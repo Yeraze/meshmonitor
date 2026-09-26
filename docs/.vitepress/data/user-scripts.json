@@ -756,5 +756,51 @@
       "Logging and after-action CSV exports",
       "LIVE mode blocks simulated injects and requires explicit local activation"
     ]
+  },
+  {
+    "name": "Discord Webhook DM",
+    "filename": "Discord_Webhook_DM.js",
+    "icon": "🎯",
+    "description": "Forwards direct messages received on the mesh to a Discord channel via webhook, with an embed showing SNR, RSSI, and hop count alongside the message text and sender.",
+    "language": "JavaScript",
+    "tags": ["Discord", "Webhook", "Notification", "Bridge", "DM"],
+    "githubPath": "coinraiser/MeshMonitor-Discord/Discord_Webhook_DM.js",
+    "exampleTrigger": "A new direct message is received (Automation Engine: trigger \"A message is received\", rule \"is a direct message\" = true, action \"Run Script\")",
+    "requirements": [
+      "Node.js 18+ (included in MeshMonitor, for global fetch)",
+      "dotenv npm package — add it to /data/scripts/package.json and install it from Script Dependencies (it is not resolvable by default)",
+      ".env file alongside the script with WEBHOOK_ID and WEBHOOK_TOKEN from a Discord webhook URL",
+      "Automation Engine action configured to pass --snr, --rssi, --hops, --fromName, and --text CLI arguments from trigger substitution tokens"
+    ],
+    "author": "coinraiser",
+    "features": [
+      "Discord rich embed with SNR, RSSI, and hop count fields",
+      "Reads webhook credentials from a local .env file (dotenv)",
+      "Designed for Automation Engine \"Run Script\" actions rather than the classic Auto Responder",
+      "Companion \"Discord Webhook PUBLIC\" script for channel messages"
+    ]
+  },
+  {
+    "name": "Discord Webhook PUBLIC",
+    "filename": "Discord_Webhook_PUBLIC.js",
+    "icon": "👀",
+    "description": "Forwards public channel messages received on the mesh to a Discord channel via webhook, with an embed showing SNR, RSSI, and hop count alongside the message text and sender.",
+    "language": "JavaScript",
+    "tags": ["Discord", "Webhook", "Notification", "Bridge", "Channel"],
+    "githubPath": "coinraiser/MeshMonitor-Discord/Discord_Webhook_PUBLIC.js",
+    "exampleTrigger": "A new channel message is received (Automation Engine: trigger \"A message is received\", action \"Run Script\")",
+    "requirements": [
+      "Node.js 18+ (included in MeshMonitor, for global fetch)",
+      "dotenv npm package — add it to /data/scripts/package.json and install it from Script Dependencies (it is not resolvable by default)",
+      ".env file alongside the script with WEBHOOK_ID and WEBHOOK_TOKEN from a Discord webhook URL",
+      "Automation Engine action configured to pass --snr, --rssi, --hops, --fromName, and --text CLI arguments from trigger substitution tokens"
+    ],
+    "author": "coinraiser",
+    "features": [
+      "Discord rich embed with SNR, RSSI, and hop count fields",
+      "Reads webhook credentials from a local .env file (dotenv)",
+      "Designed for Automation Engine \"Run Script\" actions rather than the classic Auto Responder",
+      "Companion \"Discord Webhook DM\" script for direct messages"
+    ]
   }
 ]

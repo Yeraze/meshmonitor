@@ -148,6 +148,9 @@ export const TABLE_ORDER = [
   'automation_home_anchors',
   // 3770: global MeshCore saved-regions catalog. No sourceId / no FK.
   'meshcore_saved_regions',
+  // 5277 P4b: global saved Coverage surveys (UUID PK, no sourceId, no FK).
+  // User data, so migrated like the other global catalogs above.
+  'coverage_surveys',
   // 5156: global operator-hosted privacy documents. No sourceId / no FK — the
   // policy describes the deployment, not a source.
   'privacy_documents',

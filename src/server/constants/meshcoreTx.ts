@@ -42,6 +42,7 @@ export const SERIAL_ONLY_BRIDGE_COMMANDS: ReadonlySet<string> = new Set([
   'set_telemetry_mode_base', 'set_telemetry_mode_loc', 'set_telemetry_mode_env',
   'get_stats', 'get_device_time', 'set_device_time', 'device_query',
   'reboot', 'shutdown', 'ping',
+  'has_contact', 'add_contact', // #5349: read / write the companion's contact table, no RF TX
 ]);
 
 export function isRfBridgeCommand(cmd: string): boolean {
@@ -49,7 +50,7 @@ export function isRfBridgeCommand(cmd: string): boolean {
 }
 
 /** Local-CLI verbs (Companion synthetic CLI and Repeater serial CLI) that transmit. */
-export const RF_LOCAL_CLI_VERBS: ReadonlySet<string> = new Set(['advert']);
+export const RF_LOCAL_CLI_VERBS: ReadonlySet<string> = new Set(['advert', 'advert.zerohop']);
 
 export function isTransmittingLocalCliVerb(command: string): boolean {
   const verb = command.trim().split(/\s+/)[0]?.toLowerCase() ?? '';

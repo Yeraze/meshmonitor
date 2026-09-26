@@ -14,6 +14,14 @@ import { requireAuth, optionalAuth, requirePermission, hasPermission } from '../
 import { meshcoreDeviceLimiter } from '../middleware/rateLimiters.js';
 import { managerFor, isValidConnectionParams, requireMeshcoreTx, failIfTxDisabled, stripPositions } from './meshcoreRouteShared.js';
 import databaseService from '../../services/database.js';
+import { ok, fail } from '../utils/apiResponse.js';
+import {
+  type MeshCoreAdvertMode,
+  MESHCORE_ADVERT_MODES,
+  DEFAULT_MESHCORE_ADVERT_MODE,
+  isMeshCoreAdvertMode,
+} from '../../types/meshcoreAdvert.js';
+import { MeshCoreZeroHopAdvertUnsupportedError } from '../utils/meshcoreAdvert.js';
 import { buildLocalContactRow, withoutLocalFlag, type MeshCoreContactResponse } from './meshcoreLocalContactRow.js';
 
 const router = Router({ mergeParams: true });
@@ -267,22 +275,34 @@ router.get('/info', optionalAuth(), requirePermission('connection', 'read', { so
 
 /**
  * POST /api/meshcore/advert
- * Send an advertisement
+ * Send a self-advert. Body: `{ mode?: 'zero_hop' | 'flood' }` — missing means
+ * zero_hop. A manual flood is never blocked by the automated flood floor, but
+ * it does stamp the per-source last-flood time that the floor reads.
  * Requires authentication - broadcasts on mesh network
  */
 router.post('/advert', meshcoreDeviceLimiter, requireAuth(), requirePermission('connection', 'write', { sourceIdFrom: 'params.id' }), requireMeshcoreTx(), async (req: Request, res: Response) => {
+  const rawMode = (req.body as { mode?: unknown } | undefined)?.mode;
+  if (rawMode !== undefined && !isMeshCoreAdvertMode(rawMode)) {
+    fail(res, 400, 'INVALID_ADVERT_MODE', `mode must be one of: ${MESHCORE_ADVERT_MODES.join(', ')}`);
+    return;
+  }
+  const mode: MeshCoreAdvertMode = rawMode ?? DEFAULT_MESHCORE_ADVERT_MODE;
   try {
-    const success = await managerFor(req, res).sendAdvert();
+    const success = await managerFor(req, res).sendAdvert(mode);
 
     if (success) {
-      res.json({ success: true, message: 'Advert sent' });
+      ok(res, { mode });
     } else {
-      res.status(400).json({ success: false, error: 'Failed to send advert' });
+      fail(res, 400, 'ADVERT_FAILED', 'Failed to send advert');
     }
   } catch (error) {
     if (failIfTxDisabled(res, error)) return;
+    if (error instanceof MeshCoreZeroHopAdvertUnsupportedError) {
+      fail(res, 409, error.code, error.message, { floodSent: error.floodSent });
+      return;
+    }
     logger.error('[API] Error sending advert:', error);
-    res.status(500).json({ success: false, error: 'Advert error' });
+    fail(res, 500, 'ADVERT_ERROR', 'Advert error');
   }
 });
 

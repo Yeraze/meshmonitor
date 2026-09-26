@@ -367,6 +367,8 @@ export const VALID_SETTINGS_KEYS = [
   'meshcoreAutoAnnounceSchedule',
   'meshcoreAutoAnnounceAdvertEnabled',
   'meshcoreAutoAnnounceAdvertDelaySeconds',
+  // 'zero_hop' | 'flood'; absent = flood (pre-existing burst configs)
+  'meshcoreAutoAnnounceAdvertMode',
   'meshcoreAutoAnnounceLastRunAt',
   // MeshCore auto-responder
   'meshcoreAutoResponderEnabled',
@@ -557,7 +559,12 @@ export const PER_SOURCE_SETTINGS_KEYS = [
   'meshcoreAutoAnnounceSchedule',
   'meshcoreAutoAnnounceAdvertEnabled',
   'meshcoreAutoAnnounceAdvertDelaySeconds',
+  // 'zero_hop' | 'flood'; absent = flood (pre-existing burst configs)
+  'meshcoreAutoAnnounceAdvertMode',
   'meshcoreAutoAnnounceLastRunAt',
+  // Last flood advert sent from this source (ms). Server-managed floor for
+  // automated flood adverts; see PER_SOURCE_KEYS_NOT_POSTABLE.
+  'meshcoreLastFloodAdvertAt',
   // MeshCore auto-responder
   'meshcoreAutoResponderEnabled',
   'meshcoreAutoResponderTriggers',
@@ -783,6 +790,7 @@ export const PER_SOURCE_KEYS_NOT_POSTABLE = new Set<string>([
   'lastAnnouncementTime',   // announceRoutes.ts:15,17; autoAnnounceService.ts:242,244
   'localNodeNum',           // meshtasticManager.ts:4688,4748
   'transportTrafficCheckpoint', // transportTrafficService.ts checkpointAll/restoreAndRecover (#5101 P3 WP3)
+  'meshcoreLastFloodAdvertAt', // meshcoreManager.ts recordFloodAdvert (automated flood-advert floor)
 ]);
 
 /**

@@ -6,6 +6,44 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased]
 
+## [4.16.2-rc3] - 2026-09-25
+
+### Added
+- **Coverage Report** replaces the Range Test module that firmware 2.8 removed, and it's passive: MeshMonitor sends nothing. Every position fix a radio source hears is stored with that radio's SNR, RSSI and hop data, and Reports → Coverage plots the fixes on a map coloured by signal. Drive a GPS node around and read the map.
+  - MQTT gateways (opt-in recording) and MeshCore receptions also count as receivers.
+  - The report adds coverage gaps, a summary, a grid view, export, deep links and saved surveys.
+  - Recordings are kept for 7 days by default (Global Settings → Coverage Report). (#5277, #5334, #5336, #5337, #5348, #5353)
+- **Per-transport breakdown (RF / UDP / MQTT)**, with migrations 169–171. (#5101, #5329, #5330, #5332)
+  - Network Survey hop buckets, the Packet Distribution cards, Total Nodes and Total Messages split by transport.
+  - Total Messages is now a real count, not the last 100 messages.
+  - Record Holder and Longest Active route segments keep one record per transport.
+  - Counters the firmware reports itself (Radio Statistics, Packets TX/RX and the "(Device)" charts) are labelled as covering all transports.
+  - New "Traffic by Transport" charts (nodes heard and packets received, in 5-minute bins) appear on the Info tab and as Dashboard favourites.
+- **Purge telemetry outliers.** Use "Clean outliers…" in a telemetry chart's menu, or a source-wide sweep in Settings. It shows a preview, then removes readings more than k × MAD from the series median and/or outside min/max bounds. Admin-only, and each purge is audit-logged. (#5333, #5335)
+- **`{{ trigger.packetHash }}`** on MeshCore "A message is received" automations: the 16-character on-wire packet hash, for linking a message to CoreScope maps such as `map.meshcore.com.hr/#/packets/<hash>`. Best-effort for DMs. (#5357, #5359)
+- **MeshCore "Add to radio"** adds a node the radio hasn't stored to its contact list, so you can log in to it. If the list is full, favourites are never evicted. (#5349, #5351)
+- **User Scripts Gallery:** Discord Webhook DM / PUBLIC. (#5345, #5346)
+
+### Changed
+- **MeshCore adverts default to zero-hop, and automated flood adverts are limited to one per hour per source.** That covers the auto-announce burst, timer triggers and the automation advert action, and the limit survives restarts. A manual flood advert asks for confirmation and states its airtime cost. Saved configs with no mode set keep flooding, but fall under the hourly limit. (#5347)
+- **Longest Active and Record Holder cards need `traceroute:read`** on the source, and Clear Record needs `traceroute:write`. They used `info` before, which applies across all sources and so could not limit them to one. (#5330)
+
+### Fixed
+- **MeshCore**
+  - The node list no longer shrinks to just the radio's contacts on every contact update. (#5349, #5351)
+  - Logging in to, querying or messaging a node the radio doesn't hold reports `CONTACT_NOT_ON_DEVICE` instead of a generic failure. (#5351)
+  - A short key prefix that matches several contacts no longer resolves to the first one, which misnamed repeaters from path hashes. (#5351)
+  - Channel messages are matched to their raw frame by decryption, so route, SNR and RSSI no longer attach to the wrong message. (#5359)
+- **PostgreSQL restore** advances serial sequences, so inserts after a restore no longer collide or get silently dropped. Migration 174 repairs installs that were already restored. (#5355)
+- **Per-transport counts** (#5329, #5332):
+  - MQTT-ingested traceroutes were classified as RF.
+  - Packets marked only `viaMqtt` were logged as LoRa.
+  - A new node's first transport stamp was dropped.
+  - Firmware 2.8 NodeDB replays were counted as live receptions.
+- **Channels:** deleting a channel now removes its row and messages, and cards shift while you drag to reorder. (#5324, #5326)
+- **Position History:** the heading triangle no longer blocks hover and click on the dot beneath it. (#5356, #5358)
+- **Dashboard Packet Rate card** is limited to the selected source, and starring a derived chart now keeps its underlying data from being pruned. (#5332)
+
 ## [4.16.2-rc2] - 2026-09-23
 
 ### Added

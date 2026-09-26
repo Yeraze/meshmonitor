@@ -17,6 +17,18 @@ import { logger } from '../utils/logger.js';
 import { TxDisabledError } from './errors/txDisabledError.js';
 import { isRfBridgeCommand, MESHCORE_RECEIVE_ONLY_MESSAGE } from './constants/meshcoreTx.js';
 import { meshcorePayloadTypeNameOrNull } from '../utils/meshcorePacketDecode.js';
+import { meshCorePacketHashOrUndefined } from './services/meshcoreObserverPacket.js';
+import {
+  deriveMeshCoreChannelHash,
+  groupTextBodyMatchesRecv,
+  tryDecodeGroupTextPayload,
+} from './utils/meshcoreGroupEcho.js';
+import {
+  MESHCORE_CONTACT_NOT_ON_DEVICE,
+  MESHCORE_DEVICE_TABLE_FULL,
+  MESHCORE_ERR_CODE_NOT_FOUND,
+  MESHCORE_ERR_CODE_TABLE_FULL,
+} from './meshcoreDeviceContactErrors.js';
 
 /**
  * Error message thrown when a remote answers a login attempt with an explicit
@@ -147,6 +159,48 @@ export interface BridgeShapedEvent {
 }
 
 // ---------------- helpers ----------------
+
+/** One buffered LogRxData text packet awaiting its recv event (see `pendingTxtMsgPaths`). */
+interface PendingRxEntry {
+  hops: string[];
+  /** Raw OTA path_len byte (packed: top 2 bits = hash width - 1, bottom 6 = hop count). */
+  rawPathLen: number;
+  /** OTA route type (0 TRANSPORT_FLOOD, 1 FLOOD, 2 DIRECT, 3 TRANSPORT_DIRECT). */
+  routeType?: number;
+  payloadType: number;
+  /** TXT_MSG only: plaintext src_hash byte (payload[1]). */
+  srcHash?: number;
+  snr?: number;
+  rssi?: number;
+  rawHex?: string;
+  /** Packet payload (after the path) as hex — the GRP_TXT decrypt input. */
+  payloadHex?: string;
+  /** MeshCore packet hash (16 UPPERCASE hex), or undefined if it couldn't be computed. */
+  packetHash?: string;
+  bufferedAt: number;
+}
+
+/**
+ * Does a buffered LogRxData entry agree with a recv frame's `path_len`? The
+ * firmware reports 0xFF for a direct packet and the packet's path_len byte for
+ * a flood one. Accept the packed byte or its bare hop count (older frames and
+ * test fixtures report the count). Unknown on either side counts as agreeing.
+ */
+function pathLenMatchesRecv(entry: PendingRxEntry, recvPathLen: unknown): boolean {
+  if (typeof recvPathLen !== 'number' || typeof entry.routeType !== 'number') return true;
+  const isDirect = entry.routeType === 0x02 || entry.routeType === 0x03;
+  if (recvPathLen === 0xff) return isDirect;
+  return !isDirect && (entry.rawPathLen === recvPathLen || (entry.rawPathLen & 0x3f) === recvPathLen);
+}
+
+/** What a recv event takes from its matched LogRxData entry. */
+interface ConsumedRxPath {
+  hops: string[];
+  snr?: number;
+  rssi?: number;
+  rawHex?: string;
+  packetHash?: string;
+}
 
 function bytesToHex(bytes: Uint8Array | number[]): string {
   const arr = bytes instanceof Uint8Array ? bytes : Uint8Array.from(bytes);
@@ -282,9 +336,10 @@ export class MeshCoreNativeBackend extends EventEmitter {
    * the first's buffer before its recv consumed it, so the first message lost
    * its route/SNR and — most visibly — its scope badge (received-message scope
    * intermittently blank on busy meshes, even though the raw bytes were
-   * captured). {@link consumePendingPath} matches by MESSAGE KIND and, for DMs,
-   * the 8-bit sender src_hash — NOT hop count (issue #4883). It takes the oldest
-   * matching unconsumed entry, so concurrent packets no longer evict each other.
+   * captured). {@link consumePendingPath} matches by MESSAGE KIND, then for
+   * channels by decrypting the frame (#5357) and for DMs by the 8-bit sender
+   * src_hash — NOT hop count (issue #4883) — so concurrent packets no longer
+   * evict each other.
    *
    * Each entry records `payloadType` (TXT_MSG vs GRP_TXT) so a channel recv only
    * ever consumes a GRP_TXT and a DM recv only ever consumes a TXT_MSG, and (for
@@ -293,7 +348,29 @@ export class MeshCoreNativeBackend extends EventEmitter {
    * `pubKeyPrefix[0]`. This replaces the fragile hop-count correlator that made
    * every 0-hop packet look identical (issue #4883).
    */
-  private pendingTxtMsgPaths: Array<{ hops: string[]; rawPathLen: number; payloadType: number; srcHash?: number; snr?: number; rssi?: number; rawHex?: string; bufferedAt: number }> = [];
+  private pendingTxtMsgPaths: PendingRxEntry[] = [];
+
+  /**
+   * Packet hashes (#5357) of text packets a recv already consumed, with the time
+   * of consumption. The firmware logs a packet (LogRxData) BEFORE its dedup
+   * check, so every flood copy of a message we already decoded is still logged.
+   * Without this, a late copy would sit in the buffer and a DM recv from the
+   * same sender could take it for the NEXT message. Copies whose hash is here
+   * are not buffered; entries expire after {@link CONSUMED_HASH_TTL_MS}.
+   */
+  private recentlyConsumedHashes = new Map<string, number>();
+  /** Flood copies of one packet keep arriving for a few seconds; 30s is ample. */
+  private static readonly CONSUMED_HASH_TTL_MS = 30_000;
+
+  /**
+   * Channel-secret lookup supplied by the manager (#5357). The backend has no DB
+   * access; the manager keeps an in-memory cache of the source's channel secrets
+   * and hands this sync lookup in, so a channel recv can decrypt the buffered
+   * GRP_TXT frames and take only the one that proves to be this message. `null`
+   * (unset, or a channel we don't hold) means channel messages get no
+   * path/SNR/raw/hash attached — never a FIFO guess.
+   */
+  private channelSecretResolver: ((channelIdx: number) => Uint8Array | null) | null = null;
 
   /**
    * Maximum age (ms) of a buffered LogRxData path before it is garbage-collected.
@@ -485,87 +562,155 @@ export class MeshCoreNativeBackend extends EventEmitter {
 
   /**
    * Consume the LogRxData path/SNR/raw buffered by a preceding push event,
-   * correlating it to the current message-recv event so {SNR}/{ROUTE} and the
-   * scope/region badge populate from the *matching* packet (issues #3589, #4883).
+   * correlating it to the current message-recv event so {SNR}/{ROUTE}, the
+   * scope/region badge and the packet hash (#5357) come from the *matching*
+   * packet (issues #3589, #4883).
    *
-   * MeshCore encrypts the message body on air, so there is NO per-packet identity
-   * (timestamp/text/hash) shared between the raw LogRxData bytes and the decoded
-   * recv event — a content match is impossible without the key. What we DO have:
-   *
-   *   - the message KIND: a DM rides TXT_MSG and surfaces as ContactMsgRecv; a
-   *     channel/group message rides GRP_TXT and surfaces as ChannelMsgRecv. So a
-   *     channel recv must never consume a buffered DM, and vice-versa.
-   *   - for a DM, the 8-bit sender src_hash: the OTA plaintext header carries a
-   *     src_hash byte (payload[1]) that equals the sender's `pubKeyPrefix[0]` on
-   *     the recv event. A real per-sender discriminator, 256× better than the
-   *     0/1/2/3-hop count that the old correlator used (issue #4883: on a mesh
-   *     of mostly 0-hop packets, every buffered entry looked identical, so the
-   *     oldest poison entry — an overheard packet whose recv never came — was
-   *     mis-attributed to our next message, losing its route/SNR/scope).
-   *
-   * Firmware ordering is batched and in-order: LogRx(A),LogRx(B),LogRx(C) then
-   * recv(A),recv(B),recv(C). So oldest-match (FIFO) is correct, never LIFO.
+   * Firmware ordering: the companion logs a packet (LogRxData) the moment it is
+   * received, BEFORE its dedup check, then queues the decoded message; the recv
+   * (ContactMsgRecv / ChannelMsgRecv) only arrives when we pull it. So the buffer
+   * can hold several flood copies of one packet, other packets in flight, and
+   * overheard traffic whose recv never comes.
    *
    * Matching:
-   *   - DM: the OLDEST TXT_MSG entry whose `srcHash === pubKeyPrefix[0]`. When no
-   *     entry has a matching known srcHash, fall back to the oldest TXT_MSG entry
-   *     with an UNKNOWN srcHash (fail-open for backends/packets that didn't
-   *     expose the header byte) — but never steal an entry with a known,
-   *     different srcHash.
-   *   - channel: the OLDEST GRP_TXT entry (pure FIFO — no discriminator exists on
-   *     the wire; channelIdx is always 0 and the group MAC is opaque).
+   *   - channel (#5357): decrypt-and-verify. Using the manager-supplied secret for
+   *     the recv's channel, take the OLDEST GRP_TXT entry whose channel hash
+   *     matches, whose MAC verifies, and whose plaintext timestamp and
+   *     `"Name: text"` body equal the recv's `sender_timestamp` and text. That is
+   *     proof the frame IS this message. If no entry verifies (no secret, a
+   *     backlog message synced after reconnect, a channel we don't hold) nothing
+   *     is attached — no FIFO guess.
+   *   - DM: BEST-EFFORT. TXT_MSG bodies are encrypted with the sender's shared
+   *     secret, which the companion never exports, so no content proof is
+   *     possible. Candidates are TXT_MSG entries whose plaintext src_hash equals
+   *     the sender's `pubKeyPrefix[0]` (falling back to entries whose src_hash we
+   *     couldn't read, but never one with a known, different src_hash). When
+   *     several share the src_hash, the recv's `path_len` (flood hop byte, or
+   *     0xFF = direct) and — if the recv frame carries one (v3) — its SNR break
+   *     the tie; otherwise the oldest wins.
    *
-   * Hop count is deliberately NOT used: requiring it was the #4883 bug.
+   * Hop count alone is never the correlator (that was the #4883 bug).
    *
-   * The chosen entry is spliced out (consume-once) so a later recv that got no
-   * LogRxData of its own can't reuse it. Stale entries are GC'd first (age only,
-   * see `PENDING_PATH_MAX_AGE_MS`). Returns `{ hops, snr, rssi, rawHex }` to
-   * attach, or `undefined` when there is no matching entry.
+   * The chosen entry is spliced out (consume-once) together with every other
+   * buffered copy of the same packet (same packet hash), and the hash is
+   * remembered so later copies aren't buffered at all. Stale entries are GC'd
+   * first (age only, see `PENDING_PATH_MAX_AGE_MS`).
    */
   private consumePendingPath(recv: {
     kind: 'dm' | 'channel';
     pubKeyPrefix?: Uint8Array;
-    // pathLen is accepted for callers' convenience / possible future weak
-    // tiebreak but is intentionally NOT used as a correlator (issue #4883).
+    /** Recv frame path_len: flood hop byte, 0xFF = direct. DM tie-breaker only. */
     pathLen?: unknown;
-  }): { hops: string[]; snr?: number; rssi?: number; rawHex?: string } | undefined {
+    /** Recv frame SNR (v3 frames only). DM tie-breaker only. */
+    snr?: unknown;
+    channelIdx?: unknown;
+    senderTimestamp?: unknown;
+    text?: unknown;
+  }): ConsumedRxPath | undefined {
     const now = Date.now();
     // GC poison first — an overheard buffer whose matching recv never arrived
-    // must not sit at the head of the FIFO and attach to a later message.
+    // must not sit in the FIFO and attach to a later message.
     this.pendingTxtMsgPaths = this.pendingTxtMsgPaths.filter(
       (e) => now - e.bufferedAt <= MeshCoreNativeBackend.PENDING_PATH_MAX_AGE_MS,
     );
+    this.pruneConsumedHashes(now);
     if (this.pendingTxtMsgPaths.length === 0) return undefined;
 
-    const TXT_MSG = this.PacketCtor?.PAYLOAD_TYPE_TXT_MSG;
-    const GRP_TXT = this.PacketCtor?.PAYLOAD_TYPE_GRP_TXT;
-
-    let idx = -1;
-    if (recv.kind === 'channel') {
-      // Pure FIFO: oldest GRP_TXT entry. No per-packet discriminator exists.
-      idx = this.pendingTxtMsgPaths.findIndex((e) => e.payloadType === GRP_TXT);
-    } else {
-      // DM: prefer a strict src_hash match (the real 8-bit discriminator).
-      const wantSrc =
-        recv.pubKeyPrefix && recv.pubKeyPrefix.length > 0 ? recv.pubKeyPrefix[0] : null;
-      if (wantSrc !== null) {
-        idx = this.pendingTxtMsgPaths.findIndex(
-          (e) => e.payloadType === TXT_MSG && e.srcHash === wantSrc,
-        );
-      }
-      // Fail-open: oldest TXT_MSG whose srcHash we couldn't read (e.g. the
-      // backend/mock didn't expose the OTA header byte). Never consume an entry
-      // whose known srcHash differs — that would be a wrong-sender attach.
-      if (idx === -1) {
-        idx = this.pendingTxtMsgPaths.findIndex(
-          (e) => e.payloadType === TXT_MSG && typeof e.srcHash !== 'number',
-        );
-      }
-    }
+    const idx = recv.kind === 'channel' ? this.findVerifiedChannelEntry(recv) : this.findDmEntry(recv);
     if (idx === -1) return undefined;
 
     const [buffered] = this.pendingTxtMsgPaths.splice(idx, 1); // consume-once
-    return { hops: buffered.hops, snr: buffered.snr, rssi: buffered.rssi, rawHex: buffered.rawHex };
+    if (buffered.packetHash) {
+      // Drop the other flood copies of this packet and refuse later ones.
+      const hash = buffered.packetHash;
+      this.pendingTxtMsgPaths = this.pendingTxtMsgPaths.filter((e) => e.packetHash !== hash);
+      this.recentlyConsumedHashes.set(hash, now);
+    }
+    return {
+      hops: buffered.hops,
+      snr: buffered.snr,
+      rssi: buffered.rssi,
+      rawHex: buffered.rawHex,
+      packetHash: buffered.packetHash,
+    };
+  }
+
+  /** Expire {@link recentlyConsumedHashes} entries older than the TTL. */
+  private pruneConsumedHashes(now: number): void {
+    for (const [hash, at] of this.recentlyConsumedHashes) {
+      if (now - at > MeshCoreNativeBackend.CONSUMED_HASH_TTL_MS) this.recentlyConsumedHashes.delete(hash);
+    }
+  }
+
+  /**
+   * Channel half of {@link consumePendingPath}: the index of the oldest buffered
+   * GRP_TXT entry that decrypts, with this channel's secret, to exactly the
+   * recv's timestamp and text. -1 when none does.
+   */
+  private findVerifiedChannelEntry(recv: { channelIdx?: unknown; senderTimestamp?: unknown; text?: unknown }): number {
+    if (!this.channelSecretResolver || typeof recv.channelIdx !== 'number') return -1;
+    if (typeof recv.senderTimestamp !== 'number') return -1;
+    let secret: Uint8Array | null = null;
+    try {
+      secret = this.channelSecretResolver(recv.channelIdx);
+    } catch {
+      secret = null;
+    }
+    if (!secret) return -1;
+
+    const GRP_TXT = this.PacketCtor?.PAYLOAD_TYPE_GRP_TXT;
+    const channelHash = deriveMeshCoreChannelHash(secret);
+    return this.pendingTxtMsgPaths.findIndex((e) => {
+      if (e.payloadType !== GRP_TXT || !e.payloadHex) return false;
+      // Cheap pre-filter: payload byte 0 is the channel hash.
+      if (parseInt(e.payloadHex.slice(0, 2), 16) !== channelHash) return false;
+      const decoded = tryDecodeGroupTextPayload(e.payloadHex, secret);
+      return (
+        decoded !== null &&
+        decoded.timestamp === recv.senderTimestamp &&
+        groupTextBodyMatchesRecv(decoded.body, recv.text)
+      );
+    });
+  }
+
+  /**
+   * DM half of {@link consumePendingPath} (best-effort; see there). Returns the
+   * index of the chosen TXT_MSG entry, or -1.
+   */
+  private findDmEntry(recv: { pubKeyPrefix?: Uint8Array; pathLen?: unknown; snr?: unknown }): number {
+    const TXT_MSG = this.PacketCtor?.PAYLOAD_TYPE_TXT_MSG;
+    const entries = this.pendingTxtMsgPaths;
+    const indicesWhere = (pred: (e: PendingRxEntry) => boolean): number[] =>
+      entries.flatMap((e, i) => (e.payloadType === TXT_MSG && pred(e) ? [i] : []));
+
+    // Prefer a strict src_hash match (the real 8-bit discriminator).
+    const wantSrc = recv.pubKeyPrefix && recv.pubKeyPrefix.length > 0 ? recv.pubKeyPrefix[0] : null;
+    let candidates = wantSrc !== null ? indicesWhere((e) => e.srcHash === wantSrc) : [];
+    // Fail-open: TXT_MSG entries whose srcHash we couldn't read (e.g. the
+    // backend/mock didn't expose the OTA header byte). Never an entry whose
+    // known srcHash differs — that would be a wrong-sender attach.
+    if (candidates.length === 0) candidates = indicesWhere((e) => typeof e.srcHash !== 'number');
+    if (candidates.length <= 1) return candidates[0] ?? -1;
+
+    // Tie-break among same-sender candidates (oldest-first order preserved).
+    const pathOk = (e: PendingRxEntry): boolean => pathLenMatchesRecv(e, recv.pathLen);
+    const snrOk = (e: PendingRxEntry): boolean =>
+      typeof recv.snr !== 'number' || (typeof e.snr === 'number' && Math.abs(e.snr - recv.snr) <= 0.25);
+    return (
+      candidates.find((i) => pathOk(entries[i]) && snrOk(entries[i])) ??
+      candidates.find((i) => pathOk(entries[i])) ??
+      candidates.find((i) => snrOk(entries[i])) ??
+      candidates[0]
+    );
+  }
+
+  /**
+   * Set (or clear) the manager's channel-secret lookup used to verify channel
+   * messages against buffered GRP_TXT frames (#5357). Must be synchronous — it
+   * runs inside the recv handler.
+   */
+  setChannelSecretResolver(resolver: ((channelIdx: number) => Uint8Array | null) | null): void {
+    this.channelSecretResolver = resolver;
   }
 
   private wirePushEvents(): void {
@@ -575,11 +720,9 @@ export class MeshCoreNativeBackend extends EventEmitter {
     // LogRxData: emitted for every received OTA packet (when a serial
     // client is attached). The companion-level txt-msg recv events
     // (ContactMsgRecv / ChannelMsgRecv) strip the relay-hash chain, so
-    // we parse the raw bytes here, buffer the path for TXT_MSG packets
-    // only, and let the next message-recv handler consume it. The
-    // single-buffer design is intentional — under the wire-level
-    // serialization the firmware uses, LogRxData is emitted right
-    // before the corresponding txt-msg event for the same packet.
+    // we parse the raw bytes here, buffer the path for TXT_MSG / GRP_TXT
+    // packets, and let the matching message-recv handler consume it (see
+    // consumePendingPath for how a recv picks its frame).
     //
     // We also surface EVERY parsed packet as an `ota_packet` bridge event
     // so the MeshCore Packet Monitor can show full OTA metadata (route
@@ -630,12 +773,16 @@ export class MeshCoreNativeBackend extends EventEmitter {
               payload.length > 0 &&
               typeof selfFirstByte === 'number' &&
               payload[0] !== selfFirstByte;
-            // NOTE: GRP_TXT (channel) can't be cheaply poison-filtered — its
-            // byte 0 is a channel_hash and we don't resolve the held-channel
-            // hash set here, so an undecryptable channel packet is still
-            // buffered and reaped only by the age GC. TODO: filter on our
-            // channel hashes if that set becomes available on this seam.
-            if (!overheardDm) {
+            // NOTE: GRP_TXT (channel) is not poison-filtered here. A packet for a
+            // channel we don't hold is buffered, never verifies against a recv
+            // (#5357 decrypt-and-verify), and is reaped by the age GC.
+            const rawHex = bytesToHex(raw);
+            const packetHash = meshCorePacketHashOrUndefined(rawHex);
+            // A later flood copy of a packet a recv already consumed (#5357):
+            // the firmware logs it before dedup, but no recv will follow.
+            const alreadyConsumed =
+              packetHash !== undefined && this.recentlyConsumedHashes.has(packetHash);
+            if (!overheardDm && !alreadyConsumed) {
               // For DMs, byte 1 is the plaintext src_hash — the real 8-bit
               // discriminator matched against the recv's pubKeyPrefix[0]. For
               // GRP_TXT byte 1 is a MAC byte (not a src hash), so leave it unset.
@@ -648,11 +795,14 @@ export class MeshCoreNativeBackend extends EventEmitter {
               this.pendingTxtMsgPaths.push({
                 hops,
                 rawPathLen: pkt.pathLen,
+                routeType: typeof pkt.route_type === 'number' ? pkt.route_type : undefined,
                 payloadType: pkt.payload_type,
                 srcHash,
                 snr,
                 rssi,
-                rawHex: bytesToHex(raw),
+                rawHex,
+                payloadHex: payload != null ? bytesToHex(payload) : undefined,
+                packetHash,
                 bufferedAt: Date.now(),
               });
               // Backstop against unbounded growth (recv-less LogRxData bursts).
@@ -727,7 +877,14 @@ export class MeshCoreNativeBackend extends EventEmitter {
       // Consume the path buffered by the preceding LogRxData event, correlated
       // to THIS DM by src_hash (#4883). Returns undefined when the buffer is
       // absent, stale, or for a different sender (issue #3589).
-      const consumedPath = this.consumePendingPath({ kind: 'dm', pubKeyPrefix: msg.pubKeyPrefix, pathLen: msg.pathLen });
+      const consumedPath = this.consumePendingPath({
+        kind: 'dm',
+        pubKeyPrefix: msg.pubKeyPrefix,
+        pathLen: msg.pathLen,
+        // Only v3 recv frames carry SNR; meshcore.js parses v1, so this is
+        // normally undefined and path_len alone breaks src_hash ties.
+        snr: msg.snr,
+      });
       const payload = {
         pubkey_prefix: bytesToHex(msg.pubKeyPrefix),
         text: msg.text,
@@ -748,13 +905,23 @@ export class MeshCoreNativeBackend extends EventEmitter {
         // Raw OTA bytes (from the same preceding LogRxData) so the manager can
         // resolve the scope/region the message was sent under (#3742 Phase 2).
         raw_hex: consumedPath?.rawHex,
+        // MeshCore packet hash of the matched frame (#5357). BEST-EFFORT for
+        // DMs: src_hash + path_len correlation, no content proof.
+        packet_hash: consumedPath?.packetHash,
       };
       this.emitBridgeEvent(isCliReply ? 'cli_reply' : 'contact_message', payload);
     });
 
     // ChannelMsgRecv → channel_message
     this.connection.on(ResponseCodes.ChannelMsgRecv, (msg: any) => {
-      const consumedPath = this.consumePendingPath({ kind: 'channel', pathLen: msg.pathLen });
+      // Decrypt-and-verify (#5357): only a buffered GRP_TXT that decrypts to
+      // this exact timestamp + text is attached; otherwise nothing is.
+      const consumedPath = this.consumePendingPath({
+        kind: 'channel',
+        channelIdx: msg.channelIdx,
+        senderTimestamp: msg.senderTimestamp,
+        text: msg.text,
+      });
       this.emitBridgeEvent('channel_message', {
         channel_idx: msg.channelIdx,
         text: msg.text,
@@ -767,6 +934,8 @@ export class MeshCoreNativeBackend extends EventEmitter {
         rssi: consumedPath?.rssi,
         // Raw OTA bytes for scope/region resolution (#3742 Phase 2).
         raw_hex: consumedPath?.rawHex,
+        // MeshCore packet hash of the verified frame (#5357).
+        packet_hash: consumedPath?.packetHash,
       });
     });
 
@@ -790,6 +959,24 @@ export class MeshCoreNativeBackend extends EventEmitter {
       this.emitBridgeEvent('contact_path_updated', {
         public_key: bytesToHex(push.publicKey),
       });
+    });
+
+    // CONTACT_DELETED (0x8F) and CONTACTS_FULL (0x90) — not in meshcore.js
+    // PushCodes, so read them off the raw frame stream (#5349). Firmware
+    // (examples/companion_radio/MyMesh.cpp):
+    //   0x8F [pub_key 32B] — the firmware evicted this contact to make room
+    //                        (only when "overwrite oldest" is enabled; it never
+    //                        evicts a favourite)
+    //   0x90               — a new contact could not be stored: table full
+    const PUSH_CONTACT_DELETED = 0x8F;
+    const PUSH_CONTACTS_FULL = 0x90;
+    this.connection.on('rx', (frame: Uint8Array) => {
+      if (!frame || frame.length < 1) return;
+      if (frame[0] === PUSH_CONTACT_DELETED && frame.length >= 33) {
+        this.emitBridgeEvent('contact_deleted', { public_key: bytesToHex(frame.slice(1, 33)) });
+      } else if (frame[0] === PUSH_CONTACTS_FULL && frame.length === 1) {
+        this.emitBridgeEvent('contacts_full', {});
+      }
     });
 
     // PathDiscoveryResponse (0x8D) — not in meshcore.js PushCodes, so we
@@ -914,7 +1101,7 @@ export class MeshCoreNativeBackend extends EventEmitter {
             try {
               const existing: any[] = await c.getContacts();
               if (existing.some((ct) => bytesToHex(ct.publicKey) === publicKey)) return;
-              await c.addOrUpdateContact(publicKeyBytes, nodeType, 0, 0xff, new Uint8Array(64), '', 0, 0, 0);
+              await this.addNewDeviceContact(c, { publicKey: publicKeyBytes, type: nodeType });
             } catch (err) {
               // meshcore.js's uncorrelated global Ok/Err ack can reject this
               // promise with NO argument when a concurrent command's Err frame
@@ -1987,9 +2174,16 @@ export class MeshCoreNativeBackend extends EventEmitter {
         return { ok: true, size };
       }
 
-      case 'send_advert':
-        await c.sendAdvert(K.SelfAdvertTypes.Flood);
-        return { sent: true };
+      case 'send_advert': {
+        // Reach is explicit: a missing or unknown mode is a caller bug, and
+        // guessing would risk a flood nobody asked for.
+        const mode = params.mode;
+        if (mode !== 'zero_hop' && mode !== 'flood') {
+          throw new Error(`send_advert requires mode 'zero_hop' or 'flood' (got ${String(mode)})`);
+        }
+        await c.sendAdvert(mode === 'flood' ? K.SelfAdvertTypes.Flood : K.SelfAdvertTypes.ZeroHop);
+        return { sent: true, mode };
+      }
 
       case 'send_cli': {
         // Remote-admin: send a CLI command to a distant node as an encrypted
@@ -2011,6 +2205,9 @@ export class MeshCoreNativeBackend extends EventEmitter {
         if (!fullKey) {
           throw new Error(`Contact not found for public key ${to.substring(0, 12)}…`);
         }
+        // The firmware addresses the CLI text from its own contact table; a
+        // target it doesn't hold fails instantly with no RF (#5349).
+        await this.requireDeviceContact(c, fullKey);
         await c.sendTextMessage(fullKey, text, K.TxtTypes.CliData);
         return { sent: true };
       }
@@ -2018,6 +2215,12 @@ export class MeshCoreNativeBackend extends EventEmitter {
       case 'login': {
         const publicKey = await this.resolvePublicKey(params.public_key as string);
         if (!publicKey) throw new Error('Login target not found');
+        // CMD_SEND_LOGIN resolves the target against the companion's own
+        // contact table; one it doesn't hold is answered at once with
+        // ERR_CODE_NOT_FOUND and nothing goes out over the air. Check first so
+        // the caller gets a clear reason instead of a bare "login failed"
+        // (#5349). Local serial read only — no airtime.
+        await this.requireDeviceContact(c, publicKey);
         // meshcore.js resolves login() with the parsed LoginSuccess push. On
         // firmware >= 1.16 that carries the remote's is_admin flag and firmware
         // version level, which the Virtual Node must relay so the app grants
@@ -2035,6 +2238,9 @@ export class MeshCoreNativeBackend extends EventEmitter {
         // can act on immediately instead of retrying a password that will
         // never be accepted.
         const rejected = this.awaitLoginRejection(publicKey);
+        // meshcore.js rejects login() with NO argument on any Err frame, so
+        // capture the firmware error code ourselves to explain the failure.
+        const errCode = this.captureErrCode(c);
         try {
           const login = await Promise.race([
             c.login(publicKey, String(params.password ?? '')) as Promise<{
@@ -2052,14 +2258,24 @@ export class MeshCoreNativeBackend extends EventEmitter {
             acl_permissions: login?.aclPermissions,
             firmware_ver_level: login?.firmwareVerLevel,
           };
+        } catch (err) {
+          // The contact was on the device a moment ago but the firmware says
+          // otherwise (evicted in between) — same clear reason.
+          if (errCode.get() === MESHCORE_ERR_CODE_NOT_FOUND) {
+            throw new Error(MESHCORE_CONTACT_NOT_ON_DEVICE, { cause: err });
+          }
+          throw err;
         } finally {
           rejected.cancel();
+          errCode.stop();
         }
       }
 
       case 'get_status': {
         const publicKey = await this.resolvePublicKey(params.public_key as string);
         if (!publicKey) throw new Error('Status target not found');
+        // Same contact-table lookup as login (#5349): fail clearly, no RF.
+        await this.requireDeviceContact(c, publicKey);
         // Serialize + dedupe on this connection: the library's getStatus listens
         // on the shared, tag-less StatusResponse event with a `.once` handler, so
         // overlapping requests cannibalize each other's response and spam the
@@ -2228,11 +2444,19 @@ export class MeshCoreNativeBackend extends EventEmitter {
         const manufParts = rawManuf.split('\u0000').filter((s) => s.length > 0);
         const model = manufParts[0] ?? '';
         const verString = manufParts[1];
+        // DeviceInfo byte 2 is MAX_CONTACTS / 2 on protocol v3+ firmware
+        // (companion_radio MyMesh.cpp); meshcore.js lumps it into `reserved`.
+        const reserved = info?.reserved as Uint8Array | number[] | undefined;
+        const maxContacts =
+          typeof info?.firmwareVer === 'number' && info.firmwareVer >= 3 && reserved && reserved.length > 0
+            ? Number(reserved[0]) * 2
+            : undefined;
         return {
           'fw ver': info?.firmwareVer,
           fw_build: info?.firmware_build_date,
           model,
           ver: verString,
+          max_contacts: maxContacts,
         };
       }
 
@@ -2289,6 +2513,64 @@ export class MeshCoreNativeBackend extends EventEmitter {
         }
         await c.deleteChannel(idx);
         return { ok: true };
+      }
+
+      case 'has_contact': {
+        // Is this key in the companion's saved contact table? (#5349)
+        // Local serial read — no airtime.
+        const hex = String(params.public_key ?? '').toLowerCase();
+        if (!/^[0-9a-f]{64}$/.test(hex)) throw new Error('has_contact requires a 64-hex public_key');
+        const contacts = (await c.getContacts()) as RawDeviceContact[];
+        return {
+          on_device: contacts.some((ct) => bytesToHex(ct.publicKey) === hex),
+          count: contacts.length,
+        };
+      }
+
+      case 'add_contact': {
+        // Explicit "Add to radio" (#5349). The manager owns the policy (full
+        // table confirmation, favourite protection); this is the device IO.
+        const hex = String(params.public_key ?? '').toLowerCase();
+        if (!/^[0-9a-f]{64}$/.test(hex)) throw new Error('add_contact requires a 64-hex public_key');
+        const type = Number(params.adv_type);
+        // Refuse ADV_TYPE_NONE (0): the firmware's transient-slot eviction
+        // for it ignores favourites.
+        if (!Number.isInteger(type) || type < 1 || type > 4) {
+          throw new Error('add_contact requires adv_type 1-4');
+        }
+        const before = (await c.getContacts()) as RawDeviceContact[];
+        if (before.some((ct) => bytesToHex(ct.publicKey) === hex)) {
+          return { added: false, already: true, count: before.length, evicted: [] };
+        }
+        const errCode = this.captureErrCode(c);
+        let ackFailed = false;
+        try {
+          await this.addNewDeviceContact(c, {
+            publicKey: Uint8Array.from(hexToBytes(hex)),
+            type,
+            name: typeof params.name === 'string' ? params.name.slice(0, 31) : '',
+            favorite: params.favorite === true,
+            latitude: typeof params.latitude === 'number' ? params.latitude : null,
+            longitude: typeof params.longitude === 'number' ? params.longitude : null,
+          });
+        } catch (err) {
+          if (errCode.get() === MESHCORE_ERR_CODE_TABLE_FULL) throw new Error(MESHCORE_DEVICE_TABLE_FULL, { cause: err });
+          // meshcore.js's Ok/Err ack is uncorrelated — a foreign Err can
+          // reject this with no argument. The read-back below is authoritative.
+          ackFailed = true;
+          logger.debug(`[MeshCore:native] add_contact ack error (verifying by read-back): ${String(err)}`);
+        } finally {
+          errCode.stop();
+        }
+        const after = (await c.getContacts()) as RawDeviceContact[];
+        const afterHex = new Set(after.map((ct) => bytesToHex(ct.publicKey)));
+        if (!afterHex.has(hex)) {
+          throw new Error(ackFailed ? 'The radio refused to store the contact' : 'The radio did not store the contact');
+        }
+        const evicted = before
+          .map((ct) => bytesToHex(ct.publicKey))
+          .filter((k) => !afterHex.has(k));
+        return { added: true, already: false, count: after.length, evicted };
       }
 
       case 'remove_contact': {
@@ -2562,6 +2844,85 @@ export class MeshCoreNativeBackend extends EventEmitter {
     };
   }
 
+  /**
+   * Store a contact the companion does not hold yet, via CMD_ADD_UPDATE_CONTACT
+   * (opcode 9). Local serial write — nothing goes on the air. Shared by the
+   * discovery auto-add and the explicit "Add to radio" action (#5349).
+   *
+   * - Flood path (out_path_len 0xFF = OUT_PATH_UNKNOWN): the device learns the
+   *   route from the next exchange.
+   * - lastAdvert 0, so the node's next advert is not dropped by the firmware's
+   *   replay guard (`timestamp <= last_advert_timestamp`, BaseChatMesh.cpp)
+   *   and refreshes name/type/position.
+   * - `favorite` sets flags bit 0, which the firmware's eviction honours.
+   *
+   * When the table is full, the firmware (BaseChatMesh::allocateContactSlot)
+   * either overwrites the oldest NON-favourite contact (only if "overwrite
+   * oldest" is enabled; it pushes 0x8F for the evicted one) or refuses with
+   * ERR_CODE_TABLE_FULL. Never pass type 0 (ADV_TYPE_NONE): that takes the
+   * firmware's transient-slot path, whose eviction does NOT check favourites.
+   */
+  private async addNewDeviceContact(
+    connection: AnyConnection,
+    opts: {
+      publicKey: Uint8Array;
+      type: number;
+      name?: string;
+      favorite?: boolean;
+      latitude?: number | null;
+      longitude?: number | null;
+    },
+  ): Promise<void> {
+    const toFixed = (deg: number | null | undefined): number =>
+      typeof deg === 'number' && Number.isFinite(deg) ? Math.round(deg * 1e6) : 0;
+    await connection.addOrUpdateContact(
+      opts.publicKey,
+      opts.type,
+      opts.favorite ? 0x01 : 0,
+      0xff,
+      new Uint8Array(64),
+      opts.name ?? '',
+      0,
+      toFixed(opts.latitude),
+      toFixed(opts.longitude),
+    );
+  }
+
+  /**
+   * Throw MESHCORE_CONTACT_NOT_ON_DEVICE unless `publicKey` is in the
+   * companion's saved contact table (#5349). The firmware resolves login /
+   * status / DM targets from that table only, so a missing contact would fail
+   * instantly with a bare Err frame. Local serial read — no airtime.
+   */
+  private async requireDeviceContact(connection: AnyConnection, publicKey: Uint8Array): Promise<void> {
+    const targetHex = bytesToHex(publicKey);
+    const contacts = (await connection.getContacts()) as RawDeviceContact[];
+    if (!contacts.some((ct) => bytesToHex(ct.publicKey) === targetHex)) {
+      throw new Error(MESHCORE_CONTACT_NOT_ON_DEVICE);
+    }
+  }
+
+  /**
+   * Record the errCode of the next firmware Err frame (meshcore.js emits
+   * `{ errCode }` on ResponseCodes.Err but its command wrappers reject with no
+   * argument). The Err frame carries no request tag, so this is best-effort
+   * attribution for the command in flight. Always call `stop()`.
+   */
+  private captureErrCode(connection: AnyConnection): { get: () => number | null; stop: () => void } {
+    let code: number | null = null;
+    const errEvent = this.constants?.ResponseCodes?.Err;
+    const onErr = (resp: { errCode?: number | null } | undefined) => {
+      if (code === null && typeof resp?.errCode === 'number') code = resp.errCode;
+    };
+    if (errEvent !== undefined) connection.on(errEvent, onErr);
+    return {
+      get: () => code,
+      stop: () => {
+        if (errEvent !== undefined) connection.off(errEvent, onErr);
+      },
+    };
+  }
+
   private async resolvePublicKey(hexKey: string): Promise<Uint8Array | null> {
     if (!hexKey || !this.connection) return null;
     const normalized = hexKey.toLowerCase();
@@ -2569,15 +2930,14 @@ export class MeshCoreNativeBackend extends EventEmitter {
     if (normalized.length === 64) {
       return Uint8Array.from(hexToBytes(normalized));
     }
-    // Look up by prefix from the contact list.
+    // Look up by prefix from the contact list. Require a UNIQUE match
+    // (#5349): picking the first of several contacts sharing the prefix
+    // would address the command to the wrong node.
     const contacts: any[] = await this.connection.getContacts();
-    for (const ct of contacts) {
-      const fullHex = bytesToHex(ct.publicKey);
-      if (fullHex.startsWith(normalized)) {
-        return ct.publicKey instanceof Uint8Array ? ct.publicKey : Uint8Array.from(ct.publicKey);
-      }
-    }
-    return null;
+    const matches = contacts.filter((ct) => bytesToHex(ct.publicKey).startsWith(normalized));
+    if (matches.length !== 1) return null;
+    const pk = matches[0].publicKey;
+    return pk instanceof Uint8Array ? pk : Uint8Array.from(pk);
   }
 
   /**

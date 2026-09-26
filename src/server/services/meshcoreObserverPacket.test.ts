@@ -29,6 +29,7 @@ import {
   pathByteLength,
   parseObserverFrame,
   calculateMeshCorePacketHash,
+  meshCorePacketHashOrUndefined,
   buildObserverPacketPayload,
   buildObserverStatusPayload,
   buildObserverDeviceStats,
@@ -321,6 +322,36 @@ describe('calculateMeshCorePacketHash', () => {
   it('is 16 uppercase hex chars', () => {
     const hex = new Builder().u8(header(0x01, 0x02)).u8(0xff).bytes([0x01]).hex();
     expect(calculateMeshCorePacketHash(hex)).toMatch(/^[0-9A-F]{16}$/);
+  });
+
+  // Known vectors (#5357): real frames captured by the CoreScope analyzer at
+  // map.meshcore.com.hr, with the hash it keys them on (it stores lowercase;
+  // its lookups ignore case). `{{ trigger.packetHash }}` must equal these.
+  it('matches CoreScope on a captured GRP_TXT (channel) flood frame', () => {
+    const raw =
+      '1540D9AEFFB8183F8F47F919E136150469109973F7C3E2C2932DCA02542008F06F72F2A75639827A40C96F08A544D1BC568BAD9F100D29DACA0B3E8098F75476195E43E9F5';
+    expect(calculateMeshCorePacketHash(raw)).toBe('931D5DA9D6054F49');
+  });
+
+  it('matches CoreScope on a captured 2-hop RESPONSE frame', () => {
+    expect(calculateMeshCorePacketHash('0642359A9CC9782930704E86F9D77715A516E5B1F7DC14F3CC75')).toBe(
+      '26EB14C8F6B56595',
+    );
+  });
+});
+
+describe('meshCorePacketHashOrUndefined', () => {
+  it('returns the hash for a parsable frame', () => {
+    expect(meshCorePacketHashOrUndefined('0642359A9CC9782930704E86F9D77715A516E5B1F7DC14F3CC75')).toBe(
+      '26EB14C8F6B56595',
+    );
+  });
+
+  it('returns undefined instead of the sentinel for missing or unparsable input', () => {
+    expect(meshCorePacketHashOrUndefined(undefined)).toBeUndefined();
+    expect(meshCorePacketHashOrUndefined(null)).toBeUndefined();
+    expect(meshCorePacketHashOrUndefined('')).toBeUndefined();
+    expect(meshCorePacketHashOrUndefined('00')).toBeUndefined();
   });
 });
 

@@ -24,6 +24,7 @@ import { useWebSocketContext } from '../../../contexts/WebSocketContext';
 import { useToast } from '../../ToastContainer';
 import { isTxDisabledBody } from '../../../utils/txDisabled';
 import { parseJsonResponse } from '../../../utils/parseJsonResponse';
+import type { MeshCoreAdvertMode } from '../../../types/meshcoreAdvert';
 import type {
   MeshCoreMessageEvent,
   MeshCoreContactUpdateEvent,
@@ -151,6 +152,9 @@ export interface MeshCoreMessage {
   scopeCode?: number | null;
   /** Region name resolved from the scope code; null = unscoped or unknown scope (#3742 Ph2). */
   scopeName?: string | null;
+  /** MeshCore packet hash (16 uppercase hex) of the received frame, when matched
+   *  (#5357). Live events only — not persisted, so absent on reloaded history. */
+  packetHash?: string;
   /**
    * MeshMonitor's own wall clock (ms) at the moment this message was created or
    * observed — NOT the sender's clock.
@@ -206,6 +210,19 @@ export interface RoomSyncConfig {
   /** Consecutive failed scheduled syncs; 0 once one succeeds. */
   failureCount: number;
   lastError: RoomSyncFailureReason | null;
+}
+
+/** Response of `addContactToDevice` (#5349). `code` is the server's machine
+ *  code on failure — `CONTACT_TABLE_FULL_CONFIRM` means "ask the user, then
+ *  retry with confirmFull". */
+export interface AddContactToDeviceResponse {
+  success: boolean;
+  status?: string;
+  code?: string;
+  error?: string;
+  count?: number;
+  maxContacts?: number | null;
+  evicted?: string[];
 }
 
 export interface MeshCoreActions {
@@ -264,6 +281,9 @@ export interface MeshCoreActions {
   /** Remove a contact from the device's contact list. Resolves `true` when
    *  the device ACKed the removal; `false` for any error. */
   removeContact: (publicKey: string) => Promise<boolean>;
+  /** Add a node to the companion radio's own contact list so the radio can
+   *  log in to / query / message it (#5349). Local write, no airtime. */
+  addContactToDevice: (publicKey: string, confirmFull?: boolean) => Promise<AddContactToDeviceResponse>;
   /** Toggle the favorite flag for a node (issue #3588). Persists the local
    *  favorite (which pins the node to the top of the list) and, for a
    *  connected Companion source, also sets the firmware favourite bit so the
@@ -289,7 +309,8 @@ export interface MeshCoreActions {
   exportPrivateKey: () => Promise<string | null>;
   /** Import an Ed25519 private key onto the device. Destructive — replaces identity. */
   importPrivateKey: (hexKey: string, opts?: { confirm?: boolean }) => Promise<boolean>;
-  sendAdvert: () => Promise<void>;
+  /** Send a self-advert. `zero_hop` = nearby only; `flood` = whole mesh (costly). */
+  sendAdvert: (mode: MeshCoreAdvertMode) => Promise<void>;
   /** Send a message. `scope` is an optional one-off region/scope override
    *  (#3701) for THIS send only — it is not persisted to the channel; the next
    *  send re-asserts the channel/default scope. Omit (or pass `undefined`) for
@@ -543,33 +564,49 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
   }), []);
 
   const recomputeNodes = useCallback(() => {
-    // Rebuild the node list from in-memory contacts. Contacts carry no
-    // favorite flag (it lives server-side, issue #3588), so carry forward the
-    // last-known isFavorite per publicKey from the previous nodes state — a
-    // contact push must not transiently un-pin a favorite before the next
-    // snapshot poll reconciles from the DB.
+    // MERGE the live in-memory contacts into the current node list — never
+    // rebuild the list from contacts alone (#5349). `nodes` comes from the
+    // snapshot's `getAllNodes()` (durable meshcore_nodes rows ∪ live
+    // contacts), while `contactsRef` only mirrors the companion's contact
+    // table plus pushes. Rebuilding from contacts dropped every node known
+    // only from the DB on the first contact/local-node push (the "13 nodes,
+    // then 6, then 7 until you refresh" report) and replaced DB-only fields
+    // (favorite, battery, advType, name) with contact defaults.
     setNodes(prev => {
-      const favByKey = new Map(prev.map(n => [n.publicKey, n.isFavorite]));
-      // Likewise carry forward the last-known name. A re-discovered node
-      // returns from the device with an empty adv_name (discovery responses
-      // carry only key+type; the name follows via a later advert), so
-      // contactToNode() resolves it to "Unknown" and would clobber the good
-      // name live until a page reload re-reads it from the DB. Keep the prior
-      // real name in that gap.
-      const nameByKey = new Map(
-        prev.filter(n => n.name && n.name !== 'Unknown').map(n => [n.publicKey, n.name]),
-      );
+      const prevByKey = new Map(prev.map(n => [n.publicKey, n]));
       const merged: MeshCoreNode[] = [];
-      if (localNodeRef.current) merged.push(localNodeRef.current);
+      const covered = new Set<string>();
+      const local = localNodeRef.current;
+      if (local) {
+        const base = prevByKey.get(local.publicKey);
+        merged.push(base ? { ...base, ...local } : local);
+        covered.add(local.publicKey);
+      }
       for (const c of contactsRef.current.values()) {
-        const node = contactToNode(c);
-        const fav = favByKey.get(c.publicKey);
-        if (fav !== undefined) node.isFavorite = fav;
-        if (node.name === 'Unknown') {
-          const prevName = nameByKey.get(c.publicKey);
-          if (prevName) node.name = prevName;
-        }
-        merged.push(node);
+        const base = prevByKey.get(c.publicKey);
+        const live = contactToNode(c);
+        merged.push({
+          ...base,
+          ...live,
+          // A re-discovered node returns from the device with an empty
+          // adv_name (discovery responses carry only key+type), so keep the
+          // prior real name rather than regressing it to "Unknown".
+          name: live.name !== 'Unknown' ? live.name : (base?.name || live.name),
+          // An advert that carried no type must not erase a known type
+          // (e.g. the DB says repeater) — only a real value overrides.
+          advType: c.advType ?? base?.advType ?? 0,
+          lastHeard: live.lastHeard ?? base?.lastHeard,
+          rssi: live.rssi ?? base?.rssi,
+          snr: live.snr ?? base?.snr,
+          // Favorites live server-side (issue #3588), not on contacts.
+          isFavorite: base?.isFavorite,
+        });
+        covered.add(c.publicKey);
+      }
+      // Keep every row the snapshot knew about that no contact covers — the
+      // DB-only nodes (not in the companion's contact table).
+      for (const n of prev) {
+        if (!covered.has(n.publicKey)) merged.push(n);
       }
       return merged;
     });
@@ -1457,6 +1494,44 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
     }
   }, [mcPrefix, csrfFetch, reportTxDisabled]);
 
+  const addContactToDevice = useCallback(async (
+    publicKey: string,
+    confirmFull = false,
+  ): Promise<AddContactToDeviceResponse> => {
+    try {
+      const response = await csrfFetch(
+        `${mcPrefix}/contacts/${encodeURIComponent(publicKey)}/add-to-device`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ confirmFull }),
+        },
+      );
+      const body = await parseJsonResponse(response);
+      if (!body.success) {
+        return {
+          success: false,
+          code: body.code,
+          error: body.error,
+          count: body.count,
+          maxContacts: body.maxContacts,
+        };
+      }
+      const data = (body.data ?? {}) as { status?: string; count?: number; maxContacts?: number | null; evicted?: string[] };
+      // The server pushes contact updates too; mark it locally so the panel
+      // re-enables login without waiting for the push.
+      const existing = contactsRef.current.get(publicKey);
+      if (existing) {
+        const updated = { ...existing, onDevice: true };
+        contactsRef.current.set(publicKey, updated);
+        setContacts(Array.from(contactsRef.current.values()));
+      }
+      return { success: true, ...data };
+    } catch (_err) {
+      return { success: false, error: 'Network error' };
+    }
+  }, [mcPrefix, csrfFetch]);
+
   const removeContact = useCallback(async (publicKey: string): Promise<boolean> => {
     try {
       const response = await csrfFetch(
@@ -1471,6 +1546,9 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
       setContacts(prev => prev.filter(c => c.publicKey !== publicKey));
       contactsRef.current.delete(publicKey);
       recomputeNodes();
+      // recomputeNodes() keeps DB-only rows (#5349); the server deleted this
+      // node's row too, so drop it explicitly.
+      setNodes(prev => prev.filter(n => n.publicKey !== publicKey));
       return true;
     } catch (_err) {
       setError('Failed to remove contact');
@@ -1634,9 +1712,13 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
     }
   }, [mcPrefix, csrfFetch]);
 
-  const sendAdvert = useCallback(async () => {
+  const sendAdvert = useCallback(async (mode: MeshCoreAdvertMode) => {
     try {
-      const response = await csrfFetch(`${mcPrefix}/advert`, { method: 'POST' });
+      const response = await csrfFetch(`${mcPrefix}/advert`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mode }),
+      });
       const data = await parseJsonResponse(response);
       if (!data.success) {
         if (reportTxDisabled(response.status, data)) return;
@@ -2037,6 +2119,7 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
       traceContactPath,
       pingContactZeroHop,
       removeContact,
+      addContactToDevice,
       setNodeFavorite,
       exportContact,
       importContact,

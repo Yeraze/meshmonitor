@@ -48,7 +48,7 @@ plan comment on #5277.
 - [x] **P3 — MeshCore receptions.** Advert positions with SNR/RSSI from the raw RX
   feed (LOG_RX_DATA 0x88) and hops from path_len.
   *Exit:* MeshCore receptions on the report alongside Meshtastic.
-- [ ] **P4 — Gaps, surveys, summary, export.** Likely-gap lines; saved surveys
+- [x] **P4 — Gaps, surveys, summary, export.** (P4a #5348, P4b) Likely-gap lines; saved surveys
   (live start or past range) exempt from retention; summary panel (heard vs
   expected, best/worst, distance-vs-SNR chart, per-receiver table); grid view;
   CSV/GeoJSON export; "Show coverage" link on node details. Also: search in the
@@ -125,4 +125,40 @@ plan comment on #5277.
 - **Flagged, not changed:** MeshMonitor's own MeshCore "Send advert" button,
   the auto-announce advert burst and the automation `advert` action all send a
   FLOOD advert (~9–25 s of channel time per send with 20 repeaters in reach).
+
+### P4a (2026-09-25)
+
+- Spec: `COVERAGE_P4_SPEC.md` (P4 split: P4a no schema change; P4b saved surveys).
+- All analysis runs in the browser on already-loaded, privacy-filtered
+  receptions: gaps (`coverageGaps.ts`), summary, metre grid, CSV/GeoJSON
+  export (formula-injection guard), deep link. No new endpoint.
+- Gap rule (U1): interval = configured, else P25 of spacings (≥5, clamped
+  15–900 s), else 30 s / 60 s; gap = > max(2.5× interval, 60 s), ≤ 30 min,
+  moved ≥ 200 m. Thresholds only in `src/utils/coverage.ts`.
+- `preferCanvas` on the coverage map; recording toggle and "Show coverage"
+  deep link from node details; sender search via `SearchableSelect`; the
+  recording toggle now uses the shared `Modal` instead of `window.confirm`.
+- Session crashed mid-phase with 6 agents running; all resumed from their
+  worktrees. Vitest under jsdom cannot `vi.mock` a module missing on disk
+  (resolution fails before the mock registry), so parallel packages that
+  import each other can't run their tests until merged.
+- **Flagged, outside the epic:** PostgreSQL restore never resets id
+  sequences; `insertIgnore` on PG (`onConflictDoNothing()` without a target)
+  can then silently drop new inserts into restored serial tables.
+
+### P4b (2026-09-25)
+
+- Global `coverage_surveys` table (migration 173, UUID text PK — not serial,
+  avoiding the PG restore sequence trap). Added to CLAUDE.md's global-by-design
+  exceptions.
+- Retention exemption through the single `purgeOlderThan(cutoff, exemptions)`
+  seam; live surveys end at read time (`effectiveSurveyEndAt`, 24 h cap), no timer.
+- User decisions: U2 permissions (logged-in + sender visible to create;
+  creator/admin to edit), U3 backup of surveys + their window receptions (ids
+  dropped), U4 caps (24 h live, 7-day range, 50/user, 500 total), U6 wipes still
+  delete receptions.
+- Route tests converted from a fake repo to the real repository on the harness
+  DB after merge (a getter-only singleton property broke the fake's injection).
+- Circular import between `coverageRoutes` and `coverageSurveyRoutes` broke the
+  Express mount; `parseSenderParam` moved to `src/server/utils/coverageSenderParam.ts`.
 

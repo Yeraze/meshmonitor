@@ -11,6 +11,7 @@
  */
 
 import { HOP_LIMIT_OVERRIDE_MAX, parseHopLimitOverride } from '../utils/hopLimitOverride.js';
+import { isMeshCoreAdvertMode } from './meshcoreAdvert.js';
 
 export const AUTOMATION_CONFIG_VERSION = 1;
 
@@ -515,6 +516,10 @@ export function validateAutomationGraph(input: unknown): ValidationResult {
         case 'action.requestData':
           if (p.op != null && !REQUEST_OPS.includes(p.op as RequestOp)) {
             errors.push(`action.requestData "${n.id}" requires a valid params.op`);
+          }
+          // Optional MeshCore advert reach. Absent = flood (pre-existing actions).
+          if (p.advertMode != null && !isMeshCoreAdvertMode(p.advertMode)) {
+            errors.push(`action.requestData "${n.id}" requires params.advertMode ∈ {zero_hop,flood}`);
           }
           break;
         case 'action.tapback':

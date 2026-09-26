@@ -207,6 +207,8 @@ export interface CoverageFix<T extends CoverageReceptionLike = CoverageReception
   latitude: number;
   longitude: number;
   receivedAt: number;
+  /** Earliest `receivedAt` in the group: when the fix was first heard. */
+  firstReceivedAt: number;
   /** Sorted by the active metric, descending (nulls last). */
   receptions: T[];
   /** Max SNR across every reception in the group (Decision D4). */
@@ -243,10 +245,12 @@ export function groupReceptionsIntoFixes<T extends CoverageReceptionLike>(
   const fixes: Array<CoverageFix<T>> = [];
   for (const receptions of groups.values()) {
     let newest = receptions[0];
+    let firstReceivedAt = receptions[0].receivedAt;
     let bestSnr: number | null = null;
     let bestRssi: number | null = null;
     for (const r of receptions) {
       if (r.receivedAt > newest.receivedAt) newest = r;
+      if (r.receivedAt < firstReceivedAt) firstReceivedAt = r.receivedAt;
       if (r.snr != null && (bestSnr === null || r.snr > bestSnr)) bestSnr = r.snr;
       if (r.rssi != null && (bestRssi === null || r.rssi > bestRssi)) bestRssi = r.rssi;
     }
@@ -266,6 +270,7 @@ export function groupReceptionsIntoFixes<T extends CoverageReceptionLike>(
       latitude: newest.latitude,
       longitude: newest.longitude,
       receivedAt: newest.receivedAt,
+      firstReceivedAt,
       receptions: sorted,
       bestSnr,
       bestRssi,
@@ -337,3 +342,42 @@ export function isMeshCoreReceptionRow(row: { protocol: string }): boolean {
 export function isCoverageMqttSourceType(sourceType: string | null | undefined): boolean {
   return sourceType === 'mqtt_bridge' || sourceType === 'mqtt_broker' || sourceType === 'meshcore_mqtt';
 }
+
+// ---------------------------------------------------------------------------
+// Gaps, grid and chart (#5277 P4a). The only home for these thresholds.
+// ---------------------------------------------------------------------------
+
+export const COVERAGE_DEFAULT_INTERVAL_SEC = { meshtastic: 30, meshcore: 60 } as const;
+export const COVERAGE_GAP_FACTOR = 2.5;          // gap if spacing > 2.5 × interval
+export const COVERAGE_GAP_MIN_SEC = 60;          // never call < 60 s a gap
+export const COVERAGE_GAP_MAX_SEC = 30 * 60;     // longer = session break, not a dead zone
+export const COVERAGE_GAP_MIN_DISTANCE_M = 200;  // shorter = sender stood still
+export const COVERAGE_INTERVAL_MIN_SAMPLES = 5;  // spacings needed to trust the estimate
+export const COVERAGE_INTERVAL_CLAMP_SEC = { min: 15, max: 900 } as const;
+export const COVERAGE_GRID_CELL_SIZES_M = [100, 250, 500, 1000] as const;
+export const COVERAGE_GRID_DEFAULT_CELL_M = 250;
+export const COVERAGE_CHART_MAX_POINTS = 3000;
+export const COVERAGE_CHART_MAX_SERIES = 7;     // + "Other"
+
+// ---------------------------------------------------------------------------
+// Saved surveys (#5277 P4b, user decision U4)
+// ---------------------------------------------------------------------------
+
+/** A live survey ends itself this long after it started (read-time, no timer). */
+export const COVERAGE_SURVEY_LIVE_MAX_MS = 24 * 3_600_000;
+/** Longest time range a saved (past) survey may cover. */
+export const COVERAGE_SURVEY_MAX_RANGE_MS = 7 * 86_400_000;
+export const COVERAGE_SURVEY_MAX_PER_USER = 50;
+export const COVERAGE_SURVEY_MAX_TOTAL = 500;
+
+/**
+ * When a survey actually ends. A stopped or saved survey ends at `endAt`; a
+ * live one (`endAt` null) runs until now, capped at start + LIVE_MAX. Worked
+ * out at read time from the stored start, so a restart or save can neither
+ * extend nor reset it.
+ */
+export function effectiveSurveyEndAt(s: { startAt: number; endAt: number | null }, nowMs: number): number {
+  if (s.endAt != null) return s.endAt;
+  return Math.min(nowMs, s.startAt + COVERAGE_SURVEY_LIVE_MAX_MS);
+}
+

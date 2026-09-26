@@ -42,6 +42,15 @@ export interface BaseMapProps {
   doubleClickZoom?: boolean;
   zoomControl?: boolean;
   attributionControl?: boolean;
+  /** Render vector layers (CircleMarker/Polyline/Rectangle/…) on a Canvas
+   *  renderer instead of SVG. A Leaflet Map constructor option — like
+   *  `center`/`zoom` it is applied once at mount and is NOT reactive; a
+   *  later prop change does not swap the renderer. Omitted ⇒ Leaflet's own
+   *  default (SVG, `false`). Canvas keeps click/popup/tooltip interactivity
+   *  but renders large marker/overlay counts (thousands) without the
+   *  pan/zoom lag SVG DOM nodes hit at that scale (#5277 Coverage Report
+   *  P4a decision A6). */
+  preferCanvas?: boolean;
   /** Merged into MapContainer style; default { height: '100%', width: '100%' }. */
   mapStyle?: CSSProperties;
   /** className on the MapContainer element. */
@@ -128,6 +137,7 @@ export function BaseMap({
   doubleClickZoom,
   zoomControl,
   attributionControl,
+  preferCanvas,
   mapStyle,
   className,
   resizeTrigger,
@@ -152,11 +162,13 @@ export function BaseMap({
     doubleClickZoom?: boolean;
     zoomControl?: boolean;
     attributionControl?: boolean;
+    preferCanvas?: boolean;
   } = {};
   if (scrollWheelZoom !== undefined) interactionOptions.scrollWheelZoom = scrollWheelZoom;
   if (doubleClickZoom !== undefined) interactionOptions.doubleClickZoom = doubleClickZoom;
   if (zoomControl !== undefined) interactionOptions.zoomControl = zoomControl;
   if (attributionControl !== undefined) interactionOptions.attributionControl = attributionControl;
+  if (preferCanvas !== undefined) interactionOptions.preferCanvas = preferCanvas;
 
   return (
     <>

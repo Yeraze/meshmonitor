@@ -35,6 +35,17 @@ const mockDb = vi.hoisted(() => ({
     getSetting: vi.fn(),
   },
   auditLogAsync: vi.fn(),
+  // #5277 P4b WP2: databaseService.coverageSurveys doesn't exist in this
+  // worktree yet (WP1, built in parallel) — mocked here on the singleton per
+  // the P4b WP2 task brief, rather than importing the (not-yet-present)
+  // repository module. The orchestrator re-runs against the real repo once
+  // WP1 merges.
+  coverageSurveys: {
+    getExemptionWindows: vi.fn(),
+  },
+  coverageReceptions: {
+    exportSurveyReceptions: vi.fn(),
+  },
 }));
 
 vi.mock('../../services/database.js', () => ({
@@ -58,6 +69,9 @@ beforeEach(() => {
   // Default SQLite db mock: prepare returns a stub
   const stmtMock = { all: vi.fn().mockReturnValue([]), get: vi.fn().mockReturnValue(null), run: vi.fn() };
   mockDb.db.prepare.mockReturnValue(stmtMock);
+
+  mockDb.coverageSurveys.getExemptionWindows.mockResolvedValue([]);
+  mockDb.coverageReceptions.exportSurveyReceptions.mockResolvedValue([]);
 });
 
 // ─── initializeBackupDirectory ────────────────────────────────────────────────
@@ -296,5 +310,85 @@ describe('BACKUP_TABLES manifest', () => {
       const childIdx = BACKUP_TABLES.indexOf(child);
       expect(childIdx).toBeGreaterThan(sourcesIdx);
     }
+  });
+
+  // #5277 P4b WP2, spec §2b.6, decisions U3/U5.
+  it('includes coverage_surveys (U5: global-by-design table)', () => {
+    expect(BACKUP_TABLES).toContain('coverage_surveys');
+  });
+
+  it('includes coverage_receptions (U3: survey-window receptions, filtered export)', () => {
+    expect(BACKUP_TABLES).toContain('coverage_receptions');
+  });
+
+  it('lists sources before coverage_surveys and coverage_receptions', () => {
+    const sourcesIdx = BACKUP_TABLES.indexOf('sources');
+    expect(BACKUP_TABLES.indexOf('coverage_surveys')).toBeGreaterThan(sourcesIdx);
+    expect(BACKUP_TABLES.indexOf('coverage_receptions')).toBeGreaterThan(sourcesIdx);
+  });
+});
+
+// ─── createBackup — coverage tables (#5277 P4b WP2, spec §2b.6) ─────────────
+
+describe('systemBackupService.createBackup — coverage tables', () => {
+  beforeEach(() => {
+    // createBackup() also reads package.json for the version string.
+    fsMock.readFileSync.mockImplementation((p: unknown) => {
+      if (typeof p === 'string' && p.endsWith('package.json')) {
+        return JSON.stringify({ version: '4.15.0' });
+      }
+      throw new Error(`Unexpected readFileSync call in this test: ${String(p)}`);
+    });
+  });
+
+  it('exports coverage_receptions via exportSurveyReceptions(windows), not the generic SELECT * scan', async () => {
+    const windows = [{ senderId: '!aabbccdd', startAt: 1000, endAt: 2000 }];
+    const rows = [{ sourceId: 's1', senderId: '!aabbccdd', receivedAt: 1500 }];
+    mockDb.coverageSurveys.getExemptionWindows.mockResolvedValue(windows);
+    mockDb.coverageReceptions.exportSurveyReceptions.mockResolvedValue(rows);
+
+    await systemBackupService.createBackup('manual');
+
+    expect(mockDb.coverageSurveys.getExemptionWindows).toHaveBeenCalledWith(expect.any(Number));
+    expect(mockDb.coverageReceptions.exportSurveyReceptions).toHaveBeenCalledWith(windows);
+
+    // The generic per-backend SELECT path must never run for coverage_receptions —
+    // it would dump the whole (potentially huge) table instead of the survey windows.
+    const preparedSql = mockDb.db.prepare.mock.calls.map(([sql]) => sql as string);
+    expect(preparedSql.some((sql) => sql.includes('coverage_receptions'))).toBe(false);
+
+    const writtenTableFiles = fsMock.writeFileSync.mock.calls
+      .map(([p]) => p as string)
+      .filter((p) => p.endsWith('coverage_receptions.json'));
+    expect(writtenTableFiles).toHaveLength(1);
+    const [, writtenJson] = fsMock.writeFileSync.mock.calls.find(([p]) => (p as string).endsWith('coverage_receptions.json'))!;
+    expect(JSON.parse(writtenJson as string)).toEqual(rows);
+  });
+
+  it('writes coverage_surveys via the generic per-backend scan (no filtered exporter)', async () => {
+    await systemBackupService.createBackup('manual');
+
+    // coverage_surveys itself goes through the plain `SELECT * FROM
+    // coverage_surveys` path — unlike coverage_receptions, which is
+    // redirected through the survey-window filter (asserted in the
+    // preceding test). `getExemptionWindows` IS still called once during
+    // this same backup run, but only as part of exporting coverage_receptions,
+    // not coverage_surveys.
+    const preparedSql = mockDb.db.prepare.mock.calls.map(([sql]) => sql as string);
+    expect(preparedSql.some((sql) => sql.includes('coverage_surveys'))).toBe(true);
+  });
+
+  it('an exported survey reception row has no id column (PG sequence trap avoidance)', async () => {
+    mockDb.coverageSurveys.getExemptionWindows.mockResolvedValue([{ senderId: '!aabbccdd', startAt: 0, endAt: 100 }]);
+    mockDb.coverageReceptions.exportSurveyReceptions.mockResolvedValue([
+      { sourceId: 's1', senderId: '!aabbccdd', receivedAt: 50, snr: 4.5 },
+    ]);
+
+    await systemBackupService.createBackup('manual');
+
+    const [, writtenJson] = fsMock.writeFileSync.mock.calls.find(([p]) => (p as string).endsWith('coverage_receptions.json'))!;
+    const written = JSON.parse(writtenJson as string);
+    expect(written).toHaveLength(1);
+    expect(written[0]).not.toHaveProperty('id');
   });
 });

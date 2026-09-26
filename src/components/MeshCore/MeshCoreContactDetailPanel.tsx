@@ -14,10 +14,12 @@ import { meshcoreLastHeardMs } from '../../utils/meshcoreAge';
 import { useSettings } from '../../contexts/SettingsContext';
 import { useSource } from '../../contexts/SourceContext';
 import { MeshCoreRemoteConsole } from './MeshCoreRemoteConsole';
-import type { MeshCoreActions, TracePathResult, ZeroHopPingResult } from './hooks/useMeshCore';
+import { MeshCoreNotOnDeviceNotice } from './MeshCoreNotOnDeviceNotice';
+import type { AddContactToDeviceResponse, MeshCoreActions, TracePathResult, ZeroHopPingResult } from './hooks/useMeshCore';
 import api from '../../services/api';
 import '../NodeDetailsBlock.css';
 import { UiIcon } from '../icons';
+import { ShowCoverageLink } from '../Analysis/ShowCoverageLink';
 
 const DEVICE_TYPE_KEYS: Record<number, string> = {
   0: 'meshcore.device_type.unknown',
@@ -64,6 +66,9 @@ interface MeshCoreContactDetailPanelProps {
   isCompanion?: boolean;
   /** Remove a contact from the device. Unset hides the Remove button. */
   onRemoveContact?: (publicKey: string) => Promise<boolean>;
+  /** Add a node the radio doesn't hold to its contact list (#5349). Shown
+   *  only when `contact.onDevice === false`. Unset hides the button. */
+  onAddToDevice?: (publicKey: string, confirmFull?: boolean) => Promise<AddContactToDeviceResponse>;
   /** Export a contact as a signed advert blob. Unset hides the Export button. */
   onExportContact?: (publicKey: string) => Promise<number[] | null>;
   /** Query the neighbour list from a remote repeater. Unset hides the
@@ -109,6 +114,7 @@ export const MeshCoreContactDetailPanel: React.FC<MeshCoreContactDetailPanelProp
   onPingZeroHop,
   onDiscoverPath,
   onRemoveContact,
+  onAddToDevice,
   onExportContact,
   onGetNeighbours,
   canWriteNodes = false,
@@ -559,9 +565,12 @@ export const MeshCoreContactDetailPanel: React.FC<MeshCoreContactDetailPanelProp
   return (
     <div className="node-details-block meshcore-contact-detail-panel">
       <div className="node-details-header">
-        <h3 className="node-details-title">
-          {t('meshcore.contact_details.title', 'Contact Details')}
-        </h3>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
+          <h3 className="node-details-title">
+            {t('meshcore.contact_details.title', 'Contact Details')}
+          </h3>
+          <ShowCoverageLink senderId={publicKey.toLowerCase()} />
+        </div>
         <button
           className="node-details-toggle"
           onClick={() => setIsCollapsed(prev => !prev)}
@@ -572,6 +581,16 @@ export const MeshCoreContactDetailPanel: React.FC<MeshCoreContactDetailPanelProp
           <UiIcon name={isCollapsed ? 'chevronDown' : 'chevronUp'} size={15} />
         </button>
       </div>
+      {/* #5349: the radio can't address a node missing from its own contact
+          list — say so (visible even when collapsed) and offer to add it. */}
+      {isCompanion && contact?.onDevice === false && (
+        <MeshCoreNotOnDeviceNotice
+          key={publicKey}
+          publicKey={publicKey}
+          onAddToDevice={onAddToDevice}
+          canAdd={canWriteNodes}
+        />
+      )}
       {!isCollapsed && (
         <div className="node-details-grid">
           {/* Name */}
@@ -1190,6 +1209,7 @@ export const MeshCoreContactDetailPanel: React.FC<MeshCoreContactDetailPanelProp
           contactName={name}
           actions={remoteAdminActions}
           receiveOnly={receiveOnly}
+          notOnDevice={contact?.onDevice === false}
         />
       )}
     </div>

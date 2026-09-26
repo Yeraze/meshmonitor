@@ -665,6 +665,24 @@ describe('executeAction', () => {
     expect(calls[0].args).toMatchObject({ op: 'advert', target: '', channel: 1 });
   });
 
+  it('requestData: advert without advertMode (legacy action) is flood', async () => {
+    const { calls, deps } = recorder();
+    await executeAction(node('action.requestData', { op: 'advert' }), ctx({ from: 9 }), deps);
+    expect(calls[0].args).toMatchObject({ op: 'advert', advertMode: 'flood' });
+  });
+
+  it('requestData: advert forwards an explicit zero_hop advertMode', async () => {
+    const { calls, deps } = recorder();
+    await executeAction(node('action.requestData', { op: 'advert', advertMode: 'zero_hop' }), ctx({ from: 9 }), deps);
+    expect(calls[0].args).toMatchObject({ op: 'advert', advertMode: 'zero_hop' });
+  });
+
+  it('requestData: non-advert ops carry no advertMode', async () => {
+    const { calls, deps } = recorder();
+    await executeAction(node('action.requestData', { op: 'traceroute', advertMode: 'flood' }), ctx({ from: 9 }), deps);
+    expect((calls[0].args as Record<string, unknown>).advertMode).toBeUndefined();
+  });
+
   it('requestData: position/nodeinfo are skipped on MeshCore (no-op)', async () => {
     const { calls, deps } = recorder();
     const pos = await executeAction(node('action.requestData', { op: 'position', to: 'abc' }), ctx({ from: 1 }, 'mc', 'meshcore'), deps);

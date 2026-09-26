@@ -250,7 +250,7 @@ describe('createMeshActionDeps requestData — node operations (#3835)', () => {
       requestRemoteTelemetry: vi.fn().mockResolvedValue({}),
       traceContactPath: vi.fn().mockResolvedValue({}),
       requestNeighbors: vi.fn().mockResolvedValue({}),
-      sendAdvert: vi.fn().mockResolvedValue(true),
+      sendAutomatedAdvert: vi.fn().mockResolvedValue({ sent: true }),
     };
   }
 
@@ -268,8 +268,25 @@ describe('createMeshActionDeps requestData — node operations (#3835)', () => {
     await deps.requestData({ sourceId: 'mc', op: 'neighbors', target: 'aabbcc', channel: 0 });
     expect(m.requestNeighbors).toHaveBeenCalledWith('aabbcc');
 
+    await deps.requestData({ sourceId: 'mc', op: 'advert', target: '', channel: 0, advertMode: 'zero_hop' });
+    expect(m.sendAutomatedAdvert).toHaveBeenCalledWith('zero_hop', expect.any(String));
+  });
+
+  it('MeshCore advert: absent mode (legacy action) goes through the floor as flood', async () => {
+    const m = meshcoreManager();
+    getManager.mockReturnValue(m);
+    const deps = createMeshActionDeps();
     await deps.requestData({ sourceId: 'mc', op: 'advert', target: '', channel: 0 });
-    expect(m.sendAdvert).toHaveBeenCalled();
+    expect(m.sendAutomatedAdvert).toHaveBeenCalledWith('flood', expect.any(String));
+  });
+
+  it('MeshCore advert: a flood skipped by the floor fails the step with the reason', async () => {
+    const m = meshcoreManager();
+    m.sendAutomatedAdvert.mockResolvedValue({ sent: false, reason: 'flood advert skipped: last flood was 5 min ago' });
+    getManager.mockReturnValue(m);
+    const deps = createMeshActionDeps();
+    await expect(deps.requestData({ sourceId: 'mc', op: 'advert', target: '', channel: 0, advertMode: 'flood' }))
+      .rejects.toThrow(/flood advert skipped/);
   });
 
   it('throws for a MeshCore-unsupported op reaching the deps directly', async () => {

@@ -26,7 +26,9 @@ import {
   requireMeshcoreTx,
   rejectIfReceiveOnly,
   failIfTxDisabled,
+  failContactNotOnDevice,
 } from './meshcoreRouteShared.js';
+import { MeshCoreContactNotOnDeviceError } from '../meshcoreDeviceContactErrors.js';
 import { isTransmittingLocalCliVerb } from '../constants/meshcoreTx.js';
 
 const router = Router({ mergeParams: true });
@@ -73,12 +75,14 @@ router.post('/admin/login', meshcoreDeviceLimiter, requireAuth(), requirePermiss
       });
     }
 
-    const success = await managerFor(req, res).loginToNode(publicKey, password);
+    const { result: success, outcome } = await managerFor(req, res).loginToNodeDetailed(publicKey, password);
     if (!success) {
       auditMeshcoreEvent(req, 'meshcore_remote_login_failed', 'remote_admin', {
         sourceId,
         publicKey,
+        reason: outcome,
       });
+      if (outcome === 'not_on_device') return failContactNotOnDevice(res);
       return res.status(401).json({ success: false, error: 'Login failed' });
     }
 
@@ -188,6 +192,15 @@ router.post('/admin/cli', meshcoreDeviceLimiter, requireAuth(), requirePermissio
       res.json({ success: true, data: result });
     } catch (err) {
       if (failIfTxDisabled(res, err)) return;
+      if (err instanceof MeshCoreContactNotOnDeviceError) {
+        auditMeshcoreEvent(req, 'meshcore_remote_cli_failed', 'remote_admin', {
+          sourceId: req.params.id,
+          publicKey,
+          command,
+          error: 'CONTACT_NOT_ON_DEVICE',
+        });
+        return failContactNotOnDevice(res);
+      }
       const msg = err instanceof Error ? err.message : String(err);
       auditMeshcoreEvent(req, 'meshcore_remote_cli_failed', 'remote_admin', {
         sourceId: req.params.id,
@@ -401,7 +414,13 @@ router.post('/admin/login-with-saved', meshcoreDeviceLimiter, requireAuth(), req
     }
     // result.password is intentionally consumed in-process only; do not
     // log it, do not echo it, do not include it in any response field.
-    const ok = await managerFor(req, res).loginToNode(publicKey, result.password);
+    const { result: ok, outcome } = await managerFor(req, res).loginToNodeDetailed(publicKey, result.password);
+    if (!ok && outcome === 'not_on_device') {
+      auditMeshcoreEvent(req, 'meshcore_remote_login_saved_failed', 'remote_admin', {
+        sourceId, publicKey, code: 'CONTACT_NOT_ON_DEVICE',
+      });
+      return failContactNotOnDevice(res);
+    }
     if (!ok) {
       auditMeshcoreEvent(req, 'meshcore_remote_login_saved_failed', 'remote_admin', {
         sourceId, publicKey, code: 'STORED_CREDENTIAL_REJECTED',
@@ -455,8 +474,9 @@ router.get('/admin/status/:publicKey', requireAuth(), requirePermission('remote_
       return res.status(400).json({ success: false, error: 'Invalid public key format (expected 64-character hex string)' });
     }
 
-    const status = await managerFor(req, res).requestNodeStatus(publicKey);
+    const { status, notOnDevice } = await managerFor(req, res).requestNodeStatusDetailed(publicKey);
 
+    if (!status && notOnDevice) return failContactNotOnDevice(res);
     if (status) {
       res.json({ success: true, data: status });
     } else {

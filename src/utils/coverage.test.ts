@@ -5,6 +5,8 @@
  */
 import { describe, it, expect } from 'vitest';
 import {
+  effectiveSurveyEndAt,
+  COVERAGE_SURVEY_LIVE_MAX_MS,
   computeMeshCoreHopsAway,
   meshcorePathKey,
   parseMeshCorePathKey,
@@ -298,5 +300,31 @@ describe('MeshCore helpers (#5277 P3)', () => {
     expect(isMeshCoreReceptionRow({ protocol: 'meshtastic' })).toBe(false);
     for (const t of ['mqtt_bridge', 'mqtt_broker', 'meshcore_mqtt']) expect(isCoverageMqttSourceType(t)).toBe(true);
     for (const t of ['meshcore', 'meshtastic_tcp', null]) expect(isCoverageMqttSourceType(t)).toBe(false);
+  });
+});
+
+describe('groupReceptionsIntoFixes firstReceivedAt (#5277 P4a)', () => {
+  it('keeps the earliest reception time as firstReceivedAt', () => {
+    const base = { senderId: '!aaaaaaaa', packetKey: '1', latitude: 1, longitude: 2, snr: 5, rssi: -90 };
+    const [fix] = groupReceptionsIntoFixes([
+      { ...base, receivedAt: 1_000_003_000 },
+      { ...base, receivedAt: 1_000_000_000 },
+    ]);
+    expect(fix.firstReceivedAt).toBe(1_000_000_000);
+    expect(fix.receivedAt).toBe(1_000_003_000);
+  });
+});
+
+describe('effectiveSurveyEndAt (#5277 P4b)', () => {
+  const start = 1_000_000_000_000;
+  it('uses endAt for a stopped or saved survey', () => {
+    expect(effectiveSurveyEndAt({ startAt: start, endAt: start + 5_000 }, start + 999_999)).toBe(start + 5_000);
+  });
+  it('runs a live survey until now', () => {
+    expect(effectiveSurveyEndAt({ startAt: start, endAt: null }, start + 60_000)).toBe(start + 60_000);
+  });
+  it('caps a live survey at start + LIVE_MAX', () => {
+    const later = start + COVERAGE_SURVEY_LIVE_MAX_MS + 3_600_000;
+    expect(effectiveSurveyEndAt({ startAt: start, endAt: null }, later)).toBe(start + COVERAGE_SURVEY_LIVE_MAX_MS);
   });
 });

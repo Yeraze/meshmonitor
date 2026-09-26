@@ -6,6 +6,9 @@ import type {
   CoverageReceptionDto,
   CoveragePage,
   CoverageMqttSourceStatusDto,
+  CoverageSurveyDto,
+  CreateCoverageSurveyBody,
+  UpdateCoverageSurveyBody,
 } from '../types/coverage.js';
 
 export interface Paginated<T> {
@@ -182,6 +185,57 @@ export async function fetchCoverageReceptionsPage(
     args.signal,
   );
   return body.data;
+}
+
+// ── Coverage Report — saved surveys (#5277 P4b WP3, COVERAGE_P4_SPEC.md §2b.7) ──
+//
+// Same envelope gotcha as above: `coverageSurveyRoutes.ts` (server, built in
+// parallel by a different WP) uses `ok()`/`fail()`, so every fetcher here
+// reads `body.data`. `ApiService` has no `patch()` method — `request()` is
+// public, so PATCH goes through it directly rather than adding one for a
+// single caller.
+
+export async function fetchCoverageSurveys(
+  args: { signal?: AbortSignal } = {},
+): Promise<CoverageSurveyDto[]> {
+  const body = await authedGet<{ success: boolean; data: CoverageSurveyDto[] }>(
+    '/api/analysis/coverage/surveys',
+    args.signal,
+  );
+  return body.data;
+}
+
+export async function createCoverageSurvey(
+  body: CreateCoverageSurveyBody,
+): Promise<CoverageSurveyDto> {
+  const res = await api.post<{ success: boolean; data: CoverageSurveyDto }>(
+    '/api/analysis/coverage/surveys',
+    body,
+  );
+  return res.data;
+}
+
+export async function updateCoverageSurvey(
+  id: string,
+  body: UpdateCoverageSurveyBody,
+): Promise<CoverageSurveyDto> {
+  const res = await api.request<{ success: boolean; data: CoverageSurveyDto }>(
+    'PATCH',
+    `/api/analysis/coverage/surveys/${encodeURIComponent(id)}`,
+    body,
+  );
+  return res.data;
+}
+
+export async function stopCoverageSurvey(id: string): Promise<CoverageSurveyDto> {
+  const res = await api.post<{ success: boolean; data: CoverageSurveyDto }>(
+    `/api/analysis/coverage/surveys/${encodeURIComponent(id)}/stop`,
+  );
+  return res.data;
+}
+
+export async function deleteCoverageSurvey(id: string): Promise<void> {
+  await api.delete<{ success: boolean }>(`/api/analysis/coverage/surveys/${encodeURIComponent(id)}`);
 }
 
 export async function fetchHopCounts(args: {

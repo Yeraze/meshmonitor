@@ -1,5 +1,6 @@
 /**
- * Tests for the Coverage Report retention sweep (#5277 Phase 1 WP2).
+ * Tests for the Coverage Report retention sweep (#5277 Phase 1 WP2 +
+ * Phase 4b WP1).
  *
  * `coverageRetentionService` must NOT auto-start on import — importing this
  * module in any other test file must never spin up a live timer — so every
@@ -8,9 +9,10 @@
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
-const { getSettingAsyncMock, purgeOlderThanMock } = vi.hoisted(() => ({
+const { getSettingAsyncMock, purgeOlderThanMock, getExemptionWindowsMock } = vi.hoisted(() => ({
   getSettingAsyncMock: vi.fn(),
   purgeOlderThanMock: vi.fn(),
+  getExemptionWindowsMock: vi.fn(),
 }));
 
 vi.mock('../../services/database.js', () => {
@@ -18,6 +20,9 @@ vi.mock('../../services/database.js', () => {
     getSettingAsync: getSettingAsyncMock,
     coverageReceptions: {
       purgeOlderThan: purgeOlderThanMock,
+    },
+    coverageSurveys: {
+      getExemptionWindows: getExemptionWindowsMock,
     },
   };
   return { default: shared, databaseService: shared };
@@ -30,6 +35,8 @@ describe('coverageRetentionService', () => {
     getSettingAsyncMock.mockReset();
     purgeOlderThanMock.mockReset();
     purgeOlderThanMock.mockResolvedValue(0);
+    getExemptionWindowsMock.mockReset();
+    getExemptionWindowsMock.mockResolvedValue([]);
   });
 
   afterEach(() => {
@@ -69,7 +76,26 @@ describe('coverageRetentionService', () => {
 
       expect(purgeOlderThanMock).toHaveBeenCalledTimes(1);
       const expectedCutoff = new Date('2026-01-10T00:00:00.000Z').getTime() - 7 * 24 * 60 * 60 * 1000;
-      expect(purgeOlderThanMock).toHaveBeenCalledWith(expectedCutoff);
+      expect(purgeOlderThanMock).toHaveBeenCalledWith(expectedCutoff, []);
+    });
+
+    it('loads the survey exemption windows and passes them straight through to purgeOlderThan (#5277 Phase 4b WP1)', async () => {
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date('2026-01-10T00:00:00.000Z'));
+      getSettingAsyncMock.mockResolvedValue('7');
+      const windows = [
+        { senderId: '!aaaaaaaa', startAt: 1000, endAt: 2000 },
+        { senderId: 'b'.repeat(64), startAt: 5000, endAt: 6000 },
+      ];
+      getExemptionWindowsMock.mockResolvedValue(windows);
+
+      await coverageRetentionService.runCleanup();
+
+      expect(getExemptionWindowsMock).toHaveBeenCalledTimes(1);
+      expect(getExemptionWindowsMock).toHaveBeenCalledWith(Date.now());
+      expect(purgeOlderThanMock).toHaveBeenCalledTimes(1);
+      const expectedCutoff = new Date('2026-01-10T00:00:00.000Z').getTime() - 7 * 24 * 60 * 60 * 1000;
+      expect(purgeOlderThanMock).toHaveBeenCalledWith(expectedCutoff, windows);
     });
 
     it('logs and does not throw when the purge rejects', async () => {
@@ -77,6 +103,14 @@ describe('coverageRetentionService', () => {
       purgeOlderThanMock.mockRejectedValueOnce(new Error('db unavailable'));
 
       await expect(coverageRetentionService.runCleanup()).resolves.toBeUndefined();
+    });
+
+    it('logs and does not throw when loading exemption windows rejects', async () => {
+      getSettingAsyncMock.mockResolvedValue('7');
+      getExemptionWindowsMock.mockRejectedValueOnce(new Error('db unavailable'));
+
+      await expect(coverageRetentionService.runCleanup()).resolves.toBeUndefined();
+      expect(purgeOlderThanMock).not.toHaveBeenCalled();
     });
 
     it('does not throw when getSettingAsync rejects', async () => {

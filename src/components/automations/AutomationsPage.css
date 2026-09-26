@@ -63,6 +63,7 @@
 
 /* TX-disabled advisory badge (#4294 P3) — hint only, never disables the checkbox. */
 .ae-tx-warn { color: var(--color-warning); font-size: 0.75rem; display: inline-flex; align-items: center; gap: 0.25rem; margin-left: 0.4rem; }
+.ae-field-warn { color: var(--color-warning); font-size: 0.76rem; display: flex; align-items: flex-start; gap: 0.3rem; margin-top: 0.3rem; }
 
 /* Form fields */
 .ae-field { margin-bottom: 0.85rem; }

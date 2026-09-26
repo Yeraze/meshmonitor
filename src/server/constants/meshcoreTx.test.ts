@@ -125,8 +125,8 @@ describe('meshcoreTx denylist completeness (#4547)', () => {
 
   it('pins the current classification sizes (deliberate, like PER_SOURCE_KEYS_NOT_POSTABLE.size)', () => {
     expect(RF_BRIDGE_COMMANDS.size).toBe(14);
-    expect(SERIAL_ONLY_BRIDGE_COMMANDS.size).toBe(31); // +set_path_hash_mode (#4945)
-    expect(RF_BRIDGE_COMMANDS.size + SERIAL_ONLY_BRIDGE_COMMANDS.size).toBe(45);
+    expect(SERIAL_ONLY_BRIDGE_COMMANDS.size).toBe(33); // +set_path_hash_mode (#4945), +has_contact/add_contact (#5349)
+    expect(RF_BRIDGE_COMMANDS.size + SERIAL_ONLY_BRIDGE_COMMANDS.size).toBe(47);
   });
 });
 
@@ -149,7 +149,7 @@ describe('isRfBridgeCommand (#4547)', () => {
 });
 
 describe('isTransmittingLocalCliVerb (#4547)', () => {
-  it.each(['advert', 'ADVERT', ' advert '])('returns true for %j', (cmd) => {
+  it.each(['advert', 'ADVERT', ' advert ', 'advert.zerohop', 'ADVERT.ZEROHOP'])('returns true for %j', (cmd) => {
     expect(isTransmittingLocalCliVerb(cmd)).toBe(true);
   });
 

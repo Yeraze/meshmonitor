@@ -17,6 +17,7 @@ import { meshcoreDeviceLimiter } from '../middleware/rateLimiters.js';
 import { resolveAutoAckPreSendDelaySeconds } from '../autoAckDelay.js';
 import { compileUserRegex } from '../../utils/safeRegex.js';
 import { ok, fail } from '../utils/apiResponse.js';
+import { MESHCORE_ADVERT_MODES, isMeshCoreAdvertMode, resolveMeshCoreAdvertMode } from '../../types/meshcoreAdvert.js';
 import type { MeshcorePathfindingFilterSettings } from '../../services/database.js';
 import { managerFor, requireMeshcoreTx, failIfTxDisabled } from './meshcoreRouteShared.js';
 
@@ -430,6 +431,7 @@ router.get(
       const schedule = await settings.getSettingForSource(sourceId, 'meshcoreAutoAnnounceSchedule');
       const advertEnabled = await settings.getSettingForSource(sourceId, 'meshcoreAutoAnnounceAdvertEnabled');
       const advertDelaySeconds = await settings.getSettingForSource(sourceId, 'meshcoreAutoAnnounceAdvertDelaySeconds');
+      const advertMode = await settings.getSettingForSource(sourceId, 'meshcoreAutoAnnounceAdvertMode');
       const lastRunAt = await settings.getSettingForSource(sourceId, 'meshcoreAutoAnnounceLastRunAt');
       const scopeMode = await settings.getSettingForSource(sourceId, 'meshcoreAutoAnnounceScopeMode');
       const scopeName = await settings.getSettingForSource(sourceId, 'meshcoreAutoAnnounceScopeName');
@@ -451,6 +453,10 @@ router.get(
           schedule: schedule || '0 */6 * * *',
           advertEnabled: advertEnabled === 'true',
           advertDelaySeconds: parseInt(advertDelaySeconds || '30', 10) || 30,
+          // Absent mode: an ENABLED burst predates the field and has always
+          // flooded, so report (and keep) flood; otherwise this is a new
+          // config and gets the zero-hop default.
+          advertMode: resolveMeshCoreAdvertMode(advertMode, advertEnabled === 'true' ? 'flood' : 'zero_hop'),
           lastRunAt: lastRunAt ? parseInt(lastRunAt, 10) || null : null,
           // MeshCore scope/region for the announcement (#3833). No trigger here,
           // so only inherit / unscoped / named are meaningful.
@@ -483,6 +489,7 @@ router.post(
         schedule,
         advertEnabled,
         advertDelaySeconds,
+        advertMode,
         scopeMode,
         scopeName,
       } = req.body as {
@@ -495,9 +502,15 @@ router.post(
         schedule?: string;
         advertEnabled?: boolean;
         advertDelaySeconds?: number;
+        advertMode?: unknown;
         scopeMode?: 'inherit' | 'unscoped' | 'named';
         scopeName?: string;
       };
+
+      // Validate before writing anything so a bad request leaves no partial save.
+      if (advertMode !== undefined && !isMeshCoreAdvertMode(advertMode)) {
+        return fail(res, 400, 'INVALID_ADVERT_MODE', `advertMode must be one of: ${MESHCORE_ADVERT_MODES.join(', ')}`);
+      }
 
       if (enabled !== undefined) {
         await settings.setSourceSetting(sourceId, 'meshcoreAutoAnnounceEnabled', String(enabled));
@@ -530,6 +543,9 @@ router.post(
       if (advertDelaySeconds !== undefined) {
         const clamped = Math.max(0, Math.min(600, Math.floor(advertDelaySeconds) || 30));
         await settings.setSourceSetting(sourceId, 'meshcoreAutoAnnounceAdvertDelaySeconds', String(clamped));
+      }
+      if (advertMode !== undefined) {
+        await settings.setSourceSetting(sourceId, 'meshcoreAutoAnnounceAdvertMode', advertMode);
       }
       if (scopeMode !== undefined) {
         const mode = ['inherit', 'unscoped', 'named'].includes(String(scopeMode)) ? String(scopeMode) : 'inherit';
@@ -631,6 +647,13 @@ router.post(
       const body = req.body as { triggers?: unknown };
       if (!Array.isArray(body.triggers)) {
         return res.status(400).json({ success: false, error: 'triggers must be an array' });
+      }
+      // advertMode is optional (absent = legacy flood) but must be valid if set.
+      const badMode = (body.triggers as Array<{ id?: unknown; advertMode?: unknown } | null>).find(
+        (t) => t != null && t.advertMode !== undefined && !isMeshCoreAdvertMode(t.advertMode),
+      );
+      if (badMode) {
+        return fail(res, 400, 'INVALID_ADVERT_MODE', `Trigger ${String(badMode.id ?? '')}: advertMode must be one of: ${MESHCORE_ADVERT_MODES.join(', ')}`);
       }
       await databaseService.settings.setSourceSetting(sourceId, 'meshcoreTimerTriggers', JSON.stringify(body.triggers));
 

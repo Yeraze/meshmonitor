@@ -104,3 +104,53 @@ export interface CoveragePage<T> {
   hasMore: boolean;
   nextCursor: string | null;
 }
+
+// ---------------------------------------------------------------------------
+// Saved surveys (#5277 P4b). Global table; see COVERAGE_P4_SPEC.md §2b.
+// ---------------------------------------------------------------------------
+
+export interface CoverageSurveyDto {
+  id: string;
+  name: string;
+  /** `!xxxxxxxx` or a lowercased 64-hex MeshCore public key. */
+  senderId: string;
+  /** Unix ms. */
+  startAt: number;
+  /** Unix ms; null while live. */
+  endAt: number | null;
+  /** Encoded receiver-filter wire string; null = every receiver. View preference only. */
+  receivers: string | null;
+  /** Configured broadcast interval for gap detection, seconds. */
+  intervalSec: number | null;
+  notes: string | null;
+  createdAt: number;
+  updatedAt: number;
+  /** effectiveSurveyEndAt(startAt, endAt, now) at response time. */
+  effectiveEndAt: number;
+  isLive: boolean;
+  /** Creator or admin. */
+  canEdit: boolean;
+  createdByMe: boolean;
+}
+
+export interface CreateCoverageSurveyBody {
+  name: string;
+  senderId: string;
+  /** Required unless `live`. Unix ms. */
+  startAt?: number;
+  /** Required unless `live`. Unix ms. */
+  endAt?: number;
+  /** Start now and run until stopped (or the live cap). */
+  live?: boolean;
+  receivers?: string | null;
+  intervalSec?: number | null;
+  notes?: string | null;
+}
+
+export interface UpdateCoverageSurveyBody {
+  name?: string;
+  notes?: string | null;
+  intervalSec?: number | null;
+  receivers?: string | null;
+}
+

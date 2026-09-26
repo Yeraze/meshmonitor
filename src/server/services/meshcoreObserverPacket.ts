@@ -317,6 +317,17 @@ export function calculateMeshCorePacketHash(rawHex: string): string {
   }
 }
 
+/**
+ * {@link calculateMeshCorePacketHash} for callers that surface the hash to users
+ * (#5357, automation `{{ trigger.packetHash }}`): returns undefined instead of
+ * the all-zero sentinel when the frame is missing or can't be parsed.
+ */
+export function meshCorePacketHashOrUndefined(rawHex: string | null | undefined): string | undefined {
+  if (typeof rawHex !== 'string' || rawHex.trim() === '') return undefined;
+  const hash = calculateMeshCorePacketHash(rawHex);
+  return hash === SENTINEL_HASH ? undefined : hash;
+}
+
 /** Build the analyzer-contract packet payload. Never throws. `null` iff `raw_hex` is missing/blank. */
 export function buildObserverPacketPayload(
   event: OtaPacketEvent,

@@ -80,7 +80,7 @@ const PATCHED_ACTIONS: Array<{
   { name: 'traceContactPath', invoke: a => a.traceContactPath(CONTACT_PK) },
   { name: 'pingContactZeroHop', invoke: a => a.pingContactZeroHop(CONTACT_PK) },
   { name: 'getNeighbours', invoke: a => a.getNeighbours(CONTACT_PK) },
-  { name: 'sendAdvert', invoke: a => a.sendAdvert() },
+  { name: 'sendAdvert', invoke: a => a.sendAdvert('zero_hop') },
   { name: 'sendMessage', invoke: a => a.sendMessage('hello', CONTACT_PK) },
   { name: 'sendRoomPost', invoke: a => a.sendRoomPost(CONTACT_PK, 'hello') },
   { name: 'loginRoom', invoke: a => a.loginRoom(CONTACT_PK, 'pw') },
@@ -147,5 +147,25 @@ describe('useMeshCore — reportTxDisabled 409 toast (#4547 Phase 2 WP1)', () =>
 
       expect(showToast).not.toHaveBeenCalled();
     });
+  });
+});
+
+describe('useMeshCore — sendAdvert mode', () => {
+  it.each(['zero_hop', 'flood'] as const)('POSTs { mode: %s } to /advert', async (mode) => {
+    const fetchMock = vi.fn().mockImplementation(async (url: string) => {
+      if (typeof url === 'string' && url.includes('/snapshot')) {
+        return { ok: true, status: 200, json: async () => snapshotResponse() };
+      }
+      return { ok: true, status: 200, json: async () => ({ success: true, data: { mode } }) };
+    });
+    (globalThis as any).fetch = fetchMock;
+    const result = await renderConnectedHook();
+
+    await result.current.actions.sendAdvert(mode);
+
+    const call = fetchMock.mock.calls.find(([url]) => String(url).endsWith('/advert'));
+    expect(call).toBeDefined();
+    expect(call![1]).toMatchObject({ method: 'POST' });
+    expect(JSON.parse(call![1].body)).toEqual({ mode });
   });
 });

@@ -23,6 +23,11 @@ import { CronOrIntervalScheduler, type ScheduleMode } from './services/cronOrInt
 import { replaceMeshCoreAnnounceTokens } from './utils/meshcoreAnnounceTokens.js';
 import { runScript, type RunScriptResult } from './utils/scriptRunner.js';
 import { MeshCoreNativeBackend, MESHCORE_LOGIN_REJECTED, type BridgeShapedEvent } from './meshcoreNativeBackend.js';
+import {
+  MESHCORE_CONTACT_NOT_ON_DEVICE,
+  MESHCORE_DEVICE_TABLE_FULL,
+  MeshCoreContactNotOnDeviceError,
+} from './meshcoreDeviceContactErrors.js';
 import { resolveMessageScope } from './meshcoreScopeResolve.js';
 import { TxDisabledError } from './errors/txDisabledError.js';
 import { isRfBridgeCommand, isTransmittingLocalCliVerb, MESHCORE_RECEIVE_ONLY_MESSAGE } from './constants/meshcoreTx.js';
@@ -61,9 +66,17 @@ import { MESHCORE_SECRET_BYTES } from '../utils/meshcoreHelpers.js';
 import { MESHCORE_PAYLOAD_ADVERT } from '../utils/coverage.js';
 import { maybeRecordMeshCoreCoverageReception } from './utils/coverageMeshCore.js';
 import { parsePathHops, pathHashBytesOf, resolveRouteNames } from '../utils/meshcorePath.js';
-import { tryDecodeGroupTextPayload } from './utils/meshcoreGroupEcho.js';
+import { MESHCORE_PUBLIC_CHANNEL_SECRET, tryDecodeGroupTextPayload } from './utils/meshcoreGroupEcho.js';
 import { meshcoreAgeCutoffMs, isWithinMeshcoreAge } from '../utils/meshcoreAge.js';
 import { safeJson } from './utils/redactSecrets.js';
+import {
+  type MeshCoreAdvertMode,
+  isMeshCoreAdvertMode,
+  resolveMeshCoreAdvertMode,
+  LEGACY_MESHCORE_ADVERT_MODE,
+  MESHCORE_AUTOMATED_FLOOD_ADVERT_MIN_INTERVAL_MS,
+} from '../types/meshcoreAdvert.js';
+import { MeshCoreZeroHopAdvertUnsupportedError, classifyRepeaterAdvertReply } from './utils/meshcoreAdvert.js';
 
 // Dynamic imports for optional serialport dependency
 // These are loaded only when MeshCore is enabled to avoid requiring native build tools
@@ -375,6 +388,12 @@ export interface MeshCoreTimerTrigger extends MeshCoreAutomationScopeConfig {
    */
   responseType: 'text' | 'advert' | 'script';
   response?: string;
+  /**
+   * Advert reach when `responseType === 'advert'`. Absent on triggers saved
+   * before the field existed — those keep flooding (LEGACY_MESHCORE_ADVERT_MODE)
+   * and fall under the automated flood floor. New triggers default to zero_hop.
+   */
+  advertMode?: MeshCoreAdvertMode;
   /** Script filename inside /data/scripts (responseType === 'script'). */
   scriptPath?: string;
   /** Whitespace-separated argv passed to the script. Token-expanded. */
@@ -539,6 +558,17 @@ export interface MeshCoreContact {
    * in sync.
    */
   deviceFavorite?: boolean;
+  /**
+   * Whether this contact is in the companion's saved contact table (#5349).
+   * The firmware resolves login / status / DM targets from that table only.
+   *  - `true`: read from `get_contacts`, or a 0x80 Advert push (the firmware
+   *    sends 0x80 only for contacts it stored).
+   *  - `false`: a 0x8A NewAdvert push (the firmware sends 0x8A only for a
+   *    contact it did NOT store — manual-add mode, hop limit, or table full),
+   *    or a 0x8F CONTACT_DELETED eviction.
+   *  - `undefined`: unknown (e.g. seeded from the DB).
+   */
+  onDevice?: boolean;
 }
 
 /** Sentinel RSSI (dBm) below which a configured `rssiMin` threshold is a no-op. */
@@ -687,6 +717,17 @@ export interface MeshCoreMessage {
   /** Region name resolved from `scopeCode` against this source's known scopes;
    *  null = unscoped, or scoped-but-unknown (then the UI shows `#<code-hex>`). */
   scopeName?: string | null;
+  /**
+   * MeshCore packet hash of the received frame (#5357): 16 UPPERCASE hex chars,
+   * `calculateMeshCorePacketHash` — the key map.meshcore.com.hr and other
+   * MeshCore analyzers use. Set only when the raw frame was matched to this
+   * message: channel messages verified by decrypting the frame (companion) or
+   * taken from the MQTT envelope's raw bytes; DMs best-effort (sender src_hash
+   * + path_len). Undefined for room posts, messages synced from the device's
+   * offline queue after a reconnect, outbound messages, and anything unmatched.
+   * In-memory/event only — not persisted to meshcore_messages.
+   */
+  packetHash?: string;
 }
 
 export interface MeshCoreStatus {
@@ -830,7 +871,31 @@ export interface MeshCoreLoginResult {
  *                 a marginal link and says nothing about whether the password
  *                 is correct, so callers must back off rather than conclude.
  */
-export type MeshCoreLoginOutcome = 'ok' | 'rejected' | 'no_reply';
+/**
+ * - `ok`: logged in.
+ * - `rejected`: the remote answered with an explicit refusal (0x86).
+ * - `no_reply`: nothing came back (lossy link, remote offline).
+ * - `not_on_device`: the companion does not hold the target in its contact
+ *   table, so it could not send the login at all (#5349). Nothing was
+ *   transmitted; retrying cannot help until the contact is added.
+ */
+export type MeshCoreLoginOutcome = 'ok' | 'rejected' | 'no_reply' | 'not_on_device';
+
+/** Result of `MeshCoreManager.addContactToDevice` (#5349). */
+export type AddContactToDeviceResult =
+  | { status: 'added'; evicted: string[]; count: number; maxContacts: number | null }
+  | { status: 'already_on_device' }
+  /** The table is full (or its capacity is unknown): ask the user first. */
+  | { status: 'confirm_full'; count: number; maxContacts: number | null }
+  /** Blocked: these MeshMonitor favourites lack the device favourite bit. */
+  | { status: 'favorites_unprotected'; unprotected: string[] }
+  /** The firmware refused: table full and "overwrite oldest" off. */
+  | { status: 'table_full'; count: number; maxContacts: number | null }
+  /** No known advert type — adding as ADV_TYPE_NONE would bypass favourites. */
+  | { status: 'unknown_type' }
+  | { status: 'not_found' }
+  | { status: 'unavailable' }
+  | { status: 'failed'; error: string };
 
 /**
  * MeshCore Manager class
@@ -925,12 +990,29 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
   // and stateful, two concurrent sends with different scopes must not interleave.
   private activeFloodScope: string | null | undefined = undefined;
   private sendScopeLock: Promise<unknown> = Promise.resolve();
+  // Serialises the automated flood-advert floor's read-check-send so two
+  // automated floods firing together cannot both pass the check.
+  private floodAdvertGate: Promise<unknown> = Promise.resolve();
+  // Set when a repeater answered `advert.zerohop` with the legacy flood reply
+  // (firmware that predates the verb prefix-matches it as `advert`). Further
+  // zero-hop requests are refused rather than flooding again. In memory only:
+  // after a restart the first zero-hop attempt re-detects it.
+  private repeaterZeroHopAdvertUnsupported = false;
   // Known scope/region names for this source (#3742 Phase 2): the candidate set
   // a received message's transport code is matched against to resolve its scope
   // name. Sourced from per-channel scopes + the source default scope. Cached so
   // the synchronous inbound-message path resolves with no DB round-trip;
   // refreshed on connect and whenever a scope changes.
   private knownScopes: Set<string> = new Set();
+  /**
+   * In-memory copy of this source's MeshCore channel secrets (slot → 16-byte
+   * AES key), read from the `channels` table (#5357). The native backend's
+   * channel-recv handler is synchronous and has no DB access, so it verifies a
+   * channel message against the buffered GRP_TXT frames through
+   * {@link resolveChannelSecret}, which reads only this cache. Primed on connect
+   * and rebuilt after every channel sync (MeshCore has no channel-change push).
+   */
+  private channelSecrets: Map<number, Uint8Array> = new Map();
 
   /** Cached per-source `meshcoreReceiveOnly`. Sync-readable; refreshed on connect and on settings write. */
   private receiveOnly = false;
@@ -938,6 +1020,9 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
   // Shared state
   private localNode: MeshCoreNode | null = null;
   private contacts: Map<string, MeshCoreContact> = new Map();
+  /** Last "contact table full" (0x90) warning, ms — rate-limits the log (#5349). */
+  private lastContactsFullWarnAt = 0;
+  private static readonly CONTACTS_FULL_WARN_INTERVAL_MS = 10 * 60 * 1000;
   /**
    * Recently-removed contacts (lowercased publicKey → tombstone-expiry ms).
    * When a contact still lives on the companion's saved-contact list, an
@@ -1275,6 +1360,10 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
     // Prime the known-scope cache so the first received message can resolve its
     // scope name without a DB round-trip (#3742 Phase 2).
     await this.refreshKnownScopes();
+    // Same for the channel-secret cache the backend verifies channel messages
+    // with (#5357), so messages that arrive before the first channel sync still
+    // get their packet hash.
+    await this.refreshChannelSecrets();
 
     logger.info(`[MeshCore] Connecting via ${this.config.connectionType}...`);
     this.connectionState = 'connecting';
@@ -1703,6 +1792,9 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
 
     const backend = new MeshCoreNativeBackend(this.sourceId, backendConfig);
     this.nativeBackend = backend;
+    // Channel messages are matched to their raw frame by decrypting it (#5357);
+    // the backend reads secrets through this sync lookup, never the DB.
+    backend.setChannelSecretResolver((idx) => this.resolveChannelSecret(idx));
 
     // Native backend emits bridge-shaped push events; route them through
     // the manager's existing event handler.
@@ -1803,6 +1895,8 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
         routePath: observedRoute,
         scopeCode: scope.scopeCode,
         scopeName: scope.scopeName,
+        // Best-effort for DMs (src_hash + path_len correlation, #5357).
+        packetHash: typeof data.packet_hash === 'string' ? data.packet_hash : undefined,
       };
       this.addMessage(message);
       this.emit('message', message);
@@ -1858,6 +1952,8 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
         routePath: route,
         scopeCode: scope.scopeCode,
         scopeName: scope.scopeName,
+        // Set only when the backend verified the raw frame by decrypting it (#5357).
+        packetHash: typeof data.packet_hash === 'string' ? data.packet_hash : undefined,
       };
       this.addMessage(message);
       this.emit('message', message);
@@ -1924,6 +2020,10 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
           latitude: data.latitude ?? existing.latitude,
           longitude: data.longitude ?? existing.longitude,
           lastSeen: Date.now(),
+          // Firmware sends 0x80 (contact_advertised) only for a contact it
+          // stored, and 0x8A (contact_added) only for one it did NOT store
+          // (#5349) — so this is the authoritative "in the radio's table" bit.
+          onDevice: event_type === 'contact_advertised',
         };
         this.contacts.set(publicKey, updated);
         // Mirror to meshcore_nodes so per-source consumers (telemetry
@@ -1964,6 +2064,33 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
           this.schedulePathRefresh(publicKey);
         }
         logger.debug(`[MeshCore] ${event_type} for ${publicKey} (${data.adv_name ?? ''})`);
+      }
+    } else if (event_type === 'contact_deleted') {
+      // 0x8F: the firmware evicted this contact to make room for a new one
+      // ("overwrite oldest" is on; it never evicts a favourite). Keep the row
+      // — the node still exists on the mesh — but mark it as no longer in the
+      // radio's table so the UI stops offering login/status on it (#5349).
+      const publicKey = String(data.public_key ?? '').toLowerCase();
+      const existing = publicKey ? this.contacts.get(publicKey) : undefined;
+      logger.info(
+        `[MeshCore:${this.sourceId}] Radio evicted contact ${publicKey.substring(0, 12)}… from its full contact table`,
+      );
+      if (existing) {
+        const updated: MeshCoreContact = { ...existing, onDevice: false };
+        this.contacts.set(publicKey, updated);
+        this.emit('contacts_updated', { sourceId: this.sourceId, contact: updated });
+        dataEventEmitter.emitMeshCoreContactUpdated(updated, this.sourceId);
+      }
+    } else if (event_type === 'contacts_full') {
+      // 0x90: an advertised node could not be stored — the table is full and
+      // "overwrite oldest" is off. It still arrives as a 0x8A (onDevice=false).
+      // Warn at most once per window so a busy mesh doesn't flood the log.
+      if (Date.now() - this.lastContactsFullWarnAt >= MeshCoreManager.CONTACTS_FULL_WARN_INTERVAL_MS) {
+        this.lastContactsFullWarnAt = Date.now();
+        logger.warn(
+          `[MeshCore:${this.sourceId}] The radio's contact table is full — newly heard nodes are not being ` +
+          `stored and cannot be logged in to or messaged until added (remove unused contacts, or add them explicitly).`,
+        );
       }
     } else if (event_type === 'cli_reply') {
       // Remote-admin: a contact message with txtType=CliData. Routed here by
@@ -2281,6 +2408,35 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
   }
 
   /**
+   * Rebuild {@link channelSecrets} from this source's `channels` rows (#5357).
+   * Never throws; on failure the previous cache stays in place.
+   */
+  private async refreshChannelSecrets(): Promise<void> {
+    try {
+      const rows = await databaseService.channels.getAllChannels(this.sourceId);
+      const next = new Map<number, Uint8Array>();
+      for (const row of rows) {
+        if (!row.psk) continue;
+        const buf = Buffer.from(row.psk, 'base64');
+        if (buf.length === MESHCORE_SECRET_BYTES) next.set(row.id, new Uint8Array(buf));
+      }
+      this.channelSecrets = next;
+    } catch (err) {
+      logger.debug(`[MeshCore:${this.sourceId}] refreshChannelSecrets failed: ${(err as Error).message}`);
+    }
+  }
+
+  /**
+   * Synchronous channel-secret lookup handed to the native backend (#5357).
+   * Slot 0 falls back to the well-known Public secret: the firmware seeds slot 0
+   * with it but reports the slot like an empty one, so no PSK is stored for it.
+   * A wrong secret only means the frame fails to verify — never a false match.
+   */
+  private resolveChannelSecret(channelIdx: number): Uint8Array | null {
+    return this.channelSecrets.get(channelIdx) ?? (channelIdx === 0 ? MESHCORE_PUBLIC_CHANNEL_SECRET : null);
+  }
+
+  /**
    * Best-effort channel "heard repeaters" correlation (#3700).
    *
    * When a nearby repeater re-floods one of OUR channel messages, our device
@@ -2336,8 +2492,7 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
       const heardBy: Array<{ hash: string; name?: string | null; snr?: number | null }> = [];
 
       for (const hash of match.pathHops) {
-        const contact = this.resolveContactByPrefix(hash);
-        const name = contact?.advName ?? contact?.name ?? null;
+        const name = this.nameForRelayHash(hash);
         const merged = await databaseService.meshcore.recordHeardRepeater({
           sourceId: this.sourceId,
           messageId: match.messageId,
@@ -2770,6 +2925,8 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
         'Re-run a sync once the device is responsive to reconcile properly.',
       );
     }
+
+    await this.refreshChannelSecrets();
 
     logger.debug(
       `[MeshCore:${this.sourceId}] Synced ${configured.length} configured channel(s) from device ` +
@@ -3278,6 +3435,8 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
             pathLen: c.path_len ?? null,
             flags: typeof c.flags === 'number' ? c.flags : undefined,
             deviceFavorite: c.favorite === true,
+            // Read straight from the device's contact table (#5349).
+            onDevice: true,
           });
         }
         // Mirror every contact to meshcore_nodes so stale stub rows
@@ -4048,9 +4207,25 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
   }
 
   /**
-   * Send an advert
+   * Send a self-advert with an explicit reach (see src/types/meshcoreAdvert.ts).
+   *
+   * - Companion: CMD_SEND_SELF_ADVERT with type byte 0 (zero-hop) or 1 (flood).
+   *   Only floods carry the default scope (#3667); zero-hop is never forwarded,
+   *   so scope does not apply to it.
+   * - Repeater: CLI `advert.zerohop` or `advert`. Firmware that predates
+   *   `advert.zerohop` prefix-matches it as `advert` and FLOODS — detected from
+   *   the reply and thrown as MeshCoreZeroHopAdvertUnsupportedError rather than
+   *   reported as a zero-hop success.
+   *
+   * Every successful flood (manual or automated) stamps
+   * `meshcoreLastFloodAdvertAt`, the per-source floor that
+   * {@link sendAutomatedAdvert} checks. Manual callers use this method directly
+   * and are not blocked by that floor.
    */
-  async sendAdvert(): Promise<boolean> {
+  async sendAdvert(mode: MeshCoreAdvertMode): Promise<boolean> {
+    if (!isMeshCoreAdvertMode(mode)) {
+      throw new Error(`Invalid advert mode: ${String(mode)}`);
+    }
     if (!this.connected) {
       return false;
     }
@@ -4058,28 +4233,99 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
     this.requireTransmit();
 
     if (this.deviceType === MeshCoreDeviceType.REPEATER) {
+      if (mode === 'zero_hop' && this.repeaterZeroHopAdvertUnsupported) {
+        throw new MeshCoreZeroHopAdvertUnsupportedError(false);
+      }
+      let reply: string;
       try {
-        await this.sendRepeaterCommand('advert');
-        logger.debug('[MeshCore] Advert sent (Repeater)');
+        reply = await this.sendRepeaterCommand(mode === 'flood' ? 'advert' : 'advert.zerohop');
+      } catch (error) {
+        logger.error('[MeshCore] Failed to send advert:', error);
+        return false;
+      }
+      const outcome = classifyRepeaterAdvertReply(reply);
+      if (mode === 'zero_hop' && outcome === 'flood') {
+        // Old firmware: the request went out as a FLOOD. Count it against the
+        // floor and refuse further zero-hop requests on this connection.
+        this.repeaterZeroHopAdvertUnsupported = true;
+        await this.recordFloodAdvert();
+        logger.error(`[MeshCore:${this.sourceId}] Repeater firmware does not support advert.zerohop — it sent a FLOOD advert instead. Update the repeater firmware.`);
+        throw new MeshCoreZeroHopAdvertUnsupportedError(true);
+      }
+      if (outcome === 'error') {
+        logger.error(`[MeshCore:${this.sourceId}] Repeater rejected ${mode} advert: ${reply}`);
+        return false;
+      }
+      if (mode === 'flood') await this.recordFloodAdvert();
+      logger.debug(`[MeshCore] ${mode} advert sent (Repeater)`);
+      return true;
+    }
+
+    try {
+      const send = () => this.sendBridgeCommand('send_advert', { mode });
+      // Floods carry the default scope (#3667). Zero-hop is never forwarded,
+      // so it only needs ordering with other sends, not a scope assertion.
+      const response = mode === 'flood'
+        ? await this.sendWithDefaultScope(send)
+        : await this.runSerialized(send);
+      if (response.success) {
+        if (mode === 'flood') await this.recordFloodAdvert();
+        logger.debug(`[MeshCore] ${mode} advert sent (Companion)`);
         return true;
-      } catch (error) {
-        logger.error('[MeshCore] Failed to send advert:', error);
-        return false;
       }
-    } else {
-      try {
-        // Adverts flood, so they carry the default scope (#3667). Repeaters
-        // (handled above) scope via their own `region` config instead.
-        const response = await this.sendWithDefaultScope(() => this.sendBridgeCommand('send_advert', {}));
-        if (response.success) {
-          logger.debug('[MeshCore] Advert sent (Companion)');
-          return true;
-        }
-        return false;
-      } catch (error) {
-        logger.error('[MeshCore] Failed to send advert:', error);
-        return false;
+      return false;
+    } catch (error) {
+      logger.error('[MeshCore] Failed to send advert:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Advert entry point for AUTOMATED senders (auto-announce burst, timer
+   * triggers, automation actions). Zero-hop passes straight through. A flood
+   * is allowed at most once per MESHCORE_AUTOMATED_FLOOD_ADVERT_MIN_INTERVAL_MS
+   * per source, measured from the last flood of ANY origin as persisted in the
+   * DB — so restarts and settings saves cannot reset it. A flood inside the
+   * window is skipped (not downgraded) and reported as not sent.
+   *
+   * Errors from sendAdvert (receive-only, unsupported zero-hop) propagate so
+   * each caller's existing error handling applies.
+   */
+  async sendAutomatedAdvert(mode: MeshCoreAdvertMode, origin: string): Promise<{ sent: boolean; reason?: string }> {
+    if (mode !== 'flood') {
+      const ok = await this.sendAdvert(mode);
+      return ok ? { sent: true } : { sent: false, reason: 'advert failed' };
+    }
+    const task = this.floodAdvertGate.then(async () => {
+      const last = await this.getLastFloodAdvertAt();
+      const elapsed = last === null ? null : Date.now() - last;
+      // |elapsed| so a clock that stepped backwards cannot block floods for
+      // longer than one window.
+      if (elapsed !== null && Math.abs(elapsed) < MESHCORE_AUTOMATED_FLOOD_ADVERT_MIN_INTERVAL_MS) {
+        const minutes = Math.max(0, Math.round(elapsed / 60000));
+        const reason = `flood advert skipped: last flood was ${minutes} min ago (automated flood adverts are limited to one per ${MESHCORE_AUTOMATED_FLOOD_ADVERT_MIN_INTERVAL_MS / 60000} min)`;
+        logger.info(`[MeshCore:${this.sourceId}] ${origin}: ${reason}`);
+        return { sent: false, reason };
       }
+      const ok = await this.sendAdvert('flood');
+      return ok ? { sent: true } : { sent: false, reason: 'advert failed' };
+    });
+    this.floodAdvertGate = task.then(() => undefined, () => undefined);
+    return task;
+  }
+
+  /** Last flood advert time (ms) for this source, or null if none/unparseable. */
+  async getLastFloodAdvertAt(): Promise<number | null> {
+    const raw = await databaseService.settings.getSettingForSource(this.sourceId, 'meshcoreLastFloodAdvertAt');
+    const n = raw ? Number(raw) : NaN;
+    return Number.isFinite(n) && n > 0 ? n : null;
+  }
+
+  private async recordFloodAdvert(): Promise<void> {
+    try {
+      await databaseService.settings.setSourceSetting(this.sourceId, 'meshcoreLastFloodAdvertAt', String(Date.now()));
+    } catch (err) {
+      logger.error(`[MeshCore:${this.sourceId}] Failed to record flood advert time: ${(err as Error).message}`);
     }
   }
 
@@ -4954,6 +5200,144 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
   }
 
   /**
+   * Add a node MeshMonitor knows about (heard via an advert the radio did not
+   * store, evicted earlier, or known only from the DB) to the companion's own
+   * contact table, so the radio can log in to / query / message it (#5349).
+   * Local serial write via CMD_ADD_UPDATE_CONTACT — nothing is transmitted.
+   *
+   * Full-table policy (the firmware behaviour is in BaseChatMesh.cpp
+   * `allocateContactSlot` / companion MyMesh.cpp CMD_ADD_UPDATE_CONTACT):
+   *  - Not full: the contact is simply added.
+   *  - Full, "overwrite oldest" ON: the firmware evicts the oldest contact
+   *    whose favourite bit (flags & 0x01) is CLEAR — never a favourite.
+   *  - Full, "overwrite oldest" OFF (or every contact is a favourite): the
+   *    firmware refuses with ERR_CODE_TABLE_FULL; nothing changes.
+   * So a favourite can only be evicted if MeshMonitor's favourite never
+   * reached the device bit. When the table is full (or its capacity can't be
+   * read) we therefore:
+   *  1. require `confirmFull` (the UI's confirm step), and
+   *  2. re-sync MeshMonitor favourites onto the device (refreshContacts →
+   *     reconcileDeviceFavorites) and verify every favourite the radio holds
+   *     now carries the bit. If any does not, the add is BLOCKED.
+   * The added contact carries the favourite bit itself when it is a
+   * MeshMonitor favourite. ADV_TYPE_NONE (unknown type) is refused because the
+   * firmware's eviction for that type ignores favourites.
+   */
+  async addContactToDevice(
+    publicKey: string,
+    opts: { confirmFull?: boolean } = {},
+  ): Promise<AddContactToDeviceResult> {
+    if (this.deviceType !== MeshCoreDeviceType.COMPANION || !this.connected) {
+      return { status: 'unavailable' };
+    }
+    const key = publicKey.toLowerCase();
+
+    // What we know about the node: the live contact first, else the DB row.
+    const live = this.contacts.get(key);
+    const dbNode = await databaseService.meshcore.getNodeByPublicKeyAndSource(key, this.sourceId);
+    if (!live && !dbNode) return { status: 'not_found' };
+    const advType = live?.advType ?? (dbNode?.advType as MeshCoreDeviceType | null | undefined) ?? null;
+    if (advType === null || advType < 1 || advType > 4) return { status: 'unknown_type' };
+    const name = live?.advName || live?.name || dbNode?.name || '';
+    const latitude = live?.latitude ?? dbNode?.latitude ?? null;
+    const longitude = live?.longitude ?? dbNode?.longitude ?? null;
+    const isFavorite = dbNode?.isFavorite === true;
+
+    const table = await this.sendBridgeCommand('has_contact', { public_key: key });
+    if (!table.success || !table.data) {
+      return { status: 'failed', error: table.error || 'Could not read the radio contact list' };
+    }
+    if (table.data.on_device === true) {
+      await this.markContactOnDevice(key, true);
+      return { status: 'already_on_device' };
+    }
+
+    const count = typeof table.data.count === 'number' ? table.data.count : 0;
+    const maxContacts = (await this.deviceQuery())?.maxContacts ?? null;
+    const full = maxContacts === null || count >= maxContacts;
+    if (full) {
+      if (!opts.confirmFull) {
+        return { status: 'confirm_full', count, maxContacts };
+      }
+      // Make sure the firmware's own eviction guard covers every favourite:
+      // refreshContacts() re-asserts MeshMonitor favourites onto the device
+      // (reconcileDeviceFavorites), then a fresh read VERIFIES the bits —
+      // the in-memory mirror is updated optimistically, so it is not proof.
+      await this.refreshContacts();
+      const verify = await this.sendBridgeCommand('get_contacts', {});
+      if (!verify.success || !Array.isArray(verify.data)) {
+        return { status: 'failed', error: 'Could not verify favourite protection on the radio' };
+      }
+      const deviceFav = new Map<string, boolean>(
+        (verify.data as Array<{ public_key: string; favorite?: boolean }>).map((c) => [
+          String(c.public_key).toLowerCase(),
+          c.favorite === true,
+        ]),
+      );
+      const favKeys = (await databaseService.meshcore.getNodesBySource(this.sourceId))
+        .filter((n) => n.isFavorite === true)
+        .map((n) => n.publicKey.toLowerCase());
+      // A favourite the radio doesn't hold can't be evicted; one it holds
+      // without the bit could be.
+      const unprotected = favKeys.filter((k) => deviceFav.has(k) && deviceFav.get(k) !== true);
+      if (unprotected.length > 0) {
+        logger.warn(
+          `[MeshCore:${this.sourceId}] Add-to-radio blocked: ${unprotected.length} favourite(s) are not ` +
+          `protected on the radio and could be evicted from its full contact list`,
+        );
+        return { status: 'favorites_unprotected', unprotected };
+      }
+    }
+
+    // Snapshot before the add so an eviction can be reported with a name.
+    const beforeAdd = new Map(this.contacts);
+    const response = await this.sendBridgeCommand('add_contact', {
+      public_key: key,
+      adv_type: advType,
+      name,
+      favorite: isFavorite,
+      latitude,
+      longitude,
+    });
+    if (!response.success) {
+      if (response.error === MESHCORE_DEVICE_TABLE_FULL) return { status: 'table_full', count, maxContacts };
+      return { status: 'failed', error: response.error || 'The radio did not store the contact' };
+    }
+    const evicted: string[] = Array.isArray(response.data?.evicted) ? response.data.evicted : [];
+    logger.info(
+      `[MeshCore:${this.sourceId}] Added ${key.substring(0, 12)}… to the radio's contact list` +
+      (evicted.length > 0 ? ` (radio evicted ${evicted.length} non-favourite contact(s))` : ''),
+    );
+
+    // Mirror the device list, then tell the UI about the added and evicted rows
+    // (refreshContacts itself emits no per-contact events).
+    await this.refreshContacts();
+    await this.markContactOnDevice(key, true);
+    for (const k of evicted) {
+      const prev = beforeAdd.get(k) ?? { publicKey: k };
+      const gone: MeshCoreContact = { ...prev, onDevice: false };
+      this.emit('contacts_updated', { sourceId: this.sourceId, contact: gone });
+      dataEventEmitter.emitMeshCoreContactUpdated(gone, this.sourceId);
+    }
+    return {
+      status: 'added',
+      evicted,
+      count: typeof response.data?.count === 'number' ? response.data.count : count + 1,
+      maxContacts,
+    };
+  }
+
+  /** Set a contact's `onDevice` flag and broadcast it (#5349). */
+  private async markContactOnDevice(publicKey: string, onDevice: boolean): Promise<void> {
+    const existing = this.contacts.get(publicKey);
+    if (!existing) return;
+    const updated: MeshCoreContact = { ...existing, onDevice };
+    this.contacts.set(publicKey, updated);
+    this.emit('contacts_updated', { sourceId: this.sourceId, contact: updated });
+    dataEventEmitter.emitMeshCoreContactUpdated(updated, this.sourceId);
+  }
+
+  /**
    * Remove a contact from the device's contact list. On success, the
    * in-memory contact map and meshcore_nodes row are cleared. Companion only.
    */
@@ -5404,6 +5788,34 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
   }
 
   /**
+   * `loginToNode` plus WHY it failed, for routes that report the reason to
+   * the user (#5349: "not in the radio's contact list" vs "no reply").
+   */
+  async loginToNodeDetailed(
+    publicKey: string,
+    password: string,
+  ): Promise<{ result: MeshCoreLoginResult | null; outcome: MeshCoreLoginOutcome }> {
+    return this.loginToNodeWithOutcome(publicKey, password);
+  }
+
+  /**
+   * Is `publicKey` in the companion's saved contact table? (#5349)
+   * `null` when that can't be determined (not a connected Companion, or the
+   * read failed). Local serial read — no airtime.
+   */
+  async isContactOnDevice(publicKey: string): Promise<boolean | null> {
+    if (this.deviceType !== MeshCoreDeviceType.COMPANION) return null;
+    try {
+      const response = await this.sendBridgeCommand('has_contact', { public_key: publicKey.toLowerCase() });
+      if (!response.success || !response.data) return null;
+      return response.data.on_device === true;
+    } catch (err) {
+      logger.debug(`[MeshCore:${this.sourceId}] has_contact failed: ${(err as Error).message}`);
+      return null;
+    }
+  }
+
+  /**
    * `loginToNode` plus WHY it failed.
    *
    * Kept separate so the boolean/nullable contract every existing caller
@@ -5448,9 +5860,20 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
           outcome: 'ok',
         };
       }
+      if (response.error === MESHCORE_CONTACT_NOT_ON_DEVICE) {
+        // The companion could not even send the login: it resolves the target
+        // from its own contact table and doesn't hold this one (#5349).
+        logger.warn(
+          `[MeshCore:${this.sourceId}] Login to ${publicKey.substring(0, 12)}… not sent: ` +
+          `the node is not in the radio's contact list`,
+        );
+        return { result: null, outcome: 'not_on_device' };
+      }
       const rejected = response.error === MESHCORE_LOGIN_REJECTED;
       if (rejected) {
         logger.debug(`[MeshCore] Node ${publicKey.substring(0, 8)}… refused the password`);
+      } else {
+        logger.debug(`[MeshCore] Login to ${publicKey.substring(0, 8)}… failed: ${response.error ?? 'no reply'}`);
       }
       return { result: null, outcome: rejected ? 'rejected' : 'no_reply' };
     } catch (error) {
@@ -5463,8 +5886,19 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
    * Request status from a remote node
    */
   async requestNodeStatus(publicKey: string): Promise<MeshCoreStatus | null> {
+    return (await this.requestNodeStatusDetailed(publicKey)).status;
+  }
+
+  /**
+   * `requestNodeStatus` plus whether it failed because the node is not in the
+   * radio's contact list (#5349) — the one failure worth telling the user
+   * about specifically, since nothing was transmitted.
+   */
+  async requestNodeStatusDetailed(
+    publicKey: string,
+  ): Promise<{ status: MeshCoreStatus | null; notOnDevice: boolean }> {
     if (this.deviceType !== MeshCoreDeviceType.COMPANION) {
-      return null;
+      return { status: null, notOnDevice: false };
     }
 
     this.requireTransmit();
@@ -5474,9 +5908,19 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
         public_key: publicKey,
       }, 15000);
 
+      if (!response.success && response.error === MESHCORE_CONTACT_NOT_ON_DEVICE) {
+        // Debug, not warn: the remote-telemetry scheduler polls on a timer
+        // and would otherwise repeat this every cycle.
+        logger.debug(
+          `[MeshCore:${this.sourceId}] Status request to ${publicKey.substring(0, 12)}… not sent: ` +
+          `the node is not in the radio's contact list`,
+        );
+        return { status: null, notOnDevice: true };
+      }
+
       if (response.success && response.data) {
         const d = response.data;
-        return {
+        const status: MeshCoreStatus = {
           batteryMv: d.bat_mv,
           uptimeSecs: d.up_secs,
           queueLen: d.queue_len,
@@ -5501,11 +5945,12 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
           radioSf: d.radio_sf,
           radioCr: d.radio_cr,
         };
+        return { status, notOnDevice: false };
       }
-      return null;
+      return { status: null, notOnDevice: false };
     } catch (error) {
       logger.error('[MeshCore] Status request failed:', error);
-      return null;
+      return { status: null, notOnDevice: false };
     }
   }
 
@@ -5627,6 +6072,11 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
         logger.warn(`[MeshCore] Room ${publicKey.substring(0, 8)}… refused the password — not retrying`);
         return 'rejected';
       }
+      if (outcome === 'not_on_device') {
+        // Nothing was sent, and retrying cannot help until the room server
+        // is added to the radio's contact list (#5349).
+        return 'not_on_device';
+      }
       if (attempt < maxAttempts) {
         logger.warn(`[MeshCore] Room login attempt ${attempt}/${maxAttempts} got no reply for ${publicKey.substring(0, 8)}…, retrying`);
         await new Promise(r => setTimeout(r, 2000));
@@ -5695,16 +6145,50 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
   }
 
   /**
-   * Find a contact whose publicKey starts with the given hex prefix.
+   * Find THE contact whose publicKey starts with the given hex prefix.
+   *
+   * Returns `undefined` when nothing matches AND when more than one contact
+   * matches (#5349). Picking the first of several would silently attribute a
+   * name, a reply, or a DM to whichever colliding contact happened to be
+   * inserted first. The MeshCore frames that carry a 6-byte prefix practically
+   * never collide, but 1-3 byte route hashes routinely do on a busy mesh.
+   * Callers that can disambiguate with extra context (e.g. "only repeaters")
+   * should use `resolveContactsByPrefix` and choose themselves.
    */
   resolveContactByPrefix(prefix: string): MeshCoreContact | undefined {
     if (!prefix) return undefined;
     const exact = this.contacts.get(prefix);
     if (exact) return exact;
+    const matches = this.resolveContactsByPrefix(prefix);
+    return matches.length === 1 ? matches[0] : undefined;
+  }
+
+  /**
+   * Friendly name for a 1-3 byte route-hop hash, or null when it cannot be
+   * attributed to exactly one relay (#5349). Hop hashes collide routinely on a
+   * busy mesh, and only a repeater or room server can appear in a path, so the
+   * candidates are narrowed to those before requiring a unique match.
+   */
+  nameForRelayHash(hash: string): string | null {
+    const relays = this.resolveContactsByPrefix(hash).filter(
+      (c) => c.advType === MeshCoreDeviceType.REPEATER || c.advType === MeshCoreDeviceType.ROOM_SERVER,
+    );
+    if (relays.length !== 1) return null;
+    return relays[0].advName || relays[0].name || null;
+  }
+
+  /**
+   * Every contact whose publicKey starts with the given hex prefix
+   * (case-insensitive). Empty prefix matches nothing.
+   */
+  resolveContactsByPrefix(prefix: string): MeshCoreContact[] {
+    if (!prefix) return [];
+    const needle = prefix.toLowerCase();
+    const out: MeshCoreContact[] = [];
     for (const c of this.contacts.values()) {
-      if (c.publicKey.startsWith(prefix)) return c;
+      if (c.publicKey && c.publicKey.toLowerCase().startsWith(needle)) out.push(c);
     }
-    return undefined;
+    return out;
   }
 
   /**
@@ -5941,7 +6425,11 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
           if (!resp.success) {
             clearTimeout(timer);
             this.pendingCliReplies.delete(prefixKey);
-            reject(new Error(resp.error || 'send_cli failed'));
+            reject(
+              resp.error === MESHCORE_CONTACT_NOT_ON_DEVICE
+                ? new MeshCoreContactNotOnDeviceError(fullKey)
+                : new Error(resp.error || 'send_cli failed'),
+            );
           }
           // Success means the firmware accepted the outbound frame; the
           // actual reply still arrives asynchronously via cli_reply.
@@ -5992,6 +6480,13 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
       // (sender_timestamp=0 → "clock cannot go backwards"); rewrite it to the
       // absolute `time <epoch>` verb so the RTC actually gets set (#3954).
       const reply = await this.sendRepeaterCommand(this.rewriteClockSync(trimmed), timeoutMs);
+      // A flood advert typed at the console counts against the automated
+      // flood floor like any other manual flood. Judge by the reply, not the
+      // verb: firmware without `advert.zerohop` floods on it too.
+      const verb = trimmed.split(/\s+/)[0]?.toLowerCase() ?? '';
+      if ((verb === 'advert' || verb === 'advert.zerohop') && classifyRepeaterAdvertReply(reply) === 'flood') {
+        await this.recordFloodAdvert();
+      }
       return { reply, elapsedMs: Date.now() - sentAt };
     }
 
@@ -6049,10 +6544,15 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
       return `${epoch}\n${new Date(epoch * 1000).toISOString()}`;
     }
 
-    if (verb === 'advert') {
-      const response = await this.sendBridgeCommand('send_advert', {});
-      if (!response.success) throw new Error(response.error || 'send_advert failed');
-      return 'Advert sent (flood)';
+    // Same verbs as the repeater firmware CLI: `advert` floods,
+    // `advert.zerohop` stays in direct radio range. Both go through
+    // sendAdvert() so a flood carries the default scope and stamps the
+    // automated flood floor like any other manual flood.
+    if (verb === 'advert' || verb === 'advert.zerohop') {
+      const mode: MeshCoreAdvertMode = verb === 'advert' ? 'flood' : 'zero_hop';
+      const ok = await this.sendAdvert(mode);
+      if (!ok) throw new Error('send_advert failed');
+      return mode === 'flood' ? 'Advert sent (flood)' : 'Advert sent (zero-hop)';
     }
 
     if (verb === 'help' || verb === '?') {
@@ -6061,7 +6561,8 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
         '  ver           — firmware version + model',
         '  stats [core|radio|packets] — local device stats',
         '  clock         — device time',
-        '  advert        — broadcast a flood advert',
+        '  advert.zerohop — advert to nodes in direct radio range',
+        '  advert        — flood advert across the whole mesh (costly)',
         '  help          — this list',
       ].join('\n');
     }
@@ -7548,6 +8049,11 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
     // Optional advert burst N seconds after the announcement.
     const advertEnabled = (await databaseService.settings.getSettingForSource(this.sourceId, 'meshcoreAutoAnnounceAdvertEnabled')) === 'true';
     if (advertEnabled) {
+      // Absent mode = a burst configured before the field existed → flood (legacy).
+      const advertMode = resolveMeshCoreAdvertMode(
+        await databaseService.settings.getSettingForSource(this.sourceId, 'meshcoreAutoAnnounceAdvertMode'),
+        LEGACY_MESHCORE_ADVERT_MODE,
+      );
       const delayRaw = await databaseService.settings.getSettingForSource(this.sourceId, 'meshcoreAutoAnnounceAdvertDelaySeconds');
       const delaySec = Math.max(0, Math.min(600, parseInt(delayRaw || '30', 10) || 30));
       if (this.autoAnnounceAdvertTimer) clearTimeout(this.autoAnnounceAdvertTimer);
@@ -7560,7 +8066,11 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
           return;
         }
         if (!this.connected) return;
-        void this.sendAdvert().catch((err: Error) => {
+        void this.sendAutomatedAdvert(advertMode, 'Auto-announce advert burst').then((r) => {
+          if (!r.sent && r.reason) {
+            logger.debug(`[MeshCore:${this.sourceId}] Auto-announce: advert burst not sent: ${r.reason}`);
+          }
+        }).catch((err: Error) => {
           logger.warn(`[MeshCore:${this.sourceId}] Auto-announce: advert burst failed: ${err.message}`);
         });
       }, delaySec * 1000);
@@ -7705,8 +8215,13 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
     let reason: string | undefined;
     try {
       if (trigger.responseType === 'advert') {
-        ok = await this.sendAdvert();
-        if (!ok) reason = 'advert failed';
+        // Absent mode = trigger saved before the field existed → flood (legacy).
+        const result = await this.sendAutomatedAdvert(
+          resolveMeshCoreAdvertMode(trigger.advertMode, LEGACY_MESHCORE_ADVERT_MODE),
+          `Timer trigger ${trigger.id}`,
+        );
+        ok = result.sent;
+        if (!ok) reason = result.reason ?? 'advert failed';
       } else if (trigger.responseType === 'script') {
         if (!trigger.scriptPath) {
           ok = false;

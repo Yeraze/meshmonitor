@@ -32,6 +32,8 @@
  * which is also what keeps the pre-existing unit tests meaningful.
  */
 
+import { uniquePrefixMatch } from '../../utils/meshcoreKeyMatch';
+
 const CHANGE_EVENT = 'meshcore-unread-changed';
 
 export const channelLastReadKey = (sourceId: string) =>
@@ -246,13 +248,9 @@ export function canonicalizePeerKey(
   contacts: ReadonlyArray<{ publicKey?: string }>,
 ): string {
   if (!key) return key;
-  for (const c of contacts) {
-    if (c.publicKey === key) return key;
-  }
-  for (const c of contacts) {
-    if (c.publicKey && c.publicKey.startsWith(key)) return c.publicKey;
-  }
-  return key;
+  // Unique match only (#5349): an ambiguous prefix stays as-is rather than
+  // being folded into whichever colliding contact comes first.
+  return uniquePrefixMatch(contacts, key)?.publicKey ?? key;
 }
 
 /** True when `a` and `b` reference the same key allowing for prefix matching. */

@@ -1,0 +1,40 @@
+/*
+ * MeshCoreAdvertModeField. CSS module — do not add these rules to the global
+ * sheets (CLAUDE.md CSS containment rule).
+ */
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  border: none;
+  padding: 0;
+  margin: 0;
+  font-size: 0.85rem;
+}
+
+.legend {
+  padding: 0;
+  margin-bottom: 0.15rem;
+}
+
+.option {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.4rem;
+  cursor: pointer;
+}
+
+.option input {
+  width: auto;
+  margin: 0.15rem 0 0;
+}
+
+.warning {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.35rem;
+  margin-left: 1.4rem;
+  color: var(--color-warning);
+  font-size: 0.8rem;
+}

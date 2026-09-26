@@ -17,6 +17,7 @@ import { UiIcon, type UiIconName } from './icons';
 import { MeshtasticContactShare } from './MeshtasticContactShare';
 import { NodeSkyView } from './gnss/NodeSkyView';
 import { Firmware28SilenceNotice } from './Firmware28SilenceNotice';
+import { ShowCoverageLink } from './Analysis/ShowCoverageLink';
 
 interface NodeDetailsBlockProps {
   node: DeviceInfo | null;
@@ -375,7 +376,10 @@ const NodeDetailsBlock: React.FC<NodeDetailsBlockProps> = ({ node, timeFormat = 
   return (
     <div className="node-details-block">
       <div className="node-details-header">
-        <h3 className="node-details-title">{t('node_details.title')}</h3>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
+          <h3 className="node-details-title">{t('node_details.title')}</h3>
+          {node.user?.id && <ShowCoverageLink senderId={node.user.id} />}
+        </div>
         <button
           className="node-details-toggle"
           onClick={() => setIsCollapsed(!isCollapsed)}

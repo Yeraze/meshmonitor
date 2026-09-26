@@ -480,12 +480,14 @@
   text-shadow: 0 0 3px rgba(0, 0, 0, 0.8);
 }
 
-/* Position History Arrow Icons - clickable */
+/* Position History Arrow Icons - decorative heading triangles (#5356).
+   The Marker is interactive={false}, but Leaflet's marker pane sits above the
+   dot's overlay pane, so the icon element must also ignore the pointer or it
+   swallows hover/click meant for the position dot underneath. */
 .leaflet-marker-icon.position-history-arrow-icon {
   background: transparent !important;
   border: none !important;
-  pointer-events: auto;
-  cursor: pointer;
+  pointer-events: none;
 }
 
 .leaflet-marker-icon.position-history-arrow-icon div {

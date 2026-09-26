@@ -40,16 +40,68 @@ vi.mock('./CoverageMap', () => ({
   CoverageMap: () => <div data-testid="coverage-map-stub" />,
 }));
 
+vi.mock('../../contexts/SettingsContext', () => ({
+  useSettings: () => ({ distanceUnit: 'km' }),
+}));
+
+// P4a WP1/WP3 modules (COVERAGE_P4_SPEC.md §2a) — separate worktrees that
+// merge before this WP; their real files do not exist here. Trivial
+// stand-ins so CoverageReport's OWN query-stability behaviour (the thing
+// this file actually regression-tests) is what's under test, not these.
+vi.mock('../../utils/coverageGaps', () => ({
+  detectCoverageGaps: vi.fn(() => ({
+    intervalSec: 30,
+    intervalSource: 'default',
+    gaps: [],
+    breaks: 0,
+    heard: 0,
+    expected: 0,
+  })),
+}));
+vi.mock('../../utils/coverageSummary', () => ({
+  summarizeCoverage: vi.fn(() => ({
+    fixesHeard: 0,
+    receptions: 0,
+    bestSnr: null,
+    worstSnr: null,
+    bestRssi: null,
+    worstRssi: null,
+    receivers: [],
+    distancePoints: [],
+  })),
+}));
+vi.mock('../../utils/coverageGrid', () => ({
+  binFixesToGrid: vi.fn(() => []),
+}));
+vi.mock('./CoverageSummaryPanel', () => ({
+  CoverageSummaryPanel: () => <div data-testid="coverage-summary-panel-stub" />,
+}));
+vi.mock('./CoverageDistanceChart', () => ({
+  CoverageDistanceChart: () => <div data-testid="coverage-distance-chart-stub" />,
+}));
+vi.mock('./CoverageExportButtons', () => ({
+  CoverageExportButtons: () => <div data-testid="coverage-export-buttons-stub" />,
+}));
+
 vi.mock('../../services/analysisApi', () => ({
   fetchCoverageReceivers: vi.fn(),
   fetchCoverageSenders: vi.fn(),
   fetchCoverageReceptionsPage: vi.fn(),
+  fetchCoverageSurveys: vi.fn(),
+}));
+
+// #5277 P4b WP3: CoverageReport now also calls useCoverageSurveys(). Stubbed
+// out here (its own query-stability behaviour has no bearing on THIS
+// regression test) the same way the P4a WP3 components above are stubbed.
+vi.mock('./CoverageSurveyBar', () => ({
+  CoverageSurveyBar: () => <div data-testid="coverage-survey-bar-stub" />,
 }));
 
 import {
   fetchCoverageReceivers,
   fetchCoverageSenders,
   fetchCoverageReceptionsPage,
+  fetchCoverageSurveys,
 } from '../../services/analysisApi';
 import CoverageReport from './CoverageReport';
 
@@ -117,6 +169,7 @@ describe('CoverageReport query stability (#5277 regression)', () => {
       hasMore: false,
       nextCursor: null,
     });
+    vi.mocked(fetchCoverageSurveys).mockResolvedValue([]);
   });
 
   it('fetches each endpoint exactly once on mount, renders the map, and fetches exactly once more per Refresh click', async () => {
@@ -132,6 +185,7 @@ describe('CoverageReport query stability (#5277 regression)', () => {
     expect(fetchCoverageReceivers).toHaveBeenCalledTimes(1);
     expect(fetchCoverageSenders).toHaveBeenCalledTimes(1);
     expect(fetchCoverageReceptionsPage).toHaveBeenCalledTimes(1);
+    expect(fetchCoverageSurveys).toHaveBeenCalledTimes(1);
 
     // Refresh must be enabled once loading has settled (it stayed
     // permanently disabled under the render-loop bug).
@@ -143,6 +197,7 @@ describe('CoverageReport query stability (#5277 regression)', () => {
     await waitFor(() => expect(fetchCoverageReceivers).toHaveBeenCalledTimes(2));
     await waitFor(() => expect(fetchCoverageSenders).toHaveBeenCalledTimes(2));
     await waitFor(() => expect(fetchCoverageReceptionsPage).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(fetchCoverageSurveys).toHaveBeenCalledTimes(2));
 
     // Settle again after Refresh and confirm nothing kept looping.
     await act(async () => {
@@ -151,5 +206,6 @@ describe('CoverageReport query stability (#5277 regression)', () => {
     expect(fetchCoverageReceivers).toHaveBeenCalledTimes(2);
     expect(fetchCoverageSenders).toHaveBeenCalledTimes(2);
     expect(fetchCoverageReceptionsPage).toHaveBeenCalledTimes(2);
+    expect(fetchCoverageSurveys).toHaveBeenCalledTimes(2);
   });
 });

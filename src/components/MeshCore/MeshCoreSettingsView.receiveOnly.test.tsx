@@ -99,11 +99,12 @@ describe('MeshCoreSettingsView — receive-only toggle rendering', () => {
 });
 
 describe('MeshCoreSettingsView — receive-only button gating', () => {
-  it('disables Send advert, Discover x3 and Discover regions, all with the control tooltip', () => {
+  it('disables both advert buttons, Discover x3 and Discover regions, all with the control tooltip', () => {
     renderView(true);
 
     const gated = [
-      screen.getByRole('button', { name: 'Send advert' }),
+      screen.getByRole('button', { name: 'Advert (nearby, zero-hop)' }),
+      screen.getByRole('button', { name: 'Flood advert' }),
       screen.getByRole('button', { name: 'Discover Nearby Nodes' }),
       screen.getByRole('button', { name: 'Discover Repeaters' }),
       screen.getByRole('button', { name: 'Discover Sensors' }),
@@ -129,7 +130,8 @@ describe('MeshCoreSettingsView — receive-only button gating', () => {
     renderView(false);
 
     const gated = [
-      screen.getByRole('button', { name: 'Send advert' }),
+      screen.getByRole('button', { name: 'Advert (nearby, zero-hop)' }),
+      screen.getByRole('button', { name: 'Flood advert' }),
       screen.getByRole('button', { name: 'Discover Nearby Nodes' }),
       screen.getByRole('button', { name: 'Discover Repeaters' }),
       screen.getByRole('button', { name: 'Discover Sensors' }),

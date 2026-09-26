@@ -21,6 +21,7 @@ import { logger } from '../../utils/logger.js';
 import databaseService from '../../services/database.js';
 import { systemBackupService, BACKUP_TABLES } from './systemBackupService.js';
 import { getDatabaseConfig } from '../../db/index.js';
+import { resetPostgresSequences } from '../migrations/postgresSequences.js';
 import { Pool } from 'pg';
 import mysql from 'mysql2/promise';
 
@@ -479,6 +480,18 @@ class SystemRestoreService {
           throw error; // Will trigger rollback
         }
       }
+
+      // The INSERTs above carry each row's original id, which never advances
+      // a SERIAL/IDENTITY sequence. Move the sequences past the restored ids
+      // on the same client, after the last INSERT and before COMMIT: a
+      // failure here rolls the whole restore back. (setval itself is not
+      // undone by a later ROLLBACK, which is harmless: it only moves
+      // forward.) Without this the next id-less INSERT collides, and
+      // insertIgnore's onConflictDoNothing() silently drops the row.
+      const sequences = await resetPostgresSequences(client);
+      logger.info(
+        `🔄 PostgreSQL sequences: advanced ${sequences.advanced} of ${sequences.checked} past restored ids`
+      );
 
       await client.query('COMMIT');
       return { rowsRestored: totalRowsRestored, tablesRestored };

@@ -1,18 +1,26 @@
 /**
  * CoverageReport — Coverage Report landing view for the RF reception epic
- * (#5277, Phase 1 WP4). Filters (sender, receivers, hops, time range, colour
- * metric) apply immediately — this is a live view over recently-recorded
- * receptions, not a deferred multi-source scan like MqttViolationsReport, so
- * there is no "Run report" gate. A manual Refresh button re-runs the current
- * window instead of polling (spec §2.11).
+ * (#5277, Phase 1 WP4; gaps/summary/grid/export/deep-link wired in P4a
+ * WP4, COVERAGE_P4_SPEC.md §2a.7). Filters (sender, receivers, hops, time
+ * range, colour metric, dots/grid view) apply immediately — this is a live
+ * view over recently-recorded receptions, not a deferred multi-source scan
+ * like MqttViolationsReport, so there is no "Run report" gate. A manual
+ * Refresh button re-runs the current window instead of polling (spec
+ * §2.11).
  *
  * Data flow: `useCoverageReceivers` (the receiver checkbox list + names),
- * `useCoverageSenders` (the sender `<select>`), `useCoverageReceptions` (the
+ * `useCoverageSenders` (the sender picker), `useCoverageReceptions` (the
  * paginated reception rows for the map). Reception rows are grouped into
  * fixes with `groupReceptionsIntoFixes` (`src/utils/coverage.ts`, shared with
- * the server) and handed to `CoverageMap`.
+ * the server) and handed to `CoverageMap`, plus the P4a pure analysis
+ * functions (`coverageGaps`/`coverageSummary`/`coverageGrid`, WP1) that turn
+ * those same fixes/items into gap lines, the summary panel and the grid
+ * view. `initialLink` seeds the sender + range once at mount from a
+ * `/reports?report=coverage&…` deep link (AnalysisTab, WP4 + ShowCoverageLink,
+ * WP5) — never re-applied after mount, same rule as the query-stability fix
+ * on `timeWindow` below.
  */
-import { useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { UiIcon } from '../icons';
 import {
@@ -20,17 +28,46 @@ import {
   useCoverageSenders,
   useCoverageReceptions,
 } from '../../hooks/useCoverageData';
-import { groupReceptionsIntoFixes, formatCoverageNodeId } from '../../utils/coverage';
+import { useCoverageSurveys } from '../../hooks/useCoverageSurveys';
+import {
+  groupReceptionsIntoFixes,
+  formatCoverageNodeId,
+  effectiveSurveyEndAt,
+  COVERAGE_GRID_CELL_SIZES_M,
+  COVERAGE_GRID_DEFAULT_CELL_M,
+  isMeshCorePubKeyId,
+} from '../../utils/coverage';
 import type { CoverageMetric } from '../../utils/coverage';
-import type { CoverageHopsMode } from '../../types/coverage';
-import { buildReceiverQuery, receiverKey } from '../../utils/coverageReceiverFilter';
+import type { CoverageHopsMode, CoverageSurveyDto } from '../../types/coverage';
+import {
+  buildReceiverQuery,
+  deselectedFromReceiverFilter,
+  encodeReceiverFilter,
+  receiverKey,
+} from '../../utils/coverageReceiverFilter';
 import {
   resolveCoverageWindow,
   type CoverageRangePreset,
   type CoverageWindow,
 } from '../../utils/coverageTimeRange';
+import { detectCoverageGaps } from '../../utils/coverageGaps';
+import { summarizeCoverage } from '../../utils/coverageSummary';
+import { binFixesToGrid } from '../../utils/coverageGrid';
+import type {
+  CoverageDeepLink,
+  CoverageExportContext,
+  CoverageGridCellSizeM,
+  CoverageMapView,
+  GapFixInput,
+} from '../../types/coverageAnalysis';
+import { useSettings } from '../../contexts/SettingsContext';
 import { CoverageMap } from './CoverageMap';
 import { CoverageReceiverFilter } from './CoverageReceiverFilter';
+import { CoverageSummaryPanel } from './CoverageSummaryPanel';
+import { CoverageDistanceChart } from './CoverageDistanceChart';
+import { CoverageExportButtons } from './CoverageExportButtons';
+import { CoverageSurveyBar } from './CoverageSurveyBar';
+import SearchableSelect, { type SearchableSelectOption } from '../common/SearchableSelect';
 import styles from './CoverageReport.module.css';
 
 const RANGE_PRESETS: Array<{ id: Exclude<CoverageRangePreset, 'custom'>; key: string; label: string }> = [
@@ -65,18 +102,59 @@ const MESHCORE_AIRTIME_ROWS: Array<{ preset: string; b111: string; b123: string;
   { preset: 'Legacy EU, SF11 BW250 CR5', b111: '1.09 s', b123: '1.17 s', b135: '1.26 s' },
 ];
 
-export const CoverageReport: React.FC = () => {
-  const { t } = useTranslation();
+export interface CoverageReportProps {
+  /**
+   * Seeds the sender filter and time-range preset once at mount from a
+   * `/reports?report=coverage&sender=…&range=…` deep link (AnalysisTab's
+   * `useSearchParams` + `parseCoverageDeepLink`, WP4; `ShowCoverageLink`,
+   * WP5). Read ONLY in the lazy `useState` initializers below — never
+   * re-applied on a prop change after mount. Same rule as `timeWindow`
+   * (see its comment): re-deriving from a prop on every render is exactly
+   * the shape of the #5277 query-stability regression, just one hop
+   * removed (a prop that changes identity every render would be just as
+   * bad as `Date.now()` computed inline).
+   */
+  initialLink?: CoverageDeepLink;
+}
 
-  const [preset, setPreset] = useState<CoverageRangePreset>('24h');
+export const CoverageReport: React.FC<CoverageReportProps> = ({ initialLink }) => {
+  const { t } = useTranslation();
+  const { distanceUnit } = useSettings();
+
+  const [preset, setPreset] = useState<CoverageRangePreset>(() => initialLink?.range ?? '24h');
   const [customFrom, setCustomFrom] = useState('');
   const [customTo, setCustomTo] = useState('');
-  const [senderId, setSenderId] = useState<string>('');
+  const [senderId, setSenderId] = useState<string>(() => initialLink?.sender ?? '');
   const [deselectedReceiverIds, setDeselectedReceiverIds] = useState<Set<string>>(new Set());
   const [hops, setHops] = useState<number | ''>('');
   const [hopsMode, setHopsMode] = useState<CoverageHopsMode>('exact');
   const [metric, setMetric] = useState<CoverageMetric>('snr');
   const [guidanceOpen, setGuidanceOpen] = useState(false);
+  const [view, setView] = useState<CoverageMapView>('dots');
+  const [cellSize, setCellSize] = useState<CoverageGridCellSizeM>(COVERAGE_GRID_DEFAULT_CELL_M);
+
+  // Saved surveys (#5277 P4b WP3, spec §2b.7). `selectedSurvey` holds the
+  // FULL DTO, not just an id looked up from `surveysQuery` below, on
+  // purpose: `applySurvey` (and the bar's Start/Save/Stop/Edit onSuccess
+  // callbacks, which also call back through `onSelectSurvey`) always hand
+  // this the freshest row directly, and `surveysQuery`'s own cache can lag
+  // one refetch behind a just-created/just-mutated row (its invalidation is
+  // async). Deriving `selectedSurvey` by re-looking the id up in
+  // `surveysQuery.data` would momentarily lose `intervalSec`/`isLive`/etc.
+  // right after Start or Save, before that refetch lands. A manual sender or
+  // window change clears it (see the wrapped setters further down), matching
+  // "picking a survey applies it; changing anything by hand detaches it"
+  // (spec §2b.7).
+  //
+  // Starts `null`, even with a `survey=` deep link — NOT the deep-linked id
+  // itself. The survey list has to load first to know whether that id is
+  // real; the effect below is what sets this once it's confirmed to exist,
+  // same "seed once, from confirmed data" rule as the sender synthetic-
+  // option handling above, just one tick later than a lazy `useState` can
+  // reach (the list is a network fetch, not a prop already in hand).
+  const [selectedSurvey, setSelectedSurvey] = useState<CoverageSurveyDto | null>(null);
+  const selectedSurveyId = selectedSurvey?.id ?? null;
+  const appliedInitialSurveyRef = useRef(false);
 
   // Resolved ONCE per discrete user action (mount / preset click / custom
   // "Apply" / Refresh) via `resolveCoverageWindow`, and cached in state —
@@ -88,25 +166,37 @@ export const CoverageReport: React.FC = () => {
   // Refresh permanently disabled and the map never rendering. The lazy
   // `useState` initializer runs exactly once, at mount.
   const [timeWindow, setTimeWindow] = useState<CoverageWindow>(() =>
-    resolveCoverageWindow('24h', Date.now()),
+    resolveCoverageWindow(initialLink?.range ?? '24h', Date.now()),
   );
   const { sinceMs, untilMs, rangeInvalid } = timeWindow;
 
+  // A manual range or sender change is "changing the window/sender by hand"
+  // (spec §2b.7) — it detaches whatever survey is currently applied. This
+  // does NOT run when `applySurvey` itself sets these (it sets
+  // `selectedSurveyId` directly, never through these wrapped setters).
   const selectPreset = (id: Exclude<CoverageRangePreset, 'custom'>) => {
     setPreset(id);
     setTimeWindow(resolveCoverageWindow(id, Date.now()));
+    setSelectedSurvey(null);
   };
 
   /** Switches the UI to the custom from/to inputs WITHOUT resolving a new
    *  window — the window only changes once the user presses Apply, so
-   *  merely opening the custom picker can't itself trigger a fetch. */
+   *  merely opening the custom picker can't itself trigger a fetch (and
+   *  doesn't detach a selected survey either). */
   const selectCustomPreset = () => {
     setPreset('custom');
   };
 
   const applyCustomRange = () => {
     setTimeWindow(resolveCoverageWindow('custom', Date.now(), customFrom, customTo));
+    setSelectedSurvey(null);
   };
+
+  const handleSenderChange = useCallback((id: string) => {
+    setSenderId(id);
+    setSelectedSurvey(null);
+  }, []);
 
   const receiversQuery = useCoverageReceivers([]);
   const sendersQuery = useCoverageSenders({ sources: [], sinceMs, untilMs });
@@ -123,8 +213,53 @@ export const CoverageReport: React.FC = () => {
     return map;
   }, [sendersQuery.data]);
 
+  // Options for the sender SearchableSelect (spec §2a.7). A deep-linked (or
+  // otherwise already-selected) sender absent from `/senders` — no fixes in
+  // the current window — still gets a synthetic option with its formatted
+  // id so the current value never silently vanishes from the picker.
+  const senderOptions = useMemo<SearchableSelectOption[]>(() => {
+    const senders = sendersQuery.data?.senders ?? [];
+    const options: SearchableSelectOption[] = senders.map((s) => {
+      const displaySenderId = formatCoverageNodeId(s.senderId);
+      const label = s.longName || s.shortName || displaySenderId;
+      return {
+        value: s.senderId,
+        label: `${label} (${displaySenderId}) — ${s.fixCount}`,
+        keywords: [s.longName, s.shortName, s.senderId].filter(Boolean).join(' '),
+      };
+    });
+    if (senderId && !senders.some((s) => s.senderId === senderId)) {
+      options.push({
+        value: senderId,
+        label: formatCoverageNodeId(senderId),
+        keywords: senderId,
+      });
+    }
+    return options;
+  }, [sendersQuery.data, senderId]);
+
   const receivers = useMemo(() => receiversQuery.data?.receivers ?? [], [receiversQuery.data]);
   const mqttSources = useMemo(() => receiversQuery.data?.mqttSources ?? [], [receiversQuery.data]);
+
+  // receiverKey(sourceId, receiverId) -> best display name / sourceId ->
+  // sourceName, for the summary table, distance chart and CSV/GeoJSON export
+  // (spec §2a.4/§2a.6). Same composite-key convention as
+  // `CoverageReceiverFilter`/`CoverageMap`.
+  const receiverNames = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const r of receivers) {
+      const name = r.longName || r.shortName;
+      if (name) map.set(receiverKey(r.sourceId, r.receiverId), name);
+    }
+    return map;
+  }, [receivers]);
+  const sourceNames = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const r of receivers) {
+      if (r.sourceName) map.set(r.sourceId, r.sourceName);
+    }
+    return map;
+  }, [receivers]);
 
   // Source-scoped receiver filter (#5277 P2 §2.5/§2.9), built from the
   // composite-keyed `deselectedReceiverIds` set — carry-over (a): the same
@@ -148,6 +283,76 @@ export const CoverageReport: React.FC = () => {
   const allReceiversSelected = receivers.length > 0 && selectedReceiverKeys.size === receivers.length;
   const noReceiversSelected = receivers.length > 0 && receiverQuery.noneSelected;
 
+  // Encoded wire form of the CURRENT receiver selection — what "Save as
+  // survey" stores on the new row (spec §2b.7: "sender + current window +
+  // current receiver filter"). `null` = every receiver, same convention as
+  // `CoverageSurveyDto.receivers`. When the picker fell back to
+  // `clientSideFilter` (well past the 1000-id / 6000-char cap, spec §2.5),
+  // there is no encodable filter to save — the survey is saved with every
+  // receiver instead of failing outright; it is a view preference, not a
+  // privacy boundary (spec §2b.1).
+  const currentReceiversEncoded = useMemo(
+    () =>
+      receiverQuery.clientSideFilter || !receiverQuery.receiverFilter
+        ? null
+        : encodeReceiverFilter(receiverQuery.receiverFilter),
+    [receiverQuery],
+  );
+
+  // Saved surveys (#5277 P4b WP3, spec §2b.7). `surveysQuery` itself is only
+  // read here for the deep-link lookup below (and to hand `.refetch` to
+  // Refresh) — everyday selection reads/writes go through `selectedSurvey`
+  // state above, not this query's cache (see that state's doc comment).
+  const surveysQuery = useCoverageSurveys();
+
+  /** Applies a picked/started/saved/stopped survey to the report's own
+   *  sender/window/receiver state — the one place all four ever change
+   *  together. Sets `selectedSurvey` directly (never through the wrapped
+   *  `handleSenderChange`/`selectPreset`/`applyCustomRange` setters above,
+   *  which would immediately clear it again). */
+  const applySurvey = useCallback(
+    (survey: CoverageSurveyDto) => {
+      setSelectedSurvey(survey);
+      setSenderId(survey.senderId);
+      setTimeWindow({
+        sinceMs: survey.startAt,
+        untilMs: effectiveSurveyEndAt(survey, Date.now()),
+        rangeInvalid: false,
+      });
+      setDeselectedReceiverIds(
+        deselectedFromReceiverFilter(
+          survey.receivers,
+          receivers.map((r) => ({ sourceId: r.sourceId, receiverId: r.receiverId })),
+        ),
+      );
+    },
+    [receivers],
+  );
+
+  const handleSelectSurvey = useCallback(
+    (survey: CoverageSurveyDto | null) => {
+      if (!survey) {
+        setSelectedSurvey(null);
+        return;
+      }
+      applySurvey(survey);
+    },
+    [applySurvey],
+  );
+
+  // Deep link `survey=<uuid>` (spec §2a.5/§2b.7): applied once, as soon as
+  // the survey list has loaded and contains it. Runs at most once per mount
+  // (the ref guard) — a survey that no longer exists, or hasn't loaded yet
+  // on the first pass, is simply left unapplied rather than retried forever.
+  useEffect(() => {
+    if (appliedInitialSurveyRef.current) return;
+    if (!initialLink?.survey) return;
+    if (!surveysQuery.data) return; // still loading
+    appliedInitialSurveyRef.current = true;
+    const found = surveysQuery.data.find((s) => s.id === initialLink.survey);
+    if (found) applySurvey(found);
+  }, [initialLink?.survey, surveysQuery.data, applySurvey]);
+
   const receptionsEnabled = !rangeInvalid && !noReceiversSelected;
   const receptionsQuery = useCoverageReceptions(
     {
@@ -165,6 +370,68 @@ export const CoverageReport: React.FC = () => {
 
   const items = useMemo(() => receptionsQuery.data?.items ?? [], [receptionsQuery.data]);
   const fixes = useMemo(() => groupReceptionsIntoFixes(items, metric), [items, metric]);
+
+  // P4a pure analysis (spec §2a.7) — all derived from `items`/`fixes`
+  // that are already privacy-filtered and already-loaded; no new fetch.
+  const singleSender = senderId !== '';
+  const fixesAsGapInputs = useMemo<GapFixInput[]>(
+    () =>
+      fixes.map((f) => ({
+        packetKey: f.packetKey,
+        firstReceivedAt: f.firstReceivedAt,
+        latitude: f.latitude,
+        longitude: f.longitude,
+      })),
+    [fixes],
+  );
+  // Gaps only run for a single sender, so its protocol follows from its id
+  // (MeshCore senders are 64-hex public keys), never a source type (spec
+  // §2a.2). The gap rule's default interval (30 s vs 60 s) depends on it.
+  const protocol = isMeshCorePubKeyId(senderId) ? 'meshcore' : 'meshtastic';
+  // A selected survey's configured interval overrides the observed/default
+  // estimate (spec §2b.7/§2a.2's `configured` source).
+  const configuredIntervalSec = selectedSurvey?.intervalSec ?? undefined;
+  const gapResult = useMemo(
+    () => (singleSender ? detectCoverageGaps(fixesAsGapInputs, { protocol, configuredIntervalSec }) : null),
+    [singleSender, fixesAsGapInputs, protocol, configuredIntervalSec],
+  );
+  const summary = useMemo(() => summarizeCoverage(items), [items]);
+  const gridCells = useMemo(
+    () => (view === 'grid' ? binFixesToGrid(fixes, cellSize, metric) : []),
+    [view, fixes, cellSize, metric],
+  );
+  // Tied to when `items` actually changed (a real fetch), not every render —
+  // an export timestamp has no query-key implications, but there is no
+  // reason to churn it on every keystroke either. `items` isn't read inside
+  // the factory; it's the recompute trigger, which exhaustive-deps can't see.
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- #5277 P4a WP4: intentional recompute-on-items-change, Date.now() itself has no deps
+  const generatedAt = useMemo(() => Date.now(), [items]);
+  const exportCtx = useMemo<CoverageExportContext>(
+    () => ({
+      senderNames,
+      receiverNames,
+      sourceNames,
+      truncated: receptionsQuery.data?.truncated ?? false,
+      generatedAt,
+      filters: {
+        senderId: senderId || null,
+        hops: hops === '' ? null : hops,
+        hopsMode,
+        metric,
+      },
+    }),
+    [
+      senderNames,
+      receiverNames,
+      sourceNames,
+      receptionsQuery.data?.truncated,
+      generatedAt,
+      senderId,
+      hops,
+      hopsMode,
+      metric,
+    ],
+  );
 
   // Identifies the current filter set for CoverageMap's fit-once-per-filter
   // behaviour. Deliberately excludes sinceMs/untilMs (the resolved window) —
@@ -197,9 +464,24 @@ export const CoverageReport: React.FC = () => {
     // key via .refetch(), one for the new key from the key change), which
     // is exactly the bug this file's regression test guards against.
     // `receiversQuery`'s key never depends on the time window, so it needs
-    // its own explicit refetch to actually do anything on Refresh.
-    setTimeWindow(resolveCoverageWindow(preset, Date.now(), customFrom, customTo));
+    // its own explicit refetch to actually do anything on Refresh — same
+    // reasoning applies to `surveysQuery` (#5277 P4b WP3).
+    //
+    // A selected LIVE survey re-anchors to its own effective end (spec
+    // §2b.7: "live -> now at resolve time; Refresh re-anchors") instead of
+    // the preset — its `startAt` never moves, only how far `effectiveEndAt`
+    // has crept since it was last resolved.
+    if (selectedSurvey) {
+      setTimeWindow({
+        sinceMs: selectedSurvey.startAt,
+        untilMs: effectiveSurveyEndAt(selectedSurvey, Date.now()),
+        rangeInvalid: false,
+      });
+    } else {
+      setTimeWindow(resolveCoverageWindow(preset, Date.now(), customFrom, customTo));
+    }
     void receiversQuery.refetch();
+    void surveysQuery.refetch();
   };
 
   return (
@@ -268,21 +550,15 @@ export const CoverageReport: React.FC = () => {
 
           <label className={`reports-controls__field ${styles.senderField}`}>
             <span>{t('analysis.coverage.sender', 'Sender')}</span>
-            <select value={senderId} onChange={(e) => setSenderId(e.target.value)}>
-              <option value="">{t('analysis.coverage.sender_all', 'All')}</option>
-              {(sendersQuery.data?.senders ?? []).map((s) => {
-                // A MeshCore sender's id is a 64-hex pubkey; formatCoverageNodeId
-                // abbreviates it the same way CoverageReceiverFilter/CoverageMap
-                // do (#5277 P3 WP3, spec §2.6). A Meshtastic `!id` is unchanged.
-                const displaySenderId = formatCoverageNodeId(s.senderId);
-                const label = s.longName || s.shortName || displaySenderId;
-                return (
-                  <option key={s.senderId} value={s.senderId}>
-                    {label} ({displaySenderId}) — {s.fixCount}
-                  </option>
-                );
-              })}
-            </select>
+            <SearchableSelect
+              value={senderId}
+              onChange={handleSenderChange}
+              options={senderOptions}
+              emptyLabel={t('analysis.coverage.sender_all', 'All')}
+              placeholder={t('analysis.coverage.sender_search_placeholder', 'Search senders')}
+              noMatchesText={t('analysis.coverage.sender_no_matches', 'No matching senders')}
+              ariaLabel={t('analysis.coverage.sender', 'Sender')}
+            />
           </label>
 
           <label className="reports-controls__field">
@@ -319,11 +595,69 @@ export const CoverageReport: React.FC = () => {
             </select>
           </label>
 
+          <div className="reports-controls__field">
+            <span>{t('analysis.coverage.view', 'View')}</span>
+            <div className={styles.viewToggle}>
+              <button
+                type="button"
+                className={`reports-btn reports-btn--ghost${view === 'dots' ? ` ${styles.activePreset}` : ''}`}
+                aria-pressed={view === 'dots'}
+                onClick={() => setView('dots')}
+              >
+                {t('analysis.coverage.view_dots', 'Dots')}
+              </button>
+              <button
+                type="button"
+                className={`reports-btn reports-btn--ghost${view === 'grid' ? ` ${styles.activePreset}` : ''}`}
+                aria-pressed={view === 'grid'}
+                onClick={() => setView('grid')}
+              >
+                {t('analysis.coverage.view_grid', 'Grid')}
+              </button>
+            </div>
+          </div>
+
+          {view === 'grid' && (
+            <label className="reports-controls__field">
+              <span>{t('analysis.coverage.cell_size', 'Cell size')}</span>
+              <select
+                value={cellSize}
+                onChange={(e) => setCellSize(Number(e.target.value) as CoverageGridCellSizeM)}
+              >
+                {COVERAGE_GRID_CELL_SIZES_M.map((size) => (
+                  <option key={size} value={size}>
+                    {size} m
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
+
           <button type="button" className="reports-btn" onClick={handleRefresh} disabled={isLoading}>
             <UiIcon name="refresh" size={14} />
             {t('analysis.coverage.refresh', 'Refresh')}
           </button>
+
+          <CoverageExportButtons
+            items={items}
+            gaps={gapResult?.gaps ?? []}
+            ctx={exportCtx}
+            senderId={senderId || null}
+            sinceMs={sinceMs}
+            untilMs={untilMs}
+            disabled={items.length === 0}
+          />
         </div>
+
+        <CoverageSurveyBar
+          senderId={senderId}
+          senderLabel={senderId ? (senderNames.get(senderId) ?? formatCoverageNodeId(senderId)) : ''}
+          currentSinceMs={sinceMs}
+          currentUntilMs={untilMs}
+          currentReceiversEncoded={currentReceiversEncoded}
+          selectedSurveyId={selectedSurveyId}
+          onSelectSurvey={handleSelectSurvey}
+        />
 
         <CoverageReceiverFilter
           receivers={receivers}
@@ -394,13 +728,30 @@ export const CoverageReport: React.FC = () => {
       )}
 
       {receptionsEnabled && !isLoading && !isEmpty && items.length > 0 && (
-        <CoverageMap
-          fixes={fixes}
-          receivers={receivers}
-          metric={metric}
-          senderNames={senderNames}
-          fitKey={fitKey}
-        />
+        <>
+          <CoverageMap
+            fixes={fixes}
+            receivers={receivers}
+            metric={metric}
+            senderNames={senderNames}
+            fitKey={fitKey}
+            gaps={gapResult?.gaps}
+            view={view}
+            gridCells={gridCells}
+          />
+          <CoverageSummaryPanel
+            summary={summary}
+            gapResult={gapResult}
+            receivers={receivers}
+            distanceUnit={distanceUnit}
+            truncated={receptionsQuery.data?.truncated ?? false}
+          />
+          <CoverageDistanceChart
+            points={summary.distancePoints}
+            receiverNames={receiverNames}
+            distanceUnit={distanceUnit}
+          />
+        </>
       )}
 
       <div className="reports-panel">
