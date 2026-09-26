@@ -520,7 +520,7 @@ class PushNotificationService {
       const localNodeNumStr = await databaseService.settings.getLocalNodeNumForSource(mgr.sourceId);
       if (localNodeNumStr) {
         const localNodeNum = parseInt(localNodeNumStr, 10);
-        const localNode = await databaseService.nodesRepo?.getNode(localNodeNum);
+        const localNode = await databaseService.nodesRepo?.getNode(localNodeNum, mgr.sourceId);
         if (localNode?.longName) {
           localNodeName = localNode.longName;
           logger.debug(`📢 Using node name from database for prefix: ${localNodeName}`);
