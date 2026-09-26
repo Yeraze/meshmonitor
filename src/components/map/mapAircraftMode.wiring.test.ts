@@ -96,4 +96,28 @@ describe('mapAircraftMode wiring (#5364/#5365 Phase 1 WP4)', () => {
     expect(src).toContain('aircraftDisplayMode');
     expect(src).toMatch(/likelyAircraft === true/);
   });
+
+  /**
+   * #5364/#5365 Phase 3: both panels mount the flight-trails layer, feed the
+   * glue hook the SAME list they draw markers from (so trails follow Hide,
+   * the age window and "Show aged-out"), and wire the control's trail props.
+   */
+  const DRAWN_LIST: Record<string, string> = {
+    'src/components/Dashboard/DashboardMap.tsx': 'drawnNodesForTrails',
+    'src/components/NodesTab.tsx': 'visibleMapNodes',
+  };
+
+  it.each(MAP_FEATURES_PANELS)('%s mounts AircraftTrailsLayer from the drawn marker list', (rel) => {
+    const src = read(rel);
+    expect(src).toContain('<AircraftTrailsLayer');
+    expect(src).toMatch(new RegExp(`useAircraftTrailLayer\\(\\{\\s*drawnNodes: ${DRAWN_LIST[rel]}`));
+    expect(src).toContain('onShowTrailsChange={setShowAircraftTrails}');
+    expect(src).toContain('onTrailHoursChange={setAircraftTrailHours}');
+  });
+
+  it('DashboardMap builds the trail list from the filtered marker set', () => {
+    expect(read('src/components/Dashboard/DashboardMap.tsx')).toMatch(
+      /drawnNodesForTrails = useMemo\(\(\) => nodesWithPosition\.map\(\(e\) => e\.node\)/,
+    );
+  });
 });

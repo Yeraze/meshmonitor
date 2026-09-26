@@ -111,6 +111,7 @@ import {
   MqttPacketFilter,
 } from './mqttPacketFilter.js';
 import { maybeRecordMqttCoverageReception } from './utils/coverageMqtt.js';
+import { recordMqttPositionHistory } from './utils/mqttPositionHistory.js';
 
 /**
  * First-drop-per-node tracker for ignore/geo-ignore noise suppression (see
@@ -488,6 +489,24 @@ async function ingestServiceEnvelopeInner(input: MqttIngestionInput): Promise<Mq
           altitude: typeof alt === 'number' ? alt : null,
           precisionBits: precisionBits ?? null,
           channel: effectiveChannel,
+          nowMs,
+        });
+        // Position history (#5364/#5365 Phase 3): store every trustworthy MQTT
+        // fix as position telemetry, as the TCP path always has, so Position
+        // History and flight trails work for MQTT-heard nodes. Deduped across
+        // gateways on the packet id; non-throwing, not awaited.
+        const positionTime = position.time;
+        void recordMqttPositionHistory({
+          sourceId,
+          fromNum,
+          nodeId: fromNodeId,
+          packetId: typeof packet.id === 'number' ? packet.id >>> 0 : 0,
+          latitude: lat,
+          longitude: lng,
+          altitude: typeof alt === 'number' ? alt : undefined,
+          precisionBits: precisionBits ?? undefined,
+          channel: effectiveChannel,
+          positionTimeSec: typeof positionTime === 'number' && positionTime > 0 ? positionTime : undefined,
           nowMs,
         });
       }

@@ -3,7 +3,7 @@
  * single-node age-gradient position history in `src/utils/mapHelpers.tsx`
  * (`getPositionHistoryColor`/`generatePositionHistoryArrows`). This layer
  * draws *many* nodes' trails at once, each colored by a deterministic hash
- * of `(sourceId, nodeNum)` (see `colorForKey` below), with whole-trail
+ * of `(sourceId, nodeNum)` (see `colorForKey` in `utils/trailColor.ts`), with whole-trail
  * click-to-select — vs. the shared helpers' single selected node with a
  * per-segment age gradient, per-fix dot markers, and heading arrows. There
  * is no shared rendering to extract; this is NOT a fork. See
@@ -16,18 +16,13 @@ import { useDashboardSources } from '../../../hooks/useDashboardData';
 import { usePositions } from '../../../hooks/useMapAnalysisData';
 import { useMapAnalysisCtx } from '../MapAnalysisContext';
 import { isNodeEmphasized, selectionOpacity } from '../../../utils/nodeIdentity';
+import { colorForKey } from '../../../utils/trailColor';
 
 const TRAIL_WEIGHT = 4;
 const OUTLINE_WEIGHT = 7;
 const OUTLINE_COLOR = 'rgba(0,0,0,0.4)';
 const DOT_RADIUS = 4;
 const DOT_FILL_OPACITY = 0.9;
-
-function colorForKey(key: string): string {
-  let h = 0;
-  for (let i = 0; i < key.length; i++) h = (h * 31 + key.charCodeAt(i)) | 0;
-  return `hsl(${Math.abs(h) % 360}, 70%, 55%)`;
-}
 
 interface PositionRecord {
   nodeNum: number;
