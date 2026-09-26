@@ -47,7 +47,12 @@ describe('nodeDisplayStorage', () => {
   });
 
   describe('purgeLegacyNodeDisplayLocal', () => {
-    it('removes exactly the ten bare legacy keys', () => {
+    // #5364/#5365 Phase 1 WP5: NODE_DISPLAY_SETTING_KEYS now also carries the
+    // three unseeded aircraft-detection keys — they were never stored bare,
+    // so purging them is a harmless no-op. This test iterates the imported
+    // constant directly (no hardcoded count), so it covers all thirteen
+    // keys with no further change here.
+    it('removes every bare legacy Node Display key (NODE_DISPLAY_SETTING_KEYS)', () => {
       for (const key of NODE_DISPLAY_SETTING_KEYS) {
         localStorage.setItem(key, 'stale');
       }

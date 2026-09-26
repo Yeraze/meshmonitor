@@ -189,6 +189,15 @@ function validTestValue(key: string, suffix = ''): string {
     autoEnrichmentScheduleType: 'interval',
     autoEnrichmentIntervalMinutes: '360',
     autoEnrichmentCron: '0 */6 * * *',
+
+    // Likely-aircraft detection (#5364/#5365 Phase 1 WP5). The two enable
+    // switches are in settingsRoutes.ts's STRICT_BOOLEAN_SETTINGS_KEYS (only
+    // literal 'true'/'false' accepted); the thresholds are range-checked
+    // (50-20000 / 500-20000 respectively).
+    aircraftDetectionEnabled: 'true',
+    aircraftAglThresholdMeters: '500',
+    aircraftMslThresholdMeters: '5000',
+    autoFavoriteExcludeAircraft: 'true',
   };
 
   if (key in VALID_VALUES) {
@@ -527,6 +536,12 @@ describe('Settings Persistence', () => {
         // adminRetryAttempts above. Read server-side only by
         // coverageRetentionService via the bare-key getSettingAsync.
         'coverage_retention_days',
+        // Likely-aircraft detection (#5364/#5365 Phase 1 WP5) — loaded
+        // directly by SettingsTab into its own initial* snapshot (per-source,
+        // no SettingsContext hook), same Category C pattern as
+        // elevationEnabled/elevationSourceUrl above. Read server-side by
+        // aircraftClassificationService and the settings route's validation.
+        'aircraftDetectionEnabled', 'aircraftAglThresholdMeters', 'aircraftMslThresholdMeters',
       ];
 
       const keysNotLoaded = SETTINGS_TAB_SENDS.filter(
@@ -545,16 +560,18 @@ describe('Settings Persistence', () => {
     // Executes the ACTUAL nodeDisplayBody/globalBody split extracted from
     // SettingsTab.tsx's handleSave (see extractSettingsTabPartition above),
     // not a re-implementation of it. Order of importance per the spec: (1)
-    // is the non-negotiable assertion — every one of the ten
-    // NODE_DISPLAY_SETTING_KEYS entries lands in the scoped body, by COUNT
-    // AND NAME against the constant itself, so this cannot degrade into a
-    // subset check or drift from the constant.
+    // is the non-negotiable assertion — every one of
+    // NODE_DISPLAY_SETTING_KEYS's entries (the frozen ten Node Display keys
+    // plus the three likely-aircraft keys, #5364/#5365 Phase 1 WP5 — 13
+    // total) lands in the scoped body, by COUNT AND NAME against the
+    // constant itself, so this cannot degrade into a subset check or drift
+    // from the constant.
     it('(1) every NODE_DISPLAY_SETTING_KEYS entry — and only those — lands in the scoped nodeDisplayBody', () => {
       const { nodeDisplayBody } = extractSettingsTabPartition();
       expect(Object.keys(nodeDisplayBody).sort()).toEqual([...NODE_DISPLAY_SETTING_KEYS].sort());
     });
 
-    it('(2) none of the ten NODE_DISPLAY_SETTING_KEYS entries land in the unscoped globalBody', () => {
+    it('(2) none of the NODE_DISPLAY_SETTING_KEYS entries land in the unscoped globalBody', () => {
       const { globalBody } = extractSettingsTabPartition();
       for (const key of NODE_DISPLAY_SETTING_KEYS) {
         expect(globalBody).not.toHaveProperty(key);

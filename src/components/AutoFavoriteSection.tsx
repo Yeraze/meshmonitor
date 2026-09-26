@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { useTranslation } from 'react-i18next';
+import { useTranslation, Trans } from 'react-i18next';
+import { Link } from 'react-router-dom';
 import { useCsrfFetch } from '../hooks/useCsrfFetch';
 import { useSourceQuery } from '../hooks/useSourceQuery';
 import { useSource } from '../contexts/SourceContext';
@@ -38,9 +39,15 @@ const AutoFavoriteSection: React.FC<AutoFavoriteSectionProps> = ({ baseUrl }) =>
   const { showToast } = useToast();
   const [localEnabled, setLocalEnabled] = useState(false);
   const [localStaleHours, setLocalStaleHours] = useState(72);
+  // Likely-aircraft exclusion switch (#5364/#5365 D14, spec §5.11). Default
+  // on, per-source. Read-only companion `detectionEnabled` comes from the
+  // same GET /api/settings response but is never written by this component —
+  // aircraftDetectionEnabled lives in Settings -> Node Display (SettingsTab).
+  const [localExcludeAircraft, setLocalExcludeAircraft] = useState(true);
+  const [detectionEnabled, setDetectionEnabled] = useState(true);
   const [hasChanges, setHasChanges] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
-  const [initialSettings, setInitialSettings] = useState<{ enabled: boolean; staleHours: number } | null>(null);
+  const [initialSettings, setInitialSettings] = useState<{ enabled: boolean; staleHours: number; excludeAircraft: boolean } | null>(null);
   const [status, setStatus] = useState<AutoFavoriteStatus | null>(null);
 
   const fetchData = useCallback(async () => {
@@ -53,9 +60,12 @@ const AutoFavoriteSection: React.FC<AutoFavoriteSectionProps> = ({ baseUrl }) =>
         const settings = await settingsRes.json();
         const enabled = settings.autoFavoriteEnabled === 'true';
         const staleHours = parseInt(settings.autoFavoriteStaleHours || '72');
+        const excludeAircraft = settings.autoFavoriteExcludeAircraft !== 'false';
         setLocalEnabled(enabled);
         setLocalStaleHours(staleHours);
-        setInitialSettings({ enabled, staleHours });
+        setLocalExcludeAircraft(excludeAircraft);
+        setDetectionEnabled(settings.aircraftDetectionEnabled !== 'false');
+        setInitialSettings({ enabled, staleHours, excludeAircraft });
       }
       if (statusRes.ok) {
         setStatus(await statusRes.json());
@@ -71,9 +81,10 @@ const AutoFavoriteSection: React.FC<AutoFavoriteSectionProps> = ({ baseUrl }) =>
     if (!initialSettings) return;
     setHasChanges(
       localEnabled !== initialSettings.enabled ||
-      localStaleHours !== initialSettings.staleHours
+      localStaleHours !== initialSettings.staleHours ||
+      localExcludeAircraft !== initialSettings.excludeAircraft
     );
-  }, [localEnabled, localStaleHours, initialSettings]);
+  }, [localEnabled, localStaleHours, localExcludeAircraft, initialSettings]);
 
   const handleSave = useCallback(async () => {
     setIsSaving(true);
@@ -84,10 +95,11 @@ const AutoFavoriteSection: React.FC<AutoFavoriteSectionProps> = ({ baseUrl }) =>
         body: JSON.stringify({
           autoFavoriteEnabled: localEnabled ? 'true' : 'false',
           autoFavoriteStaleHours: String(localStaleHours),
+          autoFavoriteExcludeAircraft: localExcludeAircraft ? 'true' : 'false',
         }),
       });
       if (response.ok) {
-        setInitialSettings({ enabled: localEnabled, staleHours: localStaleHours });
+        setInitialSettings({ enabled: localEnabled, staleHours: localStaleHours, excludeAircraft: localExcludeAircraft });
         setHasChanges(false);
         showToast(t('automation.auto_favorite.saved', 'Auto Favorite settings saved'), 'success');
         void fetchData();
@@ -99,12 +111,13 @@ const AutoFavoriteSection: React.FC<AutoFavoriteSectionProps> = ({ baseUrl }) =>
     } finally {
       setIsSaving(false);
     }
-  }, [baseUrl, csrfFetch, localEnabled, localStaleHours, showToast, t, fetchData]);
+  }, [baseUrl, csrfFetch, localEnabled, localStaleHours, localExcludeAircraft, showToast, t, fetchData]);
 
   const resetChanges = useCallback(() => {
     if (initialSettings) {
       setLocalEnabled(initialSettings.enabled);
       setLocalStaleHours(initialSettings.staleHours);
+      setLocalExcludeAircraft(initialSettings.excludeAircraft);
     }
   }, [initialSettings]);
 
@@ -138,6 +151,7 @@ const AutoFavoriteSection: React.FC<AutoFavoriteSectionProps> = ({ baseUrl }) =>
       }}>
         <h2 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
           <input
+            id="autoFavoriteEnabled"
             type="checkbox"
             checked={localEnabled}
             onChange={(e) => setLocalEnabled(e.target.checked)}
@@ -275,6 +289,41 @@ const AutoFavoriteSection: React.FC<AutoFavoriteSectionProps> = ({ baseUrl }) =>
             disabled={!localEnabled}
             className="setting-input"
           />
+        </div>
+
+        {/* Likely-aircraft exclusion (#5364/#5365 D14, spec §5.11). Independent
+            of localEnabled's disabled styling only insofar as the section
+            already greys its sub-controls when Auto-Favorite is off — this
+            switch follows that existing behaviour, and is ALSO disabled when
+            aircraft detection itself is off for this source. */}
+        <div className="setting-item" style={{ marginTop: '1rem' }}>
+          <label>
+            <span style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: (!localEnabled || !detectionEnabled) ? 'default' : 'pointer' }}>
+              <input
+                id="autoFavoriteExcludeAircraft"
+                type="checkbox"
+                checked={localExcludeAircraft}
+                onChange={(e) => setLocalExcludeAircraft(e.target.checked)}
+                disabled={!localEnabled || !detectionEnabled}
+                style={{ cursor: (!localEnabled || !detectionEnabled) ? 'default' : 'pointer' }}
+              />
+              {t('automation.auto_favorite.exclude_aircraft_label', 'Exclude likely aircraft')}
+            </span>
+          </label>
+          {detectionEnabled ? (
+            <span className="setting-description">
+              {t('automation.auto_favorite.exclude_aircraft_hint',
+                'Likely aircraft are never auto-favorited. An auto-favorite that is flagged at two hourly sweeps in a row is removed. Your own and locked favorites are never touched.')}
+            </span>
+          ) : (
+            <span className="setting-description" style={{ color: 'var(--color-warning)' }}>
+              <Trans
+                i18nKey="automation.auto_favorite.exclude_aircraft_needs_detection"
+                defaults="Needs aircraft detection, which is off for this source (<link>Settings → Node Display</link>)."
+                components={{ link: <Link to="/settings#settings-node-display" /> }}
+              />
+            </span>
+          )}
         </div>
 
         {/* Auto-Favorited Nodes List */}

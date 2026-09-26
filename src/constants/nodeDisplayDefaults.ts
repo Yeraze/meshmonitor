@@ -1,6 +1,10 @@
 /**
- * Node Display settings — the ten per-source keys and their hardcoded
- * defaults (epic #4412 Phase 2 WP1).
+ * Node Display settings — the ten per-source keys seeded by migration 131
+ * and their hardcoded defaults (epic #4412 Phase 2 WP1), plus the three
+ * unseeded likely-aircraft detection keys (#5364/#5365 Phase 1 WP5) that
+ * route through the same per-source Node Display machinery. See
+ * `NODE_DISPLAY_SEEDED_KEYS` vs. `AIRCRAFT_NODE_DISPLAY_KEYS` below for the
+ * split and why it exists.
  *
  * Isomorphic, zero imports. Lives in `src/constants/` (not
  * `src/server/constants/settings.ts`) because that file is server-only and
@@ -13,10 +17,11 @@
  * source with no stored per-source value falls straight through to the
  * hardcoded default here — never to a neighbouring source's value, and
  * never to the legacy un-namespaced global row. This module is the single
- * place those ten literals live; do not hardcode any of them elsewhere.
+ * place those literals live; do not hardcode any of them elsewhere.
  */
 
-export const NODE_DISPLAY_SETTING_KEYS = [
+/** The frozen ten keys seeded by migration 131. Do not add to this list. */
+export const NODE_DISPLAY_SEEDED_KEYS = [
   'maxNodeAgeHours',
   'inactiveNodeThresholdHours',
   'inactiveNodeCheckIntervalMinutes',
@@ -28,6 +33,29 @@ export const NODE_DISPLAY_SETTING_KEYS = [
   'nodeDimmingStartHours',
   'nodeDimmingMinOpacity',
 ] as const;
+export type NodeDisplaySeededKey = typeof NODE_DISPLAY_SEEDED_KEYS[number];
+
+/**
+ * Likely-aircraft detection (#5364/#5365). Per-source, unseeded: unset falls
+ * through to `parseAircraftSettings`'s hardcoded default
+ * (`src/utils/aircraftClassification.ts`) rather than to a migration 131 seed
+ * row. Routed through Settings -> Node Display alongside the frozen ten, but
+ * kept out of `NODE_DISPLAY_SEEDED_KEYS`/`NODE_DISPLAY_DEFAULT_STRINGS` so
+ * migration 131's seed table — a statement about a point in time — never
+ * needs a new entry.
+ */
+export const AIRCRAFT_NODE_DISPLAY_KEYS = [
+  'aircraftDetectionEnabled',
+  'aircraftAglThresholdMeters',
+  'aircraftMslThresholdMeters',
+] as const;
+export type AircraftNodeDisplayKey = typeof AIRCRAFT_NODE_DISPLAY_KEYS[number];
+
+/** Every key the Node Display section routes to the scoped `?sourceId=` POST, and the GET back-fill skips. */
+export const NODE_DISPLAY_SETTING_KEYS = [
+  ...NODE_DISPLAY_SEEDED_KEYS,
+  ...AIRCRAFT_NODE_DISPLAY_KEYS,
+] as const;
 export type NodeDisplaySettingKey = typeof NODE_DISPLAY_SETTING_KEYS[number];
 
 /**
@@ -36,9 +64,10 @@ export type NodeDisplaySettingKey = typeof NODE_DISPLAY_SETTING_KEYS[number];
  * 'false'/'true' — see the Phase 1 deviations log). Enforced by
  * nodeDisplayDefaults.test.ts; migration 131 must NOT import this (a
  * migration is a statement about a point in time — see 131's file-level
- * comment).
+ * comment). Keyed on `NodeDisplaySeededKey` only — the aircraft keys are
+ * unseeded (see `AIRCRAFT_NODE_DISPLAY_KEYS` above) and have no entry here.
  */
-export const NODE_DISPLAY_DEFAULT_STRINGS: Readonly<Record<NodeDisplaySettingKey, string>> = {
+export const NODE_DISPLAY_DEFAULT_STRINGS: Readonly<Record<NodeDisplaySeededKey, string>> = {
   maxNodeAgeHours: '24',
   inactiveNodeThresholdHours: '24',
   inactiveNodeCheckIntervalMinutes: '60',

@@ -19,7 +19,11 @@ import {
   GLOBAL_ONLY_SETTINGS_KEYS,
   PER_SOURCE_KEYS_NOT_POSTABLE,
 } from './settings.js';
-import { NODE_DISPLAY_SETTING_KEYS } from '../../constants/nodeDisplayDefaults.js';
+import {
+  NODE_DISPLAY_SETTING_KEYS,
+  NODE_DISPLAY_SEEDED_KEYS,
+  AIRCRAFT_NODE_DISPLAY_KEYS,
+} from '../../constants/nodeDisplayDefaults.js';
 
 describe('per-source settings key allowlist invariants', () => {
   it('every per-source key is either POST-able or a documented exemption', () => {
@@ -95,7 +99,11 @@ describe('per-source settings key allowlist invariants', () => {
   // `src/constants/nodeDisplayDefaults.ts` (`NODE_DISPLAY_SETTING_KEYS`) —
   // imported here rather than re-declared, so this test cross-checks that
   // module against the allowlist instead of drifting from it.
-  it('all ten Node Display keys are per-source-postable (in both sets, in neither deny-list)', () => {
+  //
+  // #5364/#5365 Phase 1 WP5: NODE_DISPLAY_SETTING_KEYS now also carries the
+  // three unseeded aircraft-detection keys (§4.6), so this iterates all
+  // thirteen, not just the frozen ten.
+  it('all Node Display keys (seeded + aircraft) are per-source-postable (in both sets, in neither deny-list)', () => {
     const valid = new Set<string>(VALID_SETTINGS_KEYS as readonly string[]);
     const perSource = new Set<string>(PER_SOURCE_SETTINGS_KEYS as readonly string[]);
     for (const key of NODE_DISPLAY_SETTING_KEYS) {
@@ -106,16 +114,29 @@ describe('per-source settings key allowlist invariants', () => {
     }
   });
 
-  // WP1 acceptance: NODE_DISPLAY_SETTING_KEYS (src/constants/nodeDisplayDefaults.ts)
+  // WP1 acceptance: NODE_DISPLAY_SEEDED_KEYS (src/constants/nodeDisplayDefaults.ts)
   // must have exactly ten entries and agree exactly with the allowlist above —
   // no fewer (a key silently dropped from the shared defaults module) and no
   // more (a key added there without also being added to PER_SOURCE_SETTINGS_KEYS).
-  it('NODE_DISPLAY_SETTING_KEYS has exactly ten entries, all per-source-postable', () => {
-    expect(NODE_DISPLAY_SETTING_KEYS.length).toBe(10);
+  // The "exactly ten" count moved here from NODE_DISPLAY_SETTING_KEYS (#5364/
+  // #5365 Phase 1 WP5) once that constant grew to include the aircraft keys.
+  it('NODE_DISPLAY_SEEDED_KEYS has exactly ten entries, all per-source-postable', () => {
+    expect(NODE_DISPLAY_SEEDED_KEYS.length).toBe(10);
     const perSource = new Set<string>(PER_SOURCE_SETTINGS_KEYS as readonly string[]);
-    for (const key of NODE_DISPLAY_SETTING_KEYS) {
+    for (const key of NODE_DISPLAY_SEEDED_KEYS) {
       expect(perSource.has(key)).toBe(true);
     }
+  });
+
+  // #5364/#5365 Phase 1 WP5: pins the seeded/routed split itself — the
+  // routed set is exactly the frozen ten plus the three aircraft keys, in
+  // that order, with no third source of keys sneaking in.
+  it('NODE_DISPLAY_SETTING_KEYS equals NODE_DISPLAY_SEEDED_KEYS + AIRCRAFT_NODE_DISPLAY_KEYS', () => {
+    expect(NODE_DISPLAY_SETTING_KEYS).toEqual([
+      ...NODE_DISPLAY_SEEDED_KEYS,
+      ...AIRCRAFT_NODE_DISPLAY_KEYS,
+    ]);
+    expect(NODE_DISPLAY_SETTING_KEYS.length).toBe(13);
   });
 
   // `localStatsIntervalMinutes` predates this work item (already read

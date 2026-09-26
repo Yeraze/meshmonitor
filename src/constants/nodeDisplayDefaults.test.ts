@@ -12,6 +12,8 @@
 import { describe, it, expect } from 'vitest';
 import {
   NODE_DISPLAY_SETTING_KEYS,
+  NODE_DISPLAY_SEEDED_KEYS,
+  AIRCRAFT_NODE_DISPLAY_KEYS,
   NODE_DISPLAY_DEFAULT_STRINGS,
   NODE_DISPLAY_NUMERIC_DEFAULTS,
   NODE_DISPLAY_BOOLEAN_DEFAULTS,
@@ -28,26 +30,59 @@ import {
   VALID_SETTINGS_KEYS,
 } from '../server/constants/settings.js';
 
-describe('NODE_DISPLAY_SETTING_KEYS', () => {
+describe('NODE_DISPLAY_SEEDED_KEYS', () => {
   it('has exactly ten entries', () => {
-    expect(NODE_DISPLAY_SETTING_KEYS.length).toBe(10);
+    expect(NODE_DISPLAY_SEEDED_KEYS.length).toBe(10);
   });
 
   it('has no duplicates', () => {
-    expect(new Set(NODE_DISPLAY_SETTING_KEYS).size).toBe(NODE_DISPLAY_SETTING_KEYS.length);
+    expect(new Set(NODE_DISPLAY_SEEDED_KEYS).size).toBe(NODE_DISPLAY_SEEDED_KEYS.length);
   });
 
   it('is a subset of PER_SOURCE_SETTINGS_KEYS', () => {
     const perSource = new Set<string>(PER_SOURCE_SETTINGS_KEYS as readonly string[]);
-    for (const key of NODE_DISPLAY_SETTING_KEYS) {
+    for (const key of NODE_DISPLAY_SEEDED_KEYS) {
       expect(perSource.has(key)).toBe(true);
     }
   });
 
   it('is a subset of VALID_SETTINGS_KEYS', () => {
     const valid = new Set<string>(VALID_SETTINGS_KEYS as readonly string[]);
-    for (const key of NODE_DISPLAY_SETTING_KEYS) {
+    for (const key of NODE_DISPLAY_SEEDED_KEYS) {
       expect(valid.has(key)).toBe(true);
+    }
+  });
+});
+
+// #5364/#5365 Phase 1 WP5: the three unseeded likely-aircraft keys join the
+// routed set without touching the frozen ten above.
+describe('NODE_DISPLAY_SETTING_KEYS (seeded + aircraft)', () => {
+  it('equals NODE_DISPLAY_SEEDED_KEYS followed by AIRCRAFT_NODE_DISPLAY_KEYS', () => {
+    expect(NODE_DISPLAY_SETTING_KEYS).toEqual([
+      ...NODE_DISPLAY_SEEDED_KEYS,
+      ...AIRCRAFT_NODE_DISPLAY_KEYS,
+    ]);
+  });
+
+  it('has exactly thirteen entries with no duplicates', () => {
+    expect(NODE_DISPLAY_SETTING_KEYS.length).toBe(13);
+    expect(new Set(NODE_DISPLAY_SETTING_KEYS).size).toBe(NODE_DISPLAY_SETTING_KEYS.length);
+  });
+
+  it('is a subset of PER_SOURCE_SETTINGS_KEYS and VALID_SETTINGS_KEYS', () => {
+    const perSource = new Set<string>(PER_SOURCE_SETTINGS_KEYS as readonly string[]);
+    const valid = new Set<string>(VALID_SETTINGS_KEYS as readonly string[]);
+    for (const key of NODE_DISPLAY_SETTING_KEYS) {
+      expect(perSource.has(key)).toBe(true);
+      expect(valid.has(key)).toBe(true);
+    }
+  });
+
+  it('none of the three aircraft keys are in migration 131\'s frozen seed', () => {
+    const seedKeys = new Set(NODE_DISPLAY_SEED.map(([k]) => k));
+    for (const key of AIRCRAFT_NODE_DISPLAY_KEYS) {
+      expect(seedKeys.has(key)).toBe(false);
+      expect(NODE_DISPLAY_SEEDED_KEYS as readonly string[]).not.toContain(key);
     }
   });
 });
@@ -58,9 +93,9 @@ describe('NODE_DISPLAY_DEFAULT_STRINGS', () => {
     expect(NODE_DISPLAY_DEFAULT_STRINGS).toEqual(seedAsRecord);
   });
 
-  it('has an entry for every key in NODE_DISPLAY_SETTING_KEYS, and no extras', () => {
+  it('has an entry for every key in NODE_DISPLAY_SEEDED_KEYS, and no extras', () => {
     const stringKeys = Object.keys(NODE_DISPLAY_DEFAULT_STRINGS).sort();
-    expect(stringKeys).toEqual([...NODE_DISPLAY_SETTING_KEYS].sort());
+    expect(stringKeys).toEqual([...NODE_DISPLAY_SEEDED_KEYS].sort());
   });
 
   it('stores booleans as \'0\'/\'1\', never \'false\'/\'true\'', () => {
