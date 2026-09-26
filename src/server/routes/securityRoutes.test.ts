@@ -19,7 +19,7 @@ vi.mock('../../services/database.js', () => ({
     getNodesWithTimeOffsetIssuesAsync: vi.fn().mockResolvedValue([]),
     getTopBroadcastersAsync: vi.fn().mockResolvedValue([]),
     nodes: { getAllNodes: vi.fn().mockResolvedValue([]), getNode: vi.fn(), upsertNode: vi.fn().mockResolvedValue(undefined) },
-    settings: { getSetting: vi.fn().mockResolvedValue(null) },
+    settings: { getSetting: vi.fn().mockResolvedValue(null), getLocalNodeNumForSource: vi.fn().mockResolvedValue(null) },
     getKeyRepairLogAsync: vi.fn().mockResolvedValue([]),
     updateNodeTimeOffsetFlagsAsync: vi.fn().mockResolvedValue(undefined),
   }
@@ -168,7 +168,7 @@ describe('securityRoutes — per-source scanner', () => {
             ? { sourceId: id, sourceType: 'meshcore' }
             : undefined,
       );
-      mockDb.settings.getSetting.mockResolvedValue('0');
+      mockDb.settings.getLocalNodeNumForSource.mockResolvedValue('0');
     });
 
     it('scopes the dead-nodes query to the requested source', async () => {
@@ -249,7 +249,7 @@ describe('securityRoutes — per-source scanner', () => {
       ]);
       runScanMock.mockResolvedValue(undefined);
       getStatusMock.mockReturnValue({ scanningNow: false });
-      mockDb.settings.getSetting.mockResolvedValue('0');
+      mockDb.settings.getLocalNodeNumForSource.mockResolvedValue('0');
     });
 
     it('POST /scanner/scan with meshcore sourceId → 400 INVALID_SOURCE_TYPE', async () => {

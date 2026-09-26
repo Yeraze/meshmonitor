@@ -20,15 +20,19 @@ router.get('/', async (req: Request, res: Response) => {
     const statusSourceId = resolvedSourceIdFromPath(req);
     const statusManager = resolveSourceManager(statusSourceId);
 
-    const localNodeNum = await databaseService.settings.getSetting('localNodeNum');
-    const localNodeId = await databaseService.settings.getSetting('localNodeId');
+    // Per-source local node (#5377): the bare 'localNodeNum' key only ever
+    // held the legacy `default` source's node.
+    const localNodeNum = await databaseService.settings.getLocalNodeNumForSource(statusManager.sourceId);
+    const localNodeId = localNodeNum
+      ? `!${Number(localNodeNum).toString(16).padStart(8, '0')}`
+      : null;
     const connectionStatus = await statusManager.getConnectionStatus();
 
     let longName: string | null = null;
     let shortName: string | null = null;
 
     if (localNodeNum) {
-      const node = await databaseService.nodes.getNode(Number(localNodeNum));
+      const node = await databaseService.nodes.getNode(Number(localNodeNum), statusManager.sourceId);
       if (node) {
         longName = node.longName || null;
         shortName = node.shortName || null;

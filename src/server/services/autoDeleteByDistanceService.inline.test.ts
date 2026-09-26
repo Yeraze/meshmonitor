@@ -18,7 +18,10 @@ const isIgnoredCached = vi.fn();
 
 vi.mock('../../services/database.js', () => ({
   default: {
-    settings: { getSettingForSource: (...a: unknown[]) => getSettingForSource(...a) },
+    settings: {
+      getSettingForSource: (...a: unknown[]) => getSettingForSource(...a),
+      getLocalNodeNumForSource: (id: unknown) => getSettingForSource(id, 'localNodeNum'),
+    },
     nodes: { getNode: (...a: unknown[]) => getNode(...a) },
     ignoredNodes: { isIgnoredCached: (...a: unknown[]) => isIgnoredCached(...a) },
     deleteNodeAsync: (...a: unknown[]) => deleteNodeAsync(...a),

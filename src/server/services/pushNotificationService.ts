@@ -517,7 +517,7 @@ class PushNotificationService {
       localNodeName = localNodeInfo.longName;
     } else {
       // Fall back to database - get localNodeNum from settings and look up the node
-      const localNodeNumStr = await databaseService.settings.getSetting('localNodeNum');
+      const localNodeNumStr = await databaseService.settings.getLocalNodeNumForSource(mgr.sourceId);
       if (localNodeNumStr) {
         const localNodeNum = parseInt(localNodeNumStr, 10);
         const localNode = await databaseService.nodesRepo?.getNode(localNodeNum);

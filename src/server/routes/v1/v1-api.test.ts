@@ -125,6 +125,7 @@ vi.mock('../../../services/database.js', () => {
           if (key === 'localNodeId') return '!a1b2c3d4';
           return null;
         }),
+        getLocalNodeNumForSource: vi.fn(async () => '2715451348'),
       },
       // Nodes methods
       getAllNodes: vi.fn(() => testNodes),

@@ -399,7 +399,7 @@ router.get('/dead-nodes', async (req: Request, res: Response) => {
     // Scope to the requested source — otherwise the list leaks dead nodes from
     // every source into one source's view (issue: 2000+ dead nodes).
     const allNodes = await databaseService.nodes.getAllNodes(deadNodesSourceId);
-    const localNodeNum = parseInt(await databaseService.settings.getSetting('localNodeNum') || '0');
+    const localNodeNum = parseInt(await databaseService.settings.getLocalNodeNumForSource(deadNodesManager.sourceId) || '0');
 
     const deadNodes = allNodes
       .filter(node => {

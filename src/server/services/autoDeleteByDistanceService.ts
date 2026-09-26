@@ -89,7 +89,7 @@ class AutoDeleteByDistanceService {
       s.getSettingForSource(sourceId, 'autoDeleteByDistanceLon'),
       s.getSettingForSource(sourceId, 'autoDeleteByDistanceThresholdKm'),
       s.getSettingForSource(sourceId, 'autoDeleteByDistanceAction'),
-      s.getSettingForSource(sourceId, 'localNodeNum'),
+      s.getLocalNodeNumForSource(sourceId),
     ]);
     const homeLat = parseFloat(latStr || '');
     const homeLon = parseFloat(lonStr || '');
@@ -214,7 +214,7 @@ class AutoDeleteByDistanceService {
       }
 
       // Get local node number to protect it (per-source with global fallback)
-      const localNodeNumStr = await databaseService.settings.getSettingForSource(sourceId, 'localNodeNum');
+      const localNodeNumStr = await databaseService.settings.getLocalNodeNumForSource(sourceId);
       const localNodeNum = localNodeNumStr ? Number(localNodeNumStr) : null;
 
       // Get all nodes (must use async for PostgreSQL/MySQL)
