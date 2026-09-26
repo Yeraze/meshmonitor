@@ -1,18 +1,14 @@
 /**
- * Cross-dialect coverage for `NodesRepository.countNodesHeardByTransport`
- * (#5101 Phase 3 WP1) — backs the transport-traffic writer's "nodes heard"
- * series (`src/server/services/transportTrafficService.ts`, WP3).
+ * Cross-dialect coverage for the likely-aircraft classification repository
+ * methods (#5364/#5365 Phase 1 WP1): `setAircraftClassification`,
+ * `getAircraftReclassifyRows`, `getUnclassifiedNodeNumsWithAltitude`, and
+ * `clearAircraftClassification`. Also pins that `upsertNode` never clobbers
+ * these columns (like `mobile`/`notes`), on both the UPDATE and the
+ * INSERT-conflict path.
  *
  * DDL below is hand-written per dialect, matching `nodes.test.ts`'s
- * POSTGRES_CREATE / MYSQL_CREATE verbatim (so `upsertNode` — which touches
- * most of the table — behaves identically to the real schema) plus an
- * equivalent SQLite CREATE, same convention as
- * `messages.transportCounts.multiBackend.test.ts`.
- *
- * The risk here is pure SQL dialect behaviour: window-edge inclusivity
- * (`(fromSec, toSec]`), NULL handling in three aggregate SUM(CASE) branches,
- * and BIGINT/NUMERIC aggregate results on PostgreSQL/MySQL (returned as
- * strings/decimals unless coerced back to `number`).
+ * POSTGRES_CREATE / MYSQL_CREATE (with the migration 175 columns), same
+ * convention as the other `nodes.*.multiBackend.test.ts` files.
  */
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
 import { NodesRepository } from './nodes.js';
@@ -278,8 +274,6 @@ const MYSQL_CREATE = `
 `;
 
 const SOURCE = 'src-a';
-const FROM_SEC = 1_760_000_000;
-const TO_SEC = FROM_SEC + 300; // 5-minute bin
 
 function makeNode(nodeNum: number, overrides: Record<string, unknown> = {}) {
   return {
@@ -291,136 +285,193 @@ function makeNode(nodeNum: number, overrides: Record<string, unknown> = {}) {
   };
 }
 
-/**
- * `upsertNode`'s INSERT branch does carry `transportLast*` fields (#5101 P3
- * WP3 fix, commit 7d71f450 — a brand-new node's very first packet stamps
- * them there, not just on the UPDATE branch). This helper still seeds in two
- * steps to model a distinct, equally real production sequence: a node's row
- * created from NodeInfo alone (no transport stamp yet) and the stamp applied
- * by a later, separate per-packet write. Insert bare, then a second upsert
- * (now an UPDATE, since the row exists) applies the stamps.
- */
-async function seedNode(
-  repo: NodesRepository,
-  sourceId: string,
-  nodeNum: number,
-  overrides: Record<string, unknown> = {},
-): Promise<void> {
-  await repo.upsertNode(makeNode(nodeNum), sourceId);
-  if (Object.keys(overrides).length > 0) {
-    await repo.upsertNode(makeNode(nodeNum, overrides), sourceId);
-  }
-}
-
 /** Behaviours that must hold identically on every dialect. */
-function runTransportHeardTests(getBackend: () => TestBackend) {
-  it('excludes a stamp exactly at fromSec (exclusive lower bound)', async () => {
+function runAircraftTests(getBackend: () => TestBackend) {
+  it('setAircraftClassification round-trips all 5 fields (boolean true)', async () => {
     const backend = getBackend();
     if (!backend.available) return;
     const repo = new NodesRepository(backend.drizzleDb, backend.dbType);
-    await seedNode(repo, SOURCE, 100, { transportLastRf: FROM_SEC });
+    await repo.upsertNode(makeNode(100, { altitude: 3200 }), SOURCE);
 
-    const counts = await repo.countNodesHeardByTransport(SOURCE, FROM_SEC, TO_SEC);
-    expect(counts.rf).toBe(0);
+    const now = Date.now();
+    await repo.setAircraftClassification(100, SOURCE, {
+      likelyAircraft: true,
+      aircraftBasis: 'agl',
+      groundElevation: 200,
+      heightAboveGround: 3000,
+      aircraftClassifiedAt: now,
+    });
+
+    const node = await repo.getNode(100, SOURCE);
+    expect(node?.likelyAircraft).toBe(true);
+    expect(node?.aircraftBasis).toBe('agl');
+    expect(node?.groundElevation).toBe(200);
+    expect(node?.heightAboveGround).toBe(3000);
+    expect(Number(node?.aircraftClassifiedAt)).toBe(now);
   });
 
-  it('includes a stamp exactly at toSec (inclusive upper bound)', async () => {
+  it('setAircraftClassification round-trips false', async () => {
     const backend = getBackend();
     if (!backend.available) return;
     const repo = new NodesRepository(backend.drizzleDb, backend.dbType);
-    await seedNode(repo, SOURCE, 101, { transportLastRf: TO_SEC });
+    await repo.upsertNode(makeNode(101, { altitude: 300 }), SOURCE);
 
-    const counts = await repo.countNodesHeardByTransport(SOURCE, FROM_SEC, TO_SEC);
-    expect(counts.rf).toBe(1);
+    await repo.setAircraftClassification(101, SOURCE, {
+      likelyAircraft: false,
+      aircraftBasis: 'msl',
+      groundElevation: null,
+      heightAboveGround: null,
+      aircraftClassifiedAt: Date.now(),
+    });
+
+    const node = await repo.getNode(101, SOURCE);
+    expect(node?.likelyAircraft).toBe(false);
+    expect(node?.aircraftBasis).toBe('msl');
+    expect(node?.groundElevation).toBeNull();
+    expect(node?.heightAboveGround).toBeNull();
   });
 
-  it('excludes a stamp just past toSec', async () => {
+  it('setAircraftClassification round-trips null (unknown)', async () => {
     const backend = getBackend();
     if (!backend.available) return;
     const repo = new NodesRepository(backend.drizzleDb, backend.dbType);
-    await seedNode(repo, SOURCE, 102, { transportLastRf: TO_SEC + 1 });
+    await repo.upsertNode(makeNode(102), SOURCE);
 
-    const counts = await repo.countNodesHeardByTransport(SOURCE, FROM_SEC, TO_SEC);
-    expect(counts.rf).toBe(0);
+    await repo.setAircraftClassification(102, SOURCE, {
+      likelyAircraft: null,
+      aircraftBasis: 'unknown',
+      groundElevation: null,
+      heightAboveGround: null,
+      aircraftClassifiedAt: Date.now(),
+    });
+
+    const node = await repo.getNode(102, SOURCE);
+    expect(node?.likelyAircraft).toBeNull();
+    expect(node?.aircraftBasis).toBe('unknown');
   });
 
-  it('includes a stamp just past fromSec', async () => {
+  it('upsertNode does NOT clobber the aircraft columns on the UPDATE path', async () => {
     const backend = getBackend();
     if (!backend.available) return;
     const repo = new NodesRepository(backend.drizzleDb, backend.dbType);
-    await seedNode(repo, SOURCE, 103, { transportLastRf: FROM_SEC + 1 });
+    await repo.upsertNode(makeNode(103, { altitude: 3200 }), SOURCE);
+    await repo.setAircraftClassification(103, SOURCE, {
+      likelyAircraft: true,
+      aircraftBasis: 'agl',
+      groundElevation: 200,
+      heightAboveGround: 3000,
+      aircraftClassifiedAt: Date.now(),
+    });
 
-    const counts = await repo.countNodesHeardByTransport(SOURCE, FROM_SEC, TO_SEC);
-    expect(counts.rf).toBe(1);
+    // A later packet-driven upsert (existing row -> UPDATE branch) must
+    // leave the classification untouched.
+    await repo.upsertNode(makeNode(103, { altitude: 3300, batteryLevel: 80 }), SOURCE);
+
+    const node = await repo.getNode(103, SOURCE);
+    expect(node?.likelyAircraft).toBe(true);
+    expect(node?.aircraftBasis).toBe('agl');
+    expect(node?.groundElevation).toBe(200);
+    expect(node?.heightAboveGround).toBe(3000);
   });
 
-  it('is additive: a node heard over two transports in the window counts in both', async () => {
+  it('upsertNode does NOT write the aircraft columns on the INSERT/conflict path', async () => {
     const backend = getBackend();
     if (!backend.available) return;
     const repo = new NodesRepository(backend.drizzleDb, backend.dbType);
-    const mid = FROM_SEC + 100;
-    await seedNode(repo, SOURCE, 110, { transportLastRf: mid, transportLastMqtt: mid + 1 });
+    // Fresh row: INSERT branch. The aircraft columns must come out NULL, not
+    // whatever `upsertSet`/`newNode` would default them to if they were
+    // (wrongly) included there.
+    await repo.upsertNode(makeNode(104, { altitude: 3200 }), SOURCE);
 
-    const counts = await repo.countNodesHeardByTransport(SOURCE, FROM_SEC, TO_SEC);
-    expect(counts).toEqual({ rf: 1, udp: 0, mqtt: 1 });
+    const node = await repo.getNode(104, SOURCE);
+    expect(node?.likelyAircraft).toBeNull();
+    expect(node?.aircraftBasis).toBeNull();
+    expect(node?.groundElevation).toBeNull();
+    expect(node?.heightAboveGround).toBeNull();
+    expect(node?.aircraftClassifiedAt).toBeNull();
   });
 
-  it('NULL stamps never count', async () => {
+  it('getUnclassifiedNodeNumsWithAltitude returns only altitude-having, never-classified nodes', async () => {
     const backend = getBackend();
     if (!backend.available) return;
     const repo = new NodesRepository(backend.drizzleDb, backend.dbType);
-    await seedNode(repo, SOURCE, 120); // no transportLast* fields set
+    await repo.upsertNode(makeNode(110, { altitude: 3200 }), SOURCE); // eligible
+    await repo.upsertNode(makeNode(111), SOURCE); // no altitude: not eligible
+    await repo.upsertNode(makeNode(112, { altitude: 500 }), SOURCE);
+    await repo.setAircraftClassification(112, SOURCE, {
+      likelyAircraft: false,
+      aircraftBasis: 'msl',
+      groundElevation: null,
+      heightAboveGround: null,
+      aircraftClassifiedAt: Date.now(),
+    }); // already classified: not eligible
 
-    const counts = await repo.countNodesHeardByTransport(SOURCE, FROM_SEC, TO_SEC);
-    expect(counts).toEqual({ rf: 0, udp: 0, mqtt: 0 });
+    const ids = await repo.getUnclassifiedNodeNumsWithAltitude(SOURCE);
+    expect(ids).toEqual([110]);
   });
 
-  it('excludeNodeNum removes that node from every class', async () => {
+  it('getAircraftReclassifyRows returns rows with an altitude or an existing classification', async () => {
     const backend = getBackend();
     if (!backend.available) return;
     const repo = new NodesRepository(backend.drizzleDb, backend.dbType);
-    const mid = FROM_SEC + 100;
-    await seedNode(repo, SOURCE, 130, { transportLastRf: mid });
-    await seedNode(repo, SOURCE, 131, { transportLastUdp: mid });
+    await repo.upsertNode(makeNode(120, { altitude: 3200, latitude: 44.1, longitude: -78.2 }), SOURCE);
+    await repo.upsertNode(makeNode(121), SOURCE); // no altitude, never classified: excluded
+    await repo.upsertNode(makeNode(122), SOURCE);
+    await repo.setAircraftClassification(122, SOURCE, {
+      likelyAircraft: false,
+      aircraftBasis: 'msl',
+      groundElevation: null,
+      heightAboveGround: null,
+      aircraftClassifiedAt: Date.now(),
+    }); // classified but no current altitude: still included (needs a clear check)
 
-    const counts = await repo.countNodesHeardByTransport(SOURCE, FROM_SEC, TO_SEC, 130);
-    expect(counts).toEqual({ rf: 0, udp: 1, mqtt: 0 });
+    const rows = await repo.getAircraftReclassifyRows(SOURCE);
+    const nodeNums = rows.map((r) => r.nodeNum).sort((a, b) => a - b);
+    expect(nodeNums).toEqual([120, 122]);
+
+    const row120 = rows.find((r) => r.nodeNum === 120)!;
+    expect(row120.altitude).toBe(3200);
+    expect(row120.latitude).toBe(44.1);
+    expect(row120.longitude).toBe(-78.2);
   });
 
-  it('handles stamps above 2^31 (BIGINT columns on PG/MySQL)', async () => {
+  it('clearAircraftClassification nulls likelyAircraft/aircraftBasis/heightAboveGround but keeps groundElevation', async () => {
     const backend = getBackend();
     if (!backend.available) return;
     const repo = new NodesRepository(backend.drizzleDb, backend.dbType);
-    const big = 3_000_000_000; // > INT32 max (2_147_483_647)
-    await seedNode(repo, SOURCE, 140, { transportLastMqtt: big });
+    await repo.upsertNode(makeNode(130, { altitude: 3200 }), SOURCE);
+    await repo.setAircraftClassification(130, SOURCE, {
+      likelyAircraft: true,
+      aircraftBasis: 'agl',
+      groundElevation: 200,
+      heightAboveGround: 3000,
+      aircraftClassifiedAt: Date.now(),
+    });
+    await repo.upsertNode(makeNode(131), SOURCE); // never classified: not counted as "affected"
 
-    const counts = await repo.countNodesHeardByTransport(SOURCE, big - 100, big + 100);
-    expect(counts.mqtt).toBe(1);
+    const affected = await repo.clearAircraftClassification(SOURCE);
+    expect(affected).toBe(1);
+
+    const node130 = await repo.getNode(130, SOURCE);
+    expect(node130?.likelyAircraft).toBeNull();
+    expect(node130?.aircraftBasis).toBeNull();
+    expect(node130?.heightAboveGround).toBeNull();
+    // Ground elevation is cheap DEM data, kept so a re-enable doesn't need a re-fetch.
+    expect(node130?.groundElevation).toBe(200);
   });
 
-  it('returns plain JS numbers, not strings/decimals (PG NUMERIC / MySQL DECIMAL aggregates)', async () => {
+  it('clearAircraftClassification returns 0 and is a no-op when nothing is classified', async () => {
     const backend = getBackend();
     if (!backend.available) return;
     const repo = new NodesRepository(backend.drizzleDb, backend.dbType);
-    await seedNode(repo, SOURCE, 150, { transportLastRf: FROM_SEC + 1 });
+    await repo.upsertNode(makeNode(140, { altitude: 3200 }), SOURCE);
 
-    const counts = await repo.countNodesHeardByTransport(SOURCE, FROM_SEC, TO_SEC);
-    expect(typeof counts.rf).toBe('number');
-    expect(typeof counts.udp).toBe('number');
-    expect(typeof counts.mqtt).toBe('number');
-  });
-
-  it('returns all zeros for an empty table', async () => {
-    const backend = getBackend();
-    if (!backend.available) return;
-    const repo = new NodesRepository(backend.drizzleDb, backend.dbType);
-
-    const counts = await repo.countNodesHeardByTransport(SOURCE, FROM_SEC, TO_SEC);
-    expect(counts).toEqual({ rf: 0, udp: 0, mqtt: 0 });
+    const affected = await repo.clearAircraftClassification(SOURCE);
+    expect(affected).toBe(0);
   });
 }
 
-describe('NodesRepository.countNodesHeardByTransport - SQLite Backend', () => {
+describe('NodesRepository aircraft classification - SQLite Backend', () => {
   let backend: TestBackend;
   beforeAll(() => {
     backend = createSqliteBackend(SQLITE_CREATE);
@@ -431,33 +482,35 @@ describe('NodesRepository.countNodesHeardByTransport - SQLite Backend', () => {
   beforeEach(async () => {
     await clearTable(backend, 'nodes');
   });
-  runTransportHeardTests(() => backend);
+  runAircraftTests(() => backend);
 });
 
-describe.skipIf(!postgresAvailable)('NodesRepository.countNodesHeardByTransport - PostgreSQL Backend', () => {
+describe.skipIf(!postgresAvailable)('NodesRepository aircraft classification - PostgreSQL Backend', () => {
   let backend: TestBackend;
   beforeAll(async () => {
-    backend = await createPostgresBackend(POSTGRES_CREATE, 'nodes_transport_heard');
+    backend = await createPostgresBackend(POSTGRES_CREATE, 'nodes_aircraft');
   });
   afterAll(async () => {
     if (backend) await backend.close();
   });
   beforeEach(async () => {
+    if (!backend.available) return;
     await clearTable(backend, 'nodes');
   });
-  runTransportHeardTests(() => backend);
+  runAircraftTests(() => backend);
 });
 
-describe.skipIf(!mysqlAvailable)('NodesRepository.countNodesHeardByTransport - MySQL Backend', () => {
+describe.skipIf(!mysqlAvailable)('NodesRepository aircraft classification - MySQL Backend', () => {
   let backend: TestBackend;
   beforeAll(async () => {
-    backend = await createMysqlBackend(MYSQL_CREATE, 'nodes_transport_heard');
+    backend = await createMysqlBackend(MYSQL_CREATE, 'nodes_aircraft');
   });
   afterAll(async () => {
     if (backend) await backend.close();
   });
   beforeEach(async () => {
+    if (!backend.available) return;
     await clearTable(backend, 'nodes');
   });
-  runTransportHeardTests(() => backend);
+  runAircraftTests(() => backend);
 });

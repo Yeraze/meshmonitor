@@ -11,6 +11,7 @@ import { logger } from '../../utils/logger.js';
 import { isValidNodeNum } from '../../server/constants/meshtastic.js';
 import { isBlankMacAddr } from '../../utils/nodeFieldBlanks.js';
 import type { TransportCounts } from '../../utils/transportSeries.js';
+import type { AircraftBasis } from '../../utils/aircraftClassification.js';
 
 /**
  * Hook for keeping an external in-memory node cache coherent with PG/MySQL writes.
@@ -59,6 +60,38 @@ export interface NodeIdentityRow {
    * consumer normalises before comparing them.
    */
   createdAt: number;
+}
+
+/**
+ * Values written by the aircraft classification service (#5364/#5365 Phase 1
+ * WP1) — see {@link NodesRepository.setAircraftClassification}.
+ */
+export interface AircraftClassificationWrite {
+  likelyAircraft: boolean | null;
+  aircraftBasis: AircraftBasis | null;
+  groundElevation: number | null;
+  heightAboveGround: number | null;
+  aircraftClassifiedAt: number | null;
+}
+
+/**
+ * One node's row as read by {@link NodesRepository.getAircraftReclassifyRows}
+ * — the effective-position inputs (D17) plus the current classification, so
+ * `reclassifySource` can recompute without a network call.
+ */
+export interface AircraftReclassifyRow {
+  nodeNum: number;
+  altitude: number | null;
+  groundElevation: number | null;
+  likelyAircraft: boolean | null;
+  aircraftBasis: string | null;
+  heightAboveGround: number | null;
+  positionOverrideEnabled: boolean | null;
+  latitudeOverride: number | null;
+  longitudeOverride: number | null;
+  altitudeOverride: number | null;
+  latitude: number | null;
+  longitude: number | null;
 }
 
 /**
@@ -2042,5 +2075,117 @@ export class NodesRepository extends BaseRepository {
       logger.error('Failed to query low battery monitored nodes:', error);
       return [];
     }
+  }
+
+  // ============ Likely-aircraft classification (#5364/#5365 Phase 1 WP1) ============
+
+  /**
+   * Persist a classification result for one (nodeNum, sourceId) row. Does
+   * **not** bump `updatedAt` — that column is the merge tie-breaker and the
+   * list sort order, and a classifier write is not node activity.
+   */
+  async setAircraftClassification(
+    nodeNum: number,
+    sourceId: string,
+    c: AircraftClassificationWrite,
+  ): Promise<void> {
+    const { nodes } = this.tables;
+    await this.db
+      .update(nodes)
+      .set({
+        likelyAircraft: c.likelyAircraft,
+        aircraftBasis: c.aircraftBasis,
+        groundElevation: c.groundElevation,
+        heightAboveGround: c.heightAboveGround,
+        aircraftClassifiedAt: this.coerceBigintField(c.aircraftClassifiedAt),
+      })
+      .where(and(eq(nodes.nodeNum, nodeNum), eq(nodes.sourceId, sourceId)));
+
+    await this.syncCacheNode(nodeNum, sourceId);
+  }
+
+  /**
+   * Rows worth a silent settings-change recompute (D6): anything with an
+   * altitude to (re)classify, or an existing classification that a lowered
+   * threshold might need to clear. Carries the effective-position override
+   * fields (D17) so the caller can recompute without re-deriving them.
+   */
+  async getAircraftReclassifyRows(sourceId: string): Promise<AircraftReclassifyRow[]> {
+    const { nodes } = this.tables;
+    const rows = await this.db
+      .select({
+        nodeNum: nodes.nodeNum,
+        altitude: nodes.altitude,
+        groundElevation: nodes.groundElevation,
+        likelyAircraft: nodes.likelyAircraft,
+        aircraftBasis: nodes.aircraftBasis,
+        heightAboveGround: nodes.heightAboveGround,
+        positionOverrideEnabled: nodes.positionOverrideEnabled,
+        latitudeOverride: nodes.latitudeOverride,
+        longitudeOverride: nodes.longitudeOverride,
+        altitudeOverride: nodes.altitudeOverride,
+        latitude: nodes.latitude,
+        longitude: nodes.longitude,
+      })
+      .from(nodes)
+      .where(and(
+        eq(nodes.sourceId, sourceId),
+        or(isNotNull(nodes.altitude), isNotNull(nodes.likelyAircraft)),
+      ));
+
+    return rows.map((r: typeof rows[number]) => ({ ...r, nodeNum: Number(r.nodeNum) }));
+  }
+
+  /**
+   * Node numbers with an altitude but never classified — the D11 startup
+   * backfill's work list.
+   */
+  async getUnclassifiedNodeNumsWithAltitude(sourceId: string): Promise<number[]> {
+    const { nodes } = this.tables;
+    const rows = await this.db
+      .select({ nodeNum: nodes.nodeNum })
+      .from(nodes)
+      .where(and(
+        eq(nodes.sourceId, sourceId),
+        isNotNull(nodes.altitude),
+        isNull(nodes.aircraftClassifiedAt),
+      ));
+    return (rows as Array<{ nodeNum: number }>).map((r) => Number(r.nodeNum));
+  }
+
+  /**
+   * Clear the classification for every row in a source (D7: detection turned
+   * off for this source). `groundElevation` is kept — cheap DEM data, not a
+   * user-facing flag, so re-enabling detection later doesn't need a re-fetch
+   * for nodes that haven't moved. Returns the number of rows actually
+   * changed and syncs the PG/MySQL node cache for each.
+   */
+  async clearAircraftClassification(sourceId: string): Promise<number> {
+    const { nodes } = this.tables;
+    const toClear = await this.db
+      .select({ nodeNum: nodes.nodeNum })
+      .from(nodes)
+      .where(and(
+        eq(nodes.sourceId, sourceId),
+        or(
+          isNotNull(nodes.likelyAircraft),
+          isNotNull(nodes.aircraftBasis),
+          isNotNull(nodes.heightAboveGround),
+        ),
+      ));
+
+    if (toClear.length === 0) return 0;
+
+    const nodeNums = (toClear as Array<{ nodeNum: number }>).map((r) => r.nodeNum);
+    await this.db
+      .update(nodes)
+      .set({ likelyAircraft: null, aircraftBasis: null, heightAboveGround: null })
+      .where(and(eq(nodes.sourceId, sourceId), inArray(nodes.nodeNum, nodeNums)));
+
+    for (const nodeNum of nodeNums) {
+      await this.syncCacheNode(Number(nodeNum), sourceId);
+    }
+
+    return nodeNums.length;
   }
 }
