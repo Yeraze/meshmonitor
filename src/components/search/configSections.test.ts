@@ -54,6 +54,16 @@ describe('configSections', () => {
     expect(global.filter((id) => source.includes(id))).toEqual([]);
   });
 
+  it('files Sorting under Global Settings, since its keys are global (#5368)', () => {
+    // preferredSortField / preferredSortDirection / preferredDashboardSortOption
+    // are plain global settings; filing the section per-source (#5182) made it
+    // unreachable from /settings.
+    const global = settingsNavItems(t, { ...baseOptions, mode: 'global' }).map((i) => i.id);
+    const source = settingsNavItems(t, { ...baseOptions, mode: 'source' }).map((i) => i.id);
+    expect(global).toContain('settings-sorting');
+    expect(source).not.toContain('settings-sorting');
+  });
+
   describe('visibility gates mirror the tab', () => {
     it('hides admin-only sections from a non-admin', () => {
       const ids = settingsNavItems(t, { ...baseOptions, isAdmin: false }).map((i) => i.id);
