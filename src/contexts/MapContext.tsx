@@ -2,6 +2,11 @@ import React, { createContext, useContext, useState, useEffect, useMemo, ReactNo
 import { DbTraceroute, DbNeighborInfo } from '../services/database';
 import api from '../services/api';
 import { useCsrf } from './CsrfContext';
+import {
+  isAircraftDisplayMode,
+  DEFAULT_AIRCRAFT_DISPLAY_MODE,
+  type AircraftDisplayMode,
+} from '../utils/aircraftClassification';
 
 export interface PositionHistoryItem {
   latitude: number;
@@ -68,6 +73,15 @@ interface MapContextType {
    */
   spreadNodes: boolean;
   setSpreadNodes: (value: boolean) => void;
+  /**
+   * Likely-aircraft display mode for the map (#5364/#5365 Phase 1 WP4):
+   * 'show' (no badge, no filtering), 'mark' (badge only, default), or 'hide'
+   * (marker suppressed, except favourites). Persisted server-side via
+   * `user_map_preferences.aircraft_display_mode`, with a localStorage mirror
+   * for anonymous viewers.
+   */
+  aircraftDisplayMode: AircraftDisplayMode;
+  setAircraftDisplayMode: (mode: AircraftDisplayMode) => void;
   /**
    * A "centre the map on this node" request, by nodeNum (#5177). Distinct from
    * `mapCenterTarget`, which is a raw lat/lng: a low-precision node's MARKER is
@@ -156,6 +170,16 @@ export const MapProvider: React.FC<MapProviderProps> = ({ children }) => {
   const [unreadIndicatorEnabled, setUnreadIndicatorEnabledState] = useState<boolean>(true);
   // #5177: default true = preserve the existing within-cell offset behaviour.
   const [spreadNodes, setSpreadNodesState] = useState<boolean>(true);
+  // #5364/#5365 Phase 1 WP4: localStorage-first (validated), else 'mark',
+  // overridden by the server preference once it loads (see the loader below).
+  const [aircraftDisplayMode, setAircraftDisplayModeState] = useState<AircraftDisplayMode>(() => {
+    try {
+      const saved = localStorage.getItem('aircraftDisplayMode');
+      return isAircraftDisplayMode(saved) ? saved : DEFAULT_AIRCRAFT_DISPLAY_MODE;
+    } catch {
+      return DEFAULT_AIRCRAFT_DISPLAY_MODE;
+    }
+  });
   // #5177: transient (not persisted) cross-tab centre-on-node request.
   const [pendingCenterNodeNum, setPendingCenterNodeNum] = useState<number | null>(null);
   const [showMeshCoreNodes, setShowMeshCoreNodesState] = useState<boolean>(true);
@@ -250,6 +274,17 @@ export const MapProvider: React.FC<MapProviderProps> = ({ children }) => {
   // eslint-disable-next-line react-hooks/exhaustive-deps -- #5177 same temporal-dead-zone reason as the sibling setters: `savePreferenceToServer` is declared below this callback
   }, []);
 
+  const setAircraftDisplayMode = React.useCallback((value: AircraftDisplayMode) => {
+    setAircraftDisplayModeState(value);
+    try {
+      localStorage.setItem('aircraftDisplayMode', value);
+    } catch {
+      // best-effort mirror only; the server preference (below) is authoritative
+    }
+    void savePreferenceToServer({ aircraftDisplayMode: value });
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- #5365 same temporal-dead-zone reason as the sibling setters: `savePreferenceToServer` is declared below this callback
+  }, []);
+
   const setShowRfNodes = React.useCallback((value: boolean) => {
     setShowRfNodesState(value);
     void savePreferenceToServer({ showRfNodes: value });
@@ -298,7 +333,7 @@ export const MapProvider: React.FC<MapProviderProps> = ({ children }) => {
   }, []);
 
   // Helper function to save preference to server
-  const savePreferenceToServer = React.useCallback(async (preference: Record<string, boolean | number | null>, isRetry = false) => {
+  const savePreferenceToServer = React.useCallback(async (preference: Record<string, boolean | number | string | null>, isRetry = false) => {
     try {
       const baseUrl = await api.getBaseUrl();
       const csrfToken = getCsrfToken();
@@ -434,6 +469,11 @@ export const MapProvider: React.FC<MapProviderProps> = ({ children }) => {
             if (preferences.mapMaxAgeHours !== undefined) {
               setMapMaxAgeHoursState(preferences.mapMaxAgeHours);
             }
+            // Server preference wins over localStorage/default once it loads;
+            // an invalid stored value is ignored (keeps whatever local state has).
+            if (isAircraftDisplayMode(preferences.aircraftDisplayMode)) {
+              setAircraftDisplayModeState(preferences.aircraftDisplayMode);
+            }
           }
           // If preferences is null (anonymous user), initial defaults are already set
         }
@@ -533,6 +573,8 @@ export const MapProvider: React.FC<MapProviderProps> = ({ children }) => {
     setPositionHistoryHours,
     mapMaxAgeHours,
     setMapMaxAgeHours,
+    aircraftDisplayMode,
+    setAircraftDisplayMode,
   }), [
     showPaths, setShowPaths,
     showNeighborInfo, setShowNeighborInfo,
@@ -563,6 +605,7 @@ export const MapProvider: React.FC<MapProviderProps> = ({ children }) => {
     selectedNodeId, setSelectedNodeId,
     positionHistoryHours, setPositionHistoryHours,
     mapMaxAgeHours, setMapMaxAgeHours,
+    aircraftDisplayMode, setAircraftDisplayMode,
   ]);
 
   return (

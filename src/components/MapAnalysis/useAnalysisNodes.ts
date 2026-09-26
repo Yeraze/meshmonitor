@@ -12,6 +12,7 @@ import { useMaxNodeAgeHoursAcross } from '../../hooks/useNodeDisplaySettings';
 import { unifiedNodeKey } from '../../utils/nodeIdentity';
 import { applyPrecisionCellOffsets } from '../../utils/precisionOffset';
 import { useMapContextOptional } from '../../contexts/MapContext';
+import { DEFAULT_AIRCRAFT_DISPLAY_MODE } from '../../utils/aircraftClassification';
 import type { NodeSourceRef } from '../Dashboard/DashboardNodePopup';
 
 /**
@@ -48,6 +49,10 @@ export interface NodeRecord extends MaybePositionedNode {
   viaMqtt?: boolean | null;
   /** Union of transport classes across sources (unified merge); makes the #4129 filter additive. */
   transportClasses?: Array<'rf' | 'udp' | 'mqtt'> | null;
+  /** True when the node is favorited — the Hide filter never hides a favourite (#5364/#5365). */
+  isFavorite?: boolean | null;
+  /** Likely-aircraft classification (#5364/#5365 Phase 1); drives the map aircraft badge + Hide filter. */
+  likelyAircraft?: boolean | null;
 }
 
 export interface AnalysisNode {
@@ -76,6 +81,10 @@ export function useAnalysisNodes(): AnalysisNode[] {
   // is live there; a bare component test gets `undefined` and the default
   // (spread on) below, exactly as before this flag existed.
   const spreadNodes = useMapContextOptional()?.spreadNodes ?? true;
+  // #5364/#5365 Phase 1 WP4: same non-throwing read as spreadNodes above —
+  // Map Analysis has no Map Features panel of its own, so it follows the mode
+  // chosen on NodesTab/DashboardMap (both write through the same MapContext).
+  const aircraftMode = useMapContextOptional()?.aircraftDisplayMode ?? DEFAULT_AIRCRAFT_DISPLAY_MODE;
   const { data: sources = [] } = useDashboardSources();
   const sourceList = sources as Array<{ id: string; name: string }>;
   const sourceIds = sourceList.map((s) => s.id);
@@ -112,6 +121,12 @@ export function useAnalysisNodes(): AnalysisNode[] {
           if (!latLng) return false;
           // #3549: per-node "Hide from Map" suppresses the marker on every map surface.
           if (node.hideFromMap) return false;
+          // Likely-aircraft Hide (#5364/#5365 Phase 1 WP4): suppress the
+          // marker, except a favourite is never hidden by this toggle. Map
+          // Analysis has no Map Features panel of its own — it follows the
+          // mode chosen on NodesTab/DashboardMap, matching `spreadNodes`
+          // above (avoids the "shipped to one surface" bug, memory #5177).
+          if (aircraftMode === 'hide' && node.likelyAircraft === true && !node.isFavorite) return false;
           // Node search (issue #3399): hide non-matches.
           if (!nodeMatchesSearch(node, nodeFilter)) return false;
           // Node-type filter (issue #3546): hide categories the user toggled off.
@@ -162,5 +177,5 @@ export function useAnalysisNodes(): AnalysisNode[] {
     // TanStack query hook rather than a plain mutable-variable read, so it is a
     // real reactive dependency (its value changes when a source's setting loads
     // or changes) — safe and correct to list, unlike the old #4240 mirror read.
-  }, [nodes, nodeFilter, config.nodeTypes, config.transports, config.sources, transportCutoff, spreadNodes]);
+  }, [nodes, nodeFilter, config.nodeTypes, config.transports, config.sources, transportCutoff, spreadNodes, aircraftMode]);
 }

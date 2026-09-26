@@ -18,6 +18,7 @@ import { MeshtasticContactShare } from './MeshtasticContactShare';
 import { NodeSkyView } from './gnss/NodeSkyView';
 import { Firmware28SilenceNotice } from './Firmware28SilenceNotice';
 import { ShowCoverageLink } from './Analysis/ShowCoverageLink';
+import { formatAircraftSummary } from '../utils/aircraftClassification';
 
 interface NodeDetailsBlockProps {
   node: DeviceInfo | null;
@@ -578,6 +579,21 @@ const NodeDetailsBlock: React.FC<NodeDetailsBlockProps> = ({ node, timeFormat = 
             <div className="node-detail-label">{t('node_details.elevation', 'Elevation')}</div>
             <div className="node-detail-value">
               {node.position.altitude}m
+            </div>
+          </div>
+        )}
+
+        {/* Likely aircraft (#5364/#5365 Phase 1 WP4) */}
+        {node.likelyAircraft && (
+          <div className="node-detail-card">
+            <div className="node-detail-label">
+              <UiIcon name="aircraft" size={14} /> {t('nodes.likely_aircraft', 'Likely aircraft')}
+            </div>
+            <div className="node-detail-value">
+              {formatAircraftSummary(
+                { aircraftBasis: node.aircraftBasis, heightAboveGround: node.heightAboveGround, altitude: node.position?.altitude },
+                t,
+              )}
             </div>
           </div>
         )}

@@ -187,6 +187,23 @@ See [Multi-Source → Connection Types](/features/multi-source) for the full lis
 
 **Learn More**: See [Security Features](/features/security) for detailed information about security monitoring, detection methods, and best practices.
 
+### Likely-Aircraft Detection
+
+**Description**: Flags a node as a likely aircraft (plane, balloon, drone) when its reported altitude sits far above the ground at its position. Flagged nodes get a badge on the map (see [Map Features](/features/maps#map-features)) and can be excluded from Auto-Favorite (see [Automation → Auto Favorite](/features/automation#auto-favorite)).
+
+**Location**: Settings → Node Display, per source. Meshtastic sources only (including MQTT bridge/broker sources) — MeshCore does not report altitude the same way and is not classified.
+
+**Fields**:
+- **Detect likely aircraft** — turns classification on or off for this source. Enabled by default.
+- **Height above ground threshold (m)** — the main basis. A node is flagged when its reported altitude is more than this height above the terrain at its position, read from ground-elevation tiles. Default **500 m**, range 50–20000 m.
+- **Fallback: altitude above sea level (m)** — used only when terrain elevation is off, or the terrain sample is unavailable, for that node's position. Default **5000 m**, range 500–20000 m.
+
+**How it works**: The height-above-ground basis needs the same ground-elevation data as [Elevation / Terrain](#elevation-terrain-link-profile) — outbound tile fetches for classification only happen while that global setting is enabled. When it's off, or a fetch fails, classification silently falls back to the sea-level basis. A warning appears under the thresholds when terrain elevation is off, since only the fallback applies in that case.
+
+To avoid a node flapping in and out of the flag near the threshold, a small hysteresis band protects the *exit* only: once flagged, a node needs to drop back below the threshold by 10% (minimum 50 m) before it clears. Entering the flagged state still happens exactly at the threshold.
+
+**Effect**: Saving these settings recomputes existing nodes on this source immediately, from their already-stored altitude and ground elevation — no new tile fetches. Turning detection off clears the flag for every node on the source (the stored ground elevation itself is kept).
+
 ## Node Details Block
 
 **Location**: Messages page, displayed when a node is selected in the conversation list

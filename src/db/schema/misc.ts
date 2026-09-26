@@ -125,6 +125,9 @@ export const userMapPreferencesSqlite = sqliteTable('user_map_preferences', {
   // Default true = today's decluttering behaviour; false pins every node at
   // exactly the position it reported.
   spreadNodes: integer('spread_nodes', { mode: 'boolean' }).default(true),
+  // Likely-aircraft map display choice (#5364/#5365, migration 176):
+  // 'show' | 'mark' | 'hide'. NULL reads as 'mark'.
+  aircraftDisplayMode: text('aircraft_display_mode'),
   positionHistoryHours: integer('position_history_hours'),
   // Map age slider: hide nodes/traceroutes older than this on the map (hours).
   // NULL = follow the global maxNodeAgeHours setting. See #3322.
@@ -160,6 +163,7 @@ export const userMapPreferencesPostgres = pgTable('user_map_preferences', {
   showAtakContacts: pgBoolean('show_atak_contacts').default(false),
   unreadIndicatorEnabled: pgBoolean('unread_indicator_enabled').default(true),
   spreadNodes: pgBoolean('spread_nodes').default(true),
+  aircraftDisplayMode: pgText('aircraft_display_mode'),
   positionHistoryHours: pgInteger('position_history_hours'),
   mapMaxAgeHours: pgInteger('map_max_age_hours'),
   positionHistoryPointsOnly: pgBoolean('position_history_points_only').default(false),
@@ -415,6 +419,7 @@ export const userMapPreferencesMysql = mysqlTable('user_map_preferences', {
   showAtakContacts: myBoolean('show_atak_contacts').default(false),
   unreadIndicatorEnabled: myBoolean('unread_indicator_enabled').default(true),
   spreadNodes: myBoolean('spread_nodes').default(true),
+  aircraftDisplayMode: myVarchar('aircraft_display_mode', { length: 8 }),
   positionHistoryHours: myInt('position_history_hours'),
   mapMaxAgeHours: myInt('map_max_age_hours'),
   positionHistoryPointsOnly: myBoolean('position_history_points_only').default(false),

@@ -247,6 +247,90 @@ describe('mergeUnifiedSourceData', () => {
     expect((merged.nodes[0] as any).lastHeard).toBe(5000);
   });
 
+  it('carries altitude + aircraft fields from the SAME record as the chosen position (#5364/#5365)', () => {
+    // The freshest record has a position but no altitude/classification; an
+    // older record has both a position AND the classification. Both fields
+    // must come from the record whose position was actually chosen, not be
+    // spliced together from two different records.
+    const merged = mergeUnifiedSourceData([
+      {
+        nodes: [
+          {
+            nodeNum: 300,
+            lastHeard: 9000,
+            longName: 'Plane',
+            latitude: 35.0,
+            longitude: -80.0,
+            // No altitude/likelyAircraft on this fresher record.
+          },
+        ],
+        traceroutes: [],
+        neighborInfo: [],
+        channels: [],
+      },
+      {
+        nodes: [
+          {
+            nodeNum: 300,
+            lastHeard: 1000,
+            longName: 'Plane',
+            latitude: 35.5,
+            longitude: -80.5,
+            altitude: 3200,
+            likelyAircraft: true,
+            aircraftBasis: 'agl',
+            groundElevation: 200,
+            heightAboveGround: 3000,
+          },
+        ],
+        traceroutes: [],
+        neighborInfo: [],
+        channels: [],
+      },
+    ]);
+    // pickPositionRecord has no positionTimestamp to rank by here, so it falls
+    // back to newest-lastHeard among candidates with a real fix — both do —
+    // meaning the freshest (9000) record's position wins, and its (absent)
+    // altitude/aircraft fields must NOT be back-filled from the older record.
+    const node = merged.nodes[0] as any;
+    expect(node.latitude).toBe(35.0);
+    expect(node.altitude).toBeNull();
+    expect(node.likelyAircraft).toBeNull();
+    expect(node.aircraftBasis).toBeNull();
+    expect(node.groundElevation).toBeNull();
+    expect(node.heightAboveGround).toBeNull();
+  });
+
+  it('carries altitude + aircraft fields through when the classified record IS the chosen position', () => {
+    const merged = mergeUnifiedSourceData([
+      {
+        nodes: [
+          {
+            nodeNum: 301,
+            lastHeard: 9000,
+            longName: 'Plane',
+            latitude: 35.0,
+            longitude: -80.0,
+            altitude: 3200,
+            likelyAircraft: true,
+            aircraftBasis: 'agl',
+            groundElevation: 200,
+            heightAboveGround: 3000,
+          },
+        ],
+        traceroutes: [],
+        neighborInfo: [],
+        channels: [],
+      },
+    ]);
+    const node = merged.nodes[0] as any;
+    expect(node.altitude).toBe(3200);
+    expect(node.likelyAircraft).toBe(true);
+    expect(node.aircraftBasis).toBe('agl');
+    expect(node.groundElevation).toBe(200);
+    expect(node.heightAboveGround).toBe(3000);
+  });
+
   it('does not let chatter on a coarse record promote its position (#5292)', () => {
     // PARC, as reported: two sources hold the SAME physical spot at different
     // precisions (14-bit inside the 13-bit grid cell). The coarse source has

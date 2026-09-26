@@ -32,6 +32,7 @@ import { logger } from '../../utils/logger.js';
 import { sourceManagerRegistry, type ISourceManager } from '../sourceManagerRegistry.js';
 import { DEFAULT_ELIGIBLE_ROLES_JSON } from '../../db/schema/autoFavoriteTargets.js';
 import { getRoutingErrorName } from '../constants/meshtastic.js';
+import { normalizeLikelyAircraft } from '../../utils/aircraftClassification.js';
 import type { DbAutoFavoriteTarget, DbAutoFavoriteAssignment, DbTraceroute } from '../../db/types.js';
 
 const CHECK_INTERVAL_MS = 60_000;
@@ -183,6 +184,31 @@ export function selectNewFavorites(params: {
 }
 
 /**
+ * Build the `excluded` set for {@link selectNewFavorites}: the target itself
+ * (a node cannot favorite itself), plus — when the likely-aircraft exclusion
+ * is active for this target's source (#5364/#5365, spec §4.12) — every
+ * candidate already flagged `likelyAircraft`. This is add-side only: the
+ * remote-favorites feature never REMOVES an existing remote favorite, so the
+ * two-strike sweep rule (favoritesService.ts) does not apply here — an
+ * aircraft candidate is simply never added in the first place, which reduces
+ * remote-admin airtime rather than costing any.
+ */
+export function buildExcludedSet(
+  targetNodeNum: number,
+  nodesByNum: Map<number, { likelyAircraft?: boolean | null } | null | undefined>,
+  aircraftExclusionActive: boolean,
+): Set<number> {
+  const excluded = new Set<number>([targetNodeNum]);
+  if (!aircraftExclusionActive) return excluded;
+  for (const [nodeNum, node] of nodesByNum) {
+    if (normalizeLikelyAircraft(node?.likelyAircraft) === true) {
+      excluded.add(nodeNum);
+    }
+  }
+  return excluded;
+}
+
+/**
  * Pick up to `max` previously-assigned favorites to re-send. Un-confirmed
  * assignments (last command not ACKed: timed out, rejected, or never tracked)
  * are prioritized over confirmed ones, then oldest-re-sent-first within each
@@ -289,6 +315,22 @@ class AutoFavoriteManagementScheduler {
   }
 
   /** Execute one discovery/favorite cycle for a single target. */
+  /**
+   * Likely-aircraft exclusion is active for a source when BOTH
+   * `aircraftDetectionEnabled` and `autoFavoriteExcludeAircraft` are on for it
+   * (both default on — #5364/#5365 D14). Same rule as
+   * `favoritesService.ts`'s `isAircraftExclusionActive`, duplicated rather
+   * than shared because this service has no per-source manager object to
+   * hang a method off — it reads settings by `sourceId` directly instead.
+   */
+  private async isAircraftExclusionActiveForSource(sourceId: string): Promise<boolean> {
+    const [detectionEnabled, excludeAircraft] = await Promise.all([
+      databaseService.settings.getSettingForSource(sourceId, 'aircraftDetectionEnabled'),
+      databaseService.settings.getSettingForSource(sourceId, 'autoFavoriteExcludeAircraft'),
+    ]);
+    return detectionEnabled !== 'false' && excludeAircraft !== 'false';
+  }
+
   private async runCycleForTarget(target: DbAutoFavoriteTarget): Promise<CycleResult> {
     const { sourceId, targetNodeNum } = target;
     const result: CycleResult = { ran: false, discoveredNeighbors: 0, newlyFavorited: [], reFavorited: [] };
@@ -358,23 +400,33 @@ class AutoFavoriteManagementScheduler {
     }
     result.discoveredNeighbors = candidates.length;
 
-    // 3a. Resolve roles for candidate filtering.
+    // 3a. Resolve roles (+ likely-aircraft flag) for candidate filtering. The
+    // per-candidate node fetch already happens here, so the aircraft flag
+    // rides along at no extra DB cost (#5364/#5365, spec §4.12).
     const eligibleRoles = parseEligibleRoles(target.eligibleRoles);
     const roleByNode = new Map<number, number | null | undefined>();
+    const nodesByNum = new Map<number, { likelyAircraft?: boolean | null } | null | undefined>();
     for (const c of candidates) {
       const node = await databaseService.nodes.getNode(c, sourceId);
       roleByNode.set(c, node?.role ?? null);
+      nodesByNum.set(c, node);
     }
 
     const assignments = await databaseService.autoFavoriteTargets.getAssignments(sourceId, targetNodeNum);
     const assigned = new Set(assignments.map((a) => a.favoriteNodeNum));
 
+    // Likely-aircraft exclusion (#5364/#5365 D14, spec §4.12): read once per
+    // cycle for this target's source. Add-side only — never removes an
+    // existing remote favorite (see buildExcludedSet's doc comment).
+    const aircraftExclusionActive = await this.isAircraftExclusionActiveForSource(sourceId);
+
     const newFavorites = selectNewFavorites({
       candidates,
       assigned,
-      // Only the target itself is excluded — a node cannot favorite itself. The
-      // local node is intentionally eligible when it is a discovered neighbor.
-      excluded: new Set([targetNodeNum]),
+      // The target itself, plus (when active) any candidate already flagged
+      // likely aircraft. The local node is intentionally still eligible when
+      // it is a discovered neighbor.
+      excluded: buildExcludedSet(targetNodeNum, nodesByNum, aircraftExclusionActive),
       eligibleRoles,
       roleByNode,
       max: target.maxNewPerCycle,

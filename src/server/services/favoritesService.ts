@@ -66,6 +66,13 @@ import databaseService from '../../services/database.js';
 import protobufService from '../protobufService.js';
 import { isAutoFavoriteEligible } from '../constants/autoFavorite.js';
 import { logger } from '../../utils/logger.js';
+import { normalizeLikelyAircraft } from '../../utils/aircraftClassification.js';
+import {
+  parseAircraftStrikes,
+  applyAircraftStrike,
+  AIRCRAFT_STRIKES_TO_REMOVE,
+  type AircraftStrikes,
+} from './autoFavoriteAircraftStrikes.js';
 
 export class FavoritesService {
   private autoFavoriteSweepRunning = false;  // Prevent concurrent sweep operations
@@ -231,6 +238,23 @@ export class FavoritesService {
     return { acked: result.acked, errorReason: result.errorReason, timedOut: result.timedOut };
   }
 
+  /**
+   * Likely-aircraft Auto-Favorite exclusion is active for this source when
+   * BOTH `aircraftDetectionEnabled` and `autoFavoriteExcludeAircraft` are on
+   * (both default on — #5364/#5365 D14, spec §4.11). `targetNode.likelyAircraft`
+   * is already forced null when detection is off (the classifier clears it on
+   * disable, D7), but reading both keys here keeps the rule explicit and stops
+   * a stale flag from acting in the brief window before `reclassifySource`
+   * finishes a settings save.
+   */
+  private async isAircraftExclusionActive(): Promise<boolean> {
+    const [detectionEnabled, excludeAircraft] = await Promise.all([
+      databaseService.settings.getSettingForSource(this.mgr.sourceId, 'aircraftDetectionEnabled'),
+      databaseService.settings.getSettingForSource(this.mgr.sourceId, 'autoFavoriteExcludeAircraft'),
+    ]);
+    return detectionEnabled !== 'false' && excludeAircraft !== 'false';
+  }
+
   async checkAutoFavorite(nodeNum: number, nodeId: string): Promise<void> {
     try {
       const autoFavoriteEnabled = await databaseService.settings.getSettingForSource(this.mgr.sourceId, 'autoFavoriteEnabled');
@@ -269,6 +293,16 @@ export class FavoritesService {
 
       // Skip nodes where favoriteLocked is true — user has manually managed this node
       if (targetNode.favoriteLocked) return;
+
+      // Likely-aircraft exclusion (#5364/#5365 D14): never auto-favorite a node
+      // already flagged likely aircraft, when the exclusion is active. There is
+      // no instant-removal counterpart — a plane auto-added before its first
+      // classified position leaves via the two-strike sweep (see
+      // autoFavoriteSweep below).
+      if (normalizeLikelyAircraft(targetNode.likelyAircraft) === true && await this.isAircraftExclusionActive()) {
+        logger.debug(`⭐ Skipping auto-favorite for ${nodeId}: likely aircraft`);
+        return;
+      }
 
       // Check if already in auto-favorite list (backward compat belt-and-suspenders)
       const autoFavoriteNodesJson = await databaseService.settings.getSettingForSource(this.mgr.sourceId, 'autoFavoriteNodes') || '[]';
@@ -340,6 +374,9 @@ export class FavoritesService {
           }
         }
         await databaseService.settings.setSourceSetting(this.mgr.sourceId, 'autoFavoriteNodes', '[]');
+        // Auto-Favorite itself was switched off — the strike streak it was
+        // protecting no longer applies (#5364/#5365 D19, spec §4.11 step 4).
+        await databaseService.settings.setSourceSetting(this.mgr.sourceId, 'autoFavoriteAircraftStrikes', '{}');
         return;
       }
 
@@ -353,6 +390,18 @@ export class FavoritesService {
       const localNodeNum = await databaseService.settings.getSetting(this.mgr.localNodeSettingKey('localNodeNum'));
       const localNodeNumInt = localNodeNum ? parseInt(localNodeNum) : this.mgr.getLocalNodeInfo()?.nodeNum;
       const localNode = localNodeNumInt ? await databaseService.nodes.getNode(localNodeNumInt, this.mgr.sourceId) : null;
+
+      // Likely-aircraft two-strike removal (#5364/#5365 D19, spec §4.11). Read
+      // the exclusion flag and the persisted strike state ONCE per sweep — the
+      // strikes live in the settings table (not an instance field) so a
+      // restart or an unrelated settings save cannot reset the streak (mesh
+      // impact checklist §3).
+      const aircraftExclusionActive = await this.isAircraftExclusionActive();
+      const strikes: AircraftStrikes = parseAircraftStrikes(
+        await databaseService.settings.getSettingForSource(this.mgr.sourceId, 'autoFavoriteAircraftStrikes'),
+      );
+      let strikesDirty = false;
+      const sweepNow = Date.now();
 
       const nodesToRemove: number[] = [];
 
@@ -371,8 +420,30 @@ export class FavoritesService {
         let shouldRemove = false;
         let reason = '';
 
+        // Likely-aircraft two-strike check — before staleness/hops so the log
+        // names the real reason when both would otherwise apply.
+        const strikeKey = String(nodeNum);
+        const flagged = aircraftExclusionActive && normalizeLikelyAircraft(node.likelyAircraft) === true;
+        const { next: nextStrike, remove: strikeRemove } = applyAircraftStrike(strikes[strikeKey], flagged, sweepNow);
+        if (nextStrike === null) {
+          if (strikes[strikeKey] !== undefined) {
+            delete strikes[strikeKey];
+            strikesDirty = true;
+          }
+        } else if (strikes[strikeKey] !== nextStrike) {
+          strikes[strikeKey] = nextStrike;
+          strikesDirty = true;
+        }
+        if (strikeRemove) {
+          shouldRemove = true;
+          const heightSummary = node.aircraftBasis === 'agl' && typeof node.heightAboveGround === 'number'
+            ? `${Math.round(node.heightAboveGround)} m above ground`
+            : typeof node.altitude === 'number' ? `${Math.round(node.altitude)} m MSL` : 'altitude unknown';
+          reason = `likely aircraft at ${AIRCRAFT_STRIKES_TO_REMOVE} consecutive sweeps (${heightSummary})`;
+        }
+
         // Check staleness
-        if (node.lastHeard && node.lastHeard < staleThreshold) {
+        if (!shouldRemove && node.lastHeard && node.lastHeard < staleThreshold) {
           shouldRemove = true;
           reason = `stale (not heard in ${staleHours}+ hours)`;
         }
@@ -413,11 +484,27 @@ export class FavoritesService {
       }
 
       // Update the tracking list (per-source)
+      let remaining = autoFavoriteNodes;
       if (nodesToRemove.length > 0) {
         const removeSet = new Set(nodesToRemove);
-        const remaining = autoFavoriteNodes.filter(n => !removeSet.has(n));
+        remaining = autoFavoriteNodes.filter(n => !removeSet.has(n));
         await databaseService.settings.setSourceSetting(this.mgr.sourceId, 'autoFavoriteNodes', JSON.stringify(remaining));
         logger.debug(`🧹 Auto-favorite sweep: removed ${nodesToRemove.length}, remaining ${remaining.length}`);
+      }
+
+      // Prune strike entries for nodes that left the provenance list (removed
+      // this sweep, or already gone for any other reason) — never let a stale
+      // key linger for a nodeNum that isn't tracked any more.
+      const remainingSet = new Set(remaining);
+      for (const key of Object.keys(strikes)) {
+        if (!remainingSet.has(Number(key))) {
+          delete strikes[key];
+          strikesDirty = true;
+        }
+      }
+
+      if (strikesDirty) {
+        await databaseService.settings.setSourceSetting(this.mgr.sourceId, 'autoFavoriteAircraftStrikes', JSON.stringify(strikes));
       }
     } catch (error) {
       logger.error('❌ Error in auto-favorite sweep:', error);

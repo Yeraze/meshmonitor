@@ -52,6 +52,9 @@ export class MapPreferencesRepository extends BaseRepository {
         // defaults on (#5124) — so null reads as true, not false.
         unreadIndicatorEnabled: row.unreadIndicatorEnabled ?? true,
         spreadNodes: row.spreadNodes ?? true,
+        // NULL reads as 'mark' (badge the marker, no filtering) — matches
+        // today's behaviour for everyone who has not chosen anything else.
+        aircraftDisplayMode: row.aircraftDisplayMode ?? 'mark',
         positionHistoryHours: row.positionHistoryHours ?? null,
         mapMaxAgeHours: row.mapMaxAgeHours ?? null,
         positionHistoryPointsOnly: row.positionHistoryPointsOnly ?? false,
@@ -84,6 +87,8 @@ export class MapPreferencesRepository extends BaseRepository {
     showAtakContacts?: boolean;
     unreadIndicatorEnabled?: boolean;
     spreadNodes?: boolean;
+    /** Likely-aircraft map display choice (#5364/#5365). Null clears to the 'mark' default. */
+    aircraftDisplayMode?: string | null;
     positionHistoryHours?: number | null;
     mapMaxAgeHours?: number | null;
     positionHistoryPointsOnly?: boolean;
@@ -116,6 +121,7 @@ export class MapPreferencesRepository extends BaseRepository {
         if (preferences.showAtakContacts !== undefined) set.showAtakContacts = preferences.showAtakContacts;
         if (preferences.unreadIndicatorEnabled !== undefined) set.unreadIndicatorEnabled = preferences.unreadIndicatorEnabled;
         if (preferences.spreadNodes !== undefined) set.spreadNodes = preferences.spreadNodes;
+        if (preferences.aircraftDisplayMode !== undefined) set.aircraftDisplayMode = preferences.aircraftDisplayMode;
         if (preferences.positionHistoryHours !== undefined) set.positionHistoryHours = preferences.positionHistoryHours;
         if (preferences.mapMaxAgeHours !== undefined) set.mapMaxAgeHours = preferences.mapMaxAgeHours;
         if (preferences.positionHistoryPointsOnly !== undefined) set.positionHistoryPointsOnly = preferences.positionHistoryPointsOnly;
@@ -145,6 +151,7 @@ export class MapPreferencesRepository extends BaseRepository {
           showAtakContacts: preferences.showAtakContacts ?? false,
           unreadIndicatorEnabled: preferences.unreadIndicatorEnabled ?? true,
           spreadNodes: preferences.spreadNodes ?? true,
+          aircraftDisplayMode: preferences.aircraftDisplayMode ?? null,
           positionHistoryHours: preferences.positionHistoryHours ?? null,
           mapMaxAgeHours: preferences.mapMaxAgeHours ?? null,
           positionHistoryPointsOnly: preferences.positionHistoryPointsOnly ?? false,

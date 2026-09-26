@@ -103,6 +103,14 @@ export const nodesSqlite = sqliteTable('nodes', {
   // When this row was created by importing a contact URL rather than by
   // hearing the node (#5317). NULL for every normally-discovered node.
   importedAt: integer('importedAt'),
+  // Likely-aircraft classification (#5364/#5365, migration 175). No DEFAULT,
+  // no index. `upsertNode` never writes these — only the aircraft
+  // classification repository methods do (like mobile/notes).
+  likelyAircraft: integer('likelyAircraft', { mode: 'boolean' }),
+  aircraftBasis: text('aircraftBasis'),
+  groundElevation: real('groundElevation'),
+  heightAboveGround: real('heightAboveGround'),
+  aircraftClassifiedAt: integer('aircraftClassifiedAt'),
   // Timestamps
   createdAt: integer('createdAt').notNull(),
   updatedAt: integer('updatedAt').notNull(),
@@ -203,6 +211,13 @@ export const nodesPostgres = pgTable('nodes', {
   lastTimeSync: pgBigint('lastTimeSync', { mode: 'number' }),
   // See the SQLite table above (#5317).
   importedAt: pgBigint('importedAt', { mode: 'number' }),
+  // Likely-aircraft classification (#5364/#5365, migration 175). See the
+  // SQLite table above.
+  likelyAircraft: pgBoolean('likelyAircraft'),
+  aircraftBasis: pgText('aircraftBasis'),
+  groundElevation: pgDoublePrecision('groundElevation'),
+  heightAboveGround: pgDoublePrecision('heightAboveGround'),
+  aircraftClassifiedAt: pgBigint('aircraftClassifiedAt', { mode: 'number' }),
   // Timestamps
   createdAt: pgBigint('createdAt', { mode: 'number' }).notNull(),
   updatedAt: pgBigint('updatedAt', { mode: 'number' }).notNull(),
@@ -302,6 +317,13 @@ export const nodesMysql = mysqlTable('nodes', {
   lastTimeSync: myBigint('lastTimeSync', { mode: 'number' }),
   // See the SQLite table above (#5317).
   importedAt: myBigint('importedAt', { mode: 'number' }),
+  // Likely-aircraft classification (#5364/#5365, migration 175). See the
+  // SQLite table above.
+  likelyAircraft: myBoolean('likelyAircraft'),
+  aircraftBasis: myVarchar('aircraftBasis', { length: 8 }),
+  groundElevation: myDouble('groundElevation'),
+  heightAboveGround: myDouble('heightAboveGround'),
+  aircraftClassifiedAt: myBigint('aircraftClassifiedAt', { mode: 'number' }),
   // Timestamps
   createdAt: myBigint('createdAt', { mode: 'number' }).notNull(),
   updatedAt: myBigint('updatedAt', { mode: 'number' }).notNull(),

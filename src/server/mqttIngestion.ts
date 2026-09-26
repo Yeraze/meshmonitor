@@ -17,6 +17,7 @@ import { dataEventEmitter } from './services/dataEventEmitter.js';
 import { sendMessagePushNotification } from './services/messagePushNotifier.js';
 import mqttPacketLogService from './services/mqttPacketLogService.js';
 import { autoDeleteByDistanceService } from './services/autoDeleteByDistanceService.js';
+import { aircraftClassificationService } from './services/aircraftClassificationService.js';
 import databaseService from '../services/database.js';
 import { isBlankMacAddr } from '../utils/nodeFieldBlanks.js';
 
@@ -525,7 +526,14 @@ async function ingestServiceEnvelopeInner(input: MqttIngestionInput): Promise<Mq
         createdAt: nowMs,
         updatedAt: nowMs,
       };
-      void databaseService.upsertNodeAsync(node).catch(err => logger.error('MQTT upsertNode failed:', err));
+      void databaseService.upsertNodeAsync(node).then(() => {
+        // Likely-aircraft classification (#5364/#5365): non-throwing,
+        // coalescing queue — see aircraftClassificationService.ts. Only for a
+        // trustworthy fix with an altitude to classify.
+        if (!positionIsBogus && typeof alt === 'number') {
+          aircraftClassificationService.schedule(sourceId, fromNum);
+        }
+      }).catch(err => logger.error('MQTT upsertNode failed:', err));
       return { ingested: true, portnum };
     }
 

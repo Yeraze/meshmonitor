@@ -40,4 +40,5 @@ export const SUBJECT_NODE_TRIGGER_TYPES = [
   'trigger.nodeRebooted',
   'trigger.nodePowerChanged',
   'trigger.batteryTrend',
+  'trigger.becameLikelyAircraft',
 ] as const;

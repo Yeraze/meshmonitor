@@ -366,4 +366,70 @@ describe('MeshtasticManager - Auto Favorite per-source scoping', () => {
       expect(mockSetNodeFavorite).not.toHaveBeenCalled();
     });
   });
+
+  // ── Likely-aircraft exclusion (#5364/#5365 Phase 1 WP3) ──────────────────
+  //
+  // Every DB read/write FavoritesService makes for the aircraft gate/strikes
+  // is scoped by `this.mgr.sourceId` exactly like the pre-existing calls
+  // above — these tests prove that scoping the same way (via inline
+  // `expect(sourceId).toBe(SOURCE_A)` assertions inside the mocks), so a
+  // second source's aircraft flag or strike state can never leak into A's
+  // auto-favorite decisions.
+  describe('likely-aircraft exclusion (per-source scoping)', () => {
+    it('checkAutoFavorite reads the aircraft settings and target node scoped to this source, and skips a flagged target', async () => {
+      const remoteAircraft = 6000000001;
+
+      mockGetSettingForSource.mockImplementation(async (sourceId: string, key: string) => {
+        expect(sourceId).toBe(SOURCE_A);
+        if (key === 'autoFavoriteEnabled') return 'true';
+        if (key === 'autoFavoriteNodes') return '[]';
+        if (key === 'aircraftDetectionEnabled') return 'true';
+        if (key === 'autoFavoriteExcludeAircraft') return 'true';
+        return null;
+      });
+      mockGetNode.mockImplementation(async (nodeNum: number, sourceId?: string) => {
+        expect(sourceId).toBe(SOURCE_A);
+        if (nodeNum === LOCAL_NODE_NUM) return localRouter();
+        if (nodeNum === remoteAircraft) return remoteRouter({ nodeNum: remoteAircraft, likelyAircraft: true });
+        return null;
+      });
+
+      await manager.checkAutoFavorite(remoteAircraft, `!${remoteAircraft.toString(16).padStart(8, '0')}`);
+
+      expect(mockGetSettingForSource).toHaveBeenCalledWith(SOURCE_A, 'aircraftDetectionEnabled');
+      expect(mockGetSettingForSource).toHaveBeenCalledWith(SOURCE_A, 'autoFavoriteExcludeAircraft');
+      expect(mockSetNodeFavorite).not.toHaveBeenCalled();
+    });
+
+    it('autoFavoriteSweep reads and writes the two-strike state under this source only', async () => {
+      const tracked = 6000000002;
+
+      mockGetSettingForSource.mockImplementation(async (sourceId: string, key: string) => {
+        expect(sourceId).toBe(SOURCE_A);
+        if (key === 'autoFavoriteEnabled') return 'true';
+        if (key === 'autoFavoriteNodes') return JSON.stringify([tracked]);
+        if (key === 'autoFavoriteStaleHours') return '72';
+        if (key === 'aircraftDetectionEnabled') return 'true';
+        if (key === 'autoFavoriteExcludeAircraft') return 'true';
+        if (key === 'autoFavoriteAircraftStrikes') return '{}';
+        return null;
+      });
+      mockGetNode.mockImplementation(async (nodeNum: number, sourceId?: string) => {
+        expect(sourceId).toBe(SOURCE_A);
+        if (nodeNum === LOCAL_NODE_NUM) return localRouter();
+        return remoteRouter({ nodeNum, likelyAircraft: true });
+      });
+
+      await manager.autoFavoriteSweep();
+
+      // First-strike sweep: kept, but the strike write (if any) must target
+      // this source's key — never a bare/global one and never another source.
+      expect(mockSetNodeFavorite).not.toHaveBeenCalledWith(tracked, false, SOURCE_A, false);
+      for (const call of mockSetSourceSetting.mock.calls) {
+        if (call[1] === 'autoFavoriteAircraftStrikes') {
+          expect(call[0]).toBe(SOURCE_A);
+        }
+      }
+    });
+  });
 });

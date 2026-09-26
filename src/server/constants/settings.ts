@@ -229,6 +229,14 @@ export const VALID_SETTINGS_KEYS = [
   'autoPingTimeoutSeconds',
   'autoFavoriteEnabled',
   'autoFavoriteStaleHours',
+  // Likely-aircraft detection (#5364/#5365), Settings -> Node Display. Master
+  // switch + AGL/MSL thresholds; join NODE_DISPLAY_SETTING_KEYS in WP5.
+  'aircraftDetectionEnabled',
+  'aircraftAglThresholdMeters',
+  'aircraftMslThresholdMeters',
+  // Auto-Favorite exclusion for likely aircraft (#5364/#5365 D14), Automation
+  // -> Auto Favorite section.
+  'autoFavoriteExcludeAircraft',
   'homoglyphEnabled',
   // Global privacy toggle (issue #3416): when '0'/'false', the /api/link-preview
   // endpoint refuses to fetch external URLs and the UI renders no preview cards.
@@ -491,6 +499,14 @@ export const PER_SOURCE_SETTINGS_KEYS = [
   'autoFavoriteEnabled',
   'autoFavoriteNodes',
   'autoFavoriteStaleHours',
+  // Likely-aircraft exclusion for Auto-Favorite (#5364/#5365 D14) + the
+  // server-managed two-strike sweep state (D19, PER_SOURCE_KEYS_NOT_POSTABLE).
+  'autoFavoriteExcludeAircraft',
+  'autoFavoriteAircraftStrikes',
+  // Likely-aircraft detection (#5364/#5365), Settings -> Node Display.
+  'aircraftDetectionEnabled',
+  'aircraftAglThresholdMeters',
+  'aircraftMslThresholdMeters',
   // Auto-heap-management
   'autoHeapManagementEnabled',
   'autoHeapManagementThresholdBytes',
@@ -795,6 +811,7 @@ export const PER_SOURCE_KEYS_NOT_POSTABLE = new Set<string>([
   'localNodeNum',           // meshtasticManager.ts:4688,4748
   'transportTrafficCheckpoint', // transportTrafficService.ts checkpointAll/restoreAndRecover (#5101 P3 WP3)
   'meshcoreLastFloodAdvertAt', // meshcoreManager.ts recordFloodAdvert (automated flood-advert floor)
+  'autoFavoriteAircraftStrikes', // favoritesService.ts autoFavoriteSweep (#5364/#5365 D19 two-strike rule)
 ]);
 
 /**

@@ -126,7 +126,7 @@ export function settingsNavItems(t: Translate, options: SettingsNavOptions): Nav
     { id: 'settings-privacy', label: t('settings.privacy', 'Privacy'), keywords: ['terms', 'policy', 'gdpr', 'contact'] },
     { id: 'settings-meshcore-messaging', label: t('settings.meshcore_messaging', 'MeshCore Messaging'), keywords: ['meshcore', 'chat'] },
     { id: 'settings-map', label: t('settings.map'), keywords: ['tiles', 'tileset', 'basemap', 'markers', 'pins', 'zoom'] },
-    { id: 'settings-node-display', label: t('settings.node_display'), keywords: ['nodes', 'list', 'columns', 'age', 'inactive'] },
+    { id: 'settings-node-display', label: t('settings.node_display'), keywords: ['nodes', 'list', 'columns', 'age', 'inactive', 'aircraft', 'plane', 'altitude', 'AGL', 'balloon', 'drone'] },
     { id: 'settings-telemetry', label: t('settings.telemetry'), keywords: ['battery', 'voltage', 'charts', 'graphs', 'sensors'] },
     { id: 'settings-notifications', label: t('settings.notifications_and_security'), keywords: ['alerts', 'sounds', 'audio', 'desktop'] },
     { id: 'settings-security', label: t('settings.security', 'Security'), keywords: ['pki', 'keys', 'encryption'] },

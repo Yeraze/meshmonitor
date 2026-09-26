@@ -270,6 +270,81 @@ describe('mergeNodesAcrossSources (issue #3135)', () => {
     });
   });
 
+  /**
+   * #5364/#5365: the aircraft classification describes a specific point, so
+   * it must travel with the SAME row the coordinates came from — never the
+   * newest-lastHeard winner, and never back-filled from a different source's
+   * row by the generic empty-field loop.
+   */
+  describe('likely-aircraft fields follow the position row (#5364/#5365)', () => {
+    it('takes the aircraft fields from the finer (bestPosition) fix, not the newest-lastHeard row', () => {
+      const rows = [
+        makeNode(400, {
+          sourceId: 'coarse',
+          lastHeard: 9000,
+          latitude: 44.2761216,
+          longitude: -78.3024128,
+          positionPrecisionBits: 13,
+          positionTimestamp: 1_760_000_000_000 - 5_000,
+          likelyAircraft: false,
+          aircraftBasis: 'msl',
+        }),
+        makeNode(400, {
+          sourceId: 'fine',
+          lastHeard: 1000,
+          latitude: 44.28923,
+          longitude: -78.31552,
+          positionPrecisionBits: 14,
+          positionTimestamp: 1_760_000_000_000,
+          likelyAircraft: true,
+          aircraftBasis: 'agl',
+          groundElevation: 200,
+          heightAboveGround: 3000,
+        }),
+      ];
+      const [merged] = mergeNodesAcrossSources(rows);
+      expect(merged.latitude).toBe(44.28923);
+      expect(merged.likelyAircraft).toBe(true);
+      expect(merged.aircraftBasis).toBe('agl');
+      expect(merged.groundElevation).toBe(200);
+      expect(merged.heightAboveGround).toBe(3000);
+    });
+
+    it('a null flag on the position row is not back-filled from another row', () => {
+      const rows = [
+        // Newest by lastHeard AND the bestPosition winner (positionTimestamp
+        // is ~33 minutes ahead of the other row, well outside the "same
+        // observation" window, so it wins outright on recency). Its own
+        // aircraft flag is null (source B hasn't classified it yet).
+        makeNode(401, {
+          sourceId: 'newer-unclassified',
+          lastHeard: 9000,
+          latitude: 35,
+          longitude: -80,
+          positionTimestamp: 2_000_000,
+          likelyAircraft: null,
+          aircraftBasis: null,
+        }),
+        // Older row, already classified true. Without the explicit
+        // bestPosition copy, the generic empty-field backfill loop would see
+        // winner.likelyAircraft (null) as "empty" and splice this in.
+        makeNode(401, {
+          sourceId: 'older-classified',
+          lastHeard: 1000,
+          latitude: 36,
+          longitude: -81,
+          positionTimestamp: 1000,
+          likelyAircraft: true,
+          aircraftBasis: 'agl',
+        }),
+      ];
+      const [merged] = mergeNodesAcrossSources(rows);
+      expect(merged.latitude).toBe(35);
+      expect(merged.likelyAircraft).toBeNull();
+      expect(merged.aircraftBasis).toBeNull();
+    });
+  });
+
   describe('cannot undercount relative to a single source (#4573)', () => {
     it('returns at least as many nodes as the largest contributing source', () => {
       const sourceA = [makeNode(1), makeNode(2), makeNode(3)].map((n) => ({

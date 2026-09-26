@@ -9,6 +9,7 @@
 import type { DbMessage } from '../../../services/database.js';
 import type { MeshCoreMessage } from '../../meshcoreManager.js';
 import type { ReticulumMessageRow } from '../../../db/repositories/reticulum.js';
+import type { NodeAircraftData } from '../dataEventEmitter.js';
 import type { TriggerType } from '../../../types/automation.js';
 import { compileUserRegex } from '../../../utils/safeRegex.js';
 import { hopCountEmoji, hopOrMqttEmoji } from '../../../utils/hopEmoji.js';
@@ -473,6 +474,47 @@ export function buildNodeRebootedContext(
       publicKey: publicKey ?? undefined,
       previousUptimeSeconds,
       uptimeSeconds,
+      sourceId,
+      timestamp,
+    },
+  };
+}
+
+/**
+ * Build the trigger context for a node's transition INTO the likely-aircraft
+ * flagged state (`trigger.becameLikelyAircraft` — #5364/#5365 Phase 1 WP3,
+ * spec §4.10). Subject node = the flagged node, so `{{ node.* }}` hydration
+ * and node-scoped cooldown work. Meshtastic-only (D2), so `nodeNum` is always
+ * a real number — no MeshCore pubkey degrade like the reboot/power-changed
+ * builders above.
+ *
+ * Detection (comparing the persisted flag against the new classification, and
+ * deciding whether this is a genuine `previous !== true && current === true`
+ * transition) already happened at the classification-queue seam
+ * (`aircraftClassificationService.ts`); this builder only shapes what the
+ * conditions/interpolation read.
+ */
+export function buildBecameLikelyAircraftContext(
+  d: NodeAircraftData,
+  sourceId: string | null,
+  timestamp: number,
+): TriggerContext {
+  const nodeNum = Number(d.nodeNum);
+  return {
+    triggerType: 'trigger.becameLikelyAircraft',
+    sourceId,
+    subjectNodeNum: nodeNum,
+    timestamp,
+    fields: {
+      nodeNum,
+      altitude: d.altitude,
+      heightAboveGround: d.heightAboveGround,
+      groundElevation: d.groundElevation,
+      basis: d.basis,
+      thresholdM: d.thresholdM,
+      latitude: d.latitude,
+      longitude: d.longitude,
+      previousLikelyAircraft: d.previous,
       sourceId,
       timestamp,
     },

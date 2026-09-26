@@ -226,6 +226,21 @@ export function mapDbNodeToDeviceInfo(
     if (node[key] !== null && node[key] !== undefined) deviceInfo[key] = Number(node[key]);
   }
 
+  // #5364/#5365: likely-aircraft classification. Absent = never classified /
+  // unknown / detection off for this source.
+  if (node.likelyAircraft !== null && node.likelyAircraft !== undefined) {
+    deviceInfo.likelyAircraft = Boolean(node.likelyAircraft);
+  }
+  if (node.aircraftBasis !== null && node.aircraftBasis !== undefined) {
+    deviceInfo.aircraftBasis = node.aircraftBasis;
+  }
+  if (node.groundElevation !== null && node.groundElevation !== undefined) {
+    deviceInfo.groundElevation = node.groundElevation;
+  }
+  if (node.heightAboveGround !== null && node.heightAboveGround !== undefined) {
+    deviceInfo.heightAboveGround = node.heightAboveGround;
+  }
+
   return deviceInfo;
 }
 

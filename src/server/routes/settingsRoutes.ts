@@ -35,6 +35,8 @@ import {
 import { autoDeleteByDistanceService } from '../services/autoDeleteByDistanceService.js';
 import { NODE_DISPLAY_RANGES, SETTINGS_TAB_PER_SOURCE_KEYS, MAX_INFRA_NODE_AGE_HOURS_RANGE, TX_TARGET_MAX_AGE_HOURS_WHEN_UNLIMITED_RANGE } from '../../constants/nodeDisplayDefaults.js';
 import { resolveAppriseServerUrl } from '../services/appriseNotificationService.js';
+import { AIRCRAFT_AGL_RANGE, AIRCRAFT_MSL_RANGE } from '../../utils/aircraftClassification.js';
+import { aircraftClassificationService } from '../services/aircraftClassificationService.js';
 
 // ─── Tile URL validation ─────────────────────────────────────────────────
 
@@ -347,7 +349,14 @@ router.post('/', requirePermission('settings', 'write', { sourceIdFrom: 'query' 
     // arrays stay unmodified (#4547 Phase 2 WP2). Sits before both write paths
     // (setSourceSettings below and setSettings further down) and before
     // callbacks.refreshMeshcoreReceiveOnly fires, so a rejected request writes nothing.
-    const STRICT_BOOLEAN_SETTINGS_KEYS = ['meshcoreReceiveOnly'] as const;
+    const STRICT_BOOLEAN_SETTINGS_KEYS = [
+      'meshcoreReceiveOnly',
+      // Likely-aircraft detection (#5364/#5365 spec §4.5): both booleans gate
+      // real behavior (classification writes / Auto-Favorite exclusion), so a
+      // typo'd value should 400 rather than silently read as false.
+      'aircraftDetectionEnabled',
+      'autoFavoriteExcludeAircraft',
+    ] as const;
 
     for (const key of STRICT_BOOLEAN_SETTINGS_KEYS) {
       if (!(key in filteredSettings)) continue;
@@ -471,6 +480,26 @@ router.post('/', requirePermission('settings', 'write', { sourceIdFrom: 'query' 
       if (isNaN(hours) || hours < R.min || hours > R.max) {
         return fail(res, 400, 'INVALID_MAX_INFRA_NODE_AGE_HOURS',
           `maxInfraNodeAgeHours must be between ${R.min} and ${R.max} hours (0 = never expire)`);
+      }
+    }
+
+    // Likely-aircraft detection thresholds (#5364/#5365 spec §4.5). Both are
+    // required integers within range — no "0 = unlimited" escape hatch here,
+    // unlike the age windows above.
+    if ('aircraftAglThresholdMeters' in filteredSettings) {
+      const meters = parseInt(filteredSettings.aircraftAglThresholdMeters, 10);
+      const R = AIRCRAFT_AGL_RANGE;
+      if (isNaN(meters) || meters < R.min || meters > R.max) {
+        return fail(res, 400, 'INVALID_AIRCRAFT_AGL_THRESHOLD',
+          `aircraftAglThresholdMeters must be between ${R.min} and ${R.max} meters`);
+      }
+    }
+    if ('aircraftMslThresholdMeters' in filteredSettings) {
+      const meters = parseInt(filteredSettings.aircraftMslThresholdMeters, 10);
+      const R = AIRCRAFT_MSL_RANGE;
+      if (isNaN(meters) || meters < R.min || meters > R.max) {
+        return fail(res, 400, 'INVALID_AIRCRAFT_MSL_THRESHOLD',
+          `aircraftMslThresholdMeters must be between ${R.min} and ${R.max} meters`);
       }
     }
 
@@ -1001,6 +1030,23 @@ router.post('/', requirePermission('settings', 'write', { sourceIdFrom: 'query' 
       // takes effect immediately rather than waiting out the TTL.
       if (COVERAGE_MQTT_ENABLED_SETTING in filteredSettings) {
         invalidateCoverageMqttEnabled(sourceId);
+      }
+
+      // Likely-aircraft detection (#5364/#5365 D6/D7): a threshold or
+      // enable/disable change gets a silent, no-network recompute from
+      // stored values so the map/badge reflect the new setting immediately,
+      // without waiting for the next position packet. Not awaited — the
+      // response must not wait on a (possibly large) per-source recompute.
+      // `autoFavoriteExcludeAircraft` alone triggers nothing here: the
+      // Auto-Favorite sweep reads it directly on its own schedule.
+      const aircraftDetectionKeys = [
+        'aircraftDetectionEnabled',
+        'aircraftAglThresholdMeters',
+        'aircraftMslThresholdMeters',
+      ];
+      if (aircraftDetectionKeys.some((key) => key in filteredSettings)) {
+        void aircraftClassificationService.reclassifySource(sourceId).catch((err) =>
+          logger.warn(`Aircraft reclassify failed for source ${sourceId}:`, err));
       }
 
       await auditSettingsWrite(req, currentSettings, filteredSettings, sourceId);

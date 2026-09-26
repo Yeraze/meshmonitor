@@ -140,6 +140,34 @@ describe('SignalItems', () => {
     expect(screen.getByText('42m')).toBeInTheDocument();
   });
 
+  it('renders the AGL aircraft summary row when flagged and showAltitude is set (#5364/#5365)', () => {
+    const model = toNodeCardModel(
+      { nodeNum: 1, position: { altitude: 3200 }, likelyAircraft: true, aircraftBasis: 'agl', heightAboveGround: 3000 },
+      'meshtastic',
+    );
+    const { unmount } = render(<><SignalItems model={model} /></>);
+    expect(screen.queryByText(/Likely aircraft/)).not.toBeInTheDocument();
+    unmount();
+
+    render(<><SignalItems model={model} showAltitude /></>);
+    expect(screen.getByText('Likely aircraft · 3.0 km above ground')).toBeInTheDocument();
+  });
+
+  it('renders the MSL aircraft summary row when the basis has no ground elevation', () => {
+    const model = toNodeCardModel(
+      { nodeNum: 1, position: { altitude: 6100 }, likelyAircraft: true, aircraftBasis: 'msl' },
+      'meshtastic',
+    );
+    render(<><SignalItems model={model} showAltitude /></>);
+    expect(screen.getByText('Likely aircraft · 6.1 km above sea level')).toBeInTheDocument();
+  });
+
+  it('hides the aircraft summary row when the node is not flagged', () => {
+    const model = toNodeCardModel({ nodeNum: 1, position: { altitude: 100 } }, 'meshtastic');
+    render(<><SignalItems model={model} showAltitude /></>);
+    expect(screen.queryByText(/Likely aircraft/)).not.toBeInTheDocument();
+  });
+
   it('renders position accuracy from precision bits, unit-aware (#4176)', () => {
     const model = toNodeCardModel({ nodeNum: 1, positionPrecisionBits: 18 }, 'meshtastic');
     const { unmount } = render(<><SignalItems model={model} /></>);

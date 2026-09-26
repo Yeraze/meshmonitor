@@ -16,8 +16,8 @@
  * Covers the phase's centrepiece assertions (spec §5.1):
  *  1. mode="source" inside a SourceProvider GETs /api/settings?sourceId=X.
  *  2. Save in source mode issues two POSTs; the scoped one carries exactly
- *     the ten NODE_DISPLAY_SETTING_KEYS (by count AND name against the
- *     constant itself), the unscoped one carries none of them.
+ *     NODE_DISPLAY_SETTING_KEYS (by count AND name against the constant
+ *     itself), the unscoped one carries none of them.
  *  3. mode="global" issues one POST with all keys (byte-identical shape to
  *     pre-split behaviour).
  *  4. Editing a dimming input marks the SaveBar dirty; saving clears it.
@@ -29,6 +29,14 @@
  * so the branch was dead code and its test passed vacuously. MeshCore's Node
  * Display settings now live in MeshCoreNodeDisplaySection, covered by
  * MeshCoreNodeDisplaySection.test.tsx.
+ *
+ * #5364/#5365 Phase 1 WP5: NODE_DISPLAY_SETTING_KEYS grew from ten to
+ * thirteen (the frozen seeded ten + three unseeded likely-aircraft keys,
+ * spec §4.6). Items 2/3 above still assert against the imported constant
+ * itself, so they cover the new count automatically with no code change.
+ * The new "Likely aircraft detection" describe block below covers the
+ * aircraft-specific behaviour: load/save, range clamping, and the
+ * elevation-off warning.
  */
 import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -473,5 +481,147 @@ describe('SettingsTab — dimming trio dirty-tracking (#4412 Phase 3 WP4c)', () 
 
     await saveBarCapture.current!.onSave();
     await waitFor(() => expect(saveBarCapture.current!.hasChanges).toBe(false));
+  });
+});
+
+// #5364/#5365 Phase 1 WP5, spec §5.10/§6.
+describe('SettingsTab — likely-aircraft detection (#5364/#5365 Phase 1 WP5)', () => {
+  it('an unset source shows the hardcoded defaults: detection on, AGL 500, MSL 5000', async () => {
+    render(
+      <SourceProvider sourceId="source-a" sourceType="meshtastic_tcp">
+        <SettingsTab {...baseProps} mode="source" />
+      </SourceProvider>
+    );
+
+    await waitFor(() => {
+      const enabled = document.getElementById('aircraftDetectionEnabled') as HTMLInputElement;
+      const agl = document.getElementById('aircraftAglThresholdMeters') as HTMLInputElement;
+      const msl = document.getElementById('aircraftMslThresholdMeters') as HTMLInputElement;
+      expect(enabled.checked).toBe(true);
+      expect(agl.value).toBe('500');
+      expect(msl.value).toBe('5000');
+    });
+  });
+
+  it('loading source A with a stored aircraftAglThresholdMeters shows that value', async () => {
+    serverSettings = { aircraftAglThresholdMeters: '800' };
+    render(
+      <SourceProvider sourceId="source-a" sourceType="meshtastic_tcp">
+        <SettingsTab {...baseProps} mode="source" />
+      </SourceProvider>
+    );
+
+    await waitFor(() => {
+      const agl = document.getElementById('aircraftAglThresholdMeters') as HTMLInputElement;
+      expect(agl.value).toBe('800');
+    });
+  });
+
+  it('editing a threshold and saving sends it on the scoped POST only', async () => {
+    render(
+      <SourceProvider sourceId="source-a" sourceType="meshtastic_tcp">
+        <SettingsTab {...baseProps} mode="source" />
+      </SourceProvider>
+    );
+
+    const agl = await waitFor(() => {
+      const el = document.getElementById('aircraftAglThresholdMeters') as HTMLInputElement;
+      expect(el.value).toBe('500');
+      return el;
+    });
+
+    fireEvent.change(agl, { target: { value: '900' } });
+    await waitFor(() => expect(agl.value).toBe('900'));
+    expect(saveBarCapture.current!.hasChanges).toBe(true);
+
+    await saveBarCapture.current!.onSave();
+
+    const calls = csrfFetchMock.mock.calls as [string, RequestInit][];
+    const scopedCall = calls.find(([url]) => url.includes('sourceId='));
+    const globalCall = calls.find(([url]) => !url.includes('sourceId='));
+    expect(scopedCall).toBeDefined();
+    expect(globalCall).toBeDefined();
+    const scopedBody = JSON.parse(scopedCall![1].body as string);
+    const globalBody = JSON.parse(globalCall![1].body as string);
+    expect(scopedBody.aircraftAglThresholdMeters).toBe('900');
+    expect(globalBody).not.toHaveProperty('aircraftAglThresholdMeters');
+  });
+
+  it('clamps an out-of-range AGL threshold into AIRCRAFT_AGL_RANGE on change', async () => {
+    render(<SettingsTab {...baseProps} mode="source" />);
+
+    const agl = await waitFor(() => {
+      const el = document.getElementById('aircraftAglThresholdMeters') as HTMLInputElement;
+      expect(el.value).toBe('500');
+      return el;
+    });
+
+    fireEvent.change(agl, { target: { value: '10' } });
+    await waitFor(() => expect(agl.value).toBe('50')); // below min (50) -> clamped up
+
+    fireEvent.change(agl, { target: { value: '99999' } });
+    await waitFor(() => expect(agl.value).toBe('20000')); // above max (20000) -> clamped down
+  });
+
+  it('clamps an out-of-range MSL threshold into AIRCRAFT_MSL_RANGE on change', async () => {
+    render(<SettingsTab {...baseProps} mode="source" />);
+
+    const msl = await waitFor(() => {
+      const el = document.getElementById('aircraftMslThresholdMeters') as HTMLInputElement;
+      expect(el.value).toBe('5000');
+      return el;
+    });
+
+    fireEvent.change(msl, { target: { value: '10' } });
+    await waitFor(() => expect(msl.value).toBe('500')); // below min (500) -> clamped up
+
+    fireEvent.change(msl, { target: { value: '99999' } });
+    await waitFor(() => expect(msl.value).toBe('20000')); // above max (20000) -> clamped down
+  });
+
+  it('disables the threshold inputs when detection is off', async () => {
+    serverSettings = { aircraftDetectionEnabled: 'false' };
+    render(<SettingsTab {...baseProps} mode="source" />);
+
+    await waitFor(() => {
+      const enabled = document.getElementById('aircraftDetectionEnabled') as HTMLInputElement;
+      expect(enabled.checked).toBe(false);
+    });
+    const agl = document.getElementById('aircraftAglThresholdMeters') as HTMLInputElement;
+    const msl = document.getElementById('aircraftMslThresholdMeters') as HTMLInputElement;
+    expect(agl.disabled).toBe(true);
+    expect(msl.disabled).toBe(true);
+  });
+
+  it('shows the elevation-off warning when the global elevationEnabled setting is false', async () => {
+    serverSettings = { elevationEnabled: 'false' };
+    render(<SettingsTab {...baseProps} mode="source" />);
+
+    await waitFor(() => {
+      const section = document.getElementById('settings-node-display')!;
+      expect(within(section).getByText('settings.aircraft.warn_elevation_disabled')).toBeInTheDocument();
+    });
+  });
+
+  it('hides the elevation-off warning when elevationEnabled is on (or unset)', async () => {
+    render(<SettingsTab {...baseProps} mode="source" />);
+
+    await waitFor(() => {
+      const section = document.getElementById('settings-node-display')!;
+      expect(within(section).queryByText('settings.aircraft.warn_elevation_disabled')).not.toBeInTheDocument();
+    });
+  });
+
+  it('the aircraft controls render only inside #settings-node-display', async () => {
+    render(<SettingsTab {...baseProps} mode="source" />);
+
+    await waitFor(() => {
+      expect(document.getElementById('aircraftDetectionEnabled')).not.toBeNull();
+    });
+    const section = document.getElementById('settings-node-display')!;
+    expect(within(section).getByText('settings.aircraft.title')).toBeInTheDocument();
+    // Sanity: nothing with the same id exists twice (would indicate a leak
+    // outside the Node Display section).
+    expect(document.querySelectorAll('#aircraftDetectionEnabled').length).toBe(1);
   });
 });

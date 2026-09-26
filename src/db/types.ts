@@ -118,6 +118,20 @@ export interface DbNode {
    * every normally-discovered node.
    */
   importedAt?: number | null;
+  /**
+   * Likely-aircraft classification (#5364/#5365, migration 175). `true` =
+   * likely aircraft, `false` = classified as not, `null` = never classified /
+   * unknown / detection off for this source.
+   */
+  likelyAircraft?: boolean | null;
+  /** `'agl' | 'msl' | 'unknown'`, null when unclassified. */
+  aircraftBasis?: string | null;
+  /** DEM metres at the classified point; null if not sampled. */
+  groundElevation?: number | null;
+  /** `altitude − groundElevation`, signed; null unless basis is `'agl'`. */
+  heightAboveGround?: number | null;
+  /** Epoch ms of the last classification write; the backfill key. */
+  aircraftClassifiedAt?: number | null;
   createdAt: number;
   updatedAt: number;
 }

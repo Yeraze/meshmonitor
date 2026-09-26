@@ -60,6 +60,13 @@ import {
   TX_TARGET_MAX_AGE_HOURS_WHEN_UNLIMITED_DEFAULT,
   TX_TARGET_MAX_AGE_HOURS_WHEN_UNLIMITED_RANGE,
 } from '../constants/nodeDisplayDefaults';
+import {
+  parseAircraftSettings,
+  AIRCRAFT_AGL_RANGE,
+  AIRCRAFT_MSL_RANGE,
+  DEFAULT_AIRCRAFT_AGL_THRESHOLD_M,
+  DEFAULT_AIRCRAFT_MSL_THRESHOLD_M,
+} from '../utils/aircraftClassification';
 
 type DistanceUnit = 'km' | 'mi';
 type PositionHistoryLineStyle = 'linear' | 'spline';
@@ -130,6 +137,12 @@ interface SettingsDraft {
   nodeDimmingEnabled: boolean;
   nodeDimmingStartHours: number;
   nodeDimmingMinOpacity: number;
+  // Likely-aircraft detection (#5364/#5365 Phase 1 WP5) — unseeded Node
+  // Display keys (AIRCRAFT_NODE_DISPLAY_KEYS), same scoped-POST routing as
+  // the group above via NODE_DISPLAY_SETTING_KEYS.
+  aircraftDetectionEnabled: boolean;
+  aircraftAglThresholdMeters: number;
+  aircraftMslThresholdMeters: number;
   solarMonitoringEnabled: boolean;
   solarMonitoringLatitude: number;
   solarMonitoringLongitude: number;
@@ -448,6 +461,9 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
     nodeDimmingEnabled,
     nodeDimmingStartHours,
     nodeDimmingMinOpacity,
+    aircraftDetectionEnabled: true,
+    aircraftAglThresholdMeters: DEFAULT_AIRCRAFT_AGL_THRESHOLD_M,
+    aircraftMslThresholdMeters: DEFAULT_AIRCRAFT_MSL_THRESHOLD_M,
     solarMonitoringEnabled,
     solarMonitoringLatitude,
     solarMonitoringLongitude,
@@ -509,6 +525,13 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
   // `elevationSourceUrl` (stripSecretSettings returns the full map to admins).
   const [initialElevationEnabled, setInitialElevationEnabled] = useState(false);
   const [initialElevationSourceUrl, setInitialElevationSourceUrl] = useState('');
+  // Likely-aircraft detection (#5364/#5365 Phase 1 WP5). Per-source, unseeded
+  // Node Display keys (AIRCRAFT_NODE_DISPLAY_KEYS) — same Category C pattern
+  // as the elevation pair above: no SettingsContext prop home, dirty-tracked
+  // against an `initial*` snapshot populated by the server-fetch effect.
+  const [initialAircraftDetectionEnabled, setInitialAircraftDetectionEnabled] = useState(true);
+  const [initialAircraftAglThresholdMeters, setInitialAircraftAglThresholdMeters] = useState(DEFAULT_AIRCRAFT_AGL_THRESHOLD_M);
+  const [initialAircraftMslThresholdMeters, setInitialAircraftMslThresholdMeters] = useState(DEFAULT_AIRCRAFT_MSL_THRESHOLD_M);
   // #4934: deployment-wide Carto API key (no context/prop home, same admin-field
   // pattern as elevationSourceUrl above). Default '' (unset).
   const [initialCartoApiKey, setInitialCartoApiKey] = useState('');
@@ -691,6 +714,24 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
           updateField('elevationSourceUrl', elevationSourceUrl);
           setInitialElevationSourceUrl(elevationSourceUrl);
 
+          // Load likely-aircraft detection settings (#5364/#5365 Phase 1
+          // WP5). Per-source, routed through NODE_DISPLAY_SETTING_KEYS; an
+          // unset source (absent keys) falls through to
+          // parseAircraftSettings' hardcoded defaults, never a global row —
+          // the GET back-fill already skips every NODE_DISPLAY_SETTING_KEYS
+          // key (§4.5), so a legacy global row can never leak in here.
+          const aircraft = parseAircraftSettings({
+            enabled: settings.aircraftDetectionEnabled,
+            aglThresholdM: settings.aircraftAglThresholdMeters,
+            mslThresholdM: settings.aircraftMslThresholdMeters,
+          });
+          updateField('aircraftDetectionEnabled', aircraft.enabled);
+          setInitialAircraftDetectionEnabled(aircraft.enabled);
+          updateField('aircraftAglThresholdMeters', aircraft.aglThresholdM);
+          setInitialAircraftAglThresholdMeters(aircraft.aglThresholdM);
+          updateField('aircraftMslThresholdMeters', aircraft.mslThresholdM);
+          setInitialAircraftMslThresholdMeters(aircraft.mslThresholdM);
+
           // #4934: deployment-wide Carto basemap API key. Admins receive the
           // unmasked value (it is not secret-stripped).
           const cartoApiKey = typeof settings.cartoApiKey === 'string' ? settings.cartoApiKey : '';
@@ -780,6 +821,9 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       nodeDimmingEnabled,
       nodeDimmingStartHours,
       nodeDimmingMinOpacity,
+      aircraftDetectionEnabled: initialAircraftDetectionEnabled,
+      aircraftAglThresholdMeters: initialAircraftAglThresholdMeters,
+      aircraftMslThresholdMeters: initialAircraftMslThresholdMeters,
       solarMonitoringEnabled,
       solarMonitoringLatitude,
       solarMonitoringLongitude,
@@ -814,6 +858,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       defaultLandingPage, appearanceMode, darkTheme, lightTheme, nodeHopsCalculation, preferredDashboardSortOption,
       linkPreviewsEnabled, discardInvalidPositions, noIndexEnabled, meshcoreChannelRetryEnabled, showIncompleteNodes,
       nodeDimmingEnabled, nodeDimmingStartHours, nodeDimmingMinOpacity,
+      initialAircraftDetectionEnabled, initialAircraftAglThresholdMeters, initialAircraftMslThresholdMeters,
       solarMonitoringEnabled, solarMonitoringLatitude, solarMonitoringLongitude, solarMonitoringAzimuth, solarMonitoringDeclination,
       initialPacketMonitorSettings, initialHomoglyphEnabled, initialLocalStatsIntervalMinutes, initialTxTargetMaxAgeHoursWhenUnlimited,
       initialMeshcoreCliTimeoutSeconds, initialAdminRetryAttempts,
@@ -992,6 +1037,9 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
     setNodeDimmingMinOpacity(d.nodeDimmingMinOpacity);
 
     // Update initial* snapshots for category-C fields after successful save
+    setInitialAircraftDetectionEnabled(d.aircraftDetectionEnabled);
+    setInitialAircraftAglThresholdMeters(d.aircraftAglThresholdMeters);
+    setInitialAircraftMslThresholdMeters(d.aircraftMslThresholdMeters);
     setInitialPacketMonitorSettings({ enabled: d.packetLogEnabled, maxCount: d.packetLogMaxCount, maxAgeHours: d.packetLogMaxAgeHours });
     setInitialHomoglyphEnabled(d.homoglyphEnabled);
     setInitialLocalStatsIntervalMinutes(d.localStatsIntervalMinutes);
@@ -1080,6 +1128,15 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
         nodeDimmingEnabled: draft.nodeDimmingEnabled ? '1' : '0',
         nodeDimmingStartHours: draft.nodeDimmingStartHours.toString(),
         nodeDimmingMinOpacity: draft.nodeDimmingMinOpacity.toString(),
+        // Likely-aircraft detection (#5364/#5365 Phase 1 WP5). Stored as
+        // 'true'/'false' (not the '0'/'1' of the seeded Node Display
+        // booleans above), matching elevationEnabled/autoFavoriteEnabled —
+        // these three are unseeded (AIRCRAFT_NODE_DISPLAY_KEYS), not part of
+        // migration 131's frozen ten. The partition below still routes them
+        // to the scoped POST because they are in NODE_DISPLAY_SETTING_KEYS.
+        aircraftDetectionEnabled: draft.aircraftDetectionEnabled ? 'true' : 'false',
+        aircraftAglThresholdMeters: String(draft.aircraftAglThresholdMeters),
+        aircraftMslThresholdMeters: String(draft.aircraftMslThresholdMeters),
         analyticsProvider: draft.analyticsProvider,
         analyticsConfig: JSON.stringify(draft.analyticsConfig),
         appriseApiServerUrl: draft.appriseApiServerUrl.trim(),
@@ -1099,7 +1156,9 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       // behaviour. Partition — never a second literal, the single
       // `const settings = {…}` block above is source-extracted by
       // server.settings-persistence.test.ts (which also statically executes this
-      // partition to assert it routes exactly SETTINGS_TAB_PER_SOURCE_KEYS).
+      // partition to assert it routes exactly SETTINGS_TAB_PER_SOURCE_KEYS —
+      // NODE_DISPLAY_SETTING_KEYS, including the three likely-aircraft keys
+      // from #5364/#5365, plus the TX-target window from #5376).
       const nodeDisplayBody: Record<string, unknown> = {};
       const globalBody: Record<string, unknown> = {};
       for (const [k, v] of Object.entries(settings)) {
@@ -2426,6 +2485,81 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
               </div>
             </>
           )}
+
+          {/* Likely-aircraft detection (#5364/#5365 Phase 1 WP5, spec §5.10).
+              Meshtastic-only (D2/D18) — do NOT add to
+              MeshCoreNodeDisplaySection.tsx; SettingsTab never mounts under a
+              MeshCore route. */}
+          <div className="setting-item" style={{ marginTop: '1.5rem' }}>
+            <h4 style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', margin: 0 }}>
+              <UiIcon name="aircraft" /> {t('settings.aircraft.title', 'Likely aircraft')}
+            </h4>
+          </div>
+          <div className="setting-item">
+            <label>
+              <span style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
+                <input
+                  id="aircraftDetectionEnabled"
+                  type="checkbox"
+                  checked={draft.aircraftDetectionEnabled}
+                  onChange={(e) => updateField('aircraftDetectionEnabled', e.target.checked)}
+                  style={{ cursor: 'pointer' }}
+                />
+                {t('settings.aircraft.detection_enabled', 'Detect likely aircraft')}
+              </span>
+            </label>
+          </div>
+          <div className="setting-item">
+            <label htmlFor="aircraftAglThresholdMeters">
+              {t('settings.aircraft.agl_threshold_label', 'Height above ground threshold (m)')}
+            </label>
+            <input
+              id="aircraftAglThresholdMeters"
+              type="number"
+              min={AIRCRAFT_AGL_RANGE.min}
+              max={AIRCRAFT_AGL_RANGE.max}
+              step="10"
+              disabled={!draft.aircraftDetectionEnabled}
+              value={draft.aircraftAglThresholdMeters}
+              onChange={(e) => updateField(
+                'aircraftAglThresholdMeters',
+                Math.min(AIRCRAFT_AGL_RANGE.max, Math.max(AIRCRAFT_AGL_RANGE.min, Math.round(parseFloat(e.target.value)) || DEFAULT_AIRCRAFT_AGL_THRESHOLD_M)),
+              )}
+              className="setting-input"
+            />
+          </div>
+          <div className="setting-item">
+            <label htmlFor="aircraftMslThresholdMeters">
+              {t('settings.aircraft.msl_threshold_label', 'Fallback: altitude above sea level (m)')}
+            </label>
+            <input
+              id="aircraftMslThresholdMeters"
+              type="number"
+              min={AIRCRAFT_MSL_RANGE.min}
+              max={AIRCRAFT_MSL_RANGE.max}
+              step="100"
+              disabled={!draft.aircraftDetectionEnabled}
+              value={draft.aircraftMslThresholdMeters}
+              onChange={(e) => updateField(
+                'aircraftMslThresholdMeters',
+                Math.min(AIRCRAFT_MSL_RANGE.max, Math.max(AIRCRAFT_MSL_RANGE.min, Math.round(parseFloat(e.target.value)) || DEFAULT_AIRCRAFT_MSL_THRESHOLD_M)),
+              )}
+              className="setting-input"
+            />
+          </div>
+          <div className="setting-item">
+            <p className="setting-description">
+              {t('settings.aircraft.help_threshold', 'A node is flagged when its reported altitude is more than this height above the terrain at its position. When terrain data is unavailable, only the sea-level fallback applies.')}
+            </p>
+            {!draft.elevationEnabled && (
+              <p className="setting-description" style={{ color: 'var(--color-warning)' }}>
+                {t('settings.aircraft.warn_elevation_disabled', 'Terrain elevation is off (Global Settings → Elevation): only the sea-level fallback is used.')}
+              </p>
+            )}
+            <p className="setting-description">
+              {t('settings.aircraft.help_effects', 'Flagged nodes get an aircraft badge on the map and can be hidden in Map Features. Auto-Favorite exclusion is set in Automation → Auto Favorite.')}
+            </p>
+          </div>
         </div>}
 
         {show('settings-telemetry') && <div id="settings-telemetry" className="settings-section">

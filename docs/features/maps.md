@@ -208,6 +208,18 @@ setting and says so: `All (24h from Settings)`.
 
 The `active/total (last 2h)` badge on each source card in the sidebar is a separate, fixed 2-hour activity stat. It is informational only and does not filter the list or the map.
 
+### Likely Aircraft
+
+A node flagged by [likely-aircraft detection](/features/settings#likely-aircraft-detection) (Meshtastic sources only) gets an aircraft badge on its marker, so it's easy to tell an airborne node apart from a fixed one at a glance.
+
+The **Likely aircraft** control in the **Map Features** panel has three modes:
+
+- **Mark** *(default)* — the badge shows on flagged markers; the marker itself still behaves normally and can be clicked through to the node.
+- **Show** — no badge, no filtering; flagged nodes look like any other node.
+- **Hide** — flagged markers are removed from the map, except a node that is one of your own favorites, which always stays visible.
+
+The control appears in both the Nodes map and the Dashboard map, and the chosen mode is shared across them (saved per user, with a local fallback for anonymous viewers). [Map Analysis](/features/map-analysis) reads the same mode, so a marker hidden or marked here is hidden or marked there too.
+
 ### GNSS Satellite Overlay
 
 MeshMonitor can show a node's live GPS constellation geometry:

@@ -131,6 +131,17 @@ export interface DeviceInfo {
   hasRemoteAdmin?: boolean;
   lastRemoteAdminCheck?: number;
   remoteAdminMetadata?: string;
+  /**
+   * Likely-aircraft classification (#5364/#5365). Absent = never classified
+   * / unknown / detection off for this source.
+   */
+  likelyAircraft?: boolean;
+  /** `'agl' | 'msl' | 'unknown'`. */
+  aircraftBasis?: 'agl' | 'msl' | 'unknown';
+  /** DEM metres at the classified point. */
+  groundElevation?: number;
+  /** `altitude − groundElevation`, signed. Only set when `aircraftBasis === 'agl'`. */
+  heightAboveGround?: number;
 }
 
 export interface Channel {

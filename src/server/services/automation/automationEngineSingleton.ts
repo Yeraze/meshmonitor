@@ -8,7 +8,7 @@
  */
 import { logger } from '../../../utils/logger.js';
 import databaseService from '../../../services/database.js';
-import { dataEventEmitter, type DataEvent } from '../dataEventEmitter.js';
+import { dataEventEmitter, type DataEvent, type NodeAircraftData } from '../dataEventEmitter.js';
 import type { DbMessage, DbTelemetry } from '../../../services/database.js';
 import type { MeshCoreMessage } from '../../meshcoreManager.js';
 import type { ReticulumMessageRow } from '../../../db/repositories/reticulum.js';
@@ -158,6 +158,18 @@ async function handleEvent(event: DataEvent): Promise<void> {
       // batteryLevel row), not here, so this is a pure event forward.
       const data = event.data as { nodeNum: number | null; publicKey?: string | null; previousPowered: boolean; powered: boolean; batteryLevel: number };
       await e.onNodePowerChanged(data.nodeNum, data.publicKey ?? null, data.previousPowered, data.powered, data.batteryLevel, sourceId);
+      break;
+    }
+
+    case 'node:aircraft': {
+      // Likely-aircraft classification (#5364/#5365 Phase 1 WP3): the
+      // classification-queue seam detected a genuine transition into the
+      // flagged state (`previous !== true && current === true`, reason
+      // 'position' only). Fire trigger.becameLikelyAircraft. Detection state
+      // lives in the DB (the persisted `likelyAircraft` row), not here, so
+      // this is a pure event forward.
+      const data = event.data as NodeAircraftData;
+      await e.onBecameLikelyAircraft(data, sourceId);
       break;
     }
 
