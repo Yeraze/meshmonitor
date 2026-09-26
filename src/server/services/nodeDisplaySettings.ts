@@ -14,6 +14,8 @@ import {
   NODE_DISPLAY_NUMERIC_DEFAULTS,
   parseNodeDisplayNumber,
   parseNodeDisplayBoolean,
+  parseTxTargetMaxAgeHoursWhenUnlimited,
+  resolveTxTargetMaxAgeHours,
   type NodeDisplayNumericKey,
   type NodeDisplayBooleanKey,
 } from '../../constants/nodeDisplayDefaults.js';
@@ -77,6 +79,23 @@ export async function getMaxNodeAgeHoursForSources(
     result.set(id, parseNodeDisplayNumber('maxNodeAgeHours', raw.get(id) ?? null));
   }
   return result;
+}
+
+/**
+ * Age window (hours, always > 0) for jobs that choose nodes to TRANSMIT to
+ * (auto-traceroute, remote-admin scanner, remote LocalStats). Equals
+ * `maxNodeAgeHours`, except when that is 0 ("unlimited", #5376): then the
+ * per-source `txTargetMaxAgeHoursWhenUnlimited` bound applies, so an unlimited
+ * display window never widens the TX target set to every node ever heard.
+ */
+export async function getTxTargetMaxAgeHours(
+  reader: NodeDisplaySettingsReader,
+  sourceId: string | null | undefined,
+): Promise<number> {
+  const maxNodeAgeHours = await getMaxNodeAgeHours(reader, sourceId);
+  if (maxNodeAgeHours > 0) return maxNodeAgeHours;
+  const raw = await reader.getSettingForSource(sourceId, 'txTargetMaxAgeHoursWhenUnlimited');
+  return resolveTxTargetMaxAgeHours(maxNodeAgeHours, parseTxTargetMaxAgeHoursWhenUnlimited(raw));
 }
 
 export interface InactiveNodeConfig {

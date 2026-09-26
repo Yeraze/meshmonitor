@@ -11,6 +11,10 @@ import type { NodesRepository } from '../../db/repositories/nodes.js';
 import type { DbNode } from '../../db/types.js';
 import { compileUserRegex } from '../../utils/safeRegex.js';
 import { logger } from '../../utils/logger.js';
+import {
+  resolveTxTargetMaxAgeHours,
+  TX_TARGET_MAX_AGE_HOURS_WHEN_UNLIMITED_DEFAULT,
+} from '../../constants/nodeDisplayDefaults.js';
 
 /**
  * How one of the five node-matching filters combines with the others (#5230).
@@ -84,8 +88,16 @@ export async function selectNodeNeedingTraceroute(
   const THREE_HOURS_MS = 3 * 60 * 60 * 1000;
   const EXPIRATION_MS = filterCfg.expirationHours * 60 * 60 * 1000;
 
+  // Callers pass the TX-target window (getTxTargetMaxAgeHours), which is never
+  // 0. Guard anyway: a 0 ("unlimited") window here must not mean "no nodes"
+  // (cutoff = now) nor "every node ever heard" for a TX job (#5376).
+  const windowHours = resolveTxTargetMaxAgeHours(
+    maxNodeAgeHours,
+    TX_TARGET_MAX_AGE_HOURS_WHEN_UNLIMITED_DEFAULT,
+  );
+
   // lastHeard is stored in seconds (Unix timestamp), so convert cutoff to seconds
-  const activeNodeCutoff = Math.floor(now / 1000) - maxNodeAgeHours * 60 * 60;
+  const activeNodeCutoff = Math.floor(now / 1000) - windowHours * 60 * 60;
 
   try {
     // Get eligible nodes from repository

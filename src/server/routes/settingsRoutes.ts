@@ -33,7 +33,7 @@ import {
   MAX_INTERVAL_MINUTES as AUTO_ENRICHMENT_MAX_INTERVAL_MINUTES,
 } from '../services/autoEnrichmentScheduler.js';
 import { autoDeleteByDistanceService } from '../services/autoDeleteByDistanceService.js';
-import { NODE_DISPLAY_RANGES, NODE_DISPLAY_SETTING_KEYS, MAX_INFRA_NODE_AGE_HOURS_RANGE } from '../../constants/nodeDisplayDefaults.js';
+import { NODE_DISPLAY_RANGES, SETTINGS_TAB_PER_SOURCE_KEYS, MAX_INFRA_NODE_AGE_HOURS_RANGE, TX_TARGET_MAX_AGE_HOURS_WHEN_UNLIMITED_RANGE } from '../../constants/nodeDisplayDefaults.js';
 import { resolveAppriseServerUrl } from '../services/appriseNotificationService.js';
 
 // ─── Tile URL validation ─────────────────────────────────────────────────
@@ -277,11 +277,12 @@ router.get('/', optionalAuth(), async (req: Request, res: Response) => {
       // source created after migration 131 has no seeded per-source row, and would
       // otherwise display the legacy global value while behaving as the hardcoded
       // default. Exclude them from the global back-fill; they end up present only
-      // when the per-source row exists.
+      // when the per-source row exists. Same for the later standalone per-source
+      // keys in SETTINGS_TAB_PER_SOURCE_KEYS (#5376).
       const cleaned: Record<string, string> = {};
       for (const [k, v] of Object.entries(globalSettings)) {
         if (k.startsWith('source:')) continue;
-        if ((NODE_DISPLAY_SETTING_KEYS as readonly string[]).includes(k)) continue;
+        if ((SETTINGS_TAB_PER_SOURCE_KEYS as readonly string[]).includes(k)) continue;
         cleaned[k] = v;
       }
       const sourceSettings = await databaseService.settings.getSourceSettings(sourceId);
@@ -470,6 +471,19 @@ router.post('/', requirePermission('settings', 'write', { sourceIdFrom: 'query' 
       if (isNaN(hours) || hours < R.min || hours > R.max) {
         return fail(res, 400, 'INVALID_MAX_INFRA_NODE_AGE_HOURS',
           `maxInfraNodeAgeHours must be between ${R.min} and ${R.max} hours (0 = never expire)`);
+      }
+    }
+
+    // #5376: TX-target window used when maxNodeAgeHours is 0 ("unlimited").
+    // It bounds which nodes auto-traceroute / remote-admin / remote LocalStats
+    // may transmit to, so 0 ("no bound") is rejected here.
+    if ('txTargetMaxAgeHoursWhenUnlimited' in filteredSettings) {
+      const raw = filteredSettings.txTargetMaxAgeHoursWhenUnlimited;
+      const hours = Number(raw);
+      const R = TX_TARGET_MAX_AGE_HOURS_WHEN_UNLIMITED_RANGE;
+      if (raw.trim() === '' || !Number.isInteger(hours) || hours < R.min || hours > R.max) {
+        return fail(res, 400, 'INVALID_TX_TARGET_MAX_AGE_HOURS',
+          `txTargetMaxAgeHoursWhenUnlimited must be a whole number between ${R.min} and ${R.max} hours`);
       }
     }
 

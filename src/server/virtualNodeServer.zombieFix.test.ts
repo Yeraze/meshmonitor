@@ -28,7 +28,8 @@ import type { Mock } from 'vitest';
 // databaseService.settings.getSettingForSource, not the old global
 // databaseService.getSettingAsync. getSettingForSourceMock is keyed on
 // (sourceId, key) so per-source cases can differ from the default.
-const { getActiveNodesMock, getSettingForSourceMock } = vi.hoisted(() => ({
+const { getActiveNodesMock, getHeardNodesMock, getSettingForSourceMock } = vi.hoisted(() => ({
+  getHeardNodesMock: vi.fn().mockResolvedValue([]),
   getActiveNodesMock: vi.fn().mockResolvedValue([]),
   getSettingForSourceMock: vi.fn().mockResolvedValue('24'),
 }));
@@ -37,6 +38,7 @@ vi.mock('../services/database.js', () => {
   const shared = {
     nodes: {
       getActiveNodes: getActiveNodesMock,
+      getHeardNodes: getHeardNodesMock,
       setNodeFavorite: vi.fn().mockResolvedValue(undefined),
     },
     settings: {
@@ -142,6 +144,7 @@ function attachFakeClient(vn: VirtualNodeServer, clientId: string = 'client-1') 
 describe('VirtualNodeServer.sendNodeInfosFromDb — issue #2602 zombie filtering', () => {
   beforeEach(() => {
     getActiveNodesMock.mockReset();
+    getHeardNodesMock.mockReset();
     getSettingForSourceMock.mockReset();
     createNodeInfoMock.mockReset();
     createNodeInfoMock.mockResolvedValue(new Uint8Array([10, 20, 30]));
@@ -245,6 +248,32 @@ describe('VirtualNodeServer.sendNodeInfosFromDb — issue #2602 zombie filtering
     const [days] = getActiveNodesMock.mock.calls[0];
     // 24h / 24 == 1 day
     expect(days).toBeCloseTo(1);
+  });
+
+  it('#5376: maxNodeAgeHours 0 ("unlimited") replays every heard node, not none', async () => {
+    const staleNode = {
+      nodeNum: 0x33333333,
+      nodeId: '!33333333',
+      longName: 'Old Timer',
+      shortName: 'OLD',
+      hwModel: 1,
+      lastHeard: Math.floor(Date.now() / 1000) - 90 * 24 * 3600,
+    };
+    getHeardNodesMock.mockResolvedValue([staleNode]);
+    getSettingForSourceMock.mockResolvedValue('0');
+
+    const vn = new VirtualNodeServer({
+      port: 4503,
+      meshtasticManager: makeFakeManager('src-unlimited'),
+    });
+    attachFakeClient(vn);
+
+    const result = await (vn as any).sendNodeInfosFromDb('client-1');
+
+    // Before #5376 this called getActiveNodes(0) → cutoff = now → no nodes.
+    expect(getActiveNodesMock).not.toHaveBeenCalled();
+    expect(getHeardNodesMock).toHaveBeenCalledWith('src-unlimited');
+    expect(result.sent).toBe(1);
   });
 
   it('#4412 Phase 2: two sources with different maxNodeAgeHours resolve to different windows', async () => {

@@ -20,7 +20,7 @@ import { isSourceyResource } from '../types/permission.js';
 import { computeAveragingIntervalMinutes } from '../utils/telemetryAveraging.js';
 import { buildFavoriteRetentions } from '../utils/telemetryRetention.js';
 import type { TelemetryFavorite } from '../db/repositories/telemetry.js';
-import { getMaxNodeAgeHours } from '../server/services/nodeDisplaySettings.js';
+import { getTxTargetMaxAgeHours } from '../server/services/nodeDisplaySettings.js';
 import { classifyNodeTransport, type NodeTransportClass } from '../utils/nodeTransport.js';
 // Drizzle ORM imports for dual-database support
 import { drizzle as drizzleSqlite } from 'drizzle-orm/better-sqlite3';
@@ -2348,8 +2348,9 @@ class DatabaseService {
     // filters honor the Source that the scheduler tick is running on.
     const filterCfg = await this.getTracerouteFilterSettingsAsync(sourceId);
 
-    // Get maxNodeAgeHours setting to filter only active nodes.
-    const maxNodeAgeHours = await getMaxNodeAgeHours(this.settings, sourceId ?? null);
+    // Active-node window for TX targets: maxNodeAgeHours, or the
+    // txTargetMaxAgeHoursWhenUnlimited bound when it is 0 (#5376).
+    const maxNodeAgeHours = await getTxTargetMaxAgeHours(this.settings, sourceId ?? null);
 
     return selectNodeNeedingTraceroute(localNodeNum, sourceId, {
       filterCfg,
@@ -2466,8 +2467,9 @@ class DatabaseService {
       const cfg = await this.getRemoteLocalStatsFilterSettingsAsync(sourceId);
 
       // Candidate base: active nodes for this source. maxNodeAgeHours bounds how
-      // far back "active" reaches so we never poll long-dead nodes.
-      const maxNodeAgeHours = await getMaxNodeAgeHours(this.settings, sourceId ?? null);
+      // far back "active" reaches so we never poll long-dead nodes. When it is
+      // 0 ("unlimited") the TX-target bound applies instead (#5376).
+      const maxNodeAgeHours = await getTxTargetMaxAgeHours(this.settings, sourceId ?? null);
       const sinceDays = Math.max(1, Math.ceil(maxNodeAgeHours / 24));
       let nodes = (await this.nodesRepo!.getActiveNodes(sinceDays, sourceId)) as unknown as DbNode[];
 
@@ -2528,8 +2530,9 @@ class DatabaseService {
   async getNodeNeedingRemoteAdminCheckAsync(localNodeNum: number, sourceId?: string): Promise<DbNode | null> {
     try {
       // Get maxNodeAgeHours setting to filter only active nodes
-      // lastHeard is stored in SECONDS (Unix timestamp)
-      const maxNodeAgeHours = await getMaxNodeAgeHours(this.settings, sourceId ?? null);
+      // lastHeard is stored in SECONDS (Unix timestamp). When maxNodeAgeHours
+      // is 0 ("unlimited") the TX-target bound applies instead (#5376).
+      const maxNodeAgeHours = await getTxTargetMaxAgeHours(this.settings, sourceId ?? null);
       const activeNodeCutoffSeconds = Math.floor(Date.now() / 1000) - (maxNodeAgeHours * 60 * 60);
 
       // Get expiration hours (default 168 = 1 week)
