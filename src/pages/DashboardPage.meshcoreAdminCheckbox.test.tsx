@@ -320,6 +320,36 @@ describe('MeshCore virtual node "Allow PKI export" checkbox', () => {
     expect(body.config.virtualNode.allowAdminCommands).toBe(true);
   });
 
+  // #5350: import has its own switch, off by default, and a danger warning.
+  it('shows an unchecked "Allow PKI import" box with its warning, and persists it when checked', async () => {
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ ...meshcoreSource }),
+    }) as any;
+
+    renderPage();
+    fireEvent.click(screen.getByRole('button', { name: 'edit-MC Source' }));
+
+    const importBox = await screen.findByRole('checkbox', { name: 'meshcore.form.allow_pki_import' });
+    expect(importBox).not.toBeChecked();
+    expect(screen.getByText('meshcore.form.allow_pki_import_help')).toBeInTheDocument();
+
+    fireEvent.click(importBox);
+    fireEvent.click(screen.getByRole('button', { name: /^common\.save$/i }));
+
+    await waitFor(() => {
+      expect(global.fetch).toHaveBeenCalledWith(
+        '/api/sources/src-mc',
+        expect.objectContaining({ method: 'PUT' }),
+      );
+    });
+    const call = (global.fetch as any).mock.calls.find(([url]: [string]) => url === '/api/sources/src-mc');
+    const body = JSON.parse(call[1].body as string);
+    expect(body.config.virtualNode.allowPkiImport).toBe(true);
+    // Import must not turn on export.
+    expect(body.config.virtualNode.allowPkiExport).toBe(false);
+  });
+
   it('toggling admin commands does not turn on PKI export', async () => {
     global.fetch = vi.fn().mockResolvedValue({
       ok: true,

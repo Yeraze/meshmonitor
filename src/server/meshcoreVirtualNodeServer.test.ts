@@ -186,6 +186,8 @@ class FakeManager extends EventEmitter implements MeshCoreVirtualNodeManager {
   exportContact(publicKey: string | null) { return this.exportContactMock(publicKey) as Promise<number[] | null>; }
   importContact(advertBytes: number[]) { return this.importContactMock(advertBytes) as Promise<boolean>; }
   rebootDevice() { return this.rebootDeviceMock() as Promise<boolean>; }
+  importPrivateKeyMock = vi.fn().mockResolvedValue(true);
+  importPrivateKey(hexKey: string) { return this.importPrivateKeyMock(hexKey) as Promise<boolean>; }
   getStatsCore() { return this.getStatsCoreMock() as Promise<Record<string, number> | null>; }
   getStatsRadio() { return this.getStatsRadioMock() as Promise<Record<string, number> | null>; }
   getStatsPackets() { return this.getStatsPacketsMock() as Promise<Record<string, number | null> | null>; }
@@ -2342,17 +2344,20 @@ describe('MeshCoreVirtualNodeServer — contact / device commands (#5350)', () =
   const KEY = 'b1'.repeat(32); // SAMPLE_CONTACTS[0]
   const KEY_BYTES = Buffer.from(KEY, 'hex');
   const UNKNOWN_KEY_BYTES = Buffer.from('ee'.repeat(32), 'hex');
+  const auditMock = vi.fn().mockResolvedValue(undefined);
+  beforeEach(() => auditMock.mockClear());
 
   async function startWith(
-    opts: { allowAdminCommands?: boolean; allowPkiExport?: boolean; contacts?: MeshCoreContact[] } = {},
+    opts: { allowAdminCommands?: boolean; allowPkiExport?: boolean; allowPkiImport?: boolean; contacts?: MeshCoreContact[] } = {},
   ): Promise<void> {
     manager = new FakeManager(LOCAL_NODE, opts.contacts ?? SAMPLE_CONTACTS);
     server = new MeshCoreVirtualNodeServer({
       port: 0,
       manager,
-      databaseService: CHANNELS_DB,
+      databaseService: { ...CHANNELS_DB, auditLogAsync: auditMock },
       allowAdminCommands: opts.allowAdminCommands ?? true,
       allowPkiExport: opts.allowPkiExport ?? false,
+      allowPkiImport: opts.allowPkiImport ?? false,
     });
     await server.start();
     client = new TestClient();
@@ -2664,13 +2669,64 @@ describe('MeshCoreVirtualNodeServer — contact / device commands (#5350)', () =
     });
   });
 
-  describe('ImportPrivateKey (24) and SendRawData (25)', () => {
-    it('refuses ImportPrivateKey with Disabled(15) even with every flag on', async () => {
+  describe('ImportPrivateKey (24): allowPkiImport gate', () => {
+    const importFrame = () => appFrame((c) => c.sendCommandImportPrivateKey(new Uint8Array(64).fill(7)));
+
+    it('replies Disabled(15) when allowPkiImport is off, even with admin + PKI export on', async () => {
       await startWith({ allowAdminCommands: true, allowPkiExport: true });
-      const res = await client.request(await appFrame((c) => c.sendCommandImportPrivateKey(new Uint8Array(64).fill(7))));
+      expect(server.isPkiImportAllowed()).toBe(false);
+      const res = await client.request(await importFrame());
       expect(res[0]).toBe(ResponseCodes.Disabled);
       expect(res.length).toBe(1);
+      expect(manager.importPrivateKeyMock).not.toHaveBeenCalled();
+      expect(auditMock).not.toHaveBeenCalled();
     });
+
+    it('meshcore.js reports the off state as "disabled", not a generic error', async () => {
+      await startWith();
+      const res = await client.request(await importFrame());
+      const conn: any = new (Connection as any)();
+      conn.sendToRadioFrame = async () => { conn.onFrameReceived(new Uint8Array(res)); };
+      await expect(conn.importPrivateKey(new Uint8Array(64))).rejects.toBe('disabled');
+    });
+
+    it('relays the 64 key bytes as hex, replies Ok and writes an audit row when on', async () => {
+      await startWith({ allowPkiImport: true, allowAdminCommands: false });
+      const res = await client.request(await importFrame());
+      expect(res[0]).toBe(ResponseCodes.Ok);
+      expect(manager.importPrivateKeyMock).toHaveBeenCalledWith('07'.repeat(64));
+      expect(auditMock).toHaveBeenCalledWith(
+        null,
+        'meshcore_vn_import_private_key',
+        'configuration',
+        expect.stringContaining('src-test'),
+        expect.anything(),
+      );
+    });
+
+    it('does not unlock PKI export when only import is on', async () => {
+      await startWith({ allowPkiImport: true });
+      const res = await client.request([CommandCodes.ExportPrivateKey]);
+      expect(res[0]).toBe(ResponseCodes.Disabled);
+    });
+
+    it('replies Err(BadState) with no audit row when the node refuses or throws', async () => {
+      await startWith({ allowPkiImport: true });
+      manager.importPrivateKeyMock.mockResolvedValueOnce(false);
+      expectErr(await client.request(await importFrame()), ErrorCodes.BadState);
+      manager.importPrivateKeyMock.mockRejectedValueOnce(new Error('disconnected'));
+      expectErr(await client.request(await importFrame()), ErrorCodes.BadState);
+      expect(auditMock).not.toHaveBeenCalled();
+    });
+
+    it('replies Err(IllegalArg) on a short key frame without calling the node', async () => {
+      await startWith({ allowPkiImport: true });
+      expectErr(await client.request([CommandCodes.ImportPrivateKey, 1, 2, 3]), ErrorCodes.IllegalArg);
+      expect(manager.importPrivateKeyMock).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('SendRawData (25)', () => {
 
     it('refuses SendRawData with Err(UnsupportedCmd) even with allowAdminCommands on', async () => {
       await startWith();

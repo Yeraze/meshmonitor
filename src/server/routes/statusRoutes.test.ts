@@ -95,6 +95,7 @@ describe('GET /virtual-node/status', () => {
           isRunning: () => true,
           isAdminCommandsAllowed: () => false,
           isPkiExportAllowed: () => true,
+          isPkiImportAllowed: () => false,
           getClientCount: () => 0,
           getClientDetails: () => [],
         },
@@ -106,6 +107,7 @@ describe('GET /virtual-node/status', () => {
           isRunning: () => true,
           isAdminCommandsAllowed: () => true,
           isPkiExportAllowed: () => false,
+          isPkiImportAllowed: () => true,
           getClientCount: () => 0,
           getClientDetails: () => [],
         },
@@ -128,6 +130,10 @@ describe('GET /virtual-node/status', () => {
     expect(mcOff.allowPkiExport).toBe(false);
     // JSON drops undefined, so the key is absent for Meshtastic VNs.
     expect(mt).not.toHaveProperty('allowPkiExport');
+    // #5350: the import gate is reported on its own, independent of export.
+    expect(mcOn.allowPkiImport).toBe(false);
+    expect(mcOff.allowPkiImport).toBe(true);
+    expect(mt).not.toHaveProperty('allowPkiImport');
     // The PKI gate must not bleed into the admin gate.
     expect(mcOn.allowAdminCommands).toBe(false);
     expect(mcOff.allowAdminCommands).toBe(true);

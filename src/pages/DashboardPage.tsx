@@ -170,6 +170,7 @@ function DashboardInner() {
   // Security-sensitive, so it never defaults on and is never inherited when
   // switching a form between source types.
   const [formVnAllowPkiExport, setFormVnAllowPkiExport] = useState(false);
+  const [formVnAllowPkiImport, setFormVnAllowPkiImport] = useState(false);
   // MeshCore Analyzer Observer (#4457) — publishes heard packets to a
   // MeshCore-Analyzer MQTT broker. Key management lives on the source's
   // MeshCore Configuration page, not here (see the fieldset hint).
@@ -419,6 +420,7 @@ function DashboardInner() {
     setFormVnPort('');
     setFormVnAllowAdmin(false);
     setFormVnAllowPkiExport(false);
+    setFormVnAllowPkiImport(false);
     setFormObserver(emptyObserverForm());
     setFormObserverCreds({});
     setFormHeartbeat('30');
@@ -562,12 +564,13 @@ function DashboardInner() {
     setFormHost(cfg?.host ?? '');
     setFormPort(String(cfg?.port ?? 4403));
     const vn = cfg?.virtualNode as
-      | { enabled?: boolean; port?: number; allowAdminCommands?: boolean; allowPkiExport?: boolean }
+      | { enabled?: boolean; port?: number; allowAdminCommands?: boolean; allowPkiExport?: boolean; allowPkiImport?: boolean }
       | undefined;
     setFormVnEnabled(vn?.enabled === true);
     setFormVnPort(vn?.port != null ? String(vn.port) : '');
     setFormVnAllowAdmin(vn?.allowAdminCommands === true);
     setFormVnAllowPkiExport(vn?.allowPkiExport === true);
+    setFormVnAllowPkiImport(vn?.allowPkiImport === true);
     setFormObserver(observerFormFromConfig(cfg?.observer));
     setFormHeartbeat(String(cfg?.heartbeatIntervalSeconds ?? 0));
     // Default to true when unset (legacy sources pre-#2773 auto-connected).
@@ -757,6 +760,7 @@ function DashboardInner() {
           port: vnPort,
           allowAdminCommands: formVnAllowAdmin,
           allowPkiExport: formVnAllowPkiExport,
+          allowPkiImport: formVnAllowPkiImport,
         };
       }
 
@@ -1825,6 +1829,17 @@ function DashboardInner() {
                       </label>
                       <p style={{ fontSize: 11, color: 'var(--color-text-subtle)', margin: '4px 0 0' }}>
                         {t('meshcore.form.allow_pki_export_help', 'Let connected clients read your node\'s private key. Some tools (e.g. Remote-Terminal\'s community MQTT) require it to authenticate as your node. The virtual node port has no client authentication, so anyone who can reach it can copy your node identity. Leave off unless you need it. Requires node firmware built with ENABLE_PRIVATE_KEY_EXPORT.')}
+                      </p>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, marginTop: 8 }}>
+                        <input
+                          type="checkbox"
+                          checked={formVnAllowPkiImport}
+                          onChange={(e) => setFormVnAllowPkiImport(e.target.checked)}
+                        />
+                        {t('meshcore.form.allow_pki_import', 'Allow PKI import')}
+                      </label>
+                      <p style={{ fontSize: 11, color: 'var(--color-warning)', margin: '4px 0 0' }}>
+                        {t('meshcore.form.allow_pki_import_help', 'Danger: lets any connected client permanently replace your node\'s identity with a key it chooses. The virtual node port has no client authentication, so anyone who can reach it could take over your node\'s identity, and the old identity is lost unless you exported it first. Leave off unless you are restoring a backed-up key right now, then turn it off again. Requires node firmware built with ENABLE_PRIVATE_KEY_IMPORT.')}
                       </p>
                     </>
                   )}

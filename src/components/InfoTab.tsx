@@ -621,6 +621,9 @@ const InfoTab: React.FC<InfoTabProps> = React.memo(({
                     {typeof source.allowPkiExport === 'boolean' && (
                       <p><strong>{t('info.virtual_node_pki_export')}</strong> {source.allowPkiExport ? t('info.virtual_node_admin_allowed') : t('info.virtual_node_admin_blocked')}</p>
                     )}
+                    {typeof source.allowPkiImport === 'boolean' && (
+                      <p><strong>{t('info.virtual_node_pki_import')}</strong> {source.allowPkiImport ? t('info.virtual_node_admin_allowed') : t('info.virtual_node_admin_blocked')}</p>
+                    )}
                     <p><strong>{t('info.connected_clients')}</strong> {source.clientCount}</p>
 
                     {source.clients && source.clients.length > 0 && (

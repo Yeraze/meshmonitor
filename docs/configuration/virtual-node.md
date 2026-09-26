@@ -77,7 +77,7 @@ This prevents mobile apps from accidentally or maliciously modifying your physic
 3. In the **Virtual Node** section, toggle **Enable Virtual Node**.
 4. Enter the TCP port mobile apps should connect to (the historical default was `4404`). It must not collide with the source's upstream TCP port or another source's VN port.
 5. Optionally enable **Allow admin commands** — leave off unless you trust every connected client (see [Security Filtering](#security-filtering)).
-6. On a **MeshCore** source, optionally enable **Allow PKI export** — see [PKI private-key export](#pki-private-key-export-meshcore) before you do.
+6. On a **MeshCore** source, optionally enable **Allow PKI export** or **Allow PKI import** — see [PKI private-key export](#pki-private-key-export-meshcore) and [PKI private-key import](#pki-private-key-import-meshcore) before you do.
 7. Click **Save**. The endpoint hot-swaps without restarting the upstream TCP connection.
 
 Configuration lives in the `sources.config` JSON column as:
@@ -129,6 +129,25 @@ Read this before turning it on:
   `ENABLE_PRIVATE_KEY_EXPORT`, so a client shows an accurate "unavailable" rather than hanging.
 
 The **Info** tab shows a **PKI Export** row so you can see the current state at a glance.
+
+### PKI private-key import (MeshCore)
+
+*Since 4.16 (#5350).* The MeshCore app can restore a backed-up identity by sending
+`ImportPrivateKey(24)`. **Allow PKI import** (`virtualNode.allowPkiImport`, MeshCore sources
+only, default **off**) relays that key to the physical node, which then *becomes* whoever
+holds it.
+
+- **It is irreversible.** The node's old identity is gone unless you exported it first.
+  Contacts on the mesh see a different node afterwards.
+- **The Virtual Node port has no client authentication.** Anyone who can reach the port could
+  replace your node's identity with a key of their choosing.
+- **It is a separate switch** from **Allow PKI export** and **Allow admin commands**; enabling
+  one never enables the others. Turn it on only for the restore, then turn it off again.
+- With the gate off the Virtual Node answers `Disabled`, byte-identical to firmware compiled
+  without `ENABLE_PRIVATE_KEY_IMPORT`. With it on, the node's own firmware must also support
+  import, or the app gets an error. Each import writes an audit row.
+
+The **Info** tab shows a **PKI Import** row next to **PKI Export**.
 
 ### Docker Compose Example
 
@@ -524,7 +543,8 @@ Enabling **Allow admin commands** forwards those configuration commands through 
 | Import contact (URL / QR) | Refused | Adds the contact |
 | Reboot node | Refused | Reboots the node; MeshMonitor reconnects |
 | Share contact, export contact, read stats | Allowed | Allowed |
-| Import private key, raw-data send | Always refused | Always refused |
+| Import private key | Refused unless **Allow PKI import** is on (separate switch, see above) | Same |
+| Raw-data send | Always refused | Always refused |
 
 Setting a manual route or per-contact telemetry permissions from the app is not relayed; use the MeshMonitor web UI for those. Share contact sends one zero-hop advert, so receive-only mode refuses it.
 

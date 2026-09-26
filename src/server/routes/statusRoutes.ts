@@ -35,6 +35,7 @@ router.get('/virtual-node/status', requireAuth(), (_req: Request, res: Response)
         // command, so it reports undefined and the UI omits the row entirely
         // rather than showing a permanently-"Blocked" toggle that isn't real.
         allowPkiExport: typeof vn.isPkiExportAllowed === 'function' ? vn.isPkiExportAllowed() : undefined,
+        allowPkiImport: typeof vn.isPkiImportAllowed === 'function' ? vn.isPkiImportAllowed() : undefined,
         clientCount: vn.getClientCount(),
         // Duck-typed like the rest of this handler: `getAllManagers()` mixes VN
         // implementations, and one missing method used to take the whole

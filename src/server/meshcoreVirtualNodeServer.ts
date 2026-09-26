@@ -136,6 +136,13 @@ export interface MeshCoreVirtualNodeManager {
    */
   exportPrivateKey(): Promise<string | null>;
   /**
+   * Replace the physical node's identity with a 128-char hex Ed25519 private
+   * key. Returns false when the node refused (invalid key, firmware built
+   * without ENABLE_PRIVATE_KEY_IMPORT), is disconnected, or is not a Companion.
+   * Only reached when the VN's `allowPkiImport` flag is on.
+   */
+  importPrivateKey(hexKey: string): Promise<boolean>;
+  /**
    * Log in to a remote node with a password (issue #3904). Resolves a
    * `MeshCoreLoginResult` (carrying the remote's admin flag + firmware version
    * level on firmware >= 1.16, #4094) when the remote acknowledged the login,
@@ -289,6 +296,13 @@ export interface MeshCoreVirtualNodeServerOptions {
    * admin commands change the node, key export hands out its identity.
    */
   allowPkiExport?: boolean;
+  /**
+   * Allow ImportPrivateKey(24) to be relayed to the node (default false). Its
+   * own flag, separate from `allowPkiExport` and `allowAdminCommands`: an
+   * import permanently REPLACES the node's identity with a key the client
+   * chose, and the VN port has no per-client auth (#5350).
+   */
+  allowPkiImport?: boolean;
   /** Injectable channels source; defaults to the real DatabaseService facade. */
   databaseService?: ChannelsDb;
 }
@@ -302,6 +316,7 @@ export interface MeshCoreVirtualNodeConfig {
   port: number;
   allowAdminCommands: boolean;
   allowPkiExport: boolean;
+  allowPkiImport: boolean;
 }
 
 interface ConnectedClient {
@@ -344,6 +359,7 @@ export class MeshCoreVirtualNodeServer extends EventEmitter {
   private readonly options: MeshCoreVirtualNodeServerOptions;
   private readonly allowAdminCommands: boolean;
   private readonly allowPkiExport: boolean;
+  private readonly allowPkiImport: boolean;
   private readonly db: ChannelsDb;
   private server: Server | null = null;
   private clients: Map<string, ConnectedClient> = new Map();
@@ -404,6 +420,7 @@ export class MeshCoreVirtualNodeServer extends EventEmitter {
     this.options = options;
     this.allowAdminCommands = options.allowAdminCommands ?? false;
     this.allowPkiExport = options.allowPkiExport ?? false;
+    this.allowPkiImport = options.allowPkiImport ?? false;
     this.db = options.databaseService ?? (databaseService as unknown as ChannelsDb);
   }
 
@@ -490,6 +507,10 @@ export class MeshCoreVirtualNodeServer extends EventEmitter {
 
   isPkiExportAllowed(): boolean {
     return this.allowPkiExport;
+  }
+
+  isPkiImportAllowed(): boolean {
+    return this.allowPkiImport;
   }
 
   /**
@@ -772,13 +793,9 @@ export class MeshCoreVirtualNodeServer extends EventEmitter {
           void this.handleShareContact(clientId, command);
           break;
         case CommandCodes.ImportPrivateKey:
-          // Replacing the node's identity is permanent and would hand its
-          // mesh identity to whoever holds the imported key. Never served over
-          // the VN port: reply Disabled(15), byte-identical to firmware built
-          // without ENABLE_PRIVATE_KEY_IMPORT, so meshcore.js rejects with
-          // "disabled" instead of a generic error (#5350).
-          logger.debug(`[MeshCore VN ${this.sourceId}] ImportPrivateKey refused from ${clientId} (not offered over VN)`);
-          this.send(clientId, encodeDisabled());
+          // Replacing the node's identity. Gated on its OWN flag, not
+          // allowAdminCommands — see handleImportPrivateKey.
+          void this.handleImportPrivateKey(clientId, command);
           break;
         case CommandCodes.SendRawData:
           // Arbitrary raw-packet injection onto the mesh. No manager path exists
@@ -856,6 +873,55 @@ export class MeshCoreVirtualNodeServer extends EventEmitter {
       `[MeshCore VN ${this.sourceId}] ExportPrivateKey served to ${clientId} (allowPkiExport on)`,
     );
     this.send(clientId, frame);
+  }
+
+  /**
+   * ImportPrivateKey(24): replace the physical node's Ed25519 identity with the
+   * 64-byte key the app sends (`[24][key:64]`, meshcore.js
+   * `sendCommandImportPrivateKey`). The node then IS whoever holds that key, on
+   * every mesh, and its old identity is gone unless someone kept a copy.
+   *
+   * Gated on its own `allowPkiImport` flag (#5350), independent of
+   * `allowPkiExport` and `allowAdminCommands`: the VN port has no per-client
+   * authentication, so this must be an explicit, separate opt-in.
+   *
+   * Responses:
+   *   - flag off         → Disabled(15), byte-identical to firmware built without
+   *                        ENABLE_PRIVATE_KEY_IMPORT (meshcore.js rejects "disabled")
+   *   - short frame      → Err(IllegalArg)  (firmware requires len >= 65)
+   *   - node refused / threw → Err(BadState)  (invalid key, node firmware lacks
+   *                        import support, disconnected: the manager's boolean
+   *                        cannot tell these apart)
+   *   - success          → Ok, plus an audit row
+   * A local serial write with no RF, so receive-only mode does not block it.
+   */
+  private async handleImportPrivateKey(clientId: string, command: ParsedCommand): Promise<void> {
+    if (!this.allowPkiImport) {
+      logger.debug(`[MeshCore VN ${this.sourceId}] ImportPrivateKey blocked from ${clientId} (allowPkiImport off)`);
+      this.send(clientId, encodeDisabled());
+      return;
+    }
+    if (command.payload.length < 1 + 64) {
+      logger.warn(`[MeshCore VN ${this.sourceId}] ImportPrivateKey bad payload from ${clientId}: short frame`);
+      this.send(clientId, encodeErr(ErrorCodes.IllegalArg));
+      return;
+    }
+    const hexKey = command.payload.subarray(1, 65).toString('hex');
+    try {
+      const ok = await this.options.manager.importPrivateKey(hexKey);
+      if (!ok) {
+        logger.warn(`[MeshCore VN ${this.sourceId}] ImportPrivateKey from ${clientId} not accepted by node`);
+        this.send(clientId, encodeErr(ErrorCodes.BadState));
+        return;
+      }
+    } catch (err) {
+      logger.warn(`[MeshCore VN ${this.sourceId}] ImportPrivateKey from ${clientId} failed: ${(err as Error).message}`);
+      this.send(clientId, encodeErr(ErrorCodes.BadState));
+      return;
+    }
+    this.auditVnAction(clientId, 'meshcore_vn_import_private_key');
+    logger.info(`[MeshCore VN ${this.sourceId}] ImportPrivateKey applied for ${clientId}: node identity replaced (allowPkiImport on)`);
+    this.send(clientId, encodeOk());
   }
 
   /** Fire-and-forget audit row for a served key export. Never throws. */
