@@ -409,6 +409,12 @@ export const VALID_SETTINGS_KEYS = [
   // every elevation fetch is server-proxied.
   'elevationEnabled',
   'elevationSourceUrl',
+  // ADS-B flight matching for likely aircraft (#5374). Global (not per-source):
+  // it configures one outbound service, like elevation. `adsb_api_token` is
+  // server-only via SECRET_SETTINGS_KEY_PATTERN (`_token` suffix).
+  'adsbMatchEnabled',
+  'adsbFeed',
+  'adsb_api_token',
   // ATAK/CoT Phase 3 (issue #3691): plaintext TCP CoT feed for ATAK/WinTAK.
   // Default OFF. When enabled, streams CoT <event> XML on cotFeedPort.
   'cotFeedEnabled',
@@ -766,6 +772,9 @@ export const GLOBAL_ONLY_SETTINGS_KEYS = new Set<string>([
   'adminRetryAttempts',                     // :201 global admin retry count (#4487)
   'elevationEnabled',                       // :305 "Global (not per-source)" (#4111)
   'elevationSourceUrl',                     // :305, also SECRET_SETTINGS_KEYS
+  'adsbMatchEnabled',                       // global outbound service (#5374), read via getSetting
+  'adsbFeed',                               // "
+  'adsb_api_token',                         // ", secret via the _token pattern
   // Global singletons driven only by the global POST branch:
   'cotFeedEnabled',                         // settingsRoutes.ts:900-911 — "global singleton"
   'cotFeedPort',                            // "

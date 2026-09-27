@@ -42,6 +42,7 @@ import {
   isAircraftAgeOutAction,
 } from '../../utils/aircraftClassification.js';
 import { aircraftClassificationService } from '../services/aircraftClassificationService.js';
+import { isAdsbFeed, ADSB_FEED_IDS } from '../../utils/adsbFeeds.js';
 
 // ─── Tile URL validation ─────────────────────────────────────────────────
 
@@ -363,6 +364,8 @@ router.post('/', requirePermission('settings', 'write', { sourceIdFrom: 'query' 
       'autoFavoriteExcludeAircraft',
       // Aircraft age-out (#5364/#5365 Phase 2): ignores or deletes nodes.
       'aircraftAgeOutEnabled',
+      // ADS-B flight matching (#5374): turns on third-party HTTP requests.
+      'adsbMatchEnabled',
     ] as const;
 
     for (const key of STRICT_BOOLEAN_SETTINGS_KEYS) {
@@ -521,6 +524,11 @@ router.post('/', requirePermission('settings', 'write', { sourceIdFrom: 'query' 
         return fail(res, 400, 'INVALID_AIRCRAFT_AGE_OUT_HOURS',
           `aircraftAgeOutHours must be a whole number between ${R.min} and ${R.max}`);
       }
+    }
+    // ADS-B flight matching (#5374): only the feeds the client knows.
+    if ('adsbFeed' in filteredSettings && !isAdsbFeed(filteredSettings.adsbFeed)) {
+      return fail(res, 400, 'INVALID_ADSB_FEED',
+        `adsbFeed must be one of: ${ADSB_FEED_IDS.join(', ')}`);
     }
     if ('aircraftAgeOutAction' in filteredSettings
       && !isAircraftAgeOutAction(filteredSettings.aircraftAgeOutAction)) {
