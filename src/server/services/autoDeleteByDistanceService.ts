@@ -266,7 +266,7 @@ class AutoDeleteByDistanceService {
         const distance = calculateDistance(homeLat, homeLon, eff.latitude, eff.longitude);
 
         if (distance > thresholdKm) {
-          const nodeSourceId = (node as any).sourceId || sourceId || 'default';
+          const nodeSourceId = rowSourceId(node) || sourceId || 'default';
           const nodeNum = Number(node.nodeNum);
           const nodeInfo: ProcessedNodeInfo = {
             nodeId: node.nodeId || `!${nodeNum.toString(16)}`,
