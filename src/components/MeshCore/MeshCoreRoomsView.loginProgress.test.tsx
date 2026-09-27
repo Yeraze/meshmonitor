@@ -73,7 +73,7 @@ describe('MeshCoreRoomsView login progress (#5400)', () => {
     fireEvent.click(await screen.findByText('Login'));
 
     const progress = await screen.findByTestId('meshcore-login-progress');
-    expect(progress.textContent).toContain('Attempt 1 of 3');
+    expect(progress.textContent).toContain('Sending login');
     fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
     const requestId = actions.loginRoom.mock.calls[0][3].requestId;
     await waitFor(() => expect(actions.cancelLogin).toHaveBeenCalledWith(requestId));

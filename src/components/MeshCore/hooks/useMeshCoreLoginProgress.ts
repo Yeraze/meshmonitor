@@ -81,7 +81,9 @@ export function useMeshCoreLoginProgress(actions: ProgressActions): UseMeshCoreL
       requestId,
       phase: 'starting',
       attempt: 1,
-      maxAttempts: 3,
+      // Unknown until the server reports it (its MESHCORE_LOGIN_MAX_ATTEMPTS);
+      // 0 makes the UI say "Sending login…" without guessing a count.
+      maxAttempts: 0,
       waitMs: null,
       waitEndsAt: null,
       cancelling: false,

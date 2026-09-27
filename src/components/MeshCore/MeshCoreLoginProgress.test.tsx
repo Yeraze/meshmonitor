@@ -39,6 +39,11 @@ describe('MeshCoreLoginProgress', () => {
     expect(screen.getByText('Attempt 1 of 3: sending login…')).toBeTruthy();
   });
 
+  it('does not guess an attempt count before the server reports one', () => {
+    render(<MeshCoreLoginProgress progress={{ ...base, phase: 'starting', maxAttempts: 0 }} onCancel={() => {}} />);
+    expect(screen.getByText('Sending login…')).toBeTruthy();
+  });
+
   it('counts the reply wait down as time passes', () => {
     const progress = { ...base, phase: 'waiting' as const, attempt: 2, waitMs: 12_000, waitEndsAt: Date.now() + 12_000 };
     render(<MeshCoreLoginProgress progress={progress} onCancel={() => {}} />);

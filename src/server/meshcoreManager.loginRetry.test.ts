@@ -87,6 +87,14 @@ describe('MeshCoreManager.loginToNodeWithRetry (#5400)', () => {
     expect(logins).toHaveLength(MESHCORE_LOGIN_MAX_ATTEMPTS);
   });
 
+  it('does not retry when the source is not a Companion (nothing was sent)', async () => {
+    const { m, logins } = makeManager([NO_REPLY]);
+    m.deviceType = MeshCoreDeviceType.REPEATER;
+    const r = await m.loginToNodeWithRetry(KEY, 'pw');
+    expect(r).toEqual({ result: null, outcome: 'no_reply', attempts: 1 });
+    expect(logins).toHaveLength(0);
+  });
+
   it('does not retry a refused password', async () => {
     const { m, logins } = makeManager([{ success: false, error: MESHCORE_LOGIN_REJECTED }, OK]);
     const r = await m.loginToNodeWithRetry(KEY, 'bad');

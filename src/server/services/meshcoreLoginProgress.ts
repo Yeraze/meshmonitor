@@ -169,6 +169,11 @@ export class MeshCoreLoginProgressRegistry {
     this.entries.clear();
   }
 
+  /** True while an id is tracked (live or recently finished), for any owner. */
+  has(requestId: string): boolean {
+    return this.entries.has(requestId);
+  }
+
   get size(): number {
     return this.entries.size;
   }

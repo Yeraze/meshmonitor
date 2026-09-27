@@ -15,7 +15,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import meshcoreRoutes from './meshcoreRoutes.js';
 import { createRouteTestApp, type RouteTestHarness } from '../test-helpers/routeTestApp.js';
-import { getMeshCoreLoginProgressRegistry } from '../services/meshcoreLoginProgress.js';
+import { getMeshCoreLoginProgressRegistry, LOGIN_PROGRESS_MAX_ENTRIES } from '../services/meshcoreLoginProgress.js';
 import type { MeshCoreLoginOptions } from '../meshcoreManager.js';
 
 const { retryMock, storeMock, loadMock } = vi.hoisted(() => ({
@@ -198,6 +198,16 @@ describe('meshcoreRoutes — login retry / progress / cancel (#5400)', () => {
       expect(second.body.code).toBe('LOGIN_REQUEST_ID_IN_USE');
       login.settle({ result: {}, outcome: 'ok', attempts: 1 });
       expect((await first).status).toBe(200);
+    });
+
+    it('answers TOO_MANY_LOGINS (not "id in use") when the registry is full of live logins', async () => {
+      const registry = getMeshCoreLoginProgressRegistry();
+      for (let i = 0; i < LOGIN_PROGRESS_MAX_ENTRIES; i++) registry.start(`filler-${String(i).padStart(4, '0')}`, 999, 'x', 3);
+      const agent = await harness.loginAs(harness.admin);
+      const res = await agent.post(loginUrl(harness.sourceA)).send({ publicKey: PK, password: 'pw', requestId: REQ });
+      expect(res.status).toBe(409);
+      expect(res.body.code).toBe('TOO_MANY_LOGINS');
+      expect(retryMock).not.toHaveBeenCalled();
     });
 
     it('cancelling one login leaves a concurrent one alone', async () => {

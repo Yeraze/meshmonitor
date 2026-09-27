@@ -69,7 +69,7 @@ describe('MeshCoreRemoteConsole login progress (#5400)', () => {
     fireEvent.click(await renderConsole(actions));
 
     const progress = await screen.findByTestId('meshcore-login-progress');
-    expect(progress.textContent).toContain('Attempt 1 of 3');
+    expect(progress.textContent).toContain('Sending login');
     const cancel = screen.getByRole('button', { name: 'Cancel' }) as HTMLButtonElement;
     expect(cancel.disabled).toBe(false);
     expect((screen.getByRole('button', { name: 'Use a different password' }) as HTMLButtonElement).disabled).toBe(true);

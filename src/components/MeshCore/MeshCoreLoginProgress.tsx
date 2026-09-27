@@ -49,6 +49,8 @@ export const MeshCoreLoginProgress: React.FC<MeshCoreLoginProgressProps> = ({ pr
       max: maxAttempts,
       seconds: seconds ?? 0,
     });
+  } else if (maxAttempts <= 0) {
+    message = t('meshcore.loginProgress.starting', 'Sending login…');
   } else {
     message = t('meshcore.loginProgress.sending', 'Attempt {{attempt}} of {{max}}: sending login…', { attempt, max: maxAttempts });
   }

@@ -5097,6 +5097,7 @@
   "meshcore.rooms.login_failed": "Login failed",
   "meshcore.rooms.logging_in": "Logging in…",
   "meshcore.rooms.login_cancelled": "Login cancelled",
+  "meshcore.loginProgress.starting": "Sending login…",
   "meshcore.loginProgress.sending": "Attempt {{attempt}} of {{max}}: sending login…",
   "meshcore.loginProgress.waiting": "Attempt {{attempt}} of {{max}}: waiting for a reply ({{seconds}} s left)",
   "meshcore.loginProgress.waiting_no_time": "Attempt {{attempt}} of {{max}}: waiting for a reply…",

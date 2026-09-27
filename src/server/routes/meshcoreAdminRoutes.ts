@@ -500,6 +500,11 @@ router.post('/admin/login-with-saved', meshcoreDeviceLimiter, requireAuth(), req
  * who started the login, on the same source, can read it; anyone else gets
  * 404 so ids cannot be probed. Not rate-limited as a device op: it never
  * touches the radio.
+ *
+ * Deliberately requireAuth() only, no requirePermission: the login POST
+ * already checked remote_admin:write (or messages:write for rooms, which
+ * share these endpoints), and the registry matches the session user AND
+ * the source, so a caller can only ever see or cancel their own login.
  */
 router.get('/admin/login-progress/:requestId', requireAuth(), (req: Request, res: Response) => {
   const { requestId } = req.params;

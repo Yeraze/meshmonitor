@@ -571,11 +571,14 @@ export function startTrackedLogin(req: Request, res: Response): TrackedLogin | n
     // session to bind progress to. Run it untracked rather than refuse it.
     return { opts: {}, finish: () => {} };
   }
-  const handle = getMeshCoreLoginProgressRegistry().start(
-    requestId, userId, req.params.id!, MESHCORE_LOGIN_MAX_ATTEMPTS,
-  );
-  if (!handle) {
+  const registry = getMeshCoreLoginProgressRegistry();
+  if (registry.has(requestId)) {
     fail(res, 409, 'LOGIN_REQUEST_ID_IN_USE', 'A login with this requestId is already tracked');
+    return null;
+  }
+  const handle = registry.start(requestId, userId, req.params.id!, MESHCORE_LOGIN_MAX_ATTEMPTS);
+  if (!handle) {
+    fail(res, 409, 'TOO_MANY_LOGINS', 'Too many logins in progress; try again shortly');
     return null;
   }
   return { opts: { signal: handle.signal, onProgress: handle.onProgress }, finish: handle.finish };
