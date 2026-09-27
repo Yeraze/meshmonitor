@@ -20,6 +20,9 @@ import { MeshCoreMessageStream } from './MeshCoreMessageStream';
 import { useAuth } from '../../contexts/AuthContext';
 import { UiIcon } from '../icons';
 import { MeshCoreReceiveOnlyNote } from './MeshCoreReceiveOnlyNote';
+import { MeshCoreLoginProgress } from './MeshCoreLoginProgress';
+import { useMeshCoreLoginProgress } from './hooks/useMeshCoreLoginProgress';
+import loginProgressStyles from './MeshCoreLoginProgress.module.css';
 
 const MOBILE_BREAKPOINT = 768;
 const isMobileViewport = (): boolean =>
@@ -73,6 +76,10 @@ export const MeshCoreRoomsView: React.FC<MeshCoreRoomsViewProps> = ({
   const [loginPassword, setLoginPassword] = useState('');
   const [loginError, setLoginError] = useState<string | null>(null);
   const [loginLoading, setLoginLoading] = useState(false);
+  // Live "attempt n of 3" progress + cancel for the login in flight (#5400).
+  const { progress: loginProgress, run: runLogin, cancel: cancelLoginAttempt } = useMeshCoreLoginProgress(actions);
+  // Shown briefly on the login card after the user cancels.
+  const [loginNotice, setLoginNotice] = useState<string | null>(null);
   const [rememberPassword, setRememberPassword] = useState(false);
   const [mobileShowContent, setMobileShowContent] = useState(false);
 
@@ -155,8 +162,13 @@ export const MeshCoreRoomsView: React.FC<MeshCoreRoomsViewProps> = ({
     autoLoginAttempted.current.add(selectedRoom);
     void (async () => {
       setLoginLoading(true);
-      const result = await actions.loginRoomWithSaved(selectedRoom);
-      if (result.success) {
+      setLoginNotice(null);
+      const { value: result, cancelledByUser } = await runLogin((requestId) =>
+        actions.loginRoomWithSaved(selectedRoom, { requestId }),
+      );
+      if (cancelledByUser || result.cancelled) {
+        setLoginNotice(t('meshcore.rooms.login_cancelled', 'Login cancelled'));
+      } else if (result.success) {
         setLoggedInRooms(prev => new Set(prev).add(selectedRoom));
       } else if (result.reason === 'rejected') {
         // Say so rather than dropping the user on a blank login card: the
@@ -169,7 +181,7 @@ export const MeshCoreRoomsView: React.FC<MeshCoreRoomsViewProps> = ({
       }
       setLoginLoading(false);
     })();
-  }, [selectedRoom, loggedInRooms, storedCreds, actions, receiveOnly, t]);
+  }, [selectedRoom, loggedInRooms, storedCreds, actions, receiveOnly, runLogin, t]);
 
   const loadSyncConfig = useCallback(async (pubkey: string) => {
     const config = await actions.getRoomSyncConfig(pubkey);
@@ -192,6 +204,7 @@ export const MeshCoreRoomsView: React.FC<MeshCoreRoomsViewProps> = ({
   const handleSelectRoom = useCallback((pubkey: string) => {
     setSelectedRoom(pubkey);
     setLoginError(null);
+    setLoginNotice(null);
     setLoginPassword('');
     setRememberPassword(false);
     setSyncConfigDirty(false);
@@ -204,9 +217,18 @@ export const MeshCoreRoomsView: React.FC<MeshCoreRoomsViewProps> = ({
     if (!selectedRoom) return;
     setLoginLoading(true);
     setLoginError(null);
+    setLoginNotice(null);
     try {
-      const result = await actions.loginRoom(selectedRoom, loginPassword, rememberPassword);
-      if (result.success) {
+      const { value: result, cancelledByUser } = await runLogin((requestId) =>
+        actions.loginRoom(selectedRoom, loginPassword, rememberPassword, { requestId }),
+      );
+      if (cancelledByUser || result.cancelled) {
+        setLoginNotice(t('meshcore.rooms.login_cancelled', 'Login cancelled'));
+        // A reply may have raced the cancel on the server; re-read which
+        // rooms have a saved password rather than assume.
+        const creds = await actions.getRoomCredentials();
+        if (creds) setStoredCreds(new Set(creds.stored.map(c => c.publicKey)));
+      } else if (result.success) {
         setLoggedInRooms(prev => new Set(prev).add(selectedRoom));
         if (result.persisted) {
           setStoredCreds(prev => new Set(prev).add(selectedRoom));
@@ -223,7 +245,7 @@ export const MeshCoreRoomsView: React.FC<MeshCoreRoomsViewProps> = ({
     } finally {
       setLoginLoading(false);
     }
-  }, [selectedRoom, loginPassword, rememberPassword, actions, t]);
+  }, [selectedRoom, loginPassword, rememberPassword, actions, runLogin, t]);
 
   const handleForgetCredential = useCallback(async () => {
     if (!selectedRoom) return;
@@ -349,7 +371,11 @@ export const MeshCoreRoomsView: React.FC<MeshCoreRoomsViewProps> = ({
 
         {selectedRoom && loginLoading && (
           <div className="meshcore-empty-state">
-            {t('meshcore.rooms.logging_in', 'Logging in…')}
+            {loginProgress ? (
+              <MeshCoreLoginProgress progress={loginProgress} onCancel={() => void cancelLoginAttempt()} />
+            ) : (
+              t('meshcore.rooms.logging_in', 'Logging in…')
+            )}
           </div>
         )}
 
@@ -393,6 +419,9 @@ export const MeshCoreRoomsView: React.FC<MeshCoreRoomsViewProps> = ({
               </button>
               {loginError && (
                 <div className="meshcore-room-login-error">{loginError}</div>
+              )}
+              {loginNotice && !loginError && (
+                <div className={loginProgressStyles.notice} role="status">{loginNotice}</div>
               )}
               {selectedRoom && storedCreds.has(selectedRoom) && (
                 <div className="meshcore-room-saved-cred">

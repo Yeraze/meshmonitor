@@ -27,7 +27,12 @@ import {
   rejectIfReceiveOnly,
   failIfTxDisabled,
   failContactNotOnDevice,
+  startTrackedLogin,
+  respondLoginCancelled,
 } from './meshcoreRouteShared.js';
+import type { MeshCoreLoginRetryOutcome } from '../meshcoreManager.js';
+import { getMeshCoreLoginProgressRegistry, isValidLoginRequestId } from '../services/meshcoreLoginProgress.js';
+import { ok, fail } from '../utils/apiResponse.js';
 import { MeshCoreContactNotOnDeviceError } from '../meshcoreDeviceContactErrors.js';
 import { isTransmittingLocalCliVerb } from '../constants/meshcoreTx.js';
 
@@ -37,11 +42,18 @@ const router = Router({ mergeParams: true });
  * POST /api/meshcore/admin/login
  * Log into a remote node for admin access.
  *
- * Body: { publicKey: string, password: string, rememberPassword?: boolean }
+ * Body: { publicKey: string, password: string, rememberPassword?: boolean, requestId?: string }
  *   - `password` may be empty for guest login.
+ *   - `requestId` (optional, client-chosen) enables live progress via
+ *     GET /admin/login-progress/:requestId and cancel via POST
+ *     /admin/login-cancel (#5400).
  *   - `rememberPassword: true` persists the password (AES-256-GCM, see
  *     MeshCoreCredentialStore). Rejected with 400 when SESSION_SECRET was
  *     auto-generated — check GET /admin/credentials-capability first.
+ *
+ * Retries up to MESHCORE_LOGIN_MAX_ATTEMPTS times, but only when nothing came
+ * back; a refusal or a contact missing from the radio stops at once (#5400).
+ * A cancelled login answers 409 LOGIN_CANCELLED and saves nothing.
  *
  * Gated on `remote_admin:write` per-source. (Pre-4.7 versions used
  * `configuration:write`; remote_admin was split out so operators can grant
@@ -75,15 +87,30 @@ router.post('/admin/login', meshcoreDeviceLimiter, requireAuth(), requirePermiss
       });
     }
 
-    const { result: success, outcome } = await managerFor(req, res).loginToNodeDetailed(publicKey, password);
+    const tracked = startTrackedLogin(req, res);
+    if (!tracked) return;
+    let finalOutcome: MeshCoreLoginRetryOutcome = 'no_reply';
+    let loginResult;
+    try {
+      loginResult = await managerFor(req, res).loginToNodeWithRetry(publicKey, password, tracked.opts);
+      finalOutcome = loginResult.outcome;
+    } finally {
+      tracked.finish(finalOutcome);
+    }
+    const { result: success, outcome, attempts } = loginResult;
+    if (outcome === 'cancelled') {
+      auditMeshcoreEvent(req, 'meshcore_remote_login_cancelled', 'remote_admin', { sourceId, publicKey, attempts });
+      return respondLoginCancelled(res);
+    }
     if (!success) {
       auditMeshcoreEvent(req, 'meshcore_remote_login_failed', 'remote_admin', {
         sourceId,
         publicKey,
         reason: outcome,
+        attempts,
       });
       if (outcome === 'not_on_device') return failContactNotOnDevice(res);
-      return res.status(401).json({ success: false, error: 'Login failed' });
+      return res.status(401).json({ success: false, error: 'Login failed', reason: outcome, attempts });
     }
 
     if (rememberPassword) {
@@ -414,18 +441,46 @@ router.post('/admin/login-with-saved', meshcoreDeviceLimiter, requireAuth(), req
     }
     // result.password is intentionally consumed in-process only; do not
     // log it, do not echo it, do not include it in any response field.
-    const { result: ok, outcome } = await managerFor(req, res).loginToNodeDetailed(publicKey, result.password);
-    if (!ok && outcome === 'not_on_device') {
+    const tracked = startTrackedLogin(req, res);
+    if (!tracked) return;
+    let finalOutcome: MeshCoreLoginRetryOutcome = 'no_reply';
+    let loginResult;
+    try {
+      loginResult = await managerFor(req, res).loginToNodeWithRetry(publicKey, result.password, tracked.opts);
+      finalOutcome = loginResult.outcome;
+    } finally {
+      tracked.finish(finalOutcome);
+    }
+    const { result: loggedIn, outcome, attempts } = loginResult;
+    if (outcome === 'cancelled') {
+      auditMeshcoreEvent(req, 'meshcore_remote_login_saved_cancelled', 'remote_admin', { sourceId, publicKey, attempts });
+      return respondLoginCancelled(res);
+    }
+    if (!loggedIn && outcome === 'not_on_device') {
       auditMeshcoreEvent(req, 'meshcore_remote_login_saved_failed', 'remote_admin', {
         sourceId, publicKey, code: 'CONTACT_NOT_ON_DEVICE',
       });
       return failContactNotOnDevice(res);
     }
-    if (!ok) {
+    if (!loggedIn && outcome === 'no_reply') {
+      // Silence after every attempt says nothing about the saved password,
+      // so do not call it rejected (#5400).
+      auditMeshcoreEvent(req, 'meshcore_remote_login_saved_failed', 'remote_admin', {
+        sourceId, publicKey, code: 'REMOTE_LOGIN_NO_REPLY', attempts,
+      });
+      return res.status(401).json({
+        success: false,
+        error: `No reply from the node after ${attempts} attempts`,
+        code: 'REMOTE_LOGIN_NO_REPLY',
+        reason: 'no_reply',
+        attempts,
+      });
+    }
+    if (!loggedIn) {
       auditMeshcoreEvent(req, 'meshcore_remote_login_saved_failed', 'remote_admin', {
         sourceId, publicKey, code: 'STORED_CREDENTIAL_REJECTED',
       });
-      return res.status(401).json({ success: false, error: 'Saved credential rejected by the remote', code: 'STORED_CREDENTIAL_REJECTED' });
+      return res.status(401).json({ success: false, error: 'Saved credential rejected by the remote', code: 'STORED_CREDENTIAL_REJECTED', reason: 'rejected' });
     }
     auditMeshcoreEvent(req, 'meshcore_remote_login_saved', 'remote_admin', {
       sourceId, publicKey,
@@ -436,6 +491,45 @@ router.post('/admin/login-with-saved', meshcoreDeviceLimiter, requireAuth(), req
     logger.error('[API] Error in login-with-saved:', error);
     res.status(500).json({ success: false, error: 'Login error' });
   }
+});
+
+/**
+ * GET /api/meshcore/admin/login-progress/:requestId
+ * Live progress of a login POST that carried this `requestId` (#5400):
+ * phase, attempt n of N, and time left in the current wait. Only the user
+ * who started the login, on the same source, can read it; anyone else gets
+ * 404 so ids cannot be probed. Not rate-limited as a device op: it never
+ * touches the radio.
+ */
+router.get('/admin/login-progress/:requestId', requireAuth(), (req: Request, res: Response) => {
+  const { requestId } = req.params;
+  const userId = req.session?.userId;
+  if (!isValidLoginRequestId(requestId) || typeof userId !== 'number') {
+    return fail(res, 404, 'LOGIN_NOT_FOUND', 'No such login in progress');
+  }
+  const snapshot = getMeshCoreLoginProgressRegistry().get(requestId, userId, req.params.id!);
+  if (!snapshot) return fail(res, 404, 'LOGIN_NOT_FOUND', 'No such login in progress');
+  return ok(res, snapshot);
+});
+
+/**
+ * POST /api/meshcore/admin/login-cancel
+ * Body: { requestId: string }
+ * Stop a tracked login (#5400): no further attempts are sent, and a reply
+ * that arrives afterwards is ignored. A packet already on the air cannot be
+ * recalled. The login POST itself then answers 409 LOGIN_CANCELLED. Owner
+ * and source scoped like the progress endpoint.
+ */
+router.post('/admin/login-cancel', requireAuth(), (req: Request, res: Response) => {
+  const requestId = (req.body as { requestId?: unknown } | undefined)?.requestId;
+  const userId = req.session?.userId;
+  if (!isValidLoginRequestId(requestId) || typeof userId !== 'number') {
+    return fail(res, 404, 'LOGIN_NOT_FOUND', 'No such login in progress');
+  }
+  if (!getMeshCoreLoginProgressRegistry().cancel(requestId, userId, req.params.id!)) {
+    return fail(res, 404, 'LOGIN_NOT_FOUND', 'No such login in progress');
+  }
+  return ok(res);
 });
 
 /**

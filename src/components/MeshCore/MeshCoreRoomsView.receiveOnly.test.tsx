@@ -121,7 +121,7 @@ describe('MeshCoreRoomsView receive-only mode', () => {
       />,
     );
 
-    await waitFor(() => expect(actions.loginRoomWithSaved).toHaveBeenCalledWith(ROOM_PK));
+    await waitFor(() => expect(actions.loginRoomWithSaved).toHaveBeenCalledWith(ROOM_PK, { requestId: expect.any(String) }));
   });
 
   it('disables the send box (with a tooltip) once logged in, when receiveOnly', async () => {

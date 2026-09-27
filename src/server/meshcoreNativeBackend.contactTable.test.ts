@@ -54,17 +54,15 @@ class MockConnection extends EventEmitter {
   }
   sendToRadioFrame(_frame: Uint8Array) { /* no-op */ }
 
-  login(publicKey: Uint8Array, _password: string) {
+  // The backend sends CMD_SEND_LOGIN itself (#5400) and reads the reply off
+  // the Sent / Err / LoginSuccess events.
+  async sendCommandSendLogin(publicKey: Uint8Array, _password: string) {
     this.loginCalls.push(Buffer.from(publicKey).toString('hex'));
     const behaviour = this.loginBehaviour;
-    return new Promise((_resolve, reject) => {
-      if (behaviour !== 'hang') {
-        // meshcore.js: an Err frame rejects login() with NO argument; the
-        // errCode is only visible on the emitted Err event.
-        this.emit(ResponseCodes.Err, { errCode: behaviour.errCode });
-        reject();
-      }
-    });
+    if (behaviour !== 'hang') {
+      // The firmware answers a login it cannot send with an Err frame.
+      this.emit(ResponseCodes.Err, { errCode: behaviour.errCode });
+    }
   }
   getStatus(publicKey: Uint8Array) {
     this.statusCalls.push(Buffer.from(publicKey).toString('hex'));

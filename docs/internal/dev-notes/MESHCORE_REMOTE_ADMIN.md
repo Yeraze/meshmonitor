@@ -86,6 +86,36 @@ The login replay-protection check is a timestamp in the request, so
 clocks must be roughly aligned. The companion firmware doesn't sync
 clocks automatically — that's what `clock sync` is for.
 
+### Login wait, retry, progress and cancel (#5400)
+
+Every login path (admin console, room server, `ensureSavedLogin`, the
+room-sync scheduler) goes through `MeshCoreManager.loginToNodeWithRetry`.
+The numbers live in one file, `src/server/constants/meshcoreLogin.ts`:
+
+- **Per-attempt wait = max(estTimeout × 2, 10 s)**, capped at 90 s against a
+  garbage estimate. meshcore.js `login()` waited only estTimeout + 1 s, which
+  multi-hop replies routinely missed, so every retry repeated the miss. The
+  native backend now runs the exchange itself (`runLoginExchange`: send
+  CMD_SEND_LOGIN, wait for Sent, then LoginSuccess 0x85 / LoginFail 0x86) and
+  removes every listener and timer on every exit path.
+- **Up to 3 attempts, retry only on `no_reply`**, 2 s pause between. A
+  refusal (`rejected`), a contact missing from the radio (`not_on_device`) or
+  TX disabled stops at once.
+- **Cancel** is an `AbortSignal`. It stops further attempts and makes the
+  backend stop listening, so a reply that lands afterwards is ignored; an
+  `ok` that raced the cancel still reads `cancelled`. A packet already sent
+  cannot be recalled.
+- **Progress** for the UI: the login POST carries a client-chosen
+  `requestId`; `GET /admin/login-progress/:requestId` returns attempt n of N
+  and the time left in the current wait, and `POST /admin/login-cancel`
+  aborts. Both are private to the user and source that started the login
+  (`src/server/services/meshcoreLoginProgress.ts`, in memory). A cancelled
+  login answers 409 `LOGIN_CANCELLED` and saves no password. The room login
+  routes use the same two endpoints.
+- The Virtual Node relay (`handleSendLogin`) keeps ONE attempt: the phone app
+  runs its own retries, as it would against real firmware. It does get the
+  longer wait, so a slow reply is still relayed as LoginSuccess.
+
 ### Scheduled clock pushes (#4916)
 
 `MeshCoreTimeSyncScheduler` (`src/server/services/meshcoreTimeSyncScheduler.ts`)
@@ -353,6 +383,9 @@ glance whether something needs attention.
 | `src/components/MeshCore/MeshCoreLocalConsole.tsx` | Local wrapper: device-type-aware catalog, no auth layer. |
 | `src/components/MeshCore/MeshCoreAclManager.tsx` | Setperm form, mounted alongside the body for Repeater / RoomServer targets. |
 | `src/components/MeshCore/MeshCoreRemoteStatsPanel.tsx` | Structured status panel for the remote console. |
+| `src/server/constants/meshcoreLogin.ts` | Login attempt count, retry pause, per-attempt wait (#5400). |
+| `src/server/services/meshcoreLoginProgress.ts` | In-memory progress + cancel for tracked logins (#5400). |
+| `src/components/MeshCore/MeshCoreLoginProgress.tsx` + `hooks/useMeshCoreLoginProgress.ts` | "Attempt n of 3" line with countdown and Cancel (#5400). |
 
 ## PR history
 

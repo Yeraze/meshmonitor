@@ -209,6 +209,25 @@ export interface SavedRegion {
  *  password outright, `no_reply` is a login that went unanswered. */
 export type RoomSyncFailureReason = 'rejected' | 'no_reply';
 
+/** Live progress of a tracked MeshCore login (#5400). Mirrors the server's
+ *  `LoginProgressSnapshot` (src/server/services/meshcoreLoginProgress.ts). */
+export interface MeshCoreLoginProgressSnapshot {
+  requestId: string;
+  phase: 'starting' | 'sending' | 'waiting' | 'retrying' | 'done';
+  attempt: number;
+  maxAttempts: number;
+  waitMs: number | null;
+  waitRemainingMs: number | null;
+  cancelRequested: boolean;
+  outcome: 'ok' | 'rejected' | 'no_reply' | 'not_on_device' | 'cancelled' | null;
+}
+
+/** Optional per-call tracking for a login (#5400): pass a fresh `requestId`
+ *  to read progress / cancel it while the POST is open. */
+export interface MeshCoreLoginCallOptions {
+  requestId?: string;
+}
+
 export interface RoomSyncConfig {
   enabled: boolean;
   intervalMinutes: number;
@@ -349,7 +368,8 @@ export interface MeshCoreActions {
     publicKey: string,
     password: string,
     rememberPassword?: boolean,
-  ) => Promise<{ success: boolean; persisted?: boolean; error?: string; code?: string; reason?: string }>;
+    opts?: MeshCoreLoginCallOptions,
+  ) => Promise<{ success: boolean; persisted?: boolean; error?: string; code?: string; reason?: string; cancelled?: boolean; attempts?: number }>;
   /** Send a CLI command to a remote node and await its single-packet reply.
    *  Resolves the reply text + elapsedMs on success; `error` carries the
    *  human message for any failure (timeouts, send rejections). */
@@ -381,7 +401,14 @@ export interface MeshCoreActions {
    *  STORED_CREDENTIAL_REJECTED) and fall back to the password modal. */
   loginRemoteWithSaved: (
     publicKey: string,
-  ) => Promise<{ success: boolean; usedStored?: boolean; error?: string; code?: string }>;
+    opts?: MeshCoreLoginCallOptions,
+  ) => Promise<{ success: boolean; usedStored?: boolean; error?: string; code?: string; reason?: string; cancelled?: boolean; attempts?: number }>;
+  /** Progress of a login started with `opts.requestId` (#5400). Null when
+   *  unknown (not started yet, expired, or not ours). No radio traffic. */
+  getLoginProgress: (requestId: string) => Promise<MeshCoreLoginProgressSnapshot | null>;
+  /** Ask a tracked login to stop sending further attempts (#5400). A packet
+   *  already on the air cannot be recalled; a late reply is ignored. */
+  cancelLogin: (requestId: string) => Promise<boolean>;
   /** Send a CLI command to the LOCALLY connected MeshCore node (the one
    *  this source is bound to). For Repeater / Room Server firmware this
    *  drives the device's native text CLI; for Companion firmware a small
@@ -403,11 +430,11 @@ export interface MeshCoreActions {
 
   // ----- Room server -----
   /** Login to a room server. Password may be empty for guest access. */
-  loginRoom: (publicKey: string, password: string, rememberPassword?: boolean) => Promise<{ success: boolean; persisted?: boolean; error?: string }>;
+  loginRoom: (publicKey: string, password: string, rememberPassword?: boolean, opts?: MeshCoreLoginCallOptions) => Promise<{ success: boolean; persisted?: boolean; error?: string; code?: string; reason?: RoomSyncFailureReason; cancelled?: boolean }>;
   /** Login to a room server using a previously saved credential. `reason`
    *  separates a password the room server actively refused from one whose
    *  login simply went unanswered. */
-  loginRoomWithSaved: (publicKey: string) => Promise<{ success: boolean; usedStored?: boolean; error?: string; code?: string; reason?: RoomSyncFailureReason }>;
+  loginRoomWithSaved: (publicKey: string, opts?: MeshCoreLoginCallOptions) => Promise<{ success: boolean; usedStored?: boolean; error?: string; code?: string; reason?: RoomSyncFailureReason; cancelled?: boolean }>;
   /** Send a text post to a room server. */
   sendRoomPost: (roomPublicKey: string, text: string) => Promise<boolean>;
   /** Get room credential info for this source. */
@@ -1276,12 +1303,13 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
     publicKey: string,
     password: string,
     rememberPassword?: boolean,
+    opts?: MeshCoreLoginCallOptions,
   ) => {
     try {
       const response = await csrfFetch(`${mcPrefix}/admin/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ publicKey, password, rememberPassword }),
+        body: JSON.stringify({ publicKey, password, rememberPassword, requestId: opts?.requestId }),
       });
       const data = await parseJsonResponse(response);
       reportTxDisabled(response.status, data);
@@ -1291,6 +1319,8 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
         error: data.error,
         code: data.code,
         reason: data.reason,
+        cancelled: data.code === 'LOGIN_CANCELLED',
+        attempts: data.attempts,
       };
     } catch (err) {
       return { success: false, error: err instanceof Error ? err.message : 'Network error' };
@@ -1360,12 +1390,12 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
     }
   }, [mcPrefix, csrfFetch, reportTxDisabled]);
 
-  const loginRemoteWithSaved = useCallback(async (publicKey: string) => {
+  const loginRemoteWithSaved = useCallback(async (publicKey: string, opts?: MeshCoreLoginCallOptions) => {
     try {
       const response = await csrfFetch(`${mcPrefix}/admin/login-with-saved`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ publicKey }),
+        body: JSON.stringify({ publicKey, requestId: opts?.requestId }),
       });
       const data = await parseJsonResponse(response);
       reportTxDisabled(response.status, data);
@@ -1374,11 +1404,39 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
         usedStored: data.usedStored,
         error: data.error,
         code: data.code,
+        reason: data.reason,
+        cancelled: data.code === 'LOGIN_CANCELLED',
+        attempts: data.attempts,
       };
     } catch (err) {
       return { success: false, error: err instanceof Error ? err.message : 'Network error' };
     }
   }, [mcPrefix, csrfFetch, reportTxDisabled]);
+
+  const getLoginProgress = useCallback(async (requestId: string): Promise<MeshCoreLoginProgressSnapshot | null> => {
+    try {
+      const response = await csrfFetch(`${mcPrefix}/admin/login-progress/${encodeURIComponent(requestId)}`);
+      if (!response.ok) return null;
+      const data = await parseJsonResponse(response);
+      return data.success && data.data ? (data.data as MeshCoreLoginProgressSnapshot) : null;
+    } catch (_err) {
+      return null;
+    }
+  }, [mcPrefix, csrfFetch]);
+
+  const cancelLogin = useCallback(async (requestId: string): Promise<boolean> => {
+    try {
+      const response = await csrfFetch(`${mcPrefix}/admin/login-cancel`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ requestId }),
+      });
+      const data = await parseJsonResponse(response);
+      return !!data.success;
+    } catch (_err) {
+      return false;
+    }
+  }, [mcPrefix, csrfFetch]);
 
   const forgetRemoteCredential = useCallback(async (publicKey: string): Promise<boolean> => {
     try {
@@ -2009,31 +2067,45 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
 
   // ----- Room server -----
 
-  const loginRoom = useCallback(async (publicKey: string, password: string, rememberPassword?: boolean): Promise<{ success: boolean; persisted?: boolean; error?: string }> => {
+  const loginRoom = useCallback(async (publicKey: string, password: string, rememberPassword?: boolean, opts?: MeshCoreLoginCallOptions): Promise<{ success: boolean; persisted?: boolean; error?: string; code?: string; reason?: RoomSyncFailureReason; cancelled?: boolean }> => {
     try {
       const response = await csrfFetch(`${mcPrefix}/rooms/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ publicKey, password, rememberPassword }),
+        body: JSON.stringify({ publicKey, password, rememberPassword, requestId: opts?.requestId }),
       });
       const data = await parseJsonResponse(response);
       reportTxDisabled(response.status, data);
-      return { success: !!data.success, persisted: data.persisted, error: data.error };
+      return {
+        success: !!data.success,
+        persisted: data.persisted,
+        error: data.error,
+        code: data.code,
+        reason: data.reason,
+        cancelled: data.code === 'LOGIN_CANCELLED',
+      };
     } catch (_err) {
       return { success: false, error: 'Room login request failed' };
     }
   }, [mcPrefix, csrfFetch, reportTxDisabled]);
 
-  const loginRoomWithSaved = useCallback(async (publicKey: string): Promise<{ success: boolean; usedStored?: boolean; error?: string; code?: string; reason?: RoomSyncFailureReason }> => {
+  const loginRoomWithSaved = useCallback(async (publicKey: string, opts?: MeshCoreLoginCallOptions): Promise<{ success: boolean; usedStored?: boolean; error?: string; code?: string; reason?: RoomSyncFailureReason; cancelled?: boolean }> => {
     try {
       const response = await csrfFetch(`${mcPrefix}/rooms/login-with-saved`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ publicKey }),
+        body: JSON.stringify({ publicKey, requestId: opts?.requestId }),
       });
       const data = await parseJsonResponse(response);
       reportTxDisabled(response.status, data);
-      return { success: !!data.success, usedStored: data.usedStored, error: data.error, code: data.code, reason: data.reason };
+      return {
+        success: !!data.success,
+        usedStored: data.usedStored,
+        error: data.error,
+        code: data.code,
+        reason: data.reason,
+        cancelled: data.code === 'LOGIN_CANCELLED',
+      };
     } catch (_err) {
       return { success: false, error: 'Room auto-login request failed' };
     }
@@ -2175,6 +2247,8 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
       forgetRemoteCredential,
       getRemoteStatus,
       loginRemoteWithSaved,
+      getLoginProgress,
+      cancelLogin,
       sendLocalCliCommand,
       loginRoom,
       loginRoomWithSaved,

@@ -13,7 +13,13 @@
  */
 
 import { Request, Response, NextFunction } from 'express';
-import { MeshCoreManager } from '../meshcoreManager.js';
+import {
+  MeshCoreManager,
+  type MeshCoreLoginOptions,
+  type MeshCoreLoginRetryOutcome,
+} from '../meshcoreManager.js';
+import { MESHCORE_LOGIN_MAX_ATTEMPTS } from '../constants/meshcoreLogin.js';
+import { getMeshCoreLoginProgressRegistry, isValidLoginRequestId } from '../services/meshcoreLoginProgress.js';
 import { sourceManagerRegistry } from '../sourceManagerRegistry.js';
 import { isMeshCoreManager, isMeshCoreMqttManager, isAnyMeshCoreManager } from '../sourceManagerTypes.js';
 import databaseService from '../../services/database.js';
@@ -532,4 +538,50 @@ export function requireMeshcoreChannelAccess(action: 'read' | 'write') {
       required: { resource: channelResourceFor(idx) ?? 'messages', action },
     });
   };
+}
+
+/**
+ * Tracking for one interactive login (#5400). `opts` goes straight to
+ * `loginToNodeWithRetry` / `loginToRoomWithOutcome`; `finish` records the
+ * final outcome for the progress endpoint and must run once on every path.
+ */
+export interface TrackedLogin {
+  opts: MeshCoreLoginOptions;
+  finish: (outcome: MeshCoreLoginRetryOutcome) => void;
+}
+
+/**
+ * Start progress tracking for a login POST that carries a client-chosen
+ * `requestId` (#5400). Without one the login runs untracked, exactly as
+ * before, so API clients need no change. Returns null after answering 400
+ * (malformed id) or 409 (id in use, or too many live logins).
+ */
+export function startTrackedLogin(req: Request, res: Response): TrackedLogin | null {
+  const requestId = (req.body as { requestId?: unknown } | undefined)?.requestId;
+  if (requestId === undefined || requestId === null) {
+    return { opts: {}, finish: () => {} };
+  }
+  if (!isValidLoginRequestId(requestId)) {
+    fail(res, 400, 'INVALID_REQUEST_ID', 'requestId must be 8-64 characters of A-Z, a-z, 0-9, _ or -');
+    return null;
+  }
+  const userId = req.session?.userId;
+  if (typeof userId !== 'number') {
+    // requireAuth() already passed, so this is a token request with no
+    // session to bind progress to. Run it untracked rather than refuse it.
+    return { opts: {}, finish: () => {} };
+  }
+  const handle = getMeshCoreLoginProgressRegistry().start(
+    requestId, userId, req.params.id!, MESHCORE_LOGIN_MAX_ATTEMPTS,
+  );
+  if (!handle) {
+    fail(res, 409, 'LOGIN_REQUEST_ID_IN_USE', 'A login with this requestId is already tracked');
+    return null;
+  }
+  return { opts: { signal: handle.signal, onProgress: handle.onProgress }, finish: handle.finish };
+}
+
+/** Answer a login the user cancelled (#5400). Not a failure: nothing to fix. */
+export function respondLoginCancelled(res: Response): Response {
+  return fail(res, 409, 'LOGIN_CANCELLED', 'Login cancelled', { cancelled: true });
 }

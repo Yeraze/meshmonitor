@@ -44,6 +44,12 @@ import {
 } from './meshcoreChannelReorder.js';
 import { remapMeshCoreChannelReferences, type ChannelRemapSummary } from './services/meshcoreChannelRemapService.js';
 import { TxDisabledError } from './errors/txDisabledError.js';
+import {
+  MESHCORE_LOGIN_BRIDGE_TIMEOUT_MS,
+  MESHCORE_LOGIN_CANCELLED,
+  MESHCORE_LOGIN_MAX_ATTEMPTS,
+  MESHCORE_LOGIN_RETRY_PAUSE_MS,
+} from './constants/meshcoreLogin.js';
 import { isRfBridgeCommand, isTransmittingLocalCliVerb, MESHCORE_RECEIVE_ONLY_MESSAGE } from './constants/meshcoreTx.js';
 import {
   parseMeshCoreIgnoreList,
@@ -930,6 +936,48 @@ export interface MeshCoreLoginResult {
  *   transmitted; retrying cannot help until the contact is added.
  */
 export type MeshCoreLoginOutcome = 'ok' | 'rejected' | 'no_reply' | 'not_on_device';
+
+/**
+ * A login outcome that can also be `cancelled` — the caller aborted it
+ * through its AbortSignal (#5400). Only reachable when a signal is passed,
+ * so the room-sync scheduler (which passes none) never sees it.
+ */
+export type MeshCoreLoginRetryOutcome = MeshCoreLoginOutcome | 'cancelled';
+
+/**
+ * Live progress of a retrying login (#5400), for the UI's "attempt 2 of 3"
+ * line. Carries no password or key material.
+ *  - `sending`: attempt `attempt` is being handed to the radio.
+ *  - `waiting`: the radio sent it; listening up to `waitMs` for the reply.
+ *  - `retrying`: attempt `attempt` got no reply; pausing `pauseMs` first.
+ */
+export type MeshCoreLoginProgressEvent =
+  | { phase: 'sending'; attempt: number; maxAttempts: number }
+  | { phase: 'waiting'; attempt: number; maxAttempts: number; waitMs: number }
+  | { phase: 'retrying'; attempt: number; maxAttempts: number; pauseMs: number };
+
+/** Options for a cancellable, progress-reporting login. */
+export interface MeshCoreLoginOptions {
+  /** Aborting stops further attempts and ignores a late reply. */
+  signal?: AbortSignal;
+  onProgress?: (event: MeshCoreLoginProgressEvent) => void;
+}
+
+/** Sleep that ends early (returning false) when `signal` aborts. */
+function sleepUnlessAborted(ms: number, signal?: AbortSignal): Promise<boolean> {
+  if (signal?.aborted) return Promise.resolve(false);
+  return new Promise((resolve) => {
+    const onAbort = () => {
+      clearTimeout(timer);
+      resolve(false);
+    };
+    const timer = setTimeout(() => {
+      signal?.removeEventListener('abort', onAbort);
+      resolve(true);
+    }, ms);
+    signal?.addEventListener('abort', onAbort, { once: true });
+  });
+}
 
 /** Result of `MeshCoreManager.addContactToDevice` (#5349). */
 export type AddContactToDeviceResult =
@@ -6341,16 +6389,6 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
     return (await this.loginToNodeWithOutcome(publicKey, password)).result;
   }
 
-  /**
-   * `loginToNode` plus WHY it failed, for routes that report the reason to
-   * the user (#5349: "not in the radio's contact list" vs "no reply").
-   */
-  async loginToNodeDetailed(
-    publicKey: string,
-    password: string,
-  ): Promise<{ result: MeshCoreLoginResult | null; outcome: MeshCoreLoginOutcome }> {
-    return this.loginToNodeWithOutcome(publicKey, password);
-  }
 
   /**
    * Is `publicKey` in the companion's saved contact table? (#5349)
@@ -6381,21 +6419,28 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
   private async loginToNodeWithOutcome(
     publicKey: string,
     password: string,
-  ): Promise<{ result: MeshCoreLoginResult | null; outcome: MeshCoreLoginOutcome }> {
+    opts: { signal?: AbortSignal; onWait?: (waitMs: number) => void } = {},
+  ): Promise<{ result: MeshCoreLoginResult | null; outcome: MeshCoreLoginRetryOutcome }> {
     if (this.deviceType !== MeshCoreDeviceType.COMPANION) {
       logger.warn('[MeshCore] Admin login requires Companion firmware');
       return { result: null, outcome: 'no_reply' };
     }
 
     this.requireTransmit();
+    if (opts.signal?.aborted) return { result: null, outcome: 'cancelled' };
 
     try {
       // A login request floods when the path to the node is unknown, so it
-      // carries the default scope (#3667).
+      // carries the default scope (#3667). The backend waits
+      // max(estTimeout x 2, 10 s) for the reply (#5400); the bridge timeout
+      // sits above its longest possible attempt so the backend's own
+      // deadline, which detaches its listeners, always fires first.
       const response = await this.sendWithDefaultScope(() => this.sendBridgeCommand('login', {
         public_key: publicKey,
         password: password,
-      }));
+        signal: opts.signal,
+        onWait: opts.onWait,
+      }, MESHCORE_LOGIN_BRIDGE_TIMEOUT_MS));
 
       if (response.success) {
         logger.debug(`[MeshCore] Logged into node ${publicKey.substring(0, 8)}...`);
@@ -6414,6 +6459,10 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
           outcome: 'ok',
         };
       }
+      if (response.error === MESHCORE_LOGIN_CANCELLED) {
+        logger.debug(`[MeshCore:${this.sourceId}] Login to ${publicKey.substring(0, 8)}… cancelled`);
+        return { result: null, outcome: 'cancelled' };
+      }
       if (response.error === MESHCORE_CONTACT_NOT_ON_DEVICE) {
         // The companion could not even send the login: it resolves the target
         // from its own contact table and doesn't hold this one (#5349).
@@ -6431,9 +6480,71 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
       }
       return { result: null, outcome: rejected ? 'rejected' : 'no_reply' };
     } catch (error) {
+      // Receive-only / TX-disabled is a hard stop, not a lost reply: let it
+      // reach the route (403) instead of being retried as silence.
+      if (error instanceof TxDisabledError) throw error;
       logger.error('[MeshCore] Login failed:', error);
       return { result: null, outcome: 'no_reply' };
     }
+  }
+
+  /**
+   * Log in to a remote node, retrying ONLY when nothing came back (#5400).
+   *
+   * Shared by every interactive and background login (admin console, room
+   * server, saved-credential login before read commands, room-sync
+   * scheduler) so they all use the same attempt count, pause, and per-attempt
+   * reply wait (constants/meshcoreLogin.ts).
+   *
+   *  - `no_reply`: pause, then try again, up to MESHCORE_LOGIN_MAX_ATTEMPTS.
+   *    Silence on LoRa says nothing about the password.
+   *  - `rejected`: stop at once. It is the remote's final answer; more
+   *    tries only spend airtime and fill the remote's log.
+   *  - `not_on_device`: stop at once. Nothing was sent, and nothing will be
+   *    until the contact is added to the radio.
+   *  - TX disabled (receive-only): throws, as before.
+   *  - `opts.signal` aborting: `cancelled`. No further attempts, and a reply
+   *    that lands after the abort is ignored (even an `ok` that raced it).
+   */
+  async loginToNodeWithRetry(
+    publicKey: string,
+    password: string,
+    opts: MeshCoreLoginOptions = {},
+  ): Promise<{ result: MeshCoreLoginResult | null; outcome: MeshCoreLoginRetryOutcome; attempts: number }> {
+    const { signal, onProgress } = opts;
+    const maxAttempts = MESHCORE_LOGIN_MAX_ATTEMPTS;
+    const report = (event: MeshCoreLoginProgressEvent) => {
+      try {
+        onProgress?.(event);
+      } catch (err) {
+        logger.debug(`[MeshCore:${this.sourceId}] login progress callback threw: ${(err as Error).message}`);
+      }
+    };
+    const short = `${publicKey.substring(0, 8)}…`;
+
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      if (signal?.aborted) return { result: null, outcome: 'cancelled', attempts: attempt - 1 };
+      report({ phase: 'sending', attempt, maxAttempts });
+      const { result, outcome } = await this.loginToNodeWithOutcome(publicKey, password, {
+        signal,
+        onWait: (waitMs) => report({ phase: 'waiting', attempt, maxAttempts, waitMs }),
+      });
+      // A success that raced a cancel is still a cancel: the user asked us
+      // to stop, so the UI must not flip to "logged in" behind their back.
+      if (signal?.aborted) return { result: null, outcome: 'cancelled', attempts: attempt };
+      if (outcome !== 'no_reply') return { result, outcome, attempts: attempt };
+      // Not a Companion: nothing went on the air, and retrying cannot help.
+      if (this.deviceType !== MeshCoreDeviceType.COMPANION) return { result, outcome, attempts: attempt };
+      if (attempt < maxAttempts) {
+        logger.debug(`[MeshCore:${this.sourceId}] Login attempt ${attempt}/${maxAttempts} got no reply for ${short}, retrying`);
+        report({ phase: 'retrying', attempt, maxAttempts, pauseMs: MESHCORE_LOGIN_RETRY_PAUSE_MS });
+        if (!(await sleepUnlessAborted(MESHCORE_LOGIN_RETRY_PAUSE_MS, signal))) {
+          return { result: null, outcome: 'cancelled', attempts: attempt };
+        }
+      }
+    }
+    logger.warn(`[MeshCore:${this.sourceId}] Login to ${short} got no reply after ${maxAttempts} attempts`);
+    return { result: null, outcome: 'no_reply', attempts: maxAttempts };
   }
 
   /**
@@ -6581,15 +6692,9 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
     // No saved password (or unreadable/rotated): do NOT anonymous-login.
     if (cred.kind !== 'ok') return false;
 
-    const maxAttempts = 3;
-    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-      if (await this.loginToNode(publicKey, cred.password)) return true;
-      if (attempt < maxAttempts) {
-        logger.debug(`[MeshCore:${this.sourceId}] saved-credential login attempt ${attempt}/${maxAttempts} got no reply for ${publicKey.substring(0, 8)}…, retrying`);
-        await new Promise((r) => setTimeout(r, 1500));
-      }
-    }
-    logger.warn(`[MeshCore:${this.sourceId}] saved-credential login failed after ${maxAttempts} attempts for ${publicKey.substring(0, 8)}…`);
+    const { outcome, attempts } = await this.loginToNodeWithRetry(publicKey, cred.password);
+    if (outcome === 'ok') return true;
+    logger.warn(`[MeshCore:${this.sourceId}] saved-credential login ${outcome} after ${attempts} attempt(s) for ${publicKey.substring(0, 8)}…`);
     return false;
   }
 
@@ -6613,30 +6718,19 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
    * final answer, so we stop at once instead of spending two more floods to
    * be told the same thing.
    */
-  async loginToRoomWithOutcome(publicKey: string, password: string): Promise<MeshCoreLoginOutcome> {
+  async loginToRoomWithOutcome(
+    publicKey: string,
+    password: string,
+    opts: MeshCoreLoginOptions = {},
+  ): Promise<MeshCoreLoginRetryOutcome> {
     this.requireTransmit();
-    const maxAttempts = 3;
-    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-      const { outcome } = await this.loginToNodeWithOutcome(publicKey, password);
-      if (outcome === 'ok') {
-        this.roomLoggedInNodes.set(publicKey, { loggedIn: true, loginTime: Date.now() });
-        return 'ok';
-      }
-      if (outcome === 'rejected') {
-        logger.warn(`[MeshCore] Room ${publicKey.substring(0, 8)}… refused the password — not retrying`);
-        return 'rejected';
-      }
-      if (outcome === 'not_on_device') {
-        // Nothing was sent, and retrying cannot help until the room server
-        // is added to the radio's contact list (#5349).
-        return 'not_on_device';
-      }
-      if (attempt < maxAttempts) {
-        logger.warn(`[MeshCore] Room login attempt ${attempt}/${maxAttempts} got no reply for ${publicKey.substring(0, 8)}…, retrying`);
-        await new Promise(r => setTimeout(r, 2000));
-      }
+    const { outcome } = await this.loginToNodeWithRetry(publicKey, password, opts);
+    if (outcome === 'ok') {
+      this.roomLoggedInNodes.set(publicKey, { loggedIn: true, loginTime: Date.now() });
+    } else if (outcome === 'rejected') {
+      logger.warn(`[MeshCore] Room ${publicKey.substring(0, 8)}… refused the password, not retrying`);
     }
-    return 'no_reply';
+    return outcome;
   }
 
   isRoomLoggedIn(publicKey: string): boolean {

@@ -29,9 +29,12 @@ function makeManager(loginImpl?: (pk: string, pw: string, attempt: number) => bo
   m.connected = true;
   m.localNode = { publicKey: 'local', name: 'local', advType: MeshCoreDeviceType.COMPANION };
   const loginCalls: LoginCall[] = [];
-  m.loginToNode = vi.fn(async (pk: string, pw: string) => {
+  // ensureSavedLogin goes through the shared retry helper (#5400), which
+  // calls loginToNodeWithOutcome once per attempt.
+  m.loginToNodeWithOutcome = vi.fn(async (pk: string, pw: string) => {
     loginCalls.push({ pk, pw });
-    return loginImpl ? loginImpl(pk, pw, loginCalls.length) : true;
+    const ok = loginImpl ? loginImpl(pk, pw, loginCalls.length) : true;
+    return ok ? { result: {}, outcome: 'ok' } : { result: null, outcome: 'no_reply' };
   });
   // Stub the CLI transport: reply "not supported" so requestNeighbors returns
   // early (null) right after login — we only assert on the login that happened.
@@ -99,7 +102,7 @@ describe('MeshCoreManager.requestNeighbors — saved-password login (no anonymou
       { pk: KEY, pw: 's3cret' },
     ]);
     expect(loginCalls.some((c) => c.pw === '')).toBe(false);
-  });
+  }, 15_000); // two real 2 s retry pauses (#5400)
 });
 
 describe('MeshCoreManager.getNeighbours — saved-password login (binary path)', () => {
