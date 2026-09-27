@@ -132,6 +132,13 @@ export type {
   UpdateCoverageSurveyPatch,
   CoverageSurveyExemptionWindow,
 } from './coverageSurveys.js';
+export { AircraftFlightMatchesRepository } from './aircraftFlightMatches.js';
+export type {
+  AircraftFlightMatchRow,
+  FlightMatchStatus,
+  FlightMatchResultWrite,
+  FlightMatchLookupWrite,
+} from './aircraftFlightMatches.js';
 export { MeshIssuesRepository } from './meshIssues.js';
 export type {
   DbMeshIssue,
