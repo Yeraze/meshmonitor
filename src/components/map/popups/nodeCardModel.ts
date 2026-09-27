@@ -71,6 +71,9 @@ export interface NodeCardModel {
    *  epoch-ms `firstHeard` is divided down like `lastHeard`). Null = unknown. */
   firstHeard?: number | null;
   sources?: NodeSourceRef[];
+  /** The row's own source, on per-source payloads (a Dashboard source view).
+   *  Unified rows carry `sources` instead. Used by the #5374 flight-match line. */
+  sourceId?: string;
   meshcore?: NodeCardMeshCoreDetails;
   /** Whether the node is favorited — used by the "importance" node-list color
    *  style (#4880) to keep favorites vivid regardless of hop distance. */
@@ -168,6 +171,7 @@ function toMeshtasticModel(raw: unknown, opts?: ToNodeCardModelOptions): NodeCar
   const positionTimestamp = typeof node.positionTimestamp === 'number' ? node.positionTimestamp : null;
 
   const sources = Array.isArray(node.sources) ? (node.sources as NodeSourceRef[]) : undefined;
+  const sourceId = typeof node.sourceId === 'string' && node.sourceId ? node.sourceId : undefined;
 
   // Likely-aircraft classification (#5364/#5365 Phase 1) — flat top-level
   // fields (no nested equivalent), matching `dbNodeMapper`'s DTO shape.
@@ -203,6 +207,7 @@ function toMeshtasticModel(raw: unknown, opts?: ToNodeCardModelOptions): NodeCar
     lastHeard,
     firstHeard,
     sources,
+    sourceId,
     isFavorite: node.isFavorite === true,
     likelyAircraft,
     aircraftBasis,

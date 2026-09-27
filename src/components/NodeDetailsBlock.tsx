@@ -20,6 +20,7 @@ import { Firmware28SilenceNotice } from './Firmware28SilenceNotice';
 import { ShowCoverageLink } from './Analysis/ShowCoverageLink';
 import { formatAircraftSummary } from '../utils/aircraftClassification';
 import { SignFlipNotice } from './SignFlipNotice';
+import FlightMatchLine from './FlightMatchLine';
 
 interface NodeDetailsBlockProps {
   node: DeviceInfo | null;
@@ -606,6 +607,11 @@ const NodeDetailsBlock: React.FC<NodeDetailsBlockProps> = ({ node, timeFormat = 
               )}
             </div>
           </div>
+        )}
+
+        {/* ADS-B flight match (#5374), fetched only while this panel is open */}
+        {node.likelyAircraft && (
+          <FlightMatchLine sourceId={sourceId} nodeNum={node.nodeNum} likelyAircraft variant="details" />
         )}
 
         {/* Aircraft age-out / fixed marks (#5364/#5365 Phase 2) */}

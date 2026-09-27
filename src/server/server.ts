@@ -421,6 +421,10 @@ setTimeout(async () => {
     // automation references beacons.
     startMeshBeaconOfferIngestion();
 
+    // ADS-B flight matching for likely aircraft (#5374). Subscribes to the
+    // Phase 1 transition event; does nothing unless adsbMatchEnabled is on.
+    startAdsbFlightMatching();
+
     // Seed the global "discard invalid GPS positions" ingest gate from settings
     // (default ON = discard, the historical behavior). Refreshed live on save via
     // the setDiscardInvalidPositions callback registered below.
@@ -690,6 +694,7 @@ import automationRoutes from './routes/automationRoutes.js';
 import autoAckConverterRoutes from './routes/autoAckConverterRoutes.js';
 import { startAutomationEngine } from './services/automation/automationEngineSingleton.js';
 import { startMeshBeaconOfferIngestion } from './services/meshBeaconOfferService.js';
+import { startAdsbFlightMatching } from './services/adsbMatchService.js';
 import userRoutes from './routes/userRoutes.js';
 import auditRoutes from './routes/auditRoutes.js';
 import securityRoutes from './routes/securityRoutes.js';

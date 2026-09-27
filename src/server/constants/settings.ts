@@ -415,6 +415,12 @@ export const VALID_SETTINGS_KEYS = [
   // every elevation fetch is server-proxied.
   'elevationEnabled',
   'elevationSourceUrl',
+  // ADS-B flight matching for likely aircraft (#5374). Global (not per-source):
+  // it configures one outbound service, like elevation. `adsb_api_token` is
+  // server-only via SECRET_SETTINGS_KEY_PATTERN (`_token` suffix).
+  'adsbMatchEnabled',
+  'adsbFeed',
+  'adsb_api_token',
   // ATAK/CoT Phase 3 (issue #3691): plaintext TCP CoT feed for ATAK/WinTAK.
   // Default OFF. When enabled, streams CoT <event> XML on cotFeedPort.
   'cotFeedEnabled',
@@ -777,6 +783,9 @@ export const GLOBAL_ONLY_SETTINGS_KEYS = new Set<string>([
   'adminRetryAttempts',                     // :201 global admin retry count (#4487)
   'elevationEnabled',                       // :305 "Global (not per-source)" (#4111)
   'elevationSourceUrl',                     // :305, also SECRET_SETTINGS_KEYS
+  'adsbMatchEnabled',                       // global outbound service (#5374), read via getSetting
+  'adsbFeed',                               // "
+  'adsb_api_token',                         // ", secret via the _token pattern
   // Global singletons driven only by the global POST branch:
   'cotFeedEnabled',                         // settingsRoutes.ts:900-911 — "global singleton"
   'cotFeedPort',                            // "
@@ -864,6 +873,11 @@ export const SECRET_SETTINGS_KEYS = new Set<string>([
  */
 export const SECRET_SETTINGS_KEY_PATTERN = /(_private_key|_secret|_token)$/i;
 
+/** True for a key `stripSecretSettings` hides from non-admins. */
+export function isSecretSettingKey(key: string): boolean {
+  return SECRET_SETTINGS_KEYS.has(key) || SECRET_SETTINGS_KEY_PATTERN.test(key);
+}
+
 /**
  * Strip secret-bearing keys from a settings map. Admins receive the
  * unmodified map; everyone else (including unauthenticated callers) gets
@@ -876,8 +890,7 @@ export function stripSecretSettings<T extends Record<string, unknown>>(
   if (isAdmin) return settings;
   const out: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(settings)) {
-    if (SECRET_SETTINGS_KEYS.has(k)) continue;
-    if (SECRET_SETTINGS_KEY_PATTERN.test(k)) continue;
+    if (isSecretSettingKey(k)) continue;
     out[k] = v;
   }
   return out as Partial<T>;

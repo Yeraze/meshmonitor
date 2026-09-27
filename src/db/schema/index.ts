@@ -55,6 +55,9 @@ export * from './coverageReceptions.js';
 // Coverage Report saved surveys (global — no sourceId) (#5277 Phase 4b WP1)
 export * from './coverageSurveys.js';
 
+// ADS-B flight matching for likely aircraft (#5374)
+export * from './aircraftFlightMatches.js';
+
 // Mesh Issues findings (global — no sourceId) (epic #4964 Phase 1 WP1)
 export * from './meshIssues.js';
 

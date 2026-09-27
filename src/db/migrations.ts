@@ -198,6 +198,7 @@ import { migration as userMapPreferencesAircraftDisplayModeMigration, runMigrati
 import { migration as addNodeAircraftAgeOutMigration, runMigration177Postgres, runMigration177Mysql } from '../server/migrations/177_add_node_aircraft_ageout.js';
 import { migration as userMapPreferencesAircraftTrailsMigration, runMigration178Postgres, runMigration178Mysql } from '../server/migrations/178_user_map_preferences_aircraft_trails.js';
 import { migration as addNodeFirstHeardMigration, runMigration179Postgres, runMigration179Mysql } from '../server/migrations/179_add_node_first_heard.js';
+import { migration as createAircraftFlightMatchesMigration, runMigration180Postgres, runMigration180Mysql } from '../server/migrations/180_create_aircraft_flight_matches.js';
 
 // ============================================================================
 // Registry
@@ -2905,4 +2906,18 @@ registry.register({
   sqlite: (db) => addNodeFirstHeardMigration.up(db),
   postgres: (client) => runMigration179Postgres(client),
   mysql: (pool) => runMigration179Mysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 180: `aircraft_flight_matches` (#5374). Per-source ADS-B lookup
+// state for a likely-aircraft flagging; the row is the DB-backed 2-lookup cap.
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 180,
+  name: 'create_aircraft_flight_matches',
+  settingsKey: 'migration_180_create_aircraft_flight_matches',
+  sqlite: (db) => createAircraftFlightMatchesMigration.up(db),
+  postgres: (client) => runMigration180Postgres(client),
+  mysql: (pool) => runMigration180Mysql(pool),
 });

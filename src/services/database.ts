@@ -69,6 +69,7 @@ import {
   MeshtasticHeardRepeatersRepository,
   CoverageReceptionsRepository,
   CoverageSurveysRepository,
+  AircraftFlightMatchesRepository,
   MeshIssuesRepository,
   DeadDropRepository,
   AutomationsRepository,
@@ -103,7 +104,7 @@ import type {
   TelemetryCadenceAggregate,
 } from '../db/repositories/index.js';
 import type { MeshIssueFinding } from '../server/services/meshIssues/types.js';
-import type { ConversationReadStateMap } from '../db/repositories/index.js';
+import type { ConversationReadStateMap, AircraftFlightMatchRow, FlightMatchLookupWrite } from '../db/repositories/index.js';
 import type { ConversationKind } from '../db/schema/conversationReadState.js';
 import type { DatabaseType, DbPacketLog as DbTypesPacketLog, DbPacketCountByNode, DbPacketCountByPortnum, DbDistinctRelayNode } from '../db/types.js';
 import { updateNodeMobility } from '../server/services/nodeMobilityService.js';
@@ -608,6 +609,7 @@ class DatabaseService {
   public meshtasticHeardRepeatersRepo: MeshtasticHeardRepeatersRepository | null = null;
   public coverageReceptionsRepo: CoverageReceptionsRepository | null = null;
   public coverageSurveysRepo: CoverageSurveysRepository | null = null;
+  public aircraftFlightMatchesRepo: AircraftFlightMatchesRepository | null = null;
   public meshIssuesRepo: MeshIssuesRepository | null = null;
   public deadDropRepo: DeadDropRepository | null = null;
   public automationsRepo: AutomationsRepository | null = null;
@@ -698,6 +700,11 @@ class DatabaseService {
   get coverageSurveys(): CoverageSurveysRepository {
     if (!this.coverageSurveysRepo) throw new Error('Database not initialized');
     return this.coverageSurveysRepo;
+  }
+
+  get aircraftFlightMatches(): AircraftFlightMatchesRepository {
+    if (!this.aircraftFlightMatchesRepo) throw new Error('Database not initialized');
+    return this.aircraftFlightMatchesRepo;
   }
 
   get meshIssues(): MeshIssuesRepository {
@@ -1150,6 +1157,7 @@ class DatabaseService {
       this.meshtasticHeardRepeatersRepo = new MeshtasticHeardRepeatersRepository(drizzleDb, this.drizzleDbType);
       this.coverageReceptionsRepo = new CoverageReceptionsRepository(drizzleDb, this.drizzleDbType);
       this.coverageSurveysRepo = new CoverageSurveysRepository(drizzleDb, this.drizzleDbType);
+      this.aircraftFlightMatchesRepo = new AircraftFlightMatchesRepository(drizzleDb, this.drizzleDbType);
       this.meshIssuesRepo = new MeshIssuesRepository(drizzleDb, this.drizzleDbType);
       this.deadDropRepo = new DeadDropRepository(drizzleDb, this.drizzleDbType);
       this.automationsRepo = new AutomationsRepository(drizzleDb, this.drizzleDbType);
@@ -3700,6 +3708,15 @@ class DatabaseService {
         }
       }
 
+      // ADS-B flight match (#5374) — per-node lookup state.
+      if (this.aircraftFlightMatchesRepo) {
+        try {
+          await this.aircraftFlightMatchesRepo.deleteForNode(sourceId, nodeNum);
+        } catch (err) {
+          logger.error(`Failed to delete flight match for node ${nodeNum}@${sourceId}:`, err);
+        }
+      }
+
       // Delete the node itself (scoped to sourceId)
       if (this.nodesRepo) {
         nodeDeleted = await this.nodesRepo.deleteNodeRecord(nodeNum, sourceId);
@@ -5754,6 +5771,28 @@ class DatabaseService {
 
   async clearAircraftAgedOutAsync(nodeNum: number, sourceId: string): Promise<void> {
     return this.nodes.clearAircraftAgedOut(nodeNum, sourceId);
+  }
+
+  // ---- ADS-B flight matching (#5374) ----
+
+  async getAircraftFlightMatchAsync(sourceId: string, nodeNum: number): Promise<AircraftFlightMatchRow | null> {
+    return this.aircraftFlightMatches.get(sourceId, nodeNum);
+  }
+
+  async startAircraftFlightMatchEpisodeAsync(sourceId: string, nodeNum: number, episodeStartedAt: number): Promise<void> {
+    return this.aircraftFlightMatches.startEpisode(sourceId, nodeNum, episodeStartedAt);
+  }
+
+  async recordAircraftFlightMatchLookupAsync(
+    sourceId: string,
+    nodeNum: number,
+    write: FlightMatchLookupWrite,
+  ): Promise<boolean> {
+    return this.aircraftFlightMatches.recordLookup(sourceId, nodeNum, write);
+  }
+
+  async deleteAircraftFlightMatchAsync(sourceId: string, nodeNum: number): Promise<number> {
+    return this.aircraftFlightMatches.deleteForNode(sourceId, nodeNum);
   }
 
   async setAircraftFixedAsync(

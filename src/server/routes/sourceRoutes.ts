@@ -16,6 +16,7 @@ import { MAX_RAISE_TARGET, RAISEABLE_PORTNUMS } from '../mqttHopLimitPolicy.js';
 import { MqttBridgeManager, type MqttBridgeSourceConfig } from '../mqttBridgeManager.js';
 import waypointRoutes from './waypoints.js';
 import observerRoutes from './sourceObserverRoutes.js';
+import aircraftFlightMatchRoutes from './aircraftFlightMatchRoutes.js';
 import { PortNum } from '../constants/meshtastic.js';
 import {
   buildSourceNodes,
@@ -2172,6 +2173,7 @@ router.post('/:id/prune-outside-roi', requirePermission('sources', 'write'), asy
 // Waypoints sub-router. Each handler runs `requirePermission('waypoints', …)`
 // scoped to the path's `:id` parameter.
 router.use('/:id/waypoints', waypointRoutes);
+router.use('/:id/nodes/:nodeNum/flight-match', aircraftFlightMatchRoutes);
 router.use('/:id/observer', observerRoutes);
 
 export default router;

@@ -27,6 +27,8 @@ import type { NodeCardModel, NodeSourceRef } from './nodeCardModel';
 import { UiIcon, type UiIconName } from '../../icons';
 import { formatAircraftSummary } from '../../../utils/aircraftClassification';
 import { SignFlipNotice } from '../../SignFlipNotice';
+import FlightMatchLine from '../../FlightMatchLine';
+import { useSource } from '../../../contexts/SourceContext';
 
 /* ------------------------------------------------------------------ */
 /* Header                                                              */
@@ -159,6 +161,7 @@ export const SignalItems: React.FC<SignalItemsProps> = ({
   const showPrecision = precisionBits != null && precisionBits > 0;
   const precisionUnit: 'km' | 'mi' = distanceUnit === 'mi' ? 'mi' : 'km';
   const locationSourceLabel = formatLocationSource(model.positionLocationSource);
+  const { sourceId: contextSourceId } = useSource();
 
   return (
     <>
@@ -200,6 +203,15 @@ export const SignalItems: React.FC<SignalItemsProps> = ({
           <span className="node-popup-icon"><UiIcon name="aircraft" /></span>
           <span className="node-popup-value">{formatAircraftSummary(model, t)}</span>
         </div>
+      )}
+      {/* #5374: ADS-B flight match, fetched only while this popup is open. */}
+      {showAltitude && model.likelyAircraft && (
+        <FlightMatchLine
+          sourceId={contextSourceId ?? model.sourceId ?? model.sources?.find((src) => src.protocol === 'Meshtastic')?.sourceId ?? null}
+          nodeNum={model.nodeNum}
+          likelyAircraft
+          variant="popup"
+        />
       )}
       {/* #5364/#5365 Phase 2: age-out and fixed marks, same gate as above. */}
       {showAltitude && model.aircraftAgedOut && (

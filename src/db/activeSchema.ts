@@ -130,6 +130,9 @@ import {
 import {
   coverageSurveysSqlite, coverageSurveysPostgres, coverageSurveysMysql,
 } from './schema/coverageSurveys.js';
+import {
+  aircraftFlightMatchesSqlite, aircraftFlightMatchesPostgres, aircraftFlightMatchesMysql,
+} from './schema/aircraftFlightMatches.js';
 
 // Mesh Issues findings (global — no sourceId) (epic #4964 Phase 1 WP1)
 import {
@@ -318,6 +321,10 @@ export interface ActiveSchema {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any -- #5277 matches the existing ActiveSchema per-dialect table pattern; typing burn-down is #3962 Phase 6
   coverageSurveys: any;
 
+  // ADS-B flight matches for likely aircraft, per source (#5374)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- #5374 matches the existing ActiveSchema per-dialect table pattern; typing burn-down is #3962 Phase 6
+  aircraftFlightMatches: any;
+
   // Mesh Issues findings (global — no sourceId) (epic #4964 Phase 1 WP1)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any -- #4964 matches the existing ActiveSchema per-dialect table pattern; typing burn-down is #3962 Phase 6
   meshIssues: any;
@@ -453,6 +460,7 @@ const SCHEMA_MAP: Record<DatabaseType, ActiveSchema> = {
     meshtasticHeardRepeaters: meshtasticHeardRepeatersSqlite,
     coverageReceptions: coverageReceptionsSqlite,
     coverageSurveys: coverageSurveysSqlite,
+    aircraftFlightMatches: aircraftFlightMatchesSqlite,
     meshIssues: meshIssuesSqlite,
     embedProfiles: embedProfilesSqlite,
     automations: automationsSqlite,
@@ -531,6 +539,7 @@ const SCHEMA_MAP: Record<DatabaseType, ActiveSchema> = {
     meshtasticHeardRepeaters: meshtasticHeardRepeatersPostgres,
     coverageReceptions: coverageReceptionsPostgres,
     coverageSurveys: coverageSurveysPostgres,
+    aircraftFlightMatches: aircraftFlightMatchesPostgres,
     meshIssues: meshIssuesPostgres,
     embedProfiles: embedProfilesPostgres,
     automations: automationsPostgres,
@@ -609,6 +618,7 @@ const SCHEMA_MAP: Record<DatabaseType, ActiveSchema> = {
     meshtasticHeardRepeaters: meshtasticHeardRepeatersMysql,
     coverageReceptions: coverageReceptionsMysql,
     coverageSurveys: coverageSurveysMysql,
+    aircraftFlightMatches: aircraftFlightMatchesMysql,
     meshIssues: meshIssuesMysql,
     embedProfiles: embedProfilesMysql,
     automations: automationsMysql,
