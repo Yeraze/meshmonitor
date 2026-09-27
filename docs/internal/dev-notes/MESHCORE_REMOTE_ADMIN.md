@@ -116,6 +116,39 @@ The numbers live in one file, `src/server/constants/meshcoreLogin.ts`:
   runs its own retries, as it would against real firmware. It does get the
   longer wait, so a slow reply is still relayed as LoginSuccess.
 
+### Neighbour table paging (#5413)
+
+`REQ_TYPE_GET_NEIGHBOURS` (firmware `simple_repeater/MyMesh.cpp`) packs its
+reply into a 130-byte buffer, prefix_len + 5 bytes an entry, and stops when
+it is full. With our 8-byte prefix one reply holds **at most 10 entries
+whatever `count` says**. The reply also carries the full table size, so a
+larger table (up to MAX_NEIGHBOURS, 50) is read with `offset`. Code:
+`src/server/services/meshcoreNeighboursPaging.ts`.
+
+- **Manual** fetches (Contact Details "Neighbours", "Poll Neighbours") read up
+  to 5 pages, newest first. **Automated** ones (the autopoll scheduler, one
+  page strongest first; auto-pathfinding, one page) stay at one exchange.
+- **Every page waits the shared 60 s `lastMeshTxAt` floor** and stamps it
+  before it sends, so a full manual read takes about 5 minutes and never
+  crowds out the other schedulers.
+- **One login per fetch.** The repeater keeps a logged-in client in its ACL
+  until the table fills and evicts the least-recently-active non-admin
+  (`helpers/ClientACL.cpp`); there is no idle timeout. Pages after the first
+  pass `skipLogin`.
+- The repeater re-sorts per request, so pages are **merged by prefix**, and
+  the walk stops once the offset passes the table size, a page is empty, the
+  cap is hit, the user cancels, or a page gets no reply.
+- **Storage:** a complete read replaces the stored set. Anything less (one
+  scheduler page, cap, cancel, failure) merges: fresh rows win, other stored
+  rows stay with their heard age moved forward, trimmed to the reported table
+  size. A partial read never shrinks a fuller set.
+- **Progress** mirrors the login: `POST /nodes/:pk/neighbours/fetch` with a
+  client `requestId` answers at once and runs in the background;
+  `GET .../fetch/:requestId` returns the page, the table size, the neighbours
+  so far and the time to the next page; `POST .../fetch/:requestId/cancel`
+  stops further pages. Private to the user and source
+  (`meshcoreNeighboursFetchProgress.ts`), one running fetch per source.
+
 ### Scheduled clock pushes (#4916)
 
 `MeshCoreTimeSyncScheduler` (`src/server/services/meshcoreTimeSyncScheduler.ts`)
