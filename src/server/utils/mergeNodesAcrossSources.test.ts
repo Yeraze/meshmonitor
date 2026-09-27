@@ -277,6 +277,38 @@ describe('mergeNodesAcrossSources (issue #3135)', () => {
    * row by the generic empty-field loop.
    */
   describe('likely-aircraft fields follow the position row (#5364/#5365)', () => {
+    // #5401: a source whose radio replays its NodeDB holds a STALE high fix.
+    // With the replay stamped at its original rx_time (not now), the newer
+    // low fix from the other source wins, and so does its aircraft verdict.
+    it('a replayed stale high fix does not keep the aircraft badge over a newer low fix (#5401)', () => {
+      const now = 1_790_000_000_000;
+      const rows = [
+        makeNode(401, {
+          sourceId: 'stale-radio',
+          lastHeard: now / 1000,
+          latitude: 27.5,
+          longitude: -82.2,
+          altitude: 800,
+          positionTimestamp: now - 3 * 3_600_000, // replay keeps its original rx_time
+          likelyAircraft: true,
+          aircraftBasis: 'agl',
+        }),
+        makeNode(401, {
+          sourceId: 'fresh-radio',
+          lastHeard: now / 1000 - 600,
+          latitude: 27.5,
+          longitude: -82.2,
+          altitude: 250,
+          positionTimestamp: now - 20 * 60_000,
+          likelyAircraft: false,
+          aircraftBasis: 'agl',
+        }),
+      ];
+      const [merged] = mergeNodesAcrossSources(rows);
+      expect(merged.altitude).toBe(250);
+      expect(merged.likelyAircraft).toBe(false);
+    });
+
     it('takes the aircraft fields from the finer (bestPosition) fix, not the newest-lastHeard row', () => {
       const rows = [
         makeNode(400, {

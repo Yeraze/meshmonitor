@@ -76,7 +76,7 @@ import { compileUserRegex } from '../utils/safeRegex.js';
 import { shouldGateAutomations, averageStrongestNeighborUtilization, DEFAULT_AIRTIME_CUTOFF_THRESHOLD, DEFAULT_AIRTIME_CUTOFF_SOURCE, DEFAULT_NEIGHBOR_UTIL_MAX_HOPS, MAX_NEIGHBOR_UTIL_MAX_HOPS, NEIGHBOR_UTIL_SAMPLE_COUNT, type AirtimeCutoffSource, type NeighborUtilContributor } from './utils/airtimeCutoff.js';
 import { resolveLastHopName } from './utils/lastHop.js';
 import { isRelayedReception } from './utils/packetHops.js';
-import { resolveLastHeardSec, isLiveReception } from './utils/replayGuard.js';
+import { resolveLastHeardSec, isLiveReception, resolvePositionObservedAtMs, resolveNodeDbPositionObservedAtMs } from './utils/replayGuard.js';
 import { isUptimeReboot } from './utils/rebootDetection.js';
 import { isPowered, detectPowerTransition } from './utils/poweredState.js';
 import { autoAckIsZeroHop, autoAckCellKey, resolveAutoAckReplyRouting } from './utils/autoAckDecision.js';
@@ -7860,7 +7860,13 @@ class MeshtasticManager implements ISourceManager {
             positionPrecisionBits: precisionBits,
             positionGpsAccuracy: gpsAccuracy,
             positionHdop: hdop,
-            positionTimestamp: now,
+            // When the fix was observed, not when this copy arrived (#5401): a
+            // NodeDB replay keeps its original rx_time, so it can't pose as the
+            // freshest fix and outrank a newer one another source heard.
+            positionTimestamp: resolvePositionObservedAtMs(
+              meshPacket.rxTime != null ? Number(meshPacket.rxTime) : undefined,
+              now,
+            ),
             positionLocationSource: locationSource
           };
 
@@ -9892,6 +9898,15 @@ class MeshtasticManager implements ISourceManager {
             nodeData.latitude = coords.latitude;
             nodeData.longitude = coords.longitude;
             nodeData.altitude = nodeInfo.position.altitude;
+            // A NodeDB position is whatever the radio last stored, possibly days
+            // old: stamp the fix's own time (or the radio's lastHeard), never now
+            // (#5401). Unknown leaves the stored stamp alone.
+            const observedAt = resolveNodeDbPositionObservedAtMs(
+              nodeInfo.position.time,
+              nodeInfo.lastHeard,
+              Date.now(),
+            );
+            if (observedAt !== undefined) nodeData.positionTimestamp = observedAt;
             // Only update precision metadata when we actually accept the lat/lon. Updating
             // positionPrecisionBits even on a rejected downgrade would lower the stored
             // value and make the guard one-shot — the next packet at the same low precision
@@ -9899,7 +9914,6 @@ class MeshtasticManager implements ISourceManager {
             if (precisionBits !== undefined && precisionBits !== 0) {
               nodeData.positionPrecisionBits = precisionBits;
               nodeData.positionChannel = channelIndex;
-              nodeData.positionTimestamp = Date.now();
             }
             // location_source is meaningful independent of precision bits, so
             // record it whenever the node reports one (#4176).

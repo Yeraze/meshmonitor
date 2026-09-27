@@ -135,5 +135,29 @@ describe('MeshtasticManager - lastHeard replay guard coverage (#4192/#4445)', ()
 
       expect(lastHeardArg()).toBeCloseTo(nowSec, -1);
     });
+
+    // #5401: positionTimestamp is when the fix was OBSERVED. A NodeDB replay
+    // stamped with "now" re-dated a stale fix as the freshest one, so it
+    // outranked a newer fix from another source in the unified merge.
+    function positionTimestampArg(): number | undefined {
+      const withPos = mockUpsertNodeAsync.mock.calls.filter((c: any[]) => c[0].latitude != null);
+      expect(withPos.length).toBeGreaterThan(0);
+      return withPos[withPos.length - 1][0].positionTimestamp;
+    }
+
+    it('stamps a replayed position with its original rx_time, not now (#5401)', async () => {
+      const meshPacket = { from: 0x44444444, id: 9, rxTime: staleRxTime };
+      await manager.processPositionMessageProtobuf(meshPacket, position);
+
+      expect(positionTimestampArg()).toBe(staleRxTime * 1000);
+    });
+
+    it('stamps a live position with now (#5401)', async () => {
+      const before = Date.now();
+      const meshPacket = { from: 0x44444444, id: 10, rxTime: freshRxTime };
+      await manager.processPositionMessageProtobuf(meshPacket, position);
+
+      expect(positionTimestampArg()).toBeGreaterThanOrEqual(before);
+    });
   });
 });
