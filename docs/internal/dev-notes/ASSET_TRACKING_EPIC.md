@@ -53,4 +53,4 @@ None in any phase. Everything is storage and UI; nothing is sent over the mesh.
   - Estimate endpoint scopes by the per-source `nodes:read` grant. `info` (the telemetry grant) is a global resource, so it can't narrow the count to permitted sources.
   - Auto-delete-by-distance and the aircraft age-out skip an asset for both the ignore and the delete action, like favourites. Only the MQTT geo filter still ignores an asset (as specified).
   - Mesh Issues: `PooledNode` gains an optional `asset` flag; B5 treats an asset as mobile. The raw `mobile` value in finding evidence is unchanged.
-- Found in research, not in scope: `telemetry.purgePositionHistory` (`src/db/repositories/telemetry.ts` ~823) declares the position types but deletes **all** telemetry for the source, or the whole table when no sourceId is given. Check its callers and file a separate bug.
+- Research flagged `telemetry.purgePositionHistory` as deleting all telemetry; checked 2026-09-27, it does filter to position types and the node. False alarm.
