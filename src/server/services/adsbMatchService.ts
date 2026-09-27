@@ -182,7 +182,17 @@ export class AdsbMatchService {
   private async handleLivePosition(sourceId: string, nodeNum: number): Promise<void> {
     if (!(await this.isActive(sourceId))) return;
     const row = await this.deps.getMatch(sourceId, nodeNum);
-    if (!row || row.lookups !== 1 || row.status === 'matched' || row.firstLookupAt == null) return;
+    if (!row) return;
+    // Lookup 1 failed (network, 429, 5xx: failures don't count): retry it on a
+    // later live fix, while the flagging is at most 30 min old. The retry floor
+    // and the global backoff in runLookup still space the attempts.
+    if (row.lookups === 0) {
+      const sinceFlag = this.deps.now() - row.episodeStartedAt;
+      if (sinceFlag < 0 || sinceFlag > SECOND_LOOKUP_MAX_MS) return;
+      await this.runLookup({ sourceId, nodeNum, episodeStartedAt: row.episodeStartedAt, lookupsBefore: 0, previousHex: null });
+      return;
+    }
+    if (row.lookups !== 1 || row.status === 'matched' || row.firstLookupAt == null) return;
     const sinceFirst = this.deps.now() - row.firstLookupAt;
     if (sinceFirst < SECOND_LOOKUP_MIN_MS || sinceFirst > SECOND_LOOKUP_MAX_MS) return;
     await this.runLookup({

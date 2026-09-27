@@ -261,6 +261,31 @@ describe('AdsbMatchService — failures and backoff', () => {
     expect(await h.repo.get('src-a', NODE)).toMatchObject({ lookups: 2, status: 'matched' });
   });
 
+  it('a failed first lookup is retried on a later live fix, then confirms as usual', async () => {
+    const h = makeHarness({ responses: [new AdsbFeedError('HTTP 404', 'http', 404, false), HIT, HIT] });
+    await flag(h); // lookup 1 fails, not counted
+    expect((await h.repo.get('src-a', NODE))!.lookups).toBe(0);
+    h.clock.now += 30_000;
+    await livePosition(h); // inside the 60 s retry floor: skipped
+    expect(h.fetch).toHaveBeenCalledTimes(1);
+    h.clock.now += 31_000;
+    await livePosition(h); // lookup 1 retried
+    expect(await h.repo.get('src-a', NODE)).toMatchObject({ lookups: 1, status: 'possible' });
+    h.clock.now += 61_000;
+    await livePosition(h); // lookup 2 confirms
+    expect(await h.repo.get('src-a', NODE)).toMatchObject({ lookups: 2, status: 'matched' });
+    expect(h.fetch).toHaveBeenCalledTimes(3);
+  });
+
+  it('a failed first lookup is not retried once the flagging is over 30 min old', async () => {
+    const h = makeHarness({ responses: [new AdsbFeedError('HTTP 404', 'http', 404, false), HIT] });
+    await flag(h);
+    h.clock.now += 31 * 60_000;
+    await livePosition(h);
+    expect(h.fetch).toHaveBeenCalledTimes(1);
+    expect((await h.repo.get('src-a', NODE))!.lookups).toBe(0);
+  });
+
   it('a 429 starts a 10-minute global backoff that blocks every source', async () => {
     const h = makeHarness({ responses: [new AdsbFeedError('HTTP 429', 'http', 429, true), HIT] });
     await flag(h, 'src-a');

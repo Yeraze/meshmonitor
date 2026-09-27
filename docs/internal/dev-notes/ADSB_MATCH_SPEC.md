@@ -40,6 +40,7 @@ These are global, not per source: they configure an outbound service, like `elev
 | `adsb_api_token` | string, optional | empty; kept for adsb.lol's announced future key. Server-only: the `_token` suffix matches `SECRET_SETTINGS_KEY_PATTERN`, so it is never sent to clients. |
 
 - Validate `adsbFeed` against the list, returning 400 `INVALID_ADSB_FEED` otherwise.
+- **Secret keys and non-admin saves (added in review):** a non-admin never receives `adsb_api_token` (or any secret key), so their Settings save carries it blank. `POST /api/settings` drops secret keys from non-admin writers, so such a save can neither wipe nor set a key. This also closes the same gap for `elevationSourceUrl`.
 - **UI:** a "Flight matching (ADS-B)" block in Settings, next to the Elevation settings (global section).
   - An enable switch, a feed select and an optional key field.
   - Help text: "When a node becomes a likely aircraft, MeshMonitor asks the selected public ADS-B feed which aircraft is at that spot. At most two lookups per flagging. Nothing is sent over the mesh."
@@ -122,6 +123,7 @@ Check the next free number when implementing.
     - Lookup 2 with a hit on a different hex sets `'possible'` with the new aircraft.
     - Lookup 2 with no hit keeps the previous status and fields.
   - A failed lookup (network, 4xx or 5xx) does not increment `lookups`.
+  - **Retry of a failed lookup 1 (added in review):** if lookup 1 failed (so `lookups` is still 0), the next live fix retries it while the flagging is at most 30 min old. The 60 s per-node retry floor and the global backoff still apply.
 - **Exclusions:** skip MeshCore, meshcore_mqtt and Reticulum sources (`AIRCRAFT_EXCLUDED_SOURCE_TYPES`).
 
 ## Route
