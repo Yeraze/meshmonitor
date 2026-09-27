@@ -8497,7 +8497,7 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
             const ok = await this.discoverContactPath(t.key);
             logger.debug(`[MeshCore:${this.sourceId}] Auto-pathfinding: discover_path ${t.name} → ${ok ? 'sent' : 'failed'}`);
           } else {
-            const result = await this.getNeighbours(t.key);
+            const result = await this.getNeighbours(t.key, { count: MAX_NEIGHBOURS_COUNT });
             if (result && result.neighbours.length > 0) {
               const toStore = result.neighbours
                 .map(n => {
