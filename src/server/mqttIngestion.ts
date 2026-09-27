@@ -137,6 +137,15 @@ export function __resetFirstDropCacheForTest(): void {
   droppedOnce.clear();
 }
 
+/** Read a MeshPacket hop header field, accepting the protobufjs camelCase name
+ *  or a bridge's raw snake_case name. Missing / non-numeric → undefined, so an
+ *  absent hop_start stays "unknown" downstream rather than becoming 0 (#5366). */
+function mqttHopField(packet: unknown, camel: string, snake: string): number | undefined {
+  const p = packet as Record<string, unknown>;
+  const v = p[camel] ?? p[snake];
+  return typeof v === 'number' && Number.isFinite(v) ? v : undefined;
+}
+
 export interface MqttIngestionInput {
   sourceId: string;
   envelope: ServiceEnvelopeShape;
@@ -617,6 +626,12 @@ async function ingestServiceEnvelopeInner(input: MqttIngestionInput): Promise<Mq
         rxTime: plausibleRxTime(typeof packet.rxTime === 'number' ? packet.rxTime * 1000 : undefined) ?? undefined,
         rxSnr: typeof packet.rxSnr === 'number' ? packet.rxSnr : undefined,
         rxRssi: typeof packet.rxRssi === 'number' ? packet.rxRssi : undefined,
+        // Hop header fields (#5366). The TCP path stores these on every
+        // message row; MQTT ingest dropped them, so every MQTT reception in
+        // Unified Messages read as "hop count unknown". Same camel/snake read
+        // as meshtasticManager so both paths agree.
+        hopStart: mqttHopField(packet, 'hopStart', 'hop_start'),
+        hopLimit: mqttHopField(packet, 'hopLimit', 'hop_limit'),
         viaMqtt: true,
         emoji,
         replyId,
@@ -1204,6 +1219,9 @@ async function ingestStoreForward(
       rxTime: plausibleRxTime(typeof packet.rxTime === 'number' ? packet.rxTime * 1000 : undefined) ?? undefined,
       rxSnr: typeof packet.rxSnr === 'number' ? packet.rxSnr : undefined,
       rxRssi: typeof packet.rxRssi === 'number' ? packet.rxRssi : undefined,
+      // hopStart/hopLimit deliberately omitted (#5366): this packet's hop
+      // header describes the S&F replay transmission, not the original
+      // message's path, so storing it would report a misleading hop count.
       viaMqtt: true,
       createdAt: nowMs,
       sourcePath: 'mqtt_bridge',

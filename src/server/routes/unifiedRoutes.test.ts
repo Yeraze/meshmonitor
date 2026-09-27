@@ -506,6 +506,9 @@ describe('Unified Routes', () => {
       expect(res.body[0].receptions[1].sourceId).toBe('src-b');
       expect(res.body[0].receptions[0].rxSnr).toBe(-5);
       expect(res.body[0].receptions[1].rxSnr).toBe(-8);
+      // #5366: Meshtastic receptions carry hopStart/hopLimit, not a decoded hopCount.
+      expect(res.body[0].receptions[0].hopCount).toBeNull();
+      expect(res.body[0].receptions[0].hopStart).toBe(3);
     });
 
     it('upgrades emoji/replyId from a later source when the first-seen row lacks them', async () => {
@@ -896,7 +899,7 @@ describe('Unified Routes', () => {
       mockDb.sources.getAllSources.mockResolvedValue([MC_SRC]);
       mockDb.channels.getAllChannels.mockResolvedValue(MC_CHANNELS);
       mockDb.meshcore.getRecentMessages.mockResolvedValue([
-        mkMcMsg({ id: 'c0', fromPublicKey: 'channel-0', fromName: 'Alice', text: 'channel hello', timestamp: 2000, createdAt: 2000 }),
+        mkMcMsg({ id: 'c0', fromPublicKey: 'channel-0', fromName: 'Alice', text: 'channel hello', timestamp: 2000, createdAt: 2000, hopCount: 2 }),
         mkMcMsg({ id: 'dm', fromPublicKey: 'a'.repeat(64), toPublicKey: 'b'.repeat(64), fromName: null, text: 'private', timestamp: 1000, createdAt: 1000 }),
       ]);
 
@@ -916,8 +919,12 @@ describe('Unified Routes', () => {
       expect(channelMsg.fromNodeNum).toBe(0);
       expect(channelMsg.receptions[0].sourceType).toBe('meshcore');
       expect(channelMsg.receptions[0].rxSnr).toBe(6);
+      // #5366: MeshCore hop count (decoded path_len) rides on the reception.
+      expect(channelMsg.receptions[0].hopCount).toBe(2);
 
       const dm = res.body.find((m: any) => m.text === 'private');
+      // Unknown hop count stays null, never 0.
+      expect(dm.receptions[0].hopCount).toBeNull();
       expect(dm.channel).toBe(-1); // DM: no channel-N on either side
     });
 

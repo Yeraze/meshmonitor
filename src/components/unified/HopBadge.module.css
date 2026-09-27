@@ -1,0 +1,27 @@
+/* Per-source hop-count badge in the Unified Messages collapsed row (#5366).
+   Sits inside a colored source tag and inherits its color via currentColor,
+   so it needs no theme tokens of its own. */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 16px;
+  height: 16px;
+  margin-left: 5px;
+  padding: 0 4px;
+  box-sizing: border-box;
+  border-radius: 8px;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  vertical-align: middle;
+  background: color-mix(in srgb, currentColor 22%, transparent);
+  border: 1px solid color-mix(in srgb, currentColor 45%, transparent);
+  white-space: nowrap;
+}
+
+.unknown {
+  opacity: 0.6;
+  border-style: dashed;
+}

@@ -5548,6 +5548,8 @@
   "unified.messages.hop_count_other": "{{count}} hops",
   "unified.messages.hop_start_only": "start {{value}}",
   "unified.messages.hop_limit_only": "limit {{value}}",
+  "unified.messages.hop_badge_label": "Heard by {{name}}: {{hops}}",
+  "unified.messages.hop_badge_unknown": "Heard by {{name}}: hop count unknown",
   "unified.messages.modal.title": "Reception details",
   "unified.messages.modal.request_id": "Request ID",
   "unified.messages.modal.channel": "Channel",
