@@ -24,6 +24,7 @@ import { logger } from '../utils/logger.js';
 import { parseJsonResponse } from '../utils/parseJsonResponse.js';
 import type { NodeTransportClass } from '../utils/nodeTransport.js';
 import type { OutlierPreview, OutlierPurgeResult } from '../utils/telemetryOutliers.js';
+import type { FlightMatch } from '../types/flightMatch.js';
 
 /** Body of the telemetry outlier preview/purge requests (#5333). */
 export interface TelemetryOutlierRequest {
@@ -934,6 +935,17 @@ class ApiService {
       data?: { trails?: Array<{ sourceId: string; nodeNum: number; points: Array<{ lat: number; lon: number; alt: number | null; ts: number }> }> };
     }>(`/api/aircraft/trails?${params}`);
     return body?.data?.trails ?? [];
+  }
+
+  /**
+   * ADS-B flight match for a likely-aircraft node on one source (#5374).
+   * Unwraps the `ok()` envelope; null when there is nothing to show.
+   */
+  async getFlightMatch(sourceId: string, nodeNum: number): Promise<FlightMatch | null> {
+    const body = await this.get<{ success: boolean; data?: FlightMatch | null }>(
+      `/api/sources/${encodeURIComponent(sourceId)}/nodes/${nodeNum >>> 0}/flight-match`,
+    );
+    return body?.data ?? null;
   }
 
   async getMessages(limit: number = 100, sourceId?: string | null): Promise<MeshMessage[]> {

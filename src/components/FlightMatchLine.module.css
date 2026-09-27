@@ -1,0 +1,28 @@
+/* ADS-B flight match line (#5374). */
+
+.line {
+  display: inline;
+}
+
+.link {
+  color: var(--color-accent);
+  text-decoration: none;
+}
+
+.link:hover,
+.link:focus-visible {
+  text-decoration: underline;
+}
+
+.credit {
+  margin-left: 0.4em;
+  font-size: 0.85em;
+  color: var(--color-text-muted);
+  white-space: nowrap;
+}
+
+.detailsLabel {
+  display: flex;
+  align-items: center;
+  gap: 0.35em;
+}

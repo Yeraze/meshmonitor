@@ -45,6 +45,7 @@ import GeoJsonLayerManager from './GeoJsonLayerManager';
 import MapStyleManager from './MapStyleManager';
 import { useDashboardSources } from '../hooks/useDashboardData';
 import { DEFAULT_TERRARIUM_URL } from '../types/elevation';
+import { ADSB_FEEDS, ADSB_FEED_IDS, DEFAULT_ADSB_FEED, isAdsbFeed } from '../utils/adsbFeeds';
 import { clampCoverageRetentionDays, COVERAGE_RETENTION_DEFAULT_DAYS, isCoverageMqttSourceType } from '../utils/coverage';
 import { useSourceQuery } from '../hooks/useSourceQuery';
 import { useSource } from '../contexts/SourceContext';
@@ -187,6 +188,12 @@ interface SettingsDraft {
   externalUrl: string;
   elevationEnabled: boolean;
   elevationSourceUrl: string;
+  // ADS-B flight matching (#5374). Global outbound service, same admin-field
+  // pattern as the elevation pair. `adsbApiToken` maps to the server-only
+  // `adsb_api_token` key (admins receive it unmasked).
+  adsbMatchEnabled: boolean;
+  adsbFeed: string;
+  adsbApiToken: string;
   // Deployment-wide Carto basemap API key (#4934). Global, admin-set, publicly
   // readable (NOT a secret) — publishable, domain-restricted token appended to
   // Carto tile URLs. Mirrors the elevationSourceUrl admin-field pattern.
@@ -503,6 +510,9 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
     externalUrl: '',
     elevationEnabled: false,
     elevationSourceUrl: '',
+    adsbMatchEnabled: false,
+    adsbFeed: DEFAULT_ADSB_FEED,
+    adsbApiToken: '',
     cartoApiKey: '',
     cotFeedEnabled: false,
     cotFeedPort: 8088,
@@ -541,6 +551,10 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
   // `elevationSourceUrl` (stripSecretSettings returns the full map to admins).
   const [initialElevationEnabled, setInitialElevationEnabled] = useState(false);
   const [initialElevationSourceUrl, setInitialElevationSourceUrl] = useState('');
+  // ADS-B flight matching (#5374): same Category C pattern as elevation.
+  const [initialAdsbMatchEnabled, setInitialAdsbMatchEnabled] = useState(false);
+  const [initialAdsbFeed, setInitialAdsbFeed] = useState<string>(DEFAULT_ADSB_FEED);
+  const [initialAdsbApiToken, setInitialAdsbApiToken] = useState('');
   // Likely-aircraft detection (#5364/#5365 Phase 1 WP5). Per-source, unseeded
   // Node Display keys (AIRCRAFT_NODE_DISPLAY_KEYS) — same Category C pattern
   // as the elevation pair above: no SettingsContext prop home, dirty-tracked
@@ -739,6 +753,18 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
           updateField('elevationSourceUrl', elevationSourceUrl);
           setInitialElevationSourceUrl(elevationSourceUrl);
 
+          // ADS-B flight matching (#5374). Off unless stored 'true'; an
+          // unknown feed reads as the default.
+          const adsbOn = settings.adsbMatchEnabled === 'true';
+          updateField('adsbMatchEnabled', adsbOn);
+          setInitialAdsbMatchEnabled(adsbOn);
+          const adsbFeed = isAdsbFeed(settings.adsbFeed) ? settings.adsbFeed : DEFAULT_ADSB_FEED;
+          updateField('adsbFeed', adsbFeed);
+          setInitialAdsbFeed(adsbFeed);
+          const adsbToken = typeof settings.adsb_api_token === 'string' ? settings.adsb_api_token : '';
+          updateField('adsbApiToken', adsbToken);
+          setInitialAdsbApiToken(adsbToken);
+
           // Load likely-aircraft detection settings (#5364/#5365 Phase 1
           // WP5). Per-source, routed through NODE_DISPLAY_SETTING_KEYS; an
           // unset source (absent keys) falls through to
@@ -894,6 +920,9 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       externalUrl: initialExternalUrl,
       elevationEnabled: initialElevationEnabled,
       elevationSourceUrl: initialElevationSourceUrl,
+      adsbMatchEnabled: initialAdsbMatchEnabled,
+      adsbFeed: initialAdsbFeed,
+      adsbApiToken: initialAdsbApiToken,
       cartoApiKey: initialCartoApiKey,
       cotFeedEnabled: initialCotFeedEnabled,
       cotFeedPort: initialCotFeedPort,
@@ -913,7 +942,8 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       initialCoverageRetentionDays,
       initialAnalyticsProvider, initialAnalyticsConfig, initialAppriseApiServerUrl, initialExternalUrl, initialElevationEnabled, initialElevationSourceUrl,
       initialPrivacyPolicyUrl, initialTermsOfServiceUrl, initialContactUrl,
-      initialCartoApiKey, initialCotFeedEnabled, initialCotFeedPort]);
+      initialCartoApiKey, initialCotFeedEnabled, initialCotFeedPort,
+      initialAdsbMatchEnabled, initialAdsbFeed, initialAdsbApiToken]);
 
   // Re-seed the draft's category-A/B fields whenever the upstream props/context values change.
   // PINNED BEHAVIOR (do not add a dirty-guard here — that would be a behavior change, out of
@@ -1107,6 +1137,9 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
     setInitialExternalUrl(d.externalUrl.trim());
     setInitialElevationEnabled(d.elevationEnabled);
     setInitialElevationSourceUrl(d.elevationSourceUrl.trim());
+    setInitialAdsbMatchEnabled(d.adsbMatchEnabled);
+    setInitialAdsbFeed(d.adsbFeed);
+    setInitialAdsbApiToken(d.adsbApiToken.trim());
     setInitialCartoApiKey(d.cartoApiKey.trim());
     setInitialCotFeedEnabled(d.cotFeedEnabled);
     setInitialCotFeedPort(d.cotFeedPort);
@@ -1202,6 +1235,9 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
         externalUrl: draft.externalUrl.trim(),
         elevationEnabled: draft.elevationEnabled ? 'true' : 'false',
         elevationSourceUrl: draft.elevationSourceUrl.trim(),
+        adsbMatchEnabled: draft.adsbMatchEnabled ? 'true' : 'false',
+        adsbFeed: draft.adsbFeed,
+        adsb_api_token: draft.adsbApiToken.trim(),
         cartoApiKey: draft.cartoApiKey.trim(),
         cotFeedEnabled: draft.cotFeedEnabled ? '1' : '0',
         cotFeedPort: String(draft.cotFeedPort),
@@ -3093,6 +3129,70 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
                 </p>
               )}
             </div>
+          </div>
+        </div>}
+
+        {show('settings-adsb') && isAdmin && <div id="settings-adsb" className="settings-section">
+          <h3>{t('settings.adsb_section', 'Flight matching (ADS-B)')}</h3>
+          <p className="setting-description">
+            {t(
+              'settings.adsb_section_description',
+              'When a node becomes a likely aircraft, MeshMonitor asks the selected public ADS-B feed which aircraft is at that spot. At most two lookups per flagging. Nothing is sent over the mesh.'
+            )}
+          </p>
+          <div className="setting-item">
+            <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
+              <input
+                id="adsbMatchEnabled"
+                type="checkbox"
+                checked={draft.adsbMatchEnabled}
+                onChange={(e) => updateField('adsbMatchEnabled', e.target.checked)}
+                style={{ cursor: 'pointer' }}
+              />
+              <span>{t('settings.adsb_enabled_label', 'Look up likely aircraft on a public ADS-B feed')}</span>
+            </label>
+            <span className="setting-description">
+              {t('settings.adsb_enabled_description', 'Off by default. When on, MeshMonitor sends the flagged node\'s approximate position to the feed over HTTPS. A match only confirms; no match never clears the likely-aircraft flag.')}
+            </span>
+          </div>
+          <div className="setting-item">
+            <label htmlFor="adsbFeed">
+              {t('settings.adsb_feed_label', 'Feed')}
+              <span className="setting-description">
+                {draft.adsbFeed === 'adsb.fi'
+                  ? t('settings.adsb_feed_terms_adsb_fi', 'adsb.fi: for personal, non-commercial use only.')
+                  : t('settings.adsb_feed_terms_adsb_lol', 'adsb.lol: open data under the ODbL.')}
+              </span>
+            </label>
+            <select
+              id="adsbFeed"
+              value={draft.adsbFeed}
+              onChange={(e) => updateField('adsbFeed', e.target.value)}
+              className="setting-input"
+              disabled={!draft.adsbMatchEnabled}
+            >
+              {ADSB_FEED_IDS.map((id) => (
+                <option key={id} value={id}>{ADSB_FEEDS[id].name}</option>
+              ))}
+            </select>
+          </div>
+          <div className="setting-item">
+            <label htmlFor="adsbApiToken">
+              {t('settings.adsb_api_key_label', 'API key (optional)')}
+              <span className="setting-description">
+                {t('settings.adsb_api_key_description', 'Leave empty. Kept for adsb.lol\'s announced future key; sent only when set. Stored server-side and never shown to non-admins.')}
+              </span>
+            </label>
+            <input
+              id="adsbApiToken"
+              type="password"
+              value={draft.adsbApiToken}
+              onChange={(e) => updateField('adsbApiToken', e.target.value)}
+              className="setting-input"
+              autoComplete="off"
+              spellCheck={false}
+              disabled={!draft.adsbMatchEnabled}
+            />
           </div>
         </div>}
 
