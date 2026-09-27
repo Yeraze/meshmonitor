@@ -1140,3 +1140,128 @@ describe('MeshCoreChannelsView — receive-only mode (#4547 Phase 2 WP3)', () =>
     expect(input).not.toHaveAttribute('title');
   });
 });
+
+describe('MeshCoreChannelsView — display order (#5385, #5379)', () => {
+  function orderFetch(latestTimestamps: Record<number, number> = {}) {
+    return (url: string) => {
+      if (url.includes('/channels/all')) {
+        return Promise.resolve(jsonResponse([
+          { id: 0, name: 'Public' },
+          { id: 1, name: 'zulu' },
+          { id: 2, name: 'alpha' },
+        ]));
+      }
+      if (url.includes('/channel-counts')) {
+        return Promise.resolve(jsonResponse({ success: true, counts: {}, latestTimestamps }));
+      }
+      return Promise.resolve(jsonResponse({ success: true, data: [] }));
+    };
+  }
+
+  const rowNames = (container: HTMLElement) =>
+    Array.from(container.querySelectorAll('.mc-channel-row-name')).map(n => n.textContent);
+
+  function renderView(actions: MeshCoreActions = makeActions()) {
+    return render(
+      <MeshCoreChannelsView
+        messages={[]}
+        contacts={contacts}
+        status={makeStatus()}
+        actions={actions}
+        baseUrl=""
+        sourceId="src-a"
+      />,
+    );
+  }
+
+  beforeEach(() => {
+    localStorage.clear();
+  });
+
+  it('defaults to device order and sorts by name from the dropdown, persisted per source', async () => {
+    csrfFetchMock.mockImplementation(orderFetch());
+    const { container } = renderView();
+    await waitFor(() => expect(rowNames(container)).toEqual(['# Public', '# zulu', '# alpha']));
+
+    fireEvent.change(screen.getByLabelText('Sort channels by'), { target: { value: 'name' } });
+    await waitFor(() => expect(rowNames(container)).toEqual(['# alpha', '# Public', '# zulu']));
+    expect(localStorage.getItem('meshmonitor-meshcore-channel-sort-mode-src-a')).toBe('name');
+    expect(localStorage.getItem('meshmonitor-meshcore-channel-sort-mode-src-b')).toBeNull();
+  });
+
+  it('sorts by last message, newest first', async () => {
+    csrfFetchMock.mockImplementation(orderFetch({ 1: 100, 2: 900 }));
+    localStorage.setItem('meshmonitor-meshcore-channel-sort-mode-src-a', 'lastMessage');
+    const { container } = renderView();
+    await waitFor(() => expect(rowNames(container)).toEqual(['# alpha', '# zulu', '# Public']));
+  });
+
+  it('reorder mode saves a custom order without touching the device', async () => {
+    csrfFetchMock.mockImplementation(orderFetch());
+    const actions = makeActions();
+    const { container } = renderView(actions);
+    await waitFor(() => expect(rowNames(container)).toEqual(['# Public', '# zulu', '# alpha']));
+
+    fireEvent.click(screen.getByRole('button', { name: /Reorder/ }));
+    expect(screen.getAllByTestId('mc-channel-reorder-row')).toHaveLength(3);
+
+    // Move alpha to the top with the keyboard-friendly arrow buttons.
+    fireEvent.click(screen.getByLabelText('Move # alpha up'));
+    fireEvent.click(screen.getByLabelText('Move # alpha up'));
+    fireEvent.click(screen.getByText('Save order'));
+
+    await waitFor(() => expect(rowNames(container)).toEqual(['# alpha', '# Public', '# zulu']));
+    expect(JSON.parse(localStorage.getItem('meshmonitor-meshcore-channel-custom-order-src-a') ?? '[]'))
+      .toEqual([2, 0, 1]);
+    expect((screen.getByLabelText('Sort channels by') as HTMLSelectElement).value).toBe('custom');
+
+    // Display-only: nothing but GETs went out, and no send action fired.
+    for (const call of csrfFetchMock.mock.calls) {
+      expect(call[1]?.method ?? 'GET').toBe('GET');
+    }
+    expect(actions.sendMessage).not.toHaveBeenCalled();
+  });
+
+  it('loads each source its own sort mode when the source changes', async () => {
+    csrfFetchMock.mockImplementation(orderFetch());
+    localStorage.setItem('meshmonitor-meshcore-channel-sort-mode-src-a', 'name');
+    const { container, rerender } = renderView();
+    await waitFor(() => expect(rowNames(container)).toEqual(['# alpha', '# Public', '# zulu']));
+
+    rerender(
+      <MeshCoreChannelsView
+        messages={[]}
+        contacts={contacts}
+        status={makeStatus()}
+        actions={makeActions()}
+        baseUrl=""
+        sourceId="src-b"
+      />,
+    );
+    await waitFor(() => expect((screen.getByLabelText('Sort channels by') as HTMLSelectElement).value).toBe('device'));
+    await waitFor(() => expect(rowNames(container)).toEqual(['# Public', '# zulu', '# alpha']));
+  });
+
+  it('hides the Reorder button when there is only one channel', async () => {
+    csrfFetchMock.mockImplementation((url: string) => {
+      if (url.includes('/channels/all')) return Promise.resolve(jsonResponse([{ id: 0, name: 'Public' }]));
+      return Promise.resolve(jsonResponse({ success: true, data: [] }));
+    });
+    renderView();
+    await waitFor(() => expect(screen.getByText('# Public')).toBeTruthy());
+    expect(screen.queryByRole('button', { name: /Reorder/ })).toBeNull();
+  });
+
+  it('cancel discards the draft order', async () => {
+    csrfFetchMock.mockImplementation(orderFetch());
+    const { container } = renderView();
+    await waitFor(() => expect(rowNames(container)).toEqual(['# Public', '# zulu', '# alpha']));
+
+    fireEvent.click(screen.getByRole('button', { name: /Reorder/ }));
+    fireEvent.click(screen.getByLabelText('Move # Public down'));
+    fireEvent.click(screen.getByText('Cancel'));
+
+    await waitFor(() => expect(rowNames(container)).toEqual(['# Public', '# zulu', '# alpha']));
+    expect(localStorage.getItem('meshmonitor-meshcore-channel-custom-order-src-a')).toBeNull();
+  });
+});

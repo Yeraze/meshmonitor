@@ -98,4 +98,21 @@ describe('pollRoutes — GET /poll', () => {
 
     getAllTraceroutesSpy.mockRestore();
   });
+
+  it('#5390: the poll payload carries each node\'s firstHeard (Unix seconds)', async () => {
+    const nowS = Math.floor(Date.now() / 1000);
+    const firstS = nowS - 600;
+    await harness.db.nodes.upsertNode({ nodeNum: 0x5390, nodeId: '!00005390', longName: 'First', lastHeard: firstS }, harness.sourceA);
+    await harness.db.nodes.upsertNode({ nodeNum: 0x5390, nodeId: '!00005390', lastHeard: nowS - 5 }, harness.sourceA);
+
+    const agent = await harness.loginAs(harness.admin);
+    const res = await agent.get('/poll');
+
+    expect(res.status).toBe(200);
+    const node = (res.body.nodes as Array<{ nodeNum: number; firstHeard?: number; lastHeard?: number }>)
+      .find((n) => n.nodeNum === 0x5390);
+    expect(node).toBeDefined();
+    expect(node?.firstHeard).toBe(firstS);
+    expect(node?.lastHeard).toBe(nowS - 5);
+  });
 });

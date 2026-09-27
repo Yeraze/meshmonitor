@@ -41,6 +41,8 @@ import { useNodes, useTelemetryNodes, setNodeFieldInCache } from './useServerDat
 import { useTraceroutePaths, type ThemeColors } from './useTraceroutePaths';
 import { isNodeComplete, getEffectivePosition } from '../utils/nodeHelpers';
 import { effectiveMapMaxAgeHours } from '../utils/mapAge';
+import { resolveNodeListAgeHours } from '../utils/nodeQuickAgeFilter';
+import { useNodeQuickAgeFilter } from './useNodeQuickAgeFilter';
 import { nodePassesTransportFilter, transportCutoffSec, isMqttOnlySourceType } from '../utils/nodeTransport';
 import { logger } from '../utils/logger';
 import { favoritePendingKey, pendingFavoriteRequests } from '../utils/pendingToggles';
@@ -157,6 +159,13 @@ export function useSourceView(params: UseSourceViewParams) {
     sortDirection,
     setTracerouteLoading,
   } = useUI();
+  // Nodes tab quick age filter (#5387): a view-only override of the Settings
+  // window, applied ONLY while the Nodes tab is active (processedNodes also
+  // feeds the Messages tab, which keeps the Settings window). null = Settings.
+  const [quickAgeHours] = useNodeQuickAgeFilter();
+  const listAgeHours = activeTab === 'nodes'
+    ? resolveNodeListAgeHours(quickAgeHours, maxNodeAgeHours)
+    : maxNodeAgeHours;
   const {
     showPaths,
     showRoute,
@@ -363,12 +372,13 @@ export function useSourceView(params: UseSourceViewParams) {
     processedNodes: DeviceInfo[];
     agedOutAircraftNodes: DeviceInfo[];
   } => {
-    const cutoffTime = Date.now() / 1000 - maxNodeAgeHours * 60 * 60;
+    const cutoffTime = Date.now() / 1000 - listAgeHours * 60 * 60;
 
-    // maxNodeAgeHours of 0 = "never / show all" (#4947). Keep this
-    // per-source view aligned with useProcessedNodes.
+    // A window of 0 = "never / show all" (#4947). Keep this per-source view
+    // aligned with useProcessedNodes. listAgeHours is maxNodeAgeHours unless
+    // the Nodes tab quick filter overrides it (#5387).
     const ageFiltered =
-      maxNodeAgeHours <= 0
+      listAgeHours <= 0
         ? nodes
         : nodes.filter(node => {
             if (node.isFavorite) return true;
@@ -525,7 +535,7 @@ export function useSourceView(params: UseSourceViewParams) {
     };
   }, [
     nodes,
-    maxNodeAgeHours,
+    listAgeHours,
     activeTab,
     nodesNodeFilter,
     sortField,
@@ -667,10 +677,10 @@ export function useSourceView(params: UseSourceViewParams) {
   );
 
   // Effective map age cap for traceroute/route-segment visibility (#3322):
-  // the Map Features age slider, clamped to [1, maxNodeAgeHours]. null =
-  // follow the source's setting (per-source since #4412 Phase 3), so default
-  // behavior is unchanged.
-  const effectiveMapMaxAge = effectiveMapMaxAgeHours(mapMaxAgeHours, maxNodeAgeHours);
+  // the Map Features age slider, clamped to [1, listAgeHours]. null = follow
+  // the source's setting (per-source since #4412 Phase 3), or the Nodes tab
+  // quick filter when one is picked (#5387), so default behavior is unchanged.
+  const effectiveMapMaxAge = effectiveMapMaxAgeHours(mapMaxAgeHours, listAgeHours);
 
   // Create stable digests of nodes and traceroutes that only change when relevant data changes
   // This prevents unnecessary recalculation of traceroutePathsElements

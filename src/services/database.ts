@@ -141,6 +141,8 @@ export interface DbNode {
   channelUtilization?: number;
   airUtilTx?: number;
   lastHeard?: number;
+  /** #5390: earliest reception on this source, Unix SECONDS. Set once. */
+  firstHeard?: number;
   snr?: number;
   rssi?: number;
   lastTracerouteRequest?: number;
@@ -5508,6 +5510,9 @@ class DatabaseService {
       spreadNodes?: boolean;
       /** Likely-aircraft map display choice (#5364/#5365). Null clears to the 'mark' default. */
       aircraftDisplayMode?: 'show' | 'mark' | 'hide' | null;
+      /** Flight trails (#5364/#5365 Phase 3). */
+      showAircraftTrails?: boolean;
+      aircraftTrailHours?: number;
   }): Promise<void> {
     return this.mapPreferences!.saveMapPreferences(userId, preferences);
   }

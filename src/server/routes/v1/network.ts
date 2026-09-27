@@ -107,7 +107,9 @@ router.get('/topology', async (req: Request, res: Response) => {
           hopsAway: n.hopsAway,
           latitude: eff.latitude,
           longitude: eff.longitude,
-          lastHeard: n.lastHeard
+          lastHeard: n.lastHeard,
+          // #5390: Unix seconds; null = unknown.
+          firstHeard: n.firstHeard != null ? Number(n.firstHeard) : null,
         };
       }),
       edges: traceroutes.map(t => ({

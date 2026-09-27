@@ -21,12 +21,18 @@ interface MapAgeFilterControlProps {
   effectiveMaxAgeHours: number;
   /** New slider value in hours, or null to follow the Settings window. */
   onChange: (hours: number | null) => void;
+  /**
+   * True when `maxNodeAgeHours` is the Nodes tab quick filter (#5387) rather
+   * than the Settings window, so the top stop and hint name the right cap.
+   */
+  capFromQuickFilter?: boolean;
 }
 
 export default function MapAgeFilterControl({
   maxNodeAgeHours,
   effectiveMaxAgeHours,
   onChange,
+  capFromQuickFilter = false,
 }: MapAgeFilterControlProps) {
   const { t } = useTranslation();
   // Keep a "never / show all" setting at 0 so ageFilterStops takes its
@@ -39,12 +45,22 @@ export default function MapAgeFilterControl({
     ? topIndex
     : nearestAgeStopIndex(stops, Math.max(1, Math.round(effectiveMaxAgeHours)));
 
-  const allLabel = settingUnlimited
-    ? t('map.ageAllUnlimited', { defaultValue: 'All (no limit in Settings)' })
-    : t('map.ageAllFromSettings', {
-        window: formatAgeDuration(maxHours),
-        defaultValue: 'All ({{window}} from Settings)',
-      });
+  let allLabel: string;
+  if (capFromQuickFilter) {
+    allLabel = settingUnlimited
+      ? t('map.ageAllUnlimitedQuick', { defaultValue: 'All (no limit in Nodes filter)' })
+      : t('map.ageAllFromQuick', {
+          window: formatAgeDuration(maxHours),
+          defaultValue: 'All ({{window}} from Nodes filter)',
+        });
+  } else {
+    allLabel = settingUnlimited
+      ? t('map.ageAllUnlimited', { defaultValue: 'All (no limit in Settings)' })
+      : t('map.ageAllFromSettings', {
+          window: formatAgeDuration(maxHours),
+          defaultValue: 'All ({{window}} from Settings)',
+        });
+  }
   const stopLabel = (idx: number) => (idx >= topIndex ? allLabel : formatAgeWindow(stops[idx], t));
   const current = stopLabel(currentIndex);
   const title = t('map.ageFilter', { defaultValue: 'Map age filter' });
@@ -76,7 +92,9 @@ export default function MapAgeFilterControl({
         {t('map.ageShowing', { value: current, defaultValue: 'Showing: {{value}}' })}
       </span>
       <span className={styles.hint}>
-        {t('map.ageFilterHint', { defaultValue: "Narrows the Settings node window. It can't widen it." })}
+        {capFromQuickFilter
+          ? t('map.ageFilterHintQuick', { defaultValue: "Narrows the Nodes list window. It can't widen it." })
+          : t('map.ageFilterHint', { defaultValue: "Narrows the Settings node window. It can't widen it." })}
       </span>
     </div>
   );

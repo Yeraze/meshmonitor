@@ -196,6 +196,8 @@ import { migration as resetPostgresSequencesMigration, runMigration174Postgres, 
 import { migration as addNodeAircraftClassificationMigration, runMigration175Postgres, runMigration175Mysql } from '../server/migrations/175_add_node_aircraft_classification.js';
 import { migration as userMapPreferencesAircraftDisplayModeMigration, runMigration176Postgres, runMigration176Mysql } from '../server/migrations/176_user_map_preferences_aircraft_display_mode.js';
 import { migration as addNodeAircraftAgeOutMigration, runMigration177Postgres, runMigration177Mysql } from '../server/migrations/177_add_node_aircraft_ageout.js';
+import { migration as userMapPreferencesAircraftTrailsMigration, runMigration178Postgres, runMigration178Mysql } from '../server/migrations/178_user_map_preferences_aircraft_trails.js';
+import { migration as addNodeFirstHeardMigration, runMigration179Postgres, runMigration179Mysql } from '../server/migrations/179_add_node_first_heard.js';
 
 // ============================================================================
 // Registry
@@ -2873,4 +2875,34 @@ registry.register({
   sqlite: (db) => addNodeAircraftAgeOutMigration.up(db),
   postgres: (client) => runMigration177Postgres(client),
   mysql: (pool) => runMigration177Mysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 178: `user_map_preferences.show_aircraft_trails` +
+// `aircraft_trail_hours` (#5364/#5365 Phase 3) — per-user flight-trail toggle
+// and lookback (1..168 h, default 6).
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 178,
+  name: 'user_map_preferences_aircraft_trails',
+  settingsKey: 'migration_178_user_map_preferences_aircraft_trails',
+  sqlite: (db) => userMapPreferencesAircraftTrailsMigration.up(db),
+  postgres: (client) => runMigration178Postgres(client),
+  mysql: (pool) => runMigration178Mysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 179: `firstHeard` on `nodes` (Unix seconds) and `meshcore_nodes`
+// (epoch ms) (#5390). Per-source, set once by the repositories; backfilled from
+// the earlier of createdAt / lastHeard for rows that have been heard.
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 179,
+  name: 'add_node_first_heard',
+  settingsKey: 'migration_179_add_node_first_heard',
+  sqlite: (db) => addNodeFirstHeardMigration.up(db),
+  postgres: (client) => runMigration179Postgres(client),
+  mysql: (pool) => runMigration179Mysql(pool),
 });

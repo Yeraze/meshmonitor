@@ -381,5 +381,19 @@ describe('NodeDbMaintenanceService', () => {
       // #5033: the uptime sample's timestamp rides along as telemetryTimestamp.
       expect(result[0].telemetryTimestamp).toBe(1700);
     });
+
+    it('#5390: carries firstHeard through, Number-coerced, and omits it when unknown', async () => {
+      getAllNodes.mockResolvedValue([
+        { nodeNum: 7, nodeId: '!00000007', longName: '', shortName: '', lastHeard: 1_760_000_100, firstHeard: '1760000000' },
+        { nodeNum: 8, nodeId: '!00000008', longName: '', shortName: '', lastHeard: 1_760_000_100, firstHeard: null },
+      ]);
+      getLatestTelemetrySampleForAllNodes.mockResolvedValue(new Map());
+      getLatestTelemetryValueForAllNodes.mockResolvedValue(new Map());
+      const svc = new NodeDbMaintenanceService(makeFakeManager() as any);
+
+      const result: any[] = await svc.getAllNodesAsync('source-A');
+      expect(result[0].firstHeard).toBe(1_760_000_000);
+      expect(result[1].firstHeard).toBeUndefined();
+    });
   });
 });

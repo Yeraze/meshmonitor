@@ -128,6 +128,9 @@ export const userMapPreferencesSqlite = sqliteTable('user_map_preferences', {
   // Likely-aircraft map display choice (#5364/#5365, migration 176):
   // 'show' | 'mark' | 'hide'. NULL reads as 'mark'.
   aircraftDisplayMode: text('aircraft_display_mode'),
+  // Likely-aircraft flight trails (#5364/#5365 Phase 3, migration 178).
+  showAircraftTrails: integer('show_aircraft_trails', { mode: 'boolean' }).default(false),
+  aircraftTrailHours: integer('aircraft_trail_hours').default(6),
   positionHistoryHours: integer('position_history_hours'),
   // Map age slider: hide nodes/traceroutes older than this on the map (hours).
   // NULL = follow the global maxNodeAgeHours setting. See #3322.
@@ -164,6 +167,8 @@ export const userMapPreferencesPostgres = pgTable('user_map_preferences', {
   unreadIndicatorEnabled: pgBoolean('unread_indicator_enabled').default(true),
   spreadNodes: pgBoolean('spread_nodes').default(true),
   aircraftDisplayMode: pgText('aircraft_display_mode'),
+  showAircraftTrails: pgBoolean('show_aircraft_trails').default(false),
+  aircraftTrailHours: pgInteger('aircraft_trail_hours').default(6),
   positionHistoryHours: pgInteger('position_history_hours'),
   mapMaxAgeHours: pgInteger('map_max_age_hours'),
   positionHistoryPointsOnly: pgBoolean('position_history_points_only').default(false),
@@ -420,6 +425,8 @@ export const userMapPreferencesMysql = mysqlTable('user_map_preferences', {
   unreadIndicatorEnabled: myBoolean('unread_indicator_enabled').default(true),
   spreadNodes: myBoolean('spread_nodes').default(true),
   aircraftDisplayMode: myVarchar('aircraft_display_mode', { length: 8 }),
+  showAircraftTrails: myBoolean('show_aircraft_trails').default(false),
+  aircraftTrailHours: myInt('aircraft_trail_hours').default(6),
   positionHistoryHours: myInt('position_history_hours'),
   mapMaxAgeHours: myInt('map_max_age_hours'),
   positionHistoryPointsOnly: myBoolean('position_history_points_only').default(false),

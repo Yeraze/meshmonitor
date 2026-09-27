@@ -348,6 +348,8 @@ export interface DeviceInfo {
   telemetryTimestamp?: number;
   hopsAway?: number;
   lastHeard?: number;
+  /** #5390: earliest reception on this source, Unix SECONDS (like lastHeard). */
+  firstHeard?: number;
   snr?: number;
   rssi?: number;
   mobile?: number; // Database field: 0 = not mobile, 1 = mobile (moved >100m)

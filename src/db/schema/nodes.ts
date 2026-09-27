@@ -39,6 +39,9 @@ export const nodesSqlite = sqliteTable('nodes', {
   channelUtilization: real('channelUtilization'),
   airUtilTx: real('airUtilTx'),
   lastHeard: integer('lastHeard'),
+  // #5390: earliest reception this source recorded for the node, Unix SECONDS
+  // (same unit as lastHeard). Set once from the first plausible lastHeard; never overwritten.
+  firstHeard: integer('firstHeard'),
   snr: real('snr'),
   rssi: integer('rssi'),
   lastTracerouteRequest: integer('lastTracerouteRequest'),
@@ -155,6 +158,9 @@ export const nodesPostgres = pgTable('nodes', {
   channelUtilization: pgReal('channelUtilization'),
   airUtilTx: pgReal('airUtilTx'),
   lastHeard: pgBigint('lastHeard', { mode: 'number' }),
+  // #5390: earliest reception this source recorded for the node, Unix SECONDS
+  // (same unit as lastHeard). Set once from the first plausible lastHeard; never overwritten.
+  firstHeard: pgBigint('firstHeard', { mode: 'number' }),
   snr: pgReal('snr'),
   rssi: pgInteger('rssi'),
   lastTracerouteRequest: pgBigint('lastTracerouteRequest', { mode: 'number' }),
@@ -266,6 +272,9 @@ export const nodesMysql = mysqlTable('nodes', {
   channelUtilization: myDouble('channelUtilization'),
   airUtilTx: myDouble('airUtilTx'),
   lastHeard: myBigint('lastHeard', { mode: 'number' }),
+  // #5390: earliest reception this source recorded for the node, Unix SECONDS
+  // (same unit as lastHeard). Set once from the first plausible lastHeard; never overwritten.
+  firstHeard: myBigint('firstHeard', { mode: 'number' }),
   snr: myDouble('snr'),
   rssi: myInt('rssi'),
   lastTracerouteRequest: myBigint('lastTracerouteRequest', { mode: 'number' }),

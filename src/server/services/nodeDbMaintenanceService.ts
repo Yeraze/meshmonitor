@@ -68,6 +68,9 @@ export function mapDbNodeToDeviceInfo(
       noiseFloor
     },
     lastHeard: node.lastHeard,
+    // #5390: Unix seconds, like lastHeard. Absent = never stamped (unknown).
+    // Keep in lock-step with the twin in utils/dbNodeMapper.ts.
+    firstHeard: node.firstHeard != null ? Number(node.firstHeard) : undefined,
     snr: node.snr,
     rssi: node.rssi
   };

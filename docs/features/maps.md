@@ -202,7 +202,9 @@ slider says what the map shows right now, such as `Showing: last 6h`.
 
 The slider can only **narrow** the **Node list & map window** setting
 (**Settings → Node Display**), never widen it. Its top stop follows that
-setting and says so: `All (24h from Settings)`.
+setting and says so: `All (24h from Settings)`. On the Nodes tab, when you pick a
+window in the Nodes list header's quick age filter, the slider narrows that window
+instead and reads `All (7d from Nodes filter)`.
 
 **Show all** (0): the **Node list & map window** setting accepts `0` to mean "no age cap". At `0` the slider's top stop reads `All (no limit in Settings)` and MeshMonitor never hides a node for being stale. Useful for post-mortem review of a mesh you don't intend to prune.
 
@@ -223,6 +225,20 @@ The control appears in both the Nodes map and the Dashboard map, and the chosen 
 **Show aged-out** — a checkbox under the three modes. When [age-out](/features/settings#age-out-and-reclassify-as-fixed) ignores a likely aircraft, the node drops off the map like any ignored node. Tick **Show aged-out** to draw those nodes again, faded and with the aircraft badge. It only brings back aircraft ignored by age-out; manual and geo ignores stay hidden. The hint line shows how many aged-out nodes the map would draw with your other filters applied. The setting is saved in your browser and applies to both maps and Map Analysis.
 
 A node's popup and details say **Aged out (likely aircraft)** while it is aged out, and **Reclassified as fixed** once the sweep has decided it is a fixed node.
+
+#### Flight trails
+
+Tick **Flight trails** under the likely-aircraft modes to draw the recent path of each aircraft on the map. Each aircraft gets its own colour, with a dark outline and small arrows that point the way it was flying. Hover over a trail to see the node's name and the time of the nearest position.
+
+- A trail appears only for an aircraft whose marker the map draws, so it follows **Hide**, the age filter, the transport toggles, and **Show aged-out**.
+- The **Trail lookback** slider, shown while the box is ticked, sets how far back a trail reaches: 1 hour to 7 days, 6 hours by default. MeshMonitor keeps position history for 7 days, so older points don't exist.
+- On the Unified dashboard, an aircraft heard by more than one source draws as one trail.
+- You only see trails for nodes you can see on the map. Private positions and channels you can't view on the map stay hidden.
+- Both settings are saved per user and apply to the Nodes map and the Dashboard map. The 3D view doesn't show trails.
+
+Trails are drawn from positions MeshMonitor has already stored, so they send nothing over the mesh.
+
+MQTT sources store position history too, the same as a connected radio, so aircraft heard only over MQTT get trails. A position relayed by several gateways is stored once. History for an MQTT node starts from when you upgrade to this version.
 
 ### GNSS Satellite Overlay
 

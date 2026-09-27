@@ -154,6 +154,8 @@ router.get('/:profileId/nodes', createEmbedCspMiddleware(), async (req: Request,
         altitude: eff.altitude,
       },
       lastHeard: node.lastHeard,
+      // #5390: Unix seconds; undefined = unknown.
+      firstHeard: node.firstHeard != null ? Number(node.firstHeard) : undefined,
       snr: node.snr,
       hopsAway: node.hopsAway ?? 999,
       role: node.role ?? 0,

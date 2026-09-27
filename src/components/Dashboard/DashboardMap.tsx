@@ -58,6 +58,8 @@ import { isMeshCoreInfrastructureAdvType } from '../MeshCore/meshcoreRole';
 import MapAgeFilterControl from '../map/MapAgeFilterControl';
 import MapAircraftDisplayControl from '../map/MapAircraftDisplayControl';
 import { isAgedOutAircraft, AGED_OUT_AIRCRAFT_OPACITY } from '../map/agedOutAircraft';
+import AircraftTrailsLayer from '../map/layers/AircraftTrailsLayer';
+import { useAircraftTrailLayer } from '../map/useAircraftTrailLayer';
 import { resolveMapEndpoint } from '../../utils/nodeHelpers';
 import api from '../../services/api';
 import { useCsrfFetch } from '../../hooks/useCsrfFetch';
@@ -323,6 +325,10 @@ export default function DashboardMap({
     setAircraftDisplayMode,
     showAgedOutAircraft,
     setShowAgedOutAircraft,
+    showAircraftTrails,
+    setShowAircraftTrails,
+    aircraftTrailHours,
+    setAircraftTrailHours,
   } = useMapContext();
   const showRfNodes = isMqttOnlySource ? true : rawShowRfNodes;
   const showUdpNodes = isMqttOnlySource ? true : rawShowUdpNodes;
@@ -438,6 +444,16 @@ export default function DashboardMap({
   // `spreadNodes` (#5177) changes every resolved position without changing any
   // node, so it has to be a dependency or toggling it leaves the markers put.
   }, [nodes, effectiveMaxAge, effectiveInfraMaxAge, infraNever, showRfNodes, showUdpNodes, showMqttNodes, spreadNodes, aircraftDisplayMode, showAgedOutAircraft]);
+
+  // Flight trails (#5364/#5365 Phase 3): one per aircraft this map draws a
+  // marker for — `nodesWithPosition` is already past Hide / age / transport /
+  // "Show aged-out", so trails follow every one of those filters.
+  const drawnNodesForTrails = useMemo(() => nodesWithPosition.map((e) => e.node), [nodesWithPosition]);
+  const aircraftTrailLayer = useAircraftTrailLayer({
+    drawnNodes: drawnNodesForTrails,
+    mode: isUnified ? { kind: 'unified' } : sourceId ? { kind: 'source', sourceId } : null,
+    available: !effective3D,
+  });
 
   // Array form of node positions for MapBoundsUpdater (fit bounds).
   const nodePositions: [number, number][] = nodesWithPosition.map((e) => [e.pos.lat, e.pos.lng]);
@@ -909,6 +925,14 @@ export default function DashboardMap({
 
         {showAtakContacts && <DashboardAtakContacts sourceId={sourceId} />}
 
+        {/* Flight trails (#5364/#5365 Phase 3), below the node markers. */}
+        {showAircraftTrails && (
+          <AircraftTrailsLayer
+            trails={aircraftTrailLayer.trails}
+            formatTooltip={aircraftTrailLayer.formatTooltip}
+          />
+        )}
+
         <NodeMarkersLayer markers={nodeMarkers} />
 
         {/* Position accuracy regions — shared layer, canonical gray. */}
@@ -1037,6 +1061,10 @@ export default function DashboardMap({
             showAgedOut={showAgedOutAircraft}
             onShowAgedOutChange={setShowAgedOutAircraft}
             agedOutCount={agedOutCountOnMap}
+            showTrails={showAircraftTrails}
+            onShowTrailsChange={setShowAircraftTrails}
+            trailHours={aircraftTrailHours}
+            onTrailHoursChange={setAircraftTrailHours}
           />
           <label className="map-control-item">
             <input

@@ -87,6 +87,8 @@ export interface MeshCoreNode {
   radioSf?: number;
   radioCr?: number;
   lastHeard?: number;
+  /** #5390: earliest reception on this source, epoch MILLISECONDS (like lastHeard). */
+  firstHeard?: number;
   rssi?: number;
   snr?: number;
   batteryMv?: number;

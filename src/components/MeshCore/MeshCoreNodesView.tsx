@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import NodeAgeWindowSuffix from '../NodeAgeWindowSuffix';
+import NodeQuickAgeFilter from '../NodeQuickAgeFilter';
+import { useNodeQuickAgeFilter } from '../../hooks/useNodeQuickAgeFilter';
 import { useTranslation } from 'react-i18next';
 import { MeshCoreNode } from './hooks/useMeshCore';
 import { MeshCoreContact } from '../../utils/meshcoreHelpers';
@@ -160,6 +161,12 @@ export const MeshCoreNodesView: React.FC<MeshCoreNodesViewProps> = ({
   const { timeFormat, dateFormat } = useSettings();
   const { sourceId } = useSource();
   const { maxNodeAgeHours, maxInfraNodeAgeHours } = useNodeDisplaySettings(sourceId);
+  // Nodes tab quick age filter (#5387): a view-only override. When picked it
+  // replaces BOTH the companion and the infrastructure window, since the
+  // viewer asked for "nodes heard in the last N"; null = the two settings.
+  const [quickAgeHours] = useNodeQuickAgeFilter();
+  const companionAgeHours = quickAgeHours ?? maxNodeAgeHours;
+  const infraAgeHours = quickAgeHours ?? maxInfraNodeAgeHours;
   const [favoriteBusy, setFavoriteBusy] = useState<string | null>(null);
 
   const handleToggleFavorite = useCallback(async (publicKey: string, next: boolean) => {
@@ -307,18 +314,18 @@ export const MeshCoreNodesView: React.FC<MeshCoreNodesViewProps> = ({
     // Date.now() is read inside the memo, so the cutoff refreshes on every
     // nodes/contacts poll (`merged` changes) rather than freezing at mount —
     // the same property useProcessedNodes relies on.
-    const cutoffMs = meshcoreAgeCutoffMs(maxNodeAgeHours);
+    const cutoffMs = meshcoreAgeCutoffMs(companionAgeHours);
     // #4899: repeaters and room servers (advType 2/3) get a SEPARATE, usually
     // longer cutoff. They re-flood-advertise on a long, often multi-day
     // interval and never send DMs, so a stale `lastHeard` doesn't mean the node
     // left the mesh — aging them off the companion window just makes fixed
     // infrastructure vanish while its DB row/position stay intact. A value of
     // 0 means "never expire" (show regardless of age, like favorites).
-    const infraNever = maxInfraNodeAgeHours <= 0;
-    const infraCutoffMs = infraNever ? 0 : meshcoreAgeCutoffMs(maxInfraNodeAgeHours);
+    const infraNever = infraAgeHours <= 0;
+    const infraCutoffMs = infraNever ? 0 : meshcoreAgeCutoffMs(infraAgeHours);
     // The companion window itself can be "never / show all" (#4947) — stealthy
     // MeshCore companions may go days/weeks between adverts, so 0 keeps them all.
-    const companionNever = maxNodeAgeHours <= 0;
+    const companionNever = companionAgeHours <= 0;
     return merged.filter(r => {
       if (isAgeExempt(r)) return true;
       if (isMeshCoreInfrastructureAdvType(r.advType)) {
@@ -326,7 +333,7 @@ export const MeshCoreNodesView: React.FC<MeshCoreNodesViewProps> = ({
       }
       return companionNever || isWithinMeshcoreAge(r, cutoffMs);
     });
-  }, [merged, maxNodeAgeHours, maxInfraNodeAgeHours, isAgeExempt]);
+  }, [merged, companionAgeHours, infraAgeHours, isAgeExempt]);
 
   const sorted = useMemo(
     () => sortRows(aged, sortField, sortDirection),
@@ -344,9 +351,23 @@ export const MeshCoreNodesView: React.FC<MeshCoreNodesViewProps> = ({
    *  the map's centering / polar-grid origin never loses the local node.
    *  Uses `isLocal` (#4438), not the `(local)` naming convention. */
   const visibleKeys = useMemo(() => new Set(aged.map(r => r.publicKey)), [aged]);
+  // #5390: First Heard lives on the durable node rows, not the live contact
+  // records — copy it across so the map popup can show it.
+  const firstHeardByKey = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const n of nodes) {
+      if (n.publicKey && typeof n.firstHeard === 'number') map.set(n.publicKey, n.firstHeard);
+    }
+    return map;
+  }, [nodes]);
   const visibleContacts = useMemo(
-    () => contacts.filter(c => visibleKeys.has(c.publicKey) || c.isLocal === true),
-    [contacts, visibleKeys],
+    () => contacts
+      .filter(c => visibleKeys.has(c.publicKey) || c.isLocal === true)
+      .map(c => {
+        const firstHeard = firstHeardByKey.get(c.publicKey);
+        return firstHeard !== undefined && c.firstHeard === undefined ? { ...c, firstHeard } : c;
+      }),
+    [contacts, visibleKeys, firstHeardByKey],
   );
 
   const mobileClass = mobileShowContent ? 'mobile-show-content' : 'mobile-show-list';
@@ -374,7 +395,7 @@ export const MeshCoreNodesView: React.FC<MeshCoreNodesViewProps> = ({
           <>
           <span>{t('meshcore.nav.nodes', 'Nodes')}</span>
           <span className="pane-count">{rows.length}</span>
-          <NodeAgeWindowSuffix hours={maxNodeAgeHours} variant="meshcore" />
+          <NodeQuickAgeFilter settingsHours={maxNodeAgeHours} variant="meshcore" />
           {onImportContact && (
             <button
               type="button"

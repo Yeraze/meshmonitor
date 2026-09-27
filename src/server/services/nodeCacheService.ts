@@ -61,6 +61,7 @@ export class NodeCacheService {
       channelUtilization: node.channelUtilization ?? undefined,
       airUtilTx: node.airUtilTx ?? undefined,
       lastHeard: node.lastHeard ?? undefined,
+      firstHeard: node.firstHeard ?? undefined,
       snr: node.snr ?? undefined,
       rssi: node.rssi ?? undefined,
       lastTracerouteRequest: node.lastTracerouteRequest ?? undefined,

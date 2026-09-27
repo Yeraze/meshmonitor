@@ -12,6 +12,7 @@ import { isValidNodeNum } from '../../server/constants/meshtastic.js';
 import { isBlankMacAddr } from '../../utils/nodeFieldBlanks.js';
 import type { TransportCounts } from '../../utils/transportSeries.js';
 import type { AircraftBasis } from '../../utils/aircraftClassification.js';
+import { resolveFirstHeard } from '../../utils/firstHeard.js';
 
 /**
  * Hook for keeping an external in-memory node cache coherent with PG/MySQL writes.
@@ -643,6 +644,11 @@ export class NodesRepository extends BaseRepository {
           channelUtilization: nodeData.channelUtilization ?? existingNode.channelUtilization,
           airUtilTx: nodeData.airUtilTx ?? existingNode.airUtilTx,
           lastHeard: this.coerceBigintField(nodeData.lastHeard ?? existingNode.lastHeard),
+          // #5390: stamp once, never overwrite (Unix seconds, like lastHeard).
+          firstHeard: this.coerceBigintField(
+            resolveFirstHeard(existingNode.firstHeard, existingNode.lastHeard, nodeData.lastHeard, 's')
+              ?? existingNode.firstHeard,
+          ),
           snr: nodeData.snr ?? existingNode.snr,
           rssi: nodeData.rssi ?? existingNode.rssi,
           firmwareVersion: nodeData.firmwareVersion ?? existingNode.firmwareVersion,
@@ -764,6 +770,9 @@ export class NodesRepository extends BaseRepository {
         // #5317: only ever set on INSERT, by the contact-URL import. A row that
         // was heard first and imported later is not "never heard".
         importedAt: this.coerceBigintField(nodeData.importedAt) ?? null,
+        // #5390: first reception, Unix seconds. Omitted from `upsertSet`
+        // below on purpose — the conflict path must never overwrite it.
+        firstHeard: this.coerceBigintField(resolveFirstHeard(null, null, nodeData.lastHeard, 's')) ?? null,
         createdAt: now,
         updatedAt: now,
       } as any;
@@ -1899,6 +1908,7 @@ export class NodesRepository extends BaseRepository {
       channelUtilization: node.channelUtilization ?? null,
       airUtilTx: node.airUtilTx ?? null,
       lastHeard: node.lastHeard ?? null,
+      firstHeard: node.firstHeard ?? null,
       snr: node.snr ?? null,
       rssi: node.rssi ?? null,
       createdAt: node.createdAt,
@@ -1963,6 +1973,9 @@ export class NodesRepository extends BaseRepository {
       setIfProvided('channelUtilization', nodeData.channelUtilization);
       setIfProvided('airUtilTx', nodeData.airUtilTx);
       setIfProvided('lastHeard', nodeData.lastHeard);
+      // #5390: stamp once, never overwrite (Unix seconds).
+      const syncFirstHeard = resolveFirstHeard(existing.firstHeard, existing.lastHeard, nodeData.lastHeard, 's');
+      if (syncFirstHeard !== undefined) updateSet.firstHeard = syncFirstHeard;
       setIfProvided('snr', nodeData.snr);
       setIfProvided('rssi', nodeData.rssi);
       if (nodeData.firmwareVersion) updateSet.firmwareVersion = nodeData.firmwareVersion;
@@ -2045,6 +2058,7 @@ export class NodesRepository extends BaseRepository {
         positionTimestamp: nodeData.positionTimestamp !== undefined ? nodeData.positionTimestamp : null,
         isIgnored: wasIgnored,
         importedAt: nodeData.importedAt || null,
+        firstHeard: resolveFirstHeard(null, null, nodeData.lastHeard, 's') ?? null,
         createdAt: now,
         updatedAt: now,
         sourceId: insertSourceId,
@@ -2356,6 +2370,29 @@ export class NodesRepository extends BaseRepository {
       aircraftAgedOutAt: r.aircraftAgedOutAt == null ? null : Number(r.aircraftAgedOutAt),
       positionOverrideEnabled: r.positionOverrideEnabled == null ? null : Boolean(r.positionOverrideEnabled),
     }));
+  }
+
+  /**
+   * `(sourceId, nodeNum)` for every node on the given sources that the map
+   * could draw as a likely aircraft: `likelyAircraft = true`, or aged out by
+   * the sweep (`aircraftAgedOutAt` set). Feeds the flight-trails endpoint
+   * (#5364/#5365 Phase 3); visibility and privacy gates run in the route.
+   */
+  async listAircraftTrailNodeNums(sourceIds: string[]): Promise<Array<{ sourceId: string; nodeNum: number }>> {
+    if (sourceIds.length === 0) return [];
+    const { nodes } = this.tables;
+    const rows = await this.db
+      .select({ sourceId: nodes.sourceId, nodeNum: nodes.nodeNum })
+      .from(nodes)
+      .where(
+        and(
+          inArray(nodes.sourceId, sourceIds),
+          or(eq(nodes.likelyAircraft, true), isNotNull(nodes.aircraftAgedOutAt)),
+        ),
+      );
+    return (rows as Array<{ sourceId: string | null; nodeNum: number | bigint }>)
+      .filter((r) => r.sourceId != null)
+      .map((r) => ({ sourceId: r.sourceId as string, nodeNum: Number(r.nodeNum) }));
   }
 
   /** `aircraftAgedOutAt` for one row, or null (row missing or not aged out). */
