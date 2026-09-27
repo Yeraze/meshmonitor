@@ -19,7 +19,7 @@ import { validateThemeDefinition as validateTheme } from '../utils/themeValidati
 import { isSourceyResource } from '../types/permission.js';
 import { computeAveragingIntervalMinutes } from '../utils/telemetryAveraging.js';
 import { buildFavoriteRetentions } from '../utils/telemetryRetention.js';
-import type { TelemetryFavorite } from '../db/repositories/telemetry.js';
+import type { TelemetryFavorite, AssetRetention } from '../db/repositories/telemetry.js';
 import { getTxTargetMaxAgeHours } from '../server/services/nodeDisplaySettings.js';
 import { classifyNodeTransport, type NodeTransportClass } from '../utils/nodeTransport.js';
 // Drizzle ORM imports for dual-database support
@@ -106,6 +106,7 @@ import type {
 } from '../db/repositories/index.js';
 import type { MeshIssueFinding } from '../server/services/meshIssues/types.js';
 import type { ConversationReadStateMap, AircraftFlightMatchRow, FlightMatchLookupWrite, AssetNode, AssetNodeSettings } from '../db/repositories/index.js';
+import { assetRetentionCutoff } from '../utils/assetTracking.js';
 import type { ConversationKind } from '../db/schema/conversationReadState.js';
 import type { DatabaseType, DbPacketLog as DbTypesPacketLog, DbPacketCountByNode, DbPacketCountByPortnum, DbDistinctRelayNode } from '../db/types.js';
 import { updateNodeMobility } from '../server/services/nodeMobilityService.js';
@@ -3514,15 +3515,27 @@ class DatabaseService {
   }
 
   /**
+   * Tracked assets' purge cutoffs (#5354): one entry per asset, `cutoff` =
+   * now − retentionDays. Retention lives in the database, so this is rebuilt
+   * on every run and a restart cannot change what is kept.
+   */
+  private async collectAssetRetentionsAsync(now: number): Promise<AssetRetention[]> {
+    const assets = await this.assetNodes.getMapAsync();
+    return [...assets].map(([nodeNum, a]) => ({ nodeNum, cutoff: assetRetentionCutoff(a.retentionDays, now) }));
+  }
+
+  /**
    * Purge old telemetry data (async version)
    */
   async purgeOldTelemetryAsync(hoursToKeep: number, favoriteDaysToKeep?: number): Promise<number> {
-    const regularCutoffTime = Date.now() - (hoursToKeep * 60 * 60 * 1000);
+    const now = Date.now();
+    const regularCutoffTime = now - (hoursToKeep * 60 * 60 * 1000);
     const isSql = this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql';
+    const assets = await this.collectAssetRetentionsAsync(now);
 
     // Caller explicitly opted out of favorites retention — purge everything past
-    // the regular window.
-    if (!favoriteDaysToKeep) {
+    // the regular window, except tracked assets, which keep their own window.
+    if (!favoriteDaysToKeep && assets.length === 0) {
       const deleted = isSql
         ? await this.telemetry.deleteOldTelemetry(regularCutoffTime)
         : this.telemetry.deleteOldTelemetrySync(regularCutoffTime);
@@ -3535,27 +3548,32 @@ class DatabaseService {
     // `favoriteTelemetryStorageDays` (falling back to global, then the caller's
     // value). `favoriteCutoffTime` below only covers entries with no explicit
     // cutoff, which today means none — it is the safety net, not the policy.
-    const favorites = await this.collectFavoriteRetentionsAsync(favoriteDaysToKeep);
-    const favoriteCutoffTime = Date.now() - (favoriteDaysToKeep * 24 * 60 * 60 * 1000);
+    const favorites = favoriteDaysToKeep ? await this.collectFavoriteRetentionsAsync(favoriteDaysToKeep) : [];
+    const favoriteCutoffTime = favoriteDaysToKeep
+      ? now - (favoriteDaysToKeep * 24 * 60 * 60 * 1000)
+      : regularCutoffTime;
 
-    const { nonFavoritesDeleted, favoritesDeleted } = isSql
+    const { nonFavoritesDeleted, favoritesDeleted, assetsDeleted } = isSql
       ? await this.telemetry.deleteOldTelemetryWithFavorites(
           regularCutoffTime,
           favoriteCutoffTime,
-          favorites
+          favorites,
+          assets
         )
       : this.telemetry.deleteOldTelemetryWithFavoritesSync(
           regularCutoffTime,
           favoriteCutoffTime,
-          favorites
+          favorites,
+          assets
         );
 
-    const totalDeleted = nonFavoritesDeleted + favoritesDeleted;
+    const totalDeleted = nonFavoritesDeleted + favoritesDeleted + (assetsDeleted ?? 0);
     logger.debug(
       `🧹 Purged ${totalDeleted} old telemetry records ` +
       `(${nonFavoritesDeleted} non-favorites older than ${hoursToKeep}h, ` +
       `${favoritesDeleted} of ${favorites.length} protected favorite series past their ` +
-      `per-source retention window)`
+      `per-source retention window, ${assetsDeleted ?? 0} from ${assets.length} tracked asset(s) ` +
+      `past their own window)`
     );
     if (!isSql && totalDeleted > 0) this.invalidateTelemetryTypesCache();
     return totalDeleted;

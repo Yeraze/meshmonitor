@@ -4,7 +4,7 @@
  * Handles all telemetry-related database operations.
  * Supports SQLite, PostgreSQL, and MySQL through Drizzle ORM.
  */
-import { eq, lt, lte, gte, and, desc, inArray, isNull, or, not, SQL, count, sql } from 'drizzle-orm';
+import { eq, lt, lte, gte, and, desc, inArray, notInArray, isNull, or, not, SQL, count, sql } from 'drizzle-orm';
 import { ALL_SOURCES, BaseRepository, DrizzleDatabase, SourceScope } from './base.js';
 import { DatabaseType, DbTelemetry } from '../types.js';
 import { logger } from '../../utils/logger.js';
@@ -72,6 +72,34 @@ export interface TelemetryFavorite {
    * `favoriteTelemetryStorageDays` values.
    */
   cutoffTimestamp?: number;
+}
+
+/**
+ * A tracked asset's retention for the telemetry purge (#5354). All telemetry
+ * for `nodeNum` — every type, every source — is kept until `cutoff` (epoch ms),
+ * then purged. Unlike favorites, the cutoff is NOT clamped to the regular
+ * window: a 1-day asset keeps 1 day, because the owner chose it.
+ */
+export interface AssetRetention {
+  nodeNum: number;
+  cutoff: number;
+}
+
+/** Counts returned by the favorite/asset-aware purge. */
+export interface RetentionPurgeResult {
+  nonFavoritesDeleted: number;
+  favoritesDeleted: number;
+  /** Rows removed from tracked assets past their own window (#5354). */
+  assetsDeleted: number;
+}
+
+/** Max nodeNums per IN / NOT IN list, so one purge never hits a parameter cap. */
+const ASSET_IN_CHUNK = 500;
+
+function chunkNodeNums(nums: number[]): number[][] {
+  const out: number[][] = [];
+  for (let i = 0; i < nums.length; i += ASSET_IN_CHUNK) out.push(nums.slice(i, i + ASSET_IN_CHUNK));
+  return out;
 }
 
 /**
@@ -949,75 +977,139 @@ export class TelemetryRepository extends BaseRepository {
   }
 
   /**
-   * Delete old telemetry with special handling for favorites.
-   * Non-favorited telemetry is deleted if older than regularCutoff.
-   * Favorited telemetry is deleted if older than favoriteCutoff.
+   * Build the ordered delete steps for the favorite/asset-aware purge.
+   * Shared by the async (PostgreSQL/MySQL) and Sync (SQLite) executors so the
+   * two paths cannot drift.
+   *
+   * A row is deleted only when it is older than EVERY retention window that
+   * applies to it (#5354):
+   *  1. regular — older than the regular cutoff, not a favorite series, and
+   *     not a tracked asset;
+   *  2. favorite — per favorite cutoff group, older than that cutoff, unless a
+   *     tracked asset's window still covers the row;
+   *  3. asset — per asset cutoff group, older than that asset's cutoff, unless
+   *     a favorite window still covers the row.
+   * So a node that is both a favorite and an asset keeps the LONGER of the two
+   * windows for its favorited series, and the asset window for everything else.
+   */
+  private buildRetentionPurgePlan(
+    regularCutoffTimestamp: number,
+    favoriteCutoffTimestamp: number,
+    favorites: TelemetryFavorite[],
+    assets: AssetRetention[]
+  ): Array<{ kind: 'regular' | 'favorite' | 'asset'; where: SQL }> {
+    const { telemetry } = this.tables;
+    const favoritesCondition = this.buildFavoritesCondition(favorites);
+    const favoriteGroups = favorites.length > 0
+      ? this.groupFavoritesByCutoff(favorites, favoriteCutoffTimestamp, regularCutoffTimestamp)
+      : [];
+
+    // Assets grouped by cutoff, each group chunked for the IN list.
+    const assetByCutoff = new Map<number, number[]>();
+    const assetNums: number[] = [];
+    for (const a of assets) {
+      const num = Number(a.nodeNum) >>> 0;
+      if (assetNums.includes(num)) continue;
+      assetNums.push(num);
+      const bucket = assetByCutoff.get(a.cutoff);
+      if (bucket) bucket.push(num);
+      else assetByCutoff.set(a.cutoff, [num]);
+    }
+    const assetGroups = [...assetByCutoff.entries()].map(([cutoff, nums]) => ({ cutoff, chunks: chunkNodeNums(nums) }));
+
+    // Rows a tracked asset still protects: its nodeNum, younger than its cutoff.
+    const assetProtects = assetGroups.length > 0
+      ? or(...assetGroups.flatMap((g) =>
+          g.chunks.map((c) => and(inArray(telemetry.nodeNum, c), gte(telemetry.timestamp, g.cutoff))!)))!
+      : null;
+    // Rows a favorite still protects: its series, younger than its cutoff.
+    const favoriteProtects = favoriteGroups.length > 0
+      ? or(...favoriteGroups.map((g) => and(g.condition, gte(telemetry.timestamp, g.cutoff))!))!
+      : null;
+
+    const plan: Array<{ kind: 'regular' | 'favorite' | 'asset'; where: SQL }> = [];
+
+    plan.push({
+      kind: 'regular',
+      where: and(
+        lt(telemetry.timestamp, regularCutoffTimestamp),
+        favoritesCondition ? not(favoritesCondition) : undefined,
+        ...chunkNodeNums(assetNums).map((c) => notInArray(telemetry.nodeNum, c)),
+      )!,
+    });
+
+    for (const group of favoriteGroups) {
+      plan.push({
+        kind: 'favorite',
+        where: and(
+          lt(telemetry.timestamp, group.cutoff),
+          group.condition,
+          assetProtects ? not(assetProtects) : undefined,
+        )!,
+      });
+    }
+
+    for (const group of assetGroups) {
+      for (const c of group.chunks) {
+        plan.push({
+          kind: 'asset',
+          where: and(
+            inArray(telemetry.nodeNum, c),
+            lt(telemetry.timestamp, group.cutoff),
+            favoriteProtects ? not(favoriteProtects) : undefined,
+          )!,
+        });
+      }
+    }
+    return plan;
+  }
+
+  /**
+   * Delete old telemetry with special handling for favorites and tracked assets.
+   * Non-favorited, non-asset telemetry is deleted if older than regularCutoff.
+   * Favorited telemetry is deleted if older than its favorite cutoff.
+   * Asset telemetry is deleted if older than its asset cutoff (#5354).
+   * See `buildRetentionPurgePlan` for how overlapping windows combine.
    *
    * Keeps branching: MySQL doesn't support .returning().
    */
   async deleteOldTelemetryWithFavorites(
     regularCutoffTimestamp: number,
     favoriteCutoffTimestamp: number,
-    favorites: TelemetryFavorite[]
-  ): Promise<{ nonFavoritesDeleted: number; favoritesDeleted: number }> {
-    // If no favorites, just delete everything older than regularCutoff
-    if (favorites.length === 0) {
+    favorites: TelemetryFavorite[],
+    assets: AssetRetention[] = []
+  ): Promise<RetentionPurgeResult> {
+    // No favorites and no assets: just delete everything older than regularCutoff
+    if (favorites.length === 0 && assets.length === 0) {
       const count = await this.deleteOldTelemetry(regularCutoffTimestamp);
-      return { nonFavoritesDeleted: count, favoritesDeleted: 0 };
+      return { nonFavoritesDeleted: count, favoritesDeleted: 0, assetsDeleted: 0 };
     }
 
     const { telemetry } = this.tables;
-    const favoritesCondition = this.buildFavoritesCondition(favorites)!;
-    const groups = this.groupFavoritesByCutoff(
-      favorites,
-      favoriteCutoffTimestamp,
-      regularCutoffTimestamp
-    );
+    const result: RetentionPurgeResult = { nonFavoritesDeleted: 0, favoritesDeleted: 0, assetsDeleted: 0 };
+    const plan = this.buildRetentionPurgePlan(regularCutoffTimestamp, favoriteCutoffTimestamp, favorites, assets);
 
-    let nonFavoritesDeleted = 0;
-    let favoritesDeleted = 0;
-
-    if (this.isMySQL()) {
-      // MySQL doesn't support .returning(), so count before deleting
-      const nonFavoritesCount = await this.db
-        .select({ cnt: count() })
-        .from(telemetry)
-        .where(and(lt(telemetry.timestamp, regularCutoffTimestamp), not(favoritesCondition)));
-      nonFavoritesDeleted = Number(nonFavoritesCount[0]?.cnt ?? 0);
-
-      await this.db
-        .delete(telemetry)
-        .where(and(lt(telemetry.timestamp, regularCutoffTimestamp), not(favoritesCondition)));
-
-      for (const group of groups) {
-        const favoritesCount = await this.db
-          .select({ cnt: count() })
-          .from(telemetry)
-          .where(and(lt(telemetry.timestamp, group.cutoff), group.condition));
-        favoritesDeleted += Number(favoritesCount[0]?.cnt ?? 0);
-
-        await this.db
+    for (const step of plan) {
+      let deleted: number;
+      if (this.isMySQL()) {
+        // MySQL doesn't support .returning(), so count before deleting
+        const counted = await this.db.select({ cnt: count() }).from(telemetry).where(step.where);
+        deleted = Number(counted[0]?.cnt ?? 0);
+        await this.db.delete(telemetry).where(step.where);
+      } else {
+        // SQLite and PostgreSQL support .returning()
+        const rows = await (this.db as any)
           .delete(telemetry)
-          .where(and(lt(telemetry.timestamp, group.cutoff), group.condition));
-      }
-    } else {
-      // SQLite and PostgreSQL support .returning()
-      const deletedNonFavorites = await (this.db as any)
-        .delete(telemetry)
-        .where(and(lt(telemetry.timestamp, regularCutoffTimestamp), not(favoritesCondition)))
-        .returning({ id: telemetry.id });
-      nonFavoritesDeleted = deletedNonFavorites.length;
-
-      for (const group of groups) {
-        const deletedFavorites = await (this.db as any)
-          .delete(telemetry)
-          .where(and(lt(telemetry.timestamp, group.cutoff), group.condition))
+          .where(step.where)
           .returning({ id: telemetry.id });
-        favoritesDeleted += deletedFavorites.length;
+        deleted = rows.length;
       }
+      if (step.kind === 'regular') result.nonFavoritesDeleted += deleted;
+      else if (step.kind === 'favorite') result.favoritesDeleted += deleted;
+      else result.assetsDeleted += deleted;
     }
 
-    return { nonFavoritesDeleted, favoritesDeleted };
+    return result;
   }
 
   /**
@@ -1665,46 +1757,35 @@ export class TelemetryRepository extends BaseRepository {
 
 
   /**
-   * Synchronously delete old telemetry with favorites retention (SQLite only).
-   * Non-favorited telemetry older than regularCutoffTimestamp is deleted.
-   * Favorited telemetry older than favoriteCutoffTimestamp is deleted.
-   * Returns { nonFavoritesDeleted, favoritesDeleted }.
+   * Synchronously delete old telemetry with favorites and tracked-asset
+   * retention (SQLite only). Same plan as the async variant — see
+   * `buildRetentionPurgePlan`.
    */
   deleteOldTelemetryWithFavoritesSync(
     regularCutoffTimestamp: number,
     favoriteCutoffTimestamp: number,
-    favorites: TelemetryFavorite[]
-  ): { nonFavoritesDeleted: number; favoritesDeleted: number } {
-    if (favorites.length === 0) {
+    favorites: TelemetryFavorite[],
+    assets: AssetRetention[] = []
+  ): RetentionPurgeResult {
+    if (favorites.length === 0 && assets.length === 0) {
       const nonFavoritesDeleted = this.deleteOldTelemetrySync(regularCutoffTimestamp);
-      return { nonFavoritesDeleted, favoritesDeleted: 0 };
+      return { nonFavoritesDeleted, favoritesDeleted: 0, assetsDeleted: 0 };
     }
 
     const db = this.getSqliteDb();
     const { telemetry } = this.tables;
-    const favoritesCondition = this.buildFavoritesCondition(favorites)!;
-    const groups = this.groupFavoritesByCutoff(
-      favorites,
-      favoriteCutoffTimestamp,
-      regularCutoffTimestamp
-    );
+    const result: RetentionPurgeResult = { nonFavoritesDeleted: 0, favoritesDeleted: 0, assetsDeleted: 0 };
+    const plan = this.buildRetentionPurgePlan(regularCutoffTimestamp, favoriteCutoffTimestamp, favorites, assets);
 
-    const nonFavoritesResult = db
-      .delete(telemetry)
-      .where(and(lt(telemetry.timestamp, regularCutoffTimestamp), not(favoritesCondition)))
-      .run();
-    const nonFavoritesDeleted = Number((nonFavoritesResult as any).changes ?? 0);
-
-    let favoritesDeleted = 0;
-    for (const group of groups) {
-      const favoritesResult = db
-        .delete(telemetry)
-        .where(and(lt(telemetry.timestamp, group.cutoff), group.condition))
-        .run();
-      favoritesDeleted += Number((favoritesResult as any).changes ?? 0);
+    for (const step of plan) {
+      const res = db.delete(telemetry).where(step.where).run();
+      const deleted = Number((res as any).changes ?? 0);
+      if (step.kind === 'regular') result.nonFavoritesDeleted += deleted;
+      else if (step.kind === 'favorite') result.favoritesDeleted += deleted;
+      else result.assetsDeleted += deleted;
     }
 
-    return { nonFavoritesDeleted, favoritesDeleted };
+    return result;
   }
 
   /**
