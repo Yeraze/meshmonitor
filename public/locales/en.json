@@ -5340,6 +5340,18 @@
     "showPositionHistory": "Show Position History",
     "positionHistoryPointsOnly": "Points only (no line)",
     "assetTrailThinned": "Showing {{shown}} of {{total}} fixes (thinned)",
+    "playback": {
+      "play": "Play",
+      "pause": "Pause",
+      "stepBack": "Previous fix",
+      "stepForward": "Next fix",
+      "speed": "Playback speed",
+      "speedOption": "{{speed}}×",
+      "trailToCursor": "Trail up to cursor",
+      "follow": "Follow",
+      "timeline": "Playback timeline",
+      "noFixes": "no fixes (gap)"
+    },
     "showAnimations": "Show Animations",
     "showEstimatedPositions": "Show Estimated Positions",
     "showAccuracyRegions": "Show Accuracy Regions",

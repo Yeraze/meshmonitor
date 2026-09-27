@@ -197,3 +197,17 @@ export function isOutsideCentralRegion(
 export const FOLLOW_PAN_INTERVAL_MS = 500;
 /** Interval between React state commits during playback (~5 Hz). */
 export const PLAYBACK_COMMIT_INTERVAL_MS = 200;
+
+/**
+ * Whether the Nodes map shows the playback bar (#5354 D1): the selected node is
+ * an asset, its own server track is loaded (not a previous node's), Show
+ * Position History is on, and more than one fix survives the hours filter.
+ */
+export function shouldShowAssetPlayback(opts: {
+  isAsset: boolean;
+  assetTrackLoaded: boolean;
+  showPositionHistory: boolean;
+  fixCount: number;
+}): boolean {
+  return opts.isAsset && opts.assetTrackLoaded && opts.showPositionHistory && opts.fixCount > 1;
+}
