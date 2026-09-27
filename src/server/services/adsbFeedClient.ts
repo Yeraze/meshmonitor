@@ -111,7 +111,7 @@ export async function fetchAircraftNear(
     let body: unknown;
     try {
       body = await res.json();
-    } catch (err) {
+    } catch {
       if (timedOut) throw new AdsbFeedError(`${feed.name} timed out after ${timeoutMs} ms`, 'timeout', null, true);
       throw new AdsbFeedError(`${feed.name} returned invalid JSON`, 'parse', res.status, false);
     }
