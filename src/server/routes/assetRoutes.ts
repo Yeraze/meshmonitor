@@ -13,13 +13,16 @@
  */
 import { Router, Request, Response } from 'express';
 import databaseService from '../../services/database.js';
-import { requirePermission } from '../auth/authMiddleware.js';
+import { optionalAuth, requirePermission } from '../auth/authMiddleware.js';
 import { logger } from '../../utils/logger.js';
 import { ok, fail } from '../utils/apiResponse.js';
 import { resolvePermittedSourceIds } from '../utils/permittedSources.js';
 import { parseAssetRetentionDays, estimateAssetRows, ASSET_RETENTION_DAYS_RANGE } from '../../utils/assetTracking.js';
 
 const router = Router();
+// The api router mounts this without auth; resolve req.user here, as the
+// analysis and aircraft routers do, so GET filtering sees the real caller.
+router.use(optionalAuth());
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 

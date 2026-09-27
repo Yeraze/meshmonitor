@@ -41,7 +41,9 @@ describe('assetRoutes (#5354)', () => {
   }
 
   beforeEach(async () => {
-    harness = await createRouteTestApp({ mount: (app) => app.use('/', assetRoutes) });
+    // useOptionalAuth: false — production mounts this router without auth, so
+    // the router must resolve req.user itself.
+    harness = await createRouteTestApp({ mount: (app) => app.use('/', assetRoutes), useOptionalAuth: false });
     await clearAssets();
     await seedNode(NODE_A, harness.sourceA, 'Alpha');
     await seedNode(NODE_B, harness.sourceB, 'Bravo');
