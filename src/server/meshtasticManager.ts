@@ -1024,6 +1024,9 @@ class MeshtasticManager implements ISourceManager {
   private localStatsInterval: NodeJS.Timeout | null = null;
   private timeOffsetSamples: number[] = [];
   private timeOffsetInterval: NodeJS.Timeout | null = null;
+  // Hourly auto-favorite staleness sweep. Kept on the instance so a reconnect
+  // replaces it instead of stacking another interval.
+  private autoFavoriteSweepInterval: NodeJS.Timeout | null = null;
   private localStatsIntervalMinutes: number = 15;  // Default 15 minutes
   private timerCronJobs: Map<string, CronJob> = new Map();
   private geofenceNodeState: Map<string, Set<number>> = new Map(); // geofenceId -> set of nodeNums currently inside
@@ -2306,12 +2309,8 @@ class MeshtasticManager implements ISourceManager {
           logger.debug('📦 Skipping module config request on reconnect (already fetched this session)');
         }
 
-        // Auto-favorite staleness sweep - runs every 60 minutes
-        setInterval(() => {
-          this.autoFavoriteSweep().catch(error => {
-            logger.error('❌ Error in auto-favorite sweep interval:', error);
-          });
-        }, 60 * 60 * 1000);
+        // Auto-favorite staleness sweep - runs every 60 minutes.
+        this.armAutoFavoriteSweep();
 
         // Run initial sweep after all schedulers have started
         setTimeout(() => {
@@ -2632,6 +2631,11 @@ class MeshtasticManager implements ISourceManager {
     if (this.timeSyncInterval) {
       clearInterval(this.timeSyncInterval);
       this.timeSyncInterval = null;
+    }
+
+    if (this.autoFavoriteSweepInterval) {
+      clearInterval(this.autoFavoriteSweepInterval);
+      this.autoFavoriteSweepInterval = null;
     }
 
     // Stop auto-delete-by-distance scheduler
@@ -7596,6 +7600,20 @@ class MeshtasticManager implements ISourceManager {
    * true last-contact time (issue #4192/#4445). Every packet-derived
    * `lastHeard` stamp outside the generic upsert path should go through this.
    */
+  /**
+   * Arm the hourly auto-favorite staleness sweep, replacing any interval left by
+   * an earlier connect. Config capture completes again on every reconnect, and a
+   * bare setInterval there stacked one more hourly sweep per reconnect.
+   */
+  armAutoFavoriteSweep(): void {
+    if (this.autoFavoriteSweepInterval) clearInterval(this.autoFavoriteSweepInterval);
+    this.autoFavoriteSweepInterval = setInterval(() => {
+      this.autoFavoriteSweep().catch(error => {
+        logger.error('❌ Error in auto-favorite sweep interval:', error);
+      });
+    }, 60 * 60 * 1000);
+  }
+
   private lastHeardFor(meshPacket: { rxTime?: unknown }): number | undefined {
     return resolveLastHeardSec(
       meshPacket.rxTime != null ? Number(meshPacket.rxTime) : undefined,
@@ -15132,6 +15150,11 @@ class MeshtasticManager implements ISourceManager {
     if (this.timeSyncInterval) {
       clearInterval(this.timeSyncInterval);
       this.timeSyncInterval = null;
+    }
+
+    if (this.autoFavoriteSweepInterval) {
+      clearInterval(this.autoFavoriteSweepInterval);
+      this.autoFavoriteSweepInterval = null;
     }
 
     // Stop announce scheduler if active (idempotent — no-op if not armed)
