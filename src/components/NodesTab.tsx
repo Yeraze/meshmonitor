@@ -19,7 +19,7 @@ import { isAgedOutAircraft, AGED_OUT_AIRCRAFT_OPACITY } from './map/agedOutAircr
 import NodeQuickAgeFilter from './NodeQuickAgeFilter';
 import { useNodeQuickAgeFilter } from '../hooks/useNodeQuickAgeFilter';
 import { resolveNodeListAgeHours } from '../utils/nodeQuickAgeFilter';
-import { downsamplePositionHistory, MAX_RENDERED_POSITION_POINTS } from '../utils/positionHistoryDownsample';
+import { downsamplePositionHistory, segmentBreaks, MAX_RENDERED_POSITION_POINTS, MAX_RENDERED_ASSET_POSITION_POINTS } from '../utils/positionHistoryDownsample';
 import { createNodeIcon, getHopColor } from '../utils/mapIcons';
 import { getPositionHistoryColor, generateHeadingAwarePath, generatePositionHistoryArrows, snrToColor } from '../utils/mapHelpers.tsx';
 import { convertSpeed } from '../utils/speedConversion';
@@ -606,6 +606,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
     setSelectedNodeId,
     neighborInfo,
     positionHistory,
+    positionHistoryTotalFixes,
     traceroutes,
     positionHistoryHours,
     setPositionHistoryHours,
@@ -906,13 +907,42 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
    * span, so the reported oldest/newest remain exact while the drawing is
    * capped.
    */
+  // A tracked asset's trail (#5354 Phase 2) arrives already thinned by the
+  // server to at most 2,000 points, so draw up to that many rather than
+  // resampling it down to the regular 500.
+  const isAssetTrail = positionHistoryTotalFixes !== null;
   const renderedPositionHistory = useMemo(
-    () => downsamplePositionHistory(filteredPositionHistory, MAX_RENDERED_POSITION_POINTS),
-    [filteredPositionHistory],
+    () => downsamplePositionHistory(
+      filteredPositionHistory,
+      isAssetTrail ? MAX_RENDERED_ASSET_POSITION_POINTS : MAX_RENDERED_POSITION_POINTS,
+    ),
+    [filteredPositionHistory, isAssetTrail],
   );
 
-  /** True when the drawn trail omits intermediate fixes — surfaced in the popup. */
-  const positionHistoryDownsampled = renderedPositionHistory.length < filteredPositionHistory.length;
+  /** Per drawn pair: true when it spans a gap segment (#5354), so no line is drawn. */
+  const positionHistorySegmentBreaks = useMemo(
+    () => segmentBreaks(filteredPositionHistory, renderedPositionHistory),
+    [filteredPositionHistory, renderedPositionHistory],
+  );
+
+  /**
+   * "Showing N of M fixes (thinned)" for an asset whose server-side track
+   * holds fewer points than the fixes it stands for.
+   */
+  const assetTrailThinnedHint = isAssetTrail && positionHistoryTotalFixes > positionHistory.length
+    ? t('map.assetTrailThinned', {
+        shown: renderedPositionHistory.length.toLocaleString(),
+        total: positionHistoryTotalFixes.toLocaleString(),
+        defaultValue: 'Showing {{shown}} of {{total}} fixes (thinned)',
+      })
+    : null;
+
+  /**
+   * True when the drawn trail omits intermediate fixes — surfaced in the popup.
+   * An asset trail thinned on the server counts too (#5354).
+   */
+  const positionHistoryDownsampled = renderedPositionHistory.length < filteredPositionHistory.length
+    || assetTrailThinnedHint !== null;
 
   // Memoize position history legend data for MapLegend
   const positionHistoryLegendData = useMemo(() => {
@@ -941,6 +971,9 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
 
       // Points-only mode (#3492): skip the connecting line; keep the per-fix dots.
       if (positionHistoryPointsOnly) continue;
+
+      // Gap between two asset drives (#5354): never join across it.
+      if (positionHistorySegmentBreaks[i]) continue;
 
       const segmentPath = positionHistoryLineStyle === 'spline' && startPos.groundTrack !== undefined
         ? generateHeadingAwarePath(
@@ -1011,7 +1044,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
     elements.push(...historyArrows);
 
     return elements;
-  }, [renderedPositionHistory, positionHistoryDownsampled, t, overlayColors.positionHistoryOld, overlayColors.positionHistoryNew, positionHistoryLineStyle, positionHistoryPointsOnly, timeFormat, dateFormat, distanceUnit]);
+  }, [renderedPositionHistory, positionHistorySegmentBreaks, positionHistoryDownsampled, t, overlayColors.positionHistoryOld, overlayColors.positionHistoryNew, positionHistoryLineStyle, positionHistoryPointsOnly, timeFormat, dateFormat, distanceUnit]);
 
   // Detect touch device to disable hover tooltips on mobile
   const [isTouchDevice, setIsTouchDevice] = useState(false);
@@ -3136,6 +3169,11 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                       </div>
                     );
                   })()}
+                  {showMotion && assetTrailThinnedHint && (
+                    <div className="map-control-item" style={{ paddingLeft: '1.5rem', fontSize: '0.85em', opacity: 0.8 }}>
+                      {assetTrailThinnedHint}
+                    </div>
+                  )}
                   <label className="map-control-item">
                     <input
                       type="checkbox"

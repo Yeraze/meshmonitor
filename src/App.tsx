@@ -46,9 +46,10 @@ import { NodeFilters } from './types/ui';
 import { getHashTabRedirectTarget } from './utils/tabHashRedirect';
 import { ResourceType } from './types/permission';
 import api, { type ChannelDatabaseEntry } from './services/api';
+import { fetchAssetTrack } from './hooks/useAssetTracking';
 import { getPacketStats } from './services/packetApi';
 import { logger } from './utils/logger';
-import { MAX_ACCUMULATED_POSITION_FIXES } from './utils/positionHistoryDownsample';
+import { MAX_ACCUMULATED_POSITION_FIXES, flattenAssetTrack } from './utils/positionHistoryDownsample';
 import { isTxDisabledBody } from './utils/txDisabled';
 import { resolveNeighborInfoErrorToast } from './utils/neighborInfoError';
 // generateArrowMarkers moved to useTraceroutePaths hook
@@ -379,6 +380,7 @@ function App() {
     setTraceroutes,
     setNeighborInfo,
     setPositionHistory,
+    setPositionHistoryTotalFixes,
     selectedNodeId,
     setSelectedNodeId,
   } = useMapContext();
@@ -1305,20 +1307,54 @@ function App() {
     }
   }, [connectionStatus, sourceId]);
 
+  // Signature of the asset track last put on the map (#5354 Phase 2), so a
+  // node poll that returns the same (cached) track doesn't redraw 2,000 points.
+  const assetTrackSignatureRef = useRef<string | null>(null);
+
   // Fetch position history when a mobile node is selected
   useEffect(() => {
     if (!selectedNodeId) {
+      assetTrackSignatureRef.current = null;
+      setPositionHistoryTotalFixes(null);
       setPositionHistory([]);
       return;
     }
 
     const selectedNode = nodes.find(n => n.user?.id === selectedNodeId);
     if (!selectedNode || !selectedNode.isMobile) {
+      assetTrackSignatureRef.current = null;
+      setPositionHistoryTotalFixes(null);
       setPositionHistory([]);
       return;
     }
 
     let cancelled = false;
+
+    // Tracked asset (#5354 Phase 2): one request for the server-thinned trail
+    // across the whole retention window, instead of the paged loop and its
+    // 5,000-fix cap. The server returns at most 2,000 points in gap segments.
+    if (selectedNode.asset) {
+      const nodeNum = selectedNode.nodeNum;
+      const fetchAssetTrail = async () => {
+        try {
+          const track = await fetchAssetTrack(nodeNum);
+          if (cancelled) return;
+          const items = flattenAssetTrack(track.segments);
+          const last = items.length > 0 ? items[items.length - 1].timestamp : 0;
+          const signature = `${nodeNum}|${track.totalFixes}|${items.length}|${last}`;
+          if (signature === assetTrackSignatureRef.current) return;
+          assetTrackSignatureRef.current = signature;
+          setPositionHistoryTotalFixes(track.totalFixes);
+          setPositionHistory(items);
+        } catch (error) {
+          if (!cancelled) logger.error('Error fetching asset track:', error);
+        }
+      };
+      void fetchAssetTrail();
+      return () => { cancelled = true; };
+    }
+    assetTrackSignatureRef.current = null;
+    setPositionHistoryTotalFixes(null);
 
     // Progressively load the ENTIRE position history in bounded pages (#3791).
     // The server caps each response at 1500 telemetry rows (~300 fixes), so we

@@ -42,7 +42,20 @@ describe('trail rendering is bounded', () => {
   });
 
   it('derives the bounded array through the shared cap', () => {
-    expect(nodesTab).toContain('downsamplePositionHistory(filteredPositionHistory, MAX_RENDERED_POSITION_POINTS)');
+    // Non-assets keep the 500 cap; a tracked asset (#5354) uses the 2,000 cap
+    // the server already thinned to.
+    const start = nodesTab.indexOf('const renderedPositionHistory = useMemo(');
+    expect(start).toBeGreaterThan(-1);
+    const src = nodesTab.slice(start, start + 300);
+    expect(src).toContain('downsamplePositionHistory(');
+    expect(src).toContain('isAssetTrail ? MAX_RENDERED_ASSET_POSITION_POINTS : MAX_RENDERED_POSITION_POINTS');
+  });
+
+  it('never draws a line across an asset gap segment (#5354)', () => {
+    const src = segmentBuilderSource();
+    expect(src).toContain('if (positionHistorySegmentBreaks[i]) continue;');
+    // The break check comes after the colour is pushed, so dot colours stay aligned.
+    expect(src.indexOf('segmentColors.push(color)')).toBeLessThan(src.indexOf('positionHistorySegmentBreaks[i]'));
   });
 
   it('keeps the legend reading the FULL filtered history', () => {
@@ -75,5 +88,18 @@ describe('history fetching is bounded', () => {
     // Both caps are now exported from one module, so this compares the real
     // values rather than a number scraped out of source text (review note).
     expect(MAX_ACCUMULATED_POSITION_FIXES).toBeGreaterThan(MAX_RENDERED_POSITION_POINTS);
+  });
+});
+
+describe('asset trails (#5354 Phase 2)', () => {
+  it('fetch the server-thinned track once instead of the paged loop', () => {
+    const start = app.indexOf('if (selectedNode.asset) {');
+    expect(start, 'asset branch not found — retarget this test').toBeGreaterThan(-1);
+    const branch = app.slice(start, app.indexOf('assetTrackSignatureRef.current = null;', start));
+    expect(branch).toContain('fetchAssetTrack(nodeNum)');
+    expect(branch).toContain('flattenAssetTrack(track.segments)');
+    expect(branch).toContain('return () => { cancelled = true; };');
+    // The asset branch returns before the paged loop and its 5,000-fix cap.
+    expect(start).toBeLessThan(app.indexOf('const fetchAllPositionHistory = async'));
   });
 });

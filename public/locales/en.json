@@ -5339,6 +5339,7 @@
     "showAtakContacts": "Show ATAK Contacts",
     "showPositionHistory": "Show Position History",
     "positionHistoryPointsOnly": "Points only (no line)",
+    "assetTrailThinned": "Showing {{shown}} of {{total}} fixes (thinned)",
     "showAnimations": "Show Animations",
     "showEstimatedPositions": "Show Estimated Positions",
     "showAccuracyRegions": "Show Accuracy Regions",
