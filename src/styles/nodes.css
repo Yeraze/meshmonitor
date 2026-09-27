@@ -696,6 +696,8 @@
 
 .sort-controls {
   display: flex;
+  /* Wrap onto a second row instead of overflowing a narrow sidebar (#5420). */
+  flex-wrap: wrap;
   gap: 0.5rem;
   margin-top: 0.5rem;
 }
@@ -709,7 +711,9 @@
   font-size: 0.85rem;
   flex: 1 1 0;
   width: 0;
-  min-width: 0;
+  /* A floor so a narrow row wraps the dropdown to its own line instead of
+     crushing it to a sliver; .sort-controls wraps (#5420). */
+  min-width: 7rem;
   cursor: pointer;
   transition: border-color 0.2s;
 }
