@@ -15,6 +15,7 @@ const getNode = vi.fn();
 const deleteNodeAsync = vi.fn();
 const setNodeIgnoredAsync = vi.fn();
 const isIgnoredCached = vi.fn();
+const getAssetNodeAsync = vi.fn();
 
 vi.mock('../../services/database.js', () => ({
   default: {
@@ -26,6 +27,7 @@ vi.mock('../../services/database.js', () => ({
     ignoredNodes: { isIgnoredCached: (...a: unknown[]) => isIgnoredCached(...a) },
     deleteNodeAsync: (...a: unknown[]) => deleteNodeAsync(...a),
     setNodeIgnoredAsync: (...a: unknown[]) => setNodeIgnoredAsync(...a),
+    getAssetNodeAsync: (...a: unknown[]) => getAssetNodeAsync(...a),
   },
 }));
 
@@ -71,8 +73,23 @@ describe('autoDeleteByDistanceService.applyInlineDistanceCheck (#3900)', () => {
     deleteNodeAsync.mockReset().mockResolvedValue(undefined);
     setNodeIgnoredAsync.mockReset().mockResolvedValue(undefined);
     isIgnoredCached.mockReset().mockReturnValue(false);
+    getAssetNodeAsync.mockReset().mockResolvedValue(null);
     // Config is cached per-source; clear between cases so each mockSettings takes.
     autoDeleteByDistanceService.clearInlineConfigCache();
+  });
+
+  it.each(['delete', 'ignore'])("never touches a tracked asset beyond range (#5354), action %s", async (action) => {
+    mockSettings({ autoDeleteByDistanceAction: action });
+    getNode.mockResolvedValue({ nodeNum: 1, isFavorite: false, isIgnored: false });
+    getAssetNodeAsync.mockImplementation(async (n: number) => (n === 1 ? { nodeNum: 1, retentionDays: 90 } : null));
+
+    expect(await autoDeleteByDistanceService.applyInlineDistanceCheck('A', 1, FAR_LAT, FAR_LON)).toBe('kept');
+    expect(deleteNodeAsync).not.toHaveBeenCalled();
+    expect(setNodeIgnoredAsync).not.toHaveBeenCalled();
+
+    // A non-asset beyond range is still handled.
+    getNode.mockResolvedValue({ nodeNum: 2, isFavorite: false, isIgnored: false });
+    expect(await autoDeleteByDistanceService.applyInlineDistanceCheck('A', 2, FAR_LAT, FAR_LON)).toBe(action === 'delete' ? 'deleted' : 'ignored');
   });
 
   it("returns 'kept' when the feature is disabled for the source", async () => {

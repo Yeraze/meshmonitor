@@ -45,6 +45,7 @@ function makeDeps(opts: {
   ignored?: Set<number>;
   agedOut?: Map<number, number>;
   liftResult?: boolean;
+  assets?: Set<number>;
 } = {}) {
   const settings = new Map(Object.entries(opts.settings ?? {}));
   const written = new Map<string, string>();
@@ -59,6 +60,7 @@ function makeDeps(opts: {
     addAircraftIgnore: vi.fn(async () => true),
     markAgedOut: vi.fn(async () => undefined),
     deleteNode: vi.fn(async () => undefined),
+    getAssetNodeNums: vi.fn(async () => opts.assets ?? new Set<number>()),
     getAgedOutAt: vi.fn(async (n: number) => opts.agedOut?.get(n) ?? null),
     isIgnoredCached: vi.fn((n: number) => opts.ignored?.has(n) ?? false),
     liftAircraftIgnore: vi.fn(async () => opts.liftResult ?? true),
@@ -151,6 +153,25 @@ describe('AircraftAgeOutService.runSweep — age-out pass', () => {
     expect(deps.deleteNode).toHaveBeenCalledWith(1, SRC);
     expect(deps.addAircraftIgnore).not.toHaveBeenCalled();
     expect(r.deleted).toBe(1);
+  });
+
+  it.each(['ignore', 'delete'])('never ages out a tracked asset (#5354), action %s', async (action) => {
+    const { deps } = makeDeps({
+      settings: { ...AGE_ON, aircraftAgeOutAction: action },
+      candidates: [cand(1), cand(2)],
+      assets: new Set([1]),
+    });
+    const r = await new AircraftAgeOutService(deps).runSweep(SRC, NOW);
+    // Node 2 (not an asset) is still handled; node 1 is skipped.
+    if (action === 'delete') {
+      expect(deps.deleteNode).toHaveBeenCalledTimes(1);
+      expect(deps.deleteNode).toHaveBeenCalledWith(2, SRC);
+      expect(r.deleted).toBe(1);
+    } else {
+      expect(deps.addAircraftIgnore).toHaveBeenCalledTimes(1);
+      expect(deps.addAircraftIgnore).toHaveBeenCalledWith(2, SRC, '!00000002', 'Node 2', 'N2');
+      expect(r.agedOut).toBe(1);
+    }
   });
 
   it('ages a node out at most once per silence (a hand un-ignore sticks until it is heard again)', async () => {

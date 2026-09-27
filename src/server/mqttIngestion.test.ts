@@ -23,6 +23,8 @@ vi.mock('../services/database.js', () => ({
     // #5101 (finding 2): persistRouteSegments now also calls this per stored
     // segment, mirroring the TCP writer.
     updateRecordHolderSegmentAsync: vi.fn(async () => undefined),
+    // #5354 tracked assets — none unless a test says so.
+    getAssetNodeAsync: vi.fn(async () => null),
     deleteNodeAsync: vi.fn(async () => ({
       messagesDeleted: 0,
       broadcastMessagesDeleted: 0,
@@ -354,6 +356,24 @@ describe('ingestServiceEnvelope — POSITION geo evaluation', () => {
     await new Promise((r) => setTimeout(r, 0));
     expect(databaseService.deleteNodeAsync).toHaveBeenCalledTimes(1);
     expect(databaseService.upsertNodeAsync).not.toHaveBeenCalled();
+  });
+
+  it('geo-ignores a tracked asset but never purges it (#5354)', async () => {
+    await outOfBboxOnce();
+    (databaseService.ignoredNodes.addGeoIgnoreAsync as any).mockResolvedValueOnce(true);
+    (databaseService.getAssetNodeAsync as any).mockResolvedValueOnce({ nodeNum: NODE_OUT, retentionDays: 90 });
+    const filter = new MqttPacketFilter({ geo: ON_BBOX });
+
+    const result = await ingestServiceEnvelope({
+      sourceId: 'bridge-1',
+      envelope: envFor(NODE_OUT, 3 /* POSITION_APP */),
+      filter,
+    });
+
+    expect(result).toMatchObject({ ingested: false, reason: 'geo-ignored' });
+    expect(databaseService.ignoredNodes.addGeoIgnoreAsync).toHaveBeenCalledTimes(1);
+    await new Promise((r) => setTimeout(r, 0));
+    expect(databaseService.deleteNodeAsync).not.toHaveBeenCalled();
   });
 
   it('does not re-purge an already geo-ignored node (addGeoIgnoreAsync → false)', async () => {

@@ -38,6 +38,8 @@ vi.mock('../services/database.js', () => ({
       addGeoIgnoreAsync: vi.fn(async () => true),
       liftGeoIgnoreAsync: vi.fn(async () => false),
     },
+    // #5354 tracked assets — none unless a test says so.
+    getAssetNodeAsync: vi.fn(async () => null),
     deleteNodeAsync: vi.fn(async () => ({
       messagesDeleted: 0, broadcastMessagesDeleted: 0, traceroutesDeleted: 0,
       telemetryDeleted: 0, nodeDeleted: true,

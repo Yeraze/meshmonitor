@@ -418,7 +418,11 @@ async function ingestServiceEnvelopeInner(input: MqttIngestionInput): Promise<Mq
           existing?.longName ?? `Node ${fromNodeId}`,
           existing?.shortName ?? fromNodeId.slice(-4),
         );
-        if (inserted) {
+        // A tracked asset (#5354) is still geo-ignored, but never purged: its
+        // retained history outlives the bbox. Checked only on the transition.
+        if (inserted && (await databaseService.getAssetNodeAsync(fromNum))) {
+          logger.info(`Geo-ignored tracked asset ${fromNodeId}@${sourceId}; skipping purge`);
+        } else if (inserted) {
           // Fire-and-forget full purge (messages incl. broadcasts, telemetry,
           // traceroutes, neighbors, packet logs, node row). Ingestion must not
           // block the packet loop on a multi-table cascade. The ignore-cache

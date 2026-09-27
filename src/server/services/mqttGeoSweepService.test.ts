@@ -20,6 +20,7 @@ const addGeoIgnoreAsync = vi.fn();
 const getIgnoredNodesAsync = vi.fn();
 const liftGeoIgnoreAsync = vi.fn();
 const deleteNodeAsync = vi.fn();
+const getAssetNodesMapAsync = vi.fn();
 
 vi.mock('../../services/database.js', () => ({
   default: {
@@ -31,6 +32,7 @@ vi.mock('../../services/database.js', () => ({
       liftGeoIgnoreAsync: (...a: unknown[]) => liftGeoIgnoreAsync(...a),
     },
     deleteNodeAsync: (...a: unknown[]) => deleteNodeAsync(...a),
+    getAssetNodesMapAsync: () => getAssetNodesMapAsync(),
   },
 }));
 
@@ -63,6 +65,7 @@ describe('mqttGeoSweepService', () => {
     getIgnoredNodesAsync.mockReset().mockResolvedValue([]);
     liftGeoIgnoreAsync.mockReset().mockResolvedValue(true);
     deleteNodeAsync.mockReset().mockResolvedValue(undefined);
+    getAssetNodesMapAsync.mockReset().mockResolvedValue(new Map());
   });
 
   it('ignores and purges an out-of-bbox node', async () => {
@@ -73,6 +76,21 @@ describe('mqttGeoSweepService', () => {
     expect(stats).toMatchObject({ sourceId: 'S1', scanned: 1, ignored: 1, purged: 1, lifted: 0 });
     expect(addGeoIgnoreAsync).toHaveBeenCalledWith(100, 'S1', '!00000064', 'Node 100', 'N100');
     expect(deleteNodeAsync).toHaveBeenCalledWith(100, 'S1');
+  });
+
+  it('geo-ignores a tracked asset but does not purge it (#5354)', async () => {
+    getAllNodes.mockResolvedValue([
+      makeNode({ latitude: 49.2, longitude: -123 }),
+      makeNode({ nodeNum: 101, nodeId: '!00000065', latitude: 49.2, longitude: -123 }),
+    ]);
+    getAssetNodesMapAsync.mockResolvedValue(new Map([[100, { retentionDays: 90 }]]));
+
+    const stats = await mqttGeoSweepService.runSweep('S1', ON_BBOX, { lift: false });
+
+    expect(stats).toMatchObject({ scanned: 2, ignored: 2, purged: 1 });
+    expect(addGeoIgnoreAsync).toHaveBeenCalledWith(100, 'S1', '!00000064', 'Node 100', 'N100');
+    expect(deleteNodeAsync).toHaveBeenCalledTimes(1);
+    expect(deleteNodeAsync).toHaveBeenCalledWith(101, 'S1');
   });
 
   it('leaves an in-bbox node untouched', async () => {

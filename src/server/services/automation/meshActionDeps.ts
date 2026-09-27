@@ -185,6 +185,12 @@ export function createMeshActionDeps(): ActionDeps {
         case 'unignore': return m.sendRemoveIgnoredNode(nodeNum);
         case 'delete': {
           if (!sourceId) throw new Error('automation delete action requires a target source');
+          // Automated cleanups never delete a tracked asset (#5354); only a
+          // manual Delete Node can remove it and its retained history.
+          if (await databaseService.getAssetNodeAsync(nodeNum)) {
+            logger.info(`[Automation] delete skipped for node ${nodeNum}@${sourceId}: node is a tracked asset`);
+            return { skipped: true, reason: 'node is a tracked asset' };
+          }
           await databaseService.deleteNodeAsync(nodeNum, sourceId);
           return;
         }

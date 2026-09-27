@@ -143,6 +143,8 @@ class AutoDeleteByDistanceService {
     // Beyond threshold — but never touch a favorite (parity with runDeleteCycle).
     const existing = await databaseService.nodes.getNode(nodeNum, sourceId);
     if (existing?.isFavorite) return 'kept';
+    // Never touch a tracked asset (#5354) — it is expected to roam.
+    if (await databaseService.getAssetNodeAsync(nodeNum)) return 'kept';
 
     try {
       if (cfg.action === 'ignore') {
@@ -220,6 +222,8 @@ class AutoDeleteByDistanceService {
       // Get all nodes (must use async for PostgreSQL/MySQL)
       // intentional cross-source: when sourceId is omitted, scan all sources
       const allNodes = await databaseService.nodes.getAllNodes(sourceId ?? ALL_SOURCES);
+      // Tracked assets (#5354) are protected like favorites. One load per sweep.
+      const assets = await databaseService.getAssetNodesMapAsync();
 
       // Throttle device syncs so firmware admin queue doesn't back up on
       // large MQTT meshes with hundreds of nodes to ignore per cycle.
@@ -235,6 +239,11 @@ class AutoDeleteByDistanceService {
 
         // Protect favorited nodes
         if (node.isFavorite) {
+          continue;
+        }
+
+        // Protect tracked assets (#5354)
+        if (assets.has(Number(node.nodeNum))) {
           continue;
         }
 
