@@ -353,7 +353,9 @@ describe('MeshtasticManager - Auto-Ack/Responder/Ping TX-disabled skip (#4294 WP
       expect(manager.sendTextMessage).toHaveBeenCalledWith(
         expect.stringContaining('Starting 3 pings'),
         0,
-        REMOTE_NODE_NUM
+        REMOTE_NODE_NUM,
+        undefined, undefined, undefined, undefined,
+        { origin: 'automation' },
       );
       expect(manager.autoPingSessions.has(REMOTE_NODE_NUM)).toBe(true);
     });
@@ -399,7 +401,7 @@ describe('MeshtasticManager - Auto-Ack/Responder/Ping TX-disabled skip (#4294 WP
 
       await manager.sendNextAutoPing(session);
 
-      expect(manager.sendTextMessage).toHaveBeenCalledWith('Ping 1/5', 0, REMOTE_NODE_NUM);
+      expect(manager.sendTextMessage).toHaveBeenCalledWith('Ping 1/5', 0, REMOTE_NODE_NUM, undefined, undefined, undefined, undefined, { origin: 'automation' });
     });
   });
 });

@@ -408,7 +408,8 @@ class WaypointService {
         },
         // Rebroadcast on the channel the waypoint was created with (#4341);
         // rows predating the column have `channel === null` and stay on 0.
-        { channel: normalizeWaypointChannel(candidate.channel) },
+        // Scheduler-driven rebroadcast — automation traffic (#5414).
+        { channel: normalizeWaypointChannel(candidate.channel), origin: 'automation' },
       );
 
       if (!packetId) {

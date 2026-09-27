@@ -39,8 +39,8 @@ describe('MessageQueueService hop-limit override (#5121)', () => {
     messageQueueService.enqueue('hi', 0, undefined, undefined, undefined, 2, 1, undefined, 1);
     await vi.advanceTimersByTimeAsync(10);
     expect(sendCallback).toHaveBeenCalledTimes(1);
-    // (text, destination, replyId, channel, emoji, hopLimitOverride)
-    expect(sendCallback.mock.calls[0]).toEqual(['hi', 0, undefined, 2, undefined, 1]);
+    // (text, destination, replyId, channel, emoji, hopLimitOverride, origin)
+    expect(sendCallback.mock.calls[0]).toEqual(['hi', 0, undefined, 2, undefined, 1, undefined]);
   });
 
   it('passes undefined when no override is set, so existing sends are unchanged', async () => {

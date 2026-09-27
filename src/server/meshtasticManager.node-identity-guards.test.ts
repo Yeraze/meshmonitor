@@ -364,7 +364,7 @@ describe('MeshtasticManager - Node Identity Guards', () => {
       await manager.processKeyRepairs();
 
       // Should attempt repair on the remote node
-      expect(manager.sendNodeInfoRequest).toHaveBeenCalledWith(REMOTE_NODE_NUM, 0);
+      expect(manager.sendNodeInfoRequest).toHaveBeenCalledWith(REMOTE_NODE_NUM, 0, { origin: 'automation' });
     });
 
     it('should skip all repairs when reboot merge is in progress', async () => {
@@ -429,7 +429,7 @@ describe('MeshtasticManager - Node Identity Guards', () => {
 
       await manager.processKeyRepairs();
 
-      expect(manager.sendNodeInfoRequest).toHaveBeenCalledWith(REMOTE_NODE_NUM, 0);
+      expect(manager.sendNodeInfoRequest).toHaveBeenCalledWith(REMOTE_NODE_NUM, 0, { origin: 'automation' });
     });
   });
 

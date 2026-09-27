@@ -10,6 +10,7 @@
 
 import { logger } from '../utils/logger.js';
 import databaseService from '../services/database.js';
+import type { SendOrigin } from './utils/automationPacketTracker.js';
 
 export interface QueuedMessage {
   id: string;
@@ -20,6 +21,8 @@ export interface QueuedMessage {
   emoji?: number; // Emoji flag (1 for tapback/reaction)
   /** Automated-send hop-limit override (#5121); undefined inherits the node's. */
   hopLimitOverride?: number;
+  /** Who asked for the send (#5414). Absent ⇒ manual. */
+  origin?: SendOrigin;
   attempts: number;
   maxAttempts: number;
   enqueuedAt: number;
@@ -56,7 +59,7 @@ export class MessageQueueService {
   private cleanupInterval?: ReturnType<typeof setInterval>;
 
   // Reference to meshtasticManager for sending messages
-  private sendCallback?: (text: string, destination: number, replyId?: number, channel?: number, emoji?: number, hopLimitOverride?: number) => Promise<number>;
+  private sendCallback?: (text: string, destination: number, replyId?: number, channel?: number, emoji?: number, hopLimitOverride?: number, origin?: SendOrigin) => Promise<number>;
 
   /**
    * @param sourceId - Owning source, for per-source `autoAckMaxAttempts` reads
@@ -69,7 +72,7 @@ export class MessageQueueService {
    * Set the callback function for sending messages
    * This should be MeshtasticManager.sendTextMessage
    */
-  setSendCallback(callback: (text: string, destination: number, replyId?: number, channel?: number, emoji?: number, hopLimitOverride?: number) => Promise<number>) {
+  setSendCallback(callback: (text: string, destination: number, replyId?: number, channel?: number, emoji?: number, hopLimitOverride?: number, origin?: SendOrigin) => Promise<number>) {
     this.sendCallback = callback;
   }
 
@@ -109,8 +112,11 @@ export class MessageQueueService {
    *                           exactly once and reported as success as soon as
    *                           it reaches the radio — a retry would be a blind
    *                           resend with no way to know the first one landed.
+   * @param origin - `'automation'` for sends MeshMonitor makes on its own
+   *                 (#5414), so an MQTT bridge can keep them off the upstream
+   *                 broker. Absent ⇒ manual.
    */
-  enqueue(text: string, destination: number, replyId?: number, onSuccess?: () => void, onFailure?: (reason: string) => void, channel?: number, maxAttemptsOverride?: number, emoji?: number, hopLimitOverride?: number): string {
+  enqueue(text: string, destination: number, replyId?: number, onSuccess?: () => void, onFailure?: (reason: string) => void, channel?: number, maxAttemptsOverride?: number, emoji?: number, hopLimitOverride?: number, origin?: SendOrigin): string {
     const messageId = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 
     // Channel messages don't support ACKs, so only attempt once
@@ -130,6 +136,7 @@ export class MessageQueueService {
       replyId,
       emoji,
       hopLimitOverride,
+      origin,
       attempts: 0,
       maxAttempts,
       enqueuedAt: Date.now(),
@@ -369,7 +376,7 @@ export class MessageQueueService {
       logger.debug(`📤 Sending queued message ${message.id} to ${target}${attemptInfo}`);
 
       // Send the message
-      const requestId = await this.sendCallback(message.text, message.destination, message.replyId, message.channel, message.emoji, message.hopLimitOverride);
+      const requestId = await this.sendCallback(message.text, message.destination, message.replyId, message.channel, message.emoji, message.hopLimitOverride, message.origin);
 
       // Validate requestId
       if (requestId === undefined || requestId === null || requestId <= 0) {

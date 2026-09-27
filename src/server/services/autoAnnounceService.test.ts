@@ -442,7 +442,7 @@ describe('AutoAnnounceService', () => {
 
       await svc.sendAutoAnnouncement(true);
 
-      expect(mgr.broadcastNodeInfoToChannels).toHaveBeenCalledWith([1, 2], 15);
+      expect(mgr.broadcastNodeInfoToChannels).toHaveBeenCalledWith([1, 2], 15, { origin: 'automation' });
     });
 
     it('does not broadcast NodeInfo when disabled', async () => {

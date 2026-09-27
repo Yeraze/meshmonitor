@@ -228,6 +228,10 @@ export class AutoAnnounceService {
 
       logger.debug(`📢 Sending auto-announcement to ${channelIndexes.length} channel(s) [${channelIndexes.join(',')}]: "${replacedMessage}"`);
 
+      // A scheduled/automation-triggered announcement is automation traffic
+      // (#5414); the manual "Send Announcement" button is not.
+      const origin = triggeredByAutomation ? 'automation' : 'manual';
+
       channelIndexes.forEach((channelIdx, i) => {
         this.mgr.messageQueue.enqueue(
           replacedMessage,
@@ -243,6 +247,7 @@ export class AutoAnnounceService {
           1, // single attempt, no retry for broadcasts
           undefined, // not a tapback
           hopLimitOverride,
+          origin,
         );
       });
 
@@ -265,7 +270,7 @@ export class AutoAnnounceService {
           if (nodeInfoChannels.length > 0) {
             logger.debug(`📢 NodeInfo broadcasting enabled - will broadcast to ${nodeInfoChannels.length} channel(s)`);
             // Run NodeInfo broadcasting asynchronously (don't block the announcement)
-            this.mgr.broadcastNodeInfoToChannels(nodeInfoChannels, nodeInfoDelaySeconds).catch(error => {
+            this.mgr.broadcastNodeInfoToChannels(nodeInfoChannels, nodeInfoDelaySeconds, { origin }).catch(error => {
               logger.error('❌ Error in NodeInfo broadcasting:', error);
             });
           }
