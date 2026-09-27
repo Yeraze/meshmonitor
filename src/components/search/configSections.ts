@@ -54,7 +54,10 @@ export const GLOBAL_SETTINGS_SECTIONS = new Set([
   'settings-privacy', 'settings-meshcore-messaging', 'settings-map',
   'settings-security',
   'settings-remote-admin',
-  'settings-apprise-server', 'settings-elevation', 'settings-atak-cot', 'settings-backup',
+  'settings-apprise-server', 'settings-elevation',
+  // ADS-B flight matching (#5374): one global outbound service, like elevation.
+  'settings-adsb',
+  'settings-atak-cot', 'settings-backup',
   'settings-channel-database',
   'settings-scripts',
   'settings-maintenance', 'settings-analytics',
@@ -135,6 +138,7 @@ export function settingsNavItems(t: Translate, options: SettingsNavOptions): Nav
     { id: 'settings-remote-admin', label: t('settings.remote_admin_section', 'Remote Administration'), keywords: ['admin', 'password', 'credentials'] },
     { id: 'settings-apprise-server', label: t('settings.apprise_server_section', 'Apprise API Server'), keywords: ['notifications', 'email', 'push', 'webhook'] },
     { id: 'settings-elevation', label: t('settings.elevation_section', 'Elevation / Terrain'), keywords: ['dem', 'terrain', 'altitude', 'height'] },
+    { id: 'settings-adsb', label: t('settings.adsb_section', 'Flight matching (ADS-B)'), keywords: ['adsb', 'ads-b', 'aircraft', 'flight', 'plane', 'callsign', 'adsb.lol', 'adsb.fi'] },
     { id: 'settings-backup', label: t('settings.system_backup', 'System Backup'), keywords: ['restore', 'export', 'import', 'archive'] },
     { id: 'settings-channel-database', label: t('channel_database.title', 'Channel Database'), keywords: ['psk', 'decrypt', 'channels', 'keys'] },
     { id: 'settings-scripts', label: t('settings.scripts_section', 'Scripts'), keywords: ['javascript', 'automation', 'code'] },
@@ -152,7 +156,7 @@ export function settingsNavItems(t: Translate, options: SettingsNavOptions): Nav
   ];
 
   const adminOnly = new Set([
-    'settings-remote-admin', 'settings-apprise-server', 'settings-elevation',
+    'settings-remote-admin', 'settings-apprise-server', 'settings-elevation', 'settings-adsb',
     'settings-channel-database', 'settings-scripts', 'settings-analytics',
   ]);
   const settingsWriteOnly = new Set(['settings-position-estimation', 'settings-mesh-issues', 'settings-auto-enrichment', 'settings-coverage', 'settings-coverage-mqtt']);

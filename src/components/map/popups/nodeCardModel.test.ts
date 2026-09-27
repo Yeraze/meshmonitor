@@ -101,6 +101,12 @@ describe('toNodeCardModel — meshtastic', () => {
     expect(model.sources).toBe(sources);
   });
 
+  it("carries a per-source row's sourceId (#5374), and leaves it unset otherwise", () => {
+    expect(toNodeCardModel({ nodeNum: 1, sourceId: 'src-a' }, 'meshtastic').sourceId).toBe('src-a');
+    expect(toNodeCardModel({ nodeNum: 1 }, 'meshtastic').sourceId).toBeUndefined();
+    expect(toNodeCardModel({ nodeNum: 1, sourceId: '' }, 'meshtastic').sourceId).toBeUndefined();
+  });
+
   it('leaves hops/snr/battery/altitude/lastHeard null when absent (missing-data behavior)', () => {
     const model = toNodeCardModel({ nodeNum: 1, longName: 'Bare' }, 'meshtastic');
     expect(model.hops).toBeNull();

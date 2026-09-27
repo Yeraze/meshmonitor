@@ -28,6 +28,7 @@ import databaseService from '../../services/database.js';
 import { getEffectiveDbNodePosition } from '../utils/nodeEnhancer.js';
 import { isLiveReception } from '../utils/replayGuard.js';
 import { aircraftClassificationService, AIRCRAFT_EXCLUDED_SOURCE_TYPES } from './aircraftClassificationService.js';
+import { adsbMatchService } from './adsbMatchService.js';
 import {
   AIRCRAFT_FIXED_WINDOW_MS,
   isStationaryFix,
@@ -60,6 +61,8 @@ export interface AircraftAgeOutDeps {
   scheduleClassification(sourceId: string, nodeNum: number): void;
   /** Silent recompute of every stored verdict for a source (no DEM fetch). */
   reclassifyStored(sourceId: string): Promise<number>;
+  /** #5374: ADS-B lookup 2 check for a live position (no-op unless the node is flagged). */
+  onLiveAdsbPosition(sourceId: string, nodeNum: number): void;
 }
 
 /**
@@ -114,6 +117,7 @@ function defaultDeps(): AircraftAgeOutDeps {
     clearAgedOut: (nodeNum, sourceId) => databaseService.clearAircraftAgedOutAsync(nodeNum, sourceId),
     scheduleClassification: (sourceId, nodeNum) => aircraftClassificationService.schedule(sourceId, nodeNum),
     reclassifyStored: (sourceId) => aircraftClassificationService.reclassifySource(sourceId),
+    onLiveAdsbPosition: (sourceId, nodeNum) => adsbMatchService.onLivePosition(sourceId, nodeNum),
   };
 }
 
@@ -250,6 +254,8 @@ export class AircraftAgeOutService {
     try {
       if (isLiveReception(rxTimeSec, nowMs)) {
         void this.onLivePosition(sourceId, nodeNum, opts);
+        // #5374: a flagged node's next live fix may be due its second ADS-B lookup.
+        this.deps.onLiveAdsbPosition(sourceId, nodeNum);
       } else if (opts.classify !== false) {
         this.deps.scheduleClassification(sourceId, nodeNum);
       }

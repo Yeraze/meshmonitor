@@ -65,6 +65,7 @@ function makeDeps(opts: {
     clearAgedOut: vi.fn(async () => undefined),
     scheduleClassification: vi.fn(),
     reclassifyStored: vi.fn(async () => 0),
+    onLiveAdsbPosition: vi.fn(),
   };
   return { deps, written };
 }
@@ -317,6 +318,14 @@ describe('AircraftAgeOutService — live-position lift (D3)', () => {
     expect(deps.getAgedOutAt).not.toHaveBeenCalled();
     expect(deps.liftAircraftIgnore).not.toHaveBeenCalled();
     expect(deps.scheduleClassification).toHaveBeenCalledWith(SRC, 5);
+    // #5374: a replay is not a "next live position" for ADS-B lookup 2.
+    expect(deps.onLiveAdsbPosition).not.toHaveBeenCalled();
+  });
+
+  it('handlePositionReception: a live rxTime offers the fix to ADS-B matching (#5374)', () => {
+    const { deps } = makeDeps();
+    new AircraftAgeOutService(deps).handlePositionReception(SRC, 5, Math.floor(NOW / 1000) - 5, NOW);
+    expect(deps.onLiveAdsbPosition).toHaveBeenCalledWith(SRC, 5);
   });
 
   it('handlePositionReception: a live rxTime lifts', async () => {

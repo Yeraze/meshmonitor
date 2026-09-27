@@ -204,6 +204,10 @@ function validTestValue(key: string, suffix = ''): string {
     aircraftAgeOutEnabled: 'true',
     aircraftAgeOutHours: '24',
     aircraftAgeOutAction: 'ignore',
+    // ADS-B flight matching (#5374): strict boolean, and the feed must be a
+    // known one (INVALID_ADSB_FEED otherwise).
+    adsbMatchEnabled: 'true',
+    adsbFeed: 'adsb.fi',
   };
 
   if (key in VALID_VALUES) {
@@ -554,6 +558,10 @@ describe('Settings Persistence', () => {
         // Aircraft age-out (#5364/#5365 Phase 2) — same Category C pattern;
         // read server-side by aircraftAgeOutService.
         'aircraftAgeOutEnabled', 'aircraftAgeOutHours', 'aircraftAgeOutAction',
+        // ADS-B flight matching (#5374) — same Category C pattern as the
+        // elevation pair; read server-side by adsbMatchService. The flag is
+        // also read publicly by useAdsbMatchEnabled() via a direct fetch.
+        'adsbMatchEnabled', 'adsbFeed', 'adsb_api_token',
       ];
 
       const keysNotLoaded = SETTINGS_TAB_SENDS.filter(

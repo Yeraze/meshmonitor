@@ -20,7 +20,7 @@ import { securityDigestService } from '../services/securityDigestService.js';
 import { invalidatePkiDmGlobalCache } from '../services/sourcePkiKeyStore.js';
 import { invalidateCoverageMqttEnabled } from '../services/coverageMqttSettings.js';
 import { COVERAGE_MQTT_ENABLED_SETTING } from '../../utils/coverage.js';
-import { VALID_SETTINGS_KEYS, GLOBAL_ONLY_SETTINGS_KEYS, stripSecretSettings } from '../constants/settings.js';
+import { VALID_SETTINGS_KEYS, GLOBAL_ONLY_SETTINGS_KEYS, stripSecretSettings, isSecretSettingKey } from '../constants/settings.js';
 import { ok, fail } from '../utils/apiResponse.js';
 import { resolveOwnMeshtasticManager } from '../utils/resolveSourceManager.js';
 import { validateFilterNameRegexOnSave } from '../utils/filterNameRegex.js';
@@ -42,6 +42,7 @@ import {
   isAircraftAgeOutAction,
 } from '../../utils/aircraftClassification.js';
 import { aircraftClassificationService } from '../services/aircraftClassificationService.js';
+import { isAdsbFeed, ADSB_FEED_IDS } from '../../utils/adsbFeeds.js';
 
 // ─── Tile URL validation ─────────────────────────────────────────────────
 
@@ -328,8 +329,13 @@ router.post('/', requirePermission('settings', 'write', { sourceIdFrom: 'query' 
     // so the deny branch is unreachable and ignoredKeys stays empty).
     const filteredSettings: Record<string, string> = {};
     const ignoredKeys: string[] = [];
+    // Secret keys are never sent to non-admins (stripSecretSettings), so a
+    // non-admin's Settings save carries them blank. Drop them rather than let
+    // that save wipe a stored key (#5374; elevationSourceUrl had the same gap).
+    const isAdminWriter = req.user?.isAdmin === true;
     for (const key of VALID_SETTINGS_KEYS) {
       if (!(key in settings)) continue;
+      if (!isAdminWriter && isSecretSettingKey(key)) continue;
       if (sourceId && GLOBAL_ONLY_SETTINGS_KEYS.has(key)) {
         ignoredKeys.push(key);
         continue;
@@ -363,6 +369,8 @@ router.post('/', requirePermission('settings', 'write', { sourceIdFrom: 'query' 
       'autoFavoriteExcludeAircraft',
       // Aircraft age-out (#5364/#5365 Phase 2): ignores or deletes nodes.
       'aircraftAgeOutEnabled',
+      // ADS-B flight matching (#5374): turns on third-party HTTP requests.
+      'adsbMatchEnabled',
     ] as const;
 
     for (const key of STRICT_BOOLEAN_SETTINGS_KEYS) {
@@ -521,6 +529,11 @@ router.post('/', requirePermission('settings', 'write', { sourceIdFrom: 'query' 
         return fail(res, 400, 'INVALID_AIRCRAFT_AGE_OUT_HOURS',
           `aircraftAgeOutHours must be a whole number between ${R.min} and ${R.max}`);
       }
+    }
+    // ADS-B flight matching (#5374): only the feeds the client knows.
+    if ('adsbFeed' in filteredSettings && !isAdsbFeed(filteredSettings.adsbFeed)) {
+      return fail(res, 400, 'INVALID_ADSB_FEED',
+        `adsbFeed must be one of: ${ADSB_FEED_IDS.join(', ')}`);
     }
     if ('aircraftAgeOutAction' in filteredSettings
       && !isAircraftAgeOutAction(filteredSettings.aircraftAgeOutAction)) {
