@@ -260,6 +260,7 @@ class MeshIssuesAnalysisService {
     // 2. Nodes — pool physical nodes across every resolved source.
     // intentional cross-source: findings pool physical nodes across every Meshtastic source
     const allNodes = (await databaseService.nodes.getAllNodes(ALL_SOURCES)) as unknown as NodeRow[];
+    const assetNodeNums = await databaseService.getAssetNodesMapAsync();
     const nodeInputs: PooledNodeInput[] = allNodes
       .filter((n) => sourceIdSet.has(n.sourceId))
       .map((n) => ({
@@ -283,6 +284,7 @@ class MeshIssuesAnalysisService {
         longitudeOverride: n.longitudeOverride ?? null,
         positionPrecisionBits: n.positionPrecisionBits ?? null,
         mobile: n.mobile ?? null,
+        asset: assetNodeNums.has(Number(n.nodeNum)),
         lastHeard: n.lastHeard ?? null,
         updatedAt: n.updatedAt ?? null,
         // Tier C fold-in flags (#4964 Phase 3 WP2) — see nodeSnapshot.ts's

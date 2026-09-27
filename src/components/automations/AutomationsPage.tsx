@@ -290,6 +290,7 @@ function AutomationEditor({ automation, onClose }: { automation: Automation | 'n
       nodeId?: string;
       mobile?: number;
       isMobile?: boolean;
+      asset?: { retentionDays: number };
       user?: { id?: string; longName?: string; shortName?: string };
     }>>('/api/nodes')
       .then((list) => {
@@ -310,6 +311,7 @@ function AutomationEditor({ automation, onClose }: { automation: Automation | 'n
               nodeId,
               mobile: n.mobile,
               isMobile: n.isMobile,
+              asset: n.asset,
             };
           }));
       })

@@ -874,6 +874,20 @@ describe('evaluateB5 — load-bearing client', () => {
     expect(findings[0].recommendation).toContain('CLIENT_BASE');
   });
 
+  it('treats a tracked asset as mobile, never fixed/powered (#5354)', () => {
+    const { nodes, samples } = fixture(DeviceRole.CLIENT, 101, false);
+    nodes.get(601)!.asset = true;
+    const ctx = makeCtx({ nodes, samples });
+
+    const findings = evaluateB5(ctx);
+
+    expect(findings[0].severity).toBe('warning');
+    expect(findings[0].evidence.fixedAndPowered).toBe(false);
+    expect(findings[0].evidence.asset).toBe(true);
+    // The persisted heuristic flag is reported unchanged.
+    expect(findings[0].evidence.mobile).toBe(false);
+  });
+
   it('a node already CLIENT_BASE (fixed/powered) gets "another CLIENT" wording, not a CLIENT_BASE suggestion', () => {
     const { nodes, samples } = fixture(DeviceRole.CLIENT_BASE, 101, false);
     const ctx = makeCtx({ nodes, samples });

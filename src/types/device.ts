@@ -84,8 +84,11 @@ export interface DeviceInfo {
   snr?: number;
   rssi?: number;
   firmwareVersion?: string;
+  /** Effective mobility: the heuristic `mobile` column OR the asset flag (#5354). */
   isMobile?: boolean;
   mobile?: number; // Database field: 0 = not mobile, 1 = mobile (moved >100m)
+  /** Tracked asset (#5354): present when the operator flagged this physical node. */
+  asset?: { retentionDays: number };
   isFavorite?: boolean;
   favoriteLocked?: boolean;
   isIgnored?: boolean;

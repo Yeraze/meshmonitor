@@ -83,12 +83,13 @@ router.get('/nodes', optionalAuth(), async (req, res) => {
     const mgr = getPrimaryMeshtasticManager(sourceManagerRegistry) ?? fallbackManager;
     const allNodes = await mgr.getAllNodesAsync(nodesSourceId);
     const estimatedPositions = await databaseService.getAllNodesEstimatedPositionsAsync();
+    const assets = await databaseService.getAssetNodesMapAsync();
 
     // Filter nodes based on channel read permissions — scope the permission
     // lookup to the requested source so a guest with channel access on one
     // source can't see another source's nodes (#3745).
     const filteredNodes = await filterNodesByChannelPermission(allNodes, (req as any).user, nodesSourceId);
-    const enhancedNodes = await Promise.all(filteredNodes.map(node => enhanceNodeForClient(node, (req as any).user, estimatedPositions)));
+    const enhancedNodes = await Promise.all(filteredNodes.map(node => enhanceNodeForClient(node, (req as any).user, estimatedPositions, undefined, assets)));
 
     // Enrich each node with its latest uptime from telemetry (#4814). Uptime is
     // not a node column — it lives only in device-metrics telemetry — so the node
@@ -162,6 +163,8 @@ router.get('/nodes/active', optionalAuth(), async (req, res) => {
     // Filter nodes based on channel read permissions (source-scoped, #3745)
     const dbNodes = await filterNodesByChannelPermission(allDbNodes, (req as any).user, activeNodesSourceId);
 
+    const assets = await databaseService.getAssetNodesMapAsync();
+
     // Map raw DB nodes to DeviceInfo format then enhance
     const maskedNodes = await Promise.all(dbNodes.map(async node => {
       // Map basic fields
@@ -180,7 +183,7 @@ router.get('/nodes/active', optionalAuth(), async (req, res) => {
         deviceInfo.position = { latitude: node.latitude, longitude: node.longitude, altitude: node.altitude };
       }
 
-      return enhanceNodeForClient(deviceInfo, (req as any).user);
+      return enhanceNodeForClient(deviceInfo, (req as any).user, undefined, undefined, assets);
     }));
 
     res.json(maskedNodes);

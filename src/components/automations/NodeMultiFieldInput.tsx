@@ -16,6 +16,8 @@ export interface NodeMultiOption {
   /** MeshMonitor mobility flag: 0/false = stationary, 1/true = mobile. */
   mobile?: number | boolean;
   isMobile?: boolean;
+  /** Tracked asset (#5354); forces the node into the Mobile chip. */
+  asset?: { retentionDays: number } | null;
 }
 
 interface Props {
@@ -25,6 +27,8 @@ interface Props {
 }
 
 function isStationary(n: NodeMultiOption): boolean {
+  // A tracked asset (#5354) is always mobile, whatever the heuristic says.
+  if (n.asset) return false;
   if (n.isMobile === true) return false;
   if (n.isMobile === false) return true;
   if (n.mobile === 1 || n.mobile === true) return false;

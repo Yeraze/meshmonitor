@@ -339,6 +339,14 @@ function mergeNodeRecords(records: any[]): any {
     }
   }
 
+  // Mobility (#5354): OR across sources, not newest-wins — one source's
+  // heuristic can say stationary while another saw the node move, and a
+  // tracked asset is mobile on every source. `asset` itself is global per
+  // nodeNum, so the generic loop above already carried it from any record.
+  if (merged.asset != null || records.some((r) => r?.isMobile !== undefined)) {
+    merged.isMobile = records.some((r) => r?.isMobile === true || r?.mobile === 1) || merged.asset != null;
+  }
+
   // #5231: when EVERY source held only a placeholder, the loop above skipped
   // them all and the node would render nameless. Fall back to the newest
   // placeholder so the marker keeps its hex stub, which is what it showed

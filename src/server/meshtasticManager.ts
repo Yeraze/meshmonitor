@@ -370,6 +370,12 @@ export interface DeviceInfo {
   positionIsEstimated?: boolean;
   /** Radius of the estimate in km, when known. Only set with positionIsEstimated. */
   positionEstimateUncertaintyKm?: number;
+  /**
+   * Tracked-asset flag (#5354). Set by enhanceNodeForClient from the global
+   * `asset_nodes` table; absent when the node is not an asset. Forces the
+   * client's `isMobile` on, but never touches the `mobile` column.
+   */
+  asset?: { retentionDays: number };
   hideFromMap?: boolean;
   isStoreForwardServer?: boolean;
   /**

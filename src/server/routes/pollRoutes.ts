@@ -143,7 +143,8 @@ router.get('/poll', optionalAuth(), async (req, res) => {
     // 2. Nodes (always available with optionalAuth, filtered by channel permissions)
     try {
       const estimatedPositions = await databaseService.getAllNodesEstimatedPositionsAsync();
-      result.nodes = await Promise.all(filteredMemoryNodes.map(node => enhanceNodeForClient(node, user, estimatedPositions, canViewPrivate)));
+      const assets = await databaseService.getAssetNodesMapAsync();
+      result.nodes = await Promise.all(filteredMemoryNodes.map(node => enhanceNodeForClient(node, user, estimatedPositions, canViewPrivate, assets)));
     } catch (error) {
       logger.error('Error fetching nodes in poll:', error);
       result.nodes = [];
