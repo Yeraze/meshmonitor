@@ -3,7 +3,13 @@ import databaseService from '../../services/database.js';
 import { ALL_SOURCES } from '../../db/repositories/index.js';
 import { calculateDistance } from '../../utils/distance.js';
 import { resolveOwnMeshtasticManager } from '../utils/resolveSourceManager.js';
-import { getEffectiveDbNodePosition } from '../utils/nodeEnhancer.js';
+import {
+  createSignFlipResolver,
+  getCachedSignFlipContext,
+  getDisplayDbNodePosition,
+  correctLatLon,
+  rowSourceId,
+} from './signFlipCorrection.js';
 
 type DistanceAction = 'delete' | 'ignore';
 
@@ -130,6 +136,7 @@ class AutoDeleteByDistanceService {
     nodeNum: number,
     lat: number,
     lon: number,
+    precisionBits?: number | null,
   ): Promise<InlineDistanceOutcome> {
     const cfg = await this.getInlineConfig(sourceId);
     if (!cfg.enabled) return 'kept';
@@ -137,7 +144,11 @@ class AutoDeleteByDistanceService {
     // Protect the local node.
     if (cfg.localNodeNum != null && nodeNum === cfg.localNodeNum) return 'kept';
 
-    const distance = calculateDistance(cfg.homeLat, cfg.homeLon, lat, lon);
+    // #5363: with sign-flip correction on for this source, judge the point the
+    // map shows, so a node that only lost its minus sign is not treated as far
+    // away. Detection skipped (or correction off) = the reported fix, as before.
+    const corrected = correctLatLon(lat, lon, await getCachedSignFlipContext(sourceId), precisionBits);
+    const distance = calculateDistance(cfg.homeLat, cfg.homeLon, corrected.latitude ?? lat, corrected.longitude ?? lon);
     if (distance <= cfg.thresholdKm) return 'kept';
 
     // Beyond threshold — but never touch a favorite (parity with runDeleteCycle).
@@ -221,6 +232,11 @@ class AutoDeleteByDistanceService {
       // intentional cross-source: when sourceId is omitted, scan all sources
       const allNodes = await databaseService.nodes.getAllNodes(sourceId ?? ALL_SOURCES);
 
+      // #5363: per-source sign-flip correction, so the distance test sees the
+      // same point the map shows. Rows may span sources when sourceId is
+      // omitted, so resolve per row's own source.
+      const signFlipFor = createSignFlipResolver();
+
       // Throttle device syncs so firmware admin queue doesn't back up on
       // large MQTT meshes with hundreds of nodes to ignore per cycle.
       const SYNC_DELAY_MS = 5000;
@@ -239,8 +255,9 @@ class AutoDeleteByDistanceService {
         }
 
         // Skip nodes without position. Use effective position so a user-set
-        // override is what the distance check sees (issue #2847).
-        const eff = getEffectiveDbNodePosition(node);
+        // override is what the distance check sees (issue #2847), corrected
+        // for a sign flip when that is on for the node's source (#5363).
+        const eff = getDisplayDbNodePosition(node, await signFlipFor(rowSourceId(node) ?? sourceId));
         if (eff.latitude == null || eff.longitude == null) {
           continue;
         }
@@ -249,7 +266,7 @@ class AutoDeleteByDistanceService {
         const distance = calculateDistance(homeLat, homeLon, eff.latitude, eff.longitude);
 
         if (distance > thresholdKm) {
-          const nodeSourceId = (node as any).sourceId || sourceId || 'default';
+          const nodeSourceId = rowSourceId(node) || sourceId || 'default';
           const nodeNum = Number(node.nodeNum);
           const nodeInfo: ProcessedNodeInfo = {
             nodeId: node.nodeId || `!${nodeNum.toString(16)}`,

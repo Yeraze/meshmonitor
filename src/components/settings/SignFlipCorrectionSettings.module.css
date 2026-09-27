@@ -1,0 +1,41 @@
+.section {
+  margin-top: 1.5rem;
+}
+
+.heading {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin: 0 0 0.5rem;
+}
+
+.checkboxLabel {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  cursor: pointer;
+}
+
+.referenceLabel {
+  display: block;
+  margin-bottom: 0.35rem;
+}
+
+.referenceRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.coordInput {
+  flex: 1 1 8rem;
+  min-width: 0;
+}
+
+.warning {
+  color: var(--color-warning);
+}
+
+.error {
+  color: var(--color-error);
+}

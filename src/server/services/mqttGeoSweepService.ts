@@ -1,6 +1,6 @@
 import { logger } from '../../utils/logger.js';
 import databaseService from '../../services/database.js';
-import { getEffectiveDbNodePosition } from '../utils/nodeEnhancer.js';
+import { loadSignFlipContext, getDisplayDbNodePosition } from './signFlipCorrection.js';
 import { MqttPacketFilter, type MqttFilterConfig } from '../mqttPacketFilter.js';
 
 export interface GeoSweepStats {
@@ -115,6 +115,8 @@ class MqttGeoSweepService {
     // returns 'no-geo' for every node, so this naturally no-ops.
     const filter = new MqttPacketFilter({ geo });
     const allNodes = await databaseService.nodes.getAllNodes(sourceId);
+    // #5363: judge the sign-flip corrected point when that is on for this source.
+    const signFlipCtx = await loadSignFlipContext(sourceId);
 
     for (const node of allNodes) {
       const nodeNum = Number(node.nodeNum); // BIGINT coercion (PostgreSQL/MySQL)
@@ -128,7 +130,7 @@ class MqttGeoSweepService {
 
       // Effective position honors a user-set override (issue #2847), same as
       // autoDeleteByDistanceService.
-      const eff = getEffectiveDbNodePosition(node);
+      const eff = getDisplayDbNodePosition(node, signFlipCtx);
       if (eff.latitude == null || eff.longitude == null) continue; // fail-open: no position, no opinion
 
       scanned++;

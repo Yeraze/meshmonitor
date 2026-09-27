@@ -24,6 +24,7 @@ import {
 } from '../utils/virtualChannelPermissions.js';
 import { transformChannel } from '../utils/channelView.js';
 import { enhanceNodeForClient, filterNodesByChannelPermission, getEffectiveDbNodePosition } from '../utils/nodeEnhancer.js';
+import { loadSignFlipContext, applySignFlipCorrection } from '../services/signFlipCorrection.js';
 import { PortNum } from '../constants/meshtastic.js';
 import { transformDbMessageToMeshMessage } from '../utils/transformDbMessage.js';
 import { resolveSourceConnectionConfig } from '../utils/resolveSourceConnectionConfig.js';
@@ -143,7 +144,10 @@ router.get('/poll', optionalAuth(), async (req, res) => {
     // 2. Nodes (always available with optionalAuth, filtered by channel permissions)
     try {
       const estimatedPositions = await databaseService.getAllNodesEstimatedPositionsAsync();
-      result.nodes = await Promise.all(filteredMemoryNodes.map(node => enhanceNodeForClient(node, user, estimatedPositions, canViewPrivate)));
+      const enhanced = await Promise.all(filteredMemoryNodes.map(node => enhanceNodeForClient(node, user, estimatedPositions, canViewPrivate)));
+      // #5363: display-only sign-flip correction against this source's reference.
+      const signFlipCtx = await loadSignFlipContext(pollSourceId);
+      result.nodes = enhanced.map(node => applySignFlipCorrection(node, signFlipCtx));
     } catch (error) {
       logger.error('Error fetching nodes in poll:', error);
       result.nodes = [];

@@ -306,6 +306,34 @@ describe('mergeUnifiedSourceData', () => {
     expect(node.aircraftFixedAt).toBeNull();
   });
 
+  it('carries the sign-flip flag and reported pair only from the chosen record (#5363)', () => {
+    const bundle = (nodes: unknown[]) => ({ nodes, traceroutes: [], neighborInfo: [], channels: [] });
+    // Fresher record (A) was corrected; older record (B) is uncorrected.
+    const corrected = mergeUnifiedSourceData([
+      bundle([{
+        nodeNum: 400, lastHeard: 9000, latitude: 27.9, longitude: -82.5,
+        positionSignFlipCorrected: true, reportedLatitude: 27.9, reportedLongitude: 82.5,
+      }]),
+      bundle([{ nodeNum: 400, lastHeard: 1000, latitude: 27.9, longitude: 82.5 }]),
+    ]).nodes[0] as any;
+    expect(corrected.longitude).toBe(-82.5);
+    expect(corrected.positionSignFlipCorrected).toBe(true);
+    expect(corrected.reportedLongitude).toBe(82.5);
+
+    // Reverse: the chosen (fresher) record is uncorrected, so the flag from
+    // the older record must not be spliced onto it.
+    const plain = mergeUnifiedSourceData([
+      bundle([{ nodeNum: 401, lastHeard: 9000, latitude: 27.9, longitude: 82.5 }]),
+      bundle([{
+        nodeNum: 401, lastHeard: 1000, latitude: 27.9, longitude: -82.5,
+        positionSignFlipCorrected: true, reportedLatitude: 27.9, reportedLongitude: 82.5,
+      }]),
+    ]).nodes[0] as any;
+    expect(plain.longitude).toBe(82.5);
+    expect(plain.positionSignFlipCorrected).toBeUndefined();
+    expect(plain.reportedLongitude).toBeUndefined();
+  });
+
   it('carries altitude + aircraft fields through when the classified record IS the chosen position', () => {
     const merged = mergeUnifiedSourceData([
       {

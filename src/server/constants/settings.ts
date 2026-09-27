@@ -239,6 +239,12 @@ export const VALID_SETTINGS_KEYS = [
   'aircraftAgeOutEnabled',
   'aircraftAgeOutHours',
   'aircraftAgeOutAction',
+  // Sign-flipped position correction (#5363), Settings -> Node Display.
+  // Per source: the reference is the source's own node. Display only.
+  'signFlipCorrectionEnabled',
+  'signFlipCorrectionRangeKm',
+  'signFlipReferenceLatitude',
+  'signFlipReferenceLongitude',
   // Auto-Favorite exclusion for likely aircraft (#5364/#5365 D14), Automation
   // -> Auto Favorite section.
   'autoFavoriteExcludeAircraft',
@@ -528,6 +534,11 @@ export const PER_SOURCE_SETTINGS_KEYS = [
   'aircraftAgeOutAction',
   'aircraftAgeOutLastRunAt',
   'aircraftAgeOutLastResult',
+  // Sign-flipped position correction (#5363), Settings -> Node Display.
+  'signFlipCorrectionEnabled',
+  'signFlipCorrectionRangeKm',
+  'signFlipReferenceLatitude',
+  'signFlipReferenceLongitude',
   // Auto-heap-management
   'autoHeapManagementEnabled',
   'autoHeapManagementThresholdBytes',

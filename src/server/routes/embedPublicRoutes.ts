@@ -14,7 +14,7 @@ import { createEmbedCspMiddleware } from '../middleware/embedMiddleware.js';
 import databaseService from '../../services/database.js';
 import { ALL_SOURCES } from '../../db/repositories/index.js';
 import { logger } from '../../utils/logger.js';
-import { getEffectiveDbNodePosition } from '../utils/nodeEnhancer.js';
+import { loadSignFlipContexts, getDisplayDbNodePosition, rowSourceId } from '../services/signFlipCorrection.js';
 import geojsonService from '../services/geojsonService.js';
 import { decomposeTraceroute } from '../../utils/tracerouteSegments.js';
 
@@ -117,8 +117,10 @@ router.get('/:profileId/nodes', createEmbedCspMiddleware(), async (req: Request,
     const profileChannels = new Set(profile.channels as number[]);
     // Resolve effective position once per node so the override (if set) is the
     // value used for both filtering and display (issue #2847).
+    // #5363: display-only sign-flip correction, per row's own source.
+    const signFlip = await loadSignFlipContexts(allNodes.map(rowSourceId));
     const filtered = allNodes
-      .map(node => ({ node, eff: getEffectiveDbNodePosition(node) }))
+      .map(node => ({ node, eff: getDisplayDbNodePosition(node, signFlip.get(rowSourceId(node) ?? '')) }))
       .filter(({ node, eff }) => {
         // #3549: per-node "Hide from Map" suppresses the marker on every map surface
         if (node.hideFromMap) return false;
@@ -185,8 +187,9 @@ router.get('/:profileId/neighborinfo', createEmbedCspMiddleware(), async (req: R
     // Build a lookup of nodes that pass the embed's filters. Use effective
     // position so a user-set override is what's drawn on the map (issue #2847).
     const nodeMap = new Map<number, { latitude: number; longitude: number; name: string }>();
+    const signFlip = await loadSignFlipContexts(allNodes.map(rowSourceId)); // #5363
     for (const node of allNodes) {
-      const eff = getEffectiveDbNodePosition(node);
+      const eff = getDisplayDbNodePosition(node, signFlip.get(rowSourceId(node) ?? ''));
       if (eff.latitude == null || eff.longitude == null) continue;
       if (eff.latitude === 0 && eff.longitude === 0) continue;
       if (!profile.showMqttNodes && node.viaMqtt) continue;
@@ -253,9 +256,10 @@ router.get('/:profileId/traceroutes', createEmbedCspMiddleware(), async (req: Re
     // filters as GET /:profileId/nodes: effective position (#2847), drop
     // (0,0), drop hideFromMap (#3549), MQTT filter, channel filter.
     const nodePositions = new Map<number, { lat: number; lng: number; name: string }>();
+    const signFlip = await loadSignFlipContexts(allNodes.map(rowSourceId)); // #5363
     for (const node of allNodes) {
       if (node.hideFromMap) continue;
-      const eff = getEffectiveDbNodePosition(node);
+      const eff = getDisplayDbNodePosition(node, signFlip.get(rowSourceId(node) ?? ''));
       if (eff.latitude == null || eff.longitude == null) continue;
       if (eff.latitude === 0 && eff.longitude === 0) continue;
       if (!profile.showMqttNodes && node.viaMqtt) continue;
