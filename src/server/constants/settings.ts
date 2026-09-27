@@ -862,6 +862,11 @@ export const SECRET_SETTINGS_KEYS = new Set<string>([
  */
 export const SECRET_SETTINGS_KEY_PATTERN = /(_private_key|_secret|_token)$/i;
 
+/** True for a key `stripSecretSettings` hides from non-admins. */
+export function isSecretSettingKey(key: string): boolean {
+  return SECRET_SETTINGS_KEYS.has(key) || SECRET_SETTINGS_KEY_PATTERN.test(key);
+}
+
 /**
  * Strip secret-bearing keys from a settings map. Admins receive the
  * unmodified map; everyone else (including unauthenticated callers) gets
@@ -874,8 +879,7 @@ export function stripSecretSettings<T extends Record<string, unknown>>(
   if (isAdmin) return settings;
   const out: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(settings)) {
-    if (SECRET_SETTINGS_KEYS.has(k)) continue;
-    if (SECRET_SETTINGS_KEY_PATTERN.test(k)) continue;
+    if (isSecretSettingKey(k)) continue;
     out[k] = v;
   }
   return out as Partial<T>;
