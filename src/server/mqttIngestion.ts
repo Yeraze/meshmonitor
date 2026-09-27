@@ -112,6 +112,7 @@ import {
 } from './mqttPacketFilter.js';
 import { maybeRecordMqttCoverageReception } from './utils/coverageMqtt.js';
 import { recordMqttPositionHistory } from './utils/mqttPositionHistory.js';
+import { getCachedSignFlipContext, correctLatLon } from './services/signFlipCorrection.js';
 
 /**
  * First-drop-per-node tracker for ignore/geo-ignore noise suppression (see
@@ -144,6 +145,33 @@ function mqttHopField(packet: unknown, camel: string, snake: string): number | u
   const p = packet as Record<string, unknown>;
   const v = p[camel] ?? p[snake];
   return typeof v === 'number' && Number.isFinite(v) ? v : undefined;
+}
+
+/**
+ * The POSITION payload with its coordinates moved to the sign-flip corrected
+ * point when correction is on for `sourceId` and applies (#5363); otherwise the
+ * payload itself. Used only as geo-gate input.
+ */
+async function signFlipCorrectedPosition(
+  sourceId: string,
+  position: PositionShape & { precisionBits?: number | null; precision_bits?: number | null },
+): Promise<PositionShape> {
+  const ctx = await getCachedSignFlipContext(sourceId);
+  if (!ctx) return position;
+  const latI = position.latitudeI ?? position.latitude_i;
+  const lngI = position.longitudeI ?? position.longitude_i;
+  if (typeof latI !== 'number' || typeof lngI !== 'number') return position;
+  const precisionBits = position.precisionBits ?? position.precision_bits ?? undefined;
+  const c = correctLatLon(latI / 1e7, lngI / 1e7, ctx, precisionBits);
+  if (c.latitude == null || c.longitude == null) return position;
+  if (c.latitude === latI / 1e7 && c.longitude === lngI / 1e7) return position;
+  return {
+    ...position,
+    latitudeI: Math.round(c.latitude * 1e7),
+    longitudeI: Math.round(c.longitude * 1e7),
+    latitude_i: undefined,
+    longitude_i: undefined,
+  };
 }
 
 export interface MqttIngestionInput {
@@ -403,7 +431,12 @@ async function ingestServiceEnvelopeInner(input: MqttIngestionInput): Promise<Mq
 
     case PortNum.POSITION_APP: {
       const position = payload as PositionShape & Record<string, any>;
-      const geo = filter ? filter.classifyPosition(position) : 'no-geo';
+      // #5363: with sign-flip correction on for this source, the geo gate
+      // judges the corrected point, so a node that only dropped its minus
+      // sign is not geo-ignored as outside the box. Detection skipped (or
+      // correction off) = the reported fix, exactly as before. Only the
+      // classification input changes; the stored fix stays as reported.
+      const geo = filter ? filter.classifyPosition(await signFlipCorrectedPosition(sourceId, position)) : 'no-geo';
 
       if (geo === 'out') {
         // Outside the boundary. Capture display names before purge so the
@@ -478,7 +511,7 @@ async function ingestServiceEnvelopeInner(input: MqttIngestionInput): Promise<Mq
       // for the next periodic sweep. Only on a trustworthy (non-bogus) fix; a
       // bogus position is not a reliable basis for a distance decision.
       if (!positionIsBogus && lat != null && lng != null) {
-        const outcome = await autoDeleteByDistanceService.applyInlineDistanceCheck(sourceId, fromNum, lat, lng);
+        const outcome = await autoDeleteByDistanceService.applyInlineDistanceCheck(sourceId, fromNum, lat, lng, precisionBits);
         if (outcome !== 'kept') {
           return { ingested: false, reason: 'distance', portnum };
         }

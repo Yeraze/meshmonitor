@@ -14,6 +14,7 @@ import {
   NODE_DISPLAY_SETTING_KEYS,
   NODE_DISPLAY_SEEDED_KEYS,
   AIRCRAFT_NODE_DISPLAY_KEYS,
+  SIGN_FLIP_NODE_DISPLAY_KEYS,
   NODE_DISPLAY_DEFAULT_STRINGS,
   NODE_DISPLAY_NUMERIC_DEFAULTS,
   NODE_DISPLAY_BOOLEAN_DEFAULTS,
@@ -60,16 +61,18 @@ describe('NODE_DISPLAY_SEEDED_KEYS', () => {
 
 // #5364/#5365 Phase 1 WP5: the three unseeded likely-aircraft keys join the
 // routed set without touching the frozen ten above.
-describe('NODE_DISPLAY_SETTING_KEYS (seeded + aircraft)', () => {
-  it('equals NODE_DISPLAY_SEEDED_KEYS followed by AIRCRAFT_NODE_DISPLAY_KEYS', () => {
+// #5363: the four unseeded sign-flip keys follow them.
+describe('NODE_DISPLAY_SETTING_KEYS (seeded + aircraft + sign-flip)', () => {
+  it('equals NODE_DISPLAY_SEEDED_KEYS, then AIRCRAFT_NODE_DISPLAY_KEYS, then SIGN_FLIP_NODE_DISPLAY_KEYS', () => {
     expect(NODE_DISPLAY_SETTING_KEYS).toEqual([
       ...NODE_DISPLAY_SEEDED_KEYS,
       ...AIRCRAFT_NODE_DISPLAY_KEYS,
+      ...SIGN_FLIP_NODE_DISPLAY_KEYS,
     ]);
   });
 
-  it('has exactly sixteen entries with no duplicates', () => {
-    expect(NODE_DISPLAY_SETTING_KEYS.length).toBe(16);
+  it('has exactly twenty entries with no duplicates', () => {
+    expect(NODE_DISPLAY_SETTING_KEYS.length).toBe(20);
     expect(new Set(NODE_DISPLAY_SETTING_KEYS).size).toBe(NODE_DISPLAY_SETTING_KEYS.length);
   });
 
@@ -242,8 +245,9 @@ describe('TX-target window when maxNodeAgeHours is 0 (#5376)', () => {
   it('SETTINGS_TAB_PER_SOURCE_KEYS = the Node Display keys plus the TX-target window', () => {
     expect(SETTINGS_TAB_PER_SOURCE_KEYS).toEqual([...NODE_DISPLAY_SETTING_KEYS, 'txTargetMaxAgeHoursWhenUnlimited']);
     // The frozen ten stay ten (migration 131 seed parity); the three
-    // likely-aircraft keys (#5364/#5365) ride on top of them (3 in P1, 3 in P2).
+    // likely-aircraft keys (#5364/#5365) ride on top of them (3 in P1, 3 in P2),
+    // then the four sign-flip keys (#5363).
     expect(NODE_DISPLAY_SEEDED_KEYS).toHaveLength(10);
-    expect(NODE_DISPLAY_SETTING_KEYS).toHaveLength(16);
+    expect(NODE_DISPLAY_SETTING_KEYS).toHaveLength(20);
   });
 });

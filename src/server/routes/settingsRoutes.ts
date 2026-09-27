@@ -19,6 +19,7 @@ import { parseNoIndexEnabled } from '../../utils/robotsConfig.js';
 import { securityDigestService } from '../services/securityDigestService.js';
 import { invalidatePkiDmGlobalCache } from '../services/sourcePkiKeyStore.js';
 import { invalidateCoverageMqttEnabled } from '../services/coverageMqttSettings.js';
+import { invalidateSignFlipContext, SIGN_FLIP_SETTING_KEYS } from '../services/signFlipCorrection.js';
 import { COVERAGE_MQTT_ENABLED_SETTING } from '../../utils/coverage.js';
 import { VALID_SETTINGS_KEYS, GLOBAL_ONLY_SETTINGS_KEYS, stripSecretSettings, isSecretSettingKey } from '../constants/settings.js';
 import { ok, fail } from '../utils/apiResponse.js';
@@ -1066,6 +1067,12 @@ router.post('/', requirePermission('settings', 'write', { sourceIdFrom: 'query' 
       // (coverageMqttSettings.ts) so a busy MQTT feed doesn't hit the
       // settings table per packet — invalidate it here so a scoped save
       // takes effect immediately rather than waiting out the TTL.
+      // Sign-flip correction (#5363): the MQTT ingest gates read the
+      // per-source context through a 60s cache; drop it so a save applies now.
+      if (Object.values(SIGN_FLIP_SETTING_KEYS).some((key) => key in filteredSettings)) {
+        invalidateSignFlipContext(sourceId);
+      }
+
       if (COVERAGE_MQTT_ENABLED_SETTING in filteredSettings) {
         invalidateCoverageMqttEnabled(sourceId);
       }

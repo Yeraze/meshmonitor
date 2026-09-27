@@ -27,6 +27,7 @@ import { resolveSourceManager, resolveOwnMeshtasticManager } from '../utils/reso
 import { requireMeshtasticDeviceSource } from '../utils/requireMeshtasticDeviceSource.js';
 import { isMeshCoreManager, getPrimaryMeshtasticManager } from '../sourceManagerTypes.js';
 import { filterNodesByChannelPermission, enhanceNodeForClient, checkNodeChannelAccess, attachUptimeToNodes } from '../utils/nodeEnhancer.js';
+import { createSignFlipResolver, loadSignFlipContext, applySignFlipCorrection, rowSourceId } from '../services/signFlipCorrection.js';
 import { pivotPositionHistory } from '../utils/positionHistoryPivot.js';
 import { resolveRequestSourceId } from '../utils/sourceResolver.js';
 import { requireSourceId } from '../utils/requireSourceId.js';
@@ -89,7 +90,12 @@ router.get('/nodes', optionalAuth(), async (req, res) => {
     // lookup to the requested source so a guest with channel access on one
     // source can't see another source's nodes (#3745).
     const filteredNodes = await filterNodesByChannelPermission(allNodes, (req as any).user, nodesSourceId);
-    const enhancedNodes = await Promise.all(filteredNodes.map(node => enhanceNodeForClient(node, (req as any).user, estimatedPositions, undefined, assets)));
+    // #5363: display-only sign-flip correction. Only for a single-source list:
+    // an unscoped call returns rows merged across sources, which have no one
+    // reference point to correct against.
+    const nodesSignFlipCtx = await loadSignFlipContext(nodesSourceId);
+    const enhancedNodes = (await Promise.all(filteredNodes.map(node => enhanceNodeForClient(node, (req as any).user, estimatedPositions, undefined, assets))))
+      .map(node => applySignFlipCorrection(node, nodesSignFlipCtx));
 
     // Enrich each node with its latest uptime from telemetry (#4814). Uptime is
     // not a node column — it lives only in device-metrics telemetry — so the node
@@ -166,6 +172,7 @@ router.get('/nodes/active', optionalAuth(), async (req, res) => {
     const assets = await databaseService.getAssetNodesMapAsync();
 
     // Map raw DB nodes to DeviceInfo format then enhance
+    const signFlipFor = createSignFlipResolver(); // #5363, per row's own source
     const maskedNodes = await Promise.all(dbNodes.map(async node => {
       // Map basic fields
       const deviceInfo: any = {
@@ -183,7 +190,8 @@ router.get('/nodes/active', optionalAuth(), async (req, res) => {
         deviceInfo.position = { latitude: node.latitude, longitude: node.longitude, altitude: node.altitude };
       }
 
-      return enhanceNodeForClient(deviceInfo, (req as any).user, undefined, undefined, assets);
+      const enhanced = await enhanceNodeForClient(deviceInfo, (req as any).user, undefined, undefined, assets);
+      return applySignFlipCorrection(enhanced, await signFlipFor(rowSourceId(node)));
     }));
 
     res.json(maskedNodes);

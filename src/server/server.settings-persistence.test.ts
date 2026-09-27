@@ -558,6 +558,10 @@ describe('Settings Persistence', () => {
         // Aircraft age-out (#5364/#5365 Phase 2) — same Category C pattern;
         // read server-side by aircraftAgeOutService.
         'aircraftAgeOutEnabled', 'aircraftAgeOutHours', 'aircraftAgeOutAction',
+        // Sign-flipped position correction (#5363) — same Category C pattern;
+        // read server-side by signFlipCorrection.ts when node payloads are built.
+        'signFlipCorrectionEnabled', 'signFlipCorrectionRangeKm',
+        'signFlipReferenceLatitude', 'signFlipReferenceLongitude',
         // ADS-B flight matching (#5374) — same Category C pattern as the
         // elevation pair; read server-side by adsbMatchService. The flag is
         // also read publicly by useAdsbMatchEnabled() via a direct fetch.

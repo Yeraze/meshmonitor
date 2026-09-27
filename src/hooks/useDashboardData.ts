@@ -328,7 +328,12 @@ function mergeNodeRecords(records: any[]): any {
         // Phase 2 (#5364/#5365): the age-out and fixed marks belong to the
         // same classification, so they come from the same record too.
         k === 'aircraftAgedOutAt' ||
-        k === 'aircraftFixedAt'
+        k === 'aircraftFixedAt' ||
+        // #5363: the sign-flip flag and reported pair describe one record's
+        // fix, so they travel with the chosen position too.
+        k === 'positionSignFlipCorrected' ||
+        k === 'reportedLatitude' ||
+        k === 'reportedLongitude'
       ) {
         continue;
       }
@@ -415,6 +420,12 @@ function mergeNodeRecords(records: any[]): any {
     merged.heightAboveGround = withPosition.heightAboveGround ?? null;
     merged.aircraftAgedOutAt = withPosition.aircraftAgedOutAt ?? null;
     merged.aircraftFixedAt = withPosition.aircraftFixedAt ?? null;
+    // #5363: from the same record, or absent, never spliced from another.
+    if (withPosition.positionSignFlipCorrected === true) {
+      merged.positionSignFlipCorrected = true;
+      merged.reportedLatitude = withPosition.reportedLatitude;
+      merged.reportedLongitude = withPosition.reportedLongitude;
+    }
   }
 
   merged.lastHeard = sortedNewestFirst.reduce(

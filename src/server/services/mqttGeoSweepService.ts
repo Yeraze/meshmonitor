@@ -1,6 +1,6 @@
 import { logger } from '../../utils/logger.js';
 import databaseService from '../../services/database.js';
-import { getEffectiveDbNodePosition } from '../utils/nodeEnhancer.js';
+import { loadSignFlipContext, getDisplayDbNodePosition } from './signFlipCorrection.js';
 import { MqttPacketFilter, type MqttFilterConfig } from '../mqttPacketFilter.js';
 
 export interface GeoSweepStats {
@@ -118,6 +118,8 @@ class MqttGeoSweepService {
     // Tracked assets (#5354): still geo-ignored (the bbox is the operator's
     // per-source policy), but never purged — the retained history survives.
     const assets = await databaseService.getAssetNodesMapAsync();
+    // #5363: judge the sign-flip corrected point when that is on for this source.
+    const signFlipCtx = await loadSignFlipContext(sourceId);
 
     for (const node of allNodes) {
       const nodeNum = Number(node.nodeNum); // BIGINT coercion (PostgreSQL/MySQL)
@@ -131,7 +133,7 @@ class MqttGeoSweepService {
 
       // Effective position honors a user-set override (issue #2847), same as
       // autoDeleteByDistanceService.
-      const eff = getEffectiveDbNodePosition(node);
+      const eff = getDisplayDbNodePosition(node, signFlipCtx);
       if (eff.latitude == null || eff.longitude == null) continue; // fail-open: no position, no opinion
 
       scanned++;

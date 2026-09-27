@@ -26,6 +26,7 @@ import { nodeColorStyle } from '../../../utils/nodeColor';
 import type { NodeCardModel, NodeSourceRef } from './nodeCardModel';
 import { UiIcon, type UiIconName } from '../../icons';
 import { formatAircraftSummary } from '../../../utils/aircraftClassification';
+import { SignFlipNotice } from '../../SignFlipNotice';
 import FlightMatchLine from '../../FlightMatchLine';
 import { useSource } from '../../../contexts/SourceContext';
 
@@ -224,6 +225,14 @@ export const SignalItems: React.FC<SignalItemsProps> = ({
           <span className="node-popup-icon"><UiIcon name="aircraft" /></span>
           <span className="node-popup-value">{t('node_popup.aircraft_fixed', 'Reclassified as fixed')}</span>
         </div>
+      )}
+      {/* #5363: not gated on showAltitude, every popup should say it. */}
+      {model.signFlipReported && (
+        <SignFlipNotice
+          variant="popup"
+          reportedLatitude={model.signFlipReported.latitude}
+          reportedLongitude={model.signFlipReported.longitude}
+        />
       )}
       {showPrecision && (
         <div className="node-popup-item">
