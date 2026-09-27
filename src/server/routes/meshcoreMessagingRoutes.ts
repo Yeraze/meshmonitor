@@ -17,7 +17,9 @@ import { requireAuth, optionalAuth, requirePermission } from '../auth/authMiddle
 import { meshcoreDeviceLimiter, messageLimiter } from '../middleware/rateLimiters.js';
 import { getMeshCoreCredentialStore } from '../services/meshcoreCredentialStore.js';
 import { failContactNotOnDevice, managerFor, VALIDATION, isValidPublicKey, isValidMessage, auditMeshcoreEvent,
-  requireMeshcoreChannelAccess, canAccessMeshcoreChannel, requireMeshcoreTx, failIfTxDisabled } from './meshcoreRouteShared.js';
+  requireMeshcoreChannelAccess, canAccessMeshcoreChannel, requireMeshcoreTx, failIfTxDisabled,
+  startTrackedLogin, respondLoginCancelled } from './meshcoreRouteShared.js';
+import type { MeshCoreLoginRetryOutcome } from '../meshcoreManager.js';
 
 const router = Router({ mergeParams: true });
 
@@ -359,9 +361,12 @@ router.get('/rooms/servers', optionalAuth(), requirePermission('messages', 'read
 /**
  * POST /api/meshcore/rooms/login
  * Login to a room server to receive posts and (if permitted) submit new ones.
- * Body: { publicKey: string, password: string, rememberPassword?: boolean }
+ * Body: { publicKey: string, password: string, rememberPassword?: boolean, requestId?: string }
  *   - `password` may be empty for guest/read-only access.
  *   - `rememberPassword: true` persists the password (AES-256-GCM via credential store).
+ *   - `requestId` enables live progress / cancel through the
+ *     /admin/login-progress and /admin/login-cancel endpoints (#5400).
+ *     A cancelled login answers 409 LOGIN_CANCELLED and saves nothing.
  */
 router.post('/rooms/login', meshcoreDeviceLimiter, requireAuth(), requirePermission('messages', 'write', { sourceIdFrom: 'params.id' }), requireMeshcoreTx(), async (req: Request, res: Response) => {
   try {
@@ -390,7 +395,15 @@ router.post('/rooms/login', meshcoreDeviceLimiter, requireAuth(), requirePermiss
       });
     }
 
-    const outcome = await managerFor(req, res).loginToRoomWithOutcome(publicKey, password);
+    const tracked = startTrackedLogin(req, res);
+    if (!tracked) return;
+    let outcome: MeshCoreLoginRetryOutcome = 'no_reply';
+    try {
+      outcome = await managerFor(req, res).loginToRoomWithOutcome(publicKey, password, tracked.opts);
+    } finally {
+      tracked.finish(outcome);
+    }
+    if (outcome === 'cancelled') return respondLoginCancelled(res);
     if (outcome === 'not_on_device') return failContactNotOnDevice(res);
     if (outcome === 'rejected') {
       // Worth saying plainly: "login failed" sent people hunting for a radio
@@ -441,7 +454,7 @@ router.post('/rooms/login', meshcoreDeviceLimiter, requireAuth(), requirePermiss
 /**
  * POST /api/meshcore/rooms/login-with-saved
  * Login to a room server using a previously saved credential.
- * Body: { publicKey: string }
+ * Body: { publicKey: string, requestId?: string } (requestId: see /rooms/login)
  */
 router.post('/rooms/login-with-saved', meshcoreDeviceLimiter, requireAuth(), requirePermission('messages', 'write', { sourceIdFrom: 'params.id' }), requireMeshcoreTx(), async (req: Request, res: Response) => {
   try {
@@ -461,7 +474,15 @@ router.post('/rooms/login-with-saved', meshcoreDeviceLimiter, requireAuth(), req
       return res.status(409).json({ success: false, error: 'Saved credential was encrypted with a different key', code: 'CREDENTIAL_KEY_ROTATED' });
     }
 
-    const outcome = await managerFor(req, res).loginToRoomWithOutcome(publicKey, result.password);
+    const tracked = startTrackedLogin(req, res);
+    if (!tracked) return;
+    let outcome: MeshCoreLoginRetryOutcome = 'no_reply';
+    try {
+      outcome = await managerFor(req, res).loginToRoomWithOutcome(publicKey, result.password, tracked.opts);
+    } finally {
+      tracked.finish(outcome);
+    }
+    if (outcome === 'cancelled') return respondLoginCancelled(res);
     if (outcome === 'not_on_device') return failContactNotOnDevice(res);
     if (outcome === 'rejected') {
       // The room server answered and said no. Distinguished from silence so

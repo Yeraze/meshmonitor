@@ -1343,6 +1343,13 @@ export class MeshCoreVirtualNodeServer extends EventEmitter {
    *      the app fall back to its estTimeout (mirrors real-node behaviour,
    *      where a failed login simply never produces a success push).
    * Not gated on allowAdminCommands — logging in is a normal unlock step.
+   *
+   * One attempt only, via loginToNode, not loginToNodeWithRetry (#5400): the
+   * app retries on its own, exactly as it would against real firmware, and a
+   * hidden retry here would double the packets per app attempt. It still gets
+   * the longer per-attempt wait, so a slow multi-hop reply is relayed. The
+   * call is fire-and-forget from the command switch, so the wait never blocks
+   * other Virtual Node traffic.
    */
   private async handleSendLogin(clientId: string, command: ParsedCommand): Promise<void> {
     if (this.refuseIfReceiveOnly(clientId, 'SendLogin')) return;

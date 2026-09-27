@@ -85,6 +85,8 @@ interface MeshCoreContactDetailPanelProps {
     MeshCoreActions,
     | 'loginRemote'
     | 'loginRemoteWithSaved'
+    | 'getLoginProgress'
+    | 'cancelLogin'
     | 'sendCliCommand'
     | 'getRemoteAdminCapability'
     | 'forgetRemoteCredential'

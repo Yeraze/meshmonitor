@@ -24,6 +24,8 @@ import type { MeshCoreActions } from './hooks/useMeshCore';
 import { MeshCoreRemoteStatsPanel } from './MeshCoreRemoteStatsPanel';
 import { MeshCoreAclManager } from './MeshCoreAclManager';
 import { CliConsoleBody, type ActionCommand, type CliConsoleBodyHandle } from './CliConsoleBody';
+import { MeshCoreLoginProgress } from './MeshCoreLoginProgress';
+import { useMeshCoreLoginProgress } from './hooks/useMeshCoreLoginProgress';
 import './MeshCoreRemoteConsole.css';
 import { UiIcon } from '../icons';
 
@@ -65,6 +67,8 @@ interface MeshCoreRemoteConsoleProps {
     MeshCoreActions,
     | 'loginRemote'
     | 'loginRemoteWithSaved'
+    | 'getLoginProgress'
+    | 'cancelLogin'
     | 'sendCliCommand'
     | 'getRemoteAdminCapability'
     | 'forgetRemoteCredential'
@@ -103,6 +107,8 @@ export const MeshCoreRemoteConsole: React.FC<MeshCoreRemoteConsoleProps> = ({
   const [rememberPassword, setRememberPassword] = useState(false);
   const [loginBusy, setLoginBusy] = useState(false);
   const [loginError, setLoginError] = useState<string | null>(null);
+  // Live "attempt n of 3" progress + cancel for the login in flight (#5400).
+  const { progress: loginProgressState, run: runLogin, cancel: cancelLoginAttempt } = useMeshCoreLoginProgress(actions);
 
   // Imperative handle into the body — used to push "Logged in" info
   // lines into the transcript without lifting transcript state.
@@ -133,16 +139,60 @@ export const MeshCoreRemoteConsole: React.FC<MeshCoreRemoteConsoleProps> = ({
     void refreshCapability();
   }, [publicKey, refreshCapability]);
 
+  // Human text for a failed login. `no_reply` and `rejected` get their own
+  // wording: "Login failed" hid whether to check the password or the link.
+  const loginFailureText = useCallback(
+    (result: { error?: string; reason?: string; attempts?: number }) => {
+      if (result.reason === 'no_reply') {
+        return t('meshcore.remoteConsole.login_no_reply', 'No reply from {{name}} after {{count}} attempts', {
+          name: contactName,
+          count: result.attempts ?? 3,
+        });
+      }
+      if (result.reason === 'rejected') {
+        return t('meshcore.remoteConsole.login_rejected', '{{name}} refused the password', { name: contactName });
+      }
+      return result.error || t('meshcore.remoteConsole.login_failed', 'Login failed');
+    },
+    [contactName, t],
+  );
+
+  const handleLoginCancelled = useCallback(() => {
+    setShowLogin(false);
+    setLoginPassword('');
+    setLoginError(null);
+    bodyRef.current?.appendInfo(t('meshcore.remoteConsole.login_cancelled', 'Login cancelled'));
+    // A reply may have raced the cancel on the server; re-read the saved
+    // password state rather than assume.
+    void refreshCapability();
+  }, [refreshCapability, t]);
+
+  // Cancel in the modal: before sending it just closes; while a login is in
+  // flight it also stops further attempts (the progress line takes over
+  // until the server confirms).
+  const handleModalCancel = useCallback(() => {
+    if (loginBusy) {
+      void cancelLoginAttempt();
+    }
+    setShowLogin(false);
+  }, [cancelLoginAttempt, loginBusy]);
+
   const handleLogin = useCallback(async () => {
     setLoginBusy(true);
     setLoginError(null);
-    const result = await actions.loginRemote(publicKey, loginPassword, rememberPassword);
+    const { value: result, cancelledByUser } = await runLogin((requestId) =>
+      actions.loginRemote(publicKey, loginPassword, rememberPassword, { requestId }),
+    );
     setLoginBusy(false);
+    if (cancelledByUser || result.cancelled) {
+      handleLoginCancelled();
+      return;
+    }
     if (!result.success) {
       setLoginError(
         result.code === 'CREDENTIAL_PERSISTENCE_DISABLED'
           ? result.reason || result.error || t('meshcore.remoteConsole.persistence_disabled', 'Saving credentials is disabled')
-          : result.error || t('meshcore.remoteConsole.login_failed', 'Login failed'),
+          : loginFailureText(result),
       );
       return;
     }
@@ -155,7 +205,7 @@ export const MeshCoreRemoteConsole: React.FC<MeshCoreRemoteConsoleProps> = ({
         : t('meshcore.remoteConsole.login_success', 'Logged in'),
     );
     void refreshCapability();
-  }, [actions, loginPassword, publicKey, refreshCapability, rememberPassword, t]);
+  }, [actions, handleLoginCancelled, loginFailureText, loginPassword, publicKey, runLogin, refreshCapability, rememberPassword, t]);
 
   // On-demand login using the saved password (one click, no re-typing). This
   // is the only place the saved credential is used from the console, and only
@@ -163,8 +213,14 @@ export const MeshCoreRemoteConsole: React.FC<MeshCoreRemoteConsoleProps> = ({
   const handleLoginWithSaved = useCallback(async () => {
     setLoginBusy(true);
     setLoginError(null);
-    const result = await actions.loginRemoteWithSaved(publicKey);
+    const { value: result, cancelledByUser } = await runLogin((requestId) =>
+      actions.loginRemoteWithSaved(publicKey, { requestId }),
+    );
     setLoginBusy(false);
+    if (cancelledByUser || result.cancelled) {
+      handleLoginCancelled();
+      return;
+    }
     if (result.success) {
       setLoggedIn(true);
       bodyRef.current?.appendInfo(
@@ -176,8 +232,8 @@ export const MeshCoreRemoteConsole: React.FC<MeshCoreRemoteConsoleProps> = ({
     if (result.code === 'CREDENTIAL_KEY_ROTATED') {
       void refreshCapability();
     }
-    setLoginError(result.error || t('meshcore.remoteConsole.login_failed', 'Login failed'));
-  }, [actions, publicKey, refreshCapability, t]);
+    setLoginError(loginFailureText(result));
+  }, [actions, handleLoginCancelled, loginFailureText, publicKey, refreshCapability, runLogin, t]);
 
   const handleForgetCredential = useCallback(async () => {
     const ok = await actions.forgetRemoteCredential(publicKey);
@@ -290,14 +346,24 @@ export const MeshCoreRemoteConsole: React.FC<MeshCoreRemoteConsoleProps> = ({
           <button
             type="button"
             className="mrc-btn-primary"
-            onClick={() => setShowLogin(true)}
-            disabled={blocked}
+            onClick={() => {
+              setLoginError(null);
+              setShowLogin(true);
+            }}
+            disabled={loginBusy || blocked}
             title={blockedTitle}
           >
             {t('meshcore.remoteConsole.login_button', 'Log in to {{name}}', { name: contactName })}
           </button>
         )}
       </div>
+
+      {loginProgressState && !showLogin && (
+        <MeshCoreLoginProgress progress={loginProgressState} onCancel={() => void cancelLoginAttempt()} />
+      )}
+      {loginError && !showLogin && !loginProgressState && (
+        <div className="mrc-banner mrc-banner-warn" role="alert">{loginError}</div>
+      )}
 
       {loggedIn && (
         <MeshCoreRemoteStatsPanel
@@ -360,13 +426,15 @@ export const MeshCoreRemoteConsole: React.FC<MeshCoreRemoteConsoleProps> = ({
               />
               {t('meshcore.remoteConsole.remember_password', 'Remember this password on the server')}
             </label>
+            {loginProgressState && (
+              <MeshCoreLoginProgress progress={loginProgressState} onCancel={handleModalCancel} />
+            )}
             {loginError && <div className="mrc-modal-error">{loginError}</div>}
             <div className="mrc-modal-actions">
               <button
                 type="button"
                 className="mrc-btn-secondary"
-                onClick={() => setShowLogin(false)}
-                disabled={loginBusy}
+                onClick={handleModalCancel}
               >
                 {t('meshcore.remoteConsole.cancel', 'Cancel')}
               </button>

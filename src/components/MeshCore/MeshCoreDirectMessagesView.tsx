@@ -582,6 +582,8 @@ export const MeshCoreDirectMessagesView: React.FC<MeshCoreDirectMessagesViewProp
                 remoteAdminActions={{
                   loginRemote: actions.loginRemote,
                   loginRemoteWithSaved: actions.loginRemoteWithSaved,
+                  getLoginProgress: actions.getLoginProgress,
+                  cancelLogin: actions.cancelLogin,
                   sendCliCommand: actions.sendCliCommand,
                   getRemoteAdminCapability: actions.getRemoteAdminCapability,
                   forgetRemoteCredential: actions.forgetRemoteCredential,

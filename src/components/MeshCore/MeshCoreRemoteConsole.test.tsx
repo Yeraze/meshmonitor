@@ -98,7 +98,7 @@ describe('MeshCoreRemoteConsole credential handling', () => {
     fireEvent.click(btn);
 
     await waitFor(() => expect(actions.loginRemoteWithSaved).toHaveBeenCalledTimes(1));
-    expect(actions.loginRemoteWithSaved).toHaveBeenCalledWith(PK);
+    expect(actions.loginRemoteWithSaved).toHaveBeenCalledWith(PK, { requestId: expect.any(String) });
   });
 
   it('shows the plain "Log in" button (no saved indicator) when nothing is stored', async () => {

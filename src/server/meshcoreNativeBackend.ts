@@ -16,6 +16,11 @@ import { createHash } from 'node:crypto';
 import { logger } from '../utils/logger.js';
 import { TxDisabledError } from './errors/txDisabledError.js';
 import { isRfBridgeCommand, MESHCORE_RECEIVE_ONLY_MESSAGE } from './constants/meshcoreTx.js';
+import {
+  MESHCORE_LOGIN_CANCELLED,
+  MESHCORE_LOGIN_SENT_ACK_TIMEOUT_MS,
+  meshcoreLoginReplyWaitMs,
+} from './constants/meshcoreLogin.js';
 import { meshcorePayloadTypeNameOrNull } from '../utils/meshcorePacketDecode.js';
 import { meshCorePacketHashOrUndefined } from './services/meshcoreObserverPacket.js';
 import {
@@ -39,6 +44,14 @@ import {
  * nothing about the password.
  */
 export const MESHCORE_LOGIN_REJECTED = 'MESHCORE_LOGIN_REJECTED';
+
+/** Fields of a LoginSuccess (0x85) push that the login command relays. */
+interface LoginSuccessFields {
+  isAdmin?: number;
+  serverTimestamp?: number;
+  aclPermissions?: number;
+  firmwareVerLevel?: number;
+}
 
 // Lazy meshcore.js import. Hold the module reference so tests can swap it
 // out by calling `__setMeshCoreModule(...)`. The default load path is the
@@ -2292,38 +2305,23 @@ export class MeshCoreNativeBackend extends EventEmitter {
         // handlers above do, and surface it as a distinct error the scheduler
         // can act on immediately instead of retrying a password that will
         // never be accepted.
-        const rejected = this.awaitLoginRejection(publicKey);
-        // meshcore.js rejects login() with NO argument on any Err frame, so
-        // capture the firmware error code ourselves to explain the failure.
-        const errCode = this.captureErrCode(c);
-        try {
-          const login = await Promise.race([
-            c.login(publicKey, String(params.password ?? '')) as Promise<{
-              isAdmin?: number;
-              serverTimestamp?: number;
-              aclPermissions?: number;
-              firmwareVerLevel?: number;
-            }>,
-            rejected.promise,
-          ]);
-          return {
-            ok: true,
-            is_admin: login?.isAdmin,
-            server_timestamp: login?.serverTimestamp,
-            acl_permissions: login?.aclPermissions,
-            firmware_ver_level: login?.firmwareVerLevel,
-          };
-        } catch (err) {
-          // The contact was on the device a moment ago but the firmware says
-          // otherwise (evicted in between) — same clear reason.
-          if (errCode.get() === MESHCORE_ERR_CODE_NOT_FOUND) {
-            throw new Error(MESHCORE_CONTACT_NOT_ON_DEVICE, { cause: err });
-          }
-          throw err;
-        } finally {
-          rejected.cancel();
-          errCode.stop();
-        }
+        //
+        // We run the exchange ourselves instead of calling meshcore.js
+        // `login()` (#5400): that waits only estTimeout + 1 s, which multi-hop
+        // replies routinely miss, and its listeners cannot be detached from
+        // outside, so neither a longer wait nor a cancel could be layered on
+        // top without leaking them. See runLoginExchange().
+        const login = await this.runLoginExchange(c, publicKey, String(params.password ?? ''), {
+          signal: params.signal instanceof AbortSignal ? params.signal : undefined,
+          onWait: typeof params.onWait === 'function' ? (params.onWait as (waitMs: number) => void) : undefined,
+        });
+        return {
+          ok: true,
+          is_admin: login?.isAdmin,
+          server_timestamp: login?.serverTimestamp,
+          acl_permissions: login?.aclPermissions,
+          firmware_ver_level: login?.firmwareVerLevel,
+        };
       }
 
       case 'get_status': {
@@ -2897,6 +2895,110 @@ export class MeshCoreNativeBackend extends EventEmitter {
       );
     }
     return { changed, flags: newFlags };
+  }
+
+  /**
+   * One login attempt: send CMD_SEND_LOGIN and wait for the remote's answer
+   * (#5400). Replaces meshcore.js `login()` so we own the wait and every
+   * listener:
+   *
+   *  1. Send the login frame. Until the companion's local Sent ack arrives,
+   *     an Err frame fails the attempt (ERR_CODE_NOT_FOUND → the contact left
+   *     the table) and MESHCORE_LOGIN_SENT_ACK_TIMEOUT_MS bounds the wait.
+   *  2. On Sent, wait max(estTimeout × 2, 10 s) for LoginSuccess (0x85)
+   *     matching the target's 6-byte key prefix, and report that wait via
+   *     `onWait` so the UI can count it down. Like meshcore.js, Err is no
+   *     longer ours to read once Sent has arrived.
+   *  3. A LoginFail (0x86) for the same prefix rejects at once with
+   *     MESHCORE_LOGIN_REJECTED; `signal` aborting rejects with
+   *     MESHCORE_LOGIN_CANCELLED.
+   *
+   * Every exit path — success, refusal, silence, Err, cancel, send failure —
+   * runs the same cleanup, so no listener or timer outlives the attempt and a
+   * reply that lands after a cancel or timeout is simply not heard.
+   */
+  private async runLoginExchange(
+    c: AnyConnection,
+    publicKey: Uint8Array,
+    password: string,
+    opts: { signal?: AbortSignal; onWait?: (waitMs: number) => void } = {},
+  ): Promise<LoginSuccessFields> {
+    const { signal, onWait } = opts;
+    if (signal?.aborted) throw new Error(MESHCORE_LOGIN_CANCELLED);
+
+    const ResponseCodes = this.constants?.ResponseCodes ?? {};
+    const PushCodes = this.constants?.PushCodes ?? {};
+    const expectedPrefix = bytesToHex(publicKey.slice(0, 6));
+
+    const rejected = this.awaitLoginRejection(publicKey);
+    // Registered BEFORE our own Err handler, so the code is recorded by the
+    // time that handler runs (meshcore.js fires listeners in order).
+    const errCode = this.captureErrCode(c);
+
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    let onSent: ((resp: { estTimeout?: number }) => void) | null = null;
+    let onSuccess: ((resp: { pubKeyPrefix?: Uint8Array }) => void) | null = null;
+    let onErr: (() => void) | null = null;
+    let onAbort: (() => void) | null = null;
+
+    const cleanup = () => {
+      if (timer) clearTimeout(timer);
+      timer = null;
+      if (onSent) c.off(ResponseCodes.Sent, onSent);
+      if (onSuccess) c.off(PushCodes.LoginSuccess, onSuccess);
+      if (onErr) c.off(ResponseCodes.Err, onErr);
+      if (onAbort) signal?.removeEventListener('abort', onAbort);
+      onSent = onSuccess = onErr = onAbort = null;
+      rejected.cancel();
+      errCode.stop();
+    };
+
+    const exchange = new Promise<LoginSuccessFields>((resolve, reject) => {
+      let sentSeen = false;
+      onErr = () => {
+        reject(errCode.get() === MESHCORE_ERR_CODE_NOT_FOUND
+          ? new Error(MESHCORE_CONTACT_NOT_ON_DEVICE)
+          : new Error(`Login failed (firmware error ${errCode.get() ?? 'unknown'})`));
+      };
+      onSent = (resp) => {
+        if (sentSeen) return;
+        sentSeen = true;
+        if (onErr) c.off(ResponseCodes.Err, onErr);
+        onErr = null;
+        const waitMs = meshcoreLoginReplyWaitMs(resp?.estTimeout);
+        if (timer) clearTimeout(timer);
+        timer = setTimeout(() => reject(new Error('Login timed out: no reply')), waitMs);
+        try {
+          onWait?.(waitMs);
+        } catch (err) {
+          logger.debug(`[MeshCoreNative:${this.sourceId}] login onWait callback threw: ${(err as Error).message}`);
+        }
+      };
+      onSuccess = (resp) => {
+        const prefix = resp?.pubKeyPrefix;
+        if (!prefix || bytesToHex(Uint8Array.from(prefix)) !== expectedPrefix) return;
+        resolve(resp as LoginSuccessFields);
+      };
+      onAbort = () => reject(new Error(MESHCORE_LOGIN_CANCELLED));
+
+      c.on(ResponseCodes.Err, onErr);
+      c.on(ResponseCodes.Sent, onSent);
+      c.on(PushCodes.LoginSuccess, onSuccess);
+      signal?.addEventListener('abort', onAbort, { once: true });
+      timer = setTimeout(
+        () => reject(new Error('Login timed out: no Sent ack from the radio')),
+        MESHCORE_LOGIN_SENT_ACK_TIMEOUT_MS,
+      );
+      Promise.resolve(c.sendCommandSendLogin(publicKey, password)).catch((err: unknown) => {
+        reject(err instanceof Error ? err : new Error(String(err ?? 'Login send failed')));
+      });
+    });
+
+    try {
+      return await Promise.race([exchange, rejected.promise]);
+    } finally {
+      cleanup();
+    }
   }
 
   /**

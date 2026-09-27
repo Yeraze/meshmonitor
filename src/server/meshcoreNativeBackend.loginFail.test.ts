@@ -54,10 +54,10 @@ function buildLoginFailFrame(pubkeyHex: string): Uint8Array {
 }
 
 class MockConnection extends EventEmitter {
-  /** Resolved by an explicit LoginSuccess; never resolved otherwise, standing
-   *  in for meshcore.js's behaviour of waiting out the timeout on a refusal. */
+  /** The backend sends CMD_SEND_LOGIN itself (#5400); the radio acks it
+   *  with Sent at once and the remote's answer arrives later (or never,
+   *  standing in for a refusal meshcore.js cannot see). */
   loginCalls: Array<{ publicKey: Uint8Array; password: string }> = [];
-  private resolveLogin: ((value: unknown) => void) | null = null;
 
   async connect() { /* no-op */ }
   async close() { /* no-op */ }
@@ -69,16 +69,17 @@ class MockConnection extends EventEmitter {
   }
   sendToRadioFrame(_frame: Uint8Array) { /* no-op */ }
 
-  login(publicKey: Uint8Array, password: string) {
+  async sendCommandSendLogin(publicKey: Uint8Array, password: string) {
     this.loginCalls.push({ publicKey, password });
-    return new Promise((resolve) => {
-      this.resolveLogin = resolve;
-    });
+    this.emit(ResponseCodes.Sent, { result: 0, expectedAckCrc: 0, estTimeout: 1000 });
   }
 
-  /** Simulate the LoginSuccess path. */
+  /** Simulate the LoginSuccess push from the room server. */
   succeedLogin(payload: Record<string, unknown> = {}) {
-    this.resolveLogin?.(payload);
+    this.emit(PushCodes.LoginSuccess, {
+      pubKeyPrefix: Uint8Array.from(hexToBytes(ROOM_KEY_HEX.substring(0, 12))),
+      ...payload,
+    });
   }
 }
 

@@ -211,7 +211,10 @@ export class MeshCoreRoomSyncScheduler {
         // The failure column only knows rejected / no_reply. "Not on the
         // device" still counts towards auto-disable so it cannot retry for
         // ever (#5036), recorded as no_reply.
-        outcome === 'not_on_device' ? 'no_reply' : outcome,
+        // `cancelled` needs an AbortSignal, which the scheduler never passes
+        // (#5400); should one appear, it still counts, so it cannot dodge the
+        // #5036 threshold.
+        outcome === 'not_on_device' || outcome === 'cancelled' ? 'no_reply' : outcome,
         { disable },
       );
 

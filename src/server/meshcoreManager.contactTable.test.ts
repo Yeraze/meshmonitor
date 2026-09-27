@@ -140,8 +140,9 @@ describe('MeshCoreManager — contact table (#5349)', () => {
         cmd === 'login'
           ? { id: '1', success: false, error: MESHCORE_CONTACT_NOT_ON_DEVICE }
           : { id: '1', success: true, data: {} };
-      const r = await manager.loginToNodeDetailed(TARGET, 'pw');
-      expect(r).toEqual({ result: null, outcome: 'not_on_device' });
+      const r = await manager.loginToNodeWithRetry(TARGET, 'pw');
+      // Nothing was sent, so the retry helper stops after one try (#5400).
+      expect(r).toEqual({ result: null, outcome: 'not_on_device', attempts: 1 });
     });
 
     it('does not retry a room login the radio cannot send', async () => {
