@@ -9,6 +9,7 @@
 import { useMutation, useQuery, useQueryClient, type UseMutationResult, type UseQueryResult } from '@tanstack/react-query';
 import apiService from '../services/api';
 import { POLL_QUERY_KEY } from './usePoll';
+import type { PositionHistoryItem } from '../contexts/MapContext';
 
 export interface AssetEstimate {
   nodeNum: number;
@@ -39,6 +40,24 @@ export async function fetchAssetEstimate(nodeNum: number, retentionDays: number)
   const body = await apiService.get<Envelope<AssetEstimate>>(
     `/api/assets/${nodeNum >>> 0}/estimate?retentionDays=${retentionDays}`,
   );
+  return body.data;
+}
+
+/** `GET /api/assets/:nodeNum/track` payload (#5354 Phase 2). */
+export interface AssetTrack {
+  nodeNum: number;
+  retentionDays: number;
+  hours: number;
+  windowStartMs: number;
+  /** Distinct fixes in the window before the server thinned them. */
+  totalFixes: number;
+  /** Gap segments (> 30 min apart), oldest first; at most 2,000 points in all. */
+  segments: PositionHistoryItem[][];
+}
+
+/** The asset's thinned full-history trail, across every source the caller can see. */
+export async function fetchAssetTrack(nodeNum: number): Promise<AssetTrack> {
+  const body = await apiService.get<Envelope<AssetTrack>>(`/api/assets/${nodeNum >>> 0}/track`);
   return body.data;
 }
 

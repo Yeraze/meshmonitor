@@ -1,5 +1,5 @@
 /**
- * Asset Tracking routes (#5354, Phase 1), mounted at `/api/assets`.
+ * Asset Tracking routes (#5354, Phases 1-2), mounted at `/api/assets`.
  *
  * An asset flag is GLOBAL (keyed by the physical nodeNum; see
  * `src/db/schema/assetNodes.ts`), so:
@@ -16,8 +16,15 @@ import databaseService from '../../services/database.js';
 import { optionalAuth, requirePermission } from '../auth/authMiddleware.js';
 import { logger } from '../../utils/logger.js';
 import { ok, fail } from '../utils/apiResponse.js';
-import { resolvePermittedSourceIds } from '../utils/permittedSources.js';
+import { resolvePermittedSourceIds, parseSourcesParam } from '../utils/permittedSources.js';
 import { parseAssetRetentionDays, estimateAssetRows, ASSET_RETENTION_DAYS_RANGE } from '../../utils/assetTracking.js';
+import { CHANNEL_DB_OFFSET } from '../constants/meshtastic.js';
+import {
+  buildAssetTrack,
+  getAssetTrackCached,
+  assetTrackCacheKey,
+  clearAssetTrackCache,
+} from '../services/assetTrackService.js';
 
 const router = Router();
 // The api router mounts this without auth; resolve req.user here, as the
@@ -25,6 +32,7 @@ const router = Router();
 router.use(optionalAuth());
 
 const DAY_MS = 24 * 60 * 60 * 1000;
+const HOUR_MS = 60 * 60 * 1000;
 
 /** Parse an unsigned 32-bit nodeNum path param, or null. */
 function parseNodeNum(raw: string): number | null {
@@ -111,6 +119,106 @@ router.get('/:nodeNum/estimate', async (req: Request, res: Response) => {
 });
 
 /**
+ * Of `sourceIds`, the sources whose copy of `nodeNum` the caller may see on a
+ * map. Mirrors `buildPositionFilter` (positionVisibility.ts) for one node:
+ *  - presence: a source with no node row contributes nothing (orphaned
+ *    telemetry has no marker anywhere), admins included;
+ *  - non-admins: a private position override needs `nodes_private:read` on
+ *    THAT source (buildPositionFilter checks it unscoped; per-source is the
+ *    stricter reading, since the grant is per-source), and the node's channel
+ *    needs `viewOnMap`.
+ * `hideFromMap` is not applied: the Nodes map only asks for a trail when the
+ * operator selects the node, and `/position-history` doesn't apply it either.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- #5354 req.user's shape isn't exported as a type from authMiddleware; matches buildPositionFilter
+async function trackVisibleSources(user: any, nodeNum: number, sourceIds: string[]): Promise<string[]> {
+  const isAdmin = !!user?.isAdmin;
+  const userId: number | null = user?.id ?? null;
+  const nodes = await Promise.all(sourceIds.map((s) => databaseService.nodes.getNode(nodeNum, s)));
+  const present = sourceIds
+    .map((sourceId, i) => ({ sourceId, node: nodes[i] }))
+    .filter((e): e is { sourceId: string; node: NonNullable<typeof e.node> } => !!e.node);
+  if (isAdmin) return present.map((e) => e.sourceId);
+  if (userId === null) return [];
+
+  const channelDbPerms = present.some((e) => (e.node.channel ?? 0) >= CHANNEL_DB_OFFSET)
+    ? await databaseService.getChannelDatabasePermissionsForUserAsSetAsync(userId)
+    : {};
+  const visible: string[] = [];
+  for (const { sourceId, node } of present) {
+    if (node.positionOverrideIsPrivate
+      && !(await databaseService.checkPermissionAsync(userId, 'nodes_private', 'read', sourceId))) {
+      continue;
+    }
+    const ch = node.channel ?? 0;
+    let canView: boolean;
+    if (ch < CHANNEL_DB_OFFSET) {
+      const perms = await databaseService.getUserPermissionSetAsync(userId, sourceId);
+      canView = (perms as Record<string, { viewOnMap?: boolean } | undefined>)[`channel_${ch}`]?.viewOnMap === true;
+    } else {
+      canView = (channelDbPerms as Record<number, { viewOnMap?: boolean } | undefined>)[ch - CHANNEL_DB_OFFSET]?.viewOnMap === true;
+    }
+    if (canView) visible.push(sourceId);
+  }
+  return visible;
+}
+
+/**
+ * GET /api/assets/:nodeNum/track?hours=N&sources=a,b
+ * The asset's thinned full-history trail (#5354 Phase 2): at most 2,000
+ * points in gap segments, merged and deduped across the caller's visible
+ * sources. `hours` is clamped to 1 .. retentionDays x 24 and defaults to the
+ * full retention. 404 `NOT_AN_ASSET` when the node isn't tracked or the
+ * caller can't see it on any permitted source (so the flag doesn't leak).
+ */
+router.get('/:nodeNum/track', async (req: Request, res: Response) => {
+  const nodeNum = parseNodeNum(req.params.nodeNum as string);
+  if (nodeNum === null) {
+    return fail(res, 400, 'INVALID_NODE_NUM', 'nodeNum must be an unsigned 32-bit integer');
+  }
+  let requestedHours: number | null = null;
+  if (req.query.hours !== undefined) {
+    const raw = String(req.query.hours);
+    requestedHours = /^\d+$/.test(raw) ? Number(raw) : NaN;
+    if (!Number.isSafeInteger(requestedHours)) {
+      return fail(res, 400, 'INVALID_HOURS', 'hours must be a whole number');
+    }
+  }
+  try {
+    const asset = await databaseService.assetNodes.getAsync(nodeNum);
+    const permitted = await resolvePermittedSourceIds(req);
+    if (!asset || !(await visibleNodeNums([nodeNum], permitted)).has(nodeNum)) {
+      return fail(res, 404, 'NOT_AN_ASSET', 'Node is not a tracked asset');
+    }
+    const maxHours = asset.retentionDays * 24;
+    const hours = requestedHours === null ? maxHours : Math.min(maxHours, Math.max(1, requestedHours));
+
+    const requested = parseSourcesParam(req.query.sources);
+    const scoped = requested ? permitted.filter((s) => requested.includes(s)) : permitted;
+    const sourceIds = await trackVisibleSources(req.user, nodeNum, scoped);
+
+    const now = Date.now();
+    const windowStartMs = now - hours * HOUR_MS;
+    const track = await getAssetTrackCached(
+      assetTrackCacheKey(nodeNum, hours, sourceIds),
+      () => buildAssetTrack({ nodeNum, sourceIds, windowStartMs, windowEndMs: now }),
+      now,
+    );
+    return ok(res, {
+      nodeNum,
+      retentionDays: asset.retentionDays,
+      hours,
+      windowStartMs,
+      totalFixes: track.totalFixes,
+      segments: track.segments,
+    });
+  } catch (error) {
+    logger.error('Error in GET /api/assets/:nodeNum/track:', error);
+    return fail(res, 500, 'ASSET_TRACK_FAILED', 'Failed to load asset track');
+  }
+});
+
+/**
  * PUT /api/assets/:nodeNum  body `{ retentionDays }`
  * Mark a node as a tracked asset, or change its retention. `settings:write`.
  */
@@ -131,6 +239,7 @@ router.put('/:nodeNum', requirePermission('settings', 'write'), async (req: Requ
   try {
     const before = await databaseService.assetNodes.getAsync(nodeNum);
     const saved = await databaseService.assetNodes.setAsync(nodeNum, retentionDays, req.user?.id ?? null);
+    clearAssetTrackCache(nodeNum);
     void databaseService.auditLogAsync(
       req.user?.id ?? null,
       'asset_node_set',
@@ -161,6 +270,7 @@ router.delete('/:nodeNum', requirePermission('settings', 'write'), async (req: R
   try {
     const before = await databaseService.assetNodes.getAsync(nodeNum);
     await databaseService.assetNodes.clearAsync(nodeNum);
+    clearAssetTrackCache(nodeNum);
     if (before) {
       void databaseService.auditLogAsync(
         req.user?.id ?? null,

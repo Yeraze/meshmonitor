@@ -4,7 +4,7 @@
  * Handles all telemetry-related database operations.
  * Supports SQLite, PostgreSQL, and MySQL through Drizzle ORM.
  */
-import { eq, lt, lte, gte, and, desc, inArray, notInArray, isNull, or, not, SQL, count, sql } from 'drizzle-orm';
+import { eq, lt, lte, gt, gte, and, asc, desc, inArray, notInArray, isNull, or, not, SQL, count, sql } from 'drizzle-orm';
 import { ALL_SOURCES, BaseRepository, DrizzleDatabase, SourceScope } from './base.js';
 import { DatabaseType, DbTelemetry } from '../types.js';
 import { logger } from '../../utils/logger.js';
@@ -91,6 +91,21 @@ export interface RetentionPurgeResult {
   favoritesDeleted: number;
   /** Rows removed from tracked assets past their own window (#5354). */
   assetsDeleted: number;
+}
+
+/** Telemetry types that make up a position fix. */
+const POSITION_TELEMETRY_TYPES = ['latitude', 'longitude', 'altitude', 'ground_speed', 'ground_track'];
+
+/** One row of `getPositionRowsForNodeNumPage` (#5354 asset track). */
+export interface PositionTelemetryPageRow {
+  id: number;
+  sourceId: string | null;
+  telemetryType: string;
+  timestamp: number;
+  value: number;
+  rxSnr: number | null;
+  hopStart: number | null;
+  hopLimit: number | null;
 }
 
 /** Max nodeNums per IN / NOT IN list, so one purge never hits a parameter cap. */
@@ -249,6 +264,63 @@ export class TelemetryRepository extends BaseRepository {
         inArray(telemetry.sourceId, sourceIds),
       ));
     return Number(result[0]?.cnt ?? 0);
+  }
+
+  /**
+   * One page of a node's position telemetry rows across the given sources,
+   * oldest first (#5354 asset track). Rows are ordered by `(timestamp, id)`
+   * and the cursor is that pair, so a page boundary that falls inside one
+   * timestamp resumes on the very next row instead of skipping or repeating
+   * rows. Omit `afterTs` for the first page. An empty source list reads nothing.
+   */
+  async getPositionRowsForNodeNumPage(opts: {
+    nodeNum: number;
+    sourceIds: string[];
+    sinceMs: number;
+    afterTs?: number;
+    afterId?: number;
+    limit: number;
+  }): Promise<PositionTelemetryPageRow[]> {
+    const { nodeNum, sourceIds, sinceMs, afterTs, afterId, limit } = opts;
+    if (sourceIds.length === 0 || limit <= 0) return [];
+    const { telemetry } = this.tables;
+    const conditions: SQL[] = [
+      eq(telemetry.nodeNum, nodeNum),
+      inArray(telemetry.telemetryType, POSITION_TELEMETRY_TYPES),
+      inArray(telemetry.sourceId, sourceIds),
+      gte(telemetry.timestamp, sinceMs),
+    ];
+    if (afterTs !== undefined) {
+      const cursor = afterId !== undefined
+        ? or(gt(telemetry.timestamp, afterTs), and(eq(telemetry.timestamp, afterTs), gt(telemetry.id, afterId)))
+        : gt(telemetry.timestamp, afterTs);
+      if (cursor) conditions.push(cursor);
+    }
+    const rows = await this.db
+      .select({
+        id: telemetry.id,
+        sourceId: telemetry.sourceId,
+        telemetryType: telemetry.telemetryType,
+        timestamp: telemetry.timestamp,
+        value: telemetry.value,
+        rxSnr: telemetry.rxSnr,
+        hopStart: telemetry.hopStart,
+        hopLimit: telemetry.hopLimit,
+      })
+      .from(telemetry)
+      .where(and(...conditions))
+      .orderBy(asc(telemetry.timestamp), asc(telemetry.id))
+      .limit(limit);
+    return (rows as Array<Record<string, unknown>>).map((r) => ({
+      id: Number(r.id),
+      sourceId: (r.sourceId as string | null) ?? null,
+      telemetryType: r.telemetryType as string,
+      timestamp: Number(r.timestamp),
+      value: Number(r.value),
+      rxSnr: r.rxSnr == null ? null : Number(r.rxSnr),
+      hopStart: r.hopStart == null ? null : Number(r.hopStart),
+      hopLimit: r.hopLimit == null ? null : Number(r.hopLimit),
+    }));
   }
 
   /**

@@ -75,3 +75,59 @@ export const MAX_RENDERED_POSITION_POINTS = 500;
  * sequential round trips, each followed by a state update and a full re-render.
  */
 export const MAX_ACCUMULATED_POSITION_FIXES = 5000;
+
+/**
+ * Render budget for a tracked asset's trail (#5354 Phase 2, decision D1).
+ *
+ * The server has already thinned the asset's whole retention window to at
+ * most this many points, keeping turns and stops, so the client draws them
+ * all rather than evenly resampling down to `MAX_RENDERED_POSITION_POINTS`.
+ */
+export const MAX_RENDERED_ASSET_POSITION_POINTS = 2000;
+
+/** Minimal shape `segmentBreaks` needs. */
+interface SegmentMarked {
+  segmentStart?: boolean;
+}
+
+/**
+ * For each rendered pair `(rendered[i], rendered[i + 1])`, whether it crosses
+ * a gap-segment boundary (#5354 Phase 2), so the trail must not be drawn
+ * between them. `rendered` must be an in-order subsequence of `source` (what
+ * `downsamplePositionHistory` returns); a boundary fix that was sampled away
+ * still breaks the pair that spans it.
+ *
+ * Returns an array of length `rendered.length - 1` (empty for fewer than two).
+ */
+export function segmentBreaks<T extends SegmentMarked>(source: T[], rendered: T[]): boolean[] {
+  if (rendered.length < 2) return [];
+  const breaks: boolean[] = [];
+  let j = source.indexOf(rendered[0]);
+  if (j < 0) j = 0;
+  for (let i = 1; i < rendered.length; i++) {
+    let crossed = false;
+    // Walk the source forward to rendered[i], noting any segment start passed.
+    for (j = j + 1; j < source.length; j++) {
+      if (source[j].segmentStart) crossed = true;
+      if (source[j] === rendered[i]) break;
+    }
+    breaks.push(crossed);
+  }
+  return breaks;
+}
+
+/**
+ * Flatten a tracked asset's gap segments (#5354 Phase 2) into the map's single
+ * `positionHistory` array. The first fix of every segment after the first
+ * carries `segmentStart: true`, so the trail renderer knows not to join it to
+ * the fix before.
+ */
+export function flattenAssetTrack<T extends object>(segments: T[][]): Array<T & SegmentMarked> {
+  const out: Array<T & SegmentMarked> = [];
+  segments.forEach((segment, s) => {
+    segment.forEach((fix, i) => {
+      out.push(s > 0 && i === 0 ? { ...fix, segmentStart: true } : fix);
+    });
+  });
+  return out;
+}

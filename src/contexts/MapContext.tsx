@@ -23,6 +23,9 @@ export interface PositionHistoryItem {
   snr?: number;
   hopStart?: number;
   hopLimit?: number;
+  // Tracked-asset trails (#5354 Phase 2): the first fix after a gap of more
+  // than 30 min. The trail is not drawn from the previous fix to this one.
+  segmentStart?: boolean;
 }
 
 export interface EnrichedNeighborInfo extends DbNeighborInfo {
@@ -146,6 +149,12 @@ interface MapContextType {
   setNeighborInfo: (info: EnrichedNeighborInfo[]) => void;
   positionHistory: PositionHistoryItem[];
   setPositionHistory: (history: PositionHistoryItem[]) => void;
+  /**
+   * Tracked asset (#5354 Phase 2): distinct fixes in the window before the
+   * server thinned them. null for a non-asset trail.
+   */
+  positionHistoryTotalFixes: number | null;
+  setPositionHistoryTotalFixes: (total: number | null) => void;
   selectedNodeId: string | null;
   setSelectedNodeId: (id: string | null) => void;
   positionHistoryHours: number | null;
@@ -246,6 +255,7 @@ export const MapProvider: React.FC<MapProviderProps> = ({ children }) => {
   const [traceroutes, setTraceroutes] = useState<DbTraceroute[]>([]);
   const [neighborInfo, setNeighborInfo] = useState<EnrichedNeighborInfo[]>([]);
   const [positionHistory, setPositionHistory] = useState<PositionHistoryItem[]>([]);
+  const [positionHistoryTotalFixes, setPositionHistoryTotalFixes] = useState<number | null>(null);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [positionHistoryHours, setPositionHistoryHoursState] = useState<number | null>(null);
   const [mapMaxAgeHours, setMapMaxAgeHoursState] = useState<number | null>(null);
@@ -615,6 +625,8 @@ export const MapProvider: React.FC<MapProviderProps> = ({ children }) => {
     setNeighborInfo,
     positionHistory,
     setPositionHistory,
+    positionHistoryTotalFixes,
+    setPositionHistoryTotalFixes,
     selectedNodeId,
     setSelectedNodeId,
     positionHistoryHours,
@@ -656,6 +668,7 @@ export const MapProvider: React.FC<MapProviderProps> = ({ children }) => {
     traceroutes, setTraceroutes,
     neighborInfo, setNeighborInfo,
     positionHistory, setPositionHistory,
+    positionHistoryTotalFixes, setPositionHistoryTotalFixes,
     selectedNodeId, setSelectedNodeId,
     positionHistoryHours, setPositionHistoryHours,
     mapMaxAgeHours, setMapMaxAgeHours,

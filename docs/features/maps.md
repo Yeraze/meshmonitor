@@ -292,6 +292,13 @@ Mark a node as a tracked **asset**, for example a GPS node on a vehicle, and Mes
 - A manual **Delete Node** still works on an asset, and warns you that the retained history goes with it.
 - Turning the flag off returns the node to the normal 7-day window at the next hourly cleanup.
 
+**The full-history trail.** Select an asset on the Nodes map and its trail covers the whole window you chose, not just the newest few thousand fixes:
+
+- The server merges the fixes from every source you can see, drops copies of the same fix heard by more than one source, and thins the rest to at most 2,000 points. It keeps each stretch's start, end, and the point that strays farthest from the straight line between them, so turns and stops survive.
+- A gap of more than 30 minutes between fixes breaks the trail. Each drive draws on its own, with no line from where one ended to where the next began.
+- Under **Show Position History**, "Showing N of M fixes (thinned)" tells you how many of the stored fixes the map draws. The history slider still runs from the oldest fix to now.
+- Your permissions still apply: a source you can't read, a channel you can't view on the map, or a private position without the **Private Positions** permission on that source adds no points.
+
 Nothing is sent over the mesh; this is storage and display only. Plan disk space for long windows: a node that reports often can keep hundreds of thousands of rows over a year.
 
 ### GNSS Satellite Overlay
