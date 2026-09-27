@@ -1713,7 +1713,7 @@
   "settings.map_center_target_zoom_label": "Center-on-Node Target Zoom",
   "settings.map_center_target_zoom_description": "Zoom level used when centering the map on a single node (1-18). The map only ever zooms IN to reach this level — it never zooms out if you're already closer.",
   "settings.map_zoom_gate_threshold_label": "Map Click Zoom Gate",
-  "settings.map_zoom_gate_threshold_description": "Below this zoom level (0-18), clicking a marker that overlaps another one zooms in first instead of opening its popup, so you can pick the node you meant. Isolated markers always open their popup right away, at any zoom. When clustering is on, overlapping markers also group into numbered circles below this zoom. Set to 0 to turn the gate (and clustering) off entirely.",
+  "settings.map_zoom_gate_threshold_description": "Below this zoom level (0-18), clicking a marker that overlaps another one zooms in first instead of opening its popup, so you can pick the node you meant. Isolated markers always open their popup right away, at any zoom. If Cluster overlapping markers is on, crowded markers also group into numbered circles below this zoom. Set to 0 to turn the gate off entirely; 0 also stops clustering, even with that box checked.",
   "settings.map_clustering_enabled_label": "Cluster overlapping markers",
   "settings.map_clustering_enabled_description": "Group overlapping markers into one numbered circle below the Map Click Zoom Gate level. Turn off to show every marker at every zoom; the click zoom gate still works either way.",
   "settings.telemetry_hours_label": "Telemetry Visualization (Hours)",

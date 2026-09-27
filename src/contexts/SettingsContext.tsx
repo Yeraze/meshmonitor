@@ -662,7 +662,8 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
 
   // #5404: default ON — only an explicit 'false' turns clustering off.
   const [mapClusteringEnabled, setMapClusteringEnabledState] = useState<boolean>(() => {
-    return localStorage.getItem('mapClusteringEnabled') !== 'false';
+    const saved = localStorage.getItem('mapClusteringEnabled');
+    return saved !== 'false' && saved !== '0';
   });
 
   // Default landing page when visiting root URL: 'unified' or a sourceId UUID.
@@ -1908,9 +1909,11 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
             }
           }
 
-          // #5404: stored as the string 'true'/'false'.
+          // #5404: saved as 'true'/'false' (like elevationEnabled); '0' is
+          // also read as off so a hand-set value can't flip it back on.
           if (settings.mapClusteringEnabled !== undefined) {
-            const enabled = String(settings.mapClusteringEnabled) !== 'false';
+            const raw = String(settings.mapClusteringEnabled);
+            const enabled = raw !== 'false' && raw !== '0';
             setMapClusteringEnabledState(enabled);
             localStorage.setItem('mapClusteringEnabled', String(enabled));
           }
