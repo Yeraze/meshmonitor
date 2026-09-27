@@ -514,6 +514,25 @@ describe('FirmwareUpdateService', () => {
       expect(result.matched).toBeNull();
       expect(result.rejected).toEqual([]);
     });
+
+    // #5402: some Meshtastic release zips (e.g. esp32s3) nest per-board
+    // binaries under a platform subdirectory instead of the extraction root.
+    it('should match a firmware binary nested under a platform subdirectory', () => {
+      const files = [
+        'esp32s3',
+        'esp32s3/firmware-heltec-v4-2.8.0.47db0e3.bin',
+        'esp32s3/firmware-heltec-v4-2.8.0.47db0e3.factory.bin',
+        'esp32s3/firmware-heltec-v4-r8-oled-2.8.0.47db0e3.bin',
+        'esp32s3/firmware-heltec-v4-r8-tft-2.8.0.47db0e3.bin',
+        'esp32s3/firmware-heltec-v4-tft-2.8.0.47db0e3.bin',
+        'esp32s3/firmware-heltec-v4-2.8.0.47db0e3.mt.json',
+      ];
+      const result = service.findFirmwareBinary(files, 'heltec-v4', '2.8.0.47db0e3');
+      expect(result.matched).toBe('esp32s3/firmware-heltec-v4-2.8.0.47db0e3.bin');
+      expect(result.rejected).toContainEqual(
+        expect.objectContaining({ name: 'esp32s3/firmware-heltec-v4-2.8.0.47db0e3.factory.bin' })
+      );
+    });
   });
 
   // ---- getStatus ----

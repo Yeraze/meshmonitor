@@ -426,6 +426,13 @@ export class FirmwareUpdateService {
    * Find the correct firmware .bin in a list of extracted file names.
    * Uses strict regex: firmware-${boardName}-\d+\.\d+\.\d+\.[a-f0-9]+\.bin$
    * Rejects .factory.bin and other variants.
+   *
+   * `files` may be paths relative to the extraction root (e.g.
+   * `esp32s3/firmware-heltec-v4-2.8.0.47db0e3.bin`) — some Meshtastic release
+   * zips nest per-platform binaries under a subdirectory (#5402). Matching
+   * happens on the basename so board/version checks are unaffected by the
+   * subdirectory, but `matched`/`rejected` entries keep the full relative
+   * path so the caller can still locate the file under the extraction root.
    */
   findFirmwareBinary(
     files: string[],
@@ -439,15 +446,17 @@ export class FirmwareUpdateService {
     let matched: string | null = null;
 
     for (const file of files) {
+      const baseName = path.basename(file);
+
       // Skip non-bin files
-      if (!file.endsWith('.bin')) {
+      if (!baseName.endsWith('.bin')) {
         continue;
       }
 
       // Check if it looks like a firmware file for this board
-      if (!file.startsWith(`firmware-${boardName}-`)) {
+      if (!baseName.startsWith(`firmware-${boardName}-`)) {
         // Not for this board — skip silently (don't add to rejected unless it's firmware-*)
-        if (file.startsWith('firmware-')) {
+        if (baseName.startsWith('firmware-')) {
           rejected.push({ name: file, reason: 'wrong board name' });
         } else {
           rejected.push({ name: file, reason: 'not a firmware binary' });
@@ -456,13 +465,13 @@ export class FirmwareUpdateService {
       }
 
       // Reject factory binaries
-      if (file.includes('.factory.')) {
+      if (baseName.includes('.factory.')) {
         rejected.push({ name: file, reason: 'factory binary' });
         continue;
       }
 
       // Check strict pattern match
-      if (strictPattern.test(file)) {
+      if (strictPattern.test(baseName)) {
         matched = file;
       } else {
         rejected.push({ name: file, reason: 'does not match expected naming pattern' });
@@ -1459,7 +1468,10 @@ export class FirmwareUpdateService {
         }
       }
 
-      const extractedFiles = fs.readdirSync(extractDir);
+      // Recursive: some Meshtastic release zips nest per-platform binaries
+      // under a subdirectory (e.g. `esp32s3/firmware-heltec-v4-...bin`), and a
+      // top-level-only listing would silently miss them (#5402).
+      const extractedFiles = fs.readdirSync(extractDir, { recursive: true }) as string[];
       const { matched, rejected } = this.findFirmwareBinary(extractedFiles, boardName, version);
 
       if (!matched) {
