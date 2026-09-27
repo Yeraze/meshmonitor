@@ -35,11 +35,8 @@ export function remapChannelKey(key: string | undefined, map: Map<number, number
 }
 
 export function emitChannelsReordered(detail: ChannelsReorderedDetail): void {
-  try {
-    window.dispatchEvent(new CustomEvent<ChannelsReorderedDetail>(EVENT, { detail }));
-  } catch {
-    /* non-DOM env — nothing listens there */
-  }
+  if (typeof window === 'undefined') return;
+  window.dispatchEvent(new CustomEvent<ChannelsReorderedDetail>(EVENT, { detail }));
 }
 
 export function subscribeChannelsReordered(cb: (detail: ChannelsReorderedDetail) => void): () => void {

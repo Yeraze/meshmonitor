@@ -141,6 +141,8 @@ export function remapMeshCoreChannelSetting(
 
 /* eslint-disable @typescript-eslint/no-explicit-any -- Drizzle query builders differ per dialect; this repo builds the same queries against whichever table set is active. */
 type Op = (tx: any) => any;
+/** One write; `count` names the reported bucket its affected rows go to (temp passes have none). */
+interface Step { q: Op; count?: 'messages' | 'channels' | 'readMarkers' }
 
 export class MeshCoreChannelRemapRepository extends BaseRepository {
   /**
@@ -186,49 +188,50 @@ export class MeshCoreChannelRemapRepository extends BaseRepository {
     const readSettings: Op = (tx) => tx.select().from(st).where(inArray(st.key, settingKeys));
 
     // Build the write list from a snapshot of the rows we read-modify-write.
-    const buildOps = (permRows: any[], settingRows: any[]): Op[] => {
-      const ops: Op[] = [];
+    const buildOps = (permRows: any[], settingRows: any[]): Step[] => {
+      const ops: Step[] = [];
+      const add = (q: Op, count?: Step['count']) => { ops.push({ q, count }); };
 
       // 1. Messages: both key columns, through a temp key.
       for (const col of ['fromPublicKey', 'toPublicKey'] as const) {
         for (const m of real) {
-          ops.push((tx) => tx.update(msg)
+          add((tx) => tx.update(msg)
             .set({ [col]: `${TEMP_KEY_PREFIX}${m.from}` })
             .where(and(eq(msg.sourceId, sourceId), eq(msg[col], `${CHANNEL_KEY_PREFIX}${m.from}`))));
         }
         for (const m of real) {
-          ops.push((tx) => tx.update(msg)
+          add((tx) => tx.update(msg)
             .set({ [col]: `${CHANNEL_KEY_PREFIX}${m.to}` })
-            .where(and(eq(msg.sourceId, sourceId), eq(msg[col], `${TEMP_KEY_PREFIX}${m.from}`))));
+            .where(and(eq(msg.sourceId, sourceId), eq(msg[col], `${TEMP_KEY_PREFIX}${m.from}`))), 'messages');
         }
       }
 
       // 2. Channel rows (unique on sourceId+id): through a negative temp id.
       for (const m of real) {
-        ops.push((tx) => tx.update(ch).set({ id: TEMP_ID_BASE - m.from })
+        add((tx) => tx.update(ch).set({ id: TEMP_ID_BASE - m.from })
           .where(and(eq(ch.sourceId, sourceId), eq(ch.id, m.from))));
       }
       for (const m of real) {
-        ops.push((tx) => tx.update(ch).set({ id: m.to })
-          .where(and(eq(ch.sourceId, sourceId), eq(ch.id, TEMP_ID_BASE - m.from))));
+        add((tx) => tx.update(ch).set({ id: m.to })
+          .where(and(eq(ch.sourceId, sourceId), eq(ch.id, TEMP_ID_BASE - m.from))), 'channels');
       }
 
       // 3. Read markers (unique on user+source+kind+key): through a temp key.
       for (const m of real) {
-        ops.push((tx) => tx.update(rs).set({ conversationKey: `${TEMP_READ_KEY_PREFIX}${m.from}` })
+        add((tx) => tx.update(rs).set({ conversationKey: `${TEMP_READ_KEY_PREFIX}${m.from}` })
           .where(and(eq(rs.sourceId, sourceId), eq(rs.conversationKind, 'meshcore_channel'),
             eq(rs.conversationKey, String(m.from)))));
       }
       for (const m of real) {
-        ops.push((tx) => tx.update(rs).set({ conversationKey: String(m.to) })
+        add((tx) => tx.update(rs).set({ conversationKey: String(m.to) })
           .where(and(eq(rs.sourceId, sourceId), eq(rs.conversationKind, 'meshcore_channel'),
-            eq(rs.conversationKey, `${TEMP_READ_KEY_PREFIX}${m.from}`))));
+            eq(rs.conversationKey, `${TEMP_READ_KEY_PREFIX}${m.from}`))), 'readMarkers');
       }
 
       // 4. Permissions: delete + re-insert, because SQLite's CHECK constraint
       //    on `resource` rejects any temp value.
       if (permRows.length > 0) {
-        ops.push((tx) => tx.delete(perm).where(and(eq(perm.sourceId, sourceId), inArray(perm.resource, permResources))));
+        add((tx) => tx.delete(perm).where(and(eq(perm.sourceId, sourceId), inArray(perm.resource, permResources))));
         for (const row of permRows) {
           const fromSlot = Number(String(row.resource).slice('channel_'.length));
           const toSlot = map.get(fromSlot) ?? fromSlot;
@@ -251,7 +254,7 @@ export class MeshCoreChannelRemapRepository extends BaseRepository {
           };
           if (!this.isSQLite()) values.canDelete = row.canDelete ?? false;
           counts.permissionsMoved++;
-          ops.push((tx) => tx.insert(perm).values(values));
+          add((tx) => tx.insert(perm).values(values));
         }
       }
 
@@ -261,19 +264,9 @@ export class MeshCoreChannelRemapRepository extends BaseRepository {
         const next = remapMeshCoreChannelSetting(bareKey, String(row.value ?? ''), map);
         if (next === null) continue;
         counts.settingsUpdated.push(bareKey);
-        ops.push((tx) => tx.update(st).set({ value: next, updatedAt: Date.now() }).where(eq(st.key, row.key)));
+        add((tx) => tx.update(st).set({ value: next, updatedAt: Date.now() }).where(eq(st.key, row.key)));
       }
       return ops;
-    };
-
-    // Count only the statements whose effect we report; the temp passes
-    // would otherwise double-count.
-    const countable = (i: number): 'messages' | 'channels' | 'readMarkers' | null => {
-      const perCol = real.length;
-      if (i < perCol * 4) return (i % (perCol * 2)) >= perCol ? 'messages' : null;
-      if (i < perCol * 6) return i >= perCol * 5 ? 'channels' : null;
-      if (i < perCol * 8) return i >= perCol * 7 ? 'readMarkers' : null;
-      return null;
     };
 
     if (this.isSQLite()) {
@@ -286,11 +279,10 @@ export class MeshCoreChannelRemapRepository extends BaseRepository {
       const settingRows: any[] = readSettings(db).all();
       const ops = buildOps(permRows, settingRows);
       db.transaction((tx: any) => {
-        ops.forEach((op, i) => {
-          const result = op(tx).run();
-          const bucket = countable(i);
-          if (bucket) counts[bucket] += this.getAffectedRows(result);
-        });
+        for (const step of ops) {
+          const result = step.q(tx).run();
+          if (step.count) counts[step.count] += this.getAffectedRows(result);
+        }
       });
       return counts;
     }
@@ -300,10 +292,9 @@ export class MeshCoreChannelRemapRepository extends BaseRepository {
       const permRows: any[] = permQuery ? await permQuery : [];
       const settingRows: any[] = await readSettings(tx);
       const ops = buildOps(permRows, settingRows);
-      for (let i = 0; i < ops.length; i++) {
-        const result = await ops[i](tx);
-        const bucket = countable(i);
-        if (bucket) counts[bucket] += this.getAffectedRows(result);
+      for (const step of ops) {
+        const result = await step.q(tx);
+        if (step.count) counts[step.count] += this.getAffectedRows(result);
       }
     });
     return counts;

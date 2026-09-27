@@ -219,6 +219,26 @@ describe('MeshCoreManager.reorderChannels', () => {
     expect((await running).status).toBe('applied');
   });
 
+  it('resolves a slot\'s secret from what the reorder last wrote there', async () => {
+    const device = makeDevice(['a', 'b']);
+    const { manager } = makeManager(device);
+    const seen: Array<string | null> = [];
+    const send = (manager as any).sendBridgeCommand;
+    (manager as any).sendBridgeCommand = async (cmd: string, params: any) => {
+      const res = await send(cmd, params);
+      if (cmd === 'set_channel_verified' && seen.length === 0) {
+        // First write copies channel 'a' (secret aa..) into scratch slot 7.
+        const secret = (manager as any).resolveChannelSecret(7) as Uint8Array | null;
+        seen.push(secret ? Buffer.from(secret).toString('hex') : null);
+      }
+      return res;
+    };
+    await manager.reorderChannels([2, 1]);
+    expect(seen).toEqual([sec('a')]);
+    // Afterwards the normal cache is used again (empty in this unit test).
+    expect((manager as any).resolveChannelSecret(7)).toBeNull();
+  });
+
   it('files a message received mid-reorder under the channel\'s original slot', async () => {
     const device = makeDevice(['a', 'b']);
     const { manager } = makeManager(device);
