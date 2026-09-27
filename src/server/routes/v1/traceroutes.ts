@@ -27,6 +27,9 @@ function getScopedSourceId(req: Request): string | undefined {
  * - toNodeId: string - Filter by destination node
  * - limit: number - Max number of records to return (default: 100)
  */
+// #5363: this public data API returns stored traceroutes as recorded. The
+// display-time sign-flip correction of routePositions snapshots applies to the
+// app's map payloads (poll, /api/traceroutes, dashboard, WebSocket) only.
 router.get('/', async (req: Request, res: Response) => {
   try {
     const { fromNodeId, toNodeId, limit } = req.query;
