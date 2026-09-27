@@ -29,6 +29,20 @@ import {
   MeshCoreContactNotOnDeviceError,
 } from './meshcoreDeviceContactErrors.js';
 import { resolveMessageScope } from './meshcoreScopeResolve.js';
+import {
+  UNKNOWN_SLOT,
+  ChannelReorderPlanError,
+  buildReorderTarget,
+  moveMap,
+  planReorderWrites,
+  sameSlotValue,
+  toSlotValue,
+  verifyPlan,
+  type BelievedSlotValue,
+  type ChannelMove,
+  type SlotValue,
+} from './meshcoreChannelReorder.js';
+import { remapMeshCoreChannelReferences, type ChannelRemapSummary } from './services/meshcoreChannelRemapService.js';
 import { TxDisabledError } from './errors/txDisabledError.js';
 import { isRfBridgeCommand, isTransmittingLocalCliVerb, MESHCORE_RECEIVE_ONLY_MESSAGE } from './constants/meshcoreTx.js';
 import {
@@ -824,6 +838,39 @@ export interface MeshCoreTelemetryRecord {
   value: number | string | Record<string, number> | number[] | null;
 }
 
+/** One slot in a channel-reorder report (#5379). Never carries the secret. */
+export interface ChannelReorderSlotReport {
+  slot: number;
+  /** Channel name, '' for an unnamed channel, null for an empty slot. */
+  name: string | null;
+  /** True when we could not confirm what the slot holds. */
+  unknown?: boolean;
+}
+
+/**
+ * Outcome of {@link MeshCoreManager.reorderChannels} (#5379).
+ *
+ * - `unchanged`: the requested order is the current one; nothing was written.
+ * - `applied`: the device holds the new order and every stored reference was
+ *   remapped.
+ * - `rolled_back`: something failed, the original layout was written back and
+ *   confirmed by a full re-read. Nothing changed.
+ * - `inconsistent`: the rollback itself could not be confirmed. `deviceSlots`
+ *   is the best knowledge we have (a fresh read when the device answered).
+ *   No channel was removed (see meshcoreChannelReorder.ts), but a channel may
+ *   sit in two slots or the wrong one. History and rules were NOT remapped.
+ */
+export type ChannelReorderResult =
+  | { status: 'unchanged' }
+  | { status: 'applied'; moves: ChannelMove[]; writes: number; remap: ChannelRemapSummary }
+  | { status: 'rolled_back'; error: string; writes: number; rollbackWrites: number }
+  | {
+      status: 'inconsistent';
+      error: string;
+      rollbackError: string;
+      deviceSlots: ChannelReorderSlotReport[];
+    };
+
 export interface MeshCoreDeviceInfo {
   firmwareVer?: number;
   firmwareBuild?: string;
@@ -1029,6 +1076,19 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
    * and rebuilt after every channel sync (MeshCore has no channel-change push).
    */
   private channelSecrets: Map<number, Uint8Array> = new Map();
+
+  /**
+   * Live state of an on-device channel reorder (#5379), or null when none is
+   * running. While set: channel writes, deletes and syncs from other callers
+   * are refused, incoming channel messages are filed under the channel's
+   * ORIGINAL slot (the remap then moves them with everything else), and
+   * channel sends wait for the reorder to finish and follow their channel.
+   */
+  private channelReorder: {
+    original: SlotValue[];
+    believed: BelievedSlotValue[];
+    done: Promise<ChannelReorderResult>;
+  } | null = null;
 
   /** Cached per-source `meshcoreReceiveOnly`. Sync-readable; refreshed on connect and on settings write. */
   private receiveOnly = false;
@@ -1958,9 +2018,11 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
       const hopCount = decodePathLenHopCount(data.path_len);
       const route = formatPathHops(data.path_hops);
       const scope = resolveMessageScope(data.raw_hex, this.knownScopes);
+      // #5379: during an on-device reorder, file under the channel's original slot.
+      const channelIdx = this.reorderSafeChannelIdx(data.channel_idx);
       const message: MeshCoreMessage = {
         id: `${Date.now()}-${Math.random().toString(36).substring(2, 11)}`,
-        fromPublicKey: MeshCoreManager.channelPublicKey(data.channel_idx),
+        fromPublicKey: MeshCoreManager.channelPublicKey(channelIdx),
         fromName,
         text: body,
         // See the contact_message case above (#5339): falls back to receipt
@@ -1989,9 +2051,9 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
       this.addMessage(message);
       this.emit('message', message);
       dataEventEmitter.emitMeshCoreMessage(message, this.sourceId);
-      logger.debug(`[MeshCore] Channel ${data.channel_idx} message (${data.text.length} chars)`);
-      void this.checkAutoAcknowledge(message, false, data.channel_idx, hopCount, route);
-      void this.checkAutoResponder(message, false, data.channel_idx, hopCount, route);
+      logger.debug(`[MeshCore] Channel ${channelIdx} message (${data.text.length} chars)`);
+      void this.checkAutoAcknowledge(message, false, channelIdx, hopCount, route);
+      void this.checkAutoResponder(message, false, channelIdx, hopCount, route);
     } else if (event_type === 'room_message') {
       // Room server post (TXT_TYPE_SIGNED_PLAIN). The room's pubkey prefix
       // identifies which room, and the author prefix identifies the poster.
@@ -2469,6 +2531,10 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
    * A wrong secret only means the frame fails to verify — never a false match.
    */
   private resolveChannelSecret(channelIdx: number): Uint8Array | null {
+    // Mid-reorder (#5379) the slot may hold a different channel than the
+    // cache says; use what we last wrote there.
+    const live = this.channelReorder?.believed[channelIdx];
+    if (live && live !== UNKNOWN_SLOT) return new Uint8Array(Buffer.from(live.secretHex, 'hex'));
     return this.channelSecrets.get(channelIdx) ?? (channelIdx === 0 ? MESHCORE_PUBLIC_CHANNEL_SECRET : null);
   }
 
@@ -2831,6 +2897,7 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
     if (this.deviceType !== MeshCoreDeviceType.COMPANION) {
       throw new Error('setChannel: MeshCore source is not in Companion mode');
     }
+    this.assertNoChannelReorder('setChannel');
     const response = await this.sendBridgeCommand('set_channel', {
       idx,
       name,
@@ -2866,11 +2933,376 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
     if (this.deviceType !== MeshCoreDeviceType.COMPANION) {
       throw new Error('deleteChannel: MeshCore source is not in Companion mode');
     }
+    this.assertNoChannelReorder('deleteChannel');
     const response = await this.sendBridgeCommand('delete_channel', { idx });
     if (!response.success) {
       throw new Error(response.error || 'delete_channel failed');
     }
     await this.syncChannelsFromDevice();
+  }
+
+  // ============ On-device channel reorder (#5379) ============
+
+  /** Per-write budget for one CMD_SET_CHANNEL + read-back pair. */
+  private static readonly CHANNEL_WRITE_TIMEOUT_MS = 15_000;
+  /** A failed slot write is retried this many extra times before giving up. */
+  private static readonly CHANNEL_WRITE_RETRIES = 1;
+
+  /** True while an on-device channel reorder is writing to the companion. */
+  isChannelReorderInProgress(): boolean {
+    return this.channelReorder !== null;
+  }
+
+  private assertNoChannelReorder(op: string): void {
+    if (this.channelReorder) {
+      throw new ChannelReorderPlanError(
+        `${op}: a channel reorder is running on this device; try again when it finishes`,
+        'REORDER_IN_PROGRESS',
+      );
+    }
+  }
+
+  /**
+   * While a reorder is writing, the firmware files an incoming channel message
+   * under whichever slot holds that channel right now (the lowest match), which
+   * may be a temporary one. Map it back to the channel's ORIGINAL slot: the
+   * remap after a successful reorder moves it with the rest of the history,
+   * and after a rollback the original slot is correct as it stands.
+   */
+  private reorderSafeChannelIdx(idx: number): number {
+    const r = this.channelReorder;
+    if (!r || !Number.isInteger(idx)) return idx;
+    const now = r.believed[idx];
+    if (now === undefined || now === UNKNOWN_SLOT || now === null) return idx;
+    const home = r.original.findIndex((v) => sameSlotValue(v, now));
+    return home >= 0 ? home : idx;
+  }
+
+  /**
+   * Channel sends issued while a reorder runs wait for it, then follow their
+   * channel to its new slot. The caller picked the slot from the old layout.
+   */
+  private async channelIdxAfterReorder(channelIdx: number | undefined): Promise<number | undefined> {
+    const r = this.channelReorder;
+    if (!r || channelIdx === undefined) return channelIdx;
+    const result = await r.done;
+    if (result.status !== 'applied') return channelIdx;
+    return moveMap(result.remap.appliedMoves).get(channelIdx) ?? channelIdx;
+  }
+
+  /** Read the whole slot table; index = slot. */
+  private async readChannelTable(): Promise<SlotValue[]> {
+    const res = await this.sendBridgeCommand('get_channel_table', {}, 30_000);
+    if (!res.success) {
+      throw new ChannelReorderPlanError(
+        `Could not read the channel table from the device: ${res.error || 'no response'}`,
+        'TABLE_READ_FAILED',
+      );
+    }
+    const rows: Array<{ channel_idx: number; name?: string; secret_hex?: string }> =
+      Array.isArray(res.data) ? res.data : [];
+    return rows.map((row, i) => {
+      if (Number(row.channel_idx) !== i) {
+        throw new ChannelReorderPlanError(
+          `Channel table read came back out of order (slot ${i} reported as ${row.channel_idx})`,
+          'TABLE_READ_FAILED',
+        );
+      }
+      return toSlotValue({ name: row.name ?? '', secretHex: row.secret_hex ?? '' });
+    });
+  }
+
+  private static describeSlots(table: BelievedSlotValue[]): ChannelReorderSlotReport[] {
+    const out: ChannelReorderSlotReport[] = [];
+    table.forEach((v, slot) => {
+      if (slot === 0) return;
+      if (v === UNKNOWN_SLOT) out.push({ slot, name: null, unknown: true });
+      else if (v !== null) out.push({ slot, name: v.name });
+    });
+    return out;
+  }
+
+  /**
+   * Run `steps` one verified write at a time, updating `believed` after each.
+   * Stops at the first write that does not verify (after a retry).
+   */
+  private async executeChannelWrites(
+    steps: ReturnType<typeof planReorderWrites>,
+    believed: BelievedSlotValue[],
+    label: string,
+  ): Promise<{ ok: true; writes: number } | { ok: false; writes: number; error: string }> {
+    let writes = 0;
+    for (const step of steps) {
+      const name = step.value?.name ?? '';
+      const secretHex = step.value?.secretHex ?? '0'.repeat(32);
+      let lastError = '';
+      let done = false;
+      for (let attempt = 0; attempt <= MeshCoreManager.CHANNEL_WRITE_RETRIES && !done; attempt++) {
+        // Assume the write lands: the firmware applies it within a few ms,
+        // long before our read-back returns, so a channel message it files
+        // under this slot meanwhile is most likely for the NEW channel
+        // (reorderSafeChannelIdx). Corrected below if the write fails.
+        believed[step.slot] = step.value;
+        let res: BridgeResponse;
+        try {
+          res = await this.sendBridgeCommand(
+            'set_channel_verified',
+            { idx: step.slot, name, secret_hex: secretHex, timeout_ms: MeshCoreManager.CHANNEL_WRITE_TIMEOUT_MS },
+            MeshCoreManager.CHANNEL_WRITE_TIMEOUT_MS + 5_000,
+          );
+        } catch (err) {
+          res = { id: '', success: false, error: (err as Error).message };
+        }
+        writes++;
+        const data = res.data as { verified?: boolean; channel_idx?: number; name?: string; secret_hex?: string } | undefined;
+        if (res.success && data?.verified) {
+          believed[step.slot] = step.value;
+          done = true;
+          break;
+        }
+        // Record what the read-back actually showed, when it was for this slot.
+        believed[step.slot] = res.success && data && Number(data.channel_idx) === step.slot
+          ? toSlotValue({ name: data.name ?? '', secretHex: data.secret_hex ?? '' })
+          : UNKNOWN_SLOT;
+        lastError = res.success
+          ? `slot ${step.slot} did not read back as written`
+          : `slot ${step.slot} write failed: ${res.error || 'no response'}`;
+        logger.warn(`[MeshCore:${this.sourceId}] channel ${label}: ${lastError} (attempt ${attempt + 1})`);
+      }
+      if (!done) return { ok: false, writes, error: lastError };
+    }
+    return { ok: true, writes };
+  }
+
+  /**
+   * Write the original layout back. Plans from what we believe the device
+   * holds now (UNKNOWN for a slot we could not confirm), then confirms with a
+   * full re-read.
+   */
+  private async rollbackChannelReorder(
+    original: SlotValue[],
+    believed: BelievedSlotValue[],
+    cause: string,
+    writesSoFar: number,
+  ): Promise<ChannelReorderResult> {
+    const target = new Map<number, SlotValue>();
+    believed.forEach((v, slot) => {
+      if (slot > 0 && !sameSlotValue(v, original[slot])) target.set(slot, original[slot]);
+    });
+    let rollbackWrites = 0;
+    let rollbackError = '';
+    try {
+      const steps = planReorderWrites(believed, target);
+      const run = await this.executeChannelWrites(steps, believed, 'reorder rollback');
+      rollbackWrites = run.writes;
+      if (!run.ok) rollbackError = run.error;
+    } catch (err) {
+      rollbackError = (err as Error).message;
+    }
+
+    // Confirm with a fresh read either way: it is the only ground truth.
+    let finalTable: SlotValue[] | null = null;
+    try {
+      finalTable = await this.readChannelTable();
+    } catch (err) {
+      rollbackError = rollbackError || (err as Error).message;
+    }
+    if (!rollbackError && finalTable && finalTable.length === original.length
+      && finalTable.every((v, i) => sameSlotValue(v, original[i]))) {
+      logger.warn(`[MeshCore:${this.sourceId}] channel reorder rolled back after: ${cause}`);
+      return { status: 'rolled_back', error: cause, writes: writesSoFar, rollbackWrites };
+    }
+    if (!rollbackError) rollbackError = 'the device did not read back in its original layout';
+    logger.error(`[MeshCore:${this.sourceId}] channel reorder rollback FAILED (${rollbackError}) after: ${cause}`);
+    return {
+      status: 'inconsistent',
+      error: cause,
+      rollbackError,
+      deviceSlots: MeshCoreManager.describeSlots(finalTable ?? believed),
+    };
+  }
+
+  /**
+   * Rewrite the companion's channel slots into `order` (#5379).
+   *
+   * `order` lists the CURRENT slot index of every configured channel in slots
+   * 1+, in the wanted order; the result packs them into slots 1..n. Slot 0
+   * (Public) never moves. Sequence:
+   *
+   *  1. Read the full slot table twice (and check it against the firmware's
+   *     MAX_GROUP_CHANNELS when known). Two reads that disagree, or a short
+   *     read, abort before any write.
+   *  2. Plan writes that never remove the last copy of a channel
+   *     (meshcoreChannelReorder.ts), using one free slot as scratch for cycles.
+   *  3. Write each slot with CMD_SET_CHANNEL and read it back.
+   *  4. Re-read the whole table and compare with the target.
+   *  5. Remap every stored slot reference in one DB transaction.
+   *
+   * Any failure in 3-5 writes the original layout back and confirms it. The
+   * DB is only touched after the device is confirmed in the new layout.
+   * Channel writes are serial-link config: nothing goes over the air.
+   */
+  async reorderChannels(order: number[]): Promise<ChannelReorderResult> {
+    if (this.deviceType !== MeshCoreDeviceType.COMPANION) {
+      throw new ChannelReorderPlanError('Channel reorder needs a Companion device', 'NOT_COMPANION');
+    }
+    if (!this.connected || !this.nativeBackend) {
+      throw new ChannelReorderPlanError('The MeshCore device is not connected', 'NOT_CONNECTED');
+    }
+    this.assertNoChannelReorder('reorderChannels');
+
+    let resolveDone!: (r: ChannelReorderResult) => void;
+    const done = new Promise<ChannelReorderResult>((resolve) => { resolveDone = resolve; });
+    this.channelReorder = { original: [], believed: [], done };
+    let result: ChannelReorderResult = { status: 'unchanged' };
+    let resyncMirror = false;
+    try {
+      result = await this.runChannelReorder(order);
+      return result;
+    } catch (err) {
+      // The page built its order from the DB mirror. When that disagrees with
+      // the device (e.g. a row kept from a truncated scan), resync from the
+      // full table we just read so "reload and try again" actually works.
+      if (err instanceof ChannelReorderPlanError && err.code === 'ORDER_MISMATCH') resyncMirror = true;
+      throw err;
+    } finally {
+      resolveDone(result);
+      this.channelReorder = null;
+      if (resyncMirror) {
+        await this.syncChannelsFromDevice().catch(() => { /* best effort */ });
+      }
+      if (result.status !== 'unchanged') {
+        // The DB mirror, the secret cache and the flood-scope cache are all
+        // slot-keyed; rebuild them from the device's final state.
+        await this.syncChannelsFromDevice().catch((err) => {
+          logger.warn(`[MeshCore:${this.sourceId}] post-reorder channel sync failed: ${(err as Error).message}`);
+        });
+        this.activeFloodScope = undefined;
+        void this.refreshKnownScopes();
+      }
+    }
+  }
+
+  private async runChannelReorder(order: number[]): Promise<ChannelReorderResult> {
+    const state = this.channelReorder!;
+
+    // 1. Read and cross-check the slot table.
+    const first = await this.readChannelTable();
+    const second = await this.readChannelTable();
+    if (first.length !== second.length || first.some((v, i) => !sameSlotValue(v, second[i]))) {
+      throw new ChannelReorderPlanError(
+        'Two reads of the channel table disagreed, so the device state is not certain. Nothing was changed; try again.',
+        'TABLE_READ_FAILED',
+      );
+    }
+    const info = await this.deviceQuery();
+    if (info?.maxChannels && first.length !== info.maxChannels) {
+      throw new ChannelReorderPlanError(
+        `Read ${first.length} channel slots but the device reports ${info.maxChannels}. Nothing was changed; try again.`,
+        'TABLE_READ_FAILED',
+      );
+    }
+
+    // 2. Plan.
+    const { target, moves } = buildReorderTarget(first, order);
+    if (target.size === 0) return { status: 'unchanged' };
+    const steps = planReorderWrites(first, target);
+    const check = verifyPlan(first, target, steps);
+    if (!check.ok) {
+      throw new ChannelReorderPlanError(`Refusing an unsafe reorder plan: ${check.reason}`, 'PLAN_DID_NOT_CONVERGE');
+    }
+    state.original = first;
+    state.believed = first.slice();
+    logger.info(
+      `[MeshCore:${this.sourceId}] channel reorder: ${moves.map((m) => `${m.from}→${m.to}`).join(', ')} ` +
+      `(${steps.length} slot write(s))`,
+    );
+
+    // 3. Write.
+    const run = await this.executeChannelWrites(steps, state.believed, 'reorder');
+    if (!run.ok) {
+      return this.rollbackChannelReorder(first, state.believed, run.error, run.writes);
+    }
+
+    // 4. Confirm the whole table.
+    const expected: SlotValue[] = first.map((v, slot) => (target.has(slot) ? target.get(slot)! : v));
+    let after: SlotValue[];
+    try {
+      after = await this.readChannelTable();
+    } catch (err) {
+      return this.rollbackChannelReorder(first, state.believed, (err as Error).message, run.writes);
+    }
+    if (after.length !== expected.length || after.some((v, i) => !sameSlotValue(v, expected[i]))) {
+      after.forEach((v, i) => { state.believed[i] = v; });
+      return this.rollbackChannelReorder(
+        first,
+        state.believed,
+        'the device did not read back in the new layout',
+        run.writes,
+      );
+    }
+
+    // 5. Remap stored references. The device is confirmed; a DB failure here
+    //    puts the device back so the two never disagree.
+    let remap: ChannelRemapSummary;
+    try {
+      remap = await remapMeshCoreChannelReferences(this.sourceId, moves);
+    } catch (err) {
+      logger.error(`[MeshCore:${this.sourceId}] channel reorder: remap failed, restoring device layout`, err);
+      return this.rollbackChannelReorder(
+        first,
+        state.believed,
+        `saving the new slot numbers failed: ${(err as Error).message}`,
+        run.writes,
+      );
+    }
+
+    // From here the reorder is committed on both sides; nothing below may
+    // turn it into a failure.
+    try {
+      this.applyChannelMovesInMemory(remap.appliedMoves);
+      dataEventEmitter.emitMeshCoreChannelsReordered({ moves: remap.appliedMoves }, this.sourceId);
+      // Connected Virtual Node apps cached the old slot list, and the companion
+      // protocol has no "channels changed" push. A stale app would file new
+      // messages under the wrong channel and, worse, SEND on the wrong one.
+      // Drop them so they reconnect and read the new list.
+      if (this.virtualNodeServer) {
+        const dropped = this.virtualNodeServer.disconnectAllClients('channel slots were reordered');
+        if (dropped > 0) {
+          logger.info(`[MeshCore:${this.sourceId}] channel reorder: disconnected ${dropped} Virtual Node client(s) so they re-read channels`);
+        }
+      }
+    } catch (err) {
+      logger.warn(`[MeshCore:${this.sourceId}] channel reorder: post-apply notify failed: ${(err as Error).message}`);
+    }
+    logger.info(
+      `[MeshCore:${this.sourceId}] channel reorder applied: ${run.writes} write(s); remapped ` +
+      `${remap.messages} message(s), ${remap.channels} channel row(s), ${remap.readMarkers} read marker(s), ` +
+      `${remap.permissionsMoved} grant(s)` +
+      (remap.permissionsDropped ? `, dropped ${remap.permissionsDropped} grant(s) for slots 8+` : '') +
+      (remap.settingsUpdated.length ? `; settings ${remap.settingsUpdated.join(', ')}` : ''),
+    );
+    return { status: 'applied', moves, writes: run.writes, remap };
+  }
+
+  /** Move `channel-N` keys in the in-memory message pool to their new slot. */
+  private applyChannelMovesInMemory(moves: ChannelMove[]): void {
+    // In-flight echo matching and one-shot channel resends carry a slot too;
+    // a resend must go out on the channel's new slot.
+    const slotMap = moveMap(moves);
+    for (const entry of this.pendingChannelSends.values()) {
+      entry.channelIdx = slotMap.get(entry.channelIdx) ?? entry.channelIdx;
+    }
+    for (const entry of this.pendingChannelRetries.values()) {
+      entry.channelIdx = slotMap.get(entry.channelIdx) ?? entry.channelIdx;
+    }
+    const map = new Map(moves.map((m) => [`channel-${m.from}`, `channel-${m.to}`]));
+    this.messages = this.messages.map((m) => {
+      const from = map.get(m.fromPublicKey);
+      const to = m.toPublicKey ? map.get(m.toPublicKey) : undefined;
+      if (!from && !to) return m;
+      return { ...m, ...(from ? { fromPublicKey: from } : {}), ...(to ? { toPublicKey: to } : {}) };
+    });
   }
 
   /**
@@ -2908,6 +3340,12 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
    * this on connect and after every local write.
    */
   async syncChannelsFromDevice(): Promise<void> {
+    if (this.channelReorder) {
+      // Mid-reorder the table holds temporary copies; mirroring it would
+      // write them into the DB. reorderChannels() syncs when it finishes.
+      logger.debug(`[MeshCore:${this.sourceId}] channel sync skipped: reorder in progress`);
+      return;
+    }
     const channels = await this.listChannels();
     const configured = channels.filter(ch => isConfiguredMeshCoreChannel(ch));
 
@@ -3607,6 +4045,10 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
     }
 
     this.requireTransmit();
+
+    // #5379: a channel send issued during an on-device reorder waits for it
+    // and follows its channel to the new slot.
+    channelIdx = await this.channelIdxAfterReorder(channelIdx);
 
     // Serialise the scope-assert→send pair per source (#3667). The device's
     // flood scope is a single global setting; two concurrent sends with

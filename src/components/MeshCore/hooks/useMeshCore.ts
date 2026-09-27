@@ -32,6 +32,9 @@ import type {
   MeshCoreLocalNodeUpdateEvent,
 } from '../../../hooks/useWebSocket';
 import { MeshCoreContact, mapContactsToNodes } from '../../../utils/meshcoreHelpers';
+import { remapChannelLastRead } from '../meshcoreUnreadStore';
+import { remapChannelCustomOrder } from '../meshcoreChannelOrder';
+import { emitChannelsReordered, remapChannelKey, slotMoveMap } from '../meshcoreChannelReorderEvents';
 
 export type TelemetryMode = 'always' | 'device' | 'never';
 
@@ -900,8 +903,27 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
       });
     };
 
+    // On-device channel reorder (#5379): the server moved every stored
+    // `channel-<idx>` reference; follow it in the messages we hold, in the
+    // unread markers, and tell slot-keyed views to reload.
+    const onChannelsReordered = (evt: { moves?: Array<{ from: number; to: number }> }) => {
+      const moves = Array.isArray(evt?.moves) ? evt.moves : [];
+      if (!sourceId || moves.length === 0) return;
+      const map = slotMoveMap(moves);
+      setMessages(prev => prev.map(m => {
+        const from = remapChannelKey(m.fromPublicKey, map) as string;
+        const to = remapChannelKey(m.toPublicKey, map);
+        return from === m.fromPublicKey && to === m.toPublicKey ? m : { ...m, fromPublicKey: from, toPublicKey: to };
+      }));
+      remapChannelLastRead(sourceId, moves);
+      // #5392's Custom display order is stored by slot too.
+      remapChannelCustomOrder(sourceId, moves);
+      emitChannelsReordered({ sourceId, moves });
+    };
+
     socket.on('meshcore:message', onMessage);
     socket.on('meshcore:messages:deleted', onMessagesDeleted);
+    socket.on('meshcore:channels:reordered', onChannelsReordered);
     socket.on('meshcore:contact:updated', onContactUpdated);
     socket.on('meshcore:status:updated', onStatusUpdated);
     socket.on('meshcore:local-node:updated', onLocalNodeUpdated);
@@ -916,6 +938,7 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
       socket.off('connect', joinRoom);
       socket.off('meshcore:message', onMessage);
       socket.off('meshcore:messages:deleted', onMessagesDeleted);
+      socket.off('meshcore:channels:reordered', onChannelsReordered);
       socket.off('meshcore:contact:updated', onContactUpdated);
       socket.off('meshcore:status:updated', onStatusUpdated);
       socket.off('meshcore:local-node:updated', onLocalNodeUpdated);

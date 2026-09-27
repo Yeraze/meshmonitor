@@ -53,6 +53,7 @@ import {
   WaypointsRepository,
   WaypointNotificationsRepository,
   MeshCoreRepository,
+  MeshCoreChannelRemapRepository,
   MqttPacketLogRepository,
   MqttOkToMqttViolationsRepository,
   AtakContactsRepository,
@@ -591,6 +592,7 @@ class DatabaseService {
   public waypointsRepo: WaypointsRepository | null = null;
   public waypointNotificationsRepo: WaypointNotificationsRepository | null = null;
   public meshcoreRepo: MeshCoreRepository | null = null;
+  public meshcoreChannelRemapRepo: MeshCoreChannelRemapRepository | null = null;
   public mqttPacketLogRepo: MqttPacketLogRepository | null = null;
   public mqttOkToMqttViolationsRepo: MqttOkToMqttViolationsRepository | null = null;
   public atakContactsRepo: AtakContactsRepository | null = null;
@@ -852,6 +854,12 @@ class DatabaseService {
   get meshcore(): MeshCoreRepository {
     if (!this.meshcoreRepo) throw new Error('Database not initialized');
     return this.meshcoreRepo;
+  }
+
+  /** MeshCore on-device channel reorder remap (#5379). */
+  get meshcoreChannelRemap(): MeshCoreChannelRemapRepository {
+    if (!this.meshcoreChannelRemapRepo) throw new Error('Database not initialized');
+    return this.meshcoreChannelRemapRepo;
   }
 
   get mqttPacketLog(): MqttPacketLogRepository {
@@ -1126,6 +1134,7 @@ class DatabaseService {
       this.waypointsRepo = new WaypointsRepository(drizzleDb, this.drizzleDbType);
       this.waypointNotificationsRepo = new WaypointNotificationsRepository(drizzleDb, this.drizzleDbType);
       this.meshcoreRepo = new MeshCoreRepository(drizzleDb, this.drizzleDbType);
+      this.meshcoreChannelRemapRepo = new MeshCoreChannelRemapRepository(drizzleDb, this.drizzleDbType);
       this.mqttPacketLogRepo = new MqttPacketLogRepository(drizzleDb, this.drizzleDbType);
       this.mqttOkToMqttViolationsRepo = new MqttOkToMqttViolationsRepository(drizzleDb, this.drizzleDbType);
       this.atakContactsRepo = new AtakContactsRepository(drizzleDb, this.drizzleDbType);
@@ -3608,6 +3617,22 @@ class DatabaseService {
    * The cache is PG/MySQL-only (see settingsCache) but evicting unconditionally
    * is harmless on SQLite, where the map is never populated.
    */
+  /**
+   * Re-read the given settings keys from the database into the PG/MySQL sync
+   * cache after a repository wrote them directly (e.g. inside a transaction,
+   * #5379). A key missing from the database is evicted. No-op on SQLite, whose
+   * sync path reads the database directly.
+   */
+  async refreshCachedSettingsAsync(keys: string[]): Promise<void> {
+    if (this.drizzleDbType !== 'postgres' && this.drizzleDbType !== 'mysql') return;
+    if (!this.settingsRepo) return;
+    for (const key of keys) {
+      const value = await this.settingsRepo.getSetting(key);
+      if (value === null) this.settingsCache.delete(key);
+      else this.settingsCache.set(key, value);
+    }
+  }
+
   async deleteSourceSettingsAsync(sourceId: string): Promise<void> {
     if (!this.settingsRepo) return;
     await this.settingsRepo.deleteSourceSettings(sourceId);

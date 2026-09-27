@@ -32,6 +32,7 @@ export const RF_BRIDGE_COMMANDS: ReadonlySet<string> = new Set([
 /** Local-serial-only commands. Allowed in receive-only mode. */
 export const SERIAL_ONLY_BRIDGE_COMMANDS: ReadonlySet<string> = new Set([
   'get_channels', 'set_channel', 'delete_channel',
+  'get_channel_table', 'set_channel_verified', // #5379: on-device channel reorder, serial config only
   'get_self_info', 'get_contacts', 'remove_contact',
   'set_contact_favorite', 'set_contacts_favorite',
   'set_contact_name', // #5350: rewrites a saved contact's name, no RF TX

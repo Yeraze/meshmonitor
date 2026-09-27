@@ -17,6 +17,7 @@
  *    delete an existing channel.
  *  - Show the secret in hex with show/copy toggles (same masked-by-default
  *    UX as the Meshtastic PSK field).
+ *  - Reorder the slots on the device (#5379, MeshCoreChannelReorderPanel).
  */
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -29,6 +30,7 @@ import {
   formatMeshCoreChannelName,
   isHashtagChannelName,
 } from '../../utils/meshcoreHelpers';
+import { MeshCoreChannelReorderPanel } from './MeshCoreChannelReorderPanel';
 
 interface MeshCoreChannelsConfigSectionProps {
   baseUrl: string;
@@ -114,6 +116,8 @@ export const MeshCoreChannelsConfigSection: React.FC<MeshCoreChannelsConfigSecti
   const [showSecret, setShowSecret] = useState(false);
   const [saving, setSaving] = useState(false);
   const [reloadTick, setReloadTick] = useState(0);
+  // "Reorder slots on device" mode (#5379): rewrites the companion's slots.
+  const [reordering, setReordering] = useState(false);
   // Saved-regions catalog (#3770) — offered as scope-field suggestions so the
   // operator can pick a known region instead of typing it.
   const [savedRegions, setSavedRegions] = useState<string[]>([]);
@@ -352,7 +356,17 @@ export const MeshCoreChannelsConfigSection: React.FC<MeshCoreChannelsConfigSecti
         </div>
       )}
 
-      {channels.length > 0 && (
+      {reordering && (
+        <MeshCoreChannelReorderPanel
+          baseUrl={baseUrl}
+          sourceId={sourceId}
+          channels={channels.filter(c => c.id >= 1).map(c => ({ id: c.id, name: c.name }))}
+          onFinished={reload}
+          onClose={() => setReordering(false)}
+        />
+      )}
+
+      {!reordering && channels.length > 0 && (
         <ul className="mc-channels-list" style={{ listStyle: 'none', padding: 0, margin: 0 }}>
           {channels.map(row => {
             const isEditing = editingIdx === row.id;
@@ -425,7 +439,7 @@ export const MeshCoreChannelsConfigSection: React.FC<MeshCoreChannelsConfigSecti
       )}
 
       {/* Inline "Add channel" editor (used when starting fresh without an existing row). */}
-      {editingIdx !== null && !channels.some(c => c.id === editingIdx) && (
+      {!reordering && editingIdx !== null && !channels.some(c => c.id === editingIdx) && (
         <div
           style={{
             border: '1px dashed var(--color-accent)',
@@ -459,15 +473,26 @@ export const MeshCoreChannelsConfigSection: React.FC<MeshCoreChannelsConfigSecti
         </div>
       )}
 
-      <div style={{ marginTop: '1rem' }}>
-        <button
-          type="button"
-          onClick={startAdd}
-          disabled={!canConfigure || editingIdx !== null}
-        >
-          {t('meshcore.channels.add', '+ Add channel')}
-        </button>
-      </div>
+      {!reordering && (
+        <div style={{ marginTop: '1rem', display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
+          <button
+            type="button"
+            onClick={startAdd}
+            disabled={!canConfigure || editingIdx !== null}
+          >
+            {t('meshcore.channels.add', '+ Add channel')}
+          </button>
+          <button
+            type="button"
+            onClick={() => { cancelEdit(); setReordering(true); }}
+            disabled={!canConfigure || editingIdx !== null || !channels.some(c => c.id >= 1)}
+            title={t('meshcore.channels.reorder.button_title', 'Change the order of the channel slots stored on the device')}
+            data-testid="mc-reorder-open"
+          >
+            {t('meshcore.channels.reorder.button', 'Reorder slots on device')}
+          </button>
+        </div>
+      )}
     </div>
   );
 };
