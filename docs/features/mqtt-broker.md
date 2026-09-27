@@ -99,7 +99,7 @@ The field is stored in the bridge's `config.mode` JSON field; omitting it (or st
 | **Can serve as a `mqttLink` client-proxy target?** | Yes | Yes | **Yes** — primary use case |
 | **TLS / WSS?** | Plain TCP only in v1 | `mqtts://` upstream supported | `mqtts://` upstream supported |
 | **Survives a sibling source restart?** | Independent — broker keeps listening if a bridge restarts | Detaches if parent broker stops; reattaches when it comes back | Independent — runs without any sibling |
-| **Status fields on `/api/sources/:id/status`** | `listening`, `clientCount`, `packetsIn`, `packetsIngested`, `packetsDropped`, `lastError` | `upstreamConnected`, `parentBrokerAttached`, `downlinkIn`, `downlinkIngested`, `downlinkRepublished`, `uplinkOut`, downlink/uplink drop counters, `permissionMessage` | Same as attached, but `parentBrokerAttached: false` and `uplinkOut` stays at 0 |
+| **Status fields on `/api/sources/:id/status`** | `listening`, `clientCount`, `packetsIn`, `packetsIngested`, `packetsDropped`, `lastError` | `upstreamConnected`, `parentBrokerAttached`, `downlinkIn`, `downlinkIngested`, `downlinkRepublished`, `uplinkOut`, downlink/uplink drop counters, `uplinkOkToMqttDrops`, `uplinkAutomationDrops`, `permissionMessage` | Same as attached, but `parentBrokerAttached: false` and `uplinkOut` stays at 0 |
 | **Required pair?** | Standalone — no bridge required | Requires a sibling `mqtt_broker` | None |
 
 ### Use-case recipes
@@ -247,6 +247,31 @@ Echo suppression is keyed on the **post-rewrite** topic — so an inbound TX pac
 - **Standalone bridges cannot rewrite.** A bridge without a parent broker has no parent-broker republish path (downlink) and no `local-packet` event source (uplink), so rewriting would silently do nothing. The validator rejects rewrite fields on standalone bridges.
 - **No wildcards.** `from` / `to` are literal prefixes only. `msh/US/+` is rejected by the validator.
 - **Single rule per direction.** v1 supports one `{from, to}` per direction. Folding multiple foreign roots into one local root (`msh/US/TX/* → msh/US/LA/*` AND `msh/CA/QC/* → msh/US/LA/*`) would need separate bridges today.
+:::
+
+## Keep automation traffic off the upstream broker
+
+When a node has **OK to MQTT** turned on (`config.lora.config_ok_to_mqtt`), the firmware sets the `ok_to_mqtt` bit on every packet MeshMonitor sends through it. MeshMonitor cannot clear the bit on a single packet ([meshtastic/firmware#11994](https://github.com/meshtastic/firmware/issues/11994)), so auto-acknowledge tapbacks and other automated replies get published upstream along with your own messages.
+
+Turn on **Don't uplink MeshMonitor automation traffic** on the bridge's Configuration page (stored as `dropAutomationUplinks: true`) to stop that. The bridge then skips any uplink packet that MeshMonitor's own automations sent:
+
+- Auto-acknowledge (tapbacks and text replies), auto-responder, auto-welcome, auto-ping
+- Scheduled auto-announce and its NodeInfo broadcasts
+- Timer and geofence triggers
+- Automation Engine actions (send message, tapback, node requests)
+- Scheduled requests: auto-traceroute, key-repair NodeInfo exchanges, remote LocalStats, telemetry auto-retry, auto-favorite NeighborInfo, auto-enrichment NodeInfo pushes, waypoint rebroadcasts
+
+Messages and requests you send by hand (the UI, the v1 API, the **Send Announcement** button) are not affected.
+
+The packets still go out over LoRa and to the local broker, so nearby nodes and locally connected devices still see them. Only the upstream publish is skipped. Each skipped packet adds one to `uplinkAutomationDrops` in `/api/sources/:id/status`; the Configuration page shows it next to the `ok_to_mqtt` drop count.
+
+The setting is off by default, so upgrading changes nothing.
+
+::: warning Limits
+- **Only this bridge's uplink.** If a node's own MQTT module publishes straight to the upstream broker, MeshMonitor never sees that publish and cannot stop it. That path needs the firmware fix in [meshtastic/firmware#11994](https://github.com/meshtastic/firmware/issues/11994).
+- **Only MeshMonitor's own automations.** Other phone-API clients (the Android and Apple apps) still follow the node's setting.
+- **Matched by sender and packet id for 30 seconds.** MeshMonitor remembers each automated send's id for 30 seconds (at most 512 per source). A copy that reaches the bridge later than that is uplinked as usual.
+- **Admin packets are not tagged.** Remote-admin sends (favorite, ignore, reboot) are not covered.
 :::
 
 ## Hop limit on delivery

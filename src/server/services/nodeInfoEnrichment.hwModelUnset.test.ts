@@ -189,7 +189,7 @@ describe('pushNodeInfoToDevice channel selection (#5193)', () => {
     const result = await copyNodeInfo(181032536, 'mqtt', 'tcp', true);
 
     expect(result.pushedToDevice).toBe(true);
-    expect(sendNodeInfoRequest).toHaveBeenCalledWith(181032536, 3);
+    expect(sendNodeInfoRequest).toHaveBeenCalledWith(181032536, 3, { origin: 'manual' });
   });
 
   it('falls back to the primary channel rather than sending a virtual channel number', async () => {
@@ -202,7 +202,7 @@ describe('pushNodeInfoToDevice channel selection (#5193)', () => {
 
     await copyNodeInfo(181032536, 'tcp', 'mqtt', true);
 
-    expect(sendNodeInfoRequest).toHaveBeenCalledWith(181032536, 0);
+    expect(sendNodeInfoRequest).toHaveBeenCalledWith(181032536, 0, { origin: 'manual' });
   });
 
   it('falls back to the primary channel when the target row has no channel', async () => {
@@ -213,6 +213,6 @@ describe('pushNodeInfoToDevice channel selection (#5193)', () => {
 
     await copyNodeInfo(181032536, 'mqtt', 'tcp', true);
 
-    expect(sendNodeInfoRequest).toHaveBeenCalledWith(181032536, 0);
+    expect(sendNodeInfoRequest).toHaveBeenCalledWith(181032536, 0, { origin: 'manual' });
   });
 });

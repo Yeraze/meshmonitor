@@ -483,14 +483,17 @@ function validateMqttBridgeForwardingMode(config: Record<string, any>): string |
 }
 
 /**
- * Validate the optional `ignoreOkToMqtt` override on an mqtt_bridge
- * config. Absent (undefined) defaults to false (honor the bit).
+ * Validate the optional boolean uplink overrides on an mqtt_bridge config:
+ * `ignoreOkToMqtt` (absent ⇒ honor the bit) and `dropAutomationUplinks`
+ * (#5414, absent ⇒ uplink automation sends as before).
  */
 function validateMqttBridgeIgnoreOkToMqtt(config: Record<string, any>): string | null {
-  const value = config?.ignoreOkToMqtt;
-  if (value === undefined || value === null) return null;
-  if (typeof value !== 'boolean') {
-    return 'mqtt_bridge ignoreOkToMqtt must be a boolean';
+  for (const key of ['ignoreOkToMqtt', 'dropAutomationUplinks'] as const) {
+    const value = config?.[key];
+    if (value === undefined || value === null) continue;
+    if (typeof value !== 'boolean') {
+      return `mqtt_bridge ${key} must be a boolean`;
+    }
   }
   return null;
 }

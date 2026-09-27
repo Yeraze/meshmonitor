@@ -75,7 +75,7 @@ export class MeshtasticProtobufService {
    *   Meshtastic Python resolves traceroute hops the same way, from
    *   `localConfig.lora.hop_limit`.
    */
-  createTracerouteMessage(destination: number, channel?: number, hopLimit: number = DEFAULT_HOP_LIMIT): Uint8Array {
+  createTracerouteMessage(destination: number, channel?: number, hopLimit: number = DEFAULT_HOP_LIMIT, packetId?: number): Uint8Array {
     const root = getProtobufRoot();
     if (!root) {
       logger.error('❌ Protobuf definitions not loaded');
@@ -109,6 +109,9 @@ export class MeshtasticProtobufService {
         decoded: dataMessage,
         wantAck: false, // Traceroute doesn't need ack
         hopLimit: resolveHopLimit(hopLimit),
+        // Left unset by default so the firmware assigns one. A caller that has
+        // to recognise the packet later (automation tagging, #5414) passes its own.
+        ...(packetId ? { id: packetId >>> 0 } : {}),
       });
 
       // Create the ToRadio message

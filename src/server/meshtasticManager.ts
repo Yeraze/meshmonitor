@@ -90,6 +90,7 @@ import { getCachedSignFlipContext, getDisplayDbNodePosition, correctLatLon } fro
 import { migrateAutomationChannels } from './utils/automationChannelMigration.js';
 import { detectChannelMoves } from './utils/channelMoveDetection.js';
 import { detectLocalNodeSpoof, SentPacketIdCache, type SpoofDetectionResult } from './utils/spoofDetection.js';
+import { automationPacketTracker, randomPacketId, type SendOrigin } from './utils/automationPacketTracker.js';
 import { resolveBroadcastChannel } from './utils/resolveDestinationChannel.js';
 import { applyHomoglyphOptimization } from '../utils/homoglyph.js';
 import { PortNum, RoutingError, isPkiError, getRoutingErrorName, CHANNEL_DB_OFFSET, TransportMechanism, resolveRadioPacketTransport, isViaMqtt, MIN_TRACEROUTE_INTERVAL_MS, StoreForwardRequestResponse, getStoreForwardRequestResponseName, isUdpBroadcastEnabled, resolveHopLimit } from './constants/meshtastic.js';
@@ -1528,8 +1529,8 @@ class MeshtasticManager implements ISourceManager {
       });
     }
     // Initialize message queue service with send callback
-    this.messageQueue.setSendCallback(async (text: string, destination: number, replyId?: number, channel?: number, emoji?: number, hopLimitOverride?: number) => {
-      const sendOptions = hopLimitOverride !== undefined ? { hopLimitOverride } : undefined;
+    this.messageQueue.setSendCallback(async (text: string, destination: number, replyId?: number, channel?: number, emoji?: number, hopLimitOverride?: number, origin?: SendOrigin) => {
+      const sendOptions = hopLimitOverride !== undefined || origin !== undefined ? { hopLimitOverride, origin } : undefined;
       // For channel messages: channel is specified, destination is 0 (undefined in sendTextMessage)
       // For DMs: channel is undefined, destination is the node number
       if (channel !== undefined) {
@@ -2753,7 +2754,7 @@ class MeshtasticManager implements ISourceManager {
             this.pendingTracerouteTimestamps.set(targetNode.nodeNum, Date.now());
 
             this.lastTracerouteSentTime = Date.now();
-            await this.sendTraceroute(targetNode.nodeNum, channel);
+            await this.sendTraceroute(targetNode.nodeNum, channel, { origin: 'automation' });
 
             // Check for timed-out traceroutes (> 5 minutes old)
             this.checkTracerouteTimeouts();
@@ -2928,7 +2929,7 @@ class MeshtasticManager implements ISourceManager {
 
         this.remoteLocalStatsLastSentAt.set(Number(target.nodeNum), Date.now());
         this.lastRemoteLocalStatsSentTime = Date.now();
-        await this.requestRemoteLocalStats(target.nodeNum, channel, hopLimit);
+        await this.requestRemoteLocalStats(target.nodeNum, channel, hopLimit, { origin: 'automation' });
       } catch (error) {
         logger.error('❌ Error in remote LocalStats automation:', error);
       }
@@ -3481,7 +3482,7 @@ class MeshtasticManager implements ISourceManager {
               // Send one more node info exchange after purge — use channel, not DM
               // (keys are mismatched so PKI-encrypted DMs would fail)
               const purgedNodeData = await databaseService.nodes.getNode(node.nodeNum);
-              await this.sendNodeInfoRequest(node.nodeNum, purgedNodeData?.channel ?? 0);
+              await this.sendNodeInfoRequest(node.nodeNum, purgedNodeData?.channel ?? 0, { origin: 'automation' });
               void databaseService.logKeyRepairAttemptAsync(node.nodeNum, nodeName, 'exchange', null, null, null, this.sourceId);
             } catch (error) {
               logger.error(`🔐 Key repair: Failed to purge node ${nodeName}:`, error);
@@ -3501,7 +3502,7 @@ class MeshtasticManager implements ISourceManager {
         const repairChannel = repairNodeData?.channel ?? 0;
         logger.debug(`🔐 Key repair: Sending node info exchange to ${nodeName} on channel ${repairChannel} (attempt ${node.attemptCount + 1}/${this.keyRepairMaxExchanges})`);
         try {
-          await this.sendNodeInfoRequest(node.nodeNum, repairChannel);
+          await this.sendNodeInfoRequest(node.nodeNum, repairChannel, { origin: 'automation' });
 
           // Update repair state
           await databaseService.setKeyRepairStateAsync(node.nodeNum, {
@@ -4072,7 +4073,7 @@ class MeshtasticManager implements ISourceManager {
         // For DMs: use 3 attempts if verifyResponse is enabled, otherwise just 1 attempt
         const maxAttempts = isDM ? (trigger.verifyResponse ? 3 : 1) : 1;
         logger.debug(`📍 Geofence "${trigger.name}" sending text to ${isDM ? `DM (node ${nodeNum})` : `channel ${trigger.channel}`}${trigger.verifyResponse ? ' (with verification)' : ''}`);
-        this.messageQueue.enqueue(
+        this.enqueueAutomation(
           truncated,
           isDM ? nodeNum : 0,
           undefined,
@@ -4222,7 +4223,7 @@ class MeshtasticManager implements ISourceManager {
           const maxAttempts = isDM ? (trigger.verifyResponse ? 3 : 1) : 1;
           for (const resp of scriptResponses) {
             const truncated = this.truncateMessageForMeshtastic(resp, 200);
-            this.messageQueue.enqueue(
+            this.enqueueAutomation(
               truncated,
               isDM ? nodeNum : 0,
               undefined,
@@ -4496,7 +4497,7 @@ class MeshtasticManager implements ISourceManager {
           scriptResponses.forEach((resp, index) => {
             const truncated = this.truncateMessageForMeshtastic(resp, 200);
 
-            this.messageQueue.enqueue(
+            this.enqueueAutomation(
               truncated,
               0, // destination: 0 for channel broadcast
               undefined, // no reply-to packet ID for timer messages
@@ -4540,7 +4541,7 @@ class MeshtasticManager implements ISourceManager {
 
       logger.debug(`⏱️ Timer "${triggerName}" sending to channel ${channel}: ${truncated.substring(0, 50)}${truncated.length > 50 ? '...' : ''}`);
 
-      this.messageQueue.enqueue(
+      this.enqueueAutomation(
         truncated,
         0, // destination: 0 for channel broadcast
         undefined, // no reply-to packet ID for timer messages
@@ -8093,7 +8094,7 @@ class MeshtasticManager implements ISourceManager {
                 // Request fresh NodeInfo exchange — use channel, not DM
                 // (keys are mismatched so PKI-encrypted DMs would fail)
                 const nodeChannel = meshPacket.channel ?? 0;
-                await this.sendNodeInfoRequest(fromNum, nodeChannel);
+                await this.sendNodeInfoRequest(fromNum, nodeChannel, { origin: 'automation' });
               } catch (error) {
                 logger.error(`🔐 Immediate purge failed for ${nodeName}:`, error);
                 databaseService.logKeyRepairAttemptAsync(
@@ -9029,7 +9030,7 @@ class MeshtasticManager implements ISourceManager {
         const hopCount = route.length + 1;
         const compactMsg = `Trace to ${fromShort}: ${compactPath} (${hopCount} hop${hopCount !== 1 ? 's' : ''})`;
 
-        this.messageQueue.enqueue(
+        this.enqueueAutomation(
           this.truncateMessageForMeshtastic(compactMsg, 200),
           pending.isDM ? pending.replyToNodeNum : 0,
           undefined,
@@ -9452,7 +9453,7 @@ class MeshtasticManager implements ISourceManager {
     name?: string;
     description?: string;
     icon?: number;
-  }, options: { destination?: number; channel?: number } = {}): Promise<number> {
+  }, options: { destination?: number; channel?: number; origin?: SendOrigin } = {}): Promise<number> {
     if (!this.isConnected || !this.transport) {
       logger.warn(`[meshtasticManager] broadcastWaypoint skipped: not connected (source ${this.sourceId})`);
       return 0;
@@ -9461,6 +9462,7 @@ class MeshtasticManager implements ISourceManager {
       const { data, packetId } = meshtasticProtobufService.createWaypointMessage(waypoint, options);
       if (data.length === 0) return 0;
 
+      this.recordAutomationPacket(packetId, options.origin);
       await this.transport.send(data);
 
       const virtualNodeServer = this.virtualNodeServer;
@@ -10227,7 +10229,40 @@ class MeshtasticManager implements ISourceManager {
     return null;
   }
 
-  async sendTextMessage(text: string, channel: number = 0, destination?: number, replyId?: number, emoji?: number, userId?: number, attribution?: { sourceIp?: string | null; sourcePath?: 'http_api' | 'tcp_radio' | 'mqtt_bridge' | 'system' | null }, options?: { hopLimitOverride?: number }): Promise<number> {
+  /**
+   * Tag a packet this source's own automation is about to send (#5414), so an
+   * MQTT bridge with `dropAutomationUplinks` can keep it off the upstream
+   * broker. No-op for manual sends (origin absent or `'manual'`).
+   */
+  private recordAutomationPacket(packetId: number | null | undefined, origin: SendOrigin | undefined): void {
+    if (origin !== 'automation') return;
+    automationPacketTracker.record(this.sourceId, this.localNodeInfo?.nodeNum, packetId);
+  }
+
+  /**
+   * `sendTextMessage` for a send MeshMonitor makes on its own (auto-ping
+   * replies, ...). Tags the packet as automation-originated (#5414).
+   */
+  private sendAutomationText(text: string, channel: number, destination?: number, replyId?: number, emoji?: number): Promise<number> {
+    return this.sendTextMessage(text, channel, destination, replyId, emoji, undefined, undefined, { origin: 'automation' });
+  }
+
+  /**
+   * `messageQueue.enqueue` for a send MeshMonitor makes on its own
+   * (auto-ack, auto-responder, timers, geofences, auto-welcome, ...). Every
+   * queue send inside this class is an automation; tags it (#5414).
+   */
+  private enqueueAutomation(
+    text: string, destination: number, replyId?: number,
+    onSuccess?: () => void, onFailure?: (reason: string) => void,
+    channel?: number, maxAttemptsOverride?: number, emoji?: number, hopLimitOverride?: number,
+  ): string {
+    return this.messageQueue.enqueue(
+      text, destination, replyId, onSuccess, onFailure, channel, maxAttemptsOverride, emoji, hopLimitOverride, 'automation',
+    );
+  }
+
+  async sendTextMessage(text: string, channel: number = 0, destination?: number, replyId?: number, emoji?: number, userId?: number, attribution?: { sourceIp?: string | null; sourcePath?: 'http_api' | 'tcp_radio' | 'mqtt_bridge' | 'system' | null }, options?: { hopLimitOverride?: number; origin?: SendOrigin }): Promise<number> {
     if (!this.isConnected || !this.transport) {
       throw new Error('Not connected to Meshtastic node');
     }
@@ -10297,6 +10332,9 @@ class MeshtasticManager implements ISourceManager {
       // rebroadcast, echoed by MQTT, or replayed by store-and-forward, it isn't
       // mistaken for a local-node spoof (#2584).
       this.sentPacketIds.record(messageId);
+      // Tag automation sends before they hit the wire so an MQTT bridge can
+      // recognise the uplinked copy however fast it comes back (#5414).
+      this.recordAutomationPacket(messageId, options?.origin);
 
       await this.transport.send(textMessageData);
 
@@ -10437,7 +10475,7 @@ class MeshtasticManager implements ISourceManager {
     }
   }
 
-  async sendTraceroute(destination: number, channel: number = 0): Promise<void> {
+  async sendTraceroute(destination: number, channel: number = 0, options?: { origin?: SendOrigin }): Promise<void> {
     if (!this.isConnected || !this.transport) {
       throw new Error('Not connected to Meshtastic node');
     }
@@ -10454,7 +10492,11 @@ class MeshtasticManager implements ISourceManager {
       // Use the node's own hop limit, like admin packets and the Meshtastic
       // CLI, rather than a fixed 7 that out-reached everything else it sends.
       const hopLimit = this.getConfiguredHopLimit();
-      const tracerouteData = meshtasticProtobufService.createTracerouteMessage(destination, channel, hopLimit);
+      // Traceroutes normally let the firmware pick the packet id. An automated
+      // one needs a known id so the MQTT bridge can recognise it (#5414).
+      const automationId = options?.origin === 'automation' ? randomPacketId() : undefined;
+      const tracerouteData = meshtasticProtobufService.createTracerouteMessage(destination, channel, hopLimit, automationId);
+      if (automationId !== undefined) this.recordAutomationPacket(automationId, options?.origin);
 
       logger.debug(`🔍 Traceroute packet created: ${tracerouteData.length} bytes for dest=${destination} (0x${destination.toString(16)}), channel=${channel}, hopLimit=${hopLimit}`);
 
@@ -10492,7 +10534,7 @@ class MeshtasticManager implements ISourceManager {
    * Send a position request to a specific node
    * This will request the destination node to send back its position
    */
-  async sendPositionRequest(destination: number, channel: number = 0): Promise<{ packetId: number; requestId: number }> {
+  async sendPositionRequest(destination: number, channel: number = 0, options?: { origin?: SendOrigin }): Promise<{ packetId: number; requestId: number }> {
     if (!this.isConnected || !this.transport) {
       throw new Error('Not connected to Meshtastic node');
     }
@@ -10535,6 +10577,7 @@ class MeshtasticManager implements ISourceManager {
 
       logger.debug(`📍 Position exchange packet created: ${positionRequestData.length} bytes for dest=${destination} (0x${destination.toString(16)}), channel=${channel}, packetId=${packetId}, requestId=${requestId}, position=${localPosition ? `${localPosition.latitude},${localPosition.longitude}` : 'none'}`);
 
+      this.recordAutomationPacket(packetId, options?.origin);
       await this.transport.send(positionRequestData);
 
       // Broadcast to virtual node clients (including packet monitor)
@@ -10571,7 +10614,7 @@ class MeshtasticManager implements ISourceManager {
    * This will request the destination node to send back its user information
    * Similar to "Exchange Node Info" feature in mobile apps - triggers key exchange
    */
-  async sendNodeInfoRequest(destination: number, channel: number = 0): Promise<{ packetId: number; requestId: number }> {
+  async sendNodeInfoRequest(destination: number, channel: number = 0, options?: { origin?: SendOrigin }): Promise<{ packetId: number; requestId: number }> {
     if (!this.isConnected || !this.transport) {
       throw new Error('Not connected to Meshtastic node');
     }
@@ -10608,6 +10651,7 @@ class MeshtasticManager implements ISourceManager {
 
       logger.debug(`📇 NodeInfo exchange packet created: ${nodeInfoRequestData.length} bytes for dest=${destination} (0x${destination.toString(16)}), channel=${channel}, packetId=${packetId}, requestId=${requestId}, userInfo=${localUserInfo ? localUserInfo.longName : 'none'}`);
 
+      this.recordAutomationPacket(packetId, options?.origin);
       await this.transport.send(nodeInfoRequestData);
 
       // Broadcast to virtual node clients (including packet monitor)
@@ -10644,7 +10688,7 @@ class MeshtasticManager implements ISourceManager {
    * The target node must have NeighborInfo module enabled (broadcast interval can be 0)
    * Firmware rate-limits responses to one every 3 minutes
    */
-  async sendNeighborInfoRequest(destination: number, channel: number = 0): Promise<{ packetId: number; requestId: number }> {
+  async sendNeighborInfoRequest(destination: number, channel: number = 0, options?: { origin?: SendOrigin }): Promise<{ packetId: number; requestId: number }> {
     if (!this.isConnected || !this.transport) {
       throw new Error('Not connected to Meshtastic node');
     }
@@ -10665,6 +10709,7 @@ class MeshtasticManager implements ISourceManager {
 
       logger.debug(`🏠 NeighborInfo request packet created: ${neighborInfoRequestData.length} bytes for dest=${destination} (0x${destination.toString(16)}), channel=${channel}, packetId=${packetId}, requestId=${requestId}`);
 
+      this.recordAutomationPacket(packetId, options?.origin);
       await this.transport.send(neighborInfoRequestData);
 
       // Broadcast to virtual node clients (including packet monitor)
@@ -10848,7 +10893,7 @@ class MeshtasticManager implements ISourceManager {
       : Math.round(MeshtasticManager.TELEMETRY_HIJACK_RETRY_2_DELAY_MS / 1000);
     logger.info(`📊 Auto-retry #${attempt} (${atSeconds}s after hijack) of telemetry request to ${destLabel} (firmware #11071 NeighborInfo hijack recovery)`);
 
-    this.sendTelemetryRequest(entry.destination, entry.channel, entry.telemetryType, { isAutoRetry: true })
+    this.sendTelemetryRequest(entry.destination, entry.channel, entry.telemetryType, { isAutoRetry: true, origin: 'automation' })
       .then(({ packetId }) => {
         // Link this retry's packet id so its telemetry reply resolves the
         // sequence (and cancels a later retry). Skip if resolved meanwhile.
@@ -10874,7 +10919,7 @@ class MeshtasticManager implements ISourceManager {
     destination: number,
     channel: number = 0,
     telemetryType?: 'device' | 'environment' | 'airQuality' | 'power',
-    options?: { isAutoRetry?: boolean }
+    options?: { isAutoRetry?: boolean; origin?: SendOrigin }
   ): Promise<{ packetId: number; requestId: number }> {
     if (!this.isConnected || !this.transport) {
       throw new Error('Not connected to Meshtastic node');
@@ -10898,6 +10943,7 @@ class MeshtasticManager implements ISourceManager {
       const typeLabel = telemetryType || 'device';
       logger.debug(`📊 Telemetry request packet created: ${telemetryRequestData.length} bytes for dest=${destination} (0x${destination.toString(16)}), channel=${channel}, type=${typeLabel}, packetId=${packetId}, requestId=${requestId}`);
 
+      this.recordAutomationPacket(packetId, options?.origin);
       await this.transport.send(telemetryRequestData);
 
       // Broadcast to virtual node clients (including packet monitor)
@@ -10944,17 +10990,17 @@ class MeshtasticManager implements ISourceManager {
    * Uses the broadcast address (0xFFFFFFFF) to send to all nodes
    * wantAck is set to false to reduce mesh traffic
    */
-  async broadcastNodeInfoToChannel(channel: number): Promise<{ packetId: number; requestId: number }> {
+  async broadcastNodeInfoToChannel(channel: number, options?: { origin?: SendOrigin }): Promise<{ packetId: number; requestId: number }> {
     const BROADCAST_ADDR = 0xFFFFFFFF;
     logger.debug(`📢 Broadcasting NodeInfo on channel ${channel}`);
-    return this.sendNodeInfoRequest(BROADCAST_ADDR, channel);
+    return this.sendNodeInfoRequest(BROADCAST_ADDR, channel, options);
   }
 
   /**
    * Broadcast NodeInfo to multiple channels with delays between each
    * Used by auto-announce feature to broadcast on secondary channels
    */
-  async broadcastNodeInfoToChannels(channels: number[], delaySeconds: number): Promise<void> {
+  async broadcastNodeInfoToChannels(channels: number[], delaySeconds: number, options?: { origin?: SendOrigin }): Promise<void> {
     if (this.rebootMergeInProgress) {
       logger.debug('📢 Skipping NodeInfo broadcast - reboot merge in progress');
       return;
@@ -10975,7 +11021,7 @@ class MeshtasticManager implements ISourceManager {
     for (let i = 0; i < channels.length; i++) {
       const channel = channels[i];
       try {
-        await this.broadcastNodeInfoToChannel(channel);
+        await this.broadcastNodeInfoToChannel(channel, options);
         logger.debug(`📢 NodeInfo broadcast sent to channel ${channel} (${i + 1}/${channels.length})`);
 
         // Wait between broadcasts (except after the last one)
@@ -11046,7 +11092,7 @@ class MeshtasticManager implements ISourceManager {
    * answer too) and channel routing avoids stale-key fragility. The reply is
    * persisted by the existing telemetry handler.
    */
-  async requestRemoteLocalStats(destination: number, channel: number = 0, hopLimit: number = 3): Promise<{ packetId: number; requestId: number }> {
+  async requestRemoteLocalStats(destination: number, channel: number = 0, hopLimit: number = 3, options?: { origin?: SendOrigin }): Promise<{ packetId: number; requestId: number }> {
     if (!this.isConnected || !this.transport) {
       throw new Error('Not connected to Meshtastic node');
     }
@@ -11063,6 +11109,7 @@ class MeshtasticManager implements ISourceManager {
       throw new Error('Failed to build remote LocalStats request');
     }
 
+    this.recordAutomationPacket(packetId, options?.origin);
     await this.transport.send(telemetryRequestData);
 
     // Broadcast to virtual node clients (including packet monitor) for visibility.
@@ -11401,7 +11448,7 @@ class MeshtasticManager implements ISourceManager {
 
         // Route tapback through message queue for rate limiting (after the
         // optional pre-send delay).
-        dispatchAck(() => this.messageQueue.enqueue(
+        dispatchAck(() => this.enqueueAutomation(
           hopEmoji,
           isDirectMessage ? fromNum : 0, // destination: node number for DM, 0 for channel
           packetId, // replyId - react to the original message
@@ -11454,7 +11501,7 @@ class MeshtasticManager implements ISourceManager {
 
         // Use message queue to send auto-acknowledge with rate limiting and
         // retry logic (after the optional pre-send delay).
-        dispatchAck(() => this.messageQueue.enqueue(
+        dispatchAck(() => this.enqueueAutomation(
           ackText,
           replyDest, // destination: node number for DM, 0 for channel
           replyId, // replyId
@@ -11603,7 +11650,7 @@ class MeshtasticManager implements ISourceManager {
         logger.debug(`🛑 Auto-ping stop requested by !${fromNum.toString(16).padStart(8, '0')}`);
         this.stopAutoPingSession(fromNum, 'cancelled');
       } else {
-        await this.sendTextMessage('No active ping session to stop.', 0, fromNum);
+        await this.sendAutomationText('No active ping session to stop.', 0, fromNum);
         this.messageQueue.recordExternalSend();
       }
       return true;
@@ -11620,7 +11667,7 @@ class MeshtasticManager implements ISourceManager {
 
       // Validate count
       if (count <= 0) {
-        await this.sendTextMessage('Ping count must be at least 1.', 0, fromNum);
+        await this.sendAutomationText('Ping count must be at least 1.', 0, fromNum);
         this.messageQueue.recordExternalSend();
         return true;
       }
@@ -11629,7 +11676,7 @@ class MeshtasticManager implements ISourceManager {
 
       // Check for existing session
       if (this.autoPingSessions.has(fromNum)) {
-        await this.sendTextMessage(`You already have an active ping session. Send "ping stop" to cancel it first.`, 0, fromNum);
+        await this.sendAutomationText(`You already have an active ping session. Send "ping stop" to cancel it first.`, 0, fromNum);
         this.messageQueue.recordExternalSend();
         return true;
       }
@@ -11656,7 +11703,7 @@ class MeshtasticManager implements ISourceManager {
       this.autoPingSessions.set(fromNum, session);
 
       const cappedMsg = count > maxPings ? ` (capped to ${maxPings})` : '';
-      await this.sendTextMessage(
+      await this.sendAutomationText(
         `Starting ${actualCount} pings every ${intervalSeconds}s${cappedMsg}. Send "ping stop" to cancel.`,
         0, fromNum
       );
@@ -11715,7 +11762,7 @@ class MeshtasticManager implements ISourceManager {
       const pingNum = session.completedPings + 1;
       const pingMessage = `Ping ${pingNum}/${session.totalPings}`;
 
-      const requestId = await this.sendTextMessage(pingMessage, 0, session.requestedBy);
+      const requestId = await this.sendAutomationText(pingMessage, 0, session.requestedBy);
       this.messageQueue.recordExternalSend();
       // Arm pendingRequestId and the ack timeout synchronously (timeoutMs was
       // resolved at session start) so a fast response can't arrive between the
@@ -11881,7 +11928,7 @@ class MeshtasticManager implements ISourceManager {
     }
 
     try {
-      await this.sendTextMessage(summary, 0, requestedBy);
+      await this.sendAutomationText(summary, 0, requestedBy);
       this.messageQueue.recordExternalSend();
     } catch (error) {
       logger.error(`❌ Failed to send auto-ping summary to !${requestedBy.toString(16).padStart(8, '0')}:`, error);
@@ -11911,7 +11958,7 @@ class MeshtasticManager implements ISourceManager {
 
     const summary = `Auto-ping ${reason}: ${session.successfulPings}/${session.completedPings} successful out of ${session.totalPings} planned.`;
 
-    this.sendTextMessage(summary, 0, requestedBy).then(() => {
+    this.sendAutomationText(summary, 0, requestedBy).then(() => {
       this.messageQueue.recordExternalSend();
     }).catch(error => {
       logger.error(`❌ Failed to send auto-ping cancellation to !${requestedBy.toString(16).padStart(8, '0')}:`, error);
@@ -12302,7 +12349,7 @@ class MeshtasticManager implements ISourceManager {
                 const truncated = this.truncateMessageForMeshtastic(resp, 200);
                 const isFirstMessage = index === 0;
 
-                this.messageQueue.enqueue(
+                this.enqueueAutomation(
                   truncated,
                   isDM ? message.fromNodeNum : 0, // destination: node number for DM, 0 for channel
                   isFirstMessage ? packetId : undefined, // Reply to original message for first response
@@ -12367,7 +12414,7 @@ class MeshtasticManager implements ISourceManager {
 
             if (!targetNode) {
               const errMsg = `Unknown node: ${resolvedTarget.substring(0, 20)}`;
-              this.messageQueue.enqueue(
+              this.enqueueAutomation(
                 this.truncateMessageForMeshtastic(errMsg, 200),
                 isDirectMessage ? message.fromNodeNum : 0,
                 packetId,
@@ -12385,7 +12432,7 @@ class MeshtasticManager implements ISourceManager {
             // Deduplicate: if a traceroute to this node is already pending, tell the user
             if (this.pendingAutoresponderTraceroutes.has(targetNodeNum)) {
               const dupMsg = `Traceroute to ${targetName.substring(0, 15)} already queued`;
-              this.messageQueue.enqueue(
+              this.enqueueAutomation(
                 this.truncateMessageForMeshtastic(dupMsg, 200),
                 isDirectMessage ? message.fromNodeNum : 0,
                 packetId,
@@ -12399,7 +12446,7 @@ class MeshtasticManager implements ISourceManager {
 
             // Send immediate ACK to the requesting node
             const ackMsg = `Tracerouting to ${targetName.substring(0, 15)}...`;
-            this.messageQueue.enqueue(
+            this.enqueueAutomation(
               this.truncateMessageForMeshtastic(ackMsg, 200),
               isDirectMessage ? message.fromNodeNum : 0,
               packetId,
@@ -12416,7 +12463,7 @@ class MeshtasticManager implements ISourceManager {
               if (!pending) return;
               this.pendingAutoresponderTraceroutes.delete(targetNodeNum);
               const timeoutMsg = `${targetName.substring(0, 15)} did not respond within timeout`;
-              this.messageQueue.enqueue(
+              this.enqueueAutomation(
                 this.truncateMessageForMeshtastic(timeoutMsg, 200),
                 pending.isDM ? pending.replyToNodeNum : 0,
                 undefined,
@@ -12442,7 +12489,7 @@ class MeshtasticManager implements ISourceManager {
               // decrypt and relay, rather than the target's raw stored channel
               // (which may be a private secondary) — issues #3696, #4691.
               const channel = await resolveBroadcastChannel(this, databaseService);
-              await this.sendTraceroute(targetNodeNum, channel);
+              await this.sendTraceroute(targetNodeNum, channel, { origin: 'automation' });
               logger.debug(`🔍 Auto-responder traceroute to ${targetName} (${targetNode.nodeId}) initiated by ${nodeId}`);
 
               // Record cooldown timestamp
@@ -12455,7 +12502,7 @@ class MeshtasticManager implements ISourceManager {
               clearTimeout(timeoutHandle);
               this.pendingAutoresponderTraceroutes.delete(targetNodeNum);
               const errMsg = `Failed to traceroute: ${error.message?.substring(0, 30)}`;
-              this.messageQueue.enqueue(
+              this.enqueueAutomation(
                 this.truncateMessageForMeshtastic(errMsg, 200),
                 isDirectMessage ? message.fromNodeNum : 0,
                 undefined,
@@ -12502,7 +12549,7 @@ class MeshtasticManager implements ISourceManager {
               mailboxResponses.forEach((resp, index) => {
                 const truncated = this.truncateMessageForMeshtastic(resp, 200);
                 const isFirstMessage = index === 0;
-                this.messageQueue.enqueue(
+                this.enqueueAutomation(
                   truncated,
                   message.fromNodeNum, // destination: always DM the sender
                   isFirstMessage ? packetId : undefined, // reply to original for first response
@@ -12585,7 +12632,7 @@ class MeshtasticManager implements ISourceManager {
 
           responseValue.responses.forEach((msg, index) => {
             const isFirstMessage = index === 0;
-            this.messageQueue.enqueue(
+            this.enqueueAutomation(
               msg,
               isDM ? message.fromNodeNum : 0, // destination: node number for DM, 0 for channel
               isFirstMessage ? packetId : undefined, // Reply to original message for first response
@@ -13036,7 +13083,7 @@ class MeshtasticManager implements ISourceManager {
     // For DMs, send only once (maxAttempts=1) — the local radio ACK confirms
     // transmission to the mesh; remote ACKs from the destination node are unreliable
     // and waiting for them causes the queue to retry, sending the message multiple times.
-    this.messageQueue.enqueue(
+    this.enqueueAutomation(
       welcomeText,
       destination ?? 0, // destination: node number for DM, 0 for channel
       undefined, // replyId

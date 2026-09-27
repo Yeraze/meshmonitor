@@ -105,11 +105,11 @@ describe('MeshtasticManager.sendTraceroute hop limit', () => {
 
   it("uses the node's configured hop limit", async () => {
     await makeReadyManager({ hopLimit: 5 }).sendTraceroute(0x11111111, 2).catch(() => undefined);
-    expect(createTracerouteMessage).toHaveBeenCalledWith(0x11111111, 2, 5);
+    expect(createTracerouteMessage).toHaveBeenCalledWith(0x11111111, 2, 5, undefined);
   });
 
   it('uses the firmware default before the LoRa config has arrived', async () => {
     await makeReadyManager().sendTraceroute(0x11111111, 0).catch(() => undefined);
-    expect(createTracerouteMessage).toHaveBeenCalledWith(0x11111111, 0, DEFAULT_HOP_LIMIT);
+    expect(createTracerouteMessage).toHaveBeenCalledWith(0x11111111, 0, DEFAULT_HOP_LIMIT, undefined);
   });
 });

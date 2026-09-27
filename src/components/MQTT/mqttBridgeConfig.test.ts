@@ -26,6 +26,7 @@ describe('mqttBridgeConfig', () => {
       expect(config).not.toHaveProperty('mode');
       expect(config).not.toHaveProperty('forwardingMode');
       expect(config).not.toHaveProperty('ignoreOkToMqtt');
+      expect(config).not.toHaveProperty('dropAutomationUplinks');
       expect(config).not.toHaveProperty('brokerSourceId');
     });
 
@@ -37,8 +38,10 @@ describe('mqttBridgeConfig', () => {
         mode: 'publish_only',
         forwardingMode: 'single',
         ignoreOkToMqtt: true,
+        dropAutomationUplinks: true,
       };
       const { config } = buildBridgeConfig(form, { editing: false });
+      expect(config?.dropAutomationUplinks).toBe(true);
       expect(config?.subscriptions).toEqual(['msh/US/#', 'msh/EU/#']);
       expect(config?.mode).toBe('publish_only');
       expect(config?.forwardingMode).toBe('single');
@@ -267,6 +270,7 @@ describe('mqttBridgeConfig', () => {
         mode: 'subscribe_only',
         forwardingMode: 'single',
         ignoreOkToMqtt: true,
+        dropAutomationUplinks: true,
         useTopicBlock: true,
         topicBlock: 'msh/CA/#',
         useGeo: true,

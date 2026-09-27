@@ -315,7 +315,10 @@ describe('MeshtasticManager - Auto Welcome Integration', () => {
         expect.any(Function), // onSuccess
         expect.any(Function), // onFailure
         undefined, // channel (undefined for DM)
-        1 // maxAttemptsOverride: send once
+        1, // maxAttemptsOverride: send once
+        undefined, // emoji
+        undefined, // hopLimitOverride
+        'automation', // origin (#5414)
       );
     });
 
@@ -349,7 +352,10 @@ describe('MeshtasticManager - Auto Welcome Integration', () => {
         expect.any(Function), // onSuccess
         expect.any(Function), // onFailure
         2, // channel
-        1 // maxAttemptsOverride: send once
+        1, // maxAttemptsOverride: send once
+        undefined, // emoji
+        undefined, // hopLimitOverride
+        'automation', // origin (#5414)
       );
     });
 
@@ -447,7 +453,10 @@ describe('MeshtasticManager - Auto Welcome Integration', () => {
         expect.any(Function), // onSuccess
         expect.any(Function), // onFailure
         undefined, // channel (undefined for DM)
-        1 // maxAttemptsOverride: send once
+        1, // maxAttemptsOverride: send once
+        undefined, // emoji
+        undefined, // hopLimitOverride
+        'automation', // origin (#5414)
       );
     });
 

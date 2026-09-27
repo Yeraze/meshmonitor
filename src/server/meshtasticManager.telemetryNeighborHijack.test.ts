@@ -112,7 +112,7 @@ describe('MeshtasticManager - telemetry NeighborInfo hijack auto-retry (#4210)',
 
     await vi.advanceTimersByTimeAsync(1);
     expect(sendSpy).toHaveBeenCalledTimes(1);
-    expect(sendSpy).toHaveBeenCalledWith(DEST, CHANNEL, 'environment', { isAutoRetry: true });
+    expect(sendSpy).toHaveBeenCalledWith(DEST, CHANNEL, 'environment', { isAutoRetry: true, origin: 'automation' });
     sendSpy.mockRestore();
   });
 

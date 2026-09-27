@@ -51,7 +51,7 @@ export interface FavoriteAckResult {
 interface MeshtasticAdminManager extends ISourceManager {
   supportsFavorites(): boolean;
   sendFavoriteNodeAwaitAck(nodeNum: number, destinationNodeNum?: number, timeoutMs?: number): Promise<FavoriteAckResult>;
-  sendNeighborInfoRequest(destination: number, channel?: number): Promise<{ packetId: number; requestId: number }>;
+  sendNeighborInfoRequest(destination: number, channel?: number, options?: { origin?: 'automation' | 'manual' }): Promise<{ packetId: number; requestId: number }>;
 }
 
 export interface CycleFavoriteOutcome {
@@ -370,7 +370,7 @@ class AutoFavoriteManagementScheduler {
         logger.debug(`🟢 Auto-favorite: NeighborInfo for ${targetNodeNum} is within ${target.maxNeighborAgeHours}h — reusing, no request`);
       } else {
         try {
-          await manager.sendNeighborInfoRequest(targetNodeNum, channel);
+          await manager.sendNeighborInfoRequest(targetNodeNum, channel, { origin: 'automation' });
           await databaseService.autoFavoriteTargets.touchLastNeighborRequest(sourceId, targetNodeNum, now);
         } catch (error) {
           logger.warn(`⚠️ Auto-favorite: NeighborInfo request to ${targetNodeNum} failed:`, error);

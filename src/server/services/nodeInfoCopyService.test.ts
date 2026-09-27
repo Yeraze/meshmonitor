@@ -184,7 +184,7 @@ describe('copyNodeInfo', () => {
     const result = await copyNodeInfo(100, 'src-B', 'src-A', true);
 
     expect(result.pushedToDevice).toBe(true);
-    expect(sendMock).toHaveBeenCalledWith(100, 3);
+    expect(sendMock).toHaveBeenCalledWith(100, 3, { origin: 'manual' });
   });
 
   it('returns pushedToDevice=false when manager not available', async () => {
