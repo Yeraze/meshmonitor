@@ -231,12 +231,16 @@ const LoginPage: React.FC = () => {
                     <label htmlFor="username">{t('auth.username')}</label>
                     <input
                       id="username"
+                      name="username"
                       type="text"
                       value={username}
                       onChange={(e) => setUsername(e.target.value)}
                       disabled={loading}
                       required
                       autoComplete="username"
+                      autoCapitalize="none"
+                      autoCorrect="off"
+                      spellCheck={false}
                       autoFocus
                     />
                   </div>
@@ -245,6 +249,7 @@ const LoginPage: React.FC = () => {
                     <label htmlFor="password">{t('auth.password')}</label>
                     <input
                       id="password"
+                      name="password"
                       type="password"
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
