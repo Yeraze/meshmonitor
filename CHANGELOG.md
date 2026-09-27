@@ -6,6 +6,41 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased]
 
+## [4.16.2-rc4] - 2026-09-27
+
+### Added
+- **Likely-aircraft detection.** A node flying more than a set height above the terrain beneath it (default 500 m; 5000 m above sea level when there is no terrain data) is flagged as a likely aircraft. Mountaintop repeaters stay fixed. Per source, in Settings → Node Display. Migrations 175–178. (#5364, #5365, #5386, #5391, #5396)
+  - The map shows a plane badge and popup line, with a Show / Mark / Hide control in both Map Features panels.
+  - Auto-Favorite skips likely aircraft by default, and a new automation trigger fires when a node becomes one.
+  - Optional age-out ignores (or, opt-in, deletes) aircraft not heard for N hours, and lifts the ignore when a live position arrives. A node that stays put is reclassified as fixed.
+  - Flight trails, off by default, draw each aircraft's recent path with a 1 h–7 day lookback.
+  - MQTT sources now store position history, so Position History and trails work for nodes heard only over MQTT.
+- **First Heard** for Meshtastic and MeshCore nodes, per source: set once from the first believable reception and never overwritten. Shown in node details, map popups and the node export. Migration 179 fills it for existing nodes from the earlier of `createdAt` and Last Heard. (#5390, #5395)
+- **Nodes tab quick age filter** (Setting / 24h / 3d / 7d / 30d / All) in the Nodes header. It changes the view only, never the saved setting, and applies to the Nodes list and its map for Meshtastic and MeshCore. (#5387, #5394)
+- **MeshCore channel order:** a sort dropdown on the Channels page (device order, name, last message, custom), with drag-and-drop for the custom order. Stored per browser. (#5385, #5392)
+- **Reorder MeshCore channel slots on the companion** from Channels settings. Each slot write is read back, a failure restores the original layout, and message history, unread markers, scope, per-channel permissions and MeshCore auto-ack / announce / responder / timer settings follow each channel. Connected Virtual Node apps are disconnected so they re-read the list. Automations that name a raw channel number are listed for review, not rewritten. (#5379, #5397)
+- **Unified Messages hop counts:** each source tag shows how many hops that source heard the message at (`?` when unknown). (#5366, #5393)
+- **Transmit target window** (Settings → Node Display, default 24 h, 1–720): when the node window is 0 ("all"), auto-traceroute, the remote-admin scanner and remote LocalStats pick targets from nodes heard within this window instead of none. (#5376, #5384)
+- **Virtual Node PKI import** opt-in (`allowPkiImport`, off by default) for the MeshCore ImportPrivateKey command, and a Virtual Node card on the MeshCore Node Info view showing its status, admin and PKI settings. (#5350, #5372, #5380, #5381)
+
+### Changed
+- **The three node-age controls say what they do:** the sidebar pill is informational, "Node list & map window (hours)" sets the default, and the map's age filter can only narrow it. The Nodes header shows the active window. (#5344, #5373)
+- **MQTT and MeshCore sources no longer borrow the primary Meshtastic radio.** Sends, mesh requests, channel pushes, device config, remote admin and connect/disconnect from those sources are refused (`SOURCE_NOT_MESHTASTIC`), and status routes report the source's own state. Send controls on MQTT sources are disabled with an explanation. A disconnected TCP source returns `SOURCE_NOT_CONNECTED`. (#5367, #5371, #5375, #5383)
+- **Virtual Node companion commands:** remove, rename, favourite, reset path, import contact and reboot are now handled (admin-gated), along with share/export contact and stats. Private-key import and raw data are refused unless opted in. (#5350, #5372)
+
+### Fixed
+- **Security:** an MQTT broker source's Info and Device Config tabs showed, and could write to, the primary TCP node, including its private key. (#5367, #5371)
+- **Max node age 0** hid every non-favourite node in the per-source Nodes tab and removed all neighbour links from the map. It now means "all nodes". (#5338, #5352, #5378)
+- **MeshCore**
+  - A powered-off node's Last Heard kept advancing: contact syncs, path resets and failed DMs stamped it with "now". (#5341, #5343)
+  - Nodes with a drifted clock (year 2000 or 2087) broke Last Heard sorting and pinned messages to the wrong place in the channel. Implausible times now fall back to receipt time, and stored bad values heal. (#5339, #5342)
+  - New-node notifications never fired for companions in auto-add mode, because the first advert has no name. (#5340, #5370)
+- **Local node number** was read from a key the manager never writes, so `/api/config`, spam detection, telemetry security badges and distance auto-delete missed the local node on every source except the default. (#5377, #5382)
+- **Mesh Issues C2 "Broadcasting too often"** flagged MeshMonitor's own directly connected nodes because of their phone-only telemetry. (#5388, #5389)
+- **MQTT text messages** were stored without hop data. (#5393)
+- **Global Settings** lost its Sorting section. (#5368, #5369)
+- **`watch-release.sh`** could report a stale run as the release result. (#5362)
+
 ## [4.16.2-rc3] - 2026-09-25
 
 ### Added
