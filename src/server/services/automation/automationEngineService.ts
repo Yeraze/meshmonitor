@@ -1123,6 +1123,15 @@ export class AutomationEngineService {
     if (!entries || entries.length === 0) return 0;
     const node = await this.data.getNode(sourceId, nodeNum);
     if (!node || node.latitude == null || node.longitude == null) return 0;
+    // #5363: judge the sign-flip corrected point when correction is on for the
+    // node's source; otherwise (or on any failure) the reported point.
+    let lat = node.latitude;
+    let lng = node.longitude;
+    if (this.data.correctPosition) {
+      const bits = (node as { positionPrecisionBits?: number | null }).positionPrecisionBits;
+      const c = await this.data.correctPosition(sourceId, lat, lng, bits).catch(() => null);
+      if (c) { lat = c.latitude; lng = c.longitude; }
+    }
     const now = this.now();
     let fired = 0;
     for (const a of entries) {
@@ -1143,7 +1152,7 @@ export class AutomationEngineService {
           if (automationTraceBus.activeCount() > 0 && automationTraceBus.isTracing(a.id, now)) {
             this.emitTrace(
               a,
-              buildGeofenceContext(nodeNum, mode, node.latitude, node.longitude, 0, sourceId, now),
+              buildGeofenceContext(nodeNum, mode, lat, lng, 0, sourceId, now),
               now,
               { outcome: 'prefiltered', reason: `waypoint ${anchor.waypointId} not found on source ${anchor.sourceId} — fence cannot be resolved` },
             );
@@ -1156,16 +1165,16 @@ export class AutomationEngineService {
       }
       if (!shape) continue;
 
-      const inside = pointInShape(node.latitude, node.longitude, shape);
+      const inside = pointInShape(lat, lng, shape);
       // Distance to the region's reference point (circle center / polygon
       // centroid) so {{ trigger.distanceKm }} stays meaningful for both shapes.
       const center = geofenceCenter(shape);
-      const distanceKm = haversineKm(node.latitude, node.longitude, center.lat, center.lng);
+      const distanceKm = haversineKm(lat, lng, center.lat, center.lng);
       const prev = this.getGeofenceBaseline(a, nodeNum);
       this.setGeofenceBaseline(a, nodeNum, inside, now);
 
       const traced = automationTraceBus.activeCount() > 0 && automationTraceBus.isTracing(a.id, now);
-      const geoCtx = buildGeofenceContext(nodeNum, mode, node.latitude, node.longitude, distanceKm, sourceId, now);
+      const geoCtx = buildGeofenceContext(nodeNum, mode, lat, lng, distanceKm, sourceId, now);
 
       if (!geofenceFires(prev, inside, mode)) {
         if (traced) this.emitTrace(a, geoCtx, now, { outcome: 'prefiltered', reason: prev === undefined ? 'first sighting — baseline only' : `no ${mode} transition (node ${inside ? 'inside' : 'outside'})` });

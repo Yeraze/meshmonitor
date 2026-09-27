@@ -932,6 +932,55 @@ describe('AutomationEngineService', () => {
     expect(calls.filter((c) => c.fn === 'notify')).toHaveLength(1);
   });
 
+  // #5363 — the provider's correctPosition (sign-flip correction) decides the
+  // point the fence is judged against; without it the reported point is used.
+  describe('geofence with sign-flip correction', () => {
+    const graph: AutomationGraph = {
+      version: 1,
+      nodes: [
+        // A 50 km fence around Tampa.
+        { id: 't', type: 'trigger.geofence', params: { event: 'enter', lat: 27.95, lon: -82.46, radiusKm: 50 } },
+        { id: 'a', type: 'action.notify', params: { body: 'entered' } },
+      ],
+      edges: [{ from: 't', to: 'a' }],
+    };
+    // Mirror of Tampa's longitude: the operator dropped the minus sign.
+    const flipped = { nodeNum: 5, latitude: 27.9, longitude: 82.5 };
+
+    it('judges the corrected point when the provider corrects it', async () => {
+      const { calls, deps } = recorder();
+      await createEnabled('geo-flip-on', graph);
+      let correct = false;
+      const data = {
+        getNode: async () => flipped,
+        getTelemetry: async () => null,
+        correctPosition: async (_s: string | null, lat: number, lon: number) =>
+          correct ? { latitude: lat, longitude: -lon } : { latitude: lat, longitude: lon },
+      };
+      const engine = new AutomationEngineService({ automationsRepo: autos, varResolver: resolver, deps, data, now: () => clock });
+      await engine.load();
+
+      expect(await engine.checkGeofences(5, 'default')).toBe(0); // baseline, reported point: outside
+      correct = true; // correction turned on for the source
+      expect(await engine.checkGeofences(5, 'default')).toBe(1); // corrected point: inside → enter
+      expect(calls.filter((c) => c.fn === 'notify')).toHaveLength(1);
+    });
+
+    it('uses the reported point when the provider has no correctPosition, or it fails', async () => {
+      const { deps } = recorder();
+      await createEnabled('geo-flip-off', graph);
+      const data = {
+        getNode: async () => flipped,
+        getTelemetry: async () => null,
+        correctPosition: async () => { throw new Error('boom'); },
+      };
+      const engine = new AutomationEngineService({ automationsRepo: autos, varResolver: resolver, deps, data, now: () => clock });
+      await engine.load();
+      expect(await engine.checkGeofences(5, 'default')).toBe(0); // baseline outside
+      expect(await engine.checkGeofences(5, 'default')).toBe(0); // still outside, never enters
+    });
+  });
+
   // #4722 — a geofence anchored to a waypoint instead of a drawn region.
   describe('geofence anchored to a waypoint', () => {
     const anchoredGraph: AutomationGraph = {

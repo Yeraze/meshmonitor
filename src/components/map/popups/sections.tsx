@@ -434,6 +434,13 @@ export const MeshCoreDetails: React.FC<MeshCoreDetailsProps> = ({ model }) => {
           <span className="node-popup-value">{hopCountLabel(mc.pathLen)}</span>
         </div>
       )}
+      {model.signFlipReported && (
+        <SignFlipNotice
+          variant="popup"
+          reportedLatitude={model.signFlipReported.latitude}
+          reportedLongitude={model.signFlipReported.longitude}
+        />
+      )}
       {mc.outPath && (
         <div className="node-popup-item node-popup-item-full">
           <span className="node-popup-icon"><UiIcon name="route" /></span>

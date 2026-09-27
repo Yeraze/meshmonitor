@@ -81,6 +81,17 @@ export interface NodeDataProvider {
    */
   getWaypoint?(sourceId: string, waypointId: number): Promise<{ latitude: number; longitude: number } | null>;
   /**
+   * #5363 — the point to judge a geofence against: the node's position moved
+   * to its sign-flip corrected point when correction is on for `sourceId`
+   * and applies, otherwise the input. Optional; absent = the reported point.
+   */
+  correctPosition?(
+    sourceId: string | null,
+    latitude: number,
+    longitude: number,
+    precisionBits?: number | null,
+  ): Promise<{ latitude: number; longitude: number }>;
+  /**
    * All channels for a source as {slot, name, psk, role}, for resolving a
    * unified channel (by name) to its local slot when sending. Optional.
    */

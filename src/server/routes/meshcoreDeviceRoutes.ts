@@ -23,6 +23,7 @@ import {
 } from '../../types/meshcoreAdvert.js';
 import { MeshCoreZeroHopAdvertUnsupportedError } from '../utils/meshcoreAdvert.js';
 import { buildLocalContactRow, withoutLocalFlag, type MeshCoreContactResponse } from './meshcoreLocalContactRow.js';
+import { applySignFlipToMeshCoreRows } from '../services/signFlipCorrection.js';
 
 const router = Router({ mergeParams: true });
 
@@ -197,8 +198,9 @@ router.get('/snapshot', optionalAuth(), requirePermission('connection', 'read', 
     // it's the same user/source for both, so a second permission check would
     // just be a redundant DB round-trip on every snapshot request.
     const canViewOnMap = user ? await hasPermission(user, 'nodes', 'viewOnMap', sourceId) : false;
-    const maskedContacts = canViewOnMap ? allContacts : stripPositions(allContacts);
-    const maskedNodes = canViewOnMap ? nodes : stripPositions(nodes);
+    // #5363: display-only sign-flip correction of the positions that remain.
+    const maskedContacts = canViewOnMap ? await applySignFlipToMeshCoreRows(allContacts, sourceId) : stripPositions(allContacts);
+    const maskedNodes = canViewOnMap ? await applySignFlipToMeshCoreRows(nodes, sourceId) : stripPositions(nodes);
 
     res.json({
       success: true,

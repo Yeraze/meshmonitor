@@ -351,6 +351,28 @@ describe('SourcesList', () => {
 });
 
 describe('MeshCoreDetails', () => {
+  it('shows the sign-flip notice for a corrected MeshCore contact (#5363)', () => {
+    const corrected = toNodeCardModel(
+      {
+        publicKey: 'ab'.repeat(32),
+        latitude: 27.9,
+        longitude: -82.5,
+        positionSignFlipCorrected: true,
+        reportedLatitude: 27.9,
+        reportedLongitude: 82.5,
+      },
+      'meshcore',
+    );
+    expect(corrected.signFlipReported).toEqual({ latitude: 27.9, longitude: 82.5 });
+    const { unmount } = render(<><MeshCoreDetails model={corrected} /></>);
+    expect(screen.getByTestId('sign-flip-notice')).toHaveTextContent('Reported: 27.90000, 82.50000');
+    unmount();
+
+    const plain = toNodeCardModel({ publicKey: 'ab'.repeat(32), latitude: 27.9, longitude: 82.5 }, 'meshcore');
+    render(<><MeshCoreDetails model={plain} /></>);
+    expect(screen.queryByTestId('sign-flip-notice')).not.toBeInTheDocument();
+  });
+
   it('renders nothing when the model has no meshcore data', () => {
     const model = toNodeCardModel({ nodeNum: 1, longName: 'x' }, 'meshtastic');
     const { container } = render(<><MeshCoreDetails model={model} /></>);

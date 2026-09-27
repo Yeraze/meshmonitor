@@ -16,6 +16,7 @@ import { getEnvironmentConfig } from '../config/environment.js';
 import type { DbMessage } from '../../services/database.js';
 import databaseService from '../../services/database.js';
 import { ALL_SOURCES } from '../../db/repositories/index.js';
+import { getCachedSignFlipContext, applySignFlipToTraceroute, applySignFlipCorrection } from './signFlipCorrection.js';
 import { canonicalMessageTime, messageReceivedAt } from '../utils/messageTime.js';
 import { automationTraceBus, MAX_TRACE_MS } from './automation/automationTraceBus.js';
 
@@ -224,6 +225,31 @@ export function initializeWebSocket(
           logger.warn('[WebSocket] Channel remap failed:', err);
         }
 
+        socket.emit(event.type, outgoing);
+      } else if (event.type === 'meshcore:contact:updated' && event.sourceId) {
+        // #5363: a live contact update carries the same corrected position as
+        // the snapshot/contacts routes. A copy only.
+        const payload = event.data as { sourceId: string; contact: object };
+        let outgoing: unknown = payload;
+        try {
+          const ctx = await getCachedSignFlipContext(event.sourceId);
+          if (ctx && payload?.contact) {
+            const contact = applySignFlipCorrection(payload.contact, ctx);
+            if (contact !== payload.contact) outgoing = { ...payload, contact };
+          }
+        } catch (err) {
+          logger.warn('[WebSocket] Sign-flip contact correction failed:', err);
+        }
+        socket.emit(event.type, outgoing);
+      } else if (event.type === 'traceroute:complete' && event.sourceId) {
+        // #5363: draw the live traceroute's snapshot at the corrected point.
+        // A copy only; the event bus and the stored row keep the reported fix.
+        let outgoing = event.data as { routePositions?: string | null };
+        try {
+          outgoing = applySignFlipToTraceroute(outgoing, await getCachedSignFlipContext(event.sourceId));
+        } catch (err) {
+          logger.warn('[WebSocket] Sign-flip traceroute correction failed:', err);
+        }
         socket.emit(event.type, outgoing);
       } else {
         socket.emit(event.type, event.data);

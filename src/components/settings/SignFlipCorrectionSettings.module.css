@@ -9,10 +9,15 @@
   margin: 0 0 0.5rem;
 }
 
-.checkboxLabel {
+.checkboxRow {
   display: flex;
+  flex-direction: row;
   align-items: center;
   gap: 0.5rem;
+  cursor: pointer;
+}
+
+.checkboxRow input {
   cursor: pointer;
 }
 

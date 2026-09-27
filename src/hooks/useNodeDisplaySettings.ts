@@ -28,6 +28,7 @@ import {
 } from '../constants/nodeDisplayDefaults';
 import type { NodeHopsCalculation } from '../contexts/SettingsContext';
 import { pickSetting, NODE_HOPS_CALCULATIONS } from '../contexts/settingsEnums';
+import { parseSignFlipSettings } from '../utils/signFlipPosition';
 
 export interface NodeDisplaySettings {
   maxNodeAgeHours: number;
@@ -119,6 +120,44 @@ export function useNodeDisplaySettings(sourceId: string | null): NodeDisplaySett
     enabled: sourceId != null,
   });
   return parseNodeDisplaySettings(data);
+}
+
+/** Sign-flip correction settings for one source, as the settings form edits them (#5363). */
+export interface SignFlipFormSettings {
+  enabled: boolean;
+  rangeKm: number;
+  /** Stored strings, kept as typed (blank = use the source's own node). */
+  referenceLatitude: string;
+  referenceLongitude: string;
+}
+
+/** Parse the raw `/api/settings?sourceId=` map into {@link SignFlipFormSettings}. */
+export function parseSignFlipFormSettings(raw: Record<string, string> | undefined): SignFlipFormSettings {
+  const parsed = parseSignFlipSettings({
+    enabled: raw?.signFlipCorrectionEnabled,
+    rangeKm: raw?.signFlipCorrectionRangeKm,
+  });
+  return {
+    enabled: parsed.enabled,
+    rangeKm: parsed.rangeKm,
+    referenceLatitude: typeof raw?.signFlipReferenceLatitude === 'string' ? raw.signFlipReferenceLatitude : '',
+    referenceLongitude: typeof raw?.signFlipReferenceLongitude === 'string' ? raw.signFlipReferenceLongitude : '',
+  };
+}
+
+/**
+ * Sign-flip settings for ONE source (#5363), read from the same cached
+ * `/api/settings?sourceId=` query as {@link useNodeDisplaySettings}, so a save
+ * that invalidates `nodeDisplaySettingsQueryKey` refreshes both.
+ */
+export function useSignFlipFormSettings(sourceId: string | null): SignFlipFormSettings {
+  const { data } = useQuery({
+    queryKey: nodeDisplaySettingsQueryKey(sourceId),
+    queryFn: () => fetchNodeDisplayRaw(sourceId),
+    staleTime: 60_000,
+    enabled: sourceId != null,
+  });
+  return parseSignFlipFormSettings(data);
 }
 
 /**

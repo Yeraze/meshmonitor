@@ -14,6 +14,8 @@
  * point and its "reported" pair on the same record.
  */
 import databaseService from '../../services/database.js';
+import { sourceManagerRegistry } from '../sourceManagerRegistry.js';
+import { isAnyMeshCoreManager, isMeshCoreManager } from '../sourceManagerTypes.js';
 import { getEffectiveDbNodePosition, type EffectivePosition } from '../utils/nodeEnhancer.js';
 import { logger } from '../../utils/logger.js';
 import {
@@ -44,11 +46,20 @@ export interface SignFlipFields {
 }
 
 /**
- * The source's own node position: its Meshtastic local node row, with a user
- * override honoured. Sources without a local node (MQTT, MeshCore) return
- * null, so they need a manual reference point.
+ * The source's own node position: its Meshtastic local node row (a user
+ * override honoured), or a MeshCore companion's advertised position. Sources
+ * without a node of their own (MQTT, MeshCore MQTT ingest) return null, so
+ * they need a manual reference point.
  */
 async function resolveOwnNodePosition(sourceId: string): Promise<LatLon | null> {
+  const manager = sourceManagerRegistry.getManager(sourceId);
+  if (manager && isAnyMeshCoreManager(manager)) {
+    const local = isMeshCoreManager(manager) ? manager.getLocalNode() : null;
+    const lat = local?.latitude;
+    const lon = local?.longitude;
+    if (lat == null || lon == null || isBogusPosition(lat, lon)) return null;
+    return { latitude: lat, longitude: lon };
+  }
   const raw = await databaseService.settings.getLocalNodeNumForSource(sourceId);
   const nodeNum = raw ? Number(raw) : NaN;
   if (!Number.isFinite(nodeNum) || nodeNum <= 0) return null;
@@ -222,4 +233,78 @@ export function getCachedSignFlipContext(sourceId: string | null | undefined): P
 export function invalidateSignFlipContext(sourceId?: string): void {
   if (sourceId) contextCache.delete(sourceId);
   else contextCache.clear();
+}
+
+/**
+ * Correct each point of a traceroute's stored `routePositions` snapshot
+ * (JSON `{ [nodeNum]: { lat, lng, alt? } }`, captured at traceroute time) the
+ * same way the markers are corrected, so a hop drawn from the snapshot lands
+ * on the marker rather than on the far side of the globe. Display only: the
+ * stored snapshot is unchanged. Returns the input string when nothing changes
+ * or it does not parse.
+ */
+export function correctRoutePositionsJson(
+  routePositions: string | null | undefined,
+  ctx: SignFlipContext | null | undefined,
+): string | null | undefined {
+  if (!ctx || !routePositions) return routePositions;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(routePositions);
+  } catch {
+    return routePositions;
+  }
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return routePositions;
+  let changed = false;
+  const out: Record<string, unknown> = {};
+  for (const [nodeNum, point] of Object.entries(parsed as Record<string, unknown>)) {
+    const p = point as { lat?: unknown; lng?: unknown } | null;
+    if (p && typeof p.lat === 'number' && typeof p.lng === 'number') {
+      const r = detectSignFlip(p.lat, p.lng, ctx.reference, ctx.rangeKm);
+      if (r) {
+        out[nodeNum] = { ...p, lat: r.latitude, lng: r.longitude };
+        changed = true;
+        continue;
+      }
+    }
+    out[nodeNum] = point;
+  }
+  return changed ? JSON.stringify(out) : routePositions;
+}
+
+/** A traceroute row with its `routePositions` snapshot corrected (see above). */
+export function applySignFlipToTraceroute<T extends { routePositions?: string | null }>(
+  traceroute: T,
+  ctx: SignFlipContext | null | undefined,
+): T {
+  if (!ctx || !traceroute.routePositions) return traceroute;
+  const corrected = correctRoutePositionsJson(traceroute.routePositions, ctx);
+  return corrected === traceroute.routePositions ? traceroute : { ...traceroute, routePositions: corrected };
+}
+
+/**
+ * Correct a list of traceroute rows, each against its own source (rows can
+ * span sources when a caller omits sourceId); `fallbackSourceId` covers rows
+ * without a `sourceId` column value.
+ */
+export async function applySignFlipToTraceroutes<T extends { routePositions?: string | null }>(
+  traceroutes: T[],
+  fallbackSourceId?: string | null,
+): Promise<T[]> {
+  const resolve = createSignFlipResolver();
+  return Promise.all(traceroutes.map(async (tr) =>
+    applySignFlipToTraceroute(tr, await resolve(rowSourceId(tr) ?? fallbackSourceId))));
+}
+
+/**
+ * Correct each MeshCore contact/node row (flat `latitude`/`longitude`) against
+ * `sourceId`'s context. MeshCore rows have no override or estimate, so this is
+ * `applySignFlipCorrection` over a list.
+ */
+export async function applySignFlipToMeshCoreRows<T extends object>(
+  rows: T[],
+  sourceId: string | null | undefined,
+): Promise<Array<T & SignFlipFields>> {
+  const ctx = await loadSignFlipContext(sourceId);
+  return ctx ? rows.map((r) => applySignFlipCorrection(r, ctx)) : rows;
 }

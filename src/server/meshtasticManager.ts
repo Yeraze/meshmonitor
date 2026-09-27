@@ -86,6 +86,7 @@ import { canonicalMessageTime, plausibleRxTime } from './utils/messageTime.js';
 import { canonicalTelemetryType, canonicalTelemetryUnit } from './utils/telemetryKeys.js';
 import { isNodeComplete } from '../utils/nodeHelpers.js';
 import { getEffectiveDbNodePosition } from './utils/nodeEnhancer.js';
+import { getCachedSignFlipContext, getDisplayDbNodePosition, correctLatLon } from './services/signFlipCorrection.js';
 import { migrateAutomationChannels } from './utils/automationChannelMigration.js';
 import { detectChannelMoves } from './utils/channelMoveDetection.js';
 import { detectLocalNodeSpoof, SentPacketIdCache, type SpoofDetectionResult } from './utils/spoofDetection.js';
@@ -3893,10 +3894,12 @@ class MeshtasticManager implements ISourceManager {
     // Use effective position so a user-set override is what the geofence engine
     // tests against (issue #2847).
     const allNodes = await databaseService.nodes.getAllNodes(this.sourceId);
+    // #5363: sign-flip corrected point when correction is on for this source.
+    const signFlipCtx = await getCachedSignFlipContext(this.sourceId);
     for (const trigger of enabledTriggers) {
       const insideSet = new Set<number>();
       for (const node of allNodes) {
-        const eff = getEffectiveDbNodePosition(node);
+        const eff = getDisplayDbNodePosition(node, signFlipCtx);
         if (eff.latitude == null || eff.longitude == null) continue;
         const nodeNum = Number(node.nodeNum);
 
@@ -3979,9 +3982,15 @@ class MeshtasticManager implements ISourceManager {
    * Check all geofence triggers for a node that just reported a new position.
    * Fires entry/exit events based on state transitions.
    */
-  private async checkGeofencesForNode(nodeNum: number, lat: number, lng: number): Promise<void> {
+  private async checkGeofencesForNode(nodeNum: number, reportedLat: number, reportedLng: number, precisionBits?: number | null): Promise<void> {
     const triggersJson = await databaseService.settings.getSettingForSource(this.sourceId, 'geofenceTriggers');
     if (!triggersJson) return;
+
+    // #5363: judge the sign-flip corrected point when correction is on for
+    // this source; otherwise the reported fix, as before.
+    const corrected = correctLatLon(reportedLat, reportedLng, await getCachedSignFlipContext(this.sourceId), precisionBits);
+    const lat = corrected.latitude ?? reportedLat;
+    const lng = corrected.longitude ?? reportedLng;
 
     let triggers: GeofenceTriggerConfig[];
     try {
@@ -4242,12 +4251,13 @@ class MeshtasticManager implements ISourceManager {
   private async executeWhileInsideGeofenceTrigger(trigger: GeofenceTriggerConfig): Promise<void> {
     const stateSet = this.geofenceNodeState.get(trigger.id);
     if (!stateSet || stateSet.size === 0) return;
+    const signFlipCtx = await getCachedSignFlipContext(this.sourceId); // #5363
 
     for (const nodeNum of stateSet) {
       const node = await databaseService.nodes.getNode(nodeNum, this.sourceId);
       // Honor a user-set override so the geofence reads the same coordinates
-      // surfaced everywhere else (issue #2847).
-      const eff = getEffectiveDbNodePosition(node);
+      // surfaced everywhere else (issue #2847), and a sign-flip correction (#5363).
+      const eff = getDisplayDbNodePosition(node, signFlipCtx);
       if (!node || eff.latitude == null || eff.longitude == null) continue;
 
       // Re-validate position is still inside
@@ -7929,7 +7939,7 @@ class MeshtasticManager implements ISourceManager {
           // location for that node and doesn't change with incoming packets, so
           // device GPS shouldn't drive geofence transitions (issue #2847).
           if (existingNode?.positionOverrideEnabled !== true) {
-            this.checkGeofencesForNode(fromNum, coords.latitude, coords.longitude).catch(err => logger.error('Error checking geofences:', err));
+            this.checkGeofencesForNode(fromNum, coords.latitude, coords.longitude, precisionBits).catch(err => logger.error('Error checking geofences:', err));
           }
 
           logger.debug(`🗺️ Updated node position: ${nodeId} -> ${coords.latitude}, ${coords.longitude} (precision: ${precisionBits ?? 'unknown'} bits, channel: ${channelIndex})`);

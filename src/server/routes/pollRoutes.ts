@@ -24,7 +24,7 @@ import {
 } from '../utils/virtualChannelPermissions.js';
 import { transformChannel } from '../utils/channelView.js';
 import { enhanceNodeForClient, filterNodesByChannelPermission, getEffectiveDbNodePosition } from '../utils/nodeEnhancer.js';
-import { loadSignFlipContext, applySignFlipCorrection } from '../services/signFlipCorrection.js';
+import { loadSignFlipContext, applySignFlipCorrection, applySignFlipToTraceroutes } from '../services/signFlipCorrection.js';
 import { PortNum } from '../constants/meshtastic.js';
 import { transformDbMessageToMeshMessage } from '../utils/transformDbMessage.js';
 import { resolveSourceConnectionConfig } from '../utils/resolveSourceConnectionConfig.js';
@@ -489,7 +489,8 @@ router.get('/poll', optionalAuth(), async (req, res) => {
         return { ...tr, hopCount };
       });
 
-      result.traceroutes = traceroutesWithHops;
+      // #5363: stored routePositions snapshots drawn at the corrected point.
+      result.traceroutes = await applySignFlipToTraceroutes(traceroutesWithHops, pollSourceId);
     } catch (error) {
       logger.error('Error fetching traceroutes in poll:', error);
     }

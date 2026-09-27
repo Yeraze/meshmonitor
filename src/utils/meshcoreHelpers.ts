@@ -14,6 +14,11 @@ export interface MeshCoreContact {
   latitude?: number;
   longitude?: number;
   lastAdvert?: number;
+  /** #5363: the server moved latitude/longitude to the sign-flip corrected
+   *  point; the reported pair rides along. Display only. */
+  positionSignFlipCorrected?: boolean;
+  reportedLatitude?: number;
+  reportedLongitude?: number;
   /** Hop count of the cached forwarding route. `null` / undefined = unknown
    *  (next send floods). */
   pathLen?: number | null;

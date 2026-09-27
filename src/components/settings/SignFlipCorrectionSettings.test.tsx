@@ -71,6 +71,25 @@ describe('SignFlipCorrectionSettings (#5363)', () => {
     expect(screen.queryByTestId('sign-flip-reference-invalid')).not.toBeInTheDocument();
   });
 
+  it('puts the checkbox inside an inline row with its text, not stacked above it', () => {
+    setup();
+    const box = document.getElementById('signFlipCorrectionEnabled') as HTMLInputElement;
+    // The global `.setting-item label` is a column flexbox, so the box must sit
+    // in an inner row element, as the other Node Display checkboxes do.
+    const row = box.parentElement!;
+    expect(row.tagName).toBe('SPAN');
+    expect(row.textContent).toContain('Correct sign-flipped positions');
+    expect(row.parentElement!.tagName).toBe('LABEL');
+  });
+
+  it('disables every control when read-only', () => {
+    setup({ disabled: true });
+    expect(screen.getByLabelText('Correct sign-flipped positions')).toBeDisabled();
+    expect(screen.getByLabelText('Range (km)')).toBeDisabled();
+    expect(screen.getByLabelText('Latitude')).toBeDisabled();
+    expect(screen.getByLabelText('Longitude')).toBeDisabled();
+  });
+
   it('reports the toggle', () => {
     const props = setup({ enabled: false });
     fireEvent.click(screen.getByLabelText('Correct sign-flipped positions'));

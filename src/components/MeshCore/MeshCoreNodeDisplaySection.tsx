@@ -5,7 +5,10 @@ import { useCsrfFetch } from '../../hooks/useCsrfFetch';
 import { useToast } from '../ToastContainer';
 import { useAuth } from '../../contexts/AuthContext';
 import { useSaveBar } from '../../hooks/useSaveBar';
-import { useNodeDisplaySettings, nodeDisplaySettingsQueryKey } from '../../hooks/useNodeDisplaySettings';
+import { useNodeDisplaySettings, useSignFlipFormSettings, nodeDisplaySettingsQueryKey } from '../../hooks/useNodeDisplaySettings';
+import { useSettingsOptional } from '../../contexts/SettingsContext';
+import SignFlipCorrectionSettings from '../settings/SignFlipCorrectionSettings';
+import { clampSignFlipRangeKm } from '../../utils/signFlipPosition';
 import { writeNodeDisplayLocal } from '../../utils/nodeDisplayStorage';
 import {
   NODE_DISPLAY_RANGES,
@@ -46,9 +49,24 @@ const MESHCORE_NODE_DISPLAY_KEYS = [
  */
 type MeshCoreNodeDisplayDraft =
   Record<typeof MESHCORE_NODE_DISPLAY_KEYS[number], number>
-  & { maxInfraNodeAgeHours: number };
+  & { maxInfraNodeAgeHours: number }
+  // Sign-flip correction (#5363), also per source.
+  & {
+    signFlipCorrectionEnabled: boolean;
+    signFlipCorrectionRangeKm: number;
+    signFlipReferenceLatitude: string;
+    signFlipReferenceLongitude: string;
+  };
 
-type MeshCoreNodeDisplayDraftKey = keyof MeshCoreNodeDisplayDraft;
+type MeshCoreNodeDisplayNumericKey =
+  typeof MESHCORE_NODE_DISPLAY_KEYS[number] | 'maxInfraNodeAgeHours';
+
+const SIGN_FLIP_DRAFT_KEYS = [
+  'signFlipCorrectionEnabled',
+  'signFlipCorrectionRangeKm',
+  'signFlipReferenceLatitude',
+  'signFlipReferenceLongitude',
+] as const;
 
 /**
  * MeshCore Node Display settings section (#4412 Phase 4 WP2).
@@ -75,6 +93,9 @@ export const MeshCoreNodeDisplaySection: React.FC<MeshCoreNodeDisplaySectionProp
   const canWrite = hasPermission('settings', 'write', { sourceId });
 
   const settings = useNodeDisplaySettings(sourceId);
+  const signFlip = useSignFlipFormSettings(sourceId);
+  // Optional: this section is also rendered without a SettingsProvider in tests.
+  const distanceUnit = useSettingsOptional()?.distanceUnit ?? 'km';
 
   const buildDraft = useCallback((): MeshCoreNodeDisplayDraft => ({
     maxNodeAgeHours: settings.maxNodeAgeHours,
@@ -82,12 +103,20 @@ export const MeshCoreNodeDisplaySection: React.FC<MeshCoreNodeDisplaySectionProp
     inactiveNodeThresholdHours: settings.inactiveNodeThresholdHours,
     inactiveNodeCheckIntervalMinutes: settings.inactiveNodeCheckIntervalMinutes,
     inactiveNodeCooldownHours: settings.inactiveNodeCooldownHours,
+    signFlipCorrectionEnabled: signFlip.enabled,
+    signFlipCorrectionRangeKm: signFlip.rangeKm,
+    signFlipReferenceLatitude: signFlip.referenceLatitude,
+    signFlipReferenceLongitude: signFlip.referenceLongitude,
   }), [
     settings.maxNodeAgeHours,
     settings.maxInfraNodeAgeHours,
     settings.inactiveNodeThresholdHours,
     settings.inactiveNodeCheckIntervalMinutes,
     settings.inactiveNodeCooldownHours,
+    signFlip.enabled,
+    signFlip.rangeKm,
+    signFlip.referenceLatitude,
+    signFlip.referenceLongitude,
   ]);
 
   const [draft, setDraft] = useState<MeshCoreNodeDisplayDraft>(buildDraft);
@@ -106,11 +135,12 @@ export const MeshCoreNodeDisplaySection: React.FC<MeshCoreNodeDisplaySectionProp
   useEffect(() => {
     setHasChanges(
       MESHCORE_NODE_DISPLAY_KEYS.some((k) => draft[k] !== initial[k])
-      || draft.maxInfraNodeAgeHours !== initial.maxInfraNodeAgeHours,
+      || draft.maxInfraNodeAgeHours !== initial.maxInfraNodeAgeHours
+      || SIGN_FLIP_DRAFT_KEYS.some((k) => draft[k] !== initial[k]),
     );
   }, [draft, initial]);
 
-  const update = (key: MeshCoreNodeDisplayDraftKey, value: number) => {
+  const update = (key: MeshCoreNodeDisplayNumericKey, value: number) => {
     // Clearing a number input yields `parseInt(...) === NaN` — fall back to
     // the current draft value rather than letting NaN reach state, where it
     // would render as the literal string "NaN" and serialize the same way
@@ -128,6 +158,11 @@ export const MeshCoreNodeDisplaySection: React.FC<MeshCoreNodeDisplaySectionProp
           ...Object.fromEntries(MESHCORE_NODE_DISPLAY_KEYS.map((k) => [k, String(draft[k])])),
           // #4899: standalone key, POSTed alongside the four frozen ones.
           maxInfraNodeAgeHours: String(draft.maxInfraNodeAgeHours),
+          // #5363: sign-flip correction, per source like the rest.
+          signFlipCorrectionEnabled: draft.signFlipCorrectionEnabled ? 'true' : 'false',
+          signFlipCorrectionRangeKm: String(clampSignFlipRangeKm(draft.signFlipCorrectionRangeKm)),
+          signFlipReferenceLatitude: draft.signFlipReferenceLatitude.trim(),
+          signFlipReferenceLongitude: draft.signFlipReferenceLongitude.trim(),
         }),
       });
       if (!res.ok) {
@@ -287,6 +322,21 @@ export const MeshCoreNodeDisplaySection: React.FC<MeshCoreNodeDisplaySectionProp
           className="setting-input"
         />
       </div>
+
+      {/* Sign-flipped position correction (#5363). Display only, plus the
+          geo/distance gates that follow it. */}
+      <SignFlipCorrectionSettings
+        enabled={draft.signFlipCorrectionEnabled}
+        rangeKm={draft.signFlipCorrectionRangeKm}
+        referenceLatitude={draft.signFlipReferenceLatitude}
+        referenceLongitude={draft.signFlipReferenceLongitude}
+        distanceUnit={distanceUnit}
+        disabled={!canWrite}
+        onEnabledChange={(v) => setDraft((prev) => ({ ...prev, signFlipCorrectionEnabled: v }))}
+        onRangeKmChange={(v) => setDraft((prev) => ({ ...prev, signFlipCorrectionRangeKm: v }))}
+        onReferenceLatitudeChange={(v) => setDraft((prev) => ({ ...prev, signFlipReferenceLatitude: v }))}
+        onReferenceLongitudeChange={(v) => setDraft((prev) => ({ ...prev, signFlipReferenceLongitude: v }))}
+      />
     </div>
   );
 };

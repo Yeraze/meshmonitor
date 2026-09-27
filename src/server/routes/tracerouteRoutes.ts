@@ -8,6 +8,7 @@ import { ok, fail } from '../utils/apiResponse.js';
 import { maskTraceroutesByChannel } from '../utils/nodeEnhancer.js';
 import { hasRouteData, parseHopArray } from '../../utils/tracerouteSegments.js';
 import { getMaxNodeAgeHours } from '../services/nodeDisplaySettings.js';
+import { applySignFlipToTraceroutes } from '../services/signFlipCorrection.js';
 
 const router = Router();
 
@@ -48,7 +49,8 @@ router.get('/recent', async (req: Request, res: Response) => {
       return { ...tr, hopCount };
     });
 
-    res.json(traceroutesWithHops);
+    // #5363: stored routePositions snapshots drawn at the corrected point.
+    res.json(await applySignFlipToTraceroutes(traceroutesWithHops, recentSourceId));
   } catch (error) {
     logger.error('Error fetching recent traceroutes:', error);
     res.status(500).json({ error: 'Failed to fetch recent traceroutes' });
@@ -94,7 +96,7 @@ router.get('/history/:fromNodeNum/:toNodeNum', requirePermission('traceroute', '
       return { ...tr, hopCount };
     });
 
-    res.json(traceroutesWithHops);
+    res.json(await applySignFlipToTraceroutes(traceroutesWithHops, historySourceId)); // #5363
   } catch (error) {
     logger.error('Error fetching traceroute history:', error);
     res.status(500).json({ error: 'Failed to fetch traceroute history' });

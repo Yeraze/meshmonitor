@@ -26,6 +26,8 @@ export interface SignFlipCorrectionSettingsProps {
   onRangeKmChange: (value: number) => void;
   onReferenceLatitudeChange: (value: string) => void;
   onReferenceLongitudeChange: (value: string) => void;
+  /** Read-only form (no settings:write). */
+  disabled?: boolean;
 }
 
 export const SignFlipCorrectionSettings: React.FC<SignFlipCorrectionSettingsProps> = ({
@@ -38,6 +40,7 @@ export const SignFlipCorrectionSettings: React.FC<SignFlipCorrectionSettingsProp
   onRangeKmChange,
   onReferenceLatitudeChange,
   onReferenceLongitudeChange,
+  disabled = false,
 }) => {
   const { t } = useTranslation();
   const isMiles = distanceUnit === 'mi';
@@ -54,14 +57,21 @@ export const SignFlipCorrectionSettings: React.FC<SignFlipCorrectionSettingsProp
       </h4>
 
       <div className="setting-item">
-        <label className={styles.checkboxLabel}>
-          <input
-            id="signFlipCorrectionEnabled"
-            type="checkbox"
-            checked={enabled}
-            onChange={(e) => onEnabledChange(e.target.checked)}
-          />
-          {t('settings.sign_flip.enabled', 'Correct sign-flipped positions')}
+        {/* The inner row is what sits the box beside its text: the global
+            `.setting-item label` is a column flexbox that outranks a module
+            class on the label itself. Same shape as the other Node Display
+            checkbox rows. */}
+        <label>
+          <span className={styles.checkboxRow}>
+            <input
+              id="signFlipCorrectionEnabled"
+              type="checkbox"
+              checked={enabled}
+              disabled={disabled}
+              onChange={(e) => onEnabledChange(e.target.checked)}
+            />
+            {t('settings.sign_flip.enabled', 'Correct sign-flipped positions')}
+          </span>
         </label>
         <p className="setting-description">
           {t(
@@ -81,7 +91,7 @@ export const SignFlipCorrectionSettings: React.FC<SignFlipCorrectionSettingsProp
           min={displayMin}
           max={displayMax}
           step="1"
-          disabled={!enabled}
+          disabled={disabled || !enabled}
           value={displayRange}
           onChange={(e) => {
             const v = parseInt(e.target.value, 10);
@@ -107,7 +117,7 @@ export const SignFlipCorrectionSettings: React.FC<SignFlipCorrectionSettingsProp
             id="signFlipReferenceLatitude"
             type="text"
             inputMode="decimal"
-            disabled={!enabled}
+            disabled={disabled || !enabled}
             value={referenceLatitude}
             placeholder={t('settings.sign_flip.latitude_placeholder', 'Latitude')}
             aria-label={t('settings.sign_flip.latitude_placeholder', 'Latitude')}
@@ -118,7 +128,7 @@ export const SignFlipCorrectionSettings: React.FC<SignFlipCorrectionSettingsProp
             id="signFlipReferenceLongitude"
             type="text"
             inputMode="decimal"
-            disabled={!enabled}
+            disabled={disabled || !enabled}
             value={referenceLongitude}
             placeholder={t('settings.sign_flip.longitude_placeholder', 'Longitude')}
             aria-label={t('settings.sign_flip.longitude_placeholder', 'Longitude')}

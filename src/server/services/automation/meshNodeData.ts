@@ -7,6 +7,7 @@ import databaseService from '../../../services/database.js';
 import { ALL_SOURCES } from '../../../db/repositories/index.js';
 import type { NodeDataProvider, NodeFacts, StaleCandidate } from './engineContext.js';
 import { sourceProtocol } from './channelUnify.js';
+import { getCachedSignFlipContext, correctLatLon } from '../signFlipCorrection.js';
 import { sourceManagerRegistry } from '../../sourceManagerRegistry.js';
 import { isAnyMeshCoreSourceType } from '../../../utils/nodeTypeCategory.js';
 import { isMeshCoreManager } from '../../sourceManagerTypes.js';
@@ -25,6 +26,13 @@ export function createMeshNodeDataProvider(): NodeDataProvider {
       } catch {
         return null;
       }
+    },
+
+    // #5363: geofences judge the sign-flip corrected point when correction is
+    // on for the source (the same detector and reference the maps use).
+    async correctPosition(sourceId, latitude, longitude, precisionBits) {
+      const c = correctLatLon(latitude, longitude, await getCachedSignFlipContext(sourceId), precisionBits);
+      return { latitude: c.latitude ?? latitude, longitude: c.longitude ?? longitude };
     },
 
     async getTelemetry(_sourceId, nodeNum, telemetryType) {

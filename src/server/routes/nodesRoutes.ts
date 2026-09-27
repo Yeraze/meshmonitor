@@ -27,7 +27,7 @@ import { resolveSourceManager, resolveOwnMeshtasticManager } from '../utils/reso
 import { requireMeshtasticDeviceSource } from '../utils/requireMeshtasticDeviceSource.js';
 import { isMeshCoreManager, getPrimaryMeshtasticManager } from '../sourceManagerTypes.js';
 import { filterNodesByChannelPermission, enhanceNodeForClient, checkNodeChannelAccess, attachUptimeToNodes } from '../utils/nodeEnhancer.js';
-import { createSignFlipResolver, loadSignFlipContext, applySignFlipCorrection, rowSourceId } from '../services/signFlipCorrection.js';
+import { createSignFlipResolver, applySignFlipCorrection, rowSourceId } from '../services/signFlipCorrection.js';
 import { pivotPositionHistory } from '../utils/positionHistoryPivot.js';
 import { resolveRequestSourceId } from '../utils/sourceResolver.js';
 import { requireSourceId } from '../utils/requireSourceId.js';
@@ -92,7 +92,8 @@ router.get('/nodes', optionalAuth(), async (req, res) => {
     // #5363: display-only sign-flip correction. Only for a single-source list:
     // an unscoped call returns rows merged across sources, which have no one
     // reference point to correct against.
-    const nodesSignFlipCtx = await loadSignFlipContext(nodesSourceId);
+    const signFlipFor = createSignFlipResolver();
+    const nodesSignFlipCtx = await signFlipFor(nodesSourceId);
     const enhancedNodes = (await Promise.all(filteredNodes.map(node => enhanceNodeForClient(node, (req as any).user, estimatedPositions))))
       .map(node => applySignFlipCorrection(node, nodesSignFlipCtx));
 
@@ -118,6 +119,7 @@ router.get('/nodes', optionalAuth(), async (req, res) => {
     const includeAllMeshcore = req.query.includeAllMeshcore === 'true';
     const meshcoreNodes: any[] = [];
     for (const mgr of meshcoreManagers) {
+      const mcSignFlipCtx = await signFlipFor(mgr.sourceId); // #5363
       for (const n of await mgr.getAllNodes()) {
         const hasPosition = n.latitude != null && n.longitude != null && !(n.latitude === 0 && n.longitude === 0);
         if (!hasPosition && !includeAllMeshcore) continue;
@@ -126,7 +128,7 @@ router.get('/nodes', optionalAuth(), async (req, res) => {
           : Math.floor(Date.now() / 1000);
         const pubKey = n.publicKey || '';
         const nodeId = `mc:${mgr.sourceId}:${pubKey.substring(0, 12)}`;
-        meshcoreNodes.push({
+        meshcoreNodes.push(applySignFlipCorrection({
           nodeId,
           nodeNum: 0,
           sourceId: mgr.sourceId,
@@ -146,7 +148,7 @@ router.get('/nodes', optionalAuth(), async (req, res) => {
           lastHeard,
           hopsAway: 0,
           role: 0,
-        });
+        }, mcSignFlipCtx));
       }
     }
 

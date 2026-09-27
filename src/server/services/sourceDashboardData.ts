@@ -33,7 +33,7 @@ import {
 import { modemPresetChannelName, TransportMechanism } from '../constants/meshtastic.js';
 import { transformChannel } from '../utils/channelView.js';
 import { getMaxNodeAgeHours } from './nodeDisplaySettings.js';
-import { loadSignFlipContext, applySignFlipCorrection, getDisplayDbNodePosition } from './signFlipCorrection.js';
+import { loadSignFlipContext, applySignFlipCorrection, getDisplayDbNodePosition, applySignFlipToTraceroute } from './signFlipCorrection.js';
 import type { ResourceType } from '../../types/permission.js';
 import type { User } from '../../types/auth.js';
 
@@ -68,6 +68,8 @@ export async function buildSourceNodes(source: SourceRow, user: ReqUser): Promis
     // Narrowing device-only meant those never reached the map.
     const mcManager = _raw && isAnyMeshCoreManager(_raw) ? _raw : null;
     const mcNodes: any[] = [];
+    // #5363: display-only sign-flip correction against this source's reference.
+    const mcSignFlipCtx = mcManager ? await loadSignFlipContext(source.id) : null;
     if (mcManager) {
       for (const n of await mcManager.getAllNodes()) {
         if (n.latitude == null || n.longitude == null) continue;
@@ -77,7 +79,7 @@ export async function buildSourceNodes(source: SourceRow, user: ReqUser): Promis
           : Math.floor(Date.now() / 1000);
         const pubKey = n.publicKey || '';
         const nodeId = `mc:${mcManager.sourceId}:${pubKey.substring(0, 12)}`;
-        mcNodes.push({
+        mcNodes.push(applySignFlipCorrection({
           nodeId,
           nodeNum: 0,
           sourceId: mcManager.sourceId,
@@ -103,7 +105,7 @@ export async function buildSourceNodes(source: SourceRow, user: ReqUser): Promis
           hopsAway: 0,
           role: 0,
           advType: typeof n.advType === 'number' ? n.advType : 0,
-        });
+        }, mcSignFlipCtx));
       }
     }
     return mcNodes;
@@ -236,7 +238,10 @@ export async function buildSourceTraceroutes(
   const traceroutes = await databaseService.traceroutes.getAllTraceroutes(clamped, source.id);
   // Channel-gate traceroutes the same way nodes are gated so their embedded
   // routePositions don't draw segments for routes the user can't view (#3092).
-  return maskTraceroutesByChannel(traceroutes, user, source.id);
+  const masked = await maskTraceroutesByChannel(traceroutes, user, source.id);
+  // #5363: stored routePositions snapshots drawn at the corrected point.
+  const signFlipCtx = await loadSignFlipContext(source.id);
+  return masked.map(tr => applySignFlipToTraceroute(tr, signFlipCtx));
 }
 
 /**

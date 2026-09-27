@@ -16,7 +16,16 @@ vi.mock('../../services/database.js', () => ({
   },
 }));
 
+const managers = new Map<string, { sourceType: string; getLocalNode?: () => unknown }>();
+vi.mock('../sourceManagerRegistry.js', () => ({
+  sourceManagerRegistry: { getManager: (id: string) => managers.get(id) },
+}));
+
 import {
+  correctRoutePositionsJson,
+  applySignFlipToTraceroute,
+  applySignFlipToTraceroutes,
+  applySignFlipToMeshCoreRows,
   applySignFlipCorrection,
   loadSignFlipContext,
   createSignFlipResolver,
@@ -38,6 +47,7 @@ beforeEach(() => {
   settingsStore.clear();
   localNodeNums.clear();
   nodeRows.clear();
+  managers.clear();
 });
 
 describe('applySignFlipCorrection', () => {
@@ -172,5 +182,77 @@ describe('rowSourceId', () => {
     expect(rowSourceId({ sourceId: '' })).toBeUndefined();
     expect(rowSourceId({})).toBeUndefined();
     expect(rowSourceId(null)).toBeUndefined();
+  });
+});
+
+describe('traceroute routePositions snapshots (#5363)', () => {
+  const snapshot = JSON.stringify({
+    100: { lat: 27.95, lng: -82.46, alt: 5 }, // near the reference: untouched
+    111: { lat: 27.9, lng: 82.5 },            // flipped longitude: corrected
+  });
+
+  it('corrects only the flipped points and keeps other fields', () => {
+    const out = JSON.parse(correctRoutePositionsJson(snapshot, CTX)!);
+    expect(out['100']).toEqual({ lat: 27.95, lng: -82.46, alt: 5 });
+    expect(out['111'].lat).toBeCloseTo(27.9);
+    expect(out['111'].lng).toBeCloseTo(-82.5);
+  });
+
+  it('returns the input when correction is off, nothing changes, or it does not parse', () => {
+    expect(correctRoutePositionsJson(snapshot, null)).toBe(snapshot);
+    const near = JSON.stringify({ 1: { lat: 28, lng: -82 } });
+    expect(correctRoutePositionsJson(near, CTX)).toBe(near);
+    expect(correctRoutePositionsJson('not json', CTX)).toBe('not json');
+    expect(correctRoutePositionsJson(null, CTX)).toBeNull();
+  });
+
+  it('copies the traceroute row only when a point changed', () => {
+    const tr = { id: 1, routePositions: snapshot };
+    const out = applySignFlipToTraceroute(tr, CTX);
+    expect(out).not.toBe(tr);
+    expect(tr.routePositions).toBe(snapshot); // stored row untouched
+    const plain = { id: 2, routePositions: JSON.stringify({ 1: { lat: 28, lng: -82 } }) };
+    expect(applySignFlipToTraceroute(plain, CTX)).toBe(plain);
+  });
+
+  it('corrects each row against its own source', async () => {
+    setSetting('src-a', SIGN_FLIP_SETTING_KEYS.enabled, 'true');
+    setSetting('src-a', SIGN_FLIP_SETTING_KEYS.referenceLat, '27.95');
+    setSetting('src-a', SIGN_FLIP_SETTING_KEYS.referenceLon, '-82.46');
+    const rows = [
+      { sourceId: 'src-a', routePositions: snapshot },
+      { sourceId: 'src-b', routePositions: snapshot },
+    ];
+    const [a, b] = await applySignFlipToTraceroutes(rows);
+    expect(JSON.parse(a.routePositions!)['111'].lng).toBeCloseTo(-82.5);
+    expect(b.routePositions).toBe(snapshot);
+  });
+});
+
+describe('MeshCore (#5363)', () => {
+  it("uses a MeshCore companion's own advertised position as the reference", async () => {
+    managers.set('mc-1', { sourceType: 'meshcore', getLocalNode: () => ({ latitude: 27.95, longitude: -82.46 }) });
+    setSetting('mc-1', SIGN_FLIP_SETTING_KEYS.enabled, 'true');
+    expect((await loadSignFlipContext('mc-1'))?.reference).toEqual(TAMPA);
+  });
+
+  it('has no own-node reference for a MeshCore MQTT ingest source, or a companion without a fix', async () => {
+    managers.set('mc-mqtt', { sourceType: 'meshcore_mqtt' });
+    setSetting('mc-mqtt', SIGN_FLIP_SETTING_KEYS.enabled, 'true');
+    expect(await loadSignFlipContext('mc-mqtt')).toBeNull();
+    managers.set('mc-2', { sourceType: 'meshcore', getLocalNode: () => ({ latitude: null, longitude: null }) });
+    setSetting('mc-2', SIGN_FLIP_SETTING_KEYS.enabled, 'true');
+    expect(await loadSignFlipContext('mc-2')).toBeNull();
+  });
+
+  it('corrects MeshCore contact rows (flat lat/lon) when on, and leaves them when off', async () => {
+    managers.set('mc-1', { sourceType: 'meshcore', getLocalNode: () => ({ latitude: 27.95, longitude: -82.46 }) });
+    const rows = [{ publicKey: 'ab', latitude: 27.9, longitude: 82.5 }];
+    expect(await applySignFlipToMeshCoreRows(rows, 'mc-1')).toBe(rows); // off
+    setSetting('mc-1', SIGN_FLIP_SETTING_KEYS.enabled, 'true');
+    const [row] = await applySignFlipToMeshCoreRows(rows, 'mc-1');
+    expect(row.longitude).toBeCloseTo(-82.5);
+    expect(row.positionSignFlipCorrected).toBe(true);
+    expect(row.reportedLongitude).toBeCloseTo(82.5);
   });
 });
