@@ -160,4 +160,43 @@ describe('MeshtasticManager - lastHeard replay guard coverage (#4192/#4445)', ()
       expect(positionTimestampArg()).toBeGreaterThanOrEqual(before);
     });
   });
+
+  // #5401: a NodeInfo from the radio's NodeDB carries whatever position the
+  // radio last stored, possibly days old. It must be dated by the fix's own
+  // time (or the radio's lastHeard), never by "now".
+  describe('processNodeInfoProtobuf position timestamp (#5401)', () => {
+    const nodeNum = 0x55555555;
+    function nodeInfoTimestampArg(): number | undefined {
+      const withPos = mockUpsertNodeAsync.mock.calls.filter((c: any[]) => c[0].latitude != null);
+      expect(withPos.length).toBeGreaterThan(0);
+      return withPos[withPos.length - 1][0].positionTimestamp;
+    }
+
+    it("dates a NodeDB position by the fix's own time", async () => {
+      const fixTime = nowSec - 2 * 24 * 60 * 60;
+      await manager.processNodeInfoProtobuf({
+        num: nodeNum,
+        lastHeard: nowSec - 60,
+        position: { latitudeI: 407128000, longitudeI: -740060000, altitude: 800, time: fixTime, precisionBits: 32 },
+      });
+      expect(nodeInfoTimestampArg()).toBe(fixTime * 1000);
+    });
+
+    it("falls back to the radio's lastHeard when the fix has no time", async () => {
+      await manager.processNodeInfoProtobuf({
+        num: nodeNum,
+        lastHeard: nowSec - 600,
+        position: { latitudeI: 407128000, longitudeI: -740060000, altitude: 800 },
+      });
+      expect(nodeInfoTimestampArg()).toBe((nowSec - 600) * 1000);
+    });
+
+    it('leaves the stored stamp alone when neither time is known', async () => {
+      await manager.processNodeInfoProtobuf({
+        num: nodeNum,
+        position: { latitudeI: 407128000, longitudeI: -740060000, altitude: 800 },
+      });
+      expect(nodeInfoTimestampArg()).toBeUndefined();
+    });
+  });
 });
