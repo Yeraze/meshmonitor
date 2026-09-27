@@ -54,6 +54,8 @@ export interface AircraftAgeOutDeps {
   addAircraftIgnore(nodeNum: number, sourceId: string, nodeId: string, longName?: string, shortName?: string): Promise<boolean>;
   markAgedOut(nodeNum: number, sourceId: string, atMs: number): Promise<void>;
   deleteNode(nodeNum: number, sourceId: string): Promise<void>;
+  /** Tracked assets (#5354) — global nodeNums the age-out must never touch. */
+  getAssetNodeNums(): Promise<Set<number>>;
   getAgedOutAt(nodeNum: number, sourceId: string): Promise<number | null>;
   isIgnoredCached(nodeNum: number, sourceId: string): boolean;
   liftAircraftIgnore(nodeNum: number, sourceId: string): Promise<boolean>;
@@ -111,6 +113,7 @@ function defaultDeps(): AircraftAgeOutDeps {
     deleteNode: async (nodeNum, sourceId) => {
       await databaseService.deleteNodeAsync(nodeNum, sourceId);
     },
+    getAssetNodeNums: async () => new Set((await databaseService.getAssetNodesMapAsync()).keys()),
     getAgedOutAt: (nodeNum, sourceId) => databaseService.getAircraftAgedOutAtAsync(nodeNum, sourceId),
     isIgnoredCached: (nodeNum, sourceId) => databaseService.ignoredNodes.isIgnoredCached(nodeNum, sourceId),
     liftAircraftIgnore: (nodeNum, sourceId) => databaseService.liftAircraftIgnoreAsync(nodeNum, sourceId),
@@ -194,9 +197,13 @@ export class AircraftAgeOutService {
     if (ageOut.enabled) {
       const localNodeNum = await this.deps.getLocalNodeNum(sourceId);
       const cutoffSec = (now - ageOut.hours * 3_600_000) / 1000;
+      // One asset load per sweep (#5354).
+      const assets = await this.deps.getAssetNodeNums();
       for (const c of candidates) {
         if (fixedNow.has(c.nodeNum)) continue;
         if (c.isFavorite || c.isIgnored) continue;
+        // A tracked asset is never aged out, whether the action is ignore or delete.
+        if (assets.has(Number(c.nodeNum))) continue;
         if (localNodeNum != null && c.nodeNum === localNodeNum) continue;
         // A never-heard row has nothing to age from; leave it.
         if (c.lastHeard == null || c.lastHeard >= cutoffSec) continue;

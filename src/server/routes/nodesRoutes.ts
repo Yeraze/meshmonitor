@@ -84,6 +84,7 @@ router.get('/nodes', optionalAuth(), async (req, res) => {
     const mgr = getPrimaryMeshtasticManager(sourceManagerRegistry) ?? fallbackManager;
     const allNodes = await mgr.getAllNodesAsync(nodesSourceId);
     const estimatedPositions = await databaseService.getAllNodesEstimatedPositionsAsync();
+    const assets = await databaseService.getAssetNodesMapAsync();
 
     // Filter nodes based on channel read permissions — scope the permission
     // lookup to the requested source so a guest with channel access on one
@@ -94,7 +95,7 @@ router.get('/nodes', optionalAuth(), async (req, res) => {
     // reference point to correct against.
     const signFlipFor = createSignFlipResolver();
     const nodesSignFlipCtx = await signFlipFor(nodesSourceId);
-    const enhancedNodes = (await Promise.all(filteredNodes.map(node => enhanceNodeForClient(node, (req as any).user, estimatedPositions))))
+    const enhancedNodes = (await Promise.all(filteredNodes.map(node => enhanceNodeForClient(node, (req as any).user, estimatedPositions, undefined, assets))))
       .map(node => applySignFlipCorrection(node, nodesSignFlipCtx));
 
     // Enrich each node with its latest uptime from telemetry (#4814). Uptime is
@@ -170,6 +171,8 @@ router.get('/nodes/active', optionalAuth(), async (req, res) => {
     // Filter nodes based on channel read permissions (source-scoped, #3745)
     const dbNodes = await filterNodesByChannelPermission(allDbNodes, (req as any).user, activeNodesSourceId);
 
+    const assets = await databaseService.getAssetNodesMapAsync();
+
     // Map raw DB nodes to DeviceInfo format then enhance
     const signFlipFor = createSignFlipResolver(); // #5363, per row's own source
     const maskedNodes = await Promise.all(dbNodes.map(async node => {
@@ -189,7 +192,7 @@ router.get('/nodes/active', optionalAuth(), async (req, res) => {
         deviceInfo.position = { latitude: node.latitude, longitude: node.longitude, altitude: node.altitude };
       }
 
-      const enhanced = await enhanceNodeForClient(deviceInfo, (req as any).user);
+      const enhanced = await enhanceNodeForClient(deviceInfo, (req as any).user, undefined, undefined, assets);
       return applySignFlipCorrection(enhanced, await signFlipFor(rowSourceId(node)));
     }));
 

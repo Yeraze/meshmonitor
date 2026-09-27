@@ -257,9 +257,14 @@ export function useSourceView(params: UseSourceViewParams) {
       const node = nodes.find(n => n.nodeNum === nodeNum);
       const nodeName = node?.user?.shortName || node?.user?.longName || `Node ${nodeNum}`;
 
+      // #5354: a manual delete is still allowed for a tracked asset, but say
+      // plainly that its retained history goes with it.
+      const assetWarning = node?.asset
+        ? `${t('purgeModal.assetWarning', 'This node is a tracked asset. Deleting it also removes its retained history.')}\n\n`
+        : '';
       if (
         !window.confirm(
-          `Are you sure you want to DELETE ${nodeName} from the local database?\n\nThis will remove:\n- The node from the map and node list\n- All messages with this node\n- All traceroutes for this node\n- All telemetry data for this node\n\nThis action cannot be undone.`
+          `${assetWarning}Are you sure you want to DELETE ${nodeName} from the local database?\n\nThis will remove:\n- The node from the map and node list\n- All messages with this node\n- All traceroutes for this node\n- All telemetry data for this node\n\nThis action cannot be undone.`
         )
       ) {
         return;
@@ -313,9 +318,12 @@ export function useSourceView(params: UseSourceViewParams) {
       const node = nodes.find(n => n.nodeNum === nodeNum);
       const nodeName = node?.user?.shortName || node?.user?.longName || `Node ${nodeNum}`;
 
+      const assetWarning = node?.asset
+        ? `${t('purgeModal.assetWarning', 'This node is a tracked asset. Deleting it also removes its retained history.')}\n\n`
+        : '';
       if (
         !window.confirm(
-          `Are you sure you want to PURGE ${nodeName} from BOTH the connected device AND the local database?\n\nThis will:\n- Send an admin command to remove the node from the device NodeDB\n- Remove the node from the map and node list\n- Delete all messages with this node\n- Delete all traceroutes for this node\n- Delete all telemetry data for this node\n\nThis action cannot be undone and affects both the device and local database.`
+          `${assetWarning}Are you sure you want to PURGE ${nodeName} from BOTH the connected device AND the local database?\n\nThis will:\n- Send an admin command to remove the node from the device NodeDB\n- Remove the node from the map and node list\n- Delete all messages with this node\n- Delete all traceroutes for this node\n- Delete all telemetry data for this node\n\nThis action cannot be undone and affects both the device and local database.`
         )
       ) {
         return;

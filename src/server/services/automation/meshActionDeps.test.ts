@@ -8,7 +8,11 @@ vi.mock('../../sourceManagerRegistry.js', () => ({
   sourceManagerRegistry: { getManager: (id: string) => getManager(id) },
 }));
 // The deps module also imports these at load time; stub to harmless objects.
-vi.mock('../../../services/database.js', () => ({ default: {} }));
+const mockDb = vi.hoisted(() => ({
+  getAssetNodeAsync: vi.fn(),
+  deleteNodeAsync: vi.fn(),
+}));
+vi.mock('../../../services/database.js', () => ({ default: mockDb }));
 vi.mock('../appriseNotificationService.js', () => ({ appriseNotificationService: {} }));
 vi.mock('../../utils/scriptRunner.js', () => ({ runScript: vi.fn() }));
 
@@ -473,5 +477,31 @@ describe('createMeshActionDeps — hop-limit override (#5121)', () => {
     await deps.sendTapback({ sourceId: 'mt', emoji: '👍', channel: 2, replyId: 9 });
 
     expect(sendTextMessage).toHaveBeenCalledWith('👍', 2, undefined, 9, 1);
+  });
+});
+
+// #5354: the automation "delete node" action is an automated cleanup, so it
+// must skip a tracked asset (a manual Delete Node still works).
+describe('createMeshActionDeps manageNode delete — tracked assets (#5354)', () => {
+  beforeEach(() => {
+    getManager.mockReset().mockReturnValue({ sendTextMessage: vi.fn() });
+    mockDb.getAssetNodeAsync.mockReset().mockResolvedValue(null);
+    mockDb.deleteNodeAsync.mockReset().mockResolvedValue(undefined);
+  });
+
+  it('skips a tracked asset and reports why', async () => {
+    mockDb.getAssetNodeAsync.mockResolvedValue({ nodeNum: 7, retentionDays: 90 });
+    const deps = createMeshActionDeps();
+
+    const out = await deps.manageNode({ sourceId: 'mt', nodeNum: 7, op: 'delete' });
+
+    expect(out).toEqual({ skipped: true, reason: 'node is a tracked asset' });
+    expect(mockDb.deleteNodeAsync).not.toHaveBeenCalled();
+  });
+
+  it('still deletes a node that is not an asset', async () => {
+    const deps = createMeshActionDeps();
+    await deps.manageNode({ sourceId: 'mt', nodeNum: 8, op: 'delete' });
+    expect(mockDb.deleteNodeAsync).toHaveBeenCalledWith(8, 'mt');
   });
 });

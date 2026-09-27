@@ -115,6 +115,9 @@ class MqttGeoSweepService {
     // returns 'no-geo' for every node, so this naturally no-ops.
     const filter = new MqttPacketFilter({ geo });
     const allNodes = await databaseService.nodes.getAllNodes(sourceId);
+    // Tracked assets (#5354): still geo-ignored (the bbox is the operator's
+    // per-source policy), but never purged — the retained history survives.
+    const assets = await databaseService.getAssetNodesMapAsync();
     // #5363: judge the sign-flip corrected point when that is on for this source.
     const signFlipCtx = await loadSignFlipContext(sourceId);
 
@@ -151,7 +154,10 @@ class MqttGeoSweepService {
         node.shortName ?? undefined,
       );
 
-      if (inserted) {
+      if (inserted && assets.has(nodeNum)) {
+        ignored++;
+        logger.info(`geo sweep [${sourceId}]: node ${nodeNum} is a tracked asset, geo-ignored but not purged`);
+      } else if (inserted) {
         ignored++;
         // Purge-once: only the true→false transition (a NEW geo-ignore row)
         // purges. If addGeoIgnoreAsync returned false the node was already

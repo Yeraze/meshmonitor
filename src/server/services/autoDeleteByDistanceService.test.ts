@@ -9,6 +9,8 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 const getSettingForSource = vi.fn();
 const getAllNodes = vi.fn();
 const addDistanceDeleteLogEntry = vi.fn();
+const deleteNodeAsync = vi.fn();
+const getAssetNodesMapAsync = vi.fn();
 
 vi.mock('../../services/database.js', () => ({
   default: {
@@ -18,8 +20,9 @@ vi.mock('../../services/database.js', () => ({
     },
     nodes: { getAllNodes: (...a: unknown[]) => getAllNodes(...a) },
     misc: { addDistanceDeleteLogEntry: (...a: unknown[]) => addDistanceDeleteLogEntry(...a) },
-    deleteNodeAsync: vi.fn(),
+    deleteNodeAsync: (...a: unknown[]) => deleteNodeAsync(...a),
     setNodeIgnoredAsync: vi.fn(),
+    getAssetNodesMapAsync: () => getAssetNodesMapAsync(),
   },
 }));
 
@@ -41,6 +44,8 @@ describe('autoDeleteByDistanceService — per-source run guard (#3901)', () => {
     getSettingForSource.mockReset();
     getAllNodes.mockReset().mockResolvedValue([]);
     addDistanceDeleteLogEntry.mockReset().mockResolvedValue(undefined);
+    deleteNodeAsync.mockReset().mockResolvedValue(undefined);
+    getAssetNodesMapAsync.mockReset().mockResolvedValue(new Map());
   });
 
   it('lets a different source run while one source is in-flight, and skips the same source', async () => {
@@ -75,6 +80,29 @@ describe('autoDeleteByDistanceService — per-source run guard (#3901)', () => {
     // Release A and let it finish cleanly.
     releaseA();
     await pA1;
+  });
+
+  it('skips a tracked asset beyond range and still deletes a plain node (#5354)', async () => {
+    getSettingForSource.mockImplementation((_s: string, key: string) => {
+      const vals: Record<string, string> = {
+        autoDeleteByDistanceLat: '0',
+        autoDeleteByDistanceLon: '0',
+        autoDeleteByDistanceThresholdKm: '100',
+        autoDeleteByDistanceAction: 'delete',
+      };
+      return Promise.resolve(vals[key] ?? null);
+    });
+    getAllNodes.mockResolvedValue([
+      { nodeNum: 1, nodeId: '!00000001', latitude: 10, longitude: 10, sourceId: 'C' },
+      { nodeNum: 2, nodeId: '!00000002', latitude: 10, longitude: 10, sourceId: 'C' },
+    ]);
+    getAssetNodesMapAsync.mockResolvedValue(new Map([[1, { retentionDays: 90 }]]));
+
+    const result = await autoDeleteByDistanceService.runDeleteCycle('C');
+
+    expect(result).toEqual({ deletedCount: 1 });
+    expect(deleteNodeAsync).toHaveBeenCalledTimes(1);
+    expect(deleteNodeAsync).toHaveBeenCalledWith(2, 'C');
   });
 
   it('clears the guard after a cycle completes, so the same source can run again', async () => {

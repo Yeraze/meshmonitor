@@ -372,6 +372,12 @@ export interface DeviceInfo {
   /** Radius of the estimate in km, when known. Only set with positionIsEstimated. */
   positionEstimateUncertaintyKm?: number;
   /**
+   * Tracked-asset flag (#5354). Set by enhanceNodeForClient from the global
+   * `asset_nodes` table; absent when the node is not an asset. Forces the
+   * client's `isMobile` on, but never touches the `mobile` column.
+   */
+  asset?: { retentionDays: number };
+  /**
    * #5363: `position` was moved to the mirror point because the reported fix
    * looks sign-flipped (display only; the stored fix is unchanged). The
    * reported coordinates ride along so the UI can show them.

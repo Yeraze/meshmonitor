@@ -44,6 +44,8 @@ export interface PooledNodeInput {
   longitudeOverride?: number | null;
   positionPrecisionBits?: number | null;
   mobile?: number | null;
+  /** Tracked asset (#5354) — global per nodeNum, so every row of a node agrees. */
+  asset?: boolean | null;
   lastHeard?: number | null;
   updatedAt?: number | null;
   // Tier C fold-in flags (#4964 Phase 3 WP2) — see PooledNode's JSDoc for the
@@ -75,6 +77,11 @@ export interface PooledNode {
   longitude: number | null;
   positionPrecisionBits: number | null;
   mobile: boolean;
+  /**
+   * Tracked asset (#5354). Rules that care whether a node is fixed treat an
+   * asset as mobile; `mobile` itself stays the persisted heuristic value.
+   */
+  asset?: boolean;
   /** max across rows — the freshness proxy; see module header. */
   lastHeardMs: number | null;
   sourceIds: string[]; // sorted, deduped
@@ -229,6 +236,7 @@ export function buildPooledNodeSnapshot(rows: PooledNodeInput[]): Map<number, Po
       longitude: position?.longitude ?? null,
       positionPrecisionBits: precisionValues.length > 0 ? Math.min(...precisionValues) : null,
       mobile: groupRows.some((r) => !!r.mobile),
+      asset: groupRows.some((r) => !!r.asset),
       lastHeardMs: freshnessValues.length > 0 ? Math.max(...freshnessValues) : null,
       sourceIds: Array.from(new Set(groupRows.map((r) => r.sourceId))).sort(),
       isExcessivePackets: groupRows.some((r) => !!r.isExcessivePackets),

@@ -5,6 +5,7 @@ import type { ResourceType, PermissionSet } from '../../types/permission.js';
 import databaseService from '../../services/database.js';
 import { isBogusPosition } from '../../utils/nullIsland.js';
 import { CHANNEL_DB_OFFSET } from '../constants/meshtastic.js';
+import { effectiveIsMobile } from '../../utils/assetTracking.js';
 
 /**
  * Effective position fields for a database node row.
@@ -74,17 +75,29 @@ export function getEffectiveDbNodePosition(
 }
 
 /**
- * Helper to enhance a node with position priority logic and privacy masking
+ * Helper to enhance a node with position priority logic and privacy masking.
+ *
+ * `assets` (#5354) is the global tracked-asset map, loaded once per request.
+ * An asset gets `asset: { retentionDays }` and `isMobile: true` — a computed
+ * overlay only. `node.mobile` (the heuristic column) is passed through as-is,
+ * so nothing downstream that reads it (becameMobile, automation tokens) sees
+ * the asset flag.
+ * Keep in step with the same overlay in `buildSourceNodes` (sourceDashboardData.ts).
  */
 export async function enhanceNodeForClient(
   node: DeviceInfo,
   user: User | null,
   estimatedPositions?: Map<string, { latitude: number; longitude: number; uncertaintyKm?: number | null }>,
-  canViewPrivateOverride?: boolean
+  canViewPrivateOverride?: boolean,
+  assets?: Map<number, { retentionDays: number }>
 ): Promise<DeviceInfo & { isMobile: boolean }> {
-  if (!node.user?.id) return { ...node, isMobile: false, positionIsOverride: false, positionIsEstimated: false };
+  const assetEntry = assets?.get(Number(node.nodeNum));
+  const asset = assetEntry ? { retentionDays: assetEntry.retentionDays } : undefined;
+  if (!node.user?.id) {
+    return { ...node, asset, isMobile: effectiveIsMobile(node.mobile, asset), positionIsOverride: false, positionIsEstimated: false };
+  }
 
-  const enhancedNode = { ...node, isMobile: node.mobile === 1, positionIsOverride: false, positionIsEstimated: false };
+  const enhancedNode = { ...node, asset, isMobile: effectiveIsMobile(node.mobile, asset), positionIsOverride: false, positionIsEstimated: false };
 
   // Priority 1: Check for position override
   const hasOverride = node.positionOverrideEnabled === true && node.latitudeOverride != null && node.longitudeOverride != null;

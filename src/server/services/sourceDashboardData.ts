@@ -33,6 +33,7 @@ import {
 import { modemPresetChannelName, TransportMechanism } from '../constants/meshtastic.js';
 import { transformChannel } from '../utils/channelView.js';
 import { getMaxNodeAgeHours } from './nodeDisplaySettings.js';
+import { effectiveIsMobile } from '../../utils/assetTracking.js';
 import { loadSignFlipContext, applySignFlipCorrection, getDisplayDbNodePosition, applySignFlipToTraceroute } from './signFlipCorrection.js';
 import type { ResourceType } from '../../types/permission.js';
 import type { User } from '../../types/auth.js';
@@ -180,11 +181,23 @@ export async function buildSourceNodes(source: SourceRow, user: ReqUser): Promis
     }
     return n;
   });
+
   // #5363: display-only sign-flip correction. Runs after the override step so
   // an override (positionIsOverride) is never touched. Meshtastic only: the
   // MeshCore branch above returns early.
   const signFlipCtx = await loadSignFlipContext(source.id);
-  return withOverride.map(node => applySignFlipCorrection(node, signFlipCtx));
+
+  // Tracked-asset overlay (#5354): these rows skip enhanceNodeForClient, so
+  // attach `asset` and the effective `isMobile` here. Keep in step with the
+  // overlay in enhanceNodeForClient. Computed only: the raw `mobile` column is
+  // passed through untouched.
+  const assets = await databaseService.getAssetNodesMapAsync();
+  return withOverride.map((node) => {
+    const n = applySignFlipCorrection(node, signFlipCtx) as typeof node & { nodeNum?: unknown; mobile?: unknown };
+    const entry = assets.get(Number(n.nodeNum));
+    const asset = entry ? { retentionDays: entry.retentionDays } : undefined;
+    return { ...n, asset, isMobile: effectiveIsMobile(n.mobile, asset) };
+  });
 }
 
 /** Channels for a source, per-channel read-gated, PSK projected (mirrors GET /:id/channels). */

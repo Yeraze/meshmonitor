@@ -27,6 +27,8 @@ const mockDb = vi.hoisted(() => ({
   getTelemetryCadenceAggregatesAsync: vi.fn(),
   getTelemetryTimestampsAsync: vi.fn(),
   getBroadcastTelemetryTimestampsAsync: vi.fn(),
+  // #5354 tracked assets — none by default.
+  getAssetNodesMapAsync: vi.fn(async () => new Map()),
 }));
 vi.mock('../../services/database.js', () => ({ default: mockDb }));
 
