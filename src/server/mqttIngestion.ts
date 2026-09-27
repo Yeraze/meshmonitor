@@ -1200,6 +1200,9 @@ async function ingestStoreForward(
       rxTime: plausibleRxTime(typeof packet.rxTime === 'number' ? packet.rxTime * 1000 : undefined) ?? undefined,
       rxSnr: typeof packet.rxSnr === 'number' ? packet.rxSnr : undefined,
       rxRssi: typeof packet.rxRssi === 'number' ? packet.rxRssi : undefined,
+      // hopStart/hopLimit deliberately omitted (#5366): this packet's hop
+      // header describes the S&F replay transmission, not the original
+      // message's path, so storing it would report a misleading hop count.
       viaMqtt: true,
       createdAt: nowMs,
       sourcePath: 'mqtt_bridge',

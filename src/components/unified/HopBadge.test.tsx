@@ -47,6 +47,11 @@ describe('HopBadge (#5366)', () => {
     expect(badge.getAttribute('aria-label')).toBe('Heard by Old Node: hop count unknown');
   });
 
+  it('shows ? for a corrupt pair where hopLimit exceeds hopStart', () => {
+    render(<HopBadge reception={{ hopStart: 1, hopLimit: 3 }} sourceName="Bad" />);
+    expect(screen.getByTestId('unified-hop-badge').textContent).toBe('?');
+  });
+
   it('renders no emoji', () => {
     render(<HopBadge reception={{ hopStart: 5, hopLimit: 2 }} sourceName="X" />);
     expect(/\p{Extended_Pictographic}|⃣/u.test(screen.getByTestId('unified-hop-badge').textContent ?? '')).toBe(false);
