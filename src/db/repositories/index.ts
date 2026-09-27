@@ -78,6 +78,8 @@ export { PrivacyDocumentsRepository } from './privacyDocuments.js';
 export type { PrivacyDocument, PrivacyDocumentMeta } from './privacyDocuments.js';
 export { SolarNodeOverridesRepository } from './solarNodeOverrides.js';
 export type { SolarNodeOverride } from './solarNodeOverrides.js';
+export { AssetNodesRepository } from './assetNodes.js';
+export type { AssetNode, AssetNodeSettings } from './assetNodes.js';
 export { SourcesRepository } from './sources.js';
 export type { Source, CreateSourceInput } from './sources.js';
 export { AnalysisRepository } from './analysis.js';

@@ -78,6 +78,7 @@ import {
   SavedRegionsRepository,
   PrivacyDocumentsRepository,
   SolarNodeOverridesRepository,
+  AssetNodesRepository,
   SolarEstimatesRepository,
   NewsCacheRepository,
   BackupHistoryRepository,
@@ -104,7 +105,7 @@ import type {
   TelemetryCadenceAggregate,
 } from '../db/repositories/index.js';
 import type { MeshIssueFinding } from '../server/services/meshIssues/types.js';
-import type { ConversationReadStateMap, AircraftFlightMatchRow, FlightMatchLookupWrite } from '../db/repositories/index.js';
+import type { ConversationReadStateMap, AircraftFlightMatchRow, FlightMatchLookupWrite, AssetNode, AssetNodeSettings } from '../db/repositories/index.js';
 import type { ConversationKind } from '../db/schema/conversationReadState.js';
 import type { DatabaseType, DbPacketLog as DbTypesPacketLog, DbPacketCountByNode, DbPacketCountByPortnum, DbDistinctRelayNode } from '../db/types.js';
 import { updateNodeMobility } from '../server/services/nodeMobilityService.js';
@@ -618,6 +619,7 @@ class DatabaseService {
   public savedRegionsRepo: SavedRegionsRepository | null = null;
   public privacyDocumentsRepo: PrivacyDocumentsRepository | null = null;
   public solarNodeOverridesRepo: SolarNodeOverridesRepository | null = null;
+  public assetNodesRepo: AssetNodesRepository | null = null;
   public solarEstimatesRepo: SolarEstimatesRepository | null = null;
   public newsCacheRepo: NewsCacheRepository | null = null;
   public backupHistoryRepo: BackupHistoryRepository | null = null;
@@ -751,6 +753,12 @@ class DatabaseService {
   get solarNodeOverrides(): SolarNodeOverridesRepository {
     if (!this.solarNodeOverridesRepo) throw new Error('Database not initialized');
     return this.solarNodeOverridesRepo;
+  }
+
+  /** Tracked-asset flag + retention per physical node (#5354). Global — not source-scoped. */
+  get assetNodes(): AssetNodesRepository {
+    if (!this.assetNodesRepo) throw new Error('Database not initialized');
+    return this.assetNodesRepo;
   }
 
   get solarEstimates(): SolarEstimatesRepository {
@@ -1166,6 +1174,7 @@ class DatabaseService {
       this.savedRegionsRepo = new SavedRegionsRepository(drizzleDb, this.drizzleDbType);
       this.privacyDocumentsRepo = new PrivacyDocumentsRepository(drizzleDb, this.drizzleDbType);
       this.solarNodeOverridesRepo = new SolarNodeOverridesRepository(drizzleDb, this.drizzleDbType);
+      this.assetNodesRepo = new AssetNodesRepository(drizzleDb, this.drizzleDbType);
       this.solarEstimatesRepo = new SolarEstimatesRepository(drizzleDb, this.drizzleDbType);
       this.newsCacheRepo = new NewsCacheRepository(drizzleDb, this.drizzleDbType);
       this.backupHistoryRepo = new BackupHistoryRepository(drizzleDb, this.drizzleDbType);
@@ -2699,6 +2708,23 @@ class DatabaseService {
   }
 
 
+
+  // Tracked assets (#5354) — global, keyed by physical nodeNum
+  async getAssetNodesMapAsync(): Promise<Map<number, AssetNodeSettings>> {
+    return this.assetNodes.getMapAsync();
+  }
+
+  async getAssetNodeAsync(nodeNum: number): Promise<AssetNode | null> {
+    return this.assetNodes.getAsync(nodeNum);
+  }
+
+  async setAssetNodeAsync(nodeNum: number, retentionDays: number, updatedBy?: number | null): Promise<AssetNode> {
+    return this.assetNodes.setAsync(nodeNum, retentionDays, updatedBy);
+  }
+
+  async clearAssetNodeAsync(nodeNum: number): Promise<void> {
+    return this.assetNodes.clearAsync(nodeNum);
+  }
 
   // Solar Estimates methods
   async upsertSolarEstimateAsync(timestamp: number, wattHours: number, fetchedAt: number): Promise<void> {

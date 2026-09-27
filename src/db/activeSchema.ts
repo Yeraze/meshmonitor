@@ -167,6 +167,10 @@ import {
 import {
   solarNodeOverridesSqlite, solarNodeOverridesPostgres, solarNodeOverridesMysql,
 } from './schema/solarNodeOverrides.js';
+// Tracked assets (global — no sourceId) (#5354)
+import {
+  assetNodesSqlite, assetNodesPostgres, assetNodesMysql,
+} from './schema/assetNodes.js';
 
 // Waypoints table
 import {
@@ -348,6 +352,8 @@ export interface ActiveSchema {
   privacyDocuments: any;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any -- #3195 dialect-union table slot, same shape as every sibling here
   solarNodeOverrides: any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- #5354 dialect-union table slot, same shape as every sibling here
+  assetNodes: any;
 
   // Waypoints
   waypoints: any;
@@ -471,6 +477,7 @@ const SCHEMA_MAP: Record<DatabaseType, ActiveSchema> = {
     meshcoreSavedRegions: meshcoreSavedRegionsSqlite,
     privacyDocuments: privacyDocumentsSqlite,
     solarNodeOverrides: solarNodeOverridesSqlite,
+    assetNodes: assetNodesSqlite,
     waypoints: waypointsSqlite,
     sources: sourcesSqlite,
     estimatedPositions: estimatedPositionsSqlite,
@@ -550,6 +557,7 @@ const SCHEMA_MAP: Record<DatabaseType, ActiveSchema> = {
     meshcoreSavedRegions: meshcoreSavedRegionsPostgres,
     privacyDocuments: privacyDocumentsPostgres,
     solarNodeOverrides: solarNodeOverridesPostgres,
+    assetNodes: assetNodesPostgres,
     waypoints: waypointsPostgres,
     sources: sourcesPostgres,
     estimatedPositions: estimatedPositionsPostgres,
@@ -629,6 +637,7 @@ const SCHEMA_MAP: Record<DatabaseType, ActiveSchema> = {
     meshcoreSavedRegions: meshcoreSavedRegionsMysql,
     privacyDocuments: privacyDocumentsMysql,
     solarNodeOverrides: solarNodeOverridesMysql,
+    assetNodes: assetNodesMysql,
     waypoints: waypointsMysql,
     sources: sourcesMysql,
     estimatedPositions: estimatedPositionsMysql,

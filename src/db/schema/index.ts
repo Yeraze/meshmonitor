@@ -76,6 +76,9 @@ export * from './savedRegions.js';
 export * from './privacyDocuments.js';
 export * from './solarNodeOverrides.js';
 
+// Tracked assets (global — no sourceId) (#5354)
+export * from './assetNodes.js';
+
 // Waypoints table
 export * from './waypoints.js';
 
