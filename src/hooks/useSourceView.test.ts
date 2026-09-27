@@ -4,12 +4,13 @@
  *
  * @vitest-environment jsdom
  */
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 import type React from 'react';
 import type { DeviceInfo } from '../types/device';
 import type { NodeFilters } from '../types/ui';
 import { pendingFavoriteRequests } from '../utils/pendingToggles';
+import { setNodeQuickAgeHours } from './useNodeQuickAgeFilter';
 
 const mockUseSource = vi.fn();
 const mockUseData = vi.fn();
@@ -191,6 +192,55 @@ describe('useSourceView', () => {
       const { result } = renderHook(() => useSourceView(baseParams()));
 
       expect(result.current.processedNodes.map(n => n.nodeNum).sort()).toEqual([100, 200, 300]);
+    });
+
+    describe('Nodes tab quick age filter (#5387)', () => {
+      afterEach(() => {
+        act(() => setNodeQuickAgeHours(null));
+      });
+      const threeDaysAgo = () => Math.floor(Date.now() / 1000) - 72 * 3600;
+
+      it('widens the Settings window on the Nodes tab, and "Setting" restores it', () => {
+        const older = makeNode({ nodeNum: 200, lastHeard: threeDaysAgo() });
+        mockUseNodes.mockReturnValue({ nodes: [makeNode(), older], isLoading: false, error: null });
+        const { result } = renderHook(() => useSourceView(baseParams()));
+        expect(result.current.processedNodes.map(n => n.nodeNum)).toEqual([100]);
+
+        act(() => setNodeQuickAgeHours(168));
+        expect(result.current.processedNodes.map(n => n.nodeNum).sort()).toEqual([100, 200]);
+
+        act(() => setNodeQuickAgeHours(null));
+        expect(result.current.processedNodes.map(n => n.nodeNum)).toEqual([100]);
+      });
+
+      it('narrows the window, and 0 (All) removes the cutoff', () => {
+        const sixHoursAgo = makeNode({ nodeNum: 200, lastHeard: Math.floor(Date.now() / 1000) - 6 * 3600 });
+        const ancient = makeNode({ nodeNum: 300, lastHeard: 1 });
+        mockUseSettings.mockReturnValue({ maxNodeAgeHours: 720, distanceUnit: 'metric', showIncompleteNodes: true });
+        mockUseNodes.mockReturnValue({ nodes: [makeNode(), sixHoursAgo, ancient], isLoading: false, error: null });
+
+        act(() => setNodeQuickAgeHours(0));
+        const { result } = renderHook(() => useSourceView(baseParams()));
+        expect(result.current.processedNodes.map(n => n.nodeNum).sort()).toEqual([100, 200, 300]);
+
+        act(() => setNodeQuickAgeHours(24));
+        expect(result.current.processedNodes.map(n => n.nodeNum).sort()).toEqual([100, 200]);
+      });
+
+      it('does not apply off the Nodes tab (processedNodes also feeds Messages)', () => {
+        const older = makeNode({ nodeNum: 200, lastHeard: threeDaysAgo() });
+        mockUseNodes.mockReturnValue({ nodes: [makeNode(), older], isLoading: false, error: null });
+        mockUseUI.mockReturnValue({
+          activeTab: 'messages',
+          nodesNodeFilter: '',
+          sortField: 'longName',
+          sortDirection: 'asc',
+          setTracerouteLoading,
+        });
+        act(() => setNodeQuickAgeHours(168));
+        const { result } = renderHook(() => useSourceView(baseParams()));
+        expect(result.current.processedNodes.map(n => n.nodeNum)).toEqual([100]);
+      });
     });
 
     it('applies nodesNodeFilter text search only when activeTab is "nodes"', () => {

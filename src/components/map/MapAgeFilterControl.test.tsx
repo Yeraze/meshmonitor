@@ -58,4 +58,15 @@ describe('MapAgeFilterControl', () => {
     fireEvent.change(slider, { target: { value: '1' } });
     expect(onChange).toHaveBeenLastCalledWith(3);
   });
+
+  it('names the Nodes quick filter as the cap when it overrides Settings (#5387)', () => {
+    render(<MapAgeFilterControl maxNodeAgeHours={168} effectiveMaxAgeHours={168} onChange={vi.fn()} capFromQuickFilter />);
+    expect(screen.getByTestId('map-age-showing')).toHaveTextContent('Showing: All (7d from Nodes filter)');
+    expect(screen.getByText("Narrows the Nodes list window. It can't widen it.")).toBeInTheDocument();
+  });
+
+  it('reads "no limit in Nodes filter" when the quick filter is All (#5387)', () => {
+    render(<MapAgeFilterControl maxNodeAgeHours={0} effectiveMaxAgeHours={Infinity} onChange={vi.fn()} capFromQuickFilter />);
+    expect(screen.getByTestId('map-age-showing')).toHaveTextContent('Showing: All (no limit in Nodes filter)');
+  });
 });

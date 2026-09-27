@@ -524,18 +524,23 @@ describe('map controls: attribution clearance + zoom-to-fit (#4495, #4496)', () 
 
   // #5344: NodesTab's full surface needs Leaflet plus a large context stack, so
   // pin the wiring at the source boundary. The rendered wording is covered by
-  // MapAgeFilterControl.test.tsx / NodeAgeWindowSuffix.test.tsx, and
+  // MapAgeFilterControl.test.tsx / NodeQuickAgeFilter.test.tsx, and
   // DashboardMap.test.tsx renders the same control at runtime.
   describe('node-age window is visible in the header and the Map age filter (#5344)', () => {
     const src = readFileSync(resolve('src/components/NodesTab.tsx'), 'utf8');
     const dashSrc = readFileSync(resolve('src/components/Dashboard/DashboardMap.tsx'), 'utf8');
 
-    it('shows the Settings window beside the Nodes count', () => {
-      expect(src).toMatch(/<h3>Nodes \([\s\S]{0,2000}\)<NodeAgeWindowSuffix hours=\{maxNodeAgeHours\} \/><\/h3>/);
+    it('shows the Settings window (as the #5387 quick filter) beside the Nodes count', () => {
+      expect(src).toMatch(/<h3>Nodes \([\s\S]{0,2000}\)<NodeQuickAgeFilter settingsHours=\{maxNodeAgeHours\} \/><\/h3>/);
+    });
+
+    it('caps the map by the list window, which the quick filter can override (#5387)', () => {
+      expect(src).toMatch(/const listAgeHours = resolveNodeListAgeHours\(quickAgeHours, maxNodeAgeHours\);/);
+      expect(src).toMatch(/effectiveMapMaxAgeHours\(mapMaxAgeHours, listAgeHours\)/);
     });
 
     it('renders the shared MapAgeFilterControl in BOTH Map Features panels', () => {
-      expect(src).toMatch(/<MapAgeFilterControl\s+maxNodeAgeHours=\{maxNodeAgeHours\}\s+effectiveMaxAgeHours=\{effectiveMapMaxAge\}\s+onChange=\{setMapMaxAgeHours\}/);
+      expect(src).toMatch(/<MapAgeFilterControl\s+maxNodeAgeHours=\{listAgeHours\}\s+effectiveMaxAgeHours=\{effectiveMapMaxAge\}\s+onChange=\{setMapMaxAgeHours\}\s+capFromQuickFilter=\{quickAgeHours != null\}/);
       expect(dashSrc).toMatch(/<MapAgeFilterControl\s+maxNodeAgeHours=\{maxNodeAgeHours\}\s+effectiveMaxAgeHours=\{effectiveMaxAge\}\s+onChange=\{setMapMaxAgeHours\}/);
       // Neither panel may re-inline its own slider (#5177: one panel drifted).
       expect(src).not.toContain('ageFilterStops(');

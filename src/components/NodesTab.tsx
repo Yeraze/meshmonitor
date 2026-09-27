@@ -16,7 +16,9 @@ import MapAircraftDisplayControl from './map/MapAircraftDisplayControl';
 import AircraftTrailsLayer from './map/layers/AircraftTrailsLayer';
 import { useAircraftTrailLayer } from './map/useAircraftTrailLayer';
 import { isAgedOutAircraft, AGED_OUT_AIRCRAFT_OPACITY } from './map/agedOutAircraft';
-import NodeAgeWindowSuffix from './NodeAgeWindowSuffix';
+import NodeQuickAgeFilter from './NodeQuickAgeFilter';
+import { useNodeQuickAgeFilter } from '../hooks/useNodeQuickAgeFilter';
+import { resolveNodeListAgeHours } from '../utils/nodeQuickAgeFilter';
 import { downsamplePositionHistory, MAX_RENDERED_POSITION_POINTS } from '../utils/positionHistoryDownsample';
 import { createNodeIcon, getHopColor } from '../utils/mapIcons';
 import { getPositionHistoryColor, generateHeadingAwarePath, generatePositionHistoryArrows, snrToColor } from '../utils/mapHelpers.tsx';
@@ -711,10 +713,17 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
     setActiveMapStyleId,
   } = useSettings();
 
+  // Nodes tab quick age filter (#5387): a view-only override of the Settings
+  // window for this tab's list AND map. null = follow the setting. The list
+  // side is applied in useSourceView; the map cap below uses the same window.
+  const [quickAgeHours] = useNodeQuickAgeFilter();
+  const listAgeHours = resolveNodeListAgeHours(quickAgeHours, maxNodeAgeHours);
+
   // Effective map age cap from the Map Features age slider (#3322), clamped to
-  // [1, maxNodeAgeHours]. null = follow the setting, so default behavior is
-  // unchanged. Used to hide stale node markers on the map (favorites bypass).
-  const effectiveMapMaxAge = effectiveMapMaxAgeHours(mapMaxAgeHours, maxNodeAgeHours);
+  // [1, listAgeHours] (the Settings window, or the quick filter when one is
+  // picked). null = follow that window, so default behavior is unchanged.
+  // Used to hide stale node markers on the map (favorites bypass).
+  const effectiveMapMaxAge = effectiveMapMaxAgeHours(mapMaxAgeHours, listAgeHours);
   // #4240: single clock read per render for transport decay (see
   // transportCutoffSec) — a per-node call would drift across the filter pass.
   const transportCutoff = transportCutoffSec(effectiveMapMaxAge);
@@ -2376,7 +2385,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
               }).length;
               const isFiltered = securityFilter !== 'all' || !showIncompleteNodes || filterRemoteAdminOnly;
               return isFiltered ? `${filteredCount}/${processedNodes.length}` : processedNodes.length;
-            })()})<NodeAgeWindowSuffix hours={maxNodeAgeHours} /></h3>
+            })()})<NodeQuickAgeFilter settingsHours={maxNodeAgeHours} /></h3>
           </div>
           )}
           {!isNodeListCollapsed && (
@@ -2956,12 +2965,13 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                   )}
                   {/* Map Features age filter (#3322, #5344): hides node markers,
                       traceroutes, and route segments older than the chosen age.
-                      Shared with DashboardMap; can only narrow the Settings
-                      window. */}
+                      Shared with DashboardMap; can only narrow the list
+                      window (Settings, or the #5387 quick filter). */}
                   <MapAgeFilterControl
-                    maxNodeAgeHours={maxNodeAgeHours}
+                    maxNodeAgeHours={listAgeHours}
                     effectiveMaxAgeHours={effectiveMapMaxAge}
                     onChange={setMapMaxAgeHours}
+                    capFromQuickFilter={quickAgeHours != null}
                   />
                   {/* Likely aircraft (#5364/#5365 Phase 1 WP4): shared with
                       DashboardMap so Show/Mark/Hide can't drift between panels. */}
