@@ -17,7 +17,17 @@
   cursor: pointer;
 }
 
-.checkboxRow input {
+/* Host sheets size every input for text entry: MeshCore's
+   `.meshcore-form-view input { width: 100%; max-width: 320px; padding… }`
+   stretched the box to 320px and pushed the label right. Two classes + an
+   attribute outrank those one-class rules, so the box keeps its natural size
+   beside its text in both the Meshtastic and MeshCore settings. */
+.section .checkboxRow input[type="checkbox"] {
+  width: auto;
+  max-width: none;
+  margin: 0;
+  padding: 0;
+  flex: 0 0 auto;
   cursor: pointer;
 }
 
