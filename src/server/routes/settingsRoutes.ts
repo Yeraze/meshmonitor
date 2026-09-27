@@ -332,7 +332,7 @@ router.post('/', requirePermission('settings', 'write', { sourceIdFrom: 'query' 
     // Secret keys are never sent to non-admins (stripSecretSettings), so a
     // non-admin's Settings save carries them blank. Drop them rather than let
     // that save wipe a stored key (#5374; elevationSourceUrl had the same gap).
-    const isAdminWriter = (req as any).user?.isAdmin === true;
+    const isAdminWriter = req.user?.isAdmin === true;
     for (const key of VALID_SETTINGS_KEYS) {
       if (!(key in settings)) continue;
       if (!isAdminWriter && isSecretSettingKey(key)) continue;
