@@ -96,7 +96,7 @@ import {
 import { calculateDistance } from '../utils/distance.js';
 import { getEffectiveDbNodePosition } from './utils/nodeEnhancer.js';
 import { canonicalTelemetryType, canonicalTelemetryUnit } from './utils/telemetryKeys.js';
-import { resolveLastHeardSec } from './utils/replayGuard.js';
+import { resolveLastHeardSec, resolvePositionObservedAtMs } from './utils/replayGuard.js';
 import { plausibleRxTime } from './utils/messageTime.js';
 import { shouldDiscardPosition } from '../utils/nullIsland.js';
 import { getDiscardInvalidPositions } from '../utils/positionIngestConfig.js';
@@ -543,7 +543,11 @@ async function ingestServiceEnvelopeInner(input: MqttIngestionInput): Promise<Mq
         // precision or a timestamp describing a position we refused to store
         // would outrank a real fix from another source.
         positionPrecisionBits: positionIsBogus ? undefined : precisionBits,
-        positionTimestamp: positionIsBogus ? undefined : nowMs,
+        // Observation time, not arrival (#5401): a retained or replayed frame
+        // keeps its original rx_time rather than posing as the freshest fix.
+        positionTimestamp: positionIsBogus
+          ? undefined
+          : resolvePositionObservedAtMs(typeof packet.rxTime === 'number' ? packet.rxTime : undefined, nowMs),
         // Drop altitude too on a bogus fix — an altitude with no trustworthy
         // horizontal position is not worth persisting.
         altitude: positionIsBogus ? undefined : (typeof alt === 'number' ? alt : undefined),

@@ -129,3 +129,45 @@ export function isLiveReception(
   const nowSec = nowMs / 1000;
   return nowSec - rxTimeSec <= LIVE_RECEPTION_WINDOW_SEC;
 }
+
+/**
+ * When a stored position was actually OBSERVED, in ms (#5401). Written to
+ * `nodes.positionTimestamp`, which the unified view uses to pick the freshest
+ * fix across sources (`pickPositionRecord`), and the likely-aircraft flag
+ * follows that choice.
+ *
+ * Stamping the receive time instead let a firmware-2.8 NodeDB replay (hourly,
+ * and on every reconnect) re-stamp a source's STALE fix as brand new, so it
+ * outranked a genuinely newer fix another source had heard. A live packet is
+ * still stamped `nowMs`; a replayed or retained one gets its original
+ * `rx_time`, the one field the replay keeps honest.
+ */
+export function resolvePositionObservedAtMs(
+  rxTimeSec: number | null | undefined,
+  nowMs: number,
+): number {
+  if (isLiveReception(rxTimeSec, nowMs)) return nowMs;
+  // Not live implies a plausible rx_time more than the live window old.
+  return Math.min((rxTimeSec as number) * 1000, nowMs);
+}
+
+/**
+ * Observation time for a position carried in a NodeInfo from the radio's own
+ * NodeDB (config sync / PhoneAPI replay), in ms (#5401). That position is
+ * whatever the radio last stored, possibly days old, so never `now`: prefer
+ * the fix's own GPS `time`, then the radio's `lastHeard` for the node.
+ * Returns undefined when neither is a plausible past time, so the caller
+ * leaves the stored `positionTimestamp` alone.
+ */
+export function resolveNodeDbPositionObservedAtMs(
+  positionTimeSec: number | null | undefined,
+  lastHeardSec: number | null | undefined,
+  nowMs: number,
+): number | undefined {
+  const nowSec = nowMs / 1000;
+  for (const t of [positionTimeSec, lastHeardSec]) {
+    const n = typeof t === 'number' ? t : Number(t);
+    if (Number.isFinite(n) && n >= MIN_PLAUSIBLE_UNIX_SEC) return Math.min(n, nowSec) * 1000;
+  }
+  return undefined;
+}
