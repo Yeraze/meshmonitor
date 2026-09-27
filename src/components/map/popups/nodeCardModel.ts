@@ -89,6 +89,9 @@ export interface NodeCardModel {
   aircraftAgedOut?: boolean;
   /** #5364/#5365 Phase 2: carries the sticky "reclassified as fixed" mark. */
   aircraftFixed?: boolean;
+  /** #5363: the shown position is the mirror of this reported pair. Null
+   *  (or absent) when the position was not auto-corrected. */
+  signFlipReported?: { latitude: number; longitude: number } | null;
 }
 
 export type NodeCardVariant = 'meshtastic' | 'meshcore';
@@ -174,6 +177,13 @@ function toMeshtasticModel(raw: unknown, opts?: ToNodeCardModelOptions): NodeCar
   // Phase 2 marks (#5364/#5365): same predicate as the map's aged-out filter.
   const aircraftAgedOut = node.isIgnored === true && typeof node.aircraftAgedOutAt === 'number';
   const aircraftFixed = typeof node.aircraftFixedAt === 'number';
+  // #5363: set by the server's sign-flip correction, flat on both node shapes.
+  const signFlipReported =
+    node.positionSignFlipCorrected === true
+    && typeof node.reportedLatitude === 'number'
+    && typeof node.reportedLongitude === 'number'
+      ? { latitude: node.reportedLatitude, longitude: node.reportedLongitude }
+      : null;
 
   return {
     longName,
@@ -199,6 +209,7 @@ function toMeshtasticModel(raw: unknown, opts?: ToNodeCardModelOptions): NodeCar
     heightAboveGround,
     aircraftAgedOut,
     aircraftFixed,
+    signFlipReported,
   };
 }
 

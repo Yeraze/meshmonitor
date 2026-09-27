@@ -23,6 +23,7 @@ import {
   NODE_DISPLAY_SETTING_KEYS,
   NODE_DISPLAY_SEEDED_KEYS,
   AIRCRAFT_NODE_DISPLAY_KEYS,
+  SIGN_FLIP_NODE_DISPLAY_KEYS,
 } from '../../constants/nodeDisplayDefaults.js';
 
 describe('per-source settings key allowlist invariants', () => {
@@ -132,12 +133,14 @@ describe('per-source settings key allowlist invariants', () => {
   // routed set is exactly the frozen ten plus the six aircraft keys (three
   // P1 detection keys, three P2 age-out keys), in
   // that order, with no third source of keys sneaking in.
-  it('NODE_DISPLAY_SETTING_KEYS equals NODE_DISPLAY_SEEDED_KEYS + AIRCRAFT_NODE_DISPLAY_KEYS', () => {
+  // #5363 adds the four sign-flip keys after them.
+  it('NODE_DISPLAY_SETTING_KEYS equals NODE_DISPLAY_SEEDED_KEYS + AIRCRAFT_NODE_DISPLAY_KEYS + SIGN_FLIP_NODE_DISPLAY_KEYS', () => {
     expect(NODE_DISPLAY_SETTING_KEYS).toEqual([
       ...NODE_DISPLAY_SEEDED_KEYS,
       ...AIRCRAFT_NODE_DISPLAY_KEYS,
+      ...SIGN_FLIP_NODE_DISPLAY_KEYS,
     ]);
-    expect(NODE_DISPLAY_SETTING_KEYS.length).toBe(16);
+    expect(NODE_DISPLAY_SETTING_KEYS.length).toBe(20);
   });
 
   // `localStatsIntervalMinutes` predates this work item (already read

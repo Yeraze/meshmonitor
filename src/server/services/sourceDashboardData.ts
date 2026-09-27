@@ -33,6 +33,7 @@ import {
 import { modemPresetChannelName, TransportMechanism } from '../constants/meshtastic.js';
 import { transformChannel } from '../utils/channelView.js';
 import { getMaxNodeAgeHours } from './nodeDisplaySettings.js';
+import { loadSignFlipContext, applySignFlipCorrection, getDisplayDbNodePosition } from './signFlipCorrection.js';
 import type { ResourceType } from '../../types/permission.js';
 import type { User } from '../../types/auth.js';
 
@@ -177,7 +178,11 @@ export async function buildSourceNodes(source: SourceRow, user: ReqUser): Promis
     }
     return n;
   });
-  return withOverride;
+  // #5363: display-only sign-flip correction. Runs after the override step so
+  // an override (positionIsOverride) is never touched. Meshtastic only: the
+  // MeshCore branch above returns early.
+  const signFlipCtx = await loadSignFlipContext(source.id);
+  return withOverride.map(node => applySignFlipCorrection(node, signFlipCtx));
 }
 
 /** Channels for a source, per-channel read-gated, PSK projected (mirrors GET /:id/channels). */
@@ -288,6 +293,9 @@ export async function buildSourceNeighborInfo(
     byDirected.set(`${ni.nodeNum}-${ni.neighborNodeNum}`, ni);
   }
 
+  // #5363: draw neighbor links to the same (corrected) point as the marker.
+  const signFlipCtx = await loadSignFlipContext(source.id);
+
   const enrichedNeighborInfo = neighborInfo
     .filter(ni =>
       visibleNodeNums.has(Number(ni.nodeNum)) &&
@@ -305,8 +313,8 @@ export async function buildSourceNeighborInfo(
     .map(ni => {
       const node = nodeMap.get(ni.nodeNum) ?? null;
       const neighbor = nodeMap.get(ni.neighborNodeNum) ?? null;
-      const nodePos = getEffectiveDbNodePosition(node);
-      const neighborPos = getEffectiveDbNodePosition(neighbor);
+      const nodePos = getDisplayDbNodePosition(node, signFlipCtx);
+      const neighborPos = getDisplayDbNodePosition(neighbor, signFlipCtx);
 
       const nTx = (node as any)?.transportMechanism;
       const nbTx = (neighbor as any)?.transportMechanism;

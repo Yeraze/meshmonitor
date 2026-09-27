@@ -162,6 +162,30 @@ describe('SignalItems', () => {
     expect(screen.getByText('Likely aircraft · 6.1 km above sea level')).toBeInTheDocument();
   });
 
+  it('shows the sign-flip notice with the reported coordinates on every popup (#5363)', () => {
+    const corrected = toNodeCardModel(
+      {
+        nodeNum: 1,
+        position: { latitude: 27.9, longitude: -82.5 },
+        positionSignFlipCorrected: true,
+        reportedLatitude: 27.9,
+        reportedLongitude: 82.5,
+      },
+      'meshtastic',
+    );
+    expect(corrected.signFlipReported).toEqual({ latitude: 27.9, longitude: 82.5 });
+    // Not gated on showAltitude: the NodesTab and Dashboard cards both show it.
+    const { unmount } = render(<><SignalItems model={corrected} /></>);
+    expect(screen.getByTestId('sign-flip-notice')).toHaveTextContent('Position auto-corrected (sign flip)');
+    expect(screen.getByTestId('sign-flip-notice')).toHaveTextContent('Reported: 27.90000, 82.50000');
+    unmount();
+
+    const plain = toNodeCardModel({ nodeNum: 1, position: { latitude: 27.9, longitude: 82.5 } }, 'meshtastic');
+    expect(plain.signFlipReported).toBeNull();
+    render(<><SignalItems model={plain} showAltitude /></>);
+    expect(screen.queryByTestId('sign-flip-notice')).not.toBeInTheDocument();
+  });
+
   it('shows "Aged out (likely aircraft)" only for an age-out ignore (#5364/#5365 Phase 2)', () => {
     const agedOut = toNodeCardModel(
       { nodeNum: 1, position: { altitude: 3200 }, likelyAircraft: true, isIgnored: true, aircraftAgedOutAt: 1_700_000_000_000 },

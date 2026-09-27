@@ -19,6 +19,7 @@ import { NodeSkyView } from './gnss/NodeSkyView';
 import { Firmware28SilenceNotice } from './Firmware28SilenceNotice';
 import { ShowCoverageLink } from './Analysis/ShowCoverageLink';
 import { formatAircraftSummary } from '../utils/aircraftClassification';
+import { SignFlipNotice } from './SignFlipNotice';
 
 interface NodeDetailsBlockProps {
   node: DeviceInfo | null;
@@ -570,6 +571,15 @@ const NodeDetailsBlock: React.FC<NodeDetailsBlockProps> = ({ node, timeFormat = 
                 </span>
               )}
             </div>
+            {/* #5363: the coords above are the mirror of what the node sent. */}
+            {node.positionSignFlipCorrected
+              && node.reportedLatitude != null
+              && node.reportedLongitude != null && (
+              <SignFlipNotice
+                reportedLatitude={node.reportedLatitude}
+                reportedLongitude={node.reportedLongitude}
+              />
+            )}
           </div>
         )}
 

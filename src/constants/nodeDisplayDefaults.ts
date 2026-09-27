@@ -57,10 +57,24 @@ export const AIRCRAFT_NODE_DISPLAY_KEYS = [
 ] as const;
 export type AircraftNodeDisplayKey = typeof AIRCRAFT_NODE_DISPLAY_KEYS[number];
 
+/**
+ * Sign-flipped position correction (#5363). Per-source and unseeded, like the
+ * aircraft keys: unset falls through to `parseSignFlipSettings`' defaults
+ * (off, 500 km, own-node reference) in `src/utils/signFlipPosition.ts`.
+ */
+export const SIGN_FLIP_NODE_DISPLAY_KEYS = [
+  'signFlipCorrectionEnabled',
+  'signFlipCorrectionRangeKm',
+  'signFlipReferenceLatitude',
+  'signFlipReferenceLongitude',
+] as const;
+export type SignFlipNodeDisplayKey = typeof SIGN_FLIP_NODE_DISPLAY_KEYS[number];
+
 /** Every key the Node Display section routes to the scoped `?sourceId=` POST, and the GET back-fill skips. */
 export const NODE_DISPLAY_SETTING_KEYS = [
   ...NODE_DISPLAY_SEEDED_KEYS,
   ...AIRCRAFT_NODE_DISPLAY_KEYS,
+  ...SIGN_FLIP_NODE_DISPLAY_KEYS,
 ] as const;
 export type NodeDisplaySettingKey = typeof NODE_DISPLAY_SETTING_KEYS[number];
 

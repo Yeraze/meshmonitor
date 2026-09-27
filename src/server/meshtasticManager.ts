@@ -370,6 +370,14 @@ export interface DeviceInfo {
   positionIsEstimated?: boolean;
   /** Radius of the estimate in km, when known. Only set with positionIsEstimated. */
   positionEstimateUncertaintyKm?: number;
+  /**
+   * #5363: `position` was moved to the mirror point because the reported fix
+   * looks sign-flipped (display only; the stored fix is unchanged). The
+   * reported coordinates ride along so the UI can show them.
+   */
+  positionSignFlipCorrected?: boolean;
+  reportedLatitude?: number;
+  reportedLongitude?: number;
   hideFromMap?: boolean;
   isStoreForwardServer?: boolean;
   /**

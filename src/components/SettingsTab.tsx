@@ -22,6 +22,8 @@ import DatabaseMaintenanceSection from './configuration/DatabaseMaintenanceSecti
 import ScriptsSection from './settings/ScriptsSection';
 import CoverageMqttRecordingSection from './settings/CoverageMqttRecordingSection';
 import FirmwareUpdateSection from './configuration/FirmwareUpdateSection';
+import SignFlipCorrectionSettings from './settings/SignFlipCorrectionSettings';
+import { parseSignFlipSettings, clampSignFlipRangeKm, SIGN_FLIP_DEFAULT_RANGE_KM } from '../utils/signFlipPosition';
 import ChannelDatabaseSection from './configuration/ChannelDatabaseSection';
 import { CustomThemeManagement } from './CustomThemeManagement';
 import { CustomTilesetManager } from './CustomTilesetManager';
@@ -156,6 +158,13 @@ interface SettingsDraft {
   aircraftAgeOutEnabled: boolean;
   aircraftAgeOutHours: number;
   aircraftAgeOutAction: AircraftAgeOutAction;
+  // Sign-flipped position correction (#5363) — per-source Node Display keys
+  // (SIGN_FLIP_NODE_DISPLAY_KEYS). Range in km; reference as typed strings
+  // (blank = use the source's own node).
+  signFlipCorrectionEnabled: boolean;
+  signFlipCorrectionRangeKm: number;
+  signFlipReferenceLatitude: string;
+  signFlipReferenceLongitude: string;
   solarMonitoringEnabled: boolean;
   solarMonitoringLatitude: number;
   solarMonitoringLongitude: number;
@@ -480,6 +489,10 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
     aircraftAgeOutEnabled: false,
     aircraftAgeOutHours: AIRCRAFT_AGE_OUT_HOURS_DEFAULT,
     aircraftAgeOutAction: DEFAULT_AIRCRAFT_AGE_OUT_ACTION,
+    signFlipCorrectionEnabled: false,
+    signFlipCorrectionRangeKm: SIGN_FLIP_DEFAULT_RANGE_KM,
+    signFlipReferenceLatitude: '',
+    signFlipReferenceLongitude: '',
     solarMonitoringEnabled,
     solarMonitoringLatitude,
     solarMonitoringLongitude,
@@ -553,6 +566,13 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
   const [initialAircraftAgeOutEnabled, setInitialAircraftAgeOutEnabled] = useState(false);
   const [initialAircraftAgeOutHours, setInitialAircraftAgeOutHours] = useState(AIRCRAFT_AGE_OUT_HOURS_DEFAULT);
   const [initialAircraftAgeOutAction, setInitialAircraftAgeOutAction] = useState<AircraftAgeOutAction>(DEFAULT_AIRCRAFT_AGE_OUT_ACTION);
+  // Sign-flip correction (#5363): Category C, one snapshot for the four keys.
+  const [initialSignFlip, setInitialSignFlip] = useState({
+    enabled: false,
+    rangeKm: SIGN_FLIP_DEFAULT_RANGE_KM,
+    referenceLatitude: '',
+    referenceLongitude: '',
+  });
   const [aircraftAgeOutLastRun, setAircraftAgeOutLastRun] = useState<{
     at: number | null;
     result: AircraftAgeOutLastResult | null;
@@ -770,6 +790,25 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
           setInitialAircraftAgeOutHours(ageOut.hours);
           updateField('aircraftAgeOutAction', ageOut.action);
           setInitialAircraftAgeOutAction(ageOut.action);
+
+          // Sign-flip correction (#5363). Off / 500 km / own node when unset.
+          // The typed reference strings are kept as stored so a half-entered
+          // point shows up for fixing rather than silently vanishing.
+          const signFlip = parseSignFlipSettings({
+            enabled: settings.signFlipCorrectionEnabled,
+            rangeKm: settings.signFlipCorrectionRangeKm,
+          });
+          const signFlipSnapshot = {
+            enabled: signFlip.enabled,
+            rangeKm: signFlip.rangeKm,
+            referenceLatitude: typeof settings.signFlipReferenceLatitude === 'string' ? settings.signFlipReferenceLatitude : '',
+            referenceLongitude: typeof settings.signFlipReferenceLongitude === 'string' ? settings.signFlipReferenceLongitude : '',
+          };
+          updateField('signFlipCorrectionEnabled', signFlipSnapshot.enabled);
+          updateField('signFlipCorrectionRangeKm', signFlipSnapshot.rangeKm);
+          updateField('signFlipReferenceLatitude', signFlipSnapshot.referenceLatitude);
+          updateField('signFlipReferenceLongitude', signFlipSnapshot.referenceLongitude);
+          setInitialSignFlip(signFlipSnapshot);
           const lastRunAt = Number(settings.aircraftAgeOutLastRunAt);
           setAircraftAgeOutLastRun({
             at: Number.isFinite(lastRunAt) && lastRunAt > 0 ? lastRunAt : null,
@@ -871,6 +910,10 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       aircraftAgeOutEnabled: initialAircraftAgeOutEnabled,
       aircraftAgeOutHours: initialAircraftAgeOutHours,
       aircraftAgeOutAction: initialAircraftAgeOutAction,
+      signFlipCorrectionEnabled: initialSignFlip.enabled,
+      signFlipCorrectionRangeKm: initialSignFlip.rangeKm,
+      signFlipReferenceLatitude: initialSignFlip.referenceLatitude,
+      signFlipReferenceLongitude: initialSignFlip.referenceLongitude,
       solarMonitoringEnabled,
       solarMonitoringLatitude,
       solarMonitoringLongitude,
@@ -907,6 +950,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       nodeDimmingEnabled, nodeDimmingStartHours, nodeDimmingMinOpacity,
       initialAircraftDetectionEnabled, initialAircraftAglThresholdMeters, initialAircraftMslThresholdMeters,
       initialAircraftAgeOutEnabled, initialAircraftAgeOutHours, initialAircraftAgeOutAction,
+      initialSignFlip,
       solarMonitoringEnabled, solarMonitoringLatitude, solarMonitoringLongitude, solarMonitoringAzimuth, solarMonitoringDeclination,
       initialPacketMonitorSettings, initialHomoglyphEnabled, initialLocalStatsIntervalMinutes, initialTxTargetMaxAgeHoursWhenUnlimited,
       initialMeshcoreCliTimeoutSeconds, initialAdminRetryAttempts,
@@ -1091,6 +1135,12 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
     setInitialAircraftAgeOutEnabled(d.aircraftAgeOutEnabled);
     setInitialAircraftAgeOutHours(d.aircraftAgeOutHours);
     setInitialAircraftAgeOutAction(d.aircraftAgeOutAction);
+    setInitialSignFlip({
+      enabled: d.signFlipCorrectionEnabled,
+      rangeKm: d.signFlipCorrectionRangeKm,
+      referenceLatitude: d.signFlipReferenceLatitude,
+      referenceLongitude: d.signFlipReferenceLongitude,
+    });
     setInitialPacketMonitorSettings({ enabled: d.packetLogEnabled, maxCount: d.packetLogMaxCount, maxAgeHours: d.packetLogMaxAgeHours });
     setInitialHomoglyphEnabled(d.homoglyphEnabled);
     setInitialLocalStatsIntervalMinutes(d.localStatsIntervalMinutes);
@@ -1193,6 +1243,11 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
         aircraftAgeOutEnabled: draft.aircraftAgeOutEnabled ? 'true' : 'false',
         aircraftAgeOutHours: String(draft.aircraftAgeOutHours),
         aircraftAgeOutAction: draft.aircraftAgeOutAction,
+        // Sign-flip correction (#5363), per-source via NODE_DISPLAY_SETTING_KEYS.
+        signFlipCorrectionEnabled: draft.signFlipCorrectionEnabled ? 'true' : 'false',
+        signFlipCorrectionRangeKm: String(clampSignFlipRangeKm(draft.signFlipCorrectionRangeKm)),
+        signFlipReferenceLatitude: draft.signFlipReferenceLatitude.trim(),
+        signFlipReferenceLongitude: draft.signFlipReferenceLongitude.trim(),
         analyticsProvider: draft.analyticsProvider,
         analyticsConfig: JSON.stringify(draft.analyticsConfig),
         appriseApiServerUrl: draft.appriseApiServerUrl.trim(),
@@ -2691,6 +2746,19 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
                   })}
             </p>
           </div>
+
+          {/* Sign-flipped position correction (#5363). Display only. */}
+          <SignFlipCorrectionSettings
+            enabled={draft.signFlipCorrectionEnabled}
+            rangeKm={draft.signFlipCorrectionRangeKm}
+            referenceLatitude={draft.signFlipReferenceLatitude}
+            referenceLongitude={draft.signFlipReferenceLongitude}
+            distanceUnit={draft.distanceUnit}
+            onEnabledChange={(v) => updateField('signFlipCorrectionEnabled', v)}
+            onRangeKmChange={(v) => updateField('signFlipCorrectionRangeKm', v)}
+            onReferenceLatitudeChange={(v) => updateField('signFlipReferenceLatitude', v)}
+            onReferenceLongitudeChange={(v) => updateField('signFlipReferenceLongitude', v)}
+          />
         </div>}
 
         {show('settings-telemetry') && <div id="settings-telemetry" className="settings-section">
