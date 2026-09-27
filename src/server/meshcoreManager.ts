@@ -600,6 +600,18 @@ export const MC_PF_RSSI_FLOOR = -200;
 export const MC_PF_SNR_FLOOR = -100;
 
 /**
+ * Ceiling on `get_neighbours` `count`, shared by the interactive
+ * `/contacts/:publicKey/neighbours` route's clamp and `pollNeighborsAndStore`
+ * (the scheduler + manual-poll path). Also the request size used by
+ * `pollNeighborsAndStore` itself — that path used to omit `count` entirely,
+ * which left the manager's own default of 10 in place and silently truncated
+ * the stored neighbour table for any repeater reporting more than that
+ * (#5413), even though the interactive button already asks for up to this
+ * many.
+ */
+export const MAX_NEIGHBOURS_COUNT = 50;
+
+/**
  * Pure filter for Auto-Pathfinding target selection (#4024). AND pre-filters
  * (last-heard, hop range, signal) narrow the pool first; OR-union identity
  * filters (contact allowlist, name regex) then select within that pool — a
@@ -6218,7 +6230,7 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
    * enforce those, mirroring the telemetry scheduler's division of labour.
    */
   async pollNeighborsAndStore(publicKey: string): Promise<{ total: number; written: number } | null> {
-    const result = await this.getNeighbours(publicKey);
+    const result = await this.getNeighbours(publicKey, { count: MAX_NEIGHBOURS_COUNT });
     if (!result) return null;
 
     const toStore = result.neighbours

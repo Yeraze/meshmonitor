@@ -9,7 +9,7 @@
  */
 
 import { Router, Request, Response } from 'express';
-import { MeshCoreDiscoverFilter, type MeshCoreDiscoverMode } from '../meshcoreManager.js';
+import { MeshCoreDiscoverFilter, type MeshCoreDiscoverMode, MAX_NEIGHBOURS_COUNT } from '../meshcoreManager.js';
 import {
   MAX_INTERVAL_MINUTES,
   MIN_INTERVAL_BETWEEN_REQUESTS_MS,
@@ -802,7 +802,7 @@ router.get(
           error: 'Invalid public key — must be 64-char hex',
         });
       }
-      const count = Math.min(Math.max(parseInt(req.query.count as string || '10', 10) || 10, 1), 50);
+      const count = Math.min(Math.max(parseInt(req.query.count as string || '10', 10) || 10, 1), MAX_NEIGHBOURS_COUNT);
       const offset = Math.max(parseInt(req.query.offset as string || '0', 10) || 0, 0);
       const orderBy = Math.min(Math.max(parseInt(req.query.orderBy as string || '0', 10) || 0, 0), 3);
       const manager = managerFor(req, res);
