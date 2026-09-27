@@ -233,6 +233,25 @@ export class TelemetryRepository extends BaseRepository {
   }
 
   /**
+   * Count one node's telemetry rows since a timestamp, across the given sources
+   * (#5354 asset retention estimate). An empty source list counts nothing, so
+   * a caller with no permitted source learns nothing.
+   */
+  async countTelemetryForNodeNumSince(nodeNum: number, sinceTimestamp: number, sourceIds: string[]): Promise<number> {
+    if (sourceIds.length === 0) return 0;
+    const { telemetry } = this.tables;
+    const result = await this.db
+      .select({ cnt: count() })
+      .from(telemetry)
+      .where(and(
+        eq(telemetry.nodeNum, nodeNum),
+        gte(telemetry.timestamp, sinceTimestamp),
+        inArray(telemetry.sourceId, sourceIds),
+      ));
+    return Number(result[0]?.cnt ?? 0);
+  }
+
+  /**
    * Get telemetry count by node with optional filters
    */
   async getTelemetryCountByNode(
