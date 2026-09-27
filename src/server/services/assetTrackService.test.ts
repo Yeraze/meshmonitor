@@ -65,6 +65,21 @@ describe('buildAssetTrack', () => {
     }
   });
 
+  // Review #5419: more rows share one timestamp than a page holds (several
+  // sources report the same instant). The (timestamp, id) cursor still
+  // advances, the carry keeps those rows together, and the read ends.
+  it('terminates and keeps fixes whole when one timestamp outlasts several pages', async () => {
+    for (const src of ['a', 'b', 'c', 'd']) addFix(T0, 40, -75, src);
+    addFix(T0 + 60_000, 40.01, -75);
+    const track = await buildAssetTrack({
+      nodeNum: 1, sourceIds: ['a', 'b', 'c', 'd'], windowStartMs: T0 - 1, windowEndMs: T0 + 120_000, pageRows: 2,
+    });
+    expect(getPage.mock.calls.length).toBeLessThan(20);
+    // The four same-instant copies dedupe to one fix, plus the later fix.
+    expect(track.totalFixes).toBe(2);
+    for (const p of track.segments.flat()) expect(p.altitude).toBe(100);
+  });
+
   it('reads nothing for no sources', async () => {
     addFix(T0, 40, -75);
     const track = await buildAssetTrack({ nodeNum: 1, sourceIds: [], windowStartMs: 0, windowEndMs: T0 });
