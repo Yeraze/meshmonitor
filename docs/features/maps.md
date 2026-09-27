@@ -274,6 +274,22 @@ Nothing goes over the mesh. MeshMonitor sends the node's approximate position (t
 
 Only users who can read nodes on that source see the line. A node with a private position shows no match to users who can't see private positions.
 
+### Asset Tracking
+
+Mark a node as a tracked **asset**, for example a GPS node on a vehicle, and MeshMonitor:
+
+- **always draws its trail.** MeshMonitor flags a node as mobile once it has moved more than 100 m. A vehicle parked for a while can lose that flag and its trail. An asset always counts as mobile.
+- **keeps all of its telemetry** (position, battery, environment and the rest) for the number of days you choose, on every source that heard it. Other nodes keep 7 days.
+- **is skipped by cleanups that run on their own**: auto-delete by distance, the aircraft age-out, the MQTT geo filter purge, and the automation "delete node" action. The geo filter still ignores an asset outside its box, but no longer deletes its history.
+
+**To set it up:** open the node's details (Messages tab, then select the node) and find **Asset tracking** below Notes. Turn on the switch and set how many days to keep (1 to 365, default 90). The section shows about how many rows that keeps, based on the node's last 24 hours. It says "unknown" when there is no recent data.
+
+- The flag belongs to the physical node, not to a source, so it applies to every source that hears it. Changing it needs the **Settings: write** permission. Other users see the section read-only.
+- A manual **Delete Node** still works on an asset, and warns you that the retained history goes with it.
+- Turning the flag off returns the node to the normal 7-day window at the next hourly cleanup.
+
+Nothing is sent over the mesh; this is storage and display only. Plan disk space for long windows: a node that reports often can keep hundreds of thousands of rows over a year.
+
 ### GNSS Satellite Overlay
 
 MeshMonitor can show a node's live GPS constellation geometry:
