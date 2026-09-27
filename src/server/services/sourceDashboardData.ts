@@ -183,7 +183,7 @@ export async function buildSourceNodes(source: SourceRow, user: ReqUser): Promis
   // attach `asset` and the effective `isMobile` here. Computed only — the raw
   // `mobile` column is passed through untouched.
   const assets = await databaseService.getAssetNodesMapAsync();
-  return withOverride.map((n: any) => {
+  return withOverride.map((n: { nodeNum?: unknown; mobile?: unknown }) => {
     const entry = assets.get(Number(n.nodeNum));
     const asset = entry ? { retentionDays: entry.retentionDays } : undefined;
     return { ...n, asset, isMobile: effectiveIsMobile(n.mobile, asset) };
