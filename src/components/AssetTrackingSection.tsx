@@ -74,7 +74,7 @@ const AssetTrackingSection: React.FC<AssetTrackingSectionProps> = ({ nodeNum, as
     const rows = estimate.data?.estimatedRows;
     return rows == null
       ? t('node_details.asset_estimate_unknown', 'Estimated rows kept: unknown')
-      : t('node_details.asset_estimate', { count: rows, defaultValue: 'About {{count}} rows kept' });
+      : t('node_details.asset_estimate', { count: rows, rows: rows.toLocaleString(), defaultValue: 'About {{rows}} rows kept' });
   })();
 
   const helpText = t(

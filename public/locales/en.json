@@ -143,7 +143,7 @@
   "node_details.asset_enable": "Track this node as an asset",
   "node_details.asset_retention_days": "Keep history for (days)",
   "node_details.asset_help": "Keeps all of this node's telemetry for the chosen number of days on every source, and always draws its trail on the map. Cleanups that run automatically won't delete it.",
-  "node_details.asset_estimate": "About {{count}} rows kept",
+  "node_details.asset_estimate": "About {{rows}} rows kept",
   "node_details.asset_estimate_unknown": "Estimated rows kept: unknown",
   "node_details.asset_retention_invalid": "Enter a whole number from {{min}} to {{max}}",
   "node_details.asset_readonly_on": "Tracked as an asset. Keeps {{days}} days of telemetry.",
