@@ -128,6 +128,32 @@ describe('resolveClusterZoomThreshold (#5284 review item 1)', () => {
   });
 });
 
+describe('resolveClusterZoomThreshold clustering toggle (#5404)', () => {
+  it('defaults to clustering ON when the toggle is omitted or undefined', () => {
+    expect(resolveClusterZoomThreshold(13)).toBe(13);
+    expect(resolveClusterZoomThreshold(13, undefined)).toBe(13);
+  });
+
+  it('uses the zoom gate threshold when clustering is on', () => {
+    expect(resolveClusterZoomThreshold(13, true)).toBe(13);
+    expect(resolveClusterZoomThreshold(8, true)).toBe(8);
+  });
+
+  it('still treats a 0 threshold as no clustering when clustering is on', () => {
+    expect(resolveClusterZoomThreshold(0, true)).toBeUndefined();
+  });
+
+  it('removes clustering at any threshold when clustering is off', () => {
+    expect(resolveClusterZoomThreshold(13, false)).toBeUndefined();
+    expect(resolveClusterZoomThreshold(18, false)).toBeUndefined();
+    expect(resolveClusterZoomThreshold(0, false)).toBeUndefined();
+  });
+
+  it('leaves the map-center target zoom alone when clustering is off', () => {
+    expect(resolveClusteredMapCenterTargetZoom(5, resolveClusterZoomThreshold(13, false))).toBe(5);
+  });
+});
+
 describe('resolveClusteredMapCenterTargetZoom (#5284 review item 3)', () => {
   it('raises the target zoom to the cluster threshold when the configured target is lower', () => {
     expect(resolveClusteredMapCenterTargetZoom(5, 13)).toBe(13);

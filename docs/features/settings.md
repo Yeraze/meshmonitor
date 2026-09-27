@@ -441,6 +441,20 @@ separate from channel sharing, which uses Meshtastic's `/e/#` URL format.
 
 Raise the threshold if your nodes sit close together and you keep opening the wrong popup; lower it (or zero it) if you mostly view a sparse mesh and want one-click popups when zoomed out.
 
+When **Cluster overlapping markers** is on, this zoom also sets where clustering stops: below it, crowded markers group into numbered circles. A value of `0` turns off both the gate and clustering.
+
+**Location**: Settings → Map Settings
+
+### Cluster Overlapping Markers
+
+**Description**: Groups crowded map markers into one numbered circle while you are zoomed out below the Map Click Zoom Gate level. Clicking a circle zooms in until its markers split apart.
+
+**Default**: Enabled
+
+**Effect**: Turn it off to draw every marker at every zoom, as MeshMonitor did before clustering arrived. The Map Click Zoom Gate keeps working either way, so you can keep the zoom-in-first click behavior without the numbered circles, or drop both.
+
+Clustering makes large node sets much faster to draw. On a busy mesh, expect the map to feel slower with clustering off.
+
 **Location**: Settings → Map Settings
 
 ### Discard Invalid Positions

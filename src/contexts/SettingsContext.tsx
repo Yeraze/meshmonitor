@@ -197,6 +197,11 @@ interface SettingsContextType {
    *  zoom. Isolated markers are never gated regardless of this value — see
    *  `useMarkerSpiderfier`'s `isMarkerGated`. */
   mapZoomGateThreshold: number;
+  /** Issue #5404: whether overlapping map markers collapse into numbered
+   *  cluster bubbles below `mapZoomGateThreshold`. Independent of the click
+   *  zoom gate / spiderfy, which keeps reading `mapZoomGateThreshold` either
+   *  way. Defaults to `true` (the #5284 behavior). */
+  mapClusteringEnabled: boolean;
   defaultLandingPage: string;
   theme: Theme;
   appearanceMode: AppearanceMode;
@@ -271,6 +276,7 @@ interface SettingsContextType {
   setDefaultMapCenterZoom: (zoom: number | null) => void;
   setMapCenterTargetZoom: (zoom: number) => void;
   setMapZoomGateThreshold: (zoom: number) => void;
+  setMapClusteringEnabled: (enabled: boolean) => void;
   setDefaultLandingPage: (value: string) => void;
   setTheme: (theme: Theme) => void;
   setAppearanceMode: (mode: AppearanceMode) => void;
@@ -654,6 +660,12 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
     return Number.isNaN(parsed) ? DEFAULT_ZOOM_GATE_THRESHOLD : parsed;
   });
 
+  // #5404: default ON — only an explicit 'false' turns clustering off.
+  const [mapClusteringEnabled, setMapClusteringEnabledState] = useState<boolean>(() => {
+    const saved = localStorage.getItem('mapClusteringEnabled');
+    return saved !== 'false' && saved !== '0';
+  });
+
   // Default landing page when visiting root URL: 'unified' or a sourceId UUID.
   const [defaultLandingPage, setDefaultLandingPageState] = useState<string>(() => {
     return localStorage.getItem('defaultLandingPage') || 'unified';
@@ -1003,6 +1015,11 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
   const setMapZoomGateThreshold = React.useCallback((zoom: number) => {
     setMapZoomGateThresholdState(zoom);
     localStorage.setItem('mapZoomGateThreshold', String(zoom));
+  }, []);
+
+  const setMapClusteringEnabled = React.useCallback((enabled: boolean) => {
+    setMapClusteringEnabledState(enabled);
+    localStorage.setItem('mapClusteringEnabled', String(enabled));
   }, []);
 
   const setDefaultLandingPage = React.useCallback((value: string) => {
@@ -1892,6 +1909,15 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
             }
           }
 
+          // #5404: saved as 'true'/'false' (like elevationEnabled); '0' is
+          // also read as off so a hand-set value can't flip it back on.
+          if (settings.mapClusteringEnabled !== undefined) {
+            const raw = String(settings.mapClusteringEnabled);
+            const enabled = raw !== 'false' && raw !== '0';
+            setMapClusteringEnabledState(enabled);
+            localStorage.setItem('mapClusteringEnabled', String(enabled));
+          }
+
           if (typeof settings.defaultLandingPage === 'string' && settings.defaultLandingPage.length > 0) {
             setDefaultLandingPageState(settings.defaultLandingPage);
             localStorage.setItem('defaultLandingPage', settings.defaultLandingPage);
@@ -2160,6 +2186,7 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
     defaultMapCenterZoom,
     mapCenterTargetZoom,
     mapZoomGateThreshold,
+    mapClusteringEnabled,
     defaultLandingPage,
     theme,
     appearanceMode,
@@ -2222,6 +2249,7 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
     setDefaultMapCenterZoom,
     setMapCenterTargetZoom,
     setMapZoomGateThreshold,
+    setMapClusteringEnabled,
     setDefaultLandingPage,
     setTheme,
     setAppearanceMode,
@@ -2290,6 +2318,7 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
     defaultMapCenterZoom,
     mapCenterTargetZoom,
     mapZoomGateThreshold,
+    mapClusteringEnabled,
     defaultLandingPage,
     theme,
     appearanceMode,
@@ -2351,6 +2380,7 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
     setDefaultMapCenterZoom,
     setMapCenterTargetZoom,
     setMapZoomGateThreshold,
+    setMapClusteringEnabled,
     setDefaultLandingPage,
     setTheme,
     setAppearanceMode,
