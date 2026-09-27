@@ -154,6 +154,8 @@ class AutoDeleteByDistanceService {
     // Beyond threshold — but never touch a favorite (parity with runDeleteCycle).
     const existing = await databaseService.nodes.getNode(nodeNum, sourceId);
     if (existing?.isFavorite) return 'kept';
+    // Never touch a tracked asset (#5354) — it is expected to roam.
+    if (await databaseService.getAssetNodeAsync(nodeNum)) return 'kept';
 
     try {
       if (cfg.action === 'ignore') {
@@ -231,6 +233,8 @@ class AutoDeleteByDistanceService {
       // Get all nodes (must use async for PostgreSQL/MySQL)
       // intentional cross-source: when sourceId is omitted, scan all sources
       const allNodes = await databaseService.nodes.getAllNodes(sourceId ?? ALL_SOURCES);
+      // Tracked assets (#5354) are protected like favorites. One load per sweep.
+      const assets = await databaseService.getAssetNodesMapAsync();
 
       // #5363: per-source sign-flip correction, so the distance test sees the
       // same point the map shows. Rows may span sources when sourceId is
@@ -251,6 +255,11 @@ class AutoDeleteByDistanceService {
 
         // Protect favorited nodes
         if (node.isFavorite) {
+          continue;
+        }
+
+        // Protect tracked assets (#5354)
+        if (assets.has(Number(node.nodeNum))) {
           continue;
         }
 

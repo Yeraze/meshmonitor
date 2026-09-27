@@ -144,7 +144,8 @@ router.get('/poll', optionalAuth(), async (req, res) => {
     // 2. Nodes (always available with optionalAuth, filtered by channel permissions)
     try {
       const estimatedPositions = await databaseService.getAllNodesEstimatedPositionsAsync();
-      const enhanced = await Promise.all(filteredMemoryNodes.map(node => enhanceNodeForClient(node, user, estimatedPositions, canViewPrivate)));
+      const assets = await databaseService.getAssetNodesMapAsync();
+      const enhanced = await Promise.all(filteredMemoryNodes.map(node => enhanceNodeForClient(node, user, estimatedPositions, canViewPrivate, assets)));
       // #5363: display-only sign-flip correction against this source's reference.
       const signFlipCtx = await loadSignFlipContext(pollSourceId);
       result.nodes = enhanced.map(node => applySignFlipCorrection(node, signFlipCtx));

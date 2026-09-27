@@ -160,6 +160,9 @@ export const TABLE_ORDER = [
   // 3195: global manual solar classification per physical node. No sourceId /
   // no FK — a solar panel belongs to the hardware, not a source.
   'solar_node_overrides',
+  // 5354: global tracked-asset flag + retention per physical node. No sourceId /
+  // no FK — the flag belongs to the hardware, not a source.
+  'asset_nodes',
 ];
 
 // Tables in the 4.0 schema that carry a `sourceId` column. When the source

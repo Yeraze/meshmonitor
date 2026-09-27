@@ -18,6 +18,8 @@ import databaseService from '../../services/database.js';
 
 vi.mock('../../services/database.js', () => ({
   default: {
+    // #5354 tracked assets — none; buildSourceNodes overlays them.
+    getAssetNodesMapAsync: vi.fn(async () => new Map()),
     sources: { getSource: vi.fn(), getAllSources: vi.fn() },
     nodes: { getAllNodes: vi.fn(), getNode: vi.fn(), getNodesByNums: vi.fn() },
     traceroutes: { getAllTraceroutes: vi.fn() },

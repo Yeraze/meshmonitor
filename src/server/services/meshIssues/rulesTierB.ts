@@ -777,7 +777,8 @@ function evaluateB5Impl(ctx: TierBRuleContext, index: ParticipationIndex): MeshI
     const areaShare = areaHopCount / areaPaths.length;
     if (!(areaShare >= LOAD_BEARING_MIN_AREA_SHARE)) continue;
 
-    const fixedAndPowered = isPowered(node.batteryLevel) && !node.mobile;
+    // A tracked asset (#5354) moves by definition, so it is never "fixed".
+    const fixedAndPowered = isPowered(node.batteryLevel) && !node.mobile && !node.asset;
     // D10 — severity conditional on power; a load-bearing battery/mobile
     // node is a real fragility (warning), an already-fixed-and-powered one
     // is informational only.
@@ -804,6 +805,7 @@ function evaluateB5Impl(ctx: TierBRuleContext, index: ParticipationIndex): MeshI
         fixedAndPowered,
         batteryLevel: node.batteryLevel,
         mobile: node.mobile,
+        asset: node.asset ?? false,
         sources: node.sourceIds,
       },
       sourceIds: node.sourceIds,

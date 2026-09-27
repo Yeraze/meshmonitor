@@ -2821,6 +2821,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                 dateFormat={dateFormat}
                 sourceId={sourceId}
                 canEditNotes={hasPermission('nodes', 'write')}
+                assetTracking={{ canEdit: hasPermission('settings', 'write', { anySource: true }) }}
                 onSaveNotes={async (notes) => {
                   if (!selectedNode.user?.id) throw new Error('Node has no ID');
                   await apiService.setNodeNotes(selectedNode.user.id, notes, sourceId);

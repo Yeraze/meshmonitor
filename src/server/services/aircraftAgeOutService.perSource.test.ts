@@ -42,6 +42,7 @@ describe('AircraftAgeOutService — per-source isolation', () => {
       addAircraftIgnore: (n, s, id, ln, sn) => ignored.addAircraftIgnoreAsync(n, s, id, ln, sn),
       markAgedOut: (n, s, at) => nodes.markAircraftAgedOut(n, s, at),
       deleteNode: async () => undefined,
+      getAssetNodeNums: async () => new Set<number>(),
       getAgedOutAt: (n, s) => nodes.getAircraftAgedOutAt(n, s),
       isIgnoredCached: (n, s) => ignored.isIgnoredCached(n, s),
       liftAircraftIgnore: (n, s) => ignored.liftAircraftIgnoreAsync(n, s),

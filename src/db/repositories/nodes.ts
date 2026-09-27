@@ -358,6 +358,34 @@ export class NodesRepository extends BaseRepository {
   }
 
   /**
+   * For a batch of nodeNums, the source ids that hold a row for each (#5354).
+   *
+   * Unscoped by design, like `getSourcesForNode`: global tables keyed by
+   * nodeNum (asset flags) use it to decide which rows a caller may see. The
+   * route is responsible for intersecting the result with permitted sources.
+   */
+  async getSourceIdsForNodeNums(nodeNums: number[]): Promise<Map<number, string[]>> {
+    const validNums = [...new Set(nodeNums)].filter((n) => isValidNodeNum(n));
+    const out = new Map<number, string[]>();
+    if (validNums.length === 0) return out;
+    const { nodes } = this.tables;
+    for (let i = 0; i < validNums.length; i += 500) {
+      const chunk = validNums.slice(i, i + 500);
+      const rows = await this.db
+        .select({ nodeNum: nodes.nodeNum, sourceId: nodes.sourceId })
+        .from(nodes)
+        .where(inArray(nodes.nodeNum, chunk));
+      for (const row of rows) {
+        const num = Number(row.nodeNum);
+        const list = out.get(num);
+        if (list) list.push(row.sourceId);
+        else out.set(num, [row.sourceId]);
+      }
+    }
+    return out;
+  }
+
+  /**
    * Get a node by nodeId, optionally scoped to a source.
    *
    * After migration 029, (nodeId, sourceId) is the composite unique key. When

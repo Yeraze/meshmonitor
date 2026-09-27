@@ -199,6 +199,7 @@ import { migration as addNodeAircraftAgeOutMigration, runMigration177Postgres, r
 import { migration as userMapPreferencesAircraftTrailsMigration, runMigration178Postgres, runMigration178Mysql } from '../server/migrations/178_user_map_preferences_aircraft_trails.js';
 import { migration as addNodeFirstHeardMigration, runMigration179Postgres, runMigration179Mysql } from '../server/migrations/179_add_node_first_heard.js';
 import { migration as createAircraftFlightMatchesMigration, runMigration180Postgres, runMigration180Mysql } from '../server/migrations/180_create_aircraft_flight_matches.js';
+import { migration as createAssetNodesMigration, runMigration181Postgres, runMigration181Mysql } from '../server/migrations/181_create_asset_nodes.js';
 
 // ============================================================================
 // Registry
@@ -2920,4 +2921,19 @@ registry.register({
   sqlite: (db) => createAircraftFlightMatchesMigration.up(db),
   postgres: (client) => runMigration180Postgres(client),
   mysql: (pool) => runMigration180Mysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 181: `asset_nodes` (#5354, Asset Tracking Phase 1). GLOBAL (no
+// sourceId): the tracked-asset flag and its telemetry retention belong to the
+// physical node. Copies migration 167 (`solar_node_overrides`).
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 181,
+  name: 'create_asset_nodes',
+  settingsKey: 'migration_181_create_asset_nodes',
+  sqlite: (db) => createAssetNodesMigration.up(db),
+  postgres: (client) => runMigration181Postgres(client),
+  mysql: (pool) => runMigration181Mysql(pool),
 });
