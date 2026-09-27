@@ -109,6 +109,35 @@ describe('MqttBridgeManager — dropAutomationUplinks (#5414)', () => {
     expect(bridge.getStatus().uplinkAutomationDrops).toBe(0);
   });
 
+  it('uplinks a packet with no id even when the flag is on', async () => {
+    const { bridge, publish } = makeBridge({ dropAutomationUplinks: true });
+    automationPacketTracker.record('src-a', NODE_A, 0x1001);
+    await (bridge as any).handleUplink({
+      topic: 'msh/US/2/e/LongFast/!aaaa0001',
+      payload: Buffer.from([1]),
+      retained: false,
+      envelope: { channelId: 'LongFast', gatewayId: '!aaaa0001', packet: { from: NODE_A } },
+      clientId: '!aaaa0001',
+    });
+    expect(publish).toHaveBeenCalledTimes(1);
+    expect(bridge.getStatus().uplinkAutomationDrops).toBe(0);
+  });
+
+  it('matches a from field decoded as a non-number (Long-like)', async () => {
+    const { bridge, publish } = makeBridge({ dropAutomationUplinks: true });
+    automationPacketTracker.record('src-a', NODE_A, 0x1001);
+    const longFrom = { valueOf: () => NODE_A, toString: () => String(NODE_A) };
+    await (bridge as any).handleUplink({
+      topic: 'msh/US/2/e/LongFast/!aaaa0001',
+      payload: Buffer.from([1]),
+      retained: false,
+      envelope: { channelId: 'LongFast', gatewayId: '!aaaa0001', packet: { from: longFrom, id: 0x1001 } },
+      clientId: '!aaaa0001',
+    });
+    expect(publish).not.toHaveBeenCalled();
+    expect(bridge.getStatus().uplinkAutomationDrops).toBe(1);
+  });
+
   it('drops every uplinked copy within the window (several gateways heard it)', async () => {
     const { bridge, publish, uplink } = makeBridge({ dropAutomationUplinks: true });
     automationPacketTracker.record('src-a', NODE_A, 0x1001);

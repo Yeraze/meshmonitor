@@ -55,7 +55,8 @@ const NOT_MESHTASTIC = new Set([
 ]);
 
 /**
- * Expected call-site counts. Every automation site in these files is tagged;
+ * Expected match counts. These are regex matches, not strictly call sites:
+ * wrapper bodies and delegates count too. Only a change in the number matters. Every automation site in these files is tagged;
  * the few manual ones are noted.
  */
 const EXPECTED: Record<string, number> = {

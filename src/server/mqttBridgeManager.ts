@@ -775,7 +775,9 @@ export class MqttBridgeManager extends EventEmitter implements ISourceManager {
     // node's packet never matches. Checked before ok_to_mqtt — it is a cheap
     // synchronous lookup and saves a decrypt.
     if (this.config.dropAutomationUplinks && packetId !== null) {
-      const from = p.envelope.packet?.from;
+      // Coerce like the packet id above: some decode paths hand back a Long.
+      const rawFrom = p.envelope.packet?.from;
+      const from = rawFrom === undefined || rawFrom === null ? null : Number(rawFrom) >>> 0;
       if (automationPacketTracker.isAutomationPacket(from, packetId)) {
         this.uplinkAutomationDrops++;
         return;
