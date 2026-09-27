@@ -46,6 +46,9 @@ spec:
           containerPort: {{ .targetPort | default .port }}
           protocol: {{ .protocol | default "TCP" }}
         {{- end }}
+        {{- with include "meshmonitor.virtualNodeContainerPorts" . }}
+        {{- . | trim | nindent 8 }}
+        {{- end }}
         env:
         - name: MESHTASTIC_NODE_IP
           value: {{ .Values.env.meshtasticNodeIp | quote }}

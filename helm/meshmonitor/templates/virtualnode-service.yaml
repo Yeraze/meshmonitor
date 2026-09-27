@@ -1,0 +1,43 @@
+{{- /*
+Optional second Service for Virtual Node Server port(s) (#5416). It selects the
+same pods as the main Service but carries its own type, annotations and
+load-balancer settings, so the web UI can stay ClusterIP behind an Ingress
+while only the raw-TCP Virtual Node port(s) sit on a LoadBalancer with a pinned
+IP. An Ingress cannot carry this traffic: it proxies HTTP, and the Virtual Node
+speaks the Meshtastic framed-protobuf TCP protocol.
+*/ -}}
+{{- if .Values.virtualNodeService.enabled }}
+{{- $svc := .Values.virtualNodeService -}}
+{{- $external := or (eq (toString $svc.type) "LoadBalancer") (eq (toString $svc.type) "NodePort") -}}
+{{- if not $svc.ports }}
+{{- fail "virtualNodeService.enabled is true but virtualNodeService.ports is empty" }}
+{{- end }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "meshmonitor.fullname" . }}-virtual-node
+  labels:
+    {{- include "meshmonitor.labels" . | nindent 4 }}
+    app.kubernetes.io/component: virtual-node
+  {{- with $svc.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  type: {{ $svc.type }}
+  {{- with include "meshmonitor.serviceTypeFields" $svc | trim }}
+  {{- . | nindent 2 }}
+  {{- end }}
+  ports:
+  {{- range $svc.ports }}
+  - port: {{ .port }}
+    targetPort: {{ .targetPort | default .port }}
+    protocol: {{ .protocol | default "TCP" }}
+    name: {{ .name }}
+    {{- if and $external .nodePort }}
+    nodePort: {{ .nodePort }}
+    {{- end }}
+  {{- end }}
+  selector:
+    {{- include "meshmonitor.selectorLabels" . | nindent 4 }}
+{{- end }}

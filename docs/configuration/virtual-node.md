@@ -193,6 +193,70 @@ service:
 
 After the pod starts, open the Dashboard and enable Virtual Node on the auto-created source, using the same port number you listed above.
 
+#### Pinning the LoadBalancer IP
+
+Mobile apps connect to a fixed address, so you usually want the Virtual Node on
+a stable IP. Most bare-metal load balancers pick the IP from a Service
+annotation, which the chart passes through with `service.annotations`:
+
+| Load balancer | Annotation |
+|---------------|------------|
+| MetalLB 0.13+ | `metallb.io/loadBalancerIPs` (older: `metallb.universe.tf/loadBalancerIPs`) |
+| kube-vip | `kube-vip.io/loadbalancerIPs` |
+| Cilium LB-IPAM | `lbipam.cilium.io/ips` |
+
+```yaml
+service:
+  type: LoadBalancer
+  annotations:
+    metallb.io/loadBalancerIPs: 192.168.1.240
+  extraPorts:
+    - name: virtual-node
+      port: 4404
+      targetPort: 4404
+```
+
+The chart also exposes `service.loadBalancerIP`, `loadBalancerClass`,
+`loadBalancerSourceRanges` and `externalTrafficPolicy`, plus a `nodePort` on
+each port for `type: NodePort`. `loadBalancerIP` is deprecated in Kubernetes in
+favour of the annotations above, but some load balancers still honour it.
+
+::: warning k3s ServiceLB
+k3s's built-in ServiceLB (klipper-lb) cannot pin an IP: it answers on the
+node IPs. To choose the address, install MetalLB, kube-vip or Cilium LB-IPAM
+(and start k3s with `--disable servicelb`), or use `type: NodePort` and connect
+to a node's IP.
+:::
+
+#### Web UI behind an Ingress, Virtual Node on a LoadBalancer
+
+An Ingress (or Gateway API HTTPRoute) can't carry Virtual Node traffic: it
+proxies HTTP, while the Virtual Node speaks the raw Meshtastic TCP protocol. To
+keep the web UI on ClusterIP behind your Ingress and put only the Virtual Node
+port(s) on a LoadBalancer, enable the chart's separate `virtualNodeService`. It
+selects the same pod, has its own type, annotations and load-balancer fields,
+and adds a matching container port for each entry (a port already listed in
+`service.extraPorts` is not added twice):
+
+```yaml
+service:
+  type: ClusterIP
+
+ingress:
+  enabled: true
+  # ...hosts/tls as usual
+
+virtualNodeService:
+  enabled: true
+  type: LoadBalancer
+  annotations:
+    metallb.io/loadBalancerIPs: 192.168.1.241
+  ports:
+    - name: virtual-node
+      port: 4404
+      targetPort: 4404
+```
+
 ## Mobile App Setup
 
 ### iOS (Official Meshtastic App)
