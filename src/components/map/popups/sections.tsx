@@ -206,7 +206,7 @@ export const SignalItems: React.FC<SignalItemsProps> = ({
       {/* #5374: ADS-B flight match, fetched only while this popup is open. */}
       {showAltitude && model.likelyAircraft && (
         <FlightMatchLine
-          sourceId={contextSourceId ?? model.sources?.find((src) => src.protocol === 'Meshtastic')?.sourceId ?? null}
+          sourceId={contextSourceId ?? model.sourceId ?? model.sources?.find((src) => src.protocol === 'Meshtastic')?.sourceId ?? null}
           nodeNum={model.nodeNum}
           likelyAircraft
           variant="popup"
