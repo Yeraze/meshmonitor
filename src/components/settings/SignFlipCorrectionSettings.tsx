@@ -66,7 +66,7 @@ export const SignFlipCorrectionSettings: React.FC<SignFlipCorrectionSettingsProp
         <p className="setting-description">
           {t(
             'settings.sign_flip.help',
-            'Some operators type their coordinates without the minus sign, which puts the node on the other side of the globe. When a node is outside the range below but exactly one mirror of its position (latitude, longitude, or both negated) is inside it, the maps show the mirror point and the node details say so. The stored position is never changed.',
+            'Some operators type their coordinates without the minus sign, which puts the node on the other side of the globe. When a node is outside the range below but exactly one mirror of its position (latitude, longitude, or both negated) is inside it, the maps show the mirror point and the node details say so. The stored position is never changed. While this is on, distance auto-delete and MQTT geo-ignore for this source also judge the corrected point.',
           )}
         </p>
       </div>

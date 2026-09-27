@@ -199,3 +199,27 @@ export function rowSourceId(row: unknown): string | undefined {
   const id = (row as { sourceId?: unknown } | null | undefined)?.sourceId;
   return typeof id === 'string' && id.length > 0 ? id : undefined;
 }
+
+/**
+ * Short-TTL cache of each source's context, for hot paths that run per packet
+ * (MQTT ingest's geo and distance gates). Settings saves invalidate it; the
+ * TTL bounds how stale an own-node reference can get.
+ */
+const SIGN_FLIP_CONTEXT_TTL_MS = 60_000;
+const contextCache = new Map<string, { ctx: Promise<SignFlipContext | null>; expiresAt: number }>();
+
+export function getCachedSignFlipContext(sourceId: string | null | undefined): Promise<SignFlipContext | null> {
+  if (!sourceId) return Promise.resolve(null);
+  const now = Date.now();
+  const hit = contextCache.get(sourceId);
+  if (hit && hit.expiresAt > now) return hit.ctx;
+  const ctx = loadSignFlipContext(sourceId);
+  contextCache.set(sourceId, { ctx, expiresAt: now + SIGN_FLIP_CONTEXT_TTL_MS });
+  return ctx;
+}
+
+/** Drop the cached context for one source, or all sources when omitted. */
+export function invalidateSignFlipContext(sourceId?: string): void {
+  if (sourceId) contextCache.delete(sourceId);
+  else contextCache.clear();
+}

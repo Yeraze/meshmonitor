@@ -1662,7 +1662,7 @@
   "settings.aircraft.age_out_last_run_never": "Last run: not yet.",
   "settings.sign_flip.title": "Sign-flipped positions",
   "settings.sign_flip.enabled": "Correct sign-flipped positions",
-  "settings.sign_flip.help": "Some operators type their coordinates without the minus sign, which puts the node on the other side of the globe. When a node is outside the range below but exactly one mirror of its position (latitude, longitude, or both negated) is inside it, the maps show the mirror point and the node details say so. The stored position is never changed.",
+  "settings.sign_flip.help": "Some operators type their coordinates without the minus sign, which puts the node on the other side of the globe. When a node is outside the range below but exactly one mirror of its position (latitude, longitude, or both negated) is inside it, the maps show the mirror point and the node details say so. The stored position is never changed. While this is on, distance auto-delete and MQTT geo-ignore for this source also judge the corrected point.",
   "settings.sign_flip.range_label": "Range ({{unit}})",
   "settings.sign_flip.range_warning": "Keep this small. A wide range can move a genuine far-away node (for example one heard over MQTT) whose mirror point happens to fall inside it.",
   "settings.sign_flip.reference_label": "Reference point (optional)",
