@@ -240,6 +240,40 @@ Trails are drawn from positions MeshMonitor has already stored, so they send not
 
 MQTT sources store position history too, the same as a connected radio, so aircraft heard only over MQTT get trails. A position relayed by several gateways is stored once. History for an MQTT node starts from when you upgrade to this version.
 
+#### Flight matching (ADS-B) {#flight-matching-ads-b}
+
+MeshMonitor can check a likely aircraft against a free, public ADS-B feed and show which flight it is on. It is **off by default**: a stock install makes no calls to any outside service. An admin turns it on in [**Settings → Flight matching (ADS-B)**](/features/settings#flight-matching-ads-b) (global, not per source).
+
+When it finds a match, the node's popup and details show one line, for example:
+
+> Matched: UAL123 · B738 · N12345 · 450 kt 270° &nbsp; *Data: adsb.lol*
+
+The line links to the flight on the feed's own map. Parts the feed doesn't report are left out. The node keeps its own name; the marker and automations don't change.
+
+**How it looks up a flight**
+
+- A lookup happens only when a node **becomes** a likely aircraft, and at most **two lookups per flagging**.
+- Lookup 1 runs when the node is flagged. A hit shows as **Possible match**.
+- Lookup 2 runs on the node's next live position, 1 to 30 minutes later. If it names the same aircraft again, the line changes to **Matched**.
+- After that nothing more is looked up until the node is flagged again. The count is stored in the database, so a restart or a settings save doesn't reset it.
+- MeshMonitor picks the nearest aircraft within a radius that grows with the age of the node's fix (5 to 90 km) and within 300 m of the node's altitude. If two aircraft are about equally close, it shows nothing rather than guess.
+- **A match only confirms.** No match never clears the likely-aircraft flag: light aircraft, balloons and drones often carry no ADS-B.
+
+**Feeds**
+
+| Feed | Terms |
+|---|---|
+| **adsb.lol** *(default)* | Open data under the ODbL. |
+| **adsb.fi** | For personal, non-commercial use only. |
+
+airplanes.live is not offered: it refused anonymous requests when this feature was built. The optional **API key** field is for adsb.lol's announced future key; leave it empty unless adsb.lol asks for one. Only admins can see the key.
+
+**What it sends, and how often**
+
+Nothing goes over the mesh. MeshMonitor sends the node's approximate position (to about 10 m) to the chosen feed over HTTPS. Requests go out at least 1.1 seconds apart, and any rate limit, refusal, server error or timeout pauses all lookups for 10 minutes. A failed lookup doesn't use up the node's allowance. A node flagged on several sources at once shares one request.
+
+Only users who can read nodes on that source see the line. A node with a private position shows no match to users who can't see private positions.
+
 ### GNSS Satellite Overlay
 
 MeshMonitor can show a node's live GPS constellation geometry:

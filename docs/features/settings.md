@@ -567,6 +567,17 @@ Description: Offline OpenStreetMap tiles via TileServer GL
 This same elevation source drives Map Analysis's [3D terrain view](/features/map-analysis#3d-terrain-view). A **tile-template** URL (the default Terrarium source, or a custom one) works for both the 2D Link Profile chart and the 3D pitched-terrain map. A **JSON point API** source only supports the 2D Link Profile — there are no tiles to build a 3D surface from, so the 3D toggle stays disabled with an explanatory tooltip for that configuration (no fallback to the default tile source is attempted).
 :::
 
+## Flight matching (ADS-B) {#flight-matching-ads-b}
+
+**Description**: Looks up a node that becomes a [likely aircraft](#likely-aircraft-detection) on a free, public ADS-B feed and shows the flight in its popup and details. Admin-only, global (not per source); under **Settings → Flight matching (ADS-B)**, next to Elevation / Terrain. Off by default.
+
+**Fields**:
+- **Look up likely aircraft on a public ADS-B feed** — the on/off switch. Off means no outside calls at all.
+- **Feed** — **adsb.lol** (default, ODbL open data) or **adsb.fi** (personal, non-commercial use only). airplanes.live is not offered in this version.
+- **API key (optional)** — for adsb.lol's announced future key. Sent only when set; never shown to non-admins.
+
+At most two lookups per flagging, no packets over the mesh. See [Flight matching (ADS-B)](/features/maps#flight-matching-ads-b) for how matches are chosen and shown.
+
 ## Display Preferences
 
 ### Default Landing Page {#default-landing-page}
