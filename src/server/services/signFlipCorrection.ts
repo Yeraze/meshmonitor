@@ -143,13 +143,14 @@ export function applySignFlipCorrection<T extends object>(node: T, ctx: SignFlip
   const lat = n.position?.latitude ?? n.latitude;
   const lon = n.position?.longitude ?? n.longitude;
   const r = detectSignFlip(lat, lon, ctx.reference, ctx.rangeKm, n.positionPrecisionBits);
-  if (!r) return node;
+  // detectSignFlip already rejects a missing pair; the explicit check keeps that visible here.
+  if (!r || lat == null || lon == null) return node;
 
   const out: T & NodeLike & SignFlipFields = {
     ...n,
     positionSignFlipCorrected: true,
-    reportedLatitude: lat as number,
-    reportedLongitude: lon as number,
+    reportedLatitude: lat,
+    reportedLongitude: lon,
   };
   if (n.position && n.position.latitude != null && n.position.longitude != null) {
     out.position = { ...n.position, latitude: r.latitude, longitude: r.longitude };

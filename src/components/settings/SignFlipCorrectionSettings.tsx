@@ -13,7 +13,8 @@ import { SIGN_FLIP_RANGE_KM, clampSignFlipRangeKm, isSignFlipReferenceValid } fr
 import type { DistanceUnit } from '../../contexts/SettingsContext';
 import styles from './SignFlipCorrectionSettings.module.css';
 
-const KM_PER_MILE = 1 / kmToMiles(1);
+// Inverse of kmToMiles (0.621371 mi per km).
+const KM_PER_MILE = 1 / 0.621371;
 
 export interface SignFlipCorrectionSettingsProps {
   enabled: boolean;
