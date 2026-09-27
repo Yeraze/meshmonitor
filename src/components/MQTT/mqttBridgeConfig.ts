@@ -57,6 +57,8 @@ export interface BridgeConfigForm {
   mode: BridgeMode;
   forwardingMode: BridgeForwardingMode;
   ignoreOkToMqtt: boolean;
+  /** Keep MeshMonitor's own automation sends off the upstream broker (#5414). */
+  dropAutomationUplinks: boolean;
   // Subscribe-side (downlink) filtering.
   useTopicBlock: boolean;
   topicBlock: string;
@@ -197,6 +199,10 @@ export function buildBridgeConfig(
     if (form.ignoreOkToMqtt) cfg.ignoreOkToMqtt = true;
     else delete cfg.ignoreOkToMqtt;
   }
+  if (form.dropAutomationUplinks !== undefined) {
+    if (form.dropAutomationUplinks) cfg.dropAutomationUplinks = true;
+    else delete cfg.dropAutomationUplinks;
+  }
 
   // --- Subscribe-side (downlink) filters: manage topics.block / geo only when
   // the caller supplies them; preserve other downlink subkeys (channels/nodes/
@@ -303,6 +309,7 @@ export function formFromBridgeConfig(config: Record<string, any> | null | undefi
         : 'bidirectional',
     forwardingMode: savedForwarding === 'single' ? 'single' : 'per_gateway',
     ignoreOkToMqtt: cfg.ignoreOkToMqtt === true,
+    dropAutomationUplinks: cfg.dropAutomationUplinks === true,
     useTopicBlock: downTopicBlock.length > 0,
     topicBlock: downTopicBlock.join('\n'),
     useGeo: hasGeo,
@@ -336,6 +343,7 @@ export function emptyBridgeForm(): BridgeConfigForm {
     mode: 'bidirectional',
     forwardingMode: 'per_gateway',
     ignoreOkToMqtt: false,
+    dropAutomationUplinks: false,
     useTopicBlock: false,
     topicBlock: '',
     useGeo: false,

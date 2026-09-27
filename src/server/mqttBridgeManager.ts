@@ -48,6 +48,7 @@ import {
   type PublisherStatus,
 } from './mqttBridgePublisherPool.js';
 import { allowsUplink, resolveOkToMqttForEnvelope } from './utils/okToMqtt.js';
+import { automationPacketTracker } from './utils/automationPacketTracker.js';
 import { DistanceDeleteScheduler } from './services/distanceDeleteScheduler.js';
 import { mqttGeoSweepService, type GeoSweepStats } from './services/mqttGeoSweepService.js';
 
@@ -139,6 +140,17 @@ export interface MqttBridgeSourceConfig {
    * upstreams where the operator has explicit consent from every gateway.
    */
   ignoreOkToMqtt?: boolean;
+  /**
+   * When true, do not uplink packets MeshMonitor's own automations sent
+   * (auto-ack, auto-responder, auto-announce, timers, geofences, Automation
+   * Engine actions, ...) — #5414. Manual sends still follow the normal rules.
+   * Default false (unchanged behaviour on upgrade).
+   *
+   * Only covers this bridge's uplink. A device whose built-in MQTT module
+   * publishes straight to the upstream broker bypasses it; that path needs a
+   * firmware fix (meshtastic/firmware#11994).
+   */
+  dropAutomationUplinks?: boolean;
 }
 
 /** Literal prefix replacement rule applied to a Meshtastic MQTT topic. */
@@ -200,6 +212,11 @@ export interface MqttBridgeStatus extends SourceStatus {
    * policy mirroring firmware MQTT::onSend.
    */
   uplinkOkToMqttDrops: number;
+  /**
+   * Count of uplink packets dropped because MeshMonitor's own automation sent
+   * them and `dropAutomationUplinks` is on (#5414).
+   */
+  uplinkAutomationDrops: number;
   lastError: string | null;
   /**
    * Inferred broker ACL state. `permissionMessage` is non-null when the
@@ -263,6 +280,7 @@ export class MqttBridgeManager extends EventEmitter implements ISourceManager {
   private downlinkRepublished = 0;
   private uplinkOut = 0;
   private uplinkOkToMqttDrops = 0;
+  private uplinkAutomationDrops = 0;
   private lastError: string | null = null;
   private readonly downlinkEchoes: EchoEntry[] = [];
   private readonly uplinkEchoes: EchoEntry[] = [];
@@ -460,6 +478,7 @@ export class MqttBridgeManager extends EventEmitter implements ISourceManager {
       forwardingMode: this.getForwardingMode(),
       publishers: this.publisherPool?.getStatus() ?? {},
       uplinkOkToMqttDrops: this.uplinkOkToMqttDrops,
+      uplinkAutomationDrops: this.uplinkAutomationDrops,
       lastGeoSweep: this.lastGeoSweep,
     };
   }
@@ -747,6 +766,21 @@ export class MqttBridgeManager extends EventEmitter implements ISourceManager {
     }
 
     if (!this.uplinkFilter.preFilter(p.topic, p.envelope)) return;
+
+    // Drop packets MeshMonitor's own automations sent (#5414). The firmware
+    // sets ok_to_mqtt on every phone-API packet from the node config
+    // (meshtastic/firmware#11994), so this is the only place we can keep
+    // automation traffic off the upstream broker. Matched on (from, id): the
+    // tracker only knows packets our connected nodes originated, so another
+    // node's packet never matches. Checked before ok_to_mqtt — it is a cheap
+    // synchronous lookup and saves a decrypt.
+    if (this.config.dropAutomationUplinks && packetId !== null) {
+      const from = p.envelope.packet?.from;
+      if (automationPacketTracker.isAutomationPacket(from, packetId)) {
+        this.uplinkAutomationDrops++;
+        return;
+      }
+    }
 
     // Honor the originator's `ok_to_mqtt` preference unless the operator
     // has explicitly opted out for this bridge. See evaluateOkToMqtt for

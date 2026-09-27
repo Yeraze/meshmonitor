@@ -504,6 +504,7 @@ describe('broadcast channel (#4341)', () => {
 
     expect(broadcastWaypoint).toHaveBeenCalledWith(expect.objectContaining({ id: 7 }), {
       channel: 3,
+      origin: 'automation',
     });
   });
 
@@ -517,7 +518,7 @@ describe('broadcast channel (#4341)', () => {
 
     await waypointService.rebroadcastTick();
 
-    expect(broadcastWaypoint).toHaveBeenCalledWith(expect.anything(), { channel: 0 });
+    expect(broadcastWaypoint).toHaveBeenCalledWith(expect.anything(), { channel: 0, origin: 'automation' });
   });
 });
 

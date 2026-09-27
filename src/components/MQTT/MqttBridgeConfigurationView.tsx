@@ -43,6 +43,9 @@ import {
 interface GeoFilterSourceStatus {
   downlinkDrops?: { geo?: number };
   uplinkDrops?: { geo?: number };
+  /** Bridge-level uplink policy drops (outside the filter chain). */
+  uplinkOkToMqttDrops?: number;
+  uplinkAutomationDrops?: number;
   lastGeoSweep?: {
     timestamp: number;
     scanned: number;
@@ -96,6 +99,8 @@ export const MqttBridgeConfigurationView: React.FC<MqttBridgeConfigurationViewPr
   const downlinkGeoDrops = geoStatus?.downlinkDrops?.geo ?? 0;
   const uplinkGeoDrops = geoStatus?.uplinkDrops?.geo ?? 0;
   const lastGeoSweep = geoStatus?.lastGeoSweep ?? null;
+  const uplinkOkToMqttDrops = geoStatus?.uplinkOkToMqttDrops ?? 0;
+  const uplinkAutomationDrops = geoStatus?.uplinkAutomationDrops ?? 0;
 
   const [form, setForm] = useState<BridgeConfigForm>(emptyBridgeForm());
   const [brokers, setBrokers] = useState<SourceSummary[]>([]);
@@ -382,6 +387,33 @@ export const MqttBridgeConfigurationView: React.FC<MqttBridgeConfigurationViewPr
               {t(
                 'source.form.mqtt_bridge_ignore_ok_to_mqtt_help',
                 'Overrides the originating node\'s "ok_to_mqtt" preference. Only enable for private bridges where every gateway has consented.',
+              )}
+            </span>
+          </span>
+        </label>
+        <label className="dashboard-form-field" style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 8 }}>
+          <input
+            type="checkbox"
+            checked={form.dropAutomationUplinks}
+            disabled={!canWrite}
+            onChange={(e) => patch('dropAutomationUplinks', e.target.checked)}
+            style={{ marginTop: 3 }}
+          />
+          <span>
+            <span className="dashboard-form-label" style={{ display: 'block' }}>
+              {t('source.form.mqtt_bridge_drop_automation_uplinks', "Don't uplink MeshMonitor automation traffic")}
+            </span>
+            <span style={labelStyle}>
+              {t(
+                'source.form.mqtt_bridge_drop_automation_uplinks_help',
+                'Keeps packets sent by MeshMonitor automations (auto-acknowledge tapbacks, auto-responder, auto-announce, auto-welcome, timers, geofences, Automation Engine actions, auto-ping, scheduled requests) off the upstream broker. They still go out over LoRa and to the local broker; messages you send by hand are not affected. Only covers this bridge: a node whose own MQTT module publishes straight to the upstream broker still uplinks them (firmware limit, meshtastic/firmware#11994).',
+              )}
+            </span>
+            <span style={{ ...labelStyle, display: 'block' }}>
+              {t(
+                'source.form.mqtt_bridge_uplink_policy_drops',
+                'Dropped so far: {{automation}} automation · {{okToMqtt}} ok_to_mqtt',
+                { automation: uplinkAutomationDrops, okToMqtt: uplinkOkToMqttDrops },
               )}
             </span>
           </span>

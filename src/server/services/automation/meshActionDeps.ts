@@ -16,6 +16,7 @@ import { appriseNotificationService } from '../appriseNotificationService.js';
 import { runScript as runUserScript } from '../../utils/scriptRunner.js';
 import { logger } from '../../../utils/logger.js';
 import type { ActionDeps } from './actionExecutor.js';
+import type { SendOrigin } from '../../utils/automationPacketTracker.js';
 import { type MeshCoreAdvertMode, LEGACY_MESHCORE_ADVERT_MODE } from '../../../types/meshcoreAdvert.js';
 
 /**
@@ -31,13 +32,20 @@ interface QueuedSendManager {
       text: string, destination: number, replyId?: number,
       onSuccess?: () => void, onFailure?: (reason: string) => void,
       channel?: number, maxAttemptsOverride?: number, emoji?: number,
-      hopLimitOverride?: number,
+      hopLimitOverride?: number, origin?: SendOrigin,
     ): string;
   };
 }
 
 /** Options bag MeshtasticManager.sendTextMessage takes as its 8th argument. */
-type SendTextOptions = { hopLimitOverride?: number };
+type SendTextOptions = { hopLimitOverride?: number; origin?: SendOrigin };
+
+/**
+ * Every Meshtastic send made here is an Automation Engine action, so it is
+ * tagged as automation-originated (#5414) — an MQTT bridge with
+ * `dropAutomationUplinks` keeps it off the upstream broker.
+ */
+const AUTOMATION: { origin: SendOrigin } = { origin: 'automation' };
 
 interface MeshSendManager {
   sendTextMessage(
@@ -49,12 +57,12 @@ interface MeshSendManager {
   sendIgnoredNode(nodeNum: number, destinationNodeNum?: number): Promise<void>;
   sendRemoveIgnoredNode(nodeNum: number, destinationNodeNum?: number): Promise<void>;
   // Request/operation senders (#3835).
-  sendTelemetryRequest(destination: number, channel?: number, telemetryType?: 'device' | 'environment' | 'airQuality' | 'power'): Promise<unknown>;
-  sendPositionRequest(destination: number, channel?: number): Promise<unknown>;
-  sendTraceroute(destination: number, channel?: number): Promise<unknown>;
-  sendNodeInfoRequest(destination: number, channel?: number): Promise<unknown>;
-  sendNeighborInfoRequest(destination: number, channel?: number): Promise<unknown>;
-  broadcastNodeInfoToChannel(channel: number): Promise<unknown>;
+  sendTelemetryRequest(destination: number, channel?: number, telemetryType?: 'device' | 'environment' | 'airQuality' | 'power', options?: { origin?: SendOrigin }): Promise<unknown>;
+  sendPositionRequest(destination: number, channel?: number, options?: { origin?: SendOrigin }): Promise<unknown>;
+  sendTraceroute(destination: number, channel?: number, options?: { origin?: SendOrigin }): Promise<unknown>;
+  sendNodeInfoRequest(destination: number, channel?: number, options?: { origin?: SendOrigin }): Promise<unknown>;
+  sendNeighborInfoRequest(destination: number, channel?: number, options?: { origin?: SendOrigin }): Promise<unknown>;
+  broadcastNodeInfoToChannel(channel: number, options?: { origin?: SendOrigin }): Promise<unknown>;
 }
 
 /** MeshCore companion managers send via a different method signature. */
@@ -120,7 +128,9 @@ async function sendTextVia(
     //     through actionExecutor's pushOrSkipTxDisabled. Both are exactly how
     //     Auto-Acknowledge itself behaves — that IS the parity.
     const q = (raw as QueuedSendManager).messageQueue;
-    const sendOptions = hopLimitOverride !== undefined ? { hopLimitOverride } : undefined;
+    const sendOptions: SendTextOptions = hopLimitOverride !== undefined
+      ? { hopLimitOverride, ...AUTOMATION }
+      : { ...AUTOMATION };
     // #5121: a zero-hop send carries no ACK request, so there is nothing for the
     // queue's retry to wait on. It always takes the direct single-send path —
     // maxAttempts is deliberately ignored rather than turned into blind resends.
@@ -133,14 +143,11 @@ async function sendTextVia(
         maxAttempts,
         emoji || undefined,
         hopLimitOverride,
+        'automation',
       );
       return { queued: true, messageId: id, maxAttempts };
     }
-    // Only widen the call when an override is set, so an automation without
-    // one reaches the manager exactly as it did before #5121.
-    return sendOptions
-      ? raw.sendTextMessage(text, channel, dest, replyId, emoji, undefined, undefined, sendOptions)
-      : raw.sendTextMessage(text, channel, dest, replyId, emoji);
+    return raw.sendTextMessage(text, channel, dest, replyId, emoji, undefined, undefined, sendOptions);
   }
   if (raw && typeof raw.sendMessage === 'function') {
     // MeshCore: `destination`, when a string, is the contact's public key (#4018)
@@ -171,9 +178,10 @@ export function createMeshActionDeps(): ActionDeps {
 
     async sendTapback({ sourceId, emoji, channel, destination, replyId, hopLimitOverride }) {
       // emoji flag = 1 marks a tapback/reaction; route the way the trigger arrived.
-      return hopLimitOverride !== undefined
-        ? mgr(sourceId).sendTextMessage(emoji, channel ?? 0, destination, replyId, 1, undefined, undefined, { hopLimitOverride })
-        : mgr(sourceId).sendTextMessage(emoji, channel ?? 0, destination, replyId, 1);
+      const options: SendTextOptions = hopLimitOverride !== undefined
+        ? { hopLimitOverride, ...AUTOMATION }
+        : { ...AUTOMATION };
+      return mgr(sourceId).sendTextMessage(emoji, channel ?? 0, destination, replyId, 1, undefined, undefined, options);
     },
 
     async manageNode({ sourceId, nodeNum, op }) {
@@ -210,12 +218,12 @@ export function createMeshActionDeps(): ActionDeps {
           throw new Error(`action.requestData: invalid Meshtastic target "${target}" — expected a node number`);
         }
         switch (op) {
-          case 'telemetry': return raw.sendTelemetryRequest!(dest, channel, telemetryType);
-          case 'position': return raw.sendPositionRequest!(dest, channel);
-          case 'traceroute': return raw.sendTraceroute!(dest, channel);
-          case 'nodeinfo': return raw.sendNodeInfoRequest!(dest, channel);
-          case 'neighbors': return raw.sendNeighborInfoRequest!(dest, channel);
-          case 'advert': return raw.broadcastNodeInfoToChannel!(channel);
+          case 'telemetry': return raw.sendTelemetryRequest!(dest, channel, telemetryType, AUTOMATION);
+          case 'position': return raw.sendPositionRequest!(dest, channel, AUTOMATION);
+          case 'traceroute': return raw.sendTraceroute!(dest, channel, AUTOMATION);
+          case 'nodeinfo': return raw.sendNodeInfoRequest!(dest, channel, AUTOMATION);
+          case 'neighbors': return raw.sendNeighborInfoRequest!(dest, channel, AUTOMATION);
+          case 'advert': return raw.broadcastNodeInfoToChannel!(channel, AUTOMATION);
           default: throw new Error(`unsupported request op "${op}"`);
         }
       }
