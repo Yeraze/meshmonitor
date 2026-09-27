@@ -707,6 +707,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
     defaultMapCenterZoom,
     mapCenterTargetZoom,
     mapZoomGateThreshold,
+    mapClusteringEnabled,
     mapStyles,
     activeStyleId,
     activeStyleJson,
@@ -747,7 +748,11 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
   // either. Every other setting (including the DEFAULT_ZOOM_GATE_THRESHOLD
   // fallback used when the setting is unset) gets the full clustering perf
   // fix.
-  const resolvedClusterZoomThreshold = resolveClusterZoomThreshold(mapZoomGateThreshold);
+  //
+  // Issue #5404: `mapClusteringEnabled` turns the cluster layer off on its
+  // own, without touching the click zoom gate (the spiderfier keeps reading
+  // `mapZoomGateThreshold` in `NodeMarkersLayer`).
+  const resolvedClusterZoomThreshold = resolveClusterZoomThreshold(mapZoomGateThreshold, mapClusteringEnabled);
 
   // Review item 3 (PR #5284) — see resolveClusteredMapCenterTargetZoom's own
   // doc comment for the full "why" and why this beats zoomToShowLayer().

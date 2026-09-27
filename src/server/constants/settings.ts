@@ -301,6 +301,9 @@ export const VALID_SETTINGS_KEYS = [
   // opening the popup. `0` disables the gate entirely. Isolated markers are
   // never gated at any zoom (issue #4551).
   'mapZoomGateThreshold',
+  // Whether overlapping markers collapse into numbered cluster bubbles below
+  // `mapZoomGateThreshold`. Independent of the click zoom gate (issue #5404).
+  'mapClusteringEnabled',
   'securityDigestEnabled',
   'securityDigestAppriseUrl',
   'securityDigestTime',

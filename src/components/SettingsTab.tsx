@@ -129,6 +129,7 @@ interface SettingsDraft {
   defaultMapCenterZoom: number | null;
   mapCenterTargetZoom: number;
   mapZoomGateThreshold: number;
+  mapClusteringEnabled: boolean;
   defaultLandingPage: string;
   appearanceMode: AppearanceMode;
   darkTheme: Theme;
@@ -403,8 +404,10 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
     setDefaultMapCenterZoom,
     mapCenterTargetZoom,
     mapZoomGateThreshold,
+    mapClusteringEnabled,
     setMapCenterTargetZoom,
     setMapZoomGateThreshold,
+    setMapClusteringEnabled,
     defaultLandingPage,
     setDefaultLandingPage,
     appearanceMode,
@@ -460,6 +463,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
     defaultMapCenterZoom,
     mapCenterTargetZoom,
     mapZoomGateThreshold,
+    mapClusteringEnabled,
     defaultLandingPage,
     appearanceMode,
     darkTheme,
@@ -846,6 +850,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       defaultMapCenterZoom,
       mapCenterTargetZoom,
       mapZoomGateThreshold,
+      mapClusteringEnabled,
       defaultLandingPage,
       appearanceMode,
       darkTheme,
@@ -901,7 +906,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
   }, [maxNodeAgeHours, inactiveNodeThresholdHours, inactiveNodeCheckIntervalMinutes, inactiveNodeCooldownHours,
       temperatureUnit, distanceUnit, positionHistoryLineStyle, telemetryVisualizationHours, favoriteTelemetryStorageDays,
       preferredSortField, preferredSortDirection, timeFormat, dateFormat, mapTilesetLight, mapTilesetDark, mapPinStyle, mapPinColorMode, nodeListStyle,
-      iconStyle, neighborInfoMinZoom, defaultMapCenterLat, defaultMapCenterLon, defaultMapCenterZoom, mapCenterTargetZoom, mapZoomGateThreshold,
+      iconStyle, neighborInfoMinZoom, defaultMapCenterLat, defaultMapCenterLon, defaultMapCenterZoom, mapCenterTargetZoom, mapZoomGateThreshold, mapClusteringEnabled,
       defaultLandingPage, appearanceMode, darkTheme, lightTheme, nodeHopsCalculation, preferredDashboardSortOption,
       linkPreviewsEnabled, discardInvalidPositions, noIndexEnabled, meshcoreChannelRetryEnabled, showIncompleteNodes,
       nodeDimmingEnabled, nodeDimmingStartHours, nodeDimmingMinOpacity,
@@ -958,6 +963,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
         defaultMapCenterZoom,
         mapCenterTargetZoom,
         mapZoomGateThreshold,
+        mapClusteringEnabled,
         defaultLandingPage,
         appearanceMode,
         darkTheme,
@@ -982,7 +988,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
   }, [maxNodeAgeHours, inactiveNodeThresholdHours, inactiveNodeCheckIntervalMinutes, inactiveNodeCooldownHours,
       temperatureUnit, distanceUnit, positionHistoryLineStyle, telemetryVisualizationHours, favoriteTelemetryStorageDays,
       preferredSortField, preferredSortDirection, timeFormat, dateFormat, mapTilesetLight, mapTilesetDark, mapPinStyle, mapPinColorMode, nodeListStyle,
-      iconStyle, neighborInfoMinZoom, defaultMapCenterLat, defaultMapCenterLon, defaultMapCenterZoom, mapCenterTargetZoom, mapZoomGateThreshold,
+      iconStyle, neighborInfoMinZoom, defaultMapCenterLat, defaultMapCenterLon, defaultMapCenterZoom, mapCenterTargetZoom, mapZoomGateThreshold, mapClusteringEnabled,
       defaultLandingPage, appearanceMode, darkTheme, lightTheme, nodeHopsCalculation, preferredDashboardSortOption,
       linkPreviewsEnabled, discardInvalidPositions, noIndexEnabled, meshcoreChannelRetryEnabled, showIncompleteNodes,
       nodeDimmingEnabled, nodeDimmingStartHours, nodeDimmingMinOpacity,
@@ -1069,6 +1075,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
     setDefaultMapCenterZoom(d.defaultMapCenterZoom);
     setMapCenterTargetZoom(d.mapCenterTargetZoom);
     setMapZoomGateThreshold(d.mapZoomGateThreshold);
+    setMapClusteringEnabled(d.mapClusteringEnabled);
     setDefaultLandingPage(d.defaultLandingPage);
     setAppearanceMode(d.appearanceMode);
     setDarkTheme(d.darkTheme);
@@ -1111,7 +1118,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
     setInitialCotFeedEnabled(d.cotFeedEnabled);
     setInitialCotFeedPort(d.cotFeedPort);
   }, [setNeighborInfoMinZoom, setDefaultMapCenterLat, setDefaultMapCenterLon, setDefaultMapCenterZoom,
-      setMapCenterTargetZoom, setMapZoomGateThreshold, setDefaultLandingPage, setAppearanceMode, setDarkTheme, setLightTheme,
+      setMapCenterTargetZoom, setMapZoomGateThreshold, setMapClusteringEnabled, setDefaultLandingPage, setAppearanceMode, setDarkTheme, setLightTheme,
       setNodeHopsCalculation, setPreferredDashboardSortOption, setLinkPreviewsEnabled, setDiscardInvalidPositions,
       setNoIndexEnabled, setMeshcoreChannelRetryEnabled, setHideIncompleteNodes,
       setNodeDimmingEnabled, setNodeDimmingStartHours, setNodeDimmingMinOpacity]);
@@ -1151,6 +1158,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
         defaultMapCenterZoom: draft.defaultMapCenterZoom !== null ? draft.defaultMapCenterZoom.toString() : '',
         mapCenterTargetZoom: draft.mapCenterTargetZoom.toString(),
         mapZoomGateThreshold: draft.mapZoomGateThreshold.toString(),
+        mapClusteringEnabled: draft.mapClusteringEnabled.toString(),
         defaultLandingPage: draft.defaultLandingPage,
         theme: effectiveTheme,
         appearanceMode: draft.appearanceMode,
@@ -2323,6 +2331,20 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
               }}
               className="setting-input"
               style={{ width: '100px' }}
+            />
+          </div>
+          <div className="setting-item">
+            <label htmlFor="mapClusteringEnabled">
+              {t('settings.map_clustering_enabled_label')}
+              <span className="setting-description">{t('settings.map_clustering_enabled_description')}</span>
+            </label>
+            {/* #5404: independent of the click zoom gate above — turning this
+                off removes the cluster layer but keeps the gate/spiderfy. */}
+            <input
+              id="mapClusteringEnabled"
+              type="checkbox"
+              checked={draft.mapClusteringEnabled}
+              onChange={(e) => updateField('mapClusteringEnabled', e.target.checked)}
             />
           </div>
           <GeoJsonLayerManager />

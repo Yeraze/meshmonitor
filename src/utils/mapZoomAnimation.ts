@@ -71,7 +71,15 @@ export function computeZoomAnimationDuration(currentZoom: number, targetZoom: nu
  * read the SAME setting the SAME way instead of each inventing its own
  * reading of `0`.
  */
-export function resolveClusterZoomThreshold(mapZoomGateThreshold: number): number | undefined {
+export function resolveClusterZoomThreshold(
+  mapZoomGateThreshold: number,
+  // Issue #5404: clustering has its own on/off switch. When it is off the
+  // cluster layer goes away at every zoom, but the spiderfier's click gate
+  // (which reads `mapZoomGateThreshold` directly in `NodeMarkersLayer`) is
+  // left alone. Defaults to `true` so the #5284 behavior is unchanged.
+  mapClusteringEnabled: boolean = true,
+): number | undefined {
+  if (!mapClusteringEnabled) return undefined;
   return mapZoomGateThreshold > 0 ? mapZoomGateThreshold : undefined;
 }
 

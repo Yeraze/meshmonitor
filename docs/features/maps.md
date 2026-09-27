@@ -74,6 +74,10 @@ Both carry the node's public key, so the receiving device can send PKI-encrypted
 - **Zoom Limits**: Respects the max zoom level of your selected tileset
 - **Double-Click Zoom**: Double-click to zoom in on a location
 
+#### Marker Clustering
+
+When you zoom out past the **Map Click Zoom Gate** level, crowded markers group into one numbered circle. Click a circle to zoom in until its markers split apart. To show every marker at every zoom instead, turn off **Cluster overlapping markers** in **Settings → Map Settings**. The click zoom gate keeps working either way. See [Map Settings](/features/settings#map-settings).
+
 #### Layer Controls
 
 - **Tileset Selector**: Bottom-center visual picker to switch between map styles

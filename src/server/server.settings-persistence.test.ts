@@ -607,6 +607,25 @@ describe('Settings Persistence', () => {
     });
   });
 
+  describe('mapClusteringEnabled (issue #5404)', () => {
+    it('SettingsTab sends it and SettingsContext loads it', () => {
+      expect(SETTINGS_TAB_SENDS).toContain('mapClusteringEnabled');
+      expect(SETTINGS_CONTEXT_LOADS).toContain('mapClusteringEnabled');
+      expect(ALL_VALID_KEYS).toContain('mapClusteringEnabled');
+    });
+
+    it('should persist mapClusteringEnabled=false independently of mapZoomGateThreshold', async () => {
+      await request(app)
+        .post('/api/settings')
+        .send({ mapClusteringEnabled: 'false', mapZoomGateThreshold: '13' })
+        .expect(200);
+
+      const getRes = await request(app).get('/api/settings').expect(200);
+      expect(getRes.body.mapClusteringEnabled).toBe('false');
+      expect(getRes.body.mapZoomGateThreshold).toBe('13');
+    });
+  });
+
   describe('Specific settings from issue #2048', () => {
     it('should persist nodeHopsCalculation through full round-trip', async () => {
       await request(app)
