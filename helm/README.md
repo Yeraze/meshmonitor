@@ -182,6 +182,31 @@ service:
   type: "ClusterIP"
   port: 80
   targetPort: 3001
+  extraPorts: []                        # additional container/Service ports, e.g. Virtual Node
+    # - name: virtual-node
+    #   port: 4404
+    #   targetPort: 4404
+    #   nodePort: 30404                 # type NodePort/LoadBalancer only
+  annotations: {}                       # e.g. metallb.io/loadBalancerIPs: 192.168.1.240
+  nodePort: null                        # fixed nodePort for the web UI port
+  loadBalancerIP: ""                    # LoadBalancer only; deprecated upstream, prefer annotations
+  loadBalancerClass: ""                 # LoadBalancer only
+  loadBalancerSourceRanges: []          # LoadBalancer only
+  externalTrafficPolicy: ""             # LoadBalancer/NodePort only, e.g. Local
+
+# Optional separate Service for Virtual Node port(s) (disabled by default)
+virtualNodeService:
+  enabled: false
+  type: LoadBalancer
+  annotations: {}
+  loadBalancerIP: ""
+  loadBalancerClass: ""
+  loadBalancerSourceRanges: []
+  externalTrafficPolicy: ""
+  ports:
+    - name: virtual-node
+      port: 4404
+      targetPort: 4404
 
 # Ingress configuration
 ingress:
@@ -304,6 +329,85 @@ service:
   type: LoadBalancer
   port: 80
 ```
+
+### Exposing a Virtual Node Server port
+
+Virtual Node is enabled per source from the Dashboard, not via chart values (see
+[Virtual Node Server](https://meshmonitor.org/configuration/virtual-node)), so the
+chart doesn't know which port(s) you'll pick. Add an entry to `service.extraPorts`
+for each Virtual Node port you enable — this opens it on both the container and
+the Service, matching the port you configure in the Dashboard:
+
+```yaml
+service:
+  extraPorts:
+    - name: virtual-node
+      port: 4404
+      targetPort: 4404
+```
+
+### Pinning the LoadBalancer IP
+
+Most bare-metal load balancers pick a Service's IP from an annotation. Set it
+with `service.annotations` (or `virtualNodeService.annotations`, below):
+
+| Load balancer | Annotation |
+|---------------|------------|
+| MetalLB 0.13+ | `metallb.io/loadBalancerIPs` (older: `metallb.universe.tf/loadBalancerIPs`) |
+| kube-vip | `kube-vip.io/loadbalancerIPs` |
+| Cilium LB-IPAM | `lbipam.cilium.io/ips` |
+
+```yaml
+service:
+  type: LoadBalancer
+  annotations:
+    metallb.io/loadBalancerIPs: 192.168.1.240
+  extraPorts:
+    - name: virtual-node
+      port: 4404
+      targetPort: 4404
+```
+
+`service.loadBalancerIP`, `loadBalancerClass` and `loadBalancerSourceRanges`
+render only when `type: LoadBalancer`; `externalTrafficPolicy` and each port's
+`nodePort` render for `LoadBalancer` or `NodePort`. Kubernetes deprecated
+`loadBalancerIP` in favour of the annotations above, but some load balancers
+still honour it.
+
+**k3s:** the built-in ServiceLB (klipper-lb) can't pin an IP; it answers on the
+node IPs. Install MetalLB, kube-vip or Cilium LB-IPAM (with k3s started with
+`--disable servicelb`) to choose the address, or use `type: NodePort`.
+
+### Web UI behind an Ingress, Virtual Node on a LoadBalancer
+
+An Ingress or HTTPRoute can't carry Virtual Node traffic: it proxies HTTP, and
+the Virtual Node speaks the raw Meshtastic TCP protocol. Enable
+`virtualNodeService` to get a second Service with its own type, annotations and
+load-balancer fields that exposes only the Virtual Node port(s). It selects the
+same pod and adds a container port for each entry; a port already in
+`service.extraPorts` (same name, or same port and protocol) is not added twice.
+
+```yaml
+service:
+  type: ClusterIP             # web UI stays internal, behind the Ingress
+
+ingress:
+  enabled: true
+  # ...hosts/tls as usual
+
+virtualNodeService:
+  enabled: true
+  type: LoadBalancer
+  annotations:
+    metallb.io/loadBalancerIPs: 192.168.1.241
+  externalTrafficPolicy: Local  # keep the client's source IP
+  ports:
+    - name: virtual-node
+      port: 4404
+      targetPort: 4404
+```
+
+The Service takes the main Service's name plus `-virtual-node`.
 
 ### Reticulum Bridge Sidecar
 

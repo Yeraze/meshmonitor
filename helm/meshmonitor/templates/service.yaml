@@ -1,15 +1,36 @@
+{{- $svc := .Values.service -}}
+{{- $external := or (eq (toString $svc.type) "LoadBalancer") (eq (toString $svc.type) "NodePort") -}}
 apiVersion: v1
 kind: Service
 metadata:
   name: {{ include "meshmonitor.fullname" . }}
   labels:
     {{- include "meshmonitor.labels" . | nindent 4 }}
+  {{- with $svc.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
 spec:
-  type: {{ .Values.service.type }}
+  type: {{ $svc.type }}
+  {{- with include "meshmonitor.serviceTypeFields" $svc | trim }}
+  {{- . | nindent 2 }}
+  {{- end }}
   ports:
-  - port: {{ .Values.service.port }}
+  - port: {{ $svc.port }}
     targetPort: http
     protocol: TCP
     name: http
+    {{- if and $external $svc.nodePort }}
+    nodePort: {{ $svc.nodePort }}
+    {{- end }}
+  {{- range $svc.extraPorts }}
+  - port: {{ .port }}
+    targetPort: {{ .targetPort | default .port }}
+    protocol: {{ .protocol | default "TCP" }}
+    name: {{ .name }}
+    {{- if and $external .nodePort }}
+    nodePort: {{ .nodePort }}
+    {{- end }}
+  {{- end }}
   selector:
     {{- include "meshmonitor.selectorLabels" . | nindent 4 }}

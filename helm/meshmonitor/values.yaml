@@ -14,6 +14,60 @@ service:
   type: ClusterIP
   port: 80
   targetPort: 3001
+  # Additional TCP ports to expose on both the container and the Service —
+  # e.g. a per-source Virtual Node Server endpoint (see
+  # docs/configuration/virtual-node.md). Virtual Node is enabled per source
+  # from the Dashboard, not via env vars, so the chart has no way to know
+  # which port(s) you'll pick; add one entry here per port you enable so it's
+  # actually reachable outside the cluster (#5416).
+  # extraPorts:
+  #   - name: virtual-node
+  #     port: 4404
+  #     targetPort: 4404
+  #     nodePort: 30404       # only used when type is NodePort/LoadBalancer
+  extraPorts: []
+  # Annotations on the Service. This is the usual way to pin a LoadBalancer
+  # IP: MetalLB reads `metallb.io/loadBalancerIPs` (older releases:
+  # `metallb.universe.tf/loadBalancerIPs`), kube-vip reads
+  # `kube-vip.io/loadbalancerIPs`, Cilium LB-IPAM reads `lbipam.cilium.io/ips`,
+  # and cloud providers read their own keys. k3s's built-in ServiceLB
+  # (klipper-lb) cannot pin an IP; it answers on the node IPs.
+  annotations: {}
+    # metallb.io/loadBalancerIPs: 192.168.1.240
+  # Fixed nodePort for the web UI port (type NodePort/LoadBalancer only).
+  nodePort: null
+  # The fields below render only when type is LoadBalancer
+  # (externalTrafficPolicy: LoadBalancer or NodePort).
+  # loadBalancerIP is deprecated upstream in favour of the annotations above,
+  # but some load balancers still honour it.
+  loadBalancerIP: ""
+  loadBalancerClass: ""
+  loadBalancerSourceRanges: []
+  # "Local" keeps the client source IP and skips the extra node hop.
+  externalTrafficPolicy: ""
+
+# Optional second Service for Virtual Node Server port(s) only (#5416).
+# It selects the same pod as `service`, but has its own type, annotations and
+# load-balancer settings. Use it to keep the web UI on ClusterIP behind an
+# Ingress while only the Virtual Node port(s) go out on a LoadBalancer with a
+# pinned IP. An Ingress cannot carry Virtual Node traffic: it speaks the raw
+# Meshtastic TCP protocol, not HTTP.
+# Each port listed here also gets a containerPort on the pod; a port already
+# in service.extraPorts (same name, or same port+protocol) is not duplicated.
+virtualNodeService:
+  enabled: false
+  type: LoadBalancer
+  annotations: {}
+    # metallb.io/loadBalancerIPs: 192.168.1.241
+  loadBalancerIP: ""
+  loadBalancerClass: ""
+  loadBalancerSourceRanges: []
+  externalTrafficPolicy: ""
+  ports:
+    - name: virtual-node
+      port: 4404
+      targetPort: 4404
+      # nodePort: 30404       # only used when type is NodePort/LoadBalancer
 
 # Ingress configuration
 ingress:
