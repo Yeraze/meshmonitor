@@ -41,7 +41,7 @@ The issue began as "pin the mobile flag" (a node parked after a trip showed no t
 - [x] Client: one ApiService call for an asset, 2,000-point render cap, no line across a 30-min gap, "Showing N of M fixes (thinned)".
 
 ### Phase 3: timeline playback
-- [ ] A scrubber at the bottom of the map for a selected asset: a notch per fix, play/pause, speed, a time readout, and a "trail up to cursor" mode.
+- [x] A scrubber at the bottom of the map for a selected asset: a notch per fix, play/pause, speed, a time readout, and a "trail up to cursor" mode.
 
 ## Mesh impact
 
@@ -64,3 +64,10 @@ None in any phase. Everything is storage and UI; nothing is sent over the mesh.
   - `nodes_private:read` is checked on each source. `buildPositionFilter` checks it unscoped, but the grant is per-source, so this is the stricter reading. `hideFromMap` is not applied, matching `/position-history`.
   - `NOT_AN_ASSET` (404) also covers an asset with no node row on any of the caller's permitted sources, so the flag doesn't leak. Garbage `hours` (not digits) is 400 `INVALID_HOURS`; numbers are clamped.
   - The client asks for every source the caller can see, not just the current source view, since the flag is global and the server dedupes. PUT/DELETE drop that node's cache entries.
+- 2026-09-27: Phase 3 implemented on `feature/5354-asset-p3` (spec: `ASSET_TRACKING_P3_SPEC.md`). Deviations from the spec:
+  - Trail-up-to-cursor cuts the trail by fix **index** (`indexAtOrBefore`), not by time, so the ~5 Hz cursor rebuilds the polylines only when it crosses a fix.
+  - The bar also requires the asset's own server track to be loaded (`positionHistoryTotalFixes !== null`), so it never plays a previous node's history for a moment after the selection changes. 2D only; the 3D view draws no position history.
+  - `useDisplaySettings` does not exist; the bar takes `timeFormat` / `dateFormat` from `useSettings()` via NodesTab and formats with `formatDateTime`.
+  - The playback marker is hidden while the cursor sits at the end and playback is stopped, since the node's own marker already marks that spot.
+  - On a phone the one-row bar hides the step buttons (the timeline's arrow keys and dragging still step) and shows the two toggles as checkbox + icon, with the text kept for screen readers.
+  - The traceroute-mode banner (`MapModeIndicator`) gains a `raised` prop so it sits above the bar rather than under it.
