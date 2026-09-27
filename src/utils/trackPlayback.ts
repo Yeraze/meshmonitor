@@ -135,10 +135,17 @@ export function nextFixTime(fixes: readonly PlaybackFix[], t: number): number {
 /** Time of the last fix strictly before `t`, or the track start. */
 export function previousFixTime(fixes: readonly PlaybackFix[], t: number): number {
   if (fixes.length === 0) return t;
-  // The cursor can be fractional mid-playback, so walk back past any fix AT t
-  // rather than searching for t - 1.
-  let index = indexAtOrBefore(fixes, t);
-  while (index >= 0 && fixes[index].timestamp >= t) index--;
+  // Lower-bound search for the first fix at or after t, then step one back.
+  // Works for a fractional cursor and skips a run of equal timestamps in
+  // O(log n) rather than walking it.
+  let lo = 0;
+  let hi = fixes.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >>> 1;
+    if (fixes[mid].timestamp < t) lo = mid + 1;
+    else hi = mid;
+  }
+  const index = lo - 1;
   return index >= 0 ? fixes[index].timestamp : fixes[0].timestamp;
 }
 

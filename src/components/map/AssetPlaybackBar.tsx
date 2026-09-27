@@ -206,6 +206,8 @@ export function AssetPlaybackBar({
     };
     raf = requestAnimationFrame(frame);
     return () => cancelAnimationFrame(raf);
+    // `fixes` is reached through applyCursor (it is in that callback's deps), so
+    // a new track restarts this loop; the reset effect also stops playback.
   }, [playing, end, applyCursor, commitCursor]);
 
   // Report the trail cutoff (committed rate only).
@@ -296,6 +298,8 @@ export function AssetPlaybackBar({
 
   const onFollowChange = (checked: boolean) => {
     setFollow(checked);
+    // Write the ref here too, not only in the sync effect: applyCursor below runs
+    // before that effect, and must already see the new value.
     followRef.current = checked;
     if (checked) {
       lastPanRef.current = Number.NEGATIVE_INFINITY;
