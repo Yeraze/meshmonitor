@@ -1,0 +1,128 @@
+/*
+ * MeshCoreChannelReorderList CSS module (#5379). Keep these rules here, not in
+ * MeshCorePage.css (CLAUDE.md CSS containment rule).
+ */
+
+.container {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0 0.5rem 0.5rem;
+}
+
+.hint {
+  margin: 0;
+  padding: 0 0.25rem;
+  font-size: 0.78rem;
+  line-height: 1.4;
+  color: var(--color-text-subtle);
+}
+
+.list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.35rem 0.4rem;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  color: var(--color-text);
+}
+
+.dragging {
+  position: relative;
+  z-index: 10;
+  background: var(--color-surface-active);
+  border-color: var(--color-accent);
+}
+
+.handle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 2rem;
+  min-height: 2rem;
+  cursor: grab;
+  color: var(--color-text-subtle);
+  border-radius: var(--radius-md);
+}
+
+.dragging .handle {
+  cursor: grabbing;
+  color: var(--color-accent);
+}
+
+.handle:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 1px;
+}
+
+.name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.9rem;
+}
+
+.move {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 2rem;
+  min-height: 2rem;
+  padding: 0;
+  background: transparent;
+  color: var(--color-text);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+}
+
+.move:hover:not(:disabled) {
+  background: var(--color-surface-hover);
+}
+
+.move:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+
+.cancel,
+.save {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.4rem 0.9rem;
+  border-radius: var(--radius-md);
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.cancel {
+  background: transparent;
+  color: var(--color-text);
+  border: 1px solid var(--color-border);
+}
+
+.save {
+  background: var(--color-accent);
+  color: var(--color-accent-text);
+  border: 1px solid var(--color-accent);
+}
