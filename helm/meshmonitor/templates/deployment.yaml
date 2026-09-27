@@ -41,6 +41,11 @@ spec:
         - name: http
           containerPort: {{ .Values.service.targetPort }}
           protocol: TCP
+        {{- range .Values.service.extraPorts }}
+        - name: {{ .name }}
+          containerPort: {{ .targetPort | default .port }}
+          protocol: {{ .protocol | default "TCP" }}
+        {{- end }}
         env:
         - name: MESHTASTIC_NODE_IP
           value: {{ .Values.env.meshtasticNodeIp | quote }}

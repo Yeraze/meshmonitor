@@ -173,22 +173,25 @@ On first boot MeshMonitor auto-creates a default `meshtastic_tcp` source from `M
 
 ### Kubernetes/Helm Example
 
+The chart's `service.port`/`service.targetPort` cover the web UI only. Add each
+Virtual Node port you enable to `service.extraPorts` (available since #5416) so
+it's opened on both the container and the Service — otherwise the port exists
+only inside the pod's network namespace and mobile apps outside the cluster
+can't reach it:
+
 ```yaml
 env:
   meshtasticNodeIp: "192.168.1.100"
 
 service:
   type: LoadBalancer
-  ports:
-    - name: http
-      port: 80
-      targetPort: 3001
+  extraPorts:
     - name: virtual-node
       port: 4404
       targetPort: 4404
 ```
 
-After the pod starts, open the Dashboard and enable Virtual Node on the auto-created source.
+After the pod starts, open the Dashboard and enable Virtual Node on the auto-created source, using the same port number you listed above.
 
 ## Mobile App Setup
 

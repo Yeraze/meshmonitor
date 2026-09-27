@@ -14,6 +14,17 @@ service:
   type: ClusterIP
   port: 80
   targetPort: 3001
+  # Additional TCP ports to expose on both the container and the Service —
+  # e.g. a per-source Virtual Node Server endpoint (see
+  # docs/configuration/virtual-node.md). Virtual Node is enabled per source
+  # from the Dashboard, not via env vars, so the chart has no way to know
+  # which port(s) you'll pick; add one entry here per port you enable so it's
+  # actually reachable outside the cluster (#5416).
+  # extraPorts:
+  #   - name: virtual-node
+  #     port: 4404
+  #     targetPort: 4404
+  extraPorts: []
 
 # Ingress configuration
 ingress:

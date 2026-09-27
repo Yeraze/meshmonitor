@@ -182,6 +182,10 @@ service:
   type: "ClusterIP"
   port: 80
   targetPort: 3001
+  extraPorts: []                        # additional container/Service ports, e.g. Virtual Node
+    # - name: virtual-node
+    #   port: 4404
+    #   targetPort: 4404
 
 # Ingress configuration
 ingress:
@@ -303,6 +307,22 @@ persistence:
 service:
   type: LoadBalancer
   port: 80
+```
+
+### Exposing a Virtual Node Server port
+
+Virtual Node is enabled per source from the Dashboard, not via chart values (see
+[Virtual Node Server](https://meshmonitor.org/configuration/virtual-node)), so the
+chart doesn't know which port(s) you'll pick. Add an entry to `service.extraPorts`
+for each Virtual Node port you enable — this opens it on both the container and
+the Service, matching the port you configure in the Dashboard:
+
+```yaml
+service:
+  extraPorts:
+    - name: virtual-node
+      port: 4404
+      targetPort: 4404
 ```
 
 ### Reticulum Bridge Sidecar
