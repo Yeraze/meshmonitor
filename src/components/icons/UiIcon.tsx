@@ -93,6 +93,8 @@ import {
   Shield,
   ShieldAlert,
   ShieldCheck,
+  SkipBack,
+  SkipForward,
   Smartphone,
   Smile,
   Sparkles,
@@ -206,6 +208,8 @@ export const UI_ICON_DEFINITIONS = {
   radio: { lucide: Radio, emoji: '📻', usage: 'MeshCore and radio state' },
   // Three-state status dots (#4217 follow-up). Emoji counterparts are the
   // glyphs these replaced, so emoji-mode users see exactly what they saw before.
+  stepBack: { lucide: SkipBack, emoji: '⏮️', usage: 'step back one item in playback' },
+  stepForward: { lucide: SkipForward, emoji: '⏭️', usage: 'step forward one item in playback' },
   statusOn: { lucide: CircleDot, emoji: '●', usage: 'active / connected / live status' },
   statusPartial: { lucide: CircleDashed, emoji: '◐', usage: 'partial or pending status' },
   statusOff: { lucide: Circle, emoji: '○', usage: 'inactive / disconnected status' },

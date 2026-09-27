@@ -44,4 +44,11 @@ describe('MapModeIndicator', () => {
     render(<MapModeIndicator {...baseProps} />);
     expect(screen.queryByRole('button')).toBeNull();
   });
+
+  it('adds a second class when raised above the asset playback bar (#5354)', () => {
+    const { rerender } = render(<MapModeIndicator {...baseProps} />);
+    const plain = screen.getByTestId('map-mode-indicator').className.split(' ').length;
+    rerender(<MapModeIndicator {...baseProps} raised />);
+    expect(screen.getByTestId('map-mode-indicator').className.split(' ').length).toBe(plain + 1);
+  });
 });

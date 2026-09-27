@@ -299,6 +299,17 @@ Mark a node as a tracked **asset**, for example a GPS node on a vehicle, and Mes
 - Under **Show Position History**, "Showing N of M fixes (thinned)" tells you how many of the stored fixes the map draws. The history slider still runs from the oldest fix to now.
 - Your permissions still apply: a source you can't read, a channel you can't view on the map, or a private position without the **Private Positions** permission on that source adds no points.
 
+**Playback.** With an asset selected and **Show Position History** on, a playback bar runs along the bottom of the Nodes map. Its timeline spans the trail the map shows (after the history slider), with a notch for each fix and shaded gaps.
+
+- The cursor starts at the end, so the map looks as it did until you use the bar. Press **Play** to replay the trail from the start; press it again to pause. Playback stops at the end, and **Play** there starts over.
+- Click or drag the timeline to jump. The step buttons move one fix back or forward.
+- Pick **60×, 600× or 3600×**: one minute, ten minutes, or an hour of track per second. The bar remembers your choice.
+- A marker with a time label slides between fixes. In a gap it waits at the last fix before the gap and fades, rather than cutting straight across.
+- The readout shows the date and time at the cursor, in your time and date format, and the speed of the nearest fix when it reported one.
+- **Trail up to cursor** (on by default) draws only the fixes up to the cursor, so the trail grows as it plays. **Follow** (off by default) pans the map when the marker nears the edge.
+- With the timeline focused: **Space** plays or pauses, **←**/**→** step one fix, **Home**/**End** jump to the start or end.
+- On a phone the bar fits one row: the step buttons hide (use the arrow keys or drag) and the two toggles show as icons.
+
 Nothing is sent over the mesh; this is storage and display only. Plan disk space for long windows: a node that reports often can keep hundreds of thousands of rows over a year.
 
 ### GNSS Satellite Overlay
