@@ -82,6 +82,7 @@ export function getEffectiveDbNodePosition(
  * overlay only. `node.mobile` (the heuristic column) is passed through as-is,
  * so nothing downstream that reads it (becameMobile, automation tokens) sees
  * the asset flag.
+ * Keep in step with the same overlay in `buildSourceNodes` (sourceDashboardData.ts).
  */
 export async function enhanceNodeForClient(
   node: DeviceInfo,

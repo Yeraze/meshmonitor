@@ -1026,9 +1026,11 @@ export class TelemetryRepository extends BaseRepository {
     // Assets grouped by cutoff, each group chunked for the IN list.
     const assetByCutoff = new Map<number, number[]>();
     const assetNums: number[] = [];
+    const seenAssets = new Set<number>();
     for (const a of assets) {
       const num = Number(a.nodeNum) >>> 0;
-      if (assetNums.includes(num)) continue;
+      if (seenAssets.has(num)) continue;
+      seenAssets.add(num);
       assetNums.push(num);
       const bucket = assetByCutoff.get(a.cutoff);
       if (bucket) bucket.push(num);

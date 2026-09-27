@@ -53,7 +53,10 @@ const AssetTrackingSection: React.FC<AssetTrackingSectionProps> = ({ nodeNum, as
   const handleToggle = (next: boolean) => {
     setError(null);
     if (next) {
+      // An invalid draft falls back to the default; show that value too, so the
+      // input matches what was actually saved.
       const days = parsedDays ?? ASSET_RETENTION_DAYS_DEFAULT;
+      if (parsedDays == null) setDaysDraft(String(days));
       setEnabled(true);
       setAsset.mutate({ nodeNum, retentionDays: days }, { onError: (e) => { setEnabled(false); saveError(e); } });
     } else {
