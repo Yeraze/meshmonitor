@@ -53,6 +53,9 @@ export const meshcoreNodesSqlite = sqliteTable('meshcore_nodes', {
   rssi: integer('rssi'),
   snr: real('snr'),
   lastHeard: integer('lastHeard'),   // Unix timestamp
+  // #5390: earliest reception this source recorded for the node, MILLISECONDS
+  // (same unit as MeshCore lastHeard). Set once from the first plausible lastHeard; never overwritten.
+  firstHeard: integer('firstHeard'),
 
   // Admin status
   hasAdminAccess: integer('hasAdminAccess', { mode: 'boolean' }).default(false),
@@ -148,6 +151,9 @@ export const meshcoreNodesPostgres = pgTable('meshcore_nodes', {
   rssi: pgInteger('rssi'),
   snr: pgReal('snr'),
   lastHeard: pgBigint('lastHeard', { mode: 'number' }),
+  // #5390: earliest reception this source recorded for the node, MILLISECONDS
+  // (same unit as MeshCore lastHeard). Set once from the first plausible lastHeard; never overwritten.
+  firstHeard: pgBigint('firstHeard', { mode: 'number' }),
 
   hasAdminAccess: pgBoolean('hasAdminAccess').default(false),
   lastAdminCheck: pgBigint('lastAdminCheck', { mode: 'number' }),
@@ -220,6 +226,9 @@ export const meshcoreNodesMysql = mysqlTable('meshcore_nodes', {
   rssi: myInt('rssi'),
   snr: myDouble('snr'),
   lastHeard: myBigint('lastHeard', { mode: 'number' }),
+  // #5390: earliest reception this source recorded for the node, MILLISECONDS
+  // (same unit as MeshCore lastHeard). Set once from the first plausible lastHeard; never overwritten.
+  firstHeard: myBigint('firstHeard', { mode: 'number' }),
 
   hasAdminAccess: myBoolean('hasAdminAccess').default(false),
   lastAdminCheck: myBigint('lastAdminCheck', { mode: 'number' }),

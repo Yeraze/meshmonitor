@@ -269,6 +269,17 @@ describe('LastHeardFooter', () => {
     render(<LastHeardFooter lastHeard={lastHeard} mode="relative" timeFormat="24" dateFormat="MM/DD/YYYY" />);
     expect(screen.getByText(/minute|just now/)).toBeInTheDocument();
   });
+
+  it('adds a First Heard line only when firstHeard is known (#5390)', () => {
+    const now = Math.floor(Date.now() / 1000);
+    const { unmount } = render(
+      <LastHeardFooter lastHeard={now - 60} firstHeard={now - 2 * 3600} mode="relative" timeFormat="24" dateFormat="MM/DD/YYYY" />,
+    );
+    expect(screen.getByTestId('popup-first-heard')).toHaveTextContent(/First Heard: 2 hours ago/);
+    unmount();
+    render(<LastHeardFooter lastHeard={now - 60} firstHeard={null} mode="relative" timeFormat="24" dateFormat="MM/DD/YYYY" />);
+    expect(screen.queryByTestId('popup-first-heard')).not.toBeInTheDocument();
+  });
 });
 
 describe('SourcesList', () => {

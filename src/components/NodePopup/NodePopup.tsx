@@ -174,6 +174,7 @@ export const NodePopup: React.FC<NodePopupProps> = ({
             </div>
             <LastHeardFooter
               lastHeard={model.lastHeard}
+              firstHeard={model.firstHeard}
               mode="absolute"
               timeFormat={timeFormat}
               dateFormat={dateFormat}

@@ -67,6 +67,9 @@ export interface NodeCardModel {
   /** Epoch SECONDS, normalized across variants (MeshCore's `lastSeen` is raw
    *  epoch-ms and is divided down when building this field). */
   lastHeard?: number | null;
+  /** #5390: when the source first heard the node, epoch SECONDS (MeshCore's
+   *  epoch-ms `firstHeard` is divided down like `lastHeard`). Null = unknown. */
+  firstHeard?: number | null;
   sources?: NodeSourceRef[];
   meshcore?: NodeCardMeshCoreDetails;
   /** Whether the node is favorited — used by the "importance" node-list color
@@ -153,6 +156,7 @@ function toMeshtasticModel(raw: unknown, opts?: ToNodeCardModelOptions): NodeCar
     : (typeof positionRaw?.altitude === 'number' ? positionRaw.altitude : null);
 
   const lastHeard = typeof node.lastHeard === 'number' ? node.lastHeard : null;
+  const firstHeard = typeof node.firstHeard === 'number' ? node.firstHeard : null;
 
   // Position accuracy + source live flat on the DeviceInfo (surfaced by the
   // server's mapDbNodeToDeviceInfo / dbNodeMapper). Display-only (#4176).
@@ -187,6 +191,7 @@ function toMeshtasticModel(raw: unknown, opts?: ToNodeCardModelOptions): NodeCar
     positionTimestamp,
     position: opts?.pos,
     lastHeard,
+    firstHeard,
     sources,
     isFavorite: node.isFavorite === true,
     likelyAircraft,
@@ -207,11 +212,13 @@ function toMeshCoreModel(raw: unknown): NodeCardModel {
   const pathLen = typeof c.pathLen === 'number' ? c.pathLen : null;
   const outPath = typeof c.outPath === 'string' ? c.outPath : undefined;
   const lastSeen = typeof c.lastSeen === 'number' ? c.lastSeen : undefined;
+  const firstHeardMs = typeof c.firstHeard === 'number' ? c.firstHeard : undefined;
 
   return {
     longName: advName || name || 'MeshCore',
     nodeId: publicKey || undefined,
     lastHeard: lastSeen !== undefined ? Math.floor(lastSeen / 1000) : null,
+    firstHeard: firstHeardMs !== undefined ? Math.floor(firstHeardMs / 1000) : null,
     meshcore: { publicKey, rssi, snr, pathLen, outPath, lastSeen },
     // Aircraft classification is Meshtastic-only (D2, #5364/#5365) — a
     // MeshCore contact is never flagged.

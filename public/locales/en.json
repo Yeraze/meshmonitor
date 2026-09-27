@@ -3183,6 +3183,7 @@
   "node_details.has_ethernet": "Has Ethernet",
   "node_details.can_shutdown": "Can Shutdown",
   "node_details.last_heard": "Last Heard",
+  "node_details.first_heard": "First Heard",
   "node_details.public_key": "Public Key",
   "node_details.contact_share.title": "Share contact",
   "node_details.contact_share.summary": "Create a Meshtastic contact QR code and URL for this node.",

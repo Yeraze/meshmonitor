@@ -2104,6 +2104,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                           </div>
                           <LastHeardFooter
                             lastHeard={cardModel.lastHeard}
+                            firstHeard={cardModel.firstHeard}
                             mode="absolute"
                             timeFormat={timeFormat}
                             dateFormat={dateFormat}

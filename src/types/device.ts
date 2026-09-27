@@ -79,6 +79,8 @@ export interface DeviceInfo {
   transportLastUdp?: number | null;
   isStoreForwardServer?: boolean;
   lastHeard?: number;
+  /** #5390: earliest reception on this source, Unix SECONDS (like lastHeard). Absent = unknown. */
+  firstHeard?: number;
   snr?: number;
   rssi?: number;
   firmwareVersion?: string;

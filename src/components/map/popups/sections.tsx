@@ -279,6 +279,9 @@ export const PositionItem: React.FC<PositionItemProps> = ({
 export interface LastHeardFooterProps {
   /** Epoch SECONDS (matches `NodeCardModel.lastHeard`). */
   lastHeard?: number | null;
+  /** #5390: epoch SECONDS (matches `NodeCardModel.firstHeard`). Shown as a
+   *  second line under Last Heard when known. */
+  firstHeard?: number | null;
   /** 'absolute' = NodesTab/NodePopup's `formatDateTime`; 'relative' =
    *  Dashboard/MapAnalysis's `formatRelativeTime(..., showAbsolute=true)`. */
   mode: 'absolute' | 'relative';
@@ -289,19 +292,29 @@ export interface LastHeardFooterProps {
 /** `.node-popup-footer` last-heard/last-seen, shown by every consumer. */
 export const LastHeardFooter: React.FC<LastHeardFooterProps> = ({
   lastHeard,
+  firstHeard,
   mode,
   timeFormat,
   dateFormat,
 }) => {
+  const { t } = useTranslation();
   if (lastHeard == null) return null;
-  const text = mode === 'relative'
-    ? formatRelativeTime(lastHeard * 1000, timeFormat, dateFormat, true)
-    : formatDateTime(new Date(lastHeard * 1000), timeFormat, dateFormat);
+  const format = (secs: number) => mode === 'relative'
+    ? formatRelativeTime(secs * 1000, timeFormat, dateFormat, true)
+    : formatDateTime(new Date(secs * 1000), timeFormat, dateFormat);
   return (
-    <div className="node-popup-footer">
-      <span className="node-popup-icon"><UiIcon name="time" /></span>
-      {text}
-    </div>
+    <>
+      <div className="node-popup-footer">
+        <span className="node-popup-icon"><UiIcon name="time" /></span>
+        {format(lastHeard)}
+      </div>
+      {firstHeard != null && (
+        <div className="node-popup-footer" data-testid="popup-first-heard">
+          <span className="node-popup-icon"><UiIcon name="calendar" /></span>
+          {t('node_details.first_heard', 'First Heard')}: {format(firstHeard)}
+        </div>
+      )}
+    </>
   );
 };
 

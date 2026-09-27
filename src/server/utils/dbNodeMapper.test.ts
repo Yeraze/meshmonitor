@@ -9,6 +9,12 @@ import { describe, it, expect } from 'vitest';
 import { mapDbNodeToDeviceInfo } from './dbNodeMapper.js';
 
 describe('mapDbNodeToDeviceInfo (dbNodeMapper.ts)', () => {
+  it('#5390: maps firstHeard (seconds), omitting it when unknown', () => {
+    const base = { nodeNum: 1, nodeId: '!00000001', longName: '', shortName: '' };
+    expect((mapDbNodeToDeviceInfo({ ...base, firstHeard: 1_760_000_000 }) as any).firstHeard).toBe(1_760_000_000);
+    expect((mapDbNodeToDeviceInfo({ ...base, firstHeard: null }) as any).firstHeard).toBeUndefined();
+  });
+
   it('maps the likely-aircraft classification fields (SQLite 1 -> true)', () => {
     const node = {
       nodeNum: 1,

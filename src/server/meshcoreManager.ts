@@ -481,6 +481,8 @@ export interface MeshCoreNode {
   radioSf?: number;
   radioCr?: number;
   lastHeard?: number;
+  /** #5390: earliest reception on this source, epoch MILLISECONDS (like lastHeard). */
+  firstHeard?: number;
   rssi?: number;
   snr?: number;
   batteryMv?: number;
@@ -7239,6 +7241,7 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
           // A drifted value stored before #5339 would pin this node at the top
           // (or bottom) of Last Heard sort and dodge the max-age filter.
           lastHeard: plausibleMeshCoreTimeMsOrUndefined(n.lastHeard),
+          firstHeard: plausibleMeshCoreTimeMsOrUndefined(n.firstHeard),
           rssi: n.rssi ?? undefined,
           snr: n.snr ?? undefined,
           latitude: n.latitude ?? undefined,

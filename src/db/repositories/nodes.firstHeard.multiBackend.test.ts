@@ -1,26 +1,11 @@
 /**
- * #5101 Phase 3 WP3 EXTRA — `upsertNode`'s INSERT branch must carry
- * `transportLast{Rf,Mqtt,Udp}` forward on a brand-new node's very first row.
+ * #5390 — `nodes.firstHeard` (Unix SECONDS) is stamped once, from the first
+ * plausible `lastHeard` a write carries, and never overwritten. Per-source:
+ * each (nodeNum, sourceId) row keeps its own value.
  *
- * `meshtasticManager.ts`'s per-packet handler (~6407) is the ONLY place that
- * stamps these columns, and it runs for every heard packet — including a
- * node's first-ever sighting, when `upsertNode` has no existing row and takes
- * the INSERT branch. Before this fix, both the plain INSERT values and the
- * `ON CONFLICT DO UPDATE` values omitted the three columns entirely, so a
- * brand-new node's first transport stamp was silently dropped and only
- * recorded starting on its SECOND packet (the UPDATE branch, which has always
- * carried them). That undercounts
- * `NodesRepository.countNodesHeardByTransport` (the "nodes heard" series
- * powering `transportTrafficService`, #5101 P3 WP3) for exactly the bin in
- * which a new node first appears.
- *
- * DDL mirrors `nodes.transportHeard.multiBackend.test.ts` (itself matching
- * `nodes.test.ts`'s POSTGRES_CREATE / MYSQL_CREATE) so `upsertNode` sees the
- * real column set on every dialect. Uses its own isolated PG/MySQL database
- * (`isolationKey: 'nodes_transport_stamp_insert'`) — a different key than the
- * sibling suite, per the "PG/MySQL fixture races" rule (each multi-backend
- * suite owns its own throwaway database; a shared one races on concurrent
- * CREATE/DROP TABLE).
+ * DDL mirrors `nodes.transportStampInsert.multiBackend.test.ts` (itself
+ * matching `nodes.test.ts`). Own isolated PG/MySQL database
+ * (`isolationKey: 'nodes_first_heard'`) per the fixture-race rule.
  */
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
 import { NodesRepository } from './nodes.js';
@@ -300,92 +285,78 @@ const MYSQL_CREATE = `
   )
 `;
 
-const SOURCE = 'src-a';
+const SOURCE_A = 'src-a';
+const SOURCE_B = 'src-b';
+const T0 = 1_760_000_000; // 2025-10-09, Unix seconds
 
-/** Behaviours that must hold identically on every dialect. */
-function runTransportStampInsertTests(getBackend: () => TestBackend) {
-  it('a brand-new node persists its transport stamp on the very first upsertNode call (INSERT branch)', async () => {
+function runFirstHeardTests(getBackend: () => TestBackend) {
+  const repoFor = (b: TestBackend) => new NodesRepository(b.drizzleDb, b.dbType);
+
+  it('stamps firstHeard from lastHeard on the first-seen INSERT', async () => {
     const backend = getBackend();
     if (!backend.available) return;
-    const repo = new NodesRepository(backend.drizzleDb, backend.dbType);
-
-    // Single upsertNode call, exactly like meshtasticManager.ts's per-packet
-    // handler for a node with no existing row: nodeId/nodeNum plus one
-    // transport stamp, in one shot — no prior "bare" insert.
-    await repo.upsertNode(
-      { nodeNum: 200, nodeId: '!000000c8', longName: 'Node !000000c8', transportLastRf: 1_760_000_100 },
-      SOURCE,
-    );
-
-    const node = await repo.getNode(200, SOURCE);
-    expect(node?.transportLastRf).toBe(1_760_000_100);
-    expect(typeof node?.transportLastRf).toBe('number');
+    const repo = repoFor(backend);
+    await repo.upsertNode({ nodeNum: 300, nodeId: '!0000012c', lastHeard: T0 }, SOURCE_A);
+    const node = await repo.getNode(300, SOURCE_A);
+    expect(Number(node?.firstHeard)).toBe(T0);
   });
 
-  it('immediately counts toward countNodesHeardByTransport for the bin the node first appeared in', async () => {
+  it('never overwrites firstHeard when later packets move lastHeard forward', async () => {
     const backend = getBackend();
     if (!backend.available) return;
-    const repo = new NodesRepository(backend.drizzleDb, backend.dbType);
-    const fromSec = 1_760_000_000;
-    const toSec = fromSec + 300;
-
-    await repo.upsertNode(
-      { nodeNum: 201, nodeId: '!000000c9', longName: 'Node !000000c9', transportLastMqtt: fromSec + 50 },
-      SOURCE,
-    );
-
-    const counts = await repo.countNodesHeardByTransport(SOURCE, fromSec, toSec);
-    expect(counts).toEqual({ rf: 0, udp: 0, mqtt: 1 });
+    const repo = repoFor(backend);
+    await repo.upsertNode({ nodeNum: 301, nodeId: '!0000012d', lastHeard: T0 }, SOURCE_A);
+    await repo.upsertNode({ nodeNum: 301, nodeId: '!0000012d', lastHeard: T0 + 600 }, SOURCE_A);
+    await repo.upsertNode({ nodeNum: 301, nodeId: '!0000012d', lastHeard: T0 + 1200 }, SOURCE_A);
+    const node = await repo.getNode(301, SOURCE_A);
+    expect(Number(node?.firstHeard)).toBe(T0);
+    expect(Number(node?.lastHeard)).toBe(T0 + 1200);
   });
 
-  it('a node created with no transport stamp (e.g. contact-URL import) still has null, not an error', async () => {
+  it('leaves firstHeard null for a row created without a reception, then stamps it on the first one', async () => {
     const backend = getBackend();
     if (!backend.available) return;
-    const repo = new NodesRepository(backend.drizzleDb, backend.dbType);
-
-    await repo.upsertNode({ nodeNum: 202, nodeId: '!000000ca', longName: 'Node !000000ca' }, SOURCE);
-
-    const node = await repo.getNode(202, SOURCE);
-    expect(node?.transportLastRf).toBeNull();
-    expect(node?.transportLastMqtt).toBeNull();
-    expect(node?.transportLastUdp).toBeNull();
+    const repo = repoFor(backend);
+    // e.g. a message that only references the node, or a contact-URL import
+    await repo.upsertNode({ nodeNum: 302, nodeId: '!0000012e', longName: 'Imported' }, SOURCE_A);
+    expect((await repo.getNode(302, SOURCE_A))?.firstHeard ?? null).toBeNull();
+    await repo.upsertNode({ nodeNum: 302, nodeId: '!0000012e', lastHeard: T0 + 50 }, SOURCE_A);
+    expect(Number((await repo.getNode(302, SOURCE_A))?.firstHeard)).toBe(T0 + 50);
   });
 
-  it('a later packet on a different transport adds its own stamp without erasing the first (UPDATE branch, regression guard)', async () => {
+  it('ignores implausible lastHeard values (unsynced clock, far future)', async () => {
     const backend = getBackend();
     if (!backend.available) return;
-    const repo = new NodesRepository(backend.drizzleDb, backend.dbType);
-    const first = 1_760_000_000;
-    const second = first + 120;
-
-    await repo.upsertNode(
-      { nodeNum: 203, nodeId: '!000000cb', longName: 'Node !000000cb', transportLastRf: first },
-      SOURCE,
-    );
-    await repo.upsertNode({ nodeNum: 203, nodeId: '!000000cb', transportLastUdp: second }, SOURCE);
-
-    const node = await repo.getNode(203, SOURCE);
-    expect(node?.transportLastRf).toBe(first);
-    expect(node?.transportLastUdp).toBe(second);
+    const repo = repoFor(backend);
+    await repo.upsertNode({ nodeNum: 303, nodeId: '!0000012f', lastHeard: 12_345 }, SOURCE_A);
+    expect((await repo.getNode(303, SOURCE_A))?.firstHeard ?? null).toBeNull();
+    const future = Math.floor(Date.now() / 1000) + 10 * 365 * 86_400;
+    await repo.upsertNode({ nodeNum: 303, nodeId: '!0000012f', lastHeard: future }, SOURCE_A);
+    expect((await repo.getNode(303, SOURCE_A))?.firstHeard ?? null).toBeNull();
   });
 
-  it('handles stamps above 2^31 on the INSERT branch (BIGINT columns on PG/MySQL)', async () => {
+  it('keeps firstHeard per source', async () => {
     const backend = getBackend();
     if (!backend.available) return;
-    const repo = new NodesRepository(backend.drizzleDb, backend.dbType);
-    const big = 3_000_000_000; // > INT32 max (2_147_483_647)
+    const repo = repoFor(backend);
+    await repo.upsertNode({ nodeNum: 304, nodeId: '!00000130', lastHeard: T0 }, SOURCE_A);
+    await repo.upsertNode({ nodeNum: 304, nodeId: '!00000130', lastHeard: T0 + 3600 }, SOURCE_B);
+    await repo.upsertNode({ nodeNum: 304, nodeId: '!00000130', lastHeard: T0 + 7200 }, SOURCE_A);
+    expect(Number((await repo.getNode(304, SOURCE_A))?.firstHeard)).toBe(T0);
+    expect(Number((await repo.getNode(304, SOURCE_B))?.firstHeard)).toBe(T0 + 3600);
+  });
 
-    await repo.upsertNode(
-      { nodeNum: 204, nodeId: '!000000cc', longName: 'Node !000000cc', transportLastMqtt: big },
-      SOURCE,
-    );
-
-    const node = await repo.getNode(204, SOURCE);
-    expect(node?.transportLastMqtt).toBe(big);
+  it('ignores a caller-supplied firstHeard on update', async () => {
+    const backend = getBackend();
+    if (!backend.available) return;
+    const repo = repoFor(backend);
+    await repo.upsertNode({ nodeNum: 305, nodeId: '!00000131', lastHeard: T0 }, SOURCE_A);
+    await repo.upsertNode({ nodeNum: 305, nodeId: '!00000131', lastHeard: T0 + 10, firstHeard: T0 + 999 }, SOURCE_A);
+    expect(Number((await repo.getNode(305, SOURCE_A))?.firstHeard)).toBe(T0);
   });
 }
 
-describe('NodesRepository.upsertNode — transport stamp on first-seen INSERT (#5101 P3 WP3 EXTRA)', () => {
+describe('NodesRepository.upsertNode — firstHeard (#5390)', () => {
   describe('SQLite Backend', () => {
     let backend: TestBackend;
     beforeAll(() => {
@@ -397,13 +368,13 @@ describe('NodesRepository.upsertNode — transport stamp on first-seen INSERT (#
     beforeEach(async () => {
       await clearTable(backend, 'nodes');
     });
-    runTransportStampInsertTests(() => backend);
+    runFirstHeardTests(() => backend);
   });
 
   describe.skipIf(!postgresAvailable)('PostgreSQL Backend', () => {
     let backend: TestBackend;
     beforeAll(async () => {
-      backend = await createPostgresBackend(POSTGRES_CREATE, 'nodes_transport_stamp_insert');
+      backend = await createPostgresBackend(POSTGRES_CREATE, 'nodes_first_heard');
     });
     afterAll(async () => {
       if (backend) await backend.close();
@@ -411,13 +382,13 @@ describe('NodesRepository.upsertNode — transport stamp on first-seen INSERT (#
     beforeEach(async () => {
       await clearTable(backend, 'nodes');
     });
-    runTransportStampInsertTests(() => backend);
+    runFirstHeardTests(() => backend);
   });
 
   describe.skipIf(!mysqlAvailable)('MySQL Backend', () => {
     let backend: TestBackend;
     beforeAll(async () => {
-      backend = await createMysqlBackend(MYSQL_CREATE, 'nodes_transport_stamp_insert');
+      backend = await createMysqlBackend(MYSQL_CREATE, 'nodes_first_heard');
     });
     afterAll(async () => {
       if (backend) await backend.close();
@@ -425,6 +396,6 @@ describe('NodesRepository.upsertNode — transport stamp on first-seen INSERT (#
     beforeEach(async () => {
       await clearTable(backend, 'nodes');
     });
-    runTransportStampInsertTests(() => backend);
+    runFirstHeardTests(() => backend);
   });
 });

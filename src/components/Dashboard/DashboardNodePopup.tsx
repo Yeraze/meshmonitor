@@ -48,6 +48,7 @@ export default function DashboardNodePopup({ node, pos, onSourceSelect }: Dashbo
           </div>
           <LastHeardFooter
             lastHeard={model.lastHeard}
+            firstHeard={model.firstHeard}
             mode="relative"
             timeFormat={timeFormat}
             dateFormat={dateFormat}

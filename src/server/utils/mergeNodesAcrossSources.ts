@@ -108,6 +108,12 @@ export function mergeNodesAcrossSources(rows: DbNode[]): DbNode[] {
     );
     if (maxLastHeard > 0) winner.lastHeard = maxLastHeard;
 
+    // #5390: the unified view's First Heard is the earliest any source heard it.
+    const firstHeards = group
+      .map((n) => Number(n.firstHeard))
+      .filter((v) => Number.isFinite(v) && v > 0);
+    if (firstHeards.length > 0) winner.firstHeard = Math.min(...firstHeards);
+
     const maxUpdatedAt = group.reduce(
       (max, n) => Math.max(max, n.updatedAt ?? 0),
       0,
