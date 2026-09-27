@@ -43,6 +43,8 @@ vi.mock('../../hooks/useCsrfFetch', () => ({
 }));
 
 import { MeshCoreChannelsView } from './MeshCoreChannelsView';
+import { remapChannelCustomOrder } from './meshcoreChannelOrder';
+import { emitChannelsReordered } from './meshcoreChannelReorderEvents';
 import type { MeshCoreActions, ConnectionStatus, MeshCoreMessage } from './hooks/useMeshCore';
 import type { MeshCoreContact } from '../../utils/meshcoreHelpers';
 
@@ -1250,6 +1252,36 @@ describe('MeshCoreChannelsView — display order (#5385, #5379)', () => {
     renderView();
     await waitFor(() => expect(screen.getByText('# Public')).toBeTruthy());
     expect(screen.queryByRole('button', { name: /Reorder/ })).toBeNull();
+  });
+
+  it('keeps the Custom display order after an on-device slot reorder (#5379)', async () => {
+    // Device order before: 1 zulu, 2 alpha. After the device reorder the two
+    // channels trade slots; the saved display order must follow the channels.
+    let swapped = false;
+    csrfFetchMock.mockImplementation((url: string) => {
+      if (url.includes('/channels/all')) {
+        return Promise.resolve(jsonResponse(swapped
+          ? [{ id: 0, name: 'Public' }, { id: 1, name: 'alpha' }, { id: 2, name: 'zulu' }]
+          : [{ id: 0, name: 'Public' }, { id: 1, name: 'zulu' }, { id: 2, name: 'alpha' }]));
+      }
+      return orderFetch()(url);
+    });
+    localStorage.setItem('meshmonitor-meshcore-channel-sort-mode-src-a', 'custom');
+    localStorage.setItem('meshmonitor-meshcore-channel-custom-order-src-a', JSON.stringify([2, 0, 1]));
+    const { container } = renderView();
+    await waitFor(() => expect(rowNames(container)).toEqual(['# alpha', '# Public', '# zulu']));
+
+    swapped = true;
+    const moves = [{ from: 1, to: 2 }, { from: 2, to: 1 }];
+    // useMeshCore does this on the socket event, then re-broadcasts it.
+    act(() => {
+      remapChannelCustomOrder('src-a', moves);
+      emitChannelsReordered({ sourceId: 'src-a', moves });
+    });
+
+    await waitFor(() => expect(rowNames(container)).toEqual(['# alpha', '# Public', '# zulu']));
+    expect(JSON.parse(localStorage.getItem('meshmonitor-meshcore-channel-custom-order-src-a') ?? '[]'))
+      .toEqual([1, 0, 2]);
   });
 
   it('cancel discards the draft order', async () => {

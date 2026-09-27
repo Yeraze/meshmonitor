@@ -33,6 +33,7 @@ import type {
 } from '../../../hooks/useWebSocket';
 import { MeshCoreContact, mapContactsToNodes } from '../../../utils/meshcoreHelpers';
 import { remapChannelLastRead } from '../meshcoreUnreadStore';
+import { remapChannelCustomOrder } from '../meshcoreChannelOrder';
 import { emitChannelsReordered, remapChannelKey, slotMoveMap } from '../meshcoreChannelReorderEvents';
 
 export type TelemetryMode = 'always' | 'device' | 'never';
@@ -915,6 +916,8 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
         return from === m.fromPublicKey && to === m.toPublicKey ? m : { ...m, fromPublicKey: from, toPublicKey: to };
       }));
       remapChannelLastRead(sourceId, moves);
+      // #5392's Custom display order is stored by slot too.
+      remapChannelCustomOrder(sourceId, moves);
       emitChannelsReordered({ sourceId, moves });
     };
 

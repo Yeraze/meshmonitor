@@ -257,6 +257,10 @@ export const MeshCoreChannelsView: React.FC<MeshCoreChannelsViewProps> = ({
       if (detail.sourceId !== sourceId) return;
       const map = slotMoveMap(detail.moves);
       setSelectedIdx(prev => map.get(prev) ?? prev);
+      // useMeshCore already rewrote the saved Custom order (#5392); pick it
+      // up, and drop any display-order draft built on the old slots.
+      setCustomOrder(loadChannelCustomOrder(sourceId));
+      setReordering(false);
       setReorderTick(v => v + 1);
     });
   }, [sourceId]);

@@ -12,6 +12,7 @@ import {
   saveChannelCustomOrder,
   channelCustomOrderKey,
   channelSortModeKey,
+  remapChannelCustomOrder,
 } from './meshcoreChannelOrder';
 
 const ch = (id: number, name: string) => ({ id, name });
@@ -88,5 +89,22 @@ describe('persistence', () => {
     expect(loadChannelCustomOrder('src-a')).toEqual([]);
     localStorage.setItem(channelCustomOrderKey('src-a'), JSON.stringify([1, 'x', 1, -2, 3.5, 0]));
     expect(loadChannelCustomOrder('src-a')).toEqual([1, 0]);
+  });
+});
+
+describe('remapChannelCustomOrder (#5379)', () => {
+  beforeEach(() => localStorage.clear());
+
+  it('moves each saved slot to its new slot, per source', () => {
+    saveChannelCustomOrder('a', [3, 0, 1, 2]);
+    saveChannelCustomOrder('b', [1, 2]);
+    remapChannelCustomOrder('a', [{ from: 1, to: 2 }, { from: 2, to: 3 }, { from: 3, to: 1 }]);
+    expect(loadChannelCustomOrder('a')).toEqual([1, 0, 2, 3]);
+    expect(loadChannelCustomOrder('b')).toEqual([1, 2]);
+  });
+
+  it('does not create an order when none was saved', () => {
+    remapChannelCustomOrder('a', [{ from: 1, to: 2 }, { from: 2, to: 1 }]);
+    expect(localStorage.getItem(channelCustomOrderKey('a'))).toBeNull();
   });
 });

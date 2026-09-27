@@ -72,6 +72,19 @@ export function loadChannelCustomOrder(sourceId: string): number[] {
   }
 }
 
+/**
+ * Follow an on-device channel reorder (#5379): the saved Custom display order
+ * names channels by slot, so rewrite each slot old -> new. `moves` is a full
+ * permutation, so no two entries collide. No-op when nothing is saved.
+ */
+export function remapChannelCustomOrder(sourceId: string, moves: Array<{ from: number; to: number }>): void {
+  if (!sourceId || moves.length === 0) return;
+  const saved = loadChannelCustomOrder(sourceId);
+  if (saved.length === 0) return;
+  const map = new Map(moves.map((m) => [m.from, m.to]));
+  saveChannelCustomOrder(sourceId, saved.map((slot) => map.get(slot) ?? slot));
+}
+
 export function saveChannelCustomOrder(sourceId: string, order: number[]): void {
   try {
     localStorage.setItem(channelCustomOrderKey(sourceId), JSON.stringify(order));
