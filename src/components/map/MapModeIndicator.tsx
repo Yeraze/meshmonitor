@@ -12,6 +12,8 @@ export interface MapModeIndicatorProps {
   onDisable?: () => void;
   /** Accessible label/tooltip for the dismiss button. */
   disableLabel?: string;
+  /** Sit higher, clear of the asset playback bar along the bottom (#5354). */
+  raised?: boolean;
 }
 
 /**
@@ -31,10 +33,11 @@ export function MapModeIndicator({
   hint,
   onDisable,
   disableLabel,
+  raised = false,
 }: MapModeIndicatorProps) {
   return (
     <div
-      className={styles.indicator}
+      className={raised ? `${styles.indicator} ${styles.raised}` : styles.indicator}
       data-testid="map-mode-indicator"
       role="status"
       aria-live="polite"

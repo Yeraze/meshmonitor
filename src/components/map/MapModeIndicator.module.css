@@ -91,3 +91,9 @@
     display: none;
   }
 }
+
+/* Clear of the asset playback bar (#5354 Phase 3), which takes the bottom
+   edge: ~52px tall at 22px from the bottom on desktop. */
+.raised {
+  bottom: 84px;
+}

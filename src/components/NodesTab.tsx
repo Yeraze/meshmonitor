@@ -20,6 +20,8 @@ import NodeQuickAgeFilter from './NodeQuickAgeFilter';
 import { useNodeQuickAgeFilter } from '../hooks/useNodeQuickAgeFilter';
 import { resolveNodeListAgeHours } from '../utils/nodeQuickAgeFilter';
 import { downsamplePositionHistory, segmentBreaks, MAX_RENDERED_POSITION_POINTS, MAX_RENDERED_ASSET_POSITION_POINTS } from '../utils/positionHistoryDownsample';
+import { indexAtOrBefore, shouldShowAssetPlayback } from '../utils/trackPlayback';
+import { AssetPlaybackBar } from './map/AssetPlaybackBar';
 import { createNodeIcon, getHopColor } from '../utils/mapIcons';
 import { getPositionHistoryColor, generateHeadingAwarePath, generatePositionHistoryArrows, snrToColor } from '../utils/mapHelpers.tsx';
 import { convertSpeed } from '../utils/speedConversion';
@@ -361,6 +363,20 @@ export function isTracerouteRunDisabled(
 ): boolean {
   return connectionStatus !== 'connected' || tracerouteLoading === nodeUserId || txDisabled;
 }
+
+/**
+ * Hands the Leaflet map instance out of BaseMap (#5354 Phase 3). The asset
+ * playback bar is a sibling of the map (so it can sit over it as a DOM
+ * overlay) but moves its marker imperatively on the map.
+ */
+const MapInstanceBridge: React.FC<{ onMap: (map: L.Map | null) => void }> = ({ onMap }) => {
+  const map = useMap();
+  useEffect(() => {
+    onMap(map);
+    return () => onMap(null);
+  }, [map, onMap]);
+  return null;
+};
 
 /**
  * Controller that applies the configured default map center once server settings load.
@@ -911,18 +927,48 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
   // server to at most 2,000 points, so draw up to that many rather than
   // resampling it down to the regular 500.
   const isAssetTrail = positionHistoryTotalFixes !== null;
+
+  /**
+   * Timeline playback (#5354 Phase 3): shown for a selected asset whose own
+   * track is loaded (not a previous node's) with Show Position History on and
+   * more than one fix after the hours filter. 2D only.
+   */
+  const selectedMapNode = useMemo(
+    () => (selectedNodeId ? nodes.find(n => n.user?.id === selectedNodeId) : undefined),
+    [nodes, selectedNodeId],
+  );
+  const showAssetPlayback = shouldShowAssetPlayback({
+    isAsset: Boolean(selectedMapNode?.asset),
+    assetTrackLoaded: isAssetTrail,
+    showPositionHistory: showMotion,
+    fixCount: filteredPositionHistory.length,
+  });
+  // Cursor time from the playback bar while "trail up to cursor" is on (null = whole trail).
+  const [playbackTrailCursor, setPlaybackTrailCursor] = useState<number | null>(null);
+  // Leaflet map instance, captured inside BaseMap for the playback marker.
+  const [playbackMap, setPlaybackMap] = useState<L.Map | null>(null);
+  // Cut the trail by fix INDEX, not time, so the ~5 Hz cursor only rebuilds
+  // the polylines when it crosses a fix.
+  const trailCutIndex = showAssetPlayback && playbackTrailCursor !== null
+    ? indexAtOrBefore(filteredPositionHistory, playbackTrailCursor)
+    : null;
+  const trailPositionHistory = useMemo(
+    () => (trailCutIndex === null ? filteredPositionHistory : filteredPositionHistory.slice(0, trailCutIndex + 1)),
+    [filteredPositionHistory, trailCutIndex],
+  );
+
   const renderedPositionHistory = useMemo(
     () => downsamplePositionHistory(
-      filteredPositionHistory,
+      trailPositionHistory,
       isAssetTrail ? MAX_RENDERED_ASSET_POSITION_POINTS : MAX_RENDERED_POSITION_POINTS,
     ),
-    [filteredPositionHistory, isAssetTrail],
+    [trailPositionHistory, isAssetTrail],
   );
 
   /** Per drawn pair: true when it spans a gap segment (#5354), so no line is drawn. */
   const positionHistorySegmentBreaks = useMemo(
-    () => segmentBreaks(filteredPositionHistory, renderedPositionHistory),
-    [filteredPositionHistory, renderedPositionHistory],
+    () => segmentBreaks(trailPositionHistory, renderedPositionHistory),
+    [trailPositionHistory, renderedPositionHistory],
   );
 
   /**
@@ -941,7 +987,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
    * True when the drawn trail omits intermediate fixes — surfaced in the popup.
    * An asset trail thinned on the server counts too (#5354).
    */
-  const positionHistoryDownsampled = renderedPositionHistory.length < filteredPositionHistory.length
+  const positionHistoryDownsampled = renderedPositionHistory.length < trailPositionHistory.length
     || assetTrailThinnedHint !== null;
 
   // Memoize position history legend data for MapLegend
@@ -3349,6 +3395,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                 )}
                 onDisable={() => setShowRoute(false)}
                 disableLabel={t('map.tracerouteModeDisable', 'Turn off Show Traceroute')}
+                raised={!effective3D && showAssetPlayback}
               />
             )}
             {effective3D ? (
@@ -3402,6 +3449,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
               <FitAllNodesController request={fitAllRequest} positions={fitAllPositions} />
               <ZoomHandler onZoomChange={setMapZoom} />
               <MapPositionHandler />
+              <MapInstanceBridge onMap={setPlaybackMap} />
               <WaypointMapEventBridge
                 placing={placingWaypoint}
                 canCreate={canWriteWaypoints}
@@ -3511,6 +3559,17 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
               {positionHistoryElements}
 
           </BaseMap>
+          )}
+          {shouldShowData() && !effective3D && showAssetPlayback && selectedNodeId && (
+            <AssetPlaybackBar
+              fixes={filteredPositionHistory}
+              map={playbackMap}
+              resetKey={selectedNodeId}
+              timeFormat={timeFormat}
+              dateFormat={dateFormat}
+              distanceUnit={distanceUnit}
+              onTrailCursorChange={setPlaybackTrailCursor}
+            />
           )}
           {shouldShowData() && nodesIsLoading && <MapLoadingOverlay />}
           {shouldShowData() && !nodesIsLoading && nodesWithPosition.length === 0 && (
