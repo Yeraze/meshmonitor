@@ -42,6 +42,7 @@ export type DataEventType =
   | 'meshcore:local-node:updated'
   | 'meshcore:send-confirmed'
   | 'meshcore:channel-heard'
+  | 'meshcore:channels:reordered'
   | 'meshcore:ota-packet'
   | 'meshbeacon:received'
   | 'reticulum:message'
@@ -632,6 +633,23 @@ class DataEventEmitter extends EventEmitter {
     };
     this.emit('data', event);
     logger.debug(`[DataEventEmitter] MeshCore channel heard: msg=${data.id} count=${data.heardBy.length} (source: ${sourceId})`);
+  }
+
+  /**
+   * Emit a MeshCore on-device channel reorder (#5379). `moves` is the full
+   * slot permutation the server applied to stored rows; clients remap any
+   * `channel-<idx>`-keyed state they hold (messages, unread markers) and
+   * reload the channel list.
+   */
+  emitMeshCoreChannelsReordered(data: { moves: Array<{ from: number; to: number }> }, sourceId: string): void {
+    const event: DataEvent = {
+      type: 'meshcore:channels:reordered',
+      data: { sourceId, ...data },
+      timestamp: Date.now(),
+      sourceId,
+    };
+    this.emit('data', event);
+    logger.debug(`[DataEventEmitter] MeshCore channels reordered: ${data.moves.length} move(s) (source: ${sourceId})`);
   }
 
   /**

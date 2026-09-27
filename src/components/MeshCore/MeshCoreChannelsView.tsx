@@ -22,6 +22,7 @@ import { MeshCoreContact, formatMeshCoreChannelName } from '../../utils/meshcore
 import { MeshCoreMessageStream } from './MeshCoreMessageStream';
 import { useAuth } from '../../contexts/AuthContext';
 import { loadChannelLastRead, markChannelRead as persistChannelRead } from './meshcoreUnreadStore';
+import { slotMoveMap, subscribeChannelsReordered } from './meshcoreChannelReorderEvents';
 import { compareMeshCoreMessages } from './messageOrder';
 import { UiIcon } from '../icons';
 
@@ -112,6 +113,9 @@ export const MeshCoreChannelsView: React.FC<MeshCoreChannelsViewProps> = ({
   const [channels, setChannels] = useState<ChannelRow[]>([]);
   const [selectedIdx, setSelectedIdx] = useState<number>(0);
   const [loadingChannels, setLoadingChannels] = useState(false);
+  // Bumped when the device's channel slots are reordered (#5379) so the
+  // slot-keyed list and counts reload.
+  const [reorderTick, setReorderTick] = useState(0);
   const [mobileShowContent, setMobileShowContent] = useState(false);
   // Per-channel backlog for the *active* channel, fetched independently of the
   // shared `messages` pool so each channel shows its own history (not a slice
@@ -226,6 +230,18 @@ export const MeshCoreChannelsView: React.FC<MeshCoreChannelsViewProps> = ({
     // we can't replicate it; leave the scope as-is (channel / source default).
   }, []);
 
+  // Follow an on-device channel reorder (#5379): keep the open channel open
+  // at its new slot, then reload everything keyed by slot.
+  useEffect(() => {
+    if (!sourceId) return;
+    return subscribeChannelsReordered((detail) => {
+      if (detail.sourceId !== sourceId) return;
+      const map = slotMoveMap(detail.moves);
+      setSelectedIdx(prev => map.get(prev) ?? prev);
+      setReorderTick(v => v + 1);
+    });
+  }, [sourceId]);
+
   // Fetch the synced channel list for this source. We use /api/channels/all
   // (rather than /api/channels) so MeshCore rows with idx > 7 aren't dropped
   // by the legacy Meshtastic-shaped 0-7 filter on the basic endpoint. The
@@ -263,7 +279,7 @@ export const MeshCoreChannelsView: React.FC<MeshCoreChannelsViewProps> = ({
     return () => { cancelled = true; };
   // Status connected→disconnected→connected transitions trigger a re-fetch so a
   // freshly-synced channel list shows up without a full page reload.
-  }, [baseUrl, sourceId, csrfFetch, status?.connected]);
+  }, [baseUrl, sourceId, csrfFetch, status?.connected, reorderTick]);
 
   // Always include a synthetic "Channel 0" placeholder when the device hasn't
   // reported any channels yet — keeps the view usable on first connect, and
@@ -305,7 +321,7 @@ export const MeshCoreChannelsView: React.FC<MeshCoreChannelsViewProps> = ({
       }
     })();
     return () => { cancelled = true; };
-  }, [baseUrl, sourceId, channelIdsKey, csrfFetch, status?.connected]);
+  }, [baseUrl, sourceId, channelIdsKey, csrfFetch, status?.connected, reorderTick]);
 
   const active = displayChannels.find(c => c.id === selectedIdx) ?? displayChannels[0];
   const activeFilter = useMemo(() => buildChannelFilter(active.id), [active.id]);

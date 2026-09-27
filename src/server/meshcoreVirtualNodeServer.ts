@@ -495,6 +495,23 @@ export class MeshCoreVirtualNodeServer extends EventEmitter {
     return this.clients.size;
   }
 
+  /**
+   * Close every connected app, keeping the server listening (#5379). Used after
+   * an on-device channel reorder: the companion protocol has no "channels
+   * changed" push, so an app only re-reads its channel list on a fresh
+   * connection. Returns how many clients were closed.
+   */
+  disconnectAllClients(reason: string): number {
+    const count = this.clients.size;
+    for (const client of this.clients.values()) {
+      client.socket.destroy();
+    }
+    if (count > 0) {
+      logger.info(`[MeshCore VN ${this.sourceId}] closed ${count} client(s): ${reason}`);
+    }
+    return count;
+  }
+
   /** Actual listening port (useful when started on port 0 in tests). */
   getListeningPort(): number | null {
     const addr = this.server?.address();

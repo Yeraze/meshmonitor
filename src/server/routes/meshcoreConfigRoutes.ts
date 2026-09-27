@@ -12,7 +12,10 @@ import { sourceManagerRegistry } from '../sourceManagerRegistry.js';
 import { isMeshCoreManager } from '../sourceManagerTypes.js';
 import databaseService from '../../services/database.js';
 import { logger } from '../../utils/logger.js';
-import { requireAuth, requirePermission } from '../auth/authMiddleware.js';
+import { requireAuth, requirePermission, hasPermission } from '../auth/authMiddleware.js';
+import { ok, fail } from '../utils/apiResponse.js';
+import { ChannelReorderPlanError } from '../meshcoreChannelReorder.js';
+import type { ResourceType } from '../../types/permission.js';
 import { meshcoreDeviceLimiter } from '../middleware/rateLimiters.js';
 import { managerFor, isValidName, isValidRadioParams, auditMeshcoreEvent } from './meshcoreRouteShared.js';
 
@@ -649,5 +652,124 @@ router.post('/config/telemetry-mode-env', meshcoreDeviceLimiter, requireAuth(), 
     res.status(500).json({ success: false, error: 'Config error' });
   }
 });
+
+/** HTTP status for each pre-write channel reorder refusal (#5379). */
+const CHANNEL_REORDER_STATUS: Record<ChannelReorderPlanError['code'], number> = {
+  ORDER_INVALID: 400,
+  NOT_COMPANION: 400,
+  ORDER_MISMATCH: 409,
+  NO_FREE_SLOT: 409,
+  REORDER_IN_PROGRESS: 409,
+  NOT_CONNECTED: 503,
+  TABLE_READ_FAILED: 502,
+  PLAN_DID_NOT_CONVERGE: 500,
+};
+
+/**
+ * POST /api/sources/:id/meshcore/channels/reorder
+ *
+ * Rewrite the companion's channel slots into a new order (#5379). Body:
+ * `{ order: number[] }`, the CURRENT slot of every configured channel in
+ * slots 1+, in the wanted order. Channels land in slots 1..n; slot 0 (Public)
+ * never moves. Message history, read markers, channel permissions, scopes and
+ * the MeshCore auto-ack / auto-announce / auto-responder / timer settings
+ * follow their channel.
+ *
+ * Responses:
+ *  - 200 `{ success, data: { status: 'applied' | 'unchanged', ... } }`
+ *  - 502 CHANNEL_REORDER_ROLLED_BACK: a write failed; the original layout was
+ *    written back and confirmed. `result` has the details.
+ *  - 500 CHANNEL_REORDER_INCONSISTENT: the rollback could not be confirmed.
+ *    `result.deviceSlots` is the best view of the device.
+ *  - 4xx/5xx with a plan code (ORDER_MISMATCH, NO_FREE_SLOT, ...) when it
+ *    refused before writing anything.
+ *
+ * Serial-link config only: no packet goes over the air, so receive-only mode
+ * does not block it.
+ */
+router.post(
+  '/channels/reorder',
+  meshcoreDeviceLimiter,
+  requireAuth(),
+  requirePermission('configuration', 'write', { sourceIdFrom: 'params.id' }),
+  async (req: Request, res: Response) => {
+    const sourceId = (req.params as { id: string }).id;
+    const order: unknown = req.body?.order;
+    if (!Array.isArray(order) || order.length === 0 || order.length > 255
+      || !order.every((n: unknown) => Number.isInteger(n) && (n as number) >= 1 && (n as number) <= 255)) {
+      return fail(res, 400, 'ORDER_INVALID', 'order must be a non-empty array of channel slot indexes (1-255)');
+    }
+    const slots = order as number[];
+
+    // MM-SEC-4, same rule as the Meshtastic reorder: rewriting a slot needs
+    // write on that slot's channel. Only slots 1-7 have a channel_N resource;
+    // 8+ are governed by configuration:write, checked above.
+    if (!req.user?.isAdmin) {
+      const affected = new Set<number>();
+      slots.forEach((fromSlot, k) => {
+        if (fromSlot !== k + 1) {
+          affected.add(fromSlot);
+          affected.add(k + 1);
+        }
+      });
+      for (const slot of [...affected].sort((a, b) => a - b)) {
+        if (slot > 7) continue;
+        const resource = `channel_${slot}` as ResourceType;
+        if (!(req.user && await hasPermission(req.user, resource, 'write', sourceId))) {
+          return fail(res, 403, 'FORBIDDEN',
+            `Reordering needs write permission on every channel it moves (missing: ${resource})`,
+            { required: { resource, action: 'write' } });
+        }
+      }
+    }
+
+    const manager = managerFor(req, res);
+    try {
+      const result = await manager.reorderChannels(slots);
+      auditMeshcoreEvent(req, 'meshcore_channels_reorder', 'configuration', {
+        sourceId,
+        order: slots,
+        status: result.status,
+        ...(result.status === 'applied'
+          ? {
+            moves: result.moves,
+            writes: result.writes,
+            remap: {
+              messages: result.remap.messages,
+              channels: result.remap.channels,
+              readMarkers: result.remap.readMarkers,
+              permissionsMoved: result.remap.permissionsMoved,
+              permissionsDropped: result.remap.permissionsDropped,
+              settingsUpdated: result.remap.settingsUpdated,
+            },
+          }
+          : {}),
+        ...(result.status === 'rolled_back' ? { error: result.error } : {}),
+        ...(result.status === 'inconsistent' ? { error: result.error, rollbackError: result.rollbackError } : {}),
+      });
+      if (result.status === 'rolled_back') {
+        return fail(res, 502, 'CHANNEL_REORDER_ROLLED_BACK',
+          `Channel reorder failed and was undone; the device is back in its original order. ${result.error}`,
+          { result });
+      }
+      if (result.status === 'inconsistent') {
+        return fail(res, 500, 'CHANNEL_REORDER_INCONSISTENT',
+          `Channel reorder failed and the undo could not be confirmed (${result.rollbackError}). ` +
+          'No channel was removed, but one may be in the wrong slot or listed twice.',
+          { result });
+      }
+      return ok(res, result);
+    } catch (error) {
+      if (error instanceof ChannelReorderPlanError) {
+        auditMeshcoreEvent(req, 'meshcore_channels_reorder', 'configuration', {
+          sourceId, order: slots, status: 'refused', code: error.code,
+        });
+        return fail(res, CHANNEL_REORDER_STATUS[error.code] ?? 400, error.code, error.message);
+      }
+      logger.error('[API] Error reordering MeshCore channels:', error);
+      return fail(res, 500, 'INTERNAL_ERROR', 'Channel reorder failed');
+    }
+  },
+);
 
 export default router;

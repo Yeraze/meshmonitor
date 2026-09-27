@@ -203,6 +203,26 @@ export function markChannelRead(sourceId: string, idx: number, ts: number = Date
 }
 
 /**
+ * Follow an on-device channel reorder (#5379): move each channel's last-read
+ * marker from its old slot key to its new one, in localStorage and in the
+ * hydrated server snapshot. The server already moved its own rows in the same
+ * transaction as the rest of the remap, so nothing is pushed back. `moves` is
+ * a permutation, so no two markers land on one key.
+ */
+export function remapChannelLastRead(sourceId: string, moves: Array<{ from: number; to: number }>): void {
+  if (!sourceId || moves.length === 0) return;
+  const map = new Map(moves.map((m) => [String(m.from), String(m.to)]));
+  const remap = (rec: Record<string, number>): Record<string, number> => {
+    const out: Record<string, number> = {};
+    for (const [key, ts] of Object.entries(rec)) out[map.get(key) ?? key] = ts;
+    return out;
+  };
+  const snapshot = serverState.get(sourceId);
+  if (snapshot) snapshot.channels = remap(snapshot.channels);
+  persist(channelLastReadKey(sourceId), remap(loadMap<string>(channelLastReadKey(sourceId))));
+}
+
+/**
  * Mark a DM conversation (with `peerKey`) read up to `ts` (defaults to now).
  * `peerKey` must be the canonical peer key (see {@link canonicalizePeerKey}).
  * Never moves the marker backwards.

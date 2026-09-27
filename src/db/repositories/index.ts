@@ -48,6 +48,7 @@ export type { BackupHistory } from './backupHistory.js';
 export { ChannelDatabaseRepository, type ChannelDatabaseInput, type ChannelDatabaseUpdate, type ChannelDatabasePermissionInput } from './channelDatabase.js';
 export { IgnoredNodesRepository, type IgnoredNodeRecord, type IgnoreReason } from './ignoredNodes.js';
 export { MeshCoreRepository } from './meshcore.js';
+export { MeshCoreChannelRemapRepository } from './meshcoreChannelRemap.js';
 export type { DbMeshCoreNode, DbMeshCoreMessage } from './meshcore.js';
 export { EmbedProfileRepository } from './embedProfiles.js';
 export type { EmbedProfile, EmbedProfileInput } from './embedProfiles.js';

@@ -68,6 +68,13 @@ interface TraceDataResponse {
   lastSnr: number;
 }
 
+/** A raw meshcore.js ChannelInfo response (`getChannel()` / `getChannels()`). */
+interface RawDeviceChannel {
+  channelIdx: number;
+  name: string;
+  secret: Uint8Array;
+}
+
 /** A raw meshcore.js contact record as returned by `connection.getContacts()`.
  * These are the wire-format fields (fixed-point coords, packed out_path_len,
  * 64-byte out_path buffer) needed to re-send a contact via AddUpdateContact. */
@@ -2499,12 +2506,19 @@ export class MeshCoreNativeBackend extends EventEmitter {
           typeof info?.firmwareVer === 'number' && info.firmwareVer >= 3 && reserved && reserved.length > 0
             ? Number(reserved[0]) * 2
             : undefined;
+        // Byte 3 is MAX_GROUP_CHANNELS on the same v3+ firmware (#5379): the
+        // channel reorder uses it to confirm it read the whole slot table.
+        const maxChannels =
+          typeof info?.firmwareVer === 'number' && info.firmwareVer >= 3 && reserved && reserved.length > 1
+            ? Number(reserved[1])
+            : undefined;
         return {
           'fw ver': info?.firmwareVer,
           fw_build: info?.firmware_build_date,
           model,
           ver: verString,
           max_contacts: maxContacts,
+          max_channels: maxChannels,
         };
       }
 
@@ -2561,6 +2575,64 @@ export class MeshCoreNativeBackend extends EventEmitter {
         }
         await c.deleteChannel(idx);
         return { ok: true };
+      }
+
+      case 'get_channel_table': {
+        // Whole slot table for the on-device reorder (#5379), read under the
+        // shared-ack lock. `getChannels()` enumerates GetChannel until the
+        // firmware answers Err, and that Err is tag-less, so an unrelated
+        // command's Err landing mid-scan truncates the list silently. Holding
+        // the lock keeps our own ops off the channel; the manager still reads
+        // twice and compares, which catches anything else.
+        const list = (await this.runExclusiveRadioOp(
+          () => this.withTimeout(c.getChannels(), Number(params.timeout_ms) || 20_000, 'get_channel_table'),
+          'get_channel_table',
+        )) as RawDeviceChannel[];
+        return list.map((ch) => ({
+          channel_idx: ch.channelIdx,
+          name: typeof ch.name === 'string' ? ch.name : String(ch.name ?? ''),
+          secret_hex: ch.secret ? bytesToHex(ch.secret) : '',
+        }));
+      }
+
+      case 'set_channel_verified': {
+        // One slot write for the on-device reorder (#5379): CMD_SET_CHANNEL,
+        // then CMD_GET_CHANNEL on the same slot. The write resolves on the
+        // tag-less global Ok/Err, which a concurrent command can steal (the
+        // #4631 set_out_path failure), so the ack is not trusted either way:
+        // the read-back is the ground truth. Runs under the shared-ack lock
+        // so none of our own uncorrelated ops overlap the pair.
+        const idx = Number(params.idx);
+        if (!Number.isInteger(idx) || idx < 0 || idx > 255) {
+          throw new Error(`Invalid channel index: ${idx}`);
+        }
+        const name = String(params.name ?? '');
+        const secretHex = String(params.secret_hex ?? '').toLowerCase();
+        const secret = Uint8Array.from(hexToBytes(secretHex));
+        if (secret.length !== 16) {
+          throw new Error(`Channel secret must be 16 bytes, got ${secret.length}`);
+        }
+        const timeoutMs = Number(params.timeout_ms) || 10_000;
+        return await this.runExclusiveRadioOp(async () => this.withTimeout((async () => {
+          let ackError: string | null = null;
+          try {
+            await c.setChannel(idx, name, secret);
+          } catch (writeErr) {
+            // meshcore.js rejects with no argument on Err (#5102).
+            ackError = writeErr instanceof Error ? writeErr.message : writeErr == null ? 'Err ack' : String(writeErr);
+          }
+          const readBack = (await c.getChannel(idx)) as RawDeviceChannel | undefined;
+          const readName = typeof readBack?.name === 'string' ? readBack.name : String(readBack?.name ?? '');
+          const readSecret = readBack?.secret ? bytesToHex(readBack.secret).toLowerCase() : '';
+          const readIdx = Number(readBack?.channelIdx);
+          return {
+            verified: readIdx === idx && readName === name && readSecret === secretHex,
+            channel_idx: readIdx,
+            name: readName,
+            secret_hex: readSecret,
+            ack_error: ackError,
+          };
+        })(), timeoutMs, 'set_channel_verified'), 'set_channel_verified');
       }
 
       case 'has_contact': {
