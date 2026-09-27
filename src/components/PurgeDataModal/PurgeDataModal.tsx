@@ -3,6 +3,8 @@ import { useTranslation } from 'react-i18next';
 import type { BasicNodeInfo } from '../../types/device';
 import Modal from '../common/Modal';
 import './PurgeDataModal.css';
+import styles from './PurgeDataModal.module.css';
+import { UiIcon } from '../icons';
 
 interface PurgeDataModalProps {
   isOpen: boolean;
@@ -92,6 +94,12 @@ export const PurgeDataModal: React.FC<PurgeDataModalProps> = ({
       <p className="purge-section-description">
         {t('purgeModal.deleteNodeDescription')}
       </p>
+      {selectedNode.asset && (
+        <p className={styles.assetWarning} role="alert">
+          <UiIcon name="alert" />
+          {t('purgeModal.assetWarning', 'This node is a tracked asset. Deleting it also removes its retained history.')}
+        </p>
+      )}
       <div className="purge-actions-column">
         <button onClick={handleDeleteNode} className="danger-btn purge-btn-full delete-local">
           {t('purgeModal.deleteLocal')}

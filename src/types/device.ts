@@ -215,6 +215,8 @@ export interface NodeUser {
 export interface BasicNodeInfo {
   nodeNum: number;
   user?: NodeUser;
+  /** Tracked asset (#5354); drives the delete warning. */
+  asset?: { retentionDays: number };
 }
 
 /**

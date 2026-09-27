@@ -20,6 +20,7 @@ import { Firmware28SilenceNotice } from './Firmware28SilenceNotice';
 import { ShowCoverageLink } from './Analysis/ShowCoverageLink';
 import { formatAircraftSummary } from '../utils/aircraftClassification';
 import FlightMatchLine from './FlightMatchLine';
+import AssetTrackingSection from './AssetTrackingSection';
 
 interface NodeDetailsBlockProps {
   node: DeviceInfo | null;
@@ -38,6 +39,11 @@ interface NodeDetailsBlockProps {
    * when absent (or a MeshCore/no-source context) the badge is simply omitted.
    */
   sourceId?: string | null;
+  /**
+   * Asset Tracking section (#5354). Rendered only when given, because it
+   * needs the app's QueryClient; `canEdit` = the caller's `settings:write`.
+   */
+  assetTracking?: { canEdit: boolean };
 }
 
 const MAX_NODE_NOTES_LENGTH = 2000;
@@ -84,7 +90,7 @@ function buildSignalTrendTooltip(
   return parts.join('\n');
 }
 
-const NodeDetailsBlock: React.FC<NodeDetailsBlockProps> = ({ node, timeFormat = '24', dateFormat = 'MM/DD/YYYY', canEditNotes = false, onSaveNotes, sourceId }) => {
+const NodeDetailsBlock: React.FC<NodeDetailsBlockProps> = ({ node, timeFormat = '24', dateFormat = 'MM/DD/YYYY', canEditNotes = false, onSaveNotes, sourceId, assetTracking }) => {
   const { t } = useTranslation();
   const { channels } = useChannels();
   const { currentNodeId } = useDeviceConfig();
@@ -845,6 +851,11 @@ const NodeDetailsBlock: React.FC<NodeDetailsBlockProps> = ({ node, timeFormat = 
             </div>
           ) : null}
         </div>
+
+        {/* Asset tracking (#5354) — sits right below Notes. */}
+        {assetTracking && node.nodeNum != null && (
+          <AssetTrackingSection nodeNum={node.nodeNum} asset={node.asset} canEdit={assetTracking.canEdit} />
+        )}
 
         {/* "Silent on 2.8+" notice (#5033). Self-gated: renders nothing unless
             the node is on firmware >= 2.8, is still being heard, and has gone
