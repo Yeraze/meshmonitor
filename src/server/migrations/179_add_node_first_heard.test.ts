@@ -1,10 +1,10 @@
 /**
- * Tests for migration 178 — `firstHeard` on `nodes` (seconds) and
+ * Tests for migration 179 — `firstHeard` on `nodes` (seconds) and
  * `meshcore_nodes` (ms), with backfill (#5390).
  */
 import Database from 'better-sqlite3';
 import { describe, expect, it } from 'vitest';
-import { migration } from './178_add_node_first_heard.js';
+import { migration } from './179_add_node_first_heard.js';
 
 const NOW_MS = Date.now();
 const NOW_S = Math.floor(NOW_MS / 1000);
@@ -35,7 +35,7 @@ function createTables(db: Database.Database): void {
 const fh = (db: Database.Database, sql: string, ...args: unknown[]) =>
   (db.prepare(sql).get(...args) as { firstHeard: number | null }).firstHeard;
 
-describe('Migration 178 — firstHeard', () => {
+describe('Migration 179 — firstHeard', () => {
   it('adds the column to both tables and is idempotent', () => {
     const db = new Database(':memory:');
     createTables(db);

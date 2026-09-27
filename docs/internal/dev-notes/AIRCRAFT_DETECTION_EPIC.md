@@ -62,7 +62,7 @@ A mountaintop repeater must **not** be treated as an aircraft.
 **Exit:** the timer persists across restarts, and saving settings does not re-arm it (see the CLAUDE.md mesh checklist). Favourites and the local node are protected.
 
 ### Phase 3: flight trails
-- [ ] Trails for likely-aircraft nodes, reusing `PositionTrailsLayer` and the position history, in both map panels.
+- [x] Trails for likely-aircraft nodes, reusing `PositionTrailsLayer` and the position history, in both map panels.
 
 **Exit:** trails render for moving suspects and expire with the retention window.
 
@@ -73,3 +73,5 @@ A mountaintop repeater must **not** be treated as an aircraft.
 - 2026-09-26: Phase 1 validated in the browser on the dev container. Badge, popup line and Show / Mark / Hide work in both map panels; settings and the Auto-Favorite switch render. Two fixes from validation: the Dashboard hint counted flagged nodes outside the age window ("19 on the map" with none drawn), and the Node Display help text ran two sentences together. PR opened.
 - 2026-09-26: Phase 2 spec approved (AIRCRAFT_P2_SPEC.md; migration 177). DB-only ignore with reason 'aircraft', 24 h default, auto-lift on a live position, fixed rule 24 h / <200 m / >=3 fixes with a 1 km release.
 - 2026-09-26: Phase 2 validated on the dev container. The first sweep aged out 19 (Florida MQTT) and 21 (broker) nodes; the timer survived a restart; Show aged-out, the popup line, the Ignored Nodes reason and the settings block all work. Fix from validation: a hand un-ignore was undone by the next sweep, so a node is now aged out at most once per silence. Also found: the #2601 re-apply would have pushed aircraft ignores to the radio, which is now skipped for reason 'aircraft'. PR opened.
+- 2026-09-26: Phase 3 spec approved (AIRCRAFT_P3_SPEC.md; migration 178). Trails for every drawn likely aircraft, 6 h default lookback (1-168 h), colour per aircraft with arrows, toggle saved per user.
+- 2026-09-26: Phase 3 validated on the dev container. Trails render on both maps, follow Hide, and the toggle and lookback persist. Found in validation: MQTT sources stored no position history, so MQTT-heard aircraft (49 of 51 here) could never have a trail. The user chose to store MQTT position history for every node, like TCP sources, deduped across gateways (about 15-30k rows a day per regional MQTT source, 7-day retention). Epic complete.

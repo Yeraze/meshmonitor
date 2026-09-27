@@ -1,5 +1,5 @@
 /**
- * Migration 178: `firstHeard` on `nodes` and `meshcore_nodes` (#5390).
+ * Migration 179: `firstHeard` on `nodes` and `meshcore_nodes` (#5390).
  *
  *   nodes.firstHeard           INTEGER/BIGINT NULL — Unix SECONDS (same unit as nodes.lastHeard)
  *   meshcore_nodes.firstHeard  INTEGER/BIGINT NULL — epoch MILLISECONDS (same unit as meshcore_nodes.lastHeard)
@@ -29,7 +29,7 @@ import {
   addColumnIfMissingMysql,
 } from './helpers.js';
 
-const LABEL = 'Migration 178';
+const LABEL = 'Migration 179';
 
 /** 2020-01-01T00:00:00Z. Neither firmware existed before this. */
 const MIN_PLAUSIBLE_SEC = 1_577_836_800;
@@ -102,7 +102,7 @@ export const migration = {
 
 // ============ PostgreSQL ============
 
-export async function runMigration178Postgres(client: import('pg').PoolClient): Promise<void> {
+export async function runMigration179Postgres(client: import('pg').PoolClient): Promise<void> {
   logger.info(`${LABEL} (PostgreSQL): adding firstHeard to nodes and meshcore_nodes...`);
   const nowMs = Date.now();
   for (const { table, unitMs } of TABLES) {
@@ -115,7 +115,7 @@ export async function runMigration178Postgres(client: import('pg').PoolClient): 
 
 // ============ MySQL ============
 
-export async function runMigration178Mysql(pool: import('mysql2/promise').Pool): Promise<void> {
+export async function runMigration179Mysql(pool: import('mysql2/promise').Pool): Promise<void> {
   logger.info(`${LABEL} (MySQL): adding firstHeard to nodes and meshcore_nodes...`);
   const nowMs = Date.now();
   for (const { table, unitMs } of TABLES) {

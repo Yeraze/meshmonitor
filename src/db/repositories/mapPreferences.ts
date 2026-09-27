@@ -55,6 +55,9 @@ export class MapPreferencesRepository extends BaseRepository {
         // NULL reads as 'mark' (badge the marker, no filtering) — matches
         // today's behaviour for everyone who has not chosen anything else.
         aircraftDisplayMode: row.aircraftDisplayMode ?? 'mark',
+        // Flight trails (#5364/#5365 Phase 3): off by default, 6 h lookback.
+        showAircraftTrails: row.showAircraftTrails ?? false,
+        aircraftTrailHours: row.aircraftTrailHours ?? 6,
         positionHistoryHours: row.positionHistoryHours ?? null,
         mapMaxAgeHours: row.mapMaxAgeHours ?? null,
         positionHistoryPointsOnly: row.positionHistoryPointsOnly ?? false,
@@ -89,6 +92,10 @@ export class MapPreferencesRepository extends BaseRepository {
     spreadNodes?: boolean;
     /** Likely-aircraft map display choice (#5364/#5365). Null clears to the 'mark' default. */
     aircraftDisplayMode?: string | null;
+    /** Flight trails toggle (#5364/#5365 Phase 3). */
+    showAircraftTrails?: boolean;
+    /** Flight trail lookback in hours, 1..168 (validated by the route). */
+    aircraftTrailHours?: number;
     positionHistoryHours?: number | null;
     mapMaxAgeHours?: number | null;
     positionHistoryPointsOnly?: boolean;
@@ -122,6 +129,8 @@ export class MapPreferencesRepository extends BaseRepository {
         if (preferences.unreadIndicatorEnabled !== undefined) set.unreadIndicatorEnabled = preferences.unreadIndicatorEnabled;
         if (preferences.spreadNodes !== undefined) set.spreadNodes = preferences.spreadNodes;
         if (preferences.aircraftDisplayMode !== undefined) set.aircraftDisplayMode = preferences.aircraftDisplayMode;
+        if (preferences.showAircraftTrails !== undefined) set.showAircraftTrails = preferences.showAircraftTrails;
+        if (preferences.aircraftTrailHours !== undefined) set.aircraftTrailHours = preferences.aircraftTrailHours;
         if (preferences.positionHistoryHours !== undefined) set.positionHistoryHours = preferences.positionHistoryHours;
         if (preferences.mapMaxAgeHours !== undefined) set.mapMaxAgeHours = preferences.mapMaxAgeHours;
         if (preferences.positionHistoryPointsOnly !== undefined) set.positionHistoryPointsOnly = preferences.positionHistoryPointsOnly;
@@ -152,6 +161,8 @@ export class MapPreferencesRepository extends BaseRepository {
           unreadIndicatorEnabled: preferences.unreadIndicatorEnabled ?? true,
           spreadNodes: preferences.spreadNodes ?? true,
           aircraftDisplayMode: preferences.aircraftDisplayMode ?? null,
+          showAircraftTrails: preferences.showAircraftTrails ?? false,
+          aircraftTrailHours: preferences.aircraftTrailHours ?? 6,
           positionHistoryHours: preferences.positionHistoryHours ?? null,
           mapMaxAgeHours: preferences.mapMaxAgeHours ?? null,
           positionHistoryPointsOnly: preferences.positionHistoryPointsOnly ?? false,

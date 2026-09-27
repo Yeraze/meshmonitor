@@ -738,6 +738,7 @@ import firmwareUpdateRoutes from './routes/firmwareUpdateRoutes.js';
 import sourceRoutes from './routes/sourceRoutes.js';
 import unifiedRoutes from './routes/unifiedRoutes.js';
 import analysisRoutes from './routes/analysisRoutes.js';
+import aircraftRoutes from './routes/aircraftRoutes.js';
 import meshIssuesRoutes from './routes/meshIssuesRoutes.js';
 import coverageRoutes from './routes/coverageRoutes.js';
 import elevationRoutes from './routes/elevationRoutes.js';
@@ -929,6 +930,9 @@ apiRouter.use('/analysis/coverage', coverageRoutes);
 
 // Cross-source analysis workspace
 apiRouter.use('/analysis', analysisRoutes);
+
+// Likely-aircraft flight trails (#5364/#5365 Phase 3) — stored telemetry only.
+apiRouter.use('/aircraft', aircraftRoutes);
 
 // Terrain link elevation profile (#4111 Phase 1)
 apiRouter.use('/elevation', elevationRoutes);

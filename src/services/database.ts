@@ -5485,6 +5485,9 @@ class DatabaseService {
       spreadNodes?: boolean;
       /** Likely-aircraft map display choice (#5364/#5365). Null clears to the 'mark' default. */
       aircraftDisplayMode?: 'show' | 'mark' | 'hide' | null;
+      /** Flight trails (#5364/#5365 Phase 3). */
+      showAircraftTrails?: boolean;
+      aircraftTrailHours?: number;
   }): Promise<void> {
     return this.mapPreferences!.saveMapPreferences(userId, preferences);
   }

@@ -3,7 +3,7 @@
  * `lastHeard`) is stamped once and never overwritten, per source.
  *
  * Runs against the full migration registry (createTestDb), so it also proves
- * migration 178 added the column on SQLite.
+ * migration 179 added the column on SQLite.
  */
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import type Database from 'better-sqlite3';

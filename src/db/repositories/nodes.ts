@@ -2372,6 +2372,29 @@ export class NodesRepository extends BaseRepository {
     }));
   }
 
+  /**
+   * `(sourceId, nodeNum)` for every node on the given sources that the map
+   * could draw as a likely aircraft: `likelyAircraft = true`, or aged out by
+   * the sweep (`aircraftAgedOutAt` set). Feeds the flight-trails endpoint
+   * (#5364/#5365 Phase 3); visibility and privacy gates run in the route.
+   */
+  async listAircraftTrailNodeNums(sourceIds: string[]): Promise<Array<{ sourceId: string; nodeNum: number }>> {
+    if (sourceIds.length === 0) return [];
+    const { nodes } = this.tables;
+    const rows = await this.db
+      .select({ sourceId: nodes.sourceId, nodeNum: nodes.nodeNum })
+      .from(nodes)
+      .where(
+        and(
+          inArray(nodes.sourceId, sourceIds),
+          or(eq(nodes.likelyAircraft, true), isNotNull(nodes.aircraftAgedOutAt)),
+        ),
+      );
+    return (rows as Array<{ sourceId: string | null; nodeNum: number | bigint }>)
+      .filter((r) => r.sourceId != null)
+      .map((r) => ({ sourceId: r.sourceId as string, nodeNum: Number(r.nodeNum) }));
+  }
+
   /** `aircraftAgedOutAt` for one row, or null (row missing or not aged out). */
   async getAircraftAgedOutAt(nodeNum: number, sourceId: string): Promise<number | null> {
     const { nodes } = this.tables;

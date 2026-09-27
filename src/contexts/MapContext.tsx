@@ -7,6 +7,7 @@ import {
   DEFAULT_AIRCRAFT_DISPLAY_MODE,
   type AircraftDisplayMode,
 } from '../utils/aircraftClassification';
+import { DEFAULT_AIRCRAFT_TRAIL_HOURS, clampAircraftTrailHours } from '../components/map/aircraftTrails';
 import { readShowAgedOutAircraft, writeShowAgedOutAircraft } from '../components/map/agedOutAircraft';
 
 export interface PositionHistoryItem {
@@ -90,6 +91,16 @@ interface MapContextType {
    */
   showAgedOutAircraft: boolean;
   setShowAgedOutAircraft: (value: boolean) => void;
+  /**
+   * Flight trails for visible likely aircraft (#5364/#5365 Phase 3, D4). Off
+   * by default; persisted per user in
+   * `user_map_preferences.show_aircraft_trails`.
+   */
+  showAircraftTrails: boolean;
+  setShowAircraftTrails: (value: boolean) => void;
+  /** Flight trail lookback in hours, 1..168 (default 6). */
+  aircraftTrailHours: number;
+  setAircraftTrailHours: (hours: number) => void;
   /**
    * A "centre the map on this node" request, by nodeNum (#5177). Distinct from
    * `mapCenterTarget`, which is a raw lat/lng: a low-precision node's MARKER is
@@ -190,6 +201,9 @@ export const MapProvider: React.FC<MapProviderProps> = ({ children }) => {
   });
   // #5364/#5365 Phase 2: per-viewer "Show aged-out" map toggle (localStorage only).
   const [showAgedOutAircraft, setShowAgedOutAircraftState] = useState<boolean>(readShowAgedOutAircraft);
+  // #5364/#5365 Phase 3: flight trails, server-persisted (off, 6 h by default).
+  const [showAircraftTrails, setShowAircraftTrailsState] = useState<boolean>(false);
+  const [aircraftTrailHours, setAircraftTrailHoursState] = useState<number>(DEFAULT_AIRCRAFT_TRAIL_HOURS);
   // #5177: transient (not persisted) cross-tab centre-on-node request.
   const [pendingCenterNodeNum, setPendingCenterNodeNum] = useState<number | null>(null);
   const [showMeshCoreNodes, setShowMeshCoreNodesState] = useState<boolean>(true);
@@ -298,6 +312,19 @@ export const MapProvider: React.FC<MapProviderProps> = ({ children }) => {
   const setShowAgedOutAircraft = React.useCallback((value: boolean) => {
     setShowAgedOutAircraftState(value);
     writeShowAgedOutAircraft(value);
+  }, []);
+
+  const setShowAircraftTrails = React.useCallback((value: boolean) => {
+    setShowAircraftTrailsState(value);
+    void savePreferenceToServer({ showAircraftTrails: value });
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- #5365 same temporal-dead-zone reason as the sibling setters: `savePreferenceToServer` is declared below this callback
+  }, []);
+
+  const setAircraftTrailHours = React.useCallback((hours: number) => {
+    const clamped = clampAircraftTrailHours(hours);
+    setAircraftTrailHoursState(clamped);
+    void savePreferenceToServer({ aircraftTrailHours: clamped });
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- #5365 same temporal-dead-zone reason as the sibling setters: `savePreferenceToServer` is declared below this callback
   }, []);
 
   const setShowRfNodes = React.useCallback((value: boolean) => {
@@ -489,6 +516,12 @@ export const MapProvider: React.FC<MapProviderProps> = ({ children }) => {
             if (isAircraftDisplayMode(preferences.aircraftDisplayMode)) {
               setAircraftDisplayModeState(preferences.aircraftDisplayMode);
             }
+            if (typeof preferences.showAircraftTrails === 'boolean') {
+              setShowAircraftTrailsState(preferences.showAircraftTrails);
+            }
+            if (typeof preferences.aircraftTrailHours === 'number') {
+              setAircraftTrailHoursState(clampAircraftTrailHours(preferences.aircraftTrailHours));
+            }
           }
           // If preferences is null (anonymous user), initial defaults are already set
         }
@@ -592,6 +625,10 @@ export const MapProvider: React.FC<MapProviderProps> = ({ children }) => {
     setAircraftDisplayMode,
     showAgedOutAircraft,
     setShowAgedOutAircraft,
+    showAircraftTrails,
+    setShowAircraftTrails,
+    aircraftTrailHours,
+    setAircraftTrailHours,
   }), [
     showPaths, setShowPaths,
     showNeighborInfo, setShowNeighborInfo,
@@ -624,6 +661,8 @@ export const MapProvider: React.FC<MapProviderProps> = ({ children }) => {
     mapMaxAgeHours, setMapMaxAgeHours,
     aircraftDisplayMode, setAircraftDisplayMode,
     showAgedOutAircraft, setShowAgedOutAircraft,
+    showAircraftTrails, setShowAircraftTrails,
+    aircraftTrailHours, setAircraftTrailHours,
   ]);
 
   return (

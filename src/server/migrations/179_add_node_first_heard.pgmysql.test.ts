@@ -1,11 +1,11 @@
 /**
- * Migration 178 — PostgreSQL / MySQL container behaviour (isolated DBs).
+ * Migration 179 — PostgreSQL / MySQL container behaviour (isolated DBs).
  * A silent skip still reports success; confirm via `numPendingTests`.
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import pg from 'pg';
 import mysql from 'mysql2/promise';
-import { runMigration178Postgres, runMigration178Mysql } from './178_add_node_first_heard.js';
+import { runMigration179Postgres, runMigration179Mysql } from './179_add_node_first_heard.js';
 import {
   postgresAvailable,
   mysqlAvailable,
@@ -17,12 +17,12 @@ const NOW_MS = Date.now();
 const NOW_S = Math.floor(NOW_MS / 1000);
 const DAY_S = 86_400;
 
-describe.skipIf(!postgresAvailable)('migration 178 — PostgreSQL (container)', () => {
+describe.skipIf(!postgresAvailable)('migration 179 — PostgreSQL (container)', () => {
   let pool: pg.Pool;
   let cleanup: (() => Promise<void>) | undefined;
 
   beforeAll(async () => {
-    ({ pool, cleanup } = await createIsolatedPostgresDatabase('mig178'));
+    ({ pool, cleanup } = await createIsolatedPostgresDatabase('mig179'));
     await pool.query('DROP TABLE IF EXISTS nodes CASCADE');
     await pool.query('DROP TABLE IF EXISTS meshcore_nodes CASCADE');
     await pool.query(`
@@ -65,8 +65,8 @@ describe.skipIf(!postgresAvailable)('migration 178 — PostgreSQL (container)', 
   it('adds the columns, backfills, and is idempotent', async () => {
     const client = await pool.connect();
     try {
-      await runMigration178Postgres(client);
-      await expect(runMigration178Postgres(client)).resolves.toBeUndefined();
+      await runMigration179Postgres(client);
+      await expect(runMigration179Postgres(client)).resolves.toBeUndefined();
     } finally {
       client.release();
     }
@@ -78,12 +78,12 @@ describe.skipIf(!postgresAvailable)('migration 178 — PostgreSQL (container)', 
   });
 });
 
-describe.skipIf(!mysqlAvailable)('migration 178 — MySQL (container)', () => {
+describe.skipIf(!mysqlAvailable)('migration 179 — MySQL (container)', () => {
   let pool: mysql.Pool;
   let cleanup: (() => Promise<void>) | undefined;
 
   beforeAll(async () => {
-    ({ pool, cleanup } = await createIsolatedMysqlDatabase('mig178'));
+    ({ pool, cleanup } = await createIsolatedMysqlDatabase('mig179'));
     await pool.query('DROP TABLE IF EXISTS nodes');
     await pool.query('DROP TABLE IF EXISTS meshcore_nodes');
     await pool.query(`
@@ -123,8 +123,8 @@ describe.skipIf(!mysqlAvailable)('migration 178 — MySQL (container)', () => {
   });
 
   it('adds the columns, backfills with integer seconds, and is idempotent', async () => {
-    await runMigration178Mysql(pool);
-    await expect(runMigration178Mysql(pool)).resolves.toBeUndefined();
+    await runMigration179Mysql(pool);
+    await expect(runMigration179Mysql(pool)).resolves.toBeUndefined();
     const [rows] = await pool.query('SELECT nodeNum, firstHeard FROM nodes ORDER BY nodeNum');
     const r = rows as Array<{ firstHeard: number | string | null }>;
     // createdAt ended in 999 ms: DIV must truncate, not round.

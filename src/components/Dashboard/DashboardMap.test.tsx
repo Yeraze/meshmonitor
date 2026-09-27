@@ -43,7 +43,15 @@ const mocks = vi.hoisted(() => ({
     showMqttNodes: true,
     // #5364/#5365 Phase 2 "Show aged-out".
     showAgedOutAircraft: false,
+    // #5364/#5365 Phase 3 flight trails.
+    aircraftDisplayMode: 'mark' as string,
+    showAircraftTrails: false,
   },
+  // #5364/#5365 Phase 3: what `useAircraftTrails` returns, the args it was
+  // last called with, and the descriptors the trails layer last received.
+  aircraftTrails: [] as Array<{ sourceId: string; nodeNum: number; points: Array<{ lat: number; lon: number; alt: number | null; ts: number }> }>,
+  aircraftTrailArgs: null as null | { enabled: boolean; hours: number; sourceIds?: string[] | null },
+  renderedTrails: [] as Array<{ key: string; label: string; times: number[] }>,
   // Segments handed to the shared TraceroutePathsLayer on the last render.
   tracerouteSegments: [] as Array<{ fromNodeNum: number; toNodeNum: number; isMqtt: boolean }>,
   // #5283: sources backing `useDashboardSources()`, so tests can select a
@@ -175,7 +183,28 @@ vi.mock('../../contexts/MapContext', () => ({
     setShowPolarGrid: vi.fn(),
     showAgedOutAircraft: mocks.mapContext.showAgedOutAircraft,
     setShowAgedOutAircraft: vi.fn(),
+    aircraftDisplayMode: mocks.mapContext.aircraftDisplayMode,
+    setAircraftDisplayMode: vi.fn(),
+    showAircraftTrails: mocks.mapContext.showAircraftTrails,
+    setShowAircraftTrails: vi.fn(),
+    aircraftTrailHours: 6,
+    setAircraftTrailHours: vi.fn(),
   }),
+}));
+
+// #5364/#5365 Phase 3: stub the trails query (no QueryClient in this suite)
+// and capture what the trails layer is handed.
+vi.mock('../../hooks/useAircraftTrails', () => ({
+  useAircraftTrails: (args: { enabled: boolean; hours: number; sourceIds?: string[] | null }) => {
+    mocks.aircraftTrailArgs = args;
+    return { data: args.enabled ? mocks.aircraftTrails : undefined };
+  },
+}));
+vi.mock('../map/layers/AircraftTrailsLayer', () => ({
+  default: (p: { trails: Array<{ key: string; label: string; times: number[] }> }) => {
+    mocks.renderedTrails = p.trails;
+    return <div data-testid="aircraft-trails" data-count={p.trails.length} />;
+  },
 }));
 
 // #5364/#5365 Phase 2: expose the props the map hands the shared aircraft
@@ -428,7 +457,12 @@ describe('DashboardMap', () => {
       showUdpNodes: true,
       showMqttNodes: true,
       showAgedOutAircraft: false,
+      aircraftDisplayMode: 'mark',
+      showAircraftTrails: false,
     };
+    mocks.aircraftTrails = [];
+    mocks.aircraftTrailArgs = null;
+    mocks.renderedTrails = [];
     mocks.tracerouteSegments = [];
     // Reset the shared settings mock to "no Default Map Center configured".
     mocks.settings.mapPinStyle = 'official';
@@ -772,6 +806,90 @@ describe('DashboardMap', () => {
       render(<DashboardMap {...defaultProps} nodes={[agedOutAircraft]} />);
       expect(screen.queryAllByTestId('map-marker')).toHaveLength(0);
       expect(screen.getByTestId('aircraft-control').getAttribute('data-aged-out-count')).toBe('0');
+    });
+  });
+
+  describe('Flight trails (#5364/#5365 Phase 3)', () => {
+    const plane = {
+      nodeNum: 0x7a000001,
+      sourceId: 'src-a',
+      user: { id: '!7a000001', shortName: 'PL', longName: 'Plane' },
+      position: { latitude: 36.0, longitude: -81.0 },
+      hopsAway: 1,
+      role: 1,
+      lastHeard: recent,
+      likelyAircraft: true,
+    };
+    const favPlane = { ...plane, nodeNum: 0x7a000002, user: { id: '!7a000002', shortName: 'FP', longName: 'Fav Plane' }, isFavorite: true };
+    const agedOut = {
+      ...plane,
+      nodeNum: 0x7a000003,
+      user: { id: '!7a000003', shortName: 'AO', longName: 'Aged Plane' },
+      lastHeard: stale,
+      isIgnored: true,
+      aircraftAgedOutAt: Date.now() - 3600_000,
+    };
+    const trailFor = (nodeNum: number, sourceId = 'src-a', base = 0) => ({
+      sourceId,
+      nodeNum,
+      points: [
+        { lat: 36, lon: -81, alt: null, ts: base + 1_000 },
+        { lat: 36.1, lon: -81.1, alt: null, ts: base + 60_000 },
+      ],
+    });
+    const drawnTrailNodes = () => mocks.renderedTrails.map((t) => t.key).sort();
+
+    beforeEach(() => {
+      mocks.aircraftTrails = [trailFor(plane.nodeNum), trailFor(favPlane.nodeNum), trailFor(agedOut.nodeNum)];
+    });
+
+    it('draws nothing and does not query while the toggle is off', () => {
+      render(<DashboardMap {...defaultProps} sourceId="src-a" nodes={[plane]} />);
+      expect(screen.queryByTestId('aircraft-trails')).not.toBeInTheDocument();
+      expect(mocks.aircraftTrailArgs?.enabled).toBe(false);
+    });
+
+    it('draws a trail for each drawn aircraft on a per-source map', () => {
+      mocks.mapContext.showAircraftTrails = true;
+      render(<DashboardMap {...defaultProps} sourceId="src-a" nodes={[plane, favPlane, nodeWithPosition]} />);
+      expect(mocks.aircraftTrailArgs).toMatchObject({ enabled: true, hours: 6, sourceIds: ['src-a'] });
+      expect(drawnTrailNodes()).toEqual([`aircraft-trail-${plane.nodeNum}`, `aircraft-trail-${favPlane.nodeNum}`].sort());
+    });
+
+    it('Hide mode removes trails with the markers, except a favourite', () => {
+      mocks.mapContext.showAircraftTrails = true;
+      mocks.mapContext.aircraftDisplayMode = 'hide';
+      render(<DashboardMap {...defaultProps} sourceId="src-a" nodes={[plane, favPlane]} />);
+      expect(drawnTrailNodes()).toEqual([`aircraft-trail-${favPlane.nodeNum}`]);
+    });
+
+    it('aged-out aircraft get a trail only while Show aged-out is on', () => {
+      mocks.mapContext.showAircraftTrails = true;
+      const { unmount } = render(<DashboardMap {...defaultProps} sourceId="src-a" nodes={[plane, agedOut]} />);
+      expect(drawnTrailNodes()).toEqual([`aircraft-trail-${plane.nodeNum}`]);
+      unmount();
+
+      mocks.mapContext.showAgedOutAircraft = true;
+      render(<DashboardMap {...defaultProps} sourceId="src-a" nodes={[plane, agedOut]} />);
+      expect(drawnTrailNodes()).toEqual([`aircraft-trail-${plane.nodeNum}`, `aircraft-trail-${agedOut.nodeNum}`].sort());
+    });
+
+    it('drops another source\'s trail on a per-source map', () => {
+      mocks.mapContext.showAircraftTrails = true;
+      mocks.aircraftTrails = [trailFor(plane.nodeNum, 'src-b')];
+      render(<DashboardMap {...defaultProps} sourceId="src-a" nodes={[plane]} />);
+      expect(mocks.renderedTrails).toEqual([]);
+    });
+
+    it('Unified merges one aircraft heard by two sources into one trail', () => {
+      mocks.mapContext.showAircraftTrails = true;
+      mocks.aircraftTrails = [trailFor(plane.nodeNum, 'src-a'), trailFor(plane.nodeNum, 'src-b', 2_000)];
+      render(<DashboardMap {...defaultProps} sourceId="__unified__" nodes={[plane]} />);
+      expect(mocks.aircraftTrailArgs?.sourceIds ?? null).toBeNull();
+      expect(mocks.renderedTrails).toHaveLength(1);
+      // 1_000 kept, 3_000 within 5 s dropped, 60_000 kept, 62_000 dropped.
+      expect(mocks.renderedTrails[0].times).toEqual([1_000, 60_000]);
+      expect(mocks.renderedTrails[0].label).toBe('Plane');
     });
   });
 
