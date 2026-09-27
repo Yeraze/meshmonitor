@@ -64,6 +64,7 @@ function makeDeps(opts: {
     liftAircraftIgnore: vi.fn(async () => opts.liftResult ?? true),
     clearAgedOut: vi.fn(async () => undefined),
     scheduleClassification: vi.fn(),
+    reclassifyStored: vi.fn(async () => 0),
   };
   return { deps, written };
 }
@@ -95,6 +96,30 @@ describe('AircraftAgeOutService.runSweep — gating', () => {
     const r = await new AircraftAgeOutService(deps).runSweep(SRC, NOW);
     expect(r.ran).toBe(false);
     expect(deps.addAircraftIgnore).not.toHaveBeenCalled();
+  });
+
+  it('re-checks stored verdicts first, even with age-out off (#5401)', async () => {
+    const { deps } = makeDeps({ settings: { aircraftDetectionEnabled: 'true' }, candidates: [] });
+    const order: string[] = [];
+    (deps.reclassifyStored as any).mockImplementation(async () => { order.push('reclassify'); return 0; });
+    const listCandidates = deps.listCandidates;
+    deps.listCandidates = vi.fn(async (sid: string) => { order.push('list'); return listCandidates(sid); });
+    await new AircraftAgeOutService(deps).runSweep(SRC, NOW);
+    expect(deps.reclassifyStored).toHaveBeenCalledWith(SRC);
+    expect(order).toEqual(['reclassify', 'list']);
+  });
+
+  it('a failed re-check does not stop the sweep (#5401)', async () => {
+    const { deps } = makeDeps({ settings: AGE_ON, candidates: [cand(1)] });
+    (deps.reclassifyStored as any).mockRejectedValue(new Error('boom'));
+    const r = await new AircraftAgeOutService(deps).runSweep(SRC, NOW);
+    expect(r.agedOut).toBe(1);
+  });
+
+  it('detection off: no re-check (#5401)', async () => {
+    const { deps } = makeDeps({ settings: { aircraftDetectionEnabled: 'false' }, candidates: [] });
+    await new AircraftAgeOutService(deps).runSweep(SRC, NOW);
+    expect(deps.reclassifyStored).not.toHaveBeenCalled();
   });
 
   it('age-out off: nothing is aged out, but the sweep still runs and records its time', async () => {

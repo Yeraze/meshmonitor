@@ -58,6 +58,8 @@ export interface AircraftAgeOutDeps {
   liftAircraftIgnore(nodeNum: number, sourceId: string): Promise<boolean>;
   clearAgedOut(nodeNum: number, sourceId: string): Promise<void>;
   scheduleClassification(sourceId: string, nodeNum: number): void;
+  /** Silent recompute of every stored verdict for a source (no DEM fetch). */
+  reclassifyStored(sourceId: string): Promise<number>;
 }
 
 /**
@@ -111,6 +113,7 @@ function defaultDeps(): AircraftAgeOutDeps {
     liftAircraftIgnore: (nodeNum, sourceId) => databaseService.liftAircraftIgnoreAsync(nodeNum, sourceId),
     clearAgedOut: (nodeNum, sourceId) => databaseService.clearAircraftAgedOutAsync(nodeNum, sourceId),
     scheduleClassification: (sourceId, nodeNum) => aircraftClassificationService.schedule(sourceId, nodeNum),
+    reclassifyStored: (sourceId) => aircraftClassificationService.reclassifySource(sourceId),
   };
 }
 
@@ -148,6 +151,17 @@ export class AircraftAgeOutService {
     const ageOut = parseAircraftAgeOutSettings({ enabled: ageEnabled, hours: ageHours, action: ageAction });
 
     result.ran = true;
+
+    // Pass 0 (#5401): re-check every stored verdict against the current
+    // thresholds. A fixed node whose stored altitude dropped (or a threshold
+    // saved outside the per-source path) otherwise kept its old verdict until
+    // a new position packet arrived, which a fixed node may never send.
+    try {
+      await this.deps.reclassifyStored(sourceId);
+    } catch (err) {
+      logger.debug(`Aircraft stored-verdict recheck failed for ${sourceId}: ${err}`);
+    }
+
     const candidates = await this.deps.listCandidates(sourceId);
     const fixedNow = new Set<number>();
 
