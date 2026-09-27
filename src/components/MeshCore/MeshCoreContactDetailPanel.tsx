@@ -20,6 +20,7 @@ import api from '../../services/api';
 import '../NodeDetailsBlock.css';
 import { UiIcon } from '../icons';
 import { ShowCoverageLink } from '../Analysis/ShowCoverageLink';
+import { SignFlipNotice } from '../SignFlipNotice';
 
 const DEVICE_TYPE_KEYS: Record<number, string> = {
   0: 'meshcore.device_type.unknown',
@@ -1014,6 +1015,15 @@ export const MeshCoreContactDetailPanel: React.FC<MeshCoreContactDetailPanelProp
               <div className="node-detail-value">
                 {`${latitude!.toFixed(5)}, ${longitude!.toFixed(5)}`}
               </div>
+              {/* #5363: the coords above are the mirror of what the node sent. */}
+              {contact?.positionSignFlipCorrected
+                && contact.reportedLatitude != null
+                && contact.reportedLongitude != null && (
+                <SignFlipNotice
+                  reportedLatitude={contact.reportedLatitude}
+                  reportedLongitude={contact.reportedLongitude}
+                />
+              )}
             </div>
           )}
 

@@ -229,6 +229,13 @@ function toMeshCoreModel(raw: unknown): NodeCardModel {
   const outPath = typeof c.outPath === 'string' ? c.outPath : undefined;
   const lastSeen = typeof c.lastSeen === 'number' ? c.lastSeen : undefined;
   const firstHeardMs = typeof c.firstHeard === 'number' ? c.firstHeard : undefined;
+  // #5363: set by the server's sign-flip correction on MeshCore rows too.
+  const signFlipReported =
+    c.positionSignFlipCorrected === true
+    && typeof c.reportedLatitude === 'number'
+    && typeof c.reportedLongitude === 'number'
+      ? { latitude: c.reportedLatitude, longitude: c.reportedLongitude }
+      : null;
 
   return {
     longName: advName || name || 'MeshCore',
@@ -239,6 +246,7 @@ function toMeshCoreModel(raw: unknown): NodeCardModel {
     // Aircraft classification is Meshtastic-only (D2, #5364/#5365) — a
     // MeshCore contact is never flagged.
     likelyAircraft: false,
+    signFlipReported,
   };
 }
 

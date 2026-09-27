@@ -2,6 +2,8 @@
  * @vitest-environment jsdom
  */
 import { describe, it, expect, vi } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { render, screen, fireEvent } from '@testing-library/react';
 import SignFlipCorrectionSettings, { type SignFlipCorrectionSettingsProps } from './SignFlipCorrectionSettings';
 
@@ -71,9 +73,53 @@ describe('SignFlipCorrectionSettings (#5363)', () => {
     expect(screen.queryByTestId('sign-flip-reference-invalid')).not.toBeInTheDocument();
   });
 
+  it('puts the checkbox inside an inline row with its text, not stacked above it', () => {
+    setup();
+    const box = document.getElementById('signFlipCorrectionEnabled') as HTMLInputElement;
+    // The global `.setting-item label` is a column flexbox, so the box must sit
+    // in an inner row element, as the other Node Display checkboxes do.
+    const row = box.parentElement!;
+    expect(row.tagName).toBe('SPAN');
+    expect(row.textContent).toContain('Correct sign-flipped positions');
+    expect(row.parentElement!.tagName).toBe('LABEL');
+  });
+
+  it('disables every control when read-only', () => {
+    setup({ disabled: true });
+    expect(screen.getByLabelText('Correct sign-flipped positions')).toBeDisabled();
+    expect(screen.getByLabelText('Range (km)')).toBeDisabled();
+    expect(screen.getByLabelText('Latitude')).toBeDisabled();
+    expect(screen.getByLabelText('Longitude')).toBeDisabled();
+  });
+
   it('reports the toggle', () => {
     const props = setup({ enabled: false });
     fireEvent.click(screen.getByLabelText('Correct sign-flipped positions'));
     expect(props.onEnabledChange).toHaveBeenCalledWith(true);
+  });
+});
+
+// jsdom does not apply the stylesheets, so pin the rule itself: the host
+// settings sheets size every input for text entry (MeshCore's
+// `.meshcore-form-view input { width: 100%; max-width: 320px }`), and the
+// checkbox must outrank them to stay beside its label.
+describe('SignFlipCorrectionSettings checkbox CSS (#5363)', () => {
+  // jsdom's import.meta.url is not a file URL; Vitest runs from the repo root.
+  const css = readFileSync(
+    resolve(process.cwd(), 'src/components/settings/SignFlipCorrectionSettings.module.css'),
+    'utf8',
+  );
+  const match = css.match(/([^{}]*input\[type="checkbox"\][^{}]*)\{([^}]*)\}/);
+
+  it('resets width and max-width on the checkbox', () => {
+    expect(match).not.toBeNull();
+    const body = match![2];
+    expect(body).toMatch(/width:\s*auto/);
+    expect(body).toMatch(/max-width:\s*none/);
+  });
+
+  it('uses at least two classes, so it beats one-class host rules like .meshcore-form-view input', () => {
+    const selector = match![1].trim().split('\n').pop()!.trim();
+    expect((selector.match(/\.[A-Za-z]/g) ?? []).length).toBeGreaterThanOrEqual(2);
   });
 });

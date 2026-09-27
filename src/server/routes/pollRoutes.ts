@@ -24,7 +24,7 @@ import {
 } from '../utils/virtualChannelPermissions.js';
 import { transformChannel } from '../utils/channelView.js';
 import { enhanceNodeForClient, filterNodesByChannelPermission, getEffectiveDbNodePosition } from '../utils/nodeEnhancer.js';
-import { loadSignFlipContext, applySignFlipCorrection } from '../services/signFlipCorrection.js';
+import { getCachedSignFlipContext, applySignFlipCorrection, applySignFlipToTraceroute, applySignFlipToTraceroutes } from '../services/signFlipCorrection.js';
 import { PortNum } from '../constants/meshtastic.js';
 import { transformDbMessageToMeshMessage } from '../utils/transformDbMessage.js';
 import { resolveSourceConnectionConfig } from '../utils/resolveSourceConnectionConfig.js';
@@ -147,7 +147,8 @@ router.get('/poll', optionalAuth(), async (req, res) => {
       const assets = await databaseService.getAssetNodesMapAsync();
       const enhanced = await Promise.all(filteredMemoryNodes.map(node => enhanceNodeForClient(node, user, estimatedPositions, canViewPrivate, assets)));
       // #5363: display-only sign-flip correction against this source's reference.
-      const signFlipCtx = await loadSignFlipContext(pollSourceId);
+      // Cached (60 s, cleared by a settings save): this runs on every poll tick.
+      const signFlipCtx = await getCachedSignFlipContext(pollSourceId);
       result.nodes = enhanced.map(node => applySignFlipCorrection(node, signFlipCtx));
     } catch (error) {
       logger.error('Error fetching nodes in poll:', error);
@@ -469,6 +470,7 @@ router.get('/poll', optionalAuth(), async (req, res) => {
       let limit = Math.ceil(traceroutesPerHour * maxNodeAgeHours * 1.1);
       limit = Math.max(limit, 100);
 
+      const signFlipCtxForTraceroutes = await getCachedSignFlipContext(pollSourceId); // #5363
       const allTraceroutes = await databaseService.traceroutes.getAllTraceroutes(limit, pollSourceId ?? ALL_SOURCES); // intentional cross-source when sourceId omitted
       const recentTraceroutes = allTraceroutes.filter(tr => tr.timestamp >= cutoffTime);
 
@@ -490,7 +492,12 @@ router.get('/poll', optionalAuth(), async (req, res) => {
         return { ...tr, hopCount };
       });
 
-      result.traceroutes = traceroutesWithHops;
+      // #5363: stored routePositions snapshots drawn at the corrected point.
+      // A scoped poll has one source, so reuse the cached context; an unscoped
+      // one spans sources and resolves each row's own.
+      result.traceroutes = pollSourceId
+        ? traceroutesWithHops.map(tr => applySignFlipToTraceroute(tr, signFlipCtxForTraceroutes))
+        : await applySignFlipToTraceroutes(traceroutesWithHops);
     } catch (error) {
       logger.error('Error fetching traceroutes in poll:', error);
     }

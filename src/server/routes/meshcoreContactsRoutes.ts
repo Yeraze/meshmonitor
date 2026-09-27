@@ -38,6 +38,7 @@ import { isBogusPosition } from '../../utils/nullIsland.js';
 import { managerFor, isValidPublicKey, auditMeshcoreEvent, parseHexPathChain, requireMeshcoreTx, failIfTxDisabled, maskContactPositionsForViewOnMap } from './meshcoreRouteShared.js';
 import { ok, fail } from '../utils/apiResponse.js';
 import { buildLocalContactRow, withoutLocalFlag, type MeshCoreContactResponse } from './meshcoreLocalContactRow.js';
+import { applySignFlipToMeshCoreRows } from '../services/signFlipCorrection.js';
 
 const router = Router({ mergeParams: true });
 
@@ -47,11 +48,11 @@ const router = Router({ mergeParams: true });
  */
 router.get('/nodes', optionalAuth(), requirePermission('nodes', 'read', { sourceIdFrom: 'params.id' }), async (req: Request, res: Response) => {
   try {
-    const nodes = await maskContactPositionsForViewOnMap(
+    const nodes = await applySignFlipToMeshCoreRows(await maskContactPositionsForViewOnMap(
       await managerFor(req, res).getAllNodes(),
       req.user ?? null,
       req.params.id,
-    );
+    ), req.params.id); // #5363 display-only sign-flip correction
     res.json({
       success: true,
       data: nodes,
@@ -125,11 +126,11 @@ router.get('/contacts', optionalAuth(), requirePermission('nodes', 'read', { sou
       allContacts.unshift(buildLocalContactRow(localNode));
     }
 
-    const masked = await maskContactPositionsForViewOnMap(
+    const masked = await applySignFlipToMeshCoreRows(await maskContactPositionsForViewOnMap(
       allContacts,
       req.user ?? null,
       req.params.id,
-    );
+    ), req.params.id); // #5363
 
     res.json({
       success: true,
@@ -170,7 +171,10 @@ router.post('/contacts/refresh', meshcoreDeviceLimiter, requireAuth(), requirePe
     // nodes:write (required above) does not imply nodes:viewOnMap — mask the
     // same as GET /contacts so refreshing doesn't become a side-channel
     // around the read-path's position gate (#4559 review follow-up).
-    const masked = await maskContactPositionsForViewOnMap(allContacts, req.user ?? null, req.params.id);
+    const masked = await applySignFlipToMeshCoreRows(
+      await maskContactPositionsForViewOnMap(allContacts, req.user ?? null, req.params.id),
+      req.params.id,
+    ); // #5363
 
     res.json({
       success: true,
