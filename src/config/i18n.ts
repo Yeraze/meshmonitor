@@ -7,6 +7,7 @@
  */
 
 import i18n from 'i18next';
+import { toShippedLanguage } from './languageTag';
 import { initReactI18next } from 'react-i18next';
 import LanguageDetector from 'i18next-browser-languagedetector';
 import HttpBackend from 'i18next-http-backend';
@@ -48,6 +49,12 @@ void i18n
   .use(initReactI18next)
   .init({
     fallbackLng: 'en',
+    // Only the locales we ship. A browser reporting a regional variant
+    // ("en-US", "de-AT") resolves to its base language ("en", "de") instead of
+    // requesting /locales/en-US.json, which does not exist and 404s on every
+    // page load. Exact codes such as "zh_Hans" match as-is; an unshipped
+    // language falls back to English.
+    supportedLngs: AVAILABLE_LANGUAGES.map((lang) => lang.code),
     load: 'currentOnly',
     preload: ['en'], // Always load English for fallback when translations are missing
     debug: process.env.NODE_ENV === 'development',
@@ -66,6 +73,10 @@ void i18n
       order: ['localStorage', 'navigator'],
       caches: ['localStorage'],
       lookupLocalStorage: 'language',
+      // Browser tags like "zh-CN" or "zh-Hant" map onto our underscore locale
+      // codes. A saved choice is already a shipped code and passes unchanged.
+      convertDetectedLanguage: (lng: string) =>
+        toShippedLanguage(lng, AVAILABLE_LANGUAGES.map((lang) => lang.code)),
     },
 
     react: {
