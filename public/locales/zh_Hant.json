@@ -2934,7 +2934,6 @@
     "auto_responder.skip_incomplete_description": "不要自動回覆來自缺少名稱或硬體資訊之節點的訊息。建議安全頻道啟用此選項，以免回覆可能竊聽到您加密流量的節點。",
     "auto_responder.add_trigger": "新增觸發條件",
     "auto_responder.add_trigger_description": "建立比對傳入訊息的觸發模式。使用 {parameter} 代表動態值，或使用 {param:regex} 自訂比對規則。多個模式可用逗號分隔。",
-    "auto_responder.trigger_placeholder": "例如：weather、weather {location}、w {location}",
     "auto_responder.pattern_count_one": "{{count}} 個模式",
     "auto_responder.pattern_count_other": "{{count}} 個模式",
     "auto_responder.type_text": "文字",

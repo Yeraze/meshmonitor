@@ -3068,7 +3068,6 @@
     "auto_responder.skip_incomplete_description": "Jangan membalas otomatis pesan dari node yang tidak memiliki nama atau info perangkat keras. Direkomendasikan untuk channel aman agar tidak membalas node yang mungkin hanya mendengar lalu lintas terenkripsi Anda.",
     "auto_responder.add_trigger": "Tambah pemicu",
     "auto_responder.add_trigger_description": "Buat pola pemicu yang cocok dengan pesan masuk. Gunakan {parameter} untuk nilai dinamis, atau {param:regex} untuk aturan pencocokan khusus. Beberapa pola dapat dipisahkan dengan koma.",
-    "auto_responder.trigger_placeholder": "Coba: weather, weather {location}, w {location}",
     "auto_responder.pattern_count_one": "{{count}} pola",
     "auto_responder.pattern_count_other": "{{count}} pola",
     "auto_responder.type_text": "Teks",

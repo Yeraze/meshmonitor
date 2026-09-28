@@ -53,12 +53,37 @@
   container-type: inline-size;
 }
 
+/*
+ * On a wide row the pattern and the Response field used to split the free
+ * space 1:2 from a zero basis, so at a 1280px window the pattern input was
+ * 154px (118px of text) and "e.g. weather {location}" (~222px) showed only
+ * "e.g. weather". A 17rem basis gives the placeholder room; the Response field
+ * keeps the larger share of anything wider. The two bases plus the 120px type
+ * select and gaps come to ~568px, under the ~599px row at 1280px, so the row
+ * stays on one line there. Below 36rem the container query takes over.
+ */
 .patternField {
-  flex: 1;
+  flex: 1 1 17rem;
+}
+
+.responseField {
+  flex: 2 1 10rem;
 }
 
 @container (max-width: 36rem) {
   .patternField {
     flex-basis: 100%;
   }
+}
+
+/*
+ * Help text beside a fixed-width number input (Geofence Cooldown / Interval).
+ * On a phone the space left beside the 120px label and 100px input is ~100px,
+ * so the hint wrapped to about one word per line. This basis is wider than
+ * that, so on a narrow row the hint moves under the input and takes the full
+ * line; on a desktop card it fits beside the input as before. Pair it with
+ * `.wrapRow` on the row.
+ */
+.inlineHint {
+  flex: 1 1 14rem;
 }

@@ -1879,7 +1879,6 @@
     "auto_responder.skip_incomplete_description": "不对缺少名称或硬件信息的节点自动回复。建议在安全频道启用以避免回应可能窃听到加密流量的节点。",
     "auto_responder.add_trigger": "添加触发器",
     "auto_responder.add_trigger_description": "创建匹配入站消息的触发模式。使用 {parameter} 代表动态值，或 {param:regex} 自定义匹配规则。可用逗号分隔多个模式。",
-    "auto_responder.trigger_placeholder": "示例：weather, weather {location}, w {location}",
     "auto_responder.pattern_count_one": "{{count}} 个模式",
     "auto_responder.pattern_count_other": "{{count}} 个模式",
     "auto_responder.type_text": "文本",
