@@ -24,3 +24,41 @@
 .growField {
   min-width: min(100%, 9rem);
 }
+
+/*
+ * A labelled field in the Timer / Geofence trigger forms: a 120px label, then
+ * a `flex: 1` input, select or wrapper. `.setting-input` sets `width: 200px`,
+ * so the flex item's automatic minimum was 200px and at a 390px viewport the
+ * Name input and Script select ran 36px past the card edge.
+ *
+ * This floor replaces that automatic minimum. It is wider than the space left
+ * beside the label on a phone, so there the field wraps under its label and
+ * takes the full row; on a desktop card the row is wide enough and nothing
+ * moves. Pair it with `.wrapRow` on the row.
+ */
+.labeledField {
+  min-width: min(100%, 12rem);
+  max-width: 100%;
+}
+
+/*
+ * Auto Responder pattern input. Its floor (`.growField`, 9rem) keeps it on the
+ * first line beside the 120px type select, which leaves ~140px of text on a
+ * phone and clipped the placeholder. When the add row itself is narrow, the
+ * pattern gets a line of its own. A container query rather than a media query:
+ * it follows the row's real width, so a phone in landscape or a narrow desktop
+ * window behaves the same way, and a wide row keeps the desktop layout.
+ */
+.patternRow {
+  container-type: inline-size;
+}
+
+.patternField {
+  flex: 1;
+}
+
+@container (max-width: 36rem) {
+  .patternField {
+    flex-basis: 100%;
+  }
+}

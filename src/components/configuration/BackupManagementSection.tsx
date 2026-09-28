@@ -317,7 +317,10 @@ const BackupManagementSection: React.FC<BackupManagementSectionProps> = ({ onBac
           {t('backup_management.auto_description')}
         </p>
 
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', marginBottom: '1rem' }}>
+        {/* No bottom margin: this is the last block on the Configuration page,
+            and a margin here collapses through the section and adds 16px
+            below the list (the stack spaces sections itself). */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
           {/* Enable Automatic Backups */}
           <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
             <input
