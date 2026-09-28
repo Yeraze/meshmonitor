@@ -229,11 +229,12 @@ router.get('/stats/distribution', requirePacketPermissions, async (req, res) => 
 
     // Non-admins only count packets they could see in the packet list: the
     // same channel/DM rule as filterPacketsByPermissions, applied in SQL.
-    const visibility = (req as any).isAdmin
+    const permReq = req as typeof req & { isAdmin?: boolean; allowedChannels?: Set<number>; canReadMessages?: boolean };
+    const visibility = permReq.isAdmin
       ? undefined
       : {
-          allowedChannels: [...((req as any).allowedChannels as Set<number>)],
-          canReadMessages: (req as any).canReadMessages === true,
+          allowedChannels: [...(permReq.allowedChannels ?? [])],
+          canReadMessages: permReq.canReadMessages === true,
         };
 
     // Fetch distribution data - limit to top 10 devices
