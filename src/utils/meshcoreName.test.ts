@@ -4,6 +4,7 @@ import {
   isGarbageMeshCoreName,
   isCorruptMeshCoreContactRecord,
 } from './meshcoreName.js';
+import { CORRUPT_CONTACT_FIXTURES, REAL_NAME_FIXTURES } from './meshcoreName.fixtures.js';
 
 /**
  * Decode name bytes the way meshcore.js BufferReader.readCString(32) does:
@@ -106,5 +107,36 @@ describe('isCorruptMeshCoreContactRecord', () => {
     expect(isCorruptMeshCoreContactRecord({ adv_name: '', adv_type: 0 })).toBeNull();
     expect(isCorruptMeshCoreContactRecord({})).toBeNull();
     expect(isCorruptMeshCoreContactRecord({ adv_name: 'Base \ufffd', adv_type: 2 })).toBeNull();
+  });
+});
+
+describe('field fixtures from the dev rig', () => {
+  const decode = (hex: string) => Buffer.from(hex, 'hex').toString('utf8');
+
+  it.each(CORRUPT_CONTACT_FIXTURES)('rejects corrupt record $key ($nameHex, type $advType)', (fx) => {
+    const name = fx.nameHex === null ? undefined : decode(fx.nameHex);
+    expect(isCorruptMeshCoreContactRecord({ adv_name: name, adv_type: fx.advType })).not.toBeNull();
+    if (name !== undefined) expect(sanitizeMeshCoreName(name)).toBeNull();
+  });
+
+  it.each(REAL_NAME_FIXTURES)('keeps real name $clean', ({ nameHex, clean }) => {
+    const name = decode(nameHex);
+    expect(isCorruptMeshCoreContactRecord({ adv_name: name, adv_type: 1 })).toBeNull();
+    expect(sanitizeMeshCoreName(name)).toBe(clean);
+  });
+
+  it('rejects the swallowed frame header on its own and after printable chars', () => {
+    // '>' + 0x94 (length 148) + 0x00: the header of the next Contact frame.
+    const tail = new TextDecoder().decode(Uint8Array.from([0x6a, 0x3e, 0x94]));
+    expect(tail).toBe('j>\ufffd');
+    for (const n of ['>\ufffd', tail, '\u00b7j>\ufffd', '|j>\ufffd', '%\ufffdj>\ufffd']) {
+      expect(isGarbageMeshCoreName(n)).toBe(true);
+      expect(sanitizeMeshCoreName(n)).toBeNull();
+    }
+  });
+
+  it('still accepts a plain ">" inside a real name', () => {
+    expect(sanitizeMeshCoreName('Rptr > North')).toBe('Rptr > North');
+    expect(isGarbageMeshCoreName('Rptr >')).toBe(false);
   });
 });

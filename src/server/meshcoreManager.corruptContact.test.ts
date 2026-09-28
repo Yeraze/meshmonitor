@@ -100,6 +100,15 @@ describe('MeshCoreManager corrupt contact frames', () => {
     expect(upsertNode).not.toHaveBeenCalled();
   });
 
+  it('skips a record whose name ends in the next frame header (">" + length byte)', async () => {
+    // Field row 79de2e3d…: name bytes 25 ef bf bd 6a 3e 94, adv_type 0.
+    const name = readCString('25efbfbd6a3e9400');
+    const m = companion([{ public_key: 'e'.repeat(64), adv_name: name, name, adv_type: 0 }]);
+    await m.refreshContacts();
+    await flush();
+    expect(upsertNode).not.toHaveBeenCalled();
+  });
+
   it('ignores a corrupt NewAdvert push rather than overwriting a known name', async () => {
     const m = companion([]);
     dispatch(m, 'contact_advertised', { public_key: GOOD_KEY, adv_name: 'Good Repeater', adv_type: 2 });

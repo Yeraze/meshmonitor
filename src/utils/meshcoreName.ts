@@ -22,6 +22,14 @@
 const HAS_CONTROL_CHAR = /[\u0000-\u001f\u007f-\u009f]/;
 const REPLACEMENT_CHAR = '\ufffd';
 const TRAILING_REPLACEMENT = /\ufffd+$/;
+// The next frame's serial header swallowed into the name field. A Contact /
+// NewAdvert frame is 148 bytes, so its header is `3e 94 00`: '>' then the
+// length byte 0x94 (not valid UTF-8 on its own, so it decodes to U+FFFD),
+// then 0x00, which ends the C string. Every spliced record in the field data
+// that slipped past the control-char check ended exactly like this
+// (">\ufffd", "j>\ufffd", "·j>\ufffd", "|j>\ufffd", "%\ufffdj>\ufffd").
+// A real name ending in '>' plus a clipped multi-byte char is not plausible.
+const FRAME_HEADER_TAIL = />\ufffd+$/;
 
 /** Highest MeshCore ADV_TYPE value (NONE=0, CHAT=1, REPEATER=2, ROOM=3, SENSOR=4). */
 const MAX_ADV_TYPE = 4;
@@ -32,8 +40,9 @@ const MAX_ADV_TYPE = 4;
  * run of U+FFFD (a multi-byte character the sender truncated at its name
  * limit, e.g. a clipped emoji), and trim whitespace.
  *
- * A name that still holds any other control character or an undecodable
- * byte came from a corrupt frame, not from a person, so the whole name is
+ * A name that ends in a swallowed frame header ('>' + U+FFFD), or that
+ * still holds any other control character or an undecodable byte, came
+ * from a corrupt frame, not from a person, so the whole name is
  * discarded rather than showing the printable crumbs of it.
  *
  * Returns `null` when nothing usable remains, so callers fall back to the
@@ -43,6 +52,7 @@ export function sanitizeMeshCoreName(raw: string | null | undefined): string | n
   if (typeof raw !== 'string' || raw.length === 0) return null;
   const nul = raw.indexOf('\u0000');
   let name = nul === -1 ? raw : raw.slice(0, nul);
+  if (FRAME_HEADER_TAIL.test(name)) return null;
   name = name.replace(/[\t\r\n]/g, ' ').replace(TRAILING_REPLACEMENT, '').trim();
   if (name.length === 0) return null;
   if (HAS_CONTROL_CHAR.test(name) || name.includes(REPLACEMENT_CHAR)) return null;
@@ -52,11 +62,13 @@ export function sanitizeMeshCoreName(raw: string | null | undefined): string | n
 /**
  * True when a decoded name holds bytes real firmware would never send:
  * control characters (including NUL past the terminator), an undecodable
- * byte anywhere but the tail, or nothing but undecodable bytes.
+ * byte anywhere but the tail, nothing but undecodable bytes, or a tail that
+ * is a swallowed serial frame header ('>' + U+FFFD).
  */
 export function isGarbageMeshCoreName(raw: string | null | undefined): boolean {
   if (typeof raw !== 'string' || raw.length === 0) return false;
   if (HAS_CONTROL_CHAR.test(raw)) return true;
+  if (FRAME_HEADER_TAIL.test(raw)) return true;
   const withoutTail = raw.replace(TRAILING_REPLACEMENT, '');
   if (withoutTail.length === 0) return true;
   return withoutTail.includes(REPLACEMENT_CHAR);
