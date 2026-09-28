@@ -6,22 +6,27 @@
  * receive-only gating (mirrors MeshCoreNodeTelemetryConfig).
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { MeshCoreNodeNeighboursConfig } from './MeshCoreNodeNeighboursConfig';
 
-const { csrfFetchMock, hasPermissionMock, showToastMock } = vi.hoisted(() => ({
+const { csrfFetchMock, hasPermissionMock, showToastMock, t } = vi.hoisted(() => ({
   csrfFetchMock: vi.fn(),
   hasPermissionMock: vi.fn(),
   showToastMock: vi.fn(),
+  t: (_key: string, fallback?: string | Record<string, unknown>, vars?: Record<string, unknown>) =>
+    typeof fallback === 'string'
+      ? fallback.replace(/\{\{(\w+)\}\}/g, (_m, k: string) => String(vars?.[k] ?? ''))
+      : _key,
 }));
 
+// `t` must keep one identity across renders, as the real react-i18next `t`
+// does. The config-load effect lists `t` in its deps, so a fresh `t` per
+// render re-ran the load on every render: hundreds of GETs a second, with the
+// panel flipping between "Loading…" and the checkbox. A synchronous
+// getByRole('checkbox') then failed whenever it landed on a loading frame.
 vi.mock('react-i18next', () => ({
-  useTranslation: () => ({
-    t: (_key: string, fallback?: string | Record<string, unknown>, vars?: Record<string, unknown>) =>
-      typeof fallback === 'string'
-        ? fallback.replace(/\{\{(\w+)\}\}/g, (_m, k: string) => String(vars?.[k] ?? ''))
-        : _key,
-  }),
+  useTranslation: () => ({ t }),
 }));
 
 vi.mock('../../contexts/AuthContext', () => ({
@@ -47,8 +52,16 @@ const doneSnapshot = (overrides: Record<string, unknown> = {}) => ({
   outcome: 'complete', stored: 'replaced', written: 2, error: null, ...overrides,
 });
 
-const renderPanel = (receiveOnly = false) =>
+/**
+ * The poll button renders at once, but the config controls (the enable
+ * checkbox) appear only after the config GET resolves. Tests that touch them
+ * must find them asynchronously, not with a sync getBy after the poll button.
+ */
+const renderPanel = (receiveOnly = false) => {
+  const user = userEvent.setup();
   render(<MeshCoreNodeNeighboursConfig baseUrl="" sourceId="test-source" publicKey={PK} receiveOnly={receiveOnly} />);
+  return user;
+};
 
 describe('MeshCoreNodeNeighboursConfig — poll + config', () => {
   beforeEach(() => {
@@ -81,8 +94,8 @@ describe('MeshCoreNodeNeighboursConfig — poll + config', () => {
   });
 
   it('starts a paged fetch (#5413) and shows the stored count when it completes', async () => {
-    renderPanel();
-    fireEvent.click(await screen.findByText('Poll Neighbours'));
+    const user = renderPanel();
+    await user.click(await screen.findByText('Poll Neighbours'));
     await waitFor(() =>
       expect(csrfFetchMock).toHaveBeenCalledWith(
         '/api/sources/test-source/meshcore/nodes/' + PK + '/neighbours/fetch',
@@ -120,20 +133,19 @@ describe('MeshCoreNodeNeighboursConfig — poll + config', () => {
       }
       return Promise.resolve(okResponse({ success: true, data: { enabled: false, intervalMinutes: 60, lastRequestAt: null } }));
     });
-    renderPanel();
-    fireEvent.click(await screen.findByText('Poll Neighbours'));
+    const user = renderPanel();
+    await user.click(await screen.findByText('Poll Neighbours'));
     const status = await screen.findByTestId('meshcore-neighbours-fetch-progress');
     await waitFor(() => expect(status.textContent).toMatch(/Page 2 of 4 · 10 of 37 neighbours · next page in 4\d s/));
     // The button stays locked while the fetch runs; Cancel does not.
     expect(screen.getByText('Polling…').closest('button')).toBeDisabled();
-    fireEvent.click(screen.getByText('Cancel'));
+    await user.click(screen.getByText('Cancel'));
     await waitFor(() => expect(cancelled).toBe(true));
   });
 
   it('PATCHes neighbours-config when the enable checkbox is toggled', async () => {
-    renderPanel();
-    await screen.findByText('Poll Neighbours');
-    fireEvent.click(screen.getByRole('checkbox'));
+    const user = renderPanel();
+    await user.click(await screen.findByRole('checkbox'));
     await waitFor(() =>
       expect(csrfFetchMock).toHaveBeenCalledWith(
         '/api/sources/test-source/meshcore/nodes/' + PK + '/neighbours-config',
@@ -154,7 +166,7 @@ describe('MeshCoreNodeNeighboursConfig — poll + config', () => {
     const btn = (await screen.findByText('Poll Neighbours')).closest('button');
     expect(btn).toBeDisabled();
     expect(btn).toHaveAttribute('title', 'Receive-only mode is on for this MeshCore source. Turn it off in MeshCore Settings to use this.');
-    expect(screen.getByRole('checkbox')).not.toBeDisabled();
+    expect(await screen.findByRole('checkbox')).not.toBeDisabled();
   });
 
   it('detects a 409 TX_DISABLED response and toasts instead of the inline error', async () => {
@@ -170,8 +182,8 @@ describe('MeshCoreNodeNeighboursConfig — poll + config', () => {
         okResponse({ success: true, data: { enabled: false, intervalMinutes: 60, lastRequestAt: null } }),
       );
     });
-    renderPanel(false);
-    fireEvent.click(await screen.findByText('Poll Neighbours'));
+    const user = renderPanel(false);
+    await user.click(await screen.findByText('Poll Neighbours'));
     await waitFor(() => expect(showToastMock).toHaveBeenCalledWith(
       'Receive-only mode is on for this MeshCore source — nothing was sent.', 'warning',
     ));
