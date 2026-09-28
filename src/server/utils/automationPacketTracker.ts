@@ -9,9 +9,10 @@
  * publish it upstream.
  *
  * Why: firmware ORs `config.lora.config_ok_to_mqtt` into every phone-API
- * packet (meshtastic/firmware#11994), so MeshMonitor cannot clear the
- * ok_to_mqtt bit on a single automated send. The bridge uplink is the one
- * path MeshMonitor controls.
+ * packet, so MeshMonitor cannot clear the ok_to_mqtt bit on a single
+ * automated send. Upstream declined to change this (meshtastic/firmware#11994):
+ * ok_to_mqtt is a node-level privacy intent, by design not overridable from
+ * the phone API. The bridge uplink is the one path MeshMonitor controls.
  *
  * Keying: one map per sending source (`sourceId`), each entry holding the
  * node number that originated it. A match needs BOTH the packet id and the

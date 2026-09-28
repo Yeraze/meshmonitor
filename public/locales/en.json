@@ -4691,7 +4691,7 @@
   "news.category.feature": "Feature",
   "news.category.maintenance": "Maintenance",
   "source.form.mqtt_bridge_drop_automation_uplinks": "Don't uplink MeshMonitor automation traffic",
-  "source.form.mqtt_bridge_drop_automation_uplinks_help": "Keeps packets sent by MeshMonitor automations (auto-acknowledge tapbacks, auto-responder, auto-announce, auto-welcome, timers, geofences, Automation Engine actions, auto-ping, scheduled requests) off the upstream broker. They still go out over LoRa and to the local broker; messages you send by hand are not affected. Only covers this bridge: a node whose own MQTT module publishes straight to the upstream broker still uplinks them (firmware limit, meshtastic/firmware#11994).",
+  "source.form.mqtt_bridge_drop_automation_uplinks_help": "Keeps packets sent by MeshMonitor automations (auto-acknowledge tapbacks, auto-responder, auto-announce, auto-welcome, timers, geofences, Automation Engine actions, auto-ping, scheduled requests) off the upstream broker. They still go out over LoRa and to the local broker; messages you send by hand are not affected. Only covers this bridge: a node whose own MQTT module publishes straight to the upstream broker still uplinks them (firmware behaviour by design, meshtastic/firmware#11994).",
   "source.form.mqtt_bridge_uplink_policy_drops": "Dropped so far: {{automation}} automation · {{okToMqtt}} ok_to_mqtt",
   "mqtt_bridge_config.geo_status.title": "Geo filter status",
   "mqtt_bridge_config.geo_status.dropped_summary": "Out-of-bbox positions dropped — downlink: {{downlink}} · uplink: {{uplink}}",
