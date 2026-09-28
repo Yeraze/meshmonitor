@@ -285,3 +285,18 @@ export function sourceTypeProtocol(type: string | undefined | null): 'meshcore' 
 export function isAnyMeshCoreSourceType(type: string | undefined | null): boolean {
   return type === 'meshcore' || type === 'meshcore_mqtt';
 }
+
+/**
+ * True only for a device-backed MeshCore source (`meshcore`) — NOT the
+ * `meshcore_mqtt` ingest source.
+ *
+ * The source-type mirror of `isMeshCoreManager()` (the server's device
+ * predicate), for client surfaces that call routes mounted behind
+ * `meshcoreRouteGuard` in `src/server/routes/meshcoreRoutes.ts`. That guard
+ * answers 404 for every source without a device-backed MeshCore manager,
+ * including ingest sources, so use this before calling such a route rather
+ * than `isAnyMeshCoreSourceType()`.
+ */
+export function isDeviceMeshCoreSourceType(type: string | undefined | null): boolean {
+  return type === 'meshcore';
+}
