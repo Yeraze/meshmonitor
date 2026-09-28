@@ -18,6 +18,7 @@ import * as path from 'path';
 import { assertSafeUrl, SsrfBlockedError } from '../utils/ssrfGuard.js';
 import { logger } from '../../utils/logger.js';
 import { parseFirmwareVersion, isParsedFirmwareAtLeast } from '../../utils/firmwareVersion.js';
+import { parseOtaGateway } from '../../utils/otaGateway.js';
 import databaseService from '../../services/database.js';
 import { fallbackManager } from '../meshtasticManager.js';
 import { sourceManagerRegistry } from '../sourceManagerRegistry.js';
@@ -32,20 +33,14 @@ import {
 // Re-export for consumers
 export { getBoardName, getPlatformForBoard, isOtaCapable, getHardwareDisplayName };
 
-const DEFAULT_MESHTASTIC_TCP_PORT = 4403;
 // Port served by the MeshtasticOTA-WiFi loader in the ota_1 partition during OTA mode.
+// This is the firmware-image transfer port and is NOT the TCP API port — a
+// source's custom API port (#5424) never applies to it.
 const OTA_LOADER_PORT = 3232;
-
-function parseGateway(gateway: string): { host: string; port: number } {
-  const trimmed = gateway.trim();
-  // Support "host:port" but leave IPv6 literals alone — dev/prod only use IPv4 or hostnames.
-  const lastColon = trimmed.lastIndexOf(':');
-  if (lastColon > 0 && /^\d+$/.test(trimmed.slice(lastColon + 1))) {
-    const port = Number(trimmed.slice(lastColon + 1));
-    return { host: trimmed.slice(0, lastColon), port };
-  }
-  return { host: trimmed, port: DEFAULT_MESHTASTIC_TCP_PORT };
-}
+// `gatewayIp` throughout this service is `host` or `host:port` (see
+// parseOtaGateway). The frontend appends the source's custom TCP API port
+// (#5424); the meshtastic CLI accepts the same string on `--host`, but socket
+// probes must use the parsed host and port.
 
 // ---- Types ----
 
@@ -1172,7 +1167,10 @@ export class FirmwareUpdateService {
 
       // Wait for the firmware to release its TCP slot from the prior
       // MeshMonitor connection — otherwise the CLI silently hangs on connect.
-      await this.waitForNodeTcpReady(gatewayIp);
+      // Probe the parsed host/port — `gatewayIp` may carry the source's custom
+      // TCP port as `host:port` (#5424), which is not a valid socket host.
+      const gw = parseOtaGateway(gatewayIp);
+      await this.waitForNodeTcpReady(gw.host, gw.port);
 
       const result = await this.runCliCommand('meshtastic', [
         '--host', gatewayIp,
@@ -1529,7 +1527,7 @@ export class FirmwareUpdateService {
       progress: 0,
     });
 
-    const { host, port } = parseGateway(gatewayIp);
+    const { host, port } = parseOtaGateway(gatewayIp);
     try {
       await this.waitForNodeReady(host, port);
       this.appendLog(`Node ${host}:${port} is accepting connections — starting OTA.`);
@@ -1730,15 +1728,15 @@ export class FirmwareUpdateService {
       });
 
       // The device just rebooted into new firmware — it takes ~10–30s to come
-      // back on :4403. Reconnecting before the port is open triggers the TCP
+      // back on its API port. Reconnecting before the port is open triggers the TCP
       // transport's auto-reconnect loop which races with later reconnect calls
       // (e.g. from completeUpdate) and leaves the source in a "connected but
       // no config" limbo where handleConnected fires on a torn-down transport.
       // Poll the API port ourselves first, then reconnect synchronously once.
-      const nodeHost = parseGateway(gatewayIp).host;
+      // Wait on the source's configured API port, not a hard-coded 4403 (#5424).
       logger.debug('[FirmwareUpdateService] OTA flash completed — waiting for node to finish reboot before reconnecting');
       try {
-        await this.waitForNodeReady(nodeHost, DEFAULT_MESHTASTIC_TCP_PORT, 120_000);
+        await this.waitForNodeReady(host, port, 120_000);
         this.appendLog('Node is back online. Reconnecting MeshMonitor...');
       } catch (err) {
         const m = err instanceof Error ? err.message : String(err);
@@ -1771,7 +1769,7 @@ export class FirmwareUpdateService {
       // race we're explicitly trying to avoid.
       logger.debug('[FirmwareUpdateService] Reconnecting MeshMonitor after flash failure');
       try {
-        await this.waitForNodeReady(parseGateway(gatewayIp).host, DEFAULT_MESHTASTIC_TCP_PORT, 30_000);
+        await this.waitForNodeReady(host, port, 30_000);
       } catch {
         // Best-effort — reconnect anyway and let the transport's retry handle it.
       }
@@ -1826,7 +1824,8 @@ export class FirmwareUpdateService {
       logger.debug('[FirmwareUpdateService] Verify wait expired — falling back to CLI to read firmware version directly');
       // Temporarily release MM's TCP slot so the CLI can connect cleanly.
       await mgr.userDisconnect().catch(() => { /* best-effort */ });
-      await this.waitForNodeTcpReady(opts.gatewayIp).catch(() => { /* best-effort */ });
+      const gw = parseOtaGateway(opts.gatewayIp);
+      await this.waitForNodeTcpReady(gw.host, gw.port).catch(() => { /* best-effort */ });
       // Post-OTA, the node passes the TCP probe but its meshtastic protocol
       // layer may still be initializing — the first --info attempt often times
       // out or returns partial JSON. Retry up to 3 times with backoff, and log

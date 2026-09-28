@@ -7,6 +7,7 @@ import { useToast } from '../ToastContainer';
 import { usePoll } from '../../hooks/usePoll';
 import { useData } from '../../contexts/DataContext';
 import { getHardwareModelName } from '../../utils/hardwareModel';
+import { buildOtaGateway } from '../../utils/otaGateway';
 
 interface FirmwareUpdateSectionProps {
   baseUrl: string;
@@ -135,7 +136,11 @@ const FirmwareUpdateSection: React.FC<FirmwareUpdateSectionProps> = ({ baseUrl }
       (n: any) => n.nodeNum === nodeNum || n.user?.id === nodeId
     );
     return {
-      gatewayIp: config?.meshtasticNodeIp ?? '',
+      // Issue #5424: `config` is the SELECTED source's connection (usePoll
+      // scopes /api/poll by sourceId), so carry its TCP port too. The backend
+      // and the meshtastic CLI both read `host:port`; the port is appended only
+      // when it differs from the 4403 default.
+      gatewayIp: buildOtaGateway(config?.meshtasticNodeIp, config?.meshtasticTcpPort),
       firmwareVersion: config?.deviceMetadata?.firmwareVersion ?? '',
       hwModel: gatewayNode?.user?.hwModel ?? 0,
       nodeId,

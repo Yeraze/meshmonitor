@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import express from 'express';
 import request from 'supertest';
 
@@ -154,12 +154,13 @@ vi.mock('../sourceManagerTypes.js', () => ({
 // Mock environment config — issue #2981 guard reads meshtasticNodeIpProvided
 // to decide whether the gatewayIp argument was explicitly configured by the
 // operator. Tests pass an explicit IP, so flag it as provided.
+const mockEnv = vi.hoisted(() => ({
+  meshtasticNodeIp: '192.168.1.100',
+  meshtasticNodeIpProvided: true,
+  meshtasticTcpPort: 4403,
+}));
 vi.mock('../config/environment.js', () => ({
-  getEnvironmentConfig: () => ({
-    meshtasticNodeIp: '192.168.1.100',
-    meshtasticNodeIpProvided: true,
-    meshtasticTcpPort: 4403,
-  }),
+  getEnvironmentConfig: () => mockEnv,
 }));
 
 // Mock logger
@@ -403,6 +404,56 @@ describe('firmwareUpdateRoutes', () => {
       expect(res.status).toBe(400);
       expect(res.body.success).toBe(false);
       expect(res.body.error).toMatch(/not found/i);
+    });
+
+    // Issue #5424: the gateway carries the source's custom TCP port.
+    describe('custom TCP port / IPv6 gateway (#5424)', () => {
+      const release = {
+        tagName: 'v2.5.0', version: '2.5.0', prerelease: false,
+        publishedAt: '2024-01-01', htmlUrl: '', assets: [],
+      };
+      const send = (gatewayIp: string) =>
+        request(app).post('/api/firmware/update').send({
+          targetVersion: '2.5.0', gatewayIp, hwModel: 44, currentVersion: '2.4.0',
+        });
+
+      afterEach(() => {
+        mockEnv.meshtasticNodeIpProvided = true;
+      });
+
+      it('passes host:port through to preflight unchanged', async () => {
+        mockFindReleaseByVersion.mockReturnValue(release);
+        mockGetStatus.mockReturnValue({ state: 'awaiting-confirm', step: 'preflight', message: '', logs: [] });
+
+        const res = await send('10.0.0.5:5000');
+
+        expect(res.status).toBe(200);
+        expect(mockStartPreflight).toHaveBeenCalledWith(
+          expect.objectContaining({ gatewayIp: '10.0.0.5:5000' }),
+        );
+      });
+
+      it('still refuses the unconfigured env default when a port is appended', async () => {
+        mockEnv.meshtasticNodeIpProvided = false;
+        mockFindReleaseByVersion.mockReturnValue(release);
+
+        const res = await send('192.168.1.100:5000');
+
+        expect(res.status).toBe(400);
+        expect(res.body.error).toMatch(/No node IP configured/);
+        expect(mockStartPreflight).not.toHaveBeenCalled();
+      });
+
+      it('rejects an IPv6 literal with a clear reason before starting', async () => {
+        mockFindReleaseByVersion.mockReturnValue(release);
+
+        const res = await send('fe80::1');
+
+        expect(res.status).toBe(400);
+        expect(res.body.code).toBe('OTA_IPV6_UNSUPPORTED');
+        expect(res.body.error).toMatch(/IPv6/);
+        expect(mockStartPreflight).not.toHaveBeenCalled();
+      });
     });
   });
 
