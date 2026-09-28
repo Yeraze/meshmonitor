@@ -111,6 +111,7 @@ import type { ConversationKind } from '../db/schema/conversationReadState.js';
 import type { DatabaseType, DbPacketLog as DbTypesPacketLog, DbPacketCountByNode, DbPacketCountByPortnum, DbDistinctRelayNode } from '../db/types.js';
 import { updateNodeMobility } from '../server/services/nodeMobilityService.js';
 import { selectNodeNeedingTraceroute, parseTracerouteFilterMode, type TracerouteFilterMode } from '../server/services/autoTracerouteSelectionService.js';
+import type { PacketVisibility } from '../db/repositories/packetLog.js';
 import { NodeCacheService } from '../server/services/nodeCacheService.js';
 
 // Configuration constants for traceroute history
@@ -1348,7 +1349,7 @@ class DatabaseService {
     try {
       logger.debug('🔥 Warming up database caches...');
       // Pre-populate the telemetry types cache (SQLite bootstrap path).
-      const map = this.telemetry.getAllNodesTelemetryTypesSync();
+      const map = this.telemetry.getAllNodesTelemetryTypesSync(ALL_SOURCES);
       this.telemetryTypesCacheBySource.set(DatabaseService.TELEMETRY_TYPES_CACHE_GLOBAL_KEY, { map, time: Date.now() });
       logger.debug('✅ Cache warmup complete');
     } catch (error) {
@@ -3425,8 +3426,9 @@ class DatabaseService {
       return map;
     }
 
-    // SQLite: query the database and update cache
-    const map = this.telemetry.getAllNodesTelemetryTypesSync();
+    // SQLite: query the database and update cache. Scoped like the PG/MySQL
+    // path above; this used to ignore sourceId and return every source's types.
+    const map = this.telemetry.getAllNodesTelemetryTypesSync(sourceId ?? ALL_SOURCES);
     this.telemetryTypesCacheBySource.set(cacheKey, { map, time: now });
     return map;
   }
@@ -4756,11 +4758,11 @@ class DatabaseService {
     return this.packetLogRepo.cleanupOldPacketLogs(maxAgeHours);
   }
 
-  async getPacketCountsByNodeAsync(options?: { since?: number; limit?: number; portnum?: number; sourceId?: string; transportClass?: NodeTransportClass }): Promise<DbPacketCountByNode[]> {
+  async getPacketCountsByNodeAsync(options?: { since?: number; limit?: number; portnum?: number; sourceId?: string; transportClass?: NodeTransportClass; visibility?: PacketVisibility }): Promise<DbPacketCountByNode[]> {
     return this.packetLog.getPacketCountsByNode(options);
   }
 
-  async getPacketCountsByPortnumAsync(options?: { since?: number; from_node?: number; sourceId?: string; transportClass?: NodeTransportClass }): Promise<DbPacketCountByPortnum[]> {
+  async getPacketCountsByPortnumAsync(options?: { since?: number; from_node?: number; sourceId?: string; transportClass?: NodeTransportClass; visibility?: PacketVisibility }): Promise<DbPacketCountByPortnum[]> {
     return this.packetLog.getPacketCountsByPortnum(options);
   }
 
