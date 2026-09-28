@@ -47,6 +47,22 @@ const SAFE_ID = /^[A-Za-z0-9_-]+$/;
 const WINDOW_SCROLL_OFFSET = 130;
 /** Where a clicked section lands when an inner pane is the scroller. */
 const PANE_SCROLL_OFFSET = 50;
+/** Breathing room between the stuck nav's bottom edge and a clicked section. */
+const NAV_CLEARANCE = 16;
+
+/**
+ * Where the sticky nav's bottom edge sits once it is stuck: its `top` plus its
+ * rendered height. The fixed offsets above assume a one-row nav; when the
+ * buttons wrap (the Automation tab wraps to three rows on a laptop), a section
+ * clicked near the end of the list landed under the nav (#5446 review). Using
+ * the real height keeps every section clear of it; the constants stay as the
+ * floor, so a one-row nav (and jsdom, where heights are 0) behaves as before.
+ */
+function stuckNavBottom(nav: HTMLElement | null): number {
+  if (!nav) return 0;
+  const top = parseFloat(window.getComputedStyle(nav).top) || 0;
+  return top + nav.getBoundingClientRect().height + NAV_CLEARANCE;
+}
 
 /**
  * The "reading position": the section whose top most recently crossed this line
@@ -182,7 +198,7 @@ const SectionNav: React.FC<SectionNavProps> = ({
       scrollContainer !== document.documentElement
     ) {
       // Inner pane scrolling — offset only for the sticky nav (~50px).
-      const offset = PANE_SCROLL_OFFSET;
+      const offset = Math.max(PANE_SCROLL_OFFSET, stuckNavBottom(navRef.current));
       const containerRect = scrollContainer.getBoundingClientRect();
       const elementRect = element.getBoundingClientRect();
       scrollContainer.scrollBy({
@@ -192,7 +208,7 @@ const SectionNav: React.FC<SectionNavProps> = ({
     } else {
       // Window scrolling (standalone settings page).
       // Account for fixed header (60px) + sticky nav (~50px) + padding (16px).
-      const offset = WINDOW_SCROLL_OFFSET;
+      const offset = Math.max(WINDOW_SCROLL_OFFSET, stuckNavBottom(navRef.current));
       const elementPosition = element.getBoundingClientRect().top + window.scrollY;
       window.scrollTo({ top: elementPosition - offset, behavior: 'smooth' });
     }

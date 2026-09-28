@@ -60,7 +60,9 @@ const newId = (): string =>
 const newRule = (): ForwardingRule => ({
   id: newId(),
   name: '',
-  enabled: true,
+  // New rules start OFF: forwarding sends packets, so the user arms a rule
+  // deliberately with its checkbox once it is filled in.
+  enabled: false,
   match: { isDM: true },
   forwardTo: { destinationNodeId: '' },
   prefix: '{from}: ',
@@ -168,7 +170,7 @@ export const ForwardingSection: React.FC<ForwardingSectionProps> = ({
           {t('forwarding.title', 'Forwarding')}
         </h2>
         <span className={styles.count}>
-          {t('forwarding.count', '{{count}} rules', { count: rules.length })}
+          {t('forwarding.count', { count: rules.length })}
         </span>
       </div>
 
@@ -213,6 +215,7 @@ export const ForwardingSection: React.FC<ForwardingSectionProps> = ({
               <div className={styles.cardHeader}>
                 <input
                   type="checkbox"
+                  className={styles.toggle}
                   checked={rule.enabled}
                   disabled={readOnly}
                   onChange={e => update(rule.id, { enabled: e.target.checked })}
@@ -220,6 +223,7 @@ export const ForwardingSection: React.FC<ForwardingSectionProps> = ({
                 />
                 <input
                   type="text"
+                  className={`setting-input ${styles.control}`}
                   value={rule.name}
                   disabled={readOnly}
                   maxLength={60}
@@ -234,129 +238,149 @@ export const ForwardingSection: React.FC<ForwardingSectionProps> = ({
                   onClick={() => setRules(prev => prev.filter(r => r.id !== rule.id))}
                   aria-label={t('forwarding.delete', 'Delete rule')}
                 >
-                  <UiIcon name="delete" size={14} />
+                  <UiIcon name="delete" size={16} />
                 </button>
               </div>
 
               <div className={styles.grid}>
-                <label className={styles.field}>
-                  {t('forwarding.match', 'Forward messages from')}
-                  <select
-                    value={matchValue}
-                    disabled={readOnly}
-                    onChange={e => {
-                      const v = e.target.value;
-                      update(rule.id, {
-                        match: {
-                          ...rule.match,
-                          isDM: v === DM_VALUE ? true : undefined,
-                          channel: v === DM_VALUE ? undefined : Number(v),
-                        },
-                      });
-                    }}
-                  >
-                    <option value={DM_VALUE}>{t('forwarding.match_dm', 'Direct messages to this node')}</option>
-                    {channels.map(c => (
-                      <option key={c.index} value={String(c.index)}>{channelLabel(c)}</option>
-                    ))}
-                  </select>
-                </label>
-
-                <label className={styles.field}>
-                  {t('forwarding.from_node', 'Only from sender')}
-                  <select
-                    value={rule.match.fromNodeId ?? ''}
-                    disabled={readOnly}
-                    onChange={e => update(rule.id, { match: { ...rule.match, fromNodeId: e.target.value || undefined } })}
-                  >
-                    <option value="">{t('forwarding.any_sender', 'Any sender')}</option>
-                    {rule.match.fromNodeId && !nodes.some(n => n.id === rule.match.fromNodeId) && (
-                      <option value={rule.match.fromNodeId}>{rule.match.fromNodeId}</option>
-                    )}
-                    {nodes.map(n => <option key={n.id} value={n.id}>{n.label}</option>)}
-                  </select>
-                </label>
-
-                <label className={styles.field}>
-                  {t('forwarding.text_regex', 'Only if text matches (regex, optional)')}
-                  <input
-                    type="text"
-                    value={rule.match.textRegex ?? ''}
-                    disabled={readOnly}
-                    maxLength={100}
-                    placeholder="^alert"
-                    onChange={e => update(rule.id, { match: { ...rule.match, textRegex: e.target.value || undefined } })}
-                  />
-                </label>
-
-                <label className={styles.field}>
-                  {t('forwarding.target', 'Forward to')}
-                  <span className={styles.targetRow}>
+                <div className="setting-item">
+                  <label>
+                    {t('forwarding.match', 'Forward messages from')}
                     <select
-                      value={targetKind}
+                      className={`setting-input ${styles.control}`}
+                      value={matchValue}
                       disabled={readOnly}
-                      aria-label={t('forwarding.target_kind', 'Target type')}
-                      onChange={e => update(rule.id, {
-                        forwardTo: e.target.value === 'channel'
-                          ? { channel: channels.find(c => c.index !== rule.match.channel)?.index ?? 0 }
-                          : { destinationNodeId: '' },
-                      })}
+                      onChange={e => {
+                        const v = e.target.value;
+                        update(rule.id, {
+                          match: {
+                            ...rule.match,
+                            isDM: v === DM_VALUE ? true : undefined,
+                            channel: v === DM_VALUE ? undefined : Number(v),
+                          },
+                        });
+                      }}
                     >
-                      <option value="node">{t('forwarding.target_node', 'Node (DM)')}</option>
-                      <option value="channel">{t('forwarding.target_channel', 'Channel')}</option>
+                      <option value={DM_VALUE}>{t('forwarding.match_dm', 'Direct messages to this node')}</option>
+                      {channels.map(c => (
+                        <option key={c.index} value={String(c.index)}>{channelLabel(c)}</option>
+                      ))}
                     </select>
-                    {targetKind === 'channel' ? (
+                  </label>
+                </div>
+
+                <div className="setting-item">
+                  <label>
+                    {t('forwarding.from_node', 'Only from sender')}
+                    <select
+                      className={`setting-input ${styles.control}`}
+                      value={rule.match.fromNodeId ?? ''}
+                      disabled={readOnly}
+                      onChange={e => update(rule.id, { match: { ...rule.match, fromNodeId: e.target.value || undefined } })}
+                    >
+                      <option value="">{t('forwarding.any_sender', 'Any sender')}</option>
+                      {rule.match.fromNodeId && !nodes.some(n => n.id === rule.match.fromNodeId) && (
+                        <option value={rule.match.fromNodeId}>{rule.match.fromNodeId}</option>
+                      )}
+                      {nodes.map(n => <option key={n.id} value={n.id}>{n.label}</option>)}
+                    </select>
+                  </label>
+                </div>
+
+                <div className="setting-item">
+                  <label>
+                    {t('forwarding.text_regex', 'Only if text matches (regex, optional)')}
+                    <input
+                      type="text"
+                      className={`setting-input ${styles.control}`}
+                      value={rule.match.textRegex ?? ''}
+                      disabled={readOnly}
+                      maxLength={100}
+                      placeholder="^alert"
+                      onChange={e => update(rule.id, { match: { ...rule.match, textRegex: e.target.value || undefined } })}
+                    />
+                  </label>
+                </div>
+
+                <div className="setting-item">
+                  <label>
+                    {t('forwarding.target', 'Forward to')}
+                    <span className={styles.targetRow}>
                       <select
-                        value={String(rule.forwardTo.channel)}
+                        className={`setting-input ${styles.control} ${styles.targetKind}`}
+                        value={targetKind}
                         disabled={readOnly}
-                        aria-label={t('forwarding.target_channel', 'Channel')}
-                        onChange={e => update(rule.id, { forwardTo: { channel: Number(e.target.value) } })}
+                        aria-label={t('forwarding.target_kind', 'Target type')}
+                        onChange={e => update(rule.id, {
+                          forwardTo: e.target.value === 'channel'
+                            ? { channel: channels.find(c => c.index !== rule.match.channel)?.index ?? 0 }
+                            : { destinationNodeId: '' },
+                        })}
                       >
-                        {channels.map(c => (
-                          <option key={c.index} value={String(c.index)}>{channelLabel(c)}</option>
-                        ))}
+                        <option value="node">{t('forwarding.target_node', 'Node (DM)')}</option>
+                        <option value="channel">{t('forwarding.target_channel', 'Channel')}</option>
                       </select>
-                    ) : (
-                      <select
-                        value={rule.forwardTo.destinationNodeId ?? ''}
-                        disabled={readOnly}
-                        aria-label={t('forwarding.target_node', 'Node (DM)')}
-                        onChange={e => update(rule.id, { forwardTo: { destinationNodeId: e.target.value } })}
-                      >
-                        <option value="">{t('forwarding.pick_node', 'Pick a node...')}</option>
-                        {rule.forwardTo.destinationNodeId && !nodes.some(n => n.id === rule.forwardTo.destinationNodeId) && (
-                          <option value={rule.forwardTo.destinationNodeId}>{rule.forwardTo.destinationNodeId}</option>
-                        )}
-                        {nodes.map(n => <option key={n.id} value={n.id}>{n.label}</option>)}
-                      </select>
-                    )}
-                  </span>
-                  {targetKind === 'channel' && (
-                    <span className={styles.warning} role="note">
-                      <UiIcon name="alert" size={14} />
-                      {t(
-                        'forwarding.channel_airtime_warning',
-                        'Forwarding to a channel broadcasts to everyone on it and uses shared airtime for the whole mesh. Prefer a DM target where you can.',
+                      {targetKind === 'channel' ? (
+                        <select
+                          className={`setting-input ${styles.control}`}
+                          value={String(rule.forwardTo.channel)}
+                          disabled={readOnly}
+                          aria-label={t('forwarding.target_channel', 'Channel')}
+                          onChange={e => update(rule.id, { forwardTo: { channel: Number(e.target.value) } })}
+                        >
+                          {channels.map(c => (
+                            <option key={c.index} value={String(c.index)}>{channelLabel(c)}</option>
+                          ))}
+                        </select>
+                      ) : (
+                        <select
+                          className={`setting-input ${styles.control}`}
+                          value={rule.forwardTo.destinationNodeId ?? ''}
+                          disabled={readOnly}
+                          aria-label={t('forwarding.target_node', 'Node (DM)')}
+                          onChange={e => update(rule.id, { forwardTo: { destinationNodeId: e.target.value } })}
+                        >
+                          <option value="">{t('forwarding.pick_node', 'Pick a node...')}</option>
+                          {rule.forwardTo.destinationNodeId && !nodes.some(n => n.id === rule.forwardTo.destinationNodeId) && (
+                            <option value={rule.forwardTo.destinationNodeId}>{rule.forwardTo.destinationNodeId}</option>
+                          )}
+                          {nodes.map(n => <option key={n.id} value={n.id}>{n.label}</option>)}
+                        </select>
                       )}
                     </span>
-                  )}
-                </label>
+                  </label>
+                </div>
 
-                <label className={styles.field}>
-                  {t('forwarding.prefix', 'Prefix (optional)')}
-                  <input
-                    type="text"
-                    value={rule.prefix ?? ''}
-                    disabled={readOnly}
-                    maxLength={FORWARDING_MAX_PREFIX_CHARS}
-                    placeholder="{from}: "
-                    onChange={e => update(rule.id, { prefix: e.target.value })}
-                  />
-                  <span className={styles.hint}>
-                    {t('forwarding.prefix_hint', 'Tokens: {from} = sender, {channel} = channel name or DM.')}
-                  </span>
-                </label>
+                <div className="setting-item">
+                  <label>
+                    {t('forwarding.prefix', 'Prefix (optional)')}
+                    <span className="setting-description">
+                      {t('forwarding.prefix_hint', 'Tokens: {from} = sender, {channel} = channel name or DM.')}
+                    </span>
+                    <input
+                      type="text"
+                      className={`setting-input ${styles.control}`}
+                      value={rule.prefix ?? ''}
+                      disabled={readOnly}
+                      maxLength={FORWARDING_MAX_PREFIX_CHARS}
+                      placeholder="{from}: "
+                      onChange={e => update(rule.id, { prefix: e.target.value })}
+                    />
+                  </label>
+                </div>
               </div>
+
+              {targetKind === 'channel' && (
+                <p className={styles.warning} role="note">
+                  <UiIcon name="alert" size={16} />
+                  <span>
+                    {t(
+                      'forwarding.channel_airtime_warning',
+                      'Forwarding to a channel broadcasts to everyone on it and uses shared airtime for the whole mesh. Prefer a DM target where you can.',
+                    )}
+                  </span>
+                </p>
+              )}
             </div>
           );
         })}
@@ -368,7 +392,7 @@ export const ForwardingSection: React.FC<ForwardingSectionProps> = ({
             disabled={readOnly || rules.length >= FORWARDING_MAX_RULES}
             onClick={() => setRules(prev => [...prev, newRule()])}
           >
-            <UiIcon name="plus" size={14} />
+            <UiIcon name="plus" size={16} />
             {t('forwarding.add', 'Add forwarding rule')}
           </button>
         </div>

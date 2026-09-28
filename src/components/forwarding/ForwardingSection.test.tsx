@@ -120,6 +120,25 @@ describe('ForwardingSection', () => {
     expect(showToastMock).toHaveBeenCalledWith(expect.stringMatching(/name is required/), 'error');
   });
 
+  it('a newly added rule starts disabled, so it cannot send until armed', async () => {
+    renderSection();
+    await screen.findByDisplayValue('Ops bridge');
+    fireEvent.click(screen.getByText('Add forwarding rule'));
+    const cards = screen.getAllByTestId('forwarding-rule');
+    expect(cards).toHaveLength(3);
+    const toggle = cards[2].querySelector('input[type="checkbox"]') as HTMLInputElement;
+    expect(toggle.checked).toBe(false);
+  });
+
+  it('uses the shared settings form controls', async () => {
+    renderSection();
+    await screen.findByDisplayValue('Ops bridge');
+    const card = screen.getAllByTestId('forwarding-rule')[0];
+    const controls = card.querySelectorAll('select, input[type="text"]');
+    expect(controls.length).toBeGreaterThan(0);
+    controls.forEach(c => expect(c.classList.contains('setting-input')).toBe(true));
+  });
+
   it('receive-only: shows rules read-only with the paused note', async () => {
     renderSection(true);
     const name = (await screen.findByDisplayValue('DMs to phone')) as HTMLInputElement;

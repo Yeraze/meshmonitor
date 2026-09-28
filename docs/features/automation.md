@@ -1435,7 +1435,7 @@ When a rule matches, MeshMonitor sends a copy to the rule's target:
 - **Node (DM)**: a direct message to one node, such as your phone's companion node.
 - **Channel**: a broadcast on another channel of the same source.
 
-Each rule has its own checkbox, so you can switch a rule on when you leave and off when you get back without deleting it.
+Each rule has its own checkbox, so you can switch a rule on when you leave and off when you get back without deleting it. A new rule starts switched off: fill it in, then tick its checkbox to turn it on.
 
 The forwarded text looks like this:
 
