@@ -114,6 +114,8 @@ export function useMeshCoreUnread({
   const channelLatestEffective = useMemo(() => {
     const map: Record<number, number> = { ...channelLatest };
     for (const m of messages) {
+      // Ignored messages never count as unread (#5408).
+      if (m.filtered) continue;
       const key = isChannelPseudoKey(m.toPublicKey)
         ? m.toPublicKey
         : isChannelPseudoKey(m.fromPublicKey)

@@ -36,6 +36,7 @@ import { MeshCoreContact, mapContactsToNodes } from '../../../utils/meshcoreHelp
 import { remapChannelLastRead } from '../meshcoreUnreadStore';
 import { remapChannelCustomOrder } from '../meshcoreChannelOrder';
 import { emitChannelsReordered, remapChannelKey, slotMoveMap } from '../meshcoreChannelReorderEvents';
+import { emitFiltersChanged, subscribeFiltersChanged } from '../meshcoreFilterEvents';
 
 export type TelemetryMode = 'always' | 'device' | 'never';
 
@@ -161,6 +162,12 @@ export interface MeshCoreMessage {
   /** MeshCore packet hash (16 uppercase hex) of the received frame, when matched
    *  (#5357). Live events only — not persisted, so absent on reloaded history. */
   packetHash?: string;
+  /**
+   * Ignore / Block (#5408): set by the server when this message matches an
+   * entry on the CURRENT lists (read routes), or on the live socket copy of an
+   * ignored message. The stream collapses runs of these.
+   */
+  filtered?: 'ignore' | 'block';
   /**
    * MeshMonitor's own wall clock (ms) at the moment this message was created or
    * observed — NOT the sender's clock.
@@ -983,6 +990,25 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
       socket.io.off('reconnect', onReconnect);
     };
   }, [enabled, sourceId, socket, mcPrefix, csrfFetch, setMeshCoreNodes, recomputeNodes, stampLocal]);
+
+  // Ignore / Block (#5408): the ignored flag is computed by the server at read
+  // time, so reload the message pool whenever this source's lists change —
+  // here (a local write) or elsewhere (the socket event, re-broadcast so the
+  // Channels view and the list queries follow too).
+  useEffect(() => {
+    if (!enabled || !sourceId) return;
+    const unsubscribe = subscribeFiltersChanged((detail) => {
+      if (detail.sourceId === sourceId) void fetchMessages();
+    });
+    const onRemoteChange = (evt: { sourceId?: string }) => {
+      if (evt?.sourceId === sourceId) emitFiltersChanged({ sourceId });
+    };
+    socket?.on('meshcore:filters:changed', onRemoteChange);
+    return () => {
+      unsubscribe();
+      socket?.off('meshcore:filters:changed', onRemoteChange);
+    };
+  }, [enabled, sourceId, socket, fetchMessages]);
 
   const connect = useCallback(async (): Promise<boolean> => {
     setLoading(true);
