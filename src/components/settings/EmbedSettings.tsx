@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { useMapEvents, Marker, useMap } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import { BaseMap } from '../map/BaseMap';
+import mapFrame from '../map/EmbeddedMapFrame.module.css';
 import apiService from '../../services/api';
 import { useCsrfFetch } from '../../hooks/useCsrfFetch';
 import { useToast } from '../ToastContainer';
@@ -484,7 +485,7 @@ const EmbedSettings = () => {
                 <p className="setting-description">
                   {t('settings.embed.map_center_help', 'Click the map to set the center. Zoom with scroll or controls.')}
                 </p>
-                <div className="embed-map-picker">
+                <div className={`embed-map-picker ${mapFrame.frame}`} data-testid="embed-map-frame">
                   <BaseMap
                     center={[form.defaultLat, form.defaultLng]}
                     zoom={form.defaultZoom}

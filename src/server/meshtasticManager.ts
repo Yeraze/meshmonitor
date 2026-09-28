@@ -30,6 +30,12 @@ import { getDiscardInvalidPositions } from '../utils/positionIngestConfig.js';
 import { isPointInGeofence, distanceToGeofenceCenter } from '../utils/geometry.js';
 import { formatTime, formatDate } from '../utils/datetime.js';
 import { logger } from '../utils/logger.js';
+import {
+  clampIntervalSetting,
+  GEOFENCE_WHILE_INSIDE_MINUTES,
+  REMOTE_ADMIN_SCANNER_MINUTES,
+  TIME_SYNC_MINUTES,
+} from './utils/schedulerInterval.js';
 import { transportColumnForPacket, classifyNodeTransport } from '../utils/nodeTransport.js';
 import { segmentTransportMechanism } from '../utils/tracerouteTransport.js';
 import {
@@ -3165,7 +3171,11 @@ class MeshtasticManager implements ISourceManager {
     if (this.remoteAdminScannerIntervalMinutes === 0) {
       const savedInterval = await databaseService.settings.getSettingForSource(this.sourceId, 'remoteAdminScannerIntervalMinutes');
       if (savedInterval) {
-        this.remoteAdminScannerIntervalMinutes = parseInt(savedInterval, 10) || 0;
+        const parsed = parseInt(savedInterval, 10) || 0;
+        // 0 keeps the scanner off; anything else is clamped to the UI's 1–60.
+        this.remoteAdminScannerIntervalMinutes = parsed === 0
+          ? 0
+          : clampIntervalSetting(parsed, REMOTE_ADMIN_SCANNER_MINUTES, `Source ${this.sourceId} remoteAdminScannerIntervalMinutes`);
       }
     }
 
@@ -3256,7 +3266,14 @@ class MeshtasticManager implements ISourceManager {
       if (isEnabled) {
         const intervalStr = await databaseService.settings.getSettingForSource(this.sourceId, 'autoTimeSyncIntervalMinutes');
         const parsed = intervalStr ? parseInt(intervalStr, 10) : NaN;
-        this.timeSyncIntervalMinutes = isNaN(parsed) ? 15 : parsed;
+        // NaN keeps the historical default of 15 and 0 still means disabled;
+        // anything else is clamped to the UI's 15–1440 range (the setter
+        // enforces the same bounds).
+        this.timeSyncIntervalMinutes = isNaN(parsed)
+          ? 15
+          : parsed === 0
+            ? 0
+            : clampIntervalSetting(parsed, TIME_SYNC_MINUTES, `Source ${this.sourceId} autoTimeSyncIntervalMinutes`);
       }
     }
 
@@ -3931,13 +3948,21 @@ class MeshtasticManager implements ISourceManager {
       logger.debug(`📍 Geofence "${trigger.name}": ${insideSet.size} node(s) initially inside`);
 
       // Set up "while inside" interval timer
-      if (trigger.event === 'while_inside' && trigger.whileInsideIntervalMinutes && trigger.whileInsideIntervalMinutes >= 1) {
-        const intervalMs = trigger.whileInsideIntervalMinutes * 60 * 1000;
+      // Clamp where the timer is armed, so rows stored before the save route
+      // clamped (or edited by hand) are covered too. Above ~35,791 minutes the
+      // delay overflows and Node fires setInterval every 1 ms.
+      if (trigger.event === 'while_inside' && trigger.whileInsideIntervalMinutes != null) {
+        const minutes = clampIntervalSetting(
+          Number(trigger.whileInsideIntervalMinutes),
+          GEOFENCE_WHILE_INSIDE_MINUTES,
+          `Geofence "${trigger.name}" whileInsideIntervalMinutes`,
+        );
+        const intervalMs = minutes * 60 * 1000;
         const timer = setInterval(() => {
           this.executeWhileInsideGeofenceTrigger(trigger).catch(err => logger.error(`Error executing while-inside geofence trigger "${trigger.name}":`, err));
         }, intervalMs);
         this.geofenceWhileInsideTimers.set(trigger.id, timer);
-        logger.debug(`📍 Geofence "${trigger.name}": while_inside timer set for every ${trigger.whileInsideIntervalMinutes} minute(s)`);
+        logger.debug(`📍 Geofence "${trigger.name}": while_inside timer set for every ${minutes} minute(s)`);
       }
     }
 
