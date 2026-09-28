@@ -1832,12 +1832,13 @@ export class TelemetryRepository extends BaseRepository {
    * Synchronously get all nodes with their telemetry types (SQLite only).
    * Returns Map<nodeId, string[]>.
    */
-  getAllNodesTelemetryTypesSync(): Map<string, string[]> {
+  getAllNodesTelemetryTypesSync(sourceId: SourceScope): Map<string, string[]> {
     const db = this.getSqliteDb();
     const { telemetry } = this.tables;
     const rows = db
       .selectDistinct({ nodeId: telemetry.nodeId, telemetryType: telemetry.telemetryType })
       .from(telemetry)
+      .where(this.withSourceScope(telemetry, sourceId))
       .all();
     const map = new Map<string, string[]>();
     for (const r of rows as any[]) {

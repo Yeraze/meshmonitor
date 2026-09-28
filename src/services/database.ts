@@ -1349,7 +1349,7 @@ class DatabaseService {
     try {
       logger.debug('🔥 Warming up database caches...');
       // Pre-populate the telemetry types cache (SQLite bootstrap path).
-      const map = this.telemetry.getAllNodesTelemetryTypesSync();
+      const map = this.telemetry.getAllNodesTelemetryTypesSync(ALL_SOURCES);
       this.telemetryTypesCacheBySource.set(DatabaseService.TELEMETRY_TYPES_CACHE_GLOBAL_KEY, { map, time: Date.now() });
       logger.debug('✅ Cache warmup complete');
     } catch (error) {
@@ -3426,8 +3426,9 @@ class DatabaseService {
       return map;
     }
 
-    // SQLite: query the database and update cache
-    const map = this.telemetry.getAllNodesTelemetryTypesSync();
+    // SQLite: query the database and update cache. Scoped like the PG/MySQL
+    // path above; this used to ignore sourceId and return every source's types.
+    const map = this.telemetry.getAllNodesTelemetryTypesSync(sourceId ?? ALL_SOURCES);
     this.telemetryTypesCacheBySource.set(cacheKey, { map, time: now });
     return map;
   }
