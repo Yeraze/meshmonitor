@@ -317,7 +317,9 @@ export class MeshCoreMessageFilterService {
         { countHit: false },
       );
       if (res.action !== 'allow') return { ...m, filtered: res.action };
-      return m.filtered ? { ...m, filtered: undefined } : m;
+      if (!m.filtered) return m;
+      const { filtered: _cleared, ...rest } = m;
+      return rest as T;
     });
   }
 
