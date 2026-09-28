@@ -90,6 +90,22 @@ import { MESHCORE_PUBLIC_CHANNEL_SECRET, tryDecodeGroupTextPayload } from './uti
 import { meshcoreAgeCutoffMs, isWithinMeshcoreAge } from '../utils/meshcoreAge.js';
 import { safeJson } from './utils/redactSecrets.js';
 import {
+  fetchNeighbourPages,
+  mergeNeighbourRows,
+  MESH_TX_FLOOR_MS,
+  MANUAL_NEIGHBOURS_MAX_PAGES,
+  AUTOMATED_NEIGHBOURS_MAX_PAGES,
+  NEIGHBOURS_ORDER_NEWEST,
+  NEIGHBOURS_ORDER_STRONGEST,
+  type RawNeighbour,
+} from './services/meshcoreNeighboursPaging.js';
+import type {
+  NeighboursFetchEvent,
+  NeighboursFetchSummary,
+  NeighboursStoreAction,
+  ResolvedNeighbour,
+} from './services/meshcoreNeighboursFetchProgress.js';
+import {
   type MeshCoreAdvertMode,
   isMeshCoreAdvertMode,
   resolveMeshCoreAdvertMode,
@@ -6166,7 +6182,7 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
    * of neighbour entries with pubkey prefix, last-heard age, and SNR.
    * Requires firmware v1.9.0+ on the target repeater.
    */
-  async getNeighbours(publicKey: string, opts?: { count?: number; offset?: number; orderBy?: number }): Promise<{
+  async getNeighbours(publicKey: string, opts?: { count?: number; offset?: number; orderBy?: number; skipLogin?: boolean }): Promise<{
     total: number;
     neighbours: { publicKeyPrefix: string; heardSecondsAgo: number; snr: number }[];
   } | null> {
@@ -6175,9 +6191,11 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
     // Establish a session with the saved password first — repeaters gate the
     // neighbours query behind a guest/admin login, and this binary path (like
     // the CLI `neighbors` path) otherwise fails with no session. Never
-    // anonymous-logs-in (see ensureSavedLogin).
+    // anonymous-logs-in (see ensureSavedLogin). A paged fetch (#5413) logs
+    // in before page 1 only: the repeater keeps the session in its ACL, so
+    // later pages pass `skipLogin`.
     this.requireTransmit();
-    await this.ensureSavedLogin(publicKey);
+    if (!opts?.skipLogin) await this.ensureSavedLogin(publicKey);
     try {
       const response = await this.sendBridgeCommand('get_neighbours', {
         public_key: publicKey,
@@ -6204,37 +6222,140 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
     }
   }
 
+  /** Attach contact names and full keys to raw neighbour entries. */
+  resolveNeighbours(neighbours: RawNeighbour[]): ResolvedNeighbour[] {
+    return neighbours.map((n) => {
+      const contact = this.resolveContactByPrefix(n.publicKeyPrefix);
+      return {
+        ...n,
+        name: contact?.advName ?? contact?.name ?? null,
+        fullPublicKey: contact?.publicKey ?? null,
+      };
+    });
+  }
+
   /**
-   * Query a node's neighbour table over RF and persist the result, resolving
-   * each returned prefix to a full contact pubkey the same way
-   * `startAutoPathfinding` does. Shared by the MeshCoreNeighboursScheduler
-   * (#4618) and the manual per-node neighbours-poll route so both paths use
-   * identical request → resolve → store logic.
+   * Persist a neighbour fetch for one reporter (#5413).
    *
-   * Returns `{ total, written }` (`written` = neighbours we could resolve and
-   * store), or `null` when the query failed (disconnected, not a Companion,
-   * firmware too old, or the bridge returned an error). Does NOT own the
-   * per-source 60s TX gate or the `lastNeighborsRequestAt` stamp — callers
-   * enforce those, mirroring the telemetry scheduler's division of labour.
+   * `complete` means we read the whole table: replace the stored set (it may
+   * rightly shrink, or empty). Anything less (the autopoll's one page, the
+   * page cap, a cancel, a failure part-way) merges instead, so a partial read
+   * never wipes a fuller stored set: fresh rows win, other stored rows stay,
+   * trimmed to the table size the repeater reported. An empty partial read
+   * changes nothing.
+   */
+  async storeNeighbours(
+    publicKey: string,
+    neighbours: RawNeighbour[],
+    total: number | null,
+    complete: boolean,
+  ): Promise<{ written: number; stored: NeighboursStoreAction }> {
+    const fresh = this.resolveNeighbours(neighbours)
+      .filter((n) => n.fullPublicKey !== null)
+      .map((n) => ({ neighborPublicKey: n.fullPublicKey!, snr: n.snr, lastHeardSecs: n.heardSecondsAgo }));
+
+    if (complete) {
+      await databaseService.meshcore.insertNeighborsBatch(this.sourceId, publicKey, fresh);
+      return { written: fresh.length, stored: 'replaced' };
+    }
+    if (neighbours.length === 0) return { written: 0, stored: 'none' };
+
+    const stored = await databaseService.meshcore.getNeighborsForReporter(this.sourceId, publicKey);
+    const rows = mergeNeighbourRows(fresh, stored, total, neighbours.length, Date.now());
+    await databaseService.meshcore.insertNeighborsBatch(this.sourceId, publicKey, rows);
+    return { written: fresh.length, stored: 'merged' };
+  }
+
+  /**
+   * Read a repeater's neighbour table page by page and store it once (#5413).
+   *
+   *  - `manual`: up to MANUAL_NEIGHBOURS_MAX_PAGES (the 50-entry table),
+   *    newest first. For the Contact Details "Neighbours" button and the
+   *    manual "Poll Neighbours" button.
+   *  - `automated`: one page, strongest first. For the autopoll scheduler.
+   *
+   * Every page waits the shared 60 s mesh-TX floor and stamps `lastMeshTxAt`
+   * before it sends, except page 1 when the caller already stamped it
+   * (`firstSlotReserved`, as the scheduler does). Never throws for a failed
+   * page; the summary says how it ended. Storage follows `storeNeighbours`.
+   */
+  async fetchAndStoreNeighbours(
+    publicKey: string,
+    opts: {
+      mode: 'manual' | 'automated';
+      firstSlotReserved?: boolean;
+      signal?: AbortSignal;
+      onProgress?: (event: NeighboursFetchEvent) => void;
+      minIntervalMs?: number;
+    },
+  ): Promise<NeighboursFetchSummary> {
+    const manual = opts.mode === 'manual';
+    const keyShort = publicKey.substring(0, 16);
+    const onProgress = opts.onProgress;
+    const result = await fetchNeighbourPages(this, publicKey, {
+      maxPages: manual ? MANUAL_NEIGHBOURS_MAX_PAGES : AUTOMATED_NEIGHBOURS_MAX_PAGES,
+      orderBy: manual ? NEIGHBOURS_ORDER_NEWEST : NEIGHBOURS_ORDER_STRONGEST,
+      minIntervalMs: opts.minIntervalMs ?? MESH_TX_FLOOR_MS,
+      firstSlotReserved: opts.firstSlotReserved,
+      signal: opts.signal,
+      onProgress: onProgress
+        ? (event) => {
+          if (event.phase === 'page') {
+            onProgress({ ...event, neighbours: this.resolveNeighbours(event.neighbours) });
+          } else {
+            onProgress(event);
+          }
+        }
+        : undefined,
+    });
+
+    if (result.outcome === 'cancelled' || result.outcome === 'failed') {
+      logger.info(
+        `[MeshCore:${this.sourceId}] Neighbour fetch for ${keyShort}… ${result.outcome} after ` +
+          `${result.pagesFetched} page(s): ${result.neighbours.length} of ${result.total ?? '?'} collected` +
+          (result.error ? ` (${result.error})` : ''),
+      );
+    }
+
+    let written = 0;
+    let stored: NeighboursStoreAction = 'none';
+    try {
+      ({ written, stored } = await this.storeNeighbours(
+        publicKey,
+        result.neighbours,
+        result.total,
+        result.outcome === 'complete',
+      ));
+    } catch (err) {
+      logger.warn(`[MeshCore:${this.sourceId}] Failed to store neighbours for ${keyShort}…: ${(err as Error).message}`);
+    }
+
+    return {
+      outcome: result.outcome,
+      total: result.total,
+      neighbours: this.resolveNeighbours(result.neighbours),
+      pagesFetched: result.pagesFetched,
+      written,
+      stored,
+      ...(result.error ? { error: result.error } : {}),
+    };
+  }
+
+  /**
+   * One automated neighbours poll: a single page, strongest first, merged
+   * into the stored set (#4618, #5413). Used by the MeshCoreNeighboursScheduler
+   * and the legacy single-shot poll route.
+   *
+   * Returns `{ total, written }`, or `null` when the query failed
+   * (disconnected, not a Companion, firmware too old, or the bridge returned
+   * an error). Does NOT own the per-source 60s TX gate or the
+   * `lastNeighborsRequestAt` stamp: callers stamp before calling, mirroring
+   * the telemetry scheduler's division of labour.
    */
   async pollNeighborsAndStore(publicKey: string): Promise<{ total: number; written: number } | null> {
-    const result = await this.getNeighbours(publicKey);
-    if (!result) return null;
-
-    const toStore = result.neighbours
-      .map((n) => {
-        const contact = this.resolveContactByPrefix(n.publicKeyPrefix);
-        return contact?.publicKey
-          ? { neighborPublicKey: contact.publicKey, snr: n.snr, lastHeardSecs: n.heardSecondsAgo }
-          : null;
-      })
-      .filter((n): n is NonNullable<typeof n> => n !== null);
-
-    // Always call insertNeighborsBatch — even with zero resolved neighbours it
-    // clears the previous (now stale) set for this reporter, matching the
-    // route/auto-pathfinding semantics.
-    await databaseService.meshcore.insertNeighborsBatch(this.sourceId, publicKey, toStore);
-    return { total: result.total, written: toStore.length };
+    const summary = await this.fetchAndStoreNeighbours(publicKey, { mode: 'automated', firstSlotReserved: true });
+    if (summary.outcome === 'failed' && summary.pagesFetched === 0) return null;
+    return { total: summary.total ?? 0, written: summary.written };
   }
 
   /**
@@ -8485,20 +8606,13 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
             const ok = await this.discoverContactPath(t.key);
             logger.debug(`[MeshCore:${this.sourceId}] Auto-pathfinding: discover_path ${t.name} → ${ok ? 'sent' : 'failed'}`);
           } else {
+            // Automated, so one page (#5413). Merged unless it covers the
+            // whole table, so it cannot shrink a fuller set a manual fetch stored.
             const result = await this.getNeighbours(t.key);
             if (result && result.neighbours.length > 0) {
-              const toStore = result.neighbours
-                .map(n => {
-                  const contact = this.resolveContactByPrefix(n.publicKeyPrefix);
-                  return contact?.publicKey
-                    ? { neighborPublicKey: contact.publicKey, snr: n.snr, lastHeardSecs: n.heardSecondsAgo }
-                    : null;
-                })
-                .filter((n): n is NonNullable<typeof n> => n !== null);
-              if (toStore.length > 0) {
-                databaseService.meshcore.insertNeighborsBatch(this.sourceId, t.key, toStore)
-                  .catch((err: Error) => logger.warn(`[MeshCore:${this.sourceId}] Auto-pathfinding: failed to persist neighbours: ${err.message}`));
-              }
+              const complete = result.neighbours.length >= result.total;
+              this.storeNeighbours(t.key, result.neighbours, result.total, complete)
+                .catch((err: Error) => logger.warn(`[MeshCore:${this.sourceId}] Auto-pathfinding: failed to persist neighbours: ${err.message}`));
             }
             logger.debug(`[MeshCore:${this.sourceId}] Auto-pathfinding: get_neighbours ${t.name} → ${result ? result.total + ' neighbours' : 'failed'}`);
           }

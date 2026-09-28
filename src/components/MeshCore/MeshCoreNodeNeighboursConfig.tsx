@@ -6,17 +6,21 @@
  * pane of `MeshCoreDirectMessagesView` for a peer with a real 64-hex pubkey,
  * reads/writes `(enabled, intervalMinutes)` for the (sourceId, publicKey) pair
  * from `/api/sources/:id/meshcore/nodes/:publicKey/neighbours-config`, and
- * offers a manual "Poll Now" that hits `/neighbours/poll`. The scheduler fills
+ * offers a manual "Poll Now" that runs the paged `/neighbours/fetch` job
+ * (#5413: the whole table, one page a minute, with progress and Cancel). The
+ * scheduler reads one page, strongest first, and fills
  * the node's neighbour table into Node Details on the chosen cadence. Gated by
  * `configuration:write` for edits, `nodes:read` for the manual poll.
  */
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../../contexts/AuthContext';
 import { useCsrfFetch } from '../../hooks/useCsrfFetch';
 import { useToast } from '../ToastContainer';
-import { isTxDisabledBody } from '../../utils/txDisabled';
 import { MeshCoreReceiveOnlyNote } from './MeshCoreReceiveOnlyNote';
+import { MeshCoreNeighboursFetchProgress } from './MeshCoreNeighboursFetchProgress';
+import { createNeighboursFetchActions } from './hooks/meshcoreNeighboursFetchApi';
+import { useMeshCoreNeighboursFetch } from './hooks/useMeshCoreNeighboursFetch';
 
 interface MeshCoreNodeNeighboursConfigProps {
   /** Frontend basename (e.g. '' or '/meshmonitor'). */
@@ -65,11 +69,25 @@ export const MeshCoreNodeNeighboursConfig: React.FC<MeshCoreNodeNeighboursConfig
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [polling, setPolling] = useState(false);
-  const [pollMsg, setPollMsg] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null);
-
   const endpoint = `${baseUrl}/api/sources/${encodeURIComponent(sourceId)}/meshcore/nodes/${encodeURIComponent(publicKey)}/neighbours-config`;
-  const pollEndpoint = `${baseUrl}/api/sources/${encodeURIComponent(sourceId)}/meshcore/nodes/${encodeURIComponent(publicKey)}/neighbours/poll`;
+  const mcPrefix = `${baseUrl}/api/sources/${encodeURIComponent(sourceId)}/meshcore`;
+  const fetchActions = useMemo(() => createNeighboursFetchActions(csrfFetch, mcPrefix), [csrfFetch, mcPrefix]);
+  const neighboursFetch = useMeshCoreNeighboursFetch(fetchActions);
+  const { reset: resetNeighboursFetch, startError: pollStartError } = neighboursFetch;
+  const pollFetch = neighboursFetch.fetch;
+  const polling = neighboursFetch.running;
+
+  // Stop watching a poll when the node or source changes.
+  useEffect(() => {
+    resetNeighboursFetch();
+  }, [endpoint, resetNeighboursFetch]);
+
+  // Receive-only refusals surface as a toast, like every other RF button.
+  useEffect(() => {
+    if (pollStartError?.txDisabled) {
+      showToast(t('meshcore.receive_only.blocked_toast', 'Receive-only mode is on for this MeshCore source — nothing was sent.'), 'warning');
+    }
+  }, [pollStartError, showToast, t]);
 
   // Refetch whenever the selected node or source changes.
   useEffect(() => {
@@ -77,7 +95,6 @@ export const MeshCoreNodeNeighboursConfig: React.FC<MeshCoreNodeNeighboursConfig
     setLoading(true);
     setError(null);
     setSaved(false);
-    setPollMsg(null);
     void (async () => {
       try {
         const response = await csrfFetch(endpoint);
@@ -152,39 +169,22 @@ export const MeshCoreNodeNeighboursConfig: React.FC<MeshCoreNodeNeighboursConfig
     void save({ intervalMinutes: n });
   };
 
-  const poll = async () => {
-    setPolling(true);
-    setPollMsg(null);
-    try {
-      const response = await csrfFetch(pollEndpoint, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({}),
-      });
-      const data = await response.json();
-      if (response.ok && data.success) {
-        const written: number = typeof data.data?.written === 'number' ? data.data.written : 0;
-        setPollMsg({
-          kind: 'ok',
-          text:
-            written > 0
-              ? t('meshcore.neighbours_config.poll_wrote', `Stored ${written} neighbour(s).`)
-              : t('meshcore.neighbours_config.poll_empty', 'Request sent — no neighbours returned.'),
-        });
-      } else if (isTxDisabledBody(response.status, data)) {
-        showToast(t('meshcore.receive_only.blocked_toast', 'Receive-only mode is on for this MeshCore source — nothing was sent.'), 'warning');
-      } else {
-        setPollMsg({
-          kind: 'err',
-          text: data.error || t('meshcore.neighbours_config.poll_error', 'Poll failed'),
-        });
-      }
-    } catch (_err) {
-      setPollMsg({ kind: 'err', text: t('meshcore.neighbours_config.poll_error', 'Poll failed') });
-    } finally {
-      setPolling(false);
-    }
+  const poll = () => {
+    void neighboursFetch.start(publicKey);
   };
+
+  let pollMsg: { kind: 'ok' | 'err'; text: string } | null = null;
+  if (pollStartError && !pollStartError.txDisabled) {
+    pollMsg = { kind: 'err', text: pollStartError.message || t('meshcore.neighbours_config.poll_error', 'Poll failed') };
+  } else if (pollFetch?.phase === 'done' && pollFetch.outcome === 'complete') {
+    const written = pollFetch.written ?? 0;
+    pollMsg = {
+      kind: 'ok',
+      text: written > 0
+        ? t('meshcore.neighbours_config.poll_wrote', 'Stored {{count}} neighbour(s).', { count: written })
+        : t('meshcore.neighbours_config.poll_empty', 'Request sent — no neighbours returned.'),
+    };
+  }
 
   return (
     <div className="node-details-block">
@@ -281,7 +281,7 @@ export const MeshCoreNodeNeighboursConfig: React.FC<MeshCoreNodeNeighboursConfig
         <p className="hint" style={{ marginBottom: '0.5rem' }}>
           {t(
             'meshcore.neighbours_config.poll_hint',
-            'Request neighbours immediately, outside the scheduled interval. Subject to the same 60-second mesh-TX spacing.',
+            'Read the whole neighbour table now, outside the scheduled interval. A repeater sends at most 10 neighbours per reply, so this takes up to 5 pages, each waiting the 60-second mesh-TX spacing (about 5 minutes for a full table). The scheduled poll reads one page, strongest first.',
           )}
         </p>
         <MeshCoreReceiveOnlyNote receiveOnly={receiveOnly} />
@@ -289,7 +289,7 @@ export const MeshCoreNodeNeighboursConfig: React.FC<MeshCoreNodeNeighboursConfig
           <button
             type="button"
             className="btn-secondary"
-            onClick={() => void poll()}
+            onClick={poll}
             disabled={!canPoll || polling || receiveOnly}
             title={receiveOnly ? t('meshcore.receive_only.control_tooltip', 'Receive-only mode is on for this MeshCore source. Turn it off in MeshCore Settings to use this.') : undefined}
           >
@@ -298,6 +298,9 @@ export const MeshCoreNodeNeighboursConfig: React.FC<MeshCoreNodeNeighboursConfig
               : t('meshcore.neighbours_config.poll_button', 'Poll Neighbours')}
           </button>
         </div>
+        {pollFetch && (
+          <MeshCoreNeighboursFetchProgress fetch={pollFetch} onCancel={() => void neighboursFetch.cancel()} />
+        )}
         {pollMsg && (
           <div
             className="meshcore-empty-state"

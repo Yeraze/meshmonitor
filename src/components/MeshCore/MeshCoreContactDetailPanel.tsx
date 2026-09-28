@@ -21,6 +21,16 @@ import '../NodeDetailsBlock.css';
 import { UiIcon } from '../icons';
 import { ShowCoverageLink } from '../Analysis/ShowCoverageLink';
 import { SignFlipNotice } from '../SignFlipNotice';
+import { MeshCoreNeighboursFetchProgress } from './MeshCoreNeighboursFetchProgress';
+import { useMeshCoreNeighboursFetch } from './hooks/useMeshCoreNeighboursFetch';
+import type { MeshCoreNeighboursFetchActions } from './hooks/meshcoreNeighboursFetchApi';
+
+/** Stand-in so the fetch hook can run unconditionally when no actions are wired. */
+const NO_NEIGHBOURS_FETCH_ACTIONS: MeshCoreNeighboursFetchActions = {
+  startNeighboursFetch: async () => ({ ok: false, status: 0, error: 'Neighbours fetch is not available here' }),
+  getNeighboursFetchProgress: async () => null,
+  cancelNeighboursFetch: async () => false,
+};
 
 const DEVICE_TYPE_KEYS: Record<number, string> = {
   0: 'meshcore.device_type.unknown',
@@ -73,11 +83,16 @@ interface MeshCoreContactDetailPanelProps {
   /** Export a contact as a signed advert blob. Unset hides the Export button. */
   onExportContact?: (publicKey: string) => Promise<number[] | null>;
   /** Query the neighbour list from a remote repeater. Unset hides the
-   *  Neighbours button. */
+   *  Neighbours button. Used only when `neighboursFetchActions` is unset:
+   *  it reads one page, so at most 10 neighbours (#5413). */
   onGetNeighbours?: (publicKey: string, opts?: { count?: number }) => Promise<{
     total: number;
     neighbours: { publicKeyPrefix: string; heardSecondsAgo: number; snr: number }[];
   } | null>;
+  /** Paged neighbour fetch (#5413): the Neighbours button reads the whole
+   *  table (up to five pages, one a minute) with live progress and Cancel.
+   *  Takes precedence over `onGetNeighbours` for the fetch itself. */
+  neighboursFetchActions?: MeshCoreNeighboursFetchActions;
   /** When provided AND the contact is a Repeater (advType=2) or Room
    *  Server (advType=3), the remote-administration console is mounted
    *  below the details block. Pass the four hook actions it needs; leave
@@ -123,6 +138,7 @@ export const MeshCoreContactDetailPanel: React.FC<MeshCoreContactDetailPanelProp
   onAddToDevice,
   onExportContact,
   onGetNeighbours,
+  neighboursFetchActions,
   canWriteNodes = false,
   isCompanion = true,
   remoteAdminActions,
@@ -193,6 +209,15 @@ export const MeshCoreContactDetailPanel: React.FC<MeshCoreContactDetailPanelProp
     neighbours: { publicKeyPrefix: string; name?: string | null; heardSecondsAgo: number; snr: number }[];
     fetchedAt?: number;
   } | null>(null);
+
+  // Paged neighbour fetch (#5413). Runs for minutes; the hook polls progress.
+  const neighboursFetch = useMeshCoreNeighboursFetch(neighboursFetchActions ?? NO_NEIGHBOURS_FETCH_ACTIONS);
+  const resetNeighboursFetch = neighboursFetch.reset;
+  // Stop watching when the selected node changes. The server fetch keeps
+  // going; pressing Neighbours on that node again re-attaches to it.
+  useEffect(() => {
+    resetNeighboursFetch();
+  }, [publicKey, resetNeighboursFetch]);
 
   // Path-editor modal state. The hop chain is built by repeater name; each
   // hop is a 1-byte hex routing hash.
@@ -542,6 +567,11 @@ export const MeshCoreContactDetailPanel: React.FC<MeshCoreContactDetailPanelProp
   };
 
   const handleGetNeighbours = async () => {
+    if (neighboursFetchActions) {
+      if (neighboursFetch.running) return;
+      await neighboursFetch.start(publicKey);
+      return;
+    }
     if (!onGetNeighbours || neighboursLoading) return;
     const isCurrent = beginContactAction();
     setNeighboursLoading(true);
@@ -556,6 +586,21 @@ export const MeshCoreContactDetailPanel: React.FC<MeshCoreContactDetailPanelProp
       if (isCurrent()) setNeighboursLoading(false);
     }
   };
+
+  // What the Neighbours card shows: a paged fetch's neighbours once any have
+  // arrived (or it read an empty table), otherwise the stored set.
+  const liveFetch = neighboursFetch.fetch && neighboursFetch.fetch.publicKey.toLowerCase() === publicKey.toLowerCase()
+    ? neighboursFetch.fetch
+    : null;
+  const liveHasData = !!liveFetch && (liveFetch.neighbours.length > 0 || liveFetch.outcome === 'complete');
+  const shownNeighbours = liveHasData && liveFetch
+    ? {
+      total: liveFetch.total ?? liveFetch.neighbours.length,
+      neighbours: liveFetch.neighbours,
+      fetchedAt: undefined as number | undefined,
+    }
+    : neighboursData;
+  const neighboursBusy = neighboursLoading || neighboursFetch.running;
 
   const getSignalClass = (value: number | undefined): string => {
     if (value === undefined || value === null) return '';
@@ -767,11 +812,11 @@ export const MeshCoreContactDetailPanel: React.FC<MeshCoreContactDetailPanelProp
                     type="button"
                     className="btn-secondary"
                     onClick={handleGetNeighbours}
-                    disabled={neighboursLoading || receiveOnly}
+                    disabled={neighboursBusy || receiveOnly}
                     title={receiveOnly ? t('meshcore.receive_only.control_tooltip', 'Receive-only mode is on for this MeshCore source. Turn it off in MeshCore Settings to use this.') : undefined}
                     aria-label={t('meshcore.contact_details.neighbours_button', 'Neighbours')}
                   >
-                    {neighboursLoading
+                    {neighboursBusy
                       ? t('meshcore.contact_details.neighbours_loading', 'Loading…')
                       : t('meshcore.contact_details.neighbours_button', 'Neighbours')}
                   </button>
@@ -902,20 +947,42 @@ export const MeshCoreContactDetailPanel: React.FC<MeshCoreContactDetailPanelProp
             </div>
           )}
 
+          {/* Paged neighbour fetch progress (#5413) */}
+          {(liveFetch || neighboursFetch.startError) && (
+            <div className="node-detail-card node-detail-card-2col">
+              {liveFetch && (
+                <MeshCoreNeighboursFetchProgress fetch={liveFetch} onCancel={() => void neighboursFetch.cancel()} />
+              )}
+              {neighboursFetch.startError && (
+                <div style={{ color: 'var(--color-error)', fontSize: '0.85rem' }} role="alert">
+                  {neighboursFetch.startError.txDisabled
+                    ? t('meshcore.receive_only.blocked_toast', 'Receive-only mode is on for this MeshCore source — nothing was sent.')
+                    : neighboursFetch.startError.message}
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Neighbours results */}
-          {neighboursData && (
+          {shownNeighbours && (
             <div className="node-detail-card node-detail-card-2col">
               <div className="node-detail-label">
                 {t('meshcore.contact_details.neighbours_results', 'Neighbours')}
-                {' '}({neighboursData.total} {t('meshcore.contact_details.neighbours_total', 'total')})
-                {neighboursData.fetchedAt && (
+                {' '}
+                {shownNeighbours.neighbours.length < shownNeighbours.total
+                  ? t('meshcore.contact_details.neighbours_partial', '({{shown}} of {{total}} total)', {
+                    shown: shownNeighbours.neighbours.length,
+                    total: shownNeighbours.total,
+                  })
+                  : `(${shownNeighbours.total} ${t('meshcore.contact_details.neighbours_total', 'total')})`}
+                {shownNeighbours.fetchedAt && (
                   <span style={{ fontSize: '0.8em', opacity: 0.6, marginLeft: '0.5rem' }}>
-                    {formatRelativeTime(neighboursData.fetchedAt, timeFormat, dateFormat)}
+                    {formatRelativeTime(shownNeighbours.fetchedAt, timeFormat, dateFormat)}
                   </span>
                 )}
               </div>
               <div className="node-detail-value">
-                {neighboursData.neighbours.length === 0 ? (
+                {shownNeighbours.neighbours.length === 0 ? (
                   <span style={{ opacity: 0.7 }}>
                     {t('meshcore.contact_details.neighbours_none', 'No neighbours reported.')}
                   </span>
@@ -935,7 +1002,7 @@ export const MeshCoreContactDetailPanel: React.FC<MeshCoreContactDetailPanelProp
                       </tr>
                     </thead>
                     <tbody>
-                      {neighboursData.neighbours.map((n, i) => (
+                      {shownNeighbours.neighbours.map((n, i) => (
                         <tr key={i}>
                           <td style={{ padding: '0.25rem 0.5rem' }} title={n.publicKeyPrefix}>
                             {n.name || n.publicKeyPrefix}

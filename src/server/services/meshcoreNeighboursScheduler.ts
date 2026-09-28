@@ -28,6 +28,7 @@ import type { DbMeshCoreNode } from '../../db/repositories/meshcore.js';
 import type { MeshCoreManager } from '../meshcoreManager.js';
 import type { SourceManagerRegistry } from '../sourceManagerRegistry.js';
 import { isMeshCoreManager } from '../sourceManagerTypes.js';
+import { MESH_TX_FLOOR_MS } from './meshcoreNeighboursPaging.js';
 
 /** Database surface the scheduler depends on (kept thin for testability). */
 export interface NeighboursSchedulerDatabase {
@@ -39,7 +40,7 @@ export interface NeighboursSchedulerDatabase {
 }
 
 /** Minimum spacing between scheduled mesh requests on the same source (ms). */
-export const MIN_INTERVAL_BETWEEN_REQUESTS_MS = 60_000;
+export const MIN_INTERVAL_BETWEEN_REQUESTS_MS = MESH_TX_FLOOR_MS;
 
 /** Default scheduler tick (ms); always >= 1s, clamped on parse. */
 export const DEFAULT_TICK_MS = 30_000;

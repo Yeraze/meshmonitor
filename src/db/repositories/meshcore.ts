@@ -1727,6 +1727,36 @@ export class MeshCoreRepository extends BaseRepository {
     );
   }
 
+  /**
+   * The stored neighbour set one repeater reported on one source (#5413).
+   * Read before a partial neighbour fetch is written, so it can be merged
+   * instead of replacing a fuller set.
+   */
+  async getNeighborsForReporter(
+    sourceId: string,
+    publicKey: string,
+  ): Promise<Array<{ neighborPublicKey: string; snr: number | null; lastHeardSecs: number | null; timestamp: number }>> {
+    if (!sourceId) {
+      throw new Error('MeshCoreRepository.getNeighborsForReporter requires a sourceId');
+    }
+    const { meshcoreNeighbors } = this.tables;
+    const rows = await this.db
+      .select({
+        neighborPublicKey: meshcoreNeighbors.neighborPublicKey,
+        snr: meshcoreNeighbors.snr,
+        lastHeardSecs: meshcoreNeighbors.lastHeardSecs,
+        timestamp: meshcoreNeighbors.timestamp,
+      })
+      .from(meshcoreNeighbors)
+      .where(and(eq(meshcoreNeighbors.sourceId, sourceId), eq(meshcoreNeighbors.publicKey, publicKey)));
+    return rows.map((r: { neighborPublicKey: string; snr: number | null; lastHeardSecs: number | null; timestamp: number }) => ({
+      neighborPublicKey: r.neighborPublicKey,
+      snr: r.snr,
+      lastHeardSecs: r.lastHeardSecs,
+      timestamp: Number(r.timestamp),
+    }));
+  }
+
   async getNeighbors(
     sourceIds: string[],
     sinceMs: number = 0,

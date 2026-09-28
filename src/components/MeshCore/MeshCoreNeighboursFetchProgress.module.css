@@ -1,0 +1,82 @@
+/*
+ * MeshCoreNeighboursFetchProgress CSS module (#5413). Scoped here per the
+ * CLAUDE.md CSS containment rule; colours come from theme tokens with no
+ * fallback. Mirrors MeshCoreLoginProgress.module.css.
+ */
+
+.container {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  margin: 0.5rem 0;
+  padding: 0.5rem 0.6rem;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  color: var(--color-text);
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+.icon {
+  flex: 0 0 auto;
+  color: var(--color-accent);
+}
+
+.message {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 0.85rem;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.cancel {
+  flex: 0 0 auto;
+  padding: 0.25rem 0.7rem;
+  font-size: 0.8rem;
+  background: transparent;
+  color: var(--color-text);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+}
+
+.cancel:hover:not(:disabled) {
+  background: var(--color-surface-hover);
+}
+
+.cancel:disabled {
+  color: var(--color-text-disabled);
+  cursor: default;
+}
+
+.track {
+  height: 4px;
+  background: var(--color-bg);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.bar {
+  height: 100%;
+  background: var(--color-accent);
+  transition: width 0.25s linear;
+}
+
+.hint {
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+}
+
+/* Note shown when a fetch ends short of the full table. */
+.notice {
+  margin: 0.5rem 0;
+  font-size: 0.85rem;
+  color: var(--color-text-muted);
+}

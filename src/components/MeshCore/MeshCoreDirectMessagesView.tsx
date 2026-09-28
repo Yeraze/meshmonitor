@@ -575,6 +575,11 @@ export const MeshCoreDirectMessagesView: React.FC<MeshCoreDirectMessagesViewProp
                 onAddToDevice={actions.addContactToDevice}
                 onExportContact={actions.exportContact}
                 onGetNeighbours={actions.getNeighbours}
+                neighboursFetchActions={{
+                  startNeighboursFetch: actions.startNeighboursFetch,
+                  getNeighboursFetchProgress: actions.getNeighboursFetchProgress,
+                  cancelNeighboursFetch: actions.cancelNeighboursFetch,
+                }}
                 canWriteNodes={canWriteNodes && connected}
                 isCompanion={isCompanion}
                 repeaters={contacts}

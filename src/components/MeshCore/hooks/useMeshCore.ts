@@ -24,6 +24,7 @@ import { useWebSocketContext } from '../../../contexts/WebSocketContext';
 import { useToast } from '../../ToastContainer';
 import { isTxDisabledBody } from '../../../utils/txDisabled';
 import { parseJsonResponse } from '../../../utils/parseJsonResponse';
+import { createNeighboursFetchActions, type MeshCoreNeighboursFetchActions } from './meshcoreNeighboursFetchApi';
 import type { MeshCoreAdvertMode } from '../../../types/meshcoreAdvert';
 import type {
   MeshCoreMessageEvent,
@@ -409,6 +410,13 @@ export interface MeshCoreActions {
   /** Ask a tracked login to stop sending further attempts (#5400). A packet
    *  already on the air cannot be recalled; a late reply is ignored. */
   cancelLogin: (requestId: string) => Promise<boolean>;
+  /** Start a paged read of a repeater's whole neighbour table (#5413). Returns
+   *  at once; poll `getNeighboursFetchProgress` for pages as they arrive. */
+  startNeighboursFetch: MeshCoreNeighboursFetchActions['startNeighboursFetch'];
+  /** Progress of a paged neighbour fetch (#5413). Null when unknown. No radio traffic. */
+  getNeighboursFetchProgress: MeshCoreNeighboursFetchActions['getNeighboursFetchProgress'];
+  /** Stop a paged neighbour fetch after the page in flight (#5413). */
+  cancelNeighboursFetch: MeshCoreNeighboursFetchActions['cancelNeighboursFetch'];
   /** Send a CLI command to the LOCALLY connected MeshCore node (the one
    *  this source is bound to). For Repeater / Room Server firmware this
    *  drives the device's native text CLI; for Companion firmware a small
@@ -1438,6 +1446,19 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
     }
   }, [mcPrefix, csrfFetch]);
 
+  const startNeighboursFetch = useCallback<MeshCoreNeighboursFetchActions['startNeighboursFetch']>(
+    (publicKey, requestId) => createNeighboursFetchActions(csrfFetch, mcPrefix).startNeighboursFetch(publicKey, requestId),
+    [mcPrefix, csrfFetch],
+  );
+  const getNeighboursFetchProgress = useCallback<MeshCoreNeighboursFetchActions['getNeighboursFetchProgress']>(
+    (publicKey, requestId) => createNeighboursFetchActions(csrfFetch, mcPrefix).getNeighboursFetchProgress(publicKey, requestId),
+    [mcPrefix, csrfFetch],
+  );
+  const cancelNeighboursFetch = useCallback<MeshCoreNeighboursFetchActions['cancelNeighboursFetch']>(
+    (publicKey, requestId) => createNeighboursFetchActions(csrfFetch, mcPrefix).cancelNeighboursFetch(publicKey, requestId),
+    [mcPrefix, csrfFetch],
+  );
+
   const forgetRemoteCredential = useCallback(async (publicKey: string): Promise<boolean> => {
     try {
       const response = await csrfFetch(
@@ -2249,6 +2270,9 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
       loginRemoteWithSaved,
       getLoginProgress,
       cancelLogin,
+      startNeighboursFetch,
+      getNeighboursFetchProgress,
+      cancelNeighboursFetch,
       sendLocalCliCommand,
       loginRoom,
       loginRoomWithSaved,
