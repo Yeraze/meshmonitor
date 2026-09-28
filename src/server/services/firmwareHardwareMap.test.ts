@@ -75,6 +75,10 @@ describe('firmwareHardwareMap', () => {
       expect(getBoardName(31)).toBe('station-g2');
     });
 
+    it('should map STATION_G3 (134) to station-g3 (#5423)', () => {
+      expect(getBoardName(134)).toBe('station-g3');
+    });
+
     it('should use default conversion for models without overrides', () => {
       // TLORA_V2 (1) -> tlora-v2
       expect(getBoardName(1)).toBe('tlora-v2');
@@ -132,6 +136,12 @@ describe('firmwareHardwareMap', () => {
 
     it('should return esp32s3 for station-g2', () => {
       expect(getPlatformForBoard('station-g2')).toBe('esp32s3');
+    });
+
+    // #5423: without this entry Station G3 had no platform, so OTA was blocked.
+    it('should return esp32s3 for station-g3 and treat it as OTA capable', () => {
+      expect(getPlatformForBoard('station-g3')).toBe('esp32s3');
+      expect(isOtaCapable(getPlatformForBoard(getBoardName(134)!)!)).toBe(true);
     });
 
     it('should return rp2040 for rpi-pico', () => {

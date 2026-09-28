@@ -490,6 +490,20 @@ describe('FirmwareUpdateService', () => {
       expect(result.rejected.length).toBeGreaterThan(0);
     });
 
+    // #5423: the Station G3 entries of the real v2.7.26 esp32s3 release zip.
+    it('should pick the station-g3 app binary, not station-g2 or the factory image', () => {
+      const files = [
+        'firmware-station-g2-2.7.26.54e0d8d.bin',
+        'firmware-station-g2-2.7.26.54e0d8d.factory.bin',
+        'firmware-station-g3-2.7.26.54e0d8d.mt.json',
+        'firmware-station-g3-2.7.26.54e0d8d.factory.bin',
+        'firmware-station-g3-2.7.26.54e0d8d.bin',
+        'littlefs-station-g3-2.7.26.54e0d8d.bin',
+      ];
+      const result = service.findFirmwareBinary(files, 'station-g3', '2.7.26.54e0d8d');
+      expect(result.matched).toBe('firmware-station-g3-2.7.26.54e0d8d.bin');
+    });
+
     it('should reject factory binaries', () => {
       const files = [
         'firmware-heltec-v3-2.6.1.abcdef.factory.bin',

@@ -35,6 +35,9 @@ const BOARD_NAME_OVERRIDES: Record<string, string> = {
   EBYTE_ESP32_S3: 'CDEBYTE_EoRa-S3',
   STATION_G1: 'station-g1',
   STATION_G2: 'station-g2',
+  // #5423: variants/esp32s3/station-g3 (hw model 134); ships as
+  // firmware-station-g3-<ver>.bin in the esp32s3 release zip.
+  STATION_G3: 'station-g3',
 };
 
 /**
@@ -91,6 +94,7 @@ const BOARD_PLATFORM_MAP: Record<string, string> = {
   't-watch-ultra': 'esp32s3',
   't-lora-pager': 'esp32s3',
   'station-g2': 'esp32s3',
+  'station-g3': 'esp32s3',
   'seeed-sensecap-indicator': 'esp32s3',
   'm5stack-cores3': 'esp32s3',
   'm5stack-corebasic': 'esp32s3',
