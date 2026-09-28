@@ -652,8 +652,8 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
             </span>
           </label>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', marginTop: '0.5rem' }}>
-            <div className={layout.wrapRow} style={{ display: 'flex', gap: '0.5rem', alignItems: 'flex-start' }}>
-              <div className={layout.growField} style={{ flex: '1', position: 'relative' }}>
+            <div className={`${layout.wrapRow} ${layout.patternRow}`} style={{ display: 'flex', gap: '0.5rem', alignItems: 'flex-start' }}>
+              <div className={`${layout.growField} ${layout.patternField}`} style={{ position: 'relative' }}>
             <input
               type="text"
               value={newTrigger}

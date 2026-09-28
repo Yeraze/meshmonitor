@@ -287,7 +287,7 @@ const TimerTriggersSection: React.FC<TimerTriggersSectionProps> = ({
           </h4>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <div className={layout.wrapRow} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
               <label style={{ minWidth: '120px', fontSize: '0.9rem' }}>
                 {t('automation.timer_triggers.name', 'Name:')}
               </label>
@@ -295,17 +295,17 @@ const TimerTriggersSection: React.FC<TimerTriggersSectionProps> = ({
                 type="text"
                 value={newName}
                 onChange={(e) => handleNameChange(e.target.value)}
-                className="setting-input"
+                className={`setting-input ${layout.labeledField}`}
                 style={{ flex: 1 }}
                 placeholder={t('automation.timer_triggers.name_placeholder', 'e.g., Daily Report')}
               />
             </div>
 
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <div className={layout.wrapRow} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
               <label style={{ minWidth: '120px', fontSize: '0.9rem' }}>
                 {t('automation.timer_triggers.schedule', 'Schedule:')}
               </label>
-              <div style={{ flex: 1 }}>
+              <div className={layout.labeledField} style={{ flex: 1 }}>
                 <input
                   type="text"
                   value={newCronExpression}
@@ -338,7 +338,7 @@ const TimerTriggersSection: React.FC<TimerTriggersSectionProps> = ({
               </div>
             </div>
 
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <div className={layout.wrapRow} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
               <label style={{ minWidth: '120px', fontSize: '0.9rem' }}>
                 {t('automation.timer_triggers.response_type', 'Type:')}
               </label>
@@ -367,14 +367,14 @@ const TimerTriggersSection: React.FC<TimerTriggersSectionProps> = ({
             </div>
 
             {newResponseType === 'script' && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <div className={layout.wrapRow} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                 <label style={{ minWidth: '120px', fontSize: '0.9rem' }}>
                   {t('automation.timer_triggers.script', 'Script:')}
                 </label>
                 <select
                   value={newScriptPath}
                   onChange={(e) => handleScriptSelect(e.target.value)}
-                  className="setting-input"
+                  className={`setting-input ${layout.labeledField}`}
                   style={{ flex: 1 }}
                 >
                   <option value="">
@@ -392,11 +392,11 @@ const TimerTriggersSection: React.FC<TimerTriggersSectionProps> = ({
             )}
 
             {newResponseType === 'script' && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <div className={layout.wrapRow} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                 <label style={{ minWidth: '120px', fontSize: '0.9rem' }}>
                   {t('automation.timer_triggers.script_args', 'Arguments:')}
                 </label>
-                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                <div className={layout.labeledField} style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
                   <input
                     type="text"
                     value={newScriptArgs}
@@ -413,11 +413,11 @@ const TimerTriggersSection: React.FC<TimerTriggersSectionProps> = ({
             )}
 
             {newResponseType === 'text' && (
-              <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.5rem' }}>
+              <div className={layout.wrapRow} style={{ display: 'flex', alignItems: 'flex-start', gap: '0.5rem' }}>
                 <label style={{ minWidth: '120px', fontSize: '0.9rem', paddingTop: '0.5rem' }}>
                   {t('automation.timer_triggers.message', 'Message:')}
                 </label>
-                <div style={{ flex: 1 }}>
+                <div className={layout.labeledField} style={{ flex: 1 }}>
                   <textarea
                     value={newResponse}
                     onChange={(e) => setNewResponse(e.target.value)}
@@ -460,7 +460,7 @@ const TimerTriggersSection: React.FC<TimerTriggersSectionProps> = ({
                   const val = e.target.value;
                   setNewChannel(val === 'none' ? 'none' : Number(val));
                 }}
-                className="setting-input"
+                className={`setting-input ${layout.labeledField}`}
                 style={{ flex: 1 }}
               >
                 {newResponseType === 'script' && (
@@ -645,19 +645,19 @@ const TimerTriggerItem: React.FC<TimerTriggerItemProps> = ({
       {isEditing ? (
         <>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <div className={layout.wrapRow} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
               <label style={{ minWidth: '80px', fontSize: '0.9rem', fontWeight: 'bold' }}>Name:</label>
               <input
                 type="text"
                 value={editName}
                 onChange={(e) => setEditName(e.target.value)}
-                className="setting-input"
+                className={`setting-input ${layout.labeledField}`}
                 style={{ flex: 1 }}
               />
             </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <div className={layout.wrapRow} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
               <label style={{ minWidth: '80px', fontSize: '0.9rem', fontWeight: 'bold' }}>Schedule:</label>
-              <div style={{ flex: 1 }}>
+              <div className={layout.labeledField} style={{ flex: 1 }}>
                 <input
                   type="text"
                   value={editCronExpression}
@@ -676,7 +676,7 @@ const TimerTriggerItem: React.FC<TimerTriggerItemProps> = ({
                 )}
               </div>
             </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <div className={layout.wrapRow} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
               <label style={{ minWidth: '80px', fontSize: '0.9rem', fontWeight: 'bold' }}>Type:</label>
               <div style={{ display: 'flex', gap: '1rem' }}>
                 <label style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', cursor: 'pointer' }}>
@@ -702,12 +702,12 @@ const TimerTriggerItem: React.FC<TimerTriggerItemProps> = ({
               </div>
             </div>
             {editResponseType === 'script' && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <div className={layout.wrapRow} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                 <label style={{ minWidth: '80px', fontSize: '0.9rem', fontWeight: 'bold' }}>Script:</label>
                 <select
                   value={editScriptPath}
                   onChange={(e) => setEditScriptPath(e.target.value)}
-                  className="setting-input"
+                  className={`setting-input ${layout.labeledField}`}
                   style={{ flex: 1 }}
                 >
                   {availableScripts.map((script) => (
@@ -719,9 +719,9 @@ const TimerTriggerItem: React.FC<TimerTriggerItemProps> = ({
               </div>
             )}
             {editResponseType === 'script' && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <div className={layout.wrapRow} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                 <label style={{ minWidth: '80px', fontSize: '0.9rem', fontWeight: 'bold' }}>{t('automation.timer_triggers.script_args', 'Arguments:')}</label>
-                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                <div className={layout.labeledField} style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
                   <input
                     type="text"
                     value={editScriptArgs}
@@ -737,9 +737,9 @@ const TimerTriggerItem: React.FC<TimerTriggerItemProps> = ({
               </div>
             )}
             {editResponseType === 'text' && (
-              <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.5rem' }}>
+              <div className={layout.wrapRow} style={{ display: 'flex', alignItems: 'flex-start', gap: '0.5rem' }}>
                 <label style={{ minWidth: '80px', fontSize: '0.9rem', fontWeight: 'bold', paddingTop: '0.5rem' }}>Message:</label>
-                <div style={{ flex: 1 }}>
+                <div className={layout.labeledField} style={{ flex: 1 }}>
                   <textarea
                     value={editResponse}
                     onChange={(e) => setEditResponse(e.target.value)}
@@ -761,7 +761,7 @@ const TimerTriggerItem: React.FC<TimerTriggerItemProps> = ({
                 </div>
               </div>
             )}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <div className={layout.wrapRow} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
               <label style={{ minWidth: '80px', fontSize: '0.9rem', fontWeight: 'bold' }}>Channel:</label>
               <select
                 value={editChannel}
@@ -769,7 +769,7 @@ const TimerTriggerItem: React.FC<TimerTriggerItemProps> = ({
                   const val = e.target.value;
                   setEditChannel(val === 'none' ? 'none' : Number(val));
                 }}
-                className="setting-input"
+                className={`setting-input ${layout.labeledField}`}
                 style={{ flex: 1 }}
               >
                 {editResponseType === 'script' && (

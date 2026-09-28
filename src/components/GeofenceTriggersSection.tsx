@@ -351,7 +351,7 @@ const GeofenceTriggersSection: React.FC<GeofenceTriggersSectionProps> = ({
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
             {/* Name */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <div className={layout.wrapRow} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
               <label style={{ minWidth: '120px', fontSize: '0.9rem' }}>
                 {t('automation.geofence_triggers.name', 'Name:')}
               </label>
@@ -359,14 +359,14 @@ const GeofenceTriggersSection: React.FC<GeofenceTriggersSectionProps> = ({
                 type="text"
                 value={newName}
                 onChange={(e) => setNewName(e.target.value)}
-                className="setting-input"
+                className={`setting-input ${layout.labeledField}`}
                 style={{ flex: 1 }}
                 placeholder={t('automation.geofence_triggers.name_placeholder', 'e.g., Base Camp Entry Alert')}
               />
             </div>
 
             {/* Shape Type */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <div className={layout.wrapRow} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
               <label style={{ minWidth: '120px', fontSize: '0.9rem' }}>
                 {t('automation.geofence_triggers.shape_type', 'Shape:')}
               </label>
@@ -403,14 +403,14 @@ const GeofenceTriggersSection: React.FC<GeofenceTriggersSectionProps> = ({
             />
 
             {/* Event */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <div className={layout.wrapRow} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
               <label style={{ minWidth: '120px', fontSize: '0.9rem' }}>
                 {t('automation.geofence_triggers.event', 'Event:')}
               </label>
               <select
                 value={newEvent}
                 onChange={(e) => setNewEvent(e.target.value as GeofenceEvent)}
-                className="setting-input"
+                className={`setting-input ${layout.labeledField}`}
                 style={{ flex: 1 }}
               >
                 <option value="entry">{t('automation.geofence_triggers.event_entry', 'Entry')}</option>
@@ -465,7 +465,7 @@ const GeofenceTriggersSection: React.FC<GeofenceTriggersSectionProps> = ({
             />
 
             {/* Response Type */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <div className={layout.wrapRow} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
               <label style={{ minWidth: '120px', fontSize: '0.9rem' }}>
                 {t('automation.geofence_triggers.response_type', 'Type:')}
               </label>
@@ -495,14 +495,14 @@ const GeofenceTriggersSection: React.FC<GeofenceTriggersSectionProps> = ({
 
             {/* Script Selector */}
             {newResponseType === 'script' && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <div className={layout.wrapRow} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                 <label style={{ minWidth: '120px', fontSize: '0.9rem' }}>
                   {t('automation.geofence_triggers.script', 'Script:')}
                 </label>
                 <select
                   value={newScriptPath}
                   onChange={(e) => setNewScriptPath(e.target.value)}
-                  className="setting-input"
+                  className={`setting-input ${layout.labeledField}`}
                   style={{ flex: 1 }}
                 >
                   <option value="">
@@ -521,11 +521,11 @@ const GeofenceTriggersSection: React.FC<GeofenceTriggersSectionProps> = ({
 
             {/* Script Arguments */}
             {newResponseType === 'script' && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <div className={layout.wrapRow} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                 <label style={{ minWidth: '120px', fontSize: '0.9rem' }}>
                   {t('automation.geofence_triggers.script_args', 'Arguments:')}
                 </label>
-                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                <div className={layout.labeledField} style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
                   <input
                     type="text"
                     value={newScriptArgs}
@@ -543,11 +543,11 @@ const GeofenceTriggersSection: React.FC<GeofenceTriggersSectionProps> = ({
 
             {/* Text Message */}
             {newResponseType === 'text' && (
-              <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.5rem' }}>
+              <div className={layout.wrapRow} style={{ display: 'flex', alignItems: 'flex-start', gap: '0.5rem' }}>
                 <label style={{ minWidth: '120px', fontSize: '0.9rem', paddingTop: '0.5rem' }}>
                   {t('automation.geofence_triggers.message', 'Message:')}
                 </label>
-                <div style={{ flex: 1 }}>
+                <div className={layout.labeledField} style={{ flex: 1 }}>
                   <textarea
                     value={newResponse}
                     onChange={(e) => setNewResponse(e.target.value)}
@@ -591,7 +591,7 @@ const GeofenceTriggersSection: React.FC<GeofenceTriggersSectionProps> = ({
                   const val = e.target.value;
                   setNewChannel(val === 'dm' ? 'dm' : val === 'none' ? 'none' : Number(val));
                 }}
-                className="setting-input"
+                className={`setting-input ${layout.labeledField}`}
                 style={{ flex: 1 }}
               >
                 {newResponseType === 'script' && (
