@@ -1,0 +1,119 @@
+/*
+ * MeshCore Ignore / Block UI (#5408): the Node Details controls and the two
+ * Settings sections. CSS module — do not add these rules to the global sheets
+ * (CLAUDE.md CSS containment rule).
+ */
+
+.controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.status {
+  color: var(--color-text-subtle);
+  font-size: 0.85rem;
+}
+
+.danger {
+  color: var(--color-error);
+}
+
+.error {
+  color: var(--color-error);
+  font-size: 0.85rem;
+}
+
+.note {
+  color: var(--color-text-subtle);
+  font-size: 0.85rem;
+  line-height: 1.5;
+  margin: 0 0 0.75rem;
+}
+
+.tableWrap {
+  overflow-x: auto;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+}
+
+.table th,
+.table td {
+  text-align: left;
+  padding: 0.35rem 0.5rem;
+  border-bottom: 1px solid var(--color-border);
+  vertical-align: middle;
+}
+
+.table th {
+  color: var(--color-text-subtle);
+  font-weight: 600;
+}
+
+.mono {
+  font-family: var(--font-mono, monospace);
+  word-break: break-all;
+}
+
+.badge {
+  display: inline-block;
+  padding: 0.05rem 0.45rem;
+  border-radius: 999px;
+  border: 1px solid var(--color-border);
+  font-size: 0.75rem;
+}
+
+.badgeBlock {
+  border-color: var(--color-error);
+  color: var(--color-error);
+}
+
+.empty {
+  color: var(--color-text-subtle);
+  font-size: 0.85rem;
+}
+
+.form {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
+  gap: 0.6rem;
+  align-items: end;
+  margin-top: 0.75rem;
+}
+
+.form label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-size: 0.8rem;
+  color: var(--color-text-subtle);
+}
+
+.patternField {
+  grid-column: 1 / -1;
+}
+
+.checkboxLabel {
+  flex-direction: row !important;
+  align-items: center;
+  gap: 0.4rem !important;
+}
+
+.formActions {
+  grid-column: 1 / -1;
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.rowActions {
+  display: flex;
+  gap: 0.35rem;
+  flex-wrap: nowrap;
+}

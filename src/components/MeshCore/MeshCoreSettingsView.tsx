@@ -9,6 +9,8 @@ import { UiIcon } from '../icons';
 import { MeshCoreNodeDisplaySection } from './MeshCoreNodeDisplaySection';
 import { MeshCoreReceiveOnlyNote } from './MeshCoreReceiveOnlyNote';
 import { MeshCoreAdvertButtons } from './MeshCoreAdvertButtons';
+import { MeshCoreIgnoredNodesSection } from './MeshCoreIgnoredNodesSection';
+import { MeshCoreMessageFiltersSection } from './MeshCoreMessageFiltersSection';
 
 // MeshCoreDeviceType.COMPANION — active discovery is companion-only.
 const DEVICE_TYPE_COMPANION = 1;
@@ -382,6 +384,10 @@ export const MeshCoreSettingsView: React.FC<MeshCoreSettingsViewProps> = ({
       </div>
 
       <MeshCoreNodeDisplaySection baseUrl={baseUrl} sourceId={sourceId} />
+
+      {/* Ignore / Block (#5408) */}
+      <MeshCoreIgnoredNodesSection sourceId={sourceId} />
+      <MeshCoreMessageFiltersSection sourceId={sourceId} />
 
       {isCompanion && (
         <div className="form-section">

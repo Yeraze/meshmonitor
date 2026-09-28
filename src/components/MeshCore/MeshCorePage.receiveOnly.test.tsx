@@ -47,6 +47,12 @@ vi.mock('./hooks/useMeshCore', () => ({
   ConnectionStatus: {},
 }));
 
+vi.mock('../../hooks/useMeshCoreFilters', () => ({
+  useMeshCoreIgnoredNodes: () => ({ data: [] }),
+  useHiddenMeshCoreKeys: () => new Set<string>(),
+  useSetMeshCoreIgnoredNode: () => ({ mutateAsync: vi.fn() }),
+  useRemoveMeshCoreIgnoredNode: () => ({ mutateAsync: vi.fn() }),
+}));
 vi.mock('./hooks/useMeshCoreUnread', () => ({
   useMeshCoreUnread: () => ({ channels: false, dms: false }),
 }));
