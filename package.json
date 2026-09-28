@@ -49,7 +49,7 @@
     "@tmcw/togeojson": "^7.1.2",
     "@types/leaflet.heat": "^0.2.5",
     "@xmldom/xmldom": "^0.9.12",
-    "aedes": "^1.1.2",
+    "aedes": "^1.2.0",
     "archiver": "^8.0.0",
     "bcrypt": "^6.0.0",
     "better-sqlite3": "^13.0.3",
