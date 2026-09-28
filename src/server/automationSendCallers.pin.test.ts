@@ -62,11 +62,11 @@ const NOT_MESHTASTIC = new Set([
 const EXPECTED: Record<string, number> = {
   // All automation: auto-ack, auto-responder, timers, geofences, auto-welcome,
   // auto-ping, auto-traceroute, key repair, remote LocalStats, telemetry
-  // auto-retry. Also counts the helpers themselves, the queue send callback
+  // auto-retry, message forwarding (#5446, 2 enqueueAutomation calls). Also counts the helpers themselves, the queue send callback
   // (origin comes from the queued entry), and thin delegates that pass the
   // caller's origin through (broadcastWaypointDelete, sendAutoAnnouncement,
   // broadcastNodeInfoToChannel[s]).
-  'src/server/meshtasticManager.ts': 38,
+  'src/server/meshtasticManager.ts': 40,
   // Queue send + NodeInfo broadcast; origin follows triggeredByAutomation
   // (the "Send Announcement" button is manual). Plus the scheduler's calls.
   'src/server/services/autoAnnounceService.ts': 5,
