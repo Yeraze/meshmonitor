@@ -225,6 +225,7 @@ export function automationNavItems(t: Translate): NavItem[] {
     { id: 'auto-acknowledge', label: t('automation.acknowledge.title', 'Auto Acknowledge'), keywords: ['ack', 'reply'] },
     { id: 'auto-announce', label: t('automation.announce.title', 'Auto Announce'), keywords: ['broadcast', 'scheduled', 'message'] },
     { id: 'auto-responder', label: t('automation.auto_responder.title', 'Auto Responder'), keywords: ['reply', 'bot', 'keyword'] },
+    { id: 'forwarding', label: t('forwarding.title', 'Forwarding'), keywords: ['forward', 'relay', 'bridge', 'copy', 'phone'] },
     { id: 'auto-key-management', label: t('automation.auto_key_management.title', 'Auto Key Management'), keywords: ['pki', 'key mismatch', 'nodeinfo'] },
     { id: 'timer-triggers', label: t('automation.timer_triggers.title', 'Timer Triggers'), keywords: ['schedule', 'cron', 'timed events'] },
     { id: 'geofence-triggers', label: t('automation.geofence_triggers.title', 'Geofence Triggers'), keywords: ['location', 'area', 'boundary'] },

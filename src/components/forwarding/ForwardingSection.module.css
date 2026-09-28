@@ -1,0 +1,235 @@
+/*
+ * ForwardingSection (#5446). CSS module — scoped to this component per the
+ * CLAUDE.md CSS containment rule. Colors come from theme tokens only.
+ *
+ * Form controls reuse the app's shared `.setting-item` / `.setting-input` /
+ * `.setting-description` classes (src/styles/settings.css), the same ones the
+ * Auto-Responder uses, so the fields match the sections around them. This
+ * module only handles layout: the grid, full-width controls inside it, and the
+ * airtime warning.
+ */
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin: 2rem 0 1rem;
+  padding: 1rem 1.25rem;
+  background: var(--color-surface-hover);
+  border: 1px solid var(--color-surface-active);
+  border-radius: 8px;
+}
+
+.header h2 {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  min-width: 0;
+}
+
+.count {
+  margin-left: auto;
+  font-size: 0.85rem;
+  color: var(--color-text-subtle);
+  white-space: nowrap;
+}
+
+.body {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+/*
+ * The save bar is position: fixed over the bottom of the page (and sits above
+ * the bottom nav on phones). There is no shared clearance pattern for it, so
+ * keep the rule cards and their fields out from under it when the browser
+ * scrolls them into view (focus, Tab), and pad the section on phones where the
+ * bar plus the nav bar take the most room.
+ */
+.card,
+.card input,
+.card select,
+.card button {
+  scroll-margin-bottom: 7rem;
+}
+
+@media (max-width: 768px), (max-height: 500px) and (orientation: landscape) {
+  .body {
+    padding-bottom: 5rem;
+  }
+}
+
+.description {
+  margin: 0;
+  color: var(--color-text-subtle);
+  line-height: 1.5;
+}
+
+.limits {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--color-text-muted);
+  line-height: 1.5;
+}
+
+.paused {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0;
+  font-size: 0.9rem;
+  color: var(--color-warning);
+}
+
+.empty {
+  margin: 0;
+  font-size: 0.9rem;
+  color: var(--color-text-subtle);
+}
+
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  padding: 1rem 1.25rem;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  min-width: 0;
+}
+
+.cardDisabled {
+  opacity: 0.6;
+}
+
+.cardHeader {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  min-width: 0;
+}
+
+.toggle {
+  width: auto;
+  margin: 0;
+  flex: 0 0 auto;
+}
+
+/*
+ * `.setting-input` defaults to a fixed 200px width. Inside the rule card every
+ * control fills its column instead (the MeshCore trigger cards do the same in
+ * MeshCoreAutomation.css). The doubled class beats the global rule on
+ * specificity regardless of stylesheet order.
+ */
+.card .control {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+/*
+ * MeshCore variant: a rule row mixes .meshcore-input and .meshcore-select,
+ * which the view styles with different padding, and browsers give <select> a
+ * different line box than <input> even at equal padding (a 2px gap). Pin both
+ * to one explicit height, line-height and padding so every control in the row
+ * lines up. The doubled class wins over the view-scoped rules in
+ * MeshCoreAutomation.css on specificity, not source order.
+ */
+.card input.meshcoreControl.meshcoreControl,
+.card select.meshcoreControl.meshcoreControl {
+  box-sizing: border-box;
+  height: 2.25rem;
+  line-height: 1.25;
+  padding: 0 0.6rem;
+  font-size: 0.95rem;
+  border-radius: var(--radius-md);
+}
+
+.cardHeader .control {
+  flex: 1 1 auto;
+}
+
+.grid {
+  display: grid;
+  /* min(...) keeps a single column from overflowing a narrow phone screen. */
+  grid-template-columns: repeat(auto-fit, minmax(min(240px, 100%), 1fr));
+  gap: 1rem 1.25rem;
+  min-width: 0;
+}
+
+/* The shared .setting-item spacing is for stacked sections; the grid gap
+   handles spacing here. */
+.grid :global(.setting-item) {
+  margin: 0;
+  min-width: 0;
+}
+
+.grid :global(.setting-item) label {
+  margin-bottom: 0;
+}
+
+.targetRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+.targetRow .control {
+  flex: 1 1 10rem;
+  width: auto;
+}
+
+.card .targetKind {
+  flex: 0 1 9rem;
+}
+
+/* Full-width note under the rule, in the app's warning-banner style. */
+.warning {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  margin: 0;
+  padding: 0.75rem 1rem;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--color-warning) 12%, transparent);
+  border: 1px solid var(--color-warning);
+  color: var(--color-text);
+  font-size: 0.9rem;
+  line-height: 1.4;
+}
+
+.warning > :first-child {
+  color: var(--color-warning);
+  flex: 0 0 auto;
+  margin-top: 0.1rem;
+}
+
+.iconButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex: 0 0 auto;
+  padding: 0.5rem 0.75rem;
+  border-radius: 6px;
+  border: 1px solid var(--color-border);
+  background: var(--color-bg-raised);
+  color: var(--color-text);
+  font-size: 0.95rem;
+  cursor: pointer;
+}
+
+.iconButton:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.danger {
+  color: var(--color-error);
+}
+
+.addRow {
+  display: flex;
+}

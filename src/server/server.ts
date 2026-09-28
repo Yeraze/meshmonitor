@@ -712,6 +712,7 @@ import tileServerRoutes from './routes/tileServerTest.js';
 import v1Router from './routes/v1/index.js';
 import meshcoreRoutes from './routes/meshcoreRoutes.js';
 import mqttPacketRoutes from './routes/mqttPacketRoutes.js';
+import forwardingRoutes from './routes/forwardingRoutes.js';
 import atakRoutes from './routes/atakRoutes.js';
 import surveyRoutes from './routes/surveyRoutes.js';
 import beaconOfferRoutes from './routes/beaconOfferRoutes.js';
@@ -859,6 +860,9 @@ apiRouter.use('/sources/:id/meshcore', meshcoreRoutes);
 // a source is disconnected or reconfigured. See
 // docs/internal/dev-notes/MQTT_PACKET_MONITOR_PHASE1_SPEC.md §2.11/§2.12.
 apiRouter.use('/sources/:id/mqtt/packets', mqttPacketRoutes);
+
+// Message Forwarding rules (#5446) — per-source, Meshtastic + MeshCore.
+apiRouter.use('/sources/:id/forwarding', forwardingRoutes);
 
 // ATAK Contacts routes — nested under `/api/sources/:id/atak` so each
 // request resolves the contact table bound to a specific source. No

@@ -22,6 +22,8 @@ import AutoTimeSyncSection from './AutoTimeSyncSection';
 import AutoAcknowledgeSection from './AutoAcknowledgeSection';
 import AutoAnnounceSection from './AutoAnnounceSection';
 import AutoResponderSection from './AutoResponderSection';
+import ForwardingSection from './forwarding/ForwardingSection';
+import { useSource } from '../contexts/SourceContext';
 import AutoKeyManagementSection from './AutoKeyManagementSection';
 import TimerTriggersSection from './TimerTriggersSection';
 import GeofenceTriggersSection from './GeofenceTriggersSection';
@@ -33,6 +35,8 @@ interface AutomationTabProps {
   channels: Channel[];
   nodes: DeviceInfo[];
   currentNodeId: string;
+  /** True when this source cannot transmit (TX disabled or MQTT); Forwarding goes read-only. */
+  txDisabled?: boolean;
 }
 
 /**
@@ -43,8 +47,20 @@ interface AutomationTabProps {
  * props. Extracted from the inline `activeTab === 'automation'` render
  * block in App.tsx (#3962 5.4 PR6) — behavior-preserving.
  */
-const AutomationTab: React.FC<AutomationTabProps> = ({ baseUrl, channels, nodes, currentNodeId }) => {
+const AutomationTab: React.FC<AutomationTabProps> = ({ baseUrl, channels, nodes, currentNodeId, txDisabled = false }) => {
   const { t } = useTranslation();
+  const { sourceId } = useSource();
+  const forwardingChannels = React.useMemo(
+    () => channels.map(c => ({ index: c.id, name: c.displayName || c.name || '' })).sort((a, b) => a.index - b.index),
+    [channels],
+  );
+  const forwardingNodes = React.useMemo(
+    () => nodes
+      .filter(n => typeof n.user?.id === 'string' && n.user.id !== currentNodeId)
+      .map(n => ({ id: n.user!.id, label: `${n.user!.longName || n.user!.shortName || n.user!.id} (${n.user!.id})` }))
+      .sort((a, b) => a.label.localeCompare(b.label)),
+    [nodes, currentNodeId],
+  );
   const {
     tracerouteIntervalMinutes,
     remoteLocalStatsIntervalMinutes,
@@ -261,6 +277,17 @@ const AutomationTab: React.FC<AutomationTabProps> = ({ baseUrl, channels, nodes,
               onSkipIncompleteNodesChange={setAutoResponderSkipIncompleteNodes}
             />
           </div>
+          {sourceId && (
+            <div id="forwarding">
+              <ForwardingSection
+                baseUrl={baseUrl}
+                sourceId={sourceId}
+                channels={forwardingChannels}
+                nodes={forwardingNodes}
+                receiveOnly={txDisabled}
+              />
+            </div>
+          )}
           <div id="auto-key-management">
             <AutoKeyManagementSection
               enabled={autoKeyManagementEnabled}

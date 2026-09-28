@@ -165,7 +165,8 @@ describe('per-source settings key allowlist invariants', () => {
   // exact-equality test above.
   it('PER_SOURCE_KEYS_NOT_POSTABLE has the expected size', () => {
     // #5364/#5365 Phase 2 added aircraftAgeOutLastRunAt + aircraftAgeOutLastResult.
-    expect(PER_SOURCE_KEYS_NOT_POSTABLE.size).toBe(27);
+    // #5446 added forwardingRules (dedicated automation-gated route only).
+    expect(PER_SOURCE_KEYS_NOT_POSTABLE.size).toBe(28);
   });
 
   // #5101 Phase 3 WP3: the transport-traffic writer's checkpoint is
