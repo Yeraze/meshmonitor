@@ -3,6 +3,8 @@ import {
   isPlausibleMeshCoreTimeMs,
   isFutureDriftedMeshCoreTimeMs,
   plausibleMeshCoreTimeMs,
+  isPlausibleMeshCoreMessageTimeMs,
+  plausibleMeshCoreMessageTimeMs,
   plausibleMeshCoreTimeMsOrUndefined,
 } from './meshcoreTimestamp.js';
 
@@ -84,5 +86,36 @@ describe('plausibleMeshCoreTimeMs', () => {
     const after = Date.now();
     expect(result).toBeGreaterThanOrEqual(before);
     expect(result).toBeLessThanOrEqual(after);
+  });
+});
+
+describe('message time window (#5339)', () => {
+  const DAY = 24 * 60 * 60 * 1000;
+
+  it('accepts a stated time up to a day before receipt', () => {
+    expect(isPlausibleMeshCoreMessageTimeMs(NOW - 60_000, NOW)).toBe(true);
+    expect(isPlausibleMeshCoreMessageTimeMs(NOW - DAY, NOW)).toBe(true);
+  });
+
+  it('rejects a stated time more than a day before receipt (no-RTC 2024 default)', () => {
+    expect(isPlausibleMeshCoreMessageTimeMs(NOW - DAY - 1, NOW)).toBe(false);
+    expect(isPlausibleMeshCoreMessageTimeMs(1_715_770_351_000, NOW)).toBe(false);
+  });
+
+  it('keeps the future ceiling and pre-2020 floor', () => {
+    expect(isPlausibleMeshCoreMessageTimeMs(3_700_000_000_000, NOW)).toBe(false);
+    expect(isPlausibleMeshCoreMessageTimeMs(946_684_800_000, NOW)).toBe(false);
+  });
+
+  it('plausibleMeshCoreMessageTimeMs falls back to receipt time outside the window', () => {
+    const recentSec = Math.floor(NOW / 1000) - 60;
+    expect(plausibleMeshCoreMessageTimeMs(recentSec, NOW)).toBe(recentSec * 1000);
+    expect(plausibleMeshCoreMessageTimeMs(1_715_770_351, NOW)).toBe(NOW);
+    expect(plausibleMeshCoreMessageTimeMs(undefined, NOW)).toBe(NOW);
+  });
+
+  it('plausibleMeshCoreTimeMs (room posts) still keeps an old-but-real stated time', () => {
+    const weekOldSec = Math.floor((NOW - 7 * DAY) / 1000);
+    expect(plausibleMeshCoreTimeMs(weekOldSec, NOW)).toBe(weekOldSec * 1000);
   });
 });

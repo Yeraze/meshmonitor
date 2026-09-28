@@ -113,7 +113,7 @@ import {
   MESHCORE_AUTOMATED_FLOOD_ADVERT_MIN_INTERVAL_MS,
 } from '../types/meshcoreAdvert.js';
 import { MeshCoreZeroHopAdvertUnsupportedError, classifyRepeaterAdvertReply } from './utils/meshcoreAdvert.js';
-import { plausibleMeshCoreTimeMs, plausibleMeshCoreTimeMsOrUndefined } from '../utils/meshcoreTimestamp.js';
+import { plausibleMeshCoreTimeMs, plausibleMeshCoreMessageTimeMs, plausibleMeshCoreTimeMsOrUndefined } from '../utils/meshcoreTimestamp.js';
 
 // Dynamic imports for optional serialport dependency
 // These are loaded only when MeshCore is enabled to avoid requiring native build tools
@@ -2027,10 +2027,11 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
         toPublicKey: this.localNode?.publicKey || 'local',
         text: data.text,
         // Falls back to our own receipt clock when the remote's clock is
-        // missing or implausible (unsynced RTC drifted years off, #5339) —
+        // missing or implausible: drifted into the future, or more than a day
+        // behind (a no-RTC node stuck at the firmware 2024 default, #5339) —
         // otherwise a broken sender clock pins this message at a bogus sort
         // position forever (see messageOrder.ts, which sorts on `timestamp`).
-        timestamp: plausibleMeshCoreTimeMs(data.sender_timestamp),
+        timestamp: plausibleMeshCoreMessageTimeMs(data.sender_timestamp),
         // Our own clock, for ordering. `timestamp` above is the REMOTE's and
         // only whole-seconds, so it cannot order against our ms-precision
         // sends (see components/MeshCore/messageOrder.ts).
@@ -2091,7 +2092,7 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
         text: body,
         // See the contact_message case above (#5339): falls back to receipt
         // time when the sender's clock is missing or implausible.
-        timestamp: plausibleMeshCoreTimeMs(data.sender_timestamp),
+        timestamp: plausibleMeshCoreMessageTimeMs(data.sender_timestamp),
         // Our own clock, for ordering. `timestamp` above is the REMOTE's and
         // only whole-seconds, so it cannot order against our ms-precision
         // sends (see components/MeshCore/messageOrder.ts).
@@ -3972,23 +3973,27 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
           // what resurrected deleted rows before (#3878). The tombstone expires
           // (or is cleared by a live advert), so a genuine re-add still syncs.
           if (this.isContactTombstoned(c.public_key)) continue;
-          // Preserve the real Last Heard across reconnect (#3645). The companion
-          // reports each contact's last advert time (epoch seconds) — use it for
-          // lastSeen instead of the reconnect wall-clock, which previously reset
-          // every node's Last Heard to "now". When the device didn't report an
-          // advert time, keep the last value we knew about instead of stamping
-          // "now" (#5341) — the forward-only guard in upsertNode() can't catch
-          // that, since Date.now() always looks like forward progress. (Guard
-          // handles a value already in ms, mirroring MeshCoreContactDetailPanel.)
+          // Preserve the real Last Heard across reconnect (#3645) rather than
+          // stamping the reconnect wall-clock, which reset every node's Last
+          // Heard to "now". When the device reports no usable time, keep the
+          // last value we knew about (#5341) — the forward-only guard in
+          // upsertNode() can't catch "now", since it always looks like progress.
           const advertSec = typeof c.last_advert === 'number' ? c.last_advert : 0;
-          const rawAdvertMs = advertSec > 0
-            ? (advertSec < 1e12 ? advertSec * 1000 : advertSec)
+          // Last Heard comes from `last_mod`, NOT `last_advert` (#5339).
+          // `last_advert` is the SENDER's clock: a node with no RTC boots at the
+          // firmware's fixed default (2024) and one that drifted can read years
+          // off either way, so it says nothing about when we heard the node.
+          // `last_mod` is stamped by the COMPANION's clock whenever it hears an
+          // advert, message or path from that contact (ContactInfo.h: "by OUR
+          // clock"), and startDeviceTimeSync() keeps that clock on server time.
+          // Clamped to now so a companion running slightly fast can't sort a
+          // node ahead of one we genuinely just heard.
+          const lastModSec = typeof c.last_mod === 'number' ? c.last_mod : 0;
+          const rawLastModMs = lastModSec > 0
+            ? (lastModSec < 1e12 ? lastModSec * 1000 : lastModSec)
             : undefined;
-          // `last_advert` is the SENDER's clock. One that can't be a real
-          // receive time (unsynced RTC drifted years off, #5339) counts as no
-          // advert time at all: trusting it wrecks Last Heard sort order and
-          // the max-age filter for as long as the drifted value sticks around.
-          const advertMs = plausibleMeshCoreTimeMsOrUndefined(rawAdvertMs);
+          const lastModMs = plausibleMeshCoreTimeMsOrUndefined(rawLastModMs);
+          const heardMs = lastModMs !== undefined ? Math.min(lastModMs, Date.now()) : undefined;
           this.contacts.set(c.public_key, {
             publicKey: c.public_key,
             advName: c.adv_name,
@@ -3999,7 +4004,7 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
             latitude: c.latitude,
             longitude: c.longitude,
             lastAdvert: advertSec > 0 ? advertSec : undefined,
-            lastSeen: advertMs ?? previousLastSeen.get(c.public_key),
+            lastSeen: heardMs ?? previousLastSeen.get(c.public_key),
             outPath: c.out_path ?? null,
             pathLen: c.path_len ?? null,
             flags: typeof c.flags === 'number' ? c.flags : undefined,
