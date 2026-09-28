@@ -8,17 +8,6 @@
  * Also used by the Admin Commands copy of this field.
  */
 
-/*
- * Each config section is the only child of its `#config-*` wrapper, so the
- * global `.settings-section:last-child` zeroes its bottom margin and the
- * counter sat flush against the next section's header. Restore the normal
- * `.settings-section` gap (2rem). The extra class outranks the global
- * `:last-child` rule regardless of stylesheet load order.
- */
-.section.section:last-child {
-  margin-bottom: 2rem;
-}
-
 .field {
   display: flex;
   flex-direction: column;

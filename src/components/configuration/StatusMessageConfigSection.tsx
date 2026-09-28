@@ -54,7 +54,7 @@ const StatusMessageConfigSection: React.FC<StatusMessageConfigSectionProps> = ({
   });
 
   return (
-    <div className={`settings-section ${styles.section}`}>
+    <div className="settings-section">
       <h3 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
         {t('statusmessage_config.title', 'Status Message')}
         <a

@@ -2153,7 +2153,7 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
         </div>
       )}
 
-      <div className="settings-content">
+      <div className={`settings-content ${styles.sectionStack}`}>
         <div id="config-node-identity">
           <NodeIdentitySection
             longName={longName}

@@ -14,6 +14,9 @@
 import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
+import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 // --- hoisted mutable mock state -----------------------------------------
 const h = vi.hoisted(() => ({
@@ -134,4 +137,41 @@ describe('ConfigurationTab — excluded module gating (#5065)', () => {
     ).toBeTruthy();
   });
 
+});
+
+/*
+ * Section spacing. Every section is the only child of its `#config-*` wrapper,
+ * so the global `.settings-section:last-child` rule zeroes its bottom margin
+ * and sections joined flush. The gap now lives on the wrappers' container.
+ * jsdom does not apply stylesheets, so this pins the class hook and the rule.
+ */
+describe('ConfigurationTab — gap between config sections', () => {
+  it('spaces the section wrappers from a class on their container', async () => {
+    h.currentConfig = { supportedModules: { paxcounter: false } };
+    render(<ConfigurationTab nodes={[]} channels={[]} />);
+    await screen.findByText(NOTICE);
+
+    const pax = document.getElementById('config-paxcounter')!;
+    const stack = pax.parentElement!;
+    expect(stack.classList.contains('settings-content')).toBe(true);
+    const extra = Array.from(stack.classList).filter((c) => c !== 'settings-content');
+    expect(extra).toHaveLength(1);
+    expect(extra[0]).not.toBe('undefined');
+
+    // Every direct child is a section wrapper, so the sibling rule spaces
+    // sections and nothing else. The gated wrapper is still one of them.
+    const children = Array.from(stack.children);
+    expect(children.length).toBeGreaterThan(20);
+    for (const child of children) {
+      expect(child.id).toMatch(/^config-/);
+    }
+    expect(pax.querySelector('.settings-section')).not.toBeNull();
+  });
+
+  it('adds space only between wrappers, never after the last one', () => {
+    const dir = dirname(fileURLToPath(import.meta.url));
+    const css = readFileSync(join(dir, 'ConfigurationTab.module.css'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
+    expect(css).toMatch(/\.sectionStack\s*>\s*\*\s*\+\s*\*\s*\{\s*margin-top:\s*2rem;\s*\}/);
+    expect(css).not.toMatch(/\.sectionStack[^{]*\{[^}]*margin-bottom/);
+  });
 });

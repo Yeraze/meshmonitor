@@ -119,3 +119,23 @@
     min-width: 0;
   }
 }
+
+/*
+ * Gap between config sections.
+ *
+ * Each section renders inside its own `#config-*` wrapper div, so it is always
+ * that wrapper's last child. The global `.settings-section:last-child` rule
+ * (src/styles/settings.css, frozen) then zeroes its 2rem bottom margin, and
+ * every section sat flush against the next section's header.
+ *
+ * Space the wrappers instead: every wrapper after the first gets the normal
+ * `.settings-section` 2rem above it. The adjacent-sibling combinator means the
+ * first section gains no top space and the last gains no bottom space. When a
+ * wrapper holds more than one section (Security + PKI), the inner section's own
+ * 2rem bottom margin collapses with this one, so the gap stays 2rem. The
+ * excluded-module gate (`.gated`, #5065) sits inside the wrapper, so it is
+ * unaffected.
+ */
+.sectionStack > * + * {
+  margin-top: 2rem;
+}
