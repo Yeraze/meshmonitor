@@ -6,6 +6,7 @@ import { useCsrfFetch } from '../../hooks/useCsrfFetch';
 import { useToast } from '../ToastContainer';
 import { usePoll } from '../../hooks/usePoll';
 import { useData } from '../../contexts/DataContext';
+import { useSource } from '../../contexts/SourceContext';
 import { getHardwareModelName } from '../../utils/hardwareModel';
 import { buildOtaGateway } from '../../utils/otaGateway';
 
@@ -57,6 +58,8 @@ interface UpdateStatus {
   downloadSize?: number;
   matchedFile?: string;
   rejectedFiles?: Array<{ name: string; reason: string }>;
+  /** Source whose node the running update is flashing (#5424 follow-up). */
+  sourceId?: string;
 }
 
 interface FirmwareRelease {
@@ -123,6 +126,12 @@ const FirmwareUpdateSection: React.FC<FirmwareUpdateSectionProps> = ({ baseUrl }
   const { showToast } = useToast();
   const queryClient = useQueryClient();
   const { setConnectionStatus } = useData();
+  // #5424 follow-up: every OTA call names the selected source, so the server
+  // disconnects and reconnects THIS source's node rather than the primary's.
+  // null outside a SourceProvider (legacy single-source install).
+  const { sourceId } = useSource();
+  const withSource = <T extends Record<string, unknown>>(body: T): T & { sourceId?: string } =>
+    sourceId ? { ...body, sourceId } : body;
 
   // Derive gateway info from poll data
   const { data: pollData } = usePoll();
@@ -378,12 +387,12 @@ const FirmwareUpdateSection: React.FC<FirmwareUpdateSectionProps> = ({ baseUrl }
       const res = await csrfFetch(`${baseUrl}/api/firmware/update`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+        body: JSON.stringify(withSource({
           useCustomUrl: true,
           gatewayIp: gatewayInfo.gatewayIp,
           hwModel: gatewayInfo.hwModel,
           currentVersion: gatewayInfo.firmwareVersion,
-        }),
+        })),
       });
       if (!res.ok) {
         const data = await res.json();
@@ -401,12 +410,12 @@ const FirmwareUpdateSection: React.FC<FirmwareUpdateSectionProps> = ({ baseUrl }
       const res = await csrfFetch(`${baseUrl}/api/firmware/update`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+        body: JSON.stringify(withSource({
           useStagedUpload: true,
           gatewayIp: gatewayInfo.gatewayIp,
           hwModel: gatewayInfo.hwModel,
           currentVersion: gatewayInfo.firmwareVersion,
-        }),
+        })),
       });
       if (!res.ok) {
         const data = await res.json();
@@ -420,12 +429,12 @@ const FirmwareUpdateSection: React.FC<FirmwareUpdateSectionProps> = ({ baseUrl }
 
   const handleInstall = async (release: FirmwareRelease) => {
     try {
-      const body = {
+      const body = withSource({
         targetVersion: release.version,
         gatewayIp: gatewayInfo.gatewayIp,
         hwModel: gatewayInfo.hwModel,
         currentVersion: gatewayInfo.firmwareVersion,
-      };
+      });
       const res = await csrfFetch(`${baseUrl}/api/firmware/update`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -445,10 +454,10 @@ const FirmwareUpdateSection: React.FC<FirmwareUpdateSectionProps> = ({ baseUrl }
     if (isConfirming) return;
     setIsConfirming(true);
     try {
-      const body = {
+      const body = withSource({
         gatewayIp: effectiveStatus?.preflightInfo?.gatewayIp ?? gatewayInfo.gatewayIp,
         nodeId: gatewayInfo.nodeId,
-      };
+      });
       const res = await csrfFetch(`${baseUrl}/api/firmware/update/confirm`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -522,6 +531,8 @@ const FirmwareUpdateSection: React.FC<FirmwareUpdateSectionProps> = ({ baseUrl }
     try {
       const res = await csrfFetch(`${baseUrl}/api/firmware/update/cancel`, {
         method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(withSource({})),
       });
       if (!res.ok) {
         const data = await res.json();
@@ -542,10 +553,18 @@ const FirmwareUpdateSection: React.FC<FirmwareUpdateSectionProps> = ({ baseUrl }
         // Immediately show reconnecting state so the UI reflects the disconnect→reconnect cycle
         setConnectionStatus('connecting');
         // Successful update — full disconnect→reconnect cycle to re-download all node data
-        await csrfFetch(`${baseUrl}/api/firmware/update/done`, { method: 'POST' });
+        await csrfFetch(`${baseUrl}/api/firmware/update/done`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(withSource({})),
+        });
       } else {
         // Error dismiss — just reset state
-        await csrfFetch(`${baseUrl}/api/firmware/update/cancel`, { method: 'POST' });
+        await csrfFetch(`${baseUrl}/api/firmware/update/cancel`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(withSource({})),
+        });
       }
     } catch {
       // Best-effort — even if the call fails, clear local queries
@@ -559,6 +578,8 @@ const FirmwareUpdateSection: React.FC<FirmwareUpdateSectionProps> = ({ baseUrl }
     try {
       const res = await csrfFetch(`${baseUrl}/api/firmware/update/retry`, {
         method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(withSource({})),
       });
       if (!res.ok) {
         const data = await res.json();
@@ -616,6 +637,12 @@ const FirmwareUpdateSection: React.FC<FirmwareUpdateSectionProps> = ({ baseUrl }
   };
 
   const isUpdateActive = effectiveStatus && effectiveStatus.state !== 'idle';
+  // One OTA runs at a time across all sources. When it belongs to a different
+  // source, don't put that source's wizard over this page (its actions would be
+  // refused as OTA_SOURCE_MISMATCH); say it is busy instead.
+  const isOtherSourceUpdate = !!(
+    isUpdateActive && sourceId && effectiveStatus?.sourceId && effectiveStatus.sourceId !== sourceId
+  );
 
   return (
     <div id="settings-firmware" className="settings-section" style={{ marginTop: '2rem' }}>
@@ -886,8 +913,27 @@ const FirmwareUpdateSection: React.FC<FirmwareUpdateSectionProps> = ({ baseUrl }
         </button>
       </div>
 
+      {isOtherSourceUpdate && (
+        <div
+          className="setting-item"
+          style={{
+            marginTop: '1rem',
+            padding: '0.5rem 0.75rem',
+            border: '1px solid var(--color-warning)',
+            borderRadius: '4px',
+          }}
+        >
+          <span className="setting-description">
+            {t(
+              'firmware.update_on_other_source',
+              'A firmware update is running on another source. Only one update can run at a time; open that source to follow or cancel it.'
+            )}
+          </span>
+        </div>
+      )}
+
       {/* Update Wizard Modal (blocks UI during firmware update) */}
-      {isUpdateActive && effectiveStatus && (
+      {isUpdateActive && effectiveStatus && !isOtherSourceUpdate && (
         <div className="modal-overlay" style={{ zIndex: 10002 }}>
         <div style={{
           padding: '1.5rem',
