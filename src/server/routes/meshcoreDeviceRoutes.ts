@@ -10,6 +10,7 @@ import { Router, Request, Response } from 'express';
 import { ConnectionType, MeshCoreDeviceType } from '../meshcoreManager.js';
 import { getMeshCoreTelemetryPoller, nodeNumFromPubkey } from '../services/meshcoreTelemetryPoller.js';
 import { logger } from '../../utils/logger.js';
+import { meshcoreMessageFilter } from '../services/meshcoreMessageFilter.js';
 import { requireAuth, optionalAuth, requirePermission, hasPermission } from '../auth/authMiddleware.js';
 import { meshcoreDeviceLimiter } from '../middleware/rateLimiters.js';
 import { managerFor, isValidConnectionParams, requireMeshcoreTx, failIfTxDisabled, stripPositions } from './meshcoreRouteShared.js';
@@ -180,7 +181,10 @@ router.get('/snapshot', optionalAuth(), requirePermission('connection', 'read', 
     const canReadMessages = isAdmin || (user
       ? await databaseService.checkPermissionAsync(user.id, 'messages', 'read', sourceId)
       : false);
-    const messages = canReadMessages ? manager.getRecentMessages(50) : [];
+    // Ignore / Block (#5408): flag messages that match the CURRENT lists.
+    const messages = canReadMessages
+      ? meshcoreMessageFilter.annotate(sourceId, manager.getRecentMessages(50), localNode?.publicKey)
+      : [];
     const seqCursor = messages.length > 0 ? Math.max(...messages.map(m => m.timestamp)) : 0;
 
     // Shares the local-row construction site with GET /contacts and

@@ -103,6 +103,14 @@ function subscribe(): void {
   });
 }
 
+/**
+ * An ignored MeshCore message (#5408) is stored and shown collapsed, but it
+ * must not trigger automations. Its bus event carries `filtered: 'ignore'`.
+ */
+export function shouldRouteMeshCoreMessageToAutomations(message: Pick<MeshCoreMessage, 'filtered'>): boolean {
+  return !message.filtered;
+}
+
 async function handleEvent(event: DataEvent): Promise<void> {
   const e = engine;
   if (!e) return;
@@ -115,6 +123,9 @@ async function handleEvent(event: DataEvent): Promise<void> {
 
     case 'meshcore:message':
       // MeshCore received messages were previously ignored by the engine (#3833).
+      // An ignored message (#5408) is stored and shown collapsed, but must not
+      // trigger automations.
+      if (!shouldRouteMeshCoreMessageToAutomations(event.data as MeshCoreMessage)) break;
       await e.onMeshCoreMessage(event.data as MeshCoreMessage, sourceId);
       break;
 

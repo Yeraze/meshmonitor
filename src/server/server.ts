@@ -711,6 +711,7 @@ import newsRoutes from './routes/newsRoutes.js';
 import tileServerRoutes from './routes/tileServerTest.js';
 import v1Router from './routes/v1/index.js';
 import meshcoreRoutes from './routes/meshcoreRoutes.js';
+import { meshcoreMessageFilter } from './services/meshcoreMessageFilter.js';
 import mqttPacketRoutes from './routes/mqttPacketRoutes.js';
 import forwardingRoutes from './routes/forwardingRoutes.js';
 import atakRoutes from './routes/atakRoutes.js';
@@ -1237,6 +1238,17 @@ function gracefulShutdown(reason: string, exitCode = 0): void {
       logger.debug('✅ Meshtastic connection closed');
     } catch (error) {
       logger.error('Error disconnecting from Meshtastic:', error);
+    }
+
+    // #5408: write pending MeshCore Ignore / Block hit counts before the DB
+    // closes. Bounded; a few lost counts are acceptable.
+    try {
+      await Promise.race([
+        meshcoreMessageFilter.flushAsync(),
+        new Promise((resolve) => setTimeout(resolve, 2000)),
+      ]);
+    } catch (error) {
+      logger.warn('Error flushing MeshCore filter hit counts:', error);
     }
 
     // #5101 P3 WP3: give the transport-traffic writer's final checkpoint up

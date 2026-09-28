@@ -59,6 +59,7 @@ import { createHash } from 'node:crypto';
 import { ChannelCrypto } from '@michaelhart/meshcore-decoder';
 import { ALL_SOURCES } from '../db/repositories/base.js';
 import { dataEventEmitter } from './services/dataEventEmitter.js';
+import { meshcoreMessageFilter } from './services/meshcoreMessageFilter.js';
 import { meshCorePacketHashOrUndefined } from './services/meshcoreObserverPacket.js';
 import { MESHCORE_PAYLOAD_ADVERT } from '../utils/coverage.js';
 import {
@@ -241,6 +242,8 @@ export class MeshCoreMqttManager extends EventEmitter implements ISourceManager 
   async start(): Promise<void> {
     if (this.started) return;
     this.started = true;
+    // Ignore / Block lists (#5408) are classified synchronously on ingest.
+    await meshcoreMessageFilter.loadSource(this.sourceId);
     try {
       await this.openBroker();
     } catch (err) {
@@ -588,17 +591,50 @@ export class MeshCoreMqttManager extends EventEmitter implements ISourceManager 
           createdAt: Date.now(),
       };
 
+      // Ignore / Block (#5408): block drops the message before it is stored;
+      // ignore stores it and flags the event so automations skip it.
+      const verdict = meshcoreMessageFilter.classify(this.sourceId, {
+        fromPublicKey: null,
+        fromName: plain.senderName,
+        text: plain.text,
+        kind: 'channel',
+      }, { countHit: false });
+      // Many observers relay one frame, so count a hit once per message id,
+      // not once per copy.
+      if (verdict.action === 'block') {
+        if (this.rememberBlockedId(id)) meshcoreMessageFilter.countHit(this.sourceId, verdict);
+        return;
+      }
+
       const inserted = await databaseService.meshcore.insertMessage(row, this.sourceId);
       if (!inserted) return; // A different observer's copy already landed.
+      meshcoreMessageFilter.countHit(this.sourceId, verdict);
       this.stats.channelMessages++;
       // The packet hash (#5357) rides the event only: added AFTER the insert so
       // the DB row keeps its shape (meshcore_messages has no hash column). The
       // raw frame came straight off the wire, so the hash is exact.
       const packetHash = meshCorePacketHashOrUndefined(decoded.event.raw_hex);
-      dataEventEmitter.emitMeshCoreMessage({ ...row, packetHash }, this.sourceId);
+      dataEventEmitter.emitMeshCoreMessage(
+        verdict.action === 'ignore' ? { ...row, packetHash, filtered: 'ignore' as const } : { ...row, packetHash },
+        this.sourceId,
+      );
     } catch (err) {
       logger.debug(`[MeshCoreMqtt:${this.sourceId}] failed to ingest channel message:`, err);
     }
+  }
+
+  /** Recently blocked message ids (#5408), so N observer copies count one hit. */
+  private recentBlockedIds = new Set<string>();
+
+  /** Returns true the first time an id is seen. Bounded to the last 500 ids. */
+  private rememberBlockedId(id: string): boolean {
+    if (this.recentBlockedIds.has(id)) return false;
+    this.recentBlockedIds.add(id);
+    if (this.recentBlockedIds.size > 500) {
+      const oldest = this.recentBlockedIds.values().next().value;
+      if (oldest !== undefined) this.recentBlockedIds.delete(oldest);
+    }
+    return true;
   }
 
   /**
