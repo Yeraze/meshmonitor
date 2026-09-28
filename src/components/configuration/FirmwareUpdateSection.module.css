@@ -1,0 +1,31 @@
+/* Sibling-build warning in the OTA wizard (#5423). Shown before every
+   confirm so the operator sees it before the flash step, not as a toast. */
+.siblingWarning {
+  display: flex;
+  gap: 0.6rem;
+  align-items: flex-start;
+  padding: 0.75rem;
+  margin-bottom: 0.75rem;
+  border-radius: 6px;
+  border: 2px solid var(--color-warning);
+  background: color-mix(in srgb, var(--color-warning) 15%, var(--color-bg));
+  color: var(--color-text);
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
+.siblingWarningIcon {
+  flex-shrink: 0;
+  margin-top: 0.15rem;
+  color: var(--color-warning);
+}
+
+.siblingWarningTitle {
+  display: block;
+  margin-bottom: 0.25rem;
+}
+
+.siblingWarningList {
+  margin: 0;
+  padding-left: 1.1rem;
+}

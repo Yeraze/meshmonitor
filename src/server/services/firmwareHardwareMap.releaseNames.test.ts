@@ -28,7 +28,9 @@ vi.mock('../sourceManagerTypes.js', () => ({ getPrimaryMeshtasticManager: vi.fn(
 
 import {
   AMBIGUOUS_OTA_MODELS,
+  OTA_SIBLING_BUILDS,
   getAmbiguousOtaModel,
+  getOtaSiblingWarnings,
   getBoardName,
   getPlatformForBoard,
   isOtaCapable,
@@ -300,6 +302,55 @@ describe('firmwareHardwareMap vs. Meshtastic release file names', () => {
       );
       expect(svc.getStatus().state).toBe('awaiting-confirm');
       expect(svc.getStatus().preflightInfo?.platform).toBe(platform);
+    });
+  });
+
+  describe('sibling-build warnings', () => {
+    it.each(Object.entries(OTA_SIBLING_BUILDS))(
+      '%s: base and sibling builds ship in 2.8.0 on the same platform',
+      (enumName, entry) => {
+        const hwModel = Number(Object.keys(HARDWARE_MODELS).find((k) => HARDWARE_MODELS[Number(k)] === enumName));
+        const board = getBoardName(hwModel)!;
+        const platform = boardPlatformIn(V280, board);
+        expect(platform).not.toBeNull();
+        for (const { build } of entry.siblings) expect(boardPlatformIn(V280, build)).toBe(platform);
+        expect(getAmbiguousOtaModel(hwModel)).toBeNull();
+      },
+    );
+
+    it('HELTEC_V4 keeps heltec-v4 and warns about heltec-v4-tft in the preflight status', () => {
+      expect(getBoardName(110)).toBe('heltec-v4');
+      const svc = new FirmwareUpdateService();
+      svc.startPreflight(preflightParams(110));
+      const status = svc.getStatus();
+      expect(status.state).toBe('awaiting-confirm');
+      expect(status.warnings).toEqual([
+        {
+          code: 'OTA_SIBLING_BUILD',
+          board: 'heltec-v4',
+          boardLabel: 'heltec-v4 (OLED)',
+          sibling: 'heltec-v4-tft',
+          siblingLabel: 'Heltec V4 TFT',
+          message:
+            'This will flash heltec-v4 (OLED). If your node is a Heltec V4 TFT, cancel and use a custom ' +
+            'firmware URL or upload the heltec-v4-tft .bin instead.',
+        },
+      ]);
+    });
+
+    it('has no warning for a board with a single build (HELTEC_V3)', () => {
+      expect(getOtaSiblingWarnings(43)).toEqual([]);
+      const svc = new FirmwareUpdateService();
+      svc.startPreflight(preflightParams(43));
+      expect(svc.getStatus().warnings).toEqual([]);
+    });
+
+    it('has no warning when the operator picked the build (custom URL)', () => {
+      const svc = new FirmwareUpdateService();
+      svc.startPreflight(
+        preflightParams(110, { targetRelease: null, customUrl: 'https://example.invalid/fw.bin' }),
+      );
+      expect(svc.getStatus().warnings).toEqual([]);
     });
   });
 

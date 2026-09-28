@@ -280,6 +280,105 @@ export function getAmbiguousOtaModel(
   return entry ? { enumName, ...entry } : null;
 }
 
+export interface OtaSiblingBuild {
+  /** Release manifest board name of the sibling build. */
+  build: string;
+  /** How the operator would describe a node running that build. */
+  label: string;
+}
+
+/**
+ * hw models that map to one base build but share their hw model with other
+ * release builds (#5423). Unlike AMBIGUOUS_OTA_MODELS these still update:
+ * the base build is the usual one and existing users rely on it (HELTEC_V4,
+ * #5402). OTA preflight attaches a warning naming each sibling so the
+ * operator can cancel and pick the build by custom URL or upload.
+ *
+ * Evidence (v2.8.0): the sibling env either sets the same
+ * `custom_meshtastic_hw_model`, `extends` the base env, or defines the same
+ * architecture.h HW_VENDOR macro.
+ */
+export const OTA_SIBLING_BUILDS: Readonly<
+  Record<string, { baseLabel?: string; siblings: readonly OtaSiblingBuild[] }>
+> = {
+  HELTEC_V4: { baseLabel: 'OLED', siblings: [{ build: 'heltec-v4-tft', label: 'Heltec V4 TFT' }] },
+  HELTEC_WIRELESS_TRACKER: {
+    siblings: [
+      { build: 'tracksenger', label: 'Tracksenger' },
+      { build: 'tracksenger-lcd', label: 'Tracksenger LCD' },
+      { build: 'tracksenger-oled', label: 'Tracksenger OLED' },
+    ],
+  },
+  T_DECK_PRO: { siblings: [{ build: 't-deck-pro-v1_1', label: 'T-Deck Pro v1.1' }] },
+  T_DECK: { siblings: [{ build: 't-deck-tft', label: 'T-Deck running the TFT (MUI) build' }] },
+  PICOMPUTER_S3: {
+    siblings: [{ build: 'picomputer-s3-tft', label: 'PiComputer S3 running the TFT (MUI) build' }],
+  },
+  SENSECAP_INDICATOR: {
+    siblings: [
+      { build: 'seeed-sensecap-indicator-tft', label: 'SenseCAP Indicator running the TFT (MUI) build' },
+    ],
+  },
+  WISMESH_TAP_V2: {
+    siblings: [{ build: 'rak_wismesh_tap_v2-tft', label: 'WisMesh Tap V2 running the TFT (MUI) build' }],
+  },
+  THINKNODE_M9: {
+    siblings: [{ build: 'thinknode_m9-tft', label: 'ThinkNode M9 running the TFT (MUI) build' }],
+  },
+  HELTEC_WIRELESS_PAPER: {
+    siblings: [
+      { build: 'heltec-wireless-paper-inkhud', label: 'Heltec Wireless Paper running the InkHUD build' },
+    ],
+  },
+  HELTEC_VISION_MASTER_E213: {
+    siblings: [
+      { build: 'heltec-vision-master-e213-inkhud', label: 'Vision Master E213 running the InkHUD build' },
+    ],
+  },
+  HELTEC_VISION_MASTER_E290: {
+    siblings: [
+      { build: 'heltec-vision-master-e290-inkhud', label: 'Vision Master E290 running the InkHUD build' },
+    ],
+  },
+  MINI_EPAPER_S3: {
+    siblings: [{ build: 'mini-epaper-s3-inkhud', label: 'Mini E-Paper S3 running the InkHUD build' }],
+  },
+};
+
+export interface OtaSiblingWarning {
+  code: 'OTA_SIBLING_BUILD';
+  /** Board MeshMonitor will flash, e.g. `heltec-v4`. */
+  board: string;
+  /** Board plus its variant note, e.g. `heltec-v4 (OLED)`. */
+  boardLabel: string;
+  sibling: string;
+  siblingLabel: string;
+  /** English text; the frontend renders its own translated copy. */
+  message: string;
+}
+
+/**
+ * Warnings for a hw model whose base build has sibling release builds, or an
+ * empty array when the model maps to exactly one build.
+ */
+export function getOtaSiblingWarnings(hwModel: number): OtaSiblingWarning[] {
+  const enumName = HARDWARE_MODELS[hwModel];
+  const entry = enumName ? OTA_SIBLING_BUILDS[enumName] : undefined;
+  const board = getBoardName(hwModel);
+  if (!entry || !board) return [];
+  const boardLabel = entry.baseLabel ? `${board} (${entry.baseLabel})` : board;
+  return entry.siblings.map(({ build, label }) => ({
+    code: 'OTA_SIBLING_BUILD' as const,
+    board,
+    boardLabel,
+    sibling: build,
+    siblingLabel: label,
+    message:
+      `This will flash ${boardLabel}. If your node is a ${label}, cancel and use a custom ` +
+      `firmware URL or upload the ${build} .bin instead.`,
+  }));
+}
+
 /**
  * Platforms that support WiFi OTA firmware updates.
  */

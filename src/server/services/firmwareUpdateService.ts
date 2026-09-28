@@ -30,7 +30,9 @@ import {
   isOtaCapable,
   getHardwareDisplayName,
   getAmbiguousOtaModel,
+  getOtaSiblingWarnings,
 } from './firmwareHardwareMap.js';
+import type { OtaSiblingWarning } from './firmwareHardwareMap.js';
 // Re-export for consumers
 export { getBoardName, getPlatformForBoard, isOtaCapable, getHardwareDisplayName };
 
@@ -114,6 +116,12 @@ export interface UpdateStatus {
   downloadSize?: number;
   matchedFile?: string;
   rejectedFiles?: Array<{ name: string; reason: string }>;
+  /**
+   * Set at preflight and kept for the whole wizard: the board being flashed
+   * shares its hw model with other release builds (#5423). Empty when the
+   * operator picked the build (custom URL / upload) or the model is unique.
+   */
+  warnings?: OtaSiblingWarning[];
 }
 
 // ---- GitHub API response types (raw) ----
@@ -1137,9 +1145,17 @@ export class FirmwareUpdateService {
 
     const displayName = getHardwareDisplayName(params.hwModel);
 
+    // A custom URL / upload is the operator's own pick of build, so the
+    // "we are about to flash the base build" warning doesn't apply there.
+    const warnings = operatorPickedBuild ? [] : getOtaSiblingWarnings(params.hwModel);
+    for (const w of warnings) {
+      logger.warn(`[FirmwareUpdateService] ${w.message}`);
+    }
+
     this.updateStatus({
       state: 'awaiting-confirm',
       step: 'preflight',
+      warnings,
       message: `Preflight complete. Ready to update ${displayName} from ${params.currentVersion} to ${params.targetVersion}`,
       targetVersion: params.targetVersion,
       downloadUrl,

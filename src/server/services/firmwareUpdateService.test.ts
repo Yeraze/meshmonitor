@@ -75,6 +75,7 @@ vi.mock('./firmwareHardwareMap.js', () => ({
   isOtaCapable: vi.fn(),
   getHardwareDisplayName: vi.fn(),
   getAmbiguousOtaModel: vi.fn().mockReturnValue(null),
+  getOtaSiblingWarnings: vi.fn().mockReturnValue([]),
 }));
 
 // #3962 Phase 4.2a WP4: firmwareUpdateService resolves its manager via
