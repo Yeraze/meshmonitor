@@ -41,7 +41,8 @@ async function sourceLabel(sourceId: string): Promise<string> {
   try {
     const row = await databaseService.sources.getSource(sourceId);
     return row?.name ? `"${row.name}"` : `"${sourceId}"`;
-  } catch {
+  } catch (err) {
+    logger.debug(`[FirmwareRoutes] Could not look up source ${sourceId} for its name:`, err);
     return `"${sourceId}"`;
   }
 }

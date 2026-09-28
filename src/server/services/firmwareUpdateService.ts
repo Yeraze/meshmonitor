@@ -1873,6 +1873,11 @@ export class FirmwareUpdateService {
     const fallback = mgr?.getLocalNodeInfo()?.firmwareVersion ?? '';
     if (fallback && fallback !== stale) return fallback;
     if (!opts?.gatewayIp) return fallback;
+    if (!mgr) {
+      // resolveUpdateManager already warned. The CLI read below still works;
+      // there is just no MeshMonitor connection to release or restore.
+      logger.debug('[FirmwareUpdateService] Verify CLI fallback runs without a manager for the update source');
+    }
     try {
       logger.debug('[FirmwareUpdateService] Verify wait expired — falling back to CLI to read firmware version directly');
       // Temporarily release MM's TCP slot so the CLI can connect cleanly.
