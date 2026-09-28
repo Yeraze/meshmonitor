@@ -1,0 +1,26 @@
+/*
+ * Shared layout fixes for the Meshtastic Automation "add" forms
+ * (Auto Responder, Timer Triggers, Geofence Triggers).
+ *
+ * At a 390px viewport these rows were single-line flex rows with fixed-width
+ * children (a 120px label, a 200px select, a 214px cooldown group, buttons),
+ * so they ran past the screen and gave the whole page a 618px scrollWidth.
+ *
+ * No media query on purpose: wrapping only happens when a row is too narrow,
+ * so the desktop layout is unchanged and a phone in landscape (wider than any
+ * max-width breakpoint) is covered too.
+ */
+
+.wrapRow {
+  flex-wrap: wrap;
+}
+
+/*
+ * A flex: 1 text field has a flex-basis of 0, so on a wrapping row it would
+ * shrink to a sliver next to its siblings. This floor makes it claim a usable
+ * width, and wrap to its own line when that does not fit. min() keeps the
+ * floor from ever exceeding the row itself.
+ */
+.growField {
+  min-width: min(100%, 9rem);
+}

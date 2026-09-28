@@ -18,6 +18,7 @@ import GeofenceMapEditor from './GeofenceMapEditor';
 import GeofenceNodeSelector from './GeofenceNodeSelector';
 import ScriptTestModal from './ScriptTestModal';
 import apiService from '../services/api';
+import layout from './AutomationFormLayout.module.css';
 
 // Available tokens for geofence text message expansion
 const AVAILABLE_TOKENS = [
@@ -580,7 +581,7 @@ const GeofenceTriggersSection: React.FC<GeofenceTriggersSectionProps> = ({
             )}
 
             {/* Channel */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <div className={layout.wrapRow} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
               <label style={{ minWidth: '120px', fontSize: '0.9rem' }}>
                 {t('automation.geofence_triggers.channel', 'Channel:')}
               </label>

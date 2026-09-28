@@ -2935,7 +2935,7 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
             onChange={(e) => setLoRaConfig({ femLnaMode: Number(e.target.value) })}
             disabled={isExecuting}
             className="setting-input"
-            style={{ width: '400px' }}
+            style={{ width: '400px', maxWidth: '100%' }}
           >
             {FEM_LNA_MODE_OPTIONS.map(option => (
               <option key={option.value} value={option.value}>

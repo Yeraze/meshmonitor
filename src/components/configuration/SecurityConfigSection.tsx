@@ -264,7 +264,7 @@ const SecurityConfigSection: React.FC<SecurityConfigSectionProps> = ({
           {t('security_config.private_key')}
           <span className="setting-description">{t('security_config.private_key_description')}</span>
         </label>
-        <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', alignItems: 'center' }}>
           <input
             id="privateKey"
             type={isEditingPrivateKey ? 'text' : 'password'}
