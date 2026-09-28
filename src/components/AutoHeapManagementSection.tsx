@@ -5,6 +5,20 @@ import { useSourceQuery } from '../hooks/useSourceQuery';
 import { useSaveBar } from '../hooks/useSaveBar';
 import { useToast } from './ToastContainer';
 import { useData } from '../contexts/DataContext';
+import { useSource } from '../contexts/SourceContext';
+
+/** Row shape of the session-authed GET /api/telemetry/:nodeId. */
+interface TelemetryRow {
+  telemetryType: string;
+  timestamp: number;
+  value: number;
+}
+
+/**
+ * How far back to look for the node's last heap report. LocalStats arrive on
+ * the device telemetry interval (30 min by default), so one hour can miss it.
+ */
+const HEAP_LOOKBACK_HOURS = 24;
 
 interface AutoHeapManagementSectionProps {
   baseUrl: string;
@@ -16,6 +30,7 @@ const AutoHeapManagementSection: React.FC<AutoHeapManagementSectionProps> = ({ b
   const sourceQuery = useSourceQuery();
   const { showToast } = useToast();
   const { currentNodeId } = useData();
+  const { sourceId } = useSource();
 
   const [localEnabled, setLocalEnabled] = useState(false);
   const [localThresholdKb, setLocalThresholdKb] = useState(20); // displayed as KB
@@ -41,21 +56,29 @@ const AutoHeapManagementSection: React.FC<AutoHeapManagementSectionProps> = ({ b
     }
   }, [baseUrl, csrfFetch]);
 
+  // Reads the session-authed internal endpoint, as the Info tab does. This used
+  // to call /api/v1/telemetry, the bearer-token API, which answers a browser
+  // session with 401, so the heap readout never appeared and every visit to the
+  // Automation page logged a failed request.
   const fetchHeapStatus = useCallback(async () => {
-    if (!currentNodeId) return;
+    if (!currentNodeId || !sourceId) return;
     try {
-      const res = await csrfFetch(`${baseUrl}/api/v1/telemetry/${currentNodeId}?type=heapFreeBytes&limit=1`);
-      if (res.ok) {
-        const data = await res.json();
-        const items = data.telemetry || data.items || data;
-        if (Array.isArray(items) && items.length > 0) {
-          setHeapFreeBytes(items[0].value);
-        }
+      const res = await csrfFetch(
+        `${baseUrl}/api/telemetry/${encodeURIComponent(currentNodeId)}?hours=${HEAP_LOOKBACK_HOURS}&sourceId=${encodeURIComponent(sourceId)}`,
+      );
+      if (!res.ok) return;
+      const rows: unknown = await res.json();
+      if (!Array.isArray(rows)) return;
+      let latest: TelemetryRow | null = null;
+      for (const row of rows as TelemetryRow[]) {
+        if (row?.telemetryType !== 'heapFreeBytes') continue;
+        if (!latest || row.timestamp > latest.timestamp) latest = row;
       }
+      if (latest) setHeapFreeBytes(latest.value);
     } catch (error) {
       console.error('Failed to fetch heap telemetry:', error);
     }
-  }, [baseUrl, csrfFetch, currentNodeId]);
+  }, [baseUrl, csrfFetch, currentNodeId, sourceId]);
 
   useEffect(() => {
     void fetchSettings();
