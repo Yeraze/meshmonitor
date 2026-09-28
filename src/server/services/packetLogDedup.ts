@@ -55,6 +55,7 @@
  */
 
 import { TransportMechanism } from '../constants/meshtastic.js';
+import { isLiveReception } from '../utils/replayGuard.js';
 
 /**
  * How long a non-RF (MQTT / multicast UDP / API) tuple suppresses a repeat.
@@ -181,4 +182,36 @@ export function isDuplicatePacketLog(
 
   seen.set(key, now + ttlMs);
   return false;
+}
+
+/**
+ * True when an RF packet is a firmware-2.8 NodeDB replay rather than a fresh
+ * reception, so it should stay out of the Packet Monitor entirely (#5426).
+ *
+ * The dedup map above only catches a replay whose ORIGINAL reception this
+ * manager already logged. It lives in memory, so after a MeshMonitor restart —
+ * or for any packet the node heard while we were disconnected — the
+ * reconnect-time `want_config_id` burst logged ~50 "LoRa" rows inside half a
+ * second, all with SNR, no RSSI and no hop data.
+ *
+ * Two independent tells must BOTH hold:
+ * - `rx_time` is older than the live-reception window
+ *   ({@link isLiveReception}); a replay keeps the original first-heard time.
+ * - RSSI is absent. The firmware stores SNR with a NodeDB entry but not RSSI,
+ *   so replays carry none, while a real radio reception always does.
+ *
+ * Requiring both keeps a genuine packet logged when the receiving node's clock
+ * runs minutes behind the server's (stale-looking `rx_time`, but real RSSI).
+ * Non-RF transports never match: MQTT and UDP receptions carry no RSSI and are
+ * real data.
+ */
+export function isNodeDbReplayForPacketLog(
+  transportMechanism: number | null | undefined,
+  rxTimeSec: number | null | undefined,
+  rxRssi: number | null | undefined,
+  nowMs: number,
+): boolean {
+  if (!isRfTransport(transportMechanism)) return false;
+  if (rxRssi != null && rxRssi !== 0) return false;
+  return !isLiveReception(rxTimeSec, nowMs);
 }

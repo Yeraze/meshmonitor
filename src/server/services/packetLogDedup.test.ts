@@ -4,6 +4,7 @@ import {
   isDuplicatePacketLog,
   isRfTransport,
   dedupTtlForTransport,
+  isNodeDbReplayForPacketLog,
   PACKET_LOG_DEDUP_TTL_MS,
   PACKET_LOG_DEDUP_RF_TTL_MS,
   PACKET_LOG_DEDUP_MAX_ENTRIES,
@@ -231,5 +232,37 @@ describe('RF replay suppression (#5034)', () => {
 
   it('has a sane default entry cap', () => {
     expect(PACKET_LOG_DEDUP_MAX_ENTRIES).toBeGreaterThan(1_000);
+  });
+});
+
+describe('isNodeDbReplayForPacketLog (#5426)', () => {
+  const now = 1_790_000_000_000;
+  const nowSec = now / 1000;
+  const staleRx = nowSec - 3600; // cached first-heard time, an hour old
+
+  it('flags a stale-rx_time RF packet with no RSSI (the reconnect replay burst)', () => {
+    expect(isNodeDbReplayForPacketLog(TransportMechanism.LORA, staleRx, undefined, now)).toBe(true);
+    expect(isNodeDbReplayForPacketLog(TransportMechanism.LORA, staleRx, null, now)).toBe(true);
+    expect(isNodeDbReplayForPacketLog(TransportMechanism.LORA, staleRx, 0, now)).toBe(true);
+    expect(isNodeDbReplayForPacketLog(undefined, staleRx, undefined, now)).toBe(true);
+  });
+
+  it('keeps a live RF reception even without RSSI', () => {
+    expect(isNodeDbReplayForPacketLog(TransportMechanism.LORA, nowSec - 2, undefined, now)).toBe(false);
+  });
+
+  it('keeps a stale-looking RF packet that carries RSSI (node clock behind the server)', () => {
+    expect(isNodeDbReplayForPacketLog(TransportMechanism.LORA, staleRx, -97, now)).toBe(false);
+  });
+
+  it('keeps RF packets with no usable rx_time', () => {
+    expect(isNodeDbReplayForPacketLog(TransportMechanism.LORA, undefined, undefined, now)).toBe(false);
+    expect(isNodeDbReplayForPacketLog(TransportMechanism.LORA, 0, undefined, now)).toBe(false);
+  });
+
+  it('never flags non-RF transports, whose receptions carry no RSSI', () => {
+    expect(isNodeDbReplayForPacketLog(TransportMechanism.MQTT, staleRx, undefined, now)).toBe(false);
+    expect(isNodeDbReplayForPacketLog(TransportMechanism.MULTICAST_UDP, staleRx, undefined, now)).toBe(false);
+    expect(isNodeDbReplayForPacketLog(TransportMechanism.INTERNAL, staleRx, undefined, now)).toBe(false);
   });
 });
