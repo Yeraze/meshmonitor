@@ -97,14 +97,17 @@
  * input out of line. The `.inlineHint` wrap from #5465 is unchanged: the hint
  * still drops under the input on a phone and sits beside it on a desktop.
  *
- * The basis is capped at 45% of the row. At 390px the row is ~276px, and a
- * plain 11rem (176px) + gap + 100px input needed 284px, so each input wrapped
- * under its label. 45% (~124px) keeps label and input on one line there, with
- * the label text wrapping inside it; on a desktop card 11rem is the smaller
- * value, so nothing moves.
+ * Sizing, from the labels measured in Chrome at 0.9rem: "Interval (minutes):"
+ * is ~116px and "Cooldown (minutes):" ~133px (German falls back to English).
+ *   - Desktop: 8.5rem (136px) fits the longer label on one line and stays
+ *     close to the old 120px min-width, so the inputs sit where they did.
+ *     11rem (176px) pushed them ~52px right.
+ *   - Phone: at 390px the row is ~276px. 50% (138px) + gap + 100px input is
+ *     246px, so label and input share the line, and "Cooldown (minutes):"
+ *     no longer wraps beside a one-line "Interval (minutes):".
  */
 .numberLabel {
-  flex: 0 0 min(11rem, 45%);
+  flex: 0 0 min(8.5rem, 50%);
   max-width: 100%;
 }
 

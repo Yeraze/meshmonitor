@@ -5,6 +5,11 @@ import layout from '../AutomationFormLayout.module.css';
 
 interface PatternExamplesProps {
   onSelectPattern: (pattern: string) => void;
+  /**
+   * True while the trigger field is disabled (Auto Responder off). The
+   * examples then do nothing, so they cannot fill a field the user cannot edit.
+   */
+  disabled?: boolean;
 }
 
 /*
@@ -107,8 +112,12 @@ const tipCodeStyle: React.CSSProperties = {
 /** A literal shown inside a translated tip. */
 const lit = (text: string, style: React.CSSProperties = tipCodeStyle) => <code style={style}>{text}</code>;
 
-const PatternExamples: React.FC<PatternExamplesProps> = ({ onSelectPattern }) => {
+const PatternExamples: React.FC<PatternExamplesProps> = ({ onSelectPattern, disabled = false }) => {
   const { t } = useTranslation();
+  const select = (pattern: string) => {
+    if (!disabled) onSelectPattern(pattern);
+  };
+  const disabledTitle = t('auto_responder.examples_disabled_title');
   const [showExamples, setShowExamples] = useState(false);
 
   return (
@@ -153,9 +162,11 @@ const PatternExamples: React.FC<PatternExamplesProps> = ({ onSelectPattern }) =>
                 <button
                   key={pattern}
                   className={layout.scrollTarget}
-                  onClick={() => onSelectPattern(pattern)}
-                  style={cardStyle}
+                  onClick={() => select(pattern)}
+                  disabled={disabled}
+                  style={{ ...cardStyle, ...(disabled ? { cursor: 'not-allowed', opacity: 0.6 } : {}) }}
                   onMouseEnter={(e) => {
+                    if (disabled) return;
                     e.currentTarget.style.background = 'var(--color-surface-active)';
                     e.currentTarget.style.borderColor = 'var(--color-accent)';
                   }}
@@ -163,7 +174,7 @@ const PatternExamples: React.FC<PatternExamplesProps> = ({ onSelectPattern }) =>
                     e.currentTarget.style.background = 'var(--color-surface-hover)';
                     e.currentTarget.style.borderColor = 'var(--color-border-subtle)';
                   }}
-                  title={t('auto_responder.examples_click_to_use_pattern')}
+                  title={disabled ? disabledTitle : t('auto_responder.examples_click_to_use_pattern')}
                 >
                   <code style={{ color: 'var(--color-accent)' }}>{pattern}</code>
                   <div style={{ fontSize: '0.7rem', color: 'var(--color-text-subtle)', marginTop: '0.2rem' }}>{t(`auto_responder.${descKey}`)}</div>
@@ -182,9 +193,10 @@ const PatternExamples: React.FC<PatternExamplesProps> = ({ onSelectPattern }) =>
                     <div key={item.pattern}>
                       <code
                         className={layout.scrollTarget}
-                        style={patternCodeStyle}
-                        onClick={() => onSelectPattern(item.pattern)}
-                        title={t(`auto_responder.${item.titleKey ?? 'examples_click_to_use'}`)}
+                        style={disabled ? { ...patternCodeStyle, cursor: 'not-allowed', opacity: 0.6 } : patternCodeStyle}
+                        onClick={() => select(item.pattern)}
+                        aria-disabled={disabled || undefined}
+                        title={disabled ? disabledTitle : t(`auto_responder.${item.titleKey ?? 'examples_click_to_use'}`)}
                       >{item.pattern}</code>
                       {' '}- {t(`auto_responder.${item.descKey}`, item.values)}
                     </div>

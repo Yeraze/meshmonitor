@@ -3539,6 +3539,7 @@
   "auto_responder.examples_click_to_use_pattern": "Click to use this pattern",
   "auto_responder.examples_click_to_use": "Click to use",
   "auto_responder.examples_click_to_use_time": "Click to use - Scripts receive the TZ env var for timezone-aware time",
+  "auto_responder.examples_disabled_title": "Turn on Auto Responder to use the examples",
   "auto_responder.examples_weather_command": "Multi-pattern weather command",
   "auto_responder.examples_status_command": "Node status check",
   "auto_responder.examples_ping_command": "Simple ping command",

@@ -28,6 +28,13 @@ import { UiIcon } from './icons';
 import apiService from '../services/api';
 import layout from './AutomationFormLayout.module.css';
 
+/**
+ * Right padding the trigger input reserves for its "N patterns" badge: the
+ * badge's 0.5rem inset plus "12 patterns" at 0.7rem (~74px measured), with
+ * a little room so the caret never touches it.
+ */
+const PATTERN_BADGE_RESERVE = '6rem';
+
 const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
   enabled,
   triggers,
@@ -636,7 +643,7 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
         </div>
 
         {/* Pattern Examples Section */}
-        <PatternExamples onSelectPattern={setNewTrigger} />
+        <PatternExamples onSelectPattern={setNewTrigger} disabled={!localEnabled} />
 
         {/* Script Management Section */}
         <ScriptManagement
@@ -683,7 +690,11 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
                     width: '100%',
                     fontFamily: 'monospace',
                     borderColor: newTriggerValidation.valid ? undefined : 'var(--color-error)',
-                    borderWidth: newTriggerValidation.valid ? undefined : '2px'
+                    borderWidth: newTriggerValidation.valid ? undefined : '2px',
+                    // Keep typed text clear of the "N patterns" badge drawn
+                    // over the right edge. Only while the badge shows, so the
+                    // empty field keeps its full width for the placeholder.
+                    paddingRight: newTrigger.trim() ? PATTERN_BADGE_RESERVE : undefined
                   }}
                   title={t('auto_responder.trigger_pattern_title')}
                 />
@@ -695,7 +706,8 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
                     transform: 'translateY(-50%)',
                     fontSize: '0.7rem',
                     color: 'var(--color-text-subtle)',
-                    pointerEvents: 'none'
+                    pointerEvents: 'none',
+                    whiteSpace: 'nowrap'
                   }}>
                     {t('auto_responder.pattern_count', { count: splitTriggerPatterns(newTrigger).length })}
                   </div>

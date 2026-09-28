@@ -222,6 +222,68 @@ describe('pattern examples are translatable', () => {
   });
 });
 
+describe('pattern count badge does not cover the pattern', () => {
+  const tsx = read('AutoResponderSection.tsx');
+
+  it('the input reserves room for the badge while it shows', () => {
+    const m = tsx.match(/const PATTERN_BADGE_RESERVE = '([\d.]+)rem';/);
+    expect(m).not.toBeNull();
+    const reserve = Number(m![1]) * REM;
+    // Badge inset (0.5rem) + "12 patterns" at 0.7rem (~74px measured in Chrome).
+    expect(reserve).toBeGreaterThanOrEqual(8 + 74);
+    // Tied to the same condition that renders the badge, so an empty field
+    // keeps its full width for the placeholder (#5465).
+    expect(tsx).toContain('paddingRight: newTrigger.trim() ? PATTERN_BADGE_RESERVE : undefined');
+    expect(tsx).toMatch(/\{newTrigger\.trim\(\) && \(\s*<div style=\{\{\s*position: 'absolute'/);
+  });
+
+  it('the badge stays on one line', () => {
+    const at = tsx.indexOf("t('auto_responder.pattern_count', { count: splitTriggerPatterns(newTrigger).length })");
+    const style = tsx.slice(tsx.lastIndexOf('<div style={{', at), at);
+    expect(style).toContain("whiteSpace: 'nowrap'");
+  });
+});
+
+describe('examples do nothing while the trigger field is disabled', () => {
+  it('the section passes the field state', () => {
+    expect(read('AutoResponderSection.tsx')).toContain('<PatternExamples onSelectPattern={setNewTrigger} disabled={!localEnabled} />');
+    expect(en['auto_responder.examples_disabled_title']).toBeTruthy();
+  });
+
+  async function renderExamples(disabled: boolean) {
+    const i18n = createInstance();
+    await i18n.use(initReactI18next).init({ lng: 'en', resources: { en: { translation: en } }, interpolation: { escapeValue: false } });
+    const onSelect = vi.fn();
+    const view = render(
+      createElement(I18nextProvider, { i18n }, createElement(PatternExamples, { onSelectPattern: onSelect, disabled })),
+    );
+    fireEvent.click(view.getByText('Pattern Examples & Templates'));
+    return { ...view, onSelect };
+  }
+
+  it('disabled: card buttons are disabled, patterns are no-ops, tooltips explain', async () => {
+    const { getByText, onSelect, unmount } = await renderExamples(true);
+    const card = getByText('ping').closest('button')!;
+    expect(card.disabled).toBe(true);
+    expect(card.title).toBe(en['auto_responder.examples_disabled_title']);
+    fireEvent.click(card);
+    const code = getByText('zip {code:\\d{5}}');
+    expect(code.getAttribute('aria-disabled')).toBe('true');
+    expect(code.title).toBe(en['auto_responder.examples_disabled_title']);
+    fireEvent.click(code);
+    expect(onSelect).not.toHaveBeenCalled();
+    unmount();
+  });
+
+  it('enabled: both kinds still insert', async () => {
+    const { getByText, onSelect, unmount } = await renderExamples(false);
+    fireEvent.click(getByText('ping').closest('button')!);
+    fireEvent.click(getByText('zip {code:\\d{5}}'));
+    expect(onSelect.mock.calls).toEqual([['ping'], ['zip {code:\\d{5}}']]);
+    unmount();
+  });
+});
+
 describe('click targets clear the sticky tab strip', () => {
   it('scroll-margin-top covers the header and the SectionNav', () => {
     const r = rule('scrollTarget');
@@ -240,7 +302,7 @@ describe('click targets clear the sticky tab strip', () => {
 describe('geofence number inputs line up', () => {
   const tsx = read('GeofenceTriggersSection.tsx');
 
-  it('Interval and Cooldown labels share a width that fits on a phone', () => {
+  it('Interval and Cooldown labels share one-line widths on phone and desktop', () => {
     const m = rule('numberLabel').match(/flex:\s*0\s+0\s+min\(\s*([\d.]+)rem\s*,\s*([\d.]+)%\s*\)/);
     expect(m, '.numberLabel needs flex: 0 0 min(<rem>, <pct>%)').not.toBeNull();
     const cap = Number(m![1]) * REM;
@@ -249,15 +311,31 @@ describe('geofence number inputs line up', () => {
     const gap = 8;
     const input = 100;
 
-    // 390px viewport: the measured row is ~276px. The first version used a
-    // plain 11rem (176px) and needed 284px, so each input dropped under its
-    // label. Label + gap + input must now share the line.
-    expect(basisAt(276) + gap + input).toBeLessThanOrEqual(276);
+    // Label widths measured in headless Chrome at 0.9rem (German falls back
+    // to English: both keys are empty in de.json).
+    const intervalLabel = 116;
+    const cooldownLabel = 133;
+    const oldDesktopLabel = 120; // the pre-#5466 min-width
+    // If German gains its own text, re-measure: it may be longer.
+    const de = JSON.parse(read('../../public/locales/de.json')) as Record<string, string>;
+    expect(de['automation.geofence_triggers.cooldown'] ?? '').toBe('');
+    expect(de['automation.geofence_triggers.while_inside_interval'] ?? '').toBe('');
 
-    // 1280px: the desktop card is far wider, so the label takes the full cap,
-    // which is wider than "Cooldown (minutes):" (~160px at 0.9rem).
-    expect(basisAt(900)).toBe(cap);
-    expect(cap).toBeGreaterThanOrEqual(160);
+    // 390px viewport: the measured row is ~276px. 11rem (176px) needed 284px,
+    // so each input dropped under its label. Label + gap + input share the line.
+    const phone = basisAt(276);
+    expect(phone + gap + input).toBeLessThanOrEqual(276);
+    // Both labels fit on one line, so the two rows are the same height.
+    expect(phone).toBeGreaterThanOrEqual(cooldownLabel);
+    expect(phone).toBeGreaterThanOrEqual(intervalLabel);
+
+    // 1280px: the label takes the full cap. It fits the longer label on one
+    // line and stays within ~20px of the old 120px, where 11rem moved the
+    // inputs ~52px right.
+    const desktop = basisAt(900);
+    expect(desktop).toBe(cap);
+    expect(desktop).toBeGreaterThanOrEqual(cooldownLabel);
+    expect(desktop - oldDesktopLabel).toBeLessThanOrEqual(20);
   });
 
   it.each(['while_inside_interval', 'cooldown'])('%s label uses the class', (key) => {
