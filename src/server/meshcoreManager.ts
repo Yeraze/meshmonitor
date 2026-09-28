@@ -3988,10 +3988,9 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
           // clock"), and startDeviceTimeSync() keeps that clock on server time.
           // Clamped to now so a companion running slightly fast can't sort a
           // node ahead of one we genuinely just heard.
+          // Always epoch SECONDS: meshcore.js reads it as a raw u32.
           const lastModSec = typeof c.last_mod === 'number' ? c.last_mod : 0;
-          const rawLastModMs = lastModSec > 0
-            ? (lastModSec < 1e12 ? lastModSec * 1000 : lastModSec)
-            : undefined;
+          const rawLastModMs = lastModSec > 0 ? lastModSec * 1000 : undefined;
           const lastModMs = plausibleMeshCoreTimeMsOrUndefined(rawLastModMs);
           const heardMs = lastModMs !== undefined ? Math.min(lastModMs, Date.now()) : undefined;
           this.contacts.set(c.public_key, {
