@@ -61,10 +61,8 @@ const defaultProps = {
   enabled: true,
   regex: '^(test|ping)',
   message: '🤖 Copy, {NUMBER_HOPS} hops at {TIME}',
-  // Must match the component's own DEFAULT_MESSAGE_DIRECT — the hasChanges diff
-  // compares this raw prop against a local state seeded with `messageDirect ||
-  // DEFAULT_MESSAGE_DIRECT`, so an empty-string prop would read as an unsaved
-  // change on mount even though nothing changed.
+  // A blank value would also be clean now (the dirty check normalizes it the
+  // same way the local state is seeded; see automationSections.phantomDirty.test.tsx).
   messageDirect: '🤖 Copy, direct connection! SNR: {SNR}dB RSSI: {RSSI}dBm at {TIME}',
   channels: mockChannels,
   enabledChannels: [0],
