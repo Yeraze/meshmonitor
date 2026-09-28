@@ -1,6 +1,7 @@
 import React, { useRef, useMemo, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSaveBar } from '../../hooks/useSaveBar';
+import ModuleAvailabilityNotice from './ModuleAvailabilityNotice';
 
 interface AmbientLightingConfigSectionProps {
   ledState: boolean;
@@ -99,6 +100,7 @@ const AmbientLightingConfigSection: React.FC<AmbientLightingConfigSectionProps> 
           ?
         </a>
       </h3>
+      <ModuleAvailabilityNotice />
 
       {/* Enable LED */}
       <div className="setting-item">

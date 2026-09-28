@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { useSaveBar } from '../../hooks/useSaveBar';
 import { UiIcon } from '../icons';
 import styles from './RangeTestConfigSection.module.css';
+import ModuleAvailabilityNotice from './ModuleAvailabilityNotice';
 
 interface RangeTestConfigSectionProps {
   enabled: boolean;
@@ -96,6 +97,7 @@ const RangeTestConfigSection: React.FC<RangeTestConfigSectionProps> = ({
           ?
         </a>
       </h3>
+      <ModuleAvailabilityNotice />
 
       {isDisabled && (
         <div className={styles.removedNotice} role="status">

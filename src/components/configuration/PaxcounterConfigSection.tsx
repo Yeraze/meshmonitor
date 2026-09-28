@@ -1,6 +1,7 @@
 import React, { useRef, useMemo, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSaveBar } from '../../hooks/useSaveBar';
+import ModuleAvailabilityNotice from './ModuleAvailabilityNotice';
 
 interface PaxcounterConfigSectionProps {
   enabled: boolean;
@@ -90,6 +91,7 @@ const PaxcounterConfigSection: React.FC<PaxcounterConfigSectionProps> = ({
           ?
         </a>
       </h3>
+      <ModuleAvailabilityNotice />
 
       {/* Enable Module */}
       <div className="setting-item">

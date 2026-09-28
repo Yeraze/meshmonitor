@@ -23,8 +23,13 @@
   margin-top: 0.1rem;
 }
 
-/* Grey the controls out and make them inert while the module is unavailable. */
-.disabledControls {
+/*
+ * Grey the controls out and make them inert while the module is unavailable.
+ * The gate wraps one section root; its header and the notice (rendered by the
+ * section just after its <h3>, #5447) stay at full strength so the notice
+ * reads as part of that section.
+ */
+.gated > * > :not(h3):not(.notice) {
   opacity: 0.4;
   pointer-events: none;
 }

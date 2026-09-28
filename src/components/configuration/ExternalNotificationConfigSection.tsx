@@ -2,6 +2,7 @@ import React, { useState, useRef, useMemo, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { UiIcon } from '../icons';
 import { useSaveBar } from '../../hooks/useSaveBar';
+import ModuleAvailabilityNotice from './ModuleAvailabilityNotice';
 
 interface ExternalNotificationConfigSectionProps {
   // Main settings
@@ -172,6 +173,7 @@ const ExternalNotificationConfigSection: React.FC<ExternalNotificationConfigSect
           ?
         </a>
       </h3>
+      <ModuleAvailabilityNotice />
 
       {/* Enable Module */}
       <div className="setting-item">
