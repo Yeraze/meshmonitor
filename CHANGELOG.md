@@ -6,6 +6,29 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased]
 
+## [4.16.2-rc5] - 2026-09-28
+
+### Added
+- **Asset tracking.** Flag a node as an asset in Node Details → Asset tracking to keep its telemetry for 1–365 days (default 90) on every source, always draw its trail, and exempt it from automated cleanups. The Nodes map draws the asset's whole retained history, thinned to keep its shape, and a playback bar replays the trip with a moving marker at 60×/600×/3600×. Migration 181. (#5354, #5411, #5419, #5422)
+- **ADS-B flight matching for likely aircraft**, off by default. When a node becomes a likely aircraft, MeshMonitor asks a community ADS-B feed (adsb.lol or adsb.fi) which flight is there, at most twice per flagging, and shows the match in the popup and details. Migration 180. (#5374, #5410)
+- **Sign-flipped position correction**, off by default, per source. A node whose latitude or longitude sign was entered wrong is shown at its mirror point when exactly one mirror lands within range (default 500 km) of the source's own node or a set point, with a notice showing the reported coordinates. Stored data never changes. Distance auto-delete, MQTT geo-ignore, automation geofences, traceroute snapshots and MeshCore contacts all use the corrected point. (#5363, #5409, #5412)
+- **Drop automation traffic at the MQTT bridge uplink**, a per-bridge option, off by default. MeshMonitor's own automated sends (auto-ack, responders, announce, timers, geofences, Automation Engine actions, auto-ping and similar) never reach the upstream broker; manual sends still do. A drop counter shows beside the ok_to_mqtt counter. (#5414, #5418)
+- **Map clustering toggle** in Settings → Map, separate from the Map Click Zoom Gate. On by default. (#5404, #5407)
+- **Helm: expose Virtual Node ports** with `service.extraPorts`, pin a LoadBalancer IP with `service.annotations` (MetalLB, kube-vip, Cilium) or `loadBalancerIP`, and optionally put the Virtual Node on its own `virtualNodeService` so the web UI can stay behind an Ingress. (#5416, #5417)
+
+### Changed
+- **MeshCore remote logins wait longer and retry.** Each attempt waits the longer of twice the firmware's estimate or 10 s, and the admin buttons try up to 3 times on silence (never on a refused password). Every login screen shows live progress and a Cancel button. Behind a reverse proxy, a worst-case login can now take about 34 s. (#5400, #5405)
+- **MeshCore neighbour lists show the whole table.** The repeater sends at most 10 neighbours per reply, so the Contact Details button and "Poll Neighbours" now fetch up to 5 pages, each spaced by the 60 s radio gap, with live progress and Cancel. The scheduled autopoll stays at 1 page (strongest first) and merges into the stored list instead of shrinking it. (#5413, #5425)
+- **OTA firmware updates run on the selected source.** Disconnect, reconnect, verify, retry and cancel act on the source the update was started from, not the primary radio, and use its custom TCP port. (#5424, #5428, #5432)
+- **OTA board map** matches the Meshtastic release file names for 2.7.x and 2.8.0: 26 ESP32 boards fixed (including Station G3 and Mini ePaper S3), 13 nRF52 boards no longer offered OTA. Six models shared by several builds are refused with a clear message, and boards with sibling builds (e.g. Heltec V4 / V4 TFT) show a warning before flashing. (#5423, #5429, #5433)
+
+### Fixed
+- **Firmware update** failed at Extract on 2.8.0, which keeps each board's binary in a platform folder. (#5402, #5403)
+- **Positions** were dated by when a packet arrived, so firmware 2.8 NodeDB replays made stale fixes look newest (and kept stale likely-aircraft badges). They now carry the observation time. (#5401, #5406)
+- **Auto-Favorite** stacked one more hourly sweep on every reconnect; packet distribution counts ignored per-channel permissions. (#5427)
+- **Nodes list header** controls overflowed a narrow sidebar instead of wrapping. (#5420, #5421)
+- **MeshCore channel reorder** could open and immediately close when clicked just as the channel list loaded. (#5431)
+
 ## [4.16.2-rc4] - 2026-09-27
 
 ### Added
