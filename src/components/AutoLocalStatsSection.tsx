@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import { clampInt, LAST_HEARD_FILTER_HOURS_MAX } from './automationInputLimits';
 import { useTranslation } from 'react-i18next';
 import { useToast } from './ToastContainer';
 import { useCsrfFetch } from '../hooks/useCsrfFetch';
@@ -643,8 +644,8 @@ const AutoLocalStatsSection: React.FC<AutoLocalStatsSectionProps> = ({
                       <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '12px' }}>
                         {t('automation.auto_localstats.last_heard_within')}
                         <input type="number" value={filterLastHeardHours}
-                          onChange={(e) => setFilterLastHeardHours(Math.max(1, parseInt(e.target.value) || 1))}
-                          min={1} style={{ width: '80px', padding: '2px 4px' }} />
+                          onChange={(e) => setFilterLastHeardHours(clampInt(e.target.value, 1, LAST_HEARD_FILTER_HOURS_MAX))}
+                          min={1} max={LAST_HEARD_FILTER_HOURS_MAX} style={{ width: '80px', padding: '2px 4px' }} />
                         {t('automation.auto_localstats.hours')}
                       </label>
                     </div>

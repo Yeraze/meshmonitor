@@ -137,6 +137,26 @@ describe('AutoAnnounceService', () => {
       expect(svc.running).toBe(true);
     });
 
+    // Nothing upstream bounds the stored hours, and above ~596 h the delay
+    // overflows so setInterval would announce every 1 ms.
+    it.each([
+      ['999999', 24],
+      ['1', 3],
+      ['junk', 6],
+    ])('clamps a stored interval of %s hours to %i', async (stored, expectedHours) => {
+      stubSettings({ autoAnnounceIntervalHours: stored });
+      const setIntervalSpy = vi.spyOn(globalThis, 'setInterval');
+      const svc = new AutoAnnounceService(makeFakeManager() as any);
+
+      await svc.startAnnounceScheduler();
+
+      const delays = setIntervalSpy.mock.calls.map((c) => c[1]);
+      expect(delays).toContain(expectedHours * 60 * 60 * 1000);
+      expect(delays.every((d) => typeof d === 'number' && d > 1 && d <= 2 ** 31 - 1)).toBe(true);
+      svc.stop();
+      setIntervalSpy.mockRestore();
+    });
+
     it('arms a cron-mode scheduler when autoAnnounceUseSchedule is true', async () => {
       stubSettings({ autoAnnounceUseSchedule: 'true', autoAnnounceSchedule: '0 */6 * * *' });
       const mgr = makeFakeManager();

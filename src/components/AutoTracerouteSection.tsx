@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import { clampInt, HOP_FILTER_MAX, LAST_HEARD_FILTER_HOURS_MAX } from './automationInputLimits';
 import { useTranslation } from 'react-i18next';
 import { useToast } from './ToastContainer';
 import { useCsrfFetch } from '../hooks/useCsrfFetch';
@@ -1391,8 +1392,9 @@ const AutoTracerouteSection: React.FC<AutoTracerouteSectionProps> = ({
                       <input
                         type="number"
                         value={filterLastHeardHours}
-                        onChange={(e) => setFilterLastHeardHours(Math.max(1, parseInt(e.target.value) || 1))}
+                        onChange={(e) => setFilterLastHeardHours(clampInt(e.target.value, 1, LAST_HEARD_FILTER_HOURS_MAX))}
                         min={1}
+                        max={LAST_HEARD_FILTER_HOURS_MAX}
                         style={{ width: '80px', padding: '2px 4px' }}
                       />
                       {t('automation.auto_traceroute.hours')}
@@ -1446,6 +1448,7 @@ const AutoTracerouteSection: React.FC<AutoTracerouteSectionProps> = ({
                         value={filterHopsMax}
                         onChange={(e) => setFilterHopsMax(Math.max(filterHopsMin, parseInt(e.target.value) || 0))}
                         min={filterHopsMin}
+                        max={HOP_FILTER_MAX}
                         style={{ width: '60px', padding: '2px 4px' }}
                       />
                     </label>

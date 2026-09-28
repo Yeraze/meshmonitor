@@ -106,18 +106,46 @@ describe('DistanceDeleteScheduler (#3901)', () => {
   });
 
   it('restart via start() clears the previous timer (no double-scheduling)', async () => {
-    settings({ autoDeleteByDistanceEnabled: 'true', autoDeleteByDistanceIntervalHours: '1' });
+    settings({ autoDeleteByDistanceEnabled: 'true', autoDeleteByDistanceIntervalHours: '6' });
     const scheduler = new DistanceDeleteScheduler('source-E');
 
     await scheduler.start();
     await scheduler.start(); // restart
     await vi.advanceTimersByTimeAsync(120_000);
-    await vi.advanceTimersByTimeAsync(1 * HOUR_MS);
+    await vi.advanceTimersByTimeAsync(6 * HOUR_MS);
 
     // Only one live interval, so exactly one cycle per interval tick.
     expect(runSpy).toHaveBeenCalledTimes(2); // initial + one interval
     expect(runSpy).toHaveBeenCalledWith('source-E');
 
     scheduler.stop();
+  });
+
+  // A stored interval past ~596 h overflows the timer delay, and NaN reaches
+  // setInterval as NaN; Node runs both every 1 ms. Clamped to the UI's 6–48 h.
+  it.each([
+    ['999999', 48],
+    ['2', 6],
+    ['garbage', 24],
+  ])('clamps a stored interval of %s hours to %i', async (stored, expectedHours) => {
+    settings({ autoDeleteByDistanceEnabled: 'true', autoDeleteByDistanceIntervalHours: stored });
+    const setIntervalSpy = vi.spyOn(globalThis, 'setInterval');
+    const scheduler = new DistanceDeleteScheduler('source-F');
+
+    await scheduler.start();
+    expect(setIntervalSpy).toHaveBeenCalledTimes(1);
+    expect(setIntervalSpy.mock.calls[0][1]).toBe(expectedHours * HOUR_MS);
+
+    // And it really does not fire early: past the 2-minute initial run, the
+    // interval stays quiet until its full period since start() has elapsed.
+    await vi.advanceTimersByTimeAsync(120_000);
+    runSpy.mockClear();
+    await vi.advanceTimersByTimeAsync(expectedHours * HOUR_MS - 120_000 - 1000);
+    expect(runSpy).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(runSpy).toHaveBeenCalledTimes(1);
+
+    scheduler.stop();
+    setIntervalSpy.mockRestore();
   });
 });

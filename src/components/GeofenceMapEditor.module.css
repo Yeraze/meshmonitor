@@ -22,3 +22,46 @@
   min-width: 0;
   box-sizing: border-box;
 }
+
+/*
+ * Circle fields. Moved from inline styles so the invalid state can override
+ * the border. The error line reuses the Auto Responder trigger-validation look
+ * (error colour, alert icon, 0.75rem text).
+ */
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.fieldLabel {
+  font-size: 12px;
+  color: var(--color-text-subtle);
+}
+
+.circleFields .fieldInput {
+  padding: 6px 8px;
+  background: var(--color-bg);
+  border: 1px solid var(--color-surface-active);
+  border-radius: 4px;
+  color: var(--color-text);
+  font-size: 14px;
+}
+
+.circleFields .fieldInputInvalid {
+  border: 2px solid var(--color-error);
+}
+
+.fieldError {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 0.75rem;
+  color: var(--color-error);
+}
+
+/* Without this the icon shrinks to a dot when the message wraps at 390px. */
+.fieldErrorIcon {
+  flex-shrink: 0;
+}
