@@ -284,4 +284,41 @@ describe('evaluateGraph', () => {
     await evaluateGraph(graph, {}, hooks);
     expect(vars).toEqual(['v']);
   });
+
+  it('haltReason stops the run after the halting action and records why (#5445)', async () => {
+    const { hooks, ran } = makeHooks();
+    const ctx: { halt?: string } = {};
+    hooks.executeAction = (node) => { ran.push(node.id); if (node.id === 'a') ctx.halt = 'stop'; return null; };
+    hooks.haltReason = (c) => (c as { halt?: string }).halt;
+    const graph = g({
+      version: 1,
+      nodes: [
+        { id: 't', type: 'trigger.message' },
+        { id: 'a', type: 'action.tapback' },
+        { id: 'b', type: 'action.tapback' },
+      ],
+      edges: [{ from: 't', to: 'a' }, { from: 'a', to: 'b' }],
+    });
+    const r = await evaluateGraph(graph, ctx, hooks);
+    expect(ran).toEqual(['a']);
+    expect(r.steps.map((s) => s.outcome)).toEqual(['activated', 'action:ok', 'run:halted']);
+    expect(r.steps[2]).toMatchObject({ nodeId: 'a', detail: { reason: 'stop' } });
+  });
+
+  it('stepDetail attaches a summary to the action step only when it returns one (#5445)', async () => {
+    const { hooks } = makeHooks();
+    hooks.stepDetail = (node) => (node.id === 'a' ? { target: 'x' } : undefined);
+    const graph = g({
+      version: 1,
+      nodes: [
+        { id: 't', type: 'trigger.message' },
+        { id: 'a', type: 'action.tapback' },
+        { id: 'b', type: 'action.tapback' },
+      ],
+      edges: [{ from: 't', to: 'a' }, { from: 't', to: 'b' }],
+    });
+    const r = await evaluateGraph(graph, {}, hooks);
+    expect(r.steps.find((s) => s.nodeId === 'a')?.detail).toEqual({ target: 'x' });
+    expect(r.steps.find((s) => s.nodeId === 'b')).not.toHaveProperty('detail');
+  });
 });

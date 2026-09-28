@@ -1,0 +1,15 @@
+/* AutomationIdFieldInput (#5445) — automation picker with a free-text id /
+ * template fallback. Scoped per CLAUDE.md's CSS containment rule; the select and
+ * text input reuse the shared `ae-*` classes from AutomationsPage.css.
+ */
+
+.picker {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.unknown {
+  font-size: 0.85em;
+  color: var(--color-text-muted);
+}

@@ -491,6 +491,49 @@ Responder uses) when the automation fires.
 > The script itself does **not** send messages — capture its output into a variable, then use a
 > separate **Send a message** action to relay it.
 
+### Enable or disable an automation
+
+Turns another automation, or this one, on or off. It does the same thing as the enable switch on
+the Automations page, with no script, API token, or `curl` call. It sends nothing on the mesh.
+
+- **Automation** — pick one from the list (shown by name, saved by id). Choose **Enter an id or
+  template** to type an id instead, such as `{{ var.targetAutomation }}`.
+- **Change** — **Set to** forces the state you pick in **New state** (**Enabled** or
+  **Disabled**). **Toggle** flips whatever state the automation is in now.
+- **New state** — shown for **Set to** only. In JSON mode, `enabled` also takes `true` / `false`,
+  the strings `"true"` / `"false"`, or a `{{ }}` template that resolves to one of them.
+
+What happens when it runs:
+
+- The engine saves the new state and reloads its rules, as the enable and disable buttons do. If
+  the automation already has that state, the engine writes nothing and skips the reload.
+- An id that matches no automation fails the step with `no automation with id "…"` in the run
+  log. The rest of the run still goes ahead, as it does for any failed action.
+- The run log shows the target's id, name, mode, new state and old state on the step.
+- **An automation that disables itself stops there.** Its later actions do not run, and the run
+  log ends with a **run stopped** step that says why. Use this for a one-shot rule: do the work
+  first, then disable itself as the last action.
+- A rule this action disables will not fire for the event that is being handled, even if it
+  listens for the same trigger and was due to run next.
+- The [Test panel](#testing-dry-run) reports what would change, and fails an unknown id, but never
+  changes any automation.
+
+Common patterns:
+
+- **Kill switch** — a Message trigger that matches `!quiet`, a condition that checks the sender
+  is your admin node, then **Set to Disabled** on a noisy rule.
+- **Time window** — a Schedule at `0 22 * * *` sets a chatty rule to **Disabled**, and a second
+  Schedule at `0 7 * * *` sets it back to **Enabled**.
+- **One-shot** — a rule that sends its reply, then disables itself.
+
+> Take care with ids built from mesh input. With `{{ trigger.text }}` as the id, anyone who can
+> message the node can switch your automations on and off. Pick the automation from the list, or
+> gate the rule on the sender first.
+
+Loop safety: turning an automation on or off raises no event, so no trigger can fire from it.
+Rule A that toggles rule B can't set off rule B, and two rules can't toggle each other in a loop
+through this action alone. The trigger's own cooldown and rate limit still apply.
+
 ### Set a variable / flag
 
 Writes a **dynamic** [variable](#variables): **Set to value**, **Increment by**, **Raise flag**, or
