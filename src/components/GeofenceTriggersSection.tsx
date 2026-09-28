@@ -417,10 +417,11 @@ const GeofenceTriggersSection: React.FC<GeofenceTriggersSectionProps> = ({
 
             {/* Event */}
             <div className={layout.wrapRow} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <label style={{ minWidth: '120px', fontSize: '0.9rem' }}>
+              <label htmlFor="geofence-event" style={{ minWidth: '120px', fontSize: '0.9rem' }}>
                 {t('automation.geofence_triggers.event', 'Event:')}
               </label>
               <select
+                id="geofence-event"
                 value={newEvent}
                 onChange={(e) => setNewEvent(e.target.value as GeofenceEvent)}
                 className={`setting-input ${layout.labeledField}`}

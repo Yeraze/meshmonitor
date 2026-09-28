@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef, useCallback, useMemo } from 'react';
+import React, { useEffect, useState, useRef, useCallback, useMemo, useId } from 'react';
 import L from 'leaflet';
 import { useMap, useMapEvents } from 'react-leaflet';
 import { useTranslation } from 'react-i18next';
@@ -7,6 +7,21 @@ import { BaseMap } from './map/BaseMap';
 import mapFrame from './map/EmbeddedMapFrame.module.css';
 import styles from './GeofenceMapEditor.module.css';
 import { GEOFENCE_RADIUS_KM_MAX } from './automationInputLimits';
+import { UiIcon } from './icons';
+
+/** A non-empty field whose number is missing or outside [min, max]. */
+function isOutOfRange(value: string, min: number, max: number): boolean {
+  if (value.trim() === '') return false;
+  const n = parseFloat(value);
+  return Number.isNaN(n) || n < min || n > max;
+}
+
+/** A non-empty radius that is not a positive number (above-max is clamped, not flagged). */
+function isInvalidRadius(value: string): boolean {
+  if (value.trim() === '') return false;
+  const n = parseFloat(value);
+  return Number.isNaN(n) || n <= 0;
+}
 
 interface NodePosition {
   nodeNum: number;
@@ -98,7 +113,8 @@ const MapDrawingLayer: React.FC<{
   }, [map]);
 
   const updateCircleShape = useCallback((center: L.LatLng, radiusMeters: number, isInternal = false) => {
-    const radiusKm = radiusMeters / 1000;
+    // A drag on the radius handle can't produce a radius the form would refuse.
+    const radiusKm = Math.min(GEOFENCE_RADIUS_KM_MAX, radiusMeters / 1000);
     if (isInternal) {
       internalChangeRef.current = true;
     }
@@ -395,16 +411,35 @@ const GeofenceMapEditor: React.FC<GeofenceMapEditorProps> = ({
     }
   };
 
+  // Radius above the max is clamped rather than refused: the shape gets the
+  // max straight away, and the field shows it once the user leaves it.
   const handleRadiusChange = (value: string) => {
     setRadiusKm(value);
     const radius = parseFloat(value);
     if (!isNaN(radius) && radius > 0 && shape?.type === 'circle') {
       onShapeChange({
         ...shape,
-        radiusKm: radius,
+        radiusKm: Math.min(GEOFENCE_RADIUS_KM_MAX, radius),
       });
     }
   };
+
+  const handleRadiusBlur = () => {
+    const radius = parseFloat(radiusKm);
+    if (!isNaN(radius) && radius > GEOFENCE_RADIUS_KM_MAX) {
+      setRadiusKm(GEOFENCE_RADIUS_KM_MAX.toFixed(2));
+    }
+  };
+
+  // An out-of-range coordinate never reaches the shape, so the map keeps the
+  // last valid centre. Say so next to the field instead of failing silently.
+  const latInvalid = isOutOfRange(centerLat, -90, 90);
+  const lngInvalid = isOutOfRange(centerLng, -180, 180);
+  const radiusInvalid = isInvalidRadius(radiusKm);
+  const fieldId = useId();
+  const latId = `${fieldId}-lat`;
+  const lngId = `${fieldId}-lng`;
+  const radiusId = `${fieldId}-radius`;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
@@ -425,73 +460,80 @@ const GeofenceMapEditor: React.FC<GeofenceMapEditorProps> = ({
 
       {shapeType === 'circle' && (
         <div className={styles.circleFields} data-testid="geofence-circle-fields">
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-            <label style={{ fontSize: '12px', color: 'var(--color-text-subtle)' }}>
+          <div className={styles.field}>
+            <label htmlFor={latId} className={styles.fieldLabel}>
               {t('automation.geofence_triggers.center_lat')}
             </label>
             <input
+              id={latId}
               type="number"
               step="0.000001"
               min="-90"
               max="90"
               value={centerLat}
               onChange={(e) => handleCenterLatChange(e.target.value)}
-              style={{
-                padding: '6px 8px',
-                background: 'var(--color-bg)',
-                border: '1px solid var(--color-surface-active)',
-                borderRadius: '4px',
-                color: 'var(--color-text)',
-                fontSize: '14px',
-              }}
+              className={latInvalid ? `${styles.fieldInput} ${styles.fieldInputInvalid}` : styles.fieldInput}
+              aria-invalid={latInvalid || undefined}
+              aria-describedby={latInvalid ? `${latId}-error` : undefined}
               placeholder="0.000000"
             />
+            {latInvalid && (
+              <div id={`${latId}-error`} className={styles.fieldError} role="alert">
+                <UiIcon name="alert" size={14} />
+                <span>{t('automation.geofence_triggers.lat_out_of_range', 'Latitude must be between -90 and 90. The map keeps the last valid value.')}</span>
+              </div>
+            )}
           </div>
 
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-            <label style={{ fontSize: '12px', color: 'var(--color-text-subtle)' }}>
+          <div className={styles.field}>
+            <label htmlFor={lngId} className={styles.fieldLabel}>
               {t('automation.geofence_triggers.center_lng')}
             </label>
             <input
+              id={lngId}
               type="number"
               step="0.000001"
               min="-180"
               max="180"
               value={centerLng}
               onChange={(e) => handleCenterLngChange(e.target.value)}
-              style={{
-                padding: '6px 8px',
-                background: 'var(--color-bg)',
-                border: '1px solid var(--color-surface-active)',
-                borderRadius: '4px',
-                color: 'var(--color-text)',
-                fontSize: '14px',
-              }}
+              className={lngInvalid ? `${styles.fieldInput} ${styles.fieldInputInvalid}` : styles.fieldInput}
+              aria-invalid={lngInvalid || undefined}
+              aria-describedby={lngInvalid ? `${lngId}-error` : undefined}
               placeholder="0.000000"
             />
+            {lngInvalid && (
+              <div id={`${lngId}-error`} className={styles.fieldError} role="alert">
+                <UiIcon name="alert" size={14} />
+                <span>{t('automation.geofence_triggers.lng_out_of_range', 'Longitude must be between -180 and 180. The map keeps the last valid value.')}</span>
+              </div>
+            )}
           </div>
 
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-            <label style={{ fontSize: '12px', color: 'var(--color-text-subtle)' }}>
+          <div className={styles.field}>
+            <label htmlFor={radiusId} className={styles.fieldLabel}>
               {t('automation.geofence_triggers.radius_km')}
             </label>
             <input
+              id={radiusId}
               type="number"
               step="0.01"
               min="0.01"
               max={GEOFENCE_RADIUS_KM_MAX}
               value={radiusKm}
               onChange={(e) => handleRadiusChange(e.target.value)}
-              style={{
-                padding: '6px 8px',
-                background: 'var(--color-bg)',
-                border: '1px solid var(--color-surface-active)',
-                borderRadius: '4px',
-                color: 'var(--color-text)',
-                fontSize: '14px',
-              }}
+              onBlur={handleRadiusBlur}
+              className={radiusInvalid ? `${styles.fieldInput} ${styles.fieldInputInvalid}` : styles.fieldInput}
+              aria-invalid={radiusInvalid || undefined}
+              aria-describedby={radiusInvalid ? `${radiusId}-error` : undefined}
               placeholder="10.00"
             />
+            {radiusInvalid && (
+              <div id={`${radiusId}-error`} className={styles.fieldError} role="alert">
+                <UiIcon name="alert" size={14} />
+                <span>{t('automation.geofence_triggers.radius_invalid', 'Radius must be greater than 0. The map keeps the last valid value.')}</span>
+              </div>
+            )}
           </div>
         </div>
       )}

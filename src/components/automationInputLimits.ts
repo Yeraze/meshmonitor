@@ -24,8 +24,8 @@ export const GEOFENCE_COOLDOWN_MINUTES_MAX = 10080;
 export const GEOFENCE_INTERVAL_MINUTES_MIN = 1;
 export const GEOFENCE_INTERVAL_MINUTES_MAX = 1440;
 
-/** Geofence circle radius, in km: half the Earth's circumference covers any point. */
-export const GEOFENCE_RADIUS_KM_MAX = 20037;
+/** Geofence circle radius, in km. Shared with the server's save validation. */
+export { GEOFENCE_RADIUS_KM_MAX } from '../utils/geofenceLimits';
 
 /** Auto-delete-by-distance threshold, in km. Matches the settings route's 400 bound. */
 export const DISTANCE_DELETE_THRESHOLD_KM_MAX = 50000;

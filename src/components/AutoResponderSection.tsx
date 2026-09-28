@@ -579,6 +579,7 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
             type="checkbox"
             checked={localEnabled}
             onChange={(e) => setLocalEnabled(e.target.checked)}
+            aria-label={t('auto_responder.enable_aria', 'Enable Auto Responder')}
             style={{ width: 'auto', margin: 0, cursor: 'pointer' }}
           />
           {t('auto_responder.title')}

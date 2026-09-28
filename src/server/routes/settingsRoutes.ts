@@ -45,6 +45,7 @@ import {
 import { aircraftClassificationService } from '../services/aircraftClassificationService.js';
 import { isAdsbFeed, ADSB_FEED_IDS } from '../../utils/adsbFeeds.js';
 import { clampIntervalSetting, GEOFENCE_WHILE_INSIDE_MINUTES } from '../utils/schedulerInterval.js';
+import { GEOFENCE_RADIUS_KM_MAX } from '../../utils/geofenceLimits.js';
 
 // ─── Tile URL validation ─────────────────────────────────────────────────
 
@@ -794,6 +795,14 @@ router.post('/', requirePermission('settings', 'write', { sourceIdFrom: 'query' 
             }
             if (typeof trigger.shape.radiusKm !== 'number' || trigger.shape.radiusKm <= 0) {
               return res.status(400).json({ error: 'Circle geofence must have a positive radiusKm' });
+            }
+            // Rejected like the lat/lng checks above, not clamped: this is shape
+            // data with no timer or mesh-traffic risk, and the UI already clamps
+            // to the same ceiling, so only a direct API caller can hit this.
+            if (trigger.shape.radiusKm > GEOFENCE_RADIUS_KM_MAX) {
+              return res
+                .status(400)
+                .json({ error: `Circle geofence radiusKm must be at most ${GEOFENCE_RADIUS_KM_MAX}` });
             }
           } else if (trigger.shape.type === 'polygon') {
             if (!Array.isArray(trigger.shape.vertices) || trigger.shape.vertices.length < 3) {
