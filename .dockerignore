@@ -52,3 +52,6 @@ meshmonitor-logs/
 
 # Helm charts (not needed in container)
 helm/
+
+# Local tile server data (bind-mounted by docker-compose.dev.yml, never built in)
+tiles/

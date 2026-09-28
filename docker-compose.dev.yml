@@ -1,9 +1,14 @@
 name: meshmonitor
 
 services:
+  # Optional offline tile server. Opt-in only: normal dev deploys and tests do
+  # not use it. Drop .mbtiles into ./tiles (gitignored), then start it with
+  # COMPOSE_PROFILES=sqlite,tiles docker compose -f docker-compose.dev.yml up -d
   tileserver:
     image: maptiler/tileserver-gl-light:latest
     container_name: tileserver
+    profiles:
+      - tiles
     ports:
       - "8082:8080"
     restart: unless-stopped
