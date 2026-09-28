@@ -129,6 +129,15 @@ vi.mock('../services/firmwareUpdateService.js', () => ({
     clearStagedUpload: mockClearStagedUpload,
   },
   FirmwareChannel: {},
+  OtaPreflightError: class OtaPreflightError extends Error {
+    constructor(
+      public readonly code: string,
+      message: string
+    ) {
+      super(message);
+      this.name = 'OtaPreflightError';
+    }
+  },
 }));
 
 // Mock meshtasticManager (routes use fallbackManager for post-flash
@@ -358,6 +367,27 @@ describe('firmwareUpdateRoutes', () => {
       expect(res.status).toBe(200);
       expect(res.body.success).toBe(true);
       expect(mockStartPreflight).toHaveBeenCalled();
+    });
+
+    it('returns 400 with the refusal code when preflight refuses an ambiguous board (#5423)', async () => {
+      const { OtaPreflightError } = await import('../services/firmwareUpdateService.js');
+      mockFindReleaseByVersion.mockReturnValue({
+        tagName: 'v2.5.0', version: '2.5.0', prerelease: false, publishedAt: '2024-01-01', htmlUrl: '', assets: [],
+      });
+      mockStartPreflight.mockImplementationOnce(() => {
+        throw new OtaPreflightError('OTA_AMBIGUOUS_BOARD', 'Diy V1 is shared by several firmware builds');
+      });
+
+      const res = await request(app)
+        .post('/api/firmware/update')
+        .send({ targetVersion: '2.5.0', gatewayIp: '192.168.1.100', hwModel: 39, currentVersion: '2.4.0' });
+
+      expect(res.status).toBe(400);
+      expect(res.body).toMatchObject({
+        success: false,
+        code: 'OTA_AMBIGUOUS_BOARD',
+        error: 'Diy V1 is shared by several firmware builds',
+      });
     });
 
     it('should return 400 when missing required fields', async () => {

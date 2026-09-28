@@ -48,6 +48,8 @@ vi.mock('./firmwareHardwareMap.js', () => ({
   getPlatformForBoard: vi.fn().mockReturnValue('esp32s3'),
   isOtaCapable: vi.fn().mockReturnValue(true),
   getHardwareDisplayName: vi.fn().mockReturnValue('Station G2'),
+  getAmbiguousOtaModel: vi.fn().mockReturnValue(null),
+  getOtaSiblingWarnings: vi.fn().mockReturnValue([]),
 }));
 
 const mockManager = vi.hoisted(() => ({

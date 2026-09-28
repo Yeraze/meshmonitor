@@ -29,9 +29,26 @@ import {
   getPlatformForBoard,
   isOtaCapable,
   getHardwareDisplayName,
+  getAmbiguousOtaModel,
+  getOtaSiblingWarnings,
 } from './firmwareHardwareMap.js';
+import type { OtaSiblingWarning } from './firmwareHardwareMap.js';
 // Re-export for consumers
 export { getBoardName, getPlatformForBoard, isOtaCapable, getHardwareDisplayName };
+
+/**
+ * A preflight refusal the route should report as a 400 with a machine code,
+ * rather than a generic 500.
+ */
+export class OtaPreflightError extends Error {
+  constructor(
+    public readonly code: string,
+    message: string
+  ) {
+    super(message);
+    this.name = 'OtaPreflightError';
+  }
+}
 
 // Port served by the MeshtasticOTA-WiFi loader in the ota_1 partition during OTA mode.
 // This is the firmware-image transfer port and is NOT the TCP API port — a
@@ -106,6 +123,12 @@ export interface UpdateStatus {
   downloadSize?: number;
   matchedFile?: string;
   rejectedFiles?: Array<{ name: string; reason: string }>;
+  /**
+   * Set at preflight and kept for the whole wizard: the board being flashed
+   * shares its hw model with other release builds (#5423). Empty when the
+   * operator picked the build (custom URL / upload) or the model is unique.
+   */
+  warnings?: OtaSiblingWarning[];
 }
 
 // ---- GitHub API response types (raw) ----
@@ -1071,12 +1094,26 @@ export class FirmwareUpdateService {
       throw new Error('Cannot start preflight: state is not idle');
     }
 
+    // #5423: a hw model shared by several release builds can't be matched to
+    // one binary. Refuse release/nightly updates; a custom URL or uploaded
+    // .bin is the operator's own pick of build, so those still proceed.
+    const ambiguous = getAmbiguousOtaModel(params.hwModel);
+    const operatorPickedBuild = Boolean(params.customUrl) || Boolean(params.useStagedUpload);
+    if (ambiguous && !operatorPickedBuild) {
+      throw new OtaPreflightError(
+        'OTA_AMBIGUOUS_BOARD',
+        `${getHardwareDisplayName(params.hwModel)} is shared by several firmware builds ` +
+          `(${ambiguous.builds.join(', ')}); MeshMonitor can't tell which one this node runs. ` +
+          `Flash it manually, or choose the build yourself with a custom firmware URL or an uploaded .bin.`
+      );
+    }
+
     const boardName = getBoardName(params.hwModel);
     if (!boardName) {
       throw new Error(`Unknown hardware model ${params.hwModel}: cannot determine board name`);
     }
 
-    const platform = getPlatformForBoard(boardName);
+    const platform = ambiguous ? ambiguous.platform : getPlatformForBoard(boardName);
     if (!platform || !isOtaCapable(platform)) {
       throw new Error(
         `Board "${boardName}" (platform: ${platform ?? 'unknown'}) is not OTA capable`
@@ -1159,9 +1196,17 @@ export class FirmwareUpdateService {
 
     const displayName = getHardwareDisplayName(params.hwModel);
 
+    // A custom URL / upload is the operator's own pick of build, so the
+    // "we are about to flash the base build" warning doesn't apply there.
+    const warnings = operatorPickedBuild ? [] : getOtaSiblingWarnings(params.hwModel);
+    for (const w of warnings) {
+      logger.warn(`[FirmwareUpdateService] ${w.message}`);
+    }
+
     this.updateStatus({
       state: 'awaiting-confirm',
       step: 'preflight',
+      warnings,
       message: `Preflight complete. Ready to update ${displayName} from ${params.currentVersion} to ${params.targetVersion}`,
       targetVersion: params.targetVersion,
       sourceId: params.sourceId,

@@ -9,6 +9,7 @@ import { useData } from '../../contexts/DataContext';
 import { useSource } from '../../contexts/SourceContext';
 import { getHardwareModelName } from '../../utils/hardwareModel';
 import { buildOtaGateway } from '../../utils/otaGateway';
+import styles from './FirmwareUpdateSection.module.css';
 
 interface FirmwareUpdateSectionProps {
   baseUrl: string;
@@ -44,6 +45,16 @@ interface PreflightInfo {
   platform: string;
 }
 
+/** Mirrors OtaSiblingWarning in src/server/services/firmwareHardwareMap.ts (#5423). */
+interface OtaSiblingWarning {
+  code: 'OTA_SIBLING_BUILD';
+  board: string;
+  boardLabel: string;
+  sibling: string;
+  siblingLabel: string;
+  message: string;
+}
+
 interface UpdateStatus {
   state: UpdateState;
   step: UpdateStep;
@@ -58,6 +69,7 @@ interface UpdateStatus {
   downloadSize?: number;
   matchedFile?: string;
   rejectedFiles?: Array<{ name: string; reason: string }>;
+  warnings?: OtaSiblingWarning[];
   /** Source whose node the running update is flashing (#5424 follow-up). */
   sourceId?: string;
 }
@@ -1015,6 +1027,34 @@ const FirmwareUpdateSection: React.FC<FirmwareUpdateSectionProps> = ({ baseUrl }
               {effectiveStatus.message}
             </p>
           </div>
+
+          {/* Sibling-build warning (#5423): the board being flashed shares its
+              hw model with other release builds. Shown at every confirm so the
+              operator sees it before the flash step, not as a passing toast. */}
+          {effectiveStatus.state === 'awaiting-confirm' &&
+            effectiveStatus.warnings && effectiveStatus.warnings.length > 0 && (
+            <div className={styles.siblingWarning} role="alert" data-testid="ota-sibling-warning">
+              <UiIcon name="alert" size={18} className={styles.siblingWarningIcon} />
+              <div>
+                <strong className={styles.siblingWarningTitle}>
+                  {t('firmware.sibling_build_title', 'Check which firmware build your node runs')}
+                </strong>
+                <ul className={styles.siblingWarningList}>
+                  {effectiveStatus.warnings.map((w) => (
+                    <li key={w.sibling}>
+                      {t('firmware.sibling_build_warning', {
+                        defaultValue:
+                          'This will flash {{board}}. If your node is a {{siblingLabel}}, cancel and use a custom firmware URL or upload the {{sibling}} .bin instead.',
+                        board: w.boardLabel,
+                        siblingLabel: w.siblingLabel,
+                        sibling: w.sibling,
+                      })}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+          )}
 
           {/* Progress bar with percentage */}
           {effectiveStatus.progress !== undefined && effectiveStatus.progress > 0 && (

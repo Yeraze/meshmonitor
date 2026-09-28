@@ -7,7 +7,7 @@
 
 import express, { Router, Request, Response } from 'express';
 import { requireAdmin } from '../auth/authMiddleware.js';
-import { firmwareUpdateService } from '../services/firmwareUpdateService.js';
+import { firmwareUpdateService, OtaPreflightError } from '../services/firmwareUpdateService.js';
 import { resolveFirmwareDownloadUrl } from '../services/firmwareUrl.js';
 import { fallbackManager, type MeshtasticManager } from '../meshtasticManager.js';
 import { sourceManagerRegistry } from '../sourceManagerRegistry.js';
@@ -458,6 +458,10 @@ router.post('/update', async (req: Request, res: Response) => {
     const status = firmwareUpdateService.getStatus();
     return res.json({ success: true, status });
   } catch (error) {
+    if (error instanceof OtaPreflightError) {
+      logger.warn(`[FirmwareRoutes] Preflight refused (${error.code}): ${error.message}`);
+      return fail(res, 400, error.code, error.message);
+    }
     const message = error instanceof Error ? error.message : String(error);
     logger.error('[FirmwareRoutes] Error starting preflight:', error);
     return res.status(500).json({ success: false, error: message });
