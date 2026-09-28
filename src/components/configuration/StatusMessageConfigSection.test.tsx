@@ -53,6 +53,14 @@ describe('StatusMessageConfigSection layout', () => {
     expect(counter.parentElement!.style.position).toBe('');
   });
 
+  it('gives the section root a module class that restores its bottom gap', () => {
+    const { container } = renderSection();
+    const section = container.querySelector('.settings-section')!;
+    const extra = Array.from(section.classList).filter((c) => c !== 'settings-section');
+    expect(extra.length).toBe(1);
+    expect(extra[0]).not.toBe('undefined');
+  });
+
   it('keeps the global setting-input class so the field matches its siblings', () => {
     renderSection();
     const input = screen.getByLabelText(/Node Status/);
