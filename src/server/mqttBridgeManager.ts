@@ -147,8 +147,8 @@ export interface MqttBridgeSourceConfig {
    * Default false (unchanged behaviour on upgrade).
    *
    * Only covers this bridge's uplink. A device whose built-in MQTT module
-   * publishes straight to the upstream broker bypasses it; that path needs a
-   * firmware fix (meshtastic/firmware#11994).
+   * publishes straight to the upstream broker bypasses it. Firmware will not
+   * add a per-packet override (declined in meshtastic/firmware#11994).
    */
   dropAutomationUplinks?: boolean;
 }
@@ -768,11 +768,11 @@ export class MqttBridgeManager extends EventEmitter implements ISourceManager {
     if (!this.uplinkFilter.preFilter(p.topic, p.envelope)) return;
 
     // Drop packets MeshMonitor's own automations sent (#5414). The firmware
-    // sets ok_to_mqtt on every phone-API packet from the node config
-    // (meshtastic/firmware#11994), so this is the only place we can keep
-    // automation traffic off the upstream broker. Matched on (from, id): the
-    // tracker only knows packets our connected nodes originated, so another
-    // node's packet never matches. Checked before ok_to_mqtt — it is a cheap
+    // sets ok_to_mqtt on every phone-API packet from the node config, by
+    // design (declined in meshtastic/firmware#11994), so this is the only
+    // place we can keep automation traffic off the upstream broker. Matched on
+    // (from, id): the tracker only knows packets our connected nodes
+    // originated, so another node's packet never matches. Checked before ok_to_mqtt — it is a cheap
     // synchronous lookup and saves a decrypt.
     if (this.config.dropAutomationUplinks && packetId !== null) {
       // Coerce like the packet id above: some decode paths hand back a Long.

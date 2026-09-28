@@ -406,7 +406,7 @@ export const MqttBridgeConfigurationView: React.FC<MqttBridgeConfigurationViewPr
             <span style={labelStyle}>
               {t(
                 'source.form.mqtt_bridge_drop_automation_uplinks_help',
-                'Keeps packets sent by MeshMonitor automations (auto-acknowledge tapbacks, auto-responder, auto-announce, auto-welcome, timers, geofences, Automation Engine actions, auto-ping, scheduled requests) off the upstream broker. They still go out over LoRa and to the local broker; messages you send by hand are not affected. Only covers this bridge: a node whose own MQTT module publishes straight to the upstream broker still uplinks them (firmware limit, meshtastic/firmware#11994).',
+                'Keeps packets sent by MeshMonitor automations (auto-acknowledge tapbacks, auto-responder, auto-announce, auto-welcome, timers, geofences, Automation Engine actions, auto-ping, scheduled requests) off the upstream broker. They still go out over LoRa and to the local broker; messages you send by hand are not affected. Only covers this bridge: a node whose own MQTT module publishes straight to the upstream broker still uplinks them (firmware behaviour by design, meshtastic/firmware#11994).',
               )}
             </span>
             <span style={{ ...labelStyle, display: 'block' }}>
