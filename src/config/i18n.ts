@@ -43,6 +43,12 @@ void i18n
   .use(initReactI18next)
   .init({
     fallbackLng: 'en',
+    // Only the locales we ship. A browser reporting a regional variant
+    // ("en-US", "de-AT") resolves to its base language ("en", "de") instead of
+    // requesting /locales/en-US.json, which does not exist and 404s on every
+    // page load. Exact codes such as "zh_Hans" match as-is; an unshipped
+    // language falls back to English.
+    supportedLngs: AVAILABLE_LANGUAGES.map((lang) => lang.code),
     load: 'currentOnly',
     preload: ['en'], // Always load English for fallback when translations are missing
     debug: process.env.NODE_ENV === 'development',
