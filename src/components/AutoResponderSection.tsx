@@ -21,6 +21,7 @@ import {
   getExampleValueForParam
 } from './auto-responder/utils';
 import TriggerItem from './auto-responder/TriggerItem';
+import AutoResponderDialog from './auto-responder/AutoResponderDialog';
 import PatternExamples from './auto-responder/PatternExamples';
 import ScriptManagement from './auto-responder/ScriptManagement';
 import { UiIcon } from './icons';
@@ -228,6 +229,23 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
     } finally {
       setIsDeleting(null);
     }
+  };
+
+  // Shared by the ×, Cancel and Escape, so every way out resets the picker.
+  const closeImportModal = () => {
+    setShowImportModal(false);
+    const input = document.getElementById('script-import-input') as HTMLInputElement | null;
+    const filenameDisplay = document.getElementById('script-import-filename');
+    if (input) input.value = '';
+    if (filenameDisplay) {
+      filenameDisplay.textContent = t('auto_responder.no_file_selected');
+      filenameDisplay.style.color = 'var(--color-text-subtle)';
+    }
+  };
+
+  const closeDeleteModal = () => {
+    setShowDeleteModal(false);
+    setScriptToDelete(null);
   };
 
   const toggleScriptSelection = (script: string) => {
@@ -660,7 +678,7 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
               onChange={(e) => setNewTrigger(e.target.value)}
                   placeholder={t('auto_responder.trigger_placeholder')}
               disabled={!localEnabled}
-              className="setting-input"
+              className={`setting-input ${layout.scrollTarget}`}
                   style={{ 
                     width: '100%',
                     fontFamily: 'monospace',
@@ -2348,30 +2366,11 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
 
         {/* Import Modal */}
         {showImportModal && (
-          <div style={{
-            position: 'fixed',
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            background: 'rgba(0, 0, 0, 0.7)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            zIndex: 10000
-          }}>
-            <div style={{
-              background: 'var(--color-bg)',
-              padding: '1.5rem',
-              borderRadius: '8px',
-              maxWidth: '500px',
-              width: '90%',
-              border: '1px solid var(--color-border-subtle)'
-            }}>
+          <AutoResponderDialog onClose={closeImportModal} labelledBy="auto-responder-import-title">
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-                <h3 style={{ margin: 0, color: 'var(--color-text)' }}>{t('auto_responder.import_script')}</h3>
+                <h3 id="auto-responder-import-title" style={{ margin: 0, color: 'var(--color-text)' }}>{t('auto_responder.import_script')}</h3>
                 <button
-                  onClick={() => setShowImportModal(false)}
+                  onClick={closeImportModal}
                   style={{
                     background: 'transparent',
                     border: 'none',
@@ -2446,16 +2445,7 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
               </div>
               <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
                 <button
-                  onClick={() => {
-                    setShowImportModal(false);
-                    const input = document.getElementById('script-import-input') as HTMLInputElement;
-                    const filenameDisplay = document.getElementById('script-import-filename');
-                    if (input) input.value = '';
-                    if (filenameDisplay) {
-                      filenameDisplay.textContent = t('auto_responder.no_file_selected');
-                      filenameDisplay.style.color = 'var(--color-text-subtle)';
-                    }
-                  }}
+                  onClick={closeImportModal}
                   style={{
                     padding: '0.5rem 1rem',
                     background: 'var(--color-surface-hover)',
@@ -2468,34 +2458,14 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
                   {t('common.cancel')}
                 </button>
               </div>
-            </div>
-          </div>
+          </AutoResponderDialog>
         )}
 
         {/* Export Modal */}
         {showExportModal && (
-          <div style={{
-            position: 'fixed',
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            background: 'rgba(0, 0, 0, 0.7)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            zIndex: 10000
-          }}>
-            <div style={{
-              background: 'var(--color-bg)',
-              padding: '1.5rem',
-              borderRadius: '8px',
-              maxWidth: '500px',
-              width: '90%',
-              border: '1px solid var(--color-border-subtle)'
-            }}>
+          <AutoResponderDialog onClose={() => setShowExportModal(false)} labelledBy="auto-responder-export-title">
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-                <h3 style={{ margin: 0, color: 'var(--color-text)' }}>{t('auto_responder.export_scripts')}</h3>
+                <h3 id="auto-responder-export-title" style={{ margin: 0, color: 'var(--color-text)' }}>{t('auto_responder.export_scripts')}</h3>
                 <button
                   onClick={() => setShowExportModal(false)}
                   style={{
@@ -2561,39 +2531,16 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
                   {isExporting ? t('auto_responder.exporting') : <><UiIcon name="download" size={14} /> {t('auto_responder.download_zip')}</>}
                 </button>
               </div>
-            </div>
-          </div>
+          </AutoResponderDialog>
         )}
 
         {/* Delete Modal */}
         {showDeleteModal && scriptToDelete && (
-          <div style={{
-            position: 'fixed',
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            background: 'rgba(0, 0, 0, 0.7)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            zIndex: 10000
-          }}>
-            <div style={{
-              background: 'var(--color-bg)',
-              padding: '1.5rem',
-              borderRadius: '8px',
-              maxWidth: '500px',
-              width: '90%',
-              border: '1px solid var(--color-border-subtle)'
-            }}>
+          <AutoResponderDialog onClose={closeDeleteModal} labelledBy="auto-responder-delete-title">
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-                <h3 style={{ margin: 0, color: 'var(--color-text)' }}>{t('auto_responder.delete_script')}</h3>
+                <h3 id="auto-responder-delete-title" style={{ margin: 0, color: 'var(--color-text)' }}>{t('auto_responder.delete_script')}</h3>
                 <button
-                  onClick={() => {
-                    setShowDeleteModal(false);
-                    setScriptToDelete(null);
-                  }}
+                  onClick={closeDeleteModal}
                   style={{
                     background: 'transparent',
                     border: 'none',
@@ -2616,10 +2563,7 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
               </p>
               <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
                 <button
-                  onClick={() => {
-                    setShowDeleteModal(false);
-                    setScriptToDelete(null);
-                  }}
+                  onClick={closeDeleteModal}
                   style={{
                     padding: '0.5rem 1rem',
                     background: 'var(--color-surface-hover)',
@@ -2647,8 +2591,7 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
                   {isDeleting === scriptToDelete ? t('auto_responder.deleting') : t('common.delete')}
                 </button>
               </div>
-            </div>
-          </div>
+          </AutoResponderDialog>
         )}
       </div>
     </>

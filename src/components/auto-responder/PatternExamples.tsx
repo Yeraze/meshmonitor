@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useTranslation, Trans } from 'react-i18next';
 import { UiIcon } from '../icons';
+import layout from '../AutomationFormLayout.module.css';
 
 interface PatternExamplesProps {
   onSelectPattern: (pattern: string) => void;
@@ -42,7 +43,9 @@ const PATTERN_GROUPS: Array<{ titleKey: string; items: PatternExample[] }> = [
   {
     titleKey: 'examples_group_location',
     items: [
-      { pattern: 'loc {lat:-?\\d+\\.?\\d*},{lon:-?\\d+\\.?\\d*}', descKey: 'examples_lat_lon' },
+      // Space, not comma, between the two: a top-level comma separates
+      // patterns, so "{lat},{lon}" inserted as two patterns.
+      { pattern: 'loc {lat:-?\\d+\\.?\\d*} {lon:-?\\d+\\.?\\d*}', descKey: 'examples_lat_lon' },
       { pattern: 'grid {square:[A-R]{2}\\d{2}[a-x]{2}}', descKey: 'examples_grid_square' },
       { pattern: 'zip {code:\\d{5}}', descKey: 'examples_zip_code' },
       { pattern: 'weather {location}', descKey: 'examples_location_name' },
@@ -149,6 +152,7 @@ const PatternExamples: React.FC<PatternExamplesProps> = ({ onSelectPattern }) =>
               {COMMAND_EXAMPLES.map(([pattern, descKey]) => (
                 <button
                   key={pattern}
+                  className={layout.scrollTarget}
                   onClick={() => onSelectPattern(pattern)}
                   style={cardStyle}
                   onMouseEnter={(e) => {
@@ -177,6 +181,7 @@ const PatternExamples: React.FC<PatternExamplesProps> = ({ onSelectPattern }) =>
                   {group.items.map((item) => (
                     <div key={item.pattern}>
                       <code
+                        className={layout.scrollTarget}
                         style={patternCodeStyle}
                         onClick={() => onSelectPattern(item.pattern)}
                         title={t(`auto_responder.${item.titleKey ?? 'examples_click_to_use'}`)}

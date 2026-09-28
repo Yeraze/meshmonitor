@@ -96,9 +96,15 @@
  * same x. A longer translation wraps inside the label instead of pushing its
  * input out of line. The `.inlineHint` wrap from #5465 is unchanged: the hint
  * still drops under the input on a phone and sits beside it on a desktop.
+ *
+ * The basis is capped at 45% of the row. At 390px the row is ~276px, and a
+ * plain 11rem (176px) + gap + 100px input needed 284px, so each input wrapped
+ * under its label. 45% (~124px) keeps label and input on one line there, with
+ * the label text wrapping inside it; on a desktop card 11rem is the smaller
+ * value, so nothing moves.
  */
 .numberLabel {
-  flex: 0 0 11rem;
+  flex: 0 0 min(11rem, 45%);
   max-width: 100%;
 }
 
@@ -128,4 +134,16 @@
   flex-wrap: nowrap;
   gap: 0.5rem;
   white-space: nowrap;
+}
+
+/*
+ * Click targets on the Automation page that the browser may scroll into view:
+ * the Pattern Examples card's buttons and patterns, and the trigger input they
+ * fill. The page scrolls under the fixed header AND the sticky SectionNav tab
+ * strip, so a target scrolled to the top landed under the strip. Clear both,
+ * using the heights the app publishes (useAppHeaderHeightVar /
+ * useSectionNavHeightVar, the offsets #5455 moved SectionNav to).
+ */
+.scrollTarget {
+  scroll-margin-top: calc(var(--app-header-height, 0px) + var(--section-nav-height, 0px) + 1rem);
 }

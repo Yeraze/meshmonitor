@@ -4,6 +4,7 @@ import { TriggerItemProps, ResponseType, ScriptMetadata } from './types';
 import { splitTriggerPatterns, formatTriggerPatterns } from './utils';
 import { normalizeTriggerChannels } from '../../utils/autoResponderUtils';
 import ScriptTestModal from '../ScriptTestModal';
+import AutoResponderDialog from './AutoResponderDialog';
 import { UiIcon } from '../icons';
 
 /**
@@ -816,28 +817,13 @@ const TriggerItem: React.FC<TriggerItemProps> = ({
       )}
       {/* Remove Confirmation Modal */}
       {showRemoveModal && (
-        <div style={{
-          position: 'fixed',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          background: 'rgba(0, 0, 0, 0.5)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          zIndex: 10000
-        }}>
-          <div style={{
-            background: 'var(--color-bg)',
-            borderRadius: '8px',
-            padding: '1.5rem',
-            maxWidth: '500px',
-            width: '90%',
-            border: '1px solid var(--color-border-subtle)'
-          }}>
+        <AutoResponderDialog
+          onClose={() => setShowRemoveModal(false)}
+          labelledBy={`remove-trigger-title-${trigger.id}`}
+          backdrop="rgba(0, 0, 0, 0.5)"
+        >
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-              <h3 style={{ margin: 0, color: 'var(--color-text)' }}>{t('auto_responder.remove_trigger_title')}</h3>
+              <h3 id={`remove-trigger-title-${trigger.id}`} style={{ margin: 0, color: 'var(--color-text)' }}>{t('auto_responder.remove_trigger_title')}</h3>
               <button
                 onClick={() => setShowRemoveModal(false)}
                 aria-label={t('common.close')}
@@ -903,8 +889,7 @@ const TriggerItem: React.FC<TriggerItemProps> = ({
                 {t('common.remove')}
               </button>
             </div>
-          </div>
-        </div>
+        </AutoResponderDialog>
       )}
       {/* Script Test Modal */}
       {trigger.responseType === 'script' && (

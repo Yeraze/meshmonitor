@@ -222,17 +222,42 @@ describe('pattern examples are translatable', () => {
   });
 });
 
+describe('click targets clear the sticky tab strip', () => {
+  it('scroll-margin-top covers the header and the SectionNav', () => {
+    const r = rule('scrollTarget');
+    expect(r).toMatch(/scroll-margin-top:\s*calc\(/);
+    expect(r).toContain('var(--app-header-height');
+    expect(r).toContain('var(--section-nav-height');
+  });
+
+  it('the examples and the trigger input carry the class', () => {
+    const examples = read('auto-responder/PatternExamples.tsx');
+    expect(examples.match(/className=\{layout\.scrollTarget\}/g)?.length).toBe(2);
+    expect(read('AutoResponderSection.tsx')).toContain('className={`setting-input ${layout.scrollTarget}`}');
+  });
+});
+
 describe('geofence number inputs line up', () => {
   const tsx = read('GeofenceTriggersSection.tsx');
 
-  it('Interval and Cooldown labels share a fixed width', () => {
-    const [grow, shrink, basis] = flexOf('numberLabel');
-    expect(grow).toBe(0);
-    expect(shrink).toBe(0);
-    // Wider than "Cooldown (minutes):" (~160px at 0.9rem), so both fit.
-    expect(basis).toBeGreaterThanOrEqual(160);
-    // 390px viewport: ~333px card. Label + gap + 100px input still share a line.
-    expect(basis + 8 + 100).toBeLessThanOrEqual(333);
+  it('Interval and Cooldown labels share a width that fits on a phone', () => {
+    const m = rule('numberLabel').match(/flex:\s*0\s+0\s+min\(\s*([\d.]+)rem\s*,\s*([\d.]+)%\s*\)/);
+    expect(m, '.numberLabel needs flex: 0 0 min(<rem>, <pct>%)').not.toBeNull();
+    const cap = Number(m![1]) * REM;
+    const pct = Number(m![2]) / 100;
+    const basisAt = (row: number) => Math.min(cap, row * pct);
+    const gap = 8;
+    const input = 100;
+
+    // 390px viewport: the measured row is ~276px. The first version used a
+    // plain 11rem (176px) and needed 284px, so each input dropped under its
+    // label. Label + gap + input must now share the line.
+    expect(basisAt(276) + gap + input).toBeLessThanOrEqual(276);
+
+    // 1280px: the desktop card is far wider, so the label takes the full cap,
+    // which is wider than "Cooldown (minutes):" (~160px at 0.9rem).
+    expect(basisAt(900)).toBe(cap);
+    expect(cap).toBeGreaterThanOrEqual(160);
   });
 
   it.each(['while_inside_interval', 'cooldown'])('%s label uses the class', (key) => {

@@ -12,6 +12,16 @@
  * @example
  * splitTriggerPatterns("hello,hi {name}") // ["hello", "hi {name}"]
  * splitTriggerPatterns("weather {city, state}") // ["weather {city, state}"]
+ *
+ * Only a comma at the top level separates patterns. Inside `{...}` it is part
+ * of the parameter or its regex (`{n:\d{1,3}}`, `{sep:[,;]}`). Outside braces
+ * there is no regex context: the matcher escapes literal text, `[`/`]`
+ * included. So a comma between two parameters (`{lat},{lon}`) IS a separator.
+ * Write such patterns with a space (`{lat} {lon}`) or put the comma inside one
+ * parameter's regex.
+ *
+ * This is the one splitter: the server (meshtasticManager via
+ * normalizeTriggerPatterns) and the UI (auto-responder/utils.ts) both use it.
  */
 const MAX_TRIGGER_STR_LENGTH = 10000;
 
