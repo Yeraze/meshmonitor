@@ -59,8 +59,10 @@ describe('firmwareHardwareMap', () => {
       expect(getBoardName(70)).toBe('seeed-sensecap-indicator');
     });
 
-    it('should map M5STACK (42) to the esp32 m5stack-core release board', () => {
-      expect(getBoardName(42)).toBe('m5stack-core');
+    it('should leave M5STACK (42) unmapped: m5stack-core and m5stack-coreink share it (#5423)', () => {
+      const board = getBoardName(42);
+      expect(board).not.toBe('m5stack-core');
+      expect(getPlatformForBoard(board!)).toBeNull();
     });
 
     it('should map EBYTE_ESP32_S3 (54) to its own EBYTE_ESP32-S3 env, not the CDEBYTE board', () => {

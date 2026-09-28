@@ -28,11 +28,10 @@ const EXCLUDED_MODELS = new Set(['UNSET', 'ANDROID_SIM', 'PORTDUINO']);
  * never derive them by rule — copy them from the manifest (#5423 audit;
  * fixtures in firmwareHardwareMap.releaseNames.test.ts).
  *
- * Several hw models are shared by more than one release build (e.g.
- * HELTEC_V4 = heltec-v4 / heltec-v4-tft, TLORA_T3_S3 = tlora-t3s3-v1 /
- * tlora-t3s3-epaper). The node only reports the hw model, so we map to the
- * base build of that model; owners of the alternate build must use a custom
- * URL or local upload, which skip the board-name match.
+ * hw models shared by more than one release build are NOT mapped here: they
+ * live in AMBIGUOUS_OTA_MODELS below and OTA preflight refuses them. The one
+ * exception is HELTEC_V4 (heltec-v4 / heltec-v4-tft), which predates the
+ * audit and is kept on heltec-v4 on purpose (#5402).
  */
 const BOARD_NAME_OVERRIDES: Record<string, string> = {
   LILYGO_TBEAM_S3_CORE: 'tbeam-s3-core',
@@ -63,13 +62,8 @@ const BOARD_NAME_OVERRIDES: Record<string, string> = {
   STATION_G3: 'station-g3',
 
   // ---- Release builds (verified against the 2.7.26 and 2.8.0 manifests) ----
-  TLORA_V2_1_1P6: 'tlora-v2-1-1_6',
-  TLORA_T3_S3: 'tlora-t3s3-v1',
-  DIY_V1: 'meshtastic-diy-v1',
-  M5STACK: 'm5stack-core',
   CHATTER_2: 'chatter2',
   CDEBYTE_EORA_S3: 'CDEBYTE_EoRa-S3',
-  RADIOMASTER_900_BANDIT_NANO: 'radiomaster_900_bandit_nano',
   RADIOMASTER_900_BANDIT: 'radiomaster_900_bandit',
   HELTEC_CAPSULE_SENSOR_V3: 'heltec_capsule_sensor_v3',
   THINKNODE_M2: 'thinknode_m2',
@@ -82,7 +76,6 @@ const BOARD_NAME_OVERRIDES: Record<string, string> = {
   TBEAM_BPF: 't-beam-bpf',
   THINKNODE_M7: 'thinknode_m7',
   THINKNODE_M9: 'thinknode_m9',
-  HELTEC_V4_R8: 'heltec-v4-r8-oled',
   // The plain seeed_wio_tracker_L2 env is board_level = extra; the -tft
   // build is the only one the release ships for hw model 137.
   SEEED_WIO_TRACKER_L2: 'seeed_wio_tracker_L2-tft',
@@ -247,6 +240,45 @@ const BOARD_PLATFORM_MAP: Record<string, string> = {
   ms24sf1: 'stm32',
   'me25ls01-4y10td': 'stm32',
 };
+
+/**
+ * hw models that more than one release build reports (#5423). The node only
+ * tells us its hw model, so MeshMonitor cannot know which build it runs, and
+ * flashing the wrong one can leave the node without a working display or
+ * radio. OTA preflight refuses these for release and nightly updates; a
+ * custom URL or uploaded .bin (where the operator picks the build) still
+ * works. Candidate builds are the release manifest board names; evidence is
+ * `custom_meshtastic_hw_model` / architecture.h HW_VENDOR at v2.8.0.
+ *
+ * HELTEC_V4 (heltec-v4 / heltec-v4-tft, both tagged hw model 110) has the
+ * same ambiguity but is intentionally NOT listed: it has always mapped to
+ * heltec-v4 and existing users rely on that (#5402).
+ */
+export const AMBIGUOUS_OTA_MODELS: Readonly<
+  Record<string, { platform: string; builds: readonly string[] }>
+> = {
+  TLORA_V2_1_1P6: { platform: 'esp32', builds: ['tlora-v2-1-1_6', 'tlora-v3-3-0-tcxo'] },
+  TLORA_T3_S3: { platform: 'esp32s3', builds: ['tlora-t3s3-v1', 'tlora-t3s3-epaper'] },
+  DIY_V1: { platform: 'esp32', builds: ['meshtastic-diy-v1', 'hydra'] },
+  M5STACK: { platform: 'esp32', builds: ['m5stack-core', 'm5stack-coreink'] },
+  RADIOMASTER_900_BANDIT_NANO: {
+    platform: 'esp32',
+    builds: ['radiomaster_900_bandit_nano', 'radiomaster_900_bandit_micro'],
+  },
+  HELTEC_V4_R8: { platform: 'esp32s3', builds: ['heltec-v4-r8-oled', 'heltec-v4-r8-tft'] },
+};
+
+/**
+ * Returns the candidate builds and platform when a hw model is shared by
+ * several release builds, or null when the model maps to one board.
+ */
+export function getAmbiguousOtaModel(
+  hwModel: number
+): { enumName: string; platform: string; builds: readonly string[] } | null {
+  const enumName = HARDWARE_MODELS[hwModel];
+  const entry = enumName ? AMBIGUOUS_OTA_MODELS[enumName] : undefined;
+  return entry ? { enumName, ...entry } : null;
+}
 
 /**
  * Platforms that support WiFi OTA firmware updates.

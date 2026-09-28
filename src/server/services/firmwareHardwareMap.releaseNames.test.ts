@@ -26,8 +26,14 @@ vi.mock('../meshtasticManager.js', () => ({ fallbackManager: {} }));
 vi.mock('../sourceManagerRegistry.js', () => ({ sourceManagerRegistry: {} }));
 vi.mock('../sourceManagerTypes.js', () => ({ getPrimaryMeshtasticManager: vi.fn() }));
 
-import { getBoardName, getPlatformForBoard, isOtaCapable } from './firmwareHardwareMap.js';
-import { FirmwareUpdateService } from './firmwareUpdateService.js';
+import {
+  AMBIGUOUS_OTA_MODELS,
+  getAmbiguousOtaModel,
+  getBoardName,
+  getPlatformForBoard,
+  isOtaCapable,
+} from './firmwareHardwareMap.js';
+import { FirmwareUpdateService, OtaPreflightError } from './firmwareUpdateService.js';
 import { HARDWARE_MODELS } from '../../utils/hardwareModel.js';
 
 type EspPlatform = 'esp32' | 'esp32c3' | 'esp32c6' | 'esp32s3';
@@ -99,18 +105,14 @@ const V2726 = '2.7.26.54e0d8d';
  * Rows marked (#5423 audit) changed in this PR; the rest pin existing mappings.
  */
 const OTA_BOARDS: Array<[number, string, string, EspPlatform, string[]]> = [
-  [3, 'TLORA_V2_1_1P6', 'tlora-v2-1-1_6', 'esp32', [V280, V2726]], // #5423 audit
   [4, 'TBEAM', 'tbeam', 'esp32', [V280, V2726]],
   [12, 'LILYGO_TBEAM_S3_CORE', 'tbeam-s3-core', 'esp32s3', [V280, V2726]],
   [13, 'RAK11200', 'rak11200', 'esp32', [V280, V2726]],
   [14, 'NANO_G1', 'nano-g1', 'esp32', [V280, V2726]],
-  [16, 'TLORA_T3_S3', 'tlora-t3s3-v1', 'esp32s3', [V280, V2726]], // #5423 audit
   [17, 'NANO_G1_EXPLORER', 'nano-g1-explorer', 'esp32', [V280, V2726]],
   [23, 'HELTEC_HRU_3601', 'heltec-hru-3601', 'esp32c3', [V280, V2726]],
   [25, 'STATION_G1', 'station-g1', 'esp32', [V280, V2726]],
   [31, 'STATION_G2', 'station-g2', 'esp32s3', [V280, V2726]],
-  [39, 'DIY_V1', 'meshtastic-diy-v1', 'esp32', [V280, V2726]], // #5423 audit
-  [42, 'M5STACK', 'm5stack-core', 'esp32', [V280, V2726]], // #5423 audit
   [43, 'HELTEC_V3', 'heltec-v3', 'esp32s3', [V280, V2726]],
   [44, 'HELTEC_WSL_V3', 'heltec-wsl-v3', 'esp32s3', [V280, V2726]],
   [48, 'HELTEC_WIRELESS_TRACKER', 'heltec-wireless-tracker', 'esp32s3', [V280, V2726]],
@@ -122,7 +124,6 @@ const OTA_BOARDS: Array<[number, string, string, EspPlatform, string[]]> = [
   [56, 'CHATTER_2', 'chatter2', 'esp32', [V280, V2726]], // #5423 audit
   [59, 'UNPHONE', 'unphone', 'esp32s3', [V280, V2726]],
   [61, 'CDEBYTE_EORA_S3', 'CDEBYTE_EoRa-S3', 'esp32s3', [V280, V2726]], // #5423 audit
-  [64, 'RADIOMASTER_900_BANDIT_NANO', 'radiomaster_900_bandit_nano', 'esp32', [V280, V2726]], // #5423 audit
   [65, 'HELTEC_CAPSULE_SENSOR_V3', 'heltec_capsule_sensor_v3', 'esp32s3', [V280, V2726]], // #5423 audit
   [66, 'HELTEC_VISION_MASTER_T190', 'heltec-vision-master-t190', 'esp32s3', [V280, V2726]],
   [67, 'HELTEC_VISION_MASTER_E213', 'heltec-vision-master-e213', 'esp32s3', [V280, V2726]],
@@ -139,6 +140,8 @@ const OTA_BOARDS: Array<[number, string, string, EspPlatform, string[]]> = [
   [103, 'T_LORA_PAGER', 'tlora-pager', 'esp32s3', [V280, V2726]], // #5423 audit
   [106, 'RAK3312', 'rak3312', 'esp32s3', [V280, V2726]], // #5423 audit
   [107, 'THINKNODE_M5', 'thinknode_m5', 'esp32s3', [V280, V2726]], // #5423 audit
+  // HELTEC_V4 is also shared (heltec-v4-tft carries hw model 110 too) but
+  // keeps its pre-existing heltec-v4 mapping on purpose (#5402).
   [110, 'HELTEC_V4', 'heltec-v4', 'esp32s3', [V280, V2726]],
   [111, 'M5STACK_C6L', 'm5stack-unitc6l', 'esp32c6', [V280, V2726]], // #5423 audit
   [112, 'M5STACK_CARDPUTER_ADV', 'm5stack-cardputer-adv', 'esp32s3', [V280, V2726]],
@@ -150,7 +153,6 @@ const OTA_BOARDS: Array<[number, string, string, EspPlatform, string[]]> = [
   [125, 'MINI_EPAPER_S3', 'mini-epaper-s3', 'esp32s3', [V280, V2726]], // #5423 audit
   [129, 'THINKNODE_M7', 'thinknode_m7', 'esp32s3', [V280, V2726]], // #5423 audit
   [131, 'THINKNODE_M9', 'thinknode_m9', 'esp32s3', [V280]], // #5423 audit
-  [132, 'HELTEC_V4_R8', 'heltec-v4-r8-oled', 'esp32s3', [V280, V2726]], // #5423 audit
   [134, 'STATION_G3', 'station-g3', 'esp32s3', [V280, V2726]],
   [137, 'SEEED_WIO_TRACKER_L2', 'seeed_wio_tracker_L2-tft', 'esp32s3', [V280]], // #5423 audit
   [140, 'MESHNOLOGY_W10', 'meshnology_w10', 'esp32s3', [V280]], // #5423 audit
@@ -178,6 +180,38 @@ const NRF_BOARDS: Array<[number, string, string]> = [
   [120, 'THINKNODE_M6', 'thinknode_m6'],
 ];
 
+/** hw models shared by several release builds: OTA preflight must refuse them. */
+const AMBIGUOUS: Array<[number, string, EspPlatform, string[]]> = [
+  [3, 'TLORA_V2_1_1P6', 'esp32', ['tlora-v2-1-1_6', 'tlora-v3-3-0-tcxo']],
+  [16, 'TLORA_T3_S3', 'esp32s3', ['tlora-t3s3-v1', 'tlora-t3s3-epaper']],
+  [39, 'DIY_V1', 'esp32', ['meshtastic-diy-v1', 'hydra']],
+  [42, 'M5STACK', 'esp32', ['m5stack-core', 'm5stack-coreink']],
+  [64, 'RADIOMASTER_900_BANDIT_NANO', 'esp32', ['radiomaster_900_bandit_nano', 'radiomaster_900_bandit_micro']],
+  [132, 'HELTEC_V4_R8', 'esp32s3', ['heltec-v4-r8-oled', 'heltec-v4-r8-tft']],
+];
+
+function preflightParams(hwModel: number, extra: Record<string, unknown> = {}) {
+  return {
+    currentVersion: '2.7.26',
+    targetVersion: '2.8.0',
+    targetRelease: {
+      tagName: `v${V280}`,
+      version: V280,
+      prerelease: true,
+      publishedAt: '2026-09-01',
+      htmlUrl: '',
+      assets: (['esp32', 'esp32s3'] as const).map((p) => ({
+        name: `firmware-${p}-${V280}.zip`,
+        size: 1,
+        downloadUrl: `https://example.invalid/firmware-${p}-${V280}.zip`,
+      })),
+    },
+    gatewayIp: '192.168.1.50',
+    hwModel,
+    ...extra,
+  } as unknown as Parameters<FirmwareUpdateService['startPreflight']>[0];
+}
+
 function releaseFiles(version: string, platform: EspPlatform): string[] {
   // 2.8.0 nests binaries under `<platform>/` (#5402); 2.7.26 does not.
   const prefix = version === V280 ? `${platform}/` : '';
@@ -203,6 +237,7 @@ describe('firmwareHardwareMap vs. Meshtastic release file names', () => {
 
   describe.each(OTA_BOARDS)('hwModel %i (%s)', (hwModel, enumName, board, platform, versions) => {
     it('maps to the release board name and platform, and is OTA capable', () => {
+      expect(getAmbiguousOtaModel(hwModel)).toBeNull();
       expect(HARDWARE_MODELS[hwModel]).toBe(enumName);
       expect(getBoardName(hwModel)).toBe(board);
       expect(getPlatformForBoard(board)).toBe(platform);
@@ -221,6 +256,50 @@ describe('firmwareHardwareMap vs. Meshtastic release file names', () => {
       const { matched } = service.findFirmwareBinary(releaseFiles(version, platform), board, version);
       const prefix = version === V280 ? `${platform}/` : '';
       expect(matched).toBe(`${prefix}firmware-${board}-${version}.bin`);
+    });
+  });
+
+  it('lists exactly the audited ambiguous hw models', () => {
+    expect(Object.keys(AMBIGUOUS_OTA_MODELS).sort()).toEqual(AMBIGUOUS.map(([, e]) => e).sort());
+  });
+
+  describe.each(AMBIGUOUS)('ambiguous hwModel %i (%s)', (hwModel, enumName, platform, builds) => {
+    it('lists release builds that all ship in 2.8.0 on one platform', () => {
+      expect(HARDWARE_MODELS[hwModel]).toBe(enumName);
+      expect(getAmbiguousOtaModel(hwModel)).toEqual({ enumName, platform, builds });
+      for (const b of builds) expect(boardPlatformIn(V280, b)).toBe(platform);
+    });
+
+    it('is not mapped to any single release board', () => {
+      const board = getBoardName(hwModel);
+      expect(builds).not.toContain(board);
+      expect(board && getPlatformForBoard(board)).toBeFalsy();
+    });
+
+    it('is refused by OTA preflight for a release update with a specific message', () => {
+      const svc = new FirmwareUpdateService();
+      let caught: unknown;
+      try {
+        svc.startPreflight(preflightParams(hwModel));
+      } catch (e) {
+        caught = e;
+      }
+      expect(caught).toBeInstanceOf(OtaPreflightError);
+      const err = caught as OtaPreflightError;
+      expect(err.code).toBe('OTA_AMBIGUOUS_BOARD');
+      expect(err.message).toContain(`is shared by several firmware builds (${builds.join(', ')})`);
+      expect(err.message).toContain("MeshMonitor can't tell which one this node runs");
+      expect(err.message).toMatch(/Flash it manually/);
+      expect(svc.getStatus().state).toBe('idle');
+    });
+
+    it('still allows a custom URL, where the operator picks the build', () => {
+      const svc = new FirmwareUpdateService();
+      svc.startPreflight(
+        preflightParams(hwModel, { targetRelease: null, customUrl: 'https://example.invalid/fw.bin' }),
+      );
+      expect(svc.getStatus().state).toBe('awaiting-confirm');
+      expect(svc.getStatus().preflightInfo?.platform).toBe(platform);
     });
   });
 
