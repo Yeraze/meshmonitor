@@ -2,6 +2,7 @@ import React, { useState, useRef, useMemo, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { UiIcon } from '../icons';
 import { useSaveBar } from '../../hooks/useSaveBar';
+import ModuleAvailabilityNotice from './ModuleAvailabilityNotice';
 
 // Audio bitrate options matching protobuf enum
 const AUDIO_BAUD_OPTIONS = [
@@ -123,6 +124,7 @@ const AudioConfigSection: React.FC<AudioConfigSectionProps> = ({
           ?
         </a>
       </h3>
+      <ModuleAvailabilityNotice />
 
       {/* Enable Codec2 */}
       <div className="setting-item">

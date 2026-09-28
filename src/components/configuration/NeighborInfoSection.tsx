@@ -2,6 +2,7 @@ import React, { useRef, useMemo, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { UiIcon } from '../icons';
 import { useSaveBar } from '../../hooks/useSaveBar';
+import ModuleAvailabilityNotice from './ModuleAvailabilityNotice';
 
 interface NeighborInfoSectionProps {
   neighborInfoEnabled: boolean;
@@ -85,6 +86,7 @@ const NeighborInfoSection: React.FC<NeighborInfoSectionProps> = ({
           <UiIcon name="help" />
         </a>
       </h3>
+      <ModuleAvailabilityNotice />
       <div className="setting-item">
         <label htmlFor="neighborInfoEnabled" style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '0.5rem', width: '100%' }}>
           <input

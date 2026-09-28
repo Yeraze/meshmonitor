@@ -2,6 +2,7 @@ import React, { useState, useRef, useMemo, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { UiIcon } from '../icons';
 import { useSaveBar } from '../../hooks/useSaveBar';
+import ModuleAvailabilityNotice from './ModuleAvailabilityNotice';
 
 // Serial baud rate options matching protobuf enum
 const SERIAL_BAUD_OPTIONS = [
@@ -149,6 +150,7 @@ const SerialConfigSection: React.FC<SerialConfigSectionProps> = ({
           ?
         </a>
       </h3>
+      <ModuleAvailabilityNotice />
 
       {/* Enable Module */}
       <div className="setting-item">
