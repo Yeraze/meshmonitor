@@ -2778,7 +2778,6 @@
     "auto_responder.skip_incomplete_description": "Nie odpowiadaj automatycznie na wiadomości z węzłów bez nazwy lub informacji o sprzęcie. Zalecane dla bezpiecznych kanałów, aby uniknąć odpowiadania węzłom, które mogły podsłuchać zaszyfrowany ruch.",
     "auto_responder.add_trigger": "Dodaj wyzwalacz",
     "auto_responder.add_trigger_description": "Utwórz wzorzec wyzwalający pasujący do przychodzących wiadomości. Użyj {parameter} dla wartości dynamicznych lub {param:regex} dla własnych reguł dopasowania. Wiele wzorców można rozdzielić przecinkami.",
-    "auto_responder.trigger_placeholder": "Przykład: pogoda, pogoda {location}, p {location}",
     "auto_responder.pattern_count_one": "{{count}} wzorzec",
     "auto_responder.pattern_count_other": "{{count}} wzorców",
     "auto_responder.type_text": "Tekst",

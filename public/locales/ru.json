@@ -2571,7 +2571,6 @@
     "auto_responder.security": "Безопасность",
     "notifications.full_list": "полный список поддерживаемых сервисов",
     "users.inactive": "Неактивный",
-    "auto_responder.trigger_placeholder": "Попробуйте: weather, weather {location}, w {location}",
     "extnotif_config.title": "Внешнее уведомление",
     "config.import_export_title": "Импорт/экспорт настроек",
     "users.insufficient_permissions_deactivate": "Недостаточно прав для деактивации пользователя",

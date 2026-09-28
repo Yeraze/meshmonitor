@@ -421,7 +421,7 @@ const GeofenceTriggersSection: React.FC<GeofenceTriggersSectionProps> = ({
 
             {/* While Inside Interval */}
             {newEvent === 'while_inside' && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <div className={layout.wrapRow} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                 <label style={{ minWidth: '120px', fontSize: '0.9rem' }}>
                   {t('automation.geofence_triggers.while_inside_interval', 'Interval (minutes):')}
                 </label>
@@ -433,14 +433,14 @@ const GeofenceTriggersSection: React.FC<GeofenceTriggersSectionProps> = ({
                   style={{ width: '100px' }}
                   min={1}
                 />
-                <span style={{ fontSize: '0.75rem', color: 'var(--color-text-subtle)' }}>
+                <span className={layout.inlineHint} style={{ fontSize: '0.75rem', color: 'var(--color-text-subtle)' }}>
                   {t('automation.geofence_triggers.while_inside_interval_help', 'How often to fire while nodes remain inside')}
                 </span>
               </div>
             )}
 
             {/* Cooldown */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <div className={layout.wrapRow} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
               <label style={{ minWidth: '120px', fontSize: '0.9rem' }}>
                 {t('automation.geofence_triggers.cooldown', 'Cooldown (minutes):')}
               </label>
@@ -452,7 +452,7 @@ const GeofenceTriggersSection: React.FC<GeofenceTriggersSectionProps> = ({
                 style={{ width: '100px' }}
                 min={0}
               />
-              <span style={{ fontSize: '0.75rem', color: 'var(--color-text-subtle)' }}>
+              <span className={layout.inlineHint} style={{ fontSize: '0.75rem', color: 'var(--color-text-subtle)' }}>
                 {t('automation.geofence_triggers.cooldown_help', 'Minimum time between triggers for each node. 0 = no cooldown.')}
               </span>
             </div>

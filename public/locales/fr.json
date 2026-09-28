@@ -2256,7 +2256,6 @@
     "notifications.full_list": "pour la liste complète des services supportés",
     "users.inactive": "Inactif",
     "modals.set_password": "Définir le mot de passe",
-    "auto_responder.trigger_placeholder": "Essai : weather, weather {location}, w {location}",
     "extnotif_config.title": "Notification externe",
     "map.terrain": "Terrain",
     "security.failed_scan": "Échec du déclenchement du scan",

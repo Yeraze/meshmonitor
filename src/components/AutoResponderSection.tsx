@@ -696,7 +696,7 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
               <option value="script">{t('auto_responder.type_script')}</option>
               <option value="mailbox">Mailbox</option>
             </select>
-            <div className={layout.growField} style={{ flex: '2' }}>
+            <div className={`${layout.growField} ${layout.responseField}`}>
               {newResponseType === 'mailbox' ? (
                 <span style={{ fontSize: '0.75rem', color: 'var(--color-text-subtle)' }}>
                   Built-in async message store ("mesh voicemail"). No response text needed.
@@ -720,7 +720,7 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
                   onChange={(e) => setNewResponse(e.target.value)}
                   disabled={!localEnabled || availableScripts.length === 0}
                   className="setting-input"
-                  style={{ width: '100%', minWidth: '200px', fontFamily: 'monospace' }}
+                  style={{ width: '100%', minWidth: 'min(100%, 200px)', fontFamily: 'monospace' }}
                   title="Select a script from data/scripts/ to execute. Scripts receive parameters as environment variables (PARAM_*)."
                 >
                   <option value="">
