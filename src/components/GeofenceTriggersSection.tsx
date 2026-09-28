@@ -436,7 +436,7 @@ const GeofenceTriggersSection: React.FC<GeofenceTriggersSectionProps> = ({
             {/* While Inside Interval */}
             {newEvent === 'while_inside' && (
               <div className={layout.wrapRow} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                <label htmlFor="geofence-while-inside-interval" style={{ minWidth: '120px', fontSize: '0.9rem' }}>
+                <label htmlFor="geofence-while-inside-interval" className={layout.numberLabel} style={{ fontSize: '0.9rem' }}>
                   {t('automation.geofence_triggers.while_inside_interval', 'Interval (minutes):')}
                 </label>
                 <input
@@ -457,7 +457,7 @@ const GeofenceTriggersSection: React.FC<GeofenceTriggersSectionProps> = ({
 
             {/* Cooldown */}
             <div className={layout.wrapRow} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <label htmlFor="geofence-cooldown-minutes" style={{ minWidth: '120px', fontSize: '0.9rem' }}>
+              <label htmlFor="geofence-cooldown-minutes" className={layout.numberLabel} style={{ fontSize: '0.9rem' }}>
                 {t('automation.geofence_triggers.cooldown', 'Cooldown (minutes):')}
               </label>
               <input

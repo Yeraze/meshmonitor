@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useCsrfFetch } from '../hooks/useCsrfFetch';
 import { UiIcon } from './icons';
@@ -170,6 +170,21 @@ const ScriptTestModal: React.FC<ScriptTestModalProps> = ({
 
     return env;
   };
+
+  // Escape closes, like the other Auto Responder dialogs. This modal stays
+  // mounted with an isOpen flag, so it cannot use the mount-only
+  // useDialogA11y hook; the listener is attached only while open.
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.stopPropagation();
+        onClose();
+      }
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, onClose]);
 
   if (!isOpen) return null;
 
