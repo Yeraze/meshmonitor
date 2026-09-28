@@ -60,3 +60,8 @@
   font-size: 0.75rem;
   color: var(--color-error);
 }
+
+/* Without this the icon shrinks to a dot when the message wraps at 390px. */
+.fieldErrorIcon {
+  flex-shrink: 0;
+}
