@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useTranslation } from 'react-i18next';
+import { useTranslation, Trans } from 'react-i18next';
 import { TriggerItemProps, ResponseType, ScriptMetadata } from './types';
 import { splitTriggerPatterns, formatTriggerPatterns } from './utils';
 import { normalizeTriggerChannels } from '../../utils/autoResponderUtils';
@@ -75,16 +75,16 @@ const TriggerItem: React.FC<TriggerItemProps> = ({
     const patterns = splitTriggerPatterns(triggerStr);
     
     if (patterns.length === 0) {
-      return { valid: false, error: 'Trigger cannot be empty' };
+      return { valid: false, error: t('auto_responder.trigger_empty') };
     }
     
     for (let i = 0; i < patterns.length; i++) {
       const pattern = patterns[i];
       if (!pattern.trim()) {
-        return { valid: false, error: `Pattern ${i + 1} cannot be empty` };
+        return { valid: false, error: t('auto_responder.pattern_empty', { index: i + 1 }) };
       }
       if (pattern.length > 100) {
-        return { valid: false, error: `Pattern ${i + 1} too long (max 100 characters per pattern)` };
+        return { valid: false, error: t('auto_responder.pattern_too_long', { index: i + 1 }) };
       }
     }
     
@@ -116,7 +116,7 @@ const TriggerItem: React.FC<TriggerItemProps> = ({
 
   const handleSave = () => {
     if (editChannels.length === 0) {
-      showToast?.('Please select at least one channel for this trigger', 'error');
+      showToast?.(t('auto_responder.no_channels_selected'), 'error');
       return;
     }
     // Automatically disable verifyResponse when channel is not DM
@@ -156,7 +156,7 @@ const TriggerItem: React.FC<TriggerItemProps> = ({
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', flex: '1' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                <label style={{ minWidth: '80px', fontSize: '0.9rem', fontWeight: 'bold' }}>Trigger:</label>
+                <label style={{ minWidth: '80px', fontSize: '0.9rem', fontWeight: 'bold' }}>{t('auto_responder.trigger_label')}</label>
                 <input
                   type="text"
                   value={editTrigger}
@@ -168,7 +168,7 @@ const TriggerItem: React.FC<TriggerItemProps> = ({
                     borderColor: triggerValidation.valid ? undefined : 'var(--color-error)',
                     borderWidth: triggerValidation.valid ? undefined : '2px'
                   }}
-                  placeholder="e.g., weather, weather {location}, w {location}"
+                  placeholder={t('auto_responder.edit_trigger_placeholder')}
                 />
               </div>
               {!triggerValidation.valid && triggerValidation.error && (
@@ -194,27 +194,27 @@ const TriggerItem: React.FC<TriggerItemProps> = ({
                   gap: '0.25rem'
                 }}>
                   <UiIcon name="check" size={14} />
-                  <span>Valid trigger pattern{splitTriggerPatterns(editTrigger).length > 1 ? 's' : ''}</span>
+                  <span>{t('auto_responder.valid_trigger_pattern', { count: splitTriggerPatterns(editTrigger).length })}</span>
                 </div>
               )}
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <label style={{ minWidth: '80px', fontSize: '0.9rem', fontWeight: 'bold' }}>Type:</label>
+              <label style={{ minWidth: '80px', fontSize: '0.9rem', fontWeight: 'bold' }}>{t('auto_responder.type_label')}</label>
               <select
                 value={editResponseType}
                 onChange={(e) => setEditResponseType(e.target.value as ResponseType)}
                 className="setting-input"
                 style={{ width: '120px', minWidth: '120px' }}
               >
-                <option value="text">Text Response</option>
-                <option value="http">HTTP Request</option>
-                <option value="script">Script Execution</option>
-                <option value="traceroute">Traceroute</option>
-                <option value="mailbox">Mailbox</option>
+                <option value="text">{t('auto_responder.type_text_response')}</option>
+                <option value="http">{t('auto_responder.type_http_request')}</option>
+                <option value="script">{t('auto_responder.type_script_execution')}</option>
+                <option value="traceroute">{t('auto_responder.type_traceroute')}</option>
+                <option value="mailbox">{t('auto_responder.type_mailbox')}</option>
               </select>
             </div>
             <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.5rem' }}>
-              <label style={{ minWidth: '80px', fontSize: '0.9rem', fontWeight: 'bold', paddingTop: '0.5rem' }}>Response:</label>
+              <label style={{ minWidth: '80px', fontSize: '0.9rem', fontWeight: 'bold', paddingTop: '0.5rem' }}>{t('auto_responder.response_label')}</label>
               <div style={{ flex: '1' }}>
                 {editResponseType === 'traceroute' ? (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
@@ -224,10 +224,10 @@ const TriggerItem: React.FC<TriggerItemProps> = ({
                       onChange={(e) => setEditResponse(e.target.value)}
                       className="setting-input"
                       style={{ width: '100%', fontFamily: 'monospace' }}
-                      placeholder="e.g., {node} or MyNode"
+                      placeholder={t('auto_responder.traceroute_placeholder')}
                     />
                     <span style={{ fontSize: '0.75rem', color: 'var(--color-text-subtle)' }}>
-                      Node name, short name, or node ID to traceroute to. Use <code>&#123;node&#125;</code> to capture from the trigger pattern.
+                      <Trans i18nKey="auto_responder.traceroute_help" components={{ code: <code /> }} />
                     </span>
                   </div>
                 ) : editResponseType === 'text' ? (
@@ -252,7 +252,7 @@ const TriggerItem: React.FC<TriggerItemProps> = ({
                     }}
                   >
                     <option value="">
-                      {availableScripts.length === 0 ? 'No scripts found in /data/scripts/' : 'Select a script...'}
+                      {availableScripts.length === 0 ? t('auto_responder.no_scripts_found') : t('auto_responder.select_script')}
                     </option>
                     {availableScripts.map((script) => (
                       <option key={script.path} value={script.path}>
@@ -262,10 +262,11 @@ const TriggerItem: React.FC<TriggerItemProps> = ({
                   </select>
                 ) : editResponseType === 'mailbox' ? (
                   <span style={{ fontSize: '0.75rem', color: 'var(--color-text-subtle)' }}>
-                    Built-in async message store ("mesh voicemail"). No response text needed — the
-                    mailbox handles <code>msg &lt;name&gt; &lt;text&gt;</code>, <code>inbox</code>,
-                    {' '}<code>inbox play</code>, <code>inbox delete &lt;id&gt;</code> and <code>inbox clear</code>.
-                    Set this trigger DM-only and use the pattern:{' '}
+                    {t('auto_responder.mailbox_description')}{' '}
+                    {t('auto_responder.mailbox_commands')}{' '}
+                    <code>msg &lt;name&gt; &lt;text&gt;</code>, <code>inbox</code>,
+                    {' '}<code>inbox play</code>, <code>inbox delete &lt;id&gt;</code>, <code>inbox clear</code>.
+                    {' '}{t('auto_responder.mailbox_pattern_hint')}{' '}
                     <code>msg &#123;recipient&#125; &#123;body:.+&#125;,inbox,inbox play &#123;sender&#125;,inbox play,inbox delete &#123;id&#125;,inbox clear</code>
                   </span>
                 ) : (
@@ -281,7 +282,7 @@ const TriggerItem: React.FC<TriggerItemProps> = ({
             </div>
             {editResponseType === 'script' && (
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.5rem' }}>
-                <label style={{ minWidth: '80px', fontSize: '0.9rem', fontWeight: 'bold' }}>{t('auto_responder.script_args', 'Arguments:')}</label>
+                <label style={{ minWidth: '80px', fontSize: '0.9rem', fontWeight: 'bold' }}>{t('auto_responder.script_args')}</label>
                 <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
                   <input
                     type="text"
@@ -292,13 +293,13 @@ const TriggerItem: React.FC<TriggerItemProps> = ({
                     placeholder="--ip {IP} --dest {NODE_ID} --flag"
                   />
                   <span style={{ fontSize: '0.75rem', color: 'var(--color-text-subtle)' }}>
-                    {t('auto_responder.script_args_help', 'Optional CLI arguments. Tokens: {NODE_ID}, {IP}, {VERSION}, etc.')}
+                    {t('auto_responder.script_args_help')}
                   </span>
                 </div>
               </div>
             )}
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.5rem' }}>
-              <label style={{ minWidth: '80px', fontSize: '0.9rem', fontWeight: 'bold' }}>Channels:</label>
+              <label style={{ minWidth: '80px', fontSize: '0.9rem', fontWeight: 'bold' }}>{t('auto_responder.channels_label')}</label>
               <div className="channel-checkbox-list" style={{ flex: 1 }}>
                 {editResponseType === 'script' && (
                   <div className="channel-checkbox-row">
@@ -317,7 +318,7 @@ const TriggerItem: React.FC<TriggerItemProps> = ({
                       }}
                     />
                     <label htmlFor={`edit-channel-none-${trigger.id}`} style={{ color: 'var(--color-text-subtle)' }}>
-                      {t('auto_responder.channel_none', 'None (no mesh output)')}
+                      {t('auto_responder.channel_none')}
                     </label>
                   </div>
                 )}
@@ -337,7 +338,7 @@ const TriggerItem: React.FC<TriggerItemProps> = ({
                     }}
                   />
                   <label htmlFor={`edit-channel-dm-${trigger.id}`} className="dm-channel">
-                    Direct Messages
+                    {t('auto_responder.direct_messages')}
                   </label>
                 </div>
                 {channels.map((channel) => (
@@ -359,7 +360,7 @@ const TriggerItem: React.FC<TriggerItemProps> = ({
                       htmlFor={`edit-channel-${channel.id}-${trigger.id}`}
                       className={channel.id === 0 ? 'primary-channel' : undefined}
                     >
-                      Channel {channel.id}: {channel.name}
+                      {t('auto_responder.channel_option', { id: channel.id, name: channel.name })}
                     </label>
                   </div>
                 ))}
@@ -374,7 +375,7 @@ const TriggerItem: React.FC<TriggerItemProps> = ({
                     onChange={(e) => setEditMultiline(e.target.checked)}
                     style={{ marginRight: '0.5rem', cursor: 'pointer', verticalAlign: 'middle' }}
                   />
-                  <span style={{ verticalAlign: 'middle' }}>Enable Multiline (split long responses into multiple messages)</span>
+                  <span style={{ verticalAlign: 'middle' }}>{t('auto_responder.multiline_label')}</span>
                 </label>
               </div>
             )}
@@ -395,7 +396,7 @@ const TriggerItem: React.FC<TriggerItemProps> = ({
               return (
                 <div style={{ marginTop: '0.5rem', padding: '0.5rem', background: 'var(--color-surface-hover)', borderRadius: '4px' }}>
                   <div style={{ fontSize: '0.75rem', color: 'var(--color-text-subtle)', marginBottom: '0.25rem', fontWeight: 'bold', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <span>Response Preview:</span>
+                    <span>{t('auto_responder.response_preview')}</span>
                     <button
                       onClick={() => setEditResponse('')}
                       style={{
@@ -408,9 +409,9 @@ const TriggerItem: React.FC<TriggerItemProps> = ({
                         fontSize: '0.7rem',
                         fontWeight: 'bold'
                       }}
-                      title="Clear response"
+                      title={t('auto_responder.clear_response')}
                     >
-                      Clear
+                      {t('common.clear')}
                     </button>
                   </div>
                   <div style={{
@@ -437,13 +438,13 @@ const TriggerItem: React.FC<TriggerItemProps> = ({
                   disabled={!editChannels.includes('dm')}
                   style={{ marginRight: '0.5rem', cursor: editChannels.includes('dm') ? 'pointer' : 'not-allowed', verticalAlign: 'middle' }}
                 />
-                <span style={{ verticalAlign: 'middle' }}>Verify Response (enable 3-retry delivery confirmation - DM only)</span>
+                <span style={{ verticalAlign: 'middle' }}>{t('auto_responder.verify_response_dm_only')}</span>
               </label>
             </div>
             {/* Cooldown */}
             <div style={{ marginTop: '0.5rem' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                <label style={{ minWidth: '80px', fontSize: '0.9rem', fontWeight: 'bold' }}>{t('auto_responder.cooldown_label', 'Cooldown:')}</label>
+                <label style={{ minWidth: '80px', fontSize: '0.9rem', fontWeight: 'bold' }}>{t('auto_responder.cooldown_label')}</label>
                 <input
                   type="number"
                   value={editCooldownSeconds}
@@ -453,11 +454,11 @@ const TriggerItem: React.FC<TriggerItemProps> = ({
                   style={{ width: '80px' }}
                 />
                 <span style={{ fontSize: '0.75rem', color: 'var(--color-text-subtle)' }}>
-                  {t('auto_responder.cooldown_help', 'seconds per node (0 = disabled)')}
+                  {t('auto_responder.cooldown_help')}
                 </span>
               </div>
               <div style={{ fontSize: '0.75rem', color: 'var(--color-text-subtle)', marginTop: '0.25rem', marginLeft: '85px' }}>
-                {t('auto_responder.cooldown_description', 'After this trigger responds to a node, ignore further matches from that node for this duration.')}
+                {t('auto_responder.cooldown_description')}
               </div>
             </div>
           </div>
@@ -474,7 +475,7 @@ const TriggerItem: React.FC<TriggerItemProps> = ({
                 cursor: 'pointer'
               }}
             >
-              Save
+              {t('common.save')}
             </button>
             <button
               onClick={onCancelEdit}
@@ -488,7 +489,7 @@ const TriggerItem: React.FC<TriggerItemProps> = ({
                 cursor: 'pointer'
               }}
             >
-              Cancel
+              {t('common.cancel')}
             </button>
           </div>
         </>
@@ -613,7 +614,7 @@ const TriggerItem: React.FC<TriggerItemProps> = ({
                                         ? '1px solid color-mix(in srgb, var(--color-success) 50%, transparent)'
                                         : '1px solid color-mix(in srgb, var(--color-accent) 30%, transparent)'
                                     }}
-                                    title={segment.type === 'parameter' ? `Parameter: ${segment.paramName}` : 'Literal text'}
+                                    title={segment.type === 'parameter' ? t('auto_responder.parameter_title', { name: segment.paramName }) : t('auto_responder.literal_text')}
                                   >
                                     {segment.type === 'literal' ? segment.text.trim() : segment.text}
                                   </span>
@@ -708,7 +709,7 @@ const TriggerItem: React.FC<TriggerItemProps> = ({
                     borderRadius: '3px',
                     fontWeight: 'bold'
                   }}>
-                    MULTILINE
+                    {t('auto_responder.badge_multiline')}
                   </span>
                 )}
                 {trigger.verifyResponse && (
@@ -720,7 +721,7 @@ const TriggerItem: React.FC<TriggerItemProps> = ({
                     borderRadius: '3px',
                     fontWeight: 'bold'
                   }}>
-                    VERIFY
+                    {t('auto_responder.badge_verify')}
                   </span>
                 )}
                 <span style={{
@@ -754,7 +755,7 @@ const TriggerItem: React.FC<TriggerItemProps> = ({
                 })()}
                 {trigger.cooldownSeconds != null && trigger.cooldownSeconds > 0 && (
                   <span style={{ fontSize: '0.75rem', color: 'var(--color-text-subtle)' }}>
-                    <UiIcon name="timer" size={13} /> {trigger.cooldownSeconds}s {t('auto_responder.cooldown_badge', 'cooldown')}
+                    <UiIcon name="timer" size={13} /> {trigger.cooldownSeconds}s {t('auto_responder.cooldown_badge')}
                   </span>
                 )}
               </div>
@@ -791,7 +792,7 @@ const TriggerItem: React.FC<TriggerItemProps> = ({
                   opacity: localEnabled ? 1 : 0.5
                 }}
               >
-                Edit
+                {t('common.edit')}
               </button>
               <button
                 onClick={() => setShowRemoveModal(true)}
@@ -807,7 +808,7 @@ const TriggerItem: React.FC<TriggerItemProps> = ({
                   opacity: localEnabled ? 1 : 0.5
                 }}
               >
-                Remove
+                {t('common.remove')}
               </button>
             </div>
           </div>
@@ -836,9 +837,10 @@ const TriggerItem: React.FC<TriggerItemProps> = ({
             border: '1px solid var(--color-border-subtle)'
           }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-              <h3 style={{ margin: 0, color: 'var(--color-text)' }}>Remove Trigger</h3>
+              <h3 style={{ margin: 0, color: 'var(--color-text)' }}>{t('auto_responder.remove_trigger_title')}</h3>
               <button
                 onClick={() => setShowRemoveModal(false)}
+                aria-label={t('common.close')}
                 style={{
                   background: 'transparent',
                   border: 'none',
@@ -853,7 +855,7 @@ const TriggerItem: React.FC<TriggerItemProps> = ({
               </button>
             </div>
             <p style={{ color: 'var(--color-text-subtle)', fontSize: '0.875rem', marginBottom: '1rem' }}>
-              Are you sure you want to remove this trigger? This action cannot be undone.
+              {t('auto_responder.remove_trigger_confirm')}
             </p>
             <div style={{ 
               marginBottom: '1rem',
@@ -878,7 +880,7 @@ const TriggerItem: React.FC<TriggerItemProps> = ({
                   cursor: 'pointer'
                 }}
               >
-                Cancel
+                {t('common.cancel')}
               </button>
               <button
                 onClick={() => {
@@ -898,7 +900,7 @@ const TriggerItem: React.FC<TriggerItemProps> = ({
                   fontWeight: 'bold'
                 }}
               >
-                Remove
+                {t('common.remove')}
               </button>
             </div>
           </div>

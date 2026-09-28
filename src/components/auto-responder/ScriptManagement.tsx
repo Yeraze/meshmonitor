@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { ScriptMetadata } from './types';
 import ScriptDependenciesPanel from './ScriptDependenciesPanel';
 import { UiIcon, type UiIconName } from '../icons';
@@ -53,6 +54,7 @@ const ScriptManagement: React.FC<ScriptManagementProps> = ({
   onSelectAll,
   onDeselectAll,
 }) => {
+  const { t } = useTranslation();
   const [showScriptManagement, setShowScriptManagement] = useState(false);
 
   return (
@@ -74,7 +76,7 @@ const ScriptManagement: React.FC<ScriptManagementProps> = ({
           color: 'var(--color-accent)'
         }}
       >
-        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem' }}><UiIcon name="list" size={16} /> Script Management</span>
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem' }}><UiIcon name="list" size={16} /> {t('auto_responder.script_management')}</span>
         <UiIcon name={showScriptManagement ? 'chevronDown' : 'forward'} size={18} />
       </button>
 
@@ -101,7 +103,7 @@ const ScriptManagement: React.FC<ScriptManagementProps> = ({
                 fontWeight: 'bold'
               }}
             >
-              {isImporting ? 'Importing...' : <><UiIcon name="import" size={15} /> Import Script</>}
+              {isImporting ? t('auto_responder.importing') : <><UiIcon name="import" size={15} /> {t('auto_responder.import_script')}</>}
             </button>
             <button
               onClick={onExportClick}
@@ -117,7 +119,7 @@ const ScriptManagement: React.FC<ScriptManagementProps> = ({
                 fontWeight: 'bold'
               }}
             >
-              {isExporting ? 'Exporting...' : <><UiIcon name="upload" size={15} /> Export Scripts</>}
+              {isExporting ? t('auto_responder.exporting') : <><UiIcon name="upload" size={15} /> {t('auto_responder.export_scripts')}</>}
             </button>
             {availableScripts.length > 0 && (
               <>
@@ -133,7 +135,7 @@ const ScriptManagement: React.FC<ScriptManagementProps> = ({
                     cursor: 'pointer'
                   }}
                 >
-                  Select All
+                  {t('common.select_all')}
                 </button>
                 <button
                   onClick={onDeselectAll}
@@ -147,7 +149,7 @@ const ScriptManagement: React.FC<ScriptManagementProps> = ({
                     cursor: 'pointer'
                   }}
                 >
-                  Deselect All
+                  {t('common.deselect_all')}
                 </button>
               </>
             )}
@@ -169,7 +171,7 @@ const ScriptManagement: React.FC<ScriptManagementProps> = ({
                 alignItems: 'center'
               }}
             >
-              Script Gallery
+              {t('auto_responder.script_gallery')}
             </a>
           </div>
 
@@ -180,7 +182,7 @@ const ScriptManagement: React.FC<ScriptManagementProps> = ({
               color: 'var(--color-text-subtle)', 
               fontStyle: 'italic' 
             }}>
-              No scripts found in /data/scripts/
+              {t('auto_responder.no_scripts_found')}
             </div>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
@@ -223,7 +225,7 @@ const ScriptManagement: React.FC<ScriptManagementProps> = ({
                         fontWeight: 'bold'
                       }}
                     >
-                      {isDeleting === script.filename ? 'Deleting...' : <><UiIcon name="delete" size={14} /> Delete</>}
+                      {isDeleting === script.filename ? t('auto_responder.deleting') : <><UiIcon name="delete" size={14} /> {t('common.delete')}</>}
                     </button>
                   </div>
                 );

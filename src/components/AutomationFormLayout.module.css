@@ -87,3 +87,45 @@
 .inlineHint {
   flex: 1 1 14rem;
 }
+
+/*
+ * Label for the Geofence Interval / Cooldown number inputs. The two labels
+ * differ in length, so with only a min-width each took its own text width and
+ * at a 390px viewport the Interval input started at x=185 and Cooldown at
+ * x=198. A fixed basis wider than either English label puts both inputs on the
+ * same x. A longer translation wraps inside the label instead of pushing its
+ * input out of line. The `.inlineHint` wrap from #5465 is unchanged: the hint
+ * still drops under the input on a phone and sits beside it on a desktop.
+ */
+.numberLabel {
+  flex: 0 0 11rem;
+  max-width: 100%;
+}
+
+/*
+ * Auto Responder add row, second line: the Cooldown group, then Add and Clear.
+ * The German "Hinzufügen" is about twice the width of "Add", so at a 1280px
+ * window the three no longer fit and "Leeren" dropped to a line of its own.
+ *
+ * The buttons are one nowrap group, so they never split. The Cooldown group
+ * has a small basis and can shrink, and its hint wraps inside the group, so it
+ * gives up width before the buttons have to move. On a phone, where even the
+ * small basis plus the buttons is too wide, the button group wraps as a whole.
+ */
+.cooldownGroup {
+  flex: 1 1 12rem;
+  min-width: 0;
+  flex-wrap: wrap;
+}
+
+.cooldownHint {
+  min-width: 0;
+}
+
+.buttonGroup {
+  display: flex;
+  flex: 0 0 auto;
+  flex-wrap: nowrap;
+  gap: 0.5rem;
+  white-space: nowrap;
+}
