@@ -398,6 +398,24 @@ MeshMonitor includes several pre-configured map styles:
 Both CartoDB tilesets accept a personal API key from a free [carto.com](https://carto.com/) account for higher rate limits than the anonymous public endpoint. Paste your **publishable** key into **Settings → Map → Carto API key**; MeshMonitor appends it as `?key=...` on every Carto tile request. The key is publishable by design (it lives in the browser), so treat it like any other public API token and rotate it if abused. Leave the field blank to keep using the anonymous endpoint.
 :::
 
+#### CARTO vector basemaps
+
+Four vector basemaps render in the browser with MapLibre GL, so labels and lines stay sharp at every zoom:
+
+| Tileset | Look |
+|---------|------|
+| **CARTO Voyager** | Colorful street map with land-use shading |
+| **CARTO Positron** | Light gray, minimal |
+| **CARTO Dark Matter** | Near-black, minimal |
+| **CARTO Voyager Dark** | Dark map that keeps land-use color: green parks and woodland, teal water, amber major roads, light labels |
+
+CARTO publishes Voyager, Positron and Dark Matter. It does not publish a dark Voyager, so MeshMonitor ships **CARTO Voyager Dark** itself: a recolor of CARTO's Voyager style, bundled with the app. It still reads CARTO's vector tiles.
+
+- **API key**: all four need the same CARTO API key as the raster CARTO tilesets. MeshMonitor adds the key to every CARTO request the map makes (style, tiles, fonts and icons). The picker warns you when a CARTO tileset is selected and no key is set. For a dark map with no key, pick **Dark Gray**.
+- **3D view**: the 3D map draws raster tiles only, so it shows each style's raster twin: CARTO's raster Voyager, Positron (Light Mode) or Dark Matter (Dark Mode). **CARTO Voyager Dark** has no raster twin and uses Dark Mode in 3D.
+- **Embeds**: embed profiles offer raster tilesets only, so these four do not appear there.
+- **Attribution**: © OpenStreetMap contributors, © CARTO. CARTO's style code is BSD-3-Clause; map data is ODbL.
+
 ### Custom Tile Servers
 
 MeshMonitor supports adding your own custom tile servers for:

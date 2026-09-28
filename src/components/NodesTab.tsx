@@ -3322,7 +3322,9 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                       </span>
                     </label>
                   ))}
-                  {getTilesetById(activeTileset, customTilesets).isVector && mapStyles.length > 0 && (
+                  {/* Style-based presets (#5448, e.g. CARTO Voyager) bring their own GL
+                      style, so a custom style has nothing to apply to. */}
+                  {getTilesetById(activeTileset, customTilesets).isVector && !getTilesetById(activeTileset, customTilesets).styleUrl && mapStyles.length > 0 && (
                     <div className="map-control-item">
                       <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.85em' }}>
                         Map Style

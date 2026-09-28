@@ -40,7 +40,14 @@ vi.mock('react-leaflet', () => ({
 }));
 
 vi.mock('../VectorTileLayer', () => ({
-  VectorTileLayer: (p: { url?: string }) => <div data-testid="vector-tile" data-url={p.url} />,
+  VectorTileLayer: (p: { url?: string; styleUrl?: string; cartoApiKey?: string | null }) => (
+    <div
+      data-testid="vector-tile"
+      data-url={p.url}
+      data-style-url={p.styleUrl ?? ''}
+      data-carto-key={p.cartoApiKey ?? ''}
+    />
+  ),
 }));
 
 vi.mock('../TilesetSelector', () => ({
@@ -117,6 +124,25 @@ describe('BaseMap', () => {
   it('leaves a non-Carto raster URL untouched even when a Carto key is set', () => {
     render(<BaseMap center={[0, 0]} zoom={3} cartoApiKey="KEY123" />);
     expect(screen.getByTestId('raster-tile').getAttribute('data-url')).toBe(OSM_URL);
+  });
+
+  // 2c. CARTO vector presets (#5448): the style URL and key go to MapLibre;
+  // the raster twin in `url` is NOT rendered as a TileLayer.
+  it('hands a CARTO style preset to VectorTileLayer with its styleUrl and the key', () => {
+    render(<BaseMap center={[0, 0]} zoom={3} tilesetId="cartoVoyager" cartoApiKey="KEY123" />);
+    const vectorTile = screen.getByTestId('vector-tile');
+    expect(vectorTile.getAttribute('data-style-url')).toBe(
+      'https://basemaps.cartocdn.com/gl/voyager-gl-style/style.json',
+    );
+    expect(vectorTile.getAttribute('data-carto-key')).toBe('KEY123');
+    expect(screen.queryByTestId('raster-tile')).not.toBeInTheDocument();
+  });
+
+  it('hands the bundled Voyager Dark style to VectorTileLayer', () => {
+    render(<BaseMap center={[0, 0]} zoom={3} tilesetId="cartoVoyagerDark" />);
+    expect(screen.getByTestId('vector-tile').getAttribute('data-style-url')).toBe(
+      'map-styles/carto-voyager-dark.json',
+    );
   });
 
   // 3. Unknown-id fallback

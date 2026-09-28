@@ -112,6 +112,11 @@ export async function buildConnectSrcDirective(isProduction: boolean, cookieSecu
     'https://*.tile.openstreetmap.org',
     'https://*.tile.openstreetmap.fr',
     'https://*.basemaps.cartocdn.com',
+    // CARTO GL styles (#5448) live on the BARE host
+    // (basemaps.cartocdn.com/gl/…/style.json), which `*.` does not match. Their
+    // vector tiles, TileJSON, sprites and glyphs are on tiles(-a..d).basemaps…,
+    // which the wildcard above covers. MapLibre fetch()es all of them.
+    'https://basemaps.cartocdn.com',
     'https://*.tile.opentopomap.org',
     'https://server.arcgisonline.com',
   ];

@@ -24,11 +24,13 @@ export interface BaseMapProps {
   tilesetId?: TilesetId;
   /** Needed only to resolve `custom-*` ids. Default []. */
   customTilesets?: CustomTileset[];
-  /** MapLibre style JSON passthrough for vector tilesets (ignored for raster). */
+  /** MapLibre style JSON passthrough for vector tilesets (ignored for raster,
+   *  and for style-based presets that carry their own `styleUrl`, #5448). */
   styleJson?: Record<string, unknown>;
   /** Deployment-wide Carto basemap API key (#4934). When set, it is appended as
    *  `?key=` to Carto CDN tile URLs (no-op for every other host). Omit/null ⇒
-   *  keyless (Carto tiles show the "API key required" watermark). */
+   *  keyless (Carto tiles show the "API key required" watermark). Vector
+   *  CARTO styles (#5448) get it through MapLibre's `transformRequest`. */
   cartoApiKey?: string | null;
 
   // ---- Optional tileset selector overlay ---------------------------------
@@ -188,6 +190,8 @@ export function BaseMap({
               attribution={tileset.attribution}
               maxZoom={tileset.maxZoom}
               styleJson={styleJson}
+              styleUrl={tileset.styleUrl}
+              cartoApiKey={cartoApiKey}
             />
           )
           : (

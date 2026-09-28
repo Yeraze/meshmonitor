@@ -11,7 +11,7 @@ import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { MapContainer, TileLayer, Marker, Tooltip, useMap } from 'react-leaflet';
 import { useSettings } from '../contexts/SettingsContext';
-import { getTilesetById } from '../config/tilesets';
+import { getTilesetById, getRasterTileset } from '../config/tilesets';
 import { withCartoKey } from '../config/cartoKey';
 import { useTraceroutes } from '../hooks/useTraceroutes';
 import { isUnknownSnr, tracerouteSegmentWeight } from '../utils/mapHelpers';
@@ -82,7 +82,9 @@ const TracerouteWidget: React.FC<TracerouteWidgetProps> = ({
   const searchRef = useRef<HTMLDivElement>(null);
 
   // Get tileset configuration
-  const tileset = getTilesetById(mapTileset, customTilesets);
+  // The mini-map is a plain raster TileLayer, so a vector selection draws its
+  // raster twin (or osm) instead of feeding a style/.pbf URL to Leaflet (#5448).
+  const tileset = getRasterTileset(getTilesetById(mapTileset, customTilesets)).tileset;
 
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
 
