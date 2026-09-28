@@ -198,7 +198,10 @@ export function isDuplicatePacketLog(
  * - `rx_time` is older than the live-reception window
  *   ({@link isLiveReception}); a replay keeps the original first-heard time.
  * - RSSI is absent. The firmware stores SNR with a NodeDB entry but not RSSI,
- *   so replays carry none, while a real radio reception always does.
+ *   so replays carry none, while a real radio reception always does. 0 counts
+ *   as absent: pre-2.8 builds decode an unset rx_rssi as 0, and a real 0 dBm
+ *   reading needs the radios touching; the stale-rx_time half still has to
+ *   hold on top of it.
  *
  * Requiring both keeps a genuine packet logged when the receiving node's clock
  * runs minutes behind the server's (stale-looking `rx_time`, but real RSSI).

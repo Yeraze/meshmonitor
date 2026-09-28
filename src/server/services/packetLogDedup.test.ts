@@ -264,5 +264,6 @@ describe('isNodeDbReplayForPacketLog (#5426)', () => {
     expect(isNodeDbReplayForPacketLog(TransportMechanism.MQTT, staleRx, undefined, now)).toBe(false);
     expect(isNodeDbReplayForPacketLog(TransportMechanism.MULTICAST_UDP, staleRx, undefined, now)).toBe(false);
     expect(isNodeDbReplayForPacketLog(TransportMechanism.INTERNAL, staleRx, undefined, now)).toBe(false);
+    expect(isNodeDbReplayForPacketLog(TransportMechanism.API, staleRx, undefined, now)).toBe(false);
   });
 });
