@@ -20,9 +20,9 @@ import { logger } from '../../utils/logger.js';
 import { parseFirmwareVersion, isParsedFirmwareAtLeast } from '../../utils/firmwareVersion.js';
 import { parseOtaGateway } from '../../utils/otaGateway.js';
 import databaseService from '../../services/database.js';
-import { fallbackManager } from '../meshtasticManager.js';
+import { fallbackManager, type MeshtasticManager } from '../meshtasticManager.js';
 import { sourceManagerRegistry } from '../sourceManagerRegistry.js';
-import { getPrimaryMeshtasticManager } from '../sourceManagerTypes.js';
+import { getPrimaryMeshtasticManager, isMeshtasticManager } from '../sourceManagerTypes.js';
 import { dataEventEmitter } from './dataEventEmitter.js';
 import {
   getBoardName,
@@ -86,6 +86,13 @@ export interface UpdateStatus {
   logs: string[];
   targetVersion?: string;
   error?: string;
+  /**
+   * The source whose node this update is flashing (#5424 follow-up). Every
+   * disconnect/reconnect in the run targets this source's manager, never the
+   * primary. Absent on a legacy single-source install that sent no sourceId,
+   * where the primary manager is the only one there is.
+   */
+  sourceId?: string;
   preflightInfo?: {
     currentVersion: string;
     targetVersion: string;
@@ -548,14 +555,52 @@ export class FirmwareUpdateService {
   }
 
   /**
+   * The manager that owns the device this update is flashing.
+   *
+   * With a `sourceId` on the status (set at preflight), re-resolve that source
+   * by id so a disconnect or reconnect lands on ITS manager, never on the
+   * primary: a Meshtastic node allows one TCP client, so freeing or re-taking
+   * the wrong source's slot leaves the CLI hanging on the real target.
+   * Returns null when that source is gone or no longer a Meshtastic source;
+   * callers then skip the reconnect rather than reconnect a different radio.
+   *
+   * Without a `sourceId` (legacy single-source install) this is the primary,
+   * or `fallbackManager` when none is registered.
+   *
+   * Callers doing more than one manager call in an operation must capture the
+   * result once (#3962 Phase 4.2a atomicity).
+   */
+  private resolveUpdateManager(): MeshtasticManager | null {
+    const sourceId = this.status.sourceId;
+    if (!sourceId) return getPrimaryMeshtasticManager(sourceManagerRegistry) ?? fallbackManager;
+    const manager = sourceManagerRegistry.getManager(sourceId);
+    if (manager && isMeshtasticManager(manager)) return manager;
+    logger.warn(
+      `[FirmwareUpdateService] Source ${sourceId} no longer has a Meshtastic manager; ` +
+        'skipping its disconnect/reconnect',
+    );
+    return null;
+  }
+
+  /** Reconnect the update's source after a failed step. Never throws. */
+  private async reconnectAfterFailure(mgr: MeshtasticManager | null, step: string): Promise<void> {
+    if (!mgr) return;
+    logger.debug(`[FirmwareUpdateService] Reconnecting MeshMonitor after ${step} failure`);
+    try {
+      await mgr.userReconnect();
+    } catch (reconnectError) {
+      logger.error(`[FirmwareUpdateService] Reconnect after ${step} failure errored:`, reconnectError);
+    }
+  }
+
+  /**
    * Cancel an active update process.
    * Kills any active child process, cleans temp directory, resets to idle.
    */
   async cancelUpdate(): Promise<void> {
-    // Capture the manager once for this operation (atomicity: #3962 Phase
-    // 4.2a — do not re-resolve per call site, the registry's primary could
-    // swap mid-operation).
-    const mgr = getPrimaryMeshtasticManager(sourceManagerRegistry) ?? fallbackManager;
+    // Capture the update's own manager once, BEFORE the status reset below
+    // clears the sourceId it is resolved from (atomicity: #3962 Phase 4.2a).
+    const mgr = this.resolveUpdateManager();
 
     // Capture step BEFORE resetting status so we know whether MM was
     // already disconnected from the node. Steps 'backup' onwards run after
@@ -583,7 +628,7 @@ export class FirmwareUpdateService {
       this.updateStatus({ message: 'Update cancelled' });
       logger.info('[FirmwareUpdateService] Update cancelled by user');
 
-      if (wasDisconnected) {
+      if (wasDisconnected && mgr) {
         logger.debug('[FirmwareUpdateService] Reconnecting MeshMonitor after cancel');
         try {
           await mgr.userReconnect();
@@ -610,11 +655,10 @@ export class FirmwareUpdateService {
    * The UI will show the disconnected/reconnecting state.
    */
   async completeUpdate(): Promise<void> {
-    // Capture the manager once for this disconnect→reconnect operation
-    // (atomicity: #3962 Phase 4.2a — a single capture ensures all three
-    // calls below target the same instance even if the registry's primary
-    // changes mid-operation).
-    const mgr = getPrimaryMeshtasticManager(sourceManagerRegistry) ?? fallbackManager;
+    // Capture the update's own manager once for this disconnect→reconnect
+    // operation, before the status reset clears its sourceId (atomicity:
+    // #3962 Phase 4.2a — all three calls below target the same instance).
+    const mgr = this.resolveUpdateManager();
 
     this.cleanupTempDir();
     // #5249: the upload has been flashed, so drop it. Keeping it would leave a
@@ -625,6 +669,7 @@ export class FirmwareUpdateService {
     this.status = createIdleStatus();
     this.updateStatus({});
     logger.info('[FirmwareUpdateService] Update completed — initiating full reconnect cycle');
+    if (!mgr) return;
 
     // Force disconnect (clears intervals, transport, etc.)
     await mgr.userDisconnect();
@@ -1015,6 +1060,12 @@ export class FirmwareUpdateService {
      * actually be fetched.
      */
     customUrl?: string;
+    /**
+     * Source whose node is being flashed (#5424 follow-up). The route has
+     * already checked it is a connected Meshtastic TCP source. Omitted only on
+     * a legacy single-source install.
+     */
+    sourceId?: string;
   }): void {
     if (this.status.state !== 'idle') {
       throw new Error('Cannot start preflight: state is not idle');
@@ -1113,6 +1164,7 @@ export class FirmwareUpdateService {
       step: 'preflight',
       message: `Preflight complete. Ready to update ${displayName} from ${params.currentVersion} to ${params.targetVersion}`,
       targetVersion: params.targetVersion,
+      sourceId: params.sourceId,
       downloadUrl,
       preflightInfo: {
         currentVersion: params.currentVersion,
@@ -1145,7 +1197,15 @@ export class FirmwareUpdateService {
       message: 'Disconnecting from node for firmware update...',
     });
     logger.debug('[FirmwareUpdateService] Disconnecting MeshMonitor from node for CLI access');
-    await (getPrimaryMeshtasticManager(sourceManagerRegistry) ?? fallbackManager).userDisconnect();
+    const mgr = this.resolveUpdateManager();
+    if (!mgr) {
+      // The source vanished between preflight and confirm. Stop here: going on
+      // would run the CLI against a node whose TCP slot we never freed.
+      const message = `Source ${this.status.sourceId} is no longer available; cannot disconnect it for the update.`;
+      this.updateStatus({ state: 'error', step: 'backup', message, error: message });
+      throw new Error(message);
+    }
+    await mgr.userDisconnect();
     this.appendLog('Disconnected from node.');
     logger.debug('[FirmwareUpdateService] MeshMonitor disconnected from node');
   }
@@ -1216,8 +1276,7 @@ export class FirmwareUpdateService {
         error: message,
       });
       // Reconnect on failure so MeshMonitor isn't left disconnected
-      logger.debug('[FirmwareUpdateService] Reconnecting MeshMonitor after backup failure');
-      await (getPrimaryMeshtasticManager(sourceManagerRegistry) ?? fallbackManager).userReconnect();
+      await this.reconnectAfterFailure(this.resolveUpdateManager(), 'backup');
       throw error;
     }
   }
@@ -1383,12 +1442,7 @@ export class FirmwareUpdateService {
       // Reconnect on failure so MeshMonitor isn't left disconnected. Backup
       // already disconnected the node — without this, the user has to wait
       // for the 60s auto-reconnect timer or manually reconnect.
-      logger.debug('[FirmwareUpdateService] Reconnecting MeshMonitor after download failure');
-      try {
-        await (getPrimaryMeshtasticManager(sourceManagerRegistry) ?? fallbackManager).userReconnect();
-      } catch (reconnectError) {
-        logger.error('[FirmwareUpdateService] Reconnect after download failure errored:', reconnectError);
-      }
+      await this.reconnectAfterFailure(this.resolveUpdateManager(), 'download');
       throw error;
     }
   }
@@ -1501,12 +1555,7 @@ export class FirmwareUpdateService {
         error: message,
       });
       // Reconnect on failure — node is still disconnected from the backup step.
-      logger.debug('[FirmwareUpdateService] Reconnecting MeshMonitor after extract failure');
-      try {
-        await (getPrimaryMeshtasticManager(sourceManagerRegistry) ?? fallbackManager).userReconnect();
-      } catch (reconnectError) {
-        logger.error('[FirmwareUpdateService] Reconnect after extract failure errored:', reconnectError);
-      }
+      await this.reconnectAfterFailure(this.resolveUpdateManager(), 'extract');
       throw error;
     }
   }
@@ -1517,8 +1566,9 @@ export class FirmwareUpdateService {
   async executeFlash(gatewayIp: string, firmwarePath: string): Promise<void> {
     // Capture once for this operation (atomicity: #3962 Phase 4.2a — the
     // success path and the failure path below are mutually exclusive but
-    // both must target the same manager instance resolved at entry).
-    const mgr = getPrimaryMeshtasticManager(sourceManagerRegistry) ?? fallbackManager;
+    // both must target the same manager instance resolved at entry). It is
+    // the update's own source, never the primary (#5424 follow-up).
+    const mgr = this.resolveUpdateManager();
 
     this.updateStatus({
       state: 'in-progress',
@@ -1542,7 +1592,7 @@ export class FirmwareUpdateService {
       });
       logger.error(`[FirmwareUpdateService] Readiness check failed before OTA: ${message}`);
       logger.debug('[FirmwareUpdateService] Reconnecting MeshMonitor after readiness failure');
-      await mgr.userReconnect();
+      await mgr?.userReconnect();
       throw new Error(`Node readiness check failed: ${message}`);
     }
 
@@ -1744,8 +1794,10 @@ export class FirmwareUpdateService {
         logger.warn(`[FirmwareUpdateService] Post-flash reboot wait timed out: ${m}`);
       }
 
-      await mgr.userReconnect();
-      this.appendLog('Reconnected to node.');
+      if (mgr) {
+        await mgr.userReconnect();
+        this.appendLog('Reconnected to node.');
+      }
 
       this.updateStatus({
         state: 'awaiting-confirm',
@@ -1773,7 +1825,7 @@ export class FirmwareUpdateService {
       } catch {
         // Best-effort — reconnect anyway and let the transport's retry handle it.
       }
-      await mgr.userReconnect();
+      await mgr?.userReconnect();
       throw error;
     } finally {
       // Only clean up temp dir on success — keep it for retry on failure
@@ -1802,14 +1854,15 @@ export class FirmwareUpdateService {
   ): Promise<string> {
     // Capture once for this operation (atomicity: #3962 Phase 4.2a — the
     // polling loop, the CLI-fallback disconnect, and the finally-block
-    // reconnect must all target the same manager instance resolved at entry).
-    const mgr = getPrimaryMeshtasticManager(sourceManagerRegistry) ?? fallbackManager;
+    // reconnect must all target the same manager instance resolved at entry),
+    // the update's own source rather than the primary (#5424 follow-up).
+    const mgr = this.resolveUpdateManager();
     const timeoutMs = opts?.timeoutMs ?? 30_000;
     const intervalMs = opts?.intervalMs ?? 500;
     const stale = opts?.staleVersion ?? '';
     const deadline = Date.now() + timeoutMs;
     while (Date.now() < deadline) {
-      const v = mgr.getLocalNodeInfo()?.firmwareVersion;
+      const v = mgr?.getLocalNodeInfo()?.firmwareVersion;
       if (v && v !== stale) return v;
       await new Promise((r) => setTimeout(r, intervalMs));
     }
@@ -1817,13 +1870,18 @@ export class FirmwareUpdateService {
     // of the post-OTA `@meshtastic/js` reconnect flap). Fall back to the
     // meshtastic CLI to read the version straight from the node — this is the
     // same path we use elsewhere and is independent of MM's transport state.
-    const fallback = mgr.getLocalNodeInfo()?.firmwareVersion ?? '';
+    const fallback = mgr?.getLocalNodeInfo()?.firmwareVersion ?? '';
     if (fallback && fallback !== stale) return fallback;
     if (!opts?.gatewayIp) return fallback;
+    if (!mgr) {
+      // resolveUpdateManager already warned. The CLI read below still works;
+      // there is just no MeshMonitor connection to release or restore.
+      logger.debug('[FirmwareUpdateService] Verify CLI fallback runs without a manager for the update source');
+    }
     try {
       logger.debug('[FirmwareUpdateService] Verify wait expired — falling back to CLI to read firmware version directly');
       // Temporarily release MM's TCP slot so the CLI can connect cleanly.
-      await mgr.userDisconnect().catch(() => { /* best-effort */ });
+      await mgr?.userDisconnect().catch(() => { /* best-effort */ });
       const gw = parseOtaGateway(opts.gatewayIp);
       await this.waitForNodeTcpReady(gw.host, gw.port).catch(() => { /* best-effort */ });
       // Post-OTA, the node passes the TCP probe but its meshtastic protocol
@@ -1860,7 +1918,7 @@ export class FirmwareUpdateService {
       return fallback;
     } finally {
       // Hand the TCP slot back to MM so the rest of the app stays connected.
-      mgr.userReconnect().catch((e) =>
+      mgr?.userReconnect().catch((e) =>
         logger.warn(`[FirmwareUpdateService] userReconnect after CLI fallback failed: ${e instanceof Error ? e.message : String(e)}`)
       );
     }
