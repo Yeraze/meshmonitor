@@ -181,7 +181,9 @@ function runOutlierQueryTests(getBackend: () => TestBackend) {
     expect(left.map(p => p.value)).toEqual([n - 3, n - 2, n - 1]);
 
     expect(await r.deleteTelemetryByIds('src-a', 'temperature', [])).toBe(0);
-  });
+    // 1,007 rows in and out: MySQL on CI runners can pass the default 10s, and
+    // a timed-out test keeps writing into the next one's fixture.
+  }, 60_000);
 
   it('deleteTelemetryByIds never removes ids from another source or telemetry type', async () => {
     if (!getBackend().available) return;
