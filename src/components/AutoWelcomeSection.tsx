@@ -68,14 +68,16 @@ const AutoWelcomeSection: React.FC<AutoWelcomeSectionProps> = ({
     setLocalDelay(delay ?? 30);
   }, [enabled, message, target, waitForName, maxHops, delay]);
 
-  // Check if any settings have changed
+  // Check if any settings have changed. Compare against the same normalized
+  // baseline the local state is seeded with, or a blank/zero stored value reads
+  // as an unsaved edit on load (phantom SaveBar).
   useEffect(() => {
     const changed =
       localEnabled !== enabled ||
-      localMessage !== message ||
-      localTarget !== target ||
+      localMessage !== (message || DEFAULT_MESSAGE) ||
+      localTarget !== (target || '0') ||
       localWaitForName !== waitForName ||
-      localMaxHops !== maxHops ||
+      localMaxHops !== (maxHops || 5) ||
       localDelay !== (delay ?? 30);
     setHasChanges(changed);
   }, [localEnabled, localMessage, localTarget, localWaitForName, localMaxHops, localDelay, enabled, message, target, waitForName, maxHops, delay]);

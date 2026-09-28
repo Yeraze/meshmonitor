@@ -149,16 +149,18 @@ const AutoAnnounceSection: React.FC<AutoAnnounceSectionProps> = ({
     return sortedA.every((val, idx) => val === sortedB[idx]);
   };
 
-  // Check if any settings have changed
+  // Check if any settings have changed. Compare against the same normalized
+  // baseline the local state is seeded with, or a blank/zero stored value reads
+  // as an unsaved edit on load (phantom SaveBar).
   useEffect(() => {
     const changed =
       localEnabled !== enabled ||
-      localInterval !== intervalHours ||
-      localMessage !== message ||
-      !arraysEqual(localChannelIndexes, channelIndexes) ||
+      localInterval !== (intervalHours || 6) ||
+      localMessage !== (message || DEFAULT_MESSAGE) ||
+      !arraysEqual(localChannelIndexes, channelIndexes.length > 0 ? channelIndexes : [0]) ||
       localAnnounceOnStart !== announceOnStart ||
       localUseSchedule !== useSchedule ||
-      localSchedule !== schedule ||
+      localSchedule !== (schedule || '0 */6 * * *') ||
       localHopLimit !== hopLimit ||
       localNodeInfoEnabled !== nodeInfoEnabled ||
       !arraysEqual(localNodeInfoChannels, nodeInfoChannels) ||
