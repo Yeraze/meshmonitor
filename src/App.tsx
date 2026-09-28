@@ -3755,7 +3755,7 @@ function App() {
             path="automation"
             element={
               <ErrorBoundary fallbackTitle="Automation failed to load">
-                <AutomationTab baseUrl={baseUrl} channels={channels} nodes={nodes} currentNodeId={currentNodeId} />
+                <AutomationTab baseUrl={baseUrl} channels={channels} nodes={nodes} currentNodeId={currentNodeId} txDisabled={txGated} />
               </ErrorBoundary>
             }
           />

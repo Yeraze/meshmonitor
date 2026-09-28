@@ -7,6 +7,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { MeshCoreAutoAckSection } from './MeshCoreAutoAckSection';
 import { MeshCoreAutoAnnounceSection } from './MeshCoreAutoAnnounceSection';
 import { MeshCoreAutoResponderSection } from './MeshCoreAutoResponderSection';
+import { MeshCoreForwardingSection } from './MeshCoreForwardingSection';
 import { MeshCoreTimerTriggersSection } from './MeshCoreTimerTriggersSection';
 import { MeshCorePathfindingFilterSection } from './MeshCorePathfindingFilterSection';
 import { AutomationTokenReference } from '../AutomationTokenReference';
@@ -336,6 +337,9 @@ export const MeshCoreAutomationsView: React.FC<MeshCoreAutomationsViewProps> = (
 
       {/* Auto-Responder Section */}
       <MeshCoreAutoResponderSection baseUrl={baseUrl} sourceId={sourceId} receiveOnly={receiveOnly} />
+
+      {/* Forwarding Section (#5446) */}
+      <MeshCoreForwardingSection baseUrl={baseUrl} sourceId={sourceId} receiveOnly={receiveOnly} />
 
       {/* Timer Triggers Section */}
       <MeshCoreTimerTriggersSection baseUrl={baseUrl} sourceId={sourceId} receiveOnly={receiveOnly} />
