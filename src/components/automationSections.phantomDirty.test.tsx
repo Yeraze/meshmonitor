@@ -14,7 +14,7 @@
  * there are no changes.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render } from '@testing-library/react';
+import { render, fireEvent, act } from '@testing-library/react';
 import AutoAcknowledgeSection from './AutoAcknowledgeSection';
 import AutoAnnounceSection from './AutoAnnounceSection';
 import AutoWelcomeSection from './AutoWelcomeSection';
@@ -52,6 +52,13 @@ function lastHasChanges(id: string): boolean | undefined {
   const calls = mockUseSaveBar.mock.calls.filter(([opts]) => (opts as { id: string }).id === id);
   const last = calls[calls.length - 1];
   return last ? (last[0] as { hasChanges: boolean }).hasChanges : undefined;
+}
+
+/** Invoke the most recent onDismiss a section registered, as the SaveBar does. */
+function dismiss(id: string): void {
+  const calls = mockUseSaveBar.mock.calls.filter(([opts]) => (opts as { id: string }).id === id);
+  const opts = calls[calls.length - 1][0] as { onDismiss: () => void };
+  act(() => opts.onDismiss());
 }
 
 const channels: Channel[] = [
@@ -218,5 +225,85 @@ describe('Automation sections do not report phantom unsaved changes', () => {
     };
     render(<AutoKeyManagementSection {...props} />);
     expect(lastHasChanges('auto-key-management')).toBe(false);
+  });
+});
+
+/*
+ * Dismiss on the SaveBar calls each section's resetChanges, which re-seeds the
+ * local state with the default-filled values. Before the fix the dirty check
+ * compared those against the raw (blank/zero) props, so Dismiss left the bar
+ * up. Edit a field, dismiss, and expect a clean section showing the default.
+ */
+describe('Automation sections: Dismiss clears a genuinely dirty section', () => {
+  const cb = () => vi.fn();
+
+  it('Auto Acknowledge', () => {
+    const { container } = render(
+      <AutoAcknowledgeSection
+        enabled regex="" message="" messageDirect="" channels={channels} enabledChannels={[1, 0]}
+        skipIncompleteNodes={false} ignoredNodes="" matrix={DEFAULT_AUTOACK_MATRIX} baseUrl=""
+        cooldownSeconds={60} preSendDelaySeconds={0} maxAttempts={3} hopLimit="" testMessages=""
+        onEnabledChange={cb()} onRegexChange={cb()} onMessageChange={cb()} onMessageDirectChange={cb()}
+        onChannelsChange={cb()} onSkipIncompleteNodesChange={cb()} onIgnoredNodesChange={cb()}
+        onMatrixChange={cb()} onCooldownSecondsChange={cb()} onPreSendDelaySecondsChange={cb()}
+        onMaxAttemptsChange={cb()} onHopLimitChange={cb()} onTestMessagesChange={cb()}
+      />
+    );
+    const input = container.querySelector('#autoAckRegex') as HTMLInputElement;
+    fireEvent.change(input, { target: { value: '^(edited)' } });
+    expect(lastHasChanges('auto-acknowledge')).toBe(true);
+    dismiss('auto-acknowledge');
+    expect(lastHasChanges('auto-acknowledge')).toBe(false);
+    expect(input.value).toBe('^(test|ping)');
+  });
+
+  it('Auto Announce', () => {
+    const { container } = render(
+      <AutoAnnounceSection
+        enabled intervalHours={0} message="" channelIndexes={[]} announceOnStart={false}
+        useSchedule={false} schedule="" channels={channels} baseUrl=""
+        onEnabledChange={cb()} onIntervalChange={cb()} onMessageChange={cb()}
+        onChannelIndexesChange={cb()} onAnnounceOnStartChange={cb()} onUseScheduleChange={cb()}
+        onScheduleChange={cb()}
+      />
+    );
+    const input = container.querySelector('#announceInterval') as HTMLInputElement;
+    fireEvent.change(input, { target: { value: '12' } });
+    expect(lastHasChanges('auto-announce')).toBe(true);
+    dismiss('auto-announce');
+    expect(lastHasChanges('auto-announce')).toBe(false);
+    expect(input.value).toBe('6');
+  });
+
+  it('Auto Welcome', () => {
+    const { container } = render(
+      <AutoWelcomeSection
+        enabled message="" target="" waitForName maxHops={0} delay={30} channels={channels} baseUrl=""
+        onEnabledChange={cb()} onMessageChange={cb()} onTargetChange={cb()}
+        onWaitForNameChange={cb()} onMaxHopsChange={cb()} onDelayChange={cb()}
+      />
+    );
+    const textarea = container.querySelector('#welcomeMessage') as HTMLTextAreaElement;
+    fireEvent.change(textarea, { target: { value: 'edited' } });
+    expect(lastHasChanges('auto-welcome')).toBe(true);
+    dismiss('auto-welcome');
+    expect(lastHasChanges('auto-welcome')).toBe(false);
+    expect(textarea.value).toBe('Welcome {LONG_NAME} ({SHORT_NAME}) to the mesh!');
+  });
+
+  it('Auto Key Management', () => {
+    const { container } = render(
+      <AutoKeyManagementSection
+        enabled intervalMinutes={0} maxExchanges={0} autoPurge={false} immediatePurge={false} baseUrl=""
+        onEnabledChange={cb()} onIntervalChange={cb()} onMaxExchangesChange={cb()}
+        onAutoPurgeChange={cb()} onImmediatePurgeChange={cb()}
+      />
+    );
+    const input = container.querySelector('#keyRepairInterval') as HTMLInputElement;
+    fireEvent.change(input, { target: { value: '30' } });
+    expect(lastHasChanges('auto-key-management')).toBe(true);
+    dismiss('auto-key-management');
+    expect(lastHasChanges('auto-key-management')).toBe(false);
+    expect(input.value).toBe('5');
   });
 });
