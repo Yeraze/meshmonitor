@@ -327,11 +327,6 @@ export class MeshCoreMessageFilterService {
     return !!state && (state.nodes.size > 0 || state.rules.length > 0);
   }
 
-  /** Public keys with an entry (either mode) on this source, lowercase. */
-  hiddenPublicKeys(sourceId: string): Set<string> {
-    return new Set(this.states.get(sourceId)?.nodes.keys() ?? []);
-  }
-
   /**
    * An advert arrived. When the node has an entry, keep its name snapshot
    * current so channel messages under the new name still match.
