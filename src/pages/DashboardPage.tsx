@@ -319,7 +319,8 @@ function DashboardInner() {
   // MeshCore neighbor links for the map. Fetched only when the "Show Neighbors"
   // toggle is on (DashboardInner sits inside MapProvider, so we can read it
   // here to gate the request). Unified pulls every source; single-source pulls
-  // just the selected one. Non-MeshCore sources simply return no edges.
+  // just the selected one. The hook itself drops non-MeshCore sources, whose
+  // requests the server answers with 404.
   const { showNeighborInfo, unreadIndicatorEnabled, setUnreadIndicatorEnabled } = useMapContext();
   // #5124. `enabled: false` means the query never runs, so switching the badge
   // off stops the polling too rather than merely hiding the answer.
