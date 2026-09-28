@@ -6039,7 +6039,7 @@
   "forwarding.name": "Name",
   "forwarding.delete": "Delete rule",
   "forwarding.match": "Forward messages from",
-  "forwarding.match_dm": "Direct messages to this node",
+  "forwarding.match_dm": "Direct messages",
   "forwarding.from_node": "Only from sender",
   "forwarding.any_sender": "Any sender",
   "forwarding.text_regex": "Only if text matches (regex, optional)",

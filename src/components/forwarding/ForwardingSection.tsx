@@ -167,9 +167,11 @@ export const ForwardingSection: React.FC<ForwardingSectionProps> = ({
   const update = (id: string, patch: Partial<ForwardingRule>) =>
     setRules(prev => prev.map(r => (r.id === id ? { ...r, ...patch } : r)));
 
-  const inputClass = `${controlVariant === 'meshcore' ? 'meshcore-input' : 'setting-input'} ${styles.control}`;
+  const inputClass = controlVariant === 'meshcore'
+    ? `meshcore-input ${styles.control} ${styles.meshcoreControl}`
+    : `setting-input ${styles.control}`;
   const selectClass = controlVariant === 'meshcore'
-    ? `meshcore-select ${styles.control} ${styles.meshcoreSelect}`
+    ? `meshcore-select ${styles.control} ${styles.meshcoreControl}`
     : `setting-input ${styles.control}`;
 
   const channelLabel = (c: ForwardingChannelOption) =>
@@ -277,7 +279,7 @@ export const ForwardingSection: React.FC<ForwardingSectionProps> = ({
                         });
                       }}
                     >
-                      <option value={DM_VALUE}>{t('forwarding.match_dm', 'Direct messages to this node')}</option>
+                      <option value={DM_VALUE}>{t('forwarding.match_dm', 'Direct messages')}</option>
                       {channels.map(c => (
                         <option key={c.index} value={String(c.index)}>{channelLabel(c)}</option>
                       ))}

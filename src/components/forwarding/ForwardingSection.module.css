@@ -41,6 +41,26 @@
   gap: 1rem;
 }
 
+/*
+ * The save bar is position: fixed over the bottom of the page (and sits above
+ * the bottom nav on phones). There is no shared clearance pattern for it, so
+ * keep the rule cards and their fields out from under it when the browser
+ * scrolls them into view (focus, Tab), and pad the section on phones where the
+ * bar plus the nav bar take the most room.
+ */
+.card,
+.card input,
+.card select,
+.card button {
+  scroll-margin-bottom: 7rem;
+}
+
+@media (max-width: 768px), (max-height: 500px) and (orientation: landscape) {
+  .body {
+    padding-bottom: 5rem;
+  }
+}
+
 .description {
   margin: 0;
   color: var(--color-text-subtle);
@@ -110,14 +130,20 @@
 }
 
 /*
- * MeshCore variant: the shared .meshcore-select is a little taller than
- * .meshcore-input, so a row mixing both (as a forwarding rule does) looks
- * ragged. Give the selects the input's padding and radius so every control in
- * the row is the same height. The extra class wins over the view-scoped rule
- * in MeshCoreAutomation.css on specificity, not source order.
+ * MeshCore variant: a rule row mixes .meshcore-input and .meshcore-select,
+ * which the view styles with different padding, and browsers give <select> a
+ * different line box than <input> even at equal padding (a 2px gap). Pin both
+ * to one explicit height, line-height and padding so every control in the row
+ * lines up. The doubled class wins over the view-scoped rules in
+ * MeshCoreAutomation.css on specificity, not source order.
  */
-.card .grid select.meshcoreSelect {
-  padding: 0.4rem 0.6rem;
+.card input.meshcoreControl.meshcoreControl,
+.card select.meshcoreControl.meshcoreControl {
+  box-sizing: border-box;
+  height: 2.25rem;
+  line-height: 1.25;
+  padding: 0 0.6rem;
+  font-size: 0.95rem;
   border-radius: var(--radius-md);
 }
 
