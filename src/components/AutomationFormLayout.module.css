@@ -87,3 +87,66 @@
 .inlineHint {
   flex: 1 1 14rem;
 }
+
+/*
+ * Label for the Geofence Interval / Cooldown number inputs. The two labels
+ * differ in length, so with only a min-width each took its own text width and
+ * at a 390px viewport the Interval input started at x=185 and Cooldown at
+ * x=198. A fixed basis wider than either English label puts both inputs on the
+ * same x. A longer translation wraps inside the label instead of pushing its
+ * input out of line. The `.inlineHint` wrap from #5465 is unchanged: the hint
+ * still drops under the input on a phone and sits beside it on a desktop.
+ *
+ * Sizing, from the labels measured in Chrome at 0.9rem: "Interval (minutes):"
+ * is ~116px and "Cooldown (minutes):" ~133px (German falls back to English).
+ *   - Desktop: 8.5rem (136px) fits the longer label on one line and stays
+ *     close to the old 120px min-width, so the inputs sit where they did.
+ *     11rem (176px) pushed them ~52px right.
+ *   - Phone: at 390px the row is ~276px. 50% (138px) + gap + 100px input is
+ *     246px, so label and input share the line, and "Cooldown (minutes):"
+ *     no longer wraps beside a one-line "Interval (minutes):".
+ */
+.numberLabel {
+  flex: 0 0 min(8.5rem, 50%);
+  max-width: 100%;
+}
+
+/*
+ * Auto Responder add row, second line: the Cooldown group, then Add and Clear.
+ * The German "Hinzufügen" is about twice the width of "Add", so at a 1280px
+ * window the three no longer fit and "Leeren" dropped to a line of its own.
+ *
+ * The buttons are one nowrap group, so they never split. The Cooldown group
+ * has a small basis and can shrink, and its hint wraps inside the group, so it
+ * gives up width before the buttons have to move. On a phone, where even the
+ * small basis plus the buttons is too wide, the button group wraps as a whole.
+ */
+.cooldownGroup {
+  flex: 1 1 12rem;
+  min-width: 0;
+  flex-wrap: wrap;
+}
+
+.cooldownHint {
+  min-width: 0;
+}
+
+.buttonGroup {
+  display: flex;
+  flex: 0 0 auto;
+  flex-wrap: nowrap;
+  gap: 0.5rem;
+  white-space: nowrap;
+}
+
+/*
+ * Click targets on the Automation page that the browser may scroll into view:
+ * the Pattern Examples card's buttons and patterns, and the trigger input they
+ * fill. The page scrolls under the fixed header AND the sticky SectionNav tab
+ * strip, so a target scrolled to the top landed under the strip. Clear both,
+ * using the heights the app publishes (useAppHeaderHeightVar /
+ * useSectionNavHeightVar, the offsets #5455 moved SectionNav to).
+ */
+.scrollTarget {
+  scroll-margin-top: calc(var(--app-header-height, 0px) + var(--section-nav-height, 0px) + 1rem);
+}

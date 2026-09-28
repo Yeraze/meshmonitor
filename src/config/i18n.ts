@@ -11,6 +11,7 @@ import { initReactI18next } from 'react-i18next';
 import LanguageDetector from 'i18next-browser-languagedetector';
 import HttpBackend from 'i18next-http-backend';
 import { appBasename } from '../init';
+import { bindDocumentLanguage } from './documentLanguage';
 
 /**
  * Available languages configuration.
@@ -36,6 +37,10 @@ export const AVAILABLE_LANGUAGES = [
   { code: 'pl', name: 'Polish', nativeName: 'Polski' },
   { code: 'id', name: 'Indonesian', nativeName: 'Bahasa Indonesia' },
 ];
+
+// Bound before init so the language restored from localStorage during init
+// reaches <html lang> too, not only later switches.
+bindDocumentLanguage(i18n);
 
 void i18n
   .use(HttpBackend)
