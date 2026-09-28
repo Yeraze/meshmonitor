@@ -1,0 +1,33 @@
+/*
+ * Status Message config: the Node Status text input and its character counter.
+ *
+ * The global `.setting-input` is a fixed 200px, which cut off the placeholder.
+ * The counter used to be absolutely positioned below the input, so it spilled
+ * out of the section and landed on the next section's header. Here the input
+ * fills the column and the counter sits in normal flow, right-aligned under it.
+ * Also used by the Admin Commands copy of this field.
+ */
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  width: 100%;
+}
+
+/* Two classes so this beats the global `.setting-input` width regardless of
+   stylesheet load order. */
+.field .input {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.counter {
+  align-self: flex-end;
+  font-size: 0.75rem;
+  color: var(--color-text-subtle);
+}
+
+.field .counterNearLimit {
+  color: var(--color-caution);
+}
