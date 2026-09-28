@@ -1205,7 +1205,7 @@ describe('MeshCoreChannelsView — display order (#5385, #5379)', () => {
     await waitFor(() => expect(rowNames(container)).toEqual(['# Public', '# zulu', '# alpha']));
 
     fireEvent.click(screen.getByRole('button', { name: /Reorder/ }));
-    expect(screen.getAllByTestId('mc-channel-reorder-row')).toHaveLength(3);
+    expect(await screen.findAllByTestId('mc-channel-reorder-row')).toHaveLength(3);
 
     // Move alpha to the top with the keyboard-friendly arrow buttons.
     fireEvent.click(screen.getByLabelText('Move # alpha up'));
@@ -1284,13 +1284,77 @@ describe('MeshCoreChannelsView — display order (#5385, #5379)', () => {
       .toEqual([1, 0, 2]);
   });
 
+  it('opens reorder mode on a click that lands before the post-commit effects run', async () => {
+    // Regression for the CI flake in this block. The Reorder button first
+    // appears in the commit that loads the channel list; that same commit
+    // changes the channel-set key. The panel used to close on a
+    // `useEffect([channelIdsKey])`, so a click landing before React flushed
+    // that effect was undone by it. `waitFor` can resolve in exactly that gap
+    // (MutationObserver microtask vs. the scheduler's macrotask), so it only
+    // failed under CI load. Click from a MutationObserver to hit the gap every
+    // time.
+    csrfFetchMock.mockImplementation(orderFetch());
+    const { container } = renderView();
+    const opened = await new Promise<boolean>((resolve) => {
+      const mo = new MutationObserver(() => {
+        const btn = Array.from(container.querySelectorAll('button')).find(b => /Reorder/.test(b.textContent ?? ''));
+        if (!btn) return;
+        mo.disconnect();
+        fireEvent.click(btn);
+        resolve(screen.queryAllByTestId('mc-channel-reorder-row').length === 3);
+      });
+      mo.observe(container, { childList: true, subtree: true });
+    });
+    expect(opened).toBe(true);
+  });
+
+  it('closes reorder mode when a reconnect re-sync changes the channel set', async () => {
+    let extra = false;
+    csrfFetchMock.mockImplementation((url: string) => {
+      if (url.includes('/channels/all')) {
+        const rows = [{ id: 0, name: 'Public' }, { id: 1, name: 'zulu' }, { id: 2, name: 'alpha' }];
+        return Promise.resolve(jsonResponse(extra ? [...rows, { id: 3, name: 'bravo' }] : rows));
+      }
+      return orderFetch()(url);
+    });
+    const actions = makeActions();
+    const view = (connected: boolean) => (
+      <MeshCoreChannelsView
+        messages={[]}
+        contacts={contacts}
+        status={{ ...makeStatus(), connected }}
+        actions={actions}
+        baseUrl=""
+        sourceId="src-a"
+      />
+    );
+    const { container, rerender } = render(view(true));
+    await waitFor(() => expect(rowNames(container)).toEqual(['# Public', '# zulu', '# alpha']));
+
+    fireEvent.click(screen.getByRole('button', { name: /Reorder/ }));
+    expect(await screen.findAllByTestId('mc-channel-reorder-row')).toHaveLength(3);
+
+    // Same channel set again: the panel stays open.
+    rerender(view(false));
+    rerender(view(true));
+    await waitFor(() => expect(csrfFetchMock.mock.calls.filter(c => String(c[0]).includes('/channels/all'))).toHaveLength(3));
+    expect(screen.getAllByTestId('mc-channel-reorder-row')).toHaveLength(3);
+
+    // A slot appears: the stale draft is dropped.
+    extra = true;
+    rerender(view(false));
+    rerender(view(true));
+    await waitFor(() => expect(rowNames(container)).toEqual(['# Public', '# zulu', '# alpha', '# bravo']));
+    expect(screen.queryAllByTestId('mc-channel-reorder-row')).toHaveLength(0);
+  });
+
   it('cancel discards the draft order', async () => {
     csrfFetchMock.mockImplementation(orderFetch());
     const { container } = renderView();
     await waitFor(() => expect(rowNames(container)).toEqual(['# Public', '# zulu', '# alpha']));
 
     fireEvent.click(screen.getByRole('button', { name: /Reorder/ }));
-    fireEvent.click(screen.getByLabelText('Move # Public down'));
+    fireEvent.click(await screen.findByLabelText('Move # Public down'));
     fireEvent.click(screen.getByText('Cancel'));
 
     await waitFor(() => expect(rowNames(container)).toEqual(['# Public', '# zulu', '# alpha']));
