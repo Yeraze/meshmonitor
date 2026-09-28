@@ -1,4 +1,5 @@
 import type { UiIconName } from '../icons';
+import { splitTriggerPatterns as splitSharedTriggerPatterns } from '../../utils/autoResponderUtils';
 
 /**
  * Gets file icon based on extension
@@ -15,7 +16,8 @@ export const getFileIcon = (filename: string): UiIconName => {
 
 /**
  * Splits a multi-pattern trigger string into individual patterns.
- * Handles comma-separated patterns, but doesn't split commas inside braces.
+ * Delegates to the shared splitter the server uses, so the "N patterns" count
+ * and preview here always agree with what the server will match.
  * Example: "weather, weather {location}, w {location}" -> ["weather", "weather {location}", "w {location}"]
  */
 export const splitTriggerPatterns = (trigger: string | string[]): string[] => {
@@ -23,43 +25,10 @@ export const splitTriggerPatterns = (trigger: string | string[]): string[] => {
   if (Array.isArray(trigger)) {
     return trigger.filter(p => p && typeof p === 'string' && p.trim().length > 0);
   }
-  
-  // Handle string format
-  if (!trigger || typeof trigger !== 'string' || !trigger.trim()) {
+  if (!trigger || typeof trigger !== 'string') {
     return [];
   }
-  
-  const patterns: string[] = [];
-  let currentPattern = '';
-  let braceDepth = 0;
-  
-  for (let i = 0; i < trigger.length; i++) {
-    const char = trigger[i];
-    
-    if (char === '{') {
-      braceDepth++;
-      currentPattern += char;
-    } else if (char === '}') {
-      braceDepth--;
-      currentPattern += char;
-    } else if (char === ',' && braceDepth === 0) {
-      // Only split on commas that are outside braces
-      const trimmed = currentPattern.trim();
-      if (trimmed) {
-        patterns.push(trimmed);
-      }
-      currentPattern = '';
-    } else {
-      currentPattern += char;
-    }
-  }
-  
-  const trimmed = currentPattern.trim();
-  if (trimmed) {
-    patterns.push(trimmed);
-  }
-  
-  return patterns;
+  return splitSharedTriggerPatterns(trigger);
 };
 
 /**
