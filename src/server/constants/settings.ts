@@ -398,6 +398,11 @@ export const VALID_SETTINGS_KEYS = [
   'meshcoreAutoResponderTriggers',
   // MeshCore timer triggers
   'meshcoreTimerTriggers',
+  // Message Forwarding rules (#5446) — per source, JSON array, both protocols.
+  // Normally saved through the validated POST /api/sources/:id/forwarding; the
+  // managers re-validate on read, so a raw /api/settings write cannot bypass the
+  // engine's limits.
+  'forwardingRules',
   // MeshCore default region/scope (#3667) — applied to all originated flood
   // traffic (DMs, adverts, requests) unless a channel overrides it. Empty =
   // unscoped (legacy '*' / null region).
@@ -619,6 +624,11 @@ export const PER_SOURCE_SETTINGS_KEYS = [
   'meshcoreAutoResponderTriggers',
   // MeshCore timer triggers
   'meshcoreTimerTriggers',
+  // Message Forwarding rules (#5446) — per source, JSON array, both protocols.
+  // Normally saved through the validated POST /api/sources/:id/forwarding; the
+  // managers re-validate on read, so a raw /api/settings write cannot bypass the
+  // engine's limits.
+  'forwardingRules',
   // MeshCore default region/scope (#3667) — per source (per node)
   'meshcoreDefaultScope',
   // MeshCore default path hash size (#4945) — per source (per node)

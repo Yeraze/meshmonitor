@@ -114,6 +114,9 @@ import {
 } from '../types/meshcoreAdvert.js';
 import { MeshCoreZeroHopAdvertUnsupportedError, classifyRepeaterAdvertReply } from './utils/meshcoreAdvert.js';
 import { plausibleMeshCoreTimeMs, plausibleMeshCoreTimeMsOrUndefined } from '../utils/meshcoreTimestamp.js';
+import { runForwarding, parseStoredForwardingRules } from './utils/forwardingEngine.js';
+import { FORWARDING_SETTING_KEY } from '../types/forwarding.js';
+import { isOwnPublicKey } from './utils/ownNodes.js';
 
 // Dynamic imports for optional serialport dependency
 // These are loaded only when MeshCore is enabled to avoid requiring native build tools
@@ -2057,6 +2060,7 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
       logger.debug(`[MeshCore:${this.sourceId}] Contact message from ${data.pubkey_prefix} (${data.text.length} chars)`);
       void this.checkAutoAcknowledge(message, true, undefined, hopCount, ackRoute);
       void this.checkAutoResponder(message, true, undefined, hopCount, ackRoute);
+      void this.checkForwarding(message, true, undefined);
       // A direct message is itself a "we just heard this contact" event —
       // without this, Last Heard/Last Seen only advance on `contact_advertised`
       // pushes or the next refreshContacts() poll, so the Contact Details panel
@@ -2118,6 +2122,7 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
       logger.debug(`[MeshCore] Channel ${channelIdx} message (${data.text.length} chars)`);
       void this.checkAutoAcknowledge(message, false, channelIdx, hopCount, route);
       void this.checkAutoResponder(message, false, channelIdx, hopCount, route);
+      void this.checkForwarding(message, false, channelIdx);
     } else if (event_type === 'room_message') {
       // Room server post (TXT_TYPE_SIGNED_PLAIN). The room's pubkey prefix
       // identifies which room, and the author prefix identifies the poster.
@@ -9304,6 +9309,60 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
       }
     } catch (err) {
       logger.warn(`[MeshCore:${this.sourceId}] Auto-responder check threw: ${(err as Error).message}`);
+    }
+  }
+
+  // ============ Message Forwarding (#5446) ============
+  //
+  // Copies a matching incoming message to a channel or a contact on this
+  // same source. Mesh-safety limits (receive-only, self-origin, forwarded
+  // marker, loop break, 5/min/rule, 200 chars) live in forwardingEngine.ts.
+  // Channel forwards do NOT opt into auto-retry, so a missed send is dropped
+  // rather than repeated.
+  private async checkForwarding(
+    message: MeshCoreMessage,
+    isDM: boolean,
+    channelIdx: number | undefined,
+  ): Promise<void> {
+    try {
+      const raw = await databaseService.settings.getSettingForSource(this.sourceId, FORWARDING_SETTING_KEY);
+      const rules = parseStoredForwardingRules(raw);
+      if (!rules.some(r => r.enabled)) return;
+
+      const fromKey = message.fromPublicKey || '';
+      const localKey = this.localNode?.publicKey?.toLowerCase();
+      // Channel messages carry no sender key (fromPublicKey is a synthetic
+      // channel id), so a channel echo of our own post is caught by the
+      // sender-name check instead.
+      const isSelf = (!!localKey && fromKey.toLowerCase() === localKey)
+        || (isDM && isOwnPublicKey(fromKey))
+        || (!isDM && !!this.localNode?.name && message.fromName === this.localNode.name);
+
+      const senderContact = isDM ? this.resolveContactByPrefix(fromKey) : undefined;
+      const channelRow = !isDM && typeof channelIdx === 'number'
+        ? await databaseService.channels.getChannelById(channelIdx, this.sourceId)
+        : null;
+
+      await runForwarding({
+        sourceId: this.sourceId,
+        rules,
+        canTransmit: this.canTransmit() && this.deviceType !== MeshCoreDeviceType.REPEATER,
+        message: {
+          text: message.text || '',
+          isDM,
+          channel: typeof channelIdx === 'number' ? channelIdx : null,
+          // No sender key on channel messages, so a sender filter can never match them.
+          fromNodeId: isDM ? (senderContact?.publicKey || fromKey) : '',
+          isSelf,
+          fromName: message.fromName || senderContact?.advName || senderContact?.name || undefined,
+          channelName: channelRow?.name || undefined,
+        },
+        send: (action) => action.target.kind === 'dm'
+          ? this.sendMessage(action.text, action.target.nodeId)
+          : this.sendMessage(action.text, undefined, action.target.channel),
+      });
+    } catch (err) {
+      logger.warn(`[MeshCore:${this.sourceId}] Forwarding check threw: ${(err as Error).message}`);
     }
   }
 

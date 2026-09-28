@@ -71,6 +71,9 @@ import { resolveAutoAckPreSendDelaySeconds } from './autoAckDelay.js';
 import { clampHopLimitOverride, parseHopLimitOverride } from '../utils/hopLimitOverride.js';
 import { normalizeTriggerPatterns, normalizeTriggerChannels } from '../utils/autoResponderUtils.js';
 import { matchAutoResponderPattern } from './utils/autoResponderMatcher.js';
+import { runForwarding, parseStoredForwardingRules } from './utils/forwardingEngine.js';
+import { FORWARDING_SETTING_KEY } from '../types/forwarding.js';
+import { isOwnNodeNum } from './utils/ownNodes.js';
 import { isWithinTimeWindow } from './utils/timeWindow.js';
 import { compileUserRegex } from '../utils/safeRegex.js';
 import { shouldGateAutomations, averageStrongestNeighborUtilization, DEFAULT_AIRTIME_CUTOFF_THRESHOLD, DEFAULT_AIRTIME_CUTOFF_SOURCE, DEFAULT_NEIGHBOR_UTIL_MAX_HOPS, MAX_NEIGHBOR_UTIL_MAX_HOPS, NEIGHBOR_UTIL_SAMPLE_COUNT, type AirtimeCutoffSource, type NeighborUtilContributor } from './utils/airtimeCutoff.js';
@@ -7208,6 +7211,12 @@ class MeshtasticManager implements ISourceManager {
           // Auto-acknowledge matching messages
           await this.checkAutoAcknowledge(message, messageText, channelIndex, isDirectMessage, fromNum, meshPacket.id, meshPacket.rxSnr, meshPacket.rxRssi);
 
+          // Message forwarding (#5446) — before auto-ping, which can return early.
+          // Replayed packets (fw 2.8 NodeDB replay) are never forwarded.
+          if (isLiveReception(meshPacket.rxTime, Date.now())) {
+            await this.checkForwarding(message, isDirectMessage);
+          }
+
           // Check for auto-ping DM command (before auto-responder so it takes priority)
           if (await this.handleAutoPingCommand(message, isDirectMessage)) return;
 
@@ -12034,6 +12043,63 @@ class MeshtasticManager implements ISourceManager {
       status,
       results: session.results,
     }, this.sourceId);
+  }
+
+  /**
+   * Message forwarding (#5446): copy a matching incoming text to a channel or
+   * a node on this same source. All mesh-safety limits (self-origin, forwarded
+   * marker, loop break, 5/min/rule, 200 chars) live in forwardingEngine.ts.
+   * Forwards go through the automation queue with a single attempt, so a
+   * failed DM is never retried into a flood.
+   */
+  private async checkForwarding(message: TextMessage, isDirectMessage: boolean): Promise<void> {
+    try {
+      const raw = await databaseService.settings.getSettingForSource(this.sourceId, FORWARDING_SETTING_KEY);
+      const rules = parseStoredForwardingRules(raw);
+      if (!rules.some(r => r.enabled)) return;
+
+      const canTransmit = this.canTransmit() && !(await this.isAutomationAirtimeGated());
+      const localNum = this.localNodeInfo?.nodeNum;
+      const isSelf = (localNum != null && Number(localNum) === Number(message.fromNodeNum))
+        || isOwnNodeNum(message.fromNodeNum);
+
+      const fromNode = await databaseService.nodes.getNode(message.fromNodeNum, this.sourceId);
+      const channelRow = !isDirectMessage && typeof message.channel === 'number'
+        ? await databaseService.channels.getChannelById(message.channel, this.sourceId)
+        : null;
+
+      await runForwarding({
+        sourceId: this.sourceId,
+        rules,
+        canTransmit,
+        message: {
+          text: message.text || '',
+          isDM: isDirectMessage,
+          channel: typeof message.channel === 'number' ? message.channel : null,
+          fromNodeId: message.fromNodeId || `!${Number(message.fromNodeNum).toString(16).padStart(8, '0')}`,
+          isSelf,
+          fromName: fromNode?.shortName || fromNode?.longName || undefined,
+          channelName: channelRow?.name || undefined,
+        },
+        send: (action) => {
+          if (action.target.kind === 'dm') {
+            const destNum = parseInt(action.target.nodeId.trim().replace(/^!/, ''), 16);
+            if (!Number.isFinite(destNum) || destNum <= 0) {
+              logger.warn(`[Forwarding:${this.sourceId}] Rule "${action.ruleName}": bad destination ${action.target.nodeId}`);
+              return false;
+            }
+            this.enqueueAutomation(action.text, destNum, undefined, undefined,
+              (reason: string) => logger.debug(`[Forwarding:${this.sourceId}] DM forward failed: ${reason}`),
+              undefined, 1);
+            return true;
+          }
+          this.enqueueAutomation(action.text, 0, undefined, undefined, undefined, action.target.channel, 1);
+          return true;
+        },
+      });
+    } catch (error) {
+      logger.warn(`[Forwarding:${this.sourceId}] check failed: ${(error as Error).message}`);
+    }
   }
 
   private async checkAutoResponder(message: TextMessage, isDirectMessage: boolean, packetId?: number): Promise<void> {
