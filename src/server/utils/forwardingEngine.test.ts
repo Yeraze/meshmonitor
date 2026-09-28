@@ -223,6 +223,7 @@ describe('validateForwardingRules', () => {
     ['neither DM nor channel', [{ ...dmRule(), match: {} }]],
     ['two targets', [{ ...dmRule(), forwardTo: { channel: 1, destinationNodeId: '!1' } }]],
     ['no target', [{ ...dmRule(), forwardTo: {} }]],
+    ['channel target with no channel picked', [{ ...dmRule(), forwardTo: { channel: null } }]],
     ['channel to itself', [chanRule({ forwardTo: { channel: 1 } })]],
     ['node back to itself', [dmRule({ match: { isDM: true, fromNodeId: '!0000BEEF' } })]],
     ['long prefix', [dmRule({ prefix: 'p'.repeat(41) })]],
@@ -230,6 +231,12 @@ describe('validateForwardingRules', () => {
     ['too many rules', Array.from({ length: 21 }, (_, i) => dmRule({ id: `r${i}` }))],
   ])('rejects %s', (_label, input) => {
     expect(validateForwardingRules(input).ok).toBe(false);
+  });
+
+  it('names the missing channel when a channel target has none picked', () => {
+    const v = validateForwardingRules([{ ...dmRule(), forwardTo: { channel: null } }]);
+    expect(v.ok).toBe(false);
+    if (!v.ok) expect(v.error).toMatch(/choose a channel/);
   });
 
   it('parseStoredForwardingRules returns [] for garbage', () => {

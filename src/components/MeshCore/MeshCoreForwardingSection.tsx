@@ -75,6 +75,7 @@ export const MeshCoreForwardingSection: React.FC<MeshCoreForwardingSectionProps>
       nodes={contacts}
       receiveOnly={receiveOnly}
       saveBarId="meshcore-forwarding"
+      controlVariant="meshcore"
     />
   );
 };

@@ -6048,6 +6048,7 @@
   "forwarding.target_node": "Node (DM)",
   "forwarding.target_channel": "Channel",
   "forwarding.pick_node": "Pick a node...",
+  "forwarding.pick_channel": "Choose a channel...",
   "forwarding.channel_airtime_warning": "Forwarding to a channel broadcasts to everyone on it and uses shared airtime for the whole mesh. Prefer a DM target where you can.",
   "forwarding.prefix": "Prefix (optional)",
   "forwarding.prefix_hint": "Tokens: {from} = sender, {channel} = channel name or DM.",

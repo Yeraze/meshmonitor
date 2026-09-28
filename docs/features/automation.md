@@ -1433,7 +1433,7 @@ Each source has its own list of rules. When a text message arrives, every enable
 When a rule matches, MeshMonitor sends a copy to the rule's target:
 
 - **Node (DM)**: a direct message to one node, such as your phone's companion node.
-- **Channel**: a broadcast on another channel of the same source.
+- **Channel**: a broadcast on another channel of the same source. No channel is pre-selected; you must pick one before the rule can be saved.
 
 Each rule has its own checkbox, so you can switch a rule on when you leave and off when you get back without deleting it. A new rule starts switched off: fill it in, then tick its checkbox to turn it on.
 

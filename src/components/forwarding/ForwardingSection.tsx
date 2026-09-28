@@ -50,6 +50,13 @@ export interface ForwardingSectionProps {
   receiveOnly?: boolean;
   /** Save-bar id suffix, so two sections on one page never collide. */
   saveBarId?: string;
+  /**
+   * Which shared form-control classes to use, so the fields match the
+   * sections around them: `settings` = `.setting-input` (Meshtastic
+   * Automation tab), `meshcore` = `.meshcore-input` / `.meshcore-select`
+   * (MeshCore Automations view).
+   */
+  controlVariant?: 'settings' | 'meshcore';
 }
 
 const newId = (): string =>
@@ -77,6 +84,7 @@ export const ForwardingSection: React.FC<ForwardingSectionProps> = ({
   nodes,
   receiveOnly = false,
   saveBarId = 'forwarding',
+  controlVariant = 'settings',
 }) => {
   const { t } = useTranslation();
   const csrfFetch = useCsrfFetch();
@@ -159,6 +167,11 @@ export const ForwardingSection: React.FC<ForwardingSectionProps> = ({
   const update = (id: string, patch: Partial<ForwardingRule>) =>
     setRules(prev => prev.map(r => (r.id === id ? { ...r, ...patch } : r)));
 
+  const inputClass = `${controlVariant === 'meshcore' ? 'meshcore-input' : 'setting-input'} ${styles.control}`;
+  const selectClass = controlVariant === 'meshcore'
+    ? `meshcore-select ${styles.control} ${styles.meshcoreSelect}`
+    : `setting-input ${styles.control}`;
+
   const channelLabel = (c: ForwardingChannelOption) =>
     c.name ? `${c.index}: ${c.name}` : t('forwarding.channel_n', 'Channel {{index}}', { index: c.index });
 
@@ -205,7 +218,10 @@ export const ForwardingSection: React.FC<ForwardingSectionProps> = ({
 
         {rules.map(rule => {
           const matchValue = rule.match.isDM ? DM_VALUE : String(rule.match.channel ?? '');
-          const targetKind = typeof rule.forwardTo.channel === 'number' ? 'channel' : 'node';
+          // `channel: null` = channel target chosen but no channel picked yet.
+          const targetKind = rule.forwardTo.destinationNodeId === undefined && 'channel' in rule.forwardTo
+            ? 'channel'
+            : 'node';
           return (
             <div
               key={rule.id}
@@ -223,7 +239,7 @@ export const ForwardingSection: React.FC<ForwardingSectionProps> = ({
                 />
                 <input
                   type="text"
-                  className={`setting-input ${styles.control}`}
+                  className={inputClass}
                   value={rule.name}
                   disabled={readOnly}
                   maxLength={60}
@@ -247,7 +263,7 @@ export const ForwardingSection: React.FC<ForwardingSectionProps> = ({
                   <label>
                     {t('forwarding.match', 'Forward messages from')}
                     <select
-                      className={`setting-input ${styles.control}`}
+                      className={selectClass}
                       value={matchValue}
                       disabled={readOnly}
                       onChange={e => {
@@ -273,7 +289,7 @@ export const ForwardingSection: React.FC<ForwardingSectionProps> = ({
                   <label>
                     {t('forwarding.from_node', 'Only from sender')}
                     <select
-                      className={`setting-input ${styles.control}`}
+                      className={selectClass}
                       value={rule.match.fromNodeId ?? ''}
                       disabled={readOnly}
                       onChange={e => update(rule.id, { match: { ...rule.match, fromNodeId: e.target.value || undefined } })}
@@ -292,7 +308,7 @@ export const ForwardingSection: React.FC<ForwardingSectionProps> = ({
                     {t('forwarding.text_regex', 'Only if text matches (regex, optional)')}
                     <input
                       type="text"
-                      className={`setting-input ${styles.control}`}
+                      className={inputClass}
                       value={rule.match.textRegex ?? ''}
                       disabled={readOnly}
                       maxLength={100}
@@ -307,13 +323,15 @@ export const ForwardingSection: React.FC<ForwardingSectionProps> = ({
                     {t('forwarding.target', 'Forward to')}
                     <span className={styles.targetRow}>
                       <select
-                        className={`setting-input ${styles.control} ${styles.targetKind}`}
+                        className={`${selectClass} ${styles.targetKind}`}
                         value={targetKind}
                         disabled={readOnly}
                         aria-label={t('forwarding.target_kind', 'Target type')}
                         onChange={e => update(rule.id, {
                           forwardTo: e.target.value === 'channel'
-                            ? { channel: channels.find(c => c.index !== rule.match.channel)?.index ?? 0 }
+                            // Pre-select nothing: a channel target costs shared airtime,
+                            // so the user must pick one on purpose.
+                            ? { channel: null }
                             : { destinationNodeId: '' },
                         })}
                       >
@@ -322,19 +340,22 @@ export const ForwardingSection: React.FC<ForwardingSectionProps> = ({
                       </select>
                       {targetKind === 'channel' ? (
                         <select
-                          className={`setting-input ${styles.control}`}
-                          value={String(rule.forwardTo.channel)}
+                          className={selectClass}
+                          value={rule.forwardTo.channel == null ? '' : String(rule.forwardTo.channel)}
                           disabled={readOnly}
                           aria-label={t('forwarding.target_channel', 'Channel')}
-                          onChange={e => update(rule.id, { forwardTo: { channel: Number(e.target.value) } })}
+                          onChange={e => update(rule.id, {
+                            forwardTo: { channel: e.target.value === '' ? null : Number(e.target.value) },
+                          })}
                         >
+                          <option value="" disabled>{t('forwarding.pick_channel', 'Choose a channel...')}</option>
                           {channels.map(c => (
                             <option key={c.index} value={String(c.index)}>{channelLabel(c)}</option>
                           ))}
                         </select>
                       ) : (
                         <select
-                          className={`setting-input ${styles.control}`}
+                          className={selectClass}
                           value={rule.forwardTo.destinationNodeId ?? ''}
                           disabled={readOnly}
                           aria-label={t('forwarding.target_node', 'Node (DM)')}
@@ -359,7 +380,7 @@ export const ForwardingSection: React.FC<ForwardingSectionProps> = ({
                     </span>
                     <input
                       type="text"
-                      className={`setting-input ${styles.control}`}
+                      className={inputClass}
                       value={rule.prefix ?? ''}
                       disabled={readOnly}
                       maxLength={FORWARDING_MAX_PREFIX_CHARS}

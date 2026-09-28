@@ -139,6 +139,44 @@ describe('ForwardingSection', () => {
     controls.forEach(c => expect(c.classList.contains('setting-input')).toBe(true));
   });
 
+  it('switching a target to Channel pre-selects no channel and blocks saving until one is chosen', async () => {
+    renderSection();
+    await screen.findByDisplayValue('DMs to phone');
+    const card = screen.getAllByTestId('forwarding-rule')[0];
+    const kind = card.querySelector('select[aria-label="Target type"]') as HTMLSelectElement;
+    fireEvent.change(kind, { target: { value: 'channel' } });
+
+    const channelSelect = card.querySelector('select[aria-label="Channel"]') as HTMLSelectElement;
+    expect(channelSelect.value).toBe('');
+    expect(channelSelect.selectedOptions[0]).toHaveTextContent('Choose a channel...');
+
+    await waitFor(() => expect(saveBarCapture.current?.hasChanges).toBe(true));
+    await saveBarCapture.current!.onSave();
+    expect(csrfFetchMock.mock.calls.some(c => c[1]?.method === 'POST')).toBe(false);
+    expect(showToastMock).toHaveBeenCalledWith(expect.stringMatching(/choose a channel/), 'error');
+
+    fireEvent.change(channelSelect, { target: { value: '2' } });
+    await saveBarCapture.current!.onSave();
+    const post = csrfFetchMock.mock.calls.find(c => c[1]?.method === 'POST');
+    expect(JSON.parse(post![1].body).rules[0].forwardTo).toEqual({ channel: 2 });
+  });
+
+  it('meshcore variant uses the MeshCore control classes', async () => {
+    render(
+      <ForwardingSection baseUrl="" sourceId="src1" channels={CHANNELS} nodes={NODES} controlVariant="meshcore" />,
+    );
+    await screen.findByDisplayValue('DMs to phone');
+    const card = screen.getAllByTestId('forwarding-rule')[0];
+    card.querySelectorAll('input[type="text"]').forEach(c => {
+      expect(c.classList.contains('meshcore-input')).toBe(true);
+      expect(c.classList.contains('setting-input')).toBe(false);
+    });
+    card.querySelectorAll('select').forEach(c => {
+      expect(c.classList.contains('meshcore-select')).toBe(true);
+      expect(c.classList.contains('setting-input')).toBe(false);
+    });
+  });
+
   it('receive-only: shows rules read-only with the paused note', async () => {
     renderSection(true);
     const name = (await screen.findByDisplayValue('DMs to phone')) as HTMLInputElement;

@@ -130,7 +130,17 @@ export function validateForwardingRules(input: unknown): ForwardingValidation {
     if (toChannel !== null && (toChannel < 0 || toChannel > 255)) {
       return { ok: false, error: `rule "${label}": target channel is out of range` };
     }
-    if ((toChannel !== null) === (toNode !== '')) {
+    if (toChannel === null && toNode === '') {
+      // A channel target starts with nothing picked (#5446 review): say which
+      // choice is missing rather than the generic message.
+      return {
+        ok: false,
+        error: 'channel' in f
+          ? `rule "${label}": choose a channel to forward to`
+          : `rule "${label}": choose a node to forward to`,
+      };
+    }
+    if (toChannel !== null && toNode !== '') {
       return { ok: false, error: `rule "${label}": forward to either one channel or one node` };
     }
     if (toNode.length > 80) return { ok: false, error: `rule "${label}": target node id is too long` };

@@ -109,6 +109,18 @@
   box-sizing: border-box;
 }
 
+/*
+ * MeshCore variant: the shared .meshcore-select is a little taller than
+ * .meshcore-input, so a row mixing both (as a forwarding rule does) looks
+ * ragged. Give the selects the input's padding and radius so every control in
+ * the row is the same height. The extra class wins over the view-scoped rule
+ * in MeshCoreAutomation.css on specificity, not source order.
+ */
+.card .grid select.meshcoreSelect {
+  padding: 0.4rem 0.6rem;
+  border-radius: var(--radius-md);
+}
+
 .cardHeader .control {
   flex: 1 1 auto;
 }
