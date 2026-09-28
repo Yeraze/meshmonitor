@@ -7,6 +7,7 @@
  */
 
 import i18n from 'i18next';
+import { toShippedLanguage } from './languageTag';
 import { initReactI18next } from 'react-i18next';
 import LanguageDetector from 'i18next-browser-languagedetector';
 import HttpBackend from 'i18next-http-backend';
@@ -67,6 +68,10 @@ void i18n
       order: ['localStorage', 'navigator'],
       caches: ['localStorage'],
       lookupLocalStorage: 'language',
+      // Browser tags like "zh-CN" or "zh-Hant" map onto our underscore locale
+      // codes. A saved choice is already a shipped code and passes unchanged.
+      convertDetectedLanguage: (lng: string) =>
+        toShippedLanguage(lng, AVAILABLE_LANGUAGES.map((lang) => lang.code)),
     },
 
     react: {
