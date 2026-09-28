@@ -28,14 +28,15 @@
  * honest thing to show.
  *
  * One exception (#5339): a stated time that could not have been real when we
- * observed the message — a sender RTC drifted years into the future, or stuck
- * before MeshCore existed — is replaced by `receivedAt` for ordering.
+ * observed the message — a sender RTC drifted into the future, or more than a
+ * day behind (a no-RTC node stuck at the firmware's 2024 default) — is replaced
+ * by `receivedAt` for ordering.
  * Otherwise a single "2038" message sits at the bottom of the channel for the
  * next twelve years. The server already applies this rule at ingest; it is
  * repeated here so rows stored before that fix sort correctly too.
  */
 import type { MeshCoreMessage } from './hooks/useMeshCore';
-import { isPlausibleMeshCoreTimeMs } from '../../utils/meshcoreTimestamp';
+import { isPlausibleMeshCoreMessageTimeMs } from '../../utils/meshcoreTimestamp';
 
 /**
  * The stated time used for ordering: `timestamp`, unless it is implausible
@@ -43,7 +44,7 @@ import { isPlausibleMeshCoreTimeMs } from '../../utils/meshcoreTimestamp';
  */
 function orderingTime(m: Pick<MeshCoreMessage, 'timestamp' | 'receivedAt'>): number {
   const stated = m.timestamp ?? 0;
-  if (typeof m.receivedAt === 'number' && !isPlausibleMeshCoreTimeMs(stated, m.receivedAt)) {
+  if (typeof m.receivedAt === 'number' && !isPlausibleMeshCoreMessageTimeMs(stated, m.receivedAt)) {
     return m.receivedAt;
   }
   return stated;

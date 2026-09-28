@@ -528,6 +528,7 @@ describe('MeshCoreNativeBackend', () => {
         advLat: 35_000_000,
         advLon: -120_000_000,
         lastAdvert: 1234567,
+        lastMod: 1790000000,
       },
     ];
 
@@ -539,6 +540,9 @@ describe('MeshCoreNativeBackend', () => {
         adv_name: 'Alice',
         latitude: 35,
         longitude: -120,
+        last_advert: 1234567,
+        // Companion-clock "last heard" drives Last Heard (#5339).
+        last_mod: 1790000000,
       }),
     ]);
   });
