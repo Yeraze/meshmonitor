@@ -111,6 +111,7 @@ import type { ConversationKind } from '../db/schema/conversationReadState.js';
 import type { DatabaseType, DbPacketLog as DbTypesPacketLog, DbPacketCountByNode, DbPacketCountByPortnum, DbDistinctRelayNode } from '../db/types.js';
 import { updateNodeMobility } from '../server/services/nodeMobilityService.js';
 import { selectNodeNeedingTraceroute, parseTracerouteFilterMode, type TracerouteFilterMode } from '../server/services/autoTracerouteSelectionService.js';
+import type { PacketVisibility } from '../db/repositories/packetLog.js';
 import { NodeCacheService } from '../server/services/nodeCacheService.js';
 
 // Configuration constants for traceroute history
@@ -4756,11 +4757,11 @@ class DatabaseService {
     return this.packetLogRepo.cleanupOldPacketLogs(maxAgeHours);
   }
 
-  async getPacketCountsByNodeAsync(options?: { since?: number; limit?: number; portnum?: number; sourceId?: string; transportClass?: NodeTransportClass }): Promise<DbPacketCountByNode[]> {
+  async getPacketCountsByNodeAsync(options?: { since?: number; limit?: number; portnum?: number; sourceId?: string; transportClass?: NodeTransportClass; visibility?: PacketVisibility }): Promise<DbPacketCountByNode[]> {
     return this.packetLog.getPacketCountsByNode(options);
   }
 
-  async getPacketCountsByPortnumAsync(options?: { since?: number; from_node?: number; sourceId?: string; transportClass?: NodeTransportClass }): Promise<DbPacketCountByPortnum[]> {
+  async getPacketCountsByPortnumAsync(options?: { since?: number; from_node?: number; sourceId?: string; transportClass?: NodeTransportClass; visibility?: PacketVisibility }): Promise<DbPacketCountByPortnum[]> {
     return this.packetLog.getPacketCountsByPortnum(options);
   }
 

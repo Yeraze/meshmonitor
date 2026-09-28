@@ -227,11 +227,20 @@ router.get('/stats/distribution', requirePacketPermissions, async (req, res) => 
     const portnum = req.query.portnum ? parseInt(req.query.portnum as string, 10) : undefined;
     const sourceId = (req as any).scopedSourceId as string | undefined;
 
+    // Non-admins only count packets they could see in the packet list: the
+    // same channel/DM rule as filterPacketsByPermissions, applied in SQL.
+    const visibility = (req as any).isAdmin
+      ? undefined
+      : {
+          allowedChannels: [...((req as any).allowedChannels as Set<number>)],
+          canReadMessages: (req as any).canReadMessages === true,
+        };
+
     // Fetch distribution data - limit to top 10 devices
     const [byDevice, byType, total] = await Promise.all([
-      packetLogService.getPacketCountsByNodeAsync({ since, limit: 10, portnum, sourceId, transportClass }),
-      packetLogService.getPacketCountsByPortnumAsync({ since, from_node, sourceId, transportClass }),
-      packetLogService.getPacketCountAsync({ since, from_node, portnum, sourceId, transportClass })
+      packetLogService.getPacketCountsByNodeAsync({ since, limit: 10, portnum, sourceId, transportClass, visibility }),
+      packetLogService.getPacketCountsByPortnumAsync({ since, from_node, sourceId, transportClass, visibility }),
+      packetLogService.getPacketCountAsync({ since, from_node, portnum, sourceId, transportClass, visibility })
     ]);
 
     res.json({
