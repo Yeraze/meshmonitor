@@ -15,6 +15,8 @@ import { getPrimaryMeshtasticManager } from '../sourceManagerTypes.js';
 import { getEnvironmentConfig } from '../config/environment.js';
 import { logger } from '../../utils/logger.js';
 import path from 'path';
+import { parseOtaGateway, isIpv6Literal } from '../../utils/otaGateway.js';
+import { fail } from '../utils/apiResponse.js';
 
 const router = Router();
 
@@ -287,13 +289,28 @@ router.post('/update', async (req: Request, res: Response) => {
     // is the fallback that used to silently target 192.168.1.100 for non-TCP
     // or unconfigured sources. We surface it as an explicit error instead.
     const env = getEnvironmentConfig();
-    if (!env.meshtasticNodeIpProvided && gatewayIp === env.meshtasticNodeIp) {
+    // Compare the host part: the gateway may carry a custom port (#5424).
+    const gatewayHost = parseOtaGateway(String(gatewayIp)).host;
+    if (!env.meshtasticNodeIpProvided && gatewayHost === env.meshtasticNodeIp) {
       return res.status(400).json({
         success: false,
         error:
           'No node IP configured for this source. OTA firmware update requires ' +
           'a TCP source with a host configured, or MESHTASTIC_NODE_IP explicitly set.',
       });
+    }
+
+    // The meshtastic CLI splits `--host` on ':' to find a port, so it cannot
+    // connect to an IPv6 literal at all. Fail up front with a clear reason
+    // rather than after the node has been disconnected (#5424).
+    if (isIpv6Literal(gatewayHost)) {
+      return fail(
+        res,
+        400,
+        'OTA_IPV6_UNSUPPORTED',
+        'OTA firmware update cannot reach an IPv6 address: the meshtastic CLI only accepts ' +
+          'a hostname or IPv4 address. Configure this source with a hostname or IPv4 address.',
+      );
     }
 
     firmwareUpdateService.startPreflight({

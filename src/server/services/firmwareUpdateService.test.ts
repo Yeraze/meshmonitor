@@ -1092,6 +1092,57 @@ describe('FirmwareUpdateService', () => {
       });
     });
 
+    describe('custom TCP port in the gateway (#5424)', () => {
+      it('backup probes the parsed host/port and passes host:port to --host', async () => {
+        const svc = new FirmwareUpdateService() as any;
+        svc.ensureBackupDir = vi.fn();
+        svc.waitForNodeTcpReady = vi.fn().mockResolvedValue(undefined);
+        // Fail the CLI so no backup file is written; the calls are what we check.
+        svc.runCliCommand = vi.fn().mockResolvedValue({ stdout: '', stderr: 'x', exitCode: 1 });
+
+        await expect(svc.executeBackup('10.0.0.5:5000', '!abc')).rejects.toThrow(/Backup command failed/);
+
+        expect(svc.waitForNodeTcpReady).toHaveBeenCalledWith('10.0.0.5', 5000);
+        const args = svc.runCliCommand.mock.calls[0][1] as string[];
+        expect(args.slice(0, 2)).toEqual(['--host', '10.0.0.5:5000']);
+      });
+
+      it('backup with a bare host probes the default 4403 port', async () => {
+        const svc = new FirmwareUpdateService() as any;
+        svc.ensureBackupDir = vi.fn();
+        svc.waitForNodeTcpReady = vi.fn().mockResolvedValue(undefined);
+        svc.runCliCommand = vi.fn().mockResolvedValue({ stdout: '', stderr: 'x', exitCode: 1 });
+
+        await expect(svc.executeBackup('10.0.0.5', '!abc')).rejects.toThrow();
+
+        expect(svc.waitForNodeTcpReady).toHaveBeenCalledWith('10.0.0.5', 4403);
+        expect((svc.runCliCommand.mock.calls[0][1] as string[]).slice(0, 2)).toEqual(['--host', '10.0.0.5']);
+      });
+
+      it('flash readiness and post-failure waits use the custom port; --host carries it', async () => {
+        const svc = new FirmwareUpdateService() as any;
+        svc.waitForNodeReady = vi.fn().mockImplementation((_h: string, port: number) =>
+          port === 3232 ? Promise.reject(new Error('no loader')) : Promise.resolve(),
+        );
+        svc.probePort = vi.fn().mockRejectedValue(new Error('no loader'));
+        svc.runCliCommand = vi.fn().mockResolvedValue({ stdout: '', stderr: 'timeout', exitCode: 1 });
+        svc.tempDir = '/tmp/test';
+        svc.cleanupTempDir = vi.fn();
+
+        await expect(svc.executeFlash('10.0.0.5:5000', '/tmp/test/firmware.bin')).rejects.toThrow();
+
+        const waits = svc.waitForNodeReady.mock.calls.map((c: unknown[]) => [c[0], c[1]]);
+        // Pre-flash readiness on the API port.
+        expect(waits[0]).toEqual(['10.0.0.5', 5000]);
+        // The OTA loader transfer port is never replaced by the API port.
+        expect(waits).toContainEqual(['10.0.0.5', 3232]);
+        // The post-failure reboot wait uses the API port, not a hard-coded 4403.
+        expect(waits[waits.length - 1]).toEqual(['10.0.0.5', 5000]);
+        expect(waits).not.toContainEqual(['10.0.0.5', 4403]);
+        expect((svc.runCliCommand.mock.calls[0][1] as string[]).slice(0, 2)).toEqual(['--host', '10.0.0.5:5000']);
+      });
+    });
+
     describe('retryFlash', () => {
       // Helper to create idle status (mirrors the non-exported createIdleStatus)
       const createIdleStatus = (): any => ({
