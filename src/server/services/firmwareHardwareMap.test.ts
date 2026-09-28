@@ -31,8 +31,8 @@ describe('firmwareHardwareMap', () => {
       expect(getBoardName(12)).toBe('tbeam-s3-core');
     });
 
-    it('should map TBEAM_V0P7 (6) to tbeam-v0p7 via override', () => {
-      expect(getBoardName(6)).toBe('tbeam-v0p7');
+    it('should map TBEAM_V0P7 (6) to its variant env name tbeam0_7 via override', () => {
+      expect(getBoardName(6)).toBe('tbeam0_7');
     });
 
     it('should map T_ECHO (7) to t-echo via override', () => {
@@ -59,12 +59,12 @@ describe('firmwareHardwareMap', () => {
       expect(getBoardName(70)).toBe('seeed-sensecap-indicator');
     });
 
-    it('should map M5STACK (42) to m5stack-cores3 via override', () => {
-      expect(getBoardName(42)).toBe('m5stack-cores3');
+    it('should map M5STACK (42) to the esp32 m5stack-core release board', () => {
+      expect(getBoardName(42)).toBe('m5stack-core');
     });
 
-    it('should map EBYTE_ESP32_S3 (54) to CDEBYTE_EoRa-S3 via override', () => {
-      expect(getBoardName(54)).toBe('CDEBYTE_EoRa-S3');
+    it('should map EBYTE_ESP32_S3 (54) to its own EBYTE_ESP32-S3 env, not the CDEBYTE board', () => {
+      expect(getBoardName(54)).toBe('EBYTE_ESP32-S3');
     });
 
     it('should map STATION_G1 (25) to station-g1 via override', () => {
@@ -82,8 +82,8 @@ describe('firmwareHardwareMap', () => {
     it('should use default conversion for models without overrides', () => {
       // TLORA_V2 (1) -> tlora-v2
       expect(getBoardName(1)).toBe('tlora-v2');
-      // HELTEC_V2_0 (5) -> heltec-v2-0
-      expect(getBoardName(5)).toBe('heltec-v2-0');
+      // HELTEC_V1 (11) -> heltec-v1
+      expect(getBoardName(11)).toBe('heltec-v1');
       // HELTEC_WSL_V3 (44) -> heltec-wsl-v3
       expect(getBoardName(44)).toBe('heltec-wsl-v3');
     });
