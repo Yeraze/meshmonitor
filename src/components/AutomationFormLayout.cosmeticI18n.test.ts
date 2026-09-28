@@ -9,13 +9,26 @@
  *     edit form, the test panel) were hardcoded English.
  *   - Geofence Interval / Cooldown inputs started at different x at 390px.
  *
+ *   - Pattern Examples & Templates card was entirely hardcoded English.
+ *
  * jsdom has no layout engine, so stylesheets and markup are asserted directly,
- * as AutomationFormLayout.placeholderHint.test.ts does.
+ * as AutomationFormLayout.placeholderHint.test.ts does. PatternExamples is
+ * also rendered with the real react-i18next (the global setup mocks it) to
+ * prove the <Trans> tips put the literal examples back in.
+ *
+ * @vitest-environment jsdom
  */
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { createElement } from 'react';
+import { render, fireEvent } from '@testing-library/react';
+import { createInstance } from 'i18next';
+import { I18nextProvider, initReactI18next } from 'react-i18next';
+import PatternExamples from './auto-responder/PatternExamples';
+
+vi.unmock('react-i18next');
 
 const here = dirname(fileURLToPath(import.meta.url));
 const read = (p: string) => readFileSync(join(here, p), 'utf8');
@@ -96,6 +109,7 @@ describe('auto responder strings are translatable', () => {
     section: read('AutoResponderSection.tsx'),
     item: read('auto-responder/TriggerItem.tsx'),
     scripts: read('auto-responder/ScriptManagement.tsx'),
+    examples: read('auto-responder/PatternExamples.tsx'),
   };
 
   it('every t() key the components use exists in en.json', () => {
@@ -146,6 +160,65 @@ describe('auto responder strings are translatable', () => {
     const de = JSON.parse(read('../../public/locales/de.json')) as Record<string, string>;
     expect(de).not.toHaveProperty(['auto_responder.channels_label']);
     expect(de).not.toHaveProperty(['auto_responder.multiline_label']);
+  });
+});
+
+describe('pattern examples are translatable', () => {
+  // Comments name the sections in English, so strip them first.
+  const src = read('auto-responder/PatternExamples.tsx').replace(/\{?\/\*[\s\S]*?\*\/\}?/g, '');
+  const exampleKeys = Object.keys(en).filter((k) => k.startsWith('auto_responder.examples_'));
+
+  it('every examples_* key the component names exists in en.json', () => {
+    // Descriptions and group titles are looked up by key suffix, so collect
+    // the suffixes as string literals rather than t('...') calls.
+    const named = [...new Set([...src.matchAll(/['.](examples_[a-z_]+)['"]/g)].map((m) => `auto_responder.${m[1]}`))];
+    expect(named.length).toBeGreaterThan(30);
+    expect(named.filter((k) => !(k in en))).toEqual([]);
+    // And nothing in en.json is orphaned.
+    expect(exampleKeys.filter((k) => !named.includes(k))).toEqual([]);
+  });
+
+  it('keeps pattern, regex and config literals out of the translated text', () => {
+    for (const key of exampleKeys) {
+      const value = en[key].replace(/\{\{\w+\}\}/g, '').replace(/<\/?\w+\/?>/g, '');
+      expect(value, key).not.toMatch(/[{}\\[\]]/);
+      expect(value, key).not.toMatch(/TZ=|docker-compose|!a1b2/);
+    }
+  });
+
+  it('has no hardcoded English prose left in the markup', () => {
+    for (const text of ['Pattern Examples & Templates', 'Common Meshtastic Commands', 'Click to use', 'Quick Tips:', 'Node & Network Patterns', 'Multi-pattern weather command', 'Battery level (0-100)']) {
+      expect(src).not.toContain(text);
+    }
+    expect(src).not.toMatch(/title="[A-Z]/);
+    expect(src).not.toMatch(/>\s*[A-Z][a-z]+ [a-z]+[^<{]*</);
+  });
+
+  it('renders the tips with their literal examples through <Trans>', async () => {
+    const i18n = createInstance();
+    await i18n.use(initReactI18next).init({
+      lng: 'en',
+      resources: { en: { translation: en } },
+      interpolation: { escapeValue: false },
+    });
+    const onSelect = vi.fn();
+    const { container, getByText } = render(
+      createElement(I18nextProvider, { i18n }, createElement(PatternExamples, { onSelectPattern: onSelect })),
+    );
+    fireEvent.click(getByText('Pattern Examples & Templates'));
+    const text = container.textContent ?? '';
+    expect(text).toContain('Use {param} for default matching (single word, no spaces)');
+    expect(text).toContain('Default pattern [^\\s]+ matches any single word');
+    expect(text).toContain('Use [\\w\\s]+ for multiple words with spaces');
+    expect(text).toContain('configure via TZ=America/New_York in docker-compose.yaml');
+    expect(text).toContain('Meshtastic node ID (e.g., !a1b2c3d4)');
+    expect(text).not.toMatch(/auto_responder\./);
+
+    // The clickable examples still insert the exact pattern.
+    fireEvent.click(getByText('grid {square:[A-R]{2}\\d{2}[a-x]{2}}'));
+    expect(onSelect).toHaveBeenLastCalledWith('grid {square:[A-R]{2}\\d{2}[a-x]{2}}');
+    fireEvent.click(getByText('weather, weather {location}, w {location}'));
+    expect(onSelect).toHaveBeenLastCalledWith('weather, weather {location}, w {location}');
   });
 });
 
