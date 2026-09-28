@@ -484,6 +484,10 @@ Auto-Acknowledge and Auto-Responder templates can quote the path the triggering 
 
 A hop MeshMonitor cannot resolve stays as raw hex. When several repeaters share a hash prefix, MeshMonitor picks the one closest to the neighbouring hops' positions — a best guess, not a certainty. The same resolution backs the clickable route line on a received message (see [Message route line](#message-route-line)).
 
+## Forwarding
+
+Forwarding copies matching incoming DMs or channel messages to one contact or another channel on the same MeshCore source, with an on/off checkbox per rule. It uses the same rules and fixed limits as Meshtastic forwarding (5 forwards per rule per minute, 200 characters, no loops) and stays read-only in receive-only mode. See [Forwarding](/features/automation#forwarding) for details.
+
 ## Timer Triggers
 
 Timer Triggers schedule recurring actions independent of incoming traffic:
