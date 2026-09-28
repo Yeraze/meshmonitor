@@ -70,6 +70,7 @@ import {
   CoverageReceptionsRepository,
   CoverageSurveysRepository,
   AircraftFlightMatchesRepository,
+  MeshCoreFiltersRepository,
   MeshIssuesRepository,
   DeadDropRepository,
   AutomationsRepository,
@@ -106,6 +107,7 @@ import type {
 } from '../db/repositories/index.js';
 import type { MeshIssueFinding } from '../server/services/meshIssues/types.js';
 import type { ConversationReadStateMap, AircraftFlightMatchRow, FlightMatchLookupWrite, AssetNode, AssetNodeSettings } from '../db/repositories/index.js';
+import type { MeshCoreIgnoredNodeRow, MeshCoreMessageFilterRow, MeshCoreMessageFilterInput, MeshCoreFilterMode } from '../db/repositories/index.js';
 import { assetRetentionCutoff } from '../utils/assetTracking.js';
 import type { ConversationKind } from '../db/schema/conversationReadState.js';
 import type { DatabaseType, DbPacketLog as DbTypesPacketLog, DbPacketCountByNode, DbPacketCountByPortnum, DbDistinctRelayNode } from '../db/types.js';
@@ -613,6 +615,7 @@ class DatabaseService {
   public coverageReceptionsRepo: CoverageReceptionsRepository | null = null;
   public coverageSurveysRepo: CoverageSurveysRepository | null = null;
   public aircraftFlightMatchesRepo: AircraftFlightMatchesRepository | null = null;
+  public meshcoreFiltersRepo: MeshCoreFiltersRepository | null = null;
   public meshIssuesRepo: MeshIssuesRepository | null = null;
   public deadDropRepo: DeadDropRepository | null = null;
   public automationsRepo: AutomationsRepository | null = null;
@@ -709,6 +712,11 @@ class DatabaseService {
   get aircraftFlightMatches(): AircraftFlightMatchesRepository {
     if (!this.aircraftFlightMatchesRepo) throw new Error('Database not initialized');
     return this.aircraftFlightMatchesRepo;
+  }
+
+  get meshcoreFilters(): MeshCoreFiltersRepository {
+    if (!this.meshcoreFiltersRepo) throw new Error('Database not initialized');
+    return this.meshcoreFiltersRepo;
   }
 
   get meshIssues(): MeshIssuesRepository {
@@ -1168,6 +1176,7 @@ class DatabaseService {
       this.coverageReceptionsRepo = new CoverageReceptionsRepository(drizzleDb, this.drizzleDbType);
       this.coverageSurveysRepo = new CoverageSurveysRepository(drizzleDb, this.drizzleDbType);
       this.aircraftFlightMatchesRepo = new AircraftFlightMatchesRepository(drizzleDb, this.drizzleDbType);
+      this.meshcoreFiltersRepo = new MeshCoreFiltersRepository(drizzleDb, this.drizzleDbType);
       this.meshIssuesRepo = new MeshIssuesRepository(drizzleDb, this.drizzleDbType);
       this.deadDropRepo = new DeadDropRepository(drizzleDb, this.drizzleDbType);
       this.automationsRepo = new AutomationsRepository(drizzleDb, this.drizzleDbType);
@@ -5817,6 +5826,62 @@ class DatabaseService {
 
   async clearAircraftAgedOutAsync(nodeNum: number, sourceId: string): Promise<void> {
     return this.nodes.clearAircraftAgedOut(nodeNum, sourceId);
+  }
+
+  // ---- MeshCore Ignore / Block (#5408) ----
+
+  async getMeshCoreIgnoredNodesAsync(sourceId: string): Promise<MeshCoreIgnoredNodeRow[]> {
+    return this.meshcoreFilters.listIgnoredNodes(sourceId);
+  }
+
+  async upsertMeshCoreIgnoredNodeAsync(entry: {
+    sourceId: string;
+    publicKey: string;
+    name: string | null;
+    mode: MeshCoreFilterMode;
+    createdBy: number | null;
+  }): Promise<MeshCoreIgnoredNodeRow> {
+    return this.meshcoreFilters.upsertIgnoredNode(entry);
+  }
+
+  async removeMeshCoreIgnoredNodeAsync(sourceId: string, publicKey: string): Promise<number> {
+    return this.meshcoreFilters.removeIgnoredNode(sourceId, publicKey);
+  }
+
+  async updateMeshCoreIgnoredNodeNameAsync(sourceId: string, publicKey: string, name: string): Promise<void> {
+    return this.meshcoreFilters.updateIgnoredNodeName(sourceId, publicKey, name);
+  }
+
+  async addMeshCoreIgnoredNodeHitsAsync(sourceId: string, publicKey: string, count: number, lastHitAt: number): Promise<void> {
+    return this.meshcoreFilters.addIgnoredNodeHits(sourceId, publicKey, count, lastHitAt);
+  }
+
+  async getMeshCoreMessageFiltersAsync(sourceId: string): Promise<MeshCoreMessageFilterRow[]> {
+    return this.meshcoreFilters.listMessageFilters(sourceId);
+  }
+
+  async createMeshCoreMessageFilterAsync(
+    sourceId: string,
+    input: MeshCoreMessageFilterInput,
+    createdBy: number | null,
+  ): Promise<MeshCoreMessageFilterRow> {
+    return this.meshcoreFilters.createMessageFilter(sourceId, input, createdBy);
+  }
+
+  async updateMeshCoreMessageFilterAsync(
+    sourceId: string,
+    id: string,
+    patch: Partial<MeshCoreMessageFilterInput>,
+  ): Promise<MeshCoreMessageFilterRow | null> {
+    return this.meshcoreFilters.updateMessageFilter(sourceId, id, patch);
+  }
+
+  async deleteMeshCoreMessageFilterAsync(sourceId: string, id: string): Promise<number> {
+    return this.meshcoreFilters.deleteMessageFilter(sourceId, id);
+  }
+
+  async addMeshCoreMessageFilterHitsAsync(sourceId: string, id: string, count: number, lastHitAt: number): Promise<void> {
+    return this.meshcoreFilters.addMessageFilterHits(sourceId, id, count, lastHitAt);
   }
 
   // ---- ADS-B flight matching (#5374) ----

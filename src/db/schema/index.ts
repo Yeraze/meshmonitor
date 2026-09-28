@@ -58,6 +58,9 @@ export * from './coverageSurveys.js';
 // ADS-B flight matching for likely aircraft (#5374)
 export * from './aircraftFlightMatches.js';
 
+// MeshCore client-side Ignore / Block, per source (#5408)
+export * from './meshcoreFilters.js';
+
 // Mesh Issues findings (global — no sourceId) (epic #4964 Phase 1 WP1)
 export * from './meshIssues.js';
 
