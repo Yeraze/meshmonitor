@@ -64,9 +64,11 @@ desktop/src-tauri/target/
 desktop/src-tauri/binaries/
 desktop/resources/
 
-# Tile server data
-tiles/*.mbtiles
-tiles/*.pbf
+# Tile server data. tiles/ must stay a real directory: the dev tileserver
+# bind-mounts ./tiles. Only the placeholder is tracked. Never commit a
+# `tiles` symlink (scripts/check-no-tracked-symlinks.mjs enforces this).
+tiles/*
+!tiles/.gitkeep
 
 # Serena MCP
 .serena/

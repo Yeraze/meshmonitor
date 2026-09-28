@@ -32,6 +32,7 @@ When in doubt about a destructive command, delegate the whole job to the **`dock
   ```bash
   [ -f docker-compose.dev.local.yml ] || cp ../meshmonitor/docker-compose.dev.local.yml .
   ```
+- The tileserver is opt-in (`tiles` profile) and not used for testing, so the commands below don't start it. Don't copy tiles into a worktree or replace `tiles/` with a symlink: a committed `tiles` link breaks every fresh clone (#4950, #5162).
 - Note the deployed commit so you can verify later: `git rev-parse --short HEAD`.
 
 ### 2. Build + deploy
@@ -65,7 +66,7 @@ COMPOSE_PROFILES=sqlite docker compose -f docker-compose.dev.yml -f docker-compo
 
 ### 4. Access details (for the user / for testing)
 - App: **http://localhost:8081/meshmonitor** (the sqlite app publishes `8081:3001`; `BASE_URL=/meshmonitor`). *(CLAUDE.md mentions :8080 — that's a host proxy, not the container port; the container itself is 8081.)*
-- Tileserver: http://localhost:8082
+- Tileserver: not started by default. Only if the user asks, add the `tiles` profile (`COMPOSE_PROFILES=sqlite,tiles`); it serves http://localhost:8082 from `./tiles`.
 - Login: `admin` / `changeme` (the seeded default — **not** `changeme1`, which is only the `api-test.sh` default). Login is rate-limited; if you lock yourself out, wait it out — the container has **no `sqlite3` CLI** to reset it.
 - Send test messages on the `gauntlet` channel, never Primary.
 
