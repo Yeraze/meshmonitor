@@ -3381,7 +3381,7 @@
   "auto_responder.skip_incomplete_description": "Don't auto-respond to messages from nodes that are missing name or hardware info. Recommended for secure channels to avoid responding to nodes that may have overheard your encrypted traffic.",
   "auto_responder.add_trigger": "Add Trigger",
   "auto_responder.add_trigger_description": "Create a trigger pattern that matches incoming messages. Use {parameter} for dynamic values, or {param:regex} for custom matching rules. Multiple patterns can be separated by commas.",
-  "auto_responder.trigger_placeholder": "Try: weather, weather {location}, w {location}",
+  "auto_responder.trigger_placeholder": "e.g. weather {location}",
   "auto_responder.pattern_count_one": "{{count}} pattern",
   "auto_responder.pattern_count_other": "{{count}} patterns",
   "auto_responder.type_text": "Text",
