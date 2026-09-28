@@ -183,6 +183,30 @@ describe('buildCspHeader - built-in tileset hosts are reachable in 3D (#4371)', 
       expect(cspAllowsHost(sources, concrete)).toBe(true);
     },
   );
+
+  // #5448: MapLibre fetch()es a GL style and everything it references, so the
+  // style's host AND its tile/sprite/glyph hosts must all be in connect-src.
+  // CARTO serves styles from the BARE host, which `*.basemaps…` doesn't match.
+  it.each(
+    Object.values(TILESETS)
+      .filter((t) => t.styleUrl && /^https?:\/\//.test(t.styleUrl))
+      .map((t) => [t.id, t.styleUrl as string] as const),
+  )('allows the %s GL style host in connect-src', async (_id, styleUrl) => {
+    const header = await buildCspHeader(true, true, []);
+    const sources = directivesFromHeader(header)['connect-src'].split(' ');
+    expect(cspAllowsHost(sources, styleUrl)).toBe(true);
+  });
+
+  it.each([
+    'https://tiles.basemaps.cartocdn.com/vector/carto.streets/v1/tiles.json',
+    'https://tiles-a.basemaps.cartocdn.com/vectortiles/carto.streets/v1/1/0/0.mvt',
+    'https://tiles.basemaps.cartocdn.com/gl/voyager-gl-style/sprite.json',
+    'https://tiles.basemaps.cartocdn.com/fonts/Montserrat%20Medium/0-255.pbf',
+  ])('allows CARTO style sub-resource %s in connect-src', async (url) => {
+    const header = await buildCspHeader(true, true, []);
+    const sources = directivesFromHeader(header)['connect-src'].split(' ');
+    expect(cspAllowsHost(sources, url)).toBe(true);
+  });
 });
 
 describe('extractHostFromUrl (#4371)', () => {

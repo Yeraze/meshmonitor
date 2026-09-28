@@ -6,7 +6,13 @@
  * logic (DM vs channel, target source/node resolution, tapback replyId) is
  * unit-tested without a live node. The real deps wiring lives in meshActionDeps.ts.
  */
-import { type AutomationNode, AUTOMATION_DELAY_MAX_SECONDS, parseSendMaxAttempts } from '../../../types/automation.js';
+import {
+  type AutomationNode,
+  type AutomationEnableMode,
+  AUTOMATION_DELAY_MAX_SECONDS,
+  parseSendMaxAttempts,
+  parseAutomationEnabledFlag,
+} from '../../../types/automation.js';
 import { parseHopLimitOverride } from '../../../utils/hopLimitOverride.js';
 import { type EngineEvalContext, interpolateAsync, resolveOperand } from './engineContext.js';
 import { isTxDisabledError } from '../../errors/txDisabledError.js';
@@ -82,6 +88,38 @@ export interface ActionDeps {
     Promise<{ success: boolean; returnValue?: unknown; stdout: string; error?: string }>;
   /** Pause for `ms` (action.delay). Optional/injectable so tests don't wait in real time. */
   sleep?(ms: number): Promise<void>;
+  /**
+   * Enable / disable / toggle an automation by id (#5445). `enabled` is set only
+   * for mode 'set'. Resolves null when no automation has that id. Optional: the
+   * live engine supplies it (it owns the reload), the simulator supplies a
+   * no-write stand-in, and a deps object without it fails the step cleanly.
+   */
+  setAutomationEnabled?(a: { automationId: string; mode: AutomationEnableMode; enabled?: boolean }):
+    Promise<SetAutomationEnabledResult | null>;
+}
+
+/** What {@link ActionDeps.setAutomationEnabled} reports back (#5445). */
+export interface SetAutomationEnabledResult {
+  automationId: string;
+  name: string;
+  /** State before the action ran. */
+  previous: boolean;
+  /** State after the action ran. */
+  enabled: boolean;
+}
+
+/**
+ * The persistable run-log summary for an action's result (#5445), wired into the
+ * evaluator's `stepDetail` hook. Only action.setAutomationEnabled opts in today:
+ * its resolved target and new state are the audit trail for a rule that changes
+ * other rules, and they are small. Other actions return undefined so their
+ * stored run-log rows stay exactly as before.
+ */
+export function actionStepDetail(node: AutomationNode, value: unknown): Record<string, unknown> | undefined {
+  if (node.type !== 'action.setAutomationEnabled') return undefined;
+  if (value == null || typeof value !== 'object') return undefined;
+  const v = value as Record<string, unknown>;
+  return { automationId: v.automationId, name: v.name, mode: v.mode, enabled: v.enabled, previous: v.previous };
 }
 
 /**
@@ -531,6 +569,33 @@ export async function executeAction(node: AutomationNode, ctx: EngineEvalContext
       const rawUrls = typeof p.urls === 'string' ? await interpolateAsync(p.urls, ctx, { varsOnly: true }) : '';
       const urls = rawUrls.split(/[\n,]/).map((u) => u.trim()).filter((u) => u.length > 0);
       return deps.notify({ sourceId, title, body, type, urls });
+    }
+
+    case 'action.setAutomationEnabled': {
+      // Enable / disable / toggle an automation by id (#5445). Sends nothing on
+      // the mesh — it is a DB write plus an engine reload, done by the deps.
+      // Runtime is lenient on mode (unknown → 'set'); save-time validation is strict.
+      const mode: AutomationEnableMode = p.mode === 'toggle' ? 'toggle' : 'set';
+      const automationId = await str(ctx, p.automationId);
+      if (!automationId) throw new Error('action.setAutomationEnabled: no automation id (it may have resolved to blank)');
+      let enabled: boolean | undefined;
+      if (mode === 'set') {
+        const raw = await resolveOperand(ctx, p.enabled);
+        enabled = parseAutomationEnabledFlag(raw);
+        if (enabled === undefined) {
+          throw new Error(`action.setAutomationEnabled: "enabled" must be true or false, got "${String(raw)}"`);
+        }
+      }
+      if (!deps.setAutomationEnabled) throw new Error('action.setAutomationEnabled: not available here');
+      const r = await deps.setAutomationEnabled({ automationId, mode, enabled });
+      if (!r) throw new Error(`action.setAutomationEnabled: no automation with id "${automationId}"`);
+      // An automation that just disabled itself stops here: its later actions
+      // would run for a rule the user (or the rule) has switched off. This is
+      // the one-shot pattern — fire once, then turn off.
+      if (ctx.automationId && r.automationId === ctx.automationId && !r.enabled) {
+        ctx.halt = { reason: 'this automation disabled itself, so its remaining actions were skipped' };
+      }
+      return { automationId: r.automationId, name: r.name, mode, enabled: r.enabled, previous: r.previous };
     }
 
     default:

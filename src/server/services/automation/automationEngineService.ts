@@ -63,7 +63,7 @@ import { haversineKm, geofenceFires, pointInShape, geofenceCenter, normalizeGeof
 import { evaluateGraph, type EvaluatorHooks } from './graphEvaluator.js';
 import { automationTraceBus } from './automationTraceBus.js';
 import { evaluateCondition } from './conditionEvaluator.js';
-import { executeAction, type ActionDeps } from './actionExecutor.js';
+import { executeAction, actionStepDetail, type ActionDeps, type SetAutomationEnabledResult } from './actionExecutor.js';
 import {
   type EngineEvalContext,
   type NodeDataProvider,
@@ -291,6 +291,13 @@ export class AutomationEngineService {
 
   /** triggerType → loaded automations. */
   private index = new Map<TriggerType, LoadedAutomation[]>();
+  /**
+   * Ids in the current {@link index} (#5445). A dispatch loop iterates the list it
+   * read before it started, so when an action reloads the engine mid-dispatch
+   * (action.setAutomationEnabled), a rule disabled a moment ago can still be
+   * ahead in that list. fireAutomation checks this set to skip it.
+   */
+  private liveIds = new Set<string>();
   /** automationId → cooldown key → last fired ms. Inner key shape: cooldownKeyFor(). */
   private lastFired = new Map<string, Map<string, number>>();
   /** automationId → fire timestamps (ms) within the current rate-limit window (#4577 Phase 2). */
@@ -313,7 +320,13 @@ export class AutomationEngineService {
   constructor(opts: EngineServiceOptions) {
     this.automationsRepo = opts.automationsRepo;
     this.vars = opts.varResolver;
-    this.deps = opts.deps;
+    // The engine owns action.setAutomationEnabled (#5445): it holds the repo and
+    // the reload. Layered over the caller's deps via the prototype chain so every
+    // mesh action still resolves to the caller's own implementation.
+    this.deps = Object.assign(Object.create(opts.deps) as ActionDeps, {
+      setAutomationEnabled: (a: Parameters<NonNullable<ActionDeps['setAutomationEnabled']>>[0]) =>
+        this.setAutomationEnabled(a),
+    });
     this.data = opts.data;
     this.homeAnchorsRepo = opts.homeAnchorsRepo ?? null;
     this.estimateHomeFromHistory = opts.estimateHomeFromHistory;
@@ -368,6 +381,7 @@ export class AutomationEngineService {
       index.get(entry.triggerType)!.push(entry);
     }
     this.index = index;
+    this.liveIds = new Set([...index.values()].flatMap((list) => list.map((a) => a.id)));
     // Drop cooldown state for automations that are no longer loaded (deleted or
     // disabled). They are unreachable — runTrigger/onSchedule/checkGeofences only
     // iterate `this.index` — so this is unobservable while they stay out of the
@@ -528,7 +542,7 @@ export class AutomationEngineService {
     if (!rateGate.ok) return { ran: false, reason: 'ratelimited', detail: rateGate.reason };
     this.markFired(a, gate.key, now);
     this.markRateLimited(a, now);
-    const fr = await this.fireAutomation(a, ctx, now);
+    const fr = await this.fireAutomation(a, ctx, now, { manual: true });
     return { ran: true, status: fr.status, actions: fr.actions, steps: fr.steps };
   }
 
@@ -542,7 +556,37 @@ export class AutomationEngineService {
       evaluateCondition: (node, ctx) => evaluateCondition(node, ctx),
       executeAction: (node, ctx) => executeAction(node, ctx, this.deps),
       applySetVar: (node, ctx) => this.applySetVar(node, ctx),
+      stepDetail: (node, value) => actionStepDetail(node, value),
+      haltReason: (ctx) => ctx.halt?.reason,
     };
+  }
+
+  /**
+   * action.setAutomationEnabled (#5445): write the new state, then reload the
+   * engine exactly as the /enable and /disable routes do. Skips the write and the
+   * reload when the state would not change. Returns null for an unknown id.
+   *
+   * Reloading mid-run is safe: load() swaps in a NEW index map rather than
+   * mutating the old one, and the in-flight run holds its own LoadedAutomation
+   * (graph included), so the run finishes against what it started with. The
+   * only thing that can go stale is the rest of the current dispatch loop,
+   * which {@link liveIds} covers.
+   */
+  private async setAutomationEnabled(a: {
+    automationId: string;
+    mode: 'set' | 'toggle';
+    enabled?: boolean;
+  }): Promise<SetAutomationEnabledResult | null> {
+    const row = await this.automationsRepo.getAutomation(a.automationId);
+    if (!row) return null;
+    const previous = Boolean(row.enabled);
+    const enabled = a.mode === 'toggle' ? !previous : Boolean(a.enabled);
+    if (enabled !== previous) {
+      await this.automationsRepo.setEnabled(row.id, enabled);
+      logger.info(`[AutomationEngine] automation "${row.name}" ${enabled ? 'enabled' : 'disabled'} by an automation action`);
+      await this.load();
+    }
+    return { automationId: row.id, name: row.name, previous, enabled };
   }
 
   /** flow.setVar handling: set / clear / flag / increment a user variable. */
@@ -734,13 +778,26 @@ export class AutomationEngineService {
    * row. Returns a compact result the live trace reuses (the persisted run-log
    * shape is unchanged).
    */
-  private async fireAutomation(a: LoadedAutomation, ctx: TriggerContext, now: number): Promise<FireResult> {
+  private async fireAutomation(
+    a: LoadedAutomation,
+    ctx: TriggerContext,
+    now: number,
+    opts: { manual?: boolean } = {},
+  ): Promise<FireResult> {
+    // Disabled (or deleted) after this dispatch began — most often by an
+    // action.setAutomationEnabled in a rule that ran just before it on the same
+    // event (#5445). Run Now is exempt: it fires disabled automations on purpose.
+    if (!opts.manual && !this.liveIds.has(a.id)) {
+      logger.debug(`[AutomationEngine] automation "${a.name}" was disabled mid-dispatch; not firing`);
+      return { status: 'completed', conditionResults: {}, actions: [], steps: [] };
+    }
     const evalCtx: EngineEvalContext = {
       trigger: ctx,
       vars: this.vars,
       data: this.data,
       varCtx: varContextFromTrigger(ctx),
       now,
+      automationId: a.id,
     };
     try {
       const result = await evaluateGraph(a.graph, evalCtx, this.hooks(), { maxActions: this.maxActions });

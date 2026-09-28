@@ -2,6 +2,7 @@ import React, { useRef, useMemo, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { UiIcon } from '../icons';
 import { useSaveBar } from '../../hooks/useSaveBar';
+import ModuleAvailabilityNotice from './ModuleAvailabilityNotice';
 
 interface StoreForwardConfigSectionProps {
   enabled: boolean;
@@ -103,6 +104,7 @@ const StoreForwardConfigSection: React.FC<StoreForwardConfigSectionProps> = ({
           <UiIcon name="help" />
         </a>
       </h3>
+      <ModuleAvailabilityNotice />
 
       {/* Enable Module */}
       <div className="setting-item">

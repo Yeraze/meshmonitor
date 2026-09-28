@@ -7,6 +7,7 @@ import { useSource } from '../../contexts/SourceContext';
 import { useAuth } from '../../contexts/AuthContext';
 import apiService from '../../services/api';
 import { logger } from '../../utils/logger';
+import ModuleAvailabilityNotice from './ModuleAvailabilityNotice';
 
 interface MQTTConfigSectionProps {
   mqttEnabled: boolean;
@@ -297,6 +298,7 @@ const MQTTConfigSection: React.FC<MQTTConfigSectionProps> = ({
           <UiIcon name="help" />
         </a>
       </h3>
+      <ModuleAvailabilityNotice />
       {isBridged && (
         <div
           role="note"

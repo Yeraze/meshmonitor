@@ -70,9 +70,21 @@ vi.mock('./configuration/CannedMessageConfigSection', () => ({ default: () => nu
 vi.mock('./configuration/AudioConfigSection', () => ({ default: () => null }));
 vi.mock('./configuration/RemoteHardwareConfigSection', () => ({ default: () => null }));
 vi.mock('./configuration/DetectionSensorConfigSection', () => ({ default: () => null }));
-vi.mock('./configuration/PaxcounterConfigSection', () => ({
-  default: () => <div data-testid="paxcounter-controls" />,
-}));
+// Same shape as the real section: header, then the notice (#5447), then controls.
+vi.mock('./configuration/PaxcounterConfigSection', async () => {
+  const { default: ModuleAvailabilityNotice } = await vi.importActual<
+    typeof import('./configuration/ModuleAvailabilityNotice')
+  >('./configuration/ModuleAvailabilityNotice');
+  return {
+    default: () => (
+      <div className="settings-section">
+        <h3>Paxcounter</h3>
+        <ModuleAvailabilityNotice />
+        <div data-testid="paxcounter-controls" />
+      </div>
+    ),
+  };
+});
 vi.mock('./configuration/StatusMessageConfigSection', () => ({ default: () => null }));
 vi.mock('./configuration/TrafficManagementConfigSection', () => ({ default: () => null }));
 vi.mock('./configuration/MeshBeaconConfigSection', () => ({ default: () => null }));
@@ -108,8 +120,18 @@ describe('ConfigurationTab — excluded module gating (#5065)', () => {
     h.currentConfig = { supportedModules: { paxcounter: false, mqtt: true } };
     render(<ConfigurationTab nodes={[]} channels={[]} />);
 
-    expect(await screen.findByText(NOTICE)).toBeInTheDocument();
+    const notice = await screen.findByText(NOTICE);
+    expect(notice).toBeInTheDocument();
     expect(screen.getByTestId('paxcounter-controls')).toBeInTheDocument();
+
+    // The notice sits inside the Paxcounter wrapper, under its own header,
+    // not above it where it reads as part of the section above (#5447).
+    const pax = document.getElementById('config-paxcounter')!;
+    expect(pax.contains(notice)).toBe(true);
+    const header = screen.getByRole('heading', { name: 'Paxcounter' });
+    expect(
+      header.compareDocumentPosition(notice) & Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy();
   });
 
 });

@@ -1,6 +1,5 @@
-import React from 'react';
-import { useTranslation } from 'react-i18next';
-import { UiIcon } from '../icons';
+import React, { useMemo } from 'react';
+import { ModuleAvailabilityContext } from './moduleAvailabilityContext';
 import styles from './ModuleAvailabilityGate.module.css';
 
 interface ModuleAvailabilityGateProps {
@@ -17,34 +16,27 @@ interface ModuleAvailabilityGateProps {
 
 /**
  * Wraps a module config section and, when the device reports the module as
- * excluded from its firmware build, shows a notice and switches the controls
- * off (#5065).
+ * excluded from its firmware build, switches the controls off (#5065).
+ *
+ * The gate does not draw the notice itself: the section renders
+ * <ModuleAvailabilityNotice /> right after its <h3>, so the notice sits under
+ * its own header rather than under the section above (#5447).
  */
 const ModuleAvailabilityGate: React.FC<ModuleAvailabilityGateProps> = ({
   available,
   moduleName,
   children,
 }) => {
-  const { t } = useTranslation();
+  const value = useMemo(() => ({ moduleName }), [moduleName]);
 
   if (available !== false) {
     return <>{children}</>;
   }
 
   return (
-    <>
-      <div className={styles.notice} role="status">
-        <span className={styles.noticeIcon}><UiIcon name="alert" /></span>
-        <span>
-          {t(
-            'module_availability.excluded',
-            '{{module}} is not included in this device\'s firmware build, so these settings cannot be changed.',
-            { module: moduleName }
-          )}
-        </span>
-      </div>
-      <div className={styles.disabledControls}>{children}</div>
-    </>
+    <ModuleAvailabilityContext.Provider value={value}>
+      <div className={styles.gated}>{children}</div>
+    </ModuleAvailabilityContext.Provider>
   );
 };
 

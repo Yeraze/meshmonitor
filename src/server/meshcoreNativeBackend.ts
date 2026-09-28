@@ -1514,6 +1514,8 @@ export class MeshCoreNativeBackend extends EventEmitter {
             latitude: fixedToDegrees(ct.advLat),
             longitude: fixedToDegrees(ct.advLon),
             last_advert: ct.lastAdvert,
+            // Companion-clock time it last heard this contact (#5339).
+            last_mod: ct.lastMod,
             out_path: outPathHex,
             path_len: pathLen,
             flags,

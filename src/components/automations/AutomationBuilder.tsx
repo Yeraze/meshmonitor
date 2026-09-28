@@ -12,6 +12,7 @@ import type { WorkflowForm, FormBlock, Rule } from './compile';
 import SubstitutionsHelpDrawer from './SubstitutionsHelp';
 import GeofenceFieldInput from './GeofenceFieldInput';
 import NodeMultiFieldInput, { type NodeMultiOption } from './NodeMultiFieldInput';
+import AutomationIdFieldInput, { type AutomationOption } from './AutomationIdFieldInput';
 import TokenTextField from './TokenTextField';
 import type { GeofenceShape } from '../auto-responder/types';
 import { UiIcon } from '../icons';
@@ -33,7 +34,7 @@ export interface UnifiedChannelOption {
   sources?: Array<{ sourceId: string; sourceName?: string; slot: number }>;
 }
 export interface ScriptOption { value: string; label: string; }
-export type { NodeMultiOption };
+export type { NodeMultiOption, AutomationOption };
 
 /** Sendable = enabled and not an MQTT (receive-only) source. */
 const isSendableSource = (s: SourceOption): boolean =>
@@ -75,6 +76,8 @@ interface Props {
   scripts: ScriptOption[];
   regions: string[];
   nodes?: NodeMultiOption[];
+  /** Existing automations for action.setAutomationEnabled's picker (#5445). */
+  automations?: AutomationOption[];
   onChange: (form: WorkflowForm) => void;
 }
 
@@ -147,9 +150,11 @@ function NodeNumFieldInput({ value, onChange, placeholder }: {
 
 export interface FieldInputProps {
   field: FieldDef; value: unknown; onChange: (v: unknown) => void; variables: VariableOption[]; sources: SourceOption[]; channels: UnifiedChannelOption[]; scripts: ScriptOption[]; regions: string[]; nodes: NodeMultiOption[]; triggerType: string;
+  /** Optional so existing callers (TemplateGallery, tests) need no change (#5445). */
+  automations?: AutomationOption[];
 }
 
-export function FieldInput({ field, value, onChange, variables, sources, channels, scripts, regions, nodes, triggerType }: FieldInputProps) {
+export function FieldInput({ field, value, onChange, variables, sources, channels, scripts, regions, nodes, triggerType, automations = [] }: FieldInputProps) {
   const { t } = useTranslation();
   let control;
   const varNames = variables.map((v) => v.name);
@@ -240,6 +245,10 @@ export function FieldInput({ field, value, onChange, variables, sources, channel
         </select>
       );
       break;
+    case 'automationSelect':
+      control = <AutomationIdFieldInput value={value} onChange={onChange} automations={automations}
+        triggerType={triggerType} variableNames={varNames} />;
+      break;
     case 'regionSelect':
       // Editable combobox: pick a saved region or type any region name (incl. a
       // {{ trigger.scopeName }} token). Not a hard <select> so users can target
@@ -328,8 +337,8 @@ export function FieldInput({ field, value, onChange, variables, sources, channel
   );
 }
 
-function BlockFields({ block, triggerType, variables, sources, channels, scripts, regions, nodes, onParams }: {
-  block: FormBlock; triggerType: string; variables: VariableOption[]; sources: SourceOption[]; channels: UnifiedChannelOption[]; scripts: ScriptOption[]; regions: string[]; nodes: NodeMultiOption[]; onParams: (p: Record<string, unknown>) => void;
+function BlockFields({ block, triggerType, variables, sources, channels, scripts, regions, nodes, automations, onParams }: {
+  block: FormBlock; triggerType: string; variables: VariableOption[]; sources: SourceOption[]; channels: UnifiedChannelOption[]; scripts: ScriptOption[]; regions: string[]; nodes: NodeMultiOption[]; automations: AutomationOption[]; onParams: (p: Record<string, unknown>) => void;
 }) {
   const def = BLOCK_BY_TYPE[block.type];
   if (!def) return null;
@@ -337,15 +346,15 @@ function BlockFields({ block, triggerType, variables, sources, channels, scripts
     <>
       {def.fields.filter((f) => fieldVisible(f, block.params)).map((f) => {
         const field = f.kind === 'fieldselect' ? { ...f, groups: fieldsFor(block.type, triggerType) } : f;
-        return <FieldInput key={f.name} field={field} value={block.params[f.name]} variables={variables} sources={sources} channels={channels} scripts={scripts} regions={regions} nodes={nodes} triggerType={triggerType}
+        return <FieldInput key={f.name} field={field} value={block.params[f.name]} variables={variables} sources={sources} channels={channels} scripts={scripts} regions={regions} nodes={nodes} automations={automations} triggerType={triggerType}
           onChange={(v) => onParams({ ...block.params, [f.name]: v })} />;
       })}
     </>
   );
 }
 
-function BlockListEditor({ blocks, options, triggerType, variables, sources, channels, scripts, regions, nodes, onChange, addLabel }: {
-  blocks: FormBlock[]; options: BlockDef[]; triggerType: string; variables: VariableOption[]; sources: SourceOption[]; channels: UnifiedChannelOption[]; scripts: ScriptOption[]; regions: string[]; nodes: NodeMultiOption[];
+function BlockListEditor({ blocks, options, triggerType, variables, sources, channels, scripts, regions, nodes, automations, onChange, addLabel }: {
+  blocks: FormBlock[]; options: BlockDef[]; triggerType: string; variables: VariableOption[]; sources: SourceOption[]; channels: UnifiedChannelOption[]; scripts: ScriptOption[]; regions: string[]; nodes: NodeMultiOption[]; automations: AutomationOption[];
   onChange: (b: FormBlock[]) => void; addLabel: string;
 }) {
   const update = (i: number, b: FormBlock) => { const l = [...blocks]; l[i] = b; onChange(l); };
@@ -360,7 +369,7 @@ function BlockListEditor({ blocks, options, triggerType, variables, sources, cha
             </select>
             <button className="ae-btn ae-btn--ghost" onClick={() => onChange(blocks.filter((_, j) => j !== i))} aria-label="Remove block"><UiIcon name="close" size={15} /></button>
           </div>
-          <BlockFields block={b} triggerType={triggerType} variables={variables} sources={sources} channels={channels} scripts={scripts} regions={regions} nodes={nodes} onParams={(p) => update(i, { ...b, params: p })} />
+          <BlockFields block={b} triggerType={triggerType} variables={variables} sources={sources} channels={channels} scripts={scripts} regions={regions} nodes={nodes} automations={automations} onParams={(p) => update(i, { ...b, params: p })} />
         </div>
       ))}
       <button className="ae-btn" onClick={() => onChange([...blocks, { type: options[0].type, params: defaultParams(options[0].type, triggerType) }])}>{addLabel}</button>
@@ -368,7 +377,7 @@ function BlockListEditor({ blocks, options, triggerType, variables, sources, cha
   );
 }
 
-export default function AutomationBuilder({ form, variables, sources, channels, scripts, regions, nodes = [], onChange }: Props) {
+export default function AutomationBuilder({ form, variables, sources, channels, scripts, regions, nodes = [], automations = [], onChange }: Props) {
   const triggerType = form.trigger.type;
   const [showHelp, setShowHelp] = useState(false);
   const setTrigger = (type: string) => onChange({ ...form, trigger: { type, params: defaultParams(type, type) } });
@@ -397,7 +406,7 @@ export default function AutomationBuilder({ form, variables, sources, channels, 
             </select>
             <div className="ae-help-text">{BLOCK_BY_TYPE[triggerType]?.description}</div>
           </div>
-          <BlockFields block={form.trigger} triggerType={triggerType} variables={variables} sources={sources} channels={channels} scripts={scripts} regions={regions} nodes={nodes} onParams={setTriggerParams} />
+          <BlockFields block={form.trigger} triggerType={triggerType} variables={variables} sources={sources} channels={channels} scripts={scripts} regions={regions} nodes={nodes} automations={automations} onParams={setTriggerParams} />
         </div>
       </div>
 
@@ -411,10 +420,10 @@ export default function AutomationBuilder({ form, variables, sources, channels, 
           <div className="ae-section-body">
             <div className="ae-field-label" style={{ marginBottom: '0.4rem' }}>IF — all of these are true (optional)</div>
             {rule.conditions.length === 0 && <div className="ae-muted" style={{ marginBottom: '0.5rem' }}>No conditions — runs every time the trigger fires.</div>}
-            <BlockListEditor blocks={rule.conditions} options={CONDITIONS} triggerType={triggerType} variables={variables} sources={sources} channels={channels} scripts={scripts} regions={regions} nodes={nodes}
+            <BlockListEditor blocks={rule.conditions} options={CONDITIONS} triggerType={triggerType} variables={variables} sources={sources} channels={channels} scripts={scripts} regions={regions} nodes={nodes} automations={automations}
               onChange={(c) => updateRule(i, { ...rule, conditions: c })} addLabel="+ Add condition" />
             <div className="ae-field-label" style={{ margin: '0.9rem 0 0.4rem' }}>THEN — do this</div>
-            <BlockListEditor blocks={rule.actions} options={ACTIONS} triggerType={triggerType} variables={variables} sources={sources} channels={channels} scripts={scripts} regions={regions} nodes={nodes}
+            <BlockListEditor blocks={rule.actions} options={ACTIONS} triggerType={triggerType} variables={variables} sources={sources} channels={channels} scripts={scripts} regions={regions} nodes={nodes} automations={automations}
               onChange={(a) => updateRule(i, { ...rule, actions: a })} addLabel="+ Add action" />
           </div>
         </div>
@@ -443,7 +452,7 @@ export default function AutomationBuilder({ form, variables, sources, channels, 
               <div className="ae-help-text">“Matched” means a rule’s IF conditions passed.</div>
             </div>
             <div className="ae-field-label" style={{ margin: '0.6rem 0 0.4rem' }}>THEN — do this</div>
-            <BlockListEditor blocks={form.combine.actions} options={ACTIONS} triggerType={triggerType} variables={variables} sources={sources} channels={channels} scripts={scripts} regions={regions} nodes={nodes}
+            <BlockListEditor blocks={form.combine.actions} options={ACTIONS} triggerType={triggerType} variables={variables} sources={sources} channels={channels} scripts={scripts} regions={regions} nodes={nodes} automations={automations}
               onChange={(a) => setCombine({ ...form.combine!, actions: a })} addLabel="+ Add action" />
           </div>
         </div>

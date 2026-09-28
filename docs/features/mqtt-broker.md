@@ -251,7 +251,7 @@ Echo suppression is keyed on the **post-rewrite** topic — so an inbound TX pac
 
 ## Keep automation traffic off the upstream broker
 
-When a node has **OK to MQTT** turned on (`config.lora.config_ok_to_mqtt`), the firmware sets the `ok_to_mqtt` bit on every packet MeshMonitor sends through it. MeshMonitor cannot clear the bit on a single packet ([meshtastic/firmware#11994](https://github.com/meshtastic/firmware/issues/11994)), so auto-acknowledge tapbacks and other automated replies get published upstream along with your own messages.
+When a node has **OK to MQTT** turned on (`config.lora.config_ok_to_mqtt`), the firmware sets the `ok_to_mqtt` bit on every packet MeshMonitor sends through it. MeshMonitor cannot clear the bit on a single packet, so auto-acknowledge tapbacks and other automated replies get published upstream along with your own messages. This is by design: Meshtastic treats `ok_to_mqtt` as the node owner's privacy choice, and declined a per-packet override ([meshtastic/firmware#11994](https://github.com/meshtastic/firmware/issues/11994)).
 
 Turn on **Don't uplink MeshMonitor automation traffic** on the bridge's Configuration page (stored as `dropAutomationUplinks: true`) to stop that. The bridge then skips any uplink packet that MeshMonitor's own automations sent:
 
@@ -268,7 +268,7 @@ The packets still go out over LoRa and to the local broker, so nearby nodes and 
 The setting is off by default, so upgrading changes nothing.
 
 ::: warning Limits
-- **Only this bridge's uplink.** If a node's own MQTT module publishes straight to the upstream broker, MeshMonitor never sees that publish and cannot stop it. That path needs the firmware fix in [meshtastic/firmware#11994](https://github.com/meshtastic/firmware/issues/11994).
+- **Only this bridge's uplink.** If a node's own MQTT module publishes straight to the upstream broker, MeshMonitor never sees that publish and cannot stop it. No firmware fix is coming; to keep automation traffic off that path, turn off **OK to MQTT** on the node or uplink through this bridge instead of the node's own MQTT module.
 - **Only MeshMonitor's own automations.** Other phone-API clients (the Android and Apple apps) still follow the node's setting.
 - **Matched by sender and packet id for 30 seconds.** MeshMonitor remembers each automated send's id for 30 seconds (at most 512 per source). A copy that reaches the bridge later than that is uplinked as usual.
 - **Admin packets are not tagged.** Remote-admin sends (favorite, ignore, reboot) are not covered.

@@ -184,6 +184,13 @@ export interface EngineEvalContext {
   data: NodeDataProvider;
   varCtx: VarContext;
   now: number;
+  /** Id of the automation this run belongs to. Absent in the simulator / tests (#5445). */
+  automationId?: string;
+  /**
+   * Set by an action to stop the rest of this run (#5445: the automation just
+   * disabled itself). The engine's `haltReason` hook reads it after each action.
+   */
+  halt?: { reason: string };
   /** internal memo for the hydrated subject node (do not set directly). */
   __nodeP?: Promise<NodeFacts | null>;
 }

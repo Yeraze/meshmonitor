@@ -66,12 +66,14 @@ const AutoKeyManagementSection: React.FC<AutoKeyManagementSectionProps> = ({
     setLocalImmediatePurge(immediatePurge);
   }, [enabled, intervalMinutes, maxExchanges, autoPurge, immediatePurge]);
 
-  // Check if any settings have changed
+  // Check if any settings have changed. Compare against the same normalized
+  // baseline the local state is seeded with, or a zero stored value reads as an
+  // unsaved edit on load (phantom SaveBar).
   useEffect(() => {
     const changed =
       localEnabled !== enabled ||
-      localInterval !== intervalMinutes ||
-      localMaxExchanges !== maxExchanges ||
+      localInterval !== (intervalMinutes || 5) ||
+      localMaxExchanges !== (maxExchanges || 3) ||
       localAutoPurge !== autoPurge ||
       localImmediatePurge !== immediatePurge;
     setHasChanges(changed);

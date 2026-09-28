@@ -4,6 +4,10 @@ import {
   TILESETS,
   getTilesetById,
   getAllTilesets,
+  getRasterTileset,
+  isVectorTileUrl,
+  resolveStyleUrl,
+  validateTileUrl,
   type CustomTileset,
 } from './tilesets';
 
@@ -98,5 +102,106 @@ describe('tilesets — keyless dark basemap (#5015)', () => {
     expect(TILESETS.cartoDark).toBeDefined();
     expect(TILESETS.cartoLight).toBeDefined();
     expect(isCartoUrl(TILESETS.cartoDark.url)).toBe(true);
+  });
+});
+
+describe('tilesets — CARTO vector presets (#5448)', () => {
+  const STYLE_PRESETS = ['cartoVoyager', 'cartoPositron', 'cartoDarkMatter', 'cartoVoyagerDark'] as const;
+
+  it.each(STYLE_PRESETS)('%s resolves as a vector tileset with a styleUrl', (id) => {
+    const t = getTilesetById(id);
+    expect(t.id).toBe(id);
+    expect(t.isVector).toBe(true);
+    expect(t.styleUrl).toBeTruthy();
+    expect(getAllTilesets().some((x) => x.id === id)).toBe(true);
+  });
+
+  it.each(STYLE_PRESETS)('%s is not misclassified by the .pbf/.mvt URL sniffer', (id) => {
+    const t = TILESETS[id];
+    // The style URL is a JSON document, not a tile template, so the sniffer
+    // (which only exists for custom tilesets) must not be what marks it
+    // vector — the explicit isVector flag does.
+    expect(isVectorTileUrl(t.styleUrl!)).toBe(false);
+    expect(isVectorTileUrl(t.url)).toBe(false);
+  });
+
+  it.each(STYLE_PRESETS)('%s keeps a valid raster twin in url (thumbnail / 3D / mini-map)', (id) => {
+    const t = TILESETS[id];
+    // `url` must stay a real {z}/{x}/{y} raster template; validateTileUrl is
+    // never run on styleUrl, which has no placeholders by design.
+    expect(validateTileUrl(t.url).valid).toBe(true);
+    expect(validateTileUrl(t.styleUrl!).valid).toBe(false);
+    expect(isCartoUrl(t.url)).toBe(true);
+  });
+
+  it.each(STYLE_PRESETS)('%s credits OSM and CARTO and says it needs a key', (id) => {
+    const t = TILESETS[id];
+    expect(t.attribution).toContain('OpenStreetMap');
+    expect(t.attribution).toContain('CARTO');
+    expect(t.description).toMatch(/CARTO API key/);
+  });
+
+  it('points the three CARTO-published presets at CARTO GL styles', () => {
+    expect(TILESETS.cartoVoyager.styleUrl).toBe('https://basemaps.cartocdn.com/gl/voyager-gl-style/style.json');
+    expect(TILESETS.cartoPositron.styleUrl).toBe('https://basemaps.cartocdn.com/gl/positron-gl-style/style.json');
+    expect(TILESETS.cartoDarkMatter.styleUrl).toBe('https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json');
+  });
+
+  it('serves Voyager Dark from the bundled same-origin style (relative path)', () => {
+    expect(TILESETS.cartoVoyagerDark.styleUrl).toBe('map-styles/carto-voyager-dark.json');
+  });
+
+  it('every CARTO preset description notes the key requirement', () => {
+    for (const t of Object.values(TILESETS)) {
+      if (isCartoUrl(t.url)) expect(t.description).toMatch(/CARTO API key/);
+    }
+  });
+});
+
+describe('getRasterTileset (#5448)', () => {
+  it('returns raster tilesets unchanged', () => {
+    expect(getRasterTileset(TILESETS.osm)).toEqual({ tileset: TILESETS.osm, substituted: false });
+  });
+
+  it('returns a style preset itself (its url is the raster twin)', () => {
+    expect(getRasterTileset(TILESETS.cartoVoyagerDark)).toEqual({
+      tileset: TILESETS.cartoVoyagerDark,
+      substituted: false,
+    });
+  });
+
+  it('substitutes osm for a custom .pbf vector tileset', () => {
+    const vector = getTilesetById('custom-v', [
+      {
+        id: 'custom-v',
+        name: 'V',
+        url: 'https://x.example/{z}/{x}/{y}.pbf',
+        attribution: '',
+        maxZoom: 14,
+        description: '',
+        createdAt: 0,
+        updatedAt: 0,
+      },
+    ]);
+    expect(getRasterTileset(vector)).toEqual({ tileset: TILESETS.osm, substituted: true });
+  });
+});
+
+describe('resolveStyleUrl (#5448)', () => {
+  it('passes absolute style URLs through', () => {
+    const url = 'https://basemaps.cartocdn.com/gl/voyager-gl-style/style.json';
+    expect(resolveStyleUrl(url, 'https://mm.example/meshmonitor/')).toBe(url);
+  });
+
+  it('resolves a bundled style under a BASE_URL sub-path', () => {
+    expect(resolveStyleUrl('map-styles/carto-voyager-dark.json', 'https://mm.example/meshmonitor/')).toBe(
+      'https://mm.example/meshmonitor/map-styles/carto-voyager-dark.json',
+    );
+  });
+
+  it('resolves a bundled style at the origin root', () => {
+    expect(resolveStyleUrl('map-styles/carto-voyager-dark.json', 'http://localhost:8080/')).toBe(
+      'http://localhost:8080/map-styles/carto-voyager-dark.json',
+    );
   });
 });

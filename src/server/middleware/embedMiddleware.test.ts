@@ -124,6 +124,21 @@ describe('Embed CSP Middleware', () => {
     expect(csp).toContain("worker-src 'self' blob:");
   });
 
+  it('allows the bare CARTO host that serves GL styles (#5448)', async () => {
+    mockDb.embedProfiles.getByIdAsync.mockResolvedValue(sampleProfile);
+    const app = createApp();
+
+    const response = await request(app).get('/embed/profile-uuid-123');
+
+    const directives = String(response.headers['content-security-policy']).split('; ');
+    for (const name of ['img-src', 'connect-src']) {
+      const sources = directives.find((d) => d.startsWith(`${name} `))!.split(' ');
+      // `*.basemaps.cartocdn.com` does not match the bare host.
+      expect(sources).toContain('https://basemaps.cartocdn.com');
+      expect(sources).toContain('https://*.basemaps.cartocdn.com');
+    }
+  });
+
   it('handles profile with empty allowedOrigins by allowing any origin', async () => {
     mockDb.embedProfiles.getByIdAsync.mockResolvedValue({ ...sampleProfile, allowedOrigins: [] });
     const app = createApp();

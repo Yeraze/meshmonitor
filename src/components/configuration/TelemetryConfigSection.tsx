@@ -2,6 +2,7 @@ import React, { useState, useCallback, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { UiIcon } from '../icons';
 import { useSaveBar } from '../../hooks/useSaveBar';
+import ModuleAvailabilityNotice from './ModuleAvailabilityNotice';
 
 interface TelemetryConfigSectionProps {
   // Config version - increment when config is loaded from device to sync saved state
@@ -190,6 +191,7 @@ const TelemetryConfigSection: React.FC<TelemetryConfigSectionProps> = ({
           <UiIcon name="help" />
         </a>
       </h3>
+      <ModuleAvailabilityNotice />
 
       {/* Device Telemetry Section */}
       <h4 style={{ marginTop: '1.5rem', marginBottom: '0.5rem', color: 'var(--color-text-subtle)' }}>

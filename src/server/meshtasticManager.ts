@@ -107,7 +107,7 @@ import {
   recordMqttEcho,
   matchesMqttEcho,
 } from './services/mqttProxyBridge.js';
-import { isDuplicatePacketLog, packetLogDedupKey, dedupTtlForTransport, isRfTransport } from './services/packetLogDedup.js';
+import { isDuplicatePacketLog, packetLogDedupKey, dedupTtlForTransport, isRfTransport, isNodeDbReplayForPacketLog } from './services/packetLogDedup.js';
 import {
   isStaleCoverageRxTime,
   computeMeshtasticHopsAway,
@@ -6477,7 +6477,16 @@ class MeshtasticManager implements ISourceManager {
         // token in the dedup key — it is never compared against the ms clock or
         // used as a duration. Do not start doing arithmetic across the two.
         const dedupRxTime = meshPacket.rxTime != null ? Number(meshPacket.rxTime) : null;
-        if (dedupPacketId && isDuplicatePacketLog(
+        const packetLogNow = Date.now();
+        if (isNodeDbReplayForPacketLog(
+          resolveRadioPacketTransport(meshPacket),
+          dedupRxTime,
+          meshPacket.rxRssi,
+          packetLogNow
+        )) {
+          // Firmware 2.8 NodeDB replay (#5426): cached history, not a reception.
+          logger.debug(`📦 Skipping NodeDB-replay packet-log entry for id ${dedupPacketId} from ${fromNum}`);
+        } else if (dedupPacketId && isDuplicatePacketLog(
           this.recentPacketLogKeys,
           packetLogDedupKey(
             fromNum,
@@ -6486,7 +6495,7 @@ class MeshtasticManager implements ISourceManager {
             meshPacket.transportMechanism,
             dedupRxTime
           ),
-          Date.now(),
+          packetLogNow,
           dedupTtlForTransport(meshPacket.transportMechanism)
         )) {
           logger.debug(`📦 Skipping duplicate packet-log entry for id ${dedupPacketId} from ${fromNum}`);

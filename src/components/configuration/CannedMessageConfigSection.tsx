@@ -2,6 +2,7 @@ import React, { useState, useRef, useMemo, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { UiIcon } from '../icons';
 import { useSaveBar } from '../../hooks/useSaveBar';
+import ModuleAvailabilityNotice from './ModuleAvailabilityNotice';
 
 // Input event character options matching protobuf enum
 const INPUT_EVENT_OPTIONS = [
@@ -156,6 +157,7 @@ const CannedMessageConfigSection: React.FC<CannedMessageConfigSectionProps> = ({
           <UiIcon name="help" />
         </a>
       </h3>
+      <ModuleAvailabilityNotice />
 
       {/* Enable Module */}
       <div className="setting-item">

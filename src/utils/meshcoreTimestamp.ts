@@ -43,6 +43,25 @@ export function isPlausibleMeshCoreTimeMs(ms: number, nowMs: number = Date.now()
 }
 
 /**
+ * How far BEFORE MeshMonitor received a message its sender's stated time may
+ * sit (#5339). The floor above only rejects clocks from before MeshCore
+ * existed, which lets through the most common bad value: a node with no RTC
+ * boots at the firmware's fixed default (2024) and stamps every message with
+ * it. A day covers the companion's offline queue draining after a short
+ * MeshMonitor outage; anything older is a broken clock, not a delayed message.
+ */
+const MAX_MESSAGE_PAST_SKEW_MS = 24 * 60 * 60 * 1000; // 1 day
+
+/**
+ * Whether a message's sender-stated time (ms) is believable for a message we
+ * received at `receivedAtMs`: plausible per {@link isPlausibleMeshCoreTimeMs}
+ * and no more than {@link MAX_MESSAGE_PAST_SKEW_MS} older than receipt.
+ */
+export function isPlausibleMeshCoreMessageTimeMs(ms: number, receivedAtMs: number): boolean {
+  return isPlausibleMeshCoreTimeMs(ms, receivedAtMs) && ms >= receivedAtMs - MAX_MESSAGE_PAST_SKEW_MS;
+}
+
+/**
  * Whether an epoch-ms value sits further ahead of `nowMs` than ordinary clock
  * skew allows, i.e. could only have come from a drifted RTC. The one-sided
  * half of {@link isPlausibleMeshCoreTimeMs}, for callers where a too-OLD value
@@ -69,6 +88,21 @@ export function plausibleMeshCoreTimeMs(
   if (typeof senderTimestampSec !== 'number' || senderTimestampSec <= 0) return nowMs;
   const ms = senderTimestampSec * 1000;
   return isPlausibleMeshCoreTimeMs(ms, nowMs) ? ms : nowMs;
+}
+
+/**
+ * {@link plausibleMeshCoreTimeMs} with the tighter
+ * {@link isPlausibleMeshCoreMessageTimeMs} window, for live direct and channel
+ * messages (#5339). Room posts do NOT use this: a room server replays its
+ * backlog on login, so a days-old stated time there is real history.
+ */
+export function plausibleMeshCoreMessageTimeMs(
+  senderTimestampSec: number | null | undefined,
+  nowMs: number = Date.now(),
+): number {
+  if (typeof senderTimestampSec !== 'number' || senderTimestampSec <= 0) return nowMs;
+  const ms = senderTimestampSec * 1000;
+  return isPlausibleMeshCoreMessageTimeMs(ms, nowMs) ? ms : nowMs;
 }
 
 /**

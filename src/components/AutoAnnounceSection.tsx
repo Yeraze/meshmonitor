@@ -43,6 +43,11 @@ interface AutoAnnounceSectionProps {
 
 const DEFAULT_MESSAGE = 'MeshMonitor {VERSION} online for {DURATION} {FEATURES}';
 
+// Stable default for `nodeInfoChannels`. An inline `= []` default is a new
+// array every render; the re-seed effect below depends on it and sets state,
+// so rendering without the prop re-rendered forever.
+const EMPTY_CHANNELS: readonly number[] = Object.freeze([]);
+
 const AutoAnnounceSection: React.FC<AutoAnnounceSectionProps> = ({
   enabled,
   intervalHours,
@@ -64,7 +69,7 @@ const AutoAnnounceSection: React.FC<AutoAnnounceSectionProps> = ({
   onHopLimitChange,
   // NodeInfo broadcasting props
   nodeInfoEnabled = false,
-  nodeInfoChannels = [],
+  nodeInfoChannels = EMPTY_CHANNELS as number[],
   nodeInfoDelaySeconds = 30,
   onNodeInfoEnabledChange,
   onNodeInfoChannelsChange,
@@ -149,16 +154,18 @@ const AutoAnnounceSection: React.FC<AutoAnnounceSectionProps> = ({
     return sortedA.every((val, idx) => val === sortedB[idx]);
   };
 
-  // Check if any settings have changed
+  // Check if any settings have changed. Compare against the same normalized
+  // baseline the local state is seeded with, or a blank/zero stored value reads
+  // as an unsaved edit on load (phantom SaveBar).
   useEffect(() => {
     const changed =
       localEnabled !== enabled ||
-      localInterval !== intervalHours ||
-      localMessage !== message ||
-      !arraysEqual(localChannelIndexes, channelIndexes) ||
+      localInterval !== (intervalHours || 6) ||
+      localMessage !== (message || DEFAULT_MESSAGE) ||
+      !arraysEqual(localChannelIndexes, channelIndexes.length > 0 ? channelIndexes : [0]) ||
       localAnnounceOnStart !== announceOnStart ||
       localUseSchedule !== useSchedule ||
-      localSchedule !== schedule ||
+      localSchedule !== (schedule || '0 */6 * * *') ||
       localHopLimit !== hopLimit ||
       localNodeInfoEnabled !== nodeInfoEnabled ||
       !arraysEqual(localNodeInfoChannels, nodeInfoChannels) ||

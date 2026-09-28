@@ -45,8 +45,8 @@ export function createEmbedCspMiddleware() {
         "default-src 'self'",
         "script-src 'self' 'unsafe-inline'",
         "style-src 'self' 'unsafe-inline'",
-        "img-src 'self' data: https://*.tile.openstreetmap.org https://*.basemaps.cartocdn.com https://server.arcgisonline.com",
-        "connect-src 'self' ws: wss: https://*.tile.openstreetmap.org https://*.basemaps.cartocdn.com https://server.arcgisonline.com",
+        "img-src 'self' data: https://*.tile.openstreetmap.org https://*.basemaps.cartocdn.com https://basemaps.cartocdn.com https://server.arcgisonline.com",
+        "connect-src 'self' ws: wss: https://*.tile.openstreetmap.org https://*.basemaps.cartocdn.com https://basemaps.cartocdn.com https://server.arcgisonline.com",
         "worker-src 'self' blob:",
         `frame-ancestors ${frameAncestors}`,
       ];

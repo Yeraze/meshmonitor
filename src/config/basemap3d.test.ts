@@ -122,6 +122,29 @@ describe('resolve3DBasemap', () => {
   });
 });
 
+describe('resolve3DBasemap — CARTO vector presets (#5448)', () => {
+  it.each([
+    ['cartoVoyager', 'rastertiles/voyager'],
+    ['cartoPositron', 'light_all'],
+    ['cartoDarkMatter', 'dark_all'],
+    ['cartoVoyagerDark', 'dark_all'],
+  ] as const)('draws the %s raster twin (%s) in 3D, keyed', (id, rasterPath) => {
+    const result = resolve3DBasemap(id, [], 'KEY123');
+    // A raster equivalent, not the osm substitution.
+    expect(result.usedFallback).toBe(false);
+    expect(result.tiles).toHaveLength(3);
+    const escaped = rasterPath.replace('/', '\\/');
+    for (const tile of result.tiles) {
+      expect(tile).toMatch(
+        new RegExp(`^https://[abc]\\.basemaps\\.cartocdn\\.com/${escaped}/\\{z\\}/\\{x\\}/\\{y\\}\\.png\\?key=KEY123$`),
+      );
+      // Never the GL style URL: MapLibre raster sources need a tile template.
+      expect(tile).not.toContain('style');
+    }
+    expect(result.attribution).toContain('CARTO');
+  });
+});
+
 describe('buildTerrainTileUrl', () => {
   it('builds the tile URL template with an empty base path (root deployment)', () => {
     expect(buildTerrainTileUrl('')).toBe('/api/elevation/tiles/{z}/{x}/{y}');

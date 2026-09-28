@@ -70,6 +70,8 @@ registerRoute(({ url }) => url.pathname.includes('/api/'), new NetworkOnly());
 // Use an exact-host allowlist (with optional subdomain match) instead of
 // substring .includes() so that hostnames like
 // "tile.openstreetmap.org.attacker.example" are NOT matched.
+// `basemaps.cartocdn.com` also covers CARTO's vector GL basemaps (#5448):
+// style.json on the bare host, tiles/sprites/glyphs on tiles(-a..d).basemaps….
 const MAP_TILE_HOSTS = new Set([
   'tile.openstreetmap.org',
   'basemaps.cartocdn.com',

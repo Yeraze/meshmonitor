@@ -1,7 +1,7 @@
 # Carto Basemap API Key + Vector Basemaps — Implementation Plan
 
 **Issue:** (to be filed) — "Support a Carto basemap API key + add Carto vector basemaps"
-**Status:** Plan / not started
+**Status:** Phase 1 merged (#4934). Phase 2 shipped with #5448, which also adds a bundled "CARTO Voyager Dark" style (`scripts/generate-carto-voyager-dark.mjs` → `public/map-styles/`). Phase 3 deferred.
 **Author:** Claude (for Randall)
 
 ## Background
