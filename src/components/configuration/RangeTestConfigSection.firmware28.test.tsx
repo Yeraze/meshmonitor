@@ -28,6 +28,7 @@ vi.mock('../../hooks/useSaveBar', () => ({
 }));
 
 import RangeTestConfigSection from './RangeTestConfigSection';
+import ModuleAvailabilityGate from './ModuleAvailabilityGate';
 
 const REMOVED_NOTICE = /removed in Meshtastic 2\.8/i;
 
@@ -104,5 +105,56 @@ describe('RangeTestConfigSection — firmware 2.8 removal notice', () => {
     rerender(<RangeTestConfigSection {...baseProps} sender={999} isDisabled={false} />);
 
     expect(saveBarCalls[saveBarCalls.length - 1].hasChanges).toBe(true);
+  });
+});
+
+describe('RangeTestConfigSection — one notice when the build also excludes it', () => {
+  // A 2.8 build is both "2.8+" (isDisabled) and reports Range Test in
+  // excluded_modules (the gate). Two notices that say the same thing stacked
+  // under the header; the gate's notice now carries the 2.8 reason instead.
+  const EXCLUDED_NOTICE = /not included in this device's firmware build/i;
+
+  it('shows a single notice that carries the 2.8 removal reason', () => {
+    const { container } = render(
+      <ModuleAvailabilityGate available={false} moduleName="Range Test">
+        <RangeTestConfigSection {...baseProps} isDisabled={true} />
+      </ModuleAvailabilityGate>
+    );
+
+    const notices = screen.getAllByRole('status');
+    expect(notices).toHaveLength(1);
+    expect(notices[0].textContent).toMatch(EXCLUDED_NOTICE);
+    expect(notices[0].textContent).toMatch(/removed from Meshtastic firmware in 2\.8/i);
+    expect(screen.queryByText(REMOVED_NOTICE)).toBeNull();
+
+    // Controls stay switched off, and the gate's fade is not doubled by ours.
+    expect((document.getElementById('rangetestEnabled') as HTMLInputElement).disabled).toBe(true);
+    expect(container.querySelector('[class*="disabledControls"]')).toBeNull();
+  });
+
+  it('shows only the plain exclusion notice when the firmware is pre-2.8', () => {
+    render(
+      <ModuleAvailabilityGate available={false} moduleName="Range Test">
+        <RangeTestConfigSection {...baseProps} isDisabled={false} />
+      </ModuleAvailabilityGate>
+    );
+
+    const notices = screen.getAllByRole('status');
+    expect(notices).toHaveLength(1);
+    expect(notices[0].textContent).toMatch(EXCLUDED_NOTICE);
+    expect(notices[0].textContent).not.toMatch(/2\.8/);
+  });
+
+  it('keeps its own 2.8 notice when the gate reports the module available', () => {
+    const { container } = render(
+      <ModuleAvailabilityGate available={true} moduleName="Range Test">
+        <RangeTestConfigSection {...baseProps} isDisabled={true} />
+      </ModuleAvailabilityGate>
+    );
+
+    const notices = screen.getAllByRole('status');
+    expect(notices).toHaveLength(1);
+    expect(notices[0].textContent).toMatch(REMOVED_NOTICE);
+    expect(container.querySelector('[class*="disabledControls"]')).not.toBeNull();
   });
 });
