@@ -26,7 +26,7 @@ import { VariableResolver, type VarContext, type SetResult } from './variableRes
 import type { DecodedValue } from './variableCodec.js';
 import { evaluateGraph } from './graphEvaluator.js';
 import { evaluateCondition } from './conditionEvaluator.js';
-import { executeAction, type ActionDeps } from './actionExecutor.js';
+import { executeAction, actionStepDetail, type ActionDeps } from './actionExecutor.js';
 import {
   buildMessageContext,
   buildNodeContext,
@@ -121,11 +121,28 @@ export interface SimulateOptions {
   liveData?: NodeDataProvider;
   now?: number;
   maxActions?: number;
+  /** Id of the saved automation being tested, so a self-disable stops the dry run like a real one (#5445). */
+  automationId?: string;
+  /**
+   * Read-only automation lookup for action.setAutomationEnabled (#5445): reports
+   * an unknown id and the target's current state without writing anything.
+   * Absent = every id is treated as existing and currently disabled.
+   */
+  lookupAutomation?: (id: string) => Promise<{ id: string; name: string; enabled: boolean } | null>;
 }
 
 /** ActionDeps that perform no IO — each call resolves to its received params. */
-function recordingDeps(): ActionDeps {
+function recordingDeps(lookupAutomation?: SimulateOptions['lookupAutomation']): ActionDeps {
   return {
+    // Dry-run must never change an automation — report what WOULD change (#5445).
+    async setAutomationEnabled({ automationId, mode, enabled }) {
+      const row = lookupAutomation
+        ? await lookupAutomation(automationId)
+        : { id: automationId, name: '', enabled: false };
+      if (!row) return null;
+      const previous = Boolean(row.enabled);
+      return { automationId: row.id, name: row.name, previous, enabled: mode === 'toggle' ? !previous : Boolean(enabled) };
+    },
     async sendMessage(a) { return { action: 'sendMessage', ...a }; },
     async sendTapback(a) { return { action: 'tapback', ...a }; },
     async manageNode(a) { return { action: 'nodeManage', ...a }; },
@@ -401,15 +418,19 @@ export async function simulateAutomation(opts: SimulateOptions): Promise<SimResu
     };
   }
 
-  const deps = recordingDeps();
+  const deps = recordingDeps(opts.lookupAutomation);
   const vars = new SimVariableResolver(opts.varsRepo, opts.variables ?? {});
   const data = stubData(opts.node, opts.telemetry, opts.liveData);
-  const evalCtx: EngineEvalContext = { trigger: ctx, vars, data, varCtx: varContextFromTrigger(ctx), now };
+  const evalCtx: EngineEvalContext = {
+    trigger: ctx, vars, data, varCtx: varContextFromTrigger(ctx), now, automationId: opts.automationId,
+  };
 
   const result = await evaluateGraph(opts.graph, evalCtx, {
     evaluateCondition: (n, c) => evaluateCondition(n, c),
     executeAction: (n, c) => executeAction(n, c, deps),
     applySetVar: (n, c) => simApplySetVar(n, c),
+    stepDetail: (n, v) => actionStepDetail(n, v),
+    haltReason: (c) => c.halt?.reason,
   }, { maxActions: opts.maxActions });
 
   const status = result.actions.some((a) => !a.ok) ? 'failed' : 'completed';

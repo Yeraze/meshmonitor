@@ -1,18 +1,13 @@
 /**
  * Tests that refreshContacts() preserves each node's real Last Heard across a
- * reconnect by using the companion-reported advert timestamp instead of the
- * reconnect wall-clock (#3645).
+ * reconnect instead of stamping the reconnect wall-clock (#3645).
  *
- * The MeshCore companion reports `last_advert` per contact in epoch SECONDS.
- * Previously refreshContacts() set every contact's lastSeen to Date.now(),
- * which surfaced as "Last Heard: just now" for every node after a reconnect.
- *
- * Also covers #5339: a companion with an unsynced/drifted RTC can report a
- * `last_advert` that isn't a real receive time at all (years in the past or
- * future). Trusting it verbatim, as the #3645 fix originally did, wrecks
- * Last Heard sort order and the node-visibility max-age filter for as long
- * as that bogus value sticks around — so an implausible advert time is
- * treated the same as a missing one.
+ * #5339: Last Heard comes from the companion's `last_mod` — stamped by the
+ * COMPANION's own clock (which MeshMonitor keeps synced) whenever it hears the
+ * contact — and never from `last_advert`, which is the SENDER's clock. A node
+ * with no RTC boots at the firmware's fixed 2024 default and one that drifted
+ * can read years off either way, so trusting `last_advert` wrecked Last Heard
+ * sort order and the node-visibility max-age filter.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 
@@ -52,44 +47,67 @@ describe('MeshCoreManager — Last Heard preserved across reconnect (#3645)', ()
   beforeEach(() => { upsertNode.mockClear(); });
   afterEach(() => { vi.useRealTimers(); });
 
-  it('uses the reported advert time (epoch seconds → ms) for lastSeen, not now', async () => {
-    // Advert heard ~2 hours ago, reported by the companion in epoch seconds.
+  it('uses the companion-clock last_mod (epoch seconds → ms) for lastSeen, not now', async () => {
     const fixedNow = 1_800_000_000_000; // ms
     vi.setSystemTime(fixedNow);
-    const advertSec = Math.floor(fixedNow / 1000) - 7200; // 2h ago, seconds
+    const lastModSec = Math.floor(fixedNow / 1000) - 7200; // heard 2h ago
 
     const m = makeCompanionManager([
-      { public_key: KEY, adv_name: 'Repeater', name: 'Repeater', adv_type: 2, last_advert: advertSec },
+      { public_key: KEY, adv_name: 'Repeater', name: 'Repeater', adv_type: 2, last_advert: lastModSec - 5, last_mod: lastModSec },
     ]);
 
     await m.refreshContacts();
 
     const contact = m.getContact(KEY);
-    // lastSeen is the advert time in ms — NOT Date.now()
-    expect(contact?.lastSeen).toBe(advertSec * 1000);
-    expect(contact?.lastSeen).not.toBe(fixedNow);
+    expect(contact?.lastSeen).toBe(lastModSec * 1000);
     // lastAdvert preserved in seconds (for the detail panel)
-    expect(contact?.lastAdvert).toBe(advertSec);
-
-    // Persisted to meshcore_nodes.lastHeard with the advert-derived ms value.
+    expect(contact?.lastAdvert).toBe(lastModSec - 5);
     expect(upsertNode).toHaveBeenCalledWith(
-      expect.objectContaining({ publicKey: KEY, lastHeard: advertSec * 1000 }),
+      expect.objectContaining({ publicKey: KEY, lastHeard: lastModSec * 1000 }),
       'src-a',
     );
   });
 
-  it('does not stamp "now" when the device did not report an advert time (#5341)', async () => {
+  it('ignores last_advert even when it looks plausible (no-RTC node at the firmware 2024 default, #5339)', async () => {
+    const fixedNow = 1_800_000_000_000;
+    vi.setSystemTime(fixedNow);
+    const noRtcDefaultSec = 1_715_770_351; // VolatileRTCClock base, 2024-05-15
+    const lastModSec = Math.floor(fixedNow / 1000) - 60;
+
+    const m = makeCompanionManager([
+      { public_key: KEY, adv_name: 'NoRtc', adv_type: 2, last_advert: noRtcDefaultSec, last_mod: lastModSec },
+    ]);
+
+    await m.refreshContacts();
+
+    expect(m.getContact(KEY)?.lastSeen).toBe(lastModSec * 1000);
+    expect(upsertNode).not.toHaveBeenCalledWith(
+      expect.objectContaining({ lastHeard: noRtcDefaultSec * 1000 }),
+      'src-a',
+    );
+  });
+
+  it('does not fall back to last_advert when last_mod is absent', async () => {
+    vi.setSystemTime(1_800_000_000_000);
+    const m = makeCompanionManager([
+      { public_key: KEY, adv_name: 'NoLastMod', adv_type: 2, last_advert: 1_799_990_000 },
+    ]);
+
+    await m.refreshContacts();
+
+    expect(m.getContact(KEY)?.lastSeen).toBeUndefined();
+  });
+
+  it('does not stamp "now" when the device reported no time (#5341)', async () => {
     // A contact sync is a local read of the device's saved contact list, not
-    // evidence the node was just heard. Previously this fell back to
-    // Date.now(), which — combined with the forward-only guard in
-    // upsertNode() always seeing "now" as newer — made an offline favorite's
-    // Last Heard advance every time refreshContacts() ran (on reconnect, on
-    // an unrelated contact's path update, etc).
+    // evidence the node was just heard. Stamping Date.now() — which the
+    // forward-only guard in upsertNode() always sees as newer — made an
+    // offline favorite's Last Heard advance on every refreshContacts().
     const fixedNow = 1_800_000_050_000;
     vi.setSystemTime(fixedNow);
 
     const m = makeCompanionManager([
-      { public_key: KEY, adv_name: 'NoAdvert', adv_type: 1, last_advert: 0 },
+      { public_key: KEY, adv_name: 'NoTime', adv_type: 1, last_advert: 0, last_mod: 0 },
     ]);
 
     await m.refreshContacts();
@@ -101,104 +119,74 @@ describe('MeshCoreManager — Last Heard preserved across reconnect (#3645)', ()
     );
   });
 
-  it('keeps the previously known lastSeen across a refresh when the device reports no advert time', async () => {
-    const advertSec = 1_700_000_000;
+  it('keeps the previously known lastSeen across a refresh when the device reports no time', async () => {
+    const lastModSec = 1_700_000_000;
     const m = makeCompanionManager([
-      { public_key: KEY, adv_name: 'Stable', adv_type: 2, last_advert: advertSec },
+      { public_key: KEY, adv_name: 'Stable', adv_type: 2, last_mod: lastModSec },
     ]);
 
     vi.setSystemTime(1_800_000_000_000);
     await m.refreshContacts();
-    expect(m.getContact(KEY)?.lastSeen).toBe(advertSec * 1000);
+    expect(m.getContact(KEY)?.lastSeen).toBe(lastModSec * 1000);
 
-    // A later sync where the device no longer reports an advert time for
-    // this contact must not clobber the last known value with "now".
     const later = makeCompanionManager([
-      { public_key: KEY, adv_name: 'Stable', adv_type: 2, last_advert: 0 },
+      { public_key: KEY, adv_name: 'Stable', adv_type: 2, last_mod: 0 },
     ]);
     (later as any).contacts = (m as any).contacts;
     vi.setSystemTime(1_800_000_500_000);
     await later.refreshContacts();
 
-    expect(later.getContact(KEY)?.lastSeen).toBe(advertSec * 1000);
+    expect(later.getContact(KEY)?.lastSeen).toBe(lastModSec * 1000);
   });
 
-  it('ignores a reported advert time implausibly far in the past (#5339)', async () => {
-    const fixedNow = 1_800_000_000_000; // ms
+  it('ignores an implausible last_mod (companion clock never synced, far past or future)', async () => {
+    const fixedNow = 1_800_000_000_000;
     vi.setSystemTime(fixedNow);
-    // A companion with an unsynced RTC reporting year 2000 — below the
-    // 2020-01-01 plausibility floor.
-    const advertSec = 946_684_800; // 2000-01-01T00:00:00Z
+
+    for (const badSec of [946_684_800 /* 2000 */, 3_700_000_000 /* ~2087 */]) {
+      upsertNode.mockClear();
+      const m = makeCompanionManager([
+        { public_key: KEY, adv_name: 'Drifted', adv_type: 1, last_mod: badSec },
+      ]);
+      await m.refreshContacts();
+      expect(m.getContact(KEY)?.lastSeen).toBeUndefined();
+      expect(upsertNode).not.toHaveBeenCalledWith(
+        expect.objectContaining({ lastHeard: badSec * 1000 }),
+        'src-a',
+      );
+    }
+  });
+
+  it('clamps a last_mod slightly ahead of the server clock to now', async () => {
+    const fixedNow = 1_800_000_000_000;
+    vi.setSystemTime(fixedNow);
+    const aheadSec = Math.floor(fixedNow / 1000) + 3600; // companion 1h fast
 
     const m = makeCompanionManager([
-      { public_key: KEY, adv_name: 'DriftedPast', adv_type: 1, last_advert: advertSec },
+      { public_key: KEY, adv_name: 'Fast', adv_type: 1, last_mod: aheadSec },
     ]);
 
     await m.refreshContacts();
 
-    // The drifted value must reach neither memory nor the DB. (What replaces
-    // it, now or the last known value, is the no-advert-time rule's call;
-    // #5341 owns that.)
-    expect(m.getContact(KEY)?.lastSeen).not.toBe(advertSec * 1000);
-    expect(upsertNode).not.toHaveBeenCalledWith(
-      expect.objectContaining({ lastHeard: advertSec * 1000 }),
-      'src-a',
-    );
-  });
-
-  it('ignores a reported advert time implausibly far in the future (#5339)', async () => {
-    const fixedNow = 1_800_000_000_000; // ms
-    vi.setSystemTime(fixedNow);
-    // A companion with a drifted RTC reporting year 2087.
-    const advertSec = 3_700_000_000;
-
-    const m = makeCompanionManager([
-      { public_key: KEY, adv_name: 'DriftedFuture', adv_type: 1, last_advert: advertSec },
-    ]);
-
-    await m.refreshContacts();
-
-    // The drifted value must reach neither memory nor the DB. (What replaces
-    // it, now or the last known value, is the no-advert-time rule's call;
-    // #5341 owns that.)
-    expect(m.getContact(KEY)?.lastSeen).not.toBe(advertSec * 1000);
-    expect(upsertNode).not.toHaveBeenCalledWith(
-      expect.objectContaining({ lastHeard: advertSec * 1000 }),
-      'src-a',
-    );
-  });
-
-  it('accepts an advert time within a day of now (ordinary clock skew, not drift)', async () => {
-    const fixedNow = 1_800_000_000_000; // ms
-    vi.setSystemTime(fixedNow);
-    const advertSec = Math.floor(fixedNow / 1000) + 3600; // 1h ahead — plausible skew
-
-    const m = makeCompanionManager([
-      { public_key: KEY, adv_name: 'SlightlyAhead', adv_type: 1, last_advert: advertSec },
-    ]);
-
-    await m.refreshContacts();
-
-    expect(m.getContact(KEY)?.lastSeen).toBe(advertSec * 1000);
+    expect(m.getContact(KEY)?.lastSeen).toBe(fixedNow);
   });
 
   it('is stable across repeated refreshes (does not advance to each reconnect time)', async () => {
-    const advertSec = 1_700_000_000;
+    const lastModSec = 1_700_000_000;
     const m = makeCompanionManager([
-      { public_key: KEY, adv_name: 'Stable', adv_type: 2, last_advert: advertSec },
+      { public_key: KEY, adv_name: 'Stable', adv_type: 2, last_mod: lastModSec },
     ]);
 
     vi.setSystemTime(1_800_000_000_000);
     await m.refreshContacts();
     const first = m.getContact(KEY)?.lastSeen;
 
-    // Simulate a later reconnect — same device-reported advert time.
     vi.setSystemTime(1_800_000_500_000);
     await m.refreshContacts();
     const second = m.getContact(KEY)?.lastSeen;
 
-    expect(first).toBe(advertSec * 1000);
-    expect(second).toBe(first); // preserved, not bumped to the new reconnect time
+    expect(first).toBe(lastModSec * 1000);
+    expect(second).toBe(first);
   });
 });
 

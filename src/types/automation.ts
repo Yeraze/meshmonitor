@@ -55,7 +55,8 @@ export type ActionType =
   | 'action.deviceReboot'
   | 'action.notify'
   | 'action.runScript'
-  | 'action.delay';
+  | 'action.delay'
+  | 'action.setAutomationEnabled';
 
 // `action.delay` is a BOUNDED, in-process pause (caps at AUTOMATION_DELAY_MAX_SECONDS)
 // that blocks only its own run — it serializes naturally with the sequential,
@@ -110,6 +111,7 @@ export const ACTION_TYPES: readonly ActionType[] = [
   'action.notify',
   'action.runScript',
   'action.delay',
+  'action.setAutomationEnabled',
 ];
 
 export const FLOW_TYPES: readonly FlowType[] = ['flow.fanout', 'flow.collapse', 'flow.setVar'];
@@ -141,6 +143,31 @@ export type RequestOp = (typeof REQUEST_OPS)[number];
 /** Where action.tapback's emoji comes from. Absent = 'fixed' (pre-4.14 behaviour). */
 export type TapbackEmojiMode = 'fixed' | 'hopCount';
 export const TAPBACK_EMOJI_MODES: readonly TapbackEmojiMode[] = ['fixed', 'hopCount'];
+
+/**
+ * How action.setAutomationEnabled changes its target (#5445). Absent = 'set'.
+ *  - 'set'     force the target to `params.enabled`.
+ *  - 'toggle'  flip the target's current state; `params.enabled` is ignored.
+ */
+export type AutomationEnableMode = 'set' | 'toggle';
+export const AUTOMATION_ENABLE_MODES: readonly AutomationEnableMode[] = ['set', 'toggle'];
+
+/**
+ * Coerce action.setAutomationEnabled's `enabled` param (#5445). The builder
+ * stores 'true'/'false' strings and a `{{ }}` template resolves to a string, so
+ * both a boolean and its string spelling (any case, trimmed; also '1'/'0') are
+ * accepted. Anything else returns undefined so the caller can fail loudly
+ * rather than guess.
+ */
+export function parseAutomationEnabledFlag(raw: unknown): boolean | undefined {
+  if (typeof raw === 'boolean') return raw;
+  if (typeof raw === 'number') return raw === 1 ? true : raw === 0 ? false : undefined;
+  if (typeof raw !== 'string') return undefined;
+  const s = raw.trim().toLowerCase();
+  if (s === 'true' || s === '1') return true;
+  if (s === 'false' || s === '0') return false;
+  return undefined;
+}
 
 /**
  * What a trigger's `cooldownSeconds` window is keyed by (#4340 Phase 2).
@@ -605,6 +632,26 @@ export function validateAutomationGraph(input: unknown): ValidationResult {
           const minDropPercent = p.minDropPercent == null || p.minDropPercent === '' ? NaN : Number(p.minDropPercent);
           if (!Number.isFinite(minDropPercent) || minDropPercent <= 0) {
             errors.push(`trigger.batteryTrend "${n.id}" requires params.minDropPercent > 0`);
+          }
+          break;
+        }
+        case 'action.setAutomationEnabled': {
+          // #5445. automationId may be a literal id or a {{ }} template, so only
+          // its presence is checked here; an unknown id fails the step at run time.
+          if (typeof p.automationId !== 'string' || p.automationId.trim().length === 0) {
+            errors.push(`action.setAutomationEnabled "${n.id}" requires params.automationId`);
+          }
+          const mode = p.mode == null ? 'set' : p.mode;
+          if (!AUTOMATION_ENABLE_MODES.includes(mode as AutomationEnableMode)) {
+            errors.push(`action.setAutomationEnabled "${n.id}" requires params.mode ∈ {set,toggle}`);
+          } else if (mode === 'set') {
+            // Toggle ignores `enabled`. Set needs a boolean, its string spelling,
+            // or a template that resolves to one at run time.
+            const e = p.enabled;
+            const templated = typeof e === 'string' && e.includes('{{');
+            if (!templated && parseAutomationEnabledFlag(e) === undefined) {
+              errors.push(`action.setAutomationEnabled "${n.id}" requires params.enabled to be true or false`);
+            }
           }
           break;
         }

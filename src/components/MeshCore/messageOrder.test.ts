@@ -95,6 +95,12 @@ describe('compareMeshCoreMessages', () => {
     expect(sortMeshCoreMessages([live, backlog]).map(m => m.id)).toEqual(['backlog', 'live']);
   });
 
+  it('orders a stated time stuck at the no-RTC 2024 default by receipt time (#5339)', () => {
+    const earlier: M = { id: 'earlier', timestamp: 1785604100000, receivedAt: 1785604100000 };
+    const stuck: M = { id: 'stuck', timestamp: 1_715_770_351_000 /* 2024-05-15 */, receivedAt: 1785604213000 };
+    expect(sortMeshCoreMessages([stuck, earlier]).map(m => m.id)).toEqual(['earlier', 'stuck']);
+  });
+
   it('does not mutate its input', () => {
     const input = [REPLY, TRIGGER];
     sortMeshCoreMessages(input);

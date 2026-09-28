@@ -5,6 +5,7 @@ import {
   parseCooldownScope,
   parseSendMaxAttempts,
   parseRateLimit,
+  parseAutomationEnabledFlag,
   SEND_MAX_ATTEMPTS_MIN,
   SEND_MAX_ATTEMPTS_MAX,
   RATE_LIMIT_MAX_ACTIONS_MAX,
@@ -103,6 +104,60 @@ describe('validateAutomationGraph', () => {
     expect(neg.valid).toBe(false);
     expect(neg.errors.join(' ')).toMatch(/positive node number/);
     expect(validateAutomationGraph(withReboot({ targetNodeNum: 1.5 })).valid).toBe(false);
+  });
+
+  describe('action.setAutomationEnabled (#5445)', () => {
+    const withSet = (params: Record<string, unknown>): AutomationGraph => ({
+      version: 1,
+      nodes: [
+        { id: 't', type: 'trigger.schedule', params: { cron: '0 22 * * *' } },
+        { id: 'a', type: 'action.setAutomationEnabled', params },
+      ],
+      edges: [{ from: 't', to: 'a' }],
+    });
+    const errs = (params: Record<string, unknown>) => validateAutomationGraph(withSet(params)).errors.join(' ');
+
+    it('accepts set with a boolean or its string spelling', () => {
+      expect(validateAutomationGraph(withSet({ automationId: 'abc', enabled: false })).valid).toBe(true);
+      expect(validateAutomationGraph(withSet({ automationId: 'abc', mode: 'set', enabled: 'true' })).valid).toBe(true);
+      expect(validateAutomationGraph(withSet({ automationId: 'abc', enabled: ' FALSE ' })).valid).toBe(true);
+    });
+
+    it('accepts a templated id and a templated enabled', () => {
+      expect(validateAutomationGraph(withSet({ automationId: '{{ var.target }}', enabled: '{{ var.on }}' })).valid).toBe(true);
+    });
+
+    it('toggle ignores enabled', () => {
+      expect(validateAutomationGraph(withSet({ automationId: 'abc', mode: 'toggle' })).valid).toBe(true);
+      expect(validateAutomationGraph(withSet({ automationId: 'abc', mode: 'toggle', enabled: 'nonsense' })).valid).toBe(true);
+    });
+
+    it('requires automationId', () => {
+      expect(errs({ enabled: true })).toMatch(/requires params\.automationId/);
+      expect(errs({ automationId: '   ', enabled: true })).toMatch(/requires params\.automationId/);
+      expect(errs({ automationId: 42, enabled: true })).toMatch(/requires params\.automationId/);
+    });
+
+    it('rejects an unknown mode', () => {
+      expect(errs({ automationId: 'abc', mode: 'flip', enabled: true })).toMatch(/params\.mode ∈ \{set,toggle\}/);
+    });
+
+    it('set requires a parseable enabled', () => {
+      expect(errs({ automationId: 'abc' })).toMatch(/params\.enabled to be true or false/);
+      expect(errs({ automationId: 'abc', enabled: 'maybe' })).toMatch(/params\.enabled to be true or false/);
+    });
+  });
+
+  it('parseAutomationEnabledFlag coerces booleans, strings and 1/0 (#5445)', () => {
+    expect(parseAutomationEnabledFlag(true)).toBe(true);
+    expect(parseAutomationEnabledFlag(false)).toBe(false);
+    expect(parseAutomationEnabledFlag('True')).toBe(true);
+    expect(parseAutomationEnabledFlag(' false ')).toBe(false);
+    expect(parseAutomationEnabledFlag('1')).toBe(true);
+    expect(parseAutomationEnabledFlag(0)).toBe(false);
+    expect(parseAutomationEnabledFlag('yes')).toBeUndefined();
+    expect(parseAutomationEnabledFlag(2)).toBeUndefined();
+    expect(parseAutomationEnabledFlag(undefined)).toBeUndefined();
   });
 
   it('action.requestData: optional advertMode validates present/absent', () => {

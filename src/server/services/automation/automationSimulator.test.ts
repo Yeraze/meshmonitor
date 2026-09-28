@@ -263,6 +263,53 @@ describe('simulateAutomation', () => {
     expect((r.actions[0].resolvedParams as any).messageId).toBeUndefined();
   });
 
+  describe('setAutomationEnabled (#5445)', () => {
+    const graph = (params: Record<string, unknown>): AutomationGraph => ({
+      version: 1,
+      nodes: [
+        { id: 't', type: 'trigger.message', params: {} },
+        { id: 's', type: 'action.setAutomationEnabled', params },
+        { id: 'n', type: 'action.notify', params: { body: 'after' } },
+      ],
+      edges: [{ from: 't', to: 's' }, { from: 's', to: 'n' }],
+    });
+    const rows: Record<string, { id: string; name: string; enabled: boolean }> = {
+      b: { id: 'b', name: 'Rule B', enabled: true },
+      self: { id: 'self', name: 'Me', enabled: true },
+    };
+    const lookupAutomation = async (id: string) => (rows[id] ? { ...rows[id] } : null);
+
+    it('reports what would change without writing', async () => {
+      const r = await simulateAutomation({
+        graph: graph({ automationId: 'b', mode: 'toggle' }), varsRepo, lookupAutomation,
+        event: { kind: 'message', text: 'hi' },
+      });
+      expect(r.actions[0]).toMatchObject({
+        type: 'action.setAutomationEnabled', ok: true,
+        resolvedParams: { automationId: 'b', name: 'Rule B', mode: 'toggle', enabled: false, previous: true },
+      });
+      expect(rows.b.enabled).toBe(true); // untouched
+    });
+
+    it('an unknown id fails the dry-run step', async () => {
+      const r = await simulateAutomation({
+        graph: graph({ automationId: 'zzz', enabled: false }), varsRepo, lookupAutomation,
+        event: { kind: 'message', text: 'hi' },
+      });
+      expect(r.status).toBe('failed');
+      expect(r.actions[0].error).toMatch(/no automation with id "zzz"/);
+    });
+
+    it('a self-disable stops the dry run like a real one', async () => {
+      const r = await simulateAutomation({
+        graph: graph({ automationId: 'self', enabled: false }), varsRepo, lookupAutomation, automationId: 'self',
+        event: { kind: 'message', text: 'hi' },
+      });
+      expect(r.actions.map((a) => a.nodeId)).toEqual(['s']);
+      expect(r.steps.at(-1)?.outcome).toBe('run:halted');
+    });
+  });
+
   it('runScript: dry-run records the action without spawning a process', async () => {
     const graph: AutomationGraph = {
       version: 1,
