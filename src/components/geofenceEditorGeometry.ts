@@ -8,6 +8,14 @@ import { GEOFENCE_RADIUS_KM_MAX } from '../utils/geofenceLimits';
 /** Radius a new circle gets when the fields leave it empty (matches click-to-create). */
 export const DEFAULT_RADIUS_KM = 10;
 
+/**
+ * How long typing in the Lat/Lng/Radius fields must pause before the typed
+ * value moves the circle. Blur and Enter apply it at once. Without the wait,
+ * each valid prefix was applied: typing "123" moved the circle to lat 12
+ * before "123" failed validation.
+ */
+export const GEOFENCE_FIELD_COMMIT_DELAY_MS = 400;
+
 /** Leaflet's own Earth radius (L.CRS.Earth.R), so distanceTo() and circleEdgePoint() agree. */
 export const EARTH_RADIUS_M = 6371000;
 

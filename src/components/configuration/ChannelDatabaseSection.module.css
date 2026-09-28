@@ -1,0 +1,43 @@
+/*
+ * Channel Database card list.
+ *
+ * At a 390px viewport the list was a `display: grid` with an implicit `auto`
+ * column. An auto track never shrinks below its items' min-content width, and
+ * each card's single-line flex row (drag handle + info + four buttons) had a
+ * min-content of ~462px, so every card ran ~120px past a 292px section and
+ * gave /settings a 538px scrollWidth.
+ *
+ * No media query on purpose: the row wraps only when it is too narrow, so the
+ * desktop layout is unchanged and a phone in landscape is covered too.
+ */
+
+/* minmax(0, 1fr) lets the track shrink to the section instead of its content. */
+.cardList {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 1rem;
+}
+
+.cardRow {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: flex-start;
+  row-gap: 0.5rem;
+}
+
+/*
+ * The info column takes the free space and wraps its text. The floor keeps it
+ * readable; when the buttons do not fit beside it, they drop to their own line.
+ */
+.cardInfo {
+  flex: 1 1 12rem;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.cardActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
