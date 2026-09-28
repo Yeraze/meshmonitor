@@ -52,8 +52,10 @@ describe('parseOtaGateway (#5424)', () => {
   });
 
   it('falls back to the default port for an invalid port', () => {
-    expect(parseOtaGateway('10.0.0.5:99999')).toEqual({ host: '10.0.0.5:99999', port: 4403 });
-    expect(parseOtaGateway('10.0.0.5:abc')).toEqual({ host: '10.0.0.5:abc', port: 4403 });
+    // The host is still split off so a socket never sees `host:junk`.
+    expect(parseOtaGateway('10.0.0.5:99999')).toEqual({ host: '10.0.0.5', port: 4403 });
+    expect(parseOtaGateway('10.0.0.5:abc')).toEqual({ host: '10.0.0.5', port: 4403 });
+    expect(parseOtaGateway('10.0.0.5:')).toEqual({ host: '10.0.0.5', port: 4403 });
   });
 
   it('round-trips buildOtaGateway output', () => {

@@ -12,7 +12,11 @@
 
 export const DEFAULT_MESHTASTIC_TCP_PORT = 4403;
 
-/** True when `host` is an IPv6 literal (bare or bracketed). */
+/**
+ * True when `host` is an IPv6 literal. Pass a bare host only (a source's
+ * configured host, or `parseOtaGateway(...).host`): a raw `host:port` gateway
+ * string also contains a colon and would read as IPv6.
+ */
 export function isIpv6Literal(host: string): boolean {
   return host.includes(':');
 }
@@ -50,12 +54,16 @@ export function parseOtaGateway(gateway: string): { host: string; port: number }
   }
   const colonCount = (trimmed.match(/:/g) ?? []).length;
   if (colonCount === 1) {
-    const lastColon = trimmed.lastIndexOf(':');
-    const portStr = trimmed.slice(lastColon + 1);
+    // Exactly one colon is always host:port. An invalid port falls back to
+    // the default rather than leaking `host:junk` into a socket host.
+    const colon = trimmed.indexOf(':');
+    const portStr = trimmed.slice(colon + 1);
     const port = Number(portStr);
-    if (lastColon > 0 && /^\d+$/.test(portStr) && port > 0 && port <= 65535) {
-      return { host: trimmed.slice(0, lastColon), port };
-    }
+    const validPort = /^\d+$/.test(portStr) && port > 0 && port <= 65535;
+    return {
+      host: trimmed.slice(0, colon),
+      port: validPort ? port : DEFAULT_MESHTASTIC_TCP_PORT,
+    };
   }
   return { host: trimmed, port: DEFAULT_MESHTASTIC_TCP_PORT };
 }
