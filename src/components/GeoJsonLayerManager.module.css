@@ -1,0 +1,41 @@
+/*
+ * Map overlay (GeoJSON/KML) layer rows on /settings.
+ *
+ * At a 390px viewport the top row (Visible, Public, Disable click popup,
+ * Color, name input, Delete) was a single-line flex row. The name input's
+ * automatic minimum is its intrinsic ~214px width, so the input ran to 471px
+ * and the Delete button to 538px, the whole page's scrollWidth.
+ *
+ * No media query on purpose: the rows wrap only when they are too narrow, so
+ * the desktop layout is unchanged and a phone in landscape is covered too.
+ */
+
+.controlRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  width: 100%;
+}
+
+/*
+ * The name field takes the free space. Its floor keeps it usable and makes it
+ * wrap to a line of its own on a phone; min() stops the floor exceeding the row.
+ *
+ * Keep the floor at or below ~8.9rem. At a 1280px window the settings section
+ * is 497px wide and the row's other controls plus gaps take ~354px, so a 9rem
+ * (144px) floor made the row 498px and wrapped Delete to a second line. 7.5rem
+ * leaves ~22px of slack there.
+ */
+.nameInput {
+  flex: 1 1 7.5rem;
+  min-width: min(100%, 7.5rem);
+}
+
+.styleRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
+  padding-left: 4px;
+}

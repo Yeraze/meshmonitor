@@ -12,6 +12,7 @@ import {
   circleEdgePoint,
   clampRadiusMeters,
   DEFAULT_RADIUS_KM,
+  GEOFENCE_FIELD_COMMIT_DELAY_MS,
   isInvalidRadius,
   isOutOfRange,
 } from './geofenceEditorGeometry';
@@ -29,6 +30,13 @@ interface GeofenceMapEditorProps {
   shapeType: 'circle' | 'polygon';
   nodePositions?: NodePosition[];
 }
+
+type CircleShape = Extract<GeofenceShape, { type: 'circle' }>;
+type CircleField = 'lat' | 'lng' | 'radius';
+
+/** A non-empty field holding a number inside [min, max]. */
+const isValidCoordinate = (value: string, min: number, max: number) =>
+  value.trim() !== '' && !isOutOfRange(value, min, max);
 
 interface CircleShapeData {
   center: { lat: number; lng: number };
@@ -369,6 +377,28 @@ const GeofenceMapEditor: React.FC<GeofenceMapEditorProps> = ({
   const [centerLng, setCenterLng] = useState<string>('');
   const [radiusKm, setRadiusKm] = useState<string>('');
 
+  // The debounced commit fires outside the render that scheduled it, so it
+  // reads the latest draft text and shape from refs, not a stale closure.
+  const draftRef = useRef<Record<CircleField, string>>({ lat: '', lng: '', radius: '' });
+  const shapeRef = useRef<GeofenceShape | null>(shape);
+  const commitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const setDraft = useCallback((field: CircleField, value: string) => {
+    draftRef.current = { ...draftRef.current, [field]: value };
+    if (field === 'lat') setCenterLat(value);
+    else if (field === 'lng') setCenterLng(value);
+    else setRadiusKm(value);
+  }, []);
+
+  const cancelPendingCommit = useCallback(() => {
+    if (commitTimerRef.current !== null) {
+      clearTimeout(commitTimerRef.current);
+      commitTimerRef.current = null;
+    }
+  }, []);
+
+  useEffect(() => cancelPendingCommit, [cancelPendingCommit]);
+
   // The fields are a text draft. A shape this form emitted comes back as the
   // `shape` prop; reformatting the field from it on every keystroke turned
   // "1" into "1.000000", so typing "12" produced "1.0000002". Only a shape
@@ -377,75 +407,117 @@ const GeofenceMapEditor: React.FC<GeofenceMapEditorProps> = ({
   const lastEmittedRef = useRef<GeofenceShape | null>(null);
 
   useEffect(() => {
+    shapeRef.current = shape;
     if (shape !== null && shape === lastEmittedRef.current) return;
+    // A change from elsewhere (a map drag) wins over a half-typed value.
+    cancelPendingCommit();
     if (shape && shape.type === 'circle') {
-      setCenterLat(shape.center.lat.toFixed(6));
-      setCenterLng(shape.center.lng.toFixed(6));
-      setRadiusKm(shape.radiusKm.toFixed(2));
+      setDraft('lat', shape.center.lat.toFixed(6));
+      setDraft('lng', shape.center.lng.toFixed(6));
+      setDraft('radius', shape.radiusKm.toFixed(2));
     } else {
-      setCenterLat('');
-      setCenterLng('');
-      setRadiusKm('');
+      setDraft('lat', '');
+      setDraft('lng', '');
+      setDraft('radius', '');
     }
-  }, [shape]);
+  }, [shape, cancelPendingCommit, setDraft]);
 
   const emit = (next: GeofenceShape) => {
     lastEmittedRef.current = next;
+    shapeRef.current = next;
     onShapeChange(next);
   };
 
-  const circle = shape?.type === 'circle' ? shape : null;
+  /**
+   * Apply the typed values to the circle. Typing only edits the draft; this
+   * runs on blur, on Enter, or after GEOFENCE_FIELD_COMMIT_DELAY_MS without a
+   * keystroke, so the prefixes of a value ("1", "12" on the way to "123")
+   * never move the map. An invalid or empty field keeps the circle's current
+   * value. With no circle yet, one is created once lat and lng are valid,
+   * defaulting an empty radius to DEFAULT_RADIUS_KM like a map click.
+   * Returns the circle after the commit, or null when there is none.
+   */
+  const commitDraft = (): CircleShape | null => {
+    cancelPendingCommit();
+    const { lat: latText, lng: lngText, radius: radiusText } = draftRef.current;
+    const current = shapeRef.current;
+    const circle = current?.type === 'circle' ? current : null;
+
+    if (!circle) {
+      if (!isValidCoordinate(latText, -90, 90) || !isValidCoordinate(lngText, -180, 180)) return null;
+      const radiusEmpty = radiusText.trim() === '';
+      if (!radiusEmpty && isInvalidRadius(radiusText)) return null;
+      const radius = radiusEmpty ? DEFAULT_RADIUS_KM : parseFloat(radiusText);
+      if (radiusEmpty) setDraft('radius', DEFAULT_RADIUS_KM.toFixed(2));
+      const created: CircleShape = {
+        type: 'circle',
+        center: { lat: parseFloat(latText), lng: parseFloat(lngText) },
+        radiusKm: Math.min(GEOFENCE_RADIUS_KM_MAX, radius),
+      };
+      emit(created);
+      return created;
+    }
+
+    const next: CircleShape = {
+      type: 'circle',
+      center: {
+        lat: isValidCoordinate(latText, -90, 90) ? parseFloat(latText) : circle.center.lat,
+        lng: isValidCoordinate(lngText, -180, 180) ? parseFloat(lngText) : circle.center.lng,
+      },
+      // Radius above the max is clamped rather than refused.
+      radiusKm: radiusText.trim() !== '' && !isInvalidRadius(radiusText)
+        ? Math.min(GEOFENCE_RADIUS_KM_MAX, parseFloat(radiusText))
+        : circle.radiusKm,
+    };
+    if (
+      next.center.lat === circle.center.lat
+      && next.center.lng === circle.center.lng
+      && next.radiusKm === circle.radiusKm
+    ) {
+      return circle;
+    }
+    emit(next);
+    return next;
+  };
+
+  // Validation stays instant (it reads the draft); only the commit waits.
+  const handleFieldChange = (field: CircleField, value: string) => {
+    setDraft(field, value);
+    cancelPendingCommit();
+    commitTimerRef.current = setTimeout(() => {
+      commitTimerRef.current = null;
+      commitDraft();
+    }, GEOFENCE_FIELD_COMMIT_DELAY_MS);
+  };
 
   /**
-   * No circle yet: create one from the typed values once lat and lng are
-   * valid, defaulting an empty radius to DEFAULT_RADIUS_KM like a map click.
+   * Blur or Enter: commit now, then reformat the field. A valid field shows the
+   * circle's value (so a clamped radius shows the cap). With no circle yet it
+   * shows its own number, formatted the same way, so the result never depends
+   * on whether a circle existed when the field was left. An invalid or empty
+   * field keeps its text and its error.
    */
-  const createFromFields = (latText: string, lngText: string, radiusText: string) => {
-    const lat = parseFloat(latText);
-    const lng = parseFloat(lngText);
-    const radius = radiusText.trim() === '' ? DEFAULT_RADIUS_KM : parseFloat(radiusText);
-    if (isOutOfRange(latText, -90, 90) || isOutOfRange(lngText, -180, 180)) return;
-    if (Number.isNaN(lat) || Number.isNaN(lng) || Number.isNaN(radius) || radius <= 0) return;
-    if (radiusText.trim() === '') setRadiusKm(DEFAULT_RADIUS_KM.toFixed(2));
-    emit({ type: 'circle', center: { lat, lng }, radiusKm: Math.min(GEOFENCE_RADIUS_KM_MAX, radius) });
+  const handleFieldCommit = (field: CircleField) => {
+    const committed = commitDraft();
+    const text = draftRef.current[field];
+    if (text.trim() === '') return;
+    if (field === 'radius') {
+      if (isInvalidRadius(text)) return;
+      const value = committed ? committed.radiusKm : Math.min(GEOFENCE_RADIUS_KM_MAX, parseFloat(text));
+      setDraft('radius', value.toFixed(2));
+      return;
+    }
+    const [min, max] = field === 'lat' ? [-90, 90] : [-180, 180];
+    if (!isValidCoordinate(text, min, max)) return;
+    const value = committed ? committed.center[field] : parseFloat(text);
+    setDraft(field, value.toFixed(6));
   };
 
-  const handleCenterLatChange = (value: string) => {
-    setCenterLat(value);
-    if (value.trim() === '' || isOutOfRange(value, -90, 90)) return;
-    const lat = parseFloat(value);
-    if (circle) emit({ ...circle, center: { ...circle.center, lat } });
-    else createFromFields(value, centerLng, radiusKm);
-  };
-
-  const handleCenterLngChange = (value: string) => {
-    setCenterLng(value);
-    if (value.trim() === '' || isOutOfRange(value, -180, 180)) return;
-    const lng = parseFloat(value);
-    if (circle) emit({ ...circle, center: { ...circle.center, lng } });
-    else createFromFields(centerLat, value, radiusKm);
-  };
-
-  // Radius above the max is clamped rather than refused: the shape gets the
-  // max straight away, and the field shows it once the user leaves it.
-  const handleRadiusChange = (value: string) => {
-    setRadiusKm(value);
-    if (value.trim() === '' || isInvalidRadius(value)) return;
-    const radius = Math.min(GEOFENCE_RADIUS_KM_MAX, parseFloat(value));
-    if (circle) emit({ ...circle, radiusKm: radius });
-    else createFromFields(centerLat, centerLng, value);
-  };
-
-  // On blur, a valid field is reformatted from the shape (so the clamped
-  // radius shows as the cap). An invalid one keeps its text and its error.
-  const handleLatBlur = () => {
-    if (circle && !isOutOfRange(centerLat, -90, 90)) setCenterLat(circle.center.lat.toFixed(6));
-  };
-  const handleLngBlur = () => {
-    if (circle && !isOutOfRange(centerLng, -180, 180)) setCenterLng(circle.center.lng.toFixed(6));
-  };
-  const handleRadiusBlur = () => {
-    if (circle && !isInvalidRadius(radiusKm)) setRadiusKm(circle.radiusKm.toFixed(2));
+  const handleFieldKeyDown = (field: CircleField) => (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key !== 'Enter') return;
+    // Enter applies the value here; it must not also submit an enclosing form.
+    e.preventDefault();
+    handleFieldCommit(field);
   };
 
   // An out-of-range coordinate never reaches the shape, so the map keeps the
@@ -488,8 +560,9 @@ const GeofenceMapEditor: React.FC<GeofenceMapEditorProps> = ({
               min="-90"
               max="90"
               value={centerLat}
-              onChange={(e) => handleCenterLatChange(e.target.value)}
-              onBlur={handleLatBlur}
+              onChange={(e) => handleFieldChange('lat', e.target.value)}
+              onBlur={() => handleFieldCommit('lat')}
+              onKeyDown={handleFieldKeyDown('lat')}
               className={latInvalid ? `${styles.fieldInput} ${styles.fieldInputInvalid}` : styles.fieldInput}
               aria-invalid={latInvalid || undefined}
               aria-describedby={latInvalid ? `${latId}-error` : undefined}
@@ -514,8 +587,9 @@ const GeofenceMapEditor: React.FC<GeofenceMapEditorProps> = ({
               min="-180"
               max="180"
               value={centerLng}
-              onChange={(e) => handleCenterLngChange(e.target.value)}
-              onBlur={handleLngBlur}
+              onChange={(e) => handleFieldChange('lng', e.target.value)}
+              onBlur={() => handleFieldCommit('lng')}
+              onKeyDown={handleFieldKeyDown('lng')}
               className={lngInvalid ? `${styles.fieldInput} ${styles.fieldInputInvalid}` : styles.fieldInput}
               aria-invalid={lngInvalid || undefined}
               aria-describedby={lngInvalid ? `${lngId}-error` : undefined}
@@ -540,8 +614,9 @@ const GeofenceMapEditor: React.FC<GeofenceMapEditorProps> = ({
               min="0.01"
               max={GEOFENCE_RADIUS_KM_MAX}
               value={radiusKm}
-              onChange={(e) => handleRadiusChange(e.target.value)}
-              onBlur={handleRadiusBlur}
+              onChange={(e) => handleFieldChange('radius', e.target.value)}
+              onBlur={() => handleFieldCommit('radius')}
+              onKeyDown={handleFieldKeyDown('radius')}
               className={radiusInvalid ? `${styles.fieldInput} ${styles.fieldInputInvalid}` : styles.fieldInput}
               aria-invalid={radiusInvalid || undefined}
               aria-describedby={radiusInvalid ? `${radiusId}-error` : undefined}
