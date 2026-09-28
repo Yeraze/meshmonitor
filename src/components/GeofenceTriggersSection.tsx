@@ -19,6 +19,12 @@ import GeofenceNodeSelector from './GeofenceNodeSelector';
 import ScriptTestModal from './ScriptTestModal';
 import apiService from '../services/api';
 import layout from './AutomationFormLayout.module.css';
+import {
+  clampInt,
+  GEOFENCE_COOLDOWN_MINUTES_MAX,
+  GEOFENCE_INTERVAL_MINUTES_MAX,
+  GEOFENCE_INTERVAL_MINUTES_MIN,
+} from './automationInputLimits';
 
 // Available tokens for geofence text message expansion
 const AVAILABLE_TOKENS = [
@@ -422,16 +428,18 @@ const GeofenceTriggersSection: React.FC<GeofenceTriggersSectionProps> = ({
             {/* While Inside Interval */}
             {newEvent === 'while_inside' && (
               <div className={layout.wrapRow} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                <label style={{ minWidth: '120px', fontSize: '0.9rem' }}>
+                <label htmlFor="geofence-while-inside-interval" style={{ minWidth: '120px', fontSize: '0.9rem' }}>
                   {t('automation.geofence_triggers.while_inside_interval', 'Interval (minutes):')}
                 </label>
                 <input
+                  id="geofence-while-inside-interval"
                   type="number"
                   value={newWhileInsideInterval}
-                  onChange={(e) => setNewWhileInsideInterval(Math.max(1, parseInt(e.target.value) || 1))}
+                  onChange={(e) => setNewWhileInsideInterval(clampInt(e.target.value, GEOFENCE_INTERVAL_MINUTES_MIN, GEOFENCE_INTERVAL_MINUTES_MAX))}
                   className="setting-input"
                   style={{ width: '100px' }}
-                  min={1}
+                  min={GEOFENCE_INTERVAL_MINUTES_MIN}
+                  max={GEOFENCE_INTERVAL_MINUTES_MAX}
                 />
                 <span className={layout.inlineHint} style={{ fontSize: '0.75rem', color: 'var(--color-text-subtle)' }}>
                   {t('automation.geofence_triggers.while_inside_interval_help', 'How often to fire while nodes remain inside')}
@@ -441,16 +449,18 @@ const GeofenceTriggersSection: React.FC<GeofenceTriggersSectionProps> = ({
 
             {/* Cooldown */}
             <div className={layout.wrapRow} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <label style={{ minWidth: '120px', fontSize: '0.9rem' }}>
+              <label htmlFor="geofence-cooldown-minutes" style={{ minWidth: '120px', fontSize: '0.9rem' }}>
                 {t('automation.geofence_triggers.cooldown', 'Cooldown (minutes):')}
               </label>
               <input
+                id="geofence-cooldown-minutes"
                 type="number"
                 value={newCooldownMinutes}
-                onChange={(e) => setNewCooldownMinutes(Math.max(0, parseInt(e.target.value) || 0))}
+                onChange={(e) => setNewCooldownMinutes(clampInt(e.target.value, 0, GEOFENCE_COOLDOWN_MINUTES_MAX))}
                 className="setting-input"
                 style={{ width: '100px' }}
                 min={0}
+                max={GEOFENCE_COOLDOWN_MINUTES_MAX}
               />
               <span className={layout.inlineHint} style={{ fontSize: '0.75rem', color: 'var(--color-text-subtle)' }}>
                 {t('automation.geofence_triggers.cooldown_help', 'Minimum time between triggers for each node. 0 = no cooldown.')}

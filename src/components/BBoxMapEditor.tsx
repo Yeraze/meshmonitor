@@ -23,6 +23,7 @@ import L from 'leaflet';
 import { useMap, useMapEvents } from 'react-leaflet';
 import { useTranslation } from 'react-i18next';
 import { BaseMap } from './map/BaseMap';
+import mapFrame from './map/EmbeddedMapFrame.module.css';
 
 export interface BBoxValue {
   minLat: number;
@@ -289,6 +290,8 @@ const BBoxMapEditor: React.FC<BBoxMapEditorProps> = ({ bbox, onChange, height = 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
       <div
+        className={mapFrame.frame}
+        data-testid="bbox-map-frame"
         style={{
           height,
           border: '1px solid var(--color-surface-active)',

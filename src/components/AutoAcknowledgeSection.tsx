@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { clampInt, COOLDOWN_SECONDS_MAX } from './automationInputLimits';
 import { useTranslation } from 'react-i18next';
 import { useToast } from './ToastContainer';
 import { useCsrfFetch } from '../hooks/useCsrfFetch';
@@ -549,8 +550,9 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
               <input
                 type="number"
                 value={localCooldownSeconds}
-                onChange={(e) => setLocalCooldownSeconds(Math.max(0, parseInt(e.target.value) || 0))}
+                onChange={(e) => setLocalCooldownSeconds(clampInt(e.target.value, 0, COOLDOWN_SECONDS_MAX))}
                 min={0}
+                max={COOLDOWN_SECONDS_MAX}
                 disabled={!localEnabled}
                 style={{ width: '80px', padding: '2px 4px' }}
               />

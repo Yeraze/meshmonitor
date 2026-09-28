@@ -2,6 +2,7 @@ import React, { useRef, useEffect } from 'react';
 import { useMapEvents, useMap } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import { BaseMap } from '../map/BaseMap';
+import mapFrame from '../map/EmbeddedMapFrame.module.css';
 
 export interface DefaultMapCenterPickerProps {
     lat: number | null;
@@ -76,7 +77,7 @@ export const DefaultMapCenterPicker: React.FC<DefaultMapCenterPickerProps> = ({
 
     return (
         <div>
-            <div style={{ height: '300px', width: '100%' }}>
+            <div className={mapFrame.frame} data-testid="default-center-map-frame" style={{ height: '300px', width: '100%' }}>
                 <BaseMap
                     center={initialCenter}
                     zoom={initialZoom}

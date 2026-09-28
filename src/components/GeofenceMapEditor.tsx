@@ -4,7 +4,9 @@ import { useMap, useMapEvents } from 'react-leaflet';
 import { useTranslation } from 'react-i18next';
 import type { GeofenceShape } from './auto-responder/types';
 import { BaseMap } from './map/BaseMap';
+import mapFrame from './map/EmbeddedMapFrame.module.css';
 import styles from './GeofenceMapEditor.module.css';
+import { GEOFENCE_RADIUS_KM_MAX } from './automationInputLimits';
 
 interface NodePosition {
   nodeNum: number;
@@ -406,7 +408,11 @@ const GeofenceMapEditor: React.FC<GeofenceMapEditorProps> = ({
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-      <div style={{ height: '400px', border: '1px solid var(--color-surface-active)', borderRadius: '8px', overflow: 'hidden' }}>
+      <div
+        className={mapFrame.frame}
+        data-testid="geofence-map-frame"
+        style={{ height: '400px', border: '1px solid var(--color-surface-active)', borderRadius: '8px', overflow: 'hidden' }}
+      >
         <BaseMap center={[30, 0]} zoom={3}>
           <MapDrawingLayer
             shapeType={shapeType}
@@ -473,6 +479,7 @@ const GeofenceMapEditor: React.FC<GeofenceMapEditorProps> = ({
               type="number"
               step="0.01"
               min="0.01"
+              max={GEOFENCE_RADIUS_KM_MAX}
               value={radiusKm}
               onChange={(e) => handleRadiusChange(e.target.value)}
               style={{

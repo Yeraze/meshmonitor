@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { clampInt, COOLDOWN_SECONDS_MAX } from './automationInputLimits';
 import { useTranslation } from 'react-i18next';
 import { useToast } from './ToastContainer';
 import { useCsrfFetch } from '../hooks/useCsrfFetch';
@@ -756,8 +757,9 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
               <input
                 type="number"
                 value={newCooldownSeconds}
-                onChange={(e) => setNewCooldownSeconds(Math.max(0, parseInt(e.target.value) || 0))}
+                onChange={(e) => setNewCooldownSeconds(clampInt(e.target.value, 0, COOLDOWN_SECONDS_MAX))}
                 min={0}
+                max={COOLDOWN_SECONDS_MAX}
                 disabled={!localEnabled}
                 className="setting-input"
                 style={{ width: '80px' }}
