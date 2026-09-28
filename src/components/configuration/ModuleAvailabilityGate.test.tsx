@@ -131,7 +131,7 @@ describe('ModuleAvailabilityGate notice placement (#5447)', () => {
     for (const name of gated) {
       const src = fs.readFileSync(path.resolve(__dirname, `${name}.tsx`), 'utf8');
       expect(src, `${name} must render <ModuleAvailabilityNotice /> after its </h3>`).toMatch(
-        /<\/h3>\s*<ModuleAvailabilityNotice \/>/
+        /<\/h3>\s*<ModuleAvailabilityNotice\b[^>]*\/>/
       );
     }
   });

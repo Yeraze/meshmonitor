@@ -4,6 +4,7 @@ import { useSaveBar } from '../../hooks/useSaveBar';
 import { UiIcon } from '../icons';
 import styles from './RangeTestConfigSection.module.css';
 import ModuleAvailabilityNotice from './ModuleAvailabilityNotice';
+import { useModuleExcluded } from './moduleAvailabilityContext';
 
 interface RangeTestConfigSectionProps {
   enabled: boolean;
@@ -36,6 +37,10 @@ const RangeTestConfigSection: React.FC<RangeTestConfigSectionProps> = ({
   onSave
 }) => {
   const { t } = useTranslation();
+  // A 2.8 build also reports Range Test in excluded_modules, so the gate is
+  // usually active too. Then the gate's notice carries the 2.8 context and ours
+  // stays hidden: two notices saying the same thing read as noise.
+  const gateExcluded = useModuleExcluded();
 
   // Track initial values for change detection
   const initialValuesRef = useRef({
@@ -97,9 +102,11 @@ const RangeTestConfigSection: React.FC<RangeTestConfigSectionProps> = ({
           ?
         </a>
       </h3>
-      <ModuleAvailabilityNotice />
+      <ModuleAvailabilityNotice
+        detail={isDisabled ? t('rangetest_config.removed_in_28_detail', 'It was removed from Meshtastic firmware in 2.8.') : undefined}
+      />
 
-      {isDisabled && (
+      {isDisabled && !gateExcluded && (
         <div className={styles.removedNotice} role="status">
           <span className={styles.removedNoticeIcon}><UiIcon name="alert" /></span>
           <span>
@@ -111,7 +118,8 @@ const RangeTestConfigSection: React.FC<RangeTestConfigSectionProps> = ({
         </div>
       )}
 
-      <div className={isDisabled ? styles.disabledControls : undefined}>
+      {/* The gate already greys its section out; a second opacity would stack. */}
+      <div className={isDisabled && !gateExcluded ? styles.disabledControls : undefined}>
         {/* Enable Module */}
         <div className="setting-item">
           <label htmlFor="rangetestEnabled" style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '0.5rem', width: '100%' }}>

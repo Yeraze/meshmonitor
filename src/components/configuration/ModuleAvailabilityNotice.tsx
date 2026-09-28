@@ -4,6 +4,15 @@ import { UiIcon } from '../icons';
 import { ModuleAvailabilityContext } from './moduleAvailabilityContext';
 import styles from './ModuleAvailabilityGate.module.css';
 
+interface ModuleAvailabilityNoticeProps {
+  /**
+   * Optional extra sentence that says why the module is missing, e.g. Range
+   * Test's removal in firmware 2.8. A section with its own "why" notice passes
+   * it here instead of drawing a second notice under the gate's one.
+   */
+  detail?: string;
+}
+
 /**
  * The "this firmware build excludes the module" notice (#5065).
  *
@@ -13,7 +22,7 @@ import styles from './ModuleAvailabilityGate.module.css';
  *
  * Renders nothing outside an excluding ModuleAvailabilityGate.
  */
-const ModuleAvailabilityNotice: React.FC = () => {
+const ModuleAvailabilityNotice: React.FC<ModuleAvailabilityNoticeProps> = ({ detail }) => {
   const { t } = useTranslation();
   const ctx = useContext(ModuleAvailabilityContext);
 
@@ -28,6 +37,7 @@ const ModuleAvailabilityNotice: React.FC = () => {
           '{{module}} is not included in this device\'s firmware build, so these settings cannot be changed.',
           { module: ctx.moduleName }
         )}
+        {detail ? ` ${detail}` : null}
       </span>
     </div>
   );
