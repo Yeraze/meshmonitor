@@ -11,6 +11,7 @@
 import { EventEmitter } from 'events';
 import { logger } from '../utils/logger.js';
 import { isBogusPosition } from '../utils/nullIsland.js';
+import { isCorruptMeshCoreContactRecord, sanitizeMeshCoreName } from '../utils/meshcoreName.js';
 import databaseService from '../services/database.js';
 import type { MeshcorePathfindingFilterSettings } from '../services/database.js';
 import type { MessageEventType, MessageEventProvenance } from '../db/repositories/messageEvents.js';
@@ -2157,7 +2158,15 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
       logger.debug(`[MeshCore:${this.sourceId}] Room post from ${authorPrefixHex} in room ${roomPubkeyPrefix} (${data.text.length} chars)`);
     } else if (event_type === 'contact_advertised' || event_type === 'contact_added') {
       const publicKey: string = data.public_key;
-      if (publicKey) {
+      // The serial link has no checksum, so a frame spliced by dropped bytes
+      // can parse as an advert whose name and type are binary junk. Drop it
+      // rather than create a phantom node or overwrite a real name.
+      const corruptReason = publicKey ? isCorruptMeshCoreContactRecord(data) : null;
+      if (corruptReason) {
+        logger.warn(
+          `[MeshCore:${this.sourceId}] Ignoring corrupt ${event_type} frame for ${publicKey.substring(0, 16)}… (${corruptReason})`,
+        );
+      } else if (publicKey) {
         // A live advert means this node is genuinely back — lift any removal
         // tombstone so it syncs normally again (#3878). The reporter's gone
         // room server never adverts, so it stays suppressed.
@@ -2174,7 +2183,7 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
           // `||` not `??`: zero-hop repeaters (and some firmware builds) emit
           // `contact_advertised` with adv_name === "", which `??` would pass
           // through and overwrite the known name with an empty string (#3756).
-          advName: data.adv_name || existing.advName,
+          advName: sanitizeMeshCoreName(data.adv_name) || existing.advName,
           advType: data.adv_type ?? existing.advType,
           lastAdvert: data.last_advert ?? existing.lastAdvert,
           latitude: data.latitude ?? existing.latitude,
@@ -3973,6 +3982,17 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
           // what resurrected deleted rows before (#3878). The tombstone expires
           // (or is cleared by a live advert), so a genuine re-add still syncs.
           if (this.isContactTombstoned(c.public_key)) continue;
+          // A contact frame spliced by dropped serial bytes (no checksum on
+          // the companion link) decodes as a record with binary junk in the
+          // name and type. Skip it: it is either a phantom key or a real key
+          // whose good name it would overwrite.
+          const corruptReason = isCorruptMeshCoreContactRecord(c);
+          if (corruptReason) {
+            logger.warn(
+              `[MeshCore:${this.sourceId}] Skipping corrupt contact record ${String(c.public_key).substring(0, 16)}… (${corruptReason})`,
+            );
+            continue;
+          }
           // Preserve the real Last Heard across reconnect (#3645) rather than
           // stamping the reconnect wall-clock, which reset every node's Last
           // Heard to "now". When the device reports no usable time, keep the
@@ -3995,8 +4015,10 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
           const heardMs = lastModMs !== undefined ? Math.min(lastModMs, Date.now()) : undefined;
           this.contacts.set(c.public_key, {
             publicKey: c.public_key,
-            advName: c.adv_name,
-            name: c.name,
+            // Clip a truncated trailing multi-byte char (e.g. a half emoji the
+            // sender cut at its 32-byte name limit) so it doesn't render as U+FFFD.
+            advName: sanitizeMeshCoreName(c.adv_name) ?? undefined,
+            name: sanitizeMeshCoreName(c.name) ?? undefined,
             rssi: c.rssi,
             snr: c.snr,
             advType: c.adv_type,
