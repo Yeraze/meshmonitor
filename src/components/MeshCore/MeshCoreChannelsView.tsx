@@ -169,7 +169,9 @@ export const MeshCoreChannelsView: React.FC<MeshCoreChannelsViewProps> = ({
   // writes, so the firmware slot indices never move.
   const [sortMode, setSortMode] = useState<ChannelSortMode>(() => loadChannelSortMode(sourceId));
   const [customOrder, setCustomOrder] = useState<number[]>(() => loadChannelCustomOrder(sourceId));
-  const [reordering, setReordering] = useState(false);
+  // The channel-set key (`channelIdsKey`) the reorder panel was opened
+  // against, or null when closed. `reordering` is derived from it below.
+  const [reorderingFor, setReorderingFor] = useState<string | null>(null);
   // Per-message scope/region override (#3701). `null` means "no override —
   // use the channel's resolved scope". A string is a one-off override applied
   // to the NEXT send only; it is never persisted to the channel row. Reset on
@@ -205,7 +207,7 @@ export const MeshCoreChannelsView: React.FC<MeshCoreChannelsViewProps> = ({
     setLastRead(loadChannelLastRead(sourceId));
     setSortMode(loadChannelSortMode(sourceId));
     setCustomOrder(loadChannelCustomOrder(sourceId));
-    setReordering(false);
+    setReorderingFor(null);
   }, [sourceId]);
 
   // Persist the sort preference whenever it changes.
@@ -260,7 +262,7 @@ export const MeshCoreChannelsView: React.FC<MeshCoreChannelsViewProps> = ({
       // useMeshCore already rewrote the saved Custom order (#5392); pick it
       // up, and drop any display-order draft built on the old slots.
       setCustomOrder(loadChannelCustomOrder(sourceId));
-      setReordering(false);
+      setReorderingFor(null);
       setReorderTick(v => v + 1);
     });
   }, [sourceId]);
@@ -327,9 +329,16 @@ export const MeshCoreChannelsView: React.FC<MeshCoreChannelsViewProps> = ({
   // The reorder panel snapshots the channel list when it opens. If the set of
   // channels changes underneath it (reconnect re-sync adds or drops a slot),
   // close it rather than let a stale draft be saved.
-  useEffect(() => {
-    setReordering(false);
-  }, [channelIdsKey]);
+  //
+  // This is derived during render, not done in a `useEffect([channelIdsKey])`.
+  // An effect runs after commit, so a click on Reorder landing between the
+  // commit that first shows the channel list and the effect flush was
+  // swallowed: React flushed the pending effect's `setReorderingFor(null)` after
+  // the click's toggle, and the panel never opened.
+  if (reorderingFor !== null && reorderingFor !== channelIdsKey) {
+    setReorderingFor(null);
+  }
+  const reordering = reorderingFor !== null && reorderingFor === channelIdsKey;
   useEffect(() => {
     if (!sourceId || !channelIdsKey) return;
     let cancelled = false;
@@ -636,7 +645,7 @@ export const MeshCoreChannelsView: React.FC<MeshCoreChannelsViewProps> = ({
     saveChannelCustomOrder(sourceId, order);
     setSortMode('custom');
     saveChannelSortMode(sourceId, 'custom');
-    setReordering(false);
+    setReorderingFor(null);
   }, [sourceId]);
 
   const unreadChannelCount = useMemo(
@@ -727,7 +736,7 @@ export const MeshCoreChannelsView: React.FC<MeshCoreChannelsViewProps> = ({
             <button
               type="button"
               className={`${styles.reorderButton} ${reordering ? styles.active : ''}`}
-              onClick={() => setReordering(r => !r)}
+              onClick={() => setReorderingFor(prev => (prev === channelIdsKey ? null : channelIdsKey))}
               aria-pressed={reordering}
               title={t('meshcore.channels.order.reorder_title', 'Set a custom channel order (MeshMonitor display only)')}
             >
@@ -740,7 +749,7 @@ export const MeshCoreChannelsView: React.FC<MeshCoreChannelsViewProps> = ({
             <MeshCoreChannelReorderList
               channels={baseOrderedChannels.map(c => ({ id: c.id, label: channelLabel(c) }))}
               onSave={handleSaveCustomOrder}
-              onCancel={() => setReordering(false)}
+              onCancel={() => setReorderingFor(null)}
             />
           ) : (<>
           {loadingChannels && channels.length === 0 && (

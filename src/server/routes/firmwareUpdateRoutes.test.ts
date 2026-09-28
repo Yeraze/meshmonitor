@@ -153,11 +153,15 @@ vi.mock('../meshtasticManager.js', () => ({
 // tests — resolveManager falls through to fallbackManager above, same as
 // the retired Proxy alias always did in this unmocked-registry environment.
 vi.mock('../sourceManagerRegistry.js', () => ({
-  sourceManagerRegistry: {},
+  sourceManagerRegistry: {
+    getAllManagers: () => [],
+    getManager: () => undefined,
+  },
 }));
 
 vi.mock('../sourceManagerTypes.js', () => ({
   getPrimaryMeshtasticManager: () => undefined,
+  isMeshtasticManager: (m: { sourceType?: string }) => m?.sourceType === 'meshtastic_tcp',
 }));
 
 // Mock environment config — issue #2981 guard reads meshtasticNodeIpProvided
@@ -184,6 +188,8 @@ vi.mock('../../utils/logger.js', () => ({
 
 import firmwareUpdateRoutes from './firmwareUpdateRoutes.js';
 
+const IDLE_STATUS = { state: 'idle', step: null, message: '', logs: [] };
+
 function createApp() {
   const app = express();
   app.use(express.json());
@@ -199,6 +205,9 @@ describe('firmwareUpdateRoutes', () => {
     // clearAllMocks resets call history but not implementations, so restore the
     // default (not bridged) — the bridged-node test overrides it to true.
     mockIsLocalNodeBridged.mockReturnValue(false);
+    // /update refuses while another update is running (#5424 follow-up), so
+    // default to idle; tests that need another state override it.
+    mockGetStatus.mockReturnValue(IDLE_STATUS);
     app = createApp();
   });
 
@@ -339,7 +348,7 @@ describe('firmwareUpdateRoutes', () => {
       ];
       mockFindReleaseByVersion.mockReturnValue(releases[0]);
       mockStartPreflight.mockReturnValue(undefined);
-      mockGetStatus.mockReturnValue({
+      mockGetStatus.mockReturnValueOnce(IDLE_STATUS).mockReturnValue({
         state: 'awaiting-confirm',
         step: 'preflight',
         message: 'Preflight complete',
@@ -453,7 +462,7 @@ describe('firmwareUpdateRoutes', () => {
 
       it('passes host:port through to preflight unchanged', async () => {
         mockFindReleaseByVersion.mockReturnValue(release);
-        mockGetStatus.mockReturnValue({ state: 'awaiting-confirm', step: 'preflight', message: '', logs: [] });
+        mockGetStatus.mockReturnValueOnce(IDLE_STATUS).mockReturnValue({ state: 'awaiting-confirm', step: 'preflight', message: '', logs: [] });
 
         const res = await send('10.0.0.5:5000');
 
@@ -567,7 +576,7 @@ describe('firmwareUpdateRoutes', () => {
   describe('POST /api/firmware/update with useStagedUpload (#5249)', () => {
     it('starts preflight against the staged upload without a targetVersion', async () => {
       mockGetStagedUpload.mockReturnValue({ originalName: 'firmware.bin', size: 4096 });
-      mockGetStatus.mockReturnValue({ state: 'awaiting-confirm', step: 'preflight', message: '', logs: [] });
+      mockGetStatus.mockReturnValueOnce(IDLE_STATUS).mockReturnValue({ state: 'awaiting-confirm', step: 'preflight', message: '', logs: [] });
 
       const res = await request(app)
         .post('/api/firmware/update')
@@ -669,7 +678,7 @@ describe('firmwareUpdateRoutes', () => {
   describe('POST /api/firmware/update with useCustomUrl (#5011)', () => {
     it('starts preflight against the saved URL without a targetVersion', async () => {
       mockGetCustomUrl.mockResolvedValue('https://raw.githubusercontent.com/o/r/main/firmware.bin');
-      mockGetStatus.mockReturnValue({ state: 'awaiting-confirm', step: 'preflight', message: '', logs: [] });
+      mockGetStatus.mockReturnValueOnce(IDLE_STATUS).mockReturnValue({ state: 'awaiting-confirm', step: 'preflight', message: '', logs: [] });
 
       const res = await request(app)
         .post('/api/firmware/update')
@@ -695,7 +704,7 @@ describe('firmwareUpdateRoutes', () => {
       // Belt and braces with the save-time rewrite: a URL stored by an older
       // build never reaches fetch in its page form.
       mockGetCustomUrl.mockResolvedValue('https://github.com/o/r/blob/main/firmware.bin');
-      mockGetStatus.mockReturnValue({ state: 'awaiting-confirm', step: 'preflight', message: '', logs: [] });
+      mockGetStatus.mockReturnValueOnce(IDLE_STATUS).mockReturnValue({ state: 'awaiting-confirm', step: 'preflight', message: '', logs: [] });
 
       await request(app)
         .post('/api/firmware/update')

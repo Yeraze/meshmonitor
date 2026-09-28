@@ -9,19 +9,104 @@ import express, { Router, Request, Response } from 'express';
 import { requireAdmin } from '../auth/authMiddleware.js';
 import { firmwareUpdateService, OtaPreflightError } from '../services/firmwareUpdateService.js';
 import { resolveFirmwareDownloadUrl } from '../services/firmwareUrl.js';
-import { fallbackManager } from '../meshtasticManager.js';
+import { fallbackManager, type MeshtasticManager } from '../meshtasticManager.js';
 import { sourceManagerRegistry } from '../sourceManagerRegistry.js';
-import { getPrimaryMeshtasticManager } from '../sourceManagerTypes.js';
+import { getPrimaryMeshtasticManager, isMeshtasticManager } from '../sourceManagerTypes.js';
 import { getEnvironmentConfig } from '../config/environment.js';
 import { logger } from '../../utils/logger.js';
 import path from 'path';
 import { parseOtaGateway, isIpv6Literal } from '../../utils/otaGateway.js';
 import { fail } from '../utils/apiResponse.js';
+import { refuseNonMeshtasticSource } from '../utils/requireMeshtasticDeviceSource.js';
+import { resolveSourceConnectionConfig } from '../utils/resolveSourceConnectionConfig.js';
+import databaseService from '../../services/database.js';
 
 const router = Router();
 
-// All firmware routes require admin access
+// All firmware routes require admin access. OTA replaces a node's firmware and
+// frees its TCP slot, so it stays admin-only rather than per-source
+// configuration:write (#5424 follow-up keeps the existing gate).
 router.use(requireAdmin());
+
+/** The optional `sourceId` a request carries in its JSON body, trimmed. */
+function bodySourceId(req: Request): string | undefined {
+  const raw = req.body?.sourceId;
+  if (typeof raw !== 'string') return undefined;
+  const trimmed = raw.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
+}
+
+/** A source's display name for error messages; falls back to the id. */
+async function sourceLabel(sourceId: string): Promise<string> {
+  try {
+    const row = await databaseService.sources.getSource(sourceId);
+    return row?.name ? `"${row.name}"` : `"${sourceId}"`;
+  } catch (err) {
+    logger.debug(`[FirmwareRoutes] Could not look up source ${sourceId} for its name:`, err);
+    return `"${sourceId}"`;
+  }
+}
+
+/**
+ * Resolve the Meshtastic manager an OTA run will disconnect, flash and
+ * reconnect (#5424 follow-up). Sends the refusal and returns null when the
+ * request cannot name a flashable source.
+ *
+ * - `sourceId` given: it must be a registered, connected Meshtastic TCP source.
+ *   MQTT, MeshCore and Reticulum sources are refused (400
+ *   SOURCE_NOT_MESHTASTIC), as is a disconnected TCP source (409
+ *   SOURCE_NOT_CONNECTED) or an unknown id (404 SOURCE_NOT_FOUND).
+ * - No `sourceId`: accepted only on a legacy install with at most one
+ *   Meshtastic source, where the primary (or `fallbackManager`) is the only
+ *   radio there is. With two or more the caller must say which one: guessing
+ *   the primary would free the wrong node's TCP slot (400 SOURCE_ID_REQUIRED).
+ */
+async function resolveOtaManager(
+  res: Response,
+  sourceId: string | undefined,
+): Promise<MeshtasticManager | null> {
+  if (!sourceId) {
+    const meshtasticCount = sourceManagerRegistry.getAllManagers().filter(isMeshtasticManager).length;
+    if (meshtasticCount > 1) {
+      fail(
+        res,
+        400,
+        'SOURCE_ID_REQUIRED',
+        'sourceId is required: this install has more than one Meshtastic source, so the ' +
+          'OTA update must name the source whose node it flashes.',
+      );
+      return null;
+    }
+    return getPrimaryMeshtasticManager(sourceManagerRegistry) ?? fallbackManager;
+  }
+  if (await refuseNonMeshtasticSource(res, sourceId, 'OTA firmware updates')) return null;
+  const manager = sourceManagerRegistry.getManager(sourceId);
+  if (!manager || !isMeshtasticManager(manager)) {
+    fail(res, 404, 'SOURCE_NOT_FOUND', `Source "${sourceId}" was not found.`);
+    return null;
+  }
+  return manager;
+}
+
+/**
+ * Refuse a wizard action whose `sourceId` names a different source than the
+ * running update. The update state is global (one OTA at a time), so without
+ * this a user on source A's page could confirm or cancel source B's update
+ * believing it was A's. A request with no sourceId (legacy client) is allowed.
+ */
+async function refuseOtherSourceAction(req: Request, res: Response): Promise<boolean> {
+  const requested = bodySourceId(req);
+  const active = firmwareUpdateService.getStatus().sourceId;
+  if (!requested || !active || requested === active) return false;
+  fail(
+    res,
+    409,
+    'OTA_SOURCE_MISMATCH',
+    `The running firmware update belongs to source ${await sourceLabel(active)}, not this one.`,
+    { activeSourceId: active },
+  );
+  return true;
+}
 
 /**
  * GET /api/firmware/status
@@ -232,12 +317,30 @@ router.post('/update', async (req: Request, res: Response) => {
       });
     }
 
+    // One OTA at a time, across all sources: the service holds a single
+    // update's state. Say which source is busy instead of a bare 500.
+    const current = firmwareUpdateService.getStatus();
+    if (current.state !== 'idle') {
+      const busy = current.sourceId ? ` on source ${await sourceLabel(current.sourceId)}` : '';
+      return fail(
+        res,
+        409,
+        'OTA_IN_PROGRESS',
+        `A firmware update is already in progress${busy}. Finish or cancel it first.`,
+        current.sourceId ? { activeSourceId: current.sourceId } : undefined,
+      );
+    }
+
+    // #5424 follow-up: the update disconnects and reconnects THIS source's
+    // manager, never the primary's.
+    const sourceId = bodySourceId(req);
+    const mgr = await resolveOtaManager(res, sourceId);
+    if (!mgr) return;
+
     // Refuse OTA on a bridged node. A serial/BLE-only device fronted by a TCP
     // proxy (meshtasticd, mesh-bridge, …) reports no native WiFi/Ethernet and
     // cannot serve an OTA HTTP endpoint, so the flash would target the proxy,
     // not the radio. The frontend hides the button, but enforce server-side too.
-    // firmwareUpdateService operates on the primary/fallback manager (never undefined).
-    const mgr = getPrimaryMeshtasticManager(sourceManagerRegistry) ?? fallbackManager;
     if (mgr.isLocalNodeBridged()) {
       return res.status(400).json({
         success: false,
@@ -300,6 +403,28 @@ router.post('/update', async (req: Request, res: Response) => {
       });
     }
 
+    // The gateway must be the source's own node. Otherwise the run would free
+    // this source's TCP slot and then flash some other host.
+    if (sourceId) {
+      const conn = await resolveSourceConnectionConfig(sourceId);
+      if (!conn.host) {
+        return fail(
+          res,
+          400,
+          'OTA_NO_HOST',
+          'No node host is configured for this source, so it cannot be flashed over the air.',
+        );
+      }
+      if (conn.host.trim().toLowerCase() !== gatewayHost.trim().toLowerCase()) {
+        return fail(
+          res,
+          400,
+          'OTA_GATEWAY_MISMATCH',
+          `The gateway ${gatewayHost} is not this source's node (${conn.host}).`,
+        );
+      }
+    }
+
     // The meshtastic CLI splits `--host` on ':' to find a port, so it cannot
     // connect to an IPv6 literal at all. Fail up front with a clear reason
     // rather than after the node has been disconnected (#5424).
@@ -327,6 +452,7 @@ router.post('/update', async (req: Request, res: Response) => {
       hwModel: Number(hwModel),
       useStagedUpload: wantsStagedUpload,
       customUrl: resolvedCustomUrl,
+      sourceId,
     });
 
     const status = firmwareUpdateService.getStatus();
@@ -350,6 +476,7 @@ router.post('/update', async (req: Request, res: Response) => {
 router.post('/update/confirm', async (req: Request, res: Response) => {
   try {
     const { gatewayIp, nodeId } = req.body;
+    if (await refuseOtherSourceAction(req, res)) return;
     const status = firmwareUpdateService.getStatus();
 
     if (status.state !== 'awaiting-confirm' || !status.step) {
@@ -520,8 +647,10 @@ router.post('/update/confirm', async (req: Request, res: Response) => {
  * POST /api/firmware/update/cancel
  * Cancel an in-progress update
  */
-router.post('/update/cancel', async (_req: Request, res: Response) => {
+router.post('/update/cancel', async (req: Request, res: Response) => {
   try {
+    if (await refuseOtherSourceAction(req, res)) return;
+    // Reconnects the update's own source (stored at preflight), not the primary.
     await firmwareUpdateService.cancelUpdate();
     return res.json({ success: true, message: 'Update cancelled' });
   } catch (error) {
@@ -536,8 +665,9 @@ router.post('/update/cancel', async (_req: Request, res: Response) => {
  * Complete a successful update: reset state, force full disconnect→reconnect
  * so all node data is re-downloaded with the new firmware version.
  */
-router.post('/update/done', async (_req: Request, res: Response) => {
+router.post('/update/done', async (req: Request, res: Response) => {
   try {
+    if (await refuseOtherSourceAction(req, res)) return;
     await firmwareUpdateService.completeUpdate();
     return res.json({ success: true, message: 'Update completed, reconnecting to node' });
   } catch (error) {
@@ -551,8 +681,9 @@ router.post('/update/done', async (_req: Request, res: Response) => {
  * POST /api/firmware/update/retry
  * Retry a failed flash step — directly re-executes the flash with existing firmware
  */
-router.post('/update/retry', async (_req: Request, res: Response) => {
+router.post('/update/retry', async (req: Request, res: Response) => {
   try {
+    if (await refuseOtherSourceAction(req, res)) return;
     firmwareUpdateService.retryFlash();
     const status = firmwareUpdateService.getStatus();
 
