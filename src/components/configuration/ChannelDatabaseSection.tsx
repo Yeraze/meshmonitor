@@ -23,6 +23,7 @@ import { useToast } from '../ToastContainer';
 import { logger } from '../../utils/logger';
 import { REBROADCAST_MODE_OPTIONS } from './constants';
 import { normalizeChannelUrlPskToBase64, getPskBase64ByteLength } from '../../utils/channelUrl';
+import styles from './ChannelDatabaseSection.module.css';
 
 /**
  * Shape of a decoded channel returned by `apiService.decodeChannelUrl`
@@ -105,7 +106,7 @@ const SortableChannelCard: React.FC<SortableChannelCardProps> = ({
 
   return (
     <div ref={setNodeRef} style={style}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+      <div className={styles.cardRow}>
         {/* Drag handle */}
         <div
           {...attributes}
@@ -130,8 +131,8 @@ const SortableChannelCard: React.FC<SortableChannelCardProps> = ({
             <circle cx="11" cy="13" r="1.5" />
           </svg>
         </div>
-        <div style={{ flex: 1 }}>
-          <h4 style={{ margin: 0, color: 'var(--color-text)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+        <div className={styles.cardInfo}>
+          <h4 style={{ margin: 0, color: 'var(--color-text)', display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
             {channel.name}
             {channel.isEnabled ? (
               <span style={{ color: 'var(--color-success)', fontSize: '0.8rem' }}>{t('channel_database.enabled')}</span>
@@ -162,7 +163,7 @@ const SortableChannelCard: React.FC<SortableChannelCardProps> = ({
             <div>{t('channel_database.last_decrypted')}: {formatTimestamp(channel.lastDecryptedAt)}</div>
           </div>
         </div>
-        <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+        <div className={styles.cardActions}>
           <button
             onClick={() => onToggleEnabled(channel)}
             style={{
@@ -958,7 +959,7 @@ const ChannelDatabaseSection: React.FC<ChannelDatabaseSectionProps> = ({ isAdmin
               items={channels.map(ch => ch.id)}
               strategy={verticalListSortingStrategy}
             >
-              <div style={{ display: 'grid', gap: '1rem' }}>
+              <div className={styles.cardList}>
                 {channels.map((channel) => (
                   <SortableChannelCard
                     key={channel.id}
