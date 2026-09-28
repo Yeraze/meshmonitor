@@ -11,9 +11,10 @@
  *  - MapLibre raster sources cannot render a vector (`.pbf`/`.mvt`) tileset
  *    without a full style JSON (out of scope this phase) — vector-only
  *    tilesets fall back to the default `osm` raster basemap for 3D only;
- *    the 2D view is unaffected.
+ *    the 2D view is unaffected. Style-based vector presets (CARTO Voyager
+ *    etc., #5448) instead use their raster twin (`TilesetConfig.url`).
  */
-import { getTilesetById, TILESETS, type TilesetId, type CustomTileset } from './tilesets';
+import { getTilesetById, getRasterTileset, type TilesetId, type CustomTileset } from './tilesets';
 import { withCartoKey } from './cartoKey';
 
 export interface Basemap3DSource {
@@ -48,17 +49,10 @@ export function resolve3DBasemap(
   custom: CustomTileset[] = [],
   cartoApiKey?: string | null,
 ): Basemap3DSource {
-  const tileset = getTilesetById(tilesetId, custom);
-
-  if (tileset.isVector) {
-    const fallback = TILESETS.osm;
-    return {
-      tiles: expandSubdomains(fallback.url),
-      attribution: fallback.attribution,
-      maxZoom: fallback.maxZoom,
-      usedFallback: true,
-    };
-  }
+  // Style-based vector presets (#5448) draw their raster twin (`url`) — 3D is
+  // still raster-only (CARTO_API_KEY_PLAN.md Phase 3). Other vector tilesets
+  // have no raster form and fall back to `osm`.
+  const { tileset, substituted } = getRasterTileset(getTilesetById(tilesetId, custom));
 
   return {
     // #4934: append the Carto key to each expanded subdomain URL (no-op for
@@ -66,7 +60,7 @@ export function resolve3DBasemap(
     tiles: expandSubdomains(tileset.url).map((u) => withCartoKey(u, cartoApiKey)),
     attribution: tileset.attribution,
     maxZoom: tileset.maxZoom,
-    usedFallback: false,
+    usedFallback: substituted,
   };
 }
 

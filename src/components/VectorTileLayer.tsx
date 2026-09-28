@@ -3,12 +3,16 @@ import { useMap } from 'react-leaflet';
 import L from 'leaflet';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import '@maplibre/maplibre-gl-leaflet';
+import { createCartoTransformRequest } from '../config/cartoKey';
+import { resolveStyleUrl } from '../config/tilesets';
 
 // Extend Leaflet types to include MapLibre GL
 declare module 'leaflet' {
   interface MaplibreGLOptions {
     style: unknown;
     attribution?: string;
+    /** Forwarded by the adapter to `new maplibregl.Map(options)`. */
+    transformRequest?: (url: string, resourceType?: string) => { url: string } | undefined;
   }
   function maplibreGL(options: MaplibreGLOptions): L.Layer;
 }
@@ -18,6 +22,21 @@ interface VectorTileLayerProps {
   attribution?: string;
   maxZoom?: number;
   styleJson?: Record<string, unknown>;
+  /** Complete MapLibre GL style URL (#5448, e.g. a CARTO GL style). When set,
+   *  MapLibre loads this style as-is and `url`/`styleJson` are ignored. */
+  styleUrl?: string;
+  /** Carto basemap API key (#4934/#5448). Appended to every Carto CDN request
+   *  (style, tiles, sprites, glyphs) through MapLibre's `transformRequest`. */
+  cartoApiKey?: string | null;
+}
+
+/** The app's base URL: the server-injected `<base href>` when deployed under a
+ *  `BASE_URL` sub-path, else the origin root. Deliberately NOT
+ *  `document.baseURI`, which without a `<base>` tag is the current route
+ *  (e.g. `/nodes/…`) and would resolve a bundled style under that route. */
+function appBaseUri(): string {
+  const href = document.querySelector('base')?.getAttribute('href') || '/';
+  return new URL(href, window.location.origin).href;
 }
 
 /**
@@ -26,7 +45,7 @@ interface VectorTileLayerProps {
  * Uses MapLibre GL renderer wrapped as a Leaflet layer to display vector tiles.
  * Vector tiles are rendered client-side with a default style, or a custom styleJson.
  */
-export function VectorTileLayer({ url, attribution, maxZoom = 14, styleJson }: VectorTileLayerProps) {
+export function VectorTileLayer({ url, attribution, maxZoom = 14, styleJson, styleUrl, cartoApiKey }: VectorTileLayerProps) {
   const map = useMap();
 
   useEffect(() => {
@@ -34,7 +53,11 @@ export function VectorTileLayer({ url, attribution, maxZoom = 14, styleJson }: V
 
     let style: unknown;
 
-    if (styleJson) {
+    if (styleUrl) {
+      // A complete published GL style: hand it to MapLibre untouched. The
+      // patch-sources / default-style branches below assume a `.pbf` template.
+      style = resolveStyleUrl(styleUrl, appBaseUri());
+    } else if (styleJson) {
       // Deep-clone and patch all vector sources to point at the active tile URL
       const patched = JSON.parse(JSON.stringify(styleJson));
       if (patched.sources && typeof patched.sources === 'object') {
@@ -302,7 +325,10 @@ export function VectorTileLayer({ url, attribution, maxZoom = 14, styleJson }: V
     try {
       vectorLayer = L.maplibreGL({
         style: style,
-        attribution: attribution
+        attribution: attribution,
+        // Appends the Carto key to Carto-CDN requests only; every other host
+        // (self-hosted tiles, same-origin styles) passes through untouched.
+        transformRequest: createCartoTransformRequest(cartoApiKey),
       });
 
       // Add to map
@@ -318,7 +344,7 @@ export function VectorTileLayer({ url, attribution, maxZoom = 14, styleJson }: V
         map.removeLayer(vectorLayer);
       } catch { /* layer may already be removed */ }
     };
-  }, [map, url, attribution, maxZoom, styleJson]);
+  }, [map, url, attribution, maxZoom, styleJson, styleUrl, cartoApiKey]);
 
   return null;
 }

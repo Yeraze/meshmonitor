@@ -61,3 +61,27 @@ export function withCartoKey(url: string, key: string | null | undefined): strin
   const separator = base.includes('?') ? '&' : '?';
   return `${base}${separator}key=${encodeURIComponent(key)}${fragment}`;
 }
+
+/** Shape of MapLibre's `transformRequest` return value that we use. */
+export interface CartoTransformedRequest {
+  url: string;
+}
+
+/**
+ * Build a MapLibre `transformRequest` hook that appends the Carto key to every
+ * request aimed at the Carto CDN (#5448, CARTO_API_KEY_PLAN.md Phase 2).
+ *
+ * One hook covers everything a Carto GL style pulls in — the style.json, the
+ * TileJSON, the vector tiles on `tiles-{a..d}.basemaps.cartocdn.com`, sprites
+ * and glyphs — so we never depend on the key being copied into sub-URLs.
+ * Requests to any other host return `undefined`, which tells MapLibre to use
+ * the request unchanged. With no key the hook is a no-op for every URL.
+ */
+export function createCartoTransformRequest(
+  key: string | null | undefined,
+): (url: string) => CartoTransformedRequest | undefined {
+  return (url: string) => {
+    if (!key || !isCartoUrl(url)) return undefined;
+    return { url: withCartoKey(url, key) };
+  };
+}
