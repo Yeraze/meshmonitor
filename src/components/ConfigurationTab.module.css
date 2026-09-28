@@ -43,6 +43,15 @@
  */
 
 /*
+ * Reboot / Purge / Reload buttons in the warning box. As a single-line flex
+ * row the last button ended at x=421 on a 390px viewport, so the page
+ * scrolled sideways. Wrapping has no effect when they fit, so no media query.
+ */
+.dangerActions {
+  flex-wrap: wrap;
+}
+
+/*
  * Gated on the landscape half of the union breakpoint only. A portrait phone
  * must NOT get a rail: at 390px wide, 160px of it is not spare width.
  * `(max-height: 500px) and (orientation: landscape)` matches the shell's own

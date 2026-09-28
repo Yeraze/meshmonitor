@@ -25,6 +25,7 @@ import PatternExamples from './auto-responder/PatternExamples';
 import ScriptManagement from './auto-responder/ScriptManagement';
 import { UiIcon } from './icons';
 import apiService from '../services/api';
+import layout from './AutomationFormLayout.module.css';
 
 const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
   enabled,
@@ -651,8 +652,8 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
             </span>
           </label>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', marginTop: '0.5rem' }}>
-            <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'flex-start' }}>
-              <div style={{ flex: '1', position: 'relative' }}>
+            <div className={layout.wrapRow} style={{ display: 'flex', gap: '0.5rem', alignItems: 'flex-start' }}>
+              <div className={layout.growField} style={{ flex: '1', position: 'relative' }}>
             <input
               type="text"
               value={newTrigger}
@@ -695,7 +696,7 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
               <option value="script">{t('auto_responder.type_script')}</option>
               <option value="mailbox">Mailbox</option>
             </select>
-            <div style={{ flex: '2' }}>
+            <div className={layout.growField} style={{ flex: '2' }}>
               {newResponseType === 'mailbox' ? (
                 <span style={{ fontSize: '0.75rem', color: 'var(--color-text-subtle)' }}>
                   Built-in async message store ("mesh voicemail"). No response text needed.

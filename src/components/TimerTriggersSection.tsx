@@ -10,6 +10,7 @@ import { useSaveBar } from '../hooks/useSaveBar';
 import ScriptTestModal from './ScriptTestModal';
 import { UiIcon } from './icons';
 import apiService from '../services/api';
+import layout from './AutomationFormLayout.module.css';
 
 /**
  * Format script for dropdown display
@@ -449,7 +450,7 @@ const TimerTriggersSection: React.FC<TimerTriggersSectionProps> = ({
               </div>
             )}
 
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <div className={layout.wrapRow} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
               <label style={{ minWidth: '120px', fontSize: '0.9rem' }}>
                 {t('automation.timer_triggers.channel', 'Channel:')}
               </label>

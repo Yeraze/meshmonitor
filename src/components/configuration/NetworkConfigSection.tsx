@@ -373,7 +373,7 @@ const NetworkConfigSection: React.FC<NetworkConfigSectionProps> = ({
           placeholder="meshtastic.pool.ntp.org"
           maxLength={32}
           className="setting-input"
-          style={{ width: '400px' }}
+          style={{ width: '400px', maxWidth: '100%' }}
         />
       </div>
 
@@ -391,7 +391,7 @@ const NetworkConfigSection: React.FC<NetworkConfigSectionProps> = ({
           placeholder="192.168.1.100:514"
           maxLength={32}
           className="setting-input"
-          style={{ width: '400px' }}
+          style={{ width: '400px', maxWidth: '100%' }}
         />
       </div>
 

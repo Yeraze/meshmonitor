@@ -4,6 +4,7 @@ import { useMap, useMapEvents } from 'react-leaflet';
 import { useTranslation } from 'react-i18next';
 import type { GeofenceShape } from './auto-responder/types';
 import { BaseMap } from './map/BaseMap';
+import styles from './GeofenceMapEditor.module.css';
 
 interface NodePosition {
   nodeNum: number;
@@ -417,16 +418,7 @@ const GeofenceMapEditor: React.FC<GeofenceMapEditorProps> = ({
       </div>
 
       {shapeType === 'circle' && (
-        <div
-          style={{
-            display: 'grid',
-            gridTemplateColumns: '1fr 1fr 1fr',
-            gap: '8px',
-            padding: '12px',
-            background: 'var(--color-surface)',
-            borderRadius: '8px',
-          }}
-        >
+        <div className={styles.circleFields} data-testid="geofence-circle-fields">
           <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
             <label style={{ fontSize: '12px', color: 'var(--color-text-subtle)' }}>
               {t('automation.geofence_triggers.center_lat')}

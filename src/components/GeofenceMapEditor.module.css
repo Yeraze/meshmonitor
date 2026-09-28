@@ -1,0 +1,24 @@
+/*
+ * Circle-geofence fields (Center Lat / Center Lng / Radius).
+ *
+ * This was a fixed `1fr 1fr 1fr` grid. A `1fr` track cannot shrink below its
+ * content, and a number input's intrinsic width is ~190px on mobile, so at a
+ * 390px viewport the grid measured 469px inside a 276px box and pushed the page
+ * sideways. auto-fit + minmax drops to two columns (or one) when the box is
+ * narrow, and three on desktop, with no media query.
+ */
+
+.circleFields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(7rem, 1fr));
+  gap: 8px;
+  padding: 12px;
+  background: var(--color-surface);
+  border-radius: 8px;
+}
+
+.circleFields input {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
