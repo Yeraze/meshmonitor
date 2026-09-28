@@ -2,6 +2,7 @@ import React from 'react';
 import { useTranslation } from 'react-i18next';
 import { MODEM_PRESET_OPTIONS, REGION_OPTIONS } from '../configuration/constants';
 import BroadcastTargetsEditor from '../configuration/BroadcastTargetsEditor';
+import statusMessageStyles from '../configuration/StatusMessageConfigSection.module.css';
 import {
   MESH_BEACON_MIN_INTERVAL_SECS,
   MESH_BEACON_MESSAGE_MAX_BYTES,
@@ -702,23 +703,17 @@ export const ModuleConfigurationSection: React.FC<ModuleConfigurationSectionProp
                 {t('statusmessage_config.node_status_description', 'A short status message displayed on the node. Maximum 80 characters.')}
               </span>
             </label>
-            <div style={{ position: 'relative' }}>
+            <div className={statusMessageStyles.field}>
               <input
                 type="text"
                 maxLength={80}
                 value={statusMessageNodeStatus}
                 onChange={(e) => onStatusMessageConfigChange('nodeStatus', e.target.value)}
                 disabled={isExecuting || statusMessageIsDisabled}
-                className="setting-input"
+                className={`setting-input ${statusMessageStyles.input}`}
                 placeholder={t('statusmessage_config.node_status_placeholder', 'Enter status message...')}
               />
-              <span style={{
-                position: 'absolute',
-                right: '0.5rem',
-                bottom: '-1.2rem',
-                fontSize: '0.75rem',
-                color: statusMessageNodeStatus.length >= 70 ? 'var(--color-caution)' : 'var(--color-text-subtle)'
-              }}>
+              <span className={statusMessageNodeStatus.length >= 70 ? `${statusMessageStyles.counter} ${statusMessageStyles.counterNearLimit}` : statusMessageStyles.counter}>
                 {statusMessageNodeStatus.length}/80
               </span>
             </div>

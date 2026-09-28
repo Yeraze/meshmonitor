@@ -1,6 +1,7 @@
 import React, { useRef, useMemo, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSaveBar } from '../../hooks/useSaveBar';
+import styles from './StatusMessageConfigSection.module.css';
 
 interface StatusMessageConfigSectionProps {
   nodeStatus: string;
@@ -93,24 +94,21 @@ const StatusMessageConfigSection: React.FC<StatusMessageConfigSectionProps> = ({
               {t('statusmessage_config.node_status_description', 'A short status message displayed on the node. Maximum 80 characters.')}
             </span>
           </label>
-          <div style={{ position: 'relative' }}>
+          <div className={styles.field}>
             <input
               id="statusMessageNodeStatus"
               type="text"
               maxLength={80}
               value={nodeStatus}
               onChange={(e) => setNodeStatus(e.target.value)}
-              className="setting-input"
+              className={`setting-input ${styles.input}`}
               disabled={isDisabled}
               placeholder={t('statusmessage_config.node_status_placeholder', 'Enter status message...')}
             />
-            <span style={{
-              position: 'absolute',
-              right: '0.5rem',
-              bottom: '-1.2rem',
-              fontSize: '0.75rem',
-              color: nodeStatus.length >= 70 ? 'var(--color-caution)' : 'var(--color-text-subtle)'
-            }}>
+            <span
+              className={nodeStatus.length >= 70 ? `${styles.counter} ${styles.counterNearLimit}` : styles.counter}
+              data-testid="status-message-counter"
+            >
               {nodeStatus.length}/80
             </span>
           </div>
