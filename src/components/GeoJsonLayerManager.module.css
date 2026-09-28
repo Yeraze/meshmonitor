@@ -21,10 +21,15 @@
 /*
  * The name field takes the free space. Its floor keeps it usable and makes it
  * wrap to a line of its own on a phone; min() stops the floor exceeding the row.
+ *
+ * Keep the floor at or below ~8.9rem. At a 1280px window the settings section
+ * is 497px wide and the row's other controls plus gaps take ~354px, so a 9rem
+ * (144px) floor made the row 498px and wrapped Delete to a second line. 7.5rem
+ * leaves ~22px of slack there.
  */
 .nameInput {
-  flex: 1 1 9rem;
-  min-width: min(100%, 9rem);
+  flex: 1 1 7.5rem;
+  min-width: min(100%, 7.5rem);
 }
 
 .styleRow {

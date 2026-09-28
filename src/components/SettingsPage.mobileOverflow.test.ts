@@ -66,6 +66,23 @@ describe('Map overlay layer rows fit a phone', () => {
     expect(tsx).not.toMatch(/style=\{\{ flex: 1, padding: '2px 6px'/);
   });
 
+  it('the name floor keeps the whole row on one line in a 497px desktop section', () => {
+    // Measured at a 1280px window: the settings section is 497px wide and the
+    // row's other controls (Visible, Public, Disable click popup, Color,
+    // Delete) plus their 12px gaps take 354.4px. A 9rem (144px) floor needed
+    // 498.4px and wrapped Delete to a second line.
+    const SECTION_PX = 497;
+    const OTHER_CONTROLS_PX = 354.4;
+    const REM_PX = 16;
+    const rule = css.match(/\.nameInput\s*\{([^}]*)\}/)?.[1] ?? '';
+    const floorRem = Number(rule.match(/min-width:\s*min\(100%,\s*([\d.]+)rem\)/)?.[1]);
+    const basisRem = Number(rule.match(/flex:\s*1 1 ([\d.]+)rem/)?.[1]);
+    expect(floorRem).toBeGreaterThan(0);
+    expect(basisRem).toBeGreaterThan(0);
+    expect(OTHER_CONTROLS_PX + floorRem * REM_PX).toBeLessThanOrEqual(SECTION_PX);
+    expect(OTHER_CONTROLS_PX + basisRem * REM_PX).toBeLessThanOrEqual(SECTION_PX);
+  });
+
   it('uses no viewport media query', () => {
     expect(css).not.toMatch(/@media/);
   });
