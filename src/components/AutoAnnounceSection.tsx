@@ -43,6 +43,11 @@ interface AutoAnnounceSectionProps {
 
 const DEFAULT_MESSAGE = 'MeshMonitor {VERSION} online for {DURATION} {FEATURES}';
 
+// Stable default for `nodeInfoChannels`. An inline `= []` default is a new
+// array every render; the re-seed effect below depends on it and sets state,
+// so rendering without the prop re-rendered forever.
+const EMPTY_CHANNELS: readonly number[] = Object.freeze([]);
+
 const AutoAnnounceSection: React.FC<AutoAnnounceSectionProps> = ({
   enabled,
   intervalHours,
@@ -64,7 +69,7 @@ const AutoAnnounceSection: React.FC<AutoAnnounceSectionProps> = ({
   onHopLimitChange,
   // NodeInfo broadcasting props
   nodeInfoEnabled = false,
-  nodeInfoChannels = [],
+  nodeInfoChannels = EMPTY_CHANNELS as number[],
   nodeInfoDelaySeconds = 30,
   onNodeInfoEnabledChange,
   onNodeInfoChannelsChange,

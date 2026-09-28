@@ -138,10 +138,6 @@ describe('Automation sections do not report phantom unsaved changes', () => {
       announceOnStart: false,
       useSchedule: false,
       schedule: '',
-      // Pass explicitly (as AutomationTab does): the component's `= []`
-      // default param is a fresh array per render, and its re-seed effect
-      // depends on it, so omitting it re-renders forever.
-      nodeInfoChannels: [] as number[],
       channels,
       baseUrl: '',
       onEnabledChange: vi.fn(),
@@ -153,6 +149,35 @@ describe('Automation sections do not report phantom unsaved changes', () => {
       onScheduleChange: vi.fn(),
     };
     render(<AutoAnnounceSection {...props} />);
+    expect(lastHasChanges('auto-announce')).toBe(false);
+  });
+
+  it('Auto Announce: rendering without nodeInfoChannels settles instead of looping', () => {
+    // The `nodeInfoChannels` default used to be an inline `= []`: a new array
+    // each render, in the deps of an effect that sets state, so it re-rendered
+    // until the worker ran out of heap. A settled render calls useSaveBar only
+    // a handful of times.
+    const props = {
+      enabled: false,
+      intervalHours: 6,
+      message: 'MeshMonitor {VERSION} online for {DURATION} {FEATURES}',
+      channelIndexes: [0],
+      announceOnStart: false,
+      useSchedule: false,
+      schedule: '0 */6 * * *',
+      channels,
+      baseUrl: '',
+      onEnabledChange: vi.fn(),
+      onIntervalChange: vi.fn(),
+      onMessageChange: vi.fn(),
+      onChannelIndexesChange: vi.fn(),
+      onAnnounceOnStartChange: vi.fn(),
+      onUseScheduleChange: vi.fn(),
+      onScheduleChange: vi.fn(),
+    };
+    render(<AutoAnnounceSection {...props} />);
+    const renders = mockUseSaveBar.mock.calls.filter(([o]) => (o as { id: string }).id === 'auto-announce').length;
+    expect(renders).toBeLessThan(10);
     expect(lastHasChanges('auto-announce')).toBe(false);
   });
 
