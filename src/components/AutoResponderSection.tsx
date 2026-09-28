@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { clampInt, COOLDOWN_SECONDS_MAX } from './automationInputLimits';
 import { useTranslation } from 'react-i18next';
 import { useToast } from './ToastContainer';
@@ -76,12 +76,23 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [scriptToDelete, setScriptToDelete] = useState<string | null>(null);
 
-  // Update local state when props change
+  // Re-seed the draft only when the SAVED values change content. A parent that
+  // hands down a new `triggers` array with the same content (a re-render, a
+  // context refresh) must not wipe an unsaved edit, so compare a serialised
+  // key rather than the array's identity. The first run matches the key the
+  // state was initialised from, so mount does not re-seed.
+  const savedKey = useMemo(
+    () => JSON.stringify([enabled, triggers, skipIncompleteNodes]),
+    [enabled, triggers, skipIncompleteNodes],
+  );
+  const seededKeyRef = useRef(savedKey);
   useEffect(() => {
+    if (seededKeyRef.current === savedKey) return;
+    seededKeyRef.current = savedKey;
     setLocalEnabled(enabled);
     setLocalTriggers(triggers);
     setLocalSkipIncompleteNodes(skipIncompleteNodes);
-  }, [enabled, triggers, skipIncompleteNodes]);
+  }, [savedKey, enabled, triggers, skipIncompleteNodes]);
 
   // Check if any settings have changed
   useEffect(() => {

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   GeofenceTrigger,
@@ -92,9 +92,16 @@ const GeofenceTriggersSection: React.FC<GeofenceTriggersSectionProps> = ({
   // Edit mode state
   const [editingTriggerId, setEditingTriggerId] = useState<string | null>(null);
 
+  // Re-seed the draft only when the SAVED triggers change content, not when a
+  // parent hands down a new array with the same content; that would wipe an
+  // unsaved edit. The first run matches the initial key, so mount is a no-op.
+  const savedTriggersKey = useMemo(() => JSON.stringify(triggers), [triggers]);
+  const seededTriggersKeyRef = useRef(savedTriggersKey);
   useEffect(() => {
+    if (seededTriggersKeyRef.current === savedTriggersKey) return;
+    seededTriggersKeyRef.current = savedTriggersKey;
     setLocalTriggers(triggers);
-  }, [triggers]);
+  }, [savedTriggersKey, triggers]);
 
   useEffect(() => {
     const changed = JSON.stringify(localTriggers) !== JSON.stringify(triggers);

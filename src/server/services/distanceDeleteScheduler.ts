@@ -1,4 +1,5 @@
 import { logger } from '../../utils/logger.js';
+import { clampIntervalSetting, DISTANCE_DELETE_HOURS } from '../utils/schedulerInterval.js';
 import databaseService from '../../services/database.js';
 import { autoDeleteByDistanceService } from './autoDeleteByDistanceService.js';
 
@@ -45,8 +46,15 @@ export class DistanceDeleteScheduler {
       this.sourceId,
       'autoDeleteByDistanceIntervalHours',
     );
-    const intervalHours = parseInt(intervalHoursStr || '24', 10);
-    const intervalMs = Math.max(1, intervalHours) * 60 * 60 * 1000;
+    // Clamp to the UI's 6–48 h. `Math.max(1, NaN)` is NaN, which setInterval
+    // treats as 1 ms, and above ~596 h the delay overflows to 1 ms as well.
+    const intervalHours = clampIntervalSetting(
+      parseInt(intervalHoursStr || '24', 10),
+      DISTANCE_DELETE_HOURS,
+      `Source ${this.sourceId} autoDeleteByDistanceIntervalHours`,
+      24,
+    );
+    const intervalMs = intervalHours * 60 * 60 * 1000;
 
     logger.info(
       `🗑️ Starting auto-delete-by-distance scheduler for source ${this.sourceId} (interval: ${intervalHours}h)`,

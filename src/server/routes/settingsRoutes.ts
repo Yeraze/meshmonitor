@@ -44,6 +44,7 @@ import {
 } from '../../utils/aircraftClassification.js';
 import { aircraftClassificationService } from '../services/aircraftClassificationService.js';
 import { isAdsbFeed, ADSB_FEED_IDS } from '../../utils/adsbFeeds.js';
+import { clampIntervalSetting, GEOFENCE_WHILE_INSIDE_MINUTES } from '../utils/schedulerInterval.js';
 
 // ─── Tile URL validation ─────────────────────────────────────────────────
 
@@ -752,6 +753,7 @@ router.post('/', requirePermission('settings', 'write', { sourceIdFrom: 'query' 
     if ('geofenceTriggers' in filteredSettings) {
       try {
         const triggers = JSON.parse(filteredSettings.geofenceTriggers);
+        let geofenceTriggersClamped = false;
 
         if (!Array.isArray(triggers)) {
           return res.status(400).json({ error: 'geofenceTriggers must be an array' });
@@ -814,10 +816,22 @@ router.post('/', requirePermission('settings', 'write', { sourceIdFrom: 'query' 
           }
 
           if (trigger.event === 'while_inside') {
-            if (typeof trigger.whileInsideIntervalMinutes !== 'number' || trigger.whileInsideIntervalMinutes < 1) {
+            if (typeof trigger.whileInsideIntervalMinutes !== 'number' || !Number.isFinite(trigger.whileInsideIntervalMinutes)) {
               return res
                 .status(400)
-                .json({ error: 'whileInsideIntervalMinutes must be >= 1 when event is "while_inside"' });
+                .json({ error: 'whileInsideIntervalMinutes must be a number when event is "while_inside"' });
+            }
+            // Clamp rather than reject: above ~35,791 minutes the scheduler's
+            // setInterval delay overflows and fires every 1 ms. The manager
+            // clamps again when it arms the timer, for rows already stored.
+            const clamped = clampIntervalSetting(
+              trigger.whileInsideIntervalMinutes,
+              GEOFENCE_WHILE_INSIDE_MINUTES,
+              `Geofence "${trigger.name}" whileInsideIntervalMinutes (save)`,
+            );
+            if (clamped !== trigger.whileInsideIntervalMinutes) {
+              trigger.whileInsideIntervalMinutes = clamped;
+              geofenceTriggersClamped = true;
             }
           }
 
@@ -871,6 +885,9 @@ router.post('/', requirePermission('settings', 'write', { sourceIdFrom: 'query' 
               }
             }
           }
+        }
+        if (geofenceTriggersClamped) {
+          filteredSettings.geofenceTriggers = JSON.stringify(triggers);
         }
       } catch (error) {
         return res.status(400).json({ error: 'Invalid JSON format for geofenceTriggers' });
