@@ -32,6 +32,18 @@ export interface EvaluatorHooks<Ctx> {
   executeAction(node: AutomationNode, ctx: Ctx): unknown | Promise<unknown>;
   /** Apply a flow.setVar write. */
   applySetVar(node: AutomationNode, ctx: Ctx): void | Promise<void>;
+  /**
+   * Optional: a small, persistable summary of an action's result, stored on its
+   * step (`detail`) so the run log shows what the action resolved to (#5445).
+   * Return undefined to record nothing — the default for every action today.
+   */
+  stepDetail?(node: AutomationNode, value: unknown): Record<string, unknown> | undefined;
+  /**
+   * Optional: checked after each action. A non-empty reason stops the run —
+   * nothing further executes, and one `run:halted` step records why (#5445:
+   * an automation that disabled itself).
+   */
+  haltReason?(ctx: Ctx): string | undefined;
 }
 
 export type StepOutcome =
@@ -42,13 +54,16 @@ export type StepOutcome =
   | 'setVar:ok'
   | 'setVar:error'
   | 'activated'
-  | 'guard:maxActions';
+  | 'guard:maxActions'
+  | 'run:halted';
 
 export interface EvaluationStep {
   nodeId: string;
   type: string;
   outcome: StepOutcome;
   error?: string;
+  /** Resolved result summary from {@link EvaluatorHooks.stepDetail}, or the halt reason. */
+  detail?: Record<string, unknown>;
 }
 
 export interface EvaluationResult {
@@ -173,10 +188,16 @@ export async function evaluateGraph<Ctx>(
       try {
         const value = await hooks.executeAction(node, ctx);
         actions.push({ nodeId, ok: true, value });
-        steps.push({ nodeId, type: node.type, outcome: 'action:ok' });
+        const detail = hooks.stepDetail?.(node, value);
+        steps.push({ nodeId, type: node.type, outcome: 'action:ok', ...(detail ? { detail } : {}) });
       } catch (e: any) {
         actions.push({ nodeId, ok: false, error: e?.message });
         steps.push({ nodeId, type: node.type, outcome: 'action:error', error: e?.message });
+      }
+      const haltReason = hooks.haltReason?.(ctx);
+      if (haltReason) {
+        steps.push({ nodeId, type: node.type, outcome: 'run:halted', detail: { reason: haltReason } });
+        break;
       }
     } else if (node.type === 'flow.setVar') {
       try {

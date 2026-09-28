@@ -7,7 +7,7 @@
  */
 import { HOP_COUNT_EMOJIS, HOP_EMOJI_MAX, MQTT_SOURCE_EMOJI } from '../../utils/hopEmoji';
 
-export type FieldKind = 'text' | 'number' | 'nodeNum' | 'textarea' | 'select' | 'checkbox' | 'variable' | 'emoji' | 'fieldselect' | 'sourceMulti' | 'sendSourceMulti' | 'channelMulti' | 'geofence' | 'scriptselect' | 'regionSelect' | 'nodeMulti';
+export type FieldKind = 'text' | 'number' | 'nodeNum' | 'textarea' | 'select' | 'checkbox' | 'variable' | 'emoji' | 'fieldselect' | 'sourceMulti' | 'sendSourceMulti' | 'channelMulti' | 'geofence' | 'scriptselect' | 'regionSelect' | 'nodeMulti' | 'automationSelect';
 
 export interface FieldOpt { value: string; label: string; }
 export interface FieldGroup { label: string; options: FieldOpt[]; }
@@ -769,6 +769,37 @@ export const ACTIONS: BlockDef[] = [
       { name: 'sourceIds', label: 'Reboot which node(s)', kind: 'sendSourceMulti', help: 'The connected node(s) to reboot. Leave none to use the source that triggered the automation — but a source IS required for source-less triggers like Schedules and System events. (MQTT sources have no physical device and are excluded.)' },
       { name: 'targetNodeNum', label: 'Remote target node #', kind: 'nodeNum', advanced: true, placeholder: 'blank = locally-connected node; 1017730782 or !3ca956de', help: 'Meshtastic remote-admin reboot: leave blank to reboot the locally-connected node; set a node number to reboot a remote node over the mesh (uses the session-passkey admin mechanism — the target must have granted admin access). Setting the connected node’s own number is treated as a local reboot, not a remote one. Accepts a decimal node number or a hex id (!3ca956de). Ignored by MeshCore.' },
       { name: 'seconds', label: 'Reboot delay (seconds)', kind: 'number', advanced: true, placeholder: '10', help: 'Meshtastic: how long the device waits before rebooting (default 10s). Ignored by MeshCore.' },
+    ],
+  },
+  {
+    type: 'action.setAutomationEnabled',
+    label: 'Enable or disable an automation',
+    description: 'Turn another automation (or this one) on or off. Sends nothing on the mesh. If an automation disables itself, the rest of its actions are skipped.',
+    fields: [
+      {
+        name: 'automationId', label: 'Automation', kind: 'automationSelect',
+        help: 'Pick an automation, or choose "Enter an id or template" to type an id such as {{ var.targetAutomation }}. An id that matches no automation fails the step. Avoid building the id from message text: anyone who can message this node could then switch your automations.',
+      },
+      {
+        name: 'mode', label: 'Change', kind: 'select',
+        // Values mirror AutomationEnableMode in src/types/automation.ts.
+        // 'set' MUST be first: defaultParams() seeds it on new blocks.
+        options: [
+          { value: 'set', label: 'Set to' },
+          { value: 'toggle', label: 'Toggle (flip its current state)' },
+        ],
+        absentValue: 'set',
+      },
+      {
+        name: 'enabled', label: 'New state', kind: 'select',
+        // Stored as the strings 'true'/'false'; the engine coerces them. JSON
+        // mode also accepts a boolean or a {{ }} template.
+        options: [
+          { value: 'false', label: 'Disabled' },
+          { value: 'true', label: 'Enabled' },
+        ],
+        showIf: { field: 'mode', notEquals: 'toggle' },
+      },
     ],
   },
   {

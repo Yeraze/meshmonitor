@@ -378,6 +378,10 @@ function ActionView({ a }: { a: SimResult['actions'][number] }) {
     headline = `Request ${op}${tt}${reach}${tgt}`;
   } else if (a.type === 'action.deviceReboot') {
     headline = `Reboot device${p.seconds != null ? ` (delay ${String(p.seconds)}s)` : ''}`;
+  } else if (a.type === 'action.setAutomationEnabled') {
+    // Dry run: nothing is written, this reports what WOULD change (#5445).
+    const target = p.name ? `“${String(p.name)}”` : String(p.automationId ?? '');
+    headline = `${p.enabled ? 'Enable' : 'Disable'} automation ${target}${p.mode === 'toggle' ? ' (toggle)' : ''}`;
   }
   return (
     <div className={`ae-test-action ${a.ok ? '' : 'is-err'}`}>

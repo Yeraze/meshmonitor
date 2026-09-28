@@ -10,7 +10,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { isValidCron } from 'cron-validator';
 import apiService from '../../services/api';
-import AutomationBuilder, { type VariableOption, type SourceOption, type UnifiedChannelOption, type ScriptOption, type NodeMultiOption } from './AutomationBuilder';
+import AutomationBuilder, { type VariableOption, type SourceOption, type UnifiedChannelOption, type ScriptOption, type NodeMultiOption, type AutomationOption } from './AutomationBuilder';
 import AutomationTester from './AutomationTester';
 import LiveTracePanel from './LiveTracePanel';
 import TemplateGallery, { type InstalledAutomationRow } from './TemplateGallery';
@@ -232,6 +232,7 @@ function AutomationEditor({ automation, onClose }: { automation: Automation | 'n
   const [scripts, setScripts] = useState<ScriptOption[]>([]);
   const [regions, setRegions] = useState<string[]>([]);
   const [nodes, setNodes] = useState<NodeMultiOption[]>([]);
+  const [automationOptions, setAutomationOptions] = useState<AutomationOption[]>([]);
 
   // Decide builder vs JSON from the existing config.
   const parsedInitial = (() => { try { return initial ? decompile(JSON.parse(initial.config)) : DEFAULT_FORM; } catch { return null; } })();
@@ -280,6 +281,12 @@ function AutomationEditor({ automation, onClose }: { automation: Automation | 'n
     apiService.get<{ scripts: Array<{ filename: string; name?: string }> }>('/api/scripts')
       .then((r) => setScripts((r.scripts ?? []).map((s) => ({ value: s.filename, label: s.name || s.filename }))))
       .catch(() => setScripts([]));
+    // Targets for action.setAutomationEnabled's picker (#5445).
+    apiService.get<Automation[]>('/api/automations')
+      .then((list) => setAutomationOptions((Array.isArray(list) ? list : [])
+        .map((a) => ({ id: a.id, name: a.name, enabled: a.enabled }))
+        .sort((x, y) => x.name.localeCompare(y.name))))
+      .catch(() => setAutomationOptions([]));
     apiService.get<{ regions: Array<{ name: string }> }>('/api/automations/regions')
       .then((r) => setRegions((r.regions ?? []).map((x) => x.name)))
       .catch(() => setRegions([]));
@@ -445,7 +452,7 @@ function AutomationEditor({ automation, onClose }: { automation: Automation | 'n
       </div>
 
       {mode === 'builder'
-        ? <AutomationBuilder form={form} variables={variables} sources={sources} channels={channels} scripts={scripts} regions={regions} nodes={nodes} onChange={setForm} />
+        ? <AutomationBuilder form={form} variables={variables} sources={sources} channels={channels} scripts={scripts} regions={regions} nodes={nodes} automations={automationOptions} onChange={setForm} />
         : (
           <div className="ae-field">
             <label className="ae-field-label">Workflow graph (JSON)</label>

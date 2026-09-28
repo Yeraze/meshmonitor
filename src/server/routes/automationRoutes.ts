@@ -175,7 +175,7 @@ router.delete('/variables/:id', canWrite, async (req: Request, res: Response) =>
  * IO, no Apprise dispatch, no variable persistence, no run-log row. Gated on
  * `automations:write` (same as editing). Used by the builder's Test panel.
  */
-async function runSimulation(req: Request, res: Response, configRaw: unknown): Promise<Response | void> {
+async function runSimulation(req: Request, res: Response, configRaw: unknown, automationId?: string): Promise<Response | void> {
   const v = validateConfig(configRaw);
   if (!v.ok) return res.status(400).json({ error: 'invalid automation config', details: v.errors });
   const event = (req.body ?? {}).event;
@@ -192,6 +192,10 @@ async function runSimulation(req: Request, res: Response, configRaw: unknown): P
     node, telemetry, variables,
     varsRepo: databaseService.automationVariablesRepo,
     liveData: createMeshNodeDataProvider(),
+    automationId,
+    // Read-only: lets a dry run of action.setAutomationEnabled report an unknown
+    // id and the target's current state without changing it (#5445).
+    lookupAutomation: (id) => databaseService.automations.getAutomation(id),
   });
   return res.json(result);
 }
@@ -209,7 +213,7 @@ router.post('/:id/test', canWrite, async (req: Request, res: Response) => {
   try {
     const a = await databaseService.automations.getAutomation(req.params.id);
     if (!a) return res.status(404).json({ error: 'automation not found' });
-    await runSimulation(req, res, a.config);
+    await runSimulation(req, res, a.config, a.id);
   } catch (error) {
     logger.error('Error simulating automation:', error);
     res.status(500).json({ error: 'Failed to simulate automation' });
