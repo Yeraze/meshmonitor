@@ -398,11 +398,6 @@ export const VALID_SETTINGS_KEYS = [
   'meshcoreAutoResponderTriggers',
   // MeshCore timer triggers
   'meshcoreTimerTriggers',
-  // Message Forwarding rules (#5446) — per source, JSON array, both protocols.
-  // Normally saved through the validated POST /api/sources/:id/forwarding; the
-  // managers re-validate on read, so a raw /api/settings write cannot bypass the
-  // engine's limits.
-  'forwardingRules',
   // MeshCore default region/scope (#3667) — applied to all originated flood
   // traffic (DMs, adverts, requests) unless a channel overrides it. Empty =
   // unscoped (legacy '*' / null region).
@@ -625,9 +620,9 @@ export const PER_SOURCE_SETTINGS_KEYS = [
   // MeshCore timer triggers
   'meshcoreTimerTriggers',
   // Message Forwarding rules (#5446) — per source, JSON array, both protocols.
-  // Normally saved through the validated POST /api/sources/:id/forwarding; the
-  // managers re-validate on read, so a raw /api/settings write cannot bypass the
-  // engine's limits.
+  // Written ONLY by POST /api/sources/:id/forwarding (per-source `automation`
+  // write), so it is deliberately absent from VALID_SETTINGS_KEYS and listed in
+  // PER_SOURCE_KEYS_NOT_POSTABLE. The managers still re-validate on read.
   'forwardingRules',
   // MeshCore default region/scope (#3667) — per source (per node)
   'meshcoreDefaultScope',
@@ -859,6 +854,10 @@ export const PER_SOURCE_KEYS_NOT_POSTABLE = new Set<string>([
   'autoFavoriteAircraftStrikes', // favoritesService.ts autoFavoriteSweep (#5364/#5365 D19 two-strike rule)
   'aircraftAgeOutLastRunAt',  // aircraftAgeOutService.ts runSweep (#5364/#5365 Phase 2; persisted so a restart is not a run)
   'aircraftAgeOutLastResult', // aircraftAgeOutService.ts runSweep (#5364/#5365 Phase 2; JSON counts for the settings status line)
+  // POST /api/sources/:id/forwarding (forwardingRoutes.ts, #5446) — gated on
+  // per-source `automation` write, so the generic `settings` POST must not
+  // reach it.
+  'forwardingRules',
 ]);
 
 /**
@@ -877,6 +876,11 @@ export const SECRET_SETTINGS_KEYS = new Set<string>([
   // May embed an API key; server-only (all elevation fetches are
   // server-proxied, so no frontend consumer ever needs the raw URL).
   'elevationSourceUrl',
+  // Message Forwarding rules (#5446). Not a secret, but readable only with
+  // per-source `automation` read via GET /api/sources/:id/forwarding. The
+  // generic GET /api/settings is public (optionalAuth), so keep the rules out
+  // of it for non-admins; admins already hold every permission.
+  'forwardingRules',
 ]);
 
 /**
