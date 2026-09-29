@@ -41,6 +41,26 @@ See [Multi-Source → Connection Types](/features/multi-source) for the full lis
 
 **Side Effects**: Setting this too low may cause frequently-active nodes to disappear from the list temporarily. Setting it too high (or `0`) may clutter the list with offline nodes.
 
+### Nodes list header
+
+![Nodes list header](/images/features/compact-node-list-header.png)
+
+The header holds the title, the age window picker, and one row of icon buttons. Hover over a button to see its tooltip.
+
+- **Filter** (filter icon, tooltip "Filter nodes"): opens the filter popup described below.
+- **Group by Role** (list icon, tooltip "Group nodes by role"): groups the list by device role. Each group has a header with a count. Click a header to collapse or expand its group. A summary bar shows how the nodes split across roles. Grouping applies to the nodes that pass your filters. Your browser remembers the choice.
+- **Add node from URL** (plus icon): see below. It appears when you view a single source.
+
+#### Add a node from a contact URL
+
+Paste a `https://meshtastic.org/v/#...` contact link, the kind [Share a Meshtastic Contact](#share-a-meshtastic-contact) creates, and MeshMonitor adds that node to the source. You can then message the node before it sends any packet. MeshMonitor sends nothing over the mesh.
+
+The row shows an **Imported** badge until the source hears the node. Importing a node the source already knows updates its name and key, and does not add the badge. You need write permission on **nodes** for that source.
+
+#### First Heard
+
+MeshMonitor records **First Heard** for each node on each source. It sets the value once, from the first believable reception, and never overwrites it. You see it in Node Details, in map popups, and in the node export. For nodes that existed before 4.16.2, the upgrade fills it with the earlier of the node's creation time and Last Heard.
+
 ### Hide Incomplete Nodes
 
 **Description**: Filters out nodes that haven't been fully verified on secure channels. Incomplete nodes are missing proper name or hardware information, which on encrypted channels indicates we haven't received their NODEINFO packet.
@@ -163,7 +183,7 @@ See [Multi-Source → Connection Types](/features/multi-source) for the full lis
 
 **Description**: Filter nodes based on detected security issues, allowing you to focus on nodes with security problems or hide them from view.
 
-**Location**: Filter Modal popup (click "Filter" button in Nodes or Messages tab sidebar)
+**Location**: Filter Modal popup (click the filter icon, tooltip "Filter nodes", in the Nodes list header)
 
 **Filter Options**:
 - **All Nodes**: Show all nodes regardless of security status (default)
@@ -220,9 +240,33 @@ Aircraft pass through and do not come back, so their nodes pile up. Age-out clea
 
 **How it works**: A sweep runs about once an hour for each source. Favorites and the source's own node are never aged out, and a node that is already ignored for another reason is left alone. Saving settings or restarting MeshMonitor does not trigger a sweep.
 
-When an ignored aircraft sends a new live position, its ignore is lifted and it is classified again. Manual and geo ignores are never lifted this way.
+When an ignored aircraft sends a new live position, its ignore is lifted and it is classified again. This works on MQTT sources too. Manual and geo ignores are never lifted this way, and replayed or retained MQTT frames never lift an ignore.
 
 The same sweep also looks for nodes that were flagged but sit still: a flagged node heard in the last 24 hours with at least 3 position fixes, all within 200 m of each other, is **reclassified as fixed**. Its flag is cleared and it stays unflagged while it is within 1 km of that spot. If it moves further than 1 km, it is classified normally again. This check runs whenever detection is on, even with age-out off.
+
+## Sign-flipped Position Correction
+
+**Description**: Some operators type their coordinates without the minus sign, which puts the node on the other side of the globe. This setting shows such a node at its corrected point.
+
+**Location**: Settings → Node Display, per source (Meshtastic, MQTT, and MeshCore). Off by default.
+
+**Options**:
+- **Correct sign-flipped positions**: turns the correction on for this source.
+- **Range**: how close a mirror point must be. Default 500 km. Allowed: 10 to 2000 km.
+- **Reference point (optional)**: a latitude and longitude to measure from. Leave it blank to use the source's own node. An MQTT source has no node of its own, so it needs a reference point or nothing gets corrected.
+
+**How it works**: If a node sits outside the range but exactly one mirror of its position (latitude negated, longitude negated, or both) sits inside it, MeshMonitor shows the mirror point. If more than one mirror fits, or none, the node stays where it reported. Node Details then shows "Position auto-corrected (sign flip)" and the coordinates the node reported.
+
+**Stored data never changes.** The correction only affects what MeshMonitor displays and judges. While it is on, these features use the corrected point:
+- Distance-based auto-delete
+- MQTT geo-ignore
+- Automation geofences
+- Traceroute snapshots
+- MeshCore contacts
+
+::: warning Keep the range small
+A wide range can move a real far-away node, for example one heard over MQTT, whose mirror point happens to fall inside it.
+:::
 
 ## Node Details Block
 
@@ -831,6 +875,14 @@ These actions are **irreversible** and can result in data loss. Use with extreme
 - The page will automatically refresh after purging
 
 **When to use**: When your database has grown too large or you want to start fresh telemetry collection.
+
+### Clean Telemetry Outliers
+
+**Description**: Removes bad readings for one metric and keeps the rest of the history. Admin-only.
+
+**Location**: Settings → Danger Zone → **Clean outliers…** (sweeps every node on one source), or **Clean outliers…** in a telemetry chart's menu (checks that one node). See [Telemetry outliers](/features/telemetry-widgets#clean-telemetry-outliers).
+
+**Effect**: Nothing is deleted until you review a preview and confirm. Each purge is written to the audit log.
 
 ### Purge Messages
 

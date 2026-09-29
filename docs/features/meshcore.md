@@ -133,6 +133,21 @@ The device's channels with the most recent message stream. Channel-message sende
 
 **Heard repeaters** — outgoing channel posts show a **📡 N** badge with an expandable list of the repeaters that re-flooded the message and the SNR each was heard at. This is populated best-effort by **self-echo correlation**: when a repeater re-floods your `GRP_TXT` packet, MeshMonitor hears it inbound and attributes the relay hashes to the most recent matching channel send within a ~30-second window. Channel sends carry no protocol ACK, so this is a heuristic, not a delivery receipt. Correlation runs on the raw inbound packet before the opt-in packet-monitor gate, so it works **regardless of whether the packet monitor is enabled**. Relay hashes are resolved to repeater names where known; otherwise the raw hash is shown.
 
+### Channel order
+
+The Channels page has a **Sort channels by** dropdown with four choices: **Device order**, **Channel name**, **Last message** and **Custom**. Pick **Custom** and click **Reorder** to drag channels (or use the arrows) into the order you want. MeshMonitor saves the sort choice and the custom order in your browser, per source. This changes only how MeshMonitor lists the channels. The slots on the device stay as they are.
+
+#### Reordering channel slots on the companion
+
+To change the slots stored on the device, open the source's **Configuration** tab, go to **Channels**, and click **Reorder slots on device**. Drag channels into the order you want, then click **Save order to device**.
+
+- MeshMonitor packs channels into slots 1, 2, 3 and so on, which closes empty slots. Public stays in slot 0.
+- It writes each slot over the serial or TCP link and reads it back to check it. It sends nothing over the radio. Keep the device connected until it finishes.
+- If a write fails, MeshMonitor writes the original layout back. If it cannot confirm the undo, it tells you to reconnect the device and run the reorder again.
+- Message history, unread markers, scopes, per-channel permissions, and the auto-ack, auto-announce, auto-responder and timer settings follow each channel to its new slot. A channel that moves to slot 8 or higher loses its per-channel permission grants, because those slots have none.
+- Apps connected through the Virtual Node disconnect, so they reload the new channel list.
+- Automations that name a raw channel number are not changed. MeshMonitor lists them so you can check that they still point at the right channel.
+
 ### Node Details
 
 Per-contact DM view (renamed from "Direct Messages" to reflect that it also surfaces node details, not just DMs) with a **contact-detail panel** that mirrors the Meshtastic NodeDetailsBlock. It surfaces:
@@ -323,6 +338,14 @@ For any Repeater (advType=2) or Room Server (advType=3) contact in your MeshCore
 
 The console only renders for Repeater / Room Server advTypes since Companion firmware doesn't expose a remote-admin surface. Replies are single-packet (≈130 – 180 byte MTU) and there is no chunking — long output is truncated at the firmware level.
 
+#### Login timing and retries
+
+A login to a repeater or room server can take a while on a busy mesh. MeshMonitor waits for a reply for twice the firmware's time estimate, but never less than 10 s and never more than 90 s. If a login gets no reply, the admin buttons try again, up to 3 attempts in all, with a 2 s pause between them. At the 10 s floor, three silent attempts take about 34 s; a slow path with a larger estimate takes longer, so give a reverse proxy a generous timeout.
+
+MeshMonitor never retries when the node **refuses the password**. It shows the refusal at once, because sending the same password again cannot help.
+
+Every login screen (remote console, contact details, direct messages and rooms) shows live progress, such as "Attempt 2 of 3: waiting for a reply (14 s left)". Click **Cancel** to stop the login.
+
 ### Local console (Configuration view)
 
 The Configuration tab gets a **Device console** for the locally connected node. Dispatch depends on the firmware:
@@ -390,6 +413,43 @@ The MeshCore map can render a per-node movement trail, mirroring the Meshtastic 
 
 Points come entirely from existing MeshCore GPS sources — contact adverts and the [remote telemetry](#per-node-remote-telemetry) poll — recording only fixes that actually moved (sub-epsilon jitter and Null Island are dropped), so stationary nodes don't accumulate noise. No firmware changes are involved.
 
+## Ignore and Block
+
+MeshCore firmware has no block or mute, so MeshMonitor filters messages in the server. You can filter by node or by text pattern. Each entry has one of two modes:
+
+| Mode | What happens |
+|---|---|
+| **Ignore** | MeshMonitor stores the message but does nothing else with it. It sends no notification and runs no automation, auto-ack or auto-responder. It does not forward the message or relay it to Virtual Node apps. The message list folds a run of ignored messages into one row, such as "3 ignored messages", that you can expand. |
+| **Block** | MeshMonitor drops the message when it arrives and never stores it. |
+
+If a message matches both an Ignore and a Block entry, Block wins.
+
+### Ignoring nodes
+
+Open a contact's detail panel in the direct messages view and use the **Ignore / Block** row. Pick **Ignore** or **Block**, or remove the entry. Block asks you to confirm first.
+
+The **Ignored and blocked nodes** section in the MeshCore source's **Settings** lists every entry with its mode, hit count and last hit. You can remove entries there.
+
+::: warning Channel messages match by name
+A channel message carries only a sender name, not a key. MeshMonitor matches it to the node by advert name. Anyone can use any name, and two nodes can share one. Direct messages match by key.
+:::
+
+### Text rules
+
+The **Message filters** section in the MeshCore source's **Settings** holds text rules. Each rule has:
+
+- **Pattern** (up to 256 characters)
+- **Match type**: *Exact*, *Wildcard* or *Regex*
+- **Checks**: *Sender name*, *Message text*, or *Name and text*
+- **Mode**: Ignore or Block
+- **Case sensitive** and **Enabled** switches
+
+Exact and wildcard patterns must match the whole field. In a wildcard, `*` matches any run of characters and `?` matches one character. A regex matches anywhere in the field. Regexes run on RE2, so lookaround and backreferences are not supported, and MeshMonitor rejects them when you save.
+
+Each rule shows how often it matched and when it last matched. Counts save to the database about every 30 s, so a crash can lose a few.
+
+Ignore and Block send nothing over the radio. Saving a list never triggers a send.
+
 ## Neighbor Discovery
 
 Repeaters maintain a neighbor table of other repeaters heard via zero-hop adverts. MeshMonitor can query this table and display the results:
@@ -400,6 +460,18 @@ Repeaters maintain a neighbor table of other repeaters heard via zero-hop advert
 - **Database persistence** — neighbor data is stored in `meshcore_neighbor_info` and survives page refreshes.
 
 Neighbor queries require authentication to the repeater (guest or admin login). See [the MeshCore protocol details](/features/meshcore#remote-administration) for auth requirements.
+
+### Fetching the whole table
+
+A repeater sends at most 10 neighbours per reply, and its table can hold 50. The **Contact Details** neighbour button and **Poll Neighbours** fetch up to 5 pages, so you see the whole table.
+
+- MeshMonitor logs in once before page 1. Later pages skip the login.
+- Each page waits 60 s after the last radio send, so the fetch cannot flood the mesh. A full 5-page fetch takes about 4 minutes.
+- A progress line shows the page, the neighbours collected so far, and the wait for the next page.
+- **Cancel** stops the fetch. Neighbours you already have stay stored, and the pages that arrived update them.
+- If a page gets no reply, MeshMonitor shows the neighbours it has and keeps the stored list.
+
+The scheduled autopoll fetches 1 page, strongest signal first. It merges the result into the stored list, so the list never shrinks.
 
 ## Active Node Discovery
 

@@ -81,6 +81,24 @@ All mode and range preferences are stored in your browser's local storage. They 
 
 To reset a widget's mode, click the `~` (Chart) button. To reset a gauge range, type in the desired values in the min/max inputs.
 
+## Clean Telemetry Outliers
+
+A faulty sensor can log a spike that flattens the rest of a chart. **Clean outliers** removes those readings and keeps the rest of the history. Only admins see it.
+
+**Where to find it:**
+- In a telemetry chart's menu, choose **Clean outliers…** to check one node and one metric.
+- In **Settings → Danger Zone**, click **Clean outliers…** to check every node on one source for one metric.
+
+**Criteria** (use either or both):
+- **Auto-detect outliers**: removes a reading that sits more than *k* median absolute deviations (MAD) from the median of that node's series. A higher *k* removes less. *k* runs from 2 to 20 and defaults to 6. MeshMonitor skips a series with fewer than 10 readings, or one where most readings share a single value.
+- **Remove values below / above**: optional bounds. They use stored values, so temperature is in °C.
+
+**Steps:**
+1. Set the criteria and click **Preview**. The preview lists the readings that would go, with the reason for each, and shows the series median.
+2. Click **Delete N readings…** and confirm. Deletion is permanent.
+
+If telemetry changed after the preview, MeshMonitor asks you to run the preview again. Each purge is written to the audit log.
+
 ## Limitations
 
 - Gauge and Numeric modes only display the **most recent** data point. If no data has been received, the widget remains empty.

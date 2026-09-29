@@ -493,6 +493,8 @@ Responder uses) when the automation fires.
 
 ### Enable or disable an automation
 
+In JSON mode, this action has the type `action.setAutomationEnabled`.
+
 Turns another automation, or this one, on or off. It does the same thing as the enable switch on
 the Automations page, with no script, API token, or `curl` call. It sends nothing on the mesh.
 
