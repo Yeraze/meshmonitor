@@ -1,0 +1,28 @@
+/*
+ * MeshCoreIgnoredRunRow (#5408). CSS module — do not add these rules to the
+ * global sheets (CLAUDE.md CSS containment rule).
+ */
+
+.row {
+  display: flex;
+  justify-content: center;
+  margin: 0.35rem 0;
+}
+
+.toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.25rem 0.75rem;
+  border: 1px dashed var(--color-border);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--color-text-subtle);
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+
+.toggle:hover {
+  color: var(--color-text);
+  border-style: solid;
+}

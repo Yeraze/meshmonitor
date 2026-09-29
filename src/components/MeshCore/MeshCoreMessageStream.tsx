@@ -13,6 +13,8 @@ import { UiIcon } from '../icons';
 import UnreadDivider from '../messages/UnreadDivider';
 import { resolveUnreadAnchorId, shouldSuppressDivider } from '../../utils/unreadAnchor';
 import { uniquePrefixMatch } from '../../utils/meshcoreKeyMatch';
+import { MeshCoreIgnoredRunRow } from './MeshCoreIgnoredRunRow';
+import { findIgnoredRuns } from './meshcoreIgnoredRuns';
 
 interface MeshCoreMessageStreamProps {
   messages: MeshCoreMessage[];
@@ -129,6 +131,18 @@ export const MeshCoreMessageStream: React.FC<MeshCoreMessageStreamProps> = ({
   const [showJumpToBottom, setShowJumpToBottom] = useState(false);
   // Message ids whose "heard repeaters" list (#3700) is expanded.
   const [expandedHeardBy, setExpandedHeardBy] = useState<Set<string>>(new Set());
+  // Ignore / Block (#5408): consecutive ignored messages collapse into one row,
+  // keyed by the run's first message id; this set holds the runs shown open.
+  const ignoredRuns = useMemo(() => findIgnoredRuns(messages), [messages]);
+  const [expandedIgnoredRuns, setExpandedIgnoredRuns] = useState<Set<string>>(new Set());
+  const toggleIgnoredRun = useCallback((key: string) => {
+    setExpandedIgnoredRuns(prev => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }, []);
   // Message whose relay-hash chain was clicked — opens the route-detail modal
   // that expands each hash to the matching repeater name.
   const [routeDetail, setRouteDetail] = useState<MeshCoreMessage | null>(null);
@@ -524,6 +538,29 @@ export const MeshCoreMessageStream: React.FC<MeshCoreMessageStreamProps> = ({
           const currentDate = new Date(m.timestamp);
           const prevDate = idx > 0 ? new Date(messages[idx - 1].timestamp) : null;
           const showSeparator = shouldShowDateSeparator(prevDate, currentDate);
+          const ignoredRun = ignoredRuns.get(idx);
+          const runExpanded = !!ignoredRun && expandedIgnoredRuns.has(ignoredRun.key);
+          if (ignoredRun && !runExpanded) {
+            // Collapsed run: the first message stands in with one row; the
+            // rest render nothing.
+            if (idx !== ignoredRun.startIndex) return null;
+            return (
+              <React.Fragment key={`ignored-${ignoredRun.key}`}>
+                {showSeparator && (
+                  <div className="mc-date-separator">
+                    <span className="mc-date-separator-text">
+                      {getMessageDateSeparator(currentDate)}
+                    </span>
+                  </div>
+                )}
+                <MeshCoreIgnoredRunRow
+                  count={ignoredRun.count}
+                  expanded={false}
+                  onToggle={() => toggleIgnoredRun(ignoredRun.key)}
+                />
+              </React.Fragment>
+            );
+          }
           const outgoing = !!selfPublicKey && m.fromPublicKey === selfPublicKey;
           const friendlyName = outgoing ? null : nameForKey(m.fromPublicKey);
           const fromLabel = outgoing
@@ -547,6 +584,13 @@ export const MeshCoreMessageStream: React.FC<MeshCoreMessageStreamProps> = ({
                   heads its own day and the red line sits directly above the
                   first unseen message (#4607). */}
               {unreadAnchorId === m.id && <UnreadDivider />}
+              {ignoredRun && idx === ignoredRun.startIndex && (
+                <MeshCoreIgnoredRunRow
+                  count={ignoredRun.count}
+                  expanded
+                  onToggle={() => toggleIgnoredRun(ignoredRun.key)}
+                />
+              )}
               <div className={`mc-message-row ${outgoing ? 'outgoing' : ''}`} data-message-id={m.id}>
               <div className="mc-message-header">
                 {canClick ? (

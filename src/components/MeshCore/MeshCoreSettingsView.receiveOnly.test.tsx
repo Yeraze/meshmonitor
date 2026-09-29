@@ -33,6 +33,9 @@ vi.mock('@tanstack/react-query', () => ({
   useQueryClient: () => ({ invalidateQueries: h.invalidateQueries }),
 }));
 // Not under test; it fetches on mount.
+// Ignore / Block sections (#5408) own TanStack queries; covered by their own tests.
+vi.mock('./MeshCoreIgnoredNodesSection', () => ({ MeshCoreIgnoredNodesSection: () => null }));
+vi.mock('./MeshCoreMessageFiltersSection', () => ({ MeshCoreMessageFiltersSection: () => null }));
 vi.mock('./MeshCoreNodeDisplaySection', () => ({
   MeshCoreNodeDisplaySection: () => null,
 }));

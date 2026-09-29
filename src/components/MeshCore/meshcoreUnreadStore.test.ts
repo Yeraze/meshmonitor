@@ -53,6 +53,12 @@ describe('computeUnreadDmPeers', () => {
     expect(unread.has(PEER1)).toBe(false);
   });
 
+  it('does not flag ignored messages (#5408)', () => {
+    const messages = [{ ...dm(PEER1, SELF, 100), filtered: 'ignore' as const }];
+    const unread = computeUnreadDmPeers({ messages, contacts, selfKey: SELF, dmLastRead: {} });
+    expect(unread.size).toBe(0);
+  });
+
   it('never flags the currently-open peer', () => {
     const messages = [dm(PEER1, SELF, 100)];
     const unread = computeUnreadDmPeers({ messages, contacts, selfKey: SELF, dmLastRead: {}, activePeerKey: PEER1 });

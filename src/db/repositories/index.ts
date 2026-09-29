@@ -141,6 +141,15 @@ export type {
   FlightMatchResultWrite,
   FlightMatchLookupWrite,
 } from './aircraftFlightMatches.js';
+export { MeshCoreFiltersRepository } from './meshcoreFilters.js';
+export type {
+  MeshCoreIgnoredNodeRow,
+  MeshCoreMessageFilterRow,
+  MeshCoreMessageFilterInput,
+  MeshCoreFilterMode,
+  MeshCoreFilterMatchType,
+  MeshCoreFilterFields,
+} from './meshcoreFilters.js';
 export { MeshIssuesRepository } from './meshIssues.js';
 export type {
   DbMeshIssue,

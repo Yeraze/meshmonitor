@@ -1,4 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { MeshCoreIgnoreBlockControls } from './MeshCoreIgnoreBlockControls';
+import type { MeshCoreFilterMode } from '../../hooks/useMeshCoreFilters';
 import { useTranslation } from 'react-i18next';
 import {
   MeshCoreMessage, MeshCoreActions, ConnectionStatus, MeshCoreNode,
@@ -52,6 +54,15 @@ interface MeshCoreDirectMessagesViewProps {
    *  Phase 2). Threaded to MeshCoreContactDetailPanel and
    *  MeshCoreNodeTelemetryConfig; WP3 wires the DM send-box gate itself. */
   receiveOnly?: boolean;
+  /**
+   * Ignore / Block entries for this source (#5408). Peers with an entry are
+   * hidden from the list (the selected one stays reachable so it can be
+   * taken off the list). When `onSetIgnoredNode` is given, the detail pane
+   * shows Ignore / Block controls.
+   */
+  ignoredNodes?: ReadonlyArray<{ publicKey: string; mode: MeshCoreFilterMode }>;
+  onSetIgnoredNode?: (publicKey: string, mode: MeshCoreFilterMode, name: string | null) => Promise<unknown>;
+  onRemoveIgnoredNode?: (publicKey: string) => Promise<unknown>;
 }
 
 /** True when the publicKey is a real 64-char hex (i.e. not a synthetic / prefix key). */
@@ -82,6 +93,9 @@ export const MeshCoreDirectMessagesView: React.FC<MeshCoreDirectMessagesViewProp
   sourceId,
   initialSelectedContact,
   receiveOnly = false,
+  ignoredNodes,
+  onSetIgnoredNode,
+  onRemoveIgnoredNode,
 }) => {
   const { t } = useTranslation();
   const { hasPermission } = useAuth();
@@ -176,6 +190,11 @@ export const MeshCoreDirectMessagesView: React.FC<MeshCoreDirectMessagesViewProp
     return a.startsWith(b) || b.startsWith(a);
   };
 
+  const ignoredModeByKey = useMemo(
+    () => new Map((ignoredNodes ?? []).map((e) => [e.publicKey.toLowerCase(), e.mode] as const)),
+    [ignoredNodes],
+  );
+
   // Channel messages carry synthetic `channel-${idx}` keys (see the shared
   // `isChannelPseudoKey` in meshcoreUnreadStore) — they are NOT real DM peers
   // and are filtered out everywhere this view looks at to/fromPublicKey.
@@ -220,6 +239,12 @@ export const MeshCoreDirectMessagesView: React.FC<MeshCoreDirectMessagesViewProp
         if (keysMatch(key, selfKey)) peers.delete(key);
       }
     }
+    // Ignore / Block (#5408): hide listed peers, except the open one.
+    if (ignoredModeByKey.size > 0) {
+      for (const key of Array.from(peers)) {
+        if (ignoredModeByKey.has(key.toLowerCase()) && key !== selected) peers.delete(key);
+      }
+    }
     const peerNameFor = (key: string): string => {
       const c = contactsByKey.get(key);
       return c?.advName || c?.name || key;
@@ -238,7 +263,7 @@ export const MeshCoreDirectMessagesView: React.FC<MeshCoreDirectMessagesViewProp
       const bt = lastMessageAt.get(b) ?? 0;
       return (at - bt) * dir;
     });
-  }, [messages, contacts, selfKey, canonicalize, contactsByKey, favoriteByKey, sortField, sortDirection]);
+  }, [messages, contacts, selfKey, canonicalize, contactsByKey, favoriteByKey, sortField, sortDirection, ignoredModeByKey, selected]);
 
   // Issue #3922 (MeshCore): let the conversation filter match on message
   // *content*, not just the contact's name / public key. Precompute the set of
@@ -597,6 +622,18 @@ export const MeshCoreDirectMessagesView: React.FC<MeshCoreDirectMessagesViewProp
                 receiveOnly={receiveOnly}
                 firstHeard={firstHeardByKey.get(selected)}
               />
+              {onSetIgnoredNode && onRemoveIgnoredNode && isRealNodeKey(selected) && (
+                <MeshCoreIgnoreBlockControls
+                  publicKey={selected}
+                  mode={ignoredModeByKey.get(selected.toLowerCase()) ?? null}
+                  canWrite={canWriteNodes}
+                  onSet={(mode) => {
+                    const c = contactsByKey.get(selected);
+                    return onSetIgnoredNode(selected, mode, c?.advName || c?.name || null);
+                  }}
+                  onRemove={() => onRemoveIgnoredNode(selected)}
+                />
+              )}
               {!!sourceId && typeof baseUrl === 'string' && isRealNodeKey(selected) && (
                 <>
                   <MeshCoreNodeTelemetryConfig

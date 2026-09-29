@@ -20,6 +20,7 @@ import { isMeshCoreMqttManager } from '../sourceManagerTypes.js';
 import type { MeshCoreMqttManager } from '../meshcoreMqttManager.js';
 import { logger } from '../../utils/logger.js';
 import { ok, fail } from '../utils/apiResponse.js';
+import { meshcoreMessageFilter } from '../services/meshcoreMessageFilter.js';
 
 const router = Router({ mergeParams: true });
 
@@ -135,7 +136,11 @@ router.get(
       const limit =
         Number.isFinite(raw) && raw > 0 ? Math.min(raw, MAX_MESSAGE_LIMIT) : DEFAULT_MESSAGE_LIMIT;
 
-      const messages = await mgr.getRecentMessagesAsync(limit);
+      // Ignore / Block (#5408): computed from the current lists at read time.
+      const messages = meshcoreMessageFilter.annotate(
+        (req.params as { id?: string }).id ?? '',
+        await mgr.getRecentMessagesAsync(limit),
+      );
       return ok(res, { messages, count: messages.length });
     } catch (error) {
       logger.error('[API] MeshCore ingest messages failed:', error);
