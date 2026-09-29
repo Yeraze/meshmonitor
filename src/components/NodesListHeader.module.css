@@ -1,0 +1,59 @@
+/*
+ * Nodes list header: title row, filter input, one row of icon controls.
+ *
+ * The global `.sidebar-header` rule in Sidebar.css sets `display: flex`
+ * (row), which put the title and the controls side by side and crushed the
+ * controls into a narrow column. Stack them instead. `:global(.nodes-sidebar)`
+ * lifts specificity over both global `.sidebar-header` rules; the collapsed
+ * rules (`.nodes-sidebar.collapsed .sidebar-header`) still win.
+ */
+
+:global(.nodes-sidebar) .header {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.4rem;
+  padding: 0.5rem 0.75rem;
+}
+
+/* Clear the absolutely positioned 18px collapse button at top/left 8px. */
+:global(.nodes-sidebar) .title {
+  padding-left: 1.5rem;
+  min-height: 18px;
+}
+
+:global(.nodes-sidebar) .title h3 {
+  font-size: 1rem;
+  line-height: 1.2;
+}
+
+:global(.nodes-sidebar) .controls {
+  padding: 0;
+}
+
+:global(.nodes-sidebar) .controls :global(.filter-input-small) {
+  padding-top: 0.35rem;
+  padding-bottom: 0.35rem;
+  font-size: 0.85rem;
+}
+
+:global(.nodes-sidebar) .toolbar {
+  gap: 0.35rem;
+  margin-top: 0.4rem;
+}
+
+:global(.nodes-sidebar) .toolbar :global(.sort-dropdown) {
+  min-width: 5.5rem;
+}
+
+:global(.nodes-sidebar) .toolbar :global(.sort-direction-btn) {
+  padding: 0.3rem 0.5rem;
+  font-size: 1rem;
+}
+
+/* Pressed state for the Group by Role toggle. */
+:global(.nodes-sidebar) .toolbar :global(.sort-direction-btn).active {
+  background: var(--color-accent);
+  border-color: var(--color-accent);
+  color: var(--color-accent-text);
+}
