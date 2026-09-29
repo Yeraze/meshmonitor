@@ -12,7 +12,7 @@ Before using OTA updates, your setup must meet **all** of the following:
 
 | Requirement | Details |
 |---|---|
-| **TCP connection** | MeshMonitor must be connected to the node via TCP/IP (direct Wi-Fi). Serial and BLE bridge connections **cannot** use OTA updates. |
+| **ESP32 hardware** | Only ESP32-family boards are supported (ESP32, ESP32-S3, ESP32-C3, ESP32-C6; e.g., Heltec V3/V4, T-Beam, Station G2). nRF52 and RP2040 boards do not support Wi-Fi OTA. See [Supported Hardware](#supported-hardware). |
 | **ESP32 hardware** | Only ESP32 and ESP32-S3 boards are supported (e.g., Heltec V3/V4, T-Beam, RAK WisBlock, Station G2). nRF52 and RP2040 boards do not support Wi-Fi OTA. |
 | **Wi-Fi enabled** | The node must be connected to your local network with a known, reachable IP address. |
 | **Firmware >= 2.7.18** | The node must already be running firmware version 2.7.18 or later. Earlier versions do not support the OTA update command. |
