@@ -279,23 +279,44 @@ export class AircraftAgeOutService {
    * carries an altitude). Never throws; the caller does not await it.
    */
   async onLivePosition(sourceId: string, nodeNum: number, opts: { classify?: boolean } = {}): Promise<void> {
+    await this.liftAgedOut(sourceId, nodeNum);
+    if (opts.classify !== false) this.deps.scheduleClassification(sourceId, nodeNum);
+  }
+
+  /**
+   * D3 auto-lift for an ingest path that drops ignored senders BEFORE it
+   * stores the fix (MQTT). Such a path never reaches `handlePositionReception`
+   * for an aged-out aircraft, so it must lift first and then re-check its
+   * ignore gate. Lifts only for a live reception; queues no classification
+   * (the path's own `handlePositionReception` does that once the fix is
+   * stored). Returns true when the ignore was lifted. Never throws.
+   */
+  async liftIfLivePosition(
+    sourceId: string,
+    nodeNum: number,
+    rxTimeSec: number | null | undefined,
+    nowMs: number,
+  ): Promise<boolean> {
+    if (!isLiveReception(rxTimeSec, nowMs)) return false;
+    return this.liftAgedOut(sourceId, nodeNum);
+  }
+
+  private async liftAgedOut(sourceId: string, nodeNum: number): Promise<boolean> {
     try {
       // Cheap pre-check: a node that isn't ignored at all can't be aged out.
-      if (this.deps.isIgnoredCached(nodeNum, sourceId)) {
-        const agedOutAt = await this.deps.getAgedOutAt(nodeNum, sourceId);
-        if (agedOutAt != null) {
-          const lifted = await this.deps.liftAircraftIgnore(nodeNum, sourceId);
-          if (lifted) {
-            await this.deps.clearAgedOut(nodeNum, sourceId);
-            this.liftedSinceLastRun.set(sourceId, (this.liftedSinceLastRun.get(sourceId) ?? 0) + 1);
-            logger.info(`✈️ Aged-out aircraft ${nodeNum} on source ${sourceId} sent a live position; ignore lifted`);
-          }
-        }
-      }
+      if (!this.deps.isIgnoredCached(nodeNum, sourceId)) return false;
+      const agedOutAt = await this.deps.getAgedOutAt(nodeNum, sourceId);
+      if (agedOutAt == null) return false;
+      const lifted = await this.deps.liftAircraftIgnore(nodeNum, sourceId);
+      if (!lifted) return false;
+      await this.deps.clearAgedOut(nodeNum, sourceId);
+      this.liftedSinceLastRun.set(sourceId, (this.liftedSinceLastRun.get(sourceId) ?? 0) + 1);
+      logger.info(`✈️ Aged-out aircraft ${nodeNum} on source ${sourceId} sent a live position; ignore lifted`);
+      return true;
     } catch (err) {
       logger.debug(`Aircraft auto-lift failed for ${nodeNum}@${sourceId}: ${err}`);
+      return false;
     }
-    if (opts.classify !== false) this.deps.scheduleClassification(sourceId, nodeNum);
   }
 }
 
