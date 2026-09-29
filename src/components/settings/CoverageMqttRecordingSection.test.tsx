@@ -26,50 +26,42 @@ import { CoverageMqttRecordingSection } from './CoverageMqttRecordingSection';
 // on the literal rendered text (the measured numbers / unmeasured wording),
 // so it needs real fallback resolution, following the
 // MeshCoreSettingsView.receiveOnly.test.tsx convention.
-vi.mock('react-i18next', () => ({
-  useTranslation: () => ({
-    t: (key: string, fallback?: string, vars?: Record<string, unknown>) => {
-      let out = typeof fallback === 'string' ? fallback : key;
-      if (vars) {
-        Object.entries(vars).forEach(([k, v]) => {
-          out = out.replace(`{{${k}}}`, String(v));
-        });
-      }
-      return out;
+vi.mock('react-i18next', async () => {
+  const { createReactI18nextMock } = await import('../../test/mockI18n');
+  return createReactI18nextMock(undefined, {
+    // The real Trans resolves `i18nKey` against loaded resources and swaps
+    // <link>...</link> for `components.link`. Tests carry no i18n resources, so
+    // this mirrors that behavior for the two keys the component uses, using
+    // the same English text as public/locales/en.json's
+    // `settings.coverage_mqtt_warning` / `settings.coverage_observer_warning`.
+    Trans: ({ i18nKey, components }: { i18nKey: string; components?: Record<string, React.ReactElement> }) => {
+      const templates: Record<string, string> = {
+        'settings.coverage_mqtt_warning':
+          'Each gateway that hears a position packet adds one row. A regional feed adds about ' +
+          '12,000–14,000 rows a day: about 90,000–100,000 rows (35–50 MB) over a 7-day retention. ' +
+          'A world-wide msh/# feed can reach about 1 million rows a day and several GB a week. ' +
+          'Rows are kept for the Coverage retention period, a global setting under <link>Settings → Coverage Report</link>.',
+        'settings.coverage_observer_warning':
+          'Each observer that hears a MeshCore advert with a position adds one row, and many ' +
+          'observers can hear one advert over several paths. We have not measured how many rows a ' +
+          'MeshCore region feed produces; watch your database size after turning this on. Rows are ' +
+          'kept for the Coverage retention period, a global setting under <link>Settings → Coverage Report</link>.',
+      };
+      const template = templates[i18nKey];
+      if (!template) return null;
+      const [before, rest] = template.split('<link>');
+      const [linkText, after] = rest.split('</link>');
+      const link = components?.link;
+      return (
+        <>
+          {before}
+          {link ? React.cloneElement(link, undefined, linkText) : linkText}
+          {after}
+        </>
+      );
     },
-  }),
-  // The real Trans resolves `i18nKey` against loaded resources and swaps
-  // <link>...</link> for `components.link`. Tests carry no i18n resources, so
-  // this mirrors that behavior for the two keys the component uses, using
-  // the same English text as public/locales/en.json's
-  // `settings.coverage_mqtt_warning` / `settings.coverage_observer_warning`.
-  Trans: ({ i18nKey, components }: { i18nKey: string; components?: Record<string, React.ReactElement> }) => {
-    const templates: Record<string, string> = {
-      'settings.coverage_mqtt_warning':
-        'Each gateway that hears a position packet adds one row. A regional feed adds about ' +
-        '12,000–14,000 rows a day: about 90,000–100,000 rows (35–50 MB) over a 7-day retention. ' +
-        'A world-wide msh/# feed can reach about 1 million rows a day and several GB a week. ' +
-        'Rows are kept for the Coverage retention period, a global setting under <link>Settings → Coverage Report</link>.',
-      'settings.coverage_observer_warning':
-        'Each observer that hears a MeshCore advert with a position adds one row, and many ' +
-        'observers can hear one advert over several paths. We have not measured how many rows a ' +
-        'MeshCore region feed produces; watch your database size after turning this on. Rows are ' +
-        'kept for the Coverage retention period, a global setting under <link>Settings → Coverage Report</link>.',
-    };
-    const template = templates[i18nKey];
-    if (!template) return null;
-    const [before, rest] = template.split('<link>');
-    const [linkText, after] = rest.split('</link>');
-    const link = components?.link;
-    return (
-      <>
-        {before}
-        {link ? React.cloneElement(link, undefined, linkText) : linkText}
-        {after}
-      </>
-    );
-  },
-}));
+  });
+});
 
 const h = vi.hoisted(() => ({
   apiGet: vi.fn(),

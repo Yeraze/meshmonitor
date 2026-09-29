@@ -26,9 +26,11 @@ const h = vi.hoisted(() => ({
 }));
 
 // --- mocks ---------------------------------------------------------------
-vi.mock('react-i18next', () => ({
-  useTranslation: () => ({ t: (_key: string, fallback?: string) => fallback ?? _key }),
-}));
+vi.mock('react-i18next', async () => {
+  const { createReactI18nextMock } = await import('../test/mockI18n');
+  const t = (_key: string, fallback?: string) => fallback ?? _key;
+  return createReactI18nextMock(t);
+});
 
 vi.mock('@tanstack/react-query', () => ({
   useQueryClient: () => ({

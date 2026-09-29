@@ -22,12 +22,14 @@ function lookupEnDefault(key: string): string | undefined {
   return typeof value === 'string' ? value : undefined;
 }
 
-vi.mock('react-i18next', async (importOriginal) => ({
-  ...(await importOriginal<Record<string, unknown>>()),
-  useTranslation: () => ({
-    t: (key: string, defaultValue?: string) => lookupEnDefault(key) ?? defaultValue ?? key,
-  }),
-}));
+vi.mock('react-i18next', async (importOriginal) => {
+  const { createReactI18nextMock } = await import('../../test/mockI18n');
+  const t = (key: string, defaultValue?: string) => lookupEnDefault(key) ?? defaultValue ?? key;
+  return {
+    ...(await importOriginal<Record<string, unknown>>()),
+    useTranslation: createReactI18nextMock(t).useTranslation,
+  };
+});
 
 const FROM = 100;
 const TO = 200;

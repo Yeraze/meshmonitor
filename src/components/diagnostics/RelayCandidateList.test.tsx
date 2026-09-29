@@ -11,12 +11,12 @@ import '@testing-library/jest-dom';
 import { render, screen } from '@testing-library/react';
 import RelayCandidateList, { type RelayCandidateNode } from './RelayCandidateList';
 
-vi.mock('react-i18next', () => ({
-  useTranslation: () => ({
-    t: (key: string, vars?: Record<string, unknown>) =>
-      vars ? `${key}:${JSON.stringify(vars)}` : key,
-  }),
-}));
+vi.mock('react-i18next', async () => {
+  const { createReactI18nextMock } = await import('../../test/mockI18n');
+  const t = (key: string, vars?: Record<string, unknown>) =>
+    vars ? `${key}:${JSON.stringify(vars)}` : key;
+  return createReactI18nextMock(t);
+});
 
 const node = (over: Partial<RelayCandidateNode> = {}): RelayCandidateNode => ({
   nodeNum: 0x1234abcd,

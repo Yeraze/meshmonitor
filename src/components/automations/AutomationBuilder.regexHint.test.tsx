@@ -15,15 +15,10 @@ import AutomationBuilder from './AutomationBuilder';
 import type { WorkflowForm } from './compile';
 
 // Override the global i18n mock so t(key, default) returns the English default.
-vi.mock('react-i18next', () => ({
-  useTranslation: () => ({
-    t: (key: string, defaultValue?: string | Record<string, unknown>) =>
-      typeof defaultValue === 'string' ? defaultValue : key,
-    i18n: { changeLanguage: vi.fn(), language: 'en' },
-  }),
-  Trans: ({ children }: { children: React.ReactNode }) => children,
-  initReactI18next: { type: '3rdParty', init: vi.fn() },
-}));
+vi.mock('react-i18next', async () => {
+  const { createReactI18nextMock } = await import('../../test/mockI18n');
+  return createReactI18nextMock();
+});
 
 /** A workflow whose single condition is a text comparison using `op`. */
 function renderWithStringOp(op: string) {

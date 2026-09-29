@@ -152,37 +152,39 @@ function lookupEnDefault(key: string): string | undefined {
   return typeof value === 'string' ? value : undefined;
 }
 
-vi.mock('react-i18next', async (importOriginal) => ({
-  ...(await importOriginal<Record<string, unknown>>()),
-  useTranslation: () => ({
-    t: (
-      key: string,
-      arg2?: string | Record<string, unknown>,
-      arg3?: Record<string, unknown>,
-    ) => {
-      let options: Record<string, unknown> | undefined;
-      let defaultValue: string | undefined;
-      if (typeof arg2 === 'string') {
-        defaultValue = arg2;
-        options = arg3;
-      } else {
-        options = arg2;
+vi.mock('react-i18next', async (importOriginal) => {
+  const { createReactI18nextMock } = await import('../../test/mockI18n');
+  const t = (
+    key: string,
+    arg2?: string | Record<string, unknown>,
+    arg3?: Record<string, unknown>,
+  ) => {
+    let options: Record<string, unknown> | undefined;
+    let defaultValue: string | undefined;
+    if (typeof arg2 === 'string') {
+      defaultValue = arg2;
+      options = arg3;
+    } else {
+      options = arg2;
+    }
+    let resolved = lookupEnDefault(key);
+    if (resolved === undefined && options && typeof options.count === 'number') {
+      const suffix = options.count === 1 ? '_one' : '_other';
+      resolved = lookupEnDefault(`${key}${suffix}`);
+    }
+    let out = resolved ?? defaultValue ?? key;
+    if (options) {
+      for (const [k, v] of Object.entries(options)) {
+        out = out.replace(new RegExp(`{{${k}}}`, 'g'), String(v));
       }
-      let resolved = lookupEnDefault(key);
-      if (resolved === undefined && options && typeof options.count === 'number') {
-        const suffix = options.count === 1 ? '_one' : '_other';
-        resolved = lookupEnDefault(`${key}${suffix}`);
-      }
-      let out = resolved ?? defaultValue ?? key;
-      if (options) {
-        for (const [k, v] of Object.entries(options)) {
-          out = out.replace(new RegExp(`{{${k}}}`, 'g'), String(v));
-        }
-      }
-      return out;
-    },
-  }),
-}));
+    }
+    return out;
+  };
+  return {
+    ...(await importOriginal<Record<string, unknown>>()),
+    useTranslation: createReactI18nextMock(t).useTranslation,
+  };
+});
 
 describe('TracerouteParticipationPicker', () => {
   it('renders nothing for 0 entries', () => {

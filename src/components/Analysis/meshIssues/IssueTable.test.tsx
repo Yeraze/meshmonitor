@@ -7,18 +7,10 @@ import React from 'react';
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 
-vi.mock('react-i18next', () => ({
-  useTranslation: () => ({
-    t: (key: string, defaultValue?: string, options?: Record<string, unknown>) => {
-      let result = typeof defaultValue === 'string' ? defaultValue : key;
-      if (options) Object.entries(options).forEach(([k, v]) => { result = result.replace(`{{${k}}}`, String(v)); });
-      return result;
-    },
-    i18n: { changeLanguage: vi.fn(), language: 'en' },
-  }),
-  Trans: ({ children }: { children: React.ReactNode }) => children,
-  initReactI18next: { type: '3rdParty', init: vi.fn() },
-}));
+vi.mock('react-i18next', async () => {
+  const { createReactI18nextMock } = await import('../../../test/mockI18n');
+  return createReactI18nextMock();
+});
 
 // RouterClusterMap (pulled in transitively by FindingDetail for B1 rows) pulls
 // BaseMap -> TilesetSelector -> SettingsContext -> i18n -> init.ts, which

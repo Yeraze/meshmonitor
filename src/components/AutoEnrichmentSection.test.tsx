@@ -12,20 +12,10 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import AutoEnrichmentSection from './AutoEnrichmentSection';
 
-vi.mock('react-i18next', () => ({
-  useTranslation: () => ({
-    t: (key: string, defaultValue?: string | Record<string, unknown>) => {
-      if (typeof defaultValue === 'string') return defaultValue;
-      if (defaultValue && typeof defaultValue === 'object' && 'defaultValue' in defaultValue) {
-        return String((defaultValue as Record<string, unknown>).defaultValue);
-      }
-      return key;
-    },
-    i18n: { changeLanguage: vi.fn(), language: 'en' },
-  }),
-  Trans: ({ children }: { children: React.ReactNode }) => children,
-  initReactI18next: { type: '3rdParty', init: vi.fn() },
-}));
+vi.mock('react-i18next', async () => {
+  const { createReactI18nextMock } = await import('../test/mockI18n');
+  return createReactI18nextMock();
+});
 
 const mockCsrfFetch = vi.fn();
 vi.mock('../hooks/useCsrfFetch', () => ({ useCsrfFetch: () => mockCsrfFetch }));

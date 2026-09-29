@@ -16,9 +16,11 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
 
-vi.mock('react-i18next', () => ({
-  useTranslation: () => ({ t: (key: string, fallback?: string) => fallback ?? key }),
-}));
+vi.mock('react-i18next', async () => {
+  const { createReactI18nextMock } = await import('../../test/mockI18n');
+  const t = (key: string, fallback?: string) => fallback ?? key;
+  return createReactI18nextMock(t);
+});
 
 const saveBarCalls: Array<{ hasChanges: boolean }> = [];
 vi.mock('../../hooks/useSaveBar', () => ({

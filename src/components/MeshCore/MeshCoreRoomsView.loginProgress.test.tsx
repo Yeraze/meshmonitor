@@ -8,16 +8,10 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { MeshCoreRoomsView } from './MeshCoreRoomsView';
 import type { MeshCoreContact } from '../../utils/meshcoreHelpers';
 
-vi.mock('react-i18next', () => ({
-  useTranslation: () => ({
-    t: (key: string, fallback?: string | Record<string, unknown>, vars?: Record<string, unknown>) => {
-      const text = typeof fallback === 'string' ? fallback : key;
-      return text.replace(/\{\{(\w+)\}\}/g, (_m, k) => String(vars?.[k] ?? ''));
-    },
-  }),
-  Trans: ({ children }: { children?: unknown }) => children,
-  initReactI18next: { type: '3rdParty', init: () => {} },
-}));
+vi.mock('react-i18next', async () => {
+  const { createReactI18nextMock } = await import('../../test/mockI18n');
+  return createReactI18nextMock();
+});
 vi.mock('../../contexts/AuthContext', () => ({
   useAuth: () => ({ hasPermission: () => true }),
 }));

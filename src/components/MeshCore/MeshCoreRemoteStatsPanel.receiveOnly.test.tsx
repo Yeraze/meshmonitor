@@ -23,14 +23,14 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { MeshCoreRemoteStatsPanel } from './MeshCoreRemoteStatsPanel';
 import type { MeshCoreRemoteStatus } from './hooks/useMeshCore';
 
-vi.mock('react-i18next', () => ({
-  useTranslation: () => ({
-    t: (key: string, fallback?: string | Record<string, unknown>) => {
-      if (typeof fallback === 'string') return fallback;
-      return key;
-    },
-  }),
-}));
+vi.mock('react-i18next', async () => {
+  const { createReactI18nextMock } = await import('../../test/mockI18n');
+  const t = (key: string, fallback?: string | Record<string, unknown>) => {
+    if (typeof fallback === 'string') return fallback;
+    return key;
+  };
+  return createReactI18nextMock(t);
+});
 
 const PK = 'a'.repeat(64);
 

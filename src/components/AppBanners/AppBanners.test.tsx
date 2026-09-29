@@ -10,17 +10,17 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { AppBanners, DISMISSED_UPDATE_VERSION_KEY, type DeploymentMethod } from './AppBanners';
 
-vi.mock('react-i18next', () => ({
-  useTranslation: () => ({
-    t: (key: string, opts?: string | Record<string, unknown>) => {
-      if (typeof opts === 'string') return opts;
-      if (opts && typeof opts === 'object' && 'version' in opts) {
-        return `${key}:${(opts as { version: string }).version}`;
-      }
-      return key;
-    },
-  }),
-}));
+vi.mock('react-i18next', async () => {
+  const { createReactI18nextMock } = await import('../../test/mockI18n');
+  const t = (key: string, opts?: string | Record<string, unknown>) => {
+    if (typeof opts === 'string') return opts;
+    if (opts && typeof opts === 'object' && 'version' in opts) {
+      return `${key}:${(opts as { version: string }).version}`;
+    }
+    return key;
+  };
+  return createReactI18nextMock(t);
+});
 
 const baseProps = {
   isTxDisabled: false,

@@ -12,11 +12,11 @@ const settings = {
   cartoApiKey: null as string | null,
 };
 
-vi.mock('react-i18next', () => ({
-  useTranslation: () => ({
-    t: (_key: string, fallback: string) => fallback,
-  }),
-}));
+vi.mock('react-i18next', async () => {
+  const { createReactI18nextMock } = await import('../test/mockI18n');
+  const t = (_key: string, fallback: string) => fallback;
+  return createReactI18nextMock(t);
+});
 
 vi.mock('../contexts/SettingsContext', () => ({
   useNodeListStyle: () => 'monochrome',

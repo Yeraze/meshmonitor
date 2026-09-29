@@ -17,19 +17,10 @@ import { MessageDeliveryState, type MeshMessage, type MessageEvent } from '../..
 import type { MeshCoreMessage } from '../MeshCore/hooks/useMeshCore';
 import apiService from '../../services/api';
 
-vi.mock('react-i18next', () => ({
-  useTranslation: () => ({
-    t: (key: string, fallback?: string | Record<string, unknown>, vars?: Record<string, unknown>) => {
-      if (typeof fallback !== 'string') return key;
-      // Minimal {{var}} interpolation so possible_relays/attempt-style
-      // fallbacks render their count in tests, matching real i18next.
-      if (vars) {
-        return fallback.replace(/\{\{(\w+)\}\}/g, (_, name) => String(vars[name] ?? ''));
-      }
-      return fallback;
-    },
-  }),
-}));
+vi.mock('react-i18next', async () => {
+  const { createReactI18nextMock } = await import('../../test/mockI18n');
+  return createReactI18nextMock();
+});
 
 // The timeline section fetches via ApiService.getMessageEvents, and the
 // Meshtastic Propagation section via ApiService.getMeshtasticHeardBy. Default

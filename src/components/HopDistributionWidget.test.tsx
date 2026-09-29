@@ -19,23 +19,23 @@ vi.mock('@dnd-kit/utilities', () => ({
   CSS: { Transform: { toString: () => null } },
 }));
 
-vi.mock('react-i18next', () => ({
-  useTranslation: () => ({
-    t: (key: string, opts?: Record<string, unknown>) => {
-      if (opts?.count !== undefined) return `${opts.count} hops`;
-      const translations: Record<string, string> = {
-        'dashboard.widget.hop_distribution.title': 'Hop Distribution',
-        'dashboard.widget.hop_distribution.direct': 'Direct',
-        'dashboard.widget.hop_distribution.total_nodes': 'Total Nodes',
-        'dashboard.widget.hop_distribution.direct_neighbors': 'Direct Neighbors',
-        'dashboard.widget.hop_distribution.longest_path': 'Longest Path',
-        'dashboard.widget.hop_distribution.unknown': 'Unknown',
-        'dashboard.remove_widget': 'Remove',
-      };
-      return translations[key] || key;
-    },
-  }),
-}));
+vi.mock('react-i18next', async () => {
+  const { createReactI18nextMock } = await import('../test/mockI18n');
+  const t = (key: string, opts?: Record<string, unknown>) => {
+    if (opts?.count !== undefined) return `${opts.count} hops`;
+    const translations: Record<string, string> = {
+      'dashboard.widget.hop_distribution.title': 'Hop Distribution',
+      'dashboard.widget.hop_distribution.direct': 'Direct',
+      'dashboard.widget.hop_distribution.total_nodes': 'Total Nodes',
+      'dashboard.widget.hop_distribution.direct_neighbors': 'Direct Neighbors',
+      'dashboard.widget.hop_distribution.longest_path': 'Longest Path',
+      'dashboard.widget.hop_distribution.unknown': 'Unknown',
+      'dashboard.remove_widget': 'Remove',
+    };
+    return translations[key] || key;
+  };
+  return createReactI18nextMock(t);
+});
 
 // The widget now reads `overlayColors.hopColors` so its bars use the same hop
 // scale as the map. Mock the hook rather than widening the react-i18next mock:

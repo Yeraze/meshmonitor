@@ -15,15 +15,10 @@ import { render, screen } from '@testing-library/react';
 import { FieldInput, type SourceOption, type UnifiedChannelOption } from './AutomationBuilder';
 import type { FieldDef } from './catalog';
 
-vi.mock('react-i18next', () => ({
-  useTranslation: () => ({
-    t: (key: string, defaultValue?: string | Record<string, unknown>) =>
-      typeof defaultValue === 'string' ? defaultValue : key,
-    i18n: { changeLanguage: vi.fn(), language: 'en' },
-  }),
-  Trans: ({ children }: { children: React.ReactNode }) => children,
-  initReactI18next: { type: '3rdParty', init: vi.fn() },
-}));
+vi.mock('react-i18next', async () => {
+  const { createReactI18nextMock } = await import('../../test/mockI18n');
+  return createReactI18nextMock();
+});
 
 const sources: SourceOption[] = [
   { id: 'mt-tcp', name: 'Radio TCP', type: 'meshtastic_tcp', enabled: true, txEnabled: true },

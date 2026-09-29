@@ -43,12 +43,12 @@ vi.mock('leaflet', () => ({
   },
 }));
 
-vi.mock('react-i18next', () => ({
-  useTranslation: () => ({
-    t: (key: string, opts?: { count: number }) =>
-      key === 'map.clusterNodeCount' ? `${opts?.count} node${opts?.count === 1 ? '' : 's'}` : key,
-  }),
-}));
+vi.mock('react-i18next', async () => {
+  const { createReactI18nextMock } = await import('../../../test/mockI18n');
+  const t = (key: string, opts?: { count: number }) =>
+    key === 'map.clusterNodeCount' ? `${opts?.count} node${opts?.count === 1 ? '' : 's'}` : key;
+  return createReactI18nextMock(t);
+});
 
 describe('NodeMarkerCluster', () => {
   it('renders children through MarkerClusterGroup', () => {

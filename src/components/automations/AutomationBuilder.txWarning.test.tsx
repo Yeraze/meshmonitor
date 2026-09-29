@@ -16,15 +16,10 @@ import type { WorkflowForm } from './compile';
 
 // Override the global i18n mock from src/test/setup.ts so t(key, default) returns
 // the English default — the component calls t() with an inline fallback string.
-vi.mock('react-i18next', () => ({
-  useTranslation: () => ({
-    t: (key: string, defaultValue?: string | Record<string, unknown>) =>
-      typeof defaultValue === 'string' ? defaultValue : key,
-    i18n: { changeLanguage: vi.fn(), language: 'en' },
-  }),
-  Trans: ({ children }: { children: React.ReactNode }) => children,
-  initReactI18next: { type: '3rdParty', init: vi.fn() },
-}));
+vi.mock('react-i18next', async () => {
+  const { createReactI18nextMock } = await import('../../test/mockI18n');
+  return createReactI18nextMock();
+});
 
 const WARNING_TEXT = 'Transmit is disabled on this source — messages sent through it will be skipped.';
 
