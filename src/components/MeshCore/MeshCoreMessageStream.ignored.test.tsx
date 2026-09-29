@@ -7,17 +7,10 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent, within } from '@testing-library/react';
 
-vi.mock('react-i18next', () => ({
-  useTranslation: () => ({
-    t: (key: string, opts?: string | Record<string, unknown>) => {
-      if (typeof opts === 'string') return opts;
-      const template = typeof opts?.defaultValue === 'string' ? opts.defaultValue : key;
-      return template.replace(/\{\{(\w+)\}\}/g, (_m, k) => String(opts?.[k] ?? ''));
-    },
-  }),
-  Trans: ({ children }: { children?: unknown }) => children,
-  initReactI18next: { type: '3rdParty', init: () => {} },
-}));
+vi.mock('react-i18next', async () => {
+  const { createReactI18nextMock } = await import('../../test/mockI18n');
+  return createReactI18nextMock();
+});
 
 import { MeshCoreMessageStream } from './MeshCoreMessageStream';
 import { findIgnoredRuns } from './meshcoreIgnoredRuns';
