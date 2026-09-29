@@ -8,7 +8,8 @@
  */
 import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 
 const PROFILE = {
   id: 'p1',
@@ -62,9 +63,36 @@ vi.mock('react-leaflet', () => ({
 
 import EmbedSettings from './EmbedSettings';
 
-async function renderLoaded() {
+type User = ReturnType<typeof userEvent.setup>;
+
+async function renderLoaded(): Promise<User> {
+  const user = userEvent.setup();
   render(<EmbedSettings />);
   await screen.findByText('Front page');
+  return user;
+}
+
+/**
+ * Open a dialog and wait until it is ready, not just in the DOM.
+ *
+ * "+ New Embed Profile" runs the async `openCreate`: it awaits
+ * `/api/nodes/active` before `setEditingId('new')`, so the dialog commits
+ * outside `act()`. `findByRole` resolves as soon as the node appears, but
+ * React runs `useDialogA11y`'s passive effects (focus the dialog, attach the
+ * document Escape listener) in a later task. An Escape sent in that gap finds
+ * no listener, so the dialog never closes. Under CI load the gap is wide
+ * enough to hit (run 36496362067). Both effects flush in the same pass, so
+ * once focus has moved the Escape listener is attached too.
+ */
+async function openDialog(user: User, trigger: string, name?: string): Promise<HTMLElement> {
+  await user.click(screen.getByRole('button', { name: trigger }));
+  const dialog = await screen.findByRole('dialog', name ? { name } : {});
+  await waitFor(() => expect(document.activeElement).toBe(dialog));
+  return dialog;
+}
+
+async function expectClosed() {
+  await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
 }
 
 describe('EmbedSettings dialogs', () => {
@@ -73,57 +101,52 @@ describe('EmbedSettings dialogs', () => {
   });
 
   it('create/edit dialog is a labelled modal dialog with a named close button', async () => {
-    await renderLoaded();
-    fireEvent.click(screen.getByRole('button', { name: '+ New Embed Profile' }));
+    const user = await renderLoaded();
+    // openDialog also asserts focus moved into the dialog.
+    const dialog = await openDialog(user, '+ New Embed Profile', 'Create Embed Profile');
 
-    const dialog = await screen.findByRole('dialog', { name: 'Create Embed Profile' });
     expect(dialog.getAttribute('aria-modal')).toBe('true');
-    expect(document.activeElement).toBe(dialog);
     expect(screen.getByRole('button', { name: 'Close' })).toBeTruthy();
   });
 
   it('Escape closes the create/edit dialog', async () => {
-    await renderLoaded();
-    fireEvent.click(screen.getByRole('button', { name: '+ New Embed Profile' }));
-    await screen.findByRole('dialog');
+    const user = await renderLoaded();
+    await openDialog(user, '+ New Embed Profile');
 
-    fireEvent.keyDown(document, { key: 'Escape' });
+    await user.keyboard('{Escape}');
 
-    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    await expectClosed();
   });
 
   it('the close button closes the create/edit dialog', async () => {
-    await renderLoaded();
-    fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
-    await screen.findByRole('dialog', { name: 'Edit Embed Profile' });
+    const user = await renderLoaded();
+    await openDialog(user, 'Edit', 'Edit Embed Profile');
 
-    fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+    await user.click(screen.getByRole('button', { name: 'Close' }));
 
-    expect(screen.queryByRole('dialog')).toBeNull();
+    await expectClosed();
   });
 
   it('clicking inside the dialog does not close it; clicking the overlay does', async () => {
-    await renderLoaded();
-    fireEvent.click(screen.getByRole('button', { name: '+ New Embed Profile' }));
-    const dialog = await screen.findByRole('dialog');
+    const user = await renderLoaded();
+    const dialog = await openDialog(user, '+ New Embed Profile');
 
-    fireEvent.click(dialog);
+    await user.click(dialog);
     expect(screen.getByRole('dialog')).toBeTruthy();
 
-    fireEvent.click(dialog.parentElement!);
-    expect(screen.queryByRole('dialog')).toBeNull();
+    await user.click(dialog.parentElement!);
+    await expectClosed();
   });
 
   it('embed code dialog also closes on Escape and labels its close button', async () => {
-    await renderLoaded();
-    fireEvent.click(screen.getByRole('button', { name: 'Embed Code' }));
+    const user = await renderLoaded();
+    await openDialog(user, 'Embed Code', 'Embed Code');
 
-    await screen.findByRole('dialog', { name: 'Embed Code' });
     // The dialog's own footer button is also "Close"; the header icon button
     // must carry the same accessible name rather than none.
     expect(screen.getAllByRole('button', { name: 'Close' })).toHaveLength(2);
 
-    fireEvent.keyDown(document, { key: 'Escape' });
-    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    await user.keyboard('{Escape}');
+    await expectClosed();
   });
 });
