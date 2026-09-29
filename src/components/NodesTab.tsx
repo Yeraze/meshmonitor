@@ -85,6 +85,7 @@ import { NodeDetailsButton } from './NodeDetailsButton';
 import nodeRowStyles from './NodeRowActions.module.css';
 import nodeStatusStyles from './NodeStatusLine.module.css';
 import roleGroupingStyles from './NodeRoleGrouping.module.css';
+import listHeaderStyles from './NodesListHeader.module.css';
 import { NeighborLinksLayer, type NeighborLinkDescriptor } from './map/layers/NeighborLinksLayer';
 import { AccuracyRegionsLayer, type AccuracyRegionDescriptor } from './map/layers/AccuracyRegionsLayer';
 import { NodeCard } from './map/popups/NodeCard';
@@ -2438,7 +2439,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
         className={`nodes-sidebar nodes-anchored-sidebar ${isNodeListCollapsed ? 'collapsed' : ''} ${isSidebarResizing ? 'resizing' : ''}`}
         style={!isNodeListCollapsed ? { width: resolveNodeSidebarRenderWidth(sidebarWidth, sidebarMetrics.availableWidth, sidebarMetrics.mobile) } : undefined}
       >
-        <div className="sidebar-header">
+        <div className={`sidebar-header ${listHeaderStyles.header}`}>
           <button
             className="collapse-nodes-btn"
             onClick={handleCollapseNodeList}
@@ -2447,7 +2448,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
             <UiIcon name={isNodeListCollapsed ? 'forward' : 'back'} size={18} />
           </button>
           {!isNodeListCollapsed && (
-          <div className="sidebar-header-content">
+          <div className={`sidebar-header-content ${listHeaderStyles.title}`}>
             <h3>Nodes ({(() => {
               const filteredCount = processedNodes.filter(node => {
                 // Security filter
@@ -2473,7 +2474,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
           </div>
           )}
           {!isNodeListCollapsed && (
-          <div className="node-controls">
+          <div className={`node-controls ${listHeaderStyles.controls}`}>
             <div className="filter-input-wrapper">
               <input
                 type="text"
@@ -2493,9 +2494,9 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                 </button>
               )}
             </div>
-            <div className="sort-controls">
+            <div className={`sort-controls ${listHeaderStyles.toolbar}`}>
               <button
-                className="filter-popup-btn"
+                className="sort-direction-btn"
                 onClick={(e) => {
                   e.stopPropagation();
                   e.nativeEvent.stopImmediatePropagation();
@@ -2506,11 +2507,12 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                   e.nativeEvent.stopImmediatePropagation();
                 }}
                 title={t('nodes.filter_title')}
+                aria-label={t('common.filter')}
               >
-                {t('common.filter')}
+                <UiIcon name="filter" />
               </button>
               <button
-                className={`filter-popup-btn${groupNodesByRole ? ` ${roleGroupingStyles.toggleActive}` : ''}`}
+                className={`sort-direction-btn${groupNodesByRole ? ` ${listHeaderStyles.active}` : ''}`}
                 onClick={(e) => {
                   e.stopPropagation();
                   e.nativeEvent.stopImmediatePropagation();
@@ -2522,12 +2524,13 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                 }}
                 aria-pressed={groupNodesByRole}
                 title={t('nodes.group_by_role_title', 'Group nodes by role')}
+                aria-label={t('nodes.group_by_role', 'Group by Role')}
               >
-                {t('nodes.group_by_role', 'Group by Role')}
+                <UiIcon name="list" />
               </button>
               {currentSourceId && (
                 <button
-                  className="filter-popup-btn"
+                  className="sort-direction-btn"
                   onClick={(e) => {
                     e.stopPropagation();
                     e.nativeEvent.stopImmediatePropagation();
@@ -2538,8 +2541,9 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                     e.nativeEvent.stopImmediatePropagation();
                   }}
                   title={t('nodes.import_contact_title', 'Add node from URL')}
+                  aria-label={t('nodes.import_contact_title', 'Add node from URL')}
                 >
-                  {t('nodes.import_contact_button', '+ Add from URL')}
+                  <UiIcon name="plus" />
                 </button>
               )}
               <select
