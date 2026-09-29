@@ -15,17 +15,10 @@ const { setViewMock, fitBoundsMock } = vi.hoisted(() => ({
   fitBoundsMock: vi.fn(),
 }));
 
-vi.mock('react-i18next', () => ({
-  useTranslation: () => ({
-    t: (_key: string, fallback?: string | Record<string, unknown>, opts?: Record<string, unknown>) => {
-      if (typeof fallback === 'string') {
-        const vars = (opts ?? {}) as Record<string, unknown>;
-        return fallback.replace(/\{\{(\w+)\}\}/g, (_, k) => String(vars[k] ?? ''));
-      }
-      return _key;
-    },
-  }),
-}));
+vi.mock('react-i18next', async () => {
+  const { createReactI18nextMock } = await import('../../test/mockI18n');
+  return createReactI18nextMock();
+});
 
 vi.mock('../../contexts/SettingsContext', () => ({
   useSettings: () => ({

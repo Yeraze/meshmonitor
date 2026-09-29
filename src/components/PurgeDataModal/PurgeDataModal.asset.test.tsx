@@ -8,11 +8,10 @@ import React from 'react';
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 
-vi.mock('react-i18next', () => ({
-  useTranslation: () => ({
-    t: (key: string, opts?: string | Record<string, unknown>) => (typeof opts === 'string' ? opts : key),
-  }),
-}));
+vi.mock('react-i18next', async () => {
+  const { createReactI18nextMock } = await import('../../test/mockI18n');
+  return createReactI18nextMock();
+});
 
 import { PurgeDataModal } from './PurgeDataModal';
 

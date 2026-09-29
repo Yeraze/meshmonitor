@@ -12,9 +12,10 @@ import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
-vi.mock('react-i18next', () => ({
-  useTranslation: () => ({ t: (k: string) => k }),
-}));
+vi.mock('react-i18next', async () => {
+  const { createReactI18nextMock } = await import('../../test/mockI18n');
+  return createReactI18nextMock();
+});
 vi.mock('../icons/UiIcon', () => ({ UiIcon: ({ name }: { name: string }) => <i data-icon={name} /> }));
 
 import KeyMismatchWarning from './KeyMismatchWarning';

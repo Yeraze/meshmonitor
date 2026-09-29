@@ -12,17 +12,10 @@ import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 
-vi.mock('react-i18next', () => ({
-  useTranslation: () => ({
-    t: (_key: string, fallback?: string | Record<string, unknown>, opts?: Record<string, unknown>) => {
-      if (typeof fallback === 'string') {
-        const vars = (opts ?? {}) as Record<string, unknown>;
-        return fallback.replace(/\{\{(\w+)\}\}/g, (_, k) => String(vars[k] ?? ''));
-      }
-      return _key;
-    },
-  }),
-}));
+vi.mock('react-i18next', async () => {
+  const { createReactI18nextMock } = await import('../../test/mockI18n');
+  return createReactI18nextMock();
+});
 
 const buildCoverageCsv = vi.fn(() => 'csv-content');
 const buildCoverageGeoJson = vi.fn(() => 'geojson-content');

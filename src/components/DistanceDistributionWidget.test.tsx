@@ -19,27 +19,27 @@ vi.mock('@dnd-kit/utilities', () => ({
   CSS: { Transform: { toString: () => null } },
 }));
 
-vi.mock('react-i18next', () => ({
-  useTranslation: () => ({
-    t: (key: string, opts?: Record<string, unknown>) => {
-      const translations: Record<string, string> = {
-        'dashboard.widget.distance_distribution.title': 'Distance Distribution',
-        'dashboard.widget.distance_distribution.km': 'km',
-        'dashboard.widget.distance_distribution.miles': 'mi',
-        'dashboard.widget.distance_distribution.no_home_position': 'No home position set — add GPS to your node',
-        'dashboard.widget.distance_distribution.no_position_data': 'No other nodes have position data',
-        'dashboard.widget.distance_distribution.with_position': 'With Position',
-        'dashboard.widget.distance_distribution.avg_distance': `Avg Distance (${opts?.unit || 'km'})`,
-        'dashboard.widget.distance_distribution.max_distance': `Max Distance (${opts?.unit || 'km'})`,
-        'dashboard.widget.distance_distribution.no_gps': 'No GPS',
-        'dashboard.widget.distance_distribution.settings': 'Settings',
-        'dashboard.widget.distance_distribution.bucket_size': 'Bucket Size',
-        'dashboard.remove_widget': 'Remove',
-      };
-      return translations[key] || key;
-    },
-  }),
-}));
+vi.mock('react-i18next', async () => {
+  const { createReactI18nextMock } = await import('../test/mockI18n');
+  const t = (key: string, opts?: Record<string, unknown>) => {
+    const translations: Record<string, string> = {
+      'dashboard.widget.distance_distribution.title': 'Distance Distribution',
+      'dashboard.widget.distance_distribution.km': 'km',
+      'dashboard.widget.distance_distribution.miles': 'mi',
+      'dashboard.widget.distance_distribution.no_home_position': 'No home position set — add GPS to your node',
+      'dashboard.widget.distance_distribution.no_position_data': 'No other nodes have position data',
+      'dashboard.widget.distance_distribution.with_position': 'With Position',
+      'dashboard.widget.distance_distribution.avg_distance': `Avg Distance (${opts?.unit || 'km'})`,
+      'dashboard.widget.distance_distribution.max_distance': `Max Distance (${opts?.unit || 'km'})`,
+      'dashboard.widget.distance_distribution.no_gps': 'No GPS',
+      'dashboard.widget.distance_distribution.settings': 'Settings',
+      'dashboard.widget.distance_distribution.bucket_size': 'Bucket Size',
+      'dashboard.remove_widget': 'Remove',
+    };
+    return translations[key] || key;
+  };
+  return createReactI18nextMock(t);
+});
 
 import DistanceDistributionWidget from './DistanceDistributionWidget';
 

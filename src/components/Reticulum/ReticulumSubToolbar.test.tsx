@@ -11,12 +11,10 @@ import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { ReticulumSubToolbar } from './ReticulumSubToolbar';
 
-vi.mock('react-i18next', () => ({
-  useTranslation: () => ({
-    t: (key: string, fallback?: string | Record<string, unknown>) =>
-      typeof fallback === 'string' ? fallback : key,
-  }),
-}));
+vi.mock('react-i18next', async () => {
+  const { createReactI18nextMock } = await import('../../test/mockI18n');
+  return createReactI18nextMock();
+});
 
 function renderToolbar(sourceMode?: string | null) {
   return render(

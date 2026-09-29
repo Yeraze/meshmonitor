@@ -14,14 +14,10 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, act } from '@testing-library/react';
 
-vi.mock('react-i18next', () => ({
-  useTranslation: () => ({
-    t: (key: string, fallback?: string | Record<string, unknown>) =>
-      (typeof fallback === 'string' ? fallback : key),
-  }),
-  Trans: ({ children }: { children?: unknown }) => children,
-  initReactI18next: { type: '3rdParty', init: () => {} },
-}));
+vi.mock('react-i18next', async () => {
+  const { createReactI18nextMock } = await import('../../test/mockI18n');
+  return createReactI18nextMock();
+});
 
 import { MeshCoreMessageStream } from './MeshCoreMessageStream';
 import type { MeshCoreMessage } from './hooks/useMeshCore';

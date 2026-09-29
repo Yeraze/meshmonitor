@@ -15,41 +15,40 @@ import { SourceProvider } from '../contexts/SourceContext';
 // the aircraft-exclusion-disabled hint below, since that usage carries no
 // `children`, only `defaults`/`components`. Mirrors
 // CoverageMqttRecordingSection.test.tsx's local override.
-vi.mock('react-i18next', () => ({
-  useTranslation: () => ({
-    t: (key: string, options?: Record<string, unknown>) => {
-      if (options) {
-        let result = key;
-        Object.entries(options).forEach(([k, v]) => {
-          result = result.replace(`{{${k}}}`, String(v));
-        });
-        return result;
-      }
-      return key;
+vi.mock('react-i18next', async () => {
+  const { createReactI18nextMock } = await import('../test/mockI18n');
+  const t = (key: string, options?: Record<string, unknown>) => {
+    if (options) {
+      let result = key;
+      Object.entries(options).forEach(([k, v]) => {
+        result = result.replace(`{{${k}}}`, String(v));
+      });
+      return result;
+    }
+    return key;
+  };
+  return createReactI18nextMock(t, {
+    Trans: ({ i18nKey, defaults, components }: {
+      i18nKey?: string;
+      defaults?: string;
+      components?: Record<string, React.ReactElement>;
+    }) => {
+      const template = defaults ?? i18nKey ?? '';
+      const linkMatch = template.match(/<link>(.*?)<\/link>/);
+      if (!linkMatch) return <>{template}</>;
+      const before = template.slice(0, linkMatch.index);
+      const after = template.slice((linkMatch.index ?? 0) + linkMatch[0].length);
+      const link = components?.link;
+      return (
+        <>
+          {before}
+          {link ? React.cloneElement(link, undefined, linkMatch[1]) : linkMatch[1]}
+          {after}
+        </>
+      );
     },
-    i18n: { changeLanguage: vi.fn(), language: 'en' },
-  }),
-  Trans: ({ i18nKey, defaults, components }: {
-    i18nKey?: string;
-    defaults?: string;
-    components?: Record<string, React.ReactElement>;
-  }) => {
-    const template = defaults ?? i18nKey ?? '';
-    const linkMatch = template.match(/<link>(.*?)<\/link>/);
-    if (!linkMatch) return <>{template}</>;
-    const before = template.slice(0, linkMatch.index);
-    const after = template.slice((linkMatch.index ?? 0) + linkMatch[0].length);
-    const link = components?.link;
-    return (
-      <>
-        {before}
-        {link ? React.cloneElement(link, undefined, linkMatch[1]) : linkMatch[1]}
-        {after}
-      </>
-    );
-  },
-  initReactI18next: { type: '3rdParty', init: vi.fn() },
-}));
+  });
+});
 
 // Mock the useCsrfFetch hook
 const mockCsrfFetch = vi.fn();

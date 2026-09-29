@@ -13,14 +13,10 @@ import { MeshCoreContactDetailPanel } from './MeshCoreContactDetailPanel';
 import type { MeshCoreContact } from '../../utils/meshcoreHelpers';
 import type { MeshCoreNeighboursFetchActions, MeshCoreNeighboursFetchSnapshot } from './hooks/meshcoreNeighboursFetchApi';
 
-vi.mock('react-i18next', () => ({
-  useTranslation: () => ({
-    t: (key: string, fallback?: string | Record<string, unknown>, vars?: Record<string, unknown>) =>
-      typeof fallback === 'string'
-        ? fallback.replace(/\{\{(\w+)\}\}/g, (_m, k: string) => String(vars?.[k] ?? ''))
-        : key,
-  }),
-}));
+vi.mock('react-i18next', async () => {
+  const { createReactI18nextMock } = await import('../../test/mockI18n');
+  return createReactI18nextMock();
+});
 
 vi.mock('../../contexts/SettingsContext', () => ({
   useNodeListStyle: () => 'monochrome',

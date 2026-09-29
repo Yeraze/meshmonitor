@@ -12,35 +12,10 @@ import { calculateDistance, formatDistance } from '../../utils/distance';
 // raw key) — see src/components/NodePopup/NodePopup.test.tsx for the same
 // override. This component calls `t(key, defaultEnglish, vars)`, so a smarter
 // local mock is needed to assert real rendered English text.
-vi.mock('react-i18next', () => ({
-  // #4880: sections.tsx now value-imports SettingsContext (→ config/i18n),
-  // which references initReactI18next at load time.
-  initReactI18next: { type: '3rdParty', init: () => {} },
-  useTranslation: () => ({
-    t: (
-      key: string,
-      arg2?: string | Record<string, unknown>,
-      arg3?: Record<string, unknown>,
-    ) => {
-      let options: Record<string, unknown> | undefined;
-      let defaultValue: string | undefined;
-      if (typeof arg2 === 'string') {
-        defaultValue = arg2;
-        options = arg3;
-      } else {
-        options = arg2;
-        defaultValue = typeof options?.defaultValue === 'string' ? options.defaultValue : undefined;
-      }
-      let out = defaultValue ?? key;
-      if (options) {
-        for (const [k, v] of Object.entries(options)) {
-          out = out.replace(new RegExp(`{{${k}}}`, 'g'), String(v));
-        }
-      }
-      return out;
-    },
-  }),
-}));
+vi.mock('react-i18next', async () => {
+  const { createReactI18nextMock } = await import('../../test/mockI18n');
+  return createReactI18nextMock();
+});
 
 /** Display formats the strip forwards to `LastHeardFooter`. Spread into every
  *  render so the tests don't restate them 12 times. */

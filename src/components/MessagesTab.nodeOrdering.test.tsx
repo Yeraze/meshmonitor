@@ -74,15 +74,17 @@ vi.mock('./SmartHopsGraphs', () => ({ default: () => null }));
 vi.mock('./LinkQualityGraph', () => ({ default: () => null }));
 vi.mock('./PacketStatsChart', () => ({ default: () => null }));
 
-vi.mock('react-i18next', async (importOriginal) => ({
-  ...(await importOriginal<Record<string, unknown>>()),
-  useTranslation: () => ({
-    t: (key: string, opts?: Record<string, unknown>) =>
-      (opts && typeof opts === 'object' && 'defaultValue' in opts
-        ? (opts.defaultValue as string)
-        : undefined) ?? key,
-  }),
-}));
+vi.mock('react-i18next', async (importOriginal) => {
+  const { createReactI18nextMock } = await import('../test/mockI18n');
+  const t = (key: string, opts?: Record<string, unknown>) =>
+    (opts && typeof opts === 'object' && 'defaultValue' in opts
+      ? (opts.defaultValue as string)
+      : undefined) ?? key;
+  return {
+    ...(await importOriginal<Record<string, unknown>>()),
+    useTranslation: createReactI18nextMock(t).useTranslation,
+  };
+});
 
 beforeAll(() => {
   if (!('ResizeObserver' in globalThis)) {

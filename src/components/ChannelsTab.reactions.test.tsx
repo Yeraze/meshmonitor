@@ -32,13 +32,15 @@ vi.mock('../contexts/SettingsContext', async (importOriginal) => ({
   }),
 }));
 
-vi.mock('react-i18next', async (importOriginal) => ({
-  ...(await importOriginal<Record<string, unknown>>()),
-  useTranslation: () => ({
-    t: (key: string, opts?: Record<string, unknown>) =>
-      (opts?.defaultValue as string) ?? key,
-  }),
-}));
+vi.mock('react-i18next', async (importOriginal) => {
+  const { createReactI18nextMock } = await import('../test/mockI18n');
+  const t = (key: string, opts?: Record<string, unknown>) =>
+    (opts?.defaultValue as string) ?? key;
+  return {
+    ...(await importOriginal<Record<string, unknown>>()),
+    useTranslation: createReactI18nextMock(t).useTranslation,
+  };
+});
 
 // jsdom has no ResizeObserver; ChannelsTab constructs one on mount (line 384).
 // Stubbed locally rather than in the shared setup file so this PR doesn't

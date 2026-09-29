@@ -17,9 +17,10 @@ import {
   FIRMWARE_28_TELEMETRY_DOC_URL,
 } from '../utils/firmware28Silence';
 
-vi.mock('react-i18next', () => ({
-  useTranslation: () => ({ t: (key: string, def?: string) => def ?? key }),
-}));
+vi.mock('react-i18next', async () => {
+  const { createReactI18nextMock } = await import('../test/mockI18n');
+  return createReactI18nextMock();
+});
 
 const NOW = 1_800_000_000_000;
 const HOUR = 60 * 60 * 1000;

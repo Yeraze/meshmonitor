@@ -21,9 +21,11 @@ vi.mock('../../services/api', () => ({
     post: (...a: unknown[]) => post(...a),
   },
 }));
-vi.mock('react-i18next', () => ({
-  useTranslation: () => ({ t: (k: string, p?: Record<string, unknown>) => (p ? `${k}:${JSON.stringify(p)}` : k) }),
-}));
+vi.mock('react-i18next', async () => {
+  const { createReactI18nextMock } = await import('../../test/mockI18n');
+  const t = (k: string, p?: Record<string, unknown>) => (p ? `${k}:${JSON.stringify(p)}` : k);
+  return createReactI18nextMock(t);
+});
 vi.mock('../icons/UiIcon', () => ({ UiIcon: ({ name }: { name: string }) => <i data-icon={name} /> }));
 
 import SitePlannerPanel from './SitePlannerPanel';

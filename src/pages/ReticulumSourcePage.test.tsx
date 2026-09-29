@@ -17,20 +17,10 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 // (ReticulumPage's status/placeholder strings use the 3-arg
 // `t(key, fallback, { var })` form), since a raw-fallback-only mock would
 // otherwise leave "{{count}} destinations" un-interpolated in assertions.
-vi.mock('react-i18next', () => ({
-  useTranslation: () => ({
-    t: (key: string, fallback?: string | Record<string, unknown>, options?: Record<string, unknown>) => {
-      const fallbackStr = typeof fallback === 'string' ? fallback : key;
-      const vars = typeof fallback === 'object' && fallback !== null ? fallback : options;
-      if (vars && typeof vars === 'object') {
-        return fallbackStr.replace(/\{\{(\w+)\}\}/g, (_match, varName: string) => (
-          Object.prototype.hasOwnProperty.call(vars, varName) ? String((vars as Record<string, unknown>)[varName]) : `{{${varName}}}`
-        ));
-      }
-      return fallbackStr;
-    },
-  }),
-}));
+vi.mock('react-i18next', async () => {
+  const { createReactI18nextMock } = await import('../test/mockI18n');
+  return createReactI18nextMock();
+});
 
 // Initial-load helpers — DashboardPage's heavy SettingsContext needs the
 // settings endpoint to resolve. Stub fetch to default per URL.

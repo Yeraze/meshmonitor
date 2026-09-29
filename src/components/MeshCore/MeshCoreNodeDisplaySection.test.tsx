@@ -48,12 +48,12 @@ const MESHTASTIC_ONLY_IDS = [
 // ---------------------------------------------------------------------------
 // Mocks
 // ---------------------------------------------------------------------------
-vi.mock('react-i18next', () => ({
-  useTranslation: () => ({
-    t: (key: string, fallback?: string | Record<string, unknown>) =>
-      typeof fallback === 'string' ? fallback : key,
-  }),
-}));
+vi.mock('react-i18next', async () => {
+  const { createReactI18nextMock } = await import('../../test/mockI18n');
+  const t = (key: string, fallback?: string | Record<string, unknown>) =>
+    typeof fallback === 'string' ? fallback : key;
+  return createReactI18nextMock(t);
+});
 
 const { hasPermissionMock } = vi.hoisted(() => ({ hasPermissionMock: vi.fn() }));
 vi.mock('../../contexts/AuthContext', () => ({

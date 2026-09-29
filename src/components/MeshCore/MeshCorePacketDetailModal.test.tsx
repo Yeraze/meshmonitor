@@ -9,12 +9,10 @@ import { render, screen } from '@testing-library/react';
 import MeshCorePacketDetailModal from './MeshCorePacketDetailModal';
 import type { MeshCoreOtaPacketEvent } from '../../hooks/useWebSocket';
 
-vi.mock('react-i18next', () => ({
-  useTranslation: () => ({
-    t: (key: string, fallback?: string | Record<string, unknown>) =>
-      typeof fallback === 'string' ? fallback : key,
-  }),
-}));
+vi.mock('react-i18next', async () => {
+  const { createReactI18nextMock } = await import('../../test/mockI18n');
+  return createReactI18nextMock();
+});
 
 // Build an ADVERT packet: FLOOD route, direct path, named REPEATER advert.
 function buildAdvertHex(name: string): string {

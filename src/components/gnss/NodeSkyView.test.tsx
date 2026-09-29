@@ -15,9 +15,10 @@ import type { DeviceInfo } from '../../types/device';
 
 vi.mock('../../hooks/useSkyView', () => ({ useSkyView: vi.fn() }));
 vi.mock('../../hooks/useTelemetry', () => ({ useTelemetry: vi.fn() }));
-vi.mock('react-i18next', () => ({
-  useTranslation: () => ({ t: (_key: string, def?: string) => def ?? _key }),
-}));
+vi.mock('react-i18next', async () => {
+  const { createReactI18nextMock } = await import('../../test/mockI18n');
+  return createReactI18nextMock();
+});
 
 const skyView = {
   satellites: [

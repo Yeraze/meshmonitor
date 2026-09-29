@@ -14,11 +14,10 @@ vi.mock('../../contexts/IconStyleContext', () => ({
   useIconStyleOptional: () => iconStyle,
 }));
 
-vi.mock('react-i18next', () => ({
-  useTranslation: () => ({
-    t: (key: string, fallback?: string) => (typeof fallback === 'string' ? fallback : key),
-  }),
-}));
+vi.mock('react-i18next', async () => {
+  const { createReactI18nextMock } = await import('../../test/mockI18n');
+  return createReactI18nextMock();
+});
 
 import { MeshCoreSubToolbar } from './MeshCoreSubToolbar';
 

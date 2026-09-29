@@ -10,26 +10,10 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 
-vi.mock('react-i18next', () => ({
-  useTranslation: () => ({
-    t: (key: string, fallback?: string | Record<string, unknown>, vars?: Record<string, unknown>) => {
-      // Mimic i18next interpolation for the {{idx}} placeholder used by the
-      // "unnamed channel" fallback so tests can assert on the rendered string.
-      if (typeof fallback === 'string') {
-        if (vars && typeof vars === 'object') {
-          return fallback.replace(/\{\{(\w+)\}\}/g, (_m, k) => String((vars as any)[k] ?? ''));
-        }
-        return fallback;
-      }
-      // when fallback was actually an interpolation `values` object, return key
-      return key;
-    },
-  }),
-  // Required by config/i18n (pulled in transitively via SettingsContext, which
-  // the embedded <LinkPreview> imports). Without these the mock is incomplete.
-  Trans: ({ children }: { children?: unknown }) => children,
-  initReactI18next: { type: '3rdParty', init: () => {} },
-}));
+vi.mock('react-i18next', async () => {
+  const { createReactI18nextMock } = await import('../../test/mockI18n');
+  return createReactI18nextMock();
+});
 
 // Mutable so a test can simulate a read-only / anonymous viewer.
 let permissionFn: (resource: string, action: string) => boolean = () => true;

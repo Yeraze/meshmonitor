@@ -14,14 +14,10 @@ import { render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MeshCoreInfoView } from './MeshCoreInfoView';
 
-vi.mock('react-i18next', () => ({
-  useTranslation: () => ({
-    t: (key: string, fallback?: string | Record<string, unknown>) => {
-      if (typeof fallback === 'string') return fallback;
-      return key;
-    },
-  }),
-}));
+vi.mock('react-i18next', async () => {
+  const { createReactI18nextMock } = await import('../../test/mockI18n');
+  return createReactI18nextMock();
+});
 
 // Recharts uses ResizeObserver. jsdom doesn't ship it, and the graph grid
 // only renders when there's *no* matching `mc_` telemetry anyway in these

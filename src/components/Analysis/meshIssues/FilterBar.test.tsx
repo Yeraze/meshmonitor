@@ -7,16 +7,10 @@ import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 
-vi.mock('react-i18next', () => ({
-  useTranslation: () => ({
-    t: (key: string, defaultValue?: string, options?: Record<string, unknown>) => {
-      let result = typeof defaultValue === 'string' ? defaultValue : key;
-      if (options) Object.entries(options).forEach(([k, v]) => { result = result.replace(`{{${k}}}`, String(v)); });
-      return result;
-    },
-    i18n: { changeLanguage: vi.fn(), language: 'en' },
-  }),
-}));
+vi.mock('react-i18next', async () => {
+  const { createReactI18nextMock } = await import('../../../test/mockI18n');
+  return createReactI18nextMock();
+});
 
 import FilterBar from './FilterBar';
 import { DEFAULT_MESH_ISSUES_FILTERS } from './grouping';

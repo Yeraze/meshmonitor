@@ -8,12 +8,10 @@ import { render, screen, fireEvent, act } from '@testing-library/react';
 import { MeshCoreLoginProgress } from './MeshCoreLoginProgress';
 import type { MeshCoreLoginProgressState } from './hooks/useMeshCoreLoginProgress';
 
-vi.mock('react-i18next', () => ({
-  useTranslation: () => ({
-    t: (_key: string, fallback?: string, vars?: Record<string, unknown>) =>
-      String(fallback ?? _key).replace(/\{\{(\w+)\}\}/g, (_m, k) => String(vars?.[k] ?? '')),
-  }),
-}));
+vi.mock('react-i18next', async () => {
+  const { createReactI18nextMock } = await import('../../test/mockI18n');
+  return createReactI18nextMock();
+});
 
 const base: MeshCoreLoginProgressState = {
   requestId: 'req-12345678',

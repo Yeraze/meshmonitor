@@ -9,18 +9,10 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 
-vi.mock('react-i18next', () => ({
-  useTranslation: () => ({
-    t: (key: string, fallback?: string | Record<string, unknown>) => {
-      if (typeof fallback === 'string') return fallback;
-      return key;
-    },
-  }),
-  // Required by config/i18n (pulled in transitively via SettingsContext, which
-  // the embedded <LinkPreview> imports). Without these the mock is incomplete.
-  Trans: ({ children }: { children?: unknown }) => children,
-  initReactI18next: { type: '3rdParty', init: () => {} },
-}));
+vi.mock('react-i18next', async () => {
+  const { createReactI18nextMock } = await import('../../test/mockI18n');
+  return createReactI18nextMock();
+});
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { createElement, type ReactNode } from 'react';

@@ -34,11 +34,11 @@ const PROFILE = {
   updatedAt: 0,
 };
 
-vi.mock('react-i18next', () => ({
-  useTranslation: () => ({
-    t: (key: string, fallback?: unknown) => (typeof fallback === 'string' ? fallback : key),
-  }),
-}));
+vi.mock('react-i18next', async () => {
+  const { createReactI18nextMock } = await import('../../test/mockI18n');
+  const t = (key: string, fallback?: unknown) => (typeof fallback === 'string' ? fallback : key);
+  return createReactI18nextMock(t);
+});
 
 vi.mock('../../services/api', () => ({
   default: {

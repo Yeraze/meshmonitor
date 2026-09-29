@@ -14,16 +14,14 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { MeshCoreRoomsView } from './MeshCoreRoomsView';
 import type { MeshCoreContact } from '../../utils/meshcoreHelpers';
 
-vi.mock('react-i18next', () => ({
-  useTranslation: () => ({
-    t: (key: string, fallback?: string | Record<string, unknown>) => {
-      if (typeof fallback === 'string') return fallback;
-      return key;
-    },
-  }),
-  Trans: ({ children }: { children?: unknown }) => children,
-  initReactI18next: { type: '3rdParty', init: () => {} },
-}));
+vi.mock('react-i18next', async () => {
+  const { createReactI18nextMock } = await import('../../test/mockI18n');
+  const t = (key: string, fallback?: string | Record<string, unknown>) => {
+    if (typeof fallback === 'string') return fallback;
+    return key;
+  };
+  return createReactI18nextMock(t);
+});
 
 vi.mock('../../contexts/AuthContext', () => ({
   useAuth: () => ({ hasPermission: () => true }),
