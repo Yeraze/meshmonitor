@@ -6,6 +6,37 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased]
 
+## [4.16.2-rc6] - 2026-09-28
+
+### Added
+- **Message Forwarding**, per source, next to the Auto-Responder on both Meshtastic and MeshCore. Each rule copies a matching incoming message (DM or channel, optionally filtered by sender or regex) to one node or another channel on the same source, with an optional `{from}` / `{channel}` prefix. Each rule is hard-capped at 5 forwards per 60 s, at most 20 rules per source, sends never retry, and NodeDB replays are never forwarded. Channel targets show an airtime warning; receive-only and MQTT sources show the rules read-only. (#5446, #5455)
+- **MeshCore Ignore and Block**, for nodes and text patterns. MeshCore firmware has no block or mute, so MeshMonitor filters in the client. Ignore stores the message but skips notifications, automations, auto-ack, auto-responder, forwarding and Virtual Node relay, and folds runs into an "N ignored messages" row; Block drops the message on receipt. Text rules match exact, wildcard or regex against the sender name, body or both. Controls sit under the contact detail panel and in two new sections of the MeshCore source's Settings, each with hit counts. Migration 182. (#5408, #5469)
+- **`action.setAutomationEnabled`** in the Automation Engine enables, disables or toggles an automation by id (literal or `{{ }}` template), replacing the `runScript` + `curl` + API token workaround. (#5445, #5454)
+- **CARTO vector basemaps** (Voyager, Positron, Dark Matter) in 2D, plus a bundled **CARTO Voyager Dark** style: a dark map that keeps land-use colour. A CARTO key, when set, is added to CARTO requests only. 3D and raster-only views use each preset's matching raster tiles. (#5448, #5453)
+
+### Changed
+- **The dev tileserver is opt-in**, and `tiles/` is a real directory again. A symlink committed by accident left fresh clones with a dangling `tiles` link and crash-looped the dev tileserver; `lint:ci` now rejects tracked symlinks. (#5470)
+- **MQTT docs and help text** say Meshtastic declined meshtastic/firmware#11994 (a per-packet `ok_to_mqtt` override) by design, and name the workarounds. The bridge-side drop from #5418 stays the supported answer. (#5452)
+- **Blog:** a One Year of MeshMonitor retrospective. (#5456)
+- **Translations updated from Hosted Weblate** (Indonesian). (#5464)
+- **Tests:** every react-i18next mock now returns a stable `t`, which ends a class of latent flakes; the EmbedSettings dialog and MeshCore neighbours-config flakes are fixed; the MySQL outlier batch-delete test gets 60 s. (#5461, #5473, #5474)
+- 10 Dependabot updates, including `maplibre-gl` 6.11.2, `aedes` 1.2.0 (MQTT broker security fixes), `@tanstack/react-query`, `lucide-react`, `jsdom`, `puppeteer`, `supertest`, the CodeQL actions, and the production and development groups. (#5435–#5444)
+
+### Fixed
+- **Packet Monitor** logged firmware 2.8's NodeDB replay burst (~50 packets on every connect) as fresh LoRa receptions after a MeshMonitor restart. Packets with a stale `rx_time` and no RSSI are now skipped. (#5426, #5450)
+- **MeshCore Last Heard** took the sender's clock, so nodes with no RTC stayed pinned at a 2024 default. It now uses the companion's own clock (`last_mod`). (#5339, #5451)
+- **MeshCore contacts with binary names.** The serial protocol has no checksum, so dropped bytes spliced frames into bogus contacts. Corrupt contact frames are now dropped and binary node names scrubbed. (#5460)
+- **MeshCore neighbour polling** hit every source, drawing a 404 from each Meshtastic and MQTT source on every refetch. It now polls MeshCore sources only. (#5472)
+- **Module-excluded notices** read as a warning about the section above; they now sit under their own section header. Range Test on 2.8 shows one notice instead of two. (#5447, #5449, #5458)
+- **A phantom "Save changes" bar** appeared on the Automation page with no edits, whenever a stored setting was blank. (#5459)
+- **Status Message input** cut off its placeholder, and its counter spilled onto the next section's header. (#5457)
+- **Mobile:** the Automation, Configuration and global `/settings` pages no longer scroll sideways on a phone, trigger fields stay inside their cards, geofence hints wrap, and the Auto Responder placeholder shows in full on desktop. (#5462, #5463, #5465, #5466, #5471)
+- **Geofence Lat/Lng/Radius** fields moved the circle on every keystroke; they now commit on blur. (#5471)
+- **Maps embedded in settings pages** painted over the sticky section nav, and Automation number inputs are now bounded, with a server-side interval clamp. (#5467)
+- **`/settings`** content scrolled above the section nav; Embed profile modals ignored Escape and had an unlabelled close button; browsers reporting `en-US` hit a 404 before falling back, and `zh-CN` / `zh-TW` now load Chinese instead of English; heap telemetry drew a 401. (#5468)
+- **iOS 27 home-screen app** still fogged the Dashboard topbar; it is now pinned like the per-source header. (#5286, #5328)
+- **Login username field** no longer auto-capitalises on mobile keyboards, and gives autofill a clearer hint. Thanks @ievans! (#5430)
+
 ## [4.16.2-rc5] - 2026-09-28
 
 ### Added
