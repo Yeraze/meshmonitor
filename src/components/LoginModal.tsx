@@ -218,12 +218,16 @@ const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
                 <input
                   ref={usernameInputRef}
                   id="username"
+                  name="username"
                   type="text"
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
                   disabled={loading}
                   required
                   autoComplete="username"
+                  autoCapitalize="none"
+                  autoCorrect="off"
+                  spellCheck={false}
                 />
               </div>
 
@@ -231,6 +235,7 @@ const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
                 <label htmlFor="password">{t('auth.password')}</label>
                 <input
                   id="password"
+                  name="password"
                   type="password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
