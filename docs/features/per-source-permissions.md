@@ -42,6 +42,10 @@ Select a user to edit their permission scope and per-channel access across every
 
 ![User detail view with permission scope dropdown and per-channel controls](/images/features/per-source-permissions.png)
 
+## Traceroute records
+
+On the Info tab, the **Longest Active Route Segment** and **Record Holder Route Segment** cards need `traceroute` read access on the source. **Clear Record** needs `traceroute` write access on the source. Older versions used `info` for these cards. That permission applies across all sources, so it could not limit them to one. See [Transport Breakdown](/features/transport-breakdown).
+
 ## Authentication options
 
 | Method | Notes |

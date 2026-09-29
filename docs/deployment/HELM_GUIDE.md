@@ -109,6 +109,10 @@ resources:
     memory: 256Mi
 ```
 
+### Virtual Node
+
+The chart's `service.port` covers the web UI only. To expose a Virtual Node port, use `service.extraPorts` or the separate `virtualNodeService`. See the [Virtual Node Helm section](/configuration/virtual-node#kubernetes-helm-example).
+
 ## Upgrading
 
 ```bash

@@ -120,7 +120,7 @@ The Security Filter allows you to show or hide flagged nodes throughout the inte
 **Location**: Filter Modal popup (available on both Nodes and Messages tabs)
 
 **How to Access**:
-1. Click the "Filter" button in the sidebar (on Nodes or Messages tab)
+1. Click the filter icon (tooltip: "Filter nodes") in the Nodes list header
 2. The Filter Modal will open
 3. Find the "Security" section (marked with ⚠️ icon)
 
