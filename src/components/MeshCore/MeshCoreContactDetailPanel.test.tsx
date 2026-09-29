@@ -9,14 +9,14 @@ import { MemoryRouter } from 'react-router-dom';
 import { MeshCoreContactDetailPanel } from './MeshCoreContactDetailPanel';
 import type { MeshCoreContact } from '../../utils/meshcoreHelpers';
 
-vi.mock('react-i18next', () => ({
-  useTranslation: () => ({
-    t: (key: string, fallback?: string | Record<string, unknown>) => {
-      if (typeof fallback === 'string') return fallback;
-      return key;
-    },
-  }),
-}));
+vi.mock('react-i18next', async () => {
+  const { createReactI18nextMock } = await import('../../test/mockI18n');
+  const t = (key: string, fallback?: string | Record<string, unknown>) => {
+    if (typeof fallback === 'string') return fallback;
+    return key;
+  };
+  return createReactI18nextMock(t);
+});
 
 vi.mock('../../contexts/SettingsContext', () => ({
   useNodeListStyle: () => 'monochrome',

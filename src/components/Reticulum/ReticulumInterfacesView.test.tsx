@@ -16,16 +16,10 @@ import { render, screen } from '@testing-library/react';
 import { ReticulumInterfacesView } from './ReticulumInterfacesView';
 import type { ReticulumInterfaceRow } from '../../types/reticulum';
 
-vi.mock('react-i18next', () => ({
-  useTranslation: () => ({
-    t: (key: string, fallbackOrOptions?: string | Record<string, unknown>, maybeOptions?: Record<string, unknown>) => {
-      const fallback = typeof fallbackOrOptions === 'string' ? fallbackOrOptions : key;
-      const options = typeof fallbackOrOptions === 'object' ? fallbackOrOptions : maybeOptions;
-      if (!options) return fallback;
-      return fallback.replace(/\{\{(\w+)\}\}/g, (_match: string, k: string) => String(options[k] ?? ''));
-    },
-  }),
-}));
+vi.mock('react-i18next', async () => {
+  const { createReactI18nextMock } = await import('../../test/mockI18n');
+  return createReactI18nextMock();
+});
 
 const hasPermissionMock = vi.fn(() => true);
 vi.mock('../../contexts/AuthContext', () => ({

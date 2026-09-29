@@ -8,14 +8,14 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import { setNodeQuickAgeHours } from '../../hooks/useNodeQuickAgeFilter';
 
-vi.mock('react-i18next', () => ({
-  useTranslation: () => ({
-    t: (key: string, fallback?: string | Record<string, unknown>) => {
-      if (typeof fallback === 'string') return fallback;
-      return key;
-    },
-  }),
-}));
+vi.mock('react-i18next', async () => {
+  const { createReactI18nextMock } = await import('../../test/mockI18n');
+  const t = (key: string, fallback?: string | Record<string, unknown>) => {
+    if (typeof fallback === 'string') return fallback;
+    return key;
+  };
+  return createReactI18nextMock(t);
+});
 
 // Captures every prop MeshCoreMap is rendered with, so the per-source age
 // filter suite (#4412 Phase 4 WP3) can assert on the `contacts` it receives

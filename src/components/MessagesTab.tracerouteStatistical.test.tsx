@@ -159,34 +159,36 @@ function lookupEnDefault(key: string, count?: number): string | undefined {
   const value = enDict[key];
   return typeof value === 'string' ? value : undefined;
 }
-vi.mock('react-i18next', async (importOriginal) => ({
-  ...(await importOriginal<Record<string, unknown>>()),
-  useTranslation: () => ({
-    t: (
-      key: string,
-      arg2?: string | Record<string, unknown>,
-      arg3?: Record<string, unknown>,
-    ) => {
-      let options: Record<string, unknown> | undefined;
-      let defaultValue: string | undefined;
-      if (typeof arg2 === 'string') {
-        defaultValue = arg2;
-        options = arg3;
-      } else {
-        options = arg2;
-        defaultValue = typeof options?.defaultValue === 'string' ? options.defaultValue : undefined;
+vi.mock('react-i18next', async (importOriginal) => {
+  const { createReactI18nextMock } = await import('../test/mockI18n');
+  const t = (
+    key: string,
+    arg2?: string | Record<string, unknown>,
+    arg3?: Record<string, unknown>,
+  ) => {
+    let options: Record<string, unknown> | undefined;
+    let defaultValue: string | undefined;
+    if (typeof arg2 === 'string') {
+      defaultValue = arg2;
+      options = arg3;
+    } else {
+      options = arg2;
+      defaultValue = typeof options?.defaultValue === 'string' ? options.defaultValue : undefined;
+    }
+    const count = typeof options?.count === 'number' ? options.count : undefined;
+    let out = defaultValue ?? lookupEnDefault(key, count) ?? key;
+    if (options) {
+      for (const [k, v] of Object.entries(options)) {
+        out = out.replace(new RegExp(`{{${k}}}`, 'g'), String(v));
       }
-      const count = typeof options?.count === 'number' ? options.count : undefined;
-      let out = defaultValue ?? lookupEnDefault(key, count) ?? key;
-      if (options) {
-        for (const [k, v] of Object.entries(options)) {
-          out = out.replace(new RegExp(`{{${k}}}`, 'g'), String(v));
-        }
-      }
-      return out;
-    },
-  }),
-}));
+    }
+    return out;
+  };
+  return {
+    ...(await importOriginal<Record<string, unknown>>()),
+    useTranslation: createReactI18nextMock(t).useTranslation,
+  };
+});
 
 beforeAll(() => {
   if (!('ResizeObserver' in globalThis)) {

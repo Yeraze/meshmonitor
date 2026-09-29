@@ -13,11 +13,11 @@ vi.mock('../../../contexts/SettingsContext', () => ({
 
 // Always resolve to the key itself (ignoring any string/object default) so
 // assertions are deterministic regardless of English copy.
-vi.mock('react-i18next', () => ({
-  useTranslation: () => ({
-    t: (key: string) => key,
-  }),
-}));
+vi.mock('react-i18next', async () => {
+  const { createReactI18nextMock } = await import('../../../test/mockI18n');
+  const t = (key: string) => key;
+  return createReactI18nextMock(t);
+});
 
 const baseModel: NodeCardModel = { longName: 'Tower Node', shortName: 'TWR' };
 

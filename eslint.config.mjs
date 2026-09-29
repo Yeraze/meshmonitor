@@ -7,6 +7,7 @@ import reactRefresh from 'eslint-plugin-react-refresh';
 import globals from 'globals';
 import { noHardcodedUiGlyph } from './scripts/eslint-rules/no-hardcoded-ui-glyph.mjs';
 import { requireRelativeImportExtension } from './scripts/eslint-rules/require-relative-import-extension.mjs';
+import { stableI18nMock } from './scripts/eslint-rules/stable-i18n-mock.mjs';
 
 export default [
   {
@@ -51,6 +52,7 @@ export default [
         rules: {
           'no-hardcoded-ui-glyph': noHardcodedUiGlyph,
           'require-relative-import-extension': requireRelativeImportExtension,
+          'stable-i18n-mock': stableI18nMock,
         },
       },
     },
@@ -243,6 +245,15 @@ export default [
     },
     rules: {
       '@typescript-eslint/no-explicit-any': 'off',
+    },
+  },
+  {
+    // A react-i18next mock must hand out one stable `t`, as the real hook does.
+    // A fresh `t` per render loops every effect that lists `t` in its deps
+    // (PR #5473). Use createReactI18nextMock() from src/test/mockI18n.ts.
+    files: ['**/*.test.ts', '**/*.test.tsx', '**/*.spec.ts', '**/*.spec.tsx', 'src/test/**/*.ts'],
+    rules: {
+      'meshmonitor-ui/stable-i18n-mock': 'error',
     },
   },
 ];

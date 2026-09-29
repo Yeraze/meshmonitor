@@ -14,14 +14,14 @@ import { render, screen } from '@testing-library/react';
 import { MeshCoreStatusBar } from './MeshCoreStatusBar';
 import type { ConnectionStatus } from './hooks/useMeshCore';
 
-vi.mock('react-i18next', () => ({
-  useTranslation: () => ({
-    t: (key: string, fallback?: string | Record<string, unknown>) => {
-      if (typeof fallback === 'string') return fallback;
-      return key;
-    },
-  }),
-}));
+vi.mock('react-i18next', async () => {
+  const { createReactI18nextMock } = await import('../../test/mockI18n');
+  const t = (key: string, fallback?: string | Record<string, unknown>) => {
+    if (typeof fallback === 'string') return fallback;
+    return key;
+  };
+  return createReactI18nextMock(t);
+});
 
 const TOOLTIP = 'Receive-only mode is on for this MeshCore source. Turn it off in MeshCore Settings to use this.';
 

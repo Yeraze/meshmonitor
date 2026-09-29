@@ -24,20 +24,12 @@ import { render, screen, waitFor, fireEvent, within } from '@testing-library/rea
 
 // --- mocks (mirrors UsersTab.test.tsx) ------------------------------------
 
-vi.mock('react-i18next', () => ({
-  useTranslation: () => ({
-    t: (key: string, fallback?: string | Record<string, unknown>, vars?: Record<string, unknown>) => {
-      if (typeof fallback === 'string') {
-        if (vars && typeof vars === 'object') {
-          return fallback.replace(/\{\{(\w+)\}\}/g, (_m, k) => String((vars as any)[k] ?? ''));
-        }
-        return fallback;
-      }
-      return key;
-    },
-  }),
-  Trans: ({ i18nKey }: { i18nKey: string }) => <>{i18nKey}</>,
-}));
+vi.mock('react-i18next', async () => {
+  const { createReactI18nextMock } = await import('../test/mockI18n');
+  return createReactI18nextMock(undefined, {
+    Trans: ({ i18nKey }: { i18nKey: string }) => <>{i18nKey}</>,
+  });
+});
 
 vi.mock('../contexts/AuthContext', () => ({
   useAuth: () => ({

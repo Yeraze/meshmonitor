@@ -10,14 +10,14 @@ import HopBadge from './HopBadge';
 
 // Interpolate against the real English catalog so the accessible label is
 // asserted as a user would hear it.
-vi.mock('react-i18next', () => ({
-  useTranslation: () => ({
-    t: (key: string, opts?: Record<string, unknown>) => {
-      const tpl = (en as unknown as Record<string, string>)[key] ?? key;
-      return tpl.replace(/\{\{(\w+)\}\}/g, (_, k: string) => String(opts?.[k] ?? ''));
-    },
-  }),
-}));
+vi.mock('react-i18next', async () => {
+  const { createReactI18nextMock } = await import('../../test/mockI18n');
+  const t = (key: string, opts?: Record<string, unknown>) => {
+    const tpl = (en as unknown as Record<string, string>)[key] ?? key;
+    return tpl.replace(/\{\{(\w+)\}\}/g, (_, k: string) => String(opts?.[k] ?? ''));
+  };
+  return createReactI18nextMock(t);
+});
 
 describe('HopBadge (#5366)', () => {
   it('shows the hop count with a label naming the source', () => {

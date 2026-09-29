@@ -12,9 +12,11 @@ import NodeDetailsBlock from './NodeDetailsBlock';
 import type { DeviceInfo } from '../types/device';
 import type { SignalTrendResult } from '../services/api';
 
-vi.mock('react-i18next', () => ({
-  useTranslation: () => ({ t: (key: string, def?: string) => def ?? key }),
-}));
+vi.mock('react-i18next', async () => {
+  const { createReactI18nextMock } = await import('../test/mockI18n');
+  const t = (key: string, def?: string) => def ?? key;
+  return createReactI18nextMock(t);
+});
 vi.mock('../hooks/useServerData', () => ({
   useChannels: () => ({ channels: [] }),
   useDeviceConfig: () => ({ currentNodeId: null }),

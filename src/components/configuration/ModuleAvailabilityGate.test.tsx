@@ -19,14 +19,10 @@ import RemoteHardwareConfigSection from './RemoteHardwareConfigSection';
 import AudioConfigSection from './AudioConfigSection';
 
 vi.mock('../../hooks/useSaveBar', () => ({ useSaveBar: vi.fn() }));
-vi.mock('react-i18next', () => ({
-  useTranslation: () => ({
-    t: (key: string, fallback?: unknown, opts?: Record<string, string>) =>
-      typeof fallback === 'string'
-        ? fallback.replace(/\{\{(\w+)\}\}/g, (_m, k: string) => opts?.[k] ?? '')
-        : key,
-  }),
-}));
+vi.mock('react-i18next', async () => {
+  const { createReactI18nextMock } = await import('../../test/mockI18n');
+  return createReactI18nextMock();
+});
 
 /** Minimal stand-in with the same shape as every *ConfigSection. */
 const FakeSection: React.FC<{ title: string }> = ({ title }) => (

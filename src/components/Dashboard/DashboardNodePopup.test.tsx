@@ -17,32 +17,10 @@ vi.mock('../../contexts/SettingsContext', () => ({
 // — so these assertions exercise the same English copy a real render would
 // produce (#4047 Phase 5 WP2: DashboardNodePopup gains i18n, English output
 // stays byte-identical).
-vi.mock('react-i18next', () => ({
-  useTranslation: () => ({
-    t: (
-      key: string,
-      arg2?: string | Record<string, unknown>,
-      arg3?: Record<string, unknown>,
-    ) => {
-      let options: Record<string, unknown> | undefined;
-      let defaultValue: string | undefined;
-      if (typeof arg2 === 'string') {
-        defaultValue = arg2;
-        options = arg3;
-      } else {
-        options = arg2;
-        defaultValue = typeof options?.defaultValue === 'string' ? options.defaultValue : undefined;
-      }
-      let out = defaultValue ?? key;
-      if (options) {
-        for (const [k, v] of Object.entries(options)) {
-          out = out.replace(new RegExp(`{{${k}}}`, 'g'), String(v));
-        }
-      }
-      return out;
-    },
-  }),
-}));
+vi.mock('react-i18next', async () => {
+  const { createReactI18nextMock } = await import('../../test/mockI18n');
+  return createReactI18nextMock();
+});
 
 const pos = { lat: 35.12345, lng: -80.6789 };
 

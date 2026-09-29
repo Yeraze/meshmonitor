@@ -16,16 +16,10 @@ const api = vi.hoisted(() => ({
   setBaseUrl: vi.fn(),
 }));
 vi.mock('../services/api', () => ({ default: api }));
-vi.mock('react-i18next', () => ({
-  useTranslation: () => ({
-    t: (key: string, opts?: string | Record<string, unknown>) => {
-      if (typeof opts === 'string') return opts;
-      let s = String(opts?.defaultValue ?? key);
-      for (const [k, v] of Object.entries(opts ?? {})) s = s.replace(`{{${k}}}`, String(v));
-      return s;
-    },
-  }),
-}));
+vi.mock('react-i18next', async () => {
+  const { createReactI18nextMock } = await import('../test/mockI18n');
+  return createReactI18nextMock();
+});
 
 import AssetTrackingSection from './AssetTrackingSection';
 

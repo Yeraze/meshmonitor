@@ -15,15 +15,10 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MeshCoreSettingsView } from './MeshCoreSettingsView';
 
-vi.mock('react-i18next', () => ({
-  useTranslation: () => ({
-    t: (key: string, fallback?: string | Record<string, unknown>, opts?: Record<string, unknown>) => {
-      const base = typeof fallback === 'string' ? fallback : key;
-      const vars = (typeof fallback === 'object' ? fallback : opts) ?? {};
-      return base.replace(/\{\{(\w+)\}\}/g, (_m, k) => String((vars as Record<string, unknown>)[k] ?? ''));
-    },
-  }),
-}));
+vi.mock('react-i18next', async () => {
+  const { createReactI18nextMock } = await import('../../test/mockI18n');
+  return createReactI18nextMock();
+});
 
 const h = vi.hoisted(() => ({
   showToast: vi.fn(),

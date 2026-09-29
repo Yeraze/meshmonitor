@@ -12,14 +12,10 @@ import { SourceProvider } from '../contexts/SourceContext';
 
 const csrfFetch = vi.fn();
 
-vi.mock('react-i18next', () => ({
-  useTranslation: () => ({
-    t: (key: string, fallback?: unknown, opts?: Record<string, unknown>) => {
-      if (typeof fallback !== 'string') return key;
-      return fallback.replace(/\{\{(\w+)\}\}/g, (_, k) => String(opts?.[k] ?? ''));
-    },
-  }),
-}));
+vi.mock('react-i18next', async () => {
+  const { createReactI18nextMock } = await import('../test/mockI18n');
+  return createReactI18nextMock();
+});
 vi.mock('../hooks/useCsrfFetch', () => ({ useCsrfFetch: () => csrfFetch }));
 vi.mock('../hooks/useSaveBar', () => ({ useSaveBar: () => undefined }));
 vi.mock('./ToastContainer', () => ({ useToast: () => ({ showToast: vi.fn() }) }));

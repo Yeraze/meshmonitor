@@ -31,43 +31,40 @@ const PLURAL_TEMPLATES: Record<string, { one: string; other: string }> = {
   },
 };
 
-vi.mock('react-i18next', () => ({
-  // #4880: sections.tsx now value-imports SettingsContext (→ config/i18n),
-  // which references initReactI18next at load time.
-  initReactI18next: { type: '3rdParty', init: () => {} },
-  useTranslation: () => ({
-    t: (
-      key: string,
-      arg2?: string | Record<string, unknown>,
-      arg3?: Record<string, unknown>,
-    ) => {
-      let options: Record<string, unknown> | undefined;
-      let defaultValue: string | undefined;
-      if (typeof arg2 === 'string') {
-        defaultValue = arg2;
-        options = arg3;
-      } else {
-        options = arg2;
-        defaultValue = typeof options?.defaultValue === 'string' ? options.defaultValue : undefined;
+vi.mock('react-i18next', async () => {
+  const { createReactI18nextMock } = await import('../../test/mockI18n');
+  const t = (
+    key: string,
+    arg2?: string | Record<string, unknown>,
+    arg3?: Record<string, unknown>,
+  ) => {
+    let options: Record<string, unknown> | undefined;
+    let defaultValue: string | undefined;
+    if (typeof arg2 === 'string') {
+      defaultValue = arg2;
+      options = arg3;
+    } else {
+      options = arg2;
+      defaultValue = typeof options?.defaultValue === 'string' ? options.defaultValue : undefined;
+    }
+    let template: string;
+    if (defaultValue !== undefined) {
+      template = defaultValue;
+    } else if (options && typeof options.count === 'number' && PLURAL_TEMPLATES[key]) {
+      template = options.count === 1 ? PLURAL_TEMPLATES[key].one : PLURAL_TEMPLATES[key].other;
+    } else {
+      template = key;
+    }
+    let out = template;
+    if (options) {
+      for (const [k, v] of Object.entries(options)) {
+        out = out.replace(new RegExp(`{{${k}}}`, 'g'), String(v));
       }
-      let template: string;
-      if (defaultValue !== undefined) {
-        template = defaultValue;
-      } else if (options && typeof options.count === 'number' && PLURAL_TEMPLATES[key]) {
-        template = options.count === 1 ? PLURAL_TEMPLATES[key].one : PLURAL_TEMPLATES[key].other;
-      } else {
-        template = key;
-      }
-      let out = template;
-      if (options) {
-        for (const [k, v] of Object.entries(options)) {
-          out = out.replace(new RegExp(`{{${k}}}`, 'g'), String(v));
-        }
-      }
-      return out;
-    },
-  }),
-}));
+    }
+    return out;
+  };
+  return createReactI18nextMock(t);
+});
 
 const FMT = { timeFormat: '24' as const, dateFormat: 'YYYY-MM-DD' as const };
 

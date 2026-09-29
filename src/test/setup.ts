@@ -5,31 +5,13 @@ import * as matchers from '@testing-library/jest-dom/matchers';
 // Extends Vitest's expect method with methods from react-testing-library
 expect.extend(matchers);
 
-// Mock react-i18next for tests
-vi.mock('react-i18next', () => ({
-  useTranslation: () => ({
-    t: (key: string, options?: Record<string, unknown>) => {
-      // Return key with interpolated values for debugging
-      if (options) {
-        let result = key;
-        Object.entries(options).forEach(([k, v]) => {
-          result = result.replace(`{{${k}}}`, String(v));
-        });
-        return result;
-      }
-      return key;
-    },
-    i18n: {
-      changeLanguage: vi.fn(),
-      language: 'en',
-    },
-  }),
-  Trans: ({ children }: { children: React.ReactNode }) => children,
-  initReactI18next: {
-    type: '3rdParty',
-    init: vi.fn(),
-  },
-}));
+// Mock react-i18next for tests. `t` returns the key (with {{var}} filled from
+// an options object). It keeps one identity across renders, as the real hook
+// does; see src/test/mockI18n.ts for why that matters.
+vi.mock('react-i18next', async () => {
+  const { createReactI18nextMock, keyT } = await import('./mockI18n');
+  return createReactI18nextMock(keyT);
+});
 
 // Runs a cleanup after each test case (e.g., clearing jsdom)
 afterEach(() => {

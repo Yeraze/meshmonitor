@@ -15,9 +15,11 @@ import type { DeviceInfo } from '../types/device';
 // default (falling back to the key) so label lookups don't need a real bundle —
 // the assertions below target the language-independent coordinate/elevation
 // values, not the labels.
-vi.mock('react-i18next', () => ({
-  useTranslation: () => ({ t: (key: string, def?: string) => def ?? key }),
-}));
+vi.mock('react-i18next', async () => {
+  const { createReactI18nextMock } = await import('../test/mockI18n');
+  const t = (key: string, def?: string) => def ?? key;
+  return createReactI18nextMock(t);
+});
 vi.mock('../hooks/useServerData', () => ({
   useChannels: () => ({ channels: [] }),
   useDeviceConfig: () => ({ currentNodeId: null }),

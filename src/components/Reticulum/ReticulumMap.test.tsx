@@ -15,12 +15,10 @@ import type { ReticulumDestinationRow, ReticulumPathRow } from '../../types/reti
 import type { NodeMarkerDescriptor } from '../map/layers/NodeMarkersLayer';
 import type { NeighborLinkDescriptor } from '../map/layers/NeighborLinksLayer';
 
-vi.mock('react-i18next', () => ({
-  useTranslation: () => ({
-    t: (key: string, fallback?: string | Record<string, unknown>) =>
-      typeof fallback === 'string' ? fallback : key,
-  }),
-}));
+vi.mock('react-i18next', async () => {
+  const { createReactI18nextMock } = await import('../../test/mockI18n');
+  return createReactI18nextMock();
+});
 
 vi.mock('../map/BaseMap', () => ({
   BaseMap: ({ children }: { children: ReactNode }) => <div data-testid="base-map">{children}</div>,

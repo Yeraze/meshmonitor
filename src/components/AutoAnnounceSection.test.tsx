@@ -10,23 +10,20 @@ import { Channel } from '../types/device';
 
 // Override the global i18n mock (from src/test/setup.ts) with real translations
 // from en.json so text-based assertions like `getByText('Auto Announce')` work.
-vi.mock('react-i18next', () => ({
-  useTranslation: () => ({
-    t: (key: string, options?: Record<string, unknown>) => {
-      const translations = enTranslations as unknown as Record<string, string>;
-      let result = translations[key] ?? key;
-      if (options) {
-        Object.entries(options).forEach(([k, v]) => {
-          result = result.replace(`{{${k}}}`, String(v));
-        });
-      }
-      return result;
-    },
-    i18n: { changeLanguage: vi.fn(), language: 'en' },
-  }),
-  Trans: ({ children }: { children: React.ReactNode }) => children,
-  initReactI18next: { type: '3rdParty', init: vi.fn() },
-}));
+vi.mock('react-i18next', async () => {
+  const { createReactI18nextMock } = await import('../test/mockI18n');
+  const t = (key: string, options?: Record<string, unknown>) => {
+    const translations = enTranslations as unknown as Record<string, string>;
+    let result = translations[key] ?? key;
+    if (options) {
+      Object.entries(options).forEach(([k, v]) => {
+        result = result.replace(`{{${k}}}`, String(v));
+      });
+    }
+    return result;
+  };
+  return createReactI18nextMock(t);
+});
 
 // Mock the useCsrfFetch hook
 const mockCsrfFetch = vi.fn();
