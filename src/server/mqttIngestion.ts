@@ -475,15 +475,6 @@ async function ingestServiceEnvelopeInner(input: MqttIngestionInput): Promise<Mq
         await databaseService.ignoredNodes.liftGeoIgnoreAsync(fromNum, sourceId);
       }
 
-      // After any lift attempt, a still-ignored sender must NOT ingest — this
-      // catches manual ignores with an in-bounds position, a geo lift that lost
-      // the race to a manual upgrade, and coordless ('unknown') positions from
-      // an ignored node. A never-ignored node (or one just lifted) passes.
-      if (databaseService.ignoredNodes.isIgnoredCached(fromNum, sourceId)) {
-        return { ingested: false, reason: 'ignored', portnum };
-      }
-
-      // Fail-open ingest ('in' reappearance, 'unknown', or 'no-geo').
       const latI = position.latitudeI ?? position.latitude_i;
       const lngI = position.longitudeI ?? position.longitude_i;
       const alt = position.altitude;
@@ -504,6 +495,25 @@ async function ingestServiceEnvelopeInner(input: MqttIngestionInput): Promise<Mq
       if (positionIsBogus) {
         logger.debug(`MQTT: dropping bogus position (${lat}, ${lng}) precisionBits=${precisionBits} from ${fromNodeId}`);
       }
+
+      // Aircraft age-out D3 lift: an aged-out aircraft is DB-ignored, so the
+      // gate below would drop its fix before the post-upsert hook could lift
+      // the ignore, and it could never come back on an MQTT source. Lift first,
+      // on a live, trustworthy fix only. Manual and geo ignores are untouched.
+      if (!positionIsBogus && lat != null && lng != null &&
+          databaseService.ignoredNodes.isIgnoredCached(fromNum, sourceId)) {
+        await aircraftAgeOutService.liftIfLivePosition(sourceId, fromNum, packet.rxTime, nowMs);
+      }
+
+      // After any lift attempt, a still-ignored sender must NOT ingest — this
+      // catches manual ignores with an in-bounds position, a geo lift that lost
+      // the race to a manual upgrade, and coordless ('unknown') positions from
+      // an ignored node. A never-ignored node (or one just lifted) passes.
+      if (databaseService.ignoredNodes.isIgnoredCached(fromNum, sourceId)) {
+        return { ingested: false, reason: 'ignored', portnum };
+      }
+
+      // Fail-open ingest ('in' reappearance, 'unknown', or 'no-geo').
 
       // Inline auto-delete-by-distance (#3900): when this MQTT source has the
       // feature enabled, evaluate the fix as it arrives so a node beyond the

@@ -285,6 +285,38 @@ describe('AircraftAgeOutService.runSweep — fixed pass', () => {
   });
 });
 
+describe('AircraftAgeOutService — liftIfLivePosition (MQTT pre-gate lift)', () => {
+  const liveRx = Math.floor(NOW / 1000) - 5;
+
+  it('lifts an aged-out aircraft on a live fix and returns true, without queuing classification', async () => {
+    const { deps } = makeDeps({ ignored: new Set([10]), agedOut: new Map([[10, NOW - HOUR]]) });
+    expect(await new AircraftAgeOutService(deps).liftIfLivePosition(SRC, 10, liveRx, NOW)).toBe(true);
+    expect(deps.liftAircraftIgnore).toHaveBeenCalledWith(10, SRC);
+    expect(deps.clearAgedOut).toHaveBeenCalledWith(10, SRC);
+    expect(deps.scheduleClassification).not.toHaveBeenCalled();
+  });
+
+  it('a replayed or retained fix (old rxTime) never lifts', async () => {
+    const { deps } = makeDeps({ ignored: new Set([11]), agedOut: new Map([[11, NOW - HOUR]]) });
+    const staleRx = Math.floor((NOW - HOUR) / 1000);
+    expect(await new AircraftAgeOutService(deps).liftIfLivePosition(SRC, 11, staleRx, NOW)).toBe(false);
+    expect(deps.getAgedOutAt).not.toHaveBeenCalled();
+    expect(deps.liftAircraftIgnore).not.toHaveBeenCalled();
+  });
+
+  it('a manual or geo ignore is not lifted and returns false', async () => {
+    const { deps } = makeDeps({ ignored: new Set([12]), agedOut: new Map([[12, NOW]]), liftResult: false });
+    expect(await new AircraftAgeOutService(deps).liftIfLivePosition(SRC, 12, liveRx, NOW)).toBe(false);
+    expect(deps.clearAgedOut).not.toHaveBeenCalled();
+  });
+
+  it('an ignored node that was never aged out is not lifted', async () => {
+    const { deps } = makeDeps({ ignored: new Set([13]) });
+    expect(await new AircraftAgeOutService(deps).liftIfLivePosition(SRC, 13, liveRx, NOW)).toBe(false);
+    expect(deps.liftAircraftIgnore).not.toHaveBeenCalled();
+  });
+});
+
 describe('AircraftAgeOutService — live-position lift (D3)', () => {
   it('lifts an aged-out aircraft, clears the mark, reclassifies, and reports it on the next sweep', async () => {
     const { deps, written } = makeDeps({ ignored: new Set([5]), agedOut: new Map([[5, NOW - HOUR]]) });
