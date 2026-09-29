@@ -19,11 +19,10 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 
 // --- mocks ---------------------------------------------------------------
 
-vi.mock('react-i18next', () => ({
-  useTranslation: () => ({
-    t: (key: string) => key,
-  }),
-}));
+vi.mock('react-i18next', async () => {
+  const { createReactI18nextMock } = await import('../../test/mockI18n');
+  return createReactI18nextMock();
+});
 
 const mockShowToast = vi.hoisted(() => vi.fn());
 vi.mock('../ToastContainer', () => ({

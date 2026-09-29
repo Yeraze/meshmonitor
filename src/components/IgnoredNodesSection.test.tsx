@@ -9,14 +9,10 @@ import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import IgnoredNodesSection from './IgnoredNodesSection';
 
-vi.mock('react-i18next', () => ({
-  useTranslation: () => ({
-    t: (key: string, def?: unknown, opts?: Record<string, unknown>) => {
-      const text = typeof def === 'string' ? def : key;
-      return text.replace(/\{\{(\w+)\}\}/g, (_m, n) => String(opts?.[n] ?? ''));
-    },
-  }),
-}));
+vi.mock('react-i18next', async () => {
+  const { createReactI18nextMock } = await import('../test/mockI18n');
+  return createReactI18nextMock();
+});
 vi.mock('./ToastContainer', () => ({ useToast: () => ({ showToast: vi.fn() }) }));
 vi.mock('../contexts/SourceContext', () => ({ useSource: () => ({ sourceId: 'src-1' }) }));
 

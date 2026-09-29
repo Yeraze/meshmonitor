@@ -19,30 +19,30 @@ vi.mock('@dnd-kit/utilities', () => ({
   CSS: { Transform: { toString: () => null } },
 }));
 
-vi.mock('react-i18next', () => ({
-  useTranslation: () => ({
-    t: (key: string, opts?: Record<string, unknown>) => {
-      const translations: Record<string, string> = {
-        'dashboard.widget.hop_distance_heatmap.title': 'Hop/Distance Heatmap',
-        'dashboard.widget.hop_distance_heatmap.no_data': 'No nodes with both hops and position data',
-        'dashboard.widget.hop_distance_heatmap.skipped': `${opts?.count || 0} nodes skipped (missing hops or GPS)`,
-        'dashboard.widget.hop_distance_heatmap.fewer': 'Fewer',
-        'dashboard.widget.hop_distance_heatmap.more': 'More',
-        'dashboard.widget.hop_distance_heatmap.distance_axis': `Distance (${opts?.unit || 'km'})`,
-        'dashboard.widget.hop_distance_heatmap.hops_axis': 'Hops',
-        'dashboard.widget.hop_distribution.direct': 'Direct',
-        'dashboard.widget.distance_distribution.title': 'Distance Distribution',
-        'dashboard.widget.distance_distribution.km': 'km',
-        'dashboard.widget.distance_distribution.miles': 'mi',
-        'dashboard.widget.distance_distribution.no_home_position': 'No home position set — add GPS to your node',
-        'dashboard.widget.distance_distribution.settings': 'Settings',
-        'dashboard.widget.distance_distribution.bucket_size': 'Bucket Size',
-        'dashboard.remove_widget': 'Remove',
-      };
-      return translations[key] || key;
-    },
-  }),
-}));
+vi.mock('react-i18next', async () => {
+  const { createReactI18nextMock } = await import('../test/mockI18n');
+  const t = (key: string, opts?: Record<string, unknown>) => {
+    const translations: Record<string, string> = {
+      'dashboard.widget.hop_distance_heatmap.title': 'Hop/Distance Heatmap',
+      'dashboard.widget.hop_distance_heatmap.no_data': 'No nodes with both hops and position data',
+      'dashboard.widget.hop_distance_heatmap.skipped': `${opts?.count || 0} nodes skipped (missing hops or GPS)`,
+      'dashboard.widget.hop_distance_heatmap.fewer': 'Fewer',
+      'dashboard.widget.hop_distance_heatmap.more': 'More',
+      'dashboard.widget.hop_distance_heatmap.distance_axis': `Distance (${opts?.unit || 'km'})`,
+      'dashboard.widget.hop_distance_heatmap.hops_axis': 'Hops',
+      'dashboard.widget.hop_distribution.direct': 'Direct',
+      'dashboard.widget.distance_distribution.title': 'Distance Distribution',
+      'dashboard.widget.distance_distribution.km': 'km',
+      'dashboard.widget.distance_distribution.miles': 'mi',
+      'dashboard.widget.distance_distribution.no_home_position': 'No home position set — add GPS to your node',
+      'dashboard.widget.distance_distribution.settings': 'Settings',
+      'dashboard.widget.distance_distribution.bucket_size': 'Bucket Size',
+      'dashboard.remove_widget': 'Remove',
+    };
+    return translations[key] || key;
+  };
+  return createReactI18nextMock(t);
+});
 
 import HopDistanceHeatmapWidget from './HopDistanceHeatmapWidget';
 

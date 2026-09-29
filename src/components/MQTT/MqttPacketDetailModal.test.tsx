@@ -13,12 +13,10 @@ import { render, screen, fireEvent, within } from '@testing-library/react';
 import MqttPacketDetailModal from './MqttPacketDetailModal';
 import type { MqttGroupedPacket, MqttReception } from './mqttPacketTypes';
 
-vi.mock('react-i18next', () => ({
-  useTranslation: () => ({
-    t: (key: string, fallback?: string | Record<string, unknown>) =>
-      typeof fallback === 'string' ? fallback : key,
-  }),
-}));
+vi.mock('react-i18next', async () => {
+  const { createReactI18nextMock } = await import('../../test/mockI18n');
+  return createReactI18nextMock();
+});
 
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {

@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import type { GeoJsonLayer } from '../server/services/geojsonService.js';
 import api from '../services/api';
 import { useCsrfFetch } from '../hooks/useCsrfFetch';
+import styles from './GeoJsonLayerManager.module.css';
 
 const GeoJsonLayerManager: React.FC = () => {
   const [layers, setLayers] = useState<GeoJsonLayer[]>([]);
@@ -123,7 +124,7 @@ const GeoJsonLayerManager: React.FC = () => {
       ) : (
         layers.map(layer => (
           <div key={layer.id} className="setting-item" style={{ flexDirection: 'column', alignItems: 'flex-start', gap: '8px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', width: '100%' }}>
+            <div className={styles.controlRow}>
               {/* Visibility */}
               <label style={{ display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer' }}>
                 <input
@@ -178,7 +179,8 @@ const GeoJsonLayerManager: React.FC = () => {
                 value={layer.name}
                 onChange={(e) => setLayers(prev => prev.map(l => l.id === layer.id ? { ...l, name: e.target.value } : l))}
                 onBlur={(e) => updateLayer(layer.id, { name: e.target.value })}
-                style={{ flex: 1, padding: '2px 6px', border: '1px solid var(--border-color, #ccc)', borderRadius: '3px', background: 'var(--input-bg, #fff)', color: 'var(--text-color, #000)' }}
+                className={styles.nameInput}
+                style={{ padding: '2px 6px', border: '1px solid var(--border-color, #ccc)', borderRadius: '3px', background: 'var(--input-bg, #fff)', color: 'var(--text-color, #000)' }}
               />
 
               {/* Delete */}
@@ -190,7 +192,7 @@ const GeoJsonLayerManager: React.FC = () => {
               </button>
             </div>
 
-            <div style={{ display: 'flex', alignItems: 'center', gap: '16px', paddingLeft: '4px' }}>
+            <div className={styles.styleRow}>
               {/* Opacity */}
               <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.85em' }}>
                 Opacity

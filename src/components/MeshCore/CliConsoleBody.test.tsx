@@ -38,12 +38,10 @@ describe('CliConsoleBody — DANGER_COMMAND_PATTERN', () => {
   });
 });
 
-vi.mock('react-i18next', () => ({
-  useTranslation: () => ({
-    t: (key: string, fallback?: string | Record<string, unknown>) =>
-      typeof fallback === 'string' ? fallback : key,
-  }),
-}));
+vi.mock('react-i18next', async () => {
+  const { createReactI18nextMock } = await import('../../test/mockI18n');
+  return createReactI18nextMock();
+});
 
 describe('CliConsoleBody — command input focus (#3752)', () => {
   it('returns focus to the command input after a command is sent', async () => {

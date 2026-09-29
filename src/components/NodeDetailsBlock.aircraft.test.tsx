@@ -9,9 +9,10 @@ import { render, screen } from '@testing-library/react';
 import NodeDetailsBlock from './NodeDetailsBlock';
 import type { DeviceInfo } from '../types/device';
 
-vi.mock('react-i18next', () => ({
-  useTranslation: () => ({ t: (key: string, def?: string) => (typeof def === 'string' ? def : key) }),
-}));
+vi.mock('react-i18next', async () => {
+  const { createReactI18nextMock } = await import('../test/mockI18n');
+  return createReactI18nextMock();
+});
 vi.mock('../hooks/useServerData', () => ({
   useChannels: () => ({ channels: [] }),
   useDeviceConfig: () => ({ currentNodeId: null }),

@@ -12,20 +12,17 @@ import MeshIssuesSection from './MeshIssuesSection';
 
 // Override the global i18n mock from src/test/setup.ts — that mock returns the
 // key, not the English default, and these tests assert on English text.
-vi.mock('react-i18next', () => ({
-  useTranslation: () => ({
-    t: (key: string, defaultValue?: string | Record<string, unknown>) => {
-      if (typeof defaultValue === 'string') return defaultValue;
-      if (defaultValue && typeof defaultValue === 'object' && 'defaultValue' in defaultValue) {
-        return String((defaultValue as Record<string, unknown>).defaultValue);
-      }
-      return key;
-    },
-    i18n: { changeLanguage: vi.fn(), language: 'en' },
-  }),
-  Trans: ({ children }: { children: React.ReactNode }) => children,
-  initReactI18next: { type: '3rdParty', init: vi.fn() },
-}));
+vi.mock('react-i18next', async () => {
+  const { createReactI18nextMock } = await import('../test/mockI18n');
+  const t = (key: string, defaultValue?: string | Record<string, unknown>) => {
+    if (typeof defaultValue === 'string') return defaultValue;
+    if (defaultValue && typeof defaultValue === 'object' && 'defaultValue' in defaultValue) {
+      return String((defaultValue as Record<string, unknown>).defaultValue);
+    }
+    return key;
+  };
+  return createReactI18nextMock(t);
+});
 
 const mockCsrfFetch = vi.fn();
 vi.mock('../hooks/useCsrfFetch', () => ({

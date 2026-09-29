@@ -23,9 +23,10 @@ vi.mock('./MeshCorePacketMonitorView', () => ({
   ),
 }));
 
-vi.mock('react-i18next', () => ({
-  useTranslation: () => ({ t: (_k: string, fallback?: string) => fallback ?? _k }),
-}));
+vi.mock('react-i18next', async () => {
+  const { createReactI18nextMock } = await import('../../test/mockI18n');
+  return createReactI18nextMock();
+});
 
 vi.mock('../icons', () => ({ UiIcon: () => <span /> }));
 

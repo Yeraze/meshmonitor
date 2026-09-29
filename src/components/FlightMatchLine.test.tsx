@@ -20,12 +20,10 @@ vi.mock('../services/api', () => ({
   },
 }));
 
-vi.mock('react-i18next', () => ({
-  useTranslation: () => ({
-    t: (_key: string, fallback: string, vars?: Record<string, string>) =>
-      vars ? fallback.replace(/\{\{(\w+)\}\}/g, (_m, k) => vars[k] ?? '') : fallback,
-  }),
-}));
+vi.mock('react-i18next', async () => {
+  const { createReactI18nextMock } = await import('../test/mockI18n');
+  return createReactI18nextMock();
+});
 
 const MATCH: FlightMatch = {
   nodeNum: 123,

@@ -16,12 +16,10 @@ import userEvent from '@testing-library/user-event';
 import { ThemeDocumentation } from './ThemeDocumentation';
 
 // Passthrough i18n so assertions can target the real i18n keys.
-vi.mock('react-i18next', () => ({
-  useTranslation: () => ({
-    t: (key: string) => key,
-    i18n: { changeLanguage: vi.fn(), language: 'en' },
-  }),
-}));
+vi.mock('react-i18next', async () => {
+  const { createReactI18nextMock } = await import('../test/mockI18n');
+  return createReactI18nextMock();
+});
 
 const setTheme = vi.fn();
 const setAppearanceMode = vi.fn();

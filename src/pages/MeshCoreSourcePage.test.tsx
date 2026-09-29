@@ -11,15 +11,15 @@ import { MemoryRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 // react-i18next: passthrough so we can assert on default fallback text.
-vi.mock('react-i18next', () => ({
-  useTranslation: () => ({
-    t: (key: string, fallback?: string | Record<string, unknown>) => {
-      if (typeof fallback === 'string') return fallback;
-      // Test-only synthetic fallback so unmatched keys don't render as `undefined`.
-      return key;
-    },
-  }),
-}));
+vi.mock('react-i18next', async () => {
+  const { createReactI18nextMock } = await import('../test/mockI18n');
+  const t = (key: string, fallback?: string | Record<string, unknown>) => {
+    if (typeof fallback === 'string') return fallback;
+    // Test-only synthetic fallback so unmatched keys don't render as `undefined`.
+    return key;
+  };
+  return createReactI18nextMock(t);
+});
 
 // Initial-load helpers — DashboardPage's heavy SettingsContext needs the
 // settings endpoint to resolve. Stub fetch to default per URL.

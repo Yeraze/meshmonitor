@@ -10,6 +10,12 @@
 
 import { EventEmitter } from 'events';
 import { logger } from '../utils/logger.js';
+import {
+  clampIntervalSetting,
+  MESHCORE_AUTO_ANNOUNCE_HOURS,
+  MESHCORE_PATHFINDING_INTERVAL_MINUTES,
+  MESHCORE_PATHFINDING_REPEAT_HOURS,
+} from './utils/schedulerInterval.js';
 import { isBogusPosition } from '../utils/nullIsland.js';
 import { isCorruptMeshCoreContactRecord, sanitizeMeshCoreName } from '../utils/meshcoreName.js';
 import databaseService from '../services/database.js';
@@ -8632,11 +8638,21 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
     }
 
     const intervalMinutesRaw = await databaseService.settings.getSettingForSource(this.sourceId, 'meshcoreAutoPathfindingIntervalMinutes');
-    const intervalMinutes = Math.max(3, parseInt(intervalMinutesRaw || '5', 10) || 5);
+    // Clamp both to the ranges the save route enforces: stored rows it never
+    // saw could otherwise overflow the timer delay to 1 ms.
+    const intervalMinutes = clampIntervalSetting(
+      parseInt(intervalMinutesRaw || '5', 10) || 5,
+      MESHCORE_PATHFINDING_INTERVAL_MINUTES,
+      `[MeshCore:${this.sourceId}] meshcoreAutoPathfindingIntervalMinutes`,
+    );
     const intervalMs = intervalMinutes * 60 * 1000;
 
     const repeatHoursRaw = await databaseService.settings.getSettingForSource(this.sourceId, 'meshcoreAutoPathfindingRepeatHours');
-    const repeatHours = Math.max(1, parseInt(repeatHoursRaw || '24', 10) || 24);
+    const repeatHours = clampIntervalSetting(
+      parseInt(repeatHoursRaw || '24', 10) || 24,
+      MESHCORE_PATHFINDING_REPEAT_HOURS,
+      `[MeshCore:${this.sourceId}] meshcoreAutoPathfindingRepeatHours`,
+    );
     const repeatMs = repeatHours * 60 * 60 * 1000;
 
     const maxJitterMs = Math.min(repeatMs, 5 * 60 * 1000);
@@ -8816,7 +8832,11 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
     const useScheduleRaw = (await databaseService.settings.getSettingForSource(this.sourceId, 'meshcoreAutoAnnounceUseSchedule')) === 'true';
     const schedule = (await databaseService.settings.getSettingForSource(this.sourceId, 'meshcoreAutoAnnounceSchedule')) || '0 */6 * * *';
     const intervalHoursRaw = await databaseService.settings.getSettingForSource(this.sourceId, 'meshcoreAutoAnnounceIntervalHours');
-    const intervalHours = Math.max(1, parseInt(intervalHoursRaw || '6', 10) || 6);
+    const intervalHours = clampIntervalSetting(
+      parseInt(intervalHoursRaw || '6', 10) || 6,
+      MESHCORE_AUTO_ANNOUNCE_HOURS,
+      `[MeshCore:${this.sourceId}] meshcoreAutoAnnounceIntervalHours`,
+    );
 
     let mode: ScheduleMode;
     if (useScheduleRaw) {

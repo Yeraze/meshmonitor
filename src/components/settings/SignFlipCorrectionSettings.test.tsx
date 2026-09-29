@@ -7,14 +7,10 @@ import { resolve } from 'node:path';
 import { render, screen, fireEvent } from '@testing-library/react';
 import SignFlipCorrectionSettings, { type SignFlipCorrectionSettingsProps } from './SignFlipCorrectionSettings';
 
-vi.mock('react-i18next', () => ({
-  useTranslation: () => ({
-    t: (key: string, def?: string, opts?: Record<string, unknown>) => {
-      if (typeof def !== 'string') return key;
-      return def.replace(/\{\{(\w+)\}\}/g, (_, k) => String(opts?.[k] ?? ''));
-    },
-  }),
-}));
+vi.mock('react-i18next', async () => {
+  const { createReactI18nextMock } = await import('../../test/mockI18n');
+  return createReactI18nextMock();
+});
 
 function setup(overrides: Partial<SignFlipCorrectionSettingsProps> = {}) {
   const props: SignFlipCorrectionSettingsProps = {

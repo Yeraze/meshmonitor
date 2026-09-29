@@ -1,0 +1,21 @@
+/*
+ * Standalone global settings page (/settings).
+ *
+ * This page mounts outside the app shell, so there is no fixed `.app-header`
+ * and `useAppHeaderHeightVar` never runs. `--app-header-height` then falls back
+ * to the :root expression in App.css (the 60px design height), and the sticky
+ * `.section-nav` parked 60px down the viewport. Content scrolled through that
+ * empty band above the nav.
+ *
+ * Zeroing the variable here, on the page wrapper, lets every descendant that
+ * offsets "below the header" (the section nav's `top`, and anything else that
+ * reads the variable) follow the real header height, which is none. Pages
+ * inside the app shell never render this wrapper, so their offsets are
+ * unchanged.
+ */
+.page {
+  --app-header-height: 0px;
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 1rem;
+}

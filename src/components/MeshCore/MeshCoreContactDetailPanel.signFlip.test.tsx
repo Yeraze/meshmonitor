@@ -10,14 +10,10 @@ import { render, screen } from '@testing-library/react';
 import { MeshCoreContactDetailPanel } from './MeshCoreContactDetailPanel';
 import type { MeshCoreContact } from '../../utils/meshcoreHelpers';
 
-vi.mock('react-i18next', () => ({
-  useTranslation: () => ({
-    t: (key: string, fallback?: string | Record<string, unknown>, opts?: Record<string, unknown>) => {
-      if (typeof fallback !== 'string') return key;
-      return fallback.replace(/\{\{(\w+)\}\}/g, (_, k) => String(opts?.[k] ?? ''));
-    },
-  }),
-}));
+vi.mock('react-i18next', async () => {
+  const { createReactI18nextMock } = await import('../../test/mockI18n');
+  return createReactI18nextMock();
+});
 
 vi.mock('../../contexts/SettingsContext', () => ({
   useNodeListStyle: () => 'monochrome',

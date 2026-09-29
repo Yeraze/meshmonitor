@@ -8,6 +8,8 @@ import {
   fetchCoverageGrid,
   fetchHopCounts,
 } from '../services/analysisApi';
+import { useDashboardSources } from './useDashboardData';
+import { isDeviceMeshCoreSourceType } from '../utils/nodeTypeCategory';
 
 interface PaginatedHookArgs {
   enabled: boolean;
@@ -145,13 +147,33 @@ export function useNeighbors(args: PaginatedHookArgs) {
   });
 }
 
+/**
+ * MeshCore neighbor edges for the given sources.
+ *
+ * `/api/sources/:id/meshcore/neighbors` sits behind the device MeshCore route
+ * guard, which answers 404 for any other source. Callers pass every source
+ * they show (Unified dashboard, Map Analysis "all sources"), so the hook
+ * narrows the list to enabled device-backed MeshCore sources itself and stays
+ * disabled when none remain, rather than firing a 404 per Meshtastic/MQTT
+ * source on every refetch. Until the source list loads, no source counts as
+ * MeshCore, so nothing is fetched early.
+ */
 export function useMeshCoreNeighbors(args: PaginatedHookArgs) {
+  const { data: allSources } = useDashboardSources();
+  const meshcoreSources = useMemo(() => {
+    const meshcoreIds = new Set(
+      (allSources ?? [])
+        .filter((s) => s.enabled !== false && isDeviceMeshCoreSourceType(s.type))
+        .map((s) => s.id),
+    );
+    return args.sources.filter((id) => meshcoreIds.has(id));
+  }, [allSources, args.sources]);
   return useQuery({
-    queryKey: ['analysis', 'meshcoreNeighbors', args.sources, args.lookbackHours],
-    enabled: args.enabled && args.sources.length > 0,
+    queryKey: ['analysis', 'meshcoreNeighbors', meshcoreSources, args.lookbackHours],
+    enabled: args.enabled && meshcoreSources.length > 0,
     queryFn: ({ signal }: { signal: AbortSignal }) =>
       fetchMeshCoreNeighbors({
-        sources: args.sources,
+        sources: meshcoreSources,
         sinceMs: lookbackToSinceMs(args.lookbackHours),
         signal,
       }),

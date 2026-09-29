@@ -16,12 +16,10 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import { ReticulumSettingsView } from './ReticulumSettingsView';
 
-vi.mock('react-i18next', () => ({
-  useTranslation: () => ({
-    t: (key: string, fallback?: string | Record<string, unknown>) =>
-      typeof fallback === 'string' ? fallback : key,
-  }),
-}));
+vi.mock('react-i18next', async () => {
+  const { createReactI18nextMock } = await import('../../test/mockI18n');
+  return createReactI18nextMock();
+});
 
 const { hasPermissionMock } = vi.hoisted(() => ({ hasPermissionMock: vi.fn(() => true) }));
 vi.mock('../../contexts/AuthContext', () => ({

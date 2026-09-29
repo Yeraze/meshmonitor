@@ -3,12 +3,15 @@ import { useTranslation } from 'react-i18next';
 import { useMapEvents, Marker, useMap } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import { BaseMap } from '../map/BaseMap';
+import mapFrame from '../map/EmbeddedMapFrame.module.css';
 import apiService from '../../services/api';
 import { useCsrfFetch } from '../../hooks/useCsrfFetch';
 import { useToast } from '../ToastContainer';
 import { getAllTilesets } from '../../config/tilesets';
 import { useSettings } from '../../contexts/SettingsContext';
 import { useDashboardSources } from '../../hooks/useDashboardData';
+import { EmbedDialogContent } from './EmbedDialogContent';
+import { UiIcon } from '../icons';
 import './EmbedSettings.css';
 
 /** Shape matching the backend EmbedProfile */
@@ -201,9 +204,14 @@ const EmbedSettings = () => {
     setEditingId(profile.id);
   };
 
-  const closeModal = () => {
+  // Stable identities: useDialogA11y re-binds its Escape listener whenever
+  // onClose changes, so an inline arrow would re-bind on every keystroke.
+  const closeModal = useCallback(() => {
     setEditingId(null);
-  };
+  }, []);
+  const closeCodeModal = useCallback(() => {
+    setCopyProfileId(null);
+  }, []);
 
   const toggleChannel = (ch: number) => {
     setForm(prev => {
@@ -380,11 +388,11 @@ const EmbedSettings = () => {
 
       {/* ===== Create/Edit Modal ===== */}
       {editingId !== null && (
-        <div className="modal-overlay" onClick={closeModal}>
-          <div className="modal-content embed-modal" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-overlay" onClick={closeModal} role="presentation">
+          <EmbedDialogContent className="modal-content embed-modal" labelledBy="embed-profile-dialog-title" onClose={closeModal}>
             <div className="modal-header">
-              <h2>{editingId === 'new' ? t('settings.embed.create_title', 'Create Embed Profile') : t('settings.embed.edit_title', 'Edit Embed Profile')}</h2>
-              <button className="modal-close" onClick={closeModal}>&times;</button>
+              <h2 id="embed-profile-dialog-title">{editingId === 'new' ? t('settings.embed.create_title', 'Create Embed Profile') : t('settings.embed.edit_title', 'Edit Embed Profile')}</h2>
+              <button type="button" className="modal-close" onClick={closeModal} aria-label={t('common.close', 'Close')}><UiIcon name="close" size={18} /></button>
             </div>
             <div className="modal-body">
               {/* Name */}
@@ -477,7 +485,7 @@ const EmbedSettings = () => {
                 <p className="setting-description">
                   {t('settings.embed.map_center_help', 'Click the map to set the center. Zoom with scroll or controls.')}
                 </p>
-                <div className="embed-map-picker">
+                <div className={`embed-map-picker ${mapFrame.frame}`} data-testid="embed-map-frame">
                   <BaseMap
                     center={[form.defaultLat, form.defaultLng]}
                     zoom={form.defaultZoom}
@@ -586,17 +594,17 @@ const EmbedSettings = () => {
                 </button>
               </div>
             </div>
-          </div>
+          </EmbedDialogContent>
         </div>
       )}
 
       {/* ===== Embed Code Modal ===== */}
       {copyProfileId && (
-        <div className="modal-overlay" onClick={() => setCopyProfileId(null)}>
-          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-overlay" onClick={closeCodeModal} role="presentation">
+          <EmbedDialogContent className="modal-content" labelledBy="embed-code-dialog-title" onClose={closeCodeModal}>
             <div className="modal-header">
-              <h2>{t('settings.embed.embed_code_title', 'Embed Code')}</h2>
-              <button className="modal-close" onClick={() => setCopyProfileId(null)}>&times;</button>
+              <h2 id="embed-code-dialog-title">{t('settings.embed.embed_code_title', 'Embed Code')}</h2>
+              <button type="button" className="modal-close" onClick={closeCodeModal} aria-label={t('common.close', 'Close')}><UiIcon name="close" size={18} /></button>
             </div>
             <div className="modal-body">
               <p className="setting-description">
@@ -613,12 +621,12 @@ const EmbedSettings = () => {
                 <button className="settings-button settings-button-primary" onClick={() => copyToClipboard(buildIframeSnippet(copyProfileId))}>
                   {t('settings.embed.copy_btn', 'Copy to Clipboard')}
                 </button>
-                <button className="settings-button" onClick={() => setCopyProfileId(null)}>
+                <button className="settings-button" onClick={closeCodeModal}>
                   {t('settings.embed.close_btn', 'Close')}
                 </button>
               </div>
             </div>
-          </div>
+          </EmbedDialogContent>
         </div>
       )}
     </div>

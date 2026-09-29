@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { DISTANCE_DELETE_THRESHOLD_KM_MAX } from './automationInputLimits';
 import { useTranslation } from 'react-i18next';
 import { useToast } from './ToastContainer';
 import { useCsrfFetch } from '../hooks/useCsrfFetch';
@@ -290,6 +291,8 @@ const AutoDeleteByDistanceSection: React.FC<AutoDeleteByDistanceSectionProps> = 
             <input
               type="number"
               step="any"
+              min={-90}
+              max={90}
               placeholder={t('automation.distance_delete.latitude')}
               value={localHomeLat}
               onChange={(e) => setLocalHomeLat(e.target.value)}
@@ -300,6 +303,8 @@ const AutoDeleteByDistanceSection: React.FC<AutoDeleteByDistanceSectionProps> = 
             <input
               type="number"
               step="any"
+              min={-180}
+              max={180}
               placeholder={t('automation.distance_delete.longitude')}
               value={localHomeLon}
               onChange={(e) => setLocalHomeLon(e.target.value)}
@@ -326,6 +331,7 @@ const AutoDeleteByDistanceSection: React.FC<AutoDeleteByDistanceSectionProps> = 
           <input
             type="number"
             min="1"
+            max={Math.floor(toDisplayUnit(DISTANCE_DELETE_THRESHOLD_KM_MAX))}
             step="1"
             value={Math.round(displayThreshold)}
             onChange={(e) => {

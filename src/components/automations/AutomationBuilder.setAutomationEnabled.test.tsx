@@ -13,15 +13,10 @@ import { render, screen, fireEvent } from '@testing-library/react';
 import AutomationBuilder, { type AutomationOption } from './AutomationBuilder';
 import type { WorkflowForm } from './compile';
 
-vi.mock('react-i18next', () => ({
-  useTranslation: () => ({
-    t: (key: string, defaultValue?: string | Record<string, unknown>) =>
-      typeof defaultValue === 'string' ? defaultValue : key,
-    i18n: { changeLanguage: vi.fn(), language: 'en' },
-  }),
-  Trans: ({ children }: { children: React.ReactNode }) => children,
-  initReactI18next: { type: '3rdParty', init: vi.fn() },
-}));
+vi.mock('react-i18next', async () => {
+  const { createReactI18nextMock } = await import('../../test/mockI18n');
+  return createReactI18nextMock();
+});
 
 const AUTOMATIONS: AutomationOption[] = [
   { id: 'id-a', name: 'Alpha', enabled: true },

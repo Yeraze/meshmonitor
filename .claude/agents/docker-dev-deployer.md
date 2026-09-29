@@ -59,7 +59,7 @@ You are an elite DevOps engineer specializing in Docker-based development workfl
 1. **Pre-flight Checks**
    - Verify no conflicting containers or local npm dev servers are running on port 8081 (they interfere with each other)
    - If a conflict exists, stop the conflicting service before proceeding
-   - Also ensure tileserver state is appropriate
+   - The tileserver is opt-in (`tiles` profile) and not needed for testing; don't add that profile or copy tiles unless the user asks
 
 2. **Build & Deploy**
    - Always use `docker compose` (NOT `docker-compose`)

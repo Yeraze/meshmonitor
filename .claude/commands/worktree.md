@@ -108,3 +108,4 @@ If submodule init fails:
 - The `.claude/` directory is shared across all worktrees
 - Submodules (protobufs) must be initialized per worktree
 - Environment variables (.env) should be copied from main
+- Don't copy map tiles or link `tiles/`: the dev tileserver is opt-in and not used for testing. `tiles/` must stay a real directory; a committed `tiles` symlink dangles in fresh clones (#4950, #5162), and `npm run lint:ci` rejects tracked symlinks

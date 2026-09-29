@@ -46,17 +46,10 @@ const h = vi.hoisted(() => ({
 }));
 
 // i18next-style interpolation so the rendered copy can be asserted.
-vi.mock('react-i18next', () => ({
-  useTranslation: () => ({
-    t: (key: string, opts?: string | Record<string, unknown>) => {
-      if (typeof opts === 'string') return opts;
-      if (opts && typeof opts.defaultValue === 'string') {
-        return opts.defaultValue.replace(/\{\{(\w+)\}\}/g, (_m, k: string) => String(opts[k] ?? ''));
-      }
-      return key;
-    },
-  }),
-}));
+vi.mock('react-i18next', async () => {
+  const { createReactI18nextMock } = await import('../../test/mockI18n');
+  return createReactI18nextMock();
+});
 
 vi.mock('@tanstack/react-query', () => ({
   useQuery: (opts: { queryKey: unknown[] }) => {

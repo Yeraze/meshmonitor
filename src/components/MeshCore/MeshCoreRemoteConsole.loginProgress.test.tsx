@@ -12,14 +12,10 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import { MeshCoreRemoteConsole } from './MeshCoreRemoteConsole';
 
-vi.mock('react-i18next', () => ({
-  useTranslation: () => ({
-    t: (key: string, fallback?: string | Record<string, unknown>, vars?: Record<string, unknown>) => {
-      const text = typeof fallback === 'string' ? fallback : key;
-      return text.replace(/\{\{(\w+)\}\}/g, (_m, k) => String(vars?.[k] ?? ''));
-    },
-  }),
-}));
+vi.mock('react-i18next', async () => {
+  const { createReactI18nextMock } = await import('../../test/mockI18n');
+  return createReactI18nextMock();
+});
 vi.mock('./MeshCoreRemoteStatsPanel', () => ({ MeshCoreRemoteStatsPanel: () => <div data-testid="stats-panel" /> }));
 vi.mock('./MeshCoreAclManager', () => ({ MeshCoreAclManager: () => <div /> }));
 vi.mock('./CliConsoleBody', () => ({ CliConsoleBody: () => <div /> }));

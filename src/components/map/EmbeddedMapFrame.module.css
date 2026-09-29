@@ -1,0 +1,17 @@
+/*
+ * Wrapper for a map embedded in a scrolling settings page (Automation's
+ * Geofence editor, Settings' default-center and embed pickers, the MQTT
+ * bridge's bounding-box editor).
+ *
+ * Leaflet gives its panes z-index 400 and its controls 1000. `.leaflet-container`
+ * is `position: relative` with no z-index, so it forms no stacking context and
+ * those values compete in the page's root context, where they beat the sticky
+ * section nav (z-index 10). Scrolled, the map painted over the nav and its
+ * search box. `isolation: isolate` makes this frame its own stacking context:
+ * the panes keep their order inside the map and the frame as a whole paints at
+ * z-index auto, below the nav.
+ */
+.frame {
+  position: relative;
+  isolation: isolate;
+}

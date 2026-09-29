@@ -21,15 +21,10 @@ import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, useSearchParams } from 'react-router-dom';
 
-vi.mock('react-i18next', () => ({
-  useTranslation: () => ({
-    t: (key: string, defaultValue?: string) =>
-      typeof defaultValue === 'string' ? defaultValue : key,
-    i18n: { changeLanguage: vi.fn(), language: 'en' },
-  }),
-  Trans: ({ children }: { children: React.ReactNode }) => children,
-  initReactI18next: { type: '3rdParty', init: vi.fn() },
-}));
+vi.mock('react-i18next', async () => {
+  const { createReactI18nextMock } = await import('../../test/mockI18n');
+  return createReactI18nextMock();
+});
 
 vi.mock('./SolarMonitoringReport', () => ({
   default: () => <div data-testid="solar-monitoring-report">Solar report</div>,

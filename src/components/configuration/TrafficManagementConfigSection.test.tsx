@@ -13,9 +13,10 @@ import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import TrafficManagementConfigSection from './TrafficManagementConfigSection';
 
-vi.mock('react-i18next', () => ({
-  useTranslation: () => ({ t: (_key: string, fallback?: string) => fallback ?? _key }),
-}));
+vi.mock('react-i18next', async () => {
+  const { createReactI18nextMock } = await import('../../test/mockI18n');
+  return createReactI18nextMock();
+});
 
 vi.mock('../../hooks/useSaveBar', () => ({ useSaveBar: vi.fn() }));
 

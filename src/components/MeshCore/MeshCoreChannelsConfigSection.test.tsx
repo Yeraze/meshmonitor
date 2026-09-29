@@ -12,19 +12,10 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 
-vi.mock('react-i18next', () => ({
-  useTranslation: () => ({
-    t: (key: string, fallback?: string | Record<string, unknown>, vars?: Record<string, unknown>) => {
-      if (typeof fallback === 'string') {
-        if (vars && typeof vars === 'object') {
-          return fallback.replace(/\{\{(\w+)\}\}/g, (_m, k) => String((vars as any)[k] ?? ''));
-        }
-        return fallback;
-      }
-      return key;
-    },
-  }),
-}));
+vi.mock('react-i18next', async () => {
+  const { createReactI18nextMock } = await import('../../test/mockI18n');
+  return createReactI18nextMock();
+});
 
 vi.mock('../../contexts/AuthContext', () => ({
   useAuth: () => ({ hasPermission: () => true }),

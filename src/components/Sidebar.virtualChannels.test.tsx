@@ -12,9 +12,10 @@ import { render, screen } from '@testing-library/react';
 import Sidebar from './Sidebar';
 import type { ResourceType } from '../types/permission';
 
-vi.mock('react-i18next', () => ({
-  useTranslation: () => ({ t: (key: string, fallback?: string) => fallback ?? key }),
-}));
+vi.mock('react-i18next', async () => {
+  const { createReactI18nextMock } = await import('../test/mockI18n');
+  return createReactI18nextMock();
+});
 
 vi.mock('../contexts/SettingsContext', () => ({
   useNodeListStyle: () => 'monochrome',
