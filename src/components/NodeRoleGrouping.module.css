@@ -104,15 +104,3 @@
 .summaryChipCount {
   color: var(--color-text-disabled);
 }
-
-/* Pressed state for the "Group by Role" toggle, which otherwise shares the
-   global .filter-popup-btn class with the (non-toggle) filter popup buttons —
-   applied as an additional class alongside filter-popup-btn rather than
-   adding a `.filter-popup-btn.active` rule to the global sheet. Same visual
-   language as the global `.filter-toggle-btn.active`. */
-.toggleActive {
-  background: var(--color-accent);
-  border-color: var(--color-accent);
-  color: var(--color-accent-text);
-  font-weight: 600;
-}
