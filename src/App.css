@@ -44,9 +44,9 @@
    * Extra room below the status bar for iOS 27 home-screen web apps (#5286).
    * There iOS draws its own blur over the top ~20px below the safe area, over
    * whatever the page puts there, so header text in that band renders fogged.
-   * No page CSS changes the blur (measured on-device with a test page: fixed,
-   * in-flow and absent bars all blur the same). The only fix is to keep text
-   * out of the band. 0 everywhere else; `applyIosStandaloneBlurGap()` turns it
+   * Keep text out of the band. A fixed bar at the top edge also helps: iOS
+   * tints the band with its colour rather than fogging it, which is why the
+   * Dashboard topbar is now fixed like `.app-header`. 0 everywhere else; `applyIosStandaloneBlurGap()` turns it
    * on, and the `* 1000` clamp keeps it 0 when there is no top inset
    * (landscape, where the status bar is hidden).
    */

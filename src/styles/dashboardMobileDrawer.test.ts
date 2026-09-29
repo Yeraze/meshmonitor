@@ -76,6 +76,17 @@ describe('Sources drawer close control (#5053)', () => {
     }
   );
 
+  it.each([...mobileViewports, ['desktop', DESKTOP] as const])(
+    'pins the top bar and pads the page by its height on a %s (#5286)',
+    (_name, vp) => {
+      // An in-flow bar renders fogged under the iOS 27 home-screen status bar;
+      // a fixed one at the top edge gets tinted instead.
+      expect(resolve_('.dashboard-topbar', 'position', vp)).toBe('fixed');
+      expect(resolve_('.dashboard-topbar', 'top', vp)).toBe('0');
+      expect(resolve_('.dashboard-page', 'padding-top', vp)).toBe('var(--dashboard-topbar-height)');
+    }
+  );
+
   it('keeps the desktop layout untouched', () => {
     expect(resolve_('.dashboard-topbar-hamburger', 'display', DESKTOP)).toBe('none');
     expect(resolve_('.dashboard-sidebar', 'position', DESKTOP)).toBeNull();
