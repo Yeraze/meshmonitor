@@ -292,7 +292,7 @@ export function isChannelPseudoKey(k: string | null | undefined): boolean {
  * canonical peer keys.
  */
 export function computeUnreadDmPeers(params: {
-  messages: ReadonlyArray<{ fromPublicKey: string; toPublicKey?: string; timestamp: number; messageType?: string }>;
+  messages: ReadonlyArray<{ fromPublicKey: string; toPublicKey?: string; timestamp: number; messageType?: string; filtered?: string }>;
   contacts: ReadonlyArray<{ publicKey?: string }>;
   selfKey: string | undefined;
   dmLastRead: Record<string, number>;
@@ -318,6 +318,8 @@ export function computeUnreadDmPeers(params: {
   for (const m of messages) {
     if (!m.toPublicKey) continue;
     if (m.messageType === 'room_post') continue;
+    // Ignored messages never count as unread (#5408).
+    if (m.filtered) continue;
     if (isChannelPseudoKey(m.fromPublicKey) || isChannelPseudoKey(m.toPublicKey)) continue;
     // Only received messages count as unread — sender is NOT us, recipient IS us.
     if (peerKeysMatch(m.fromPublicKey, selfKey)) continue;

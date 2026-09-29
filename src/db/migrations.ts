@@ -200,6 +200,7 @@ import { migration as userMapPreferencesAircraftTrailsMigration, runMigration178
 import { migration as addNodeFirstHeardMigration, runMigration179Postgres, runMigration179Mysql } from '../server/migrations/179_add_node_first_heard.js';
 import { migration as createAircraftFlightMatchesMigration, runMigration180Postgres, runMigration180Mysql } from '../server/migrations/180_create_aircraft_flight_matches.js';
 import { migration as createAssetNodesMigration, runMigration181Postgres, runMigration181Mysql } from '../server/migrations/181_create_asset_nodes.js';
+import { migration as createMeshcoreIgnoreBlockMigration, runMigration182Postgres, runMigration182Mysql } from '../server/migrations/182_create_meshcore_ignore_block.js';
 
 // ============================================================================
 // Registry
@@ -2936,4 +2937,18 @@ registry.register({
   sqlite: (db) => createAssetNodesMigration.up(db),
   postgres: (client) => runMigration181Postgres(client),
   mysql: (pool) => runMigration181Mysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 182: `meshcore_ignored_nodes` + `meshcore_message_filters` (#5408,
+// MeshCore client-side Ignore / Block). PER-SOURCE, FK to sources(id) cascade.
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 182,
+  name: 'create_meshcore_ignore_block',
+  settingsKey: 'migration_182_create_meshcore_ignore_block',
+  sqlite: (db) => createMeshcoreIgnoreBlockMigration.up(db),
+  postgres: (client) => runMigration182Postgres(client),
+  mysql: (pool) => runMigration182Mysql(pool),
 });

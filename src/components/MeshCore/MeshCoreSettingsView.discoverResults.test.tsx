@@ -21,6 +21,9 @@ vi.mock('react-i18next', async () => {
 vi.mock('../ToastContainer', () => ({ useToast: () => ({ showToast: vi.fn() }) }));
 vi.mock('../../contexts/AuthContext', () => ({ useAuth: () => ({ hasPermission: () => true }) }));
 // Not under test; it fetches on mount.
+// Ignore / Block sections (#5408) own TanStack queries; covered by their own tests.
+vi.mock('./MeshCoreIgnoredNodesSection', () => ({ MeshCoreIgnoredNodesSection: () => null }));
+vi.mock('./MeshCoreMessageFiltersSection', () => ({ MeshCoreMessageFiltersSection: () => null }));
 vi.mock('./MeshCoreNodeDisplaySection', () => ({
   MeshCoreNodeDisplaySection: () => null,
 }));

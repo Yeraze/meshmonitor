@@ -58,6 +58,8 @@ interface IngestMessage {
   text?: string | null;
   fromName?: string | null;
   timestamp?: number | null;
+  /** Ignore / Block (#5408): set by the server from the source's current lists. */
+  filtered?: 'ignore' | 'block';
 }
 
 /** ApiService returns the raw envelope; `ok(res, x)` puts the payload in `data`. */
@@ -142,7 +144,8 @@ export const MeshCoreIngestView: React.FC<MeshCoreIngestViewProps> = ({ sourceId
         const res = await apiService.get<Envelope<{ messages: IngestMessage[] }>>(
           `${prefix}/messages?limit=100`,
         );
-        if (!cancelled) setMessages(res?.data?.messages ?? []);
+        // This compact list has no collapsed row, so ignored messages (#5408) are left out.
+        if (!cancelled) setMessages((res?.data?.messages ?? []).filter((m) => !m.filtered));
       } catch {
         if (!cancelled) setMessages([]);
       }

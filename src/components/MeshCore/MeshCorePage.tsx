@@ -12,11 +12,18 @@
  *
  * Talks to /api/sources/:id/meshcore/* via useMeshCore.
  */
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useTxStatus } from '../../hooks/useTxStatus';
 import { useMeshCore, ConnectionStatus } from './hooks/useMeshCore';
 import { useMeshCoreUnread } from './hooks/useMeshCoreUnread';
+import {
+  useMeshCoreIgnoredNodes,
+  useHiddenMeshCoreKeys,
+  useSetMeshCoreIgnoredNode,
+  useRemoveMeshCoreIgnoredNode,
+  type MeshCoreFilterMode,
+} from '../../hooks/useMeshCoreFilters';
 import { useReadStateSync } from './hooks/useReadStateSync';
 import { MeshCoreStatusBar } from './MeshCoreStatusBar';
 import { MeshCoreSubToolbar, MeshCoreView } from './MeshCoreSubToolbar';
@@ -86,6 +93,31 @@ export const MeshCorePage: React.FC<MeshCorePageProps> = ({ baseUrl, sourceId, e
   useReadStateSync({ sourceId });
 
   // Unread red-dots for the Channels + Node Details (DMs) sidebar icons (#3891).
+  // Ignore / Block (#5408): nodes with an entry are hidden from the node list,
+  // the map and Node Details. Adverts still update their rows server-side;
+  // only display is suppressed. One place, so all three views agree.
+  const ignoredNodesQuery = useMeshCoreIgnoredNodes(sourceId, { enabled: enabled ?? true });
+  const hiddenKeys = useHiddenMeshCoreKeys(ignoredNodesQuery.data);
+  const visibleNodes = useMemo(
+    () => (hiddenKeys.size === 0 ? nodes : nodes.filter((n) => !hiddenKeys.has(n.publicKey.toLowerCase()))),
+    [nodes, hiddenKeys],
+  );
+  const visibleContacts = useMemo(
+    () => (hiddenKeys.size === 0 ? contacts : contacts.filter((c) => !hiddenKeys.has(c.publicKey.toLowerCase()))),
+    [contacts, hiddenKeys],
+  );
+  const { mutateAsync: setIgnoredNodeAsync } = useSetMeshCoreIgnoredNode(sourceId);
+  const { mutateAsync: removeIgnoredNodeAsync } = useRemoveMeshCoreIgnoredNode(sourceId);
+  const handleSetIgnoredNode = useCallback(
+    (publicKey: string, mode: MeshCoreFilterMode, name: string | null) =>
+      setIgnoredNodeAsync({ publicKey, mode, name }),
+    [setIgnoredNodeAsync],
+  );
+  const handleRemoveIgnoredNode = useCallback(
+    (publicKey: string) => removeIgnoredNodeAsync(publicKey),
+    [removeIgnoredNodeAsync],
+  );
+
   const unread = useMeshCoreUnread({
     baseUrl,
     sourceId,
@@ -140,8 +172,8 @@ export const MeshCorePage: React.FC<MeshCorePageProps> = ({ baseUrl, sourceId, e
         <div className="meshcore-content">
           {view === 'nodes' && (
             <MeshCoreNodesView
-              nodes={nodes}
-              contacts={contacts}
+              nodes={visibleNodes}
+              contacts={visibleContacts}
               onImportContact={actions.importContact}
               onNavigateToDm={navigateToDm}
               onToggleFavorite={actions.setNodeFavorite}
@@ -186,6 +218,9 @@ export const MeshCorePage: React.FC<MeshCorePageProps> = ({ baseUrl, sourceId, e
               sourceId={sourceId}
               initialSelectedContact={pendingDmContact}
               receiveOnly={receiveOnly}
+              ignoredNodes={ignoredNodesQuery.data}
+              onSetIgnoredNode={handleSetIgnoredNode}
+              onRemoveIgnoredNode={handleRemoveIgnoredNode}
             />
           )}
           {view === 'telemetry' && (

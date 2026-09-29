@@ -84,6 +84,7 @@ import {
 import type { MeshCoreObserverConfig, MeshCoreSourceConfig, NormalizedObserverConfig } from './meshcoreConfig.js';
 import meshcorePacketLogService from './services/meshcorePacketLogService.js';
 import { notificationService } from './services/notificationService.js';
+import { meshcoreMessageFilter } from './services/meshcoreMessageFilter.js';
 import { DistanceDeleteScheduler } from './services/distanceDeleteScheduler.js';
 import { HeartbeatScheduler } from './services/heartbeatScheduler.js';
 import type { DbMeshCorePacket } from '../db/repositories/meshcore.js';
@@ -716,6 +717,11 @@ export interface MeshCoreMessage {
   toPublicKey?: string; // null for broadcast
   text: string;
   timestamp: number;
+  /**
+   * Ignore / Block (#5408): set on the live socket copy of an ignored message,
+   * and by read routes from the CURRENT lists. Never persisted.
+   */
+  filtered?: 'ignore' | 'block';
   /**
    * MeshMonitor's own wall clock (ms) when this message was created or observed
    * — NOT the sender's clock, and stamped identically for both directions.
@@ -1461,6 +1467,10 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
     this.config = config;
     this.pendingConfig = config; // keep staging field in sync with direct connect() calls
 
+    // Ignore / Block lists (#5408) must be cached before the first message
+    // arrives: ingest classifies synchronously.
+    await meshcoreMessageFilter.loadSource(this.sourceId);
+
     // Pre-seed in-memory message cache from DB so history survives restarts.
     // Reset the array first to avoid duplicates on reconnect within the same
     // process (the previous session's messages are already in DB).
@@ -2020,6 +2030,18 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
     if (event_type === 'contact_message') {
       const hopCount = decodePathLenHopCount(data.path_len);
       const senderContact = this.resolveContactByPrefix(data.pubkey_prefix);
+      // Ignore / Block (#5408). Block drops the message here: nothing stored,
+      // emitted, acked or answered. Ignore stores it but fires nothing.
+      const verdict = meshcoreMessageFilter.classify(this.sourceId, {
+        fromPublicKey: senderContact?.publicKey ?? data.pubkey_prefix,
+        fromName: senderContact?.advName ?? senderContact?.name ?? null,
+        text: data.text,
+        kind: 'dm',
+      });
+      if (verdict.action === 'block') {
+        logger.debug(`[MeshCore:${this.sourceId}] Blocked DM from ${String(data.pubkey_prefix).substring(0, 12)} (${verdict.entryKind})`);
+        return;
+      }
       // The displayed/stored route is ONLY the per-packet relay-hash chain
       // recovered from LogRxData — the actual hops THIS packet traversed.
       // We deliberately do NOT fall back to the contact's cached outPath here:
@@ -2063,12 +2085,16 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
         packetHash: typeof data.packet_hash === 'string' ? data.packet_hash : undefined,
       };
       this.addMessage(message);
-      this.emit('message', message);
-      dataEventEmitter.emitMeshCoreMessage(message, this.sourceId);
-      logger.debug(`[MeshCore:${this.sourceId}] Contact message from ${data.pubkey_prefix} (${data.text.length} chars)`);
-      void this.checkAutoAcknowledge(message, true, undefined, hopCount, ackRoute);
-      void this.checkAutoResponder(message, true, undefined, hopCount, ackRoute);
-      void this.checkForwarding(message, true, undefined);
+      if (verdict.action === 'ignore') {
+        this.emitIgnoredMessage(message);
+      } else {
+        this.emit('message', message);
+        dataEventEmitter.emitMeshCoreMessage(message, this.sourceId);
+        logger.debug(`[MeshCore:${this.sourceId}] Contact message from ${data.pubkey_prefix} (${data.text.length} chars)`);
+        void this.checkAutoAcknowledge(message, true, undefined, hopCount, ackRoute);
+        void this.checkAutoResponder(message, true, undefined, hopCount, ackRoute);
+        void this.checkForwarding(message, true, undefined);
+      }
       // A direct message is itself a "we just heard this contact" event —
       // without this, Last Heard/Last Seen only advance on `contact_advertised`
       // pushes or the next refreshContacts() poll, so the Contact Details panel
@@ -2088,6 +2114,18 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
       const prefixMatch = rawText.match(/^([^:\n]{1,32}):\s*(.*)$/s);
       const fromName = prefixMatch ? prefixMatch[1].trim() : undefined;
       const body = prefixMatch ? prefixMatch[2] : rawText;
+      // Ignore / Block (#5408): a channel packet names its sender only in the
+      // text, so node entries match on that (spoofable) name.
+      const verdict = meshcoreMessageFilter.classify(this.sourceId, {
+        fromPublicKey: null,
+        fromName: fromName ?? null,
+        text: body,
+        kind: 'channel',
+      });
+      if (verdict.action === 'block') {
+        logger.debug(`[MeshCore:${this.sourceId}] Blocked channel ${data.channel_idx} message (${verdict.entryKind})`);
+        return;
+      }
       // Channel messages carry no sender pubkey on the wire, so there
       // is no contact outPath fallback for {ROUTE}. The LogRxData
       // path_hops (when present) is the only source of relay identities.
@@ -2125,12 +2163,16 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
         packetHash: typeof data.packet_hash === 'string' ? data.packet_hash : undefined,
       };
       this.addMessage(message);
-      this.emit('message', message);
-      dataEventEmitter.emitMeshCoreMessage(message, this.sourceId);
-      logger.debug(`[MeshCore] Channel ${channelIdx} message (${data.text.length} chars)`);
-      void this.checkAutoAcknowledge(message, false, channelIdx, hopCount, route);
-      void this.checkAutoResponder(message, false, channelIdx, hopCount, route);
-      void this.checkForwarding(message, false, channelIdx);
+      if (verdict.action === 'ignore') {
+        this.emitIgnoredMessage(message);
+      } else {
+        this.emit('message', message);
+        dataEventEmitter.emitMeshCoreMessage(message, this.sourceId);
+        logger.debug(`[MeshCore] Channel ${channelIdx} message (${data.text.length} chars)`);
+        void this.checkAutoAcknowledge(message, false, channelIdx, hopCount, route);
+        void this.checkAutoResponder(message, false, channelIdx, hopCount, route);
+        void this.checkForwarding(message, false, channelIdx);
+      }
     } else if (event_type === 'room_message') {
       // Room server post (TXT_TYPE_SIGNED_PLAIN). The room's pubkey prefix
       // identifies which room, and the author prefix identifies the poster.
@@ -2142,6 +2184,13 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
       const authorContact = this.resolveContactByPrefix(authorPrefixHex);
       const authorFullKey = authorContact?.publicKey ?? authorPrefixHex;
       const authorName = authorContact?.advName ?? authorContact?.name ?? undefined;
+      // Ignore / Block (#5408) keys on the post's author, not the room.
+      const verdict = meshcoreMessageFilter.classify(this.sourceId, {
+        fromPublicKey: authorFullKey,
+        fromName: authorName ?? null,
+        text: data.text,
+        kind: 'room',
+      });
 
       const message: MeshCoreMessage = {
         id: `${Date.now()}-${Math.random().toString(36).substring(2, 11)}`,
@@ -2160,10 +2209,19 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
         sourceId: this.sourceId,
         messageType: 'room_post',
       };
-      this.addMessage(message);
-      this.emit('message', message);
-      dataEventEmitter.emitMeshCoreMessage(message, this.sourceId);
-      // Track newest post timestamp for sync-since and UI display.
+      if (verdict.action === 'allow') {
+        this.addMessage(message);
+        this.emit('message', message);
+        dataEventEmitter.emitMeshCoreMessage(message, this.sourceId);
+      } else if (verdict.action === 'ignore') {
+        this.addMessage(message);
+        this.emitIgnoredMessage(message);
+      } else {
+        logger.debug(`[MeshCore:${this.sourceId}] Blocked room post from ${authorPrefixHex} (${verdict.entryKind})`);
+      }
+      // Track newest post timestamp for sync-since and UI display. Advanced
+      // for a blocked post too: otherwise the next sync asks the room for the
+      // same post again, spending airtime to drop it again (#5408).
       databaseService.meshcore.updateLastRoomPostAt(this.sourceId, roomFullKey, message.timestamp)
         .catch(err => logger.warn(`[MeshCore:${this.sourceId}] Failed to update lastRoomPostAt:`, err));
       logger.debug(`[MeshCore:${this.sourceId}] Room post from ${authorPrefixHex} in room ${roomPubkeyPrefix} (${data.text.length} chars)`);
@@ -2206,6 +2264,8 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
           onDevice: event_type === 'contact_advertised',
         };
         this.contacts.set(publicKey, updated);
+        // Keep an Ignore / Block entry's name snapshot current (#5408).
+        meshcoreMessageFilter.noteAdvertName(this.sourceId, publicKey, updated.advName);
         // Mirror to meshcore_nodes so per-source consumers (telemetry
         // scheduler, REST queries) see the contact's advType. Without
         // this, the table only gets stub rows from setNodeTelemetryConfig
@@ -3630,11 +3690,33 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
         receivedAt: Date.now(),
         sourceId: this.sourceId,
       };
+      const verdict = meshcoreMessageFilter.classify(this.sourceId, {
+        fromPublicKey: match[1],
+        text: match[2],
+        kind: 'dm',
+      });
+      if (verdict.action === 'block') return;
       this.addMessage(message);
+      if (verdict.action === 'ignore') {
+        this.emitIgnoredMessage(message);
+        return;
+      }
       this.emit('message', message);
       dataEventEmitter.emitMeshCoreMessage(message, this.sourceId);
       logger.debug(`[MeshCore] Message from ${match[1].substring(0, 8)}... (${match[2].length} chars)`);
     }
+  }
+
+  /**
+   * An ignored message (#5408) is stored but fires nothing: no auto-ack,
+   * auto-responder, forwarding, automation or Virtual Node relay. The socket
+   * still gets a copy flagged `filtered: 'ignore'` so an open view can
+   * collapse it; the automation engine skips flagged events. The flag rides
+   * the emitted copy only, never the stored row or the in-memory pool.
+   */
+  private emitIgnoredMessage(message: MeshCoreMessage): void {
+    dataEventEmitter.emitMeshCoreMessage({ ...message, filtered: 'ignore' }, this.sourceId);
+    logger.debug(`[MeshCore:${this.sourceId}] Ignored message ${message.id} (stored, not acted on)`);
   }
 
   /**

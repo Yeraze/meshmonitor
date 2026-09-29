@@ -23,6 +23,7 @@ import { MeshCoreMessageStream } from './MeshCoreMessageStream';
 import { useAuth } from '../../contexts/AuthContext';
 import { loadChannelLastRead, markChannelRead as persistChannelRead } from './meshcoreUnreadStore';
 import { slotMoveMap, subscribeChannelsReordered } from './meshcoreChannelReorderEvents';
+import { subscribeFiltersChanged } from './meshcoreFilterEvents';
 import { compareMeshCoreMessages } from './messageOrder';
 import { UiIcon } from '../icons';
 import { MeshCoreChannelReorderList } from './MeshCoreChannelReorderList';
@@ -126,6 +127,9 @@ export const MeshCoreChannelsView: React.FC<MeshCoreChannelsViewProps> = ({
   // Bumped when the device's channel slots are reordered (#5379) so the
   // slot-keyed list and counts reload.
   const [reorderTick, setReorderTick] = useState(0);
+  // Bumped when this source's Ignore / Block lists change (#5408): the
+  // ignored flag is computed at read time, so the backlog and counts reload.
+  const [filtersTick, setFiltersTick] = useState(0);
   const [mobileShowContent, setMobileShowContent] = useState(false);
   // Per-channel backlog for the *active* channel, fetched independently of the
   // shared `messages` pool so each channel shows its own history (not a slice
@@ -267,6 +271,13 @@ export const MeshCoreChannelsView: React.FC<MeshCoreChannelsViewProps> = ({
     });
   }, [sourceId]);
 
+  useEffect(() => {
+    if (!sourceId) return;
+    return subscribeFiltersChanged((detail) => {
+      if (detail.sourceId === sourceId) setFiltersTick(v => v + 1);
+    });
+  }, [sourceId]);
+
   // Fetch the synced channel list for this source. We use /api/channels/all
   // (rather than /api/channels) so MeshCore rows with idx > 7 aren't dropped
   // by the legacy Meshtastic-shaped 0-7 filter on the basic endpoint. The
@@ -359,7 +370,7 @@ export const MeshCoreChannelsView: React.FC<MeshCoreChannelsViewProps> = ({
       }
     })();
     return () => { cancelled = true; };
-  }, [baseUrl, sourceId, channelIdsKey, csrfFetch, status?.connected, reorderTick]);
+  }, [baseUrl, sourceId, channelIdsKey, csrfFetch, status?.connected, reorderTick, filtersTick]);
 
   const active = displayChannels.find(c => c.id === selectedIdx) ?? displayChannels[0];
   const activeFilter = useMemo(() => buildChannelFilter(active.id), [active.id]);
@@ -496,7 +507,7 @@ export const MeshCoreChannelsView: React.FC<MeshCoreChannelsViewProps> = ({
       }
     })();
     return () => { cancelled = true; };
-  }, [baseUrl, sourceId, active.id, csrfFetch, status?.connected]);
+  }, [baseUrl, sourceId, active.id, csrfFetch, status?.connected, filtersTick]);
 
   // Load an older page of the active channel's history (#4460 infinite scroll).
   // Offset is the current backlog length (oldest-first fetch order means the
@@ -590,6 +601,8 @@ export const MeshCoreChannelsView: React.FC<MeshCoreChannelsViewProps> = ({
     for (const c of displayChannels) {
       const liveMatch = messages.filter(buildChannelFilter(c.id));
       for (const m of liveMatch) {
+        // Ignored messages never count as unread (#5408).
+        if (m.filtered) continue;
         if (m.timestamp > (map[c.id] ?? 0)) map[c.id] = m.timestamp;
       }
     }

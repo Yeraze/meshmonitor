@@ -43,6 +43,7 @@ export type DataEventType =
   | 'meshcore:send-confirmed'
   | 'meshcore:channel-heard'
   | 'meshcore:channels:reordered'
+  | 'meshcore:filters:changed'
   | 'meshcore:ota-packet'
   | 'meshbeacon:received'
   | 'reticulum:message'
@@ -650,6 +651,21 @@ class DataEventEmitter extends EventEmitter {
     };
     this.emit('data', event);
     logger.debug(`[DataEventEmitter] MeshCore channels reordered: ${data.moves.length} move(s) (source: ${sourceId})`);
+  }
+
+  /**
+   * Emit a MeshCore Ignore / Block list change (#5408). Ignored state is
+   * computed at read time, so open views reload their messages and hide or
+   * re-show nodes when this fires.
+   */
+  emitMeshCoreFiltersChanged(sourceId: string): void {
+    const event: DataEvent = {
+      type: 'meshcore:filters:changed',
+      data: { sourceId },
+      timestamp: Date.now(),
+      sourceId,
+    };
+    this.emit('data', event);
   }
 
   /**

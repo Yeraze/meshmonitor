@@ -91,6 +91,10 @@ export const TABLE_ORDER = [
   // 5374: per-source ADS-B flight matches (composite PK sourceId+nodeNum, FK to
   // sources). Migrated so the per-flagging lookup cap survives a backend move.
   'aircraft_flight_matches',
+  // 5408: per-source MeshCore Ignore / Block lists (FK to sources). Migrated
+  // so an operator's block list survives a backend move.
+  'meshcore_ignored_nodes',
+  'meshcore_message_filters',
   // 3960 Phase 1a WP1: per-source Reticulum destinations + interfaces. Unique
   // on (sourceId, destinationHash) / (sourceId, interfaceName), no FKs.
   'reticulum_destinations',
@@ -185,6 +189,7 @@ export const SOURCE_SCOPED_TABLES = new Set([
   'meshcore_heard_repeaters', 'message_events', 'meshtastic_heard_repeaters',
   'mqtt_packet_log', 'mqtt_ok_to_mqtt_violations', 'coverage_receptions',
   'atak_contacts', 'mesh_beacon_offers', 'aircraft_flight_matches',
+  'meshcore_ignored_nodes', 'meshcore_message_filters',
   'auto_favorite_targets', 'auto_favorite_assignments',
   'dead_drop_messages',
   // 3960 Phase 1a WP1: per-source Reticulum destinations + interfaces.

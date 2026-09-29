@@ -171,6 +171,11 @@ import {
 import {
   assetNodesSqlite, assetNodesPostgres, assetNodesMysql,
 } from './schema/assetNodes.js';
+// MeshCore Ignore / Block, per source (#5408)
+import {
+  meshcoreIgnoredNodesSqlite, meshcoreIgnoredNodesPostgres, meshcoreIgnoredNodesMysql,
+  meshcoreMessageFiltersSqlite, meshcoreMessageFiltersPostgres, meshcoreMessageFiltersMysql,
+} from './schema/meshcoreFilters.js';
 
 // Waypoints table
 import {
@@ -354,6 +359,10 @@ export interface ActiveSchema {
   solarNodeOverrides: any;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any -- #5354 dialect-union table slot, same shape as every sibling here
   assetNodes: any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- #5408 dialect-union table slot, same shape as every sibling here
+  meshcoreIgnoredNodes: any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- #5408 dialect-union table slot, same shape as every sibling here
+  meshcoreMessageFilters: any;
 
   // Waypoints
   waypoints: any;
@@ -478,6 +487,8 @@ const SCHEMA_MAP: Record<DatabaseType, ActiveSchema> = {
     privacyDocuments: privacyDocumentsSqlite,
     solarNodeOverrides: solarNodeOverridesSqlite,
     assetNodes: assetNodesSqlite,
+    meshcoreIgnoredNodes: meshcoreIgnoredNodesSqlite,
+    meshcoreMessageFilters: meshcoreMessageFiltersSqlite,
     waypoints: waypointsSqlite,
     sources: sourcesSqlite,
     estimatedPositions: estimatedPositionsSqlite,
@@ -558,6 +569,8 @@ const SCHEMA_MAP: Record<DatabaseType, ActiveSchema> = {
     privacyDocuments: privacyDocumentsPostgres,
     solarNodeOverrides: solarNodeOverridesPostgres,
     assetNodes: assetNodesPostgres,
+    meshcoreIgnoredNodes: meshcoreIgnoredNodesPostgres,
+    meshcoreMessageFilters: meshcoreMessageFiltersPostgres,
     waypoints: waypointsPostgres,
     sources: sourcesPostgres,
     estimatedPositions: estimatedPositionsPostgres,
@@ -638,6 +651,8 @@ const SCHEMA_MAP: Record<DatabaseType, ActiveSchema> = {
     privacyDocuments: privacyDocumentsMysql,
     solarNodeOverrides: solarNodeOverridesMysql,
     assetNodes: assetNodesMysql,
+    meshcoreIgnoredNodes: meshcoreIgnoredNodesMysql,
+    meshcoreMessageFilters: meshcoreMessageFiltersMysql,
     waypoints: waypointsMysql,
     sources: sourcesMysql,
     estimatedPositions: estimatedPositionsMysql,

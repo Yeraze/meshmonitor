@@ -25,6 +25,7 @@ import adminRoutes from './meshcoreAdminRoutes.js';
 import automationRoutes from './meshcoreAutomationRoutes.js';
 import packetRoutes from './meshcorePacketRoutes.js';
 import ingestReadRoutes from './meshcoreIngestReadRoutes.js';
+import filterRoutes from './meshcoreFilterRoutes.js';
 
 const router = Router({ mergeParams: true });
 
@@ -36,6 +37,9 @@ const router = Router({ mergeParams: true });
 router.use(anyMeshCoreRouteGuard);
 router.use(packetRoutes);
 router.use(ingestReadRoutes);
+// Ignore / Block lists (#5408): data, not device surface — valid for an
+// ingest source too.
+router.use(filterRoutes);
 
 // DEVICE routes from here down. This guard refuses an ingest source, and
 // everything below it is connection lifecycle, local-node status, contacts,
