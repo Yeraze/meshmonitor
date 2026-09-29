@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased]
 
+## [4.16.2] - 2026-09-29
+
+The full release of the 4.16.2 line. It ships everything in 4.16.2-rc1 through rc6 below, plus the two fixes in this section. Highlights since 4.16.1: the Coverage Report, likely-aircraft detection with ADS-B flight matching, asset tracking with timeline playback, per-transport breakdowns, sign-flipped position correction, per-source Message Forwarding, MeshCore Ignore/Block, and CARTO vector basemaps. Upgrading from 4.16.1 runs migrations 168–182 automatically.
+
+### Fixed
+- **The Nodes list header** grew to ~310px: a global `.sidebar-header` rule laid the title and controls side by side, squeezing every control onto its own line. The header is stacked again (title, filter, one toolbar row), and Filter, Group by Role and Add from URL are now icon buttons with tooltips. (#5477)
+- **An aged-out aircraft could never come back on an MQTT source.** The MQTT position path dropped the ignored sender's fix before the age-out lift could run, so the node stayed hidden while still being heard. A live, trustworthy fix now lifts the `aircraft` ignore first; manual and geo ignores are untouched, and replayed or retained frames still never lift. (#5478)
+
 ## [4.16.2-rc6] - 2026-09-28
 
 ### Added

@@ -1458,7 +1458,7 @@ These limits are fixed. You cannot change them:
 - **200 characters.** MeshMonitor cuts longer forwarded messages, including the `[fwd]` marker and prefix, and ends them with `...`.
 - **No loops.** MeshMonitor never forwards its own messages, never forwards a message that already starts with `[fwd]`, and never forwards a message back to the node or channel it came from. You also cannot save a rule that forwards a channel to itself.
 - **One try per forward.** A forwarded DM that fails is not retried.
-- **No forwarding while the source cannot transmit.** On a MeshCore source in receive-only mode, or a Meshtastic source with TX disabled, the rules stay visible but read-only and nothing is sent. On Meshtastic, the automation airtime cutoff also pauses forwarding while the mesh is busy.
+- **No forwarding while the source cannot transmit.** On a MeshCore source in receive-only mode, a Meshtastic source with TX disabled, or an MQTT source, the rules stay visible but read-only and nothing is sent. On Meshtastic, the automation airtime cutoff also pauses forwarding while the mesh is busy.
 - **Live messages only.** Messages that a Meshtastic 2.8 node replays from its history on reconnect are not forwarded.
 - **At most 20 rules per source.**
 

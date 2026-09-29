@@ -109,6 +109,7 @@ const featuresSidebar = [
       },
       { text: 'Coverage Report', link: '/features/coverage-report' },
       { text: 'Link Quality & Smart Hops', link: '/features/link-quality' },
+      { text: 'Transport Breakdown', link: '/features/transport-breakdown' },
       { text: 'Packet Monitor', link: '/features/packet-monitor' }
     ]
   },

@@ -12,7 +12,7 @@ Before using OTA updates, your setup must meet **all** of the following:
 
 | Requirement | Details |
 |---|---|
-| **TCP connection** | MeshMonitor must be connected to the node via TCP/IP (direct Wi-Fi). Serial and BLE bridge connections **cannot** use OTA updates. |
+| **ESP32 hardware** | Only ESP32-family boards are supported (ESP32, ESP32-S3, ESP32-C3, ESP32-C6; e.g., Heltec V3/V4, T-Beam, Station G2). nRF52 and RP2040 boards do not support Wi-Fi OTA. See [Supported Hardware](#supported-hardware). |
 | **ESP32 hardware** | Only ESP32 and ESP32-S3 boards are supported (e.g., Heltec V3/V4, T-Beam, RAK WisBlock, Station G2). nRF52 and RP2040 boards do not support Wi-Fi OTA. |
 | **Wi-Fi enabled** | The node must be connected to your local network with a known, reachable IP address. |
 | **Firmware >= 2.7.18** | The node must already be running firmware version 2.7.18 or later. Earlier versions do not support the OTA update command. |
@@ -24,7 +24,7 @@ Before using OTA updates, your setup must meet **all** of the following:
 
 OTA updates require a **direct TCP connection** between MeshMonitor and the node. This means:
 
-- **Supported:** MeshMonitor connected via `MESHTASTIC_NODE_IP` (TCP/IP over Wi-Fi)
+- **Supported:** a source connected over TCP/IP (Wi-Fi). OTA runs on the source you select, not always the primary. It uses that source's TCP port, including a custom one.
 - **Not supported:** Serial connections (`/dev/ttyUSB0`, `COM3`, etc.)
 - **Not supported:** BLE bridge connections
 
@@ -88,7 +88,7 @@ Once the prerequisites are met, updating firmware through MeshMonitor follows th
 
 5. **Flash** — The firmware is uploaded to your node over Wi-Fi. A progress bar shows the upload status. The node will reboot during this process.
 
-6. **Reconnect** — After the update completes, MeshMonitor automatically disconnects and reconnects to the node, re-downloading all configuration data to reflect the new firmware version.
+6. **Reconnect** — After the update completes, MeshMonitor automatically disconnects and reconnects the source you started the update from (not always the primary), re-downloading all configuration data to reflect the new firmware version.
 
 ::: tip
 The entire update process runs inside a modal dialog that prevents interaction with the rest of the UI. This protects the update from being interrupted. Only the Cancel and Done buttons within the dialog are active during the update.
@@ -151,16 +151,36 @@ OTA firmware updates are an actively developed feature. If you encounter any pro
 
 ## Supported Hardware
 
-The following ESP32 boards have been tested with OTA updates:
+OTA works on ESP32-family boards (ESP32, ESP32-S3, ESP32-C3, ESP32-C6). MeshMonitor picks the firmware file for your board from the hardware model the node reports. The board list follows the Meshtastic release file names for 2.7.x and 2.8.0.
 
 | Board | Status |
 |---|---|
 | Heltec V3 (ESP32-S3) | Tested |
-| Heltec V4 (ESP32-S3) | Expected to work |
+| Heltec V4 (ESP32-S3) | Expected to work (see sibling builds below) |
 | T-Beam Supreme (ESP32-S3) | Expected to work |
 | Station G2 (ESP32-S3) | Expected to work |
-| RAK WisBlock (nRF52) | Not supported (no Wi-Fi) |
-| T-Echo (nRF52) | Not supported (no Wi-Fi) |
+| Station G3 (ESP32-S3) | Supported |
+| Mini ePaper S3 (ESP32-S3) | Supported |
+| RAK WisBlock, T-Echo and other nRF52 boards | Not offered OTA (no Wi-Fi) |
 | RP2040-based boards | Not supported (no Wi-Fi) |
+
+### Models that several builds share
+
+Some boards report the same hardware model for more than one firmware build. The node tells MeshMonitor only its model, so MeshMonitor cannot tell which build it runs. A wrong build can leave the node with no working display or radio.
+
+- **Refused:** for these six models, MeshMonitor refuses stable, alpha and nightly OTA updates and shows a message that names the builds:
+  - LILYGO T-LoRa V2.1-1.6 (`tlora-v2-1-1_6` or `tlora-v3-3-0-tcxo`)
+  - LILYGO T-LoRa T3-S3 (`tlora-t3s3-v1` or `tlora-t3s3-epaper`)
+  - DIY V1 (`meshtastic-diy-v1` or `hydra`)
+  - M5Stack (`m5stack-core` or `m5stack-coreink`)
+  - RadioMaster 900 Bandit Nano (`radiomaster_900_bandit_nano` or `radiomaster_900_bandit_micro`)
+  - Heltec V4 R8 (`heltec-v4-r8-oled` or `heltec-v4-r8-tft`)
+- **Warning:** other boards have a usual build plus sibling builds, such as the Heltec V4 (OLED) and Heltec V4 TFT. MeshMonitor flashes the usual build and warns you first, so you can cancel if your node runs a sibling.
+
+For a refused model, or when you run a sibling build, pick the exact build yourself with a custom URL or an uploaded `.bin` file.
+
+::: tip Firmware 2.8.0 layout
+Firmware 2.8.0 keeps each board's binary in a platform folder inside the release archive. MeshMonitor finds it there. You do not need to do anything.
+:::
 
 If you successfully use OTA updates on a board not listed here, please let us know so we can update this list.

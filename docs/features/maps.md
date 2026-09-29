@@ -771,7 +771,6 @@ MeshMonitor validates tile URLs to prevent:
 
 - Use vector tiles for smaller file sizes and better performance
 - Set appropriate max node age to filter inactive nodes
-- Consider clustering markers at low zoom levels (future feature)
 - Use raster tiles with lower max zoom if vector rendering is slow
 
 ### For Limited Bandwidth
