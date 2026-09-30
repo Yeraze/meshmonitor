@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import { optionalAuth, requireAuth, requirePermission, requireAdmin } from '../auth/authMiddleware.js';
 import databaseService from '../../services/database.js';
 import { logger } from '../../utils/logger.js';
+import { fail } from '../utils/apiResponse.js';
 import { pushNotificationService } from '../services/pushNotificationService.js';
 import { appriseNotificationService, resolveAppriseServerUrl } from '../services/appriseNotificationService.js';
 import { fallbackManager } from '../meshtasticManager.js';
@@ -92,7 +93,20 @@ pushRouter.post(
   }
 );
 
-// Unsubscribe from push notifications
+// Response shapes on the three handlers below stay FLAT on purpose
+// (`{ success: true, remainingSources }` etc.): the frontend ApiService returns
+// the raw body and does not unwrap `data`, so `ok(res, data)` would nest the
+// fields where the client does not read them. Errors use `fail()`, which is
+// always safe for ApiService.
+
+/**
+ * Unsubscribe THIS source only (#5493). A browser has one push endpoint per
+ * origin, shared by every source it subscribed on, so deleting by endpoint
+ * alone silently dropped the user from every other source too. Returns how
+ * many other sources still hold a row for the endpoint, so the client knows
+ * whether it may kill the browser subscription. Count only: listing the ids
+ * could reveal sources this user may not read.
+ */
 pushRouter.post(
   '/unsubscribe',
   optionalAuth(),
@@ -101,19 +115,85 @@ pushRouter.post(
     try {
       const { endpoint, sourceId } = req.body;
 
-      if (!endpoint) {
-        return res.status(400).json({ error: 'Endpoint is required' });
+      if (!endpoint || typeof endpoint !== 'string') {
+        return fail(res, 400, 'MISSING_ENDPOINT', 'Endpoint is required');
       }
       if (!sourceId || typeof sourceId !== 'string') {
-        return res.status(400).json({ error: 'sourceId is required' });
+        return fail(res, 400, 'MISSING_SOURCE_ID', 'sourceId is required');
       }
 
+      await pushNotificationService.removeSubscription(endpoint, sourceId);
+      const remaining = await pushNotificationService.getSubscriptionSourceIds(endpoint);
+
+      res.json({ success: true, remainingSources: remaining.length });
+    } catch (error) {
+      logger.error('Error removing push subscription:', error);
+      return fail(res, 500, 'INTERNAL_ERROR', error instanceof Error && error.message ? error.message : 'Failed to remove subscription');
+    }
+  }
+);
+
+/**
+ * Is this browser's endpoint subscribed on this source? (#5493)
+ *
+ * POST, not GET, so the endpoint URL (a bearer-like capability) stays out of
+ * access logs and query strings. `otherSources` is a count only, for the same
+ * reason `/unsubscribe` returns a count.
+ */
+pushRouter.post(
+  '/subscription-status',
+  optionalAuth(),
+  requirePermission('messages', 'read', { sourceIdFrom: 'body' }),
+  async (req: Request, res: Response) => {
+    try {
+      const { endpoint, sourceId } = req.body;
+
+      if (!endpoint || typeof endpoint !== 'string') {
+        return fail(res, 400, 'MISSING_ENDPOINT', 'Endpoint is required');
+      }
+      if (!sourceId || typeof sourceId !== 'string') {
+        return fail(res, 400, 'MISSING_SOURCE_ID', 'sourceId is required');
+      }
+
+      const sourceIds = await pushNotificationService.getSubscriptionSourceIds(endpoint);
+      const subscribed = sourceIds.includes(sourceId);
+      const otherSources = sourceIds.filter(id => id !== sourceId).length;
+
+      res.json({ success: true, subscribed, otherSources });
+    } catch (error) {
+      logger.error('Error checking push subscription status:', error);
+      return fail(res, 500, 'INTERNAL_ERROR', error instanceof Error && error.message ? error.message : 'Failed to check subscription status');
+    }
+  }
+);
+
+/**
+ * Remove this browser's endpoint from EVERY source (#5493).
+ *
+ * No per-source permission check: holding the endpoint URL is the ownership
+ * proof. The push service mints it per browser and only that browser (and our
+ * DB) knows it, and the only effect is to stop pushes to the caller's own
+ * browser, so there is nothing to gain by guessing someone else's.
+ */
+pushRouter.post(
+  '/unsubscribe-all',
+  optionalAuth(),
+  async (req: Request, res: Response) => {
+    try {
+      const { endpoint } = req.body;
+
+      if (!endpoint || typeof endpoint !== 'string') {
+        return fail(res, 400, 'MISSING_ENDPOINT', 'Endpoint is required');
+      }
+
+      const before = await pushNotificationService.getSubscriptionSourceIds(endpoint);
       await pushNotificationService.removeSubscription(endpoint);
 
-      res.json({ success: true });
-    } catch (error: any) {
-      logger.error('Error removing push subscription:', error);
-      res.status(500).json({ error: error.message || 'Failed to remove subscription' });
+      // `removed` counts the distinct sources the endpoint was dropped from.
+      res.json({ success: true, removed: before.length });
+    } catch (error) {
+      logger.error('Error removing push subscription from all sources:', error);
+      return fail(res, 500, 'INTERNAL_ERROR', error instanceof Error && error.message ? error.message : 'Failed to remove subscription');
     }
   }
 );
