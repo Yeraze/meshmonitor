@@ -614,6 +614,7 @@ router.post('/load-config', requireAdmin(), requireMeshtasticDeviceSource('body'
             uplinkEnabled: stored?.uplinkEnabled ?? false,
             downlinkEnabled: stored?.downlinkEnabled ?? false,
             positionPrecision: stored?.positionPrecision ?? 32,
+            useAead: stored?.useAead ?? false,
           };
         } else {
           // Remote node channel config not yet supported
@@ -770,7 +771,8 @@ router.post('/get-channel', requireAdmin(), requireMeshtasticDeviceSource('body'
           role: channel.role !== undefined ? channel.role : (channelIndex === 0 ? 1 : 0),
           uplinkEnabled: channel.uplinkEnabled !== undefined ? channel.uplinkEnabled : false,
           downlinkEnabled: channel.downlinkEnabled !== undefined ? channel.downlinkEnabled : false,
-          positionPrecision: channel.positionPrecision !== undefined ? channel.positionPrecision : 32
+          positionPrecision: channel.positionPrecision !== undefined ? channel.positionPrecision : 32,
+          useAead: channel.useAead ?? false,
         }});
       } else {
         return res.json({ channel: {
@@ -779,7 +781,8 @@ router.post('/get-channel', requireAdmin(), requireMeshtasticDeviceSource('body'
           role: channelIndex === 0 ? 1 : 0,
           uplinkEnabled: false,
           downlinkEnabled: false,
-          positionPrecision: 32
+          positionPrecision: 32,
+          useAead: false,
         }});
       }
     } else {
@@ -805,6 +808,10 @@ router.post('/get-channel', requireAdmin(), requireMeshtasticDeviceSource('body'
         const moduleSettings = settings.moduleSettings || settings.module_settings || {};
         const positionPrecision = moduleSettings.positionPrecision !== undefined ? moduleSettings.positionPrecision :
                                  (moduleSettings.position_precision !== undefined ? moduleSettings.position_precision : 32);
+        // ChannelSettings.use_aead (#5248). The UI carries this back in the
+        // setChannel config, which is the only way a remote edit keeps it —
+        // MeshMonitor stores no channel rows for remote nodes.
+        const useAead = !!(settings.useAead ?? settings.use_aead ?? false);
         
         logger.debug(`📡 Converting channel ${channelIndex} from remote node ${destinationNodeNum}`, {
           name,
@@ -823,7 +830,8 @@ router.post('/get-channel', requireAdmin(), requireMeshtasticDeviceSource('body'
           role: channel.role !== undefined ? channel.role : (channelIndex === 0 ? 1 : 0),
           uplinkEnabled: uplinkEnabled,
           downlinkEnabled: downlinkEnabled,
-          positionPrecision: positionPrecision
+          positionPrecision: positionPrecision,
+          useAead,
         }});
       } else {
         // Channel not received - could be timeout, doesn't exist, or not configured
@@ -1086,6 +1094,7 @@ router.post('/export-config', requireAdmin(), requireMeshtasticDeviceSource('bod
             uplinkEnabled: channel.uplinkEnabled,
             downlinkEnabled: channel.downlinkEnabled,
             positionPrecision: channel.positionPrecision,
+            useAead: !!channel.useAead,
           });
         }
       } else {
@@ -1121,6 +1130,7 @@ router.post('/export-config', requireAdmin(), requireMeshtasticDeviceSource('bod
                             (settings.downlink_enabled !== undefined ? settings.downlink_enabled : true),
             positionPrecision: moduleSettings.positionPrecision !== undefined ? moduleSettings.positionPrecision :
                               (moduleSettings.position_precision !== undefined ? moduleSettings.position_precision : 32),
+            useAead: !!(settings.useAead ?? settings.use_aead ?? false),
           });
         }
       }
@@ -1268,6 +1278,9 @@ router.post('/import-config', requireAdmin(), requireMeshtasticDeviceSource('bod
               uplinkEnabled: channel.uplinkEnabled,
               downlinkEnabled: channel.downlinkEnabled,
               positionPrecision: channel.positionPrecision,
+              // The URL's ChannelSet replaces the channel, so its use_aead
+              // wins (#5248); decodeUrl always sets it (proto3 default false).
+              useAead: channel.useAead,
             });
             // Pacing between admin packets — same firmware drop pattern.
             await new Promise((resolve) => setTimeout(resolve, 1000));
@@ -1338,6 +1351,7 @@ router.post('/import-config', requireAdmin(), requireMeshtasticDeviceSource('bod
               uplinkEnabled: channel.uplinkEnabled,
               downlinkEnabled: channel.downlinkEnabled,
               positionPrecision: channel.positionPrecision,
+              useAead: channel.useAead, // URL value wins (#5248)
             }, sessionPasskey);
             await aicManager.sendAdminCommand(adminMessage, destinationNodeNum);
             importedChannels.push({ index: i, name: channel.name || '(unnamed)' });
@@ -1615,6 +1629,7 @@ async function executeAdminCommand(ctx: {
     const cfg = params.config as {
       name?: string; psk?: string; role?: number;
       uplinkEnabled?: boolean; downlinkEnabled?: boolean; positionPrecision?: number;
+      useAead?: boolean;
     };
     try {
       await databaseService.channels.upsertChannel(
@@ -1626,6 +1641,9 @@ async function executeAdminCommand(ctx: {
           uplinkEnabled: cfg.uplinkEnabled ?? false,
           downlinkEnabled: cfg.downlinkEnabled ?? false,
           positionPrecision: cfg.positionPrecision,
+          // undefined = keep the stored flag (#5248); the setChannel case
+          // below already filled it from that row before sending.
+          useAead: cfg.useAead,
         },
         acManager.sourceId,
         { allowBlankName: true },
@@ -1775,6 +1793,18 @@ router.post('/commands', requireAdmin(), requireMeshtasticDeviceSource('body'), 
       case 'setChannel':
         if (params.channelIndex === undefined || !params.config) {
           return res.status(400).json({ error: 'channelIndex and config are required for setChannel' });
+        }
+        // Read-modify-write for use_aead (#5248): set_channel replaces the
+        // whole ChannelSettings, so an omitted flag would turn AES-CCM off.
+        // Local node: fill it from this source's stored row. Remote node:
+        // MeshMonitor stores no channel rows, so the UI must carry the value
+        // it read via get-channel; if it did not, the flag is sent as false.
+        if (isLocalNode && params.config.useAead === undefined) {
+          const storedChannel = await databaseService.channels.getChannelById(
+            Number(params.channelIndex),
+            acManager.sourceId,
+          );
+          params.config = { ...params.config, useAead: storedChannel?.useAead ?? false };
         }
         buildAdminMessage = (passkey) => protobufService.createSetChannelMessage(
           params.channelIndex,

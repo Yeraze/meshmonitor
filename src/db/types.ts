@@ -211,6 +211,7 @@ export interface DbChannel {
   downlinkEnabled: boolean;
   positionPrecision?: number; // Location precision bits (0-32)
   scope?: string | null; // MeshCore region/scope tag (#3667); null = inherit default/unscoped
+  useAead?: boolean; // ChannelSettings.use_aead (#5248): AES-CCM authenticated encryption
   createdAt: number;
   updatedAt: number;
 }

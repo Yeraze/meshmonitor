@@ -1328,6 +1328,7 @@ export class MeshtasticProtobufService {
       uplinkEnabled?: boolean;
       downlinkEnabled?: boolean;
       positionPrecision?: number | null;
+      useAead?: boolean;
     };
     role: number;
   }): Promise<Uint8Array | null> {
@@ -1361,6 +1362,9 @@ export class MeshtasticProtobufService {
       }
       if (channelData.settings.downlinkEnabled) {
         settingsData.downlinkEnabled = true;
+      }
+      if (channelData.settings.useAead) {
+        settingsData.useAead = true;
       }
       // Include moduleSettings with positionPrecision when available
       if (channelData.settings.positionPrecision != null && channelData.settings.positionPrecision > 0) {

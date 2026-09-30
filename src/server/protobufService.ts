@@ -1344,6 +1344,12 @@ class ProtobufService {
     uplinkEnabled?: boolean;
     downlinkEnabled?: boolean;
     positionPrecision?: number;
+    /**
+     * ChannelSettings.use_aead (#5248). set_channel REPLACES the whole
+     * ChannelSettings, so an omitted flag reaches the device as false and
+     * turns AES-CCM off. Callers fill it from the stored channel row.
+     */
+    useAead?: boolean;
   }, sessionPasskey?: Uint8Array): Uint8Array {
     try {
       const root = getProtobufRoot();
@@ -1369,6 +1375,9 @@ class ProtobufService {
       }
       if (config.downlinkEnabled !== undefined) {
         settingsData.downlinkEnabled = config.downlinkEnabled;
+      }
+      if (config.useAead !== undefined) {
+        settingsData.useAead = config.useAead;
       }
       if (config.positionPrecision !== undefined) {
         settingsData.moduleSettings = {

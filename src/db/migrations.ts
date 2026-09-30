@@ -203,6 +203,7 @@ import { migration as createAssetNodesMigration, runMigration181Postgres, runMig
 import { migration as createMeshcoreIgnoreBlockMigration, runMigration182Postgres, runMigration182Mysql } from '../server/migrations/182_create_meshcore_ignore_block.js';
 import { migration as addWaypointHopLimitAutomationKeyMigration, runMigration183Postgres, runMigration183Mysql } from '../server/migrations/183_add_waypoint_hop_limit_automation_key.js';
 import { migration as addAckProofStatusMigration, runMigration184Postgres, runMigration184Mysql } from '../server/migrations/184_add_ack_proof_status_to_messages.js';
+import { migration as addChannelUseAeadMigration, runMigration185Postgres, runMigration185Mysql } from '../server/migrations/185_add_channel_use_aead.js';
 
 // ============================================================================
 // Registry
@@ -2984,4 +2985,19 @@ registry.register({
   sqlite: (db) => addAckProofStatusMigration.up(db),
   postgres: (client) => runMigration184Postgres(client),
   mysql: (pool) => runMigration184Mysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 185: `channels.useAead` (#5248 Phase 1). PER-SOURCE. Stores the
+// device's ChannelSettings.use_aead so a channel edit sends it back instead
+// of silently turning AES-CCM off (set_channel replaces the whole struct).
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 185,
+  name: 'add_channel_use_aead',
+  settingsKey: 'migration_185_add_channel_use_aead',
+  sqlite: (db) => addChannelUseAeadMigration.up(db),
+  postgres: (client) => runMigration185Postgres(client),
+  mysql: (pool) => runMigration185Mysql(pool),
 });

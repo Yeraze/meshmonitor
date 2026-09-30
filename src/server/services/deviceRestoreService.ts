@@ -239,6 +239,8 @@ class DeviceRestoreService {
                 uplinkEnabled: channel.uplinkEnabled,
                 downlinkEnabled: channel.downlinkEnabled,
                 positionPrecision: channel.positionPrecision,
+                // Verbatim restore (#4926): the backup's channel_url wins (#5248).
+                useAead: channel.useAead,
               }), PACE_PER_CHANNEL_MS);
             channels++;
           }

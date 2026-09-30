@@ -85,7 +85,7 @@ export function computeChannelDisplayName(
  * Project a raw `channels` row into the public response shape.
  *
  * Always returns: `id`, `name`, `displayName`, `role`, `roleName`,
- * `uplinkEnabled`, `downlinkEnabled`, `positionPrecision`,
+ * `uplinkEnabled`, `downlinkEnabled`, `positionPrecision`, `useAead`,
  * `pskSet` (boolean), and `encryptionStatus` ('none' | 'default' | 'secure').
  *
  * `name` is the raw DB column (may be empty for slot 0 when the device
@@ -106,6 +106,9 @@ export function transformChannel(channel: any, options: TransformChannelOptions 
     uplinkEnabled: channel.uplinkEnabled,
     downlinkEnabled: channel.downlinkEnabled,
     positionPrecision: channel.positionPrecision,
+    // ChannelSettings.use_aead (#5248). Not sensitive; drives the read-only
+    // AEAD badge. SQLite may hand back 0/1, so coerce.
+    useAead: !!channel.useAead,
     // MeshCore region/scope tag (#3667). Plain region name or null; not
     // sensitive, so always surfaced for the config UI.
     scope: channel.scope ?? null,

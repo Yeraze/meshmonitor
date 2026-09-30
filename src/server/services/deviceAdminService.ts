@@ -128,6 +128,8 @@ export class DeviceAdminService {
     uplinkEnabled?: boolean;
     downlinkEnabled?: boolean;
     positionPrecision?: number;
+    /** Omit to keep the stored value for this slot (#5248). */
+    useAead?: boolean;
   }): Promise<void> {
     if (!this.mgr.isTransportReady()) {
       throw new Error('Not connected to Meshtastic node');
@@ -138,8 +140,16 @@ export class DeviceAdminService {
     }
 
     try {
-      logger.debug(`⚙️ Sending channel ${channelIndex} config:`, safeJson(config));
-      const setChannelMsg = protobufService.createSetChannelMessage(channelIndex, config, new Uint8Array());
+      // Read-modify-write for use_aead (#5248): set_channel replaces the whole
+      // ChannelSettings, so a caller that does not know the flag must send the
+      // stored value, not drop it (which the device reads as AEAD off).
+      const toSend = { ...config };
+      if (toSend.useAead === undefined) {
+        const stored = await databaseService.channels.getChannelById(channelIndex, this.mgr.sourceId);
+        toSend.useAead = stored?.useAead ?? false;
+      }
+      logger.debug(`⚙️ Sending channel ${channelIndex} config:`, safeJson(toSend));
+      const setChannelMsg = protobufService.createSetChannelMessage(channelIndex, toSend, new Uint8Array());
       const adminPacket = protobufService.createAdminPacket(setChannelMsg, this.mgr.getLocalNodeInfo()?.nodeNum || 0, this.mgr.getLocalNodeInfo()?.nodeNum);
 
       await this.mgr.sendLocalAdminPacket(adminPacket);
@@ -473,7 +483,8 @@ export class DeviceAdminService {
       role: ch.role,
       uplinkEnabled: ch.uplinkEnabled,
       downlinkEnabled: ch.downlinkEnabled,
-      positionPrecision: ch.positionPrecision
+      positionPrecision: ch.positionPrecision,
+      useAead: !!ch.useAead,
     }));
 
     const localNode = this.mgr.getLocalNodeInfo() as any;

@@ -285,6 +285,7 @@ export const ExportConfigModal: React.FC<ExportConfigModalProps> = ({
                       {channel.positionPrecision !== undefined && channel.positionPrecision !== null && ` | ${t('export_config.position_precision', { bits: channel.positionPrecision })}`}
                       {` | ${channel.uplinkEnabled ? t('export_config.uplink_enabled') : t('export_config.uplink_disabled')}`}
                       {` | ${channel.downlinkEnabled ? t('export_config.downlink_enabled') : t('export_config.downlink_disabled')}`}
+                      {channel.useAead && ` | ${t('channels.aead_badge')}`}
                     </div>
                   </div>
                 </label>
