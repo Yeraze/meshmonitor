@@ -1051,6 +1051,44 @@ describe('TelemetryGraphs Component', () => {
       expect(screen.getByText('telemetry.title_minutes')).toBeInTheDocument();
     });
 
+    it('keeps the selector when the window is empty so it can be widened (#5498)', async () => {
+      // A short window persisted from another node leaves this one empty.
+      window.localStorage.setItem('deviceInfoTelemetryHours', '12');
+      (global.fetch as Mock).mockImplementation((url: string) => {
+        if (url.includes('/api/settings')) return Promise.resolve({ ok: true, json: async () => ({}) });
+        if (url.includes('/api/solar/estimates')) return Promise.resolve({ ok: true, json: async () => ({ count: 0, estimates: [] }) });
+        if (url.includes('/api/csrf-token')) return Promise.resolve({ ok: true, json: async () => ({ token: 't' }) });
+        return Promise.resolve({ ok: true, json: async () => [] });
+      });
+
+      renderWithProviders(
+        <TelemetryGraphs nodeId={mockNodeId} telemetryHours={24} showTimeRangeSelector />
+      );
+
+      expect(await screen.findByText('telemetry.no_data')).toBeInTheDocument();
+      const active = screen.getByRole('button', { name: '12h' });
+      expect(active).toHaveAttribute('aria-pressed', 'true');
+
+      fireEvent.click(screen.getByRole('button', { name: '48h' }));
+      await waitFor(() => {
+        expect(global.fetch).toHaveBeenCalledWith(`/api/telemetry/${mockNodeId}?hours=48&sourceId=src-test`);
+      });
+    });
+
+    it('shows only the empty message when the selector is off', async () => {
+      (global.fetch as Mock).mockImplementation((url: string) => {
+        if (url.includes('/api/settings')) return Promise.resolve({ ok: true, json: async () => ({}) });
+        if (url.includes('/api/solar/estimates')) return Promise.resolve({ ok: true, json: async () => ({ count: 0, estimates: [] }) });
+        if (url.includes('/api/csrf-token')) return Promise.resolve({ ok: true, json: async () => ({ token: 't' }) });
+        return Promise.resolve({ ok: true, json: async () => [] });
+      });
+
+      renderWithProviders(<TelemetryGraphs nodeId={mockNodeId} telemetryHours={24} />);
+
+      expect(await screen.findByText('telemetry.no_data')).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: '24h' })).not.toBeInTheDocument();
+    });
+
     it('seeds the initial window from a persisted choice', async () => {
       window.localStorage.setItem('deviceInfoTelemetryHours', '48');
 

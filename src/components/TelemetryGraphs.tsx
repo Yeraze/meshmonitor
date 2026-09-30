@@ -996,6 +996,37 @@ const TelemetryGraphs: React.FC<TelemetryGraphsProps> = React.memo(
       return colors[type] || '#8884d8';
     };
 
+    // Sub-hour windows (e.g. the 15-minute preset) read awkwardly as
+    // fractional hours, so render those with a minutes-based title instead.
+    const titleText = effectiveHours < 1
+      ? t('telemetry.title_minutes', { count: Math.round(effectiveHours * 60) })
+      : t('telemetry.title', { count: effectiveHours });
+
+    const header = (
+      <div className="telemetry-graphs-header">
+        <h3 className="telemetry-title">{titleText}</h3>
+        {showTimeRangeSelector && (
+          <div
+            className="telemetry-range-selector"
+            role="group"
+            aria-label={t('telemetry.time_range')}
+          >
+            {TELEMETRY_RANGE_PRESETS.map(preset => (
+              <button
+                key={preset.label}
+                type="button"
+                className={`telemetry-range-btn ${effectiveHours === preset.hours ? 'active' : ''}`}
+                onClick={() => handleSelectRange(preset.hours)}
+                aria-pressed={effectiveHours === preset.hours}
+              >
+                {preset.label}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+
     if (loading) {
       return <div className="telemetry-loading">{t('telemetry.loading')}</div>;
     }
@@ -1009,6 +1040,17 @@ const TelemetryGraphs: React.FC<TelemetryGraphsProps> = React.memo(
     }
 
     if (telemetryData.length === 0) {
+      // Keep the range selector reachable (#5498): the chosen range persists
+      // across nodes, so a short window picked on another node can leave this
+      // one empty. Without the header there'd be no way to widen it again.
+      if (showTimeRangeSelector) {
+        return (
+          <div className="telemetry-graphs">
+            {header}
+            <div className="telemetry-empty">{t('telemetry.no_data')}</div>
+          </div>
+        );
+      }
       return <div className="telemetry-empty">{t('telemetry.no_data')}</div>;
     }
 
@@ -1103,36 +1145,9 @@ const TelemetryGraphs: React.FC<TelemetryGraphsProps> = React.memo(
       sectionedData.push({ category: cat, entries });
     }
 
-    // Sub-hour windows (e.g. the 15-minute preset) read awkwardly as
-    // fractional hours, so render those with a minutes-based title instead.
-    const titleText = effectiveHours < 1
-      ? t('telemetry.title_minutes', { count: Math.round(effectiveHours * 60) })
-      : t('telemetry.title', { count: effectiveHours });
-
     return (
       <div className="telemetry-graphs">
-        <div className="telemetry-graphs-header">
-          <h3 className="telemetry-title">{titleText}</h3>
-          {showTimeRangeSelector && (
-            <div
-              className="telemetry-range-selector"
-              role="group"
-              aria-label={t('telemetry.time_range')}
-            >
-              {TELEMETRY_RANGE_PRESETS.map(preset => (
-                <button
-                  key={preset.label}
-                  type="button"
-                  className={`telemetry-range-btn ${effectiveHours === preset.hours ? 'active' : ''}`}
-                  onClick={() => handleSelectRange(preset.hours)}
-                  aria-pressed={effectiveHours === preset.hours}
-                >
-                  {preset.label}
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
+        {header}
         {sectionedData.map(({ category, entries }) => (
           <section
             key={category}
