@@ -472,7 +472,11 @@ export async function executeAction(node: AutomationNode, ctx: EngineEvalContext
       }
 
       const rawChannel = p.channel == null || p.channel === '' ? 0 : Number(p.channel);
-      const channel = Number.isInteger(rawChannel) && rawChannel >= 0 && rawChannel <= 7 ? rawChannel : 0;
+      // Reject a bad slot rather than silently falling back to Primary (0).
+      if (!Number.isInteger(rawChannel) || rawChannel < 0 || rawChannel > 7) {
+        throw new Error(`action.broadcastWaypoint: channel "${String(p.channel)}" is not a slot from 0 to 7`);
+      }
+      const channel = rawChannel;
       const hopLimit = parseHopLimitOverride(p.hopLimit) ?? null;
 
       const results: unknown[] = [];

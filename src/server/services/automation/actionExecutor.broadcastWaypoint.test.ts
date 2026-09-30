@@ -112,6 +112,8 @@ describe('action.broadcastWaypoint (#5482)', () => {
     [{ latitude: '{{ var.missing }}' }, /latitude/],
     [{ longitude: 200 }, /longitude/],
     [{ expireHours: -1 }, /expireHours/],
+    [{ channel: 9 }, /channel/],
+    [{ channel: 'two' }, /channel/],
     [{ waypointKey: '' }, /waypoint key/],
     [{ sourceId: '' }, /no source/],
   ])('fails the step on a bad value %j', async (change, msg) => {

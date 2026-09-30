@@ -247,11 +247,11 @@ export default function WaypointEditorModal(props: WaypointEditorModalProps) {
         )}
 
         <label className="form-label">
-          Name (≤30)
+          Name (≤29 bytes)
           <input
             className="form-input"
             type="text"
-            maxLength={30}
+            maxLength={29}
             value={name}
             onChange={(e) => setName(e.target.value)}
             placeholder="e.g. Trailhead"
@@ -259,11 +259,11 @@ export default function WaypointEditorModal(props: WaypointEditorModalProps) {
         </label>
 
         <label className="form-label">
-          Description (≤100)
+          Description (≤99 bytes)
           <textarea
             className="form-input"
             rows={2}
-            maxLength={100}
+            maxLength={99}
             value={description}
             onChange={(e) => setDescription(e.target.value)}
           />

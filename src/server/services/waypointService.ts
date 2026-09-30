@@ -434,7 +434,32 @@ class WaypointService {
    */
   async upsertAndBroadcastForAutomation(
     input: AutomationWaypointInput,
-    nowSec: number = Math.floor(Date.now() / 1000),
+    nowSec?: number,
+  ): Promise<AutomationWaypointResult> {
+    // Serialize runs per (source, automation waypoint). The 30-minute floor is
+    // read-then-stamp, so two overlapping trigger events for the same waypoint
+    // would otherwise both pass it and both transmit. Each run reads the clock
+    // once it holds the lock, so a queued run sees the stamp the previous one
+    // wrote.
+    const lockKey = `${input.sourceId}\u0000${input.automationKey}`;
+    const previous = this.automationLocks.get(lockKey) ?? Promise.resolve();
+    const run = previous
+      .catch(() => undefined)
+      .then(() => this.upsertAndBroadcastForAutomationLocked(input, nowSec ?? Math.floor(Date.now() / 1000)));
+    const settled = run.then(() => undefined, () => undefined);
+    this.automationLocks.set(lockKey, settled);
+    void settled.then(() => {
+      if (this.automationLocks.get(lockKey) === settled) this.automationLocks.delete(lockKey);
+    });
+    return run;
+  }
+
+  /** Per-waypoint run queue for {@link upsertAndBroadcastForAutomation}. */
+  private automationLocks = new Map<string, Promise<void>>();
+
+  private async upsertAndBroadcastForAutomationLocked(
+    input: AutomationWaypointInput,
+    nowSec: number,
   ): Promise<AutomationWaypointResult> {
     const manager = sourceManagerRegistry.getManager(input.sourceId);
     if (!manager || !isMeshtasticManager(manager)) {

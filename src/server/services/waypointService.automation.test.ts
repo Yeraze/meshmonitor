@@ -163,6 +163,31 @@ describe('upsertAndBroadcastForAutomation (#5482)', () => {
     expect(m.broadcastWaypoint).not.toHaveBeenCalled();
   });
 
+  it('lets only one of two overlapping runs for the same waypoint transmit', async () => {
+    const m = makeManager();
+    mockGetManager.mockReturnValue(m);
+
+    const [a, b] = await Promise.all([
+      waypointService.upsertAndBroadcastForAutomation(input(), T0),
+      waypointService.upsertAndBroadcastForAutomation(input({ name: 'San Ysidro 45m' }), T0),
+    ]);
+
+    expect(m.broadcastWaypoint).toHaveBeenCalledTimes(1);
+    expect([a.sent, b.sent].filter(Boolean)).toHaveLength(1);
+    expect(b).toMatchObject({ skipped: true, reason: 'MIN_INTERVAL' });
+    expect(rows.size).toBe(1);
+  });
+
+  it('keeps serving a waypoint after a run on it failed', async () => {
+    const m = makeManager();
+    m.broadcastWaypoint.mockRejectedValueOnce(new Error('radio gone'));
+    mockGetManager.mockReturnValue(m);
+
+    await expect(waypointService.upsertAndBroadcastForAutomation(input(), T0)).rejects.toThrow('radio gone');
+    const r = await waypointService.upsertAndBroadcastForAutomation(input(), T0 + MIN);
+    expect(r.sent).toBe(true);
+  });
+
   it('sends again once 30 minutes have passed', async () => {
     const m = makeManager();
     mockGetManager.mockReturnValue(m);
