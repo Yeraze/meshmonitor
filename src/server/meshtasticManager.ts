@@ -10651,7 +10651,8 @@ class MeshtasticManager implements ISourceManager {
       const { data: positionRequestData, packetId, requestId } = meshtasticProtobufService.createPositionRequestMessage(
         destination,
         channel,
-        localPosition
+        localPosition,
+        this.getConfiguredHopLimit()
       );
 
       logger.debug(`📍 Position exchange packet created: ${positionRequestData.length} bytes for dest=${destination} (0x${destination.toString(16)}), channel=${channel}, packetId=${packetId}, requestId=${requestId}, position=${localPosition ? `${localPosition.latitude},${localPosition.longitude}` : 'none'}`);
@@ -10725,7 +10726,8 @@ class MeshtasticManager implements ISourceManager {
       const { data: nodeInfoRequestData, packetId, requestId } = meshtasticProtobufService.createNodeInfoRequestMessage(
         destination,
         channel,
-        localUserInfo
+        localUserInfo,
+        this.getConfiguredHopLimit()
       );
 
       logger.debug(`📇 NodeInfo exchange packet created: ${nodeInfoRequestData.length} bytes for dest=${destination} (0x${destination.toString(16)}), channel=${channel}, packetId=${packetId}, requestId=${requestId}, userInfo=${localUserInfo ? localUserInfo.longName : 'none'}`);
@@ -10783,7 +10785,8 @@ class MeshtasticManager implements ISourceManager {
     try {
       const { data: neighborInfoRequestData, packetId, requestId } = meshtasticProtobufService.createNeighborInfoRequestMessage(
         destination,
-        channel
+        channel,
+        this.getConfiguredHopLimit()
       );
 
       logger.debug(`🏠 NeighborInfo request packet created: ${neighborInfoRequestData.length} bytes for dest=${destination} (0x${destination.toString(16)}), channel=${channel}, packetId=${packetId}, requestId=${requestId}`);
@@ -11016,7 +11019,8 @@ class MeshtasticManager implements ISourceManager {
       const { data: telemetryRequestData, packetId, requestId } = meshtasticProtobufService.createTelemetryRequestMessage(
         destination,
         channel,
-        telemetryType
+        telemetryType,
+        this.getConfiguredHopLimit()
       );
 
       const typeLabel = telemetryType || 'device';
