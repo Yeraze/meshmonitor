@@ -474,6 +474,16 @@ describe('MeshtasticManager - delivery-diagnostics event recording (#4816 Phase 
       expect(meta.ackProofStatus).toBeUndefined();
     });
 
+    it('stores ABSENT (0) for a status-less ack when our radio runs 2.8.1+', async () => {
+      mockGetMessageByRequestId.mockResolvedValue(dmRow);
+      (manager as any).localNodeInfo = { ...(manager as any).localNodeInfo, firmwareVersion: '2.8.1.7fe3176' };
+      const packet = { from: PEER, to: LOCAL, rxTime: 0, decoded: { requestId: REQ_ID } };
+      await (manager as any).processRoutingErrorMessage(packet, { errorReason: 0 });
+
+      const meta = mockUpdateMessageDeliveryState.mock.calls[0][3];
+      expect(meta.ackProofStatus).toBe(0);
+    });
+
     it('does not store a status from an intermediate node ack', async () => {
       mockGetMessageByRequestId.mockResolvedValue(dmRow);
       const packet = { from: OTHER, to: LOCAL, rxTime: 0, decoded: { requestId: REQ_ID }, ackProofStatus: 1 };

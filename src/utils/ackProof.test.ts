@@ -4,6 +4,7 @@ import {
   formatAckProofStatus,
   normalizeAckProofStatus,
   readAckProofStatus,
+  resolveAckProofStatus,
 } from './ackProof';
 
 describe('ackProof (#5279)', () => {
@@ -36,5 +37,19 @@ describe('ackProof (#5279)', () => {
   it('formats a display label with name and number', () => {
     expect(formatAckProofStatus(1)).toBe('ACK_PROOF_VALID (1)');
     expect(formatAckProofStatus(99)).toBeNull();
+  });
+
+  it('resolves a missing field to ABSENT only on 2.8.1+ radios', () => {
+    // ABSENT (0) is never encoded on the wire, so the field reads missing.
+    expect(resolveAckProofStatus({}, '2.8.1.7fe3176')).toBe(AckProofStatus.ABSENT);
+    expect(resolveAckProofStatus({}, '2.9.0')).toBe(AckProofStatus.ABSENT);
+    expect(resolveAckProofStatus({}, '2.8.0.47db0e3')).toBeUndefined();
+    expect(resolveAckProofStatus({}, undefined)).toBeUndefined();
+    expect(resolveAckProofStatus({}, 'garbage')).toBeUndefined();
+  });
+
+  it('keeps a reported value regardless of firmware', () => {
+    expect(resolveAckProofStatus({ ackProofStatus: 1 }, '2.8.0')).toBe(AckProofStatus.VALID);
+    expect(resolveAckProofStatus({ ackProofStatus: 'ACK_PROOF_INVALID' }, undefined)).toBe(AckProofStatus.INVALID);
   });
 });

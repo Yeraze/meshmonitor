@@ -11,7 +11,7 @@ import type { ITransport } from './transports/transport.js';
 import type { ISourceManager, SourceStatus } from './sourceManagerRegistry.js';
 import { sourceManagerRegistry } from './sourceManagerRegistry.js';
 import { calculateDistance } from '../utils/distance.js';
-import { normalizeAckProofStatus, readAckProofStatus } from '../utils/ackProof.js';
+import { normalizeAckProofStatus, readAckProofStatus, resolveAckProofStatus } from '../utils/ackProof.js';
 
 /**
  * What the Config tab reads to decide which module sections it can offer.
@@ -9297,8 +9297,8 @@ class MeshtasticManager implements ISourceManager {
               rxRssi: meshPacket.rxRssi ?? meshPacket.rx_rssi,
               // Ack proof verdict (#5279): the radio sets ack_proof_status only
               // on the ack that settles our own unicast, which is this one.
-              // Absent => undefined => column left NULL (older firmware).
-              ackProofStatus: readAckProofStatus(meshPacket),
+              // A missing value is ABSENT on 2.8.1+ radios, NULL on older ones.
+              ackProofStatus: resolveAckProofStatus(meshPacket, this.localNodeInfo?.firmwareVersion),
             });
             if (updated) {
               logger.debug(`💾 Marked message ${requestId} as confirmed (received by target)`);
@@ -9471,7 +9471,9 @@ class MeshtasticManager implements ISourceManager {
       // Ack proof verdict (#5279): naks carry proofs too, but only a DM nak
       // from the addressed node is the one that settles our unicast. Channel
       // messages never get a status, so leave the column untouched there.
-      const nakAckProofStatus = isDM && fromNodeId === targetNodeId ? readAckProofStatus(meshPacket) : undefined;
+      const nakAckProofStatus = isDM && fromNodeId === targetNodeId
+        ? resolveAckProofStatus(meshPacket, this.localNodeInfo?.firmwareVersion)
+        : undefined;
       if (nakAckProofStatus !== undefined) {
         await databaseService.messages.updateMessageDeliveryState(requestId, 'failed', routingErrorCode, {
           ackProofStatus: nakAckProofStatus,

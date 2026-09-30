@@ -12,6 +12,7 @@
  * Shared by the server (capture) and the frontend (Delivery Details, Packet
  * Monitor), so it stays framework-free.
  */
+import { isFirmwareAtLeast } from './firmwareVersion.js';
 
 export const AckProofStatus = {
   /** No verdict: no proof, a relay's ack, or the packet was already settled. Not a failure. */
@@ -76,12 +77,32 @@ export function formatAckProofStatus(raw: unknown): string | null {
  *
  * Note: `ack_proof_status` is a plain proto3 enum, so ABSENT (0) is never
  * encoded on the wire. A decoded instance reads it as null/undefined, the
- * same as firmware that predates the field — so ABSENT normally reads as
- * `undefined` (NULL, row hidden) rather than 0. Only a present, recognised
- * value is returned.
+ * same as firmware that predates the field. Only a present, recognised
+ * value is returned; use `resolveAckProofStatus` to tell the two apart.
  */
 export function readAckProofStatus(meshPacket: unknown): AckProofStatusValue | undefined {
   if (!meshPacket || typeof meshPacket !== 'object') return undefined;
   const p = meshPacket as Record<string, unknown>;
   return normalizeAckProofStatus(p.ackProofStatus ?? p.ack_proof_status);
+}
+
+/** First firmware line that reports `ack_proof_status` (firmware #11965, develop = 2.8.1). */
+export const ACK_PROOF_MIN_FIRMWARE = { major: 2, minor: 8, patch: 1 } as const;
+
+/**
+ * The verdict to STORE for the ack that settles our own unicast.
+ *
+ * ABSENT (0) is never on the wire, so a missing field is ambiguous. The radio
+ * that sets the field is our own, and we know its firmware: on 2.8.1+ a
+ * missing value means ABSENT ("not proven"); on older or unknown firmware it
+ * means "no status reported" (`undefined` => NULL, row hidden).
+ */
+export function resolveAckProofStatus(
+  meshPacket: unknown,
+  localFirmwareVersion: string | null | undefined,
+): AckProofStatusValue | undefined {
+  const reported = readAckProofStatus(meshPacket);
+  if (reported !== undefined) return reported;
+  const { major, minor, patch } = ACK_PROOF_MIN_FIRMWARE;
+  return isFirmwareAtLeast(localFirmwareVersion, major, minor, patch) ? AckProofStatus.ABSENT : undefined;
 }
