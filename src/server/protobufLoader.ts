@@ -3,9 +3,30 @@
  */
 import protobuf from 'protobufjs';
 import path from 'path';
+import { createRequire } from 'module';
 import { logger } from '../utils/logger.js';
 
 let root: protobuf.Root | null = null;
+
+/**
+ * protobufjs ships the well-known `google/protobuf/*.proto` files (e.g.
+ * descriptor.proto). The Meshtastic protos import descriptor.proto since
+ * `field_metadata.proto` (protobufs master, 2026-09), which extends
+ * FieldOptions for the `[(meshtastic.field_metadata) = {...}]` annotations.
+ */
+const PROTOBUFJS_DIR = path.dirname(createRequire(import.meta.url).resolve('protobufjs/package.json'));
+
+/**
+ * Resolve a `.proto` import for a Root that loads the `protobufs/` submodule.
+ * `meshtastic/*` resolves against the submodule root, `google/protobuf/*`
+ * against protobufjs's bundled copies, and anything else relative to the
+ * importing file. Shared by every loader so they cannot drift.
+ */
+export function resolveProtoImport(protoRoot: string, origin: string, target: string): string {
+  if (target.startsWith('meshtastic/')) return path.join(protoRoot, target);
+  if (target.startsWith('google/protobuf/')) return path.join(PROTOBUFJS_DIR, target);
+  return protobuf.util.path.resolve(origin, target);
+}
 
 export async function loadProtobufDefinitions(): Promise<protobuf.Root> {
   if (root) {
@@ -21,13 +42,7 @@ export async function loadProtobufDefinitions(): Promise<protobuf.Root> {
 
     // Create a root with proper include paths
     root = new protobuf.Root();
-    root.resolvePath = (origin: string, target: string) => {
-      // Handle relative imports from meshtastic/ directory
-      if (target.startsWith('meshtastic/')) {
-        return path.join(protoRoot, target);
-      }
-      return path.resolve(origin, target);
-    };
+    root.resolvePath = (origin: string, target: string) => resolveProtoImport(protoRoot, origin, target);
 
     await root.load(protoPath);
 
