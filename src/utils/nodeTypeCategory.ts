@@ -140,12 +140,22 @@ export const NODE_TYPE_CATEGORY_META: Record<NodeTypeCategory, NodeTypeCategoryM
 };
 
 /**
- * The glyph "family" a category draws with. Several Meshtastic roles share the
- * MeshCore glyph silhouettes (a ROUTER is drawn as a repeater tower, a SENSOR
- * as a sensor broadcast, etc.) so map icons stay recognizable without inventing
- * a unique glyph per role. `'standard'` = fall back to the default pin.
+ * Map glyph families: MeshCore's advert types plus `'router'`, the tower that
+ * Meshtastic infrastructure roles draw with (#5491).
  */
-export function categoryGlyphFamily(category: NodeTypeCategory): MeshCoreCategory {
+export type GlyphFamily = MeshCoreCategory | 'router';
+
+/**
+ * The glyph "family" a category draws with. Several Meshtastic roles share the
+ * MeshCore glyph silhouettes (a SENSOR draws as a sensor broadcast, etc.) so map
+ * icons stay recognizable without inventing a unique glyph per role.
+ * `'standard'` = fall back to the default pin.
+ *
+ * Infrastructure is the exception (#5491): Meshtastic ROUTER / ROUTER_LATE /
+ * REPEATER draw the `'router'` tower, and a MeshCore Repeater draws its own
+ * `'repeater'` mesh-relay glyph, so the two read apart on the Unified map.
+ */
+export function categoryGlyphFamily(category: NodeTypeCategory): GlyphFamily {
   switch (category) {
     case 'repeater':
     case 'roomServer':
@@ -156,7 +166,7 @@ export function categoryGlyphFamily(category: NodeTypeCategory): MeshCoreCategor
     case 'mtRouter':
     case 'mtRouterLate':
     case 'mtRepeater':
-      return 'repeater';
+      return 'router';
     case 'mtSensor':
       return 'sensor';
     case 'mtClient':
