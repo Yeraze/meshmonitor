@@ -34,6 +34,10 @@ describe('resolveProtoImport', () => {
     expect(resolved).toMatch(/protobufjs[\\/]google[\\/]protobuf[\\/]descriptor\.proto$/);
     expect(resolved.startsWith(protoRoot)).toBe(false);
   });
+
+  it('resolves other imports relative to the importing file', () => {
+    expect(resolveProtoImport(protoRoot, origin, 'nanopb.proto')).toBe('/app/protobufs/meshtastic/nanopb.proto');
+  });
 });
 
 describe('protobufs past v2.8.0', () => {
@@ -63,8 +67,7 @@ describe('protobufs past v2.8.0', () => {
   it('moves soil/water chemistry into SoilWaterMetrics and reserves the old tags', () => {
     const env = root.lookupType('meshtastic.EnvironmentMetrics');
     expect(env.fields.soilPh).toBeUndefined();
-    expect(env.isReservedId(42)).toBe(true);
-    expect(env.isReservedId(56)).toBe(true);
+    for (let tag = 42; tag <= 56; tag++) expect(env.isReservedId(tag)).toBe(true);
     expect(root.lookupType('meshtastic.Telemetry').fields.soilWaterMetrics.id).toBe(11);
   });
 });
