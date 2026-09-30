@@ -225,6 +225,8 @@ describe('buildTracePathHops (#5485)', () => {
   });
 
   it('turns at the last repeater for a non-forwarding target', () => {
+    // One repeater: turning at it is the same one-way trace — the reply comes
+    // back from 5e either way, so there is no return leg to add.
     expect(buildTracePathHops(['5e'], TARGET, 1, { autoReturn: true, targetForwards: false })).toEqual(['5e']);
     expect(buildTracePathHops(['a1', 'b2', 'c3'], TARGET, 1, { autoReturn: true, targetForwards: false }))
       .toEqual(['a1', 'b2', 'c3', 'b2', 'a1']);

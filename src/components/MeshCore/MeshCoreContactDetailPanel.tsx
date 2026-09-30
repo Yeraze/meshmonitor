@@ -954,9 +954,9 @@ export const MeshCoreContactDetailPanel: React.FC<MeshCoreContactDetailPanelProp
                     </tr>
                   </thead>
                   <tbody>
-                    {traceResult.hops.map((hop) => {
+                    {(() => {
                       const pathHashes = traceResult.path ?? outPath?.split(',') ?? [];
-                      return (
+                      return traceResult.hops.map((hop) => (
                         <tr key={hop.index}>
                           <td style={{ padding: '0.25rem 0.5rem' }}>{hop.index + 1}</td>
                           <td style={{ padding: '0.25rem 0.5rem' }}>{pathHashes[hop.index] ?? '??'}</td>
@@ -965,8 +965,8 @@ export const MeshCoreContactDetailPanel: React.FC<MeshCoreContactDetailPanelProp
                             {hop.snr.toFixed(2)} dB
                           </td>
                         </tr>
-                      );
-                    })}
+                      ));
+                    })()}
                     <tr style={{ borderTop: '1px solid var(--color-surface-hover)' }}>
                       <td style={{ padding: '0.25rem 0.5rem' }} colSpan={2}>
                         {t('meshcore.contact_details.trace_destination', 'Destination')}
