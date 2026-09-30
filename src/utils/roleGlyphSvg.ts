@@ -13,8 +13,10 @@ import { categoryGlyphFamily, type GlyphFamily, type NodeTypeCategory } from './
  * callers fall back to the default pin/circle. `color` is the hop color so the
  * glyph stays consistent with the marker's stroke.
  *
- * Meshtastic role categories (issue #3610) reuse the MeshCore glyph silhouettes
- * via {@link categoryGlyphFamily} (a ROUTER draws as a repeater tower, etc.).
+ * Meshtastic role categories (issue #3610) draw through {@link categoryGlyphFamily}:
+ * a SENSOR reuses the MeshCore sensor glyph, while ROUTER / ROUTER_LATE /
+ * REPEATER have their own `'router'` tower, apart from the MeshCore Repeater's
+ * mesh relay (#5491).
  */
 /**
  * The Meshtastic router tower silhouette (tower + signal waves): the `'router'`

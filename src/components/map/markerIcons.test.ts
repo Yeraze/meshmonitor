@@ -359,7 +359,7 @@ describe('createNodeIcon — Meshtastic ROUTER_LATE is distinguished from ROUTER
     expect(iconHtml('mtRouterLate', false)).not.toBe(iconHtml('mtRouter', false));
   });
 
-  it('ROUTER_LATE keeps the shared repeater-tower silhouette (still reads as infra)', () => {
+  it('ROUTER_LATE keeps the router-tower silhouette (still reads as infra)', () => {
     // Both draw the tower base rect; ROUTER_LATE layers a clock badge on top of
     // it rather than swapping to an unrelated glyph.
     const routerLate = iconHtml('mtRouterLate', false);

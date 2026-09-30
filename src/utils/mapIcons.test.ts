@@ -212,7 +212,7 @@ describe('roleGlyphMarkerSvg', () => {
   });
 
   it('renders ROUTER_LATE as the tower plus a distinguishing clock badge (issue #4295)', () => {
-    // ROUTER_LATE keeps the repeater tower but adds a clock badge, so it no
+    // ROUTER_LATE keeps the router tower but adds a clock badge, so it no
     // longer matches a plain ROUTER/repeater exactly.
     const late = roleGlyphMarkerSvg('mtRouterLate', COLOR, 24);
     expect(late).not.toBe(roleGlyphMarkerSvg('repeater', COLOR, 24));
