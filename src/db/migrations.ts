@@ -202,6 +202,7 @@ import { migration as createAircraftFlightMatchesMigration, runMigration180Postg
 import { migration as createAssetNodesMigration, runMigration181Postgres, runMigration181Mysql } from '../server/migrations/181_create_asset_nodes.js';
 import { migration as createMeshcoreIgnoreBlockMigration, runMigration182Postgres, runMigration182Mysql } from '../server/migrations/182_create_meshcore_ignore_block.js';
 import { migration as addWaypointHopLimitAutomationKeyMigration, runMigration183Postgres, runMigration183Mysql } from '../server/migrations/183_add_waypoint_hop_limit_automation_key.js';
+import { migration as addAckProofStatusMigration, runMigration184Postgres, runMigration184Mysql } from '../server/migrations/184_add_ack_proof_status_to_messages.js';
 
 // ============================================================================
 // Registry
@@ -2968,4 +2969,19 @@ registry.register({
   sqlite: (db) => addWaypointHopLimitAutomationKeyMigration.up(db),
   postgres: (client) => runMigration183Postgres(client),
   mysql: (pool) => runMigration183Mysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 184: `messages.ackProofStatus` (#5279, Meshtastic ack proof).
+// Records MeshPacket.ack_proof_status (enum number) from the ack/nak that
+// settles an outbound DM. NULL = no status reported.
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 184,
+  name: 'add_ack_proof_status_to_messages',
+  settingsKey: 'migration_184_add_ack_proof_status_to_messages',
+  sqlite: (db) => addAckProofStatusMigration.up(db),
+  postgres: (client) => runMigration184Postgres(client),
+  mysql: (pool) => runMigration184Mysql(pool),
 });

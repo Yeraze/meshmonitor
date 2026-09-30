@@ -57,6 +57,14 @@ export interface DiagField {
   provenance: Provenance;
   /** Optional i18n key for a short muted note rendered under the value. */
   noteKey?: string;
+  /**
+   * Optional emphasis for the value itself (#5279 ack proof): `success` for a
+   * proven fact, `warning` for a possible forgery, `muted` for "not proven"
+   * (explicitly not a failure). Omitted = default styling.
+   */
+  valueTone?: 'success' | 'warning' | 'muted';
+  /** Optional i18n key for a hover tooltip explaining the value. */
+  tooltipKey?: string;
 }
 
 /** A titled group of related fields, rendered as a block in the modal. */

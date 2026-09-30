@@ -122,4 +122,24 @@ describe('MessagesRepository.updateMessageDeliveryState — ack metadata', () =>
     expect(msg?.rxSnr ?? null).toBeNull();
     expect(msg?.rxRssi ?? null).toBeNull();
   });
+
+  it('persists ackProofStatus (#5279) as a number, and an omitted value leaves it NULL', async () => {
+    await insert('msg-5', 555);
+    await insert('msg-6', 666);
+
+    await repo.updateMessageDeliveryState(555, 'confirmed', undefined, { ackFromNode: NODE_NUM, ackProofStatus: 1 });
+    await repo.updateMessageDeliveryState(666, 'failed', 5, { ackProofStatus: 0 });
+
+    expect(Number((await repo.getMessage('msg-5'))?.ackProofStatus)).toBe(1);
+    // ABSENT (0) stays 0, not NULL.
+    expect((await repo.getMessage('msg-6'))?.ackProofStatus).toBe(0);
+
+    // A later call without the field does not clobber the stored verdict.
+    await repo.updateMessageDeliveryState(555, 'confirmed');
+    expect(Number((await repo.getMessage('msg-5'))?.ackProofStatus)).toBe(1);
+
+    await insert('msg-7', 777);
+    await repo.updateMessageDeliveryState(777, 'confirmed', undefined, { ackFromNode: NODE_NUM });
+    expect((await repo.getMessage('msg-7'))?.ackProofStatus ?? null).toBeNull();
+  });
 });

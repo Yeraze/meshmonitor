@@ -55,6 +55,7 @@ export class MessagesRepository extends BaseRepository {
       viaMqtt: messageData.viaMqtt ?? null,
       viaStoreForward: messageData.viaStoreForward ?? null,
       xeddsaSigned: messageData.xeddsaSigned ?? null,
+      ackProofStatus: messageData.ackProofStatus ?? null,
       rxSnr: messageData.rxSnr ?? null,
       rxRssi: messageData.rxRssi ?? null,
       ackFailed: messageData.ackFailed ?? null,
@@ -467,6 +468,7 @@ export class MessagesRepository extends BaseRepository {
       viaMqtt: messageData.viaMqtt ?? null,
       viaStoreForward: (messageData as any).viaStoreForward ?? null,
       xeddsaSigned: messageData.xeddsaSigned ?? null,
+      ackProofStatus: messageData.ackProofStatus ?? null,
       rxSnr: messageData.rxSnr ?? null,
       rxRssi: messageData.rxRssi ?? null,
       ackFailed: (messageData as any).ackFailed ?? null,
@@ -670,6 +672,8 @@ export class MessagesRepository extends BaseRepository {
       relayNode?: number | null;
       rxSnr?: number | null;
       rxRssi?: number | null;
+      /** #5279 MeshPacket.AckProofStatus number; undefined leaves the column untouched. */
+      ackProofStatus?: number | null;
     },
   ): Promise<boolean> {
     const { messages } = this.tables;
@@ -687,6 +691,7 @@ export class MessagesRepository extends BaseRepository {
       relayNode?: number | null;
       rxSnr?: number | null;
       rxRssi?: number | null;
+      ackProofStatus?: number | null;
     } = { deliveryState };
     if (routingErrorCode !== undefined) {
       updateSet.routingErrorCode = routingErrorCode;
@@ -695,6 +700,7 @@ export class MessagesRepository extends BaseRepository {
     if (ackMeta?.relayNode !== undefined) updateSet.relayNode = ackMeta.relayNode;
     if (ackMeta?.rxSnr !== undefined) updateSet.rxSnr = ackMeta.rxSnr;
     if (ackMeta?.rxRssi !== undefined) updateSet.rxRssi = ackMeta.rxRssi;
+    if (ackMeta?.ackProofStatus !== undefined) updateSet.ackProofStatus = ackMeta.ackProofStatus;
 
     await this.db
       .update(messages)

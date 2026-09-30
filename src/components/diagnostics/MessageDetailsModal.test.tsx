@@ -356,6 +356,43 @@ describe('DeliveryDetailsModal', () => {
     });
   });
 
+  describe('ack proof row (#5279)', () => {
+    const renderSent = (ackProofStatus?: number) =>
+      renderModal(
+        <MessageDetailsModal direction="sent"
+          protocol="meshtastic"
+          sourceId="source-a"
+          message={buildMeshtasticMessage({ ackProofStatus })}
+          onClose={vi.fn()}
+        />,
+      );
+
+    it('hides the row when no status was reported', () => {
+      renderSent(undefined);
+      expect(screen.queryByText('delivery_details.field.ack_proof')).toBeNull();
+    });
+
+    it('VALID renders "Proven receipt" with success tone and a tooltip', () => {
+      renderSent(1);
+      const value = screen.getByText('delivery_details.value.ack_proof_valid');
+      expect(value.getAttribute('data-tone')).toBe('success');
+      expect(value.getAttribute('title')).toBe('delivery_details.tooltip.ack_proof_valid');
+    });
+
+    it('INVALID renders the forgery warning with warning tone', () => {
+      renderSent(2);
+      const value = screen.getByText('delivery_details.value.ack_proof_invalid');
+      expect(value.getAttribute('data-tone')).toBe('warning');
+    });
+
+    it.each([0, 3])('status %i renders muted "Receipt not proven" with an explaining tooltip', (status) => {
+      renderSent(status);
+      const value = screen.getByText('delivery_details.value.ack_proof_not_proven');
+      expect(value.getAttribute('data-tone')).toBe('muted');
+      expect(value.getAttribute('title')).toMatch(/^delivery_details\.tooltip\.ack_proof_(absent|no_key)$/);
+    });
+  });
+
   it('calls onClose on Escape, overlay click, and the close button', () => {
     const onCloseEscape = vi.fn();
     const { unmount } = renderModal(

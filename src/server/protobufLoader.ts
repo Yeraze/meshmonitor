@@ -116,6 +116,8 @@ export interface MeshPacket {
   transportMechanism?: number;
   /** Firmware 2.8+: device verified the packet's XEdDSA signature (#3923). */
   xeddsaSigned?: boolean;
+  /** Firmware 2.8.1+: MeshPacket.AckProofStatus on the ack/nak settling our unicast (#5279). */
+  ackProofStatus?: number;
 }
 
 export interface Data {

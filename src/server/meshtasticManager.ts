@@ -11,6 +11,7 @@ import type { ITransport } from './transports/transport.js';
 import type { ISourceManager, SourceStatus } from './sourceManagerRegistry.js';
 import { sourceManagerRegistry } from './sourceManagerRegistry.js';
 import { calculateDistance } from '../utils/distance.js';
+import { normalizeAckProofStatus, readAckProofStatus, resolveAckProofStatus } from '../utils/ackProof.js';
 
 /**
  * What the Config tab reads to decide which module sections it can offer.
@@ -503,6 +504,7 @@ type TextMessage = {
   decryptedBy?: 'node' | 'server' | null; // Decryption source - 'server' means read-only
   viaStoreForward?: boolean; // Message received via Store & Forward replay
   xeddsaSigned?: boolean; // Broadcast had a cryptographically verified XEdDSA signature (firmware 2.8+)
+  ackProofStatus?: number; // #5279 — MeshPacket.AckProofStatus from the settling ack/nak (outbound DMs)
   sourceIp?: string | null; // Per-message ingress attribution (client IP for HTTP injects)
   sourcePath?: 'http_api' | 'tcp_radio' | 'mqtt_bridge' | 'system' | null;
   spoofSuspected?: boolean; // #2584 — claims from == our local node but arrived over RF
@@ -6467,6 +6469,16 @@ class MeshtasticManager implements ISourceManager {
           metadata.xeddsa_signed = true;
         }
 
+        // Ack proof verdict (#5279) on a ROUTING_APP ack/nak, from this
+        // packet's own decode. Metadata only, no packet_log column (decided);
+        // stored as the enum number, only when the radio reported one.
+        if (portnum === PortNum.ROUTING_APP) {
+          const ackProofStatus = readAckProofStatus(meshPacket);
+          if (ackProofStatus !== undefined) {
+            metadata.ack_proof_status = ackProofStatus;
+          }
+        }
+
         // Include encrypted payload bytes if packet is encrypted
         if (isEncrypted && meshPacket.encrypted) {
           // Convert Uint8Array to hex string for storage
@@ -9283,6 +9295,10 @@ class MeshtasticManager implements ISourceManager {
               relayNode: meshPacket.relayNode ?? undefined,
               rxSnr: meshPacket.rxSnr ?? meshPacket.rx_snr,
               rxRssi: meshPacket.rxRssi ?? meshPacket.rx_rssi,
+              // Ack proof verdict (#5279): the radio sets ack_proof_status only
+              // on the ack that settles our own unicast, which is this one.
+              // A missing value is ABSENT on 2.8.1+ radios, NULL on older ones.
+              ackProofStatus: resolveAckProofStatus(meshPacket, this.localNodeInfo?.firmwareVersion),
             });
             if (updated) {
               logger.debug(`💾 Marked message ${requestId} as confirmed (received by target)`);
@@ -9452,7 +9468,19 @@ class MeshtasticManager implements ISourceManager {
       // Update message in database to mark delivery as failed
       logger.debug(`❌ Marking message ${requestId} as failed due to routing error from ${isDM ? 'target' : 'mesh'}: ${errorName}`);
       const routingErrorCode = typeof errorReason === 'number' ? errorReason : null;
-      await databaseService.messages.updateMessageDeliveryState(requestId, 'failed', routingErrorCode);
+      // Ack proof verdict (#5279): naks carry proofs too, but only a DM nak
+      // from the addressed node is the one that settles our unicast. Channel
+      // messages never get a status, so leave the column untouched there.
+      const nakAckProofStatus = isDM && fromNodeId === targetNodeId
+        ? resolveAckProofStatus(meshPacket, this.localNodeInfo?.firmwareVersion)
+        : undefined;
+      if (nakAckProofStatus !== undefined) {
+        await databaseService.messages.updateMessageDeliveryState(requestId, 'failed', routingErrorCode, {
+          ackProofStatus: nakAckProofStatus,
+        });
+      } else {
+        await databaseService.messages.updateMessageDeliveryState(requestId, 'failed', routingErrorCode);
+      }
       // Emit WebSocket event for real-time delivery failure update
       dataEventEmitter.emitRoutingUpdate({ requestId, status: 'nak', errorReason: errorName }, this.sourceId);
       // Delivery-diagnostics timeline event (#4816 Phase 3) — see the
@@ -15042,6 +15070,7 @@ class MeshtasticManager implements ISourceManager {
       emoji: msg.emoji ?? undefined,
       viaMqtt: Boolean(msg.viaMqtt),
       xeddsaSigned: msg.xeddsaSigned ? true : undefined,
+      ackProofStatus: normalizeAckProofStatus(msg.ackProofStatus),
       rxSnr: msg.rxSnr ?? undefined,
       rxRssi: msg.rxRssi ?? undefined,
       // Include delivery tracking fields

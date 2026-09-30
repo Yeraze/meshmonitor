@@ -170,6 +170,11 @@ export interface DbMessage {
   /** Broadcast carried a verified XEdDSA signature (firmware 2.8+). NULL for pre-migration rows / unsigned traffic. */
   xeddsaSigned?: boolean | null;
   /**
+   * `meshtastic.MeshPacket.AckProofStatus` number (#5279) from the ack/nak that
+   * settled this outbound DM. NULL = no status reported.
+   */
+  ackProofStatus?: number | null;
+  /**
    * `meshtastic.MeshPacket.TransportMechanism` the message arrived on (#5101).
    * NULL = pre-migration row -> classify by `viaMqtt`. Outbound sends store
    * INTERNAL (0).

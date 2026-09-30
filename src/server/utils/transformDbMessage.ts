@@ -1,6 +1,7 @@
 import { DbMessage } from '../../services/database.js';
 import { MeshMessage } from '../../types/message.js';
 import { canonicalMessageTime, messageReceivedAt } from './messageTime.js';
+import { normalizeAckProofStatus } from '../../utils/ackProof.js';
 
 /**
  * Transform a DbMessage (raw repository row shape) into the MeshMessage shape
@@ -32,6 +33,7 @@ export function transformDbMessageToMeshMessage(msg: DbMessage): MeshMessage {
     emoji: msg.emoji ?? undefined,
     viaMqtt: Boolean((msg as any).viaMqtt),
     xeddsaSigned: msg.xeddsaSigned ? true : undefined,
+    ackProofStatus: normalizeAckProofStatus(msg.ackProofStatus),
     rxSnr: msg.rxSnr ?? undefined,
     rxRssi: msg.rxRssi ?? undefined,
     requestId: (msg as any).requestId,
