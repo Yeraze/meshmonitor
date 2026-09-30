@@ -237,6 +237,8 @@ export interface DbMessage {
   viaMqtt?: boolean;
   /** Broadcast carried a verified XEdDSA signature (firmware 2.8+). */
   xeddsaSigned?: boolean;
+  /** `meshtastic.MeshPacket.AckProofStatus` number (#5279) from the settling ack/nak. */
+  ackProofStatus?: number;
   /**
    * `meshtastic.MeshPacket.TransportMechanism` the message arrived on (#5101).
    * NULL = pre-migration row -> classify by `viaMqtt`. Outbound sends store
@@ -1883,6 +1885,7 @@ class DatabaseService {
       emoji: msg.emoji ?? undefined,
       viaMqtt: msg.viaMqtt ?? undefined,
       xeddsaSigned: msg.xeddsaSigned ?? undefined,
+      ackProofStatus: msg.ackProofStatus ?? undefined,
       rxSnr: msg.rxSnr ?? undefined,
       rxRssi: msg.rxRssi ?? undefined,
       ackFailed: msg.ackFailed ?? undefined,
@@ -5201,6 +5204,7 @@ class DatabaseService {
         emoji: result.emoji ?? undefined,
         viaMqtt: result.viaMqtt ?? undefined,
         xeddsaSigned: result.xeddsaSigned ?? undefined,
+        ackProofStatus: result.ackProofStatus ?? undefined,
         rxSnr: result.rxSnr ?? undefined,
         rxRssi: result.rxRssi ?? undefined,
         ackFailed: result.ackFailed ?? undefined,

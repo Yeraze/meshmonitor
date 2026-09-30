@@ -233,4 +233,51 @@ describe('describeMeshtasticDelivery', () => {
     );
     expect(findField(result, 'delivery_details.field.want_ack')?.valueKey).toBe('delivery_details.value.no');
   });
+
+  describe('ack proof row (#5279)', () => {
+    const LABEL = 'delivery_details.field.ack_proof';
+
+    it('hides the row when no status was reported (NULL / undefined)', () => {
+      const result = describeMeshtasticDelivery(baseMessage({ channel: -1 }));
+      expect(findField(result, LABEL)).toBeUndefined();
+    });
+
+    it('VALID reads "Proven receipt" with success styling', () => {
+      const f = findField(describeMeshtasticDelivery(baseMessage({ channel: -1, ackProofStatus: 1 })), LABEL);
+      expect(f?.valueKey).toBe('delivery_details.value.ack_proof_valid');
+      expect(f?.valueTone).toBe('success');
+      expect(f?.provenance).toBe('reported');
+    });
+
+    it('INVALID reads as a possible forgery with warning styling', () => {
+      const f = findField(describeMeshtasticDelivery(baseMessage({ channel: -1, ackProofStatus: 2 })), LABEL);
+      expect(f?.valueKey).toBe('delivery_details.value.ack_proof_invalid');
+      expect(f?.valueTone).toBe('warning');
+    });
+
+    it.each([
+      [0, 'delivery_details.tooltip.ack_proof_absent'],
+      [3, 'delivery_details.tooltip.ack_proof_no_key'],
+    ])('status %i is muted "Receipt not proven", never a failure', (status, tooltipKey) => {
+      const f = findField(describeMeshtasticDelivery(baseMessage({ channel: -1, ackProofStatus: status })), LABEL);
+      expect(f?.valueKey).toBe('delivery_details.value.ack_proof_not_proven');
+      expect(f?.valueTone).toBe('muted');
+      expect(f?.tooltipKey).toBe(tooltipKey);
+    });
+
+    it('hides the row for an unknown value, a channel message, or a received message', () => {
+      expect(findField(describeMeshtasticDelivery(baseMessage({ channel: -1, ackProofStatus: 9 })), LABEL)).toBeUndefined();
+      expect(findField(describeMeshtasticDelivery(baseMessage({ channel: 0, ackProofStatus: 1 })), LABEL)).toBeUndefined();
+      expect(
+        findField(describeMeshtasticDelivery(baseMessage({ channel: -1, ackProofStatus: 1 }), 'received'), LABEL),
+      ).toBeUndefined();
+    });
+
+    it('sits right after the XEdDSA row', () => {
+      const result = describeMeshtasticDelivery(baseMessage({ channel: -1, ackProofStatus: 1 }));
+      const section = result.sections.find(s => s.fields.some(f => f.labelKey === LABEL))!;
+      const labels = section.fields.map(f => f.labelKey);
+      expect(labels.indexOf(LABEL)).toBe(labels.indexOf('delivery_details.field.xeddsa_signed') + 1);
+    });
+  });
 });

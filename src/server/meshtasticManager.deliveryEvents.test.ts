@@ -430,4 +430,91 @@ describe('MeshtasticManager - delivery-diagnostics event recording (#4816 Phase 
       expect(mockUpdateMessageDeliveryState).toHaveBeenCalledWith(REQ_ID, 'delivered');
     });
   });
+
+  describe('ack proof capture (#5279)', () => {
+    const REQ_ID = 5279;
+    const OTHER = 0x33333333;
+    const dmRow = { id: 'msg-ap-1', toNodeId: toNodeId(PEER), toNodeNum: PEER, channel: -1 };
+    const channelRow = { id: 'msg-ap-2', toNodeId: toNodeId(PEER), toNodeNum: PEER, channel: 0 };
+
+    it('stores the status from the target-node confirmed ack', async () => {
+      mockGetMessageByRequestId.mockResolvedValue(dmRow);
+      const packet = { from: PEER, to: LOCAL, rxTime: 0, decoded: { requestId: REQ_ID }, ackProofStatus: 1 };
+      await (manager as any).processRoutingErrorMessage(packet, { errorReason: 0 });
+
+      expect(mockUpdateMessageDeliveryState).toHaveBeenCalledWith(
+        REQ_ID,
+        'confirmed',
+        undefined,
+        expect.objectContaining({ ackFromNode: PEER, ackProofStatus: 1 }),
+      );
+    });
+
+    it('maps an enum NAME to its number, never storing the name', async () => {
+      mockGetMessageByRequestId.mockResolvedValue(dmRow);
+      const packet = {
+        from: PEER,
+        to: LOCAL,
+        rxTime: 0,
+        decoded: { requestId: REQ_ID },
+        ackProofStatus: 'ACK_PROOF_INVALID',
+      };
+      await (manager as any).processRoutingErrorMessage(packet, { errorReason: 0 });
+
+      const meta = mockUpdateMessageDeliveryState.mock.calls[0][3];
+      expect(meta.ackProofStatus).toBe(2);
+    });
+
+    it('leaves the column untouched (undefined) when the ack carries no status', async () => {
+      mockGetMessageByRequestId.mockResolvedValue(dmRow);
+      const packet = { from: PEER, to: LOCAL, rxTime: 0, decoded: { requestId: REQ_ID }, ackProofStatus: null };
+      await (manager as any).processRoutingErrorMessage(packet, { errorReason: 0 });
+
+      const meta = mockUpdateMessageDeliveryState.mock.calls[0][3];
+      expect(meta.ackProofStatus).toBeUndefined();
+    });
+
+    it('does not store a status from an intermediate node ack', async () => {
+      mockGetMessageByRequestId.mockResolvedValue(dmRow);
+      const packet = { from: OTHER, to: LOCAL, rxTime: 0, decoded: { requestId: REQ_ID }, ackProofStatus: 1 };
+      await (manager as any).processRoutingErrorMessage(packet, { errorReason: 0 });
+
+      expect(mockUpdateMessageDeliveryState).not.toHaveBeenCalled();
+    });
+
+    it('does not store a status for a channel message ack', async () => {
+      mockGetMessageByRequestId.mockResolvedValue(channelRow);
+      const packet = { from: PEER, to: LOCAL, rxTime: 0, decoded: { requestId: REQ_ID }, ackProofStatus: 1 };
+      await (manager as any).processRoutingErrorMessage(packet, { errorReason: 0 });
+
+      expect(mockUpdateMessageDeliveryState).not.toHaveBeenCalled();
+    });
+
+    it('stores the status from a target-node nak on a DM', async () => {
+      mockGetMessageByRequestId.mockResolvedValue(dmRow);
+      const packet = { from: PEER, to: LOCAL, rxTime: 0, decoded: { requestId: REQ_ID }, ackProofStatus: 3 };
+      await (manager as any).processRoutingErrorMessage(packet, { errorReason: RoutingError.MAX_RETRANSMIT });
+
+      expect(mockUpdateMessageDeliveryState).toHaveBeenCalledWith(REQ_ID, 'failed', RoutingError.MAX_RETRANSMIT, {
+        ackProofStatus: 3,
+      });
+    });
+
+    it('does not store a status on a channel-message nak', async () => {
+      mockGetMessageByRequestId.mockResolvedValue(channelRow);
+      const packet = { from: PEER, to: LOCAL, rxTime: 0, decoded: { requestId: REQ_ID }, ackProofStatus: 1 };
+      await (manager as any).processRoutingErrorMessage(packet, { errorReason: RoutingError.MAX_RETRANSMIT });
+
+      expect(mockUpdateMessageDeliveryState).toHaveBeenCalledWith(REQ_ID, 'failed', RoutingError.MAX_RETRANSMIT);
+      expect(mockUpdateMessageDeliveryState.mock.calls[0]).toHaveLength(3);
+    });
+
+    it('ignores a nak from an intermediate node on a DM', async () => {
+      mockGetMessageByRequestId.mockResolvedValue(dmRow);
+      const packet = { from: OTHER, to: LOCAL, rxTime: 0, decoded: { requestId: REQ_ID }, ackProofStatus: 2 };
+      await (manager as any).processRoutingErrorMessage(packet, { errorReason: RoutingError.MAX_RETRANSMIT });
+
+      expect(mockUpdateMessageDeliveryState).not.toHaveBeenCalled();
+    });
+  });
 });

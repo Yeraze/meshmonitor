@@ -3,8 +3,8 @@
  * Supports SQLite, PostgreSQL, and MySQL
  */
 import { sqliteTable, text, integer, real } from 'drizzle-orm/sqlite-core';
-import { pgTable, text as pgText, integer as pgInteger, real as pgReal, boolean as pgBoolean, bigint as pgBigint } from 'drizzle-orm/pg-core';
-import { mysqlTable, varchar as myVarchar, int as myInt, double as myDouble, boolean as myBoolean, bigint as myBigint, text as myText } from 'drizzle-orm/mysql-core';
+import { pgTable, text as pgText, integer as pgInteger, real as pgReal, boolean as pgBoolean, bigint as pgBigint, smallint as pgSmallint } from 'drizzle-orm/pg-core';
+import { mysqlTable, varchar as myVarchar, int as myInt, double as myDouble, boolean as myBoolean, bigint as myBigint, text as myText, smallint as mySmallint } from 'drizzle-orm/mysql-core';
 import { nodesSqlite, nodesPostgres, nodesMysql } from './nodes.js';
 
 // SQLite schema
@@ -29,6 +29,9 @@ export const messagesSqlite = sqliteTable('messages', {
   viaStoreForward: integer('viaStoreForward', { mode: 'boolean' }),
   // XEdDSA packet signing (firmware 2.8+): broadcast had a verified signature.
   xeddsaSigned: integer('xeddsaSigned', { mode: 'boolean' }),
+  // Ack proof verdict (firmware 2.8.1+, #5279): MeshPacket.AckProofStatus number
+  // from the ack/nak that settled this outbound DM. NULL = no status reported.
+  ackProofStatus: integer('ackProofStatus'),
   // meshtastic.MeshPacket.TransportMechanism the message arrived on (#5101).
   // NULL = pre-migration row -> classify by viaMqtt. Outbound sends store INTERNAL (0).
   transportMechanism: integer('transportMechanism'),
@@ -78,6 +81,8 @@ export const messagesPostgres = pgTable('messages', {
   viaMqtt: pgBoolean('viaMqtt'),
   viaStoreForward: pgBoolean('viaStoreForward'),
   xeddsaSigned: pgBoolean('xeddsaSigned'),
+  // Ack proof verdict (#5279). See SQLite definition.
+  ackProofStatus: pgSmallint('ackProofStatus'),
   // meshtastic.MeshPacket.TransportMechanism the message arrived on (#5101). See SQLite definition.
   transportMechanism: pgInteger('transportMechanism'),
   rxSnr: pgReal('rxSnr'),
@@ -121,6 +126,8 @@ export const messagesMysql = mysqlTable('messages', {
   viaMqtt: myBoolean('viaMqtt'),
   viaStoreForward: myBoolean('viaStoreForward'),
   xeddsaSigned: myBoolean('xeddsaSigned'),
+  // Ack proof verdict (#5279). See SQLite definition.
+  ackProofStatus: mySmallint('ackProofStatus'),
   // meshtastic.MeshPacket.TransportMechanism the message arrived on (#5101). See SQLite definition.
   transportMechanism: myInt('transportMechanism'),
   rxSnr: myDouble('rxSnr'),

@@ -25,6 +25,7 @@ import RelayNodeModal from './RelayNodeModal';
 import SearchableSelect, { type SearchableSelectOption } from './common/SearchableSelect';
 import './PacketMonitorPanel.css';
 import { UiIcon } from './icons';
+import { formatAckProofStatus } from '../utils/ackProof';
 
 interface PacketMonitorPanelProps {
   onClose: () => void;
@@ -1010,6 +1011,12 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
                     const { decoded_payload, ...otherMetadata } = parsedMetadata as Record<string, unknown>;
                     // Add other metadata fields
                     Object.assign(displayData, otherMetadata);
+                    // Ack proof verdict (#5279): stored as the enum number;
+                    // show its name alongside so the row reads on its own.
+                    if (displayData.ack_proof_status !== undefined) {
+                      displayData.ack_proof_status =
+                        formatAckProofStatus(displayData.ack_proof_status) ?? displayData.ack_proof_status;
+                    }
                     // Add decoded payload last so it appears at the bottom
                     if (decoded_payload) {
                       displayData.decoded_payload = decoded_payload;

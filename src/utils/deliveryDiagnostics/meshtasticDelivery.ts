@@ -7,9 +7,53 @@
 
 import { MeshMessage } from '../../types/message.js';
 import { getMeshtasticDeliveryState } from './status.js';
-import type { DeliveryDescription, DeliverySection, DeliveryTone, MessageDirection } from './types.js';
+import type { DeliveryDescription, DeliverySection, DeliveryTone, DiagField, MessageDirection } from './types.js';
 import { getRoutingErrorName } from '../routingErrors.js';
 import { getPortnumName } from '../packetFormat.js';
+import { AckProofStatus, normalizeAckProofStatus } from '../ackProof.js';
+
+/**
+ * "Ack proof" row (#5279) for an outbound DM, or null to hide it when the
+ * radio reported no status (older firmware, MQTT, channel broadcast).
+ * ABSENT / NO_KEY read as "not proven" and are never styled as a failure;
+ * on multi-hop paths a genuine receipt often reads ABSENT.
+ */
+export function buildAckProofField(ackProofStatus: number | null | undefined): DiagField | null {
+  const status = normalizeAckProofStatus(ackProofStatus);
+  if (status === undefined) return null;
+  const base = { labelKey: 'delivery_details.field.ack_proof', value: null, provenance: 'reported' as const };
+  switch (status) {
+    case AckProofStatus.VALID:
+      return {
+        ...base,
+        valueKey: 'delivery_details.value.ack_proof_valid',
+        valueTone: 'success',
+        tooltipKey: 'delivery_details.tooltip.ack_proof_valid',
+      };
+    case AckProofStatus.INVALID:
+      return {
+        ...base,
+        valueKey: 'delivery_details.value.ack_proof_invalid',
+        valueTone: 'warning',
+        tooltipKey: 'delivery_details.tooltip.ack_proof_invalid',
+      };
+    case AckProofStatus.NO_KEY:
+      return {
+        ...base,
+        valueKey: 'delivery_details.value.ack_proof_not_proven',
+        valueTone: 'muted',
+        tooltipKey: 'delivery_details.tooltip.ack_proof_no_key',
+      };
+    case AckProofStatus.ABSENT:
+    default:
+      return {
+        ...base,
+        valueKey: 'delivery_details.value.ack_proof_not_proven',
+        valueTone: 'muted',
+        tooltipKey: 'delivery_details.tooltip.ack_proof_absent',
+      };
+  }
+}
 
 /**
  * DM vs broadcast/channel convention used throughout the frontend
@@ -173,6 +217,8 @@ export function describeMeshtasticDelivery(
     ],
   };
 
+  const ackProofField = direction === 'sent' && dm ? buildAckProofField(msg.ackProofStatus) : null;
+
   const transportSection: DeliverySection = {
     titleKey: 'delivery_details.section.transport',
     fields: [
@@ -202,6 +248,8 @@ export function describeMeshtasticDelivery(
             : 'delivery_details.value.no',
         provenance: 'reported',
       },
+      // Ack proof verdict (#5279) — only when the radio reported one.
+      ...(ackProofField ? [ackProofField] : []),
       {
         labelKey: 'delivery_details.field.want_ack',
         value: null,
