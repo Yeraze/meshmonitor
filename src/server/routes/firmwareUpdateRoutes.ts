@@ -20,6 +20,10 @@ import { fail } from '../utils/apiResponse.js';
 import { refuseNonMeshtasticSource } from '../utils/requireMeshtasticDeviceSource.js';
 import { resolveSourceConnectionConfig } from '../utils/resolveSourceConnectionConfig.js';
 import databaseService from '../../services/database.js';
+import { extendRequestTimeout } from '../middleware/requestTimeout.js';
+
+/** Config restore: pushes every admin config section back to the node in sequence. */
+const RESTORE_TIMEOUT_MS = 200_000;
 
 const router = Router();
 
@@ -728,7 +732,7 @@ router.get('/backups', (_req: Request, res: Response) => {
  * POST /api/firmware/restore
  * Restore a config backup. Body: { gatewayIp, backupPath }
  */
-router.post('/restore', async (req: Request, res: Response) => {
+router.post('/restore', extendRequestTimeout(RESTORE_TIMEOUT_MS), async (req: Request, res: Response) => {
   try {
     const { gatewayIp, backupPath } = req.body;
 

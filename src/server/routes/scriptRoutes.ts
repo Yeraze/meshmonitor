@@ -19,6 +19,19 @@ import { getDependencyStatus, installDependencies } from '../services/scriptDepe
 import databaseService from '../../services/database.js';
 import { computeScriptUsage, type SourceTriggers } from '../utils/scriptUsage.js';
 import { ok, fail } from '../utils/apiResponse.js';
+import { extendRequestTimeout } from '../middleware/requestTimeout.js';
+
+// These routes can legitimately run past the 30s default socket timeout;
+// extend it per-route so the caller gets the real result instead of a
+// dropped-socket 504.
+/**
+ * Dependency install: pip and npm each run sequentially with their own
+ * INSTALL_TIMEOUT_MS (5 min, scriptDependencyService.ts) when both a Python
+ * and a Node manifest are present — worst case ~10 min. +15s margin.
+ */
+const SCRIPT_DEPENDENCY_INSTALL_TIMEOUT_MS = 615_000;
+/** Script test run: execFileAsync's own 30s timeout, +15s margin. */
+const SCRIPT_TEST_TIMEOUT_MS = 45_000;
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -336,7 +349,7 @@ router.get('/scripts/inventory', requirePermission('settings', 'read'), async (_
 
 // Script test endpoint - allows testing script execution with sample parameters
 // Supports triggerType: 'auto-responder' (default), 'geofence', or 'timer'
-router.post('/scripts/test', requirePermission('settings', 'read'), async (req: Request, res: Response) => {
+router.post('/scripts/test', extendRequestTimeout(SCRIPT_TEST_TIMEOUT_MS), requirePermission('settings', 'read'), async (req: Request, res: Response) => {
   const startTime = Date.now();
   try {
     const {
@@ -976,7 +989,7 @@ router.get('/scripts/dependencies', requirePermission('settings', 'read'), async
   }
 });
 
-router.post('/scripts/dependencies/install', requirePermission('settings', 'write'), async (_req: Request, res: Response) => {
+router.post('/scripts/dependencies/install', extendRequestTimeout(SCRIPT_DEPENDENCY_INSTALL_TIMEOUT_MS), requirePermission('settings', 'write'), async (_req: Request, res: Response) => {
   try {
     const result = await installDependencies();
     res.status(result.success ? 200 : 400).json(result);
