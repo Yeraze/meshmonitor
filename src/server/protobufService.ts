@@ -1,6 +1,6 @@
 import protobuf from 'protobufjs';
 import path from 'path';
-import { getProtobufRoot } from './protobufLoader.js';
+import { getProtobufRoot, resolveProtoImport } from './protobufLoader.js';
 import { buildSharedContactPayload } from './services/sharedContactService.js';
 import { logger } from '../utils/logger.js';
 import { PortNum, resolveHopLimit } from './constants/meshtastic.js';
@@ -182,15 +182,7 @@ class ProtobufService {
 
       // Load mesh.proto with the proper root path for imports
       this.root = new protobuf.Root();
-      this.root.resolvePath = (origin: string, target: string) => {
-        logger.debug(`Resolving import: origin=${origin}, target=${target}`);
-        if (target.startsWith('meshtastic/')) {
-          const resolved = path.join(protoDir, target);
-          logger.debug(`Resolved to: ${resolved}`);
-          return resolved;
-        }
-        return protobuf.util.path.resolve(origin, target);
-      };
+      this.root.resolvePath = (origin: string, target: string) => resolveProtoImport(protoDir, origin, target);
 
       await this.root.load(path.join(protoDir, 'meshtastic/mesh.proto'));
 
