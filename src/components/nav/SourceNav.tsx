@@ -65,6 +65,14 @@ export interface SourceNavProps {
   onToggleCollapsed?: () => void;
   collapseLabel?: string;
   expandLabel?: string;
+  /**
+   * With `onToggleCollapsed`, adds a pin toggle to the built-in controls while
+   * expanded (#5481). The consumer owns the state (see `useSidebarPin`).
+   */
+  pinned?: boolean;
+  onTogglePin?: () => void;
+  pinLabel?: string;
+  unpinLabel?: string;
   /** Extra class on the root, for consumer-specific positioning. */
   className?: string;
   ariaLabel?: string;
@@ -81,6 +89,10 @@ export const SourceNav: React.FC<SourceNavProps> = ({
   onToggleCollapsed,
   collapseLabel = 'Collapse',
   expandLabel = 'Expand',
+  pinned = false,
+  onTogglePin,
+  pinLabel = 'Pin sidebar',
+  unpinLabel = 'Unpin sidebar',
   className,
   ariaLabel,
 }) => {
@@ -239,6 +251,20 @@ export const SourceNav: React.FC<SourceNavProps> = ({
         <div className={styles.controlsSlot} data-source-nav-controls="">{controls}</div>
       ) : (onToggleCollapsed && (
         <div className={`${styles.controls} ${styles.controlsSlot}`} data-source-nav-controls="">
+          {onTogglePin && !collapsed && (
+            <button
+              type="button"
+              className={`${styles.toggle} ${pinned ? styles.pinned : ''}`}
+              data-source-nav-pin=""
+              data-pinned={pinned ? 'true' : 'false'}
+              onClick={onTogglePin}
+              title={pinned ? unpinLabel : pinLabel}
+              aria-label={pinned ? unpinLabel : pinLabel}
+              aria-pressed={pinned}
+            >
+              <UiIcon name="pin" size={18} />
+            </button>
+          )}
           <button
             type="button"
             className={styles.toggle}

@@ -178,6 +178,18 @@
   background: var(--color-surface-hover);
 }
 
+/* Pinned state for the pin toggle (#5481), same language as Sidebar.css. */
+.toggle.pinned {
+  background: var(--color-success);
+  border-color: var(--color-success);
+  color: var(--color-bg-sunken);
+}
+
+.toggle.pinned:hover {
+  background: color-mix(in srgb, var(--color-success) 85%, var(--color-text));
+  border-color: color-mix(in srgb, var(--color-success) 85%, var(--color-text));
+}
+
 /* ============================================================
  * Mobile
  *

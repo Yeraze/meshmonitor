@@ -6,6 +6,7 @@ import { ResourceType } from '../types/permission';
 import { UiIcon, type UiIconName } from './icons';
 import SidebarFooter from './SidebarFooter';
 import { SourceNav, type SourceNavItem, type SourceNavSection } from './nav/SourceNav';
+import { readSidebarPinned, useSidebarPin } from './nav/useSidebarPin';
 
 interface UnreadCountsData {
   channels?: {[channelId: number]: number};
@@ -77,25 +78,17 @@ const Sidebar: React.FC<SidebarProps> = ({
   const noDeviceConfig = mqttReadOnly || hideDeviceConfig;
   const { t } = useTranslation();
 
-  // Pin state persisted to localStorage - when pinned, sidebar won't auto-collapse on nav click
-  const [isPinned, setIsPinned] = useState(() => {
-    const saved = localStorage.getItem('sidebar-pinned');
-    return saved === 'true';
-  });
+  // Pin state is shared with every per-source nav (#5481) - when pinned, the
+  // sidebar won't auto-collapse on nav click.
+  const { isPinned, togglePin: toggleStoredPin } = useSidebarPin();
   // Start collapsed (narrow/icon-only) by default for cleaner desktop UI, but if
   // the sidebar was pinned expanded, honor that on load instead of rendering
   // collapsed-with-pin-selected.
-  const [isCollapsed, setIsCollapsed] = useState(() => {
-    return localStorage.getItem('sidebar-pinned') !== 'true';
-  });
+  const [isCollapsed, setIsCollapsed] = useState(() => !readSidebarPinned());
 
-  // Persist pin state to localStorage
   const togglePin = () => {
-    const newPinned = !isPinned;
-    setIsPinned(newPinned);
-    localStorage.setItem('sidebar-pinned', String(newPinned));
     // When pinning, expand the sidebar if collapsed
-    if (newPinned && isCollapsed) {
+    if (toggleStoredPin() && isCollapsed) {
       setIsCollapsed(false);
     }
   };
