@@ -378,6 +378,21 @@ function ActionView({ a }: { a: SimResult['actions'][number] }) {
     headline = `Request ${op}${tt}${reach}${tgt}`;
   } else if (a.type === 'action.deviceReboot') {
     headline = `Reboot device${p.seconds != null ? ` (delay ${String(p.seconds)}s)` : ''}`;
+  } else if (a.type === 'action.broadcastWaypoint') {
+    // Dry run (#5482): nothing is written or sent. The live run also skips a
+    // send inside the 30-minute floor, or when onlyWhenChanged sees no change.
+    const hop = p.hopLimit == null ? "the node's hop limit" : `hop limit ${String(p.hopLimit)}`;
+    headline = `Broadcast waypoint${p.name ? ` “${String(p.name)}”` : ''} → channel ${String(p.channel ?? 0)}, ${hop}`;
+    const expiry = typeof p.expireAt === 'number' ? `, expires ${new Date(p.expireAt * 1000).toLocaleString()}` : '';
+    sent = (
+      <div className="ae-test-sent">
+        {p.icon ? `${String(p.icon)} ` : ''}{String(p.latitude ?? '')}, {String(p.longitude ?? '')}{expiry}
+        {p.description ? <div>{String(p.description)}</div> : null}
+        <div className="ae-muted">
+          At most once per 30 minutes per waypoint{p.onlyWhenChanged ? ', and only when it changed' : ''}.
+        </div>
+      </div>
+    );
   } else if (a.type === 'action.setAutomationEnabled') {
     // Dry run: nothing is written, this reports what WOULD change (#5445).
     const target = p.name ? `“${String(p.name)}”` : String(p.automationId ?? '');
