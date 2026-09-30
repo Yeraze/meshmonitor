@@ -9,12 +9,12 @@
  * color) pair, and register it lazily through MapLibre's `styleimagemissing`
  * event — so only the combinations actually on screen are ever generated.
  *
- * Icon id format is `"<family>_<hexColor>"` (e.g. `"repeater_#0000FF"`). The
+ * Icon id format is `"<family>_<hexColor>"` (e.g. `"router_#0000FF"`). The
  * `standard` family has no glyph and keeps the shared SDF disc instead, so it
  * never routes through here.
  */
-import { roleGlyphMarkerSvg } from '../../utils/roleGlyphSvg';
-import type { NodeTypeCategory } from '../../utils/nodeTypeCategory';
+import { glyphFamilyMarkerSvg } from '../../utils/roleGlyphSvg';
+import type { GlyphFamily } from '../../utils/nodeTypeCategory';
 
 /** Source resolution of a generated glyph image (device px). */
 export const GLYPH_ICON_SIZE = 64;
@@ -45,7 +45,7 @@ export async function rasterizeGlyphIcon(
   color: string,
   size: number = GLYPH_ICON_SIZE,
 ): Promise<ImageData | null> {
-  const svg = roleGlyphMarkerSvg(family as NodeTypeCategory, color, size);
+  const svg = glyphFamilyMarkerSvg(family as GlyphFamily, color, size);
   if (!svg) return null;
   const url = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
   const img = new Image();

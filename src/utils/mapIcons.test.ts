@@ -193,9 +193,22 @@ describe('roleGlyphMarkerSvg', () => {
   });
 
   it('renders Meshtastic role categories via their shared glyph family (issue #3610)', () => {
-    // A Meshtastic ROUTER draws as the repeater tower; identical markup.
-    expect(roleGlyphMarkerSvg('mtRouter', COLOR, 24)).toBe(roleGlyphMarkerSvg('repeater', COLOR, 24));
     expect(roleGlyphMarkerSvg('mtSensor', COLOR, 24)).toBe(roleGlyphMarkerSvg('sensor', COLOR, 24));
+    // ROUTER and REPEATER share the Meshtastic tower.
+    expect(roleGlyphMarkerSvg('mtRepeater', COLOR, 24)).toBe(roleGlyphMarkerSvg('mtRouter', COLOR, 24));
+  });
+
+  it('draws a Meshtastic ROUTER and a MeshCore Repeater with different glyphs (#5491)', () => {
+    const mtRouter = roleGlyphMarkerSvg('mtRouter', COLOR, 24);
+    const mcRepeater = roleGlyphMarkerSvg('repeater', COLOR, 24);
+    expect(mtRouter).not.toBe('');
+    expect(mcRepeater).not.toBe('');
+    expect(mtRouter).not.toBe(mcRepeater);
+    // The tower's mast is Meshtastic-only; ROUTER_LATE keeps it too.
+    const mast = 'x="22.5" y="4" width="3" height="12"';
+    expect(mtRouter).toContain(mast);
+    expect(roleGlyphMarkerSvg('mtRouterLate', COLOR, 24)).toContain(mast);
+    expect(mcRepeater).not.toContain(mast);
   });
 
   it('renders ROUTER_LATE as the tower plus a distinguishing clock badge (issue #4295)', () => {
