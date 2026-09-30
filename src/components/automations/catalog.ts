@@ -7,7 +7,7 @@
  */
 import { HOP_COUNT_EMOJIS, HOP_EMOJI_MAX, MQTT_SOURCE_EMOJI } from '../../utils/hopEmoji';
 
-export type FieldKind = 'text' | 'number' | 'nodeNum' | 'textarea' | 'select' | 'checkbox' | 'variable' | 'emoji' | 'fieldselect' | 'sourceMulti' | 'sendSourceMulti' | 'channelMulti' | 'geofence' | 'scriptselect' | 'regionSelect' | 'nodeMulti' | 'automationSelect';
+export type FieldKind = 'text' | 'number' | 'nodeNum' | 'textarea' | 'select' | 'checkbox' | 'variable' | 'emoji' | 'fieldselect' | 'sourceMulti' | 'sendSourceMulti' | 'channelMulti' | 'geofence' | 'scriptselect' | 'regionSelect' | 'nodeMulti' | 'automationSelect' | 'meshtasticSourceSelect';
 
 export interface FieldOpt { value: string; label: string; }
 export interface FieldGroup { label: string; options: FieldOpt[]; }
@@ -35,6 +35,8 @@ export interface FieldDef {
   absentValue?: string;
   /** `select` only: a warning rendered next to the control while the (effective) value matches a key. */
   warningByValue?: Record<string, string>;
+  /** `select` only: a warning shown next to the control whatever its value (used when no `warningByValue` entry matches). */
+  warning?: string;
   advanced?: boolean;
   /** This `text`/`textarea` field accepts `{{ }}` tokens → highlight + typo-check. */
   tokens?: boolean;
@@ -125,6 +127,23 @@ const HOP_LIMIT_FIELD: FieldDef = {
     ...[1, 2, 3, 4, 5, 6, 7].map((n) => ({ value: String(n), label: String(n) })),
   ],
   help: "Meshtastic only. Capped at the sending node's own hop limit, so this can only shorten how far the message travels, never extend it. 0 keeps it to nodes that hear this radio directly: it is sent once with no delivery confirmation and no resend, because the firmware only honors a zero hop limit on a send that does not ask for an ACK.",
+};
+
+/**
+ * Hop limit for action.broadcastWaypoint (#5482). Same values and clamp as
+ * {@link HOP_LIMIT_FIELD}, but always visible and always warning: a waypoint is
+ * a broadcast, so its hop limit is the only thing bounding how many nodes
+ * rebroadcast it. Waypoints are broadcasts with no ACK, so the zero-hop ACK
+ * caveat in HOP_LIMIT_FIELD does not apply.
+ */
+export const WAYPOINT_HOP_LIMIT_WARNING =
+  'Every node within this many hops rebroadcasts the waypoint. On a 30-node mesh at 3 hops one send is about 30 transmissions (~30 s of channel time). Use the lowest value that reaches the area you need; 0 reaches only nodes that hear this radio directly.';
+
+const WAYPOINT_HOP_LIMIT_FIELD: FieldDef = {
+  ...HOP_LIMIT_FIELD,
+  advanced: false,
+  warning: WAYPOINT_HOP_LIMIT_WARNING,
+  help: "Capped at the sending node's own hop limit, so this can only shorten how far the waypoint travels, never extend it. Inherit uses the node's configured hop limit.",
 };
 
 export const TRIGGERS: BlockDef[] = [
@@ -759,6 +778,30 @@ export const ACTIONS: BlockDef[] = [
       { name: 'sourceIds', label: 'Via sources', kind: 'sendSourceMulti', help: 'Which radio(s) to send the request through. Leave none to use the triggering source — but a source IS required for source-less triggers (Schedule / System).' },
       { name: 'to', label: 'Target node', kind: 'text', tokens: true, advanced: true, placeholder: 'blank = triggering node; {{ trigger.from }}', help: 'Node # (Meshtastic) or contact public key (MeshCore). Leave blank to target the triggering node. Not used for "Announce self".' },
       { name: 'channel', label: 'Channel #', kind: 'number', advanced: true, placeholder: 'blank = triggering channel', help: 'Meshtastic: which channel to send the request on — e.g. a private sensor channel. Ignored by MeshCore.' },
+    ],
+  },
+  {
+    type: 'action.broadcastWaypoint',
+    label: 'Broadcast a waypoint',
+    description: 'Create or update a Meshtastic waypoint and broadcast it (e.g. a border wait time from a script). Each run updates the same waypoint. A waypoint goes out at most once per 30 minutes; runs in between update it on the map without sending.',
+    fields: [
+      { name: 'sourceId', label: 'Send via source', kind: 'meshtasticSourceSelect', help: 'The Meshtastic radio that owns and broadcasts this waypoint.' },
+      {
+        name: 'waypointKey', label: 'Waypoint key', kind: 'text', tokens: true, placeholder: 'e.g. border-north',
+        help: 'Names this waypoint within the automation, so each run updates it instead of creating a new one. Use a different key for each waypoint. Accepts {{ var.* }} only.',
+      },
+      { name: 'latitude', label: 'Latitude', kind: 'text', tokens: true, placeholder: '32.5423 or {{ var.wait.lat }}' },
+      { name: 'longitude', label: 'Longitude', kind: 'text', tokens: true, placeholder: '-117.0291 or {{ var.wait.lon }}' },
+      { name: 'name', label: 'Name', kind: 'text', tokens: true, placeholder: 'San Ysidro {{ var.wait.minutes }} min', help: 'Up to 29 bytes; longer names are cut short.' },
+      { name: 'description', label: 'Description', kind: 'textarea', tokens: true, help: 'Up to 99 bytes; longer text is cut short.' },
+      { name: 'icon', label: 'Icon', kind: 'emoji', placeholder: '📍' },
+      { name: 'expireHours', label: 'Expires after (hours)', kind: 'text', tokens: true, placeholder: 'blank = never', help: 'Counted from each run. Up to 720 hours (30 days).' },
+      { name: 'channel', label: 'Channel #', kind: 'number', placeholder: '0', help: 'Device channel slot (0–7) the waypoint is broadcast on.' },
+      WAYPOINT_HOP_LIMIT_FIELD,
+      {
+        name: 'onlyWhenChanged', label: 'Only send when changed', kind: 'checkbox',
+        help: 'Skip the send when the name, description, position, icon, expiry, channel and hop limit match what was last sent. Off: send on every run allowed by the 30-minute limit.',
+      },
     ],
   },
   {

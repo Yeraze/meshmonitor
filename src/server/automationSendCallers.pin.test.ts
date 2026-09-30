@@ -71,13 +71,18 @@ const EXPECTED: Record<string, number> = {
   // (the "Send Announcement" button is manual). Plus the scheduler's calls.
   'src/server/services/autoAnnounceService.ts': 5,
   'src/server/services/autoFavoriteManagementService.ts': 1,
+  // Automation Engine: action.broadcastWaypoint calls deps.broadcastWaypoint
+  // (#5482); the real dep is waypointService.upsertAndBroadcastForAutomation,
+  // which tags the send.
+  'src/server/services/automation/actionExecutor.ts': 1,
   // Automation Engine actions — all tagged.
   'src/server/services/automation/meshActionDeps.ts': 9,
   // Manual via routes (copyNodeInfo), automation via the enrichment scheduler
   // (pushNodeInfoRequestForNode) — the origin is a parameter.
   'src/server/services/nodeInfoCopyService.ts': 1,
-  // Scheduled waypoint rebroadcast — tagged.
-  'src/server/services/waypointService.ts': 1,
+  // Scheduled waypoint rebroadcast and the Automation Engine waypoint
+  // action (#5482) — both tagged.
+  'src/server/services/waypointService.ts': 2,
 };
 
 function walk(dir: string, out: string[]): void {

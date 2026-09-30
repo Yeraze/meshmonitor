@@ -150,6 +150,8 @@ function recordingDeps(lookupAutomation?: SimulateOptions['lookupAutomation']): 
     // Dry-run must never actually reboot a device — report the resolved params.
     async rebootDevice(a) { return { action: 'deviceReboot', ...a }; },
     async notify(a) { return { action: 'notify', ...a }; },
+    // Dry-run must never write a waypoint or key the mesh — report the resolved params.
+    async broadcastWaypoint(a) { return { action: 'broadcastWaypoint', ...a }; },
     // Dry-run must never spawn a process — report success without executing.
     async runScript() { return { success: true, stdout: '' }; },
     // Dry-run must never actually wait — resolve the pause instantly.

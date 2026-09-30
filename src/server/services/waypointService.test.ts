@@ -328,6 +328,23 @@ describe('rebroadcastTick', () => {
     expect(emit.mock.calls.find((c) => c[0] === 'upserted')).toBeTruthy();
   });
 
+  // #5482 — the scheduler sends with the waypoint's stored hop limit; NULL
+  // leaves the choice to the manager (the node's configured limit).
+  it.each([[2, 2], [null, null]])('passes the stored hop limit %s to broadcastWaypoint', async (stored, expected) => {
+    mockFindOldestEligible.mockResolvedValueOnce(eligibleRow({ hopLimit: stored, channel: 3 }));
+    const broadcastWaypoint = vi.fn().mockResolvedValue(42);
+    mockGetManager.mockReturnValueOnce({ broadcastWaypoint });
+    mockMarkRebroadcasted.mockResolvedValueOnce(true);
+    mockGet.mockResolvedValueOnce(eligibleRow());
+
+    await waypointService.rebroadcastTick();
+
+    expect(broadcastWaypoint).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 7 }),
+      { channel: 3, origin: 'automation', hopLimit: expected },
+    );
+  });
+
   // #4294 WP3 — TX-disabled Meshtastic sources must not attempt the OTA send.
   describe('TX-disabled skip (#4294 WP3)', () => {
     it('does NOT stamp lastBroadcastAt or call broadcastWaypoint when the source manager reports TX disabled', async () => {

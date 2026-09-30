@@ -21,6 +21,9 @@ import { dataEventEmitter } from './dataEventEmitter.js';
 import { sourceManagerRegistry } from '../sourceManagerRegistry.js';
 import { waypointNotificationService } from './waypointNotificationService.js';
 import type { Waypoint } from '../../db/repositories/waypoints.js';
+import { isMeshtasticManager } from '../sourceManagerTypes.js';
+import { TxDisabledError } from '../errors/txDisabledError.js';
+import { WAYPOINT_AUTOMATION_MIN_INTERVAL_SECONDS } from '../../types/automation.js';
 
 /** Default emoji shown when a waypoint arrives without a valid icon codepoint. */
 const FALLBACK_ICON = '\u{1F4CD}'; // 📍
@@ -97,6 +100,8 @@ export interface CreateLocalInput {
   /** Device channel slot to broadcast on. null/undefined = slot 0 (#4341). */
   channel?: number | null;
   rebroadcastIntervalS?: number | null;
+  /** Hop limit 0-7; null/undefined = the node's configured limit (#5482). */
+  hopLimit?: number | null;
 }
 
 export interface UpdateInput {
@@ -109,6 +114,8 @@ export interface UpdateInput {
   lockedTo?: number | null;
   channel?: number | null;
   rebroadcastIntervalS?: number | null;
+  /** undefined = keep; null = inherit the node's configured limit (#5482). */
+  hopLimit?: number | null;
   isVirtual?: boolean;
 }
 
@@ -124,6 +131,82 @@ export function normalizeWaypointChannel(channel: number | null | undefined): nu
   const n = Number(channel);
   if (!Number.isInteger(n) || n < 0 || n > 7) return 0;
   return n;
+}
+
+/**
+ * Usable bytes in the firmware's Waypoint strings. nanopb `max_size` counts the
+ * NUL terminator, so `name max_size:30` holds 29 bytes and `description
+ * max_size:100` holds 99 (protobufs/meshtastic/mesh.options).
+ */
+export const WAYPOINT_NAME_MAX_BYTES = 29;
+export const WAYPOINT_DESCRIPTION_MAX_BYTES = 99;
+
+/** Trim a string to at most `maxBytes` of UTF-8 without splitting a code point. */
+export function truncateUtf8(s: string, maxBytes: number): string {
+  const enc = new TextEncoder();
+  if (enc.encode(s).length <= maxBytes) return s;
+  let out = '';
+  let used = 0;
+  for (const ch of s) {
+    const n = enc.encode(ch).length;
+    if (used + n > maxBytes) break;
+    out += ch;
+    used += n;
+  }
+  return out;
+}
+
+/** What an automation step asks for (#5482). Values are already interpolated and range-checked. */
+export interface AutomationWaypointInput {
+  sourceId: string;
+  /** `<automationId>:<waypointKey>` — stable across runs and restarts. */
+  automationKey: string;
+  latitude: number;
+  longitude: number;
+  name: string;
+  description: string;
+  /** A single emoji, or null for the default pin. */
+  icon: string | null;
+  /** Epoch seconds, or null for no expiry. */
+  expireAt: number | null;
+  channel: number;
+  /** 0-7, or null to use the node's configured hop limit. */
+  hopLimit: number | null;
+  onlyWhenChanged: boolean;
+}
+
+/** Why an automation step updated its waypoint but did not send it. */
+export type AutomationWaypointSkipReason = 'MIN_INTERVAL' | 'UNCHANGED' | 'NOT_CONNECTED';
+
+export interface AutomationWaypointResult {
+  waypointId: number;
+  sent: boolean;
+  packetId?: number;
+  skipped?: true;
+  reason?: AutomationWaypointSkipReason;
+  /** Epoch seconds when the 30-minute floor next allows a send (MIN_INTERVAL only). */
+  nextAllowedAt?: number;
+}
+
+/**
+ * Digest of the fields that go on the air for an automation waypoint. Two runs
+ * with the same digest would put the same packet on the mesh (#5482).
+ */
+export function automationWaypointFingerprint(w: {
+  latitude: number; longitude: number; name: string; description: string;
+  iconCodepoint: number | null; expireAt: number | null; channel: number; hopLimit: number | null;
+}): string {
+  const canonical = JSON.stringify([
+    Math.round(w.latitude * 1e7),
+    Math.round(w.longitude * 1e7),
+    w.name,
+    w.description,
+    w.iconCodepoint ?? 0,
+    w.expireAt ?? 0,
+    w.channel,
+    w.hopLimit ?? null,
+  ]);
+  return crypto.createHash('sha256').update(canonical).digest('hex');
 }
 
 class WaypointService {
@@ -271,6 +354,7 @@ class WaypointService {
       isVirtual: Boolean(options.virtual),
       channel: normalizeWaypointChannel(fields.channel),
       rebroadcastIntervalS: fields.rebroadcastIntervalS ?? null,
+      hopLimit: fields.hopLimit ?? null,
     });
 
     dataEventEmitter.emitWaypointUpserted(persisted, sourceId);
@@ -325,10 +409,140 @@ class WaypointService {
         fields.rebroadcastIntervalS === undefined
           ? existing.rebroadcastIntervalS
           : fields.rebroadcastIntervalS,
+      hopLimit: fields.hopLimit === undefined ? existing.hopLimit : fields.hopLimit,
     });
 
     dataEventEmitter.emitWaypointUpserted(persisted, sourceId);
     return persisted;
+  }
+
+  /**
+   * Automation Engine `action.broadcastWaypoint` (#5482). Upserts the waypoint
+   * this step owns (found by `automationKey`, so the id is stable across runs
+   * and restarts), then sends it unless:
+   *
+   * - it went out less than 30 minutes ago — read from the persisted
+   *   `lastBroadcastAt`, so neither a save of the automation nor a restart can
+   *   re-arm the floor;
+   * - `onlyWhenChanged` is set and the content matches what this step last sent;
+   * - the source cannot transmit (throws {@link TxDisabledError}, which the
+   *   executor records as a skip, the same as action.sendMessage).
+   *
+   * The row is updated even when the send is skipped, so the map and the
+   * periodic rebroadcaster see the fresh content. Only a successful send stamps
+   * `lastBroadcastAt`.
+   */
+  async upsertAndBroadcastForAutomation(
+    input: AutomationWaypointInput,
+    nowSec?: number,
+  ): Promise<AutomationWaypointResult> {
+    // Serialize runs per (source, automation waypoint). The 30-minute floor is
+    // read-then-stamp, so two overlapping trigger events for the same waypoint
+    // would otherwise both pass it and both transmit. Each run reads the clock
+    // once it holds the lock, so a queued run sees the stamp the previous one
+    // wrote.
+    const lockKey = `${input.sourceId}\u0000${input.automationKey}`;
+    const previous = this.automationLocks.get(lockKey) ?? Promise.resolve();
+    const run = previous
+      .catch(() => undefined)
+      .then(() => this.upsertAndBroadcastForAutomationLocked(input, nowSec ?? Math.floor(Date.now() / 1000)));
+    const settled = run.then(() => undefined, () => undefined);
+    this.automationLocks.set(lockKey, settled);
+    void settled.then(() => {
+      if (this.automationLocks.get(lockKey) === settled) this.automationLocks.delete(lockKey);
+    });
+    return run;
+  }
+
+  /** Per-waypoint run queue for {@link upsertAndBroadcastForAutomation}. */
+  private automationLocks = new Map<string, Promise<void>>();
+
+  private async upsertAndBroadcastForAutomationLocked(
+    input: AutomationWaypointInput,
+    nowSec: number,
+  ): Promise<AutomationWaypointResult> {
+    const manager = sourceManagerRegistry.getManager(input.sourceId);
+    if (!manager || !isMeshtasticManager(manager)) {
+      throw new Error(`source "${input.sourceId}" is not a Meshtastic source; waypoints are Meshtastic-only`);
+    }
+
+    const existing = await databaseService.waypoints.getByAutomationKeyAsync(input.sourceId, input.automationKey);
+    const waypointId = existing?.waypointId ?? (await this.generateLocalIdAsync(input.sourceId));
+    const iconCodepoint = emojiToCodepoint(input.icon);
+    const iconEmoji = codepointToEmoji(iconCodepoint) ?? FALLBACK_ICON;
+    const name = truncateUtf8(input.name, WAYPOINT_NAME_MAX_BYTES);
+    const description = truncateUtf8(input.description, WAYPOINT_DESCRIPTION_MAX_BYTES);
+    const ownerNodeNum = manager.getLocalNodeInfo()?.nodeNum ?? existing?.ownerNodeNum ?? null;
+
+    const persisted = await databaseService.waypoints.upsertAsync({
+      sourceId: input.sourceId,
+      waypointId,
+      ownerNodeNum,
+      latitude: input.latitude,
+      longitude: input.longitude,
+      expireAt: input.expireAt,
+      lockedTo: null,
+      name,
+      description,
+      iconCodepoint,
+      iconEmoji,
+      isVirtual: false,
+      channel: input.channel,
+      hopLimit: input.hopLimit,
+      automationKey: input.automationKey,
+    });
+    dataEventEmitter.emitWaypointUpserted(persisted, input.sourceId);
+
+    const fingerprint = automationWaypointFingerprint({
+      latitude: persisted.latitude,
+      longitude: persisted.longitude,
+      name: persisted.name,
+      description: persisted.description,
+      iconCodepoint: persisted.iconCodepoint,
+      expireAt: persisted.expireAt,
+      channel: input.channel,
+      hopLimit: persisted.hopLimit,
+    });
+
+    const last = persisted.lastBroadcastAt;
+    if (last != null && nowSec - last < WAYPOINT_AUTOMATION_MIN_INTERVAL_SECONDS) {
+      return {
+        waypointId,
+        sent: false,
+        skipped: true,
+        reason: 'MIN_INTERVAL',
+        nextAllowedAt: last + WAYPOINT_AUTOMATION_MIN_INTERVAL_SECONDS,
+      };
+    }
+    if (input.onlyWhenChanged && persisted.broadcastFingerprint === fingerprint) {
+      return { waypointId, sent: false, skipped: true, reason: 'UNCHANGED' };
+    }
+    if (!manager.canTransmit()) {
+      throw new TxDisabledError();
+    }
+
+    const packetId = await manager.broadcastWaypoint(
+      {
+        id: waypointId,
+        latitude: persisted.latitude,
+        longitude: persisted.longitude,
+        expire: persisted.expireAt ?? 0,
+        lockedTo: 0,
+        name: persisted.name,
+        description: persisted.description,
+        icon: persisted.iconCodepoint ?? 0,
+      },
+      { channel: input.channel, origin: 'automation', hopLimit: persisted.hopLimit },
+    );
+    if (!packetId) {
+      // Not connected / encode failed: nothing went out, so the floor is not stamped.
+      return { waypointId, sent: false, skipped: true, reason: 'NOT_CONNECTED' };
+    }
+
+    await databaseService.waypoints.markAutomationBroadcastAsync(input.sourceId, waypointId, nowSec, fingerprint);
+    const refreshed = await databaseService.waypoints.getAsync(input.sourceId, waypointId);
+    if (refreshed) dataEventEmitter.emitWaypointUpserted(refreshed, input.sourceId);
+    return { waypointId, sent: true, packetId };
   }
 
   /** Delete a waypoint locally with the same lockedTo enforcement as update. */
@@ -409,7 +623,12 @@ class WaypointService {
         // Rebroadcast on the channel the waypoint was created with (#4341);
         // rows predating the column have `channel === null` and stay on 0.
         // Scheduler-driven rebroadcast — automation traffic (#5414).
-        { channel: normalizeWaypointChannel(candidate.channel), origin: 'automation' },
+        // Stored hop limit; NULL = the node's configured limit (#5482).
+        {
+          channel: normalizeWaypointChannel(candidate.channel),
+          origin: 'automation',
+          hopLimit: candidate.hopLimit,
+        },
       );
 
       if (!packetId) {

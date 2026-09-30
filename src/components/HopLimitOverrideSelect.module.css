@@ -29,3 +29,12 @@
   font-size: 0.85rem;
   color: var(--color-caution);
 }
+
+.warning {
+  display: flex;
+  gap: 0.35rem;
+  align-items: flex-start;
+  margin-top: 0.5rem;
+  font-size: 0.85rem;
+  color: var(--color-caution);
+}

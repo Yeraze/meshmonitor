@@ -58,6 +58,7 @@ Authoring is available on the per-source dashboard map for users with `waypoints
    - **Icon** — pick an emoji from the picker (rendered with VS-16 forcing so it shows as an emoji on every platform)
    - **Lock to me** — only your node can edit this waypoint after broadcast
    - **Expires** — toggle on to set an expiry timestamp; off means "never expires"
+   - **Hop limit** — how many hops the waypoint may travel. Blank uses the node's own hop limit. A value is capped at that limit, so it can only shorten reach.
    - **Channel** — which of the source's channels the waypoint is broadcast on. The list comes from the waypoint's own source, so you only ever see channels that source can transmit on. Leave it alone and the waypoint goes out on Primary (slot 0), the channel every waypoint used before this option existed. The picker is disabled for virtual waypoints, which are never transmitted.
 5. Click **Save**. MeshMonitor allocates a waypoint id (Python-style id allocation), persists the row, and broadcasts a WAYPOINT_APP packet to the mesh.
 
@@ -84,6 +85,8 @@ All mutations require the standard `X-CSRF-Token` header. Mutations on a waypoin
 
 `POST` and `PATCH` accept an optional `channel` field — an integer device channel slot `0`-`7`. Anything else returns `400`. Omit it and the waypoint stays on slot 0.
 
+`POST` and `PATCH` also accept `hop_limit` (or `hopLimit`): an integer `0`-`7`, or `null` to use the node's configured hop limit. Anything else returns `400` with code `INVALID_HOP_LIMIT`. The stored value is what you asked for; at send time it is capped at the node's own hop limit. `GET` returns it as `hopLimit`.
+
 ## Database
 
 Waypoints live in a per-source `waypoints` table introduced in migration **053**, with composite primary key `(sourceId, waypointId)`, a foreign key to `sources` with `ON DELETE CASCADE`, and indexes on `(sourceId, expireAt)` and `(sourceId, ownerNodeNum)`.
@@ -91,6 +94,10 @@ Waypoints live in a per-source `waypoints` table introduced in migration **053**
 Migrations **054** / **055** seed the new `waypoints:read` / `waypoints:write` permissions for existing users by cloning their `messages` grants per source.
 
 Migration **130** adds the `channel` column that records which slot a waypoint is broadcast on. Rows created before it read back as `NULL`, which every send site treats as slot 0 — the same channel they always used.
+
+Migration **183** adds `hop_limit` (`NULL` = the node's configured hop limit, which every earlier row gets), plus `automation_key` and `broadcast_fingerprint`, used by the Automation Engine's [Broadcast a waypoint](/features/automation-engine#broadcast-a-waypoint) action.
+
+Waypoints used to go out at a fixed hop limit of 3. They now use the node's configured LoRa hop limit unless the waypoint sets its own.
 
 The daily database maintenance tick sweeps expired waypoints (with a grace window) and emits `waypoint:expired` events for each removed row.
 

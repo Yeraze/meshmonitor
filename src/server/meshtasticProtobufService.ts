@@ -519,6 +519,12 @@ export class MeshtasticProtobufService {
    * tombstone, use a non-zero past epoch (e.g. `expire = 1`) — that matches
    * the Meshtastic-Apple convention. `expire = 0` means "no expiration" and
    * is NOT treated as a delete by other clients.
+   *
+   * `options.hopLimit` is the already-resolved wire value (the caller clamps it
+   * to the node's configured limit, #5482). Omitted, the packet leaves
+   * `hop_limit` unset and the firmware applies the node's own value. A DM sent
+   * with hop limit 0 goes out without `want_ack`: the firmware rewrites hop 0 to
+   * the node default on want_ack packets from the phone API (#5121).
    */
   createWaypointMessage(waypoint: {
     id: number;
@@ -529,7 +535,7 @@ export class MeshtasticProtobufService {
     name?: string;
     description?: string;
     icon?: number; // unicode codepoint
-  }, options?: { destination?: number; channel?: number }): { data: Uint8Array; packetId: number } {
+  }, options?: { destination?: number; channel?: number; hopLimit?: number }): { data: Uint8Array; packetId: number } {
     const root = getProtobufRoot();
     if (!root) {
       logger.error('❌ Protobuf definitions not loaded');
@@ -562,15 +568,20 @@ export class MeshtasticProtobufService {
       const validChannel = (options?.channel !== undefined && options.channel >= 0 && options.channel <= 7) ? options.channel : 0;
       const isBroadcast = destination === 0xffffffff;
 
+      const hopLimit = options?.hopLimit;
+      const hasHopLimit = hopLimit !== undefined && Number.isInteger(hopLimit) && hopLimit >= 0 && hopLimit <= 7;
+      const zeroHop = hasHopLimit && hopLimit === 0;
+
       const MeshPacket = root.lookupType('meshtastic.MeshPacket');
-      const meshPacket = MeshPacket.create({
+      const packetFields: Record<string, unknown> = {
         id: packetId,
         to: destination,
         channel: validChannel,
         decoded: dataMessage,
-        wantAck: !isBroadcast,
-        hopLimit: 3,
-      });
+        wantAck: !isBroadcast && !zeroHop,
+      };
+      if (hasHopLimit) packetFields.hopLimit = hopLimit;
+      const meshPacket = MeshPacket.create(packetFields);
 
       const ToRadio = root.lookupType('meshtastic.ToRadio');
       const toRadio = ToRadio.create({ packet: meshPacket });
