@@ -51,6 +51,12 @@ export const waypointsSqlite = sqliteTable('waypoints', {
   /** Device channel slot the waypoint is broadcast on. NULL = slot 0 (#4341). */
   channel: integer('channel'),
   rebroadcastIntervalS: integer('rebroadcast_interval_s'),
+  /** Hop limit 0-7 the waypoint is sent with. NULL = the node's configured limit (#5482). */
+  hopLimit: integer('hop_limit'),
+  /** `<automationId>:<waypointKey>` for waypoints owned by an automation step (#5482). */
+  automationKey: text('automation_key'),
+  /** Digest of the content an automation step last sent (#5482, onlyWhenChanged). */
+  broadcastFingerprint: text('broadcast_fingerprint'),
   lastBroadcastAt: integer('last_broadcast_at'),
   firstSeenAt: integer('first_seen_at').notNull(),
   lastUpdatedAt: integer('last_updated_at').notNull(),
@@ -78,6 +84,12 @@ export const waypointsPostgres = pgTable('waypoints', {
   /** Device channel slot the waypoint is broadcast on. NULL = slot 0 (#4341). */
   channel: pgInteger('channel'),
   rebroadcastIntervalS: pgInteger('rebroadcast_interval_s'),
+  /** Hop limit 0-7 the waypoint is sent with. NULL = the node's configured limit (#5482). */
+  hopLimit: pgInteger('hop_limit'),
+  /** `<automationId>:<waypointKey>` for waypoints owned by an automation step (#5482). */
+  automationKey: pgText('automation_key'),
+  /** Digest of the content an automation step last sent (#5482, onlyWhenChanged). */
+  broadcastFingerprint: pgText('broadcast_fingerprint'),
   lastBroadcastAt: pgBigint('last_broadcast_at', { mode: 'number' }),
   firstSeenAt: pgBigint('first_seen_at', { mode: 'number' }).notNull(),
   lastUpdatedAt: pgBigint('last_updated_at', { mode: 'number' }).notNull(),
@@ -105,6 +117,12 @@ export const waypointsMysql = mysqlTable('waypoints', {
   /** Device channel slot the waypoint is broadcast on. NULL = slot 0 (#4341). */
   channel: myInt('channel'),
   rebroadcastIntervalS: myInt('rebroadcast_interval_s'),
+  /** Hop limit 0-7 the waypoint is sent with. NULL = the node's configured limit (#5482). */
+  hopLimit: myInt('hop_limit'),
+  /** `<automationId>:<waypointKey>` for waypoints owned by an automation step (#5482). */
+  automationKey: myVarchar('automation_key', { length: 255 }),
+  /** Digest of the content an automation step last sent (#5482, onlyWhenChanged). */
+  broadcastFingerprint: myVarchar('broadcast_fingerprint', { length: 64 }),
   lastBroadcastAt: myBigint('last_broadcast_at', { mode: 'number' }),
   firstSeenAt: myBigint('first_seen_at', { mode: 'number' }).notNull(),
   lastUpdatedAt: myBigint('last_updated_at', { mode: 'number' }).notNull(),

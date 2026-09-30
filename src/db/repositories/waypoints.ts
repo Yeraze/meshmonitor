@@ -24,6 +24,12 @@ export interface Waypoint {
   /** Device channel slot the waypoint is broadcast on. `null` = slot 0 (#4341). */
   channel: number | null;
   rebroadcastIntervalS: number | null;
+  /** Hop limit 0-7 the waypoint is sent with. `null` = the node's configured limit (#5482). */
+  hopLimit: number | null;
+  /** `<automationId>:<waypointKey>` when an automation step owns this waypoint (#5482). */
+  automationKey: string | null;
+  /** Digest of the content an automation step last sent (#5482, onlyWhenChanged). */
+  broadcastFingerprint: string | null;
   lastBroadcastAt: number | null;
   firstSeenAt: number;
   lastUpdatedAt: number;
@@ -44,6 +50,9 @@ export interface WaypointUpsertInput {
   isVirtual?: boolean;
   channel?: number | null;
   rebroadcastIntervalS?: number | null;
+  hopLimit?: number | null;
+  automationKey?: string | null;
+  broadcastFingerprint?: string | null;
   lastBroadcastAt?: number | null;
 }
 
@@ -68,6 +77,9 @@ function deserializeRow(row: any): Waypoint {
     isVirtual: Boolean(row.isVirtual),
     channel: row.channel == null ? null : Number(row.channel),
     rebroadcastIntervalS: row.rebroadcastIntervalS == null ? null : Number(row.rebroadcastIntervalS),
+    hopLimit: row.hopLimit == null ? null : Number(row.hopLimit),
+    automationKey: row.automationKey ?? null,
+    broadcastFingerprint: row.broadcastFingerprint ?? null,
     lastBroadcastAt: row.lastBroadcastAt == null ? null : Number(row.lastBroadcastAt),
     firstSeenAt: Number(row.firstSeenAt),
     lastUpdatedAt: Number(row.lastUpdatedAt),
@@ -110,6 +122,13 @@ export class WaypointsRepository extends BaseRepository {
         input.rebroadcastIntervalS === undefined
           ? existing?.rebroadcastIntervalS ?? null
           : input.rebroadcastIntervalS,
+      hopLimit: input.hopLimit === undefined ? existing?.hopLimit ?? null : input.hopLimit,
+      automationKey:
+        input.automationKey === undefined ? existing?.automationKey ?? null : input.automationKey,
+      broadcastFingerprint:
+        input.broadcastFingerprint === undefined
+          ? existing?.broadcastFingerprint ?? null
+          : input.broadcastFingerprint,
       lastBroadcastAt:
         input.lastBroadcastAt === undefined
           ? existing?.lastBroadcastAt ?? null
@@ -141,6 +160,20 @@ export class WaypointsRepository extends BaseRepository {
       .select()
       .from(waypoints)
       .where(and(eq(waypoints.sourceId, sourceId), eq(waypoints.waypointId, waypointId)))
+      .limit(1);
+    return rows.length > 0 ? deserializeRow(rows[0]) : null;
+  }
+
+  /**
+   * Fetch the waypoint an automation step owns, by its `automationKey`
+   * (`<automationId>:<waypointKey>`), scoped to one source (#5482).
+   */
+  async getByAutomationKeyAsync(sourceId: string, automationKey: string): Promise<Waypoint | null> {
+    const { waypoints } = this.tables;
+    const rows = await this.db
+      .select()
+      .from(waypoints)
+      .where(and(eq(waypoints.sourceId, sourceId), eq(waypoints.automationKey, automationKey)))
       .limit(1);
     return rows.length > 0 ? deserializeRow(rows[0]) : null;
   }
@@ -260,6 +293,26 @@ export class WaypointsRepository extends BaseRepository {
       this.db
         .update(waypoints)
         .set({ lastBroadcastAt: nowSec })
+        .where(and(eq(waypoints.sourceId, sourceId), eq(waypoints.waypointId, waypointId))),
+    );
+    return this.getAffectedRows(result) > 0;
+  }
+
+  /**
+   * Record an automation step's send (#5482): stamp `lastBroadcastAt` and the
+   * fingerprint of the content that went out, in one write.
+   */
+  async markAutomationBroadcastAsync(
+    sourceId: string,
+    waypointId: number,
+    nowSec: number,
+    fingerprint: string,
+  ): Promise<boolean> {
+    const { waypoints } = this.tables;
+    const result = await this.executeRun(
+      this.db
+        .update(waypoints)
+        .set({ lastBroadcastAt: nowSec, broadcastFingerprint: fingerprint })
         .where(and(eq(waypoints.sourceId, sourceId), eq(waypoints.waypointId, waypointId))),
     );
     return this.getAffectedRows(result) > 0;
