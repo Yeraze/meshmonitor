@@ -515,6 +515,56 @@ function runNotificationsTests(getBackend: () => TestBackend) {
       expect(subs[0].endpoint).toBe('https://push.example.com/to-keep');
     });
 
+    it('removeSubscription with sourceId - removes only that source for the endpoint (#5493)', async () => {
+      const backend = getBackend();
+      if (!backend.available) { console.log(`⚠ Skipped: ${backend.skipReason}`); return; }
+
+      await backend.exec(insertUserSql(backend, 1, 'testuser'));
+      const endpoint = 'https://push.example.com/shared-browser';
+      await repo.saveSubscription({ userId: 1, sourceId: 'src-a', endpoint, p256dhKey: 'k', authKey: 'a' });
+      await repo.saveSubscription({ userId: 1, sourceId: 'src-b', endpoint, p256dhKey: 'k', authKey: 'a' });
+
+      await repo.removeSubscription(endpoint, 'src-a');
+
+      const subs = await repo.getUserSubscriptions(1);
+      expect(subs).toHaveLength(1);
+      expect(subs[0].sourceId).toBe('src-b');
+      expect(await repo.getSubscriptionSourceIds(endpoint)).toEqual(['src-b']);
+    });
+
+    it('removeSubscription without sourceId - removes every source for the endpoint (#5493)', async () => {
+      const backend = getBackend();
+      if (!backend.available) { console.log(`⚠ Skipped: ${backend.skipReason}`); return; }
+
+      await backend.exec(insertUserSql(backend, 1, 'testuser'));
+      const endpoint = 'https://push.example.com/shared-browser';
+      await repo.saveSubscription({ userId: 1, sourceId: 'src-a', endpoint, p256dhKey: 'k', authKey: 'a' });
+      await repo.saveSubscription({ userId: 1, sourceId: 'src-b', endpoint, p256dhKey: 'k', authKey: 'a' });
+      await repo.saveSubscription({ userId: 1, sourceId: 'src-a', endpoint: 'https://push.example.com/other', p256dhKey: 'k', authKey: 'a' });
+
+      await repo.removeSubscription(endpoint);
+
+      expect(await repo.getSubscriptionSourceIds(endpoint)).toEqual([]);
+      expect(await repo.getSubscriptionSourceIds('https://push.example.com/other')).toEqual(['src-a']);
+    });
+
+    it('getSubscriptionSourceIds - distinct sourceIds for the endpoint (#5493)', async () => {
+      const backend = getBackend();
+      if (!backend.available) { console.log(`⚠ Skipped: ${backend.skipReason}`); return; }
+
+      await backend.exec(insertUserSql(backend, 1, 'user1'));
+      await backend.exec(insertUserSql(backend, 2, 'user2'));
+      const endpoint = 'https://push.example.com/shared-browser';
+      // Two users on the same browser + source yield one distinct sourceId.
+      await repo.saveSubscription({ userId: 1, sourceId: 'src-a', endpoint, p256dhKey: 'k', authKey: 'a' });
+      await repo.saveSubscription({ userId: 2, sourceId: 'src-a', endpoint, p256dhKey: 'k', authKey: 'a' });
+      await repo.saveSubscription({ userId: 1, sourceId: 'src-b', endpoint, p256dhKey: 'k', authKey: 'a' });
+
+      const ids = await repo.getSubscriptionSourceIds(endpoint);
+      expect([...ids].sort()).toEqual(['src-a', 'src-b']);
+      expect(await repo.getSubscriptionSourceIds('https://push.example.com/none')).toEqual([]);
+    });
+
     it('removeSubscription - no error when endpoint does not exist', async () => {
       const backend = getBackend();
       if (!backend.available) { console.log(`⚠ Skipped: ${backend.skipReason}`); return; }

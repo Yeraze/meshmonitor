@@ -71,7 +71,17 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
   // Meshtastic-only controls so a MeshCore source only shows what actually works.
   const isMeshCore = sourceType === 'meshcore';
   const [vapidStatus, setVapidStatus] = useState<VapidStatus | null>(null);
+  // Subscribed on THIS source (a push_subscriptions row exists for it), not
+  // merely "the browser has a push endpoint" (#5493).
   const [isSubscribed, setIsSubscribed] = useState(false);
+  // The browser holds a push endpoint at all (shared by every source).
+  const [hasBrowserSubscription, setHasBrowserSubscription] = useState(false);
+  // How many OTHER sources this browser's endpoint is subscribed on.
+  const [otherSourcesCount, setOtherSourcesCount] = useState(0);
+  // Latest source, read after awaits so a slow status reply for the source we
+  // just left cannot overwrite the new source's state.
+  const currentSourceIdRef = useRef(currentSourceId);
+  currentSourceIdRef.current = currentSourceId;
   const [isSubscribing, setIsSubscribing] = useState(false);
   const [notificationPermission, setNotificationPermission] = useState<NotificationPermission>('default');
   const [vapidSubject, setVapidSubject] = useState('');
@@ -132,7 +142,6 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
 
   // Check notification permission and subscription status
   useEffect(() => {
-    void checkNotificationStatus();
     void loadVapidStatus();
   }, []);
 
@@ -145,6 +154,8 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
   useEffect(() => {
     void loadChannels().finally(() => loadPreferences());
     void loadNodes();
+    // Subscription state is per source too (#5493).
+    void checkNotificationStatus();
   }, [currentSourceId]);
 
   // Fetch available nodes
@@ -213,10 +224,44 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
 
     setNotificationPermission(Notification.permission);
 
+    const sourceId = currentSourceId;
+    const isStale = () => currentSourceIdRef.current !== sourceId;
+
     try {
       const registration = await navigator.serviceWorker.ready;
       const subscription = await registration.pushManager.getSubscription();
-      setIsSubscribed(!!subscription);
+      if (isStale()) return;
+      setHasBrowserSubscription(!!subscription);
+
+      if (!subscription) {
+        setIsSubscribed(false);
+        setOtherSourcesCount(0);
+        return;
+      }
+
+      // Legacy/unified view with no source: the browser check is all we have.
+      if (!sourceId) {
+        setIsSubscribed(true);
+        setOtherSourcesCount(0);
+        return;
+      }
+
+      // The browser endpoint is shared by every source, so ask the server
+      // whether THIS source holds a row for it (#5493).
+      try {
+        const status = await api.post<{ subscribed?: boolean; otherSources?: number }>(
+          '/api/push/subscription-status',
+          { endpoint: subscription.endpoint, sourceId },
+        );
+        if (isStale()) return;
+        setIsSubscribed(!!status.subscribed);
+        setOtherSourcesCount(Number(status.otherSources) || 0);
+      } catch (error) {
+        logger.warn('Failed to check per-source subscription status, using browser state:', error);
+        if (isStale()) return;
+        setIsSubscribed(true);
+        setOtherSourcesCount(0);
+      }
     } catch (error) {
       logger.error('Failed to check subscription status:', error);
     }
@@ -375,6 +420,10 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
       const registration = await navigator.serviceWorker.ready;
       logger.info('Service worker ready, attempting subscription...');
 
+      // One endpoint per browser, shared by every source: if this browser is
+      // already subscribed on another source, subscribe() hands back that same
+      // subscription, and we only add a row for this source (#5493). Never
+      // unsubscribe and re-create here; that would kill the other sources.
       const subscription = await registration.pushManager.subscribe({
         userVisibleOnly: true,
         applicationServerKey: urlBase64ToUint8Array(publicKey)
@@ -397,6 +446,7 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
       await api.post('/api/push/subscribe', subscriptionData);
 
       setIsSubscribed(true);
+      setHasBrowserSubscription(true);
       setDebugInfo({ message: 'Successfully subscribed!', tone: 'success' });
       logger.info('Successfully subscribed to push notifications');
 
@@ -412,23 +462,64 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
   };
 
   const unsubscribeFromNotifications = async () => {
+    // With no source (legacy/unified view) there is no per-source row to
+    // target, so this means "leave everywhere".
+    if (!currentSourceId) {
+      await unsubscribeFromAllSources({ skipConfirm: true });
+      return;
+    }
+
     setIsSubscribing(true);
     try {
       const registration = await navigator.serviceWorker.ready;
       const subscription = await registration.pushManager.getSubscription();
 
       if (subscription) {
-        await subscription.unsubscribe();
-        await api.post('/api/push/unsubscribe', {
+        // Server first, for THIS source only (#5493). The browser endpoint is
+        // shared by every source, so only drop it once no source still uses it.
+        const result = await api.post<{ remainingSources?: number }>('/api/push/unsubscribe', {
           endpoint: subscription.endpoint,
-          sourceId: currentSourceId ?? undefined
+          sourceId: currentSourceId,
         });
+        const remaining = Number(result?.remainingSources) || 0;
+        if (remaining === 0) {
+          await subscription.unsubscribe();
+          setHasBrowserSubscription(false);
+        }
+        setOtherSourcesCount(remaining);
       }
 
       setIsSubscribed(false);
-      logger.info('Unsubscribed from push notifications');
+      logger.info('Unsubscribed this source from push notifications');
     } catch (error) {
       logger.error('Failed to unsubscribe:', error);
+      alert(t('notifications.alert_unsubscribe_failed'));
+    } finally {
+      setIsSubscribing(false);
+    }
+  };
+
+  const unsubscribeFromAllSources = async (opts: { skipConfirm?: boolean } = {}) => {
+    if (!opts.skipConfirm && !window.confirm(t('notifications.unsubscribe_all_confirm'))) {
+      return;
+    }
+
+    setIsSubscribing(true);
+    try {
+      const registration = await navigator.serviceWorker.ready;
+      const subscription = await registration.pushManager.getSubscription();
+
+      if (subscription) {
+        await api.post('/api/push/unsubscribe-all', { endpoint: subscription.endpoint });
+        await subscription.unsubscribe();
+      }
+
+      setIsSubscribed(false);
+      setHasBrowserSubscription(false);
+      setOtherSourcesCount(0);
+      logger.info('Unsubscribed from push notifications on all sources');
+    } catch (error) {
+      logger.error('Failed to unsubscribe from all sources:', error);
       alert(t('notifications.alert_unsubscribe_failed'));
     } finally {
       setIsSubscribing(false);
@@ -1530,6 +1621,20 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
                       disabled={isSubscribing}
                     >
                       {isSubscribing ? t('notifications.unsubscribing') : <><UiIcon name="upload" /> {t('notifications.unsubscribe_button')}</>}
+                    </button>
+                  </div>
+                )}
+                {currentSourceId && otherSourcesCount > 0 && (
+                  <p>{t('notifications.subscribed_other_sources', { count: otherSourcesCount })}</p>
+                )}
+                {hasBrowserSubscription && currentSourceId && (
+                  <div style={{ marginTop: '10px' }}>
+                    <button
+                      className="button button-secondary"
+                      onClick={() => { void unsubscribeFromAllSources(); }}
+                      disabled={isSubscribing}
+                    >
+                      <UiIcon name="upload" /> {t('notifications.unsubscribe_all_button')}
                     </button>
                   </div>
                 )}

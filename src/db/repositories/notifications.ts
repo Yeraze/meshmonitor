@@ -175,13 +175,34 @@ export class NotificationsRepository extends BaseRepository {
   }
 
   /**
-   * Remove a push subscription by endpoint
+   * Remove push subscription rows for an endpoint.
+   *
+   * One browser has ONE Web Push endpoint per origin, shared by every source
+   * it subscribed on (#5493). With `sourceId`, only that source's row(s) go;
+   * the endpoint stays live for the other sources. Without it, every row for
+   * the endpoint goes: use that only when the endpoint itself is dead
+   * (expired/invalid push service reply) or the user asked to leave all sources.
    */
-  async removeSubscription(endpoint: string): Promise<void> {
+  async removeSubscription(endpoint: string, sourceId?: string): Promise<void> {
     const { pushSubscriptions } = this.tables;
-    await this.db
-      .delete(pushSubscriptions)
+    const where = sourceId
+      ? and(eq(pushSubscriptions.endpoint, endpoint), eq(pushSubscriptions.sourceId, sourceId))
+      : eq(pushSubscriptions.endpoint, endpoint);
+    await this.db.delete(pushSubscriptions).where(where);
+  }
+
+  /**
+   * Distinct sourceIds that hold a push subscription row for this endpoint.
+   */
+  async getSubscriptionSourceIds(endpoint: string): Promise<string[]> {
+    const { pushSubscriptions } = this.tables;
+    const rows = await this.db
+      .selectDistinct({ sourceId: pushSubscriptions.sourceId })
+      .from(pushSubscriptions)
       .where(eq(pushSubscriptions.endpoint, endpoint));
+    return (rows as Array<{ sourceId: string | null }>)
+      .map(row => row.sourceId)
+      .filter((id): id is string => typeof id === 'string');
   }
 
   /**

@@ -207,20 +207,36 @@ class PushNotificationService {
   }
 
   /**
-   * Remove a push subscription from the database
+   * Remove push subscription rows from the database.
+   *
+   * With `sourceId`, removes only that source's row(s) for the endpoint, so
+   * the same browser stays subscribed on its other sources (#5493). Without
+   * it, removes every row for the endpoint.
    */
-  public async removeSubscription(endpoint: string): Promise<void> {
+  public async removeSubscription(endpoint: string, sourceId?: string): Promise<void> {
     try {
       if (!databaseService.notificationsRepo) {
         throw new Error('Notifications repository not initialized');
       }
 
-      await databaseService.notificationsRepo.removeSubscription(endpoint);
-      logger.info('✅ Removed push subscription');
+      await databaseService.notificationsRepo.removeSubscription(endpoint, sourceId);
+      logger.info(sourceId
+        ? `✅ Removed push subscription for source ${sourceId}`
+        : '✅ Removed push subscription for all sources');
     } catch (error) {
       logger.error('❌ Failed to remove push subscription:', error);
       throw error;
     }
+  }
+
+  /**
+   * Distinct sourceIds that still hold a subscription row for this endpoint.
+   */
+  public async getSubscriptionSourceIds(endpoint: string): Promise<string[]> {
+    if (!databaseService.notificationsRepo) {
+      throw new Error('Notifications repository not initialized');
+    }
+    return databaseService.notificationsRepo.getSubscriptionSourceIds(endpoint);
   }
 
   /**
@@ -304,6 +320,8 @@ class PushNotificationService {
       // Handle expired/invalid/gone subscriptions - remove them
       if (statusCode === 404 || statusCode === 410) {
         logger.warn(`⚠️ Subscription expired/gone (${statusCode}), removing: ${subscription.endpoint}`);
+        // No sourceId on purpose: the push service says the ENDPOINT is dead,
+        // so every source's row for it is dead too (#5493).
         await this.removeSubscription(subscription.endpoint);
       }
       // Handle payload too large - log but don't remove subscription
@@ -317,6 +335,8 @@ class PushNotificationService {
       // Handle other client errors (400-499) - might indicate invalid subscription
       else if (statusCode >= 400 && statusCode < 500) {
         logger.warn(`⚠️ Client error (${statusCode}) sending to subscription ${subscription.id}, removing`);
+        // No sourceId on purpose: an invalid endpoint is invalid for every
+        // source, so remove all of its rows (#5493).
         await this.removeSubscription(subscription.endpoint);
       }
       // Handle server errors (500-599) - temporary issue, don't remove
