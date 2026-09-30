@@ -69,6 +69,16 @@ describe('findPresetId', () => {
     expect(findPresetId(902.25, 500, 11, 5)).toBe('us-philly');
   });
 
+  it('matches a preset despite float noise in the reported frequency (#5496)', () => {
+    // A repeater's `get radio` reports 869.6179809 for the 869.618 MHz preset.
+    expect(findPresetId(869.6179809, 62.5, 8, 8)).toBe('eu-uk-narrow');
+    expect(findPresetId(869.618, 62.49999, 8, 8)).toBe('eu-uk-narrow');
+  });
+
+  it('does not stretch the tolerance to a neighbouring frequency', () => {
+    expect(findPresetId(869.62, 62.5, 8, 8)).toBe('custom');
+  });
+
   it('returns custom for parameters no preset covers', () => {
     // Same frequency, narrower bandwidth — must NOT fall through to Philly.
     expect(findPresetId(902.25, 250, 11, 5)).toBe('custom');
