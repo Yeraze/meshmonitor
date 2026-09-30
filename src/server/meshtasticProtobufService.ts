@@ -374,7 +374,7 @@ export class MeshtasticProtobufService {
         channel: channel || 0,
         decoded: dataMessage,
         wantAck: true, // Want delivery confirmation
-        hopLimit // Caller sizes this to the target's distance (default 3)
+        hopLimit: resolveHopLimit(hopLimit) // Caller passes the configured hop limit, or sizes it to the target's distance
       });
 
       // Create ToRadio message
