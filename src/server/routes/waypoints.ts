@@ -103,7 +103,7 @@ function parseChannel(raw: unknown): number | undefined | { error: string } {
  * The stored value is what was asked for; the cap at the node's own hop limit
  * happens at send time (`broadcastWaypoint`), so it follows config changes.
  */
-function parseHopLimitBody(body: any): number | null | undefined | { error: string } {
+function parseHopLimitBody(body: Record<string, unknown> | null | undefined): number | null | undefined | { error: string } {
   const raw = body?.hop_limit !== undefined ? body.hop_limit : body?.hopLimit;
   if (raw === undefined) return undefined;
   if (raw === null || raw === '' || raw === 'inherit') return null;
