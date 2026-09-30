@@ -5,7 +5,7 @@
  * Leaflet into a non-map bundle/test. Do not add a Leaflet import here.
  */
 
-import { categoryGlyphFamily, type NodeTypeCategory } from './nodeTypeCategory.js';
+import { categoryGlyphFamily, type GlyphFamily, type NodeTypeCategory } from './nodeTypeCategory.js';
 
 /**
  * Inner SVG markup for a node-type role glyph, drawn inside the 48×48 viewBox
@@ -13,13 +13,15 @@ import { categoryGlyphFamily, type NodeTypeCategory } from './nodeTypeCategory.j
  * callers fall back to the default pin/circle. `color` is the hop color so the
  * glyph stays consistent with the marker's stroke.
  *
- * Meshtastic role categories (issue #3610) reuse the MeshCore glyph silhouettes
- * via {@link categoryGlyphFamily} (a ROUTER draws as a repeater tower, etc.).
+ * Meshtastic role categories (issue #3610) draw through {@link categoryGlyphFamily}:
+ * a SENSOR reuses the MeshCore sensor glyph, while ROUTER / ROUTER_LATE /
+ * REPEATER have their own `'router'` tower, apart from the MeshCore Repeater's
+ * mesh relay (#5491).
  */
 /**
- * The repeater/router tower silhouette (tower + signal waves), shared by the
- * `'repeater'` glyph family and the ROUTER_LATE variant (issue #4295). Drawn in
- * the 48×48 role-glyph viewBox.
+ * The Meshtastic router tower silhouette (tower + signal waves): the `'router'`
+ * glyph family (ROUTER / ROUTER_LATE / REPEATER, #5491) and the base of the
+ * ROUTER_LATE variant (issue #4295). Drawn in the 48×48 role-glyph viewBox.
  */
 function repeaterTowerSvg(color: string): string {
   return `
@@ -31,6 +33,21 @@ function repeaterTowerSvg(color: string): string {
         <path d="M 18 24 C 15 24 12 25 12 26" stroke="${color}" stroke-width="3" fill="none" />
         <path d="M 32 20 C 36 20 40 23 40 26" stroke="${color}" stroke-width="3" fill="none" />
         <path d="M 30 24 C 33 24 36 25 36 26" stroke="${color}" stroke-width="3" fill="none" />`;
+}
+
+/**
+ * The MeshCore Repeater glyph (#5491): a mesh relay, one hub linked to three
+ * peers. Wide and round where the Meshtastic tower is tall and thin, so the two
+ * infrastructure types read apart on the Unified map. 48×48 role-glyph viewBox.
+ */
+function meshcoreRepeaterSvg(color: string): string {
+  return `
+        <path d="M 24 25 L 24 11 M 24 25 L 11.5 33 M 24 25 L 36.5 33" stroke="#555" stroke-width="3" stroke-linecap="round" />
+        <circle cx="24" cy="11" r="4.5" fill="${color}" />
+        <circle cx="11.5" cy="33" r="4.5" fill="${color}" />
+        <circle cx="36.5" cy="33" r="4.5" fill="${color}" />
+        <circle cx="24" cy="25" r="6" fill="#555" />
+        <circle cx="24" cy="25" r="2.5" fill="white" />`;
 }
 
 /**
@@ -74,11 +91,23 @@ export function roleGlyphInnerSvg(category: NodeTypeCategory, color: string): st
       + `\n        <path d="M 13 34 L 13 30" stroke="${color}" stroke-width="1.6" stroke-linecap="round" />`
       + `\n        <path d="M 13 34 L 15.6 35.6" stroke="${color}" stroke-width="1.6" stroke-linecap="round" />`;
   }
-  switch (categoryGlyphFamily(category)) {
-    case 'repeater':
-      // Tower with signal waves — the existing router silhouette, overflows
-      // the circle so backbone nodes read at a glance.
+  return glyphFamilyInnerSvg(categoryGlyphFamily(category), color);
+}
+
+/**
+ * Inner SVG markup for a glyph FAMILY (see {@link categoryGlyphFamily}). The 3D
+ * map keys its rasterized icons by family, so it draws through here rather than
+ * by category. Returns '' for `'standard'`.
+ */
+export function glyphFamilyInnerSvg(family: GlyphFamily, color: string): string {
+  switch (family) {
+    case 'router':
+      // Meshtastic infrastructure: tower with signal waves, overflows the
+      // circle so backbone nodes read at a glance.
       return repeaterTowerSvg(color);
+    case 'repeater':
+      // MeshCore Repeater: mesh relay (#5491).
+      return meshcoreRepeaterSvg(color);
     case 'roomServer':
       // Stacked server rack with status LEDs.
       return `
@@ -119,7 +148,15 @@ export function roleGlyphMarkerSvg(
   color: string,
   size = 24,
 ): string {
-  const inner = roleGlyphInnerSvg(category, color);
+  return wrapGlyphMarker(roleGlyphInnerSvg(category, color), color, size);
+}
+
+/** {@link roleGlyphMarkerSvg} for a glyph family (the 3D map's icon key). */
+export function glyphFamilyMarkerSvg(family: GlyphFamily, color: string, size = 24): string {
+  return wrapGlyphMarker(glyphFamilyInnerSvg(family, color), color, size);
+}
+
+function wrapGlyphMarker(inner: string, color: string, size: number): string {
   if (!inner) return '';
   return `<svg width="${size}" height="${size}" viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg">`
     + `<circle cx="24" cy="24" r="20" fill="white" fill-opacity="0.95" stroke="${color}" stroke-width="2" />`

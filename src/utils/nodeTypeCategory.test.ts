@@ -121,10 +121,11 @@ describe('categoryGlyphFamily', () => {
       expect(categoryGlyphFamily(c)).toBe(c);
     }
   });
-  it('draws Meshtastic routers/repeaters as the repeater tower', () => {
-    expect(categoryGlyphFamily('mtRouter')).toBe('repeater');
-    expect(categoryGlyphFamily('mtRouterLate')).toBe('repeater');
-    expect(categoryGlyphFamily('mtRepeater')).toBe('repeater');
+  it('draws Meshtastic routers/repeaters as the router tower, apart from MeshCore repeaters (#5491)', () => {
+    expect(categoryGlyphFamily('mtRouter')).toBe('router');
+    expect(categoryGlyphFamily('mtRouterLate')).toBe('router');
+    expect(categoryGlyphFamily('mtRepeater')).toBe('router');
+    expect(categoryGlyphFamily('repeater')).toBe('repeater');
   });
   it('draws a Meshtastic sensor as the sensor glyph', () => {
     expect(categoryGlyphFamily('mtSensor')).toBe('sensor');
