@@ -10,6 +10,7 @@ import React from 'react';
 import { useTranslation } from 'react-i18next';
 import { HOP_LIMIT_OVERRIDE_MAX } from '../utils/hopLimitOverride';
 import styles from './HopLimitOverrideSelect.module.css';
+import { UiIcon } from './icons';
 
 export interface HopLimitOverrideSelectProps {
   id: string;
@@ -18,6 +19,10 @@ export interface HopLimitOverrideSelectProps {
   disabled?: boolean;
   /** What a zero-hop send gives up in this context, shown when 0 is chosen. */
   zeroHopNote?: string;
+  /** Replaces the default description (written for automated messages) — e.g. for waypoints (#5482). */
+  description?: string;
+  /** A warning shown under the picker whatever the value (#5482: waypoint airtime). */
+  warning?: string;
 }
 
 export const HopLimitOverrideSelect: React.FC<HopLimitOverrideSelectProps> = ({
@@ -26,6 +31,8 @@ export const HopLimitOverrideSelect: React.FC<HopLimitOverrideSelectProps> = ({
   onChange,
   disabled,
   zeroHopNote,
+  description,
+  warning,
 }) => {
   const { t } = useTranslation();
   return (
@@ -34,7 +41,7 @@ export const HopLimitOverrideSelect: React.FC<HopLimitOverrideSelectProps> = ({
         {t('automation.hop_limit_override.label', 'Hop limit')}
       </label>
       <div className={styles.description}>
-        {t(
+        {description ?? t(
           'automation.hop_limit_override.description',
           "How far this automated message may travel. Capped at the node's own hop limit, so it can only shorten reach, never extend it. 0 keeps it to nodes that hear this radio directly.",
         )}
@@ -54,6 +61,11 @@ export const HopLimitOverrideSelect: React.FC<HopLimitOverrideSelectProps> = ({
           </option>
         ))}
       </select>
+      {warning && (
+        <div className={styles.warning} role="note">
+          <UiIcon name="alert" size={14} /> <span>{warning}</span>
+        </div>
+      )}
       {value === '0' && zeroHopNote && (
         <div className={styles.zeroNote}>
           {zeroHopNote}

@@ -201,6 +201,7 @@ import { migration as addNodeFirstHeardMigration, runMigration179Postgres, runMi
 import { migration as createAircraftFlightMatchesMigration, runMigration180Postgres, runMigration180Mysql } from '../server/migrations/180_create_aircraft_flight_matches.js';
 import { migration as createAssetNodesMigration, runMigration181Postgres, runMigration181Mysql } from '../server/migrations/181_create_asset_nodes.js';
 import { migration as createMeshcoreIgnoreBlockMigration, runMigration182Postgres, runMigration182Mysql } from '../server/migrations/182_create_meshcore_ignore_block.js';
+import { migration as addWaypointHopLimitAutomationKeyMigration, runMigration183Postgres, runMigration183Mysql } from '../server/migrations/183_add_waypoint_hop_limit_automation_key.js';
 
 // ============================================================================
 // Registry
@@ -2951,4 +2952,20 @@ registry.register({
   sqlite: (db) => createMeshcoreIgnoreBlockMigration.up(db),
   postgres: (client) => runMigration182Postgres(client),
   mysql: (pool) => runMigration182Mysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 183: `waypoints.hop_limit`, `automation_key`, `broadcast_fingerprint` (#5482).
+// hop_limit NULL = inherit the node's configured hop limit; automation_key ties
+// an Automation Engine broadcastWaypoint step to a stable waypoint id;
+// broadcast_fingerprint records what that step last sent (onlyWhenChanged).
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 183,
+  name: 'add_waypoint_hop_limit_automation_key',
+  settingsKey: 'migration_183_add_waypoint_hop_limit_automation_key',
+  sqlite: (db) => addWaypointHopLimitAutomationKeyMigration.up(db),
+  postgres: (client) => runMigration183Postgres(client),
+  mysql: (pool) => runMigration183Mysql(pool),
 });

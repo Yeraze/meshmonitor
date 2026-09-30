@@ -176,6 +176,42 @@ describe('MeshtasticManager — Waypoint wiring', () => {
     expect(args).toEqual(expect.objectContaining({ id: 7, expire: 1 }));
   });
 
+  // #5482 — no hardcoded 3: the default is the node's configured hop limit,
+  // and a requested value is clamped to it (lower only).
+  describe('hop limit (#5482)', () => {
+    function withConfiguredHopLimit(hopLimit: number): MeshtasticManager {
+      const mgr = makeManager();
+      (mgr as any).actualDeviceConfig = { lora: { hopLimit } };
+      return mgr;
+    }
+    const wp = { id: 1, latitude: 1, longitude: 2, expire: 0 };
+
+    it('defaults to the node configured hop limit', async () => {
+      await withConfiguredHopLimit(5).broadcastWaypoint(wp);
+      expect(createWaypointMock.mock.calls[0]?.[1]).toMatchObject({ hopLimit: 5 });
+    });
+
+    it('treats null as inherit', async () => {
+      await withConfiguredHopLimit(4).broadcastWaypoint(wp, { hopLimit: null });
+      expect(createWaypointMock.mock.calls[0]?.[1]).toMatchObject({ hopLimit: 4 });
+    });
+
+    it('passes a lower requested value through', async () => {
+      await withConfiguredHopLimit(5).broadcastWaypoint(wp, { hopLimit: 0 });
+      expect(createWaypointMock.mock.calls[0]?.[1]).toMatchObject({ hopLimit: 0 });
+    });
+
+    it('clamps a requested value above the node limit', async () => {
+      await withConfiguredHopLimit(3).broadcastWaypoint(wp, { hopLimit: 7 });
+      expect(createWaypointMock.mock.calls[0]?.[1]).toMatchObject({ hopLimit: 3 });
+    });
+
+    it('broadcastWaypointDelete forwards the stored hop limit', async () => {
+      await withConfiguredHopLimit(5).broadcastWaypointDelete(7, { hopLimit: 2 });
+      expect(createWaypointMock.mock.calls[0]?.[1]).toMatchObject({ hopLimit: 2 });
+    });
+  });
+
   it('broadcastWaypoint returns 0 when the manager is not connected', async () => {
     const mgr = makeManager();
     (mgr as any).isConnected = false;

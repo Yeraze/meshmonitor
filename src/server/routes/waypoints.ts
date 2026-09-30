@@ -12,6 +12,8 @@ import { requirePermission } from '../auth/authMiddleware.js';
 import { logger } from '../../utils/logger.js';
 import { sourceManagerRegistry } from '../sourceManagerRegistry.js';
 import { waypointService } from '../services/waypointService.js';
+import { fail } from '../utils/apiResponse.js';
+import { HOP_LIMIT_OVERRIDE_MAX, parseHopLimitOverride } from '../../utils/hopLimitOverride.js';
 
 // `mergeParams` lets us read `:id` from the parent (sourceRoutes) router.
 const router = Router({ mergeParams: true });
@@ -85,6 +87,29 @@ function parseChannel(raw: unknown): number | undefined | { error: string } {
   const n = Number(raw);
   if (!Number.isInteger(n) || n < 0 || n > MAX_CHANNEL_INDEX) {
     return { error: `channel must be an integer between 0 and ${MAX_CHANNEL_INDEX}` };
+  }
+  return n;
+}
+
+/**
+ * Read the hop-limit body field (#5482), accepting `hop_limit` or `hopLimit`.
+ * Returns:
+ *   - `undefined` when neither key is present (no change on PATCH; inherit on POST)
+ *   - `null` for an explicit `null` / `''` / `'inherit'` — inherit the node's
+ *     configured hop limit
+ *   - an integer 0..7 when valid
+ *   - `{ error }` for anything else
+ *
+ * The stored value is what was asked for; the cap at the node's own hop limit
+ * happens at send time (`broadcastWaypoint`), so it follows config changes.
+ */
+function parseHopLimitBody(body: Record<string, unknown> | null | undefined): number | null | undefined | { error: string } {
+  const raw = body?.hop_limit !== undefined ? body.hop_limit : body?.hopLimit;
+  if (raw === undefined) return undefined;
+  if (raw === null || raw === '' || raw === 'inherit') return null;
+  const n = parseHopLimitOverride(raw);
+  if (n === undefined) {
+    return { error: `hop_limit must be an integer between 0 and ${HOP_LIMIT_OVERRIDE_MAX}, or null to use the node's hop limit` };
   }
   return n;
 }
@@ -165,6 +190,11 @@ router.post(
       // rebroadcast scheduled. PATCH preserves the distinction.
       const rebroadcastIntervalS =
         parsedRebroadcast === undefined ? null : (parsedRebroadcast as number | null);
+      const parsedHopLimit = parseHopLimitBody(body);
+      if (parsedHopLimit && typeof parsedHopLimit === 'object') {
+        return fail(res, 400, 'INVALID_HOP_LIMIT', parsedHopLimit.error);
+      }
+      const hopLimit = (parsedHopLimit as number | null | undefined) ?? null;
 
       // Best-effort: use the source's local node as the owner. Fallback to 0
       // when the manager isn't reachable (still records, owner_node_num NULL).
@@ -184,6 +214,7 @@ router.post(
           lockedTo,
           channel,
           rebroadcastIntervalS,
+          hopLimit,
         },
         { virtual },
       );
@@ -205,7 +236,8 @@ router.post(
               icon: persisted.iconCodepoint ?? 0,
             },
             // Stored value is already validated on write; NULL rows predate #4341.
-            { channel: persisted.channel ?? 0 },
+            // hopLimit NULL = the node's configured limit (#5482).
+            { channel: persisted.channel ?? 0, hopLimit: persisted.hopLimit },
           );
         } catch (err) {
           logger.warn(`Failed to broadcast new waypoint ${persisted.waypointId}:`, err);
@@ -276,6 +308,13 @@ router.patch(
         }
         fields.rebroadcastIntervalS = parsed as number | null;
       }
+      const parsedHopLimit = parseHopLimitBody(body);
+      if (parsedHopLimit && typeof parsedHopLimit === 'object') {
+        return fail(res, 400, 'INVALID_HOP_LIMIT', parsedHopLimit.error);
+      }
+      if (parsedHopLimit !== undefined) {
+        fields.hopLimit = parsedHopLimit;
+      }
 
       let persisted;
       try {
@@ -304,7 +343,8 @@ router.patch(
               icon: persisted.iconCodepoint ?? 0,
             },
             // Stored value is already validated on write; NULL rows predate #4341.
-            { channel: persisted.channel ?? 0 },
+            // hopLimit NULL = the node's configured limit (#5482).
+            { channel: persisted.channel ?? 0, hopLimit: persisted.hopLimit },
           );
         } catch (err) {
           logger.warn(`Failed to broadcast updated waypoint ${persisted.waypointId}:`, err);
@@ -356,6 +396,7 @@ router.delete(
           // on, otherwise listeners on that channel never see the delete.
           await (manager as any).broadcastWaypointDelete(waypointId, {
             channel: existing.channel ?? 0,
+            hopLimit: existing.hopLimit,
           });
         } catch (err) {
           logger.warn(`Failed to broadcast waypoint delete ${waypointId}:`, err);

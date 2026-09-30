@@ -24,6 +24,10 @@ export interface Waypoint {
    */
   channel: number | null;
   rebroadcastIntervalS: number | null;
+  /** Hop limit 0-7 the waypoint is sent with; `null` = the node's configured limit (#5482). */
+  hopLimit?: number | null;
+  /** Set when an automation step owns this waypoint (#5482). */
+  automationKey?: string | null;
   lastBroadcastAt: number | null;
   firstSeenAt: number;
   lastUpdatedAt: number;
@@ -43,4 +47,6 @@ export interface WaypointInput {
   /** Device channel slot (0-7) to broadcast on. Omitted = slot 0. */
   channel?: number | null;
   rebroadcast_interval_s?: number | null;
+  /** Hop limit 0-7, or null for the node's configured limit (#5482). Omitted = unchanged on edit. */
+  hop_limit?: number | null;
 }

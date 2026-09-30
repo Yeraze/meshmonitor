@@ -56,7 +56,8 @@ export type ActionType =
   | 'action.notify'
   | 'action.runScript'
   | 'action.delay'
-  | 'action.setAutomationEnabled';
+  | 'action.setAutomationEnabled'
+  | 'action.broadcastWaypoint';
 
 // `action.delay` is a BOUNDED, in-process pause (caps at AUTOMATION_DELAY_MAX_SECONDS)
 // that blocks only its own run — it serializes naturally with the sequential,
@@ -112,6 +113,7 @@ export const ACTION_TYPES: readonly ActionType[] = [
   'action.runScript',
   'action.delay',
   'action.setAutomationEnabled',
+  'action.broadcastWaypoint',
 ];
 
 export const FLOW_TYPES: readonly FlowType[] = ['flow.fanout', 'flow.collapse', 'flow.setVar'];
@@ -237,6 +239,75 @@ function hopLimitParamError(nodeType: string, nodeId: string, raw: unknown): str
   return parseHopLimitOverride(raw) === undefined
     ? `${nodeType} "${nodeId}" requires params.hopLimit ∈ {inherit, 0–${HOP_LIMIT_OVERRIDE_MAX}}`
     : null;
+}
+
+/**
+ * Minimum time between two sends of the same automation waypoint (#5482),
+ * in seconds. Enforced at run time from the persisted `waypoints.lastBroadcastAt`,
+ * so saving the automation or restarting MeshMonitor never re-arms it.
+ */
+export const WAYPOINT_AUTOMATION_MIN_INTERVAL_SECONDS = 30 * 60;
+
+/** Longest `expireHours` an action.broadcastWaypoint accepts (#5482): 30 days. */
+export const WAYPOINT_AUTOMATION_MAX_EXPIRE_HOURS = 24 * 30;
+
+/** `waypointKey` length cap (#5482); keeps `<automationId>:<key>` within the column. */
+export const WAYPOINT_KEY_MAX_LENGTH = 64;
+
+/** True when a param is a `{{ }}` template, so it can only be checked at run time. */
+function isTemplated(raw: unknown): boolean {
+  return typeof raw === 'string' && raw.includes('{{');
+}
+
+/**
+ * Save-time checks for action.broadcastWaypoint (#5482). Fields that may hold
+ * a `{{ }}` template (latitude, longitude, expireHours) are only checked when
+ * they are literals; the executor re-checks the interpolated values.
+ */
+function broadcastWaypointParamErrors(nodeId: string, p: Record<string, unknown>): string[] {
+  const t = 'action.broadcastWaypoint';
+  const errors: string[] = [];
+  if (typeof p.sourceId !== 'string' || p.sourceId.trim().length === 0) {
+    errors.push(`${t} "${nodeId}" requires params.sourceId (a Meshtastic source)`);
+  }
+  const key = typeof p.waypointKey === 'string' ? p.waypointKey.trim() : '';
+  if (!key) {
+    errors.push(`${t} "${nodeId}" requires params.waypointKey`);
+  } else if (key.length > WAYPOINT_KEY_MAX_LENGTH) {
+    errors.push(`${t} "${nodeId}" requires params.waypointKey of at most ${WAYPOINT_KEY_MAX_LENGTH} characters`);
+  }
+  const coord = (name: 'latitude' | 'longitude', limit: number) => {
+    const raw = p[name];
+    if (raw == null || raw === '') {
+      errors.push(`${t} "${nodeId}" requires params.${name}`);
+      return;
+    }
+    if (isTemplated(raw)) return;
+    const n = Number(raw);
+    if (!Number.isFinite(n) || n < -limit || n > limit) {
+      errors.push(`${t} "${nodeId}" requires params.${name} ∈ [-${limit}, ${limit}]`);
+    }
+  };
+  coord('latitude', 90);
+  coord('longitude', 180);
+  if (p.expireHours != null && p.expireHours !== '' && !isTemplated(p.expireHours)) {
+    const h = Number(p.expireHours);
+    if (!Number.isFinite(h) || h <= 0 || h > WAYPOINT_AUTOMATION_MAX_EXPIRE_HOURS) {
+      errors.push(`${t} "${nodeId}" requires params.expireHours ∈ (0, ${WAYPOINT_AUTOMATION_MAX_EXPIRE_HOURS}]`);
+    }
+  }
+  if (p.channel != null && p.channel !== '') {
+    const c = Number(p.channel);
+    if (!Number.isInteger(c) || c < 0 || c > 7) {
+      errors.push(`${t} "${nodeId}" requires params.channel ∈ [0, 7]`);
+    }
+  }
+  const hopErr = hopLimitParamError(t, nodeId, p.hopLimit);
+  if (hopErr) errors.push(hopErr);
+  if (p.onlyWhenChanged != null && typeof p.onlyWhenChanged !== 'boolean') {
+    errors.push(`${t} "${nodeId}" requires params.onlyWhenChanged to be true or false`);
+  }
+  return errors;
 }
 
 /**
@@ -653,6 +724,10 @@ export function validateAutomationGraph(input: unknown): ValidationResult {
               errors.push(`action.setAutomationEnabled "${n.id}" requires params.enabled to be true or false`);
             }
           }
+          break;
+        }
+        case 'action.broadcastWaypoint': {
+          for (const e of broadcastWaypointParamErrors(n.id, p)) errors.push(e);
           break;
         }
         case 'action.delay': {

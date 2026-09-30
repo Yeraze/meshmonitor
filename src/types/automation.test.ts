@@ -106,6 +106,54 @@ describe('validateAutomationGraph', () => {
     expect(validateAutomationGraph(withReboot({ targetNodeNum: 1.5 })).valid).toBe(false);
   });
 
+  describe('action.broadcastWaypoint (#5482)', () => {
+    const withWp = (params: Record<string, unknown>): AutomationGraph => ({
+      version: 1,
+      nodes: [
+        { id: 't', type: 'trigger.schedule', params: { cron: '*/30 * * * *' } },
+        { id: 'a', type: 'action.broadcastWaypoint', params },
+      ],
+      edges: [{ from: 't', to: 'a' }],
+    });
+    const ok = { sourceId: 'src-1', waypointKey: 'border-north', latitude: 32.5, longitude: -117 };
+    const errs = (params: Record<string, unknown>) => validateAutomationGraph(withWp(params)).errors.join(' ');
+
+    it('accepts the minimal param set and a full one', () => {
+      expect(validateAutomationGraph(withWp(ok)).valid).toBe(true);
+      expect(validateAutomationGraph(withWp({
+        ...ok, name: 'Wait 40m', description: 'x', icon: '🚗', expireHours: 2, channel: 1, hopLimit: 2, onlyWhenChanged: true,
+      })).valid).toBe(true);
+    });
+
+    it('accepts templated coordinates and expiry', () => {
+      expect(validateAutomationGraph(withWp({
+        ...ok, latitude: '{{ var.wait.lat }}', longitude: '{{ var.wait.lon }}', expireHours: '{{ var.wait.h }}',
+      })).valid).toBe(true);
+    });
+
+    it('requires sourceId, waypointKey, latitude and longitude', () => {
+      const e = errs({});
+      expect(e).toMatch(/params\.sourceId/);
+      expect(e).toMatch(/params\.waypointKey/);
+      expect(e).toMatch(/params\.latitude/);
+      expect(e).toMatch(/params\.longitude/);
+    });
+
+    it('range-checks literal coordinates, channel, hop limit and expiry', () => {
+      expect(errs({ ...ok, latitude: 91 })).toMatch(/latitude ∈/);
+      expect(errs({ ...ok, longitude: -181 })).toMatch(/longitude ∈/);
+      expect(errs({ ...ok, channel: 8 })).toMatch(/channel ∈/);
+      expect(errs({ ...ok, hopLimit: 9 })).toMatch(/hopLimit/);
+      expect(errs({ ...ok, expireHours: 0 })).toMatch(/expireHours/);
+      expect(errs({ ...ok, waypointKey: 'k'.repeat(65) })).toMatch(/at most 64/);
+      expect(errs({ ...ok, onlyWhenChanged: 'yes' })).toMatch(/onlyWhenChanged/);
+    });
+
+    it('treats a blank hop limit as inherit', () => {
+      expect(validateAutomationGraph(withWp({ ...ok, hopLimit: '' })).valid).toBe(true);
+    });
+  });
+
   describe('action.setAutomationEnabled (#5445)', () => {
     const withSet = (params: Record<string, unknown>): AutomationGraph => ({
       version: 1,

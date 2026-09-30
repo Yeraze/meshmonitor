@@ -10,6 +10,9 @@ import Modal from './common/Modal';
 import type { Waypoint, WaypointInput } from '../types/waypoint';
 import './WaypointEditorModal.css';
 import { UiIcon } from './icons';
+import { useTranslation } from 'react-i18next';
+import { HopLimitOverrideSelect } from './HopLimitOverrideSelect';
+import { hopLimitSettingValue } from '../utils/hopLimitOverride';
 
 const DEFAULT_EMOJIS = ['📍', '🏠', '🏕️', '⛺', '🚗', '🛟', '⚠️', '⭐', '🚩', '🛠️'];
 
@@ -78,6 +81,9 @@ export default function WaypointEditorModal(props: WaypointEditorModalProps) {
   const [virtual, setVirtual] = useState(false);
   const [channel, setChannel] = useState(0);
   const [rebroadcast, setRebroadcast] = useState('');
+  /** '' = the node's configured hop limit; '0'-'7' pins it (#5482). */
+  const [hopLimit, setHopLimit] = useState('');
+  const { t } = useTranslation();
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
@@ -113,6 +119,7 @@ export default function WaypointEditorModal(props: WaypointEditorModalProps) {
           ? String(Math.max(10, Math.round(initial.rebroadcastIntervalS / 60)))
           : '',
       );
+      setHopLimit(hopLimitSettingValue(initial.hopLimit));
     } else {
       setLat(defaultCoords ? String(defaultCoords.lat) : '');
       setLon(defaultCoords ? String(defaultCoords.lon) : '');
@@ -125,6 +132,7 @@ export default function WaypointEditorModal(props: WaypointEditorModalProps) {
       setVirtual(false);
       setChannel(0);
       setRebroadcast('');
+      setHopLimit('');
     }
     setError(null);
   }, [isOpen, initial, selfNodeNum, defaultCoords]);
@@ -177,6 +185,7 @@ export default function WaypointEditorModal(props: WaypointEditorModalProps) {
       virtual,
       channel,
       rebroadcast_interval_s: rebroadcastIntervalS,
+      hop_limit: hopLimit === '' ? null : Number(hopLimit),
     };
   }
 
@@ -238,11 +247,11 @@ export default function WaypointEditorModal(props: WaypointEditorModalProps) {
         )}
 
         <label className="form-label">
-          Name (≤30)
+          Name (≤29 bytes)
           <input
             className="form-input"
             type="text"
-            maxLength={30}
+            maxLength={29}
             value={name}
             onChange={(e) => setName(e.target.value)}
             placeholder="e.g. Trailhead"
@@ -250,11 +259,11 @@ export default function WaypointEditorModal(props: WaypointEditorModalProps) {
         </label>
 
         <label className="form-label">
-          Description (≤100)
+          Description (≤99 bytes)
           <textarea
             className="form-input"
             rows={2}
-            maxLength={100}
+            maxLength={99}
             value={description}
             onChange={(e) => setDescription(e.target.value)}
           />
@@ -348,6 +357,21 @@ export default function WaypointEditorModal(props: WaypointEditorModalProps) {
               : 'The waypoint and any rebroadcasts go out on this channel.'}
           </span>
         </label>
+
+        <HopLimitOverrideSelect
+          id="waypoint-hop-limit"
+          value={hopLimit}
+          onChange={setHopLimit}
+          disabled={virtual}
+          description={t(
+            'waypoints.hop_limit.description',
+            "How far this waypoint may travel. Blank uses the node's own hop limit. Capped at the node's own hop limit, so it can only shorten reach, never extend it. 0 keeps it to nodes that hear this radio directly.",
+          )}
+          warning={virtual ? undefined : t(
+            'waypoints.hop_limit.warning',
+            'Every node within this many hops rebroadcasts the waypoint. On a 30-node mesh at 3 hops one send is about 30 transmissions. Use the lowest value that reaches the area you need.',
+          )}
+        />
 
         <label className="form-label">
           Rebroadcast every (minutes, optional)

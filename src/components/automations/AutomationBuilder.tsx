@@ -175,7 +175,7 @@ export function FieldInput({ field, value, onChange, variables, sources, channel
       break;
     case 'select': {
       const effective = (value ?? field.absentValue ?? '') as string;
-      const warning = field.warningByValue?.[effective];
+      const warning = field.warningByValue?.[effective] ?? field.warning;
       control = (
         <>
           <select className="ae-select" value={effective} onChange={(e) => onChange(e.target.value)}>
@@ -294,6 +294,35 @@ export function FieldInput({ field, value, onChange, variables, sources, channel
             );
           })}
         </div>
+      );
+      break;
+    }
+    case 'meshtasticSourceSelect': {
+      // #5482: one native Meshtastic radio (waypoints are Meshtastic-only and
+      // need a node to own and send them; MQTT and MeshCore sources cannot).
+      const options = sources.filter((s) => s.enabled !== false && s.type === 'meshtastic_tcp');
+      const current = typeof value === 'string' ? value : '';
+      const chosen = options.find((s) => s.id === current);
+      const txWarning = t(
+        'tx_disabled.automation_source_warning',
+        'Transmit is disabled on this source — messages sent through it will be skipped.',
+      );
+      control = (
+        <>
+          <select className="ae-select" value={current} onChange={(e) => onChange(e.target.value)}>
+            <option value="">{t('automation.meshtasticSource.placeholder', '— select a Meshtastic source —')}</option>
+            {options.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+            {current && !chosen && <option value={current}>{current}</option>}
+          </select>
+          {options.length === 0 && (
+            <div className="ae-muted">{t('automation.meshtasticSource.none', 'No Meshtastic sources.')}</div>
+          )}
+          {chosen && (chosen.canTransmit ?? chosen.txEnabled) === false && (
+            <div className="ae-field-warn" role="note">
+              <UiIcon name="alert" size={14} /> <span>{txWarning}</span>
+            </div>
+          )}
+        </>
       );
       break;
     }

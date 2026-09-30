@@ -15,6 +15,7 @@ import { sourceManagerRegistry } from '../../sourceManagerRegistry.js';
 import { appriseNotificationService } from '../appriseNotificationService.js';
 import { runScript as runUserScript } from '../../utils/scriptRunner.js';
 import { logger } from '../../../utils/logger.js';
+import { waypointService } from '../waypointService.js';
 import type { ActionDeps } from './actionExecutor.js';
 import type { SendOrigin } from '../../utils/automationPacketTracker.js';
 import { type MeshCoreAdvertMode, LEGACY_MESHCORE_ADVERT_MODE } from '../../../types/meshcoreAdvert.js';
@@ -174,6 +175,13 @@ export function createMeshActionDeps(): ActionDeps {
   return {
     async sendMessage({ sourceId, text, channel, destination, replyId, scopeOverride, maxAttempts, hopLimitOverride }) {
       return sendTextVia(sourceId, text, channel ?? 0, destination, replyId, 0, scopeOverride, maxAttempts, hopLimitOverride);
+    },
+
+    // #5482: the service owns the persisted 30-minute floor, onlyWhenChanged,
+    // and the TX-disabled check (it throws TxDisabledError, which the executor
+    // records as a skip).
+    async broadcastWaypoint(a) {
+      return waypointService.upsertAndBroadcastForAutomation(a);
     },
 
     async sendTapback({ sourceId, emoji, channel, destination, replyId, hopLimitOverride }) {

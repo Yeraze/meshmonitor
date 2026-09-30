@@ -15,6 +15,10 @@ const mockDb = vi.hoisted(() => ({
 vi.mock('../../../services/database.js', () => ({ default: mockDb }));
 vi.mock('../appriseNotificationService.js', () => ({ appriseNotificationService: {} }));
 vi.mock('../../utils/scriptRunner.js', () => ({ runScript: vi.fn() }));
+const mockUpsertAndBroadcast = vi.hoisted(() => vi.fn());
+vi.mock('../waypointService.js', () => ({
+  waypointService: { upsertAndBroadcastForAutomation: mockUpsertAndBroadcast },
+}));
 
 import { createMeshActionDeps } from './meshActionDeps.js';
 
@@ -507,5 +511,17 @@ describe('createMeshActionDeps manageNode delete — tracked assets (#5354)', ()
     const deps = createMeshActionDeps();
     await deps.manageNode({ sourceId: 'mt', nodeNum: 8, op: 'delete' });
     expect(mockDb.deleteNodeAsync).toHaveBeenCalledWith(8, 'mt');
+  });
+});
+
+describe('createMeshActionDeps broadcastWaypoint (#5482)', () => {
+  it('delegates to waypointService, which owns the floor and TX checks', async () => {
+    mockUpsertAndBroadcast.mockResolvedValue({ waypointId: 3, sent: true, packetId: 9 });
+    const args = {
+      sourceId: 'mt', automationKey: 'a:k', latitude: 1, longitude: 2, name: 'n', description: '',
+      icon: null, expireAt: null, channel: 0, hopLimit: 1, onlyWhenChanged: false,
+    };
+    await expect(createMeshActionDeps().broadcastWaypoint(args)).resolves.toEqual({ waypointId: 3, sent: true, packetId: 9 });
+    expect(mockUpsertAndBroadcast).toHaveBeenCalledWith(args);
   });
 });

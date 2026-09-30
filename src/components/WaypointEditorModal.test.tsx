@@ -51,23 +51,25 @@ describe('WaypointEditorModal — create mode', () => {
   });
 
   it('shows the Android-notification warning only once a rebroadcast interval is entered (#4752)', () => {
-    const { container, queryByRole } = renderModal({ defaultCoords: { lat: 1, lon: 2 } });
+    const { container, queryAllByRole } = renderModal({ defaultCoords: { lat: 1, lon: 2 } });
+    // #5482 added an always-on hop-limit note, so look for the Android one by text.
+    const androidNote = () => queryAllByRole('note').find((n) => /Android/i.test(n.textContent ?? '')) ?? null;
     // Off by default: no rebroadcast value, so no warning.
-    expect(queryByRole('note')).toBeNull();
+    expect(androidNote()).toBeNull();
 
     const rebroadcastInput = container.querySelector(
       'input[type="number"][min="10"][step="1"]',
     ) as HTMLInputElement;
     fireEvent.change(rebroadcastInput, { target: { value: '15' } });
-    expect(queryByRole('note')?.textContent).toMatch(/Android/i);
+    expect(androidNote()).not.toBeNull();
 
     // Clearing it hides the warning again. Whitespace-only counts as cleared:
     // the display guard uses `.trim().length > 0`, matching validate()'s own
     // trim, so the warning and the "interval is set" check never diverge.
     fireEvent.change(rebroadcastInput, { target: { value: '   ' } });
-    expect(queryByRole('note')).toBeNull();
+    expect(androidNote()).toBeNull();
     fireEvent.change(rebroadcastInput, { target: { value: '' } });
-    expect(queryByRole('note')).toBeNull();
+    expect(androidNote()).toBeNull();
   });
 
   it('rejects out-of-range latitude', async () => {
@@ -197,5 +199,44 @@ describe('WaypointEditorModal — edit mode', () => {
     const inputs = container.querySelectorAll('input[type="number"][step="0.000001"]');
     expect((inputs[0] as HTMLInputElement).value).toBe('10');
     expect((inputs[1] as HTMLInputElement).value).toBe('20');
+  });
+});
+
+describe('WaypointEditorModal — hop limit (#5482)', () => {
+  const existing = {
+    sourceId: 's', waypointId: 1, ownerNodeNum: null, latitude: 1, longitude: 2, expireAt: null, lockedTo: null,
+    name: 'wp', description: '', iconCodepoint: null, iconEmoji: '📍', isVirtual: false, channel: 0,
+    rebroadcastIntervalS: null, lastBroadcastAt: null, firstSeenAt: 0, lastUpdatedAt: 0,
+  };
+
+  it('defaults to blank (the node hop limit) and sends hop_limit null', async () => {
+    const { onSave, getByText, getByLabelText } = renderModal({ defaultCoords: { lat: 1, lon: 2 } });
+    expect((getByLabelText('automation.hop_limit_override.label') as HTMLSelectElement).value).toBe('');
+    fireEvent.click(getByText(/Create/));
+    await waitFor(() => expect(onSave).toHaveBeenCalledTimes(1));
+    expect(onSave.mock.calls[0][0]).toMatchObject({ hop_limit: null });
+  });
+
+  it('sends the chosen hop limit as a number', async () => {
+    const { onSave, getByText, getByLabelText } = renderModal({ defaultCoords: { lat: 1, lon: 2 } });
+    fireEvent.change(getByLabelText('automation.hop_limit_override.label'), { target: { value: '0' } });
+    fireEvent.click(getByText(/Create/));
+    await waitFor(() => expect(onSave).toHaveBeenCalledTimes(1));
+    expect(onSave.mock.calls[0][0]).toMatchObject({ hop_limit: 0 });
+  });
+
+  it('pre-fills the stored hop limit when editing', () => {
+    const { getByLabelText } = renderModal({ initial: { ...existing, hopLimit: 2 } });
+    expect((getByLabelText('automation.hop_limit_override.label') as HTMLSelectElement).value).toBe('2');
+  });
+
+  it('shows the airtime warning, and hides it for a virtual waypoint', () => {
+    const { queryAllByRole, rerender, onClose, onSave } = renderModal({ initial: { ...existing, hopLimit: null } });
+    const hopNote = () => queryAllByRole('note').find((n) => /waypoints\.hop_limit\.warning/.test(n.textContent ?? '')) ?? null;
+    expect(hopNote()).not.toBeNull();
+    rerender(
+      <WaypointEditorModal isOpen initial={{ ...existing, isVirtual: true }} onClose={onClose} onSave={onSave} selfNodeNum={1234567} />,
+    );
+    expect(hopNote()).toBeNull();
   });
 });

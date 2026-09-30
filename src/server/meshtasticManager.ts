@@ -9514,13 +9514,21 @@ class MeshtasticManager implements ISourceManager {
     name?: string;
     description?: string;
     icon?: number;
-  }, options: { destination?: number; channel?: number; origin?: SendOrigin } = {}): Promise<number> {
+  }, options: { destination?: number; channel?: number; origin?: SendOrigin; hopLimit?: number | null } = {}): Promise<number> {
     if (!this.isConnected || !this.transport) {
       logger.warn(`[meshtasticManager] broadcastWaypoint skipped: not connected (source ${this.sourceId})`);
       return 0;
     }
     try {
-      const { data, packetId } = meshtasticProtobufService.createWaypointMessage(waypoint, options);
+      // #5482: a waypoint's hop limit defaults to this node's configured LoRa
+      // hop limit (it used to be a hardcoded 3). A stored/requested value is
+      // capped at that limit, so it can only shorten reach, never extend it.
+      const hopLimit = this.resolveWaypointHopLimit(options.hopLimit);
+      const { data, packetId } = meshtasticProtobufService.createWaypointMessage(waypoint, {
+        destination: options.destination,
+        channel: options.channel,
+        hopLimit,
+      });
       if (data.length === 0) return 0;
 
       this.recordAutomationPacket(packetId, options.origin);
@@ -9561,7 +9569,7 @@ class MeshtasticManager implements ISourceManager {
    */
   async broadcastWaypointDelete(
     waypointId: number,
-    options: { destination?: number; channel?: number } = {},
+    options: { destination?: number; channel?: number; hopLimit?: number | null } = {},
   ): Promise<number> {
     return this.broadcastWaypoint(
       { id: waypointId, latitude: 0, longitude: 0, expire: 1 },
@@ -10242,6 +10250,16 @@ class MeshtasticManager implements ISourceManager {
    */
   getConfiguredHopLimit(): number {
     return resolveHopLimit(this.actualDeviceConfig?.lora?.hopLimit);
+  }
+
+  /**
+   * Effective wire hop limit for a waypoint send (#5482): the requested value
+   * clamped to this node's configured hop limit, or the configured limit itself
+   * when none (or an invalid value) is given.
+   */
+  resolveWaypointHopLimit(requested: number | null | undefined): number {
+    const configured = this.getConfiguredHopLimit();
+    return clampHopLimitOverride(parseHopLimitOverride(requested), configured) ?? configured;
   }
 
   /**
