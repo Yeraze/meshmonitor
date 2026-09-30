@@ -376,6 +376,7 @@ router.get('/:id/export', requireAuth(), requireSourceId('query'), async (req: R
         uplinkEnabled: normalizeBoolean(channel.uplinkEnabled),
         downlinkEnabled: normalizeBoolean(channel.downlinkEnabled),
         positionPrecision: channel.positionPrecision,
+        useAead: normalizeBoolean(channel.useAead),
       },
     };
 
@@ -555,6 +556,9 @@ router.put('/:id', requireAuth(), requireSourceId('body'), async (req: Request, 
         positionPrecision !== undefined && positionPrecision !== null
           ? positionPrecision
           : (existingChannel?.positionPrecision ?? null),
+      // Read-only in Phase 1 (#5248): the UI never edits it, so always keep
+      // the stored flag. set_channel replaces the whole ChannelSettings.
+      useAead: existingChannel?.useAead ?? false,
     };
 
     if (sourceType === 'meshcore') {
@@ -625,6 +629,7 @@ router.put('/:id', requireAuth(), requireSourceId('body'), async (req: Request, 
           uplinkEnabled: updatedChannelData.uplinkEnabled,
           downlinkEnabled: updatedChannelData.downlinkEnabled,
           positionPrecision: updatedChannelData.positionPrecision,
+          useAead: updatedChannelData.useAead,
         });
         logger.debug(`✅ Sent channel ${channelId} configuration to device`);
       } catch (deviceError) {
@@ -741,7 +746,7 @@ router.post('/:slotId/import', requireAuth(), requireSourceId('body'), async (re
       return res.status(400).json({ error: 'Invalid import data. Expected channel object' });
     }
 
-    const { name, psk, role, uplinkEnabled, downlinkEnabled, positionPrecision } = channel;
+    const { name, psk, role, uplinkEnabled, downlinkEnabled, positionPrecision, useAead } = channel;
 
     // Validate name type/length but allow empty string (parity with PUT /channels/:id;
     // Meshtastic protocol allows blank slot-0 names — display falls back to "Primary").
@@ -803,6 +808,10 @@ router.post('/:slotId/import', requireAuth(), requireSourceId('body'), async (re
       uplinkEnabled: normalizeBoolean(uplinkEnabled, true),
       downlinkEnabled: normalizeBoolean(downlinkEnabled, true),
       positionPrecision: positionPrecision !== null && positionPrecision !== undefined ? positionPrecision : undefined,
+      // #5248: an export carries useAead; an older file without it keeps the
+      // slot's stored flag (undefined = preserve in upsertChannel and in
+      // setChannelConfig's read-modify-write).
+      useAead: useAead !== null && useAead !== undefined ? normalizeBoolean(useAead, false) : undefined,
     };
 
     // Import channel to the specified slot in database (scoped to source — #3712)
@@ -820,6 +829,7 @@ router.post('/:slotId/import', requireAuth(), requireSourceId('body'), async (re
           uplinkEnabled: importedChannelData.uplinkEnabled,
           downlinkEnabled: importedChannelData.downlinkEnabled,
           positionPrecision: importedChannelData.positionPrecision,
+          useAead: importedChannelData.useAead,
         });
         logger.debug(`✅ Sent imported channel ${slotId} configuration to device`);
       } catch (deviceError) {
@@ -927,6 +937,8 @@ router.post('/reorder', requireAuth(), requireSourceId('body'), requireMeshtasti
           uplinkEnabled: sourceChannel.uplinkEnabled ?? true,
           downlinkEnabled: sourceChannel.downlinkEnabled ?? true,
           positionPrecision: sourceChannel.positionPrecision ?? undefined,
+          // The moved channel's own flag, NOT the target slot's (#5248).
+          useAead: !!sourceChannel.useAead,
         });
 
         // Update database (scoped to this source; reorder is an authoritative
@@ -939,6 +951,7 @@ router.post('/reorder', requireAuth(), requireSourceId('body'), requireMeshtasti
           uplinkEnabled: sourceChannel.uplinkEnabled,
           downlinkEnabled: sourceChannel.downlinkEnabled,
           positionPrecision: sourceChannel.positionPrecision,
+          useAead: !!sourceChannel.useAead,
         }, reorderSourceScope, { allowBlankName: true });
       } else {
         // Empty/disabled slot
@@ -946,12 +959,14 @@ router.post('/reorder', requireAuth(), requireSourceId('body'), requireMeshtasti
           name: '',
           psk: undefined,
           role: 0,
+          useAead: false, // empty slot: don't inherit the old occupant's flag
         });
         await databaseService.channels.upsertChannel({
           id: newSlot,
           name: '',
           psk: null,
           role: 0,
+          useAead: false,
         }, reorderSourceScope, { allowBlankName: true });
       }
 
@@ -1047,6 +1062,7 @@ router.post('/encode-url', requirePermission('configuration', 'read'), requireSo
           uplinkEnabled: ch.uplinkEnabled,
           downlinkEnabled: ch.downlinkEnabled,
           positionPrecision: ch.positionPrecision,
+          useAead: !!ch.useAead,
         };
       });
 
@@ -1166,6 +1182,9 @@ router.post('/import-config', requirePermission('configuration', 'write'), requi
             uplinkEnabled: channel.uplinkEnabled,
             downlinkEnabled: channel.downlinkEnabled,
             positionPrecision: channel.positionPrecision,
+            // The URL's ChannelSet replaces the channel, so its use_aead wins
+            // (#5248); decodeUrl always sets it (proto3 default false).
+            useAead: channel.useAead,
           });
 
           // Allow device time to process channel config before sending the next message

@@ -27,6 +27,7 @@ import { useMentionAutocomplete } from '../hooks/useMentionAutocomplete';
 import { mentionCandidatesFromNodes } from '../utils/mentionCandidates';
 import { useAutoResizeTextarea } from '../hooks/useAutoResizeTextarea';
 import HopCountDisplay from './HopCountDisplay';
+import AeadBadge from './channels/AeadBadge';
 import LinkPreview from './LinkPreview';
 import { MessageEmojiButton } from './MessageEmojiButton';
 import { logger } from '../utils/logger';
@@ -1037,6 +1038,7 @@ export default function ChannelsTab({
                           </span>
                         )}
                         <div className="channel-button-status">
+                          <AeadBadge useAead={channelConfig?.useAead} />
                           <span
                             className={`arrow-icon uplink ${channelConfig?.uplinkEnabled ? 'enabled' : 'disabled'}`}
                             title={t('channels.mqtt_uplink')}
@@ -1580,6 +1582,14 @@ export default function ChannelsTab({
                         )}
                       </span>
                     </div>
+                    {selectedChannelConfig.useAead && (
+                      <div className="info-row">
+                        <span className="info-label">{t('channels.aead_label')}:</span>
+                        <span className="info-value">
+                          <AeadBadge useAead={selectedChannelConfig.useAead} />
+                        </span>
+                      </div>
+                    )}
                     <div className="info-row">
                       <span className="info-label">{t('channels.mqtt_downlink')}:</span>
                       <span className="info-value">

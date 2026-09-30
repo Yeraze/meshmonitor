@@ -22,12 +22,14 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 const getAllChannels = vi.fn();
+const getChannelById = vi.fn();
 const upsertNodeAsync = vi.fn();
 
 vi.mock('../../services/database.js', () => ({
   default: {
     channels: {
       getAllChannels: (...args: unknown[]) => getAllChannels(...args),
+      getChannelById: (...args: unknown[]) => getChannelById(...args),
     },
     upsertNodeAsync: (...args: unknown[]) => upsertNodeAsync(...args),
   },
@@ -110,6 +112,7 @@ describe('DeviceAdminService', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     getAllChannels.mockResolvedValue([]);
+    getChannelById.mockResolvedValue(null);
     upsertNodeAsync.mockResolvedValue(undefined);
   });
 
@@ -143,6 +146,38 @@ describe('DeviceAdminService', () => {
       const svc = new DeviceAdminService(mgr as any);
       await expect(svc.setChannelConfig(8, {})).rejects.toThrow('Channel index must be between 0 and 7');
       expect(mgr.sendLocalAdminPacket).not.toHaveBeenCalled();
+    });
+
+    // #5248: set_channel replaces the whole ChannelSettings, so an omitted
+    // use_aead must be filled from this source's stored row, not dropped.
+    it('setChannelConfig fills an omitted useAead from the stored row for this source', async () => {
+      const mgr = makeFakeManager({ sourceId: 'src-aead' });
+      const svc = new DeviceAdminService(mgr as any);
+      getChannelById.mockResolvedValue({ id: 2, name: 'Sec', useAead: true });
+      await svc.setChannelConfig(2, { name: 'Renamed', role: 2 });
+      expect(getChannelById).toHaveBeenCalledWith(2, 'src-aead');
+      expect(createSetChannelMessage).toHaveBeenCalledWith(
+        2, expect.objectContaining({ name: 'Renamed', useAead: true }), expect.any(Uint8Array),
+      );
+      expect(mgr.sendLocalAdminPacket).toHaveBeenCalledTimes(1);
+    });
+
+    it('setChannelConfig sends useAead=false when there is no stored row', async () => {
+      const svc = new DeviceAdminService(makeFakeManager() as any);
+      await svc.setChannelConfig(3, { name: 'New' });
+      expect(createSetChannelMessage).toHaveBeenCalledWith(
+        3, expect.objectContaining({ useAead: false }), expect.any(Uint8Array),
+      );
+    });
+
+    it('setChannelConfig keeps an explicit useAead without a DB lookup', async () => {
+      const svc = new DeviceAdminService(makeFakeManager() as any);
+      getChannelById.mockResolvedValue({ id: 1, useAead: true });
+      await svc.setChannelConfig(1, { name: 'X', useAead: false });
+      expect(getChannelById).not.toHaveBeenCalled();
+      expect(createSetChannelMessage).toHaveBeenCalledWith(
+        1, expect.objectContaining({ useAead: false }), expect.any(Uint8Array),
+      );
     });
 
     it('setPositionConfig with coordinates writes the DB position then sends the fixed-position and config packets', async () => {

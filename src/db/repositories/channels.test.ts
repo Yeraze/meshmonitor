@@ -42,6 +42,7 @@ const POSTGRES_CREATE = `
     "updatedAt" BIGINT NOT NULL DEFAULT 0,
     "sourceId" TEXT,
     scope TEXT,
+    "useAead" BOOLEAN NOT NULL DEFAULT false,
     UNIQUE ("sourceId", id)
   );
   DROP TABLE IF EXISTS sources CASCADE;
@@ -72,6 +73,7 @@ const MYSQL_CREATE = `
     updatedAt BIGINT NOT NULL DEFAULT 0,
     sourceId VARCHAR(36),
     scope VARCHAR(64),
+    useAead BOOLEAN NOT NULL DEFAULT false,
     UNIQUE KEY channels_source_id_uniq (sourceId, id)
   );
   DROP TABLE IF EXISTS sources;
@@ -145,6 +147,48 @@ function runChannelsTests(getBackend: () => TestBackend) {
     const channel = await repo.getChannelById(2);
     expect(channel).not.toBeNull();
     expect(channel!.name).toBe('KeepMe');
+  });
+
+  // --- AEAD flag (#5248) -------------------------------------------------
+
+  it('upsertChannel - useAead defaults to false, and an omitted flag keeps the stored value', async () => {
+    const backend = getBackend();
+    if (!backend.available) {
+      console.log(`⚠ Skipped: ${backend.skipReason}`);
+      return;
+    }
+
+    await repo.upsertChannel({ id: 3, name: 'Plain', psk: 'p', role: 2 }, 'aead-src-a');
+    expect((await repo.getChannelById(3, 'aead-src-a'))!.useAead).toBe(false);
+
+    await repo.upsertChannel({ id: 3, name: 'Plain', psk: 'p', role: 2, useAead: true }, 'aead-src-a');
+    expect((await repo.getChannelById(3, 'aead-src-a'))!.useAead).toBe(true);
+
+    // A save that does not know the flag (UI edit, MeshCore sync) must keep it.
+    await repo.upsertChannel({ id: 3, name: 'Renamed', psk: 'p2', role: 2 }, 'aead-src-a', { allowBlankName: true });
+    const kept = await repo.getChannelById(3, 'aead-src-a');
+    expect(kept!.name).toBe('Renamed');
+    expect(kept!.useAead).toBe(true);
+
+    // The device reporting false overwrites it.
+    await repo.upsertChannel({ id: 3, name: 'Renamed', psk: 'p2', role: 2, useAead: false }, 'aead-src-a');
+    expect((await repo.getChannelById(3, 'aead-src-a'))!.useAead).toBe(false);
+  });
+
+  it('upsertChannel - useAead is per-source', async () => {
+    const backend = getBackend();
+    if (!backend.available) {
+      console.log(`⚠ Skipped: ${backend.skipReason}`);
+      return;
+    }
+
+    await repo.upsertChannel({ id: 1, name: 'Shared', psk: 'p', role: 2, useAead: true }, 'aead-src-a');
+    await repo.upsertChannel({ id: 1, name: 'Shared', psk: 'p', role: 2 }, 'aead-src-b');
+
+    expect((await repo.getChannelById(1, 'aead-src-a'))!.useAead).toBe(true);
+    expect((await repo.getChannelById(1, 'aead-src-b'))!.useAead).toBe(false);
+    const bRows = await repo.getAllChannels('aead-src-b');
+    expect(bRows.every((c) => c.useAead === false)).toBe(true);
   });
 
   // --- MeshCore region/scope (#3667) ------------------------------------

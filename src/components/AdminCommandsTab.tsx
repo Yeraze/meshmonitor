@@ -2144,6 +2144,7 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
           uplinkEnabled: ch.uplinkEnabled !== undefined ? ch.uplinkEnabled : false,
           downlinkEnabled: ch.downlinkEnabled !== undefined ? ch.downlinkEnabled : false,
           positionPrecision: ch.positionPrecision !== undefined ? ch.positionPrecision : 32,
+          useAead: !!ch.useAead,
           createdAt: now,
           updatedAt: now
         };
@@ -2210,6 +2211,10 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
     const isDisabling = channelRole === 0;
     const finalName = isDisabling ? '' : channelName;
     const finalPsk = isDisabling ? undefined : (channelPsk || undefined);
+    // Read-only in Phase 1 (#5248): send back the flag get-channel reported,
+    // since set_channel replaces the whole ChannelSettings. Undefined (never
+    // loaded) lets the server fill it from the stored row for the local node.
+    const loadedUseAead = remoteNodeChannels.find(ch => ch.id === savedChannelIndex)?.useAead;
     
     try {
       await executeCommand('setChannel', {
@@ -2220,7 +2225,8 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
           role: channelRole,
           uplinkEnabled: channelUplinkEnabled,
           downlinkEnabled: channelDownlinkEnabled,
-          positionPrecision: channelPositionPrecision
+          positionPrecision: channelPositionPrecision,
+          useAead: loadedUseAead,
         }
       });
       
@@ -2288,6 +2294,7 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
             uplinkEnabled: normalizeBoolean(ch.uplinkEnabled, true),
             downlinkEnabled: normalizeBoolean(ch.downlinkEnabled, true),
             positionPrecision: ch.positionPrecision,
+            useAead: normalizeBoolean(ch.useAead, false),
           },
         };
 
@@ -2400,7 +2407,10 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
             role: channelData.role !== undefined ? channelData.role : (importSlotId === 0 ? 1 : 0),
             uplinkEnabled: normalizeBoolean(channelData.uplinkEnabled, true),
             downlinkEnabled: normalizeBoolean(channelData.downlinkEnabled, true),
-            positionPrecision: channelData.positionPrecision !== undefined ? channelData.positionPrecision : 32
+            positionPrecision: channelData.positionPrecision !== undefined ? channelData.positionPrecision : 32,
+            // #5248: an export carries useAead; an older file has none, and a
+            // remote node has no stored row to fall back on, so it goes as false.
+            useAead: channelData.useAead !== undefined ? normalizeBoolean(channelData.useAead, false) : undefined,
           }
         });
         showToast(t('admin_commands.channel_imported_successfully', { importSlotId }), 'success');

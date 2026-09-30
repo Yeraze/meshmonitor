@@ -1,0 +1,18 @@
+/* Read-only AEAD (AES-CCM) marker on a channel (#5248 Phase 1). */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  margin-left: 0.5rem;
+  padding: 1px 6px;
+  border-radius: 8px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  line-height: 1.4;
+  vertical-align: middle;
+  white-space: nowrap;
+  color: var(--color-accent);
+  background: color-mix(in srgb, var(--color-accent) 14%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-accent) 40%, transparent);
+  cursor: help;
+}

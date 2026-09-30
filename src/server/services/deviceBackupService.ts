@@ -254,6 +254,7 @@ class DeviceBackupService {
             uplinkEnabled: ch.uplinkEnabled,
             downlinkEnabled: ch.downlinkEnabled,
             positionPrecision: ch.positionPrecision,
+            useAead: !!ch.useAead,
             mute: ch.mute
           }));
 

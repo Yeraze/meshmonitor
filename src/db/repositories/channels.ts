@@ -27,6 +27,12 @@ export interface ChannelInput {
    * leading '#'.
    */
   scope?: string | null;
+  /**
+   * ChannelSettings.use_aead (#5248). `undefined` = preserve the stored value
+   * (a UI save that does not know the flag must not turn AEAD off); a boolean
+   * overwrites it. Device-config ingest always passes the device's value.
+   */
+  useAead?: boolean | null;
 }
 
 /**
@@ -147,6 +153,7 @@ export class ChannelsRepository extends BaseRepository {
         uplinkEnabled: data.uplinkEnabled ?? existingChannel.uplinkEnabled,
         downlinkEnabled: data.downlinkEnabled ?? existingChannel.downlinkEnabled,
         positionPrecision: data.positionPrecision ?? existingChannel.positionPrecision,
+        useAead: data.useAead ?? existingChannel.useAead ?? false,
         // Scope is MeshMonitor-owned and never reported by the device. Only
         // overwrite when the caller explicitly supplies it (undefined = preserve,
         // empty string = clear). This keeps `syncChannelsFromDevice()` (which
@@ -191,6 +198,7 @@ export class ChannelsRepository extends BaseRepository {
         uplinkEnabled: data.uplinkEnabled ?? false,
         downlinkEnabled: data.downlinkEnabled ?? false,
         positionPrecision: data.positionPrecision ?? null,
+        useAead: data.useAead ?? false,
         scope: data.scope || null,
         createdAt: now,
         updatedAt: now,

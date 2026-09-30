@@ -268,6 +268,7 @@ export interface DbChannel {
   uplinkEnabled: boolean;
   downlinkEnabled: boolean;
   positionPrecision?: number; // Location precision bits (0-32)
+  useAead?: boolean; // ChannelSettings.use_aead (#5248)
   createdAt: number;
   updatedAt: number;
 }
