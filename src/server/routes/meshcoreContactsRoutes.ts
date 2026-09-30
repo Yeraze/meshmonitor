@@ -371,14 +371,16 @@ router.post(
           error: 'Invalid public key — must be 64-char hex',
         });
       }
-      const result = await managerFor(req, res).traceContactPath(publicKey);
+      // #5485: opt-in return leg; anything but literal true keeps one-way.
+      const autoReturn = req.body?.autoReturn === true;
+      const result = await managerFor(req, res).traceContactPath(publicKey, { autoReturn });
       if (!result) {
         return res.status(409).json({
           success: false,
           error: 'Trace path failed — contact may have no known path, source disconnected, timed out, or not a Companion device',
         });
       }
-      res.json({ success: true, hops: result.hops, lastSnr: result.lastSnr });
+      res.json({ success: true, hops: result.hops, lastSnr: result.lastSnr, path: result.path });
     } catch (error) {
       if (failIfTxDisabled(res, error)) return;
       logger.error('[API] Error tracing contact path:', error);

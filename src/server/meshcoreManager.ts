@@ -93,7 +93,7 @@ import { decodeMeshCorePacket } from '../utils/meshcorePacketDecode.js';
 import { MESHCORE_SECRET_BYTES } from '../utils/meshcoreHelpers.js';
 import { MESHCORE_PAYLOAD_ADVERT } from '../utils/coverage.js';
 import { maybeRecordMeshCoreCoverageReception } from './utils/coverageMeshCore.js';
-import { parsePathHops, pathHashBytesOf, resolveRouteNames } from '../utils/meshcorePath.js';
+import { parsePathHops, pathHashBytesOf, resolveRouteNames, buildTracePathHops } from '../utils/meshcorePath.js';
 import { MESHCORE_PUBLIC_CHANNEL_SECRET, tryDecodeGroupTextPayload } from './utils/meshcoreGroupEcho.js';
 import { meshcoreAgeCutoffMs, isWithinMeshcoreAge } from '../utils/meshcoreAge.js';
 import { safeJson } from './utils/redactSecrets.js';
@@ -5531,9 +5531,11 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
    * SNR. Returns the per-hop SNR array plus the final-hop SNR, or `null`
    * on failure (no path, timeout, not Companion).
    */
-  async traceContactPath(publicKey: string): Promise<{
+  async traceContactPath(publicKey: string, opts: { autoReturn?: boolean } = {}): Promise<{
     hops: { index: number; snr: number }[];
     lastSnr: number;
+    /** Hop hashes actually traced, one per entry in `hops` (#5485). */
+    path: string[];
   } | null> {
     if (this.deviceType !== MeshCoreDeviceType.COMPANION) {
       logger.warn('[MeshCore] Trace-path requires Companion firmware');
@@ -5566,11 +5568,22 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
       logger.warn(`[MeshCore] Trace-path: ${hashBytes}-byte hop hash width for ${publicKey.substring(0, 16)}… is not supported by the device's trace-path command (only 1 or 2 bytes/hop)`);
       return null;
     }
+    // Auto return path (#5485): bring the trace back along the same route so
+    // the initiator hears it end and gets per-direction SNRs. Repeaters and
+    // room servers forward traces, so loop through the target; a companion
+    // drops them unless its repeat setting is on, so turn at the last repeater.
+    // Off unless the caller asks, so scheduled automation traces keep their
+    // one-way airtime.
+    const tracedHops = buildTracePathHops(pathHops, publicKey, hashBytes, {
+      autoReturn: opts.autoReturn === true,
+      targetForwards:
+        contact.advType === MeshCoreDeviceType.REPEATER || contact.advType === MeshCoreDeviceType.ROOM_SERVER,
+    });
     // Expand each hop token into its constituent bytes so multi-byte hops
     // (e.g. "a3f2") yield [0xa3, 0xf2] rather than being truncated to a
     // single byte by parseInt. 1-byte paths are unaffected.
     const pathBytes = Uint8Array.from(
-      pathHops.flatMap((tok) => {
+      tracedHops.flatMap((tok) => {
         const bytes: number[] = [];
         for (let i = 0; i + 2 <= tok.length; i += 2) {
           bytes.push(parseInt(tok.slice(i, i + 2), 16));
@@ -5599,8 +5612,8 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
         snr: ((raw << 24) >> 24) / 4,
       }));
       const lastSnr: number = d.lastSnr ?? 0;
-      logger.debug(`[MeshCore] Trace path to ${publicKey.substring(0, 16)}…: ${hops.length} hops, lastSnr=${lastSnr}`);
-      return { hops, lastSnr };
+      logger.debug(`[MeshCore] Trace path to ${publicKey.substring(0, 16)}… via ${tracedHops.join(',')}: ${hops.length} hops, lastSnr=${lastSnr}`);
+      return { hops, lastSnr, path: tracedHops };
     } catch (error) {
       logger.error('[MeshCore] traceContactPath threw:', error);
       return null;

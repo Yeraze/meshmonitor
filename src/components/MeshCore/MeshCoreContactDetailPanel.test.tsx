@@ -3,7 +3,7 @@
  *
  * Smoke tests for the MeshCore DM contact-detail panel.
  */
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { MeshCoreContactDetailPanel } from './MeshCoreContactDetailPanel';
@@ -500,6 +500,59 @@ describe('MeshCoreContactDetailPanel', () => {
    * switch, so the failure is specifically a reply landing *after* that clear
    * and repainting one contact's data onto another's card.
    */
+  describe('auto return path (#5485)', () => {
+    const contact: MeshCoreContact = { publicKey: PK, advType: 2, pathLen: 1, outPath: '5e' } as MeshCoreContact;
+    const props = { canWriteNodes: true, isCompanion: true } as const;
+
+    beforeEach(() => {
+      try { localStorage.removeItem('meshcoreTraceAutoReturn'); } catch { /* ignore */ }
+    });
+
+    it('is on by default and sends autoReturn: true', async () => {
+      const onTracePath = vi.fn().mockResolvedValue({ hops: [], lastSnr: 1, path: [] });
+      render(<MeshCoreContactDetailPanel contact={contact} publicKey={PK} onTracePath={onTracePath} {...props} />);
+
+      const box = screen.getByRole('checkbox', { name: 'Auto return path' }) as HTMLInputElement;
+      expect(box.checked).toBe(true);
+      fireEvent.click(screen.getByRole('button', { name: 'Trace Path' }));
+      await waitFor(() => expect(onTracePath).toHaveBeenCalledWith(PK, { autoReturn: true }));
+    });
+
+    it('sends autoReturn: false when unticked, and remembers the choice', async () => {
+      const onTracePath = vi.fn().mockResolvedValue({ hops: [], lastSnr: 1, path: [] });
+      const { unmount } = render(
+        <MeshCoreContactDetailPanel contact={contact} publicKey={PK} onTracePath={onTracePath} {...props} />,
+      );
+      fireEvent.click(screen.getByRole('checkbox', { name: 'Auto return path' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Trace Path' }));
+      await waitFor(() => expect(onTracePath).toHaveBeenCalledWith(PK, { autoReturn: false }));
+      unmount();
+
+      render(<MeshCoreContactDetailPanel contact={contact} publicKey={PK} onTracePath={onTracePath} {...props} />);
+      expect((screen.getByRole('checkbox', { name: 'Auto return path' }) as HTMLInputElement).checked).toBe(false);
+    });
+
+    it('labels each result row with the hop actually traced', async () => {
+      const onTracePath = vi.fn().mockResolvedValue({
+        hops: [{ index: 0, snr: 10 }, { index: 1, snr: 6 }, { index: 2, snr: 2 }],
+        lastSnr: 4.5,
+        path: ['5e', 'f6', '5e'],
+      });
+      render(<MeshCoreContactDetailPanel contact={contact} publicKey={PK} onTracePath={onTracePath} {...props} />);
+      fireEvent.click(screen.getByRole('button', { name: 'Trace Path' }));
+
+      await screen.findByText('Trace Path Results');
+      const rows = screen.getAllByRole('row').slice(1).map((r) => r.textContent);
+      expect(rows).toEqual([
+        expect.stringContaining('5e'),
+        expect.stringContaining('f6'),
+        expect.stringContaining('5e'),
+        expect.stringContaining('Destination'),
+      ]);
+      expect(rows[1]).toContain('6.00 dB');
+    });
+  });
+
   describe('stale replies after a contact switch (#4517)', () => {
     const PK2 = 'b'.repeat(64);
     /** pathLen > 0 is required for the Trace Path button to be offered. */
@@ -527,7 +580,7 @@ describe('MeshCoreContactDetailPanel', () => {
 
       // A's reply arrives only now, with B on screen.
       d.resolve({ hops: [{ index: 0, snr: 7 }], lastSnr: 5 });
-      await waitFor(() => expect(onTracePath).toHaveBeenCalledWith(PK));
+      await waitFor(() => expect(onTracePath).toHaveBeenCalledWith(PK, expect.anything()));
       await new Promise((r) => setTimeout(r, 0));
 
       expect(screen.queryByText('Trace Path Results')).toBeNull();

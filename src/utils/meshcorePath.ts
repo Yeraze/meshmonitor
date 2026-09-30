@@ -57,6 +57,45 @@ export function hopByteForKey(publicKey: string, hashBytes: 1 | 2 | 3 = 1): Path
   return publicKey.slice(0, hashBytes * 2).toLowerCase();
 }
 
+/**
+ * Most hops a trace path may carry. Each hop a trace passes appends one SNR
+ * byte to the packet's path, which the firmware caps at MAX_PATH_SIZE (64).
+ */
+export const MAX_TRACE_PATH_HOPS = 63;
+
+/**
+ * Build the hop list for a trace (#5485).
+ *
+ * Without a return leg the trace walks only the saved out-path, so it stops at
+ * the last repeater and the initiator often can't hear it end. With
+ * `autoReturn`, the trace comes back along the same path, as MeshCore One's
+ * "Auto Return Path" does:
+ *
+ * - `targetForwards` (repeater / room server): loop through the target —
+ *   `out + target + reversed(out)`, e.g. `[5e]` to target `f6` becomes
+ *   `[5e, f6, 5e]`. The firmware counts hops in a trace packet's hash, so a
+ *   node can be revisited on the way back.
+ * - otherwise (companion / sensor): a companion drops a trace unless its repeat
+ *   setting is on, so turn around at the last repeater —
+ *   `out + reversed(out) minus its first` — e.g. `[a, b]` becomes `[a, b, a]`.
+ *
+ * Falls back to the one-way path if the round trip would exceed
+ * {@link MAX_TRACE_PATH_HOPS}.
+ */
+export function buildTracePathHops(
+  outHops: PathHop[],
+  targetPublicKey: string,
+  hashBytes: 1 | 2 | 3,
+  opts: { autoReturn: boolean; targetForwards: boolean },
+): PathHop[] {
+  if (!opts.autoReturn || outHops.length === 0) return outHops;
+  const outbound = opts.targetForwards
+    ? [...outHops, hopByteForKey(targetPublicKey, hashBytes)]
+    : outHops;
+  const full = [...outbound, ...[...outbound].reverse().slice(1)];
+  return full.length > MAX_TRACE_PATH_HOPS ? outHops : full;
+}
+
 export interface RepeaterOption {
   publicKey: string;
   name: string;

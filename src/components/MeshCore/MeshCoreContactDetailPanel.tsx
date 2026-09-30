@@ -59,7 +59,7 @@ interface MeshCoreContactDetailPanelProps {
   repeaters?: MeshCoreContact[];
   /** Send a trace-path diagnostic along the contact's cached path and
    *  return per-hop SNR data. Unset hides the Trace Path button. */
-  onTracePath?: (publicKey: string) => Promise<TracePathResult | null>;
+  onTracePath?: (publicKey: string, opts?: { autoReturn?: boolean }) => Promise<TracePathResult | null>;
   /** Zero-hop ping (#4393) — trace along a synthetic one-hop path so a reply
    *  proves the node is in direct RF range. Unset hides the Ping button. */
   onPingZeroHop?: (publicKey: string) => Promise<ZeroHopPingResult>;
@@ -123,6 +123,7 @@ interface MeshCoreContactDetailPanelProps {
 }
 
 const COLLAPSED_KEY = 'meshcoreContactDetailsCollapsed';
+const TRACE_AUTO_RETURN_KEY = 'meshcoreTraceAutoReturn';
 
 export const MeshCoreContactDetailPanel: React.FC<MeshCoreContactDetailPanelProps> = ({
   contact,
@@ -186,6 +187,23 @@ export const MeshCoreContactDetailPanel: React.FC<MeshCoreContactDetailPanelProp
 
   // Trace-path state
   const [tracing, setTracing] = useState(false);
+  // Auto return path (#5485): bring the trace back along the same route.
+  // On by default, remembered per browser.
+  const [traceAutoReturn, setTraceAutoReturn] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem(TRACE_AUTO_RETURN_KEY) !== 'false';
+    } catch {
+      return true;
+    }
+  });
+  const toggleTraceAutoReturn = (next: boolean) => {
+    setTraceAutoReturn(next);
+    try {
+      localStorage.setItem(TRACE_AUTO_RETURN_KEY, String(next));
+    } catch {
+      /* private window / blocked storage: keep the in-memory choice */
+    }
+  };
   const [traceResult, setTraceResult] = useState<TracePathResult | null>(null);
   const [traceError, setTraceError] = useState<string | null>(null);
   const [discovering, setDiscovering] = useState(false);
@@ -339,7 +357,7 @@ export const MeshCoreContactDetailPanel: React.FC<MeshCoreContactDetailPanelProp
     setTraceError(null);
     setTraceResult(null);
     try {
-      const result = await onTracePath(publicKey);
+      const result = await onTracePath(publicKey, { autoReturn: traceAutoReturn });
       if (!isCurrent()) return;
       if (result) {
         setTraceResult(result);
@@ -761,6 +779,23 @@ export const MeshCoreContactDetailPanel: React.FC<MeshCoreContactDetailPanelProp
                       : t('meshcore.contact_details.trace_path_button', 'Trace Path')}
                   </button>
                 )}
+                {canShowTraceButton && (
+                  <label
+                    style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem', fontSize: '0.85em' }}
+                    title={t(
+                      'meshcore.contact_details.trace_auto_return_hint',
+                      'Bring the trace back along the same path, for SNR in both directions. Repeaters and room servers are traced through; for a companion the trace turns at the last repeater. Uses about twice the airtime.',
+                    )}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={traceAutoReturn}
+                      disabled={tracing}
+                      onChange={(e) => toggleTraceAutoReturn(e.target.checked)}
+                    />
+                    {t('meshcore.contact_details.trace_auto_return', 'Auto return path')}
+                  </label>
+                )}
                 {canShowPingButton && (
                   <button
                     type="button"
@@ -920,7 +955,7 @@ export const MeshCoreContactDetailPanel: React.FC<MeshCoreContactDetailPanelProp
                   </thead>
                   <tbody>
                     {traceResult.hops.map((hop) => {
-                      const pathHashes = outPath?.split(',') ?? [];
+                      const pathHashes = traceResult.path ?? outPath?.split(',') ?? [];
                       return (
                         <tr key={hop.index}>
                           <td style={{ padding: '0.25rem 0.5rem' }}>{hop.index + 1}</td>
