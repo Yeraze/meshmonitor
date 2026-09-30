@@ -101,6 +101,41 @@ describe('SourceNav', () => {
     expect(screen.getByTestId('custom-controls')).toBeDefined();
   });
 
+  it('adds a pin toggle to the built-in controls only while expanded (#5481)', () => {
+    const onTogglePin = vi.fn();
+    const { container, rerender } = render(
+      <SourceNav sections={sections} activeId="nodes" collapsed={false}
+        onToggleCollapsed={() => {}} pinned={false} onTogglePin={onTogglePin} />
+    );
+    const pin = container.querySelector('[data-source-nav-pin]') as HTMLButtonElement;
+    expect(pin).not.toBeNull();
+    expect(pin.getAttribute('aria-pressed')).toBe('false');
+    expect(pin.getAttribute('title')).toBe('Pin sidebar');
+    fireEvent.click(pin);
+    expect(onTogglePin).toHaveBeenCalledTimes(1);
+
+    rerender(
+      <SourceNav sections={sections} activeId="nodes" collapsed={false}
+        onToggleCollapsed={() => {}} pinned onTogglePin={onTogglePin} />
+    );
+    const pinned = container.querySelector('[data-source-nav-pin]')!;
+    expect(pinned.getAttribute('data-pinned')).toBe('true');
+    expect(pinned.getAttribute('title')).toBe('Unpin sidebar');
+
+    rerender(
+      <SourceNav sections={sections} activeId="nodes" collapsed
+        onToggleCollapsed={() => {}} pinned onTogglePin={onTogglePin} />
+    );
+    expect(container.querySelector('[data-source-nav-pin]')).toBeNull();
+  });
+
+  it('renders no pin toggle without onTogglePin', () => {
+    const { container } = render(
+      <SourceNav sections={sections} activeId="nodes" collapsed={false} onToggleCollapsed={() => {}} />
+    );
+    expect(container.querySelector('[data-source-nav-pin]')).toBeNull();
+  });
+
   it('exposes the mobile variant so consumers can opt into the bottom bar', () => {
     const { container, rerender } = render(
       <SourceNav sections={sections} activeId="nodes" collapsed />
