@@ -59,6 +59,9 @@ export interface DiscoveredNode {
 export interface TracePathResult {
   hops: { index: number; snr: number }[];
   lastSnr: number;
+  /** Hop hashes actually traced, one per `hops` entry (#5485). Absent from
+   *  older servers; callers fall back to the contact's out-path. */
+  path?: string[];
 }
 
 /**
@@ -277,7 +280,7 @@ export interface MeshCoreActions {
   setContactOutPath: (publicKey: string, outPath: string, hashBytes?: 1 | 2 | 3) => Promise<boolean>;
   /** Send a trace-path diagnostic along the contact's cached forwarding
    *  route and return per-hop SNR data. Resolves `null` on failure. */
-  traceContactPath: (publicKey: string) => Promise<TracePathResult | null>;
+  traceContactPath: (publicKey: string, opts?: { autoReturn?: boolean }) => Promise<TracePathResult | null>;
   /** Zero-hop ping (#4393) — trace along a synthetic one-hop path built from
    *  the target's own key hash, bypassing any cached route. A reply proves the
    *  node is in direct RF range. Requires nodes:write. */
@@ -1582,11 +1585,18 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
     }
   }, [mcPrefix, csrfFetch, showToast, t]);
 
-  const traceContactPath = useCallback(async (publicKey: string): Promise<TracePathResult | null> => {
+  const traceContactPath = useCallback(async (
+    publicKey: string,
+    opts: { autoReturn?: boolean } = {},
+  ): Promise<TracePathResult | null> => {
     try {
       const response = await csrfFetch(
         `${mcPrefix}/contacts/${encodeURIComponent(publicKey)}/trace-path`,
-        { method: 'POST' },
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ autoReturn: opts.autoReturn === true }),
+        },
       );
       const data = await parseJsonResponse(response);
       if (!data.success) {
@@ -1594,7 +1604,7 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
         setError(data.error || 'Trace path failed');
         return null;
       }
-      return { hops: data.hops, lastSnr: data.lastSnr };
+      return { hops: data.hops, lastSnr: data.lastSnr, path: Array.isArray(data.path) ? data.path : undefined };
     } catch (_err) {
       setError('Trace path failed');
       return null;
