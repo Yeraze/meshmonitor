@@ -36,6 +36,9 @@ export const channelsSqlite = sqliteTable('channels', {
   // (no leading '#'); NULL = inherit the source default scope / unscoped.
   // MeshMonitor-owned — never reported by the device.
   scope: text('scope'),
+  // ChannelSettings.use_aead (#5248): AES-CCM authenticated encryption.
+  // Device-reported; kept so a channel edit sends it back unchanged.
+  useAead: integer('useAead', { mode: 'boolean' }).notNull().default(false),
 }, (t) => ({
   sourceChannelUniq: uniqueIndex('channels_source_id_idx').on(t.sourceId, t.id),
 }));
@@ -54,6 +57,7 @@ export const channelsPostgres = pgTable('channels', {
   updatedAt: pgBigint('updatedAt', { mode: 'number' }).notNull(),
   sourceId: pgText('sourceId'),
   scope: pgText('scope'),
+  useAead: pgBoolean('useAead').notNull().default(false),
 });
 
 // MySQL schema
@@ -70,6 +74,7 @@ export const channelsMysql = mysqlTable('channels', {
   updatedAt: myBigint('updatedAt', { mode: 'number' }).notNull(),
   sourceId: myVarchar('sourceId', { length: 36 }),
   scope: myVarchar('scope', { length: 64 }),
+  useAead: myBoolean('useAead').notNull().default(false),
 });
 
 // Type inference

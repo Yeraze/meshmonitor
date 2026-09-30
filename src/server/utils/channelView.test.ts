@@ -71,10 +71,17 @@ describe('channelView', () => {
       expect(Object.keys(out).sort()).toEqual(
         [
           'id', 'name', 'displayName', 'role', 'roleName',
-          'uplinkEnabled', 'downlinkEnabled', 'positionPrecision',
+          'uplinkEnabled', 'downlinkEnabled', 'positionPrecision', 'useAead',
           'scope', 'pskSet', 'encryptionStatus',
         ].sort()
       );
+    });
+
+    it('surfaces useAead as a boolean (#5248), coercing SQLite 0/1', () => {
+      expect(transformChannel({ ...dbRow, useAead: 1 }).useAead).toBe(true);
+      expect(transformChannel({ ...dbRow, useAead: true }).useAead).toBe(true);
+      expect(transformChannel({ ...dbRow, useAead: 0 }).useAead).toBe(false);
+      expect(transformChannel({ ...dbRow }).useAead).toBe(false);
     });
 
     it('uses raw name as displayName when set', () => {

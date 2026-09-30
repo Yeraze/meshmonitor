@@ -794,6 +794,9 @@ export class VirtualNodeServer extends EventEmitter {
           uplinkEnabled: ch.uplinkEnabled ? true : undefined,
           downlinkEnabled: ch.downlinkEnabled ? true : undefined,
           positionPrecision: ch.positionPrecision,
+          // #5248: tell VN clients the real flag, so an app that edits the
+          // channel and sends set_channel back does not turn AEAD off.
+          useAead: ch.useAead ? true : undefined,
         },
         role: ch.role ?? (ch.id === 0 ? 1 : 2),
       });

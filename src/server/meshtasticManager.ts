@@ -6135,6 +6135,7 @@ class MeshtasticManager implements ISourceManager {
       uplinkEnabled: channel.settings?.uplinkEnabled,
       downlinkEnabled: channel.settings?.downlinkEnabled,
       positionPrecision: channel.settings?.moduleSettings?.positionPrecision,
+      useAead: channel.settings?.useAead,
       hasModuleSettings: !!channel.settings?.moduleSettings
     });
 
@@ -6211,7 +6212,11 @@ class MeshtasticManager implements ISourceManager {
             // after a container restart (#3594).
             uplinkEnabled: channel.settings.uplinkEnabled ?? false,
             downlinkEnabled: channel.settings.downlinkEnabled ?? false,
-            positionPrecision: positionPrecision !== undefined ? positionPrecision : undefined
+            positionPrecision: positionPrecision !== undefined ? positionPrecision : undefined,
+            // ChannelSettings.use_aead (#5248). Same proto3 elision as above:
+            // absent means false. Stored so a later edit sends it back — the
+            // device's set_channel replaces the whole ChannelSettings.
+            useAead: channel.settings.useAead ?? false,
           }, this.sourceId);
           logger.debug(`📡 Saved channel: ${displayName} (role: ${channel.role}, index: ${channel.index}, psk: ${pskString ? 'set' : 'none'}, uplink: ${channel.settings.uplinkEnabled}, downlink: ${channel.settings.downlinkEnabled}, positionPrecision: ${positionPrecision})`);
         } catch (error) {
@@ -14669,6 +14674,8 @@ class MeshtasticManager implements ISourceManager {
     uplinkEnabled?: boolean;
     downlinkEnabled?: boolean;
     positionPrecision?: number;
+    /** Omit to keep this source's stored value (#5248). */
+    useAead?: boolean;
   }): Promise<void> {
     return this.deviceAdminService.setChannelConfig(channelIndex, config);
   }

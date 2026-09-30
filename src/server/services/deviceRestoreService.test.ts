@@ -8,8 +8,8 @@ vi.mock('./channelUrlService.js', () => ({
   default: {
     decodeUrl: vi.fn(() => ({
       channels: [
-        { name: 'Primary', psk: 'none', role: 1, uplinkEnabled: false, downlinkEnabled: false, positionPrecision: 0 },
-        { name: 'Secondary', psk: 'base64:AQ==', role: 2, uplinkEnabled: true, downlinkEnabled: true, positionPrecision: 13 },
+        { name: 'Primary', psk: 'none', role: 1, uplinkEnabled: false, downlinkEnabled: false, positionPrecision: 0, useAead: false },
+        { name: 'Secondary', psk: 'base64:AQ==', role: 2, uplinkEnabled: true, downlinkEnabled: true, positionPrecision: 13, useAead: true },
       ],
     })),
   },
@@ -164,8 +164,9 @@ describe('deviceRestoreService', () => {
     expect(mgr.setNeighborInfoConfig).toHaveBeenCalledTimes(1);
     expect(mgr.setChannelConfig).toHaveBeenCalledTimes(2);
     // psk 'none' becomes undefined; base64 psk passes through.
-    expect(mgr.setChannelConfig).toHaveBeenCalledWith(0, expect.objectContaining({ psk: undefined, role: 1 }));
-    expect(mgr.setChannelConfig).toHaveBeenCalledWith(1, expect.objectContaining({ psk: 'base64:AQ==', role: 2 }));
+    expect(mgr.setChannelConfig).toHaveBeenCalledWith(0, expect.objectContaining({ psk: undefined, role: 1, useAead: false }));
+    // #5248: the backup's use_aead is restored verbatim.
+    expect(mgr.setChannelConfig).toHaveBeenCalledWith(1, expect.objectContaining({ psk: 'base64:AQ==', role: 2, useAead: true }));
     expect(result.channels).toBe(2);
   });
 

@@ -193,6 +193,8 @@ export interface Channel {
   uplinkEnabled: boolean;
   downlinkEnabled: boolean;
   positionPrecision?: number; // Location precision bits (0-32)
+  /** ChannelSettings.use_aead (#5248): AES-CCM authenticated encryption. Read-only in the UI. */
+  useAead?: boolean;
   createdAt?: number;
   updatedAt?: number;
 }

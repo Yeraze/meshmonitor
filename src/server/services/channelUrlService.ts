@@ -16,6 +16,8 @@ export interface DecodedChannelSettings {
   uplinkEnabled?: boolean;
   downlinkEnabled?: boolean;
   positionPrecision?: number;
+  /** ChannelSettings.use_aead (#5248): AES-CCM authenticated encryption. */
+  useAead?: boolean;
   mute?: boolean;
 }
 
@@ -122,6 +124,9 @@ class ChannelUrlService {
           if (ch.uplinkEnabled !== undefined) channel.uplinkEnabled = ch.uplinkEnabled;
           if (ch.downlinkEnabled !== undefined) channel.downlinkEnabled = ch.downlinkEnabled;
           if (ch.mute !== undefined) channel.mute = ch.mute;
+          // use_aead (#5248). `defaults: true` fills an absent field with false,
+          // which is the proto3 meaning of "not set".
+          if (ch.useAead !== undefined && ch.useAead !== null) channel.useAead = !!ch.useAead;
 
           // Extract position precision from module settings
           if (ch.moduleSettings && ch.moduleSettings.positionPrecision !== undefined) {
@@ -200,6 +205,7 @@ class ChannelUrlService {
         if (ch.uplinkEnabled !== undefined) channelSettings.uplinkEnabled = ch.uplinkEnabled;
         if (ch.downlinkEnabled !== undefined) channelSettings.downlinkEnabled = ch.downlinkEnabled;
         if (ch.mute !== undefined) channelSettings.mute = ch.mute;
+        if (ch.useAead !== undefined) channelSettings.useAead = ch.useAead;
 
         // Add module settings if position precision is set
         if (ch.positionPrecision !== undefined) {

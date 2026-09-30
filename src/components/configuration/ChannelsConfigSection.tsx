@@ -1,6 +1,7 @@
 import React, { useState, useRef, useMemo, useCallback, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { UiIcon } from '../icons';
+import AeadBadge from '../channels/AeadBadge';
 import { DRAG_HANDLE_TOUCH_STYLE } from '../dragHandleStyle';
 import {
   DndContext,
@@ -557,6 +558,7 @@ const ChannelsConfigSection: React.FC<ChannelsConfigSectionProps> = ({
                               {!hasReorderChanges && channel.role === 1 && <span style={{ marginLeft: '0.5rem', color: 'var(--color-accent)', fontSize: '0.8rem' }}><UiIcon name="favorite" size={13} /> {t('channels_config.primary')}</span>}
                               {hasReorderChanges && displaySlot === 0 && <span style={{ marginLeft: '0.5rem', color: 'var(--color-accent)', fontSize: '0.8rem' }}><UiIcon name="favorite" size={13} /> {t('channels_config.primary')}</span>}
                               {channel.role === 0 && <span style={{ marginLeft: '0.5rem', color: 'var(--color-text-faint)', fontSize: '0.8rem' }}><UiIcon name="blocked" size={13} /> {t('channels_config.disabled')}</span>}
+                              <AeadBadge useAead={channel.useAead} />
                             </>
                           ) : <span style={{ color: 'var(--color-text-subtle)', fontStyle: 'italic' }}>{t('channels_config.empty')}</span>}
                         </h4>

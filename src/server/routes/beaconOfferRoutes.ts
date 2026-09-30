@@ -298,6 +298,9 @@ router.post(
         uplinkEnabled: false,
         downlinkEnabled: false,
         positionPrecision: existing?.positionPrecision ?? null,
+        // A MeshBeacon offer carries no AEAD field, and this replaces the slot
+        // outright: send false rather than inherit the old occupant's flag.
+        useAead: false,
       };
 
       // Push to the device FIRST. If the radio rejects the write, the DB must
@@ -313,6 +316,7 @@ router.post(
           uplinkEnabled: channelData.uplinkEnabled,
           downlinkEnabled: channelData.downlinkEnabled,
           positionPrecision: channelData.positionPrecision ?? undefined,
+          useAead: channelData.useAead,
         });
       } catch (deviceError) {
         logger.error(`[API] Failed to write accepted beacon channel to slot ${slot}:`, deviceError);

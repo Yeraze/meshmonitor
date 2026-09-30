@@ -17,6 +17,8 @@ interface DecodedChannel {
   uplinkEnabled?: boolean;
   downlinkEnabled?: boolean;
   positionPrecision?: number;
+  /** ChannelSettings.use_aead (#5248); applied verbatim on import. */
+  useAead?: boolean;
 }
 
 interface DecodedConfig {
@@ -335,6 +337,7 @@ export const ImportConfigModal: React.FC<ImportConfigModalProps> = ({ isOpen, on
                           {channel.positionPrecision !== undefined && ` | ${t('import_config.position_precision', { bits: channel.positionPrecision })}`}
                           {channel.uplinkEnabled !== undefined && ` | ${channel.uplinkEnabled ? t('import_config.uplink_enabled') : t('import_config.uplink_disabled')}`}
                           {channel.downlinkEnabled !== undefined && ` | ${channel.downlinkEnabled ? t('import_config.downlink_enabled') : t('import_config.downlink_disabled')}`}
+                          {channel.useAead && ` | ${t('channels.aead_badge')}`}
                         </div>
                       </div>
                     </label>
