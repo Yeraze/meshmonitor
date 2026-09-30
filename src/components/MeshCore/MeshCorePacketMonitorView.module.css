@@ -1,0 +1,17 @@
+/*
+ * MeshCorePacketMonitorView (#5500). CSS module — do not add these rules to
+ * the global MeshCorePacketMonitor.css (CLAUDE.md CSS containment rule).
+ */
+
+/* Stacks the empty message and the Repeater note, since .mcpm-empty is a row flexbox. */
+.emptyStack {
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.repeaterNote {
+  margin: 0;
+  max-width: 40rem;
+  font-size: 0.9em;
+  color: var(--color-text-subtle);
+}

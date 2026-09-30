@@ -388,6 +388,28 @@ export class MeshCoreRepository extends BaseRepository {
   }
 
   /**
+   * Nodes whose public key starts with `prefix` (case-insensitive), from ANY
+   * source. Cross-source by design (#5500): a Repeater's `neighbors` CLI
+   * reports only an 8-hex key prefix, and the full key (plus name/position)
+   * is identity data some other source may already hold. The caller decides
+   * what an ambiguous result means; this only returns candidates.
+   *
+   * `prefix` must be 2–64 hex chars, otherwise nothing matches — so a hex
+   * prefix can never smuggle a LIKE wildcard in.
+   */
+  async findNodesByPublicKeyPrefix(prefix: string, limit: number = 20): Promise<DbMeshCoreNode[]> {
+    const needle = prefix.toLowerCase();
+    if (!/^[0-9a-f]{2,64}$/.test(needle)) return [];
+    const { meshcoreNodes } = this.tables;
+    const result = await this.db
+      .select()
+      .from(meshcoreNodes)
+      .where(sql`lower(${meshcoreNodes.publicKey}) like ${`${needle}%`}`)
+      .limit(Math.max(1, Math.min(limit, 200)));
+    return this.toNodeRows(result);
+  }
+
+  /**
    * Get the local node
    */
   async getLocalNode(): Promise<DbMeshCoreNode | null> {

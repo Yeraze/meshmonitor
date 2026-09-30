@@ -361,6 +361,35 @@ If you need to extend the synthetic CLI: add the verb to
 `COMPANION_ACTION_CATALOG` in `MeshCoreLocalConsole.tsx`, and add a
 unit test to `meshcoreManager.localCli.test.ts`.
 
+### The Repeater serial CLI (#5500)
+
+The firmware (`examples/simple_repeater/main.cpp`) echoes typed characters,
+then prints `"  -> " + reply`. There is no end marker, and a multi-line reply
+(`neighbors`) marks only its first line with `->`.
+
+- **One command at a time.** `sendRepeaterCommand` chains every caller onto
+  one promise (`repeaterCliChain`). Without it, `refreshLocalNode`, the
+  console, `setName`/`setRadio` and the neighbours poll steal each other's
+  reply lines. A failed command doesn't wedge the chain.
+- **Streaming lines never reach a reply.** `handleSerialData` classifies each
+  line first (`utils/meshcoreRepeaterSerial.ts`). `MESH_PACKET_LOGGING` builds
+  print `RAW:` / `RX` / `TX` log lines and `MESH_DEBUG` builds print `DEBUG:`;
+  those skip `serial_data`. `RAW:` plus the following `RX` line (for SNR/RSSI)
+  go through `parseObserverFrame` into `handleOtaPacket`, so the Packet Monitor
+  fills on those builds. Stock firmware prints none, and the UI says so.
+- **`neighbors` ends on a 300 ms idle gap** after the first `->` line, not the
+  full timeout. The firmware prints the whole reply in one `println`.
+- **The neighbours poll** runs every 5 minutes on REPEATER sources while
+  connected, sends only `neighbors` (serial-only, zero airtime), and skips a
+  tick if any CLI command is in flight. A reconnect waits out the rest of the
+  interval. Each 8-hex prefix must match exactly one full key in
+  `meshcore_nodes` (any source); the match is upserted into this source.
+- **`localNode.publicKey` stays `'repeater'`.** Too many paths key off it. The
+  real key from `get public.key` lives in `repeaterPublicKey` and is the
+  reporter for the neighbour-graph rows.
+- **Never automate** `advert`, `advert.zerohop` or `discover.neighbors`: they
+  transmit.
+
 ## The CliConsoleBody primitive
 
 `src/components/MeshCore/CliConsoleBody.tsx` owns:
