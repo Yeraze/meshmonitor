@@ -1,0 +1,154 @@
+.translatedContainer {
+  margin-top: 0.4rem;
+  padding: 0.4rem 0.6rem;
+  background: rgba(0, 0, 0, 0.08);
+  border-left: 2px solid var(--color-accent);
+  border-radius: var(--radius-sm);
+  font-size: 0.85rem;
+  line-height: 1.35;
+  position: relative;
+}
+
+:global([data-theme="dark"]) .translatedContainer,
+:global(.theme-dark) .translatedContainer {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.translatedHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.25rem;
+  font-size: 0.72rem;
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  font-weight: 600;
+}
+
+.translatedHeaderLeft {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+}
+
+.langSelectorWrapper {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  margin-left: 0.2rem;
+}
+
+.sourceLangTag {
+  color: var(--color-text-muted);
+  font-weight: 600;
+}
+
+.targetLangTag {
+  font-weight: 600;
+  color: var(--color-text-muted);
+}
+
+.targetLangSelect {
+  background: color-mix(in srgb, var(--color-accent) 10%, var(--color-surface));
+  color: var(--color-text);
+  border: 1px solid color-mix(in srgb, var(--color-accent) 25%, var(--color-border));
+  border-radius: var(--radius-sm);
+  padding: 0.05rem 0.35rem;
+  font-size: 0.72rem;
+  font-weight: 600;
+  cursor: pointer;
+  height: 1.35rem;
+  line-height: 1;
+  transition: all 0.15s ease;
+}
+
+.targetLangSelect:hover,
+.targetLangSelect:focus {
+  background: color-mix(in srgb, var(--color-accent) 18%, var(--color-surface-hover));
+  color: var(--color-text);
+  border-color: var(--color-accent);
+  outline: none;
+}
+
+.targetLangSelect option {
+  background: var(--color-bg-raised);
+  color: var(--color-text);
+  font-weight: normal;
+}
+
+:global([data-theme="latte"]) .targetLangSelect option,
+:global(.theme-light) .targetLangSelect option {
+  background: #ffffff;
+  color: #4c4f69;
+}
+
+:global(.message-bubble.mine) .targetLangSelect {
+  background: rgba(255, 255, 255, 0.18);
+  border-color: rgba(255, 255, 255, 0.35);
+  color: rgba(255, 255, 255, 0.85);
+}
+
+:global(.message-bubble.mine) .targetLangSelect:hover,
+:global(.message-bubble.mine) .targetLangSelect:focus {
+  background: rgba(255, 255, 255, 0.28);
+  border-color: rgba(255, 255, 255, 0.65);
+  color: #ffffff;
+}
+
+:global(.message-bubble.mine) .targetLangSelect option {
+  background: var(--color-bg-raised);
+  color: var(--color-text);
+}
+
+.dismissBtn {
+  background: transparent;
+  border: none;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  padding: 0 0.2rem;
+  font-size: 0.9rem;
+  line-height: 1;
+  opacity: 0.7;
+  transition: opacity 0.15s ease;
+}
+
+.dismissBtn:hover {
+  opacity: 1;
+  color: var(--color-text);
+}
+
+.translatedText {
+  color: var(--color-text);
+  white-space: pre-line;
+  word-break: break-word;
+}
+
+.loadingRow {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  color: var(--color-text-muted);
+  font-size: 0.8rem;
+  font-style: italic;
+}
+
+.errorRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.4rem;
+  color: var(--color-danger);
+  font-size: 0.8rem;
+}
+
+.retryBtn {
+  background: transparent;
+  border: 1px solid currentColor;
+  border-radius: var(--radius-sm);
+  color: inherit;
+  font-size: 0.75rem;
+  padding: 0.15rem 0.4rem;
+  cursor: pointer;
+}

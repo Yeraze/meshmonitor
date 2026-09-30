@@ -73,6 +73,10 @@ import { computeMessagesReadOnlyState } from './messagesReadOnlyState';
 import { UiIcon } from './icons';
 import UnreadDivider from './messages/UnreadDivider';
 import { resolveUnreadAnchorId, shouldSuppressDivider } from '../utils/unreadAnchor';
+import { TranslateModal } from './translation/TranslateModal';
+import { TranslatedMessage } from './translation/TranslatedMessage';
+import { useMessageTranslation } from '../hooks/useMessageTranslation';
+import { useTranslationSettings } from '../hooks/useTranslationSettings';
 import { useUnreadDividerAnchors } from '../contexts/MessagingContext';
 
 // Types for node with message metadata
@@ -378,6 +382,9 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
   const [detailsState, setDetailsState] = useState<{ message: MeshMessage; direction: MessageDirection } | null>(null);
   const [directNeighborStats, setDirectNeighborStats] = useState<Record<number, { avgRssi: number; packetCount: number; lastHeard: number }>>({});
   const [homoglyphEnabled, setHomoglyphEnabled] = useState(false);
+  const [translateModalOpen, setTranslateModalOpen] = useState(false);
+  const translationSettings = useTranslationSettings();
+  const { translatedMessages, translateMessage, dismissTranslation } = useMessageTranslation();
 
   // Copy NodeInfo modal state
   const [showCopyNodeInfoModal, setShowCopyNodeInfoModal] = useState(false);
@@ -2086,6 +2093,16 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                               >
                                 <UiIcon name="reaction" size={15} />
                               </button>
+                              {translationSettings.enabled && msg.text && (
+                                <button
+                                  className="translate-button"
+                                  onClick={() => translateMessage(msg.id, msg.text)}
+                                  title={t('messages.translate', 'Translate')}
+                                  aria-label={t('messages.translate', 'Translate')}
+                                >
+                                  <UiIcon name="translate" size={15} />
+                                </button>
+                              )}
                               <button
                                 className="delete-button"
                                 onClick={() => handleDeleteMessage(msg)}
@@ -2122,6 +2139,14 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                               </div>
                             </div>
                             <LinkPreview text={msg.text} />
+                            {translatedMessages[msg.id] && (
+                              <TranslatedMessage
+                                state={translatedMessages[msg.id]}
+                                onDismiss={() => dismissTranslation(msg.id)}
+                                onRetry={() => translateMessage(msg.id, msg.text)}
+                                onChangeTargetLang={(newLang) => translateMessage(msg.id, msg.text, newLang)}
+                              />
+                            )}
                             {reactions.length > 0 && (
                               <div className="message-reactions">
                                 {/* Reaction chips stay clickable even when txDisabled — see the
@@ -2259,6 +2284,17 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                     >
                       <UiIcon name="notifications" size={16} />
                     </button>
+                    {translationSettings.enabled && (
+                      <button
+                        onClick={() => setTranslateModalOpen(true)}
+                        disabled={txDisabled}
+                        className="send-btn channel-action-btn"
+                        title={txDisabled ? (txDisabledTooltip ?? t('tx_disabled.control_tooltip')) : t('messages.translate', 'Translate message')}
+                        aria-label={t('messages.translate', 'Translate message')}
+                      >
+                        <UiIcon name="translate" size={16} />
+                      </button>
+                    )}
                     <button
                       onClick={() => handleSendDirectMessage(selectedDMNode)}
                       disabled={!newMessage.trim() || txDisabled}
@@ -2990,6 +3026,17 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
         onClose={() => setShowCopyNodeInfoModal(false)}
         onCopied={() => setShowCopyNodeInfoModal(false)}
       />
+
+      {translateModalOpen && (
+        <TranslateModal
+          isOpen={translateModalOpen}
+          onClose={() => setTranslateModalOpen(false)}
+          initialText={newMessage}
+          defaultTargetLanguage={translationSettings.defaultOutgoingLanguage}
+          defaultSourceLanguage={translationSettings.defaultLanguage}
+          onApply={(translatedText) => setNewMessage(translatedText)}
+        />
+      )}
     </div>
   );
 };
