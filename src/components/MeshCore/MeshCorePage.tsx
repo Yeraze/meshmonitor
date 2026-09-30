@@ -27,6 +27,7 @@ import {
 import { useReadStateSync } from './hooks/useReadStateSync';
 import { MeshCoreStatusBar } from './MeshCoreStatusBar';
 import { MeshCoreSubToolbar, MeshCoreView } from './MeshCoreSubToolbar';
+import { readSidebarPinned, useSidebarPin } from '../nav/useSidebarPin';
 import { MeshCoreNodesView } from './MeshCoreNodesView';
 import { MeshCoreChannelsView } from './MeshCoreChannelsView';
 import { MeshCoreDirectMessagesView } from './MeshCoreDirectMessagesView';
@@ -83,7 +84,18 @@ export const MeshCorePage: React.FC<MeshCorePageProps> = ({ baseUrl, sourceId, e
   const { isTxDisabled: receiveOnly } = useTxStatus({ baseUrl, sourceId });
 
   const [view, setView] = useState<MeshCoreView>('nodes');
-  const [toolbarExpanded, setToolbarExpanded] = useState(false);
+  // Same Pin sidebar behaviour as the Meshtastic sidebar (#5481): one global
+  // pin, the nav starts expanded when pinned, and an unpinned nav collapses
+  // after a nav click.
+  const { isPinned: navPinned, togglePin: toggleNavPin } = useSidebarPin();
+  const [toolbarExpanded, setToolbarExpanded] = useState(readSidebarPinned);
+  const selectView = useCallback((next: MeshCoreView) => {
+    setView(next);
+    if (!navPinned) setToolbarExpanded(false);
+  }, [navPinned]);
+  const handleToggleNavPin = useCallback(() => {
+    if (toggleNavPin()) setToolbarExpanded(true);
+  }, [toggleNavPin]);
   const [pendingDmContact, setPendingDmContact] = useState<string | null>(null);
 
   // Wire the durable per-user read-state transport once per mounted source
@@ -163,9 +175,11 @@ export const MeshCorePage: React.FC<MeshCorePageProps> = ({ baseUrl, sourceId, e
       <div className="meshcore-page-body">
         <MeshCoreSubToolbar
           view={view}
-          onSelect={setView}
+          onSelect={selectView}
           expanded={toolbarExpanded}
           onToggleExpanded={() => setToolbarExpanded(v => !v)}
+          pinned={navPinned}
+          onTogglePin={handleToggleNavPin}
           showInfo
           unread={{ channels: unread.channels, dms: unread.dms }}
         />

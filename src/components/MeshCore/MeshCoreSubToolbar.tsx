@@ -12,6 +12,9 @@ interface MeshCoreSubToolbarProps {
   onSelect: (view: MeshCoreView) => void;
   expanded: boolean;
   onToggleExpanded: () => void;
+  /** Shared "Pin sidebar" state (#5481); the toggle shows when both are set. */
+  pinned?: boolean;
+  onTogglePin?: () => void;
   /** When false, the Info entry is suppressed (no source context — it would have no data). */
   showInfo?: boolean;
   /** Per-view unread indicator flags — renders a red dot on the icon (#3891). */
@@ -52,6 +55,8 @@ export const MeshCoreSubToolbar: React.FC<MeshCoreSubToolbarProps> = ({
   onSelect,
   expanded,
   onToggleExpanded,
+  pinned,
+  onTogglePin,
   showInfo = true,
   unread = {},
 }) => {
@@ -89,6 +94,10 @@ export const MeshCoreSubToolbar: React.FC<MeshCoreSubToolbarProps> = ({
       collapsed={!expanded}
       mobileVariant="bottom-bar"
       onToggleCollapsed={onToggleExpanded}
+      pinned={pinned}
+      onTogglePin={onTogglePin}
+      pinLabel={t('nav.pin_sidebar', 'Pin sidebar')}
+      unpinLabel={t('nav.unpin_sidebar', 'Unpin sidebar')}
       collapseLabel={t('meshcore.nav.collapse', 'Collapse')}
       expandLabel={t('meshcore.nav.expand', 'Expand')}
       ariaLabel={t('meshcore.nav.label', 'MeshCore navigation')}
