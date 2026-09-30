@@ -2,6 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import path from 'path';
+import { respondOnSocketTimeout, DEFAULT_REQUEST_TIMEOUT_MS } from './middleware/requestTimeout.js';
 import fs from 'fs';
 // Side-effect only: patches JSON.stringify to handle BigInt. Must run before
 // anything else in the app can serialize a value that might contain one.
@@ -219,6 +220,9 @@ if (accessLogger) {
 }
 
 // Security: Request body size limits
+// Answer 504 instead of dropping the socket when a request outlives its
+// timeout, so browsers don't silently resend (and re-run) it.
+app.use(respondOnSocketTimeout());
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ limit: '10mb', extended: true, parameterLimit: 1000 }));
 
@@ -1400,7 +1404,9 @@ void (async () => {
   });
 
   // Configure server timeouts to prevent hanging requests
-  server.setTimeout(30000); // 30 seconds
+  // Requests still running at this point get a 504 from respondOnSocketTimeout()
+  // rather than a dropped socket; slow radio routes raise it with extendRequestTimeout().
+  server.setTimeout(DEFAULT_REQUEST_TIMEOUT_MS);
   server.keepAliveTimeout = 65000; // 65 seconds (must be > setTimeout)
   server.headersTimeout = 66000; // 66 seconds (must be > keepAliveTimeout)
 })();
