@@ -42,9 +42,13 @@ export function respondOnSocketTimeout(): RequestHandler {
       });
       // The handler is still running and will try to reply. Drop that reply
       // instead of throwing ERR_HTTP_HEADERS_SENT.
+      // `end` is patched last: the 504 above has already gone out through it.
       const drop = () => res;
       res.json = drop as Response['json'];
       res.send = drop as Response['send'];
+      res.sendFile = drop as Response['sendFile'];
+      res.redirect = drop as Response['redirect'];
+      res.end = drop as Response['end'];
     });
     next();
   };

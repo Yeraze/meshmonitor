@@ -47,7 +47,10 @@ describe('respondOnSocketTimeout', () => {
       runs++;
       await sleep(300);
       try {
-        res.json({ ok: true }); // late reply: must be dropped quietly
+        // Late replies of every kind must be dropped quietly.
+        res.json({ ok: true });
+        res.status(500).end();
+        res.redirect('/elsewhere');
       } catch {
         lateReplyThrew = true;
       }
