@@ -45,6 +45,9 @@ import { MANUAL_NEIGHBOURS_MAX_PAGES } from '../services/meshcoreNeighboursPagin
 import { buildLocalContactRow, withoutLocalFlag, type MeshCoreContactResponse } from './meshcoreLocalContactRow.js';
 import { applySignFlipToMeshCoreRows } from '../services/signFlipCorrection.js';
 
+/** Socket timeout for trace-path: above the 60 s trace radio timeout. */
+const TRACE_REQUEST_SOCKET_TIMEOUT_MS = 75_000;
+
 const router = Router({ mergeParams: true });
 
 /**
@@ -371,14 +374,22 @@ router.post(
           error: 'Invalid public key — must be 64-char hex',
         });
       }
-      const result = await managerFor(req, res).traceContactPath(publicKey);
+      // The trace waits up to 60 s for the radio, past the server's 30 s
+      // socket timeout (server.ts). Closing the socket with no reply makes
+      // the browser resend the POST, and each resend starts another trace:
+      // one RF trace every 30 s for as long as the page stays open. Give this
+      // request a socket timeout longer than the trace itself.
+      req.setTimeout(TRACE_REQUEST_SOCKET_TIMEOUT_MS);
+      // #5485: opt-in return leg; anything but literal true keeps one-way.
+      const autoReturn = req.body?.autoReturn === true;
+      const result = await managerFor(req, res).traceContactPath(publicKey, { autoReturn });
       if (!result) {
         return res.status(409).json({
           success: false,
           error: 'Trace path failed — contact may have no known path, source disconnected, timed out, or not a Companion device',
         });
       }
-      res.json({ success: true, hops: result.hops, lastSnr: result.lastSnr });
+      res.json({ success: true, hops: result.hops, lastSnr: result.lastSnr, path: result.path });
     } catch (error) {
       if (failIfTxDisabled(res, error)) return;
       logger.error('[API] Error tracing contact path:', error);

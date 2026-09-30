@@ -8,6 +8,8 @@ import {
   resolveHop,
   resolveRoute,
   resolveRouteNames,
+  buildTracePathHops,
+  MAX_TRACE_PATH_HOPS,
 } from './meshcorePath.js';
 import type { MeshCoreContact } from './meshcoreHelpers';
 
@@ -206,5 +208,42 @@ describe('meshcorePath', () => {
       expect(route[1].matchCount).toBe(2);
       expect(route[1].position).toEqual({ lat: 30.0, lon: -89.95 });
     });
+  });
+});
+
+describe('buildTracePathHops (#5485)', () => {
+  const TARGET = 'f6' + 'e'.repeat(62);
+
+  it('returns the out-path unchanged when autoReturn is off', () => {
+    expect(buildTracePathHops(['5e'], TARGET, 1, { autoReturn: false, targetForwards: true })).toEqual(['5e']);
+  });
+
+  it('loops through a forwarding target', () => {
+    expect(buildTracePathHops(['5e'], TARGET, 1, { autoReturn: true, targetForwards: true })).toEqual(['5e', 'f6', '5e']);
+    expect(buildTracePathHops(['a1', 'b2'], TARGET, 1, { autoReturn: true, targetForwards: true }))
+      .toEqual(['a1', 'b2', 'f6', 'b2', 'a1']);
+  });
+
+  it('turns at the last repeater for a non-forwarding target', () => {
+    // One repeater: turning at it is the same one-way trace — the reply comes
+    // back from 5e either way, so there is no return leg to add.
+    expect(buildTracePathHops(['5e'], TARGET, 1, { autoReturn: true, targetForwards: false })).toEqual(['5e']);
+    expect(buildTracePathHops(['a1', 'b2', 'c3'], TARGET, 1, { autoReturn: true, targetForwards: false }))
+      .toEqual(['a1', 'b2', 'c3', 'b2', 'a1']);
+  });
+
+  it('uses the target prefix at the hop width', () => {
+    expect(buildTracePathHops(['5e01'], TARGET, 2, { autoReturn: true, targetForwards: true }))
+      .toEqual(['5e01', 'f6ee', '5e01']);
+  });
+
+  it('falls back to one-way when the round trip would pass the firmware limit', () => {
+    const long = Array.from({ length: 40 }, (_, i) => i.toString(16).padStart(2, '0'));
+    expect(buildTracePathHops(long, TARGET, 1, { autoReturn: true, targetForwards: true })).toEqual(long);
+    expect(MAX_TRACE_PATH_HOPS).toBe(63);
+  });
+
+  it('leaves an empty path alone', () => {
+    expect(buildTracePathHops([], TARGET, 1, { autoReturn: true, targetForwards: true })).toEqual([]);
   });
 });
