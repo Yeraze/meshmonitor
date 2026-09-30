@@ -1031,6 +1031,19 @@ export type AddContactToDeviceResult =
  * MeshCore Manager class
  * Handles connection and communication with MeshCore devices
  */
+/**
+ * Parse the value from a repeater CLI `get` reply ("  -> > 22", "> -27.5")
+ * (#5496). Returns undefined for a missing, non-numeric or error reply
+ * ("Error: ..." / "unknown config"), so the field reads as unknown rather
+ * than as 0.
+ */
+export function parseRepeaterNumber(reply: string | null | undefined, kind: 'int' | 'float'): number | undefined {
+  const m = (reply ?? '').match(/>\s*(-?\d+(?:\.\d+)?)\s*$/m);
+  if (!m) return undefined;
+  const n = kind === 'int' ? parseInt(m[1], 10) : parseFloat(m[1]);
+  return Number.isFinite(n) ? n : undefined;
+}
+
 class MeshCoreManager extends EventEmitter implements ISourceManager {
   /**
    * The owning source this manager belongs to. Every write the manager
@@ -3934,6 +3947,13 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
       try {
         const nameResponse = await this.sendRepeaterCommand('get name');
         const radioResponse = await this.sendRepeaterCommand('get radio');
+        // TX power and position (#5496). Firmware command names come from
+        // CommonCLI.cpp: `get tx` (not `tx_power`), `get lat`, `get lon`, each
+        // replying "> <value>". There is no preset command: the Configuration
+        // page derives the preset from the radio parameters.
+        const txResponse = await this.sendRepeaterCommand('get tx');
+        const latResponse = await this.sendRepeaterCommand('get lat');
+        const lonResponse = await this.sendRepeaterCommand('get lon');
 
         logger.debug(`[MeshCore] Name response: ${safeJson(nameResponse)}`);
         logger.debug(`[MeshCore] Radio response: ${safeJson(radioResponse)}`);
@@ -3946,6 +3966,9 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
           publicKey: 'repeater',
           name: nameMatch ? nameMatch[1].trim() : 'Unknown Repeater',
           advType: MeshCoreDeviceType.REPEATER,
+          txPower: parseRepeaterNumber(txResponse, 'int'),
+          latitude: parseRepeaterNumber(latResponse, 'float'),
+          longitude: parseRepeaterNumber(lonResponse, 'float'),
           radioFreq: radioMatch ? parseFloat(radioMatch[1]) : undefined,
           radioBw: radioMatch ? parseFloat(radioMatch[2]) : undefined,
           radioSf: radioMatch ? parseInt(radioMatch[3], 10) : undefined,

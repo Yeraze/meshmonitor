@@ -45,9 +45,19 @@ export const RADIO_PRESETS: ReadonlyArray<RadioPreset> = [
   { id: 'vn-depr',       label: 'Vietnam (Deprecated)',     freq: 920.250, bw: 250,   sf: 11, cr: 5 },
 ];
 
+/**
+ * Largest frequency / bandwidth difference still treated as the same value.
+ * Devices report these as floats: a repeater's `get radio` gives
+ * 869.6179809 for the 869.618 MHz preset (#5496), so exact equality fell
+ * through to "Custom". Preset frequencies differ by far more than this.
+ */
+const RADIO_FLOAT_TOLERANCE = 0.001;
+
+const near = (a: number, b: number) => Math.abs(a - b) <= RADIO_FLOAT_TOLERANCE;
+
 export function findPresetId(freq: number, bw: number, sf: number, cr: number): string {
   const match = RADIO_PRESETS.find(
-    p => p.freq === freq && p.bw === bw && p.sf === sf && p.cr === cr,
+    p => near(p.freq, freq) && near(p.bw, bw) && p.sf === sf && p.cr === cr,
   );
   return match?.id ?? 'custom';
 }
