@@ -82,6 +82,12 @@ const ProvenanceBadge: React.FC<{ provenance: Provenance }> = ({ provenance }) =
   );
 };
 
+const VALUE_TONE_CLASS: Record<NonNullable<DiagField['valueTone']>, string> = {
+  success: styles.valueSuccess,
+  warning: styles.valueWarning,
+  muted: styles.valueMuted,
+};
+
 const FieldRow: React.FC<{ field: DiagField }> = ({ field }) => {
   const { t } = useTranslation();
   // Rendering rule (fixed by the WP1 field contract): a translatable enum
@@ -99,12 +105,20 @@ const FieldRow: React.FC<{ field: DiagField }> = ({ field }) => {
   // "Reported by protocol" badge next to an Unknown value overstates what we
   // have. The field's declared provenance only applies when a value is present.
   const provenance = hasValue ? field.provenance : 'unknown';
+  const toneClass = field.valueTone ? VALUE_TONE_CLASS[field.valueTone] : '';
+  const tooltip = field.tooltipKey ? t(field.tooltipKey) : undefined;
 
   return (
     <div className={styles.row}>
       <span className={styles.label}>{t(field.labelKey)}</span>
       <span className={styles.valueGroup}>
-        <span className={styles.value}>{displayValue}</span>
+        <span
+          className={toneClass ? `${styles.value} ${toneClass}` : styles.value}
+          title={tooltip}
+          data-tone={field.valueTone}
+        >
+          {displayValue}
+        </span>
         <ProvenanceBadge provenance={provenance} />
         {field.noteKey && <span className={styles.note}>{t(field.noteKey)}</span>}
       </span>

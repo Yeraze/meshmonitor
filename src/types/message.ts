@@ -38,6 +38,7 @@ export interface MeshMessage {
   viaMqtt?: boolean; // Whether message was received via MQTT bridge
   viaStoreForward?: boolean; // Whether message was received via Store & Forward replay
   xeddsaSigned?: boolean; // Broadcast carried a cryptographically verified XEdDSA signature (firmware 2.8+)
+  ackProofStatus?: number; // #5279 — meshtastic.MeshPacket.AckProofStatus from the ack/nak that settled this DM (see utils/ackProof.ts); undefined = none reported
   rxSnr?: number; // SNR of received packet (for direct messages)
   rxRssi?: number; // RSSI of received packet (for direct messages)
   // Enhanced delivery tracking

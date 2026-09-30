@@ -157,6 +157,20 @@
   word-break: break-word;
 }
 
+/* Per-value emphasis (#5279 ack proof). Muted means "not proven", never failure. */
+.valueSuccess {
+  color: var(--color-success);
+}
+
+.valueWarning {
+  color: var(--color-warning);
+  font-weight: 600;
+}
+
+.valueMuted {
+  color: var(--color-text-muted);
+}
+
 .note {
   display: block;
   width: 100%;
