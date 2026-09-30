@@ -103,6 +103,10 @@ export function resolveAckProofStatus(
 ): AckProofStatusValue | undefined {
   const reported = readAckProofStatus(meshPacket);
   if (reported !== undefined) return reported;
+  // Only a truly missing field means ABSENT. A present value we don't know
+  // (a future enum value) stays unknown rather than reading as "not proven".
+  const p = (meshPacket && typeof meshPacket === 'object' ? meshPacket : {}) as Record<string, unknown>;
+  if ((p.ackProofStatus ?? p.ack_proof_status) != null) return undefined;
   const { major, minor, patch } = ACK_PROOF_MIN_FIRMWARE;
   return isFirmwareAtLeast(localFirmwareVersion, major, minor, patch) ? AckProofStatus.ABSENT : undefined;
 }
