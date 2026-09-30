@@ -153,6 +153,22 @@ describe('NotificationsTab — per-source Web Push state (#5493)', () => {
     expect(browserSub.unsubscribe).not.toHaveBeenCalled();
   });
 
+  it('keeps the browser endpoint when the server unsubscribe fails', async () => {
+    const alertSpy = vi.spyOn(window, 'alert').mockImplementation(() => {});
+    h.post.mockImplementation((url: string) => {
+      if (url === '/api/push/subscription-status') return Promise.resolve({ success: true, subscribed: true, otherSources: 0 });
+      if (url === '/api/push/unsubscribe') return Promise.reject(new Error('server down'));
+      return Promise.resolve({});
+    });
+
+    renderOnSource('src-1');
+    fireEvent.click(await screen.findByText('notifications.unsubscribe_button'));
+
+    await waitFor(() => expect(alertSpy).toHaveBeenCalled());
+    expect(browserSub.unsubscribe).not.toHaveBeenCalled();
+    alertSpy.mockRestore();
+  });
+
   it('unsubscribe drops the browser endpoint once no source remains', async () => {
     onPost((url) => {
       if (url === '/api/push/subscription-status') return { success: true, subscribed: true, otherSources: 0 };
