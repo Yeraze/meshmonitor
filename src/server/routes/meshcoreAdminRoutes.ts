@@ -35,6 +35,17 @@ import { getMeshCoreLoginProgressRegistry, isValidLoginRequestId } from '../serv
 import { ok, fail } from '../utils/apiResponse.js';
 import { MeshCoreContactNotOnDeviceError } from '../meshcoreDeviceContactErrors.js';
 import { isTransmittingLocalCliVerb } from '../constants/meshcoreTx.js';
+import { extendRequestTimeout } from '../middleware/requestTimeout.js';
+
+// Radio round trips on these routes legitimately run past the 30s default
+// socket timeout; extend it per-route so the caller gets the real result
+// instead of a dropped-socket 504.
+/** Remote login retry: multiple attempts over RF, each up to ~35s. */
+const LOGIN_TIMEOUT_MS = 120_000;
+/** Remote CLI command: up to a 60s configurable reply-timeout (resolveCliTimeoutMs). */
+const REMOTE_CLI_TIMEOUT_MS = 75_000;
+/** Local serial CLI command: same 60s configurable reply-timeout ceiling. */
+const LOCAL_CLI_TIMEOUT_MS = 75_000;
 
 const router = Router({ mergeParams: true });
 
@@ -59,7 +70,7 @@ const router = Router({ mergeParams: true });
  * `configuration:write`; remote_admin was split out so operators can grant
  * one without the other.)
  */
-router.post('/admin/login', meshcoreDeviceLimiter, requireAuth(), requirePermission('remote_admin', 'write', { sourceIdFrom: 'params.id' }), requireMeshcoreTx(), async (req: Request, res: Response) => {
+router.post('/admin/login', extendRequestTimeout(LOGIN_TIMEOUT_MS), meshcoreDeviceLimiter, requireAuth(), requirePermission('remote_admin', 'write', { sourceIdFrom: 'params.id' }), requireMeshcoreTx(), async (req: Request, res: Response) => {
   try {
     const { publicKey, password, rememberPassword } = req.body as {
       publicKey?: string;
@@ -160,7 +171,7 @@ router.post('/admin/login', meshcoreDeviceLimiter, requireAuth(), requirePermiss
  * path, ACL eviction, or the remote being offline). Returns 502 when the
  * underlying bridge rejected the send.
  */
-router.post('/admin/cli', meshcoreDeviceLimiter, requireAuth(), requirePermission('remote_admin', 'write', { sourceIdFrom: 'params.id' }), requireMeshcoreTx(), async (req: Request, res: Response) => {
+router.post('/admin/cli', extendRequestTimeout(REMOTE_CLI_TIMEOUT_MS), meshcoreDeviceLimiter, requireAuth(), requirePermission('remote_admin', 'write', { sourceIdFrom: 'params.id' }), requireMeshcoreTx(), async (req: Request, res: Response) => {
   try {
     const { publicKey, command, timeoutMs, confirm } = req.body as {
       publicKey?: string;
@@ -274,7 +285,7 @@ router.post('/admin/cli', meshcoreDeviceLimiter, requireAuth(), requirePermissio
  * Gated on `configuration:write` per-source — matches the existing
  * local-device config routes (`/config/name`, `/config/radio`, etc.).
  */
-router.post('/cli', meshcoreDeviceLimiter, requireAuth(), requirePermission('configuration', 'write', { sourceIdFrom: 'params.id' }), async (req: Request, res: Response) => {
+router.post('/cli', extendRequestTimeout(LOCAL_CLI_TIMEOUT_MS), meshcoreDeviceLimiter, requireAuth(), requirePermission('configuration', 'write', { sourceIdFrom: 'params.id' }), async (req: Request, res: Response) => {
   try {
     const { command, confirm, timeoutMs } = req.body as {
       command?: string;
@@ -412,7 +423,7 @@ router.get('/admin/credentials-capability', requireAuth(), requirePermission('re
  *   401 STORED_CREDENTIAL_REJECTED — credential decrypted but the remote
  *       rejected the login (remote's admin password probably changed).
  */
-router.post('/admin/login-with-saved', meshcoreDeviceLimiter, requireAuth(), requirePermission('remote_admin', 'write', { sourceIdFrom: 'params.id' }), requireMeshcoreTx(), async (req: Request, res: Response) => {
+router.post('/admin/login-with-saved', extendRequestTimeout(LOGIN_TIMEOUT_MS), meshcoreDeviceLimiter, requireAuth(), requirePermission('remote_admin', 'write', { sourceIdFrom: 'params.id' }), requireMeshcoreTx(), async (req: Request, res: Response) => {
   try {
     const { publicKey } = req.body as { publicKey?: string };
     if (typeof publicKey !== 'string' || !isValidPublicKey(publicKey)) {

@@ -32,6 +32,29 @@ import {
 } from '../services/adminOperationService.js';
 import { isValidMeshtasticKey, derivePublicKey, normalizeMeshtasticKey } from '../utils/meshtasticKeys.js';
 import { channelPskToStoredBase64 } from '../utils/channelPsk.js';
+import { extendRequestTimeout } from '../middleware/requestTimeout.js';
+
+// Admin operations round-trip to the radio and can legitimately run past the
+// 30s default socket timeout; extend it per-route so the caller gets the
+// real result instead of a dropped-socket 504.
+/** Session passkey handshake round trip. */
+const ENSURE_SESSION_PASSKEY_TIMEOUT_MS = 60_000;
+/** Full device config load: many admin packets in sequence. */
+const LOAD_CONFIG_TIMEOUT_MS = 90_000;
+/** Channel load round trip. */
+const GET_CHANNEL_TIMEOUT_MS = 90_000;
+/** Owner load round trip. */
+const LOAD_OWNER_TIMEOUT_MS = 75_000;
+/** Device metadata round trip. */
+const GET_DEVICE_METADATA_TIMEOUT_MS = 75_000;
+/** Full config export: reads every admin config section. */
+const EXPORT_CONFIG_TIMEOUT_MS = 240_000;
+/** Reboot command round trip / ack wait. */
+const REBOOT_TIMEOUT_MS = 75_000;
+/** Set-time command round trip. */
+const SET_TIME_TIMEOUT_MS = 75_000;
+/** Manual auto-favorite-targets run: NodeInfo/favorite packets across all targets. */
+const AUTO_FAVORITE_RUN_TIMEOUT_MS = 180_000;
 
 const router = express.Router();
 
@@ -204,7 +227,7 @@ router.delete('/auto-favorite-targets/:nodeNum', requireAdmin(), async (req, res
   }
 });
 
-router.post('/auto-favorite-targets/:nodeNum/run', requireAdmin(), async (req, res) => {
+router.post('/auto-favorite-targets/:nodeNum/run', extendRequestTimeout(AUTO_FAVORITE_RUN_TIMEOUT_MS), requireAdmin(), async (req, res) => {
   try {
     const targetNodeNum = Number(req.params.nodeNum);
     const { sourceId } = req.body ?? {};
@@ -222,7 +245,7 @@ router.post('/auto-favorite-targets/:nodeNum/run', requireAdmin(), async (req, r
   }
 });
 
-router.post('/load-config', requireAdmin(), requireMeshtasticDeviceSource('body'), async (req, res) => {
+router.post('/load-config', extendRequestTimeout(LOAD_CONFIG_TIMEOUT_MS), requireAdmin(), requireMeshtasticDeviceSource('body'), async (req, res) => {
   try {
     const { nodeNum, configType, channelIndex, sourceId: adminLoadSourceId } = req.body;
 
@@ -640,7 +663,7 @@ router.post('/load-config', requireAdmin(), requireMeshtasticDeviceSource('body'
   }
 });
 
-router.post('/ensure-session-passkey', requireAdmin(), requireMeshtasticDeviceSource('body'), async (req, res) => {
+router.post('/ensure-session-passkey', extendRequestTimeout(ENSURE_SESSION_PASSKEY_TIMEOUT_MS), requireAdmin(), requireMeshtasticDeviceSource('body'), async (req, res) => {
   try {
     const { nodeNum, sourceId: espSourceId } = req.body;
 
@@ -746,7 +769,7 @@ router.post('/session-passkey-status', requireAdmin(), requireMeshtasticDeviceSo
   }
 });
 
-router.post('/get-channel', requireAdmin(), requireMeshtasticDeviceSource('body'), async (req, res) => {
+router.post('/get-channel', extendRequestTimeout(GET_CHANNEL_TIMEOUT_MS), requireAdmin(), requireMeshtasticDeviceSource('body'), async (req, res) => {
   try {
     const { nodeNum, channelIndex, sourceId: gcSourceId } = req.body;
 
@@ -841,7 +864,7 @@ router.post('/get-channel', requireAdmin(), requireMeshtasticDeviceSource('body'
   }
 });
 
-router.post('/load-owner', requireAdmin(), requireMeshtasticDeviceSource('body'), async (req, res) => {
+router.post('/load-owner', extendRequestTimeout(LOAD_OWNER_TIMEOUT_MS), requireAdmin(), requireMeshtasticDeviceSource('body'), async (req, res) => {
   try {
     const { nodeNum, sourceId: loSourceId } = req.body;
 
@@ -904,7 +927,7 @@ router.post('/load-owner', requireAdmin(), requireMeshtasticDeviceSource('body')
   }
 });
 
-router.post('/get-device-metadata', requireAdmin(), requireMeshtasticDeviceSource('body'), async (req, res) => {
+router.post('/get-device-metadata', extendRequestTimeout(GET_DEVICE_METADATA_TIMEOUT_MS), requireAdmin(), requireMeshtasticDeviceSource('body'), async (req, res) => {
   try {
     const { nodeNum, sourceId: gdmSourceId } = req.body;
 
@@ -992,7 +1015,7 @@ router.post('/get-device-metadata', requireAdmin(), requireMeshtasticDeviceSourc
   }
 });
 
-router.post('/reboot', requireAdmin(), requireMeshtasticDeviceSource('body'), async (req, res) => {
+router.post('/reboot', extendRequestTimeout(REBOOT_TIMEOUT_MS), requireAdmin(), requireMeshtasticDeviceSource('body'), async (req, res) => {
   try {
     const { nodeNum, seconds = 10, sourceId: arSourceId } = req.body;
 
@@ -1036,7 +1059,7 @@ router.delete('/suppressed-ghosts/:nodeNum', requireAdmin(), async (req, res) =>
   }
 });
 
-router.post('/set-time', requireAdmin(), requireMeshtasticDeviceSource('body'), async (req, res) => {
+router.post('/set-time', extendRequestTimeout(SET_TIME_TIMEOUT_MS), requireAdmin(), requireMeshtasticDeviceSource('body'), async (req, res) => {
   try {
     const { nodeNum, sourceId: astSourceId } = req.body;
 
@@ -1056,7 +1079,7 @@ router.post('/set-time', requireAdmin(), requireMeshtasticDeviceSource('body'), 
   }
 });
 
-router.post('/export-config', requireAdmin(), requireMeshtasticDeviceSource('body'), async (req, res) => {
+router.post('/export-config', extendRequestTimeout(EXPORT_CONFIG_TIMEOUT_MS), requireAdmin(), requireMeshtasticDeviceSource('body'), async (req, res) => {
   try {
     const { nodeNum, channelIds, includeLoraConfig, sourceId: aecSourceId } = req.body;
 

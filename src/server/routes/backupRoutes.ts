@@ -9,6 +9,10 @@ import { resolveSourceManager } from '../utils/resolveSourceManager.js';
 import { requireMeshtasticDeviceSource } from '../utils/requireMeshtasticDeviceSource.js';
 import { ok, fail } from '../utils/apiResponse.js';
 import { logger } from '../../utils/logger.js';
+import { extendRequestTimeout } from '../middleware/requestTimeout.js';
+
+/** Device config restore: pushes every backed-up admin config section to the node in sequence. */
+const DEVICE_RESTORE_TIMEOUT_MS = 90_000;
 
 /**
  * Config-backup endpoints (device config YAML backups).
@@ -139,7 +143,7 @@ backupRouter.delete('/delete/:filename', requirePermission('configuration', 'wri
 // Restore a saved backup to the connected local device (#4926).
 // Writes each config section back via admin messages. Overwrites current
 // device config, so the frontend confirms before calling this.
-backupRouter.post('/restore/:filename', requirePermission('configuration', 'write'), requireMeshtasticDeviceSource('body'), async (req: Request, res: Response) => {
+backupRouter.post('/restore/:filename', extendRequestTimeout(DEVICE_RESTORE_TIMEOUT_MS), requirePermission('configuration', 'write'), requireMeshtasticDeviceSource('body'), async (req: Request, res: Response) => {
   try {
     const { filename } = req.params;
 

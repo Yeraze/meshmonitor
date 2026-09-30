@@ -464,6 +464,11 @@ router.post('/:id/reset-homes', canWrite, async (req: Request, res: Response) =>
  * editing the rule. Routes through the engine's real dispatch path, so the
  * per-automation cooldown, rate-limit and self-origin guards all still apply and
  * the cron cadence is left untouched.
+ *
+ * No extendRequestTimeout here: an automation's action list is unbounded, so
+ * there is no sane worst-case to extend to. This route relies on the global
+ * respondOnSocketTimeout() 504 safety net (requestTimeout.ts) instead — the
+ * handler keeps running to completion even after the client gets its 504.
  */
 router.post('/:id/run-now', canWrite, async (req: Request, res: Response) => {
   try {

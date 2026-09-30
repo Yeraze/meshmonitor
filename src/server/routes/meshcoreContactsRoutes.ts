@@ -44,6 +44,27 @@ import {
 import { MANUAL_NEIGHBOURS_MAX_PAGES } from '../services/meshcoreNeighboursPaging.js';
 import { buildLocalContactRow, withoutLocalFlag, type MeshCoreContactResponse } from './meshcoreLocalContactRow.js';
 import { applySignFlipToMeshCoreRows } from '../services/signFlipCorrection.js';
+import { extendRequestTimeout } from '../middleware/requestTimeout.js';
+
+// Radio round trips on these routes legitimately run past the 30s default
+// socket timeout; extend it per-route so the caller gets the real result
+// instead of a dropped-socket 504.
+/** Zero-hop ping: a few retries over RF. */
+const PING_TIMEOUT_MS = 45_000;
+/** Remote neighbours query round trip over RF. */
+const NEIGHBOURS_TIMEOUT_MS = 120_000;
+/** Remote neighbours poll, scheduler-gated multi-hop round trip. */
+const NEIGHBOURS_POLL_TIMEOUT_MS = 120_000;
+/** Remote time-sync round trip over RF. */
+const TIME_SYNC_TIMEOUT_MS = 120_000;
+/** Neighbours request via SendBinaryReq, multi-hop round trip. */
+const NEIGHBORS_REQUEST_TIMEOUT_MS = 120_000;
+/** Remote telemetry poll round trip over RF. */
+const TELEMETRY_POLL_TIMEOUT_MS = 90_000;
+/** Node discovery (nearby/repeaters/sensors): multi-second scan window. */
+const DISCOVER_TIMEOUT_MS = 180_000;
+/** Region discovery: multi-second scan window, larger candidate set. */
+const REGIONS_DISCOVER_TIMEOUT_MS = 180_000;
 
 const router = Router({ mergeParams: true });
 
@@ -288,6 +309,7 @@ router.post(
  */
 router.post(
   '/discover',
+  extendRequestTimeout(DISCOVER_TIMEOUT_MS),
   meshcoreDeviceLimiter,
   requireAuth(),
   requirePermission('nodes', 'write', { sourceIdFrom: 'params.id' }),
@@ -333,6 +355,7 @@ router.post(
  */
 router.post(
   '/regions/discover',
+  extendRequestTimeout(REGIONS_DISCOVER_TIMEOUT_MS),
   meshcoreDeviceLimiter,
   requireAuth(),
   requirePermission('nodes', 'write', { sourceIdFrom: 'params.id' }),
@@ -405,6 +428,7 @@ router.post(
  */
 router.post(
   '/contacts/:publicKey/ping',
+  extendRequestTimeout(PING_TIMEOUT_MS),
   meshcoreDeviceLimiter,
   requireAuth(),
   requirePermission('nodes', 'write', { sourceIdFrom: 'params.id' }),
@@ -800,6 +824,7 @@ router.post(
  */
 router.get(
   '/contacts/:publicKey/neighbours',
+  extendRequestTimeout(NEIGHBOURS_TIMEOUT_MS),
   meshcoreDeviceLimiter,
   requireAuth(),
   requirePermission('nodes', 'read', { sourceIdFrom: 'params.id' }),
@@ -900,6 +925,7 @@ router.get(
  */
 router.post(
   '/nodes/:publicKey/telemetry/poll',
+  extendRequestTimeout(TELEMETRY_POLL_TIMEOUT_MS),
   meshcoreDeviceLimiter,
   requireAuth(),
   requirePermission('nodes', 'read', { sourceIdFrom: 'params.id' }),
@@ -1123,6 +1149,7 @@ router.get(
  */
 router.post(
   '/nodes/:publicKey/neighbours/poll',
+  extendRequestTimeout(NEIGHBOURS_POLL_TIMEOUT_MS),
   meshcoreDeviceLimiter,
   requireAuth(),
   requirePermission('nodes', 'read', { sourceIdFrom: 'params.id' }),
@@ -1585,6 +1612,7 @@ router.patch(
  */
 router.post(
   '/nodes/:publicKey/time-sync',
+  extendRequestTimeout(TIME_SYNC_TIMEOUT_MS),
   meshcoreDeviceLimiter,
   requireAuth(),
   requirePermission('configuration', 'write', { sourceIdFrom: 'params.id' }),
@@ -1744,7 +1772,7 @@ router.post(
 // Request neighbor data from a MeshCore repeater (remote or local).
 // ---------------------------------------------------------------------------
 
-router.post('/neighbors/request', meshcoreDeviceLimiter, requireAuth(), requirePermission('nodes', 'read', { sourceIdFrom: 'params.id' }), async (req: Request, res: Response) => {
+router.post('/neighbors/request', extendRequestTimeout(NEIGHBORS_REQUEST_TIMEOUT_MS), meshcoreDeviceLimiter, requireAuth(), requirePermission('nodes', 'read', { sourceIdFrom: 'params.id' }), async (req: Request, res: Response) => {
   const sourceId = (req.params as { id?: string }).id!;
   const { publicKey } = req.body as { publicKey?: string };
 
