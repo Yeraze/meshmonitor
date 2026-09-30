@@ -10,6 +10,8 @@ import {
   type AutomationNode,
   type AutomationEnableMode,
   AUTOMATION_DELAY_MAX_SECONDS,
+  WAYPOINT_AUTOMATION_MAX_EXPIRE_HOURS,
+  WAYPOINT_KEY_MAX_LENGTH,
   parseSendMaxAttempts,
   parseAutomationEnabledFlag,
 } from '../../../types/automation.js';
@@ -86,6 +88,28 @@ export interface ActionDeps {
    *  argv beyond the interpreter + script path. */
   runScript(a: { scriptPath: string; scriptArgs?: string[]; env: Record<string, string>; timeoutMs?: number }):
     Promise<{ success: boolean; returnValue?: unknown; stdout: string; error?: string }>;
+  /**
+   * Upsert and (maybe) send an automation-owned Meshtastic waypoint (#5482).
+   * The dep enforces the 30-minute per-waypoint floor from the persisted
+   * `lastBroadcastAt` and `onlyWhenChanged`, returning a skip result for
+   * either; it throws TxDisabledError when the source cannot transmit.
+   */
+  broadcastWaypoint(a: {
+    sourceId: string;
+    /** `<automationId>:<waypointKey>`. */
+    automationKey: string;
+    latitude: number;
+    longitude: number;
+    name: string;
+    description: string;
+    icon: string | null;
+    /** Epoch seconds, or null for no expiry. */
+    expireAt: number | null;
+    channel: number;
+    /** 0-7, or null = the node's configured hop limit. */
+    hopLimit: number | null;
+    onlyWhenChanged: boolean;
+  }): Promise<unknown>;
   /** Pause for `ms` (action.delay). Optional/injectable so tests don't wait in real time. */
   sleep?(ms: number): Promise<void>;
   /**
@@ -405,6 +429,67 @@ export async function executeAction(node: AutomationNode, ctx: EngineEvalContext
       // Unwrap the single-send case so the result shape (and run-log
       // resolvedParams) matches the original one-target behavior.
       return results.length === 1 ? results[0] : results;
+    }
+
+    case 'action.broadcastWaypoint': {
+      // #5482. Identity fields (source, key) take `var.*` templates only: a
+      // mesh-controlled `trigger.*` value in the key would let an inbound
+      // message mint a new waypoint — each with its own fresh 30-minute floor —
+      // per distinct value, which is a flood.
+      const wpSource = (await interpolateAsync(String(p.sourceId ?? ''), ctx, { varsOnly: true })).trim();
+      if (!wpSource) throw new Error('action.broadcastWaypoint: no source');
+      const waypointKey = (await interpolateAsync(String(p.waypointKey ?? ''), ctx, { varsOnly: true })).trim();
+      if (!waypointKey) throw new Error('action.broadcastWaypoint: no waypoint key (it may have resolved to blank)');
+      if (waypointKey.length > WAYPOINT_KEY_MAX_LENGTH) {
+        throw new Error(`action.broadcastWaypoint: waypoint key longer than ${WAYPOINT_KEY_MAX_LENGTH} characters`);
+      }
+
+      const coord = async (name: 'latitude' | 'longitude', limit: number): Promise<number> => {
+        const raw = await resolveOperand(ctx, p[name]);
+        const text = raw == null ? '' : String(raw).trim();
+        const n = text === '' ? NaN : Number(text);
+        if (!Number.isFinite(n) || n < -limit || n > limit) {
+          throw new Error(`action.broadcastWaypoint: ${name} "${text}" is not a number in [-${limit}, ${limit}]`);
+        }
+        return n;
+      };
+      const latitude = await coord('latitude', 90);
+      const longitude = await coord('longitude', 180);
+
+      const name = await interpolateAsync(String(p.name ?? ''), ctx);
+      const description = await interpolateAsync(String(p.description ?? ''), ctx);
+      const iconText = (await interpolateAsync(String(p.icon ?? ''), ctx)).trim();
+      const icon = iconText.length > 0 ? iconText : null;
+
+      let expireAt: number | null = null;
+      const rawExpire = await resolveOperand(ctx, p.expireHours);
+      if (rawExpire != null && String(rawExpire).trim() !== '') {
+        const hours = Number(String(rawExpire).trim());
+        if (!Number.isFinite(hours) || hours <= 0 || hours > WAYPOINT_AUTOMATION_MAX_EXPIRE_HOURS) {
+          throw new Error(`action.broadcastWaypoint: expireHours "${String(rawExpire)}" is not in (0, ${WAYPOINT_AUTOMATION_MAX_EXPIRE_HOURS}]`);
+        }
+        expireAt = Math.floor(ctx.now / 1000) + Math.round(hours * 3600);
+      }
+
+      const rawChannel = p.channel == null || p.channel === '' ? 0 : Number(p.channel);
+      const channel = Number.isInteger(rawChannel) && rawChannel >= 0 && rawChannel <= 7 ? rawChannel : 0;
+      const hopLimit = parseHopLimitOverride(p.hopLimit) ?? null;
+
+      const results: unknown[] = [];
+      await pushOrSkipTxDisabled(results, () => deps.broadcastWaypoint({
+        sourceId: wpSource,
+        automationKey: `${ctx.automationId ?? 'unsaved'}:${waypointKey}`,
+        latitude,
+        longitude,
+        name,
+        description,
+        icon,
+        expireAt,
+        channel,
+        hopLimit,
+        onlyWhenChanged: p.onlyWhenChanged === true,
+      }));
+      return results[0];
     }
 
     case 'action.tapback': {
