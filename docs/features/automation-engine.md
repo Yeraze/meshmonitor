@@ -536,6 +536,43 @@ Loop safety: turning an automation on or off raises no event, so no trigger can 
 Rule A that toggles rule B can't set off rule B, and two rules can't toggle each other in a loop
 through this action alone. The trigger's own cooldown and rate limit still apply.
 
+### Broadcast a waypoint
+
+In JSON mode, this action has the type `action.broadcastWaypoint`.
+
+Creates a Meshtastic waypoint, keeps it up to date, and broadcasts it with the hop limit you
+choose. Use it to publish a value that changes, such as a border wait time from a script, to a
+bounded area of the mesh. Meshtastic only.
+
+- **Send via source** — the Meshtastic radio that owns and sends the waypoint.
+- **Waypoint key** — names the waypoint within this automation. Each run updates the same
+  waypoint instead of making a new one, across runs and restarts. Use one key per waypoint. It
+  takes `{{ var.* }}` templates only, so a mesh message can't create waypoints.
+- **Latitude**, **Longitude**, **Name**, **Description**, **Expires after (hours)** — take
+  `{{ }}` templates, so a [Run a script](#run-a-script) step with a result variable can fill
+  them, for example `{{ var.wait.lat }}`. The name is cut to 29 bytes and the description to 99,
+  the firmware limits.
+- **Icon** — an emoji. **Channel #** — the device slot, 0-7.
+- **Hop limit** — blank or **Inherit** uses the node's configured hop limit. A value is capped at
+  that limit, so it can only shorten reach.
+- **Only send when changed** — skip the send when the name, description, position, icon, expiry,
+  channel and hop limit match what was last sent. Off by default: every allowed run sends.
+
+What happens when it runs:
+
+- The waypoint row is always updated, so the map shows the new values at once.
+- **A waypoint goes out at most once per 30 minutes.** A run inside that window updates the
+  waypoint and records a skip (`MIN_INTERVAL`) in the run log. The time of the last send is
+  stored with the waypoint, so saving the automation or restarting MeshMonitor does not reset it.
+- A change held back by the 30-minute limit still goes out on the next allowed run, even with
+  **Only send when changed** on.
+- A TX-disabled source records a skip, as **Send a message** does.
+- The trigger's cooldown and rate limit still apply on top.
+
+Airtime: every node within the hop limit rebroadcasts the waypoint. On a 30-node mesh at 3 hops
+one send is about 30 transmissions, around 30 seconds of channel time at LongFast. At the
+30-minute limit that is under 2 % of the channel per waypoint. Hop limit 0 is one transmission.
+
 ### Set a variable / flag
 
 Writes a **dynamic** [variable](#variables): **Set to value**, **Increment by**, **Raise flag**, or
