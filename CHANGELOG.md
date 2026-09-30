@@ -6,6 +6,26 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased]
 
+## [4.17.0-rc1] - 2026-09-30
+
+### Added
+- **Ack proof ("Proven receipt")** in Delivery Details. Firmware 2.8.1 reports whether the ack for a DM carries a valid proof from the recipient's key; MeshMonitor shows "Proven receipt" (valid), a warning when a proof fails ("this ack may be forged"), or a muted "Receipt not proven". On multi-hop paths a genuine receipt often reads "not proven", so that is never shown as a failure. Packet Monitor shows the raw value. Display only; migration 184. (#5279, #5489)
+- **AEAD channels, Phase 1.** Firmware 2.8.1 adds AES-CCM authenticated encryption for PSK channels. MeshMonitor now stores each channel's `use_aead` flag and sends it back on every channel write (edits, reorder, URLs, import/export, backup/restore, Virtual Node), so a MeshMonitor edit can no longer turn AEAD off. A read-only **AEAD** badge shows on the channel. Decrypting AEAD traffic and an editable setting come in Phase 2, after a 2.8.1 build ships. Migration 185. (#5248, #5492)
+- **Broadcast a waypoint from the Automation Engine** (`action.broadcastWaypoint`), with source, key, position, name, icon, expiry, channel, hop limit and "only send when changed". Every waypoint also gets an optional hop limit, set in the waypoint editor with an airtime warning. Migration 183. (#5482, #5484)
+- **MeshCore Trace Path: Auto return path**, on by default. The trace now reaches the target and comes back: repeaters and room servers are traced out and back through themselves, and companions turn at the last repeater. It falls back to one-way past the firmware's 63-hop limit. (#5485, #5490)
+- **Pin sidebar on MeshCore sources**, sharing one pin setting with Meshtastic. The MeshCore nav now follows the same rules: it starts expanded when pinned and collapses after a nav click when unpinned. (#5481, #5483)
+- **MeshCore Repeaters get their own map glyph**, a mesh relay, so they no longer look identical to a Meshtastic ROUTER on the Unified map. Meshtastic ROUTER / ROUTER_LATE / REPEATER keep the tower. Applies to 2D, 3D, legends and the traceroute strip. (#5491, #5501)
+
+### Changed
+- **Waypoints and data requests use the node's configured hop limit.** Waypoint sends used a fixed 3 hops; position, NodeInfo and telemetry requests used 3; NeighborInfo requests used 7. All now use the node's own LoRa hop limit, and a per-waypoint hop limit can only shorten it. On a node set above 3, these packets now reach further; NeighborInfo requests stop flooding to 7 hops. (#5484, #5488)
+- **Slow API requests get a `504 REQUEST_TIMEOUT` reply** instead of a silently dropped socket. Browsers resend a request whose connection closes with no reply, POSTs included, so a slow request re-ran on every resend (one Trace Path click put a trace on air every 30 s; a slow reboot request could reboot the node again). The handler still finishes in the background, and known-slow routes get a longer timeout. (#5494)
+- **Protobufs track Meshtastic's untagged `master`** (`2542e06`), which adds the ack proof, AEAD, slot parity and `SoilWaterMetrics` fields. The loaders now resolve `google/protobuf/descriptor.proto`, which the new field-metadata annotations import. (#5486)
+
+### Fixed
+- **Web Push per source.** Subscribing on one source made every source show "Subscribed", and Unsubscribe on any source removed the browser from every source. Status and Unsubscribe are now per source, the browser subscription is only dropped when no source still uses it, and a new "Unsubscribe from all sources" button covers the silence-everything case. (#5493, #5495)
+- **MeshCore repeater Configuration** showed TX power 0, position 0,0 and preset "Custom". MeshMonitor now reads `get tx`, `get lat` and `get lon`, and matches presets within 0.001 MHz, since repeaters report frequencies like 869.6179809. (#5496, #5497)
+- **Telemetry range selector** vanished when the chosen window had no data, leaving no way to widen it again. (#5498, #5499)
+
 ## [4.16.2] - 2026-09-29
 
 The full release of the 4.16.2 line. It ships everything in 4.16.2-rc1 through rc6 below, plus the two fixes in this section. Highlights since 4.16.1: the Coverage Report, likely-aircraft detection with ADS-B flight matching, asset tracking with timeline playback, per-transport breakdowns, sign-flipped position correction, per-source Message Forwarding, MeshCore Ignore/Block, and CARTO vector basemaps. Upgrading from 4.16.1 runs migrations 168–182 automatically.
