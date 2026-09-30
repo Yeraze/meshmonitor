@@ -134,7 +134,8 @@ export class MeshtasticProtobufService {
   createPositionRequestMessage(
     destination: number,
     channel?: number,
-    position?: { latitude: number; longitude: number; altitude?: number | null }
+    position?: { latitude: number; longitude: number; altitude?: number | null },
+    hopLimit: number = DEFAULT_HOP_LIMIT
   ): { data: Uint8Array; packetId: number; requestId: number } {
     const root = getProtobufRoot();
     if (!root) {
@@ -189,7 +190,7 @@ export class MeshtasticProtobufService {
         channel: channel || 0,
         decoded: dataMessage,
         wantAck: !isBroadcast, // Broadcast packets don't get ACKed
-        hopLimit: 3 // Default hop limit for position exchange
+        hopLimit: resolveHopLimit(hopLimit) // Caller passes the node's configured hop limit
       });
 
       // Create the ToRadio message
@@ -213,7 +214,8 @@ export class MeshtasticProtobufService {
   createNodeInfoRequestMessage(
     destination: number,
     channel?: number,
-    userInfo?: { id: string; longName: string; shortName: string; hwModel?: number; role?: number }
+    userInfo?: { id: string; longName: string; shortName: string; hwModel?: number; role?: number },
+    hopLimit: number = DEFAULT_HOP_LIMIT
   ): { data: Uint8Array; packetId: number; requestId: number } {
     const root = getProtobufRoot();
     if (!root) {
@@ -271,7 +273,7 @@ export class MeshtasticProtobufService {
         channel: channel || 0,
         decoded: dataMessage,
         wantAck: true, // We want to know if the message was delivered
-        hopLimit: 3 // Default hop limit for nodeinfo exchange
+        hopLimit: resolveHopLimit(hopLimit) // Caller passes the node's configured hop limit
       });
 
       // Create the ToRadio message
@@ -295,7 +297,7 @@ export class MeshtasticProtobufService {
     destination: number,
     channel?: number,
     telemetryType?: 'device' | 'environment' | 'airQuality' | 'power' | 'localStats',
-    hopLimit: number = 3
+    hopLimit: number = DEFAULT_HOP_LIMIT
   ): { data: Uint8Array; packetId: number; requestId: number } {
     const root = getProtobufRoot();
     if (!root) {
@@ -372,7 +374,7 @@ export class MeshtasticProtobufService {
         channel: channel || 0,
         decoded: dataMessage,
         wantAck: true, // Want delivery confirmation
-        hopLimit // Caller sizes this to the target's distance (default 3)
+        hopLimit: resolveHopLimit(hopLimit) // Caller passes the configured hop limit, or sizes it to the target's distance
       });
 
       // Create ToRadio message
@@ -395,7 +397,8 @@ export class MeshtasticProtobufService {
    */
   createNeighborInfoRequestMessage(
     destination: number,
-    channel?: number
+    channel?: number,
+    hopLimit: number = DEFAULT_HOP_LIMIT
   ): { data: Uint8Array; packetId: number; requestId: number } {
     const root = getProtobufRoot();
     if (!root) {
@@ -433,7 +436,7 @@ export class MeshtasticProtobufService {
         channel: channel || 0,
         decoded: dataMessage,
         wantAck: true, // Want delivery confirmation
-        hopLimit: 7 // Default hop limit for remote nodes
+        hopLimit: resolveHopLimit(hopLimit) // Caller passes the node's configured hop limit
       });
 
       // Create ToRadio message
