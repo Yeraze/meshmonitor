@@ -97,6 +97,8 @@ export interface CreateLocalInput {
   /** Device channel slot to broadcast on. null/undefined = slot 0 (#4341). */
   channel?: number | null;
   rebroadcastIntervalS?: number | null;
+  /** Hop limit 0-7; null/undefined = the node's configured limit (#5482). */
+  hopLimit?: number | null;
 }
 
 export interface UpdateInput {
@@ -109,6 +111,8 @@ export interface UpdateInput {
   lockedTo?: number | null;
   channel?: number | null;
   rebroadcastIntervalS?: number | null;
+  /** undefined = keep; null = inherit the node's configured limit (#5482). */
+  hopLimit?: number | null;
   isVirtual?: boolean;
 }
 
@@ -271,6 +275,7 @@ class WaypointService {
       isVirtual: Boolean(options.virtual),
       channel: normalizeWaypointChannel(fields.channel),
       rebroadcastIntervalS: fields.rebroadcastIntervalS ?? null,
+      hopLimit: fields.hopLimit ?? null,
     });
 
     dataEventEmitter.emitWaypointUpserted(persisted, sourceId);
@@ -325,6 +330,7 @@ class WaypointService {
         fields.rebroadcastIntervalS === undefined
           ? existing.rebroadcastIntervalS
           : fields.rebroadcastIntervalS,
+      hopLimit: fields.hopLimit === undefined ? existing.hopLimit : fields.hopLimit,
     });
 
     dataEventEmitter.emitWaypointUpserted(persisted, sourceId);
@@ -409,7 +415,12 @@ class WaypointService {
         // Rebroadcast on the channel the waypoint was created with (#4341);
         // rows predating the column have `channel === null` and stay on 0.
         // Scheduler-driven rebroadcast — automation traffic (#5414).
-        { channel: normalizeWaypointChannel(candidate.channel), origin: 'automation' },
+        // Stored hop limit; NULL = the node's configured limit (#5482).
+        {
+          channel: normalizeWaypointChannel(candidate.channel),
+          origin: 'automation',
+          hopLimit: candidate.hopLimit,
+        },
       );
 
       if (!packetId) {

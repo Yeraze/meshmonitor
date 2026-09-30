@@ -361,6 +361,95 @@ describe('Waypoint routes', () => {
       expect(fields).not.toHaveProperty('channel');
     });
 
+    // ── Hop limit (#5482) ──────────────────────────────────────────────────
+    const baseRow = {
+      latitude: 30, longitude: -90, name: '', description: '', iconCodepoint: null,
+      expireAt: null, lockedTo: null, isVirtual: false, channel: 0,
+    };
+
+    it.each([
+      [{ hop_limit: 2 }, 2],
+      [{ hopLimit: 0 }, 0],
+      [{ hop_limit: null }, null],
+      [{}, null],
+    ])('POST stores hop limit from %j as %s and sends with it', async (extra, expected) => {
+      const { broadcastWaypoint } = mockManager();
+      mockWaypointService.createLocal.mockResolvedValue({
+        ...baseRow, sourceId: harness.sourceA, waypointId: 11, hopLimit: expected,
+      });
+
+      const agent = await harness.loginAs(harness.admin);
+      const res = await agent
+        .post(`/api/sources/${harness.sourceA}/waypoints`)
+        .send({ lat: 30, lon: -90, ...extra });
+
+      expect(res.status).toBe(201);
+      expect(mockWaypointService.createLocal).toHaveBeenCalledWith(
+        harness.sourceA, 42, expect.objectContaining({ hopLimit: expected }), expect.any(Object),
+      );
+      expect(broadcastWaypoint).toHaveBeenCalledWith(expect.anything(), { channel: 0, hopLimit: expected });
+      expect(res.body.data.hopLimit).toBe(expected);
+    });
+
+    it.each([8, -1, 1.5, 'abc'])('POST rejects an invalid hop_limit (%s) with INVALID_HOP_LIMIT', async (bad) => {
+      mockManager();
+      const agent = await harness.loginAs(harness.admin);
+      const res = await agent
+        .post(`/api/sources/${harness.sourceA}/waypoints`)
+        .send({ lat: 30, lon: -90, hop_limit: bad });
+      expect(res.status).toBe(400);
+      expect(res.body.code).toBe('INVALID_HOP_LIMIT');
+      expect(mockWaypointService.createLocal).not.toHaveBeenCalled();
+    });
+
+    it('PATCH threads a hop limit through update and the outgoing packet', async () => {
+      const { broadcastWaypoint } = mockManager();
+      mockWaypointService.update.mockResolvedValue({
+        ...baseRow, sourceId: harness.sourceA, waypointId: 5, hopLimit: 1,
+      });
+      const agent = await harness.loginAs(harness.admin);
+      const res = await agent.patch(`/api/sources/${harness.sourceA}/waypoints/5`).send({ hop_limit: 1 });
+      expect(res.status).toBe(200);
+      expect(mockWaypointService.update.mock.calls[0][3]).toMatchObject({ hopLimit: 1 });
+      expect(broadcastWaypoint).toHaveBeenCalledWith(expect.anything(), { channel: 0, hopLimit: 1 });
+    });
+
+    it('PATCH with hop_limit null clears it back to inherit', async () => {
+      mockManager();
+      mockWaypointService.update.mockResolvedValue({ ...baseRow, sourceId: harness.sourceA, waypointId: 5, hopLimit: null });
+      const agent = await harness.loginAs(harness.admin);
+      await agent.patch(`/api/sources/${harness.sourceA}/waypoints/5`).send({ hop_limit: null });
+      expect(mockWaypointService.update.mock.calls[0][3]).toHaveProperty('hopLimit', null);
+    });
+
+    it('PATCH leaves the stored hop limit alone when the field is omitted', async () => {
+      mockManager();
+      mockWaypointService.update.mockResolvedValue({ ...baseRow, sourceId: harness.sourceA, waypointId: 5, hopLimit: 3 });
+      const agent = await harness.loginAs(harness.admin);
+      await agent.patch(`/api/sources/${harness.sourceA}/waypoints/5`).send({ name: 'x' });
+      expect(mockWaypointService.update.mock.calls[0][3]).not.toHaveProperty('hopLimit');
+    });
+
+    it('PATCH rejects an out-of-range hop limit', async () => {
+      mockManager();
+      const agent = await harness.loginAs(harness.admin);
+      const res = await agent.patch(`/api/sources/${harness.sourceA}/waypoints/5`).send({ hopLimit: 9 });
+      expect(res.status).toBe(400);
+      expect(res.body).toMatchObject({ success: false, code: 'INVALID_HOP_LIMIT' });
+      expect(mockWaypointService.update).not.toHaveBeenCalled();
+    });
+
+    it('DELETE sends the tombstone with the stored hop limit', async () => {
+      const { broadcastWaypointDelete } = mockManager();
+      vi.spyOn(databaseService.waypoints, 'getAsync').mockResolvedValue({
+        ...baseRow, sourceId: harness.sourceA, waypointId: 6, channel: 2, hopLimit: 1,
+      } as any);
+      mockWaypointService.deleteLocal.mockResolvedValue(true);
+      const agent = await harness.loginAs(harness.admin);
+      await agent.delete(`/api/sources/${harness.sourceA}/waypoints/6`);
+      expect(broadcastWaypointDelete).toHaveBeenCalledWith(6, { channel: 2, hopLimit: 1 });
+    });
+
     it('PATCH threads the virtual flag through update as isVirtual (#4795)', async () => {
       mockManager();
       mockWaypointService.update.mockResolvedValue({
