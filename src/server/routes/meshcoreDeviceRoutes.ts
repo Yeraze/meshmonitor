@@ -25,6 +25,10 @@ import {
 import { MeshCoreZeroHopAdvertUnsupportedError } from '../utils/meshcoreAdvert.js';
 import { buildLocalContactRow, withoutLocalFlag, type MeshCoreContactResponse } from './meshcoreLocalContactRow.js';
 import { applySignFlipToMeshCoreRows } from '../services/signFlipCorrection.js';
+import { extendRequestTimeout } from '../middleware/requestTimeout.js';
+
+/** Device connect: serial/TCP/BLE handshake + capability probe over RF. */
+const CONNECT_TIMEOUT_MS = 90_000;
 
 const router = Router({ mergeParams: true });
 
@@ -57,7 +61,7 @@ router.get('/status', optionalAuth(), requirePermission('connection', 'read', { 
  * Connect to a MeshCore device
  * Requires authentication - connects to hardware
  */
-router.post('/connect', meshcoreDeviceLimiter, requireAuth(), requirePermission('connection', 'write', { sourceIdFrom: 'params.id' }), async (req: Request, res: Response) => {
+router.post('/connect', extendRequestTimeout(CONNECT_TIMEOUT_MS), meshcoreDeviceLimiter, requireAuth(), requirePermission('connection', 'write', { sourceIdFrom: 'params.id' }), async (req: Request, res: Response) => {
   try {
     const { connectionType, serialPort, tcpHost, tcpPort, baudRate, deviceType } = req.body;
 

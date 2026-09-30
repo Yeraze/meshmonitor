@@ -21,6 +21,13 @@ import { failContactNotOnDevice, managerFor, VALIDATION, isValidPublicKey, isVal
   requireMeshcoreChannelAccess, canAccessMeshcoreChannel, requireMeshcoreTx, failIfTxDisabled,
   startTrackedLogin, respondLoginCancelled } from './meshcoreRouteShared.js';
 import type { MeshCoreLoginRetryOutcome } from '../meshcoreManager.js';
+import { extendRequestTimeout } from '../middleware/requestTimeout.js';
+
+// Room-server login retries over RF can legitimately run past the 30s
+// default socket timeout; extend it so the caller gets the real result
+// instead of a dropped-socket 504.
+/** Room login retry: multiple attempts over RF, each up to ~35s. */
+const ROOM_LOGIN_TIMEOUT_MS = 120_000;
 
 const router = Router({ mergeParams: true });
 
@@ -410,7 +417,7 @@ router.get('/rooms/servers', optionalAuth(), requirePermission('messages', 'read
  *     /admin/login-progress and /admin/login-cancel endpoints (#5400).
  *     A cancelled login answers 409 LOGIN_CANCELLED and saves nothing.
  */
-router.post('/rooms/login', meshcoreDeviceLimiter, requireAuth(), requirePermission('messages', 'write', { sourceIdFrom: 'params.id' }), requireMeshcoreTx(), async (req: Request, res: Response) => {
+router.post('/rooms/login', extendRequestTimeout(ROOM_LOGIN_TIMEOUT_MS), meshcoreDeviceLimiter, requireAuth(), requirePermission('messages', 'write', { sourceIdFrom: 'params.id' }), requireMeshcoreTx(), async (req: Request, res: Response) => {
   try {
     const { publicKey, password, rememberPassword } = req.body as {
       publicKey?: string;
@@ -498,7 +505,7 @@ router.post('/rooms/login', meshcoreDeviceLimiter, requireAuth(), requirePermiss
  * Login to a room server using a previously saved credential.
  * Body: { publicKey: string, requestId?: string } (requestId: see /rooms/login)
  */
-router.post('/rooms/login-with-saved', meshcoreDeviceLimiter, requireAuth(), requirePermission('messages', 'write', { sourceIdFrom: 'params.id' }), requireMeshcoreTx(), async (req: Request, res: Response) => {
+router.post('/rooms/login-with-saved', extendRequestTimeout(ROOM_LOGIN_TIMEOUT_MS), meshcoreDeviceLimiter, requireAuth(), requirePermission('messages', 'write', { sourceIdFrom: 'params.id' }), requireMeshcoreTx(), async (req: Request, res: Response) => {
   try {
     const { publicKey } = req.body as { publicKey?: string };
     if (typeof publicKey !== 'string' || !isValidPublicKey(publicKey)) {

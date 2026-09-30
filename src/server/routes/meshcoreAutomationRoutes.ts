@@ -20,6 +20,13 @@ import { ok, fail } from '../utils/apiResponse.js';
 import { MESHCORE_ADVERT_MODES, isMeshCoreAdvertMode, resolveMeshCoreAdvertMode } from '../../types/meshcoreAdvert.js';
 import type { MeshcorePathfindingFilterSettings } from '../../services/database.js';
 import { managerFor, requireMeshcoreTx, failIfTxDisabled } from './meshcoreRouteShared.js';
+import { extendRequestTimeout } from '../middleware/requestTimeout.js';
+
+// Manual announce-send / timer-run routes trigger a radio send + wait that
+// can legitimately run past the 30s default socket timeout; extend it so
+// the caller gets the real result instead of a dropped-socket 504.
+/** Manual announce send / timer run: broadcast + multi-hop settle window. */
+const MANUAL_AUTOMATION_RUN_TIMEOUT_MS = 120_000;
 
 const router = Router({ mergeParams: true });
 
@@ -595,6 +602,7 @@ router.get(
 
 router.post(
   '/automation/announce/send',
+  extendRequestTimeout(MANUAL_AUTOMATION_RUN_TIMEOUT_MS),
   meshcoreDeviceLimiter,
   requireAuth(),
   requirePermission('automation', 'write', { sourceIdFrom: 'params.id' }),
@@ -670,6 +678,7 @@ router.post(
 
 router.post(
   '/automation/timers/:triggerId/run',
+  extendRequestTimeout(MANUAL_AUTOMATION_RUN_TIMEOUT_MS),
   meshcoreDeviceLimiter,
   requireAuth(),
   requirePermission('automation', 'write', { sourceIdFrom: 'params.id' }),
