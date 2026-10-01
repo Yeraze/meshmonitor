@@ -8,6 +8,8 @@ A fourth report, **[Mesh Issues Analysis](./mesh-issues)**, lives alongside thes
 
 A fifth report, **[Coverage Report](./coverage-report)**, also lives alongside these on its own page — a passive, measured coverage map built from position packets your Meshtastic radios, MeshCore radios, and opt-in MQTT gateways already received, with filters over time range, sender, receiver, hops, and signal metric, and its own retention setting in Settings rather than an on-page run control.
 
+A sixth report, **[Traceroute Explorer](./traceroute-explorer)**, lists every stored traceroute across your sources on a linked map and table, with filters for result, transport, node and hop count. It is read-only and sends no packets.
+
 ## Solar Monitoring Analysis
 
 Identifies solar-powered nodes by analyzing battery and voltage telemetry over a configurable lookback window and looking for the characteristic morning-low → afternoon-peak charging curve, followed by overnight discharge. Ports the proven detection algorithm from MeshManager.

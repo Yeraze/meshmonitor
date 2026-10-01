@@ -1,14 +1,17 @@
 import { Router, Request, Response } from 'express';
-import { requirePermission } from '../auth/authMiddleware.js';
+import { optionalAuth, requirePermission } from '../auth/authMiddleware.js';
 import databaseService from '../../services/database.js';
 import { ALL_SOURCES } from '../../db/repositories/index.js';
 import { isMqttSourceType } from '../../db/repositories/sources.js';
 import { logger } from '../../utils/logger.js';
 import { ok, fail } from '../utils/apiResponse.js';
-import { maskTraceroutesByChannel } from '../utils/nodeEnhancer.js';
+import { filterNodesByChannelPermission, maskNodeLocationByChannel, maskTraceroutesByChannel } from '../utils/nodeEnhancer.js';
 import { hasRouteData, parseHopArray } from '../../utils/tracerouteSegments.js';
 import { getMaxNodeAgeHours } from '../services/nodeDisplaySettings.js';
-import { applySignFlipToTraceroutes } from '../services/signFlipCorrection.js';
+import { applySignFlipToTraceroutes, loadSignFlipContexts } from '../services/signFlipCorrection.js';
+import { resolvePermittedSourceIds, parseSourcesParam } from '../utils/permittedSources.js';
+import { mergeExplorerNodes, type ExplorerNodeRow } from '../utils/tracerouteExplorerNodes.js';
+import { getEnvironmentConfig } from '../config/environment.js';
 
 const router = Router();
 
@@ -204,5 +207,125 @@ router.get(
     }
   },
 );
+
+// GET /api/traceroutes/explorer?sources=a,b&hours=24
+//
+// Traceroute Explorer report (#5511): every stored traceroute across the
+// sources the caller can read, newest first, plus a display entry for every
+// node those runs mention. Filtering by result, transport, node and hop count
+// happens client-side over this window, so the map and table can re-filter
+// without a round trip.
+//
+// Permission model (#3745 leak class): the source set is the caller's
+// `traceroute:read` sources, optionally narrowed by `sources`; runs are then
+// channel-masked per source, the same gate the per-source traceroute routes
+// apply. Node positions come only from rows the caller may see on the map.
+//
+// Read-only: sends nothing to any node.
+// A busy multi-source install stores ~5 rows per traceroute (each MQTT
+// source keeps its own copy), so 24h can pass 5,000 rows on its own.
+export const EXPLORER_SCAN_LIMIT = 20000;
+const EXPLORER_MAX_HOURS = 24 * 365;
+
+router.get('/explorer', optionalAuth(), async (req: Request, res: Response) => {
+  try {
+    let sinceTimestamp: number | undefined;
+    if (req.query.hours !== undefined && req.query.hours !== '') {
+      const hours = Number(req.query.hours);
+      if (!Number.isInteger(hours) || hours < 1 || hours > EXPLORER_MAX_HOURS) {
+        return fail(res, 400, 'INVALID_HOURS', `hours must be between 1 and ${EXPLORER_MAX_HOURS}`);
+      }
+      sinceTimestamp = Date.now() - hours * 60 * 60 * 1000;
+    }
+
+    const allSources = await databaseService.sources.getAllSources();
+    const permitted = await resolvePermittedSourceIds(req, 'traceroute', allSources);
+    const requested = parseSourcesParam(req.query.sources);
+    const sourceIds = requested ? permitted.filter(id => requested.includes(id)) : permitted;
+
+    const rows = await databaseService.traceroutes.getTraceroutesForSources({
+      sourceIds,
+      sinceTimestamp,
+      // One extra row tells "exactly the cap" apart from "more than the cap".
+      limit: EXPLORER_SCAN_LIMIT + 1,
+    });
+    const truncated = rows.length > EXPLORER_SCAN_LIMIT;
+    if (truncated) rows.length = EXPLORER_SCAN_LIMIT;
+
+    const user = req.user ?? null;
+    const bySource = new Map<string, typeof rows>();
+    for (const row of rows) {
+      const list = bySource.get(row.sourceId);
+      if (list) list.push(row);
+      else bySource.set(row.sourceId, [row]);
+    }
+    const visibleRuns: typeof rows = [];
+    for (const [sid, list] of bySource) {
+      visibleRuns.push(...(await maskTraceroutesByChannel(list, user, sid)));
+    }
+    visibleRuns.sort((a, b) => b.timestamp - a.timestamp || Number(b.id) - Number(a.id));
+
+    const wanted = new Set<number>();
+    for (const tr of visibleRuns) {
+      wanted.add(Number(tr.fromNodeNum));
+      wanted.add(Number(tr.toNodeNum));
+      for (const n of parseHopArray(tr.route)) wanted.add(Number(n));
+      for (const n of parseHopArray(tr.routeBack)) wanted.add(Number(n));
+    }
+
+    // Node details need `nodes:read` as well: `traceroute:read` alone shows
+    // the runs (and their hex node ids) but no names or positions.
+    const nodeSourceIds = new Set(await resolvePermittedSourceIds(req, 'nodes', allSources));
+    // intentional cross-source: node rows from every source, narrowed to the
+    // permitted set before any field is read.
+    const nodeRows = ((await databaseService.nodes.getAllNodes(ALL_SOURCES)) as unknown as ExplorerNodeRow[])
+      .filter(n => sourceIds.includes(n.sourceId) && nodeSourceIds.has(n.sourceId) && wanted.has(Number(n.nodeNum)));
+    const nodesBySource = new Map<string, ExplorerNodeRow[]>();
+    for (const n of nodeRows) {
+      const list = nodesBySource.get(n.sourceId);
+      if (list) list.push(n);
+      else nodesBySource.set(n.sourceId, [n]);
+    }
+    const safeNodeRows: ExplorerNodeRow[] = [];
+    for (const [sid, list] of nodesBySource) {
+      const onMap = new Set(await filterNodesByChannelPermission(list, user, sid));
+      const masked = await maskNodeLocationByChannel(list, user, sid);
+      masked.forEach((row, i) => {
+        // A node the caller can't see on the map keeps its name but no position.
+        safeNodeRows.push(
+          onMap.has(list[i]) ? row : { ...row, latitude: null, longitude: null, positionOverrideEnabled: false },
+        );
+      });
+    }
+    const signFlip = await loadSignFlipContexts(sourceIds);
+    const nodes = mergeExplorerNodes(safeNodeRows, wanted, signFlip);
+
+    const sourceNames = new Map(allSources.map(s => [s.id, s.name]));
+    return ok(res, {
+      sources: sourceIds.map(id => ({ id, name: sourceNames.get(id) ?? id })),
+      runs: visibleRuns.map(tr => ({
+        id: Number(tr.id),
+        sourceId: tr.sourceId,
+        timestamp: tr.timestamp,
+        fromNodeNum: Number(tr.fromNodeNum),
+        toNodeNum: Number(tr.toNodeNum),
+        route: tr.route ?? null,
+        routeBack: tr.routeBack ?? null,
+        snrTowards: tr.snrTowards ?? null,
+        snrBack: tr.snrBack ?? null,
+        channel: tr.channel ?? null,
+        packetId: tr.packetId == null ? null : Number(tr.packetId),
+        transportMechanism: tr.transportMechanism ?? null,
+      })),
+      nodes,
+      truncated,
+      scanLimit: EXPLORER_SCAN_LIMIT,
+      retentionPerPair: getEnvironmentConfig().tracerouteHistoryLimit,
+    });
+  } catch (error) {
+    logger.error('Error fetching traceroute explorer data:', error);
+    return fail(res, 500, 'TRACEROUTE_EXPLORER_FAILED', 'Failed to fetch traceroutes');
+  }
+});
 
 export default router;

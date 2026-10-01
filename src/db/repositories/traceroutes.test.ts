@@ -452,6 +452,31 @@ function runTraceroutesTests(getBackend: () => TestBackend) {
     expect(unrelated[0].fromNodeNum).toBe(5005);
   });
 
+  it('getTraceroutesForSources (#5511) - listed sources only, newest first, since + limit', async () => {
+    const backend = getBackend();
+    if (!backend.available) {
+      console.log(`⚠ Skipped: ${backend.skipReason}`);
+      return;
+    }
+
+    const now = Date.now();
+    await repo.insertTraceroute(makeTraceroute({ fromNodeNum: 1001, packetId: 1, timestamp: now - 3000, createdAt: now }), 'src-a');
+    await repo.insertTraceroute(makeTraceroute({ fromNodeNum: 3003, packetId: 2, timestamp: now - 1000, createdAt: now }), 'src-b');
+    await repo.insertTraceroute(makeTraceroute({ fromNodeNum: 4004, packetId: 3, timestamp: now - 2000, createdAt: now }), 'src-c');
+
+    const ab = await repo.getTraceroutesForSources({ sourceIds: ['src-a', 'src-b'], limit: 10 });
+    expect(ab.map(r => Number(r.packetId))).toEqual([2, 1]);
+    expect(ab.map(r => r.sourceId)).toEqual(['src-b', 'src-a']);
+
+    const recent = await repo.getTraceroutesForSources({ sourceIds: ['src-a', 'src-b', 'src-c'], sinceTimestamp: now - 2500, limit: 10 });
+    expect(recent.map(r => Number(r.packetId))).toEqual([2, 3]);
+
+    const capped = await repo.getTraceroutesForSources({ sourceIds: ['src-a', 'src-b', 'src-c'], limit: 1 });
+    expect(capped.map(r => Number(r.packetId))).toEqual([2]);
+
+    expect(await repo.getTraceroutesForSources({ sourceIds: [], limit: 10 })).toEqual([]);
+  });
+
   it('getTracerouteCount - returns correct count', async () => {
     const backend = getBackend();
     if (!backend.available) {
