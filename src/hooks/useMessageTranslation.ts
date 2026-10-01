@@ -1,9 +1,15 @@
 import { useState, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import apiService from '../services/api';
 import { type TranslatedMessageState } from '../components/translation/TranslatedMessage';
-import { getPreferredInboundLanguage, setPreferredInboundLanguage } from '../utils/translationStorage';
+import {
+  getPreferredInboundLanguage,
+  setPreferredInboundLanguage,
+  extractTranslationError,
+} from '../utils/translationStorage';
 
 export function useMessageTranslation() {
+  const { t } = useTranslation();
   const [translatedMessages, setTranslatedMessages] = useState<Record<string, TranslatedMessageState>>({});
 
   const translateMessage = useCallback(async (msgKey: string, text: string, targetLang?: string) => {
@@ -26,7 +32,16 @@ export function useMessageTranslation() {
         targetLang: effectiveTargetLang,
       });
 
-      if (res.translatedText) {
+      const errorMsg = extractTranslationError(res, t);
+      if (errorMsg) {
+        setTranslatedMessages((prev) => ({
+          ...prev,
+          [msgKey]: {
+            loading: false,
+            error: errorMsg,
+          },
+        }));
+      } else {
         setTranslatedMessages((prev) => ({
           ...prev,
           [msgKey]: {
@@ -35,14 +50,6 @@ export function useMessageTranslation() {
             detectedSourceLang: res.detectedSourceLanguage,
             targetLang: res.targetLanguage,
             provider: res.provider,
-          },
-        }));
-      } else {
-        setTranslatedMessages((prev) => ({
-          ...prev,
-          [msgKey]: {
-            loading: false,
-            error: res.skipReason || 'Translation unavailable',
           },
         }));
       }
@@ -56,7 +63,7 @@ export function useMessageTranslation() {
         },
       }));
     }
-  }, []);
+  }, [t]);
 
   const dismissTranslation = useCallback((msgKey: string) => {
     setTranslatedMessages((prev) => {

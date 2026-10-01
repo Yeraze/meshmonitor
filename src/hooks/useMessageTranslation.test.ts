@@ -6,6 +6,11 @@ import { renderHook, act } from '@testing-library/react';
 import { useMessageTranslation } from './useMessageTranslation';
 import apiService from '../services/api';
 
+vi.mock('react-i18next', async () => {
+  const { createReactI18nextMock } = await import('../test/mockI18n');
+  return createReactI18nextMock();
+});
+
 vi.mock('../services/api', () => ({
   default: {
     translateMessage: vi.fn(),
@@ -103,5 +108,27 @@ describe('useMessageTranslation', () => {
     });
 
     expect(localStorage.getItem('meshmonitor_translation_inbound_lang')).toBe('fr');
+  });
+
+  it('should treat skipped messages as error/info state rather than active translation text', async () => {
+    vi.mocked(apiService.translateMessage).mockResolvedValue({
+      translatedText: '73',
+      sourceText: '73',
+      targetLanguage: 'ja',
+      skipped: true,
+      skipReason: 'non_conversational',
+      provider: 'passthrough',
+    });
+
+    const { result } = renderHook(() => useMessageTranslation());
+
+    await act(async () => {
+      await result.current.translateMessage('msg-4', '73', 'ja');
+    });
+
+    expect(result.current.translatedMessages['msg-4']).toEqual({
+      loading: false,
+      error: 'Message not translated (telemetry, test ping, or emoji)',
+    });
   });
 });

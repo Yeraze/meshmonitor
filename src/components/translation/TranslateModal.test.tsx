@@ -139,4 +139,32 @@ describe('TranslateModal', () => {
     fireEvent.change(select, { target: { value: 'de' } });
     expect(localStorage.getItem('meshmonitor_translation_outbound_lang')).toBe('de');
   });
+
+  it('should display error message when message translation is skipped by backend', async () => {
+    vi.mocked(apiService.translateMessage).mockResolvedValue({
+      translatedText: 'ok',
+      sourceText: 'ok',
+      targetLanguage: 'ja',
+      skipped: true,
+      skipReason: 'non_conversational',
+      provider: 'passthrough',
+    });
+
+    render(
+      <TranslateModal
+        isOpen={true}
+        onClose={onClose}
+        initialText="ok"
+        onApply={onApply}
+        defaultTargetLanguage="ja"
+      />
+    );
+
+    const translateBtn = screen.getByRole('button', { name: /Translate$/i });
+    fireEvent.click(translateBtn);
+
+    await waitFor(() => {
+      expect(screen.getByText(/Message not translated/i)).toBeDefined();
+    });
+  });
 });

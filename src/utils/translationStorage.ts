@@ -44,3 +44,38 @@ export function setPreferredInboundLanguage(lang: string): void {
     // Ignore storage quota or disabled errors
   }
 }
+
+export interface TranslationErrorInput {
+  skipped?: boolean;
+  skipReason?: string;
+  translatedText?: string;
+}
+
+/**
+ * Extracts a user-facing error or skip message from a translation response if
+ * the translation was skipped or empty. Returns null if translation succeeded.
+ */
+export function extractTranslationError(
+  res: TranslationErrorInput,
+  t?: (key: string, defaultValue: string) => string
+): string | null {
+  if (res.skipped) {
+    if (res.skipReason === 'non_conversational') {
+      return t
+        ? t('messages.translation_skipped_non_conversational', 'Message not translated (telemetry, test ping, or emoji)')
+        : 'Message not translated (telemetry, test ping, or emoji)';
+    }
+    if (res.skipReason === 'empty_text') {
+      return t
+        ? t('messages.translation_skipped_empty', 'Empty message text')
+        : 'Empty message text';
+    }
+    return res.skipReason || (t ? t('messages.failed_to_translate', 'Translation unavailable') : 'Translation unavailable');
+  }
+
+  if (!res.translatedText && res.translatedText !== '') {
+    return t ? t('messages.failed_to_translate', 'No translation returned') : 'No translation returned';
+  }
+
+  return null;
+}

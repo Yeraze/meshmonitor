@@ -514,6 +514,8 @@
   "messages.dismiss_translation": "Dismiss translation",
   "messages.retry_translation": "Retry",
   "messages.failed_to_translate": "Failed to translate message",
+  "messages.translation_skipped_non_conversational": "Message not translated (telemetry, test ping, or emoji)",
+  "messages.translation_skipped_empty": "Empty message text",
   "messages.translation_label": "Translation",
   "messages.translate_modal_title": "Translate Outgoing Message",
   "messages.source_language": "Source Language",

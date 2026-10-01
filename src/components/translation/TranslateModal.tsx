@@ -3,7 +3,11 @@ import { useTranslation } from 'react-i18next';
 import apiService from '../../services/api';
 import { STANDARD_LANGUAGES } from '../../types/translation';
 import { getUtf8ByteLength } from '../../utils/text';
-import { getPreferredOutboundLanguage, setPreferredOutboundLanguage } from '../../utils/translationStorage';
+import {
+  getPreferredOutboundLanguage,
+  setPreferredOutboundLanguage,
+  extractTranslationError,
+} from '../../utils/translationStorage';
 import { UiIcon } from '../icons/index';
 import styles from './TranslateModal.module.css';
 
@@ -69,10 +73,11 @@ export const TranslateModal: React.FC<TranslateModalProps> = ({
         targetLang,
       });
 
-      if (res.translatedText) {
-        setTranslatedText(res.translatedText);
+      const errorMsg = extractTranslationError(res, t);
+      if (errorMsg) {
+        setError(errorMsg);
       } else {
-        setError(t('messages.failed_to_translate', 'No translation returned'));
+        setTranslatedText(res.translatedText);
       }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
