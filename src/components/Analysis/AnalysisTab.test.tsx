@@ -46,6 +46,10 @@ vi.mock('./CoverageReport', () => ({
   ),
 }));
 
+vi.mock('./tracerouteExplorer/TracerouteExplorerReport', () => ({
+  default: () => <div data-testid="traceroute-explorer-report">Traceroute explorer report</div>,
+}));
+
 // WP1 (COVERAGE_P4_SPEC.md §2a.5) — real module lives in a separate
 // worktree that merges before WP4; not present in this isolated worktree.
 // Mirrors the documented contract closely enough for these tests: null
@@ -90,6 +94,19 @@ describe('AnalysisTab', () => {
     expect(screen.getByText('ok_to_mqtt Violations')).toBeInTheDocument();
     expect(screen.getByText('Mesh Issues')).toBeInTheDocument();
     expect(screen.getByText('Coverage Report')).toBeInTheDocument();
+    expect(screen.getByText('Traceroute Explorer')).toBeInTheDocument();
+  });
+
+  it('opens the Traceroute Explorer from its card and returns with Back (#5511)', async () => {
+    const user = userEvent.setup();
+    renderTab();
+
+    await user.click(screen.getByText('Traceroute Explorer'));
+    expect(screen.getByTestId('traceroute-explorer-report')).toBeInTheDocument();
+
+    await user.click(screen.getByText('Back to reports'));
+    expect(screen.queryByTestId('traceroute-explorer-report')).not.toBeInTheDocument();
+    expect(screen.getByText('Traceroute Explorer')).toBeInTheDocument();
   });
 
   it('clicking the Coverage Report card swaps to the report, and the back button returns to the grid', async () => {

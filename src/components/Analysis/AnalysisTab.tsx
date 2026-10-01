@@ -23,6 +23,7 @@ import NodeInfoEnrichmentReport from './NodeInfoEnrichmentReport';
 import MqttViolationsReport from './MqttViolationsReport';
 import MeshIssuesReport from './MeshIssuesReport';
 import CoverageReport from './CoverageReport';
+import TracerouteExplorerReport from './tracerouteExplorer/TracerouteExplorerReport';
 import { parseCoverageDeepLink } from '../../utils/coverageDeepLink';
 import { UiIcon, type UiIconName } from '../icons';
 
@@ -32,6 +33,7 @@ type AnalysisType =
   | 'mqtt-oktomqtt-violations'
   | 'mesh-issues'
   | 'coverage'
+  | 'traceroute-explorer'
   | null;
 
 interface AnalysisCard {
@@ -97,6 +99,15 @@ const AnalysisTab: React.FC = () => {
       ),
       icon: 'radioSignal',
     },
+    {
+      id: 'traceroute-explorer',
+      title: t('analysis.traceroute_explorer.title', 'Traceroute Explorer'),
+      description: t(
+        'analysis.traceroute_explorer.description',
+        'Browse every stored traceroute across your sources on a linked map and table: paths, SNR per hop, answer rates, and route changes.',
+      ),
+      icon: 'route',
+    },
   ];
 
   if (selected === 'solar-monitoring') {
@@ -155,6 +166,21 @@ const AnalysisTab: React.FC = () => {
           <UiIcon name="back" size={16} /> {t('analysis.back_to_reports', 'Back to reports')}
         </button>
         <MeshIssuesReport />
+      </div>
+    );
+  }
+
+  if (selected === 'traceroute-explorer') {
+    return (
+      <div className="reports-section">
+        <button
+          type="button"
+          className="reports-section__back"
+          onClick={() => setSelected(null)}
+        >
+          <UiIcon name="back" size={16} /> {t('analysis.back_to_reports', 'Back to reports')}
+        </button>
+        <TracerouteExplorerReport />
       </div>
     );
   }
