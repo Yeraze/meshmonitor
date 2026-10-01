@@ -2512,7 +2512,7 @@ export class MeshCoreNativeBackend extends EventEmitter {
           c.sendToRadioFrame(Uint8Array.from([38, next & 0xff, telemetryPacked, advLocPolicy]));
         });
         if (this.cachedSelfInfo) {
-          const s = this.cachedSelfInfo as any;
+          const s: Record<string, unknown> = this.cachedSelfInfo;
           s.manualAddContacts = next;
           s.telemetryMode = telemetryPacked;
           s.telemetryModeBase = telemetryPacked & 0b11;
