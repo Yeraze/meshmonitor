@@ -19,6 +19,7 @@ vi.mock('../../services/database.js', () => ({
 
 vi.mock('../auth/authMiddleware.js', () => ({
   requirePermission: () => (_req: any, _res: any, next: any) => next(),
+  optionalAuth: () => (_req: any, _res: any, next: any) => next(),
 }));
 
 import databaseService from '../../services/database.js';
