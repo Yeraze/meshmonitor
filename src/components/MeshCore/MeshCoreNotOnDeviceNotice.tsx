@@ -83,6 +83,12 @@ export const MeshCoreNotOnDeviceNotice: React.FC<MeshCoreNotOnDeviceNoticeProps>
           "The radio can only log in to, query, or message nodes in its own contact list. Its list may be full, or it is set to add contacts manually.",
         )}
       </p>
+      <p className={styles.body}>
+        {t(
+          'meshcore.not_on_device.settings_hint',
+          'To add many nodes at once, or to check whether the radio adds contacts automatically, see Radio contact list in MeshCore Settings.',
+        )}
+      </p>
       {canAdd && onAddToDevice && (
         <div className={styles.actions}>
           <button

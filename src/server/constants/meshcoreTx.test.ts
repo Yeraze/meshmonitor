@@ -125,8 +125,8 @@ describe('meshcoreTx denylist completeness (#4547)', () => {
 
   it('pins the current classification sizes (deliberate, like PER_SOURCE_KEYS_NOT_POSTABLE.size)', () => {
     expect(RF_BRIDGE_COMMANDS.size).toBe(14);
-    expect(SERIAL_ONLY_BRIDGE_COMMANDS.size).toBe(36); // +set_path_hash_mode (#4945), +has_contact/add_contact (#5349), +set_contact_name (#5350), +get_channel_table/set_channel_verified (#5379)
-    expect(RF_BRIDGE_COMMANDS.size + SERIAL_ONLY_BRIDGE_COMMANDS.size).toBe(50);
+    expect(SERIAL_ONLY_BRIDGE_COMMANDS.size).toBe(38); // +set_path_hash_mode (#4945), +has_contact/add_contact (#5349), +set_contact_name (#5350), +get_channel_table/set_channel_verified (#5379), +add_contacts/set_auto_add_contacts (#5502)
+    expect(RF_BRIDGE_COMMANDS.size + SERIAL_ONLY_BRIDGE_COMMANDS.size).toBe(52);
   });
 });
 

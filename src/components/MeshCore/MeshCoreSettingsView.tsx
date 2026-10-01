@@ -11,6 +11,7 @@ import { MeshCoreReceiveOnlyNote } from './MeshCoreReceiveOnlyNote';
 import { MeshCoreAdvertButtons } from './MeshCoreAdvertButtons';
 import { MeshCoreIgnoredNodesSection } from './MeshCoreIgnoredNodesSection';
 import { MeshCoreMessageFiltersSection } from './MeshCoreMessageFiltersSection';
+import { MeshCoreContactSyncSection } from './MeshCoreContactSyncSection';
 
 // MeshCoreDeviceType.COMPANION — active discovery is companion-only.
 const DEVICE_TYPE_COMPANION = 1;
@@ -364,6 +365,17 @@ export const MeshCoreSettingsView: React.FC<MeshCoreSettingsViewProps> = ({
           )}
         </p>
       </div>
+
+      {/* Radio contact list vs MeshMonitor (#5502). */}
+      {isCompanion && (
+        <MeshCoreContactSyncSection
+          baseUrl={baseUrl}
+          sourceId={sourceId}
+          connected={connected}
+          canEditConfig={hasPermission('configuration', 'write')}
+          canEditNodes={hasPermission('nodes', 'write')}
+        />
+      )}
 
       <div className="form-section">
         <h3>{t('meshcore.settings.actions', 'Device actions')}</h3>
