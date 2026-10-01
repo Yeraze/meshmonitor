@@ -87,7 +87,7 @@ import { notificationService } from './services/notificationService.js';
 import { meshcoreMessageFilter } from './services/meshcoreMessageFilter.js';
 import { DistanceDeleteScheduler } from './services/distanceDeleteScheduler.js';
 import { HeartbeatScheduler } from './services/heartbeatScheduler.js';
-import type { DbMeshCorePacket } from '../db/repositories/meshcore.js';
+import type { DbMeshCorePacket, DbMeshCoreNode } from '../db/repositories/meshcore.js';
 import type { ISourceManager, SourceStatus } from './sourceManagerRegistry.js';
 import { decodeMeshCorePacket } from '../utils/meshcorePacketDecode.js';
 import { MESHCORE_SECRET_BYTES } from '../utils/meshcoreHelpers.js';
@@ -97,6 +97,21 @@ import { parsePathHops, pathHashBytesOf, resolveRouteNames, buildTracePathHops }
 import { MESHCORE_PUBLIC_CHANNEL_SECRET, tryDecodeGroupTextPayload } from './utils/meshcoreGroupEcho.js';
 import { meshcoreAgeCutoffMs, isWithinMeshcoreAge } from '../utils/meshcoreAge.js';
 import { safeJson } from './utils/redactSecrets.js';
+import {
+  classifyRepeaterSerialLine,
+  isRepeaterStreamingLine,
+  RepeaterPacketLinePairer,
+  parseRepeaterPublicKeyReply,
+  isNeighborsReplyPossiblyTruncated,
+  nextRepeaterNeighborsPollDelay,
+  resolveNeighbourPrefix,
+  REPEATER_NEIGHBORS_POLL_INTERVAL_MS,
+  REPEATER_NEIGHBORS_IDLE_GAP_MS,
+  type RepeaterRawPacket,
+} from './utils/meshcoreRepeaterSerial.js';
+import { parseMeshcoreNeighborsResponse } from './utils/parseMeshcoreNeighbors.js';
+import { parseObserverFrame } from './services/meshcoreObserverPacket.js';
+import { getPayloadTypeName, getRouteTypeName } from '@michaelhart/meshcore-decoder';
 import {
   fetchNeighbourPages,
   mergeNeighbourRows,
@@ -1083,6 +1098,27 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
   // Repeater: direct serial
   private serialPort: InstanceType<typeof import('serialport').SerialPort> | null = null;
   private parser: InstanceType<typeof import('@serialport/parser-readline').ReadlineParser> | null = null;
+  /**
+   * Serial CLI mutex (#5500). The repeater CLI has no request IDs: a reply is
+   * just the lines that follow the echo, so two commands in flight at once
+   * steal each other's lines. Every `sendRepeaterCommand` caller chains onto
+   * this promise, so the wire only ever carries one command at a time.
+   */
+  private repeaterCliChain: Promise<unknown> = Promise.resolve();
+  /** Commands queued or running on the serial CLI. The neighbours poll skips when > 0. */
+  private repeaterCliPending = 0;
+  /** The repeater's own 64-hex key from `get public.key`. `localNode.publicKey` stays the 'repeater' placeholder. */
+  private repeaterPublicKey: string | null = null;
+  /** Neighbours poll timer (#5500). Repeater sources only, only while connected. */
+  private repeaterNeighborsTimer: ReturnType<typeof setTimeout> | null = null;
+  /** In-memory on purpose: survives reconnects so a flapping link can't cause a poll burst. */
+  private lastRepeaterNeighborsPollAt: number | null = null;
+  /** True once a `MESH_PACKET_LOGGING` RAW line has been seen on this connection. */
+  private repeaterPacketStreamSeen = false;
+  /** Pairs `RAW:` log lines with the `RX` line that follows (MESH_PACKET_LOGGING builds). */
+  private readonly repeaterPacketPairer = new RepeaterPacketLinePairer((p) => {
+    void this.handleRepeaterRawPacket(p);
+  });
 
   // Companion: native JS backend (meshcore.js). sendBridgeCommand delegates here.
   private nativeBackend: MeshCoreNativeBackend | null = null;
@@ -1635,6 +1671,10 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
       // Safe to call for any device type — it no-ops for non-Companion.
       this.startDeviceTimeSync();
 
+      // Repeater Nodes list (#5500): poll the serial `neighbors` table.
+      // No-op for any other device type.
+      this.startRepeaterNeighborsPoll();
+
       // Push the configured default path hash size to the companion's persistent
       // NodePrefs (#4945). Best-effort and Companion-only; a reconnect re-asserts
       // it so the device always matches the MeshMonitor setting.
@@ -1883,6 +1923,13 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
 
     // Stop the periodic local-node RTC sync (#3954).
     this.stopDeviceTimeSync();
+
+    // Stop the Repeater neighbours poll and drop any half-paired RAW line (#5500).
+    this.stopRepeaterNeighborsPoll();
+    this.repeaterPacketPairer.reset();
+    this.repeaterPacketStreamSeen = false;
+    // Re-read on the next connect: the port may now reach a different device.
+    this.repeaterPublicKey = null;
 
     // Stop auto-pathfinding scheduler.
     this.stopAutoPathfinding();
@@ -3675,10 +3722,24 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
   }
 
   /**
-   * Handle incoming serial data
+   * Handle incoming serial data.
+   *
+   * Every line is classified first (#5500). Unsolicited firmware log output
+   * (`RAW:` / `RX` / `TX` lines from `MESH_PACKET_LOGGING` builds, `DEBUG:`
+   * lines from `MESH_DEBUG` builds) never reaches `serial_data`, so it can't
+   * be mistaken for a command reply or trip a reply terminator. RAW and RX
+   * lines feed the Packet Monitor instead.
    */
   private handleSerialData(data: string): void {
     logger.debug(`[MeshCore] RX: ${data}`);
+
+    const line = classifyRepeaterSerialLine(data);
+    if (isRepeaterStreamingLine(line.kind)) {
+      if (line.kind === 'raw' || line.kind === 'rx') {
+        this.repeaterPacketPairer.feed(line);
+      }
+      return;
+    }
 
     if (this.deviceType === MeshCoreDeviceType.REPEATER) {
       this.emit('serial_data', data);
@@ -3687,6 +3748,55 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
     if (data.startsWith('MSG:')) {
       this.handleIncomingMessage(data);
     }
+  }
+
+  /**
+   * One frame from a `MESH_PACKET_LOGGING` repeater's `RAW:` line (#5500),
+   * decoded with the same structural parser the MQTT observer ingest uses and
+   * handed to the Packet Monitor path. `handleOtaPacket` applies the
+   * packet-log enable gate. Receive-only side effects only: nothing is sent.
+   */
+  private async handleRepeaterRawPacket(p: RepeaterRawPacket): Promise<void> {
+    if (!this.repeaterPacketStreamSeen) {
+      this.repeaterPacketStreamSeen = true;
+      logger.info(`[MeshCore:${this.sourceId}] Repeater is streaming packets over serial (MESH_PACKET_LOGGING build)`);
+    }
+    const frame = parseObserverFrame(p.rawHex);
+    if (!frame.ok) {
+      logger.debug(`[MeshCore:${this.sourceId}] Repeater RAW line did not parse as a MeshCore frame; skipped`);
+      return;
+    }
+    const enumName = (lookup: () => string): string | null => {
+      try {
+        const name = lookup();
+        return typeof name === 'string' && name.length > 0 ? name : null;
+      } catch {
+        return null;
+      }
+    };
+    await this.handleOtaPacket({
+      payload_type: frame.payloadType,
+      payload_type_string: enumName(() => getPayloadTypeName(frame.payloadType)),
+      route_type: frame.routeType,
+      route_type_string: enumName(() => getRouteTypeName(frame.routeType)),
+      path_len_raw: frame.pathLenRaw,
+      hop_count: frame.hopCount,
+      path_hops: frame.hops,
+      snr: p.snr,
+      rssi: p.rssi,
+      payload_size: frame.totalBytes,
+      raw_hex: p.rawHex,
+    });
+  }
+
+  /** True once this connection has seen a `MESH_PACKET_LOGGING` RAW line. */
+  isRepeaterPacketStreamActive(): boolean {
+    return this.repeaterPacketStreamSeen;
+  }
+
+  /** The repeater's real public key from `get public.key`, or null (not a repeater / not read yet). */
+  getRepeaterPublicKey(): string | null {
+    return this.repeaterPublicKey;
   }
 
   /**
@@ -3804,23 +3914,60 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
    * Send a command to Repeater firmware (text CLI).
    * Repeater CLI uses \r as line terminator and echoes the command back.
    * Response lines start with "  -> " prefix.
+   *
+   * Serialized (#5500): the CLI has no request IDs, so this queues behind any
+   * command already in flight instead of writing over it. The queue survives
+   * a failed command — one rejection never wedges later callers.
+   *
+   * `idleGapMs`: end the read once this long passes with no new line, counted
+   * from the first `->` reply line. For multi-line replies with no terminator
+   * (`neighbors`), so they don't always wait the full timeout.
    */
-  private async sendRepeaterCommand(command: string, timeout: number = 5000): Promise<string> {
+  private async sendRepeaterCommand(
+    command: string,
+    timeout: number = 5000,
+    opts: { idleGapMs?: number } = {},
+  ): Promise<string> {
+    this.repeaterCliPending++;
+    const run = this.repeaterCliChain.then(() => this.runRepeaterCommand(command, timeout, opts));
+    this.repeaterCliChain = run.catch(() => undefined);
+    try {
+      return await run;
+    } finally {
+      this.repeaterCliPending--;
+    }
+  }
+
+  /** True while any serial CLI command is queued or running. */
+  isRepeaterCliBusy(): boolean {
+    return this.repeaterCliPending > 0;
+  }
+
+  /** One serial CLI round-trip. Callers go through `sendRepeaterCommand` (the mutex). */
+  private runRepeaterCommand(command: string, timeout: number, opts: { idleGapMs?: number }): Promise<string> {
     if (!this.serialPort?.isOpen) {
-      throw new Error('Serial port not open');
+      return Promise.reject(new Error('Serial port not open'));
     }
 
     return new Promise((resolve, reject) => {
       const cmdId = `cmd_${++this.commandId}`;
       const lines: string[] = [];
       let echoSeen = false;
+      let replySeen = false;
+      let idleHandle: ReturnType<typeof setTimeout> | null = null;
 
-      const timeoutHandle = setTimeout(() => {
+      const finish = () => {
+        clearTimeout(timeoutHandle);
+        if (idleHandle) clearTimeout(idleHandle);
         this.pendingCommands.delete(cmdId);
         this.removeListener('serial_data', dataHandler);
+        resolve(lines.join('\n').trim());
+      };
+
+      const timeoutHandle = setTimeout(() => {
         // Resolve with whatever we have instead of rejecting on timeout,
         // since the repeater doesn't send an explicit end-of-response marker
-        resolve(lines.join('\n').trim());
+        finish();
       }, timeout);
 
       const dataHandler = (data: string) => {
@@ -3835,10 +3982,16 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
 
         // Check for response terminators
         if (data.includes('-> >') || data.includes('OK') || data.includes('Error') || data.includes('Unknown command')) {
-          clearTimeout(timeoutHandle);
-          this.pendingCommands.delete(cmdId);
-          this.removeListener('serial_data', dataHandler);
-          resolve(lines.join('\n').trim());
+          finish();
+          return;
+        }
+
+        if (opts.idleGapMs !== undefined) {
+          if (!replySeen && data.includes('->')) replySeen = true;
+          if (replySeen) {
+            if (idleHandle) clearTimeout(idleHandle);
+            idleHandle = setTimeout(finish, opts.idleGapMs);
+          }
         }
       };
 
@@ -3954,6 +4107,11 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
         const txResponse = await this.sendRepeaterCommand('get tx');
         const latResponse = await this.sendRepeaterCommand('get lat');
         const lonResponse = await this.sendRepeaterCommand('get lon');
+        // The repeater's own key (#5500), for the neighbour graph's reporter.
+        // Kept apart from localNode.publicKey, which stays the 'repeater'
+        // placeholder that other code paths key off.
+        const keyResponse = await this.sendRepeaterCommand('get public.key');
+        this.repeaterPublicKey = parseRepeaterPublicKeyReply(keyResponse) ?? this.repeaterPublicKey;
 
         logger.debug(`[MeshCore] Name response: ${safeJson(nameResponse)}`);
         logger.debug(`[MeshCore] Radio response: ${safeJson(radioResponse)}`);
@@ -7115,6 +7273,178 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
     return out;
   }
 
+  // ============ Repeater neighbours poll (#5500) ============
+
+  /**
+   * Arm the Repeater neighbours poll. REPEATER sources only; runs only while
+   * connected. It sends ONLY the serial-local `neighbors` command, which costs
+   * zero airtime (never `advert`, `advert.zerohop` or `discover.neighbors`),
+   * so receive-only mode doesn't apply.
+   *
+   * The first poll waits `REPEATER_NEIGHBORS_INITIAL_DELAY_MS` after connect,
+   * or the rest of the interval since the previous poll — whichever is longer
+   * — so a reconnect never polls early.
+   */
+  private startRepeaterNeighborsPoll(): void {
+    this.stopRepeaterNeighborsPoll();
+    if (this.deviceType !== MeshCoreDeviceType.REPEATER) return;
+    this.scheduleRepeaterNeighborsPoll(nextRepeaterNeighborsPollDelay(this.lastRepeaterNeighborsPollAt, Date.now()));
+  }
+
+  private stopRepeaterNeighborsPoll(): void {
+    if (this.repeaterNeighborsTimer) {
+      clearTimeout(this.repeaterNeighborsTimer);
+      this.repeaterNeighborsTimer = null;
+    }
+  }
+
+  private scheduleRepeaterNeighborsPoll(delayMs: number): void {
+    const timer = setTimeout(() => {
+      this.repeaterNeighborsTimer = null;
+      void this.runRepeaterNeighborsPollTick().finally(() => {
+        // Re-arm unless we disconnected meanwhile, or a reconnect already
+        // armed a fresh timer.
+        if (this.connected && this.deviceType === MeshCoreDeviceType.REPEATER && this.repeaterNeighborsTimer === null) {
+          this.scheduleRepeaterNeighborsPoll(REPEATER_NEIGHBORS_POLL_INTERVAL_MS);
+        }
+      });
+    }, delayMs);
+    timer.unref?.();
+    this.repeaterNeighborsTimer = timer;
+  }
+
+  /**
+   * One poll tick. Skips (rather than queues) when a CLI command is already
+   * in flight, so a slow console session can't pile polls up behind it.
+   */
+  async runRepeaterNeighborsPollTick(): Promise<'polled' | 'skipped-busy' | 'skipped-disconnected' | 'failed'> {
+    if (!this.connected || this.deviceType !== MeshCoreDeviceType.REPEATER || !this.serialPort?.isOpen) {
+      return 'skipped-disconnected';
+    }
+    if (this.isRepeaterCliBusy()) {
+      logger.debug(`[MeshCore:${this.sourceId}] Repeater neighbours poll skipped: a CLI command is in flight`);
+      return 'skipped-busy';
+    }
+    this.lastRepeaterNeighborsPollAt = Date.now();
+    try {
+      const reply = await this.sendRepeaterCommand('neighbors', 5000, { idleGapMs: REPEATER_NEIGHBORS_IDLE_GAP_MS });
+      const result = await this.ingestRepeaterNeighborsReply(reply);
+      logger.debug(`[MeshCore:${this.sourceId}] Repeater neighbours poll: ${result?.length ?? 0} resolved`);
+      return 'polled';
+    } catch (err) {
+      logger.warn(`[MeshCore:${this.sourceId}] Repeater neighbours poll failed: ${(err as Error).message}`);
+      return 'failed';
+    }
+  }
+
+  /**
+   * Turn a local `neighbors` reply into Nodes-list rows and neighbour-graph
+   * rows (#5500).
+   *
+   * Each 8-hex prefix resolves against `meshcore_nodes` from ANY source; only
+   * a single distinct key counts. Zero or several matches are skipped — never
+   * guessed, never stored as a prefix stub. A resolved neighbour is upserted
+   * into THIS source's `meshcore_nodes`, copying name/advType/position from
+   * the resolved row, with `snr` in dB (the CLI prints SNR×4) and
+   * `lastHeard = now − secs_ago`. The graph rows are keyed by the repeater's
+   * real key from `get public.key`; without it they are skipped.
+   *
+   * Returns null when the device says the command is not supported.
+   */
+  async ingestRepeaterNeighborsReply(
+    reply: string,
+  ): Promise<Array<{ publicKey: string; name: string | null; snr: number; lastHeardSecs: number }> | null> {
+    const parsed = parseMeshcoreNeighborsResponse(reply);
+    if (parsed === null) return null;
+
+    const now = Date.now();
+    const self = this.repeaterPublicKey;
+    const resolved: Array<{ publicKey: string; name: string | null; snr: number; lastHeardSecs: number }> = [];
+
+    for (const entry of parsed) {
+      let candidates: DbMeshCoreNode[];
+      try {
+        candidates = await databaseService.meshcore.findNodesByPublicKeyPrefix(entry.pubkeyPrefix);
+      } catch (err) {
+        logger.warn(`[MeshCore:${this.sourceId}] neighbour prefix lookup failed: ${(err as Error).message}`);
+        continue;
+      }
+      const match = resolveNeighbourPrefix(entry.pubkeyPrefix, candidates);
+      if (!match) {
+        logger.debug(`[MeshCore:${this.sourceId}] neighbour ${entry.pubkeyPrefix}: no unique match, skipped`);
+        continue;
+      }
+      if (self && match.publicKey === self) continue;
+
+      // Keep this source's own spelling of the key if it already has a row,
+      // so the upsert updates it rather than adding a case-variant twin.
+      const own = candidates.find((c) => c.sourceId === this.sourceId && c.publicKey.toLowerCase() === match.publicKey);
+      const publicKey = own?.publicKey ?? match.publicKey;
+      const lastHeardSecs = Math.max(0, entry.lastHeardSecondsAgo);
+      const lastHeard = now - lastHeardSecs * 1000;
+      const row = match.row;
+      const name = row.name ?? null;
+      // The firmware only puts zero-hop REPEATER adverts in this table.
+      const advType = (typeof row.advType === 'number' && row.advType !== MeshCoreDeviceType.UNKNOWN)
+        ? row.advType
+        : MeshCoreDeviceType.REPEATER;
+      const hasPosition = typeof row.latitude === 'number' && typeof row.longitude === 'number';
+
+      try {
+        await databaseService.meshcore.upsertNode(
+          {
+            publicKey,
+            name: name ?? undefined,
+            advType,
+            latitude: hasPosition ? row.latitude! : undefined,
+            longitude: hasPosition ? row.longitude! : undefined,
+            snr: entry.snr,
+            lastHeard,
+          },
+          this.sourceId,
+        );
+      } catch (err) {
+        logger.warn(`[MeshCore:${this.sourceId}] failed to upsert neighbour ${publicKey.substring(0, 12)}…: ${(err as Error).message}`);
+        continue;
+      }
+      const contact: MeshCoreContact = {
+        publicKey,
+        advName: name ?? undefined,
+        name: name ?? undefined,
+        advType: advType as MeshCoreDeviceType,
+        lastSeen: lastHeard,
+        snr: entry.snr,
+        latitude: hasPosition ? row.latitude! : undefined,
+        longitude: hasPosition ? row.longitude! : undefined,
+      };
+      dataEventEmitter.emitMeshCoreContactUpdated(contact, this.sourceId);
+      resolved.push({ publicKey, name, snr: entry.snr, lastHeardSecs });
+    }
+
+    if (!self) {
+      logger.debug(`[MeshCore:${this.sourceId}] repeater public key unknown; neighbour graph rows not stored`);
+      return resolved;
+    }
+    const rows = resolved.map((r) => ({ neighborPublicKey: r.publicKey, snr: r.snr, lastHeardSecs: r.lastHeardSecs }));
+    try {
+      if (isNeighborsReplyPossiblyTruncated(reply)) {
+        // The firmware caps the reply at ~134 chars, so older neighbours may
+        // be missing: merge, as the #5413 partial-read path does.
+        const stored = await databaseService.meshcore.getNeighborsForReporter(this.sourceId, self);
+        const merged = mergeNeighbourRows(rows, stored, MeshCoreManager.REPEATER_MAX_NEIGHBOURS, parsed.length, now);
+        await databaseService.meshcore.insertNeighborsBatch(this.sourceId, self, merged);
+      } else {
+        await databaseService.meshcore.insertNeighborsBatch(this.sourceId, self, rows);
+      }
+    } catch (err) {
+      logger.warn(`[MeshCore:${this.sourceId}] failed to persist repeater neighbours: ${(err as Error).message}`);
+    }
+    return resolved;
+  }
+
+  /** Firmware `MAX_NEIGHBOURS` for simple_repeater — the cap on a merged set. */
+  private static readonly REPEATER_MAX_NEIGHBOURS = 50;
+
   /**
    * Request and store neighbor data from a MeshCore repeater.
    *
@@ -7125,8 +7455,6 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
   async requestNeighbors(publicKey?: string): Promise<{
     neighbors: Array<{ publicKey: string; name: string | null; snr: number; lastHeardSecs: number }>;
   } | null> {
-    const { parseMeshcoreNeighborsResponse } = await import('./utils/parseMeshcoreNeighbors.js');
-
     // Validate-and-extract: the user-supplied publicKey is either absent
     // (route to local CLI) or must be a 64-char lowercase hex string
     // (route to remote CLI with that target). The validator returns the
@@ -7143,6 +7471,14 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
       await this.ensureSavedLogin(sanitizedTargetKey);
       const result = await this.sendCliCommand(sanitizedTargetKey, 'neighbors');
       reply = result.reply;
+    } else if (this.deviceType === MeshCoreDeviceType.REPEATER) {
+      // Local Repeater (#5500): the same ingest the 5-minute poll uses —
+      // DB-backed prefix resolution, this source's Nodes list, and the
+      // neighbour graph keyed by the repeater's real public key.
+      if (!this.connected) throw new Error('MeshCore source not connected');
+      const localReply = await this.sendRepeaterCommand('neighbors', 10_000, { idleGapMs: REPEATER_NEIGHBORS_IDLE_GAP_MS });
+      const neighbors = await this.ingestRepeaterNeighborsReply(localReply);
+      return neighbors === null ? null : { neighbors };
     } else {
       const result = await this.sendLocalCliCommand('neighbors');
       reply = result.reply;

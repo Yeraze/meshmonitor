@@ -54,6 +54,7 @@ import './MeshCoreAutomation.css';
 // MeshCoreDeviceType.COMPANION — active node discovery is companion-only
 // (same gate as MeshCoreSettingsView).
 const DEVICE_TYPE_COMPANION = 1;
+const DEVICE_TYPE_REPEATER = 2;
 
 interface MeshCorePageProps {
   baseUrl: string;
@@ -195,6 +196,7 @@ export const MeshCorePage: React.FC<MeshCorePageProps> = ({ baseUrl, sourceId, e
               canDiscover={(status?.connected ?? false) && status?.deviceType === DEVICE_TYPE_COMPANION}
               mapIsLoading={!hasLoadedOnce}
               receiveOnly={receiveOnly}
+              isRepeaterSource={status?.deviceType === DEVICE_TYPE_REPEATER}
             />
           )}
           {view === 'channels' && (
@@ -241,7 +243,11 @@ export const MeshCorePage: React.FC<MeshCorePageProps> = ({ baseUrl, sourceId, e
             <MeshCoreTelemetryView baseUrl={baseUrl} />
           )}
           {view === 'packets' && (
-            <MeshCorePacketMonitorView baseUrl={baseUrl} sourceId={sourceId} />
+            <MeshCorePacketMonitorView
+              baseUrl={baseUrl}
+              sourceId={sourceId}
+              isRepeaterSource={status?.deviceType === DEVICE_TYPE_REPEATER}
+            />
           )}
           {view === 'info' && (
             <MeshCoreInfoView baseUrl={baseUrl} sourceId={sourceId} status={status} onSyncTime={actions.syncDeviceTime} />
