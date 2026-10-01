@@ -195,6 +195,14 @@ export const MeshCoreContactDetailPanel: React.FC<MeshCoreContactDetailPanelProp
   // Favorite toggle state (#5507).
   const [favoriteBusy, setFavoriteBusy] = useState(false);
   const [favoriteError, setFavoriteError] = useState<string | null>(null);
+  // The server-confirmed value, shown until the `isFavorite` prop catches up:
+  // the prop only changes when the node list refetches (a few seconds later),
+  // so without this the star looks like the click did nothing.
+  const [favoriteOverride, setFavoriteOverride] = useState<boolean | null>(null);
+  const shownFavorite = favoriteOverride ?? isFavorite;
+  useEffect(() => {
+    if (favoriteOverride !== null && favoriteOverride === isFavorite) setFavoriteOverride(null);
+  }, [isFavorite, favoriteOverride]);
 
   const [resetting, setResetting] = useState(false);
   const [resetError, setResetError] = useState<string | null>(null);
@@ -272,6 +280,7 @@ export const MeshCoreContactDetailPanel: React.FC<MeshCoreContactDetailPanelProp
   useEffect(() => {
     setFavoriteBusy(false);
     setFavoriteError(null);
+    setFavoriteOverride(null);
     setResetError(null);
     setResetting(false);
     setShareError(null);
@@ -380,9 +389,12 @@ export const MeshCoreContactDetailPanel: React.FC<MeshCoreContactDetailPanelProp
     setFavoriteBusy(true);
     setFavoriteError(null);
     try {
-      const ok = await onToggleFavorite(publicKey, !isFavorite);
+      const next = !shownFavorite;
+      const ok = await onToggleFavorite(publicKey, next);
       if (!isCurrent()) return;
-      if (!ok) {
+      if (ok) {
+        setFavoriteOverride(next);
+      } else {
         setFavoriteError(t('meshcore.favorite.failed', 'Failed to update favorite'));
       }
     } finally {
@@ -685,18 +697,18 @@ export const MeshCoreContactDetailPanel: React.FC<MeshCoreContactDetailPanelProp
           {canShowFavoriteButton && (
             <button
               type="button"
-              className={`${styles.favoriteButton}${isFavorite ? ` ${styles.isFavorite}` : ''}`}
+              className={`${styles.favoriteButton}${shownFavorite ? ` ${styles.isFavorite}` : ''}`}
               onClick={() => void handleToggleFavorite()}
               disabled={favoriteBusy}
-              aria-pressed={isFavorite}
-              title={isFavorite
+              aria-pressed={shownFavorite}
+              title={shownFavorite
                 ? t('meshcore.contact_details.favorite_remove', 'Remove from favorites')
                 : t('meshcore.contact_details.favorite_add', 'Add to favorites')}
-              aria-label={isFavorite
+              aria-label={shownFavorite
                 ? t('meshcore.contact_details.favorite_remove', 'Remove from favorites')
                 : t('meshcore.contact_details.favorite_add', 'Add to favorites')}
             >
-              <UiIcon name={isFavorite ? 'favorite' : 'favoriteOff'} size={18} />
+              <UiIcon name={shownFavorite ? 'favorite' : 'favoriteOff'} size={18} />
             </button>
           )}
           <button

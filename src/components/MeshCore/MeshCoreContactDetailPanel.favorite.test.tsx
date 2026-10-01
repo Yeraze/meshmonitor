@@ -89,12 +89,21 @@ describe('MeshCoreContactDetailPanel favorite star', () => {
     expect(onToggleFavorite).toHaveBeenCalledWith(PK, false);
   });
 
+  it('shows the new state as soon as the server confirms, before the prop catches up', async () => {
+    const onToggleFavorite = vi.fn().mockResolvedValue(true);
+    renderPanel({ isFavorite: false, onToggleFavorite });
+    await userEvent.click(screen.getByRole('button', { name: 'Add to favorites' }));
+    const btn = await screen.findByRole('button', { name: 'Remove from favorites' });
+    expect(btn).toHaveAttribute('aria-pressed', 'true');
+  });
+
   it('shows an error and does not change state optimistically when the action fails', async () => {
     const onToggleFavorite = vi.fn().mockResolvedValue(false);
     renderPanel({ isFavorite: false, onToggleFavorite });
     const btn = screen.getByRole('button', { name: 'Add to favorites' });
     await userEvent.click(btn);
     expect(await screen.findByRole('alert')).toHaveTextContent('Failed to update favorite');
+    expect(screen.getByRole('button', { name: 'Add to favorites' })).toHaveAttribute('aria-pressed', 'false');
   });
 
   it('is hidden without write permission (canWriteNodes=false)', () => {
