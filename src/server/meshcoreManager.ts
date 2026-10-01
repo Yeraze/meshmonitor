@@ -1059,6 +1059,58 @@ export type AddContactToDeviceResult =
   | { status: 'failed'; error: string };
 
 /**
+ * Bulk "Push to radio" batches (#5502). Each batch reads the radio's contact
+ * table twice (before + after) and writes one CMD_ADD_UPDATE_CONTACT per
+ * contact, so the bridge timeout scales with the batch.
+ */
+export const PUSH_CONTACTS_CHUNK = 50;
+const PUSH_CONTACTS_BASE_TIMEOUT_MS = 30_000;
+const PUSH_CONTACTS_PER_CONTACT_MS = 1_000;
+
+/** A node the bulk push did not add, and why (#5502). */
+export interface PushContactsSkipped {
+  publicKey: string;
+  name: string | null;
+  reason: 'ignored' | 'unknown_type' | 'failed';
+}
+
+/** Result of `MeshCoreManager.pushContactsToDevice` (#5502). */
+export type PushContactsToDeviceResult =
+  | {
+      status: 'done';
+      added: Array<{ publicKey: string; name: string | null }>;
+      /** MeshMonitor nodes the radio already held. */
+      alreadyOnDevice: number;
+      skipped: PushContactsSkipped[];
+      /** Eligible nodes left out: no free slot, the limit, or unknown capacity. */
+      notAddedNoRoom: number;
+      /** Contacts the radio dropped during the push (should stay empty). */
+      evicted: string[];
+      capacityKnown: boolean;
+      maxContacts: number | null;
+      freeSlotsBefore: number | null;
+      freeSlotsAfter: number | null;
+      /** Set when a batch failed part-way. */
+      error?: string;
+    }
+  | { status: 'busy' }
+  | { status: 'unavailable' }
+  | { status: 'failed'; error: string };
+
+/** MeshMonitor's node list vs the companion's contact table (#5502). */
+export interface DeviceContactSyncStatus {
+  /** A connected Companion (the only kind with a contact table to sync). */
+  available: boolean;
+  /** Raw NodePrefs.manual_add_contacts; null when unknown. */
+  manualAddContacts: number | null;
+  /** Bit 0 clear = the radio stores contacts heard via advert. */
+  autoAddEnabled: boolean | null;
+  /** MeshMonitor favourites the radio's contact table does not hold. */
+  missingFavorites: Array<{ publicKey: string; name: string | null }>;
+  deviceContactCount: number;
+}
+
+/**
  * MeshCore Manager class
  * Handles connection and communication with MeshCore devices
  */
@@ -6248,6 +6300,237 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
     dataEventEmitter.emitMeshCoreContactUpdated(updated, this.sourceId);
   }
 
+  /** Single-flight guard for {@link pushContactsToDevice}. */
+  private contactPushInFlight = false;
+
+  /**
+   * How MeshMonitor's node list lines up with the companion's own contact
+   * table (#5502), for the Settings banner. Reads the in-memory mirror and
+   * the DB only — no device IO.
+   */
+  async getDeviceContactSyncStatus(): Promise<DeviceContactSyncStatus> {
+    const manual = this.localNode?.manualAddContacts;
+    const manualAddContacts = typeof manual === 'number' ? manual : null;
+    const dbNodes = await databaseService.meshcore.getNodesBySource(this.sourceId);
+    const localKey = (this.localNode?.publicKey ?? '').toLowerCase();
+    const missingFavorites = dbNodes
+      .filter((n) => n.isFavorite === true && n.isLocalNode !== true)
+      .filter((n) => n.publicKey.toLowerCase() !== localKey)
+      .filter((n) => this.contacts.get(n.publicKey)?.onDevice !== true)
+      .map((n) => ({ publicKey: n.publicKey, name: n.name ?? null }));
+    let deviceContactCount = 0;
+    for (const c of this.contacts.values()) if (c.onDevice === true) deviceContactCount++;
+    return {
+      available: this.deviceType === MeshCoreDeviceType.COMPANION && this.connected,
+      manualAddContacts,
+      autoAddEnabled: manualAddContacts === null ? null : (manualAddContacts & 0x01) === 0,
+      missingFavorites,
+      deviceContactCount,
+    };
+  }
+
+  /**
+   * Turn the companion's auto-add on or off (#5502). Writes bit 0 of
+   * NodePrefs.manual_add_contacts (set = manual only). The backend does a
+   * read-modify-write so the higher per-type bits, the telemetry modes and
+   * the advert location policy that share the SetOtherParams frame are kept.
+   * Local serial write — nothing is transmitted.
+   */
+  async setAutoAddContacts(enabled: boolean): Promise<{ ok: true; manualAddContacts: number; autoAddEnabled: boolean } | { ok: false; error: string }> {
+    if (this.deviceType !== MeshCoreDeviceType.COMPANION || !this.connected) {
+      return { ok: false, error: 'Auto-add needs a connected Companion radio' };
+    }
+    const response = await this.sendBridgeCommand('set_auto_add_contacts', { enabled });
+    if (!response.success || typeof response.data?.manual_add_contacts !== 'number') {
+      return { ok: false, error: response.error || 'The radio did not accept the setting' };
+    }
+    const manualAddContacts: number = response.data.manual_add_contacts;
+    await this.refreshLocalNode();
+    if (this.localNode) this.localNode.manualAddContacts = manualAddContacts;
+    logger.info(`[MeshCore:${this.sourceId}] Auto-add contacts ${enabled ? 'enabled' : 'disabled'} (manual_add_contacts=0x${manualAddContacts.toString(16)})`);
+    return { ok: true, manualAddContacts, autoAddEnabled: (manualAddContacts & 0x01) === 0 };
+  }
+
+  /**
+   * Bulk "Push to radio" (#5502): copy nodes MeshMonitor tracks for this
+   * source into the companion's contact table, so the radio can log in to,
+   * poll and message them.
+   *
+   * Order: favourites (newest lastHeard first), then the rest by lastHeard.
+   * Never evicts: only the radio's FREE slots (maxContacts − current count)
+   * are filled, and the confirm/eviction path of addContactToDevice is never
+   * used. If the capacity can't be read, only favourites are pushed, one at a
+   * time, stopping at the first table-full refusal or eviction.
+   * Excluded: the local node, unknown types (ADV_TYPE_NONE bypasses the
+   * firmware's favourite protection), and ignored / blocked nodes (#5408).
+   *
+   * Mesh impact: local serial writes to the companion (CMD_ADD_UPDATE_CONTACT)
+   * only — nothing goes on the air. Writes run one at a time.
+   */
+  async pushContactsToDevice(opts: { limit?: number } = {}): Promise<PushContactsToDeviceResult> {
+    if (this.deviceType !== MeshCoreDeviceType.COMPANION || !this.connected) {
+      return { status: 'unavailable' };
+    }
+    if (this.contactPushInFlight) return { status: 'busy' };
+    this.contactPushInFlight = true;
+    try {
+      return await this.runContactPush(opts.limit);
+    } finally {
+      this.contactPushInFlight = false;
+    }
+  }
+
+  private async runContactPush(limit: number | undefined): Promise<PushContactsToDeviceResult> {
+    const table = await this.sendBridgeCommand('get_contacts', {});
+    if (!table.success || !Array.isArray(table.data)) {
+      return { status: 'failed', error: table.error || 'Could not read the radio contact list' };
+    }
+    const onDevice = new Set<string>(
+      (table.data as Array<{ public_key: string }>).map((c) => String(c.public_key).toLowerCase()),
+    );
+    const maxContacts = (await this.deviceQuery())?.maxContacts ?? null;
+    const capacityKnown = typeof maxContacts === 'number' && maxContacts > 0;
+    const freeSlotsBefore = capacityKnown ? Math.max(0, (maxContacts as number) - onDevice.size) : null;
+
+    const dbNodes = await databaseService.meshcore.getNodesBySource(this.sourceId);
+    const ignored = new Set(
+      (await databaseService.getMeshCoreIgnoredNodesAsync(this.sourceId)).map((r) => r.publicKey.toLowerCase()),
+    );
+    const localKey = (this.localNode?.publicKey ?? '').toLowerCase();
+
+    let alreadyOnDevice = 0;
+    const skipped: PushContactsSkipped[] = [];
+    const candidates: Array<{ node: DbMeshCoreNode; key: string; advType: number }> = [];
+    for (const node of dbNodes) {
+      const key = node.publicKey.toLowerCase();
+      if (node.isLocalNode === true || key === localKey) continue;
+      if (onDevice.has(key)) {
+        alreadyOnDevice++;
+        continue;
+      }
+      const name = node.name ?? null;
+      if (ignored.has(key)) {
+        skipped.push({ publicKey: key, name, reason: 'ignored' });
+        continue;
+      }
+      const live = this.contacts.get(node.publicKey) ?? this.contacts.get(key);
+      const advType = live?.advType ?? node.advType ?? null;
+      if (advType === null || advType === undefined || advType < 1 || advType > 4) {
+        skipped.push({ publicKey: key, name, reason: 'unknown_type' });
+        continue;
+      }
+      candidates.push({ node, key, advType });
+    }
+    const heard = (n: DbMeshCoreNode): number => (typeof n.lastHeard === 'number' ? n.lastHeard : 0);
+    candidates.sort((a, b) => {
+      const fa = a.node.isFavorite === true ? 1 : 0;
+      const fb = b.node.isFavorite === true ? 1 : 0;
+      if (fa !== fb) return fb - fa;
+      return heard(b.node) - heard(a.node);
+    });
+
+    // Without a capacity reading we can't promise "free slots only", so push
+    // favourites only and add them one at a time (see below).
+    let queue = capacityKnown ? candidates : candidates.filter((c) => c.node.isFavorite === true);
+    let budget = capacityKnown ? (freeSlotsBefore as number) : queue.length;
+    if (typeof limit === 'number' && limit >= 0) budget = Math.min(budget, Math.floor(limit));
+    queue = queue.slice(0, budget);
+
+    const added: Array<{ publicKey: string; name: string | null }> = [];
+    const evicted: string[] = [];
+    // Keys with an outcome (added / already there / failed). Every other
+    // candidate was not added for lack of room (or the limit).
+    const settled = new Set<string>();
+    let deviceCount = onDevice.size;
+    let error: string | undefined;
+    const chunkSize = capacityKnown ? PUSH_CONTACTS_CHUNK : 1;
+    for (let i = 0; i < queue.length; i += chunkSize) {
+      let chunk = queue.slice(i, i + chunkSize);
+      if (capacityKnown) {
+        // Re-check the room from the last read: an advert the radio
+        // auto-added may have taken a slot since.
+        chunk = chunk.slice(0, Math.max(0, (maxContacts as number) - deviceCount));
+        if (chunk.length === 0) break;
+      }
+      const response = await this.sendBridgeCommand(
+        'add_contacts',
+        {
+          contacts: chunk.map(({ node, key, advType }) => {
+            const live = this.contacts.get(node.publicKey);
+            return {
+              public_key: key,
+              adv_type: advType,
+              name: live?.advName || live?.name || node.name || '',
+              favorite: node.isFavorite === true,
+              latitude: live?.latitude ?? node.latitude ?? null,
+              longitude: live?.longitude ?? node.longitude ?? null,
+            };
+          }),
+        },
+        PUSH_CONTACTS_BASE_TIMEOUT_MS + chunk.length * PUSH_CONTACTS_PER_CONTACT_MS,
+      );
+      if (!response.success || !Array.isArray(response.data?.results)) {
+        error = response.error || 'The radio did not answer';
+        logger.warn(`[MeshCore:${this.sourceId}] Push to radio: batch failed: ${error}`);
+        for (const c of chunk) {
+          settled.add(c.key);
+          skipped.push({ publicKey: c.key, name: c.node.name ?? null, reason: 'failed' });
+        }
+        break;
+      }
+      const byKey = new Map(chunk.map((c) => [c.key, c]));
+      let refused = false;
+      for (const r of response.data.results as Array<{ public_key: string; status: string }>) {
+        const c = byKey.get(String(r.public_key).toLowerCase());
+        if (!c) continue;
+        const name = c.node.name ?? null;
+        if (r.status === 'table_full') refused = true;
+        if (r.status === 'table_full' || r.status === 'not_attempted') continue;
+        settled.add(c.key);
+        if (r.status === 'added') added.push({ publicKey: c.key, name });
+        else if (r.status === 'already') alreadyOnDevice++;
+        else skipped.push({ publicKey: c.key, name, reason: 'failed' });
+      }
+      if (typeof response.data.count === 'number') deviceCount = response.data.count;
+      const chunkEvicted: string[] = Array.isArray(response.data.evicted) ? response.data.evicted : [];
+      evicted.push(...chunkEvicted);
+      if (chunkEvicted.length > 0) {
+        logger.warn(`[MeshCore:${this.sourceId}] Push to radio: the radio dropped ${chunkEvicted.length} contact(s); stopping`);
+      }
+      if (refused || chunkEvicted.length > 0) break;
+    }
+    const notAddedNoRoom = candidates.filter((c) => !settled.has(c.key)).length;
+
+    if (added.length > 0 || evicted.length > 0) {
+      // Mirror the device list once (this also re-asserts favourite bits),
+      // then tell the UI about each changed row.
+      await this.refreshContacts();
+      for (const a of added) await this.markContactOnDevice(a.publicKey, true);
+      for (const k of evicted) {
+        const gone: MeshCoreContact = { ...(this.contacts.get(k) ?? { publicKey: k }), onDevice: false };
+        this.emit('contacts_updated', { sourceId: this.sourceId, contact: gone });
+        dataEventEmitter.emitMeshCoreContactUpdated(gone, this.sourceId);
+      }
+    }
+    logger.info(
+      `[MeshCore:${this.sourceId}] Push to radio: added ${added.length}, already on radio ${alreadyOnDevice}, ` +
+      `skipped ${skipped.length}, no room ${notAddedNoRoom}` + (capacityKnown ? '' : ' (capacity unknown: favourites only)'),
+    );
+    return {
+      status: 'done',
+      added,
+      alreadyOnDevice,
+      skipped,
+      notAddedNoRoom,
+      evicted,
+      capacityKnown,
+      maxContacts: capacityKnown ? (maxContacts as number) : null,
+      freeSlotsBefore,
+      freeSlotsAfter: capacityKnown ? Math.max(0, (maxContacts as number) - deviceCount) : null,
+      ...(error ? { error } : {}),
+    };
+  }
+
   /**
    * Remove a contact from the device's contact list. On success, the
    * in-memory contact map and meshcore_nodes row are cleared. Companion only.
@@ -8578,8 +8861,16 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
         (n) => n.isFavorite === true && !this.contacts.has(n.publicKey),
       ).length;
       if (evictedFavCount > 0) {
+        // With auto-add off the radio never stores a node it hears (#5502),
+        // so "until they re-advert" would never happen: say why, and how to fix it.
+        const manual = this.localNode?.manualAddContacts;
+        const autoAddOff = typeof manual === 'number' && (manual & 0x01) === 0x01;
         logger.warn(
-          `[MeshCore:${this.sourceId}] ${evictedFavCount} locally-favourited node(s) not in the device contact table — eviction protection inactive until they re-advert`,
+          autoAddOff
+            ? `[MeshCore:${this.sourceId}] ${evictedFavCount} locally-favourited node(s) not in the device contact table. ` +
+              `Auto-add contacts is OFF on this radio, so nodes heard via advert are not saved to it, and MeshMonitor ` +
+              `cannot log in to or poll them. Turn auto-add on, or use "Push to radio" in MeshCore Settings.`
+            : `[MeshCore:${this.sourceId}] ${evictedFavCount} locally-favourited node(s) not in the device contact table — eviction protection inactive until they re-advert (or use "Push to radio" in MeshCore Settings)`,
         );
       }
       if (toReassert.length > 0 && this.connected) {

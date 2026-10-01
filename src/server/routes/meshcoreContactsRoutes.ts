@@ -66,6 +66,15 @@ const DISCOVER_TIMEOUT_MS = 180_000;
 /** Region discovery: multi-second scan window, larger candidate set. */
 const REGIONS_DISCOVER_TIMEOUT_MS = 180_000;
 
+/**
+ * Bulk "Push to radio" (#5502). Worst case fills ~350 free slots in 7 batches
+ * of 50; each batch reads the table twice (~350 x 150 B, ~4.6 s each over
+ * 115200-baud serial) and writes 50 contacts (~250 ms each): ~22 s a batch,
+ * ~150 s in all. 5 min leaves 2x margin; past it the 504 safety net answers
+ * and the push finishes in the background.
+ */
+const PUSH_TO_DEVICE_TIMEOUT_MS = 300_000;
+
 /** Socket timeout for trace-path: above the 60 s trace radio timeout. */
 const TRACE_REQUEST_SOCKET_TIMEOUT_MS = 75_000;
 
@@ -215,6 +224,79 @@ router.post('/contacts/refresh', meshcoreDeviceLimiter, requireAuth(), requirePe
     res.status(500).json({ success: false, error: 'Failed to refresh contacts' });
   }
 });
+
+/**
+ * GET /api/sources/:id/meshcore/contacts/device-sync
+ *
+ * How MeshMonitor's node list lines up with the companion's own contact
+ * table (#5502): the auto-add state and the favourites the radio lacks.
+ * In-memory + DB only; no device IO.
+ */
+router.get(
+  '/contacts/device-sync',
+  optionalAuth(),
+  requirePermission('nodes', 'read', { sourceIdFrom: 'params.id' }),
+  async (req: Request, res: Response) => {
+    try {
+      return ok(res, await managerFor(req, res).getDeviceContactSyncStatus());
+    } catch (error) {
+      logger.error('[API] Error reading contact sync status:', error);
+      return fail(res, 500, 'CONTACT_SYNC_STATUS_FAILED', 'Failed to read the contact sync status');
+    }
+  },
+);
+
+/**
+ * POST /api/sources/:id/meshcore/contacts/push-to-device
+ *
+ * Bulk "Push to radio" (#5502): add MeshMonitor-tracked nodes the radio's
+ * contact table lacks — favourites first, then the most recently heard — into
+ * its FREE slots only. Never evicts. Body: optional `{ limit?: number }`.
+ *
+ * Mesh impact: serial writes to the companion only, no RF — so, like
+ * add-to-device, no requireMeshcoreTx() gate.
+ */
+router.post(
+  '/contacts/push-to-device',
+  extendRequestTimeout(PUSH_TO_DEVICE_TIMEOUT_MS),
+  meshcoreDeviceLimiter,
+  requireAuth(),
+  requirePermission('nodes', 'write', { sourceIdFrom: 'params.id' }),
+  async (req: Request, res: Response) => {
+    try {
+      const rawLimit = (req.body as { limit?: unknown } | undefined)?.limit;
+      let limit: number | undefined;
+      if (rawLimit !== undefined && rawLimit !== null) {
+        if (typeof rawLimit !== 'number' || !Number.isInteger(rawLimit) || rawLimit < 1 || rawLimit > 10_000) {
+          return fail(res, 400, 'INVALID_LIMIT', 'limit must be a positive integer');
+        }
+        limit = rawLimit;
+      }
+      const result = await managerFor(req, res).pushContactsToDevice({ limit });
+      auditMeshcoreEvent(req, 'meshcore_contacts_push_to_device', 'configuration', {
+        sourceId: req.params.id,
+        limit: limit ?? null,
+        status: result.status,
+        ...(result.status === 'done'
+          ? { added: result.added.length, notAddedNoRoom: result.notAddedNoRoom, evicted: result.evicted }
+          : {}),
+      });
+      switch (result.status) {
+        case 'done':
+          return ok(res, result);
+        case 'busy':
+          return fail(res, 409, 'PUSH_IN_PROGRESS', 'A push to the radio is already running');
+        case 'unavailable':
+          return fail(res, 409, 'COMPANION_NOT_CONNECTED', 'Pushing contacts needs a connected Companion radio');
+        default:
+          return fail(res, 502, 'PUSH_TO_DEVICE_FAILED', result.error);
+      }
+    } catch (error) {
+      logger.error('[API] Error pushing contacts to device:', error);
+      return fail(res, 500, 'PUSH_TO_DEVICE_FAILED', 'Failed to push contacts to the radio');
+    }
+  },
+);
 
 /**
  * POST /api/sources/:id/meshcore/contacts/:publicKey/reset-path

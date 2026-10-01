@@ -2472,6 +2472,57 @@ export class MeshCoreNativeBackend extends EventEmitter {
         return { ok: true };
       }
 
+      case 'set_auto_add_contacts': {
+        // Toggle auto-add (#5502): bit 0 of NodePrefs.manual_add_contacts.
+        // Firmware: isAutoAddEnabled() == (manual_add_contacts & 1) == 0. The
+        // higher bits are per-type auto-add flags, and SetOtherParams(38)
+        // rewrites the telemetry modes and advert location policy in the same
+        // frame, so this is a read-modify-write against a FRESH SelfInfo.
+        // meshcore.js's setOtherParams writes `manualAddContacts ? 1 : 0`,
+        // which would wipe the higher bits, so the frame is built here:
+        // [38][manual_add_contacts][telemetry modes, packed][advert loc policy].
+        // A 4-byte frame leaves later fields (multi_acks) untouched.
+        // Local serial write — nothing is transmitted.
+        const enabled = params.enabled === true;
+        const info = (await c.getSelfInfo(10_000)) as Record<string, unknown> | null;
+        if (!info || typeof info.manualAddContacts !== 'number') {
+          throw new Error('Could not read the current device settings');
+        }
+        const current = info.manualAddContacts & 0xff;
+        const next = enabled ? current & ~0x01 : current | 0x01;
+        const bits2 = (v: unknown): number => (typeof v === 'number' ? v : 0) & 0b11;
+        const telemetryPacked = typeof info.telemetryMode === 'number'
+          ? info.telemetryMode & 0xff
+          : bits2(info.telemetryModeBase) | (bits2(info.telemetryModeLoc) << 2) | (bits2(info.telemetryModeEnv) << 4);
+        const advLocPolicy = Number(info.advLocPolicy ?? 0) & 0xff;
+        await new Promise<void>((resolve, reject) => {
+          const onOk = () => {
+            c.off(K.ResponseCodes.Ok, onOk);
+            c.off(K.ResponseCodes.Err, onErr);
+            resolve();
+          };
+          const onErr = () => {
+            c.off(K.ResponseCodes.Ok, onOk);
+            c.off(K.ResponseCodes.Err, onErr);
+            reject(new Error('Device rejected the auto-add setting'));
+          };
+          c.once(K.ResponseCodes.Ok, onOk);
+          c.once(K.ResponseCodes.Err, onErr);
+          // 38 = CMD_SET_OTHER_PARAMS.
+          c.sendToRadioFrame(Uint8Array.from([38, next & 0xff, telemetryPacked, advLocPolicy]));
+        });
+        if (this.cachedSelfInfo) {
+          const s = this.cachedSelfInfo as any;
+          s.manualAddContacts = next;
+          s.telemetryMode = telemetryPacked;
+          s.telemetryModeBase = telemetryPacked & 0b11;
+          s.telemetryModeLoc = (telemetryPacked >> 2) & 0b11;
+          s.telemetryModeEnv = (telemetryPacked >> 4) & 0b11;
+          s.advLocPolicy = advLocPolicy;
+        }
+        return { manual_add_contacts: next, auto_add: (next & 0x01) === 0 };
+      }
+
       case 'get_stats': {
         const type = String(params.type ?? 'core');
         const typeCode =
@@ -2694,6 +2745,74 @@ export class MeshCoreNativeBackend extends EventEmitter {
           .map((ct) => bytesToHex(ct.publicKey))
           .filter((k) => !afterHex.has(k));
         return { added: true, already: false, count: after.length, evicted };
+      }
+
+      case 'add_contacts': {
+        // Bulk "Push to radio" (#5502). Same device write as add_contact, but
+        // the contact table is read ONCE before and ONCE after the batch
+        // instead of twice per contact: a full read is ~150 bytes per contact
+        // over serial, so per-contact reads made a large push quadratic.
+        // The manager owns the policy (which contacts, how many fit). This
+        // stops at the first ERR_CODE_TABLE_FULL. Local serial write — no RF.
+        const list = Array.isArray(params.contacts) ? (params.contacts as Array<Record<string, unknown>>) : [];
+        const items = list.map((p) => {
+          const hex = String(p.public_key ?? '').toLowerCase();
+          if (!/^[0-9a-f]{64}$/.test(hex)) throw new Error('add_contacts requires 64-hex public keys');
+          const type = Number(p.adv_type);
+          if (!Number.isInteger(type) || type < 1 || type > 4) {
+            throw new Error('add_contacts requires adv_type 1-4');
+          }
+          return { hex, type, p };
+        });
+        const before = (await c.getContacts()) as RawDeviceContact[];
+        const beforeHex = new Set(before.map((ct) => bytesToHex(ct.publicKey)));
+        type AddStatus = 'added' | 'already' | 'failed' | 'table_full' | 'not_attempted';
+        const results: Array<{ public_key: string; status: AddStatus }> = [];
+        let full = false;
+        for (const { hex, type, p } of items) {
+          if (full) {
+            results.push({ public_key: hex, status: 'not_attempted' });
+            continue;
+          }
+          if (beforeHex.has(hex)) {
+            results.push({ public_key: hex, status: 'already' });
+            continue;
+          }
+          const errCode = this.captureErrCode(c);
+          let tableFull = false;
+          try {
+            await this.addNewDeviceContact(c, {
+              publicKey: Uint8Array.from(hexToBytes(hex)),
+              type,
+              name: typeof p.name === 'string' ? p.name.slice(0, 31) : '',
+              favorite: p.favorite === true,
+              latitude: typeof p.latitude === 'number' ? p.latitude : null,
+              longitude: typeof p.longitude === 'number' ? p.longitude : null,
+            });
+          } catch (err) {
+            if (errCode.get() === MESHCORE_ERR_CODE_TABLE_FULL) {
+              tableFull = true;
+            } else {
+              // Uncorrelated ack (see add_contact): the read-back decides.
+              logger.debug(`[MeshCore:native] add_contacts ack error for ${hex.substring(0, 12)}… (verifying by read-back): ${String(err)}`);
+            }
+          } finally {
+            errCode.stop();
+          }
+          if (tableFull) {
+            full = true;
+            results.push({ public_key: hex, status: 'table_full' });
+          } else {
+            results.push({ public_key: hex, status: 'added' });
+          }
+        }
+        const after = (await c.getContacts()) as RawDeviceContact[];
+        const afterHex = new Set(after.map((ct) => bytesToHex(ct.publicKey)));
+        for (const r of results) {
+          if (r.status === 'added' && !afterHex.has(r.public_key)) r.status = 'failed';
+        }
+        const evicted = [...beforeHex].filter((k) => !afterHex.has(k));
+        return { results, count: after.length, evicted };
       }
 
       case 'remove_contact': {
