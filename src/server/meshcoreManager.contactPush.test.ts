@@ -283,6 +283,10 @@ describe('MeshCoreManager auto-add + sync status (#5502)', () => {
     expect(h.calls.find((c) => c.cmd === 'set_auto_add_contacts')?.params).toEqual({ enabled: true });
     expect(r).toEqual({ ok: true, manualAddContacts: 0x06, autoAddEnabled: true });
     expect(h.manager.getLocalNode()?.manualAddContacts).toBe(0x06);
+    // The sync status the Settings page reads reflects the write at once.
+    const status = await h.manager.getDeviceContactSyncStatus();
+    expect(status.manualAddContacts).toBe(0x06);
+    expect(status.autoAddEnabled).toBe(true);
   });
 
   it('setAutoAddContacts refuses without a connected companion', async () => {
