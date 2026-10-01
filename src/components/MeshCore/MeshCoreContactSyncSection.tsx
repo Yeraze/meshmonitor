@@ -28,6 +28,7 @@ interface SyncStatus {
   autoAddEnabled: boolean | null;
   missingFavorites: Array<{ publicKey: string; name: string | null }>;
   deviceContactCount: number;
+  deviceContactsKnown?: boolean;
 }
 
 interface PushResult {
@@ -173,6 +174,15 @@ export const MeshCoreContactSyncSection: React.FC<MeshCoreContactSyncSectionProp
           'On: the radio saves every node it hears advertising. Off: it keeps only contacts added by hand, and MeshMonitor cannot log in to or poll nodes missing from the radio. Changing this writes a setting to the radio; nothing is transmitted.',
         )}
       </p>
+
+      {status && status.deviceContactsKnown === false && (
+        <p className="hint" data-testid="meshcore-device-contacts-unknown">
+          {t(
+            'meshcore.contact_sync.device_list_unknown',
+            "The radio's contact list hasn't been read since it connected, so MeshMonitor can't tell yet which nodes it holds. Push to radio still checks the radio first.",
+          )}
+        </p>
+      )}
 
       {missing > 0 && (
         <div className={styles.banner} role="status" data-testid="meshcore-missing-favorites">

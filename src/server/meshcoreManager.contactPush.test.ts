@@ -302,12 +302,27 @@ describe('MeshCoreManager auto-add + sync status (#5502)', () => {
     ]);
     (h.manager as any).contacts.set(key('01'), { publicKey: key('01'), onDevice: true });
     (h.manager as any).contacts.set(key('02'), { publicKey: key('02'), onDevice: false });
+    (h.manager as any).deviceContactsKnown = true;
     const s = await h.manager.getDeviceContactSyncStatus();
+    expect(s.deviceContactsKnown).toBe(true);
     expect(s.available).toBe(true);
     expect(s.manualAddContacts).toBe(1);
     expect(s.autoAddEnabled).toBe(false);
     expect(s.missingFavorites).toEqual([{ publicKey: key('02'), name: 'Missing' }]);
     expect(s.deviceContactCount).toBe(1);
+  });
+
+  it('getDeviceContactSyncStatus claims nothing missing before the radio list is read', async () => {
+    // The device read timed out and the list was seeded from the DB: onDevice
+    // is unknown, so a favourite must not be reported as missing.
+    const h = makeHarness([
+      { publicKey: key('02'), advType: 1, isFavorite: true, name: 'Unknown' },
+    ]);
+    (h.manager as any).contacts.set(key('02'), { publicKey: key('02') });
+    (h.manager as any).deviceContactsKnown = false;
+    const s = await h.manager.getDeviceContactSyncStatus();
+    expect(s.deviceContactsKnown).toBe(false);
+    expect(s.missingFavorites).toEqual([]);
   });
 
   it('getDeviceContactSyncStatus reports auto-add unknown before SelfInfo', async () => {

@@ -1108,6 +1108,13 @@ export interface DeviceContactSyncStatus {
   /** MeshMonitor favourites the radio's contact table does not hold. */
   missingFavorites: Array<{ publicKey: string; name: string | null }>;
   deviceContactCount: number;
+  /**
+   * Whether the radio's contact table has been read since this connection
+   * came up. When false (the read timed out and the list was seeded from the
+   * DB), `onDevice` is unknown, so `missingFavorites` is empty rather than
+   * claiming every favourite is missing.
+   */
+  deviceContactsKnown: boolean;
 }
 
 /**
@@ -1293,6 +1300,8 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
   // Shared state
   private localNode: MeshCoreNode | null = null;
   private contacts: Map<string, MeshCoreContact> = new Map();
+  /** Set once refreshContacts() has read the radio's table this connection (#5502). */
+  private deviceContactsKnown = false;
   /** Last "contact table full" (0x90) warning, ms — rate-limits the log (#5349). */
   private lastContactsFullWarnAt = 0;
   private static readonly CONTACTS_FULL_WARN_INTERVAL_MS = 10 * 60 * 1000;
@@ -2054,6 +2063,7 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
     this.deviceType = MeshCoreDeviceType.UNKNOWN;
     this.localNode = null;
     this.contacts.clear();
+    this.deviceContactsKnown = false;
     this.pendingNewNodeNotifications.clear();
     this.guestLoggedInNodes.clear();
     this.roomLoggedInNodes.clear();
@@ -4386,6 +4396,8 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
           Array.from(this.contacts.values()).map((c) => this.persistContact(c)),
         );
         logger.debug(`[MeshCore] Refreshed ${this.contacts.size} contacts`);
+        // The device list was read, so `onDevice` now reflects the radio (#5502).
+        this.deviceContactsKnown = true;
         // Resolve new-node notifications that were waiting on a name (#5340).
         // Only keys already parked as genuinely new are considered, so a bulk
         // contact sync never notifies for the rest of the list.
@@ -6313,7 +6325,8 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
     const manualAddContacts = typeof manual === 'number' ? manual : null;
     const dbNodes = await databaseService.meshcore.getNodesBySource(this.sourceId);
     const localKey = (this.localNode?.publicKey ?? '').toLowerCase();
-    const missingFavorites = dbNodes
+    const known = this.deviceContactsKnown;
+    const missingFavorites = (known ? dbNodes : [])
       .filter((n) => n.isFavorite === true && n.isLocalNode !== true)
       .filter((n) => n.publicKey.toLowerCase() !== localKey)
       .filter((n) => this.contacts.get(n.publicKey)?.onDevice !== true)
@@ -6326,6 +6339,7 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
       autoAddEnabled: manualAddContacts === null ? null : (manualAddContacts & 0x01) === 0,
       missingFavorites,
       deviceContactCount,
+      deviceContactsKnown: known,
     };
   }
 

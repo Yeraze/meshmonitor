@@ -32,6 +32,7 @@ function syncStatus(overrides: Record<string, unknown> = {}) {
       { publicKey: 'bb'.repeat(32), name: 'Rpt B' },
     ],
     deviceContactCount: 4,
+    deviceContactsKnown: true,
     ...overrides,
   };
 }
@@ -79,6 +80,13 @@ describe('MeshCoreContactSyncSection (#5502)', () => {
     await waitFor(() => expect(screen.getByTestId('meshcore-missing-favorites')).toBeTruthy());
     expect(screen.getByTestId('meshcore-auto-add-state').textContent).toBe('On');
     expect(screen.getByTestId('meshcore-missing-favorites').textContent).not.toContain('Auto-add contacts is off');
+  });
+
+  it('says the radio list is not read yet instead of a missing count', async () => {
+    mockServer({ status: () => syncStatus({ deviceContactsKnown: false, missingFavorites: [] }) });
+    renderSection();
+    expect(await screen.findByTestId('meshcore-device-contacts-unknown')).toBeInTheDocument();
+    expect(screen.queryByTestId('meshcore-missing-favorites')).not.toBeInTheDocument();
   });
 
   it('hides the banner when no favourite is missing', async () => {
