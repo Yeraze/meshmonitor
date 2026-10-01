@@ -4,7 +4,7 @@
  * Handles traceroute and route segment database operations.
  * Supports SQLite, PostgreSQL, and MySQL through Drizzle ORM.
  */
-import { eq, and, desc, lt, or, isNull, gte, notInArray, count, sql, type SQL } from 'drizzle-orm';
+import { eq, and, desc, lt, or, isNull, gte, inArray, notInArray, count, sql, type SQL } from 'drizzle-orm';
 import { BaseRepository, DrizzleDatabase, SourceScope } from './base.js';
 import { DatabaseType, DbTraceroute, DbRouteSegment } from '../types.js';
 import { tracerouteParticipationKind, type TracerouteParticipation } from '../../utils/tracerouteSegments.js';
@@ -135,6 +135,34 @@ export class TraceroutesRepository extends BaseRepository {
       .limit(limit);
 
     return this.normalizeBigInts(result) as DbTraceroute[];
+  }
+
+  /**
+   * Newest-first traceroutes across an explicit set of sources (#5511,
+   * Traceroute Explorer report). The caller passes the sources the user may
+   * read; an empty list returns nothing rather than falling back to every
+   * source. `limit` bounds the scan, and the report flags truncation when the
+   * result fills it.
+   */
+  async getTraceroutesForSources(opts: {
+    sourceIds: string[];
+    sinceTimestamp?: number;
+    limit: number;
+  }): Promise<Array<DbTraceroute & { sourceId: string }>> {
+    if (opts.sourceIds.length === 0) return [];
+    const { traceroutes } = this.tables;
+    const conditions: SQL[] = [inArray(traceroutes.sourceId, opts.sourceIds)];
+    if (opts.sinceTimestamp !== undefined) {
+      conditions.push(gte(traceroutes.timestamp, opts.sinceTimestamp));
+    }
+    const result = await this.db
+      .select()
+      .from(traceroutes)
+      .where(and(...conditions))
+      .orderBy(desc(traceroutes.timestamp), desc(traceroutes.id))
+      .limit(opts.limit);
+
+    return this.normalizeBigInts(result) as Array<DbTraceroute & { sourceId: string }>;
   }
 
   /**
