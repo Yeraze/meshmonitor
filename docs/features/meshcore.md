@@ -318,6 +318,36 @@ Un-scoped messages show **no scope line at all** — the absence of a badge is i
 
 The MeshCore **Settings** view has a **Saved regions** section — a catalog of region names (with optional notes) you've saved, so you don't have to retype them. The catalog is **global** (shared across all MeshCore sources, not per-source). Saved regions feed the region-picker datalists on the channel scope field and on the per-message override (the override list is the de-duplicated union of saved + discovered regions). Add regions inline (or via the **＋** on a discovered-region chip) and delete them per-item.
 
+## Radio contact table vs MeshMonitor
+
+A MeshCore companion radio and MeshMonitor each keep their own list of nodes, and the two can drift apart:
+
+- **MeshMonitor's node list** holds every node MeshMonitor has heard about on this source: adverts, messages, packets, and contacts read from the radio. Favourites live here.
+- **The radio's contact table** is stored on the device itself and holds a limited number of contacts (the firmware reports the limit). The radio can only **log in to, poll telemetry from, request status from, or message** a node in this table. A node missing from it fails at once; nothing goes on the air.
+
+### Auto-add contacts
+
+The firmware setting `manual_add_contacts` decides whether the radio saves the nodes it hears:
+
+- **Auto-add on** (bit 0 clear, the usual default): the radio stores each node it hears advertising, until the table fills.
+- **Auto-add off** (bit 0 set): the radio stores only contacts added by hand. Nodes it hears still show up in MeshMonitor, but the radio never saves them.
+
+**MeshCore → Settings → Radio contact list** shows the current state (**Auto-add contacts: On / Off**) and a **Turn on / Turn off** button (needs `configuration:write`). The button changes only bit 0. The higher bits (per-type auto-add flags) and the telemetry and advert-location settings sent in the same firmware command stay as they were. It is a local write over the serial or TCP link; nothing is transmitted.
+
+### Symptoms when the two are out of step
+
+- MeshMonitor shows the node, even marked as a favourite, but logging in to it is refused with "not in the radio's contact list".
+- Telemetry and status requests to it do nothing, while the radio still hears its adverts.
+- The server log at connect says `N locally-favourited node(s) not in the device contact table`. When auto-add is off the message says so.
+- The Settings page shows a banner: **N favourite(s) are not in the radio's contact list**.
+
+### Two fixes
+
+1. **Turn auto-add on.** The radio then stores nodes as it hears their next advert. Nodes it already missed come back only when they advert again.
+2. **Push to radio.** The **Push to radio** button in the same section (needs `nodes:write`) copies MeshMonitor's nodes into the radio's table straight away, in this order: favourites first (most recently heard first), then the other nodes by most recently heard. It fills **free slots only**: it never replaces a contact already on the radio. It skips the local node, nodes whose type is not known yet (wait for an advert), and nodes on the Ignore / Block list. If the radio's capacity can't be read, it pushes favourites only. A summary lists what was added, what was already there, what was skipped and why, and how many free slots remain. Like auto-add, this is a local write; nothing is transmitted.
+
+To add a single node, open it in **Node Details** and use **Add to radio** on the "Not in the radio's contact list" notice.
+
 ## Remote Administration
 
 ::: tip Added in 4.7
@@ -699,6 +729,9 @@ This is fixed in 4.5 — source create/update/delete/connect/disconnect endpoint
 - Verify your MeshCore device is properly flashed and operating.
 - Check that the radio frequency and parameters match other nodes in your mesh.
 - Try sending an advert to announce your presence on the network. A zero-hop advert reaches nodes in direct range; use a flood advert only if distant nodes need to find you.
+
+### Can't log in to or poll a node MeshMonitor shows
+The node is probably missing from the radio's own contact table, often because auto-add contacts is off on the radio. See [Radio contact table vs MeshMonitor](#radio-contact-table-vs-meshmonitor).
 
 ### Radio parameter changes "revert" on save
 Earlier 4.x versions had a hook-dependency bug where Phase 3 push events overwrote staged radio/location edits before Save fired. Fixed in 4.5.
