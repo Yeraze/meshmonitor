@@ -50,6 +50,8 @@
 
 /* Last-message time in each channel row, shown in Last message sort (#5503). */
 .lastMessageTime {
-  color: var(--color-text-muted);
+  /* Inherit the row colour so it stays readable on the selected (accent) row. */
+  color: inherit;
+  opacity: 0.8;
   white-space: nowrap;
 }
