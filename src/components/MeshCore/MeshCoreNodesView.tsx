@@ -50,6 +50,10 @@ interface MeshCoreNodesViewProps {
    *  Phase 2). Plumbed here in WP1; WP3 wires the actual gating (the
    *  Discover menu's three items disabled + tooltip). */
   receiveOnly?: boolean;
+  /** True for a MeshCore Repeater (serial CLI) source (#5500). Its node list
+   *  comes only from the repeater's `neighbors` table, so the empty state
+   *  says why it may stay short or empty. */
+  isRepeaterSource?: boolean;
 }
 
 interface MergedRow {
@@ -155,6 +159,7 @@ export const MeshCoreNodesView: React.FC<MeshCoreNodesViewProps> = ({
   canDiscover,
   mapIsLoading,
   receiveOnly = false,
+  isRepeaterSource = false,
 }) => {
   const { t } = useTranslation();
   const { showToast } = useToast();
@@ -514,7 +519,12 @@ export const MeshCoreNodesView: React.FC<MeshCoreNodesViewProps> = ({
             <div className="meshcore-empty-state">
               {searchQuery
                 ? t('meshcore.no_search_results', 'No nodes match your search')
-                : t('meshcore.no_nodes', 'No nodes seen yet')}
+                : isRepeaterSource
+                  ? t(
+                    'meshcore.no_nodes_repeater',
+                    'No nodes yet. A repeater only reports its direct (zero-hop) repeater neighbours, read from its neighbors table every 5 minutes. Companions and multi-hop nodes do not appear here.',
+                  )
+                  : t('meshcore.no_nodes', 'No nodes seen yet')}
             </div>
           ) : rows.map(row => {
             const roleIcon = meshcoreRoleIconName(row.advType);

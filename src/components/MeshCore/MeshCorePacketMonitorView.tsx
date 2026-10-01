@@ -26,10 +26,14 @@ import {
 } from '../../utils/meshcorePacketDecode';
 import MeshCorePacketDetailModal from './MeshCorePacketDetailModal';
 import './MeshCorePacketMonitor.css';
+import styles from './MeshCorePacketMonitorView.module.css';
 
 interface MeshCorePacketMonitorViewProps {
   baseUrl: string;
   sourceId: string;
+  /** True for a MeshCore Repeater (serial CLI) source (#5500). Stock repeater
+   *  firmware doesn't stream packets over serial, so an empty log says so. */
+  isRepeaterSource?: boolean;
 }
 
 type Packet = MeshCoreOtaPacketEvent;
@@ -80,7 +84,7 @@ function formatTime(ts: number): string {
   return d.toLocaleTimeString([], { hour12: false }) + '.' + String(d.getMilliseconds()).padStart(3, '0');
 }
 
-export const MeshCorePacketMonitorView: React.FC<MeshCorePacketMonitorViewProps> = ({ baseUrl, sourceId }) => {
+export const MeshCorePacketMonitorView: React.FC<MeshCorePacketMonitorViewProps> = ({ baseUrl, sourceId, isRepeaterSource = false }) => {
   const { t } = useTranslation();
   const csrfFetch = useCsrfFetch();
   const { state: wsState } = useWebSocketContext();
@@ -418,10 +422,20 @@ export const MeshCorePacketMonitorView: React.FC<MeshCorePacketMonitorViewProps>
         {loading ? (
           <div className="mcpm-empty">{t('common.loading', 'Loading…')}</div>
         ) : visiblePackets.length === 0 ? (
-          <div className="mcpm-empty">
-            {enabled
-              ? t('meshcore.packets.empty', 'No packets captured yet. Waiting for OTA traffic…')
-              : t('meshcore.packets.emptyDisabled', 'No packets captured. Enable capture to start recording.')}
+          <div className={isRepeaterSource ? `mcpm-empty ${styles.emptyStack}` : 'mcpm-empty'}>
+            <span>
+              {enabled
+                ? t('meshcore.packets.empty', 'No packets captured yet. Waiting for OTA traffic…')
+                : t('meshcore.packets.emptyDisabled', 'No packets captured. Enable capture to start recording.')}
+            </span>
+            {isRepeaterSource && (
+              <p className={styles.repeaterNote} data-testid="mcpm-repeater-note">
+                {t(
+                  'meshcore.packets.repeaterNoStream',
+                  'Stock MeshCore repeater firmware does not stream packets over serial. A repeater build with -D MESH_PACKET_LOGGING=1 prints each received frame, and MeshMonitor logs those here.',
+                )}
+              </p>
+            )}
           </div>
         ) : (
           <table className="mcpm-table">
