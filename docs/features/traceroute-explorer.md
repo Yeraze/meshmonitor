@@ -7,6 +7,8 @@ traceroute history one at a time.
 
 Open it from **Analysis & Reports** (`/reports`) → **Traceroute Explorer**.
 
+![Traceroute Explorer in Map + Table layout, with one run selected](/images/features/5511-traceroute-explorer-split.png)
+
 ## MeshMonitor sends nothing
 
 **This report sends zero packets.** It only reads traceroutes already in the
@@ -46,6 +48,8 @@ your browser.
   width. **Show map** on the rail brings it back.
 - **Full screen** fills the browser window with the map and table. Press
   **Esc** or **Exit full screen** to go back.
+
+![Full screen with the map collapsed to a rail](/images/features/5511-traceroute-explorer-fullscreen-table.png)
 
 ### Table
 
