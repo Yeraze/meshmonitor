@@ -110,6 +110,7 @@ export function pathKey(nodes: number[] | null): string {
  */
 export function buildRuns(wire: ExplorerRunWire[]): ExplorerRun[] {
   const merged = new Map<string, ExplorerRun>();
+  const indexOf = new Map<string, number>();
   const order: ExplorerRun[] = [];
 
   for (const w of wire) {
@@ -161,13 +162,15 @@ export function buildRuns(wire: ExplorerRunWire[]): ExplorerRun[] {
     };
 
     if (existing) {
-      order[order.indexOf(existing)] = run;
+      order[indexOf.get(dedupeKey)!] = run;
     } else {
+      indexOf.set(dedupeKey, order.length);
       order.push(run);
     }
     merged.set(dedupeKey, run);
   }
 
+  // Sort after every merge so the route-change walk below sees true time order.
   order.sort((a, b) => b.timestamp - a.timestamp);
 
   // Route-change flag: walk each pair oldest → newest over answered runs.

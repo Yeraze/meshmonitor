@@ -84,6 +84,15 @@ describe('buildRuns', () => {
     expect(runs[0].sourceIds).toEqual(['src-a', 'src-b']);
   });
 
+  it('merges two unanswered copies of one packet into one unanswered run', () => {
+    const runs = buildRuns([
+      wire({ sourceId: 'src-a', packetId: 88, route: null, routeBack: null }),
+      wire({ sourceId: 'src-b', packetId: 88, route: null, routeBack: null }),
+    ]);
+    expect(runs).toHaveLength(1);
+    expect(runs[0]).toMatchObject({ answered: false, sourceIds: ['src-a', 'src-b'] });
+  });
+
   it('classifies MQTT and UDP transport', () => {
     expect(buildRuns([wire({ transportMechanism: 5 })])[0].transport).toBe('mqtt');
     expect(buildRuns([wire({ transportMechanism: 6 })])[0].transport).toBe('udp');

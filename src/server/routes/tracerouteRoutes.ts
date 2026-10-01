@@ -244,9 +244,11 @@ router.get('/explorer', optionalAuth(), async (req: Request, res: Response) => {
     const rows = await databaseService.traceroutes.getTraceroutesForSources({
       sourceIds,
       sinceTimestamp,
-      limit: EXPLORER_SCAN_LIMIT,
+      // One extra row tells "exactly the cap" apart from "more than the cap".
+      limit: EXPLORER_SCAN_LIMIT + 1,
     });
-    const truncated = rows.length >= EXPLORER_SCAN_LIMIT;
+    const truncated = rows.length > EXPLORER_SCAN_LIMIT;
+    if (truncated) rows.length = EXPLORER_SCAN_LIMIT;
 
     const user = req.user ?? null;
     const bySource = new Map<string, typeof rows>();
@@ -269,10 +271,13 @@ router.get('/explorer', optionalAuth(), async (req: Request, res: Response) => {
       for (const n of parseHopArray(tr.routeBack)) wanted.add(Number(n));
     }
 
+    // Node details need `nodes:read` as well: `traceroute:read` alone shows
+    // the runs (and their hex node ids) but no names or positions.
+    const nodeSourceIds = new Set(await resolvePermittedSourceIds(req, 'nodes', allSources));
     // intentional cross-source: node rows from every source, narrowed to the
     // permitted set before any field is read.
     const nodeRows = ((await databaseService.nodes.getAllNodes(ALL_SOURCES)) as unknown as ExplorerNodeRow[])
-      .filter(n => sourceIds.includes(n.sourceId) && wanted.has(Number(n.nodeNum)));
+      .filter(n => sourceIds.includes(n.sourceId) && nodeSourceIds.has(n.sourceId) && wanted.has(Number(n.nodeNum)));
     const nodesBySource = new Map<string, ExplorerNodeRow[]>();
     for (const n of nodeRows) {
       const list = nodesBySource.get(n.sourceId);

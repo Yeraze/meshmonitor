@@ -97,8 +97,21 @@ describe('GET /api/traceroutes/explorer', () => {
     expect(typeof res.body.data.retentionPerPair).toBe('number');
   });
 
+  it('needs nodes:read for node names; traceroute:read alone gives hex ids only', async () => {
+    await harness.grant(harness.limited.id, 'traceroute', 'read', harness.sourceA);
+    await harness.grant(harness.limited.id, 'channel_0', 'viewOnMap', harness.sourceA);
+    await seedRun(harness.sourceA, { packetId: 90 });
+
+    const agent = await harness.loginAs(harness.limited);
+    const res = await agent.get('/explorer');
+    expect(ourRuns(res.body).map(r => r.packetId)).toEqual([90]);
+    const hop = res.body.data.nodes.find((n: any) => n.nodeNum === N_HOP);
+    expect(hop).toMatchObject({ nodeId: nodeIdFor(N_HOP), longName: null, shortName: null, latitude: null });
+  });
+
   it('limits a non-admin to sources with traceroute:read', async () => {
     await harness.grant(harness.limited.id, 'traceroute', 'read', harness.sourceA);
+    await harness.grant(harness.limited.id, 'nodes', 'read', harness.sourceA);
     await harness.grant(harness.limited.id, 'channel_0', 'viewOnMap', harness.sourceA);
     await seedRun(harness.sourceA, { packetId: 10 });
     await seedRun(harness.sourceB, { from: N_B_ONLY, packetId: 20 });
@@ -159,6 +172,7 @@ describe('GET /api/traceroutes/explorer', () => {
 
   it('keeps node names but drops positions the caller cannot see on the map', async () => {
     await harness.grant(harness.limited.id, 'traceroute', 'read', harness.sourceA);
+    await harness.grant(harness.limited.id, 'nodes', 'read', harness.sourceA);
     // No channel_0 viewOnMap: runs with no recorded channel stay visible, but
     // the nodes (channel 0) are not visible on the map.
     const ts = Date.now();

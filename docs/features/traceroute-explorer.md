@@ -105,8 +105,9 @@ hold `traceroute:read` (admins see every enabled source):
 
 - Runs on a channel you cannot view on the map are left out, the same rule the
   per-source traceroute views apply.
-- Node names come only from sources you can read. Node positions come only
-  from node rows you can see on the map.
+- Node names and positions also need `nodes:read` on that source. With
+  `traceroute:read` alone you see the runs, labelled by node id.
+- Node positions come only from node rows you can see on the map.
 - A caller with no grants gets an empty list, not an error.
 
 ## API

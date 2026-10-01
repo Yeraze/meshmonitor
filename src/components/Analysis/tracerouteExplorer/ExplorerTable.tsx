@@ -4,7 +4,7 @@
  * Two row modes: grouped by from→to pair (expand a pair to see its runs), or
  * one row per run. Hovering a run previews it on the map; clicking pins it.
  */
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { UiIcon } from '../../icons';
 import { formatDateTime, formatRelativeTime } from '../../../utils/datetime';
@@ -96,6 +96,8 @@ export const ExplorerTable: React.FC<ExplorerTableProps> = props => {
   const { runs, pairs, groupMode, selectedKey, openPairs, onTogglePair, onSelectRun, onHoverRun } = props;
   const ctx: Ctx = props;
   const [flatLimit, setFlatLimit] = useState(FLAT_PAGE);
+  // New data or filters start from the first page again.
+  useEffect(() => setFlatLimit(FLAT_PAGE), [runs]);
 
   const activate = (e: React.KeyboardEvent, fn: () => void) => {
     if (e.key === 'Enter' || e.key === ' ') {
