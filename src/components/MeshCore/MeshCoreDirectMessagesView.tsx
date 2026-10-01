@@ -590,6 +590,8 @@ export const MeshCoreDirectMessagesView: React.FC<MeshCoreDirectMessagesViewProp
               <MeshCoreContactDetailPanel
                 contact={contactsByKey.get(selected) ?? null}
                 publicKey={selected}
+                isFavorite={favoriteByKey.get(selected) ?? false}
+                onToggleFavorite={actions.setNodeFavorite}
                 onResetPath={actions.resetContactPath}
                 onShareContact={actions.shareContact}
                 onSetOutPath={actions.setContactOutPath}
