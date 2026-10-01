@@ -223,7 +223,13 @@ describe('TracerouteExplorerReport', () => {
     const user = userEvent.setup();
     renderReport();
     await screen.findAllByTestId('explorer-pair-row');
+    await user.click(screen.getAllByTestId('explorer-pair-row')[0]);
+    await user.click(screen.getAllByTestId('explorer-run-row')[0]);
+    expect(screen.getByTestId('traceroute-explorer-detail')).toBeInTheDocument();
+
     await user.click(screen.getByRole('button', { name: '7d' }));
     await waitFor(() => expect(fetchExplorer).toHaveBeenCalledWith({ hours: 168, sourceIds: [] }));
+    // A new window starts with nothing selected.
+    expect(screen.queryByTestId('traceroute-explorer-detail')).not.toBeInTheDocument();
   });
 });

@@ -242,7 +242,10 @@ export const TracerouteExplorerReport: React.FC = () => {
             <Segmented
               label={t('analysis.traceroute_explorer.range', 'Time range')}
               value={rangeId}
-              onChange={setRangeId}
+              onChange={id => {
+                setRangeId(id);
+                setSelectedKey(null);
+              }}
               options={RANGE_PRESETS.map(p => ({
                 id: p.id,
                 label: p.hours == null ? t('analysis.traceroute_explorer.range_all', 'All') : p.id,
@@ -251,7 +254,14 @@ export const TracerouteExplorerReport: React.FC = () => {
           </div>
           <label className={styles.field}>
             <span>{t('analysis.traceroute_explorer.source', 'Source')}</span>
-            <select id="trx-source" value={sourceFilter} onChange={e => setSourceFilter(e.target.value)}>
+            <select
+              id="trx-source"
+              value={sourceFilter}
+              onChange={e => {
+                setSourceFilter(e.target.value);
+                setSelectedKey(null);
+              }}
+            >
               <option value="">{t('analysis.traceroute_explorer.all_sources', 'All sources')}</option>
               {(data?.sources ?? []).map(s => (
                 <option key={s.id} value={s.id}>
