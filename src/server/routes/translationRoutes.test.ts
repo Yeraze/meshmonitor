@@ -22,8 +22,13 @@ vi.mock('../services/translation/translationService.js', () => ({
 
 vi.mock('../auth/authMiddleware.js', () => ({
   requireAuth: () => (_req: any, _res: any, next: any) => next(),
+  requirePermission: vi.fn(() => (_req: any, _res: any, next: any) => next()),
   requireAdmin: () => (_req: any, _res: any, next: any) => next(),
   optionalAuth: () => (_req: any, _res: any, next: any) => next(),
+}));
+
+vi.mock('../middleware/rateLimiters.js', () => ({
+  translateLimiter: (_req: any, _res: any, next: any) => next(),
 }));
 
 describe('translationRoutes', () => {

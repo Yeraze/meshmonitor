@@ -1,14 +1,15 @@
 /**
  * Translation Routes
  *
- * POST /api/translate       — Translate message text (optionalAuth)
- * POST /api/translate/test  — Test translation configuration (requireAuth / admin)
+ * POST /api/translate       — Translate message text (requireAuth / messages:read)
+ * POST /api/translate/test  — Test translation configuration (requireAdmin)
  * GET  /api/translate/languages — Get standard language list (public/optionalAuth)
  */
 import express from 'express';
 import { translationService, STANDARD_LANGUAGES, type TranslationProvider } from '../services/translation/translationService.js';
 import { ok, fail } from '../utils/apiResponse.js';
-import { requireAdmin } from '../auth/authMiddleware.js';
+import { requireAuth, requirePermission, requireAdmin } from '../auth/authMiddleware.js';
+import { translateLimiter } from '../middleware/rateLimiters.js';
 import { logger } from '../../utils/logger.js';
 
 const router = express.Router();
@@ -16,32 +17,38 @@ const router = express.Router();
 /**
  * Translate a message.
  */
-router.post('/', async (req, res) => {
-  try {
-    const { text, targetLang, sourceLang } = req.body || {};
+router.post(
+  '/',
+  requireAuth(),
+  requirePermission('messages', 'read'),
+  translateLimiter,
+  async (req, res) => {
+    try {
+      const { text, targetLang, sourceLang } = req.body || {};
 
-    if (typeof text !== 'string') {
-      return fail(res, 400, 'INVALID_INPUT', 'text must be a string');
+      if (typeof text !== 'string') {
+        return fail(res, 400, 'INVALID_INPUT', 'text must be a string');
+      }
+
+      const result = await translationService.translate({
+        text,
+        targetLang: typeof targetLang === 'string' ? targetLang : undefined,
+        sourceLang: typeof sourceLang === 'string' ? sourceLang : undefined,
+      });
+
+      return ok(res, result);
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      logger.error('Translation error:', error);
+      return fail(res, 500, 'TRANSLATION_FAILED', message || 'Failed to translate message');
     }
-
-    const result = await translationService.translate({
-      text,
-      targetLang: typeof targetLang === 'string' ? targetLang : undefined,
-      sourceLang: typeof sourceLang === 'string' ? sourceLang : undefined,
-    });
-
-    return ok(res, result);
-  } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : String(error);
-    logger.error('Translation error:', error);
-    return fail(res, 500, 'TRANSLATION_FAILED', message || 'Failed to translate message');
   }
-});
+);
 
 /**
  * Test a translation configuration (used by settings UI).
  */
-router.post('/test', requireAdmin(), async (req, res) => {
+router.post('/test', requireAdmin(), translateLimiter, async (req, res) => {
   try {
     const { provider, url, apiKey, model, openAiBaseUrl, sourceLanguage, targetLanguage } = req.body || {};
 

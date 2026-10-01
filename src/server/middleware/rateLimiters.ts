@@ -31,6 +31,18 @@ export function normalizeRateLimitKey(req: { ip?: string }): string {
   return ipKeyGenerator(normalized);
 }
 
+/**
+ * Rate limit key generator that keys by authenticated user ID ('user:<id>'),
+ * falling back to normalized IP address if unauthenticated.
+ */
+export function userOrIpKeyGenerator(req: { ip?: string; user?: { id?: number | string } }): string {
+  const userId = req.user?.id;
+  if (userId) {
+    return `user:${userId}`;
+  }
+  return normalizeRateLimitKey(req);
+}
+
 // RFC 1918 private network ranges and loopback — never routable from the public
 // internet, so rate limiting them provides no security benefit for local deployments.
 const PRIVATE_IP_PATTERNS = [
@@ -64,6 +76,7 @@ logger.info(`   - API: ${env.rateLimitApi === 0 ? 'unlimited (disabled)' : `${en
 logger.info('   - API private/local network addresses: always exempt (RFC 1918 + loopback)');
 logger.info(`   - Auth: ${env.rateLimitAuth === 0 ? 'unlimited (disabled)' : `${env.rateLimitAuth} attempts per 15 minutes`}${env.rateLimitAuthProvided ? ' (custom)' : ' (default)'}`);
 logger.info(`   - Messages: ${env.rateLimitMessages === 0 ? 'unlimited (disabled)' : `${env.rateLimitMessages} messages per minute`}${env.rateLimitMessagesProvided ? ' (custom)' : ' (default)'}`);
+logger.info(`   - Translate: ${env.rateLimitTranslate === 0 ? 'unlimited (disabled)' : `${env.rateLimitTranslate} requests per minute`}${env.rateLimitTranslateProvided ? ' (custom)' : ' (default)'}`);
 
 // Log reverse proxy configuration warnings
 if (!env.trustProxyProvided && env.isProduction) {
@@ -246,4 +259,27 @@ export const elevationTileLimiter = rateLimit({
     });
   },
   ...rateLimitConfig,
+});
+
+// Rate limiting for message translation (POST /api/translate, POST /api/v1/translate)
+// Protects provider API quota from automated / excessive translation requests.
+// Keyed per authenticated user ID (falls back to client IP).
+// Private IPs are NOT exempt since translation expends external API quota.
+// Default: 30 requests per minute in production, 120 in development.
+export const translateLimiter = rateLimit({
+  ...rateLimitConfig,
+  windowMs: 1 * 60 * 1000, // 1 minute
+  max: env.rateLimitTranslate,
+  message: 'Too many translation requests, please slow down',
+  keyGenerator: (req) => userOrIpKeyGenerator(req as { ip?: string; user?: { id?: number | string } }),
+  skip: () => env.rateLimitTranslate === 0,
+  handler: (req, res) => {
+    const key = userOrIpKeyGenerator(req as { ip?: string; user?: { id?: number | string } });
+    logger.warn(`🚫 Rate limit exceeded for TRANSLATE - Key: ${key}`);
+    res.status(429).json({
+      error: 'Too many translation requests, please slow down',
+      retryAfter: '1 minute'
+    });
+  },
+  ...(env.rateLimitTranslate === 0 ? { skip: () => true } : {}),
 });

@@ -5,9 +5,11 @@
 import { useContext } from 'react';
 import { useQuery, QueryClient, QueryClientContext } from '@tanstack/react-query';
 import apiService from '../services/api';
+import { AuthContext } from '../contexts/AuthContext';
 
 export interface TranslationClientSettings {
   enabled: boolean;
+  canTranslate: boolean;
   defaultLanguage: string;
   defaultOutgoingLanguage: string;
 }
@@ -21,9 +23,10 @@ const fallbackClient = new QueryClient({
   },
 });
 
-/** Returns the client translation settings from the server. */
-export function useTranslationSettings(): TranslationClientSettings {
+/** Returns the client translation settings from the server along with permission validation. */
+export function useTranslationSettings(sourceId?: string | null): TranslationClientSettings {
   const client = useContext(QueryClientContext);
+  const auth = useContext(AuthContext);
 
   const { data } = useQuery(
     {
@@ -40,11 +43,26 @@ export function useTranslationSettings(): TranslationClientSettings {
     client || fallbackClient
   );
 
+  const enabled = data?.translationEnabled === 'true';
+  const isAuthenticated = !!auth?.authStatus?.authenticated;
+  const canReadMessages = auth?.hasPermission
+    ? auth.hasPermission('messages', 'read', sourceId ? { sourceId } : { anySource: true })
+    : false;
+
+  const canTranslate = enabled && isAuthenticated && canReadMessages;
+
   return {
-    enabled: data?.translationEnabled === 'true',
+    enabled,
+    canTranslate,
     defaultLanguage: data?.translationDefaultLanguage || 'en',
     defaultOutgoingLanguage: data?.translationDefaultOutgoingLanguage || 'ja',
   };
+}
+
+/** True when translation is enabled and the user is authenticated with messages:read permission. */
+export function useCanTranslate(sourceId?: string | null): boolean {
+  const { canTranslate } = useTranslationSettings(sourceId);
+  return canTranslate;
 }
 
 /** True when the server explicitly set `translationEnabled` to `'true'`. Defaults to false. */
@@ -52,3 +70,4 @@ export function useTranslationEnabled(): boolean {
   const { enabled } = useTranslationSettings();
   return enabled;
 }
+

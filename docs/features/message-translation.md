@@ -108,6 +108,8 @@ LoRa packet payloads are typically constrained to approximately **200 to 220 UTF
 
 ## Security & Privacy
 
+- **Authentication & Permission Gating**: Translation endpoints (`POST /api/translate` and `POST /api/v1/translate`) require an authenticated user with `messages:read` permission. Unauthenticated visitors or users lacking message permissions cannot access translation endpoints, and translation action buttons are hidden in the UI.
+- **Dedicated Rate Limiting**: Translation endpoints are protected by a dedicated user/IP rate limiter (`RATE_LIMIT_TRANSLATE`, defaulting to 30 requests/minute in production and 120 in development) to defend provider API quota against automated loops and excessive usage.
 - **Secret Masking**: Sensitive translation API keys and authentication tokens are stored securely server-side and automatically stripped from `GET /api/settings` for non-admin viewers.
 - **Admin Gating**: Connection testing (`POST /api/translate/test`) requires administrative privileges (`requireAdmin()`).
 - **Telemetry Filtering**: Raw telemetry packets, system status logs, emojis, and standard radio pings (`ack`, `ping`, `test`, `73`) are automatically detected and filtered out to prevent unnecessary API queries and costs.

@@ -6,11 +6,17 @@
 import express from 'express';
 import { translationService } from '../../services/translation/translationService.js';
 import { ok, fail } from '../../utils/apiResponse.js';
+import { requirePermission } from '../../auth/authMiddleware.js';
+import { translateLimiter } from '../../middleware/rateLimiters.js';
 import { logger } from '../../../utils/logger.js';
 
 const router = express.Router();
 
-router.post('/', async (req, res) => {
+router.post(
+  '/',
+  requirePermission('messages', 'read'),
+  translateLimiter,
+  async (req, res) => {
   try {
     const { text, targetLang, sourceLang } = req.body || {};
 

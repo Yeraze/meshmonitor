@@ -649,7 +649,7 @@ export default function ChannelsTab({
       >
         <UiIcon name="location" size={16} />
       </button>
-      {translationSettings.enabled && (
+      {translationSettings.canTranslate && (
         <button
           onClick={() => setTranslateModalOpen(true)}
           disabled={txDisabled}
@@ -1370,7 +1370,7 @@ export default function ChannelsTab({
                                           <UiIcon name="reaction" size={15} />
                                         </button>
                                       )}
-                                      {translationSettings.enabled && msg.text && (
+                                      {translationSettings.canTranslate && msg.text && (
                                         <button
                                           className="translate-button"
                                           onClick={() => translateMessage(msg.id, msg.text)}

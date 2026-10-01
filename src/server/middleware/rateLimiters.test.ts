@@ -36,6 +36,8 @@ async function createTestApp(envOverrides: Record<string, unknown>): Promise<Exp
       rateLimitAuthProvided: false,
       rateLimitMessages: 100,
       rateLimitMessagesProvided: false,
+      rateLimitTranslate: 120,
+      rateLimitTranslateProvided: false,
       isProduction: false,
       trustProxyProvided: true,
       ...envOverrides,
@@ -50,13 +52,14 @@ async function createTestApp(envOverrides: Record<string, unknown>): Promise<Exp
     },
   }));
 
-  const { apiLimiter, authLimiter, messageLimiter } =
+  const { apiLimiter, authLimiter, messageLimiter, translateLimiter } =
     await import('./rateLimiters.js');
 
   const app = express();
   app.use('/api', apiLimiter, (_req, res) => res.json({ ok: true }));
   app.use('/auth', authLimiter, (_req, res) => res.json({ ok: true }));
   app.use('/messages', messageLimiter, (_req, res) => res.json({ ok: true }));
+  app.use('/translate', translateLimiter, (_req, res) => res.json({ ok: true }));
   return app;
 }
 
@@ -473,4 +476,42 @@ describe('Rate Limiters Middleware', () => {
       expect(key).toBe('');
     });
   });
+
+  describe('userOrIpKeyGenerator', () => {
+    async function getUserOrIpKeyGenerator() {
+      vi.resetModules();
+      vi.doMock('../config/environment.js', () => ({
+        getEnvironmentConfig: () => ({
+          rateLimitApi: 10000,
+          rateLimitApiProvided: false,
+          rateLimitAuth: 100,
+          rateLimitAuthProvided: false,
+          rateLimitMessages: 100,
+          rateLimitMessagesProvided: false,
+          rateLimitTranslate: 120,
+          rateLimitTranslateProvided: false,
+          isProduction: false,
+          trustProxyProvided: true,
+        }),
+      }));
+      vi.doMock('../../utils/logger.js', () => ({
+        logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
+      }));
+      const { userOrIpKeyGenerator } = await import('./rateLimiters.js');
+      return userOrIpKeyGenerator;
+    }
+
+    it('should key by user ID when user is present on request', async () => {
+      const generator = await getUserOrIpKeyGenerator();
+      expect(generator({ ip: '1.2.3.4', user: { id: 42 } })).toBe('user:42');
+      expect(generator({ ip: '1.2.3.4', user: { id: 'admin_1' } })).toBe('user:admin_1');
+    });
+
+    it('should fall back to normalized IP when user is absent', async () => {
+      const generator = await getUserOrIpKeyGenerator();
+      expect(generator({ ip: '1.2.3.4' })).toBe('1.2.3.4');
+      expect(generator({ ip: '::ffff:192.168.1.1' })).toBe('192.168.1.1');
+    });
+  });
 });
+
