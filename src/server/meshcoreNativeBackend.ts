@@ -1546,11 +1546,14 @@ export class MeshCoreNativeBackend extends EventEmitter {
         frame.set(publicKey, 2);
         // Serialize the Sent/Err command-ack window against other radio ops on
         // this connection — see runExclusiveRadioOp.
-        await this.runExclusiveRadioOp(() => new Promise<void>((resolve, reject) => {
-          const onSent = () => {
+        // RESP_CODE_SENT = [code][is_flood u8][tag u32 LE][suggested_timeout_ms u32 LE];
+        // meshcore.js parses bytes 6-9 as `estTimeout` (#5508).
+        const suggestedTimeoutMs = await this.runExclusiveRadioOp(() => new Promise<number>((resolve, reject) => {
+          const onSent = (resp?: { estTimeout?: unknown }) => {
             c.off(this.constants!.ResponseCodes.Sent, onSent);
             c.off(this.constants!.ResponseCodes.Err, onErr);
-            resolve();
+            const est = resp?.estTimeout;
+            resolve(typeof est === 'number' && Number.isFinite(est) && est > 0 ? est : 0);
           };
           const onErr = () => {
             c.off(this.constants!.ResponseCodes.Sent, onSent);
@@ -1561,7 +1564,7 @@ export class MeshCoreNativeBackend extends EventEmitter {
           c.once(this.constants!.ResponseCodes.Err, onErr);
           c.sendToRadioFrame(frame);
         }), 'discover_path');
-        return { ok: true };
+        return { ok: true, suggested_timeout_ms: suggestedTimeoutMs };
       }
 
       case 'discover_nodes': {

@@ -56,6 +56,17 @@ export interface DiscoveredNode {
   isNew: boolean;
 }
 
+/** A Discover Path request the radio accepted (#5508). */
+export interface DiscoverPathStart {
+  /** Firmware `suggested_timeout_ms` from the Sent ack (0 = none given). */
+  suggestedTimeoutMs: number;
+  /** How long to wait for the reply before showing "no response". */
+  discoveryTimeoutMs: number;
+}
+
+/** Wait budget when the server sends none (MeshCore One's flood default). */
+export const DISCOVER_PATH_DEFAULT_TIMEOUT_MS = 30_000;
+
 export interface TracePathResult {
   hops: { index: number; snr: number }[];
   lastSnr: number;
@@ -288,9 +299,9 @@ export interface MeshCoreActions {
   /** Flood a path-discovery request to the contact. The device sends a
    *  lightweight telemetry request via flood; when the contact replies,
    *  the PATH return mechanism establishes the forwarding route. The path
-   *  update arrives asynchronously — this resolves `true` when the flood
-   *  was accepted. */
-  discoverContactPath: (publicKey: string) => Promise<boolean>;
+   *  update arrives asynchronously — this resolves with the wait budget
+   *  when the flood was accepted, or `null` on failure. */
+  discoverContactPath: (publicKey: string) => Promise<DiscoverPathStart | null>;
   /** Active node discovery; resolves with responder counts, or null on error. */
   discoverNodes: (mode: 'nearby' | 'repeaters' | 'sensors') => Promise<{ returned: number; newCount: number; nodes: DiscoveredNode[] } | null>;
   /** Whether this node answers inbound discovery requests (is discoverable). */
@@ -1118,7 +1129,7 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
     }
   }, [mcPrefix, csrfFetch, reportTxDisabled]);
 
-  const discoverContactPath = useCallback(async (publicKey: string): Promise<boolean> => {
+  const discoverContactPath = useCallback(async (publicKey: string): Promise<DiscoverPathStart | null> => {
     try {
       const response = await csrfFetch(
         `${mcPrefix}/contacts/${encodeURIComponent(publicKey)}/discover-path`,
@@ -1126,14 +1137,21 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
       );
       const data = await parseJsonResponse(response);
       if (!data.success) {
-        if (reportTxDisabled(response.status, data)) return false;
+        if (reportTxDisabled(response.status, data)) return null;
         setError(data.error || 'Failed to discover path');
-        return false;
+        return null;
       }
-      return true;
+      // #5508: ok() envelope — the wait budget rides under `data`.
+      const body = (data.data ?? {}) as Partial<DiscoverPathStart>;
+      const num = (v: unknown, fallback: number) =>
+        typeof v === 'number' && Number.isFinite(v) && v > 0 ? v : fallback;
+      return {
+        suggestedTimeoutMs: num(body.suggestedTimeoutMs, 0),
+        discoveryTimeoutMs: num(body.discoveryTimeoutMs, DISCOVER_PATH_DEFAULT_TIMEOUT_MS),
+      };
     } catch (_err) {
       setError('Failed to discover path');
-      return false;
+      return null;
     }
   }, [mcPrefix, csrfFetch, reportTxDisabled]);
 
