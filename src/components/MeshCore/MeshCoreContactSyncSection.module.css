@@ -1,0 +1,70 @@
+/*
+ * MeshCoreContactSyncSection (#5502). CSS module — do not add these rules to
+ * the global sheets (CLAUDE.md CSS containment rule).
+ */
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.label {
+  color: var(--color-text);
+}
+
+.value {
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.banner {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  margin: 0.5rem 0;
+  padding: 0.6rem 0.75rem;
+  border: 1px solid var(--color-warning);
+  border-radius: 6px;
+  background: var(--color-surface);
+  color: var(--color-text);
+  font-size: 0.9em;
+}
+
+.bannerHeading {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-weight: 600;
+}
+
+.bannerBody {
+  margin: 0;
+  color: var(--color-text-subtle);
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin-top: 0.5rem;
+}
+
+.subtle {
+  color: var(--color-text-subtle);
+  font-size: 0.85em;
+}
+
+.error {
+  color: var(--color-error);
+}
+
+.result {
+  margin: 0.5rem 0 0;
+  padding-left: 1.2rem;
+  color: var(--color-text-subtle);
+  font-size: 0.9em;
+  line-height: 1.6;
+}

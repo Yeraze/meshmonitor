@@ -577,6 +577,37 @@ router.post('/config/advert-loc-policy', meshcoreDeviceLimiter, requireAuth(), r
   }
 });
 
+/**
+ * POST /api/sources/:id/meshcore/config/auto-add-contacts
+ * Body: { enabled: boolean }
+ *
+ * Turn the companion's auto-add on or off (#5502): bit 0 of
+ * NodePrefs.manual_add_contacts. Read-modify-write, so the per-type bits and
+ * the telemetry / advert-location fields sharing SetOtherParams are kept.
+ * Local serial write, no RF.
+ */
+router.post('/config/auto-add-contacts', meshcoreDeviceLimiter, requireAuth(), requirePermission('configuration', 'write', { sourceIdFrom: 'params.id' }), async (req: Request, res: Response) => {
+  try {
+    const enabled = (req.body as { enabled?: unknown } | undefined)?.enabled;
+    if (typeof enabled !== 'boolean') {
+      return fail(res, 400, 'INVALID_ENABLED', 'enabled must be true or false');
+    }
+    const result = await managerFor(req, res).setAutoAddContacts(enabled);
+    if (!result.ok) {
+      return fail(res, 502, 'AUTO_ADD_UPDATE_FAILED', result.error);
+    }
+    auditMeshcoreEvent(req, 'meshcore_auto_add_contacts', 'configuration', {
+      sourceId: req.params.id,
+      enabled,
+      manualAddContacts: result.manualAddContacts,
+    });
+    return ok(res, { autoAddEnabled: result.autoAddEnabled, manualAddContacts: result.manualAddContacts });
+  } catch (error) {
+    logger.error('[API] Error setting auto-add contacts:', error);
+    return fail(res, 500, 'AUTO_ADD_UPDATE_FAILED', 'Config error');
+  }
+});
+
 const TELEMETRY_MODES = ['always', 'device', 'never'] as const;
 type TelemetryModeReq = typeof TELEMETRY_MODES[number];
 

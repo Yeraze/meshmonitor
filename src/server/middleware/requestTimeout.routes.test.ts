@@ -57,6 +57,7 @@ describe('extendRequestTimeout route coverage (pin test)', () => {
         '/nodes/:publicKey/telemetry/poll',
         '/discover',
         '/regions/discover',
+        '/contacts/push-to-device',
       ],
     },
     {
