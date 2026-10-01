@@ -6277,5 +6277,8 @@
   "waypoints.hop_limit.description": "How far this waypoint may travel. Blank uses the node's own hop limit. Capped at the node's own hop limit, so it can only shorten reach, never extend it. 0 keeps it to nodes that hear this radio directly.",
   "waypoints.hop_limit.warning": "Every node within this many hops rebroadcasts the waypoint. On a 30-node mesh at 3 hops one send is about 30 transmissions. Use the lowest value that reaches the area you need.",
   "automation.meshtasticSource.placeholder": "— select a Meshtastic source —",
-  "automation.meshtasticSource.none": "No Meshtastic sources."
+  "automation.meshtasticSource.none": "No Meshtastic sources.",
+  "meshcore.contact_details.favorite_add": "Add to favorites",
+  "meshcore.contact_details.favorite_remove": "Remove from favorites",
+  "meshcore.favorite.failed": "Failed to update favorite"
 }

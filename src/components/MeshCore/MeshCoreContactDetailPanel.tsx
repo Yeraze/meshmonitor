@@ -68,9 +68,19 @@ interface MeshCoreContactDetailPanelProps {
    *  path update arrives asynchronously; resolves with the wait budget the
    *  button counts down (#5508), or null on failure. Unset hides the button. */
   onDiscoverPath?: (publicKey: string) => Promise<DiscoverPathStart | null>;
+  /** Current favorite state for this contact (issue #5507). Favorites live
+   *  server-side on the node list, not on the contact record (#3588), so the
+   *  caller looks this up from the node rows by `publicKey` the same way the
+   *  DM list's pinned-star badge does. Defaults to `false`. */
+  isFavorite?: boolean;
+  /** Toggle the server-side favorite flag for this contact (issue #5507).
+   *  Reuses the exact `setNodeFavorite` action the Nodes list star uses
+   *  (#3588), including its #4840 best-effort device-flag push, so the
+   *  list, map, and this panel's star all agree. Unset hides the star. */
+  onToggleFavorite?: (publicKey: string, isFavorite: boolean) => Promise<boolean>;
   /** Whether the current user may invoke write actions on this source's
    *  `nodes` resource. Required to gate the Reset Path / Share / Edit
-   *  buttons. */
+   *  buttons, and (issue #5507) the favorite star. */
   canWriteNodes?: boolean;
   /** Is the source's device a Companion? Reset Path / Share Contact /
    *  manual edit are all companion-only. Defaults to `true` so callers
@@ -149,6 +159,8 @@ const TRACE_AUTO_RETURN_KEY = 'meshcoreTraceAutoReturn';
 export const MeshCoreContactDetailPanel: React.FC<MeshCoreContactDetailPanelProps> = ({
   contact,
   publicKey,
+  isFavorite = false,
+  onToggleFavorite,
   onResetPath,
   onShareContact,
   onSetOutPath,
@@ -200,6 +212,18 @@ export const MeshCoreContactDetailPanel: React.FC<MeshCoreContactDetailPanelProp
   const [isCollapsed, setIsCollapsed] = useState<boolean>(() => {
     return localStorage.getItem(COLLAPSED_KEY) === 'true';
   });
+  // Favorite toggle state (#5507).
+  const [favoriteBusy, setFavoriteBusy] = useState(false);
+  const [favoriteError, setFavoriteError] = useState<string | null>(null);
+  // The server-confirmed value, shown until the `isFavorite` prop catches up:
+  // the prop only changes when the node list refetches (a few seconds later),
+  // so without this the star looks like the click did nothing.
+  const [favoriteOverride, setFavoriteOverride] = useState<boolean | null>(null);
+  const shownFavorite = favoriteOverride ?? isFavorite;
+  useEffect(() => {
+    if (favoriteOverride !== null && favoriteOverride === isFavorite) setFavoriteOverride(null);
+  }, [isFavorite, favoriteOverride]);
+
   const [resetting, setResetting] = useState(false);
   const [resetError, setResetError] = useState<string | null>(null);
   const [sharing, setSharing] = useState(false);
@@ -277,6 +301,9 @@ export const MeshCoreContactDetailPanel: React.FC<MeshCoreContactDetailPanelProp
   // Clear transient action state when the selected contact changes so a
   // previous failure / success doesn't bleed into a new node.
   useEffect(() => {
+    setFavoriteBusy(false);
+    setFavoriteError(null);
+    setFavoriteOverride(null);
     setResetError(null);
     setResetting(false);
     setShareError(null);
@@ -347,6 +374,11 @@ export const MeshCoreContactDetailPanel: React.FC<MeshCoreContactDetailPanelProp
   const longitude = contact?.longitude;
   const hasPosition = typeof latitude === 'number' && typeof longitude === 'number';
   const pathKnown = typeof pathLen === 'number' && pathLen !== null && pathLen >= 0;
+  // Favorite is not companion-only (#3588 covers every role), so unlike the
+  // other action buttons below this doesn't gate on `isCompanion` — the
+  // device-flag push it triggers server-side is already best-effort and
+  // companion-only on its own (meshcoreManager.pushFavoriteToDevice).
+  const canShowFavoriteButton = !!onToggleFavorite && canWriteNodes;
   const canShowResetButton =
     !!onResetPath && canWriteNodes && isCompanion;
   const canShowShareButton =
@@ -374,6 +406,25 @@ export const MeshCoreContactDetailPanel: React.FC<MeshCoreContactDetailPanelProp
     !!onExportContact && isCompanion;
   const canShowNeighboursButton =
     !!onGetNeighbours && isCompanion && advType === 2;
+
+  const handleToggleFavorite = async () => {
+    if (!onToggleFavorite || favoriteBusy) return;
+    const isCurrent = beginContactAction();
+    setFavoriteBusy(true);
+    setFavoriteError(null);
+    try {
+      const next = !shownFavorite;
+      const ok = await onToggleFavorite(publicKey, next);
+      if (!isCurrent()) return;
+      if (ok) {
+        setFavoriteOverride(next);
+      } else {
+        setFavoriteError(t('meshcore.favorite.failed', 'Failed to update favorite'));
+      }
+    } finally {
+      if (isCurrent()) setFavoriteBusy(false);
+    }
+  };
 
   const handleTracePath = async () => {
     if (!onTracePath || tracing) return;
@@ -725,16 +776,40 @@ export const MeshCoreContactDetailPanel: React.FC<MeshCoreContactDetailPanelProp
           </h3>
           <ShowCoverageLink senderId={publicKey.toLowerCase()} />
         </div>
-        <button
-          className="node-details-toggle"
-          onClick={() => setIsCollapsed(prev => !prev)}
-          aria-label={isCollapsed
-            ? t('meshcore.contact_details.expand', 'Expand contact details')
-            : t('meshcore.contact_details.collapse', 'Collapse contact details')}
-        >
-          <UiIcon name={isCollapsed ? 'chevronDown' : 'chevronUp'} size={15} />
-        </button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+          {canShowFavoriteButton && (
+            <button
+              type="button"
+              className={`${styles.favoriteButton}${shownFavorite ? ` ${styles.isFavorite}` : ''}`}
+              onClick={() => void handleToggleFavorite()}
+              disabled={favoriteBusy}
+              aria-pressed={shownFavorite}
+              title={shownFavorite
+                ? t('meshcore.contact_details.favorite_remove', 'Remove from favorites')
+                : t('meshcore.contact_details.favorite_add', 'Add to favorites')}
+              aria-label={shownFavorite
+                ? t('meshcore.contact_details.favorite_remove', 'Remove from favorites')
+                : t('meshcore.contact_details.favorite_add', 'Add to favorites')}
+            >
+              <UiIcon name={shownFavorite ? 'favorite' : 'favoriteOff'} size={18} />
+            </button>
+          )}
+          <button
+            className="node-details-toggle"
+            onClick={() => setIsCollapsed(prev => !prev)}
+            aria-label={isCollapsed
+              ? t('meshcore.contact_details.expand', 'Expand contact details')
+              : t('meshcore.contact_details.collapse', 'Collapse contact details')}
+          >
+            <UiIcon name={isCollapsed ? 'chevronDown' : 'chevronUp'} size={15} />
+          </button>
+        </div>
       </div>
+      {favoriteError && (
+        <div style={{ color: 'var(--color-error)', fontSize: '0.85em', marginTop: '-10px', marginBottom: '10px' }} role="alert">
+          {favoriteError}
+        </div>
+      )}
       {/* #5349: the radio can't address a node missing from its own contact
           list — say so (visible even when collapsed) and offer to add it. */}
       {isCompanion && contact?.onDevice === false && (
