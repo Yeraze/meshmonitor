@@ -24,6 +24,7 @@ export interface TranslationConfig {
   targetLanguage: string;
   autoIncoming: boolean;
   url?: string;
+  deeplUrl?: string;
   apiKey?: string;
   model?: string;
   openAiBaseUrl?: string;

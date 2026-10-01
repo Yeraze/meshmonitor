@@ -50,7 +50,7 @@ router.post(
  */
 router.post('/test', requireAdmin(), translateLimiter, async (req, res) => {
   try {
-    const { provider, url, apiKey, model, openAiBaseUrl, sourceLanguage, targetLanguage } = req.body || {};
+    const { provider, url, deeplUrl, apiKey, model, openAiBaseUrl, sourceLanguage, targetLanguage } = req.body || {};
 
     if (!provider || typeof provider !== 'string') {
       return fail(res, 400, 'INVALID_INPUT', 'provider is required');
@@ -61,6 +61,7 @@ router.post('/test', requireAdmin(), translateLimiter, async (req, res) => {
       text: testText,
       provider: provider as TranslationProvider,
       url,
+      deeplUrl,
       apiKey,
       model,
       openAiBaseUrl,

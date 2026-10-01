@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
 import {
   isNonConversational,
+  buildServiceEndpoint,
   translationService,
 } from './translationService.js';
 import { NoOpTranslationCache, setTranslationCache } from './translationCache.js';
@@ -26,6 +27,23 @@ describe('translationService', () => {
 
   afterEach(() => {
     global.fetch = originalFetch;
+  });
+
+  describe('buildServiceEndpoint', () => {
+    it('should return default endpoint when baseUrl is empty or whitespace', () => {
+      expect(buildServiceEndpoint('', 'https://api.deepl.com/v2/translate', '/translate')).toBe('https://api.deepl.com/v2/translate');
+      expect(buildServiceEndpoint('   ', 'https://api.deepl.com/v2/translate', '/translate')).toBe('https://api.deepl.com/v2/translate');
+    });
+
+    it('should append path when not present on baseUrl', () => {
+      expect(buildServiceEndpoint('https://api.deepl.com/v2', 'default', '/translate')).toBe('https://api.deepl.com/v2/translate');
+      expect(buildServiceEndpoint('https://api.deepl.com/v2/', 'default', '/translate')).toBe('https://api.deepl.com/v2/translate');
+    });
+
+    it('should not double-append path when already present on baseUrl', () => {
+      expect(buildServiceEndpoint('https://api.deepl.com/v2/translate', 'default', '/translate')).toBe('https://api.deepl.com/v2/translate');
+      expect(buildServiceEndpoint('https://api.deepl.com/v2/translate/', 'default', '/translate')).toBe('https://api.deepl.com/v2/translate');
+    });
   });
 
   describe('isNonConversational', () => {
@@ -214,6 +232,63 @@ describe('translationService', () => {
       expect(result.provider).toBe('deepl');
       expect(global.fetch).toHaveBeenCalledWith(
         'https://api-free.deepl.com/v2/translate',
+        expect.objectContaining({
+          method: 'POST',
+        })
+      );
+    });
+
+    it('should use custom DeepL base URL and append /translate when provided', async () => {
+      vi.mocked(databaseService.getSettingAsync).mockImplementation(async (key: string) => {
+        if (key === 'translationEnabled') return 'true';
+        if (key === 'translationProvider') return 'deepl';
+        if (key === 'translationApiKey') return 'deepl-api-key';
+        if (key === 'translationDeeplUrl') return 'https://my-proxy.internal/v2';
+        return null;
+      });
+
+      global.fetch = vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          translations: [{ text: 'Bonjour', detected_source_language: 'EN' }],
+        }),
+      } as unknown as Response);
+
+      await translationService.translate({
+        text: 'Hello',
+        targetLang: 'fr',
+      });
+
+      expect(global.fetch).toHaveBeenCalledWith(
+        'https://my-proxy.internal/v2/translate',
+        expect.objectContaining({
+          method: 'POST',
+        })
+      );
+    });
+
+    it('should use Pro DeepL endpoint for non-:fx keys when no URL is provided', async () => {
+      vi.mocked(databaseService.getSettingAsync).mockImplementation(async (key: string) => {
+        if (key === 'translationEnabled') return 'true';
+        if (key === 'translationProvider') return 'deepl';
+        if (key === 'translationApiKey') return 'deepl-pro-api-key';
+        return null;
+      });
+
+      global.fetch = vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          translations: [{ text: 'Bonjour', detected_source_language: 'EN' }],
+        }),
+      } as unknown as Response);
+
+      await translationService.translate({
+        text: 'Hello',
+        targetLang: 'fr',
+      });
+
+      expect(global.fetch).toHaveBeenCalledWith(
+        'https://api.deepl.com/v2/translate',
         expect.objectContaining({
           method: 'POST',
         })

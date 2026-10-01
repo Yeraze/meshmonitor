@@ -168,6 +168,7 @@ vi.mock('../middleware/rateLimiters.js', () => {
     authLimiter: passthrough,
     messageLimiter: passthrough,
     meshcoreDeviceLimiter: passthrough,
+    translateLimiter: passthrough,
   };
 });
 

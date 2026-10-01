@@ -573,8 +573,9 @@ describe('Settings Persistence', () => {
         // Translation settings (global) — loaded directly by SettingsTab into
         // its initial* snapshot; read server-side by translationService.
         'translationEnabled', 'translationProvider', 'translationUrl',
-        'translationApiKey', 'translationModel', 'translationOpenAiBaseUrl',
-        'translationDefaultLanguage', 'translationDefaultOutgoingLanguage',
+        'translationDeeplUrl', 'translationApiKey', 'translationModel',
+        'translationOpenAiBaseUrl', 'translationDefaultLanguage',
+        'translationDefaultOutgoingLanguage',
       ];
 
       const keysNotLoaded = SETTINGS_TAB_SENDS.filter(

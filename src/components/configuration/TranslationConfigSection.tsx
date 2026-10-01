@@ -12,6 +12,8 @@ export interface TranslationConfigSectionProps {
   onProviderChange: (val: TranslationProvider) => void;
   url: string;
   onUrlChange: (val: string) => void;
+  deeplUrl?: string;
+  onDeeplUrlChange?: (val: string) => void;
   apiKey: string;
   onApiKeyChange: (val: string) => void;
   model: string;
@@ -31,6 +33,8 @@ export const TranslationConfigSection: React.FC<TranslationConfigSectionProps> =
   onProviderChange,
   url,
   onUrlChange,
+  deeplUrl = '',
+  onDeeplUrlChange,
   apiKey,
   onApiKeyChange,
   model,
@@ -54,6 +58,7 @@ export const TranslationConfigSection: React.FC<TranslationConfigSectionProps> =
       const res = await apiService.testTranslationConfig({
         provider,
         url,
+        deeplUrl,
         apiKey,
         model,
         openAiBaseUrl,
@@ -169,7 +174,7 @@ export const TranslationConfigSection: React.FC<TranslationConfigSectionProps> =
                     data-testid="libretranslate-url-input"
                   />
                   <span className={styles.hint}>
-                    {t('settings.libretranslate_url_hint', 'URL of your LibreTranslate instance (e.g. http://localhost:5000 or http://libretranslate:5000 in Docker).')}
+                    {t('settings.translation_libretranslate_url_desc', 'URL of your LibreTranslate instance (e.g. http://localhost:5000 or http://libretranslate:5000 in Docker).')}
                   </span>
                 </div>
 
@@ -203,7 +208,7 @@ export const TranslationConfigSection: React.FC<TranslationConfigSectionProps> =
                     data-testid="openai-base-url-input"
                   />
                   <span className={styles.hint}>
-                    {t('settings.openai_base_url_hint', 'Ollama (e.g. http://host.docker.internal:11434/v1), OpenRouter, or OpenAI base URL.')}
+                    {t('settings.translation_openai_base_url_desc', 'Ollama (e.g. http://host.docker.internal:11434/v1), OpenRouter, or OpenAI base URL.')}
                   </span>
                 </div>
 
@@ -218,6 +223,9 @@ export const TranslationConfigSection: React.FC<TranslationConfigSectionProps> =
                     className={styles.input}
                     data-testid="openai-model-input"
                   />
+                  <span className={styles.hint}>
+                    {t('settings.translation_openai_model_desc', "The model identifier on your server (e.g. 'llama3.2', 'qwen2.5', or 'gpt-4o-mini').")}
+                  </span>
                 </div>
 
                 <div className={styles.formGroup}>
@@ -256,16 +264,19 @@ export const TranslationConfigSection: React.FC<TranslationConfigSectionProps> =
                 </div>
 
                 <div className={styles.formGroup}>
-                  <label htmlFor="deepl-url">{t('settings.translation_url', 'Custom DeepL Endpoint (Optional)')}</label>
+                  <label htmlFor="deepl-url">{t('settings.translation_deepl_url', 'Custom DeepL Base URL (Optional)')}</label>
                   <input
                     id="deepl-url"
                     type="text"
-                    value={url}
-                    onChange={(e) => onUrlChange(e.target.value)}
-                    placeholder="https://api-free.deepl.com/v2 or https://api.deepl.com/v2"
+                    value={deeplUrl}
+                    onChange={(e) => onDeeplUrlChange && onDeeplUrlChange(e.target.value)}
+                    placeholder={t('settings.translation_deepl_url_placeholder', 'Leave empty for automatic endpoint selection')}
                     className={styles.input}
                     data-testid="deepl-url-input"
                   />
+                  <span className={styles.hint}>
+                    {t('settings.translation_deepl_url_desc', 'Leave blank to automatically route based on your auth key (DeepL Free vs. Pro). Only enter a URL if using a custom reverse proxy or enterprise gateway.')}
+                  </span>
                 </div>
               </>
             )}
@@ -283,6 +294,9 @@ export const TranslationConfigSection: React.FC<TranslationConfigSectionProps> =
                   autoComplete="off"
                   data-testid="google-api-key-input"
                 />
+                <span className={styles.hint}>
+                  {t('settings.translation_google_api_key_desc', 'API key from your Google Cloud Console with Cloud Translation API enabled.')}
+                </span>
               </div>
             )}
 

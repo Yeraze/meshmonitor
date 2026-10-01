@@ -23,6 +23,7 @@ export interface TranslationOptions {
   sourceLang?: string;
   provider?: TranslationProvider;
   url?: string;
+  deeplUrl?: string;
   apiKey?: string;
   model?: string;
   openAiBaseUrl?: string;
@@ -79,6 +80,19 @@ export function isNonConversational(text: string): boolean {
   return false;
 }
 
+/**
+ * Safely constructs a full service endpoint from a base URL and default fallback.
+ * Automatically appends the required subpath (e.g. '/translate') if missing.
+ */
+export function buildServiceEndpoint(baseUrl: string, defaultEndpoint: string, path: string): string {
+  const trimmed = (baseUrl || '').trim();
+  if (!trimmed) {
+    return defaultEndpoint;
+  }
+  const clean = trimmed.replace(/\/+$/, '');
+  return clean.endsWith(path) ? clean : `${clean}${path}`;
+}
+
 export class TranslationService {
   /**
    * Retrieves current translation configuration from database settings.
@@ -88,6 +102,7 @@ export class TranslationService {
     const enabled = enabledRaw === 'true' || enabledRaw === '1';
     const provider = ((await databaseService.getSettingAsync('translationProvider')) as TranslationProvider) || 'libretranslate';
     const url = (await databaseService.getSettingAsync('translationUrl')) || '';
+    const deeplUrl = (await databaseService.getSettingAsync('translationDeeplUrl')) || '';
     const apiKey = (await databaseService.getSettingAsync('translationApiKey')) || '';
     const model = (await databaseService.getSettingAsync('translationModel')) || '';
     const openAiBaseUrl = (await databaseService.getSettingAsync('translationOpenAiBaseUrl')) || '';
@@ -98,6 +113,7 @@ export class TranslationService {
       enabled,
       provider,
       url,
+      deeplUrl,
       apiKey,
       model,
       openAiBaseUrl,
@@ -121,6 +137,7 @@ export class TranslationService {
   async testConfig(config: {
     provider: TranslationProvider;
     url?: string;
+    deeplUrl?: string;
     apiKey?: string;
     model?: string;
     openAiBaseUrl?: string;
@@ -135,6 +152,7 @@ export class TranslationService {
         targetLang: config.targetLanguage || 'es',
         provider: config.provider,
         url: config.url,
+        deeplUrl: config.deeplUrl,
         apiKey: config.apiKey,
         model: config.model,
         openAiBaseUrl: config.openAiBaseUrl,
@@ -247,7 +265,7 @@ export class TranslationService {
         case 'deepl':
           return this.translateWithDeepL(text, sLang, tLang, {
             apiKey: options.apiKey || settings.apiKey || '',
-            url: options.url || settings.url || '',
+            url: options.deeplUrl || settings.deeplUrl || '',
           });
         case 'google':
           return this.translateWithGoogle(text, sLang, tLang, {
@@ -306,8 +324,7 @@ export class TranslationService {
     targetLang: string,
     config: { url: string; apiKey?: string }
   ): Promise<{ translatedText: string; detectedSourceLanguage?: string }> {
-    const baseUrl = (config.url || 'http://libretranslate:5000').replace(/\/+$/, '');
-    const endpoint = `${baseUrl}/translate`;
+    const endpoint = buildServiceEndpoint(config.url || '', 'http://libretranslate:5000/translate', '/translate');
 
     const body: Record<string, unknown> = {
       q: text,
@@ -356,8 +373,7 @@ export class TranslationService {
     targetLang: string,
     config: { baseUrl: string; apiKey?: string; model?: string }
   ): Promise<{ translatedText: string; detectedSourceLanguage?: string }> {
-    const baseUrl = (config.baseUrl || 'http://host.docker.internal:11434/v1').replace(/\/+$/, '');
-    const endpoint = `${baseUrl}/chat/completions`;
+    const endpoint = buildServiceEndpoint(config.baseUrl || '', 'http://host.docker.internal:11434/v1/chat/completions', '/chat/completions');
     const model = config.model || 'gpt-4o-mini';
 
     const headers: Record<string, string> = {
@@ -424,12 +440,10 @@ Guidelines:
     }
 
     const key = config.apiKey.trim();
-    let endpoint = config.url?.trim();
-    if (!endpoint) {
-      endpoint = key.endsWith(':fx')
-        ? 'https://api-free.deepl.com/v2/translate'
-        : 'https://api.deepl.com/v2/translate';
-    }
+    const defaultEndpoint = key.endsWith(':fx')
+      ? 'https://api-free.deepl.com/v2/translate'
+      : 'https://api.deepl.com/v2/translate';
+    const endpoint = buildServiceEndpoint(config.url || '', defaultEndpoint, '/translate');
 
     const body: Record<string, unknown> = {
       text: [text],

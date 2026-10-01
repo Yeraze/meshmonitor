@@ -219,6 +219,7 @@ interface SettingsDraft {
   translationEnabled: boolean;
   translationProvider: TranslationProvider;
   translationUrl: string;
+  translationDeeplUrl: string;
   translationApiKey: string;
   translationModel: string;
   translationOpenAiBaseUrl: string;
@@ -549,6 +550,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
     translationEnabled: false,
     translationProvider: 'libretranslate',
     translationUrl: '',
+    translationDeeplUrl: '',
     translationApiKey: '',
     translationModel: '',
     translationOpenAiBaseUrl: '',
@@ -627,6 +629,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
   const [initialTranslationEnabled, setInitialTranslationEnabled] = useState(false);
   const [initialTranslationProvider, setInitialTranslationProvider] = useState<TranslationProvider>('libretranslate');
   const [initialTranslationUrl, setInitialTranslationUrl] = useState('');
+  const [initialTranslationDeeplUrl, setInitialTranslationDeeplUrl] = useState('');
   const [initialTranslationApiKey, setInitialTranslationApiKey] = useState('');
   const [initialTranslationModel, setInitialTranslationModel] = useState('');
   const [initialTranslationOpenAiBaseUrl, setInitialTranslationOpenAiBaseUrl] = useState('');
@@ -901,6 +904,9 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
           const translationUrl = typeof settings.translationUrl === 'string' ? settings.translationUrl : '';
           updateField('translationUrl', translationUrl);
           setInitialTranslationUrl(translationUrl);
+          const translationDeeplUrl = typeof settings.translationDeeplUrl === 'string' ? settings.translationDeeplUrl : '';
+          updateField('translationDeeplUrl', translationDeeplUrl);
+          setInitialTranslationDeeplUrl(translationDeeplUrl);
           const translationApiKey = typeof settings.translationApiKey === 'string' ? settings.translationApiKey : '';
           updateField('translationApiKey', translationApiKey);
           setInitialTranslationApiKey(translationApiKey);
@@ -1033,6 +1039,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       translationEnabled: initialTranslationEnabled,
       translationProvider: initialTranslationProvider,
       translationUrl: initialTranslationUrl,
+      translationDeeplUrl: initialTranslationDeeplUrl,
       translationApiKey: initialTranslationApiKey,
       translationModel: initialTranslationModel,
       translationOpenAiBaseUrl: initialTranslationOpenAiBaseUrl,
@@ -1057,7 +1064,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       initialPrivacyPolicyUrl, initialTermsOfServiceUrl, initialContactUrl,
       initialCartoApiKey, initialCotFeedEnabled, initialCotFeedPort,
       initialAdsbMatchEnabled, initialAdsbFeed, initialAdsbApiToken,
-      initialTranslationEnabled, initialTranslationProvider, initialTranslationUrl, initialTranslationApiKey, initialTranslationModel, initialTranslationOpenAiBaseUrl, initialTranslationDefaultLanguage, initialTranslationDefaultOutgoingLanguage]);
+      initialTranslationEnabled, initialTranslationProvider, initialTranslationUrl, initialTranslationDeeplUrl, initialTranslationApiKey, initialTranslationModel, initialTranslationOpenAiBaseUrl, initialTranslationDefaultLanguage, initialTranslationDefaultOutgoingLanguage]);
 
   // Re-seed the draft's category-A/B fields whenever the upstream props/context values change.
   // PINNED BEHAVIOR (do not add a dirty-guard here — that would be a behavior change, out of
@@ -1268,6 +1275,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
     setInitialTranslationEnabled(d.translationEnabled);
     setInitialTranslationProvider(d.translationProvider);
     setInitialTranslationUrl(d.translationUrl.trim());
+    setInitialTranslationDeeplUrl(d.translationDeeplUrl.trim());
     setInitialTranslationApiKey(d.translationApiKey.trim());
     setInitialTranslationModel(d.translationModel.trim());
     setInitialTranslationOpenAiBaseUrl(d.translationOpenAiBaseUrl.trim());
@@ -1380,6 +1388,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
         translationEnabled: draft.translationEnabled ? 'true' : 'false',
         translationProvider: draft.translationProvider,
         translationUrl: draft.translationUrl.trim(),
+        translationDeeplUrl: draft.translationDeeplUrl.trim(),
         translationApiKey: draft.translationApiKey.trim(),
         translationModel: draft.translationModel.trim(),
         translationOpenAiBaseUrl: draft.translationOpenAiBaseUrl.trim(),
@@ -3375,6 +3384,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
             enabled={draft.translationEnabled}
             provider={draft.translationProvider}
             url={draft.translationUrl}
+            deeplUrl={draft.translationDeeplUrl}
             apiKey={draft.translationApiKey}
             model={draft.translationModel}
             openAiBaseUrl={draft.translationOpenAiBaseUrl}
@@ -3383,6 +3393,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
             onEnabledChange={(enabled) => updateField('translationEnabled', enabled)}
             onProviderChange={(provider) => updateField('translationProvider', provider)}
             onUrlChange={(url) => updateField('translationUrl', url)}
+            onDeeplUrlChange={(deeplUrl) => updateField('translationDeeplUrl', deeplUrl)}
             onApiKeyChange={(apiKey) => updateField('translationApiKey', apiKey)}
             onModelChange={(model) => updateField('translationModel', model)}
             onOpenAiBaseUrlChange={(openAiBaseUrl) => updateField('translationOpenAiBaseUrl', openAiBaseUrl)}

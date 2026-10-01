@@ -129,11 +129,45 @@ describe('TranslationConfigSection', () => {
     expect(apiService.testTranslationConfig).toHaveBeenCalledWith({
       provider: 'libretranslate',
       url: 'http://libretranslate:5000',
+      deeplUrl: '',
       apiKey: '',
       model: '',
       openAiBaseUrl: '',
       targetLanguage: 'es',
       sourceLanguage: 'en',
     });
+  });
+
+  it('should render DeepL-specific fields and fire onDeeplUrlChange', () => {
+    const onDeeplUrlChange = vi.fn();
+    render(
+      <TranslationConfigSection
+        enabled={true}
+        onEnabledChange={onEnabledChange}
+        provider="deepl"
+        onProviderChange={onProviderChange}
+        url=""
+        onUrlChange={onUrlChange}
+        deeplUrl="https://custom-deepl.internal/v2"
+        onDeeplUrlChange={onDeeplUrlChange}
+        apiKey="test-key:fx"
+        onApiKeyChange={onApiKeyChange}
+        model=""
+        onModelChange={onModelChange}
+        openAiBaseUrl=""
+        onOpenAiBaseUrlChange={onOpenAiBaseUrlChange}
+        defaultLanguage="en"
+        onDefaultLanguageChange={onDefaultLanguageChange}
+        defaultOutgoingLanguage="ja"
+        onDefaultOutgoingLanguageChange={onDefaultOutgoingLanguageChange}
+      />
+    );
+
+    const deeplUrlInput = screen.getByTestId('deepl-url-input') as HTMLInputElement;
+    expect(deeplUrlInput).toBeDefined();
+    expect(deeplUrlInput.value).toBe('https://custom-deepl.internal/v2');
+
+    fireEvent.change(deeplUrlInput, { target: { value: 'https://new-deepl.internal/v2' } });
+    expect(onDeeplUrlChange).toHaveBeenCalledWith('https://new-deepl.internal/v2');
   });
 });
