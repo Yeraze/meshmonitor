@@ -156,6 +156,8 @@ describe('MeshCoreContactSyncSection (#5502)', () => {
     expect(result.textContent).toContain('Skipped, type not known yet: 1');
     expect(result.textContent).toContain('Skipped, ignored or blocked: 1');
     expect(result.textContent).toContain('Free slots: 1 before, 0 after (of 100)');
+    // Full afterwards with nodes left out: point at the per-node Add to radio.
+    expect(screen.getByTestId('meshcore-push-full-hint').textContent).toContain('Add to radio');
   });
 
   it('says when the capacity could not be read', async () => {

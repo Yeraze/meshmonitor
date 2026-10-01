@@ -265,6 +265,14 @@ export const MeshCoreContactSyncSection: React.FC<MeshCoreContactSyncSectionProp
           {pushResult.error && <li className={styles.error}>{pushResult.error}</li>}
         </ul>
       )}
+      {pushResult && pushResult.notAddedNoRoom > 0 && pushResult.freeSlotsAfter === 0 && (
+        <p className="hint" data-testid="meshcore-push-full-hint">
+          {t(
+            'meshcore.contact_sync.full_hint',
+            "The radio's contact list is full, so nothing more could be added. To add a specific node, open it in Node Details and use \"Add to radio\": after you confirm, the radio replaces its oldest contact that isn't a favourite. Or remove contacts you no longer need.",
+          )}
+        </p>
+      )}
     </div>
   );
 };

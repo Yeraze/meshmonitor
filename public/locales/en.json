@@ -6158,6 +6158,7 @@
   "meshcore.not_on_device.settings_hint": "To add many nodes at once, or to check whether the radio adds contacts automatically, see Radio contact list in MeshCore Settings.",
   "meshcore.contact_sync.title": "Radio contact list",
   "meshcore.contact_sync.device_list_unknown": "The radio's contact list hasn't been read since it connected, so MeshMonitor can't tell yet which nodes it holds. Push to radio still checks the radio first.",
+  "meshcore.contact_sync.full_hint": "The radio's contact list is full, so nothing more could be added. To add a specific node, open it in Node Details and use \"Add to radio\": after you confirm, the radio replaces its oldest contact that isn't a favourite. Or remove contacts you no longer need.",
   "meshcore.contact_sync.hint": "The radio keeps its own contact list, separate from the nodes MeshMonitor tracks. It can only log in to, poll, or message nodes in that list.",
   "meshcore.contact_sync.auto_add_label": "Auto-add contacts",
   "meshcore.contact_sync.unknown": "Unknown",
