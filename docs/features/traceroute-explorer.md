@@ -93,8 +93,10 @@ loaded window.
 - **Retention:** MeshMonitor keeps the newest `TRACEROUTE_HISTORY_LIMIT` runs
   per node pair (default 50) and prunes old traceroutes by age, so busy pairs
   thin out over time. The summary bar shows the current limit.
-- **Window size:** one load holds at most 5,000 traceroutes, newest first. If a
-  window holds more, a banner says so; pick a shorter time range.
+- **Window size:** one load reads at most 20,000 stored rows, newest first.
+  A traceroute that several sources stored counts once per source, so on a
+  busy multi-source install that is a few days. If a window holds more, a
+  banner says so; pick a shorter time range.
 - **Meshtastic only:** MeshCore path discovery does not store traceroutes in
   this table.
 
@@ -127,6 +129,6 @@ Response (`{ success: true, data }`):
   strings (SNR in raw dB × 4), `channel`, `packetId` and `transportMechanism`.
 - `nodes`: one entry per node the runs mention: `nodeNum`, `nodeId`,
   `shortName`, `longName`, `role`, `hwModel`, `latitude`, `longitude`.
-- `truncated`, `scanLimit` (5000), `retentionPerPair`.
+- `truncated`, `scanLimit` (20000 stored rows), `retentionPerPair`.
 
 Errors: `INVALID_HOURS` (400), `TRACEROUTE_EXPLORER_FAILED` (500).

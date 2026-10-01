@@ -222,7 +222,9 @@ router.get(
 // apply. Node positions come only from rows the caller may see on the map.
 //
 // Read-only: sends nothing to any node.
-export const EXPLORER_SCAN_LIMIT = 5000;
+// A busy multi-source install stores ~5 rows per traceroute (each MQTT
+// source keeps its own copy), so 24h can pass 5,000 rows on its own.
+export const EXPLORER_SCAN_LIMIT = 20000;
 const EXPLORER_MAX_HOURS = 24 * 365;
 
 router.get('/explorer', optionalAuth(), async (req: Request, res: Response) => {

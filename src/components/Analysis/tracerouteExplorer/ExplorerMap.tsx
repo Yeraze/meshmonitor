@@ -66,6 +66,25 @@ const FitToNodes: React.FC<{ points: Array<[number, number]>; fitKey: string }> 
   return null;
 };
 
+/** Zoom to a run when the user pins it (not on hover), so a selected path
+ *  is readable without hunting for it on a busy map. */
+const FitToRun: React.FC<{ points: Array<[number, number]>; runKey: string | null }> = ({ points, runKey }) => {
+  const map = useMap();
+  const pointsRef = useRef(points);
+  pointsRef.current = points;
+  useEffect(() => {
+    const pts = pointsRef.current;
+    if (!runKey || pts.length === 0) return;
+    if (pts.length === 1) {
+      map.setView(pts[0], Math.max(map.getZoom(), 12));
+      return;
+    }
+    const bounds = L.latLngBounds(pts);
+    if (bounds.isValid()) map.fitBounds(bounds, { padding: [50, 50], maxZoom: 13 });
+  }, [map, runKey]);
+  return null;
+};
+
 /** Leaflet keeps its own size; the pane resizes with the split divider, the
  *  collapse rail and full screen, so tell it whenever the container changes. */
 const InvalidateOnResize: React.FC = () => {
@@ -89,6 +108,8 @@ export interface ExplorerMapProps {
   runs: ExplorerRun[];
   nodes: Map<number, ExplorerNodeWire>;
   focusRun: ExplorerRun | null;
+  /** The pinned run (not the hover preview); the map zooms to it. */
+  selectedRun: ExplorerRun | null;
   nodeFilter: number | null;
   lineMode: LineMode;
   fitKey: string;
@@ -100,6 +121,7 @@ export const ExplorerMap: React.FC<ExplorerMapProps> = ({
   runs,
   nodes,
   focusRun,
+  selectedRun,
   nodeFilter,
   lineMode,
   fitKey,
@@ -142,6 +164,11 @@ export const ExplorerMap: React.FC<ExplorerMapProps> = ({
     return decomposeTraceroute(focusRun.wire, { resolvePosition: pos });
   }, [focusRun, pos]);
 
+  const selectedPoints = useMemo(
+    () => (selectedRun ? runNodes(selectedRun).flatMap(n => (pos(n) ? [pos(n)!] : [])) : []),
+    [selectedRun, pos],
+  );
+
   const focusNodes = useMemo(() => new Set(focusRun ? runNodes(focusRun) : []), [focusRun]);
   const unpositioned = shownNodes.length === 0 && runs.length > 0;
 
@@ -159,6 +186,7 @@ export const ExplorerMap: React.FC<ExplorerMapProps> = ({
       >
         <FitToNodes points={allPoints} fitKey={fitKey} />
         <InvalidateOnResize />
+        <FitToRun points={selectedPoints} runKey={selectedRun?.key ?? null} />
         <BackgroundClick onClick={onBackgroundClick} />
 
         {links.map(link => {

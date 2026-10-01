@@ -410,6 +410,8 @@
 .table {
   border-collapse: collapse;
   width: 100%;
+  /* Narrow panes scroll sideways instead of crushing columns into tall rows. */
+  min-width: 880px;
   font-size: 13px;
   color: var(--color-text);
 }
@@ -467,6 +469,22 @@
 
 .pairRow td {
   font-weight: 500;
+}
+
+.sourceCell {
+  max-width: 180px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--color-text-subtle);
+}
+
+.sourceMore {
+  color: var(--color-text-faint);
+}
+
+.pairRow td:first-child {
+  white-space: nowrap;
 }
 
 .caret {

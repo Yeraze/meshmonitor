@@ -47,7 +47,7 @@ vi.mock('react-leaflet', () => ({
     </div>
   ),
   Tooltip: ({ children }: any) => <span>{children}</span>,
-  useMap: () => ({ getContainer: () => document.createElement('div'), invalidateSize: vi.fn(), setView: vi.fn(), fitBounds: vi.fn() }),
+  useMap: () => ({ getZoom: () => 10, getContainer: () => document.createElement('div'), invalidateSize: vi.fn(), setView: vi.fn(), fitBounds: vi.fn() }),
   useMapEvents: () => null,
 }));
 
@@ -79,6 +79,7 @@ function renderMap(props: Partial<React.ComponentProps<typeof ExplorerMap>> = {}
       runs={runs}
       nodes={nodes}
       focusRun={null}
+      selectedRun={null}
       nodeFilter={null}
       lineMode="usage"
       fitKey="k"
@@ -124,6 +125,7 @@ describe('ExplorerMap', () => {
         runs={runs}
         nodes={new Map([node(A, null), node(B, null), node(R, null)].map(n => [n.nodeNum, n]))}
         focusRun={null}
+        selectedRun={null}
         nodeFilter={null}
         lineMode="snr"
         fitKey="k"

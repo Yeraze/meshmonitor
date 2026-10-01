@@ -340,7 +340,7 @@ export const TracerouteExplorerReport: React.FC = () => {
         <div className="reports-banner reports-banner--warning">
           {t(
             'analysis.traceroute_explorer.truncated',
-            'Showing the newest {{count}} traceroutes. Pick a shorter time range to see everything in it.',
+            'This time range holds more than {{count}} stored rows, so only the newest are shown. Pick a shorter range to see all of it.',
             { count: data.scanLimit },
           )}
         </div>
@@ -426,6 +426,7 @@ export const TracerouteExplorerReport: React.FC = () => {
               runs={mapRuns}
               nodes={nodes}
               focusRun={focusRun}
+              selectedRun={selectedRun}
               nodeFilter={filters.nodeNum}
               lineMode={prefs.lines}
               fitKey={fitKey}

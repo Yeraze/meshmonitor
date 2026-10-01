@@ -216,7 +216,7 @@ describe('TracerouteExplorerReport', () => {
   it('warns when the window was truncated', async () => {
     fetchExplorer.mockResolvedValue(response({ truncated: true }));
     renderReport();
-    expect(await screen.findByText(/Showing the newest 5000 traceroutes/)).toBeInTheDocument();
+    expect(await screen.findByText(/more than 5000 stored rows/)).toBeInTheDocument();
   });
 
   it('refetches when the time range changes', async () => {

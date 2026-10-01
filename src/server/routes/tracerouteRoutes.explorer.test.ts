@@ -93,7 +93,7 @@ describe('GET /api/traceroutes/explorer', () => {
 
     const hop = res.body.data.nodes.find((n: any) => n.nodeNum === N_HOP);
     expect(hop).toMatchObject({ nodeId: nodeIdFor(N_HOP), longName: `Node ${N_HOP.toString(16)}`, latitude: 40.1, longitude: -75.2 });
-    expect(res.body.data).toMatchObject({ truncated: false, scanLimit: 5000 });
+    expect(res.body.data).toMatchObject({ truncated: false, scanLimit: 20000 });
     expect(typeof res.body.data.retentionPerPair).toBe('number');
   });
 

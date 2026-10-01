@@ -22,7 +22,8 @@ import styles from './TracerouteExplorer.module.css';
 
 export type GroupMode = 'pair' | 'flat';
 
-const FLAT_PAGE = 200;
+/** Rows (runs, or pairs when grouped) rendered before "Show more". */
+const PAGE = 200;
 const SPARK_RUNS = 14;
 
 interface Ctx {
@@ -56,7 +57,16 @@ const When: React.FC<{ ts: number; ctx: Ctx }> = ({ ts, ctx }) => (
   </span>
 );
 
-const sourceList = (ids: string[], ctx: Ctx) => ids.map(id => ctx.sourceNames.get(id) ?? id).join(', ');
+/** First source name, then "+N"; the full list goes in the tooltip. */
+const SourceCell: React.FC<{ ids: string[]; ctx: Ctx }> = ({ ids, ctx }) => {
+  const names = ids.map(id => ctx.sourceNames.get(id) ?? id);
+  return (
+    <td className={styles.sourceCell} title={names.join(', ')}>
+      {names[0]}
+      {names.length > 1 && <span className={styles.sourceMore}> +{names.length - 1}</span>}
+    </td>
+  );
+};
 
 const RunResult: React.FC<{ run: ExplorerRun }> = ({ run }) => {
   const { t } = useTranslation();
@@ -95,9 +105,9 @@ export const ExplorerTable: React.FC<ExplorerTableProps> = props => {
   const { t } = useTranslation();
   const { runs, pairs, groupMode, selectedKey, openPairs, onTogglePair, onSelectRun, onHoverRun } = props;
   const ctx: Ctx = props;
-  const [flatLimit, setFlatLimit] = useState(FLAT_PAGE);
+  const [limit, setLimit] = useState(PAGE);
   // New data or filters start from the first page again.
-  useEffect(() => setFlatLimit(FLAT_PAGE), [runs]);
+  useEffect(() => setLimit(PAGE), [runs]);
 
   const activate = (e: React.KeyboardEvent, fn: () => void) => {
     if (e.key === 'Enter' || e.key === ' ') {
@@ -141,9 +151,18 @@ export const ExplorerTable: React.FC<ExplorerTableProps> = props => {
       <td>
         <RunResult run={run} />
       </td>
-      <td className={styles.muted}>{sourceList(run.sourceIds, ctx)}</td>
+      <SourceCell ids={run.sourceIds} ctx={ctx} />
     </tr>
   );
+
+  const showMore = (total: number) =>
+    total > limit && (
+      <div className={styles.moreRow}>
+        <button type="button" className="reports-btn reports-btn--ghost" onClick={() => setLimit(l => l + PAGE)}>
+          {t('analysis.traceroute_explorer.show_more', 'Show {{count}} more', { count: Math.min(PAGE, total - limit) })}
+        </button>
+      </div>
+    );
 
   if (runs.length === 0) {
     return (
@@ -168,97 +187,94 @@ export const ExplorerTable: React.FC<ExplorerTableProps> = props => {
               <th>{t('analysis.traceroute_explorer.col_source', 'Source')}</th>
             </tr>
           </thead>
-          <tbody>{runs.slice(0, flatLimit).map(run => runRow(run, false))}</tbody>
+          <tbody>{runs.slice(0, limit).map(run => runRow(run, false))}</tbody>
         </table>
-        {runs.length > flatLimit && (
-          <div className={styles.moreRow}>
-            <button type="button" className="reports-btn reports-btn--ghost" onClick={() => setFlatLimit(l => l + FLAT_PAGE)}>
-              {t('analysis.traceroute_explorer.show_more', 'Show {{count}} more', { count: Math.min(FLAT_PAGE, runs.length - flatLimit) })}
-            </button>
-          </div>
-        )}
+        {showMore(runs.length)}
       </>
     );
   }
 
   return (
-    <table className={styles.table} onMouseLeave={() => onHoverRun(null)}>
-      <thead>
-        <tr>
-          <th>{t('analysis.traceroute_explorer.col_last_run', 'Last run')}</th>
-          <th>{t('analysis.traceroute_explorer.col_pair', 'Pair')}</th>
-          <th>{t('analysis.traceroute_explorer.col_latest_path', 'Latest forward path (SNR dB)')}</th>
-          <th>{t('analysis.traceroute_explorer.col_history', 'History')}</th>
-          <th>{t('analysis.traceroute_explorer.col_median_hops', 'Med. hops')}</th>
-          <th>{t('analysis.traceroute_explorer.col_answer_rate', 'Answer rate')}</th>
-          <th>{t('analysis.traceroute_explorer.col_source', 'Source')}</th>
-        </tr>
-      </thead>
-      <tbody>
-        {pairs.map(pair => {
-          const open = openPairs.has(pair.key);
-          const pct = Math.round((pair.answeredCount / pair.runs.length) * 100);
-          const rateClass = pct >= 80 ? styles.rateGood : pct >= 50 ? styles.rateFair : styles.ratePoor;
-          const latest = pair.latestAnswered;
-          return (
-            <React.Fragment key={pair.key}>
-              <tr
-                className={styles.pairRow}
-                tabIndex={0}
-                aria-expanded={open}
-                onClick={() => onTogglePair(pair.key)}
-                onKeyDown={e => activate(e, () => onTogglePair(pair.key))}
-                onMouseEnter={() => onHoverRun(latest)}
-                data-testid="explorer-pair-row"
-              >
-                <td>
-                  <span className={styles.caret}>
-                    <UiIcon name={open ? 'chevronDown' : 'chevronRight'} size={14} />
-                  </span>
-                  <When ts={pair.runs[0].timestamp} ctx={ctx} />
-                </td>
-                <td className={styles.pair}>
-                  {nodeLabel(ctx.nodes, pair.fromNodeNum)}
-                  <UiIcon name="forward" size={12} className={styles.pairArrow} />
-                  {nodeLabel(ctx.nodes, pair.toNodeNum)}
-                </td>
-                <td>
-                  {latest?.forward ? (
-                    <PathChips seq={latest.forward} snr={latest.forwardSnr} nodes={ctx.nodes} />
-                  ) : (
-                    <span className={styles.muted}>{t('analysis.traceroute_explorer.never_answered', 'Never answered')}</span>
-                  )}
-                  {pair.distinctPaths > 1 && (
-                    <div>
-                      <span className={`${styles.tag} ${styles.tagFlag}`}>
-                        {t('analysis.traceroute_explorer.paths_seen', '{{count}} paths seen', { count: pair.distinctPaths })}
-                      </span>
-                    </div>
-                  )}
-                </td>
-                <td className={styles.num}>
-                  {t('analysis.traceroute_explorer.run_count', '{{count}} runs', { count: pair.runs.length })}
-                  <span className={styles.spark} aria-hidden="true">
-                    {pair.runs
-                      .slice(0, SPARK_RUNS)
-                      .reverse()
-                      .map(r => (
-                        <i key={r.key} className={r.answered ? styles.sparkOk : styles.sparkFail} />
-                      ))}
-                  </span>
-                </td>
-                <td className={styles.num}>{pair.medianHops ?? '—'}</td>
-                <td className={`${styles.num} ${rateClass}`}>
-                  {t('analysis.traceroute_explorer.answer_pct', '{{pct}}% answered', { pct })}
-                </td>
-                <td className={styles.muted}>{sourceList(pair.sourceIds, ctx)}</td>
-              </tr>
-              {open && pair.runs.map(run => runRow(run, true))}
-            </React.Fragment>
-          );
-        })}
-      </tbody>
-    </table>
+    <>
+      <table className={styles.table} onMouseLeave={() => onHoverRun(null)}>
+        <thead>
+          <tr>
+            <th>{t('analysis.traceroute_explorer.col_last_run', 'Last run')}</th>
+            <th>{t('analysis.traceroute_explorer.col_pair', 'Pair')}</th>
+            <th>{t('analysis.traceroute_explorer.col_latest_path', 'Latest forward path (SNR dB)')}</th>
+            <th>{t('analysis.traceroute_explorer.col_history', 'History')}</th>
+            <th>{t('analysis.traceroute_explorer.col_median_hops', 'Med. hops')}</th>
+            <th>{t('analysis.traceroute_explorer.col_answer_rate', 'Answer rate')}</th>
+            <th>{t('analysis.traceroute_explorer.col_source', 'Source')}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {pairs.slice(0, limit).map(pair => {
+            const open = openPairs.has(pair.key);
+            const pct = Math.round((pair.answeredCount / pair.runs.length) * 100);
+            const rateClass = pct >= 80 ? styles.rateGood : pct >= 50 ? styles.rateFair : styles.ratePoor;
+            const latest = pair.latestAnswered;
+            return (
+              <React.Fragment key={pair.key}>
+                <tr
+                  className={styles.pairRow}
+                  tabIndex={0}
+                  aria-expanded={open}
+                  onClick={() => onTogglePair(pair.key)}
+                  onKeyDown={e => activate(e, () => onTogglePair(pair.key))}
+                  onMouseEnter={() => onHoverRun(latest)}
+                  data-testid="explorer-pair-row"
+                >
+                  <td>
+                    <span className={styles.caret}>
+                      <UiIcon name={open ? 'chevronDown' : 'chevronRight'} size={14} />
+                    </span>
+                    <When ts={pair.runs[0].timestamp} ctx={ctx} />
+                  </td>
+                  <td className={styles.pair}>
+                    {nodeLabel(ctx.nodes, pair.fromNodeNum)}
+                    <UiIcon name="forward" size={12} className={styles.pairArrow} />
+                    {nodeLabel(ctx.nodes, pair.toNodeNum)}
+                  </td>
+                  <td>
+                    {latest?.forward ? (
+                      <PathChips seq={latest.forward} snr={latest.forwardSnr} nodes={ctx.nodes} />
+                    ) : (
+                      <span className={styles.muted}>{t('analysis.traceroute_explorer.never_answered', 'Never answered')}</span>
+                    )}
+                    {pair.distinctPaths > 1 && (
+                      <div>
+                        <span className={`${styles.tag} ${styles.tagFlag}`}>
+                          {t('analysis.traceroute_explorer.paths_seen', '{{count}} paths seen', { count: pair.distinctPaths })}
+                        </span>
+                      </div>
+                    )}
+                  </td>
+                  <td className={styles.num}>
+                    {t('analysis.traceroute_explorer.run_count', '{{count}} runs', { count: pair.runs.length })}
+                    <span className={styles.spark} aria-hidden="true">
+                      {pair.runs
+                        .slice(0, SPARK_RUNS)
+                        .reverse()
+                        .map(r => (
+                          <i key={r.key} className={r.answered ? styles.sparkOk : styles.sparkFail} />
+                        ))}
+                    </span>
+                  </td>
+                  <td className={styles.num}>{pair.medianHops ?? '—'}</td>
+                  <td className={`${styles.num} ${rateClass}`}>
+                    {t('analysis.traceroute_explorer.answer_pct', '{{pct}}% answered', { pct })}
+                  </td>
+                  <SourceCell ids={pair.sourceIds} ctx={ctx} />
+                </tr>
+                {open && pair.runs.map(run => runRow(run, true))}
+              </React.Fragment>
+            );
+          })}
+        </tbody>
+      </table>
+      {showMore(pairs.length)}
+    </>
   );
 };
 
