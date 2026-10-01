@@ -49,7 +49,7 @@ function renderPanel(receiveOnly: boolean) {
       onShareContact={vi.fn().mockResolvedValue({ ok: true })}
       onTracePath={vi.fn().mockResolvedValue({ hops: [], lastSnr: 0 })}
       onPingZeroHop={vi.fn().mockResolvedValue({ ok: true, rttMs: 1, snrToTarget: 1, snrFromTarget: 1 })}
-      onDiscoverPath={vi.fn().mockResolvedValue(true)}
+      onDiscoverPath={vi.fn().mockResolvedValue({ suggestedTimeoutMs: 0, discoveryTimeoutMs: 30000 })}
       onGetNeighbours={vi.fn().mockResolvedValue({ total: 0, neighbours: [] })}
       onRemoveContact={vi.fn().mockResolvedValue(true)}
       onExportContact={vi.fn().mockResolvedValue([1, 2, 3])}

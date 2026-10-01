@@ -85,7 +85,7 @@ function makeActions(overrides: Partial<MeshCoreActions> = {}): MeshCoreActions 
     setContactOutPath: vi.fn().mockResolvedValue(true),
     traceContactPath: vi.fn().mockResolvedValue(null),
     pingContactZeroHop: vi.fn().mockResolvedValue({ ok: false, error: 'no reply' }),
-    discoverContactPath: vi.fn().mockResolvedValue(true),
+    discoverContactPath: vi.fn().mockResolvedValue({ suggestedTimeoutMs: 0, discoveryTimeoutMs: 30000 }),
     removeContact: vi.fn().mockResolvedValue(true),
     exportContact: vi.fn().mockResolvedValue(null),
     getNeighbours: vi.fn().mockResolvedValue(null),

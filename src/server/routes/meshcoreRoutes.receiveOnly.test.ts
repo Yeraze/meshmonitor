@@ -63,7 +63,7 @@ function makeStubManager(sourceId: string) {
 
     // ---- contacts (RF) ----
     resetContactPath: async (..._args: unknown[]) => true,
-    discoverContactPath: async (..._args: unknown[]) => true,
+    discoverContactPath: async (..._args: unknown[]) => ({ suggestedTimeoutMs: 0, discoveryTimeoutMs: 30000 }),
     discoverNodes: async (..._args: unknown[]) => ({ returned: 0, newCount: 0, nodes: [] }),
     discoverRegions: async () => ({ regions: [], byRepeater: {} }),
     traceContactPath: async (..._args: unknown[]) => ({ hops: [], lastSnr: 0 }),

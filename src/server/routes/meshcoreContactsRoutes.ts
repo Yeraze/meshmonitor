@@ -265,6 +265,10 @@ router.post(
  * contact responds, the normal PATH return mechanism establishes the
  * forwarding route. The actual path update arrives asynchronously via
  * the PathUpdated push — this endpoint only confirms the flood was sent.
+ *
+ * #5508: returns `{ success: true, data: { suggestedTimeoutMs, discoveryTimeoutMs } }`
+ * so the UI can count down while it waits for the reply. The countdown is
+ * UI-only; nothing is retransmitted.
  */
 router.post(
   '/contacts/:publicKey/discover-path',
@@ -276,23 +280,25 @@ router.post(
     try {
       const publicKey = req.params.publicKey;
       if (!isValidPublicKey(publicKey)) {
-        return res.status(400).json({
-          success: false,
-          error: 'Invalid public key — must be 64-char hex',
-        });
+        return fail(res, 400, 'INVALID_PUBLIC_KEY', 'Invalid public key — must be 64-char hex');
       }
-      const ok = await managerFor(req, res).discoverContactPath(publicKey);
-      if (!ok) {
-        return res.status(409).json({
-          success: false,
-          error: 'Path discovery failed — contact may be unknown, source disconnected, or not a Companion device',
-        });
+      const result = await managerFor(req, res).discoverContactPath(publicKey);
+      if (!result) {
+        return fail(
+          res,
+          409,
+          'DISCOVER_PATH_FAILED',
+          'Path discovery failed — contact may be unknown, source disconnected, or not a Companion device',
+        );
       }
-      res.json({ success: true });
+      return ok(res, {
+        suggestedTimeoutMs: result.suggestedTimeoutMs,
+        discoveryTimeoutMs: result.discoveryTimeoutMs,
+      });
     } catch (error) {
       if (failIfTxDisabled(res, error)) return;
       logger.error('[API] Error discovering contact path:', error);
-      res.status(500).json({ success: false, error: 'Failed to discover path' });
+      return fail(res, 500, 'DISCOVER_PATH_FAILED', 'Failed to discover path');
     }
   },
 );

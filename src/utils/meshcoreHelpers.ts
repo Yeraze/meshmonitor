@@ -42,6 +42,9 @@ export interface MeshCoreContact {
    * query, or message it until it is added. `undefined` = unknown.
    */
   onDevice?: boolean;
+  /** #5508: server epoch ms of the last PATH_DISCOVERY_RESPONSE for this
+   *  contact (in-memory on the server; may be absent after a device re-read). */
+  pathDiscoveredAt?: number;
   /**
    * #5390: when this source first heard the node, epoch MILLISECONDS. Not on
    * the wire contact record; views copy it in from the durable node row.

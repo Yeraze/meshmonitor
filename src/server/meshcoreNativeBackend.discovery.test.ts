@@ -676,3 +676,53 @@ describe('MeshCoreNativeBackend — discovery responder', () => {
     expect(op(callLog[0])).not.toBe(op(callLog[2]));
   });
 });
+
+describe('MeshCoreNativeBackend — discover_path suggested timeout (#5508)', () => {
+  beforeEach(() => installMockModule());
+  afterEach(() => __setMeshCoreModule(null));
+
+  /**
+   * Decode a raw RESP_CODE_SENT frame through the REAL meshcore.js parser, so
+   * the test pins the byte layout: [code][is_flood][tag u32 LE][suggested_timeout_ms u32 LE].
+   */
+  async function parseSentFrame(frame: Uint8Array): Promise<unknown> {
+    const { Connection } = await import('@liamcottle/meshcore.js');
+    const real = new (Connection as any)();
+    let parsed: unknown;
+    real.emit = (event: unknown, payload: unknown) => {
+      if (event === ResponseCodes.Sent) parsed = payload;
+    };
+    real.onFrameReceived(frame);
+    return parsed;
+  }
+
+  it('returns suggested_timeout_ms from bytes 6-9 of the Sent frame', async () => {
+    const { backend, conn } = await connectedBackend();
+    // is_flood=1, tag=0x11223344, suggested_timeout_ms=20000 (0x4E20)
+    const sentFrame = Uint8Array.from([6, 1, 0x44, 0x33, 0x22, 0x11, 0x20, 0x4e, 0x00, 0x00]);
+    const parsed = await parseSentFrame(sentFrame);
+    (conn as any).sendToRadioFrame = (frame: Uint8Array) => {
+      conn.sentFrames.push(frame);
+      setImmediate(() => conn.emit(ResponseCodes.Sent, parsed));
+    };
+
+    const res = await backend.sendCommand('discover_path', { public_key: 'cc'.repeat(32) });
+
+    expect(res.success).toBe(true);
+    expect(res.data).toEqual({ ok: true, suggested_timeout_ms: 20000 });
+    expect(conn.sentFrames[0][0]).toBe(52);
+  });
+
+  it('returns 0 when the Sent ack carries no timeout', async () => {
+    const { backend, conn } = await connectedBackend();
+    (conn as any).sendToRadioFrame = (frame: Uint8Array) => {
+      conn.sentFrames.push(frame);
+      setImmediate(() => conn.emit(ResponseCodes.Sent));
+    };
+
+    const res = await backend.sendCommand('discover_path', { public_key: 'cc'.repeat(32) });
+
+    expect(res.success).toBe(true);
+    expect(res.data).toEqual({ ok: true, suggested_timeout_ms: 0 });
+  });
+});

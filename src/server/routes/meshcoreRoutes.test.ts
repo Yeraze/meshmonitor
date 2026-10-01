@@ -59,7 +59,7 @@ const meshcoreManager = {
   removeContact: vi.fn().mockResolvedValue(true),
   forgetLocalContact: vi.fn().mockResolvedValue(true),
   resetContactPath: vi.fn().mockResolvedValue(true),
-  discoverContactPath: vi.fn().mockResolvedValue(true),
+  discoverContactPath: vi.fn().mockResolvedValue({ suggestedTimeoutMs: 0, discoveryTimeoutMs: 30000 }),
   discoverNodes: vi.fn().mockResolvedValue({ returned: 0, newCount: 0 }),
   getRespondToDiscovery: vi.fn().mockResolvedValue(false),
   setRespondToDiscovery: vi.fn().mockResolvedValue(undefined),
@@ -2313,7 +2313,7 @@ describe('MeshCore Routes', () => {
 
     beforeEach(() => {
       meshcoreManager.discoverContactPath.mockReset();
-      meshcoreManager.discoverContactPath.mockResolvedValue(true);
+      meshcoreManager.discoverContactPath.mockResolvedValue({ suggestedTimeoutMs: 0, discoveryTimeoutMs: 30000 });
     });
 
     it('requires authentication', async () => {

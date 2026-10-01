@@ -1,0 +1,12 @@
+/*
+ * MeshCoreContactDetailPanel CSS module (#5508). Scoped here per the
+ * CLAUDE.md CSS containment rule; colours come from theme tokens.
+ */
+
+.discoverSuccess {
+  color: var(--color-success);
+}
+
+.discoverNoResponse {
+  color: var(--color-warning);
+}
