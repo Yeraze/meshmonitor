@@ -1,7 +1,7 @@
 /**
  * Translation Service
  *
- * Handles chat message translation using configurable providers:
+ * Handles chat message translation orchestration using configurable providers:
  * - LibreTranslate (Self-hosted or hosted)
  * - OpenAI-Compatible Endpoints (Ollama, OpenRouter, OpenAI, etc.)
  * - DeepL (Free / Pro API)
@@ -14,6 +14,12 @@ import databaseService from '../../../services/database.js';
 import { isEmoji } from '../../../utils/text.js';
 import { getTranslationCache, type TranslationCacheKey } from './translationCache.js';
 import { STANDARD_LANGUAGES, type TranslationLanguageOption } from '../../../types/translation.js';
+import {
+  getTranslationProvider,
+  buildServiceEndpoint,
+  type ProviderConfig,
+  type TranslationProviderResult,
+} from './providers/index.js';
 
 export type TranslationProvider = 'libretranslate' | 'openai' | 'deepl' | 'google';
 
@@ -41,7 +47,7 @@ export interface TranslationResult {
 }
 
 export type LanguageOption = TranslationLanguageOption;
-export { STANDARD_LANGUAGES };
+export { STANDARD_LANGUAGES, buildServiceEndpoint };
 
 /**
  * Filter out raw telemetry packets, standard radio tests, and emoji-only messages
@@ -78,19 +84,6 @@ export function isNonConversational(text: string): boolean {
   }
 
   return false;
-}
-
-/**
- * Safely constructs a full service endpoint from a base URL and default fallback.
- * Automatically appends the required subpath (e.g. '/translate') if missing.
- */
-export function buildServiceEndpoint(baseUrl: string, defaultEndpoint: string, path: string): string {
-  const trimmed = (baseUrl || '').trim();
-  if (!trimmed) {
-    return defaultEndpoint;
-  }
-  const clean = trimmed.replace(/\/+$/, '');
-  return clean.endsWith(path) ? clean : `${clean}${path}`;
 }
 
 export class TranslationService {
@@ -246,37 +239,21 @@ export class TranslationService {
       throw new Error('Translation is not enabled');
     }
 
-    // Execute translation based on provider
-    let result: { translatedText: string; detectedSourceLanguage?: string };
-
-    const executeProvider = async (tLang: string, sLang: string) => {
-      switch (provider) {
-        case 'libretranslate':
-          return this.translateWithLibreTranslate(text, sLang, tLang, {
-            url: options.url || settings.url || 'http://libretranslate:5000',
-            apiKey: options.apiKey || settings.apiKey || '',
-          });
-        case 'openai':
-          return this.translateWithOpenAI(text, sLang, tLang, {
-            baseUrl: options.openAiBaseUrl || settings.openAiBaseUrl || 'http://host.docker.internal:11434/v1',
-            apiKey: options.apiKey || settings.apiKey || '',
-            model: options.model || settings.model || 'gpt-4o-mini',
-          });
-        case 'deepl':
-          return this.translateWithDeepL(text, sLang, tLang, {
-            apiKey: options.apiKey || settings.apiKey || '',
-            url: options.deeplUrl || settings.deeplUrl || '',
-          });
-        case 'google':
-          return this.translateWithGoogle(text, sLang, tLang, {
-            apiKey: options.apiKey || settings.apiKey || '',
-          });
-        default:
-          throw new Error(`Unsupported translation provider: ${provider}`);
-      }
+    // Execute translation using provider implementation
+    const providerInstance = getTranslationProvider(provider);
+    const providerConfig: ProviderConfig = {
+      url: options.url || settings.url,
+      deeplUrl: options.deeplUrl || settings.deeplUrl,
+      apiKey: options.apiKey || settings.apiKey,
+      model: options.model || settings.model,
+      openAiBaseUrl: options.openAiBaseUrl || settings.openAiBaseUrl,
     };
 
-    result = await executeProvider(targetLang, sourceLang);
+    const executeProvider = async (tLang: string, sLang: string): Promise<TranslationProviderResult> => {
+      return providerInstance.translate(text, sLang, tLang, providerConfig);
+    };
+
+    let result = await executeProvider(targetLang, sourceLang);
 
     // If no explicit target was requested and detected source matches the primary target language,
     // automatically flip to the default outgoing/foreign language (e.g. English -> Japanese).
@@ -312,230 +289,6 @@ export class TranslationService {
       targetLanguage: targetLang,
       cached: false,
       provider,
-    };
-  }
-
-  /**
-   * LibreTranslate backend
-   */
-  private async translateWithLibreTranslate(
-    text: string,
-    sourceLang: string,
-    targetLang: string,
-    config: { url: string; apiKey?: string }
-  ): Promise<{ translatedText: string; detectedSourceLanguage?: string }> {
-    const endpoint = buildServiceEndpoint(config.url || '', 'http://libretranslate:5000/translate', '/translate');
-
-    const body: Record<string, unknown> = {
-      q: text,
-      source: !sourceLang || sourceLang === 'auto' ? 'auto' : sourceLang,
-      target: targetLang,
-      format: 'text',
-    };
-
-    if (config.apiKey && config.apiKey.trim()) {
-      body.api_key = config.apiKey.trim();
-    }
-
-    const response = await fetch(endpoint, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-      signal: AbortSignal.timeout(10000),
-    });
-
-    if (!response.ok) {
-      const errText = await response.text().catch(() => '');
-      throw new Error(`LibreTranslate error (${response.status}): ${errText || response.statusText}`);
-    }
-
-    const data = await response.json() as {
-      translatedText?: string;
-      detectedLanguage?: { confidence?: number; language?: string };
-    };
-
-    if (!data.translatedText && data.translatedText !== '') {
-      throw new Error('LibreTranslate returned empty or invalid response');
-    }
-
-    return {
-      translatedText: data.translatedText,
-      detectedSourceLanguage: data.detectedLanguage?.language,
-    };
-  }
-
-  /**
-   * OpenAI-compatible endpoint (Ollama, OpenRouter, OpenAI, vLLM, etc.)
-   */
-  private async translateWithOpenAI(
-    text: string,
-    sourceLang: string,
-    targetLang: string,
-    config: { baseUrl: string; apiKey?: string; model?: string }
-  ): Promise<{ translatedText: string; detectedSourceLanguage?: string }> {
-    const endpoint = buildServiceEndpoint(config.baseUrl || '', 'http://host.docker.internal:11434/v1/chat/completions', '/chat/completions');
-    const model = config.model || 'gpt-4o-mini';
-
-    const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
-    };
-
-    if (config.apiKey && config.apiKey.trim()) {
-      headers.Authorization = `Bearer ${config.apiKey.trim()}`;
-    }
-
-    const systemPrompt = `You are an expert translator for LoRa mesh and radio chat messages.
-Translate the user's message accurately${sourceLang && sourceLang !== 'auto' ? ` from "${sourceLang}"` : ''} into the target language: "${targetLang}".
-Guidelines:
-1. Preserve callsigns, node tags (e.g. !1234abcd), numbers, radio abbreviations, and emoji.
-2. Keep the output as concise as possible to respect LoRa packet constraints.
-3. Return ONLY the translated text with NO quotation marks, markdown wrappers, introductory notes, or commentary.`;
-
-    const body = {
-      model,
-      messages: [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: text },
-      ],
-      temperature: 0.1,
-    };
-
-    const response = await fetch(endpoint, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify(body),
-      signal: AbortSignal.timeout(15000),
-    });
-
-    if (!response.ok) {
-      const errText = await response.text().catch(() => '');
-      throw new Error(`OpenAI-compatible endpoint error (${response.status}): ${errText || response.statusText}`);
-    }
-
-    const data = await response.json() as {
-      choices?: Array<{ message?: { content?: string } }>;
-    };
-
-    const content = data.choices?.[0]?.message?.content;
-    if (typeof content !== 'string') {
-      throw new Error('OpenAI endpoint returned an invalid response structure');
-    }
-
-    return {
-      translatedText: content.trim(),
-    };
-  }
-
-  /**
-   * DeepL API
-   */
-  private async translateWithDeepL(
-    text: string,
-    sourceLang: string,
-    targetLang: string,
-    config: { apiKey: string; url?: string }
-  ): Promise<{ translatedText: string; detectedSourceLanguage?: string }> {
-    if (!config.apiKey || !config.apiKey.trim()) {
-      throw new Error('DeepL API key is required');
-    }
-
-    const key = config.apiKey.trim();
-    const defaultEndpoint = key.endsWith(':fx')
-      ? 'https://api-free.deepl.com/v2/translate'
-      : 'https://api.deepl.com/v2/translate';
-    const endpoint = buildServiceEndpoint(config.url || '', defaultEndpoint, '/translate');
-
-    const body: Record<string, unknown> = {
-      text: [text],
-      target_lang: targetLang.toUpperCase(),
-    };
-
-    if (sourceLang && sourceLang !== 'auto') {
-      body.source_lang = sourceLang.toUpperCase();
-    }
-
-    const response = await fetch(endpoint, {
-      method: 'POST',
-      headers: {
-        'Authorization': `DeepL-Auth-Key ${key}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(body),
-      signal: AbortSignal.timeout(10000),
-    });
-
-    if (!response.ok) {
-      const errText = await response.text().catch(() => '');
-      throw new Error(`DeepL API error (${response.status}): ${errText || response.statusText}`);
-    }
-
-    const data = await response.json() as {
-      translations?: Array<{ text: string; detected_source_language?: string }>;
-    };
-
-    const first = data.translations?.[0];
-    if (!first) {
-      throw new Error('DeepL returned an empty translations array');
-    }
-
-    return {
-      translatedText: first.text,
-      detectedSourceLanguage: first.detected_source_language?.toLowerCase(),
-    };
-  }
-
-  /**
-   * Google Cloud Translation API
-   */
-  private async translateWithGoogle(
-    text: string,
-    sourceLang: string,
-    targetLang: string,
-    config: { apiKey: string }
-  ): Promise<{ translatedText: string; detectedSourceLanguage?: string }> {
-    if (!config.apiKey || !config.apiKey.trim()) {
-      throw new Error('Google Cloud Translation API key is required');
-    }
-
-    const key = encodeURIComponent(config.apiKey.trim());
-    const endpoint = `https://translation.googleapis.com/language/translate/v2?key=${key}`;
-
-    const body: Record<string, unknown> = {
-      q: text,
-      target: targetLang,
-      format: 'text',
-    };
-
-    if (sourceLang && sourceLang !== 'auto') {
-      body.source = sourceLang;
-    }
-
-    const response = await fetch(endpoint, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-      signal: AbortSignal.timeout(10000),
-    });
-
-    if (!response.ok) {
-      const errText = await response.text().catch(() => '');
-      throw new Error(`Google Translation API error (${response.status}): ${errText || response.statusText}`);
-    }
-
-    const data = await response.json() as {
-      data?: {
-        translations?: Array<{ translatedText: string; detectedSourceLanguage?: string }>;
-      };
-    };
-
-    const first = data.data?.translations?.[0];
-    if (!first) {
-      throw new Error('Google Translation API returned an empty response');
-    }
-
-    return {
-      translatedText: first.translatedText,
-      detectedSourceLanguage: first.detectedSourceLanguage?.toLowerCase(),
     };
   }
 }

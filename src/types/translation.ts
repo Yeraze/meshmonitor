@@ -35,6 +35,17 @@ export interface TranslationLanguageOption {
   name: string;
 }
 
+/**
+ * Canonical list of standard supported languages.
+ *
+ * Language codes are sourced from the ISO 639-1 standard (Alpha-2 codes) and IETF BCP 47 language subtag registry:
+ * - https://www.loc.gov/standards/iso639-2/php/code_list.php
+ * - https://www.iana.org/assignments/language-subtag-registry/language-subtag-registry
+ *
+ * Note on Norwegian:
+ * - `nb` (Norwegian Bokmål) is the standardized ISO 639-1 code expected by translation services (DeepL, LibreTranslate).
+ * - `no` is the overarching macrolanguage code.
+ */
 export const STANDARD_LANGUAGES: TranslationLanguageOption[] = [
   { code: 'ar', name: 'Arabic (العربية)' },
   { code: 'zh', name: 'Chinese (中文)' },
@@ -50,7 +61,7 @@ export const STANDARD_LANGUAGES: TranslationLanguageOption[] = [
   { code: 'it', name: 'Italian (Italiano)' },
   { code: 'ja', name: 'Japanese (日本語)' },
   { code: 'ko', name: 'Korean (한국어)' },
-  { code: 'no', name: 'Norwegian (Norsk)' },
+  { code: 'nb', name: 'Norwegian (Norsk)' },
   { code: 'pl', name: 'Polish (Polski)' },
   { code: 'pt', name: 'Portuguese (Português)' },
   { code: 'ru', name: 'Russian (Русский)' },
@@ -61,3 +72,4 @@ export const STANDARD_LANGUAGES: TranslationLanguageOption[] = [
   { code: 'uk', name: 'Ukrainian (Українська)' },
   { code: 'vi', name: 'Vietnamese (Tiếng Việt)' },
 ];
+
