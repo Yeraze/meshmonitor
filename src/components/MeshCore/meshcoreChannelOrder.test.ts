@@ -35,6 +35,15 @@ describe('sortChannels', () => {
     expect(ids(sortChannels(channels, 'lastMessage', { latest }))).toEqual([0, 2, 1, 3]);
   });
 
+  it('message count puts the busiest first and empty channels last, in slot order (#5503)', () => {
+    const counts = { 2: 40, 0: 7, 3: 40 };
+    expect(ids(sortChannels(channels, 'messageCount', { counts }))).toEqual([2, 3, 0, 1]);
+  });
+
+  it('message count with no counts falls back to slot order', () => {
+    expect(ids(sortChannels(channels, 'messageCount'))).toEqual([0, 1, 2, 3]);
+  });
+
   it('custom order follows the saved order', () => {
     expect(ids(sortChannels(channels, 'custom', { customOrder: [3, 1, 0, 2] }))).toEqual([3, 1, 0, 2]);
   });
@@ -68,6 +77,11 @@ describe('moveItem', () => {
 
 describe('persistence', () => {
   beforeEach(() => localStorage.clear());
+
+  it('round-trips the messageCount mode (#5503)', () => {
+    saveChannelSortMode('src-x', 'messageCount');
+    expect(loadChannelSortMode('src-x')).toBe('messageCount');
+  });
 
   it('defaults to device order and ignores junk values', () => {
     expect(loadChannelSortMode('src-a')).toBe('device');

@@ -1128,7 +1128,7 @@ describe('MeshCoreChannelsView — receive-only mode (#4547 Phase 2 WP3)', () =>
 });
 
 describe('MeshCoreChannelsView — display order (#5385, #5379)', () => {
-  function orderFetch(latestTimestamps: Record<number, number> = {}) {
+  function orderFetch(latestTimestamps: Record<number, number> = {}, counts: Record<number, number> = {}) {
     return (url: string) => {
       if (url.includes('/channels/all')) {
         return Promise.resolve(jsonResponse([
@@ -1138,7 +1138,7 @@ describe('MeshCoreChannelsView — display order (#5385, #5379)', () => {
         ]));
       }
       if (url.includes('/channel-counts')) {
-        return Promise.resolve(jsonResponse({ success: true, counts: {}, latestTimestamps }));
+        return Promise.resolve(jsonResponse({ success: true, counts, latestTimestamps }));
       }
       return Promise.resolve(jsonResponse({ success: true, data: [] }));
     };
@@ -1173,6 +1173,31 @@ describe('MeshCoreChannelsView — display order (#5385, #5379)', () => {
     await waitFor(() => expect(rowNames(container)).toEqual(['# alpha', '# Public', '# zulu']));
     expect(localStorage.getItem('meshmonitor-meshcore-channel-sort-mode-src-a')).toBe('name');
     expect(localStorage.getItem('meshmonitor-meshcore-channel-sort-mode-src-b')).toBeNull();
+  });
+
+  it('sorts by message count, busiest first (#5503)', async () => {
+    csrfFetchMock.mockImplementation(orderFetch({}, { 0: 3, 1: 12, 2: 0 }));
+    const { container } = renderView();
+    await waitFor(() => expect(rowNames(container)).toEqual(['# Public', '# zulu', '# alpha']));
+
+    fireEvent.change(screen.getByLabelText('Sort channels by'), { target: { value: 'messageCount' } });
+    await waitFor(() => expect(rowNames(container)).toEqual(['# zulu', '# Public', '# alpha']));
+    expect(localStorage.getItem('meshmonitor-meshcore-channel-sort-mode-src-a')).toBe('messageCount');
+  });
+
+  it('shows each channel\'s last-message time only in Last message sort (#5503)', async () => {
+    const recent = Date.now() - 5 * 60 * 1000;
+    csrfFetchMock.mockImplementation(orderFetch({ 1: recent }));
+    const { container } = renderView();
+    await waitFor(() => expect(rowNames(container)).toEqual(['# Public', '# zulu', '# alpha']));
+    expect(container.textContent).not.toContain('5 minutes ago');
+
+    fireEvent.change(screen.getByLabelText('Sort channels by'), { target: { value: 'lastMessage' } });
+    await waitFor(() => expect(rowNames(container)[0]).toBe('# zulu'));
+    const zulu = screen.getByText('# zulu').closest('.mc-channel-row');
+    expect(zulu?.textContent).toContain('5 minutes ago');
+    const alpha = screen.getByText('# alpha').closest('.mc-channel-row');
+    expect(alpha?.textContent).not.toContain('ago');
   });
 
   it('sorts by last message, newest first', async () => {

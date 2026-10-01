@@ -10,6 +10,7 @@
  *   - `device`      — firmware slot order (the default, and the old behaviour)
  *   - `name`        — alphabetical by channel name
  *   - `lastMessage` — newest activity first; silent channels sink to the bottom
+ *   - `messageCount` — most messages first (#5503); empty channels sink
  *   - `custom`      — the operator's drag-and-drop order (#5379)
  *
  * The mode and the custom order are persisted per source in localStorage,
@@ -17,9 +18,9 @@
  * preference must not need `settings:write`, which read-only viewers lack.
  */
 
-export type ChannelSortMode = 'device' | 'name' | 'lastMessage' | 'custom';
+export type ChannelSortMode = 'device' | 'name' | 'lastMessage' | 'messageCount' | 'custom';
 
-export const CHANNEL_SORT_MODES: readonly ChannelSortMode[] = ['device', 'name', 'lastMessage', 'custom'];
+export const CHANNEL_SORT_MODES: readonly ChannelSortMode[] = ['device', 'name', 'lastMessage', 'messageCount', 'custom'];
 
 export interface OrderableChannel {
   id: number;
@@ -118,6 +119,8 @@ export interface SortChannelsOptions {
   customOrder?: number[];
   /** Newest message timestamp per slot id, used by `lastMessage`. */
   latest?: Record<number, number>;
+  /** Stored message count per slot id, used by `messageCount` (#5503). */
+  counts?: Record<number, number>;
   /** Display label for `name` sorting (defaults to the raw name). */
   label?: (c: OrderableChannel) => string;
 }
@@ -139,6 +142,11 @@ export function sortChannels<T extends OrderableChannel>(
       const latest = opts.latest ?? {};
       // Silent channels (no timestamp) sink to the bottom, in slot order.
       return [...channels].sort((a, b) => (latest[b.id] ?? 0) - (latest[a.id] ?? 0) || byId(a, b));
+    }
+    case 'messageCount': {
+      const counts = opts.counts ?? {};
+      // Busiest first; empty channels sink to the bottom, in slot order.
+      return [...channels].sort((a, b) => (counts[b.id] ?? 0) - (counts[a.id] ?? 0) || byId(a, b));
     }
     case 'custom':
       return applyCustomOrder(channels, opts.customOrder ?? []);

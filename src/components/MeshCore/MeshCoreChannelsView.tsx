@@ -35,6 +35,7 @@ import {
   saveChannelCustomOrder,
   sortChannels,
 } from './meshcoreChannelOrder';
+import { formatRelativeTime } from '../../utils/datetime';
 import styles from './MeshCoreChannelsView.module.css';
 
 const MOBILE_BREAKPOINT = 768;
@@ -626,15 +627,29 @@ export const MeshCoreChannelsView: React.FC<MeshCoreChannelsViewProps> = ({
     [t],
   );
 
+  // Message count per channel, as shown in each row's badge: the persisted
+  // count from the counts endpoint, and for the active channel the merged
+  // stream length when larger, so a just-arrived live message counts before
+  // the next refetch. The Message count sort (#5503) uses the same numbers.
+  const channelCounts = useMemo(() => {
+    const map: Record<number, number> = {};
+    for (const c of displayChannels) {
+      const persisted = counts[c.id] ?? messages.filter(buildChannelFilter(c.id)).length;
+      map[c.id] = c.id === active.id ? Math.max(persisted, filtered.length) : persisted;
+    }
+    return map;
+  }, [displayChannels, counts, messages, active.id, filtered.length]);
+
   // Base order from the sort dropdown (#5385): device slot order, name, last
-  // message, or the saved custom order (#5379).
+  // message, message count (#5503), or the saved custom order (#5379).
   const baseOrderedChannels = useMemo(
     () => sortChannels(displayChannels, sortMode, {
       customOrder,
       latest: effectiveLatest,
+      counts: channelCounts,
       label: channelLabel,
     }),
-    [displayChannels, sortMode, customOrder, effectiveLatest, channelLabel],
+    [displayChannels, sortMode, customOrder, effectiveLatest, channelCounts, channelLabel],
   );
 
   // "Unread first" (#3703) layers on top: unread channels (most recent activity
@@ -743,6 +758,7 @@ export const MeshCoreChannelsView: React.FC<MeshCoreChannelsViewProps> = ({
             <option value="device">{t('meshcore.channels.order.device', 'Device order')}</option>
             <option value="name">{t('meshcore.channels.order.name', 'Channel name')}</option>
             <option value="lastMessage">{t('meshcore.channels.order.last_message', 'Last message')}</option>
+            <option value="messageCount">{t('meshcore.channels.order.message_count', 'Message count')}</option>
             <option value="custom">{t('meshcore.channels.order.custom', 'Custom')}</option>
           </select>
           {channels.length > 1 && (
@@ -773,12 +789,11 @@ export const MeshCoreChannelsView: React.FC<MeshCoreChannelsViewProps> = ({
             </div>
           )}
           {orderedChannels.map(c => {
-            // Accurate persisted count from the counts endpoint. For the active
-            // channel, prefer the merged stream length when it's larger so a
-            // just-arrived live message bumps the badge before the next refetch.
-            const persisted = counts[c.id] ?? messages.filter(buildChannelFilter(c.id)).length;
-            const count = c.id === active.id ? Math.max(persisted, filtered.length) : persisted;
+            const count = channelCounts[c.id] ?? 0;
             const unread = isChannelUnread(c.id);
+            // Last message sort shows how recent each channel's activity is
+            // (#5503), not just the order. Other modes keep the plain row.
+            const lastTs = sortMode === 'lastMessage' ? effectiveLatest[c.id] : undefined;
             return (
               <button
                 key={c.id}
@@ -797,6 +812,11 @@ export const MeshCoreChannelsView: React.FC<MeshCoreChannelsViewProps> = ({
                 </div>
                 <div className="mc-channel-row-meta">
                   {count} {t('meshcore.messages', 'messages')}
+                  {lastTs ? (
+                    <span className={styles.lastMessageTime} title={new Date(lastTs).toLocaleString()}>
+                      {' · '}{formatRelativeTime(lastTs)}
+                    </span>
+                  ) : null}
                 </div>
               </button>
             );
