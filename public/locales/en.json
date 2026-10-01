@@ -513,6 +513,7 @@
   "meshcore.channels.order.device": "Device order",
   "meshcore.channels.order.name": "Channel name",
   "meshcore.channels.order.last_message": "Last message",
+  "meshcore.channels.order.message_count": "Message count",
   "meshcore.channels.order.custom": "Custom",
   "meshcore.channels.order.reorder": "Reorder",
   "meshcore.channels.order.reorder_title": "Set a custom channel order (MeshMonitor display only)",
