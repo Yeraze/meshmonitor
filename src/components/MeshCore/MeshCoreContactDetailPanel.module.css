@@ -1,3 +1,16 @@
+/*
+ * MeshCoreContactDetailPanel CSS module (#5508). Scoped here per the
+ * CLAUDE.md CSS containment rule; colours come from theme tokens.
+ */
+
+.discoverSuccess {
+  color: var(--color-success);
+}
+
+.discoverNoResponse {
+  color: var(--color-warning);
+}
+
 /* Favorite (pin-to-top) star in the Contact Details panel header (#5507).
  * Mirrors the look of the Nodes list's row-level star
  * (.mc-node-row-favorite-btn in MeshCorePage.css) but standalone rather than

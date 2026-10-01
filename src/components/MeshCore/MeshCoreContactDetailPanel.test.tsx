@@ -85,7 +85,7 @@ describe('MeshCoreContactDetailPanel', () => {
       <MeshCoreContactDetailPanel
         contact={contact}
         publicKey={PK}
-        onDiscoverPath={vi.fn().mockResolvedValue(true)}
+        onDiscoverPath={vi.fn().mockResolvedValue({ suggestedTimeoutMs: 0, discoveryTimeoutMs: 30000 })}
         canWriteNodes
         isCompanion
       />,
@@ -99,7 +99,7 @@ describe('MeshCoreContactDetailPanel', () => {
       <MeshCoreContactDetailPanel
         contact={contact}
         publicKey={PK}
-        onDiscoverPath={vi.fn().mockResolvedValue(true)}
+        onDiscoverPath={vi.fn().mockResolvedValue({ suggestedTimeoutMs: 0, discoveryTimeoutMs: 30000 })}
         canWriteNodes={false}
         isCompanion
       />,

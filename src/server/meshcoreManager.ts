@@ -58,6 +58,7 @@ import {
   MESHCORE_LOGIN_RETRY_PAUSE_MS,
 } from './constants/meshcoreLogin.js';
 import { isRfBridgeCommand, isTransmittingLocalCliVerb, MESHCORE_RECEIVE_ONLY_MESSAGE } from './constants/meshcoreTx.js';
+import { meshcorePathDiscoveryTimeoutMs } from './constants/meshcorePathDiscovery.js';
 import {
   parseMeshCoreIgnoreList,
   isMeshCoreIgnoreListEmpty,
@@ -587,6 +588,14 @@ function formatRadioInfo(node: MeshCoreNode | null): string | undefined {
   return `${node.radioFreq},${node.radioBw},${node.radioSf},${node.radioCr}`;
 }
 
+/** Result of a sent Discover Path request (#5508). */
+export interface MeshCoreDiscoverPathResult {
+  /** Firmware `suggested_timeout_ms` from the Sent ack (0 = none given). */
+  suggestedTimeoutMs: number;
+  /** How long the UI should wait for the reply (20–60 s). */
+  discoveryTimeoutMs: number;
+}
+
 export interface MeshCoreContact {
   publicKey: string;
   advName?: string;
@@ -609,6 +618,13 @@ export interface MeshCoreContact {
    * route (e.g. "a3,7f,02"). `null` / undefined means OUT_PATH_UNKNOWN.
    */
   outPath?: string | null;
+  /**
+   * In-memory only (#5508): epoch ms when the last PATH_DISCOVERY_RESPONSE
+   * (0x8D) for this contact arrived. Lets the Discover Path button count a
+   * reply even when the returned path matches the cached one. Not persisted,
+   * and a device contact refresh may drop it.
+   */
+  pathDiscoveredAt?: number;
   /**
    * Raw firmware `ContactInfo.flags` byte as last read from the device
    * (bit 0 = favourite, bits 1..7 = telemetry-permission bits). Undefined for
@@ -2495,6 +2511,7 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
         outPath: outPathFormatted || null,
         pathLen: outHops,
         lastSeen: Date.now(),
+        pathDiscoveredAt: Date.now(),
       };
       this.contacts.set(contact.publicKey, updated);
       void this.persistContact(updated);
@@ -5264,7 +5281,7 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
    * update is handled asynchronously by the existing push listener —
    * this method only confirms the flood was accepted by the device.
    */
-  async discoverContactPath(publicKey: string): Promise<boolean> {
+  async discoverContactPath(publicKey: string): Promise<false | MeshCoreDiscoverPathResult> {
     if (this.deviceType !== MeshCoreDeviceType.COMPANION) {
       logger.warn('[MeshCore] Discover-path requires Companion firmware');
       return false;
@@ -5279,8 +5296,11 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
         logger.warn(`[MeshCore] discover_path failed for ${publicKey}: ${response.error}`);
         return false;
       }
-      logger.debug(`[MeshCore] Path discovery sent for ${publicKey.substring(0, 16)}…`);
-      return true;
+      const raw = (response.data as { suggested_timeout_ms?: unknown } | undefined)?.suggested_timeout_ms;
+      const suggestedTimeoutMs = typeof raw === 'number' && Number.isFinite(raw) && raw > 0 ? raw : 0;
+      logger.debug(`[MeshCore] Path discovery sent for ${publicKey.substring(0, 16)}… (suggested timeout ${suggestedTimeoutMs}ms)`);
+      // #5508: the UI counts down this budget. UI-only — nothing is resent.
+      return { suggestedTimeoutMs, discoveryTimeoutMs: meshcorePathDiscoveryTimeoutMs(suggestedTimeoutMs) };
     } catch (error) {
       logger.error('[MeshCore] discoverContactPath threw:', error);
       return false;

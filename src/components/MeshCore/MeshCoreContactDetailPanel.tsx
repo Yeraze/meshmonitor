@@ -15,10 +15,10 @@ import { useSettings } from '../../contexts/SettingsContext';
 import { useSource } from '../../contexts/SourceContext';
 import { MeshCoreRemoteConsole } from './MeshCoreRemoteConsole';
 import { MeshCoreNotOnDeviceNotice } from './MeshCoreNotOnDeviceNotice';
-import type { AddContactToDeviceResponse, MeshCoreActions, TracePathResult, ZeroHopPingResult } from './hooks/useMeshCore';
+import type { AddContactToDeviceResponse, DiscoverPathStart, MeshCoreActions, TracePathResult, ZeroHopPingResult } from './hooks/useMeshCore';
+import styles from './MeshCoreContactDetailPanel.module.css';
 import api from '../../services/api';
 import '../NodeDetailsBlock.css';
-import styles from './MeshCoreContactDetailPanel.module.css';
 import { UiIcon } from '../icons';
 import { ShowCoverageLink } from '../Analysis/ShowCoverageLink';
 import { SignFlipNotice } from '../SignFlipNotice';
@@ -65,8 +65,9 @@ interface MeshCoreContactDetailPanelProps {
    *  proves the node is in direct RF range. Unset hides the Ping button. */
   onPingZeroHop?: (publicKey: string) => Promise<ZeroHopPingResult>;
   /** Flood a path-discovery request to learn the forwarding route. The
-   *  path update arrives asynchronously. Unset hides the button. */
-  onDiscoverPath?: (publicKey: string) => Promise<boolean>;
+   *  path update arrives asynchronously; resolves with the wait budget the
+   *  button counts down (#5508), or null on failure. Unset hides the button. */
+  onDiscoverPath?: (publicKey: string) => Promise<DiscoverPathStart | null>;
   /** Current favorite state for this contact (issue #5507). Favorites live
    *  server-side on the node list, not on the contact record (#3588), so the
    *  caller looks this up from the node rows by `publicKey` the same way the
@@ -134,6 +135,25 @@ interface MeshCoreContactDetailPanelProps {
 }
 
 const COLLAPSED_KEY = 'meshcoreContactDetailsCollapsed';
+
+/**
+ * Discover Path progress (#5508). `waiting` counts down the server's budget
+ * (MeshCore One's formula, 20–60 s) for the target's reply. The countdown is
+ * UI-only: it sends nothing and never retransmits, so it costs no airtime.
+ */
+type DiscoverPathState =
+  | { phase: 'idle' }
+  | { phase: 'sending' }
+  | { phase: 'waiting'; deadline: number }
+  | { phase: 'success'; hops: number }
+  | { phase: 'timeout' };
+
+/** The contact's route as it stood when Discover Path was pressed. */
+interface DiscoverPathBaseline {
+  outPath: string | null;
+  pathLen: number | null;
+  pathDiscoveredAt: number | null;
+}
 const TRACE_AUTO_RETURN_KEY = 'meshcoreTraceAutoReturn';
 
 export const MeshCoreContactDetailPanel: React.FC<MeshCoreContactDetailPanelProps> = ({
@@ -231,7 +251,10 @@ export const MeshCoreContactDetailPanel: React.FC<MeshCoreContactDetailPanelProp
   };
   const [traceResult, setTraceResult] = useState<TracePathResult | null>(null);
   const [traceError, setTraceError] = useState<string | null>(null);
-  const [discovering, setDiscovering] = useState(false);
+  const [discoverState, setDiscoverState] = useState<DiscoverPathState>({ phase: 'idle' });
+  const [discoverNow, setDiscoverNow] = useState(() => Date.now());
+  const discoverBaselineRef = useRef<DiscoverPathBaseline | null>(null);
+  const discovering = discoverState.phase === 'sending' || discoverState.phase === 'waiting';
 
   // Zero-hop ping state (#4393)
   const [pinging, setPinging] = useState(false);
@@ -292,7 +315,8 @@ export const MeshCoreContactDetailPanel: React.FC<MeshCoreContactDetailPanelProp
     setTracing(false);
     setTraceResult(null);
     setTraceError(null);
-    setDiscovering(false);
+    setDiscoverState({ phase: 'idle' });
+    discoverBaselineRef.current = null;
     setRemoving(false);
     setRemoveError(null);
     setExporting(false);
@@ -465,13 +489,72 @@ export const MeshCoreContactDetailPanel: React.FC<MeshCoreContactDetailPanelProp
   const handleDiscoverPath = async () => {
     if (!onDiscoverPath || discovering) return;
     const isCurrent = beginContactAction();
-    setDiscovering(true);
+    discoverBaselineRef.current = {
+      outPath: contact?.outPath ?? null,
+      pathLen: contact?.pathLen ?? null,
+      pathDiscoveredAt: contact?.pathDiscoveredAt ?? null,
+    };
+    setDiscoverState({ phase: 'sending' });
+    let started: DiscoverPathStart | null;
     try {
-      await onDiscoverPath(publicKey);
-    } finally {
-      if (isCurrent()) setDiscovering(false);
+      started = await onDiscoverPath(publicKey);
+    } catch {
+      started = null;
     }
+    if (!isCurrent()) return;
+    if (!started) {
+      // The hook already reported the send error; go back to the plain button.
+      setDiscoverState({ phase: 'idle' });
+      return;
+    }
+    const now = Date.now();
+    setDiscoverNow(now);
+    setDiscoverState({ phase: 'waiting', deadline: now + started.discoveryTimeoutMs });
   };
+
+  // Countdown + expiry for a Discover Path in flight (#5508). UI-only: no
+  // packet is sent from here. Cleanup runs on success, on contact switch
+  // (the reset effect drops the phase to idle) and on unmount.
+  const discoverDeadline = discoverState.phase === 'waiting' ? discoverState.deadline : null;
+  useEffect(() => {
+    if (discoverDeadline === null) return;
+    const tick = setInterval(() => setDiscoverNow(Date.now()), 1000);
+    const expire = setTimeout(
+      () => setDiscoverState((prev) => (prev.phase === 'waiting' ? { phase: 'timeout' } : prev)),
+      Math.max(0, discoverDeadline - Date.now()),
+    );
+    return () => {
+      clearInterval(tick);
+      clearTimeout(expire);
+    };
+  }, [discoverDeadline]);
+
+  // Reply detection (#5508). A PATH_DISCOVERY_RESPONSE reaches this panel as
+  // a contact update (socket `meshcore:contact:updated` → contacts list →
+  // `contact` prop). The server stamps `pathDiscoveredAt` on that update, so
+  // a reply counts even when the route it returns matches the cached one.
+  // A changed outPath/pathLen also counts, which covers the PathUpdated push
+  // (re-read from the device, carries no stamp). Limitation: a device
+  // re-read can drop the in-memory stamp, so a reply that both returns the
+  // same route AND reaches us only via that re-read reads as "no response".
+  useEffect(() => {
+    if (discoverState.phase !== 'waiting' || !contact) return;
+    const base = discoverBaselineRef.current;
+    if (!base) return;
+    const stamp = contact.pathDiscoveredAt ?? null;
+    const stamped = stamp !== null && stamp !== base.pathDiscoveredAt;
+    const pathLenNow = contact.pathLen;
+    const known = typeof pathLenNow === 'number' && pathLenNow >= 0;
+    const changed = known
+      && ((contact.outPath ?? null) !== base.outPath || pathLenNow !== base.pathLen);
+    if ((stamped && known) || changed) {
+      setDiscoverState({ phase: 'success', hops: pathLenNow as number });
+    }
+  }, [contact, discoverState.phase]);
+
+  const discoverSecondsLeft = discoverState.phase === 'waiting'
+    ? Math.max(0, Math.ceil((discoverState.deadline - discoverNow) / 1000))
+    : 0;
 
   const openEditor = () => {
     const hops = parsePathHops(outPath);
@@ -900,9 +983,11 @@ export const MeshCoreContactDetailPanel: React.FC<MeshCoreContactDetailPanelProp
                     title={receiveOnly ? t('meshcore.receive_only.control_tooltip', 'Receive-only mode is on for this MeshCore source. Turn it off in MeshCore Settings to use this.') : undefined}
                     aria-label={t('meshcore.contact_details.discover_path_button', 'Discover Path')}
                   >
-                    {discovering
-                      ? t('meshcore.contact_details.discover_path_running', 'Discovering…')
-                      : t('meshcore.contact_details.discover_path_button', 'Discover Path')}
+                    {discoverState.phase === 'waiting'
+                      ? t('meshcore.contact_details.discover_path_countdown', 'Discovering… {{seconds}}s', { seconds: discoverSecondsLeft })
+                      : discoverState.phase === 'sending'
+                        ? t('meshcore.contact_details.discover_path_running', 'Discovering…')
+                        : t('meshcore.contact_details.discover_path_button', 'Discover Path')}
                   </button>
                 )}
                 {canShowExportButton && (
@@ -967,6 +1052,20 @@ export const MeshCoreContactDetailPanel: React.FC<MeshCoreContactDetailPanelProp
                 )}
                 {traceError && (
                   <span style={{ color: 'var(--color-error)' }} role="alert">{traceError}</span>
+                )}
+                {discoverState.phase === 'success' && (
+                  <span className={styles.discoverSuccess} role="status">
+                    {t('meshcore.contact_details.discover_path_success', 'Path updated — {{hops}}', {
+                      hops: discoverState.hops === 0
+                        ? t('node_details.direct', 'Direct')
+                        : t('node_details.hops', { count: discoverState.hops }),
+                    })}
+                  </span>
+                )}
+                {discoverState.phase === 'timeout' && (
+                  <span className={styles.discoverNoResponse} role="status">
+                    {t('meshcore.contact_details.discover_path_no_response', 'No response from {{name}}', { name })}
+                  </span>
                 )}
               </div>
             </div>
