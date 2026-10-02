@@ -62,7 +62,9 @@
   display: inline-flex;
   align-items: center;
   margin-left: 0.35rem;
-  color: var(--color-text-muted);
+  /* Inherit the row colour so it stays readable on the selected (accent) row. */
+  color: inherit;
+  opacity: 0.8;
   vertical-align: middle;
 }
 
