@@ -44,6 +44,10 @@ vi.mock('./pages/UsersPage.tsx', () => ({ default: () => null }));
 vi.mock('./pages/MeshCoreSourcePage.tsx', () => ({
   default: () => <div data-testid="meshcore-source-page" />,
 }));
+vi.mock('./pages/MeshCoreIngestSourcePage.tsx', () => ({
+  default: () => <div data-testid="meshcore-ingest-source-page" />,
+}));
+vi.mock('./pages/PrivacyDocumentPage.tsx', () => ({ default: () => null }));
 vi.mock('./pages/ReticulumSourcePage.tsx', () => ({
   default: () => <div data-testid="reticulum-source-page" />,
 }));
@@ -80,6 +84,7 @@ describe('SourceApp dispatch (main.tsx)', () => {
     mockSources = [
       { id: 'ret-1', name: 'RNS Source', type: 'reticulum', enabled: true },
       { id: 'mc-1', name: 'MC Source', type: 'meshcore', enabled: true },
+      { id: 'mcm-1', name: 'MC MQTT Source', type: 'meshcore_mqtt', enabled: true },
       { id: 'mt-1', name: 'MT Source', type: 'meshtastic_tcp', enabled: true },
     ];
   });
@@ -95,6 +100,13 @@ describe('SourceApp dispatch (main.tsx)', () => {
     renderSourceApp('mc-1');
     expect(await screen.findByTestId('meshcore-source-page')).toBeInTheDocument();
     expect(screen.queryByTestId('reticulum-source-page')).not.toBeInTheDocument();
+  });
+
+  it('renders MeshCoreIngestSourcePage for a meshcore_mqtt ingest source (#5096)', async () => {
+    renderSourceApp('mcm-1');
+    expect(await screen.findByTestId('meshcore-ingest-source-page')).toBeInTheDocument();
+    expect(screen.queryByTestId('meshcore-source-page')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('app-legacy')).not.toBeInTheDocument();
   });
 
   it('falls through to the legacy App for any other source type', async () => {

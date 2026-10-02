@@ -130,6 +130,9 @@ export default defineConfig({
     // (src/server/utils/htmlRewriter.ts), so with `base: '/'` a lazy route's
     // CSS/JS preload would request `/assets/...` and 404 under a BASE_URL
     // subpath such as `/meshmonitor`. HTML and CSS keep the default.
+    // `experimental` API, verified on Vite 8.3. After a Vite upgrade, check
+    // that no JS chunk in dist/assets holds a quoted root-absolute `/assets/`
+    // string (`/api/assets/...` API paths are fine).
     renderBuiltUrl(_filename, { hostType }) {
       return hostType === 'js' ? { relative: true } : undefined
     },

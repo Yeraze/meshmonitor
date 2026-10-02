@@ -8,7 +8,7 @@ import styles from './RouteLoading.module.css';
  */
 export default function RouteLoading() {
   return (
-    <div className={styles.routeLoading} role="status" aria-live="polite">
+    <div className={styles.routeLoading} role="status">
       Loading…
     </div>
   );
