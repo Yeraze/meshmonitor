@@ -86,3 +86,13 @@ describe('tokenize', () => {
     expect(tokenSegs.map((s) => s.status)).toEqual(['ok', 'foreign', 'bad']);
   });
 });
+
+describe('node trigger packet tokens (#5534)', () => {
+  it('offers packetId and packetHash on both node triggers', () => {
+    for (const t of ['trigger.nodeUpdated', 'trigger.nodeDiscovered']) {
+      const set = validTokenSet(t, []);
+      expect(set.has('trigger.packetId')).toBe(true);
+      expect(set.has('trigger.packetHash')).toBe(true);
+    }
+  });
+});

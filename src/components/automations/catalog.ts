@@ -183,13 +183,13 @@ export const TRIGGERS: BlockDef[] = [
   {
     type: 'trigger.nodeDiscovered',
     label: 'A new node is discovered',
-    description: 'Fires the first time a node is seen. Note: new-vs-updated detection is coming in a later update — for now this behaves like “A node is updated”. Use that trigger meanwhile.',
+    description: 'Fires the first time a source hears a node live (Meshtastic and MeshCore). Device syncs on connect never fire it. A node deleted and heard again counts as new.',
     fields: [COOLDOWN, COOLDOWN_SCOPE],
   },
   {
     type: 'trigger.nodeUpdated',
     label: 'A node is updated',
-    description: "Fires when a node's info changes (name, role, position…).",
+    description: "Fires when a node's info changes (name, role, position…). MeshCore: only on a changed name, position, node type or path.",
     fields: [COOLDOWN, COOLDOWN_SCOPE],
   },
   {

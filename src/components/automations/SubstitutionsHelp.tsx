@@ -10,6 +10,21 @@ import { HOP_COUNT_EMOJIS, HOP_EMOJI_MAX, MQTT_SOURCE_EMOJI } from '../../utils/
 import { REPLY_CONTEXT_TAPBACK, REPLY_CONTEXT_REPLY } from '../../utils/replyContext';
 import { NODE_TOKENS, SUBJECT_NODE_TRIGGER_TYPES } from './substitutionNodeTokens';
 
+// #5534: tokens shared by trigger.nodeUpdated / trigger.nodeDiscovered.
+// Packet tokens are empty whenever the event had no single originating packet.
+const NODE_EVENT_PACKET_ID_TOKEN: [string, string] = [
+  'packetId',
+  'Meshtastic only: id of the received packet that caused the event, unsigned 32-bit. Empty for MeshCore and when no packet caused it (device sync, manual edits)',
+];
+const NODE_EVENT_MESHCORE_TOKENS: Array<[string, string]> = [
+  ['publicKey', 'Public key (MeshCore; empty for Meshtastic)'],
+  ['name', 'Display name (MeshCore; use node.longName on Meshtastic)'],
+];
+const NODE_EVENT_PACKET_HASH_TOKEN: [string, string] = [
+  'packetHash',
+  'MeshCore only: hash of the advert that caused the event, 16 uppercase hex chars — matches map.meshcore.com.hr/#/packets/<hash>. Empty for Meshtastic, and for MeshCore changes not caused by an advert (path updates, discovery sweeps)',
+];
+
 // All `{{ trigger.* }}` tokens, by trigger type. `sourceId`/`timestamp` are added to every group.
 export const TRIGGER_TOKENS: Record<string, Array<[string, string]>> = {
   'trigger.message': [
@@ -42,8 +57,16 @@ export const TRIGGER_TOKENS: Record<string, Array<[string, string]>> = {
     ['scopeCode', 'Region/scope code — 0 = unscoped (MeshCore)'], ['scoped', 'true if sent with a region (MeshCore)'],
   ],
   'trigger.telemetry': [['nodeNum', 'Node number'], ['telemetryType', 'Metric name'], ['value', 'Reading value'], ['unit', 'Unit']],
-  'trigger.nodeUpdated': [['nodeNum', 'Node number'], ['changed', 'Changed field names (list)']],
-  'trigger.nodeDiscovered': [['nodeNum', 'Node number'], ['changed', 'Changed field names (list)']],
+  'trigger.nodeUpdated': [
+    ['nodeNum', 'Node number (Meshtastic)'], ['changed', 'Changed field names (list). MeshCore: name, latitude, longitude, advType, outPath, pathLen'],
+    ...NODE_EVENT_MESHCORE_TOKENS,
+    NODE_EVENT_PACKET_ID_TOKEN, NODE_EVENT_PACKET_HASH_TOKEN,
+  ],
+  'trigger.nodeDiscovered': [
+    ['nodeNum', 'Node number (Meshtastic)'], ['changed', 'Changed field names (list; empty on discovery)'],
+    ...NODE_EVENT_MESHCORE_TOKENS,
+    NODE_EVENT_PACKET_ID_TOKEN, NODE_EVENT_PACKET_HASH_TOKEN,
+  ],
   'trigger.system': [['event', 'System event'], ['nodeNum', 'Node number (if any)'], ['reason', 'Detail / reason'], ['latestVersion', 'Latest version (upgrade-available)'], ['currentVersion', 'Current version (upgrade-available)']],
   'trigger.geofence': [['event', 'enter / exit / dwell'], ['nodeNum', 'Node number'], ['latitude', 'Node latitude'], ['longitude', 'Node longitude'], ['distanceKm', 'Distance from the region centre (km)']],
   'trigger.becameMobile': [['nodeNum', 'Node number'], ['previousMobile', 'Previous mobile flag (0)'], ['mobile', 'New mobile flag (1)'], ['latitude', 'Node latitude'], ['longitude', 'Node longitude']],

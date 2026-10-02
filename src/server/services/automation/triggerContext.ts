@@ -9,7 +9,7 @@
 import type { DbMessage } from '../../../services/database.js';
 import type { MeshCoreMessage } from '../../meshcoreManager.js';
 import type { ReticulumMessageRow } from '../../../db/repositories/reticulum.js';
-import type { NodeAircraftData } from '../dataEventEmitter.js';
+import type { NodeAircraftData, NodeUpdateOrigin } from '../dataEventEmitter.js';
 import type { TriggerType } from '../../../types/automation.js';
 import { compileUserRegex } from '../../../utils/safeRegex.js';
 import { hopCountEmoji, hopOrMqttEmoji } from '../../../utils/hopEmoji.js';
@@ -358,7 +358,17 @@ export function buildNodeContext(
   changedKeys: string[],
   sourceId: string | null,
   timestamp: number,
+  origin?: NodeUpdateOrigin,
 ): TriggerContext {
+  // #5534: identity of the packet that produced this node event. Read ONLY from
+  // this event's own payload — never cached across events — so an update with
+  // no originating packet (device NodeDB sync, manual edit, merge) renders both
+  // tokens as '' rather than a previous packet's values. Meshtastic supplies
+  // `packetId` (unsigned 32-bit MeshPacket id; 0 means "no id"); MeshCore
+  // supplies `packetHash` (16 UPPERCASE hex, same as trigger.message, #5357).
+  const rawId = Number(origin?.packetId);
+  const packetId = Number.isFinite(rawId) && rawId !== 0 ? rawId >>> 0 : undefined;
+  const packetHash = origin?.packetHash ? String(origin.packetHash) : undefined;
   return {
     triggerType,
     sourceId,
@@ -367,6 +377,47 @@ export function buildNodeContext(
     fields: {
       nodeNum: Number(nodeNum),
       changed: changedKeys,
+      packetId,
+      packetHash,
+      sourceId,
+      timestamp,
+    },
+  };
+}
+
+/**
+ * Build the trigger context for a MeshCore node discovered/updated event (#5534).
+ *
+ * MeshCore nodes have no numeric node id, so — like {@link buildNodeStaleContext}
+ * — `subjectNodeNum` is null (no `{{ node.* }}` hydration) and `subjectNodeKey`
+ * is the public key, which keys per-node cooldown. `name` carries the contact's
+ * display name since `node.*` cannot. `packetHash` is the advert's hash when the
+ * event came from a received advert, else undefined (renders '').
+ */
+export function buildMeshCoreNodeContext(
+  triggerType: 'trigger.nodeDiscovered' | 'trigger.nodeUpdated',
+  publicKey: string,
+  changedKeys: string[],
+  sourceId: string | null,
+  timestamp: number,
+  origin?: NodeUpdateOrigin,
+  name?: string | null,
+): TriggerContext {
+  return {
+    triggerType,
+    sourceId,
+    subjectNodeNum: null,
+    subjectNodeKey: publicKey,
+    timestamp,
+    fields: {
+      nodeNum: null,
+      publicKey,
+      name: name || undefined,
+      changed: changedKeys,
+      packetId: undefined,
+      packetHash: origin?.packetHash ? String(origin.packetHash) : undefined,
+      protocol: 'meshcore',
+      protocolShort: 'MC',
       sourceId,
       timestamp,
     },
