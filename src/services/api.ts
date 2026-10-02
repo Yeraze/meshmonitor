@@ -28,6 +28,41 @@ import type { FlightMatch } from '../types/flightMatch.js';
 import type { TranslationRequest, TranslationResponse, TranslationLanguageOption, StoredTranslation } from '../types/translation.js';
 
 /** Body of the telemetry outlier preview/purge requests (#5333). */
+/**
+ * Filters for `GET /api/messages/export` (#5517). Omitted lists mean "all
+ * readable"; an empty `sources` / `channels` list is sent as-is and exports
+ * nothing. Dates are UTC epoch milliseconds.
+ */
+export interface MessageExportParams {
+  sources?: string[];
+  channels?: string[];
+  type?: 'all' | 'channels' | 'dms';
+  include?: string[];
+  exclude?: string[];
+  start?: number;
+  end?: number;
+  sender?: string;
+  includeReactions?: boolean;
+  /** IANA zone for the local_time column. */
+  tz?: string;
+}
+
+/** Query string for {@link MessageExportParams}; repeated keys for lists. */
+export function buildMessageExportQuery(params: MessageExportParams): string {
+  const q = new URLSearchParams();
+  for (const s of params.sources ?? []) q.append('source', s);
+  for (const c of params.channels ?? []) q.append('channel', c);
+  for (const t of params.include ?? []) q.append('include', t);
+  for (const t of params.exclude ?? []) q.append('exclude', t);
+  if (params.type && params.type !== 'all') q.set('type', params.type);
+  if (params.start !== undefined) q.set('start', String(params.start));
+  if (params.end !== undefined) q.set('end', String(params.end));
+  if (params.sender) q.set('sender', params.sender);
+  if (params.includeReactions) q.set('includeReactions', 'true');
+  if (params.tz) q.set('tz', params.tz);
+  return q.toString();
+}
+
 export interface TelemetryOutlierRequest {
   sourceId: string;
   telemetryType: string;
@@ -819,6 +854,14 @@ class ApiService {
     return response.text();
   }
 
+  /** Download the filtered message export (#5517) as a CSV file. */
+  async exportMessagesCsv(params: MessageExportParams): Promise<void> {
+    const query = buildMessageExportQuery(params);
+    return this.download(`/api/messages/export${query ? `?${query}` : ''}`, {
+      defaultName: `meshmonitor-messages-${Date.now()}.csv`,
+    });
+  }
+
   async exportChannel(channelId: number): Promise<void> {
     return this.download(`/api/channels/${channelId}/export`, {
       defaultName: `channel-${channelId}-${Date.now()}.json`,
@@ -1000,10 +1043,13 @@ class ApiService {
     scope?: 'all' | 'channels' | 'dms' | 'meshcore';
     channels?: number[];
     fromNodeId?: string;
+    /** Epoch milliseconds. */
     startDate?: number;
+    /** Epoch milliseconds. */
     endDate?: number;
     limit?: number;
     offset?: number;
+    sourceId?: string;
   }): Promise<{
     success: boolean;
     count: number;
@@ -1034,6 +1080,7 @@ class ApiService {
     if (params.endDate) queryParams.set('endDate', String(params.endDate));
     if (params.limit) queryParams.set('limit', String(params.limit));
     if (params.offset) queryParams.set('offset', String(params.offset));
+    if (params.sourceId) queryParams.set('sourceId', params.sourceId);
 
     const response = await fetch(
       `${this.baseUrl}/api/messages/search?${queryParams.toString()}`,

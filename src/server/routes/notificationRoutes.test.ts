@@ -71,6 +71,9 @@ vi.mock('../../services/database.js', () => ({
     sources: {
       getSource: vi.fn(),
     },
+    notifications: {
+      getUserPreferences: vi.fn(),
+    },
   },
 }));
 
@@ -202,7 +205,21 @@ describe('notificationRoutes - push', () => {
 
     const res = await request(app).get('/push/preferences');
 
-    expect(res.body).toEqual({ enableWebPush: false });
+    expect(res.body).toEqual({ enableWebPush: false, sourceFallback: false });
+  });
+
+  it('GET /push/preferences?sourceId flags a read answered by the \'\' row (#5487)', async () => {
+    mockNotif.getUserNotificationPreferencesAsync.mockResolvedValue({ enableWebPush: false });
+    const db = (await import('../../services/database.js')).default as any;
+
+    db.notifications.getUserPreferences.mockResolvedValueOnce(null);
+    const fallback = await request(app).get('/push/preferences?sourceId=src-x');
+    expect(fallback.body.sourceFallback).toBe(true);
+    expect(db.notifications.getUserPreferences).toHaveBeenLastCalledWith(expect.any(Number), 'src-x');
+
+    db.notifications.getUserPreferences.mockResolvedValueOnce({ enableWebPush: false });
+    const own = await request(app).get('/push/preferences?sourceId=src-x');
+    expect(own.body.sourceFallback).toBe(false);
   });
 
   it('POST /push/preferences rejects invalid payload', async () => {

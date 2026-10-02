@@ -32,6 +32,8 @@ interface UseMeshCoreUnreadParams {
   contacts: MeshCoreContact[];
   selfKey: string | undefined;
   enabled: boolean;
+  /** Muted channel indices never light the Channels dot (#5487). */
+  isChannelMuted?: (channelIdx: number) => boolean;
 }
 
 export interface MeshCoreUnread {
@@ -48,6 +50,7 @@ export function useMeshCoreUnread({
   contacts,
   selfKey,
   enabled,
+  isChannelMuted,
 }: UseMeshCoreUnreadParams): MeshCoreUnread {
   const csrfFetch = useCsrfFetch();
   const [channelIndices, setChannelIndices] = useState<number[]>([]);
@@ -133,9 +136,9 @@ export function useMeshCoreUnread({
     if (!sourceId) return false;
     const lastRead = loadChannelLastRead(sourceId);
     return Object.entries(channelLatestEffective).some(
-      ([idx, ts]) => ts > (lastRead[Number(idx)] ?? 0),
+      ([idx, ts]) => !isChannelMuted?.(Number(idx)) && ts > (lastRead[Number(idx)] ?? 0),
     );
-  }, [sourceId, channelLatestEffective, readTick]);
+  }, [sourceId, channelLatestEffective, readTick, isChannelMuted]);
 
   const dms = useMemo(() => {
     void readTick; // cache-bust: re-read localStorage markers when a marker changes

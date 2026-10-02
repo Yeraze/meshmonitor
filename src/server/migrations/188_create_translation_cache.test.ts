@@ -1,11 +1,11 @@
 /**
- * Migration 186 tests — translation_cache + message_translations (#5520).
+ * Migration 188 tests — translation_cache + message_translations (#5520).
  */
 import Database from 'better-sqlite3';
 import { describe, expect, it, vi } from 'vitest';
-import { migration, runMigration186Postgres, runMigration186Mysql } from './186_create_translation_cache.js';
+import { migration, runMigration188Postgres, runMigration188Mysql } from './188_create_translation_cache.js';
 
-describe('Migration 186 — translation cache tables', () => {
+describe('Migration 188 — translation cache tables', () => {
   describe('SQLite', () => {
     it('creates both tables and indexes, and is idempotent', () => {
       const db = new Database(':memory:');
@@ -50,7 +50,7 @@ describe('Migration 186 — translation cache tables', () => {
   describe('PostgreSQL', () => {
     it('creates both tables with quoted camelCase columns and indexes', async () => {
       const client = { query: vi.fn().mockResolvedValue(undefined) };
-      await runMigration186Postgres(client as any);
+      await runMigration188Postgres(client as any);
       const sql = client.query.mock.calls.map((c: any[]) => String(c[0])).join('\n');
       expect(sql).toMatch(/CREATE TABLE IF NOT EXISTS translation_cache/);
       expect(sql).toMatch(/"cacheKey" TEXT PRIMARY KEY/);
@@ -70,7 +70,7 @@ describe('Migration 186 — translation cache tables', () => {
 
     it('creates both tables when missing', async () => {
       const conn = makeConn([]);
-      await runMigration186Mysql({ getConnection: vi.fn().mockResolvedValue(conn) } as any);
+      await runMigration188Mysql({ getConnection: vi.fn().mockResolvedValue(conn) } as any);
       const ddl = conn.query.mock.calls.map((c: any[]) => String(c[0])).join('\n');
       expect(ddl).toMatch(/CREATE TABLE translation_cache/);
       expect(ddl).toMatch(/cacheKey VARCHAR\(64\) PRIMARY KEY/);
@@ -82,7 +82,7 @@ describe('Migration 186 — translation cache tables', () => {
 
     it('skips create when the tables already exist', async () => {
       const conn = makeConn([{ TABLE_NAME: 'x' }]);
-      await runMigration186Mysql({ getConnection: vi.fn().mockResolvedValue(conn) } as any);
+      await runMigration188Mysql({ getConnection: vi.fn().mockResolvedValue(conn) } as any);
       const ddl = conn.query.mock.calls.map((c: any[]) => String(c[0])).join('\n');
       expect(ddl).not.toMatch(/CREATE TABLE/);
     });

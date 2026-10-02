@@ -173,6 +173,15 @@ export interface MeshCoreMessage {
   scopeCode?: number | null;
   /** Region name resolved from the scope code; null = unscoped or unknown scope (#3742 Ph2). */
   scopeName?: string | null;
+  /** Wire sender_timestamp (epoch seconds) of our own channel send (#5512).
+   *  Absent on messages sent before resend support; those can't be resent. */
+  senderTimestamp?: number;
+  /** User resends so far (#5512). */
+  resendCount?: number;
+  /** When (ms) the latest resend of any kind went out (#5512). */
+  lastResendAt?: number;
+  /** True while the automated echo-miss retry (#3979) is armed (#5512). */
+  autoRetryPending?: boolean;
   /** MeshCore packet hash (16 uppercase hex) of the received frame, when matched
    *  (#5357). Live events only — not persisted, so absent on reloaded history. */
   packetHash?: string;
@@ -364,6 +373,9 @@ export interface MeshCoreActions {
   sendMessage: (text: string, toPublicKey?: string, channelIdx?: number, scope?: string | null) => Promise<boolean>;
   /** Delete a single stored message by id (#3981). Resolves `true` on success. */
   deleteMessage: (id: string) => Promise<boolean>;
+  /** Resend a channel message no repeater relayed (#5512). Resolves the new
+   *  resend state on success, null on refusal (the error is set). */
+  resendMessage: (id: string) => Promise<{ resendCount: number; lastResendAt: number } | null>;
   /** Clear a whole DM conversation with a peer (by pubkey/prefix) (#3981). */
   clearConversation: (publicKey: string) => Promise<boolean>;
   /** Clear every message on a channel index (#3981). */
@@ -881,6 +893,9 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
       expectedAckCrc?: number;
       estTimeout?: number;
       deliveryStatus?: MessageDeliveryStatus;
+      resendCount?: number;
+      lastResendAt?: number;
+      autoRetryPending?: boolean;
     }) => {
       if (evt.sourceId !== sourceId) return;
       // Cancel the fail timer armed for the prior attempt's CRC — the new
@@ -899,6 +914,10 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
           ...(evt.expectedAckCrc != null ? { expectedAckCrc: evt.expectedAckCrc } : {}),
           ...(evt.estTimeout != null ? { estTimeout: evt.estTimeout } : {}),
           ...(evt.deliveryStatus ? { deliveryStatus: evt.deliveryStatus } : {}),
+          // Resend state (#5512).
+          ...(evt.resendCount != null ? { resendCount: evt.resendCount } : {}),
+          ...(evt.lastResendAt != null ? { lastResendAt: evt.lastResendAt } : {}),
+          ...(evt.autoRetryPending != null ? { autoRetryPending: evt.autoRetryPending } : {}),
         };
       }));
       // Arm a fresh fail timer for the new attempt unless this was a terminal
@@ -1939,6 +1958,26 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
     }
   }, [mcPrefix, csrfFetch]);
 
+  const resendMessage = useCallback(async (id: string): Promise<{ resendCount: number; lastResendAt: number } | null> => {
+    try {
+      const response = await csrfFetch(`${mcPrefix}/messages/${encodeURIComponent(id)}/resend`, {
+        method: 'POST',
+      });
+      const data = await parseJsonResponse(response);
+      if (data.success && data.data) {
+        const state = { resendCount: Number(data.data.resendCount), lastResendAt: Number(data.data.lastResendAt) };
+        setMessages(prev => prev.map(m => (m.id === id ? { ...m, ...state } : m)));
+        return state;
+      }
+      if (reportTxDisabled(response.status, data)) return null;
+      setError(data.error || 'Failed to resend message');
+      return null;
+    } catch (_err) {
+      setError('Failed to resend message');
+      return null;
+    }
+  }, [mcPrefix, csrfFetch, reportTxDisabled]);
+
   const clearConversation = useCallback(async (publicKey: string): Promise<boolean> => {
     try {
       const response = await csrfFetch(`${mcPrefix}/messages/conversation/${encodeURIComponent(publicKey)}`, {
@@ -2303,6 +2342,7 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
       sendAdvert,
       sendMessage,
       deleteMessage,
+      resendMessage,
       clearConversation,
       clearChannelMessages,
       purgeAllMessages,

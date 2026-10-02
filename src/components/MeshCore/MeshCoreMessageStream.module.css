@@ -1,0 +1,62 @@
+/*
+ * MeshCoreMessageStream CSS module: the channel-message Resend action and its
+ * confirm dialog (#5512). Keep new rules here, not in MeshCorePage.css
+ * (CLAUDE.md CSS containment).
+ */
+
+.resendButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  margin-left: 0.35rem;
+  padding: 0 0.3rem;
+  font-size: 0.75rem;
+  background: none;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  color: var(--color-warning);
+  cursor: pointer;
+}
+
+.resendButton:hover {
+  border-color: var(--color-warning);
+}
+
+.confirmText {
+  margin: 0 0 0.75rem;
+  line-height: 1.4;
+}
+
+.confirmQuote {
+  margin: 0 0 0.75rem;
+  padding: 0.4rem 0.6rem;
+  border-left: 3px solid var(--color-border);
+  color: var(--color-text-subtle);
+  word-break: break-word;
+}
+
+.confirmActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+
+.confirmButton {
+  padding: 0.35rem 0.8rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  color: var(--color-text);
+  cursor: pointer;
+}
+
+.confirmPrimary {
+  border-color: var(--color-accent);
+  background: var(--color-accent);
+  color: var(--color-bg);
+}
+
+.confirmButton:disabled {
+  opacity: 0.6;
+  cursor: default;
+}

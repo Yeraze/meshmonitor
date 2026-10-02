@@ -9,7 +9,7 @@ decisions are recorded on #5520.
 Scope: the Meshtastic `messages` table (the views that have translation today:
 `ChannelsTab`, `MessagesTab`). MeshCore messages are out of scope.
 
-## Two tables (migration 186, all three backends)
+## Two tables (migration 188, all three backends)
 
 `translation_cache` — the shared text cache (server-internal, global)
 - `cacheKey` PK: sha256 of `normalize(text) + '\0' + targetLang (+ '\0' + sourceLang if given)`.

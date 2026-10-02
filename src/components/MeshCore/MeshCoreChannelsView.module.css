@@ -55,3 +55,79 @@
   opacity: 0.8;
   white-space: nowrap;
 }
+
+/* Channel mute (#5487): bell toggle in the conversation toolbar, its duration
+   menu, and the muted icon on a channel row. */
+.mutedIcon {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 0.35rem;
+  /* Inherit the row colour so it stays readable on the selected (accent) row. */
+  color: inherit;
+  opacity: 0.8;
+  vertical-align: middle;
+}
+
+.muteWrap {
+  position: relative;
+  display: inline-flex;
+}
+
+.muteButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 2rem;
+  padding: 0.2rem 0.5rem;
+  background: transparent;
+  color: var(--color-text);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+}
+
+.muteButton:hover {
+  background: var(--color-surface-hover);
+}
+
+.muteButton.active {
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+}
+
+.muteBackdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 999;
+}
+
+.muteMenu {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  margin-top: 4px;
+  min-width: 180px;
+  z-index: 1000;
+  overflow: hidden;
+  background: var(--color-surface);
+  border: 1px solid var(--color-surface-active);
+  border-radius: var(--radius-md);
+}
+
+.muteMenuItem {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  width: 100%;
+  padding: 0.5rem 1rem;
+  background: none;
+  border: none;
+  color: var(--color-text);
+  font-size: 0.85rem;
+  text-align: left;
+  cursor: pointer;
+}
+
+.muteMenuItem:hover {
+  background: var(--color-surface-hover);
+}

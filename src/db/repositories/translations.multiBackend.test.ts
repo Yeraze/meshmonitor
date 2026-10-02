@@ -2,7 +2,7 @@
  * TranslationsRepository — identical behaviour on SQLite, PostgreSQL and
  * MySQL (#5520).
  *
- * Tables come from the REAL migration-186 runners (run twice, to prove
+ * Tables come from the REAL migration-188 runners (run twice, to prove
  * idempotency), not hand-written DDL. Only a minimal `messages` table
  * (`id`, `sourceId`) is hand-rolled: the orphan sweep only correlates on
  * those two columns. Each PG/MySQL suite owns an isolated database
@@ -22,10 +22,10 @@ import * as schema from '../schema/index.js';
 import { TranslationsRepository } from './translations.js';
 import { ALL_SOURCES } from './base.js';
 import {
-  migration as migration186,
-  runMigration186Postgres,
-  runMigration186Mysql,
-} from '../../server/migrations/186_create_translation_cache.js';
+  migration as migration188,
+  runMigration188Postgres,
+  runMigration188Mysql,
+} from '../../server/migrations/188_create_translation_cache.js';
 import {
   postgresAvailable,
   mysqlAvailable,
@@ -241,8 +241,8 @@ describe('TranslationsRepository — SQLite', () => {
 
   beforeEach(() => {
     sqlite = new Database(':memory:');
-    migration186.up(sqlite);
-    migration186.up(sqlite);
+    migration188.up(sqlite);
+    migration188.up(sqlite);
     sqlite.exec('CREATE TABLE messages (id TEXT PRIMARY KEY, sourceId TEXT)');
     const repo = new TranslationsRepository(drizzleSqlite(sqlite, { schema }), 'sqlite');
     ctx = {
@@ -280,8 +280,8 @@ describe.skipIf(!postgresAvailable)('TranslationsRepository — PostgreSQL (cont
     cleanupDb = isolated.cleanup;
     const client = await pool.connect();
     try {
-      await runMigration186Postgres(client);
-      await runMigration186Postgres(client);
+      await runMigration188Postgres(client);
+      await runMigration188Postgres(client);
     } finally {
       client.release();
     }
@@ -315,8 +315,8 @@ describe.skipIf(!mysqlAvailable)('TranslationsRepository — MySQL (container)',
     const isolated = await createIsolatedMysqlDatabase('trcache');
     pool = isolated.pool;
     cleanupDb = isolated.cleanup;
-    await runMigration186Mysql(pool);
-    await runMigration186Mysql(pool);
+    await runMigration188Mysql(pool);
+    await runMigration188Mysql(pool);
     await pool.query('CREATE TABLE IF NOT EXISTS messages (id VARCHAR(64) PRIMARY KEY, sourceId VARCHAR(36))');
     const repo = new TranslationsRepository(drizzleMysql(pool, { schema, mode: 'default' }), 'mysql');
     ctx = {

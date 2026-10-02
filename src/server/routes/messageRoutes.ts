@@ -1,12 +1,10 @@
 import express, { Request, Response } from 'express';
 import databaseService, { DbMessage } from '../../services/database.js';
 import { ALL_SOURCES } from '../../db/repositories/index.js';
-import { isMeshCoreManager, isMeshCoreMqttManager, isMeshtasticManager, getPrimaryMeshtasticManager } from '../sourceManagerTypes.js';
-import type { MeshCoreManager } from '../meshcoreManager.js';
+import { isMeshtasticManager, getPrimaryMeshtasticManager } from '../sourceManagerTypes.js';
 import { sourceManagerRegistry } from '../sourceManagerRegistry.js';
 import { logger } from '../../utils/logger.js';
 import { RequestHandler } from 'express';
-import { ResourceType } from '../../types/permission.js';
 import { fallbackManager } from '../meshtasticManager.js';
 import { resolveSourceManager, resolveOwnMeshtasticManager } from '../utils/resolveSourceManager.js';
 import { refuseNonMeshtasticSource, isNonMeshtasticSource } from '../utils/requireMeshtasticDeviceSource.js';
@@ -25,6 +23,15 @@ import { filterNodesByChannelPermission } from '../utils/nodeEnhancer.js';
 import { ok, fail } from '../utils/apiResponse.js';
 import { isTxDisabledError } from '../errors/txDisabledError.js';
 import { PortNum } from '../constants/meshtastic.js';
+import type { MessageSourceScope, MeshCoreMessageScope } from '../../db/repositories/index.js';
+import { isAnyMeshCoreSourceType } from '../../utils/nodeTypeCategory.js';
+import {
+  resolveReadableMeshtasticChannels,
+  resolveReadableMeshcoreScope,
+  intersectChannels,
+} from '../utils/messageSourceAccess.js';
+import messageExportRoutes from './messageExportRoutes.js';
+import { getUserNotificationPreferencesAsync } from '../utils/notificationFiltering.js';
 
 const router = express.Router();
 
@@ -138,13 +145,22 @@ const requireChannelsWrite: RequestHandler = async (req, res, next) => {
 
 /**
  * GET /api/messages/search
- * Search messages across channels and DMs
+ * Search messages across channels and DMs.
+ *
+ * Every query is scoped in SQL to the sources and channels the caller may
+ * read (#5517). Before, the Meshtastic query ran unscoped and the route
+ * trimmed by source after paging (short pages, wrong totals), virtual
+ * channels were never searchable for non-admins, and MeshCore search scanned
+ * only the in-memory ring of connected managers.
+ *
+ * `startDate` / `endDate` are epoch milliseconds.
+ *
+ * Results are Meshtastic matches (newest first) followed by MeshCore matches;
+ * `offset` pages through that concatenated list.
  */
 router.get('/search', async (req: Request, res: Response) => {
   try {
     const user = (req as any).user;
-    const userId = user?.id ?? null;
-    const isAdmin = user?.isAdmin ?? false;
 
     const { q, caseSensitive, scope, channels, fromNodeId, startDate, endDate, limit, offset, sourceId } = req.query;
     const sourceIdStr = typeof sourceId === 'string' && sourceId.length > 0 ? sourceId : undefined;
@@ -161,67 +177,39 @@ router.get('/search', async (req: Request, res: Response) => {
     const isCaseSensitive = caseSensitive === 'true';
     const searchScope = (scope as string) || 'all';
     const maxLimit = Math.min(parseInt(limit as string) || 50, 100);
-    const searchOffset = parseInt(offset as string) || 0;
+    const searchOffset = Math.max(0, parseInt(offset as string) || 0);
 
     let channelFilter: number[] | undefined;
     if (channels && typeof channels === 'string') {
       channelFilter = channels.split(',').map(c => parseInt(c.trim())).filter(c => !isNaN(c));
+      if (channelFilter.length === 0) channelFilter = undefined;
     }
 
     const startDateNum = startDate ? parseInt(startDate as string) : undefined;
     const endDateNum = endDate ? parseInt(endDate as string) : undefined;
 
-    // Get accessible channels for permission filtering. When sourceId is given,
-    // scope strictly to that source (no cross-source leak). When absent, union
-    // across sources — caller then sees whatever the union allows. Results are
-    // further filtered to sourceIdStr below when provided.
-    let accessibleChannels: Set<number> | null = null;
-    if (!isAdmin) {
-      const permissions = userId !== null
-        ? await databaseService.getUserPermissionSetAsync(userId, sourceIdStr)
-        : {};
-
-      accessibleChannels = new Set<number>();
-      for (let i = 0; i <= 7; i++) {
-        const channelResource = `channel_${i}` as ResourceType;
-        if (permissions[channelResource]?.read === true) {
-          accessibleChannels.add(i);
-        }
-      }
-      if (permissions.messages?.read === true) {
-        accessibleChannels.add(-1);
-      }
-    }
+    const allSources = await databaseService.sources.getAllSources();
+    const targetSources = sourceIdStr ? allSources.filter(s => s.id === sourceIdStr) : allSources;
 
     const results: any[] = [];
     let total = 0;
+    let standardTotal = 0;
 
-    // Search standard messages (unless scope is meshcore-only)
+    // Meshtastic-family sources (the `messages` table).
     if (searchScope !== 'meshcore') {
-      let effectiveChannelFilter = channelFilter;
-
-      if (accessibleChannels !== null) {
-        const accessibleArray = Array.from(accessibleChannels);
-        if (effectiveChannelFilter) {
-          effectiveChannelFilter = effectiveChannelFilter.filter(c => accessibleChannels!.has(c));
-        } else {
-          effectiveChannelFilter = accessibleArray;
-        }
+      const scopes: MessageSourceScope[] = [];
+      for (const source of targetSources) {
+        if (isAnyMeshCoreSourceType(source.type)) continue;
+        const readable = await resolveReadableMeshtasticChannels(user, source.id);
+        scopes.push({ sourceId: source.id, channels: intersectChannels(readable, channelFilter) });
       }
 
-      // Security: if a non-admin user has no accessible channels, the empty
-      // filter array would be ignored by the repository layer and ALL messages
-      // would be returned. Short-circuit to an empty result set instead.
-      // See FINDING-2 (Phase 0.2 remediation).
-      if (!isAdmin && effectiveChannelFilter !== undefined && effectiveChannelFilter.length === 0) {
-        return res.json({ success: true, count: 0, total: 0, data: [] });
-      }
-
+      // An empty scope list means zero rows; the repository never widens it.
       const searchResult = await databaseService.searchMessagesAsync({
         query: searchQuery,
         caseSensitive: isCaseSensitive,
-        scope: searchScope === 'meshcore' ? 'all' : (searchScope as 'all' | 'channels' | 'dms'),
-        channels: effectiveChannelFilter,
+        scope: searchScope as 'all' | 'channels' | 'dms',
+        scopes,
         fromNodeId: fromNodeId as string | undefined,
         startDate: startDateNum,
         endDate: endDateNum,
@@ -229,59 +217,35 @@ router.get('/search', async (req: Request, res: Response) => {
         offset: searchOffset
       });
 
-      // When sourceId is specified, restrict results to that source.
-      const filtered = sourceIdStr
-        ? searchResult.messages.filter((m: any) => m.sourceId === sourceIdStr)
-        : searchResult.messages;
-
-      results.push(...filtered.map(m => ({ ...m, source: 'standard' })));
-      total += sourceIdStr ? filtered.length : searchResult.total;
+      results.push(...searchResult.messages.map(m => ({ ...m, source: 'standard' })));
+      standardTotal = searchResult.total;
+      total += searchResult.total;
     }
 
-    // Search MeshCore messages (in-memory filter, across every registered source)
-    const allManagers = sourceManagerRegistry.getAllManagers();
-    const meshcoreManagers = allManagers.filter((m): m is MeshCoreManager => isMeshCoreManager(m) && m.isConnected());
-    // Ingest sources are resolved BEFORE the gate, and the gate counts both
-    // kinds. Nesting them inside a device-manager-only check meant an install
-    // with a region feed and no MeshCore radio got zero results — the exact
-    // silent-exclusion this phase exists to fix (#5040 Phase 5.5).
-    const ingestManagers = allManagers.filter(isMeshCoreMqttManager).filter(m => m.isConnected());
-    if (
-      (searchScope === 'all' || searchScope === 'meshcore') &&
-      (meshcoreManagers.length > 0 || ingestManagers.length > 0)
-    ) {
-      const hasMeshcoreAccess = isAdmin || (accessibleChannels !== null && accessibleChannels.has(-1));
-
-      if (hasMeshcoreAccess) {
-        // Device-backed sources keep an in-memory ring and answer synchronously;
-        // an MQTT ingest source has no ring — its messages are already persisted
-        // by the Phase 4 ingest path, so it reads them back asynchronously.
-        // Gathered separately rather than forcing one signature on both
-        // (#5040 Phase 5.5): before this, a region feed's channel messages were
-        // stored but never searchable.
-        const ingestMessages = (
-          await Promise.all(ingestManagers.map(m => m.getRecentMessagesAsync(1000)))
-        ).flat();
-        const allMeshcoreMessages = [
-          ...meshcoreManagers.flatMap(m => m.getRecentMessages(1000)),
-          ...ingestMessages,
-        ];
-        const filtered = allMeshcoreMessages.filter(m => {
-          if (!m.text) return false;
-          const textMatch = isCaseSensitive
-            ? m.text.includes(searchQuery)
-            : m.text.toLowerCase().includes(searchQuery.toLowerCase());
-          if (!textMatch) return false;
-          if (startDateNum && m.timestamp < startDateNum) return false;
-          if (endDateNum && m.timestamp > endDateNum) return false;
-          if (fromNodeId && m.fromPublicKey !== fromNodeId) return false;
-          return true;
+    // MeshCore sources (the `meshcore_messages` table), connected or not.
+    if (searchScope === 'all' || searchScope === 'meshcore') {
+      const meshcoreScopes: MeshCoreMessageScope[] = [];
+      for (const source of targetSources) {
+        if (!isAnyMeshCoreSourceType(source.type)) continue;
+        const readable = await resolveReadableMeshcoreScope(user, source.id);
+        meshcoreScopes.push({
+          sourceId: source.id,
+          channels: intersectChannels(readable.channels, channelFilter),
+          includeDms: readable.includeDms,
         });
-
-        total += filtered.length;
-        const meshcoreSlice = filtered.slice(0, Math.max(0, maxLimit - results.length));
-        results.push(...meshcoreSlice.map(m => ({ ...m, source: 'meshcore' })));
       }
+      const meshcoreResult = await databaseService.meshcore.searchMessages({
+        query: searchQuery,
+        caseSensitive: isCaseSensitive,
+        scopes: meshcoreScopes,
+        fromPublicKey: fromNodeId as string | undefined,
+        startDate: startDateNum,
+        endDate: endDateNum,
+        limit: maxLimit - results.length,
+        offset: Math.max(0, searchOffset - standardTotal),
+      });
+      total += meshcoreResult.total;
+      results.push(...meshcoreResult.messages.map(m => ({ ...m, source: 'meshcore' })));
     }
 
     res.json({
@@ -299,6 +263,9 @@ router.get('/search', async (req: Request, res: Response) => {
     });
   }
 });
+
+// GET /api/messages/export — filtered CSV export (#5517).
+router.use(messageExportRoutes);
 
 /**
  * DELETE /api/messages/:id
@@ -1241,26 +1208,9 @@ router.get('/unread-counts', optionalAuth(), async (req, res) => {
       directMessages?: { [nodeId: string]: number };
     } = {};
 
-    // Load mute preferences for the current user (if authenticated)
-    const mutedChannelIds: Set<number> = new Set();
-    const mutedDMNodeIds: Set<string> = new Set();
-    if (userId) {
-      const { getUserNotificationPreferencesAsync } = await import('../utils/notificationFiltering.js');
-      const prefs = await getUserNotificationPreferencesAsync(userId);
-      if (prefs) {
-        const now = Date.now();
-        for (const rule of (prefs.mutedChannels ?? [])) {
-          if (rule.muteUntil === null || rule.muteUntil > now) {
-            mutedChannelIds.add(rule.channelId);
-          }
-        }
-        for (const rule of (prefs.mutedDMs ?? [])) {
-          if (rule.muteUntil === null || rule.muteUntil > now) {
-            mutedDMNodeIds.add(rule.nodeUuid);
-          }
-        }
-      }
-    }
+    // Load mute preferences for the current user (if authenticated), from the
+    // SAME per-source row push/Apprise filtering reads (#5487).
+    const { channels: mutedChannelIds, dms: mutedDMNodeIds } = await loadActiveMutes(userId, unreadSourceId);
 
     // Get channel unread counts if user can read any channel (physical or
     // virtual). Only count incoming messages (exclude messages sent by our node).
@@ -1312,6 +1262,34 @@ router.get('/unread-counts', optionalAuth(), async (req, res) => {
     res.status(500).json({ error: 'Failed to fetch unread counts' });
   }
 });
+
+/**
+ * The channel and DM mutes currently in force for a user on one source.
+ *
+ * Reads the same row as push/Apprise filtering (`shouldFilterNotificationAsync`
+ * → `getUserNotificationPreferencesAsync(userId, sourceId)`): the per-source
+ * row when one exists, else the user's '' (default) row. Before #5487 this read
+ * the '' row unconditionally, so a badge and a push could disagree about
+ * whether a channel was muted. `sourceId` undefined (a cross-source view) reads
+ * the '' row, as before.
+ */
+async function loadActiveMutes(
+  userId: number | null,
+  sourceId: string | undefined,
+): Promise<{ channels: Set<number>; dms: Set<string> }> {
+  const channels = new Set<number>();
+  const dms = new Set<string>();
+  if (!userId) return { channels, dms };
+  const prefs = await getUserNotificationPreferencesAsync(userId, sourceId);
+  const now = Date.now();
+  for (const rule of (prefs?.mutedChannels ?? [])) {
+    if (rule.muteUntil === null || rule.muteUntil > now) channels.add(rule.channelId);
+  }
+  for (const rule of (prefs?.mutedDMs ?? [])) {
+    if (rule.muteUntil === null || rule.muteUntil > now) dms.add(rule.nodeUuid);
+  }
+  return { channels, dms };
+}
 
 /**
  * GET /api/messages/unread-by-source
@@ -1374,20 +1352,6 @@ async function collectVisibleUnreadDms(
   const out: Array<{ sourceId: string; localNodeId: string; senders: Record<string, number> }> = [];
   if (!user) return out;
 
-  // Muted DMs must not light a badge, same rule as /unread-counts — and so
-  // must not be swept up by a bulk clear either.
-  const mutedDMNodeIds: Set<string> = new Set();
-  if (userId) {
-    const { getUserNotificationPreferencesAsync } = await import('../utils/notificationFiltering.js');
-    const prefs = await getUserNotificationPreferencesAsync(userId);
-    const now = Date.now();
-    for (const rule of (prefs?.mutedDMs ?? [])) {
-      if (rule.muteUntil === null || rule.muteUntil > now) {
-        mutedDMNodeIds.add(rule.nodeUuid);
-      }
-    }
-  }
-
   const sources = await databaseService.sources.getAllSources();
 
   for (const source of sources) {
@@ -1428,6 +1392,11 @@ async function collectVisibleUnreadDms(
     const visibleNodeIds = new Set(
       visible.map((n) => n.user?.id).filter((id): id is string => typeof id === 'string'),
     );
+
+    // Muted DMs must not light a badge, same rule as /unread-counts — and so
+    // must not be swept up by a bulk clear either. Mutes are per source
+    // (#5487), so each source reads its own preferences row.
+    const { dms: mutedDMNodeIds } = await loadActiveMutes(userId, source.id);
 
     const senders: Record<string, number> = {};
     for (const [nodeId, count] of Object.entries(perSender)) {

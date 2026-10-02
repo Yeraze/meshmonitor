@@ -1,5 +1,5 @@
 /**
- * Migration 186: create `translation_cache` and `message_translations`
+ * Migration 188: create `translation_cache` and `message_translations`
  * (#5520, translation cache follow-up to #5480).
  *
  * `translation_cache` is GLOBAL (no `sourceId`): one row per hashed
@@ -27,7 +27,7 @@ import type { Database } from 'better-sqlite3';
 import { logger } from '../../utils/logger.js';
 import { createTableIfMissingMysql } from './helpers.js';
 
-const LABEL = 'Migration 186';
+const LABEL = 'Migration 188';
 const CACHE_TABLE = 'translation_cache';
 const LINK_TABLE = 'message_translations';
 const PRUNE_INDEX = 'trc_prune_idx';
@@ -80,7 +80,7 @@ export const migration = {
 
 // ============ PostgreSQL ============
 
-export async function runMigration186Postgres(client: import('pg').PoolClient): Promise<void> {
+export async function runMigration188Postgres(client: import('pg').PoolClient): Promise<void> {
   logger.info(`${LABEL} (PostgreSQL): creating ${CACHE_TABLE} + ${LINK_TABLE}...`);
 
   await client.query(`
@@ -117,7 +117,7 @@ export async function runMigration186Postgres(client: import('pg').PoolClient): 
 
 // ============ MySQL ============
 
-export async function runMigration186Mysql(pool: import('mysql2/promise').Pool): Promise<void> {
+export async function runMigration188Mysql(pool: import('mysql2/promise').Pool): Promise<void> {
   logger.info(`${LABEL} (MySQL): creating ${CACHE_TABLE} + ${LINK_TABLE}...`);
 
   await createTableIfMissingMysql(pool, CACHE_TABLE, `

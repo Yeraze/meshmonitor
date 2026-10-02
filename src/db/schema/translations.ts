@@ -26,7 +26,7 @@
  * a reused phrase ("Hi", "Good morning") never expires, even after the
  * messages that referenced it are purged.
  *
- * Indexes are declared in migration 186, not here (project convention, see
+ * Indexes are declared in migration 188, not here (project convention, see
  * `coverageSurveys.ts`).
  */
 import { sqliteTable, text, integer, primaryKey as sqlitePrimaryKey } from 'drizzle-orm/sqlite-core';

@@ -109,6 +109,7 @@ import type {
 import type { MeshIssueFinding } from '../server/services/meshIssues/types.js';
 import type { ConversationReadStateMap, AircraftFlightMatchRow, FlightMatchLookupWrite, AssetNode, AssetNodeSettings } from '../db/repositories/index.js';
 import type { MeshCoreIgnoredNodeRow, MeshCoreMessageFilterRow, MeshCoreMessageFilterInput, MeshCoreFilterMode } from '../db/repositories/index.js';
+import type { MessageSourceScope } from '../db/repositories/index.js';
 import { assetRetentionCutoff } from '../utils/assetTracking.js';
 import type { ConversationKind } from '../db/schema/conversationReadState.js';
 import type { DatabaseType, DbPacketLog as DbTypesPacketLog, DbPacketCountByNode, DbPacketCountByPortnum, DbDistinctRelayNode } from '../db/types.js';
@@ -1918,15 +1919,21 @@ class DatabaseService {
     caseSensitive?: boolean;
     scope?: 'all' | 'channels' | 'dms';
     channels?: number[];
+    /** Per-source readable channels; an empty list returns nothing (#5517). */
+    scopes?: MessageSourceScope[];
+    /** Restrict to one source. */
+    sourceId?: string;
     fromNodeId?: string;
     startDate?: number;
     endDate?: number;
     limit?: number;
     offset?: number;
-  }): Promise<{ messages: DbMessage[]; total: number }> {
+  }): Promise<{ messages: Array<DbMessage & { sourceId?: string }>; total: number }> {
     const result = await this.messages.searchMessages(options);
     return {
-      messages: result.messages.map(msg => this.convertRepoMessage(msg)),
+      // Keep the owning source on each hit (#5517): a cross-source search is
+      // useless if the caller cannot tell which source a match came from.
+      messages: result.messages.map(msg => ({ ...this.convertRepoMessage(msg), sourceId: (msg as { sourceId?: string | null }).sourceId ?? undefined })),
       total: result.total,
     };
   }
