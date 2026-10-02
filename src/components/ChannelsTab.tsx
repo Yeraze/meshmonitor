@@ -39,6 +39,10 @@ import { UiIcon } from './icons';
 import UnreadDivider from './messages/UnreadDivider';
 import { resolveUnreadAnchorId, shouldSuppressDivider } from '../utils/unreadAnchor';
 import { useUnreadDividerAnchors } from '../contexts/MessagingContext';
+import { TranslateModal } from './translation/TranslateModal';
+import { TranslatedMessage } from './translation/TranslatedMessage';
+import { useMessageTranslation } from '../hooks/useMessageTranslation';
+import { useTranslationSettings } from '../hooks/useTranslationSettings';
 // Default PSK value (publicly known key - not truly secure) — shared
 // definition lives in utils/publicChannel.ts (#4705).
 import { DEFAULT_PUBLIC_PSK } from '../utils/publicChannel';
@@ -310,6 +314,9 @@ export default function ChannelsTab({
   const [detailsState, setDetailsState] = useState<{ message: MeshMessage; direction: MessageDirection } | null>(null);
   const [directNeighborStats, setDirectNeighborStats] = useState<Record<number, { avgRssi: number; packetCount: number; lastHeard: number }>>({});
   const [homoglyphEnabled, setHomoglyphEnabled] = useState(false);
+  const [translateModalOpen, setTranslateModalOpen] = useState(false);
+  const translationSettings = useTranslationSettings();
+  const { translatedMessages, translateMessage, dismissTranslation } = useMessageTranslation();
 
   // Fetch homoglyph optimization setting
   useEffect(() => {
@@ -643,6 +650,17 @@ export default function ChannelsTab({
       >
         <UiIcon name="location" size={16} />
       </button>
+      {translationSettings.canTranslate && (
+        <button
+          onClick={() => setTranslateModalOpen(true)}
+          disabled={txDisabled}
+          className="send-btn channel-action-btn"
+          title={txDisabled ? (txDisabledTooltip ?? t('tx_disabled.control_tooltip')) : t('messages.translate', 'Translate message')}
+          aria-label={t('messages.translate', 'Translate message')}
+        >
+          <UiIcon name="translate" size={16} />
+        </button>
+      )}
     </>
   );
 
@@ -1271,6 +1289,14 @@ export default function ChannelsTab({
                                       </div>
                                     </div>
                                     <LinkPreview text={msg.text} />
+                                    {translatedMessages[msg.id] && (
+                                      <TranslatedMessage
+                                        state={translatedMessages[msg.id]}
+                                        onDismiss={() => dismissTranslation(msg.id)}
+                                        onRetry={() => translateMessage(msg.id, msg.text)}
+                                        onChangeTargetLang={(newLang) => translateMessage(msg.id, msg.text, newLang)}
+                                      />
+                                    )}
                                     {reactions.length > 0 && (
                                       <div className="message-reactions">
                                         {reactions.map(reaction => {
@@ -1344,6 +1370,16 @@ export default function ChannelsTab({
                                           aria-label={t('channels.emoji_button_title')}
                                         >
                                           <UiIcon name="reaction" size={15} />
+                                        </button>
+                                      )}
+                                      {translationSettings.canTranslate && msg.text && (
+                                        <button
+                                          className="translate-button"
+                                          onClick={() => translateMessage(msg.id, msg.text)}
+                                          title={t('messages.translate', 'Translate')}
+                                          aria-label={t('messages.translate', 'Translate')}
+                                        >
+                                          <UiIcon name="translate" size={15} />
                                         </button>
                                       )}
                                       <button
@@ -1791,6 +1827,17 @@ export default function ChannelsTab({
             handleSenderClick(nodeId);
           }}
           onClose={() => setDetailsState(null)}
+        />
+      )}
+
+      {translateModalOpen && (
+        <TranslateModal
+          isOpen={translateModalOpen}
+          onClose={() => setTranslateModalOpen(false)}
+          initialText={newMessage}
+          defaultTargetLanguage={translationSettings.defaultOutgoingLanguage}
+          defaultSourceLanguage={translationSettings.defaultLanguage}
+          onApply={(translatedText) => setNewMessage(translatedText)}
         />
       )}
     </div>

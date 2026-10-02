@@ -110,7 +110,8 @@ vi.mock('../../meshcoreManager.js', () => ({
 }));
 
 vi.mock('../../middleware/rateLimiters.js', () => ({
-  messageLimiter: (_req: any, _res: any, next: any) => next()
+  messageLimiter: (_req: any, _res: any, next: any) => next(),
+  translateLimiter: (_req: any, _res: any, next: any) => next(),
 }));
 
 vi.mock('../../messageQueueService.js', () => ({

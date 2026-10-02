@@ -29,6 +29,7 @@ vi.mock('../../sourceManagerRegistry.js', () => ({
 vi.mock('../../messageQueueService.js', () => ({ messageQueueService: {} }));
 vi.mock('../../middleware/rateLimiters.js', () => ({
   messageLimiter: (_req: any, _res: any, next: any) => next(),
+  translateLimiter: (_req: any, _res: any, next: any) => next(),
 }));
 
 import databaseService from '../../../services/database.js';

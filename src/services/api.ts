@@ -25,6 +25,7 @@ import { parseJsonResponse } from '../utils/parseJsonResponse.js';
 import type { NodeTransportClass } from '../utils/nodeTransport.js';
 import type { OutlierPreview, OutlierPurgeResult } from '../utils/telemetryOutliers.js';
 import type { FlightMatch } from '../types/flightMatch.js';
+import type { TranslationRequest, TranslationResponse, TranslationLanguageOption } from '../types/translation.js';
 
 /** Body of the telemetry outlier preview/purge requests (#5333). */
 /**
@@ -2502,6 +2503,33 @@ class ApiService {
     payload: { brokerKey?: string; username: string; password: string },
   ): Promise<void> {
     await this.put(`/api/sources/${sourceId}/observer/credentials`, payload);
+  }
+
+  /**
+   * Translate a chat message.
+   */
+  async translateMessage(payload: TranslationRequest): Promise<TranslationResponse> {
+    const res = await this.post<{ success: boolean; data: TranslationResponse }>('/api/translate', payload);
+    return res.data;
+  }
+
+  /**
+   * Test a translation configuration from the settings tab.
+   */
+  async testTranslationConfig(config: Record<string, unknown>): Promise<TranslationResponse & { sampleSourceText: string }> {
+    const res = await this.post<{ success: boolean; data: TranslationResponse & { sampleSourceText: string } }>(
+      '/api/translate/test',
+      config
+    );
+    return res.data;
+  }
+
+  /**
+   * Get standard language list for translation.
+   */
+  async getTranslationLanguages(): Promise<TranslationLanguageOption[]> {
+    const res = await this.get<{ success: boolean; data: TranslationLanguageOption[] }>('/api/translate/languages');
+    return res.data;
   }
 }
 

@@ -9,7 +9,14 @@ interface ErrorBoundaryProps {
 
 interface ErrorBoundaryState {
   hasError: boolean;
-  error: Error | null;
+  /** Whatever was thrown. Usually an `Error`, but libraries can throw plain
+   *  strings (leaflet.markercluster does, #5516). */
+  error: unknown;
+}
+
+/** Readable text for a thrown value, whether or not it is an `Error`. */
+function describeError(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
 
 class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
@@ -18,11 +25,11 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
     this.state = { hasError: false, error: null };
   }
 
-  static getDerivedStateFromError(error: Error): ErrorBoundaryState {
+  static getDerivedStateFromError(error: unknown): ErrorBoundaryState {
     return { hasError: true, error };
   }
 
-  componentDidCatch(error: Error, errorInfo: ErrorInfo) {
+  componentDidCatch(error: unknown, errorInfo: ErrorInfo) {
     logger.error('ErrorBoundary caught an error:', error, errorInfo);
   }
 
@@ -37,10 +44,10 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
           <div className="error-boundary-content">
             <h2>{this.props.fallbackTitle || 'Something went wrong'}</h2>
             <p>An unexpected error occurred in this section.</p>
-            {this.state.error && (
+            {this.state.error != null && (
               <details className="error-boundary-details">
                 <summary>Error details</summary>
-                <pre>{this.state.error.message}</pre>
+                <pre>{describeError(this.state.error)}</pre>
               </details>
             )}
             <button className="error-boundary-retry" onClick={this.handleRetry}>
