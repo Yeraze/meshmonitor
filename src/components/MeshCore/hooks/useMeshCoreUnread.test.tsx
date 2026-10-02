@@ -56,6 +56,30 @@ describe('useMeshCoreUnread', () => {
     expect(result.current.channels).toBe(false);
   });
 
+  it('ignores muted channels (#5487)', async () => {
+    routeFetch({ 1: 5000 });
+    const { result } = renderHook(() =>
+      useMeshCoreUnread({
+        baseUrl: '', sourceId: 'src1', messages: [], contacts, selfKey: SELF, enabled: true,
+        isChannelMuted: (idx) => idx === 1,
+      }),
+    );
+    await waitFor(() => expect(csrfFetchMock).toHaveBeenCalledWith(expect.stringContaining('/channel-counts')));
+    await new Promise((r) => setTimeout(r, 10));
+    expect(result.current.channels).toBe(false);
+  });
+
+  it('still flags an unmuted channel when another is muted (#5487)', async () => {
+    routeFetch({ 0: 4000, 1: 5000 });
+    const { result } = renderHook(() =>
+      useMeshCoreUnread({
+        baseUrl: '', sourceId: 'src1', messages: [], contacts, selfKey: SELF, enabled: true,
+        isChannelMuted: (idx) => idx === 1,
+      }),
+    );
+    await waitFor(() => expect(result.current.channels).toBe(true));
+  });
+
   it('flags DMs unread from an incoming message in the pool (no fetch needed)', () => {
     routeFetch({});
     const messages = [{ fromPublicKey: PEER, toPublicKey: SELF, timestamp: 1000, text: 'hi' }] as any;
