@@ -10,9 +10,7 @@ import databaseService from '../../../services/database.js';
 import { ALL_SOURCES } from '../../../db/repositories/index.js';
 import { resolveSourceManager } from '../../utils/resolveSourceManager.js';
 import { refuseNonMeshtasticSource } from '../../utils/requireMeshtasticDeviceSource.js';
-import { sourceManagerRegistry } from '../../sourceManagerRegistry.js';
-import { isMeshCoreManager } from '../../sourceManagerTypes.js';
-import type { MeshCoreManager } from '../../meshcoreManager.js';
+import { parseMessageSearchQuery, searchReadableMessages } from '../../utils/messageSearch.js';
 import { hasPermission } from '../../auth/authMiddleware.js';
 import { ResourceType } from '../../../types/permission.js';
 import { messageLimiter } from '../../middleware/rateLimiters.js';
@@ -170,103 +168,29 @@ router.get('/', async (req: Request, res: Response) => {
  * - scope: string - Search scope: 'all', 'channels', 'dms', or 'meshcore' (default: 'all')
  * - channels: string - Comma-separated channel numbers to filter by
  * - fromNodeId: string - Filter by sender node ID
- * - startDate: number - Unix timestamp for range start
- * - endDate: number - Unix timestamp for range end
+ * - startDate: number - Epoch milliseconds for range start
+ * - endDate: number - Epoch milliseconds for range end
  * - limit: number - Max results to return (default: 50, max: 100)
  * - offset: number - Offset for pagination (default: 0)
  */
 router.get('/search', async (req: Request, res: Response) => {
   try {
     const user = (req as any).user;
-    const userId = user?.id ?? null;
-    const isAdmin = user?.isAdmin ?? false;
 
-    const { q, caseSensitive, scope, channels, fromNodeId, startDate, endDate, limit, offset } = req.query;
-
-    if (!q || typeof q !== 'string' || q.trim().length === 0) {
+    const parsed = parseMessageSearchQuery(req.query);
+    if (!parsed.ok) {
       return res.status(400).json({
         success: false,
         error: 'Bad Request',
-        message: 'Search query parameter "q" is required'
+        message: parsed.message
       });
     }
 
-    const searchQuery = q.trim();
-    const isCaseSensitive = caseSensitive === 'true';
-    const searchScope = (scope as string) || 'all';
-    const maxLimit = Math.min(parseInt(limit as string) || 50, 100);
-    const searchOffset = parseInt(offset as string) || 0;
-
-    let channelFilter: number[] | undefined;
-    if (channels && typeof channels === 'string') {
-      channelFilter = channels.split(',').map(c => parseInt(c.trim())).filter(c => !isNaN(c));
-    }
-
-    const startDateNum = startDate ? parseInt(startDate as string) : undefined;
-    const endDateNum = endDate ? parseInt(endDate as string) : undefined;
-
-    // Scope search to the requesting source (path or query), pushed down to
-    // SQL so paging and totals count only that source (#5517).
-    const searchSourceId = getScopedSourceId(req);
-    const accessibleChannels = await getAccessibleChannels(userId, isAdmin, searchSourceId);
-
-    const results: any[] = [];
-    let total = 0;
-
-    // Search standard messages (unless scope is meshcore-only)
-    if (searchScope !== 'meshcore') {
-      let effectiveChannelFilter = channelFilter;
-
-      if (accessibleChannels !== null) {
-        const accessibleArray = Array.from(accessibleChannels);
-        if (effectiveChannelFilter) {
-          effectiveChannelFilter = effectiveChannelFilter.filter(c => accessibleChannels.has(c));
-        } else {
-          effectiveChannelFilter = accessibleArray;
-        }
-      }
-
-      const searchResult = await databaseService.searchMessagesAsync({
-        query: searchQuery,
-        caseSensitive: isCaseSensitive,
-        scope: searchScope === 'meshcore' ? 'all' : (searchScope as 'all' | 'channels' | 'dms'),
-        channels: effectiveChannelFilter,
-        sourceId: searchSourceId,
-        fromNodeId: fromNodeId as string | undefined,
-        startDate: startDateNum,
-        endDate: endDateNum,
-        limit: maxLimit,
-        offset: searchOffset
-      });
-
-      results.push(...searchResult.messages.map(m => ({ ...m, source: 'standard' })));
-      total += searchResult.total;
-    }
-
-    // Search MeshCore messages (in-memory filter, across every registered source)
-    const meshcoreManagers = sourceManagerRegistry.getAllManagers().filter((m): m is MeshCoreManager => isMeshCoreManager(m) && m.isConnected());
-    if ((searchScope === 'all' || searchScope === 'meshcore') && meshcoreManagers.length > 0) {
-      const hasMeshcoreAccess = isAdmin || (accessibleChannels === null);
-
-      if (hasMeshcoreAccess) {
-        const allMeshcoreMessages = meshcoreManagers.flatMap(m => m.getRecentMessages(1000));
-        const filtered = allMeshcoreMessages.filter(m => {
-          if (!m.text) return false;
-          const textMatch = isCaseSensitive
-            ? m.text.includes(searchQuery)
-            : m.text.toLowerCase().includes(searchQuery.toLowerCase());
-          if (!textMatch) return false;
-          if (startDateNum && m.timestamp < startDateNum) return false;
-          if (endDateNum && m.timestamp > endDateNum) return false;
-          if (fromNodeId && m.fromPublicKey !== fromNodeId) return false;
-          return true;
-        });
-
-        total += filtered.length;
-        const meshcoreSlice = filtered.slice(0, Math.max(0, maxLimit - results.length));
-        results.push(...meshcoreSlice.map(m => ({ ...m, source: 'meshcore' })));
-      }
-    }
+    // `attachSource` already enforced `messages:read` on this source; the
+    // shared search narrows further to readable channels / DMs in SQL, and
+    // reads MeshCore history from the database whether or not the source is
+    // connected.
+    const { results, total } = await searchReadableMessages(user, getScopedSourceId(req), parsed.params);
 
     res.json({
       success: true,
