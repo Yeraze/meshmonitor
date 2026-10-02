@@ -138,6 +138,12 @@ export interface DbMeshCoreMessage {
    */
   scopeCode?: number | null;
   scopeName?: string | null;
+  /**
+   * Wire sender_timestamp (epoch SECONDS) of our own outgoing channel send
+   * (#5512). A user resend reuses it. Null for received messages and for rows
+   * written before migration 187.
+   */
+  senderTimestamp?: number | null;
   createdAt: number;
 }
 
@@ -1657,6 +1663,24 @@ export class MeshCoreRepository extends BaseRepository {
   // store a pubkey *prefix* in fromPublicKey while outbound store the full key,
   // so matching needs the same prefix semantics the frontend uses — the manager
   // resolves the id set and calls deleteMessagesByIds here.
+
+  /**
+   * Fetch one message by id, scoped to a source (#5512). Null when the id
+   * doesn't exist or belongs to another source.
+   */
+  async getMessageForSource(id: string, sourceId: string): Promise<DbMeshCoreMessage | null> {
+    if (!sourceId) {
+      throw new Error('MeshCoreRepository.getMessageForSource requires a sourceId');
+    }
+    const { meshcoreMessages } = this.tables;
+    const rows = await this.db
+      .select()
+      .from(meshcoreMessages)
+      .where(and(eq(meshcoreMessages.id, id), eq(meshcoreMessages.sourceId, sourceId)))
+      .limit(1);
+    if (rows.length === 0) return null;
+    return (this.normalizeBigInts(rows) as unknown as DbMeshCoreMessage[])[0];
+  }
 
   /**
    * Delete a single message by id, scoped to a source (#3981). Returns true if

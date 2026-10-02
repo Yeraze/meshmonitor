@@ -721,6 +721,16 @@ export const MeshCoreChannelsView: React.FC<MeshCoreChannelsViewProps> = ({
       });
     }
   }, [actions, t]);
+  // Resend (#5512): the stream confirms first. Patch `history` too — most of
+  // this view renders from the per-channel backlog, which the hook's live
+  // `messages` update doesn't reach (same reason as delete above).
+  const handleResendMessage = useCallback(async (m: MeshCoreMessage) => {
+    const state = await actions.resendMessage(m.id);
+    if (state) {
+      setHistory(prev => prev.map(x => (x.id === m.id ? { ...x, ...state } : x)));
+    }
+    return state;
+  }, [actions]);
   const handleClearChannel = useCallback(async () => {
     if (!window.confirm(t(
       'meshcore.confirm_clear_channel',
@@ -1012,6 +1022,7 @@ export const MeshCoreChannelsView: React.FC<MeshCoreChannelsViewProps> = ({
           disabledReason={receiveOnly ? t('meshcore.receive_only.control_tooltip', 'Receive-only mode is on for this MeshCore source. Turn it off in MeshCore Settings to use this.') : undefined}
           emptyText={t('meshcore.no_messages', 'No messages on this channel yet')}
           onDeleteMessage={canSend ? handleDeleteMessage : undefined}
+          onResendMessage={canSend ? handleResendMessage : undefined}
           onSend={async text => {
             // Pass the one-off scope override only when the operator has opened
             // the control AND typed a value (incl. '' to mean unscoped). When

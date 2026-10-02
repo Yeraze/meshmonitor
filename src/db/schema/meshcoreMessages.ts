@@ -43,6 +43,11 @@ export const meshcoreMessagesSqlite = sqliteTable('meshcore_messages', {
   scopeCode: integer('scopeCode'),
   scopeName: text('scopeName'),
 
+  // Wire sender_timestamp (epoch SECONDS) of our own outgoing channel send
+  // (#5512, migration 187). A user resend reuses it so repeaters dedupe the
+  // copy. NULL for received messages and rows sent before the migration.
+  senderTimestamp: integer('senderTimestamp'),
+
   // Message type (for future use: text, location, etc.)
   messageType: text('messageType').default('text'),
 
@@ -72,6 +77,7 @@ export const meshcoreMessagesPostgres = pgTable('meshcore_messages', {
   routePath: pgText('routePath'),
   scopeCode: pgInteger('scopeCode'),
   scopeName: pgText('scopeName'),
+  senderTimestamp: pgBigint('senderTimestamp', { mode: 'number' }),
   messageType: pgText('messageType').default('text'),
   delivered: pgBoolean('delivered').default(false),
   deliveredAt: pgBigint('deliveredAt', { mode: 'number' }),
@@ -94,6 +100,7 @@ export const meshcoreMessagesMysql = mysqlTable('meshcore_messages', {
   routePath: myText('routePath'),
   scopeCode: myInt('scopeCode'),
   scopeName: myText('scopeName'),
+  senderTimestamp: myBigint('senderTimestamp', { mode: 'number' }),
   messageType: myVarchar('messageType', { length: 32 }).default('text'),
   delivered: myBoolean('delivered').default(false),
   deliveredAt: myBigint('deliveredAt', { mode: 'number' }),
