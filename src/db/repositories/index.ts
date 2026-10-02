@@ -134,6 +134,14 @@ export type {
   UpdateCoverageSurveyPatch,
   CoverageSurveyExemptionWindow,
 } from './coverageSurveys.js';
+export { TranslationsRepository, TRANSLATION_PIN_THRESHOLD } from './translations.js';
+export type {
+  DbTranslationCacheEntry,
+  NewTranslationCacheEntry,
+  StoredMessageTranslation,
+  PruneTranslationCacheOptions,
+  PruneTranslationCacheResult,
+} from './translations.js';
 export { AircraftFlightMatchesRepository } from './aircraftFlightMatches.js';
 export type {
   AircraftFlightMatchRow,

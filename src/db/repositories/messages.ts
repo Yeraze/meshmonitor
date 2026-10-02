@@ -5,7 +5,8 @@
  * Supports SQLite, PostgreSQL, and MySQL through Drizzle ORM.
  */
 import { eq, gt, lt, gte, and, or, desc, sql, like, ilike, inArray, isNotNull, isNull, ne, notInArray, SQL, count } from 'drizzle-orm';
-import { BaseRepository, DrizzleDatabase, SourceScope } from './base.js';
+import { BaseRepository, DrizzleDatabase, SourceScope, ALL_SOURCES } from './base.js';
+import { TranslationsRepository } from './translations.js';
 import { DatabaseType, DbMessage } from '../types.js';
 import { logger } from '../../utils/logger.js';
 import { PortNum } from '../../server/constants/meshtastic.js';
@@ -25,8 +26,40 @@ const DM_CHAT_PORTNUMS = [PortNum.TEXT_MESSAGE_APP, PortNum.ATAK_PLUGIN, PortNum
  * Repository for message operations
  */
 export class MessagesRepository extends BaseRepository {
+  private translationsRepo: TranslationsRepository | null = null;
+
   constructor(db: DrizzleDatabase, dbType: DatabaseType) {
     super(db, dbType);
+  }
+
+  private getTranslationsRepo(): TranslationsRepository {
+    if (!this.translationsRepo) this.translationsRepo = new TranslationsRepository(this.db, this.dbType);
+    return this.translationsRepo;
+  }
+
+  /**
+   * Drop `message_translations` links whose message was just deleted (#5520)
+   * and recount the cache's `messageRefCount`. Called at the end of every
+   * delete path below. Best-effort: a failure is logged, never thrown — the
+   * hourly translation-cache prune sweeps the same orphans again, and the
+   * stored-translation read path only serves links whose message still
+   * exists, so a missed sweep can never leak a deleted message's translation.
+   */
+  private async sweepTranslationLinks(scope: SourceScope | undefined): Promise<void> {
+    try {
+      await this.getTranslationsRepo().removeOrphanedLinks(scope || ALL_SOURCES);
+    } catch (err) {
+      logger.warn('Failed to sweep message translation links after message delete:', err);
+    }
+  }
+
+  /** Synchronous SQLite twin of `sweepTranslationLinks` for the sync facade. */
+  private sweepTranslationLinksSqliteSync(scope: SourceScope | undefined): void {
+    try {
+      this.getTranslationsRepo().removeOrphanedLinksSqliteSync(scope || ALL_SOURCES);
+    } catch (err) {
+      logger.warn('Failed to sweep message translation links after message delete:', err);
+    }
   }
 
   /**
@@ -101,6 +134,21 @@ export class MessagesRepository extends BaseRepository {
 
     if (result.length === 0) return null;
     return this.normalizeBigInts(result[0]) as DbMessage;
+  }
+
+  /**
+   * Fetch messages by id, scoped to ONE source (#5520). Ids that don't exist
+   * on that source are simply absent from the result. The caller applies
+   * channel / DM visibility (`resolveMessageReadAccess`).
+   */
+  async getMessagesByIdsInSource(sourceId: string, ids: string[]): Promise<DbMessage[]> {
+    if (ids.length === 0) return [];
+    const { messages } = this.tables;
+    const rows = await this.db
+      .select()
+      .from(messages)
+      .where(and(inArray(messages.id, ids), this.withSourceScope(messages, sourceId)));
+    return (rows as DbMessage[]).map((r) => this.normalizeBigInts(r) as DbMessage);
   }
 
   /**
@@ -375,13 +423,14 @@ export class MessagesRepository extends BaseRepository {
   async deleteMessage(id: string): Promise<boolean> {
     const { messages } = this.tables;
     const existing = await this.db
-      .select({ id: messages.id })
+      .select({ id: messages.id, sourceId: messages.sourceId })
       .from(messages)
       .where(eq(messages.id, id));
 
     if (existing.length === 0) return false;
 
     await this.db.delete(messages).where(eq(messages.id, id));
+    await this.sweepTranslationLinks(existing[0].sourceId || ALL_SOURCES);
     return true;
   }
 
@@ -397,6 +446,7 @@ export class MessagesRepository extends BaseRepository {
       .from(messages)
       .where(condition);
     await this.db.delete(messages).where(condition);
+    await this.sweepTranslationLinks(sourceId);
     return deletedCount;
   }
 
@@ -419,6 +469,7 @@ export class MessagesRepository extends BaseRepository {
       .from(messages)
       .where(condition);
     await this.db.delete(messages).where(condition);
+    await this.sweepTranslationLinks(sourceId);
     return deletedCount;
   }
 
@@ -434,6 +485,7 @@ export class MessagesRepository extends BaseRepository {
       .from(messages)
       .where(condition);
     await this.db.delete(messages).where(condition);
+    await this.sweepTranslationLinks(sourceId);
     return deletedCount;
   }
 
@@ -531,6 +583,7 @@ export class MessagesRepository extends BaseRepository {
       ? and(lt(messages.timestamp, cutoff), this.withSourceScope(messages, sourceId))
       : lt(messages.timestamp, cutoff);
     const result = db.delete(messages).where(condition).run();
+    this.sweepTranslationLinksSqliteSync(sourceId);
     return Number(result.changes);
   }
 
@@ -549,6 +602,7 @@ export class MessagesRepository extends BaseRepository {
     const result = isScoped
       ? db.delete(messages).where(eq(messages.sourceId, sourceId as string)).run()
       : db.delete(messages).run();
+    this.sweepTranslationLinksSqliteSync(isScoped ? sourceId : ALL_SOURCES);
     return Number(result.changes);
   }
 
@@ -605,6 +659,7 @@ export class MessagesRepository extends BaseRepository {
       .from(messages)
       .where(condition);
     await this.db.delete(messages).where(condition);
+    await this.sweepTranslationLinks(sourceId);
     return Number(c);
   }
 
@@ -622,6 +677,7 @@ export class MessagesRepository extends BaseRepository {
       .from(messages)
       .where(lt(messages.timestamp, cutoff));
     await this.db.delete(messages).where(lt(messages.timestamp, cutoff));
+    await this.sweepTranslationLinks(ALL_SOURCES);
     return deletedCount;
   }
 
@@ -742,6 +798,7 @@ export class MessagesRepository extends BaseRepository {
     } else {
       await this.db.delete(messages);
     }
+    await this.sweepTranslationLinks(isScoped ? sourceId : ALL_SOURCES);
     return total;
   }
 

@@ -40,6 +40,10 @@ export const TABLE_ORDER = [
   // (sourceId, messageId) with no FK. Migrated so timelines survive a backend
   // move (protocol-neutral: covers both Meshtastic and MeshCore messages).
   'message_events',
+  // 5520: translation cache (global, hashed text) + per-source message links.
+  // No FK either way; links only point at cache rows by key.
+  'translation_cache',
+  'message_translations',
   // 4816 Phase 4 WP1: Meshtastic Heard-By — repeaters that re-flooded our own
   // outgoing channel packet, keyed by (sourceId, messageId, relayByte).
   'meshtastic_heard_repeaters',
@@ -186,7 +190,7 @@ export const SOURCE_SCOPED_TABLES = new Set([
   // every backend, so the `sourceId` backfill check never applies to it.
   'embed_profiles', 'meshcore_nodes', 'meshcore_messages',
   'meshcore_neighbor_info', 'meshcore_packet_log',
-  'meshcore_heard_repeaters', 'message_events', 'meshtastic_heard_repeaters',
+  'meshcore_heard_repeaters', 'message_events', 'message_translations', 'meshtastic_heard_repeaters',
   'mqtt_packet_log', 'mqtt_ok_to_mqtt_violations', 'coverage_receptions',
   'atak_contacts', 'mesh_beacon_offers', 'aircraft_flight_matches',
   'meshcore_ignored_nodes', 'meshcore_message_filters',

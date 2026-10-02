@@ -69,6 +69,7 @@ import {
   MeshtasticHeardRepeatersRepository,
   CoverageReceptionsRepository,
   CoverageSurveysRepository,
+  TranslationsRepository,
   AircraftFlightMatchesRepository,
   MeshCoreFiltersRepository,
   MeshIssuesRepository,
@@ -617,6 +618,7 @@ class DatabaseService {
   public meshtasticHeardRepeatersRepo: MeshtasticHeardRepeatersRepository | null = null;
   public coverageReceptionsRepo: CoverageReceptionsRepository | null = null;
   public coverageSurveysRepo: CoverageSurveysRepository | null = null;
+  public translationsRepo: TranslationsRepository | null = null;
   public aircraftFlightMatchesRepo: AircraftFlightMatchesRepository | null = null;
   public meshcoreFiltersRepo: MeshCoreFiltersRepository | null = null;
   public meshIssuesRepo: MeshIssuesRepository | null = null;
@@ -710,6 +712,12 @@ class DatabaseService {
   get coverageSurveys(): CoverageSurveysRepository {
     if (!this.coverageSurveysRepo) throw new Error('Database not initialized');
     return this.coverageSurveysRepo;
+  }
+
+  /** Translation cache + per-source message links (#5520). */
+  get translations(): TranslationsRepository {
+    if (!this.translationsRepo) throw new Error('Database not initialized');
+    return this.translationsRepo;
   }
 
   get aircraftFlightMatches(): AircraftFlightMatchesRepository {
@@ -1178,6 +1186,7 @@ class DatabaseService {
       this.meshtasticHeardRepeatersRepo = new MeshtasticHeardRepeatersRepository(drizzleDb, this.drizzleDbType);
       this.coverageReceptionsRepo = new CoverageReceptionsRepository(drizzleDb, this.drizzleDbType);
       this.coverageSurveysRepo = new CoverageSurveysRepository(drizzleDb, this.drizzleDbType);
+      this.translationsRepo = new TranslationsRepository(drizzleDb, this.drizzleDbType);
       this.aircraftFlightMatchesRepo = new AircraftFlightMatchesRepository(drizzleDb, this.drizzleDbType);
       this.meshcoreFiltersRepo = new MeshCoreFiltersRepository(drizzleDb, this.drizzleDbType);
       this.meshIssuesRepo = new MeshIssuesRepository(drizzleDb, this.drizzleDbType);
