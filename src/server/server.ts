@@ -789,6 +789,7 @@ import configRoutes from './routes/configRoutes.js';
 import userPreferencesRoutes from './routes/userPreferencesRoutes.js';
 import adminRoutes from './routes/adminRoutes.js';
 import nodesRoutes from './routes/nodesRoutes.js';
+import translationRoutes from './routes/translationRoutes.js';
 
 // CSRF token endpoint (must be before CSRF protection middleware)
 apiRouter.get('/csrf-token', csrfTokenEndpoint);
@@ -847,6 +848,9 @@ apiRouter.use('/news', newsRoutes);
 
 // Message routes (requires appropriate write permissions)
 apiRouter.use('/messages', optionalAuth(), messageRoutes);
+
+// Translation routes
+apiRouter.use('/translate', optionalAuth(), translationRoutes);
 
 // Per-user conversation read watermarks (#4607) — the durable anchor for the
 // unread divider and the jump-to-first-unread entry scroll on MeshCore.
