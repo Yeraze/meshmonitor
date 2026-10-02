@@ -125,7 +125,7 @@ export const SearchModal: React.FC<SearchModalProps> = ({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (query.length < 2) return;
+    if (query.trim().length < 2) return;
     void performSearch(0);
   };
 
@@ -217,7 +217,7 @@ export const SearchModal: React.FC<SearchModalProps> = ({
               <button
                 type="submit"
                 className="search-submit-btn"
-                disabled={query.length < 2 || loading}
+                disabled={query.trim().length < 2 || loading}
               >
                 {t('search.button')}
               </button>
@@ -359,7 +359,7 @@ export const SearchModal: React.FC<SearchModalProps> = ({
             </>
           )}
 
-          {!hasSearched && !loading && query.length < 2 && (
+          {!hasSearched && !loading && query.trim().length < 2 && (
             <div className="search-min-length">{t('search.min_length')}</div>
           )}
         </div>

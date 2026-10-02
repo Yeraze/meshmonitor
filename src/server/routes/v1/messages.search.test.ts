@@ -124,6 +124,17 @@ describe('GET /api/v1/sources/:sourceId/messages/search', () => {
       expect(res.body.success).toBe(false);
     });
 
+    it.each(['q=a', 'q=%20a%20'])('rejects a q shorter than 2 characters after trimming (%s)', async (qs) => {
+      const res = await search(harness.admin, harness.sourceA, qs);
+      expect(res.status).toBe(400);
+      expect(res.body.message).toMatch(/at least 2 characters/);
+    });
+
+    it('accepts a 2-character q', async () => {
+      const res = await search(harness.admin, harness.sourceA, 'q=hi');
+      expect(res.status).toBe(200);
+    });
+
     it('rejects an unknown scope', async () => {
       const res = await search(harness.admin, harness.sourceA, 'q=hello&scope=everything');
       expect(res.status).toBe(400);

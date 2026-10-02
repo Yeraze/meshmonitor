@@ -50,12 +50,21 @@ export type ParsedMessageSearch =
   | { ok: true; params: MessageSearchParams }
   | { ok: false; message: string };
 
+/** Shortest `q` (after trimming) either search route accepts; matches the UI and docs. */
+export const MIN_SEARCH_QUERY_LENGTH = 2;
+
 /** Parse the shared search query string (`q`, `scope`, `limit`, ...). */
 export function parseMessageSearchQuery(query: Record<string, unknown>): ParsedMessageSearch {
   const { q, caseSensitive, scope, channels, fromNodeId, startDate, endDate, limit, offset } = query;
 
   if (!q || typeof q !== 'string' || q.trim().length === 0) {
     return { ok: false, message: 'Search query parameter "q" is required' };
+  }
+  if (q.trim().length < MIN_SEARCH_QUERY_LENGTH) {
+    return {
+      ok: false,
+      message: `Search query parameter "q" must be at least ${MIN_SEARCH_QUERY_LENGTH} characters`,
+    };
   }
 
   const rawScope = typeof scope === 'string' && scope.length > 0 ? scope : 'all';
