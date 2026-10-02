@@ -13,7 +13,7 @@ const { maplibreGL, addTo, fakeMap } = vi.hoisted(() => {
   return {
     addTo,
     maplibreGL: vi.fn(() => ({ addTo })),
-    fakeMap: { removeLayer: vi.fn() },
+    fakeMap: { removeLayer: vi.fn(), _addZoomLimit: vi.fn(), _removeZoomLimit: vi.fn() },
   };
 });
 
@@ -26,6 +26,8 @@ import { VectorTileLayer } from './VectorTileLayer';
 
 type Options = {
   style: unknown;
+  maxZoom?: number;
+  minZoom?: number;
   attribution?: string;
   transformRequest?: (url: string) => { url: string } | undefined;
 };
@@ -117,5 +119,25 @@ describe('VectorTileLayer', () => {
     render(<VectorTileLayer url="https://tiles.example.com/{z}/{x}/{y}.pbf" maxZoom={14} />);
     const style = lastOptions().style as { sources: Record<string, { tiles: string[] }> };
     expect(style.sources['vector-tiles'].tiles).toEqual(['https://tiles.example.com/{z}/{x}/{y}.pbf']);
+  });
+
+  it('hands MapLibre the zoom ceiling and registers it with the map (#5516)', () => {
+    fakeMap._addZoomLimit.mockClear();
+    fakeMap._removeZoomLimit.mockClear();
+    const { unmount } = render(
+      <VectorTileLayer
+        url="https://x/{z}/{x}/{y}.png"
+        styleUrl="https://basemaps.cartocdn.com/gl/voyager-gl-style/style.json"
+        maxZoom={19}
+      />,
+    );
+    const opts = lastOptions();
+    expect(opts.maxZoom).toBe(19);
+    // MapLibre runs one level below Leaflet; a forwarded floor of 0 would clamp it.
+    expect(opts.minZoom).toBeUndefined();
+    const layer = maplibreGL.mock.results[maplibreGL.mock.results.length - 1].value;
+    expect(fakeMap._addZoomLimit).toHaveBeenCalledWith(layer);
+    unmount();
+    expect(fakeMap._removeZoomLimit).toHaveBeenCalledWith(layer);
   });
 });

@@ -224,6 +224,24 @@ export const TILESETS: Readonly<Record<PredefinedTilesetId, TilesetConfig>> = {
 
 export const DEFAULT_TILESET_ID: PredefinedTilesetId = 'osm';
 
+/** Fallback zoom ceiling for a custom tileset whose stored `maxZoom` is
+ *  missing or not a number. */
+export const DEFAULT_CUSTOM_MAX_ZOOM = 18;
+const MIN_CUSTOM_MAX_ZOOM = 1;
+const MAX_CUSTOM_MAX_ZOOM = 22;
+
+/**
+ * Clamp a custom tileset's `maxZoom` to a finite 1–22. The server validates
+ * it on save, but older rows or hand-edited settings can carry anything, and
+ * a non-finite ceiling leaves the map with no `maxZoom`, which crashes node
+ * clustering (#5516).
+ */
+export function normalizeCustomMaxZoom(value: unknown): number {
+  const n = typeof value === 'string' ? Number(value) : value;
+  if (typeof n !== 'number' || !Number.isFinite(n)) return DEFAULT_CUSTOM_MAX_ZOOM;
+  return Math.min(MAX_CUSTOM_MAX_ZOOM, Math.max(MIN_CUSTOM_MAX_ZOOM, Math.round(n)));
+}
+
 /**
  * Type guard to check if a string is a valid predefined TilesetId
  */
@@ -247,6 +265,7 @@ export function getTilesetById(id: string, customTilesets: CustomTileset[] = [])
   if (customTileset) {
     return {
       ...customTileset,
+      maxZoom: normalizeCustomMaxZoom(customTileset.maxZoom),
       isCustom: true,
       isVector: customTileset.isVector ?? isVectorTileUrl(customTileset.url)
     };
@@ -290,6 +309,7 @@ export function getAllTilesets(customTilesets: CustomTileset[] = []): TilesetCon
   const predefined = Object.values(TILESETS);
   const custom = customTilesets.map(ct => ({
     ...ct,
+    maxZoom: normalizeCustomMaxZoom(ct.maxZoom),
     isCustom: true as const,
     isVector: ct.isVector ?? isVectorTileUrl(ct.url)
   }));
