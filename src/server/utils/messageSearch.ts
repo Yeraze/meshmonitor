@@ -22,6 +22,12 @@ import {
 
 export type MessageSearchScope = 'all' | 'channels' | 'dms' | 'meshcore';
 
+const SEARCH_SCOPES: readonly MessageSearchScope[] = ['all', 'channels', 'dms', 'meshcore'];
+
+function isSearchScope(value: string): value is MessageSearchScope {
+  return (SEARCH_SCOPES as readonly string[]).includes(value);
+}
+
 export interface MessageSearchParams {
   query: string;
   caseSensitive: boolean;
@@ -52,6 +58,11 @@ export function parseMessageSearchQuery(query: Record<string, unknown>): ParsedM
     return { ok: false, message: 'Search query parameter "q" is required' };
   }
 
+  const rawScope = typeof scope === 'string' && scope.length > 0 ? scope : 'all';
+  if (!isSearchScope(rawScope)) {
+    return { ok: false, message: `Invalid scope "${rawScope}"; must be one of: ${SEARCH_SCOPES.join(', ')}` };
+  }
+
   let channelFilter: number[] | undefined;
   if (channels && typeof channels === 'string') {
     channelFilter = channels.split(',').map(c => parseInt(c.trim())).filter(c => !isNaN(c));
@@ -63,7 +74,7 @@ export function parseMessageSearchQuery(query: Record<string, unknown>): ParsedM
     params: {
       query: q.trim(),
       caseSensitive: caseSensitive === 'true',
-      scope: ((scope as string) || 'all') as MessageSearchScope,
+      scope: rawScope,
       channels: channelFilter,
       fromNodeId: typeof fromNodeId === 'string' && fromNodeId.length > 0 ? fromNodeId : undefined,
       startDate: startDate ? parseInt(startDate as string) : undefined,

@@ -124,6 +124,12 @@ describe('GET /api/v1/sources/:sourceId/messages/search', () => {
       expect(res.body.success).toBe(false);
     });
 
+    it('rejects an unknown scope', async () => {
+      const res = await search(harness.admin, harness.sourceA, 'q=hello&scope=everything');
+      expect(res.status).toBe(400);
+      expect(res.body.message).toMatch(/scope/);
+    });
+
     it('refuses a source the token was not granted', async () => {
       await seed(harness.sourceB, 0, 'hello b');
       await harness.grant(harness.limited.id, 'messages', 'read', harness.sourceA);

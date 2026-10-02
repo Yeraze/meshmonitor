@@ -70,7 +70,7 @@ GET /api/v1/sources/{sourceId}/messages/search
 |-----------|------|----------|---------|-------------|
 | `q` | string | yes | — | Search text (minimum 2 characters) |
 | `caseSensitive` | boolean | no | `false` | Case-sensitive matching |
-| `scope` | string | no | `all` | `all`, `channels`, `dms`, or `meshcore` |
+| `scope` | string | no | `all` | `all`, `channels`, `dms`, or `meshcore` (any other value returns 400) |
 | `channels` | string | no | — | Comma-separated channel IDs to filter |
 | `fromNodeId` | string | no | — | Filter by sender node ID |
 | `startDate` | number | no | — | Earliest message time (epoch **milliseconds**) |
