@@ -81,7 +81,7 @@ export async function runMigration025Postgres(client: any): Promise<void> {
 
   // Add composite unique constraint idempotently.
   const { rows } = await client.query(
-    `SELECT 1 FROM pg_constraint WHERE conname = 'auto_time_sync_nodes_nodenum_sourceid_uniq'`
+    `SELECT 1 FROM pg_constraint WHERE conname = 'auto_time_sync_nodes_nodenum_sourceid_uniq' AND connamespace = current_schema()::regnamespace`
   );
   if (!rows || rows.length === 0) {
     await client.query(

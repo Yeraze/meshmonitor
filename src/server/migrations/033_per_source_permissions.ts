@@ -237,7 +237,7 @@ export async function runMigration033Postgres(client: any): Promise<void> {
   // `column "sourceId" does not exist` (#3657).
   if (sources.length > 0) {
     const { rows: cdCol } = await client.query(
-      `SELECT 1 FROM information_schema.columns WHERE table_name = 'channel_database' AND column_name = 'sourceId'`
+      `SELECT 1 FROM information_schema.columns WHERE table_schema = current_schema() AND table_name = 'channel_database' AND column_name = 'sourceId'`
     );
     if (cdCol.length > 0) {
       const firstSource = sources[0];

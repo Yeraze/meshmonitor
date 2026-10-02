@@ -26,7 +26,7 @@ export const migration = {
 
 export async function runMigration047Postgres(client: any): Promise<void> {
   const tableExists = await client.query(
-    `SELECT 1 FROM information_schema.tables WHERE table_name = 'user_map_preferences' LIMIT 1`
+    `SELECT 1 FROM information_schema.tables WHERE table_schema = current_schema() AND table_name = 'user_map_preferences' LIMIT 1`
   );
   if (tableExists.rows.length === 0) {
     return;
@@ -34,7 +34,7 @@ export async function runMigration047Postgres(client: any): Promise<void> {
 
   const col = await client.query(
     `SELECT 1 FROM information_schema.columns
-     WHERE table_name = 'user_map_preferences' AND column_name = 'selectedLayer' LIMIT 1`
+     WHERE table_schema = current_schema() AND table_name = 'user_map_preferences' AND column_name = 'selectedLayer' LIMIT 1`
   );
   if (col.rows.length === 0) {
     await client.query(`ALTER TABLE user_map_preferences ADD COLUMN "selectedLayer" TEXT`);

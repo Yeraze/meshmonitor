@@ -37,7 +37,7 @@ export async function runMigration085Postgres(client: PoolClient): Promise<void>
     // Check if migration is needed by looking for the slug column
     const slugCheck = await client.query(`
       SELECT column_name FROM information_schema.columns
-      WHERE table_name = 'custom_themes' AND column_name = 'slug'
+      WHERE table_schema = current_schema() AND table_name = 'custom_themes' AND column_name = 'slug'
     `);
 
     if (slugCheck.rows.length > 0) {
@@ -63,7 +63,7 @@ export async function runMigration085Postgres(client: PoolClient): Promise<void>
     // Add is_builtin column
     const builtinCheck = await client.query(`
       SELECT column_name FROM information_schema.columns
-      WHERE table_name = 'custom_themes' AND column_name = 'is_builtin'
+      WHERE table_schema = current_schema() AND table_name = 'custom_themes' AND column_name = 'is_builtin'
     `);
     if (builtinCheck.rows.length === 0) {
       await client.query(`ALTER TABLE custom_themes ADD COLUMN is_builtin BOOLEAN DEFAULT false`);
@@ -73,7 +73,7 @@ export async function runMigration085Postgres(client: PoolClient): Promise<void>
     // Rename camelCase columns to snake_case if needed
     const createdByCheck = await client.query(`
       SELECT column_name FROM information_schema.columns
-      WHERE table_name = 'custom_themes' AND column_name = 'createdBy'
+      WHERE table_schema = current_schema() AND table_name = 'custom_themes' AND column_name = 'createdBy'
     `);
     if (createdByCheck.rows.length > 0) {
       await client.query(`ALTER TABLE custom_themes RENAME COLUMN "createdBy" TO created_by`);

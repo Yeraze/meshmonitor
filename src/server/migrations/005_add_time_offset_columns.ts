@@ -47,7 +47,7 @@ export async function runMigration081Postgres(client: import('pg').PoolClient): 
 
   const result = await client.query(`
     SELECT column_name FROM information_schema.columns
-    WHERE table_name = 'nodes' AND column_name IN ('isTimeOffsetIssue', 'timeOffsetSeconds')
+    WHERE table_schema = current_schema() AND table_name = 'nodes' AND column_name IN ('isTimeOffsetIssue', 'timeOffsetSeconds')
   `);
 
   const existingColumns = new Set(result.rows.map((r: { column_name: string }) => r.column_name));
