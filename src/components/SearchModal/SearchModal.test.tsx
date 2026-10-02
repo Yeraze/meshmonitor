@@ -76,6 +76,10 @@ describe('SearchModal', () => {
     const input = screen.getByPlaceholderText('search.placeholder');
     fireEvent.change(input, { target: { value: 'a' } });
     expect(submitButton).toBeDisabled();
+
+    // Spaces don't count: the server trims before checking the 2-character minimum.
+    fireEvent.change(input, { target: { value: ' a ' } });
+    expect(submitButton).toBeDisabled();
   });
 
   it('should enable search button when query has 2+ characters', () => {
