@@ -31,7 +31,7 @@ export const migration = {
 
 export async function runMigration037Postgres(client: any): Promise<void> {
   const tableExists = await client.query(
-    `SELECT 1 FROM information_schema.tables WHERE table_name = 'user_map_preferences' LIMIT 1`
+    `SELECT 1 FROM information_schema.tables WHERE table_schema = current_schema() AND table_name = 'user_map_preferences' LIMIT 1`
   );
   if (tableExists.rows.length === 0) {
     return;
@@ -39,12 +39,12 @@ export async function runMigration037Postgres(client: any): Promise<void> {
 
   const idCol = await client.query(
     `SELECT 1 FROM information_schema.columns
-     WHERE table_name = 'user_map_preferences' AND column_name = 'id' LIMIT 1`
+     WHERE table_schema = current_schema() AND table_name = 'user_map_preferences' AND column_name = 'id' LIMIT 1`
   );
   if (idCol.rows.length === 0) {
     const pk = await client.query(
       `SELECT constraint_name FROM information_schema.table_constraints
-       WHERE table_name = 'user_map_preferences' AND constraint_type = 'PRIMARY KEY' LIMIT 1`
+       WHERE table_schema = current_schema() AND table_name = 'user_map_preferences' AND constraint_type = 'PRIMARY KEY' LIMIT 1`
     );
     if (pk.rows.length > 0) {
       const name = pk.rows[0].constraint_name;
@@ -55,7 +55,7 @@ export async function runMigration037Postgres(client: any): Promise<void> {
 
   const createdAtCol = await client.query(
     `SELECT 1 FROM information_schema.columns
-     WHERE table_name = 'user_map_preferences' AND column_name = 'createdAt' LIMIT 1`
+     WHERE table_schema = current_schema() AND table_name = 'user_map_preferences' AND column_name = 'createdAt' LIMIT 1`
   );
   if (createdAtCol.rows.length === 0) {
     await client.query(`ALTER TABLE user_map_preferences ADD COLUMN "createdAt" BIGINT`);
@@ -63,7 +63,7 @@ export async function runMigration037Postgres(client: any): Promise<void> {
 
   const updatedAtCol = await client.query(
     `SELECT 1 FROM information_schema.columns
-     WHERE table_name = 'user_map_preferences' AND column_name = 'updatedAt' LIMIT 1`
+     WHERE table_schema = current_schema() AND table_name = 'user_map_preferences' AND column_name = 'updatedAt' LIMIT 1`
   );
   if (updatedAtCol.rows.length === 0) {
     await client.query(`ALTER TABLE user_map_preferences ADD COLUMN "updatedAt" BIGINT`);

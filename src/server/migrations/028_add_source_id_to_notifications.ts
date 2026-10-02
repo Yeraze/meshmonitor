@@ -159,7 +159,7 @@ export async function runMigration028Postgres(client: any): Promise<void> {
     await client.query(`
       DO $$ BEGIN
         IF NOT EXISTS (
-          SELECT 1 FROM pg_indexes WHERE indexname = 'idx_push_subscriptions_user_endpoint_source'
+          SELECT 1 FROM pg_indexes WHERE indexname = 'idx_push_subscriptions_user_endpoint_source' AND schemaname = current_schema()
         ) THEN
           CREATE UNIQUE INDEX idx_push_subscriptions_user_endpoint_source
             ON push_subscriptions ("userId", endpoint, "sourceId");
@@ -193,7 +193,7 @@ export async function runMigration028Postgres(client: any): Promise<void> {
     await client.query(`
       DO $$ BEGIN
         IF EXISTS (
-          SELECT 1 FROM pg_constraint WHERE conname = 'user_notification_preferences_userId_unique'
+          SELECT 1 FROM pg_constraint WHERE conname = 'user_notification_preferences_userId_unique' AND connamespace = current_schema()::regnamespace
         ) THEN
           ALTER TABLE user_notification_preferences DROP CONSTRAINT "user_notification_preferences_userId_unique";
         END IF;
@@ -203,7 +203,7 @@ export async function runMigration028Postgres(client: any): Promise<void> {
     await client.query(`
       DO $$ BEGIN
         IF NOT EXISTS (
-          SELECT 1 FROM pg_indexes WHERE indexname = 'idx_user_notification_preferences_user_source'
+          SELECT 1 FROM pg_indexes WHERE indexname = 'idx_user_notification_preferences_user_source' AND schemaname = current_schema()
         ) THEN
           CREATE UNIQUE INDEX idx_user_notification_preferences_user_source
             ON user_notification_preferences ("userId", "sourceId");

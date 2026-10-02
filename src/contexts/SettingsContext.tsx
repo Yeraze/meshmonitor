@@ -1307,40 +1307,23 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
   }, [fetchNotificationPrefs]);
 
   /**
-   * Save one mute list for the active source. The rest of the row comes from a
-   * fresh read rather than a cache, so a save here never reverts a change made
-   * on the Notifications tab, and a channel-mute save never rewrites the DM
-   * list (or the reverse) from stale client state.
+   * Save one mute list for the active source. The server merges the posted
+   * fields onto the stored row, so this sends only the list it changes: a save
+   * here never reverts a change made on the Notifications tab, and a
+   * channel-mute save never rewrites the DM list (or the reverse).
    *
-   * If that read fails, the save is abandoned (the caller reverts its optimistic
-   * state): posting without the fresh row would reset the user's other
-   * notification settings to the defaults below.
+   * No client-side read-modify-write, so there is no path where a failed read
+   * posts defaults over the user's other settings. On a failed save the caller
+   * reverts its optimistic state.
    */
   const saveMutePreferences = useCallback(async (
     patch: { mutedChannels?: MutedChannel[]; mutedDMs?: MutedDM[] },
   ) => {
-    const base = await fetchNotificationPrefs();
     await api.post('/api/push/preferences', {
-      enableWebPush: true,
-      enableApprise: false,
-      enabledChannels: [],
-      enableDirectMessages: true,
-      notifyOnEmoji: true,
-      notifyOnMqtt: true,
-      notifyOnNewNode: true,
-      notifyOnTraceroute: true,
-      notifyOnInactiveNode: false,
-      notifyOnServerEvents: false,
-      prefixWithNodeName: false,
-      monitoredNodes: [],
-      whitelist: [],
-      blacklist: [],
-      appriseUrls: [],
-      ...base,
       ...patch,
       sourceId: sourceId ?? undefined,
     });
-  }, [fetchNotificationPrefs, sourceId]);
+  }, [sourceId]);
 
   const muteChannel = useCallback(async (channelId: number, muteUntil: number | null) => {
     const next = [
