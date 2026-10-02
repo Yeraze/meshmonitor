@@ -5227,6 +5227,14 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
   static readonly RESEND_MAX_AGE_MS = 60 * 60 * 1000;
 
   /**
+   * In-process floor under the persisted resend count (#5512). The persisted
+   * `retry` events are the cap across restarts, but if writing one fails the
+   * cap must still hold, so the larger of the two counts wins. Entries are
+   * dropped once their message is past the resend age limit.
+   */
+  private readonly resendLedger = new Map<string, { count: number; last: number }>();
+
+  /**
    * User-initiated resend of one of our channel messages that no repeater was
    * heard relaying (#5512).
    *
@@ -5288,12 +5296,22 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
           Math.ceil(MeshCoreManager.CHANNEL_RETRY_WINDOW_MS / 1000),
         );
       }
+      // An echo that lands after this read and before the RF send costs at most
+      // one copy that repeaters which heard the original drop by hash.
       const heard = await databaseService.meshcore.getHeardRepeatersForMessage(messageId, this.sourceId);
       if (heard.length > 0) {
         throw new MeshCoreResendError('ALREADY_HEARD', 'A repeater already relayed this message');
       }
       const events = await databaseService.messageEvents.getEventsForMessages(this.sourceId, [messageId], 'retry');
-      const summary = MeshCoreManager.summarizeResends(events);
+      const persisted = MeshCoreManager.summarizeResends(events);
+      for (const [id, entry] of this.resendLedger) {
+        if (now - entry.last > MeshCoreManager.RESEND_MAX_AGE_MS) this.resendLedger.delete(id);
+      }
+      const ledger = this.resendLedger.get(messageId);
+      const summary = {
+        resendCount: Math.max(persisted.resendCount, ledger?.count ?? 0),
+        lastResendAt: Math.max(persisted.lastResendAt ?? 0, ledger?.last ?? 0) || null,
+      };
       if (summary.resendCount >= MeshCoreManager.RESEND_MAX) {
         throw new MeshCoreResendError(
           'RESEND_LIMIT',
@@ -5332,6 +5350,7 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
 
       const resentAt = Date.now();
       const resendCount = summary.resendCount + 1;
+      this.resendLedger.set(messageId, { count: resendCount, last: resentAt });
       // Awaited, not fire-and-forget: this row IS the cap, so it must land
       // before the next resend request reads it.
       try {

@@ -194,6 +194,24 @@ describe('MeshCoreManager.resendChannelMessage (#5512)', () => {
     expect(sends(calls)).toHaveLength(4);
   });
 
+  it('still caps at 3 when recording the resend event fails', async () => {
+    const { manager, calls } = makeManager(sourceId);
+    const id = await sendOne(manager);
+    const record = vi.spyOn(databaseService.messageEvents, 'recordEvent').mockRejectedValue(new Error('db down'));
+    try {
+      for (let i = 1; i <= 3; i++) {
+        vi.setSystemTime(T0 + i * 31_000);
+        expect((await manager.resendChannelMessage(id)).resendCount).toBe(i);
+      }
+      vi.setSystemTime(T0 + 4 * 31_000);
+      await expectRefusal(manager.resendChannelMessage(id), 'RESEND_LIMIT');
+      // The cooldown also holds without the persisted row.
+      expect(sends(calls)).toHaveLength(4);
+    } finally {
+      record.mockRestore();
+    }
+  });
+
   it('counts the cap and cooldown from persisted events, so a restart resets neither', async () => {
     const a = makeManager(sourceId);
     const id = await sendOne(a.manager);
