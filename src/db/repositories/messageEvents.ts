@@ -16,7 +16,7 @@
  * calls in a try/catch and log-and-swallow — this method does not swallow its
  * own input-validation errors, since those indicate a caller bug.
  */
-import { and, asc, eq } from 'drizzle-orm';
+import { and, asc, eq, inArray } from 'drizzle-orm';
 import { BaseRepository, DrizzleDatabase } from './base.js';
 import { DatabaseType } from '../types.js';
 
@@ -139,5 +139,40 @@ export class MessageEventsRepository extends BaseRepository {
       )
       .orderBy(asc(messageEvents.timestamp));
     return this.normalizeBigInts(rows) as unknown as MessageEventRow[];
+  }
+
+  /**
+   * Fetch events of one type for many messages at once, scoped by sourceId,
+   * oldest first (#5512). Used to enrich a message list with its resend
+   * history in one query. Chunks the id list to stay under bind-variable
+   * ceilings.
+   */
+  async getEventsForMessages(
+    sourceId: string,
+    messageIds: string[],
+    eventType: MessageEventType,
+  ): Promise<MessageEventRow[]> {
+    if (!sourceId) {
+      throw new Error('MessageEventsRepository.getEventsForMessages requires a sourceId');
+    }
+    if (messageIds.length === 0) return [];
+    const { messageEvents } = this.tables;
+    const out: MessageEventRow[] = [];
+    const CHUNK = 500;
+    for (let i = 0; i < messageIds.length; i += CHUNK) {
+      const rows = await this.db
+        .select()
+        .from(messageEvents)
+        .where(
+          and(
+            eq(messageEvents.sourceId, sourceId),
+            eq(messageEvents.eventType, eventType),
+            inArray(messageEvents.messageId, messageIds.slice(i, i + CHUNK)),
+          ),
+        )
+        .orderBy(asc(messageEvents.timestamp));
+      out.push(...(this.normalizeBigInts(rows) as unknown as MessageEventRow[]));
+    }
+    return out;
   }
 }

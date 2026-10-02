@@ -15,6 +15,9 @@ import { resolveUnreadAnchorId, shouldSuppressDivider } from '../../utils/unread
 import { uniquePrefixMatch } from '../../utils/meshcoreKeyMatch';
 import { MeshCoreIgnoredRunRow } from './MeshCoreIgnoredRunRow';
 import { findIgnoredRuns } from './meshcoreIgnoredRuns';
+import Modal from '../common/Modal';
+import { resendAvailability, RESEND_MAX } from './meshcoreResend';
+import styles from './MeshCoreMessageStream.module.css';
 
 interface MeshCoreMessageStreamProps {
   messages: MeshCoreMessage[];
@@ -42,6 +45,10 @@ interface MeshCoreMessageStreamProps {
   /** When provided, each message row shows a delete action (#3981). The
    *  parent is responsible for confirmation and the actual delete call. */
   onDeleteMessage?: (message: MeshCoreMessage) => void | Promise<void>;
+  /** When provided, our own channel messages that no repeater relayed show a
+   *  Resend action (#5512). The stream asks for confirmation first; the parent
+   *  makes the call. Hidden while `disabled`. */
+  onResendMessage?: (message: MeshCoreMessage) => Promise<unknown>;
   /** Stable key identifying the current conversation. When it changes, the
    *  stream re-runs its entry scroll (to the first-unread row, or the bottom). */
   conversationKey?: string;
@@ -118,6 +125,7 @@ export const MeshCoreMessageStream: React.FC<MeshCoreMessageStreamProps> = ({
   onNodeNameClick,
   onReply,
   onDeleteMessage,
+  onResendMessage,
   conversationKey,
   maxBytes = 130,
   onLoadOlder,
@@ -151,6 +159,35 @@ export const MeshCoreMessageStream: React.FC<MeshCoreMessageStreamProps> = ({
   // above, which is the pre-existing route-detail popup.
   const [deliveryDetailsMsg, setDeliveryDetailsMsg] = useState<MeshCoreMessage | null>(null);
   const listRef = useRef<HTMLDivElement>(null);
+
+  // Resend (#5512). The button appears once the 30 s cooldown passes and goes
+  // away after an hour, so the stream needs a clock. It only ticks while some
+  // message could still become (or stop being) resendable.
+  const [resendConfirm, setResendConfirm] = useState<MeshCoreMessage | null>(null);
+  const [resending, setResending] = useState(false);
+  const [now, setNow] = useState(() => Date.now());
+  const resendEnabled = !!onResendMessage && !disabled;
+  const needsResendClock = useMemo(
+    () => resendEnabled && messages.some(m => resendAvailability(m, selfPublicKey, Date.now()).kind !== 'never'),
+    [resendEnabled, messages, selfPublicKey],
+  );
+  useEffect(() => {
+    if (!needsResendClock) return;
+    setNow(Date.now());
+    const timer = setInterval(() => setNow(Date.now()), 5_000);
+    return () => clearInterval(timer);
+  }, [needsResendClock]);
+  const confirmResend = useCallback(async () => {
+    if (!resendConfirm || !onResendMessage) return;
+    setResending(true);
+    try {
+      await onResendMessage(resendConfirm);
+    } finally {
+      setResending(false);
+      setResendConfirm(null);
+      setNow(Date.now());
+    }
+  }, [resendConfirm, onResendMessage]);
 
   const toggleHeardBy = useCallback((id: string) => {
     setExpandedHeardBy(prev => {
@@ -656,6 +693,17 @@ export const MeshCoreMessageStream: React.FC<MeshCoreMessageStreamProps> = ({
                       <UiIcon name="radioSignal" size={13} /> {m.heardBy.length}
                     </button>
                   )}
+                  {resendEnabled && resendAvailability(m, selfPublicKey, now).kind === 'ready' && (
+                    <button
+                      type="button"
+                      className={styles.resendButton}
+                      title={t('meshcore.resend.tooltip', 'No repeater was heard relaying this message. Resend it.')}
+                      aria-label={t('meshcore.resend.button', 'Resend')}
+                      onClick={() => setResendConfirm(m)}
+                    >
+                      <UiIcon name="resend" size={13} /> {t('meshcore.resend.button', 'Resend')}
+                    </button>
+                  )}
                   </span>
                   {onReply && isChannel && !outgoing && (
                     <button
@@ -814,6 +862,45 @@ export const MeshCoreMessageStream: React.FC<MeshCoreMessageStreamProps> = ({
           onClose={() => setRouteDetail(null)}
         />
       )}
+      <Modal
+        isOpen={!!resendConfirm}
+        onClose={() => { if (!resending) setResendConfirm(null); }}
+        title={t('meshcore.resend.confirm_title', 'Resend message?')}
+      >
+        <p className={styles.confirmText}>
+          {t(
+            'meshcore.resend.confirm_body',
+            'No repeater was heard relaying this message. Resending sends the same packet again; repeaters that already carried it drop the copy, so nobody sees it twice.',
+          )}
+        </p>
+        {resendConfirm && (
+          <blockquote className={styles.confirmQuote}>{resendConfirm.text}</blockquote>
+        )}
+        <p className={styles.confirmText}>
+          {t('meshcore.resend.remaining', '{{count}} of {{max}} resends left for this message.', {
+            count: Math.max(0, RESEND_MAX - (resendConfirm?.resendCount ?? 0)),
+            max: RESEND_MAX,
+          })}
+        </p>
+        <div className={styles.confirmActions}>
+          <button
+            type="button"
+            className={styles.confirmButton}
+            onClick={() => setResendConfirm(null)}
+            disabled={resending}
+          >
+            {t('common.cancel', 'Cancel')}
+          </button>
+          <button
+            type="button"
+            className={`${styles.confirmButton} ${styles.confirmPrimary}`}
+            onClick={() => void confirmResend()}
+            disabled={resending}
+          >
+            {resending ? t('meshcore.sending', 'Sending…') : t('meshcore.resend.confirm', 'Resend')}
+          </button>
+        </div>
+      </Modal>
       {deliveryDetailsMsg && (
         <MessageDetailsModal
           protocol="meshcore"

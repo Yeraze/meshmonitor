@@ -133,6 +133,18 @@ The device's channels with the most recent message stream. Channel-message sende
 
 **Heard repeaters** — outgoing channel posts show a **📡 N** badge with an expandable list of the repeaters that re-flooded the message and the SNR each was heard at. This is populated best-effort by **self-echo correlation**: when a repeater re-floods your `GRP_TXT` packet, MeshMonitor hears it inbound and attributes the relay hashes to the most recent matching channel send within a ~30-second window. Channel sends carry no protocol ACK, so this is a heuristic, not a delivery receipt. Correlation runs on the raw inbound packet before the opt-in packet-monitor gate, so it works **regardless of whether the packet monitor is enabled**. Relay hashes are resolved to repeater names where known; otherwise the raw hash is shown.
 
+**Resend** — if no repeater was heard relaying one of your channel posts, a **Resend** button appears next to it 30 seconds after you sent it. Click it and confirm to send the same packet again. The resend carries the original text and the original timestamp, so a repeater that already relayed the first copy drops the resend, and recipients never see the message twice. The resend adds no new message to the stream, and it fires no automations or notifications. If a repeater relays the resend, the **📡 N** badge appears on the original message.
+
+Limits, to protect the mesh:
+
+- At most **3 resends** per message.
+- **30 seconds** between the send and the first resend, and between resends.
+- Only messages under **1 hour** old.
+- The button stays hidden while the automatic channel retry is still waiting on that message, and on messages sent before MeshMonitor stored send timestamps (older than this feature).
+- You need **Messages: write** on the source, and the button is hidden while the source is in receive-only mode.
+
+The resend count lives in the database, so restarting MeshMonitor does not reset it. Direct messages don't get this button: they already retry on their own until the recipient acknowledges them.
+
 ### Channel order
 
 The Channels page has a **Sort channels by** dropdown with four choices: **Device order**, **Channel name**, **Last message** and **Custom**. Pick **Custom** and click **Reorder** to drag channels (or use the arrows) into the order you want. MeshMonitor saves the sort choice and the custom order in your browser, per source. This changes only how MeshMonitor lists the channels. The slots on the device stay as they are.
