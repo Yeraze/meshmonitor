@@ -42,6 +42,7 @@ import sourcesRouter from './sources.js';
 import metricsRouter from './metrics.js';
 import { attachSource } from './sourceParam.js';
 import actionsRouter from './actions.js';
+import translateRouter from './translate.js';
 
 const router = express.Router();
 
@@ -85,6 +86,7 @@ router.use('/sources', sourcesRouter);
 router.use('/solar', solarRouter);
 router.use('/channel-database', channelDatabaseRouter);
 router.use('/metrics', metricsRouter);
+router.use('/translate', translateRouter);
 
 // Per-source canonical routes. `attachSource(resource, action)` resolves the
 // :sourceId param (including the `default` alias) and enforces the

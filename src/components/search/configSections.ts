@@ -72,6 +72,8 @@ export const GLOBAL_SETTINGS_SECTIONS = new Set([
   // Coverage Report retention is a single global setting (#5277 P1 WP2) —
   // same reasoning as position estimation/mesh issues above.
   'settings-coverage',
+  // Message Translation settings (backend provider and defaults)
+  'settings-translation',
 ]);
 
 /** Settings sections that belong to a source's own Settings tab. */
@@ -139,6 +141,7 @@ export function settingsNavItems(t: Translate, options: SettingsNavOptions): Nav
     { id: 'settings-apprise-server', label: t('settings.apprise_server_section', 'Apprise API Server'), keywords: ['notifications', 'email', 'push', 'webhook'] },
     { id: 'settings-elevation', label: t('settings.elevation_section', 'Elevation / Terrain'), keywords: ['dem', 'terrain', 'altitude', 'height'] },
     { id: 'settings-adsb', label: t('settings.adsb_section', 'Flight matching (ADS-B)'), keywords: ['adsb', 'ads-b', 'aircraft', 'flight', 'plane', 'callsign', 'adsb.lol', 'adsb.fi'] },
+    { id: 'settings-translation', label: t('settings.translation_section', 'Message Translation'), keywords: ['translate', 'translation', 'language', 'libretranslate', 'openai', 'deepl', 'ollama'] },
     { id: 'settings-backup', label: t('settings.system_backup', 'System Backup'), keywords: ['restore', 'export', 'import', 'archive'] },
     { id: 'settings-channel-database', label: t('channel_database.title', 'Channel Database'), keywords: ['psk', 'decrypt', 'channels', 'keys'] },
     { id: 'settings-scripts', label: t('settings.scripts_section', 'Scripts'), keywords: ['javascript', 'automation', 'code'] },
@@ -157,7 +160,7 @@ export function settingsNavItems(t: Translate, options: SettingsNavOptions): Nav
 
   const adminOnly = new Set([
     'settings-remote-admin', 'settings-apprise-server', 'settings-elevation', 'settings-adsb',
-    'settings-channel-database', 'settings-scripts', 'settings-analytics',
+    'settings-translation', 'settings-channel-database', 'settings-scripts', 'settings-analytics',
   ]);
   const settingsWriteOnly = new Set(['settings-position-estimation', 'settings-mesh-issues', 'settings-auto-enrichment', 'settings-coverage', 'settings-coverage-mqtt']);
 

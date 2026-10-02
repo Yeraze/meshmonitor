@@ -1,0 +1,98 @@
+.container {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.description {
+  font-size: 0.9rem;
+  color: var(--text-muted, #888);
+  margin-top: 0.25rem;
+  margin-bottom: 0.75rem;
+  line-height: 1.4;
+}
+
+.formGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.formGroup label {
+  font-weight: 500;
+  font-size: 0.9rem;
+  color: var(--text-color, #e0e0e0);
+}
+
+.checkboxLabel {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  cursor: pointer;
+  font-weight: 500;
+  font-size: 0.95rem;
+}
+
+.input,
+.select {
+  padding: 0.5rem 0.75rem;
+  border-radius: 6px;
+  border: 1px solid var(--border-color, rgba(255, 255, 255, 0.15));
+  background: var(--bg-input, rgba(0, 0, 0, 0.2));
+  color: var(--text-color, #fff);
+  font-size: 0.9rem;
+  width: 100%;
+  max-width: 480px;
+}
+
+.input:focus,
+.select:focus {
+  outline: none;
+  border-color: var(--accent-color, #3b82f6);
+}
+
+.hint {
+  font-size: 0.8rem;
+  color: var(--text-muted, #888);
+}
+
+.testRow {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-top: 0.5rem;
+}
+
+.testButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.45rem 0.9rem;
+  border-radius: 6px;
+  font-size: 0.85rem;
+  font-weight: 500;
+  background: var(--bg-button, rgba(255, 255, 255, 0.1));
+  color: var(--text-color, #fff);
+  border: 1px solid var(--border-color, rgba(255, 255, 255, 0.2));
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.testButton:hover:not(:disabled) {
+  background: var(--bg-button-hover, rgba(255, 255, 255, 0.2));
+}
+
+.testButton:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.testSuccess {
+  font-size: 0.85rem;
+  color: #10b981;
+}
+
+.testError {
+  font-size: 0.85rem;
+  color: #ef4444;
+}

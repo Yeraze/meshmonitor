@@ -16,6 +16,7 @@ describe('Rate Limit Environment Configuration', () => {
   const originalApi = process.env.RATE_LIMIT_API;
   const originalAuth = process.env.RATE_LIMIT_AUTH;
   const originalMessages = process.env.RATE_LIMIT_MESSAGES;
+  const originalTranslate = process.env.RATE_LIMIT_TRANSLATE;
 
   afterEach(() => {
     // Restore original environment
@@ -34,6 +35,11 @@ describe('Rate Limit Environment Configuration', () => {
     } else {
       delete process.env.RATE_LIMIT_MESSAGES;
     }
+    if (originalTranslate !== undefined) {
+      process.env.RATE_LIMIT_TRANSLATE = originalTranslate;
+    } else {
+      delete process.env.RATE_LIMIT_TRANSLATE;
+    }
     resetEnvironmentConfig();
   });
 
@@ -42,6 +48,7 @@ describe('Rate Limit Environment Configuration', () => {
       delete process.env.RATE_LIMIT_API;
       delete process.env.RATE_LIMIT_AUTH;
       delete process.env.RATE_LIMIT_MESSAGES;
+      delete process.env.RATE_LIMIT_TRANSLATE;
       resetEnvironmentConfig();
 
       const config = getEnvironmentConfig();
@@ -52,6 +59,8 @@ describe('Rate Limit Environment Configuration', () => {
       expect(config.rateLimitAuthProvided).toBe(false);
       expect(config.rateLimitMessages).toBe(100);
       expect(config.rateLimitMessagesProvided).toBe(false);
+      expect(config.rateLimitTranslate).toBe(120);
+      expect(config.rateLimitTranslateProvided).toBe(false);
     });
   });
 
@@ -60,6 +69,7 @@ describe('Rate Limit Environment Configuration', () => {
       process.env.RATE_LIMIT_API = '500';
       process.env.RATE_LIMIT_AUTH = '20';
       process.env.RATE_LIMIT_MESSAGES = '60';
+      process.env.RATE_LIMIT_TRANSLATE = '40';
       resetEnvironmentConfig();
 
       const config = getEnvironmentConfig();
@@ -70,6 +80,8 @@ describe('Rate Limit Environment Configuration', () => {
       expect(config.rateLimitAuthProvided).toBe(true);
       expect(config.rateLimitMessages).toBe(60);
       expect(config.rateLimitMessagesProvided).toBe(true);
+      expect(config.rateLimitTranslate).toBe(40);
+      expect(config.rateLimitTranslateProvided).toBe(true);
     });
 
     it('should accept value of 1 as valid limit', () => {
@@ -154,10 +166,11 @@ describe('Rate Limit Environment Configuration', () => {
       expect(config.rateLimitApiProvided).toBe(true);
     });
 
-    it('should disable all three limiters independently', () => {
+    it('should disable all four limiters independently', () => {
       process.env.RATE_LIMIT_API = 'unlimited';
       process.env.RATE_LIMIT_AUTH = '0';
       process.env.RATE_LIMIT_MESSAGES = '-1';
+      process.env.RATE_LIMIT_TRANSLATE = '0';
       resetEnvironmentConfig();
 
       const config = getEnvironmentConfig();
@@ -165,6 +178,7 @@ describe('Rate Limit Environment Configuration', () => {
       expect(config.rateLimitApi).toBe(0);
       expect(config.rateLimitAuth).toBe(0);
       expect(config.rateLimitMessages).toBe(0);
+      expect(config.rateLimitTranslate).toBe(0);
     });
   });
 

@@ -30,6 +30,7 @@ const settingsStore: Record<string, string> = {};
 vi.mock('../services/database.js', () => ({
   default: {
     drizzleDbType: 'sqlite',
+    waitForReady: vi.fn(async () => {}),
     settings: {
       getAllSettings: vi.fn(async () => ({ ...settingsStore })),
       setSettings: vi.fn(async (settings: Record<string, string>) => {
@@ -44,6 +45,9 @@ vi.mock('../services/database.js', () => ({
       }),
     },
     handleAutoWelcomeEnabled: vi.fn(() => 0),
+    sourcePkiKeys: {
+      deleteAll: vi.fn(async () => 0),
+    },
     auditLogAsync: vi.fn(),
     // Async methods required by authMiddleware
     findUserByIdAsync: vi.fn(),
@@ -566,6 +570,12 @@ describe('Settings Persistence', () => {
         // elevation pair; read server-side by adsbMatchService. The flag is
         // also read publicly by useAdsbMatchEnabled() via a direct fetch.
         'adsbMatchEnabled', 'adsbFeed', 'adsb_api_token',
+        // Translation settings (global) — loaded directly by SettingsTab into
+        // its initial* snapshot; read server-side by translationService.
+        'translationEnabled', 'translationProvider', 'translationUrl',
+        'translationDeeplUrl', 'translationApiKey', 'translationModel',
+        'translationOpenAiBaseUrl', 'translationDefaultLanguage',
+        'translationDefaultOutgoingLanguage',
       ];
 
       const keysNotLoaded = SETTINGS_TAB_SENDS.filter(

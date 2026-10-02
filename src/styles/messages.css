@@ -329,7 +329,8 @@
 .resend-button,
 .emoji-button,
 .emoji-picker-button,
-.delete-button {
+.delete-button,
+.translate-button {
   background: var(--color-surface-active);
   color: var(--color-text);
   border: 1px solid var(--color-border-subtle);
@@ -343,7 +344,8 @@
 
 .emoji-button,
 .emoji-picker-button,
-.delete-button {
+.delete-button,
+.translate-button {
   padding: 0.25rem 0.4rem;
   font-size: 0.9rem;
   line-height: 1;
@@ -358,7 +360,8 @@
 .resend-button:hover,
 .emoji-button:hover,
 .emoji-picker-button:hover,
-.delete-button:hover {
+.delete-button:hover,
+.translate-button:hover {
   background: var(--color-surface-hover);
   border-color: var(--color-text-disabled);
   transform: scale(1.1);
@@ -371,7 +374,8 @@
 }
 
 .emoji-button:active,
-.emoji-picker-button:active {
+.emoji-picker-button:active,
+.translate-button:active {
   transform: scale(0.95);
 }
 
