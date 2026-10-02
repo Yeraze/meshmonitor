@@ -85,6 +85,15 @@ describe('GET /api/messages/search', () => {
     await harness.cleanup();
   });
 
+  it('rejects a q shorter than 2 characters after trimming', async () => {
+    const agent = await harness.loginAs(harness.admin);
+    for (const q of ['a', '%20a%20']) {
+      const res = await agent.get(`/search?q=${q}`);
+      expect(res.status).toBe(400);
+      expect(res.body.message).toMatch(/at least 2 characters/);
+    }
+  });
+
   it('treats startDate/endDate as milliseconds', async () => {
     await seed(harness.sourceA, 0, 'net check-in', T0);
     const agent = await harness.loginAs(harness.admin);
