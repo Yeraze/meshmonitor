@@ -87,6 +87,15 @@ describe('translationRoutes', () => {
   });
 
   describe('POST /api/v1/translate', () => {
+    it('should reject missing or non-string text parameter', async () => {
+      const res = await request(app)
+        .post('/api/v1/translate')
+        .send({ targetLang: 'es' });
+
+      expect(res.status).toBe(400);
+      expect(res.body.error).toBe('text must be a string');
+    });
+
     it('should translate through v1 endpoint', async () => {
       vi.mocked(translationService.translate).mockResolvedValue({
         translatedText: 'Bonjour',
@@ -104,6 +113,19 @@ describe('translationRoutes', () => {
       expect(res.body.success).toBe(true);
       expect(res.body.data.translatedText).toBe('Bonjour');
     });
+
+    it('should handle service errors gracefully', async () => {
+      vi.mocked(translationService.translate).mockRejectedValue(
+        new Error('v1 translation backend failed')
+      );
+
+      const res = await request(app)
+        .post('/api/v1/translate')
+        .send({ text: 'Hello', targetLang: 'fr' });
+
+      expect(res.status).toBe(500);
+      expect(res.body.error).toBe('v1 translation backend failed');
+    });
   });
 
   describe('POST /api/translate/test', () => {
@@ -116,8 +138,17 @@ describe('translationRoutes', () => {
       expect(res.body.error).toBe('provider is required');
     });
 
-    it('should test configuration', async () => {
-      vi.mocked(translationService.translate).mockResolvedValue({
+    it('should reject non-string provider', async () => {
+      const res = await request(app)
+        .post('/api/translate/test')
+        .send({ provider: 123 });
+
+      expect(res.status).toBe(400);
+      expect(res.body.error).toBe('provider is required');
+    });
+
+    it('should test configuration successfully', async () => {
+      vi.mocked(translationService.testConfig).mockResolvedValue({
         translatedText: 'Hola',
         detectedSourceLanguage: 'en',
         sourceText: 'MeshMonitor test message for radio translation.',
@@ -135,9 +166,31 @@ describe('translationRoutes', () => {
       expect(res.status).toBe(200);
       expect(res.body.success).toBe(true);
       expect(res.body.data.translatedText).toBe('Hola');
-      expect(res.body.data.sampleSourceText).toBe('MeshMonitor test message for radio translation.');
+      expect(translationService.testConfig).toHaveBeenCalledWith(
+        expect.objectContaining({
+          provider: 'libretranslate',
+          url: 'http://libretranslate:5000',
+        })
+      );
+    });
+
+    it('should handle test configuration failures gracefully', async () => {
+      vi.mocked(translationService.testConfig).mockRejectedValue(
+        new Error('DeepL API error (403): Forbidden')
+      );
+
+      const res = await request(app)
+        .post('/api/translate/test')
+        .send({
+          provider: 'deepl',
+          apiKey: 'invalid-key',
+        });
+
+      expect(res.status).toBe(400);
+      expect(res.body.error).toBe('DeepL API error (403): Forbidden');
     });
   });
+
 
   describe('GET /api/translate/languages', () => {
     it('should return available languages', async () => {

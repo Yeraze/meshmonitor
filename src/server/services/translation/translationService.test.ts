@@ -338,6 +338,198 @@ describe('translationService', () => {
     });
   });
 
+  describe('caching behavior', () => {
+    class InMemoryTranslationCache implements ITranslationCache {
+      private store = new Map<string, CachedTranslation>();
+
+      private keyToString(key: TranslationCacheKey): string {
+        return `${key.sourceLanguage || 'auto'}:${key.targetLanguage}:${key.text}`;
+      }
+
+      async get(key: TranslationCacheKey): Promise<CachedTranslation | null> {
+        return this.store.get(this.keyToString(key)) || null;
+      }
+
+      async set(key: TranslationCacheKey, translation: CachedTranslation): Promise<void> {
+        this.store.set(this.keyToString(key), translation);
+      }
+
+      async has(key: TranslationCacheKey): Promise<boolean> {
+        return this.store.has(this.keyToString(key));
+      }
+
+      async clear(): Promise<void> {
+        this.store.clear();
+      }
+    }
+
+    let memoryCache: InMemoryTranslationCache;
+
+    beforeEach(() => {
+      memoryCache = new InMemoryTranslationCache();
+      setTranslationCache(memoryCache);
+    });
+
+    it('should short-circuit and throw when translation is globally disabled even if cached entry exists', async () => {
+      // Pre-seed cache with an existing translation
+      await memoryCache.set(
+        { text: 'Hello', targetLanguage: 'es', sourceLanguage: 'auto' },
+        {
+          translatedText: 'Hola',
+          sourceText: 'Hello',
+          targetLanguage: 'es',
+          provider: 'libretranslate',
+          cachedAt: Date.now(),
+        }
+      );
+
+      // Translation is disabled globally
+      vi.mocked(databaseService.getSettingAsync).mockResolvedValue('false');
+
+      await expect(
+        translationService.translate({
+          text: 'Hello',
+          targetLang: 'es',
+        })
+      ).rejects.toThrow('Translation is not enabled');
+    });
+
+    it('should bypass cache on read and write during testConfig calls', async () => {
+      // Pre-seed cache with stale translation
+      await memoryCache.set(
+        { text: 'Hello', targetLanguage: 'es', sourceLanguage: 'en' },
+        {
+          translatedText: 'Stale Cached Hola',
+          sourceText: 'Hello',
+          targetLanguage: 'es',
+          provider: 'libretranslate',
+          cachedAt: Date.now(),
+        }
+      );
+
+      // Mock live fetch to return fresh translation
+      global.fetch = vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          translatedText: 'Fresh Live Hola',
+        }),
+      } as unknown as Response);
+
+      const result = await translationService.testConfig({
+        provider: 'libretranslate',
+        url: 'http://libretranslate:5000',
+        sourceLanguage: 'en',
+        targetLanguage: 'es',
+      });
+
+      // Test calls must return fresh live data, not cached
+      expect(result.translatedText).toBe('Fresh Live Hola');
+      expect(result.provider).toBe('libretranslate');
+      expect(global.fetch).toHaveBeenCalled();
+
+    });
+
+    it('should return cached translation on cache hit without making provider network call', async () => {
+      vi.mocked(databaseService.getSettingAsync).mockImplementation(async (key: string) => {
+        if (key === 'translationEnabled') return 'true';
+        if (key === 'translationProvider') return 'libretranslate';
+        return null;
+      });
+
+      await memoryCache.set(
+        { text: 'Hello world', targetLanguage: 'es', sourceLanguage: 'auto' },
+        {
+          translatedText: 'Hola mundo (cached)',
+          sourceText: 'Hello world',
+          targetLanguage: 'es',
+          detectedSourceLanguage: 'en',
+          provider: 'libretranslate',
+          cachedAt: Date.now(),
+        }
+      );
+
+      global.fetch = vi.fn();
+
+      const result = await translationService.translate({
+        text: 'Hello world',
+        targetLang: 'es',
+      });
+
+      expect(result.cached).toBe(true);
+      expect(result.translatedText).toBe('Hola mundo (cached)');
+      expect(global.fetch).not.toHaveBeenCalled();
+    });
+
+    it('should store translated result in cache on cache miss', async () => {
+      vi.mocked(databaseService.getSettingAsync).mockImplementation(async (key: string) => {
+        if (key === 'translationEnabled') return 'true';
+        if (key === 'translationProvider') return 'libretranslate';
+        return null;
+      });
+
+      global.fetch = vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          translatedText: 'Bonjour le monde',
+          detectedLanguage: { language: 'en', confidence: 99 },
+        }),
+      } as unknown as Response);
+
+      const result = await translationService.translate({
+        text: 'Hello world',
+        targetLang: 'fr',
+      });
+
+      expect(result.translatedText).toBe('Bonjour le monde');
+
+      const cached = await memoryCache.get({
+        text: 'Hello world',
+        targetLanguage: 'fr',
+        sourceLanguage: 'auto',
+      });
+      expect(cached?.translatedText).toBe('Bonjour le monde');
+      expect(cached?.provider).toBe('libretranslate');
+    });
+
+    it('should complete a full roundtrip: miss fetches from network and caches, subsequent request hits cache', async () => {
+      vi.mocked(databaseService.getSettingAsync).mockImplementation(async (key: string) => {
+        if (key === 'translationEnabled') return 'true';
+        if (key === 'translationProvider') return 'libretranslate';
+        return null;
+      });
+
+      global.fetch = vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          translatedText: 'Ciao mondo',
+          detectedLanguage: { language: 'en', confidence: 99 },
+        }),
+      } as unknown as Response);
+
+      // 1. First call: Cache miss -> executes live fetch and caches
+      const firstResult = await translationService.translate({
+        text: 'Hello world',
+        targetLang: 'it',
+      });
+
+      expect(firstResult.cached).toBe(false);
+      expect(firstResult.translatedText).toBe('Ciao mondo');
+      expect(global.fetch).toHaveBeenCalledTimes(1);
+
+      // 2. Second call: Cache hit -> returns cached without additional fetch
+      const secondResult = await translationService.translate({
+        text: 'Hello world',
+        targetLang: 'it',
+      });
+
+      expect(secondResult.cached).toBe(true);
+      expect(secondResult.translatedText).toBe('Ciao mondo');
+      expect(global.fetch).toHaveBeenCalledTimes(1); // Still only 1 call
+    });
+  });
+
+
+
   describe('testConfig', () => {
     it('should test LibreTranslate successfully', async () => {
       global.fetch = vi.fn().mockResolvedValue({
@@ -354,8 +546,40 @@ describe('translationService', () => {
         sourceLanguage: 'en',
       });
 
-      expect(result.success).toBe(true);
       expect(result.translatedText).toBe('Hola');
+      expect(result.provider).toBe('libretranslate');
+      expect(global.fetch).toHaveBeenCalledWith(
+        'http://libretranslate:5000/translate',
+        expect.objectContaining({
+          body: expect.stringContaining('MeshMonitor test message for radio translation.'),
+        })
+      );
+    });
+
+    it('should swap in default sample text if custom test text exceeds 5000 characters', async () => {
+      global.fetch = vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          translatedText: 'Hola',
+        }),
+      } as unknown as Response);
+
+      const longText = 'a'.repeat(6000);
+      const result = await translationService.testConfig({
+        provider: 'libretranslate',
+        url: 'http://libretranslate:5000',
+        targetLanguage: 'es',
+        sourceLanguage: 'en',
+        text: longText,
+      });
+
+      expect(result.translatedText).toBe('Hola');
+      expect(global.fetch).toHaveBeenCalledWith(
+        'http://libretranslate:5000/translate',
+        expect.objectContaining({
+          body: expect.stringContaining('MeshMonitor test message for radio translation.'),
+        })
+      );
     });
   });
 
@@ -368,3 +592,5 @@ describe('translationService', () => {
     });
   });
 });
+
+

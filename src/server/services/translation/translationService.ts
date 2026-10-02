@@ -12,27 +12,34 @@
 
 import databaseService from '../../../services/database.js';
 import { isEmoji } from '../../../utils/text.js';
-import { getTranslationCache, type TranslationCacheKey } from './translationCache.js';
+import { getTranslationCache } from './translationCache.js';
 import { STANDARD_LANGUAGES, type TranslationLanguageOption } from '../../../types/translation.js';
 import {
   getTranslationProvider,
   buildServiceEndpoint,
   type ProviderConfig,
-  type TranslationProviderResult,
 } from './providers/index.js';
 
 export type TranslationProvider = 'libretranslate' | 'openai' | 'deepl' | 'google';
 
-export interface TranslationOptions {
+export interface TranslationRequest {
   text: string;
   targetLang?: string;
   sourceLang?: string;
-  provider?: TranslationProvider;
+}
+
+export type TranslationOptions = TranslationRequest;
+
+export interface TestTranslationConfig {
+  provider: TranslationProvider;
   url?: string;
   deeplUrl?: string;
   apiKey?: string;
   model?: string;
   openAiBaseUrl?: string;
+  sourceLanguage?: string;
+  targetLanguage?: string;
+  text?: string;
 }
 
 export interface TranslationResult {
@@ -125,64 +132,23 @@ export class TranslationService {
   }
 
   /**
-   * Tests a specific translation provider configuration.
+   * Runtime translation for chat messages.
+   * Enforces DB enablement gating, handles skips, checks and populates cache.
    */
-  async testConfig(config: {
-    provider: TranslationProvider;
-    url?: string;
-    deeplUrl?: string;
-    apiKey?: string;
-    model?: string;
-    openAiBaseUrl?: string;
-    targetLanguage?: string;
-    sourceLanguage?: string;
-  }): Promise<{ success: boolean; message: string; translatedText?: string; detectedSourceLanguage?: string }> {
-    const testText = 'Hello';
-    try {
-      const res = await this.translate({
-        text: testText,
-        sourceLang: config.sourceLanguage || 'en',
-        targetLang: config.targetLanguage || 'es',
-        provider: config.provider,
-        url: config.url,
-        deeplUrl: config.deeplUrl,
-        apiKey: config.apiKey,
-        model: config.model,
-        openAiBaseUrl: config.openAiBaseUrl,
-      });
+  async translate(request: TranslationRequest): Promise<TranslationResult> {
+    const settings = await this.getSettings();
 
-      if (res.translatedText) {
-        return {
-          success: true,
-          message: `Connection successful (${config.provider})`,
-          translatedText: res.translatedText,
-          detectedSourceLanguage: res.detectedSourceLanguage,
-        };
-      }
-      return {
-        success: false,
-        message: res.skipReason || 'No translation returned',
-      };
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
-      return {
-        success: false,
-        message: msg || 'Connection failed',
-      };
+    if (!settings.enabled) {
+      throw new Error('Translation is not enabled');
     }
-  }
 
-  /**
-   * Translates a message using configured provider or explicit options.
-   */
-  async translate(options: TranslationOptions): Promise<TranslationResult> {
-    const { text } = options;
+    const { text } = request;
 
     if (!text || !text.trim()) {
       return {
         translatedText: '',
         sourceText: text || '',
-        targetLanguage: options.targetLang || 'en',
+        targetLanguage: request.targetLang || 'en',
         provider: 'none',
         skipped: true,
         skipReason: 'empty_text',
@@ -198,30 +164,25 @@ export class TranslationService {
       return {
         translatedText: text,
         sourceText: text,
-        targetLanguage: options.targetLang || 'en',
+        targetLanguage: request.targetLang || 'en',
         provider: 'passthrough',
         skipped: true,
         skipReason: 'non_conversational',
       };
     }
 
-    // Resolve settings
-    const settings = await this.getSettings();
-    const isGlobalEnabled = settings.enabled;
+    // Determine target language, source language, and provider strictly from settings / request
+    const targetLang = (request.targetLang || settings.targetLanguage || 'en').trim();
+    const sourceLang = (request.sourceLang || 'auto').trim();
+    const provider = (settings.provider || 'libretranslate') as TranslationProvider;
 
-    // Determine target language and provider
-    let targetLang = (options.targetLang || settings.targetLanguage || 'en').trim();
-    const sourceLang = (options.sourceLang || 'auto').trim();
-    const provider = (options.provider || settings.provider || 'libretranslate') as TranslationProvider;
-
-    const cacheKey: TranslationCacheKey = {
+    const cache = getTranslationCache();
+    const cacheKey = {
       text,
       targetLanguage: targetLang,
       sourceLanguage: sourceLang,
     };
 
-    // Check cache
-    const cache = getTranslationCache();
     const cached = await cache.get(cacheKey);
     if (cached) {
       return {
@@ -234,45 +195,16 @@ export class TranslationService {
       };
     }
 
-    // If translation is globally disabled and no explicit provider config passed (not a test call)
-    if (!isGlobalEnabled && !options.provider && !options.url && !options.apiKey) {
-      throw new Error('Translation is not enabled');
-    }
-
-    // Execute translation using provider implementation
-    const providerInstance = getTranslationProvider(provider);
     const providerConfig: ProviderConfig = {
-      url: options.url || settings.url,
-      deeplUrl: options.deeplUrl || settings.deeplUrl,
-      apiKey: options.apiKey || settings.apiKey,
-      model: options.model || settings.model,
-      openAiBaseUrl: options.openAiBaseUrl || settings.openAiBaseUrl,
+      url: settings.url,
+      deeplUrl: settings.deeplUrl,
+      apiKey: settings.apiKey,
+      model: settings.model,
+      openAiBaseUrl: settings.openAiBaseUrl,
     };
 
-    const executeProvider = async (tLang: string, sLang: string): Promise<TranslationProviderResult> => {
-      return providerInstance.translate(text, sLang, tLang, providerConfig);
-    };
+    const result = await this.executeTranslation(text, sourceLang, targetLang, provider, providerConfig);
 
-    let result = await executeProvider(targetLang, sourceLang);
-
-    // If no explicit target was requested and detected source matches the primary target language,
-    // automatically flip to the default outgoing/foreign language (e.g. English -> Japanese).
-    if (
-      !options.targetLang &&
-      result.detectedSourceLanguage &&
-      result.detectedSourceLanguage.toLowerCase() === targetLang.toLowerCase() &&
-      settings.defaultOutgoingLanguage &&
-      settings.defaultOutgoingLanguage.toLowerCase() !== targetLang.toLowerCase()
-    ) {
-      const altTarget = settings.defaultOutgoingLanguage.toLowerCase();
-      const altResult = await executeProvider(altTarget, result.detectedSourceLanguage);
-      if (altResult.translatedText) {
-        result = altResult;
-        targetLang = altTarget;
-      }
-    }
-
-    // Store in cache
     await cache.set(cacheKey, {
       translatedText: result.translatedText,
       detectedSourceLanguage: result.detectedSourceLanguage,
@@ -281,6 +213,46 @@ export class TranslationService {
       provider,
       cachedAt: Date.now(),
     });
+
+    return result;
+  }
+
+  /**
+   * Test a specific translation provider configuration directly (used by settings UI).
+   * Bypasses enablement checks and caching.
+   */
+  async testConfig(config: TestTranslationConfig): Promise<TranslationResult> {
+    const defaultSampleText = 'MeshMonitor test message for radio translation.';
+    const testText = config.text && config.text.trim() && config.text.length <= 5000
+      ? config.text
+      : defaultSampleText;
+
+    const sourceLang = (config.sourceLanguage || 'en').trim();
+    const targetLang = (config.targetLanguage || 'es').trim();
+
+    const providerConfig: ProviderConfig = {
+      url: config.url,
+      deeplUrl: config.deeplUrl,
+      apiKey: config.apiKey,
+      model: config.model,
+      openAiBaseUrl: config.openAiBaseUrl,
+    };
+
+    return this.executeTranslation(testText, sourceLang, targetLang, config.provider, providerConfig);
+  }
+
+  /**
+   * Shared helper to invoke the provider instance and format the response.
+   */
+  private async executeTranslation(
+    text: string,
+    sourceLang: string,
+    targetLang: string,
+    provider: TranslationProvider,
+    providerConfig: ProviderConfig
+  ): Promise<TranslationResult> {
+    const providerInstance = getTranslationProvider(provider);
+    const result = await providerInstance.translate(text, sourceLang, targetLang, providerConfig);
 
     return {
       translatedText: result.translatedText,
@@ -293,5 +265,9 @@ export class TranslationService {
   }
 }
 
+
+
 export const translationService = new TranslationService();
 export default translationService;
+
+

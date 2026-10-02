@@ -56,23 +56,19 @@ router.post('/test', requireAdmin(), translateLimiter, async (req, res) => {
       return fail(res, 400, 'INVALID_INPUT', 'provider is required');
     }
 
-    const testText = 'MeshMonitor test message for radio translation.';
-    const result = await translationService.translate({
-      text: testText,
+    const result = await translationService.testConfig({
       provider: provider as TranslationProvider,
       url,
       deeplUrl,
       apiKey,
       model,
       openAiBaseUrl,
-      sourceLang: sourceLanguage || 'en',
-      targetLang: targetLanguage || 'es',
+      sourceLanguage,
+      targetLanguage,
     });
 
-    return ok(res, {
-      ...result,
-      sampleSourceText: testText,
-    });
+    return ok(res, result);
+
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : String(error);
     logger.error('Translation test error:', error);
