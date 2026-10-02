@@ -41,7 +41,7 @@ export async function runMigration084Postgres(client: PoolClient): Promise<void>
 
   // auto_key_repair_log may not exist if user never enabled auto-key management (created in migration 046)
   const hasRepairLogTable = await client.query(
-    "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'auto_key_repair_log'"
+    "SELECT table_name FROM information_schema.tables WHERE table_schema = current_schema() AND table_name = 'auto_key_repair_log'"
   );
   if (hasRepairLogTable.rows.length > 0) {
     const oldKeyCheck = await client.query(
