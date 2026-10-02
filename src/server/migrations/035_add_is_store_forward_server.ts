@@ -28,7 +28,7 @@ export async function runMigration035Postgres(client: any): Promise<void> {
 export async function runMigration035Mysql(pool: any): Promise<void> {
   const [rows] = await pool.query(`
     SELECT COLUMN_NAME FROM information_schema.COLUMNS
-    WHERE TABLE_NAME = 'nodes' AND COLUMN_NAME = 'isStoreForwardServer'
+    WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'nodes' AND COLUMN_NAME = 'isStoreForwardServer'
   `);
   if ((rows as any[]).length === 0) {
     await pool.query(`ALTER TABLE nodes ADD COLUMN \`isStoreForwardServer\` BOOLEAN`);

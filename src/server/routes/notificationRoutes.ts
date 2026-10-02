@@ -12,6 +12,7 @@ import {
   getUserNotificationPreferencesAsync,
   saveUserNotificationPreferencesAsync,
   applyNodeNamePrefixAsync,
+  type NotificationPreferences,
 } from '../utils/notificationFiltering.js';
 
 /**
@@ -235,6 +236,59 @@ pushRouter.post('/test', requireAdmin(), async (req: Request, res: Response) => 
   }
 });
 
+// Defaults for a user with no saved preferences anywhere. GET answers with
+// these, and a partial POST that creates a user's first row fills the fields
+// it doesn't send from here.
+const DEFAULT_NOTIFICATION_PREFERENCES: NotificationPreferences = {
+  enableWebPush: true,
+  enableApprise: false,
+  enabledChannels: [],
+  enableDirectMessages: true,
+  notifyOnEmoji: true,
+  notifyOnMqtt: true,
+  notifyOnNewNode: true,
+  notifyOnTraceroute: true,
+  notifyOnInactiveNode: false,
+  notifyOnLowBattery: false,
+  lowBatteryThreshold: 20,
+  lowBatteryVoltageThreshold: 3300,
+  notifyOnWaypoint: false,
+  waypointRadiusKm: 10,
+  waypointCenterLat: null,
+  waypointCenterLon: null,
+  notifyOnServerEvents: false,
+  prefixWithNodeName: false,
+  monitoredNodes: [],
+  whitelist: ['Hi', 'Help'],
+  blacklist: ['Test', 'Copy'],
+  appriseUrls: [],
+  mutedChannels: [],
+  mutedDMs: [],
+};
+
+// Mute lists are keyed by Meshtastic channel number / node id. A source of
+// one of these types must not inherit them from the '' row (#5487).
+const NON_MESHTASTIC_SOURCE_TYPES = new Set(['meshcore', 'meshcore_mqtt', 'reticulum']);
+
+const BOOLEAN_PREF_FIELDS = [
+  'enableWebPush',
+  'enableApprise',
+  'enableDirectMessages',
+  'notifyOnEmoji',
+  'notifyOnMqtt',
+  'notifyOnNewNode',
+  'notifyOnTraceroute',
+  'notifyOnInactiveNode',
+  'notifyOnLowBattery',
+  'notifyOnWaypoint',
+  'notifyOnServerEvents',
+  'prefixWithNodeName',
+] as const;
+
+const ARRAY_PREF_FIELDS = ['enabledChannels', 'whitelist', 'blacklist'] as const;
+
+const PREF_FIELDS = Object.keys(DEFAULT_NOTIFICATION_PREFERENCES) as Array<keyof NotificationPreferences>;
+
 // Get notification preferences (unified for Web Push and Apprise)
 pushRouter.get(
   '/preferences',
@@ -267,33 +321,7 @@ pushRouter.get(
         : false;
       res.json({ ...prefs, sourceFallback });
     } else {
-      // Return defaults
-      res.json({
-        enableWebPush: true,
-        enableApprise: false,
-        enabledChannels: [],
-        enableDirectMessages: true,
-        notifyOnEmoji: true,
-        notifyOnMqtt: true,
-        notifyOnNewNode: true,
-        notifyOnTraceroute: true,
-        notifyOnInactiveNode: false,
-        notifyOnLowBattery: false,
-        lowBatteryThreshold: 20,
-        lowBatteryVoltageThreshold: 3300,
-        notifyOnWaypoint: false,
-        waypointRadiusKm: 10,
-        waypointCenterLat: null,
-        waypointCenterLon: null,
-        notifyOnServerEvents: false,
-        prefixWithNodeName: false,
-        monitoredNodes: [],
-        whitelist: ['Hi', 'Help'],
-        blacklist: ['Test', 'Copy'],
-        appriseUrls: [],
-        mutedChannels: [],
-        mutedDMs: [],
-      });
+      res.json({ ...DEFAULT_NOTIFICATION_PREFERENCES });
     }
   } catch (error: any) {
     logger.error('Error loading notification preferences:', error);
@@ -302,7 +330,16 @@ pushRouter.get(
   }
 );
 
-// Save notification preferences (unified for Web Push and Apprise)
+/**
+ * Save notification preferences (unified for Web Push and Apprise).
+ *
+ * Partial update: only the fields in the body change. The rest come from the
+ * stored row for (user, sourceId), or — for a source with no row yet — from
+ * whatever GET would answer (the '' row, the legacy settings blob, then the
+ * defaults). Each client sends only the fields it edits, so the Notifications
+ * tab can't overwrite a channel/DM mute set elsewhere after it loaded, and a
+ * mute save can't overwrite Notifications-tab edits.
+ */
 pushRouter.post(
   '/preferences',
   requireAuth(),
@@ -318,52 +355,29 @@ pushRouter.post(
       return res.status(401).json({ error: 'Authentication required' });
     }
 
-    const sourceId = typeof req.body?.sourceId === 'string' && req.body.sourceId
-      ? req.body.sourceId
+    const body: Record<string, any> =
+      req.body && typeof req.body === 'object' && !Array.isArray(req.body) ? req.body : {};
+
+    const sourceId = typeof body.sourceId === 'string' && body.sourceId
+      ? body.sourceId
       : undefined;
 
     const {
-      enableWebPush,
-      enableApprise,
-      enabledChannels,
-      enableDirectMessages,
-      notifyOnEmoji,
-      notifyOnMqtt,
-      notifyOnNewNode,
-      notifyOnTraceroute,
-      notifyOnInactiveNode,
-      notifyOnLowBattery,
       lowBatteryThreshold,
       lowBatteryVoltageThreshold,
-      notifyOnWaypoint,
       waypointRadiusKm,
       waypointCenterLat,
       waypointCenterLon,
-      notifyOnServerEvents,
-      prefixWithNodeName,
       monitoredNodes,
-      whitelist,
-      blacklist,
       appriseUrls,
       mutedChannels,
       mutedDMs,
-    } = req.body;
+    } = body;
 
-    // Validate input
+    // Validate only the fields the client sent.
     if (
-      typeof enableWebPush !== 'boolean' ||
-      typeof enableApprise !== 'boolean' ||
-      !Array.isArray(enabledChannels) ||
-      typeof enableDirectMessages !== 'boolean' ||
-      typeof notifyOnEmoji !== 'boolean' ||
-      typeof notifyOnMqtt !== 'boolean' ||
-      typeof notifyOnNewNode !== 'boolean' ||
-      typeof notifyOnTraceroute !== 'boolean' ||
-      typeof notifyOnInactiveNode !== 'boolean' ||
-      typeof notifyOnServerEvents !== 'boolean' ||
-      typeof prefixWithNodeName !== 'boolean' ||
-      !Array.isArray(whitelist) ||
-      !Array.isArray(blacklist)
+      BOOLEAN_PREF_FIELDS.some(f => body[f] !== undefined && typeof body[f] !== 'boolean') ||
+      ARRAY_PREF_FIELDS.some(f => body[f] !== undefined && !Array.isArray(body[f]))
     ) {
       return res.status(400).json({ error: 'Invalid preferences data' });
     }
@@ -372,16 +386,10 @@ pushRouter.post(
     if (monitoredNodes !== undefined && !Array.isArray(monitoredNodes)) {
       return res.status(400).json({ error: 'monitoredNodes must be an array' });
     }
-
-    // Validate each element is a string
     if (monitoredNodes && monitoredNodes.some((id: any) => typeof id !== 'string')) {
       return res.status(400).json({ error: 'monitoredNodes must be an array of strings' });
     }
 
-    // notifyOnLowBattery / lowBatteryThreshold are optional (older clients omit them)
-    if (notifyOnLowBattery !== undefined && typeof notifyOnLowBattery !== 'boolean') {
-      return res.status(400).json({ error: 'notifyOnLowBattery must be a boolean' });
-    }
     if (
       lowBatteryThreshold !== undefined &&
       (typeof lowBatteryThreshold !== 'number' ||
@@ -391,13 +399,9 @@ pushRouter.post(
     ) {
       return res.status(400).json({ error: 'lowBatteryThreshold must be a number between 0 and 100' });
     }
-    // Waypoint alerts are optional (older clients omit them) (#4750).
-    if (notifyOnWaypoint !== undefined && typeof notifyOnWaypoint !== 'boolean') {
-      return res.status(400).json({ error: 'notifyOnWaypoint must be a boolean' });
-    }
     // 0 km would silently disable the feature while the toggle reads on, so the
     // radius has to be positive. The ceiling is half the Earth's circumference:
-    // beyond that every point on the planet is inside the fence anyway.
+    // beyond that every point on the planet is inside the fence anyway (#4750).
     if (
       waypointRadiusKm !== undefined &&
       (typeof waypointRadiusKm !== 'number' ||
@@ -407,8 +411,8 @@ pushRouter.post(
     ) {
       return res.status(400).json({ error: 'waypointRadiusKm must be a number between 0 (exclusive) and 20037' });
     }
-    // The centre is optional and nullable — null means "use this source's own
-    // node". Both halves must be present together, or the radius has no origin.
+    // The centre is nullable — null means "use this source's own node". Both
+    // halves must be present together, or the radius has no origin.
     const latGiven = waypointCenterLat !== undefined && waypointCenterLat !== null;
     const lonGiven = waypointCenterLon !== undefined && waypointCenterLon !== null;
     if (latGiven !== lonGiven) {
@@ -421,8 +425,8 @@ pushRouter.post(
       return res.status(400).json({ error: 'waypointCenterLon must be a number between -180 and 180' });
     }
 
-    // lowBatteryVoltageThreshold (mV) is optional (older clients omit it). MeshCore
-    // nodes report battery voltage; 0-20000 mV covers single-cell through multi-cell packs.
+    // lowBatteryVoltageThreshold (mV). MeshCore nodes report battery voltage;
+    // 0-20000 mV covers single-cell through multi-cell packs.
     if (
       lowBatteryVoltageThreshold !== undefined &&
       (typeof lowBatteryVoltageThreshold !== 'number' ||
@@ -433,7 +437,6 @@ pushRouter.post(
       return res.status(400).json({ error: 'lowBatteryVoltageThreshold must be a number between 0 and 20000' });
     }
 
-    // Validate appriseUrls is an array of strings if provided
     if (appriseUrls !== undefined && !Array.isArray(appriseUrls)) {
       return res.status(400).json({ error: 'appriseUrls must be an array' });
     }
@@ -441,7 +444,6 @@ pushRouter.post(
       return res.status(400).json({ error: 'appriseUrls must be an array of strings' });
     }
 
-    // Validate mutedChannels
     if (mutedChannels !== undefined && !Array.isArray(mutedChannels)) {
       return res.status(400).json({ error: 'mutedChannels must be an array' });
     }
@@ -453,7 +455,6 @@ pushRouter.post(
       return res.status(400).json({ error: 'mutedChannels entries must have channelId (number) and muteUntil (number|null)' });
     }
 
-    // Validate mutedDMs
     if (mutedDMs !== undefined && !Array.isArray(mutedDMs)) {
       return res.status(400).json({ error: 'mutedDMs must be an array' });
     }
@@ -465,38 +466,57 @@ pushRouter.post(
       return res.status(400).json({ error: 'mutedDMs entries must have nodeUuid (string) and muteUntil (number|null)' });
     }
 
-    const prefs = {
-      enableWebPush,
-      enableApprise,
-      enabledChannels,
-      enableDirectMessages,
-      notifyOnEmoji,
-      notifyOnMqtt: notifyOnMqtt ?? true,
-      notifyOnNewNode,
-      notifyOnTraceroute,
-      notifyOnInactiveNode: notifyOnInactiveNode ?? false,
-      notifyOnLowBattery: notifyOnLowBattery ?? false,
-      lowBatteryThreshold: lowBatteryThreshold ?? 20,
-      lowBatteryVoltageThreshold: lowBatteryVoltageThreshold ?? 3300,
-      notifyOnWaypoint: notifyOnWaypoint ?? false,
-      waypointRadiusKm: waypointRadiusKm ?? 10,
-      waypointCenterLat: waypointCenterLat ?? null,
-      waypointCenterLon: waypointCenterLon ?? null,
-      notifyOnServerEvents: notifyOnServerEvents ?? false,
-      prefixWithNodeName: prefixWithNodeName ?? false,
-      monitoredNodes: monitoredNodes ?? [],
-      whitelist,
-      blacklist,
-      appriseUrls: appriseUrls ?? [],
-      mutedChannels: mutedChannels ?? [],
-      mutedDMs: mutedDMs ?? [],
+    // Base row. The own-row read rethrows: a failed read must fail the save,
+    // not fall through to defaults and overwrite the user's settings.
+    //
+    // Not transactional: two concurrent saves from the same user and source
+    // can both read the same base, and the later write then drops the earlier
+    // one's fields. Saves are single-user UI actions, so the window is small;
+    // it is still far narrower than the old client-side whole-row writes.
+    const ownRow = await databaseService.notifications.getUserPreferences(
+      userId,
+      sourceId,
+      { rethrow: true },
+    );
+    let base: NotificationPreferences;
+    if (ownRow) {
+      base = ownRow;
+    } else {
+      base = (await getUserNotificationPreferencesAsync(userId, sourceId)) ?? DEFAULT_NOTIFICATION_PREFERENCES;
+      // A non-Meshtastic source's first row must not inherit the '' row's
+      // Meshtastic-keyed mute lists (#5487).
+      if (sourceId) {
+        const source = await databaseService.sources.getSource(sourceId);
+        if (source && NON_MESHTASTIC_SOURCE_TYPES.has(source.type)) {
+          base = { ...base, mutedChannels: [], mutedDMs: [] };
+        }
+      }
+    }
+
+    const patch: Partial<NotificationPreferences> = {};
+    for (const field of PREF_FIELDS) {
+      if (body[field] !== undefined) {
+        (patch as Record<string, unknown>)[field] = body[field];
+      }
+    }
+
+    const prefs: NotificationPreferences = {
+      ...DEFAULT_NOTIFICATION_PREFERENCES,
+      ...base,
+      ...patch,
     };
+    // A stored centre with only one half set would leave the radius with no
+    // origin; clear both rather than save half.
+    if ((prefs.waypointCenterLat === null) !== (prefs.waypointCenterLon === null)) {
+      prefs.waypointCenterLat = null;
+      prefs.waypointCenterLon = null;
+    }
 
     const success = await saveUserNotificationPreferencesAsync(userId, prefs, sourceId);
 
     if (success) {
       logger.debug(
-        `✅ Saved notification preferences for user ${userId} source=${sourceId ?? '(default)'} (WebPush: ${enableWebPush}, Apprise: ${enableApprise})`
+        `✅ Saved notification preferences for user ${userId} source=${sourceId ?? '(default)'} fields=[${Object.keys(patch).join(',')}]`
       );
       res.json({ success: true });
     } else {

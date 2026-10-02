@@ -198,7 +198,7 @@ const MYSQL_CREATE = `
     routePath TEXT,
     scopeCode INT,
     scopeName TEXT,
-    senderTimestamp BIGINT NULL,
+    senderTimestamp BIGINT,
     messageType VARCHAR(32) DEFAULT 'text',
     delivered BOOLEAN DEFAULT false,
     deliveredAt BIGINT,

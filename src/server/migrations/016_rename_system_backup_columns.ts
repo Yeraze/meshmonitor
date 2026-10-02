@@ -85,7 +85,7 @@ export async function runMigration016Postgres(client: import('pg').PoolClient): 
     for (const [oldName, newName] of COLUMN_RENAMES) {
       const res = await client.query(`
         SELECT column_name FROM information_schema.columns
-        WHERE table_name = 'system_backup_history' AND column_name = $1
+        WHERE table_schema = current_schema() AND table_name = 'system_backup_history' AND column_name = $1
       `, [oldName]);
 
       if (res.rows.length > 0) {

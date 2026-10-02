@@ -56,6 +56,42 @@ interface NotificationPreferences {
   appriseUrls: string[];
 }
 
+// The fields this tab edits. Saves send only these: the server merges them
+// onto the stored row, so channel/DM mutes set elsewhere after this tab loaded
+// survive a save here.
+const EDITED_PREFERENCE_FIELDS: ReadonlyArray<keyof NotificationPreferences> = [
+  'enableWebPush',
+  'enableApprise',
+  'enabledChannels',
+  'enableDirectMessages',
+  'notifyOnEmoji',
+  'notifyOnMqtt',
+  'notifyOnNewNode',
+  'notifyOnTraceroute',
+  'notifyOnInactiveNode',
+  'notifyOnLowBattery',
+  'lowBatteryThreshold',
+  'lowBatteryVoltageThreshold',
+  'notifyOnWaypoint',
+  'waypointRadiusKm',
+  'waypointCenterLat',
+  'waypointCenterLon',
+  'notifyOnServerEvents',
+  'prefixWithNodeName',
+  'monitoredNodes',
+  'whitelist',
+  'blacklist',
+  'appriseUrls',
+];
+
+function editedPreferenceFields(prefs: NotificationPreferences): Partial<NotificationPreferences> {
+  const out: Partial<NotificationPreferences> = {};
+  for (const field of EDITED_PREFERENCE_FIELDS) {
+    (out as Record<string, unknown>)[field] = prefs[field];
+  }
+  return out;
+}
+
 interface NotificationsTabProps {
   isAdmin: boolean;
 }
@@ -358,7 +394,10 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
         appriseUrls: parsedAppriseUrls
       };
 
-      await api.post('/api/push/preferences', { ...prefs, sourceId: currentSourceId ?? undefined });
+      await api.post('/api/push/preferences', {
+        ...editedPreferenceFields(prefs),
+        sourceId: currentSourceId ?? undefined,
+      });
       setPreferences(prefs);
       logger.info('Notification preferences saved');
       showToast(t('notifications.preferences_saved'), 'success');
@@ -564,13 +603,10 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
         .map(url => url.trim())
         .filter(url => url.length > 0);
 
-      // Save as part of user preferences (per-user Apprise URLs)
-      const updatedPrefs = {
-        ...preferences,
-        appriseUrls: urls
-      };
-      await api.post('/api/push/preferences', { ...updatedPrefs, sourceId: currentSourceId ?? undefined });
-      setPreferences(updatedPrefs);
+      // Save only the URL list (per-user Apprise URLs); the server merges it
+      // onto the stored row.
+      await api.post('/api/push/preferences', { appriseUrls: urls, sourceId: currentSourceId ?? undefined });
+      setPreferences(prev => ({ ...prev, appriseUrls: urls }));
       logger.info('Apprise URLs configured successfully');
       setAppriseTestStatus({ message: 'Configuration saved', tone: 'success' });
       const timeout = setTimeout(() => setAppriseTestStatus(null), 3000);

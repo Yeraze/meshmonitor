@@ -73,7 +73,7 @@ export async function runMigration083Postgres(client: PoolClient): Promise<void>
   for (const col of columnsToAdd) {
     const exists = await client.query(
       `SELECT column_name FROM information_schema.columns
-       WHERE table_name = 'user_map_preferences' AND column_name = $1`,
+       WHERE table_schema = current_schema() AND table_name = 'user_map_preferences' AND column_name = $1`,
       [col.name]
     );
 
