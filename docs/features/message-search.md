@@ -63,7 +63,7 @@ In-app search reads stored messages, so MeshCore sources are searchable whether 
 The search feature is also available via the REST API for programmatic access:
 
 ```
-GET /api/v1/messages/search
+GET /api/v1/sources/{sourceId}/messages/search
 ```
 
 | Parameter | Type | Required | Default | Description |
@@ -79,7 +79,7 @@ GET /api/v1/messages/search
 | `offset` | number | no | 0 | Pagination offset |
 
 ::: tip API Authentication
-The `/api/v1/messages/search` endpoint requires a valid API token (Bearer authentication). The frontend uses session-based authentication via `/api/messages/search` which is not intended for external use.
+The `/api/v1/sources/{sourceId}/messages/search` endpoint requires a valid API token (Bearer authentication) with `messages:read` on that source. It searches stored messages, so MeshCore history is found whether or not the source is connected, and applies the same channel and DM rules as in-app search. `{sourceId}` may be `default`. The frontend uses session-based authentication via `/api/messages/search` which is not intended for external use.
 :::
 
 ## Exporting Messages (CSV)

@@ -23,13 +23,7 @@ import { filterNodesByChannelPermission } from '../utils/nodeEnhancer.js';
 import { ok, fail } from '../utils/apiResponse.js';
 import { isTxDisabledError } from '../errors/txDisabledError.js';
 import { PortNum } from '../constants/meshtastic.js';
-import type { MessageSourceScope, MeshCoreMessageScope } from '../../db/repositories/index.js';
-import { isAnyMeshCoreSourceType } from '../../utils/nodeTypeCategory.js';
-import {
-  resolveReadableMeshtasticChannels,
-  resolveReadableMeshcoreScope,
-  intersectChannels,
-} from '../utils/messageSourceAccess.js';
+import { parseMessageSearchQuery, searchReadableMessages } from '../utils/messageSearch.js';
 import messageExportRoutes from './messageExportRoutes.js';
 import { getUserNotificationPreferencesAsync } from '../utils/notificationFiltering.js';
 
@@ -161,92 +155,19 @@ const requireChannelsWrite: RequestHandler = async (req, res, next) => {
 router.get('/search', async (req: Request, res: Response) => {
   try {
     const user = (req as any).user;
-
-    const { q, caseSensitive, scope, channels, fromNodeId, startDate, endDate, limit, offset, sourceId } = req.query;
+    const { sourceId } = req.query;
     const sourceIdStr = typeof sourceId === 'string' && sourceId.length > 0 ? sourceId : undefined;
 
-    if (!q || typeof q !== 'string' || q.trim().length === 0) {
+    const parsed = parseMessageSearchQuery(req.query);
+    if (!parsed.ok) {
       return res.status(400).json({
         success: false,
         error: 'Bad Request',
-        message: 'Search query parameter "q" is required'
+        message: parsed.message
       });
     }
 
-    const searchQuery = q.trim();
-    const isCaseSensitive = caseSensitive === 'true';
-    const searchScope = (scope as string) || 'all';
-    const maxLimit = Math.min(parseInt(limit as string) || 50, 100);
-    const searchOffset = Math.max(0, parseInt(offset as string) || 0);
-
-    let channelFilter: number[] | undefined;
-    if (channels && typeof channels === 'string') {
-      channelFilter = channels.split(',').map(c => parseInt(c.trim())).filter(c => !isNaN(c));
-      if (channelFilter.length === 0) channelFilter = undefined;
-    }
-
-    const startDateNum = startDate ? parseInt(startDate as string) : undefined;
-    const endDateNum = endDate ? parseInt(endDate as string) : undefined;
-
-    const allSources = await databaseService.sources.getAllSources();
-    const targetSources = sourceIdStr ? allSources.filter(s => s.id === sourceIdStr) : allSources;
-
-    const results: any[] = [];
-    let total = 0;
-    let standardTotal = 0;
-
-    // Meshtastic-family sources (the `messages` table).
-    if (searchScope !== 'meshcore') {
-      const scopes: MessageSourceScope[] = [];
-      for (const source of targetSources) {
-        if (isAnyMeshCoreSourceType(source.type)) continue;
-        const readable = await resolveReadableMeshtasticChannels(user, source.id);
-        scopes.push({ sourceId: source.id, channels: intersectChannels(readable, channelFilter) });
-      }
-
-      // An empty scope list means zero rows; the repository never widens it.
-      const searchResult = await databaseService.searchMessagesAsync({
-        query: searchQuery,
-        caseSensitive: isCaseSensitive,
-        scope: searchScope as 'all' | 'channels' | 'dms',
-        scopes,
-        fromNodeId: fromNodeId as string | undefined,
-        startDate: startDateNum,
-        endDate: endDateNum,
-        limit: maxLimit,
-        offset: searchOffset
-      });
-
-      results.push(...searchResult.messages.map(m => ({ ...m, source: 'standard' })));
-      standardTotal = searchResult.total;
-      total += searchResult.total;
-    }
-
-    // MeshCore sources (the `meshcore_messages` table), connected or not.
-    if (searchScope === 'all' || searchScope === 'meshcore') {
-      const meshcoreScopes: MeshCoreMessageScope[] = [];
-      for (const source of targetSources) {
-        if (!isAnyMeshCoreSourceType(source.type)) continue;
-        const readable = await resolveReadableMeshcoreScope(user, source.id);
-        meshcoreScopes.push({
-          sourceId: source.id,
-          channels: intersectChannels(readable.channels, channelFilter),
-          includeDms: readable.includeDms,
-        });
-      }
-      const meshcoreResult = await databaseService.meshcore.searchMessages({
-        query: searchQuery,
-        caseSensitive: isCaseSensitive,
-        scopes: meshcoreScopes,
-        fromPublicKey: fromNodeId as string | undefined,
-        startDate: startDateNum,
-        endDate: endDateNum,
-        limit: maxLimit - results.length,
-        offset: Math.max(0, searchOffset - standardTotal),
-      });
-      total += meshcoreResult.total;
-      results.push(...meshcoreResult.messages.map(m => ({ ...m, source: 'meshcore' })));
-    }
+    const { results, total } = await searchReadableMessages(user, sourceIdStr, parsed.params);
 
     res.json({
       success: true,
