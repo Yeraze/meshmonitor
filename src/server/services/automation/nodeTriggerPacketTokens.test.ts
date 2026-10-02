@@ -6,7 +6,7 @@
  * context builder, and end-to-end interpolation through the engine — including
  * the "no originating packet ⇒ empty, never a previous packet's value" rule.
  */
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
 import { AutomationsRepository } from '../../../db/repositories/automations.js';
 import { AutomationVariablesRepository } from '../../../db/repositories/automationVariables.js';
@@ -16,7 +16,8 @@ import type { ActionDeps } from './actionExecutor.js';
 import * as schema from '../../../db/schema/index.js';
 import { createTestDb } from '../../test-helpers/testDb.js';
 import { automationTraceBus } from './automationTraceBus.js';
-import { buildNodeContext } from './triggerContext.js';
+import { buildNodeContext, buildMeshCoreNodeContext } from './triggerContext.js';
+import { routeEventToEngine } from './automationEngineSingleton.js';
 import { simulateAutomation } from './automationSimulator.js';
 import { dataEventEmitter, type DataEvent } from '../dataEventEmitter.js';
 
@@ -146,5 +147,82 @@ describe('simulator passes node packet tokens (#5534)', () => {
       event: { kind: 'nodeDiscovered', nodeNum: 9, packetHash: HASH, packetId: 77 },
     } as any);
     expect(JSON.stringify(res)).toContain(HASH);
+  });
+});
+
+describe('routeEventToEngine node events (#5534)', () => {
+  function fakeEngine() {
+    return {
+      onNode: vi.fn().mockResolvedValue(0),
+      onMeshCoreNode: vi.fn().mockResolvedValue(0),
+      checkNodeOnline: vi.fn().mockResolvedValue(undefined),
+      checkGeofences: vi.fn().mockResolvedValue(undefined),
+      checkLeftHome: vi.fn().mockResolvedValue(undefined),
+    };
+  }
+  const ev = (type: string, data: unknown): DataEvent => ({ type: type as DataEvent['type'], data, timestamp: 1, sourceId: 'src' });
+
+  it('node:discovered (Meshtastic) fires nodeDiscovered with the packet id', async () => {
+    const e = fakeEngine();
+    await routeEventToEngine(e as any, ev('node:discovered', { nodeNum: 7, packetId: 99 }));
+    expect(e.onNode).toHaveBeenCalledWith('trigger.nodeDiscovered', 7, [], 'src', { packetId: 99 });
+    expect(e.onMeshCoreNode).not.toHaveBeenCalled();
+  });
+
+  it('node:discovered (MeshCore) fires nodeDiscovered keyed by public key with the hash', async () => {
+    const e = fakeEngine();
+    await routeEventToEngine(e as any, ev('node:discovered', { nodeNum: null, publicKey: 'k', name: 'N', packetHash: HASH }));
+    expect(e.onMeshCoreNode).toHaveBeenCalledWith('trigger.nodeDiscovered', 'k', [], 'src', { packetHash: HASH }, 'N');
+    expect(e.onNode).not.toHaveBeenCalled();
+  });
+
+  it('meshcore:node:changed fires nodeUpdated with the changed fields', async () => {
+    const e = fakeEngine();
+    await routeEventToEngine(e as any, ev('meshcore:node:changed', { publicKey: 'k', name: 'N', changed: ['latitude'], packetHash: HASH }));
+    expect(e.onMeshCoreNode).toHaveBeenCalledWith('trigger.nodeUpdated', 'k', ['latitude'], 'src', { packetHash: HASH }, 'N');
+  });
+
+  it('a node:updated from the discovering packet skips nodeUpdated but still runs the geofence checks', async () => {
+    const e = fakeEngine();
+    await routeEventToEngine(e as any, ev('node:updated', { nodeNum: 7, node: { latitude: 1 }, packetId: 99, discovered: true }));
+    expect(e.onNode).not.toHaveBeenCalled();
+    expect(e.checkGeofences).toHaveBeenCalledWith(7, 'src');
+  });
+
+  it('an ordinary node:updated still fires nodeUpdated', async () => {
+    const e = fakeEngine();
+    await routeEventToEngine(e as any, ev('node:updated', { nodeNum: 7, node: { longName: 'x' } }));
+    expect(e.onNode).toHaveBeenCalledWith('trigger.nodeUpdated', 7, ['longName'], 'src', { packetId: undefined, packetHash: undefined });
+  });
+});
+
+describe('MeshCore node trigger context + self guard (#5534)', () => {
+  it('builds a pubkey-keyed context with name and hash, no node number', () => {
+    const ctx = buildMeshCoreNodeContext('trigger.nodeDiscovered', 'abc', [], 'src', 5, { packetHash: HASH }, 'Hill');
+    expect(ctx.subjectNodeNum).toBeNull();
+    expect(ctx.subjectNodeKey).toBe('abc');
+    expect(ctx.fields).toMatchObject({ publicKey: 'abc', name: 'Hill', packetHash: HASH, nodeNum: null });
+    expect(ctx.fields.packetId).toBeUndefined();
+  });
+
+  it('onMeshCoreNode ignores our own public key (#3914)', async () => {
+    const t = createTestDb();
+    try {
+      const autos = new AutomationsRepository(t.db, 'sqlite');
+      const resolver = new VariableResolver(new AutomationVariablesRepository(t.db, 'sqlite'));
+      await autos.createAutomation({
+        name: 'mc', enabled: true,
+        config: JSON.stringify({ version: 1, nodes: [{ id: 't', type: 'trigger.nodeDiscovered', params: {} }, { id: 'n', type: 'action.notify', params: { body: 'x' } }], edges: [{ from: 't', to: 'n' }] }),
+      });
+      const deps = { sendMessage: async () => 1, sendTapback: async () => 2, manageNode: async () => 3, notify: async () => 4 } as ActionDeps;
+      const data = { getNode: async () => null, getTelemetry: async () => null, getSelfPublicKey: async () => 'SELF' };
+      const engine = new AutomationEngineService({ automationsRepo: autos, varResolver: resolver, deps, data, now: () => 1 } as any);
+      await engine.load();
+      expect(await engine.onMeshCoreNode('trigger.nodeDiscovered', 'self', [], 'src')).toBe(0);
+      expect(await engine.onMeshCoreNode('trigger.nodeDiscovered', 'other', [], 'src', { packetHash: HASH }, 'O')).toBe(1);
+    } finally {
+      t.sqlite.close();
+      automationTraceBus.reset();
+    }
   });
 });

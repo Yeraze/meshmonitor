@@ -23,6 +23,7 @@ import type { MeshcorePathfindingFilterSettings } from '../services/database.js'
 import type { MessageEventType, MessageEventProvenance } from '../db/repositories/messageEvents.js';
 import { compileUserRegex } from '../utils/safeRegex.js';
 import { dataEventEmitter } from './services/dataEventEmitter.js';
+import { meshCoreTriggerChanges } from './utils/nodeDiscovery.js';
 import { compileAutoAckRegex } from './utils/autoAckRegex.js';
 import { resolveAutoAckPreSendDelaySeconds, clampPreSendDelaySeconds } from './autoAckDelay.js';
 import { scheduleCron, validateCron, type CronJob } from './utils/cronScheduler.js';
@@ -112,7 +113,7 @@ import {
   type RepeaterRawPacket,
 } from './utils/meshcoreRepeaterSerial.js';
 import { parseMeshcoreNeighborsResponse } from './utils/parseMeshcoreNeighbors.js';
-import { parseObserverFrame } from './services/meshcoreObserverPacket.js';
+import { parseObserverFrame, meshCorePacketHashOrUndefined } from './services/meshcoreObserverPacket.js';
 import { getPayloadTypeName, getRouteTypeName } from '@michaelhart/meshcore-decoder';
 import {
   fetchNeighbourPages,
@@ -1183,6 +1184,21 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
   // new-node discoveries — otherwise every reconnect could re-notify for known
   // nodes (#5340).
   private newNodeNotifySuppressed: boolean = false;
+  // #5534 automation node triggers. False until connect() has loaded the
+  // known contact list (DB seed + device get_contacts), and again after
+  // disconnect, so the contact-list sync and adverts racing it never fire
+  // trigger.nodeDiscovered / trigger.nodeUpdated.
+  private nodeTriggersReady: boolean = false;
+  // Public keys heard live for the first time but still nameless; their
+  // trigger.nodeDiscovered waits for the name (same reason as
+  // pendingNewNodeNotifications, #5340). Value = the first advert's hash.
+  private pendingDiscoveryTriggers: Map<string, string | undefined> = new Map();
+  // Advert hash per sender public key, from the raw LogRxData frame that
+  // precedes the firmware's advert push (#5534). Short-lived; see
+  // ADVERT_HASH_TTL_MS.
+  private recentAdvertHashes: Map<string, { hash: string; at: number }> = new Map();
+  private static readonly ADVERT_HASH_TTL_MS = 30_000;
+  private static readonly ADVERT_HASH_MAX_ENTRIES = 512;
 
   // Repeater: direct serial
   private serialPort: InstanceType<typeof import('serialport').SerialPort> | null = null;
@@ -1716,6 +1732,7 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
         await this.refreshContacts();
       } finally {
         this.newNodeNotifySuppressed = false;
+        this.nodeTriggersReady = true;
       }
       // Pull the device's channel list and mirror it into the DB. MeshCore has
       // no push event for channel changes, so re-sync is connect-time and
@@ -2082,6 +2099,9 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
     this.contacts.clear();
     this.deviceContactsKnown = false;
     this.pendingNewNodeNotifications.clear();
+    this.nodeTriggersReady = false;
+    this.pendingDiscoveryTriggers.clear();
+    this.recentAdvertHashes.clear();
     this.guestLoggedInNodes.clear();
     this.roomLoggedInNodes.clear();
 
@@ -2395,6 +2415,9 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
         // tombstone so it syncs normally again (#3878). The reporter's gone
         // room server never adverts, so it stays suppressed.
         this.clearContactTombstone(publicKey);
+        // #5534: hash of the advert frame that caused this push, if the raw
+        // LogRxData copy arrived just before it.
+        const advertHash = this.takeRecentAdvertHash(publicKey);
         // Captured before the set below: a contact we didn't already know about
         // is a genuine new-node discovery. Bulk contact-list sync populates
         // this.contacts directly (not via this event), so a first connect
@@ -2429,6 +2452,13 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
         void this.persistContact(updated);
         this.emit('contacts_updated', { sourceId: this.sourceId, contact: updated });
         dataEventEmitter.emitMeshCoreContactUpdated(updated, this.sourceId);
+        // #5534 automation triggers: first live sighting → nodeDiscovered;
+        // a known node whose name/position/type changed → nodeUpdated.
+        if (!wasKnown) {
+          this.noteNodeDiscovered(updated, advertHash);
+        } else {
+          this.noteNodeTriggerChange(existing, updated, advertHash);
+        }
         // A key first seen without a name is parked in
         // pendingNewNodeNotifications; a later named advert resolves it (#5340).
         if (!this.newNodeNotifySuppressed
@@ -2594,6 +2624,8 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
       };
       this.contacts.set(contact.publicKey, updated);
       void this.persistContact(updated);
+      // #5534: a changed route fires trigger.nodeUpdated (path fields).
+      this.noteNodeTriggerChange(contact, updated, undefined);
       this.emit('contacts_updated', { sourceId: this.sourceId, contact: updated });
       dataEventEmitter.emitMeshCoreContactUpdated(updated, this.sourceId);
       logger.debug(
@@ -2619,6 +2651,9 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
         };
         this.contacts.set(publicKey, updated);
         void this.persistContact(updated);
+        // #5534: the node answered our discovery sweep, so it was heard live.
+        // No advert frame here, so no packet hash.
+        if (isNew) this.noteNodeDiscovered(updated, undefined);
 
         const emitContact = (contact: MeshCoreContact) => {
           this.emit('contacts_updated', { sourceId: this.sourceId, contact });
@@ -2711,6 +2746,7 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
       // check is needed here. Never throws into this path; never sends
       // anything on the mesh.
       if (data?.payload_type === MESHCORE_PAYLOAD_ADVERT) {
+        this.recordRecentAdvertHash(data?.raw_hex);
         void maybeRecordMeshCoreCoverageReception({
           sourceId: this.sourceId,
           receiverKind: 'local',
@@ -3135,6 +3171,95 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
         `[MeshCore:${this.sourceId}] notifyNewNodeDiscovered(${contact.publicKey.substring(0, 16)}…) failed: ${(err as Error).message}`,
       );
     }
+  }
+
+  /**
+   * Remember the hash of a received ADVERT frame, keyed by its sender's public
+   * key (#5534). The firmware logs the raw frame (LogRxData) before it pushes
+   * the advert/contact event, so the advert handler can claim it.
+   */
+  private recordRecentAdvertHash(rawHex: unknown): void {
+    if (typeof rawHex !== 'string' || rawHex === '') return;
+    const hash = meshCorePacketHashOrUndefined(rawHex);
+    if (!hash) return;
+    const advert = decodeMeshCorePacket(rawHex)?.payload.advert;
+    if (!advert?.publicKey) return;
+    const now = Date.now();
+    for (const [key, entry] of this.recentAdvertHashes) {
+      if (now - entry.at > MeshCoreManager.ADVERT_HASH_TTL_MS) this.recentAdvertHashes.delete(key);
+    }
+    const key = advert.publicKey.toLowerCase();
+    this.recentAdvertHashes.delete(key); // re-insert so Map order stays oldest-first
+    this.recentAdvertHashes.set(key, { hash, at: now });
+    while (this.recentAdvertHashes.size > MeshCoreManager.ADVERT_HASH_MAX_ENTRIES) {
+      const oldest = this.recentAdvertHashes.keys().next().value;
+      if (oldest === undefined) break;
+      this.recentAdvertHashes.delete(oldest);
+    }
+  }
+
+  /** Claim (and forget) the recent advert hash for `publicKey`, if still fresh. */
+  private takeRecentAdvertHash(publicKey: string): string | undefined {
+    const key = publicKey.toLowerCase();
+    const entry = this.recentAdvertHashes.get(key);
+    if (!entry) return undefined;
+    this.recentAdvertHashes.delete(key);
+    return Date.now() - entry.at <= MeshCoreManager.ADVERT_HASH_TTL_MS ? entry.hash : undefined;
+  }
+
+  /**
+   * A contact heard live with no row on this source → trigger.nodeDiscovered
+   * (#5534). Skipped until the connect-time contact sync is done, so a device
+   * sync never fires it. A nameless contact waits for its name (the follow-up
+   * get_contacts re-read or a named advert), then fires with the first
+   * advert's hash.
+   */
+  private noteNodeDiscovered(contact: MeshCoreContact, packetHash: string | undefined): void {
+    if (!this.nodeTriggersReady) return;
+    const name = contact.advName || contact.name;
+    if (!name) {
+      if (!this.pendingDiscoveryTriggers.has(contact.publicKey)) {
+        this.pendingDiscoveryTriggers.set(contact.publicKey, packetHash);
+      }
+      return;
+    }
+    this.pendingDiscoveryTriggers.delete(contact.publicKey);
+    dataEventEmitter.emitNodeDiscovered(
+      { nodeNum: null, publicKey: contact.publicKey, name, packetHash },
+      this.sourceId,
+    );
+  }
+
+  /**
+   * A live update to a known contact (#5534). Fires trigger.nodeUpdated only
+   * when name, position, node type or path changed. A contact still waiting
+   * on its discovery fires nodeDiscovered instead once it has a name — never
+   * both.
+   */
+  private noteNodeTriggerChange(
+    before: MeshCoreContact | undefined,
+    after: MeshCoreContact,
+    packetHash: string | undefined,
+  ): void {
+    if (!this.nodeTriggersReady) return;
+    const name = after.advName || after.name || undefined;
+    if (this.pendingDiscoveryTriggers.has(after.publicKey)) {
+      if (name) {
+        const firstHash = this.pendingDiscoveryTriggers.get(after.publicKey);
+        this.pendingDiscoveryTriggers.delete(after.publicKey);
+        dataEventEmitter.emitNodeDiscovered(
+          { nodeNum: null, publicKey: after.publicKey, name, packetHash: firstHash ?? packetHash },
+          this.sourceId,
+        );
+      }
+      return;
+    }
+    const changed = meshCoreTriggerChanges(before, after);
+    if (changed.length === 0) return;
+    dataEventEmitter.emitMeshCoreNodeChanged(
+      { publicKey: after.publicKey, name, changed, packetHash },
+      this.sourceId,
+    );
   }
 
   /**
@@ -4285,6 +4410,14 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
       this.pathRefreshTimer = null;
       const pending = Array.from(this.pathRefreshPendingKeys);
       this.pathRefreshPendingKeys.clear();
+      // #5534: snapshot before the re-read so a changed name/position/type/
+      // path on one of these live-pushed contacts can fire nodeUpdated.
+      const beforeRefresh = new Map<string, MeshCoreContact | undefined>(
+        pending.map((key) => {
+          const c = this.contacts.get(key);
+          return [key, c ? { ...c } : undefined];
+        }),
+      );
       logger.debug(
         `[MeshCore:${this.sourceId}] Refreshing contacts after ${pending.length} contact push(es) (path/new-node)`,
       );
@@ -4301,6 +4434,7 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
             if (fresh) {
               this.emit('contacts_updated', { sourceId: this.sourceId, contact: fresh });
               dataEventEmitter.emitMeshCoreContactUpdated(fresh, this.sourceId);
+              this.noteNodeTriggerChange(beforeRefresh.get(key), fresh, undefined);
             }
           }
         })

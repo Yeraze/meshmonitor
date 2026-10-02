@@ -386,6 +386,45 @@ export function buildNodeContext(
 }
 
 /**
+ * Build the trigger context for a MeshCore node discovered/updated event (#5534).
+ *
+ * MeshCore nodes have no numeric node id, so — like {@link buildNodeStaleContext}
+ * — `subjectNodeNum` is null (no `{{ node.* }}` hydration) and `subjectNodeKey`
+ * is the public key, which keys per-node cooldown. `name` carries the contact's
+ * display name since `node.*` cannot. `packetHash` is the advert's hash when the
+ * event came from a received advert, else undefined (renders '').
+ */
+export function buildMeshCoreNodeContext(
+  triggerType: 'trigger.nodeDiscovered' | 'trigger.nodeUpdated',
+  publicKey: string,
+  changedKeys: string[],
+  sourceId: string | null,
+  timestamp: number,
+  origin?: NodeUpdateOrigin,
+  name?: string | null,
+): TriggerContext {
+  return {
+    triggerType,
+    sourceId,
+    subjectNodeNum: null,
+    subjectNodeKey: publicKey,
+    timestamp,
+    fields: {
+      nodeNum: null,
+      publicKey,
+      name: name || undefined,
+      changed: changedKeys,
+      packetId: undefined,
+      packetHash: origin?.packetHash ? String(origin.packetHash) : undefined,
+      protocol: 'meshcore',
+      protocolShort: 'MC',
+      sourceId,
+      timestamp,
+    },
+  };
+}
+
+/**
  * Build the trigger context when a watched node crosses its staleness threshold
  * (`trigger.nodeStale` — "heartbeat lost", #4558 Phase A). Subject node = the
  * node that went quiet, so `{{ node.* }}` hydration and node-scoped cooldown work
