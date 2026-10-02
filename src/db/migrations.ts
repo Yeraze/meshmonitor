@@ -204,6 +204,7 @@ import { migration as createMeshcoreIgnoreBlockMigration, runMigration182Postgre
 import { migration as addWaypointHopLimitAutomationKeyMigration, runMigration183Postgres, runMigration183Mysql } from '../server/migrations/183_add_waypoint_hop_limit_automation_key.js';
 import { migration as addAckProofStatusMigration, runMigration184Postgres, runMigration184Mysql } from '../server/migrations/184_add_ack_proof_status_to_messages.js';
 import { migration as addChannelUseAeadMigration, runMigration185Postgres, runMigration185Mysql } from '../server/migrations/185_add_channel_use_aead.js';
+import { migration as mergeDefaultRowMutesMigration, runMigration186Postgres, runMigration186Mysql } from '../server/migrations/186_merge_default_row_mutes_into_source_rows.js';
 
 // ============================================================================
 // Registry
@@ -3000,4 +3001,19 @@ registry.register({
   sqlite: (db) => addChannelUseAeadMigration.up(db),
   postgres: (client) => runMigration185Postgres(client),
   mysql: (pool) => runMigration185Mysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 186: merge each user's '' (default) row channel/DM mutes into
+// their existing per-source notification preference rows (#5487). Data-only;
+// skips MeshCore/Reticulum rows and creates no rows.
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 186,
+  name: 'merge_default_row_mutes_into_source_rows',
+  settingsKey: 'migration_186_merge_default_row_mutes_into_source_rows',
+  sqlite: (db) => mergeDefaultRowMutesMigration.up(db),
+  postgres: (client) => runMigration186Postgres(client),
+  mysql: (pool) => runMigration186Mysql(pool),
 });

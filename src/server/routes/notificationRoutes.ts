@@ -258,7 +258,14 @@ pushRouter.get(
     const prefs = await getUserNotificationPreferencesAsync(userId, sourceId);
 
     if (prefs) {
-      res.json(prefs);
+      // Tell the client when a source-scoped read was answered by the user's
+      // '' (default) row because this source has no row of its own (#5487).
+      // Mute lists on that row are keyed by Meshtastic channel number, so a
+      // MeshCore view must not read them as its own channel mutes.
+      const sourceFallback = sourceId
+        ? !(await databaseService.notifications.getUserPreferences(userId, sourceId))
+        : false;
+      res.json({ ...prefs, sourceFallback });
     } else {
       // Return defaults
       res.json({
