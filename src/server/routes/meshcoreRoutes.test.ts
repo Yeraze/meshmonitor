@@ -41,6 +41,8 @@ const meshcoreManager = {
     config: null,
   }),
   getLocalNode: vi.fn().mockReturnValue(null),
+  // #5533: the key /info files telemetry under (real key for a Repeater).
+  getLocalTelemetryNodeId: vi.fn().mockReturnValue(null),
   getAllNodes: vi.fn().mockReturnValue([]),
   getContacts: vi.fn().mockReturnValue([]),
   getContact: vi.fn().mockReturnValue(undefined),
@@ -1467,6 +1469,7 @@ describe('MeshCore Routes', () => {
         radioSf: 7,
         radioCr: 5,
       });
+      meshcoreManager.getLocalTelemetryNodeId.mockReturnValueOnce(FULL_PUBKEY);
 
       const response = await request(app).get('/api/sources/test-source/meshcore/info');
 
@@ -1513,6 +1516,34 @@ describe('MeshCore Routes', () => {
 
       expect(response.status).toBe(200);
       expect(response.body.data.latest).toEqual(fakePollerSnapshot.value);
+    });
+
+    it('points a Repeater telemetryRef at the real key, not the placeholder (#5533)', async () => {
+      const REAL_KEY = 'b'.repeat(64);
+      meshcoreManager.getConnectionStatus.mockReturnValueOnce({ connected: true, deviceType: 2, config: null });
+      meshcoreManager.getLocalNode.mockReturnValueOnce({ publicKey: 'repeater', name: 'Rpt', advType: 2 });
+      meshcoreManager.getLocalTelemetryNodeId.mockReturnValueOnce(REAL_KEY);
+
+      const response = await request(app).get('/api/sources/test-source/meshcore/info');
+
+      expect(response.status).toBe(200);
+      expect(response.body.data.identity.publicKey).toBe('repeater');
+      expect(response.body.data.telemetryRef).toEqual({
+        nodeId: REAL_KEY,
+        nodeNum: expect.any(Number),
+        sourceId: 'test-source',
+      });
+    });
+
+    it('returns null telemetryRef for a Repeater whose key has not been read yet (#5533)', async () => {
+      meshcoreManager.getConnectionStatus.mockReturnValueOnce({ connected: true, deviceType: 2, config: null });
+      meshcoreManager.getLocalNode.mockReturnValueOnce({ publicKey: 'repeater', name: 'Rpt', advType: 2 });
+      meshcoreManager.getLocalTelemetryNodeId.mockReturnValueOnce(null);
+
+      const response = await request(app).get('/api/sources/test-source/meshcore/info');
+
+      expect(response.status).toBe(200);
+      expect(response.body.data.telemetryRef).toBeNull();
     });
 
     it('returns null telemetryRef when no localNode has been resolved', async () => {

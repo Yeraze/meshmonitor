@@ -384,9 +384,20 @@ then prints `"  -> " + reply`. There is no end marker, and a multi-line reply
   tick if any CLI command is in flight. A reconnect waits out the rest of the
   interval. Each 8-hex prefix must match exactly one full key in
   `meshcore_nodes` (any source); the match is upserted into this source.
+- **Local stats (#5533).** `getStatsCore` / `getStatsRadio` /
+  `getStatsPackets` / `getDeviceTime` / `deviceQuery` send `stats-core`,
+  `stats-radio`, `stats-packets`, `clock`, `ver` and `board`. The firmware
+  takes the `stats-*` verbs only from serial (`sender_timestamp == 0`), and
+  the replies use the companion `get_stats` JSON keys, so one mapper serves
+  both. Each read ends on the same 300 ms idle gap, fails soft (null, debug
+  log) and rides the shared `MeshCoreTelemetryPoller` timer. `clock` prints
+  HH:MM only, so the poller truncates server time to the minute before it
+  computes drift. Telemetry rows use `repeaterPublicKey`; the poller writes
+  no `meshcore_nodes` row for it, since that would duplicate the
+  `'repeater'` placeholder node.
 - **`localNode.publicKey` stays `'repeater'`.** Too many paths key off it. The
   real key from `get public.key` lives in `repeaterPublicKey` and is the
-  reporter for the neighbour-graph rows.
+  reporter for the neighbour-graph rows and the key for local telemetry.
 - **Never automate** `advert`, `advert.zerohop` or `discover.neighbors`: they
   transmit.
 
