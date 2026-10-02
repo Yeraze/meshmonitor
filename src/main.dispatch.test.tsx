@@ -17,7 +17,8 @@
  * reconcile the full top-level app tree — that path isn't what's under
  * test here, only the named `SourceApp` export is. Every other top-level
  * page `main.tsx` imports is stubbed to a cheap marker so the test doesn't
- * pay for, or depend on, their real trees.
+ * pay for, or depend on, their real trees. The pages are `React.lazy`
+ * chunks, so each assertion awaits the lazy page resolving (`findBy*`).
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
@@ -83,31 +84,31 @@ describe('SourceApp dispatch (main.tsx)', () => {
     ];
   });
 
-  it('renders ReticulumSourcePage for a reticulum-type source', () => {
+  it('renders ReticulumSourcePage for a reticulum-type source', async () => {
     renderSourceApp('ret-1');
-    expect(screen.getByTestId('reticulum-source-page')).toBeInTheDocument();
+    expect(await screen.findByTestId('reticulum-source-page')).toBeInTheDocument();
     expect(screen.queryByTestId('meshcore-source-page')).not.toBeInTheDocument();
     expect(screen.queryByTestId('app-legacy')).not.toBeInTheDocument();
   });
 
-  it('renders MeshCoreSourcePage for a meshcore-type source (no regression)', () => {
+  it('renders MeshCoreSourcePage for a meshcore-type source (no regression)', async () => {
     renderSourceApp('mc-1');
-    expect(screen.getByTestId('meshcore-source-page')).toBeInTheDocument();
+    expect(await screen.findByTestId('meshcore-source-page')).toBeInTheDocument();
     expect(screen.queryByTestId('reticulum-source-page')).not.toBeInTheDocument();
   });
 
-  it('falls through to the legacy App for any other source type', () => {
+  it('falls through to the legacy App for any other source type', async () => {
     renderSourceApp('mt-1');
-    expect(screen.getByTestId('app-legacy')).toBeInTheDocument();
+    expect(await screen.findByTestId('app-legacy')).toBeInTheDocument();
     expect(screen.queryByTestId('reticulum-source-page')).not.toBeInTheDocument();
     expect(screen.queryByTestId('meshcore-source-page')).not.toBeInTheDocument();
   });
 
-  it('redirects when the sourceId has no matching entry yet and loading has finished', () => {
+  it('redirects when the sourceId has no matching entry yet and loading has finished', async () => {
     // No matching source and isLoading:false renders the fallthrough <App>
     // branch (source is undefined, source?.type is undefined) — pin this
     // so a future change to the "unknown source" branch is a deliberate one.
     renderSourceApp('unknown-id');
-    expect(screen.getByTestId('app-legacy')).toBeInTheDocument();
+    expect(await screen.findByTestId('app-legacy')).toBeInTheDocument();
   });
 });
