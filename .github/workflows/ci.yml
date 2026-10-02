@@ -160,6 +160,11 @@ jobs:
           echo "Checking server build..."
           ls -la dist/server/
 
+      # Keeps main-chunk/asset size creep visible in CI before it trips the
+      # vite-plugin-pwa precache cap and fails the build outright (#5526).
+      - name: Check bundle size budgets
+        run: npm run check:bundle-size
+
       # Node ESM resolves relative specifiers exactly — the extension is
       # required. tsc accepts an extensionless one and Vite resolves it, so a
       # backend file importing a frontend module written that way builds clean

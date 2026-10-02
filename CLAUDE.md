@@ -271,6 +271,7 @@ For the full "adding a migration" recipe see [Migration recipe](#migration-recip
 - When sending test messages, use the `gauntlet` channel — never the Primary channel.
 - The dev tileserver (`docker-compose.dev.yml`, port 8082) is opt-in behind the `tiles` profile and not used for normal testing, so the standard `COMPOSE_PROFILES=sqlite` deploy does not start it. Don't copy or link `.mbtiles` into worktrees, and never commit `tiles` as a symlink: it must stay a real directory holding only `tiles/.gitkeep` (`lint:ci` fails on any tracked symlink).
 - Only shut down the dev container when you are running `tests/system-tests.sh` locally to debug a system-test failure — CI runs system tests on every PR, so you should not be invoking that script as part of normal feature/bugfix work.
+- **Bundle size budgets (#5526).** `scripts/check-bundle-size.mjs` (`npm run check:bundle-size`) runs in the Build Check CI job right after `npm run build` and fails on two conditions: any `dist/assets/*.js` file over 90% of the PWA precache cap (`maximumFileSizeToCacheInBytes` in `vite.config.ts`, mirrored as `PWA_PRECACHE_CAP_BYTES`), or the entry chunk `main-*.js` over `MAIN_CHUNK_BUDGET_BYTES` (350 KiB, ~2x its measured post-#5530 size). It also prints the 10 largest JS assets (raw + gzip) so size creep shows up in CI logs over time. To raise a budget intentionally, edit the named constant at the top of the script with an updated measured-size comment — don't raise it just to silence an unreviewed regression.
 
 ## Agent worktrees (`isolation: "worktree"`)
 
