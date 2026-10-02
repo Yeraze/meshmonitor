@@ -234,6 +234,13 @@ export interface MessagesTabProps {
     action: 'read' | 'write',
     opts?: { sourceId?: string | null; anySource?: boolean }
   ) => boolean;
+  /**
+   * Whether the current user may use the Remote Admin "Available" badge's
+   * deep link into the Admin Commands tab (#5535) — mirrors the `admin`
+   * route's own gate in `App.tsx` (`authStatus?.user?.isAdmin`), passed down
+   * the same way `NotificationsTab`'s `isAdmin` prop is.
+   */
+  canOpenRemoteAdmin?: boolean;
 
   // Handlers
   handleSendDirectMessage: (destinationNodeId: string) => Promise<void>;
@@ -324,6 +331,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
   distanceUnit,
   baseUrl,
   hasPermission,
+  canOpenRemoteAdmin = false,
   handleSendDirectMessage,
   onSendBell,
   handleResendMessage,
@@ -2871,6 +2879,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                 sourceId={sourceId}
                 canEditNotes={hasPermission('nodes', 'write')}
                 assetTracking={{ canEdit: hasPermission('settings', 'write', { anySource: true }) }}
+                canOpenRemoteAdmin={canOpenRemoteAdmin}
                 onSaveNotes={async (notes) => {
                   if (!selectedNode.user?.id) throw new Error('Node has no ID');
                   await apiService.setNodeNotes(selectedNode.user.id, notes, sourceId);

@@ -3924,6 +3924,7 @@ function App() {
             distanceUnit={distanceUnit}
             baseUrl={baseUrl}
             hasPermission={hasPermission}
+            canOpenRemoteAdmin={authStatus?.user?.isAdmin || false}
             handleSendDirectMessage={handleSendDirectMessage}
             onSendBell={handleSendBellDM}
             handleResendMessage={handleResendMessage}

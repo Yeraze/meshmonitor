@@ -6,6 +6,7 @@ import { useToast } from './ToastContainer';
 import { useResolvedSourceId } from '../hooks/useResolvedSourceId';
 import { useTxStatus } from '../hooks/useTxStatus';
 import { isTxDisabledError } from '../utils/txDisabled';
+import { parseAdminDeepLink } from '../utils/adminDeepLink';
 import { appBasename } from '../init';
 import { MODEM_PRESET_OPTIONS, REGION_OPTIONS, FEM_LNA_MODE_OPTIONS } from './configuration/constants';
 import type { Channel } from '../types/device';
@@ -282,14 +283,31 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
     return sortNodeOptionsForRemoteAdmin(options);
   }, [nodes, currentNodeId, t]);
 
+  // Deep link (#5535): `?node=!xxxxxxxx` from the node-details Remote Admin
+  // badge pre-selects that node below. Read directly from
+  // `window.location.search` rather than react-router's `useSearchParams()`
+  // — this component is also rendered in tests outside a Router, and the
+  // value is only ever consulted once, by the default-selection effect
+  // below (mirrors the "seeded once" rule `coverageDeepLink` documents).
+  const deepLinkNodeId = useMemo(
+    () => parseAdminDeepLink(new URLSearchParams(window.location.search))?.node ?? null,
+    []
+  );
+
   useEffect(() => {
     setNodeOptions(nodeOptionsMemo);
-    
-    // Set default to local node (only if not already set)
+
+    // Set default (only if not already set): the deep-linked node when its id
+    // matches one of the known nodes, else the local node as before.
     if (nodeOptionsMemo.length > 0 && selectedNodeNum === null) {
-      setSelectedNodeNum(nodeOptionsMemo[0].nodeNum);
+      const deepLinked = deepLinkNodeId
+        ? nodeOptionsMemo.find(n => n.nodeId.toLowerCase() === deepLinkNodeId)
+        : undefined;
+      const target = deepLinked ?? nodeOptionsMemo[0];
+      setSelectedNodeNum(target.nodeNum);
+      if (deepLinked) setSearchQuery(deepLinked.longName);
     }
-  }, [nodeOptionsMemo, selectedNodeNum]);
+  }, [nodeOptionsMemo, selectedNodeNum, deepLinkNodeId]);
 
   // Determine if we're managing a remote node (not the local node). Hoisted
   // once here (rather than recomputed per-handler) so the TX-disabled gate
