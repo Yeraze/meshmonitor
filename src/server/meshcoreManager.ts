@@ -51,6 +51,7 @@ import {
 } from './meshcoreChannelReorder.js';
 import { remapMeshCoreChannelReferences, type ChannelRemapSummary } from './services/meshcoreChannelRemapService.js';
 import { TxDisabledError } from './errors/txDisabledError.js';
+import { MeshCoreResendError } from './errors/meshcoreResendError.js';
 import {
   MESHCORE_LOGIN_BRIDGE_TIMEOUT_MS,
   MESHCORE_LOGIN_CANCELLED,
@@ -814,6 +815,19 @@ export interface MeshCoreMessage {
    * In-memory/event only — not persisted to meshcore_messages.
    */
   packetHash?: string;
+  /** Wire sender_timestamp (epoch SECONDS) of our own outgoing channel send
+   *  (#5512). Persisted; a user resend reuses it so repeaters dedupe the copy.
+   *  Undefined for received messages and for sends made before migration 187. */
+  senderTimestamp?: number;
+  /** User-initiated resends so far (#5512), counted from persisted `retry`
+   *  events marked `userInitiated`, so a restart doesn't reset the cap. */
+  resendCount?: number;
+  /** When (ms) the latest resend of any kind went out (#5512). Starts the
+   *  resend cooldown. */
+  lastResendAt?: number;
+  /** True while the automated echo-miss retry (#3979) is armed for this
+   *  message (#5512). Computed on read; never persisted. */
+  autoRetryPending?: boolean;
 }
 
 export interface MeshCoreStatus {
@@ -1624,6 +1638,7 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
         routePath: dbMsg.routePath ?? null,
         scopeCode: dbMsg.scopeCode ?? null,
         scopeName: dbMsg.scopeName ?? null,
+        senderTimestamp: dbMsg.senderTimestamp ?? undefined,
       }));
       // Enrich with heardBy so relay info survives server restarts (#3813).
       if (this.messages.length > 0) {
@@ -1637,6 +1652,8 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
             ? { ...m, heardBy: heard.map(r => ({ hash: r.repeaterHash, name: r.repeaterName, snr: r.snr })) }
             : m;
         });
+        // Resend count + cooldown clock come from persisted events (#5512).
+        this.messages = await this.withResendInfo(this.messages);
       }
     } catch (loadErr) {
       logger.warn(`[MeshCore:${this.sourceId}] Failed to load messages from DB: ${(loadErr as Error).message}`);
@@ -3945,6 +3962,7 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
         routePath: message.routePath ?? null,
         scopeCode: message.scopeCode ?? null,
         scopeName: message.scopeName ?? null,
+        senderTimestamp: message.senderTimestamp ?? null,
         createdAt: Date.now(),
       },
       this.sourceId,
@@ -4685,6 +4703,13 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
      * attempt 0 with a freshly stamped timestamp.
      */
     retry?: { attempt: number; senderTimestamp: number },
+    /**
+     * The id of the message this send repeats (#5512). A resend creates no new
+     * row, so its self-echo must be credited to the ORIGINAL message — without
+     * this the echo landed on a throwaway id and the bubble's heard-by never
+     * updated. Used by the #3979 auto-retry and the user resend.
+     */
+    existingMessageId?: string,
   ): Promise<MeshCoreSendResult> {
     this.requireTransmit();
     try {
@@ -4766,6 +4791,8 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
           // `region` is '' for an explicit-unscoped send (#4932) — coalesce that
           // (and null) to null so unscoped shows no scope row.
           scopeName: region || null,
+          // Kept for channel sends only (#5512): a user resend reuses it.
+          senderTimestamp: isChannelSend ? senderTimestamp : undefined,
         };
         // An auto-retry resend (#3977) must NOT create a second message row or
         // re-emit a `message` event — that would produce a duplicate bubble in
@@ -4806,7 +4833,7 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
         // relaying repeaters in its path. DMs are excluded — they already get
         // a real ACK (send-confirmed).
         if (isChannelSend) {
-          this.registerPendingChannelSend(msgId, channelIdx!, text);
+          this.registerPendingChannelSend(existingMessageId ?? msgId, channelIdx!, text);
 
           // Arm the automated channel-send auto-retry (#3979 Part 2) when the
           // caller opted in AND this is not itself a resend. Gated on the global
@@ -5110,6 +5137,30 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
     if (!pending) return; // already cleared (disconnect) — nothing to do
     this.pendingChannelRetries.delete(messageId);
 
+    // Whatever happens below, the auto-retry is no longer pending: tell open
+    // views so they can offer the manual resend (#5512).
+    let resentAt: number | undefined;
+    try {
+      await this.runChannelRetry(messageId, pending, (at) => { resentAt = at; });
+    } finally {
+      if (resentAt !== undefined) {
+        const msg = this.messages.find((m) => m.id === messageId);
+        if (msg) msg.lastResendAt = resentAt;
+      }
+      dataEventEmitter.emitMeshCoreMessageUpdated(
+        { id: messageId, autoRetryPending: false, ...(resentAt !== undefined ? { lastResendAt: resentAt } : {}) },
+        this.sourceId,
+      );
+    }
+  }
+
+  /** Body of {@link handleChannelRetryTimeout}; `onResent` fires with the
+   *  resend time when the one-shot resend actually went out. */
+  private async runChannelRetry(
+    messageId: string,
+    pending: { text: string; channelIdx: number; scopeOverride: string | null | undefined; retriesLeft: number; senderTimestamp: number },
+    onResent: (at: number) => void,
+  ): Promise<void> {
     if (!this.connected) return; // torn-down connection can't resend
 
     // Point-in-time read of the heard-repeater set for this message. The echo
@@ -5144,6 +5195,7 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
     // resend is about to fire. `retry` is non-terminal; attempt is always 1
     // (one-shot). provenance 'observed'.
     this.recordMessageEvent(messageId, 'retry', 'observed', JSON.stringify({ attempt: 1 }));
+    onResent(Date.now());
 
     await this.runSerialized(async () => {
       if (!this.connected) return;
@@ -5161,7 +5213,173 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
         // what lets normal mesh dedup treat this as the same message rather
         // than a new one. `attempt` is inert for channel sends.
         { attempt: 0, senderTimestamp: pending.senderTimestamp },
+        // Credit echoes of the resend to the original bubble (#5512).
+        messageId,
       );
+    });
+  }
+
+  /** Max user-initiated resends per message (#5512). */
+  static readonly RESEND_MAX = 3;
+  /** Wait after the send, and after each resend, before another (#5512). */
+  static readonly RESEND_COOLDOWN_MS = 30_000;
+  /** Messages older than this can't be resent (#5512). */
+  static readonly RESEND_MAX_AGE_MS = 60 * 60 * 1000;
+
+  /**
+   * In-process floor under the persisted resend count (#5512). The persisted
+   * `retry` events are the cap across restarts, but if writing one fails the
+   * cap must still hold, so the larger of the two counts wins. Entries are
+   * dropped once their message is past the resend age limit.
+   */
+  private readonly resendLedger = new Map<string, { count: number; last: number }>();
+
+  /**
+   * User-initiated resend of one of our channel messages that no repeater was
+   * heard relaying (#5512).
+   *
+   * Sends the SAME bytes again: same text, same wire `sender_timestamp`.
+   * MeshCore repeaters dedupe a flood by payload hash (timestamp + "name:
+   * text"), so a repeater that already relayed the first copy drops this one
+   * and a repeater that missed it carries it. Recipients never see a duplicate.
+   *
+   * Like the #3979 auto-retry it creates no new row, emits no `message`
+   * event and never reaches the data bus, so no automation, notification or
+   * Virtual Node relay fires. It never arms the auto-retry. Echoes of it are
+   * credited to the original message id.
+   *
+   * Refusals throw {@link MeshCoreResendError}; receive-only throws
+   * TxDisabledError. Limits: {@link RESEND_MAX} user resends per message,
+   * {@link RESEND_COOLDOWN_MS} after the send and after each resend, and
+   * nothing older than {@link RESEND_MAX_AGE_MS}. The count and cooldown come
+   * from persisted `retry` events, so a restart resets neither.
+   */
+  async resendChannelMessage(messageId: string): Promise<{ id: string; resendCount: number; lastResendAt: number }> {
+    this.requireTransmit();
+    if (!this.connected || this.deviceType === MeshCoreDeviceType.REPEATER) {
+      throw new MeshCoreResendError('SOURCE_NOT_CONNECTED', 'Source is not connected to a companion radio');
+    }
+    // #5379: a reorder moves this message's channel; let it finish so the row
+    // names the slot the channel now lives in.
+    if (this.channelReorder) {
+      await this.channelReorder.done.catch(() => undefined);
+    }
+
+    return this.runSerialized(async () => {
+      this.requireTransmit();
+      const row = await databaseService.meshcore.getMessageForSource(messageId, this.sourceId);
+      if (!row) {
+        throw new MeshCoreResendError('MESSAGE_NOT_FOUND', 'Message not found');
+      }
+      const selfKey = this.localNode?.publicKey;
+      if (row.fromPublicKey !== 'local' && row.fromPublicKey !== selfKey) {
+        throw new MeshCoreResendError('NOT_OWN_MESSAGE', 'Only messages this source sent can be resent');
+      }
+      const channelMatch = /^channel-(\d+)$/.exec(row.toPublicKey ?? '');
+      if (!channelMatch) {
+        throw new MeshCoreResendError('NOT_CHANNEL_MESSAGE', 'Only channel messages can be resent');
+      }
+      if (row.senderTimestamp == null) {
+        throw new MeshCoreResendError(
+          'RESEND_UNAVAILABLE',
+          'This message was sent before resend support and has no stored timestamp',
+        );
+      }
+      const now = Date.now();
+      if (now - Number(row.timestamp) > MeshCoreManager.RESEND_MAX_AGE_MS) {
+        throw new MeshCoreResendError('RESEND_TOO_OLD', 'This message is too old to resend');
+      }
+      if (this.pendingChannelRetries.has(messageId)) {
+        throw new MeshCoreResendError(
+          'AUTO_RETRY_PENDING',
+          'An automatic retry is already scheduled for this message',
+          Math.ceil(MeshCoreManager.CHANNEL_RETRY_WINDOW_MS / 1000),
+        );
+      }
+      // An echo that lands after this read and before the RF send costs at most
+      // one copy that repeaters which heard the original drop by hash.
+      const heard = await databaseService.meshcore.getHeardRepeatersForMessage(messageId, this.sourceId);
+      if (heard.length > 0) {
+        throw new MeshCoreResendError('ALREADY_HEARD', 'A repeater already relayed this message');
+      }
+      const events = await databaseService.messageEvents.getEventsForMessages(this.sourceId, [messageId], 'retry');
+      const persisted = MeshCoreManager.summarizeResends(events);
+      for (const [id, entry] of this.resendLedger) {
+        if (now - entry.last > MeshCoreManager.RESEND_MAX_AGE_MS) this.resendLedger.delete(id);
+      }
+      const ledger = this.resendLedger.get(messageId);
+      const summary = {
+        resendCount: Math.max(persisted.resendCount, ledger?.count ?? 0),
+        lastResendAt: Math.max(persisted.lastResendAt ?? 0, ledger?.last ?? 0) || null,
+      };
+      if (summary.resendCount >= MeshCoreManager.RESEND_MAX) {
+        throw new MeshCoreResendError(
+          'RESEND_LIMIT',
+          `This message has already been resent ${MeshCoreManager.RESEND_MAX} times`,
+        );
+      }
+      const lastActivity = Math.max(Number(row.timestamp), summary.lastResendAt ?? 0);
+      const waitMs = lastActivity + MeshCoreManager.RESEND_COOLDOWN_MS - now;
+      if (waitMs > 0) {
+        throw new MeshCoreResendError(
+          'RESEND_COOLDOWN',
+          'Wait before resending this message',
+          Math.ceil(waitMs / 1000),
+        );
+      }
+
+      const channelIdx = Number(channelMatch[1]);
+      const result = await this.performScopedSend(
+        row.text,
+        undefined,
+        channelIdx,
+        // Re-use the region the original went out under; null = resolve the
+        // channel/default scope as a normal send would.
+        row.scopeName ?? undefined,
+        // isAutoRetry=true: no new row, no `message` event, no bus re-entry.
+        true,
+        // Never arm the #3979 auto-retry on a user resend.
+        false,
+        // Same wire timestamp ⇒ repeaters that saw the original drop this copy.
+        { attempt: 0, senderTimestamp: Number(row.senderTimestamp) },
+        messageId,
+      );
+      if (!result.ok) {
+        throw new MeshCoreResendError('SEND_FAILED', 'The radio did not accept the resend');
+      }
+
+      const resentAt = Date.now();
+      const resendCount = summary.resendCount + 1;
+      this.resendLedger.set(messageId, { count: resendCount, last: resentAt });
+      // Awaited, not fire-and-forget: this row IS the cap, so it must land
+      // before the next resend request reads it.
+      try {
+        await databaseService.messageEvents.recordEvent({
+          sourceId: this.sourceId,
+          messageId,
+          eventType: 'retry',
+          provenance: 'observed',
+          timestamp: resentAt,
+          detail: JSON.stringify({ attempt: resendCount, userInitiated: true }),
+        });
+      } catch (err) {
+        logger.warn(
+          `[MeshCore:${this.sourceId}] Failed to record resend event for ${messageId}: ${(err as Error).message}`,
+        );
+      }
+      const msg = this.messages.find((m) => m.id === messageId);
+      if (msg) {
+        msg.resendCount = resendCount;
+        msg.lastResendAt = resentAt;
+      }
+      dataEventEmitter.emitMeshCoreMessageUpdated(
+        { id: messageId, resendCount, lastResendAt: resentAt },
+        this.sourceId,
+      );
+      logger.info(
+        `[MeshCore:${this.sourceId}] User resend ${resendCount}/${MeshCoreManager.RESEND_MAX} of channel message ${messageId}`,
+      );
+      return { id: messageId, resendCount, lastResendAt: resentAt };
     });
   }
 
@@ -8920,7 +9138,7 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
   }
 
   getRecentMessages(limit: number = 50): MeshCoreMessage[] {
-    return this.messages.slice(-limit);
+    return this.withAutoRetryFlag(this.messages.slice(-limit));
   }
 
   /**
@@ -8945,7 +9163,7 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
       this.sourceId,
     );
     // DB returns newest-first; reverse to oldest-first for the UI.
-    return stored.reverse().map(dbMsg => {
+    const mapped: MeshCoreMessage[] = stored.reverse().map(dbMsg => {
       const heard = heardByMap[dbMsg.id];
       return {
         id: dbMsg.id,
@@ -8964,11 +9182,73 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
         routePath: dbMsg.routePath ?? null,
         scopeCode: dbMsg.scopeCode ?? null,
         scopeName: dbMsg.scopeName ?? null,
+        senderTimestamp: dbMsg.senderTimestamp ?? undefined,
         heardBy: heard && heard.length > 0
           ? heard.map(r => ({ hash: r.repeaterHash, name: r.repeaterName, snr: r.snr }))
           : undefined,
       };
     });
+    return this.withAutoRetryFlag(await this.withResendInfo(mapped));
+  }
+
+  /**
+   * Fold persisted resend history (#5512) into messages that can be resent
+   * (those carrying a stored `senderTimestamp`): `resendCount` = user resends,
+   * `lastResendAt` = latest resend of any kind. One batched query. Never
+   * throws — on a DB hiccup the messages come back unchanged.
+   */
+  private async withResendInfo(messages: MeshCoreMessage[]): Promise<MeshCoreMessage[]> {
+    const ids = messages.filter(m => m.senderTimestamp != null).map(m => m.id);
+    if (ids.length === 0) return messages;
+    try {
+      const events = await databaseService.messageEvents.getEventsForMessages(this.sourceId, ids, 'retry');
+      if (events.length === 0) return messages;
+      const byId = new Map<string, Array<{ detail: string | null; timestamp: number }>>();
+      for (const e of events) {
+        const list = byId.get(e.messageId) ?? [];
+        list.push(e);
+        byId.set(e.messageId, list);
+      }
+      return messages.map(m => {
+        const list = byId.get(m.id);
+        if (!list) return m;
+        const summary = MeshCoreManager.summarizeResends(list);
+        return { ...m, resendCount: summary.resendCount, lastResendAt: summary.lastResendAt ?? undefined };
+      });
+    } catch (err) {
+      logger.warn(`[MeshCore:${this.sourceId}] resend-info read failed: ${(err as Error).message}`);
+      return messages;
+    }
+  }
+
+  /** Flag messages whose automated echo-miss retry (#3979) is still armed. */
+  private withAutoRetryFlag(messages: MeshCoreMessage[]): MeshCoreMessage[] {
+    if (this.pendingChannelRetries.size === 0) return messages;
+    return messages.map(m => (this.pendingChannelRetries.has(m.id) ? { ...m, autoRetryPending: true } : m));
+  }
+
+  /**
+   * Summarise a message's persisted `retry` events (#5512). Only rows whose
+   * detail JSON carries `userInitiated: true` count toward the user cap; every
+   * retry (user or the #3979 auto-retry) moves the cooldown clock.
+   */
+  static summarizeResends(
+    events: Array<{ detail: string | null; timestamp: number }>,
+  ): { resendCount: number; lastResendAt: number | null } {
+    let resendCount = 0;
+    let lastResendAt: number | null = null;
+    for (const e of events) {
+      const ts = Number(e.timestamp);
+      if (Number.isFinite(ts) && (lastResendAt === null || ts > lastResendAt)) lastResendAt = ts;
+      if (!e.detail) continue;
+      try {
+        const parsed = JSON.parse(e.detail) as { userInitiated?: unknown };
+        if (parsed && parsed.userInitiated === true) resendCount++;
+      } catch {
+        // Malformed detail — a retry, but not one we can call user-initiated.
+      }
+    }
+    return { resendCount, lastResendAt };
   }
 
   /**

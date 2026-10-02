@@ -205,6 +205,7 @@ import { migration as addWaypointHopLimitAutomationKeyMigration, runMigration183
 import { migration as addAckProofStatusMigration, runMigration184Postgres, runMigration184Mysql } from '../server/migrations/184_add_ack_proof_status_to_messages.js';
 import { migration as addChannelUseAeadMigration, runMigration185Postgres, runMigration185Mysql } from '../server/migrations/185_add_channel_use_aead.js';
 import { migration as mergeDefaultRowMutesMigration, runMigration186Postgres, runMigration186Mysql } from '../server/migrations/186_merge_default_row_mutes_into_source_rows.js';
+import { migration as addMeshcoreMessageSenderTimestampMigration, runMigration187Postgres, runMigration187Mysql } from '../server/migrations/187_add_meshcore_message_sender_timestamp.js';
 
 // ============================================================================
 // Registry
@@ -3016,4 +3017,20 @@ registry.register({
   sqlite: (db) => mergeDefaultRowMutesMigration.up(db),
   postgres: (client) => runMigration186Postgres(client),
   mysql: (pool) => runMigration186Mysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 187: `meshcore_messages.senderTimestamp` (#5512). PER-SOURCE. The
+// wire sender_timestamp of our own outgoing channel send, so a user-initiated
+// resend can reuse it (repeaters dedupe on timestamp + text) after a restart.
+// NULL for received messages and rows sent before this migration.
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 187,
+  name: 'add_meshcore_message_sender_timestamp',
+  settingsKey: 'migration_187_add_meshcore_message_sender_timestamp',
+  sqlite: (db) => addMeshcoreMessageSenderTimestampMigration.up(db),
+  postgres: (client) => runMigration187Postgres(client),
+  mysql: (pool) => runMigration187Mysql(pool),
 });

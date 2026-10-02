@@ -106,8 +106,11 @@ export async function runMigration083Mysql(pool: MySQLPool): Promise<void> {
 
   for (const col of columnsToAdd) {
     const [rows] = await pool.query(
+      // TABLE_SCHEMA scopes the check to THIS database: without it, a second
+      // MeshMonitor database on the same server that already has the column
+      // makes this skip the ALTER (seen as parallel test-suite races, #5512).
       `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
-       WHERE TABLE_NAME = 'user_map_preferences' AND COLUMN_NAME = ?`,
+       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'user_map_preferences' AND COLUMN_NAME = ?`,
       [col.name]
     );
 

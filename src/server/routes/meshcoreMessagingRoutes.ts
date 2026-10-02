@@ -22,6 +22,8 @@ import { failContactNotOnDevice, managerFor, VALIDATION, isValidPublicKey, isVal
   startTrackedLogin, respondLoginCancelled } from './meshcoreRouteShared.js';
 import type { MeshCoreLoginRetryOutcome } from '../meshcoreManager.js';
 import { extendRequestTimeout } from '../middleware/requestTimeout.js';
+import { ok, fail } from '../utils/apiResponse.js';
+import { isMeshCoreResendError, MESHCORE_RESEND_ERROR_STATUS } from '../errors/meshcoreResendError.js';
 
 // Room-server login retries over RF can legitimately run past the 30s
 // default socket timeout; extend it so the caller gets the real result
@@ -378,6 +380,42 @@ router.post('/messages/send', messageLimiter, requireAuth(), requirePermission('
     if (failIfTxDisabled(res, error)) return;
     logger.error('[API] Error sending message:', error);
     res.status(500).json({ success: false, error: 'Send error' });
+  }
+});
+
+/**
+ * POST /api/sources/:id/meshcore/messages/:messageId/resend
+ * Resend one of our channel messages that no repeater was heard relaying
+ * (#5512). Same bytes, same wire timestamp, so repeaters that already relayed
+ * it drop the copy. Same gates as /messages/send; the manager enforces the
+ * per-message cap, cooldown and age limit and throws a typed refusal.
+ */
+router.post('/messages/:messageId/resend', messageLimiter, requireAuth(), requirePermission('messages', 'write', { sourceIdFrom: 'params.id' }), requireMeshcoreTx(), async (req: Request, res: Response) => {
+  const messageId = String(req.params.messageId || '');
+  if (!messageId || messageId.length > 128) {
+    return fail(res, 400, 'INVALID_INPUT', 'message id is required');
+  }
+  try {
+    const result = await managerFor(req, res).resendChannelMessage(messageId);
+    auditMeshcoreEvent(req, 'meshcore_message_resent', 'messages', {
+      sourceId: req.params.id,
+      messageId,
+      resendCount: result.resendCount,
+    });
+    return ok(res, result);
+  } catch (error) {
+    if (failIfTxDisabled(res, error)) return;
+    if (isMeshCoreResendError(error)) {
+      return fail(
+        res,
+        MESHCORE_RESEND_ERROR_STATUS[error.code],
+        error.code,
+        error.message,
+        error.retryAfterSeconds !== undefined ? { retryAfterSeconds: error.retryAfterSeconds } : undefined,
+      );
+    }
+    logger.error('[API] Error resending MeshCore message:', error);
+    return fail(res, 500, 'INTERNAL_ERROR', 'Resend error');
   }
 });
 

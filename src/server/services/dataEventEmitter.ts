@@ -541,6 +541,12 @@ class DataEventEmitter extends EventEmitter {
       expectedAckCrc?: number;
       estTimeout?: number;
       deliveryStatus?: 'sending' | 'sent' | 'delivered' | 'failed';
+      /** User resends so far (#5512). */
+      resendCount?: number;
+      /** When (ms) the latest resend went out (#5512). */
+      lastResendAt?: number;
+      /** Whether the #3979 auto-retry is still armed (#5512). */
+      autoRetryPending?: boolean;
     },
     sourceId: string,
   ): void {
