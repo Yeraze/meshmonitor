@@ -485,7 +485,7 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
   // #4412 Phase 3 (D1): source-aware, not source-keyed — copies the
   // AutomationContext precedent. `sourceId` is null outside a SourceProvider
   // (7 of 8 mount sites are the single-source case).
-  const { sourceId } = useSource();
+  const { sourceId, sourceType } = useSource();
   const [isLoading, setIsLoading] = useState(true);
   const [initialThemePreferences] = useState<ThemePreferences>(() => getInitialThemePreferences());
   const [initialMapTilesets] = useState<MapTilesetPreferences & { darkIsDefault: boolean }>(
@@ -1268,33 +1268,59 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
   /**
    * Set tapback emojis and save to database
    */
-  // Internal cache of the full notification preferences object, needed so mute
-  // updates can POST the complete preferences without losing other fields.
-  const [notificationPrefsCache, setNotificationPrefsCache] = React.useState<Record<string, unknown> | null>(null);
+  // Mutes live on the per-source notification preferences row (#5487) — the
+  // same row push/Apprise filtering and the unread-count routes read. Before
+  // #5487 these calls omitted sourceId, so mutes landed on the '' (default)
+  // row and stopped blocking push once the user saved per-source settings.
+  //
+  // A source with no row of its own is answered from the '' row
+  // (`sourceFallback: true`). Those mute lists are keyed by Meshtastic channel
+  // number / node id, so a non-Meshtastic view (MeshCore, Reticulum) ignores
+  // them rather than reading Meshtastic channel 1's mute as its own channel 1.
+  const muteScopeIsMeshtastic = sourceType !== 'meshcore'
+    && sourceType !== 'meshcore_mqtt'
+    && sourceType !== 'reticulum';
 
-  // Load mute preferences from /api/push/preferences on mount.
-  // Runs after authentication is established (same lifecycle as map preferences).
+  const fetchNotificationPrefs = useCallback(async (): Promise<Record<string, unknown>> => {
+    const qs = sourceId ? `?sourceId=${encodeURIComponent(sourceId)}` : '';
+    const prefs = await api.get<Record<string, unknown>>(`/api/push/preferences${qs}`);
+    const { sourceFallback, ...rest } = prefs ?? {};
+    if (sourceFallback === true && !muteScopeIsMeshtastic) {
+      return { ...rest, mutedChannels: [], mutedDMs: [] };
+    }
+    return rest;
+  }, [sourceId, muteScopeIsMeshtastic]);
+
+  // Load mute preferences for the active source. Re-runs when the source
+  // changes so a provider that outlives a source switch never shows (or
+  // saves over) another source's mutes.
   const loadMutePreferences = useCallback(async () => {
     try {
-      const prefs = await api.get<Record<string, unknown>>('/api/push/preferences');
-      setNotificationPrefsCache(prefs);
-      if (Array.isArray(prefs.mutedChannels)) {
-        setMutedChannels(prefs.mutedChannels as MutedChannel[]);
-      }
-      if (Array.isArray(prefs.mutedDMs)) {
-        setMutedDMs(prefs.mutedDMs as MutedDM[]);
-      }
+      const prefs = await fetchNotificationPrefs();
+      setMutedChannels(Array.isArray(prefs.mutedChannels) ? prefs.mutedChannels as MutedChannel[] : []);
+      setMutedDMs(Array.isArray(prefs.mutedDMs) ? prefs.mutedDMs as MutedDM[] : []);
     } catch (error) {
+      setMutedChannels([]);
+      setMutedDMs([]);
       logger.debug('Could not load notification preferences (mute state):', error);
     }
-  }, []);
+  }, [fetchNotificationPrefs]);
 
-  /** Save mutedChannels/mutedDMs back to the server, merging with cached prefs. */
+  /**
+   * Save one mute list for the active source. The rest of the row comes from a
+   * fresh read rather than a cache, so a save here never reverts a change made
+   * on the Notifications tab, and a channel-mute save never rewrites the DM
+   * list (or the reverse) from stale client state.
+   */
   const saveMutePreferences = useCallback(async (
-    newMutedChannels: MutedChannel[],
-    newMutedDMs: MutedDM[]
+    patch: { mutedChannels?: MutedChannel[]; mutedDMs?: MutedDM[] },
   ) => {
-    const base = notificationPrefsCache ?? {};
+    let base: Record<string, unknown> = {};
+    try {
+      base = await fetchNotificationPrefs();
+    } catch (error) {
+      logger.debug('Could not refresh notification preferences before saving mutes:', error);
+    }
     await api.post('/api/push/preferences', {
       enableWebPush: true,
       enableApprise: false,
@@ -1312,15 +1338,10 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
       blacklist: [],
       appriseUrls: [],
       ...base,
-      mutedChannels: newMutedChannels,
-      mutedDMs: newMutedDMs,
+      ...patch,
+      sourceId: sourceId ?? undefined,
     });
-    setNotificationPrefsCache(prev => ({
-      ...(prev ?? base),
-      mutedChannels: newMutedChannels,
-      mutedDMs: newMutedDMs,
-    }));
-  }, [notificationPrefsCache]);
+  }, [fetchNotificationPrefs, sourceId]);
 
   const muteChannel = useCallback(async (channelId: number, muteUntil: number | null) => {
     const next = [
@@ -1328,14 +1349,14 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
       { channelId, muteUntil },
     ];
     setMutedChannels(next);
-    await saveMutePreferences(next, mutedDMs);
-  }, [mutedChannels, mutedDMs, saveMutePreferences]);
+    await saveMutePreferences({ mutedChannels: next });
+  }, [mutedChannels, saveMutePreferences]);
 
   const unmuteChannel = useCallback(async (channelId: number) => {
     const next = mutedChannels.filter(r => r.channelId !== channelId);
     setMutedChannels(next);
-    await saveMutePreferences(next, mutedDMs);
-  }, [mutedChannels, mutedDMs, saveMutePreferences]);
+    await saveMutePreferences({ mutedChannels: next });
+  }, [mutedChannels, saveMutePreferences]);
 
   const muteDM = useCallback(async (nodeUuid: string, muteUntil: number | null) => {
     const next = [
@@ -1343,14 +1364,14 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
       { nodeUuid, muteUntil },
     ];
     setMutedDMs(next);
-    await saveMutePreferences(mutedChannels, next);
-  }, [mutedChannels, mutedDMs, saveMutePreferences]);
+    await saveMutePreferences({ mutedDMs: next });
+  }, [mutedDMs, saveMutePreferences]);
 
   const unmuteDM = useCallback(async (nodeUuid: string) => {
     const next = mutedDMs.filter(r => r.nodeUuid !== nodeUuid);
     setMutedDMs(next);
-    await saveMutePreferences(mutedChannels, next);
-  }, [mutedChannels, mutedDMs, saveMutePreferences]);
+    await saveMutePreferences({ mutedDMs: next });
+  }, [mutedDMs, saveMutePreferences]);
 
   const isChannelMuted = useCallback((channelId: number): boolean => {
     const rule = mutedChannels.find(r => r.channelId === channelId);
@@ -2132,7 +2153,8 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
     localStorage.setItem('mapTileset', mapTileset);
   }, [mapTileset]);
 
-  // Load mute preferences on mount (server-side, requires auth)
+  // Load mute preferences on mount and whenever the active source changes
+  // (server-side, requires auth; #5487)
   React.useEffect(() => {
     void loadMutePreferences();
   }, [loadMutePreferences]);

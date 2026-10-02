@@ -1241,26 +1241,9 @@ router.get('/unread-counts', optionalAuth(), async (req, res) => {
       directMessages?: { [nodeId: string]: number };
     } = {};
 
-    // Load mute preferences for the current user (if authenticated)
-    const mutedChannelIds: Set<number> = new Set();
-    const mutedDMNodeIds: Set<string> = new Set();
-    if (userId) {
-      const { getUserNotificationPreferencesAsync } = await import('../utils/notificationFiltering.js');
-      const prefs = await getUserNotificationPreferencesAsync(userId);
-      if (prefs) {
-        const now = Date.now();
-        for (const rule of (prefs.mutedChannels ?? [])) {
-          if (rule.muteUntil === null || rule.muteUntil > now) {
-            mutedChannelIds.add(rule.channelId);
-          }
-        }
-        for (const rule of (prefs.mutedDMs ?? [])) {
-          if (rule.muteUntil === null || rule.muteUntil > now) {
-            mutedDMNodeIds.add(rule.nodeUuid);
-          }
-        }
-      }
-    }
+    // Load mute preferences for the current user (if authenticated), from the
+    // SAME per-source row push/Apprise filtering reads (#5487).
+    const { channels: mutedChannelIds, dms: mutedDMNodeIds } = await loadActiveMutes(userId, unreadSourceId);
 
     // Get channel unread counts if user can read any channel (physical or
     // virtual). Only count incoming messages (exclude messages sent by our node).
@@ -1312,6 +1295,35 @@ router.get('/unread-counts', optionalAuth(), async (req, res) => {
     res.status(500).json({ error: 'Failed to fetch unread counts' });
   }
 });
+
+/**
+ * The channel and DM mutes currently in force for a user on one source.
+ *
+ * Reads the same row as push/Apprise filtering (`shouldFilterNotificationAsync`
+ * → `getUserNotificationPreferencesAsync(userId, sourceId)`): the per-source
+ * row when one exists, else the user's '' (default) row. Before #5487 this read
+ * the '' row unconditionally, so a badge and a push could disagree about
+ * whether a channel was muted. `sourceId` undefined (a cross-source view) reads
+ * the '' row, as before.
+ */
+async function loadActiveMutes(
+  userId: number | null,
+  sourceId: string | undefined,
+): Promise<{ channels: Set<number>; dms: Set<string> }> {
+  const channels = new Set<number>();
+  const dms = new Set<string>();
+  if (!userId) return { channels, dms };
+  const { getUserNotificationPreferencesAsync } = await import('../utils/notificationFiltering.js');
+  const prefs = await getUserNotificationPreferencesAsync(userId, sourceId);
+  const now = Date.now();
+  for (const rule of (prefs?.mutedChannels ?? [])) {
+    if (rule.muteUntil === null || rule.muteUntil > now) channels.add(rule.channelId);
+  }
+  for (const rule of (prefs?.mutedDMs ?? [])) {
+    if (rule.muteUntil === null || rule.muteUntil > now) dms.add(rule.nodeUuid);
+  }
+  return { channels, dms };
+}
 
 /**
  * GET /api/messages/unread-by-source
@@ -1374,20 +1386,6 @@ async function collectVisibleUnreadDms(
   const out: Array<{ sourceId: string; localNodeId: string; senders: Record<string, number> }> = [];
   if (!user) return out;
 
-  // Muted DMs must not light a badge, same rule as /unread-counts — and so
-  // must not be swept up by a bulk clear either.
-  const mutedDMNodeIds: Set<string> = new Set();
-  if (userId) {
-    const { getUserNotificationPreferencesAsync } = await import('../utils/notificationFiltering.js');
-    const prefs = await getUserNotificationPreferencesAsync(userId);
-    const now = Date.now();
-    for (const rule of (prefs?.mutedDMs ?? [])) {
-      if (rule.muteUntil === null || rule.muteUntil > now) {
-        mutedDMNodeIds.add(rule.nodeUuid);
-      }
-    }
-  }
-
   const sources = await databaseService.sources.getAllSources();
 
   for (const source of sources) {
@@ -1428,6 +1426,11 @@ async function collectVisibleUnreadDms(
     const visibleNodeIds = new Set(
       visible.map((n) => n.user?.id).filter((id): id is string => typeof id === 'string'),
     );
+
+    // Muted DMs must not light a badge, same rule as /unread-counts — and so
+    // must not be swept up by a bulk clear either. Mutes are per source
+    // (#5487), so each source reads its own preferences row.
+    const { dms: mutedDMNodeIds } = await loadActiveMutes(userId, source.id);
 
     const senders: Record<string, number> = {};
     for (const [nodeId, count] of Object.entries(perSender)) {
