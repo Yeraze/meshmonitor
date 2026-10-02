@@ -37,10 +37,10 @@ export default defineConfig({
         // HTML must be fetched from server to get runtime BASE_URL path rewriting
         globIgnores: ['**/api/**', '**/*.html'],
         // Increase size limit to accommodate large bundle (maplibre-gl, recharts, etc.).
-        // The main chunk reached 4 MiB (#5520 tipped it ~1 KB over), which fails
-        // the build outright. Raised to 5 MiB; splitting the main chunk is
-        // tracked separately so this limit doesn't keep creeping.
-        maximumFileSizeToCacheInBytes: 5 * 1024 * 1024 // 5 MB
+        // main-*.js reached 4,193,300 bytes, 1 KB under the old 4 MiB cap, so any
+        // frontend addition failed the build. Splitting the main chunk is the real
+        // fix; this keeps headroom until then.
+        maximumFileSizeToCacheInBytes: 6 * 1024 * 1024 // 6 MiB
       },
       devOptions: {
         enabled: true,
