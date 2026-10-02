@@ -25,6 +25,7 @@ import { filterNodesByChannelPermission } from '../utils/nodeEnhancer.js';
 import { ok, fail } from '../utils/apiResponse.js';
 import { isTxDisabledError } from '../errors/txDisabledError.js';
 import { PortNum } from '../constants/meshtastic.js';
+import { getUserNotificationPreferencesAsync } from '../utils/notificationFiltering.js';
 
 const router = express.Router();
 
@@ -1313,7 +1314,6 @@ async function loadActiveMutes(
   const channels = new Set<number>();
   const dms = new Set<string>();
   if (!userId) return { channels, dms };
-  const { getUserNotificationPreferencesAsync } = await import('../utils/notificationFiltering.js');
   const prefs = await getUserNotificationPreferencesAsync(userId, sourceId);
   const now = Date.now();
   for (const rule of (prefs?.mutedChannels ?? [])) {

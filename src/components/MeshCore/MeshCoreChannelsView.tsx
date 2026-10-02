@@ -867,6 +867,7 @@ export const MeshCoreChannelsView: React.FC<MeshCoreChannelsViewProps> = ({
             </span>
           </div>
         )}
+        {/* `|| canMute`: a signed-in reader without send rights still gets the row, for the mute bell alone. */}
         {((canSend && (connected || filtered.length > 0)) || canMute) && (
         <div className="meshcore-toolbar-row">
         {canSend && connected && (

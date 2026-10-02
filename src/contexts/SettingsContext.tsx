@@ -1311,16 +1311,15 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
    * fresh read rather than a cache, so a save here never reverts a change made
    * on the Notifications tab, and a channel-mute save never rewrites the DM
    * list (or the reverse) from stale client state.
+   *
+   * If that read fails, the save is abandoned (the caller reverts its optimistic
+   * state): posting without the fresh row would reset the user's other
+   * notification settings to the defaults below.
    */
   const saveMutePreferences = useCallback(async (
     patch: { mutedChannels?: MutedChannel[]; mutedDMs?: MutedDM[] },
   ) => {
-    let base: Record<string, unknown> = {};
-    try {
-      base = await fetchNotificationPrefs();
-    } catch (error) {
-      logger.debug('Could not refresh notification preferences before saving mutes:', error);
-    }
+    const base = await fetchNotificationPrefs();
     await api.post('/api/push/preferences', {
       enableWebPush: true,
       enableApprise: false,
@@ -1349,13 +1348,23 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
       { channelId, muteUntil },
     ];
     setMutedChannels(next);
-    await saveMutePreferences({ mutedChannels: next });
+    try {
+      await saveMutePreferences({ mutedChannels: next });
+    } catch (error) {
+      setMutedChannels(mutedChannels);
+      logger.warn('Could not save mute settings; change reverted:', error);
+    }
   }, [mutedChannels, saveMutePreferences]);
 
   const unmuteChannel = useCallback(async (channelId: number) => {
     const next = mutedChannels.filter(r => r.channelId !== channelId);
     setMutedChannels(next);
-    await saveMutePreferences({ mutedChannels: next });
+    try {
+      await saveMutePreferences({ mutedChannels: next });
+    } catch (error) {
+      setMutedChannels(mutedChannels);
+      logger.warn('Could not save mute settings; change reverted:', error);
+    }
   }, [mutedChannels, saveMutePreferences]);
 
   const muteDM = useCallback(async (nodeUuid: string, muteUntil: number | null) => {
@@ -1364,13 +1373,23 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
       { nodeUuid, muteUntil },
     ];
     setMutedDMs(next);
-    await saveMutePreferences({ mutedDMs: next });
+    try {
+      await saveMutePreferences({ mutedDMs: next });
+    } catch (error) {
+      setMutedDMs(mutedDMs);
+      logger.warn('Could not save mute settings; change reverted:', error);
+    }
   }, [mutedDMs, saveMutePreferences]);
 
   const unmuteDM = useCallback(async (nodeUuid: string) => {
     const next = mutedDMs.filter(r => r.nodeUuid !== nodeUuid);
     setMutedDMs(next);
-    await saveMutePreferences({ mutedDMs: next });
+    try {
+      await saveMutePreferences({ mutedDMs: next });
+    } catch (error) {
+      setMutedDMs(mutedDMs);
+      logger.warn('Could not save mute settings; change reverted:', error);
+    }
   }, [mutedDMs, saveMutePreferences]);
 
   const isChannelMuted = useCallback((channelId: number): boolean => {

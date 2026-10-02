@@ -162,6 +162,23 @@ describe('SettingsContext — per-source mutes (#5487)', () => {
     expect(body.sourceFallback).toBeUndefined();
   });
 
+  it('abandons the save and reverts the toggle when the fresh read fails', async () => {
+    rows['A'] = { enableWebPush: false, appriseUrls: ['mailto://x'], mutedChannels: [], mutedDMs: [] };
+    const { ctx } = await renderWith('A', 'meshtastic_tcp');
+    await waitFor(() => expect(mockApi.get).toHaveBeenCalled());
+
+    // The pre-save read fails (e.g. a transient 500 or an expired session).
+    mockApi.get.mockRejectedValueOnce(new Error('500'));
+    await act(async () => {
+      await ctx.current.muteChannel(3, null);
+    });
+
+    // Nothing was posted, so the user's other settings can't be reset to defaults.
+    expect(mockApi.post).not.toHaveBeenCalled();
+    expect(rows['A'].appriseUrls).toEqual(['mailto://x']);
+    expect(ctx.current.isChannelMuted(3)).toBe(false);
+  });
+
   it('reloads mutes when the source changes', async () => {
     rows['A'] = { mutedChannels: [{ channelId: 1, muteUntil: null }], mutedDMs: [] };
     rows['B'] = { mutedChannels: [], mutedDMs: [] };
