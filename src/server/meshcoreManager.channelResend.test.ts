@@ -242,7 +242,7 @@ describe('MeshCoreManager.resendChannelMessage (#5512)', () => {
     await expectRefusal(manager.resendChannelMessage(id), 'RESEND_TOO_OLD');
   });
 
-  it('refuses a row with no stored timestamp (sent before migration 186)', async () => {
+  it('refuses a row with no stored timestamp (sent before migration 187)', async () => {
     const { manager } = makeManager(sourceId);
     await databaseService.meshcore.insertMessage({
       id: 'legacy-1', fromPublicKey: SELF_KEY, toPublicKey: `channel-${CHANNEL}`, text: 'old',

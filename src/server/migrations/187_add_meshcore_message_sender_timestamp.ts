@@ -1,5 +1,5 @@
 /**
- * Migration 186: `meshcore_messages.senderTimestamp` (#5512).
+ * Migration 187: `meshcore_messages.senderTimestamp` (#5512).
  *
  *   senderTimestamp INTEGER/BIGINT NULL — wire `sender_timestamp` (epoch
  *   SECONDS) our own outgoing channel send was stamped with.
@@ -22,7 +22,7 @@ import {
   addColumnIfMissingMysql,
 } from './helpers.js';
 
-const LABEL = 'Migration 186';
+const LABEL = 'Migration 187';
 const TABLE = 'meshcore_messages';
 const COLUMN = 'senderTimestamp';
 
@@ -42,7 +42,7 @@ export const migration = {
 
 // ============ PostgreSQL ============
 
-export async function runMigration186Postgres(client: import('pg').PoolClient): Promise<void> {
+export async function runMigration187Postgres(client: import('pg').PoolClient): Promise<void> {
   logger.info(`${LABEL} (PostgreSQL): adding ${COLUMN} to ${TABLE}...`);
   await addColumnIfMissingPostgres(client, TABLE, COLUMN, '"senderTimestamp" BIGINT');
   logger.info(`${LABEL} complete (PostgreSQL)`);
@@ -50,7 +50,7 @@ export async function runMigration186Postgres(client: import('pg').PoolClient): 
 
 // ============ MySQL ============
 
-export async function runMigration186Mysql(pool: import('mysql2/promise').Pool): Promise<void> {
+export async function runMigration187Mysql(pool: import('mysql2/promise').Pool): Promise<void> {
   logger.info(`${LABEL} (MySQL): adding ${COLUMN} to ${TABLE}...`);
   await addColumnIfMissingMysql(pool, TABLE, COLUMN, 'senderTimestamp BIGINT NULL');
   logger.info(`${LABEL} complete (MySQL)`);

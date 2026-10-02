@@ -6,6 +6,8 @@ import {
   getAllTilesets,
   getRasterTileset,
   isVectorTileUrl,
+  normalizeCustomMaxZoom,
+  DEFAULT_CUSTOM_MAX_ZOOM,
   resolveStyleUrl,
   validateTileUrl,
   type CustomTileset,
@@ -203,5 +205,44 @@ describe('resolveStyleUrl (#5448)', () => {
     expect(resolveStyleUrl('map-styles/carto-voyager-dark.json', 'http://localhost:8080/')).toBe(
       'http://localhost:8080/map-styles/carto-voyager-dark.json',
     );
+  });
+});
+
+describe('custom tileset maxZoom clamp (#5516)', () => {
+  const base: CustomTileset = {
+    id: 'custom-vec',
+    name: 'Vec',
+    url: 'https://tiles.example.com/{z}/{x}/{y}.pbf',
+    attribution: 'x',
+    maxZoom: 14,
+    description: '',
+    createdAt: 0,
+    updatedAt: 0,
+  };
+  const withMax = (maxZoom: unknown): CustomTileset => ({ ...base, maxZoom: maxZoom as number });
+
+  it('keeps a valid ceiling', () => {
+    expect(getTilesetById('custom-vec', [base]).maxZoom).toBe(14);
+  });
+
+  it('defaults a missing / NaN / Infinity ceiling to 18', () => {
+    expect(DEFAULT_CUSTOM_MAX_ZOOM).toBe(18);
+    for (const bad of [undefined, null, NaN, Infinity, -Infinity, 'abc', {}]) {
+      expect(getTilesetById('custom-vec', [withMax(bad)]).maxZoom).toBe(18);
+    }
+  });
+
+  it('clamps to 1..22 and rounds', () => {
+    expect(normalizeCustomMaxZoom(0)).toBe(1);
+    expect(normalizeCustomMaxZoom(-5)).toBe(1);
+    expect(normalizeCustomMaxZoom(30)).toBe(22);
+    expect(normalizeCustomMaxZoom(16.4)).toBe(16);
+    expect(normalizeCustomMaxZoom('17')).toBe(17);
+  });
+
+  it('getAllTilesets clamps custom entries but leaves presets alone', () => {
+    const all = getAllTilesets([withMax(Infinity)]);
+    expect(all.find((t) => t.id === 'custom-vec')!.maxZoom).toBe(18);
+    expect(all.find((t) => t.id === 'osm')!.maxZoom).toBe(19);
   });
 });

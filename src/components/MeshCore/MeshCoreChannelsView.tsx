@@ -21,6 +21,7 @@ import { MeshCoreMessage, MeshCoreActions, ConnectionStatus } from './hooks/useM
 import { MeshCoreContact, formatMeshCoreChannelName } from '../../utils/meshcoreHelpers';
 import { MeshCoreMessageStream } from './MeshCoreMessageStream';
 import { useAuth } from '../../contexts/AuthContext';
+import { useOptionalChannelMuteSettings } from '../../contexts/SettingsContext';
 import { loadChannelLastRead, markChannelRead as persistChannelRead } from './meshcoreUnreadStore';
 import { slotMoveMap, subscribeChannelsReordered } from './meshcoreChannelReorderEvents';
 import { subscribeFiltersChanged } from './meshcoreFilterEvents';
@@ -119,8 +120,15 @@ export const MeshCoreChannelsView: React.FC<MeshCoreChannelsViewProps> = ({
 }) => {
   const { t } = useTranslation();
   const csrfFetch = useCsrfFetch();
-  const { hasPermission } = useAuth();
+  const { hasPermission, authStatus } = useAuth();
   const canSend = hasPermission('messages', 'write');
+  // Channel mute (#5487): a per-user preference on this source's notification
+  // row, keyed by MeshCore channel index. Indicator-only for MeshCore — it
+  // hides the unread dot/badge; MeshCore channel traffic sends no push today.
+  const muteSettings = useOptionalChannelMuteSettings();
+  const isChannelMutedFn = muteSettings?.isChannelMuted;
+  const canMute = !!muteSettings && authStatus?.authenticated === true;
+  const [showMuteMenu, setShowMuteMenu] = useState(false);
 
   const [channels, setChannels] = useState<ChannelRow[]>([]);
   const [selectedIdx, setSelectedIdx] = useState<number>(0);
@@ -610,14 +618,22 @@ export const MeshCoreChannelsView: React.FC<MeshCoreChannelsViewProps> = ({
     return map;
   }, [latestTimestamps, messages, displayChannels]);
 
+  const isChannelMuted = useCallback(
+    (idx: number): boolean => isChannelMutedFn?.(idx) ?? false,
+    [isChannelMutedFn],
+  );
+
   /** A channel is unread when its latest message is newer than its last-read
-   *  marker. The currently-active (and viewed) channel is never unread. */
+   *  marker. The currently-active (and viewed) channel is never unread, and a
+   *  muted channel never is either (#5487) — that one rule covers the row dot,
+   *  the header total and the "unread first" sort. */
   const isChannelUnread = useCallback((idx: number): boolean => {
+    if (isChannelMuted(idx)) return false;
     if (idx === active.id && (!isMobileViewport() || mobileShowContent)) return false;
     const latest = effectiveLatest[idx];
     if (!latest) return false;
     return latest > (lastRead[idx] ?? 0);
-  }, [active.id, mobileShowContent, effectiveLatest, lastRead]);
+  }, [isChannelMuted, active.id, mobileShowContent, effectiveLatest, lastRead]);
 
   const channelLabel = useCallback(
     (c: { id: number; name: string }) => formatMeshCoreChannelName(
@@ -819,6 +835,15 @@ export const MeshCoreChannelsView: React.FC<MeshCoreChannelsViewProps> = ({
                 )}
                 <div className="mc-channel-row-name">
                   {channelLabel(c)}
+                  {isChannelMuted(c.id) && (
+                    <span
+                      className={styles.mutedIcon}
+                      title={t('notifications.muted', 'Notifications muted')}
+                      aria-label={t('notifications.muted', 'Notifications muted')}
+                    >
+                      <UiIcon name="muted" size={13} />
+                    </span>
+                  )}
                 </div>
                 <div className="mc-channel-row-meta">
                   {count} {t('meshcore.messages', 'messages')}
@@ -852,7 +877,8 @@ export const MeshCoreChannelsView: React.FC<MeshCoreChannelsViewProps> = ({
             </span>
           </div>
         )}
-        {canSend && (connected || filtered.length > 0) && (
+        {/* `|| canMute`: a signed-in reader without send rights still gets the row, for the mute bell alone. */}
+        {((canSend && (connected || filtered.length > 0)) || canMute) && (
         <div className="meshcore-toolbar-row">
         {canSend && connected && (
           <div className="mc-scope-override">
@@ -910,6 +936,66 @@ export const MeshCoreChannelsView: React.FC<MeshCoreChannelsViewProps> = ({
                   scope: resolvedScope || t('meshcore.scope.unscoped', 'unscoped'),
                 })}
               </button>
+            )}
+          </div>
+        )}
+        {canMute && muteSettings && (
+          <div className={styles.muteWrap}>
+            <button
+              type="button"
+              className={`${styles.muteButton} ${isChannelMuted(active.id) ? styles.active : ''}`}
+              onClick={() => setShowMuteMenu(v => !v)}
+              aria-haspopup="menu"
+              aria-expanded={showMuteMenu}
+              title={isChannelMuted(active.id)
+                ? t('notifications.mute_channel_active', 'Muted — click to change')
+                : t('notifications.mute_channel', 'Mute notifications')}
+              aria-label={isChannelMuted(active.id)
+                ? t('notifications.mute_channel_active', 'Muted — click to change')
+                : t('notifications.mute_channel', 'Mute notifications')}
+            >
+              <UiIcon name={isChannelMuted(active.id) ? 'muted' : 'notifications'} size={15} />
+            </button>
+            {showMuteMenu && (
+              <>
+                <div className={styles.muteBackdrop} onClick={() => setShowMuteMenu(false)} />
+                <div className={styles.muteMenu} role="menu">
+                  {isChannelMuted(active.id) && (
+                    <button
+                      type="button"
+                      role="menuitem"
+                      className={styles.muteMenuItem}
+                      onClick={() => { setShowMuteMenu(false); void muteSettings.unmuteChannel(active.id); }}
+                    >
+                      <UiIcon name="unmute" size={14} /> {t('notifications.unmute', 'Unmute')}
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className={styles.muteMenuItem}
+                    onClick={() => { setShowMuteMenu(false); void muteSettings.muteChannel(active.id, null); }}
+                  >
+                    <UiIcon name="muted" size={14} /> {t('notifications.mute_indefinite', 'Mute indefinitely')}
+                  </button>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className={styles.muteMenuItem}
+                    onClick={() => { setShowMuteMenu(false); void muteSettings.muteChannel(active.id, Date.now() + 60 * 60 * 1000); }}
+                  >
+                    <UiIcon name="time" size={14} /> {t('notifications.mute_1h', 'Mute for 1 hour')}
+                  </button>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className={styles.muteMenuItem}
+                    onClick={() => { setShowMuteMenu(false); void muteSettings.muteChannel(active.id, Date.now() + 7 * 24 * 60 * 60 * 1000); }}
+                  >
+                    <UiIcon name="calendar" size={14} /> {t('notifications.mute_1w', 'Mute for 1 week')}
+                  </button>
+                </div>
+              </>
             )}
           </div>
         )}

@@ -141,7 +141,7 @@ export interface DbMeshCoreMessage {
   /**
    * Wire sender_timestamp (epoch SECONDS) of our own outgoing channel send
    * (#5512). A user resend reuses it. Null for received messages and for rows
-   * written before migration 186.
+   * written before migration 187.
    */
   senderTimestamp?: number | null;
   createdAt: number;

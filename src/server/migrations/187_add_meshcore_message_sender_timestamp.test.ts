@@ -1,9 +1,9 @@
 /**
- * Tests for migration 186 — `meshcore_messages.senderTimestamp` (#5512).
+ * Tests for migration 187 — `meshcore_messages.senderTimestamp` (#5512).
  */
 import Database from 'better-sqlite3';
 import { describe, expect, it } from 'vitest';
-import { migration } from './186_add_meshcore_message_sender_timestamp.js';
+import { migration } from './187_add_meshcore_message_sender_timestamp.js';
 
 function createTable(db: Database.Database): void {
   db.exec(`
@@ -19,7 +19,7 @@ function createTable(db: Database.Database): void {
   `);
 }
 
-describe('Migration 186 — meshcore_messages.senderTimestamp', () => {
+describe('Migration 187 — meshcore_messages.senderTimestamp', () => {
   it('adds a nullable column and is idempotent', () => {
     const db = new Database(':memory:');
     createTable(db);

@@ -817,7 +817,7 @@ export interface MeshCoreMessage {
   packetHash?: string;
   /** Wire sender_timestamp (epoch SECONDS) of our own outgoing channel send
    *  (#5512). Persisted; a user resend reuses it so repeaters dedupe the copy.
-   *  Undefined for received messages and for sends made before migration 186. */
+   *  Undefined for received messages and for sends made before migration 187. */
   senderTimestamp?: number;
   /** User-initiated resends so far (#5512), counted from persisted `retry`
    *  events marked `userInitiated`, so a restart doesn't reset the cap. */

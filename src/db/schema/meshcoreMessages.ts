@@ -44,7 +44,7 @@ export const meshcoreMessagesSqlite = sqliteTable('meshcore_messages', {
   scopeName: text('scopeName'),
 
   // Wire sender_timestamp (epoch SECONDS) of our own outgoing channel send
-  // (#5512, migration 186). A user resend reuses it so repeaters dedupe the
+  // (#5512, migration 187). A user resend reuses it so repeaters dedupe the
   // copy. NULL for received messages and rows sent before the migration.
   senderTimestamp: integer('senderTimestamp'),
 

@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useCallback, useReducer, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useReducer, useRef, useMemo, useContext } from 'react';
+import { QueryClientContext } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { UiIcon } from './icons';
 import '../styles/settings.css';
@@ -27,6 +28,8 @@ import { parseSignFlipSettings, clampSignFlipRangeKm, SIGN_FLIP_DEFAULT_RANGE_KM
 import ChannelDatabaseSection from './configuration/ChannelDatabaseSection';
 import { CustomThemeManagement } from './CustomThemeManagement';
 import { CustomTilesetManager } from './CustomTilesetManager';
+import { TranslationConfigSection } from './configuration/TranslationConfigSection';
+import { type TranslationProvider } from '../types/translation';
 import { getEffectiveTileset, type Theme, type AppearanceMode, type NodeHopsCalculation, useSettings } from '../contexts/SettingsContext';
 import { type SortOption as DashboardSortOption } from './Dashboard/types';
 import { LanguageSelector } from './LanguageSelector';
@@ -212,6 +215,16 @@ interface SettingsDraft {
   // server, not per-source — mirrors the elevation fields above.
   cotFeedEnabled: boolean;
   cotFeedPort: number;
+  // Translation settings (global)
+  translationEnabled: boolean;
+  translationProvider: TranslationProvider;
+  translationUrl: string;
+  translationDeeplUrl: string;
+  translationApiKey: string;
+  translationModel: string;
+  translationOpenAiBaseUrl: string;
+  translationDefaultLanguage: string;
+  translationDefaultOutgoingLanguage: string;
 }
 
 type SettingsDraftAction =
@@ -434,6 +447,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
     setLightTheme,
   } = useSettings();
   const { data: availableSources = [] } = useDashboardSources();
+  const queryClient = useContext(QueryClientContext);
   // #4412 Phase 3: showIncompleteNodes moved from UIContext to SettingsContext
   // (per-source, like the rest of the Node Display group).
   const { showIncompleteNodes, setHideIncompleteNodes } = useSettings();
@@ -533,6 +547,15 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
     cartoApiKey: '',
     cotFeedEnabled: false,
     cotFeedPort: 8088,
+    translationEnabled: false,
+    translationProvider: 'libretranslate',
+    translationUrl: '',
+    translationDeeplUrl: '',
+    translationApiKey: '',
+    translationModel: '',
+    translationOpenAiBaseUrl: '',
+    translationDefaultLanguage: 'en',
+    translationDefaultOutgoingLanguage: 'ja',
   }));
 
   // Single stable field updater — every JSX onChange calls this instead of a per-field
@@ -602,6 +625,16 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
   // global singleton, no context/prop home, default OFF / port 8088.
   const [initialCotFeedEnabled, setInitialCotFeedEnabled] = useState(false);
   const [initialCotFeedPort, setInitialCotFeedPort] = useState(8088);
+  // Translation settings (global)
+  const [initialTranslationEnabled, setInitialTranslationEnabled] = useState(false);
+  const [initialTranslationProvider, setInitialTranslationProvider] = useState<TranslationProvider>('libretranslate');
+  const [initialTranslationUrl, setInitialTranslationUrl] = useState('');
+  const [initialTranslationDeeplUrl, setInitialTranslationDeeplUrl] = useState('');
+  const [initialTranslationApiKey, setInitialTranslationApiKey] = useState('');
+  const [initialTranslationModel, setInitialTranslationModel] = useState('');
+  const [initialTranslationOpenAiBaseUrl, setInitialTranslationOpenAiBaseUrl] = useState('');
+  const [initialTranslationDefaultLanguage, setInitialTranslationDefaultLanguage] = useState('en');
+  const [initialTranslationDefaultOutgoingLanguage, setInitialTranslationDefaultOutgoingLanguage] = useState('ja');
   // Transient/derived UI state — stays as plain useState (not draft fields, see §1.3 of the Task
   // 5.3 spec).
   const [isFetchingSolarEstimates, setIsFetchingSolarEstimates] = useState(false);
@@ -860,6 +893,35 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
           const cotFeedPort = Number.isFinite(cotFeedPortParsed) && cotFeedPortParsed > 0 ? cotFeedPortParsed : 8088;
           updateField('cotFeedPort', cotFeedPort);
           setInitialCotFeedPort(cotFeedPort);
+
+          // Load Translation settings
+          const translationOn = settings.translationEnabled === 'true' || settings.translationEnabled === '1';
+          updateField('translationEnabled', translationOn);
+          setInitialTranslationEnabled(translationOn);
+          const translationProvider = (settings.translationProvider as TranslationProvider) || 'libretranslate';
+          updateField('translationProvider', translationProvider);
+          setInitialTranslationProvider(translationProvider);
+          const translationUrl = typeof settings.translationUrl === 'string' ? settings.translationUrl : '';
+          updateField('translationUrl', translationUrl);
+          setInitialTranslationUrl(translationUrl);
+          const translationDeeplUrl = typeof settings.translationDeeplUrl === 'string' ? settings.translationDeeplUrl : '';
+          updateField('translationDeeplUrl', translationDeeplUrl);
+          setInitialTranslationDeeplUrl(translationDeeplUrl);
+          const translationApiKey = typeof settings.translationApiKey === 'string' ? settings.translationApiKey : '';
+          updateField('translationApiKey', translationApiKey);
+          setInitialTranslationApiKey(translationApiKey);
+          const translationModel = typeof settings.translationModel === 'string' ? settings.translationModel : '';
+          updateField('translationModel', translationModel);
+          setInitialTranslationModel(translationModel);
+          const translationOpenAiBaseUrl = typeof settings.translationOpenAiBaseUrl === 'string' ? settings.translationOpenAiBaseUrl : '';
+          updateField('translationOpenAiBaseUrl', translationOpenAiBaseUrl);
+          setInitialTranslationOpenAiBaseUrl(translationOpenAiBaseUrl);
+          const translationDefaultLanguage = typeof settings.translationDefaultLanguage === 'string' ? settings.translationDefaultLanguage : 'en';
+          updateField('translationDefaultLanguage', translationDefaultLanguage);
+          setInitialTranslationDefaultLanguage(translationDefaultLanguage);
+          const translationDefaultOutgoingLanguage = typeof settings.translationDefaultOutgoingLanguage === 'string' ? settings.translationDefaultOutgoingLanguage : 'ja';
+          updateField('translationDefaultOutgoingLanguage', translationDefaultOutgoingLanguage);
+          setInitialTranslationDefaultOutgoingLanguage(translationDefaultOutgoingLanguage);
         }
       } catch (error) {
         logger.error('Failed to fetch server settings:', error);
@@ -974,6 +1036,15 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       cartoApiKey: initialCartoApiKey,
       cotFeedEnabled: initialCotFeedEnabled,
       cotFeedPort: initialCotFeedPort,
+      translationEnabled: initialTranslationEnabled,
+      translationProvider: initialTranslationProvider,
+      translationUrl: initialTranslationUrl,
+      translationDeeplUrl: initialTranslationDeeplUrl,
+      translationApiKey: initialTranslationApiKey,
+      translationModel: initialTranslationModel,
+      translationOpenAiBaseUrl: initialTranslationOpenAiBaseUrl,
+      translationDefaultLanguage: initialTranslationDefaultLanguage,
+      translationDefaultOutgoingLanguage: initialTranslationDefaultOutgoingLanguage,
     };
   }, [maxNodeAgeHours, inactiveNodeThresholdHours, inactiveNodeCheckIntervalMinutes, inactiveNodeCooldownHours,
       temperatureUnit, distanceUnit, positionHistoryLineStyle, telemetryVisualizationHours, favoriteTelemetryStorageDays,
@@ -992,7 +1063,8 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       initialAnalyticsProvider, initialAnalyticsConfig, initialAppriseApiServerUrl, initialExternalUrl, initialElevationEnabled, initialElevationSourceUrl,
       initialPrivacyPolicyUrl, initialTermsOfServiceUrl, initialContactUrl,
       initialCartoApiKey, initialCotFeedEnabled, initialCotFeedPort,
-      initialAdsbMatchEnabled, initialAdsbFeed, initialAdsbApiToken]);
+      initialAdsbMatchEnabled, initialAdsbFeed, initialAdsbApiToken,
+      initialTranslationEnabled, initialTranslationProvider, initialTranslationUrl, initialTranslationDeeplUrl, initialTranslationApiKey, initialTranslationModel, initialTranslationOpenAiBaseUrl, initialTranslationDefaultLanguage, initialTranslationDefaultOutgoingLanguage]);
 
   // Re-seed the draft's category-A/B fields whenever the upstream props/context values change.
   // PINNED BEHAVIOR (do not add a dirty-guard here — that would be a behavior change, out of
@@ -1200,6 +1272,15 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
     setInitialCartoApiKey(d.cartoApiKey.trim());
     setInitialCotFeedEnabled(d.cotFeedEnabled);
     setInitialCotFeedPort(d.cotFeedPort);
+    setInitialTranslationEnabled(d.translationEnabled);
+    setInitialTranslationProvider(d.translationProvider);
+    setInitialTranslationUrl(d.translationUrl.trim());
+    setInitialTranslationDeeplUrl(d.translationDeeplUrl.trim());
+    setInitialTranslationApiKey(d.translationApiKey.trim());
+    setInitialTranslationModel(d.translationModel.trim());
+    setInitialTranslationOpenAiBaseUrl(d.translationOpenAiBaseUrl.trim());
+    setInitialTranslationDefaultLanguage(d.translationDefaultLanguage.trim());
+    setInitialTranslationDefaultOutgoingLanguage(d.translationDefaultOutgoingLanguage.trim());
   }, [setNeighborInfoMinZoom, setDefaultMapCenterLat, setDefaultMapCenterLon, setDefaultMapCenterZoom,
       setMapCenterTargetZoom, setMapZoomGateThreshold, setMapClusteringEnabled, setDefaultLandingPage, setAppearanceMode, setDarkTheme, setLightTheme,
       setNodeHopsCalculation, setPreferredDashboardSortOption, setLinkPreviewsEnabled, setDiscardInvalidPositions,
@@ -1304,6 +1385,15 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
         cartoApiKey: draft.cartoApiKey.trim(),
         cotFeedEnabled: draft.cotFeedEnabled ? '1' : '0',
         cotFeedPort: String(draft.cotFeedPort),
+        translationEnabled: draft.translationEnabled ? 'true' : 'false',
+        translationProvider: draft.translationProvider,
+        translationUrl: draft.translationUrl.trim(),
+        translationDeeplUrl: draft.translationDeeplUrl.trim(),
+        translationApiKey: draft.translationApiKey.trim(),
+        translationModel: draft.translationModel.trim(),
+        translationOpenAiBaseUrl: draft.translationOpenAiBaseUrl.trim(),
+        translationDefaultLanguage: draft.translationDefaultLanguage.trim(),
+        translationDefaultOutgoingLanguage: draft.translationDefaultOutgoingLanguage.trim(),
       };
 
       // Node Display keys are per-source (#4412 Phase 3), as is the #5376
@@ -1362,6 +1452,9 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       // Fan out to parent/context state and update category-C snapshots
       applyDraft(draft);
 
+      // Invalidate queries that fetch settings from GET /api/settings (e.g. useTranslationSettings)
+      void queryClient?.invalidateQueries({ queryKey: ['settings'] });
+
       showToast(t('settings.saved_success'), 'success');
     } catch (error) {
       logger.error('Error saving settings:', error);
@@ -1369,7 +1462,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
     } finally {
       setIsSaving(false);
     }
-  }, [draft, applyDraft, sourceQuery, csrfFetch, baseUrl, showToast, t]);
+  }, [draft, applyDraft, sourceQuery, csrfFetch, baseUrl, showToast, t, queryClient]);
 
   // Register with SaveBar
   useSaveBar({
@@ -3285,6 +3378,29 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
             />
           </div>
         </div>}
+
+        {show('settings-translation') && isAdmin && (
+          <TranslationConfigSection
+            enabled={draft.translationEnabled}
+            provider={draft.translationProvider}
+            url={draft.translationUrl}
+            deeplUrl={draft.translationDeeplUrl}
+            apiKey={draft.translationApiKey}
+            model={draft.translationModel}
+            openAiBaseUrl={draft.translationOpenAiBaseUrl}
+            defaultLanguage={draft.translationDefaultLanguage}
+            defaultOutgoingLanguage={draft.translationDefaultOutgoingLanguage}
+            onEnabledChange={(enabled) => updateField('translationEnabled', enabled)}
+            onProviderChange={(provider) => updateField('translationProvider', provider)}
+            onUrlChange={(url) => updateField('translationUrl', url)}
+            onDeeplUrlChange={(deeplUrl) => updateField('translationDeeplUrl', deeplUrl)}
+            onApiKeyChange={(apiKey) => updateField('translationApiKey', apiKey)}
+            onModelChange={(model) => updateField('translationModel', model)}
+            onOpenAiBaseUrlChange={(openAiBaseUrl) => updateField('translationOpenAiBaseUrl', openAiBaseUrl)}
+            onDefaultLanguageChange={(defaultLanguage) => updateField('translationDefaultLanguage', defaultLanguage)}
+            onDefaultOutgoingLanguageChange={(defaultOutgoingLanguage) => updateField('translationDefaultOutgoingLanguage', defaultOutgoingLanguage)}
+          />
+        )}
 
         {show('settings-atak-cot') && isAdmin && <div id="settings-atak-cot" className="settings-section">
           <h3>{t('settings.atak_cot_section', 'ATAK / CoT Feed')}</h3>

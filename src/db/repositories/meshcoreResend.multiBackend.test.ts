@@ -2,7 +2,7 @@
  * Repository reads behind the MeshCore channel resend (#5512) on SQLite,
  * PostgreSQL and MySQL:
  *  - MeshCoreRepository.insertMessage / getMessageForSource round-trip the new
- *    `senderTimestamp` column (migration 186) and stay per-source;
+ *    `senderTimestamp` column (migration 187) and stay per-source;
  *  - MessageEventsRepository.getEventsForMessages filters by type and source.
  *
  * Every backend gets the REAL schema from the migration registry (SQLite via

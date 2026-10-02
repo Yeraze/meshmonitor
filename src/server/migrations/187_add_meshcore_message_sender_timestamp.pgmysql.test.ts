@@ -1,11 +1,11 @@
 /**
- * Migration 186 — PostgreSQL / MySQL container behaviour (isolated DBs).
+ * Migration 187 — PostgreSQL / MySQL container behaviour (isolated DBs).
  * A silent skip still reports success; confirm via `numPendingTests`.
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import pg from 'pg';
 import mysql from 'mysql2/promise';
-import { runMigration186Postgres, runMigration186Mysql } from './186_add_meshcore_message_sender_timestamp.js';
+import { runMigration187Postgres, runMigration187Mysql } from './187_add_meshcore_message_sender_timestamp.js';
 import {
   postgresAvailable,
   mysqlAvailable,
@@ -16,12 +16,12 @@ import {
 // Past 2^31 on purpose: BIGINT, not a signed 32-bit INTEGER.
 const BIG_TS = 4_300_000_000;
 
-describe.skipIf(!postgresAvailable)('migration 186 — PostgreSQL (container)', () => {
+describe.skipIf(!postgresAvailable)('migration 187 — PostgreSQL (container)', () => {
   let pool: pg.Pool;
   let cleanup: (() => Promise<void>) | undefined;
 
   beforeAll(async () => {
-    ({ pool, cleanup } = await createIsolatedPostgresDatabase('mig186'));
+    ({ pool, cleanup } = await createIsolatedPostgresDatabase('mig187'));
     await pool.query('DROP TABLE IF EXISTS meshcore_messages CASCADE');
     await pool.query(`
       CREATE TABLE meshcore_messages (
@@ -43,8 +43,8 @@ describe.skipIf(!postgresAvailable)('migration 186 — PostgreSQL (container)', 
   it('adds a nullable BIGINT column, is idempotent, and round-trips', async () => {
     const client = await pool.connect();
     try {
-      await runMigration186Postgres(client);
-      await expect(runMigration186Postgres(client)).resolves.toBeUndefined();
+      await runMigration187Postgres(client);
+      await expect(runMigration187Postgres(client)).resolves.toBeUndefined();
     } finally {
       client.release();
     }
@@ -60,12 +60,12 @@ describe.skipIf(!postgresAvailable)('migration 186 — PostgreSQL (container)', 
   });
 });
 
-describe.skipIf(!mysqlAvailable)('migration 186 — MySQL (container)', () => {
+describe.skipIf(!mysqlAvailable)('migration 187 — MySQL (container)', () => {
   let pool: mysql.Pool;
   let cleanup: (() => Promise<void>) | undefined;
 
   beforeAll(async () => {
-    ({ pool, cleanup } = await createIsolatedMysqlDatabase('mig186'));
+    ({ pool, cleanup } = await createIsolatedMysqlDatabase('mig187'));
     await pool.query('DROP TABLE IF EXISTS meshcore_messages');
     await pool.query(`
       CREATE TABLE meshcore_messages (
@@ -85,8 +85,8 @@ describe.skipIf(!mysqlAvailable)('migration 186 — MySQL (container)', () => {
   });
 
   it('adds a nullable BIGINT column, is idempotent, and round-trips', async () => {
-    await runMigration186Mysql(pool);
-    await expect(runMigration186Mysql(pool)).resolves.toBeUndefined();
+    await runMigration187Mysql(pool);
+    await expect(runMigration187Mysql(pool)).resolves.toBeUndefined();
     const [before] = await pool.query(`SELECT senderTimestamp FROM meshcore_messages WHERE id = 'a'`);
     expect((before as any[])[0].senderTimestamp).toBeNull();
     await pool.query(`UPDATE meshcore_messages SET senderTimestamp = ${BIG_TS} WHERE id = 'a'`);

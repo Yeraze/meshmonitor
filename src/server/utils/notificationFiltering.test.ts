@@ -533,6 +533,63 @@ describe('shouldFilterNotificationAsync — cross-source preferences', () => {
   });
 });
 
+describe('shouldFilterNotificationAsync — per-source mutes (#5487)', () => {
+  const baseCtx = {
+    messageText: 'Hello',
+    channelId: 1,
+    isDirectMessage: false,
+    viaMqtt: false,
+    sourceName: 'X',
+  };
+
+  it('a channel muted on the per-source row is filtered on that source only', async () => {
+    mockDb.notifications.getUserPreferences.mockImplementation(
+      async (_userId: number, sourceId?: string) => {
+        if (sourceId === 'source-A') return { ...defaultPrefs, mutedChannels: [{ channelId: 1, muteUntil: null }] };
+        if (sourceId === 'source-B') return { ...defaultPrefs };
+        return null;
+      }
+    );
+    expect(await shouldFilterNotificationAsync(1, { ...baseCtx, sourceId: 'source-A' })).toBe(true);
+    expect(await shouldFilterNotificationAsync(1, { ...baseCtx, sourceId: 'source-B' })).toBe(false);
+  });
+
+  it('a per-source row wins over a mute stranded on the \'\' row', async () => {
+    mockDb.notifications.getUserPreferences.mockImplementation(
+      async (_userId: number, sourceId?: string) => {
+        if (sourceId === '') return { ...defaultPrefs, mutedChannels: [{ channelId: 1, muteUntil: null }] };
+        if (sourceId === 'source-A') return { ...defaultPrefs };
+        return null;
+      }
+    );
+    // This is the bug #5487 fixes on the write side: the push filter reads
+    // the per-source row, so a mute must be saved there to take effect.
+    expect(await shouldFilterNotificationAsync(1, { ...baseCtx, sourceId: 'source-A' })).toBe(false);
+  });
+
+  it('falls back to the \'\' row mutes when the source has no row', async () => {
+    mockDb.notifications.getUserPreferences.mockImplementation(
+      async (_userId: number, sourceId?: string) => {
+        if (sourceId === '') return { ...defaultPrefs, mutedChannels: [{ channelId: 1, muteUntil: null }] };
+        return null;
+      }
+    );
+    expect(await shouldFilterNotificationAsync(1, { ...baseCtx, sourceId: 'source-A' })).toBe(true);
+  });
+
+  it('an expired per-source mute no longer filters, and the whitelist overrides an active one', async () => {
+    mockDb.notifications.getUserPreferences.mockImplementation(
+      async (_userId: number, sourceId?: string) => {
+        if (sourceId === 'source-A') return { ...defaultPrefs, mutedChannels: [{ channelId: 1, muteUntil: Date.now() - 1000 }] };
+        if (sourceId === 'source-B') return { ...defaultPrefs, whitelist: ['help'], mutedChannels: [{ channelId: 1, muteUntil: null }] };
+        return null;
+      }
+    );
+    expect(await shouldFilterNotificationAsync(1, { ...baseCtx, sourceId: 'source-A' })).toBe(false);
+    expect(await shouldFilterNotificationAsync(1, { ...baseCtx, messageText: 'help me', sourceId: 'source-B' })).toBe(false);
+  });
+});
+
 // ─── applyNodeNamePrefixAsync ─────────────────────────────────────────────────
 
 describe('applyNodeNamePrefixAsync', () => {
