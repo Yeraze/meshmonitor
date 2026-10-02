@@ -1,6 +1,6 @@
 import type { TranslationProvider } from '../../../../types/translation.js';
 import type { ITranslationProvider, ProviderConfig, TranslationProviderResult } from './types.js';
-import { buildServiceEndpoint } from './libreTranslateProvider.js';
+import { buildServiceEndpoint } from './translateUtils.js';
 
 export class DeepLProvider implements ITranslationProvider {
   readonly id: TranslationProvider = 'deepl';

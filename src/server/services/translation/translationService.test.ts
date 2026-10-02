@@ -4,7 +4,13 @@ import {
   buildServiceEndpoint,
   translationService,
 } from './translationService.js';
-import { NoOpTranslationCache, setTranslationCache } from './translationCache.js';
+import {
+  NoOpTranslationCache,
+  setTranslationCache,
+  type ITranslationCache,
+  type CachedTranslation,
+  type TranslationCacheKey,
+} from './translationCache.js';
 import { computeTranslationCacheKey } from './cacheKey.js';
 
 vi.mock('../../../services/database.js', () => ({
@@ -39,14 +45,15 @@ describe('translationService', () => {
       expect(buildServiceEndpoint('   ', 'https://api.deepl.com/v2/translate', '/translate')).toBe('https://api.deepl.com/v2/translate');
     });
 
-    it('should append path when not present on baseUrl', () => {
-      expect(buildServiceEndpoint('https://api.deepl.com/v2', 'default', '/translate')).toBe('https://api.deepl.com/v2/translate');
-      expect(buildServiceEndpoint('https://api.deepl.com/v2/', 'default', '/translate')).toBe('https://api.deepl.com/v2/translate');
+    it('should append path when bare origin is provided', () => {
+      expect(buildServiceEndpoint('https://api.deepl.com', 'default', '/translate')).toBe('https://api.deepl.com/translate');
+      expect(buildServiceEndpoint('https://api.deepl.com/', 'default', '/translate')).toBe('https://api.deepl.com/translate');
     });
 
-    it('should not double-append path when already present on baseUrl', () => {
+    it('should preserve URL verbatim when path is provided', () => {
       expect(buildServiceEndpoint('https://api.deepl.com/v2/translate', 'default', '/translate')).toBe('https://api.deepl.com/v2/translate');
       expect(buildServiceEndpoint('https://api.deepl.com/v2/translate/', 'default', '/translate')).toBe('https://api.deepl.com/v2/translate');
+      expect(buildServiceEndpoint('https://custom.proxy/api/v1', 'default', '/translate')).toBe('https://custom.proxy/api/v1');
     });
   });
 
@@ -170,7 +177,7 @@ describe('translationService', () => {
       vi.mocked(databaseService.getSettingAsync).mockImplementation(async (key: string) => {
         if (key === 'translationEnabled') return 'true';
         if (key === 'translationProvider') return 'openai';
-        if (key === 'translationOpenAiBaseUrl') return 'http://localhost:11434/v1';
+        if (key === 'translationOpenAiBaseUrl') return 'http://localhost:11434/v1/chat/completions';
         if (key === 'translationModel') return 'llama3';
         if (key === 'translationApiKey') return 'sk-test';
         return null;
@@ -242,12 +249,12 @@ describe('translationService', () => {
       );
     });
 
-    it('should use custom DeepL base URL and append /translate when provided', async () => {
+    it('should use custom DeepL URL when provided', async () => {
       vi.mocked(databaseService.getSettingAsync).mockImplementation(async (key: string) => {
         if (key === 'translationEnabled') return 'true';
         if (key === 'translationProvider') return 'deepl';
         if (key === 'translationApiKey') return 'deepl-api-key';
-        if (key === 'translationDeeplUrl') return 'https://my-proxy.internal/v2';
+        if (key === 'translationDeeplUrl') return 'https://my-proxy.internal/v2/translate';
         return null;
       });
 

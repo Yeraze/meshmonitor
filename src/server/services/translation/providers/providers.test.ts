@@ -212,7 +212,7 @@ describe('Translation Providers', () => {
       } as unknown as Response);
 
       const res = await provider.translate('Hello world', 'en', 'nb', {
-        openAiBaseUrl: 'http://ollama:11434/v1',
+        openAiBaseUrl: 'http://ollama:11434/v1/chat/completions',
         model: 'llama3',
         apiKey: 'ollama-key',
       });
