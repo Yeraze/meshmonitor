@@ -33,6 +33,8 @@ interface SearchModalProps {
   nodes: Array<{ nodeId: string; longName: string; shortName: string }>;
   canSearchDms?: boolean;
   canSearchMeshcore?: boolean;
+  /** Limit the search to this source (the page's current source). */
+  sourceId?: string | null;
 }
 
 const RESULTS_PER_PAGE = 25;
@@ -45,6 +47,7 @@ export const SearchModal: React.FC<SearchModalProps> = ({
   nodes,
   canSearchDms = true,
   canSearchMeshcore = false,
+  sourceId,
 }) => {
   const { t } = useTranslation();
   const inputRef = useRef<HTMLInputElement>(null);
@@ -97,8 +100,11 @@ export const SearchModal: React.FC<SearchModalProps> = ({
         scope: scope !== 'all' ? scope : undefined,
         channels: selectedChannels.length > 0 ? selectedChannels : undefined,
         fromNodeId: senderNodeId || undefined,
-        startDate: startDate ? Math.floor(new Date(startDate).getTime() / 1000) : undefined,
-        endDate: endDate ? Math.floor(new Date(endDate + 'T23:59:59').getTime() / 1000) : undefined,
+        // Epoch ms, local-day bounds (#5517). The server compares against
+        // millisecond message times; seconds here matched nothing.
+        startDate: startDate ? new Date(`${startDate}T00:00:00`).getTime() : undefined,
+        endDate: endDate ? new Date(`${endDate}T23:59:59.999`).getTime() : undefined,
+        sourceId: sourceId ?? undefined,
         limit: RESULTS_PER_PAGE,
         offset,
       };
@@ -115,7 +121,7 @@ export const SearchModal: React.FC<SearchModalProps> = ({
     } finally {
       setLoading(false);
     }
-  }, [query, caseSensitive, scope, selectedChannels, senderNodeId, startDate, endDate]);
+  }, [query, caseSensitive, scope, selectedChannels, senderNodeId, startDate, endDate, sourceId]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();

@@ -205,9 +205,8 @@ router.get('/search', async (req: Request, res: Response) => {
     const startDateNum = startDate ? parseInt(startDate as string) : undefined;
     const endDateNum = endDate ? parseInt(endDate as string) : undefined;
 
-    // Scope search to the requesting source (path or query). TODO: extend
-    // searchMessagesAsync() to accept sourceId so we can push the filter down
-    // to SQL instead of post-filtering (see getAccessibleChannels comment).
+    // Scope search to the requesting source (path or query), pushed down to
+    // SQL so paging and totals count only that source (#5517).
     const searchSourceId = getScopedSourceId(req);
     const accessibleChannels = await getAccessibleChannels(userId, isAdmin, searchSourceId);
 
@@ -232,6 +231,7 @@ router.get('/search', async (req: Request, res: Response) => {
         caseSensitive: isCaseSensitive,
         scope: searchScope === 'meshcore' ? 'all' : (searchScope as 'all' | 'channels' | 'dms'),
         channels: effectiveChannelFilter,
+        sourceId: searchSourceId,
         fromNodeId: fromNodeId as string | undefined,
         startDate: startDateNum,
         endDate: endDateNum,
@@ -239,14 +239,8 @@ router.get('/search', async (req: Request, res: Response) => {
         offset: searchOffset
       });
 
-      // Post-filter by sourceId until searchMessagesAsync gains a sourceId
-      // option. Result windows are small (bounded by `limit`), so this is
-      // acceptable for now.
-      const scopedMessages = searchSourceId
-        ? searchResult.messages.filter((m: any) => m.sourceId === searchSourceId)
-        : searchResult.messages;
-      results.push(...scopedMessages.map(m => ({ ...m, source: 'standard' })));
-      total += scopedMessages.length;
+      results.push(...searchResult.messages.map(m => ({ ...m, source: 'standard' })));
+      total += searchResult.total;
     }
 
     // Search MeshCore messages (in-memory filter, across every registered source)

@@ -4,7 +4,7 @@
  * Handles all message-related database operations.
  * Supports SQLite, PostgreSQL, and MySQL through Drizzle ORM.
  */
-import { eq, gt, lt, gte, and, or, desc, sql, like, ilike, inArray, isNotNull, isNull, ne, notInArray, SQL, count } from 'drizzle-orm';
+import { eq, gt, lt, gte, and, or, desc, sql, inArray, isNotNull, isNull, ne, notInArray, SQL, count } from 'drizzle-orm';
 import { BaseRepository, DrizzleDatabase, SourceScope } from './base.js';
 import { DatabaseType, DbMessage } from '../types.js';
 import { logger } from '../../utils/logger.js';
@@ -20,6 +20,21 @@ import { classifyMessageTransport, type NodeTransportClass } from '../../utils/n
  * processTakV2Packet.
  */
 const DM_CHAT_PORTNUMS = [PortNum.TEXT_MESSAGE_APP, PortNum.ATAK_PLUGIN, PortNum.ATAK_PLUGIN_V2];
+
+/**
+ * Floor below which `rxTime` is not a real receive time (2020-01-01, ms).
+ * Same value as `MIN_PLAUSIBLE_RXTIME_MS` in `server/utils/messageTime.ts`.
+ */
+const MIN_PLAUSIBLE_RXTIME_MS = 1_577_836_800_000;
+
+/** Channels a caller may read on one source: an explicit list, or every channel. */
+export type MessageChannelScope = number[] | 'all';
+
+/** One source plus the channels on it a caller may read (#5517). */
+export interface MessageSourceScope {
+  sourceId: string;
+  channels: MessageChannelScope;
+}
 
 /**
  * Repository for message operations
@@ -746,17 +761,56 @@ export class MessagesRepository extends BaseRepository {
   }
 
   /**
+   * Canonical time of a message row, in ms: the device receive time when it is
+   * plausible, else the server timestamp. Mirrors `canonicalMessageTime`
+   * (`server/utils/messageTime.ts`) so a filter on this expression agrees with
+   * the time the UI shows. A raw `COALESCE(rxTime, timestamp)` would sort an
+   * MQTT row with `rxTime = 0` into 1970.
+   */
+  private canonicalTimeExpr(): SQL {
+    const { messages: table } = this.tables;
+    return sql`CASE WHEN ${table.rxTime} > ${sql.raw(String(MIN_PLAUSIBLE_RXTIME_MS))} THEN ${table.rxTime} ELSE ${table.timestamp} END`;
+  }
+
+  /**
+   * WHERE fragment for a list of per-source channel scopes, or `null` when no
+   * scope can match anything. Callers MUST treat `null` as "zero rows" — never
+   * as "no filter" (#5517).
+   */
+  private sourceScopesCondition(scopes: MessageSourceScope[]): SQL | null {
+    const { messages: table } = this.tables;
+    const parts: SQL[] = [];
+    for (const scope of scopes) {
+      if (!scope.sourceId) continue;
+      if (scope.channels === 'all') {
+        parts.push(eq(table.sourceId, scope.sourceId));
+      } else if (scope.channels.length > 0) {
+        parts.push(and(eq(table.sourceId, scope.sourceId), inArray(table.channel, scope.channels)) as SQL);
+      }
+    }
+    if (parts.length === 0) return null;
+    return parts.length === 1 ? parts[0] : (or(...parts) as SQL);
+  }
+
+  /**
    * Search messages with text matching, filtering, and pagination.
    * Returns matching messages and total count for pagination.
    *
-   * Keeps branching: different text search functions per dialect
-   * (SQLite: instr/LOWER LIKE, MySQL: BINARY LIKE/like, PostgreSQL: like/ilike).
+   * `scopes` limits the search to the given sources and, per source, to the
+   * channels the caller may read. When `scopes` is given and empty (or every
+   * entry has an empty channel list) the result is empty — the query never
+   * falls back to an unscoped search (#5517). `sourceId` alone is the simpler
+   * form used by the v1 API: one source, channel list taken from `channels`.
+   *
+   * Dates are epoch milliseconds, compared against the canonical message time.
    */
   async searchMessages(options: {
     query: string;
     caseSensitive?: boolean;
     scope?: 'all' | 'channels' | 'dms';
     channels?: number[];
+    scopes?: MessageSourceScope[];
+    sourceId?: string;
     fromNodeId?: string;
     startDate?: number;
     endDate?: number;
@@ -768,6 +822,8 @@ export class MessagesRepository extends BaseRepository {
       caseSensitive = false,
       scope = 'all',
       channels,
+      scopes,
+      sourceId,
       fromNodeId,
       startDate,
       endDate,
@@ -776,37 +832,23 @@ export class MessagesRepository extends BaseRepository {
     } = options;
 
     const { messages: table } = this.tables;
-    const pattern = `%${query}%`;
-    const timeExpr = sql`COALESCE(${table.rxTime}, ${table.timestamp})`;
+    const timeExpr = this.canonicalTimeExpr();
 
-    // Build conditions array - shared across all dialects
     const conditions: SQL[] = [];
+
+    if (scopes !== undefined) {
+      const scoped = this.sourceScopesCondition(scopes);
+      if (!scoped) return { messages: [], total: 0 };
+      conditions.push(scoped);
+    }
+    if (sourceId) {
+      conditions.push(eq(table.sourceId, sourceId));
+    }
 
     // Text must exist
     conditions.push(isNotNull(table.text));
     conditions.push(ne(table.text, ''));
-
-    // Text search - dialect-specific
-    if (this.isSQLite()) {
-      if (caseSensitive) {
-        conditions.push(sql`instr(${table.text}, ${query}) > 0`);
-      } else {
-        conditions.push(sql`LOWER(${table.text}) LIKE LOWER(${pattern})`);
-      }
-    } else if (this.isMySQL()) {
-      if (caseSensitive) {
-        conditions.push(sql`BINARY ${table.text} LIKE ${pattern}`);
-      } else {
-        conditions.push(like(table.text, pattern));
-      }
-    } else {
-      // PostgreSQL
-      if (caseSensitive) {
-        conditions.push(like(table.text, pattern));
-      } else {
-        conditions.push(ilike(table.text, pattern));
-      }
-    }
+    conditions.push(this.textContains(table.text, query, caseSensitive));
 
     // Scope filter
     if (scope === 'channels') {
@@ -825,7 +867,7 @@ export class MessagesRepository extends BaseRepository {
       conditions.push(eq(table.fromNodeId, fromNodeId));
     }
 
-    // Date range filters
+    // Date range filters (ms)
     if (startDate !== undefined) {
       conditions.push(sql`${timeExpr} >= ${startDate}`);
     }
@@ -847,11 +889,100 @@ export class MessagesRepository extends BaseRepository {
       .select()
       .from(table)
       .where(whereClause)
-      .orderBy(desc(timeExpr))
+      .orderBy(desc(timeExpr), desc(table.id))
       .limit(limit)
       .offset(offset);
 
     return { messages: this.normalizeBigInts(messages) as DbMessage[], total };
+  }
+
+  /**
+   * One page of a filtered message export for ONE source (#5517).
+   *
+   * Ordered oldest-first by canonical time then id, and paged by keyset
+   * (`after`) rather than OFFSET, so a 100k-row export does not rescan the
+   * rows it already sent. `channels` is the set the caller may read on this
+   * source; an empty list returns no rows.
+   *
+   * Filters:
+   * - `includeTerms`: keep rows whose text contains ANY term (case-insensitive).
+   * - `excludeTerms`: drop rows whose text contains any term.
+   * - `startMs` / `endMs`: inclusive range on the canonical time.
+   * - `type`: channel traffic only, DMs only, or both.
+   * - `fromNodeId`: one sender, matched case-insensitively.
+   * - Traceroute rows are always excluded (as in the unified feed); reactions
+   *   (emoji > 0) unless `includeReactions`.
+   */
+  async getMessagesForExport(options: {
+    sourceId: string;
+    channels: MessageChannelScope;
+    includeTerms?: string[];
+    excludeTerms?: string[];
+    startMs?: number;
+    endMs?: number;
+    type?: 'all' | 'channels' | 'dms';
+    fromNodeId?: string;
+    includeReactions?: boolean;
+    after?: { time: number; id: string };
+    limit?: number;
+  }): Promise<DbMessage[]> {
+    const { messages: table } = this.tables;
+    const {
+      sourceId,
+      channels,
+      includeTerms = [],
+      excludeTerms = [],
+      startMs,
+      endMs,
+      type = 'all',
+      fromNodeId,
+      includeReactions = false,
+      after,
+    } = options;
+    if (!sourceId) throw new Error('getMessagesForExport requires a sourceId');
+    const limit = Math.max(1, Math.min(options.limit ?? 1000, 5000));
+
+    const scoped = this.sourceScopesCondition([{ sourceId, channels }]);
+    if (!scoped) return [];
+
+    const timeExpr = this.canonicalTimeExpr();
+    const conditions: SQL[] = [scoped, isNotNull(table.text), ne(table.text, '')];
+
+    conditions.push(or(isNull(table.portnum), notInArray(table.portnum, [PortNum.TRACEROUTE_APP])) as SQL);
+    if (!includeReactions) {
+      conditions.push(or(isNull(table.emoji), eq(table.emoji, 0)) as SQL);
+    }
+    if (type === 'channels') {
+      conditions.push(gte(table.channel, 0));
+    } else if (type === 'dms') {
+      conditions.push(eq(table.channel, -1));
+    }
+
+    const include = includeTerms.map((t) => t.trim()).filter(Boolean);
+    if (include.length > 0) {
+      const matches = include.map((t) => this.textContains(table.text, t));
+      conditions.push(matches.length === 1 ? matches[0] : (or(...matches) as SQL));
+    }
+    for (const term of excludeTerms.map((t) => t.trim()).filter(Boolean)) {
+      conditions.push(sql`NOT (${this.textContains(table.text, term)})`);
+    }
+
+    if (fromNodeId) {
+      conditions.push(sql`LOWER(${table.fromNodeId}) = ${fromNodeId.toLowerCase()}`);
+    }
+    if (startMs !== undefined) conditions.push(sql`${timeExpr} >= ${startMs}`);
+    if (endMs !== undefined) conditions.push(sql`${timeExpr} <= ${endMs}`);
+    if (after) {
+      conditions.push(sql`(${timeExpr} > ${after.time} OR (${timeExpr} = ${after.time} AND ${table.id} > ${after.id}))`);
+    }
+
+    const rows = await this.db
+      .select()
+      .from(table)
+      .where(and(...conditions))
+      .orderBy(timeExpr, table.id)
+      .limit(limit);
+    return this.normalizeBigInts(rows) as DbMessage[];
   }
 
   /**
