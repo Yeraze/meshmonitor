@@ -8,7 +8,7 @@
  */
 import { logger } from '../../../utils/logger.js';
 import databaseService from '../../../services/database.js';
-import { dataEventEmitter, type DataEvent, type NodeAircraftData } from '../dataEventEmitter.js';
+import { dataEventEmitter, type DataEvent, type NodeAircraftData, type NodeUpdateData, type NodeDiscoveredData, type MeshCoreNodeChangedData } from '../dataEventEmitter.js';
 import type { DbMessage, DbTelemetry } from '../../../services/database.js';
 import type { MeshCoreMessage } from '../../meshcoreManager.js';
 import type { ReticulumMessageRow } from '../../../db/repositories/reticulum.js';
@@ -114,6 +114,15 @@ export function shouldRouteMeshCoreMessageToAutomations(message: Pick<MeshCoreMe
 async function handleEvent(event: DataEvent): Promise<void> {
   const e = engine;
   if (!e) return;
+  await routeEventToEngine(e, event);
+}
+
+/**
+ * Map one bus event onto the engine's trigger entry points. Exported so the
+ * routing (e.g. #5534's discovered-vs-updated split) is testable without
+ * booting the singleton.
+ */
+export async function routeEventToEngine(e: AutomationEngineService, event: DataEvent): Promise<void> {
   const sourceId = event.sourceId ?? null;
 
   switch (event.type) {
@@ -137,11 +146,15 @@ async function handleEvent(event: DataEvent): Promise<void> {
       break;
 
     case 'node:updated': {
-      const { nodeNum, node } = event.data as { nodeNum: number; node: Record<string, unknown> };
+      const { nodeNum, node, packetId, packetHash, discovered } = event.data as NodeUpdateData;
       const changed = Object.keys(node ?? {});
-      // Discovered vs updated detection (isNew) is deferred to a later phase; fire
-      // as nodeUpdated with the changed field keys.
-      await e.onNode('trigger.nodeUpdated', nodeNum, changed, sourceId);
+      // #5534: the originating packet's id/hash ride along when the emitter
+      // knew them. A packet that also discovered the node already fired
+      // trigger.nodeDiscovered (via `node:discovered`), so skip nodeUpdated
+      // for it — one packet never fires both.
+      if (!discovered) {
+        await e.onNode('trigger.nodeUpdated', nodeNum, changed, sourceId, { packetId, packetHash });
+      }
       // Hearing a node again is the fast recovery signal for trigger.nodeOnline
       // (#4558 Phase A) — the stale tick catches it as a fallback otherwise.
       await e.checkNodeOnline(nodeNum, sourceId);
@@ -150,6 +163,27 @@ async function handleEvent(event: DataEvent): Promise<void> {
         await e.checkGeofences(nodeNum, sourceId);
         await e.checkLeftHome(nodeNum, sourceId);
       }
+      break;
+    }
+
+    case 'node:discovered': {
+      // #5534: a node heard live for the first time on this source. Device
+      // NodeDB / contact-list syncs never raise this event.
+      const d = event.data as NodeDiscoveredData;
+      if (d.nodeNum == null) {
+        if (d.publicKey) {
+          await e.onMeshCoreNode('trigger.nodeDiscovered', d.publicKey, [], sourceId, { packetHash: d.packetHash }, d.name);
+        }
+      } else {
+        await e.onNode('trigger.nodeDiscovered', d.nodeNum, [], sourceId, { packetId: d.packetId });
+      }
+      break;
+    }
+
+    case 'meshcore:node:changed': {
+      // #5534: a known MeshCore node changed name/position/type/path.
+      const d = event.data as MeshCoreNodeChangedData;
+      await e.onMeshCoreNode('trigger.nodeUpdated', d.publicKey, d.changed, sourceId, { packetHash: d.packetHash }, d.name);
       break;
     }
 

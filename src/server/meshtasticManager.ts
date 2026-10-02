@@ -87,6 +87,7 @@ import { shouldGateAutomations, averageStrongestNeighborUtilization, DEFAULT_AIR
 import { resolveLastHopName } from './utils/lastHop.js';
 import { isRelayedReception } from './utils/packetHops.js';
 import { resolveLastHeardSec, isLiveReception, resolvePositionObservedAtMs, resolveNodeDbPositionObservedAtMs } from './utils/replayGuard.js';
+import { isLiveNodeDiscovery } from './utils/nodeDiscovery.js';
 import { isUptimeReboot } from './utils/rebootDetection.js';
 import { isPowered, detectPowerTransition } from './utils/poweredState.js';
 import { autoAckIsZeroHop, autoAckCellKey, resolveAutoAckReplyRouting } from './utils/autoAckDecision.js';
@@ -292,6 +293,8 @@ export interface ProcessingContext {
   decryptedBy?: 'node' | 'server' | null; // How the packet was decrypted
   decryptedChannelId?: number; // Channel Database entry ID for server-decrypted messages
   viaStoreForward?: boolean; // Message was received via Store & Forward replay
+  /** #5534: this packet first discovered its sender; suppress trigger.nodeUpdated for it. */
+  nodeDiscovered?: boolean;
 }
 
 // CHANNEL_DB_OFFSET is imported from './constants/meshtastic.js'
@@ -6591,6 +6594,10 @@ class MeshtasticManager implements ISourceManager {
     // Non-blocking: never delay packet processing on a diagnostics write.
     void this.maybeRecordHeardReflood(meshPacket, this.assessLocalSpoof(meshPacket));
 
+    // #5534: set when this packet is the first live reception of a node on
+    // this source; trigger.nodeDiscovered fires once the payload is processed.
+    let discoveredNodeNum: number | null = null;
+
     // Extract node information if available
     // Note: Only update technical fields (SNR/RSSI/lastHeard/channel), not names
     // Names should only come from NODEINFO packets
@@ -6600,6 +6607,22 @@ class MeshtasticManager implements ISourceManager {
 
       // Check if node exists first
       const existingNode = await databaseService.nodes.getNode(fromNum);
+      // #5534: discovery is per source. The lookup above is unscoped (it gates
+      // the default-name stamp below, kept as-is), so re-check this source only
+      // when it found another source's row.
+      const existsOnSource = existingNode == null
+        ? false
+        : (existingNode as { sourceId?: string | null }).sourceId === this.sourceId
+          || (await databaseService.nodes.getNode(fromNum, this.sourceId)) != null;
+      if (isLiveNodeDiscovery({
+        existsOnSource,
+        fromNum,
+        localNodeNum: this.localNodeInfo?.nodeNum,
+        rxTimeSec: meshPacket.rxTime != null ? Number(meshPacket.rxTime) : undefined,
+        nowMs: Date.now(),
+      })) {
+        discoveredNodeNum = fromNum;
+      }
 
       // Only update the node's channel from firmware-decoded packets (decryptedBy === 'node').
       // Server-decrypted packets still have the raw channel hash in meshPacket.channel, not
@@ -6762,6 +6785,7 @@ class MeshtasticManager implements ISourceManager {
               ...context,
               decryptedBy,
               decryptedChannelId: decryptedChannelId ?? undefined,
+              nodeDiscovered: discoveredNodeNum !== null,
             });
             break;
           case PortNum.NODEINFO_APP:
@@ -6889,6 +6913,11 @@ class MeshtasticManager implements ISourceManager {
       }
     }
 
+    // #5534: raised after the payload handlers so node.* hydration sees what
+    // this packet stored (a first position, a NodeInfo name).
+    if (discoveredNodeNum !== null) {
+      dataEventEmitter.emitNodeDiscovered({ nodeNum: discoveredNodeNum, packetId: meshPacket.id }, this.sourceId);
+    }
   }
 
   /**
@@ -7996,9 +8025,9 @@ class MeshtasticManager implements ISourceManager {
           if (hasPositionOverride) {
             const { latitude: _lat, longitude: _lng, altitude: _alt, ...emitData } = nodeData;
             void _lat; void _lng; void _alt;
-            dataEventEmitter.emitNodeUpdate(fromNum, emitData, this.sourceId);
+            dataEventEmitter.emitNodeUpdate(fromNum, emitData, this.sourceId, { packetId: meshPacket.id, discovered: context?.nodeDiscovered });
           } else {
-            dataEventEmitter.emitNodeUpdate(fromNum, nodeData, this.sourceId);
+            dataEventEmitter.emitNodeUpdate(fromNum, nodeData, this.sourceId, { packetId: meshPacket.id, discovered: context?.nodeDiscovered });
           }
 
           // Update mobility detection for this node; emit 0→1 transitions for
@@ -8158,7 +8187,7 @@ class MeshtasticManager implements ISourceManager {
             dataEventEmitter.emitNodeUpdate(fromNum, {
               keyMismatchDetected: true,
               keySecurityIssueDetails: nodeData.keySecurityIssueDetails
-            }, this.sourceId);
+            }, this.sourceId, { packetId: meshPacket.id });
 
             // Immediate purge if enabled
             if (this.keyRepairEnabled && this.keyRepairImmediatePurge) {
@@ -8218,7 +8247,7 @@ class MeshtasticManager implements ISourceManager {
             dataEventEmitter.emitNodeUpdate(fromNum, {
               keyMismatchDetected: false,
               keySecurityIssueDetails: isLowEntropy ? nodeData.keySecurityIssueDetails : undefined
-            }, this.sourceId);
+            }, this.sourceId, { packetId: meshPacket.id });
           }
         }
       }

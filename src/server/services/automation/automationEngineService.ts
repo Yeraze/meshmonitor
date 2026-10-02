@@ -32,6 +32,7 @@ import {
   buildMeshCoreMessageContext,
   buildReticulumMessageContext,
   buildNodeContext,
+  buildMeshCoreNodeContext,
   buildTelemetryContext,
   buildMeshBeaconContext,
   buildSystemContext,
@@ -57,7 +58,7 @@ import {
 } from './triggerContext.js';
 import type { MeshCoreMessage } from '../../meshcoreManager.js';
 import type { ReticulumMessageRow } from '../../../db/repositories/reticulum.js';
-import type { NodeAircraftData } from '../dataEventEmitter.js';
+import type { NodeAircraftData, NodeUpdateOrigin } from '../dataEventEmitter.js';
 import { scheduleCron, validateCron } from '../../utils/cronScheduler.js';
 import { haversineKm, geofenceFires, pointInShape, geofenceCenter, normalizeGeofenceParams, normalizeGeofenceAnchor, shapeFromWaypoint, type GeofenceMode, type GeofenceShape } from './geo.js';
 import { evaluateGraph, type EvaluatorHooks } from './graphEvaluator.js';
@@ -997,9 +998,29 @@ export class AutomationEngineService {
     nodeNum: number,
     changedKeys: string[],
     sourceId: string | null,
+    origin?: NodeUpdateOrigin,
   ): Promise<number> {
     if (await this.isSelfMeshtastic(sourceId, nodeNum)) return 0; // #3914: ignore our own node updates
-    return this.runTrigger(buildNodeContext(kind, nodeNum, changedKeys, sourceId, this.now()));
+    return this.runTrigger(buildNodeContext(kind, nodeNum, changedKeys, sourceId, this.now(), origin));
+  }
+
+  /**
+   * MeshCore node discovered/updated (#5534). Keyed by public key — MeshCore
+   * has no node numbers. The #3914 self-origin guard drops our own node.
+   */
+  async onMeshCoreNode(
+    kind: 'trigger.nodeDiscovered' | 'trigger.nodeUpdated',
+    publicKey: string,
+    changedKeys: string[],
+    sourceId: string | null,
+    origin?: NodeUpdateOrigin,
+    name?: string | null,
+  ): Promise<number> {
+    if (!publicKey) return 0;
+    if (await this.isSelfMeshCore(sourceId, publicKey)) return 0;
+    return this.runTrigger(
+      buildMeshCoreNodeContext(kind, publicKey, changedKeys, sourceId, this.now(), origin, name),
+    );
   }
 
   async onTelemetry(

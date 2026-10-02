@@ -19,6 +19,8 @@ import { logger } from '../../utils/logger.js';
 
 export type DataEventType =
   | 'node:updated'
+  | 'node:discovered'
+  | 'meshcore:node:changed'
   | 'node:mobility'
   | 'node:rebooted'
   | 'node:powerChanged'
@@ -59,6 +61,57 @@ export interface DataEvent {
 export interface NodeUpdateData {
   nodeNum: number;
   node: Partial<DbNode>;
+  /**
+   * The received Meshtastic MeshPacket id (unsigned 32-bit) that produced this
+   * update (#5534). Absent when the update has no single originating packet
+   * (device NodeDB sync, manual edits, key-repair bookkeeping).
+   */
+  packetId?: number;
+  /**
+   * MeshCore packet hash (16 UPPERCASE hex) of the frame that produced this
+   * update (#5534). Same format as `trigger.message`'s packetHash (#5357).
+   */
+  packetHash?: string;
+  /**
+   * True when the same packet also produced a `node:discovered` event (#5534).
+   * The automation engine fires trigger.nodeDiscovered for it and skips
+   * trigger.nodeUpdated, so one packet never fires both.
+   */
+  discovered?: boolean;
+}
+
+/** Optional originating-packet identity threaded through a node update (#5534). */
+export interface NodeUpdateOrigin {
+  packetId?: number;
+  packetHash?: string;
+  /** See {@link NodeUpdateData.discovered}. */
+  discovered?: boolean;
+}
+
+/**
+ * A node heard live for the first time on a source (#5534) — no row existed
+ * for it there. Meshtastic sets `nodeNum`; MeshCore sets `publicKey` (and
+ * `nodeNum: null`). Device NodeDB / contact-list syncs never raise this.
+ */
+export interface NodeDiscoveredData {
+  nodeNum: number | null;
+  publicKey?: string;
+  /** MeshCore display name, when known. */
+  name?: string;
+  packetId?: number;
+  packetHash?: string;
+}
+
+/**
+ * A known MeshCore node changed a field that matters to automations (#5534):
+ * name, position, node type, or path. Re-adverts that change nothing never
+ * raise this.
+ */
+export interface MeshCoreNodeChangedData {
+  publicKey: string;
+  name?: string;
+  changed: string[];
+  packetHash?: string;
 }
 
 /**
@@ -202,15 +255,44 @@ class DataEventEmitter extends EventEmitter {
   /**
    * Emit a node update event
    */
-  emitNodeUpdate(nodeNum: number, node: Partial<DbNode>, sourceId?: string): void {
+  emitNodeUpdate(nodeNum: number, node: Partial<DbNode>, sourceId?: string, origin?: NodeUpdateOrigin): void {
+    const data: NodeUpdateData = { nodeNum, node };
+    // #5534: only attach origin keys that are present, so an update with no
+    // originating packet keeps the exact `{ nodeNum, node }` payload shape.
+    // A Meshtastic packet id of 0 means "no id", so it is treated as absent.
+    const packetId = Number(origin?.packetId);
+    if (Number.isFinite(packetId) && packetId !== 0) data.packetId = packetId >>> 0;
+    if (origin?.packetHash) data.packetHash = origin.packetHash;
+    if (origin?.discovered) data.discovered = true;
     const event: DataEvent = {
       type: 'node:updated',
-      data: { nodeNum, node } as NodeUpdateData,
+      data,
       timestamp: Date.now(),
       sourceId,
     };
     this.emit('data', event);
     logger.debug(`[DataEventEmitter] Node updated: ${nodeNum}`);
+  }
+
+  /**
+   * Emit a first-heard node (#5534). Feeds trigger.nodeDiscovered.
+   */
+  emitNodeDiscovered(data: NodeDiscoveredData, sourceId?: string): void {
+    const payload: NodeDiscoveredData = { nodeNum: data.nodeNum };
+    if (data.publicKey) payload.publicKey = data.publicKey;
+    if (data.name) payload.name = data.name;
+    const packetId = Number(data.packetId);
+    if (Number.isFinite(packetId) && packetId !== 0) payload.packetId = packetId >>> 0;
+    if (data.packetHash) payload.packetHash = data.packetHash;
+    this.emit('data', { type: 'node:discovered', data: payload, timestamp: Date.now(), sourceId } as DataEvent);
+    logger.debug(`[DataEventEmitter] Node discovered: ${data.nodeNum ?? data.publicKey}`);
+  }
+
+  /**
+   * Emit a meaningful MeshCore node change (#5534). Feeds trigger.nodeUpdated.
+   */
+  emitMeshCoreNodeChanged(data: MeshCoreNodeChangedData, sourceId?: string): void {
+    this.emit('data', { type: 'meshcore:node:changed', data, timestamp: Date.now(), sourceId } as DataEvent);
   }
 
   /**

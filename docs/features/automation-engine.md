@@ -66,8 +66,8 @@ Every automation has exactly one trigger (the **WHEN**). Each trigger exposes a 
 | Trigger | Fires when… | Notable options |
 | --- | --- | --- |
 | **A message is received** | A text/packet message arrives | `Text contains` (case-insensitive substring), `Text matches regex`, multi-channel match (`On channels` OR-list), legacy `On channel (name)`/`On channel #`, `From node #` |
-| **A new node is discovered** | A node is seen for the first time | — |
-| **A node is updated** | A node record changes (name, role, position, …) | — |
+| **A new node is discovered** | A source hears a node live for the first time (Meshtastic and MeshCore). See [Node discovered and updated](#node-discovered-and-updated) | — |
+| **A node is updated** | A node record changes (name, role, position, …). MeshCore: only a changed name, position, node type or path | — |
 | **Telemetry is received** | A telemetry reading arrives | `Metric` filter (battery, voltage, temperature, channel utilization, air util TX, …) |
 | **A MeshBeacon is received** | A node broadcasts a MeshBeacon (firmware 2.8+) | `Text contains` (case-insensitive substring), `Only beacons offering a network` (ignore text-only beacons). Beacons are not stored as messages, so this trigger is the only way an automation sees one |
 | **On a schedule** | A cron expression fires | 5-field cron expression |
@@ -985,6 +985,47 @@ That map looks packets up without regard to case, so the uppercase hash works as
 - **Empty** when the raw frame couldn't be matched: room-server posts, messages the device
   queued while MeshMonitor was disconnected (they arrive with no raw frame), channel frames that
   didn't verify, and our own outbound messages.
+
+### Node discovered and updated
+
+**A new node is discovered** fires once, the first time a source hears a node **live** and has no
+row for it. It fires *instead of* **A node is updated** for that packet, never both. There is no
+permanent memory: delete a node and hear it again, and it is discovered again.
+
+Device syncs never count, so a reconnect does not fire it for every node:
+
+- **Meshtastic.** The NodeDB the radio sends on connect is stored silently. Firmware 2.8 also
+  replays cached positions to the client on reconnect and about once an hour; those keep their
+  original receive time, so anything received more than 2 minutes ago does not count.
+- **MeshCore.** The contact list loaded on connect (from the database and the companion) is stored
+  silently, as are adverts that arrive while it loads. After that, a live advert from an unknown
+  key, or a reply to a **Discover** sweep, is a discovery. When the first advert carries no name,
+  the trigger waits until the name arrives, so `{{ trigger.name }}` is set.
+
+On MeshCore, **A node is updated** fires only when the name, position, node type, or path changes.
+A re-advert that changes nothing does not fire it. `{{ trigger.changed }}` lists the fields:
+`name`, `latitude`, `longitude`, `advType`, `outPath`, `pathLen`.
+
+MeshCore nodes have no node number, so `{{ node.* }}` is empty for them. Use
+`{{ trigger.publicKey }}` and `{{ trigger.name }}` instead. Cooldowns keyed per node use the public
+key.
+
+### Node triggers — originating packet
+
+Both node triggers expose the packet that caused the event:
+
+| Token | Protocol | Value |
+|-------|----------|-------|
+| `{{ trigger.packetId }}` | Meshtastic | Id of the received packet that caused the event, as an unsigned 32-bit number. |
+| `{{ trigger.packetHash }}` | MeshCore | Hash of the advert that caused the event, in the same 16-hex format as on the message trigger. Use it to link to `https://map.meshcore.com.hr/#/packets/{{ trigger.packetHash }}`. |
+
+Each token is **empty** on the other protocol, and empty whenever no single packet caused the event:
+device syncs, manual edits, merges, and other bookkeeping updates. On MeshCore, path changes and
+**Discover** replies are not adverts, so `{{ trigger.packetHash }}` is empty for them too.
+MeshMonitor never fills these from an earlier packet.
+
+`{{ trigger.packetHash }}` comes from the raw frame the companion logs just before it reports the
+advert. If that frame is missing, the token is empty.
 
 ### In-builder validation
 
