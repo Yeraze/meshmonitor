@@ -3291,6 +3291,7 @@
   "node_details.remote_admin_yes": "Available",
   "node_details.remote_admin_no": "Unavailable",
   "node_details.remote_admin_unknown": "Unknown",
+  "node_details.open_remote_admin": "Open remote admin for {{name}}",
   "node_details.remote_firmware": "Remote Firmware",
   "node_details.has_wifi": "Has WiFi",
   "node_details.has_bluetooth": "Has Bluetooth",

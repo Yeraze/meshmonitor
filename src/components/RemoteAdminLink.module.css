@@ -1,0 +1,31 @@
+/* RemoteAdminLink (#5535) — scoped narrowly per CLAUDE.md; the legacy
+   NodeDetailsBlock.css sheet stays untouched. Wraps the existing
+   `.node-detail-card` markup, so this only adds the link affordance
+   (hover/focus) on top of it via `:global()`. `var(--color-*)` tokens
+   only, no fallback. */
+
+.link {
+  display: block;
+  color: inherit;
+  text-decoration: none;
+  border-radius: var(--radius-lg);
+  cursor: pointer;
+}
+
+.link :global(.node-detail-card) {
+  transition: border-color 0.2s ease, box-shadow 0.15s ease;
+}
+
+.link:hover :global(.node-detail-card) {
+  border-color: var(--color-accent);
+}
+
+.link:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+  border-radius: var(--radius-lg);
+}
+
+.link:focus-visible :global(.node-detail-card) {
+  border-color: var(--color-accent);
+}

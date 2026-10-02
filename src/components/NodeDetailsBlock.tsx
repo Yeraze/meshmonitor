@@ -18,6 +18,7 @@ import { MeshtasticContactShare } from './MeshtasticContactShare';
 import { NodeSkyView } from './gnss/NodeSkyView';
 import { Firmware28SilenceNotice } from './Firmware28SilenceNotice';
 import { ShowCoverageLink } from './Analysis/ShowCoverageLink';
+import { RemoteAdminLink } from './RemoteAdminLink';
 import { formatAircraftSummary } from '../utils/aircraftClassification';
 import { SignFlipNotice } from './SignFlipNotice';
 import FlightMatchLine from './FlightMatchLine';
@@ -45,6 +46,16 @@ interface NodeDetailsBlockProps {
    * needs the app's QueryClient; `canEdit` = the caller's `settings:write`.
    */
   assetTracking?: { canEdit: boolean };
+  /**
+   * Whether the Remote Admin "Available" badge below should be a real,
+   * deep-linkable control into the Admin Commands tab (#5535). Mirrors the
+   * `admin` route's own gate in `App.tsx` (`authStatus?.user?.isAdmin`) —
+   * pass it down from the caller's `useAuth()` rather than consuming
+   * `AuthContext` here, so this block keeps working in tests rendered
+   * without an `AuthProvider`. Defaults to `false` (inert text, unchanged
+   * look) when omitted.
+   */
+  canOpenRemoteAdmin?: boolean;
 }
 
 const MAX_NODE_NOTES_LENGTH = 2000;
@@ -91,7 +102,7 @@ function buildSignalTrendTooltip(
   return parts.join('\n');
 }
 
-const NodeDetailsBlock: React.FC<NodeDetailsBlockProps> = ({ node, timeFormat = '24', dateFormat = 'MM/DD/YYYY', canEditNotes = false, onSaveNotes, sourceId, assetTracking }) => {
+const NodeDetailsBlock: React.FC<NodeDetailsBlockProps> = ({ node, timeFormat = '24', dateFormat = 'MM/DD/YYYY', canEditNotes = false, onSaveNotes, sourceId, assetTracking, canOpenRemoteAdmin = false }) => {
   const { t } = useTranslation();
   const { channels } = useChannels();
   const { currentNodeId } = useDeviceConfig();
@@ -734,8 +745,11 @@ const NodeDetailsBlock: React.FC<NodeDetailsBlockProps> = ({ node, timeFormat = 
               </div>
             );
           } else if (node.hasRemoteAdmin) {
-            // Available
-            return (
+            // Available — clickable shortcut into Admin Commands, pre-selecting
+            // this node, when the caller says the current user may use it (#5535).
+            const nodeId = node.user?.id;
+            const nodeName = node.user?.longName || node.user?.shortName || nodeId || '';
+            const badge = (
               <div className="node-detail-card">
                 <div className="node-detail-label">{t('node_details.remote_admin')}</div>
                 <div className="node-detail-value signal-good">
@@ -743,6 +757,15 @@ const NodeDetailsBlock: React.FC<NodeDetailsBlockProps> = ({ node, timeFormat = 
                   <span className="node-detail-secondary"> ({checkDate})</span>
                 </div>
               </div>
+            );
+            return (
+              <RemoteAdminLink
+                nodeId={nodeId ?? ''}
+                nodeName={nodeName}
+                enabled={canOpenRemoteAdmin && !!nodeId}
+              >
+                {badge}
+              </RemoteAdminLink>
             );
           } else {
             // Unavailable (tested but failed)
