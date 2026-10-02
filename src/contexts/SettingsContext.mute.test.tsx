@@ -101,8 +101,11 @@ function installApi() {
     if (rows[sid]) return { ...rows[sid], sourceFallback: false };
     return { ...(rows[''] ?? { mutedChannels: [], mutedDMs: [] }), sourceFallback: sid !== '' };
   });
+  // The server merges a POST onto the stored row (partial update).
   mockApi.post.mockImplementation(async (_url: string, body: Record<string, unknown>) => {
-    rows[(body.sourceId as string) ?? ''] = { ...body };
+    const { sourceId, ...fields } = body;
+    const sid = (sourceId as string) ?? '';
+    rows[sid] = { ...(rows[sid] ?? {}), ...fields };
     return { success: true };
   });
 }
@@ -143,39 +146,50 @@ describe('SettingsContext — per-source mutes (#5487)', () => {
     expect(mockApi.get).toHaveBeenCalledWith('/api/push/preferences?sourceId=A');
   });
 
-  it('saves a channel mute to the per-source row and keeps the server DM list', async () => {
+  it('saves a channel mute by posting only the channel list, so the server keeps the rest', async () => {
     rows['A'] = { enableWebPush: false, mutedChannels: [], mutedDMs: [{ nodeUuid: '!aaaa', muteUntil: null }] };
     const { ctx } = await renderWith('A', 'meshtastic_tcp');
     await waitFor(() => expect(ctx.current.isDMMuted('!aaaa')).toBe(true));
 
     // A DM mute added elsewhere (another tab) after this provider loaded.
     rows['A'] = { ...rows['A'], mutedDMs: [{ nodeUuid: '!aaaa', muteUntil: null }, { nodeUuid: '!bbbb', muteUntil: null }] };
+    const getsBefore = mockApi.get.mock.calls.length;
 
     await act(async () => {
       await ctx.current.muteChannel(3, null);
     });
+    expect(mockApi.post).toHaveBeenCalledTimes(1);
     const body = mockApi.post.mock.calls[0][1];
-    expect(body.sourceId).toBe('A');
-    expect(body.mutedChannels).toEqual([{ channelId: 3, muteUntil: null }]);
-    expect(body.mutedDMs).toHaveLength(2);
-    expect(body.enableWebPush).toBe(false);
-    expect(body.sourceFallback).toBeUndefined();
+    // Only the list it changes: no DM list, no other settings, no defaults.
+    expect(body).toEqual({ sourceId: 'A', mutedChannels: [{ channelId: 3, muteUntil: null }] });
+    // No client-side read-modify-write.
+    expect(mockApi.get.mock.calls.length).toBe(getsBefore);
+    expect(rows['A'].mutedDMs).toHaveLength(2);
+    expect(rows['A'].enableWebPush).toBe(false);
   });
 
-  it('abandons the save and reverts the toggle when the fresh read fails', async () => {
-    rows['A'] = { enableWebPush: false, appriseUrls: ['mailto://x'], mutedChannels: [], mutedDMs: [] };
+  it('saves a DM mute by posting only the DM list', async () => {
+    rows['A'] = { mutedChannels: [{ channelId: 1, muteUntil: null }], mutedDMs: [] };
+    const { ctx } = await renderWith('A', 'meshtastic_tcp');
+    await waitFor(() => expect(ctx.current.isChannelMuted(1)).toBe(true));
+
+    await act(async () => {
+      await ctx.current.muteDM('!cccc', null);
+    });
+    const body = mockApi.post.mock.calls[0][1];
+    expect(body).toEqual({ sourceId: 'A', mutedDMs: [{ nodeUuid: '!cccc', muteUntil: null }] });
+    expect(rows['A'].mutedChannels).toEqual([{ channelId: 1, muteUntil: null }]);
+  });
+
+  it('reverts the toggle when the save fails', async () => {
+    rows['A'] = { mutedChannels: [], mutedDMs: [] };
     const { ctx } = await renderWith('A', 'meshtastic_tcp');
     await waitFor(() => expect(mockApi.get).toHaveBeenCalled());
 
-    // The pre-save read fails (e.g. a transient 500 or an expired session).
-    mockApi.get.mockRejectedValueOnce(new Error('500'));
+    mockApi.post.mockRejectedValueOnce(new Error('500'));
     await act(async () => {
       await ctx.current.muteChannel(3, null);
     });
-
-    // Nothing was posted, so the user's other settings can't be reset to defaults.
-    expect(mockApi.post).not.toHaveBeenCalled();
-    expect(rows['A'].appriseUrls).toEqual(['mailto://x']);
     expect(ctx.current.isChannelMuted(3)).toBe(false);
   });
 
@@ -207,7 +221,8 @@ describe('SettingsContext — per-source mutes (#5487)', () => {
     });
     const body = mockApi.post.mock.calls[0][1];
     expect(body.sourceId).toBe('MC');
-    expect(body.mutedChannels).toEqual([{ channelId: 4, muteUntil: null }]);
-    expect(body.mutedDMs).toEqual([]);
+    // The server, not the client, keeps the '' row's Meshtastic DM mutes off a
+    // MeshCore source's first row; the client sends only the channel list.
+    expect(body).toEqual({ sourceId: 'MC', mutedChannels: [{ channelId: 4, muteUntil: null }] });
   });
 });

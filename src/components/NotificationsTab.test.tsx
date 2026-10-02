@@ -9,7 +9,7 @@
  * so those controls must be hidden when sourceType === 'meshcore'.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 
 vi.mock('react-i18next', async () => {
   const { createReactI18nextMock } = await import('../test/mockI18n');
@@ -57,7 +57,16 @@ vi.mock('../services/api', () => ({
       }
       if (url.startsWith('/api/channels')) return Promise.resolve([]);
       if (url.startsWith('/api/nodes')) return Promise.resolve([]);
-      if (url.startsWith('/api/push/preferences')) return Promise.resolve({ ...SAVED_PREFS });
+      // The server row also carries mutes set from the Channels views; this
+      // tab must never post them back (it would revert a mute set after load).
+      if (url.startsWith('/api/push/preferences')) {
+        return Promise.resolve({
+          ...SAVED_PREFS,
+          mutedChannels: [{ channelId: 2, muteUntil: null }],
+          mutedDMs: [{ nodeUuid: '!aaaa', muteUntil: null }],
+          sourceFallback: false,
+        });
+      }
       return Promise.resolve({});
     }),
     post: vi.fn().mockResolvedValue({}),
@@ -66,6 +75,7 @@ vi.mock('../services/api', () => ({
 }));
 
 import NotificationsTab from './NotificationsTab';
+import api from '../services/api';
 import { SourceProvider } from '../contexts/SourceContext';
 
 function renderWithSource(sourceType: string) {
@@ -125,5 +135,56 @@ describe('NotificationsTab — source-type gating', () => {
     expect(document.getElementById('lowBatteryVoltageThreshold')).toBeNull();
     expect(screen.queryByText(/notifications\.traceroutes/)).not.toBeNull();
     expect(screen.queryByText(/notifications\.keyword_filtering/)).not.toBeNull();
+  });
+});
+
+describe('NotificationsTab — saves send only the fields this tab edits', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    window.matchMedia = vi.fn().mockReturnValue({
+      matches: false,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    }) as unknown as typeof window.matchMedia;
+  });
+
+  const prefPosts = () =>
+    (api.post as ReturnType<typeof vi.fn>).mock.calls.filter(([url]) => url === '/api/push/preferences');
+
+  it('Save preferences does not send mute lists (or the GET-only sourceFallback flag)', async () => {
+    renderWithSource('meshtastic_tcp');
+    await waitFor(() => {
+      expect(document.getElementById('lowBatteryThreshold')).not.toBeNull();
+    });
+
+    fireEvent.click(screen.getByText(/notifications\.save_preferences/));
+
+    await waitFor(() => expect(prefPosts()).toHaveLength(1));
+    const body = prefPosts()[0][1] as Record<string, unknown>;
+    expect(body).not.toHaveProperty('mutedChannels');
+    expect(body).not.toHaveProperty('mutedDMs');
+    expect(body).not.toHaveProperty('sourceFallback');
+    expect(body.sourceId).toBe('src-1');
+    // The fields it does edit still go up.
+    expect(body).toMatchObject({ enableWebPush: false, notifyOnLowBattery: true, lowBatteryThreshold: 20 });
+  });
+
+  it('Save Apprise config sends only the URL list', async () => {
+    // The Apprise section renders only when Apprise is enabled on the row.
+    const defaultGet = (api.get as ReturnType<typeof vi.fn>).getMockImplementation()!;
+    (api.get as ReturnType<typeof vi.fn>).mockImplementation((url: string) =>
+      url.startsWith('/api/push/preferences')
+        ? Promise.resolve({ ...SAVED_PREFS, enableApprise: true, mutedChannels: [{ channelId: 2, muteUntil: null }] })
+        : defaultGet(url),
+    );
+    renderWithSource('meshtastic_tcp');
+    await waitFor(() => {
+      expect(document.getElementById('lowBatteryThreshold')).not.toBeNull();
+    });
+    fireEvent.click(screen.getByText(/notifications\.save_config/));
+
+    await waitFor(() => expect(prefPosts()).toHaveLength(1));
+    expect(prefPosts()[0][1]).toEqual({ appriseUrls: [], sourceId: 'src-1' });
+    (api.get as ReturnType<typeof vi.fn>).mockImplementation(defaultGet);
   });
 });
