@@ -1,291 +1,266 @@
 /**
- * Message Search API Tests
+ * GET /api/v1/sources/:sourceId/messages/search
  *
- * Tests the GET /api/v1/sources/test-source/messages/search endpoint
+ * Shares the web search's scoping (#5517): per-source and per-channel in SQL,
+ * dates in epoch ms, and MeshCore history read from `meshcore_messages`
+ * whether or not the source is connected.
+ *
+ * Real harness + real API tokens: the permission SQL, the v1 token auth and
+ * the repository query are all the real thing.
  */
-import { describe, it, expect, beforeEach, vi } from 'vitest';
-import request from 'supertest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import express from 'express';
+import request from 'supertest';
+import { createRouteTestApp, type RouteTestHarness } from '../../test-helpers/routeTestApp.js';
+import { CHANNEL_DB_OFFSET } from '../../constants/meshtastic.js';
 
-const VALID_TEST_TOKEN = 'mm_v1_test_token_12345678901234567890';
-const TEST_USER_ID = 1;
-
-const testUser = {
-  id: TEST_USER_ID,
-  username: 'test-api-user',
-  isActive: true,
-  isAdmin: true,
-  passwordHash: 'hash',
-  salt: 'salt',
-  createdAt: Date.now()
-};
-
-const searchResults = [
-  {
-    id: 'msg-1', fromNodeId: '!abcd0001', fromNodeNum: 2882400001,
-    toNodeId: '!abcd0002', toNodeNum: 2882400002,
-    text: 'hello world', channel: 0, timestamp: 1709000000,
-    rxTime: 1709000001, createdAt: 1709000001, sourceId: 'test-source'
+// No managers registered: MeshCore search must not depend on a live manager.
+vi.mock('../../sourceManagerRegistry.js', () => ({
+  sourceManagerRegistry: {
+    getManager: vi.fn(() => null),
+    getAllManagers: vi.fn(() => []),
+    getPrimaryMeshtasticSourceId: vi.fn(() => null),
+    startManager: vi.fn(),
+    stopManager: vi.fn(),
   },
-  {
-    id: 'msg-2', fromNodeId: '!abcd0002', fromNodeNum: 2882400002,
-    toNodeId: '!abcd0001', toNodeNum: 2882400001,
-    text: 'hello back', channel: 0, timestamp: 1709000100,
-    rxTime: 1709000101, createdAt: 1709000101, sourceId: 'test-source'
-  }
-];
-
-vi.mock('../../../services/database.js', () => ({
-  default: {
-    db: null,
-    permissionModel: {
-      check: vi.fn(() => true)
-    },
-    // Async methods required by authMiddleware
-    validateApiTokenAsync: vi.fn(async (token: string) => {
-      if (token === VALID_TEST_TOKEN) {
-        return testUser;
-      }
-      return null;
-    }),
-    findUserByIdAsync: vi.fn(async (id: number) => {
-      if (id === TEST_USER_ID) return testUser;
-      return null;
-    }),
-    findUserByUsernameAsync: vi.fn().mockResolvedValue(null),
-    checkPermissionAsync: vi.fn().mockResolvedValue(true),
-    updateApiTokenLastUsedAsync: vi.fn(async () => {}),
-    getUserPermissionSetAsync: vi.fn(async () => ({
-      nodes: { read: true, write: false },
-      messages: { read: true, write: true },
-      channel_0: { viewOnMap: true, read: true, write: true },
-      channel_1: { viewOnMap: true, read: true, write: true },
-      channel_2: { viewOnMap: true, read: true, write: true },
-      channel_3: { viewOnMap: true, read: true, write: true },
-      channel_4: { viewOnMap: true, read: true, write: true },
-      channel_5: { viewOnMap: true, read: true, write: true },
-      channel_6: { viewOnMap: true, read: true, write: true },
-      channel_7: { viewOnMap: true, read: true, write: true }
-    })),
-    auditLog: vi.fn(),
-    auditLogAsync: vi.fn(async () => {}),
-    getSetting: vi.fn((key: string) => {
-      if (key === 'localNodeNum') return '2715451348';
-      return null;
-    }),
-    settings: {
-      getSetting: vi.fn(async (key: string) => {
-        if (key === 'localNodeNum') return '2715451348';
-        return null;
-      }),
-    },
-    // Messages methods
-    searchMessagesAsync: vi.fn().mockResolvedValue({ messages: searchResults, total: 2 }),
-    messages: {
-      getMessages: vi.fn().mockResolvedValue([]),
-      getMessagesByChannel: vi.fn().mockResolvedValue([]),
-      getMessagesAfterTimestamp: vi.fn().mockResolvedValue([]),
-    },
-    // Sources — attachSource resolves the :sourceId path param (incl. `default`).
-    sources: {
-      getAllSources: vi.fn(async () => [
-        { id: 'test-source', name: 'Test Source', type: 'meshtastic_tcp', enabled: true, createdAt: 1 },
-      ]),
-      getSource: vi.fn(async (id: string) =>
-        typeof id === 'string' && id.length > 0
-          ? { id, name: id, type: 'meshtastic_tcp', enabled: true, createdAt: 1 }
-          : null
-      ),
-    },
-    drizzleDbType: 'sqlite'
-  }
-}));
-
-vi.mock('../../meshtasticManager.js', () => ({
-  default: { sendMessage: vi.fn(), getConnectionStatus: vi.fn().mockReturnValue('connected') }
-}));
-
-vi.mock('../../meshcoreManager.js', () => ({
-  default: { getRecentMessages: vi.fn().mockReturnValue([]), isConnected: vi.fn().mockReturnValue(false) }
 }));
 
 vi.mock('../../middleware/rateLimiters.js', () => ({
-  messageLimiter: (_req: any, _res: any, next: any) => next(),
-  translateLimiter: (_req: any, _res: any, next: any) => next(),
+  messageLimiter: (_req: unknown, _res: unknown, next: () => void) => next(),
+  translateLimiter: (_req: unknown, _res: unknown, next: () => void) => next(),
 }));
 
-vi.mock('../../messageQueueService.js', () => ({
-  messageQueueService: { queueMessage: vi.fn(), enqueue: vi.fn() }
-}));
+import v1Router from './index.js';
 
-const { default: databaseService } = await import('../../../services/database.js');
+const MC_SOURCE = 'rt-v1-search-mc';
+const T0 = 1_760_000_000_000;
+const PEER = { nodeNum: 0x0c000003, nodeId: '!0c000003' };
 
-describe('GET /api/v1/sources/test-source/messages/search', () => {
-  let app: express.Express;
+describe('GET /api/v1/sources/:sourceId/messages/search', () => {
+  let harness: RouteTestHarness;
+  let seq = 0;
+
+  const seed = async (sourceId: string, channel: number, text: string, time = T0 + ++seq * 1000) => {
+    await harness.db.messages.insertMessage(
+      {
+        id: `${sourceId}_${PEER.nodeNum}_${7000 + ++seq}`,
+        fromNodeNum: PEER.nodeNum,
+        toNodeNum: 0xffffffff,
+        fromNodeId: PEER.nodeId,
+        toNodeId: '!ffffffff',
+        text,
+        channel,
+        portnum: 1,
+        timestamp: time,
+        rxTime: time,
+        createdAt: time,
+      } as never,
+      sourceId,
+    );
+  };
+
+  const seedMc = async (text: string, extra: Record<string, unknown> = {}) => {
+    seq++;
+    await harness.db.meshcore.insertMessage(
+      {
+        id: `v1mcs-${seq}`,
+        fromPublicKey: 'channel-0',
+        fromName: 'Bob',
+        toPublicKey: null,
+        text,
+        timestamp: T0 + seq * 1000,
+        messageType: 'text',
+        sourceId: MC_SOURCE,
+        createdAt: T0 + seq * 1000,
+        ...extra,
+      } as never,
+      MC_SOURCE,
+    );
+  };
+
+  const texts = (body: { data: Array<{ text: string }> }) => body.data.map((m) => m.text).sort();
+
+  const search = async (user: RouteTestHarness['admin'], sourceId: string, qs: string) => {
+    const token = await harness.tokenFor(user);
+    return request(harness.app)
+      .get(`/api/v1/sources/${sourceId}/messages/search?${qs}`)
+      .set('Authorization', `Bearer ${token}`);
+  };
 
   beforeEach(async () => {
-    vi.clearAllMocks();
-    // Re-set mock implementations since clearAllMocks resets them
-    (databaseService.searchMessagesAsync as any).mockResolvedValue({ messages: searchResults, total: 2 });
-    (databaseService as any).validateApiTokenAsync.mockImplementation(async (token: string) => {
-      if (token === VALID_TEST_TOKEN) return testUser;
-      return null;
+    seq = 0;
+    harness = await createRouteTestApp({
+      mount: (app: express.Express) => app.use('/api/v1', v1Router),
+      useOptionalAuth: false,
     });
-    (databaseService.findUserByIdAsync as any).mockImplementation(async (id: number) => {
-      if (id === TEST_USER_ID) return testUser;
-      return null;
+    await harness.db.sources.deleteSource(MC_SOURCE).catch(() => {});
+    await harness.db.sources.createSource({ id: MC_SOURCE, name: 'MC', type: 'meshcore', config: {}, enabled: true });
+  });
+
+  afterEach(async () => {
+    await harness.db.messages.deleteAllMessages(harness.sourceA);
+    await harness.db.messages.deleteAllMessages(harness.sourceB);
+    await harness.db.meshcore.deleteAllMessagesForSource(MC_SOURCE);
+    await harness.db.sources.deleteSource(MC_SOURCE).catch(() => {});
+    await harness.cleanup();
+  });
+
+  describe('request validation and auth', () => {
+    it('requires a token', async () => {
+      const res = await request(harness.app).get(`/api/v1/sources/${harness.sourceA}/messages/search?q=hi`);
+      expect(res.status).toBe(401);
     });
-    (databaseService.getUserPermissionSetAsync as any).mockResolvedValue({
-      nodes: { read: true, write: false },
-      messages: { read: true, write: true },
-      channel_0: { viewOnMap: true, read: true, write: true },
-      channel_1: { viewOnMap: true, read: true, write: true },
-      channel_2: { viewOnMap: true, read: true, write: true },
-      channel_3: { viewOnMap: true, read: true, write: true },
-      channel_4: { viewOnMap: true, read: true, write: true },
-      channel_5: { viewOnMap: true, read: true, write: true },
-      channel_6: { viewOnMap: true, read: true, write: true },
-      channel_7: { viewOnMap: true, read: true, write: true }
+
+    it('rejects an invalid token', async () => {
+      const res = await request(harness.app)
+        .get(`/api/v1/sources/${harness.sourceA}/messages/search?q=hi`)
+        .set('Authorization', 'Bearer mm_v1_not_a_real_token_000000000000');
+      expect(res.status).toBe(401);
     });
 
-    app = express();
-    const { default: v1Router } = await import('./index.js');
-    app.use('/api/v1', v1Router);
+    it.each(['', 'q=', 'q=%20%20'])('rejects a missing or blank q (%s)', async (qs) => {
+      const res = await search(harness.admin, harness.sourceA, qs);
+      expect(res.status).toBe(400);
+      expect(res.body.success).toBe(false);
+    });
+
+    it('rejects an unknown scope', async () => {
+      const res = await search(harness.admin, harness.sourceA, 'q=hello&scope=everything');
+      expect(res.status).toBe(400);
+      expect(res.body.message).toMatch(/scope/);
+    });
+
+    it('refuses a source the token was not granted', async () => {
+      await seed(harness.sourceB, 0, 'hello b');
+      await harness.grant(harness.limited.id, 'messages', 'read', harness.sourceA);
+      const res = await search(harness.limited, harness.sourceB, 'q=hello');
+      expect(res.status).toBe(403);
+    });
   });
 
-  it('should require q parameter', async () => {
-    const res = await request(app)
-      .get('/api/v1/sources/test-source/messages/search')
-      .set('Authorization', `Bearer ${VALID_TEST_TOKEN}`);
-    expect(res.status).toBe(400);
-    expect(res.body.success).toBe(false);
+  describe('Meshtastic sources', () => {
+    it('returns matches with the documented envelope', async () => {
+      await seed(harness.sourceA, 0, 'hello world');
+      await seed(harness.sourceA, 0, 'hello back');
+      const res = await search(harness.admin, harness.sourceA, 'q=hello');
+      expect(res.status).toBe(200);
+      expect(res.body).toMatchObject({ success: true, count: 2, total: 2 });
+      expect(texts(res.body)).toEqual(['hello back', 'hello world']);
+      expect(res.body.data.every((m: { source: string }) => m.source === 'standard')).toBe(true);
+    });
+
+    it('scopes to the path source, so other sources never appear', async () => {
+      for (let i = 0; i < 3; i++) await seed(harness.sourceA, 0, `alpha ${i}`);
+      for (let i = 0; i < 4; i++) await seed(harness.sourceB, 0, `alpha b${i}`);
+      const res = await search(harness.admin, harness.sourceA, 'q=alpha&limit=2');
+      expect(res.body.total).toBe(3);
+      expect(res.body.count).toBe(2);
+      expect(res.body.data.every((m: { sourceId: string }) => m.sourceId === harness.sourceA)).toBe(true);
+    });
+
+    it('treats startDate/endDate as milliseconds', async () => {
+      await seed(harness.sourceA, 0, 'net check-in', T0);
+      const hit = await search(harness.admin, harness.sourceA, `q=net&startDate=${T0 - 60_000}&endDate=${T0 + 60_000}`);
+      expect(texts(hit.body)).toEqual(['net check-in']);
+      const secs = await search(
+        harness.admin,
+        harness.sourceA,
+        `q=net&startDate=${Math.floor((T0 - 60_000) / 1000)}&endDate=${Math.floor((T0 + 60_000) / 1000)}`,
+      );
+      expect(secs.body.total).toBe(0);
+    });
+
+    it('hides a channel the token lacks channel_N:read on', async () => {
+      await seed(harness.sourceA, 0, 'hello ch0');
+      await seed(harness.sourceA, 2, 'hello ch2');
+      await harness.grant(harness.limited.id, 'messages', 'read', harness.sourceA);
+      await harness.grant(harness.limited.id, 'channel_0', 'read', harness.sourceA);
+      const res = await search(harness.limited, harness.sourceA, 'q=hello');
+      expect(res.status).toBe(200);
+      expect(texts(res.body)).toEqual(['hello ch0']);
+      expect(res.body.total).toBe(1);
+
+      // Asking for the hidden channel directly still returns nothing.
+      const asked = await search(harness.limited, harness.sourceA, 'q=hello&channels=2');
+      expect(asked.body.total).toBe(0);
+    });
+
+    it('honours the channels, fromNodeId, caseSensitive and scope filters', async () => {
+      await seed(harness.sourceA, 0, 'Hello zero');
+      await seed(harness.sourceA, 1, 'hello one');
+      expect(texts((await search(harness.admin, harness.sourceA, 'q=hello&channels=1')).body)).toEqual(['hello one']);
+      expect(texts((await search(harness.admin, harness.sourceA, 'q=Hello&caseSensitive=true')).body)).toEqual(['Hello zero']);
+      expect((await search(harness.admin, harness.sourceA, 'q=hello')).body.total).toBe(2);
+      expect((await search(harness.admin, harness.sourceA, 'q=hello&fromNodeId=!deadbeef')).body.total).toBe(0);
+      expect((await search(harness.admin, harness.sourceA, `q=hello&fromNodeId=${encodeURIComponent(PEER.nodeId)}`)).body.total).toBe(2);
+      expect((await search(harness.admin, harness.sourceA, 'q=hello&scope=dms')).body.total).toBe(0);
+      expect((await search(harness.admin, harness.sourceA, 'q=hello&scope=meshcore')).body.total).toBe(0);
+    });
+
+    it('pages with limit and offset', async () => {
+      await seed(harness.sourceA, 0, 'page one');
+      await seed(harness.sourceA, 0, 'page two');
+      await seed(harness.sourceA, 0, 'page three');
+      const capped = await search(harness.admin, harness.sourceA, 'q=page&limit=500');
+      expect(capped.body.count).toBe(3);
+      const second = await search(harness.admin, harness.sourceA, 'q=page&limit=2&offset=2');
+      expect(second.body.total).toBe(3);
+      expect(second.body.count).toBe(1);
+    });
+
+    it('lets a non-admin search a virtual channel they can read', async () => {
+      const vcId = await harness.db.channelDatabase.createAsync({
+        name: `V1 Search VC ${Date.now()}`,
+        psk: Buffer.alloc(16, 7).toString('base64'),
+        pskLength: 16,
+        isEnabled: true,
+      });
+      try {
+        await seed(harness.sourceA, CHANNEL_DB_OFFSET + vcId, 'hello virtual');
+        await harness.grant(harness.limited.id, 'messages', 'read', harness.sourceA);
+        await harness.db.channelDatabase.setPermissionAsync({
+          userId: harness.limited.id, channelDatabaseId: vcId, canRead: true, canViewOnMap: false,
+        });
+        expect(texts((await search(harness.limited, harness.sourceA, 'q=hello')).body)).toEqual(['hello virtual']);
+      } finally {
+        await harness.db.channelDatabase.deletePermissionAsync(harness.limited.id, vcId).catch(() => {});
+        await harness.db.channelDatabase.deleteAsync(vcId).catch(() => {});
+      }
+    });
   });
 
-  it('should reject empty q parameter', async () => {
-    const res = await request(app)
-      .get('/api/v1/sources/test-source/messages/search?q=')
-      .set('Authorization', `Bearer ${VALID_TEST_TOKEN}`);
-    expect(res.status).toBe(400);
-    expect(res.body.success).toBe(false);
-  });
+  describe('MeshCore sources', () => {
+    it('finds stored history with no manager connected', async () => {
+      await seedMc('meshcore hello');
+      await seedMc('meshcore dm hello', { fromPublicKey: 'bb'.repeat(32), fromName: null, toPublicKey: 'aa'.repeat(32) });
+      const res = await search(harness.admin, MC_SOURCE, 'q=hello');
+      expect(res.status).toBe(200);
+      expect(texts(res.body)).toEqual(['meshcore dm hello', 'meshcore hello']);
+      expect(res.body.total).toBe(2);
+      expect(res.body.data.every((m: { source: string }) => m.source === 'meshcore')).toBe(true);
+    });
 
-  it('should reject whitespace-only q parameter', async () => {
-    const res = await request(app)
-      .get('/api/v1/sources/test-source/messages/search?q=%20%20')
-      .set('Authorization', `Bearer ${VALID_TEST_TOKEN}`);
-    expect(res.status).toBe(400);
-    expect(res.body.success).toBe(false);
-  });
+    it('finds stored history for a non-admin token with messages:read', async () => {
+      await seedMc('meshcore hello');
+      await harness.grant(harness.limited.id, 'messages', 'read', MC_SOURCE);
+      const res = await search(harness.limited, MC_SOURCE, 'q=hello');
+      expect(texts(res.body)).toEqual(['meshcore hello']);
+      // The channels filter narrows MeshCore results too.
+      expect((await search(harness.limited, MC_SOURCE, 'q=hello&channels=1')).body.total).toBe(0);
+    });
 
-  it('should return search results', async () => {
-    const res = await request(app)
-      .get('/api/v1/sources/test-source/messages/search?q=hello')
-      .set('Authorization', `Bearer ${VALID_TEST_TOKEN}`);
-    expect(res.status).toBe(200);
-    expect(res.body.success).toBe(true);
-    expect(res.body.data).toHaveLength(2);
-    expect(res.body.total).toBe(2);
-    expect(res.body.count).toBe(2);
-  });
+    it('refuses an ungranted MeshCore source', async () => {
+      await seedMc('meshcore hello');
+      await harness.grant(harness.limited.id, 'messages', 'read', harness.sourceA);
+      const res = await search(harness.limited, MC_SOURCE, 'q=hello');
+      expect(res.status).toBe(403);
+    });
 
-  it('should add source field to results', async () => {
-    const res = await request(app)
-      .get('/api/v1/sources/test-source/messages/search?q=hello')
-      .set('Authorization', `Bearer ${VALID_TEST_TOKEN}`);
-    expect(res.status).toBe(200);
-    expect(res.body.data[0].source).toBe('standard');
-    expect(res.body.data[1].source).toBe('standard');
-  });
-
-  it('should pass caseSensitive option', async () => {
-    await request(app)
-      .get('/api/v1/sources/test-source/messages/search?q=hello&caseSensitive=true')
-      .set('Authorization', `Bearer ${VALID_TEST_TOKEN}`);
-    expect(databaseService.searchMessagesAsync).toHaveBeenCalledWith(
-      expect.objectContaining({ caseSensitive: true })
-    );
-  });
-
-  it('should default caseSensitive to false', async () => {
-    await request(app)
-      .get('/api/v1/sources/test-source/messages/search?q=hello')
-      .set('Authorization', `Bearer ${VALID_TEST_TOKEN}`);
-    expect(databaseService.searchMessagesAsync).toHaveBeenCalledWith(
-      expect.objectContaining({ caseSensitive: false })
-    );
-  });
-
-  it('should pass scope filter', async () => {
-    await request(app)
-      .get('/api/v1/sources/test-source/messages/search?q=hello&scope=channels')
-      .set('Authorization', `Bearer ${VALID_TEST_TOKEN}`);
-    expect(databaseService.searchMessagesAsync).toHaveBeenCalledWith(
-      expect.objectContaining({ scope: 'channels' })
-    );
-  });
-
-  it('should pass date range filters', async () => {
-    await request(app)
-      .get('/api/v1/sources/test-source/messages/search?q=hello&startDate=1709000000&endDate=1709100000')
-      .set('Authorization', `Bearer ${VALID_TEST_TOKEN}`);
-    expect(databaseService.searchMessagesAsync).toHaveBeenCalledWith(
-      expect.objectContaining({ startDate: 1709000000, endDate: 1709100000 })
-    );
-  });
-
-  it('should pass channel filter', async () => {
-    await request(app)
-      .get('/api/v1/sources/test-source/messages/search?q=hello&channels=0,1')
-      .set('Authorization', `Bearer ${VALID_TEST_TOKEN}`);
-    expect(databaseService.searchMessagesAsync).toHaveBeenCalledWith(
-      expect.objectContaining({ channels: expect.arrayContaining([0, 1]) })
-    );
-  });
-
-  it('should pass fromNodeId filter', async () => {
-    await request(app)
-      .get('/api/v1/sources/test-source/messages/search?q=hello&fromNodeId=!abcd0001')
-      .set('Authorization', `Bearer ${VALID_TEST_TOKEN}`);
-    expect(databaseService.searchMessagesAsync).toHaveBeenCalledWith(
-      expect.objectContaining({ fromNodeId: '!abcd0001' })
-    );
-  });
-
-  it('should respect limit parameter with max of 100', async () => {
-    await request(app)
-      .get('/api/v1/sources/test-source/messages/search?q=hello&limit=200')
-      .set('Authorization', `Bearer ${VALID_TEST_TOKEN}`);
-    expect(databaseService.searchMessagesAsync).toHaveBeenCalledWith(
-      expect.objectContaining({ limit: 100 })
-    );
-  });
-
-  it('should pass offset parameter', async () => {
-    await request(app)
-      .get('/api/v1/sources/test-source/messages/search?q=hello&offset=10')
-      .set('Authorization', `Bearer ${VALID_TEST_TOKEN}`);
-    expect(databaseService.searchMessagesAsync).toHaveBeenCalledWith(
-      expect.objectContaining({ offset: 10 })
-    );
-  });
-
-  it('should not search standard messages when scope is meshcore', async () => {
-    await request(app)
-      .get('/api/v1/sources/test-source/messages/search?q=hello&scope=meshcore')
-      .set('Authorization', `Bearer ${VALID_TEST_TOKEN}`);
-    expect(databaseService.searchMessagesAsync).not.toHaveBeenCalled();
-  });
-
-  it('should require authentication', async () => {
-    const res = await request(app)
-      .get('/api/v1/sources/test-source/messages/search?q=hello');
-    expect(res.status).toBe(401);
-  });
-
-  it('should reject invalid token', async () => {
-    const res = await request(app)
-      .get('/api/v1/sources/test-source/messages/search?q=hello')
-      .set('Authorization', 'Bearer invalid_token_value_here_12345');
-    expect(res.status).toBe(401);
+    it('excludes MeshCore rows from a source the path does not name', async () => {
+      await seedMc('meshcore hello');
+      await seed(harness.sourceA, 0, 'mesh hello');
+      const res = await search(harness.admin, harness.sourceA, 'q=hello');
+      expect(texts(res.body)).toEqual(['mesh hello']);
+    });
   });
 });
