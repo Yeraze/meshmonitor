@@ -11,11 +11,23 @@ declare module 'leaflet' {
   interface MaplibreGLOptions {
     style: unknown;
     attribution?: string;
+    /** Zoom ceiling. Read by Leaflet's zoom-limit table once the layer is
+     *  registered there (see below); the adapter also forwards it to
+     *  `new maplibregl.Map(options)`. */
+    maxZoom?: number;
     /** Forwarded by the adapter to `new maplibregl.Map(options)`. */
     transformRequest?: (url: string, resourceType?: string) => { url: string } | undefined;
   }
   function maplibreGL(options: MaplibreGLOptions): L.Layer;
 }
+
+/** Leaflet's zoom-limit table. Private in Leaflet 1.x but stable: `GridLayer`
+ *  calls these from `beforeAdd`/`onRemove`, which is how a raster `TileLayer`
+ *  gives the map its `maxZoom`. */
+type ZoomLimitMap = L.Map & {
+  _addZoomLimit?: (layer: L.Layer) => void;
+  _removeZoomLimit?: (layer: L.Layer) => void;
+};
 
 interface VectorTileLayerProps {
   url: string;
@@ -326,13 +338,22 @@ export function VectorTileLayer({ url, attribution, maxZoom = 14, styleJson, sty
       vectorLayer = L.maplibreGL({
         style: style,
         attribution: attribution,
+        // No `minZoom`: the adapter forwards options to maplibregl.Map, which
+        // runs one zoom level below Leaflet. A floor of 0 there would clamp
+        // the GL canvas at Leaflet zoom 0 (MapLibre's own floor is -2).
+        maxZoom,
         // Appends the Carto key to Carto-CDN requests only; every other host
         // (self-hosted tiles, same-origin styles) passes through untouched.
         transformRequest: createCartoTransformRequest(cartoApiKey),
       });
 
-      // Add to map
+      // Add to map, then register its zoom bounds. The MapLibre adapter
+      // extends plain `L.Layer`, not `GridLayer`, so Leaflet never reads its
+      // `maxZoom` on its own. Without this the map has no zoom ceiling at all
+      // (`getMaxZoom()` is Infinity), and leaflet.markercluster throws
+      // "Map has no maxZoom specified" (#5516).
       vectorLayer.addTo(map);
+      (map as ZoomLimitMap)._addZoomLimit?.(vectorLayer);
     } catch (err) {
       console.error('Failed to create MapLibre GL layer:', err);
       return;
@@ -343,6 +364,7 @@ export function VectorTileLayer({ url, attribution, maxZoom = 14, styleJson, sty
       try {
         map.removeLayer(vectorLayer);
       } catch { /* layer may already be removed */ }
+      (map as ZoomLimitMap)._removeZoomLimit?.(vectorLayer);
     };
   }, [map, url, attribution, maxZoom, styleJson, styleUrl, cartoApiKey]);
 
