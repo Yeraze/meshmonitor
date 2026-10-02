@@ -13,6 +13,8 @@
 import databaseService from '../../../services/database.js';
 import { isEmoji } from '../../../utils/text.js';
 import { getTranslationCache } from './translationCache.js';
+import { computeTranslationCacheKey, normalizeTargetLang } from './cacheKey.js';
+import { logger } from '../../../utils/logger.js';
 import { STANDARD_LANGUAGES, type TranslationLanguageOption } from '../../../types/translation.js';
 import {
   getTranslationProvider,
@@ -29,6 +31,26 @@ export interface TranslationRequest {
 }
 
 export type TranslationOptions = TranslationRequest;
+
+export interface TranslateCallOptions {
+  /**
+   * Read and write the shared text cache. Off by default: only translations
+   * of a STORED message (`translateMessage`) use the cache. Free text (the
+   * composer, `/api/v1/translate`) bypasses it in both directions, so a
+   * client can never probe whether a phrase was translated before (#5520 —
+   * the cache is server-internal), and composer drafts never enter it.
+   */
+  useCache?: boolean;
+}
+
+export interface TranslateMessageRequest {
+  sourceId: string;
+  messageId: string;
+  /** The STORED message text, loaded server-side — never client-supplied. */
+  text: string;
+  targetLang?: string;
+  sourceLang?: string;
+}
 
 export interface TestTranslationConfig {
   provider: TranslationProvider;
@@ -135,7 +157,7 @@ export class TranslationService {
    * Runtime translation for chat messages.
    * Enforces DB enablement gating, handles skips, checks and populates cache.
    */
-  async translate(request: TranslationRequest): Promise<TranslationResult> {
+  async translate(request: TranslationRequest, options: TranslateCallOptions = {}): Promise<TranslationResult> {
     const settings = await this.getSettings();
 
     if (!settings.enabled) {
@@ -176,6 +198,7 @@ export class TranslationService {
     const sourceLang = (request.sourceLang || 'auto').trim();
     const provider = (settings.provider || 'libretranslate') as TranslationProvider;
 
+    const useCache = options.useCache === true;
     const cache = getTranslationCache();
     const cacheKey = {
       text,
@@ -183,7 +206,14 @@ export class TranslationService {
       sourceLanguage: sourceLang,
     };
 
-    const cached = await cache.get(cacheKey);
+    let cached = null;
+    if (useCache) {
+      try {
+        cached = await cache.get(cacheKey);
+      } catch (err) {
+        logger.warn('Translation cache lookup failed; translating without it:', err);
+      }
+    }
     if (cached) {
       return {
         translatedText: cached.translatedText,
@@ -205,14 +235,53 @@ export class TranslationService {
 
     const result = await this.executeTranslation(text, sourceLang, targetLang, provider, providerConfig);
 
-    await cache.set(cacheKey, {
-      translatedText: result.translatedText,
-      detectedSourceLanguage: result.detectedSourceLanguage,
-      sourceText: text,
-      targetLanguage: targetLang,
-      provider,
-      cachedAt: Date.now(),
-    });
+    if (useCache && result.translatedText) {
+      try {
+        await cache.set(cacheKey, {
+          translatedText: result.translatedText,
+          detectedSourceLanguage: result.detectedSourceLanguage,
+          sourceText: text,
+          targetLanguage: targetLang,
+          provider,
+          cachedAt: Date.now(),
+        });
+      } catch (err) {
+        logger.warn('Failed to store translation in cache:', err);
+      }
+    }
+
+    return result;
+  }
+
+  /**
+   * Translate a stored message and link it to the shared cache entry so any
+   * viewer who can read the message sees the translation without another
+   * provider call (#5520). The caller has already loaded `text` from the DB
+   * and checked the user may read the message. Skipped results
+   * (non-conversational, empty) and provider errors are neither cached nor
+   * linked.
+   */
+  async translateMessage(request: TranslateMessageRequest): Promise<TranslationResult> {
+    const result = await this.translate(
+      { text: request.text, targetLang: request.targetLang, sourceLang: request.sourceLang },
+      { useCache: true },
+    );
+
+    if (!result.skipped && result.translatedText) {
+      const sourceLang = (request.sourceLang || 'auto').trim();
+      const key = computeTranslationCacheKey(request.text, result.targetLanguage, sourceLang);
+      try {
+        await databaseService.translations.linkMessage(
+          request.sourceId,
+          request.messageId,
+          normalizeTargetLang(result.targetLanguage),
+          key,
+        );
+      } catch (err) {
+        // The user still gets their translation; it just isn't shared.
+        logger.warn(`Failed to link translation to message ${request.messageId}:`, err);
+      }
+    }
 
     return result;
   }
