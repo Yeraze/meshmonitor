@@ -222,7 +222,17 @@ export class NotificationsRepository extends BaseRepository {
   /**
    * Get notification preferences for a user
    */
-  async getUserPreferences(userId: number, sourceId?: string): Promise<NotificationPreferences | null> {
+  /**
+   * Read one user's preferences row. Errors are logged and read as "no row"
+   * unless `opts.rethrow` is set — a read-modify-write caller must pass it, or
+   * a failed read would look like a missing row and the write would replace
+   * the user's settings with defaults.
+   */
+  async getUserPreferences(
+    userId: number,
+    sourceId?: string,
+    opts?: { rethrow?: boolean },
+  ): Promise<NotificationPreferences | null> {
     if (!Number.isInteger(userId) || userId <= 0) {
       logger.error(`Invalid userId: ${userId}`);
       return null;
@@ -260,6 +270,7 @@ export class NotificationsRepository extends BaseRepository {
       return this.mapPreferencesRow(rows[0]);
     } catch (error) {
       logger.error(`Failed to get preferences for user ${userId}:`, error);
+      if (opts?.rethrow) throw error;
       return null;
     }
   }
