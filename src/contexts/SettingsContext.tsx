@@ -2552,6 +2552,22 @@ export const useSolarSettings = () => {
   };
 };
 
+/**
+ * Channel mute state for a view that may render outside a SettingsProvider
+ * (component tests, embeds). Returns null there instead of throwing, so the
+ * caller treats every channel as unmuted. MeshCore uses this (#5487).
+ */
+// eslint-disable-next-line react-refresh/only-export-components -- #5487 this file already exports its read hooks beside the provider; this optional variant follows the same shape
+export const useOptionalChannelMuteSettings = () => {
+  const context = useContext(SettingsContext);
+  if (context === undefined) return null;
+  return {
+    isChannelMuted: context.isChannelMuted,
+    muteChannel: context.muteChannel,
+    unmuteChannel: context.unmuteChannel,
+  };
+};
+
 export const useNotificationMuteSettings = () => {
   const s = useSettings();
   return {
