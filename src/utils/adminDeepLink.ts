@@ -1,12 +1,21 @@
 /**
  * Admin Commands deep-link build/parse (#5535).
  *
- * `/admin?node=!xxxxxxxx` opens the Admin Commands tab with that node
- * pre-selected. Pure, no router dependency — `AdminCommandsTab.tsx` reads
- * `window.location.search` directly (not `useSearchParams()`, since that
- * tab is also exercised by tests rendered outside a Router) through
- * `parseAdminDeepLink`; `RemoteAdminLink.tsx` calls `buildAdminCommandsPath`.
- * Mirrors `coverageDeepLink.ts`'s shape.
+ * `/source/:sourceId/admin?node=!xxxxxxxx` opens the Admin Commands tab with
+ * that node pre-selected. The Admin Commands tab is NOT a top-level route
+ * (unlike `/reports`, which `coverageDeepLink.ts` targets) — it only exists
+ * nested under `source/:sourceId/*` (`SourceApp` in `src/main.tsx`), which
+ * mounts the legacy Meshtastic `<App>` shell, whose own `<Routes>` declares
+ * `path="admin"` (`App.tsx` ~3625). A bare `/admin` falls through to
+ * `src/main.tsx`'s top-level `path="*"` (`DashboardPage`) instead — caught by
+ * review on the first cut of this file, which built that absolute path.
+ *
+ * Pure, no router dependency — `AdminCommandsTab.tsx` reads
+ * `window.location.search` directly (not `useSearchParams()`, since that tab
+ * is also exercised by tests rendered outside a Router) through
+ * `parseAdminDeepLink`, which only looks at the query string and doesn't
+ * care about the path prefix; `RemoteAdminLink.tsx` calls
+ * `buildAdminCommandsPath`.
  *
  * Untrusted input (a URL query param) is validated strictly: anything that
  * doesn't match the expected shape is dropped rather than passed through.
@@ -24,14 +33,17 @@ export interface AdminDeepLink {
 }
 
 /**
- * Build the Admin Commands tab path for `link`. `node` is lower-cased
- * (canonical form); omitted entirely from the query string when absent.
+ * Build the Admin Commands tab path for `link`, nested under the given
+ * source (required — the route doesn't exist without one). `node` is
+ * lower-cased (canonical form); omitted entirely from the query string when
+ * absent.
  */
-export function buildAdminCommandsPath(link: AdminDeepLink): string {
-  if (!link.node) return '/admin';
+export function buildAdminCommandsPath(sourceId: string, link: AdminDeepLink = {}): string {
+  const base = `/source/${encodeURIComponent(sourceId)}/admin`;
+  if (!link.node) return base;
   const params = new URLSearchParams();
   params.set('node', link.node.toLowerCase());
-  return `/admin?${params.toString()}`;
+  return `${base}?${params.toString()}`;
 }
 
 /**

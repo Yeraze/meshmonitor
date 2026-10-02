@@ -27,6 +27,13 @@ export interface RemoteAdminLinkProps {
   /** Node's display name, used to build the accessible label. */
   nodeName: string;
   /**
+   * Active source id. The Admin Commands tab only exists nested under
+   * `/source/:sourceId/*` (see `adminDeepLink.ts`'s doc comment) — with no
+   * sourceId there is no valid destination, so this renders the inert badge
+   * regardless of `enabled`.
+   */
+  sourceId?: string | null;
+  /**
    * Whether the badge should actually be interactive. `false` (or an
    * invalid `nodeId`) renders `children` unwrapped, inert text — same look,
    * no control.
@@ -35,22 +42,22 @@ export interface RemoteAdminLinkProps {
   children: React.ReactNode;
 }
 
-export const RemoteAdminLink: React.FC<RemoteAdminLinkProps> = ({ nodeId, nodeName, enabled, children }) => {
+export const RemoteAdminLink: React.FC<RemoteAdminLinkProps> = ({ nodeId, nodeName, sourceId, enabled, children }) => {
   const { t } = useTranslation();
   const inRouterContext = useInRouterContext();
 
-  // Validate via a round trip through `parseAdminDeepLink` — single source
-  // of truth for the accepted id shape — then rebuild the final path from
-  // the *canonical* (lowercased) node id it returns.
-  const rawPath = buildAdminCommandsPath({ node: nodeId });
-  const rawQueryString = rawPath.split('?')[1] ?? '';
+  // Validate the node id shape via a round trip through `parseAdminDeepLink`
+  // — single source of truth for the accepted id shape. The sourceId segment
+  // doesn't affect that validation, so a placeholder is fine here; the real
+  // sourceId is applied below, once we know we're actually rendering a link.
+  const rawQueryString = buildAdminCommandsPath('_', { node: nodeId }).split('?')[1] ?? '';
   const accepted = parseAdminDeepLink(new URLSearchParams(rawQueryString));
 
-  if (!enabled || !accepted?.node) {
+  if (!enabled || !sourceId || !accepted?.node) {
     return <>{children}</>;
   }
 
-  const path = buildAdminCommandsPath({ node: accepted.node });
+  const path = buildAdminCommandsPath(sourceId, { node: accepted.node });
   const label = t('node_details.open_remote_admin', 'Open remote admin for {{name}}', { name: nodeName });
 
   if (inRouterContext) {

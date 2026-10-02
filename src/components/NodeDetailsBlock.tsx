@@ -762,6 +762,7 @@ const NodeDetailsBlock: React.FC<NodeDetailsBlockProps> = ({ node, timeFormat = 
               <RemoteAdminLink
                 nodeId={nodeId ?? ''}
                 nodeName={nodeName}
+                sourceId={sourceId}
                 enabled={canOpenRemoteAdmin && !!nodeId}
               >
                 {badge}

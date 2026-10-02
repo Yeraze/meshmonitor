@@ -43,12 +43,24 @@ describe('NodeDetailsBlock Remote Admin "Available" badge shortcut', () => {
   it('renders the badge as an accessible link to the node, pre-selected, when permitted', () => {
     render(
       <MemoryRouter>
-        <NodeDetailsBlock node={availableNode} canOpenRemoteAdmin />
+        <NodeDetailsBlock node={availableNode} sourceId="src-1" canOpenRemoteAdmin />
       </MemoryRouter>,
     );
     const link = screen.getByRole('link', { name: /open remote admin for remote node/i });
-    expect(decodeURIComponent(link.getAttribute('href') ?? '')).toBe('/admin?node=!0000007b');
+    // The Admin Commands route only exists nested under /source/:sourceId/*
+    // (src/main.tsx) — a bare /admin falls through to the Dashboard route.
+    expect(decodeURIComponent(link.getAttribute('href') ?? '')).toBe('/source/src-1/admin?node=!0000007b');
     // The existing badge look is preserved inside the link.
+    expect(screen.getByText('node_details.remote_admin_yes')).toBeInTheDocument();
+  });
+
+  it('renders inert text (no link) when there is no sourceId, even when permitted', () => {
+    render(
+      <MemoryRouter>
+        <NodeDetailsBlock node={availableNode} canOpenRemoteAdmin />
+      </MemoryRouter>,
+    );
+    expect(screen.queryByRole('link', { name: /open remote admin/i })).not.toBeInTheDocument();
     expect(screen.getByText('node_details.remote_admin_yes')).toBeInTheDocument();
   });
 
@@ -101,16 +113,18 @@ describe('NodeDetailsBlock Remote Admin "Available" badge shortcut', () => {
   });
 
   it('falls back to a plain <a> without throwing when rendered without a Router (matches sibling suites)', () => {
-    render(<NodeDetailsBlock node={availableNode} canOpenRemoteAdmin />);
+    render(<NodeDetailsBlock node={availableNode} sourceId="src-1" canOpenRemoteAdmin />);
     const link = screen.getByRole('link', { name: /open remote admin for remote node/i });
     expect(link.tagName).toBe('A');
-    expect(decodeURIComponent(link.getAttribute('href') ?? '')).toContain('node=!0000007b');
+    const href = decodeURIComponent(link.getAttribute('href') ?? '');
+    expect(href).toContain('/source/src-1/admin');
+    expect(href).toContain('node=!0000007b');
   });
 
   it('renders inert text when the node has no user.id, even when permitted', () => {
     render(
       <MemoryRouter>
-        <NodeDetailsBlock node={{ ...availableNode, user: undefined }} canOpenRemoteAdmin />
+        <NodeDetailsBlock node={{ ...availableNode, user: undefined }} sourceId="src-1" canOpenRemoteAdmin />
       </MemoryRouter>,
     );
     expect(screen.queryByRole('link', { name: /open remote admin/i })).not.toBeInTheDocument();

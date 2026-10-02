@@ -2,14 +2,25 @@ import { describe, it, expect } from 'vitest';
 import { buildAdminCommandsPath, parseAdminDeepLink } from './adminDeepLink';
 
 describe('buildAdminCommandsPath', () => {
-  it('returns the bare /admin path when no node is given', () => {
-    expect(buildAdminCommandsPath({})).toBe('/admin');
+  it('nests the path under /source/:sourceId/admin — the route does not exist at top level', () => {
+    expect(buildAdminCommandsPath('src-1')).toBe('/source/src-1/admin');
+  });
+
+  it('returns the bare nested admin path when no node is given', () => {
+    expect(buildAdminCommandsPath('src-1', {})).toBe('/source/src-1/admin');
   });
 
   it('includes node (lower-cased)', () => {
-    const path = buildAdminCommandsPath({ node: '!AABBCCDD' });
-    const params = new URLSearchParams(path.split('?')[1]);
+    const path = buildAdminCommandsPath('src-1', { node: '!AABBCCDD' });
+    const [pathname, query] = path.split('?');
+    expect(pathname).toBe('/source/src-1/admin');
+    const params = new URLSearchParams(query);
     expect(params.get('node')).toBe('!aabbccdd');
+  });
+
+  it('URL-encodes the sourceId segment', () => {
+    const path = buildAdminCommandsPath('src one/two');
+    expect(path).toBe('/source/src%20one%2Ftwo/admin');
   });
 });
 
@@ -19,7 +30,7 @@ describe('parseAdminDeepLink', () => {
   });
 
   it('round-trips a valid node id through build/parse', () => {
-    const path = buildAdminCommandsPath({ node: '!aabbccdd' });
+    const path = buildAdminCommandsPath('src-1', { node: '!aabbccdd' });
     const parsed = parseAdminDeepLink(new URLSearchParams(path.split('?')[1]));
     expect(parsed).toEqual({ node: '!aabbccdd' });
   });
