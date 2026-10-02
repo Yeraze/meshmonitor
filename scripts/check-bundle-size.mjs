@@ -42,7 +42,7 @@
  *   unreviewed regression — if the main chunk grew, check whether something
  *   that should be a lazy route/vendor chunk leaked back into it.
  */
-import { readdirSync, statSync, readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { gzipSync } from 'node:zlib';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -129,8 +129,11 @@ export function readJsAssets(assetsDir) {
     .filter((name) => JS_ASSET_PATTERN.test(name))
     .map((name) => {
       const fullPath = path.join(assetsDir, name);
-      const size = statSync(fullPath).size;
-      const gzipSize = gzipSync(readFileSync(fullPath)).length;
+      // Read once and size the buffer, so size and gzip size describe the
+      // same bytes (no stat-then-read race).
+      const contents = readFileSync(fullPath);
+      const size = contents.length;
+      const gzipSize = gzipSync(contents).length;
       return { name, size, gzipSize };
     });
 }
