@@ -112,6 +112,20 @@ import {
   REPEATER_NEIGHBORS_IDLE_GAP_MS,
   type RepeaterRawPacket,
 } from './utils/meshcoreRepeaterSerial.js';
+import {
+  mapStatsCore,
+  mapStatsRadio,
+  mapStatsPackets,
+  parseRepeaterStatsCore,
+  parseRepeaterStatsRadio,
+  parseRepeaterStatsPackets,
+  parseRepeaterClockReply,
+  parseRepeaterVerReply,
+  parseRepeaterBoardReply,
+  REPEATER_STATS_IDLE_GAP_MS,
+  REPEATER_STATS_TIMEOUT_MS,
+  REPEATER_CLOCK_RESOLUTION_SECS,
+} from './utils/meshcoreRepeaterStats.js';
 import { parseMeshcoreNeighborsResponse } from './utils/parseMeshcoreNeighbors.js';
 import { parseObserverFrame, meshCorePacketHashOrUndefined } from './services/meshcoreObserverPacket.js';
 import { getPayloadTypeName, getRouteTypeName } from '@michaelhart/meshcore-decoder';
@@ -881,8 +895,9 @@ export interface MeshCoreChannel {
 }
 
 /**
- * Local-node stats fetched over the companion-protocol link. These never
- * touch the air — they read counters/state from the directly-connected node.
+ * Local-node stats read from the directly-connected node: over the
+ * companion-protocol link for a Companion, over the serial CLI `stats-*` verbs
+ * for a Repeater (#5533). These never touch the air.
  */
 export interface MeshCoreStatsCore {
   batteryMv?: number;
@@ -8854,25 +8869,51 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
     }
   }
 
-  // ============ Local-node stats (companion only, no RF) ============
+  // ============ Local-node stats (no RF) ============
   //
-  // These hit the locally-attached node over USB/BLE/TCP — they read counters
-  // and config off the directly-connected node and never transmit on the air.
-  // Safe to poll on a fixed interval. Returns null if not a companion, not
-  // connected, or the backend call fails.
+  // These hit the locally-attached node and never transmit on the air.
+  // Companion: companion-protocol GetStats / GetDeviceTime over USB/BLE/TCP.
+  // Repeater (#5533): the serial CLI verbs `stats-core`, `stats-radio`,
+  // `stats-packets` and `clock`. The firmware only accepts the `stats-*` verbs
+  // from the serial console (sender_timestamp == 0, CommonCLI.cpp:437-442), and
+  // all four just format local counters into the reply: zero airtime. They go
+  // through `sendRepeaterCommand`, so they queue behind any console command
+  // instead of interleaving with it.
+  // Safe to poll on a fixed interval. Returns null if the device type has no
+  // such stats, not connected, or the read fails.
+
+  /**
+   * One read-only serial CLI stats read for a Repeater source (#5533).
+   * Fails soft: a busy link, a timeout, a closed port or an old firmware's
+   * `Unknown command` all return null and log at debug, so a flaky link does
+   * not print a warning every poll.
+   */
+  private async readRepeaterStat<T>(command: string, parse: (reply: string) => T | null): Promise<T | null> {
+    if (!this.connected) return null;
+    try {
+      const reply = await this.sendRepeaterCommand(command, REPEATER_STATS_TIMEOUT_MS, {
+        idleGapMs: REPEATER_STATS_IDLE_GAP_MS,
+      });
+      const parsed = parse(reply);
+      if (parsed === null) {
+        logger.debug(`[MeshCore:${this.sourceId}] repeater '${command}': no usable reply (${safeJson(reply)})`);
+      }
+      return parsed;
+    } catch (error) {
+      logger.debug(`[MeshCore:${this.sourceId}] repeater '${command}' failed: ${(error as Error).message}`);
+      return null;
+    }
+  }
 
   async getStatsCore(): Promise<MeshCoreStatsCore | null> {
+    if (this.deviceType === MeshCoreDeviceType.REPEATER) {
+      return this.readRepeaterStat('stats-core', parseRepeaterStatsCore);
+    }
     if (this.deviceType !== MeshCoreDeviceType.COMPANION) return null;
     try {
       const response = await this.sendBridgeCommand('get_stats', { type: 'core' });
       if (!response.success || !response.data) return null;
-      const d = response.data;
-      return {
-        batteryMv: typeof d.battery_mv === 'number' ? d.battery_mv : undefined,
-        uptimeSecs: typeof d.uptime_secs === 'number' ? d.uptime_secs : undefined,
-        errors: typeof d.errors === 'number' ? d.errors : undefined,
-        queueLen: typeof d.queue_len === 'number' ? d.queue_len : undefined,
-      };
+      return mapStatsCore(response.data);
     } catch (error) {
       logger.warn(`[MeshCore:${this.sourceId}] getStatsCore failed:`, error);
       return null;
@@ -8880,18 +8921,14 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
   }
 
   async getStatsRadio(): Promise<MeshCoreStatsRadio | null> {
+    if (this.deviceType === MeshCoreDeviceType.REPEATER) {
+      return this.readRepeaterStat('stats-radio', parseRepeaterStatsRadio);
+    }
     if (this.deviceType !== MeshCoreDeviceType.COMPANION) return null;
     try {
       const response = await this.sendBridgeCommand('get_stats', { type: 'radio' });
       if (!response.success || !response.data) return null;
-      const d = response.data;
-      return {
-        noiseFloor: typeof d.noise_floor === 'number' ? d.noise_floor : undefined,
-        lastRssi: typeof d.last_rssi === 'number' ? d.last_rssi : undefined,
-        lastSnr: typeof d.last_snr === 'number' ? d.last_snr : undefined,
-        txAirSecs: typeof d.tx_air_secs === 'number' ? d.tx_air_secs : undefined,
-        rxAirSecs: typeof d.rx_air_secs === 'number' ? d.rx_air_secs : undefined,
-      };
+      return mapStatsRadio(response.data);
     } catch (error) {
       logger.warn(`[MeshCore:${this.sourceId}] getStatsRadio failed:`, error);
       return null;
@@ -8899,28 +8936,28 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
   }
 
   async getStatsPackets(): Promise<MeshCoreStatsPackets | null> {
+    if (this.deviceType === MeshCoreDeviceType.REPEATER) {
+      return this.readRepeaterStat('stats-packets', parseRepeaterStatsPackets);
+    }
     if (this.deviceType !== MeshCoreDeviceType.COMPANION) return null;
     try {
       const response = await this.sendBridgeCommand('get_stats', { type: 'packets' });
       if (!response.success || !response.data) return null;
-      const d = response.data;
-      return {
-        recv: typeof d.recv === 'number' ? d.recv : undefined,
-        sent: typeof d.sent === 'number' ? d.sent : undefined,
-        floodTx: typeof d.flood_tx === 'number' ? d.flood_tx : undefined,
-        directTx: typeof d.direct_tx === 'number' ? d.direct_tx : undefined,
-        floodRx: typeof d.flood_rx === 'number' ? d.flood_rx : undefined,
-        directRx: typeof d.direct_rx === 'number' ? d.direct_rx : undefined,
-        recvErrors: typeof d.recv_errors === 'number' ? d.recv_errors : null,
-      };
+      return mapStatsPackets(response.data);
     } catch (error) {
       logger.warn(`[MeshCore:${this.sourceId}] getStatsPackets failed:`, error);
       return null;
     }
   }
 
-  /** Read the RTC on the locally-connected node (Unix seconds). */
+  /**
+   * Read the RTC on the locally-connected node (Unix seconds). On a Repeater
+   * the `clock` reply has minute resolution: see getDeviceTimeResolutionSecs.
+   */
   async getDeviceTime(): Promise<number | null> {
+    if (this.deviceType === MeshCoreDeviceType.REPEATER) {
+      return this.readRepeaterStat('clock', parseRepeaterClockReply);
+    }
     if (this.deviceType !== MeshCoreDeviceType.COMPANION) return null;
     try {
       const response = await this.sendBridgeCommand('get_device_time', {});
@@ -8931,6 +8968,31 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
       logger.warn(`[MeshCore:${this.sourceId}] getDeviceTime failed:`, error);
       return null;
     }
+  }
+
+  /**
+   * Resolution of `getDeviceTime()` in seconds: 60 on a Repeater (the `clock`
+   * reply prints HH:MM only), 1 otherwise. The telemetry poller uses it so a
+   * truncated minute does not read as up to 59 s of RTC drift.
+   */
+  getDeviceTimeResolutionSecs(): number {
+    return this.deviceType === MeshCoreDeviceType.REPEATER ? REPEATER_CLOCK_RESOLUTION_SECS : 1;
+  }
+
+  /** True when this source is a directly-attached Repeater on the serial CLI. */
+  isRepeaterSource(): boolean {
+    return this.deviceType === MeshCoreDeviceType.REPEATER;
+  }
+
+  /**
+   * The key local-node telemetry rows are filed under (#5533). A Companion
+   * uses its own public key. A Repeater's `localNode.publicKey` is the
+   * `'repeater'` placeholder, so it uses the real key from `get public.key`,
+   * or null until that has been read.
+   */
+  getLocalTelemetryNodeId(): string | null {
+    if (this.deviceType === MeshCoreDeviceType.REPEATER) return this.repeaterPublicKey;
+    return this.localNode?.publicKey || null;
   }
 
   /**
@@ -8950,6 +9012,19 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
 
   /** DeviceQuery → DeviceInfo (firmware version, build date, model, etc). */
   async deviceQuery(): Promise<MeshCoreDeviceInfo | null> {
+    if (this.deviceType === MeshCoreDeviceType.REPEATER) {
+      // #5533: the serial CLI `ver` / `board` verbs (CommonCLI.cpp:272-275).
+      // Local reads, no RF. Only ver/build/model exist; the companion-only
+      // fields (firmwareVer byte, maxContacts, ...) stay undefined.
+      const ver = await this.readRepeaterStat('ver', parseRepeaterVerReply);
+      const model = await this.readRepeaterStat('board', parseRepeaterBoardReply);
+      if (!ver && !model) return null;
+      return {
+        ver: ver?.ver,
+        firmwareBuild: ver?.firmwareBuild,
+        model: model ?? undefined,
+      };
+    }
     if (this.deviceType !== MeshCoreDeviceType.COMPANION) return null;
     try {
       const response = await this.sendBridgeCommand('device_query', {});

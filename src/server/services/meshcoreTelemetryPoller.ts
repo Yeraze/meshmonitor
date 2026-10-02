@@ -1,10 +1,13 @@
 /**
  * MeshCore Telemetry Poller — local-node-only stats collection.
  *
- * Walks every connected MeshCore COMPANION manager on a fixed interval and
- * pulls GetStats(core|radio|packets), GetDeviceTime, and DeviceQuery over
- * the companion-protocol link. None of these commands touch the air; they
- * read counters and config off the directly-attached node only.
+ * Walks every connected MeshCore manager on a fixed interval and pulls
+ * GetStats(core|radio|packets), GetDeviceTime, and DeviceQuery. A COMPANION
+ * answers over the companion-protocol link; a directly-attached REPEATER
+ * answers the serial CLI verbs `stats-core` / `stats-radio` / `stats-packets` /
+ * `clock` / `ver` / `board` (#5533). None of these commands touch the air;
+ * they read counters and config off the directly-attached node only. One
+ * timer for every source: repeaters ride the same cadence, no extra timer.
  *
  * Each sample writes rows into the existing `telemetry` table with
  * `telemetryType` strings prefixed `mc_` and the manager's `sourceId`
@@ -221,6 +224,14 @@ export class MeshCoreTelemetryPoller {
       logger.debug(`[MeshCorePoller:${manager.sourceId}] No localNode yet, skipping`);
       return;
     }
+    // A Repeater's localNode.publicKey is the 'repeater' placeholder; its rows
+    // are filed under the real key from `get public.key` instead (#5533).
+    const isRepeater = manager.isRepeaterSource();
+    const nodeId = manager.getLocalTelemetryNodeId();
+    if (!nodeId) {
+      logger.debug(`[MeshCorePoller:${manager.sourceId}] No local telemetry key yet, skipping`);
+      return;
+    }
 
     const now = Date.now();
     // Fetch in parallel — they're independent bridge calls and the bridge
@@ -237,12 +248,11 @@ export class MeshCoreTelemetryPoller {
       manager.applyDeviceInfo(deviceInfo);
     }
 
-    const nodeId = localNode.publicKey;
     // MeshCore has no Meshtastic-style 32-bit nodeNum. We synthesise one from
     // the low 32 bits of the pubkey to satisfy the NOT NULL constraint on
     // `telemetry.nodeNum` while keeping it stable per source. Collisions are
     // possible but harmless — queries filter on `nodeId`, not `nodeNum`.
-    const nodeNum = nodeNumFromPubkey(localNode.publicKey);
+    const nodeNum = nodeNumFromPubkey(nodeId);
     const rows: DbTelemetry[] = [];
     const push = (telemetryType: string, value: number | null | undefined, unit?: string) => {
       if (value === null || value === undefined || !Number.isFinite(value)) return;
@@ -274,7 +284,13 @@ export class MeshCoreTelemetryPoller {
         // isLocalNode:true so this row is recognized as the local/companion
         // node (getAllNodes() and the repository's getLocalNode() both key
         // off this flag).
-        if (core.batteryMv > 0) {
+        // Repeater sources skip this (#5533): their live localNode is keyed
+        // 'repeater', so a row under the real key would show up as a second,
+        // duplicate node in this source's node list. The graph rows above
+        // are still written.
+        if (isRepeater) {
+          // Graph rows only; see above.
+        } else if (core.batteryMv > 0) {
           const persistedMv = core.batteryMv;
           this.database.meshcore.upsertNode(
             { publicKey: nodeId, batteryMv: persistedMv, isLocalNode: true },
@@ -382,7 +398,12 @@ export class MeshCoreTelemetryPoller {
     }
 
     if (deviceTimeSecs !== null) {
-      const drift = Math.floor(now / 1000) - deviceTimeSecs;
+      // A Repeater's `clock` reply is HH:MM only (#5533). Compare it with the
+      // server time truncated the same way, so an in-sync clock reads 0 and
+      // not "up to 59 s behind". Resolution 1 (Companion) leaves it unchanged.
+      const resolution = manager.getDeviceTimeResolutionSecs();
+      const nowSecs = Math.floor(now / 1000);
+      const drift = Math.floor(nowSecs / resolution) * resolution - deviceTimeSecs;
       push(`${MC_TELEMETRY_PREFIX}rtc_drift_secs`, drift, 's');
       snapshot.rtcDriftSecs = drift;
     }
@@ -457,13 +478,18 @@ export class MeshCoreTelemetryPoller {
     //
     // Deliberately after the empty-rows return: a poll that yields nothing is
     // a timeout or a refusal, which is not evidence of anything.
-    try {
-      await this.database.meshcore.markHeard(manager.sourceId, nodeId, Date.now());
-    } catch (err) {
-      logger.warn(
-        `[MeshCorePoller:${manager.sourceId}] Failed to stamp lastHeard for ${nodeId.substring(0, 16)}…:`,
-        err,
-      );
+    //
+    // Not for a Repeater (#5533): same duplicate-row reason as the battery
+    // write above — markHeard upserts a row under the real key.
+    if (!isRepeater) {
+      try {
+        await this.database.meshcore.markHeard(manager.sourceId, nodeId, Date.now());
+      } catch (err) {
+        logger.warn(
+          `[MeshCorePoller:${manager.sourceId}] Failed to stamp lastHeard for ${nodeId.substring(0, 16)}…:`,
+          err,
+        );
+      }
     }
 
     // Device Health (#4558 follow-up): detect a reboot from the uptime reading

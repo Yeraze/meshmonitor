@@ -239,7 +239,11 @@ export const MeshCoreInfoView: React.FC<MeshCoreInfoViewProps> = ({ baseUrl, sou
     );
   }
 
-  const isCompanion = (info?.deviceType ?? identity.advType) === 1;
+  const deviceType = info?.deviceType ?? identity.advType;
+  const isCompanion = deviceType === 1;
+  // #5533: a directly-attached Repeater (2) reports the same local stats over
+  // its serial CLI, so it gets the health card and graphs too.
+  const hasLocalStats = isCompanion || deviceType === 2;
 
   return (
     <div className="meshcore-info-view" data-testid="meshcore-info-view">
@@ -294,9 +298,9 @@ export const MeshCoreInfoView: React.FC<MeshCoreInfoViewProps> = ({ baseUrl, sou
 
         <section className="meshcore-info-card" data-testid="meshcore-info-health">
           <CollapsibleSection title={t('meshcore.info.health', 'Current health')}>
-          {!isCompanion ? (
+          {!hasLocalStats ? (
             <p className="meshcore-info-note">
-              {t('meshcore.info.repeater_no_stats', 'Local stats are only available for Companion devices.')}
+              {t('meshcore.info.repeater_no_stats', 'Local stats are only available for Companion and Repeater devices.')}
             </p>
           ) : latest ? (
             <dl>
@@ -315,7 +319,8 @@ export const MeshCoreInfoView: React.FC<MeshCoreInfoViewProps> = ({ baseUrl, sou
               <dt>{t('meshcore.info.rtc_drift', 'RTC drift vs server')}</dt>
               <dd style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                 {fmtDrift(latest.rtcDriftSecs)}
-                {onSyncTime && (
+                {/* Sync writes the RTC over the companion protocol, Companion only. */}
+                {onSyncTime && isCompanion && (
                   <button
                     type="button"
                     className="btn-secondary"
@@ -359,7 +364,7 @@ export const MeshCoreInfoView: React.FC<MeshCoreInfoViewProps> = ({ baseUrl, sou
         <MeshCoreVirtualNodeCard sourceId={sourceId} />
       </div>
 
-      {isCompanion && (
+      {hasLocalStats && (
         <section className="meshcore-info-graphs" data-testid="meshcore-info-graphs">
           <CollapsibleSection title={t('meshcore.info.history', 'History')}>
           <div className="meshcore-info-range" role="group" aria-label="Time range" style={{ marginBottom: '1rem' }}>
