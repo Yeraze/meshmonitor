@@ -27,27 +27,17 @@ if (typeof window !== 'undefined') {
 }
 // Initialize i18n after init.ts sets the base URL
 import './config/i18n';
-import React, { Suspense } from 'react';
+import React, { Suspense, lazy } from 'react';
 import ReactDOM from 'react-dom/client';
 import { BrowserRouter, Routes, Route, Navigate, useParams } from 'react-router-dom';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { ReactQueryDevtools } from '@tanstack/react-query-devtools';
 import { queryClient } from './config/queryClient.ts';
-import App from './App.tsx';
-import PacketMonitorPage from './pages/PacketMonitorPage.tsx';
-import PrivacyDocumentPage from './pages/PrivacyDocumentPage.tsx';
-import DashboardPage from './pages/DashboardPage.tsx';
-import MapAnalysisPage from './pages/MapAnalysisPage.tsx';
-import ReportsPage from './pages/ReportsPage.tsx';
-import AutomationsPage from './components/automations/AutomationsPage.tsx';
-import UnifiedMessagesPage from './pages/UnifiedMessagesPage.tsx';
-import UnifiedTelemetryPage from './pages/UnifiedTelemetryPage.tsx';
-import UnifiedPacketMonitorPage from './pages/UnifiedPacketMonitorPage.tsx';
-import GlobalSettingsPage from './pages/GlobalSettingsPage.tsx';
-import UsersPage from './pages/UsersPage.tsx';
-import MeshCoreSourcePage from './pages/MeshCoreSourcePage.tsx';
-import MeshCoreIngestSourcePage from './pages/MeshCoreIngestSourcePage.tsx';
-import ReticulumSourcePage from './pages/ReticulumSourcePage.tsx';
+// Every page's CSS, eagerly and in pre-split order (see vite.config.ts).
+// Must stay where the page imports used to be: ahead of index.css and the
+// contexts below, which is where the old static graph placed page CSS.
+import './eagerStyles.ts';
+import RouteLoading from './components/RouteLoading/RouteLoading.tsx';
 import { useDashboardSources } from './hooks/useDashboardData';
 import './index.css';
 import { AuthProvider } from './contexts/AuthContext';
@@ -56,6 +46,27 @@ import { WebSocketProvider } from './contexts/WebSocketContext';
 import { SourceProvider } from './contexts/SourceContext';
 import { SettingsProvider } from './contexts/SettingsContext';
 import { installKeyboardInsetsObserver } from './utils/keyboardInsets';
+
+// Every page is its own lazy chunk, so a visit loads only the page it lands
+// on rather than the whole app in one ~4 MB `main` bundle. Chunks reference
+// each other by relative URL (see `renderBuiltUrl` in vite.config.ts), so they
+// resolve under a BASE_URL subpath. A chunk that 404s after a redeploy is
+// caught by the `vite:preloadError` handler above.
+const App = lazy(() => import('./App.tsx'));
+const PacketMonitorPage = lazy(() => import('./pages/PacketMonitorPage.tsx'));
+const PrivacyDocumentPage = lazy(() => import('./pages/PrivacyDocumentPage.tsx'));
+const DashboardPage = lazy(() => import('./pages/DashboardPage.tsx'));
+const MapAnalysisPage = lazy(() => import('./pages/MapAnalysisPage.tsx'));
+const ReportsPage = lazy(() => import('./pages/ReportsPage.tsx'));
+const AutomationsPage = lazy(() => import('./components/automations/AutomationsPage.tsx'));
+const UnifiedMessagesPage = lazy(() => import('./pages/UnifiedMessagesPage.tsx'));
+const UnifiedTelemetryPage = lazy(() => import('./pages/UnifiedTelemetryPage.tsx'));
+const UnifiedPacketMonitorPage = lazy(() => import('./pages/UnifiedPacketMonitorPage.tsx'));
+const GlobalSettingsPage = lazy(() => import('./pages/GlobalSettingsPage.tsx'));
+const UsersPage = lazy(() => import('./pages/UsersPage.tsx'));
+const MeshCoreSourcePage = lazy(() => import('./pages/MeshCoreSourcePage.tsx'));
+const MeshCoreIngestSourcePage = lazy(() => import('./pages/MeshCoreIngestSourcePage.tsx'));
+const ReticulumSourcePage = lazy(() => import('./pages/ReticulumSourcePage.tsx'));
 
 // Publish the iOS keyboard overlay height as `--keyboard-inset` on
 // `document.documentElement` for the lifetime of the page (issue #2994).
@@ -81,6 +92,16 @@ installKeyboardInsetsObserver();
  * than mounting to the DOM.
  */
 export function SourceApp() {
+  // Local boundary so a source switch shows the placeholder in place of the
+  // lazily loaded per-source page, without suspending the whole route tree.
+  return (
+    <Suspense fallback={<RouteLoading />}>
+      <SourceAppDispatch />
+    </Suspense>
+  );
+}
+
+function SourceAppDispatch() {
   const { sourceId } = useParams<{ sourceId: string }>();
   const { data: sources, isLoading } = useDashboardSources();
 
@@ -93,11 +114,7 @@ export function SourceApp() {
   // wrong UI and immediately re-mount on switch — App is heavy and re-mount
   // is costly.
   if (isLoading && !source) {
-    return (
-      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100dvh' }}>
-        Loading…
-      </div>
-    );
+    return <RouteLoading />;
   }
 
   if (source?.type === 'meshcore') {
@@ -167,7 +184,7 @@ const sourceRouteProviders = (children: React.ReactNode) => (
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
-    <Suspense fallback={<div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100dvh' }}>Loading...</div>}>
+    <Suspense fallback={<RouteLoading />}>
       <QueryClientProvider client={queryClient}>
         <BrowserRouter basename={appBasename}>
           <Routes>
