@@ -11,14 +11,17 @@
  *  - `messageRefCount` = number of link rows pointing at the entry. It is
  *    bumped when a link is added, and recounted from the link table whenever
  *    links are removed (`removeOrphanedLinks`) and by the hourly prune.
- *  - An entry with `messageRefCount >= 1` is never pruned; one with
- *    `messageRefCount >= 2` is pinned (exempt from TTL and the size cap).
+ *  - An entry with `messageRefCount >= 1` is never pruned.
+ *  - The first time `messageRefCount` reaches 2, `pinnedAt` is set. The pin
+ *    is STICKY: no recount, sweep or purge clears it, and a pinned entry is
+ *    exempt from the TTL and the size cap forever (maintainer decision:
+ *    reused phrases never expire).
  *
  * Raw SQL here is limited to correlated NOT EXISTS / COUNT subqueries that
  * name two tables; column names go through `this.col()` for PostgreSQL's
  * quoted camelCase.
  */
-import { and, asc, count, eq, inArray, lt, sql, type SQL } from 'drizzle-orm';
+import { and, asc, count, eq, gte, inArray, isNull, sql, type SQL } from 'drizzle-orm';
 import { BaseRepository, DrizzleDatabase, type SourceScope, ALL_SOURCES } from './base.js';
 import { DatabaseType } from '../types.js';
 
@@ -33,6 +36,8 @@ export interface DbTranslationCacheEntry {
   lastUsedAt: number;
   hitCount: number;
   messageRefCount: number;
+  /** Unix ms of the sticky pin, or null. */
+  pinnedAt: number | null;
 }
 
 export interface NewTranslationCacheEntry {
@@ -57,7 +62,7 @@ export interface PruneTranslationCacheOptions {
   now: number;
   /** Unreferenced entries unused for longer than this are deleted. */
   ttlMs: number;
-  /** Max number of non-pinned (`messageRefCount < 2`) entries to keep. */
+  /** Max number of unpinned, unreferenced entries to keep. */
   maxUnpinned: number;
 }
 
@@ -93,6 +98,7 @@ export class TranslationsRepository extends BaseRepository {
       lastUsedAt: Number(row.lastUsedAt),
       hitCount: Number(row.hitCount ?? 0),
       messageRefCount: Number(row.messageRefCount ?? 0),
+      pinnedAt: row.pinnedAt == null ? null : Number(row.pinnedAt),
     };
   }
 
@@ -140,6 +146,7 @@ export class TranslationsRepository extends BaseRepository {
       lastUsedAt: now,
       hitCount: 0,
       messageRefCount: 0,
+      pinnedAt: null,
     });
     return this.getAffectedRows(result) > 0;
   }
@@ -150,7 +157,7 @@ export class TranslationsRepository extends BaseRepository {
     return Number(c);
   }
 
-  private async adjustRefCount(cacheKey: string, delta: 1 | -1): Promise<void> {
+  private async adjustRefCount(cacheKey: string, delta: 1 | -1, now: number = this.now()): Promise<void> {
     const { translationCache } = this.tables;
     const condition = delta < 0
       ? and(eq(translationCache.cacheKey, cacheKey), sql`${translationCache.messageRefCount} > 0`)
@@ -159,6 +166,17 @@ export class TranslationsRepository extends BaseRepository {
       .update(translationCache)
       .set({ messageRefCount: sql`${translationCache.messageRefCount} + ${delta}` })
       .where(condition);
+    if (delta > 0) {
+      // Sticky pin on reaching the threshold; never cleared afterwards.
+      await this.db
+        .update(translationCache)
+        .set({ pinnedAt: now })
+        .where(and(
+          eq(translationCache.cacheKey, cacheKey),
+          isNull(translationCache.pinnedAt),
+          gte(translationCache.messageRefCount, TRANSLATION_PIN_THRESHOLD),
+        ));
+    }
   }
 
   // -------------------------------------------------------------------------
@@ -205,14 +223,14 @@ export class TranslationsRepository extends BaseRepository {
         .where(and(pk, eq(links.cacheKey, oldKey)));
       if (this.getAffectedRows(moved) > 0) {
         await this.adjustRefCount(oldKey, -1);
-        await this.adjustRefCount(cacheKey, 1);
+        await this.adjustRefCount(cacheKey, 1, now);
       }
       return true;
     }
 
     const inserted = await this.insertIgnore(links, { sourceId, messageId, targetLang, cacheKey, createdAt: now });
     if (this.getAffectedRows(inserted) > 0) {
-      await this.adjustRefCount(cacheKey, 1);
+      await this.adjustRefCount(cacheKey, 1, now);
     }
     return true;
   }
@@ -282,11 +300,21 @@ export class TranslationsRepository extends BaseRepository {
     )`;
   }
 
-  /** Recount `messageRefCount` from the link table for every drifted entry. */
+  /**
+   * Recount `messageRefCount` from the link table for every drifted entry.
+   * Never touches `pinnedAt`: a recount can lower the count but not unpin.
+   */
   private reconcileRefCountsSql(): SQL {
     const c = (n: string) => this.col(n);
     const linkCount = sql`(SELECT COUNT(*) FROM message_translations l WHERE l.${c('cacheKey')} = translation_cache.${c('cacheKey')})`;
     return sql`UPDATE translation_cache SET ${c('messageRefCount')} = ${linkCount} WHERE ${c('messageRefCount')} <> ${linkCount}`;
+  }
+
+  /** Pin (sticky) any entry whose count reached the threshold without being pinned. */
+  private pinReusedEntriesSql(now: number): SQL {
+    const c = (n: string) => this.col(n);
+    return sql`UPDATE translation_cache SET ${c('pinnedAt')} = ${now}
+      WHERE ${c('pinnedAt')} IS NULL AND ${c('messageRefCount')} >= ${TRANSLATION_PIN_THRESHOLD}`;
   }
 
   private assertScope(scope: SourceScope | undefined): asserts scope is SourceScope {
@@ -322,9 +350,14 @@ export class TranslationsRepository extends BaseRepository {
     return removed;
   }
 
-  /** Recount every drifted `messageRefCount` from the link table. */
-  async reconcileMessageRefCounts(): Promise<void> {
+  /**
+   * Recount every drifted `messageRefCount` from the link table, then pin any
+   * entry that reached the threshold (e.g. links added outside `linkMessage`).
+   * Never unpins.
+   */
+  async reconcileMessageRefCounts(now: number = this.now()): Promise<void> {
     await this.executeRun(this.reconcileRefCountsSql());
+    await this.executeRun(this.pinReusedEntriesSql(now));
   }
 
   // -------------------------------------------------------------------------
@@ -335,15 +368,15 @@ export class TranslationsRepository extends BaseRepository {
    * Hourly / startup prune. DB-only.
    *  1. Sweep orphaned links (any delete path that bypassed the repository)
    *     and reconcile `messageRefCount`.
-   *  2. TTL: delete unreferenced entries unused for longer than `ttlMs`.
-   *  3. Size cap: while non-pinned entries exceed `maxUnpinned`, delete the
-   *     least recently used UNREFERENCED entries. Referenced and pinned entries
-   *     are never deleted, so the cap is best-effort when references alone
-   *     exceed it.
+   *  2. TTL: delete unpinned, unreferenced entries unused for longer than
+   *     `ttlMs`.
+   *  3. Size cap: while unpinned, unreferenced entries exceed `maxUnpinned`,
+   *     delete the least recently used of them. Pinned and referenced
+   *     entries neither count toward the cap nor are evicted.
    */
   async pruneCache(opts: PruneTranslationCacheOptions): Promise<PruneTranslationCacheResult> {
     const orphanedLinksRemoved = await this.removeOrphanedLinks(ALL_SOURCES);
-    await this.reconcileMessageRefCounts();
+    await this.reconcileMessageRefCounts(opts.now);
 
     const { translationCache } = this.tables;
     const c = (n: string) => this.col(n);
@@ -351,14 +384,16 @@ export class TranslationsRepository extends BaseRepository {
 
     const expiredResult = await this.executeRun(sql`DELETE FROM translation_cache
       WHERE ${c('messageRefCount')} = 0
+        AND ${c('pinnedAt')} IS NULL
         AND ${c('lastUsedAt')} < ${cutoff}
         AND NOT EXISTS (SELECT 1 FROM message_translations l WHERE l.${c('cacheKey')} = translation_cache.${c('cacheKey')})`);
     const expired = this.getAffectedRows(expiredResult);
 
+    const evictable = and(eq(translationCache.messageRefCount, 0), isNull(translationCache.pinnedAt));
     const [{ unpinned }] = await this.db
       .select({ unpinned: count() })
       .from(translationCache)
-      .where(lt(translationCache.messageRefCount, TRANSLATION_PIN_THRESHOLD));
+      .where(evictable);
     const excess = Number(unpinned) - opts.maxUnpinned;
 
     let evicted = 0;
@@ -366,7 +401,7 @@ export class TranslationsRepository extends BaseRepository {
       const victims = await this.db
         .select({ cacheKey: translationCache.cacheKey })
         .from(translationCache)
-        .where(eq(translationCache.messageRefCount, 0))
+        .where(evictable)
         .orderBy(asc(translationCache.lastUsedAt))
         .limit(excess);
       const keys = (victims as Array<{ cacheKey: string }>).map((v) => v.cacheKey);
@@ -374,7 +409,7 @@ export class TranslationsRepository extends BaseRepository {
         const chunk = keys.slice(i, i + DELETE_CHUNK);
         const res = await this.db
           .delete(translationCache)
-          .where(and(inArray(translationCache.cacheKey, chunk), eq(translationCache.messageRefCount, 0)));
+          .where(and(inArray(translationCache.cacheKey, chunk), evictable));
         evicted += this.getAffectedRows(res);
       }
     }

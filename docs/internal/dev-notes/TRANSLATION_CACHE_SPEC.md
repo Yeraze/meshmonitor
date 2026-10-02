@@ -131,14 +131,16 @@ None: DB and provider HTTP only. Fewer provider calls than today.
   whether a phrase was ever translated (the issue's "never queryable"
   rule), and a free-text write would put composer drafts in a shared table.
   `/api/v1/translate` (free text only) also skips it.
-- **Pinning as specified is current, not sticky.** `messageRefCount` is the
-  live link count, so `>= 2` (pinned) is already covered by "never prune
-  while referenced" (`>= 1`). Once a phrase's messages are purged its count
-  drops to 0 and it ages out 30 days after last use. A sticky pin ("once
-  reused, keep forever") would need its own column; not built.
-- **Size cap** counts every non-pinned row (`messageRefCount < 2`) and evicts
-  the least recently used *unreferenced* rows. Referenced rows are never
-  evicted, so the cap is best effort if references alone exceed it.
+- **Pinning is sticky** (`translation_cache.pinnedAt`, ms, nullable). It is
+  set the first time an entry reaches `messageRefCount >= 2` (in
+  `linkMessage`, and by the prune's reconcile for links added any other way)
+  and is never cleared: not by a recount, the orphan sweep or a purge. So a
+  reused phrase keeps its translation after its messages are purged.
+  `messageRefCount` stays the live link count.
+- **Prune rules.** TTL deletes only rows that are unpinned AND unreferenced
+  and idle for 30 days. The 10,000 cap counts only unpinned, unreferenced
+  rows and evicts the least recently used of them. Pinned and referenced rows
+  are never deleted and do not count toward the cap.
 - **Link cleanup.** No FK (SQLite would need the composite parent key; MySQL
   needs exact column types). Every `MessagesRepository` delete path
   (`deleteMessage`, `purgeChannelMessages`, `purgeDirectMessages`,

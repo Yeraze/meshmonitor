@@ -93,8 +93,10 @@ describe('translation cache routes (#5520)', () => {
   afterEach(async () => {
     for (const id of inserted) await harness.db.messages.deleteMessage(id).catch(() => {});
     inserted.length = 0;
-    // Drop every (now unreferenced) cache row so tests stay independent.
-    await harness.db.translations.pruneCache({ now: Date.now() + 1000, ttlMs: 0, maxUnpinned: 0 });
+    // Drop every cache row (pinned ones survive any prune by design) so tests
+    // stay independent.
+    (harness.db as unknown as { db: { prepare(q: string): { run(): void } } }).db
+      .prepare('DELETE FROM translation_cache').run();
     harness.db.setSetting('translationEnabled', 'false');
     setTranslationCache(new NoOpTranslationCache());
     // harness.cleanup() only revokes admin/limited grants; drop the
@@ -158,6 +160,7 @@ describe('translation cache routes (#5520)', () => {
       expect(after?.hitCount).toBe(1);
       expect(after!.lastUsedAt).toBeGreaterThan(before!.lastUsedAt);
       expect(after?.messageRefCount).toBe(2);
+      expect(after?.pinnedAt).not.toBeNull();
     });
 
     it('composer / free-text translations never touch the cache or create links', async () => {

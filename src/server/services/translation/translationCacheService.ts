@@ -4,9 +4,11 @@
  *
  * Maintainer decisions (TRANSLATION_CACHE_SPEC.md "Expiry"):
  *  - unreferenced entries expire 30 days after LAST use;
- *  - at most 10,000 non-pinned entries, least recently used pruned first;
- *  - entries referenced by a message are never pruned, and entries referenced
- *    by >= 2 messages are pinned. Nothing for admins to tune.
+ *  - at most 10,000 unpinned, unreferenced entries, least recently used
+ *    pruned first;
+ *  - entries referenced by a message are never pruned, and an entry once
+ *    referenced by >= 2 distinct messages is pinned for good (it survives the
+ *    purge of those messages). Nothing for admins to tune.
  *
  * DB-only, no mesh traffic. Cutoff-based and stateless: a restart or a
  * settings save cannot cause a burst or reset a timer (mesh-impact §3).

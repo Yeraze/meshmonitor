@@ -25,8 +25,8 @@ describe('Migration 186 — translation cache tables', () => {
       migration.up(db);
       db.prepare(`INSERT INTO translation_cache (cacheKey, targetLang, translatedText, provider, createdAt, lastUsedAt)
         VALUES ('k1', 'en', 'Hello', 'deepl', 1, 1)`).run();
-      const row = db.prepare(`SELECT hitCount, messageRefCount, sourceLang FROM translation_cache`).get() as any;
-      expect(row).toEqual({ hitCount: 0, messageRefCount: 0, sourceLang: null });
+      const row = db.prepare(`SELECT hitCount, messageRefCount, sourceLang, pinnedAt FROM translation_cache`).get() as any;
+      expect(row).toEqual({ hitCount: 0, messageRefCount: 0, sourceLang: null, pinnedAt: null });
 
       const insert = db.prepare(`INSERT INTO message_translations (sourceId, messageId, targetLang, cacheKey, createdAt)
         VALUES (?, ?, ?, 'k1', 1)`);
@@ -55,6 +55,7 @@ describe('Migration 186 — translation cache tables', () => {
       expect(sql).toMatch(/CREATE TABLE IF NOT EXISTS translation_cache/);
       expect(sql).toMatch(/"cacheKey" TEXT PRIMARY KEY/);
       expect(sql).toMatch(/"lastUsedAt" BIGINT NOT NULL/);
+      expect(sql).toMatch(/"pinnedAt" BIGINT/);
       expect(sql).toMatch(/CREATE TABLE IF NOT EXISTS message_translations/);
       expect(sql).toMatch(/PRIMARY KEY \("sourceId", "messageId", "targetLang"\)/);
       expect(sql).toMatch(/trc_prune_idx/);
@@ -73,6 +74,7 @@ describe('Migration 186 — translation cache tables', () => {
       const ddl = conn.query.mock.calls.map((c: any[]) => String(c[0])).join('\n');
       expect(ddl).toMatch(/CREATE TABLE translation_cache/);
       expect(ddl).toMatch(/cacheKey VARCHAR\(64\) PRIMARY KEY/);
+      expect(ddl).toMatch(/pinnedAt BIGINT/);
       expect(ddl).toMatch(/CREATE TABLE message_translations/);
       expect(ddl).toMatch(/messageId VARCHAR\(64\) NOT NULL/);
       expect(ddl).toMatch(/PRIMARY KEY \(sourceId, messageId, targetLang\)/);

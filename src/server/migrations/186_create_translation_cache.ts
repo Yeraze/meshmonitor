@@ -13,6 +13,9 @@
  * delete path sweeps orphaned links and the hourly prune job reconciles
  * `messageRefCount` — see `src/db/repositories/translations.ts`.
  *
+ * `pinnedAt` (ms, nullable) is set the first time an entry is referenced by a
+ * second distinct message and is never cleared: pinned entries never expire.
+ *
  * Indexes:
  *  - `trc_prune_idx (messageRefCount, lastUsedAt)` — TTL + LRU prune scans.
  *  - `msgtr_cache_key_idx (cacheKey)` — refcount reconciliation.
@@ -47,7 +50,8 @@ export const migration = {
         createdAt INTEGER NOT NULL,
         lastUsedAt INTEGER NOT NULL,
         hitCount INTEGER NOT NULL DEFAULT 0,
-        messageRefCount INTEGER NOT NULL DEFAULT 0
+        messageRefCount INTEGER NOT NULL DEFAULT 0,
+        pinnedAt INTEGER
       )
     `);
     db.exec(`CREATE INDEX IF NOT EXISTS ${PRUNE_INDEX} ON ${CACHE_TABLE}(messageRefCount, lastUsedAt)`);
@@ -90,7 +94,8 @@ export async function runMigration186Postgres(client: import('pg').PoolClient): 
       "createdAt" BIGINT NOT NULL,
       "lastUsedAt" BIGINT NOT NULL,
       "hitCount" INTEGER NOT NULL DEFAULT 0,
-      "messageRefCount" INTEGER NOT NULL DEFAULT 0
+      "messageRefCount" INTEGER NOT NULL DEFAULT 0,
+      "pinnedAt" BIGINT
     )
   `);
   await client.query(`CREATE INDEX IF NOT EXISTS ${PRUNE_INDEX} ON ${CACHE_TABLE}("messageRefCount", "lastUsedAt")`);
@@ -127,6 +132,7 @@ export async function runMigration186Mysql(pool: import('mysql2/promise').Pool):
       lastUsedAt BIGINT NOT NULL,
       hitCount INT NOT NULL DEFAULT 0,
       messageRefCount INT NOT NULL DEFAULT 0,
+      pinnedAt BIGINT,
       INDEX ${PRUNE_INDEX} (messageRefCount, lastUsedAt)
     )
   `);

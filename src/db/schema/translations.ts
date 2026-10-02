@@ -21,8 +21,10 @@
  * `messageRefCount` = number of link rows that point at a cache entry, i.e.
  * the number of distinct messages that reference it (a message links to a
  * given cacheKey at most once because the key includes the target language).
- * Entries with `messageRefCount >= 1` are never pruned; entries with
- * `messageRefCount >= 2` are "pinned" and exempt from the size cap.
+ * Entries with `messageRefCount >= 1` are never pruned. The first time an
+ * entry reaches `messageRefCount >= 2`, `pinnedAt` is set and never cleared:
+ * a reused phrase ("Hi", "Good morning") never expires, even after the
+ * messages that referenced it are purged.
  *
  * Indexes are declared in migration 186, not here (project convention, see
  * `coverageSurveys.ts`).
@@ -48,6 +50,9 @@ export const translationCacheSqlite = sqliteTable('translation_cache', {
   lastUsedAt: integer('lastUsedAt').notNull(),
   hitCount: integer('hitCount').notNull().default(0),
   messageRefCount: integer('messageRefCount').notNull().default(0),
+  // Unix ms when the entry was first referenced by a 2nd distinct message.
+  // STICKY: once set, never cleared — the entry never expires (#5520).
+  pinnedAt: integer('pinnedAt'),
 });
 
 export const messageTranslationsSqlite = sqliteTable('message_translations', {
@@ -73,6 +78,7 @@ export const translationCachePostgres = pgTable('translation_cache', {
   lastUsedAt: pgBigint('lastUsedAt', { mode: 'number' }).notNull(),
   hitCount: pgInteger('hitCount').notNull().default(0),
   messageRefCount: pgInteger('messageRefCount').notNull().default(0),
+  pinnedAt: pgBigint('pinnedAt', { mode: 'number' }),
 });
 
 export const messageTranslationsPostgres = pgTable('message_translations', {
@@ -98,6 +104,7 @@ export const translationCacheMysql = mysqlTable('translation_cache', {
   lastUsedAt: myBigint('lastUsedAt', { mode: 'number' }).notNull(),
   hitCount: myInt('hitCount').notNull().default(0),
   messageRefCount: myInt('messageRefCount').notNull().default(0),
+  pinnedAt: myBigint('pinnedAt', { mode: 'number' }),
 });
 
 export const messageTranslationsMysql = mysqlTable('message_translations', {

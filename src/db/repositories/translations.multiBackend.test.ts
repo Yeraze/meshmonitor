@@ -140,13 +140,12 @@ function runSharedTests(getCtx: () => Ctx) {
     await repo.linkMessage('src-a', 'm2', 'en', 'pin-old', NOW);
     await repo.linkMessage('src-a', 'm3', 'en', 'pin-old', NOW);
 
-    // Non-pinned = 5 unreferenced + 1 referenced = 6; cap 3 → evict 3 LRU.
+    // The cap counts only unpinned, unreferenced rows: 5; cap 3 → evict the 2 LRU.
     const result = await repo.pruneCache({ now: NOW, ttlMs: TTL, maxUnpinned: 3 });
-    expect(result.evicted).toBe(3);
+    expect(result.evicted).toBe(2);
     expect(await repo.getCacheEntry('lru0')).toBeNull();
     expect(await repo.getCacheEntry('lru1')).toBeNull();
-    expect(await repo.getCacheEntry('lru2')).toBeNull();
-    expect(await repo.getCacheEntry('lru3')).not.toBeNull();
+    expect(await repo.getCacheEntry('lru2')).not.toBeNull();
     expect(await repo.getCacheEntry('ref-old')).not.toBeNull();
     expect(await repo.getCacheEntry('pin-old')).not.toBeNull();
   });
@@ -173,7 +172,66 @@ function runSharedTests(getCtx: () => Ctx) {
     // Nothing orphaned → the sweep alone does not recount.
     expect(await repo.removeOrphanedLinks(ALL_SOURCES)).toBe(0);
     await repo.reconcileMessageRefCounts();
-    expect((await repo.getCacheEntry('drift'))?.messageRefCount).toBe(1);
+    expect(await repo.getCacheEntry('drift')).toMatchObject({ messageRefCount: 1, pinnedAt: null });
+  });
+
+  it('pins an entry at its 2nd distinct message, and the pin is sticky', async () => {
+    const { repo, addMessage, removeMessage } = getCtx();
+    await repo.insertCacheEntry(entry('hi'), NOW - 90 * DAY);
+    await addMessage('m1', 'src-a');
+    await addMessage('m2', 'src-b');
+
+    await repo.linkMessage('src-a', 'm1', 'en', 'hi', NOW - 90 * DAY);
+    // Re-linking the same message is not a second distinct message.
+    await repo.linkMessage('src-a', 'm1', 'en', 'hi', NOW - 90 * DAY);
+    expect((await repo.getCacheEntry('hi'))?.pinnedAt).toBeNull();
+
+    await repo.linkMessage('src-b', 'm2', 'en', 'hi', NOW - 89 * DAY);
+    expect((await repo.getCacheEntry('hi'))?.pinnedAt).toBe(NOW - 89 * DAY);
+
+    // Both messages purged: the sweep and recount drop the count to 0 but never unpin.
+    await removeMessage('m1');
+    await removeMessage('m2');
+    expect(await repo.removeOrphanedLinks(ALL_SOURCES)).toBe(2);
+    await repo.reconcileMessageRefCounts(NOW);
+    expect(await repo.getCacheEntry('hi')).toMatchObject({ messageRefCount: 0, pinnedAt: NOW - 89 * DAY });
+
+    // Unused for 90 days, under maximum cap pressure: still kept.
+    await repo.insertCacheEntry(entry('filler'), NOW - 100 * DAY);
+    const result = await repo.pruneCache({ now: NOW, ttlMs: TTL, maxUnpinned: 0 });
+    expect(result.expired).toBe(1); // only 'filler'
+    expect(await repo.getCacheEntry('hi')).not.toBeNull();
+    expect(await repo.getCacheEntry('filler')).toBeNull();
+  });
+
+  it('a single-reference entry is not pinned and ages out once its message is gone', async () => {
+    const { repo, addMessage, removeMessage } = getCtx();
+    await repo.insertCacheEntry(entry('once'), NOW - 40 * DAY);
+    await addMessage('m1', 'src-a');
+    await repo.linkMessage('src-a', 'm1', 'en', 'once', NOW - 40 * DAY);
+
+    // Referenced: survives TTL and cap.
+    expect((await repo.pruneCache({ now: NOW, ttlMs: TTL, maxUnpinned: 0 })).expired).toBe(0);
+    expect(await repo.getCacheEntry('once')).toMatchObject({ messageRefCount: 1, pinnedAt: null });
+
+    await removeMessage('m1');
+    const result = await repo.pruneCache({ now: NOW, ttlMs: TTL, maxUnpinned: 10_000 });
+    expect(result.expired).toBe(1);
+    expect(await repo.getCacheEntry('once')).toBeNull();
+  });
+
+  it('reconcile pins an entry whose links reached the threshold outside linkMessage', async () => {
+    const { repo, addMessage, setRefCount } = getCtx();
+    await repo.insertCacheEntry(entry('late'), NOW);
+    await addMessage('m1', 'src-a');
+    await addMessage('m2', 'src-a');
+    await repo.linkMessage('src-a', 'm1', 'en', 'late', NOW);
+    await repo.linkMessage('src-a', 'm2', 'en', 'late', NOW);
+    // Simulate a pre-pin row: count right, pin missing.
+    await setRefCount('late', 0);
+    await repo.reconcileMessageRefCounts(NOW + 1);
+    expect(await repo.getCacheEntry('late')).toMatchObject({ messageRefCount: 2 });
+    expect((await repo.getCacheEntry('late'))?.pinnedAt).not.toBeNull();
   });
 }
 
