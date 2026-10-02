@@ -36,6 +36,9 @@ describe('messageCsv (#5517)', () => {
     expect(csvCell('\tcmd')).toBe("'\tcmd");
     expect(csvCell('\rcmd')).toBe(`"'\rcmd"`);
     expect(csvCell('=HYPERLINK("x","y")')).toBe(`"'=HYPERLINK(""x"",""y"")"`);
+    // The guard goes inside the quotes when the cell also needs RFC 4180 quoting.
+    expect(csvCell('=foo,bar')).toBe(`"'=foo,bar"`);
+    expect(csvCell('=say "hello"')).toBe(`"'=say ""hello"""`);
     expect(csvCell(-12)).toBe('-12');
     expect(csvCell('a=b')).toBe('a=b');
   });
