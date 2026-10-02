@@ -43,12 +43,16 @@ interface FakeManagerOpts {
   deviceInfo?: MeshCoreDeviceInfo | null;
   /** When true, every getter rejects to exercise the per-source try/catch. */
   throws?: boolean;
+  /** #5533: a directly-attached Repeater. `publicKey` is then the placeholder. */
+  repeater?: boolean;
+  /** #5533: the Repeater's real key from `get public.key` (null = not read yet). */
+  repeaterKey?: string | null;
 }
 
 function makeManager(opts: FakeManagerOpts): MeshCoreManager {
   const appliedDeviceInfo: MeshCoreDeviceInfo[] = [];
   const localNode = opts.publicKey
-    ? { publicKey: opts.publicKey, name: 'test', advType: 1 as const }
+    ? { publicKey: opts.publicKey, name: 'test', advType: opts.repeater ? 2 : 1 }
     : null;
 
   const reject = () => Promise.reject(new Error('bridge boom'));
@@ -63,6 +67,9 @@ function makeManager(opts: FakeManagerOpts): MeshCoreManager {
     getStatsPackets: () => (opts.throws ? reject() : Promise.resolve(opts.packets ?? null)),
     getDeviceTime: () => (opts.throws ? reject() : Promise.resolve(opts.deviceTime ?? null)),
     deviceQuery: () => (opts.throws ? reject() : Promise.resolve(opts.deviceInfo ?? null)),
+    isRepeaterSource: () => opts.repeater === true,
+    getLocalTelemetryNodeId: () => (opts.repeater ? (opts.repeaterKey ?? null) : (localNode?.publicKey || null)),
+    getDeviceTimeResolutionSecs: () => (opts.repeater ? 60 : 1),
     applyDeviceInfo: (info: MeshCoreDeviceInfo) => {
       appliedDeviceInfo.push(info);
     },
@@ -530,5 +537,94 @@ describe('MeshCoreTelemetryPoller — lastHeard stamping (#5131)', () => {
 
     expect(batches).toHaveLength(1);
     expect(batches[0].rows.length).toBeGreaterThan(0);
+  });
+});
+
+describe('MeshCoreTelemetryPoller — directly-attached Repeater (#5533)', () => {
+  const REPEATER_KEY = 'c'.repeat(60) + '1234';
+
+  it('records the same mc_* rows under the real key, scoped to the source', async () => {
+    const manager = makeManager({
+      sourceId: 'src-rpt',
+      publicKey: 'repeater',
+      repeater: true,
+      repeaterKey: REPEATER_KEY,
+      core: FULL_CORE,
+      radio: FULL_RADIO,
+      packets: FULL_PACKETS,
+      deviceInfo: { ver: 'v1.17.1', firmwareBuild: '14 Aug 2026', model: 'Heltec V3' },
+    });
+    const { db, batches } = makeDatabase();
+    const poller = new MeshCoreTelemetryPoller({ registry: makeRegistry(manager), database: db, intervalMs: 60_000 });
+
+    await poller.pollOnce();
+
+    expect(batches).toHaveLength(1);
+    expect(batches[0].sourceId).toBe('src-rpt');
+    const rows = batches[0].rows;
+    expect(rows.every((r) => r.nodeId === REPEATER_KEY)).toBe(true);
+    expect(rows.every((r) => r.nodeNum === nodeNumFromPubkey(REPEATER_KEY))).toBe(true);
+    const types = new Set(rows.map((r) => r.telemetryType));
+    for (const t of ['battery_mv', 'uptime_secs', 'noise_floor', 'last_snr', 'tx_air_secs', 'pkt_recv', 'pkt_recv_errors']) {
+      expect(types.has(`${MC_TELEMETRY_PREFIX}${t}`)).toBe(true);
+    }
+    expect(poller.getLastSnapshot('src-rpt')).toMatchObject({ batteryMv: 4100, noiseFloor: -123, packetsRecv: 500 });
+  });
+
+  it('never files rows under the placeholder key, and skips until the real key is known', async () => {
+    const manager = makeManager({
+      sourceId: 'src-rpt',
+      publicKey: 'repeater',
+      repeater: true,
+      repeaterKey: null,
+      core: FULL_CORE,
+    });
+    const { db, batches } = makeDatabase();
+
+    await new MeshCoreTelemetryPoller({ registry: makeRegistry(manager), database: db, intervalMs: 60_000 }).pollOnce();
+
+    expect(batches).toHaveLength(0);
+  });
+
+  it('does not write a meshcore_nodes row (would duplicate the placeholder node)', async () => {
+    const manager = makeManager({
+      sourceId: 'src-rpt',
+      publicKey: 'repeater',
+      repeater: true,
+      repeaterKey: REPEATER_KEY,
+      core: FULL_CORE,
+    });
+    const { db, upsertedNodes, heardStamps, batches } = makeDatabase();
+
+    await new MeshCoreTelemetryPoller({ registry: makeRegistry(manager), database: db, intervalMs: 60_000 }).pollOnce();
+
+    expect(batches).toHaveLength(1);
+    expect(upsertedNodes).toHaveLength(0);
+    expect(heardStamps).toHaveLength(0);
+  });
+
+  it('reads an in-sync minute-resolution clock as 0 drift, not up to 59 s', async () => {
+    vi.useFakeTimers();
+    try {
+      // 12:34:47 UTC; the repeater clock prints 12:34, i.e. 12:34:00.
+      const now = Date.UTC(2026, 9, 2, 12, 34, 47);
+      vi.setSystemTime(now);
+      const minuteStart = Math.floor(Date.UTC(2026, 9, 2, 12, 34, 0) / 1000);
+      const manager = makeManager({
+        sourceId: 'src-rpt',
+        publicKey: 'repeater',
+        repeater: true,
+        repeaterKey: REPEATER_KEY,
+        deviceTime: minuteStart,
+      });
+      const { db, batches } = makeDatabase();
+
+      await new MeshCoreTelemetryPoller({ registry: makeRegistry(manager), database: db, intervalMs: 60_000 }).pollOnce();
+
+      const drift = batches[0].rows.find((r) => r.telemetryType === `${MC_TELEMETRY_PREFIX}rtc_drift_secs`);
+      expect(drift?.value).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

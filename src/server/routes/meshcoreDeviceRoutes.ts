@@ -130,7 +130,8 @@ router.post('/disconnect', meshcoreDeviceLimiter, requireAuth(), requirePermissi
  * GET /api/sources/:id/meshcore/stats/:type
  *
  * Read local-node stats (core, radio, or packets). These hit the directly-
- * connected companion node over the local link — no RF transmission.
+ * connected node over the local link — no RF transmission. Companion: the
+ * companion protocol. Repeater: the serial CLI `stats-*` verbs (#5533).
  */
 router.get(
   '/stats/:type',
@@ -148,7 +149,7 @@ router.get(
         return res.status(400).json({ success: false, error: 'type must be core, radio, or packets' });
       }
       if (!data) {
-        return res.status(409).json({ success: false, error: 'Stats unavailable — source disconnected or not a Companion' });
+        return res.status(409).json({ success: false, error: 'Stats unavailable — source disconnected, or the device did not answer' });
       }
       res.json({ success: true, data });
     } catch (error) {
@@ -245,9 +246,11 @@ router.get('/snapshot', optionalAuth(), requirePermission('connection', 'read', 
  *   - `telemetryRef`: { nodeId, nodeNum, sourceId } — the keys the existing
  *     `/api/telemetry/:nodeId?sourceId=...` endpoint indexes graphs on.
  *
- * Companion-only. Repeaters do not expose GetStats; the response will
- * still include identity but `latest` will be `null` and clients should
- * suppress the health/graphs panels.
+ * Companion and Repeater (#5533; the repeater answers the serial CLI
+ * `stats-*` verbs). For a Repeater, `telemetryRef.nodeId` is the real key from
+ * `get public.key`, not the `'repeater'` placeholder in `identity.publicKey`,
+ * and is null until that key has been read. Other device types get
+ * `latest: null`.
  */
 router.get('/info', optionalAuth(), requirePermission('connection', 'read', { sourceIdFrom: 'params.id' }), async (req: Request, res: Response) => {
   try {
@@ -257,10 +260,11 @@ router.get('/info', optionalAuth(), requirePermission('connection', 'read', { so
     const poller = getMeshCoreTelemetryPoller();
     const snapshot = poller ? poller.getLastSnapshot(manager.sourceId) : undefined;
 
-    const telemetryRef = localNode?.publicKey
+    const telemetryNodeId = localNode?.publicKey ? manager.getLocalTelemetryNodeId() : null;
+    const telemetryRef = telemetryNodeId
       ? {
-          nodeId: localNode.publicKey,
-          nodeNum: nodeNumFromPubkey(localNode.publicKey),
+          nodeId: telemetryNodeId,
+          nodeNum: nodeNumFromPubkey(telemetryNodeId),
           sourceId: manager.sourceId,
         }
       : null;

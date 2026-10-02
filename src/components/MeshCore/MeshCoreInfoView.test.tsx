@@ -5,7 +5,7 @@
  *
  * Verifies the page renders the identity / radio / health blocks pulled
  * from `/api/sources/:id/meshcore/info` and that the graph grid is hidden
- * for non-Companion devices. The TanStack Query layer is shimmed via a
+ * for device types with no local stats (Companion and Repeater have them). The TanStack Query layer is shimmed via a
  * fresh `QueryClientProvider` per test so caches don't bleed across runs.
  */
 import type { ReactNode } from 'react';
@@ -126,26 +126,15 @@ describe('MeshCoreInfoView', () => {
     expect(screen.getByText('-1 s')).toBeTruthy();
   });
 
-  it('suppresses graphs and shows a note for non-Companion sources', async () => {
+  function stubInfo(data: Record<string, unknown>) {
     vi.stubGlobal(
       'fetch',
       vi.fn(async (url: string) => {
         if (url.endsWith('/meshcore/info')) {
-          return new Response(
-            JSON.stringify({
-              success: true,
-              data: {
-                sourceId: 'src-rpt',
-                connected: true,
-                deviceType: 2, // Repeater
-                deviceTypeName: 'Repeater',
-                identity: { publicKey: PK, name: 'Repeater Rico', advType: 2 },
-                latest: null,
-                telemetryRef: { nodeId: PK, nodeNum: 1, sourceId: 'src-rpt' },
-              },
-            }),
-            { status: 200, headers: { 'content-type': 'application/json' } },
-          );
+          return new Response(JSON.stringify({ success: true, data }), {
+            status: 200,
+            headers: { 'content-type': 'application/json' },
+          });
         }
         return new Response(JSON.stringify([]), {
           status: 200,
@@ -153,10 +142,31 @@ describe('MeshCoreInfoView', () => {
         });
       }) as unknown as typeof fetch,
     );
+  }
+
+  it('shows health and graphs for a directly-attached Repeater, without the Sync button (#5533)', async () => {
+    stubInfo({
+      sourceId: 'src-rpt',
+      connected: true,
+      deviceType: 2, // Repeater
+      deviceTypeName: 'Repeater',
+      identity: { publicKey: 'repeater', name: 'Repeater Rico', advType: 2 },
+      latest: {
+        timestamp: 1700000000000,
+        batteryMv: 3950,
+        uptimeSecs: 2 * 3600 + 5 * 60,
+        queueLen: 0,
+        noiseFloor: -112,
+        lastRssi: -87,
+        lastSnr: 7.25,
+        rtcDriftSecs: 0,
+      },
+      telemetryRef: { nodeId: PK, nodeNum: 1, sourceId: 'src-rpt' },
+    });
 
     render(
       withQueryClient(
-        <MeshCoreInfoView baseUrl="" sourceId="src-rpt" status={null} />,
+        <MeshCoreInfoView baseUrl="" sourceId="src-rpt" status={null} onSyncTime={vi.fn()} />,
       ),
     );
 
@@ -164,8 +174,36 @@ describe('MeshCoreInfoView', () => {
       expect(screen.getByText('Repeater Rico')).toBeTruthy();
     });
 
-    // The repeater path renders the note and *not* the graphs grid.
-    expect(screen.getByText(/Local stats are only available for Companion devices/)).toBeTruthy();
+    expect(screen.getByText('3.95 V')).toBeTruthy();
+    expect(screen.getByText('2h 5m')).toBeTruthy();
+    expect(screen.queryByText(/Local stats are only available/)).toBeNull();
+    expect(screen.getByTestId('meshcore-info-graphs')).toBeTruthy();
+    // RTC sync writes over the companion protocol: not offered on a Repeater.
+    expect(screen.queryByRole('button', { name: /sync/i })).toBeNull();
+  });
+
+  it('suppresses graphs and shows a note for device types without local stats', async () => {
+    stubInfo({
+      sourceId: 'src-room',
+      connected: true,
+      deviceType: 3, // Room server
+      deviceTypeName: 'ROOM_SERVER',
+      identity: { publicKey: PK, name: 'Room Rita', advType: 3 },
+      latest: null,
+      telemetryRef: null,
+    });
+
+    render(
+      withQueryClient(
+        <MeshCoreInfoView baseUrl="" sourceId="src-room" status={null} />,
+      ),
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText('Room Rita')).toBeTruthy();
+    });
+
+    expect(screen.getByText(/Local stats are only available for Companion and Repeater devices/)).toBeTruthy();
     expect(screen.queryByTestId('meshcore-info-graphs')).toBeNull();
   });
 
