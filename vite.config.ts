@@ -36,8 +36,11 @@ export default defineConfig({
         // Exclude HTML and API routes from precaching
         // HTML must be fetched from server to get runtime BASE_URL path rewriting
         globIgnores: ['**/api/**', '**/*.html'],
-        // Increase size limit to accommodate large bundle (maplibre-gl, recharts, etc.)
-        maximumFileSizeToCacheInBytes: 4 * 1024 * 1024 // 4 MB
+        // Increase size limit to accommodate large bundle (maplibre-gl, recharts, etc.).
+        // main-*.js reached 4,193,300 bytes, 1 KB under the old 4 MiB cap, so any
+        // frontend addition failed the build. Splitting the main chunk is the real
+        // fix; this keeps headroom until then.
+        maximumFileSizeToCacheInBytes: 6 * 1024 * 1024 // 6 MiB
       },
       devOptions: {
         enabled: true,
