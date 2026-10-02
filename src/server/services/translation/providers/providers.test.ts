@@ -54,8 +54,21 @@ describe('Translation Providers', () => {
 
     it('should throw error when API key is missing', async () => {
       await expect(
-        provider.translate('Hello', 'en', 'nb', { apiKey: '' })
+        provider.translate('Hello', 'en', 'nb', { apiKey: '', deeplUrl: 'https://api-free.deepl.com/v2/translate' })
       ).rejects.toThrow('DeepL API key is required');
+    });
+
+    it('should throw error when endpoint URL is missing', async () => {
+      await expect(
+        provider.translate('Hello', 'en', 'nb', { apiKey: 'test-key', deeplUrl: '' })
+      ).rejects.toThrow('DeepL endpoint URL is required');
+    });
+
+    it('should resolve endpoint automatically based on key or custom URL', () => {
+      expect(provider.resolveEndpoint('', 'test-key:fx')).toBe('https://api-free.deepl.com/v2/translate');
+      expect(provider.resolveEndpoint('', 'pro-key')).toBe('https://api.deepl.com/v2/translate');
+      expect(provider.resolveEndpoint('https://custom-proxy.internal', 'pro-key')).toBe('https://custom-proxy.internal/translate');
+      expect(provider.resolveEndpoint('https://custom-proxy.internal/v1/translate', 'pro-key')).toBe('https://custom-proxy.internal/v1/translate');
     });
 
     it('should map Norwegian nb and no to NB for target_lang', async () => {
@@ -66,7 +79,10 @@ describe('Translation Providers', () => {
         }),
       } as unknown as Response);
 
-      const res = await provider.translate('Hello world', 'auto', 'nb', { apiKey: 'test-key:fx' });
+      const res = await provider.translate('Hello world', 'auto', 'nb', {
+        apiKey: 'test-key:fx',
+        deeplUrl: 'https://api-free.deepl.com/v2/translate',
+      });
 
       expect(res.translatedText).toBe('Hallo verden');
       expect(res.detectedSourceLanguage).toBe('en');
@@ -94,7 +110,10 @@ describe('Translation Providers', () => {
         }),
       } as unknown as Response);
 
-      await provider.translate('Hola', 'es', 'en', { apiKey: 'test-key:fx' });
+      await provider.translate('Hola', 'es', 'en', {
+        apiKey: 'test-key:fx',
+        deeplUrl: 'https://api-free.deepl.com/v2/translate',
+      });
 
       expect(global.fetch).toHaveBeenCalledWith(
         'https://api-free.deepl.com/v2/translate',
@@ -107,7 +126,10 @@ describe('Translation Providers', () => {
         })
       );
 
-      await provider.translate('Hola', 'es', 'pt', { apiKey: 'test-key:fx' });
+      await provider.translate('Hola', 'es', 'pt', {
+        apiKey: 'test-key:fx',
+        deeplUrl: 'https://api-free.deepl.com/v2/translate',
+      });
 
       expect(global.fetch).toHaveBeenCalledWith(
         'https://api-free.deepl.com/v2/translate',
@@ -121,22 +143,6 @@ describe('Translation Providers', () => {
       );
     });
 
-    it('should use Pro API endpoint when key does not end with :fx', async () => {
-      global.fetch = vi.fn().mockResolvedValue({
-        ok: true,
-        json: async () => ({
-          translations: [{ text: 'Bonjour', detected_source_language: 'EN' }],
-        }),
-      } as unknown as Response);
-
-      await provider.translate('Hello', 'auto', 'fr', { apiKey: 'pro-key' });
-
-      expect(global.fetch).toHaveBeenCalledWith(
-        'https://api.deepl.com/v2/translate',
-        expect.anything()
-      );
-    });
-
     it('should throw descriptive error on non-ok HTTP response', async () => {
       global.fetch = vi.fn().mockResolvedValue({
         ok: false,
@@ -146,7 +152,10 @@ describe('Translation Providers', () => {
       } as unknown as Response);
 
       await expect(
-        provider.translate('Hello', 'auto', 'invalid', { apiKey: 'test-key:fx' })
+        provider.translate('Hello', 'auto', 'invalid', {
+          apiKey: 'test-key:fx',
+          deeplUrl: 'https://api-free.deepl.com/v2/translate',
+        })
       ).rejects.toThrow('DeepL API error (400): {"message":"Value for target_lang not supported"}');
     });
   });
@@ -154,7 +163,19 @@ describe('Translation Providers', () => {
   describe('LibreTranslateProvider', () => {
     const provider = new LibreTranslateProvider();
 
-    it('should translate using custom or default url and lowercase codes', async () => {
+    it('should throw error when URL is missing', async () => {
+      await expect(
+        provider.translate('Hello', 'en', 'nb', { url: '' })
+      ).rejects.toThrow('LibreTranslate URL is required');
+    });
+
+    it('should resolve endpoint with defaults and custom URLs', () => {
+      expect(provider.resolveEndpoint('')).toBe('http://libretranslate:5000/translate');
+      expect(provider.resolveEndpoint('http://custom-libre:5000')).toBe('http://custom-libre:5000/translate');
+      expect(provider.resolveEndpoint('https://custom.internal/api/v1')).toBe('https://custom.internal/api/v1');
+    });
+
+    it('should translate using provided url and lowercase codes', async () => {
       global.fetch = vi.fn().mockResolvedValue({
         ok: true,
         json: async () => ({
@@ -164,7 +185,7 @@ describe('Translation Providers', () => {
       } as unknown as Response);
 
       const res = await provider.translate('Hello world', 'auto', 'nb', {
-        url: 'http://custom-libre:5000',
+        url: 'http://custom-libre:5000/translate',
         apiKey: 'libre-key',
       });
 
@@ -195,13 +216,25 @@ describe('Translation Providers', () => {
       } as unknown as Response);
 
       await expect(
-        provider.translate('Hello', 'auto', 'nb', {})
+        provider.translate('Hello', 'auto', 'nb', { url: 'http://libretranslate:5000/translate' })
       ).rejects.toThrow('LibreTranslate error (500): Server error');
     });
   });
 
   describe('OpenAIProvider', () => {
     const provider = new OpenAIProvider();
+
+    it('should throw error when endpoint URL is missing', async () => {
+      await expect(
+        provider.translate('Hello', 'en', 'nb', { openAiBaseUrl: '' })
+      ).rejects.toThrow('OpenAI endpoint URL is required');
+    });
+
+    it('should resolve endpoint with defaults and custom URLs', () => {
+      expect(provider.resolveEndpoint('')).toBe('http://host.docker.internal:11434/v1/chat/completions');
+      expect(provider.resolveEndpoint('http://host:11434')).toBe('http://host:11434/chat/completions');
+      expect(provider.resolveEndpoint('https://api.openai.com/v1/chat/completions')).toBe('https://api.openai.com/v1/chat/completions');
+    });
 
     it('should format request and return translation content', async () => {
       global.fetch = vi.fn().mockResolvedValue({
@@ -236,7 +269,7 @@ describe('Translation Providers', () => {
       } as unknown as Response);
 
       await expect(
-        provider.translate('Hello', 'auto', 'nb', {})
+        provider.translate('Hello', 'auto', 'nb', { openAiBaseUrl: 'http://host:11434/v1/chat/completions' })
       ).rejects.toThrow('OpenAI endpoint returned an invalid response structure');
     });
   });

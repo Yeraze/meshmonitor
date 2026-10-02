@@ -5,6 +5,17 @@ import { buildServiceEndpoint } from './translateUtils.js';
 export class DeepLProvider implements ITranslationProvider {
   readonly id: TranslationProvider = 'deepl';
 
+  resolveEndpoint(url?: string, apiKey?: string): string {
+    const rawUrl = (url || '').trim();
+    if (rawUrl) {
+      return buildServiceEndpoint(rawUrl, 'https://api.deepl.com/v2/translate', '/translate');
+    }
+    const key = (apiKey || '').trim();
+    return key.endsWith(':fx')
+      ? 'https://api-free.deepl.com/v2/translate'
+      : 'https://api.deepl.com/v2/translate';
+  }
+
   /**
    * Maps canonical ISO 639-1 language code to DeepL's required target_lang format.
    * DeepL requires regional variants for certain target languages (EN, PT) and NB for Norwegian.
@@ -36,11 +47,12 @@ export class DeepLProvider implements ITranslationProvider {
       throw new Error('DeepL API key is required');
     }
 
+    const endpoint = (config.deeplUrl || '').trim();
+    if (!endpoint) {
+      throw new Error('DeepL endpoint URL is required');
+    }
+
     const key = config.apiKey.trim();
-    const defaultEndpoint = key.endsWith(':fx')
-      ? 'https://api-free.deepl.com/v2/translate'
-      : 'https://api.deepl.com/v2/translate';
-    const endpoint = buildServiceEndpoint(config.deeplUrl || '', defaultEndpoint, '/translate');
 
     const body: Record<string, unknown> = {
       text: [text],

@@ -128,7 +128,7 @@ describe('translationService', () => {
       vi.mocked(databaseService.getSettingAsync).mockImplementation(async (key: string) => {
         if (key === 'translationEnabled') return 'true';
         if (key === 'translationProvider') return 'libretranslate';
-        if (key === 'translationUrl') return 'http://libretranslate:5000';
+        if (key === 'translationUrl') return 'http://libretranslate:5000/translate';
         return null;
       });
 
@@ -145,7 +145,7 @@ describe('translationService', () => {
       vi.mocked(databaseService.getSettingAsync).mockImplementation(async (key: string) => {
         if (key === 'translationEnabled') return 'true';
         if (key === 'translationProvider') return 'libretranslate';
-        if (key === 'translationUrl') return 'http://libretranslate:5000';
+        if (key === 'translationUrl') return 'http://libretranslate:5000/translate';
         return null;
       });
 
@@ -219,6 +219,7 @@ describe('translationService', () => {
         if (key === 'translationEnabled') return 'true';
         if (key === 'translationProvider') return 'deepl';
         if (key === 'translationApiKey') return 'deepl-api-key:fx';
+        if (key === 'translationDeeplUrl') return 'https://api-free.deepl.com/v2/translate';
         return null;
       });
 
@@ -278,11 +279,12 @@ describe('translationService', () => {
       );
     });
 
-    it('should use Pro DeepL endpoint for non-:fx keys when no URL is provided', async () => {
+    it('should use Pro DeepL endpoint when configured in settings', async () => {
       vi.mocked(databaseService.getSettingAsync).mockImplementation(async (key: string) => {
         if (key === 'translationEnabled') return 'true';
         if (key === 'translationProvider') return 'deepl';
         if (key === 'translationApiKey') return 'deepl-pro-api-key';
+        if (key === 'translationDeeplUrl') return 'https://api.deepl.com/v2/translate';
         return null;
       });
 
@@ -304,6 +306,22 @@ describe('translationService', () => {
           method: 'POST',
         })
       );
+    });
+
+    it('should throw error when provider endpoint URL is empty at runtime', async () => {
+      vi.mocked(databaseService.getSettingAsync).mockImplementation(async (key: string) => {
+        if (key === 'translationEnabled') return 'true';
+        if (key === 'translationProvider') return 'libretranslate';
+        if (key === 'translationUrl') return '';
+        return null;
+      });
+
+      await expect(
+        translationService.translate({
+          text: 'Hello world',
+          targetLang: 'es',
+        })
+      ).rejects.toThrow('LibreTranslate URL is required');
     });
 
     it('should translate using Google Cloud Translation API', async () => {
@@ -475,6 +493,7 @@ describe('translationService', () => {
       vi.mocked(databaseService.getSettingAsync).mockImplementation(async (key: string) => {
         if (key === 'translationEnabled') return 'true';
         if (key === 'translationProvider') return 'libretranslate';
+        if (key === 'translationUrl') return 'http://libretranslate:5000/translate';
         return null;
       });
 
@@ -506,6 +525,7 @@ describe('translationService', () => {
       vi.mocked(databaseService.getSettingAsync).mockImplementation(async (key: string) => {
         if (key === 'translationEnabled') return 'true';
         if (key === 'translationProvider') return 'libretranslate';
+        if (key === 'translationUrl') return 'http://libretranslate:5000/translate';
         return null;
       });
 
@@ -542,6 +562,7 @@ describe('translationService', () => {
       vi.mocked(databaseService.getSettingAsync).mockImplementation(async (key: string) => {
         if (key === 'translationEnabled') return 'true';
         if (key === 'translationProvider') return 'libretranslate';
+        if (key === 'translationUrl') return 'http://libretranslate:5000/translate';
         return null;
       });
       await memoryCache.set(
@@ -566,6 +587,7 @@ describe('translationService', () => {
       vi.mocked(databaseService.getSettingAsync).mockImplementation(async (key: string) => {
         if (key === 'translationEnabled') return 'true';
         if (key === 'translationProvider') return 'libretranslate';
+        if (key === 'translationUrl') return 'http://libretranslate:5000/translate';
         return null;
       });
       global.fetch = vi.fn().mockResolvedValue({
