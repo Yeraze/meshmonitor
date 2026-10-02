@@ -4,7 +4,7 @@
  * Provides common functionality for all repository implementations.
  * Supports SQLite, PostgreSQL, and MySQL through Drizzle ORM.
  */
-import { sql, eq, SQL } from 'drizzle-orm';
+import { sql, eq, SQL, type SQLWrapper } from 'drizzle-orm';
 import { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
 import { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { MySql2Database } from 'drizzle-orm/mysql2';
@@ -101,6 +101,34 @@ export abstract class BaseRepository {
    */
   protected isMySQL(): boolean {
     return this.dbType === 'mysql';
+  }
+
+  /**
+   * Substring match of `term` inside a text column, with the user's `%`, `_`
+   * and `~` matched literally (#5517).
+   *
+   * The escape char is `~`, not `\`, for the reason given in
+   * `packetLog.ts`: a backslash in the ESCAPE literal breaks MySQL.
+   *
+   * Case-insensitive: Postgres uses ILIKE; SQLite and MySQL LIKE are already
+   * case-insensitive (SQLite for ASCII, MySQL through the default `_ci`
+   * collation). Case-sensitive: SQLite uses `instr`, which has no wildcards to
+   * escape; MySQL compares BINARY; Postgres LIKE is case-sensitive.
+   */
+  protected textContains(column: SQLWrapper, term: string, caseSensitive = false): SQL {
+    if (this.isSQLite() && caseSensitive) {
+      return sql`instr(${column}, ${term}) > 0`;
+    }
+    const pattern = `%${term.replace(/[~%_]/g, (c: string) => `~${c}`)}%`;
+    if (this.isPostgres()) {
+      return caseSensitive
+        ? sql`${column} LIKE ${pattern} ESCAPE '~'`
+        : sql`${column} ILIKE ${pattern} ESCAPE '~'`;
+    }
+    if (this.isMySQL() && caseSensitive) {
+      return sql`BINARY ${column} LIKE ${pattern} ESCAPE '~'`;
+    }
+    return sql`${column} LIKE ${pattern} ESCAPE '~'`;
   }
 
   /**

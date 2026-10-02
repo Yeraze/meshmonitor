@@ -52,7 +52,11 @@ Search results respect the existing permission system:
 
 - **Channel messages** — only channels where you have read permission are included
 - **Direct messages** — only visible if you have the `messages:read` permission
+- **Virtual channels** (Channel Database entries) — included when you have that entry's read grant
+- **MeshCore messages** — a channel needs `channel_N:read` or `messages:read`; MeshCore DMs need `messages:read`
 - **Admin users** — see all results across all channels and DMs
+
+In-app search reads stored messages, so MeshCore sources are searchable whether or not they are connected.
 
 ## API Endpoint
 
@@ -69,14 +73,56 @@ GET /api/v1/messages/search
 | `scope` | string | no | `all` | `all`, `channels`, `dms`, or `meshcore` |
 | `channels` | string | no | — | Comma-separated channel IDs to filter |
 | `fromNodeId` | string | no | — | Filter by sender node ID |
-| `startDate` | number | no | — | Earliest timestamp (epoch seconds) |
-| `endDate` | number | no | — | Latest timestamp (epoch seconds) |
+| `startDate` | number | no | — | Earliest message time (epoch **milliseconds**) |
+| `endDate` | number | no | — | Latest message time (epoch **milliseconds**) |
 | `limit` | number | no | 50 | Max results per page (max 100) |
 | `offset` | number | no | 0 | Pagination offset |
 
 ::: tip API Authentication
 The `/api/v1/messages/search` endpoint requires a valid API token (Bearer authentication). The frontend uses session-based authentication via `/api/messages/search` which is not intended for external use.
 :::
+
+## Exporting Messages (CSV)
+
+The **Unified Messages** page has an **Export** button that downloads stored messages as a CSV file, for event logs and after-action reports (for example an ARRL Simulated Emergency Test).
+
+Pick what to include:
+
+| Filter | Description |
+|--------|-------------|
+| **Sources** | Which sources to export. All are selected by default. |
+| **Channels** | All channels, or only the ones you tick. Channels match by name across sources, as in the channel picker. |
+| **Include** | Channel messages and DMs, channel messages only, or DMs only. |
+| **Contains any of** | Comma-separated words. A message is kept if it contains **any** of them. Matching ignores case and finds the word anywhere in the text. |
+| **Leave out messages with** | Comma-separated words. A message containing any of them is dropped. |
+| **From / To** | Date and time range, entered in your browser's time zone. |
+| **Sender ID** | One sender: a Meshtastic node ID (`!abcd1234`), or a MeshCore public key prefix or channel sender name. |
+| **Time zone** | IANA zone (for example `America/New_York`) for the `local_time` column. Defaults to your browser's zone. |
+| **Include emoji reactions** | Reactions (tapbacks) are left out unless you tick this. |
+
+The file has one row per stored message, oldest first, across all selected sources. A message heard by two sources appears twice, once per source; the `source` column tells them apart. Traceroute replies are never exported.
+
+| Column | Contents |
+|--------|----------|
+| `timestamp_utc` | ISO 8601 time in UTC |
+| `local_time` | `YYYY-MM-DD HH:mm:ss` in the chosen time zone |
+| `network` | `Meshtastic` or `MeshCore` |
+| `source` | Source name |
+| `channel` | Channel name, or `DM` |
+| `sender_name` | Node long name (Meshtastic) or sender name (MeshCore) |
+| `sender_id` | Node ID or MeshCore public key (blank for MeshCore channel messages, which carry only a name) |
+| `destination` | `broadcast` for channel messages, else the recipient ID |
+| `message` | Message text |
+| `message_id` | Meshtastic packet ID (blank for MeshCore) |
+| `rssi`, `snr`, `hops` | Reception details where known |
+
+The file is UTF-8 with a byte-order mark and CRLF line endings, so Excel opens it with emoji and accented names intact. Cells that start with `=`, `+`, `-` or `@` get a leading `'` so a message can never run as a spreadsheet formula.
+
+Exports stop at **100,000 rows**. When a file is cut short, its last line starts with `TRUNCATED:`; narrow the date range or filters to get the rest.
+
+**Permissions:** the export includes exactly what you can read in the message views. Sources and channels you have no read grant on are skipped silently, DMs need `messages:read`, and a user with no grants gets a file with only the header row. The export reads the database only and sends nothing over the mesh.
+
+The endpoint is `GET /api/messages/export` (session auth). List filters repeat the key: `source`, `channel`, `include`, `exclude`. Other parameters: `type` (`all`, `channels`, `dms`), `start` / `end` (UTC epoch milliseconds), `sender`, `includeReactions=true`, `tz`. It is rate limited to 6 exports per minute per client (local network addresses are exempt).
 
 ## Related Documentation
 

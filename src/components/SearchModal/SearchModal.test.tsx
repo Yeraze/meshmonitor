@@ -86,6 +86,24 @@ describe('SearchModal', () => {
     expect(submitButton).not.toBeDisabled();
   });
 
+  it('sends date filters as epoch milliseconds plus the source id (#5517)', () => {
+    (apiService.searchMessages as ReturnType<typeof vi.fn>).mockResolvedValue({ data: [], total: 0 });
+    const { container } = render(<SearchModal {...defaultProps} sourceId="src-1" />);
+    fireEvent.change(screen.getByPlaceholderText('search.placeholder'), { target: { value: 'net' } });
+    const [from, to] = Array.from(container.querySelectorAll('input[type="date"]'));
+    fireEvent.change(from, { target: { value: '2026-10-03' } });
+    fireEvent.change(to, { target: { value: '2026-10-03' } });
+    fireEvent.click(screen.getByText('search.button'));
+
+    const params = (apiService.searchMessages as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    // Local-day bounds in ms: the old code sent seconds, which the server
+    // (comparing ms) never matched.
+    expect(params.startDate).toBe(new Date(2026, 9, 3, 0, 0, 0, 0).getTime());
+    expect(params.endDate).toBe(new Date(2026, 9, 3, 23, 59, 59, 999).getTime());
+    expect(params.startDate).toBeGreaterThan(1e12);
+    expect(params.sourceId).toBe('src-1');
+  });
+
   it('should perform search on form submit', async () => {
     const mockResults = {
       data: [
