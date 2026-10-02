@@ -41,6 +41,7 @@ import { MeshCoreAutomationsView } from './MeshCoreAutomationsView';
 import NotificationsTab from '../NotificationsTab';
 import { useAuth } from '../../contexts/AuthContext';
 import { SaveBarProvider, SaveBarGroup } from '../../contexts/SaveBarContext';
+import { useOptionalChannelMuteSettings } from '../../contexts/SettingsContext';
 import { SaveBar } from '../SaveBar';
 import './MeshCoreTab.css';
 import './MeshCorePage.css';
@@ -131,6 +132,8 @@ export const MeshCorePage: React.FC<MeshCorePageProps> = ({ baseUrl, sourceId, e
     [removeIgnoredNodeAsync],
   );
 
+  // Muted channels never light the sidebar Channels dot (#5487).
+  const channelMute = useOptionalChannelMuteSettings();
   const unread = useMeshCoreUnread({
     baseUrl,
     sourceId,
@@ -138,6 +141,7 @@ export const MeshCorePage: React.FC<MeshCorePageProps> = ({ baseUrl, sourceId, e
     contacts,
     selfKey: status?.localNode?.publicKey,
     enabled: enabled ?? true,
+    isChannelMuted: channelMute?.isChannelMuted,
   });
 
   const navigateToDm = useCallback((publicKey: string) => {
