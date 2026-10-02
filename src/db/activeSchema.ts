@@ -131,6 +131,10 @@ import {
   coverageSurveysSqlite, coverageSurveysPostgres, coverageSurveysMysql,
 } from './schema/coverageSurveys.js';
 import {
+  translationCacheSqlite, translationCachePostgres, translationCacheMysql,
+  messageTranslationsSqlite, messageTranslationsPostgres, messageTranslationsMysql,
+} from './schema/translations.js';
+import {
   aircraftFlightMatchesSqlite, aircraftFlightMatchesPostgres, aircraftFlightMatchesMysql,
 } from './schema/aircraftFlightMatches.js';
 
@@ -330,6 +334,12 @@ export interface ActiveSchema {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any -- #5277 matches the existing ActiveSchema per-dialect table pattern; typing burn-down is #3962 Phase 6
   coverageSurveys: any;
 
+  // Translation cache (global) + per-source message links (#5520)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- #5520 matches the existing ActiveSchema per-dialect table pattern; typing burn-down is #3962 Phase 6
+  translationCache: any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- #5520 matches the existing ActiveSchema per-dialect table pattern; typing burn-down is #3962 Phase 6
+  messageTranslations: any;
+
   // ADS-B flight matches for likely aircraft, per source (#5374)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any -- #5374 matches the existing ActiveSchema per-dialect table pattern; typing burn-down is #3962 Phase 6
   aircraftFlightMatches: any;
@@ -475,6 +485,8 @@ const SCHEMA_MAP: Record<DatabaseType, ActiveSchema> = {
     meshtasticHeardRepeaters: meshtasticHeardRepeatersSqlite,
     coverageReceptions: coverageReceptionsSqlite,
     coverageSurveys: coverageSurveysSqlite,
+    translationCache: translationCacheSqlite,
+    messageTranslations: messageTranslationsSqlite,
     aircraftFlightMatches: aircraftFlightMatchesSqlite,
     meshIssues: meshIssuesSqlite,
     embedProfiles: embedProfilesSqlite,
@@ -557,6 +569,8 @@ const SCHEMA_MAP: Record<DatabaseType, ActiveSchema> = {
     meshtasticHeardRepeaters: meshtasticHeardRepeatersPostgres,
     coverageReceptions: coverageReceptionsPostgres,
     coverageSurveys: coverageSurveysPostgres,
+    translationCache: translationCachePostgres,
+    messageTranslations: messageTranslationsPostgres,
     aircraftFlightMatches: aircraftFlightMatchesPostgres,
     meshIssues: meshIssuesPostgres,
     embedProfiles: embedProfilesPostgres,
@@ -639,6 +653,8 @@ const SCHEMA_MAP: Record<DatabaseType, ActiveSchema> = {
     meshtasticHeardRepeaters: meshtasticHeardRepeatersMysql,
     coverageReceptions: coverageReceptionsMysql,
     coverageSurveys: coverageSurveysMysql,
+    translationCache: translationCacheMysql,
+    messageTranslations: messageTranslationsMysql,
     aircraftFlightMatches: aircraftFlightMatchesMysql,
     meshIssues: meshIssuesMysql,
     embedProfiles: embedProfilesMysql,

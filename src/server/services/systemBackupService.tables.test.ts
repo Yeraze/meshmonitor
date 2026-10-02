@@ -38,6 +38,14 @@ describe('BACKUP_TABLES allowlist', () => {
     });
   }
 
+  it('backs up stored translations, cache entries before the links into them (#5520)', () => {
+    const cache = BACKUP_TABLES.indexOf('translation_cache');
+    const links = BACKUP_TABLES.indexOf('message_translations');
+    expect(cache).toBeGreaterThanOrEqual(0);
+    expect(links).toBeGreaterThan(cache);
+    expect(links).toBeGreaterThan(BACKUP_TABLES.indexOf('messages'));
+  });
+
   it('is a non-empty allowlist of distinct table names', () => {
     expect(BACKUP_TABLES.length).toBeGreaterThan(0);
     expect(new Set(BACKUP_TABLES).size).toBe(BACKUP_TABLES.length);

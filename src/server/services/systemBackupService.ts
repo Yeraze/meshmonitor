@@ -59,7 +59,13 @@ export const BACKUP_TABLES = [
   'solar_node_overrides',
   // #5354: tracked-asset flags (global). The history they retain is valuable,
   // so the flag must survive a backup/restore.
-  'asset_nodes'
+  'asset_nodes',
+  // #5520: stored message translations. `translation_cache` (global, hashed
+  // text only) before `message_translations` (per-source links into it), so a
+  // restore inserts the entries before the links that reference them. Pinned
+  // phrases and translations shown to viewers are worth keeping.
+  'translation_cache',
+  'message_translations'
 ];
 
 /**

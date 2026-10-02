@@ -4,6 +4,20 @@ export interface TranslationRequest {
   text: string;
   sourceLang?: string;
   targetLang?: string;
+  /**
+   * Set both when translating a stored message (#5520): the server translates
+   * its own copy of the message text, caches it, and shares the result with
+   * every viewer who can read the message. Omit for composer drafts.
+   */
+  sourceId?: string;
+  messageId?: string;
+}
+
+/** A stored (shared) translation of one message, from `GET /api/translate/stored`. */
+export interface StoredTranslation {
+  translatedText: string;
+  detectedSourceLanguage: string | null;
+  provider: string;
 }
 
 export interface TranslationResponse {

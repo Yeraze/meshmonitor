@@ -75,8 +75,7 @@ import UnreadDivider from './messages/UnreadDivider';
 import { resolveUnreadAnchorId, shouldSuppressDivider } from '../utils/unreadAnchor';
 import { TranslateModal } from './translation/TranslateModal';
 import { TranslatedMessage } from './translation/TranslatedMessage';
-import { useMessageTranslation } from '../hooks/useMessageTranslation';
-import { useTranslationSettings } from '../hooks/useTranslationSettings';
+import { useViewTranslations } from '../hooks/useViewTranslations';
 import { useUnreadDividerAnchors } from '../contexts/MessagingContext';
 
 // Types for node with message metadata
@@ -383,8 +382,6 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
   const [directNeighborStats, setDirectNeighborStats] = useState<Record<number, { avgRssi: number; packetCount: number; lastHeard: number }>>({});
   const [homoglyphEnabled, setHomoglyphEnabled] = useState(false);
   const [translateModalOpen, setTranslateModalOpen] = useState(false);
-  const translationSettings = useTranslationSettings();
-  const { translatedMessages, translateMessage, dismissTranslation } = useMessageTranslation();
 
   // Copy NodeInfo modal state
   const [showCopyNodeInfoModal, setShowCopyNodeInfoModal] = useState(false);
@@ -949,6 +946,22 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
   const handleStripNodeDetails = useCallback((nodeUserId: string) => {
     setSelectedDMNode(nodeUserId);
   }, [setSelectedDMNode]);
+
+  // #5520: stored (shared) translations for the open conversation, shown to
+  // every viewer who can read it; new translations need `canTranslate`.
+  // Above the permission early-return so the hook order never changes.
+  const storedTranslationIds = useMemo(
+    () =>
+      selectedDMNode
+        ? [...getDMMessages(selectedDMNode)]
+            .filter((m) => !!m.text)
+            .sort((a, b) => getMessageSortTime(a) - getMessageSortTime(b))
+            .map((m) => m.id)
+        : [],
+    [selectedDMNode, getDMMessages]
+  );
+  const { translationSettings, translatedMessages, translateMessage, dismissTranslation } =
+    useViewTranslations(sourceId, storedTranslationIds);
 
   // Permission check
   if (!hasPermission('messages', 'read')) {
@@ -2143,8 +2156,8 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                               <TranslatedMessage
                                 state={translatedMessages[msg.id]}
                                 onDismiss={() => dismissTranslation(msg.id)}
-                                onRetry={() => translateMessage(msg.id, msg.text)}
-                                onChangeTargetLang={(newLang) => translateMessage(msg.id, msg.text, newLang)}
+                                onRetry={translationSettings.canTranslate ? () => translateMessage(msg.id, msg.text) : undefined}
+                                onChangeTargetLang={translationSettings.canTranslate ? (newLang) => translateMessage(msg.id, msg.text, newLang) : undefined}
                               />
                             )}
                             {reactions.length > 0 && (

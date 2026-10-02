@@ -206,6 +206,7 @@ import { migration as addAckProofStatusMigration, runMigration184Postgres, runMi
 import { migration as addChannelUseAeadMigration, runMigration185Postgres, runMigration185Mysql } from '../server/migrations/185_add_channel_use_aead.js';
 import { migration as mergeDefaultRowMutesMigration, runMigration186Postgres, runMigration186Mysql } from '../server/migrations/186_merge_default_row_mutes_into_source_rows.js';
 import { migration as addMeshcoreMessageSenderTimestampMigration, runMigration187Postgres, runMigration187Mysql } from '../server/migrations/187_add_meshcore_message_sender_timestamp.js';
+import { migration as createTranslationCacheMigration, runMigration188Postgres, runMigration188Mysql } from '../server/migrations/188_create_translation_cache.js';
 
 // ============================================================================
 // Registry
@@ -3033,4 +3034,19 @@ registry.register({
   sqlite: (db) => addMeshcoreMessageSenderTimestampMigration.up(db),
   postgres: (client) => runMigration187Postgres(client),
   mysql: (pool) => runMigration187Mysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 188: `translation_cache` (GLOBAL — hashed text, no sourceId) and
+// `message_translations` (PER-SOURCE links from a message to a cache entry)
+// (#5520). See docs/internal/dev-notes/TRANSLATION_CACHE_SPEC.md.
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 188,
+  name: 'create_translation_cache',
+  settingsKey: 'migration_188_create_translation_cache',
+  sqlite: (db) => createTranslationCacheMigration.up(db),
+  postgres: (client) => runMigration188Postgres(client),
+  mysql: (pool) => runMigration188Mysql(pool),
 });
