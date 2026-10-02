@@ -7,6 +7,7 @@ import { VectorTileLayer } from '../VectorTileLayer';
 import { TilesetSelector } from '../TilesetSelector';
 import MapResizeHandler from '../MapResizeHandler';
 import { MapSidebar } from './MapSidebar';
+import { ZoomCeilingBackstop } from './ZoomCeilingBackstop';
 import './leafletDefaultIcon';
 import './BaseMap.css';
 
@@ -245,6 +246,9 @@ export function BaseMap({
             caller-driven path for layout changes an observer sees only after a
             CSS transition, and stays dormant when omitted. */}
         <MapResizeHandler trigger={resizeTrigger} />
+        {/* Before `children`, so the map has a finite maxZoom by the time a
+            cluster group mounts (#5516). */}
+        <ZoomCeilingBackstop maxZoom={tileset.maxZoom} />
         {children}
       </MapContainer>
       {showTilesetSelector && (
