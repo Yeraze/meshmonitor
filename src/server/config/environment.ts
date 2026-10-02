@@ -293,6 +293,8 @@ export interface EnvironmentConfig {
   rateLimitAuthProvided: boolean;
   rateLimitMessages: number;
   rateLimitMessagesProvided: boolean;
+  rateLimitTranslate: number;
+  rateLimitTranslateProvided: boolean;
 
   // Push Notifications (VAPID)
   vapidPublicKey: string | undefined;
@@ -666,10 +668,11 @@ export function loadEnvironmentConfig(): EnvironmentConfig {
   }
 
   // Rate Limiting
-  // Defaults: API=1000/15min (~1req/sec), Auth=5/15min, Messages=30/min
+  // Defaults: API=1000/15min (~1req/sec), Auth=5/15min, Messages=30/min, Translate=30/min
   const rateLimitApi = parseRateLimit('RATE_LIMIT_API', process.env.RATE_LIMIT_API, nodeEnv.value === 'development' ? 10000 : 1000);
   const rateLimitAuth = parseRateLimit('RATE_LIMIT_AUTH', process.env.RATE_LIMIT_AUTH, nodeEnv.value === 'development' ? 100 : 5);
   const rateLimitMessages = parseRateLimit('RATE_LIMIT_MESSAGES', process.env.RATE_LIMIT_MESSAGES, nodeEnv.value === 'development' ? 100 : 30);
+  const rateLimitTranslate = parseRateLimit('RATE_LIMIT_TRANSLATE', process.env.RATE_LIMIT_TRANSLATE, nodeEnv.value === 'development' ? 120 : 30);
 
   // Push Notifications (VAPID) - optional, can be stored in database instead
   const vapidPublicKey = {
@@ -811,6 +814,7 @@ export function loadEnvironmentConfig(): EnvironmentConfig {
   logger.debug(`   RATE_LIMIT_API: ${rateLimitApi.value} req/min (${src(rateLimitApi.wasProvided)})`);
   logger.debug(`   RATE_LIMIT_AUTH: ${rateLimitAuth.value} req/min (${src(rateLimitAuth.wasProvided)})`);
   logger.debug(`   RATE_LIMIT_MESSAGES: ${rateLimitMessages.value} req/min (${src(rateLimitMessages.wasProvided)})`);
+  logger.debug(`   RATE_LIMIT_TRANSLATE: ${rateLimitTranslate.value} req/min (${src(rateLimitTranslate.wasProvided)})`);
   if (vapidPublicKey.wasProvided) {
     logger.debug('   --- Push Notifications ---');
     logger.debug(`   VAPID keys: ***provided***`);
@@ -939,6 +943,8 @@ export function loadEnvironmentConfig(): EnvironmentConfig {
     rateLimitAuthProvided: rateLimitAuth.wasProvided,
     rateLimitMessages: rateLimitMessages.value,
     rateLimitMessagesProvided: rateLimitMessages.wasProvided,
+    rateLimitTranslate: rateLimitTranslate.value,
+    rateLimitTranslateProvided: rateLimitTranslate.wasProvided,
 
     // Push Notifications (VAPID)
     vapidPublicKey: vapidPublicKey.value,
