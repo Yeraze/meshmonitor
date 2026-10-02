@@ -59,6 +59,23 @@ export interface DataEvent {
 export interface NodeUpdateData {
   nodeNum: number;
   node: Partial<DbNode>;
+  /**
+   * The received Meshtastic MeshPacket id (unsigned 32-bit) that produced this
+   * update (#5534). Absent when the update has no single originating packet
+   * (device NodeDB sync, manual edits, key-repair bookkeeping).
+   */
+  packetId?: number;
+  /**
+   * MeshCore packet hash (16 UPPERCASE hex) of the frame that produced this
+   * update (#5534). Same format as `trigger.message`'s packetHash (#5357).
+   */
+  packetHash?: string;
+}
+
+/** Optional originating-packet identity threaded through a node update (#5534). */
+export interface NodeUpdateOrigin {
+  packetId?: number;
+  packetHash?: string;
 }
 
 /**
@@ -202,10 +219,17 @@ class DataEventEmitter extends EventEmitter {
   /**
    * Emit a node update event
    */
-  emitNodeUpdate(nodeNum: number, node: Partial<DbNode>, sourceId?: string): void {
+  emitNodeUpdate(nodeNum: number, node: Partial<DbNode>, sourceId?: string, origin?: NodeUpdateOrigin): void {
+    const data: NodeUpdateData = { nodeNum, node };
+    // #5534: only attach origin keys that are present, so an update with no
+    // originating packet keeps the exact `{ nodeNum, node }` payload shape.
+    // A Meshtastic packet id of 0 means "no id", so it is treated as absent.
+    const packetId = Number(origin?.packetId);
+    if (Number.isFinite(packetId) && packetId !== 0) data.packetId = packetId >>> 0;
+    if (origin?.packetHash) data.packetHash = origin.packetHash;
     const event: DataEvent = {
       type: 'node:updated',
-      data: { nodeNum, node } as NodeUpdateData,
+      data,
       timestamp: Date.now(),
       sourceId,
     };

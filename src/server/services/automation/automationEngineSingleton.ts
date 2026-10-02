@@ -8,7 +8,7 @@
  */
 import { logger } from '../../../utils/logger.js';
 import databaseService from '../../../services/database.js';
-import { dataEventEmitter, type DataEvent, type NodeAircraftData } from '../dataEventEmitter.js';
+import { dataEventEmitter, type DataEvent, type NodeAircraftData, type NodeUpdateData } from '../dataEventEmitter.js';
 import type { DbMessage, DbTelemetry } from '../../../services/database.js';
 import type { MeshCoreMessage } from '../../meshcoreManager.js';
 import type { ReticulumMessageRow } from '../../../db/repositories/reticulum.js';
@@ -137,11 +137,12 @@ async function handleEvent(event: DataEvent): Promise<void> {
       break;
 
     case 'node:updated': {
-      const { nodeNum, node } = event.data as { nodeNum: number; node: Record<string, unknown> };
+      const { nodeNum, node, packetId, packetHash } = event.data as NodeUpdateData;
       const changed = Object.keys(node ?? {});
       // Discovered vs updated detection (isNew) is deferred to a later phase; fire
-      // as nodeUpdated with the changed field keys.
-      await e.onNode('trigger.nodeUpdated', nodeNum, changed, sourceId);
+      // as nodeUpdated with the changed field keys. #5534: the originating
+      // packet's id/hash ride along when the emitter knew them.
+      await e.onNode('trigger.nodeUpdated', nodeNum, changed, sourceId, { packetId, packetHash });
       // Hearing a node again is the fast recovery signal for trigger.nodeOnline
       // (#4558 Phase A) — the stale tick catches it as a fallback otherwise.
       await e.checkNodeOnline(nodeNum, sourceId);

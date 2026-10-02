@@ -986,6 +986,22 @@ That map looks packets up without regard to case, so the uppercase hash works as
   queued while MeshMonitor was disconnected (they arrive with no raw frame), channel frames that
   didn't verify, and our own outbound messages.
 
+### Node triggers — originating packet
+
+**Node updated** and **Node discovered** expose the packet that caused the event:
+
+| Token | Protocol | Value |
+|-------|----------|-------|
+| `{{ trigger.packetId }}` | Meshtastic | Id of the received packet (position or NodeInfo) that produced the update, as an unsigned 32-bit number. |
+| `{{ trigger.packetHash }}` | MeshCore | Packet hash of the frame that produced the update, in the same 16-hex format as on the message trigger. |
+
+Each token is **empty** on the other protocol, and empty whenever no single packet caused the event:
+device NodeDB syncs, manual edits, merges, and other bookkeeping updates. MeshMonitor never fills
+these from an earlier packet.
+
+Meshtastic firmware 2.8 replays cached positions to the client about once an hour, reusing the
+original packet id. On such a replay, `{{ trigger.packetId }}` is that original id.
+
 ### In-builder validation
 
 Token-bearing fields render with live highlighting so typos surface immediately:

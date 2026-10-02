@@ -73,6 +73,8 @@ export interface SimEventInput {
   // node
   nodeNum?: number;
   changed?: string[];
+  /** #5534: MeshCore packet hash for node events (packetId above doubles for Meshtastic). */
+  packetHash?: string;
   // telemetry
   telemetryType?: string;
   value?: number;
@@ -274,7 +276,13 @@ function buildContext(graph: AutomationGraph, ev: SimEventInput, node: Partial<N
     case 'nodeDiscovered':
     case 'nodeUpdated': {
       const kind = ev.kind === 'nodeDiscovered' ? 'trigger.nodeDiscovered' : 'trigger.nodeUpdated';
-      return { ctx: buildNodeContext(kind, Number(ev.nodeNum ?? 0), ev.changed ?? [], sourceId, now), matched: true };
+      return {
+        ctx: buildNodeContext(kind, Number(ev.nodeNum ?? 0), ev.changed ?? [], sourceId, now, {
+          packetId: ev.packetId,
+          packetHash: ev.packetHash,
+        }),
+        matched: true,
+      };
     }
     case 'telemetry': {
       const type = String(ev.telemetryType ?? '');

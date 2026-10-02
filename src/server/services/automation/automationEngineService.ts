@@ -57,7 +57,7 @@ import {
 } from './triggerContext.js';
 import type { MeshCoreMessage } from '../../meshcoreManager.js';
 import type { ReticulumMessageRow } from '../../../db/repositories/reticulum.js';
-import type { NodeAircraftData } from '../dataEventEmitter.js';
+import type { NodeAircraftData, NodeUpdateOrigin } from '../dataEventEmitter.js';
 import { scheduleCron, validateCron } from '../../utils/cronScheduler.js';
 import { haversineKm, geofenceFires, pointInShape, geofenceCenter, normalizeGeofenceParams, normalizeGeofenceAnchor, shapeFromWaypoint, type GeofenceMode, type GeofenceShape } from './geo.js';
 import { evaluateGraph, type EvaluatorHooks } from './graphEvaluator.js';
@@ -997,9 +997,10 @@ export class AutomationEngineService {
     nodeNum: number,
     changedKeys: string[],
     sourceId: string | null,
+    origin?: NodeUpdateOrigin,
   ): Promise<number> {
     if (await this.isSelfMeshtastic(sourceId, nodeNum)) return 0; // #3914: ignore our own node updates
-    return this.runTrigger(buildNodeContext(kind, nodeNum, changedKeys, sourceId, this.now()));
+    return this.runTrigger(buildNodeContext(kind, nodeNum, changedKeys, sourceId, this.now(), origin));
   }
 
   async onTelemetry(

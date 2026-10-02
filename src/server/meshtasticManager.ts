@@ -7996,9 +7996,9 @@ class MeshtasticManager implements ISourceManager {
           if (hasPositionOverride) {
             const { latitude: _lat, longitude: _lng, altitude: _alt, ...emitData } = nodeData;
             void _lat; void _lng; void _alt;
-            dataEventEmitter.emitNodeUpdate(fromNum, emitData, this.sourceId);
+            dataEventEmitter.emitNodeUpdate(fromNum, emitData, this.sourceId, { packetId: meshPacket.id });
           } else {
-            dataEventEmitter.emitNodeUpdate(fromNum, nodeData, this.sourceId);
+            dataEventEmitter.emitNodeUpdate(fromNum, nodeData, this.sourceId, { packetId: meshPacket.id });
           }
 
           // Update mobility detection for this node; emit 0→1 transitions for
@@ -8158,7 +8158,7 @@ class MeshtasticManager implements ISourceManager {
             dataEventEmitter.emitNodeUpdate(fromNum, {
               keyMismatchDetected: true,
               keySecurityIssueDetails: nodeData.keySecurityIssueDetails
-            }, this.sourceId);
+            }, this.sourceId, { packetId: meshPacket.id });
 
             // Immediate purge if enabled
             if (this.keyRepairEnabled && this.keyRepairImmediatePurge) {
@@ -8218,7 +8218,7 @@ class MeshtasticManager implements ISourceManager {
             dataEventEmitter.emitNodeUpdate(fromNum, {
               keyMismatchDetected: false,
               keySecurityIssueDetails: isLowEntropy ? nodeData.keySecurityIssueDetails : undefined
-            }, this.sourceId);
+            }, this.sourceId, { packetId: meshPacket.id });
           }
         }
       }

@@ -9,7 +9,7 @@
 import type { DbMessage } from '../../../services/database.js';
 import type { MeshCoreMessage } from '../../meshcoreManager.js';
 import type { ReticulumMessageRow } from '../../../db/repositories/reticulum.js';
-import type { NodeAircraftData } from '../dataEventEmitter.js';
+import type { NodeAircraftData, NodeUpdateOrigin } from '../dataEventEmitter.js';
 import type { TriggerType } from '../../../types/automation.js';
 import { compileUserRegex } from '../../../utils/safeRegex.js';
 import { hopCountEmoji, hopOrMqttEmoji } from '../../../utils/hopEmoji.js';
@@ -358,7 +358,17 @@ export function buildNodeContext(
   changedKeys: string[],
   sourceId: string | null,
   timestamp: number,
+  origin?: NodeUpdateOrigin,
 ): TriggerContext {
+  // #5534: identity of the packet that produced this node event. Read ONLY from
+  // this event's own payload — never cached across events — so an update with
+  // no originating packet (device NodeDB sync, manual edit, merge) renders both
+  // tokens as '' rather than a previous packet's values. Meshtastic supplies
+  // `packetId` (unsigned 32-bit MeshPacket id; 0 means "no id"); MeshCore
+  // supplies `packetHash` (16 UPPERCASE hex, same as trigger.message, #5357).
+  const rawId = Number(origin?.packetId);
+  const packetId = Number.isFinite(rawId) && rawId !== 0 ? rawId >>> 0 : undefined;
+  const packetHash = origin?.packetHash ? String(origin.packetHash) : undefined;
   return {
     triggerType,
     sourceId,
@@ -367,6 +377,8 @@ export function buildNodeContext(
     fields: {
       nodeNum: Number(nodeNum),
       changed: changedKeys,
+      packetId,
+      packetHash,
       sourceId,
       timestamp,
     },
