@@ -468,6 +468,11 @@ pushRouter.post(
 
     // Base row. The own-row read rethrows: a failed read must fail the save,
     // not fall through to defaults and overwrite the user's settings.
+    //
+    // Not transactional: two concurrent saves from the same user and source
+    // can both read the same base, and the later write then drops the earlier
+    // one's fields. Saves are single-user UI actions, so the window is small;
+    // it is still far narrower than the old client-side whole-row writes.
     const ownRow = await databaseService.notifications.getUserPreferences(
       userId,
       sourceId,
