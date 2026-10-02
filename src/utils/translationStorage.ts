@@ -45,6 +45,44 @@ export function setPreferredInboundLanguage(lang: string): void {
   }
 }
 
+/**
+ * Map a browser language tag (`en-US`, `pt-BR`, `no`) to a supported
+ * translation target code, or null when none matches.
+ */
+export function matchSupportedLanguage(tag: string | null | undefined, supported: readonly string[]): string | null {
+  if (!tag) return null;
+  const lower = tag.trim().toLowerCase();
+  if (!lower) return null;
+  if (supported.includes(lower)) return lower;
+  let primary = lower.split(/[-_]/)[0];
+  // Norwegian: the generic and Nynorsk tags fall back to Bokmål.
+  if (primary === 'no' || primary === 'nn') primary = 'nb';
+  return supported.includes(primary) ? primary : null;
+}
+
+/**
+ * The language a viewer reads translations in (#5520): their saved inbound
+ * preference, else the first supported browser language, else the server
+ * default. Used for BOTH fetching stored translations and new translate
+ * calls, so a translation a user requests is the one they see on reload.
+ */
+export function resolveViewerTargetLanguage(serverDefault: string, supported: readonly string[]): string {
+  const preferred = getPreferredInboundLanguage();
+  if (preferred && preferred.trim()) return preferred.trim();
+  try {
+    if (typeof navigator !== 'undefined') {
+      const tags = navigator.languages && navigator.languages.length > 0 ? navigator.languages : [navigator.language];
+      for (const tag of tags) {
+        const match = matchSupportedLanguage(tag, supported);
+        if (match) return match;
+      }
+    }
+  } catch {
+    // Ignore — fall through to the server default.
+  }
+  return serverDefault;
+}
+
 export interface TranslationErrorInput {
   skipped?: boolean;
   skipReason?: string;

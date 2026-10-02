@@ -41,8 +41,7 @@ import { resolveUnreadAnchorId, shouldSuppressDivider } from '../utils/unreadAnc
 import { useUnreadDividerAnchors } from '../contexts/MessagingContext';
 import { TranslateModal } from './translation/TranslateModal';
 import { TranslatedMessage } from './translation/TranslatedMessage';
-import { useMessageTranslation } from '../hooks/useMessageTranslation';
-import { useTranslationSettings } from '../hooks/useTranslationSettings';
+import { useViewTranslations } from '../hooks/useViewTranslations';
 // Default PSK value (publicly known key - not truly secure) — shared
 // definition lives in utils/publicChannel.ts (#4705).
 import { DEFAULT_PUBLIC_PSK } from '../utils/publicChannel';
@@ -315,8 +314,18 @@ export default function ChannelsTab({
   const [directNeighborStats, setDirectNeighborStats] = useState<Record<number, { avgRssi: number; packetCount: number; lastHeard: number }>>({});
   const [homoglyphEnabled, setHomoglyphEnabled] = useState(false);
   const [translateModalOpen, setTranslateModalOpen] = useState(false);
-  const translationSettings = useTranslationSettings();
-  const { translatedMessages, translateMessage, dismissTranslation } = useMessageTranslation();
+  // #5520: ids of the open channel's text messages, oldest first, for the
+  // stored-translation fetch (shown to every viewer, anonymous included).
+  const storedTranslationIds = useMemo(
+    () =>
+      [...(channelMessages[selectedChannel] || [])]
+        .filter((m) => !!m.text)
+        .sort((a, b) => getMessageSortTime(a) - getMessageSortTime(b))
+        .map((m) => m.id),
+    [channelMessages, selectedChannel]
+  );
+  const { translationSettings, translatedMessages, translateMessage, dismissTranslation } =
+    useViewTranslations(sourceId, storedTranslationIds);
 
   // Fetch homoglyph optimization setting
   useEffect(() => {
@@ -1293,8 +1302,8 @@ export default function ChannelsTab({
                                       <TranslatedMessage
                                         state={translatedMessages[msg.id]}
                                         onDismiss={() => dismissTranslation(msg.id)}
-                                        onRetry={() => translateMessage(msg.id, msg.text)}
-                                        onChangeTargetLang={(newLang) => translateMessage(msg.id, msg.text, newLang)}
+                                        onRetry={translationSettings.canTranslate ? () => translateMessage(msg.id, msg.text) : undefined}
+                                        onChangeTargetLang={translationSettings.canTranslate ? (newLang) => translateMessage(msg.id, msg.text, newLang) : undefined}
                                       />
                                     )}
                                     {reactions.length > 0 && (

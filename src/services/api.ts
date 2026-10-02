@@ -25,7 +25,7 @@ import { parseJsonResponse } from '../utils/parseJsonResponse.js';
 import type { NodeTransportClass } from '../utils/nodeTransport.js';
 import type { OutlierPreview, OutlierPurgeResult } from '../utils/telemetryOutliers.js';
 import type { FlightMatch } from '../types/flightMatch.js';
-import type { TranslationRequest, TranslationResponse, TranslationLanguageOption } from '../types/translation.js';
+import type { TranslationRequest, TranslationResponse, TranslationLanguageOption, StoredTranslation } from '../types/translation.js';
 
 /** Body of the telemetry outlier preview/purge requests (#5333). */
 /**
@@ -2511,6 +2511,22 @@ class ApiService {
   async translateMessage(payload: TranslationRequest): Promise<TranslationResponse> {
     const res = await this.post<{ success: boolean; data: TranslationResponse }>('/api/translate', payload);
     return res.data;
+  }
+
+  /**
+   * Stored translations (#5520) for messages on one source, in one language.
+   * Never triggers a provider call; ids the viewer cannot read are omitted.
+   */
+  async getStoredTranslations(
+    sourceId: string,
+    lang: string,
+    messageIds: string[],
+  ): Promise<Record<string, StoredTranslation>> {
+    const params = new URLSearchParams({ sourceId, lang, messageIds: messageIds.join(',') });
+    const res = await this.get<{ success: boolean; data: Record<string, StoredTranslation> }>(
+      `/api/translate/stored?${params.toString()}`
+    );
+    return res.data || {};
   }
 
   /**

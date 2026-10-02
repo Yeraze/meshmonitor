@@ -48,6 +48,7 @@ import { cotFeedService } from './services/cotFeedService.js';
 import { serverEventNotificationService } from './services/serverEventNotificationService.js';
 import { versionCheckService } from './services/versionCheckService.js';
 import { coverageRetentionService } from './services/coverageRetentionService.js';
+import { translationCacheService } from './services/translation/translationCacheService.js';
 import { dynamicCspMiddleware, refreshTileHostnameCache } from './middleware/dynamicCsp.js';
 import settingsRoutes, { setSettingsCallbacks } from './routes/settingsRoutes.js';
 import { bootstrapSources } from './bootstrapSources.js';
@@ -562,6 +563,18 @@ setTimeout(async () => {
     logger.error('Error starting Coverage Report retention sweep:', error);
   }
 }, 5000);
+
+// Translation cache (#5520): installs the DB-backed text cache once the DB is
+// ready, then prunes it 30s later and hourly (TTL from last use + LRU cap;
+// entries referenced by a stored message are never pruned). DB-only.
+void (async () => {
+  try {
+    await databaseService.waitForReady();
+    translationCacheService.start();
+  } catch (error) {
+    logger.error('Error starting translation cache:', error);
+  }
+})();
 
 // ==========================================
 // MeshCore local-node telemetry poller
@@ -1239,6 +1252,7 @@ function gracefulShutdown(reason: string, exitCode = 0): void {
     }
 
     aircraftAgeOutScheduler.shutdown();
+    translationCacheService.stop();
 
     // Disconnect from Meshtastic
     try {

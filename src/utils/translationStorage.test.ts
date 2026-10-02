@@ -79,3 +79,40 @@ describe('extractTranslationError', () => {
     expect(extractTranslationError({})).toBe('No translation returned');
   });
 });
+
+describe('viewer target language (#5520)', () => {
+  const SUPPORTED = ['en', 'de', 'nb', 'pt'];
+
+  beforeEach(() => {
+    localStorage.clear();
+  });
+
+  it('maps browser tags to supported codes', async () => {
+    const { matchSupportedLanguage } = await import('./translationStorage');
+    expect(matchSupportedLanguage('en-US', SUPPORTED)).toBe('en');
+    expect(matchSupportedLanguage('pt_BR', SUPPORTED)).toBe('pt');
+    expect(matchSupportedLanguage('no', SUPPORTED)).toBe('nb');
+    expect(matchSupportedLanguage('nn-NO', SUPPORTED)).toBe('nb');
+    expect(matchSupportedLanguage('xx', SUPPORTED)).toBeNull();
+    expect(matchSupportedLanguage('', SUPPORTED)).toBeNull();
+  });
+
+  it('prefers the saved inbound language, then the browser, then the server default', async () => {
+    const { resolveViewerTargetLanguage, setPreferredInboundLanguage } = await import('./translationStorage');
+    const langs = Object.getOwnPropertyDescriptor(window.navigator, 'languages');
+    Object.defineProperty(window.navigator, 'languages', { value: ['xx-XX', 'de-AT'], configurable: true });
+    try {
+      expect(resolveViewerTargetLanguage('en', SUPPORTED)).toBe('de');
+      setPreferredInboundLanguage('pt');
+      expect(resolveViewerTargetLanguage('en', SUPPORTED)).toBe('pt');
+      localStorage.clear();
+      Object.defineProperty(window.navigator, 'languages', { value: ['xx'], configurable: true });
+      Object.defineProperty(window.navigator, 'language', { value: 'xx', configurable: true });
+      expect(resolveViewerTargetLanguage('en', SUPPORTED)).toBe('en');
+    } finally {
+      if (langs) Object.defineProperty(window.navigator, 'languages', langs);
+      else delete (window.navigator as unknown as Record<string, unknown>).languages;
+      delete (window.navigator as unknown as Record<string, unknown>).language;
+    }
+  });
+});

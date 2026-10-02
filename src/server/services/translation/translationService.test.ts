@@ -5,10 +5,14 @@ import {
   translationService,
 } from './translationService.js';
 import { NoOpTranslationCache, setTranslationCache } from './translationCache.js';
+import { computeTranslationCacheKey } from './cacheKey.js';
 
 vi.mock('../../../services/database.js', () => ({
   default: {
     getSettingAsync: vi.fn(),
+    translations: {
+      linkMessage: vi.fn().mockResolvedValue(true),
+    },
     settings: {
       getSettingAsync: vi.fn(),
     },
@@ -453,7 +457,7 @@ describe('translationService', () => {
       const result = await translationService.translate({
         text: 'Hello world',
         targetLang: 'es',
-      });
+      }, { useCache: true });
 
       expect(result.cached).toBe(true);
       expect(result.translatedText).toBe('Hola mundo (cached)');
@@ -478,7 +482,7 @@ describe('translationService', () => {
       const result = await translationService.translate({
         text: 'Hello world',
         targetLang: 'fr',
-      });
+      }, { useCache: true });
 
       expect(result.translatedText).toBe('Bonjour le monde');
 
@@ -510,7 +514,7 @@ describe('translationService', () => {
       const firstResult = await translationService.translate({
         text: 'Hello world',
         targetLang: 'it',
-      });
+      }, { useCache: true });
 
       expect(firstResult.cached).toBe(false);
       expect(firstResult.translatedText).toBe('Ciao mondo');
@@ -520,11 +524,61 @@ describe('translationService', () => {
       const secondResult = await translationService.translate({
         text: 'Hello world',
         targetLang: 'it',
-      });
+      }, { useCache: true });
 
       expect(secondResult.cached).toBe(true);
       expect(secondResult.translatedText).toBe('Ciao mondo');
       expect(global.fetch).toHaveBeenCalledTimes(1); // Still only 1 call
+    });
+  
+    it('free-text translations (no useCache) neither read nor write the shared cache (#5520)', async () => {
+      vi.mocked(databaseService.getSettingAsync).mockImplementation(async (key: string) => {
+        if (key === 'translationEnabled') return 'true';
+        if (key === 'translationProvider') return 'libretranslate';
+        return null;
+      });
+      await memoryCache.set(
+        { text: 'Hello world', targetLanguage: 'es', sourceLanguage: 'auto' },
+        { translatedText: 'cached', sourceText: 'Hello world', targetLanguage: 'es', provider: 'libretranslate', cachedAt: 1 }
+      );
+      global.fetch = vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({ translatedText: 'Hola mundo' }),
+      } as unknown as Response);
+
+      const res = await translationService.translate({ text: 'Hello world', targetLang: 'es' });
+      expect(res.cached).toBe(false);
+      expect(res.translatedText).toBe('Hola mundo');
+      expect(global.fetch).toHaveBeenCalledTimes(1);
+
+      await translationService.translate({ text: 'Draft text', targetLang: 'fr' });
+      expect(await memoryCache.has({ text: 'Draft text', targetLanguage: 'fr', sourceLanguage: 'auto' })).toBe(false);
+    });
+
+    it('translateMessage caches and links the stored text; skipped results are not linked (#5520)', async () => {
+      vi.mocked(databaseService.getSettingAsync).mockImplementation(async (key: string) => {
+        if (key === 'translationEnabled') return 'true';
+        if (key === 'translationProvider') return 'libretranslate';
+        return null;
+      });
+      global.fetch = vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({ translatedText: 'Good morning' }),
+      } as unknown as Response);
+
+      const res = await translationService.translateMessage({
+        sourceId: 'src-a', messageId: 'm1', text: 'Guten Morgen', targetLang: 'EN',
+      });
+      expect(res.translatedText).toBe('Good morning');
+      expect(await memoryCache.has({ text: 'Guten Morgen', targetLanguage: 'EN', sourceLanguage: 'auto' })).toBe(true);
+      expect((databaseService as any).translations.linkMessage).toHaveBeenCalledWith(
+        'src-a', 'm1', 'en', computeTranslationCacheKey('Guten Morgen', 'en'),
+      );
+
+      vi.mocked((databaseService as any).translations.linkMessage).mockClear();
+      const skipped = await translationService.translateMessage({ sourceId: 'src-a', messageId: 'm2', text: 'ping' });
+      expect(skipped.skipped).toBe(true);
+      expect((databaseService as any).translations.linkMessage).not.toHaveBeenCalled();
     });
   });
 

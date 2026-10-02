@@ -131,4 +131,46 @@ describe('useMessageTranslation', () => {
       error: 'Message not translated (telemetry, test ping, or emoji)',
     });
   });
+
+  it('sends { sourceId, messageId } for a message in a source view, and plain text otherwise (#5520)', async () => {
+    vi.mocked(apiService.translateMessage).mockResolvedValue({
+      translatedText: 'Hi', sourceText: 'Hallo', targetLanguage: 'en', provider: 'deepl',
+    });
+
+    const scoped = renderHook(() => useMessageTranslation({ sourceId: 'src1', defaultTargetLang: 'en' }));
+    await act(async () => {
+      await scoped.result.current.translateMessage('src1_1_2', 'Hallo');
+    });
+    expect(apiService.translateMessage).toHaveBeenLastCalledWith({
+      text: 'Hallo', targetLang: 'en', sourceId: 'src1', messageId: 'src1_1_2',
+    });
+
+    const unscoped = renderHook(() => useMessageTranslation());
+    await act(async () => {
+      await unscoped.result.current.translateMessage('m', 'Hallo', 'en');
+    });
+    expect(apiService.translateMessage).toHaveBeenLastCalledWith({ text: 'Hallo', targetLang: 'en' });
+  });
+
+  it('merges stored translations, lets the viewer hide one, and re-shows it on translate (#5520)', async () => {
+    const storedTranslations = { m1: { translatedText: 'Good morning', detectedSourceLanguage: 'de', provider: 'deepl' } };
+    const { result } = renderHook(() =>
+      useMessageTranslation({ sourceId: 'src1', storedTranslations, storedLang: 'en' })
+    );
+
+    expect(result.current.translatedMessages.m1).toEqual({
+      loading: false, text: 'Good morning', detectedSourceLang: 'de', targetLang: 'en', provider: 'deepl',
+    });
+
+    act(() => result.current.dismissTranslation('m1'));
+    expect(result.current.translatedMessages.m1).toBeUndefined();
+
+    vi.mocked(apiService.translateMessage).mockResolvedValue({
+      translatedText: 'Guten Morgen (fr)', sourceText: 'x', targetLanguage: 'fr', provider: 'deepl',
+    });
+    await act(async () => {
+      await result.current.translateMessage('m1', 'Guten Morgen', 'fr');
+    });
+    expect(result.current.translatedMessages.m1?.text).toBe('Guten Morgen (fr)');
+  });
 });
