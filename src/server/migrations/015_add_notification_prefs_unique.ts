@@ -41,7 +41,7 @@ export async function runMigration015Postgres(client: any): Promise<void> {
   await client.query(`
     DO $$ BEGIN
       IF NOT EXISTS (
-        SELECT 1 FROM pg_constraint WHERE conname = 'user_notification_preferences_userId_unique'
+        SELECT 1 FROM pg_constraint WHERE conname = 'user_notification_preferences_userId_unique' AND connamespace = current_schema()::regnamespace
       ) THEN
         ALTER TABLE user_notification_preferences ADD CONSTRAINT "user_notification_preferences_userId_unique" UNIQUE ("userId");
       END IF;

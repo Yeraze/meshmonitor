@@ -74,7 +74,7 @@ export async function runMigration023Postgres(client: any): Promise<void> {
   // Idempotent check: if pk column already exists, skip
   const colCheck = await client.query(`
     SELECT column_name FROM information_schema.columns
-    WHERE table_name = 'channels' AND column_name = 'pk'
+    WHERE table_schema = current_schema() AND table_name = 'channels' AND column_name = 'pk'
   `);
   if (colCheck.rows.length > 0) {
     logger.info('Migration 023 (PostgreSQL): channels.pk already exists, skipping');
