@@ -76,7 +76,7 @@ export async function runMigration031Postgres(client: any): Promise<void> {
     FROM pg_index ix
     JOIN pg_class i ON i.oid = ix.indexrelid
     JOIN pg_class t ON t.oid = ix.indrelid
-    WHERE t.relname = 'nodes'
+    WHERE t.oid = 'nodes'::regclass
       AND ix.indisunique
       AND NOT ix.indisprimary
       AND (
@@ -114,7 +114,7 @@ export async function runMigration031Postgres(client: any): Promise<void> {
     FROM pg_index ix
     JOIN pg_class i ON i.oid = ix.indexrelid
     JOIN pg_class t ON t.oid = ix.indrelid
-    WHERE t.relname = 'nodes'
+    WHERE t.oid = 'nodes'::regclass
       AND ix.indisunique
       AND NOT ix.indisprimary
       AND (

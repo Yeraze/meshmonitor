@@ -442,7 +442,7 @@ class SystemRestoreService {
 
           // Check if table exists in PostgreSQL
           const tableExists = await client.query(
-            `SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_name = $1)`,
+            `SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_schema = current_schema() AND table_name = $1)`,
             [tableName]
           );
           if (!tableExists.rows[0].exists) {

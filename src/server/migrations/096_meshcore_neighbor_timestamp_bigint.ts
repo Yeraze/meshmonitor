@@ -45,7 +45,7 @@ export async function runMigration096Postgres(client: any): Promise<void> {
      
     const { rows } = await client.query(
       `SELECT data_type FROM information_schema.columns
-       WHERE table_name = $1 AND column_name = $2`,
+       WHERE table_schema = current_schema() AND table_name = $1 AND column_name = $2`,
       [TABLE, col]
     );
     const currentType: string | undefined = rows[0]?.data_type?.toLowerCase();

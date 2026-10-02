@@ -33,7 +33,7 @@ export function runMigration084Sqlite(db: Database): void {
 
 export async function runMigration084Postgres(client: PoolClient): Promise<void> {
   const nodesCheck = await client.query(
-    "SELECT column_name FROM information_schema.columns WHERE table_name = 'nodes' AND column_name = 'lastMeshReceivedKey'"
+    "SELECT column_name FROM information_schema.columns WHERE table_schema = current_schema() AND table_name = 'nodes' AND column_name = 'lastMeshReceivedKey'"
   );
   if (nodesCheck.rows.length === 0) {
     await client.query('ALTER TABLE nodes ADD COLUMN "lastMeshReceivedKey" TEXT');
@@ -45,14 +45,14 @@ export async function runMigration084Postgres(client: PoolClient): Promise<void>
   );
   if (hasRepairLogTable.rows.length > 0) {
     const oldKeyCheck = await client.query(
-      "SELECT column_name FROM information_schema.columns WHERE table_name = 'auto_key_repair_log' AND column_name = 'oldKeyFragment'"
+      "SELECT column_name FROM information_schema.columns WHERE table_schema = current_schema() AND table_name = 'auto_key_repair_log' AND column_name = 'oldKeyFragment'"
     );
     if (oldKeyCheck.rows.length === 0) {
       await client.query('ALTER TABLE auto_key_repair_log ADD COLUMN "oldKeyFragment" VARCHAR(8)');
     }
 
     const newKeyCheck = await client.query(
-      "SELECT column_name FROM information_schema.columns WHERE table_name = 'auto_key_repair_log' AND column_name = 'newKeyFragment'"
+      "SELECT column_name FROM information_schema.columns WHERE table_schema = current_schema() AND table_name = 'auto_key_repair_log' AND column_name = 'newKeyFragment'"
     );
     if (newKeyCheck.rows.length === 0) {
       await client.query('ALTER TABLE auto_key_repair_log ADD COLUMN "newKeyFragment" VARCHAR(8)');
