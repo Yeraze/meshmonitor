@@ -8845,17 +8845,17 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
     return this.deviceType === MeshCoreDeviceType.REPEATER ? REPEATER_CLOCK_RESOLUTION_SECS : 1;
   }
 
+  /** True when this source is a directly-attached Repeater on the serial CLI. */
+  isRepeaterSource(): boolean {
+    return this.deviceType === MeshCoreDeviceType.REPEATER;
+  }
+
   /**
    * The key local-node telemetry rows are filed under (#5533). A Companion
    * uses its own public key. A Repeater's `localNode.publicKey` is the
    * `'repeater'` placeholder, so it uses the real key from `get public.key`,
    * or null until that has been read.
    */
-  /** True when this source is a directly-attached Repeater on the serial CLI. */
-  isRepeaterSource(): boolean {
-    return this.deviceType === MeshCoreDeviceType.REPEATER;
-  }
-
   getLocalTelemetryNodeId(): string | null {
     if (this.deviceType === MeshCoreDeviceType.REPEATER) return this.repeaterPublicKey;
     return this.localNode?.publicKey || null;
