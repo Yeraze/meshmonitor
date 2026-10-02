@@ -10,6 +10,7 @@ export { SettingsRepository } from './settings.js';
 export { ChannelsRepository, type ChannelInput } from './channels.js';
 export { NodesRepository, type NodesCacheHook, type AircraftAgeOutCandidate } from './nodes.js';
 export { MessagesRepository } from './messages.js';
+export type { MessageSourceScope, MessageChannelScope } from './messages.js';
 export { TelemetryRepository, type TelemetryCadenceAggregate } from './telemetry.js';
 export { AuthRepository } from './auth.js';
 export type {
@@ -49,7 +50,7 @@ export { ChannelDatabaseRepository, type ChannelDatabaseInput, type ChannelDatab
 export { IgnoredNodesRepository, type IgnoredNodeRecord, type IgnoreReason } from './ignoredNodes.js';
 export { MeshCoreRepository } from './meshcore.js';
 export { MeshCoreChannelRemapRepository } from './meshcoreChannelRemap.js';
-export type { DbMeshCoreNode, DbMeshCoreMessage } from './meshcore.js';
+export type { DbMeshCoreNode, DbMeshCoreMessage, MeshCoreMessageScope } from './meshcore.js';
 export { EmbedProfileRepository } from './embedProfiles.js';
 export type { EmbedProfile, EmbedProfileInput } from './embedProfiles.js';
 export { AutomationsRepository } from './automations.js';

@@ -39,6 +39,7 @@ import { getSourceColor } from '../utils/sourceColors';
 import { isAnyMeshCoreSourceType } from '../utils/nodeTypeCategory';
 import { hopDisplay } from './unifiedHops';
 import HopBadge from '../components/unified/HopBadge';
+import MessageExportDialog from '../components/MessageExportDialog/MessageExportDialog';
 
 type TFn = (key: string, options?: Record<string, unknown>) => string;
 
@@ -151,6 +152,7 @@ export default function UnifiedMessagesPage() {
   const [selectedChannel, setSelectedChannel] = useState<string>('');
   const [sourceFilter, setSourceFilter] = useState<string>('');
   const [statsFor, setStatsFor] = useState<UnifiedMessage | null>(null);
+  const [exportOpen, setExportOpen] = useState(false);
 
   // ── Channels query ────────────────────────────────────────────────────
   const {
@@ -465,6 +467,18 @@ export default function UnifiedMessagesPage() {
             ))}
           </select>
 
+          {canReadAnyMessages && (
+            <button
+              type="button"
+              className="unified-header__back"
+              onClick={() => setExportOpen(true)}
+              disabled={channels.length === 0}
+              title={t('unified.messages.export.button_title')}
+            >
+              <UiIcon name="download" size={16} /> {t('unified.messages.export.button')}
+            </button>
+          )}
+
           <button
             className="unified-header__back"
             onClick={() => refetch()}
@@ -685,6 +699,13 @@ export default function UnifiedMessagesPage() {
           </div>
         </div>
       )}
+
+      <MessageExportDialog
+        isOpen={exportOpen}
+        onClose={() => setExportOpen(false)}
+        channels={channels}
+        initialChannel={selectedChannel || undefined}
+      />
     </div>
   );
 }

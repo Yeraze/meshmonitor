@@ -239,6 +239,27 @@ export const gnssLimiter = rateLimit({
   ...rateLimitConfig,
 });
 
+// Message CSV export (#5517) — one call can stream up to 100k rows and keeps a
+// DB connection busy for the whole download, so it gets its own small budget.
+// Default: 6/min production, 60/min development.
+export const messageExportLimiter = rateLimit({
+  windowMs: 1 * 60 * 1000, // 1 minute
+  max: env.isProduction ? 6 : 60,
+  message: 'Too many message exports, please slow down',
+  skip: (req) => isPrivateNetworkIp(req.ip ?? ''),
+  handler: (req, res) => {
+    const ip = req.ip || 'unknown';
+    logger.warn(`🚫 Rate limit exceeded for MESSAGE_EXPORT - IP: ${ip}, Path: ${req.path}`);
+    res.status(429).json({
+      success: false,
+      error: 'Too many message exports, please wait a minute and try again',
+      code: 'RATE_LIMITED',
+      retryAfterSeconds: 60,
+    });
+  },
+  ...rateLimitConfig,
+});
+
 // DEM terrain tile proxy (#3826 Phase 2 WP-A) — one call per tile, and a
 // fresh 3D view legitimately fetches dozens on load/pan/zoom, so this is far
 // more generous than `elevationLimiter` (one heavy fan-out per call). Abuse

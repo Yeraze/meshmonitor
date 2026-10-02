@@ -4,7 +4,7 @@
  * Handles MeshCore node and message database operations.
  * Supports SQLite, PostgreSQL, and MySQL through Drizzle ORM.
  */
-import { eq, desc, sql, isNull, isNotNull, and, or, lt, gte, inArray, type SQL } from 'drizzle-orm';
+import { eq, ne, desc, sql, isNull, isNotNull, and, or, lt, gte, inArray, type SQL } from 'drizzle-orm';
 import { BaseRepository, DrizzleDatabase } from './base.js';
 import { DatabaseType } from '../types.js';
 import { shouldDiscardPosition } from '../../utils/nullIsland.js';
@@ -145,6 +145,16 @@ export interface DbMeshCoreMessage {
  * MeshCore OTA packet-log row. One per packet observed via the companion
  * `LogRxData` (0x88) push. See `src/db/schema/meshcorePacketLog.ts`.
  */
+/**
+ * One MeshCore source plus what a caller may read on it (#5517): channel
+ * indices (or every channel) and whether direct messages are included.
+ */
+export interface MeshCoreMessageScope {
+  sourceId: string;
+  channels: number[] | 'all';
+  includeDms: boolean;
+}
+
 export interface DbMeshCorePacket {
   id?: number;
   /** Owning source id; required on writes. */
@@ -1402,6 +1412,153 @@ export class MeshCoreRepository extends BaseRepository {
     return sourceId
       ? and(eq(meshcoreMessages.sourceId, sourceId), channelMatch)
       : channelMatch;
+  }
+
+  /**
+   * True for a direct message row: a real recipient key, and neither end a
+   * synthesised `channel-N` key. Everything else is channel traffic, including
+   * the legacy channel-0 rows with a null recipient (see channelWhereClause).
+   */
+  private directMessageClause(): SQL {
+    const { meshcoreMessages } = this.tables;
+    return and(
+      isNotNull(meshcoreMessages.toPublicKey),
+      sql`${meshcoreMessages.toPublicKey} NOT LIKE 'channel-%'`,
+      sql`${meshcoreMessages.fromPublicKey} NOT LIKE 'channel-%'`,
+    ) as SQL;
+  }
+
+  /**
+   * WHERE fragment for one source's readable MeshCore traffic, or `null` when
+   * the scope can match nothing. Callers MUST treat `null` as zero rows.
+   */
+  private meshcoreScopeCondition(scope: MeshCoreMessageScope): SQL | null {
+    const { meshcoreMessages } = this.tables;
+    if (!scope.sourceId) return null;
+    const bySource = eq(meshcoreMessages.sourceId, scope.sourceId);
+    if (scope.channels === 'all') {
+      return scope.includeDms
+        ? bySource
+        : (and(bySource, sql`NOT (${this.directMessageClause()})`) as SQL);
+    }
+    const parts: SQL[] = [];
+    for (const idx of scope.channels) {
+      const clause = this.channelWhereClause(idx);
+      if (clause) parts.push(clause);
+    }
+    if (scope.includeDms) parts.push(this.directMessageClause());
+    if (parts.length === 0) return null;
+    return and(bySource, parts.length === 1 ? parts[0] : or(...parts)) as SQL;
+  }
+
+  /**
+   * Search stored MeshCore messages (#5517). Replaces the old in-memory scan of
+   * connected managers' rings, which missed disconnected sources and anything
+   * older than the last 1000 messages. Same paging contract as the Meshtastic
+   * `searchMessages`: dates are epoch ms; an empty `scopes` returns nothing.
+   */
+  async searchMessages(options: {
+    query: string;
+    caseSensitive?: boolean;
+    scopes: MeshCoreMessageScope[];
+    fromPublicKey?: string;
+    startDate?: number;
+    endDate?: number;
+    limit?: number;
+    offset?: number;
+  }): Promise<{ messages: DbMeshCoreMessage[]; total: number }> {
+    const { meshcoreMessages } = this.tables;
+    const scopeParts = options.scopes
+      .map((s) => this.meshcoreScopeCondition(s))
+      .filter((c): c is SQL => c !== null);
+    if (scopeParts.length === 0) return { messages: [], total: 0 };
+
+    const conditions: SQL[] = [
+      scopeParts.length === 1 ? scopeParts[0] : (or(...scopeParts) as SQL),
+      this.textContains(meshcoreMessages.text, options.query, options.caseSensitive ?? false),
+    ];
+    if (options.fromPublicKey) conditions.push(eq(meshcoreMessages.fromPublicKey, options.fromPublicKey));
+    if (options.startDate !== undefined) conditions.push(gte(meshcoreMessages.timestamp, options.startDate));
+    if (options.endDate !== undefined) conditions.push(sql`${meshcoreMessages.timestamp} <= ${options.endDate}`);
+    const where = and(...conditions);
+
+    const countResult = await this.db
+      .select({ count: sql<number>`count(*)` })
+      .from(meshcoreMessages)
+      .where(where);
+    const total = Number(countResult[0]?.count ?? 0);
+    const limit = options.limit ?? 50;
+    if (limit <= 0) return { messages: [], total };
+
+    const rows = await this.db
+      .select()
+      .from(meshcoreMessages)
+      .where(where)
+      .orderBy(desc(meshcoreMessages.timestamp), desc(meshcoreMessages.id))
+      .limit(limit)
+      .offset(options.offset ?? 0);
+    return { messages: this.normalizeBigInts(rows) as unknown as DbMeshCoreMessage[], total };
+  }
+
+  /**
+   * One page of a filtered MeshCore message export for ONE source (#5517).
+   * Oldest-first by timestamp then id, keyset-paged by `after`. Filters match
+   * the Meshtastic `getMessagesForExport`; `sender` matches the sender's
+   * public key (prefix) or, for channel messages, its display name.
+   */
+  async getMessagesForExport(options: {
+    sourceId: string;
+    channels: number[] | 'all';
+    includeDms: boolean;
+    includeTerms?: string[];
+    excludeTerms?: string[];
+    startMs?: number;
+    endMs?: number;
+    sender?: string;
+    after?: { time: number; id: string };
+    limit?: number;
+  }): Promise<DbMeshCoreMessage[]> {
+    const { meshcoreMessages } = this.tables;
+    if (!options.sourceId) throw new Error('getMessagesForExport requires a sourceId');
+    const scoped = this.meshcoreScopeCondition({
+      sourceId: options.sourceId,
+      channels: options.channels,
+      includeDms: options.includeDms,
+    });
+    if (!scoped) return [];
+    const limit = Math.max(1, Math.min(options.limit ?? 1000, 5000));
+
+    const conditions: SQL[] = [scoped, ne(meshcoreMessages.text, '')];
+    const include = (options.includeTerms ?? []).map((t) => t.trim()).filter(Boolean);
+    if (include.length > 0) {
+      const matches = include.map((t) => this.textContains(meshcoreMessages.text, t));
+      conditions.push(matches.length === 1 ? matches[0] : (or(...matches) as SQL));
+    }
+    for (const term of (options.excludeTerms ?? []).map((t) => t.trim()).filter(Boolean)) {
+      conditions.push(sql`NOT (${this.textContains(meshcoreMessages.text, term)})`);
+    }
+    const sender = options.sender?.trim();
+    if (sender) {
+      const keyPrefix = `${sender.toLowerCase().replace(/[~%_]/g, (c: string) => `~${c}`)}%`;
+      conditions.push(or(
+        sql`LOWER(${meshcoreMessages.fromPublicKey}) LIKE ${keyPrefix} ESCAPE '~'`,
+        sql`LOWER(${meshcoreMessages.fromName}) = ${sender.toLowerCase()}`,
+      ) as SQL);
+    }
+    if (options.startMs !== undefined) conditions.push(gte(meshcoreMessages.timestamp, options.startMs));
+    if (options.endMs !== undefined) conditions.push(sql`${meshcoreMessages.timestamp} <= ${options.endMs}`);
+    if (options.after) {
+      const { time, id } = options.after;
+      conditions.push(sql`(${meshcoreMessages.timestamp} > ${time} OR (${meshcoreMessages.timestamp} = ${time} AND ${meshcoreMessages.id} > ${id}))`);
+    }
+
+    const rows = await this.db
+      .select()
+      .from(meshcoreMessages)
+      .where(and(...conditions))
+      .orderBy(meshcoreMessages.timestamp, meshcoreMessages.id)
+      .limit(limit);
+    return this.normalizeBigInts(rows) as unknown as DbMeshCoreMessage[];
   }
 
   /**

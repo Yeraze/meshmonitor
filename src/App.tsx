@@ -4057,6 +4057,7 @@ function App() {
         }))}
         canSearchDms={hasPermission('messages', 'read')}
         canSearchMeshcore={false}
+        sourceId={sourceId}
       />
 
       {/* Cross-page configuration search (#5182) */}
