@@ -1101,6 +1101,8 @@ router.get('/packets', async (req: Request, res: Response) => {
         lastExamined = row;
         if (matchesCrossSourceFilter(row, crossSourceFilter)) {
           sliced.push(row);
+          // Stop right at the match that fills the page: `lastExamined` is
+          // then that row, so the next page resumes just after it (no gap).
           if (sliced.length >= limit) { filledPage = true; break; }
         }
       }

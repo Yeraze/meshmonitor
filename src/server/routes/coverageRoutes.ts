@@ -686,6 +686,8 @@ router.get('/receptions', async (req: Request, res: Response) => {
     // Push the sender restriction into SQL so a sparse filter doesn't page
     // through thousands of unrelated rows; the per-row check below still
     // drops a source's own node heard by that same source.
+    // `ownSenderIds()` emits the same canonical forms every coverage writer
+    // stores in `senderId` (`!xxxxxxxx` lowercase hex, lowercased 64-hex key).
     const senderIds = crossSourceOnly ? crossIndex.ownSenderIds() : undefined;
 
     const [page, nodesBySource] = await Promise.all([
