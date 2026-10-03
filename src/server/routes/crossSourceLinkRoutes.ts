@@ -145,8 +145,11 @@ router.get('/', async (req: Request, res: Response) => {
     /**
      * One endpoint's visible position + name. Looks on the endpoint's own
      * source first, then on the other end's source (a radio's own row can
-     * lack a position its neighbour's table has). Each lookup passes that
-     * source's own visibility gate.
+     * lack a position its neighbour's table has). Each lookup passes the
+     * visibility gate of the source whose table holds the row. The fallback
+     * never overrides the owning source: if the radio's own row exists there
+     * and its gate says no (hidden, private, no viewOnMap), the endpoint is
+     * not shown, whatever the other source's table would allow.
      */
     const resolveEndpoint = (
       protocol: string, nodeId: string, ownSource: string, otherSource: string,
@@ -155,6 +158,7 @@ router.get('/', async (req: Request, res: Response) => {
         if (protocol === 'meshcore') {
           const key = nodeId.toLowerCase();
           const n = mcIndex.get(`${srcId}:${key}`);
+          if (n && srcId === ownSource && (!mcFilter || !mcFilter({ sourceId: srcId, publicKey: key }))) return null;
           if (!n || !mcFilter || !mcFilter({ sourceId: srcId, publicKey: key })) continue;
           if (n.latitude == null || n.longitude == null || (n.latitude === 0 && n.longitude === 0)) continue;
           return { pos: [n.latitude, n.longitude], name: n.name ?? null };
@@ -162,6 +166,7 @@ router.get('/', async (req: Request, res: Response) => {
         const nodeNum = parseNodeNum(nodeId);
         if (nodeNum === null) return null;
         const n = nodeIndex.get(`${srcId}:${nodeNum}`);
+        if (n && srcId === ownSource && !posFilter({ sourceId: srcId, nodeNum })) return null;
         if (!n || !posFilter({ sourceId: srcId, nodeNum })) continue;
         const pos = nodeLatLon(n);
         if (!pos) continue;

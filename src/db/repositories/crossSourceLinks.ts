@@ -137,6 +137,8 @@ export class CrossSourceLinksRepository extends BaseRepository {
       if (!existing) return; // insert failed for a reason other than a duplicate; drop this sample
     }
 
+    // Incremental means in double precision: with tens to hundreds of
+    // samples per hour bucket the rounding error is far below 0.01 dB.
     const snrCount = existing.snrCount + (snr !== null ? 1 : 0);
     const rssiCount = existing.rssiCount + (rssi !== null ? 1 : 0);
     const set = {

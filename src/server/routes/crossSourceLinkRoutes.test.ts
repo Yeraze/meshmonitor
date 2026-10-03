@@ -119,6 +119,35 @@ describe('Cross-source link routes (#5561)', () => {
     expect(res.body.data.links).toEqual([]);
   });
 
+  it('falls back to the other source\'s table when the radio\'s own row has no position', async () => {
+    // Radio A's row on its own source loses its coordinates; source B knows where A is.
+    await harness.db.nodes.upsertNode({
+      nodeNum: 0x7e00000a, nodeId: nodeIdFor(0x7e00000a), longName: 'Radio A2', shortName: 'A2', channel: 0, lastHeard: nowSec(),
+    } as any, harness.sourceA);
+    await harness.db.nodes.upsertNode({
+      nodeNum: 0x7e00000a, nodeId: nodeIdFor(0x7e00000a), longName: 'Radio A2 seen by B', shortName: 'A2', channel: 0,
+      latitude: 31.5, longitude: -91.5, lastHeard: nowSec(),
+    } as any, harness.sourceB);
+    await hear({ txNodeId: nodeIdFor(0x7e00000a) });
+    const agent = await harness.loginAs(harness.admin);
+    const links = (await agent.get('/')).body.data.links;
+    expect(links.find((l: any) => l.txNodeId === nodeIdFor(0x7e00000a))).toMatchObject({ from: [31.5, -91.5] });
+  });
+
+  it('the fallback never overrides the owning source: hidden on A stays hidden even if B could show it', async () => {
+    // The same radio is also in B's table with a position the user may see there.
+    await harness.db.nodes.upsertNode({
+      nodeNum: NUM_A, nodeId: nodeIdFor(NUM_A), longName: 'Radio A via B', shortName: 'A', channel: 0,
+      latitude: 30.15, longitude: -90.15, lastHeard: nowSec(),
+    } as any, harness.sourceB);
+    await harness.grant(harness.limited.id, 'nodes', 'read', harness.sourceA);
+    await harness.grant(harness.limited.id, 'nodes', 'read', harness.sourceB);
+    await harness.grant(harness.limited.id, 'channel_0', 'viewOnMap', harness.sourceB);
+    const agent = await harness.loginAs(harness.limited);
+    const res = await agent.get('/');
+    expect(res.body.data.links).toEqual([]);
+  });
+
   it('an endpoint with no position drops the edge', async () => {
     await hear({ rxNodeId: nodeIdFor(0x7d000009) });
     const agent = await harness.loginAs(harness.admin);

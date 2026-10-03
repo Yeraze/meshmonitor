@@ -233,6 +233,8 @@ export function evaluateMeshtasticLink(
     hopStart, hopLimit, hasBitfield: typeof p.decoded?.bitfield === 'number',
   });
   const drafts = hearingsFromTags(tags, hopsAway === 0, meshtasticNodeIdOf(index));
+  // Correlated, but no edge: a multi-hop copy of an origin packet with no
+  // relay candidate (the usual case), or a non-RF transport.
   if (drafts.length === 0) return none('not-direct');
 
   const snr = p.rxSnr != null && p.rxSnr !== -128 ? p.rxSnr : null;

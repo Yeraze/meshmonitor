@@ -88,6 +88,8 @@ export function CrossSourceLinksLayer({ enabled, sourceIds, lookbackHours }: Cro
 
   const descriptors = useMemo<NeighborLinkDescriptor[]>(() => {
     if (!enabled || !data) return [];
+    // Read once per data refresh (at most one refetch interval stale): the age
+    // fade does not need a live clock.
     const now = Date.now();
     const windowMs = Math.max(1, now - data.sinceMs);
     return data.links.map((link) => {
