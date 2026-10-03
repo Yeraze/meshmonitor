@@ -259,6 +259,7 @@ function macThenDecrypt(ciphertextHex: string, cipherMacHex: string, secretHex: 
   secret.copy(key32);
   const want = createHmac('sha256', key32).update(ct).digest().subarray(0, 2);
   if (!timingSafeEqual(want, mac)) return null;
+  // ECB with no IV is what the firmware uses (Utils::decrypt); matched on purpose.
   const decipher = createDecipheriv('aes-128-ecb', secret, null);
   decipher.setAutoPadding(false);
   return Buffer.concat([decipher.update(ct), decipher.final()]);

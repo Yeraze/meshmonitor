@@ -225,6 +225,17 @@ describe('POST /meshcore/packets/decode (#5567, #5568)', () => {
     });
   });
 
+  it('a slot above 7 has no per-channel resource: only messages:read on its source opens it', async () => {
+    await databaseService.channels.upsertChannel({ id: 12, name: 'high-slot', psk: b64(SECRET), role: 2 }, B);
+    await harness.grant(harness.limited.id, 'packetmonitor', 'read', A);
+    const agent = await harness.loginAs(harness.limited);
+    expect((await agent.post(url()).send({ rawHex: FRAME })).body).toEqual({ success: true, data: UNKNOWN });
+
+    await harness.grant(harness.limited.id, 'messages', 'read', B);
+    const res = await agent.post(url()).send({ rawHex: FRAME });
+    expect(res.body.data).toMatchObject({ decrypted: true, channelName: 'high-slot' });
+  });
+
   describe('virtual channel only', () => {
     let vcId: number;
     beforeEach(async () => {

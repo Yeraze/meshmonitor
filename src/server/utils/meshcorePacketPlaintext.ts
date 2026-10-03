@@ -73,6 +73,9 @@ interface VirtualRow {
 async function canReadDeviceRow(viewer: PacketDecodeViewer, row: ChannelKeyRow): Promise<boolean> {
   if (viewer.isAdmin) return true;
   if (!row.sourceId) return false;
+  // Number(): ids are BIGINT on PostgreSQL / MySQL. 0-7 is the whole RBAC
+  // resource set (`channel_0`..`channel_7`, see `channelResourceFor`); a higher
+  // MeshCore slot is readable through `messages:read` on its source alone.
   const idx = Number(row.id);
   if (Number.isInteger(idx) && idx >= 0 && idx <= 7) {
     if (await databaseService.checkPermissionAsync(viewer.id, `channel_${idx}`, 'read', row.sourceId)) return true;
