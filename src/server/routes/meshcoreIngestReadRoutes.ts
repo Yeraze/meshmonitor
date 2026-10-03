@@ -13,6 +13,7 @@
  *
  * Mounted BEFORE `meshcoreRouteGuard` in the barrel; see `anyMeshCoreRouteGuard`.
  */
+import { resolveMeshcoreKeyAccess, filterKeyedMessages } from '../utils/meshcoreKeyAccess.js';
 import { Router, type Request, type Response } from 'express';
 import { optionalAuth, requirePermission } from '../auth/authMiddleware.js';
 import { sourceManagerRegistry } from '../sourceManagerRegistry.js';
@@ -139,7 +140,11 @@ router.get(
       // Ignore / Block (#5408): computed from the current lists at read time.
       const messages = meshcoreMessageFilter.annotate(
         (req.params as { id?: string }).id ?? '',
-        await mgr.getRecentMessagesAsync(limit),
+        // #5552: rows decrypted with a virtual-channel key need that grant.
+        filterKeyedMessages(
+          await mgr.getRecentMessagesAsync(limit),
+          await resolveMeshcoreKeyAccess((req as Request & { user?: { id: number; isAdmin?: boolean } }).user),
+        ),
       );
       return ok(res, { messages, count: messages.length });
     } catch (error) {

@@ -2172,12 +2172,28 @@ class ApiService {
   /**
    * Get all channel database entries
    */
-  async getChannelDatabaseEntries(): Promise<{
+  async getChannelDatabaseEntries(protocol?: 'meshtastic' | 'meshcore' | 'all'): Promise<{
     success: boolean;
     count: number;
     data: ChannelDatabaseEntry[];
   }> {
-    return this.get('/api/channel-database');
+    // Meshtastic rows only by default: callers treat an entry as a Meshtastic
+    // virtual channel. Pass 'all' to include MeshCore rows (#5552).
+    return this.get(protocol ? `/api/channel-database?protocol=${protocol}` : '/api/channel-database');
+  }
+
+  /**
+   * Copy one MeshCore source's device channels into the channel database as
+   * MeshCore virtual channels (#5552). Secrets stay on the server.
+   */
+  async importMeshcoreChannels(sourceId: string): Promise<{
+    success: boolean;
+    data: {
+      imported: Array<{ id: number; name: string }>;
+      skipped: Array<{ name: string; reason: 'duplicate' | 'no_secret' }>;
+    };
+  }> {
+    return this.post('/api/channel-database/import-meshcore', { sourceId });
   }
 
   /**
@@ -2200,6 +2216,8 @@ class ApiService {
     description?: string;
     isEnabled?: boolean;
     enforceNameValidation?: boolean;
+    /** Defaults to 'meshtastic'. A MeshCore `#name` may omit `psk`. */
+    protocol?: 'meshtastic' | 'meshcore';
   }): Promise<{
     success: boolean;
     data: ChannelDatabaseEntry;
@@ -2607,6 +2625,8 @@ export interface AutomationRunNowResult {
 export interface ChannelDatabaseEntry {
   id: number;
   name: string;
+  /** 'meshtastic' or 'meshcore' (#5552). */
+  protocol?: 'meshtastic' | 'meshcore';
   pskLength: number;
   pskPreview: string;
   psk?: string;

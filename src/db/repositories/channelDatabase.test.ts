@@ -41,6 +41,7 @@ const POSTGRES_CREATE = `
     id SERIAL PRIMARY KEY,
     name TEXT NOT NULL,
     psk TEXT NOT NULL,
+    protocol TEXT NOT NULL DEFAULT 'meshtastic',
     "pskLength" INTEGER NOT NULL DEFAULT 32,
     "channelHash" INTEGER,
     description TEXT,
@@ -89,6 +90,7 @@ const MYSQL_CREATE = `
     id INT AUTO_INCREMENT PRIMARY KEY,
     name VARCHAR(255) NOT NULL,
     psk VARCHAR(255) NOT NULL,
+    protocol VARCHAR(16) NOT NULL DEFAULT 'meshtastic',
     pskLength INT NOT NULL DEFAULT 32,
     channelHash INT,
     description TEXT,
@@ -364,6 +366,58 @@ function runChannelDbTests(getBackend: () => TestBackend) {
 
     const result = await repo.getPermissionAsync(testUserId, 99999);
     expect(result).toBeNull();
+  });
+
+  // --- Protocol (#5552) ---
+
+  it('protocol - lists default to Meshtastic; MeshCore rows are opt-in', async () => {
+    const backend = getBackend();
+    if (!backend.available) return;
+
+    const mt = await repo.createAsync({ name: 'MT', psk: 'cHNrMQ==', pskLength: 16 });
+    const mc = await repo.createAsync({ name: '#mc', psk: Buffer.alloc(16, 7).toString('base64'), pskLength: 16, protocol: 'meshcore' });
+    const mcOff = await repo.createAsync({ name: 'mc-off', psk: Buffer.alloc(16, 8).toString('base64'), pskLength: 16, protocol: 'meshcore', isEnabled: false });
+
+    expect((await repo.getByIdAsync(mt))!.protocol).toBe('meshtastic');
+    expect((await repo.getByIdAsync(mc))!.protocol).toBe('meshcore');
+
+    // Every Meshtastic reader calls these with no argument.
+    expect((await repo.getAllAsync()).map((c) => c.id)).toEqual([mt]);
+    expect((await repo.getEnabledAsync()).map((c) => c.id)).toEqual([mt]);
+    expect(await repo.getByNameAsync('#mc')).toBeNull();
+
+    expect((await repo.getAllAsync('meshcore')).map((c) => c.id).sort()).toEqual([mc, mcOff].sort());
+    expect((await repo.getEnabledAsync('meshcore')).map((c) => c.id)).toEqual([mc]);
+    expect((await repo.getAllAsync('all')).length).toBe(3);
+  });
+
+  it('protocol - getMeshcoreBySecretAsync matches the secret in hex or base64, MeshCore rows only', async () => {
+    const backend = getBackend();
+    if (!backend.available) return;
+
+    const secret = Buffer.alloc(16, 0x5a);
+    // The same bytes stored as a MESHTASTIC key must not count as a duplicate.
+    await repo.createAsync({ name: 'MT same bytes', psk: secret.toString('base64'), pskLength: 16 });
+    expect(await repo.getMeshcoreBySecretAsync(secret.toString('hex'))).toBeNull();
+
+    const id = await repo.createAsync({ name: 'mc', psk: secret.toString('base64'), pskLength: 16, protocol: 'meshcore' });
+    expect((await repo.getMeshcoreBySecretAsync(secret.toString('hex')))!.id).toBe(id);
+    expect((await repo.getMeshcoreBySecretAsync(secret.toString('hex').toUpperCase()))!.id).toBe(id);
+    expect(await repo.getMeshcoreBySecretAsync('00'.repeat(16))).toBeNull();
+  });
+
+  it('protocol - a grant on one protocol never reads as a grant on the other', async () => {
+    const backend = getBackend();
+    if (!backend.available) return;
+
+    const mt = await repo.createAsync({ name: 'MT', psk: 'cHNrMQ==', pskLength: 16 });
+    const mc = await repo.createAsync({ name: 'mc', psk: Buffer.alloc(16, 9).toString('base64'), pskLength: 16, protocol: 'meshcore' });
+    await repo.setPermissionAsync({ userId: testUserId, channelDatabaseId: mt, canViewOnMap: false, canRead: true });
+    await repo.setPermissionAsync({ userId: testUserId, channelDatabaseId: mc, canViewOnMap: false, canRead: true });
+
+    expect((await repo.getPermissionsForUserAsync(testUserId)).map((p) => p.channelDatabaseId)).toEqual([mt]);
+    expect((await repo.getPermissionsForUserAsync(testUserId, 'meshcore')).map((p) => p.channelDatabaseId)).toEqual([mc]);
+    expect((await repo.getPermissionsForUserAsync(testUserId, 'all')).length).toBe(2);
   });
 
   it('getPermissionsForUserAsync - returns all permissions for a user', async () => {

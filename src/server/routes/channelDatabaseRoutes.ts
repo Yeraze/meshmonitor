@@ -28,6 +28,7 @@ import {
   getChannelByIdHandler,
   createChannelHandler,
   reorderChannelsHandler,
+  importMeshcoreChannelsHandler,
   updateChannelHandler,
   deleteChannelHandler,
   triggerRetroactiveDecryptHandler,
@@ -48,6 +49,7 @@ router.get('/retroactive-decrypt/progress', requireAuth(), getRetroactiveDecrypt
 router.get('/:id', optionalAuth(), getChannelByIdHandler);
 router.post('/', requireAuth(), createChannelHandler);
 router.put('/reorder', requireAuth(), reorderChannelsHandler);
+router.post('/import-meshcore', requireAuth(), importMeshcoreChannelsHandler);
 router.put('/:id', requireAuth(), updateChannelHandler);
 router.delete('/:id', requireAuth(), deleteChannelHandler);
 router.post('/:id/retroactive-decrypt', requireAuth(), triggerRetroactiveDecryptHandler);
