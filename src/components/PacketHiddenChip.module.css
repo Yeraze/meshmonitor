@@ -1,0 +1,25 @@
+/* "N hidden" chip beside the packet count (#5579). Sits next to the global
+   `.packet-count` pill in the monitor header and matches its size. Theme
+   tokens only. */
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  font-size: 12px;
+  font-family: var(--font-mono);
+  line-height: inherit;
+  white-space: nowrap;
+  color: var(--color-text-subtle);
+  background: transparent;
+  border: 1px dashed var(--color-surface-active);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.chip:hover,
+.chip:focus-visible {
+  color: var(--color-text);
+  background: var(--color-surface-hover);
+}

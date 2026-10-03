@@ -39,7 +39,7 @@ interface UsePacketsOptions {
   canView: boolean;
   /** Server-side filters to apply */
   filters: PacketFilters;
-  /** Whether to hide packets from own node (client-side filter) */
+  /** Whether to hide our own packets heard back (client-side filter; TX rows are kept) */
   hideOwnPackets: boolean;
   /** Own node number for filtering (hex nodeId converted to number) */
   ownNodeNum?: number;
@@ -47,11 +47,30 @@ interface UsePacketsOptions {
   sourceId?: string | null;
 }
 
+/**
+ * True for a packet we sent that the radio heard back: an RX row whose sender
+ * is our own node (rebroadcast over RF, or returned via MQTT/UDP).
+ *
+ * A row with `direction === 'tx'` is the send itself, logged by
+ * `logOutgoingPacket` with `from_node` = our node. It is never an echo, so
+ * "Hide Own Packets" must keep it. Matching on `from_node` alone hid every TX
+ * row in the per-source monitor (#5579).
+ *
+ * `from_node` is coerced because PostgreSQL/MySQL return BIGINT columns as
+ * strings on some paths.
+ */
+export function isOwnPacketEcho(packet: PacketLog, ownNodeNum: number): boolean {
+  if (packet.direction === 'tx') return false;
+  return Number(packet.from_node) === ownNodeNum;
+}
+
 interface UsePacketsResult {
   /** Filtered packets (after client-side hideOwnPackets filter) */
   packets: PacketLog[];
   /** Raw packets before client-side filtering */
   rawPackets: PacketLog[];
+  /** Loaded rows the client-side hideOwnPackets filter removed */
+  hiddenCount: number;
   /** Total packet count from server */
   total: number;
   /** Whether initial load is in progress */
@@ -163,10 +182,14 @@ export function usePackets({ canView, filters, hideOwnPackets, ownNodeNum, sourc
   // Apply client-side "Hide Own Packets" filter
   const packets = useMemo(() => {
     if (hideOwnPackets && ownNodeNum) {
-      return rawPackets.filter(packet => packet.from_node !== ownNodeNum);
+      return rawPackets.filter(packet => !isOwnPacketEcho(packet, ownNodeNum));
     }
     return rawPackets;
   }, [rawPackets, hideOwnPackets, ownNodeNum]);
+
+  // Rows the client filter removed from the loaded set. The panel shows this
+  // so a filter that lives in a collapsed drawer cannot hide rows unseen (#5579).
+  const hiddenCount = rawPackets.length - packets.length;
 
   // Reset scroll tracking when filters change (query is reset)
   useEffect(() => {
@@ -228,6 +251,7 @@ export function usePackets({ canView, filters, hideOwnPackets, ownNodeNum, sourc
   return {
     packets,
     rawPackets,
+    hiddenCount,
     total,
     loading: isLoading,
     loadingMore: isFetchingNextPage,
