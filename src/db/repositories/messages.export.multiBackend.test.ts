@@ -339,6 +339,42 @@ function runExportTests(getBackend: () => TestBackend) {
     }
     expect(seen).toEqual(['Shelter_A 100%', 'shelterXA 100 pct', 'dm shelter_a']);
   });
+
+  it('MeshCore: the keyed-message gate (#5551) filters every read by key fingerprint', async () => {
+    const b = getBackend();
+    if (!b.available) return;
+    const repo = new MeshCoreRepository(b.drizzleDb, b.dbType);
+    const keyed = { fromPublicKey: 'channel-1234', keySourceId: 'src-x', keyChannelIdx: 3, keyFingerprint: 'aaaaaaaaaaaaaaaa' };
+    await addMc(repo, { text: 'plain' });
+    await addMc(repo, { text: 'keyed one', ...keyed });
+    await addMc(repo, { text: 'keyed two', ...keyed, keyFingerprint: 'bbbbbbbbbbbbbbbb', fromPublicKey: 'channel-2222' });
+
+    const texts = async (keyAccess?: 'all' | string[]) =>
+      (await repo.getRecentMessages(50, SRC, keyAccess)).map((r) => r.text).sort();
+    expect(await texts()).toEqual(['keyed one', 'keyed two', 'plain']);
+    expect(await texts('all')).toEqual(['keyed one', 'keyed two', 'plain']);
+    expect(await texts([])).toEqual(['plain']);
+    expect(await texts(['aaaaaaaaaaaaaaaa'])).toEqual(['keyed one', 'plain']);
+
+    expect(await repo.getChannelMessages(1234, 10, SRC, 0, [])).toEqual([]);
+    expect((await repo.getChannelMessages(1234, 10, SRC, 0, ['aaaaaaaaaaaaaaaa'])).map((r) => r.text)).toEqual(['keyed one']);
+    expect(await repo.getChannelMessageCounts([1234, 2222], SRC, ['aaaaaaaaaaaaaaaa'])).toEqual({ 1234: 1, 2222: 0 });
+    expect(Object.keys(await repo.getChannelLatestTimestamps([1234, 2222], SRC, ['aaaaaaaaaaaaaaaa']))).toEqual(['1234']);
+
+    const scope = { sourceId: SRC, channels: 'all' as const, includeDms: true };
+    expect((await repo.searchMessages({ query: 'keyed', scopes: [{ ...scope, keyAccess: [] }] })).total).toBe(0);
+    expect((await repo.searchMessages({ query: 'keyed', scopes: [{ ...scope, keyAccess: ['bbbbbbbbbbbbbbbb'] }] })).total).toBe(1);
+    expect((await repo.searchMessages({ query: 'keyed', scopes: [scope] })).total).toBe(2);
+    const exported = await repo.getMessagesForExport({ ...scope, keyAccess: [] });
+    expect(exported.map((r) => r.text)).toEqual(['plain']);
+
+    const summaries = (await repo.getKeyedChannelSummaries(SRC)).sort((x, y) => x.channelKey.localeCompare(y.channelKey));
+    expect(summaries).toEqual([
+      { channelKey: 'channel-1234', keyFingerprint: 'aaaaaaaaaaaaaaaa', keySourceId: 'src-x', keyChannelIdx: 3 },
+      { channelKey: 'channel-2222', keyFingerprint: 'bbbbbbbbbbbbbbbb', keySourceId: 'src-x', keyChannelIdx: 3 },
+    ]);
+    expect(await repo.getKeyedChannelSummaries(OTHER)).toEqual([]);
+  });
 }
 
 function suite(name: string, make: () => Promise<TestBackend> | TestBackend) {

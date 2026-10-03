@@ -43,7 +43,7 @@ import { MeshCoreNodesView } from './MeshCoreNodesView';
 describe('MeshCoreNodesView — Repeater source empty state (#5500)', () => {
   it('explains that a repeater only reports its zero-hop repeater neighbours', () => {
     render(<MeshCoreNodesView nodes={[]} contacts={[]} isRepeaterSource />);
-    expect(screen.getByText(/only reports its direct \(zero-hop\) repeater neighbours/)).toBeInTheDocument();
+    expect(screen.getByText(/reports its direct \(zero-hop\) repeater neighbours/)).toBeInTheDocument();
     expect(screen.queryByText('No nodes seen yet')).not.toBeInTheDocument();
   });
 
@@ -51,5 +51,23 @@ describe('MeshCoreNodesView — Repeater source empty state (#5500)', () => {
     render(<MeshCoreNodesView nodes={[]} contacts={[]} />);
     expect(screen.getByText('No nodes seen yet')).toBeInTheDocument();
     expect(screen.queryByText(/zero-hop/)).not.toBeInTheDocument();
+  });
+
+  it('tags only nodes the neighbours table listed, not advert-only nodes (#5553)', () => {
+    const nodes = [
+      { publicKey: 'aa'.repeat(32), name: 'Near', advType: 1, lastHeard: Date.now(), repeaterNeighborAt: 1_790_000_000_000 },
+      { publicKey: 'bb'.repeat(32), name: 'Far', advType: 1, lastHeard: Date.now() },
+    ];
+    render(<MeshCoreNodesView nodes={nodes} contacts={[]} isRepeaterSource />);
+    expect(screen.getByText('Near')).toBeInTheDocument();
+    expect(screen.getByText('Far')).toBeInTheDocument();
+    expect(screen.getAllByText('Neighbour')).toHaveLength(1);
+  });
+
+  it('shows no neighbour tag on a non-repeater source', () => {
+    const nodes = [{ publicKey: 'aa'.repeat(32), name: 'Near', advType: 1, lastHeard: Date.now(), repeaterNeighborAt: 1_790_000_000_000 }];
+    render(<MeshCoreNodesView nodes={nodes} contacts={[]} />);
+    expect(screen.getByText('Near')).toBeInTheDocument();
+    expect(screen.queryByText('Neighbour')).not.toBeInTheDocument();
   });
 });

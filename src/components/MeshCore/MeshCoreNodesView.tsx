@@ -65,6 +65,8 @@ interface MergedRow {
   lastHeard?: number;
   hasPosition: boolean;
   isFavorite: boolean;
+  /** #5553: listed in the local repeater's `neighbors` table (zero-hop). */
+  isRepeaterNeighbor: boolean;
   /** Propagated from the contact's `isLocal` flag (#4438) — `MeshCoreNode`
    *  entries never carry it, only the synthetic local contact row does. */
   isLocal: boolean;
@@ -89,6 +91,7 @@ function mergeNodesAndContacts(
       lastHeard: n.lastHeard,
       hasPosition: false,
       isFavorite: n.isFavorite ?? false,
+      isRepeaterNeighbor: typeof n.repeaterNeighborAt === 'number' && n.repeaterNeighborAt > 0,
       // `MeshCoreNode` never carries `isLocal` — only the synthetic local
       // contact row does (#4438). Filled in below when a matching contact
       // merges in.
@@ -124,6 +127,7 @@ function mergeNodesAndContacts(
         lastHeard: meshcoreLastHeardMs(c) ?? undefined,
         hasPosition: hasPos,
         isFavorite: false,
+        isRepeaterNeighbor: false,
         isLocal: c.isLocal === true,
       });
     }
@@ -522,7 +526,7 @@ export const MeshCoreNodesView: React.FC<MeshCoreNodesViewProps> = ({
                 : isRepeaterSource
                   ? t(
                     'meshcore.no_nodes_repeater',
-                    'No nodes yet. A repeater only reports its direct (zero-hop) repeater neighbours, read from its neighbors table every 5 minutes. Companions and multi-hop nodes do not appear here.',
+                    'No nodes yet. A repeater reports its direct (zero-hop) repeater neighbours, read from its neighbors table every 5 minutes. Other nodes appear only when the firmware is built with MESH_PACKET_LOGGING, which lets MeshMonitor read the adverts the repeater hears.',
                   )
                   : t('meshcore.no_nodes', 'No nodes seen yet')}
             </div>
@@ -561,6 +565,11 @@ export const MeshCoreNodesView: React.FC<MeshCoreNodesViewProps> = ({
                     <span>{formatTimeOrDate(new Date(row.lastHeard), timeFormat, dateFormat)}</span>
                   )}
                   {row.hasPosition && <span><UiIcon name="location" size={14} /></span>}
+                  {isRepeaterSource && row.isRepeaterNeighbor && (
+                    <span title={t('meshcore.nodes.repeater_neighbor_hint', "Listed in this repeater's neighbours table (heard directly).")}>
+                      {t('meshcore.nodes.repeater_neighbor', 'Neighbour')}
+                    </span>
+                  )}
                 </div>
                 <div className="mc-node-row-key">
                   {row.publicKey.substring(0, 16)}…
