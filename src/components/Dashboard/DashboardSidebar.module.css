@@ -44,3 +44,39 @@
   font-weight: 400;
   opacity: 0.85;
 }
+
+/*
+ * FWD pill (#5537) — the source's Message Forwarding master switch. Reuses the
+ * global `.dashboard-source-card-badge` look; this adds button resets and the
+ * on/off tone.
+ */
+.fwdPill {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  border: 1px solid transparent;
+  font-family: inherit;
+  line-height: inherit;
+  cursor: pointer;
+}
+
+.fwdPill:disabled {
+  cursor: default;
+}
+
+.fwdPill:not(:disabled):hover {
+  border-color: var(--color-border-strong);
+}
+
+.fwdPill:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 1px;
+}
+
+.fwdOn {
+  color: var(--color-success);
+}
+
+.fwdOff {
+  color: var(--color-text-faint);
+}

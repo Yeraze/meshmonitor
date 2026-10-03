@@ -16,6 +16,7 @@ import { appriseNotificationService } from '../appriseNotificationService.js';
 import { runScript as runUserScript } from '../../utils/scriptRunner.js';
 import { logger } from '../../../utils/logger.js';
 import { waypointService } from '../waypointService.js';
+import { isForwardingEnabled, setForwardingEnabled } from '../forwardingStateService.js';
 import type { ActionDeps } from './actionExecutor.js';
 import type { SendOrigin } from '../../utils/automationPacketTracker.js';
 import { type MeshCoreAdvertMode, LEGACY_MESHCORE_ADVERT_MODE } from '../../../types/meshcoreAdvert.js';
@@ -314,6 +315,20 @@ export function createMeshActionDeps(): ActionDeps {
       const r = await appriseNotificationService.notifyDirect({ sourceId, title, body, type }, urls);
       if (!r.ok) throw new Error(`notify failed: ${r.message}`);
       return r;
+    },
+
+    // #5537: a per-source settings write. Sends nothing, and never touches the
+    // forwarding rate limiter. Skips the write when the state would not change.
+    async setSourceForwardingEnabled({ sourceId, mode, enabled }) {
+      const source = await databaseService.sources.getSource(sourceId);
+      if (!source) return null;
+      const previous = await isForwardingEnabled(sourceId);
+      const next = mode === 'toggle' ? !previous : Boolean(enabled);
+      if (next !== previous) {
+        await setForwardingEnabled(sourceId, next);
+        logger.info(`[AutomationEngine] forwarding on source "${source.name}" turned ${next ? 'on' : 'off'} by an automation action`);
+      }
+      return { sourceId, sourceName: source.name, previous, enabled: next };
     },
 
     async runScript({ scriptPath, scriptArgs, env, timeoutMs }) {

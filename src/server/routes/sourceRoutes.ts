@@ -31,6 +31,7 @@ import type { MqttFilterConfig } from '../mqttPacketFilter.js';
 import { ok, fail } from '../utils/apiResponse.js';
 import { normalizeBrokerUrl } from '../transports/mqttBrokerClient.js';
 import { observerBrokerKey } from '../meshcoreConfig.js';
+import { getForwardingSummary } from '../services/forwardingStateService.js';
 
 const router = Router();
 
@@ -1607,6 +1608,39 @@ router.delete('/:id', requirePermission('sources', 'write'), async (req: Request
 // caused anonymous users to see "Connecting"/"Idle" forever (issue #2883).
 // Node counts remain permission-scoped: only included when the caller has
 // `nodes:read` for this source, mirroring the unified endpoint.
+/** Shape of `forwarding` on GET /:id/status (#5537). */
+interface ForwardingStatus {
+  enabled: boolean;
+  ruleCount: number;
+  activeRuleCount: number;
+  /** Caller may flip the master switch (per-source `automation` write). */
+  canWrite: boolean;
+}
+
+async function forwardingStatusFor(
+  user: { id: number } | undefined,
+  isAdmin: boolean,
+  source: { id: string; type: string },
+): Promise<ForwardingStatus | null> {
+  // MQTT sources carry no forwarding rules.
+  if (String(source.type).startsWith('mqtt')) return null;
+  try {
+    const canRead = isAdmin || (user
+      ? await databaseService.checkPermissionAsync(user.id, 'automation', 'read', source.id)
+      : false);
+    if (!canRead) return null;
+    const summary = await getForwardingSummary(source.id);
+    if (summary.ruleCount === 0) return null;
+    const canWrite = isAdmin || (user
+      ? await databaseService.checkPermissionAsync(user.id, 'automation', 'write', source.id)
+      : false);
+    return { ...summary, canWrite };
+  } catch (error) {
+    logger.debug(`[Sources] forwarding status for ${source.id} failed: ${(error as Error).message}`);
+    return null;
+  }
+}
+
 router.get('/:id/status', optionalAuth(), async (req: Request, res: Response) => {
   try {
     const source = await databaseService.sources.getSource(req.params.id);
@@ -1637,6 +1671,13 @@ router.get('/:id/status', optionalAuth(), async (req: Request, res: Response) =>
     const canReadNodes = isAdmin || (user
       ? await databaseService.checkPermissionAsync(user.id, 'nodes', 'read', source.id)
       : false);
+
+    // Message Forwarding summary for the sidebar FWD pill (#5537), riding on
+    // this poll instead of one more request per source. Only for callers who
+    // may read the source's forwarding (per-source `automation` read), and
+    // only when the source has rules — otherwise the pill has nothing to show.
+    const forwarding = await forwardingStatusFor(user, isAdmin, source);
+    if (forwarding) status = { ...status, forwarding };
 
     if (!canReadNodes) {
       // Analyzer Observer status (#4457 Phase 2, D-10) can leak the broker

@@ -1219,6 +1219,20 @@ function DashboardInner() {
     }
   };
 
+  // Message Forwarding master switch from the sidebar FWD pill (#5537). The
+  // server gates it on per-source `automation` write; the pill only offers it
+  // when the status poll says the caller holds that grant. Re-poll the
+  // source's status either way so the pill shows the stored state.
+  const onToggleForwarding = async (id: string, enabled: boolean) => {
+    try {
+      await api.put(`/api/sources/${encodeURIComponent(id)}/forwarding/enabled`, { enabled });
+    } catch (err) {
+      logger.warn('Forwarding toggle failed', { status: err instanceof ApiError ? err.status : undefined });
+    } finally {
+      await queryClient.refetchQueries({ queryKey: ['dashboard', 'status', id], type: 'active' });
+    }
+  };
+
   const confirmPrune = async () => {
     if (!pruneConfirm || prunePending) return;
     setPrunePending(true);
@@ -1286,6 +1300,7 @@ function DashboardInner() {
           onDisconnectSource={onDisconnectSource}
           onPruneOutsideRoi={onPruneOutsideRoi}
           onResyncSource={onResyncSource}
+          onToggleForwarding={onToggleForwarding}
           connectingIds={connectingIds}
           unreadBySource={unreadIndicatorEnabled ? unreadBySourceData?.sources : undefined}
           unreadIndicatorEnabled={unreadIndicatorEnabled}
