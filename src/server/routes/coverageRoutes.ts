@@ -66,6 +66,13 @@ import type {
   CoveragePage,
 } from '../../types/coverage.js';
 import coverageSurveyRoutes from './coverageSurveyRoutes.js';
+import {
+  resolveCrossSourceIndex,
+  classifyMeshtasticReception,
+  classifyMeshCoreReception,
+  type CrossSourceIndex,
+} from '../services/crossSourceCorrelation.js';
+import type { DbCoverageReception } from '../../db/repositories/coverageReceptions.js';
 
 const router = Router();
 router.use(optionalAuth());
@@ -97,9 +104,52 @@ function clampRequestedPageSize(raw: unknown): number {
 
 /** Resolve the caller's permitted sources intersected with `?sources=`. */
 async function resolveSourceIds(req: Request): Promise<string[]> {
+  return (await resolveScopedSourceIds(req)).sourceIds;
+}
+
+/**
+ * Like {@link resolveSourceIds}, also returning the full permitted set — the
+ * cross-source index (#5560) is built from every readable source, not just
+ * the `?sources=` subset, so a row on B can still name a readable source A
+ * the caller chose not to list.
+ */
+async function resolveScopedSourceIds(req: Request): Promise<{ sourceIds: string[]; permitted: string[] }> {
   const permitted = await resolvePermittedSourceIds(req);
   const requested = parseSourcesParam(req.query.sources);
-  return requested ? permitted.filter((id) => requested.includes(id)) : permitted;
+  return { sourceIds: requested ? permitted.filter((id) => requested.includes(id)) : permitted, permitted };
+}
+
+/**
+ * #5560 cross-source flags for one reception. Coverage only cares who sent
+ * the fix, so this is origin-only. MeshCore senders were signature-verified
+ * when the row was recorded (coverageMeshCore.ts), so the stored key is
+ * proof of origin.
+ */
+function crossSourceFlags(
+  index: CrossSourceIndex,
+  row: DbCoverageReception,
+): Required<Pick<CoverageReceptionDto, 'senderIsOwnSource' | 'senderSourceId' | 'crossSourceTransport'>> {
+  const tags = isMeshCoreReceptionRow(row)
+    ? classifyMeshCoreReception(index, {
+      sourceId: row.sourceId,
+      advertPublicKey: row.senderId,
+      observerId: row.receiverKind === 'mqtt_gateway' ? row.receiverId : null,
+      originOnly: true,
+    })
+    : classifyMeshtasticReception(index, {
+      sourceId: row.sourceId,
+      fromNode: row.senderNodeNum,
+      transportMechanism: row.transportMechanism,
+      receiverKind: row.receiverKind,
+      receiverNodeNum: row.receiverNodeNum,
+      originOnly: true,
+    });
+  const senderSourceId = tags?.originSourceId ?? null;
+  return {
+    senderIsOwnSource: senderSourceId !== null,
+    senderSourceId,
+    crossSourceTransport: senderSourceId !== null ? tags!.transport : null,
+  };
 }
 
 /**
@@ -421,7 +471,7 @@ interface MergedSender {
 
 router.get('/senders', async (req: Request, res: Response) => {
   try {
-    const sourceIds = await resolveSourceIds(req);
+    const { sourceIds, permitted } = await resolveScopedSourceIds(req);
 
     const nowMs = Date.now();
     const sinceMs = parseTimeParam(req.query.since, nowMs - 24 * 3600_000);
@@ -437,11 +487,12 @@ router.get('/senders', async (req: Request, res: Response) => {
       return ok(res, { senders: [] as CoverageSenderDto[], truncated: false });
     }
 
-    const [rows, nodesBySource] = await Promise.all([
+    const [rows, nodesBySource, crossIndex] = await Promise.all([
       databaseService.coverageReceptions.getSenderSummary({
         sourceIds, sinceMs, untilMs, limit: SENDER_SUMMARY_LIMIT,
       }),
       loadNodesBySource(sourceIds),
+      resolveCrossSourceIndex(permitted),
     ]);
 
     // `getSenderSummary` rows carry no `protocol` column (§2.4: repository
@@ -493,6 +544,11 @@ router.get('/senders', async (req: Request, res: Response) => {
       .map((m) => m.senderNodeNum)
       .filter((n): n is number => n != null);
     const names = await databaseService.nodes.getNodeNamesByNums(wantedNums, sourceIds);
+    // #5560: name the readable source that owns a sender. Only loaded when
+    // at least one identity is known (never in a single-source install).
+    const ownSourceNames = crossIndex.size > 0
+      ? new Map((await databaseService.sources.getAllSources()).map((src) => [src.id, src.name] as const))
+      : new Map<string, string>();
 
     const senders: CoverageSenderDto[] = Array.from(merged.values())
       .map((m) => {
@@ -501,6 +557,7 @@ router.get('/senders', async (req: Request, res: Response) => {
           // per-node number to key off — first-match-wins across the
           // sources that passed the gate above (see helper docstring).
           const mcNode = findMeshCoreNodeAcrossSources(m.senderId, mcNodesBySource);
+          const ownSourceId = crossIndex.ownerOfSenderId(m.senderId);
           return {
             senderId: m.senderId,
             senderNodeNum: null,
@@ -508,9 +565,13 @@ router.get('/senders', async (req: Request, res: Response) => {
             shortName: null,
             fixCount: m.fixCount,
             lastReceivedAt: m.lastReceivedAt,
+            senderIsOwnSource: ownSourceId !== null,
+            ownSourceId,
+            ownSourceName: ownSourceId !== null ? ownSourceNames.get(ownSourceId) ?? null : null,
           };
         }
         const nm = m.senderNodeNum != null ? names.get(m.senderNodeNum) : undefined;
+        const ownSourceId = crossIndex.ownerOfSenderId(m.senderId);
         return {
           senderId: m.senderId,
           senderNodeNum: m.senderNodeNum,
@@ -518,6 +579,9 @@ router.get('/senders', async (req: Request, res: Response) => {
           shortName: nm?.shortName ?? null,
           fixCount: m.fixCount,
           lastReceivedAt: m.lastReceivedAt,
+          senderIsOwnSource: ownSourceId !== null,
+          ownSourceId,
+          ownSourceName: ownSourceId !== null ? ownSourceNames.get(ownSourceId) ?? null : null,
         };
       })
       .sort((a, b) => b.lastReceivedAt - a.lastReceivedAt);
@@ -533,7 +597,7 @@ router.get('/senders', async (req: Request, res: Response) => {
 
 router.get('/receptions', async (req: Request, res: Response) => {
   try {
-    const sourceIds = await resolveSourceIds(req);
+    const { sourceIds, permitted } = await resolveScopedSourceIds(req);
 
     const nowMs = Date.now();
     const sinceMs = parseTimeParam(req.query.since, nowMs - 24 * 3600_000);
@@ -600,6 +664,15 @@ router.get('/receptions', async (req: Request, res: Response) => {
       }
     }
 
+    // #5560: only fixes sent by another of the caller's readable sources.
+    let crossSourceOnly = false;
+    if (req.query.crossSourceOnly !== undefined) {
+      if (req.query.crossSourceOnly !== 'true' && req.query.crossSourceOnly !== 'false') {
+        return fail(res, 400, 'INVALID_CROSS_SOURCE', "crossSourceOnly must be 'true' or 'false'");
+      }
+      crossSourceOnly = req.query.crossSourceOnly === 'true';
+    }
+
     const pageSize = clampRequestedPageSize(req.query.pageSize);
 
     if (sourceIds.length === 0) {
@@ -609,9 +682,17 @@ router.get('/receptions', async (req: Request, res: Response) => {
       return ok(res, empty);
     }
 
+    const crossIndex = await resolveCrossSourceIndex(permitted);
+    // Push the sender restriction into SQL so a sparse filter doesn't page
+    // through thousands of unrelated rows; the per-row check below still
+    // drops a source's own node heard by that same source.
+    // `ownSenderIds()` emits the same canonical forms every coverage writer
+    // stores in `senderId` (`!xxxxxxxx` lowercase hex, lowercased 64-hex key).
+    const senderIds = crossSourceOnly ? crossIndex.ownSenderIds() : undefined;
+
     const [page, nodesBySource] = await Promise.all([
       databaseService.coverageReceptions.getReceptions({
-        sourceIds, sinceMs, untilMs, receiverFilter, senderId, hops, hopsMode, pageSize, cursor,
+        sourceIds, sinceMs, untilMs, receiverFilter, senderId, senderIds, hops, hopsMode, pageSize, cursor,
       }),
       loadNodesBySource(sourceIds),
     ]);
@@ -654,8 +735,10 @@ router.get('/receptions', async (req: Request, res: Response) => {
           receiverKind: row.receiverKind as CoverageReceiverKind,
           receiverLatitude: receiverVisible ? row.receiverLatitude : null,
           receiverLongitude: receiverVisible ? row.receiverLongitude : null,
+          ...crossSourceFlags(crossIndex, row),
         };
-      });
+      })
+      .filter((item) => !crossSourceOnly || item.senderIsOwnSource);
 
     const result: CoveragePage<CoverageReceptionDto> = {
       items, pageSize: page.pageSize, hasMore: page.hasMore, nextCursor: page.nextCursor,

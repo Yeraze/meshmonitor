@@ -38,7 +38,27 @@ export interface PacketLog {
   /** Present on cross-source (unified) packet rows — the source that received it. */
   sourceId?: string;
   sourceName?: string;
+  /**
+   * Cross-source tags (#5559, unified stream only): another of our sources
+   * sent this packet (proven) or most likely relayed it (inferred from a
+   * short relay hash). Null when neither, or when the viewer cannot read
+   * that other source.
+   */
+  originSourceId?: string | null;
+  originSourceName?: string | null;
+  likelyRelaySourceId?: string | null;
+  likelyRelaySourceName?: string | null;
+  /** How many of our sources match the relay hash (> 1 = ambiguous). */
+  likelyRelayCandidateCount?: number;
+  /** How the receiving source got this copy. */
+  crossSourceTransport?: CrossSourceTransportClass | null;
 }
+
+/** How a receiving source got a copy: own radio, an MQTT gateway's radio, a broker, or UDP. */
+export type CrossSourceTransportClass = 'rf' | 'mqtt_gateway' | 'mqtt' | 'udp';
+
+/** Unified Packet Monitor cross-source filter (#5559). */
+export type CrossSourcePacketFilter = 'any' | 'origin' | 'relay';
 
 export interface PacketLogResponse {
   packets: PacketLog[];
@@ -80,6 +100,8 @@ export interface UnifiedPacketFilters {
   from_node?: number;
   /** Restrict the stream to a single source within the unified view. */
   sourceId?: string;
+  /** Only rows another readable source sent / likely relayed (#5559). */
+  crossSource?: CrossSourcePacketFilter;
 }
 
 export interface UnifiedSourceRef {

@@ -148,13 +148,24 @@ router.post('/lora', requirePermission('configuration', 'write'), requireMeshtas
       ...config,
       txEnabled: config.txEnabled !== undefined ? config.txEnabled : cfgLoraManager.isTxEnabled(),
     };
+    // Same hazard for modemPreset (#5547): an omitted enum encodes as 0, which
+    // is LONG_FAST. The Config tab omits it on purpose when the radio reports a
+    // preset MeshMonitor cannot name, so keep the radio's current value.
+    if (loraConfigToSet.modemPreset === undefined) {
+      const currentPreset = cfgLoraManager.getConfiguredModemPreset();
+      if (currentPreset !== undefined) {
+        loraConfigToSet.modemPreset = currentPreset;
+      } else {
+        logger.warn('⚙️ LoRa config save omitted modemPreset and the device preset is unknown; firmware will read it as LONG_FAST');
+      }
+    }
 
     logger.debug(`⚙️ Setting LoRa config: txEnabled=${loraConfigToSet.txEnabled}`);
     await cfgLoraManager.setLoRaConfig(loraConfigToSet);
     res.json({ success: true, message: 'LoRa configuration sent' });
   } catch (error) {
     logger.error('Error setting LoRa config:', error);
-    res.status(500).json({ error: 'Failed to set LoRa configuration' });
+    fail(res, 500, 'LORA_CONFIG_FAILED', 'Failed to set LoRa configuration');
   }
 });
 
