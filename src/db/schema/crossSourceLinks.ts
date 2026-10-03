@@ -18,6 +18,8 @@
  *  - `txNodeId` / `rxNodeId`: the radios at each end (`!xxxxxxxx` or a
  *    MeshCore public key). `rxNodeId` is B's own node for `rf`, the gateway /
  *    observer for `mqtt_gateway`.
+ *  - `protocol` is not part of the unique key: it follows from the node id
+ *    form (`!xxxxxxxx` vs a 64-hex key), so the two can never collide.
  *  - `hourBucket`: unix ms floored to the hour.
  *  - `snrAvg` / `rssiAvg` are running means over `snrCount` / `rssiCount`
  *    samples (a hearing can lack either reading).

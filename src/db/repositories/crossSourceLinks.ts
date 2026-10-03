@@ -155,6 +155,9 @@ export class CrossSourceLinksRepository extends BaseRepository {
   /**
    * Buckets at or after `sinceMs` whose tx AND rx source are both in
    * `sourceIds` (the caller's readable set: the two-source read rule).
+   * Newest buckets first, capped (default 20k, max 50k rows): one row is one
+   * edge-hour, so the cap only bites with thousands of distinct edges, and
+   * then drops the OLDEST buckets.
    */
   async getLinks(args: { sourceIds: string[]; sinceMs: number; limit?: number }): Promise<DbCrossSourceLink[]> {
     if (args.sourceIds.length === 0) return [];

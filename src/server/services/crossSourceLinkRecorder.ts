@@ -89,6 +89,12 @@ async function getIngestIndex(nowMs: number): Promise<CrossSourceIndex> {
 
 /** One count per (edge, packet): a packet re-heard via a second path or a replay is not a second hearing. */
 const seen = new LruCache<string, true>(20_000);
+/**
+ * Tail of the pending write chain per edge. An entry lives only while that
+ * edge has a write in flight (the `finally` below removes it once the tail
+ * settles), so the map is bounded by the number of edges being written right
+ * now, not by every edge ever seen.
+ */
 const writeChains = new Map<string, Promise<void>>();
 
 async function record(hearing: RecordCrossSourceHearingParams, packetKey: string): Promise<void> {
