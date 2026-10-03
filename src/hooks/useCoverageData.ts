@@ -86,6 +86,8 @@ export interface CoverageReceptionsFilters {
   senderId?: string;
   hops?: number;
   hopsMode?: CoverageHopsMode;
+  /** #5560: only fixes sent by another of the viewer's readable sources. */
+  crossSourceOnly?: boolean;
 }
 
 export interface CoverageReceptionsResult {
@@ -131,6 +133,7 @@ export function useCoverageReceptions(
         senderId: filters.senderId,
         hops: filters.hops,
         hopsMode: filters.hopsMode,
+        crossSourceOnly: filters.crossSourceOnly === true,
       },
     ],
     enabled,
@@ -151,6 +154,7 @@ export function useCoverageReceptions(
           senderId: filters.senderId,
           hops: filters.hops,
           hopsMode: filters.hopsMode,
+          crossSourceOnly: filters.crossSourceOnly,
           pageSize: COVERAGE_PAGE_SIZE,
           cursor,
           signal,

@@ -50,6 +50,16 @@ export interface CoverageReceptionDto {
   rxTime: number | null;
   /** Server receive time, unix ms. */
   receivedAt: number;
+  /**
+   * #5560: the sender is the local node of ANOTHER of our sources, which
+   * the viewer can also read (`senderSourceId`). A confirmed source-to-source
+   * coverage edge. False when the viewer cannot read that source, so a
+   * one-source viewer never learns it exists.
+   */
+  senderIsOwnSource?: boolean;
+  senderSourceId?: string | null;
+  /** How this receiver got the copy: own radio (`rf`) or an MQTT gateway's radio. Null when not cross-source. */
+  crossSourceTransport?: 'rf' | 'mqtt_gateway' | 'mqtt' | 'udp' | null;
 }
 
 /** A distinct receiver seen in the retention window, enriched with a name and current position. */
@@ -95,6 +105,10 @@ export interface CoverageSenderDto {
   /** Distinct fix count. An upper bound when merged across multiple sources. */
   fixCount: number;
   lastReceivedAt: number;
+  /** #5560: the sender is the local node of one of the viewer's readable sources (`ownSourceId`). */
+  senderIsOwnSource?: boolean;
+  ownSourceId?: string | null;
+  ownSourceName?: string | null;
 }
 
 /** Cursor-paginated response shape shared by every paginated coverage endpoint. */

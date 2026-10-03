@@ -31,6 +31,13 @@ import { getMaxNodeAgeHoursForSources } from '../services/nodeDisplaySettings.js
 import { canonicalMessageTime, plausibleRxTime } from '../utils/messageTime.js';
 import type { DbPacketLog } from '../../db/types.js';
 import type { DbMeshCorePacket } from '../../db/repositories/meshcore.js';
+import {
+  resolveCrossSourceIndex,
+  classifyMeshtasticReception,
+  classifyMeshCoreReception,
+  prepareMeshCoreReception,
+  type CrossSourceTags,
+} from '../services/crossSourceCorrelation.js';
 
 const router = Router();
 
@@ -843,6 +850,44 @@ async function packetVisibilityForSource(
   };
 }
 
+type CrossSourceFilter = 'any' | 'origin' | 'relay';
+
+function isCrossSourceFilter(v: string): v is CrossSourceFilter {
+  return v === 'any' || v === 'origin' || v === 'relay';
+}
+
+/** Cross-source tags (#5559) added to a unified packet row. All null when untagged. */
+interface CrossSourceRowFields {
+  originSourceId: string | null;
+  originSourceName: string | null;
+  likelyRelaySourceId: string | null;
+  likelyRelaySourceName: string | null;
+  likelyRelayCandidateCount: number;
+  crossSourceTransport: CrossSourceTags['transport'] | null;
+}
+
+function withCrossSourceFields<T extends object>(
+  row: T,
+  tags: CrossSourceTags | null,
+  sourceNameById: Map<string, string>,
+): T & CrossSourceRowFields {
+  return {
+    ...row,
+    originSourceId: tags?.originSourceId ?? null,
+    originSourceName: tags?.originSourceId ? sourceNameById.get(tags.originSourceId) ?? null : null,
+    likelyRelaySourceId: tags?.likelyRelaySourceId ?? null,
+    likelyRelaySourceName: tags?.likelyRelaySourceId ? sourceNameById.get(tags.likelyRelaySourceId) ?? null : null,
+    likelyRelayCandidateCount: tags?.likelyRelayCandidates.length ?? 0,
+    crossSourceTransport: tags?.transport ?? null,
+  };
+}
+
+function matchesCrossSourceFilter(row: CrossSourceRowFields, filter: CrossSourceFilter): boolean {
+  if (filter === 'origin') return row.originSourceId !== null;
+  if (filter === 'relay') return row.likelyRelaySourceId !== null;
+  return row.originSourceId !== null || row.likelyRelaySourceId !== null;
+}
+
 /**
  * GET /api/unified/packets
  *
@@ -861,6 +906,16 @@ async function packetVisibilityForSource(
  *   ?transport_mechanism=N  filter by transport mechanism
  *   ?from_node=N            filter by sender nodeNum
  *   ?sourceId=<id>          restrict the stream to a single source
+ *   ?crossSource=any|origin|relay  only rows another readable source sent
+ *                           (origin) or likely relayed (relay) (#5559)
+ *
+ * Cross-source tags (#5559): a row heard by source B that was sent by, or
+ * likely relayed by, another source A gets `originSourceId` /
+ * `likelyRelaySourceId` (+ names), `likelyRelayCandidateCount`, and
+ * `crossSourceTransport` (rf | mqtt | udp | mqtt_gateway). Read-side only, no
+ * new storage. A tag only ever names a source the caller can read under
+ * packetmonitor:read (the index is built from `readableSources`), so a user
+ * who can read one source never learns another exists.
  *
  * Response: { packets, hasMore, nextCursor, sources: [{ id, name }] }
  *   `sources` always lists every readable source (for the filter dropdown),
@@ -894,6 +949,11 @@ router.get('/packets', async (req: Request, res: Response) => {
     const encrypted =
       req.query.encrypted === 'true' ? true : req.query.encrypted === 'false' ? false : undefined;
     const sourceFilter = typeof req.query.sourceId === 'string' ? req.query.sourceId : undefined;
+    const crossSourceRaw = typeof req.query.crossSource === 'string' ? req.query.crossSource : '';
+    if (crossSourceRaw !== '' && !isCrossSourceFilter(crossSourceRaw)) {
+      return res.status(400).json({ error: "crossSource must be 'any', 'origin' or 'relay'", code: 'INVALID_CROSS_SOURCE' });
+    }
+    const crossSourceFilter: CrossSourceFilter | undefined = crossSourceRaw === '' ? undefined : crossSourceRaw as CrossSourceFilter;
 
     const allSources = await databaseService.sources.getAllSources();
 
@@ -916,7 +976,17 @@ router.get('/packets', async (req: Request, res: Response) => {
     // Over-fetch per source so per-source permission filtering can't starve the page.
     const fetchLimit = limit * 2;
 
-    type TaggedPacket = DbPacketLog & { sourceId: string; sourceName: string };
+    // Identity index over every readable source — the #5559 permission rule
+    // (both ends readable) holds by construction.
+    const crossIndex = await resolveCrossSourceIndex(readableSources.map((s) => s.id));
+    const sourceNameById = new Map(readableSources.map((s) => [s.id, s.name]));
+
+    type TaggedPacket = DbPacketLog & { sourceId: string; sourceName: string } & CrossSourceRowFields;
+    interface SourceResult { rows: TaggedPacket[]; saturated: boolean; oldest: { ts: number; id: number } | null }
+    const oldestOf = (raw: Array<{ timestamp: number; id?: number | null }>) => {
+      const last = raw[raw.length - 1];
+      return last ? { ts: Number(last.timestamp), id: Number(last.id) } : null;
+    };
 
     // MeshCore OTA rows carry no node/channel/transport/decoded-message info, so
     // they can't satisfy these Meshtastic-namespace filters. When one is active,
@@ -929,9 +999,9 @@ router.get('/packets', async (req: Request, res: Response) => {
       encrypted !== true;
 
     const perSource = await Promise.allSettled(
-      fetchSources.map(async (source): Promise<{ rows: TaggedPacket[]; saturated: boolean }> => {
+      fetchSources.map(async (source): Promise<SourceResult> => {
         if (isAnyMeshCoreSourceType(source.type)) {
-          if (!meshcoreEligible) return { rows: [], saturated: false };
+          if (!meshcoreEligible) return { rows: [], saturated: false, oldest: null };
           const raw = await meshcorePacketLogService.getPackets({
             sourceId: source.id,
             limit: fetchLimit,
@@ -940,8 +1010,14 @@ router.get('/packets', async (req: Request, res: Response) => {
           });
           // No channel/message content to redact — viewing is already authorized
           // by the source-level packetmonitor:read check above.
-          const tagged = raw.map((p) => mapMeshCorePacketToTagged(p, source.id, source.name));
-          return { rows: tagged, saturated: raw.length >= fetchLimit };
+          const tagged = await Promise.all(raw.map(async (p) => {
+            const row = mapMeshCorePacketToTagged(p, source.id, source.name);
+            const input = await prepareMeshCoreReception(crossIndex, {
+              sourceId: source.id, rawHex: p.rawHex, observerId: p.observerId,
+            });
+            return withCrossSourceFields(row, classifyMeshCoreReception(crossIndex, input), sourceNameById);
+          }));
+          return { rows: tagged, saturated: raw.length >= fetchLimit, oldest: oldestOf(raw) };
         }
 
         const raw = await packetLogService.getPacketsAsync({
@@ -960,21 +1036,36 @@ router.get('/packets', async (req: Request, res: Response) => {
           source.id
         );
         const visible = filterPacketsByPermissions(raw, allowedChannels, isAdmin, canReadMessages);
-        const tagged = visible.map((r) => ({
-          ...r,
-          sourceId: source.id,
-          sourceName: source.name,
-        })) as TaggedPacket[];
-        return { rows: tagged, saturated: raw.length >= fetchLimit };
+        const tagged = visible.map((r) => withCrossSourceFields(
+          { ...r, sourceId: source.id, sourceName: source.name },
+          classifyMeshtasticReception(crossIndex, {
+            sourceId: source.id,
+            fromNode: r.from_node,
+            relayNode: r.relay_node,
+            hopStart: r.hop_start,
+            hopLimit: r.hop_limit,
+            transportMechanism: r.transport_mechanism,
+          }),
+          sourceNameById,
+        )) as TaggedPacket[];
+        return { rows: tagged, saturated: raw.length >= fetchLimit, oldest: oldestOf(raw) };
       })
     );
 
     const mergedAll: TaggedPacket[] = [];
     let anySaturated = false;
+    // Newest "oldest fetched row" among saturated sources: rows older than
+    // this may be missing from a saturated source, so a filtered walk must
+    // stop there and hand back a cursor instead of claiming the page is done.
+    let boundary: { ts: number; id: number } | null = null;
     for (const result of perSource) {
       if (result.status === 'fulfilled') {
         mergedAll.push(...result.value.rows);
-        if (result.value.saturated) anySaturated = true;
+        if (result.value.saturated) {
+          anySaturated = true;
+          const o = result.value.oldest;
+          if (o && (!boundary || o.ts > boundary.ts || (o.ts === boundary.ts && o.id > boundary.id))) boundary = o;
+        }
       } else {
         logger.warn('Failed to load unified packets for a source:', result.reason);
       }
@@ -988,10 +1079,38 @@ router.get('/packets', async (req: Request, res: Response) => {
       return a.sourceId < b.sourceId ? 1 : a.sourceId > b.sourceId ? -1 : 0;
     });
 
-    const sliced = mergedAll.slice(0, limit);
-    const hasMore = mergedAll.length > limit || anySaturated;
-    const last = sliced[sliced.length - 1];
-    const nextCursor = hasMore && last ? `${Number(last.timestamp)}_${Number(last.id)}` : null;
+    let sliced: TaggedPacket[];
+    let hasMore: boolean;
+    let nextCursor: string | null;
+    if (!crossSourceFilter) {
+      sliced = mergedAll.slice(0, limit);
+      hasMore = mergedAll.length > limit || anySaturated;
+      const last = sliced[sliced.length - 1];
+      nextCursor = hasMore && last ? `${Number(last.timestamp)}_${Number(last.id)}` : null;
+    } else {
+      // Post-filter (no new storage, #5559): walk the complete prefix of the
+      // merged stream, keep matches, and page on with a cursor at the last
+      // row examined — a sparse filter yields short pages, never skipped rows.
+      sliced = [];
+      let lastExamined: TaggedPacket | null = null;
+      let filledPage = false;
+      for (const row of mergedAll) {
+        const ts = Number(row.timestamp);
+        const id = Number(row.id);
+        if (boundary && (ts < boundary.ts || (ts === boundary.ts && id < boundary.id))) break;
+        lastExamined = row;
+        if (matchesCrossSourceFilter(row, crossSourceFilter)) {
+          sliced.push(row);
+          // Stop right at the match that fills the page: `lastExamined` is
+          // then that row, so the next page resumes just after it (no gap).
+          if (sliced.length >= limit) { filledPage = true; break; }
+        }
+      }
+      const examinedAll = !filledPage && (mergedAll.length === 0 || lastExamined === mergedAll[mergedAll.length - 1]);
+      hasMore = filledPage || anySaturated || !examinedAll;
+      nextCursor = hasMore && lastExamined ? `${Number(lastExamined.timestamp)}_${Number(lastExamined.id)}` : null;
+      if (hasMore && !lastExamined && boundary) nextCursor = `${boundary.ts}_${boundary.id}`;
+    }
 
     res.json({
       packets: sliced,
