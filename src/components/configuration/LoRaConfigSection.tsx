@@ -1,12 +1,35 @@
 import React, { useState, useRef, useMemo, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { UiIcon } from '../icons';
-import { MODEM_PRESET_OPTIONS, REGION_OPTIONS, FEM_LNA_MODE_OPTIONS, isAmateurRadioRegion, getLegalPresetOptions } from './constants';
+import {
+  MODEM_PRESET_OPTIONS,
+  REGION_OPTIONS,
+  FEM_LNA_MODE_OPTIONS,
+  isAmateurRadioRegion,
+  getLegalPresetOptions,
+  getPresetIllegalReason,
+  getRecipeIllegalReason,
+  LORA_CUSTOM_RECIPES,
+  UNKNOWN_MODEM_PRESET,
+  type LoRaCustomRecipe
+} from './constants';
+import { MODEM_PRESET_NAMES } from '../../utils/loraFrequency';
 import { useSaveBar } from '../../hooks/useSaveBar';
+import styles from './LoRaConfigSection.module.css';
 
 interface LoRaConfigSectionProps {
   usePreset: boolean;
   modemPreset: number;
+  /**
+   * Raw preset the radio reported when it could not be resolved. Set together
+   * with modemPreset === UNKNOWN_MODEM_PRESET (#5547).
+   */
+  unknownModemPresetName?: string | null;
+  /**
+   * Connected node's firmware version. Below 2.8 the 2.8-only presets are
+   * hidden; 2.8+ or unknown applies the firmware region preset lists (#5547).
+   */
+  firmwareVersion?: string | null;
   bandwidth: number;
   spreadFactor: number;
   codingRate: number;
@@ -48,6 +71,8 @@ interface LoRaConfigSectionProps {
 const LoRaConfigSection: React.FC<LoRaConfigSectionProps> = ({
   usePreset,
   modemPreset,
+  unknownModemPresetName = null,
+  firmwareVersion = null,
   bandwidth,
   spreadFactor,
   codingRate,
@@ -88,14 +113,47 @@ const LoRaConfigSection: React.FC<LoRaConfigSectionProps> = ({
   const { t } = useTranslation();
   const [isPresetDropdownOpen, setIsPresetDropdownOpen] = useState(false);
 
-  // Filter the modem-preset picker to presets legal for the selected region,
-  // mirroring the official mobile apps (issue #3924, Part 1). The currently
-  // selected preset is always retained so the picker reflects the device state.
+  // Filter the modem-preset picker to presets legal for the selected region and
+  // the radio's firmware (issue #3924 Part 1, #5547). The currently selected
+  // preset is always retained so the picker reflects the device state; if it
+  // would otherwise be hidden, currentPresetIssue drives a warning instead.
   const legalPresetOptions = useMemo(
-    () => getLegalPresetOptions(region, modemPreset),
-    [region, modemPreset]
+    () => getLegalPresetOptions(region, modemPreset, firmwareVersion),
+    [region, modemPreset, firmwareVersion]
   );
   const hasFilteredPresets = legalPresetOptions.length < MODEM_PRESET_OPTIONS.length;
+  const presetIsUnknown = modemPreset === UNKNOWN_MODEM_PRESET;
+  const currentPresetIssue = presetIsUnknown
+    ? null
+    : getPresetIllegalReason(region, modemPreset, firmwareVersion);
+  const currentPresetOption = MODEM_PRESET_OPTIONS.find(opt => opt.value === modemPreset);
+  const currentPresetName = presetIsUnknown
+    ? t('lora_config.preset_unknown_name', { name: unknownModemPresetName ?? '?' })
+    : currentPresetOption?.name ?? MODEM_PRESET_NAMES[modemPreset] ?? t('lora_config.preset_unknown_name', { name: String(modemPreset) });
+
+  // Custom-parameter recipe loader (#5548): picking a recipe opens an in-page
+  // confirm; only confirming writes BW/SF/CR.
+  const [pendingRecipe, setPendingRecipe] = useState<LoRaCustomRecipe | null>(null);
+  const handleRecipeSelect = useCallback((id: string) => {
+    const recipe = LORA_CUSTOM_RECIPES.find(r => r.id === id);
+    if (!recipe || getRecipeIllegalReason(region, recipe, firmwareVersion)) {
+      setPendingRecipe(null);
+      return;
+    }
+    setPendingRecipe(recipe);
+  }, [region, firmwareVersion]);
+  const applyPendingRecipe = useCallback(() => {
+    if (!pendingRecipe) return;
+    // Re-check: the region may have changed while the confirm was open.
+    if (getRecipeIllegalReason(region, pendingRecipe, firmwareVersion)) {
+      setPendingRecipe(null);
+      return;
+    }
+    setBandwidth(pendingRecipe.bandwidthKHz);
+    setSpreadFactor(pendingRecipe.spreadFactor);
+    setCodingRate(pendingRecipe.codingRate);
+    setPendingRecipe(null);
+  }, [pendingRecipe, region, firmwareVersion, setBandwidth, setSpreadFactor, setCodingRate]);
 
   // Track initial values for change detection
   const initialValuesRef = useRef({
@@ -245,13 +303,13 @@ const LoRaConfigSection: React.FC<LoRaConfigSectionProps> = ({
             >
               <div style={{ flex: 1 }}>
                 <div style={{ fontWeight: 'bold', fontSize: '1.1em', color: '#fff', marginBottom: '0.4rem' }}>
-                  {MODEM_PRESET_OPTIONS.find(opt => opt.value === modemPreset)?.name || 'LONG_FAST'}
+                  {currentPresetName}
                 </div>
                 <div style={{ fontSize: '0.9em', color: '#ddd', marginBottom: '0.2rem', lineHeight: '1.4' }}>
-                  {MODEM_PRESET_OPTIONS.find(opt => opt.value === modemPreset)?.description || ''}
+                  {currentPresetOption?.description || ''}
                 </div>
                 <div style={{ fontSize: '0.85em', color: '#bbb', fontStyle: 'italic', lineHeight: '1.4' }}>
-                  {MODEM_PRESET_OPTIONS.find(opt => opt.value === modemPreset)?.params || ''}
+                  {currentPresetOption?.params || ''}
                 </div>
               </div>
               <span style={{ fontSize: '1.2em', marginLeft: '1rem', flexShrink: 0 }}><UiIcon name={isPresetDropdownOpen ? 'chevronUp' : 'chevronDown'} /></span>
@@ -317,10 +375,76 @@ const LoRaConfigSection: React.FC<LoRaConfigSectionProps> = ({
               {t('lora_config.preset_filtered_note')}
             </span>
           )}
+          {presetIsUnknown && (
+            <div role="alert" className={styles.presetWarning} data-testid="lora-preset-warning">
+              <UiIcon name="alert" />
+              <span>{t('lora_config.preset_unknown_warning', { name: unknownModemPresetName ?? '?' })}</span>
+            </div>
+          )}
+          {currentPresetIssue && (
+            <div role="alert" className={styles.presetWarning} data-testid="lora-preset-warning">
+              <UiIcon name="alert" />
+              <span>{t(`lora_config.preset_illegal_${currentPresetIssue}`, { name: currentPresetName })}</span>
+            </div>
+          )}
         </div>
       )}
       {!usePreset && (
         <>
+          <div className="setting-item">
+            <label htmlFor="loraRecipe">
+              {t('lora_config.recipe')}
+              <span className="setting-description">{t('lora_config.recipe_description')}</span>
+            </label>
+            <select
+              id="loraRecipe"
+              value={pendingRecipe?.id ?? ''}
+              onChange={(e) => handleRecipeSelect(e.target.value)}
+              className={`setting-input ${styles.recipeSelect}`}
+            >
+              <option value="">{t('lora_config.recipe_placeholder')}</option>
+              {LORA_CUSTOM_RECIPES.map(recipe => {
+                const reason = getRecipeIllegalReason(region, recipe, firmwareVersion);
+                const label = `${recipe.name} (BW ${recipe.bandwidthKHz} kHz, SF ${recipe.spreadFactor}, CR 4/${recipe.codingRate})`;
+                return (
+                  <option key={recipe.id} value={recipe.id} disabled={reason !== null}>
+                    {reason ? `${label} - ${t(`lora_config.recipe_illegal_${reason}`)}` : label}
+                  </option>
+                );
+              })}
+            </select>
+            {LORA_CUSTOM_RECIPES.some(r => getRecipeIllegalReason(region, r, firmwareVersion) !== null) && (
+              <span className={`setting-description ${styles.recipeNote}`}>
+                {t('lora_config.recipe_some_unavailable')}
+              </span>
+            )}
+            {pendingRecipe && (
+              <div role="alertdialog" aria-labelledby="loraRecipeConfirmTitle" className={styles.recipeConfirm} data-testid="lora-recipe-confirm">
+                <p id="loraRecipeConfirmTitle" className={styles.recipeConfirmTitle}>
+                  <UiIcon name="alert" />
+                  {t('lora_config.recipe_confirm_title', { name: pendingRecipe.name })}
+                </p>
+                <ul className={styles.recipeConfirmList}>
+                  <li>{t('lora_config.recipe_confirm_params', {
+                    bandwidth: pendingRecipe.bandwidthKHz,
+                    spreadFactor: pendingRecipe.spreadFactor,
+                    codingRate: pendingRecipe.codingRate
+                  })}</li>
+                  <li>{t('lora_config.recipe_confirm_mesh')}</li>
+                  <li>{t('lora_config.recipe_confirm_not_official')}</li>
+                  <li>{t('lora_config.recipe_confirm_slot')}</li>
+                </ul>
+                <div className={styles.recipeConfirmActions}>
+                  <button type="button" className={styles.confirmButton} onClick={applyPendingRecipe}>
+                    {t('lora_config.recipe_confirm_apply')}
+                  </button>
+                  <button type="button" className={styles.cancelButton} onClick={() => setPendingRecipe(null)}>
+                    {t('common.cancel')}
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
           <div className="setting-item">
             <label htmlFor="bandwidth">
               {t('lora_config.bandwidth')}
