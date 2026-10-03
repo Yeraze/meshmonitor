@@ -39,9 +39,15 @@ describe('hearingsFromTags', () => {
       expect(hearingsFromTags({ originSourceId: A, likelyRelaySourceId: null, likelyRelayCandidates: [], transport }, true, idOf)).toEqual([]);
     }
   });
-  it('every relay candidate gets an edge', () => {
-    const tags = { originSourceId: null, likelyRelaySourceId: A, likelyRelayCandidates: [A], transport: 'mqtt_gateway' as const };
+  it('every relay candidate gets an edge when our own radio heard it (rf)', () => {
+    const tags = { originSourceId: null, likelyRelaySourceId: A, likelyRelayCandidates: [A], transport: 'rf' as const };
     expect(hearingsFromTags(tags, false, idOf)).toEqual([{ txSourceId: A, txNodeId: '!11223344', kind: 'relay' }]);
+  });
+  it('a gateway hearing never yields an inferred relay edge, but still yields a proven origin edge', () => {
+    const relayOnly = { originSourceId: null, likelyRelaySourceId: A, likelyRelayCandidates: [A], transport: 'mqtt_gateway' as const };
+    expect(hearingsFromTags(relayOnly, false, idOf)).toEqual([]);
+    const both = { originSourceId: A, likelyRelaySourceId: A, likelyRelayCandidates: [A], transport: 'mqtt_gateway' as const };
+    expect(hearingsFromTags(both, true, idOf)).toEqual([{ txSourceId: A, txNodeId: '!11223344', kind: 'origin' }]);
   });
   it('null tags yield nothing', () => {
     expect(hearingsFromTags(null, true, idOf)).toEqual([]);
@@ -141,5 +147,12 @@ describe('evaluateMqttLink', () => {
 
   it('an unrelated sender yields nothing', () => {
     expect(run(envelope({ from: 0x0badbeef })).skip).toBe('no-correlation');
+  });
+
+  it('a gateway copy whose relay byte matches one of our radios yields NO relay edge (hash collision guard)', () => {
+    // A third-party packet, last relayed by "something ending in 0x44", heard by a far gateway.
+    const r = run(envelope({ from: 0x0badbeef, hopLimit: 2, relayNode: NUM_A & 0xff }));
+    expect(r.hearings).toEqual([]);
+    expect(r.skip).toBe('no-correlation');
   });
 });

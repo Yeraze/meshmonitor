@@ -84,6 +84,14 @@ describe('Cross-source link routes (#5561)', () => {
     });
   });
 
+  it('an inferred relay row from a gateway (stored by an older build) is never returned', async () => {
+    await hear({ kind: 'relay', transportClass: 'mqtt_gateway', rxNodeId: nodeIdFor(GATEWAY) });
+    const agent = await harness.loginAs(harness.admin);
+    const links = (await agent.get('/')).body.data.links;
+    expect(links).toHaveLength(1);
+    expect(links[0]).toMatchObject({ kind: 'origin', transportClass: 'rf' });
+  });
+
   it('a user who can read only one source gets no edge and no trace of the other', async () => {
     await harness.grant(harness.limited.id, 'nodes', 'read', harness.sourceB);
     await harness.grant(harness.limited.id, 'channel_0', 'viewOnMap', harness.sourceB);

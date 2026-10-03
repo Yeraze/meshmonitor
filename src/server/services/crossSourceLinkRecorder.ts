@@ -16,6 +16,11 @@
  *    is not an A->B edge.
  *  - `relay`: A most likely relayed it (the last hop's short hash matches A).
  *    Inferred, never unique-checked; every matching source gets the edge.
+ *    Recorded ONLY when one of our own radios heard the packet (`rf`). A
+ *    gateway or Observer hearing never yields a relay edge: a statewide feed
+ *    has gateways hundreds of km away, and a one-byte hash collision there
+ *    drew a "likely relayed" line across the state (maintainer decision).
+ *    Gateway and Observer hearings still yield proven `origin` edges.
  *
  * Mesh impact: zero packets, no TX timers, and this module NEVER emits on
  * `dataEventEmitter`. It only writes aggregate rows. Every entry point
@@ -150,7 +155,9 @@ export function hearingsFromTags(
     const txNodeId = nodeIdOf(tags.originSourceId);
     if (txNodeId) out.push({ txSourceId: tags.originSourceId, txNodeId, kind: 'origin' });
   }
-  for (const candidate of tags.likelyRelayCandidates) {
+  // Inferred relay edges only from our own radios' hearings (see header).
+  const relayCandidates = tags.transport === 'rf' ? tags.likelyRelayCandidates : [];
+  for (const candidate of relayCandidates) {
     const txNodeId = nodeIdOf(candidate);
     if (txNodeId) out.push({ txSourceId: candidate, txNodeId, kind: 'relay' });
   }
@@ -302,11 +309,8 @@ export function evaluateMqttLink(
 
   // Cheap pre-check before the full gateway evaluation: a busy feed carries
   // thousands of packets a minute and almost none involve our own radios.
-  const rawRelay = (input.envelope.packet as { relayNode?: number | null }).relayNode;
-  const maybeOrigin = index.originForNodeNum(fromNum, input.sourceId) !== null;
-  const maybeRelay = typeof rawRelay === 'number' && rawRelay > 0
-    && index.relayCandidatesForByte(rawRelay, input.sourceId).length > 0;
-  if (!maybeOrigin && !maybeRelay) return none('no-correlation');
+  // Gateway hearings only ever yield origin edges (no inferred relay edges).
+  if (index.originForNodeNum(fromNum, input.sourceId) === null) return none('no-correlation');
 
   const evalResult = evaluateMqttCoverageReception({
     sourceId: input.sourceId,
@@ -329,6 +333,7 @@ export function evaluateMqttLink(
     transportMechanism: row.transportMechanism,
     receiverKind: 'mqtt_gateway',
     receiverNodeNum: evalResult.gatewayNum,
+    originOnly: true,
   });
   if (!tags) return none('no-correlation');
   const drafts = hearingsFromTags(tags, row.hopsAway === 0, meshtasticNodeIdOf(index));
@@ -406,7 +411,12 @@ export async function maybeRecordMeshCoreLink(input: MaybeRecordMeshCoreLinkInpu
       rawHex,
       observerId: input.receiverKind === 'mqtt_gateway' ? receiver : null,
     });
-    const tags = classifyMeshCoreReception(index, { ...prepared, relayLastHopOnly: true });
+    // An Observer hearing yields origin edges only (no inferred relay edges).
+    const tags = classifyMeshCoreReception(index, {
+      ...prepared,
+      relayLastHopOnly: true,
+      originOnly: input.receiverKind === 'mqtt_gateway',
+    });
     if (!tags) return;
 
     const packet = decodeMeshCorePacket(rawHex);

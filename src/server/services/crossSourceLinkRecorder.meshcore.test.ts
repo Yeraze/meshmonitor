@@ -110,6 +110,14 @@ describe('maybeRecordMeshCoreLink (#5561)', () => {
     });
   });
 
+  it('an Observer hearing a flood whose last hop matches our key yields NO relay edge', async () => {
+    await maybeRecordMeshCoreLink({
+      sourceId: 'obs', receiverKind: 'mqtt_gateway', receiverPubKey: OBSERVER,
+      event: { raw_hex: GOLDEN_FLOOD_RAW_HEX, snr: 3 }, observerTimestampMs: NOW - 1000, nowMs: NOW,
+    });
+    expect(h.recordHearing).not.toHaveBeenCalled();
+  });
+
   it('skips an Observer that is one of our own companions, and a stale Observer capture', async () => {
     h.ownKeys = [OBSERVER];
     await maybeRecordMeshCoreLink({

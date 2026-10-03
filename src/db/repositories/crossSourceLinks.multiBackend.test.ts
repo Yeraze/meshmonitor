@@ -74,6 +74,20 @@ function runSharedTests(getRepo: () => CrossSourceLinksRepository) {
     expect(rows).toHaveLength(4);
   });
 
+  it('a relay row that is not from our own radio is never returned, and the sweep deletes it', async () => {
+    const repo = getRepo();
+    await repo.recordHearing(hearing({ kind: 'relay' }));                                                    // rf relay: kept
+    await repo.recordHearing(hearing({ kind: 'relay', transportClass: 'mqtt_gateway', rxNodeId: '!cccccccc' })); // stored by an older build
+    await repo.recordHearing(hearing({ transportClass: 'mqtt_gateway', rxNodeId: '!cccccccc' }));              // gateway origin: kept
+    const rows = await repo.getLinks({ sourceIds: ['src-a', 'src-b'], sinceMs: 0 });
+    expect(rows.map((r) => `${r.kind}/${r.transportClass}`).sort()).toEqual(['origin/mqtt_gateway', 'relay/rf']);
+
+    // Cutoff far in the past: nothing is old, only the bad relay row goes.
+    expect(await repo.purgeOlderThan(0)).toBe(1);
+    expect(await repo.purgeOlderThan(0)).toBe(0);
+    expect(await repo.getLinks({ sourceIds: ['src-a', 'src-b'], sinceMs: 0 })).toHaveLength(2);
+  });
+
   it('getLinks requires BOTH ends in the source list (two-source read rule)', async () => {
     const repo = getRepo();
     await repo.recordHearing(hearing());

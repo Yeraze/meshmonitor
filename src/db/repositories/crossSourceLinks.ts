@@ -11,7 +11,7 @@
  * simple form is safe. A lost race on the first insert of a bucket falls back
  * to the update path.
  */
-import { and, desc, eq, gte, inArray, lt, or } from 'drizzle-orm';
+import { and, desc, eq, gte, inArray, lt, ne, not, or } from 'drizzle-orm';
 import { BaseRepository, DrizzleDatabase } from './base.js';
 import { DatabaseType } from '../types.js';
 
@@ -171,16 +171,28 @@ export class CrossSourceLinksRepository extends BaseRepository {
         gte(t.hourBucket, crossSourceLinkBucket(args.sinceMs)),
         inArray(t.txSourceId, args.sourceIds),
         inArray(t.rxSourceId, args.sourceIds),
+        // Inferred relay links count only when one of our own radios heard
+        // the packet. The recorder no longer stores gateway/Observer relay
+        // rows; this also hides any an earlier build stored, until the
+        // retention sweep removes them.
+        not(and(eq(t.kind, 'relay'), ne(t.transportClass, 'rf'))!),
       ))
       .orderBy(desc(t.hourBucket))
       .limit(Math.max(1, Math.min(args.limit ?? 20_000, 50_000)));
     return (rows as Array<Record<string, unknown>>).map((r) => this.normalize(r));
   }
 
-  /** Retention: drop buckets that started before `cutoffMs`. */
+  /**
+   * Retention: drop buckets that started before `cutoffMs`, and any inferred
+   * relay row that did not come from one of our own radios (none are written
+   * any more; this clears what an earlier build stored). Idempotent.
+   */
   async purgeOlderThan(cutoffMs: number): Promise<number> {
     const { crossSourceLinks: t } = this.tables;
-    const result = await this.db.delete(t).where(lt(t.hourBucket, cutoffMs));
+    const result = await this.db.delete(t).where(or(
+      lt(t.hourBucket, cutoffMs),
+      and(eq(t.kind, 'relay'), ne(t.transportClass, 'rf')),
+    ));
     return this.getAffectedRows(result);
   }
 

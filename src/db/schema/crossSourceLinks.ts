@@ -13,7 +13,9 @@
  *  - `kind`: `origin` (the packet came from A's own node, heard directly) or
  *    `relay` (A most likely relayed it; inferred from a short relay hash).
  *  - `transportClass`: `rf` (B's own radio heard it) or `mqtt_gateway` (a
- *    gateway/observer on source B heard it over its radio). Broker-delivered
+ *    gateway/observer on source B heard it over its radio). `relay` rows are
+ *    only ever `rf`: a far-away gateway matching a one-byte relay hash is a
+ *    collision, not a link. Broker-delivered
  *    MQTT and UDP copies are not RF edges and are never stored.
  *  - `txNodeId` / `rxNodeId`: the radios at each end (`!xxxxxxxx` or a
  *    MeshCore public key). `rxNodeId` is B's own node for `rf`, the gateway /

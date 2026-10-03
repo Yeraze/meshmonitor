@@ -169,11 +169,14 @@ directions work you will see two edges.
 |---|---|
 | Solid | Your radio's own packet, heard directly (0 hops) by another source's radio |
 | Long dashes | Heard by an MQTT gateway's (or MeshCore observer's) radio on another source |
-| Dotted | **Likely relay** (inferred): your radio appears to be the last relay of someone else's packet |
+| Dotted | **Likely relay** (inferred): your radio appears to be the last relay of someone else's packet, as heard by another of your own radios |
 
 A likely relay is a best guess. Meshtastic packets carry only the last byte
 of the relaying node's number, and MeshCore paths carry a one to three byte
-hash, so another node can share it. The popup says so.
+hash, so another node can share it. The popup says so. For that reason a
+likely relay is only drawn when one of your **own radios** heard the packet.
+A hearing by an MQTT gateway or a MeshCore observer never produces one: on a
+wide feed, a gateway far away will match the same byte by chance.
 
 Lines get thicker with the number of hearings and fade with age. Click an
 edge for the count, SNR (average, min, max), average RSSI, and when it was
