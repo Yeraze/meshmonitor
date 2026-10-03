@@ -1,4 +1,4 @@
-import type { CrossSourceLinksResponse } from '../types/crossSourceLinks.js';
+import type { CrossSourceLinksResponse, TracerouteConfirmedLinksResponse } from '../types/crossSourceLinks.js';
 import api from './api.js';
 import type {
   CoverageHopsMode,
@@ -267,6 +267,24 @@ export async function fetchCrossSourceLinks(args: {
   if (args.sinceMs > 0) p.set('since', String(args.sinceMs));
   const body = await authedGet<{ success: boolean; data: CrossSourceLinksResponse }>(
     `/api/analysis/cross-source-links?${p.toString()}`,
+    args.signal,
+  );
+  return body.data;
+}
+
+// ── Traceroute-confirmed reciprocal links (#5580) ───────────────────────────
+
+export async function fetchTracerouteConfirmedLinks(args: {
+  /** Limit to these sources; empty = every source the caller may read. */
+  sources: string[];
+  sinceMs: number;
+  signal?: AbortSignal;
+}): Promise<TracerouteConfirmedLinksResponse> {
+  const p = new URLSearchParams();
+  if (args.sources.length) p.set('sources', args.sources.join(','));
+  if (args.sinceMs > 0) p.set('since', String(args.sinceMs));
+  const body = await authedGet<{ success: boolean; data: TracerouteConfirmedLinksResponse }>(
+    `/api/analysis/cross-source-links/traceroute-confirmed?${p.toString()}`,
     args.signal,
   );
   return body.data;

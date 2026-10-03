@@ -196,6 +196,63 @@ start filling from the moment this version runs; there is no backfill.
 
 The same toggle works in the 3D view. The choice is saved in your browser.
 
+#### Traceroute-Confirmed Links
+
+A one-way edge between your own sources cannot show that a **remote** node
+hears you. Only a traceroute proves that: the reply has to travel back.
+
+**Traceroute-Confirmed Links** is a sub-toggle under **Show Cross-Source
+Links**, in both Map Features panels. It is on by default, appears once the
+parent toggle is on, and is saved in your browser. It also works with a single
+source.
+
+It draws a **double-headed, dash-dot** line between one of your radios and a
+neighbour when a completed traceroute your radio ran used that link **both
+ways**: the first hop out and the last hop back were the same node. For a
+zero-hop traceroute that node is the destination itself. Each line is one real
+link, heard in both directions.
+
+| Colour | The confirming traceroutes travelled |
+|---|---|
+| Teal | RF |
+| Amber | MQTT |
+| Blue | UDP |
+
+A link confirmed over RF by one traceroute and over MQTT by another shows as
+two lines, one per transport. Lines get thicker with the number of confirming
+traceroutes and fade with the age of the newest. Click a line for the source,
+the transport, the SNR each way (what the neighbour heard from you, and what
+you heard from it), the number of confirming traceroutes, and when it was last
+confirmed.
+
+Not drawn:
+
+- A traceroute that went out through one neighbour and came back through
+  another. Neither link carried both directions, so neither is confirmed.
+- A traceroute with no recorded return path.
+- A traceroute some other node ran. Only your own radio's runs have a leg next
+  to your radio.
+- Hops further out than your radio's own neighbour. Those are other radios'
+  links.
+
+Limits worth knowing:
+
+- MeshMonitor keeps only the newest `TRACEROUTE_HISTORY_LIMIT` traceroutes per
+  node pair (default 50). The count on a line cannot pass that, and an old
+  confirmation can drop out even inside the map's age window.
+- A traceroute records **one** transport value: how the reply reached your
+  radio. That is the "back" half of this link, and the line takes its transport
+  from it. A hop whose SNR the firmware could not fill in is treated as MQTT,
+  as on the rest of the map.
+- Nothing is stored and nothing is sent. The lines are worked out from the
+  traceroutes already in the database each time the map asks. Turning the
+  toggle on never starts a traceroute; run those yourself, or with
+  auto-traceroute.
+
+You need read access to both **nodes** and **traceroutes** on the source, and
+both nodes' positions must be visible to you on the map. A hidden or private
+node yields no line.
+
 ### Waypoints
 
 Waypoints — Meshtastic's `WAYPOINT_APP` pins — render directly on the per-source dashboard map and the Map Analysis canvas, using each waypoint's emoji as its icon. Users with `waypoints:write` can create, edit, and delete waypoints in place from the **Map Features** panel. The same panel has a **Show Waypoints** checkbox (default on) that toggles waypoint marker visibility per-user — persisted alongside the other map feature toggles. See the dedicated [Waypoints](/features/waypoints) page for the full workflow, permissions, and REST API.
