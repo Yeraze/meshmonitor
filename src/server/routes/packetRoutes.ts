@@ -4,7 +4,9 @@ import databaseService from '../../services/database.js';
 import { logger } from '../../utils/logger.js';
 import { RequestHandler } from 'express';
 import { filterPacketsByPermissions, getAllowedChannels } from './packetPermissions.js';
-import { fail } from '../utils/apiResponse.js';
+import { ok, fail } from '../utils/apiResponse.js';
+import { sourceManagerRegistry } from '../sourceManagerRegistry.js';
+import { NODE_ACTIVITY_WINDOWS, NODE_ACTIVITY_DEFAULT_WINDOW } from '../../utils/nodeActivity.js';
 import type { NodeTransportClass } from '../../utils/nodeTransport.js';
 
 /** Normalize a `since` timestamp to milliseconds (auto-detect seconds vs ms) */
@@ -256,6 +258,82 @@ router.get('/stats/distribution', requirePacketPermissions, async (req, res) => 
   }
 });
 
+
+/**
+ * GET /api/packets/stats/node-activity (#5557)
+ * Per-remote-node activity heard by one source in a rolling window — the
+ * Live Mesh Activity dashboard widget. Read-only; no packets are sent.
+ * Query params:
+ *   - sourceId (required)
+ *   - windowMinutes: one of 1, 5, 10, 30, 60 (default 10). The server picks
+ *     `since`, so a skewed browser clock cannot shift the window.
+ *   - transport: 'rf' (default) | 'all' | 'udp' | 'mqtt'. The widget sends
+ *     only 'rf' or 'all'; 'udp' and 'mqtt' match /stats/distribution.
+ * Response: ok() envelope —
+ *   { enabled, windowStart, coverageStart, truncated, nodes[] }
+ *   `coverageStart` is the oldest retained packet_log row (global: the cap and
+ *   age cleanup are global). `truncated` is true when that row is newer than
+ *   `windowStart`, i.e. the log does not reach back over the whole window.
+ */
+router.get('/stats/node-activity', requirePacketPermissions, async (req, res) => {
+  try {
+    const sourceId = (req as typeof req & { scopedSourceId?: string }).scopedSourceId;
+    if (!sourceId) {
+      return fail(res, 400, 'SOURCE_ID_REQUIRED', 'sourceId is required');
+    }
+
+    const rawWindow = typeof req.query.windowMinutes === 'string' ? req.query.windowMinutes : undefined;
+    let windowMinutes = NODE_ACTIVITY_DEFAULT_WINDOW;
+    if (rawWindow !== undefined && rawWindow !== '') {
+      const n = Number(rawWindow);
+      if (!(NODE_ACTIVITY_WINDOWS as readonly number[]).includes(n)) {
+        return fail(res, 400, 'INVALID_WINDOW', `windowMinutes must be one of ${NODE_ACTIVITY_WINDOWS.join(', ')}`);
+      }
+      windowMinutes = n;
+    }
+
+    const rawTransport = typeof req.query.transport === 'string' && req.query.transport !== '' ? req.query.transport : 'rf';
+    if (rawTransport !== 'all' && rawTransport !== 'rf' && rawTransport !== 'udp' && rawTransport !== 'mqtt') {
+      return fail(res, 400, 'INVALID_TRANSPORT', 'transport must be one of all, rf, udp, mqtt');
+    }
+    const transportClass = rawTransport === 'all' ? undefined : (rawTransport as NodeTransportClass);
+
+    const windowStart = Date.now() - windowMinutes * 60_000;
+
+    if (!(await packetLogService.isEnabled())) {
+      return ok(res, { enabled: false, windowStart, coverageStart: null, truncated: false, nodes: [] });
+    }
+
+    const permReq = req as typeof req & { isAdmin?: boolean; allowedChannels?: Set<number>; canReadMessages?: boolean };
+    const visibility = permReq.isAdmin
+      ? undefined
+      : {
+          allowedChannels: [...(permReq.allowedChannels ?? [])],
+          canReadMessages: permReq.canReadMessages === true,
+        };
+
+    // getLocalNodeInfo() is on ISourceManager, so this is safe for any source
+    // type. packet_log only holds Meshtastic rows, so a MeshCore or missing
+    // manager just means nothing extra is excluded.
+    const localNodeNum = sourceManagerRegistry.getManager(sourceId)?.getLocalNodeInfo()?.nodeNum ?? null;
+
+    const [nodes, coverageStart] = await Promise.all([
+      databaseService.getNodeActivityAsync({ sourceId, since: windowStart, localNodeNum, transportClass, visibility }),
+      databaseService.getOldestPacketTimestampAsync(),
+    ]);
+
+    return ok(res, {
+      enabled: true,
+      windowStart,
+      coverageStart,
+      truncated: coverageStart !== null && coverageStart > windowStart,
+      nodes,
+    });
+  } catch (error) {
+    logger.error('❌ Error fetching node activity:', error);
+    return fail(res, 500, 'INTERNAL_ERROR', 'Internal server error');
+  }
+});
 
 /**
  * GET /api/packets/relay-nodes

@@ -208,6 +208,7 @@ import { migration as mergeDefaultRowMutesMigration, runMigration186Postgres, ru
 import { migration as addMeshcoreMessageSenderTimestampMigration, runMigration187Postgres, runMigration187Mysql } from '../server/migrations/187_add_meshcore_message_sender_timestamp.js';
 import { migration as createTranslationCacheMigration, runMigration188Postgres, runMigration188Mysql } from '../server/migrations/188_create_translation_cache.js';
 import { migration as globalUiPrefsDropSourceCopiesMigration, runMigration189Postgres, runMigration189Mysql } from '../server/migrations/189_global_ui_prefs_drop_source_copies.js';
+import { migration as packetLogSourceTimestampIndexMigration, runMigration190Postgres, runMigration190Mysql } from '../server/migrations/190_packet_log_source_timestamp_index.js';
 
 // ============================================================================
 // Registry
@@ -3066,4 +3067,19 @@ registry.register({
   sqlite: (db) => globalUiPrefsDropSourceCopiesMigration.up(db),
   postgres: (client) => runMigration189Postgres(client),
   mysql: (pool) => runMigration189Mysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 190: `idx_packet_log_source_timestamp` on packet_log(sourceId,
+// timestamp) (#5557). Serves the Live Mesh Activity widget's 10 s poll
+// (`sourceId = ? AND timestamp >= ?`). Index only; no data change.
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 190,
+  name: 'packet_log_source_timestamp_index',
+  settingsKey: 'migration_190_packet_log_source_timestamp_index',
+  sqlite: (db) => packetLogSourceTimestampIndexMigration.up(db),
+  postgres: (client) => runMigration190Postgres(client),
+  mysql: (pool) => runMigration190Mysql(pool),
 });
