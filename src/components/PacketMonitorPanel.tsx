@@ -25,6 +25,7 @@ import RelayNodeModal from './RelayNodeModal';
 import SearchableSelect, { type SearchableSelectOption } from './common/SearchableSelect';
 import './PacketMonitorPanel.css';
 import { UiIcon } from './icons';
+import PacketHiddenChip from './PacketHiddenChip';
 import { formatAckProofStatus } from '../utils/ackProof';
 
 interface PacketMonitorPanelProps {
@@ -195,6 +196,7 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
   // Use the packets hook for all data fetching
   const {
     packets,
+    hiddenCount,
     total,
     loading,
     loadingMore,
@@ -491,6 +493,7 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
           >
             {t('packet_monitor.count', { shown: packets.length, total })}
           </div>
+          <PacketHiddenChip count={hiddenCount} onClick={() => setShowFilters(true)} />
           <div className="header-controls">
             {canWriteSettings && captureEnabled !== null && (
               <button
@@ -626,7 +629,10 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
               })}
             />
 
-            <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
+            <label
+              style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}
+              title={t('packet_monitor.filter.hide_own_tooltip')}
+            >
               <input
                 type="checkbox"
                 checked={hideOwnPackets}
