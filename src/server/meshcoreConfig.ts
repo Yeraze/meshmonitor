@@ -25,11 +25,12 @@ export interface MeshCoreSourceConfig {
   deviceType?: 'companion' | 'repeater';
   autoConnect?: boolean;
   /**
-   * Companion heartbeat / auto-reconnect interval in seconds (0 = disabled).
+   * Heartbeat / auto-reconnect interval in seconds (0 or unset = disabled).
    * Mirrors the Meshtastic source setting. When > 0 the manager periodically
    * probes the node (cheap RTC read) and, on repeated failure, tears down and
-   * reconnects with exponential backoff. Only honoured for companion devices
-   * (the native backend); repeater/direct-serial ignores it.
+   * reconnects with exponential backoff. A Companion probes the native
+   * backend; a Repeater probes the serial CLI with `clock` (#5563). Neither
+   * probe uses airtime.
    */
   heartbeatIntervalSeconds?: number;
   // Virtual Node server — expose this node to the MeshCore app over WiFi (#3535).

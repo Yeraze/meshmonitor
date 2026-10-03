@@ -426,6 +426,20 @@ then prints `"  -> " + reply`. There is no end marker, and a multi-line reply
   computes drift. Telemetry rows use `repeaterPublicKey`; the poller writes
   no `meshcore_nodes` row for it, since that would duplicate the
   `'repeater'` placeholder node.
+- **Link health (#5563).** The port's `close` and post-open `error` events
+  always reconnect through `beginReconnect` (1-60 s backoff), whatever the
+  heartbeat setting. `handleSerialPortLost` ignores a stale port, our own
+  close (`intentionalTeardown`) and a loss while `connect()` is still in
+  flight (that `connect()` fails on the closed port and retries itself). The
+  stall probe is opt-in through `heartbeatIntervalSeconds`: one serial `clock`
+  on the CLI chain, 5 s timeout, three misses in a row tear down and reconnect.
+  Any `->` reply counts as alive, and a tick is skipped when a `->` reply
+  landed within the last interval. `teardownTransportOnly` closes the port,
+  stops the neighbours poll and rejects in-flight commands. `connect()` fails
+  when `get name` returns nothing, so a wedged console can't reset the
+  backoff. A recovered link sets `linkRecoveryReconnect`, which makes the
+  landing `connect()` skip the on-start auto-announce: no advert per flap. A
+  manual disconnect clears it, and so does a process restart.
 - **`localNode.publicKey` stays `'repeater'`.** Too many paths key off it. The
   real key from `get public.key` lives in `repeaterPublicKey` and is the
   reporter for the neighbour-graph rows and the key for local telemetry.

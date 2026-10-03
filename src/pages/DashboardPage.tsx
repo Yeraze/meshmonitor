@@ -183,6 +183,10 @@ function DashboardInner() {
     Record<string, { username: string; password: string }>
   >({});
   const [formHeartbeat, setFormHeartbeat] = useState('30'); // seconds, 0 = disabled (issue 2609)
+  // True once the user types in the heartbeat field, or when the form holds a
+  // saved source. Until then, picking a MeshCore device type sets the default:
+  // Repeater = 0, because its serial probe is opt-in (#5563).
+  const [formHeartbeatTouched, setFormHeartbeatTouched] = useState(false);
   const [formAutoConnect, setFormAutoConnect] = useState(true); // issue #2773
   const [formPassiveMode, setFormPassiveMode] = useState(false); // issue #3122 — large/fragile TCP nodes
   // Empty string = "use default 4 h". Numeric string in hours when overridden (#3122 follow-up).
@@ -425,6 +429,7 @@ function DashboardInner() {
     setFormObserver(emptyObserverForm());
     setFormObserverCreds({});
     setFormHeartbeat('30');
+    setFormHeartbeatTouched(false);
     setFormAutoConnect(true);
     setFormPassiveMode(false);
     setFormPassiveResyncStaleHours('');
@@ -574,6 +579,7 @@ function DashboardInner() {
     setFormVnAllowPkiImport(vn?.allowPkiImport === true);
     setFormObserver(observerFormFromConfig(cfg?.observer));
     setFormHeartbeat(String(cfg?.heartbeatIntervalSeconds ?? 0));
+    setFormHeartbeatTouched(true);
     // Default to true when unset (legacy sources pre-#2773 auto-connected).
     setFormAutoConnect(cfg?.autoConnect !== false);
     setFormPassiveMode(cfg?.passiveMode === true);
@@ -735,9 +741,9 @@ function DashboardInner() {
         };
       }
 
-      // Companion heartbeat / auto-reconnect (mirrors the Meshtastic setting).
-      // 0 = disabled; otherwise probe + reconnect with backoff. Only the native
-      // backend (companion) honours it; repeater ignores it.
+      // Heartbeat / auto-reconnect (mirrors the Meshtastic setting).
+      // 0 = disabled; otherwise probe + reconnect with backoff. A Companion
+      // probes the native backend; a Repeater probes the serial CLI (#5563).
       const mcHeartbeat = parseInt(formHeartbeat, 10);
       if (isNaN(mcHeartbeat) || mcHeartbeat < 0 || mcHeartbeat > 3600) {
         setFormError(t('source.form.error_heartbeat_range'));
@@ -1766,7 +1772,15 @@ function DashboardInner() {
                   <select
                     className="dashboard-form-input"
                     value={formMcDeviceType}
-                    onChange={(e) => setFormMcDeviceType(e.target.value as 'companion' | 'repeater')}
+                    onChange={(e) => {
+                      const next = e.target.value as 'companion' | 'repeater';
+                      setFormMcDeviceType(next);
+                      // New source, field untouched: the Repeater probe stays
+                      // off until the user sets it (#5563).
+                      if (!editingSourceId && !formHeartbeatTouched) {
+                        setFormHeartbeat(next === 'repeater' ? '0' : '30');
+                      }
+                    }}
                   >
                     <option value="companion">{t('meshcore.device_type.companion', 'Companion')}</option>
                     <option value="repeater">{t('meshcore.device_type.repeater', 'Repeater')}</option>
@@ -1781,11 +1795,11 @@ function DashboardInner() {
                     min={0}
                     max={3600}
                     value={formHeartbeat}
-                    onChange={(e) => setFormHeartbeat(e.target.value)}
+                    onChange={(e) => { setFormHeartbeat(e.target.value); setFormHeartbeatTouched(true); }}
                     placeholder="0"
                   />
                   <p style={{ fontSize: 11, color: 'var(--color-text-subtle)', margin: '4px 0 0' }}>
-                    {t('meshcore.form.heartbeat_help', 'Seconds between companion keepalive probes (0 = disabled). On repeated failure the source reconnects automatically with backoff. Applies to Companion devices only.')}
+                    {t('meshcore.form.heartbeat_help', 'Seconds between health probes (0 = disabled). After three failed probes the source reconnects on its own, with backoff. Works for Companion and Repeater devices. The probe stays on the local link and sends nothing over the radio.')}
                   </p>
                 </label>
 
@@ -2253,7 +2267,7 @@ function DashboardInner() {
                 min={0}
                 max={3600}
                 value={formHeartbeat}
-                onChange={(e) => setFormHeartbeat(e.target.value)}
+                onChange={(e) => { setFormHeartbeat(e.target.value); setFormHeartbeatTouched(true); }}
                 placeholder="0"
               />
               <p style={{ fontSize: 11, color: 'var(--color-text-subtle)', margin: '4px 0 0' }}>
