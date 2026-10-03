@@ -622,6 +622,8 @@ The **MeshCore Messaging** section of global **Settings** hosts an opt-in toggle
 - It is **one-shot**: the resend is never itself retried, so at most one extra transmission ever occurs per logical send.
 - The resend does **not** create a second message bubble and does **not** re-enter the automation event bus, so it can never trigger a fresh automation.
 
+A split Auto-Acknowledge reply (see [Long Replies on MeshCore](/features/automation#meshcore-long-replies)) counts as one automated send per part, so each part can be resent once.
+
 This is **distinct from the direct-message retry**, which is always on and follows the firmware's own same-path/flood ACK cadence. Because a channel send has no delivery ACK, the retry can only guess from the heard-repeater signal — so with this enabled you may occasionally see a duplicate on the mesh if a late echo arrives right around the 30-second mark. Leave it off if duplicates are unacceptable for your deployment.
 
 ## Room Servers

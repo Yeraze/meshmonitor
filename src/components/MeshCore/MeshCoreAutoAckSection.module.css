@@ -1,0 +1,31 @@
+/*
+ * MeshCoreAutoAckSection. CSS module — do not add these rules to the global
+ * sheets (CLAUDE.md CSS containment rule).
+ */
+
+.toggleRow {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+
+.toggleRow input[type='checkbox'] {
+  width: auto;
+  margin: 0;
+}
+
+.toggleRow .toggleLabel {
+  margin: 0;
+  font-weight: bold;
+}
+
+.warning {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.35rem;
+  margin-top: 0.5rem;
+  margin-left: 1.75rem;
+  color: var(--color-warning);
+  font-size: 0.9rem;
+}
