@@ -274,7 +274,7 @@ If you run more than one source, one of your radios can be the survey
 sender and another the receiver. The report marks those fixes:
 
 - In the **Sender** picker, a sender that is one of your own sources reads
-  "our source <name>".
+  "our source", followed by that source's name.
 - **Cross-source only** (shown once such a sender exists) keeps just the
   fixes one of your sources sent and another heard.
 - Under the summary, **Heard between your sources** lists one row per
