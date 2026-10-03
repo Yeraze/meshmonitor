@@ -21,6 +21,7 @@ import {
   validateForwardingRules,
 } from '../../types/forwarding.js';
 import { parseStoredForwardingRules } from '../utils/forwardingEngine.js';
+import { isForwardingEnabled, setForwardingEnabled } from '../services/forwardingStateService.js';
 
 const router = Router({ mergeParams: true });
 
@@ -38,7 +39,8 @@ router.get(
     try {
       const sourceId = (req.params as { id?: string }).id!;
       const raw = await databaseService.settings.getSettingForSource(sourceId, FORWARDING_SETTING_KEY);
-      return ok(res, { rules: parseStoredForwardingRules(raw), limits });
+      const enabled = await isForwardingEnabled(sourceId);
+      return ok(res, { rules: parseStoredForwardingRules(raw), enabled, limits });
     } catch (error) {
       logger.error('[API] Error reading forwarding rules:', error);
       return fail(res, 500, 'INTERNAL_ERROR', 'Failed to read forwarding rules');
@@ -67,6 +69,34 @@ router.post(
     } catch (error) {
       logger.error('[API] Error saving forwarding rules:', error);
       return fail(res, 500, 'INTERNAL_ERROR', 'Failed to save forwarding rules');
+    }
+  },
+);
+
+/**
+ * Source-level master switch (#5537). Takes effect on the next incoming
+ * message. Sends nothing and leaves the rate limiter alone, so flipping it
+ * off and on cannot re-open a spent window.
+ */
+router.put(
+  '/enabled',
+  requireAuth(),
+  requirePermission('automation', 'write', { sourceIdFrom: 'params.id' }),
+  async (req: Request, res: Response) => {
+    try {
+      const sourceId = (req.params as { id?: string }).id!;
+      const enabled = (req.body as { enabled?: unknown } | undefined)?.enabled;
+      if (typeof enabled !== 'boolean') {
+        return fail(res, 400, 'INVALID_REQUEST', 'enabled must be true or false');
+      }
+      const source = await databaseService.sources.getSource(sourceId);
+      if (!source) return fail(res, 404, 'SOURCE_NOT_FOUND', 'Source not found');
+      await setForwardingEnabled(sourceId, enabled);
+      logger.info(`[Forwarding:${sourceId}] master switch turned ${enabled ? 'on' : 'off'}`);
+      return ok(res, { enabled });
+    } catch (error) {
+      logger.error('[API] Error setting forwarding master switch:', error);
+      return fail(res, 500, 'INTERNAL_ERROR', 'Failed to update forwarding');
     }
   },
 );

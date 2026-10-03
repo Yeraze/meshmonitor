@@ -16,6 +16,18 @@
 export const FORWARDING_SETTING_KEY = 'forwardingRules';
 
 /**
+ * Per-source master switch (#5537), stored as 'true' / 'false'. When off, no
+ * rule on the source fires, whatever its own `enabled` flag says. Absent reads
+ * as ON so installs that predate the switch keep forwarding as before.
+ */
+export const FORWARDING_ENABLED_SETTING_KEY = 'forwardingEnabled';
+
+/** Read the stored master switch: only the literal 'false' turns it off. */
+export function parseForwardingEnabled(raw: string | null | undefined): boolean {
+  return raw !== 'false';
+}
+
+/**
  * Every forwarded message starts with this marker. The engine never forwards
  * a message that starts with it, which breaks A→B→A loops between two
  * MeshMonitor instances (or two rules) even when the other safeguards miss.

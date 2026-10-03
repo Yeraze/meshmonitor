@@ -447,9 +447,14 @@ describe('bandwidth follows use_preset, not the stored bandwidth field', () => {
     expect(calculateLoRaFrequency(1, 14, 0, 0, 0, undefined, 9)).toBe('908.750 MHz');
   });
 
+  it('uses the 2.8 preset bandwidth on the slot grid (NARROW_FAST 62.5 kHz, #5547)', () => {
+    // 902 + 0.0625/2 + 13 * 0.0625
+    expect(calculateLoRaFrequency(1, 14, 0, 0, 0, undefined, 12, true)).toBe('902.844 MHz');
+  });
+
   it('falls back to the LONG_FAST 250 kHz grid for an unmapped or absent preset', () => {
     expect(calculateLoRaFrequency(1, 14, 0, 0, 0, undefined, 999, true)).toBe('905.375 MHz');
-    expect(calculateLoRaFrequency(1, 14, 0, 0, 0, undefined, 12, true)).toBe('905.375 MHz');
+    expect(calculateLoRaFrequency(1, 14, 0, 0, 0, undefined, 2, true)).toBe('905.375 MHz'); // VERY_LONG_SLOW
     expect(calculateLoRaFrequency(1, 14, 0, 0, 0)).toBe('905.375 MHz');
   });
 
@@ -483,8 +488,15 @@ describe('getPresetBandwidthKHz (canonical copy, re-exported by configuration/co
     expect(getPresetBandwidthKHz(9, true)).toBe(1625);
   });
 
+  it('returns firmware 2.8 bandwidths for LITE / NARROW / TINY (#5547)', () => {
+    expect(getPresetBandwidthKHz(10, false)).toBe(125);  // LITE_FAST
+    expect(getPresetBandwidthKHz(12, false)).toBe(62.5); // NARROW_FAST
+    expect(getPresetBandwidthKHz(14, false)).toBe(15.6); // TINY_FAST
+    expect(getPresetBandwidthKHz(15, true)).toBe(15.6);  // TINY_SLOW, not widened on 2.4 GHz
+  });
+
   it('falls back to LONG_FAST for presets firmware does not implement', () => {
-    expect(getPresetBandwidthKHz(12, false)).toBe(250); // NARROW_FAST
+    expect(getPresetBandwidthKHz(2, false)).toBe(250); // VERY_LONG_SLOW
     expect(getPresetBandwidthKHz(999, false)).toBe(250);
   });
 });

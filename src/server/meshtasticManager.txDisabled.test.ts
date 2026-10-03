@@ -257,3 +257,57 @@ describe('MeshtasticManager — TX-disabled transmit guard (#4294 WP1)', () => {
     });
   });
 });
+
+// #5547: the LoRa save route backfills an omitted modemPreset from this, so an
+// omission never encodes as 0 (LONG_FAST) in the whole-struct replace.
+describe('MeshtasticManager.getConfiguredModemPreset()', () => {
+  const make = (lora: unknown) => {
+    const mgr = new MeshtasticManager('src-1', { host: '127.0.0.1', port: 4403 });
+    (mgr as any).actualDeviceConfig = lora === undefined ? null : { lora };
+    return mgr;
+  };
+
+  it('is undefined before LoRa config arrives', () => {
+    expect(make(undefined).getConfiguredModemPreset()).toBeUndefined();
+  });
+
+  it('returns the reported preset, including TINY_FAST', () => {
+    expect(make({ modemPreset: 14 }).getConfiguredModemPreset()).toBe(14);
+    expect(make({ modemPreset: 9 }).getConfiguredModemPreset()).toBe(9);
+  });
+
+  it('reads an elided preset as LONG_FAST (proto3 omits 0)', () => {
+    expect(make({ hopLimit: 3 }).getConfiguredModemPreset()).toBe(0);
+    expect(make({ modemPreset: null }).getConfiguredModemPreset()).toBe(0);
+  });
+
+  it('resolves an enum NAME, as protobufjs toJSON emits', () => {
+    expect(make({ modemPreset: 'TINY_FAST' }).getConfiguredModemPreset()).toBe(14);
+    expect(make({ modemPreset: 'LONG_FAST' }).getConfiguredModemPreset()).toBe(0);
+    expect(make({ modemPreset: 'MEDIUM_TURBO' }).getConfiguredModemPreset()).toBe(16);
+    expect(make({ modemPreset: '15' }).getConfiguredModemPreset()).toBe(15);
+  });
+
+  it('is undefined for a value it cannot trust', () => {
+    expect(make({ modemPreset: 'HYPER_FAST' }).getConfiguredModemPreset()).toBeUndefined();
+    expect(make({ modemPreset: -1 }).getConfiguredModemPreset()).toBeUndefined();
+    expect(make({ modemPreset: {} }).getConfiguredModemPreset()).toBeUndefined();
+  });
+});
+
+// The Config tab gates 2.8-only modem presets on the local node's firmware
+// version (#5547). It reads GET /api/config/current, whose payload is
+// getCurrentConfig() verbatim, so the version must be on `localNodeInfo` here.
+// (GET /api/config is a different route: it carries deviceMetadata.firmwareVersion
+// and a three-field localNodeInfo, and the Config tab does not use it.)
+describe('MeshtasticManager.getCurrentConfig() firmware version for the Config tab', () => {
+  it('exposes the local firmware version on localNodeInfo', () => {
+    const mgr = makeReadyManager();
+    (mgr as any).localNodeInfo.firmwareVersion = '2.7.26.54e0d8d';
+    expect(mgr.getCurrentConfig().localNodeInfo.firmwareVersion).toBe('2.7.26.54e0d8d');
+  });
+
+  it('leaves it undefined until DeviceMetadata arrives', () => {
+    expect(makeReadyManager().getCurrentConfig().localNodeInfo.firmwareVersion).toBeUndefined();
+  });
+});

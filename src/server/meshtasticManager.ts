@@ -44,6 +44,7 @@ import {
   isParsedFirmwareAtLeast,
   type ParsedFirmwareVersion,
 } from '../utils/firmwareVersion.js';
+import { MODEM_PRESET_NAMES } from '../utils/loraFrequency.js';
 import { getEnvironmentConfig } from './config/environment.js';
 import { notificationService } from './services/notificationService.js';
 import { sendMessagePushNotification } from './services/messagePushNotifier.js';
@@ -80,6 +81,7 @@ import { normalizeTriggerPatterns, normalizeTriggerChannels } from '../utils/aut
 import { matchAutoResponderPattern } from './utils/autoResponderMatcher.js';
 import { runForwarding, parseStoredForwardingRules } from './utils/forwardingEngine.js';
 import { FORWARDING_SETTING_KEY } from '../types/forwarding.js';
+import { isForwardingEnabled } from './services/forwardingStateService.js';
 import { isOwnNodeNum } from './utils/ownNodes.js';
 import { isWithinTimeWindow } from './utils/timeWindow.js';
 import { compileUserRegex } from '../utils/safeRegex.js';
@@ -10309,6 +10311,35 @@ class MeshtasticManager implements ISourceManager {
   }
 
   /**
+   * The modem preset the local radio last reported, as a wire enum number, or
+   * undefined when LoRa config has not arrived. Used to backfill a LoRa save
+   * that omits modemPreset: setLoRaConfig is a whole-struct replace, so an
+   * omitted preset would otherwise encode as 0 (LONG_FAST) on the radio (#5547).
+   * proto3 elides LONG_FAST (0), so a LoRa config without the field means 0.
+   *
+   * The cached value is normally the decoded enum number, but anything that
+   * has been through protobufjs `toJSON` carries the enum NAME, and
+   * updateCachedDeviceConfig() stores whatever a caller hands it. Both forms
+   * resolve; an unrecognised name is undefined rather than a guess.
+   */
+  getConfiguredModemPreset(): number | undefined {
+    const lora = this.actualDeviceConfig?.lora;
+    if (!lora) return undefined;
+    const preset = lora.modemPreset;
+    if (preset === undefined || preset === null) return 0;
+    if (typeof preset === 'number') {
+      return Number.isInteger(preset) && preset >= 0 ? preset : undefined;
+    }
+    if (typeof preset === 'string') {
+      const trimmed = preset.trim();
+      if (/^\d+$/.test(trimmed)) return Number(trimmed);
+      const match = Object.entries(MODEM_PRESET_NAMES).find(([, name]) => name === trimmed);
+      return match ? Number(match[0]) : undefined;
+    }
+    return undefined;
+  }
+
+  /**
    * The hop limit THIS node is configured to use for its own outgoing packets,
    * read from the in-memory device config. Falls back to the firmware default
    * (3) when the LoRa config hasn't arrived yet. No DB access — safe to call
@@ -12183,6 +12214,9 @@ class MeshtasticManager implements ISourceManager {
    */
   private async checkForwarding(message: TextMessage, isDirectMessage: boolean): Promise<void> {
     try {
+      // Source-level master switch (#5537): off = no rule fires, whatever its
+      // own flag. Checked before the rules are even parsed.
+      if (!(await isForwardingEnabled(this.sourceId))) return;
       const raw = await databaseService.settings.getSettingForSource(this.sourceId, FORWARDING_SETTING_KEY);
       const rules = parseStoredForwardingRules(raw);
       if (!rules.some(r => r.enabled)) return;

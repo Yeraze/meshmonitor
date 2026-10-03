@@ -11,6 +11,9 @@
  *
  * When the source cannot transmit (MeshCore receive-only, Meshtastic TX
  * disabled, MQTT sources) the rules stay visible but read-only.
+ *
+ * The header carries the source-level master switch (#5537): off stops every
+ * rule on this source whatever its own checkbox says. It saves at once.
  */
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -96,6 +99,9 @@ export const ForwardingSection: React.FC<ForwardingSectionProps> = ({
   const [rules, setRules] = useState<ForwardingRule[]>([]);
   const [initialRules, setInitialRules] = useState<ForwardingRule[]>([]);
   const [isSaving, setIsSaving] = useState(false);
+  // Source-level master switch (#5537). Absent on the server = on.
+  const [masterEnabled, setMasterEnabled] = useState(true);
+  const [masterBusy, setMasterBusy] = useState(false);
 
   const endpoint = `${baseUrl}/api/sources/${encodeURIComponent(sourceId)}/forwarding`;
 
@@ -110,6 +116,8 @@ export const ForwardingSection: React.FC<ForwardingSectionProps> = ({
         const list: ForwardingRule[] = Array.isArray(json.data?.rules) ? json.data.rules : [];
         setRules(list);
         setInitialRules(list);
+        // `!== false`, not `=== true`: a missing flag means on, as on the server.
+        setMasterEnabled(json.data?.enabled !== false);
       } catch { /* keep empty */ }
     })();
     return () => { cancelled = true; };
@@ -155,6 +163,40 @@ export const ForwardingSection: React.FC<ForwardingSectionProps> = ({
 
   const handleDismiss = useCallback(() => setRules(initialRules), [initialRules]);
 
+  // The master switch saves at once, apart from the save bar: it is one bit,
+  // it sends nothing, and the server leaves the rate limiter alone.
+  const handleMasterToggle = useCallback(async (next: boolean) => {
+    setMasterBusy(true);
+    try {
+      const res = await csrfFetch(`${endpoint}/enabled`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enabled: next }),
+      });
+      const json = await res.json().catch(() => null);
+      if (!res.ok || !json?.success) {
+        showToast(
+          res.status === 403
+            ? t('automation.insufficient_permissions', 'Insufficient permissions')
+            : json?.error || t('forwarding.toggle_failed', 'Failed to change forwarding'),
+          'error',
+        );
+        return;
+      }
+      setMasterEnabled(json.data?.enabled !== false);
+      showToast(
+        next
+          ? t('forwarding.master_turned_on', 'Forwarding turned on')
+          : t('forwarding.master_turned_off', 'Forwarding turned off'),
+        'success',
+      );
+    } catch {
+      showToast(t('forwarding.toggle_failed', 'Failed to change forwarding'), 'error');
+    } finally {
+      setMasterBusy(false);
+    }
+  }, [csrfFetch, endpoint, showToast, t]);
+
   useSaveBar({
     id: saveBarId,
     sectionName: t('forwarding.title', 'Forwarding'),
@@ -187,6 +229,16 @@ export const ForwardingSection: React.FC<ForwardingSectionProps> = ({
         <span className={styles.count}>
           {t('forwarding.count', { count: rules.length })}
         </span>
+        <label className={styles.masterSwitch}>
+          <input
+            type="checkbox"
+            checked={masterEnabled}
+            disabled={!canWrite || masterBusy}
+            onChange={e => void handleMasterToggle(e.target.checked)}
+            data-testid="forwarding-master-switch"
+          />
+          {t('forwarding.master_label', 'Forwarding on for this source')}
+        </label>
       </div>
 
       <div className={`settings-section ${styles.body}`}>
@@ -210,6 +262,16 @@ export const ForwardingSection: React.FC<ForwardingSectionProps> = ({
             {t(
               'forwarding.paused',
               'Paused: this source cannot transmit (receive-only or TX disabled). Rules are shown read-only and nothing is forwarded.',
+            )}
+          </p>
+        )}
+
+        {!masterEnabled && (
+          <p role="status" className={styles.paused}>
+            <UiIcon name="pause" size={14} />
+            {t(
+              'forwarding.master_off_note',
+              'Forwarding is off for this source. No rule forwards anything until you turn it back on.',
             )}
           </p>
         )}

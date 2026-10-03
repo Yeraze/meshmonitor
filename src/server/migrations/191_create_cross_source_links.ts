@@ -1,5 +1,5 @@
 /**
- * Migration 190: create `cross_source_links` (#5561, map "heard here" edges).
+ * Migration 191: create `cross_source_links` (#5561, map "heard here" edges).
  *
  * Hourly aggregate of "source A's radio was heard by source B". Starts empty
  * and fills going forward from the live RX paths; no backfill. A row names
@@ -15,7 +15,7 @@ import type { Database } from 'better-sqlite3';
 import { logger } from '../../utils/logger.js';
 import { createTableIfMissingMysql } from './helpers.js';
 
-const LABEL = 'Migration 190';
+const LABEL = 'Migration 191';
 const TABLE = 'cross_source_links';
 const UNIQUE_INDEX = 'xs_links_bucket_uniq';
 const BUCKET_INDEX = 'xs_links_bucket_idx';
@@ -62,7 +62,7 @@ export const migration = {
 
 // ============ PostgreSQL ============
 
-export async function runMigration190Postgres(client: import('pg').PoolClient): Promise<void> {
+export async function runMigration191Postgres(client: import('pg').PoolClient): Promise<void> {
   logger.info(`${LABEL} (PostgreSQL): creating ${TABLE}...`);
 
   await client.query(`
@@ -95,7 +95,7 @@ export async function runMigration190Postgres(client: import('pg').PoolClient): 
 
 // ============ MySQL ============
 
-export async function runMigration190Mysql(pool: import('mysql2/promise').Pool): Promise<void> {
+export async function runMigration191Mysql(pool: import('mysql2/promise').Pool): Promise<void> {
   logger.info(`${LABEL} (MySQL): creating ${TABLE}...`);
 
   // COUNT is a function name in MySQL, so the column is backtick-quoted.

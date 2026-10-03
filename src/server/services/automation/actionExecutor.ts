@@ -120,6 +120,22 @@ export interface ActionDeps {
    */
   setAutomationEnabled?(a: { automationId: string; mode: AutomationEnableMode; enabled?: boolean }):
     Promise<SetAutomationEnabledResult | null>;
+  /**
+   * Turn a source's Message Forwarding master switch on / off / toggle
+   * (#5537). `enabled` is set only for mode 'set'. Resolves null when no source
+   * has that id. Sends nothing and leaves the forwarding rate limiter alone.
+   * Optional: a deps object without it fails the step cleanly.
+   */
+  setSourceForwardingEnabled?(a: { sourceId: string; mode: AutomationEnableMode; enabled?: boolean }):
+    Promise<SetSourceForwardingEnabledResult | null>;
+}
+
+/** What {@link ActionDeps.setSourceForwardingEnabled} reports back (#5537). */
+export interface SetSourceForwardingEnabledResult {
+  sourceId: string;
+  sourceName: string;
+  previous: boolean;
+  enabled: boolean;
 }
 
 /** What {@link ActionDeps.setAutomationEnabled} reports back (#5445). */
@@ -134,15 +150,19 @@ export interface SetAutomationEnabledResult {
 
 /**
  * The persistable run-log summary for an action's result (#5445), wired into the
- * evaluator's `stepDetail` hook. Only action.setAutomationEnabled opts in today:
+ * evaluator's `stepDetail` hook. Only action.setAutomationEnabled and
+ * action.setSourceForwardingEnabled (#5537) opt in today:
  * its resolved target and new state are the audit trail for a rule that changes
  * other rules, and they are small. Other actions return undefined so their
  * stored run-log rows stay exactly as before.
  */
 export function actionStepDetail(node: AutomationNode, value: unknown): Record<string, unknown> | undefined {
-  if (node.type !== 'action.setAutomationEnabled') return undefined;
   if (value == null || typeof value !== 'object') return undefined;
   const v = value as Record<string, unknown>;
+  if (node.type === 'action.setSourceForwardingEnabled') {
+    return { sourceId: v.sourceId, sourceName: v.sourceName, mode: v.mode, enabled: v.enabled, previous: v.previous };
+  }
+  if (node.type !== 'action.setAutomationEnabled') return undefined;
   return { automationId: v.automationId, name: v.name, mode: v.mode, enabled: v.enabled, previous: v.previous };
 }
 
@@ -685,6 +705,27 @@ export async function executeAction(node: AutomationNode, ctx: EngineEvalContext
         ctx.halt = { reason: 'this automation disabled itself, so its remaining actions were skipped' };
       }
       return { automationId: r.automationId, name: r.name, mode, enabled: r.enabled, previous: r.previous };
+    }
+
+    case 'action.setSourceForwardingEnabled': {
+      // Message Forwarding master switch (#5537). Sends nothing on the mesh — a
+      // per-source settings write. The source is a literal id (validation
+      // rejects templates) that the save route permission-checked.
+      const mode: AutomationEnableMode = p.mode === 'toggle' ? 'toggle' : 'set';
+      const sourceId = typeof p.sourceId === 'string' ? p.sourceId.trim() : '';
+      if (!sourceId) throw new Error('action.setSourceForwardingEnabled: no source');
+      let enabled: boolean | undefined;
+      if (mode === 'set') {
+        const raw = await resolveOperand(ctx, p.enabled);
+        enabled = parseAutomationEnabledFlag(raw);
+        if (enabled === undefined) {
+          throw new Error(`action.setSourceForwardingEnabled: "enabled" must be true or false, got "${String(raw)}"`);
+        }
+      }
+      if (!deps.setSourceForwardingEnabled) throw new Error('action.setSourceForwardingEnabled: not available here');
+      const r = await deps.setSourceForwardingEnabled({ sourceId, mode, enabled });
+      if (!r) throw new Error(`action.setSourceForwardingEnabled: no source with id "${sourceId}"`);
+      return { sourceId: r.sourceId, sourceName: r.sourceName, mode, enabled: r.enabled, previous: r.previous };
     }
 
     default:

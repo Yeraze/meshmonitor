@@ -116,7 +116,7 @@ import type { ConversationKind } from '../db/schema/conversationReadState.js';
 import type { DatabaseType, DbPacketLog as DbTypesPacketLog, DbPacketCountByNode, DbPacketCountByPortnum, DbDistinctRelayNode } from '../db/types.js';
 import { updateNodeMobility } from '../server/services/nodeMobilityService.js';
 import { selectNodeNeedingTraceroute, parseTracerouteFilterMode, type TracerouteFilterMode } from '../server/services/autoTracerouteSelectionService.js';
-import type { PacketVisibility } from '../db/repositories/packetLog.js';
+import type { PacketVisibility, NodeActivityRow } from '../db/repositories/packetLog.js';
 import { NodeCacheService } from '../server/services/nodeCacheService.js';
 
 // Configuration constants for traceroute history
@@ -4811,6 +4811,16 @@ class DatabaseService {
 
   async getPacketCountsByNodeAsync(options?: { since?: number; limit?: number; portnum?: number; sourceId?: string; transportClass?: NodeTransportClass; visibility?: PacketVisibility }): Promise<DbPacketCountByNode[]> {
     return this.packetLog.getPacketCountsByNode(options);
+  }
+
+  /** Live Mesh Activity widget (#5557): per-remote-node activity in a rolling window. */
+  async getNodeActivityAsync(q: Parameters<PacketLogRepository['getNodeActivity']>[0]): Promise<NodeActivityRow[]> {
+    return this.packetLog.getNodeActivity(q);
+  }
+
+  /** Oldest retained packet_log timestamp (ms) across all sources, or null (#5557). */
+  async getOldestPacketTimestampAsync(): Promise<number | null> {
+    return this.packetLog.getOldestPacketTimestamp();
   }
 
   async getPacketCountsByPortnumAsync(options?: { since?: number; from_node?: number; sourceId?: string; transportClass?: NodeTransportClass; visibility?: PacketVisibility }): Promise<DbPacketCountByPortnum[]> {

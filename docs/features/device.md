@@ -317,9 +317,12 @@ These parameters are only available when "Use Preset" is disabled. They provide 
 
 **Common Values**:
 - 31 (31.25 kHz) - Narrowest, best interference resistance
+- 62 (62.5 kHz) - Used by the NARROW presets
 - 125 kHz - Good balance
-- 250 kHz - Most common, used by all standard presets
+- 250 kHz - Most common, used by LONG_FAST and the MEDIUM/SHORT presets
 - 500 kHz - Widest, highest data rate
+
+The field holds the firmware's bandwidth code, a whole number: enter 31 for 31.25 kHz and 62 for 62.5 kHz.
 
 **Effect**: Wider bandwidth = faster data rate but more susceptible to interference. Narrower bandwidth = slower data rate but better sensitivity and interference resistance.
 
@@ -329,7 +332,7 @@ These parameters are only available when "Use Preset" is disabled. They provide 
 - Affects battery life (wider = more power)
 
 **Best Practices**:
-- Use 250 kHz for most deployments (matches all standard presets)
+- Use 250 kHz for most deployments (matches LONG_FAST)
 - Only change if you have specific range or speed requirements
 - Verify regulatory compliance for your region
 
@@ -381,9 +384,8 @@ These parameters are only available when "Use Preset" is disabled. They provide 
 - All nodes must use the same coding rate to communicate
 
 **Best Practices**:
-- Use 8 (4/8) for long-range or noisy environments (LONG_FAST default)
-- Use 5 (4/5) for clean, short-range links (SHORT_FAST)
-- Most presets use 8 for maximum reliability
+- Use 8 (4/8) for long-range or noisy environments (LONG_SLOW, LONG_MODERATE, LONG_TURBO)
+- Use 5 (4/5) for most links; LONG_FAST and the MEDIUM/SHORT presets all use it
 
 #### Frequency Offset
 
@@ -412,98 +414,61 @@ These parameters are only available when "Use Preset" is disabled. They provide 
 
 ### Modem Preset
 
-Predefined radio settings that balance range, speed, and reliability. All nodes on a mesh must use compatible settings to communicate.
+Predefined radio settings that balance range, speed, and reliability. All nodes on a mesh must use the same preset to communicate. The values below come from the firmware's `modemPresetToParams()` table.
 
-#### LONG_FAST (Default)
-
-- **Range**: Maximum
-- **Speed**: Fast
-- **Bandwidth**: 250kHz
-- **Spreading Factor**: 11
-- **Coding Rate**: 4/8
-- **Best For**: Most deployments, good balance
-
-#### LONG_SLOW
-
-- **Range**: Maximum
-- **Speed**: Slowest
-- **Bandwidth**: 250kHz
-- **Spreading Factor**: 12
-- **Coding Rate**: 4/8
-- **Best For**: Extreme range, low traffic networks
-
-#### LONG_MODERATE
-
-- **Range**: Maximum
-- **Speed**: Moderately Fast
-- **Bandwidth**: 250kHz
-- **Spreading Factor**: 11
-- **Coding Rate**: 4/6
-- **Best For**: Good range with better throughput than LONG_SLOW
-
-#### MEDIUM_SLOW
-
-- **Range**: Medium
-- **Speed**: Slow
-- **Bandwidth**: 250kHz
-- **Spreading Factor**: 11
-- **Coding Rate**: 4/8
-- **Best For**: Moderate range deployments
-
-#### MEDIUM_FAST
-
-- **Range**: Medium
-- **Speed**: Fast
-- **Bandwidth**: 250kHz
-- **Spreading Factor**: 10
-- **Coding Rate**: 4/7
-- **Best For**: Urban deployments with moderate coverage needs
-
-#### MEDIUM_TURBO
+| Preset | Bandwidth | SF | CR | Firmware | Notes |
+|---|---|---|---|---|---|
+| LONG_FAST (default) | 250 kHz | 11 | 4/5 | all | Most deployments |
+| LONG_SLOW | 125 kHz | 12 | 4/8 | all | Deprecated upstream |
+| LONG_MODERATE | 125 kHz | 11 | 4/8 | all | More range than LONG_FAST, slower |
+| LONG_TURBO | 500 kHz | 11 | 4/8 | all | LONG_FAST range class at 500 kHz |
+| MEDIUM_SLOW | 250 kHz | 10 | 4/5 | all | |
+| MEDIUM_FAST | 250 kHz | 9 | 4/5 | all | |
+| MEDIUM_TURBO | 500 kHz | 9 | 4/5 | 2.8+ | |
+| SHORT_SLOW | 250 kHz | 8 | 4/5 | all | |
+| SHORT_FAST | 250 kHz | 7 | 4/5 | all | Dense local meshes |
+| SHORT_TURBO | 500 kHz | 7 | 4/5 | all | Fastest |
+| LITE_FAST | 125 kHz | 9 | 4/5 | 2.8+ | EU_866 only |
+| LITE_SLOW | 125 kHz | 10 | 4/5 | 2.8+ | EU_866 only |
+| NARROW_FAST | 62.5 kHz | 7 | 4/6 | 2.8+ | EU_N_868 and amateur 70cm / 1.25m only |
+| NARROW_SLOW | 62.5 kHz | 8 | 4/6 | 2.8+ | EU_N_868 and amateur 70cm / 1.25m only |
+| TINY_FAST | 15.6 kHz | 7 | 4/5 | 2.8+ | Amateur 2m only |
+| TINY_SLOW | 15.6 kHz | 8 | 4/6 | 2.8+ | Amateur 2m only |
 
 ::: tip Firmware 2.8 early preview
-See [What is MeshMonitor's "firmware 2.8 early preview" decode support?](/faq#firmware-2-8-early-preview) — 2.8 is not yet officially released.
+See [What is MeshMonitor's "firmware 2.8 early preview" decode support?](/faq#firmware-2-8-early-preview).
 :::
 
-- **Range**: Medium
-- **Speed**: Faster than MEDIUM_FAST
-- **Bandwidth**: 500kHz (widest)
-- **Spreading Factor**: 9
-- **Coding Rate**: 4/5
-- **Best For**: Medium-range deployments that want more throughput than the 250kHz medium presets
+#### Which presets the picker shows
 
-#### SHORT_SLOW
+The preset list only offers presets the connected radio will accept, because firmware does not reject a bad preset: it quietly swaps in a different one.
 
-- **Range**: Short
-- **Speed**: Slow
-- **Bandwidth**: 250kHz
-- **Spreading Factor**: 9
-- **Coding Rate**: 4/8
-- **Best For**: Dense local networks
+- **Firmware 2.8 and newer** (or a version MeshMonitor has not seen yet): each region has its own preset list, copied from the firmware. Standard regions (US, EU_433, ANZ, and so on) get the ten standard presets. EU_868 gets the seven presets up to 250 kHz. EU_866 gets only LITE_FAST / LITE_SLOW, EU_N_868 and the amateur 70cm and 1.25m bands get only NARROW_FAST / NARROW_SLOW, and the amateur 2m bands get only TINY_FAST / TINY_SLOW.
+- **Firmware older than 2.8**: the 2.8-only presets (LITE, NARROW, TINY and MEDIUM_TURBO) are hidden, since older firmware would run LONG_FAST settings in their place. A preset is also hidden when its bandwidth is wider than the region's band (EU_868 hides the 500 kHz presets).
 
-#### SHORT_FAST
+Firmware 2.8 treats EU_868, EU_866 and EU_N_868 as one family: its own apps list all their presets, and picking a LITE or NARROW preset on EU_868 makes the radio change its region. MeshMonitor does not do this; pick the region first (EU_866 for LITE, EU_N_868 for NARROW) and its presets appear.
 
-- **Range**: Short
-- **Speed**: Fast
-- **Bandwidth**: 250kHz
-- **Spreading Factor**: 7
-- **Coding Rate**: 4/5
-- **Best For**: High-density local networks, fastest messaging
-
-#### SHORT_TURBO
-
-- **Range**: Very Short
-- **Speed**: Fastest
-- **Bandwidth**: 500kHz (widest)
-- **Spreading Factor**: 7
-- **Coding Rate**: 4/5
-- **Best For**: Close-range, high-speed applications
+If the radio is already on a preset that the list would hide, MeshMonitor still shows it as selected, with a warning, rather than changing it for you. If the radio reports a preset MeshMonitor does not recognize, the LoRa section refuses to save until you pick one, so it never writes a guess back to the radio.
 
 **Side Effects**:
 - All mesh participants must use compatible settings
 - Changing presets may disconnect you from the network
 - Slower presets = longer airtime = more power usage
 - Faster presets = shorter range
+
+### Custom Parameter Recipes
+
+When **Use Preset** is off, a **Load recipe** menu above the bandwidth field fills bandwidth, spreading factor and coding rate from a named community profile. It does not change the region, frequency slot or override frequency, and nothing reaches the radio until you save.
+
+| Recipe | Bandwidth | SF | CR | Source |
+|---|---|---|---|---|
+| LongModTurbo | 500 kHz | 11 | 4/8 | Proposed in [meshtastic/firmware#8214](https://github.com/meshtastic/firmware/issues/8214) (not merged) |
+
+A recipe is disabled when the region cannot use its bandwidth: when the band is too narrow (EU_868 cannot fit 500 kHz), or on firmware 2.8 when it is wider than the region's widest official preset. Loading one asks you to confirm first, because:
+
+- Every node on your mesh must use exactly the same custom settings, or they will not hear each other.
+- A recipe is not an official preset. Nodes on any official preset, including LONG_TURBO, cannot talk to it.
+- Your frequency slot is left alone, so nodes meant to talk to each other must also share the same slot.
 
 ### Region
 

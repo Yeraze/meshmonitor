@@ -600,7 +600,7 @@ A hop MeshMonitor cannot resolve stays as raw hex. When several repeaters share 
 
 ## Forwarding
 
-Forwarding copies matching incoming DMs or channel messages to one contact or another channel on the same MeshCore source, with an on/off checkbox per rule. It uses the same rules and fixed limits as Meshtastic forwarding (5 forwards per rule per minute, 200 characters, no loops) and stays read-only in receive-only mode. See [Forwarding](/features/automation#forwarding) for details.
+Forwarding copies matching incoming DMs or channel messages to one contact or another channel on the same MeshCore source, with an on/off checkbox per rule. It uses the same rules and fixed limits as Meshtastic forwarding (5 forwards per rule per minute, 200 characters, no loops) and stays read-only in receive-only mode. A master switch in the section header, and the FWD pill on the source's sidebar card, turn all forwarding on that source on or off at once. See [Forwarding](/features/automation#forwarding) for details.
 
 ## Timer Triggers
 

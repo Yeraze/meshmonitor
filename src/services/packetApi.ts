@@ -216,3 +216,51 @@ export const getRelayNodes = async (sourceId?: string): Promise<RelayNodeOption[
 export const clearPackets = async (): Promise<{ message: string; deletedCount: number }> => {
   return api.delete<{ message: string; deletedCount: number }>('/api/packets');
 };
+
+/** One remote node in the Live Mesh Activity window (#5557). */
+export interface NodeActivityNode {
+  nodeNum: number;
+  nodeId: string | null;
+  shortName: string | null;
+  longName: string | null;
+  packets: number;
+  extraReceptions: number;
+  lastSnr: number | null;
+  avgSnr: number | null;
+  lastHops: number | null;
+  minHops: number | null;
+  /** ms epoch */
+  lastHeard: number;
+}
+
+export interface NodeActivityResponse {
+  enabled: boolean;
+  /** ms epoch the server used as the window start */
+  windowStart: number;
+  /** oldest retained packet_log row (ms), across all sources; null when empty */
+  coverageStart: number | null;
+  /** true when the retained log starts inside the window */
+  truncated: boolean;
+  nodes: NodeActivityNode[];
+}
+
+/**
+ * Fetch per-remote-node activity for one source in a rolling window
+ * (Live Mesh Activity widget, #5557). The route uses the ok() envelope,
+ * so this unwraps `data`.
+ */
+export const getNodeActivity = async (
+  sourceId: string,
+  windowMinutes: number,
+  transport: 'rf' | 'all',
+): Promise<NodeActivityResponse> => {
+  const params = new URLSearchParams({
+    sourceId,
+    windowMinutes: String(windowMinutes),
+    transport,
+  });
+  const body = await api.get<{ success: boolean; data: NodeActivityResponse }>(
+    `/api/packets/stats/node-activity?${params.toString()}`,
+  );
+  return body.data;
+};
