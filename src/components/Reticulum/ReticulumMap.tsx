@@ -20,6 +20,7 @@ import { useTranslation } from 'react-i18next';
 import { Popup, Tooltip } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import { useSettings } from '../../contexts/SettingsContext';
+import { useBaseMapSettings } from '../map/useBaseMapSettings';
 import { BaseMap } from '../map/BaseMap';
 import { MapLoadingOverlay } from '../map/MapLoadingOverlay';
 import { NodeMarkersLayer, type NodeMarkerDescriptor } from '../map/layers/NodeMarkersLayer';
@@ -55,7 +56,8 @@ function shortHash(hash: string): string {
 
 export const ReticulumMap: React.FC<ReticulumMapProps> = ({ destinations, paths, loading = false, resizeTrigger }) => {
   const { t } = useTranslation();
-  const { mapTileset, customTilesets, setMapTileset, cartoApiKey, activeStyleJson } = useSettings();
+  const { setMapTileset } = useSettings();
+  const baseMapSettings = useBaseMapSettings();
 
   const positioned = useMemo(
     () => destinations.filter(d =>
@@ -144,10 +146,7 @@ export const ReticulumMap: React.FC<ReticulumMapProps> = ({ destinations, paths,
         key={`${center[0]}-${center[1]}-${zoom}`}
         center={center}
         zoom={zoom}
-        tilesetId={mapTileset}
-        customTilesets={customTilesets}
-        cartoApiKey={cartoApiKey}
-        styleJson={activeStyleJson ?? undefined}
+        {...baseMapSettings}
         onTilesetChange={setMapTileset}
         resizeTrigger={resizeTrigger}
       >

@@ -8,6 +8,8 @@ import { TilesetSelector } from '../TilesetSelector';
 import MapResizeHandler from '../MapResizeHandler';
 import { MapSidebar } from './MapSidebar';
 import { ZoomCeilingBackstop } from './ZoomCeilingBackstop';
+import { WorldFillMinZoom } from './WorldFillMinZoom';
+import { WORLD_BOUNDS } from './worldBounds';
 import './leafletDefaultIcon';
 import './BaseMap.css';
 
@@ -173,6 +175,14 @@ export function BaseMap({
   if (attributionControl !== undefined) interactionOptions.attributionControl = attributionControl;
   if (preferCanvas !== undefined) interactionOptions.preferCanvas = preferCanvas;
 
+  // One world, no copies (#5556). Leaflet's defaults let a zoomed-out map
+  // repeat the world sideways, but markers only ever draw on the first copy,
+  // so the copies show tiles with no nodes. These are always-defined values,
+  // so they do not trip the undefined-key trap above. `minZoom` is NOT a map
+  // option here: `WorldFillMinZoom` sets it from the container size instead.
+  // The 3D view (Base3DMap) is MapLibre-native and draws its sources on every
+  // copy, so it does not share the bug and is left alone.
+
   return (
     <>
       <MapContainer
@@ -181,6 +191,8 @@ export function BaseMap({
         ref={mapRef}
         className={className}
         style={{ height: '100%', width: '100%', ...mapStyle }}
+        maxBounds={WORLD_BOUNDS}
+        maxBoundsViscosity={1}
         {...interactionOptions}
       >
         {tileset.isVector
@@ -203,6 +215,7 @@ export function BaseMap({
                 attribution={tileset.attribution}
                 maxZoom={tileset.maxZoom}
                 maxNativeZoom={tileset.maxNativeZoom}
+                noWrap
                 // Damp ESRI World_Imagery's over-saturated synthetic water blue
                 // on our provided satellite tilesets (#4860). Base tiles only —
                 // the hybrid label overlay below is left untouched.
@@ -232,6 +245,7 @@ export function BaseMap({
                   attribution={tileset.overlayAttribution ?? tileset.attribution}
                   maxZoom={tileset.maxZoom}
                   maxNativeZoom={tileset.maxNativeZoom}
+                  noWrap
                   zIndex={10}
                 />
               )}
@@ -249,6 +263,9 @@ export function BaseMap({
         {/* Before `children`, so the map has a finite maxZoom by the time a
             cluster group mounts (#5516). */}
         <ZoomCeilingBackstop maxZoom={tileset.maxZoom} />
+        {/* Before `children` too, so a child's fitBounds already sees the
+            world-fill zoom floor (#5556). */}
+        <WorldFillMinZoom />
         {children}
       </MapContainer>
       {showTilesetSelector && (

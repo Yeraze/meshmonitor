@@ -1,9 +1,9 @@
 /**
- * Migration 189 — packet_log(sourceId, timestamp) index (#5557), SQLite.
+ * Migration 190 — packet_log(sourceId, timestamp) index (#5557), SQLite.
  */
 import Database from 'better-sqlite3';
 import { describe, expect, it } from 'vitest';
-import { migration, PACKET_LOG_SOURCE_TIMESTAMP_INDEX } from './189_packet_log_source_timestamp_index.js';
+import { migration, PACKET_LOG_SOURCE_TIMESTAMP_INDEX } from './190_packet_log_source_timestamp_index.js';
 
 function createPacketLog(db: Database.Database): void {
   db.exec(`
@@ -20,7 +20,7 @@ function createPacketLog(db: Database.Database): void {
   `);
 }
 
-describe('Migration 189 — packet_log source/timestamp index (SQLite)', () => {
+describe('Migration 190 — packet_log source/timestamp index (SQLite)', () => {
   it('creates the index on (sourceId, timestamp) and is idempotent', () => {
     const db = new Database(':memory:');
     createPacketLog(db);

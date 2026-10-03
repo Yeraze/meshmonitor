@@ -20,13 +20,18 @@ vi.mock('react-leaflet', () => ({
         .filter((k) => k in props)
         .join(',')}
       data-prefer-canvas={String((props as { preferCanvas?: boolean }).preferCanvas)}
+      data-max-bounds={JSON.stringify((props as { maxBounds?: unknown }).maxBounds ?? null)}
+      data-max-bounds-viscosity={String((props as { maxBoundsViscosity?: number }).maxBoundsViscosity)}
+      data-has-min-zoom={String('minZoom' in props)}
+      data-has-world-copy-jump={String('worldCopyJump' in props)}
     >
       {children}
     </div>
   ),
-  TileLayer: (props: { url?: string; maxZoom?: number; maxNativeZoom?: number; zIndex?: number; attribution?: string; className?: string }) => (
+  TileLayer: (props: { url?: string; maxZoom?: number; maxNativeZoom?: number; zIndex?: number; attribution?: string; className?: string; noWrap?: boolean }) => (
     <div
       data-testid="raster-tile"
+      data-nowrap={String(props.noWrap)}
       data-url={props.url}
       data-maxzoom={String(props.maxZoom)}
       data-maxnativezoom={props.maxNativeZoom === undefined ? '' : String(props.maxNativeZoom)}
@@ -388,5 +393,37 @@ describe('BaseMap', () => {
     );
     // Re-importing (simulating a second module evaluation) must not throw.
     await expect(import('./leafletDefaultIcon')).resolves.toBeDefined();
+  });
+
+  // #5556: one world, no copies.
+  describe('single world (#5556)', () => {
+    it('locks the map inside one world with full viscosity', () => {
+      render(<BaseMap center={[0, 0]} zoom={2} />);
+      const mc = screen.getByTestId('map-container');
+      expect(JSON.parse(mc.getAttribute('data-max-bounds')!)).toEqual([
+        [-85.0511287798066, -180],
+        [85.0511287798066, 180],
+      ]);
+      expect(mc.getAttribute('data-max-bounds-viscosity')).toBe('1');
+      // Copies are disabled, not chased: no worldCopyJump.
+      expect(mc.getAttribute('data-has-world-copy-jump')).toBe('false');
+    });
+
+    it('leaves minZoom off the map options (WorldFillMinZoom sets it from the container size)', () => {
+      render(<BaseMap center={[0, 0]} zoom={2} />);
+      expect(screen.getByTestId('map-container').getAttribute('data-has-min-zoom')).toBe('false');
+    });
+
+    it('keeps omitted interaction props out of the options next to the world bounds', () => {
+      render(<BaseMap center={[0, 0]} zoom={2} />);
+      expect(screen.getByTestId('map-container').getAttribute('data-own-option-keys')).toBe('');
+    });
+
+    it('stops raster base and overlay tiles from wrapping', () => {
+      render(<BaseMap center={[0, 0]} zoom={2} tilesetId="esriHybrid" />);
+      const tiles = screen.getAllByTestId('raster-tile');
+      expect(tiles).toHaveLength(2);
+      for (const tile of tiles) expect(tile.getAttribute('data-nowrap')).toBe('true');
+    });
   });
 });

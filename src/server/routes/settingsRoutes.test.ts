@@ -1044,16 +1044,17 @@ describe('settingsRoutes', () => {
 
     // (e) the polarity pin: a valid key in NEITHER PER_SOURCE_SETTINGS_KEYS nor
     // GLOBAL_ONLY_SETTINGS_KEYS must still be written per-source. Fails if
-    // anyone re-inverts the filter into an allow-list (§2.2).
+    // anyone re-inverts the filter into an allow-list (§2.2). (Was temperatureUnit
+    // until #5558 made the UI preferences global-only.)
     it('(e) a valid key in neither constant list is still written per-source (default-allow polarity pin)', async () => {
       const app = createApp(adminUser);
       const res = await request(app)
         .post('/api/settings?sourceId=mqtt-broker-1')
-        .send({ temperatureUnit: 'celsius' })
+        .send({ telemetryVisualizationHours: '48' })
         .expect(200);
 
       const [, calledSettings] = (databaseService.settings.setSourceSettings as any).mock.calls[0];
-      expect(calledSettings.temperatureUnit).toBe('celsius');
+      expect(calledSettings.telemetryVisualizationHours).toBe('48');
       expect(res.body.data.ignoredKeys).toEqual([]);
     });
 

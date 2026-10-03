@@ -933,7 +933,7 @@ export class PacketLogRepository extends BaseRepository {
    * - "Last" SNR/hops come from the row with the highest id in the window
    *   (ids grow with insertion order).
    *
-   * Served by `idx_packet_log_source_timestamp` (migration 189). Polled every
+   * Served by `idx_packet_log_source_timestamp` (migration 190). Polled every
    * 10 s per open widget; the window scan stays bounded by the packet log
    * cap (default 1000 rows).
    */

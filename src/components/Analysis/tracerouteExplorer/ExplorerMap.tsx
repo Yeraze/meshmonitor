@@ -15,6 +15,7 @@ import { CircleMarker, Polyline, Tooltip, useMap, useMapEvents } from 'react-lea
 import { BaseMap } from '../../map/BaseMap';
 import { TraceroutePathsLayer } from '../../map/layers/TraceroutePathsLayer';
 import { useSettings } from '../../../contexts/SettingsContext';
+import { useBaseMapSettings } from '../../map/useBaseMapSettings';
 import { snrToColor } from '../../../utils/mapHelpers';
 import { decomposeTraceroute, type TracerouteRenderSegment } from '../../../utils/tracerouteSegments';
 import {
@@ -129,8 +130,8 @@ export const ExplorerMap: React.FC<ExplorerMapProps> = ({
   onBackgroundClick,
 }) => {
   const { t } = useTranslation();
-  const { mapTileset, customTilesets, overlayColors, defaultMapCenterLat, defaultMapCenterLon, defaultMapCenterZoom } =
-    useSettings();
+  const { overlayColors, defaultMapCenterLat, defaultMapCenterLon, defaultMapCenterZoom } = useSettings();
+  const baseMapSettings = useBaseMapSettings();
   const accent = useCssColor('--color-accent', '#89b4fa');
   const accentAlt = useCssColor('--color-accent-alt', '#cba6f7');
   const errorColor = useCssColor('--color-error', '#f38ba8');
@@ -180,8 +181,7 @@ export const ExplorerMap: React.FC<ExplorerMapProps> = ({
       <BaseMap
         center={center}
         zoom={defaultMapCenterZoom ?? 2}
-        tilesetId={mapTileset}
-        customTilesets={customTilesets}
+        {...baseMapSettings}
         scrollWheelZoom
       >
         <FitToNodes points={allPoints} fitKey={fitKey} />
