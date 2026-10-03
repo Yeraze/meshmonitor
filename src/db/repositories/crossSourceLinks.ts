@@ -63,17 +63,17 @@ export class CrossSourceLinksRepository extends BaseRepository {
     super(db, dbType);
   }
 
-  private normalize(row: any): DbCrossSourceLink {
+  private normalize(row: Record<string, unknown>): DbCrossSourceLink {
     const num = (v: unknown): number | null => (v == null ? null : Number(v));
     return {
       id: Number(row.id),
-      txSourceId: row.txSourceId,
-      txNodeId: row.txNodeId,
-      rxSourceId: row.rxSourceId,
-      rxNodeId: row.rxNodeId,
-      protocol: row.protocol,
-      kind: row.kind,
-      transportClass: row.transportClass,
+      txSourceId: String(row.txSourceId),
+      txNodeId: String(row.txNodeId),
+      rxSourceId: String(row.rxSourceId),
+      rxNodeId: String(row.rxNodeId),
+      protocol: row.protocol as CrossSourceLinkProtocol,
+      kind: row.kind as CrossSourceLinkKind,
+      transportClass: row.transportClass as CrossSourceLinkTransport,
       hourBucket: Number(row.hourBucket),
       count: Number(row.count),
       snrMin: num(row.snrMin),
@@ -169,7 +169,7 @@ export class CrossSourceLinksRepository extends BaseRepository {
       ))
       .orderBy(desc(t.hourBucket))
       .limit(Math.max(1, Math.min(args.limit ?? 20_000, 50_000)));
-    return rows.map((r: any) => this.normalize(r));
+    return (rows as Array<Record<string, unknown>>).map((r) => this.normalize(r));
   }
 
   /** Retention: drop buckets that started before `cutoffMs`. */

@@ -336,6 +336,9 @@ export interface ActiveSchema {
   // Coverage Report saved surveys, global — no sourceId (#5277 Phase 4b WP1)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any -- #5277 matches the existing ActiveSchema per-dialect table pattern; typing burn-down is #3962 Phase 6
   coverageSurveys: any;
+
+  // Cross-source "heard here" link aggregates, two source ids per row (#5561)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- #5561 matches the existing ActiveSchema per-dialect table pattern; typing burn-down is #3962 Phase 6
   crossSourceLinks: any;
 
   // Translation cache (global) + per-source message links (#5520)

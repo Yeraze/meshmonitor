@@ -292,6 +292,14 @@ export function evaluateMqttLink(
   if (typeof rawFrom !== 'number') return none('no-from');
   const fromNum = rawFrom >>> 0;
 
+  // Cheap pre-check before the full gateway evaluation: a busy feed carries
+  // thousands of packets a minute and almost none involve our own radios.
+  const rawRelay = (input.envelope.packet as { relayNode?: number | null }).relayNode;
+  const maybeOrigin = index.originForNodeNum(fromNum, input.sourceId) !== null;
+  const maybeRelay = typeof rawRelay === 'number' && rawRelay > 0
+    && index.relayCandidatesForByte(rawRelay, input.sourceId).length > 0;
+  if (!maybeOrigin && !maybeRelay) return none('no-correlation');
+
   const evalResult = evaluateMqttCoverageReception({
     sourceId: input.sourceId,
     envelope: input.envelope,
