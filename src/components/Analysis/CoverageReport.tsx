@@ -52,6 +52,7 @@ import {
 } from '../../utils/coverageTimeRange';
 import { detectCoverageGaps } from '../../utils/coverageGaps';
 import { summarizeCoverage } from '../../utils/coverageSummary';
+import { summarizeCrossSourceCoverage } from '../../utils/coverageCrossSource';
 import { binFixesToGrid } from '../../utils/coverageGrid';
 import type {
   CoverageDeepLink,
@@ -67,6 +68,7 @@ import { CoverageSummaryPanel } from './CoverageSummaryPanel';
 import { CoverageDistanceChart } from './CoverageDistanceChart';
 import { CoverageExportButtons } from './CoverageExportButtons';
 import { CoverageSurveyBar } from './CoverageSurveyBar';
+import { CoverageCrossSourceSummary } from './CoverageCrossSourceSummary';
 import SearchableSelect, { type SearchableSelectOption } from '../common/SearchableSelect';
 import styles from './CoverageReport.module.css';
 
@@ -128,6 +130,8 @@ export const CoverageReport: React.FC<CoverageReportProps> = ({ initialLink }) =
   const [deselectedReceiverIds, setDeselectedReceiverIds] = useState<Set<string>>(new Set());
   const [hops, setHops] = useState<number | ''>('');
   const [hopsMode, setHopsMode] = useState<CoverageHopsMode>('exact');
+  // #5560: only fixes sent by another of our sources.
+  const [crossSourceOnly, setCrossSourceOnly] = useState(false);
   const [metric, setMetric] = useState<CoverageMetric>('snr');
   const [guidanceOpen, setGuidanceOpen] = useState(false);
   const [view, setView] = useState<CoverageMapView>('dots');
@@ -222,10 +226,16 @@ export const CoverageReport: React.FC<CoverageReportProps> = ({ initialLink }) =
     const options: SearchableSelectOption[] = senders.map((s) => {
       const displaySenderId = formatCoverageNodeId(s.senderId);
       const label = s.longName || s.shortName || displaySenderId;
+      // #5560: mark senders that are one of our own sources' radios.
+      const own = s.senderIsOwnSource
+        ? ` · ${t('analysis.coverage.sender_own_source', 'our source {{source}}', {
+            source: s.ownSourceName ?? s.ownSourceId ?? '',
+          })}`
+        : '';
       return {
         value: s.senderId,
-        label: `${label} (${displaySenderId}) — ${s.fixCount}`,
-        keywords: [s.longName, s.shortName, s.senderId].filter(Boolean).join(' '),
+        label: `${label} (${displaySenderId}) — ${s.fixCount}${own}`,
+        keywords: [s.longName, s.shortName, s.senderId, s.ownSourceName].filter(Boolean).join(' '),
       };
     });
     if (senderId && !senders.some((s) => s.senderId === senderId)) {
@@ -236,7 +246,14 @@ export const CoverageReport: React.FC<CoverageReportProps> = ({ initialLink }) =
       });
     }
     return options;
-  }, [sendersQuery.data, senderId]);
+  }, [sendersQuery.data, senderId, t]);
+
+  // The cross-source toggle only shows when it can match something (or is
+  // already on), so single-source installs never see it.
+  const hasOwnSourceSenders = useMemo(
+    () => (sendersQuery.data?.senders ?? []).some((s) => s.senderIsOwnSource),
+    [sendersQuery.data],
+  );
 
   const receivers = useMemo(() => receiversQuery.data?.receivers ?? [], [receiversQuery.data]);
   const mqttSources = useMemo(() => receiversQuery.data?.mqttSources ?? [], [receiversQuery.data]);
@@ -258,8 +275,12 @@ export const CoverageReport: React.FC<CoverageReportProps> = ({ initialLink }) =
     for (const r of receivers) {
       if (r.sourceName) map.set(r.sourceId, r.sourceName);
     }
+    // #5560: a sender's own source may not be a receiver in this window.
+    for (const s of sendersQuery.data?.senders ?? []) {
+      if (s.ownSourceId && s.ownSourceName && !map.has(s.ownSourceId)) map.set(s.ownSourceId, s.ownSourceName);
+    }
     return map;
-  }, [receivers]);
+  }, [receivers, sendersQuery.data]);
 
   // Source-scoped receiver filter (#5277 P2 §2.5/§2.9), built from the
   // composite-keyed `deselectedReceiverIds` set — carry-over (a): the same
@@ -364,6 +385,7 @@ export const CoverageReport: React.FC<CoverageReportProps> = ({ initialLink }) =
       senderId: senderId || undefined,
       hops: hops === '' ? undefined : hops,
       hopsMode,
+      crossSourceOnly,
     },
     receptionsEnabled,
   );
@@ -396,6 +418,7 @@ export const CoverageReport: React.FC<CoverageReportProps> = ({ initialLink }) =
     [singleSender, fixesAsGapInputs, protocol, configuredIntervalSec],
   );
   const summary = useMemo(() => summarizeCoverage(items), [items]);
+  const crossSourceRows = useMemo(() => summarizeCrossSourceCoverage(items), [items]);
   const gridCells = useMemo(
     () => (view === 'grid' ? binFixesToGrid(fixes, cellSize, metric) : []),
     [view, fixes, cellSize, metric],
@@ -443,8 +466,8 @@ export const CoverageReport: React.FC<CoverageReportProps> = ({ initialLink }) =
   const fitKey = useMemo(() => {
     const receiversPart = allReceiversSelected ? 'all' : [...selectedReceiverKeys].sort().join(',');
     const rangePart = preset === 'custom' ? `custom:${customFrom}:${customTo}` : preset;
-    return `${senderId}|${receiversPart}|${hops}|${hopsMode}|${rangePart}`;
-  }, [senderId, selectedReceiverKeys, allReceiversSelected, hops, hopsMode, preset, customFrom, customTo]);
+    return `${senderId}|${receiversPart}|${hops}|${hopsMode}|${rangePart}|${crossSourceOnly ? 'x' : ''}`;
+  }, [senderId, selectedReceiverKeys, allReceiversSelected, hops, hopsMode, preset, customFrom, customTo, crossSourceOnly]);
 
   const isLoading = receiversQuery.isLoading || sendersQuery.isLoading || receptionsQuery.isLoading;
   const isEmpty = receptionsEnabled && !isLoading && items.length === 0;
@@ -584,6 +607,23 @@ export const CoverageReport: React.FC<CoverageReportProps> = ({ initialLink }) =
                 onChange={(e) => setHopsMode(e.target.checked ? 'max' : 'exact')}
               />
               {t('analysis.coverage.hops_up_to', 'Up to this many hops')}
+            </label>
+          )}
+
+          {(hasOwnSourceSenders || crossSourceOnly) && (
+            <label
+              className="reports-controls__field"
+              title={t(
+                'analysis.coverage.cross_source_only_hint',
+                'Show only fixes sent by one of your own sources and heard by another of them.',
+              )}
+            >
+              <input
+                type="checkbox"
+                checked={crossSourceOnly}
+                onChange={(e) => setCrossSourceOnly(e.target.checked)}
+              />
+              {t('analysis.coverage.cross_source_only', 'Cross-source only')}
             </label>
           )}
 
@@ -745,6 +785,13 @@ export const CoverageReport: React.FC<CoverageReportProps> = ({ initialLink }) =
             receivers={receivers}
             distanceUnit={distanceUnit}
             truncated={receptionsQuery.data?.truncated ?? false}
+          />
+          <CoverageCrossSourceSummary
+            rows={crossSourceRows}
+            sourceNames={sourceNames}
+            receiverNames={receiverNames}
+            sinceMs={sinceMs}
+            untilMs={untilMs}
           />
           <CoverageDistanceChart
             points={summary.distancePoints}

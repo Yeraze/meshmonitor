@@ -297,6 +297,35 @@ It aggregates confirmed violations across every MQTT source you can read — no 
 MQTT packet capture on any of them just to see gateway violation history. See
 [ok_to_mqtt Violations](/features/analysis-reports#ok-to-mqtt-violations) for details.
 
+## Cross-source tags (Unified Packet Monitor)
+
+The Packet Monitor only logs **TX** for packets MeshMonitor itself sends. A
+router's own flood relays never show as TX rows. With two or more sources,
+though, one radio hears the other, and the Unified Packet Monitor uses that
+to show what your radios put on the air:
+
+- **Sent by our source** (solid tag with the source name): the packet's
+  sender is the local node of another of your sources. This is proven: only
+  that radio stamps its node number as the sender.
+- **Likely relayed by our source** (dashed tag, name followed by `?`): the
+  packet came from elsewhere, took at least one hop, and its relay byte
+  matches the low byte of one of your radios' node numbers. One byte is not
+  unique on a busy mesh, so this is an inference. The tooltip says so, and
+  says when more than one of your sources shares that byte.
+- For MeshCore, a signed advert from one of your companions proves origin,
+  and a relay hash in a flood path gives a likely relay.
+
+The tooltip names the transport that carried the copy: **RF**, **MQTT**, or
+**UDP**. Radios on different LoRa presets cannot hear each other over RF, so
+between them you will only see MQTT or UDP tags.
+
+The **Cross-source** filter (shown when you can read two or more sources)
+narrows the stream to tagged rows.
+
+You only see a tag when you can read **both** sources under Packet Monitor
+permission. Nothing is stored for this; tags are worked out when the page
+loads the rows, so they need packet logging on for the receiving source.
+
 ## Use Cases
 
 The Packet Monitor is useful for:

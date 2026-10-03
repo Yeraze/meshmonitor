@@ -98,6 +98,11 @@ export interface GetCoverageReceptionsArgs {
    */
   receiverFilter?: CoverageReceiverFilterEntry[];
   senderId?: string;
+  /**
+   * Restrict to these sender ids (#5560 "cross-source only": the local nodes
+   * of the caller's readable sources). An empty array matches nothing.
+   */
+  senderIds?: string[];
   hops?: number;
   hopsMode?: CoverageHopsMode;
   pageSize: number;
@@ -388,6 +393,12 @@ export class CoverageReceptionsRepository extends BaseRepository {
 
     if (args.senderId) {
       conditions.push(eq(coverageReceptions.senderId, args.senderId));
+    }
+    if (args.senderIds !== undefined) {
+      if (args.senderIds.length === 0) {
+        return { items: [], pageSize, hasMore: false, nextCursor: null };
+      }
+      conditions.push(inArray(coverageReceptions.senderId, args.senderIds));
     }
     if (args.hops !== undefined && args.hops !== null) {
       conditions.push(isNotNull(coverageReceptions.hopsAway));

@@ -250,6 +250,54 @@ async function selectSender(user: ReturnType<typeof userEvent.setup>, query: str
   await user.click(screen.getByRole('option', { name: optionName }));
 }
 
+describe('CoverageReport cross-source (#5560)', () => {
+  it('hides the cross-source toggle when no sender is one of our sources', () => {
+    renderReport();
+    expect(screen.queryByRole('checkbox', { name: /Cross-source only/ })).not.toBeInTheDocument();
+    expect(lastReceptionsFilters().crossSourceOnly).toBe(false);
+    expect(screen.queryByTestId('coverage-cross-source-summary')).not.toBeInTheDocument();
+  });
+
+  it('shows the toggle for an own-source sender and passes crossSourceOnly to the query', () => {
+    useCoverageSenders.mockReturnValue({
+      data: {
+        senders: [{ ...SENDERS[0], senderIsOwnSource: true, ownSourceId: 'src-b', ownSourceName: 'Source B' }],
+        truncated: false,
+      },
+      isLoading: false,
+      refetch: vi.fn(),
+    });
+    renderReport();
+    const toggle = screen.getByRole('checkbox', { name: /Cross-source only/ });
+    fireEvent.click(toggle);
+    expect(lastReceptionsFilters().crossSourceOnly).toBe(true);
+  });
+
+  it('renders the summary row for cross-source receptions', () => {
+    useCoverageSenders.mockReturnValue({
+      data: {
+        senders: [{ ...SENDERS[0], senderIsOwnSource: true, ownSourceId: 'src-b', ownSourceName: 'Source B' }],
+        truncated: false,
+      },
+      isLoading: false,
+      refetch: vi.fn(),
+    });
+    useCoverageReceptions.mockReturnValue({
+      data: {
+        items: [1, 2].map((i) => ({
+          ...makeReception(i), senderIsOwnSource: true, senderSourceId: 'src-b', crossSourceTransport: 'rf',
+        })),
+        truncated: false,
+      },
+      isLoading: false,
+      refetch: vi.fn(),
+    });
+    renderReport();
+    const summary = screen.getByTestId('coverage-cross-source-summary');
+    expect(within(summary).getByText(/2 fixes from Source B heard by Source A over/)).toBeInTheDocument();
+  });
+});
+
 describe('CoverageReport', () => {
   it('defaults to a 24h window, all receivers, no sender, no hops filter', () => {
     renderReport();

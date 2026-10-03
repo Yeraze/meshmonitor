@@ -268,6 +268,26 @@ receptions; the survey stays and shows what's left.
 **Backups** include saved surveys and the receptions inside their windows.
 Other receptions are not backed up.
 
+## Heard between your sources
+
+If you run more than one source, one of your radios can be the survey
+sender and another the receiver. The report marks those fixes:
+
+- In the **Sender** picker, a sender that is one of your own sources reads
+  "our source <name>".
+- **Cross-source only** (shown once such a sender exists) keeps just the
+  fixes one of your sources sent and another heard.
+- Under the summary, **Heard between your sources** lists one row per
+  receiver: "12 fixes from Radio A heard by Radio B over 24h", with how the
+  copy arrived (**RF**, or **MQTT gateway (RF)** when a gateway's radio heard
+  it) and the median and best SNR.
+
+Two radios on different LoRa presets cannot hear each other over RF, so
+expect no RF rows between them. A gateway row can still appear.
+
+You only see this when you can read **both** sources. If you can read just
+one, its rows look like any other and nothing names the other source.
+
 ## Privacy
 
 A position only appears on the Coverage Report if it would also appear on

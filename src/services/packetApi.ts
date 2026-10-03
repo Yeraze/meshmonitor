@@ -185,6 +185,7 @@ export const getUnifiedPackets = async (
   if (filters?.transport_mechanism !== undefined) params.append('transport_mechanism', filters.transport_mechanism.toString());
   if (filters?.from_node !== undefined) params.append('from_node', filters.from_node.toString());
   if (filters?.sourceId !== undefined) params.append('sourceId', filters.sourceId);
+  if (filters?.crossSource !== undefined) params.append('crossSource', filters.crossSource);
   return api.get<UnifiedPacketsResponse>(`/api/unified/packets?${params.toString()}`);
 };
 
