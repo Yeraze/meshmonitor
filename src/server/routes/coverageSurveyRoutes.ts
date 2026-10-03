@@ -255,7 +255,13 @@ router.post('/', requireAuth(), async (req: Request, res: Response) => {
     if (endAt === null) {
       const liveExisting = await databaseService.coverageSurveys.getLiveSurveyForSender(senderId, nowMs);
       if (liveExisting) {
-        return fail(res, 409, 'SURVEY_ALREADY_LIVE', 'A live survey already exists for this sender');
+        // #5544: name the blocking survey so the client can select it (its
+        // Stop button then appears for the creator/admin). The id is not a
+        // leak: the caller already passed the sender-visibility gate above,
+        // and GET / lists this same survey to them.
+        return fail(res, 409, 'SURVEY_ALREADY_LIVE', 'A live survey already exists for this sender', {
+          liveSurveyId: liveExisting.id,
+        });
       }
     }
 

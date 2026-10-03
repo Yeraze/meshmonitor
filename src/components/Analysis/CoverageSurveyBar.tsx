@@ -37,6 +37,7 @@ import { COVERAGE_SURVEY_LIVE_MAX_MS, COVERAGE_SURVEY_MAX_RANGE_MS } from '../..
 import { formatDuration } from '../../utils/telemetryFormat';
 import {
   defaultSurveyName,
+  liveSurveyIdFromError,
   mapSurveyErrorMessage,
   parseIntervalSecInput,
   sortSurveysNewestFirst,
@@ -156,6 +157,45 @@ export const CoverageSurveyBar: React.FC<CoverageSurveyBarProps> = ({
     [surveys, onSelectSurvey],
   );
 
+  /**
+   * #5544: Start hit a live survey for this sender. Select it so the bar's
+   * Stop button appears (creator/admin), instead of leaving the user on
+   * "No survey" with no cue where the running survey is. The cached list
+   * may predate the blocking survey (another session or user started it),
+   * so refetch once when it is missing.
+   */
+  const selectBlockingSurvey = useCallback(
+    async (liveId: string) => {
+      let blocking = surveys.find((s) => s.id === liveId) ?? null;
+      if (!blocking) {
+        const refreshed = await surveysQuery.refetch();
+        blocking = refreshed.data?.find((s) => s.id === liveId) ?? null;
+      }
+      if (!blocking) {
+        showToast(
+          t('analysis.coverage.survey_error_already_live', 'This sender already has a live survey running.'),
+          'error',
+        );
+        return;
+      }
+      setModal(null);
+      onSelectSurvey(blocking);
+      showToast(
+        blocking.canEdit
+          ? t(
+              'analysis.coverage.survey_error_already_live_selected',
+              'This sender already has a live survey running. It is now selected; use Stop survey to end it.',
+            )
+          : t(
+              'analysis.coverage.survey_error_already_live_other_user',
+              'This sender already has a live survey, started by another user. Only its creator or an admin can stop it.',
+            ),
+        'error',
+      );
+    },
+    [surveys, surveysQuery, onSelectSurvey, showToast, t],
+  );
+
   const handleConfirmStart = useCallback(() => {
     if (!senderId) return;
     createSurvey.mutate(
@@ -172,10 +212,28 @@ export const CoverageSurveyBar: React.FC<CoverageSurveyBarProps> = ({
           onSelectSurvey(survey);
           showToast(t('analysis.coverage.survey_started_toast', 'Survey started.'), 'success');
         },
-        onError: (error) => showToast(mapSurveyErrorMessage(t, error), 'error'),
+        onError: (error) => {
+          const liveId = liveSurveyIdFromError(error);
+          if (liveId) {
+            void selectBlockingSurvey(liveId);
+            return;
+          }
+          showToast(mapSurveyErrorMessage(t, error), 'error');
+        },
       },
     );
-  }, [senderId, formName, formNotes, senderLabel, currentReceiversEncoded, createSurvey, onSelectSurvey, showToast, t]);
+  }, [
+    senderId,
+    formName,
+    formNotes,
+    senderLabel,
+    currentReceiversEncoded,
+    createSurvey,
+    onSelectSurvey,
+    selectBlockingSurvey,
+    showToast,
+    t,
+  ]);
 
   const handleConfirmSave = useCallback(() => {
     if (!senderId) return;
