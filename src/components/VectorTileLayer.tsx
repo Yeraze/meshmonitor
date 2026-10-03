@@ -17,6 +17,8 @@ declare module 'leaflet' {
     maxZoom?: number;
     /** Forwarded by the adapter to `new maplibregl.Map(options)`. */
     transformRequest?: (url: string, resourceType?: string) => { url: string } | undefined;
+    /** Forwarded to `maplibregl.Map`. False draws one world only (#5556). */
+    renderWorldCopies?: boolean;
   }
   function maplibreGL(options: MaplibreGLOptions): L.Layer;
 }
@@ -345,6 +347,8 @@ export function VectorTileLayer({ url, attribution, maxZoom = 14, styleJson, sty
         // Appends the Carto key to Carto-CDN requests only; every other host
         // (self-hosted tiles, same-origin styles) passes through untouched.
         transformRequest: createCartoTransformRequest(cartoApiKey),
+        // One world, matching the raster `noWrap` + `maxBounds` in BaseMap (#5556).
+        renderWorldCopies: false,
       });
 
       // Add to map, then register its zoom bounds. The MapLibre adapter

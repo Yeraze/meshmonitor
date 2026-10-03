@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { Popup, Tooltip, Polyline } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import { useSettings, useDisplaySettings } from '../../contexts/SettingsContext';
+import { useBaseMapSettings } from '../map/useBaseMapSettings';
 import {
   getNodeTypeCategory,
   nodePassesTypeFilter,
@@ -101,7 +102,8 @@ interface MeshCoreMapProps {
 
 export const MeshCoreMap: React.FC<MeshCoreMapProps> = ({ contacts, selectedPublicKey, localNodePosition, onNavigateToDm, isLoading = false, resizeTrigger }) => {
   const { t } = useTranslation();
-  const { mapTileset, customTilesets, setMapTileset, cartoApiKey, activeStyleJson } = useSettings();
+  const { mapTileset, setMapTileset } = useSettings();
+  const baseMapSettings = useBaseMapSettings();
   const { timeFormat, dateFormat } = useDisplaySettings();
   const { sourceId } = useSource();
   const csrfFetch = useCsrfFetch();
@@ -487,10 +489,7 @@ export const MeshCoreMap: React.FC<MeshCoreMapProps> = ({ contacts, selectedPubl
         key={`${center[0]}-${center[1]}-${zoom}`}
         center={center}
         zoom={zoom}
-        tilesetId={mapTileset}
-        customTilesets={customTilesets}
-        cartoApiKey={cartoApiKey}
-        styleJson={activeStyleJson ?? undefined}
+        {...baseMapSettings}
         resizeTrigger={resizeTrigger}
       >
         {measureActive && (

@@ -818,6 +818,29 @@ export const GLOBAL_ONLY_SETTINGS_KEYS = new Set<string>([
   // Global retention sweep (#5277), read via getSettingAsync by
   // coverageRetentionService — no per-source variant to read.
   'coverage_retention_days',
+  // User-interface preferences (#5558). SettingsTab saves them only on the
+  // unscoped POST (they live in GLOBAL_SETTINGS_SECTIONS: appearance, units,
+  // sorting) and the server reads them only via getSetting. A source copy used
+  // to win on the sourced GET, so per-source pages showed one theme while the
+  // landing page and Global Settings showed another. The sourced GET now
+  // ignores source copies of every key in this set, and migration 189 removed
+  // the stale rows (its key list is frozen; do not import this set there).
+  'theme',
+  'appearanceMode',
+  'darkTheme',
+  'lightTheme',
+  'iconStyle',
+  'mapPinStyle',
+  'mapPinColorMode',
+  'nodeListStyle',
+  'defaultLandingPage',
+  'temperatureUnit',
+  'distanceUnit',
+  'timeFormat',
+  'dateFormat',
+  'preferredSortField',
+  'preferredSortDirection',
+  'preferredDashboardSortOption',
   // Translation settings (global provider and default config)
   'translationEnabled',
   'translationProvider',
