@@ -6,6 +6,7 @@ import { RequestHandler } from 'express';
 import { filterPacketsByPermissions, getAllowedChannels } from './packetPermissions.js';
 import { ok, fail } from '../utils/apiResponse.js';
 import { sourceManagerRegistry } from '../sourceManagerRegistry.js';
+import { NODE_ACTIVITY_WINDOWS, NODE_ACTIVITY_DEFAULT_WINDOW } from '../../utils/nodeActivity.js';
 import type { NodeTransportClass } from '../../utils/nodeTransport.js';
 
 /** Normalize a `since` timestamp to milliseconds (auto-detect seconds vs ms) */
@@ -258,10 +259,6 @@ router.get('/stats/distribution', requirePacketPermissions, async (req, res) => 
 });
 
 
-/** Rolling windows the Live Mesh Activity widget offers, in minutes (#5557). */
-export const NODE_ACTIVITY_WINDOWS = [1, 5, 10, 30, 60] as const;
-const DEFAULT_NODE_ACTIVITY_WINDOW = 10;
-
 /**
  * GET /api/packets/stats/node-activity (#5557)
  * Per-remote-node activity heard by one source in a rolling window — the
@@ -270,7 +267,8 @@ const DEFAULT_NODE_ACTIVITY_WINDOW = 10;
  *   - sourceId (required)
  *   - windowMinutes: one of 1, 5, 10, 30, 60 (default 10). The server picks
  *     `since`, so a skewed browser clock cannot shift the window.
- *   - transport: 'rf' (default) | 'all' | 'udp' | 'mqtt'
+ *   - transport: 'rf' (default) | 'all' | 'udp' | 'mqtt'. The widget sends
+ *     only 'rf' or 'all'; 'udp' and 'mqtt' match /stats/distribution.
  * Response: ok() envelope —
  *   { enabled, windowStart, coverageStart, truncated, nodes[] }
  *   `coverageStart` is the oldest retained packet_log row (global: the cap and
@@ -285,7 +283,7 @@ router.get('/stats/node-activity', requirePacketPermissions, async (req, res) =>
     }
 
     const rawWindow = typeof req.query.windowMinutes === 'string' ? req.query.windowMinutes : undefined;
-    let windowMinutes = DEFAULT_NODE_ACTIVITY_WINDOW;
+    let windowMinutes = NODE_ACTIVITY_DEFAULT_WINDOW;
     if (rawWindow !== undefined && rawWindow !== '') {
       const n = Number(rawWindow);
       if (!(NODE_ACTIVITY_WINDOWS as readonly number[]).includes(n)) {
@@ -314,6 +312,9 @@ router.get('/stats/node-activity', requirePacketPermissions, async (req, res) =>
           canReadMessages: permReq.canReadMessages === true,
         };
 
+    // getLocalNodeInfo() is on ISourceManager, so this is safe for any source
+    // type. packet_log only holds Meshtastic rows, so a MeshCore or missing
+    // manager just means nothing extra is excluded.
     const localNodeNum = sourceManagerRegistry.getManager(sourceId)?.getLocalNodeInfo()?.nodeNum ?? null;
 
     const [nodes, coverageStart] = await Promise.all([

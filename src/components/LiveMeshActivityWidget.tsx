@@ -20,11 +20,9 @@ import { useSource } from '../contexts/SourceContext';
 import { useSettings } from '../contexts/SettingsContext';
 import { formatTime } from '../utils/datetime';
 import { getNodeActivity, type NodeActivityNode } from '../services/packetApi';
+import { NODE_ACTIVITY_WINDOWS, NODE_ACTIVITY_DEFAULT_WINDOW } from '../utils/nodeActivity';
 import styles from './LiveMeshActivityWidget.module.css';
 
-/** Window choices in minutes; must match NODE_ACTIVITY_WINDOWS on the server. */
-const LIVE_ACTIVITY_WINDOWS = [1, 5, 10, 30, 60] as const;
-const LIVE_ACTIVITY_DEFAULT_WINDOW = 10;
 const LIVE_ACTIVITY_POLL_MS = 10_000;
 /** SNR within this many dB of the window average reads as steady. */
 const TREND_DEADBAND_DB = 1;
@@ -69,7 +67,7 @@ const LiveMeshActivityWidget: React.FC<LiveMeshActivityWidgetProps> = ({
   // Seeded from the saved config; a change is saved back through
   // onWindowChange (editors only) and otherwise stays local to this view.
   const [windowMin, setWindowMin] = useState<number>(() =>
-    (LIVE_ACTIVITY_WINDOWS as readonly number[]).includes(windowMinutes) ? windowMinutes : LIVE_ACTIVITY_DEFAULT_WINDOW,
+    (NODE_ACTIVITY_WINDOWS as readonly number[]).includes(windowMinutes) ? windowMinutes : NODE_ACTIVITY_DEFAULT_WINDOW,
   );
   const [allTransports, setAllTransports] = useState(false);
   const [sortKey, setSortKey] = useState<SortKey>('lastHeard');
@@ -83,6 +81,8 @@ const LiveMeshActivityWidget: React.FC<LiveMeshActivityWidgetProps> = ({
     enabled: !!sourceId,
     refetchInterval: LIVE_ACTIVITY_POLL_MS,
     refetchIntervalInBackground: false,
+    // Fresh for half a poll: a remount inside that time reuses the data
+    // rather than fetching twice.
     staleTime: LIVE_ACTIVITY_POLL_MS / 2,
   });
 
@@ -107,7 +107,8 @@ const LiveMeshActivityWidget: React.FC<LiveMeshActivityWidgetProps> = ({
     return list;
   }, [data, sortKey, sortDesc]);
 
-  const secondsLeft = query.dataUpdatedAt
+  // dataUpdatedAt is 0 until the first fetch lands; show no countdown until then.
+  const secondsLeft = query.dataUpdatedAt > 0
     ? Math.max(0, Math.ceil((query.dataUpdatedAt + LIVE_ACTIVITY_POLL_MS - now) / 1000))
     : null;
 
@@ -276,7 +277,7 @@ const LiveMeshActivityWidget: React.FC<LiveMeshActivityWidgetProps> = ({
         <label className={styles.control}>
           {t('dashboard.widget.live_mesh_activity.window')}
           <select value={windowMin} onChange={e => handleWindowChange(Number(e.target.value))}>
-            {LIVE_ACTIVITY_WINDOWS.map(w => (
+            {NODE_ACTIVITY_WINDOWS.map(w => (
               <option key={w} value={w}>
                 {w === 60
                   ? t('dashboard.widget.live_mesh_activity.window_option_hour')
