@@ -56,6 +56,12 @@ interface RadioConfigurationSectionProps {
 
   // Common
   isExecuting: boolean;
+
+  /**
+   * Target node's firmware version, for the preset filter (#5547). Omitted or
+   * unknown applies the firmware 2.8 region rule.
+   */
+  firmwareVersion?: string | null;
 }
 
 export const RadioConfigurationSection: React.FC<RadioConfigurationSectionProps> = ({
@@ -93,13 +99,14 @@ export const RadioConfigurationSection: React.FC<RadioConfigurationSectionProps>
   onImportChannel,
   selectedNodeNum,
   isExecuting,
+  firmwareVersion = null,
 }) => {
   const { t } = useTranslation();
 
   // Filter the modem-preset picker to presets legal for the selected region,
   // mirroring the official mobile apps (issue #3924, Part 1). The currently
   // selected preset is always retained so the picker reflects the device state.
-  const legalPresetOptions = getLegalPresetOptions(region, modemPreset);
+  const legalPresetOptions = getLegalPresetOptions(region, modemPreset, firmwareVersion);
   const hasFilteredPresets = legalPresetOptions.length < MODEM_PRESET_OPTIONS.length;
 
   return (

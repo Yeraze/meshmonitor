@@ -11,8 +11,9 @@ describe('LoRaConfigSection', () => {
     it('should have correct number of modem presets', () => {
       // 0-9 from earlier protobuf revisions, 10-13 added in v2.7.23
       // (LITE_FAST, LITE_SLOW, NARROW_FAST, NARROW_SLOW), plus
-      // MEDIUM_TURBO (16) from firmware 2.8 (#4074)
-      expect(MODEM_PRESET_OPTIONS).toHaveLength(14);
+      // MEDIUM_TURBO (16) from firmware 2.8 (#4074), plus TINY_FAST (14) and
+      // TINY_SLOW (15) (#5547)
+      expect(MODEM_PRESET_OPTIONS).toHaveLength(16);
     });
 
     it('should have LONG_FAST as first preset', () => {
@@ -36,7 +37,8 @@ describe('LoRaConfigSection', () => {
         value: 9,
         name: 'LONG_TURBO',
         description: 'Long Range - Turbo (Similar to LongFast)',
-        params: 'BW: 500kHz, SF: 11, CR: 4/5'
+        // CR 4/8, matching firmware modemPresetToParams() (#5546)
+        params: 'BW: 500kHz, SF: 11, CR: 4/8'
       });
     });
 
