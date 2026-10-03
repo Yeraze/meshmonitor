@@ -103,3 +103,22 @@ describe('buildSourceNodes — MeshCore favorites (#4240 follow-up)', () => {
     expect(byName).toEqual({ Fav: true, Plain: false });
   });
 });
+
+describe('buildSourceNodes — MeshCore latest-advert position flag (#5578)', () => {
+  type Flagged = { lastAdvertHadPosition: boolean | null; positionSource: string | null; latitude: number };
+
+  it('passes lastAdvertHadPosition and positionSource through with the kept coordinates', async () => {
+    getAllNodes.mockResolvedValue([mcNode(false, { lastAdvertHadPosition: false, positionSource: 'contact' })]);
+    const [node] = await buildSourceNodes(SOURCE, ADMIN) as Flagged[];
+    expect(node.lastAdvertHadPosition).toBe(false);
+    expect(node.positionSource).toBe('contact');
+    expect(node.latitude).toBe(30.1);
+  });
+
+  it('reads as null (unknown) when the manager has no value', async () => {
+    getAllNodes.mockResolvedValue([mcNode(false)]);
+    const [node] = await buildSourceNodes(SOURCE, ADMIN) as Flagged[];
+    expect(node.lastAdvertHadPosition).toBeNull();
+    expect(node.positionSource).toBeNull();
+  });
+});

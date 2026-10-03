@@ -168,6 +168,8 @@ describe('ingestAdvertFrame', () => {
     expect(node.name).toBeUndefined();
     expect(node.latitude).toBeUndefined();
     expect(node.positionSource).toBeUndefined();
+    // #5578: the positionless advert is still recorded as such.
+    expect(node.lastAdvertHadPosition).toBe(false);
     // The neighbour marker and link signal are never written from an advert.
     expect(node).not.toHaveProperty('repeaterNeighborAt');
     expect(node).not.toHaveProperty('snr');
@@ -182,6 +184,18 @@ describe('ingestAdvertFrame', () => {
     const [node] = upsertNode.mock.calls[0];
     expect(node).toMatchObject({ name: 'Hill', lastHeard: 1_700_000_000_000, positionSource: 'contact' });
     expect(node.latitude).toBeCloseTo(45.5, 5);
+    // #5578
+    expect(node.lastAdvertHadPosition).toBe(true);
+  });
+
+  it('records an advert that carries 0/0 as having no position (#5578)', async () => {
+    await ingestAdvertFrame(
+      buildAdvertFrame({ publicKey: NODE_KEY, name: 'Zero', lat: 0, lon: 0 }),
+      'src-mqtt',
+      { lastHeardMs: 1 },
+    );
+    const [node] = upsertNode.mock.calls[0];
+    expect(node.lastAdvertHadPosition).toBe(false);
   });
 
   it('skips a named key and ignores non-advert frames', async () => {

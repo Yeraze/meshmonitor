@@ -5795,6 +5795,8 @@
     "spreadNodesHelp": "Offset low-precision nodes within their accuracy area so same-cell markers do not stack. Turn off to pin every node at exactly the position it reported.",
     "showPolarGrid": "Show Polar Grid",
     "polarGridDisabledTooltip": "Requires own node position",
+    "hidePositionlessAdverts": "Hide nodes without a current position advert",
+    "hidePositionlessAdvertsHelp": "Hide MeshCore nodes whose latest advert carried no position. They are otherwise drawn at their last known position. Nodes with a live telemetry position stay.",
     "clusterNodeCount_one": "{{count}} node",
     "clusterNodeCount_other": "{{count}} nodes"
   },

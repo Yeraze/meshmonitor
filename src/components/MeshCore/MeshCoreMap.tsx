@@ -28,6 +28,11 @@ import GeoJsonOverlay from '../GeoJsonOverlay';
 import type { GeoJsonLayer } from '../../server/services/geojsonService.js';
 import MapLegend from '../MapLegend';
 import { TilesetSelector } from '../TilesetSelector';
+import {
+  isHiddenByPositionlessAdvert,
+  readHidePositionlessAdverts,
+  writeHidePositionlessAdverts,
+} from '../../utils/meshcoreAdvertPosition';
 import { MapSidebar } from '../map/MapSidebar';
 import MeasureDistanceController from '../MeasureDistanceController';
 import type { MeasurePoint } from '../../utils/measureDistance';
@@ -166,6 +171,13 @@ export const MeshCoreMap: React.FC<MeshCoreMapProps> = ({ contacts, selectedPubl
     localStorage.setItem('meshmonitor-meshcore-positionHistoryHours', String(positionHistoryHours));
   }, [positionHistoryHours]);
   // publicKey -> ordered (oldest→newest) [lat, lng] trail points.
+  // #5578: hide nodes whose latest advert had no position. Per browser
+  // (localStorage), default off; the Dashboard map reads the same key.
+  const [hidePositionlessAdverts, setHidePositionlessAdverts] = useState(readHidePositionlessAdverts);
+  useEffect(() => {
+    writeHidePositionlessAdverts(hidePositionlessAdverts);
+  }, [hidePositionlessAdverts]);
+
   const [positionHistory, setPositionHistory] = useState<Map<string, [number, number][]>>(new Map());
 
   // Polar grid overlay (#4047 follow-up) — the same shared range-ring/azimuth-
@@ -256,9 +268,13 @@ export const MeshCoreMap: React.FC<MeshCoreMapProps> = ({ contacts, selectedPubl
   // Markers visible after the node-type filter. Paths/neighbor lines keep using
   // `positioned` so the filter only hides markers — matching the Map Analysis
   // workspace, where the type filter never removes route/neighbor overlays.
+  // #5578: the same split applies to "hide nodes without a current position
+  // advert" — the marker goes, the lines stay. The local node is never hidden.
   const visibleContacts = useMemo(
-    () => positioned.filter(c => nodePassesTypeFilter({ advType: c.advType }, nodeTypeFilter)),
-    [positioned, nodeTypeFilter],
+    () => positioned.filter(c =>
+      nodePassesTypeFilter({ advType: c.advType }, nodeTypeFilter)
+      && (c.isLocal === true || !isHiddenByPositionlessAdvert(c, hidePositionlessAdverts))),
+    [positioned, nodeTypeFilter, hidePositionlessAdverts],
   );
 
   // #3636: measurement endpoints — nearest-node snapping picks from these.
@@ -601,6 +617,20 @@ export const MeshCoreMap: React.FC<MeshCoreMapProps> = ({ contacts, selectedPubl
               />
             </div>
           )}
+          <label
+            className="map-control-item"
+            title={t(
+              'map.hidePositionlessAdvertsHelp',
+              'Hide MeshCore nodes whose latest advert carried no position. They are otherwise drawn at their last known position. Nodes with a live telemetry position stay.',
+            )}
+          >
+            <input
+              type="checkbox"
+              checked={hidePositionlessAdverts}
+              onChange={(e) => setHidePositionlessAdverts(e.target.checked)}
+            />
+            <span>{t('map.hidePositionlessAdverts', 'Hide nodes without a current position advert')}</span>
+          </label>
           <label className="map-control-item">
             <input
               type="checkbox"

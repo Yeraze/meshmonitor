@@ -115,6 +115,10 @@ export interface MeshCoreNode {
   uptimeSecs?: number;
   latitude?: number;
   longitude?: number;
+  /** #5578: 'telemetry' = live GNSS fix; 'contact' = advert position. */
+  positionSource?: string | null;
+  /** #5578: did the latest advert heard carry a position? null/unset = unknown. */
+  lastAdvertHadPosition?: boolean | null;
   advLocPolicy?: number;
   /** Favorite flag (issue #3588). Pins the node to the top of the list; for a
    *  connected Companion source it also syncs the firmware favourite bit so the

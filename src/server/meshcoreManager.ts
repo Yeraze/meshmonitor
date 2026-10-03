@@ -8,6 +8,7 @@
  * - Repeater: Lightweight, uses text CLI commands over direct serial
  */
 
+import { advertHasPosition } from '../utils/meshcoreAdvertPosition.js';
 import { EventEmitter } from 'events';
 import { logger } from '../utils/logger.js';
 import {
@@ -581,6 +582,12 @@ export interface MeshCoreNode {
   uptimeSecs?: number;
   latitude?: number;
   longitude?: number;
+  /** #5578: 'telemetry' when the stored fix is a live GNSS reading, else
+   *  'contact' (advert position) or unset. From `meshcore_nodes`. */
+  positionSource?: 'contact' | 'telemetry' | null;
+  /** #5578: did the latest advert heard carry a position? `false` = no (the
+   *  coordinates above are then the last known fix); unset/null = unknown. */
+  lastAdvertHadPosition?: boolean | null;
   advLocPolicy?: number;
   /** Add contacts only on explicit request (1) vs automatically (0). From SelfInfo. */
   manualAddContacts?: number;
@@ -635,6 +642,14 @@ export interface MeshCoreContact {
   advType?: MeshCoreDeviceType;
   latitude?: number;
   longitude?: number;
+  /**
+   * #5578: did the latest advert we heard from this contact carry a position?
+   * Set only from evidence about that advert (the raw advert frame, a full
+   * NewAdvert payload, or a device contact record with no coordinates).
+   * Undefined = unknown; `persistContact` then leaves the stored value alone.
+   * `latitude`/`longitude` above keep the last known fix either way.
+   */
+  lastAdvertHadPosition?: boolean;
   lastAdvert?: number;
   /**
    * Hop count of the cached forwarding route to this contact. `null` /
@@ -1268,7 +1283,8 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
   // Advert hash per sender public key, from the raw LogRxData frame that
   // precedes the firmware's advert push (#5534). Short-lived; see
   // ADVERT_HASH_TTL_MS.
-  private recentAdvertHashes: Map<string, { hash: string; at: number }> = new Map();
+  // `hadPosition` (#5578): whether that advert frame carried coordinates.
+  private recentAdvertHashes: Map<string, { hash: string; at: number; hadPosition: boolean }> = new Map();
   private static readonly ADVERT_HASH_TTL_MS = 30_000;
   private static readonly ADVERT_HASH_MAX_ENTRIES = 512;
 
@@ -2492,7 +2508,8 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
         this.clearContactTombstone(publicKey);
         // #5534: hash of the advert frame that caused this push, if the raw
         // LogRxData copy arrived just before it.
-        const advertHash = this.takeRecentAdvertHash(publicKey);
+        const recentAdvert = this.takeRecentAdvert(publicKey);
+        const advertHash = recentAdvert?.hash;
         // Captured before the set below: a contact we didn't already know about
         // is a genuine new-node discovery. Bulk contact-list sync populates
         // this.contacts directly (not via this event), so a first connect
@@ -2510,6 +2527,17 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
           lastAdvert: data.last_advert ?? existing.lastAdvert,
           latitude: data.latitude ?? existing.latitude,
           longitude: data.longitude ?? existing.longitude,
+          // #5578. The raw advert frame is the only sure evidence: the
+          // firmware keeps a stored contact's old coordinates when a later
+          // advert has none (BaseChatMesh::onAdvertRecv), and the 0x80 push
+          // carries the public key alone. Without the frame, only a full
+          // NewAdvert payload (0x8A, built from this one advert) says
+          // anything; otherwise keep what we knew.
+          lastAdvertHadPosition: recentAdvert
+            ? recentAdvert.hadPosition
+            : event_type === 'contact_added'
+              ? advertHasPosition(data.latitude, data.longitude)
+              : existing.lastAdvertHadPosition,
           lastSeen: Date.now(),
           // Firmware sends 0x80 (contact_advertised) only for a contact it
           // stored, and 0x8A (contact_added) only for one it did NOT store
@@ -3191,6 +3219,9 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
           // fix. Only tagged when we're actually writing a real coordinate —
           // otherwise omitted so the merge preserves whatever is stored.
           positionSource: hasContactPosition ? 'contact' : undefined,
+          // #5578: undefined (unknown) leaves the stored flag alone; `false`
+          // is written and the stored coordinates are kept.
+          lastAdvertHadPosition: contact.lastAdvertHadPosition,
           rssi: contact.rssi ?? null,
           snr: contact.snr ?? null,
           lastHeard: contact.lastSeen ?? null,
@@ -3275,7 +3306,7 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
     }
     const key = advert.publicKey.toLowerCase();
     this.recentAdvertHashes.delete(key); // re-insert so Map order stays oldest-first
-    this.recentAdvertHashes.set(key, { hash, at: now });
+    this.recentAdvertHashes.set(key, { hash, at: now, hadPosition: advertHasPosition(advert.latitude, advert.longitude) });
     while (this.recentAdvertHashes.size > MeshCoreManager.ADVERT_HASH_MAX_ENTRIES) {
       const oldest = this.recentAdvertHashes.keys().next().value;
       if (oldest === undefined) break;
@@ -3283,13 +3314,17 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
     }
   }
 
-  /** Claim (and forget) the recent advert hash for `publicKey`, if still fresh. */
-  private takeRecentAdvertHash(publicKey: string): string | undefined {
+  /**
+   * Claim (and forget) the recent raw advert for `publicKey`, if still fresh:
+   * its hash (#5534) and whether it carried a position (#5578).
+   */
+  private takeRecentAdvert(publicKey: string): { hash: string; hadPosition: boolean } | undefined {
     const key = publicKey.toLowerCase();
     const entry = this.recentAdvertHashes.get(key);
     if (!entry) return undefined;
     this.recentAdvertHashes.delete(key);
-    return Date.now() - entry.at <= MeshCoreManager.ADVERT_HASH_TTL_MS ? entry.hash : undefined;
+    if (Date.now() - entry.at > MeshCoreManager.ADVERT_HASH_TTL_MS) return undefined;
+    return { hash: entry.hash, hadPosition: entry.hadPosition };
   }
 
   /**
@@ -4727,6 +4762,10 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
         const previousLastSeen = new Map(
           Array.from(this.contacts.entries(), ([key, contact]) => [key, contact.lastSeen]),
         );
+        // #5578: same snapshot for the latest-advert position flag.
+        const previousAdvertHadPosition = new Map(
+          Array.from(this.contacts.entries(), ([key, contact]) => [key, contact.lastAdvertHadPosition]),
+        );
         this.contacts.clear();
         for (const c of response.data) {
           // Skip contacts the user just removed that still linger on the
@@ -4776,6 +4815,13 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
             advType: c.adv_type,
             latitude: c.latitude,
             longitude: c.longitude,
+            // #5578: a device record with no coordinates (the firmware's 0/0)
+            // has never had a position advert, so that is a known `false`.
+            // One WITH coordinates proves nothing about the latest advert —
+            // the firmware keeps the old fix — so carry what we knew.
+            lastAdvertHadPosition: advertHasPosition(c.latitude, c.longitude)
+              ? previousAdvertHadPosition.get(c.public_key)
+              : false,
             lastAdvert: advertSec > 0 ? advertSec : undefined,
             lastSeen: heardMs ?? previousLastSeen.get(c.public_key),
             outPath: c.out_path ?? null,
@@ -4837,6 +4883,8 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
           snr: n.snr ?? undefined,
           latitude: n.latitude ?? undefined,
           longitude: n.longitude ?? undefined,
+          // #5578: keep the stored latest-advert flag with the seeded contact.
+          lastAdvertHadPosition: n.lastAdvertHadPosition ?? undefined,
           // Drop a drifted value stored before #5339 rather than seed it.
           lastSeen: plausibleMeshCoreTimeMsOrUndefined(n.lastHeard),
           outPath: n.outPath ?? null,
@@ -9373,6 +9421,9 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
           snr: n.snr ?? undefined,
           latitude: n.latitude ?? undefined,
           longitude: n.longitude ?? undefined,
+          // #5578: the durable row is the truth for both map-filter fields.
+          positionSource: n.positionSource ?? undefined,
+          lastAdvertHadPosition: n.lastAdvertHadPosition ?? undefined,
           batteryMv: n.batteryMv ?? undefined,
           uptimeSecs: n.uptimeSecs ?? undefined,
           txPower: n.txPower ?? undefined,

@@ -19,6 +19,7 @@
  * plaintext layout (timestamp | flags | "sender: text"), and GRP_DATA carries
  * a binary body with a different layout.
  */
+import { advertHasPosition } from '../../utils/meshcoreAdvertPosition.js';
 import { createHash } from 'node:crypto';
 import { ChannelCrypto } from '@michaelhart/meshcore-decoder';
 import databaseService from '../../services/database.js';
@@ -296,6 +297,11 @@ export async function ingestAdvertFrame(
       // An advert position is the static kind, so a real telemetry fix keeps
       // precedence (same tag the contact-sync path uses).
       positionSource: advert.latitude !== undefined ? 'contact' : undefined,
+      // #5578: written on EVERY advert. `false` is kept by upsertNode's merge
+      // (only null/undefined means "not observed"), and the stored
+      // coordinates stay, so this is the one record that the node's latest
+      // advert had no position.
+      lastAdvertHadPosition: advertHasPosition(advert.latitude, advert.longitude),
       lastHeard: opts.lastHeardMs === 'advert' ? advertLastHeardMs(advert.timestamp) : opts.lastHeardMs,
     },
     sourceId,
