@@ -44,6 +44,7 @@ import {
   isParsedFirmwareAtLeast,
   type ParsedFirmwareVersion,
 } from '../utils/firmwareVersion.js';
+import { MODEM_PRESET_NAMES } from '../utils/loraFrequency.js';
 import { getEnvironmentConfig } from './config/environment.js';
 import { notificationService } from './services/notificationService.js';
 import { sendMessagePushNotification } from './services/messagePushNotifier.js';
@@ -10303,13 +10304,27 @@ class MeshtasticManager implements ISourceManager {
    * that omits modemPreset: setLoRaConfig is a whole-struct replace, so an
    * omitted preset would otherwise encode as 0 (LONG_FAST) on the radio (#5547).
    * proto3 elides LONG_FAST (0), so a LoRa config without the field means 0.
+   *
+   * The cached value is normally the decoded enum number, but anything that
+   * has been through protobufjs `toJSON` carries the enum NAME, and
+   * updateCachedDeviceConfig() stores whatever a caller hands it. Both forms
+   * resolve; an unrecognised name is undefined rather than a guess.
    */
   getConfiguredModemPreset(): number | undefined {
     const lora = this.actualDeviceConfig?.lora;
     if (!lora) return undefined;
     const preset = lora.modemPreset;
     if (preset === undefined || preset === null) return 0;
-    return typeof preset === 'number' && Number.isInteger(preset) && preset >= 0 ? preset : undefined;
+    if (typeof preset === 'number') {
+      return Number.isInteger(preset) && preset >= 0 ? preset : undefined;
+    }
+    if (typeof preset === 'string') {
+      const trimmed = preset.trim();
+      if (/^\d+$/.test(trimmed)) return Number(trimmed);
+      const match = Object.entries(MODEM_PRESET_NAMES).find(([, name]) => name === trimmed);
+      return match ? Number(match[0]) : undefined;
+    }
+    return undefined;
   }
 
   /**

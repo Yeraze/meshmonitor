@@ -157,6 +157,31 @@ describe('ConfigurationTab modem preset round-trip (#5547)', () => {
     expect(payload.usePreset).toBe(false);
   });
 
+  // The firmware gate reads localNodeInfo.firmwareVersion, the field
+  // GET /api/config/current (MeshtasticManager.getCurrentConfig) carries. A
+  // version under any other key must not be picked up by accident, and a
+  // missing one must reach the section as null (unknown -> 2.8 rule).
+  it('takes the firmware version from localNodeInfo, and nowhere else', async () => {
+    api.getCurrentConfig.mockResolvedValue({
+      ...configWithPreset(0),
+      localNodeInfo: { nodeNum: 1, longName: 'n', shortName: 'n', firmwareVersion: '2.7.26.54e0d8d' },
+      deviceMetadata: { firmwareVersion: '9.9.9' },
+    });
+    render(<ConfigurationTab nodes={[]} channels={[]} />);
+    await waitFor(() => expect(screen.getByTestId('lora-firmware').textContent).toBe('2.7.26.54e0d8d'));
+  });
+
+  it('passes null when the local node has not reported a firmware version', async () => {
+    api.getCurrentConfig.mockResolvedValue({
+      ...configWithPreset(9),
+      localNodeInfo: { nodeNum: 1, longName: 'n', shortName: 'n' },
+      deviceMetadata: { firmwareVersion: '2.7.26' },
+    });
+    render(<ConfigurationTab nodes={[]} channels={[]} />);
+    await waitFor(() => expect(screen.getByTestId('lora-preset').textContent).toBe('9'));
+    expect(screen.getByTestId('lora-firmware').textContent).toBe('null');
+  });
+
   it('passes a numeric preset through unchanged', async () => {
     api.getCurrentConfig.mockResolvedValue(configWithPreset(14));
     render(<ConfigurationTab nodes={[]} channels={[]} />);

@@ -205,6 +205,13 @@ describe('configRoutes', () => {
         requestModuleConfig,
         isTxEnabled,
         getConfiguredModemPreset,
+        getCurrentConfig: vi.fn().mockReturnValue({
+          deviceConfig: { lora: { modemPreset: 9 } },
+          moduleConfig: {},
+          localNodeInfo: { nodeNum: 1, nodeId: '!00000001', longName: 'L', shortName: 'L', firmwareVersion: '2.7.26.54e0d8d' },
+          supportedModules: {},
+        }),
+        isLocalNodeBridged: vi.fn().mockReturnValue(false),
       } as unknown as ISourceManager & { setLoRaConfig: typeof setLoRaConfig; requestModuleConfig: typeof requestModuleConfig; isTxEnabled: typeof isTxEnabled };
       await sourceManagerRegistry.addManager(fakeManager);
       await harness.grant(harness.limited.id, 'configuration', 'write', harness.sourceA);
@@ -274,6 +281,28 @@ describe('configRoutes', () => {
       expect(res.status).toBe(200);
       expect(setLoRaConfig).toHaveBeenCalledWith(expect.objectContaining({ modemPreset: 0 }));
       expect(getConfiguredModemPreset).not.toHaveBeenCalled();
+    });
+
+    // The Config tab reads the local firmware version from this route's
+    // localNodeInfo to gate 2.8-only presets (#5547). GET / is a different
+    // payload (deviceMetadata.firmwareVersion); the two must not be confused.
+    it('GET /current carries the local firmware version on localNodeInfo', async () => {
+      // Admin: the limited user already holds this source's one configuration
+      // grant row as write, and the route needs read.
+      const agent = await harness.loginAs(harness.admin);
+      const res = await agent.get(`/current?sourceId=${harness.sourceA}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.localNodeInfo.firmwareVersion).toBe('2.7.26.54e0d8d');
+    });
+
+    it('answers a failed save with the error envelope', async () => {
+      setLoRaConfig.mockRejectedValue(new Error('Not connected'));
+      const agent = await harness.loginAs(harness.limited);
+      const res = await agent.post('/lora').send({ sourceId: harness.sourceA, modemPreset: 0 });
+
+      expect(res.status).toBe(500);
+      expect(res.body).toMatchObject({ success: false, code: 'LORA_CONFIG_FAILED', error: 'Failed to set LoRa configuration' });
     });
 
     it('leaves modemPreset unset when neither the caller nor the device knows it', async () => {

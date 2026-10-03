@@ -219,6 +219,21 @@ describe('LoRaConfigSection custom recipe loader (#5548)', () => {
     expect(props.setBandwidth).not.toHaveBeenCalled();
   });
 
+  it('loads nothing if the region stops allowing the recipe while the confirm is open', () => {
+    const props = makeProps({ usePreset: false, region: US, firmwareVersion: '2.8.1' });
+    const { rerender } = render(<LoRaConfigSection {...props} />);
+    fireEvent.change(screen.getByLabelText(/lora_config\.recipe/), { target: { value: 'long-mod-turbo' } });
+    expect(screen.getByTestId('lora-recipe-confirm')).toBeInTheDocument();
+
+    rerender(<LoRaConfigSection {...props} region={EU_868} />);
+    fireEvent.click(screen.getByText('lora_config.recipe_confirm_apply'));
+
+    expect(props.setBandwidth).not.toHaveBeenCalled();
+    expect(props.setSpreadFactor).not.toHaveBeenCalled();
+    expect(props.setCodingRate).not.toHaveBeenCalled();
+    expect(screen.queryByTestId('lora-recipe-confirm')).toBeNull();
+  });
+
   it('is enabled in US', () => {
     render(<LoRaConfigSection {...makeProps({ usePreset: false, region: US, firmwareVersion: '2.8.1' })} />);
     expect(recipeOption().disabled).toBe(false);

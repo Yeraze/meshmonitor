@@ -281,8 +281,33 @@ describe('MeshtasticManager.getConfiguredModemPreset()', () => {
     expect(make({ modemPreset: null }).getConfiguredModemPreset()).toBe(0);
   });
 
+  it('resolves an enum NAME, as protobufjs toJSON emits', () => {
+    expect(make({ modemPreset: 'TINY_FAST' }).getConfiguredModemPreset()).toBe(14);
+    expect(make({ modemPreset: 'LONG_FAST' }).getConfiguredModemPreset()).toBe(0);
+    expect(make({ modemPreset: 'MEDIUM_TURBO' }).getConfiguredModemPreset()).toBe(16);
+    expect(make({ modemPreset: '15' }).getConfiguredModemPreset()).toBe(15);
+  });
+
   it('is undefined for a value it cannot trust', () => {
-    expect(make({ modemPreset: 'TINY_FAST' }).getConfiguredModemPreset()).toBeUndefined();
+    expect(make({ modemPreset: 'HYPER_FAST' }).getConfiguredModemPreset()).toBeUndefined();
     expect(make({ modemPreset: -1 }).getConfiguredModemPreset()).toBeUndefined();
+    expect(make({ modemPreset: {} }).getConfiguredModemPreset()).toBeUndefined();
+  });
+});
+
+// The Config tab gates 2.8-only modem presets on the local node's firmware
+// version (#5547). It reads GET /api/config/current, whose payload is
+// getCurrentConfig() verbatim, so the version must be on `localNodeInfo` here.
+// (GET /api/config is a different route: it carries deviceMetadata.firmwareVersion
+// and a three-field localNodeInfo, and the Config tab does not use it.)
+describe('MeshtasticManager.getCurrentConfig() firmware version for the Config tab', () => {
+  it('exposes the local firmware version on localNodeInfo', () => {
+    const mgr = makeReadyManager();
+    (mgr as any).localNodeInfo.firmwareVersion = '2.7.26.54e0d8d';
+    expect(mgr.getCurrentConfig().localNodeInfo.firmwareVersion).toBe('2.7.26.54e0d8d');
+  });
+
+  it('leaves it undefined until DeviceMetadata arrives', () => {
+    expect(makeReadyManager().getCurrentConfig().localNodeInfo.firmwareVersion).toBeUndefined();
   });
 });

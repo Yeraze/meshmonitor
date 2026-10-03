@@ -165,7 +165,7 @@ router.post('/lora', requirePermission('configuration', 'write'), requireMeshtas
     res.json({ success: true, message: 'LoRa configuration sent' });
   } catch (error) {
     logger.error('Error setting LoRa config:', error);
-    res.status(500).json({ error: 'Failed to set LoRa configuration' });
+    fail(res, 500, 'LORA_CONFIG_FAILED', 'Failed to set LoRa configuration');
   }
 });
 
