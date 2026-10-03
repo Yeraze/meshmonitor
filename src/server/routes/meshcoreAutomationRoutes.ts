@@ -277,38 +277,39 @@ router.get(
       const preSendDelaySeconds = await settings.getSettingForSource(sourceId, 'meshcoreAutoAckPreSendDelaySeconds');
       const testMessages = await settings.getSettingForSource(sourceId, 'meshcoreAutoAckTestMessages');
       const ignoredNodes = await settings.getSettingForSource(sourceId, 'meshcoreAutoAckIgnoredNodes');
+      const splitLongMessages = await settings.getSettingForSource(sourceId, 'meshcoreAutoAckSplitLongMessages');
       const scopeMode = await settings.getSettingForSource(sourceId, 'meshcoreAutoAckScopeMode');
       const scopeName = await settings.getSettingForSource(sourceId, 'meshcoreAutoAckScopeName');
 
-      res.json({
-        success: true,
-        data: {
-          enabled: enabled === 'true',
-          regex: regex || '^(test|ping)',
-          message: message || '🤖 Copy, {NODE_NAME}! {HOPS} hops @ {TIME}',
-          channels: (channels || '')
-            .split(',')
-            .map(s => s.trim())
-            .filter(Boolean)
-            .map(s => parseInt(s, 10))
-            .filter(n => Number.isFinite(n)),
-          directMessages: directMessages === 'true',
-          useDM: useDM === 'true',
-          cooldownSeconds: parseInt(cooldownSeconds || '0', 10) || 0,
-          // Defense-in-depth: clamp on read too (default 0, cap 120s) so a
-          // value written directly to the DB can't escape the UI's bounds.
-          preSendDelaySeconds: resolveAutoAckPreSendDelaySeconds(preSendDelaySeconds),
-          testMessages: testMessages || 'test\nTest message\nping\nPING\nHello world\nTESTING 123',
-          // Per-sender ignore list (#4391): key prefixes and/or contact names.
-          ignoredNodes: ignoredNodes || '',
-          // MeshCore scope/region for the ack reply (#3833).
-          scopeMode: (scopeMode as 'inherit' | 'trigger' | 'unscoped' | 'named') || 'inherit',
-          scopeName: scopeName || '',
-        },
+      ok(res, {
+        enabled: enabled === 'true',
+        regex: regex || '^(test|ping)',
+        message: message || '🤖 Copy, {NODE_NAME}! {HOPS} hops @ {TIME}',
+        channels: (channels || '')
+          .split(',')
+          .map(s => s.trim())
+          .filter(Boolean)
+          .map(s => parseInt(s, 10))
+          .filter(n => Number.isFinite(n)),
+        directMessages: directMessages === 'true',
+        useDM: useDM === 'true',
+        cooldownSeconds: parseInt(cooldownSeconds || '0', 10) || 0,
+        // Defense-in-depth: clamp on read too (default 0, cap 120s) so a
+        // value written directly to the DB can't escape the UI's bounds.
+        preSendDelaySeconds: resolveAutoAckPreSendDelaySeconds(preSendDelaySeconds),
+        testMessages: testMessages || 'test\nTest message\nping\nPING\nHello world\nTESTING 123',
+        // Per-sender ignore list (#4391): key prefixes and/or contact names.
+        ignoredNodes: ignoredNodes || '',
+        // Split a long reply into up to 3 sends (#5564). Off unless the
+        // stored value is exactly 'true', so an unset key reads as off.
+        splitLongMessages: splitLongMessages === 'true',
+        // MeshCore scope/region for the ack reply (#3833).
+        scopeMode: (scopeMode as 'inherit' | 'trigger' | 'unscoped' | 'named') || 'inherit',
+        scopeName: scopeName || '',
       });
     } catch (error) {
       logger.error('[API] Error reading meshcore auto-ack settings:', error);
-      res.status(500).json({ success: false, error: 'Failed to read auto-ack settings' });
+      fail(res, 500, 'INTERNAL_ERROR', 'Failed to read auto-ack settings');
     }
   },
 );
@@ -332,6 +333,7 @@ router.post(
         preSendDelaySeconds,
         testMessages,
         ignoredNodes,
+        splitLongMessages,
         scopeMode,
         scopeName,
       } = req.body as {
@@ -345,6 +347,7 @@ router.post(
         preSendDelaySeconds?: number;
         testMessages?: string;
         ignoredNodes?: string;
+        splitLongMessages?: boolean;
         scopeMode?: 'inherit' | 'trigger' | 'unscoped' | 'named';
         scopeName?: string;
       };
@@ -360,7 +363,7 @@ router.post(
         // sync; this also satisfies CodeQL's js/regex-injection check.
         const validation = validateAutoAckRegex(regex);
         if (!validation.ok) {
-          return res.status(400).json({ success: false, error: `Invalid regex pattern: ${validation.error}` });
+          return fail(res, 400, 'INVALID_REGEX', `Invalid regex pattern: ${validation.error}`);
         }
         await settings.setSourceSetting(sourceId, 'meshcoreAutoAckRegex', regex);
       }
@@ -397,6 +400,11 @@ router.post(
         // survives a round-trip; parsing happens at match time (#4391).
         await settings.setSourceSetting(sourceId, 'meshcoreAutoAckIgnoredNodes', String(ignoredNodes).trim());
       }
+      if (splitLongMessages !== undefined) {
+        // Strict boolean: only a real `true` turns splitting on (#5564), so a
+        // stray "false" string cannot multiply the airtime of every reply.
+        await settings.setSourceSetting(sourceId, 'meshcoreAutoAckSplitLongMessages', String(splitLongMessages === true));
+      }
       if (scopeMode !== undefined) {
         const mode = ['inherit', 'trigger', 'unscoped', 'named'].includes(String(scopeMode)) ? String(scopeMode) : 'inherit';
         await settings.setSourceSetting(sourceId, 'meshcoreAutoAckScopeMode', mode);
@@ -405,10 +413,10 @@ router.post(
         await settings.setSourceSetting(sourceId, 'meshcoreAutoAckScopeName', String(scopeName).trim());
       }
 
-      res.json({ success: true });
+      ok(res);
     } catch (error) {
       logger.error('[API] Error saving meshcore auto-ack settings:', error);
-      res.status(500).json({ success: false, error: 'Failed to save auto-ack settings' });
+      fail(res, 500, 'INTERNAL_ERROR', 'Failed to save auto-ack settings');
     }
   },
 );

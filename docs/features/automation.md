@@ -132,6 +132,31 @@ When enabled, auto-ack responses are sent as direct messages (DMs) to the sender
 
 **When to use it**: Give a repeater time to finish transmitting the triggering message before your reply goes out, instead of racing it. For anything more elaborate than a single fixed delay — e.g. a delay followed by other actions — use the Automation Engine's [Pause action](/features/automation-engine#pause) instead.
 
+### Long Replies on MeshCore {#meshcore-long-replies}
+
+A MeshCore text message is small. MeshMonitor caps one message at **150 bytes** for a DM, **130 bytes** for a channel, and **120 bytes** for a channel reply that carries a region scope. These are UTF-8 bytes, not characters: an emoji takes 4 bytes and a CJK character takes 3. A template that looks short can go over the cap once `{NODE_NAME}`, `{ROUTE}` and the other tokens are filled in.
+
+The MeshCore Auto-Acknowledge section has a **Split long messages** toggle that sets what happens to a reply over the cap. It is a per-source setting, it is **off by default**, and one toggle covers DM and channel replies.
+
+**Off (default)**: MeshMonitor cuts the reply to the cap and sends one message. The cut never lands inside a character. The message list shows the text that was sent.
+
+::: warning Behaviour change
+Before this option existed, MeshMonitor handed the full reply to the radio and stored the full text, even though the radio could not send all of it. MeshMonitor now cuts the reply itself, so the stored message matches what went on air. If your reply loses its tail, shorten the template or turn on **Split long messages**.
+:::
+
+**On**: MeshMonitor sends the reply as up to **3 messages**, **10 seconds apart**.
+
+- Each part starts with a marker such as `(1/3)`, so the reader knows more is coming. The marker counts toward the byte cap.
+- MeshMonitor breaks at a line break, the end of a sentence, a comma, or a space when it can. It only breaks inside a word when there is no better place, and never inside a character.
+- A reply too long for 3 parts loses its tail: the third part is cut to fit.
+- A reply that fits in one message goes out as before, with no marker.
+- If one part fails to send, MeshMonitor skips the rest. It also stops if the source is switched to receive-only between parts.
+- The per-sender cooldown counts the whole reply once, not once per part.
+
+::: warning Airtime
+Every part is a separate transmission, and every repeater in range repeats each one. A 3-part reply costs three times the airtime of a single reply across the whole mesh. With [channel-send auto-retry](/features/meshcore#automated-channel-send-auto-retry) on, a part that no repeater echoes is resent once, so a 3-part channel reply can reach 6 transmissions from your node. A DM part that gets no acknowledgement is retried up to 3 times. Set a per-sender cooldown, and keep the template short enough that most replies fit in one message.
+:::
+
 ### Skip Incomplete Nodes {#skip-incomplete-nodes-ack}
 
 **Description**: When enabled, Auto Acknowledge will not respond to messages from incomplete nodes.

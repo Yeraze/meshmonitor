@@ -52,6 +52,8 @@ import {
 } from './meshcoreChannelReorder.js';
 import { remapMeshCoreChannelReferences, type ChannelRemapSummary } from './services/meshcoreChannelRemapService.js';
 import { TxDisabledError } from './errors/txDisabledError.js';
+import { meshcoreMessageByteCap } from './constants/meshcoreMessageLimits.js';
+import { splitUtf8Message, utf8ByteLength } from './utils/splitUtf8Message.js';
 import { MeshCoreResendError } from './errors/meshcoreResendError.js';
 import {
   MESHCORE_LOGIN_BRIDGE_TIMEOUT_MS,
@@ -11196,6 +11198,7 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
       //  - otherwise → reply on the channel it came in on
       const sendAsDM = isDirectMessage || useDM;
 
+      let dmPublicKey: string | undefined;
       if (sendAsDM) {
         // Need the full contact pubkey to address a DM. The DM event
         // gives us a prefix; resolve via the contact map.
@@ -11204,16 +11207,82 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
           logger.warn(`[MeshCore:${sourceId}] Auto-ack: cannot DM unknown contact ${message.fromPublicKey}`);
           return;
         }
-        logger.debug(`[MeshCore:${sourceId}] Auto-ack DM → ${contact.advName ?? contact.publicKey.substring(0, 8)} (${replyText.length} chars)`);
-        await this.sendMessage(replyText, contact.publicKey, undefined, scopeOverride);
-      } else {
-        logger.debug(`[MeshCore:${sourceId}] Auto-ack channel ${channelIdx} (${replyText.length} chars)`);
-        // Automated sender → opt into channel-send auto-retry (#3979).
-        await this.sendMessage(replyText, undefined, channelIdx, scopeOverride, true);
+        dmPublicKey = contact.publicKey;
+      }
+
+      // Fit the reply to the byte cap for its destination and scope (#5564).
+      // Split off (default): ONE send, truncated to the cap, so the stored row
+      // matches what went on air. Split on: up to AUTO_ACK_SPLIT_MAX_PARTS
+      // sends, each with a "(1/3) " marker, the last one truncated. A reply
+      // that already fits is sent as-is either way.
+      const maxBytes = await this.autoAckReplyByteCap(sendAsDM, channelIdx, scopeOverride);
+      const splitEnabled = (await settings.getSettingForSource(sourceId, 'meshcoreAutoAckSplitLongMessages')) === 'true';
+      const { parts, truncated } = splitUtf8Message(replyText, {
+        maxBytes,
+        maxParts: splitEnabled ? MeshCoreManager.AUTO_ACK_SPLIT_MAX_PARTS : 1,
+      });
+      if (truncated) {
+        logger.warn(
+          `[MeshCore:${sourceId}] Auto-ack: reply is ${utf8ByteLength(replyText)} bytes, over the ${maxBytes}-byte cap` +
+          `${parts.length > 1 ? ` x ${parts.length} parts` : ''}; the tail was cut`,
+        );
+      }
+
+      const target = sendAsDM ? 'DM' : `channel ${channelIdx}`;
+      for (let i = 0; i < parts.length; i++) {
+        if (i > 0) {
+          // Fixed gap between parts so they do not collide with each other's
+          // repeater re-floods. Awaited here, OUTSIDE the send lock, so other
+          // sends on this source are not held up for the wait.
+          await new Promise((resolve) => setTimeout(resolve, MeshCoreManager.AUTO_ACK_SPLIT_PART_DELAY_MS));
+        }
+        // Re-check before EVERY part: the pre-send delay and the gap between
+        // parts are long enough for receive-only to be switched on (#4547).
+        if (!this.canTransmit()) {
+          logger.debug(`⏭️ [MeshCore:${sourceId}] Auto-ack: receive-only mode, dropping part ${i + 1}/${parts.length}`);
+          return;
+        }
+        logger.debug(`[MeshCore:${sourceId}] Auto-ack ${target} part ${i + 1}/${parts.length} (${utf8ByteLength(parts[i])} bytes)`);
+        const sent = sendAsDM
+          ? await this.sendMessage(parts[i], dmPublicKey, undefined, scopeOverride)
+          // Automated sender → opt into channel-send auto-retry (#3979).
+          : await this.sendMessage(parts[i], undefined, channelIdx, scopeOverride, true);
+        if (!sent) {
+          // Stop at the first failure: later parts without the earlier ones
+          // are noise, and a radio that just refused a send needs no more.
+          if (parts.length > 1) {
+            logger.warn(`[MeshCore:${sourceId}] Auto-ack: part ${i + 1}/${parts.length} failed to send; skipping the rest`);
+          }
+          return;
+        }
       }
     } catch (err) {
       logger.error(`[MeshCore:${this.sourceId}] Auto-ack handler threw: ${(err as Error).message}`);
     }
+  }
+
+  /** Most sends one Auto-Acknowledge reply may be split into (#5564). */
+  private static readonly AUTO_ACK_SPLIT_MAX_PARTS = 3;
+
+  /** Wait between the parts of a split Auto-Acknowledge reply (#5564). */
+  private static readonly AUTO_ACK_SPLIT_PART_DELAY_MS = 10_000;
+
+  /**
+   * Byte cap for one Auto-Acknowledge send (#5564), from the caps the HTTP
+   * send route uses. A channel send counts as scoped when it will carry a
+   * named region, resolved the same way `performScopedSend` resolves it:
+   * the override if there is one, else the channel scope, else the source
+   * default.
+   */
+  private async autoAckReplyByteCap(
+    sendAsDM: boolean,
+    channelIdx: number | undefined,
+    scopeOverride: string | null | undefined,
+  ): Promise<number> {
+    if (sendAsDM) return meshcoreMessageByteCap({ isDm: true, scoped: false });
+    const override = MeshCoreManager.normalizeScopeOverride(scopeOverride);
+    const region = override !== undefined ? override : await this.resolveScopeForSend(channelIdx);
+    return meshcoreMessageByteCap({ isDm: false, scoped: !!region });
   }
 
   private async attemptReconnect(): Promise<void> {
