@@ -63,6 +63,9 @@ interface ChannelRow {
   name: string;
   /** Persisted per-channel region/scope (#3667). null/'' = no channel scope. */
   scope: string | null;
+  /** A keyed channel (#5551): decrypted with another source's key, so this
+   *  source has no slot to send on. View only. */
+  readOnly?: boolean;
 }
 
 /** Synthesised pseudo-pubkey used to scope channel messages. Must match the
@@ -308,6 +311,7 @@ export const MeshCoreChannelsView: React.FC<MeshCoreChannelsViewProps> = ({
                 id: c.id as number,
                 name: String(c.name ?? ''),
                 scope: typeof c?.scope === 'string' && c.scope ? c.scope : null,
+                readOnly: c?.readOnly === true,
               }))
               .sort((a, b) => a.id - b.id)
           : [];
@@ -1018,8 +1022,12 @@ export const MeshCoreChannelsView: React.FC<MeshCoreChannelsViewProps> = ({
           contacts={contacts}
           sourceId={sourceId}
           selfPublicKey={selfKey}
-          disabled={!connected || !canSend || receiveOnly}
-          disabledReason={receiveOnly ? t('meshcore.receive_only.control_tooltip', 'Receive-only mode is on for this MeshCore source. Turn it off in MeshCore Settings to use this.') : undefined}
+          disabled={!connected || !canSend || receiveOnly || active?.readOnly === true}
+          disabledReason={receiveOnly
+            ? t('meshcore.receive_only.control_tooltip', 'Receive-only mode is on for this MeshCore source. Turn it off in MeshCore Settings to use this.')
+            : active?.readOnly
+              ? t('meshcore.channels.keyed_read_only', 'This channel is decrypted with a key from another source. This source cannot send on it.')
+              : undefined}
           emptyText={t('meshcore.no_messages', 'No messages on this channel yet')}
           onDeleteMessage={canSend ? handleDeleteMessage : undefined}
           onResendMessage={canSend ? handleResendMessage : undefined}

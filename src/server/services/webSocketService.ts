@@ -7,6 +7,8 @@
  * - Bearer token via handshake auth (API clients)
  */
 
+import { resolveMeshcoreKeyAccess, canSeeKeyedMessage } from '../utils/meshcoreKeyAccess.js';
+import type { MeshCoreKeyAccessFilter } from '../../db/repositories/index.js';
 import { Server as HttpServer } from 'http';
 import { Server as SocketIOServer, Socket } from 'socket.io';
 import type { RequestHandler } from 'express';
@@ -65,6 +67,9 @@ function transformMessageForClient(msg: DbMessage): unknown {
 }
 
 // Store the Socket.io server instance for access from other modules
+/** How long a socket reuses its resolved keyed-message access (#5551). */
+const KEY_ACCESS_TTL_MS = 30_000;
+
 let io: SocketIOServer | null = null;
 
 /**
@@ -173,6 +178,8 @@ export function initializeWebSocket(
     // message channel slot indexes so replies from other sources land in the
     // correct channel bucket on the client.
     let joinedSourceId: string | null = null;
+    // #5551 keyed-message gate, cached per socket (see the handler below).
+    let keyAccessCache: { at: number; access: MeshCoreKeyAccessFilter } | null = null;
 
     // Subscribe to data events
     const handler = async (event: DataEvent) => {
@@ -226,6 +233,30 @@ export function initializeWebSocket(
         }
 
         socket.emit(event.type, outgoing);
+      } else if (event.type === 'meshcore:message' && (event.data as { keyFingerprint?: string | null })?.keyFingerprint) {
+        // #5551: a repeater-decrypted channel message is only for viewers who
+        // can read its key on a source that holds it — same gate as the REST
+        // reads. Access is cached briefly per socket so a busy channel does not
+        // cost a permission lookup per message.
+        try {
+          const authed = socket as Socket & { userId?: number; isAdmin?: boolean };
+          if (!authed.isAdmin) {
+            const now = Date.now();
+            if (!keyAccessCache || now - keyAccessCache.at > KEY_ACCESS_TTL_MS) {
+              keyAccessCache = {
+                at: now,
+                access: authed.userId == null
+                  ? []
+                  : await resolveMeshcoreKeyAccess({ id: authed.userId, isAdmin: false }),
+              };
+            }
+            if (!canSeeKeyedMessage(keyAccessCache.access, event.data as { keyFingerprint?: string | null })) return;
+          }
+        } catch (err) {
+          logger.warn('[WebSocket] Keyed message access check failed; not forwarding:', err);
+          return;
+        }
+        socket.emit(event.type, event.data);
       } else if (event.type === 'meshcore:contact:updated' && event.sourceId) {
         // #5363: a live contact update carries the same corrected position as
         // the snapshot/contacts routes. A copy only.

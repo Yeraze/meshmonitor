@@ -17,6 +17,7 @@ import type { MessageChannelScope, MeshCoreMessageScope } from '../../db/reposit
 import databaseService from '../../services/database.js';
 import { CHANNEL_DB_OFFSET } from '../constants/meshtastic.js';
 import { resolveMessageReadAccess } from './messageReadAccess.js';
+import { resolveMeshcoreKeyAccess } from './meshcoreKeyAccess.js';
 
 /**
  * Channel numbers the caller may read on a Meshtastic-family source: `'all'`
@@ -45,17 +46,19 @@ export async function resolveReadableMeshcoreScope(
   user: User | null | undefined,
   sourceId: string,
 ): Promise<Omit<MeshCoreMessageScope, 'sourceId'>> {
-  if (!user) return { channels: [], includeDms: false };
-  if (user.isAdmin) return { channels: 'all', includeDms: true };
+  if (!user) return { channels: [], includeDms: false, keyAccess: [] };
+  if (user.isAdmin) return { channels: 'all', includeDms: true, keyAccess: 'all' };
+  // #5551: repeater-decrypted rows also need read access to their key.
+  const keyAccess = await resolveMeshcoreKeyAccess(user);
   if (await databaseService.checkPermissionAsync(user.id, 'messages', 'read', sourceId)) {
-    return { channels: 'all', includeDms: true };
+    return { channels: 'all', includeDms: true, keyAccess };
   }
   const channels: number[] = [];
   for (let idx = 0; idx <= 7; idx++) {
     const resource = `channel_${idx}` as ResourceType;
     if (await databaseService.checkPermissionAsync(user.id, resource, 'read', sourceId)) channels.push(idx);
   }
-  return { channels, includeDms: false };
+  return { channels, includeDms: false, keyAccess };
 }
 
 /** Narrow a readable scope to a requested channel list (`undefined` = no narrowing). */

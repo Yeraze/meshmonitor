@@ -106,6 +106,9 @@ export interface MeshCoreNode {
   lastHeard?: number;
   /** #5390: earliest reception on this source, epoch MILLISECONDS (like lastHeard). */
   firstHeard?: number;
+  /** #5553: when the local repeater's `neighbors` table last listed this node
+   *  (ms). Unset on a node known only from a heard advert. */
+  repeaterNeighborAt?: number;
   rssi?: number;
   snr?: number;
   batteryMv?: number;

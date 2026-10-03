@@ -92,6 +92,12 @@ export interface DbMeshCoreNode {
   timeSyncIntervalMinutes?: number | null;
   lastTimeSyncAt?: number | null;
   /**
+   * #5553 (migration 191): when the LOCAL repeater's `neighbors` table last
+   * listed this node (epoch ms). Only that poll writes it; a node learned from
+   * a RAW advert alone stays null, so it is not taken for a zero-hop neighbour.
+   */
+  repeaterNeighborAt?: number | null;
+  /**
    * MeshCore per-contact forwarding route (migration 068). `outPath` is a
    * comma-separated hex chain of hop hashes ("a3,7f,02"); `pathLen` is the
    * hop count. Both null means the firmware's OUT_PATH_UNKNOWN (0xFF)
@@ -144,6 +150,16 @@ export interface DbMeshCoreMessage {
    * written before migration 187.
    */
   senderTimestamp?: number | null;
+  /**
+   * Decrypt provenance (#5551, migration 191). Set only when this source
+   * decrypted the channel message with a key held by another source. Reads
+   * gate the row on the viewer's access to that key — see
+   * `server/utils/meshcoreKeyAccess.ts`. `keyFingerprint` is hex
+   * SHA-256(secret)[0..8]; the secret itself is never copied here.
+   */
+  keySourceId?: string | null;
+  keyChannelIdx?: number | null;
+  keyFingerprint?: string | null;
   createdAt: number;
 }
 
@@ -159,7 +175,17 @@ export interface MeshCoreMessageScope {
   sourceId: string;
   channels: number[] | 'all';
   includeDms: boolean;
+  /** Keyed-message gate (#5551); omitted = no gate. See {@link MeshCoreKeyAccessFilter}. */
+  keyAccess?: MeshCoreKeyAccessFilter;
 }
+
+/**
+ * Which cross-source-decrypted ("keyed") channel messages a reader may see
+ * (#5551). `'all'` = every row. A list = rows with NO key provenance plus
+ * keyed rows whose `keyFingerprint` is in the list (empty list = unkeyed rows
+ * only). Built by `server/utils/meshcoreKeyAccess.ts`.
+ */
+export type MeshCoreKeyAccessFilter = 'all' | string[];
 
 export interface DbMeshCorePacket {
   id?: number;
@@ -1297,11 +1323,16 @@ export class MeshCoreRepository extends BaseRepository {
   /**
    * Get recent messages, optionally scoped to a source.
    */
-  async getRecentMessages(limit: number = 50, sourceId?: string): Promise<DbMeshCoreMessage[]> {
+  async getRecentMessages(
+    limit: number = 50,
+    sourceId?: string,
+    keyAccess?: MeshCoreKeyAccessFilter,
+  ): Promise<DbMeshCoreMessage[]> {
     const { meshcoreMessages } = this.tables;
-    const whereClause: SQL | undefined = sourceId
-      ? eq(meshcoreMessages.sourceId, sourceId)
-      : undefined;
+    const whereClause: SQL | undefined = this.withKeyAccess(
+      sourceId ? eq(meshcoreMessages.sourceId, sourceId) : undefined,
+      keyAccess,
+    );
     const result = await this.db
       .select()
       .from(meshcoreMessages)
@@ -1309,6 +1340,38 @@ export class MeshCoreRepository extends BaseRepository {
       .orderBy(desc(meshcoreMessages.timestamp))
       .limit(limit);
     return this.normalizeBigInts(result) as unknown as DbMeshCoreMessage[];
+  }
+
+  /**
+   * Keyed channels present on a source (#5551): one entry per (channel key,
+   * fingerprint) among rows that carry decrypt provenance, with the latest
+   * provenance seen. Feeds the synthesized channel list of a source that has
+   * no channel slots of its own (a repeater decrypting with sibling keys).
+   */
+  async getKeyedChannelSummaries(sourceId: string): Promise<Array<{
+    channelKey: string;
+    keyFingerprint: string;
+    keySourceId: string | null;
+    keyChannelIdx: number | null;
+  }>> {
+    if (!sourceId) return [];
+    const { meshcoreMessages } = this.tables;
+    const rows = await this.db
+      .select({
+        channelKey: meshcoreMessages.fromPublicKey,
+        keyFingerprint: meshcoreMessages.keyFingerprint,
+        keySourceId: sql<string | null>`MAX(${meshcoreMessages.keySourceId})`,
+        keyChannelIdx: sql<number | null>`MAX(${meshcoreMessages.keyChannelIdx})`,
+      })
+      .from(meshcoreMessages)
+      .where(and(eq(meshcoreMessages.sourceId, sourceId), isNotNull(meshcoreMessages.keyFingerprint)))
+      .groupBy(meshcoreMessages.fromPublicKey, meshcoreMessages.keyFingerprint);
+    return rows.map((r: { channelKey: string; keyFingerprint: string | null; keySourceId: string | null; keyChannelIdx: number | null }) => ({
+      channelKey: r.channelKey,
+      keyFingerprint: r.keyFingerprint as string,
+      keySourceId: r.keySourceId ?? null,
+      keyChannelIdx: r.keyChannelIdx == null ? null : Number(r.keyChannelIdx),
+    }));
   }
 
   /**
@@ -1349,12 +1412,13 @@ export class MeshCoreRepository extends BaseRepository {
     limit: number = 100,
     sourceId?: string,
     offset: number = 0,
+    keyAccess?: MeshCoreKeyAccessFilter,
   ): Promise<DbMeshCoreMessage[]> {
     const { meshcoreMessages } = this.tables;
     const result = await this.db
       .select()
       .from(meshcoreMessages)
-      .where(this.channelWhereClause(channelIdx, sourceId))
+      .where(this.withKeyAccess(this.channelWhereClause(channelIdx, sourceId), keyAccess))
       .orderBy(desc(meshcoreMessages.timestamp))
       .limit(limit)
       .offset(offset);
@@ -1370,6 +1434,7 @@ export class MeshCoreRepository extends BaseRepository {
   async getChannelMessageCounts(
     channelIndices: number[],
     sourceId?: string,
+    keyAccess?: MeshCoreKeyAccessFilter,
   ): Promise<Record<number, number>> {
     const { meshcoreMessages } = this.tables;
     const entries = await Promise.all(
@@ -1377,7 +1442,7 @@ export class MeshCoreRepository extends BaseRepository {
         const result = await this.db
           .select({ count: sql<number>`COUNT(*)` })
           .from(meshcoreMessages)
-          .where(this.channelWhereClause(idx, sourceId));
+          .where(this.withKeyAccess(this.channelWhereClause(idx, sourceId), keyAccess));
         return [idx, Number(result[0]?.count ?? 0)] as const;
       }),
     );
@@ -1396,6 +1461,7 @@ export class MeshCoreRepository extends BaseRepository {
   async getChannelLatestTimestamps(
     channelIndices: number[],
     sourceId?: string,
+    keyAccess?: MeshCoreKeyAccessFilter,
   ): Promise<Record<number, number>> {
     const { meshcoreMessages } = this.tables;
     const entries = await Promise.all(
@@ -1403,7 +1469,7 @@ export class MeshCoreRepository extends BaseRepository {
         const result = await this.db
           .select({ latest: sql<number>`MAX(${meshcoreMessages.timestamp})` })
           .from(meshcoreMessages)
-          .where(this.channelWhereClause(idx, sourceId));
+          .where(this.withKeyAccess(this.channelWhereClause(idx, sourceId), keyAccess));
         const latest = result[0]?.latest;
         return [idx, latest == null ? null : Number(latest)] as const;
       }),
@@ -1421,6 +1487,20 @@ export class MeshCoreRepository extends BaseRepository {
    * queries so they stay in lockstep (incl. the channel-0 legacy null-recipient
    * rule that mirrors the client-side filter in MeshCoreChannelsView).
    */
+  /**
+   * AND a keyed-message gate (#5551) onto `base`. `undefined`/`'all'` leave it
+   * unchanged. Otherwise a row passes when it carries no key provenance, or its
+   * fingerprint is one the reader holds.
+   */
+  private withKeyAccess(base: SQL | undefined, keyAccess?: MeshCoreKeyAccessFilter): SQL | undefined {
+    if (keyAccess === undefined || keyAccess === 'all') return base;
+    const { meshcoreMessages } = this.tables;
+    const gate = keyAccess.length === 0
+      ? isNull(meshcoreMessages.keyFingerprint)
+      : (or(isNull(meshcoreMessages.keyFingerprint), inArray(meshcoreMessages.keyFingerprint, keyAccess)) as SQL);
+    return base ? (and(base, gate) as SQL) : gate;
+  }
+
   private channelWhereClause(channelIdx: number, sourceId?: string): SQL | undefined {
     const { meshcoreMessages } = this.tables;
     const key = `channel-${channelIdx}`;
@@ -1464,7 +1544,7 @@ export class MeshCoreRepository extends BaseRepository {
   private meshcoreScopeCondition(scope: MeshCoreMessageScope): SQL | null {
     const { meshcoreMessages } = this.tables;
     if (!scope.sourceId) return null;
-    const bySource = eq(meshcoreMessages.sourceId, scope.sourceId);
+    const bySource = this.withKeyAccess(eq(meshcoreMessages.sourceId, scope.sourceId), scope.keyAccess) as SQL;
     if (scope.channels === 'all') {
       return scope.includeDms
         ? bySource
@@ -1539,6 +1619,7 @@ export class MeshCoreRepository extends BaseRepository {
     sourceId: string;
     channels: number[] | 'all';
     includeDms: boolean;
+    keyAccess?: MeshCoreKeyAccessFilter;
     includeTerms?: string[];
     excludeTerms?: string[];
     startMs?: number;
@@ -1553,6 +1634,7 @@ export class MeshCoreRepository extends BaseRepository {
       sourceId: options.sourceId,
       channels: options.channels,
       includeDms: options.includeDms,
+      keyAccess: options.keyAccess,
     });
     if (!scoped) return [];
     const limit = Math.max(1, Math.min(options.limit ?? 1000, 5000));

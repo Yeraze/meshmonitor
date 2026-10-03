@@ -377,6 +377,27 @@ then prints `"  -> " + reply`. There is no end marker, and a multi-line reply
   those skip `serial_data`. `RAW:` plus the following `RX` line (for SNR/RSSI)
   go through `parseObserverFrame` into `handleOtaPacket`, so the Packet Monitor
   fills on those builds. Stock firmware prints none, and the UI says so.
+- **RAW frames also feed Nodes and Messages (#5553, #5551)**, whether or not
+  the packet log is on. `ingestRepeaterFrame` uses the same helpers as the MQTT
+  ingest (`services/meshcoreFrameIngest.ts`):
+  - **ADVERT → node** on this source. It fires no new-node notification and no
+    node automation trigger; only the contact-updated socket event. It writes
+    no SNR/RSSI and never sets `repeaterNeighborAt`, so an advert-only node is
+    not a zero-hop neighbour. Only the `neighbors` poll stamps that column.
+  - **GRP_TXT → channel message**, decrypted with a key from ANY source's
+    `channels` rows (the repeater holds none). The row is filed under
+    `keyedChannelIndex(secret)` (1000 + 16 bits of the secret's digest, so one
+    key is one channel whichever source holds it) and carries `keySourceId`,
+    `keyChannelIdx` and `keyFingerprint`. **Every read path gates a row with a
+    fingerprint** on the viewer being able to read a channel that holds that
+    secret (`utils/meshcoreKeyAccess.ts`): the channel page, recent tail,
+    counts, snapshot, unified feed, search, CSV export, the channel list and
+    the live socket. A new read path for `meshcore_messages` must apply it too.
+  - The id is content-derived, so a flood heard through several neighbours is
+    one row and one event. A message whose sender name matches one of our own
+    MeshCore nodes is flagged `selfOrigin`, which the automation engine treats
+    as self-sent (#3914).
+  - GRP_DATA (0x06) is not decoded: `ChannelCrypto` only parses GRP_TXT.
 - **`neighbors` ends on a 300 ms idle gap** after the first `->` line, not the
   full timeout. The firmware prints the whole reply in one `println`.
 - **The neighbours poll** runs every 5 minutes on REPEATER sources while

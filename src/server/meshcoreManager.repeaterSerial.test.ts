@@ -280,6 +280,8 @@ describe('ingestRepeaterNeighborsReply (#5500)', () => {
         longitude: 15.9,
         snr: 10,
         lastHeard: NOW - 12_000,
+        // #5553: only this poll marks a node as a zero-hop neighbour.
+        repeaterNeighborAt: NOW,
       },
       'src-rep',
     );
