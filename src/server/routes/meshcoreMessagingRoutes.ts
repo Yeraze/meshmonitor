@@ -23,6 +23,8 @@ import { failContactNotOnDevice, managerFor, VALIDATION, isValidPublicKey, isVal
 import type { MeshCoreLoginRetryOutcome } from '../meshcoreManager.js';
 import { extendRequestTimeout } from '../middleware/requestTimeout.js';
 import { ok, fail } from '../utils/apiResponse.js';
+import { resolveMeshcoreKeyAccess, filterKeyedMessages } from '../utils/meshcoreKeyAccess.js';
+import type { MeshCoreKeyAccessFilter } from '../../db/repositories/index.js';
 import { isMeshCoreResendError, MESHCORE_RESEND_ERROR_STATUS } from '../errors/meshcoreResendError.js';
 
 // Room-server login retries over RF can legitimately run past the 30s
@@ -49,7 +51,10 @@ router.get('/messages', optionalAuth(), requirePermission('messages', 'read', { 
     const sinceRaw = req.query.since as string | undefined;
     const since = sinceRaw ? parseInt(sinceRaw, 10) : undefined;
     const manager = managerFor(req, res);
-    let messages = manager.getRecentMessages(limit);
+    // #5551: hide repeater-decrypted channel messages whose key the caller
+    // cannot read on the source that holds it.
+    const keyAccess = await resolveMeshcoreKeyAccess(req.user);
+    let messages = filterKeyedMessages(manager.getRecentMessages(limit), keyAccess);
     if (since !== undefined && !isNaN(since)) {
       messages = messages.filter(m => m.timestamp > since);
     }
@@ -99,7 +104,8 @@ router.get('/messages/channel/:idx', optionalAuth(), requireMeshcoreChannelAcces
     // Fetch limit+1 to detect whether an older page exists without a
     // separate COUNT query.
     const manager = managerFor(req, res);
-    const page = await manager.getChannelMessages(idx, limit + 1, offset);
+    const keyAccess = await resolveMeshcoreKeyAccess(req.user);
+    const page = await manager.getChannelMessages(idx, limit + 1, offset, keyAccess);
     const hasMore = page.length > limit;
     // The extra lookahead row is the oldest one in this ascending array —
     // i.e. index 0 — so drop it to send exactly `limit` messages, still
@@ -131,15 +137,16 @@ router.get('/messages/channel/:idx', optionalAuth(), requireMeshcoreChannelAcces
 const IGNORE_SCAN_PAGE = 50;
 async function latestExcludingIgnored(
   sourceId: string,
-  manager: { getChannelMessages(idx: number, limit: number, offset: number): Promise<Array<{ timestamp: number; fromPublicKey: string; fromName?: string; text: string; messageType?: string; filtered?: 'ignore' | 'block' }>>; getLocalNode(): { publicKey?: string } | null },
+  manager: { getChannelMessages(idx: number, limit: number, offset: number, keyAccess?: MeshCoreKeyAccessFilter): Promise<Array<{ timestamp: number; fromPublicKey: string; fromName?: string; text: string; messageType?: string; filtered?: 'ignore' | 'block' }>>; getLocalNode(): { publicKey?: string } | null },
   latest: Record<number, number>,
+  keyAccess?: MeshCoreKeyAccessFilter,
 ): Promise<Record<number, number>> {
   if (!sourceId || !meshcoreMessageFilter.hasEntries(sourceId)) return latest;
   const selfKey = manager.getLocalNode?.()?.publicKey;
   const out: Record<number, number> = {};
   await Promise.all(Object.keys(latest).map(async (k) => {
     const idx = Number(k);
-    const page = meshcoreMessageFilter.annotate(sourceId, await manager.getChannelMessages(idx, IGNORE_SCAN_PAGE, 0), selfKey);
+    const page = meshcoreMessageFilter.annotate(sourceId, await manager.getChannelMessages(idx, IGNORE_SCAN_PAGE, 0, keyAccess), selfKey);
     let newest = 0;
     for (const m of page) {
       if (!m.filtered && m.timestamp > newest) newest = m.timestamp;
@@ -185,16 +192,19 @@ router.get('/messages/channel-counts', optionalAuth(), async (req: Request, res:
         )).filter((idx): idx is number => idx !== null);
 
     const manager = managerFor(req, res);
+    // #5551: counts and unread markers must not reveal keyed traffic either.
+    const keyAccess = await resolveMeshcoreKeyAccess(user);
     const [counts, rawLatest] = unique.length > 0
       ? await Promise.all([
-          manager.getChannelMessageCounts(unique),
-          manager.getChannelLatestTimestamps(unique),
+          manager.getChannelMessageCounts(unique, keyAccess),
+          manager.getChannelLatestTimestamps(unique, keyAccess),
         ])
       : [{}, {}];
     const latestTimestamps = await latestExcludingIgnored(
       sourceId ?? '',
       manager,
       rawLatest as Record<number, number>,
+      keyAccess,
     );
     res.json({ success: true, counts, latestTimestamps });
   } catch (error) {

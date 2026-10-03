@@ -11,6 +11,7 @@ import { ConnectionType, MeshCoreDeviceType } from '../meshcoreManager.js';
 import { getMeshCoreTelemetryPoller, nodeNumFromPubkey } from '../services/meshcoreTelemetryPoller.js';
 import { logger } from '../../utils/logger.js';
 import { meshcoreMessageFilter } from '../services/meshcoreMessageFilter.js';
+import { resolveMeshcoreKeyAccess, filterKeyedMessages } from '../utils/meshcoreKeyAccess.js';
 import { requireAuth, optionalAuth, requirePermission, hasPermission } from '../auth/authMiddleware.js';
 import { meshcoreDeviceLimiter } from '../middleware/rateLimiters.js';
 import { managerFor, isValidConnectionParams, requireMeshcoreTx, failIfTxDisabled, stripPositions } from './meshcoreRouteShared.js';
@@ -187,8 +188,13 @@ router.get('/snapshot', optionalAuth(), requirePermission('connection', 'read', 
       ? await databaseService.checkPermissionAsync(user.id, 'messages', 'read', sourceId)
       : false);
     // Ignore / Block (#5408): flag messages that match the CURRENT lists.
+    // #5551: keyed (repeater-decrypted) rows need access to their key too.
     const messages = canReadMessages
-      ? meshcoreMessageFilter.annotate(sourceId, manager.getRecentMessages(50), localNode?.publicKey)
+      ? meshcoreMessageFilter.annotate(
+          sourceId,
+          filterKeyedMessages(manager.getRecentMessages(50), await resolveMeshcoreKeyAccess(user)),
+          localNode?.publicKey,
+        )
       : [];
     const seqCursor = messages.length > 0 ? Math.max(...messages.map(m => m.timestamp)) : 0;
 

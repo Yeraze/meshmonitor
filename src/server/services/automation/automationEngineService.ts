@@ -953,7 +953,10 @@ export class AutomationEngineService {
   async onMeshCoreMessage(msg: MeshCoreMessage, sourceId: string | null): Promise<number> {
     // #3914: ignore our own sends, UNLESS the matching automation opted back in
     // via `includeSelf` (#4694 — see includesSelfOrigin()'s doc comment).
-    const isSelf = await this.isSelfMeshCore(sourceId, msg.fromPublicKey);
+    // `selfOrigin` (#5551) marks a repeater-decrypted channel message whose
+    // sender is one of our own nodes — channel traffic has no sender key to
+    // match, so the ingest path flags it instead.
+    const isSelf = msg.selfOrigin === true || await this.isSelfMeshCore(sourceId, msg.fromPublicKey);
     // Same reconciliation as onMessage: resolve the channel name when any message
     // automation is loaded (subsumes #3974's channelName/`channels` filter gate),
     // feeding both the universal channelName/senderLabel tokens and the matcher's

@@ -45,6 +45,7 @@ import {
   resolveReadableMeshcoreScope,
   intersectChannels,
 } from '../utils/messageSourceAccess.js';
+import { keyedChannelNames } from '../utils/meshcoreKeyedChannels.js';
 import {
   CSV_BOM,
   MESSAGE_EXPORT_MAX_ROWS,
@@ -232,6 +233,10 @@ async function buildMeshcoreStream(
     const nm = unifiedChannelDisplayName(c as { id: number; name?: string | null; role?: number | null }, presetName);
     if (nm) nameByIdx.set((c as { id: number }).id, nm);
   }
+  // Keyed channels (#5551) have no slot here; name them from their key's row.
+  for (const [idx, nm] of await keyedChannelNames(source.id).catch(() => new Map<number, string>())) {
+    if (!nameByIdx.has(idx)) nameByIdx.set(idx, nm);
+  }
 
   let requested: number[] | undefined;
   if (filters.channelNames) {
@@ -285,6 +290,7 @@ async function buildMeshcoreStream(
         sourceId: source.id,
         channels,
         includeDms,
+        keyAccess: readable.keyAccess,
         includeTerms: filters.includeTerms,
         excludeTerms: filters.excludeTerms,
         startMs: filters.startMs,

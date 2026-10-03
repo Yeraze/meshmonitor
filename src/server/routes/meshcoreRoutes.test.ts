@@ -26,6 +26,15 @@ vi.mock('../../services/database.js', () => ({
   default: {}
 }));
 
+// #5551: the keyed-message gate resolves key access from the database, which
+// is stubbed empty here. These tests cover routing, not the gate (see
+// meshcoreMessagingRoutes.keyAccess.test.ts), so the caller holds every key.
+vi.mock('../utils/meshcoreKeyAccess.js', () => ({
+  resolveMeshcoreKeyAccess: vi.fn().mockResolvedValue('all'),
+  filterKeyedMessages: (rows: unknown[]) => rows,
+  canSeeKeyedMessage: () => true,
+}));
+
 // Stub manager — every method the routes call is mocked. The MeshCore
 // multi-source refactor put the manager behind a per-source registry; we
 // mock the registry directly here so requests under
@@ -1396,7 +1405,7 @@ describe('MeshCore Routes', () => {
       const response = await request(app).get('/api/sources/test-source/meshcore/messages/channel/1?limit=100');
       expect(response.status).toBe(200);
       expect(response.body.success).toBe(true);
-      expect(meshcoreManager.getChannelMessages).toHaveBeenCalledWith(1, 101, 0);
+      expect(meshcoreManager.getChannelMessages).toHaveBeenCalledWith(1, 101, 0, 'all');
       expect(response.body.hasMore).toBe(false);
       expect(response.body.data.map((m: any) => m.id)).toEqual(['a', 'b']);
     });
@@ -1411,7 +1420,7 @@ describe('MeshCore Routes', () => {
       ]);
       const response = await request(app).get('/api/sources/test-source/meshcore/messages/channel/1?limit=2');
       expect(response.status).toBe(200);
-      expect(meshcoreManager.getChannelMessages).toHaveBeenCalledWith(1, 3, 0);
+      expect(meshcoreManager.getChannelMessages).toHaveBeenCalledWith(1, 3, 0, 'all');
       expect(response.body.hasMore).toBe(true);
       expect(response.body.data.map((m: any) => m.id)).toEqual(['a', 'b']);
     });
@@ -1419,19 +1428,19 @@ describe('MeshCore Routes', () => {
     it('passes offset through to the manager', async () => {
       const response = await request(app).get('/api/sources/test-source/meshcore/messages/channel/1?limit=100&offset=200');
       expect(response.status).toBe(200);
-      expect(meshcoreManager.getChannelMessages).toHaveBeenCalledWith(1, 101, 200);
+      expect(meshcoreManager.getChannelMessages).toHaveBeenCalledWith(1, 101, 200, 'all');
     });
 
     it('clamps a negative offset to 0', async () => {
       const response = await request(app).get('/api/sources/test-source/meshcore/messages/channel/1?limit=100&offset=-5');
       expect(response.status).toBe(200);
-      expect(meshcoreManager.getChannelMessages).toHaveBeenCalledWith(1, 101, 0);
+      expect(meshcoreManager.getChannelMessages).toHaveBeenCalledWith(1, 101, 0, 'all');
     });
 
     it('clamps an offset above MAX_MESSAGE_OFFSET (50000)', async () => {
       const response = await request(app).get('/api/sources/test-source/meshcore/messages/channel/1?limit=100&offset=999999');
       expect(response.status).toBe(200);
-      expect(meshcoreManager.getChannelMessages).toHaveBeenCalledWith(1, 101, 50000);
+      expect(meshcoreManager.getChannelMessages).toHaveBeenCalledWith(1, 101, 50000, 'all');
     });
 
     it('rejects a non-numeric channel index', async () => {
