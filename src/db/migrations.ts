@@ -211,6 +211,7 @@ import { migration as globalUiPrefsDropSourceCopiesMigration, runMigration189Pos
 import { migration as packetLogSourceTimestampIndexMigration, runMigration190Postgres, runMigration190Mysql } from '../server/migrations/190_packet_log_source_timestamp_index.js';
 import { migration as addMeshcoreRepeaterIngestColumnsMigration, runMigration191Postgres, runMigration191Mysql } from '../server/migrations/191_add_meshcore_repeater_ingest_columns.js';
 import { migration as addChannelDatabaseProtocolMigration, runMigration192Postgres, runMigration192Mysql } from '../server/migrations/192_add_channel_database_protocol.js';
+import { migration as createCrossSourceLinksMigration, runMigration193Postgres, runMigration193Mysql } from '../server/migrations/193_create_cross_source_links.js';
 
 // ============================================================================
 // Registry
@@ -3116,4 +3117,19 @@ registry.register({
   sqlite: (db) => addChannelDatabaseProtocolMigration.up(db),
   postgres: (client) => runMigration192Postgres(client),
   mysql: (pool) => runMigration192Mysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 193: `cross_source_links` (#5561): hourly aggregate of "source
+// A's radio was heard by source B", for the map's "heard here" edges. A row
+// names two sources (txSourceId, rxSourceId); reads require both.
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 193,
+  name: 'create_cross_source_links',
+  settingsKey: 'migration_193_create_cross_source_links',
+  sqlite: (db) => createCrossSourceLinksMigration.up(db),
+  postgres: (client) => runMigration193Postgres(client),
+  mysql: (pool) => runMigration193Mysql(pool),
 });

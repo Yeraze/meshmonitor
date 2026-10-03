@@ -87,6 +87,7 @@ import nodeStatusStyles from './NodeStatusLine.module.css';
 import roleGroupingStyles from './NodeRoleGrouping.module.css';
 import listHeaderStyles from './NodesListHeader.module.css';
 import { NeighborLinksLayer, type NeighborLinkDescriptor } from './map/layers/NeighborLinksLayer';
+import { CrossSourceLinksLayer } from './map/layers/CrossSourceLinksLayer';
 import { AccuracyRegionsLayer, type AccuracyRegionDescriptor } from './map/layers/AccuracyRegionsLayer';
 import { NodeCard } from './map/popups/NodeCard';
 import { IdentityItems, SignalItems, LastHeardFooter, TracerouteBody, NodeActions, type NodeActionSpec } from './map/popups/sections';
@@ -576,6 +577,8 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
     setShowPaths,
     showNeighborInfo,
     setShowNeighborInfo,
+    showCrossSourceLinks,
+    setShowCrossSourceLinks,
     showRoute,
     setShowRoute,
     showMotion,
@@ -3091,6 +3094,20 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                     />
                     <span>{t('map.showNeighborInfo')}</span>
                   </label>
+                  <label
+                    className="map-control-item"
+                    title={t(
+                      'map.cross_source.toggle_hint',
+                      'One-way edges: one of your sources was heard by another. Dotted = likely relay (inferred). Dashed = heard by an MQTT gateway.',
+                    )}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={showCrossSourceLinks}
+                      onChange={(e) => setShowCrossSourceLinks(e.target.checked)}
+                    />
+                    <span>{t('map.cross_source.toggle', 'Show Cross-Source Links')}</span>
+                  </label>
                   <label className="map-control-item">
                     <input
                       type="checkbox"
@@ -3424,6 +3441,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                   // rather than silently pulling every source's edges in.
                   showNeighbors={!!currentSourceId && showNeighborInfo}
                   showTraceroutes={!!currentSourceId && (showPaths || showRoute)}
+                  showCrossSourceLinks={!!currentSourceId && showCrossSourceLinks}
                   lookbackHours={effectiveMapMaxAge}
                   visibleNodeNums={visible3DNodeNums}
                   renderPopup={(key) => {
@@ -3553,6 +3571,17 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                   (4-tier SNR pathOptions, hover-dim className, unidirectional
                   arrows, popup). */}
               <NeighborLinksLayer links={neighborLinks} />
+
+              {/* Cross-source "heard here" edges (#5561): this source's radio
+                  heard by, or hearing, another of our sources. Mounted only
+                  while on, so it fetches nothing when off. */}
+              {showCrossSourceLinks && currentSourceId && (
+                <CrossSourceLinksLayer
+                  enabled
+                  sourceIds={[currentSourceId]}
+                  lookbackHours={effectiveMapMaxAge}
+                />
+              )}
 
               {/* Note: Selected node traceroute with separate forward and back paths */}
               {/* This is handled by traceroutePathsElements passed from parent */}

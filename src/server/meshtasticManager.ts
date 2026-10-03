@@ -118,6 +118,7 @@ import {
   matchesMqttEcho,
 } from './services/mqttProxyBridge.js';
 import { isDuplicatePacketLog, packetLogDedupKey, dedupTtlForTransport, isRfTransport, isNodeDbReplayForPacketLog } from './services/packetLogDedup.js';
+import { maybeRecordMeshtasticLink } from './services/crossSourceLinkRecorder.js';
 import {
   isStaleCoverageRxTime,
   computeMeshtasticHopsAway,
@@ -6595,6 +6596,16 @@ class MeshtasticManager implements ISourceManager {
     // not packet logging is on (see meshtasticHeardRepeaters repo header).
     // Non-blocking: never delay packet processing on a diagnostics write.
     void this.maybeRecordHeardReflood(meshPacket, this.assessLocalSpoof(meshPacket));
+
+    // Cross-source "heard here" links (#5561): this radio hearing one of our
+    // OTHER sources' radios. Outside the packet_log gate for the same reason
+    // as above. Non-blocking, never throws, sends nothing, emits nothing.
+    void maybeRecordMeshtasticLink({
+      sourceId: this.sourceId,
+      localNodeNum: this.localNodeInfo?.nodeNum ?? null,
+      packet: meshPacket,
+      replayed: context?.viaStoreForward === true || context?.virtualNodeRequestId != null,
+    });
 
     // #5534: set when this packet is the first live reception of a node on
     // this source; trigger.nodeDiscovered fires once the payload is processed.
