@@ -51,6 +51,17 @@ export async function listKeyedChannels(
     exact.set(`${ch.sourceId ?? ''}\u0000${Number(ch.id)}\u0000${fp}`, name);
   }
 
+  // A virtual channel's own name (#5552) wins over a same-secret device slot:
+  // it is the name an admin gave the key on purpose.
+  try {
+    for (const vc of await databaseService.channelDatabase.getAllAsync('meshcore')) {
+      const secretHex = pskToHex(vc.psk);
+      if (secretHex && vc.name) nameByFp.set(channelKeyFingerprint(secretHex), vc.name);
+    }
+  } catch {
+    // Names fall back to the device rows.
+  }
+
   const byId = new Map<number, KeyedChannelEntry>();
   for (const s of summaries) {
     const id = parseChannelKey(s.channelKey);

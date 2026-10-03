@@ -210,6 +210,7 @@ import { migration as createTranslationCacheMigration, runMigration188Postgres, 
 import { migration as globalUiPrefsDropSourceCopiesMigration, runMigration189Postgres, runMigration189Mysql } from '../server/migrations/189_global_ui_prefs_drop_source_copies.js';
 import { migration as packetLogSourceTimestampIndexMigration, runMigration190Postgres, runMigration190Mysql } from '../server/migrations/190_packet_log_source_timestamp_index.js';
 import { migration as addMeshcoreRepeaterIngestColumnsMigration, runMigration191Postgres, runMigration191Mysql } from '../server/migrations/191_add_meshcore_repeater_ingest_columns.js';
+import { migration as addChannelDatabaseProtocolMigration, runMigration192Postgres, runMigration192Mysql } from '../server/migrations/192_add_channel_database_protocol.js';
 import { migration as createCrossSourceLinksMigration, runMigration193Postgres, runMigration193Mysql } from '../server/migrations/193_create_cross_source_links.js';
 
 // ============================================================================
@@ -3101,6 +3102,21 @@ registry.register({
   sqlite: (db) => addMeshcoreRepeaterIngestColumnsMigration.up(db),
   postgres: (client) => runMigration191Postgres(client),
   mysql: (pool) => runMigration191Mysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 192: `channel_database.protocol` (#5552). GLOBAL, like the table.
+// 'meshtastic' (default, every existing row) or 'meshcore' (a 16-byte channel
+// secret for server-side MeshCore decrypt).
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 192,
+  name: 'add_channel_database_protocol',
+  settingsKey: 'migration_192_add_channel_database_protocol',
+  sqlite: (db) => addChannelDatabaseProtocolMigration.up(db),
+  postgres: (client) => runMigration192Postgres(client),
+  mysql: (pool) => runMigration192Mysql(pool),
 });
 
 // ---------------------------------------------------------------------------

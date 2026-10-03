@@ -61,6 +61,10 @@ import {
   decryptGroupTextFrame,
   frameChannelMessageId,
   ingestAdvertFrame,
+  keyedChannelIndex,
+  channelKeyFingerprint,
+  noteVirtualChannelDecrypt,
+  type ChannelKeyCandidate,
 } from './services/meshcoreFrameIngest.js';
 import { dataEventEmitter } from './services/dataEventEmitter.js';
 import { meshcoreMessageFilter } from './services/meshcoreMessageFilter.js';
@@ -544,6 +548,8 @@ export class MeshCoreMqttManager extends EventEmitter implements ISourceManager 
           snr: decoded.event.snr ?? undefined,
           rssi: decoded.event.rssi ?? undefined,
           createdAt: Date.now(),
+          // Only for a virtual-channel key (#5552); slot-keyed rows are unchanged.
+          ...(plain.keyFingerprint ? { keyFingerprint: plain.keyFingerprint } : {}),
       };
 
       // Ignore / Block (#5408): block drops the message before it is stored;
@@ -565,6 +571,7 @@ export class MeshCoreMqttManager extends EventEmitter implements ISourceManager 
       if (!inserted) return; // A different observer's copy already landed.
       meshcoreMessageFilter.countHit(this.sourceId, verdict);
       this.stats.channelMessages++;
+      noteVirtualChannelDecrypt(plain.key);
       // The packet hash (#5357) rides the event only: added AFTER the insert so
       // the DB row keeps its shape (meshcore_messages has no hash column). The
       // raw frame came straight off the wire, so the hash is exact.
@@ -601,17 +608,35 @@ export class MeshCoreMqttManager extends EventEmitter implements ISourceManager 
    */
   private async decryptGroupText(
     group: { channelHash: string; cipherMacHex: string; ciphertextHex: string },
-  ): Promise<{ text: string; senderName: string | null; timestampSec: number; channelIdx: number } | null> {
+  ): Promise<{
+    text: string;
+    senderName: string | null;
+    timestampSec: number;
+    channelIdx: number;
+    /** Set only for a MeshCore virtual-channel key (#5552); gates reads. */
+    keyFingerprint: string | null;
+    key: ChannelKeyCandidate;
+  } | null> {
     const res = await decryptGroupTextFrame(group);
     if (!res) return null;
+    const base = { text: res.text, senderName: res.senderName, timestampSec: res.timestampSec, key: res.key };
+    if (res.key.channelIdx === null) {
+      // A virtual channel (#5552) has no device slot. File it under the
+      // secret-derived index and stamp the fingerprint, so only users granted
+      // that channel_database entry can read it.
+      return {
+        ...base,
+        channelIdx: keyedChannelIndex(res.key.secretHex),
+        keyFingerprint: channelKeyFingerprint(res.key.secretHex),
+      };
+    }
     return {
-      text: res.text,
-      senderName: res.senderName,
-      timestampSec: res.timestampSec,
+      ...base,
       // The row id of the key that decrypted it IS the channel index — the
       // only way to know which channel a frame belongs to, since the wire
       // carries a hash rather than an index.
       channelIdx: res.key.channelIdx,
+      keyFingerprint: null,
     };
   }
 

@@ -38,6 +38,7 @@ interface User {
 interface ChannelDatabaseEntry {
   id: number;
   name: string;
+  protocol?: 'meshtastic' | 'meshcore';
   description: string | null;
   isEnabled: boolean;
 }
@@ -140,7 +141,7 @@ const UsersTab: React.FC = () => {
   // Fetch channel database entries (virtual channels) - admin only
   const fetchChannelDatabaseEntries = async () => {
     try {
-      const response = await api.get<{ data: ChannelDatabaseEntry[] }>('/api/channel-database');
+      const response = await api.get<{ data: ChannelDatabaseEntry[] }>('/api/channel-database?protocol=all');
       setChannelDatabaseEntries(response.data || []);
     } catch (err) {
       // This may fail for non-admins, which is fine
@@ -1159,6 +1160,11 @@ const UsersTab: React.FC = () => {
                       <div key={`channeldb-${entry.id}`} className="permission-item">
                         <div className="permission-label">
                           {entry.name}
+                          {entry.protocol === 'meshcore' && (
+                            <span className="permission-description" style={{ fontSize: '0.85em', color: 'var(--text-muted)', marginLeft: '8px' }}>
+                              {t('channel_database.protocol_meshcore', 'MeshCore')}
+                            </span>
+                          )}
                           {entry.description && (
                             <span className="permission-description" style={{ fontSize: '0.85em', color: 'var(--text-muted)', marginLeft: '8px' }}>
                               ({entry.description})
@@ -1166,7 +1172,10 @@ const UsersTab: React.FC = () => {
                           )}
                         </div>
                         <div className="permission-actions">
-                          <label>
+                          {/* Only Read applies to a MeshCore key (#5552):
+                              MeshCore positions come from adverts, not from
+                              channel traffic, and there is nothing to write. */}
+                          <label hidden={entry.protocol === 'meshcore'}>
                             <input
                               type="checkbox"
                               checked={perm.canViewOnMap}
@@ -1200,7 +1209,7 @@ const UsersTab: React.FC = () => {
                               territory) we leave the UX to "clear both
                               boxes and Save" — that branch in
                               updateChannelDbPermission deletes the row. */}
-                          <label>
+                          <label hidden={entry.protocol === 'meshcore'}>
                             <input
                               type="checkbox"
                               checked={perm.canWrite ?? false}

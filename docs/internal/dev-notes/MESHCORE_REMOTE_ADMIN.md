@@ -398,6 +398,16 @@ then prints `"  -> " + reply`. There is no end marker, and a multi-line reply
     MeshCore nodes is flagged `selfOrigin`, which the automation engine treats
     as self-sent (#3914).
   - GRP_DATA (0x06) is not decoded: `ChannelCrypto` only parses GRP_TXT.
+  - **MeshCore virtual channels (#5552).** `channel_database` rows with
+    `protocol = 'meshcore'` are also candidate keys (device keys first, one
+    candidate per secret). A row decrypted this way has `keySourceId` /
+    `keyChannelIdx` NULL and the fingerprint set; a per-entry `canRead` grant
+    on the row adds its fingerprint to the viewer's key access. New rows have
+    no grants (default deny). Every `channel_database` list read defaults to
+    `'meshtastic'`, so Meshtastic decrypt, MQTT ingest, name lookups and the
+    `CHANNEL_DB_OFFSET` surfaces never see a MeshCore row; pass `'meshcore'`
+    or `'all'` on purpose. "Import from MeshCore device" is a one-shot copy,
+    never a mirror.
 - **`neighbors` ends on a 300 ms idle gap** after the first `->` line, not the
   full timeout. The firmware prints the whole reply in one `println`.
 - **The neighbours poll** runs every 5 minutes on REPEATER sources while
