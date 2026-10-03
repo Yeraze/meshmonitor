@@ -917,6 +917,142 @@ export class PacketLogRepository extends BaseRepository {
       return [];
     }
   }
+
+  /**
+   * Per-remote-node activity in a rolling window — the Live Mesh Activity
+   * dashboard widget (#5557). One row per `from_node` heard by `sourceId`
+   * since `since` (ms), newest first.
+   *
+   * - `direction = 'tx'` rows and rows from `localNodeNum` are excluded: the
+   *   widget lists REMOTE nodes our radio heard, not our own sends.
+   * - `extraReceptions` = rows with a packet_id minus distinct packet_ids:
+   *   extra copies of the same packet (rebroadcasts heard again). Exact
+   *   duplicates are already dropped at ingest, so these are real receptions.
+   * - Hops = `hop_start - hop_limit`, only when `hop_start > 0` (0 is the
+   *   firmware's "unknown" sentinel) and `hop_limit <= hop_start`.
+   * - "Last" SNR/hops come from the row with the highest id in the window
+   *   (ids grow with insertion order).
+   *
+   * Served by `idx_packet_log_source_timestamp` (migration 189). Polled every
+   * 10 s per open widget; the window scan stays bounded by the packet log
+   * cap (default 1000 rows).
+   */
+  async getNodeActivity(q: {
+    sourceId: string;
+    since: number;
+    localNodeNum?: number | null;
+    transportClass?: NodeTransportClass;
+    visibility?: PacketVisibility;
+    limit?: number;
+  }): Promise<NodeActivityRow[]> {
+    const limit = q.limit ?? NODE_ACTIVITY_MAX_ROWS;
+    try {
+      const conditions: SQL[] = [
+        sql`pl.${sql.identifier('sourceId')} = ${q.sourceId}`,
+        sql`pl.timestamp >= ${q.since}`,
+        sql`(pl.direction IS NULL OR pl.direction <> ${'tx'})`,
+      ];
+      if (q.localNodeNum !== undefined && q.localNodeNum !== null) {
+        conditions.push(sql`pl.from_node <> ${q.localNodeNum}`);
+      }
+      conditions.push(...this.transportConditions(sql`pl.transport_mechanism`, { transportClass: q.transportClass }));
+      if (q.visibility) conditions.push(this.packetVisibilityCondition(q.visibility, 'pl.'));
+      const whereClause = this.combineConditions(conditions);
+
+      const hopsOf = (p: 'pl' | 'l') =>
+        sql.raw(`CASE WHEN ${p}.hop_start > 0 AND ${p}.hop_limit IS NOT NULL AND ${p}.hop_limit <= ${p}.hop_start THEN ${p}.hop_start - ${p}.hop_limit END`);
+      const shortName = this.col('shortName');
+      const longName = this.col('longName');
+      const nodeNum = this.col('nodeNum');
+      const nodeSource = sql`n.${sql.identifier('sourceId')} = ${q.sourceId}`;
+
+      // Lower-case snake_case aliases only: PostgreSQL folds unquoted
+      // aliases, and MySQL reads a double-quoted alias in ORDER BY as a
+      // string constant.
+      const rows = await this.executeQuery(sql`
+        SELECT agg.from_node, agg.from_node_id, agg.packet_count, agg.with_id_count,
+          agg.distinct_ids, agg.last_heard, agg.min_hops, agg.avg_snr,
+          l.snr AS last_snr, ${hopsOf('l')} AS last_hops,
+          (SELECT n.${shortName} FROM nodes n WHERE n.${nodeNum} = agg.from_node AND ${nodeSource} LIMIT 1) AS short_name,
+          (SELECT n.${longName} FROM nodes n WHERE n.${nodeNum} = agg.from_node AND ${nodeSource} LIMIT 1) AS long_name
+        FROM (
+          SELECT pl.from_node,
+            MAX(pl.from_node_id) AS from_node_id,
+            COUNT(*) AS packet_count,
+            COUNT(pl.packet_id) AS with_id_count,
+            COUNT(DISTINCT pl.packet_id) AS distinct_ids,
+            MAX(pl.timestamp) AS last_heard,
+            MIN(${hopsOf('pl')}) AS min_hops,
+            AVG(pl.snr) AS avg_snr,
+            MAX(pl.id) AS last_id
+          FROM packet_log pl
+          WHERE ${whereClause}
+          GROUP BY pl.from_node
+          ORDER BY MAX(pl.timestamp) DESC
+          LIMIT ${limit}
+        ) agg
+        LEFT JOIN packet_log l ON l.id = agg.last_id
+        ORDER BY agg.last_heard DESC
+      `);
+
+      const num = (v: unknown): number | null => (v === null || v === undefined ? null : Number(v));
+      return (rows as Array<Record<string, unknown>>).map((r) => ({
+        nodeNum: Number(r.from_node),
+        nodeId: (r.from_node_id as string | null) ?? null,
+        shortName: (r.short_name as string | null) ?? null,
+        longName: (r.long_name as string | null) ?? null,
+        packets: Number(r.packet_count),
+        extraReceptions: Math.max(0, Number(r.with_id_count) - Number(r.distinct_ids)),
+        lastSnr: num(r.last_snr),
+        avgSnr: num(r.avg_snr),
+        lastHops: num(r.last_hops),
+        minHops: num(r.min_hops),
+        lastHeard: Number(r.last_heard),
+      }));
+    } catch (error) {
+      logger.error('[PacketLogRepository] Failed to get node activity:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Oldest timestamp (ms) still in `packet_log`, across ALL sources. The
+   * count cap and age cleanup are global, so this is where the retained log
+   * starts for every source. `null` when the table is empty. (#5557)
+   */
+  async getOldestPacketTimestamp(): Promise<number | null> {
+    const { packetLog } = this.tables;
+    try {
+      const rows = await this.db.select({ oldest: min(packetLog.timestamp) }).from(packetLog);
+      const v = (rows as Array<{ oldest: unknown }>)[0]?.oldest;
+      return v === null || v === undefined ? null : Number(v);
+    } catch (error) {
+      logger.error('[PacketLogRepository] Failed to get oldest packet timestamp:', error);
+      return null;
+    }
+  }
+}
+
+/** Row cap for {@link PacketLogRepository.getNodeActivity}. `[ours]` (#5557). */
+export const NODE_ACTIVITY_MAX_ROWS = 500;
+
+/** One remote node's activity in the Live Mesh Activity window (#5557). */
+export interface NodeActivityRow {
+  nodeNum: number;
+  nodeId: string | null;
+  shortName: string | null;
+  longName: string | null;
+  /** Rows logged in the window (every reception). */
+  packets: number;
+  /** Rows beyond the first for the same packet_id (rebroadcasts heard again). */
+  extraReceptions: number;
+  lastSnr: number | null;
+  /** Mean SNR across the window; the UI derives the trend as lastSnr minus avgSnr. */
+  avgSnr: number | null;
+  lastHops: number | null;
+  minHops: number | null;
+  /** ms epoch. */
+  lastHeard: number;
 }
 
 /**

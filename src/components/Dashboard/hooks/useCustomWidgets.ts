@@ -58,6 +58,8 @@ export function useCustomWidgets({
       newWidget = { id, type: 'hopDistribution' };
     } else if (type === 'distanceDistribution') {
       newWidget = { id, type: 'distanceDistribution', bucketSize: 5 };
+    } else if (type === 'liveMeshActivity') {
+      newWidget = { id, type: 'liveMeshActivity', windowMinutes: 10 };
     } else {
       newWidget = { id, type: 'hopDistanceHeatmap', bucketSize: 5 };
     }

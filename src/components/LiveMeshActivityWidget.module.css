@@ -1,0 +1,143 @@
+/* Live Mesh Activity dashboard widget (#5557). */
+
+.controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 1rem;
+  padding: 0 0.75rem 0.5rem;
+  font-size: 0.85rem;
+  color: var(--color-text-muted);
+}
+
+.control {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.control select {
+  background: var(--color-bg);
+  color: var(--color-text);
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  padding: 0.15rem 0.3rem;
+}
+
+.countdown {
+  margin-left: auto;
+  font-variant-numeric: tabular-nums;
+}
+
+.notice {
+  padding: 0.25rem 0.75rem 0.5rem;
+  font-size: 0.8rem;
+  color: var(--color-warning);
+}
+
+.empty {
+  padding: 1rem 0.75rem;
+  text-align: center;
+  color: var(--color-text-muted);
+}
+
+.emptyTitle {
+  font-weight: 600;
+  color: var(--color-text);
+  margin-bottom: 0.25rem;
+}
+
+.tableWrap {
+  max-height: 360px;
+  overflow: auto;
+  padding: 0 0.5rem 0.5rem;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+}
+
+.table th {
+  position: sticky;
+  top: 0;
+  background: var(--color-surface);
+  color: var(--color-text-muted);
+  font-weight: 600;
+  text-align: left;
+  padding: 0.3rem 0.4rem;
+  border-bottom: 1px solid var(--color-border);
+  white-space: nowrap;
+}
+
+.table td {
+  padding: 0.3rem 0.4rem;
+  border-bottom: 1px solid var(--color-border-subtle);
+  color: var(--color-text);
+  white-space: nowrap;
+}
+
+.num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.table th.num {
+  text-align: right;
+}
+
+.sortButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+
+.sortButton:hover,
+.sortActive {
+  color: var(--color-text);
+}
+
+.row {
+  cursor: pointer;
+}
+
+.row:hover td,
+.row:focus-visible td {
+  background: var(--color-surface-hover);
+}
+
+.row:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: -2px;
+}
+
+.nodeName {
+  font-weight: 600;
+}
+
+.nodeId {
+  margin-left: 0.35rem;
+  color: var(--color-text-subtle);
+  font-size: 0.75rem;
+}
+
+.trend {
+  display: inline-flex;
+  vertical-align: middle;
+  margin-left: 0.2rem;
+}
+
+.trendUp {
+  color: var(--color-success);
+}
+
+.trendDown {
+  color: var(--color-danger);
+}

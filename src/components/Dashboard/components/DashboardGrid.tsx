@@ -21,6 +21,7 @@ import TracerouteWidget from '../../TracerouteWidget';
 import HopDistributionWidget from '../../HopDistributionWidget';
 import DistanceDistributionWidget from '../../DistanceDistributionWidget';
 import HopDistanceHeatmapWidget from '../../HopDistanceHeatmapWidget';
+import LiveMeshActivityWidget from '../../LiveMeshActivityWidget';
 import {
   type CustomWidget,
   type FavoriteChart,
@@ -193,6 +194,18 @@ const DashboardGrid: React.FC<DashboardGridProps> = ({
                     distanceUnit={distanceUnit}
                     onRemove={() => onRemoveWidget(widget.id)}
                     onBucketSizeChange={(size) => onUpdateWidgetConfig(widget.id, { bucketSize: size })}
+                    canEdit={canEdit}
+                  />
+                );
+              } else if (widget.type === 'liveMeshActivity') {
+                return (
+                  <LiveMeshActivityWidget
+                    key={widget.id}
+                    id={widget.id}
+                    windowMinutes={widget.windowMinutes}
+                    onWindowChange={(minutes) => onUpdateWidgetConfig(widget.id, { windowMinutes: minutes })}
+                    onRemove={() => onRemoveWidget(widget.id)}
+                    onOpenNodeDetails={onOpenNodeDetails}
                     canEdit={canEdit}
                   />
                 );
