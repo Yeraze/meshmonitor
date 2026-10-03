@@ -116,6 +116,7 @@ export const ForwardingSection: React.FC<ForwardingSectionProps> = ({
         const list: ForwardingRule[] = Array.isArray(json.data?.rules) ? json.data.rules : [];
         setRules(list);
         setInitialRules(list);
+        // `!== false`, not `=== true`: a missing flag means on, as on the server.
         setMasterEnabled(json.data?.enabled !== false);
       } catch { /* keep empty */ }
     })();

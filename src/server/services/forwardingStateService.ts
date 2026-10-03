@@ -37,8 +37,13 @@ export interface ForwardingSummary {
 }
 
 export async function getForwardingSummary(sourceId: string): Promise<ForwardingSummary> {
-  const raw = await databaseService.settings.getSettingForSource(sourceId, FORWARDING_SETTING_KEY);
-  const enabled = await isForwardingEnabled(sourceId);
+  // Both reads in parallel: this runs on every sidebar status poll. Each is
+  // wrapped in an async function so a synchronous throw from one cannot leave
+  // the other's rejection unhandled.
+  const [raw, enabled] = await Promise.all([
+    (async () => databaseService.settings.getSettingForSource(sourceId, FORWARDING_SETTING_KEY))(),
+    isForwardingEnabled(sourceId),
+  ]);
   const rules = parseStoredForwardingRules(raw);
   return { enabled, ruleCount: rules.length, activeRuleCount: rules.filter(r => r.enabled).length };
 }

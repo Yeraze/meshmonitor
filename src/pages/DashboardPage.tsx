@@ -24,7 +24,7 @@ import {
 } from '../hooks/useDashboardData';
 import { useMeshCoreNeighbors } from '../hooks/useMapAnalysisData';
 import { useMaxNodeAgeHoursAcross, useMaxInfraNodeAgeHoursAcross } from '../hooks/useNodeDisplaySettings';
-import type { DashboardSource } from '../hooks/useDashboardData';
+import type { DashboardSource, SourceStatus } from '../hooks/useDashboardData';
 import DashboardSidebar from '../components/Dashboard/DashboardSidebar';
 import DashboardMap from '../components/Dashboard/DashboardMap';
 import type { NodeSourceRef } from '../components/Dashboard/DashboardNodePopup';
@@ -1224,6 +1224,10 @@ function DashboardInner() {
   // when the status poll says the caller holds that grant. Re-poll the
   // source's status either way so the pill shows the stored state.
   const onToggleForwarding = async (id: string, enabled: boolean) => {
+    // Flip the pill at once; the re-poll below settles it on the stored state,
+    // which also reverts it if the PUT failed.
+    queryClient.setQueriesData<SourceStatus | null>({ queryKey: ['dashboard', 'status', id] }, (prev) =>
+      prev?.forwarding ? { ...prev, forwarding: { ...prev.forwarding, enabled } } : prev);
     try {
       await api.put(`/api/sources/${encodeURIComponent(id)}/forwarding/enabled`, { enabled });
     } catch (err) {

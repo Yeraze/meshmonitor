@@ -1625,12 +1625,15 @@ async function forwardingStatusFor(
   // MQTT sources carry no forwarding rules.
   if (String(source.type).startsWith('mqtt')) return null;
   try {
+    if (!isAdmin && !user) return null;
+    // Rules first: most sources have none, and then no permission lookup is
+    // needed on this 15-second poll. Nothing is returned before the check.
+    const summary = await getForwardingSummary(source.id);
+    if (summary.ruleCount === 0) return null;
     const canRead = isAdmin || (user
       ? await databaseService.checkPermissionAsync(user.id, 'automation', 'read', source.id)
       : false);
     if (!canRead) return null;
-    const summary = await getForwardingSummary(source.id);
-    if (summary.ruleCount === 0) return null;
     const canWrite = isAdmin || (user
       ? await databaseService.checkPermissionAsync(user.id, 'automation', 'write', source.id)
       : false);
