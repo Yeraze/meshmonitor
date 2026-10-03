@@ -116,6 +116,8 @@ export class CrossSourceIndex {
    * identity of its own but can still hear source A. The single-source
    * case is handled by {@link resolveCrossSourceIndex}, which returns an
    * empty index for fewer than two readable sources.
+   * Only ever used as a zero-guard, never as a source count (one source can
+   * never hold both a nodeNum and a public key today).
    */
   get size(): number {
     return this.nodeNumBySource.size + this.pubKeyBySource.size;
@@ -378,8 +380,9 @@ export async function prepareMeshCoreReception(
         advert.publicKey, advert.signature, advert.timestamp, advert.appDataHex ?? '',
       );
       if (ok) base.advertPublicKey = advert.publicKey.toLowerCase();
-    } catch {
+    } catch (err) {
       // treated as unverified
+      logger.debug('Cross-source advert signature check threw (treated as unverified):', err);
     }
   }
   return base;
