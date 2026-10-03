@@ -38,6 +38,7 @@ import { getEncryptionStatus, getRoleName } from '../utils/channelView.js';
 import { sourceManagerRegistry } from '../sourceManagerRegistry.js';
 import { isMeshCoreManager } from '../sourceManagerTypes.js';
 import { fail } from '../utils/apiResponse.js';
+import { listKeyedChannelsForViewer } from '../utils/meshcoreKeyedChannels.js';
 import { requireSourceId } from '../utils/requireSourceId.js';
 import { safeJson } from '../utils/redactSecrets.js';
 
@@ -157,8 +158,35 @@ router.get('/all', optionalAuth(), async (req: Request, res: Response) => {
       return transformChannel(channel, { includePsk });
     }));
 
+    // #5551: a MeshCore source that decrypts with OTHER sources' keys (a
+    // logging repeater) has messages on channels it holds no slot for. List
+    // the ones this viewer may read — name only, never the key — so the
+    // channel view can open them. Read-only: there is no slot to send on.
+    const listed: Array<Record<string, unknown>> = [...projected];
+    if (allChannelsSourceId) {
+      try {
+        const source = await databaseService.sources.getSource(allChannelsSourceId);
+        if (source?.type === 'meshcore') {
+          const keyed = await listKeyedChannelsForViewer(req.user, allChannelsSourceId);
+          const slotIds = new Set(projected.map((c) => Number(c.id)));
+          for (const k of keyed) {
+            if (slotIds.has(k.id)) continue;
+            listed.push({
+              ...transformChannel({ id: k.id, name: k.name, role: 2, psk: null }, { includePsk: false }),
+              pskSet: true,
+              encryptionStatus: 'secure',
+              keyed: true,
+              readOnly: true,
+            });
+          }
+        }
+      } catch (err) {
+        logger.warn(`Failed to list keyed MeshCore channels for source ${allChannelsSourceId}:`, err);
+      }
+    }
+
     logger.debug(`📡 Serving ${accessible.length} channels (per-row filtered, of ${allChannels.length} total)`);
-    res.json(projected);
+    res.json(listed);
   } catch (error) {
     logger.error('Error fetching all channels:', error);
     res.status(500).json({ error: 'Failed to fetch channels' });

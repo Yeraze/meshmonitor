@@ -147,6 +147,7 @@ export async function searchReadableMessages(
         sourceId: source.id,
         channels: intersectChannels(readable.channels, params.channels),
         includeDms: readable.includeDms,
+        keyAccess: readable.keyAccess,
       });
     }
     const meshcoreResult = await databaseService.meshcore.searchMessages({

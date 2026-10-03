@@ -31,6 +31,9 @@ import { getMaxNodeAgeHoursForSources } from '../services/nodeDisplaySettings.js
 import { canonicalMessageTime, plausibleRxTime } from '../utils/messageTime.js';
 import type { DbPacketLog } from '../../db/types.js';
 import type { DbMeshCorePacket } from '../../db/repositories/meshcore.js';
+import { resolveMeshcoreKeyAccess, filterKeyedMessages } from '../utils/meshcoreKeyAccess.js';
+import { keyedChannelNames } from '../utils/meshcoreKeyedChannels.js';
+import type { MeshCoreKeyAccessFilter } from '../../db/repositories/index.js';
 import {
   resolveCrossSourceIndex,
   classifyMeshtasticReception,
@@ -352,6 +355,8 @@ router.get('/messages', async (req: Request, res: Response) => {
     // node fields at 0. Channel names resolve through the SAME channels table
     // the Meshtastic path uses (MeshCore syncs its channels there), so the
     // `/channels` picker already lists them.
+    // #5551: repeater-decrypted channel rows are gated on access to their key.
+    let meshcoreKeyAccess: Promise<MeshCoreKeyAccessFilter> | null = null;
     const ingestMeshCore = async (source: { id: string; name: string; type: string }): Promise<void> => {
       const canReadMessages = isAdmin || (user
         ? await databaseService.checkPermissionAsync(user.id, 'messages', 'read', source.id)
@@ -370,6 +375,15 @@ router.get('/messages', async (req: Request, res: Response) => {
       for (const c of chans) {
         const nm = unifiedChannelDisplayName(c as any, presetName);
         if (nm) nameByIdx.set((c as any).id as number, nm);
+      }
+      // Keyed channels (#5551) have no slot on this source; name them from
+      // the channel that holds their key.
+      try {
+        for (const [idx, nm] of await keyedChannelNames(source.id)) {
+          if (!nameByIdx.has(idx)) nameByIdx.set(idx, nm);
+        }
+      } catch (err) {
+        logger.debug(`Failed to name keyed MeshCore channels for source ${source.id}:`, err);
       }
 
       let rows: Awaited<ReturnType<typeof databaseService.meshcore.getChannelMessages>>;
@@ -394,6 +408,9 @@ router.get('/messages', async (req: Request, res: Response) => {
         if (!canReadMessages) return;
         rows = await databaseService.meshcore.getRecentMessages(fetchLimit, source.id);
       }
+
+      meshcoreKeyAccess ??= resolveMeshcoreKeyAccess(user);
+      rows = filterKeyedMessages(rows, await meshcoreKeyAccess);
 
       for (const m of rows) {
         if (before !== undefined && !(m.createdAt < before)) continue;

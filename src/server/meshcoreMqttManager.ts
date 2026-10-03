@@ -55,9 +55,13 @@ import { MC_TELEMETRY_PREFIX, nodeNumFromPubkey } from './services/meshcoreTelem
 import databaseService from '../services/database.js';
 import { decodeMeshCorePacket } from '../utils/meshcorePacketDecode.js';
 import type { MeshCoreNode, MeshCoreMessage } from './meshcoreManager.js';
-import { createHash } from 'node:crypto';
-import { ChannelCrypto } from '@michaelhart/meshcore-decoder';
-import { ALL_SOURCES } from '../db/repositories/base.js';
+import {
+  advertLastHeardMs,
+  pskToHex,
+  decryptGroupTextFrame,
+  frameChannelMessageId,
+  ingestAdvertFrame,
+} from './services/meshcoreFrameIngest.js';
 import { dataEventEmitter } from './services/dataEventEmitter.js';
 import { meshcoreMessageFilter } from './services/meshcoreMessageFilter.js';
 import { meshCorePacketHashOrUndefined } from './services/meshcoreObserverPacket.js';
@@ -137,51 +141,18 @@ export interface MeshCoreMqttIngestStats {
  * observers can report the same message with different hop paths and signal
  * metadata, so the raw bytes differ while the message does not.
  */
-/** The shape `ChannelCrypto.decryptGroupTextMessage` returns in `data`. */
-interface ChannelPlaintext {
-  timestamp?: number;
-  flags?: number;
-  sender?: string;
-  message?: string;
-}
-
 export function channelMessageId(
   sourceId: string,
   channelHash: string,
   timestampSec: number,
   text: string,
 ): string {
-  const digest = createHash('sha256')
-    .update(`${channelHash}\u0000${timestampSec}\u0000${text}`)
-    .digest('hex')
-    .slice(0, 24);
-  return `mqtt_${sourceId}_${digest}`;
+  return frameChannelMessageId('mqtt', sourceId, channelHash, timestampSec, text);
 }
 
-/** Base64 or hex channel secret -> lowercase hex, or null when unusable. */
-export function pskToHex(psk: string | null | undefined): string | null {
-  if (!psk) return null;
-  if (/^[0-9a-fA-F]+$/.test(psk) && psk.length % 2 === 0) return psk.toLowerCase();
-  try {
-    const buf = Buffer.from(psk, 'base64');
-    return buf.length > 0 ? buf.toString('hex') : null;
-  } catch {
-    return null;
-  }
-}
-
-/**
- * Convert an ADVERT's self-reported unix-seconds timestamp into a `lastHeard`
- * milliseconds value, or `undefined` when it carries none.
- *
- * Clamped to now: the value comes from an untrusted publisher, so a future
- * claim is either a forgery or a node with a bad clock, and both would corrupt
- * every "last heard" ordering that reads this column.
- */
-export function advertLastHeardMs(timestampSec: number, nowMs: number = Date.now()): number | undefined {
-  if (!Number.isFinite(timestampSec) || timestampSec <= 0) return undefined;
-  return Math.min(timestampSec * 1000, nowMs);
-}
+// Moved to services/meshcoreFrameIngest.ts (#5551) so the repeater RAW path
+// shares them; re-exported for existing importers.
+export { advertLastHeardMs, pskToHex };
 
 export class MeshCoreMqttManager extends EventEmitter implements ISourceManager {
   readonly sourceId: string;
@@ -456,39 +427,12 @@ export class MeshCoreMqttManager extends EventEmitter implements ISourceManager 
    */
   private async ingestAdvert(decoded: IngestedObserverPacket): Promise<void> {
     try {
-      const packet = decodeMeshCorePacket(decoded.event.raw_hex);
-      const advert = packet?.payload?.advert;
-      if (!advert?.publicKey) return;
-
-      await databaseService.meshcore.upsertNode(
-        {
-          publicKey: advert.publicKey,
-          // `undefined` means "not observed" to upsertNode, which then PRESERVES
-          // the stored value. Passing null would clobber a good name with
-          // nothing when an advert omits one.
-          name: advert.name ?? undefined,
-          advType: advert.advType,
-          latitude: advert.latitude,
-          longitude: advert.longitude,
-          // Same provenance tag the contact-sync path uses: an advert position
-          // is the static kind, so a real telemetry fix keeps precedence.
-          positionSource: advert.latitude !== undefined ? 'contact' : undefined,
-          // When the observer heard it, not when we ingested it — a replayed or
-          // delayed publish must not make a silent node look freshly heard.
-          //
-          // Capped at now, because the timestamp is attacker-controlled in both
-          // directions and only the stale one was guarded. A forged or
-          // misconfigured advert claiming a FUTURE time would otherwise park the
-          // node at the top of every "last heard" sort indefinitely, and no
-          // later genuine reception could displace it. Mirrors the Meshtastic
-          // NodeInfo path, which caps for the same reason
-          // (`meshtasticManager.ts`, "cap at current time to prevent future
-          // timestamps").
-          lastHeard: advertLastHeardMs(advert.timestamp),
-        },
-        this.sourceId,
-      );
-      this.stats.advertsIngested++;
+      // When the observer heard it, not when we ingested it — a replayed or
+      // delayed publish must not make a silent node look freshly heard. The
+      // shared helper caps the claim at now, since a forged FUTURE time would
+      // park the node at the top of every "last heard" sort indefinitely.
+      const advert = await ingestAdvertFrame(decoded.event.raw_hex, this.sourceId, { lastHeardMs: 'advert' });
+      if (advert) this.stats.advertsIngested++;
     } catch (err) {
       logger.debug(`[MeshCoreMqtt:${this.sourceId}] failed to ingest advert:`, err);
     }
@@ -658,32 +602,17 @@ export class MeshCoreMqttManager extends EventEmitter implements ISourceManager 
   private async decryptGroupText(
     group: { channelHash: string; cipherMacHex: string; ciphertextHex: string },
   ): Promise<{ text: string; senderName: string | null; timestampSec: number; channelIdx: number } | null> {
-    const channels = await databaseService.channels.getAllChannels(ALL_SOURCES);
-    for (const ch of channels) {
-      const secretHex = pskToHex(ch.psk);
-      if (!secretHex) continue;
-      if (ChannelCrypto.calculateChannelHash(secretHex) !== group.channelHash) continue;
-
-      const res = ChannelCrypto.decryptGroupTextMessage(
-        group.ciphertextHex,
-        group.cipherMacHex,
-        secretHex,
-      );
-      // The library already splits the plaintext into timestamp / flags /
-      // sender / message, so there is no second parser to keep in step.
-      const data = res?.success ? (res.data as ChannelPlaintext | undefined) : undefined;
-      if (!data || typeof data.message !== 'string' || data.message === '') continue;
-      return {
-        text: data.message,
-        senderName: typeof data.sender === 'string' && data.sender !== '' ? data.sender : null,
-        timestampSec: typeof data.timestamp === 'number' ? data.timestamp : 0,
-        // The row id of the key that decrypted it IS the channel index — the
-        // only way to know which channel a frame belongs to, since the wire
-        // carries a hash rather than an index.
-        channelIdx: Number(ch.id),
-      };
-    }
-    return null;
+    const res = await decryptGroupTextFrame(group);
+    if (!res) return null;
+    return {
+      text: res.text,
+      senderName: res.senderName,
+      timestampSec: res.timestampSec,
+      // The row id of the key that decrypted it IS the channel index — the
+      // only way to know which channel a frame belongs to, since the wire
+      // carries a hash rather than an index.
+      channelIdx: res.key.channelIdx,
+    };
   }
 
   /**

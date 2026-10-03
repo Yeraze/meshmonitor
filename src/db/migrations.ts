@@ -209,7 +209,8 @@ import { migration as addMeshcoreMessageSenderTimestampMigration, runMigration18
 import { migration as createTranslationCacheMigration, runMigration188Postgres, runMigration188Mysql } from '../server/migrations/188_create_translation_cache.js';
 import { migration as globalUiPrefsDropSourceCopiesMigration, runMigration189Postgres, runMigration189Mysql } from '../server/migrations/189_global_ui_prefs_drop_source_copies.js';
 import { migration as packetLogSourceTimestampIndexMigration, runMigration190Postgres, runMigration190Mysql } from '../server/migrations/190_packet_log_source_timestamp_index.js';
-import { migration as createCrossSourceLinksMigration, runMigration191Postgres, runMigration191Mysql } from '../server/migrations/191_create_cross_source_links.js';
+import { migration as addMeshcoreRepeaterIngestColumnsMigration, runMigration191Postgres, runMigration191Mysql } from '../server/migrations/191_add_meshcore_repeater_ingest_columns.js';
+import { migration as createCrossSourceLinksMigration, runMigration193Postgres, runMigration193Mysql } from '../server/migrations/193_create_cross_source_links.js';
 
 // ============================================================================
 // Registry
@@ -3086,16 +3087,33 @@ registry.register({
 });
 
 // ---------------------------------------------------------------------------
-// Migration 191: `cross_source_links` (#5561): hourly aggregate of "source
+// Migration 191: repeater RAW-stream ingest (#5551, #5553). PER-SOURCE.
+// meshcore_messages gains decrypt provenance (keySourceId / keyChannelIdx /
+// keyFingerprint) so a channel message decrypted with another source's key is
+// read-gated on access to that key; meshcore_nodes gains repeaterNeighborAt,
+// stamped only by the local repeater's `neighbors` poll.
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 191,
+  name: 'add_meshcore_repeater_ingest_columns',
+  settingsKey: 'migration_191_add_meshcore_repeater_ingest_columns',
+  sqlite: (db) => addMeshcoreRepeaterIngestColumnsMigration.up(db),
+  postgres: (client) => runMigration191Postgres(client),
+  mysql: (pool) => runMigration191Mysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 193: `cross_source_links` (#5561): hourly aggregate of "source
 // A's radio was heard by source B", for the map's "heard here" edges. A row
 // names two sources (txSourceId, rxSourceId); reads require both.
 // ---------------------------------------------------------------------------
 
 registry.register({
-  number: 191,
+  number: 193,
   name: 'create_cross_source_links',
-  settingsKey: 'migration_191_create_cross_source_links',
+  settingsKey: 'migration_193_create_cross_source_links',
   sqlite: (db) => createCrossSourceLinksMigration.up(db),
-  postgres: (client) => runMigration191Postgres(client),
-  mysql: (pool) => runMigration191Mysql(pool),
+  postgres: (client) => runMigration193Postgres(client),
+  mysql: (pool) => runMigration193Mysql(pool),
 });

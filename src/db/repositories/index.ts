@@ -50,7 +50,7 @@ export { ChannelDatabaseRepository, type ChannelDatabaseInput, type ChannelDatab
 export { IgnoredNodesRepository, type IgnoredNodeRecord, type IgnoreReason } from './ignoredNodes.js';
 export { MeshCoreRepository } from './meshcore.js';
 export { MeshCoreChannelRemapRepository } from './meshcoreChannelRemap.js';
-export type { DbMeshCoreNode, DbMeshCoreMessage, MeshCoreMessageScope } from './meshcore.js';
+export type { DbMeshCoreNode, DbMeshCoreMessage, MeshCoreMessageScope, MeshCoreKeyAccessFilter } from './meshcore.js';
 export { EmbedProfileRepository } from './embedProfiles.js';
 export type { EmbedProfile, EmbedProfileInput } from './embedProfiles.js';
 export { AutomationsRepository } from './automations.js';

@@ -424,6 +424,26 @@ describe('AutomationEngineService', () => {
     expect(await engine.onMeshCoreMessage(mcMessage({ fromPublicKey: 'channel-0', text: 'ping' }), 'default')).toBe(1);
   });
 
+  it('self-origin (#5551): ignores a repeater-decrypted channel message flagged selfOrigin, unless includeSelf', async () => {
+    const { calls, deps } = recorder();
+    await createEnabled('mc-ping', {
+      version: 1,
+      nodes: [
+        { id: 't', type: 'trigger.message', params: { textContains: 'ping' } },
+        { id: 's', type: 'action.sendMessage', params: { text: 'pong' } },
+      ],
+      edges: [{ from: 't', to: 's' }],
+    });
+    const engine = new AutomationEngineService({ automationsRepo: autos, varResolver: resolver, deps, data, now: () => clock });
+    await engine.load();
+    // A channel message carries no sender key, so the ingest path flags our
+    // own companion's send when the repeater overhears it.
+    expect(await engine.onMeshCoreMessage(mcMessage({ fromPublicKey: 'channel-1234', text: 'ping', selfOrigin: true }), 'default')).toBe(0);
+    expect(calls).toHaveLength(0);
+    // The same message from someone else fires.
+    expect(await engine.onMeshCoreMessage(mcMessage({ fromPublicKey: 'channel-1234', text: 'ping' }), 'default')).toBe(1);
+  });
+
   it('self-origin (#4577 P2): ignores our own key on a MeshCore source with no self key yet (cross-source fallback)', async () => {
     const { calls, deps } = recorder();
     await createEnabled('mc-ping', {
