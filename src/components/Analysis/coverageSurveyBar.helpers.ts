@@ -50,6 +50,16 @@ export function mapSurveyErrorMessage(t: TFunction, error: unknown): string {
   }
 }
 
+/**
+ * The blocking survey's id from a `SURVEY_ALREADY_LIVE` 409 (#5544), or
+ * `null` for any other error (or an older server that omits the field).
+ */
+export function liveSurveyIdFromError(error: unknown): string | null {
+  if (!(error instanceof ApiError) || error.code !== 'SURVEY_ALREADY_LIVE') return null;
+  const body = error.body as { liveSurveyId?: unknown } | undefined;
+  return typeof body?.liveSurveyId === 'string' && body.liveSurveyId !== '' ? body.liveSurveyId : null;
+}
+
 /** Parsed `intervalSec` form value: blank -> `null` (clear/unset), a bad
  *  number -> `undefined` (caller shows a validation error and blocks
  *  submit). A valid value is clamped by the server (15-3600s); this only

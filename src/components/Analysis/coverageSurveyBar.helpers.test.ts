@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   defaultSurveyName,
+  liveSurveyIdFromError,
   mapSurveyErrorMessage,
   parseIntervalSecInput,
   sortSurveysNewestFirst,
@@ -17,6 +18,20 @@ describe('coverageSurveyBar.helpers', () => {
       const name = defaultSurveyName('Car-01', nowMs);
       expect(name.startsWith('Car-01 ')).toBe(true);
       expect(name.length).toBeGreaterThan('Car-01 '.length);
+    });
+  });
+
+  describe('liveSurveyIdFromError (#5544)', () => {
+    it('returns the blocking survey id from a SURVEY_ALREADY_LIVE 409', () => {
+      const err = new ApiError('conflict', 409, { code: 'SURVEY_ALREADY_LIVE', body: { liveSurveyId: 'abc' } });
+      expect(liveSurveyIdFromError(err)).toBe('abc');
+    });
+
+    it('returns null for other codes, a missing id, or a non-ApiError', () => {
+      expect(liveSurveyIdFromError(new ApiError('x', 409, { code: 'SURVEY_LIMIT_REACHED', body: { liveSurveyId: 'abc' } }))).toBeNull();
+      expect(liveSurveyIdFromError(new ApiError('x', 409, { code: 'SURVEY_ALREADY_LIVE', body: {} }))).toBeNull();
+      expect(liveSurveyIdFromError(new ApiError('x', 409, { code: 'SURVEY_ALREADY_LIVE' }))).toBeNull();
+      expect(liveSurveyIdFromError(new Error('x'))).toBeNull();
     });
   });
 

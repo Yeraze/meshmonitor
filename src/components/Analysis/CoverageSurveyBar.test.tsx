@@ -29,6 +29,7 @@ const h = vi.hoisted(() => ({
   updateMutate: vi.fn(),
   stopMutate: vi.fn(),
   deleteMutate: vi.fn(),
+  refetch: vi.fn(),
 }));
 
 vi.mock('../../contexts/AuthContext', () => ({
@@ -40,7 +41,7 @@ vi.mock('../ToastContainer', () => ({
 }));
 
 vi.mock('../../hooks/useCoverageSurveys', () => ({
-  useCoverageSurveys: () => ({ data: h.surveysData, isLoading: false }),
+  useCoverageSurveys: () => ({ data: h.surveysData, isLoading: false, refetch: h.refetch }),
   useCreateSurvey: () => ({ mutate: h.createMutate, isPending: false }),
   useUpdateSurvey: () => ({ mutate: h.updateMutate, isPending: false }),
   useStopSurvey: () => ({ mutate: h.stopMutate, isPending: false }),
@@ -294,6 +295,80 @@ describe('CoverageSurveyBar', () => {
         'This sender already has a live survey running.',
         'error',
       );
+    });
+
+    it('#5544: selects the blocking live survey so its creator gets the Stop button', () => {
+      const blocking = makeSurvey({ id: 'live-1', name: 'Running', isLive: true, endAt: null, canEdit: true });
+      h.surveysData = [blocking];
+      const { onSelectSurvey } = renderBar();
+      fireEvent.click(screen.getByRole('button', { name: /Start survey/ }));
+      fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Start survey' }));
+
+      const error = new ApiError('conflict', 409, {
+        code: 'SURVEY_ALREADY_LIVE',
+        body: { success: false, code: 'SURVEY_ALREADY_LIVE', liveSurveyId: 'live-1' },
+      });
+      act(() => h.createMutate.mock.calls[0][1].onError(error));
+
+      expect(onSelectSurvey).toHaveBeenCalledWith(blocking);
+      expect(h.refetch).not.toHaveBeenCalled();
+      expect(h.showToast).toHaveBeenCalledWith(expect.stringMatching(/use Stop survey/), 'error');
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    });
+
+    it('#5544: shows the Stop button once the parent applies the selection', () => {
+      h.surveysData = [makeSurvey({ id: 'live-1', isLive: true, endAt: null, canEdit: true })];
+      renderBar({ selectedSurveyId: 'live-1' });
+      expect(screen.getByRole('button', { name: /Stop survey/ })).toBeInTheDocument();
+    });
+
+    it('#5544: a non-creator is told another user started it (and gets no Stop button)', () => {
+      const blocking = makeSurvey({
+        id: 'live-2', isLive: true, endAt: null, canEdit: false, createdByMe: false,
+      });
+      h.surveysData = [blocking];
+      const { onSelectSurvey, rerender } = renderBar();
+      fireEvent.click(screen.getByRole('button', { name: /Start survey/ }));
+      fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Start survey' }));
+
+      const error = new ApiError('conflict', 409, {
+        code: 'SURVEY_ALREADY_LIVE',
+        body: { liveSurveyId: 'live-2' },
+      });
+      act(() => h.createMutate.mock.calls[0][1].onError(error));
+
+      expect(onSelectSurvey).toHaveBeenCalledWith(blocking);
+      expect(h.showToast).toHaveBeenCalledWith(expect.stringMatching(/started by another user/), 'error');
+
+      rerender(
+        <CoverageSurveyBar
+          senderId="!bbbbbbbb"
+          senderLabel="Car-01"
+          currentSinceMs={1_700_000_000_000}
+          currentUntilMs={1_700_003_600_000}
+          currentReceiversEncoded={null}
+          selectedSurveyId="live-2"
+          onSelectSurvey={onSelectSurvey}
+        />,
+      );
+      expect(screen.queryByRole('button', { name: /Stop survey/ })).not.toBeInTheDocument();
+    });
+
+    it('#5544: refetches the list when the blocking survey is not cached yet', async () => {
+      const blocking = makeSurvey({ id: 'live-3', isLive: true, endAt: null, canEdit: true });
+      h.surveysData = [];
+      h.refetch.mockResolvedValue({ data: [blocking] });
+      const { onSelectSurvey } = renderBar();
+      fireEvent.click(screen.getByRole('button', { name: /Start survey/ }));
+      fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Start survey' }));
+
+      const error = new ApiError('conflict', 409, { code: 'SURVEY_ALREADY_LIVE', body: { liveSurveyId: 'live-3' } });
+      await act(async () => {
+        h.createMutate.mock.calls[0][1].onError(error);
+      });
+
+      expect(h.refetch).toHaveBeenCalledTimes(1);
+      expect(onSelectSurvey).toHaveBeenCalledWith(blocking);
     });
   });
 
