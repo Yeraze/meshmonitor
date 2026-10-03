@@ -279,7 +279,7 @@ const DEFAULT_NODE_ACTIVITY_WINDOW = 10;
  */
 router.get('/stats/node-activity', requirePacketPermissions, async (req, res) => {
   try {
-    const sourceId = (req as any).scopedSourceId as string | undefined;
+    const sourceId = (req as typeof req & { scopedSourceId?: string }).scopedSourceId;
     if (!sourceId) {
       return fail(res, 400, 'SOURCE_ID_REQUIRED', 'sourceId is required');
     }
