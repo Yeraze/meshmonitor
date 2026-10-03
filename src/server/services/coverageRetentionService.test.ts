@@ -9,9 +9,10 @@
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
-const { getSettingAsyncMock, purgeOlderThanMock, getExemptionWindowsMock } = vi.hoisted(() => ({
+const { getSettingAsyncMock, purgeOlderThanMock, getExemptionWindowsMock, purgeLinksMock } = vi.hoisted(() => ({
   getSettingAsyncMock: vi.fn(),
   purgeOlderThanMock: vi.fn(),
+  purgeLinksMock: vi.fn(),
   getExemptionWindowsMock: vi.fn(),
 }));
 
@@ -24,6 +25,9 @@ vi.mock('../../services/database.js', () => {
     coverageSurveys: {
       getExemptionWindows: getExemptionWindowsMock,
     },
+    crossSourceLinks: {
+      purgeOlderThan: purgeLinksMock,
+    },
   };
   return { default: shared, databaseService: shared };
 });
@@ -35,6 +39,8 @@ describe('coverageRetentionService', () => {
     getSettingAsyncMock.mockReset();
     purgeOlderThanMock.mockReset();
     purgeOlderThanMock.mockResolvedValue(0);
+    purgeLinksMock.mockReset();
+    purgeLinksMock.mockResolvedValue(0);
     getExemptionWindowsMock.mockReset();
     getExemptionWindowsMock.mockResolvedValue([]);
   });
@@ -77,6 +83,9 @@ describe('coverageRetentionService', () => {
       expect(purgeOlderThanMock).toHaveBeenCalledTimes(1);
       const expectedCutoff = new Date('2026-01-10T00:00:00.000Z').getTime() - 7 * 24 * 60 * 60 * 1000;
       expect(purgeOlderThanMock).toHaveBeenCalledWith(expectedCutoff, []);
+      // #5561: cross-source link buckets share the same cutoff (no exemptions).
+      expect(purgeLinksMock).toHaveBeenCalledTimes(1);
+      expect(purgeLinksMock).toHaveBeenCalledWith(expectedCutoff);
     });
 
     it('loads the survey exemption windows and passes them straight through to purgeOlderThan (#5277 Phase 4b WP1)', async () => {

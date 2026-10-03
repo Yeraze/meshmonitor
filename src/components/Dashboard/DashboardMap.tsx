@@ -11,6 +11,7 @@
  * NodesTab toggles. DashboardPage wraps this component in a MapProvider.
  */
 
+import { useTranslation } from 'react-i18next';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import 'leaflet/dist/leaflet.css';
 import { Popup, useMap } from 'react-leaflet';
@@ -74,6 +75,7 @@ import { appBasename } from '../../init';
 import { MapLoadingOverlay } from '../map/MapLoadingOverlay';
 import { TraceroutePathsLayer } from '../map/layers/TraceroutePathsLayer';
 import { NeighborLinksLayer, type NeighborLinkDescriptor } from '../map/layers/NeighborLinksLayer';
+import { CrossSourceLinksLayer } from '../map/layers/CrossSourceLinksLayer';
 import { AccuracyRegionsLayer, type AccuracyRegionDescriptor } from '../map/layers/AccuracyRegionsLayer';
 import { snrToNeighborOpacity, dedupByUnorderedPair } from '../../utils/neighborLinks';
 import { UiIcon } from '../icons';
@@ -286,6 +288,7 @@ export default function DashboardMap({
   const terrainCaps = useTerrainCapabilities();
   const canUse3D = !terrainCaps.isLoading && terrainCaps.enabled && terrainCaps.terrainTiles;
   const [viewMode, setViewMode] = useState<'2d' | '3d'>('2d');
+  const { t } = useTranslation();
   const effective3D = viewMode === '3d' && canUse3D;
   const unavailableIn3DTitle = effective3D ? 'Not available in 3D' : undefined;
   const basemap3D = useMemo(
@@ -311,6 +314,8 @@ export default function DashboardMap({
     setShowMqttNodes,
     showNeighborInfo,
     setShowNeighborInfo,
+    showCrossSourceLinks,
+    setShowCrossSourceLinks,
     showWaypoints,
     setShowWaypoints,
     showAtakContacts,
@@ -876,6 +881,7 @@ export default function DashboardMap({
             sourceIds={polarSourceIds}
             showNeighbors={showNeighborInfo}
             showTraceroutes={showPaths || showRoute}
+            showCrossSourceLinks={showCrossSourceLinks === true && polarSourceIds.length > 0}
             lookbackHours={effectiveMaxAge}
             visibleNodeNums={visible3DNodeNums}
             visibleMeshCoreKeys={visible3DMeshCoreKeys}
@@ -973,6 +979,12 @@ export default function DashboardMap({
         {/* Meshtastic neighbor links — transport-colored, bidirectional solid vs
             unidirectional dashed. */}
         <NeighborLinksLayer links={meshtasticNeighborLinks} />
+
+        {/* Cross-source "heard here" edges (#5561). Mounted only while on, so
+            it fetches nothing when off. */}
+        {showCrossSourceLinks && polarSourceIds.length > 0 && (
+          <CrossSourceLinksLayer enabled sourceIds={polarSourceIds} lookbackHours={effectiveMaxAge} />
+        )}
       </BaseMap>
       )}
 
@@ -1089,6 +1101,20 @@ export default function DashboardMap({
               onChange={(e) => setShowNeighborInfo(e.target.checked)}
             />
             <span>Show Neighbors</span>
+          </label>
+          <label
+            className="map-control-item"
+            title={t(
+              'map.cross_source.toggle_hint',
+              'One-way edges: one of your sources was heard by another. Dotted = likely relay (inferred). Dashed = heard by an MQTT gateway.',
+            )}
+          >
+            <input
+              type="checkbox"
+              checked={showCrossSourceLinks === true}
+              onChange={(e) => setShowCrossSourceLinks(e.target.checked)}
+            />
+            <span>{t('map.cross_source.toggle', 'Show Cross-Source Links')}</span>
           </label>
           <label className="map-control-item" title={unavailableIn3DTitle}>
             <input

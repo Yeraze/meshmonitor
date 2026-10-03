@@ -131,6 +131,9 @@ import {
   coverageSurveysSqlite, coverageSurveysPostgres, coverageSurveysMysql,
 } from './schema/coverageSurveys.js';
 import {
+  crossSourceLinksSqlite, crossSourceLinksPostgres, crossSourceLinksMysql,
+} from './schema/crossSourceLinks.js';
+import {
   translationCacheSqlite, translationCachePostgres, translationCacheMysql,
   messageTranslationsSqlite, messageTranslationsPostgres, messageTranslationsMysql,
 } from './schema/translations.js';
@@ -334,6 +337,10 @@ export interface ActiveSchema {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any -- #5277 matches the existing ActiveSchema per-dialect table pattern; typing burn-down is #3962 Phase 6
   coverageSurveys: any;
 
+  // Cross-source "heard here" link aggregates, two source ids per row (#5561)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- #5561 matches the existing ActiveSchema per-dialect table pattern; typing burn-down is #3962 Phase 6
+  crossSourceLinks: any;
+
   // Translation cache (global) + per-source message links (#5520)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any -- #5520 matches the existing ActiveSchema per-dialect table pattern; typing burn-down is #3962 Phase 6
   translationCache: any;
@@ -485,6 +492,7 @@ const SCHEMA_MAP: Record<DatabaseType, ActiveSchema> = {
     meshtasticHeardRepeaters: meshtasticHeardRepeatersSqlite,
     coverageReceptions: coverageReceptionsSqlite,
     coverageSurveys: coverageSurveysSqlite,
+    crossSourceLinks: crossSourceLinksSqlite,
     translationCache: translationCacheSqlite,
     messageTranslations: messageTranslationsSqlite,
     aircraftFlightMatches: aircraftFlightMatchesSqlite,
@@ -569,6 +577,7 @@ const SCHEMA_MAP: Record<DatabaseType, ActiveSchema> = {
     meshtasticHeardRepeaters: meshtasticHeardRepeatersPostgres,
     coverageReceptions: coverageReceptionsPostgres,
     coverageSurveys: coverageSurveysPostgres,
+    crossSourceLinks: crossSourceLinksPostgres,
     translationCache: translationCachePostgres,
     messageTranslations: messageTranslationsPostgres,
     aircraftFlightMatches: aircraftFlightMatchesPostgres,
@@ -653,6 +662,7 @@ const SCHEMA_MAP: Record<DatabaseType, ActiveSchema> = {
     meshtasticHeardRepeaters: meshtasticHeardRepeatersMysql,
     coverageReceptions: coverageReceptionsMysql,
     coverageSurveys: coverageSurveysMysql,
+    crossSourceLinks: crossSourceLinksMysql,
     translationCache: translationCacheMysql,
     messageTranslations: messageTranslationsMysql,
     aircraftFlightMatches: aircraftFlightMatchesMysql,

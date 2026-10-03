@@ -46,7 +46,12 @@ const mocks = vi.hoisted(() => ({
     // #5364/#5365 Phase 3 flight trails.
     aircraftDisplayMode: 'mark' as string,
     showAircraftTrails: false,
+    // #5561 cross-source "heard here" edges.
+    showCrossSourceLinks: false,
   },
+  setShowCrossSourceLinks: vi.fn(),
+  // #5561: props the map hands the cross-source layer (null = not mounted).
+  crossSourceLayerProps: null as null | { enabled: boolean; sourceIds: string[]; lookbackHours: number },
   // #5364/#5365 Phase 3: what `useAircraftTrails` returns, the args it was
   // last called with, and the descriptors the trails layer last received.
   aircraftTrails: [] as Array<{ sourceId: string; nodeNum: number; points: Array<{ lat: number; lon: number; alt: number | null; ts: number }> }>,
@@ -181,6 +186,8 @@ vi.mock('../../contexts/MapContext', () => ({
     setShowWaypoints: vi.fn(),
     showPolarGrid: false,
     setShowPolarGrid: vi.fn(),
+    showCrossSourceLinks: mocks.mapContext.showCrossSourceLinks,
+    setShowCrossSourceLinks: mocks.setShowCrossSourceLinks,
     showAgedOutAircraft: mocks.mapContext.showAgedOutAircraft,
     setShowAgedOutAircraft: vi.fn(),
     aircraftDisplayMode: mocks.mapContext.aircraftDisplayMode,
@@ -198,6 +205,14 @@ vi.mock('../../hooks/useAircraftTrails', () => ({
   useAircraftTrails: (args: { enabled: boolean; hours: number; sourceIds?: string[] | null }) => {
     mocks.aircraftTrailArgs = args;
     return { data: args.enabled ? mocks.aircraftTrails : undefined };
+  },
+}));
+// #5561: stub the cross-source layer (it runs a query; no QueryClient here)
+// and capture its props.
+vi.mock('../map/layers/CrossSourceLinksLayer', () => ({
+  CrossSourceLinksLayer: (p: { enabled: boolean; sourceIds: string[]; lookbackHours: number }) => {
+    mocks.crossSourceLayerProps = p;
+    return <div data-testid="cross-source-links" />;
   },
 }));
 vi.mock('../map/layers/AircraftTrailsLayer', () => ({
@@ -459,7 +474,9 @@ describe('DashboardMap', () => {
       showAgedOutAircraft: false,
       aircraftDisplayMode: 'mark',
       showAircraftTrails: false,
+      showCrossSourceLinks: false,
     };
+    mocks.crossSourceLayerProps = null;
     mocks.aircraftTrails = [];
     mocks.aircraftTrailArgs = null;
     mocks.renderedTrails = [];
@@ -516,6 +533,22 @@ describe('DashboardMap', () => {
   it('shows the Features panel toggles by default', () => {
     render(<DashboardMap {...defaultProps} />);
     expect(screen.getByText('Show Traceroute')).toBeInTheDocument();
+  });
+
+  it('#5561: has a Show Cross-Source Links toggle that is off by default and mounts no layer', () => {
+    render(<DashboardMap {...defaultProps} />);
+    const toggle = screen.getByRole('checkbox', { name: /map\.cross_source\.toggle|Show Cross-Source Links/ });
+    expect(toggle).not.toBeChecked();
+    expect(screen.queryByTestId('cross-source-links')).not.toBeInTheDocument();
+    fireEvent.click(toggle);
+    expect(mocks.setShowCrossSourceLinks).toHaveBeenCalledWith(true);
+  });
+
+  it('#5561: mounts the cross-source layer for the map\'s sources once the toggle is on', () => {
+    mocks.mapContext.showCrossSourceLinks = true;
+    render(<DashboardMap {...defaultProps} sourceId="src-1" />);
+    expect(screen.getByTestId('cross-source-links')).toBeInTheDocument();
+    expect(mocks.crossSourceLayerProps).toMatchObject({ enabled: true, sourceIds: ['src-1'] });
   });
 
   it('collapses the map controls sidebar when the collapse button is clicked (#4909)', () => {

@@ -111,6 +111,7 @@ import {
   MqttPacketFilter,
 } from './mqttPacketFilter.js';
 import { maybeRecordMqttCoverageReception } from './utils/coverageMqtt.js';
+import { maybeRecordMqttLink } from './services/crossSourceLinkRecorder.js';
 import { recordMqttPositionHistory } from './utils/mqttPositionHistory.js';
 import { getCachedSignFlipContext, correctLatLon } from './services/signFlipCorrection.js';
 
@@ -829,6 +830,22 @@ export async function ingestServiceEnvelope(input: MqttIngestionInput): Promise<
     input.topic,
     input.localGatewayNodeNum,
   );
+  // Cross-source "heard here" links (#5561): a gateway on this MQTT source
+  // heard one of our own radios over RF. Skipped for packets the node table
+  // refused (ignored / geo / distance). Non-blocking; never throws; sends
+  // nothing and emits nothing on dataEventEmitter.
+  if (
+    result.reason !== 'no-packet' &&
+    result.reason !== 'ignored' &&
+    result.reason !== 'geo-ignored' &&
+    result.reason !== 'distance'
+  ) {
+    void maybeRecordMqttLink({
+      sourceId: input.sourceId,
+      envelope: input.envelope,
+      localGatewayNodeNum: input.localGatewayNodeNum,
+    });
+  }
   if (
     (result.reason === 'ignored' || result.reason === 'geo-ignored' || result.reason === 'distance') &&
     typeof input.envelope.packet?.from === 'number'

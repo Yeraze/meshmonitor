@@ -135,6 +135,9 @@ interface MapContextType {
   setShowAccuracyRegions: (show: boolean) => void;
   showPolarGrid: boolean;
   setShowPolarGrid: (show: boolean) => void;
+  /** #5561: cross-source "heard here" edges. Per-browser (localStorage), default off. */
+  showCrossSourceLinks: boolean;
+  setShowCrossSourceLinks: (show: boolean) => void;
   animatedNodes: Set<string>;
   triggerNodeAnimation: (nodeId: string) => void;
   mapCenterTarget: [number, number] | null;
@@ -229,6 +232,13 @@ export const MapProvider: React.FC<MapProviderProps> = ({ children }) => {
   });
   const [showAccuracyRegions, setShowAccuracyRegionsState] = useState<boolean>(false);
   const [showPolarGrid, setShowPolarGridState] = useState<boolean>(false);
+  const [showCrossSourceLinks, setShowCrossSourceLinksState] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem('showCrossSourceLinks') === 'true';
+    } catch {
+      return false;
+    }
+  });
   const [animatedNodes, setAnimatedNodes] = useState<Set<string>>(new Set());
   const [mapCenterTarget, setMapCenterTarget] = useState<[number, number] | null>(null);
   const [mapCenter, setMapCenter] = useState<[number, number] | null>(() => {
@@ -372,6 +382,15 @@ export const MapProvider: React.FC<MapProviderProps> = ({ children }) => {
     setShowEstimatedPositionsState(value);
     localStorage.setItem('showEstimatedPositions', value.toString());
     void savePreferenceToServer({ showEstimatedPositions: value });
+  }, []);
+
+  const setShowCrossSourceLinks = React.useCallback((value: boolean) => {
+    setShowCrossSourceLinksState(value);
+    try {
+      localStorage.setItem('showCrossSourceLinks', value.toString());
+    } catch {
+      // storage unavailable: the toggle still works for this session
+    }
   }, []);
 
   const setShowAccuracyRegions = React.useCallback((value: boolean) => {
@@ -611,6 +630,8 @@ export const MapProvider: React.FC<MapProviderProps> = ({ children }) => {
     setShowAccuracyRegions,
     showPolarGrid,
     setShowPolarGrid,
+    showCrossSourceLinks,
+    setShowCrossSourceLinks,
     animatedNodes,
     triggerNodeAnimation,
     mapCenterTarget,
@@ -661,6 +682,7 @@ export const MapProvider: React.FC<MapProviderProps> = ({ children }) => {
     showEstimatedPositions, setShowEstimatedPositions,
     showAccuracyRegions, setShowAccuracyRegions,
     showPolarGrid, setShowPolarGrid,
+    showCrossSourceLinks, setShowCrossSourceLinks,
     animatedNodes, triggerNodeAnimation,
     mapCenterTarget, setMapCenterTarget,
     mapCenter, setMapCenter,

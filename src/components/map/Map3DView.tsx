@@ -4,6 +4,7 @@ import type { ReactNode } from 'react';
 import type { Basemap3DSource } from '../../config/basemap3d';
 import { use3DNeighborLines } from '../MapAnalysis/use3DNeighborLines';
 import { use3DTracerouteLines } from '../MapAnalysis/use3DTracerouteLines';
+import { use3DCrossSourceLines } from '../../hooks/useCrossSourceLinks';
 
 export interface Map3DViewProps {
   /** Initial center, [lat, lng]. Mount-only (Base3DMap convention). */
@@ -28,6 +29,8 @@ export interface Map3DViewProps {
   showNeighbors: boolean;
   /** Gate traceroute lines — mirrors the host's "Show Traceroute/Route" toggles. */
   showTraceroutes: boolean;
+  /** Gate cross-source "heard here" edges (#5561) — mirrors the host's toggle. Default off. */
+  showCrossSourceLinks?: boolean;
   /** Fetch lookback window in hours for the neighbor/traceroute data. */
   lookbackHours: number;
   /**
@@ -76,6 +79,7 @@ export function Map3DView({
   sourceIds,
   showNeighbors,
   showTraceroutes,
+  showCrossSourceLinks = false,
   lookbackHours,
   visibleNodeNums,
   visibleMeshCoreKeys,
@@ -105,9 +109,16 @@ export function Map3DView({
     visibleNodeNums,
   });
 
+  // #5561: server-resolved, already privacy-filtered edges; no fetch while off.
+  const crossSourceLines = use3DCrossSourceLines({
+    enabled: showCrossSourceLinks,
+    sources: sourceIds,
+    lookbackHours,
+  });
+
   const lines: Line3DFeature[] = useMemo(
-    () => [...neighborLines.lines, ...tracerouteLines.lines],
-    [neighborLines.lines, tracerouteLines.lines],
+    () => [...neighborLines.lines, ...tracerouteLines.lines, ...crossSourceLines],
+    [neighborLines.lines, tracerouteLines.lines, crossSourceLines],
   );
 
   return (
