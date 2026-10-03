@@ -33,7 +33,14 @@ export interface HopDistanceHeatmapWidgetConfig {
   bucketSize: number;
 }
 
-export type CustomWidget = NodeStatusWidgetConfig | TracerouteWidgetConfig | HopDistributionWidgetConfig | DistanceDistributionWidgetConfig | HopDistanceHeatmapWidgetConfig;
+/** Live Mesh Activity (#5557): remote nodes heard by this source in a rolling window. */
+export interface LiveMeshActivityWidgetConfig {
+  id: string;
+  type: 'liveMeshActivity';
+  windowMinutes: number; // 1, 5, 10, 30 or 60
+}
+
+export type CustomWidget = NodeStatusWidgetConfig | TracerouteWidgetConfig | HopDistributionWidgetConfig | DistanceDistributionWidgetConfig | HopDistanceHeatmapWidgetConfig | LiveMeshActivityWidgetConfig;
 
 export type SortOption = 'custom' | 'node-asc' | 'node-desc' | 'type-asc' | 'type-desc';
 
