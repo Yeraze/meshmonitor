@@ -4835,6 +4835,7 @@
   "channel_database.protocol_meshtastic": "Meshtastic",
   "channel_database.protocol_meshcore": "MeshCore",
   "channel_database.meshcore_secret": "Channel secret",
+  "channel_database.meshcore_secret_placeholder": "32 hex characters or Base64",
   "channel_database.meshcore_secret_description": "16 bytes: 32 hex characters or Base64. Leave empty for a #hashtag channel; its secret comes from the name.",
   "channel_database.toast_meshcore_secret_invalid": "A MeshCore secret is 16 bytes: 32 hex characters or Base64. Leave it empty only for a #hashtag channel.",
   "channel_database.meshcore_import": "Import from MeshCore device",

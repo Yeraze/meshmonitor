@@ -1172,7 +1172,10 @@ const UsersTab: React.FC = () => {
                           )}
                         </div>
                         <div className="permission-actions">
-                          <label>
+                          {/* Only Read applies to a MeshCore key (#5552):
+                              MeshCore positions come from adverts, not from
+                              channel traffic, and there is nothing to write. */}
+                          <label hidden={entry.protocol === 'meshcore'}>
                             <input
                               type="checkbox"
                               checked={perm.canViewOnMap}
@@ -1206,7 +1209,7 @@ const UsersTab: React.FC = () => {
                               territory) we leave the UX to "clear both
                               boxes and Save" — that branch in
                               updateChannelDbPermission deletes the row. */}
-                          <label>
+                          <label hidden={entry.protocol === 'meshcore'}>
                             <input
                               type="checkbox"
                               checked={perm.canWrite ?? false}

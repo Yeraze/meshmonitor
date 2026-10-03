@@ -1155,7 +1155,9 @@ const ChannelDatabaseSection: React.FC<ChannelDatabaseSectionProps> = ({ isAdmin
                   value={editingChannel.psk}
                   onChange={(e) => setEditingChannel({ ...editingChannel, psk: e.target.value })}
                   className="setting-input"
-                  placeholder={t('channel_database.psk_placeholder')}
+                  placeholder={editingChannel.protocol === 'meshcore'
+                    ? t('channel_database.meshcore_secret_placeholder', '32 hex characters or Base64')
+                    : t('channel_database.psk_placeholder')}
                   style={{ flex: 1 }}
                 />
                 <button
