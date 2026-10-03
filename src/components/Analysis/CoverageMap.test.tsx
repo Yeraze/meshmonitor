@@ -8,11 +8,17 @@
  */
 import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
 
-const { setViewMock, fitBoundsMock } = vi.hoisted(() => ({
+const { setViewMock, fitBoundsMock, mapEvents, fixLayers, project } = vi.hoisted(() => ({
   setViewMock: vi.fn(),
   fitBoundsMock: vi.fn(),
+  /** Handlers the overlap chooser registered through useMapEvents (#5543). */
+  mapEvents: { handlers: {} as Record<string, (e: unknown) => void> },
+  /** Fake Leaflet layers handed to CircleMarker refs, keyed by "lat,lng". */
+  fixLayers: new Map<string, { openPopup: ReturnType<typeof vi.fn> }>(),
+  /** Test projection: 100 px per degree, north up. */
+  project: (ll: [number, number]) => ({ x: ll[1] * 100, y: -ll[0] * 100 }),
 }));
 
 vi.mock('react-i18next', async () => {
@@ -49,7 +55,11 @@ vi.mock('../map/BaseMap', () => ({
 }));
 
 vi.mock('react-leaflet', () => ({
-  CircleMarker: ({ children, center, radius, pathOptions, ...rest }: any) => (
+  CircleMarker: ({ children, center, radius, pathOptions, ref, ...rest }: any) => {
+    const key = center.join(',');
+    if (!fixLayers.has(key)) fixLayers.set(key, { openPopup: vi.fn() });
+    React.useImperativeHandle(ref, () => fixLayers.get(key));
+    return (
     <div
       data-testid={rest['data-testid'] ?? 'circle-marker'}
       data-center={center.join(',')}
@@ -58,7 +68,8 @@ vi.mock('react-leaflet', () => ({
     >
       {children}
     </div>
-  ),
+    );
+  },
   Polyline: ({ children, positions, pathOptions }: any) => (
     <div
       data-testid="gap-polyline"
@@ -85,6 +96,10 @@ vi.mock('react-leaflet', () => ({
   ),
   Popup: ({ children }: { children?: React.ReactNode }) => <div data-testid="popup">{children}</div>,
   useMap: () => ({ setView: setViewMock, fitBounds: fitBoundsMock }),
+  useMapEvents: (handlers: Record<string, (e: unknown) => void>) => {
+    mapEvents.handlers = handlers;
+    return { latLngToContainerPoint: project };
+  },
 }));
 
 import { CoverageMap } from './CoverageMap';
@@ -824,5 +839,87 @@ describe('CoverageMap', () => {
         expect(screen.queryByTestId('grid-cell')).not.toBeInTheDocument();
       });
     });
+  });
+});
+
+describe('overlap chooser (#5543)', () => {
+  const stackedFix: CoverageFix<CoverageReceptionDto> = {
+    senderId: '!bbbbbbbb',
+    packetKey: '100',
+    // ~7 px from Receiver One at the test projection: stacked on it.
+    latitude: 26.15,
+    longitude: -80.25,
+    receivedAt: 1_700_000_000_000,
+    receptions: [reception({})],
+    bestSnr: 5.5,
+    bestRssi: -85,
+  };
+
+  function clickAt(lat: number, lng: number) {
+    act(() => {
+      mapEvents.handlers.click({ latlng: { lat, lng }, containerPoint: project([lat, lng]) });
+    });
+  }
+
+  beforeEach(() => {
+    fixLayers.clear();
+    mapEvents.handlers = {};
+  });
+
+  it('lists every marker under a click that hits more than one', () => {
+    render(<CoverageMap fixes={[stackedFix]} receivers={receivers} metric="snr" senderNames={SENDER_NAMES} fitKey="k" />);
+    expect(screen.queryByTestId('coverage-overlap-chooser')).not.toBeInTheDocument();
+
+    clickAt(26.1, -80.2);
+
+    const chooser = within(screen.getByTestId('coverage-overlap-chooser'));
+    expect(chooser.getByText('2 markers here')).toBeInTheDocument();
+    // The receiver row shows what its tooltip shows.
+    expect(chooser.getByTestId('coverage-chooser-receiver')).toHaveTextContent('Receiver One · Local');
+    // The fix row shows its popup header, time and best value.
+    const fixRow = chooser.getByTestId('coverage-chooser-fix');
+    expect(fixRow).toHaveTextContent('Car-01 (!bbbbbbbb)');
+    expect(fixRow).toHaveTextContent('SNR 5.5 dB');
+    // Receiver Two is 20+ px away and stays out.
+    expect(chooser.queryByText(/Receiver Two/)).not.toBeInTheDocument();
+  });
+
+  it('opens the fix popup when its chooser row is clicked', () => {
+    render(<CoverageMap fixes={[stackedFix]} receivers={receivers} metric="snr" senderNames={SENDER_NAMES} fitKey="k" />);
+    clickAt(26.1, -80.2);
+    fireEvent.click(screen.getByTestId('coverage-chooser-fix'));
+    expect(fixLayers.get('26.15,-80.25')!.openPopup).toHaveBeenCalledTimes(1);
+  });
+
+  it('leaves a single hit to the marker itself (no chooser)', () => {
+    render(<CoverageMap fixes={[stackedFix]} receivers={receivers} metric="snr" senderNames={SENDER_NAMES} fitKey="k" />);
+    clickAt(26.3, -80.4);
+    expect(screen.queryByTestId('coverage-overlap-chooser')).not.toBeInTheDocument();
+  });
+
+  it('ignores the hidden fix dots in grid view', () => {
+    render(
+      <CoverageMap
+        fixes={[stackedFix]}
+        receivers={receivers}
+        metric="snr"
+        senderNames={SENDER_NAMES}
+        fitKey="k"
+        view="grid"
+      />,
+    );
+    clickAt(26.1, -80.2);
+    expect(screen.queryByTestId('coverage-overlap-chooser')).not.toBeInTheDocument();
+  });
+
+  it('caps a huge pile and asks the user to zoom in', () => {
+    const pile = Array.from({ length: 25 }, (_, i) => ({ ...stackedFix, packetKey: String(200 + i) }));
+    render(<CoverageMap fixes={pile} receivers={receivers} metric="rssi" senderNames={SENDER_NAMES} fitKey="k" />);
+    clickAt(26.15, -80.25);
+    const chooser = within(screen.getByTestId('coverage-overlap-chooser'));
+    expect(chooser.getByText('26 markers here')).toBeInTheDocument();
+    expect(chooser.getAllByTestId('coverage-chooser-fix').length + chooser.queryAllByTestId('coverage-chooser-receiver').length).toBe(20);
+    expect(chooser.getByTestId('coverage-chooser-more')).toHaveTextContent('+6 more');
+    expect(chooser.getAllByTestId('coverage-chooser-fix')[0]).toHaveTextContent('RSSI -85 dBm');
   });
 });
