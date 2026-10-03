@@ -12,12 +12,16 @@
  *
  * Graphs are intentionally hand-rolled rather than passed through
  * `TelemetryGraphs` because that component is tightly coupled to
- * Meshtastic-flavoured features (solar overlays, favorites mutation,
- * purge-by-type permission gates). For MeshCore we want a simple
- * read-only grid keyed on telemetryType strings prefixed `mc_`.
+ * Meshtastic-flavoured features (solar overlays, purge-by-type permission
+ * gates). For MeshCore we want a simple grid keyed on telemetryType strings
+ * prefixed `mc_`. Each graph carries the same per-metric favorite star as
+ * `TelemetryGraphs` (#5549), keyed on the local node's telemetry pubkey.
+ *
+ * Labels come from `getTelemetryLabel` so a metric reads the same here, in
+ * the Node Details chart dropdown and on the Dashboard (#5550).
  */
 
-import React, { useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useQuery } from '@tanstack/react-query';
 import { ComposedChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
@@ -26,37 +30,53 @@ import { useTelemetry } from '../../hooks/useTelemetry';
 import { CollapsibleSection } from './CollapsibleSection';
 import { MeshCoreVirtualNodeCard } from './MeshCoreVirtualNodeCard';
 import apiService from '../../services/api';
+import { useFavorites, useToggleFavorite } from '../../hooks/useFavorites';
+import { useAuth } from '../../contexts/AuthContext';
+import { useToast } from '../ToastContainer';
+import { getTelemetryLabel } from '../TelemetryChart';
+import { UiIcon } from '../icons';
+import { logger } from '../../utils/logger';
+import styles from './MeshCoreInfoView.module.css';
 
 const HOURS_OPTIONS = [1, 6, 24, 72, 168] as const;
 type HoursOption = typeof HOURS_OPTIONS[number];
 
-/** Display order + label/unit/color for each `mc_*` telemetry type. */
-const MC_TELEMETRY_DISPLAY: Array<{ type: string; label: string; unit?: string; color: string; integer?: boolean }> = [
-  { type: 'mc_battery_volts', label: 'Battery', unit: 'V', color: '#a6e3a1' },
-  { type: 'mc_queue_len', label: 'Queue Length', color: '#f9e2af', integer: true },
-  { type: 'mc_noise_floor', label: 'Noise Floor', unit: 'dBm', color: '#fab387' },
-  { type: 'mc_last_rssi', label: 'Last RSSI', unit: 'dBm', color: '#f5c2e7' },
-  { type: 'mc_last_snr', label: 'Last SNR', unit: 'dB', color: '#94e2d5' },
-  { type: 'mc_tx_duty_pct', label: 'TX Duty Cycle', unit: '%', color: '#f38ba8' },
-  { type: 'mc_rx_duty_pct', label: 'RX Duty Cycle', unit: '%', color: '#89dceb' },
-  { type: 'mc_pkt_sent_rate', label: 'Packets Sent', unit: '/min', color: '#cba6f7' },
-  { type: 'mc_pkt_recv_rate', label: 'Packets Received', unit: '/min', color: '#74c7ec' },
-  { type: 'mc_rtc_drift_secs', label: 'RTC Drift', unit: 's', color: '#f2cdcd' },
-  { type: 'mc_uptime_secs', label: 'Uptime', unit: 's', color: '#b4befe' },
+/**
+ * Display order + unit/color for each graphed `mc_*` telemetry type. The
+ * label comes from `getTelemetryLabel` (#5550), not from this table.
+ */
+const MC_TELEMETRY_DISPLAY: Array<{ type: string; unit?: string; color: string; integer?: boolean }> = [
+  { type: 'mc_battery_volts', unit: 'V', color: '#a6e3a1' },
+  { type: 'mc_queue_len', color: '#f9e2af', integer: true },
+  { type: 'mc_noise_floor', unit: 'dBm', color: '#fab387' },
+  { type: 'mc_last_rssi', unit: 'dBm', color: '#f5c2e7' },
+  { type: 'mc_last_snr', unit: 'dB', color: '#94e2d5' },
+  { type: 'mc_tx_duty_pct', unit: '%', color: '#f38ba8' },
+  { type: 'mc_rx_duty_pct', unit: '%', color: '#89dceb' },
+  { type: 'mc_pkt_sent_rate', unit: '/min', color: '#cba6f7' },
+  { type: 'mc_pkt_recv_rate', unit: '/min', color: '#74c7ec' },
+  { type: 'mc_rtc_drift_secs', unit: 's', color: '#f2cdcd' },
+  { type: 'mc_uptime_secs', unit: 's', color: '#b4befe' },
 ];
 
 /** Cumulative-counter telemetry types — shown as a small table, not graphed. */
-const MC_COUNTERS: Array<{ type: string; label: string }> = [
-  { type: 'mc_pkt_recv', label: 'Packets recv (total)' },
-  { type: 'mc_pkt_sent', label: 'Packets sent (total)' },
-  { type: 'mc_pkt_flood_tx', label: 'Flood TX' },
-  { type: 'mc_pkt_direct_tx', label: 'Direct TX' },
-  { type: 'mc_pkt_flood_rx', label: 'Flood RX' },
-  { type: 'mc_pkt_direct_rx', label: 'Direct RX' },
-  { type: 'mc_pkt_recv_errors', label: 'Receive errors' },
-  { type: 'mc_tx_air_secs', label: 'TX air-time total (s)' },
-  { type: 'mc_rx_air_secs', label: 'RX air-time total (s)' },
+const MC_COUNTERS: Array<{ type: string; unit?: string }> = [
+  { type: 'mc_pkt_recv' },
+  { type: 'mc_pkt_sent' },
+  { type: 'mc_pkt_flood_tx' },
+  { type: 'mc_pkt_direct_tx' },
+  { type: 'mc_pkt_flood_rx' },
+  { type: 'mc_pkt_direct_rx' },
+  { type: 'mc_pkt_recv_errors' },
+  { type: 'mc_tx_air_secs', unit: 's' },
+  { type: 'mc_rx_air_secs', unit: 's' },
 ];
+
+/** "Label (unit)" — the same form the graph titles use. */
+function labelWithUnit(type: string, unit?: string): string {
+  const label = getTelemetryLabel(type);
+  return unit ? `${label} (${unit})` : label;
+}
 
 interface MeshCoreInfoApiResponse {
   success: boolean;
@@ -166,6 +186,11 @@ function fmtFreq(mhz?: number): string {
 export const MeshCoreInfoView: React.FC<MeshCoreInfoViewProps> = ({ baseUrl, sourceId, status, onSyncTime }) => {
   const { t } = useTranslation();
   const [hours, setHours] = useState<HoursOption>(24);
+  const { hasPermission } = useAuth();
+  const { showToast } = useToast();
+  // Favorites live in per-source settings, so saving one needs settings:write
+  // on this source — the star is hidden for users who can't save it (#5549).
+  const canFavorite = hasPermission('settings', 'write', { sourceId });
 
   // Fetch identity + latest snapshot from the server. Refetch every 30s so the
   // dashboard reflects each new poll cycle without being chatty.
@@ -192,6 +217,29 @@ export const MeshCoreInfoView: React.FC<MeshCoreInfoViewProps> = ({ baseUrl, sou
     baseUrl,
     enabled: !!telemetryRef?.nodeId,
   });
+
+  // Per-metric favorites (#5549), keyed on the same pubkey the graphs read —
+  // the companion's key, or `repeaterPublicKey` for a Repeater source (#5539).
+  const favoriteNodeId = telemetryRef?.nodeId ?? '';
+  const { data: favorites = new Set<string>() } = useFavorites({
+    nodeId: favoriteNodeId,
+    baseUrl,
+    enabled: canFavorite,
+  });
+  const toggleFavoriteMutation = useToggleFavorite({
+    baseUrl,
+    onError: (message) => {
+      logger.error('Error saving favorite:', message);
+      showToast(t('telemetry.favorite_save_failed'), 'error');
+    },
+  });
+  const toggleFavorite = useCallback(
+    (type: string) => {
+      if (!favoriteNodeId) return;
+      toggleFavoriteMutation.mutate({ nodeId: favoriteNodeId, telemetryType: type, currentFavorites: favorites });
+    },
+    [toggleFavoriteMutation, favoriteNodeId, favorites],
+  );
 
   const grouped = useMemo(() => {
     const map = new Map<string, Array<{ timestamp: number; value: number }>>();
@@ -348,10 +396,10 @@ export const MeshCoreInfoView: React.FC<MeshCoreInfoViewProps> = ({ baseUrl, sou
             <p className="meshcore-info-note">{t('meshcore.info.no_counters', 'No counter data yet.')}</p>
           ) : (
             <dl>
-              {MC_COUNTERS.map(({ type, label }) => (
+              {MC_COUNTERS.map(({ type, unit }) => (
                 counterValues.has(type) ? (
                   <React.Fragment key={type}>
-                    <dt>{label}</dt>
+                    <dt>{labelWithUnit(type, unit)}</dt>
                     <dd>{counterValues.get(type)?.toLocaleString()}</dd>
                   </React.Fragment>
                 ) : null
@@ -383,14 +431,27 @@ export const MeshCoreInfoView: React.FC<MeshCoreInfoViewProps> = ({ baseUrl, sou
             <div className="meshcore-info-note">{t('meshcore.info.loading_graphs', 'Loading graphs…')}</div>
           ) : (
             <div className="meshcore-info-graphs-grid">
-              {MC_TELEMETRY_DISPLAY.map(({ type, label, unit, color, integer }) => {
+              {MC_TELEMETRY_DISPLAY.map(({ type, unit, color, integer }) => {
                 const data = grouped.get(type) ?? [];
                 if (data.length === 0) return null;
+                const label = getTelemetryLabel(type);
+                const isFavorite = favorites.has(type);
                 return (
-                  <div key={type} className="meshcore-info-graph">
-                    <div className="meshcore-info-graph-title">
-                      {label}
-                      {unit ? ` (${unit})` : ''}
+                  <div key={type} className="meshcore-info-graph" data-testid={`meshcore-info-graph-${type}`}>
+                    <div className={`meshcore-info-graph-title ${styles.graphHeader}`}>
+                      <span>{labelWithUnit(type, unit)}</span>
+                      {canFavorite && favoriteNodeId && (
+                        <button
+                          type="button"
+                          className={`${styles.favoriteBtn} ${isFavorite ? styles.favorited : ''}`}
+                          onClick={() => toggleFavorite(type)}
+                          aria-label={isFavorite ? t('telemetry.remove_favorite') : t('telemetry.add_favorite')}
+                          aria-pressed={isFavorite}
+                          title={isFavorite ? t('telemetry.remove_favorite') : t('telemetry.add_favorite')}
+                        >
+                          <UiIcon name={isFavorite ? 'favorite' : 'favoriteOff'} size={15} />
+                        </button>
+                      )}
                     </div>
                     <ResponsiveContainer width="100%" height={180}>
                       <ComposedChart data={data} margin={{ top: 5, right: 12, bottom: 5, left: 0 }}>

@@ -1,0 +1,27 @@
+/* MeshCoreInfoView graph header + favorite star (#5549). */
+.graphHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.favoriteBtn {
+  background: none;
+  border: none;
+  padding: 0;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  cursor: pointer;
+  color: var(--color-surface-active);
+  transition: color 0.2s ease;
+}
+
+.favoriteBtn:hover,
+.favorited {
+  color: var(--color-warning);
+}
