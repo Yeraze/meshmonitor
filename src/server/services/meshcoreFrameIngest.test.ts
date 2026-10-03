@@ -28,9 +28,10 @@ import {
   decryptGroupTextFrame,
   frameChannelMessageId,
   ingestAdvertFrame,
+  openGroupFrame,
 } from './meshcoreFrameIngest.js';
 import { decodeMeshCorePacket } from '../../utils/meshcorePacketDecode.js';
-import { buildGrpTxtFrame, buildAdvertFrame } from '../test-helpers/meshcoreFrames.js';
+import { buildGrpTxtFrame, buildGrpDataFrame, buildAdvertFrame } from '../test-helpers/meshcoreFrames.js';
 
 const SECRET_A = '0123456789abcdef0123456789abcdef';
 const SECRET_B = 'fedcba9876543210fedcba9876543210';
@@ -188,5 +189,53 @@ describe('ingestAdvertFrame', () => {
     expect(await ingestAdvertFrame(buildAdvertFrame({ publicKey: NODE_KEY }), 's', { lastHeardMs: 1, skipPublicKey: NODE_KEY.toUpperCase() })).toBeNull();
     expect(await ingestAdvertFrame(buildGrpTxtFrame(1, 'A: b', SECRET_A), 's', { lastHeardMs: 1 })).toBeNull();
     expect(upsertNode).not.toHaveBeenCalled();
+  });
+});
+
+describe('openGroupFrame (#5567)', () => {
+  const dataGroupOf = (rawHex: string) => decodeMeshCorePacket(rawHex)!.payload.groupData!;
+
+  it('opens a GRP_TXT frame with the right key and no other', () => {
+    const group = groupOf(buildGrpTxtFrame(1_700_000_000, 'Alice: hi there', SECRET_A));
+    expect(openGroupFrame(0x05, group, SECRET_A)).toEqual({
+      kind: 'text', text: 'hi there', senderName: 'Alice', timestampSec: 1_700_000_000,
+    });
+    expect(openGroupFrame(0x05, group, SECRET_B)).toBeNull();
+  });
+
+  it('keeps a sender-less GRP_TXT body whole', () => {
+    const group = groupOf(buildGrpTxtFrame(0, 'no sender here', SECRET_A));
+    expect(openGroupFrame(0x05, group, SECRET_A)).toEqual({
+      kind: 'text', text: 'no sender here', senderName: null, timestampSec: 0,
+    });
+  });
+
+  it('opens a GRP_DATA frame: data_type(2 LE) | data_len(1) | data, padding dropped', () => {
+    const body = Buffer.from([0x00, 0x01, 0xfe, 0xff, 0x41]);
+    const group = dataGroupOf(buildGrpDataFrame(0xbeef, body, SECRET_A));
+    // 3 + 5 bytes pads to one 16-byte block; only data_len bytes come back.
+    expect(group.ciphertextHex).toHaveLength(32);
+    expect(openGroupFrame(0x06, group, SECRET_A)).toEqual({ kind: 'data', dataType: 0xbeef, dataHex: '0001feff41' });
+  });
+
+  it('opens an empty GRP_DATA body and one that spans blocks', () => {
+    expect(openGroupFrame(0x06, dataGroupOf(buildGrpDataFrame(7, Buffer.alloc(0), SECRET_A)), SECRET_A))
+      .toEqual({ kind: 'data', dataType: 7, dataHex: '' });
+    const long = Buffer.alloc(40, 0xab);
+    expect(openGroupFrame(0x06, dataGroupOf(buildGrpDataFrame(7, long, SECRET_A)), SECRET_A))
+      .toEqual({ kind: 'data', dataType: 7, dataHex: long.toString('hex') });
+  });
+
+  it('rejects GRP_DATA on a wrong key, a bad MAC, and a ragged ciphertext', () => {
+    const group = dataGroupOf(buildGrpDataFrame(1, Buffer.from('abc'), SECRET_A));
+    expect(openGroupFrame(0x06, group, SECRET_B)).toBeNull();
+    expect(openGroupFrame(0x06, { ...group, cipherMacHex: 'ffff' === group.cipherMacHex ? '0000' : 'ffff' }, SECRET_A)).toBeNull();
+    expect(openGroupFrame(0x06, { ...group, ciphertextHex: group.ciphertextHex.slice(2) }, SECRET_A)).toBeNull();
+    expect(openGroupFrame(0x06, group, 'abcd')).toBeNull();
+  });
+
+  it('opens nothing for any other payload type', () => {
+    const group = groupOf(buildGrpTxtFrame(1, 'A: b', SECRET_A));
+    expect(openGroupFrame(0x02, group, SECRET_A)).toBeNull();
   });
 });

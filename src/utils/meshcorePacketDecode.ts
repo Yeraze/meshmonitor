@@ -147,6 +147,21 @@ export interface DecodedGroupText {
 }
 
 /**
+ * GRP_DATA (0x06, channel datagram) framing (#5567). The outer layout is the
+ * same as GRP_TXT: the firmware handles both in one `case` of
+ * `Mesh::onRecvPacket` and writes both with `Mesh::createGroupDatagram`
+ * (channel hash, then `encryptThenMAC`). Only the plaintext differs:
+ *
+ *   bytes 0..1  data type  (uint16 LE)
+ *   byte  2     data length
+ *   bytes 3..   data
+ *
+ * (`BaseChatMesh::sendGroupData` / `onGroupDataRecv`, and docs/payloads.md
+ * "Group datagram".) The plaintext is only reachable server-side, with a key.
+ */
+export type DecodedGroupData = DecodedGroupText;
+
+/**
  * MULTIPART (0x0A) framing, from the firmware's own writer/reader
  * (`Mesh::createMultiAck` and the `PAYLOAD_TYPE_MULTIPART` case in
  * `Mesh::onRecvPacket`):
@@ -235,6 +250,8 @@ export interface DecodedMeshCorePacket {
     advert?: DecodedAdvert;
     /** Present for GRP_TXT (0x05) only — see DecodedGroupText. */
     groupText?: DecodedGroupText;
+    /** Present for GRP_DATA (0x06) only — see DecodedGroupData. */
+    groupData?: DecodedGroupData;
     message?: { destHash: string; srcHash: string; encryptedHex: string };
     ack?: { ackCodeHex: string };
     /** Present for MULTIPART (0x0A) only — see DecodedMultipart. */
@@ -348,19 +365,23 @@ export function decodeMeshCorePacket(rawHex: string | null | undefined): Decoded
   } else if (payloadType === 0x03) {
     // ACK — entire payload is the ack code.
     payload.ack = { ackCodeHex: bytesToHex(payloadBytes) };
-  } else if (payloadType === 0x05) {
-    // GRP_TXT: channel_hash(1) | cipher_mac(2) | ciphertext(rest).
+  } else if (payloadType === 0x05 || payloadType === 0x06) {
+    // GRP_TXT / GRP_DATA: channel_hash(1) | cipher_mac(2) | ciphertext(rest).
+    const typeName = payloadType === 0x05 ? 'GRP_TXT' : 'GRP_DATA';
     if (payloadBytes.length >= 4) {
-      payload.groupText = {
+      const group: DecodedGroupText = {
         channelHash: payloadBytes[0].toString(16).padStart(2, '0'),
         cipherMacHex: bytesToHex(payloadBytes.subarray(1, 3)),
         ciphertextHex: bytesToHex(payloadBytes.subarray(3)),
       };
+      if (payloadType === 0x05) payload.groupText = group;
+      else payload.groupData = group;
     } else {
-      errors.push('GRP_TXT payload too short to decode');
+      errors.push(`${typeName} payload too short to decode`);
     }
-    // Also fill the generic shape so the monitor's existing rendering is
-    // unchanged; only the new `groupText` field is layout-correct for decrypt.
+    // Also fill the generic shape for consumers that predate the group
+    // framing (the JSONL export). It is NOT layout-correct for these types:
+    // `srcHash` is half the MAC. Renderers must prefer the group field.
     if (payloadBytes.length >= 2) {
       payload.message = {
         destHash: payloadBytes[0].toString(16).padStart(2, '0'),
