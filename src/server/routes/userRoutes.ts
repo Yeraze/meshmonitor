@@ -522,7 +522,8 @@ router.get('/:id/channel-database-permissions', async (req: Request, res: Respon
       return res.status(404).json({ error: 'User not found' });
     }
 
-    const permissions = await databaseService.channelDatabase.getPermissionsForUserAsync(userId);
+    // 'all': the admin permission editor lists both protocols' entries (#5552).
+    const permissions = await databaseService.channelDatabase.getPermissionsForUserAsync(userId, 'all');
 
     return res.json({
       success: true,

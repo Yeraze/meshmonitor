@@ -83,7 +83,7 @@ function setupApi(opts: {
         ],
       };
     }
-    if (url === '/api/channel-database') {
+    if (url === '/api/channel-database?protocol=all') {
       return { data: opts.channelDbEntries ?? [] };
     }
     if (url === '/api/sources') {

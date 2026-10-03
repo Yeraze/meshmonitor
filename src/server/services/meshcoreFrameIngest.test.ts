@@ -8,10 +8,12 @@ import { ALL_SOURCES } from '../../db/repositories/base.js';
 
 const upsertNode = vi.fn().mockResolvedValue(undefined);
 const getAllChannels = vi.fn();
+const getEnabledVirtual = vi.fn();
 vi.mock('../../services/database.js', () => ({
   default: {
     meshcore: { upsertNode: (...a: unknown[]) => upsertNode(...a) },
     channels: { getAllChannels: (...a: unknown[]) => getAllChannels(...a) },
+    channelDatabase: { getEnabledAsync: (...a: unknown[]) => getEnabledVirtual(...a) },
   },
 }));
 
@@ -40,6 +42,7 @@ const groupOf = (rawHex: string) => decodeMeshCorePacket(rawHex)!.payload.groupT
 beforeEach(() => {
   upsertNode.mockClear();
   getAllChannels.mockReset();
+  getEnabledVirtual.mockReset().mockResolvedValue([]);
 });
 
 describe('pskToHex / advertLastHeardMs', () => {
@@ -87,7 +90,28 @@ describe('findChannelKeysByHash', () => {
     ]);
     const found = await findChannelKeysByHash(ChannelCrypto.calculateChannelHash(SECRET_A));
     expect(getAllChannels).toHaveBeenCalledWith(ALL_SOURCES);
-    expect(found).toEqual([{ sourceId: 'src-x', channelIdx: 2, name: 'ops', secretHex: SECRET_A }]);
+    expect(found).toEqual([{ sourceId: 'src-x', channelIdx: 2, channelDbId: null, name: 'ops', secretHex: SECRET_A }]);
+  });
+
+  it('adds MeshCore virtual channels after device keys, once per secret (#5552)', async () => {
+    getAllChannels.mockResolvedValue([{ id: 2, name: 'ops', psk: B64(SECRET_A), sourceId: 'src-x' }]);
+    getEnabledVirtual.mockResolvedValue([
+      // Same secret as the device key: the device key already covers it.
+      { id: 11, name: 'ops (virtual)', psk: B64(SECRET_A) },
+      { id: 12, name: 'only virtual', psk: B64(SECRET_B) },
+    ]);
+    const a = await findChannelKeysByHash(ChannelCrypto.calculateChannelHash(SECRET_A));
+    expect(a.map((k) => k.channelDbId)).toEqual([null]);
+    const b = await findChannelKeysByHash(ChannelCrypto.calculateChannelHash(SECRET_B));
+    expect(b).toEqual([{ sourceId: null, channelIdx: null, channelDbId: 12, name: 'only virtual', secretHex: SECRET_B }]);
+    // Only MeshCore rows are ever requested.
+    expect(getEnabledVirtual).toHaveBeenCalledWith('meshcore');
+  });
+
+  it('a failed virtual-channel read leaves device keys usable', async () => {
+    getAllChannels.mockResolvedValue([{ id: 2, name: 'ops', psk: B64(SECRET_A), sourceId: 'src-x' }]);
+    getEnabledVirtual.mockRejectedValue(new Error('db down'));
+    expect(await findChannelKeysByHash(ChannelCrypto.calculateChannelHash(SECRET_A))).toHaveLength(1);
   });
 
   it('uses a caller-supplied row list without reading the database', async () => {
@@ -108,7 +132,7 @@ describe('decryptGroupTextFrame', () => {
       text: 'hello',
       senderName: 'Alice',
       timestampSec: 1_700_000_000,
-      key: { sourceId: 'src-x', channelIdx: 3, name: 'ops', secretHex: SECRET_A },
+      key: { sourceId: 'src-x', channelIdx: 3, channelDbId: null, name: 'ops', secretHex: SECRET_A },
     });
   });
 
