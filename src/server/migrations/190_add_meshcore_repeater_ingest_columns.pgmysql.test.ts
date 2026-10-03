@@ -1,11 +1,11 @@
 /**
- * Migration 189 — PostgreSQL / MySQL container behaviour (isolated DBs).
+ * Migration 190 — PostgreSQL / MySQL container behaviour (isolated DBs).
  * A silent skip still reports success; confirm via `numPendingTests`.
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import pg from 'pg';
 import mysql from 'mysql2/promise';
-import { runMigration189Postgres, runMigration189Mysql } from './189_add_meshcore_repeater_ingest_columns.js';
+import { runMigration190Postgres, runMigration190Mysql } from './190_add_meshcore_repeater_ingest_columns.js';
 import {
   postgresAvailable,
   mysqlAvailable,
@@ -16,12 +16,12 @@ import {
 // Past 2^31 on purpose: an epoch-ms value needs BIGINT.
 const BIG_MS = 1_790_000_000_000;
 
-describe.skipIf(!postgresAvailable)('migration 189 — PostgreSQL (container)', () => {
+describe.skipIf(!postgresAvailable)('migration 190 — PostgreSQL (container)', () => {
   let pool: pg.Pool;
   let cleanup: (() => Promise<void>) | undefined;
 
   beforeAll(async () => {
-    ({ pool, cleanup } = await createIsolatedPostgresDatabase('mig189'));
+    ({ pool, cleanup } = await createIsolatedPostgresDatabase('mig190'));
     await pool.query(`
       CREATE TABLE meshcore_messages (
         id TEXT PRIMARY KEY,
@@ -52,8 +52,8 @@ describe.skipIf(!postgresAvailable)('migration 189 — PostgreSQL (container)', 
   it('adds nullable columns, is idempotent, and round-trips', async () => {
     const client = await pool.connect();
     try {
-      await runMigration189Postgres(client);
-      await expect(runMigration189Postgres(client)).resolves.toBeUndefined();
+      await runMigration190Postgres(client);
+      await expect(runMigration190Postgres(client)).resolves.toBeUndefined();
     } finally {
       client.release();
     }
@@ -71,12 +71,12 @@ describe.skipIf(!postgresAvailable)('migration 189 — PostgreSQL (container)', 
   });
 });
 
-describe.skipIf(!mysqlAvailable)('migration 189 — MySQL (container)', () => {
+describe.skipIf(!mysqlAvailable)('migration 190 — MySQL (container)', () => {
   let pool: mysql.Pool;
   let cleanup: (() => Promise<void>) | undefined;
 
   beforeAll(async () => {
-    ({ pool, cleanup } = await createIsolatedMysqlDatabase('mig189'));
+    ({ pool, cleanup } = await createIsolatedMysqlDatabase('mig190'));
     await pool.query(`
       CREATE TABLE meshcore_messages (
         id VARCHAR(64) PRIMARY KEY,
@@ -105,8 +105,8 @@ describe.skipIf(!mysqlAvailable)('migration 189 — MySQL (container)', () => {
   });
 
   it('adds nullable columns, is idempotent, and round-trips', async () => {
-    await runMigration189Mysql(pool);
-    await expect(runMigration189Mysql(pool)).resolves.toBeUndefined();
+    await runMigration190Mysql(pool);
+    await expect(runMigration190Mysql(pool)).resolves.toBeUndefined();
     const [before] = await pool.query(`SELECT keySourceId, keyChannelIdx, keyFingerprint FROM meshcore_messages WHERE id = 'a'`);
     expect((before as any[])[0]).toEqual({ keySourceId: null, keyChannelIdx: null, keyFingerprint: null });
     await pool.query(`UPDATE meshcore_messages SET keySourceId = 'src-b', keyChannelIdx = 3, keyFingerprint = '0123456789abcdef' WHERE id = 'a'`);

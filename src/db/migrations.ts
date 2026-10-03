@@ -207,7 +207,8 @@ import { migration as addChannelUseAeadMigration, runMigration185Postgres, runMi
 import { migration as mergeDefaultRowMutesMigration, runMigration186Postgres, runMigration186Mysql } from '../server/migrations/186_merge_default_row_mutes_into_source_rows.js';
 import { migration as addMeshcoreMessageSenderTimestampMigration, runMigration187Postgres, runMigration187Mysql } from '../server/migrations/187_add_meshcore_message_sender_timestamp.js';
 import { migration as createTranslationCacheMigration, runMigration188Postgres, runMigration188Mysql } from '../server/migrations/188_create_translation_cache.js';
-import { migration as addMeshcoreRepeaterIngestColumnsMigration, runMigration189Postgres, runMigration189Mysql } from '../server/migrations/189_add_meshcore_repeater_ingest_columns.js';
+import { migration as globalUiPrefsDropSourceCopiesMigration, runMigration189Postgres, runMigration189Mysql } from '../server/migrations/189_global_ui_prefs_drop_source_copies.js';
+import { migration as addMeshcoreRepeaterIngestColumnsMigration, runMigration190Postgres, runMigration190Mysql } from '../server/migrations/190_add_meshcore_repeater_ingest_columns.js';
 
 // ============================================================================
 // Registry
@@ -3053,7 +3054,23 @@ registry.register({
 });
 
 // ---------------------------------------------------------------------------
-// Migration 189: repeater RAW-stream ingest (#5551, #5553). PER-SOURCE.
+// Migration 189: drop `source:{id}:{key}` copies of global UI preferences
+// (theme/appearance, units, date/time format, sort, display style) and
+// promote a unanimous per-source choice to global when global is unset or
+// default (#5558). See the migration file for the promotion rule.
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 189,
+  name: 'global_ui_prefs_drop_source_copies',
+  settingsKey: 'migration_189_global_ui_prefs_drop_source_copies',
+  sqlite: (db) => globalUiPrefsDropSourceCopiesMigration.up(db),
+  postgres: (client) => runMigration189Postgres(client),
+  mysql: (pool) => runMigration189Mysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 190: repeater RAW-stream ingest (#5551, #5553). PER-SOURCE.
 // meshcore_messages gains decrypt provenance (keySourceId / keyChannelIdx /
 // keyFingerprint) so a channel message decrypted with another source's key is
 // read-gated on access to that key; meshcore_nodes gains repeaterNeighborAt,
@@ -3061,10 +3078,10 @@ registry.register({
 // ---------------------------------------------------------------------------
 
 registry.register({
-  number: 189,
+  number: 190,
   name: 'add_meshcore_repeater_ingest_columns',
-  settingsKey: 'migration_189_add_meshcore_repeater_ingest_columns',
+  settingsKey: 'migration_190_add_meshcore_repeater_ingest_columns',
   sqlite: (db) => addMeshcoreRepeaterIngestColumnsMigration.up(db),
-  postgres: (client) => runMigration189Postgres(client),
-  mysql: (pool) => runMigration189Mysql(pool),
+  postgres: (client) => runMigration190Postgres(client),
+  mysql: (pool) => runMigration190Mysql(pool),
 });

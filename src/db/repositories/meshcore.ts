@@ -92,7 +92,7 @@ export interface DbMeshCoreNode {
   timeSyncIntervalMinutes?: number | null;
   lastTimeSyncAt?: number | null;
   /**
-   * #5553 (migration 189): when the LOCAL repeater's `neighbors` table last
+   * #5553 (migration 190): when the LOCAL repeater's `neighbors` table last
    * listed this node (epoch ms). Only that poll writes it; a node learned from
    * a RAW advert alone stays null, so it is not taken for a zero-hop neighbour.
    */
@@ -151,7 +151,7 @@ export interface DbMeshCoreMessage {
    */
   senderTimestamp?: number | null;
   /**
-   * Decrypt provenance (#5551, migration 189). Set only when this source
+   * Decrypt provenance (#5551, migration 190). Set only when this source
    * decrypted the channel message with a key held by another source. Reads
    * gate the row on the viewer's access to that key — see
    * `server/utils/meshcoreKeyAccess.ts`. `keyFingerprint` is hex

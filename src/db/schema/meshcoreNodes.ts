@@ -102,7 +102,7 @@ export const meshcoreNodesSqlite = sqliteTable('meshcore_nodes', {
   timeSyncIntervalMinutes: integer('timeSyncIntervalMinutes').default(720),
   lastTimeSyncAt: integer('lastTimeSyncAt'),
 
-  // #5553 (migration 189): last time the LOCAL repeater's `neighbors` table
+  // #5553 (migration 190): last time the LOCAL repeater's `neighbors` table
   // listed this node (epoch ms). NULL = learned from a RAW advert only, so not
   // a known zero-hop neighbour.
   repeaterNeighborAt: integer('repeaterNeighborAt'),
