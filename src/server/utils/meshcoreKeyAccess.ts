@@ -80,7 +80,9 @@ export async function resolveMeshcoreKeyAccess(
   // MeshCore virtual channels (#5552): a per-entry `canRead` grant on the
   // channel_database row. Default-deny: a new row has no grants.
   try {
-    const perms = await databaseService.channelDatabase.getPermissionsForUserAsync(user.id, 'meshcore');
+    // 'all' here, then match against the MeshCore rows below: one read of the
+    // table instead of two.
+    const perms = await databaseService.channelDatabase.getPermissionsForUserAsync(user.id, 'all');
     const readable = new Set(perms.filter((p) => p.canRead === true).map((p) => p.channelDatabaseId));
     if (readable.size > 0) {
       for (const vc of await databaseService.channelDatabase.getAllAsync('meshcore')) {

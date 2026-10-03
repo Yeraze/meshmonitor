@@ -79,6 +79,14 @@ describe('MeshCoreChannelImport', () => {
     await waitFor(() => expect(showToast).toHaveBeenCalledWith('Forbidden', 'error'));
   });
 
+  it('tells a failed source load apart from having no MeshCore source', async () => {
+    get.mockRejectedValue(new Error('network'));
+    render(<MeshCoreChannelImport onImported={vi.fn()} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Import from MeshCore device' }));
+    expect(await screen.findByText('Could not load the source list. Close this and try again.')).toBeInTheDocument();
+    expect(screen.queryByText('No MeshCore device source is configured.')).not.toBeInTheDocument();
+  });
+
   it('says so when no MeshCore device source exists', async () => {
     get.mockResolvedValue([{ id: 'tcp', name: 'Meshtastic', type: 'meshtastic_tcp' }]);
     render(<MeshCoreChannelImport onImported={vi.fn()} />);

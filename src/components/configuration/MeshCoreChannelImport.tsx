@@ -37,10 +37,12 @@ const MeshCoreChannelImport: React.FC<MeshCoreChannelImportProps> = ({ onImporte
   const [sourceId, setSourceId] = useState('');
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<ImportResult | null>(null);
+  const [loadFailed, setLoadFailed] = useState(false);
 
   useEffect(() => {
     if (!open) return;
     let cancelled = false;
+    setLoadFailed(false);
     void (async () => {
       try {
         const all = await apiService.get<SourceRow[]>('/api/sources');
@@ -51,7 +53,10 @@ const MeshCoreChannelImport: React.FC<MeshCoreChannelImportProps> = ({ onImporte
         setSourceId((prev) => prev || devices[0]?.id || '');
       } catch (error) {
         logger.error('Error loading sources for MeshCore channel import:', error);
-        if (!cancelled) setSources([]);
+        if (!cancelled) {
+          setSources([]);
+          setLoadFailed(true);
+        }
       }
     })();
     return () => { cancelled = true; };
@@ -113,7 +118,11 @@ const MeshCoreChannelImport: React.FC<MeshCoreChannelImportProps> = ({ onImporte
             </p>
 
             {sources.length === 0 ? (
-              <p>{t('channel_database.meshcore_import_no_sources', 'No MeshCore device source is configured.')}</p>
+              <p>
+                {loadFailed
+                  ? t('channel_database.meshcore_import_sources_failed', 'Could not load the source list. Close this and try again.')
+                  : t('channel_database.meshcore_import_no_sources', 'No MeshCore device source is configured.')}
+              </p>
             ) : (
               <div className="setting-item">
                 <label htmlFor="meshcore-import-source">

@@ -286,6 +286,23 @@ describe('MeshCore virtual channels (#5552)', () => {
       await databaseService.meshcore.deleteAllMessagesForSource(A);
     });
 
+    it('fails closed when the virtual-channel read throws: no fingerprint is granted', async () => {
+      const admin = await harness.loginAs(harness.admin);
+      const created = await admin.post('/channel-database').send({ name: 'vc', psk: SECRET, protocol: 'meshcore' });
+      await databaseService.channelDatabase.setPermissionAsync({
+        userId: harness.limited.id, channelDatabaseId: created.body.data.id, canViewOnMap: false, canRead: true,
+      });
+      const limited = { id: harness.limited.id, isAdmin: false };
+      expect(await resolveMeshcoreKeyAccess(limited)).toEqual([channelKeyFingerprint(SECRET)]);
+
+      const spy = vi.spyOn(databaseService.channelDatabase, 'getAllAsync').mockRejectedValue(new Error('db down'));
+      try {
+        expect(await resolveMeshcoreKeyAccess(limited)).toEqual([]);
+      } finally {
+        spy.mockRestore();
+      }
+    });
+
     it('a Meshtastic row with the same bytes never decrypts MeshCore traffic', async () => {
       const admin = await harness.loginAs(harness.admin);
       await admin.post('/channel-database').send({ name: 'mt', psk: SECRET_B64 });

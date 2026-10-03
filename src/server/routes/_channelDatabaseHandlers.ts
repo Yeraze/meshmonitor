@@ -739,6 +739,12 @@ export async function importMeshcoreChannelsHandler(req: Request, res: Response)
     }
 
     const deviceChannels = await databaseService.channels.getAllChannels(sourceId);
+    // Secrets already stored, read once; grows as this import adds rows.
+    const stored = new Set(
+      (await databaseService.channelDatabase.getAllAsync('meshcore'))
+        .map((r) => meshcoreSecretHex(r.psk))
+        .filter((h): h is string => h !== null),
+    );
     const imported: Array<{ id: number; name: string }> = [];
     const skipped: Array<{ name: string; reason: 'duplicate' | 'no_secret' }> = [];
     for (const ch of deviceChannels) {
@@ -748,10 +754,11 @@ export async function importMeshcoreChannelsHandler(req: Request, res: Response)
         skipped.push({ name, reason: 'no_secret' });
         continue;
       }
-      if (await databaseService.channelDatabase.getMeshcoreBySecretAsync(secretHex)) {
+      if (stored.has(secretHex)) {
         skipped.push({ name, reason: 'duplicate' });
         continue;
       }
+      stored.add(secretHex);
       const id = await databaseService.channelDatabase.createAsync({
         name,
         psk: secretHexToBase64(secretHex),

@@ -72,6 +72,7 @@ function isValidMeshcoreSecretInput(name: string, secret: string): boolean {
   if (s === '') return name.trim().startsWith('#');
   if (/^[0-9a-fA-F]+$/.test(s)) return s.length === 32;
   try {
+    // atob yields one character per decoded byte, so length is the byte count.
     return atob(s).length === 16;
   } catch {
     return false;

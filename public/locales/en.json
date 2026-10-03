@@ -4860,6 +4860,7 @@
   "channel_database.meshcore_import_title": "Copy a MeshCore device's channels into the channel database",
   "channel_database.meshcore_import_note": "Copies the device's channels and their keys into the channel database, so repeater and MQTT sources can decrypt them. This is a one-time copy; later changes on the device are not followed. Imported channels start with no user access: grant it under Users.",
   "channel_database.meshcore_import_no_sources": "No MeshCore device source is configured.",
+  "channel_database.meshcore_import_sources_failed": "Could not load the source list. Close this and try again.",
   "channel_database.meshcore_import_source": "MeshCore source",
   "channel_database.meshcore_import_added": "{{count}} added",
   "channel_database.meshcore_import_duplicates": "{{count}} already stored (same key)",
