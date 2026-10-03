@@ -15,11 +15,13 @@ vi.mock('../../services/api', () => ({
 }));
 const showToast = vi.fn();
 vi.mock('../ToastContainer', () => ({ useToast: () => ({ showToast }) }));
+// One stable `t` across renders, as react-i18next gives.
+const stableTranslation = vi.hoisted(() => ({
+  t: (_k: string, fallback?: string, opts?: Record<string, unknown>) =>
+    (fallback ?? _k).replace(/\{\{(\w+)\}\}/g, (_m, name) => String(opts?.[name] ?? '')),
+}));
 vi.mock('react-i18next', () => ({
-  useTranslation: () => ({
-    t: (_k: string, fallback?: string, opts?: Record<string, unknown>) =>
-      (fallback ?? _k).replace(/\{\{(\w+)\}\}/g, (_m, name) => String(opts?.[name] ?? '')),
-  }),
+  useTranslation: () => stableTranslation,
 }));
 
 import MeshCoreChannelImport from './MeshCoreChannelImport';
