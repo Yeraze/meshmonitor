@@ -260,8 +260,10 @@ router.get('/traceroute-confirmed', async (req: Request, res: Response) => {
     const empty: TracerouteConfirmedLinksResponse = { links: [], sinceMs, truncated: false, historyLimitPerPair };
 
     const allSources = await databaseService.sources.getAllSources();
+    // A per-source reading, so this is the plain read gate on each resource,
+    // not the two-source correlation rule the route above applies.
     const [nodeSources, tracerouteSources] = await Promise.all([
-      resolveCorrelationSourceIds(req, 'nodes'),
+      resolvePermittedSourceIds(req, 'nodes', allSources),
       resolvePermittedSourceIds(req, 'traceroute', allSources),
     ]);
     const tracerouteSet = new Set(tracerouteSources);

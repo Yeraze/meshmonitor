@@ -112,6 +112,13 @@ export function confirmedLinkFromTraceroute(
   // itself). The responder is a real node number by construction.
   if (firstOut !== responder && !isValidRouteNode(firstOut)) return null;
 
+  // The two readings on OUR link. An SNR array is indexed by the hop's far
+  // end: entry i was measured at leg[i + 1].
+  //   out:  [us, N, ...]        -> snrTowards[0] is N hearing us.
+  //   back: [dest, ...rb, us]   -> `us` is leg[rb.length + 1], so the entry
+  //                               for it is snrBack[rb.length] (NOT length - 1):
+  //                               us hearing the last relay, or the
+  //                               destination when rb is empty.
   const out = readSnr(parseHopArray(row.snrTowards)[0]);
   const back = readSnr(parseHopArray(row.snrBack)[routeBack.length]);
 

@@ -6,8 +6,8 @@
  * BOTH `nodes` and `traceroute` on it; a caller with one source learns nothing
  * of another; and both endpoints must pass the map's position gates.
  */
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import crossSourceLinkRoutes from './crossSourceLinkRoutes.js';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import crossSourceLinkRoutes, { CONFIRMED_LINKS_SCAN_LIMIT } from './crossSourceLinkRoutes.js';
 import { createRouteTestApp, type RouteTestHarness } from '../test-helpers/routeTestApp.js';
 import databaseService from '../../services/database.js';
 import { ALL_SOURCES } from '../../db/repositories/index.js';
@@ -208,6 +208,29 @@ describe('Traceroute-confirmed link route (#5580)', () => {
     const bad = await agent.get(`${URL}?since=abc`);
     expect(bad.status).toBe(400);
     expect(bad.body.code).toBe('INVALID_TIME_RANGE');
+  });
+
+  it('reports truncated when the window holds more rows than the scan cap', async () => {
+    const one = {
+      id: 1, sourceId: harness.sourceA, fromNodeNum: REMOTE_A, toNodeNum: LOCAL_A,
+      fromNodeId: nodeIdFor(REMOTE_A), toNodeId: nodeIdFor(LOCAL_A),
+      route: '[]', routeBack: '[]', snrTowards: '[-33]', snrBack: '[-45]',
+      channel: 0, transportMechanism: TX_LORA, timestamp: Date.now() - 1000, createdAt: Date.now() - 1000,
+    };
+    const spy = vi.spyOn(databaseService.traceroutes, 'getTraceroutesForSources')
+      .mockResolvedValue(Array.from({ length: CONFIRMED_LINKS_SCAN_LIMIT + 1 }, () => one) as any);
+    try {
+      const agent = await harness.loginAs(harness.admin);
+      const res = await agent.get(URL);
+      // It asks for one row past the cap, to tell "at the cap" from "over it".
+      expect(spy.mock.calls[0][0]).toMatchObject({ limit: CONFIRMED_LINKS_SCAN_LIMIT + 1 });
+      expect(res.body.data.truncated).toBe(true);
+      // The extra row is dropped, not counted.
+      expect(res.body.data.links).toHaveLength(1);
+      expect(res.body.data.links[0].count).toBe(CONFIRMED_LINKS_SCAN_LIMIT);
+    } finally {
+      spy.mockRestore();
+    }
   });
 
   it('does not disturb the sibling route', async () => {
