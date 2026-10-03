@@ -30,6 +30,7 @@ type Options = {
   minZoom?: number;
   attribution?: string;
   transformRequest?: (url: string) => { url: string } | undefined;
+  renderWorldCopies?: boolean;
 };
 
 function lastOptions(): Options {
@@ -139,5 +140,10 @@ describe('VectorTileLayer', () => {
     expect(fakeMap._addZoomLimit).toHaveBeenCalledWith(layer);
     unmount();
     expect(fakeMap._removeZoomLimit).toHaveBeenCalledWith(layer);
+  });
+
+  it('draws one world only, with no copies beside it (#5556)', () => {
+    render(<VectorTileLayer url="https://tiles.example.com/{z}/{x}/{y}.pbf" />);
+    expect(lastOptions().renderWorldCopies).toBe(false);
   });
 });
