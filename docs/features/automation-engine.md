@@ -528,6 +528,43 @@ Common patterns:
   Schedule at `0 7 * * *` sets it back to **Enabled**.
 - **One-shot** — a rule that sends its reply, then disables itself.
 
+### Turn forwarding on or off
+
+In JSON mode, this action has the type `action.setSourceForwardingEnabled`.
+
+Flips the [Forwarding](/features/automation#forwarding) master switch of one source. Off stops
+every forwarding rule on that source. On lets each rule follow its own checkbox again. The action
+sends nothing on the mesh and does not reset the forwarding rate limit.
+
+- **Source** — one Meshtastic or MeshCore source. It must be picked from the list. A `{{ }}`
+  template is rejected, because the permission check below needs to know the source.
+- **Change** — **Set to** forces the state in **New state** (**On** or **Off**). **Toggle** flips
+  whatever state the source is in now.
+- **New state** — shown for **Set to** only. In JSON mode, `enabled` also takes `true` / `false`,
+  the strings `"true"` / `"false"`, or a `{{ }}` template that resolves to one of them.
+
+**Permission.** Automations run as the system, so the check happens when you save. To create,
+edit, import or duplicate an automation that holds this action, you need the per-source
+**Automation** write permission on every source it targets, as well as the Automations
+permission. Admins pass. Without it the save fails with `FORWARDING_SOURCE_FORBIDDEN`.
+
+What happens when it runs:
+
+- The new state is saved for that source and takes effect on the next incoming message. If the
+  source already has that state, nothing is written.
+- An id that matches no source fails the step with `no source with id "…"` in the run log.
+- The run log shows the source's id, name, mode, new state and old state on the step.
+- The [Test panel](#testing-dry-run) reports what would change but never changes the switch.
+
+A common pattern is a time window: a Schedule at `0 22 * * *` sets a source to **Off**, and a
+second Schedule at `0 7 * * *` sets it back to **On**.
+
+::: warning Chatty triggers
+On a Message trigger this action can flip the switch on every matching message. It sends nothing
+itself, but give such a rule a cooldown, and do not let anyone who can message the node turn your
+forwarding back on.
+:::
+
 > Take care with ids built from mesh input. With `{{ trigger.text }}` as the id, anyone who can
 > message the node can switch your automations on and off. Pick the automation from the list, or
 > gate the rule on the sender first.

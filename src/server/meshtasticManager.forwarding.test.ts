@@ -9,10 +9,14 @@ import { MeshtasticManager } from './meshtasticManager.js';
 import databaseService from '../services/database.js';
 import { forwardingRateLimiter } from './utils/forwardingEngine.js';
 
-function makeManager(rules: unknown[]) {
+function makeManager(rules: unknown[], masterSwitch: string | null = null) {
   const m = new MeshtasticManager('fwd-mt-source');
   vi.spyOn(databaseService.settings, 'getSettingForSource').mockImplementation(
-    async (_sourceId: string, key: string) => (key === 'forwardingRules' ? JSON.stringify(rules) : null),
+    async (_sourceId: string, key: string) => {
+      if (key === 'forwardingRules') return JSON.stringify(rules);
+      if (key === 'forwardingEnabled') return masterSwitch;
+      return null;
+    },
   );
   vi.spyOn(databaseService.nodes, 'getNode').mockResolvedValue({ nodeNum: 0x12345678, shortName: 'ALC' } as never);
   vi.spyOn(databaseService.channels, 'getChannelById').mockResolvedValue({ id: 1, name: 'Ops' } as never);
@@ -84,5 +88,28 @@ describe('MeshtasticManager forwarding (#5446)', () => {
     const { m, enqueue } = makeManager([dmRule]);
     for (let i = 0; i < 8; i++) await (m as any).checkForwarding(dm, true);
     expect(enqueue).toHaveBeenCalledTimes(5);
+  });
+
+  describe('source-level master switch (#5537)', () => {
+    it('sends nothing when the switch is off, even with an enabled rule', async () => {
+      const { m, enqueue } = makeManager([dmRule], 'false');
+      await (m as any).checkForwarding(dm, true);
+      expect(enqueue).not.toHaveBeenCalled();
+      // Gated before the rules are read at all.
+      const keys = (databaseService.settings.getSettingForSource as any).mock.calls.map((c: unknown[]) => c[1]);
+      expect(keys).not.toContain('forwardingRules');
+    });
+
+    it('forwards as before when the switch was never set (absent = on)', async () => {
+      const { m, enqueue } = makeManager([dmRule], null);
+      await (m as any).checkForwarding(dm, true);
+      expect(enqueue).toHaveBeenCalledTimes(1);
+    });
+
+    it('forwards when the switch is explicitly on', async () => {
+      const { m, enqueue } = makeManager([dmRule], 'true');
+      await (m as any).checkForwarding(dm, true);
+      expect(enqueue).toHaveBeenCalledTimes(1);
+    });
   });
 });

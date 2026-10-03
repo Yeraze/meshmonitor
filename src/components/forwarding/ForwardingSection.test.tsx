@@ -195,4 +195,54 @@ describe('ForwardingSection', () => {
     expect(name).toBeDisabled();
     expect(hasPermissionMock).toHaveBeenCalledWith('automation', 'write', { sourceId: 'src1' });
   });
+
+  describe('master switch (#5537)', () => {
+    const withEnabled = (enabled: boolean | undefined) => {
+      csrfFetchMock.mockImplementation((_url: string, init?: { method?: string; body?: string }) => {
+        if (init?.method === 'PUT') {
+          const body = JSON.parse(init.body ?? '{}');
+          return Promise.resolve({ ok: true, status: 200, json: async () => ({ success: true, data: { enabled: body.enabled } }) });
+        }
+        return Promise.resolve({ ok: true, status: 200, json: async () => ({ success: true, data: { rules: RULES, enabled } }) });
+      });
+    };
+
+    it('reflects the stored state and treats a missing flag as on', async () => {
+      withEnabled(undefined);
+      renderSection();
+      await screen.findByDisplayValue('Ops bridge');
+      expect((screen.getByTestId('forwarding-master-switch') as HTMLInputElement).checked).toBe(true);
+      expect(screen.queryByText(/Forwarding is off for this source/)).not.toBeInTheDocument();
+    });
+
+    it('shows the off note when the source switch is off', async () => {
+      withEnabled(false);
+      renderSection();
+      await screen.findByDisplayValue('Ops bridge');
+      await waitFor(() =>
+        expect((screen.getByTestId('forwarding-master-switch') as HTMLInputElement).checked).toBe(false));
+      expect(screen.getByText(/Forwarding is off for this source/)).toBeInTheDocument();
+    });
+
+    it('saves at once via PUT /enabled, without the save bar', async () => {
+      withEnabled(true);
+      renderSection();
+      await screen.findByDisplayValue('Ops bridge');
+      fireEvent.click(screen.getByTestId('forwarding-master-switch'));
+      await waitFor(() => expect(showToastMock).toHaveBeenCalledWith('Forwarding turned off', 'success'));
+      const put = csrfFetchMock.mock.calls.find(c => c[1]?.method === 'PUT');
+      expect(put![0]).toBe('/api/sources/src1/forwarding/enabled');
+      expect(JSON.parse(put![1].body)).toEqual({ enabled: false });
+      expect(saveBarCapture.current?.hasChanges).toBe(false);
+      expect((screen.getByTestId('forwarding-master-switch') as HTMLInputElement).checked).toBe(false);
+    });
+
+    it('is disabled without automation write on the source', async () => {
+      hasPermissionMock.mockReturnValue(false);
+      withEnabled(true);
+      renderSection();
+      await screen.findByDisplayValue('Ops bridge');
+      expect(screen.getByTestId('forwarding-master-switch')).toBeDisabled();
+    });
+  });
 });
