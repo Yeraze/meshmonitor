@@ -1,9 +1,17 @@
 import type { TranslationProvider } from '../../../../types/translation.js';
 import type { ITranslationProvider, ProviderConfig, TranslationProviderResult } from './types.js';
-import { buildServiceEndpoint } from './libreTranslateProvider.js';
+import { buildServiceEndpoint } from './translateUtils.js';
 
 export class OpenAIProvider implements ITranslationProvider {
   readonly id: TranslationProvider = 'openai';
+
+  resolveEndpoint(url?: string): string {
+    return buildServiceEndpoint(
+      url || '',
+      'http://host.docker.internal:11434/v1/chat/completions',
+      '/chat/completions'
+    );
+  }
 
   async translate(
     text: string,
@@ -11,11 +19,10 @@ export class OpenAIProvider implements ITranslationProvider {
     targetLang: string,
     config: ProviderConfig
   ): Promise<TranslationProviderResult> {
-    const endpoint = buildServiceEndpoint(
-      config.openAiBaseUrl || '',
-      'http://host.docker.internal:11434/v1/chat/completions',
-      '/chat/completions'
-    );
+    const endpoint = (config.openAiBaseUrl || '').trim();
+    if (!endpoint) {
+      throw new Error('OpenAI endpoint URL is required');
+    }
     const model = config.model || 'gpt-4o-mini';
 
     const headers: Record<string, string> = {

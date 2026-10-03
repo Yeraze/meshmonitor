@@ -180,6 +180,9 @@ function validTestValue(key: string, suffix = ''): string {
     autoDeleteByDistanceLon: '-74.006',
     appriseApiServerUrl: 'http://apprise.example.com:8000',
     externalUrl: 'https://mesh.example.com',
+    translationUrl: 'http://libretranslate:5000/translate',
+    translationOpenAiBaseUrl: 'http://host.docker.internal:11434/v1/chat/completions',
+    translationDeeplUrl: 'https://api.deepl.com/v2/translate',
 
     // Strict-boolean keys (settingsRoutes.ts's module-local
     // STRICT_BOOLEAN_SETTINGS_KEYS, #4547 Phase 2 WP2 §4): these reject

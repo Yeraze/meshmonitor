@@ -174,7 +174,7 @@ export const TranslationConfigSection: React.FC<TranslationConfigSectionProps> =
                     data-testid="libretranslate-url-input"
                   />
                   <span className={styles.hint}>
-                    {t('settings.translation_libretranslate_url_desc', 'URL of your LibreTranslate instance (e.g. http://localhost:5000 or http://libretranslate:5000 in Docker).')}
+                    {t('settings.translation_libretranslate_url_desc', 'URL of your LibreTranslate instance (e.g. http://localhost:5000 or http://libretranslate:5000 in Docker), or leave blank to use the default (http://libretranslate:5000).')}
                   </span>
                 </div>
 
@@ -203,12 +203,12 @@ export const TranslationConfigSection: React.FC<TranslationConfigSectionProps> =
                     type="text"
                     value={openAiBaseUrl}
                     onChange={(e) => onOpenAiBaseUrlChange(e.target.value)}
-                    placeholder="http://host.docker.internal:11434/v1 or https://api.openai.com/v1"
+                    placeholder="http://host.docker.internal:11434/v1/chat/completions"
                     className={styles.input}
                     data-testid="openai-base-url-input"
                   />
                   <span className={styles.hint}>
-                    {t('settings.translation_openai_base_url_desc', 'Ollama (e.g. http://host.docker.internal:11434/v1), OpenRouter, or OpenAI base URL.')}
+                    {t('settings.translation_openai_base_url_desc', 'Enter the Ollama, OpenRouter, or OpenAI URL, or leave blank to use the default (http://host.docker.internal:11434/v1/chat/completions).')}
                   </span>
                 </div>
 
@@ -275,7 +275,7 @@ export const TranslationConfigSection: React.FC<TranslationConfigSectionProps> =
                     data-testid="deepl-url-input"
                   />
                   <span className={styles.hint}>
-                    {t('settings.translation_deepl_url_desc', 'Leave blank to automatically route based on your auth key (DeepL Free vs. Pro). Only enter a URL if using a custom reverse proxy or enterprise gateway.')}
+                    {t('settings.translation_deepl_url_desc', 'Most users should leave this blank to automatically route based on your auth key (DeepL Free vs. Pro). Only enter a URL if using a custom reverse proxy or enterprise gateway.')}
                   </span>
                 </div>
               </>

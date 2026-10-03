@@ -1,20 +1,13 @@
 import type { TranslationProvider } from '../../../../types/translation.js';
 import type { ITranslationProvider, ProviderConfig, TranslationProviderResult } from './types.js';
-
-/**
- * Helper to construct the full endpoint path for translation services.
- */
-export function buildServiceEndpoint(baseUrl: string, defaultEndpoint: string, path: string): string {
-  const trimmed = (baseUrl || '').trim();
-  if (!trimmed) {
-    return defaultEndpoint;
-  }
-  const clean = trimmed.replace(/\/+$/, '');
-  return clean.endsWith(path) ? clean : `${clean}${path}`;
-}
+import { buildServiceEndpoint } from './translateUtils.js';
 
 export class LibreTranslateProvider implements ITranslationProvider {
   readonly id: TranslationProvider = 'libretranslate';
+
+  resolveEndpoint(url?: string): string {
+    return buildServiceEndpoint(url || '', 'http://libretranslate:5000/translate', '/translate');
+  }
 
   async translate(
     text: string,
@@ -22,7 +15,10 @@ export class LibreTranslateProvider implements ITranslationProvider {
     targetLang: string,
     config: ProviderConfig
   ): Promise<TranslationProviderResult> {
-    const endpoint = buildServiceEndpoint(config.url || '', 'http://libretranslate:5000/translate', '/translate');
+    const endpoint = (config.url || '').trim();
+    if (!endpoint) {
+      throw new Error('LibreTranslate URL is required');
+    }
 
     const body: Record<string, unknown> = {
       q: text,

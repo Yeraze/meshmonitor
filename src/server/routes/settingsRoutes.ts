@@ -46,6 +46,7 @@ import { aircraftClassificationService } from '../services/aircraftClassificatio
 import { isAdsbFeed, ADSB_FEED_IDS } from '../../utils/adsbFeeds.js';
 import { clampIntervalSetting, GEOFENCE_WHILE_INSIDE_MINUTES } from '../utils/schedulerInterval.js';
 import { GEOFENCE_RADIUS_KM_MAX } from '../../utils/geofenceLimits.js';
+import { getTranslationProvider } from '../services/translation/translationService.js';
 
 // ─── Tile URL validation ─────────────────────────────────────────────────
 
@@ -1122,6 +1123,38 @@ router.post('/', requirePermission('settings', 'write', { sourceIdFrom: 'query' 
 
       await auditSettingsWrite(req, currentSettings, filteredSettings, sourceId);
       return ok(res, { ignoredKeys });
+    }
+
+    // Sanitize Translation Endpoint URLs on save
+    if ('translationUrl' in filteredSettings) {
+      try {
+        filteredSettings.translationUrl =
+          getTranslationProvider('libretranslate').resolveEndpoint?.(filteredSettings.translationUrl) ??
+          filteredSettings.translationUrl;
+      } catch {
+        return res.status(400).json({ error: 'translationUrl must be a valid http(s) URL' });
+      }
+    }
+
+    if ('translationOpenAiBaseUrl' in filteredSettings) {
+      try {
+        filteredSettings.translationOpenAiBaseUrl =
+          getTranslationProvider('openai').resolveEndpoint?.(filteredSettings.translationOpenAiBaseUrl) ??
+          filteredSettings.translationOpenAiBaseUrl;
+      } catch {
+        return res.status(400).json({ error: 'translationOpenAiBaseUrl must be a valid http(s) URL' });
+      }
+    }
+
+    if ('translationDeeplUrl' in filteredSettings) {
+      try {
+        const apiKey = (filteredSettings.translationApiKey ?? currentSettings.translationApiKey ?? '').trim();
+        filteredSettings.translationDeeplUrl =
+          getTranslationProvider('deepl').resolveEndpoint?.(filteredSettings.translationDeeplUrl, apiKey) ??
+          filteredSettings.translationDeeplUrl;
+      } catch {
+        return res.status(400).json({ error: 'translationDeeplUrl must be a valid http(s) URL' });
+      }
     }
 
     await databaseService.settings.setSettings(filteredSettings);

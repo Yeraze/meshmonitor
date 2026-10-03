@@ -37,12 +37,30 @@ For most users, **DeepL API Free** provides the best balance of speed, translati
 4. Check **Enable Message Translation**.
 5. Select **DeepL API (Free / Pro)** from the **Translation Provider** dropdown.
 6. Paste your authentication key into the **DeepL Auth Key** field.
-7. Click **Test Connection** to verify connectivity.
-8. Click **Save Changes** in the bottom save bar.
+7. Leave **API URL** blank.
+8. Click **Test Connection** to verify connectivity.
+9. Click **Save Changes** in the bottom save bar.
 
 ::: tip Automatic Endpoint Detection
-MeshMonitor automatically detects whether your DeepL key is Free (`:fx`) or Pro and routes requests to the correct API endpoint (`https://api-free.deepl.com/v2` vs `https://api.deepl.com/v2`).
+MeshMonitor automatically detects whether your DeepL key is Free (`:fx`) or Pro and routes requests to the correct API endpoint (`https://api-free.deepl.com/v2` vs `https://api.deepl.com/v2`). If using a custom reverse proxy or enterprise gateway, you can enter a custom URL in the **Custom DeepL Base URL** field.
 :::
+
+---
+
+## Setting Up OpenAI or OpenAI-Compatible APIs
+
+MeshMonitor supports **OpenAI** and OpenAI-compatible providers (such as [OpenRouter](https://openrouter.ai/), Groq, Together AI, etc...), and local inference engines (such as [Ollama](https://ollama.com/) or vLLM).
+
+### Using the Official OpenAI API
+
+1. Create an account at the [OpenAI Platform](https://platform.openai.com/).
+2. Generate an API secret key from the [OpenAI API Keys Dashboard](https://platform.openai.com/api-keys). For full API details and rate limits, consult the [OpenAI API Documentation](https://platform.openai.com/docs).
+3. In MeshMonitor under **Settings** → **Message Translation**:
+   - Set **Translation Provider** to `OpenAI-Compatible (Ollama, OpenRouter, OpenAI, vLLM)`.
+   - Set **OpenAI URL** to `https://api.openai.com/v1/chat/completions`.
+   - Set **Model Name** to `gpt-4o-mini` (or `gpt-4o`).
+   - Paste your key (`sk-...`) into the **API Key** field.
+4. Click **Test Connection** and then **Save Changes**.
 
 ---
 
@@ -50,11 +68,15 @@ MeshMonitor automatically detects whether your DeepL key is Free (`:fx`) or Pro 
 
 If your MeshMonitor node operates in an off-grid, air-gapped, or privacy-conscious environment without internet access, you can run a local translation engine on the same host or local network:
 
-### 1. LibreTranslate (Self-Hosted Docker)
+### 1. LibreTranslate (Self-Hosted Open Source)
 
-LibreTranslate is a free and open-source self-hosted translation engine.
+[LibreTranslate](https://libretranslate.com/) is a free, self-hosted, open-source machine translation engine powered by Argos Translate.
 
-You can launch a local instance using Docker:
+- **Project Website**: [libretranslate.com](https://libretranslate.com/)
+- **Source Code**: [GitHub - LibreTranslate/LibreTranslate](https://github.com/LibreTranslate/LibreTranslate)
+- **Documentation**: For full installation options, language model management, and GPU acceleration setup, refer to the official [LibreTranslate Documentation](https://libretranslate.com/).
+
+You can quickly launch a local instance using Docker:
 
 ```bash
 docker run -d -p 5000:5000 --restart always libretranslate/libretranslate
@@ -62,17 +84,33 @@ docker run -d -p 5000:5000 --restart always libretranslate/libretranslate
 
 In MeshMonitor:
 - Set **Translation Provider** to `LibreTranslate (Local / Self-Hosted / Cloud)`.
-- Set **LibreTranslate URL** to `http://localhost:5000` (or `http://libretranslate:5000` if running inside a Docker network).
+- Set **LibreTranslate URL** to `http://localhost:5000` (or leave blank to use the default `http://libretranslate:5000`).
 - Leave the API key blank if authentication is not enabled on your instance.
 
-### 2. OpenAI-Compatible / Ollama (Local LLM)
+### 2. Ollama / Local Language Models
 
-If you run [Ollama](https://ollama.ai/) or another OpenAI-compatible local inference server:
+If you run [Ollama](https://ollama.com/) or another OpenAI-compatible local inference server:
 
+```bash
+ollama run llama3.2
+```
+
+In MeshMonitor:
 - Set **Translation Provider** to `OpenAI-Compatible (Ollama, OpenRouter, OpenAI, vLLM)`.
-- Set **OpenAI Base URL** to `http://host.docker.internal:11434/v1` (or your local Ollama address).
-- Set **Model Name** to your desired model (e.g. `llama3`, `qwen2.5`, or `mistral`).
+- Set **OpenAI URL** to `http://host.docker.internal:11434/v1/chat/completions` (or leave blank to use default `http://host.docker.internal:11434/v1/chat/completions`).
+- Set **Model Name** to your desired model (e.g. `llama3.2`, `qwen2.5`, or `mistral`).
 - Leave the API key blank for local Ollama instances.
+
+---
+
+## Endpoint URL Configuration Rules
+
+When configuring custom service URLs for LibreTranslate, OpenAI-compatible backends, or DeepL custom gateways, MeshMonitor applies the following resolution rules:
+
+- **Leave Blank**: Uses the provider's default endpoint.
+- **Bare Origin** (e.g. `http://localhost:5000` or `https://my-proxy:8080`): The provider's standard path (such as `/translate` or `/chat/completions`) is automatically appended.
+- **Full Endpoint / Custom Path** (e.g. `https://my-proxy.internal/v1/custom-translate` or `https://api.openai.com/v1/chat/completions`): The URL is used verbatim as the full request destination.
+- **No Protocol Specified** (e.g. `localhost:5000`): Automatically adopts the default protocol (`http://` or `https://`) for that provider.
 
 ---
 
