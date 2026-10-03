@@ -8,7 +8,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook, act, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ReactNode } from 'react';
-import { usePackets } from './usePackets';
+import { usePackets, isOwnPacketEcho } from './usePackets';
 import * as packetApi from '../services/packetApi';
 import { PacketLog, PacketLogResponse } from '../types/packet';
 
@@ -254,6 +254,79 @@ describe('usePackets', () => {
       });
 
       expect(result.current.packets).toHaveLength(2);
+    });
+
+    // #5579: logOutgoingPacket writes TX rows with from_node = our node, so a
+    // from_node-only match hid every TX row in the per-source monitor.
+    describe('TX rows (#5579)', () => {
+      const ownNodeNum = 12345;
+      const withDirection = (id: number, fromNode: number, direction?: 'rx' | 'tx'): PacketLog => ({
+        ...createMockPacket(id, fromNode),
+        direction,
+      });
+      const mixed = () => [
+        withDirection(1, ownNodeNum, 'tx'), // our send: kept
+        withDirection(2, ownNodeNum, 'rx'), // our packet heard back: hidden
+        withDirection(3, ownNodeNum), // legacy row, no direction: hidden
+        withDirection(4, 99999, 'rx'), // someone else: kept
+        withDirection(5, ownNodeNum, 'tx'), // our send: kept
+        withDirection(6, 88888), // someone else: kept
+      ];
+
+      it('keeps TX rows, hides own RX echoes, keeps other nodes', async () => {
+        mockGetPackets.mockResolvedValue(createMockResponse(mixed()));
+
+        const { result } = renderHook(
+          () => usePackets({ canView: true, filters: {}, hideOwnPackets: true, ownNodeNum }),
+          { wrapper: createWrapper(queryClient) }
+        );
+
+        await waitFor(() => {
+          expect(result.current.loading).toBe(false);
+        });
+
+        expect(result.current.packets.map(p => p.id)).toEqual([1, 4, 5, 6]);
+        expect(result.current.rawPackets).toHaveLength(6);
+        expect(result.current.hiddenCount).toBe(2);
+      });
+
+      it('hides nothing when hideOwnPackets is false', async () => {
+        mockGetPackets.mockResolvedValue(createMockResponse(mixed()));
+
+        const { result } = renderHook(
+          () => usePackets({ canView: true, filters: {}, hideOwnPackets: false, ownNodeNum }),
+          { wrapper: createWrapper(queryClient) }
+        );
+
+        await waitFor(() => {
+          expect(result.current.loading).toBe(false);
+        });
+
+        expect(result.current.packets).toHaveLength(6);
+        expect(result.current.hiddenCount).toBe(0);
+      });
+
+      it('reports zero hidden when ownNodeNum is unknown', async () => {
+        mockGetPackets.mockResolvedValue(createMockResponse(mixed()));
+
+        const { result } = renderHook(
+          () => usePackets({ canView: true, filters: {}, hideOwnPackets: true, ownNodeNum: undefined }),
+          { wrapper: createWrapper(queryClient) }
+        );
+
+        await waitFor(() => {
+          expect(result.current.loading).toBe(false);
+        });
+
+        expect(result.current.packets).toHaveLength(6);
+        expect(result.current.hiddenCount).toBe(0);
+      });
+
+      it('matches a from_node that arrives as a string (PG/MySQL BIGINT)', () => {
+        const echo = { ...createMockPacket(1), from_node: String(ownNodeNum) as unknown as number };
+        expect(isOwnPacketEcho(echo, ownNodeNum)).toBe(true);
+        expect(isOwnPacketEcho({ ...echo, direction: 'tx' }, ownNodeNum)).toBe(false);
+      });
     });
   });
 
