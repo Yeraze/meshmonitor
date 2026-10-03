@@ -1,11 +1,11 @@
 /**
- * Migration 191 — PostgreSQL / MySQL container behaviour (isolated DBs).
+ * Migration 192 — PostgreSQL / MySQL container behaviour (isolated DBs).
  * A silent skip still reports success; confirm via `numPendingTests`.
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import pg from 'pg';
 import mysql from 'mysql2/promise';
-import { runMigration191Postgres, runMigration191Mysql } from './191_add_channel_database_protocol.js';
+import { runMigration192Postgres, runMigration192Mysql } from './192_add_channel_database_protocol.js';
 import {
   postgresAvailable,
   mysqlAvailable,
@@ -13,12 +13,12 @@ import {
   createIsolatedMysqlDatabase,
 } from '../../db/repositories/test-utils.js';
 
-describe.skipIf(!postgresAvailable)('migration 191 — PostgreSQL (container)', () => {
+describe.skipIf(!postgresAvailable)('migration 192 — PostgreSQL (container)', () => {
   let pool: pg.Pool;
   let cleanup: (() => Promise<void>) | undefined;
 
   beforeAll(async () => {
-    ({ pool, cleanup } = await createIsolatedPostgresDatabase('mig191'));
+    ({ pool, cleanup } = await createIsolatedPostgresDatabase('mig192'));
     await pool.query(`
       CREATE TABLE channel_database (
         id SERIAL PRIMARY KEY,
@@ -37,8 +37,8 @@ describe.skipIf(!postgresAvailable)('migration 191 — PostgreSQL (container)', 
   it('adds the column with a meshtastic default, is idempotent, and stores meshcore', async () => {
     const client = await pool.connect();
     try {
-      await runMigration191Postgres(client);
-      await expect(runMigration191Postgres(client)).resolves.toBeUndefined();
+      await runMigration192Postgres(client);
+      await expect(runMigration192Postgres(client)).resolves.toBeUndefined();
     } finally {
       client.release();
     }
@@ -57,12 +57,12 @@ describe.skipIf(!postgresAvailable)('migration 191 — PostgreSQL (container)', 
   });
 });
 
-describe.skipIf(!mysqlAvailable)('migration 191 — MySQL (container)', () => {
+describe.skipIf(!mysqlAvailable)('migration 192 — MySQL (container)', () => {
   let pool: mysql.Pool;
   let cleanup: (() => Promise<void>) | undefined;
 
   beforeAll(async () => {
-    ({ pool, cleanup } = await createIsolatedMysqlDatabase('mig191'));
+    ({ pool, cleanup } = await createIsolatedMysqlDatabase('mig192'));
     await pool.query(`
       CREATE TABLE channel_database (
         id INT AUTO_INCREMENT PRIMARY KEY,
@@ -79,8 +79,8 @@ describe.skipIf(!mysqlAvailable)('migration 191 — MySQL (container)', () => {
   });
 
   it('adds the column with a meshtastic default, is idempotent, and stores meshcore', async () => {
-    await runMigration191Mysql(pool);
-    await expect(runMigration191Mysql(pool)).resolves.toBeUndefined();
+    await runMigration192Mysql(pool);
+    await expect(runMigration192Mysql(pool)).resolves.toBeUndefined();
     await pool.query(`INSERT INTO channel_database (name, psk, pskLength, protocol) VALUES ('mc', 'x', 16, 'meshcore')`);
     await pool.query(`INSERT INTO channel_database (name, psk, pskLength) VALUES ('new', 'AQ==', 1)`);
     const [rows] = await pool.query(`SELECT name, protocol FROM channel_database ORDER BY id`);

@@ -297,6 +297,38 @@ It aggregates confirmed violations across every MQTT source you can read — no 
 MQTT packet capture on any of them just to see gateway violation history. See
 [ok_to_mqtt Violations](/features/analysis-reports#ok-to-mqtt-violations) for details.
 
+## Live Mesh Activity dashboard widget
+
+The **Live Mesh Activity** widget shows every remote node a source heard in a
+recent window, like the live mesh activity view in the Meshtastic phone app.
+Add it from the Dashboard with **Add Widget → Live Mesh Activity**. Each
+widget belongs to the source whose Dashboard you added it to.
+
+| Column | Meaning |
+|--------|---------|
+| Node | Short name and node ID. Click a row to open that node. |
+| Packets | Packets logged from that node in the window. |
+| Extra rx | Copies of a packet heard again after the first (rebroadcasts). |
+| SNR | SNR of the latest packet, with an arrow when it sits more than 1 dB above or below the window average. |
+| Hops (last/min) | Hops on the latest packet, and the fewest seen in the window. `?` means the firmware did not report a hop start. |
+| Last heard | Time since the latest packet. |
+
+- **Window:** 1, 5, 10, 30 or 60 minutes (default 10). Editors save the choice with the widget.
+- **All transports:** off by default, so the table counts radio (RF) receptions only. Turn it on to add MQTT and UDP receptions.
+- **Sorting:** click Packets, SNR, Hops or Last heard. Default is newest first.
+- **Refresh:** the widget polls every 10 seconds while the browser tab is visible. Each poll runs one indexed query on the packet log and sends nothing over the mesh.
+
+The widget reads the packet log, so it needs **Settings → Packet Monitor**
+turned on, and it only shows packets the log still holds. The log cap
+(default 1000 packets, shared by all sources) can drop packets from the start
+of a long window on a busy mesh; when that happens the widget says
+"Data covers since …" with the time of the oldest packet left. Raise the
+maximum packet count in Settings to cover the full window.
+
+It needs `packetmonitor:read` on the source, and non-admin users only count
+packets on channels they can read, the same rule as the packet list.
+Meshtastic sources only for now; MeshCore dashboards do not offer it.
+
 ## Use Cases
 
 The Packet Monitor is useful for:

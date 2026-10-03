@@ -397,6 +397,10 @@ function ActionView({ a }: { a: SimResult['actions'][number] }) {
     // Dry run: nothing is written, this reports what WOULD change (#5445).
     const target = p.name ? `“${String(p.name)}”` : String(p.automationId ?? '');
     headline = `${p.enabled ? 'Enable' : 'Disable'} automation ${target}${p.mode === 'toggle' ? ' (toggle)' : ''}`;
+  } else if (a.type === 'action.setSourceForwardingEnabled') {
+    // Dry run: nothing is written, this reports what WOULD change (#5537).
+    const target = p.sourceName ? `“${String(p.sourceName)}”` : String(p.sourceId ?? '');
+    headline = `Turn forwarding ${p.enabled ? 'on' : 'off'} for ${target}${p.mode === 'toggle' ? ' (toggle)' : ''}`;
   }
   return (
     <div className={`ae-test-action ${a.ok ? '' : 'is-err'}`}>

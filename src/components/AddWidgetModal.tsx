@@ -6,7 +6,7 @@ import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { UiIcon, type UiIconName } from './icons';
 
-export type WidgetType = 'nodeStatus' | 'traceroute' | 'hopDistribution' | 'distanceDistribution' | 'hopDistanceHeatmap';
+export type WidgetType = 'nodeStatus' | 'traceroute' | 'hopDistribution' | 'distanceDistribution' | 'hopDistanceHeatmap' | 'liveMeshActivity';
 
 interface WidgetOption {
   type: WidgetType;
@@ -45,6 +45,12 @@ const WIDGET_OPTIONS: WidgetOption[] = [
     titleKey: 'dashboard.widget.hop_distance_heatmap.title',
     descriptionKey: 'dashboard.widget.hop_distance_heatmap.description',
     icon: 'map',
+  },
+  {
+    type: 'liveMeshActivity',
+    titleKey: 'dashboard.widget.live_mesh_activity.title',
+    descriptionKey: 'dashboard.widget.live_mesh_activity.description',
+    icon: 'activity',
   },
 ];
 

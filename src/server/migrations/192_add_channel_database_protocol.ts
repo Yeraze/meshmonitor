@@ -1,5 +1,5 @@
 /**
- * Migration 191: `channel_database.protocol` (#5552).
+ * Migration 192: `channel_database.protocol` (#5552).
  *
  *   protocol TEXT NOT NULL DEFAULT 'meshtastic' — 'meshtastic' | 'meshcore'.
  *
@@ -20,7 +20,7 @@ import {
   addColumnIfMissingMysql,
 } from './helpers.js';
 
-const LABEL = 'Migration 191';
+const LABEL = 'Migration 192';
 const TABLE = 'channel_database';
 const COLUMN = 'protocol';
 
@@ -40,7 +40,7 @@ export const migration = {
 
 // ============ PostgreSQL ============
 
-export async function runMigration191Postgres(client: import('pg').PoolClient): Promise<void> {
+export async function runMigration192Postgres(client: import('pg').PoolClient): Promise<void> {
   logger.info(`${LABEL} (PostgreSQL): adding ${COLUMN} to ${TABLE}...`);
   await addColumnIfMissingPostgres(client, TABLE, COLUMN, `"protocol" TEXT NOT NULL DEFAULT 'meshtastic'`);
   logger.info(`${LABEL} complete (PostgreSQL)`);
@@ -48,7 +48,7 @@ export async function runMigration191Postgres(client: import('pg').PoolClient): 
 
 // ============ MySQL ============
 
-export async function runMigration191Mysql(pool: import('mysql2/promise').Pool): Promise<void> {
+export async function runMigration192Mysql(pool: import('mysql2/promise').Pool): Promise<void> {
   logger.info(`${LABEL} (MySQL): adding ${COLUMN} to ${TABLE}...`);
   await addColumnIfMissingMysql(pool, TABLE, COLUMN, `protocol VARCHAR(16) NOT NULL DEFAULT 'meshtastic'`);
   logger.info(`${LABEL} complete (MySQL)`);

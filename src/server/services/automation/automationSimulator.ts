@@ -131,10 +131,19 @@ export interface SimulateOptions {
    * Absent = every id is treated as existing and currently disabled.
    */
   lookupAutomation?: (id: string) => Promise<{ id: string; name: string; enabled: boolean } | null>;
+  /**
+   * Read-only lookup of a source's forwarding master switch for
+   * action.setSourceForwardingEnabled (#5537). Absent = every source exists
+   * with forwarding on.
+   */
+  lookupSourceForwarding?: (sourceId: string) => Promise<{ id: string; name: string; enabled: boolean } | null>;
 }
 
 /** ActionDeps that perform no IO — each call resolves to its received params. */
-function recordingDeps(lookupAutomation?: SimulateOptions['lookupAutomation']): ActionDeps {
+function recordingDeps(
+  lookupAutomation?: SimulateOptions['lookupAutomation'],
+  lookupSourceForwarding?: SimulateOptions['lookupSourceForwarding'],
+): ActionDeps {
   return {
     // Dry-run must never change an automation — report what WOULD change (#5445).
     async setAutomationEnabled({ automationId, mode, enabled }) {
@@ -144,6 +153,16 @@ function recordingDeps(lookupAutomation?: SimulateOptions['lookupAutomation']): 
       if (!row) return null;
       const previous = Boolean(row.enabled);
       return { automationId: row.id, name: row.name, previous, enabled: mode === 'toggle' ? !previous : Boolean(enabled) };
+    },
+    // Dry-run must never flip a source's forwarding switch (#5537) — report
+    // what WOULD change, reading the current state without writing it.
+    async setSourceForwardingEnabled({ sourceId, mode, enabled }) {
+      const row = lookupSourceForwarding
+        ? await lookupSourceForwarding(sourceId)
+        : { id: sourceId, name: '', enabled: true };
+      if (!row) return null;
+      const previous = Boolean(row.enabled);
+      return { sourceId: row.id, sourceName: row.name, previous, enabled: mode === 'toggle' ? !previous : Boolean(enabled) };
     },
     async sendMessage(a) { return { action: 'sendMessage', ...a }; },
     async sendTapback(a) { return { action: 'tapback', ...a }; },
@@ -428,7 +447,7 @@ export async function simulateAutomation(opts: SimulateOptions): Promise<SimResu
     };
   }
 
-  const deps = recordingDeps(opts.lookupAutomation);
+  const deps = recordingDeps(opts.lookupAutomation, opts.lookupSourceForwarding);
   const vars = new SimVariableResolver(opts.varsRepo, opts.variables ?? {});
   const data = stubData(opts.node, opts.telemetry, opts.liveData);
   const evalCtx: EngineEvalContext = {

@@ -208,8 +208,9 @@ import { migration as mergeDefaultRowMutesMigration, runMigration186Postgres, ru
 import { migration as addMeshcoreMessageSenderTimestampMigration, runMigration187Postgres, runMigration187Mysql } from '../server/migrations/187_add_meshcore_message_sender_timestamp.js';
 import { migration as createTranslationCacheMigration, runMigration188Postgres, runMigration188Mysql } from '../server/migrations/188_create_translation_cache.js';
 import { migration as globalUiPrefsDropSourceCopiesMigration, runMigration189Postgres, runMigration189Mysql } from '../server/migrations/189_global_ui_prefs_drop_source_copies.js';
-import { migration as addMeshcoreRepeaterIngestColumnsMigration, runMigration190Postgres, runMigration190Mysql } from '../server/migrations/190_add_meshcore_repeater_ingest_columns.js';
-import { migration as addChannelDatabaseProtocolMigration, runMigration191Postgres, runMigration191Mysql } from '../server/migrations/191_add_channel_database_protocol.js';
+import { migration as packetLogSourceTimestampIndexMigration, runMigration190Postgres, runMigration190Mysql } from '../server/migrations/190_packet_log_source_timestamp_index.js';
+import { migration as addMeshcoreRepeaterIngestColumnsMigration, runMigration191Postgres, runMigration191Mysql } from '../server/migrations/191_add_meshcore_repeater_ingest_columns.js';
+import { migration as addChannelDatabaseProtocolMigration, runMigration192Postgres, runMigration192Mysql } from '../server/migrations/192_add_channel_database_protocol.js';
 
 // ============================================================================
 // Registry
@@ -3071,7 +3072,22 @@ registry.register({
 });
 
 // ---------------------------------------------------------------------------
-// Migration 190: repeater RAW-stream ingest (#5551, #5553). PER-SOURCE.
+// Migration 190: `idx_packet_log_source_timestamp` on packet_log(sourceId,
+// timestamp) (#5557). Serves the Live Mesh Activity widget's 10 s poll
+// (`sourceId = ? AND timestamp >= ?`). Index only; no data change.
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 190,
+  name: 'packet_log_source_timestamp_index',
+  settingsKey: 'migration_190_packet_log_source_timestamp_index',
+  sqlite: (db) => packetLogSourceTimestampIndexMigration.up(db),
+  postgres: (client) => runMigration190Postgres(client),
+  mysql: (pool) => runMigration190Mysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 191: repeater RAW-stream ingest (#5551, #5553). PER-SOURCE.
 // meshcore_messages gains decrypt provenance (keySourceId / keyChannelIdx /
 // keyFingerprint) so a channel message decrypted with another source's key is
 // read-gated on access to that key; meshcore_nodes gains repeaterNeighborAt,
@@ -3079,25 +3095,25 @@ registry.register({
 // ---------------------------------------------------------------------------
 
 registry.register({
-  number: 190,
+  number: 191,
   name: 'add_meshcore_repeater_ingest_columns',
-  settingsKey: 'migration_190_add_meshcore_repeater_ingest_columns',
+  settingsKey: 'migration_191_add_meshcore_repeater_ingest_columns',
   sqlite: (db) => addMeshcoreRepeaterIngestColumnsMigration.up(db),
-  postgres: (client) => runMigration190Postgres(client),
-  mysql: (pool) => runMigration190Mysql(pool),
+  postgres: (client) => runMigration191Postgres(client),
+  mysql: (pool) => runMigration191Mysql(pool),
 });
 
 // ---------------------------------------------------------------------------
-// Migration 191: `channel_database.protocol` (#5552). GLOBAL, like the table.
+// Migration 192: `channel_database.protocol` (#5552). GLOBAL, like the table.
 // 'meshtastic' (default, every existing row) or 'meshcore' (a 16-byte channel
 // secret for server-side MeshCore decrypt).
 // ---------------------------------------------------------------------------
 
 registry.register({
-  number: 191,
+  number: 192,
   name: 'add_channel_database_protocol',
-  settingsKey: 'migration_191_add_channel_database_protocol',
+  settingsKey: 'migration_192_add_channel_database_protocol',
   sqlite: (db) => addChannelDatabaseProtocolMigration.up(db),
-  postgres: (client) => runMigration191Postgres(client),
-  mysql: (pool) => runMigration191Mysql(pool),
+  postgres: (client) => runMigration192Postgres(client),
+  mysql: (pool) => runMigration192Mysql(pool),
 });

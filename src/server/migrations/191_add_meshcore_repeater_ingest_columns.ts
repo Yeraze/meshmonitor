@@ -1,5 +1,5 @@
 /**
- * Migration 190: repeater RAW-stream ingest columns (#5551, #5553).
+ * Migration 191: repeater RAW-stream ingest columns (#5551, #5553).
  *
  * `meshcore_messages` — decrypt provenance for channel messages a source
  * decrypted with a key it does not hold itself (a MESH_PACKET_LOGGING repeater
@@ -27,7 +27,7 @@ import {
   addColumnIfMissingMysql,
 } from './helpers.js';
 
-const LABEL = 'Migration 190';
+const LABEL = 'Migration 191';
 
 // ============ SQLite ============
 
@@ -48,7 +48,7 @@ export const migration = {
 
 // ============ PostgreSQL ============
 
-export async function runMigration190Postgres(client: import('pg').PoolClient): Promise<void> {
+export async function runMigration191Postgres(client: import('pg').PoolClient): Promise<void> {
   logger.info(`${LABEL} (PostgreSQL): adding repeater ingest columns...`);
   await addColumnIfMissingPostgres(client, 'meshcore_messages', 'keySourceId', '"keySourceId" TEXT');
   await addColumnIfMissingPostgres(client, 'meshcore_messages', 'keyChannelIdx', '"keyChannelIdx" INTEGER');
@@ -59,7 +59,7 @@ export async function runMigration190Postgres(client: import('pg').PoolClient): 
 
 // ============ MySQL ============
 
-export async function runMigration190Mysql(pool: import('mysql2/promise').Pool): Promise<void> {
+export async function runMigration191Mysql(pool: import('mysql2/promise').Pool): Promise<void> {
   logger.info(`${LABEL} (MySQL): adding repeater ingest columns...`);
   await addColumnIfMissingMysql(pool, 'meshcore_messages', 'keySourceId', 'keySourceId VARCHAR(64) NULL');
   await addColumnIfMissingMysql(pool, 'meshcore_messages', 'keyChannelIdx', 'keyChannelIdx INT NULL');

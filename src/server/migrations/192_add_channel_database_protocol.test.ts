@@ -1,9 +1,9 @@
 /**
- * Tests for migration 191 — `channel_database.protocol` (#5552).
+ * Tests for migration 192 — `channel_database.protocol` (#5552).
  */
 import Database from 'better-sqlite3';
 import { describe, expect, it } from 'vitest';
-import { migration } from './191_add_channel_database_protocol.js';
+import { migration } from './192_add_channel_database_protocol.js';
 
 function createTable(db: Database.Database): void {
   db.exec(`
@@ -18,7 +18,7 @@ function createTable(db: Database.Database): void {
   `);
 }
 
-describe('Migration 191 — channel_database.protocol', () => {
+describe('Migration 192 — channel_database.protocol', () => {
   it('adds a NOT NULL column defaulting to meshtastic and is idempotent', () => {
     const db = new Database(':memory:');
     createTable(db);

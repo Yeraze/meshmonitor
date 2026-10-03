@@ -31,7 +31,7 @@ export const channelDatabaseSqlite = sqliteTable('channel_database', {
   id: integer('id').primaryKey({ autoIncrement: true }),
   name: text('name').notNull(),
   psk: text('psk').notNull(), // Base64-encoded PSK
-  // 'meshtastic' (default) or 'meshcore' (#5552, migration 191). A meshcore
+  // 'meshtastic' (default) or 'meshcore' (#5552, migration 192). A meshcore
   // row stores a 16-byte channel secret; Meshtastic readers filter it out.
   protocol: text('protocol').notNull().default('meshtastic'),
   pskLength: integer('psk_length').notNull(), // 16 for AES-128, 32 for AES-256

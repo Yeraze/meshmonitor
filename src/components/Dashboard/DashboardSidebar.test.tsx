@@ -1,8 +1,9 @@
 /**
  * @vitest-environment jsdom
  */
+import type React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { MemoryRouter, useNavigate } from 'react-router-dom';
 import DashboardSidebar from './DashboardSidebar';
 import type { DashboardSource, SourceStatus } from '../../hooks/useDashboardData';
@@ -58,7 +59,7 @@ const defaultProps = {
   onDeleteSource: vi.fn(),
 };
 
-function renderSidebar(props: Partial<typeof defaultProps> = {}) {
+function renderSidebar(props: Partial<React.ComponentProps<typeof DashboardSidebar>> = {}) {
   return render(
     <MemoryRouter>
       <DashboardSidebar {...defaultProps} {...props} />
@@ -870,6 +871,70 @@ describe('DashboardSidebar', () => {
 
       renderSidebar({ onToggleUnreadIndicator: undefined });
       expect(screen.queryByTitle('settings.unread_indicator_help')).toBeNull();
+    });
+  });
+
+  describe('FWD pill (#5537)', () => {
+    const withForwarding = (forwarding: SourceStatus['forwarding'] | undefined) =>
+      new Map<string, SourceStatus | null>([
+        ['src-1', { sourceId: 'src-1', connected: true, forwarding }],
+        ['src-2', { sourceId: 'src-2', connected: false }],
+        ['src-3', null],
+      ]);
+
+    it('is absent when the status carries no forwarding summary', () => {
+      renderSidebar();
+      expect(screen.queryByTestId('fwd-pill-src-1')).not.toBeInTheDocument();
+    });
+
+    it('shows on + active rule count, clickable with write access', async () => {
+      const onToggleForwarding = vi.fn().mockResolvedValue(undefined);
+      const onSelectSource = vi.fn();
+      renderSidebar({
+        statusMap: withForwarding({ enabled: true, ruleCount: 3, activeRuleCount: 2, canWrite: true }),
+        onToggleForwarding,
+        onSelectSource,
+      });
+      const pill = screen.getByTestId('fwd-pill-src-1');
+      expect(pill).toHaveAttribute('aria-pressed', 'true');
+      expect(pill).toHaveTextContent(/2$/);
+      expect(pill).not.toBeDisabled();
+      fireEvent.click(pill);
+      await waitFor(() => expect(onToggleForwarding).toHaveBeenCalledWith('src-1', false));
+      // The click stays on the pill and does not select the card.
+      expect(onSelectSource).not.toHaveBeenCalled();
+    });
+
+    it('shows off and turns forwarding back on', async () => {
+      const onToggleForwarding = vi.fn().mockResolvedValue(undefined);
+      renderSidebar({
+        statusMap: withForwarding({ enabled: false, ruleCount: 3, activeRuleCount: 2, canWrite: true }),
+        onToggleForwarding,
+      });
+      const pill = screen.getByTestId('fwd-pill-src-1');
+      expect(pill).toHaveAttribute('aria-pressed', 'false');
+      expect(pill).toHaveTextContent(/off$/);
+      fireEvent.click(pill);
+      await waitFor(() => expect(onToggleForwarding).toHaveBeenCalledWith('src-1', true));
+    });
+
+    it('is read-only without automation write on the source', () => {
+      const onToggleForwarding = vi.fn();
+      renderSidebar({
+        statusMap: withForwarding({ enabled: true, ruleCount: 1, activeRuleCount: 1, canWrite: false }),
+        onToggleForwarding,
+      });
+      const pill = screen.getByTestId('fwd-pill-src-1');
+      expect(pill).toBeDisabled();
+      fireEvent.click(pill);
+      expect(onToggleForwarding).not.toHaveBeenCalled();
+    });
+
+    it('is read-only when no toggle handler is wired', () => {
+      renderSidebar({
+        statusMap: withForwarding({ enabled: true, ruleCount: 1, activeRuleCount: 1, canWrite: true }),
+      });
+      expect(screen.getByTestId('fwd-pill-src-1')).toBeDisabled();
     });
   });
 });
