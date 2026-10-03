@@ -54,13 +54,17 @@ async function resolveMeshcoreSecret(
   }
   if (typeof psk !== 'string') return { error: 'psk must be a string' };
   const trimmed = psk.trim();
+  // 16 bytes is 32 hex or 24 Base64 characters; nothing longer can be valid.
+  if (trimmed.length > 64) {
+    return { error: 'A MeshCore channel secret must be 16 bytes: 32 hex characters or Base64' };
+  }
   const secretHex = /^[0-9a-fA-F]+$/.test(trimmed)
     ? (trimmed.length === MESHCORE_SECRET_BYTES * 2 ? trimmed.toLowerCase() : null)
     : (() => {
         try {
           const buf = Buffer.from(trimmed, 'base64');
           // Reject strings base64 would silently truncate or pad.
-          return buf.length === MESHCORE_SECRET_BYTES && buf.toString('base64').replace(/=+$/, '') === trimmed.replace(/=+$/, '')
+          return buf.length === MESHCORE_SECRET_BYTES && stripBase64Padding(buf.toString('base64')) === stripBase64Padding(trimmed)
             ? buf.toString('hex')
             : null;
         } catch {
@@ -75,6 +79,13 @@ async function resolveMeshcoreSecret(
 }
 
 const secretHexToBase64 = (hex: string): string => Buffer.from(hex, 'hex').toString('base64');
+
+/** Drop trailing `=` without a regex over caller-supplied text. */
+function stripBase64Padding(value: string): string {
+  let end = value.length;
+  while (end > 0 && value[end - 1] === '=') end--;
+  return value.slice(0, end);
+}
 
 function parseProtocolFilter(raw: unknown): ChannelDatabaseProtocol | 'all' | null {
   if (raw === undefined || raw === '') return 'meshtastic';
