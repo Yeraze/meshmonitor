@@ -419,9 +419,13 @@ export async function resolveCrossSourceIndex(sourceIds: string[]): Promise<Cros
   const ids = Array.from(new Set(sourceIds));
   if (ids.length < 2) return new CrossSourceIndex(new Map(), new Map());
   try {
+    // Each lookup is wrapped on its own: `Promise.all([a(), b()])` would leave
+    // a()'s rejection unhandled if b() threw synchronously while the array was
+    // being built.
     const [nodeNums, pubKeys] = await Promise.all([
-      resolveLocalNodeNums(ids),
-      databaseService.meshcore.getLocalNodePublicKeysBySource(ids),
+      (async () => resolveLocalNodeNums(ids))().catch(() => new Map<string, number>()),
+      (async () => databaseService.meshcore.getLocalNodePublicKeysBySource(ids))()
+        .catch(() => new Map<string, string>()),
     ]);
     for (const id of ids) {
       if (nodeNums.has(id) || pubKeys.has(id)) continue;
