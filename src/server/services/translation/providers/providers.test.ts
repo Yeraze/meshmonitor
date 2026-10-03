@@ -158,6 +158,36 @@ describe('Translation Providers', () => {
         })
       ).rejects.toThrow('DeepL API error (400): {"message":"Value for target_lang not supported"}');
     });
+
+    it('should fall back to statusText on non-ok HTTP response when text() fails', async () => {
+      global.fetch = vi.fn().mockResolvedValue({
+        ok: false,
+        status: 502,
+        statusText: 'Bad Gateway',
+        text: vi.fn().mockRejectedValue(new Error('stream error')),
+      } as unknown as Response);
+
+      await expect(
+        provider.translate('Hello', 'auto', 'es', {
+          apiKey: 'test-key:fx',
+          deeplUrl: 'https://api-free.deepl.com/v2/translate',
+        })
+      ).rejects.toThrow('DeepL API error (502): Bad Gateway');
+    });
+
+    it('should throw error when translations array is empty', async () => {
+      global.fetch = vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({ translations: [] }),
+      } as unknown as Response);
+
+      await expect(
+        provider.translate('Hello', 'auto', 'es', {
+          apiKey: 'test-key:fx',
+          deeplUrl: 'https://api-free.deepl.com/v2/translate',
+        })
+      ).rejects.toThrow('DeepL returned an empty translations array');
+    });
   });
 
   describe('LibreTranslateProvider', () => {
@@ -219,6 +249,30 @@ describe('Translation Providers', () => {
         provider.translate('Hello', 'auto', 'nb', { url: 'http://libretranslate:5000/translate' })
       ).rejects.toThrow('LibreTranslate error (500): Server error');
     });
+
+    it('should fall back to statusText on non-ok HTTP response when text() fails', async () => {
+      global.fetch = vi.fn().mockResolvedValue({
+        ok: false,
+        status: 503,
+        statusText: 'Service Unavailable',
+        text: vi.fn().mockRejectedValue(new Error('stream error')),
+      } as unknown as Response);
+
+      await expect(
+        provider.translate('Hello', 'auto', 'nb', { url: 'http://libretranslate:5000/translate' })
+      ).rejects.toThrow('LibreTranslate error (503): Service Unavailable');
+    });
+
+    it('should throw error when translatedText is missing from response', async () => {
+      global.fetch = vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({ error: 'Invalid input' }),
+      } as unknown as Response);
+
+      await expect(
+        provider.translate('Hello', 'auto', 'nb', { url: 'http://libretranslate:5000/translate' })
+      ).rejects.toThrow('LibreTranslate returned empty or invalid response');
+    });
   });
 
   describe('OpenAIProvider', () => {
@@ -262,10 +316,47 @@ describe('Translation Providers', () => {
       );
     });
 
+    it('should throw descriptive error on non-ok HTTP response', async () => {
+      global.fetch = vi.fn().mockResolvedValue({
+        ok: false,
+        status: 401,
+        statusText: 'Unauthorized',
+        text: async () => 'Incorrect API key',
+      } as unknown as Response);
+
+      await expect(
+        provider.translate('Hello', 'auto', 'nb', { openAiBaseUrl: 'http://host:11434/v1/chat/completions' })
+      ).rejects.toThrow('OpenAI-compatible endpoint error (401): Incorrect API key');
+    });
+
+    it('should fall back to statusText on non-ok HTTP response when text() fails', async () => {
+      global.fetch = vi.fn().mockResolvedValue({
+        ok: false,
+        status: 500,
+        statusText: 'Internal Error',
+        text: vi.fn().mockRejectedValue(new Error('stream error')),
+      } as unknown as Response);
+
+      await expect(
+        provider.translate('Hello', 'auto', 'nb', { openAiBaseUrl: 'http://host:11434/v1/chat/completions' })
+      ).rejects.toThrow('OpenAI-compatible endpoint error (500): Internal Error');
+    });
+
     it('should throw error when choices array is missing or invalid', async () => {
       global.fetch = vi.fn().mockResolvedValue({
         ok: true,
         json: async () => ({ choices: [] }),
+      } as unknown as Response);
+
+      await expect(
+        provider.translate('Hello', 'auto', 'nb', { openAiBaseUrl: 'http://host:11434/v1/chat/completions' })
+      ).rejects.toThrow('OpenAI endpoint returned an invalid response structure');
+    });
+
+    it('should throw error when message content is not a string', async () => {
+      global.fetch = vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({ choices: [{ message: {} }] }),
       } as unknown as Response);
 
       await expect(
@@ -283,7 +374,7 @@ describe('Translation Providers', () => {
       ).rejects.toThrow('Google Cloud Translation API key is required');
     });
 
-    it('should translate using Google Cloud Translation API', async () => {
+    it('should translate using Google Cloud Translation API with auto source detection (omitting source parameter)', async () => {
       global.fetch = vi.fn().mockResolvedValue({
         ok: true,
         json: async () => ({
@@ -301,6 +392,7 @@ describe('Translation Providers', () => {
         'https://translation.googleapis.com/language/translate/v2?key=google-key',
         expect.objectContaining({
           method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             q: 'Hello world',
             target: 'nb',
@@ -308,6 +400,58 @@ describe('Translation Providers', () => {
           }),
         })
       );
+    });
+
+    it('should include source parameter when explicit source language is provided', async () => {
+      global.fetch = vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          data: {
+            translations: [{ translatedText: 'Hello world' }],
+          },
+        }),
+      } as unknown as Response);
+
+      const res = await provider.translate('Hola mundo', 'es', 'en', { apiKey: 'google-key' });
+
+      expect(res.translatedText).toBe('Hello world');
+      expect(global.fetch).toHaveBeenCalledWith(
+        'https://translation.googleapis.com/language/translate/v2?key=google-key',
+        expect.objectContaining({
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            q: 'Hola mundo',
+            target: 'en',
+            format: 'text',
+            source: 'es',
+          }),
+        })
+      );
+    });
+
+    it('should throw descriptive error on non-ok HTTP response', async () => {
+      global.fetch = vi.fn().mockResolvedValue({
+        ok: false,
+        status: 403,
+        statusText: 'Forbidden',
+        text: async () => 'API key not valid',
+      } as unknown as Response);
+
+      await expect(
+        provider.translate('Hello', 'auto', 'nb', { apiKey: 'google-key' })
+      ).rejects.toThrow('Google Translation API error (403): API key not valid');
+    });
+
+    it('should throw error when data.translations is empty', async () => {
+      global.fetch = vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({ data: { translations: [] } }),
+      } as unknown as Response);
+
+      await expect(
+        provider.translate('Hello', 'auto', 'nb', { apiKey: 'google-key' })
+      ).rejects.toThrow('Google Translation API returned an empty response');
     });
   });
 });

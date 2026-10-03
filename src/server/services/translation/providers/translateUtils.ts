@@ -33,23 +33,31 @@ export function buildServiceEndpoint(baseUrl: string, defaultEndpoint: string, d
     defaultProtocol = 'https:';
   }
 
-  const withProtocol = /^https?:\/\//i.test(trimmed) ? trimmed : `${defaultProtocol}//${trimmed}`;
+  // If a URL scheme is already present (e.g. http://, https://, ftp://, file:///), use it as-is.
+  // Otherwise, inherit the protocol from defaultEndpoint.
+  const hasScheme = /^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//.test(trimmed);
+  const withProtocol = hasScheme ? trimmed : `${defaultProtocol}//${trimmed}`;
 
+  let parsed: URL;
   try {
-    const parsed = new URL(withProtocol);
-    const normalizedPath = defaultPath.startsWith('/') ? defaultPath : `/${defaultPath}`;
-
-    // Bare origin check (pathname is empty or '/')
-    if (!parsed.pathname || parsed.pathname === '/') {
-      parsed.pathname = normalizedPath;
-    } else {
-      // Path beyond origin: strip trailing slashes
-      parsed.pathname = parsed.pathname.replace(/\/+$/, '');
-    }
-
-    return parsed.toString();
+    parsed = new URL(withProtocol);
   } catch {
-    // Fallback if URL constructor fails
-    return withProtocol.replace(/\/+$/, '');
+    throw new Error(`Invalid URL: ${baseUrl}`);
   }
+
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+    throw new Error(`Invalid URL protocol: ${baseUrl}`);
+  }
+
+  const normalizedPath = defaultPath.startsWith('/') ? defaultPath : `/${defaultPath}`;
+
+  // Bare origin check (pathname is empty or '/')
+  if (!parsed.pathname || parsed.pathname === '/') {
+    parsed.pathname = normalizedPath;
+  } else {
+    // Path beyond origin: strip trailing slashes
+    parsed.pathname = parsed.pathname.replace(/\/+$/, '');
+  }
+
+  return parsed.toString();
 }

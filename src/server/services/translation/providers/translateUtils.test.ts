@@ -59,5 +59,15 @@ describe('translateUtils', () => {
     it('should preserve query parameters and hashes if present', () => {
       expect(buildServiceEndpoint('https://proxy.internal/translate?apiKey=123', 'default', '/translate')).toBe('https://proxy.internal/translate?apiKey=123');
     });
+
+    it('should throw error when URL is malformed', () => {
+      expect(() => buildServiceEndpoint('this isnt a valid url yo!', 'default', '/translate')).toThrow('Invalid URL: this isnt a valid url yo!');
+      expect(() => buildServiceEndpoint('http://[invalid-host]/path/', 'default', '/translate')).toThrow('Invalid URL: http://[invalid-host]/path/');
+    });
+
+    it('should throw error when URL protocol is unsupported', () => {
+      expect(() => buildServiceEndpoint('ftp://example.com/api', 'default', '/translate')).toThrow('Invalid URL protocol: ftp://example.com/api');
+      expect(() => buildServiceEndpoint('file:///etc/passwd', 'default', '/translate')).toThrow('Invalid URL protocol: file:///etc/passwd');
+    });
   });
 });

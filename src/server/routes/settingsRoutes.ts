@@ -1127,22 +1127,34 @@ router.post('/', requirePermission('settings', 'write', { sourceIdFrom: 'query' 
 
     // Sanitize Translation Endpoint URLs on save
     if ('translationUrl' in filteredSettings) {
-      filteredSettings.translationUrl =
-        getTranslationProvider('libretranslate').resolveEndpoint?.(filteredSettings.translationUrl) ??
-        filteredSettings.translationUrl;
+      try {
+        filteredSettings.translationUrl =
+          getTranslationProvider('libretranslate').resolveEndpoint?.(filteredSettings.translationUrl) ??
+          filteredSettings.translationUrl;
+      } catch {
+        return res.status(400).json({ error: 'translationUrl must be a valid http(s) URL' });
+      }
     }
 
     if ('translationOpenAiBaseUrl' in filteredSettings) {
-      filteredSettings.translationOpenAiBaseUrl =
-        getTranslationProvider('openai').resolveEndpoint?.(filteredSettings.translationOpenAiBaseUrl) ??
-        filteredSettings.translationOpenAiBaseUrl;
+      try {
+        filteredSettings.translationOpenAiBaseUrl =
+          getTranslationProvider('openai').resolveEndpoint?.(filteredSettings.translationOpenAiBaseUrl) ??
+          filteredSettings.translationOpenAiBaseUrl;
+      } catch {
+        return res.status(400).json({ error: 'translationOpenAiBaseUrl must be a valid http(s) URL' });
+      }
     }
 
     if ('translationDeeplUrl' in filteredSettings) {
-      const apiKey = (filteredSettings.translationApiKey ?? currentSettings.translationApiKey ?? '').trim();
-      filteredSettings.translationDeeplUrl =
-        getTranslationProvider('deepl').resolveEndpoint?.(filteredSettings.translationDeeplUrl, apiKey) ??
-        filteredSettings.translationDeeplUrl;
+      try {
+        const apiKey = (filteredSettings.translationApiKey ?? currentSettings.translationApiKey ?? '').trim();
+        filteredSettings.translationDeeplUrl =
+          getTranslationProvider('deepl').resolveEndpoint?.(filteredSettings.translationDeeplUrl, apiKey) ??
+          filteredSettings.translationDeeplUrl;
+      } catch {
+        return res.status(400).json({ error: 'translationDeeplUrl must be a valid http(s) URL' });
+      }
     }
 
     await databaseService.settings.setSettings(filteredSettings);
