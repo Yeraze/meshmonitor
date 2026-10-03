@@ -3,6 +3,7 @@
  */
 import type { RoleOption, ModemPresetOption, RegionOption } from './types';
 import { getPresetBandwidthKHz } from '../../utils/loraFrequency';
+import { parseFirmwareVersion, isParsedFirmwareAtLeast } from '../../utils/firmwareVersion';
 
 export const ROLE_OPTIONS: RoleOption[] = [
   {
@@ -73,6 +74,12 @@ export const ROLE_OPTIONS: RoleOption[] = [
   }
 ];
 
+// Parameters mirror the firmware's `modemPresetToParams()` switch
+// (meshtastic/firmware `src/mesh/MeshRadio.h`, verified against `develop`
+// 2026-10-03). The `value` is the wire enum (`Config.LoRaConfig.ModemPreset`)
+// and must never change. LITE_*, NARROW_* and TINY_* exist only in firmware
+// 2.8+ and are region-locked there — see FIRMWARE_28_ONLY_PRESETS and
+// REGION_PRESET_ALLOWLIST_28 below (#5547).
 export const MODEM_PRESET_OPTIONS: ModemPresetOption[] = [
   { value: 0, name: 'LONG_FAST', description: 'Long Range - Fast (Default)', params: 'BW: 250kHz, SF: 11, CR: 4/5' },
   { value: 1, name: 'LONG_SLOW', description: 'Long Range - Slow (Deprecated)', params: 'BW: 125kHz, SF: 12, CR: 4/8' },
@@ -82,11 +89,15 @@ export const MODEM_PRESET_OPTIONS: ModemPresetOption[] = [
   { value: 6, name: 'SHORT_FAST', description: 'Short Range - Fast', params: 'BW: 250kHz, SF: 7, CR: 4/5' },
   { value: 7, name: 'LONG_MODERATE', description: 'Long Range - Moderately Fast', params: 'BW: 125kHz, SF: 11, CR: 4/8' },
   { value: 8, name: 'SHORT_TURBO', description: 'Short Range - Turbo (Fastest, widest bandwidth)', params: 'BW: 500kHz, SF: 7, CR: 4/5' },
-  { value: 9, name: 'LONG_TURBO', description: 'Long Range - Turbo (Similar to LongFast)', params: 'BW: 500kHz, SF: 11, CR: 4/5' },
-  { value: 10, name: 'LITE_FAST', description: 'Lite Fast - EU 866MHz SRD (similar to MEDIUM_FAST)', params: 'BW: 125kHz' },
-  { value: 11, name: 'LITE_SLOW', description: 'Lite Slow - EU 866MHz SRD (similar to LONG_FAST)', params: 'BW: 125kHz' },
-  { value: 12, name: 'NARROW_FAST', description: 'Narrow Fast - EU 868MHz (similar to SHORT_SLOW, half rate)', params: 'BW: 62.5kHz' },
-  { value: 13, name: 'NARROW_SLOW', description: 'Narrow Slow - EU 868MHz (similar to LONG_FAST)', params: 'BW: 62.5kHz' },
+  // CR is 4/8, not 4/5 (#5546): the heavier FEC is why Long Turbo's link
+  // budget beats Long Fast despite the doubled bandwidth.
+  { value: 9, name: 'LONG_TURBO', description: 'Long Range - Turbo (Similar to LongFast)', params: 'BW: 500kHz, SF: 11, CR: 4/8' },
+  { value: 10, name: 'LITE_FAST', description: 'Lite Fast - EU 866MHz SRD (similar to MEDIUM_FAST)', params: 'BW: 125kHz, SF: 9, CR: 4/5' },
+  { value: 11, name: 'LITE_SLOW', description: 'Lite Slow - EU 866MHz SRD (similar to LONG_FAST)', params: 'BW: 125kHz, SF: 10, CR: 4/5' },
+  { value: 12, name: 'NARROW_FAST', description: 'Narrow Fast - EU 868MHz Narrow / amateur 70cm & 1.25m', params: 'BW: 62.5kHz, SF: 7, CR: 4/6' },
+  { value: 13, name: 'NARROW_SLOW', description: 'Narrow Slow - EU 868MHz Narrow / amateur 70cm & 1.25m', params: 'BW: 62.5kHz, SF: 8, CR: 4/6' },
+  { value: 14, name: 'TINY_FAST', description: 'Tiny Fast - amateur 2m (15.6 kHz)', params: 'BW: 15.6kHz, SF: 7, CR: 4/5' },
+  { value: 15, name: 'TINY_SLOW', description: 'Tiny Slow - amateur 2m (15.6 kHz)', params: 'BW: 15.6kHz, SF: 8, CR: 4/6' },
   { value: 16, name: 'MEDIUM_TURBO', description: 'Medium Range - Turbo (500 kHz, faster than Medium Fast)', params: 'BW: 500kHz, SF: 9, CR: 4/5' }
 ];
 
@@ -158,18 +169,11 @@ export const REGION_OPTIONS: RegionOption[] = [
 // no comment: it is exactly what would reassure someone checking whether the
 // mapping was complete. It was not — see REGION_MAP's own note.
 //
-// NOTE (issue #3924, Part 1 — preset legality filtering):
-// There is NO protobuf wire field that carries a region -> preset legality map.
-// (Verified against meshtastic/protobufs config.proto: Config.LoRaConfig only
-// exposes `region` (field 7) and `modem_preset` (field 2); no legality map was
-// ever added at any 2.8.x tag.) Instead, the official mobile apps replicate a
-// firmware-side computation locally: a modem preset is legal for a region iff
-// at least one channel of the preset's bandwidth fits inside the region's
-// frequency band, i.e. `(freqEnd - freqStart) >= presetBandwidthKHz / 1000`
-// (spacing is 0 for every current region, so this collapses to a simple
-// span >= bandwidth test). If the check fails, firmware silently rewrites the
-// preset to LONG_FAST. See REGION_FREQ_INFO / isPresetLegalForRegion below,
-// which mirror that table + math WITHOUT requiring a protobuf submodule bump.
+// NOTE (issue #3924 Part 1, #5547 — preset legality filtering): see the
+// "Region -> modem-preset legality" block below. Firmware 2.8 also sends a
+// region -> preset map on the wire (`FromRadio.region_presets`,
+// `LoRaRegionPresetMap` in mesh.proto); MeshMonitor does not consume it yet and
+// mirrors the firmware tables instead.
 export const AMATEUR_RADIO_REGIONS: Record<number, string> = {
   27: 'ITU1_2M',
   // Upstream names 28 ITU2_2M and 33 ITU3_2M separately; the old combined
@@ -194,25 +198,38 @@ export function isAmateurRadioRegion(region: number | null | undefined): boolean
   return Object.prototype.hasOwnProperty.call(AMATEUR_RADIO_REGIONS, region);
 }
 
-// --- Region -> modem-preset legality (issue #3924, Part 1) ---
+// --- Region -> modem-preset legality (issue #3924 Part 1, #5547) ---
 //
-// Mirrors the Meshtastic firmware region table + preset-bandwidth switch so the
-// modem-preset picker can be filtered to presets that are legal for the
-// selected region, matching the official mobile apps. NO protobuf field carries
-// this — it is a client-side computation (see the note above AMATEUR_RADIO_REGIONS).
+// Mirrors the Meshtastic firmware so the modem-preset picker only offers
+// presets the connected radio will accept for the selected region. A preset the
+// firmware rejects is not refused — it is silently rewritten to the region's
+// default preset, so offering an illegal one means the radio quietly ends up on
+// something the user did not pick.
 //
-// Firmware sources (github.com/meshtastic/firmware):
-//   - src/mesh/RadioInterface.cpp  regions[] table (RDEF macro): freqStart/freqEnd.
-//   - src/mesh/MeshRadio.h         modemPresetToParams(): preset -> bandwidth (kHz).
-//   - RadioInterface::applyModemConfig / bootstrapLoRaConfigFromPreset: the
-//     `(freqEnd - freqStart) < bwKHz/1000` fit-check that falls back to LONG_FAST.
+// Two firmware generations, two rules:
 //
-// In practice only EU_868 (0.25 MHz span) filters anything: it rejects the two
-// 500 kHz presets (SHORT_TURBO, LONG_TURBO). Regions whose bounds are not listed
-// here (e.g. the ITU amateur bands and the newer EU narrow-band variants, which
-// live on the firmware develop branch) are treated as permissive — all presets
-// legal — since their spans comfortably exceed every preset bandwidth and we
-// prefer not to filter without authoritative bounds.
+//   * Firmware < 2.8 has no per-region preset lists. A preset is legal iff one
+//     channel of its bandwidth fits in the region's band:
+//     `(freqEnd - freqStart) >= presetBandwidthKHz / 1000`. In practice only
+//     EU_868 (0.25 MHz) filters anything: it rejects the 500 kHz presets. The
+//     2.8-only presets (FIRMWARE_28_ONLY_PRESETS) do not exist there at all —
+//     firmware falls through to LONG_FAST's parameters — so they are hidden.
+//
+//   * Firmware 2.8+ binds each region to a RegionProfile with an explicit
+//     preset list (`PRESETS_STD`, `PRESETS_EU_868`, `PRESETS_LITE`,
+//     `PRESETS_NARROW`, `PRESETS_TINY` in RadioInterface.cpp). That list is
+//     REGION_PRESET_ALLOWLIST_28 below. The bandwidth fit check still applies.
+//
+// An unknown firmware version (not yet reported) uses the 2.8 rule. That is
+// strictly correct on 2.8, and on older firmware it only hides presets that
+// firmware cannot run anyway (the 2.8-only presets are region-locked to the
+// 2.8-only regions).
+//
+// Firmware sources (github.com/meshtastic/firmware, verified against tags
+// v2.8.0.47db0e3 / v2.8.1.8e6a88d and `develop` on 2026-10-03):
+//   - src/mesh/RadioInterface.cpp  PRESETS_* lists, PROFILE_* and regions[] (RDEF).
+//   - src/mesh/MeshRadio.h         modemPresetToParams(): preset -> BW/SF/CR.
+//   - checkOrClampConfigLora(): the span check and the preset clamp.
 
 interface RegionFreqInfo {
   /** Band start in MHz (RadioInterface.cpp regions[] freqStart). */
@@ -262,12 +279,6 @@ const REGION_FREQ_INFO: Record<number, RegionFreqInfo> = {
 export { getPresetBandwidthKHz };
 
 /**
- * True if `preset` is legal for `region`, mirroring the firmware fit-check
- * `(freqEnd - freqStart) >= presetBandwidthKHz / 1000`. Regions with unknown
- * bounds (not in REGION_FREQ_INFO) and null/undefined regions are treated as
- * permissive (all presets legal).
- */
-/**
  * Representative frequency for a region, in Hz — the centre of its band.
  *
  * Path loss varies with frequency, so a coverage prediction (#4727) needs one.
@@ -286,22 +297,125 @@ export function regionCenterFrequencyHz(region: number | null | undefined): numb
   return ((info.start + info.end) / 2) * 1_000_000;
 }
 
-export function isPresetLegalForRegion(
+/**
+ * Modem presets that only exist in firmware 2.8+. Older firmware has no case
+ * for them in `modemPresetToParams()` and runs LONG_FAST's parameters instead,
+ * so pushing one to a 2.7 radio silently lands it on the wrong modem settings.
+ * MEDIUM_TURBO is here too: v2.7.26 lacks it.
+ */
+export const FIRMWARE_28_ONLY_PRESETS: ReadonlySet<number> = new Set([10, 11, 12, 13, 14, 15, 16]);
+
+const PRESETS_STD = [0, 1, 3, 4, 5, 6, 7, 8, 9, 16];
+const PRESETS_EU_868 = [0, 1, 3, 4, 5, 6, 7];
+const PRESETS_LITE = [10, 11];
+const PRESETS_NARROW = [12, 13];
+const PRESETS_TINY = [14, 15];
+
+/**
+ * Firmware 2.8 RegionCode -> legal ModemPreset values, copied from the
+ * `RegionProfile` each `RDEF` row in RadioInterface.cpp points at.
+ *
+ * Regions absent here (UNSET, the deprecated UA_868, and EU_874 / EU_917 which
+ * firmware does not define) resolve to firmware's UNSET entry, whose
+ * `supportsPreset()` accepts any known preset — so they are unconstrained.
+ *
+ * EU_868 / EU_866 / EU_N_868 note: firmware advertises the union of the three
+ * lists to its own apps and, when a preset owned by a sibling is chosen, swaps
+ * the REGION to that sibling. MeshMonitor deliberately offers only each
+ * region's own list, so picking a preset can never change the region behind
+ * the user's back; to use LITE_* choose EU_866, for NARROW_* choose EU_N_868.
+ */
+export const REGION_PRESET_ALLOWLIST_28: Readonly<Record<number, readonly number[]>> = {
+  1: PRESETS_STD,      // US
+  2: PRESETS_STD,      // EU_433
+  3: PRESETS_EU_868,   // EU_868 (PROFILE_EU868: no 500 kHz presets)
+  4: PRESETS_STD,      // CN
+  5: PRESETS_STD,      // JP
+  6: PRESETS_STD,      // ANZ
+  7: PRESETS_STD,      // KR
+  8: PRESETS_STD,      // TW
+  9: PRESETS_STD,      // RU
+  10: PRESETS_STD,     // IN
+  11: PRESETS_STD,     // NZ_865
+  12: PRESETS_STD,     // TH
+  13: PRESETS_STD,     // LORA_24
+  14: PRESETS_STD,     // UA_433
+  16: PRESETS_STD,     // MY_433
+  17: PRESETS_STD,     // MY_919
+  18: PRESETS_STD,     // SG_923
+  19: PRESETS_STD,     // PH_433
+  20: PRESETS_STD,     // PH_868
+  21: PRESETS_STD,     // PH_915
+  22: PRESETS_STD,     // ANZ_433
+  23: PRESETS_STD,     // KZ_433
+  24: PRESETS_STD,     // KZ_863
+  25: PRESETS_STD,     // NP_865
+  26: PRESETS_STD,     // BR_902
+  27: PRESETS_TINY,    // ITU1_2M   (PROFILE_HAM_20KHZ)
+  28: PRESETS_TINY,    // ITU2_2M   (PROFILE_HAM_20KHZ)
+  29: PRESETS_LITE,    // EU_866    (PROFILE_LITE)
+  32: PRESETS_NARROW,  // EU_N_868  (PROFILE_NARROW)
+  33: PRESETS_TINY,    // ITU3_2M   (PROFILE_HAM_20KHZ)
+  34: PRESETS_NARROW,  // ITU1_70CM (PROFILE_HAM_100KHZ)
+  35: PRESETS_NARROW,  // ITU2_70CM (PROFILE_HAM_100KHZ)
+  36: PRESETS_NARROW,  // ITU3_70CM (PROFILE_HAM_100KHZ)
+  37: PRESETS_NARROW,  // ITU2_125CM (PROFILE_HAM_100KHZ)
+};
+
+type FirmwareGeneration = 'pre28' | 'fw28';
+
+/** Unknown/unparseable versions use the 2.8 rule — see the block comment above. */
+function firmwareGeneration(firmwareVersion: string | null | undefined): FirmwareGeneration {
+  const parsed = parseFirmwareVersion(firmwareVersion);
+  if (parsed && !isParsedFirmwareAtLeast(parsed, 2, 8, 0)) return 'pre28';
+  return 'fw28';
+}
+
+/** Why a (region, preset) pair is not offered, or null when it is legal. */
+export type PresetIllegalReason = 'firmware' | 'region' | 'bandwidth';
+
+/**
+ * Reason `preset` is not legal for `region` on firmware `firmwareVersion`, or
+ * null when it is. A null/undefined region is unconstrained.
+ */
+export function getPresetIllegalReason(
   region: number | null | undefined,
-  preset: number
-): boolean {
+  preset: number,
+  firmwareVersion?: string | null
+): PresetIllegalReason | null {
+  const generation = firmwareGeneration(firmwareVersion);
+  if (generation === 'pre28' && FIRMWARE_28_ONLY_PRESETS.has(preset)) {
+    return 'firmware';
+  }
   if (region === null || region === undefined) {
-    return true;
+    return null;
+  }
+  if (generation === 'fw28') {
+    const allowed = REGION_PRESET_ALLOWLIST_28[region];
+    if (allowed && !allowed.includes(preset)) return 'region';
   }
   const info = REGION_FREQ_INFO[region];
   if (!info) {
-    return true; // no authoritative bounds -> do not filter
+    return null; // no authoritative bounds -> no span check
   }
   const spanMHz = info.end - info.start;
   const bandwidthMHz = getPresetBandwidthKHz(preset, !!info.wideLora) / 1000;
   // Small epsilon so IEEE-754 subtraction (e.g. 869.2 - 868.7) doesn't
   // mis-exclude a preset whose bandwidth lands exactly on the region span.
-  return spanMHz >= bandwidthMHz - 1e-9;
+  return spanMHz >= bandwidthMHz - 1e-9 ? null : 'bandwidth';
+}
+
+/**
+ * True if `preset` is legal for `region` on the given firmware. See the block
+ * comment above for the two firmware rules. `firmwareVersion` omitted or
+ * unknown applies the firmware 2.8 rule.
+ */
+export function isPresetLegalForRegion(
+  region: number | null | undefined,
+  preset: number,
+  firmwareVersion?: string | null
+): boolean {
+  return getPresetIllegalReason(region, preset, firmwareVersion) === null;
 }
 
 // --- Region -> regulator compliance guidance (issue #5103) ---
@@ -376,19 +490,86 @@ export function getRegionComplianceWarning(
 }
 
 /**
- * Returns the subset of MODEM_PRESET_OPTIONS that are legal for `region`.
- * `currentPreset`, when supplied, is always retained even if it is illegal, so
- * the picker still reflects a device's actual (possibly out-of-band) setting
- * instead of rendering blank. Preserves MODEM_PRESET_OPTIONS ordering.
+ * Returns the subset of MODEM_PRESET_OPTIONS that are legal for `region` on
+ * firmware `firmwareVersion`. `currentPreset`, when supplied, is always
+ * retained even if it is illegal, so the picker still reflects a device's
+ * actual setting instead of rendering blank or appearing to change it — pair
+ * it with getPresetIllegalReason() to warn. Preserves MODEM_PRESET_OPTIONS
+ * ordering.
  */
 export function getLegalPresetOptions(
   region: number | null | undefined,
-  currentPreset?: number
+  currentPreset?: number,
+  firmwareVersion?: string | null
 ): ModemPresetOption[] {
   return MODEM_PRESET_OPTIONS.filter(
     option =>
-      isPresetLegalForRegion(region, option.value) || option.value === currentPreset
+      isPresetLegalForRegion(region, option.value, firmwareVersion) || option.value === currentPreset
   );
+}
+
+// --- Custom-parameter recipes (#5548) ---
+//
+// Named BW/SF/CR combinations a user can load into the custom-parameters
+// fields (use_preset = false). They are NOT modem presets: nothing here is a
+// wire enum value, and the radio still receives explicit bandwidth /
+// spread_factor / coding_rate. A recipe never touches the frequency slot,
+// override frequency or region.
+
+export interface LoRaCustomRecipe {
+  /** Stable id for the select's value. */
+  id: string;
+  /** Display name. */
+  name: string;
+  /** Bandwidth in kHz. Also the wire value, since every recipe uses an integer bandwidth. */
+  bandwidthKHz: number;
+  spreadFactor: number;
+  /** Coding-rate denominator (4/N), the wire value. */
+  codingRate: number;
+}
+
+export const LORA_CUSTOM_RECIPES: readonly LoRaCustomRecipe[] = [
+  // Community profile from meshtastic/firmware#8214 (closed unmerged): Long
+  // Moderate's SF/CR at Long Turbo's 500 kHz.
+  { id: 'long-mod-turbo', name: 'LongModTurbo', bandwidthKHz: 500, spreadFactor: 11, codingRate: 8 },
+];
+
+/** Why a recipe cannot be loaded for a region, or null when it can. */
+export type RecipeIllegalReason = 'region' | 'bandwidth';
+
+/**
+ * Whether a custom recipe's bandwidth is usable in `region`.
+ *
+ * Two checks, mirroring the preset rules above:
+ *   - 'bandwidth': one channel of the recipe's bandwidth must fit in the
+ *     region's band, which is firmware's own custom-bandwidth span check
+ *     (EU_868's 0.25 MHz rejects 500 kHz).
+ *   - 'region' (firmware 2.8 rule, also used when the version is unknown): the
+ *     recipe may not be wider than the widest official preset the region
+ *     allows. Firmware would accept a 500 kHz custom setting on EU_866 or a
+ *     2m amateur band if it fits, but the region's preset list is the best
+ *     signal we have of what the band plan permits, so stay inside it.
+ */
+export function getRecipeIllegalReason(
+  region: number | null | undefined,
+  recipe: LoRaCustomRecipe,
+  firmwareVersion?: string | null
+): RecipeIllegalReason | null {
+  if (region === null || region === undefined) return null;
+  const info = REGION_FREQ_INFO[region];
+  const wideLora = !!info?.wideLora;
+  if (firmwareGeneration(firmwareVersion) === 'fw28') {
+    const allowed = REGION_PRESET_ALLOWLIST_28[region];
+    if (allowed) {
+      const widestKHz = Math.max(...allowed.map((p) => getPresetBandwidthKHz(p, wideLora)));
+      if (recipe.bandwidthKHz > widestKHz + 1e-9) return 'region';
+    }
+  }
+  if (info) {
+    const spanMHz = info.end - info.start;
+    if (spanMHz < recipe.bandwidthKHz / 1000 - 1e-9) return 'bandwidth';
+  }
+  return null;
 }
 
 // Config.LoRaConfig.FEM_LNA_Mode (firmware >= v2.7.20, meshtastic/firmware#9809).
@@ -429,8 +610,40 @@ export const PRESET_MAP: Record<string, number> = {
   'LITE_SLOW': 11,
   'NARROW_FAST': 12,
   'NARROW_SLOW': 13,
-  'MEDIUM_TURBO': 16
+  'TINY_FAST': 14,
+  'TINY_SLOW': 15,
+  'MEDIUM_TURBO': 16,
+  // Deprecated upstream and not offered in the picker, but a radio can still
+  // report it. Mapped so it round-trips instead of failing resolution.
+  'VERY_LONG_SLOW': 2
 };
+
+/**
+ * Wire value of a modem preset as it arrives from `/api/config`, which carries
+ * either the enum number or (via protobufjs `toJSON`) the enum NAME.
+ *
+ * Returns `null` for a name MeshMonitor does not recognise. Callers MUST NOT
+ * coerce that to 0: `setLoRaConfig` is a whole-struct replace, so an unknown
+ * preset silently read as LONG_FAST would be pushed back to the radio on the
+ * next unrelated LoRa save (#5547 — TINY_FAST did exactly this).
+ */
+export function resolveModemPresetValue(raw: unknown): number | null {
+  if (typeof raw === 'number') {
+    return Number.isInteger(raw) && raw >= 0 ? raw : null;
+  }
+  if (typeof raw === 'string') {
+    const trimmed = raw.trim();
+    if (/^\d+$/.test(trimmed)) return Number(trimmed);
+    return Object.prototype.hasOwnProperty.call(PRESET_MAP, trimmed) ? PRESET_MAP[trimmed] : null;
+  }
+  return null;
+}
+
+/**
+ * Sentinel held in UI state when the radio reports a preset this build cannot
+ * name. Never a wire value — the LoRa save path refuses to send it.
+ */
+export const UNKNOWN_MODEM_PRESET = -1;
 
 // Mapping from string region names to numeric values
 /**

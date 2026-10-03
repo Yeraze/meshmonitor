@@ -8,7 +8,7 @@ import { useTxStatus } from '../hooks/useTxStatus';
 import { isTxDisabledError } from '../utils/txDisabled';
 import { parseAdminDeepLink } from '../utils/adminDeepLink';
 import { appBasename } from '../init';
-import { MODEM_PRESET_OPTIONS, REGION_OPTIONS, FEM_LNA_MODE_OPTIONS } from './configuration/constants';
+import { REGION_OPTIONS, FEM_LNA_MODE_OPTIONS, getLegalPresetOptions } from './configuration/constants';
 import type { Channel } from '../types/device';
 import { ImportConfigModal } from './configuration/ImportConfigModal';
 import { ExportConfigModal } from './configuration/ExportConfigModal';
@@ -2833,7 +2833,8 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
               className="setting-input"
               style={{ width: '300px' }}
             >
-              {MODEM_PRESET_OPTIONS.map(preset => (
+              {/* Region + firmware filtered (#5547); the current preset is always kept. */}
+              {getLegalPresetOptions(configState.lora.region, configState.lora.modemPreset, deviceMetadata?.firmwareVersion).map(preset => (
                 <option key={preset.value} value={preset.value}>
                   {preset.name} - {preset.description} ({preset.params})
                 </option>

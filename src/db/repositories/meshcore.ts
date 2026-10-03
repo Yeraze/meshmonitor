@@ -395,6 +395,29 @@ export class MeshCoreRepository extends BaseRepository {
   }
 
   /**
+   * Each listed source's own local node public key (lowercased), read from
+   * the persisted `isLocalNode` row (#3884), so it works while a source is
+   * disconnected. Sources with no local row (an Observer/MQTT source, a
+   * companion that never connected) are absent from the map. Cross-source
+   * correlation (#5559) uses this to recognise one of our own MeshCore
+   * radios as the origin or relay of a packet another source heard.
+   */
+  async getLocalNodePublicKeysBySource(sourceIds: string[]): Promise<Map<string, string>> {
+    const out = new Map<string, string>();
+    if (sourceIds.length === 0) return out;
+    const { meshcoreNodes } = this.tables;
+    const rows = await this.db
+      .select({ sourceId: meshcoreNodes.sourceId, publicKey: meshcoreNodes.publicKey })
+      .from(meshcoreNodes)
+      .where(and(eq(meshcoreNodes.isLocalNode, true), inArray(meshcoreNodes.sourceId, sourceIds)));
+    for (const r of rows as Array<{ sourceId: string | null; publicKey: string | null }>) {
+      if (!r.sourceId || !r.publicKey) continue;
+      if (!out.has(r.sourceId)) out.set(r.sourceId, r.publicKey.toLowerCase());
+    }
+    return out;
+  }
+
+  /**
    * Get a specific node by public key, ignoring source ownership.
    * Prefer `getNodeByPublicKeyAndSource` for write paths — this variant
    * exists for cross-source read paths that legitimately don't care which

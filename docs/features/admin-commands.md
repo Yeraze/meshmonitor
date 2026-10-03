@@ -111,14 +111,7 @@ Configure the LoRa radio settings for the selected node.
 
 ### Preset Mode (Recommended)
 
-When "Use Preset" is enabled, you can select from predefined modem presets:
-
-- **Long Fast**: Long range, fast data rate
-- **Long Slow**: Long range, slow data rate
-- **Very Long Slow**: Maximum range, slowest data rate
-- **Medium**: Balanced range and speed
-- **Short**: Short range, fast data rate
-- **Long Modem Preset 1-8**: Additional preset options
+When "Use Preset" is enabled, you can select from the predefined modem presets (LONG_FAST, LONG_TURBO, MEDIUM_FAST and so on). The list only shows presets the target node will accept for its region and firmware version; see [Modem Preset](/features/device#modem-preset) for the full table and the rules.
 
 ### Manual Mode
 

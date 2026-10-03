@@ -171,8 +171,8 @@ describe('rxSensitivityForModemPreset (#4111 P3 WP-1)', () => {
     expect(rxSensitivityForModemPreset(999)).toBeNull();
   });
 
-  it('every preset 0-13 except 2 resolves to a finite sensitivity', () => {
-    for (let preset = 0; preset <= 13; preset++) {
+  it('every preset 0-16 except 2 resolves to a finite sensitivity (TINY_* included, #5547)', () => {
+    for (let preset = 0; preset <= 16; preset++) {
       if (preset === 2) continue;
       expect(Number.isFinite(rxSensitivityForModemPreset(preset))).toBe(true);
     }
