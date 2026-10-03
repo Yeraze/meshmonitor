@@ -102,6 +102,11 @@ export const meshcoreNodesSqlite = sqliteTable('meshcore_nodes', {
   timeSyncIntervalMinutes: integer('timeSyncIntervalMinutes').default(720),
   lastTimeSyncAt: integer('lastTimeSyncAt'),
 
+  // #5553 (migration 189): last time the LOCAL repeater's `neighbors` table
+  // listed this node (epoch ms). NULL = learned from a RAW advert only, so not
+  // a known zero-hop neighbour.
+  repeaterNeighborAt: integer('repeaterNeighborAt'),
+
   // Per-room-server sync config (migration 072).
   roomSyncEnabled: integer('roomSyncEnabled', { mode: 'boolean' }).default(false),
   roomSyncIntervalMinutes: integer('roomSyncIntervalMinutes').default(60),
@@ -182,6 +187,7 @@ export const meshcoreNodesPostgres = pgTable('meshcore_nodes', {
   timeSyncEnabled: pgBoolean('timeSyncEnabled').default(false),
   timeSyncIntervalMinutes: pgInteger('timeSyncIntervalMinutes').default(720),
   lastTimeSyncAt: pgBigint('lastTimeSyncAt', { mode: 'number' }),
+  repeaterNeighborAt: pgBigint('repeaterNeighborAt', { mode: 'number' }),
 
   roomSyncEnabled: pgBoolean('roomSyncEnabled').default(false),
   roomSyncIntervalMinutes: pgInteger('roomSyncIntervalMinutes').default(60),
@@ -257,6 +263,7 @@ export const meshcoreNodesMysql = mysqlTable('meshcore_nodes', {
   timeSyncEnabled: myBoolean('timeSyncEnabled').default(false),
   timeSyncIntervalMinutes: myInt('timeSyncIntervalMinutes').default(720),
   lastTimeSyncAt: myBigint('lastTimeSyncAt', { mode: 'number' }),
+  repeaterNeighborAt: myBigint('repeaterNeighborAt', { mode: 'number' }),
 
   roomSyncEnabled: myBoolean('roomSyncEnabled').default(false),
   roomSyncIntervalMinutes: myInt('roomSyncIntervalMinutes').default(60),

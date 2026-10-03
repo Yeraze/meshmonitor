@@ -48,6 +48,13 @@ export const meshcoreMessagesSqlite = sqliteTable('meshcore_messages', {
   // copy. NULL for received messages and rows sent before the migration.
   senderTimestamp: integer('senderTimestamp'),
 
+  // Decrypt provenance (#5551, migration 189). Set only when this source
+  // decrypted a channel message with a key held by ANOTHER source; reads gate
+  // the row on access to that key. keyFingerprint = hex SHA-256(secret)[0..8].
+  keySourceId: text('keySourceId'),
+  keyChannelIdx: integer('keyChannelIdx'),
+  keyFingerprint: text('keyFingerprint'),
+
   // Message type (for future use: text, location, etc.)
   messageType: text('messageType').default('text'),
 
@@ -78,6 +85,9 @@ export const meshcoreMessagesPostgres = pgTable('meshcore_messages', {
   scopeCode: pgInteger('scopeCode'),
   scopeName: pgText('scopeName'),
   senderTimestamp: pgBigint('senderTimestamp', { mode: 'number' }),
+  keySourceId: pgText('keySourceId'),
+  keyChannelIdx: pgInteger('keyChannelIdx'),
+  keyFingerprint: pgText('keyFingerprint'),
   messageType: pgText('messageType').default('text'),
   delivered: pgBoolean('delivered').default(false),
   deliveredAt: pgBigint('deliveredAt', { mode: 'number' }),
@@ -101,6 +111,9 @@ export const meshcoreMessagesMysql = mysqlTable('meshcore_messages', {
   scopeCode: myInt('scopeCode'),
   scopeName: myText('scopeName'),
   senderTimestamp: myBigint('senderTimestamp', { mode: 'number' }),
+  keySourceId: myVarchar('keySourceId', { length: 64 }),
+  keyChannelIdx: myInt('keyChannelIdx'),
+  keyFingerprint: myVarchar('keyFingerprint', { length: 32 }),
   messageType: myVarchar('messageType', { length: 32 }).default('text'),
   delivered: myBoolean('delivered').default(false),
   deliveredAt: myBigint('deliveredAt', { mode: 'number' }),

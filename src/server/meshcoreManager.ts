@@ -90,11 +90,18 @@ import { notificationService } from './services/notificationService.js';
 import { meshcoreMessageFilter } from './services/meshcoreMessageFilter.js';
 import { DistanceDeleteScheduler } from './services/distanceDeleteScheduler.js';
 import { HeartbeatScheduler } from './services/heartbeatScheduler.js';
-import type { DbMeshCorePacket, DbMeshCoreNode } from '../db/repositories/meshcore.js';
+import type { DbMeshCorePacket, DbMeshCoreNode, MeshCoreKeyAccessFilter } from '../db/repositories/meshcore.js';
 import type { ISourceManager, SourceStatus } from './sourceManagerRegistry.js';
 import { decodeMeshCorePacket } from '../utils/meshcorePacketDecode.js';
 import { MESHCORE_SECRET_BYTES } from '../utils/meshcoreHelpers.js';
 import { MESHCORE_PAYLOAD_ADVERT } from '../utils/coverage.js';
+import {
+  ingestAdvertFrame,
+  decryptGroupTextFrame,
+  channelKeyFingerprint,
+  keyedChannelIndex,
+  frameChannelMessageId,
+} from './services/meshcoreFrameIngest.js';
 import { maybeRecordMeshCoreCoverageReception } from './utils/coverageMeshCore.js';
 import { parsePathHops, pathHashBytesOf, resolveRouteNames, buildTracePathHops } from '../utils/meshcorePath.js';
 import { MESHCORE_PUBLIC_CHANNEL_SECRET, tryDecodeGroupTextPayload } from './utils/meshcoreGroupEcho.js';
@@ -562,6 +569,9 @@ export interface MeshCoreNode {
   lastHeard?: number;
   /** #5390: earliest reception on this source, epoch MILLISECONDS (like lastHeard). */
   firstHeard?: number;
+  /** #5553: when the LOCAL repeater's `neighbors` table last listed this node
+   *  (ms). Unset = known from a RAW advert only, not a zero-hop neighbour. */
+  repeaterNeighborAt?: number;
   rssi?: number;
   snr?: number;
   batteryMv?: number;
@@ -754,6 +764,35 @@ export interface MeshCoreSendResult {
   senderTimestamp?: number;
 }
 
+/** MeshCore PAYLOAD_TYPE_GRP_TXT — a channel text message. */
+const MESHCORE_PAYLOAD_GRP_TXT = 0x05;
+
+/**
+ * True when `name` is the advertised name of a local node on ANY connected
+ * MeshCore source (#5551). A channel message carries only the sender's name,
+ * so this is how a repeater recognises our own companion's sends. A stranger
+ * using the same name is also matched; that only stops automations reacting
+ * to them, which is the safe direction. Imported lazily: the registry imports
+ * this module.
+ */
+async function isLocalMeshCoreSenderName(name: string | null | undefined): Promise<boolean> {
+  if (!name) return false;
+  try {
+    const [{ sourceManagerRegistry }, { isMeshCoreManager }] = await Promise.all([
+      import('./sourceManagerRegistry.js'),
+      import('./sourceManagerTypes.js'),
+    ]);
+    const want = name.trim().toLowerCase();
+    for (const m of sourceManagerRegistry.getAllManagers().filter(isMeshCoreManager)) {
+      const local = m.getLocalNode();
+      if (local?.name && local.name.trim().toLowerCase() === want) return true;
+    }
+  } catch {
+    // Registry unavailable (tests, shutdown): treat as not ours.
+  }
+  return false;
+}
+
 export interface MeshCoreMessage {
   id: string;
   fromPublicKey: string;
@@ -820,6 +859,14 @@ export interface MeshCoreMessage {
    *  null = unscoped, or scoped-but-unknown (then the UI shows `#<code-hex>`). */
   scopeName?: string | null;
   /**
+   * Decrypt provenance (#5551): set only on a channel message this source
+   * decrypted with ANOTHER source's key (a logging repeater). Reads gate the
+   * message on access to that key — `utils/meshcoreKeyAccess.ts`.
+   */
+  keySourceId?: string | null;
+  keyChannelIdx?: number | null;
+  keyFingerprint?: string | null;
+  /**
    * MeshCore packet hash of the received frame (#5357): 16 UPPERCASE hex chars,
    * `calculateMeshCorePacketHash` — the key map.meshcore.com.hr and other
    * MeshCore analyzers use. Set only when the raw frame was matched to this
@@ -830,6 +877,13 @@ export interface MeshCoreMessage {
    * In-memory/event only — not persisted to meshcore_messages.
    */
   packetHash?: string;
+  /**
+   * Event-only (#5551): a repeater-decrypted channel message whose sender name
+   * matches one of OUR MeshCore nodes. The automation engine treats it as
+   * self-originated (#3914), so a reply sent from a sibling companion and
+   * overheard by the repeater cannot re-trigger the rule that sent it.
+   */
+  selfOrigin?: boolean;
   /** Wire sender_timestamp (epoch SECONDS) of our own outgoing channel send
    *  (#5512). Persisted; a user resend reuses it so repeaters dedupe the copy.
    *  Undefined for received messages and for sends made before migration 187. */
@@ -1670,6 +1724,9 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
         scopeCode: dbMsg.scopeCode ?? null,
         scopeName: dbMsg.scopeName ?? null,
         senderTimestamp: dbMsg.senderTimestamp ?? undefined,
+        keySourceId: dbMsg.keySourceId ?? null,
+        keyChannelIdx: dbMsg.keyChannelIdx ?? null,
+        keyFingerprint: dbMsg.keyFingerprint ?? null,
       }));
       // Enrich with heardBy so relay info survives server restarts (#3813).
       if (this.messages.length > 0) {
@@ -4002,6 +4059,10 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
       logger.debug(`[MeshCore:${this.sourceId}] Repeater RAW line did not parse as a MeshCore frame; skipped`);
       return;
     }
+    // #5553 / #5551: adverts and channel text become Nodes and Messages
+    // whenever the repeater streams RAW — NOT gated on the packet-log opt-in,
+    // which only governs the Packet Monitor rows below.
+    void this.ingestRepeaterFrame(p, frame.payloadType, frame.hopCount, frame.hops);
     const enumName = (lookup: () => string): string | null => {
       try {
         const name = lookup();
@@ -4023,6 +4084,162 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
       payload_size: frame.totalBytes,
       raw_hex: p.rawHex,
     });
+  }
+
+  /**
+   * Turn one RAW frame into node / message knowledge (#5553, #5551). Pure RX:
+   * nothing here sends. Best-effort: a decode or DB failure never breaks the
+   * serial stream.
+   */
+  async ingestRepeaterFrame(
+    p: RepeaterRawPacket,
+    payloadType: number,
+    hopCount: number | null | undefined,
+    hops: string[] | null | undefined,
+  ): Promise<void> {
+    try {
+      if (payloadType === MESHCORE_PAYLOAD_ADVERT) {
+        await this.ingestRepeaterAdvert(p.rawHex);
+      } else if (payloadType === MESHCORE_PAYLOAD_GRP_TXT) {
+        await this.ingestRepeaterGroupText(p, hopCount, hops);
+      }
+      // GRP_DATA (0x06) is not decoded: ChannelCrypto only parses the GRP_TXT
+      // plaintext layout. See services/meshcoreFrameIngest.ts.
+    } catch (err) {
+      logger.debug(`[MeshCore:${this.sourceId}] Repeater frame ingest failed: ${(err as Error).message}`);
+    }
+  }
+
+  /**
+   * ADVERT heard by the local repeater → a node on this source (#5553).
+   *
+   * Deliberately quiet, per the maintainer decision on #5553: no "new node"
+   * notification and no `trigger.nodeDiscovered` / `trigger.nodeUpdated`
+   * automation event. A logging repeater hears every advert in range, and
+   * firing those per advert would turn passive discovery into a notification
+   * flood. Only the contact-updated socket event fires, so an open Nodes list
+   * refreshes live (it drives no automation).
+   *
+   * The node's `repeaterNeighborAt` is left untouched, so an advert-only node
+   * is never taken for a zero-hop neighbour; only the `neighbors` poll sets it.
+   * SNR/RSSI are not written either: on a repeater source those mean the
+   * neighbour-table link, and an advert's RX signal is the LAST hop's, not the
+   * sender's.
+   */
+  private async ingestRepeaterAdvert(rawHex: string): Promise<void> {
+    const now = Date.now();
+    const advert = await ingestAdvertFrame(rawHex, this.sourceId, {
+      // We heard it just now; the sender's clock may be wrong or unset.
+      lastHeardMs: now,
+      skipPublicKey: this.repeaterPublicKey,
+    });
+    if (!advert?.publicKey) return;
+    dataEventEmitter.emitMeshCoreContactUpdated({
+      publicKey: advert.publicKey,
+      advName: advert.name ?? undefined,
+      name: advert.name ?? undefined,
+      advType: (typeof advert.advType === 'number' ? advert.advType : MeshCoreDeviceType.UNKNOWN) as MeshCoreDeviceType,
+      lastSeen: now,
+      latitude: advert.latitude,
+      longitude: advert.longitude,
+    }, this.sourceId);
+  }
+
+  /**
+   * GRP_TXT heard by the local repeater → a channel message on this source
+   * (#5551), decrypted with a key stored on ANY source.
+   *
+   * The repeater holds no keys, so the message is filed under a keyed channel
+   * index derived from the secret (`keyedChannelIndex`) and stamped with
+   * `keySourceId` / `keyChannelIdx` / `keyFingerprint`. Every read path gates
+   * the row on the viewer's access to that key (`utils/meshcoreKeyAccess.ts`),
+   * so a key held on source X never shows its traffic to someone who cannot
+   * read that channel on X.
+   *
+   * The id is content-derived, so the same flood heard via several
+   * neighbours writes ONE row and emits ONE event — `insertMessage` returns
+   * false for the copies. Messages that sound like our own (a sender name that
+   * matches a local MeshCore node) are stored but flagged `selfOrigin`, so an
+   * automation replying on a sibling companion cannot re-trigger itself when
+   * this repeater hears the reply (#3914 feedback loop).
+   */
+  private async ingestRepeaterGroupText(
+    p: RepeaterRawPacket,
+    hopCount: number | null | undefined,
+    hops: string[] | null | undefined,
+  ): Promise<void> {
+    const group = decodeMeshCorePacket(p.rawHex)?.payload?.groupText;
+    if (!group) return;
+    const plain = await decryptGroupTextFrame(group);
+    if (!plain) return;
+
+    const fingerprint = channelKeyFingerprint(plain.key.secretHex);
+    const channelIdx = keyedChannelIndex(plain.key.secretHex);
+    const id = frameChannelMessageId('rpt', this.sourceId, fingerprint, plain.timestampSec, plain.text);
+    const now = Date.now();
+    const message: MeshCoreMessage = {
+      id,
+      fromPublicKey: `channel-${channelIdx}`,
+      fromName: plain.senderName ?? undefined,
+      text: plain.text,
+      // Sender's clock when it has one, else when we heard it.
+      timestamp: plain.timestampSec > 0 ? plain.timestampSec * 1000 : now,
+      receivedAt: now,
+      rssi: typeof p.rssi === 'number' ? p.rssi : undefined,
+      snr: typeof p.snr === 'number' ? p.snr : undefined,
+      sourceId: this.sourceId,
+      messageType: 'channel',
+      hopCount: typeof hopCount === 'number' ? hopCount : null,
+      routePath: hops && hops.length > 0 ? hops.join(',') : null,
+      keySourceId: plain.key.sourceId,
+      keyChannelIdx: plain.key.channelIdx,
+      keyFingerprint: fingerprint,
+    };
+
+    // Ignore / Block (#5408), as on every other ingest path.
+    const verdict = meshcoreMessageFilter.classify(this.sourceId, {
+      fromPublicKey: null,
+      fromName: plain.senderName,
+      text: plain.text,
+      kind: 'channel',
+    }, { countHit: false });
+    if (verdict.action === 'block') return;
+
+    const inserted = await databaseService.meshcore.insertMessage({
+      id,
+      fromPublicKey: message.fromPublicKey,
+      fromName: message.fromName ?? null,
+      toPublicKey: null,
+      text: message.text,
+      timestamp: message.timestamp,
+      rssi: message.rssi ?? null,
+      snr: message.snr ?? null,
+      messageType: 'channel',
+      hopCount: message.hopCount ?? null,
+      routePath: message.routePath ?? null,
+      keySourceId: message.keySourceId ?? null,
+      keyChannelIdx: message.keyChannelIdx ?? null,
+      keyFingerprint: fingerprint,
+      createdAt: now,
+    }, this.sourceId);
+    // A relay of a message already stored: no second event.
+    if (!inserted) return;
+    meshcoreMessageFilter.countHit(this.sourceId, verdict);
+
+    this.messages.push(message);
+    if (this.messages.length > MeshCoreManager.MAX_MESSAGES) {
+      this.messages = this.messages.slice(-MeshCoreManager.MAX_MESSAGES);
+    }
+
+    const packetHash = meshCorePacketHashOrUndefined(p.rawHex);
+    const selfOrigin = await isLocalMeshCoreSenderName(plain.senderName);
+    const event: MeshCoreMessage = {
+      ...message,
+      packetHash,
+      ...(selfOrigin ? { selfOrigin: true } : {}),
+      ...(verdict.action === 'ignore' ? { filtered: 'ignore' as const } : {}),
+    };
+    dataEventEmitter.emitMeshCoreMessage(event, this.sourceId);
   }
 
   /** True once this connection has seen a `MESH_PACKET_LOGGING` RAW line. */
@@ -8084,6 +8301,9 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
             longitude: hasPosition ? row.longitude! : undefined,
             snr: entry.snr,
             lastHeard,
+            // The marker that this node IS a zero-hop neighbour (#5553). The
+            // RAW-advert ingest never writes it.
+            repeaterNeighborAt: now,
           },
           this.sourceId,
         );
@@ -9147,6 +9367,7 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
           radioSf: n.radioSf ?? undefined,
           radioCr: n.radioCr ?? undefined,
           isFavorite: n.isFavorite ?? false,
+          repeaterNeighborAt: n.repeaterNeighborAt ?? undefined,
         });
       }
     } catch (err) {
@@ -9358,12 +9579,18 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
    *
    * `offset` pages further back into history (for infinite-scroll load-older).
    */
-  async getChannelMessages(channelIdx: number, limit: number = 100, offset: number = 0): Promise<MeshCoreMessage[]> {
+  async getChannelMessages(
+    channelIdx: number,
+    limit: number = 100,
+    offset: number = 0,
+    keyAccess?: MeshCoreKeyAccessFilter,
+  ): Promise<MeshCoreMessage[]> {
     const stored = await databaseService.meshcore.getChannelMessages(
       channelIdx,
       limit,
       this.sourceId,
       offset,
+      keyAccess,
     );
     // Enrich outgoing channel messages with their heard-by repeater set (#3700)
     // in one batched query.
@@ -9392,6 +9619,9 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
         scopeCode: dbMsg.scopeCode ?? null,
         scopeName: dbMsg.scopeName ?? null,
         senderTimestamp: dbMsg.senderTimestamp ?? undefined,
+        keySourceId: dbMsg.keySourceId ?? null,
+        keyChannelIdx: dbMsg.keyChannelIdx ?? null,
+        keyFingerprint: dbMsg.keyFingerprint ?? null,
         heardBy: heard && heard.length > 0
           ? heard.map(r => ({ hash: r.repeaterHash, name: r.repeaterName, snr: r.snr }))
           : undefined,
@@ -9465,16 +9695,16 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
    * badges. Accurate per channel (not the capped in-memory pool), so quiet
    * channels don't read as empty next to a busy one.
    */
-  async getChannelMessageCounts(channelIndices: number[]): Promise<Record<number, number>> {
-    return databaseService.meshcore.getChannelMessageCounts(channelIndices, this.sourceId);
+  async getChannelMessageCounts(channelIndices: number[], keyAccess?: MeshCoreKeyAccessFilter): Promise<Record<number, number>> {
+    return databaseService.meshcore.getChannelMessageCounts(channelIndices, this.sourceId, keyAccess);
   }
 
   /**
    * Latest persisted message timestamp per channel index, for the channel-list
    * unread indicator (#3703). Channels with no messages are omitted.
    */
-  async getChannelLatestTimestamps(channelIndices: number[]): Promise<Record<number, number>> {
-    return databaseService.meshcore.getChannelLatestTimestamps(channelIndices, this.sourceId);
+  async getChannelLatestTimestamps(channelIndices: number[], keyAccess?: MeshCoreKeyAccessFilter): Promise<Record<number, number>> {
+    return databaseService.meshcore.getChannelLatestTimestamps(channelIndices, this.sourceId, keyAccess);
   }
 
   // ============ Message deletion / purge (#3981) ============
