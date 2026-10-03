@@ -162,6 +162,8 @@ export interface FetchCoverageReceptionsPageArgs {
   senderId?: string;
   hops?: number;
   hopsMode?: CoverageHopsMode;
+  /** #5560: only fixes sent by another of the viewer's readable sources. */
+  crossSourceOnly?: boolean;
   pageSize?: number;
   cursor?: string | null;
   signal?: AbortSignal;
@@ -178,6 +180,7 @@ export async function fetchCoverageReceptionsPage(
   if (args.senderId) p.set('sender', args.senderId);
   if (args.hops !== undefined) p.set('hops', String(args.hops));
   if (args.hopsMode) p.set('hopsMode', args.hopsMode);
+  if (args.crossSourceOnly) p.set('crossSourceOnly', 'true');
   if (args.pageSize) p.set('pageSize', String(args.pageSize));
   if (args.cursor) p.set('cursor', args.cursor);
   const body = await authedGet<{ success: boolean; data: CoveragePage<CoverageReceptionDto> }>(

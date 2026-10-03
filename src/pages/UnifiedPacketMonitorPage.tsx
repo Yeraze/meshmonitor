@@ -23,7 +23,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useUnifiedPackets } from '../hooks/useUnifiedPackets';
 import { getUnifiedPacketDistribution, getPacketStats } from '../services/packetApi';
 import apiService from '../services/api';
-import { PacketLog, UnifiedPacketFilters, UnifiedPacketDistribution } from '../types/packet';
+import { PacketLog, UnifiedPacketFilters, UnifiedPacketDistribution, CrossSourcePacketFilter } from '../types/packet';
 import PacketStatsChart, { DISTRIBUTION_COLORS, ChartDataEntry } from '../components/PacketStatsChart';
 import {
   getTransportMechanismName,
@@ -35,6 +35,7 @@ import { getSourceColor } from '../utils/sourceColors';
 import '../components/PacketMonitorPanel.css';
 import './UnifiedPacketMonitorPage.css';
 import { UiIcon } from '../components/icons';
+import CrossSourcePacketTag from '../components/CrossSource/CrossSourcePacketTag';
 
 const ROW_HEIGHT = 36;
 
@@ -313,6 +314,23 @@ export default function UnifiedPacketMonitorPage() {
             <option value="0">{t('packet_monitor.filter.transport_internal')}</option>
           </select>
 
+          {sources.length > 1 && (
+            <select
+              value={filters.crossSource ?? ''}
+              onChange={(e) => updateFilter('crossSource', (e.target.value || undefined) as CrossSourcePacketFilter | undefined)}
+              aria-label={t('cross_source.filter_label', 'Cross-source')}
+              title={t(
+                'cross_source.filter_tooltip',
+                'Packets another of your sources sent, or likely relayed (inferred from the relay byte), as heard by this source',
+              )}
+            >
+              <option value="">{t('cross_source.filter_all', 'All packets')}</option>
+              <option value="any">{t('cross_source.filter_any', 'From or relayed by our sources')}</option>
+              <option value="origin">{t('cross_source.filter_origin', 'Sent by our sources')}</option>
+              <option value="relay">{t('cross_source.filter_relay', 'Likely relayed by our sources')}</option>
+            </select>
+          )}
+
           <button onClick={() => setFilters({})} className="clear-filters-btn">
             {t('packet_monitor.filter.clear')}
           </button>
@@ -351,7 +369,7 @@ export default function UnifiedPacketMonitorPage() {
             <table className="packet-table packet-table-fixed">
               <colgroup>
                 <col style={{ width: '50px' }} />
-                <col style={{ width: '120px' }} />
+                <col style={{ width: '200px' }} />
                 <col style={{ width: '35px' }} />
                 <col style={{ width: '45px' }} />
                 <col style={{ width: '55px' }} />
@@ -369,7 +387,7 @@ export default function UnifiedPacketMonitorPage() {
               <thead>
                 <tr>
                   <th style={{ width: '50px' }}>#</th>
-                  <th style={{ width: '120px' }}>{t('unified.packets.column_source', 'Source')}</th>
+                  <th style={{ width: '200px' }}>{t('unified.packets.column_source', 'Source')}</th>
                   <th style={{ width: '35px' }}>{t('packet_monitor.column.dir')}</th>
                   <th style={{ width: '45px' }}>{t('packet_monitor.column.via')}</th>
                   <th style={{ width: '55px' }}>{t('packet_monitor.column.date')}</th>
@@ -390,7 +408,7 @@ export default function UnifiedPacketMonitorPage() {
               <table className="packet-table packet-table-fixed">
                 <colgroup>
                   <col style={{ width: '50px' }} />
-                  <col style={{ width: '120px' }} />
+                  <col style={{ width: '200px' }} />
                   <col style={{ width: '35px' }} />
                   <col style={{ width: '45px' }} />
                   <col style={{ width: '55px' }} />
@@ -434,13 +452,14 @@ export default function UnifiedPacketMonitorPage() {
                         style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: `${virtualRow.size}px`, transform: `translateY(${virtualRow.start}px)`, display: 'table', tableLayout: 'fixed' }}
                       >
                         <td className="packet-number" style={{ width: '50px', textAlign: 'right' }}>{virtualRow.index + 1}</td>
-                        <td className="unified-packets-source-cell" style={{ width: '120px' }} title={packet.sourceName}>
+                        <td className="unified-packets-source-cell" style={{ width: '200px' }} title={packet.sourceName}>
                           <span
                             className="unified-packets-source-badge"
                             style={{ background: `color-mix(in srgb, ${srcColor} 18%, transparent)`, color: srcColor, border: `1px solid color-mix(in srgb, ${srcColor} 38%, transparent)` }}
                           >
                             {packet.sourceName}
                           </span>
+                          <CrossSourcePacketTag packet={packet} />
                         </td>
                         <td className={`direction ${packet.direction === 'tx' ? 'direction-tx' : 'direction-rx'}`} style={{ width: '35px' }} title={packet.direction === 'tx' ? t('packet_monitor.direction_tx') : t('packet_monitor.direction_rx')}>
                           {packet.direction === 'tx' ? 'TX' : 'RX'}
