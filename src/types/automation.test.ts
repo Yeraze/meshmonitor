@@ -6,6 +6,7 @@ import {
   parseSendMaxAttempts,
   parseRateLimit,
   parseAutomationEnabledFlag,
+  forwardingToggleSourceIds,
   SEND_MAX_ATTEMPTS_MIN,
   SEND_MAX_ATTEMPTS_MAX,
   RATE_LIMIT_MAX_ACTIONS_MAX,
@@ -193,6 +194,42 @@ describe('validateAutomationGraph', () => {
     it('set requires a parseable enabled', () => {
       expect(errs({ automationId: 'abc' })).toMatch(/params\.enabled to be true or false/);
       expect(errs({ automationId: 'abc', enabled: 'maybe' })).toMatch(/params\.enabled to be true or false/);
+    });
+  });
+
+  describe('action.setSourceForwardingEnabled (#5537)', () => {
+    const withFwd = (...paramsList: Array<Record<string, unknown>>): AutomationGraph => ({
+      version: 1,
+      nodes: [
+        { id: 't', type: 'trigger.schedule', params: { cron: '0 22 * * *' } },
+        ...paramsList.map((params, i) => ({ id: `f${i}`, type: 'action.setSourceForwardingEnabled' as const, params })),
+      ],
+      edges: paramsList.map((_p, i) => ({ from: i === 0 ? 't' : `f${i - 1}`, to: `f${i}` })),
+    });
+    const errs = (params: Record<string, unknown>) => validateAutomationGraph(withFwd(params)).errors.join(' ');
+
+    it('accepts set (boolean, string, template) and toggle', () => {
+      expect(validateAutomationGraph(withFwd({ sourceId: 'src-a', enabled: false })).valid).toBe(true);
+      expect(validateAutomationGraph(withFwd({ sourceId: 'src-a', mode: 'set', enabled: 'true' })).valid).toBe(true);
+      expect(validateAutomationGraph(withFwd({ sourceId: 'src-a', enabled: '{{ var.on }}' })).valid).toBe(true);
+      expect(validateAutomationGraph(withFwd({ sourceId: 'src-a', mode: 'toggle' })).valid).toBe(true);
+    });
+
+    it('requires a literal source id', () => {
+      expect(errs({ enabled: true })).toMatch(/requires params\.sourceId/);
+      expect(errs({ sourceId: '  ', enabled: true })).toMatch(/requires params\.sourceId/);
+      expect(errs({ sourceId: '{{ trigger.sourceId }}', enabled: true })).toMatch(/must be a source, not a template/);
+    });
+
+    it('rejects an unknown mode and an unparseable enabled', () => {
+      expect(errs({ sourceId: 'src-a', mode: 'flip' })).toMatch(/params\.mode ∈ \{set,toggle\}/);
+      expect(errs({ sourceId: 'src-a', enabled: 'maybe' })).toMatch(/params\.enabled to be true or false/);
+    });
+
+    it('forwardingToggleSourceIds lists each targeted source once', () => {
+      const g = withFwd({ sourceId: 'src-a', enabled: false }, { sourceId: 'src-b', mode: 'toggle' }, { sourceId: 'src-a', enabled: true });
+      expect(forwardingToggleSourceIds(g).sort()).toEqual(['src-a', 'src-b']);
+      expect(forwardingToggleSourceIds({ nodes: [{ id: 'n', type: 'action.notify', params: { sourceId: 'x' } }] })).toEqual([]);
     });
   });
 

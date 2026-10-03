@@ -59,7 +59,24 @@ export interface SourceStatus {
    * mesh-activity badge alongside the link-state badge (issue #2883).
    */
   activeNodeCount?: number;
+  /**
+   * Message Forwarding summary for the sidebar FWD pill (#5537). Present only
+   * when the caller holds per-source `automation` read and the source has at
+   * least one rule.
+   */
+  forwarding?: SourceForwardingStatus;
   [key: string]: unknown;
+}
+
+/** `forwarding` on GET /api/sources/:id/status (#5537). */
+export interface SourceForwardingStatus {
+  /** Source-level master switch. */
+  enabled: boolean;
+  ruleCount: number;
+  /** Rules whose own checkbox is on. */
+  activeRuleCount: number;
+  /** Caller may flip the master switch (per-source `automation` write). */
+  canWrite: boolean;
 }
 
 /**

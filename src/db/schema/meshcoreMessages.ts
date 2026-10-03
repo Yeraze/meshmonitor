@@ -48,7 +48,7 @@ export const meshcoreMessagesSqlite = sqliteTable('meshcore_messages', {
   // copy. NULL for received messages and rows sent before the migration.
   senderTimestamp: integer('senderTimestamp'),
 
-  // Decrypt provenance (#5551, migration 190). Set only when this source
+  // Decrypt provenance (#5551, migration 191). Set only when this source
   // decrypted a channel message with a key held by ANOTHER source; reads gate
   // the row on access to that key. keyFingerprint = hex SHA-256(secret)[0..8].
   keySourceId: text('keySourceId'),

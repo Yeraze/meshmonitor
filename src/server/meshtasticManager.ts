@@ -80,6 +80,7 @@ import { normalizeTriggerPatterns, normalizeTriggerChannels } from '../utils/aut
 import { matchAutoResponderPattern } from './utils/autoResponderMatcher.js';
 import { runForwarding, parseStoredForwardingRules } from './utils/forwardingEngine.js';
 import { FORWARDING_SETTING_KEY } from '../types/forwarding.js';
+import { isForwardingEnabled } from './services/forwardingStateService.js';
 import { isOwnNodeNum } from './utils/ownNodes.js';
 import { isWithinTimeWindow } from './utils/timeWindow.js';
 import { compileUserRegex } from '../utils/safeRegex.js';
@@ -12172,6 +12173,9 @@ class MeshtasticManager implements ISourceManager {
    */
   private async checkForwarding(message: TextMessage, isDirectMessage: boolean): Promise<void> {
     try {
+      // Source-level master switch (#5537): off = no rule fires, whatever its
+      // own flag. Checked before the rules are even parsed.
+      if (!(await isForwardingEnabled(this.sourceId))) return;
       const raw = await databaseService.settings.getSettingForSource(this.sourceId, FORWARDING_SETTING_KEY);
       const rules = parseStoredForwardingRules(raw);
       if (!rules.some(r => r.enabled)) return;

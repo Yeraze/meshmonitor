@@ -35,6 +35,27 @@
   white-space: nowrap;
 }
 
+/* Source-level master switch (#5537) — sits after the rule count. */
+.masterSwitch {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.9rem;
+  color: var(--color-text);
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.masterSwitch input {
+  margin: 0;
+}
+
+@media (max-width: 768px) {
+  .header {
+    flex-wrap: wrap;
+  }
+}
+
 .body {
   display: flex;
   flex-direction: column;

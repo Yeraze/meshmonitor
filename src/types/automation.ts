@@ -57,6 +57,7 @@ export type ActionType =
   | 'action.runScript'
   | 'action.delay'
   | 'action.setAutomationEnabled'
+  | 'action.setSourceForwardingEnabled'
   | 'action.broadcastWaypoint';
 
 // `action.delay` is a BOUNDED, in-process pause (caps at AUTOMATION_DELAY_MAX_SECONDS)
@@ -113,6 +114,7 @@ export const ACTION_TYPES: readonly ActionType[] = [
   'action.runScript',
   'action.delay',
   'action.setAutomationEnabled',
+  'action.setSourceForwardingEnabled',
   'action.broadcastWaypoint',
 ];
 
@@ -389,6 +391,22 @@ export interface ValidationResult {
   errors: string[];
   /** Present only when valid. */
   graph?: AutomationGraph;
+}
+
+/**
+ * Every source an action.setSourceForwardingEnabled block in `graph` targets
+ * (#5537), deduped. Automations are global and run as the system, so the save
+ * routes use this to check that the SAVING user holds `automation` write on
+ * each one. Validation guarantees the ids are literals.
+ */
+export function forwardingToggleSourceIds(graph: Pick<AutomationGraph, 'nodes'>): string[] {
+  const ids = new Set<string>();
+  for (const n of graph.nodes ?? []) {
+    if (n.type !== 'action.setSourceForwardingEnabled') continue;
+    const sid = n.params?.sourceId;
+    if (typeof sid === 'string' && sid.trim()) ids.add(sid.trim());
+  }
+  return [...ids];
 }
 
 // ─── Validation ──────────────────────────────────────────────────────────────
@@ -722,6 +740,28 @@ export function validateAutomationGraph(input: unknown): ValidationResult {
             const templated = typeof e === 'string' && e.includes('{{');
             if (!templated && parseAutomationEnabledFlag(e) === undefined) {
               errors.push(`action.setAutomationEnabled "${n.id}" requires params.enabled to be true or false`);
+            }
+          }
+          break;
+        }
+        case 'action.setSourceForwardingEnabled': {
+          // #5537. The source must be a literal id, never a {{ }} template: the
+          // save route checks the saving user's `automation` write on it, and a
+          // template would dodge that check.
+          const sid = p.sourceId;
+          if (typeof sid !== 'string' || sid.trim().length === 0) {
+            errors.push(`action.setSourceForwardingEnabled "${n.id}" requires params.sourceId`);
+          } else if (sid.includes('{{')) {
+            errors.push(`action.setSourceForwardingEnabled "${n.id}" params.sourceId must be a source, not a template`);
+          }
+          const mode = p.mode == null ? 'set' : p.mode;
+          if (!AUTOMATION_ENABLE_MODES.includes(mode as AutomationEnableMode)) {
+            errors.push(`action.setSourceForwardingEnabled "${n.id}" requires params.mode ∈ {set,toggle}`);
+          } else if (mode === 'set') {
+            const e = p.enabled;
+            const templated = typeof e === 'string' && e.includes('{{');
+            if (!templated && parseAutomationEnabledFlag(e) === undefined) {
+              errors.push(`action.setSourceForwardingEnabled "${n.id}" requires params.enabled to be true or false`);
             }
           }
           break;

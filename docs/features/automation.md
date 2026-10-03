@@ -1437,6 +1437,18 @@ When a rule matches, MeshMonitor sends a copy to the rule's target:
 
 Each rule has its own checkbox, so you can switch a rule on when you leave and off when you get back without deleting it. A new rule starts switched off: fill it in, then tick its checkbox to turn it on.
 
+### Turn Forwarding On or Off for a Source
+
+The **Forwarding on for this source** switch in the section header is a master switch. Turn it off and no rule on that source forwards anything, whatever its own checkbox says. Turn it back on and each rule follows its own checkbox again. The switch saves at once and survives a restart. It is on by default.
+
+There are three ways to flip it:
+
+- **The header switch** in the Forwarding section. It needs the **Automation** write permission on that source.
+- **The FWD pill** on the source's card in the dashboard sidebar. The pill shows on every source that has forwarding rules, for users who may read that source's automation settings. It shows `FWD 2` (on, two rules ticked) or `FWD off`. Click it to flip the switch. Without the Automation write permission on that source, the pill is read-only.
+- **An Automation Engine action**, [Turn forwarding on or off](/features/automation-engine#turn-forwarding-on-or-off), for example to quiet a source overnight on a schedule.
+
+Flipping the switch sends nothing on the mesh and does not reset the 5-per-minute count below.
+
 The forwarded text looks like this:
 
 ```

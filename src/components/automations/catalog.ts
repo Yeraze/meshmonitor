@@ -7,7 +7,7 @@
  */
 import { HOP_COUNT_EMOJIS, HOP_EMOJI_MAX, MQTT_SOURCE_EMOJI } from '../../utils/hopEmoji';
 
-export type FieldKind = 'text' | 'number' | 'nodeNum' | 'textarea' | 'select' | 'checkbox' | 'variable' | 'emoji' | 'fieldselect' | 'sourceMulti' | 'sendSourceMulti' | 'channelMulti' | 'geofence' | 'scriptselect' | 'regionSelect' | 'nodeMulti' | 'automationSelect' | 'meshtasticSourceSelect';
+export type FieldKind = 'text' | 'number' | 'nodeNum' | 'textarea' | 'select' | 'checkbox' | 'variable' | 'emoji' | 'fieldselect' | 'sourceMulti' | 'sendSourceMulti' | 'channelMulti' | 'geofence' | 'scriptselect' | 'regionSelect' | 'nodeMulti' | 'automationSelect' | 'meshtasticSourceSelect' | 'forwardingSourceSelect';
 
 export interface FieldOpt { value: string; label: string; }
 export interface FieldGroup { label: string; options: FieldOpt[]; }
@@ -840,6 +840,36 @@ export const ACTIONS: BlockDef[] = [
         options: [
           { value: 'false', label: 'Disabled' },
           { value: 'true', label: 'Enabled' },
+        ],
+        showIf: { field: 'mode', notEquals: 'toggle' },
+      },
+    ],
+  },
+  {
+    type: 'action.setSourceForwardingEnabled',
+    label: 'Turn forwarding on or off',
+    description: 'Switch Message Forwarding on or off for one source, e.g. quiet it overnight. Off stops every forwarding rule on that source; on lets each rule follow its own checkbox again. Sends nothing on the mesh. You need Automation write permission on the source to save this.',
+    fields: [
+      {
+        name: 'sourceId', label: 'Source', kind: 'forwardingSourceSelect',
+        help: 'The Meshtastic or MeshCore source whose forwarding to switch. Must be picked here, not built from a template.',
+      },
+      {
+        name: 'mode', label: 'Change', kind: 'select',
+        // Values mirror AutomationEnableMode in src/types/automation.ts.
+        // 'set' MUST be first: defaultParams() seeds it on new blocks.
+        options: [
+          { value: 'set', label: 'Set to' },
+          { value: 'toggle', label: 'Toggle (flip its current state)' },
+        ],
+        absentValue: 'set',
+      },
+      {
+        name: 'enabled', label: 'New state', kind: 'select',
+        // Stored as the strings 'true'/'false'; the engine coerces them.
+        options: [
+          { value: 'false', label: 'Off' },
+          { value: 'true', label: 'On' },
         ],
         showIf: { field: 'mode', notEquals: 'toggle' },
       },

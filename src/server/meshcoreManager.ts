@@ -163,6 +163,7 @@ import { MeshCoreZeroHopAdvertUnsupportedError, classifyRepeaterAdvertReply } fr
 import { plausibleMeshCoreTimeMs, plausibleMeshCoreMessageTimeMs, plausibleMeshCoreTimeMsOrUndefined } from '../utils/meshcoreTimestamp.js';
 import { runForwarding, parseStoredForwardingRules } from './utils/forwardingEngine.js';
 import { FORWARDING_SETTING_KEY } from '../types/forwarding.js';
+import { isForwardingEnabled } from './services/forwardingStateService.js';
 import { isOwnPublicKey } from './utils/ownNodes.js';
 
 // Dynamic imports for optional serialport dependency
@@ -10869,6 +10870,9 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
     channelIdx: number | undefined,
   ): Promise<void> {
     try {
+      // Source-level master switch (#5537): off = no rule fires, whatever its
+      // own flag. Checked before the rules are even parsed.
+      if (!(await isForwardingEnabled(this.sourceId))) return;
       const raw = await databaseService.settings.getSettingForSource(this.sourceId, FORWARDING_SETTING_KEY);
       const rules = parseStoredForwardingRules(raw);
       if (!rules.some(r => r.enabled)) return;

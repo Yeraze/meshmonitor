@@ -1,9 +1,9 @@
 /**
- * Tests for migration 190 — repeater ingest columns (#5551, #5553).
+ * Tests for migration 191 — repeater ingest columns (#5551, #5553).
  */
 import Database from 'better-sqlite3';
 import { describe, expect, it } from 'vitest';
-import { migration } from './190_add_meshcore_repeater_ingest_columns.js';
+import { migration } from './191_add_meshcore_repeater_ingest_columns.js';
 
 function createTables(db: Database.Database): void {
   db.exec(`
@@ -28,7 +28,7 @@ function createTables(db: Database.Database): void {
 const columns = (db: Database.Database, table: string) =>
   db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string; notnull: number; type: string }>;
 
-describe('Migration 190 — repeater ingest columns', () => {
+describe('Migration 191 — repeater ingest columns', () => {
   it('adds nullable columns to both tables and is idempotent', () => {
     const db = new Database(':memory:');
     createTables(db);

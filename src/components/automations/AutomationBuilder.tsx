@@ -326,6 +326,30 @@ export function FieldInput({ field, value, onChange, variables, sources, channel
       );
       break;
     }
+    case 'forwardingSourceSelect': {
+      // #5537: one Meshtastic or MeshCore source (MQTT sources have no
+      // forwarding). Must be a literal pick: the save route checks the user's
+      // Automation write permission on it.
+      const options = sources.filter(isSendableSource);
+      const current = typeof value === 'string' ? value : '';
+      const chosen = options.find((s) => s.id === current);
+      control = (
+        <>
+          <select className="ae-select" value={current} onChange={(e) => onChange(e.target.value)}>
+            <option value="">{t('automation.forwardingSource.placeholder', '— select a source —')}</option>
+            {options.map((s) => {
+              const badge = protoBadge(s.type);
+              return <option key={s.id} value={s.id}>{badge ? `${s.name} (${badge})` : s.name}</option>;
+            })}
+            {current && !chosen && <option value={current}>{current}</option>}
+          </select>
+          {options.length === 0 && (
+            <div className="ae-muted">{t('automation.forwardingSource.none', 'No Meshtastic or MeshCore sources.')}</div>
+          )}
+        </>
+      );
+      break;
+    }
     case 'channelMulti': {
       const sel = Array.isArray(value) ? (value as Array<{ name: string; protocol?: string }>) : [];
       const same = (a: { name: string; protocol?: string }, c: UnifiedChannelOption) =>
