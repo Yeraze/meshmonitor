@@ -20,7 +20,9 @@ import {
   VARIABLE_SCOPES,
   COLLAPSE_MODES,
   NUMERIC_OPS,
+  forwardingToggleSourceIds,
 } from '../../types/automation.js';
+import { isForwardingEnabled } from '../services/forwardingStateService.js';
 import { reloadAutomations, getAutomationEngine } from '../services/automation/automationEngineSingleton.js';
 import { ok, fail } from '../utils/apiResponse.js';
 import { simulateAutomation, type SimEventInput } from '../services/automation/automationSimulator.js';
@@ -42,6 +44,32 @@ function validateConfig(raw: unknown): { ok: true; json: string } | { ok: false;
   const result = validateAutomationGraph(parsed);
   if (!result.valid) return { ok: false, errors: result.errors };
   return { ok: true, json: JSON.stringify(result.graph) };
+}
+
+/**
+ * action.setSourceForwardingEnabled (#5537) switches a source's forwarding
+ * on or off, but automations are global and run as the system. So the gate is
+ * here, at save: the saving user must hold `automation` write on every source
+ * the graph targets (the same grant PUT /api/sources/:id/forwarding/enabled
+ * needs). Admins pass. Sends a 403 and returns false when any is missing.
+ */
+async function checkForwardingTogglePermission(req: Request, res: Response, configJson: string): Promise<boolean> {
+  let ids: string[];
+  try { ids = forwardingToggleSourceIds(JSON.parse(configJson)); } catch { ids = []; }
+  if (ids.length === 0) return true;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- #5537 matches the sibling handlers' (req as any).user; typed AuthenticatedRequest cleanup is out of scope
+  const user = (req as any).user as { id: number; isAdmin?: boolean } | undefined;
+  if (user?.isAdmin) return true;
+  const denied: string[] = [];
+  for (const id of ids) {
+    const allowed = user ? await databaseService.checkPermissionAsync(user.id, 'automation', 'write', id) : false;
+    if (!allowed) denied.push(id);
+  }
+  if (denied.length === 0) return true;
+  fail(res, 403, 'FORWARDING_SOURCE_FORBIDDEN',
+    'You need Automation write permission on every source this automation turns forwarding on or off',
+    { sourceIds: denied });
+  return false;
 }
 
 // ─── catalog (for the builder) ───────────────────────────────────────────────
@@ -196,6 +224,13 @@ async function runSimulation(req: Request, res: Response, configRaw: unknown, au
     // Read-only: lets a dry run of action.setAutomationEnabled report an unknown
     // id and the target's current state without changing it (#5445).
     lookupAutomation: (id) => databaseService.automations.getAutomation(id),
+    // Read-only: the forwarding switch's current state for a dry run of
+    // action.setSourceForwardingEnabled (#5537), without changing it.
+    lookupSourceForwarding: async (sourceId) => {
+      const source = await databaseService.sources.getSource(sourceId);
+      if (!source) return null;
+      return { id: source.id, name: source.name, enabled: await isForwardingEnabled(sourceId) };
+    },
   });
   return res.json(result);
 }
@@ -269,6 +304,7 @@ router.post('/', canWrite, async (req: Request, res: Response) => {
     if (!name) return res.status(400).json({ error: 'name is required' });
     const v = validateConfig(config);
     if (!v.ok) return res.status(400).json({ error: 'invalid automation config', details: v.errors });
+    if (!(await checkForwardingTogglePermission(req, res, v.json))) return;
     const created = await databaseService.automations.createAutomation({
       name, description, enabled: !!enabled, config: v.json,
       createdByUserId: (req as any).user?.id ?? null,
@@ -290,6 +326,7 @@ router.post('/:id/duplicate', canWrite, async (req: Request, res: Response) => {
       return fail(res, 400, 'INVALID_NAME', 'name must be 200 characters or fewer');
     }
     const name = rawName.length > 0 ? rawName : `${source.name} (copy)`;
+    if (!(await checkForwardingTogglePermission(req, res, source.config))) return;
     // Duplicates land DISABLED so the user reviews before flipping them on
     // (mirrors the /import path). Uniqueness on `name` is not enforced by the
     // table, matching the plain POST / handler, so no collision check here.
@@ -318,6 +355,7 @@ router.post('/import', canWrite, async (req: Request, res: Response) => {
     if (!name) return res.status(400).json({ error: 'name is required' });
     const v = validateConfig(config);
     if (!v.ok) return res.status(400).json({ error: 'invalid automation config', details: v.errors });
+    if (!(await checkForwardingTogglePermission(req, res, v.json))) return;
     // Imported automations land DISABLED for review.
     const created = await databaseService.automations.createAutomation({
       name, description, enabled: false, config: v.json,
@@ -340,6 +378,7 @@ router.put('/:id', canWrite, async (req: Request, res: Response) => {
     if (config !== undefined) {
       const v = validateConfig(config);
       if (!v.ok) return res.status(400).json({ error: 'invalid automation config', details: v.errors });
+      if (!(await checkForwardingTogglePermission(req, res, v.json))) return;
       patch.config = v.json;
     }
     const updated = await databaseService.automations.updateAutomation(req.params.id, patch);

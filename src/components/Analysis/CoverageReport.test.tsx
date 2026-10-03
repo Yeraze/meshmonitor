@@ -273,6 +273,41 @@ describe('CoverageReport cross-source (#5560)', () => {
     expect(lastReceptionsFilters().crossSourceOnly).toBe(true);
   });
 
+  it('a hidden toggle stops filtering: no own-source sender left means crossSourceOnly is off', () => {
+    const own = {
+      data: {
+        senders: [{ ...SENDERS[0], senderIsOwnSource: true, ownSourceId: 'src-b', ownSourceName: 'Source B' }],
+        truncated: false,
+      },
+      isLoading: false,
+      refetch: vi.fn(),
+    };
+    useCoverageSenders.mockReturnValue(own);
+    const { rerender } = renderReport();
+    fireEvent.click(screen.getByRole('checkbox', { name: /Cross-source only/ }));
+    expect(lastReceptionsFilters().crossSourceOnly).toBe(true);
+
+    // The sender list no longer holds one of our sources (window moved on).
+    useCoverageSenders.mockReturnValue({ data: { senders: SENDERS, truncated: false }, isLoading: false, refetch: vi.fn() });
+    rerender(
+      <MemoryRouter>
+        <CoverageReport />
+      </MemoryRouter>,
+    );
+    expect(screen.queryByRole('checkbox', { name: /Cross-source only/ })).not.toBeInTheDocument();
+    expect(lastReceptionsFilters().crossSourceOnly).toBe(false);
+
+    // It comes back still ticked when such a sender returns.
+    useCoverageSenders.mockReturnValue(own);
+    rerender(
+      <MemoryRouter>
+        <CoverageReport />
+      </MemoryRouter>,
+    );
+    expect(screen.getByRole('checkbox', { name: /Cross-source only/ })).toBeChecked();
+    expect(lastReceptionsFilters().crossSourceOnly).toBe(true);
+  });
+
   it('renders the summary row for cross-source receptions', () => {
     useCoverageSenders.mockReturnValue({
       data: {

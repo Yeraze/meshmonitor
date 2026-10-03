@@ -22,7 +22,7 @@ import {
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import type { DashboardSource, SourceStatus, UnifiedStatus } from '../../hooks/useDashboardData';
+import type { DashboardSource, SourceStatus, SourceForwardingStatus, UnifiedStatus } from '../../hooks/useDashboardData';
 import { UNIFIED_SOURCE_ID } from '../../hooks/useDashboardData';
 import { useAuth } from '../../contexts/AuthContext';
 import { UiIcon } from '../icons';
@@ -104,6 +104,11 @@ interface DashboardSidebarProps {
   onPruneOutsideRoi?: (id: string) => void;
   /** Called when user clicks Resync (kebab) on a connected meshtastic_tcp source (#3122). */
   onResyncSource?: (id: string) => void;
+  /**
+   * Flip a source's Message Forwarding master switch from the FWD pill
+   * (#5537). Omit to render the pill read-only.
+   */
+  onToggleForwarding?: (id: string, enabled: boolean) => Promise<void> | void;
   /** Source IDs currently awaiting a /connect POST — used to show "Connecting..." feedback. */
   connectingIds?: Set<string>;
   /**
@@ -201,6 +206,58 @@ function getStatusInfo(
   }
   return { dotClass: 'connecting', label: t('source.status_connecting') };
 }
+
+/**
+ * FWD pill on a source card (#5537): the source's Message Forwarding master
+ * switch and its active rule count. Rides the already-polled status payload
+ * (`status.forwarding`, present only when the source has rules and the caller
+ * may read them). Clickable only with per-source `automation` write.
+ */
+const ForwardingPill: React.FC<{
+  sourceId: string;
+  forwarding: SourceForwardingStatus;
+  onToggle?: (id: string, enabled: boolean) => Promise<void> | void;
+}> = ({ sourceId, forwarding, onToggle }) => {
+  const { t } = useTranslation();
+  const [pending, setPending] = useState(false);
+  const { enabled, ruleCount, activeRuleCount } = forwarding;
+  const interactive = forwarding.canWrite && typeof onToggle === 'function';
+  const vars = { active: activeRuleCount, total: ruleCount };
+  const title = interactive
+    ? enabled
+      ? t('forwarding.pill_title_on', 'Forwarding on: {{active}} of {{total}} rules active. Click to turn off.', vars)
+      : t('forwarding.pill_title_off', 'Forwarding off ({{total}} rules). Click to turn on.', vars)
+    : enabled
+      ? t('forwarding.pill_title_on_readonly', 'Forwarding on: {{active}} of {{total}} rules active.', vars)
+      : t('forwarding.pill_title_off_readonly', 'Forwarding off ({{total}} rules).', vars);
+  const label = t('forwarding.pill_label', 'FWD');
+  return (
+    <button
+      type="button"
+      className={`dashboard-source-card-badge ${styles.fwdPill} ${enabled ? styles.fwdOn : styles.fwdOff}`}
+      title={title}
+      aria-label={title}
+      aria-pressed={enabled}
+      disabled={!interactive || pending}
+      data-testid={`fwd-pill-${sourceId}`}
+      // The card itself is a button: keep clicks and keys on the pill.
+      onKeyDown={(e) => e.stopPropagation()}
+      onClick={async (e) => {
+        e.stopPropagation();
+        if (!interactive || pending) return;
+        setPending(true);
+        try {
+          await onToggle!(sourceId, !enabled);
+        } finally {
+          setPending(false);
+        }
+      }}
+    >
+      <UiIcon name={enabled ? 'statusOn' : 'statusOff'} size={12} />{' '}
+      {enabled ? `${label} ${activeRuleCount}` : `${label} ${t('forwarding.pill_off', 'off')}`}
+    </button>
+  );
+};
 
 interface KebabMenuProps {
   sourceId: string;
@@ -412,6 +469,7 @@ const DashboardSidebar: React.FC<DashboardSidebarProps> = ({
   onDisconnectSource,
   onPruneOutsideRoi,
   onResyncSource,
+  onToggleForwarding,
   connectingIds,
   mobileOpen = false,
   onMobileClose,
@@ -769,6 +827,13 @@ const DashboardSidebar: React.FC<DashboardSidebarProps> = ({
                   </span>
                 );
               })()}
+              {!isUnified && status?.forwarding && (
+                <ForwardingPill
+                  sourceId={source.id}
+                  forwarding={status.forwarding}
+                  onToggle={onToggleForwarding}
+                />
+              )}
               {!isUnified && hasPermission('sources', 'write', { sourceId: source.id }) && (() => {
                 // Only show Prune Outside ROI for mqtt_bridge sources that
                 // actually have at least one geo bound configured — otherwise

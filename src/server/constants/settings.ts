@@ -634,6 +634,10 @@ export const PER_SOURCE_SETTINGS_KEYS = [
   // write), so it is deliberately absent from VALID_SETTINGS_KEYS and listed in
   // PER_SOURCE_KEYS_NOT_POSTABLE. The managers still re-validate on read.
   'forwardingRules',
+  // Message Forwarding master switch (#5537) — per source, 'true'/'false',
+  // absent = on. Written ONLY by PUT /api/sources/:id/forwarding/enabled and by
+  // action.setSourceForwardingEnabled, so it is NOT_POSTABLE too.
+  'forwardingEnabled',
   // MeshCore default region/scope (#3667) — per source (per node)
   'meshcoreDefaultScope',
   // MeshCore default path hash size (#4945) — per source (per node)
@@ -814,6 +818,29 @@ export const GLOBAL_ONLY_SETTINGS_KEYS = new Set<string>([
   // Global retention sweep (#5277), read via getSettingAsync by
   // coverageRetentionService — no per-source variant to read.
   'coverage_retention_days',
+  // User-interface preferences (#5558). SettingsTab saves them only on the
+  // unscoped POST (they live in GLOBAL_SETTINGS_SECTIONS: appearance, units,
+  // sorting) and the server reads them only via getSetting. A source copy used
+  // to win on the sourced GET, so per-source pages showed one theme while the
+  // landing page and Global Settings showed another. The sourced GET now
+  // ignores source copies of every key in this set, and migration 189 removed
+  // the stale rows (its key list is frozen; do not import this set there).
+  'theme',
+  'appearanceMode',
+  'darkTheme',
+  'lightTheme',
+  'iconStyle',
+  'mapPinStyle',
+  'mapPinColorMode',
+  'nodeListStyle',
+  'defaultLandingPage',
+  'temperatureUnit',
+  'distanceUnit',
+  'timeFormat',
+  'dateFormat',
+  'preferredSortField',
+  'preferredSortDirection',
+  'preferredDashboardSortOption',
   // Translation settings (global provider and default config)
   'translationEnabled',
   'translationProvider',
@@ -878,6 +905,8 @@ export const PER_SOURCE_KEYS_NOT_POSTABLE = new Set<string>([
   // per-source `automation` write, so the generic `settings` POST must not
   // reach it.
   'forwardingRules',
+  // PUT /api/sources/:id/forwarding/enabled (#5537) — same gate as the rules.
+  'forwardingEnabled',
 ]);
 
 /**
@@ -902,6 +931,8 @@ export const SECRET_SETTINGS_KEYS = new Set<string>([
   // generic GET /api/settings is public (optionalAuth), so keep the rules out
   // of it for non-admins; admins already hold every permission.
   'forwardingRules',
+  // Forwarding master switch (#5537) — same reasoning as the rules.
+  'forwardingEnabled',
 ]);
 
 /**

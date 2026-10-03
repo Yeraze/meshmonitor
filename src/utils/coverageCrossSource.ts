@@ -61,6 +61,7 @@ export function summarizeCrossSourceCoverage(items: CoverageReceptionDto[]): Cov
           sourceId: item.sourceId,
           receiverId: item.receiverId,
           receiverKind: item.receiverKind,
+          // First reception wins: one receiver on one source always has the same transport.
           transport: item.crossSourceTransport ?? (item.receiverKind === 'mqtt_gateway' ? 'mqtt_gateway' : 'rf'),
           fixes: 0,
           receptions: 0,

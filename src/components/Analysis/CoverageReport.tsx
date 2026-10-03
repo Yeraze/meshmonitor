@@ -255,6 +255,11 @@ export const CoverageReport: React.FC<CoverageReportProps> = ({ initialLink }) =
     [sendersQuery.data],
   );
 
+  // The filter only applies while its toggle is on screen. If the window or
+  // data changes so no sender is one of our sources, the toggle hides and the
+  // filter stops applying, so a hidden control can never leave an empty page.
+  const effectiveCrossSourceOnly = crossSourceOnly && hasOwnSourceSenders;
+
   const receivers = useMemo(() => receiversQuery.data?.receivers ?? [], [receiversQuery.data]);
   const mqttSources = useMemo(() => receiversQuery.data?.mqttSources ?? [], [receiversQuery.data]);
 
@@ -385,7 +390,7 @@ export const CoverageReport: React.FC<CoverageReportProps> = ({ initialLink }) =
       senderId: senderId || undefined,
       hops: hops === '' ? undefined : hops,
       hopsMode,
-      crossSourceOnly,
+      crossSourceOnly: effectiveCrossSourceOnly,
     },
     receptionsEnabled,
   );
@@ -466,8 +471,8 @@ export const CoverageReport: React.FC<CoverageReportProps> = ({ initialLink }) =
   const fitKey = useMemo(() => {
     const receiversPart = allReceiversSelected ? 'all' : [...selectedReceiverKeys].sort().join(',');
     const rangePart = preset === 'custom' ? `custom:${customFrom}:${customTo}` : preset;
-    return `${senderId}|${receiversPart}|${hops}|${hopsMode}|${rangePart}|${crossSourceOnly ? 'x' : ''}`;
-  }, [senderId, selectedReceiverKeys, allReceiversSelected, hops, hopsMode, preset, customFrom, customTo, crossSourceOnly]);
+    return `${senderId}|${receiversPart}|${hops}|${hopsMode}|${rangePart}|${effectiveCrossSourceOnly ? 'x' : ''}`;
+  }, [senderId, selectedReceiverKeys, allReceiversSelected, hops, hopsMode, preset, customFrom, customTo, effectiveCrossSourceOnly]);
 
   const isLoading = receiversQuery.isLoading || sendersQuery.isLoading || receptionsQuery.isLoading;
   const isEmpty = receptionsEnabled && !isLoading && items.length === 0;
@@ -610,7 +615,7 @@ export const CoverageReport: React.FC<CoverageReportProps> = ({ initialLink }) =
             </label>
           )}
 
-          {(hasOwnSourceSenders || crossSourceOnly) && (
+          {hasOwnSourceSenders && (
             <label
               className="reports-controls__field"
               title={t(

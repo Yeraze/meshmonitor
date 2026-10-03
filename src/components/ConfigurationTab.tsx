@@ -53,7 +53,7 @@ import GpioPinSummary from './configuration/GpioPinSummary';
 import BackupManagementSection from './configuration/BackupManagementSection';
 import { ImportConfigModal } from './configuration/ImportConfigModal';
 import { ExportConfigModal } from './configuration/ExportConfigModal';
-import { ROLE_MAP, PRESET_MAP, REGION_MAP } from './configuration/constants';
+import { ROLE_MAP, REGION_MAP, resolveModemPresetValue, UNKNOWN_MODEM_PRESET } from './configuration/constants';
 import SectionNav from './SectionNav';
 import { configurationNavItems } from './search/configSections';
 import styles from './ConfigurationTab.module.css';
@@ -97,6 +97,13 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
   // the guard fails (#5028 class).
   const [usePreset, setUsePreset] = useState(false);
   const [modemPreset, setModemPreset] = useState<number>(0);
+  // Raw preset the radio reported when MeshMonitor cannot name it (#5547).
+  // While set, modemPreset holds UNKNOWN_MODEM_PRESET and the LoRa save path
+  // refuses to invent a value for it.
+  const [unknownModemPresetName, setUnknownModemPresetName] = useState<string | null>(null);
+  // Local node firmware version, from /api/config localNodeInfo. Gates the
+  // 2.8-only modem presets and picks the region preset rule (#5547).
+  const [localFirmwareVersion, setLocalFirmwareVersion] = useState<string | null>(null);
   const [bandwidth, setBandwidth] = useState<number>(250);
   const [spreadFactor, setSpreadFactor] = useState<number>(11);
   const [codingRate, setCodingRate] = useState<number>(8);
@@ -375,6 +382,7 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
           setShortName(config.localNodeInfo.shortName || '');
           setIsUnmessagable(config.localNodeInfo.isUnmessagable || false);
           setIsLicensed(config.localNodeInfo.isLicensed || false);
+          setLocalFirmwareVersion(config.localNodeInfo.firmwareVersion ?? null);
         }
 
         // Populate device config
@@ -420,10 +428,16 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
           // rather than skipping the update (#5028 class).
           setUsePreset(config.deviceConfig.lora.usePreset === true);
           if (config.deviceConfig.lora.modemPreset !== undefined) {
-            const presetValue = typeof config.deviceConfig.lora.modemPreset === 'string'
-              ? PRESET_MAP[config.deviceConfig.lora.modemPreset] || 0
-              : config.deviceConfig.lora.modemPreset;
-            setModemPreset(presetValue);
+            // Never coerce an unrecognised preset to 0 (LONG_FAST): the save is
+            // a whole-struct replace and would push LONG_FAST to the radio (#5547).
+            const presetValue = resolveModemPresetValue(config.deviceConfig.lora.modemPreset);
+            if (presetValue === null) {
+              setUnknownModemPresetName(String(config.deviceConfig.lora.modemPreset));
+              setModemPreset(UNKNOWN_MODEM_PRESET);
+            } else {
+              setUnknownModemPresetName(null);
+              setModemPreset(presetValue);
+            }
           }
           if (config.deviceConfig.lora.bandwidth !== undefined) {
             setBandwidth(config.deviceConfig.lora.bandwidth);
@@ -935,9 +949,20 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
         return;
       }
 
+      // An unrecognised preset must never be written back as a guess (#5547).
+      // With presets on, the user has to pick one. With custom parameters the
+      // firmware ignores modem_preset, so leave it out and let the server keep
+      // the radio's current value.
+      const presetUnknown = modemPreset === UNKNOWN_MODEM_PRESET;
+      if (presetUnknown && usePreset) {
+        showToast(t('config.lora_unknown_preset', { name: unknownModemPresetName ?? '?' }), 'error');
+        setIsSaving(false);
+        return;
+      }
+
       await apiService.setLoRaConfig({
         usePreset,
-        modemPreset,
+        ...(presetUnknown ? {} : { modemPreset }),
         bandwidth,
         spreadFactor,
         codingRate,
@@ -1711,10 +1736,13 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
           setUsePreset(newUsePreset);
         }
         if (lora.modemPreset !== undefined) {
-          const newPreset = typeof lora.modemPreset === 'string' ? PRESET_MAP[lora.modemPreset] || 0 : lora.modemPreset;
+          // Unknown names stay unknown rather than becoming LONG_FAST (#5547).
+          const resolved = resolveModemPresetValue(lora.modemPreset);
+          const newPreset = resolved ?? UNKNOWN_MODEM_PRESET;
           if (newPreset !== modemPreset) {
-            changes.push({ field: 'LoRa: Modem Preset', oldValue: formatValue(modemPreset), newValue: formatValue(newPreset) });
+            changes.push({ field: 'LoRa: Modem Preset', oldValue: formatValue(modemPreset), newValue: formatValue(resolved === null ? lora.modemPreset : newPreset) });
           }
+          setUnknownModemPresetName(resolved === null ? String(lora.modemPreset) : null);
           setModemPreset(newPreset);
         }
         if (lora.region !== undefined) {
@@ -1927,6 +1955,7 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
         if (config.localNodeInfo.shortName !== undefined) setShortName(config.localNodeInfo.shortName);
         if (config.localNodeInfo.isUnmessagable !== undefined) setIsUnmessagable(config.localNodeInfo.isUnmessagable);
         if (config.localNodeInfo.isLicensed !== undefined) setIsLicensed(config.localNodeInfo.isLicensed);
+        if (config.localNodeInfo.firmwareVersion !== undefined) setLocalFirmwareVersion(config.localNodeInfo.firmwareVersion ?? null);
       }
 
       setConfigChanges(changes);
@@ -2202,6 +2231,8 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
             setUsePreset={setUsePreset}
             modemPreset={modemPreset}
             setModemPreset={setModemPreset}
+            unknownModemPresetName={unknownModemPresetName}
+            firmwareVersion={localFirmwareVersion}
             bandwidth={bandwidth}
             setBandwidth={setBandwidth}
             spreadFactor={spreadFactor}

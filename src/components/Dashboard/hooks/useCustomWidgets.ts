@@ -4,6 +4,7 @@ import { useSource } from '../../../contexts/SourceContext';
 import { logger } from '../../../utils/logger';
 import { type CustomWidget } from '../types';
 import { type WidgetType } from '../../AddWidgetModal';
+import { NODE_ACTIVITY_DEFAULT_WINDOW } from '../../../utils/nodeActivity';
 
 interface UseCustomWidgetsOptions {
   baseUrl: string;
@@ -58,6 +59,8 @@ export function useCustomWidgets({
       newWidget = { id, type: 'hopDistribution' };
     } else if (type === 'distanceDistribution') {
       newWidget = { id, type: 'distanceDistribution', bucketSize: 5 };
+    } else if (type === 'liveMeshActivity') {
+      newWidget = { id, type: 'liveMeshActivity', windowMinutes: NODE_ACTIVITY_DEFAULT_WINDOW };
     } else {
       newWidget = { id, type: 'hopDistanceHeatmap', bucketSize: 5 };
     }

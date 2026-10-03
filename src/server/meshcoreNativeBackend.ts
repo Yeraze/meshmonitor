@@ -232,6 +232,34 @@ function bytesToHex(bytes: Uint8Array | number[]): string {
 }
 
 /**
+ * Decode a contact record's packed `out_path_len` byte (#5554).
+ *
+ * The byte uses the same packing as the OTA `path_len`: top 2 bits =
+ * hash_size-1 (00 = 1-byte, 01 = 2-byte, 10 = 3-byte hop hashes), bottom
+ * 6 bits = hop count. meshcore.js reads it with `readInt8()`, so any value
+ * with bit 7 set (every 3-byte path, and the 0xFF sentinel) arrives
+ * NEGATIVE. Mask back to the unsigned wire byte before decoding.
+ *
+ * Returns:
+ *  - `undefined` when the field is absent (null/undefined),
+ *  - `null` for OUT_PATH_UNKNOWN (0xFF) and for the reserved `11` width
+ *    (4-byte hashes, which firmware rejects), so the path reads as flood,
+ *  - otherwise the hop width, hop count and byte count.
+ */
+export function decodeOutPathLen(
+  raw: number | null | undefined,
+): { hopHashBytes: 1 | 2 | 3; hopCount: number; byteCount: number } | null | undefined {
+  if (raw === undefined || raw === null || !Number.isFinite(raw)) return undefined;
+  const byte = raw & 0xff;
+  if (byte === 0xff) return null;
+  const widthBits = (byte >> 6) & 0x03;
+  if (widthBits === 0x03) return null;
+  const hopHashBytes = (widthBits + 1) as 1 | 2 | 3;
+  const hopCount = byte & 0x3f;
+  return { hopHashBytes, hopCount, byteCount: hopCount * hopHashBytes };
+}
+
+/**
  * Render a MeshCore contact's `out_path` blob into a comma-separated hex
  * chain like "a3,7f,02" (1-byte hashes) or "a37f,02b0" (2-byte hashes).
  * Returns null when the firmware's OUT_PATH_UNKNOWN sentinel (0xFF — or -1
@@ -1488,19 +1516,16 @@ export class MeshCoreNativeBackend extends EventEmitter {
       case 'get_contacts': {
         const contacts: any[] = await c.getContacts();
         return contacts.map((ct) => {
-          // ct.outPathLen is the packed wire byte (same format as OTA path_len):
-          // top 2 bits = hash_size−1, bottom 6 bits = hop_count. Decode it so
-          // formatOutPath receives a plain byte count + the correct hop width.
-          // Negative values and 0 fall through to formatOutPath unchanged
-          // (it handles 0 as "direct" and negatives as OUT_PATH_UNKNOWN).
-          const rawLen = ct.outPathLen as number;
-          let hopHashBytes: 1 | 2 | 3 = 1;
-          let outPathByteCount: number | null | undefined = rawLen;
-          if (rawLen != null && rawLen > 0) {
-            hopHashBytes = (((rawLen >> 6) & 0x03) + 1) as 1 | 2 | 3;
-            outPathByteCount = (rawLen & 0x3F) * hopHashBytes;
-          }
-          const { outPathHex, pathLen } = formatOutPath(ct.outPath, outPathByteCount, hopHashBytes);
+          // ct.outPathLen is the packed wire byte (same format as OTA path_len),
+          // read signed by meshcore.js. decodeOutPathLen unsigns it and splits
+          // it into a byte count + hop width for formatOutPath (#5554: 3-byte
+          // paths used to arrive negative and read as OUT_PATH_UNKNOWN).
+          const decoded = decodeOutPathLen(ct.outPathLen as number);
+          const { outPathHex, pathLen } = decoded === undefined
+            ? formatOutPath(ct.outPath, undefined)
+            : decoded === null
+              ? { outPathHex: null, pathLen: null }
+              : formatOutPath(ct.outPath, decoded.byteCount, decoded.hopHashBytes);
           // ContactInfo.flags bit 0 (mask 0x01) is the firmware "favourite"
           // bit; the upper bits are per-contact telemetry permissions. Surface
           // both so the manager can mirror the device favourite into
@@ -1989,8 +2014,10 @@ export class MeshCoreNativeBackend extends EventEmitter {
 
           const after = (await c.getContacts()) as RawDeviceContact[];
           const updated = after.find((ct) => bytesToHex(ct.publicKey) === bytesToHex(publicKey));
+          // meshcore.js reads out_path_len as Int8: a 3-byte width (0x80|hops)
+          // arrives negative, so compare the unsigned wire byte (#5554).
           return !!updated
-            && updated.outPathLen === expectedLen
+            && (updated.outPathLen & 0xff) === expectedLen
             && bytesToHex(updated.outPath.subarray(0, path.length)) === bytesToHex(path);
         })(), setOutPathTimeoutMs, 'set_out_path'), 'set_out_path');
 

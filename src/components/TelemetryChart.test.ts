@@ -8,6 +8,34 @@ import { describe, it, expect } from 'vitest';
 import { getTelemetryLabel } from './TelemetryChart';
 
 describe('getTelemetryLabel', () => {
+  it('gives the remote-status and local-poller MeshCore names one shared label (#5550)', () => {
+    // Same firmware counter, two telemetryType names: a Repeater source writes
+    // the local-poller name, a Companion polling it remotely writes mc_status_*.
+    const pairs: Array<[string, string]> = [
+      ['mc_status_air_time_secs', 'mc_tx_air_secs'],
+      ['mc_status_rx_air_time_secs', 'mc_rx_air_secs'],
+      ['mc_status_packets_recv', 'mc_pkt_recv'],
+      ['mc_status_packets_sent', 'mc_pkt_sent'],
+      ['mc_status_recv_flood', 'mc_pkt_flood_rx'],
+      ['mc_status_recv_direct', 'mc_pkt_direct_rx'],
+      ['mc_status_sent_flood', 'mc_pkt_flood_tx'],
+      ['mc_status_sent_direct', 'mc_pkt_direct_tx'],
+      ['mc_status_recv_errors', 'mc_pkt_recv_errors'],
+      ['mc_status_errors', 'mc_errors'],
+      ['mc_status_uptime_secs', 'mc_uptime_secs'],
+      ['mc_status_queue_len', 'mc_queue_len'],
+      ['mc_status_noise_floor', 'mc_noise_floor'],
+      ['mc_status_last_rssi', 'mc_last_rssi'],
+      ['mc_status_last_snr', 'mc_last_snr'],
+    ];
+    for (const [remote, local] of pairs) {
+      expect(getTelemetryLabel(local), `${remote} vs ${local}`).toBe(getTelemetryLabel(remote));
+      expect(getTelemetryLabel(local)).not.toBe(local);
+    }
+    expect(getTelemetryLabel('mc_pkt_flood_tx')).toBe('Sent (Flood)');
+    expect(getTelemetryLabel('mc_tx_air_secs')).toBe('TX Air Time');
+  });
+
   it('returns the explicit label for known Meshtastic types', () => {
     expect(getTelemetryLabel('batteryLevel')).toBe('Battery Level');
     expect(getTelemetryLabel('temperature')).toBe('Temperature');
@@ -82,8 +110,8 @@ describe('getTelemetryLabel', () => {
   it('returns the explicit label for MeshCore cumulative counter types', () => {
     expect(getTelemetryLabel('mc_pkt_recv')).toBe('Packets Received (total)');
     expect(getTelemetryLabel('mc_pkt_sent')).toBe('Packets Sent (total)');
-    expect(getTelemetryLabel('mc_pkt_flood_tx')).toBe('Flood TX');
-    expect(getTelemetryLabel('mc_pkt_direct_tx')).toBe('Direct TX');
+    expect(getTelemetryLabel('mc_pkt_flood_tx')).toBe('Sent (Flood)');
+    expect(getTelemetryLabel('mc_pkt_direct_tx')).toBe('Sent (Direct)');
     expect(getTelemetryLabel('mc_tx_air_secs')).toBe('TX Air Time');
     expect(getTelemetryLabel('mc_rx_air_secs')).toBe('RX Air Time');
   });

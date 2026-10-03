@@ -226,6 +226,24 @@ describe('Coverage Survey Routes (#5277 P4b WP2)', () => {
       const second = await agent.post('/').send({ name: 'Second', senderId: nodeIdFor(SENDER), live: true });
       expect(second.status).toBe(409);
       expect(second.body.code).toBe('SURVEY_ALREADY_LIVE');
+      // #5544: the 409 names the blocking survey so the client can select it.
+      expect(second.body.liveSurveyId).toBe(first.body.data.id);
+    });
+
+    it('#5544: SURVEY_ALREADY_LIVE names the blocking survey even when another user started it', async () => {
+      const adminAgent = await harness.loginAs(harness.admin);
+      const first = await adminAgent.post('/').send({ name: 'Admin live', senderId: nodeIdFor(SENDER), live: true });
+      expect(first.status).toBe(200);
+
+      const agent = await harness.loginAs(harness.limited);
+      const second = await agent.post('/').send({ name: 'Mine', senderId: nodeIdFor(SENDER), live: true });
+      expect(second.status).toBe(409);
+      expect(second.body).toMatchObject({ success: false, code: 'SURVEY_ALREADY_LIVE', liveSurveyId: first.body.data.id });
+
+      // The same survey is in the limited user's list, read-only for them.
+      const list = await agent.get('/');
+      const blocking = list.body.data.find((s: { id: string }) => s.id === first.body.data.id);
+      expect(blocking).toMatchObject({ isLive: true, canEdit: false, createdByMe: false });
     });
 
     it('a second SAVED (non-live) survey for the same sender is allowed', async () => {
