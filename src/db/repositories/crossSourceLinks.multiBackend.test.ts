@@ -1,7 +1,7 @@
 /**
  * CrossSourceLinksRepository (#5561) on SQLite, PostgreSQL and MySQL.
  *
- * The PG/MySQL tables are built by the real migration-189 runners, not
+ * The PG/MySQL tables are built by the real migration-190 runners, not
  * hand-written DDL, each in its OWN isolated database (`xslinks`) so this
  * suite can run next to any other container suite (CLAUDE.md "PG/MySQL
  * fixture races").
@@ -19,7 +19,7 @@ import {
   CROSS_SOURCE_LINK_BUCKET_MS,
   type RecordCrossSourceHearingParams,
 } from './crossSourceLinks.js';
-import { runMigration189Postgres, runMigration189Mysql } from '../../server/migrations/189_create_cross_source_links.js';
+import { runMigration190Postgres, runMigration190Mysql } from '../../server/migrations/190_create_cross_source_links.js';
 import {
   postgresAvailable,
   mysqlAvailable,
@@ -149,8 +149,8 @@ describe.skipIf(!postgresAvailable)('CrossSourceLinksRepository — PostgreSQL (
     cleanupDb = isolated.cleanup;
     const client = await pool.connect();
     try {
-      await runMigration189Postgres(client);
-      await runMigration189Postgres(client); // idempotent
+      await runMigration190Postgres(client);
+      await runMigration190Postgres(client); // idempotent
     } finally {
       client.release();
     }
@@ -170,8 +170,8 @@ describe.skipIf(!mysqlAvailable)('CrossSourceLinksRepository — MySQL (containe
     const isolated = await createIsolatedMysqlDatabase('xslinks');
     pool = isolated.pool;
     cleanupDb = isolated.cleanup;
-    await runMigration189Mysql(pool);
-    await runMigration189Mysql(pool); // idempotent
+    await runMigration190Mysql(pool);
+    await runMigration190Mysql(pool); // idempotent
     repo = new CrossSourceLinksRepository(drizzleMysql(pool, { schema, mode: 'default' }), 'mysql');
   });
   afterAll(async () => { await cleanupDb?.(); });

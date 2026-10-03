@@ -96,6 +96,7 @@ const TYPE_CATEGORY: Record<string, TelemetryCategory> = {
   ch8Voltage: 'power', ch8Current: 'power',
   envVoltage: 'power', envCurrent: 'power',
   mc_battery_volts: 'power',
+  mc_battery_mv: 'power',
   mc_percentage: 'power',
   mc_current: 'power',
   mc_power: 'power',
@@ -172,6 +173,7 @@ const TYPE_CATEGORY: Record<string, TelemetryCategory> = {
   mc_pkt_flood_rx: 'network',
   mc_pkt_direct_rx: 'network',
   mc_pkt_recv_errors: 'network',
+  mc_errors: 'network',
   mc_tx_air_secs: 'network',
   mc_rx_air_secs: 'network',
 
@@ -187,6 +189,7 @@ const TYPE_CATEGORY: Record<string, TelemetryCategory> = {
   mc_status_uptime_secs: 'device',
   mc_status_queue_len: 'device',
   mc_uptime_secs: 'device',
+  mc_firmware_ver: 'device',
   mc_queue_len: 'device',
 
   // ── Environment & Weather ─────────────────────────────────────────

@@ -297,7 +297,21 @@ router.get('/', optionalAuth(), async (req: Request, res: Response) => {
         cleaned[k] = v;
       }
       const sourceSettings = await databaseService.settings.getSourceSettings(sourceId);
-      const merged = { ...cleaned, ...sourceSettings };
+      // A global-only key always reads its global value (#5558). The POST
+      // already drops these from sourced saves, but a stale source copy
+      // (written before a key joined GLOBAL_ONLY_SETTINGS_KEYS) would
+      // otherwise win here — that is how per-source pages ended up dark
+      // while the landing page stayed light.
+      const sourceOverrides: Record<string, string> = {};
+      for (const [k, v] of Object.entries(sourceSettings)) {
+        if (GLOBAL_ONLY_SETTINGS_KEYS.has(k)) continue;
+        // defineProperty, not assignment — a stored `__proto__` row must not
+        // reach the prototype setter (see SettingsRepository.getSourceSettings).
+        Object.defineProperty(sourceOverrides, k, {
+          value: v, enumerable: true, writable: true, configurable: true,
+        });
+      }
+      const merged = { ...cleaned, ...sourceOverrides };
       res.json(stripSecretSettings(merged, isAdmin));
     } else {
       // Return only non-namespaced keys for global view

@@ -1,11 +1,11 @@
 /**
- * Migration 189 tests — cross_source_links table creation (#5561).
+ * Migration 190 tests — cross_source_links table creation (#5561).
  * PostgreSQL / MySQL run the same runners against live containers in
  * `src/db/repositories/crossSourceLinks.multiBackend.test.ts`.
  */
 import Database from 'better-sqlite3';
 import { describe, expect, it } from 'vitest';
-import { migration } from './189_create_cross_source_links.js';
+import { migration } from './190_create_cross_source_links.js';
 
 const ROW = {
   txSourceId: 'a', txNodeId: '!aaaaaaaa', rxSourceId: 'b', rxNodeId: '!bbbbbbbb',
@@ -16,7 +16,7 @@ const INSERT = `
   VALUES (@txSourceId, @txNodeId, @rxSourceId, @rxNodeId, @protocol, @kind, @transportClass, @hourBucket, @lastHeardAt)
 `;
 
-describe('Migration 189 — cross_source_links (SQLite)', () => {
+describe('Migration 190 — cross_source_links (SQLite)', () => {
   it('creates the table and indexes, and is idempotent', () => {
     const db = new Database(':memory:');
     migration.up(db);

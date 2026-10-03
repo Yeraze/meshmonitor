@@ -207,7 +207,8 @@ import { migration as addChannelUseAeadMigration, runMigration185Postgres, runMi
 import { migration as mergeDefaultRowMutesMigration, runMigration186Postgres, runMigration186Mysql } from '../server/migrations/186_merge_default_row_mutes_into_source_rows.js';
 import { migration as addMeshcoreMessageSenderTimestampMigration, runMigration187Postgres, runMigration187Mysql } from '../server/migrations/187_add_meshcore_message_sender_timestamp.js';
 import { migration as createTranslationCacheMigration, runMigration188Postgres, runMigration188Mysql } from '../server/migrations/188_create_translation_cache.js';
-import { migration as createCrossSourceLinksMigration, runMigration189Postgres, runMigration189Mysql } from '../server/migrations/189_create_cross_source_links.js';
+import { migration as globalUiPrefsDropSourceCopiesMigration, runMigration189Postgres, runMigration189Mysql } from '../server/migrations/189_global_ui_prefs_drop_source_copies.js';
+import { migration as createCrossSourceLinksMigration, runMigration190Postgres, runMigration190Mysql } from '../server/migrations/190_create_cross_source_links.js';
 
 // ============================================================================
 // Registry
@@ -3053,16 +3054,32 @@ registry.register({
 });
 
 // ---------------------------------------------------------------------------
-// Migration 189: `cross_source_links` (#5561): hourly aggregate of "source
+// Migration 189: drop `source:{id}:{key}` copies of global UI preferences
+// (theme/appearance, units, date/time format, sort, display style) and
+// promote a unanimous per-source choice to global when global is unset or
+// default (#5558). See the migration file for the promotion rule.
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 189,
+  name: 'global_ui_prefs_drop_source_copies',
+  settingsKey: 'migration_189_global_ui_prefs_drop_source_copies',
+  sqlite: (db) => globalUiPrefsDropSourceCopiesMigration.up(db),
+  postgres: (client) => runMigration189Postgres(client),
+  mysql: (pool) => runMigration189Mysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 190: `cross_source_links` (#5561): hourly aggregate of "source
 // A's radio was heard by source B", for the map's "heard here" edges. A row
 // names two sources (txSourceId, rxSourceId); reads require both.
 // ---------------------------------------------------------------------------
 
 registry.register({
-  number: 189,
+  number: 190,
   name: 'create_cross_source_links',
-  settingsKey: 'migration_189_create_cross_source_links',
+  settingsKey: 'migration_190_create_cross_source_links',
   sqlite: (db) => createCrossSourceLinksMigration.up(db),
-  postgres: (client) => runMigration189Postgres(client),
-  mysql: (pool) => runMigration189Mysql(pool),
+  postgres: (client) => runMigration190Postgres(client),
+  mysql: (pool) => runMigration190Mysql(pool),
 });
