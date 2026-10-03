@@ -153,6 +153,49 @@ the map treats them as RF and keeps showing them.
 This filter skips MeshCore and Reticulum sources. Their messages live in other tables and need
 a different query.
 
+### Cross-Source Links
+
+If you run two or more sources, **Show Cross-Source Links** (Map Features,
+off by default) draws an edge whenever one of your radios is heard by
+another of your sources. Unlike traceroute segments and neighbor links, which
+come from what nodes report, these come from what MeshMonitor's own receivers
+heard.
+
+Each edge is **one-way**. The arrow points from the radio that transmitted to
+the radio that heard it. An edge from A to B says nothing about B to A; if both
+directions work you will see two edges.
+
+| Style | Meaning |
+|---|---|
+| Solid | Your radio's own packet, heard directly (0 hops) by another source's radio |
+| Long dashes | Heard by an MQTT gateway's (or MeshCore observer's) radio on another source |
+| Dotted | **Likely relay** (inferred): your radio appears to be the last relay of someone else's packet, as heard by another of your own radios |
+
+A likely relay is a best guess. Meshtastic packets carry only the last byte
+of the relaying node's number, and MeshCore paths carry a one to three byte
+hash, so another node can share it. The popup says so. For that reason a
+likely relay is only drawn when one of your **own radios** heard the packet.
+A hearing by an MQTT gateway or a MeshCore observer never produces one: on a
+wide feed, a gateway far away will match the same byte by chance.
+
+Lines get thicker with the number of hearings and fade with age. Click an
+edge for the count, SNR (average, min, max), average RSSI, and when it was
+last heard. The map's age filter sets the window.
+
+Not drawn:
+
+- Copies that arrived only through an MQTT broker or UDP. Those are not RF.
+- A multi-hop copy of your own packet. It proves the packet was sent, not
+  that the two radios can hear each other.
+- Radios on different LoRa presets. They cannot hear each other over RF.
+
+You need read access to **both** sources to see an edge, and both radios'
+positions must be visible to you on the map. Links are kept for the Coverage
+retention period (Settings, Coverage Report) and are not part of backups. They
+start filling from the moment this version runs; there is no backfill.
+
+The same toggle works in the 3D view. The choice is saved in your browser.
+
 ### Waypoints
 
 Waypoints — Meshtastic's `WAYPOINT_APP` pins — render directly on the per-source dashboard map and the Map Analysis canvas, using each waypoint's emoji as its icon. Users with `waypoints:write` can create, edit, and delete waypoints in place from the **Map Features** panel. The same panel has a **Show Waypoints** checkbox (default on) that toggles waypoint marker visibility per-user — persisted alongside the other map feature toggles. See the dedicated [Waypoints](/features/waypoints) page for the full workflow, permissions, and REST API.

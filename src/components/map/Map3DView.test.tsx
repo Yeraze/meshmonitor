@@ -42,6 +42,16 @@ vi.mock('../MapAnalysis/use3DTracerouteLines', () => ({
   },
 }));
 
+// #5561: cross-source "heard here" lines come from their own query hook.
+const crossSourceSpy = vi.fn();
+const crossSourceState: { lines: Line3DFeature[] } = { lines: [] };
+vi.mock('../../hooks/useCrossSourceLinks', () => ({
+  use3DCrossSourceLines: (params: { enabled: boolean }) => {
+    crossSourceSpy(params);
+    return params.enabled ? crossSourceState.lines : [];
+  },
+}));
+
 const line = (key: string): Line3DFeature => ({
   key,
   from: [30, -90],
@@ -112,6 +122,20 @@ describe('Map3DView', () => {
     expect(tracerouteSpy).toHaveBeenCalledWith(
       expect.objectContaining({ layer: expect.objectContaining({ enabled: true }) }),
     );
+  });
+
+  it('#5561: cross-source lines are off by default and merged in when the toggle is on', () => {
+    crossSourceState.lines = [line('xs:1')];
+    const { rerender } = render(<Map3DView {...baseProps} />);
+    expect(crossSourceSpy).toHaveBeenLastCalledWith(expect.objectContaining({ enabled: false }));
+    expect(screen.getByTestId('base-3d-map').getAttribute('data-line-keys')).not.toContain('xs:1');
+
+    rerender(<Map3DView {...baseProps} showCrossSourceLinks />);
+    expect(crossSourceSpy).toHaveBeenLastCalledWith(
+      expect.objectContaining({ enabled: true, sources: baseProps.sourceIds, lookbackHours: baseProps.lookbackHours }),
+    );
+    expect(screen.getByTestId('base-3d-map').getAttribute('data-line-keys')).toContain('xs:1');
+    crossSourceState.lines = [];
   });
 
   it('forwards the exaggeration seed to Base3DMap', () => {

@@ -68,6 +68,7 @@ import {
   MessageEventsRepository,
   MeshtasticHeardRepeatersRepository,
   CoverageReceptionsRepository,
+  CrossSourceLinksRepository,
   CoverageSurveysRepository,
   TranslationsRepository,
   AircraftFlightMatchesRepository,
@@ -619,6 +620,7 @@ class DatabaseService {
   public meshtasticHeardRepeatersRepo: MeshtasticHeardRepeatersRepository | null = null;
   public coverageReceptionsRepo: CoverageReceptionsRepository | null = null;
   public coverageSurveysRepo: CoverageSurveysRepository | null = null;
+  public crossSourceLinksRepo: CrossSourceLinksRepository | null = null;
   public translationsRepo: TranslationsRepository | null = null;
   public aircraftFlightMatchesRepo: AircraftFlightMatchesRepository | null = null;
   public meshcoreFiltersRepo: MeshCoreFiltersRepository | null = null;
@@ -708,6 +710,11 @@ class DatabaseService {
   get coverageReceptions(): CoverageReceptionsRepository {
     if (!this.coverageReceptionsRepo) throw new Error('Database not initialized');
     return this.coverageReceptionsRepo;
+  }
+
+  get crossSourceLinks(): CrossSourceLinksRepository {
+    if (!this.crossSourceLinksRepo) throw new Error('Database not initialized');
+    return this.crossSourceLinksRepo;
   }
 
   get coverageSurveys(): CoverageSurveysRepository {
@@ -1187,6 +1194,7 @@ class DatabaseService {
       this.meshtasticHeardRepeatersRepo = new MeshtasticHeardRepeatersRepository(drizzleDb, this.drizzleDbType);
       this.coverageReceptionsRepo = new CoverageReceptionsRepository(drizzleDb, this.drizzleDbType);
       this.coverageSurveysRepo = new CoverageSurveysRepository(drizzleDb, this.drizzleDbType);
+      this.crossSourceLinksRepo = new CrossSourceLinksRepository(drizzleDb, this.drizzleDbType);
       this.translationsRepo = new TranslationsRepository(drizzleDb, this.drizzleDbType);
       this.aircraftFlightMatchesRepo = new AircraftFlightMatchesRepository(drizzleDb, this.drizzleDbType);
       this.meshcoreFiltersRepo = new MeshCoreFiltersRepository(drizzleDb, this.drizzleDbType);
@@ -3940,6 +3948,20 @@ class DatabaseService {
           }
         } catch (err) {
           logger.error('Failed to purge coverage receptions during purge:', err);
+        }
+      }
+
+      // Cross-source "heard here" links (#5561) name two sources and hold no
+      // single sourceId: a purged/deleted source's rows go on either end.
+      if (this.crossSourceLinksRepo) {
+        try {
+          if (sourceId) {
+            await this.crossSourceLinksRepo.deleteForSource(sourceId);
+          } else {
+            await this.crossSourceLinksRepo.deleteAll();
+          }
+        } catch (err) {
+          logger.error('Failed to purge cross-source links during purge:', err);
         }
       }
 

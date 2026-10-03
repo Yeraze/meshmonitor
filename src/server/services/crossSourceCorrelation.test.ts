@@ -271,3 +271,11 @@ describe('CrossSourceIndex sender-id helpers', () => {
     expect(idx.ownerOfSenderId('junk')).toBeNull();
   });
 });
+
+describe('classifyMeshCoreReception relayLastHopOnly (#5561)', () => {
+  it('only the last hop is a relay candidate', () => {
+    const idx = new CrossSourceIndex(new Map(), new Map([[A, KEY_A], [B, KEY_B]]));
+    expect(classifyMeshCoreReception(idx, { sourceId: B, routeType: 1, pathHops: ['aa', '7f'], relayLastHopOnly: true })).toBeNull();
+    expect(classifyMeshCoreReception(idx, { sourceId: B, routeType: 1, pathHops: ['7f', 'aa'], relayLastHopOnly: true })?.likelyRelaySourceId).toBe(A);
+  });
+});
