@@ -272,3 +272,46 @@ describe('decodeMeshCorePacket — CONTROL (0x0b)', () => {
     expect(d.errors.join(';')).toContain('NODE_DISCOVER_RESP');
   });
 });
+
+describe('GRP_TXT / GRP_DATA framing (#5567)', () => {
+  const SECRET = '0123456789abcdef0123456789abcdef';
+
+  it('frames a really-encrypted GRP_TXT as channel hash | MAC | ciphertext', async () => {
+    const { buildGrpTxtFrame } = await import('../server/test-helpers/meshcoreFrames');
+    const hex = buildGrpTxtFrame(1_700_000_000, 'Alice: hi', SECRET);
+    const d = decodeMeshCorePacket(hex)!;
+    expect(d.header.payloadTypeName).toBe('GRP_TXT');
+    expect(d.payload.groupData).toBeUndefined();
+    const g = d.payload.groupText!;
+    expect(g.channelHash + g.cipherMacHex + g.ciphertextHex).toBe(d.payload.hex);
+    expect(g.channelHash).toHaveLength(2);
+    expect(g.cipherMacHex).toHaveLength(4);
+    expect(g.ciphertextHex.length % 32).toBe(0);
+    expect(d.errors).toEqual([]);
+  });
+
+  it('frames a really-encrypted GRP_DATA the same way, under groupData', async () => {
+    const { buildGrpDataFrame, buildGrpTxtFrame } = await import('../server/test-helpers/meshcoreFrames');
+    const hex = buildGrpDataFrame(0x0102, Buffer.from('payload'), SECRET);
+    const d = decodeMeshCorePacket(hex)!;
+    expect(d.header.payloadTypeName).toBe('GRP_DATA');
+    expect(d.payload.groupText).toBeUndefined();
+    const g = d.payload.groupData!;
+    expect(g.channelHash + g.cipherMacHex + g.ciphertextHex).toBe(d.payload.hex);
+    // Same key, so the same channel hash as a GRP_TXT frame.
+    expect(g.channelHash).toBe(decodeMeshCorePacket(buildGrpTxtFrame(1, 'a: b', SECRET))!.payload.groupText!.channelHash);
+    // The legacy generic shape is still filled for the JSONL export.
+    expect(d.payload.message?.destHash).toBe(g.channelHash);
+    expect(d.errors).toEqual([]);
+  });
+
+  it('records an error for a group payload too short to frame', () => {
+    const grpData = decodeMeshCorePacket('1900aabbcc')!; // header 0x19 = GRP_DATA + FLOOD
+    expect(grpData.header.payloadType).toBe(0x06);
+    expect(grpData.payload.groupData).toBeUndefined();
+    expect(grpData.errors.join(';')).toContain('GRP_DATA payload too short');
+    const grpTxt = decodeMeshCorePacket('1500aabbcc')!;
+    expect(grpTxt.payload.groupText).toBeUndefined();
+    expect(grpTxt.errors.join(';')).toContain('GRP_TXT payload too short');
+  });
+});

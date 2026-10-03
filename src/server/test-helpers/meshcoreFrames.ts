@@ -30,6 +30,28 @@ export function buildGrpTxtFrame(timestampSec: number, body: string, secretHex: 
   return header.toString(16).padStart(2, '0') + '00' + hash + mac.subarray(0, 2).toString('hex') + ct.toString('hex');
 }
 
+/**
+ * GRP_DATA: same outer frame as GRP_TXT, with the firmware's datagram
+ * plaintext `data_type(2 LE) | data_len(1) | data` (BaseChatMesh::sendGroupData).
+ */
+export function buildGrpDataFrame(dataType: number, data: Buffer, secretHex: string): string {
+  const plain = Buffer.alloc(3 + data.length);
+  plain.writeUInt16LE(dataType, 0);
+  plain[2] = data.length;
+  data.copy(plain, 3);
+  const padded = Buffer.alloc(Math.ceil(plain.length / 16) * 16);
+  plain.copy(padded);
+  const cipher = createCipheriv('aes-128-ecb', Buffer.from(secretHex, 'hex'), null);
+  cipher.setAutoPadding(false);
+  const ct = Buffer.concat([cipher.update(padded), cipher.final()]);
+  const key32 = Buffer.alloc(32);
+  Buffer.from(secretHex, 'hex').copy(key32);
+  const mac = createHmac('sha256', key32).update(ct).digest();
+  const hash = ChannelCrypto.calculateChannelHash(secretHex);
+  const header = ((6 & 0x0f) << 2) | 1; // payload GRP_DATA(6), route FLOOD(1)
+  return header.toString(16).padStart(2, '0') + '00' + hash + mac.subarray(0, 2).toString('hex') + ct.toString('hex');
+}
+
 /** header | path_len | pubkey(32) | timestamp(4 LE) | signature(64) | appData */
 export function buildAdvertFrame(opts: {
   publicKey: string;

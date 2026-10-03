@@ -13,6 +13,8 @@ import { requireAuth, optionalAuth, requirePermission } from '../auth/authMiddle
 import meshcorePacketLogService from '../services/meshcorePacketLogService.js';
 import { decodeMeshCorePacket } from '../../utils/meshcorePacketDecode.js';
 import { auditMeshcoreEvent } from './meshcoreRouteShared.js';
+import { ok, fail } from '../utils/apiResponse.js';
+import { decodeGroupPacketForViewer, type PacketDecodeViewer } from '../utils/meshcorePacketPlaintext.js';
 
 const router = Router({ mergeParams: true });
 
@@ -287,6 +289,58 @@ router.get(
     } catch (error) {
       logger.error('[API] Error exporting MeshCore packets:', error);
       res.status(500).json({ success: false, error: 'Failed to export packets' });
+    }
+  },
+);
+
+/**
+ * Longest `rawHex` the decode endpoint reads, in hex characters. A MeshCore
+ * frame tops out at 255 bytes (firmware MAX_TRANS_UNIT); 512 bytes leaves room
+ * without letting a caller hand the decoder an arbitrary blob.
+ */
+export const MESHCORE_DECODE_MAX_HEX_CHARS = 1024;
+
+/**
+ * POST /api/sources/:id/meshcore/packets/decode   body: { rawHex }
+ *
+ * Decrypt-on-read for the Packet Monitor decode modal (#5567, #5568): opens
+ * one GRP_TXT / GRP_DATA frame with a channel key the server holds, if the
+ * caller may read a channel with that key. Nothing is stored and no secret is
+ * returned. A caller without access to the key gets the same body as when no
+ * key exists (`decrypted: false`), so the endpoint does not reveal which keys
+ * the server holds.
+ *
+ * POST because the frame rides the body, not because it changes anything. It
+ * sends no mesh traffic. Rate limiting is the global `apiLimiter` on `/api`.
+ */
+router.post(
+  '/packets/decode',
+  optionalAuth(),
+  requirePermission('packetmonitor', 'read', { sourceIdFrom: 'params.id' }),
+  async (req: Request, res: Response) => {
+    try {
+      const sourceId = (req.params as { id?: string }).id!;
+      const raw = (req.body as { rawHex?: unknown } | undefined)?.rawHex;
+      if (typeof raw !== 'string') {
+        return fail(res, 400, 'INVALID_RAW_HEX', 'rawHex is required');
+      }
+      if (raw.length > MESHCORE_DECODE_MAX_HEX_CHARS) {
+        return fail(res, 413, 'PAYLOAD_TOO_LARGE', 'rawHex is too long');
+      }
+      const rawHex = raw.trim();
+      if (rawHex.length === 0 || rawHex.length % 2 !== 0 || !/^[0-9a-fA-F]+$/.test(rawHex)) {
+        return fail(res, 400, 'INVALID_RAW_HEX', 'rawHex must be an even-length hex string');
+      }
+
+      const viewer = (req as Request & { user?: PacketDecodeViewer }).user ?? null;
+      const result = await decodeGroupPacketForViewer(viewer, sourceId, rawHex);
+      if (!result) {
+        return fail(res, 400, 'NOT_GROUP_PACKET', 'Not a GRP_TXT or GRP_DATA packet');
+      }
+      return ok(res, result);
+    } catch (error) {
+      logger.error('[API] Error decoding MeshCore group packet:', error);
+      return fail(res, 500, 'DECODE_FAILED', 'Failed to decode packet');
     }
   },
 );

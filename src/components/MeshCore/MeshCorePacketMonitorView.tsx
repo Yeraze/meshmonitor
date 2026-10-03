@@ -492,7 +492,7 @@ export const MeshCorePacketMonitorView: React.FC<MeshCorePacketMonitorViewProps>
 
       {selectedPacket &&
         createPortal(
-          <MeshCorePacketDetailModal packet={selectedPacket} onClose={() => setSelectedPacket(null)} />,
+          <MeshCorePacketDetailModal packet={selectedPacket} sourceId={sourceId} onClose={() => setSelectedPacket(null)} />,
           document.body
         )}
     </div>

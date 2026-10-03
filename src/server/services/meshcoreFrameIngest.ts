@@ -15,11 +15,11 @@
  * automation and socket decisions stay with the caller, because the two
  * callers make different ones.
  *
- * GRP_DATA (0x06) is NOT handled: `ChannelCrypto` only parses the GRP_TXT
- * plaintext layout (timestamp | flags | "sender: text"), and GRP_DATA carries
- * a binary body with a different layout.
+ * GRP_DATA (0x06) is NOT ingested: it carries a binary body, not a chat
+ * message. `openGroupFrame` below can still open one for display (the Packet
+ * Monitor decode modal, #5567).
  */
-import { createHash } from 'node:crypto';
+import { createHash, createHmac, createDecipheriv, timingSafeEqual } from 'node:crypto';
 import { ChannelCrypto } from '@michaelhart/meshcore-decoder';
 import databaseService from '../../services/database.js';
 import { ALL_SOURCES } from '../../db/repositories/base.js';
@@ -222,6 +222,84 @@ export async function decryptGroupTextFrame(
       senderName: typeof data.sender === 'string' && data.sender !== '' ? data.sender : null,
       timestampSec: typeof data.timestamp === 'number' ? data.timestamp : 0,
       key,
+    };
+  }
+  return null;
+}
+
+/** A GRP_TXT or GRP_DATA body opened with one specific key. */
+export type OpenedGroupFrame =
+  | {
+      kind: 'text';
+      text: string;
+      senderName: string | null;
+      /** Sender's own clock, epoch seconds; 0 when it has none. */
+      timestampSec: number;
+    }
+  | {
+      kind: 'data';
+      /** Application data type (uint16), see firmware number_allocations.md. */
+      dataType: number;
+      /** The body, exactly `data_len` bytes, lowercase hex. */
+      dataHex: string;
+    };
+
+/**
+ * Verify the MAC and decrypt a group ciphertext the way the firmware does
+ * (`Utils::MACThenDecrypt`): HMAC-SHA256 over the ciphertext, keyed with the
+ * secret zero-padded to 32 bytes, truncated to 2 bytes; then AES-128-ECB with
+ * no padding. Returns null on a bad MAC or a malformed ciphertext.
+ */
+function macThenDecrypt(ciphertextHex: string, cipherMacHex: string, secretHex: string): Buffer | null {
+  const secret = Buffer.from(secretHex, 'hex');
+  const ct = Buffer.from(ciphertextHex, 'hex');
+  const mac = Buffer.from(cipherMacHex, 'hex');
+  if (secret.length !== 16 || mac.length !== 2 || ct.length === 0 || ct.length % 16 !== 0) return null;
+  const key32 = Buffer.alloc(32);
+  secret.copy(key32);
+  const want = createHmac('sha256', key32).update(ct).digest().subarray(0, 2);
+  if (!timingSafeEqual(want, mac)) return null;
+  const decipher = createDecipheriv('aes-128-ecb', secret, null);
+  decipher.setAutoPadding(false);
+  return Buffer.concat([decipher.update(ct), decipher.final()]);
+}
+
+/**
+ * Open one group frame with ONE key, for display (#5567). No key lookup and
+ * no access check: the caller picks the key and decides who may see the
+ * result. Returns null when this key does not open the frame.
+ *
+ * `payloadType` 0x05 (GRP_TXT) parses through `ChannelCrypto`, the same path
+ * ingest uses. 0x06 (GRP_DATA) is `data_type(2 LE) | data_len(1) | data`, per
+ * the firmware's `BaseChatMesh::onGroupDataRecv`; a `data_len` that overruns
+ * the plaintext is rejected, as the firmware does.
+ */
+export function openGroupFrame(
+  payloadType: number,
+  group: { cipherMacHex: string; ciphertextHex: string },
+  secretHex: string,
+): OpenedGroupFrame | null {
+  if (payloadType === 0x05) {
+    const res = ChannelCrypto.decryptGroupTextMessage(group.ciphertextHex, group.cipherMacHex, secretHex);
+    const data = res?.success ? (res.data as ChannelPlaintext | undefined) : undefined;
+    if (!data || typeof data.message !== 'string') return null;
+    return {
+      kind: 'text',
+      text: data.message,
+      senderName: typeof data.sender === 'string' && data.sender !== '' ? data.sender : null,
+      // The library builds this with `<< 24`, which goes negative past 2038.
+      timestampSec: typeof data.timestamp === 'number' ? data.timestamp >>> 0 : 0,
+    };
+  }
+  if (payloadType === 0x06) {
+    const plain = macThenDecrypt(group.ciphertextHex, group.cipherMacHex, secretHex);
+    if (!plain || plain.length < 3) return null;
+    const dataLen = plain[2];
+    if (dataLen > plain.length - 3) return null;
+    return {
+      kind: 'data',
+      dataType: plain.readUInt16LE(0),
+      dataHex: plain.subarray(3, 3 + dataLen).toString('hex'),
     };
   }
   return null;
