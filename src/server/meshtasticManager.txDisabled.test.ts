@@ -257,3 +257,32 @@ describe('MeshtasticManager — TX-disabled transmit guard (#4294 WP1)', () => {
     });
   });
 });
+
+// #5547: the LoRa save route backfills an omitted modemPreset from this, so an
+// omission never encodes as 0 (LONG_FAST) in the whole-struct replace.
+describe('MeshtasticManager.getConfiguredModemPreset()', () => {
+  const make = (lora: unknown) => {
+    const mgr = new MeshtasticManager('src-1', { host: '127.0.0.1', port: 4403 });
+    (mgr as any).actualDeviceConfig = lora === undefined ? null : { lora };
+    return mgr;
+  };
+
+  it('is undefined before LoRa config arrives', () => {
+    expect(make(undefined).getConfiguredModemPreset()).toBeUndefined();
+  });
+
+  it('returns the reported preset, including TINY_FAST', () => {
+    expect(make({ modemPreset: 14 }).getConfiguredModemPreset()).toBe(14);
+    expect(make({ modemPreset: 9 }).getConfiguredModemPreset()).toBe(9);
+  });
+
+  it('reads an elided preset as LONG_FAST (proto3 omits 0)', () => {
+    expect(make({ hopLimit: 3 }).getConfiguredModemPreset()).toBe(0);
+    expect(make({ modemPreset: null }).getConfiguredModemPreset()).toBe(0);
+  });
+
+  it('is undefined for a value it cannot trust', () => {
+    expect(make({ modemPreset: 'TINY_FAST' }).getConfiguredModemPreset()).toBeUndefined();
+    expect(make({ modemPreset: -1 }).getConfiguredModemPreset()).toBeUndefined();
+  });
+});

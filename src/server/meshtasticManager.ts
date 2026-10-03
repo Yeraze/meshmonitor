@@ -10298,6 +10298,21 @@ class MeshtasticManager implements ISourceManager {
   }
 
   /**
+   * The modem preset the local radio last reported, as a wire enum number, or
+   * undefined when LoRa config has not arrived. Used to backfill a LoRa save
+   * that omits modemPreset: setLoRaConfig is a whole-struct replace, so an
+   * omitted preset would otherwise encode as 0 (LONG_FAST) on the radio (#5547).
+   * proto3 elides LONG_FAST (0), so a LoRa config without the field means 0.
+   */
+  getConfiguredModemPreset(): number | undefined {
+    const lora = this.actualDeviceConfig?.lora;
+    if (!lora) return undefined;
+    const preset = lora.modemPreset;
+    if (preset === undefined || preset === null) return 0;
+    return typeof preset === 'number' && Number.isInteger(preset) && preset >= 0 ? preset : undefined;
+  }
+
+  /**
    * The hop limit THIS node is configured to use for its own outgoing packets,
    * read from the in-memory device config. Falls back to the firmware default
    * (3) when the LoRa config hasn't arrived yet. No DB access — safe to call

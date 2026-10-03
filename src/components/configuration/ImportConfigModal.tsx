@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import apiService from '../../services/api';
 import { useResolvedSourceId } from '../../hooks/useResolvedSourceId';
 import { REGION_OPTIONS } from './constants';
+import { MODEM_PRESET_NAMES } from '../../utils/loraFrequency';
 
 interface ImportConfigModalProps {
   isOpen: boolean;
@@ -26,23 +27,9 @@ interface DecodedConfig {
   loraConfig?: any;
 }
 
-const modemPresetNames: { [key: number]: string } = {
-  0: 'LONG_FAST',
-  1: 'LONG_SLOW',
-  2: 'VERY_LONG_SLOW',
-  3: 'MEDIUM_SLOW',
-  4: 'MEDIUM_FAST',
-  5: 'SHORT_SLOW',
-  6: 'SHORT_FAST',
-  7: 'LONG_MODERATE',
-  8: 'SHORT_TURBO',
-  9: 'LONG_TURBO',
-  10: 'LITE_FAST',
-  11: 'LITE_SLOW',
-  12: 'NARROW_FAST',
-  13: 'NARROW_SLOW',
-  16: 'MEDIUM_TURBO'
-};
+// Canonical enum-name table (covers every ModemPreset incl. TINY_FAST/TINY_SLOW,
+// #5547) instead of a hand-maintained copy that had drifted.
+const modemPresetNames = MODEM_PRESET_NAMES;
 
 // Derived from REGION_OPTIONS (the authoritative protobuf-enum-ordered table)
 // instead of a hand-maintained duplicate: the old literal table had codes 13-18

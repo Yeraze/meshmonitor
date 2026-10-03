@@ -199,9 +199,12 @@ const LORA_24_REGION = 13;
  * (frequency display, source radio summary) and `src/components/**` is not in
  * `tsconfig.server.json`'s include set.
  *
- * Presets NOT implemented in the firmware switch (VERY_LONG_SLOW, LITE_*,
- * NARROW_*, TINY_*) fall through to the LONG_FAST default — see
- * DEFAULT_PRESET_BW — which is exactly what firmware does with them.
+ * LITE_*, NARROW_*, TINY_* and MEDIUM_TURBO exist from firmware 2.8 (verified
+ * against v2.8.1 and `develop`, #5547); they keep the same bandwidth on the
+ * 2.4 GHz band, as firmware does not widen them. Presets the switch does not
+ * implement (VERY_LONG_SLOW, and every 2.8-only preset on older firmware) fall
+ * through to the LONG_FAST default — see DEFAULT_PRESET_BW — which is exactly
+ * what firmware does with them.
  */
 const PRESET_BANDWIDTH_KHZ: Record<number, { normal: number; wide: number }> = {
   0: { normal: 250, wide: 812.5 },   // LONG_FAST (default)
@@ -213,7 +216,13 @@ const PRESET_BANDWIDTH_KHZ: Record<number, { normal: number; wide: number }> = {
   7: { normal: 125, wide: 406.25 },  // LONG_MODERATE
   8: { normal: 500, wide: 1625 },    // SHORT_TURBO
   9: { normal: 500, wide: 1625 },    // LONG_TURBO
-  16: { normal: 500, wide: 1625 }    // MEDIUM_TURBO
+  10: { normal: 125, wide: 125 },    // LITE_FAST   (2.8+)
+  11: { normal: 125, wide: 125 },    // LITE_SLOW   (2.8+)
+  12: { normal: 62.5, wide: 62.5 },  // NARROW_FAST (2.8+)
+  13: { normal: 62.5, wide: 62.5 },  // NARROW_SLOW (2.8+)
+  14: { normal: 15.6, wide: 15.6 },  // TINY_FAST   (2.8+)
+  15: { normal: 15.6, wide: 15.6 },  // TINY_SLOW   (2.8+)
+  16: { normal: 500, wide: 1625 }    // MEDIUM_TURBO (2.8+)
 };
 const DEFAULT_PRESET_BW = { normal: 250, wide: 812.5 }; // LONG_FAST fallback
 

@@ -181,6 +181,7 @@ describe('configRoutes', () => {
     let setLoRaConfig: ReturnType<typeof vi.fn>;
     let requestModuleConfig: ReturnType<typeof vi.fn>;
     let isTxEnabled: ReturnType<typeof vi.fn>;
+    let getConfiguredModemPreset: ReturnType<typeof vi.fn>;
 
     beforeEach(async () => {
       setLoRaConfig = vi.fn().mockResolvedValue(undefined);
@@ -190,6 +191,7 @@ describe('configRoutes', () => {
       // carries an explicit txEnabled). Individual tests override this to
       // exercise the omitted-field backfill.
       isTxEnabled = vi.fn().mockReturnValue(true);
+      getConfiguredModemPreset = vi.fn().mockReturnValue(undefined);
       const fakeManager: ISourceManager & { setLoRaConfig: typeof setLoRaConfig; requestModuleConfig: typeof requestModuleConfig; isTxEnabled: typeof isTxEnabled } = {
         sourceId: harness.sourceA,
         sourceType: 'meshtastic_tcp',
@@ -202,6 +204,7 @@ describe('configRoutes', () => {
         setLoRaConfig,
         requestModuleConfig,
         isTxEnabled,
+        getConfiguredModemPreset,
       } as unknown as ISourceManager & { setLoRaConfig: typeof setLoRaConfig; requestModuleConfig: typeof requestModuleConfig; isTxEnabled: typeof isTxEnabled };
       await sourceManagerRegistry.addManager(fakeManager);
       await harness.grant(harness.limited.id, 'configuration', 'write', harness.sourceA);
@@ -249,6 +252,37 @@ describe('configRoutes', () => {
 
       expect(res.status).toBe(200);
       expect(setLoRaConfig).toHaveBeenCalledWith(expect.objectContaining({ txEnabled: true, hopLimit: 5 }));
+    });
+
+    // #5547: an omitted modemPreset encodes as 0 (LONG_FAST) in the
+    // whole-struct replace. The Config tab omits it deliberately when it
+    // cannot name the radio's preset, so the route keeps the device's value.
+    it('backfills an omitted modemPreset from the device state instead of letting it become LONG_FAST', async () => {
+      getConfiguredModemPreset.mockReturnValue(14); // TINY_FAST
+      const agent = await harness.loginAs(harness.limited);
+      const res = await agent.post('/lora').send({ sourceId: harness.sourceA, usePreset: false, bandwidth: 500 });
+
+      expect(res.status).toBe(200);
+      expect(setLoRaConfig).toHaveBeenCalledWith(expect.objectContaining({ modemPreset: 14, usePreset: false, bandwidth: 500 }));
+    });
+
+    it('never overrides a modemPreset the caller sent', async () => {
+      getConfiguredModemPreset.mockReturnValue(14);
+      const agent = await harness.loginAs(harness.limited);
+      const res = await agent.post('/lora').send({ sourceId: harness.sourceA, modemPreset: 0 });
+
+      expect(res.status).toBe(200);
+      expect(setLoRaConfig).toHaveBeenCalledWith(expect.objectContaining({ modemPreset: 0 }));
+      expect(getConfiguredModemPreset).not.toHaveBeenCalled();
+    });
+
+    it('leaves modemPreset unset when neither the caller nor the device knows it', async () => {
+      getConfiguredModemPreset.mockReturnValue(undefined);
+      const agent = await harness.loginAs(harness.limited);
+      const res = await agent.post('/lora').send({ sourceId: harness.sourceA, hopLimit: 3 });
+
+      expect(res.status).toBe(200);
+      expect(setLoRaConfig.mock.calls[0][0].modemPreset).toBeUndefined();
     });
   });
 
