@@ -10,6 +10,7 @@ import {
   MeshCoreNativeBackend,
   __setMeshCoreModule,
   formatOutPath,
+  decodeOutPathLen,
 } from './meshcoreNativeBackend.js';
 
 // ---------------- mock meshcore.js ----------------
@@ -291,7 +292,10 @@ class MockConnection extends EventEmitter {
       (ct: any) => ct.publicKey && Buffer.from(ct.publicKey).equals(Buffer.from(pk)),
     );
     if (target) {
-      if (typeof outPathLen === 'number') target.outPathLen = outPathLen;
+      // Real meshcore.js writes the byte raw but reads it back with
+      // readInt8(), so bit-7 values (3-byte widths, 0xFF) come back negative
+      // (#5554). Model that so read-back verification sees what it would live.
+      if (typeof outPathLen === 'number') target.outPathLen = (outPathLen << 24) >> 24;
       if (outPath) target.outPath = outPath;
       if (typeof advName === 'string') target.advName = advName;
     }
@@ -1524,6 +1528,53 @@ describe('MeshCoreNativeBackend', () => {
     }));
   });
 
+  it.each([
+    // [label, raw outPathLen as meshcore.js reads it (Int8), bytes, expected hex]
+    ['1-byte', 0x03, [0xa3, 0x7f, 0x02], 'a3,7f,02'],
+    ['2-byte', 0x42, [0xa3, 0xf2, 0x7f, 0x01], 'a3f2,7f01'],
+    ['3-byte (negative Int8)', 0x82 - 256, [0xa3, 0xf2, 0x10, 0x7f, 0x01, 0x22], 'a3f210,7f0122'],
+  ])('get_contacts decodes a %s hash path (#5554)', async (_label, rawLen, bytes, hex) => {
+    const backend = new MeshCoreNativeBackend('src-1', {
+      connectionType: 'serial',
+      serialPort: '/dev/ttyUSB0',
+    });
+    await backend.connect();
+    const conn = lastInstanceRef.current as MockConnection;
+    const pubKey = new Uint8Array(32);
+    pubKey[0] = 0xcc;
+    const outPath = new Uint8Array(64);
+    outPath.set(bytes as number[]);
+    conn.contactsResponse = [{
+      publicKey: pubKey, type: AdvType.Chat, advName: 'Carol',
+      outPath, outPathLen: rawLen,
+      advLat: 0, advLon: 0, lastAdvert: 1700000000,
+    }];
+    const resp = await backend.sendCommand('get_contacts', {});
+    expect(resp.success).toBe(true);
+    expect(resp.data[0]).toEqual(expect.objectContaining({
+      out_path: hex,
+      path_len: (hex as string).split(',').length,
+    }));
+  });
+
+  it('get_contacts treats 0xFF read as -1 as flood (unknown path)', async () => {
+    const backend = new MeshCoreNativeBackend('src-1', {
+      connectionType: 'serial',
+      serialPort: '/dev/ttyUSB0',
+    });
+    await backend.connect();
+    const conn = lastInstanceRef.current as MockConnection;
+    const pubKey = new Uint8Array(32);
+    pubKey[0] = 0xcc;
+    conn.contactsResponse = [{
+      publicKey: pubKey, type: AdvType.Chat, advName: 'Carol',
+      outPath: new Uint8Array(64), outPathLen: -1,
+      advLat: 0, advLon: 0, lastAdvert: 1700000000,
+    }];
+    const resp = await backend.sendCommand('get_contacts', {});
+    expect(resp.data[0]).toEqual(expect.objectContaining({ out_path: null, path_len: null }));
+  });
+
   it('reset_path forwards the resolved pubkey to the connection', async () => {
     const backend = new MeshCoreNativeBackend('src-1', {
       connectionType: 'serial',
@@ -1669,6 +1720,82 @@ describe('MeshCoreNativeBackend', () => {
     expect(args[5]).toBe('Bob');
   });
 
+  it('set_out_path accepts a 3-byte-width path whose read-back arrives as a negative Int8 (#5554)', async () => {
+    const backend = new MeshCoreNativeBackend('src-1', {
+      connectionType: 'serial',
+      serialPort: '/dev/ttyUSB0',
+    });
+    await backend.connect();
+    const conn = lastInstanceRef.current as MockConnection;
+    const targetBytes = new Uint8Array(32);
+    targetBytes[0] = 0xab; targetBytes[1] = 0xcd; targetBytes[2] = 0xef; targetBytes[3] = 0x01;
+    const fullContact = {
+      publicKey: targetBytes,
+      type: AdvType.Chat,
+      flags: 0,
+      outPathLen: -1,
+      outPath: new Uint8Array(64),
+      advName: 'Bob',
+      lastAdvert: 1700000000,
+      advLat: 10_000_000,
+      advLon: 20_000_000,
+      lastMod: 1700000000,
+    };
+    conn.contactsResponse = [fullContact];
+
+    // Three 3-byte hops → 9 bytes, packed = (2<<6)|3 = 0x83.
+    const pathBytes = Uint8Array.from([0xa3, 0xf2, 0x10, 0x7f, 0x01, 0x22, 0x55, 0x66, 0x77]);
+    const resp = await backend.sendCommand('set_out_path', {
+      public_key: 'abcdef01' + '0'.repeat(56),
+      out_path: pathBytes,
+      hash_bytes: 3,
+    });
+
+    expect(resp.success).toBe(true);
+    expect(conn.addOrUpdateContactCalls).toHaveLength(1);
+    expect(conn.addOrUpdateContactCalls[0][3]).toBe(0x83);
+    // The mock read it back signed, exactly like meshcore.js.
+    expect(fullContact.outPathLen).toBe(0x83 - 256);
+
+    // And get_contacts renders the stored path, not flood/unknown.
+    const contacts = await backend.sendCommand('get_contacts', {});
+    expect(contacts.data[0]).toEqual(expect.objectContaining({
+      out_path: 'a3f210,7f0122,556677',
+      path_len: 3,
+    }));
+  });
+
+  it('set_out_path still fails when the read-back shows a different stored length', async () => {
+    const backend = new MeshCoreNativeBackend('src-1', {
+      connectionType: 'serial',
+      serialPort: '/dev/ttyUSB0',
+    });
+    await backend.connect();
+    const conn = lastInstanceRef.current as MockConnection;
+    const targetBytes = new Uint8Array(32);
+    targetBytes[0] = 0xab; targetBytes[1] = 0xcd; targetBytes[2] = 0xef; targetBytes[3] = 0x01;
+    const fullContact = {
+      publicKey: targetBytes, type: AdvType.Chat, flags: 0, outPathLen: -1,
+      outPath: new Uint8Array(64), advName: 'Bob', lastAdvert: 1700000000,
+      advLat: 0, advLon: 0, lastMod: 1700000000,
+    };
+    conn.contactsResponse = [fullContact];
+    // Device "stores" a 2-byte width instead of the requested 3-byte one.
+    conn.addOrUpdateContact = async (...args: any[]) => {
+      conn.addOrUpdateContactCalls.push(args);
+      fullContact.outPathLen = 0x43;
+      fullContact.outPath = args[4];
+    };
+
+    const resp = await backend.sendCommand('set_out_path', {
+      public_key: 'abcdef01' + '0'.repeat(56),
+      out_path: Uint8Array.from([0xa3, 0xf2, 0x10, 0x7f, 0x01, 0x22, 0x55, 0x66, 0x77]),
+      hash_bytes: 3,
+    });
+    expect(resp.success).toBe(false);
+    expect(resp.error).toMatch(/not confirmed on device/);
+  });
+
   it('set_out_path rejects oversize paths (>64 bytes)', async () => {
     const backend = new MeshCoreNativeBackend('src-1', {
       connectionType: 'serial',
@@ -1803,6 +1930,37 @@ class MockConnectionV12 extends MockConnection {
     manufacturerModel: 'Heltec V3',
   };
 }
+
+describe('decodeOutPathLen (#5554)', () => {
+  it('returns undefined when the field is absent', () => {
+    expect(decodeOutPathLen(undefined)).toBeUndefined();
+    expect(decodeOutPathLen(null)).toBeUndefined();
+  });
+
+  it('treats 0xFF (and its Int8 form -1) as OUT_PATH_UNKNOWN', () => {
+    expect(decodeOutPathLen(0xff)).toBeNull();
+    expect(decodeOutPathLen(-1)).toBeNull();
+  });
+
+  it('treats the reserved 4-byte width (top bits 11) as unknown', () => {
+    expect(decodeOutPathLen(0xc2)).toBeNull();
+    expect(decodeOutPathLen(0xc2 - 256)).toBeNull();
+  });
+
+  it('decodes 1-, 2- and 3-byte widths', () => {
+    expect(decodeOutPathLen(0)).toEqual({ hopHashBytes: 1, hopCount: 0, byteCount: 0 });
+    expect(decodeOutPathLen(0x05)).toEqual({ hopHashBytes: 1, hopCount: 5, byteCount: 5 });
+    expect(decodeOutPathLen(0x44)).toEqual({ hopHashBytes: 2, hopCount: 4, byteCount: 8 });
+    expect(decodeOutPathLen(0x83)).toEqual({ hopHashBytes: 3, hopCount: 3, byteCount: 9 });
+  });
+
+  it('unsigns a 3-byte width read as a negative Int8', () => {
+    // 0x83 read by readInt8() = -125.
+    expect(decodeOutPathLen(-125)).toEqual({ hopHashBytes: 3, hopCount: 3, byteCount: 9 });
+    // 0x80 = 3-byte width, zero hops = direct.
+    expect(decodeOutPathLen(-128)).toEqual({ hopHashBytes: 3, hopCount: 0, byteCount: 0 });
+  });
+});
 
 describe('formatOutPath', () => {
   it('returns nulls for the OUT_PATH_UNKNOWN sentinel (0xFF or -1)', () => {
