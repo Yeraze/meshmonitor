@@ -10,7 +10,7 @@
  */
 import type { ReactNode } from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MeshCoreInfoView } from './MeshCoreInfoView';
 
@@ -18,6 +18,24 @@ vi.mock('react-i18next', async () => {
   const { createReactI18nextMock } = await import('../../test/mockI18n');
   return createReactI18nextMock();
 });
+
+// #5549: the favorite star is gated on settings:write for this source.
+const authState = vi.hoisted(() => ({ canWriteSettings: true, calls: [] as unknown[][] }));
+vi.mock('../../contexts/AuthContext', () => ({
+  useAuth: () => ({
+    hasPermission: (...args: unknown[]) => {
+      authState.calls.push(args);
+      return authState.canWriteSettings;
+    },
+  }),
+}));
+vi.mock('../../hooks/useCsrfFetch', () => ({
+  useCsrfFetch: () => (url: string, init?: RequestInit) => fetch(url, init),
+}));
+const showToastMock = vi.fn();
+vi.mock('../ToastContainer', () => ({
+  useToast: () => ({ showToast: showToastMock }),
+}));
 
 // Recharts uses ResizeObserver. jsdom doesn't ship it, and the graph grid
 // only renders when there's *no* matching `mc_` telemetry anyway in these
@@ -41,6 +59,8 @@ const PK = 'a'.repeat(60) + 'beef';
 
 beforeEach(() => {
   vi.restoreAllMocks();
+  authState.canWriteSettings = true;
+  authState.calls = [];
 });
 
 describe('MeshCoreInfoView', () => {
@@ -249,6 +269,104 @@ describe('MeshCoreInfoView', () => {
     expect(await screen.findByTestId('meshcore-info-virtual-node')).toBeTruthy();
     expect(screen.getByTestId('meshcore-vn-pki-export').textContent).toBe('info.virtual_node_admin_allowed');
     expect(screen.getByTestId('meshcore-vn-pki-import').textContent).toBe('info.virtual_node_admin_blocked');
+  });
+
+  // ---- #5549 favorites + #5550 shared labels ----
+
+  const REPEATER_KEY = 'c'.repeat(64);
+
+  function stubWithTelemetry(opts: { favorites?: Array<{ nodeId: string; telemetryType: string }> } = {}) {
+    const posted: Array<{ url: string; body: unknown }> = [];
+    const json = (body: unknown) =>
+      new Response(JSON.stringify(body), { status: 200, headers: { 'content-type': 'application/json' } });
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string, init?: RequestInit) => {
+        if (url.endsWith('/meshcore/info')) {
+          return json({
+            success: true,
+            data: {
+              sourceId: 'src-rpt',
+              connected: true,
+              deviceType: 2,
+              deviceTypeName: 'Repeater',
+              identity: { publicKey: 'repeater', name: 'Repeater Rico', advType: 2 },
+              latest: { timestamp: 1700000000000, batteryMv: 3950 },
+              telemetryRef: { nodeId: REPEATER_KEY, nodeNum: 1, sourceId: 'src-rpt' },
+            },
+          });
+        }
+        if (url.includes('/api/telemetry/')) {
+          const row = (telemetryType: string, value: number, timestamp: number) => ({
+            nodeId: REPEATER_KEY, nodeNum: 1, telemetryType, value, timestamp, unit: '', createdAt: timestamp,
+          });
+          return json([
+            row('mc_battery_volts', 3.95, 1700000000000),
+            row('mc_battery_volts', 3.96, 1700000060000),
+            row('mc_pkt_sent_rate', 4, 1700000000000),
+            row('mc_pkt_flood_tx', 12, 1700000000000),
+            row('mc_tx_air_secs', 30, 1700000000000),
+          ]);
+        }
+        if (url.includes('/api/settings')) {
+          if (init?.method === 'POST') {
+            posted.push({ url, body: JSON.parse(String(init.body)) });
+            return json({ success: true });
+          }
+          return json({ telemetryFavorites: JSON.stringify(opts.favorites ?? []) });
+        }
+        return json([]);
+      }) as unknown as typeof fetch,
+    );
+    return posted;
+  }
+
+  it('labels graphs and counters with the shared chart labels (#5550)', async () => {
+    stubWithTelemetry();
+    render(withQueryClient(<MeshCoreInfoView baseUrl="" sourceId="src-rpt" status={null} />));
+
+    expect(await screen.findByText('Packets Sent Rate (/min)')).toBeTruthy();
+    expect(screen.getByText('Battery (V)')).toBeTruthy();
+    // Counters use the same labels as the companion-polled mc_status_* names.
+    expect(screen.getByText('Sent (Flood)')).toBeTruthy();
+    expect(screen.getByText('TX Air Time (s)')).toBeTruthy();
+    expect(screen.queryByText('Flood TX')).toBeNull();
+  });
+
+  it('shows a favorite star per graph, keyed on the telemetry pubkey, and saves a toggle (#5549)', async () => {
+    const posted = stubWithTelemetry({ favorites: [{ nodeId: REPEATER_KEY, telemetryType: 'mc_battery_volts' }] });
+    render(withQueryClient(<MeshCoreInfoView baseUrl="" sourceId="src-rpt" status={null} />));
+
+    const batteryGraph = await screen.findByTestId('meshcore-info-graph-mc_battery_volts');
+    // Existing favorite renders pressed.
+    await waitFor(() => {
+      expect(batteryGraph.querySelector('button')?.getAttribute('aria-pressed')).toBe('true');
+    });
+    const rateGraph = screen.getByTestId('meshcore-info-graph-mc_pkt_sent_rate');
+    const rateStar = rateGraph.querySelector('button') as HTMLButtonElement;
+    expect(rateStar.getAttribute('aria-pressed')).toBe('false');
+    expect(rateStar.getAttribute('aria-label')).toBe('telemetry.add_favorite');
+
+    fireEvent.click(rateStar);
+
+    await waitFor(() => expect(posted).toHaveLength(1));
+    expect(posted[0].url).toBe('/api/settings');
+    const saved = JSON.parse((posted[0].body as { telemetryFavorites: string }).telemetryFavorites);
+    expect(saved).toEqual(expect.arrayContaining([
+      { nodeId: REPEATER_KEY, telemetryType: 'mc_battery_volts' },
+      { nodeId: REPEATER_KEY, telemetryType: 'mc_pkt_sent_rate' },
+    ]));
+    expect(authState.calls).toContainEqual(['settings', 'write', { sourceId: 'src-rpt' }]);
+  });
+
+  it('hides the favorite star when the user cannot write settings (#5549)', async () => {
+    authState.canWriteSettings = false;
+    stubWithTelemetry();
+    render(withQueryClient(<MeshCoreInfoView baseUrl="" sourceId="src-rpt" status={null} />));
+
+    const batteryGraph = await screen.findByTestId('meshcore-info-graph-mc_battery_volts');
+    expect(batteryGraph.querySelector('button')).toBeNull();
+    expect(screen.queryByLabelText('telemetry.add_favorite')).toBeNull();
   });
 
   it('renders an empty-state when the source has no localNode', async () => {
