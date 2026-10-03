@@ -1,0 +1,64 @@
+/* "Import from MeshCore device" button and dialog (#5552). */
+.button {
+  padding: 0.5rem 1rem;
+  background-color: var(--color-accent);
+  color: var(--color-bg);
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.dialog {
+  background-color: var(--color-bg);
+  border-radius: 8px;
+  padding: 1.5rem;
+  max-width: 500px;
+  width: 90%;
+  max-height: 80vh;
+  overflow-y: auto;
+}
+
+.title {
+  margin-top: 0;
+}
+
+.note {
+  color: var(--color-text-muted);
+  font-size: 0.9rem;
+}
+
+.result {
+  margin: 1rem 0 0;
+  padding-left: 1.2rem;
+  font-size: 0.9rem;
+}
+
+.actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 1.5rem;
+}
+
+.secondary {
+  padding: 0.5rem 1rem;
+  background-color: var(--color-surface-hover);
+  color: var(--color-text);
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+}

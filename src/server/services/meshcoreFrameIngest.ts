@@ -96,12 +96,37 @@ export interface ChannelKeyRow {
   sourceId?: string | null;
 }
 
-/** A channel key whose hash matched a frame. */
+/** The subset of a MeshCore `channel_database` row this module reads (#5552). */
+export interface VirtualChannelKeyRow {
+  id?: number;
+  name?: string | null;
+  psk?: string | null;
+}
+
+/**
+ * A channel key whose hash matched a frame. It comes from a device source's
+ * `channels` row (`sourceId` + `channelIdx` set) or from a MeshCore virtual
+ * channel in `channel_database` (`channelDbId` set, the other two null).
+ */
 export interface ChannelKeyCandidate {
   sourceId: string | null;
-  channelIdx: number;
+  channelIdx: number | null;
+  channelDbId: number | null;
   name: string;
   secretHex: string;
+}
+
+/**
+ * Enabled MeshCore virtual channels (#5552): keys held by the server alone, so
+ * decrypt is not capped by a companion's ~40 slots. Never the Meshtastic rows.
+ * Best-effort: a read failure leaves the device keys usable.
+ */
+async function readVirtualChannelKeys(): Promise<VirtualChannelKeyRow[]> {
+  try {
+    return (await databaseService.channelDatabase?.getEnabledAsync?.('meshcore')) ?? [];
+  } catch {
+    return [];
+  }
 }
 
 /**
@@ -112,23 +137,43 @@ export interface ChannelKeyCandidate {
  * a radio-less or channel-less source has no keys of its own. Selecting by
  * hash means at most a couple of candidates are ever tried per frame.
  *
- * `rows` lets a caller pass a pre-read list; by default it is read fresh.
+ * Device keys come first, then MeshCore virtual channels (`channel_database`
+ * rows with protocol 'meshcore', #5552) whose secret no device key already
+ * supplied. `rows` / `virtualRows` let a caller pass pre-read lists; by
+ * default both are read fresh.
  */
 export async function findChannelKeysByHash(
   channelHashHex: string,
   rows?: ChannelKeyRow[],
+  virtualRows?: VirtualChannelKeyRow[],
 ): Promise<ChannelKeyCandidate[]> {
   const all = rows ?? ((await databaseService.channels.getAllChannels(ALL_SOURCES)) as ChannelKeyRow[]);
   const out: ChannelKeyCandidate[] = [];
   const want = channelHashHex.toLowerCase();
+  const seen = new Set<string>();
   for (const ch of all) {
     const secretHex = pskToHex(ch.psk);
     if (!secretHex) continue;
     if (ChannelCrypto.calculateChannelHash(secretHex) !== want) continue;
+    seen.add(secretHex);
     out.push({
       sourceId: ch.sourceId ?? null,
       channelIdx: Number(ch.id),
+      channelDbId: null,
       name: typeof ch.name === 'string' ? ch.name : '',
+      secretHex,
+    });
+  }
+  for (const vc of virtualRows ?? (rows ? [] : await readVirtualChannelKeys())) {
+    const secretHex = pskToHex(vc.psk);
+    if (!secretHex || seen.has(secretHex)) continue;
+    if (ChannelCrypto.calculateChannelHash(secretHex) !== want) continue;
+    seen.add(secretHex);
+    out.push({
+      sourceId: null,
+      channelIdx: null,
+      channelDbId: vc.id ?? null,
+      name: typeof vc.name === 'string' ? vc.name : '',
       secretHex,
     });
   }
@@ -163,8 +208,9 @@ export interface DecryptedGroupText {
 export async function decryptGroupTextFrame(
   group: { channelHash: string; cipherMacHex: string; ciphertextHex: string },
   rows?: ChannelKeyRow[],
+  virtualRows?: VirtualChannelKeyRow[],
 ): Promise<DecryptedGroupText | null> {
-  const candidates = await findChannelKeysByHash(group.channelHash, rows);
+  const candidates = await findChannelKeysByHash(group.channelHash, rows, virtualRows);
   for (const key of candidates) {
     const res = ChannelCrypto.decryptGroupTextMessage(group.ciphertextHex, group.cipherMacHex, key.secretHex);
     // The library already splits the plaintext into timestamp / flags /
@@ -179,6 +225,16 @@ export async function decryptGroupTextFrame(
     };
   }
   return null;
+}
+
+/**
+ * Count one stored message against the virtual channel whose key opened it
+ * (#5552), for the Channel Database page. No-op for a device key. Best-effort:
+ * a counter must never cost an ingested message.
+ */
+export function noteVirtualChannelDecrypt(key: ChannelKeyCandidate): void {
+  if (key.channelDbId === null) return;
+  void databaseService.channelDatabase.incrementDecryptedCountAsync(key.channelDbId).catch(() => undefined);
 }
 
 /**

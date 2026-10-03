@@ -24,6 +24,7 @@ import { logger } from '../../utils/logger';
 import { REBROADCAST_MODE_OPTIONS } from './constants';
 import { normalizeChannelUrlPskToBase64, getPskBase64ByteLength } from '../../utils/channelUrl';
 import styles from './ChannelDatabaseSection.module.css';
+import MeshCoreChannelImport from './MeshCoreChannelImport';
 
 /**
  * Shape of a decoded channel returned by `apiService.decodeChannelUrl`
@@ -57,6 +58,24 @@ interface ChannelEditState {
   description: string;
   isEnabled: boolean;
   enforceNameValidation: boolean;
+  /** 'meshcore' rows hold a 16-byte MeshCore secret (#5552). */
+  protocol: 'meshtastic' | 'meshcore';
+}
+
+/**
+ * Check a MeshCore channel secret as typed (#5552): 32 hex characters or
+ * Base64 of 16 bytes. Empty is allowed only for a `#hashtag` name, whose
+ * secret the server derives from the name.
+ */
+function isValidMeshcoreSecretInput(name: string, secret: string): boolean {
+  const s = secret.trim();
+  if (s === '') return name.trim().startsWith('#');
+  if (/^[0-9a-fA-F]+$/.test(s)) return s.length === 32;
+  try {
+    return atob(s).length === 16;
+  } catch {
+    return false;
+  }
 }
 
 // Sortable channel card props
@@ -134,6 +153,11 @@ const SortableChannelCard: React.FC<SortableChannelCardProps> = ({
         <div className={styles.cardInfo}>
           <h4 style={{ margin: 0, color: 'var(--color-text)', display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
             {channel.name}
+            <span className={styles.protocolBadge}>
+              {channel.protocol === 'meshcore'
+                ? t('channel_database.protocol_meshcore', 'MeshCore')
+                : t('channel_database.protocol_meshtastic', 'Meshtastic')}
+            </span>
             {channel.isEnabled ? (
               <span style={{ color: 'var(--color-success)', fontSize: '0.8rem' }}>{t('channel_database.enabled')}</span>
             ) : (
@@ -193,7 +217,8 @@ const SortableChannelCard: React.FC<SortableChannelCardProps> = ({
           >
             {t('common.edit')}
           </button>
-          {channel.isEnabled && (
+          {/* Retroactive decrypt re-reads the Meshtastic packet log only. */}
+          {channel.isEnabled && channel.protocol !== 'meshcore' && (
             <button
               onClick={() => onTriggerDecryption(channel.id)}
               disabled={decryptionRunning}
@@ -348,7 +373,8 @@ const ChannelDatabaseSection: React.FC<ChannelDatabaseSectionProps> = ({ isAdmin
   const fetchChannels = async () => {
     try {
       setLoading(true);
-      const response = await apiService.getChannelDatabaseEntries();
+      // 'all': this page manages both protocols' entries (#5552).
+      const response = await apiService.getChannelDatabaseEntries('all');
       setChannels(response.data || []);
     } catch (error) {
       logger.error('Error fetching channel database:', error);
@@ -365,7 +391,8 @@ const ChannelDatabaseSection: React.FC<ChannelDatabaseSectionProps> = ({ isAdmin
       psk: '',
       description: '',
       isEnabled: true,
-      enforceNameValidation: false
+      enforceNameValidation: false,
+      protocol: 'meshtastic'
     });
     setShowEditModal(true);
   };
@@ -377,13 +404,19 @@ const ChannelDatabaseSection: React.FC<ChannelDatabaseSectionProps> = ({ isAdmin
       psk: channel.psk || '',
       description: channel.description || '',
       isEnabled: channel.isEnabled,
-      enforceNameValidation: channel.enforceNameValidation ?? false
+      enforceNameValidation: channel.enforceNameValidation ?? false,
+      protocol: channel.protocol === 'meshcore' ? 'meshcore' : 'meshtastic'
     });
     setShowEditModal(true);
   };
 
   const handleSaveChannel = async () => {
     if (!editingChannel) return;
+
+    if (editingChannel.protocol === 'meshcore') {
+      await saveMeshcoreChannel(editingChannel);
+      return;
+    }
 
     if (!editingChannel.psk.trim()) {
       showToast(t('channel_database.toast_psk_required'), 'error');
@@ -457,6 +490,56 @@ const ChannelDatabaseSection: React.FC<ChannelDatabaseSectionProps> = ({ isAdmin
     }
   };
 
+  /**
+   * Save a MeshCore virtual channel (#5552). None of the Meshtastic PSK rules
+   * apply: the secret is 16 bytes, or left empty for a `#hashtag` name.
+   */
+  const saveMeshcoreChannel = async (entry: ChannelEditState) => {
+    if (!entry.name.trim()) {
+      showToast(t('channel_database.toast_name_required', 'Enter a channel name'), 'error');
+      return;
+    }
+    if (!isValidMeshcoreSecretInput(entry.name, entry.psk)) {
+      showToast(
+        t('channel_database.toast_meshcore_secret_invalid', 'A MeshCore secret is 16 bytes: 32 hex characters or Base64. Leave it empty only for a #hashtag channel.'),
+        'error',
+      );
+      return;
+    }
+    setIsSaving(true);
+    try {
+      const secret = entry.psk.trim();
+      if (entry.id) {
+        await apiService.updateChannelDatabaseEntry(entry.id, {
+          name: entry.name.trim(),
+          // Unchanged or empty secret: leave the stored one alone.
+          ...(secret ? { psk: secret } : {}),
+          description: entry.description || undefined,
+          isEnabled: entry.isEnabled,
+        });
+        showToast(t('channel_database.toast_channel_updated'), 'success');
+      } else {
+        await apiService.createChannelDatabaseEntry({
+          name: entry.name.trim(),
+          psk: secret,
+          description: entry.description || undefined,
+          isEnabled: entry.isEnabled,
+          protocol: 'meshcore',
+        });
+        showToast(t('channel_database.toast_channel_created'), 'success');
+      }
+      setShowEditModal(false);
+      setEditingChannel(null);
+      void fetchChannels();
+    } catch (error) {
+      logger.error('Error saving MeshCore channel:', error);
+      const errorMsg = error instanceof Error ? error.message : t('channel_database.toast_save_failed');
+      showToast(errorMsg, 'error');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   const handleDeleteChannel = async (id: number) => {
     setIsSaving(true);
     try {
@@ -507,8 +590,8 @@ const ChannelDatabaseSection: React.FC<ChannelDatabaseSectionProps> = ({ isAdmin
   };
 
   const handleGeneratePSK = () => {
-    // Generate 32 random bytes (256 bits for AES256)
-    const randomBytes = new Uint8Array(32);
+    // 32 random bytes (AES-256) for Meshtastic; MeshCore secrets are 16 bytes.
+    const randomBytes = new Uint8Array(editingChannel?.protocol === 'meshcore' ? 16 : 32);
     crypto.getRandomValues(randomBytes);
 
     // Convert to base64
@@ -536,6 +619,7 @@ const ChannelDatabaseSection: React.FC<ChannelDatabaseSectionProps> = ({ isAdmin
           description: ch.description ?? '',
           isEnabled: ch.isEnabled,
           enforceNameValidation: ch.enforceNameValidation ?? false,
+          protocol: ch.protocol === 'meshcore' ? 'meshcore' : 'meshtastic',
         }));
 
       const json = JSON.stringify(exportData, null, 2);
@@ -593,7 +677,8 @@ const ChannelDatabaseSection: React.FC<ChannelDatabaseSectionProps> = ({ isAdmin
             name: channelData.name,
             psk: channelData.psk,
             description: channelData.description,
-            isEnabled: channelData.isEnabled ?? true
+            isEnabled: channelData.isEnabled ?? true,
+            ...(channelData.protocol === 'meshcore' ? { protocol: 'meshcore' as const } : {})
           });
           imported++;
         }
@@ -880,6 +965,7 @@ const ChannelDatabaseSection: React.FC<ChannelDatabaseSectionProps> = ({ isAdmin
           >
             {t('common.import')}
           </button>
+          <MeshCoreChannelImport onImported={() => void fetchChannels()} />
           <button
             onClick={() => setShowUrlImportModal(true)}
             title={t('channel_database.import_from_url_title')}
@@ -1012,6 +1098,30 @@ const ChannelDatabaseSection: React.FC<ChannelDatabaseSectionProps> = ({ isAdmin
               {editingChannel.id ? t('channel_database.edit_channel') : t('channel_database.add_channel')}
             </h3>
 
+            {!editingChannel.id && (
+              <div className="setting-item">
+                <label htmlFor="channel-protocol">
+                  {t('channel_database.protocol', 'Protocol')}
+                  <span className="setting-description">
+                    {t('channel_database.protocol_description', 'Meshtastic keys decrypt Meshtastic packets. A MeshCore key is a 16-byte channel secret used to decrypt MeshCore channel messages heard by repeater and MQTT sources.')}
+                  </span>
+                </label>
+                <select
+                  id="channel-protocol"
+                  className="setting-input"
+                  value={editingChannel.protocol}
+                  onChange={(e) => setEditingChannel({
+                    ...editingChannel,
+                    protocol: e.target.value === 'meshcore' ? 'meshcore' : 'meshtastic',
+                    psk: '',
+                  })}
+                >
+                  <option value="meshtastic">{t('channel_database.protocol_meshtastic', 'Meshtastic')}</option>
+                  <option value="meshcore">{t('channel_database.protocol_meshcore', 'MeshCore')}</option>
+                </select>
+              </div>
+            )}
+
             <div className="setting-item">
               <label htmlFor="channel-name">
                 {t('channel_database.channel_name')}
@@ -1029,8 +1139,14 @@ const ChannelDatabaseSection: React.FC<ChannelDatabaseSectionProps> = ({ isAdmin
 
             <div className="setting-item">
               <label htmlFor="channel-psk">
-                {t('channel_database.psk')}
-                <span className="setting-description">{t('channel_database.psk_description')}</span>
+                {editingChannel.protocol === 'meshcore'
+                  ? t('channel_database.meshcore_secret', 'Channel secret')
+                  : t('channel_database.psk')}
+                <span className="setting-description">
+                  {editingChannel.protocol === 'meshcore'
+                    ? t('channel_database.meshcore_secret_description', '16 bytes: 32 hex characters or Base64. Leave empty for a #hashtag channel; its secret comes from the name.')
+                    : t('channel_database.psk_description')}
+                </span>
               </label>
               <div style={{ display: 'flex', gap: '0.5rem' }}>
                 <input
@@ -1093,7 +1209,8 @@ const ChannelDatabaseSection: React.FC<ChannelDatabaseSectionProps> = ({ isAdmin
               </label>
             </div>
 
-            <div className="setting-item">
+            {/* Name validation is a Meshtastic channel-hash check. */}
+            <div className="setting-item" hidden={editingChannel.protocol === 'meshcore'}>
               <label style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                   <input

@@ -24,6 +24,62 @@ import { channelDecryptionService } from '../services/channelDecryptionService.j
 import { retroactiveDecryptionService } from '../services/retroactiveDecryptionService.js';
 import { expandShorthandPsk } from '../constants/meshtastic.js';
 import { logger } from '../../utils/logger.js';
+import { ok, fail } from '../utils/apiResponse.js';
+import { meshcoreSecretHex } from '../../db/repositories/channelDatabase.js';
+import { deriveHashtagSecretHex, isHashtagChannelName } from '../../utils/meshcoreHelpers.js';
+import type { ChannelDatabaseProtocol } from '../../db/types.js';
+
+/** MeshCore channel secrets are AES-128: 16 bytes. */
+const MESHCORE_SECRET_BYTES = 16;
+
+/**
+ * Resolve the secret for a MeshCore virtual channel (#5552). Meshtastic PSK
+ * rules (1-byte shorthand, name hashing) do NOT apply here.
+ *
+ * - `psk` given: 32 hex chars or base64 of exactly 16 bytes.
+ * - `psk` absent and the name starts with `#`: the hashtag-room derivation,
+ *   SHA-256(name)[0..16], as the MeshCore apps do.
+ *
+ * Returns the secret as lowercase hex, or an error message.
+ */
+async function resolveMeshcoreSecret(
+  name: string,
+  psk: unknown,
+): Promise<{ secretHex: string } | { error: string }> {
+  if (psk === undefined || psk === null || psk === '') {
+    if (!isHashtagChannelName(name)) {
+      return { error: 'A MeshCore channel needs a 16-byte secret, unless its name starts with # (a hashtag channel derives it from the name)' };
+    }
+    return { secretHex: await deriveHashtagSecretHex(name) };
+  }
+  if (typeof psk !== 'string') return { error: 'psk must be a string' };
+  const trimmed = psk.trim();
+  const secretHex = /^[0-9a-fA-F]+$/.test(trimmed)
+    ? (trimmed.length === MESHCORE_SECRET_BYTES * 2 ? trimmed.toLowerCase() : null)
+    : (() => {
+        try {
+          const buf = Buffer.from(trimmed, 'base64');
+          // Reject strings base64 would silently truncate or pad.
+          return buf.length === MESHCORE_SECRET_BYTES && buf.toString('base64').replace(/=+$/, '') === trimmed.replace(/=+$/, '')
+            ? buf.toString('hex')
+            : null;
+        } catch {
+          return null;
+        }
+      })();
+  if (!secretHex) {
+    return { error: 'A MeshCore channel secret must be 16 bytes: 32 hex characters or Base64' };
+  }
+  if (/^0+$/.test(secretHex)) return { error: 'A MeshCore channel secret cannot be all zeros' };
+  return { secretHex };
+}
+
+const secretHexToBase64 = (hex: string): string => Buffer.from(hex, 'hex').toString('base64');
+
+function parseProtocolFilter(raw: unknown): ChannelDatabaseProtocol | 'all' | null {
+  if (raw === undefined || raw === '') return 'meshtastic';
+  return raw === 'meshtastic' || raw === 'meshcore' || raw === 'all' ? raw : null;
+}
 
 /**
  * Transform a database channel row into the API response shape.
@@ -34,6 +90,8 @@ export function transformChannelForResponse(channel: any, includeFullPsk: boolea
   return {
     id: channel.id,
     name: channel.name,
+    // 'meshtastic' or 'meshcore' (#5552).
+    protocol: channel.protocol === 'meshcore' ? 'meshcore' : 'meshtastic',
     pskLength: channel.pskLength,
     pskPreview: includeFullPsk
       ? channel.psk
@@ -120,13 +178,20 @@ export async function getAllChannelsHandler(req: Request, res: Response) {
   try {
     const scope = await resolveCallerScope(req);
     const includeFullPsk = scope.isAdmin || scope.hasWrite;
-    const allChannels = await databaseService.channelDatabase.getAllAsync();
+    // #5552: Meshtastic rows only unless the caller asks. Every existing
+    // consumer of this list treats an entry as a Meshtastic virtual channel
+    // (CHANNEL_DB_OFFSET + id), so MeshCore rows are opt-in.
+    const protocol = parseProtocolFilter(req.query.protocol);
+    if (protocol === null) {
+      return fail(res, 400, 'INVALID_PROTOCOL', 'protocol must be meshtastic, meshcore or all');
+    }
+    const allChannels = await databaseService.channelDatabase.getAllAsync(protocol);
 
     let visible = allChannels;
     if (!includeFullPsk) {
       // Filter by per-entry canRead via channel_database_permissions.
       const perms = scope.userId !== null
-        ? await databaseService.channelDatabase.getPermissionsForUserAsync(scope.userId)
+        ? await databaseService.channelDatabase.getPermissionsForUserAsync(scope.userId, protocol)
         : [];
       const readable = new Set(
         perms.filter((p: any) => p.canRead === true).map((p: any) => p.channelDatabaseId)
@@ -251,13 +316,50 @@ export async function createChannelHandler(req: Request, res: Response) {
       return forbidden(res, 'channel_database:write permission required to create channel database entries');
     }
 
-    const { name, psk, pskLength, description, isEnabled, enforceNameValidation } = req.body;
+    const { name, psk, pskLength, description, isEnabled, enforceNameValidation, protocol } = req.body;
 
     if (!name || typeof name !== 'string') {
       return res.status(400).json({
         success: false,
         error: 'Bad Request',
         message: 'name is required and must be a string',
+      });
+    }
+
+    if (protocol !== undefined && protocol !== 'meshtastic' && protocol !== 'meshcore') {
+      return fail(res, 400, 'INVALID_PROTOCOL', 'protocol must be meshtastic or meshcore');
+    }
+
+    if (protocol === 'meshcore') {
+      // MeshCore virtual channel (#5552). None of the Meshtastic PSK / name
+      // hash rules below apply, and there is no packet_log to re-decrypt.
+      const trimmedName = name.trim();
+      if (!trimmedName) return fail(res, 400, 'INVALID_NAME', 'name is required');
+      const resolved = await resolveMeshcoreSecret(trimmedName, psk);
+      if ('error' in resolved) return fail(res, 400, 'INVALID_SECRET', resolved.error);
+      // One row per secret: MeshCore identifies a channel by its key.
+      const duplicate = await databaseService.channelDatabase.getMeshcoreBySecretAsync(resolved.secretHex);
+      if (duplicate) {
+        return fail(res, 409, 'DUPLICATE_SECRET', `This secret is already stored as "${duplicate.name}"`, {
+          existingId: duplicate.id,
+        });
+      }
+      const id = await databaseService.channelDatabase.createAsync({
+        name: trimmedName,
+        psk: secretHexToBase64(resolved.secretHex),
+        pskLength: MESHCORE_SECRET_BYTES,
+        protocol: 'meshcore',
+        description: description ?? null,
+        isEnabled: isEnabled ?? true,
+        enforceNameValidation: false,
+        createdBy: scope.user?.id ?? null,
+      });
+      const created = await databaseService.channelDatabase.getByIdAsync(id);
+      logger.debug(`MeshCore virtual channel created (id=${id}) by user ${scope.user?.username ?? 'unknown'}`);
+      return res.status(201).json({
+        success: true,
+        data: created ? transformChannelForResponse(created, true) : null,
+        message: 'Channel database entry created successfully',
       });
     }
 
@@ -446,7 +548,20 @@ export async function updateChannelHandler(req: Request, res: Response) {
       updates.name = name;
     }
 
-    if (psk !== undefined) {
+    const isMeshcore = existing.protocol === 'meshcore';
+    if (isMeshcore && psk !== undefined) {
+      // MeshCore secret rules, and still one row per secret (#5552).
+      const resolved = await resolveMeshcoreSecret(typeof name === 'string' ? name.trim() : existing.name, psk);
+      if ('error' in resolved) return fail(res, 400, 'INVALID_SECRET', resolved.error);
+      const duplicate = await databaseService.channelDatabase.getMeshcoreBySecretAsync(resolved.secretHex);
+      if (duplicate && duplicate.id !== id) {
+        return fail(res, 409, 'DUPLICATE_SECRET', `This secret is already stored as "${duplicate.name}"`, {
+          existingId: duplicate.id,
+        });
+      }
+      updates.psk = secretHexToBase64(resolved.secretHex);
+      updates.pskLength = MESHCORE_SECRET_BYTES;
+    } else if (psk !== undefined) {
       if (typeof psk !== 'string') {
         return res.status(400).json({
           success: false,
@@ -491,7 +606,9 @@ export async function updateChannelHandler(req: Request, res: Response) {
 
     if (description !== undefined) updates.description = description;
     if (isEnabled !== undefined) updates.isEnabled = Boolean(isEnabled);
-    if (enforceNameValidation !== undefined) updates.enforceNameValidation = Boolean(enforceNameValidation);
+    // Name validation is a Meshtastic channel-hash check; it has no meaning
+    // for a MeshCore row.
+    if (enforceNameValidation !== undefined && !isMeshcore) updates.enforceNameValidation = Boolean(enforceNameValidation);
 
     if (sortOrder !== undefined) {
       if (typeof sortOrder !== 'number' || !Number.isInteger(sortOrder)) {
@@ -515,7 +632,7 @@ export async function updateChannelHandler(req: Request, res: Response) {
     await databaseService.channelDatabase.updateAsync(id, updates);
     channelDecryptionService.invalidateCache();
 
-    if (psk !== undefined && (isEnabled ?? existing.isEnabled)) {
+    if (!isMeshcore && psk !== undefined && (isEnabled ?? existing.isEnabled)) {
       retroactiveDecryptionService.processForChannel(id).catch((err) => {
         logger.warn(`Background retroactive decryption failed for channel ${id}:`, err);
       });
@@ -584,6 +701,67 @@ export async function deleteChannelHandler(req: Request, res: Response) {
   }
 }
 
+/**
+ * POST /import-meshcore — channel_database:write (#5552)
+ *
+ * Copy the channels of ONE MeshCore source into channel_database as MeshCore
+ * virtual channels. Opt-in and one-shot: nothing mirrors a device on its own,
+ * and a later change or delete on the device never touches these rows.
+ *
+ * A channel whose secret is already stored is skipped (one row per secret). New
+ * rows get no user grants, so only admins can read their traffic until someone
+ * assigns access. Secrets stay server-side: the response carries counts and
+ * names only.
+ */
+export async function importMeshcoreChannelsHandler(req: Request, res: Response) {
+  try {
+    const scope = await resolveCallerScope(req);
+    if (!scope.hasWrite) {
+      return forbidden(res, 'channel_database:write permission required to import channels');
+    }
+    const sourceId = typeof req.body?.sourceId === 'string' ? req.body.sourceId : '';
+    if (!sourceId) return fail(res, 400, 'SOURCE_ID_REQUIRED', 'sourceId is required');
+    const source = await databaseService.sources.getSource(sourceId);
+    if (!source) return fail(res, 404, 'SOURCE_NOT_FOUND', 'Source not found');
+    if (source.type !== 'meshcore') {
+      return fail(res, 400, 'NOT_MESHCORE_SOURCE', 'Channels can only be imported from a MeshCore device source');
+    }
+
+    const deviceChannels = await databaseService.channels.getAllChannels(sourceId);
+    const imported: Array<{ id: number; name: string }> = [];
+    const skipped: Array<{ name: string; reason: 'duplicate' | 'no_secret' }> = [];
+    for (const ch of deviceChannels) {
+      const name = (ch.name ?? '').trim() || `Channel ${ch.id}`;
+      const secretHex = meshcoreSecretHex(ch.psk);
+      if (!secretHex || secretHex.length !== MESHCORE_SECRET_BYTES * 2 || /^0+$/.test(secretHex)) {
+        skipped.push({ name, reason: 'no_secret' });
+        continue;
+      }
+      if (await databaseService.channelDatabase.getMeshcoreBySecretAsync(secretHex)) {
+        skipped.push({ name, reason: 'duplicate' });
+        continue;
+      }
+      const id = await databaseService.channelDatabase.createAsync({
+        name,
+        psk: secretHexToBase64(secretHex),
+        pskLength: MESHCORE_SECRET_BYTES,
+        protocol: 'meshcore',
+        description: `Imported from ${source.name}`,
+        isEnabled: true,
+        enforceNameValidation: false,
+        createdBy: scope.user?.id ?? null,
+      });
+      imported.push({ id, name });
+    }
+
+    logger.debug(`MeshCore channel import from ${sourceId}: ${imported.length} imported, ${skipped.length} skipped`);
+    return ok(res, { imported, skipped });
+  } catch (error) {
+    logger.error('Error importing MeshCore channels:', error);
+    return fail(res, 500, 'IMPORT_FAILED', 'Failed to import channels');
+  }
+}
+
 // ============================================================================
 // RETROACTIVE DECRYPT (P0 SECURITY GATE)
 // ============================================================================
@@ -630,6 +808,11 @@ export async function triggerRetroactiveDecryptHandler(req: Request, res: Respon
         error: 'Not Found',
         message: `Channel database entry ${id} not found`,
       });
+    }
+
+    if (existing.protocol === 'meshcore') {
+      // It re-decrypts the Meshtastic packet_log; a MeshCore key cannot.
+      return fail(res, 400, 'NOT_MESHTASTIC', 'Retroactive decryption is only available for Meshtastic entries');
     }
 
     if (!existing.isEnabled) {

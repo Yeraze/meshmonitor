@@ -101,6 +101,7 @@ import {
   channelKeyFingerprint,
   keyedChannelIndex,
   frameChannelMessageId,
+  noteVirtualChannelDecrypt,
 } from './services/meshcoreFrameIngest.js';
 import { maybeRecordMeshCoreCoverageReception } from './utils/coverageMeshCore.js';
 import { parsePathHops, pathHashBytesOf, resolveRouteNames, buildTracePathHops } from '../utils/meshcorePath.js';
@@ -4191,6 +4192,7 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
       messageType: 'channel',
       hopCount: typeof hopCount === 'number' ? hopCount : null,
       routePath: hops && hops.length > 0 ? hops.join(',') : null,
+      // Both null when a virtual channel's key (#5552) opened it.
       keySourceId: plain.key.sourceId,
       keyChannelIdx: plain.key.channelIdx,
       keyFingerprint: fingerprint,
@@ -4225,6 +4227,7 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
     // A relay of a message already stored: no second event.
     if (!inserted) return;
     meshcoreMessageFilter.countHit(this.sourceId, verdict);
+    noteVirtualChannelDecrypt(plain.key);
 
     this.messages.push(message);
     if (this.messages.length > MeshCoreManager.MAX_MESSAGES) {

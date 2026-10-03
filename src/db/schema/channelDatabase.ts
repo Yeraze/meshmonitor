@@ -31,6 +31,9 @@ export const channelDatabaseSqlite = sqliteTable('channel_database', {
   id: integer('id').primaryKey({ autoIncrement: true }),
   name: text('name').notNull(),
   psk: text('psk').notNull(), // Base64-encoded PSK
+  // 'meshtastic' (default) or 'meshcore' (#5552, migration 191). A meshcore
+  // row stores a 16-byte channel secret; Meshtastic readers filter it out.
+  protocol: text('protocol').notNull().default('meshtastic'),
   pskLength: integer('psk_length').notNull(), // 16 for AES-128, 32 for AES-256
   // Observed Meshtastic 1-byte channel hash (0-255) for PASSIVE (no-PSK) MQTT
   // rows. Lets two same-name/different-key undecryptable channels stay distinct.
@@ -69,6 +72,7 @@ export const channelDatabasePostgres = pgTable('channel_database', {
   id: pgSerial('id').primaryKey(),
   name: pgText('name').notNull(),
   psk: pgText('psk').notNull(), // Base64-encoded PSK
+  protocol: pgText('protocol').notNull().default('meshtastic'),
   pskLength: pgInteger('pskLength').notNull(), // 16 for AES-128, 32 for AES-256
   // Observed Meshtastic 1-byte channel hash (0-255) for PASSIVE (no-PSK) MQTT
   // rows; NULL for enabled rows. See SQLite definition above.
@@ -106,6 +110,7 @@ export const channelDatabaseMysql = mysqlTable('channel_database', {
   id: mySerial('id').primaryKey(),
   name: myVarchar('name', { length: 255 }).notNull(),
   psk: myVarchar('psk', { length: 255 }).notNull(), // Base64-encoded PSK
+  protocol: myVarchar('protocol', { length: 16 }).notNull().default('meshtastic'),
   pskLength: myInt('pskLength').notNull(), // 16 for AES-128, 32 for AES-256
   // Observed Meshtastic 1-byte channel hash (0-255) for PASSIVE (no-PSK) MQTT
   // rows; NULL for enabled rows. See SQLite definition above.

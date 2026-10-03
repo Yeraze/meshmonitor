@@ -17,11 +17,16 @@
  * - deleting the key everywhere hides the rows from non-admins, instead of the
  *   grant silently passing to whatever key later lands in that slot.
  *
+ * A MeshCore virtual channel (#5552, a `channel_database` row with protocol
+ * 'meshcore') is a key too: its per-entry `canRead` grant adds its fingerprint.
+ * A disabled row still grants reads of what it already decrypted.
+ *
  * Rows WITHOUT a fingerprint (every message a source decrypted with its own
  * key, every DM, every MQTT row) are unaffected. This gate is ANDed onto the
  * existing per-source checks; it never grants anything they deny.
  */
 import databaseService from '../../services/database.js';
+import { logger } from '../../utils/logger.js';
 import { ALL_SOURCES } from '../../db/repositories/base.js';
 import type { MeshCoreKeyAccessFilter } from '../../db/repositories/index.js';
 import { channelKeyFingerprint, pskToHex, type ChannelKeyRow } from '../services/meshcoreFrameIngest.js';
@@ -56,6 +61,9 @@ export async function resolveMeshcoreKeyAccess(
     if (allowed.has(fp)) continue;
     const idx = Number(ch.id);
     let ok = false;
+    // 0-7 is the RBAC resource set (`channel_0`..`channel_7`), as in
+    // `channelResourceFor`. A higher MeshCore slot has no per-channel resource
+    // and is readable through `messages:read` on its source alone.
     if (Number.isInteger(idx) && idx >= 0 && idx <= 7) {
       ok = await databaseService.checkPermissionAsync(user.id, `channel_${idx}`, 'read', ch.sourceId);
     }
@@ -68,6 +76,22 @@ export async function resolveMeshcoreKeyAccess(
       ok = await p;
     }
     if (ok) allowed.add(fp);
+  }
+  // MeshCore virtual channels (#5552): a per-entry `canRead` grant on the
+  // channel_database row. Default-deny: a new row has no grants.
+  try {
+    const perms = await databaseService.channelDatabase.getPermissionsForUserAsync(user.id, 'meshcore');
+    const readable = new Set(perms.filter((p) => p.canRead === true).map((p) => p.channelDatabaseId));
+    if (readable.size > 0) {
+      for (const vc of await databaseService.channelDatabase.getAllAsync('meshcore')) {
+        if (vc.id === undefined || !readable.has(vc.id)) continue;
+        const secretHex = pskToHex(vc.psk);
+        if (secretHex) allowed.add(channelKeyFingerprint(secretHex));
+      }
+    }
+  } catch (err) {
+    // Fail closed: no virtual-channel fingerprints are added.
+    logger.warn('Failed to resolve MeshCore virtual-channel access:', err);
   }
   return [...allowed];
 }

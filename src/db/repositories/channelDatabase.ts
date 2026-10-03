@@ -6,7 +6,7 @@
  */
 import { eq, and, asc, sql } from 'drizzle-orm';
 import { BaseRepository, DrizzleDatabase } from './base.js';
-import { DatabaseType, DbChannelDatabase, DbChannelDatabasePermission } from '../types.js';
+import { DatabaseType, DbChannelDatabase, DbChannelDatabasePermission, type ChannelDatabaseProtocol } from '../types.js';
 import { logger } from '../../utils/logger.js';
 import { expandShorthandPsk } from '../../server/constants/meshtastic.js';
 
@@ -31,12 +31,34 @@ function computeChannelHashFromName(name: string, psk: Buffer): number {
   return xorHashBytes(Buffer.from(name, 'utf8')) ^ xorHashBytes(psk);
 }
 
+/** Base64 or hex MeshCore channel secret -> lowercase hex, or null. */
+export function meshcoreSecretHex(psk: string | null | undefined): string | null {
+  if (!psk) return null;
+  if (/^[0-9a-fA-F]+$/.test(psk) && psk.length % 2 === 0) return psk.toLowerCase();
+  try {
+    const buf = Buffer.from(psk, 'base64');
+    return buf.length > 0 ? buf.toString('hex') : null;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Channel database data for insert/update operations
  */
+/**
+ * Which rows a list read returns (#5552). Lists default to `'meshtastic'`:
+ * every Meshtastic consumer (packet decrypt, MQTT ingest, name lookups, hash
+ * collisions) must never be handed a MeshCore secret, and defaulting keeps a
+ * caller that forgets the argument on the safe side.
+ */
+export type ChannelDatabaseProtocolFilter = ChannelDatabaseProtocol | 'all';
+
 export interface ChannelDatabaseInput {
   name: string;
   psk: string; // Base64-encoded PSK
+  /** Defaults to 'meshtastic'. */
+  protocol?: ChannelDatabaseProtocol;
   pskLength: number; // 16 for AES-128, 32 for AES-256
   channelHash?: number | null; // Observed channel hash for passive MQTT rows
   description?: string | null;
@@ -116,11 +138,12 @@ export class ChannelDatabaseRepository extends BaseRepository {
   /**
    * Get all channel database entries (ordered by sortOrder, then id)
    */
-  async getAllAsync(): Promise<DbChannelDatabase[]> {
+  async getAllAsync(protocol: ChannelDatabaseProtocolFilter = 'meshtastic'): Promise<DbChannelDatabase[]> {
     const { channelDatabase } = this.tables;
     const results = await this.db
       .select()
       .from(channelDatabase)
+      .where(protocol === 'all' ? undefined : eq(channelDatabase.protocol, protocol))
       .orderBy(asc(channelDatabase.sortOrder), asc(channelDatabase.id));
 
     return results.map((r: any) => this.mapToDbChannelDatabase(r));
@@ -271,12 +294,12 @@ export class ChannelDatabaseRepository extends BaseRepository {
   /**
    * Get all enabled channel database entries (for decryption, ordered by sortOrder)
    */
-  async getEnabledAsync(): Promise<DbChannelDatabase[]> {
+  async getEnabledAsync(protocol: ChannelDatabaseProtocol = 'meshtastic'): Promise<DbChannelDatabase[]> {
     const { channelDatabase } = this.tables;
     const results = await this.db
       .select()
       .from(channelDatabase)
-      .where(eq(channelDatabase.isEnabled, true))
+      .where(and(eq(channelDatabase.isEnabled, true), eq(channelDatabase.protocol, protocol)))
       .orderBy(asc(channelDatabase.sortOrder), asc(channelDatabase.id));
 
     return results.map((r: any) => this.mapToDbChannelDatabase(r));
@@ -293,6 +316,7 @@ export class ChannelDatabaseRepository extends BaseRepository {
       name: data.name,
       psk: data.psk,
       pskLength: data.pskLength,
+      protocol: data.protocol ?? 'meshtastic',
       channelHash: data.channelHash ?? null,
       description: data.description ?? null,
       isEnabled: data.isEnabled ?? true,
@@ -408,14 +432,35 @@ export class ChannelDatabaseRepository extends BaseRepository {
   /**
    * Get all permissions for a user
    */
-  async getPermissionsForUserAsync(userId: number): Promise<DbChannelDatabasePermission[]> {
+  async getPermissionsForUserAsync(
+    userId: number,
+    protocol: ChannelDatabaseProtocolFilter = 'meshtastic',
+  ): Promise<DbChannelDatabasePermission[]> {
     const { channelDatabasePermissions } = this.tables;
     const results = await this.db
       .select()
       .from(channelDatabasePermissions)
       .where(eq(channelDatabasePermissions.userId, userId));
 
-    return results.map((r: any) => this.mapToDbChannelDatabasePermission(r));
+    const perms: DbChannelDatabasePermission[] = results.map((r: any) => this.mapToDbChannelDatabasePermission(r));
+    if (protocol === 'all' || perms.length === 0) return perms;
+    // Grants on the other protocol's rows are not this caller's business
+    // (#5552): a MeshCore grant must not read as Meshtastic virtual-channel
+    // access, or the reverse.
+    const ids = new Set((await this.getAllAsync(protocol)).map((c) => c.id));
+    return perms.filter((p) => ids.has(p.channelDatabaseId));
+  }
+
+  /**
+   * The MeshCore row holding `secretHex`, or null (#5552). MeshCore identifies
+   * a channel by its secret, so this is the dedupe key: one row per secret,
+   * whatever name it was added under. Compared on the decoded bytes, since a
+   * stored key may be base64 or hex.
+   */
+  async getMeshcoreBySecretAsync(secretHex: string): Promise<DbChannelDatabase | null> {
+    const want = secretHex.toLowerCase();
+    const rows = await this.getAllAsync('meshcore');
+    return rows.find((r) => meshcoreSecretHex(r.psk) === want) ?? null;
   }
 
   /**
@@ -494,6 +539,7 @@ export class ChannelDatabaseRepository extends BaseRepository {
       name: row.name,
       psk: row.psk,
       pskLength: row.pskLength,
+      protocol: row.protocol === 'meshcore' ? 'meshcore' : 'meshtastic',
       channelHash: row.channelHash ?? null,
       description: row.description,
       isEnabled: Boolean(row.isEnabled),

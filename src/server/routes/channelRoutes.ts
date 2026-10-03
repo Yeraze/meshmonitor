@@ -166,7 +166,7 @@ router.get('/all', optionalAuth(), async (req: Request, res: Response) => {
     if (allChannelsSourceId) {
       try {
         const source = await databaseService.sources.getSource(allChannelsSourceId);
-        if (source?.type === 'meshcore') {
+        if (source?.type === 'meshcore' || source?.type === 'meshcore_mqtt') {
           const keyed = await listKeyedChannelsForViewer(req.user, allChannelsSourceId);
           const slotIds = new Set(projected.map((c) => Number(c.id)));
           for (const k of keyed) {

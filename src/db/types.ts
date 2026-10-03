@@ -472,11 +472,16 @@ export interface DbSetting {
  * Channel Database entry for server-side decryption
  * Stores channel configurations beyond the device's 8 slots
  */
+/** Which mesh protocol a `channel_database` row's key belongs to (#5552). */
+export type ChannelDatabaseProtocol = 'meshtastic' | 'meshcore';
+
 export interface DbChannelDatabase {
   id?: number;
   name: string;
   psk: string; // Base64-encoded PSK
   pskLength: number; // 16 for AES-128, 32 for AES-256
+  /** 'meshtastic' (default) or 'meshcore' (#5552): a 16-byte MeshCore channel secret. */
+  protocol: ChannelDatabaseProtocol;
   // Observed Meshtastic 1-byte channel hash (0-255) for passive (no-PSK) MQTT
   // rows; null for enabled rows (computable from name + psk).
   channelHash?: number | null;

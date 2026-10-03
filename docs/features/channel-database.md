@@ -134,6 +134,42 @@ If you only have channel names and PSKs, this is the smallest valid file:
 ]
 ```
 
+## MeshCore Channels
+
+The Channel Database also holds **MeshCore** channel keys. A MeshCore entry is a 16-byte channel secret that MeshMonitor uses to decrypt MeshCore channel messages (GRP_TXT) heard by:
+
+- a **MeshCore MQTT ingest** source, and
+- a directly attached **MeshCore repeater** running a `MESH_PACKET_LOGGING` firmware build.
+
+A companion radio holds about 40 channels. Keys in the Channel Database are held by the server alone, so that limit does not apply. They are never written to a device.
+
+### Adding a MeshCore channel
+
+1. Click **Add Channel** and set **Protocol** to **MeshCore**.
+2. Enter a name.
+3. Enter the **Channel secret**: 32 hex characters or Base64 (16 bytes). For a hashtag channel (a name that starts with `#`, such as `#general`), leave the secret empty. MeshMonitor derives it from the name, as the MeshCore apps do.
+
+Each secret is stored once. Adding a secret that is already stored is refused, whatever name it is given.
+
+### Import from MeshCore device
+
+**Import from MeshCore device** copies the channels of one MeshCore device source into the Channel Database. Pick the source and click **Import**.
+
+- It is a one-time copy. MeshMonitor does not mirror the device: adding, changing or deleting a channel on the device later does not change the Channel Database.
+- Channels whose key is already stored are skipped.
+
+### Who can read MeshCore channel traffic
+
+New MeshCore entries, added by hand or imported, start with **no user access**. Until an administrator grants it, only administrators can read messages decrypted with that key. Grant access per user under **Users**, in the Channel Database permissions list; MeshCore entries are labelled there.
+
+A message decrypted with a key that also sits on a device source can be read by anyone who can read that channel on that device source.
+
+### What does not apply to MeshCore entries
+
+- **Retroactive processing** re-reads the Meshtastic packet log only. MeshCore entries decrypt new traffic from the moment they are added.
+- **Enforce name validation** and **priority order** are Meshtastic channel-hash features. A MeshCore frame names its key by hash, so order does not matter.
+- Meshtastic key rules (1-byte shorthand keys, AES-256) do not apply: a MeshCore secret is always 16 bytes.
+
 ## How Server-Side Decryption Works
 
 When MeshMonitor receives an encrypted packet:

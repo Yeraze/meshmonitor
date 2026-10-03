@@ -209,6 +209,7 @@ import { migration as addMeshcoreMessageSenderTimestampMigration, runMigration18
 import { migration as createTranslationCacheMigration, runMigration188Postgres, runMigration188Mysql } from '../server/migrations/188_create_translation_cache.js';
 import { migration as globalUiPrefsDropSourceCopiesMigration, runMigration189Postgres, runMigration189Mysql } from '../server/migrations/189_global_ui_prefs_drop_source_copies.js';
 import { migration as addMeshcoreRepeaterIngestColumnsMigration, runMigration190Postgres, runMigration190Mysql } from '../server/migrations/190_add_meshcore_repeater_ingest_columns.js';
+import { migration as addChannelDatabaseProtocolMigration, runMigration191Postgres, runMigration191Mysql } from '../server/migrations/191_add_channel_database_protocol.js';
 
 // ============================================================================
 // Registry
@@ -3084,4 +3085,19 @@ registry.register({
   sqlite: (db) => addMeshcoreRepeaterIngestColumnsMigration.up(db),
   postgres: (client) => runMigration190Postgres(client),
   mysql: (pool) => runMigration190Mysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 191: `channel_database.protocol` (#5552). GLOBAL, like the table.
+// 'meshtastic' (default, every existing row) or 'meshcore' (a 16-byte channel
+// secret for server-side MeshCore decrypt).
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 191,
+  name: 'add_channel_database_protocol',
+  settingsKey: 'migration_191_add_channel_database_protocol',
+  sqlite: (db) => addChannelDatabaseProtocolMigration.up(db),
+  postgres: (client) => runMigration191Postgres(client),
+  mysql: (pool) => runMigration191Mysql(pool),
 });
