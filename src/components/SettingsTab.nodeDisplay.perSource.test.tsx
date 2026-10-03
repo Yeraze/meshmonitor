@@ -44,6 +44,7 @@ import { render, screen, within, fireEvent, waitFor } from '@testing-library/rea
 import SettingsTab from './SettingsTab';
 import { SourceProvider } from '../contexts/SourceContext';
 import { NODE_DISPLAY_SETTING_KEYS, SETTINGS_TAB_PER_SOURCE_KEYS } from '../constants/nodeDisplayDefaults';
+import { GLOBAL_ONLY_SETTINGS_KEYS } from '../server/constants/settings';
 
 // ---------------------------------------------------------------------------
 // Contexts / hooks — same isolation strategy as SettingsTab.elevation.test.tsx
@@ -383,6 +384,32 @@ describe('SettingsTab — split save (#4412 Phase 3 WP4b)', () => {
     expect(scopedBody.txTargetMaxAgeHoursWhenUnlimited).toBe('24');
     // Sanity: the unscoped body still carries ordinary global keys.
     expect(globalBody).toHaveProperty('temperatureUnit');
+  });
+
+  // #5558: appearance is a global preference. A save from inside a source
+  // must carry it on the UNSCOPED POST (the sourced route drops global-only
+  // keys), so the landing page and Global Settings see the same theme.
+  it('save in source mode sends the appearance keys on the unscoped POST and no global-only key on the scoped one', async () => {
+    serverSettings = { appearanceMode: 'dark', darkTheme: 'mocha', lightTheme: 'mocha' };
+    render(
+      <SourceProvider sourceId="source-a" sourceType="meshtastic_tcp">
+        <SettingsTab {...baseProps} mode="source" />
+      </SourceProvider>
+    );
+    await waitFor(() => expect(saveBarCapture.current).not.toBeNull());
+    await saveBarCapture.current!.onSave();
+
+    const calls = csrfFetchMock.mock.calls as [string, RequestInit][];
+    const scopedBody = JSON.parse(calls.find(([url]) => url.includes('sourceId='))![1].body as string);
+    const globalBody = JSON.parse(calls.find(([url]) => !url.includes('sourceId='))![1].body as string);
+
+    for (const key of ['theme', 'appearanceMode', 'darkTheme', 'lightTheme']) {
+      expect(globalBody).toHaveProperty(key);
+      expect(scopedBody).not.toHaveProperty(key);
+    }
+    for (const key of Object.keys(scopedBody)) {
+      expect(GLOBAL_ONLY_SETTINGS_KEYS.has(key)).toBe(false);
+    }
   });
 
   it('save in mode="global" issues a single unscoped POST containing all keys, including the ten Node Display keys', async () => {
