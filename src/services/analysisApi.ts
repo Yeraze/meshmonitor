@@ -1,3 +1,4 @@
+import type { CrossSourceLinksResponse } from '../types/crossSourceLinks.js';
 import api from './api.js';
 import type {
   CoverageHopsMode,
@@ -251,4 +252,22 @@ export async function fetchHopCounts(args: {
     `/api/analysis/hop-counts?${p.toString()}`,
     args.signal,
   );
+}
+
+// ── Cross-source "heard here" links (#5561) ─────────────────────────────────
+
+export async function fetchCrossSourceLinks(args: {
+  /** Keep edges touching one of these sources; empty = every readable source. */
+  sources: string[];
+  sinceMs: number;
+  signal?: AbortSignal;
+}): Promise<CrossSourceLinksResponse> {
+  const p = new URLSearchParams();
+  if (args.sources.length) p.set('sources', args.sources.join(','));
+  if (args.sinceMs > 0) p.set('since', String(args.sinceMs));
+  const body = await authedGet<{ success: boolean; data: CrossSourceLinksResponse }>(
+    `/api/analysis/cross-source-links?${p.toString()}`,
+    args.signal,
+  );
+  return body.data;
 }

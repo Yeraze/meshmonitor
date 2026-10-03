@@ -96,6 +96,7 @@ import { decodeMeshCorePacket } from '../utils/meshcorePacketDecode.js';
 import { MESHCORE_SECRET_BYTES } from '../utils/meshcoreHelpers.js';
 import { MESHCORE_PAYLOAD_ADVERT } from '../utils/coverage.js';
 import { maybeRecordMeshCoreCoverageReception } from './utils/coverageMeshCore.js';
+import { maybeRecordMeshCoreLink } from './services/crossSourceLinkRecorder.js';
 import { parsePathHops, pathHashBytesOf, resolveRouteNames, buildTracePathHops } from '../utils/meshcorePath.js';
 import { MESHCORE_PUBLIC_CHANNEL_SECRET, tryDecodeGroupTextPayload } from './utils/meshcoreGroupEcho.js';
 import { meshcoreAgeCutoffMs, isWithinMeshcoreAge } from '../utils/meshcoreAge.js';
@@ -2753,6 +2754,16 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
       // opt-in; gate persistence on the setting so we don't write a row for
       // every received packet unless the user has turned the monitor on.
       void this.handleOtaPacket(data);
+      // Cross-source "heard here" links (#5561): this companion hearing one
+      // of our OTHER MeshCore sources (a signed zero-hop advert, or a flood
+      // whose last hop matches). Independent of the packet-monitor setting.
+      // Never throws into this path; sends nothing; emits nothing.
+      void maybeRecordMeshCoreLink({
+        sourceId: this.sourceId,
+        receiverKind: 'local',
+        receiverPubKey: this.localNode?.publicKey ?? null,
+        event: data ?? {},
+      });
       // Coverage Report (#5277 P3): local companions record ADVERT
       // receptions ALWAYS (D8), independent of `meshcore_packet_log_enabled`
       // — receive-only mode does not matter either. Not reached for

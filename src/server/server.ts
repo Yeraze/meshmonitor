@@ -766,6 +766,7 @@ import aircraftRoutes from './routes/aircraftRoutes.js';
 import assetRoutes from './routes/assetRoutes.js';
 import meshIssuesRoutes from './routes/meshIssuesRoutes.js';
 import coverageRoutes from './routes/coverageRoutes.js';
+import crossSourceLinkRoutes from './routes/crossSourceLinkRoutes.js';
 import elevationRoutes from './routes/elevationRoutes.js';
 import gnssRoutes from './routes/gnssRoutes.js';
 import rfCoverageRoutes from './routes/rfCoverageRoutes.js';
@@ -959,6 +960,10 @@ apiRouter.use('/analysis/mesh-issues', meshIssuesRoutes);
 // with /analysis/coverage-grid since Express mount paths match whole
 // segments.
 apiRouter.use('/analysis/coverage', coverageRoutes);
+
+// Cross-source "heard here" map edges (#5561). More specific than /analysis;
+// mounted before it.
+apiRouter.use('/analysis/cross-source-links', crossSourceLinkRoutes);
 
 // Cross-source analysis workspace
 apiRouter.use('/analysis', analysisRoutes);

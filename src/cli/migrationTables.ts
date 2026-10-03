@@ -80,6 +80,10 @@ export const TABLE_ORDER = [
   // per COVERAGE_P1_SPEC.md Decision D9), but migrated rather than skipped so
   // a backend move doesn't silently blank out an in-progress survey.
   'coverage_receptions',
+  // 5561: hourly cross-source "heard here" link aggregates (txSourceId +
+  // rxSourceId, no single sourceId, no FKs). Regenerable, but migrated like
+  // coverage_receptions so a backend move keeps the map edges.
+  'cross_source_links',
   // 4114: durable ok_to_mqtt violation history (sourceId, no FKs). Deliberately
   // migrated — unlike the transient packet logs above, this table is long-retention
   // history (90d) that the Analysis report reads, so dropping it on a backend

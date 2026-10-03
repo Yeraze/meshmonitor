@@ -66,6 +66,7 @@ import {
   maybeRecordMeshCoreCoverageReception,
   getMeshCoreObserverReceiverPosition,
 } from './utils/coverageMeshCore.js';
+import { maybeRecordMeshCoreLink } from './services/crossSourceLinkRecorder.js';
 import { isCoverageMqttEnabled } from './services/coverageMqttSettings.js';
 import { logger } from '../utils/logger.js';
 
@@ -367,6 +368,16 @@ export class MeshCoreMqttManager extends EventEmitter implements ISourceManager 
       // flag read so the (cached, but still a lookup) flag check only ever
       // sees adverts, not every packet on the feed.
       if (decoded.event.payload_type === MESHCORE_PAYLOAD_ADVERT) void this.recordCoverage(decoded);
+      // Cross-source "heard here" links (#5561): an Observer heard one of our
+      // own MeshCore radios. Aggregate rows only (bounded by our own radios),
+      // so not behind the coverage opt-in. Never throws; emits nothing.
+      void maybeRecordMeshCoreLink({
+        sourceId: this.sourceId,
+        receiverKind: 'mqtt_gateway',
+        receiverPubKey: decoded.originId,
+        event: decoded.event,
+        observerTimestampMs: decoded.timestamp ? Date.parse(decoded.timestamp) || null : null,
+      });
     } catch (err) {
       this.stats.rejected++;
       logger.debug(`[MeshCoreMqtt:${this.sourceId}] failed to handle message:`, err);

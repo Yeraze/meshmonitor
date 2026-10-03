@@ -314,6 +314,11 @@ export interface MeshCoreReceptionInput {
   /** Observer pubkey for an Observer/MQTT copy, null when our own radio heard it. */
   observerId?: string | null;
   originOnly?: boolean;
+  /**
+   * Only the LAST hop counts as the relay (#5561 map edges: the last hop is
+   * the radio the receiver actually heard). Default: any hop in the path.
+   */
+  relayLastHopOnly?: boolean;
 }
 
 /** Classify one MeshCore reception. Same contract as {@link classifyMeshtasticReception}. */
@@ -334,7 +339,9 @@ export function classifyMeshCoreReception(
   let likelyRelayCandidates: string[] = [];
   if (!row.originOnly && row.routeType != null && MESHCORE_FLOOD_ROUTE_TYPES.has(Number(row.routeType))) {
     const set = new Set<string>();
-    for (const hop of row.pathHops ?? []) {
+    const allHops = row.pathHops ?? [];
+    const hops = row.relayLastHopOnly ? allHops.slice(-1) : allHops;
+    for (const hop of hops) {
       for (const s of index.relayCandidatesForPathHop(hop, row.sourceId)) {
         const key = index.publicKeyOf(s);
         if (key !== null && (key === senderKey || key === observer)) continue;

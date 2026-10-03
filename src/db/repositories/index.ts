@@ -129,6 +129,8 @@ export type {
   CoverageRetentionExemptionWindow,
 } from './coverageReceptions.js';
 export { CoverageSurveysRepository } from './coverageSurveys.js';
+export { CrossSourceLinksRepository } from './crossSourceLinks.js';
+export type { DbCrossSourceLink, RecordCrossSourceHearingParams } from './crossSourceLinks.js';
 export type {
   DbCoverageSurvey,
   CreateCoverageSurveyParams,

@@ -207,6 +207,7 @@ import { migration as addChannelUseAeadMigration, runMigration185Postgres, runMi
 import { migration as mergeDefaultRowMutesMigration, runMigration186Postgres, runMigration186Mysql } from '../server/migrations/186_merge_default_row_mutes_into_source_rows.js';
 import { migration as addMeshcoreMessageSenderTimestampMigration, runMigration187Postgres, runMigration187Mysql } from '../server/migrations/187_add_meshcore_message_sender_timestamp.js';
 import { migration as createTranslationCacheMigration, runMigration188Postgres, runMigration188Mysql } from '../server/migrations/188_create_translation_cache.js';
+import { migration as createCrossSourceLinksMigration, runMigration189Postgres, runMigration189Mysql } from '../server/migrations/189_create_cross_source_links.js';
 
 // ============================================================================
 // Registry
@@ -3049,4 +3050,19 @@ registry.register({
   sqlite: (db) => createTranslationCacheMigration.up(db),
   postgres: (client) => runMigration188Postgres(client),
   mysql: (pool) => runMigration188Mysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 189: `cross_source_links` (#5561): hourly aggregate of "source
+// A's radio was heard by source B", for the map's "heard here" edges. A row
+// names two sources (txSourceId, rxSourceId); reads require both.
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 189,
+  name: 'create_cross_source_links',
+  settingsKey: 'migration_189_create_cross_source_links',
+  sqlite: (db) => createCrossSourceLinksMigration.up(db),
+  postgres: (client) => runMigration189Postgres(client),
+  mysql: (pool) => runMigration189Mysql(pool),
 });

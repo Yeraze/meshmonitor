@@ -81,6 +81,12 @@ class CoverageRetentionService {
       if (removed > 0) {
         logger.debug(`🧹 Coverage Report retention sweep: removed ${removed} old reception(s)`);
       }
+      // Cross-source "heard here" link aggregates (#5561) share this window:
+      // same setting, same hourly sweep, no timer or state of their own.
+      const removedLinks = await databaseService.crossSourceLinks.purgeOlderThan(cutoff);
+      if (removedLinks > 0) {
+        logger.debug(`🧹 Coverage Report retention sweep: removed ${removedLinks} old cross-source link bucket(s)`);
+      }
     } catch (error) {
       logger.error('❌ Failed to run Coverage Report retention sweep:', error);
     }
