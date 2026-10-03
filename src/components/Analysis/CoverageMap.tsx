@@ -34,12 +34,13 @@
  * panning/zooming stays smooth with thousands of fix dots plus the grid
  * rectangles and gap polylines on top.
  */
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import L from 'leaflet';
-import { CircleMarker, Polyline, Popup, Rectangle, Tooltip, useMap } from 'react-leaflet';
+import { CircleMarker, Polyline, Popup, Rectangle, Tooltip, useMap, useMapEvents } from 'react-leaflet';
 import { BaseMap } from '../map/BaseMap';
 import { useSettings } from '../../contexts/SettingsContext';
+import { useBaseMapSettings } from '../map/useBaseMapSettings';
 import { snrToColor, rssiToColor } from '../../utils/mapHelpers';
 import { calculateDistance, formatDistance } from '../../utils/distance';
 import { formatCoverageNodeId, parseMeshCorePathKey } from '../../utils/coverage';
@@ -53,6 +54,7 @@ import {
   collapseFixReceptionsBySource,
   physicalReceiverKey,
 } from '../../utils/coverageMapGrouping';
+import { findMarkersNearPoint, type ProximityCandidate } from '../../utils/mapProximity';
 import styles from './CoverageMap.module.css';
 
 const RECEIVER_STROKE = '#ffffff';
@@ -166,6 +168,57 @@ const FitCoverageBounds: React.FC<{ points: Array<[number, number]>; fitKey: str
   return null;
 };
 
+const RECEIVER_RADIUS = 9;
+const GATEWAY_RADIUS = 6;
+const FIX_RADIUS = 6;
+/** Rows shown in the overlap chooser before it asks the user to zoom in. */
+const CHOOSER_MAX_ITEMS = 20;
+
+type ReceiverMarker = ReturnType<typeof dedupeReceiverMarkers>[number];
+
+/** One marker the overlap chooser can list (#5543). */
+type ChooserEntry =
+  | { kind: 'receiver'; key: string; marker: ReceiverMarker }
+  | { kind: 'fix'; key: string; fix: CoverageFix<CoverageReceptionDto> };
+
+interface ChooserState {
+  /** Bumped per opening so a new chooser remounts its Popup cleanly. */
+  id: number;
+  latlng: L.LatLng;
+  entries: ChooserEntry[];
+}
+
+const fixKey = (fix: CoverageFix<CoverageReceptionDto>) => `fix-${fix.senderId}-${fix.packetKey}`;
+
+/**
+ * Overlap chooser (#5543). Canvas markers stack: a click only reaches the top
+ * one, so a receiver or fix under another is unreachable. On every map click
+ * this projects the markers to screen pixels and, when more than one sits
+ * within `PROXIMITY_TOLERANCE_PX` of the click, hands them to `onOverlap`.
+ * A single hit is left to the marker's own handler, exactly as before.
+ *
+ * Canvas path clicks bubble to the map, so this also runs after a click that
+ * opened a fix's own popup; the chooser's Popup then replaces it.
+ */
+const OverlapClickHandler: React.FC<{
+  entries: ChooserEntry[];
+  positionOf: (entry: ChooserEntry) => [number, number];
+  radiusOf: (entry: ChooserEntry) => number;
+  onOverlap: (latlng: L.LatLng, entries: ChooserEntry[]) => void;
+}> = ({ entries, positionOf, radiusOf, onOverlap }) => {
+  const map = useMapEvents({
+    click: (e) => {
+      const candidates: Array<ProximityCandidate<ChooserEntry>> = entries.map((entry) => {
+        const p = map.latLngToContainerPoint(positionOf(entry));
+        return { x: p.x, y: p.y, radius: radiusOf(entry), item: entry };
+      });
+      const hits = findMarkersNearPoint(e.containerPoint, candidates);
+      if (hits.length > 1) onOverlap(e.latlng, hits.map((h) => h.item));
+    },
+  });
+  return null;
+};
+
 interface CoverageMapProps {
   fixes: Array<CoverageFix<CoverageReceptionDto>>;
   receivers: CoverageReceiverDto[];
@@ -202,10 +255,9 @@ export const CoverageMap: React.FC<CoverageMapProps> = ({
   gridCells = [],
 }) => {
   const { t } = useTranslation();
+  const baseMapSettings = useBaseMapSettings();
   const {
-    mapTileset,
     overlayColors,
-    customTilesets,
     distanceUnit,
     defaultMapCenterLat,
     defaultMapCenterLon,
@@ -244,13 +296,59 @@ export const CoverageMap: React.FC<CoverageMapProps> = ({
 
   const scale = overlayColors.snrColors;
 
+  const fixColor = (fix: CoverageFix<CoverageReceptionDto>) =>
+    metric === 'snr' ? snrToColor(fix.bestSnr, scale) : rssiToColor(fix.bestRssi, scale);
+
+  // Overlap chooser (#5543). Fix layers are kept by key so a chooser row can
+  // open that fix's own popup.
+  const fixLayersRef = useRef(new Map<string, L.CircleMarker>());
+  const [chooser, setChooser] = useState<ChooserState | null>(null);
+  const chooserSeqRef = useRef(0);
+
+  // Paint order (receivers, then fixes on top) so equal-distance ties list
+  // the way they stack. Grid view hides the dots, so only receivers count.
+  const chooserEntries = useMemo<ChooserEntry[]>(() => {
+    const entries: ChooserEntry[] = dedupedMarkers.map((marker) => ({
+      kind: 'receiver',
+      key: `receiver-${marker.key}`,
+      marker,
+    }));
+    if (view !== 'grid') for (const fix of fixes) entries.push({ kind: 'fix', key: fixKey(fix), fix });
+    return entries;
+  }, [dedupedMarkers, fixes, view]);
+
+  const positionOf = useCallback(
+    (entry: ChooserEntry): [number, number] =>
+      entry.kind === 'receiver'
+        ? [entry.marker.latitude, entry.marker.longitude]
+        : [entry.fix.latitude, entry.fix.longitude],
+    [],
+  );
+  const radiusOf = useCallback(
+    (entry: ChooserEntry) =>
+      entry.kind === 'fix' ? FIX_RADIUS : entry.marker.receiverKind === 'mqtt_gateway' ? GATEWAY_RADIUS : RECEIVER_RADIUS,
+    [],
+  );
+  const openChooser = useCallback((latlng: L.LatLng, entries: ChooserEntry[]) => {
+    chooserSeqRef.current += 1;
+    setChooser({ id: chooserSeqRef.current, latlng, entries });
+  }, []);
+
+  const receiverKindLabel = (m: ReceiverMarker) => {
+    const isGateway = m.receiverKind === 'mqtt_gateway';
+    return isGateway && m.protocol === 'meshcore'
+      ? t('analysis.coverage.kind_observer', 'Observer')
+      : isGateway
+        ? t('analysis.coverage.kind_gateway', 'Gateway')
+        : t('analysis.coverage.kind_local', 'Local');
+  };
+
   return (
     <div className={styles.mapWrap} data-testid="coverage-map">
       <BaseMap
         center={center}
         zoom={zoom}
-        tilesetId={mapTileset}
-        customTilesets={customTilesets}
+        {...baseMapSettings}
         scrollWheelZoom
         preferCanvas
       >
@@ -308,17 +406,12 @@ export const CoverageMap: React.FC<CoverageMapProps> = ({
 
         {dedupedMarkers.map((m) => {
           const isGateway = m.receiverKind === 'mqtt_gateway';
-          const isObserver = isGateway && m.protocol === 'meshcore';
-          const kindLabel = isObserver
-            ? t('analysis.coverage.kind_observer', 'Observer')
-            : isGateway
-              ? t('analysis.coverage.kind_gateway', 'Gateway')
-              : t('analysis.coverage.kind_local', 'Local');
+          const kindLabel = receiverKindLabel(m);
           return (
             <CircleMarker
               key={`receiver-${m.key}`}
               center={[m.latitude, m.longitude]}
-              radius={isGateway ? 6 : 9}
+              radius={isGateway ? GATEWAY_RADIUS : RECEIVER_RADIUS}
               pathOptions={
                 isGateway
                   ? {
@@ -346,13 +439,17 @@ export const CoverageMap: React.FC<CoverageMapProps> = ({
         })}
 
         {view !== 'grid' && fixes.map((fix) => {
-          const value = metric === 'snr' ? fix.bestSnr : fix.bestRssi;
-          const color = metric === 'snr' ? snrToColor(value, scale) : rssiToColor(value, scale);
+          const color = fixColor(fix);
+          const key = fixKey(fix);
           return (
             <CircleMarker
-              key={`fix-${fix.senderId}-${fix.packetKey}`}
+              key={key}
+              ref={(layer: L.CircleMarker | null) => {
+                if (layer) fixLayersRef.current.set(key, layer);
+                else fixLayersRef.current.delete(key);
+              }}
               center={[fix.latitude, fix.longitude]}
-              radius={6}
+              radius={FIX_RADIUS}
               pathOptions={{ color: '#000000', weight: 1, fillColor: color, fillOpacity: 0.85 }}
             >
               <Popup>
@@ -447,6 +544,90 @@ export const CoverageMap: React.FC<CoverageMapProps> = ({
             </CircleMarker>
           );
         })}
+
+        <OverlapClickHandler
+          entries={chooserEntries}
+          positionOf={positionOf}
+          radiusOf={radiusOf}
+          onOverlap={openChooser}
+        />
+        {chooser && (
+          <Popup
+            key={`chooser-${chooser.id}`}
+            position={chooser.latlng}
+            eventHandlers={{
+              // Closed by a map click, Escape, the close button, or a row
+              // opening a fix popup. Compare ids: a stale close must not wipe
+              // a newer chooser.
+              remove: () => setChooser((cur) => (cur?.id === chooser.id ? null : cur)),
+            }}
+          >
+            <div className={styles.popup} data-testid="coverage-overlap-chooser">
+              <div className={styles.popupTitle}>
+                {t('analysis.coverage.chooser_title', '{{count}} markers here', { count: chooser.entries.length })}
+              </div>
+              <ul className={styles.popupList}>
+                {chooser.entries.slice(0, CHOOSER_MAX_ITEMS).map((entry) => {
+                  if (entry.kind === 'receiver') {
+                    const m = entry.marker;
+                    return (
+                      <li key={entry.key} className={styles.popupItem} data-testid="coverage-chooser-receiver">
+                        <div className={styles.popupReceiver}>
+                          <span
+                            className={styles.legendSwatch}
+                            style={{
+                              backgroundColor: m.receiverKind === 'mqtt_gateway' ? GATEWAY_FILL : RECEIVER_FILL,
+                            }}
+                          />
+                          {m.label} · {receiverKindLabel(m)}
+                        </div>
+                      </li>
+                    );
+                  }
+                  const fix = entry.fix;
+                  const value = metric === 'snr' ? fix.bestSnr : fix.bestRssi;
+                  const valueLabel =
+                    metric === 'snr'
+                      ? value != null
+                        ? t('analysis.coverage.snr_value', 'SNR {{value}} dB', { value: value.toFixed(1) })
+                        : t('analysis.coverage.snr_unknown', 'SNR —')
+                      : value != null
+                        ? t('analysis.coverage.rssi_value', 'RSSI {{value}} dBm', { value })
+                        : t('analysis.coverage.rssi_unknown', 'RSSI —');
+                  return (
+                    <li key={entry.key} className={styles.popupItem}>
+                      <button
+                        type="button"
+                        className={styles.chooserButton}
+                        data-testid="coverage-chooser-fix"
+                        title={t('analysis.coverage.chooser_open_fix', 'Show receptions for this fix')}
+                        onClick={() => fixLayersRef.current.get(entry.key)?.openPopup()}
+                      >
+                        <span className={styles.popupReceiver}>
+                          <span className={styles.legendSwatch} style={{ backgroundColor: fixColor(fix) }} />
+                          {t('analysis.coverage.popup_title', '{{sender}} — {{count}} reception(s)', {
+                            sender: fixSenderLabel(fix.senderId, senderNames),
+                            count: fix.receptions.length,
+                          })}
+                        </span>
+                        <span className={styles.popupMeta}>
+                          {new Date(fix.receivedAt).toLocaleString()} · {valueLabel}
+                        </span>
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+              {chooser.entries.length > CHOOSER_MAX_ITEMS && (
+                <div className={styles.popupMeta} data-testid="coverage-chooser-more">
+                  {t('analysis.coverage.chooser_more', '+{{count}} more. Zoom in to separate them.', {
+                    count: chooser.entries.length - CHOOSER_MAX_ITEMS,
+                  })}
+                </div>
+              )}
+            </div>
+          </Popup>
+        )}
       </BaseMap>
 
       <div className={styles.legend} data-testid="coverage-legend">
