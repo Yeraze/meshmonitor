@@ -507,7 +507,8 @@ export interface MeshCoreConfig {
   baudRate?: number;
   firmwareType?: 'companion' | 'repeater';
 
-  // Heartbeat / auto-reconnect (native-backend only; default off).
+  // Heartbeat / auto-reconnect (default off). Companion: probes the native
+  // backend. Repeater (#5563): probes the serial CLI with `clock`.
   // See docs/internal/meshcore-design/meshcore-heartbeat-proposal.md.
   heartbeatIntervalSeconds?: number;   // 0 = disabled. v1 native default: 0.
   heartbeatTimeoutMs?: number;         // default 5000.
@@ -1284,6 +1285,22 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
   private repeaterCliChain: Promise<unknown> = Promise.resolve();
   /** Commands queued or running on the serial CLI. The neighbours poll skips when > 0. */
   private repeaterCliPending = 0;
+  /**
+   * When the last `->` reply line landed on the serial CLI (#5563). The stall
+   * probe skips a tick if this is newer than one interval: a console that just
+   * answered is alive, and the probe would only queue behind real work.
+   */
+  private repeaterLastCliReplyAt: number | null = null;
+  /** False when the last `get name` got no reply at all: connect() fails on it (#5563). */
+  private repeaterNameAnswered = false;
+  /**
+   * Set when a Repeater serial link is being recovered (port closed, port
+   * error, or stall probe), cleared by disconnect() and by the connect() that
+   * lands. While set, that connect() skips the on-start auto-announce, so a
+   * flapping USB link can't send an advert per flap (#5563). In-memory on
+   * purpose: a process restart is a real start.
+   */
+  private linkRecoveryReconnect = false;
   /** The repeater's own 64-hex key from `get public.key`. `localNode.publicKey` stays the 'repeater' placeholder. */
   private repeaterPublicKey: string | null = null;
   /** Neighbours poll timer (#5500). Repeater sources only, only while connected. */
@@ -1314,7 +1331,8 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
     this.observerPublisher?.handleOtaPacket(data);
   };
 
-  // Heartbeat / auto-reconnect state (native-backend only).
+  // Heartbeat / auto-reconnect state (Companion native backend, and the
+  // Repeater serial stall probe, #5563).
   private connectionState: MeshCoreConnectionState = 'disconnected';
   private heartbeatScheduler: HeartbeatScheduler | null = null;
   private reconnectTimer: NodeJS.Timeout | null = null;
@@ -1692,6 +1710,10 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
       await this.disconnect();
     }
 
+    // Captured before anything can clear it: disconnect() resets the flag, and
+    // the catch block below calls disconnect() on a failed attempt (#5563).
+    const linkRecovery = this.linkRecoveryReconnect;
+
     this.config = config;
     this.pendingConfig = config; // keep staging field in sync with direct connect() calls
 
@@ -1791,6 +1813,12 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
 
       // Get initial info
       await this.refreshLocalNode();
+      // A Repeater that answers nothing to `get name` is not connected: the
+      // port opened but the console is dead. Accepting it reset the backoff on
+      // every attempt and showed a wedged device as "Unknown Repeater" (#5563).
+      if (this.deviceType === MeshCoreDeviceType.REPEATER && !this.repeaterNameAnswered) {
+        throw new Error('Repeater did not answer `get name` on the serial console');
+      }
       // Pre-seed the in-memory contact list from the DB BEFORE the live
       // get_contacts. On a flaky/slow companion the live refresh can return
       // empty or time out (and refreshContacts deliberately won't wipe on
@@ -1820,7 +1848,15 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
         }
       }
 
+      // The port can close while the steps above run. The close handler leaves
+      // an in-flight connect() alone, so catch it here (#5563). No await sits
+      // between this check and `connected = true`.
+      if (this.deviceType === MeshCoreDeviceType.REPEATER && !this.serialPort?.isOpen) {
+        throw new Error('Serial port closed during connect');
+      }
+
       this.connected = true;
+      this.linkRecoveryReconnect = false;
       // The device's flood scope is unknown right after (re)connect — force the
       // next send to re-assert it (#3667).
       this.activeFloodScope = undefined;
@@ -1846,9 +1882,9 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
       }
       logger.info(`[MeshCore] Connected to ${this.localNode?.name || 'unknown device'}`);
 
-      // Start heartbeat only when running on the native backend (i.e. Companion).
-      // Repeater uses direct serial and isn't covered by the heartbeat probe.
-      if (this.nativeBackend) {
+      // Opt-in probe (heartbeatIntervalSeconds > 0). Companion probes the
+      // native backend; Repeater probes the serial CLI with `clock` (#5563).
+      if (this.nativeBackend || this.deviceType === MeshCoreDeviceType.REPEATER) {
         this.startHeartbeat();
       }
 
@@ -1884,7 +1920,10 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
       this.startAutoAnnounce().then(async () => {
         const onStart = (await databaseService.settings.getSettingForSource(this.sourceId, 'meshcoreAutoAnnounceOnStart')) === 'true';
         const enabled = (await databaseService.settings.getSettingForSource(this.sourceId, 'meshcoreAutoAnnounceEnabled')) === 'true';
-        if (onStart && enabled) {
+        if (onStart && enabled && linkRecovery) {
+          // A recovered serial link is not a start: no advert per flap (#5563).
+          logger.info(`[MeshCore:${this.sourceId}] Link recovered; skipping the on-start announce`);
+        } else if (onStart && enabled) {
           // Small delay so the device-side AppStart settles before chat goes out.
           setTimeout(() => {
             void this.runAutoAnnounceCycle('on_start').catch((err: Error) =>
@@ -1915,6 +1954,8 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
             : String(error);
       logger.error(`[MeshCore] Connection failed: ${detail}`);
       await this.disconnect();
+      // disconnect() cleared it; a failed recovery attempt is still a recovery.
+      this.linkRecoveryReconnect = linkRecovery;
       // Retry the initial connection attempt with exponential backoff instead
       // of leaving the source stuck disconnected until a manual Connect click
       // (#3918). Unlike Meshtastic TCP — whose transport retries forever by
@@ -2091,6 +2132,7 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
     // Clear reconnect intent first so a pending reconnect closure can't
     // stomp the in-progress teardown.
     this.shouldReconnect = false;
+    this.linkRecoveryReconnect = false;
     if (this.reconnectTimer) {
       clearTimeout(this.reconnectTimer);
       this.reconnectTimer = null;
@@ -2147,11 +2189,7 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
     await this.closeSerialDirect();
 
     // Clear pending commands
-    for (const [_id, cmd] of this.pendingCommands) {
-      clearTimeout(cmd.timeout);
-      cmd.reject(new Error('Disconnected'));
-    }
-    this.pendingCommands.clear();
+    this.rejectPendingCommands();
 
     // Clear pending DM ack-retry timers (#3977) — a torn-down connection
     // can't reset a path or resend, so don't let a stray timer try.
@@ -3983,21 +4021,31 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
     const ReadlineParserClass = ReadlineParser;
 
     await new Promise<void>((resolve, reject) => {
-      this.serialPort = new SerialPortClass({
+      const port = new SerialPortClass({
         path,
         baudRate: this.config!.baudRate || 115200,
       });
+      this.serialPort = port;
+      let opened = false;
 
-      this.parser = this.serialPort.pipe(new ReadlineParserClass({ delimiter: '\n' }));
+      this.parser = port.pipe(new ReadlineParserClass({ delimiter: '\n' }));
 
-      this.serialPort.on('open', () => {
+      port.on('open', () => {
         logger.info(`[MeshCore] Serial port opened: ${this.config!.serialPort}`);
+        opened = true;
         resolve();
       });
 
-      this.serialPort.on('error', (err: Error) => {
+      port.on('error', (err: Error) => {
         logger.error('[MeshCore] Serial port error:', err);
-        reject(err);
+        // Before open this fails the connect; after open it is a lost link (#5563).
+        if (opened) this.handleSerialPortLost(port, `error: ${err.message}`);
+        else reject(err);
+      });
+
+      // A USB unplug or a device reset closes the port under us (#5563).
+      port.on('close', () => {
+        this.handleSerialPortLost(port, 'closed');
       });
 
       this.parser.on('data', (data: string) => {
@@ -4395,7 +4443,7 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
   private async sendRepeaterCommand(
     command: string,
     timeout: number = 5000,
-    opts: { idleGapMs?: number } = {},
+    opts: { idleGapMs?: number; probe?: boolean } = {},
   ): Promise<string> {
     this.repeaterCliPending++;
     const run = this.repeaterCliChain.then(() => this.runRepeaterCommand(command, timeout, opts));
@@ -4413,7 +4461,11 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
   }
 
   /** One serial CLI round-trip. Callers go through `sendRepeaterCommand` (the mutex). */
-  private runRepeaterCommand(command: string, timeout: number, opts: { idleGapMs?: number }): Promise<string> {
+  private runRepeaterCommand(
+    command: string,
+    timeout: number,
+    opts: { idleGapMs?: number; probe?: boolean },
+  ): Promise<string> {
     if (!this.serialPort?.isOpen) {
       return Promise.reject(new Error('Serial port not open'));
     }
@@ -4433,6 +4485,15 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
         resolve(lines.join('\n').trim());
       };
 
+      // Teardown path: drop the timers and the listener too, so a rejected
+      // command leaves nothing behind on a link that flaps (#5563).
+      const abort = (err: Error) => {
+        clearTimeout(timeoutHandle);
+        if (idleHandle) clearTimeout(idleHandle);
+        this.removeListener('serial_data', dataHandler);
+        reject(err);
+      };
+
       const timeoutHandle = setTimeout(() => {
         // Resolve with whatever we have instead of rejecting on timeout,
         // since the repeater doesn't send an explicit end-of-response marker
@@ -4448,6 +4509,9 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
 
         lines.push(data);
         logger.debug(`[MeshCore] Response line: ${data}`);
+        // Proof of life for the stall probe (#5563). The probe's own reply
+        // does not count, or it would skip every second tick.
+        if (!opts.probe && data.includes('->')) this.repeaterLastCliReplyAt = Date.now();
 
         // Check for response terminators
         if (data.includes('-> >') || data.includes('OK') || data.includes('Error') || data.includes('Unknown command')) {
@@ -4464,7 +4528,7 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
         }
       };
 
-      this.pendingCommands.set(cmdId, { resolve, reject, timeout: timeoutHandle });
+      this.pendingCommands.set(cmdId, { resolve, reject: abort, timeout: timeoutHandle });
       this.on('serial_data', dataHandler);
 
       logger.debug(`[MeshCore] TX: ${command}`);
@@ -4566,8 +4630,17 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
    */
   async refreshLocalNode(): Promise<MeshCoreNode | null> {
     if (this.deviceType === MeshCoreDeviceType.REPEATER) {
+      this.repeaterNameAnswered = false;
       try {
         const nameResponse = await this.sendRepeaterCommand('get name');
+        if (nameResponse.trim().length === 0) {
+          // Nothing came back: the console is dead. Keep what we know and skip
+          // the five reads behind it, each of which would wait out its own
+          // timeout. connect() turns this into a failed attempt (#5563).
+          logger.warn(`[MeshCore:${this.sourceId}] Repeater gave no reply to 'get name'`);
+          return this.localNode;
+        }
+        this.repeaterNameAnswered = true;
         const radioResponse = await this.sendRepeaterCommand('get radio');
         // TX power and position (#5496). Firmware command names come from
         // CommonCLI.cpp: `get tx` (not `tx_power`), `get lat`, `get lon`, each
@@ -9123,11 +9196,16 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
    * `Unknown command` all return null and log at debug, so a flaky link does
    * not print a warning every poll.
    */
-  private async readRepeaterStat<T>(command: string, parse: (reply: string) => T | null): Promise<T | null> {
+  private async readRepeaterStat<T>(
+    command: string,
+    parse: (reply: string) => T | null,
+    opts: { timeoutMs?: number; probe?: boolean } = {},
+  ): Promise<T | null> {
     if (!this.connected) return null;
     try {
-      const reply = await this.sendRepeaterCommand(command, REPEATER_STATS_TIMEOUT_MS, {
+      const reply = await this.sendRepeaterCommand(command, opts.timeoutMs ?? REPEATER_STATS_TIMEOUT_MS, {
         idleGapMs: REPEATER_STATS_IDLE_GAP_MS,
+        probe: opts.probe,
       });
       const parsed = parse(reply);
       if (parsed === null) {
@@ -9820,12 +9898,18 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
     return this.connected;
   }
 
-  // ============ Heartbeat / auto-reconnect (native-backend only) ============
+  // ============ Heartbeat / auto-reconnect ============
   //
   // State machine: disconnected → connecting → connected → reconnecting → …
   // Probe is `getDeviceTime()` (cheap RTC read, no RF). N consecutive
   // failures triggers a teardown + exponential-backoff reconnect. See
   // docs/internal/meshcore-design/meshcore-heartbeat-proposal.md for the full design.
+  //
+  // Companion: the probe goes to the native backend. Repeater (#5563): the
+  // probe is the serial CLI `clock`, queued on the same chain as every other
+  // console command. Both are opt-in through `heartbeatIntervalSeconds`.
+  // A closed or errored Repeater serial port reconnects whether or not the
+  // probe is on: see handleSerialPortLost.
 
   getHeartbeatStatus(): MeshCoreHeartbeatStatus {
     return {
@@ -9838,9 +9922,9 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
   }
 
   /**
-   * Start the heartbeat probe loop. Called automatically from connect() when
-   * the native backend is in use. Idempotent: if interval is 0 or a scheduler
-   * is already running, it's a no-op.
+   * Start the heartbeat probe loop. Called automatically from connect() for a
+   * Companion (native backend) or a Repeater (serial CLI). Idempotent: if
+   * interval is 0 or a scheduler is already running, it's a no-op.
    */
   private startHeartbeat(): void {
     const intervalSecs = this.config?.heartbeatIntervalSeconds ?? 0;
@@ -9850,12 +9934,15 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
     }
     if (this.heartbeatScheduler?.running) return;
     this.shouldReconnect = true;
+    const repeater = this.deviceType === MeshCoreDeviceType.REPEATER;
+    const intervalMs = intervalSecs * 1000;
     this.heartbeatScheduler = new HeartbeatScheduler({
       label: `MeshCore:${this.sourceId}`,
-      intervalMs: intervalSecs * 1000,
+      intervalMs,
       timeoutMs: this.config?.heartbeatTimeoutMs ?? 5000,
-      probe: (t) => this.heartbeatProbe(t),
-      isConnected: () => this.connectionState === 'connected' && !!this.nativeBackend,
+      probe: (t) => (repeater ? this.repeaterHeartbeatProbe(t, intervalMs) : this.heartbeatProbe(t)),
+      isConnected: () =>
+        this.connectionState === 'connected' && (repeater ? !!this.serialPort : !!this.nativeBackend),
       onSuccess: (ms) => this.onHeartbeatOk(ms),
       onFailure: (e) => this.recordHeartbeatFailure(e),
     });
@@ -9881,6 +9968,51 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
     const response = await this.nativeBackend.sendCommand('get_device_time', {}, timeoutMs);
     if (response.success) return true;
     throw new Error(response.error ?? 'probe failed');
+  }
+
+  /**
+   * Repeater stall probe (#5563): one serial `clock` on the CLI chain. Local
+   * serial only, zero airtime. Any `->` reply counts as alive, so a firmware
+   * that answers `Unknown command` is not torn down for it. A reply that
+   * landed within the last interval skips the send: a busy console is not a
+   * stall, and the probe would only queue behind real work.
+   */
+  private async repeaterHeartbeatProbe(timeoutMs: number, intervalMs: number): Promise<boolean> {
+    const last = this.repeaterLastCliReplyAt;
+    if (last !== null && Date.now() - last < intervalMs) return true;
+    const alive = await this.readRepeaterStat('clock', (reply) => (reply.includes('->') ? true : null), {
+      timeoutMs,
+      probe: true,
+    });
+    return alive === true;
+  }
+
+  /**
+   * The Repeater serial port closed or errored after it opened (#5563): a USB
+   * unplug, a device reset, a dead adapter. Always reconnects with the normal
+   * backoff, probe or no probe: nothing else would ever notice.
+   *
+   * Guards: a stale port (already replaced or released) is ignored, and so is
+   * our own close from disconnect() / teardownTransportOnly(). A loss while a
+   * connect() is still in flight is left to that connect(), which fails on the
+   * closed port and retries through its own catch block.
+   */
+  private handleSerialPortLost(port: unknown, reason: string): void {
+    if (this.serialPort !== port) return;
+    if (this.intentionalTeardown) return;
+    if (this.connectionState !== 'connected') return;
+    logger.warn(`[MeshCore:${this.sourceId}] Serial port lost (${reason}); reconnecting`);
+    this.shouldReconnect = true;
+    this.beginReconnect();
+  }
+
+  /** Reject every in-flight command. Each rejection clears its own timers. */
+  private rejectPendingCommands(): void {
+    for (const [, cmd] of this.pendingCommands) {
+      clearTimeout(cmd.timeout);
+      cmd.reject(new Error('Disconnected'));
+    }
+    this.pendingCommands.clear();
   }
 
   /** Called by the scheduler on a successful probe. */
@@ -9910,6 +10042,11 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
     if (this.connectionState === 'reconnecting' || this.connectionState === 'failed') return;
     this.connectionState = 'reconnecting';
     this.stopHeartbeat();
+    // A recovered Repeater serial link must not fire the on-start announce (#5563).
+    if (this.deviceType === MeshCoreDeviceType.REPEATER) {
+      this.linkRecoveryReconnect = true;
+      dataEventEmitter.emitMeshCoreStatusUpdated({ connected: false }, this.sourceId);
+    }
     // Tear down the live transport without clearing shouldReconnect, so the
     // closure that fires after the backoff can re-enter connect().
     void this.teardownTransportOnly().then(() => this.scheduleNextReconnect());
@@ -9999,6 +10136,19 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
       }
       this.nativeBackend = null;
     }
+
+    // Repeater serial link (#5563). Without this a stalled port stayed open
+    // and the reconnect opened it a second time, the neighbours poll kept
+    // ticking against a dead console, and in-flight commands waited out their
+    // timeouts. `lastRepeaterNeighborsPollAt` is kept, so the reconnect waits
+    // out the rest of the poll interval instead of polling early.
+    this.stopRepeaterNeighborsPoll();
+    this.repeaterPacketPairer.reset();
+    this.repeaterPacketStreamSeen = false;
+    this.repeaterLastCliReplyAt = null;
+    await this.closeSerialDirect();
+    this.rejectPendingCommands();
+
     this.connected = false;
     // The MeshCore session on the wire is gone — any guest-login state on
     // the previous connection no longer applies. Local node / contacts

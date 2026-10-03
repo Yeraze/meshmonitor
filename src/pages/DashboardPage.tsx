@@ -735,9 +735,9 @@ function DashboardInner() {
         };
       }
 
-      // Companion heartbeat / auto-reconnect (mirrors the Meshtastic setting).
-      // 0 = disabled; otherwise probe + reconnect with backoff. Only the native
-      // backend (companion) honours it; repeater ignores it.
+      // Heartbeat / auto-reconnect (mirrors the Meshtastic setting).
+      // 0 = disabled; otherwise probe + reconnect with backoff. A Companion
+      // probes the native backend; a Repeater probes the serial CLI (#5563).
       const mcHeartbeat = parseInt(formHeartbeat, 10);
       if (isNaN(mcHeartbeat) || mcHeartbeat < 0 || mcHeartbeat > 3600) {
         setFormError(t('source.form.error_heartbeat_range'));
@@ -1785,7 +1785,7 @@ function DashboardInner() {
                     placeholder="0"
                   />
                   <p style={{ fontSize: 11, color: 'var(--color-text-subtle)', margin: '4px 0 0' }}>
-                    {t('meshcore.form.heartbeat_help', 'Seconds between companion keepalive probes (0 = disabled). On repeated failure the source reconnects automatically with backoff. Applies to Companion devices only.')}
+                    {t('meshcore.form.heartbeat_help', 'Seconds between health probes (0 = disabled). After three failed probes the source reconnects on its own, with backoff. Works for Companion and Repeater devices. The probe stays on the local link and sends nothing over the radio.')}
                   </p>
                 </label>
 
