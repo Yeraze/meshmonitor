@@ -106,6 +106,10 @@ export async function buildSourceNodes(source: SourceRow, user: ReqUser): Promis
           hopsAway: 0,
           role: 0,
           advType: typeof n.advType === 'number' ? n.advType : 0,
+          // #5578: lets the map hide a node whose latest advert had no
+          // position (`false`), unless the fix is a live telemetry one.
+          lastAdvertHadPosition: n.lastAdvertHadPosition ?? null,
+          positionSource: n.positionSource ?? null,
         }, mcSignFlipCtx));
       }
     }

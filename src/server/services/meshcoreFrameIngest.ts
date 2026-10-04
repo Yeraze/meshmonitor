@@ -20,6 +20,7 @@
  * Monitor decode modal, #5567).
  */
 import { createHash, createHmac, createDecipheriv, timingSafeEqual } from 'node:crypto';
+import { advertHasPosition } from '../../utils/meshcoreAdvertPosition.js';
 import { ChannelCrypto } from '@michaelhart/meshcore-decoder';
 import databaseService from '../../services/database.js';
 import { ALL_SOURCES } from '../../db/repositories/base.js';
@@ -375,6 +376,11 @@ export async function ingestAdvertFrame(
       // An advert position is the static kind, so a real telemetry fix keeps
       // precedence (same tag the contact-sync path uses).
       positionSource: advert.latitude !== undefined ? 'contact' : undefined,
+      // #5578: written on EVERY advert. `false` is kept by upsertNode's merge
+      // (only null/undefined means "not observed"), and the stored
+      // coordinates stay, so this is the one record that the node's latest
+      // advert had no position.
+      lastAdvertHadPosition: advertHasPosition(advert.latitude, advert.longitude),
       lastHeard: opts.lastHeardMs === 'advert' ? advertLastHeardMs(advert.timestamp) : opts.lastHeardMs,
     },
     sourceId,

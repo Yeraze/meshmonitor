@@ -99,6 +99,46 @@ describe('MeshCoreRepository — sourceId stamping', () => {
     expect(row.advType).toBe(1); // a provided value still updates
   });
 
+  it('upsertNode persists lastAdvertHadPosition=false and keeps the stored coordinates (#5578)', async () => {
+    await repo.upsertNode(
+      { publicKey: 'pk-adv', name: 'Mover', latitude: 43.65, longitude: -79.38, positionSource: 'contact', lastAdvertHadPosition: true },
+      'src-a',
+    );
+    // The next advert has no position: coordinates undefined, flag false.
+    await repo.upsertNode(
+      { publicKey: 'pk-adv', latitude: undefined, longitude: undefined, positionSource: undefined, lastAdvertHadPosition: false },
+      'src-a',
+    );
+    const row = await repo.getNodeByPublicKeyAndSource('pk-adv', 'src-a');
+    expect(row?.lastAdvertHadPosition).toBe(false);
+    expect(row?.latitude).toBeCloseTo(43.65);
+    expect(row?.longitude).toBeCloseTo(-79.38);
+    expect(row?.positionSource).toBe('contact');
+  });
+
+  it('upsertNode leaves lastAdvertHadPosition alone when the caller did not observe an advert (#5578)', async () => {
+    await repo.upsertNode({ publicKey: 'pk-adv2', lastAdvertHadPosition: false }, 'src-a');
+    // A telemetry / config write knows nothing about adverts.
+    await repo.upsertNode({ publicKey: 'pk-adv2', batteryMv: 3900 }, 'src-a');
+    await repo.upsertNode({ publicKey: 'pk-adv2', lastAdvertHadPosition: null }, 'src-a');
+    expect((await repo.getNodeByPublicKeyAndSource('pk-adv2', 'src-a'))?.lastAdvertHadPosition).toBe(false);
+    // A later advert with a position flips it back.
+    await repo.upsertNode({ publicKey: 'pk-adv2', latitude: 10, longitude: 20, lastAdvertHadPosition: true }, 'src-a');
+    expect((await repo.getNodeByPublicKeyAndSource('pk-adv2', 'src-a'))?.lastAdvertHadPosition).toBe(true);
+  });
+
+  it('a new node reads lastAdvertHadPosition as null (unknown) until an advert says otherwise (#5578)', async () => {
+    await repo.upsertNode({ publicKey: 'pk-adv3', name: 'Stub' }, 'src-a');
+    expect((await repo.getNodeByPublicKeyAndSource('pk-adv3', 'src-a'))?.lastAdvertHadPosition ?? null).toBeNull();
+  });
+
+  it('lastAdvertHadPosition is per source (#5578)', async () => {
+    await repo.upsertNode({ publicKey: 'pk-adv4', lastAdvertHadPosition: false }, 'src-a');
+    await repo.upsertNode({ publicKey: 'pk-adv4', lastAdvertHadPosition: true }, 'src-b');
+    expect((await repo.getNodeByPublicKeyAndSource('pk-adv4', 'src-a'))?.lastAdvertHadPosition).toBe(false);
+    expect((await repo.getNodeByPublicKeyAndSource('pk-adv4', 'src-b'))?.lastAdvertHadPosition).toBe(true);
+  });
+
   it('upsertNode does not let a static contact position clobber an established telemetry fix (#3908)', async () => {
     // Telemetry poll records the node's true GNSS fix first.
     await repo.upsertNode(
@@ -235,6 +275,7 @@ describe('MeshCoreRepository — sourceId stamping', () => {
         timeSyncIntervalMinutes INTEGER DEFAULT 720,
         lastTimeSyncAt INTEGER,
         repeaterNeighborAt INTEGER,
+        lastAdvertHadPosition INTEGER,
         out_path TEXT,
         path_len INTEGER,
         adminCredential TEXT,
@@ -506,6 +547,7 @@ describe('MeshCoreRepository — sourceId stamping', () => {
         timeSyncIntervalMinutes INTEGER DEFAULT 720,
         lastTimeSyncAt INTEGER,
         repeaterNeighborAt INTEGER,
+        lastAdvertHadPosition INTEGER,
         out_path TEXT,
         path_len INTEGER,
         adminCredential TEXT,
@@ -778,6 +820,7 @@ describe('MeshCoreRepository — sourceId stamping', () => {
         timeSyncIntervalMinutes INTEGER DEFAULT 720,
         lastTimeSyncAt INTEGER,
         repeaterNeighborAt INTEGER,
+        lastAdvertHadPosition INTEGER,
         out_path TEXT,
         path_len INTEGER,
         adminCredential TEXT,
@@ -858,6 +901,7 @@ describe('MeshCoreRepository — sourceId stamping', () => {
         timeSyncIntervalMinutes INTEGER DEFAULT 720,
         lastTimeSyncAt INTEGER,
         repeaterNeighborAt INTEGER,
+        lastAdvertHadPosition INTEGER,
         out_path TEXT,
         path_len INTEGER,
         adminCredential TEXT,

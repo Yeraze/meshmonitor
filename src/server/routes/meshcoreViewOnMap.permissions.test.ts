@@ -26,6 +26,8 @@ const STUB_CONTACT = {
   longitude: -105.0,
   advType: 1,
   lastSeen: 1000,
+  // #5578
+  lastAdvertHadPosition: false,
 };
 
 const STUB_NODE = {
@@ -34,6 +36,9 @@ const STUB_NODE = {
   advType: 1,
   latitude: 40.0,
   longitude: -105.0,
+  // #5578
+  lastAdvertHadPosition: false,
+  positionSource: 'contact',
 };
 
 vi.mock('../sourceManagerRegistry.js', () => {
@@ -99,6 +104,9 @@ describe('MeshCore routes — nodes:viewOnMap gates position data (#4559)', () =
       expect(res.body.data[0].latitude).toBeUndefined();
       expect(res.body.data[0].longitude).toBeUndefined();
       expect(res.body.data[0].publicKey).toBe(STUB_NODE.publicKey);
+      // #5578: whether a node shares its position is position data too.
+      expect(res.body.data[0]).not.toHaveProperty('lastAdvertHadPosition');
+      expect(res.body.data[0]).not.toHaveProperty('positionSource');
     });
 
     it('includes lat/lon once nodes:viewOnMap is also granted', async () => {
@@ -110,6 +118,9 @@ describe('MeshCore routes — nodes:viewOnMap gates position data (#4559)', () =
       expect(res.status).toBe(200);
       expect(res.body.data[0].latitude).toBe(40.0);
       expect(res.body.data[0].longitude).toBe(-105.0);
+      // #5578: the read route exposes the latest-advert flag for the map filter.
+      expect(res.body.data[0].lastAdvertHadPosition).toBe(false);
+      expect(res.body.data[0].positionSource).toBe('contact');
     });
 
     it('admin always sees positions', async () => {
@@ -131,6 +142,7 @@ describe('MeshCore routes — nodes:viewOnMap gates position data (#4559)', () =
       expect(res.body.data[0].latitude).toBeUndefined();
       expect(res.body.data[0].longitude).toBeUndefined();
       expect(res.body.data[0].name).toBe(STUB_CONTACT.name);
+      expect(res.body.data[0]).not.toHaveProperty('lastAdvertHadPosition');
     });
 
     it('includes lat/lon for anonymous once nodes:viewOnMap is granted', async () => {
