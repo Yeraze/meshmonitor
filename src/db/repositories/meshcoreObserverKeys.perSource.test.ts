@@ -57,6 +57,17 @@ describe('MeshCoreObserverKeysRepository — per-source isolation', () => {
     expect(await repo.getBySourceId('source-b')).toBeNull();
   });
 
+  it('listSourceIds returns every source with a key, and nothing but ids', async () => {
+    expect(await repo.listSourceIds()).toEqual([]);
+
+    await repo.upsert('source-a', 'envelope-a', 'PUBKEYA', 'device');
+    await repo.upsert('source-b', 'envelope-b', 'PUBKEYB', 'manual');
+    expect((await repo.listSourceIds()).sort()).toEqual(['source-a', 'source-b']);
+
+    await repo.deleteBySourceId('source-a');
+    expect(await repo.listSourceIds()).toEqual(['source-b']);
+  });
+
   it('deleteBySourceId removes only the targeted source, leaving others intact', async () => {
     await repo.upsert('source-a', 'envelope-a', 'PUBKEYA', 'device');
     await repo.upsert('source-b', 'envelope-b', 'PUBKEYB', 'manual');

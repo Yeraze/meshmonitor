@@ -45,6 +45,14 @@ Deliberate. Add a second source for a second broker — creating two sources on 
 
 Same requirement as the Analyzer Observer. Note that a broker password here is stored as **plaintext** in the source's config — it is withheld from non-admin API responses, but it is not encrypted at rest. Use a broker account you are comfortable storing that way.
 
+### A rejected login stops after five tries
+
+If the broker rejects the username or password five times in a row, the source stops reconnecting. A wrong password does not fix itself, and retrying it every minute only loads the broker. The source card shows **Login rejected** with the reason, and a **Connect** button.
+
+To start it again, fix the credentials and save the source, or click **Connect**. Either one gives it five fresh attempts. A restart of MeshMonitor does the same: the count is kept in memory, not in the database.
+
+Any other failure — broker down, network drop, TLS error — keeps retrying on the normal backoff (1 second, doubling to 60 seconds) and never stops.
+
 ## Duplicates: what collapses and what doesn't
 
 A region feed delivers the same frame once per observer that heard it. Different surfaces treat that differently, on purpose:

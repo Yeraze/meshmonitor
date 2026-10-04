@@ -42,6 +42,7 @@
 import { EventEmitter } from 'events';
 import type { ISourceManager, SourceStatus } from './sourceManagerRegistry.js';
 import { MqttBrokerClient } from './transports/mqttBrokerClient.js';
+import { redactBrokerUrl } from './utils/brokerUrl.js';
 import {
   decodeObserverPacketMessage,
   observerPacketsSubscription,
@@ -99,6 +100,35 @@ export interface MeshCoreMqttSourceConfig {
   rejectUnauthorized?: boolean;
   /** When false the source is enabled but must be connected manually. */
   autoConnect?: boolean;
+}
+
+/**
+ * Rejected logins in a row before an ingest source stops reconnecting (#5596).
+ * Same number the Observer publisher uses for its own hard stop
+ * (`MAX_AUTH_FAILURES` in meshcoreObserverPublisher.ts).
+ */
+export const INGEST_MAX_AUTH_FAILURES = 5;
+
+/**
+ * What the source status says once the broker has rejected the login
+ * {@link INGEST_MAX_AUTH_FAILURES} times.
+ *
+ * A fixed string on purpose: `/api/sources/:id/status` is readable without a
+ * login, so nothing from the config (username, password, broker host) and
+ * nothing from the broker's own error text may ride along.
+ */
+export const INGEST_AUTH_STOPPED_MESSAGE =
+  `Broker rejected the login ${INGEST_MAX_AUTH_FAILURES} times in a row, so this source stopped ` +
+  'reconnecting. Fix the username or password and save the source, or reconnect it.';
+
+/** `getStatus()` for an ingest source: the base status plus the auth stop. */
+export interface MeshCoreMqttSourceStatus extends SourceStatus {
+  /** True once the source gave up after repeated rejected logins. */
+  authStopped: boolean;
+  /** Why the source stopped, or null. Rendered by the sidebar's existing badge. */
+  permissionMessage: string | null;
+  /** Same fixed text as `permissionMessage`; feeds the sidebar's tooltip. */
+  lastError: string | null;
 }
 
 /** One observer's latest self-reported state, for the status panel. */
@@ -166,6 +196,17 @@ export class MeshCoreMqttManager extends EventEmitter implements ISourceManager 
   private readonly config: MeshCoreMqttSourceConfig;
   private client: MqttBrokerClient | null = null;
   private started = false;
+  /**
+   * True once the broker rejected {@link INGEST_MAX_AUTH_FAILURES} logins in a
+   * row and the source gave up (#5596).
+   *
+   * In memory only, by design. Nothing here sends anything, so there is no
+   * timer for a save to re-arm: a config save, a manual connect, or a process
+   * restart each build a NEW manager, which gets a fresh five attempts and
+   * then stops again. Persisting the stop would instead leave a source dead
+   * after the operator fixed the password out of band.
+   */
+  private authStopped = false;
 
   private readonly stats: MeshCoreMqttIngestStats = {
     received: 0,
@@ -218,6 +259,8 @@ export class MeshCoreMqttManager extends EventEmitter implements ISourceManager 
   async start(): Promise<void> {
     if (this.started) return;
     this.started = true;
+    // A fresh start is a fresh set of attempts.
+    this.authStopped = false;
     // Ignore / Block lists (#5408) are classified synchronously on ingest.
     await meshcoreMessageFilter.loadSource(this.sourceId);
     try {
@@ -245,6 +288,9 @@ export class MeshCoreMqttManager extends EventEmitter implements ISourceManager 
       password: this.config.password,
       rejectUnauthorized: this.config.rejectUnauthorized ?? true,
       clientIdPrefix: 'meshmonitor-ingest',
+      // A rejected login does not fix itself; without this a wrong password
+      // costs the broker a CONNECT every ~60 s for ever (#5596).
+      maxAuthFailures: INGEST_MAX_AUTH_FAILURES,
     });
     this.client = client;
 
@@ -258,20 +304,72 @@ export class MeshCoreMqttManager extends EventEmitter implements ISourceManager 
     client.on('close', () => {
       logger.info(`[MeshCoreMqtt:${this.sourceId}] broker connection closed`);
     });
+    client.on('auth-stopped', () => this.onAuthStopped(client));
 
     await client.connect();
     await client.subscribe([packetsTopic, statusTopic]);
     logger.info(
-      `[MeshCoreMqtt:${this.sourceId}] subscribed to ${packetsTopic} and ${statusTopic} on ${this.config.brokerUrl}`,
+      `[MeshCoreMqtt:${this.sourceId}] subscribed to ${packetsTopic} and ${statusTopic} on ${redactBrokerUrl(this.config.brokerUrl)}`,
     );
+  }
+
+  /**
+   * The broker rejected the login too many times: give up until someone acts.
+   *
+   * The client has already stopped scheduling retries. Here we record why for
+   * the status surface and close the socket. The manager stays `started` and
+   * registered, so the source's read routes keep serving what is already
+   * stored; `restart()`, or a new manager built by a config save, clears it.
+   */
+  private onAuthStopped(client: MqttBrokerClient): void {
+    if (this.client !== client) return; // A stale client from before a restart.
+    this.authStopped = true;
+    this.stats.lastError = INGEST_AUTH_STOPPED_MESSAGE;
+    this.client = null;
+    logger.warn(
+      `[MeshCoreMqtt:${this.sourceId}] broker rejected the login ${INGEST_MAX_AUTH_FAILURES} times in a row; ` +
+        'stopped reconnecting until the source is saved or reconnected',
+    );
+    // Listeners stay attached until the socket is closed: the client still
+    // emits 'error' for this same rejection, and an EventEmitter with no
+    // 'error' listener throws. For the same reason an 'error' sink stays on
+    // afterwards, for anything the dead socket reports late.
+    void client
+      .disconnect()
+      .catch((err) => logger.debug(`[MeshCoreMqtt:${this.sourceId}] error closing rejected client:`, err))
+      .finally(() => {
+        client.removeAllListeners();
+        client.on('error', () => {});
+      });
+  }
+
+  /**
+   * Manual reconnect: drop whatever is there and try again from scratch.
+   *
+   * Clears an auth stop. One call is one new connection, so a broker that
+   * still rejects the login sees five more attempts and then silence again.
+   */
+  async restart(): Promise<void> {
+    await this.stop();
+    await this.start();
+  }
+
+  /** True once the source gave up after repeated rejected logins. */
+  isAuthStopped(): boolean {
+    return this.authStopped;
   }
 
   async stop(): Promise<void> {
     this.started = false;
+    // Stopped by hand is not "stopped by the broker"; start() begins clean.
+    this.authStopped = false;
     const client = this.client;
     this.client = null;
     if (!client) return;
     client.removeAllListeners();
+    // Keep an 'error' sink: a socket can still report an error while it is
+    // being closed, and an EventEmitter with no 'error' listener throws.
+    client.on('error', () => {});
     try {
       await client.disconnect();
     } catch (err) {
@@ -838,12 +936,18 @@ export class MeshCoreMqttManager extends EventEmitter implements ISourceManager 
     return this.client?.isConnected() ?? false;
   }
 
-  getStatus(): SourceStatus {
+  getStatus(): MeshCoreMqttSourceStatus {
+    const stoppedMessage = this.authStopped ? INGEST_AUTH_STOPPED_MESSAGE : null;
     return {
       sourceId: this.sourceId,
       sourceName: this.sourceName,
       sourceType: this.sourceType,
       connected: this.client?.isConnected() ?? false,
+      authStopped: this.authStopped,
+      // Fixed text only — this status is served to callers with no login, so
+      // it never carries the broker's own error text, host, or credentials.
+      permissionMessage: stoppedMessage,
+      lastError: stoppedMessage,
     };
   }
 

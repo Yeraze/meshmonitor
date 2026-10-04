@@ -325,6 +325,64 @@ describe('DashboardSidebar', () => {
     });
   });
 
+  describe('MeshCore MQTT ingest stopped after rejected logins (#5596)', () => {
+    const ingestSources: DashboardSource[] = [
+      { id: 'ingest-1', name: 'Region Feed', type: 'meshcore_mqtt', enabled: true },
+    ];
+    const REASON = 'Broker rejected the login 5 times in a row, so this source stopped reconnecting.';
+    const stopped = new Map<string, SourceStatus | null>([
+      [
+        'ingest-1',
+        {
+          sourceId: 'ingest-1',
+          connected: false,
+          authStopped: true,
+          permissionMessage: REASON,
+          lastError: REASON,
+        } as SourceStatus,
+      ],
+    ]);
+
+    it('says the login was rejected instead of "connecting", and shows the reason', () => {
+      renderSidebar({ sources: ingestSources, statusMap: stopped, nodeCounts: new Map([['ingest-1', 0]]) });
+
+      expect(screen.getByText('source.status_auth_stopped')).toBeInTheDocument();
+      expect(screen.queryByText('source.status_connecting')).toBeNull();
+      const badge = document.querySelector('.dashboard-permission-badge')!;
+      expect(badge).not.toBeNull();
+      expect(badge.getAttribute('title')).toBe(REASON);
+    });
+
+    it('offers Connect even though auto-connect is on, and wires it to onConnectSource', () => {
+      const onConnectSource = vi.fn();
+      renderSidebar({
+        sources: ingestSources,
+        statusMap: stopped,
+        nodeCounts: new Map([['ingest-1', 0]]),
+        isAdmin: true,
+        onConnectSource,
+      });
+
+      const button = screen.getByText('source.connect');
+      expect(button.getAttribute('title')).toBe(REASON);
+      fireEvent.click(button);
+      expect(onConnectSource).toHaveBeenCalledWith('ingest-1');
+    });
+
+    it('offers no Connect button while the source is merely retrying', () => {
+      renderSidebar({
+        sources: ingestSources,
+        statusMap: new Map([['ingest-1', { sourceId: 'ingest-1', connected: false, authStopped: false } as SourceStatus]]),
+        nodeCounts: new Map([['ingest-1', 0]]),
+        isAdmin: true,
+        onConnectSource: vi.fn(),
+      });
+
+      expect(screen.queryByText('source.connect')).toBeNull();
+      expect(screen.getByText('source.status_connecting')).toBeInTheDocument();
+    });
+  });
+
   describe('Per-gateway publisher badge (mqtt_bridge)', () => {
     const bridgeSources: DashboardSource[] = [
       { id: 'bridge-1', name: 'Bridge Up', type: 'mqtt_bridge', enabled: true },

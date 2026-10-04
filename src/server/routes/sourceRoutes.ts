@@ -9,7 +9,7 @@ import { MeshtasticManager } from '../meshtasticManager.js';
 import { meshcoreConfigFromSource, ensureMeshCoreManagerStarted } from '../meshcoreConfig.js';
 import { MeshCoreManager } from '../meshcoreManager.js';
 import { reticulumConfigFromSource, ensureReticulumManagerStarted } from '../reticulumConfig.js';
-import { isMeshCoreManager, isMeshtasticManager, isReticulumManager } from '../sourceManagerTypes.js';
+import { isMeshCoreManager, isMeshCoreMqttManager, isMeshtasticManager, isReticulumManager } from '../sourceManagerTypes.js';
 import { loRaCenterFrequencyMhz, REGION_SHORT_NAME } from '../../utils/loraFrequency.js';
 import { MqttBrokerManager, MAX_HOP_LIMIT, type MqttBrokerSourceConfig } from '../mqttBrokerManager.js';
 import { MAX_RAISE_TARGET, RAISEABLE_PORTNUMS } from '../mqttHopLimitPolicy.js';
@@ -1117,6 +1117,26 @@ router.post('/', requirePermission('sources', 'write'), async (req: Request, res
 });
 
 // Update source
+/**
+ * (Re)start the ingest manager for a `meshcore_mqtt` source from its stored
+ * config (#5596).
+ *
+ * Always builds a NEW manager: the broker URL, region and credentials are baked
+ * in at construction, and a new manager is also what clears an auth stop (five
+ * rejected logins in a row). Returns false when the config is incomplete.
+ */
+async function restartMeshCoreMqttManager(
+  source: { id: string; name: string; config: unknown },
+): Promise<boolean> {
+  const cfg = (source.config ?? {}) as Partial<MeshCoreMqttSourceConfig>;
+  await sourceManagerRegistry.removeManager(source.id);
+  if (!cfg.brokerUrl || !cfg.region) return false;
+  const manager = new MeshCoreMqttManager(source.id, source.name, cfg as MeshCoreMqttSourceConfig);
+  // addManager() calls start(); a start failure is logged there, not thrown.
+  await sourceManagerRegistry.addManager(manager);
+  return true;
+}
+
 router.put('/:id', requirePermission('sources', 'write'), async (req: Request, res: Response) => {
   try {
     const { name, config, enabled } = req.body;
@@ -1280,6 +1300,23 @@ router.put('/:id', requirePermission('sources', 'write'), async (req: Request, r
     } else if (wasEnabled && !isNowEnabled) {
       // Newly disabled: stop manager in the unified registry (no-op when not registered).
       await sourceManagerRegistry.removeManager(source.id);
+    } else if (isNowEnabled && source.type === 'meshcore_mqtt' && (!wasEnabled || config !== undefined)) {
+      // MeshCore MQTT ingest (#5596): newly enabled, or config saved while
+      // enabled. Before this branch a save changed the stored config and left
+      // the running manager on the old one until a process restart — so a
+      // corrected password did nothing. The broker URL, region and credentials
+      // are baked in at construction, so any save is a full restart, and that
+      // restart is what clears an auth stop. With autoConnect off the manager
+      // is removed and the source waits for a manual connect.
+      try {
+        if (!newAutoConnect) {
+          await sourceManagerRegistry.removeManager(source.id);
+        } else if (!(await restartMeshCoreMqttManager(source))) {
+          logger.warn(`MeshCore MQTT source ${source.id} saved with incomplete config; not connecting`);
+        }
+      } catch (err) {
+        logger.warn(`Could not restart MeshCore MQTT manager for source ${source.id}:`, err);
+      }
     } else if (wasEnabled && isNowEnabled && source.type === 'meshtastic_tcp' && oldAutoConnect && !newAutoConnect) {
       // autoConnect just turned off — stop the running manager. The source
       // stays enabled so the user can manually reconnect.
@@ -1582,6 +1619,26 @@ router.delete('/:id', requirePermission('sources', 'write'), async (req: Request
       await databaseService.deleteSourceSettingsAsync(req.params.id);
     } catch (settingsError) {
       logger.warn(`Failed to purge settings for deleted source ${req.params.id}:`, settingsError);
+    }
+
+    // #5596: per-source secrets live in their own tables, keyed by source id,
+    // and nothing removed them — a deleted source left its Analyzer Observer
+    // signing key, its Observer broker passwords, and its PKI DM private key
+    // behind for good. Deliberately NOT inside purgeAllNodesAsync: that helper
+    // also backs the "purge nodes" action on a live source, which must not
+    // throw away the source's keys. Each one is best-effort and independent,
+    // so one failure neither fails the delete nor skips the others.
+    const secretPurges: Array<[string, () => Promise<unknown>]> = [
+      ['Analyzer Observer key', () => databaseService.meshcoreObserverKeys.deleteBySourceId(req.params.id)],
+      ['Analyzer Observer credentials', () => databaseService.meshcoreObserverCredentials.deleteBySourceId(req.params.id)],
+      ['PKI DM key', () => databaseService.sourcePkiKeys.deleteBySourceId(req.params.id)],
+    ];
+    for (const [label, purge] of secretPurges) {
+      try {
+        await purge();
+      } catch (secretError) {
+        logger.warn(`Failed to purge ${label} for deleted source ${req.params.id}:`, secretError);
+      }
     }
 
     // NOTE: `mesh_beacon_offers` (#4723) is cleaned up inside
@@ -1992,8 +2049,32 @@ router.post('/:id/connect', requirePermission('sources', 'write'), async (req: R
     if (!source.enabled) {
       return res.status(409).json({ error: 'Source is disabled; enable it first' });
     }
-    if (source.type !== 'meshtastic_tcp' && source.type !== 'meshcore' && source.type !== 'reticulum') {
-      return res.status(400).json({ error: 'Manual connect is only supported for meshtastic_tcp, meshcore, and reticulum sources' });
+    if (
+      source.type !== 'meshtastic_tcp' &&
+      source.type !== 'meshcore' &&
+      source.type !== 'reticulum' &&
+      source.type !== 'meshcore_mqtt'
+    ) {
+      return fail(
+        res,
+        400,
+        'CONNECT_NOT_SUPPORTED',
+        'Manual connect is only supported for meshtastic_tcp, meshcore, meshcore_mqtt, and reticulum sources',
+      );
+    }
+    if (source.type === 'meshcore_mqtt') {
+      // MeshCore MQTT ingest (#5596). Reconnecting by hand is one of the two
+      // ways to clear an auth stop (the other is saving the config). A source
+      // that is already connected is left alone, so a repeated click cannot
+      // churn a healthy broker session.
+      const existingMgr = sourceManagerRegistry.getManager(source.id);
+      if (existingMgr && isMeshCoreMqttManager(existingMgr) && existingMgr.isConnected()) {
+        return res.json({ success: true, alreadyRunning: true });
+      }
+      if (!(await restartMeshCoreMqttManager(source))) {
+        return fail(res, 400, 'INCOMPLETE_CONFIG', 'MeshCore MQTT source has incomplete config');
+      }
+      return res.json({ success: true });
     }
     if (source.type === 'meshcore') {
       const existingMgr = sourceManagerRegistry.getManager(source.id);
