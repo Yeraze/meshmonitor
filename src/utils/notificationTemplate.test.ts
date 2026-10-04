@@ -191,6 +191,18 @@ describe('renderMessageNotification — length caps and hygiene', () => {
     expect(r.body).toBe('img src=xOg jeg ser ikke Not2 med denne');
   });
 
+  it('strips the internal empty-token marker (U+E000) from values and templates', () => {
+    // A value or template carrying the marker must not be read as an empty
+    // token and take its neighbouring separator with it.
+    const r = renderMessageNotification(channel({ channelName: 'Long\uE000Fast', text: '\uE000 · hi' }), {
+      titleTemplate: '{{ channelName }} · \uE000 · {{ sourceName }}',
+      bodyTemplate: '{{ text }}',
+    });
+    expect(r.title).toBe(`LongFast · · ${SOURCE}`);
+    expect(r.body).toBe('· hi');
+    expect(`${r.title}${r.body}`).not.toContain('\uE000');
+  });
+
   it('flattens line breaks and control characters inside values', () => {
     const r = renderMessageNotification(channel({ text: 'one\r\ntwo\u0007', senderName: 'A\nB' }));
     expect(r.body).toBe('A B: one two');
