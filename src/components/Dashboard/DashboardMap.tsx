@@ -56,6 +56,11 @@ import { shouldDiscardPosition } from '../../utils/nullIsland';
 import { getDiscardInvalidPositions } from '../../utils/positionDisplayConfig';
 import { effectiveMapMaxAgeHours } from '../../utils/mapAge';
 import { isMeshCoreInfrastructureAdvType } from '../MeshCore/meshcoreRole';
+import {
+  isHiddenByPositionlessAdvert,
+  readHidePositionlessAdverts,
+  writeHidePositionlessAdverts,
+} from '../../utils/meshcoreAdvertPosition';
 import MapAgeFilterControl from '../map/MapAgeFilterControl';
 import MapAircraftDisplayControl from '../map/MapAircraftDisplayControl';
 import { isAgedOutAircraft, AGED_OUT_AIRCRAFT_OPACITY } from '../map/agedOutAircraft';
@@ -271,6 +276,13 @@ export default function DashboardMap({
     localStorage.setItem('meshmonitor-showLegend', String(showLegend));
   }, [showLegend]);
 
+  // #5578: hide MeshCore nodes whose latest advert had no position. Same
+  // localStorage key as the MeshCore map, so the choice follows the browser.
+  const [hidePositionlessAdverts, setHidePositionlessAdverts] = useState(readHidePositionlessAdverts);
+  useEffect(() => {
+    writeHidePositionlessAdverts(hidePositionlessAdverts);
+  }, [hidePositionlessAdverts]);
+
   // Collapse the Features panel — shares the NodesTab map's localStorage key
   // so the preference is unified across every map surface (issue #3912: on
   // mobile the panel's full checkbox list has no way to be dismissed).
@@ -450,6 +462,18 @@ export default function DashboardMap({
   // node, so it has to be a dependency or toggling it leaves the markers put.
   }, [nodes, effectiveMaxAge, effectiveInfraMaxAge, infraNever, showRfNodes, showUdpNodes, showMqttNodes, spreadNodes, aircraftDisplayMode, showAgedOutAircraft]);
 
+  // #5578: nodes that get a MARKER. A MeshCore node whose latest advert had no
+  // position loses its marker (and measure/3D point) when the toggle is on;
+  // it stays in `nodesWithPosition`, so neighbour and path lines keep their
+  // endpoints — the same split the MeshCore map makes for its type filter.
+  const markerNodes = useMemo(
+    () => (hidePositionlessAdverts
+      ? nodesWithPosition.filter(({ node }) => !(node.isMeshCore && isHiddenByPositionlessAdvert(node, true)))
+      : nodesWithPosition),
+    [nodesWithPosition, hidePositionlessAdverts],
+  );
+  const hasMeshCoreNodes = useMemo(() => nodes.some((n) => n.isMeshCore), [nodes]);
+
   // Flight trails (#5364/#5365 Phase 3): one per aircraft this map draws a
   // marker for — `nodesWithPosition` is already past Hide / age / transport /
   // "Show aged-out", so trails follow every one of those filters.
@@ -472,7 +496,7 @@ export default function DashboardMap({
     const now = Date.now();
     const cutoffMs = (now / 1000 - effectiveMaxAge * 60 * 60) * 1000;
     const infraCutoffMs = (now / 1000 - effectiveInfraMaxAge * 60 * 60) * 1000;
-    return nodesWithPosition.map(({ node, pos }) => {
+    return markerNodes.map(({ node, pos }) => {
       // #4899: dim infra survivors against the infra window (never fully faded
       // when the window is "never"), so a shown-but-old repeater isn't rendered
       // near-invisible on the globe.
@@ -496,7 +520,7 @@ export default function DashboardMap({
         opacity,
       };
     });
-  }, [nodesWithPosition, effectiveMaxAge, effectiveInfraMaxAge, infraNever]);
+  }, [markerNodes, effectiveMaxAge, effectiveInfraMaxAge, infraNever]);
 
   // Visible node numbers for gating the 3D neighbor/traceroute lines to the
   // rendered markers, matching 2D — also keeps a null-sourceId dashboard from
@@ -530,7 +554,7 @@ export default function DashboardMap({
   }, [nodesWithPosition]);
 
   // #3636: measurement endpoints — nearest-node snapping picks from these.
-  const measurePoints: MeasurePoint[] = nodesWithPosition.map(({ node, pos }) => ({
+  const measurePoints: MeasurePoint[] = markerNodes.map(({ node, pos }) => ({
     id: String(node.nodeId ?? node.user?.id ?? node.nodeNum),
     lat: pos.lat,
     lng: pos.lng,
@@ -711,7 +735,7 @@ export default function DashboardMap({
   // that used to be duplicated inline here. `key` doubles as the spiderfier
   // tracking key (prefer the cross-source identity, fall back to nodeId so
   // MeshCore (no nodeNum) and unmerged rows still register).
-  const nodeMarkers: NodeMarkerDescriptor[] = nodesWithPosition.map(({ node, pos }) => {
+  const nodeMarkers: NodeMarkerDescriptor[] = markerNodes.map(({ node, pos }) => {
     const hops = node.hopsAway ?? 999;
     const shortName = node.shortName ?? node.user?.shortName;
     const nodeId = node.nodeId ?? node.user?.id;
@@ -1192,6 +1216,23 @@ export default function DashboardMap({
             />
             <span>Show ATAK Contacts</span>
           </label>
+          {/* #5578: MeshCore only — offered when the map holds MeshCore nodes. */}
+          {hasMeshCoreNodes && (
+            <label
+              className="map-control-item"
+              title={t(
+                'map.hidePositionlessAdvertsHelp',
+                'Hide MeshCore nodes whose latest advert carried no position. They are otherwise drawn at their last known position. Nodes with a live telemetry position stay.',
+              )}
+            >
+              <input
+                type="checkbox"
+                checked={hidePositionlessAdverts}
+                onChange={(e) => setHidePositionlessAdverts(e.target.checked)}
+              />
+              <span>{t('map.hidePositionlessAdverts', 'Hide nodes without a current position advert')}</span>
+            </label>
+          )}
           <label className="map-control-item" title={unavailableIn3DTitle}>
             <input
               type="checkbox"

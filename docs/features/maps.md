@@ -257,6 +257,36 @@ instead and reads `All (7d from Nodes filter)`.
 
 The `active/total (last 2h)` badge on each source card in the sidebar is a separate, fixed 2-hour activity stat. It is informational only and does not filter the list or the map.
 
+### MeshCore Nodes Without a Current Position Advert
+
+A MeshCore node that stops sharing its position keeps advertising, but its adverts no longer
+carry coordinates. MeshMonitor keeps the last position it stored, so the node stays on the
+map at a place it no longer reports.
+
+**Hide nodes without a current position advert** removes those markers. It is in **Map
+controls** on the MeshCore map, and in **Map Features** on the Dashboard map when the map
+holds MeshCore nodes. It is off by default and saved per browser; the two maps share the
+choice.
+
+- A node is hidden only when the **latest advert MeshMonitor heard from it** had no position
+  (or 0/0, which MeshCore uses for "none").
+- A node whose position comes from **telemetry** stays. That is a live GNSS fix, not a stale
+  advert.
+- A node MeshMonitor has heard no advert from since the upgrade is **unknown**, and unknown
+  nodes stay. So the filter fills in as adverts arrive; nothing vanishes on upgrade.
+- Only the marker goes. Path and neighbour lines to the node stay, as with the node-type
+  filter.
+- Your own node is never hidden.
+
+The stored position is kept, so turning the toggle off brings the node back where it was.
+
+**What counts as evidence.** A repeater source and a MeshCore MQTT ingest source see every
+advert frame, so they always know. A Companion source learns it from the raw advert frame
+the radio logs. The companion's own contact list is no help here: the firmware keeps a
+contact's old coordinates when a later advert has none, so a contact that still shows a
+position proves nothing. A contact with no coordinates at all has never advertised one, and
+is recorded as such.
+
 ### Likely Aircraft
 
 A node flagged by [likely-aircraft detection](/features/settings#likely-aircraft-detection) (Meshtastic sources only) gets an aircraft badge on its marker, so it's easy to tell an airborne node apart from a fixed one at a glance.

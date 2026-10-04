@@ -369,14 +369,34 @@ export const MeshCoreNodesView: React.FC<MeshCoreNodesViewProps> = ({
     }
     return map;
   }, [nodes]);
+  // #5578: the map's "hide nodes without a current position advert" filter
+  // reads two more durable node-row fields. The node row wins over the live
+  // contact record: it is what every ingest path writes.
+  const advertPositionByKey = useMemo(() => {
+    const map = new Map<string, { lastAdvertHadPosition?: boolean | null; positionSource?: string | null }>();
+    for (const n of nodes) {
+      if (!n.publicKey) continue;
+      if (n.lastAdvertHadPosition == null && n.positionSource == null) continue;
+      map.set(n.publicKey, { lastAdvertHadPosition: n.lastAdvertHadPosition, positionSource: n.positionSource });
+    }
+    return map;
+  }, [nodes]);
   const visibleContacts = useMemo(
     () => contacts
       .filter(c => visibleKeys.has(c.publicKey) || c.isLocal === true)
       .map(c => {
         const firstHeard = firstHeardByKey.get(c.publicKey);
-        return firstHeard !== undefined && c.firstHeard === undefined ? { ...c, firstHeard } : c;
+        const advertPosition = advertPositionByKey.get(c.publicKey);
+        const withFirstHeard = firstHeard !== undefined && c.firstHeard === undefined ? { ...c, firstHeard } : c;
+        return advertPosition
+          ? {
+              ...withFirstHeard,
+              lastAdvertHadPosition: advertPosition.lastAdvertHadPosition ?? withFirstHeard.lastAdvertHadPosition,
+              positionSource: advertPosition.positionSource ?? withFirstHeard.positionSource,
+            }
+          : withFirstHeard;
       }),
-    [contacts, visibleKeys, firstHeardByKey],
+    [contacts, visibleKeys, firstHeardByKey, advertPositionByKey],
   );
 
   const mobileClass = mobileShowContent ? 'mobile-show-content' : 'mobile-show-list';

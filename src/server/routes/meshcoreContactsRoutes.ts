@@ -1167,6 +1167,8 @@ router.patch(
                 && !isBogusPosition(contact.latitude, contact.longitude))
                 ? 'contact'
                 : undefined,
+              // #5578: carry the latest-advert flag; undefined = leave stored.
+              lastAdvertHadPosition: contact.lastAdvertHadPosition,
               lastHeard: contact.lastSeen ?? null,
             },
             sourceId,
@@ -1511,6 +1513,8 @@ router.patch(
                 && !isBogusPosition(contact.latitude, contact.longitude))
                 ? 'contact'
                 : undefined,
+              // #5578: carry the latest-advert flag; undefined = leave stored.
+              lastAdvertHadPosition: contact.lastAdvertHadPosition,
               lastHeard: contact.lastSeen ?? null,
             },
             sourceId,
@@ -1665,6 +1669,8 @@ router.patch(
                 && !isBogusPosition(contact.latitude, contact.longitude))
                 ? 'contact'
                 : undefined,
+              // #5578: carry the latest-advert flag; undefined = leave stored.
+              lastAdvertHadPosition: contact.lastAdvertHadPosition,
               lastHeard: contact.lastSeen ?? null,
             },
             sourceId,
@@ -1842,6 +1848,8 @@ router.post(
                 && !isBogusPosition(contact.latitude, contact.longitude))
                 ? 'contact'
                 : undefined,
+              // #5578: carry the latest-advert flag; undefined = leave stored.
+              lastAdvertHadPosition: contact.lastAdvertHadPosition,
               lastHeard: contact.lastSeen ?? null,
             },
             sourceId,

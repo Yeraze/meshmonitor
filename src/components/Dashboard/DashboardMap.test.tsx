@@ -1031,6 +1031,48 @@ describe('DashboardMap', () => {
     expect(screen.queryAllByTestId('map-polyline')).toHaveLength(0);
   });
 
+  describe('Hide nodes without a current position advert (#5578)', () => {
+    const mcStale = { ...mcNodeB, lastAdvertHadPosition: false, positionSource: 'contact' };
+    const hideToggle = () => screen.getByRole('checkbox', { name: 'map.hidePositionlessAdverts' });
+
+    it('is not offered when the map has no MeshCore nodes', () => {
+      render(<DashboardMap {...defaultProps} nodes={[nodeWithPosition]} />);
+      expect(screen.queryByRole('checkbox', { name: 'map.hidePositionlessAdverts' })).not.toBeInTheDocument();
+    });
+
+    it('is off by default: a node whose latest advert had no position is still drawn', () => {
+      render(<DashboardMap {...defaultProps} nodes={[mcNodeA, mcStale]} />);
+      expect(hideToggle()).not.toBeChecked();
+      expect(screen.getAllByTestId('map-marker')).toHaveLength(2);
+    });
+
+    it('hides that marker when on, but keeps its neighbour line', () => {
+      render(<DashboardMap {...defaultProps} nodes={[mcNodeA, mcStale]} meshcoreNeighbors={[mcEdge]} />);
+      expect(screen.getAllByTestId('map-polyline')).toHaveLength(1);
+      fireEvent.click(hideToggle());
+      expect(screen.getAllByTestId('map-marker')).toHaveLength(1);
+      expect(screen.getAllByTestId('map-polyline')).toHaveLength(1);
+      expect(localStorage.getItem('meshmonitor-meshcore-hidePositionlessAdverts')).toBe('true');
+    });
+
+    it('reads the same saved choice as the MeshCore map', () => {
+      localStorage.setItem('meshmonitor-meshcore-hidePositionlessAdverts', 'true');
+      render(<DashboardMap {...defaultProps} nodes={[mcNodeA, mcStale]} />);
+      expect(hideToggle()).toBeChecked();
+      expect(screen.getAllByTestId('map-marker')).toHaveLength(1);
+    });
+
+    it('keeps unknown, telemetry-positioned and non-MeshCore nodes', () => {
+      localStorage.setItem('meshmonitor-meshcore-hidePositionlessAdverts', 'true');
+      const mcUnknown = { ...mcNodeA, lastAdvertHadPosition: null };
+      const mcTelemetry = { ...mcNodeB, lastAdvertHadPosition: false, positionSource: 'telemetry' };
+      // A Meshtastic node never carries the field; a stray false must not hide it.
+      const meshtastic = { ...nodeWithPosition, lastAdvertHadPosition: false };
+      render(<DashboardMap {...defaultProps} nodes={[mcUnknown, mcTelemetry, meshtastic]} />);
+      expect(screen.getAllByTestId('map-marker')).toHaveLength(3);
+    });
+  });
+
   it('deduplicates a MeshCore link reported by multiple sources (drawn once)', () => {
     const reverseEdge = { id: 2, publicKey: 'BBBB', neighborPublicKey: 'AAAA', sourceId: 's2', snr: 4, timestamp: recent * 1000 };
     render(

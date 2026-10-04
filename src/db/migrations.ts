@@ -212,6 +212,7 @@ import { migration as packetLogSourceTimestampIndexMigration, runMigration190Pos
 import { migration as addMeshcoreRepeaterIngestColumnsMigration, runMigration191Postgres, runMigration191Mysql } from '../server/migrations/191_add_meshcore_repeater_ingest_columns.js';
 import { migration as addChannelDatabaseProtocolMigration, runMigration192Postgres, runMigration192Mysql } from '../server/migrations/192_add_channel_database_protocol.js';
 import { migration as createCrossSourceLinksMigration, runMigration193Postgres, runMigration193Mysql } from '../server/migrations/193_create_cross_source_links.js';
+import { migration as addMeshcoreLastAdvertHadPositionMigration, runMigration194Postgres, runMigration194Mysql } from '../server/migrations/194_add_meshcore_last_advert_had_position.js';
 
 // ============================================================================
 // Registry
@@ -3132,4 +3133,19 @@ registry.register({
   sqlite: (db) => createCrossSourceLinksMigration.up(db),
   postgres: (client) => runMigration193Postgres(client),
   mysql: (pool) => runMigration193Mysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 194: `meshcore_nodes.lastAdvertHadPosition` (#5578). PER-SOURCE.
+// Nullable boolean: did the node's latest advert carry a position? NULL =
+// unknown. upsertNode keeps the last coordinates either way (#3504).
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 194,
+  name: 'add_meshcore_last_advert_had_position',
+  settingsKey: 'migration_194_add_meshcore_last_advert_had_position',
+  sqlite: (db) => addMeshcoreLastAdvertHadPositionMigration.up(db),
+  postgres: (client) => runMigration194Postgres(client),
+  mysql: (pool) => runMigration194Mysql(pool),
 });

@@ -45,6 +45,13 @@ export interface DbMeshCoreNode {
    * means unknown (pre-migration row, or a caller not touching position).
    */
   positionSource?: 'contact' | 'telemetry' | null;
+  /**
+   * #5578 (migration 194): did the latest ADVERT heard from this node carry a
+   * position? `false` is a real observation and is written by `upsertNode`
+   * (only null/undefined means "not observed"); the stored coordinates stay.
+   * NULL = unknown.
+   */
+  lastAdvertHadPosition?: boolean | null;
   batteryMv?: number | null;
   uptimeSecs?: number | null;
   rssi?: number | null;

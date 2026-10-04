@@ -149,6 +149,9 @@ router.get('/nodes', optionalAuth(), async (req, res) => {
           lastHeard,
           hopsAway: 0,
           role: 0,
+          // #5578: latest-advert position flag for the map's hide toggle.
+          lastAdvertHadPosition: n.lastAdvertHadPosition ?? null,
+          positionSource: n.positionSource ?? null,
         }, mcSignFlipCtx));
       }
     }

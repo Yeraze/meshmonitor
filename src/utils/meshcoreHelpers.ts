@@ -13,6 +13,12 @@ export interface MeshCoreContact {
   advType?: number;
   latitude?: number;
   longitude?: number;
+  /** #5578: did the latest advert heard carry a position? `false` = no (the
+   *  coordinates are then the last known fix); unset/null = unknown. */
+  lastAdvertHadPosition?: boolean | null;
+  /** #5578: 'telemetry' = the position is a live GNSS fix, not an advert's.
+   *  Not on the wire contact record; views copy it in from the node row. */
+  positionSource?: string | null;
   lastAdvert?: number;
   /** #5363: the server moved latitude/longitude to the sign-flip corrected
    *  point; the reported pair rides along. Display only. */
