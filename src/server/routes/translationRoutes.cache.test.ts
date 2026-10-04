@@ -73,6 +73,9 @@ describe('translation cache routes (#5520)', () => {
     });
     harness.db.setSetting('translationEnabled', 'true');
     harness.db.setSetting('translationProvider', 'deepl');
+    // DeepL requires a key; without one the service rejects before the
+    // (mocked) provider is called (#5518).
+    harness.db.setSetting('translationDeeplApiKey', 'test-deepl-key');
     setTranslationCache(new DbTranslationCache());
 
     for (const sourceId of [harness.sourceA, harness.sourceB]) {
