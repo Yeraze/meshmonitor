@@ -64,6 +64,7 @@ import {
 } from './constants/meshcoreLogin.js';
 import { isRfBridgeCommand, isTransmittingLocalCliVerb, MESHCORE_RECEIVE_ONLY_MESSAGE } from './constants/meshcoreTx.js';
 import { meshcorePathDiscoveryTimeoutMs } from './constants/meshcorePathDiscovery.js';
+import { MESHCORE_TRACE_BRIDGE_TIMEOUT_MS } from './constants/meshcoreFirmwareTimeout.js';
 import {
   parseMeshCoreIgnoreList,
   isMeshCoreIgnoreListEmpty,
@@ -369,6 +370,32 @@ export interface ShareContactResult {
  * `rttMs` is measured host-side around the companion command, so it includes
  * the USB/TCP link latency as well as airtime — treat it as approximate.
  */
+/** A finished trace: per-hop SNRs plus the hops actually traced. */
+export interface MeshCoreTracePathResult {
+  hops: { index: number; snr: number }[];
+  lastSnr: number;
+  /** Hop hashes actually traced, one per entry in `hops` (#5485). */
+  path: string[];
+}
+
+/**
+ * Outcome of {@link MeshCoreManager.traceContactPathDetailed} (#5588).
+ * `timeout` means the trace went out and no reply came inside the wait;
+ * `failed` covers every other case (no path, disconnected, device error).
+ * Neither is retried.
+ */
+export type MeshCoreTracePathOutcome =
+  | ({ ok: true } & MeshCoreTracePathResult)
+  | {
+      ok: false;
+      reason: 'timeout';
+      /** How long the backend waited for the reply, in ms. */
+      waitMs: number;
+      /** Firmware `suggested_timeout_ms` from the Sent ack (0 = none seen). */
+      suggestedTimeoutMs: number;
+    }
+  | { ok: false; reason: 'failed' };
+
 export type ZeroHopPingResult =
   | {
       ok: true;
@@ -6518,34 +6545,42 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
    * SNR. Returns the per-hop SNR array plus the final-hop SNR, or `null`
    * on failure (no path, timeout, not Companion).
    */
-  async traceContactPath(publicKey: string, opts: { autoReturn?: boolean } = {}): Promise<{
-    hops: { index: number; snr: number }[];
-    lastSnr: number;
-    /** Hop hashes actually traced, one per entry in `hops` (#5485). */
-    path: string[];
-  } | null> {
+  async traceContactPath(publicKey: string, opts: { autoReturn?: boolean } = {}): Promise<MeshCoreTracePathResult | null> {
+    const outcome = await this.traceContactPathDetailed(publicKey, opts);
+    if (!outcome.ok) return null;
+    return { hops: outcome.hops, lastSnr: outcome.lastSnr, path: outcome.path };
+  }
+
+  /**
+   * {@link traceContactPath}, but a failure says whether the trace timed out
+   * and how long we waited (#5588). The wait follows the firmware's own
+   * estimate (constants/meshcoreFirmwareTimeout.ts). One trace goes out per
+   * call; a timeout is never retried here.
+   */
+  async traceContactPathDetailed(publicKey: string, opts: { autoReturn?: boolean } = {}): Promise<MeshCoreTracePathOutcome> {
+    const failed: MeshCoreTracePathOutcome = { ok: false, reason: 'failed' };
     if (this.deviceType !== MeshCoreDeviceType.COMPANION) {
       logger.warn('[MeshCore] Trace-path requires Companion firmware');
-      return null;
+      return failed;
     }
     if (!this.connected) {
-      return null;
+      return failed;
     }
     this.requireTransmit();
     const contact = this.contacts.get(publicKey);
     if (!contact?.outPath || contact.pathLen == null || contact.pathLen <= 0) {
       logger.warn(`[MeshCore] Trace-path: no known path for ${publicKey.substring(0, 16)}…`);
-      return null;
+      return failed;
     }
     const pathHops = parsePathHops(contact.outPath);
     if (pathHops.length === 0) {
       logger.warn(`[MeshCore] Trace-path: cached path for ${publicKey.substring(0, 16)}… is empty or malformed`);
-      return null;
+      return failed;
     }
     const hashBytes = pathHashBytesOf(pathHops);
     if (pathHops.some((h) => h.length !== hashBytes * 2)) {
       logger.warn(`[MeshCore] Trace-path: cached path for ${publicKey.substring(0, 16)}… has mixed-width hops, aborting`);
-      return null;
+      return failed;
     }
     // CMD_SEND_TRACE_PATH's flags byte only encodes power-of-two hop widths
     // (device: `1 << (flags & 0x03)`), so 1- and 2-byte hops are
@@ -6553,7 +6588,7 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
     // is not (#4786).
     if (hashBytes !== 1 && hashBytes !== 2) {
       logger.warn(`[MeshCore] Trace-path: ${hashBytes}-byte hop hash width for ${publicKey.substring(0, 16)}… is not supported by the device's trace-path command (only 1 or 2 bytes/hop)`);
-      return null;
+      return failed;
     }
     // Auto return path (#5485): bring the trace back along the same route so
     // the initiator hears it end and gets per-direction SNRs. Repeaters and
@@ -6582,10 +6617,16 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
       const response = await this.sendBridgeCommand('trace_path', {
         path: pathBytes,
         path_hash_bytes: hashBytes,
-      }, 60000);
+      }, MESHCORE_TRACE_BRIDGE_TIMEOUT_MS);
       if (!response.success) {
+        if (response.data?.timed_out === true) {
+          const waitMs = Number(response.data.wait_ms) || 0;
+          const suggestedTimeoutMs = Number(response.data.suggested_timeout_ms) || 0;
+          logger.info(`[MeshCore] trace_path to ${publicKey.substring(0, 16)}… got no reply within ${waitMs}ms (firmware estimate ${suggestedTimeoutMs}ms)`);
+          return { ok: false, reason: 'timeout', waitMs, suggestedTimeoutMs };
+        }
         logger.warn(`[MeshCore] trace_path failed for ${publicKey}: ${response.error}`);
-        return null;
+        return failed;
       }
       const d = response.data ?? {};
       const snrs: number[] = d.pathSnrs ?? [];
@@ -6600,10 +6641,10 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
       }));
       const lastSnr: number = d.lastSnr ?? 0;
       logger.debug(`[MeshCore] Trace path to ${publicKey.substring(0, 16)}… via ${tracedHops.join(',')}: ${hops.length} hops, lastSnr=${lastSnr}`);
-      return { hops, lastSnr, path: tracedHops };
+      return { ok: true, hops, lastSnr, path: tracedHops };
     } catch (error) {
-      logger.error('[MeshCore] traceContactPath threw:', error);
-      return null;
+      logger.error('[MeshCore] traceContactPathDetailed threw:', error);
+      return failed;
     }
   }
 
@@ -6627,7 +6668,7 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
       // trace follows the explicit path it is given rather than flooding on an
       // unknown route, so it does not need the default flood scope asserted
       // first. Mirrors traceContactPath, which also calls the bridge directly.
-      const response = await this.sendBridgeCommand('trace_path', { path }, 60_000);
+      const response = await this.sendBridgeCommand('trace_path', { path }, MESHCORE_TRACE_BRIDGE_TIMEOUT_MS);
       if (!response.success) {
         logger.warn(`[MeshCore:${this.sourceId}] tracePathRaw failed: ${response.error}`);
         return null;
@@ -6702,13 +6743,13 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
 
     const startedAt = Date.now();
     try {
-      // extra_timeout gives the firmware's estimated direct-path timeout a
-      // little margin; the bridge ceiling is only a backstop for a device that
-      // never answers the command at all.
+      // The backend bounds the wait from the firmware's own estimate (#5588,
+      // constants/meshcoreFirmwareTimeout.ts); the bridge ceiling is only a
+      // backstop above that. `extra_timeout` is unused by the native backend.
       const response = await this.sendBridgeCommand(
         'trace_path',
         { path, extra_timeout: 3000 },
-        30_000,
+        MESHCORE_TRACE_BRIDGE_TIMEOUT_MS,
       );
       if (!response.success) {
         logger.debug(

@@ -24,7 +24,7 @@ describe('POST /contacts/:publicKey/trace-path — auto return path (#5485)', ()
 
   beforeEach(async () => {
     traceContactPath.mockReset();
-    traceContactPath.mockResolvedValue({ hops: [{ index: 0, snr: 5 }], lastSnr: 3, path: ['5e', 'f6', '5e'] });
+    traceContactPath.mockResolvedValue({ ok: true, hops: [{ index: 0, snr: 5 }], lastSnr: 3, path: ['5e', 'f6', '5e'] });
     harness = await createRouteTestApp({
       mount: (app) => app.use('/sources/:id/meshcore', meshcoreRoutes),
     });
@@ -35,7 +35,7 @@ describe('POST /contacts/:publicKey/trace-path — auto return path (#5485)', ()
       canTransmit: () => true,
       isConnected: () => true,
       getConnectionStatus: () => ({ connected: true, deviceType: 1, config: null }),
-      traceContactPath,
+      traceContactPathDetailed: traceContactPath,
     });
   });
 

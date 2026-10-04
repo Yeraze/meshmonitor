@@ -532,6 +532,29 @@ describe('MeshCoreContactDetailPanel', () => {
       expect((screen.getByRole('checkbox', { name: 'Auto return path' }) as HTMLInputElement).checked).toBe(false);
     });
 
+    it('stops the spinner and shows the time waited when the trace timed out (#5588)', async () => {
+      const onTracePath = vi.fn().mockResolvedValue({ timedOut: true, waitMs: 11_000 });
+      render(<MeshCoreContactDetailPanel contact={contact} publicKey={PK} onTracePath={onTracePath} {...props} />);
+
+      fireEvent.click(screen.getByRole('button', { name: 'Trace Path' }));
+      // This file's i18n mock returns the fallback text uninterpolated.
+      expect(await screen.findByText('No reply within {{seconds}} s.')).toBeTruthy();
+      // Button is idle again, and the timeout did not send a second trace.
+      const button = screen.getByRole('button', { name: 'Trace Path' }) as HTMLButtonElement;
+      expect(button.disabled).toBe(false);
+      expect(button.textContent).toBe('Trace Path');
+      expect(onTracePath).toHaveBeenCalledTimes(1);
+      expect(screen.queryByText('Trace Path Results')).toBeNull();
+    });
+
+    it('shows a plain timeout message when the server gives no wait', async () => {
+      const onTracePath = vi.fn().mockResolvedValue({ timedOut: true, waitMs: null });
+      render(<MeshCoreContactDetailPanel contact={contact} publicKey={PK} onTracePath={onTracePath} {...props} />);
+
+      fireEvent.click(screen.getByRole('button', { name: 'Trace Path' }));
+      expect(await screen.findByText('No reply. The trace timed out.')).toBeTruthy();
+    });
+
     it('labels each result row with the hop actually traced', async () => {
       const onTracePath = vi.fn().mockResolvedValue({
         hops: [{ index: 0, snr: 10 }, { index: 1, snr: 6 }, { index: 2, snr: 2 }],

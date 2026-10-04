@@ -17,6 +17,12 @@ import { logger } from '../utils/logger.js';
 import { TxDisabledError } from './errors/txDisabledError.js';
 import { isRfBridgeCommand, MESHCORE_RECEIVE_ONLY_MESSAGE } from './constants/meshcoreTx.js';
 import {
+  MESHCORE_RADIO_OP_BACKSTOP_MS,
+  MeshCoreTraceTimeoutError,
+  meshcoreSuggestedTimeoutMs,
+  meshcoreTraceWaitMs,
+} from './constants/meshcoreFirmwareTimeout.js';
+import {
   MESHCORE_LOGIN_CANCELLED,
   MESHCORE_LOGIN_SENT_ACK_TIMEOUT_MS,
   meshcoreLoginReplyWaitMs,
@@ -1335,6 +1341,11 @@ export class MeshCoreNativeBackend extends EventEmitter {
         id,
         success: false,
         error: err instanceof Error ? err.message : String(err),
+        // #5588: a trace that ran out its wait says how long that was, so the
+        // caller can tell "no reply" from every other failure.
+        ...(err instanceof MeshCoreTraceTimeoutError
+          ? { data: { timed_out: true, wait_ms: err.waitMs, suggested_timeout_ms: err.suggestedTimeoutMs } }
+          : {}),
       };
     }
   }
@@ -1415,10 +1426,10 @@ export class MeshCoreNativeBackend extends EventEmitter {
   /**
    * Backstop for ops with no timer of their own. Must stay above the largest
    * inner timeout already in use by a runExclusiveRadioOp handler
-   * (trace_path's default is 45_000ms) so it is a safety net, not a behaviour
-   * change, for ops that already bound themselves.
+   * (trace_path waits up to 60 s, see meshcoreFirmwareTimeout.ts) so it is a
+   * safety net, not a behaviour change, for ops that already bound themselves.
    */
-  private static readonly RADIO_OP_BACKSTOP_MS = 60_000;
+  private static readonly RADIO_OP_BACKSTOP_MS = MESHCORE_RADIO_OP_BACKSTOP_MS;
 
   private runExclusiveRadioOp<T>(fn: () => Promise<T>, label = 'radio-op'): Promise<T> {
     const bounded = (): Promise<T> => {
@@ -1833,7 +1844,12 @@ export class MeshCoreNativeBackend extends EventEmitter {
         // call's synchronous dispatch-time patch land before this call's own
         // send/reply window, which is only serialized against *sends*, not
         // against arbitrary property writes on `c`.
-        const timeoutMs = Number(params.timeout_ms) || 45_000;
+        //
+        // Reply wait (#5588): an explicit `timeout_ms` wins. Otherwise we wait
+        // the no-hint default until the Sent ack arrives, then re-arm from the
+        // firmware's own estimate (meshcoreFirmwareTimeout.ts). The deadline
+        // counts from the send, so the total never passes the policy maximum.
+        const explicitTimeoutMs = Number(params.timeout_ms) > 0 ? Number(params.timeout_ms) : undefined;
         const result = await this.runExclusiveRadioOp(() => new Promise<TraceDataResponse>((resolve, reject) => {
           // The library's own onTraceDataPush() also mis-parses multi-byte
           // replies: it reads `pathSnrs` as `pathLen` bytes (the raw hash
@@ -1863,10 +1879,32 @@ export class MeshCoreNativeBackend extends EventEmitter {
           // radio op queued on this connection — would stall forever behind
           // it. Kept comfortably under sendCommand's outer timeout so this
           // fires first and always releases the lock via cleanup().
-          const timer = setTimeout(() => {
-            cleanup();
-            reject(new Error('trace_path timed out'));
-          }, timeoutMs);
+          const startedAt = Date.now();
+          let waitMs = meshcoreTraceWaitMs(0, explicitTimeoutMs);
+          let suggestedTimeoutMs = 0;
+          const onTimeout = () => {
+            // Keep the corrected parser in place: a reply that lands after
+            // this point must still parse cleanly (the library's parser
+            // over-reads a multi-byte reply and throws). With no listener
+            // left, the late reply is dropped. The trace is never resent.
+            cleanup(false);
+            logger.debug(`[MeshCoreNative:${this.sourceId}] trace_path: no reply within ${waitMs}ms (firmware estimate ${suggestedTimeoutMs}ms)`);
+            reject(new MeshCoreTraceTimeoutError(waitMs, suggestedTimeoutMs));
+          };
+          let timer = setTimeout(onTimeout, waitMs);
+          // RESP_CODE_SENT = [code][is_flood u8][tag u32 LE][suggested_timeout_ms u32 LE];
+          // meshcore.js reads the tag as `expectedAckCrc` and the estimate as
+          // `estTimeout`. Match the tag so another command's Sent on the
+          // shared channel cannot set this trace's wait.
+          const onSent = (resp?: { expectedAckCrc?: unknown; estTimeout?: unknown }) => {
+            if (resp?.expectedAckCrc !== tag) return;
+            c.off(K.ResponseCodes.Sent, onSent);
+            suggestedTimeoutMs = meshcoreSuggestedTimeoutMs(resp?.estTimeout);
+            if (explicitTimeoutMs !== undefined) return;
+            waitMs = meshcoreTraceWaitMs(suggestedTimeoutMs);
+            clearTimeout(timer);
+            timer = setTimeout(onTimeout, Math.max(0, startedAt + waitMs - Date.now()));
+          };
           const onTraceData = (response: TraceDataResponse) => {
             if (response.tag !== tag) return;
             cleanup();
@@ -1876,13 +1914,15 @@ export class MeshCoreNativeBackend extends EventEmitter {
             cleanup();
             reject(new Error('Device rejected trace-path request'));
           };
-          function cleanup() {
+          function cleanup(restoreParser = true) {
             clearTimeout(timer);
             c.off(K.PushCodes.TraceData, onTraceData);
             c.off(K.ResponseCodes.Err, onErr);
-            c.onTraceDataPush = originalOnTraceDataPush;
+            c.off(K.ResponseCodes.Sent, onSent);
+            if (restoreParser) c.onTraceDataPush = originalOnTraceDataPush;
           }
           c.on(K.PushCodes.TraceData, onTraceData);
+          c.on(K.ResponseCodes.Sent, onSent);
           c.once(K.ResponseCodes.Err, onErr);
           void c.sendToRadioFrame(frame);
         }), 'trace_path');

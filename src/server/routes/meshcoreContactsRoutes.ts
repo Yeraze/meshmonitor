@@ -45,12 +45,13 @@ import { MANUAL_NEIGHBOURS_MAX_PAGES } from '../services/meshcoreNeighboursPagin
 import { buildLocalContactRow, withoutLocalFlag, type MeshCoreContactResponse } from './meshcoreLocalContactRow.js';
 import { applySignFlipToMeshCoreRows } from '../services/signFlipCorrection.js';
 import { extendRequestTimeout } from '../middleware/requestTimeout.js';
+import { MESHCORE_TRACE_SOCKET_TIMEOUT_MS } from '../constants/meshcoreFirmwareTimeout.js';
 
 // Radio round trips on these routes legitimately run past the 30s default
 // socket timeout; extend it per-route so the caller gets the real result
 // instead of a dropped-socket 504.
-/** Zero-hop ping: a few retries over RF. */
-const PING_TIMEOUT_MS = 45_000;
+/** Zero-hop ping: one trace, bounded like trace-path (#5588). */
+const PING_TIMEOUT_MS = MESHCORE_TRACE_SOCKET_TIMEOUT_MS;
 /** Remote neighbours query round trip over RF. */
 const NEIGHBOURS_TIMEOUT_MS = 120_000;
 /** Remote neighbours poll, scheduler-gated multi-hop round trip. */
@@ -75,8 +76,6 @@ const REGIONS_DISCOVER_TIMEOUT_MS = 180_000;
  */
 const PUSH_TO_DEVICE_TIMEOUT_MS = 300_000;
 
-/** Socket timeout for trace-path: above the 60 s trace radio timeout. */
-const TRACE_REQUEST_SOCKET_TIMEOUT_MS = 75_000;
 
 const router = Router({ mergeParams: true });
 
@@ -468,10 +467,23 @@ router.post(
  *
  * Send a diagnostic trace along the contact's cached forwarding path,
  * collecting per-hop SNR. Requires a known out_path (pathLen > 0).
- * Returns { success, hops: [{ index, snr }], lastSnr }.
+ *
+ * The wait follows the firmware's own estimate, 8-60 s (#5588,
+ * constants/meshcoreFirmwareTimeout.ts). One trace goes out per request and a
+ * timeout is never retried.
+ *
+ * 200 → { success, hops: [{ index, snr }], lastSnr, path }
+ * 409 → MESHCORE_TRACE_FAILED (no path / disconnected / not a Companion / device error)
+ * 504 → MESHCORE_TRACE_TIMEOUT, with { reason: 'timeout', waitMs, suggestedTimeoutMs }
  */
+// The trace can wait up to 60 s for the radio, past the server's 30 s socket
+// timeout (server.ts). Closing the socket with no reply makes the browser
+// resend the POST, and each resend starts another trace on RF (#5494). Give
+// this request a socket timeout above the longest trace wait and the bridge
+// timeout over it, so the handler always answers first.
 router.post(
   '/contacts/:publicKey/trace-path',
+  extendRequestTimeout(MESHCORE_TRACE_SOCKET_TIMEOUT_MS),
   meshcoreDeviceLimiter,
   requireAuth(),
   requirePermission('nodes', 'write', { sourceIdFrom: 'params.id' }),
@@ -480,31 +492,35 @@ router.post(
     try {
       const publicKey = req.params.publicKey;
       if (!isValidPublicKey(publicKey)) {
-        return res.status(400).json({
-          success: false,
-          error: 'Invalid public key — must be 64-char hex',
-        });
+        return fail(res, 400, 'INVALID_PUBLIC_KEY', 'Invalid public key — must be 64-char hex');
       }
-      // The trace waits up to 60 s for the radio, past the server's 30 s
-      // socket timeout (server.ts). Closing the socket with no reply makes
-      // the browser resend the POST, and each resend starts another trace:
-      // one RF trace every 30 s for as long as the page stays open. Give this
-      // request a socket timeout longer than the trace itself.
-      req.setTimeout(TRACE_REQUEST_SOCKET_TIMEOUT_MS);
       // #5485: opt-in return leg; anything but literal true keeps one-way.
       const autoReturn = req.body?.autoReturn === true;
-      const result = await managerFor(req, res).traceContactPath(publicKey, { autoReturn });
-      if (!result) {
-        return res.status(409).json({
-          success: false,
-          error: 'Trace path failed — contact may have no known path, source disconnected, timed out, or not a Companion device',
-        });
+      const result = await managerFor(req, res).traceContactPathDetailed(publicKey, { autoReturn });
+      if (!result.ok) {
+        if (result.reason === 'timeout') {
+          const seconds = Math.round(result.waitMs / 1000);
+          return fail(
+            res,
+            504,
+            'MESHCORE_TRACE_TIMEOUT',
+            `No reply to the trace within ${seconds} s.`,
+            { reason: 'timeout', waitMs: result.waitMs, suggestedTimeoutMs: result.suggestedTimeoutMs },
+          );
+        }
+        return fail(
+          res,
+          409,
+          'MESHCORE_TRACE_FAILED',
+          'Trace path failed — contact may have no known path, source disconnected, or not a Companion device',
+          { reason: 'failed' },
+        );
       }
       res.json({ success: true, hops: result.hops, lastSnr: result.lastSnr, path: result.path });
     } catch (error) {
       if (failIfTxDisabled(res, error)) return;
       logger.error('[API] Error tracing contact path:', error);
-      res.status(500).json({ success: false, error: 'Failed to trace path' });
+      return fail(res, 500, 'MESHCORE_TRACE_FAILED', 'Failed to trace path');
     }
   },
 );

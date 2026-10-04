@@ -67,6 +67,7 @@ function makeStubManager(sourceId: string) {
     discoverNodes: async (..._args: unknown[]) => ({ returned: 0, newCount: 0, nodes: [] }),
     discoverRegions: async () => ({ regions: [], byRepeater: {} }),
     traceContactPath: async (..._args: unknown[]) => ({ hops: [], lastSnr: 0 }),
+    traceContactPathDetailed: async (..._args: unknown[]) => ({ ok: true, hops: [], lastSnr: 0, path: [] }),
     pingContactZeroHop: async (..._args: unknown[]) => ({
       ok: true, hopHash: 'aa', rttMs: 1, snrToTarget: 1, snrFromTarget: 1,
     }),
