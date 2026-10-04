@@ -1,17 +1,6 @@
 import type { TranslationProvider } from '../../../../types/translation.js';
 import type { ITranslationProvider, ProviderConfig, TranslationProviderResult } from './types.js';
-
-/**
- * Helper to construct the full endpoint path for translation services.
- */
-export function buildServiceEndpoint(baseUrl: string, defaultEndpoint: string, path: string): string {
-  const trimmed = (baseUrl || '').trim();
-  if (!trimmed) {
-    return defaultEndpoint;
-  }
-  const clean = trimmed.replace(/\/+$/, '');
-  return clean.endsWith(path) ? clean : `${clean}${path}`;
-}
+import { buildServiceEndpoint } from './translateUtils.js';
 
 export class LibreTranslateProvider implements ITranslationProvider {
   readonly id: TranslationProvider = 'libretranslate';

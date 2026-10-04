@@ -1,6 +1,6 @@
 import type { TranslationProvider } from '../../../../types/translation.js';
 import type { ITranslationProvider, ProviderConfig, TranslationProviderResult } from './types.js';
-import { buildServiceEndpoint } from './libreTranslateProvider.js';
+import { buildServiceEndpoint } from './translateUtils.js';
 
 export class DeepLProvider implements ITranslationProvider {
   readonly id: TranslationProvider = 'deepl';
@@ -37,10 +37,13 @@ export class DeepLProvider implements ITranslationProvider {
     }
 
     const key = config.apiKey.trim();
+    const rawUrl = (config.deeplUrl || '').trim();
     const defaultEndpoint = key.endsWith(':fx')
       ? 'https://api-free.deepl.com/v2/translate'
       : 'https://api.deepl.com/v2/translate';
-    const endpoint = buildServiceEndpoint(config.deeplUrl || '', defaultEndpoint, '/translate');
+    const endpoint = rawUrl
+      ? buildServiceEndpoint(rawUrl, defaultEndpoint, '/v2/translate', '/translate')
+      : defaultEndpoint;
 
     const body: Record<string, unknown> = {
       text: [text],

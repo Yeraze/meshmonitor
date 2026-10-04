@@ -6,6 +6,7 @@ import { OpenAIProvider } from './openAiProvider.js';
 import { GoogleProvider } from './googleProvider.js';
 
 export * from './types.js';
+export * from './translateUtils.js';
 export * from './libreTranslateProvider.js';
 export * from './deepLProvider.js';
 export * from './openAiProvider.js';

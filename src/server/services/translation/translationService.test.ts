@@ -4,7 +4,13 @@ import {
   buildServiceEndpoint,
   translationService,
 } from './translationService.js';
-import { NoOpTranslationCache, setTranslationCache } from './translationCache.js';
+import {
+  NoOpTranslationCache,
+  setTranslationCache,
+  type ITranslationCache,
+  type CachedTranslation,
+  type TranslationCacheKey,
+} from './translationCache.js';
 import { computeTranslationCacheKey } from './cacheKey.js';
 
 vi.mock('../../../services/database.js', () => ({
@@ -39,14 +45,15 @@ describe('translationService', () => {
       expect(buildServiceEndpoint('   ', 'https://api.deepl.com/v2/translate', '/translate')).toBe('https://api.deepl.com/v2/translate');
     });
 
-    it('should append path when not present on baseUrl', () => {
-      expect(buildServiceEndpoint('https://api.deepl.com/v2', 'default', '/translate')).toBe('https://api.deepl.com/v2/translate');
-      expect(buildServiceEndpoint('https://api.deepl.com/v2/', 'default', '/translate')).toBe('https://api.deepl.com/v2/translate');
+    it('should append path when bare origin is provided', () => {
+      expect(buildServiceEndpoint('https://api.deepl.com', 'default', '/translate')).toBe('https://api.deepl.com/translate');
+      expect(buildServiceEndpoint('https://api.deepl.com/', 'default', '/translate')).toBe('https://api.deepl.com/translate');
     });
 
-    it('should not double-append path when already present on baseUrl', () => {
+    it('should preserve URL verbatim when path is provided', () => {
       expect(buildServiceEndpoint('https://api.deepl.com/v2/translate', 'default', '/translate')).toBe('https://api.deepl.com/v2/translate');
       expect(buildServiceEndpoint('https://api.deepl.com/v2/translate/', 'default', '/translate')).toBe('https://api.deepl.com/v2/translate');
+      expect(buildServiceEndpoint('https://custom.proxy/api/v1', 'default', '/translate')).toBe('https://custom.proxy/api/v1');
     });
   });
 
@@ -121,7 +128,7 @@ describe('translationService', () => {
       vi.mocked(databaseService.getSettingAsync).mockImplementation(async (key: string) => {
         if (key === 'translationEnabled') return 'true';
         if (key === 'translationProvider') return 'libretranslate';
-        if (key === 'translationUrl') return 'http://libretranslate:5000';
+        if (key === 'translationUrl') return 'http://libretranslate:5000/translate';
         return null;
       });
 
@@ -134,7 +141,7 @@ describe('translationService', () => {
       expect(result.translatedText).toBe('ping');
     });
 
-    it('should translate using LibreTranslate provider', async () => {
+    it('should translate using LibreTranslate provider with bare origin URL', async () => {
       vi.mocked(databaseService.getSettingAsync).mockImplementation(async (key: string) => {
         if (key === 'translationEnabled') return 'true';
         if (key === 'translationProvider') return 'libretranslate';
@@ -158,6 +165,36 @@ describe('translationService', () => {
       expect(result.translatedText).toBe('Hola mundo');
       expect(result.targetLanguage).toBe('es');
       expect(result.provider).toBe('libretranslate');
+      expect(global.fetch).toHaveBeenCalledWith(
+        'http://libretranslate:5000/translate',
+        expect.objectContaining({
+          method: 'POST',
+        })
+      );
+    });
+
+    it('should translate using LibreTranslate provider with blank URL (using default endpoint)', async () => {
+      vi.mocked(databaseService.getSettingAsync).mockImplementation(async (key: string) => {
+        if (key === 'translationEnabled') return 'true';
+        if (key === 'translationProvider') return 'libretranslate';
+        if (key === 'translationUrl') return '';
+        return null;
+      });
+
+      global.fetch = vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          translatedText: 'Hola mundo',
+          detectedLanguage: { language: 'en', confidence: 99 },
+        }),
+      } as unknown as Response);
+
+      const result = await translationService.translate({
+        text: 'Hello world',
+        targetLang: 'es',
+      });
+
+      expect(result.translatedText).toBe('Hola mundo');
       expect(global.fetch).toHaveBeenCalledWith(
         'http://libretranslate:5000/translate',
         expect.objectContaining({
@@ -207,11 +244,12 @@ describe('translationService', () => {
       );
     });
 
-    it('should translate using DeepL provider', async () => {
+    it('should translate using DeepL provider and auto-route to free endpoint when URL is blank', async () => {
       vi.mocked(databaseService.getSettingAsync).mockImplementation(async (key: string) => {
         if (key === 'translationEnabled') return 'true';
         if (key === 'translationProvider') return 'deepl';
         if (key === 'translationApiKey') return 'deepl-api-key:fx';
+        if (key === 'translationDeeplUrl') return '';
         return null;
       });
 
@@ -242,7 +280,7 @@ describe('translationService', () => {
       );
     });
 
-    it('should use custom DeepL base URL and append /translate when provided', async () => {
+    it('should use custom DeepL URL when provided', async () => {
       vi.mocked(databaseService.getSettingAsync).mockImplementation(async (key: string) => {
         if (key === 'translationEnabled') return 'true';
         if (key === 'translationProvider') return 'deepl';
@@ -271,11 +309,12 @@ describe('translationService', () => {
       );
     });
 
-    it('should use Pro DeepL endpoint for non-:fx keys when no URL is provided', async () => {
+    it('should use Pro DeepL endpoint for non-:fx keys when URL is blank', async () => {
       vi.mocked(databaseService.getSettingAsync).mockImplementation(async (key: string) => {
         if (key === 'translationEnabled') return 'true';
         if (key === 'translationProvider') return 'deepl';
         if (key === 'translationApiKey') return 'deepl-pro-api-key';
+        if (key === 'translationDeeplUrl') return null;
         return null;
       });
 
@@ -468,6 +507,7 @@ describe('translationService', () => {
       vi.mocked(databaseService.getSettingAsync).mockImplementation(async (key: string) => {
         if (key === 'translationEnabled') return 'true';
         if (key === 'translationProvider') return 'libretranslate';
+        if (key === 'translationUrl') return 'http://libretranslate:5000/translate';
         return null;
       });
 
@@ -499,6 +539,7 @@ describe('translationService', () => {
       vi.mocked(databaseService.getSettingAsync).mockImplementation(async (key: string) => {
         if (key === 'translationEnabled') return 'true';
         if (key === 'translationProvider') return 'libretranslate';
+        if (key === 'translationUrl') return 'http://libretranslate:5000/translate';
         return null;
       });
 
@@ -535,6 +576,7 @@ describe('translationService', () => {
       vi.mocked(databaseService.getSettingAsync).mockImplementation(async (key: string) => {
         if (key === 'translationEnabled') return 'true';
         if (key === 'translationProvider') return 'libretranslate';
+        if (key === 'translationUrl') return 'http://libretranslate:5000/translate';
         return null;
       });
       await memoryCache.set(
@@ -559,6 +601,7 @@ describe('translationService', () => {
       vi.mocked(databaseService.getSettingAsync).mockImplementation(async (key: string) => {
         if (key === 'translationEnabled') return 'true';
         if (key === 'translationProvider') return 'libretranslate';
+        if (key === 'translationUrl') return 'http://libretranslate:5000/translate';
         return null;
       });
       global.fetch = vi.fn().mockResolvedValue({

@@ -446,8 +446,77 @@ describe('settingsRoutes', () => {
           .expect(400);
         expect(res.body.error).toContain('valid http(s) URL');
       });
+    });
 
-      it('should return 403 when lacking settings:write permission', async () => {
+    describe('translation endpoint URL validation', () => {
+      it('should accept valid translation URLs and empty strings without mutating them', async () => {
+        const app = createApp(adminUser);
+
+        await request(app)
+          .post('/api/settings')
+          .send({
+            translationUrl: 'http://custom-libre:5000',
+            translationOpenAiBaseUrl: 'http://localhost:11434/v1',
+            translationDeeplUrl: '',
+          })
+          .expect(200);
+
+        expect(databaseService.settings.setSettings).toHaveBeenCalledWith(
+          expect.objectContaining({
+            translationUrl: 'http://custom-libre:5000',
+            translationOpenAiBaseUrl: 'http://localhost:11434/v1',
+            translationDeeplUrl: '',
+          })
+        );
+      });
+
+      it('should return 400 with INVALID_TRANSLATION_URL when translationUrl is malformed', async () => {
+        const app = createApp(adminUser);
+
+        const res = await request(app)
+          .post('/api/settings')
+          .send({ translationUrl: 'this isnt a valid url yo!' })
+          .expect(400);
+
+        expect(res.body).toMatchObject({
+          success: false,
+          code: 'INVALID_TRANSLATION_URL',
+          error: 'translationUrl must be a valid http(s) URL',
+        });
+      });
+
+      it('should return 400 with INVALID_TRANSLATION_URL when translationOpenAiBaseUrl has unsupported protocol', async () => {
+        const app = createApp(adminUser);
+
+        const res = await request(app)
+          .post('/api/settings')
+          .send({ translationOpenAiBaseUrl: 'ftp://invalid-protocol.com' })
+          .expect(400);
+
+        expect(res.body).toMatchObject({
+          success: false,
+          code: 'INVALID_TRANSLATION_URL',
+          error: 'translationOpenAiBaseUrl must be a valid http(s) URL',
+        });
+      });
+
+      it('should return 400 with INVALID_TRANSLATION_URL when translationDeeplUrl has file protocol', async () => {
+        const app = createApp(adminUser);
+
+        const res = await request(app)
+          .post('/api/settings')
+          .send({ translationDeeplUrl: 'file:///etc/passwd' })
+          .expect(400);
+
+        expect(res.body).toMatchObject({
+          success: false,
+          code: 'INVALID_TRANSLATION_URL',
+          error: 'translationDeeplUrl must be a valid http(s) URL',
+        });
+      });
+    });
+
+    it('should return 403 when lacking settings:write permission', async () => {
         const app = createApp({ id: 2, username: 'user', isActive: true, isAdmin: false });
         (databaseService as any).findUserByIdAsync.mockResolvedValue({
           id: 2, username: 'user', isActive: true, isAdmin: false
@@ -464,7 +533,6 @@ describe('settingsRoutes', () => {
           .expect(403);
       });
     });
-  });
 
   describe('POST /api/settings autoResponderTriggers (mailbox responseType)', () => {
     it('saves a mailbox trigger that has no response text', async () => {

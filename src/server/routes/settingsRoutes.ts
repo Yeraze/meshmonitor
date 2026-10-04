@@ -1012,6 +1012,25 @@ router.post('/', requirePermission('settings', 'write', { sourceIdFrom: 'query' 
       filteredSettings.externalUrl = raw;
     }
 
+    // Validate translation endpoint URLs on save
+    for (const key of ['translationUrl', 'translationOpenAiBaseUrl', 'translationDeeplUrl'] as const) {
+      if (key in filteredSettings) {
+        const raw = (filteredSettings[key] || '').trim();
+        if (raw.length > 0) {
+          try {
+            const hasScheme = /^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//.test(raw);
+            const withProtocol = hasScheme ? raw : `https://${raw}`;
+            const parsed = new URL(withProtocol);
+            if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+              return fail(res, 400, 'INVALID_TRANSLATION_URL', `${key} must be a valid http(s) URL`);
+            }
+          } catch {
+            return fail(res, 400, 'INVALID_TRANSLATION_URL', `${key} must be a valid http(s) URL`);
+          }
+        }
+      }
+    }
+
     // Save to database
     if (sourceId) {
       // Per-source: store with source: prefix
