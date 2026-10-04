@@ -431,6 +431,25 @@ describe('CoverageReport', () => {
     expect(screen.queryByText(/Recommended survey-node settings/)).not.toBeInTheDocument();
   });
 
+  it('links the setup guidance to the sparse-survey docs section (#5591)', () => {
+    renderReport();
+
+    expect(screen.queryByTestId('coverage-sparse-hint')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByText('Setup guidance'));
+
+    const hint = screen.getByTestId('coverage-sparse-hint');
+    expect(hint).toHaveTextContent(/Fewer dots than you expected\?/);
+    const link = within(hint).getByRole('link', { name: 'Why a survey looks sparse' });
+    expect(link).toHaveAttribute(
+      'href',
+      'https://meshmonitor.org/features/coverage-report#why-a-survey-looks-sparse',
+    );
+    expect(link).toHaveAttribute('target', '_blank');
+    expect(link).toHaveAttribute('rel', 'noopener noreferrer');
+    // The hint is a link only: nothing in it changes a node.
+    expect(within(hint).queryByRole('button')).not.toBeInTheDocument();
+  });
+
   it('passes the selected colour metric through to CoverageMap', () => {
     renderReport();
 
