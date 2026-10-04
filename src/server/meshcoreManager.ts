@@ -31,7 +31,7 @@ import { scheduleCron, validateCron, type CronJob } from './utils/cronScheduler.
 import { CronOrIntervalScheduler, type ScheduleMode } from './services/cronOrIntervalScheduler.js';
 import { replaceMeshCoreAnnounceTokens } from './utils/meshcoreAnnounceTokens.js';
 import { runScript, type RunScriptResult } from './utils/scriptRunner.js';
-import { MeshCoreNativeBackend, MESHCORE_LOGIN_REJECTED, type BridgeShapedEvent } from './meshcoreNativeBackend.js';
+import { MeshCoreNativeBackend, MESHCORE_LOGIN_REJECTED, decodeOutPathLen, type BridgeShapedEvent } from './meshcoreNativeBackend.js';
 import {
   MESHCORE_CONTACT_NOT_ON_DEVICE,
   MESHCORE_DEVICE_TABLE_FULL,
@@ -311,6 +311,41 @@ export const MeshCoreDiscoverFilter = {
 } as const;
 
 export type MeshCoreDiscoverMode = 'nearby' | 'repeaters' | 'sensors';
+
+/**
+ * The raw advert frame behind a node trigger (#5534, #5595): its packet hash
+ * and how many relays it crossed. Absent when no frame caused the event (a
+ * path update, a discovery reply, a contact re-read).
+ */
+export interface MeshCoreAdvertOrigin {
+  packetHash?: string;
+  hops?: number;
+}
+
+/**
+ * Contact facts carried on trigger.nodeDiscovered / trigger.nodeUpdated
+ * (#5595). Exported for unit tests.
+ *
+ *  - `hops` comes ONLY from the advert frame. The cached route length is a
+ *    different number (the route we would SEND on) and goes out as
+ *    `routeHops`; one never stands in for the other.
+ *  - `lastHeard` is `lastSeen`, which this manager always keeps in epoch
+ *    MILLISECONDS on our own clock. `lastAdvert` is the sender's clock in
+ *    seconds and is not used.
+ */
+export function meshCoreNodeTriggerPayload(
+  contact: Pick<MeshCoreContact, 'advType' | 'pathLen' | 'lastSeen'>,
+  origin: MeshCoreAdvertOrigin | undefined,
+): { packetHash?: string; hops?: number; advType?: number; routeHops?: number; lastHeard?: number } {
+  const isCount = (v: unknown): v is number => typeof v === 'number' && Number.isInteger(v) && v >= 0;
+  return {
+    packetHash: origin?.packetHash,
+    hops: isCount(origin?.hops) ? origin.hops : undefined,
+    advType: typeof contact.advType === 'number' ? contact.advType : undefined,
+    routeHops: isCount(contact.pathLen) ? contact.pathLen : undefined,
+    lastHeard: typeof contact.lastSeen === 'number' && contact.lastSeen > 0 ? contact.lastSeen : undefined,
+  };
+}
 
 /**
  * One node that answered a discovery sweep (#4516).
@@ -1308,13 +1343,15 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
   private nodeTriggersReady: boolean = false;
   // Public keys heard live for the first time but still nameless; their
   // trigger.nodeDiscovered waits for the name (same reason as
-  // pendingNewNodeNotifications, #5340). Value = the first advert's hash.
-  private pendingDiscoveryTriggers: Map<string, string | undefined> = new Map();
+  // pendingNewNodeNotifications, #5340). Value = the first advert's hash and
+  // hop count (#5595), kept together so both describe the same frame.
+  private pendingDiscoveryTriggers: Map<string, MeshCoreAdvertOrigin> = new Map();
   // Advert hash per sender public key, from the raw LogRxData frame that
   // precedes the firmware's advert push (#5534). Short-lived; see
   // ADVERT_HASH_TTL_MS.
   // `hadPosition` (#5578): whether that advert frame carried coordinates.
-  private recentAdvertHashes: Map<string, { hash: string; at: number; hadPosition: boolean }> = new Map();
+  // `hops` (#5595): relays that frame crossed, from its path_len byte.
+  private recentAdvertHashes: Map<string, { hash: string; at: number; hadPosition: boolean; hops: number | undefined }> = new Map();
   private static readonly ADVERT_HASH_TTL_MS = 30_000;
   private static readonly ADVERT_HASH_MAX_ENTRIES = 512;
 
@@ -2576,7 +2613,9 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
         // #5534: hash of the advert frame that caused this push, if the raw
         // LogRxData copy arrived just before it.
         const recentAdvert = this.takeRecentAdvert(publicKey);
-        const advertHash = recentAdvert?.hash;
+        const advertOrigin: MeshCoreAdvertOrigin | undefined = recentAdvert
+          ? { packetHash: recentAdvert.hash, hops: recentAdvert.hops }
+          : undefined;
         // Captured before the set below: a contact we didn't already know about
         // is a genuine new-node discovery. Bulk contact-list sync populates
         // this.contacts directly (not via this event), so a first connect
@@ -2625,9 +2664,9 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
         // #5534 automation triggers: first live sighting → nodeDiscovered;
         // a known node whose name/position/type changed → nodeUpdated.
         if (!wasKnown) {
-          this.noteNodeDiscovered(updated, advertHash);
+          this.noteNodeDiscovered(updated, advertOrigin);
         } else {
-          this.noteNodeTriggerChange(existing, updated, advertHash);
+          this.noteNodeTriggerChange(existing, updated, advertOrigin);
         }
         // A key first seen without a name is parked in
         // pendingNewNodeNotifications; a later named advert resolves it (#5340).
@@ -3365,15 +3404,20 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
     if (typeof rawHex !== 'string' || rawHex === '') return;
     const hash = meshCorePacketHashOrUndefined(rawHex);
     if (!hash) return;
-    const advert = decodeMeshCorePacket(rawHex)?.payload.advert;
+    const decoded = decodeMeshCorePacket(rawHex);
+    const advert = decoded?.payload.advert;
     if (!advert?.publicKey) return;
+    // #5595: hop count of THIS frame. path_len packs the hash width in its top
+    // 2 bits, so read it through the shared decoder, never as a plain number.
+    // The 0xFF sentinel and the reserved 4-byte width decode to "unknown".
+    const hops = decodeOutPathLen(decoded?.path.rawLen)?.hopCount;
     const now = Date.now();
     for (const [key, entry] of this.recentAdvertHashes) {
       if (now - entry.at > MeshCoreManager.ADVERT_HASH_TTL_MS) this.recentAdvertHashes.delete(key);
     }
     const key = advert.publicKey.toLowerCase();
     this.recentAdvertHashes.delete(key); // re-insert so Map order stays oldest-first
-    this.recentAdvertHashes.set(key, { hash, at: now, hadPosition: advertHasPosition(advert.latitude, advert.longitude) });
+    this.recentAdvertHashes.set(key, { hash, at: now, hadPosition: advertHasPosition(advert.latitude, advert.longitude), hops });
     while (this.recentAdvertHashes.size > MeshCoreManager.ADVERT_HASH_MAX_ENTRIES) {
       const oldest = this.recentAdvertHashes.keys().next().value;
       if (oldest === undefined) break;
@@ -3383,15 +3427,16 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
 
   /**
    * Claim (and forget) the recent raw advert for `publicKey`, if still fresh:
-   * its hash (#5534) and whether it carried a position (#5578).
+   * its hash (#5534), whether it carried a position (#5578) and how many
+   * relays it crossed (#5595).
    */
-  private takeRecentAdvert(publicKey: string): { hash: string; hadPosition: boolean } | undefined {
+  private takeRecentAdvert(publicKey: string): { hash: string; hadPosition: boolean; hops: number | undefined } | undefined {
     const key = publicKey.toLowerCase();
     const entry = this.recentAdvertHashes.get(key);
     if (!entry) return undefined;
     this.recentAdvertHashes.delete(key);
     if (Date.now() - entry.at > MeshCoreManager.ADVERT_HASH_TTL_MS) return undefined;
-    return { hash: entry.hash, hadPosition: entry.hadPosition };
+    return { hash: entry.hash, hadPosition: entry.hadPosition, hops: entry.hops };
   }
 
   /**
@@ -3401,18 +3446,18 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
    * get_contacts re-read or a named advert), then fires with the first
    * advert's hash.
    */
-  private noteNodeDiscovered(contact: MeshCoreContact, packetHash: string | undefined): void {
+  private noteNodeDiscovered(contact: MeshCoreContact, origin: MeshCoreAdvertOrigin | undefined): void {
     if (!this.nodeTriggersReady) return;
     const name = contact.advName || contact.name;
     if (!name) {
       if (!this.pendingDiscoveryTriggers.has(contact.publicKey)) {
-        this.pendingDiscoveryTriggers.set(contact.publicKey, packetHash);
+        this.pendingDiscoveryTriggers.set(contact.publicKey, origin ?? {});
       }
       return;
     }
     this.pendingDiscoveryTriggers.delete(contact.publicKey);
     dataEventEmitter.emitNodeDiscovered(
-      { nodeNum: null, publicKey: contact.publicKey, name, packetHash },
+      { nodeNum: null, publicKey: contact.publicKey, name, ...meshCoreNodeTriggerPayload(contact, origin) },
       this.sourceId,
     );
   }
@@ -3426,16 +3471,23 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
   private noteNodeTriggerChange(
     before: MeshCoreContact | undefined,
     after: MeshCoreContact,
-    packetHash: string | undefined,
+    origin: MeshCoreAdvertOrigin | undefined,
   ): void {
     if (!this.nodeTriggersReady) return;
     const name = after.advName || after.name || undefined;
     if (this.pendingDiscoveryTriggers.has(after.publicKey)) {
       if (name) {
-        const firstHash = this.pendingDiscoveryTriggers.get(after.publicKey);
+        // The first advert's frame wins when we saw one; its hash and hop
+        // count travel together so they never describe two different frames.
+        const first = this.pendingDiscoveryTriggers.get(after.publicKey);
         this.pendingDiscoveryTriggers.delete(after.publicKey);
         dataEventEmitter.emitNodeDiscovered(
-          { nodeNum: null, publicKey: after.publicKey, name, packetHash: firstHash ?? packetHash },
+          {
+            nodeNum: null,
+            publicKey: after.publicKey,
+            name,
+            ...meshCoreNodeTriggerPayload(after, first?.packetHash ? first : origin),
+          },
           this.sourceId,
         );
       }
@@ -3444,7 +3496,7 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
     const changed = meshCoreTriggerChanges(before, after);
     if (changed.length === 0) return;
     dataEventEmitter.emitMeshCoreNodeChanged(
-      { publicKey: after.publicKey, name, changed, packetHash },
+      { publicKey: after.publicKey, name, changed, ...meshCoreNodeTriggerPayload(after, origin) },
       this.sourceId,
     );
   }

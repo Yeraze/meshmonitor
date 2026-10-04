@@ -9,7 +9,7 @@
 import type { DbMessage } from '../../../services/database.js';
 import type { MeshCoreMessage } from '../../meshcoreManager.js';
 import type { ReticulumMessageRow } from '../../../db/repositories/reticulum.js';
-import type { NodeAircraftData, NodeUpdateOrigin } from '../dataEventEmitter.js';
+import type { MeshCoreNodeEventFacts, NodeAircraftData, NodeUpdateOrigin } from '../dataEventEmitter.js';
 import type { TriggerType } from '../../../types/automation.js';
 import { compileUserRegex } from '../../../utils/safeRegex.js';
 import { hopCountEmoji, hopOrMqttEmoji } from '../../../utils/hopEmoji.js';
@@ -393,6 +393,15 @@ export function buildNodeContext(
  * is the public key, which keys per-node cooldown. `name` carries the contact's
  * display name since `node.*` cannot. `packetHash` is the advert's hash when the
  * event came from a received advert, else undefined (renders '').
+ *
+ * #5595 — `facts` adds the contact fields a template wants, under `trigger.*`:
+ *  - `roleName`: Companion / Repeater / Room Server / Sensor; '' when unknown.
+ *  - `hops`: relays the advert frame that fired this event crossed. Undefined
+ *    (renders '') when no advert frame fired it. Never the cached route.
+ *  - `routeHops`: hop count of the cached forwarding route; undefined = flood.
+ *  - `lastHeard`: epoch ms, the same unit as `trigger.nodeStale`.
+ * MeshCore has no short name, so there is no `shortName` field: a template
+ * that uses `{{ trigger.shortName }}` renders ''.
  */
 export function buildMeshCoreNodeContext(
   triggerType: 'trigger.nodeDiscovered' | 'trigger.nodeUpdated',
@@ -402,6 +411,7 @@ export function buildMeshCoreNodeContext(
   timestamp: number,
   origin?: NodeUpdateOrigin,
   name?: string | null,
+  facts?: MeshCoreNodeEventFacts,
 ): TriggerContext {
   return {
     triggerType,
@@ -416,12 +426,53 @@ export function buildMeshCoreNodeContext(
       changed: changedKeys,
       packetId: undefined,
       packetHash: origin?.packetHash ? String(origin.packetHash) : undefined,
+      roleName: meshCoreRoleName(facts?.advType),
+      hops: hopCountOrUndefined(facts?.hops),
+      routeHops: hopCountOrUndefined(facts?.routeHops),
+      lastHeard: epochMsOrUndefined(facts?.lastHeard),
       protocol: 'meshcore',
       protocolShort: 'MC',
       sourceId,
       timestamp,
     },
   };
+}
+
+/**
+ * MeshCore advert type → role label for `{{ trigger.roleName }}` (#5595).
+ * Firmware ADV_TYPE: 1 Chat (Companion), 2 Repeater, 3 Room, 4 Sensor. The
+ * labels match the node list (components/MeshCore/meshcoreRole.ts). Unknown,
+ * unset or out-of-range → '' so a template renders blank rather than "Unknown".
+ */
+const MESHCORE_ROLE_NAMES: Record<number, string> = {
+  1: 'Companion',
+  2: 'Repeater',
+  3: 'Room Server',
+  4: 'Sensor',
+};
+export function meshCoreRoleName(advType: unknown): string {
+  // Number(null) is 0, which is "unknown" here too.
+  return MESHCORE_ROLE_NAMES[Number(advType)] ?? '';
+}
+
+/** A whole, non-negative hop count; anything else is "not known". 0 is real. */
+function hopCountOrUndefined(v: unknown): number | undefined {
+  if (v === null || v === undefined || v === '') return undefined;
+  const n = Number(v);
+  return Number.isInteger(n) && n >= 0 ? n : undefined;
+}
+
+/**
+ * Epoch MILLISECONDS, or undefined. MeshCore keeps some times in seconds
+ * (`last_advert`, `last_mod`); a value too small to be a millisecond stamp
+ * (before 1973) is taken as seconds and scaled, so a caller that hands over
+ * the wrong unit cannot put a 1970 date in a notification.
+ */
+function epochMsOrUndefined(v: unknown): number | undefined {
+  if (v === null || v === undefined || v === '') return undefined;
+  const n = Number(v);
+  if (!Number.isFinite(n) || n <= 0) return undefined;
+  return Math.round(n < 1e11 ? n * 1000 : n);
 }
 
 /**

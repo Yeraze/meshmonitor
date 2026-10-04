@@ -367,6 +367,17 @@ export const TRIGGERS: BlockDef[] = [
 const SUBJECT_NODE_TRIGGERS = ['trigger.message', 'trigger.nodeDiscovered', 'trigger.nodeUpdated', 'trigger.telemetry', 'trigger.geofence', 'trigger.becameMobile', 'trigger.leftHome', 'trigger.meshBeacon', 'trigger.nodeStale', 'trigger.nodeOnline', 'trigger.nodeRebooted', 'trigger.nodePowerChanged', 'trigger.batteryTrend', 'trigger.becameLikelyAircraft'];
 const hasSubjectNode = (t: string) => SUBJECT_NODE_TRIGGERS.includes(t);
 
+// #5595: MeshCore contact facts on the node triggers. MeshCore has no node
+// number, so the hydrated `node.*` fields below are empty for it.
+const MESHCORE_NODE_EVENT_FIELDS: FieldOpt[] = [
+  { value: 'hops', label: 'MeshCore: hops the advert took (0 = direct)' },
+  { value: 'routeHops', label: 'MeshCore: hops on the stored route' },
+];
+const MESHCORE_NODE_EVENT_STRING_FIELDS: FieldOpt[] = [
+  { value: 'roleName', label: 'MeshCore: role (Companion / Repeater / Room Server / Sensor)' },
+  { value: 'name', label: 'MeshCore: node name' },
+];
+
 const EVENT_NUMERIC: Record<string, FieldOpt[]> = {
   'trigger.message': [
     { value: 'hops', label: 'Hop count' }, { value: 'from', label: 'Sender node #' },
@@ -394,8 +405,8 @@ const EVENT_NUMERIC: Record<string, FieldOpt[]> = {
     { value: 'offerRegion', label: 'Offered region code' },
     { value: 'offerPreset', label: 'Offered modem preset' },
   ],
-  'trigger.nodeUpdated': [{ value: 'nodeNum', label: 'Node #' }],
-  'trigger.nodeDiscovered': [{ value: 'nodeNum', label: 'Node #' }],
+  'trigger.nodeUpdated': [{ value: 'nodeNum', label: 'Node #' }, ...MESHCORE_NODE_EVENT_FIELDS],
+  'trigger.nodeDiscovered': [{ value: 'nodeNum', label: 'Node #' }, ...MESHCORE_NODE_EVENT_FIELDS],
   'trigger.nodeStale': [
     { value: 'nodeNum', label: 'Node #' },
     { value: 'ageMinutes', label: 'Minutes since last heard' },
@@ -449,6 +460,8 @@ const EVENT_STRING: Record<string, FieldOpt[]> = {
     { value: 'scopeName', label: 'MeshCore scope/region' },
   ],
   'trigger.telemetry': [{ value: 'telemetryType', label: 'Metric name' }],
+  'trigger.nodeUpdated': MESHCORE_NODE_EVENT_STRING_FIELDS,
+  'trigger.nodeDiscovered': MESHCORE_NODE_EVENT_STRING_FIELDS,
   'trigger.meshBeacon': [
     { value: 'message', label: 'Beacon text' },
     { value: 'offerChannelName', label: 'Offered channel name' },
