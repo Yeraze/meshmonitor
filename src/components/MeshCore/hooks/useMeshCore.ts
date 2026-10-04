@@ -76,6 +76,16 @@ export interface TracePathResult {
 }
 
 /**
+ * A trace that went out and got no reply inside the server's wait (#5588).
+ * The server never resends it; neither does the UI.
+ */
+export interface TracePathTimeout {
+  timedOut: true;
+  /** How long the server waited, in ms (null when it did not say). */
+  waitMs: number | null;
+}
+
+/**
  * Outcome of a zero-hop ping (#4393). On success the SNR pair tells you how
  * each end heard the other; on failure `error` is the server's actionable
  * reason (out of range, not a Companion, disconnected, unknown contact).
@@ -307,7 +317,7 @@ export interface MeshCoreActions {
   setContactOutPath: (publicKey: string, outPath: string, hashBytes?: 1 | 2 | 3) => Promise<boolean>;
   /** Send a trace-path diagnostic along the contact's cached forwarding
    *  route and return per-hop SNR data. Resolves `null` on failure. */
-  traceContactPath: (publicKey: string, opts?: { autoReturn?: boolean }) => Promise<TracePathResult | null>;
+  traceContactPath: (publicKey: string, opts?: { autoReturn?: boolean }) => Promise<TracePathResult | TracePathTimeout | null>;
   /** Zero-hop ping (#4393) — trace along a synthetic one-hop path built from
    *  the target's own key hash, bypassing any cached route. A reply proves the
    *  node is in direct RF range. Requires nodes:write. */
@@ -1632,7 +1642,7 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
   const traceContactPath = useCallback(async (
     publicKey: string,
     opts: { autoReturn?: boolean } = {},
-  ): Promise<TracePathResult | null> => {
+  ): Promise<TracePathResult | TracePathTimeout | null> => {
     try {
       const response = await csrfFetch(
         `${mcPrefix}/contacts/${encodeURIComponent(publicKey)}/trace-path`,
@@ -1645,6 +1655,14 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
       const data = await parseJsonResponse(response);
       if (!data.success) {
         if (reportTxDisabled(response.status, data)) return null;
+        // #5588: "no reply" is a normal trace outcome, shown next to the
+        // button with the time waited. It is not retried.
+        if (data.code === 'MESHCORE_TRACE_TIMEOUT') {
+          const waitMs = typeof data.waitMs === 'number' && Number.isFinite(data.waitMs) && data.waitMs > 0
+            ? data.waitMs
+            : null;
+          return { timedOut: true, waitMs };
+        }
         setError(data.error || 'Trace path failed');
         return null;
       }

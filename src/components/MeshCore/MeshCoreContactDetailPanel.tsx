@@ -15,7 +15,7 @@ import { useSettings } from '../../contexts/SettingsContext';
 import { useSource } from '../../contexts/SourceContext';
 import { MeshCoreRemoteConsole } from './MeshCoreRemoteConsole';
 import { MeshCoreNotOnDeviceNotice } from './MeshCoreNotOnDeviceNotice';
-import type { AddContactToDeviceResponse, DiscoverPathStart, MeshCoreActions, TracePathResult, ZeroHopPingResult } from './hooks/useMeshCore';
+import type { AddContactToDeviceResponse, DiscoverPathStart, MeshCoreActions, TracePathResult, TracePathTimeout, ZeroHopPingResult } from './hooks/useMeshCore';
 import styles from './MeshCoreContactDetailPanel.module.css';
 import api from '../../services/api';
 import '../NodeDetailsBlock.css';
@@ -60,7 +60,7 @@ interface MeshCoreContactDetailPanelProps {
   repeaters?: MeshCoreContact[];
   /** Send a trace-path diagnostic along the contact's cached path and
    *  return per-hop SNR data. Unset hides the Trace Path button. */
-  onTracePath?: (publicKey: string, opts?: { autoReturn?: boolean }) => Promise<TracePathResult | null>;
+  onTracePath?: (publicKey: string, opts?: { autoReturn?: boolean }) => Promise<TracePathResult | TracePathTimeout | null>;
   /** Zero-hop ping (#4393) — trace along a synthetic one-hop path so a reply
    *  proves the node is in direct RF range. Unset hides the Ping button. */
   onPingZeroHop?: (publicKey: string) => Promise<ZeroHopPingResult>;
@@ -435,7 +435,17 @@ export const MeshCoreContactDetailPanel: React.FC<MeshCoreContactDetailPanelProp
     try {
       const result = await onTracePath(publicKey, { autoReturn: traceAutoReturn });
       if (!isCurrent()) return;
-      if (result) {
+      if (result && 'timedOut' in result) {
+        // #5588: the server waited as long as the radio said the trace could
+        // take. Say how long; do not send another one.
+        setTraceError(
+          result.waitMs !== null
+            ? t('meshcore.contact_details.trace_path_timeout', 'No reply within {{seconds}} s.', {
+                seconds: Math.round(result.waitMs / 1000),
+              })
+            : t('meshcore.contact_details.trace_path_timeout_no_time', 'No reply. The trace timed out.'),
+        );
+      } else if (result) {
         setTraceResult(result);
       } else {
         setTraceError(
