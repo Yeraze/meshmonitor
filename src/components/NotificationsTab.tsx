@@ -13,6 +13,7 @@ import {
   deselectAllMonitoredNodes,
 } from './monitoredNodes';
 import { UiIcon } from './icons';
+import NotificationFormatSection from './NotificationFormatSection';
 import styles from './NotificationsTab.module.css';
 
 type StatusTone = 'info' | 'success' | 'warning' | 'error';
@@ -55,6 +56,9 @@ interface NotificationPreferences {
   whitelist: string[];
   blacklist: string[];
   appriseUrls: string[];
+  // #5593: message-notification templates; null = the built-in default.
+  messageTitleTemplate: string | null;
+  messageBodyTemplate: string | null;
 }
 
 // The fields this tab edits. Saves send only these: the server merges them
@@ -83,6 +87,8 @@ const EDITED_PREFERENCE_FIELDS: ReadonlyArray<keyof NotificationPreferences> = [
   'whitelist',
   'blacklist',
   'appriseUrls',
+  'messageTitleTemplate',
+  'messageBodyTemplate',
 ];
 
 function editedPreferenceFields(prefs: NotificationPreferences): Partial<NotificationPreferences> {
@@ -100,7 +106,7 @@ interface NotificationsTabProps {
 const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
   const { t } = useTranslation();
   const { showToast } = useToast();
-  const { sourceId: currentSourceId, sourceType } = useSource();
+  const { sourceId: currentSourceId, sourceType, sourceName: currentSourceName } = useSource();
   // MeshCore sources expose a different capability set than Meshtastic: they
   // report battery as a voltage (mV) rather than a percentage, and they do not
   // surface channel/DM/emoji/MQTT/traceroute/new-node notifications (those
@@ -150,7 +156,9 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
     monitoredNodes: [],
     whitelist: ['Hi', 'Help'],
     blacklist: ['Test', 'Copy'],
-    appriseUrls: []
+    appriseUrls: [],
+    messageTitleTemplate: null,
+    messageBodyTemplate: null
   });
   const [whitelistText, setWhitelistText] = useState('Hi\nHelp');
   const [blacklistText, setBlacklistText] = useState('Test\nCopy');
@@ -404,7 +412,10 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
       showToast(t('notifications.preferences_saved'), 'success');
     } catch (error) {
       logger.error('Failed to save preferences:', error);
-      showToast(t('notifications.alert_save_failed'), 'error');
+      // A rejected message template (#5593) carries a message worth showing.
+      const code = (error as { code?: unknown } | null)?.code;
+      const templateProblem = error instanceof Error && typeof code === 'string' && code.startsWith('TEMPLATE_');
+      showToast(templateProblem ? error.message : t('notifications.alert_save_failed'), 'error');
     } finally {
       setIsSavingPreferences(false);
     }
@@ -1339,6 +1350,18 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
                   </div>
                 )}
               </div>
+
+              {/* Message notification format (#5593) — message notifications
+                  don't fire for MeshCore, so there is nothing to format there. */}
+              {!isMeshCore && (
+                <NotificationFormatSection
+                  titleTemplate={preferences.messageTitleTemplate}
+                  bodyTemplate={preferences.messageBodyTemplate}
+                  sourceName={currentSourceName}
+                  prefixWithNodeName={preferences.prefixWithNodeName}
+                  onChange={(next) => setPreferences(prev => ({ ...prev, ...next }))}
+                />
+              )}
 
               {/* Channel Selection — Meshtastic only (channel message
                   notifications don't fire for MeshCore) */}

@@ -412,7 +412,8 @@ class InactiveNodeNotificationService {
     try {
       const hoursText = node.inactiveHours === 1 ? 'hour' : 'hours';
       const payload = {
-        title: `[${node.sourceName}] ⚠️ Node Inactive: ${node.longName}`,
+        // Source once (#5593): on the body; the title leads with the node.
+        title: `⚠️ Node Inactive: ${node.longName}`,
         body: `[${node.sourceName}] ${node.shortName} (${node.nodeId}) has been inactive for ${node.inactiveHours} ${hoursText}`,
         type: 'warning' as const,
         sourceId: node.sourceId,

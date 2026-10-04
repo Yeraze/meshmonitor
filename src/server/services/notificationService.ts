@@ -3,6 +3,7 @@ import { getHardwareModelName } from '../../utils/nodeHelpers.js';
 import { pushNotificationService } from './pushNotificationService.js';
 import { appriseNotificationService, AppriseNotificationPayload } from './appriseNotificationService.js';
 import { desktopNotificationService } from './desktopNotificationService.js';
+import type { MessageTemplateContext } from '../../utils/notificationTemplate.js';
 
 export interface NotificationPayload {
   title: string;
@@ -19,6 +20,12 @@ export interface NotificationPayload {
     messageId?: string;
     senderNodeId?: string;
   };
+  /**
+   * Message notifications only (#5593). When set, each delivery wrapper
+   * renders the recipient's own title/body template from these values AFTER
+   * its filter decision; `title`/`body` above are then only a fallback.
+   */
+  message?: MessageTemplateContext;
 }
 
 export interface NotificationFilterContext {
@@ -82,7 +89,8 @@ class NotificationService {
               body: payload.body,
               type: payload.type,
               sourceId: payload.sourceId,
-              sourceName: payload.sourceName
+              sourceName: payload.sourceName,
+              message: payload.message
             } as AppriseNotificationPayload,
             filterContext
           )
@@ -96,7 +104,8 @@ class NotificationService {
               body: payload.body,
               type: payload.type,
               sourceId: payload.sourceId,
-              sourceName: payload.sourceName
+              sourceName: payload.sourceName,
+              message: payload.message
             },
             filterContext
           )
@@ -259,7 +268,9 @@ class NotificationService {
   ): Promise<void> {
     try {
       const payload: NotificationPayload = {
-        title: `[${sourceName}] 🗺️ Traceroute: ${fromNodeId} → ${toNodeId}`,
+        // Source once (#5593): on the body, where a long node pair in the
+        // title cannot push it off the screen.
+        title: `🗺️ Traceroute: ${fromNodeId} → ${toNodeId}`,
         body: `[${sourceName}] ${routeText}`,
         type: 'success',
         sourceId,

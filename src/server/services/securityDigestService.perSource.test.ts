@@ -101,13 +101,17 @@ describe('securityDigestService — per-source dispatch', () => {
     expect(fakeDb.getTopBroadcastersAsync).toHaveBeenCalledWith(10, 'src-A');
     expect(fakeDb.getTopBroadcastersAsync).toHaveBeenCalledWith(10, 'src-B');
 
-    // Per-source Apprise dispatches, body prefixed with [sourceName]
+    // Per-source Apprise dispatches. The source is named once, in the title;
+    // the body no longer repeats it (#5593).
     expect(fetchMock).toHaveBeenCalledTimes(2);
     const bodies = fetchMock.mock.calls.map(c => JSON.parse((c[1] as any).body));
     const titles = bodies.map(b => b.title);
     expect(titles.some((t: string) => t.includes('Source src-A'))).toBe(true);
     expect(titles.some((t: string) => t.includes('Source src-B'))).toBe(true);
-    expect(bodies.every(b => b.body.startsWith('[Source src-'))).toBe(true);
+    expect(bodies.every(b => !b.body.includes('Source src-'))).toBe(true);
+    for (const b of bodies) {
+      expect(`${b.title}\n${b.body}`.split(/Source src-[AB]/)).toHaveLength(2);
+    }
     // Apprise URLs should differ per source (per-source config)
     const urls = bodies.map(b => b.urls[0]);
     expect(urls).toContain('discord://a');

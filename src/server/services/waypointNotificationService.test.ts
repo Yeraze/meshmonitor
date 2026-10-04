@@ -120,7 +120,9 @@ describe('waypointNotificationService.notifyIfInRange', () => {
     expect(key).toBe('notifyOnWaypoint');
     expect(userId).toBe(1);
     expect(payload.title).toContain('MEETUP');
-    expect(payload.title).toContain('Sandbox');
+    // The source is named once, on the body (#5593).
+    expect(payload.title).not.toContain('Sandbox');
+    expect(`${payload.title}\n${payload.body}`.split('Sandbox')).toHaveLength(2);
   });
 
   it('stays silent for a waypoint outside the radius', async () => {
