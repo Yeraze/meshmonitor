@@ -1425,6 +1425,14 @@ export class NodesRepository extends BaseRepository {
    * - Category 2: Traceroute exists, retry every expirationHours
    *
    * Keeps branching: raw SQL with different column quoting per dialect.
+   *
+   * "Traceroute exists" here means a row STORED with our radio in
+   * `fromNodeNum`: a request we sent (answered or not), and also our own
+   * outgoing reply to that node. A run to the node asked from a phone app is
+   * stored the other way round (see `src/utils/tracerouteOrientation.ts`) and
+   * is not counted, so the node stays on the 3-hour retry. Left as is on
+   * purpose: this predicate decides WHEN auto-traceroute transmits, and
+   * changing it is a mesh-airtime decision, not a read fix.
    */
   async getEligibleNodesForTraceroute(
     localNodeNum: number,

@@ -13,6 +13,7 @@ import databaseService from '../../services/database.js';
 import { ALL_SOURCES } from '../../db/repositories/index.js';
 import { localNodeNumSettingKey } from '../utils/localNodeNums.js';
 import { TX_LORA, TX_MQTT } from '../../utils/nodeTransport.js';
+import { storedTracerouteRows } from '../test-helpers/tracerouteFixtures.js';
 
 const nodeIdFor = (num: number): string => `!${num.toString(16).padStart(8, '0')}`;
 const nowSec = (): number => Math.floor(Date.now() / 1000);
@@ -105,8 +106,9 @@ describe('Traceroute-confirmed link route (#5580)', () => {
       timestamp: Date.now(), createdAt: Date.now(),
       ...o,
     });
-    const storedRows = async () =>
-      (await databaseService.traceroutes.getTraceroutesForSources({ sourceIds: [harness.sourceA], limit: 50 }));
+    // Raw rows: the repository's read methods orient them, and these tests
+    // assert what the WRITER stored.
+    const storedRows = () => storedTracerouteRows(harness.sourceA);
 
     beforeEach(async () => {
       await databaseService.traceroutes.deleteAllTraceroutes(ALL_SOURCES);

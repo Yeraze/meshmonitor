@@ -8,17 +8,10 @@ import { eq, inArray, sql, SQL } from 'drizzle-orm';
 import { BaseRepository, DrizzleDatabase } from './base.js';
 import { DatabaseType } from '../types.js';
 
-/**
- * The settings key a Meshtastic source persists its local node number under
- * (#5377). Mirrors `MeshtasticManager.localNodeSettingKey('localNodeNum')`:
- * the legacy `default` source keeps the bare key, every other source is
- * suffixed. This is NOT the `source:{id}:` namespace that getSettingForSource
- * reads, so read it through getLocalNodeNumForSource, never
- * getSettingForSource(id, 'localNodeNum').
- */
-export function localNodeNumSettingKey(sourceId: string): string {
-  return sourceId && sourceId !== 'default' ? `localNodeNum_${sourceId}` : 'localNodeNum';
-}
+// The key helper lives in its own file so BaseRepository can share it without
+// an import cycle. Re-exported for existing callers.
+import { localNodeNumSettingKey } from '../localNodeNumKey.js';
+export { localNodeNumSettingKey };
 
 /**
  * Repository for settings operations

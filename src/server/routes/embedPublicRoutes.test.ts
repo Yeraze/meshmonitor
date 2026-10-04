@@ -64,13 +64,19 @@ async function seedNode(sourceId: string, overrides: {
   );
 }
 
+/**
+ * `fromNodeNum` asked, `toNodeNum` answered. The row is STORED the way a
+ * reply with no pending request is (`from` = the node that answered), which
+ * is the form every row on a source with no local radio has; the repository
+ * turns it back requester-first on read.
+ */
 async function seedTraceroute(sourceId: string, overrides: Partial<DbTraceroute> & { fromNodeNum: number; toNodeNum: number }) {
   const now = Date.now();
   const row: DbTraceroute = {
-    fromNodeNum: overrides.fromNodeNum,
-    toNodeNum: overrides.toNodeNum,
-    fromNodeId: `!${overrides.fromNodeNum.toString(16)}`,
-    toNodeId: `!${overrides.toNodeNum.toString(16)}`,
+    fromNodeNum: overrides.toNodeNum,
+    toNodeNum: overrides.fromNodeNum,
+    fromNodeId: `!${overrides.toNodeNum.toString(16)}`,
+    toNodeId: `!${overrides.fromNodeNum.toString(16)}`,
     route: overrides.route ?? '[]',
     routeBack: overrides.routeBack ?? null,
     snrTowards: overrides.snrTowards ?? null,

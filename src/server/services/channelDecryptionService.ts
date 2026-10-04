@@ -37,6 +37,12 @@ export interface DecryptionResult {
    * uplink". MqttBridgeManager reads this to gate uplink republishing.
    */
   bitfield?: number;
+  /**
+   * `Data.request_id`: set on a reply, to the id of the packet it answers.
+   * mqttIngestion needs it to tell a traceroute reply from a request still in
+   * flight, which carries a partial route and must not be stored as a run.
+   */
+  requestId?: number;
   error?: string;
 }
 
@@ -273,6 +279,7 @@ class ChannelDecryptionService {
     emoji?: number;
     replyId?: number;
     bitfield?: number;
+    requestId?: number;
   } {
     try {
       // Get the Data type from loaded protobuf definitions
@@ -306,6 +313,10 @@ class ChannelDecryptionService {
       const rawBitfield = decoded.bitfield;
       const bitfield = typeof rawBitfield === 'number' ? rawBitfield >>> 0 : undefined;
 
+      const rawRequestId = decoded.requestId ?? decoded.request_id;
+      const requestId =
+        typeof rawRequestId === 'number' && rawRequestId > 0 ? rawRequestId >>> 0 : undefined;
+
       return {
         valid: true,
         portnum: portnum,
@@ -313,6 +324,7 @@ class ChannelDecryptionService {
         emoji,
         replyId,
         bitfield,
+        requestId,
       };
     } catch {
       // Parse failure means invalid protobuf
@@ -348,6 +360,7 @@ class ChannelDecryptionService {
       emoji: validation.emoji,
       replyId: validation.replyId,
       bitfield: validation.bitfield,
+      requestId: validation.requestId,
     };
   }
 

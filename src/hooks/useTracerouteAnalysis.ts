@@ -20,8 +20,9 @@ import {
  * inbound (received at the selected node) or outbound (transmitted from the
  * selected node) so the operator can evaluate RX sensitivity vs TX power.
  *
- * SNR semantics (authoritative, from meshtasticManager storage):
- *   - fromNodeNum = responder (remote), toNodeNum = requester (local).
+ * SNR semantics. Rows arrive requester-first: the API orients them, whichever
+ * way round they are stored (see `src/utils/tracerouteOrientation.ts`).
+ *   - fromNodeNum = requester, toNodeNum = responder.
  *   - `route`/`snrTowards` describe the request leg. The physical node order is
  *     [requester, ...route, responder] and snrTowards[i] is the SNR measured at
  *     the *receiver* of hop i (fullPath[i+1]).
@@ -143,8 +144,8 @@ interface RawSegment {
 /** Decompose one traceroute into directed hops carrying receiver-measured SNR. */
 function segmentsForTraceroute(tr: TracerouteAnalysisInput): RawSegment[] {
   const out: RawSegment[] = [];
-  const requester = Number(tr.toNodeNum);
-  const responder = Number(tr.fromNodeNum);
+  const requester = Number(tr.fromNodeNum);
+  const responder = Number(tr.toNodeNum);
 
   const route = parseNumArray(tr.route);
   const routeBack = parseNumArray(tr.routeBack);
