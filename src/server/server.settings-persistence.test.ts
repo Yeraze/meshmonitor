@@ -20,7 +20,12 @@ import request from 'supertest';
 import { readFileSync } from 'fs';
 import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
-import { VALID_SETTINGS_KEYS } from './constants/settings.js';
+import { VALID_SETTINGS_KEYS, GLOBAL_ONLY_SETTINGS_KEYS, SECRET_SETTINGS_KEYS, isSecretSettingKey } from './constants/settings.js';
+import {
+  TRANSLATION_PROVIDER_DESCRIPTORS,
+  TRANSLATION_PROVIDER_SETTING_KEYS,
+  type TranslationProviderDescriptor,
+} from '../types/translationProviders.js';
 import { NODE_DISPLAY_SETTING_KEYS, SETTINGS_TAB_PER_SOURCE_KEYS } from '../constants/nodeDisplayDefaults.js';
 
 // ─── Database mock ────────────────────────────────────────────────────────
@@ -572,10 +577,10 @@ describe('Settings Persistence', () => {
         'adsbMatchEnabled', 'adsbFeed', 'adsb_api_token',
         // Translation settings (global) — loaded directly by SettingsTab into
         // its initial* snapshot; read server-side by translationService.
-        'translationEnabled', 'translationProvider', 'translationUrl',
-        'translationDeeplUrl', 'translationApiKey', 'translationModel',
-        'translationOpenAiBaseUrl', 'translationDefaultLanguage',
+        'translationEnabled', 'translationProvider', 'translationDefaultLanguage',
         'translationDefaultOutgoingLanguage',
+        // Per-provider fields come from the provider descriptors (#5518).
+        ...TRANSLATION_PROVIDER_SETTING_KEYS,
       ];
 
       const keysNotLoaded = SETTINGS_TAB_SENDS.filter(
@@ -626,6 +631,69 @@ describe('Settings Persistence', () => {
       }
       // And nothing extra leaked in — globalBody's key count matches exactly.
       expect(Object.keys(globalBody).sort()).toEqual([...nonNodeDisplayKeys].sort());
+    });
+  });
+
+  describe('Translation provider descriptors (#5518)', () => {
+    /**
+     * Where each field a provider declares must be registered. Returns one
+     * line per gap, so a failure names the key and the list it is missing
+     * from. Takes the descriptors as an argument so the last test can prove
+     * the guard catches a field nobody registered.
+     */
+    function findUnregisteredFields(descriptors: readonly TranslationProviderDescriptor[]): string[] {
+      const problems: string[] = [];
+      for (const descriptor of descriptors) {
+        for (const field of descriptor.fields) {
+          const key = field.settingKey;
+          if (!ALL_VALID_KEYS.includes(key)) problems.push(`${key}: not in VALID_SETTINGS_KEYS`);
+          if (!GLOBAL_ONLY_SETTINGS_KEYS.has(key)) problems.push(`${key}: not in GLOBAL_ONLY_SETTINGS_KEYS`);
+          if (!SETTINGS_TAB_SENDS.includes(key)) problems.push(`${key}: not in SettingsTab handleSave`);
+          if (field.kind === 'secret' && !isSecretSettingKey(key)) problems.push(`${key}: secret but not stripped`);
+          if (field.kind !== 'secret' && isSecretSettingKey(key)) problems.push(`${key}: stripped but not a secret`);
+        }
+      }
+      return problems;
+    }
+
+    const DESCRIPTORS: readonly TranslationProviderDescriptor[] = Object.values(TRANSLATION_PROVIDER_DESCRIPTORS);
+
+    it('every field a provider declares is saveable, global-only, sent by SettingsTab, and stripped when secret', () => {
+      expect(DESCRIPTORS.length).toBeGreaterThan(0);
+      expect(TRANSLATION_PROVIDER_SETTING_KEYS.length).toBeGreaterThan(DESCRIPTORS.length);
+      expect(findUnregisteredFields(DESCRIPTORS)).toEqual([]);
+    });
+
+    it('no settings key is shared by two fields', () => {
+      expect(new Set(TRANSLATION_PROVIDER_SETTING_KEYS).size).toBe(TRANSLATION_PROVIDER_SETTING_KEYS.length);
+    });
+
+    it('the retired shared translationApiKey is gone from every list', () => {
+      expect(ALL_VALID_KEYS).not.toContain('translationApiKey');
+      expect(GLOBAL_ONLY_SETTINGS_KEYS.has('translationApiKey')).toBe(false);
+      expect(SECRET_SETTINGS_KEYS.has('translationApiKey')).toBe(false);
+      expect(SETTINGS_TAB_SENDS).not.toContain('translationApiKey');
+    });
+
+    it('the guard fails for a provider that declares a field nobody registered', () => {
+      const rogue: TranslationProviderDescriptor = {
+        id: 'deepl',
+        labelKey: 'settings.translation_provider_deepl',
+        fields: [{
+          settingKey: 'translationRogueApiKey',
+          configKey: 'apiKey',
+          kind: 'secret',
+          required: true,
+          inputId: 'rogue-api-key',
+          labelKey: 'settings.translation_deepl_api_key',
+        }],
+      };
+      expect(findUnregisteredFields([...DESCRIPTORS, rogue])).toEqual([
+        'translationRogueApiKey: not in VALID_SETTINGS_KEYS',
+        'translationRogueApiKey: not in GLOBAL_ONLY_SETTINGS_KEYS',
+        'translationRogueApiKey: not in SettingsTab handleSave',
+        'translationRogueApiKey: secret but not stripped',
+      ]);
     });
   });
 
