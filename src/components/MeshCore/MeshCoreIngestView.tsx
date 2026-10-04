@@ -38,7 +38,10 @@ interface ObserverRow {
 
 interface IngestOverview {
   connected: boolean;
-  status?: { region?: string; brokerUrl?: string } & Record<string, unknown>;
+  /** The region the source subscribes to. */
+  region?: string | null;
+  /** Redacted broker URL, or null when this viewer may not see the host. */
+  brokerUrl?: string | null;
   nodeCount: number;
   observers: ObserverRow[];
 }
@@ -155,8 +158,11 @@ export const MeshCoreIngestView: React.FC<MeshCoreIngestViewProps> = ({ sourceId
     };
   }, [tab, prefix]);
 
-  const region = (overview?.status?.region as string | undefined) ?? '—';
-  const broker = (overview?.status?.brokerUrl as string | undefined) ?? '—';
+  const region = overview?.region || '—';
+  // Loaded but no URL: the server withheld the host from this viewer. Say so
+  // rather than show the same dash as "still loading".
+  const broker =
+    overview?.brokerUrl || (overview ? t('meshcore.ingest.broker_hidden', 'Hidden') : '—');
 
   const TABS: Array<{ id: IngestTab; label: string }> = [
     { id: 'overview', label: t('meshcore.ingest.tab_overview', 'Overview') },

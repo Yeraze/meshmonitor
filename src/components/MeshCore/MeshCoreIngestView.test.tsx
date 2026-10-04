@@ -36,7 +36,9 @@ const OVERVIEW = {
   success: true,
   data: {
     connected: true,
-    status: { region: 'MCO', brokerUrl: 'wss://broker.example' },
+    status: { connected: true },
+    region: 'MCO',
+    brokerUrl: 'wss://broker.example',
     nodeCount: 47,
     observers: [
       {
@@ -88,6 +90,36 @@ describe('MeshCoreIngestView (#5096)', () => {
     renderView();
     expect(await screen.findByText('MCO')).toBeTruthy();
     expect(screen.getByText('wss://broker.example')).toBeTruthy();
+  });
+
+  it('reads region and broker from the overview itself, not from `status`', async () => {
+    // THE BUG: the view read `overview.status.region` / `.brokerUrl`, which the
+    // manager's getStatus() has never returned, so both showed a dash. A stale
+    // `status` copy must not be what fills the header.
+    get.mockImplementation(async () => ({
+      success: true,
+      data: {
+        ...OVERVIEW.data,
+        status: { connected: true, region: 'STALE', brokerUrl: 'wss://stale.example' },
+        region: 'DEN',
+        brokerUrl: 'wss://***@real.example',
+      },
+    }));
+    renderView();
+    expect(await screen.findByText('DEN')).toBeTruthy();
+    expect(screen.getByText('wss://***@real.example')).toBeTruthy();
+    expect(screen.queryByText('STALE')).toBeNull();
+    expect(screen.queryByText('wss://stale.example')).toBeNull();
+  });
+
+  it('says the broker is hidden when the server withholds the host', async () => {
+    get.mockImplementation(async () => ({
+      success: true,
+      data: { ...OVERVIEW.data, region: 'MCO', brokerUrl: null },
+    }));
+    renderView();
+    expect(await screen.findByText('MCO')).toBeTruthy();
+    expect(screen.getByText('Hidden')).toBeTruthy();
   });
 
   it('states plainly that the source cannot transmit', async () => {
