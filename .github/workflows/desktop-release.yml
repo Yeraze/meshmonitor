@@ -47,6 +47,12 @@ jobs:
       - name: Build main project (frontend)
         run: npm run build
 
+      # Fails when the entry stylesheet lacks the theme rules (#5558: the
+      # eager-CSS Vite plugin silently did nothing on Windows and the Desktop
+      # app opened on a white page), and on the JS size budgets (#5526).
+      - name: Check bundle (size budgets + eager theme CSS)
+        run: npm run check:bundle-size
+
       - name: Build server (Windows-compatible)
         run: |
           npx tsc --project tsconfig.server.json
@@ -250,6 +256,12 @@ jobs:
 
       - name: Build main project (frontend)
         run: npm run build
+
+      # Fails when the entry stylesheet lacks the theme rules (#5558: the
+      # eager-CSS Vite plugin silently did nothing on Windows and the Desktop
+      # app opened on a white page), and on the JS size budgets (#5526).
+      - name: Check bundle (size budgets + eager theme CSS)
+        run: npm run check:bundle-size
 
       - name: Build server
         run: |
@@ -606,6 +618,12 @@ jobs:
 
       - name: Build main project (frontend)
         run: npm run build
+
+      # Fails when the entry stylesheet lacks the theme rules (#5558: the
+      # eager-CSS Vite plugin silently did nothing on Windows and the Desktop
+      # app opened on a white page), and on the JS size budgets (#5526).
+      - name: Check bundle (size budgets + eager theme CSS)
+        run: npm run check:bundle-size
 
       - name: Build server
         run: |

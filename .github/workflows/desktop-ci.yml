@@ -8,12 +8,20 @@ on:
     paths:
       - 'desktop/**'
       - '.github/workflows/desktop-ci.yml'
+      # The frontend build is platform-sensitive (#5558), so changes to it
+      # must run the Windows and macOS builds too.
+      - 'vite.config.ts'
+      - 'scripts/check-bundle-size.mjs'
   pull_request:
     branches:
       - main
     paths:
       - 'desktop/**'
       - '.github/workflows/desktop-ci.yml'
+      # The frontend build is platform-sensitive (#5558), so changes to it
+      # must run the Windows and macOS builds too.
+      - 'vite.config.ts'
+      - 'scripts/check-bundle-size.mjs'
   workflow_dispatch:
 
 env:
@@ -50,6 +58,12 @@ jobs:
 
       - name: Build frontend
         run: npm run build
+
+      # Fails when the entry stylesheet lacks the theme rules (#5558: the
+      # eager-CSS Vite plugin silently did nothing on Windows and the Desktop
+      # app opened on a white page), and on the JS size budgets (#5526).
+      - name: Check bundle (size budgets + eager theme CSS)
+        run: npm run check:bundle-size
 
       - name: Build server (TypeScript)
         run: npx tsc --project tsconfig.server.json
@@ -151,6 +165,12 @@ jobs:
       - name: Build frontend
         run: npm run build
 
+      # Fails when the entry stylesheet lacks the theme rules (#5558: the
+      # eager-CSS Vite plugin silently did nothing on Windows and the Desktop
+      # app opened on a white page), and on the JS size budgets (#5526).
+      - name: Check bundle (size budgets + eager theme CSS)
+        run: npm run check:bundle-size
+
       - name: Build server (TypeScript)
         run: npx tsc --project tsconfig.server.json
 
@@ -249,6 +269,12 @@ jobs:
 
       - name: Build frontend
         run: npm run build
+
+      # Fails when the entry stylesheet lacks the theme rules (#5558: the
+      # eager-CSS Vite plugin silently did nothing on Windows and the Desktop
+      # app opened on a white page), and on the JS size budgets (#5526).
+      - name: Check bundle (size budgets + eager theme CSS)
+        run: npm run check:bundle-size
 
       - name: Build server (TypeScript)
         run: npx tsc --project tsconfig.server.json
