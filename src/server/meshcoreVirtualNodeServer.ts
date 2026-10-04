@@ -1,5 +1,6 @@
 import { Server, Socket } from 'net';
 import { EventEmitter } from 'events';
+import { randomBytes } from 'crypto';
 import { logger } from '../utils/logger.js';
 import databaseService from '../services/database.js';
 import type {
@@ -61,6 +62,7 @@ import {
   parseSendTelemetryReq,
   parseSendStatusReq,
   encodeStatusResponsePush,
+  encodeRepeaterStatusData,
   TxtType,
   BinaryRequestTypes,
   parseSendBinaryReq,
@@ -1529,6 +1531,10 @@ export class MeshCoreVirtualNodeServer extends EventEmitter {
       case BinaryRequestTypes.GetNeighbours:
         await this.handleGetNeighboursReq(clientId, parsed);
         break;
+      case BinaryRequestTypes.GetStatus:
+      case BinaryRequestTypes.GetTelemetryData:
+        await this.handleStatusOrTelemetryBinaryReq(clientId, parsed);
+        break;
       default:
         logger.debug(
           `[MeshCore VN ${this.sourceId}] SendBinaryReq unknown sub-type 0x${parsed.reqType.toString(16)} from ${clientId}`,
@@ -1586,6 +1592,37 @@ export class MeshCoreVirtualNodeServer extends EventEmitter {
       );
     } catch (err) {
       logger.warn(`[MeshCore VN ${this.sourceId}] GetNeighbours to ${keyShort}… from ${clientId} failed: ${(err as Error).message}`);
+    }
+  }
+
+  /**
+   * GetStatus(0x01) / GetTelemetryData(0x03) sub-requests of SendBinaryReq. These
+   * carry no app-supplied tag, so we mint one, echo it as the Sent expectedAckCrc,
+   * and use it as the BinaryResponse tag (same correlation as GetNeighbours).
+   * Failure emits nothing (the app times out, like the sibling handlers).
+   */
+  private async handleStatusOrTelemetryBinaryReq(clientId: string, parsed: SendBinaryReqCmd): Promise<void> {
+    const isStatus = parsed.reqType === BinaryRequestTypes.GetStatus;
+    const label = isStatus ? 'STATUS' : 'TELEMETRY';
+    const keyShort = parsed.publicKey.substring(0, 12);
+    const tag = randomBytes(4).readUInt32LE(0);
+    this.send(clientId, encodeSent(0, tag, isStatus ? this.STATUS_EST_TIMEOUT_MS : this.TELEMETRY_EST_TIMEOUT_MS));
+    try {
+      let payload: Buffer | null;
+      if (isStatus) {
+        const status = await this.options.manager.requestNodeStatus(parsed.publicKey);
+        payload = status ? encodeRepeaterStatusData(status, true) : null;
+      } else {
+        payload = await this.options.manager.requestRemoteTelemetryRaw(parsed.publicKey);
+      }
+      if (!payload) {
+        logger.debug(`[MeshCore VN ${this.sourceId}] Binary ${label} to ${keyShort}… from ${clientId} got no data`);
+        return;
+      }
+      this.send(clientId, encodeBinaryResponsePush(tag, payload));
+      logger.debug(`[MeshCore VN ${this.sourceId}] Binary ${label} to ${keyShort}… from ${clientId} → relayed`);
+    } catch (err) {
+      logger.warn(`[MeshCore VN ${this.sourceId}] Binary ${label} to ${keyShort}… from ${clientId} failed: ${(err as Error).message}`);
     }
   }
 

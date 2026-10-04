@@ -1348,11 +1348,39 @@ describe('MeshCoreVirtualNodeServer — SendBinaryReq/GetNeighbours relay (#3904
 
   it('replies Err(UnsupportedCmd) for an unknown inner sub-type, without querying the node', async () => {
     await startWith(false);
-    // Envelope + an unimplemented sub-type (0x03 GetTelemetryData is not handled here).
-    const res = await client.request([CommandCodes.SendBinaryReq, ...REMOTE_KEY_BYTES, BinaryRequestTypes.GetTelemetryData, 0, 0]);
+    // Envelope + an unimplemented sub-type.
+    const res = await client.request([CommandCodes.SendBinaryReq, ...REMOTE_KEY_BYTES, 0x7f, 0, 0]);
     expect(res[0]).toBe(ResponseCodes.Err);
     expect(res[1]).toBe(ErrorCodes.UnsupportedCmd);
     expect(manager.getNeighboursMock).not.toHaveBeenCalled();
+  });
+
+  it('relays GetStatus(0x01) as Sent + BinaryResponse with a matching tag and 52-byte status', async () => {
+    await startWith(false);
+    manager.requestNodeStatusMock.mockResolvedValueOnce({ batteryMv: 4100, rxAirTimeSecs: 77 });
+    const frames = client.expectFrames(2);
+    client.send([CommandCodes.SendBinaryReq, ...REMOTE_KEY_BYTES, BinaryRequestTypes.GetStatus]);
+    const [sent, push] = await frames;
+    expect(sent[0]).toBe(ResponseCodes.Sent);
+    expect(push[0]).toBe(PushCodes.BinaryResponse);
+    expect(push.readUInt32LE(2)).toBe(sent.readUInt32LE(2)); // tag == Sent expectedAckCrc
+    const body = push.subarray(6);
+    expect(body.length).toBe(52);
+    expect(body.readUInt16LE(0)).toBe(4100);
+    expect(body.readUInt32LE(48)).toBe(77);
+    expect(manager.requestNodeStatusMock).toHaveBeenCalledWith(REMOTE_KEY);
+  });
+
+  it('relays GetTelemetryData(0x03) raw LPP as a BinaryResponse', async () => {
+    await startWith(false);
+    const frames = client.expectFrames(2);
+    client.send([CommandCodes.SendBinaryReq, ...REMOTE_KEY_BYTES, BinaryRequestTypes.GetTelemetryData, 0, 0]);
+    const [sent, push] = await frames;
+    expect(sent[0]).toBe(ResponseCodes.Sent);
+    expect(push[0]).toBe(PushCodes.BinaryResponse);
+    expect(push.readUInt32LE(2)).toBe(sent.readUInt32LE(2));
+    expect([...push.subarray(6)]).toEqual([0x01, 0x67, 0x00, 0xdc]);
+    expect(manager.requestRemoteTelemetryRawMock).toHaveBeenCalledWith(REMOTE_KEY);
   });
 });
 
