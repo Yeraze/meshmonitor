@@ -4,17 +4,49 @@
  * MeshCore analogue of the Meshtastic packet-detail modal: it parses the raw
  * hex with `decodeMeshCorePacket` and lays out the header, path, and (where
  * unencrypted) the payload contents.
+ *
+ * GRP_TXT / GRP_DATA (#5567, #5568): the browser holds no channel key, so the
+ * modal asks the server to open the frame. The server answers with plaintext
+ * only when this viewer may read a channel holding the key; otherwise the
+ * frame stays ciphertext under an "Unknown channel" note.
  */
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { MeshCoreOtaPacketEvent } from '../../hooks/useWebSocket';
 import { decodeMeshCorePacket } from '../../utils/meshcorePacketDecode';
 import { useDialogA11y } from '../../hooks/useDialogA11y';
 import { UiIcon } from '../icons';
+import apiService, { type MeshCoreGroupPacketPlaintext } from '../../services/api';
+import styles from './MeshCorePacketDetailModal.module.css';
 
 interface Props {
   packet: MeshCoreOtaPacketEvent;
+  /** The source being viewed. Without it a group packet stays ciphertext. */
+  sourceId?: string;
   onClose: () => void;
+}
+
+type GroupDecodeState =
+  | { status: 'idle' }
+  | { status: 'loading' }
+  | { status: 'error' }
+  | { status: 'done'; result: MeshCoreGroupPacketPlaintext };
+
+/** Classic 16-bytes-per-line dump: offset, hex, printable ASCII. */
+function hexAsciiDump(hex: string): string {
+  const lines: string[] = [];
+  for (let i = 0; i < hex.length; i += 32) {
+    const chunk = hex.slice(i, i + 32);
+    const bytes = chunk.match(/../g) ?? [];
+    const ascii = bytes
+      .map((b) => {
+        const n = parseInt(b, 16);
+        return n >= 0x20 && n < 0x7f ? String.fromCharCode(n) : '.';
+      })
+      .join('');
+    lines.push(`${(i / 2).toString(16).padStart(4, '0')}  ${bytes.join(' ').padEnd(47, ' ')}  ${ascii}`);
+  }
+  return lines.join('\n');
 }
 
 const Row: React.FC<{ label: string; children: React.ReactNode; mono?: boolean; wrap?: boolean }> = ({ label, children, mono, wrap }) => (
@@ -26,10 +58,37 @@ const Row: React.FC<{ label: string; children: React.ReactNode; mono?: boolean; 
 
 const fmtHex = (n: number) => `0x${n.toString(16).padStart(2, '0')}`;
 
-const MeshCorePacketDetailModal: React.FC<Props> = ({ packet, onClose }) => {
+const MeshCorePacketDetailModal: React.FC<Props> = ({ packet, sourceId, onClose }) => {
   const { t } = useTranslation();
   const { contentRef, onKeyDown } = useDialogA11y(onClose);
-  const decoded = decodeMeshCorePacket(packet.rawHex);
+  const rawHex = packet.rawHex ?? '';
+  const decoded = decodeMeshCorePacket(rawHex);
+  // GRP_TXT and GRP_DATA share one outer frame; see meshcorePacketDecode.
+  const group = decoded?.payload.groupText ?? decoded?.payload.groupData;
+  const hasGroup = !!group;
+
+  const [groupDecode, setGroupDecode] = useState<GroupDecodeState>({ status: 'idle' });
+  useEffect(() => {
+    if (!hasGroup || !sourceId) {
+      setGroupDecode({ status: 'idle' });
+      return;
+    }
+    let cancelled = false;
+    setGroupDecode({ status: 'loading' });
+    apiService
+      .decodeMeshCoreGroupPacket(sourceId, rawHex)
+      .then((result) => {
+        if (!cancelled) setGroupDecode({ status: 'done', result });
+      })
+      .catch(() => {
+        if (!cancelled) setGroupDecode({ status: 'error' });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [hasGroup, sourceId, rawHex]);
+
+  const plain = groupDecode.status === 'done' && groupDecode.result.decrypted ? groupDecode.result : null;
 
   const time = new Date(packet.timestamp);
 
@@ -129,7 +188,85 @@ const MeshCorePacketDetailModal: React.FC<Props> = ({ packet, onClose }) => {
                   </>
                 )}
 
-                {decoded.payload.message && (
+                {group && (
+                  <>
+                    <Row label={t('meshcore.packets.channelHash', 'Channel hash')} mono>0x{group.channelHash}</Row>
+                    <Row label={t('meshcore.packets.cipherMac', 'Cipher MAC')} mono>{group.cipherMacHex}</Row>
+
+                    {groupDecode.status === 'loading' && (
+                      <div className={styles.status} role="status">
+                        {t('meshcore.packets.decrypting', 'Decrypting…')}
+                      </div>
+                    )}
+                    {groupDecode.status === 'error' && (
+                      <div className={`${styles.status} ${styles.statusError}`} role="alert">
+                        {t('meshcore.packets.decryptError', 'Could not ask the server to decrypt this packet.')}
+                      </div>
+                    )}
+                    {(groupDecode.status === 'idle' || (groupDecode.status === 'done' && !plain)) && (
+                      <div className={styles.status} data-testid="mcpm-unknown-channel">
+                        {t('meshcore.packets.unknownChannel', 'Unknown channel (hash 0x{{hash}})', {
+                          hash: group.channelHash,
+                        })}
+                      </div>
+                    )}
+
+                    {plain && (
+                      <div className={styles.plaintext} data-testid="mcpm-plaintext">
+                        <Row label={t('meshcore.packets.channel', 'Channel')}>
+                          {plain.channelName || t('meshcore.packets.channelUnnamed', '(unnamed)')}
+                          <span className={styles.origin}>
+                            {plain.keyOrigin.kind === 'virtual'
+                              ? t('meshcore.packets.keyOriginVirtual', 'virtual channel')
+                              : plain.keyOrigin.currentSource
+                                ? t('meshcore.packets.keyOriginThisSource', 'this source')
+                                : t('meshcore.packets.keyOriginSource', 'key from source {{name}}', {
+                                    name: plain.keyOrigin.sourceName,
+                                  })}
+                          </span>
+                        </Row>
+                        {plain.text && (
+                          <>
+                            <Row label={t('meshcore.packets.sender', 'Sender')}>
+                              {plain.text.sender ?? t('meshcore.packets.senderUnknown', '(not given)')}
+                            </Row>
+                            <Row label={t('meshcore.packets.senderTime', 'Sender time')} mono>
+                              {plain.text.timestampSec > 0
+                                ? new Date(plain.text.timestampSec * 1000).toLocaleString()
+                                : '—'}
+                            </Row>
+                            <Row label={t('meshcore.packets.messageText', 'Text')}>
+                              <span className={styles.messageText}>{plain.text.text}</span>
+                            </Row>
+                          </>
+                        )}
+                        {plain.data && (
+                          <>
+                            <Row label={t('meshcore.packets.dataType', 'Data type')} mono>
+                              0x{plain.data.dataType.toString(16).padStart(4, '0')}
+                            </Row>
+                            <Row label={t('meshcore.packets.dataLength', 'Data length')} mono>
+                              {plain.data.dataHex.length / 2} B
+                            </Row>
+                            <Row label={t('meshcore.packets.dataBody', 'Data')}>
+                              {plain.data.dataHex ? (
+                                <pre className={styles.hexDump}>{hexAsciiDump(plain.data.dataHex)}</pre>
+                              ) : (
+                                '—'
+                              )}
+                            </Row>
+                          </>
+                        )}
+                      </div>
+                    )}
+
+                    <Row label={t('meshcore.packets.ciphertext', 'Ciphertext')} mono wrap>
+                      <UiIcon name="encrypted" size={14} /> {group.ciphertextHex || '(none)'}
+                    </Row>
+                  </>
+                )}
+
+                {!group && decoded.payload.message && (
                   <>
                     <Row label={t('meshcore.packets.destHash', 'Dest hash')} mono>{decoded.payload.message.destHash}</Row>
                     <Row label={t('meshcore.packets.srcHash', 'Src hash')} mono>{decoded.payload.message.srcHash}</Row>
@@ -211,7 +348,7 @@ const MeshCorePacketDetailModal: React.FC<Props> = ({ packet, onClose }) => {
               {/* Raw bytes */}
               <section className="mcpm-dl-section">
                 <h5>{t('meshcore.packets.raw', 'Raw')} ({decoded.totalBytes} B)</h5>
-                <pre className="mcpm-raw-hex">{packet.rawHex}</pre>
+                <pre className="mcpm-raw-hex">{rawHex}</pre>
               </section>
 
               {decoded.errors.length > 0 && (

@@ -715,6 +715,17 @@ Capture is opt-in. The view exposes an **Enable** toggle and retention controls 
 
 New packets stream in live over the existing Socket.io connection (no separate subscription is needed). The view can be **paused** and **exported** (`.jsonl` format) for offline analysis. Filtering by payload type and route type narrows the display.
 
+### Decoding channel packets
+
+Click a row to open **Packet Decode**. Adverts, ACKs and control packets decode in full. Channel packets (`GRP_TXT` and `GRP_DATA`) are encrypted, so the modal asks the server to open them:
+
+- The server tries every channel key it holds: this source's channels, channels on your other sources, and MeshCore entries in the [Channel Database](/features/channel-database).
+- A `GRP_TXT` packet shows the channel name, sender, the sender's timestamp and the text. A `GRP_DATA` packet shows the channel name, the data type and a hex + ASCII dump of the body.
+- The modal says where the key came from: **this source**, another source by name, or a **virtual channel**.
+- You see the plaintext only if you could read that channel's messages anyway (`channel_N:read` or `messages:read` on a source that holds the key, or **Read** on the virtual channel). Otherwise the modal shows **Unknown channel (hash 0xNN)**, the same as when the server has no matching key. Signed-out viewers always see that.
+
+Decryption happens when you open the modal. The packet list, the live feed and the `.jsonl` export stay ciphertext, no plaintext is stored in the packet log, and channel keys never leave the server.
+
 The `packetmonitor:write` permission is required to clear the log; `settings:write` is required to toggle capture on/off and adjust retention.
 
 ## Still Early
