@@ -14,6 +14,7 @@ import {
 } from './monitoredNodes';
 import { UiIcon } from './icons';
 import NotificationFormatSection from './NotificationFormatSection';
+import styles from './NotificationsTab.module.css';
 
 type StatusTone = 'info' | 'success' | 'warning' | 'error';
 interface StatusFeedback {
@@ -681,7 +682,7 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
   const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
 
   return (
-    <div className="tab-content">
+    <div className={`tab-content ${styles.root}`}>
       <h2>{t('notifications.title')}</h2>
 
       <SectionNav
@@ -697,18 +698,16 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
           ======================================== */}
       <div id="notif-services" className="settings-section">
         <h3><UiIcon name="notifications" /> {t('notifications.services_title')}</h3>
-        <p style={{ marginBottom: '24px', color: '#666' }}>
+        <p className={styles.muted} style={{ marginBottom: '24px' }}>
           {t('notifications.services_description')}
         </p>
 
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '16px', marginBottom: '32px' }}>
           {/* Web Push / System Notifications Toggle */}
-          <div style={{
-            padding: '16px',
-            backgroundColor: '#252535',
-            borderRadius: '6px',
-            border: '2px solid ' + (preferences.enableWebPush ? '#10b981' : '#3a3a3a')
-          }}>
+          <div
+            className={`${styles.serviceCard} ${preferences.enableWebPush ? styles.serviceCardEnabled : ''}`}
+            style={{ padding: '16px', borderRadius: '6px' }}
+          >
             <label style={{ display: 'flex', alignItems: 'center', gap: '12px', cursor: 'pointer', margin: 0 }}>
               <input
                 type="checkbox"
@@ -725,7 +724,7 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
                 <div style={{ fontWeight: '600', fontSize: '15px' }}>
                   <UiIcon name={'__TAURI__' in window ? 'monitor' : 'companion'} /> {'__TAURI__' in window ? t('notifications.system_notifications_title', 'System Notifications') : t('notifications.webpush_title')}
                 </div>
-                <div style={{ fontSize: '12px', color: '#9ca3af', marginTop: '4px' }}>
+                <div className={styles.muted} style={{ fontSize: '12px', marginTop: '4px' }}>
                   {'__TAURI__' in window ? t('notifications.system_notifications_description', 'Native desktop notifications for mesh activity') : t('notifications.webpush_description')}
                 </div>
               </div>
@@ -733,12 +732,10 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
           </div>
 
           {/* Apprise Toggle */}
-          <div style={{
-            padding: '16px',
-            backgroundColor: '#252535',
-            borderRadius: '6px',
-            border: '2px solid ' + (preferences.enableApprise ? '#10b981' : '#3a3a3a')
-          }}>
+          <div
+            className={`${styles.serviceCard} ${preferences.enableApprise ? styles.serviceCardEnabled : ''}`}
+            style={{ padding: '16px', borderRadius: '6px' }}
+          >
             <label style={{ display: 'flex', alignItems: 'center', gap: '12px', cursor: 'pointer', margin: 0 }}>
               <input
                 type="checkbox"
@@ -755,7 +752,7 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
                 <div style={{ fontWeight: '600', fontSize: '15px' }}>
                   <UiIcon name="notifications" /> {t('notifications.apprise_title')}
                 </div>
-                <div style={{ fontSize: '12px', color: '#9ca3af', marginTop: '4px' }}>
+                <div className={styles.muted} style={{ fontSize: '12px', marginTop: '4px' }}>
                   {t('notifications.apprise_description')}
                 </div>
               </div>
@@ -765,16 +762,14 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
 
         {/* Filtering Section */}
         <h4 style={{ marginTop: '32px', marginBottom: '16px' }}><UiIcon name="settings" /> {t('notifications.filtering_title')}</h4>
-        <p style={{ marginBottom: '24px', color: '#666', fontSize: '14px' }}><Trans i18nKey="notifications.filtering_description" components={{ strong: <strong /> }} /></p>
+        <p className={styles.muted} style={{ marginBottom: '24px', fontSize: '14px' }}><Trans i18nKey="notifications.filtering_description" components={{ strong: <strong /> }} /></p>
 
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '24px', marginBottom: '24px' }}>
           {/* Channel/DM Selection */}
           <div>
-            <div style={{
-              backgroundColor: '#1e1e2e',
+            <div className={styles.panel} style={{
               padding: '20px',
-              borderRadius: '8px',
-              border: '1px solid #3a3a3a'
+              borderRadius: '8px'
             }}>
               <h4 style={{ marginTop: '0', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <UiIcon name="announcement" /> {t('notifications.sources_title')}
@@ -783,12 +778,10 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
               {/* Direct Messages Toggle — Meshtastic only (MeshCore message
                   events don't reach the notification service) */}
               {!isMeshCore && (
-              <div style={{
+              <div className={styles.row} style={{
                 padding: '12px',
-                backgroundColor: '#252535',
                 borderRadius: '6px',
-                marginBottom: '16px',
-                border: '2px solid #3a3a3a'
+                marginBottom: '16px'
               }}>
                 <label style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer', margin: 0 }}>
                   <input
@@ -809,12 +802,10 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
 
               {/* Emoji Reactions Toggle — Meshtastic only */}
               {!isMeshCore && (
-              <div style={{
+              <div className={styles.row} style={{
                 padding: '12px',
-                backgroundColor: '#252535',
                 borderRadius: '6px',
-                marginBottom: '16px',
-                border: '2px solid #3a3a3a'
+                marginBottom: '16px'
               }}>
                 <label style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer', margin: 0 }}>
                   <input
@@ -835,12 +826,10 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
 
               {/* MQTT Messages Toggle — Meshtastic only */}
               {!isMeshCore && (
-              <div style={{
+              <div className={styles.row} style={{
                 padding: '12px',
-                backgroundColor: '#252535',
                 borderRadius: '6px',
-                marginBottom: '16px',
-                border: '2px solid #3a3a3a'
+                marginBottom: '16px'
               }}>
                 <label style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer', margin: 0 }}>
                   <input
@@ -861,12 +850,10 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
 
               {/* New Node Toggle — supported on both Meshtastic (node DB) and
                   MeshCore (contact-advert discovery). */}
-              <div style={{
+              <div className={styles.row} style={{
                 padding: '12px',
-                backgroundColor: '#252535',
                 borderRadius: '6px',
-                marginBottom: '16px',
-                border: '2px solid #3a3a3a'
+                marginBottom: '16px'
               }}>
                 <label style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer', margin: 0 }}>
                   <input
@@ -886,12 +873,10 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
 
               {/* Traceroute Success Toggle — Meshtastic only (no MeshCore equivalent) */}
               {!isMeshCore && (
-              <div style={{
+              <div className={styles.row} style={{
                 padding: '12px',
-                backgroundColor: '#252535',
                 borderRadius: '6px',
-                marginBottom: '16px',
-                border: '2px solid #3a3a3a'
+                marginBottom: '16px'
               }}>
                 <label style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer', margin: 0 }}>
                   <input
@@ -914,12 +899,10 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
                   no waypoint concept, so the whole block is gated like
                   traceroutes above. */}
               {!isMeshCore && (
-              <div style={{
+              <div className={styles.row} style={{
                 padding: '12px',
-                backgroundColor: '#252535',
                 borderRadius: '6px',
-                marginBottom: '16px',
-                border: '2px solid #3a3a3a'
+                marginBottom: '16px'
               }}>
                 <label style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer', margin: 0 }}>
                   <input
@@ -1030,12 +1013,10 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
               )}
 
               {/* Inactive Node Notifications */}
-              <div style={{
+              <div className={styles.row} style={{
                 padding: '12px',
-                backgroundColor: '#252535',
                 borderRadius: '6px',
-                marginBottom: '16px',
-                border: '2px solid #3a3a3a'
+                marginBottom: '16px'
               }}>
                 <label style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer', margin: 0 }}>
                   <input
@@ -1286,12 +1267,10 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
               </div>
 
               {/* Server Events Notifications */}
-              <div style={{
+              <div className={styles.row} style={{
                 padding: '12px',
-                backgroundColor: '#252535',
                 borderRadius: '6px',
-                marginBottom: '16px',
-                border: '2px solid #3a3a3a'
+                marginBottom: '16px'
               }}>
                 <label style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer', margin: 0 }}>
                   <input
@@ -1336,12 +1315,10 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
               </div>
 
               {/* Prefix with Node Name */}
-              <div style={{
+              <div className={styles.row} style={{
                 padding: '12px',
-                backgroundColor: '#252535',
                 borderRadius: '6px',
-                marginBottom: '16px',
-                border: '2px solid #3a3a3a'
+                marginBottom: '16px'
               }}>
                 <label style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer', margin: 0 }}>
                   <input
@@ -1389,14 +1366,13 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
               {/* Channel Selection — Meshtastic only (channel message
                   notifications don't fire for MeshCore) */}
               {!isMeshCore && (
-              <div style={{
-                backgroundColor: '#252535',
+              <div className={styles.channelBox} style={{
                 borderRadius: '6px',
                 padding: '12px'
               }}>
                 <div style={{ fontWeight: '600', marginBottom: '8px' }}>{t('notifications.channels')}:</div>
                 {channels.length === 0 ? (
-                  <p style={{ fontSize: '14px', color: '#999', margin: 0 }}>{t('notifications.no_channels')}</p>
+                  <p className={styles.muted} style={{ fontSize: '14px', margin: 0 }}>{t('notifications.no_channels')}</p>
                 ) : (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                     {channels.map(channel => (
@@ -1431,11 +1407,9 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
               which don't fire for MeshCore) */}
           {!isMeshCore && (
           <div>
-            <div style={{
-              backgroundColor: '#1e1e2e',
+            <div className={styles.panel} style={{
               padding: '20px',
-              borderRadius: '8px',
-              border: '1px solid #3a3a3a'
+              borderRadius: '8px'
             }}>
               <h4 style={{ marginTop: '0', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <UiIcon name="text" /> {t('notifications.keyword_filtering')}
@@ -1443,64 +1417,58 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
 
               {/* Whitelist */}
               <div style={{ marginBottom: '16px' }}>
-                <label style={{
+                <label className={styles.allowLabel} style={{
                   display: 'flex',
                   fontWeight: '600',
                   marginBottom: '8px',
-                  color: '#28a745',
                   alignItems: 'center',
                   gap: '6px'
                 }}>
                   <UiIcon name="check" /> {t('notifications.whitelist_title')}
                 </label>
-                <p style={{ fontSize: '13px', color: '#9ca3af', marginBottom: '8px', marginTop: 0 }}><Trans i18nKey="notifications.whitelist_description" components={{ strong: <strong /> }} /></p>
+                <p className={styles.muted} style={{ fontSize: '13px', marginBottom: '8px', marginTop: 0 }}><Trans i18nKey="notifications.whitelist_description" components={{ strong: <strong /> }} /></p>
                 <textarea
                   value={whitelistText}
                   onChange={(e) => setWhitelistText(e.target.value)}
                   placeholder="Hi&#10;Help&#10;Emergency"
                   rows={4}
+                  className={`${styles.textInput} ${styles.textInputAllow}`}
                   style={{
                     width: '100%',
                     padding: '10px',
                     fontFamily: 'monospace',
                     fontSize: '14px',
-                    border: '2px solid #28a745',
                     borderRadius: '6px',
-                    resize: 'vertical',
-                    backgroundColor: '#252535',
-                    color: '#e5e7eb'
+                    resize: 'vertical'
                   }}
                 />
               </div>
 
               {/* Blacklist */}
               <div>
-                <label style={{
+                <label className={styles.blockLabel} style={{
                   display: 'flex',
                   fontWeight: '600',
                   marginBottom: '8px',
-                  color: '#dc3545',
                   alignItems: 'center',
                   gap: '6px'
                 }}>
                   <UiIcon name="blocked" /> {t('notifications.blacklist_title')}
                 </label>
-                <p style={{ fontSize: '13px', color: '#9ca3af', marginBottom: '8px', marginTop: 0 }}><Trans i18nKey="notifications.blacklist_description" components={{ strong: <strong /> }} /></p>
+                <p className={styles.muted} style={{ fontSize: '13px', marginBottom: '8px', marginTop: 0 }}><Trans i18nKey="notifications.blacklist_description" components={{ strong: <strong /> }} /></p>
                 <textarea
                   value={blacklistText}
                   onChange={(e) => setBlacklistText(e.target.value)}
                   placeholder="Test&#10;Copy&#10;Spam"
                   rows={4}
+                  className={`${styles.textInput} ${styles.textInputBlock}`}
                   style={{
                     width: '100%',
                     padding: '10px',
                     fontFamily: 'monospace',
                     fontSize: '14px',
-                    border: '2px solid #dc3545',
                     borderRadius: '6px',
-                    resize: 'vertical',
-                    backgroundColor: '#252535',
-                    color: '#e5e7eb'
+                    resize: 'vertical'
                   }}
                 />
               </div>
@@ -1511,14 +1479,11 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
 
         {/* Filter Priority Info — Meshtastic only (explains message-filter ordering) */}
         {!isMeshCore && (
-        <div style={{
-          backgroundColor: '#1e3a5f',
-          border: '1px solid #2a5a8a',
+        <div className={styles.infoBox} style={{
           borderRadius: '8px',
           padding: '16px',
           marginBottom: '20px',
-          fontSize: '14px',
-          color: '#93c5fd'
+          fontSize: '14px'
         }}>
           <strong><UiIcon name="info" /> {t('notifications.filter_priority')}:</strong> {t('notifications.filter_priority_order')}
         </div>
@@ -1546,8 +1511,8 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
 
         {/* HTTPS Warning */}
         {!isSecureContext && !isLocalhost && (
-          <div style={{ backgroundColor: '#f8d7da', color: '#721c24', padding: '15px', borderRadius: '8px', border: '1px solid #f5c6cb', marginBottom: '20px' }}>
-            <h4 style={{ color: '#721c24', marginTop: 0 }}><UiIcon name="alert" /> {t('notifications.https_required')}</h4>
+          <div className={styles.errorBox} style={{ padding: '15px', borderRadius: '8px', marginBottom: '20px' }}>
+            <h4 className={styles.boxHeading} style={{ marginTop: 0 }}><UiIcon name="alert" /> {t('notifications.https_required')}</h4>
             <p>
               <strong>{t('notifications.https_required_text')}</strong>
             </p>
@@ -1559,13 +1524,14 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
             <p>
               {t('notifications.current_connection')}: <strong>{window.location.protocol}//{window.location.host}</strong>
             </p>
-            <p style={{ marginTop: '12px', paddingTop: '12px', borderTop: '1px solid #f5c6cb' }}>
+            <p className={styles.errorDivider} style={{ marginTop: '12px', paddingTop: '12px' }}>
               <strong>{t('notifications.https_help_title')}</strong><br />
               {t('notifications.https_help_text')} <a
                 href="https://github.com/Yeraze/meshmonitor/blob/main/docs/configuration/duckdns-https.md"
                 target="_blank"
                 rel="noopener noreferrer"
-                style={{ color: '#721c24', textDecoration: 'underline' }}
+                className={styles.boxLink}
+                style={{ textDecoration: 'underline' }}
               >
                 {t('notifications.https_help_link')}
               </a>.
@@ -1604,8 +1570,8 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
 
         {/* iOS Instructions */}
         {!isPWAInstalled && (
-          <div style={{ backgroundColor: '#fff3cd', color: '#856404', padding: '15px', borderRadius: '8px', border: '1px solid #ffc107', marginBottom: '20px' }}>
-            <h4 style={{ color: '#856404', marginTop: 0 }}><UiIcon name="companion" /> {t('notifications.ios_title')}</h4>
+          <div className={styles.warningBox} style={{ padding: '15px', borderRadius: '8px', marginBottom: '20px' }}>
+            <h4 className={styles.boxHeading} style={{ marginTop: 0 }}><UiIcon name="companion" /> {t('notifications.ios_title')}</h4>
             <p>{t('notifications.ios_description')}</p>
             <ol style={{ paddingLeft: '20px', marginLeft: '0' }}>
               <li><strong>{t('notifications.https_required')}:</strong> {t('notifications.ios_step_https')}</li>
@@ -1665,7 +1631,7 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
                       {isSubscribing ? t('notifications.subscribing') : <><UiIcon name="download" /> {t('notifications.subscribe_button')}</>}
                     </button>
                     {debugInfo && (
-                      <div style={{ marginTop: '10px', padding: '10px', backgroundColor: '#f0f0f0', borderRadius: '4px' }}>
+                      <div className={styles.debugBox} style={{ marginTop: '10px', padding: '10px', borderRadius: '4px' }}>
                         <strong>{t('notifications.debug')}:</strong> <StatusIcon tone={debugInfo.tone} /> {debugInfo.message}
                       </div>
                     )}
@@ -1720,7 +1686,7 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
 
         {/* VAPID Configuration (Admin Only) */}
         {isAdmin && vapidStatus && (
-          <div style={{ marginTop: '32px', paddingTop: '32px', borderTop: '1px solid #3a3a3a' }}>
+          <div className={styles.divider} style={{ marginTop: '32px', paddingTop: '32px' }}>
             <h4>{t('notifications.vapid_title')}</h4>
             <div className="info-grid">
               <div className="info-item">
@@ -1768,16 +1734,13 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
       {preferences.enableApprise && (
       <div id="notif-apprise" className="settings-section">
         <h3><UiIcon name="notifications" /> {t('notifications.apprise_config_title')}</h3>
-        <p style={{ marginBottom: '20px', color: '#666' }}><Trans i18nKey="notifications.apprise_config_description" components={{ strong: <strong /> }} /></p>
+        <p className={styles.muted} style={{ marginBottom: '20px' }}><Trans i18nKey="notifications.apprise_config_description" components={{ strong: <strong /> }} /></p>
 
-        <div style={{
-          backgroundColor: '#1e3a5f',
-          border: '1px solid #2a5a8a',
+        <div className={styles.infoBox} style={{
           borderRadius: '8px',
           padding: '16px',
           marginBottom: '20px',
-          fontSize: '14px',
-          color: '#93c5fd'
+          fontSize: '14px'
         }}>
           <strong><UiIcon name="info" /> {t('notifications.about_apprise')}:</strong> {t('notifications.apprise_info')}
         </div>
@@ -1786,21 +1749,22 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
           <label style={{ display: 'block', marginBottom: '8px', fontWeight: '600' }}>
             {t('notifications.service_urls_label')}
           </label>
-          <p style={{ fontSize: '13px', color: '#9ca3af', marginBottom: '12px' }}>
+          <p className={styles.muted} style={{ fontSize: '13px', marginBottom: '12px' }}>
             {t('notifications.service_urls_description')}
           </p>
-          <ul style={{ fontSize: '13px', color: '#9ca3af', marginBottom: '12px', paddingLeft: '20px' }}>
+          <ul className={styles.muted} style={{ fontSize: '13px', marginBottom: '12px', paddingLeft: '20px' }}>
             <li><code>discord://webhook_id/webhook_token</code> - {t('notifications.example_discord')}</li>
             <li><code>slack://token_a/token_b/token_c</code> - {t('notifications.example_slack')}</li>
             <li><code>mailto://user:pass@gmail.com</code> - {t('notifications.example_email')}</li>
             <li><code>tgram://bot_token/chat_id</code> - {t('notifications.example_telegram')}</li>
           </ul>
-          <p style={{ fontSize: '13px', color: '#9ca3af', marginBottom: '12px' }}>
+          <p className={styles.muted} style={{ fontSize: '13px', marginBottom: '12px' }}>
             {t('notifications.see_docs')} <a
               href="https://github.com/caronc/apprise#supported-notifications"
               target="_blank"
               rel="noopener noreferrer"
-              style={{ color: '#60a5fa', textDecoration: 'underline' }}
+              className={styles.link}
+              style={{ textDecoration: 'underline' }}
             >
               {t('notifications.apprise_docs_link')}
             </a> {t('notifications.full_list')}.
@@ -1810,16 +1774,14 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
             onChange={(e) => setAppriseUrls(e.target.value)}
             placeholder="discord://webhook_id/webhook_token&#10;slack://token_a/token_b/token_c&#10;mailto://user:pass@gmail.com"
             rows={8}
+            className={styles.textInput}
             style={{
               width: '100%',
               padding: '12px',
               fontFamily: 'monospace',
               fontSize: '14px',
-              border: '2px solid #3a3a3a',
               borderRadius: '6px',
-              resize: 'vertical',
-              backgroundColor: '#252535',
-              color: '#e5e7eb'
+              resize: 'vertical'
             }}
           />
         </div>

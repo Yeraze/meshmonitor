@@ -1,0 +1,121 @@
+/*
+ * Colours for the Notifications page (#5592).
+ *
+ * The page used to paint itself with inline hex literals picked for a dark
+ * theme, so a light theme got dark panels with pale text. Every colour here is
+ * a semantic role token with NO fallback (#4567, enforced by
+ * src/styles/semanticTokens.test.ts). Layout stays inline in the component;
+ * this sheet holds colour and nothing else.
+ *
+ * Each rule is scoped under `.root` so it outranks a global element rule such
+ * as `.settings-section h3`: the inline styles these replace beat every
+ * selector, and a bare class would not.
+ *
+ * Tinted boxes mix their role token into the surface for the fill and take the
+ * border from the role token itself, so no theme needs a new token. Their text
+ * is `--color-text`, not the role token: measured against the tinted fill, role
+ * coloured text falls to 1.6:1 in Latte (info, warning) and under 3:1 in six
+ * more themes, where `--color-text` holds the theme's own text-on-surface
+ * ratio. Firmware28SilenceNotice.module.css makes the same choice.
+ */
+
+/* Secondary copy: section blurbs, hints, the empty channel list. */
+.root .muted {
+  color: var(--color-text-muted);
+}
+
+/* The two service tiles (Web Push, Apprise). */
+.root .serviceCard {
+  background-color: var(--color-surface);
+  border: 2px solid var(--color-border);
+}
+
+.root .serviceCardEnabled {
+  border-color: var(--color-success);
+}
+
+/* Notification Sources and Keyword Filtering containers. */
+.root .panel {
+  background-color: var(--color-bg-raised);
+  border: 1px solid var(--color-border);
+}
+
+/* One toggle row inside a panel. */
+.root .row {
+  background-color: var(--color-surface);
+  border: 2px solid var(--color-border);
+}
+
+.root .channelBox {
+  background-color: var(--color-surface);
+}
+
+/* Keyword allow / block lists. */
+.root .allowLabel {
+  color: var(--color-success);
+}
+
+.root .blockLabel {
+  color: var(--color-danger);
+}
+
+.root .textInput {
+  background-color: var(--color-surface);
+  border: 2px solid var(--color-border);
+  color: var(--color-text);
+}
+
+.root .textInputAllow {
+  border-color: var(--color-success);
+}
+
+.root .textInputBlock {
+  border-color: var(--color-danger);
+}
+
+/* Tinted callouts. */
+.root .infoBox {
+  background-color: color-mix(in srgb, var(--color-info) 15%, var(--color-surface));
+  border: 1px solid var(--color-info);
+  color: var(--color-text);
+}
+
+.root .warningBox {
+  background-color: color-mix(in srgb, var(--color-warning) 15%, var(--color-surface));
+  border: 1px solid var(--color-warning);
+  color: var(--color-text);
+}
+
+.root .errorBox {
+  background-color: color-mix(in srgb, var(--color-error) 15%, var(--color-surface));
+  border: 1px solid var(--color-error);
+  color: var(--color-text);
+}
+
+/* Headings and links inside a tinted box follow its text, not a global rule. */
+.root .boxHeading {
+  color: var(--color-text);
+}
+
+.root .boxLink {
+  color: var(--color-text);
+}
+
+.root .errorDivider {
+  border-top: 1px solid var(--color-error);
+}
+
+/* Subscribe debug read-out. */
+.root .debugBox {
+  background-color: var(--color-bg-sunken);
+  color: var(--color-text);
+}
+
+/* Rule above the admin-only VAPID block. */
+.root .divider {
+  border-top: 1px solid var(--color-border);
+}
+
+.root .link {
+  color: var(--color-accent);
+}

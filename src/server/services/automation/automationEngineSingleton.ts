@@ -8,7 +8,7 @@
  */
 import { logger } from '../../../utils/logger.js';
 import databaseService from '../../../services/database.js';
-import { dataEventEmitter, type DataEvent, type NodeAircraftData, type NodeUpdateData, type NodeDiscoveredData, type MeshCoreNodeChangedData } from '../dataEventEmitter.js';
+import { dataEventEmitter, type DataEvent, type NodeAircraftData, type NodeUpdateData, type NodeDiscoveredData, type MeshCoreNodeChangedData, type MeshCoreNodeEventFacts } from '../dataEventEmitter.js';
 import type { DbMessage, DbTelemetry } from '../../../services/database.js';
 import type { MeshCoreMessage } from '../../meshcoreManager.js';
 import type { ReticulumMessageRow } from '../../../db/repositories/reticulum.js';
@@ -117,6 +117,11 @@ async function handleEvent(event: DataEvent): Promise<void> {
   await routeEventToEngine(e, event);
 }
 
+/** #5595: the MeshCore contact facts of a node event, for the trigger context. */
+function meshCoreFacts(d: MeshCoreNodeEventFacts): MeshCoreNodeEventFacts {
+  return { advType: d.advType, hops: d.hops, routeHops: d.routeHops, lastHeard: d.lastHeard };
+}
+
 /**
  * Map one bus event onto the engine's trigger entry points. Exported so the
  * routing (e.g. #5534's discovered-vs-updated split) is testable without
@@ -172,7 +177,7 @@ export async function routeEventToEngine(e: AutomationEngineService, event: Data
       const d = event.data as NodeDiscoveredData;
       if (d.nodeNum == null) {
         if (d.publicKey) {
-          await e.onMeshCoreNode('trigger.nodeDiscovered', d.publicKey, [], sourceId, { packetHash: d.packetHash }, d.name);
+          await e.onMeshCoreNode('trigger.nodeDiscovered', d.publicKey, [], sourceId, { packetHash: d.packetHash }, d.name, meshCoreFacts(d));
         }
       } else {
         await e.onNode('trigger.nodeDiscovered', d.nodeNum, [], sourceId, { packetId: d.packetId });
@@ -183,7 +188,7 @@ export async function routeEventToEngine(e: AutomationEngineService, event: Data
     case 'meshcore:node:changed': {
       // #5534: a known MeshCore node changed name/position/type/path.
       const d = event.data as MeshCoreNodeChangedData;
-      await e.onMeshCoreNode('trigger.nodeUpdated', d.publicKey, d.changed, sourceId, { packetHash: d.packetHash }, d.name);
+      await e.onMeshCoreNode('trigger.nodeUpdated', d.publicKey, d.changed, sourceId, { packetHash: d.packetHash }, d.name, meshCoreFacts(d));
       break;
     }
 

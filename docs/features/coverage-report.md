@@ -26,8 +26,12 @@ map, with position broadcast turned on. Recommended settings on that node:
   which is what a coverage map wants to measure.
 - **Smart position** enabled — it honours `hop_limit 0` rather than
   overriding it with the firmware default of 3.
-- **Position interval 30 seconds or more** — more frequent broadcasts add
-  airtime without adding much new coverage data.
+- **Smart position minimum interval of 30 seconds or more, on a private
+  channel only.** On a channel with the default key and a preset name, the
+  firmware raises this to at least 5 minutes at boot, and the plain position
+  interval to at least 1 hour. Shorter than 30 seconds adds airtime without
+  adding much coverage data. See
+  [Why a survey looks sparse](#why-a-survey-looks-sparse).
 
 **Receiver firmware caveat:** a receiving node only keeps a zero-hop
 (`hop_limit 0`) packet on firmware **2.7.20 or later** — older firmware
@@ -72,6 +76,137 @@ has no advert timer, so the driver sends them by hand.
 | Zero-hop, US (SF7/BW62.5) | ~0.4–0.5 s | ~0.7% |
 | Zero-hop, EU (SF8/BW62.5/CR8) | ~1.1–1.3 s | ~1.9% |
 | Flood, 20 repeaters in reach | ~9 s (US) / ~25 s (EU) | 15–40% |
+
+## Why a survey looks sparse
+
+A thin map does not always mean poor radio reach. Meshtastic firmware holds
+back, drops and filters position packets to save airtime. Those rules suit
+daily use, and a survey runs into most of them. On the map, a packet the
+firmware held back looks the same as a packet the radio never heard.
+
+This section covers Meshtastic. The facts come from the firmware source
+(2.7.27 and 2.8.2); the files are named so you can check them.
+
+### What the survey node holds back
+
+The survey node skips or delays its own position broadcasts in these cases.
+
+- **Busy channel.** The node skips a position when channel use over the last
+  minute is above **25%**. For the **TRACKER** and **TAK_TRACKER** roles the
+  limit is **40%**. The node logs `Ch. util >25%. Skip send` (or `>40%`) each
+  time. (`src/modules/PositionModule.cpp`, `src/airtime.cpp`)
+- **Default channel.** If position goes out on a channel with the default key
+  and a preset name such as `LongFast`, the firmware raises the position
+  interval to at least **1 hour** and the smart position minimum interval to
+  at least **5 minutes**. It does this at every boot, whatever you saved. A
+  30-second interval works only on a private channel. (`src/mesh/NodeDB.cpp`,
+  `src/mesh/Default.h`)
+- **Large mesh.** With more than 40 nodes online, the firmware stretches the
+  interval. TRACKER, TAK_TRACKER, SENSOR and the router roles are exempt.
+  (`src/mesh/Default.h`)
+- **Legal duty cycle.** In a region with a duty-cycle limit, such as EU_868,
+  the node stops sending once it reaches the full limit. The lower "polite"
+  limit does not apply to position packets. (`src/mesh/Router.cpp`)
+
+Firmware **2.8** adds three more:
+
+- **Parked node.** A node that has not moved out of its grid cell, or that
+  uses a fixed position, sends a position at most once every **6 hours**.
+  The LOST_AND_FOUND role is exempt.
+- **Coarse position on public channels.** On a channel anyone can decrypt,
+  the node sends its position at no more than **15 bits** of precision: a
+  grid of roughly 700 m or coarser. A channel with precision 0 sends no
+  position at all. (`src/mesh/PositionPrecision.h`)
+- **Shorter reach.** The firmware may lower `hop_limit` on position
+  broadcasts. It never raises it.
+
+### What relays and receivers drop (firmware 2.8)
+
+Firmware 2.8.0 added the **Traffic Management** module. Firmware 2.7 does not
+have it. It is on by default on every board except STM32WL, and it drops
+repeated positions.
+
+A node drops a position packet only when **all** of these hold:
+
+- another node sent it,
+- it arrived on a well-known channel (default key or no key, and a preset
+  name),
+- it falls in the **same grid cell** as the last position this node passed
+  from that sender, and
+- it arrived inside the dedup window.
+
+The default window is **18,000 seconds (5 hours)**. The protobuf comment says
+6 hours; the firmware uses 5. For a TRACKER or TAK_TRACKER sender the window
+is at most 1 hour, and for LOST_AND_FOUND at most 15 minutes. A value of 0
+turns dedup off. (`src/modules/TrafficManagementModule.cpp`,
+`src/mesh/Default.h`)
+
+The grid cell is as large as the channel's position precision. So:
+
+- **A moving survey node passes.** Each new cell is a new position.
+- **A parked survey node does not.** You get one dot per spot, however long
+  you wait there.
+
+A dropped packet goes no further on that node. The node does not rebroadcast
+it, so receivers further out lose that copy. The node also does not hand it
+to connected apps, so **MeshMonitor never sees it on that source**.
+
+The module's other features (rate limit, unknown-packet drop, NodeInfo direct
+response) are off by default.
+
+### What MQTT gateways miss
+
+- **"OK to MQTT" off.** A gateway on a public broker does not uplink packets
+  from a node that has "OK to MQTT" turned off. A broker on a private IP
+  address skips this check. (`src/mqtt/MQTT.cpp`)
+- **Old gateway firmware.** A gateway drops a zero-hop packet unless it runs
+  firmware 2.7.20 or later.
+- **Dedup does not stop the uplink.** A 2.8 gateway still uplinks a position
+  that its own Traffic Management module dropped. So an MQTT source can show
+  a fix that the same node, as a radio source, does not.
+
+### What MeshMonitor cannot see
+
+MeshMonitor records only the position packets a node hands over. It also
+skips your own node's position, packets that did not arrive over RF, replays
+of old packets, packets with id 0, and packets with a stale receive time.
+
+It has no record of a packet that was never sent or that a node dropped. It
+cannot tell those from a packet lost to poor reach. The
+[Likely gaps](#likely-gaps) lines mark where fixes went missing, not why.
+
+### Settings for a survey
+
+Change these on your own nodes, in the Meshtastic app or on MeshMonitor's
+Configuration tab. The Coverage Report changes nothing for you.
+
+| Setting | For a survey | Why |
+| --- | --- | --- |
+| Survey channel | A private channel (your own key) that carries position, on the survey node and on each receiver | Avoids the 1-hour and 5-minute floors, the 15-bit limit and receiver dedup |
+| Role | TRACKER on the survey node for the drive | Raises the busy-channel limit to 40% and skips the large-mesh stretch |
+| Smart position minimum interval | 30 s, on a private channel only | The firmware raises it to 5 minutes on a default channel |
+| Position dedup window (Traffic Management, receivers on 2.8) | Leave alone. Set 0 only for a parked test, then put it back | A moving node already passes; 0 lets every repeat through and costs the mesh airtime |
+| Override duty cycle | Do not change | It breaks the legal airtime limit for your region |
+| Traffic Management rate limit | Do not change | Off by default; it does not affect a survey |
+
+::: warning Do not trade the mesh for a denser map
+Turning on **Override duty cycle** can break radio law in your region. A very
+short position interval on a public channel takes airtime from everyone on
+it, and the firmware raises it to 5 minutes anyway. Use a private channel,
+keep `hop_limit 0`, and put the node back to its usual role and settings
+after the drive.
+:::
+
+### Troubleshooting by symptom
+
+| What you see | Likely cause | What to do |
+| --- | --- | --- |
+| One dot per parked spot | The node did not leave its grid cell. Smart position sends nothing while it sits still; on 2.8 the 6-hour parked floor and receiver dedup apply too | Expected. Move the node, or use a private channel for a parked test |
+| Dots every 5 minutes or more | The survey node sends position on a default channel, so the firmware raised the interval | Move the survey to a private channel, then reboot the node |
+| Dots snapped to a coarse grid | The channel's position precision is low, or a 2.8 node limited it to 15 bits on a public channel | Use a private channel with full precision |
+| No dots on one 2.8 source, others fine | That node's Traffic Management module dropped the repeats | Use a private channel; for a parked test, set that node's dedup window to 0 and put it back after |
+| MQTT gateways missing | "OK to MQTT" is off on the survey node, the gateway firmware is older than 2.7.20, or MQTT recording is off for that source | Turn on "OK to MQTT" on the survey node; check **Settings → Coverage recording** |
+| Dots stop in a busy area | The node skipped sends above 25% channel use | Check the node log for `Skip send`; use the TRACKER role for the drive |
 
 ## Reading the report
 

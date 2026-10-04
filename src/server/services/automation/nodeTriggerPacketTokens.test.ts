@@ -22,6 +22,8 @@ import { simulateAutomation } from './automationSimulator.js';
 import { dataEventEmitter, type DataEvent } from '../dataEventEmitter.js';
 
 const HASH = '3A24AED15A9CB70A';
+// #5595: the contact facts ride along as a 7th argument; these events carry none.
+const NO_FACTS = { advType: undefined, hops: undefined, routeHops: undefined, lastHeard: undefined };
 
 describe('buildNodeContext packet tokens (#5534)', () => {
   it('carries a Meshtastic packetId as unsigned 32-bit', () => {
@@ -172,14 +174,14 @@ describe('routeEventToEngine node events (#5534)', () => {
   it('node:discovered (MeshCore) fires nodeDiscovered keyed by public key with the hash', async () => {
     const e = fakeEngine();
     await routeEventToEngine(e as any, ev('node:discovered', { nodeNum: null, publicKey: 'k', name: 'N', packetHash: HASH }));
-    expect(e.onMeshCoreNode).toHaveBeenCalledWith('trigger.nodeDiscovered', 'k', [], 'src', { packetHash: HASH }, 'N');
+    expect(e.onMeshCoreNode).toHaveBeenCalledWith('trigger.nodeDiscovered', 'k', [], 'src', { packetHash: HASH }, 'N', NO_FACTS);
     expect(e.onNode).not.toHaveBeenCalled();
   });
 
   it('meshcore:node:changed fires nodeUpdated with the changed fields', async () => {
     const e = fakeEngine();
     await routeEventToEngine(e as any, ev('meshcore:node:changed', { publicKey: 'k', name: 'N', changed: ['latitude'], packetHash: HASH }));
-    expect(e.onMeshCoreNode).toHaveBeenCalledWith('trigger.nodeUpdated', 'k', ['latitude'], 'src', { packetHash: HASH }, 'N');
+    expect(e.onMeshCoreNode).toHaveBeenCalledWith('trigger.nodeUpdated', 'k', ['latitude'], 'src', { packetHash: HASH }, 'N', NO_FACTS);
   });
 
   it('a node:updated from the discovering packet skips nodeUpdated but still runs the geofence checks', async () => {

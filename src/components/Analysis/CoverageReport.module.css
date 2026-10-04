@@ -56,6 +56,16 @@
   margin: 0 0 10px 0;
 }
 
+/* Docs link in the setup guidance (#5591). */
+.guidanceLink {
+  color: var(--color-accent);
+  text-decoration: underline;
+}
+
+.guidanceLink:hover {
+  color: var(--color-accent-hover);
+}
+
 .airtimeTable {
   width: 100%;
   border-collapse: collapse;
