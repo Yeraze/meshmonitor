@@ -11,6 +11,8 @@ import {
   __setMeshCoreModule,
   formatOutPath,
   decodeOutPathLen,
+  encodeOutPathLen,
+  OUT_PATH_UNKNOWN,
 } from './meshcoreNativeBackend.js';
 
 // ---------------- mock meshcore.js ----------------
@@ -1959,6 +1961,67 @@ describe('decodeOutPathLen (#5554)', () => {
     expect(decodeOutPathLen(-125)).toEqual({ hopHashBytes: 3, hopCount: 3, byteCount: 9 });
     // 0x80 = 3-byte width, zero hops = direct.
     expect(decodeOutPathLen(-128)).toEqual({ hopHashBytes: 3, hopCount: 0, byteCount: 0 });
+  });
+});
+
+describe('encodeOutPathLen', () => {
+  it('packs firmware-style: ((width - 1) << 6) | hops', () => {
+    expect(encodeOutPathLen(0, 1)).toBe(0x00);
+    expect(encodeOutPathLen(5, 1)).toBe(0x05);
+    expect(encodeOutPathLen(4, 2)).toBe(0x44);
+    expect(encodeOutPathLen(3, 3)).toBe(0x83);
+  });
+
+  it('defaults to 1-byte hashes', () => {
+    expect(encodeOutPathLen(7)).toBe(0x07);
+  });
+
+  it('packs no route as OUT_PATH_UNKNOWN (0xFF)', () => {
+    expect(OUT_PATH_UNKNOWN).toBe(0xff);
+    expect(encodeOutPathLen(null)).toBe(0xff);
+    expect(encodeOutPathLen(undefined)).toBe(0xff);
+  });
+
+  it('packs the longest path each width can hold in 64 bytes', () => {
+    expect(encodeOutPathLen(63, 1)).toBe(0x3f); // 63 bytes
+    expect(encodeOutPathLen(32, 2)).toBe(0x40 | 32); // 64 bytes
+    expect(encodeOutPathLen(21, 3)).toBe(0x80 | 21); // 63 bytes
+  });
+
+  it('refuses what firmware isValidPathLen refuses, as 0xFF', () => {
+    expect(encodeOutPathLen(64, 1)).toBe(0xff); // hop count needs 7 bits
+    expect(encodeOutPathLen(33, 2)).toBe(0xff); // 66 bytes > MAX_PATH_SIZE
+    expect(encodeOutPathLen(22, 3)).toBe(0xff); // 66 bytes > MAX_PATH_SIZE
+    expect(encodeOutPathLen(2, 4)).toBe(0xff); // reserved width
+    expect(encodeOutPathLen(2, 0)).toBe(0xff);
+    expect(encodeOutPathLen(-1, 1)).toBe(0xff);
+    expect(encodeOutPathLen(1.5, 1)).toBe(0xff);
+  });
+
+  it('round-trips every valid (width, hops) pair through decodeOutPathLen', () => {
+    for (const width of [1, 2, 3] as const) {
+      for (let hops = 0; hops * width <= 64 && hops <= 63; hops++) {
+        const byte = encodeOutPathLen(hops, width);
+        expect(byte).not.toBe(0xff);
+        const expected = { hopHashBytes: width, hopCount: hops, byteCount: hops * width };
+        expect(decodeOutPathLen(byte)).toEqual(expected);
+        // meshcore.js reads the byte signed; the decoder must agree either way.
+        expect(decodeOutPathLen((byte << 24) >> 24)).toEqual(expected);
+      }
+    }
+  });
+
+  it('round-trips every wire byte the decoder accepts', () => {
+    for (let byte = 0; byte <= 0xff; byte++) {
+      const d = decodeOutPathLen(byte);
+      if (!d) continue;
+      if (d.byteCount > 64) {
+        // Decodable, but firmware would refuse it: never re-emit it.
+        expect(encodeOutPathLen(d.hopCount, d.hopHashBytes)).toBe(0xff);
+      } else {
+        expect(encodeOutPathLen(d.hopCount, d.hopHashBytes)).toBe(byte);
+      }
+    }
   });
 });
 

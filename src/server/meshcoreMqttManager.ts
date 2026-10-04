@@ -951,6 +951,23 @@ export class MeshCoreMqttManager extends EventEmitter implements ISourceManager 
     };
   }
 
+  /**
+   * Which feed this source reads: the region and the broker it connects to.
+   *
+   * Kept OUT of `getStatus()` on purpose. That payload answers callers with no
+   * login, so it carries no broker host (#5596). The ingest overview route
+   * calls this instead and decides per viewer whether the host may be shown.
+   *
+   * The URL comes back with any `user:password@` already redacted — a caller
+   * cannot forget to strip it.
+   */
+  getFeedEndpoint(): { region: string; brokerUrl: string } {
+    return {
+      region: String(this.config.region ?? '').trim().toUpperCase(),
+      brokerUrl: redactBrokerUrl(String(this.config.brokerUrl ?? '')),
+    };
+  }
+
   /** Ingest counters for the status panel. */
   getIngestStats(): Readonly<MeshCoreMqttIngestStats> {
     return { ...this.stats };

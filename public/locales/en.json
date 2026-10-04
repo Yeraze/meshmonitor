@@ -554,6 +554,7 @@
   "meshcore.ingest.tab_packets": "Packets",
   "meshcore.ingest.region": "Region",
   "meshcore.ingest.broker": "Broker",
+  "meshcore.ingest.broker_hidden": "Hidden",
   "meshcore.ingest.nodes_seen": "Nodes",
   "meshcore.ingest.observers": "Observers",
   "meshcore.ingest.observers_title": "Observers reporting",

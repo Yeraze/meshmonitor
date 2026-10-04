@@ -59,7 +59,9 @@ function makeIngestManager(sourceId: string) {
     sourceId,
     sourceType: 'meshcore_mqtt',
     isConnected: () => true,
-    getStatus: () => ({ connected: true, region: 'MCO', brokerUrl: 'wss://broker' }),
+    // The real getStatus() carries no region or broker; see getFeedEndpoint.
+    getStatus: () => ({ connected: true }),
+    getFeedEndpoint: () => ({ region: 'MCO', brokerUrl: 'wss://broker' }),
     getAllNodes: async () => [INGEST_NODE],
     getRecentMessagesAsync: async () => [INGEST_MESSAGE],
     getObserverStatuses: () =>
@@ -140,6 +142,7 @@ describe('GET /ingest/overview', () => {
     expect(res.body.data.connected).toBe(true);
     expect(res.body.data.nodeCount).toBe(1);
     expect(res.body.data.observers).toHaveLength(2);
+    expect(res.body.data.region).toBe('MCO');
   });
 
   it('sorts observers by most recent heartbeat', async () => {
