@@ -102,12 +102,10 @@ export interface TemplateValidationError {
 
 // Marks where a token rendered empty, so a separator left dangling beside it
 // can be dropped. Private-use code point: stripped from every input first.
-const EMPTY = '';
+const EMPTY = '\uE000';
 const SEPARATOR = '[·•|:,\\-–—/]';
 
-// eslint-disable-next-line no-control-regex -- stripping control characters is the point
-const CONTROL_EXCEPT_NEWLINE = /[\u0000-\u0009\u000B-\u001F\u007F]/g;
-// eslint-disable-next-line no-control-regex -- stripping control characters is the point
+const CONTROL_EXCEPT_NEWLINE = /[\u0000-\u0009\u000B-\u001F\u007F\uE000]/g;
 const CONTROL_FOR_VALIDATION = /[\u0000-\u0009\u000B\u000C\u000E-\u001F\u007F]/;
 
 /** Normalise a stored/posted template value: blank means "use the default". */
