@@ -201,6 +201,11 @@ function getStatusInfo(
   if (!status) {
     return { dotClass: 'disconnected', label: t('source.status_connecting') };
   }
+  if (status.authStopped && !status.connected) {
+    // The broker kept rejecting the login and the source gave up (#5596).
+    // "Connecting" would be a lie: nothing is retrying.
+    return { dotClass: 'disconnected', label: t('source.status_auth_stopped') };
+  }
   if (status.connected) {
     return { dotClass: 'connected', label: t('source.status_connected') };
   }
@@ -974,7 +979,9 @@ const DashboardSidebar: React.FC<DashboardSidebarProps> = ({
                 <span className="dashboard-lock-icon"><UiIcon name="encrypted" size={16} /></span>
               )}
               {!isUnified && isAdmin && source.enabled &&
-                (source.config as any)?.autoConnect === false &&
+                // autoConnect off, or a source that stopped itself after
+                // repeated rejected logins (#5596) — both wait for a click.
+                ((source.config as any)?.autoConnect === false || status?.authStopped === true) &&
                 !status?.connected &&
                 onConnectSource && (() => {
                   const pending = connectingIds?.has(source.id) === true;
@@ -986,7 +993,11 @@ const DashboardSidebar: React.FC<DashboardSidebarProps> = ({
                         e.stopPropagation();
                         if (!pending) onConnectSource(source.id);
                       }}
-                      title={t('source.connect_help')}
+                      title={
+                        (status?.authStopped
+                          ? (status as { permissionMessage?: string | null }).permissionMessage
+                          : null) ?? t('source.connect_help')
+                      }
                     >
                       {pending ? t('source.connecting') : t('source.connect')}
                     </button>

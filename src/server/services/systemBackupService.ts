@@ -65,7 +65,16 @@ export const BACKUP_TABLES = [
   // restore inserts the entries before the links that reference them. Pinned
   // phrases and translations shown to viewers are worth keeping.
   'translation_cache',
-  'message_translations'
+  'message_translations',
+  // #5596: Analyzer Observer signing keys, one row per MeshCore source. They
+  // were left out, so a restore brought back a source whose Observer config
+  // pointed at a key that no longer existed. Each row is an AES-256-GCM
+  // envelope keyed from SESSION_SECRET plus the public key in the clear — the
+  // backup holds no plaintext key, and a stolen backup without SESSION_SECRET
+  // yields nothing. The same property means a restore under a DIFFERENT
+  // SESSION_SECRET brings back rows that cannot be decrypted: they are kept,
+  // and the key store reports them as `key_rotated` (see systemRestoreService).
+  'meshcore_observer_keys'
 ];
 
 /**

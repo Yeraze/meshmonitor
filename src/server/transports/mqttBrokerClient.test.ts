@@ -507,3 +507,216 @@ describe('MqttBrokerClient', () => {
     });
   });
 });
+
+/**
+ * Auth stop (#5596).
+ *
+ * A rejected login does not fix itself, yet the client used to retry one for
+ * ever on the 60 s backoff cap. A client that opts in with `maxAuthFailures`
+ * now stops after that many CONSECUTIVE rejections. The fake below plays the
+ * broker: mqtt.js reports a CONNACK 4/5 as an `error` carrying `.code`, and
+ * the socket then closes.
+ */
+describe('MqttBrokerClient — auth stop (#5596)', () => {
+  const URL = 'mqtt://broker.test:1883';
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.useFakeTimers();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  /** The broker rejects the login: CONNACK 4/5, then the socket closes. */
+  function reject(fake: any, code: 4 | 5 = 4) {
+    fake.isUp = false;
+    fake.emit(
+      'error',
+      Object.assign(new Error('Connection refused: Bad username or password'), { code }),
+    );
+    fake.emit('close');
+  }
+
+  /** A failure that has nothing to do with the login. */
+  function networkFail(fake: any) {
+    fake.isUp = false;
+    fake.emit('error', Object.assign(new Error('connect ECONNREFUSED'), { code: 'ECONNREFUSED' }));
+    fake.emit('close');
+  }
+
+  function start(maxAuthFailures?: number) {
+    const client = new MqttBrokerClient({
+      url: URL,
+      username: 'alice',
+      password: 'hunter2-secret',
+      maxAuthFailures,
+    });
+    client.on('error', () => {}); // an unhandled 'error' would throw
+    const stopped = vi.fn();
+    client.on('auth-stopped', stopped);
+    void client.connect();
+    const fake = lastFakeClient();
+    // Every retry the wrapper makes is rejected again, like a real broker
+    // holding a wrong password.
+    return { client, fake, stopped };
+  }
+
+  /** Reject the pending attempt, then let the backoff timer fire the next one. */
+  function rejectAndWait(fake: any) {
+    reject(fake);
+    vi.advanceTimersByTime(70_000); // past the 60 s cap plus jitter
+  }
+
+  it('stops after 5 rejected logins and never makes a 6th attempt', () => {
+    const { client, fake, stopped } = start(5);
+
+    // Attempt 1 is the connect() itself; each wait arms attempts 2..5.
+    for (let i = 0; i < 4; i++) rejectAndWait(fake);
+    expect(fake.reconnect).toHaveBeenCalledTimes(4);
+    expect(client.isAuthStopped()).toBe(false);
+
+    reject(fake); // the 5th rejection
+    expect(client.isAuthStopped()).toBe(true);
+    expect(stopped).toHaveBeenCalledTimes(1);
+    expect(stopped).toHaveBeenCalledWith({ failures: 5 });
+
+    // A whole day of fake time: no 6th attempt, no second event.
+    vi.advanceTimersByTime(24 * 60 * 60 * 1000);
+    expect(fake.reconnect).toHaveBeenCalledTimes(4);
+    expect((connect as any).mock.calls).toHaveLength(1);
+    expect(stopped).toHaveBeenCalledTimes(1);
+  });
+
+  it('counts CONNACK 5 (not authorized) the same as CONNACK 4', () => {
+    const { client, fake } = start(2);
+    reject(fake, 5);
+    vi.advanceTimersByTime(70_000);
+    reject(fake, 5);
+    expect(client.isAuthStopped()).toBe(true);
+  });
+
+  it('a successful connect resets the count', () => {
+    const { client, fake, stopped } = start(5);
+
+    for (let i = 0; i < 4; i++) rejectAndWait(fake);
+    expect(client.getConsecutiveAuthFailures()).toBe(4);
+
+    up(fake); // the operator fixed the password on the broker side
+    expect(client.getConsecutiveAuthFailures()).toBe(0);
+
+    // Four more rejections after a later drop are still under the limit.
+    down(fake);
+    vi.advanceTimersByTime(70_000);
+    for (let i = 0; i < 4; i++) rejectAndWait(fake);
+    expect(client.isAuthStopped()).toBe(false);
+    expect(stopped).not.toHaveBeenCalled();
+  });
+
+  it('other errors keep the normal backoff and never stop the client', () => {
+    const { client, fake, stopped } = start(5);
+
+    for (let i = 0; i < 12; i++) {
+      networkFail(fake);
+      vi.advanceTimersByTime(70_000);
+    }
+
+    expect(client.isAuthStopped()).toBe(false);
+    expect(client.getConsecutiveAuthFailures()).toBe(0);
+    expect(stopped).not.toHaveBeenCalled();
+    expect(fake.reconnect).toHaveBeenCalledTimes(12);
+  });
+
+  it('the backoff still climbs 1 s → 60 s between rejected attempts', () => {
+    const { fake } = start(5);
+    const t0 = Date.now();
+    for (let i = 0; i < 4; i++) rejectAndWait(fake);
+
+    // Retry delays double from 1 s (±10 % jitter): ~1 s, ~2 s, ~4 s, ~8 s. Each
+    // is measured from the rejection that armed it, 70 s after the last one.
+    const delays = fake.reconnectAt.map((at: number, i: number) => at - t0 - i * 70_000);
+    expect(delays[0]).toBeLessThan(1_200);
+    expect(delays[1]).toBeGreaterThan(1_700);
+    expect(delays[3]).toBeGreaterThan(7_000);
+    expect(delays[3]).toBeLessThan(9_000);
+  });
+
+  it('is opt-in: a client without maxAuthFailures retries as before', () => {
+    const { client, fake, stopped } = start(undefined);
+    for (let i = 0; i < 12; i++) rejectAndWait(fake);
+
+    expect(client.isAuthStopped()).toBe(false);
+    expect(stopped).not.toHaveBeenCalled();
+    expect(fake.reconnect).toHaveBeenCalledTimes(12);
+  });
+
+  it('a stopped client is skipped by a shared coordinator tick', () => {
+    const coord = new MqttReconnectCoordinator();
+    const client = new MqttBrokerClient({ url: URL, clientId: '!aaaaaaaa', maxAuthFailures: 1 });
+    client.on('error', () => {});
+    client.setCoordinator(coord);
+    void client.connect();
+    const fake = lastFakeClient();
+
+    // A drop queues the client on the coordinator; the rejection lands before
+    // the shared tick fires.
+    down(fake);
+    expect(coord.getPendingCount()).toBe(1);
+    reject(fake);
+    expect(client.isAuthStopped()).toBe(true);
+
+    vi.advanceTimersByTime(600_000);
+    expect(fake.reconnect).not.toHaveBeenCalled();
+  });
+
+  it('can be torn down from inside the auth-stopped listener', async () => {
+    const { client, fake } = start(1);
+    client.on('auth-stopped', () => {
+      void client.disconnect();
+    });
+
+    expect(() => reject(fake)).not.toThrow();
+    await vi.advanceTimersByTimeAsync(600_000);
+    expect(fake.end).toHaveBeenCalledTimes(1);
+    expect(fake.reconnect).not.toHaveBeenCalled();
+  });
+
+  it('never logs the username or password', () => {
+    const { fake } = start(5);
+    for (let i = 0; i < 5; i++) rejectAndWait(fake);
+
+    const lines = [...infoLines(logger), ...warnLines(logger)]
+      .concat((logger as any).debug.mock.calls.map((c: unknown[]) => String(c[0])))
+      .join('\n');
+    expect(lines).toContain('rejected the login 5 times in a row');
+    expect(lines).not.toContain('alice');
+    expect(lines).not.toContain('hunter2-secret');
+  });
+
+  it('strips credentials typed into the broker URL from every log line', () => {
+    const client = new MqttBrokerClient({
+      url: 'mqtts://bob:url-secret@broker.test:8883',
+      maxAuthFailures: 2,
+    });
+    client.on('error', () => {});
+    void client.connect();
+    const fake = lastFakeClient();
+
+    // mqtt.js still gets the real URL — only the logs are redacted.
+    expect((connect as any).mock.calls.at(-1)[0]).toBe('mqtts://bob:url-secret@broker.test:8883');
+
+    up(fake);
+    down(fake);
+    vi.advanceTimersByTime(70_000);
+    reject(fake);
+    vi.advanceTimersByTime(70_000);
+    reject(fake);
+
+    const lines = [...infoLines(logger), ...warnLines(logger)]
+      .concat((logger as any).debug.mock.calls.map((c: unknown[]) => String(c[0])))
+      .join('\n');
+    expect(lines).toContain('mqtts://***@broker.test:8883');
+    expect(lines).not.toContain('url-secret');
+    expect(lines).not.toContain('bob');
+  });
+});

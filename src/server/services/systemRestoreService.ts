@@ -22,6 +22,7 @@ import databaseService from '../../services/database.js';
 import { systemBackupService, BACKUP_TABLES } from './systemBackupService.js';
 import { getDatabaseConfig } from '../../db/index.js';
 import { resetPostgresSequences } from '../migrations/postgresSequences.js';
+import { getMeshCoreObserverKeyStore } from './meshcoreObserverKeyStore.js';
 import { Pool } from 'pg';
 import mysql from 'mysql2/promise';
 
@@ -162,6 +163,11 @@ class SystemRestoreService {
         tablesRestored = result.tablesRestored;
       }
 
+      // Phase 4b: say so when a restored Observer key cannot be read (#5596).
+      const unreadableObserverKeys = metadata.tables.includes('meshcore_observer_keys')
+        ? await this.findUnreadableObserverKeys()
+        : [];
+
       // Phase 5: Run schema migrations if needed
       if (migrationRequired) {
         logger.debug('Phase 5: Running schema migrations...');
@@ -187,7 +193,10 @@ class SystemRestoreService {
           backupVersion: metadata.meshmonitorVersion,
           backupSchemaVersion,
           currentSchemaVersion,
-          migrationRequired
+          migrationRequired,
+          // Source ids only. Present so the audit trail records that Observer
+          // publishing needs attention after this restore.
+          ...(unreadableObserverKeys.length > 0 ? { unreadableObserverKeys } : {})
         }),
         null // No IP address during startup
       );
@@ -237,6 +246,46 @@ class SystemRestoreService {
         success: false,
         message: `System restore failed: ${error instanceof Error ? error.message : String(error)}`
       };
+    }
+  }
+
+  /**
+   * Find restored Analyzer Observer keys the current SESSION_SECRET cannot
+   * decrypt, and warn about each (#5596).
+   *
+   * A key row is an AES-256-GCM envelope keyed from SESSION_SECRET. A backup
+   * restored onto an install with a different secret brings the rows back
+   * intact but unreadable. Restore does what the key store already does for a
+   * rotated secret: it KEEPS the row. Nothing is deleted or rewritten, so
+   * putting the original SESSION_SECRET back makes the key usable again; until
+   * then `load()` returns `key_rotated`, the Observer does not publish for that
+   * source, and the Observer settings panel shows the "key rotated" state with
+   * its re-import action.
+   *
+   * Reads only the envelope's version and key fingerprint — it never decrypts
+   * and never logs key material. Best-effort: a failure here must not turn a
+   * good restore into a failed one.
+   */
+  private async findUnreadableObserverKeys(): Promise<string[]> {
+    try {
+      const store = getMeshCoreObserverKeyStore();
+      const sourceIds = await databaseService.meshcoreObserverKeys.listSourceIds();
+      const unreadable: string[] = [];
+      for (const sourceId of sourceIds) {
+        if ((await store.status(sourceId)).keyRotated) unreadable.push(sourceId);
+      }
+      if (unreadable.length > 0) {
+        logger.warn(
+          `⚠️  Restored ${unreadable.length} Analyzer Observer signing key(s) that the current ` +
+            `SESSION_SECRET cannot decrypt (sources: ${unreadable.join(', ')}). The rows were kept. ` +
+            'Set SESSION_SECRET to the value the backup was made under, or re-import the key for ' +
+            'each source; until then the Observer will not publish for them.'
+        );
+      }
+      return unreadable;
+    } catch (error) {
+      logger.warn('⚠️  Could not check restored Analyzer Observer keys:', error);
+      return [];
     }
   }
 

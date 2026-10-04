@@ -10,6 +10,7 @@ import { EventEmitter } from 'events';
 import { connect, type IClientOptions, type IClientSubscribeOptions, type MqttClient } from 'mqtt';
 import { logger } from '../../utils/logger.js';
 import { createCachingLookup } from './cachingDnsLookup.js';
+import { redactBrokerUrl } from '../utils/brokerUrl.js';
 
 // One DNS cache shared across every upstream MQTT connection. The publisher
 // pool opens one socket per gateway and reconnects re-resolve, so without this
@@ -34,7 +35,23 @@ export interface MqttBrokerClientOptions {
   will?: IClientOptions['will'];
   /** Keepalive seconds. Defaults to 15 (Meshtastic-firmware parity). */
   keepalive?: number;
+  /**
+   * Stop reconnecting after this many CONSECUTIVE rejected logins (CONNACK
+   * 4/5). Opt-in: when unset the client retries a rejected login for ever on
+   * its normal backoff, as it always has.
+   *
+   * A rejected login does not fix itself. Without a stop, a wrong password
+   * costs the broker one CONNECT every ~60 s for as long as the process lives
+   * (#5596). Once stopped, the client emits `auth-stopped` and stays down until
+   * the owner throws it away and builds a new one — there is no resume, so a
+   * stale timer can never bring a stopped client back.
+   *
+   * The count lives in memory only, by design: a process restart is a fresh
+   * set of attempts, then the stop applies again.
+   */
+  maxAuthFailures?: number;
 }
+
 
 export interface MqttBrokerClientMessage {
   topic: string;
@@ -73,6 +90,9 @@ export interface MqttClientCapabilities {
  *     fired after every subscribe SUBACK; includes both granted and denied entries.
  * - 'permission-denied' (reason: { kind: 'subscribe' | 'auth'; topics?: string[]; message: string })
  *     fired when the broker denied subscribe or rejected the CONNACK on auth grounds.
+ * - 'auth-stopped' (info: { failures: number })
+ *     fired once, when `maxAuthFailures` consecutive logins were rejected and
+ *     the client gave up reconnecting. Only for clients that opted in.
  */
 /**
  * Coordinates reconnection across multiple MqttBrokerClient instances
@@ -212,6 +232,10 @@ export class MqttBrokerClient extends EventEmitter {
   private duplicateIdHintLogged = false;
   /** Set by disconnect() so a teardown-induced 'close' never re-arms a retry. */
   private stopping = false;
+  /** Rejected logins since the last CONNACK success. */
+  private consecutiveAuthFailures = 0;
+  /** True once `maxAuthFailures` was hit. Never cleared: the owner rebuilds. */
+  private authStopped = false;
 
   constructor(options: MqttBrokerClientOptions) {
     super();
@@ -257,7 +281,9 @@ export class MqttBrokerClient extends EventEmitter {
       // MESHCORE_OBSERVER_PHASE2_SPEC.md).
       ...(this.options.will ? { will: this.options.will } : {}),
     };
-    this.resolvedUrl = url;
+    // Log lines carry the redacted form only; `url` itself goes to mqtt.js.
+    const logUrl = redactBrokerUrl(url);
+    this.resolvedUrl = logUrl;
     this.resolvedClientId = clientId;
     this.stopping = false;
     this.client = connect(url, connectOptions);
@@ -268,6 +294,7 @@ export class MqttBrokerClient extends EventEmitter {
       this.connectedAt = now;
       this.lastError = null;
       this.authFailed = false;
+      this.consecutiveAuthFailures = 0;
       // Only reset the reconnect backoff once the connection proves STABLE.
       // Resetting on every 'connect' let a flapping connection (e.g. a clientId
       // collision kicking it every second) keep the shared backoff pinned at
@@ -279,13 +306,13 @@ export class MqttBrokerClient extends EventEmitter {
       if (this.connectsSinceStable === 1) {
         // State change into "connected" — the only line worth an info.
         this.flapEpisodeStartedAt = now;
-        logger.info(`📡 MQTT client connected to ${url} (clientId=${clientId})`);
+        logger.info(`📡 MQTT client connected to ${logUrl} (clientId=${clientId})`);
       } else {
         // Repeat connect inside a flap episode. One line per socket is what
         // buried the container logs in #5079, so these drop to debug and the
         // storm is surfaced by a rate-limited summary instead.
         logger.debug(
-          `📡 MQTT reconnected to ${url} (clientId=${clientId}, attempt #${this.connectsSinceStable})`,
+          `📡 MQTT reconnected to ${logUrl} (clientId=${clientId}, attempt #${this.connectsSinceStable})`,
         );
         this.maybeLogFlapSummary(now);
       }
@@ -331,11 +358,12 @@ export class MqttBrokerClient extends EventEmitter {
     this.client.on('error', (err) => {
       this.lastError = err.message;
       this.lastErrorAt = Date.now();
-      logger.warn(`MQTT client error (${url}): ${err.message}`);
+      logger.warn(`MQTT client error (${logUrl}): ${err.message}`);
       // Classify CONNACK auth rejections. mqtt.js surfaces these as
       // ErrorWithReasonCode whose .code matches the MQTT 3.1.1 CONNACK
       // return code: 4 = BAD_USERNAME_OR_PASSWORD, 5 = NOT_AUTHORIZED.
       const code = (err as Error & { code?: number }).code;
+      let stoppedNow = false;
       if (code === 4 || code === 5) {
         this.authFailed = true;
         const reason =
@@ -346,8 +374,15 @@ export class MqttBrokerClient extends EventEmitter {
           kind: 'auth' as const,
           message: reason,
         });
+        stoppedNow = this.noteAuthRejection();
       }
       this.emit('error', err);
+      // After 'error', never before: an owner may tear this client down from
+      // its 'auth-stopped' listener, and the stop must already be in force
+      // when the socket's 'close' asks for the next retry.
+      if (stoppedNow) {
+        this.emit('auth-stopped', { failures: this.consecutiveAuthFailures });
+      }
     });
     this.client.on('message', (topic, payload, packet) => {
       this.emit('message', {
@@ -408,7 +443,7 @@ export class MqttBrokerClient extends EventEmitter {
    * dozens of sockets per minute against the upstream broker.
    */
   doReconnect(): void {
-    if (this.stopping || !this.client) return;
+    if (this.stopping || this.authStopped || !this.client) return;
     if (this.connected) return;
     this.client.reconnect();
   }
@@ -542,8 +577,38 @@ export class MqttBrokerClient extends EventEmitter {
     );
   }
 
+  /**
+   * Count a rejected login and, for an opted-in client, stop for good once the
+   * limit is reached. Returns true on the call that trips the stop.
+   *
+   * Runs from the `error` handler, which mqtt.js fires BEFORE the socket's
+   * `close` — so by the time `close` asks for the next retry the stop is
+   * already set and `scheduleReconnect()` refuses. A retry armed by an earlier
+   * drop is cancelled here too, and `doReconnect()` re-checks the flag for a
+   * shared-coordinator tick that was already in flight.
+   */
+  private noteAuthRejection(): boolean {
+    this.consecutiveAuthFailures += 1;
+    const max = this.options.maxAuthFailures;
+    if (max === undefined || max <= 0 || this.authStopped) return false;
+    if (this.consecutiveAuthFailures < max) return false;
+
+    this.authStopped = true;
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
+    this.clearStableReset();
+    logger.warn(
+      `📡 MQTT broker ${this.resolvedUrl} (clientId=${this.resolvedClientId}) rejected the login ` +
+        `${this.consecutiveAuthFailures} times in a row — no more reconnect attempts until the ` +
+        `connection is reconfigured or reconnected by hand.`,
+    );
+    return true;
+  }
+
   private scheduleReconnect(): void {
-    if (this.stopping || !this.client) return;
+    if (this.stopping || this.authStopped || !this.client) return;
     if (this.coordinator) {
       this.coordinator.requestReconnect(this);
       return;
@@ -626,6 +691,16 @@ export class MqttBrokerClient extends EventEmitter {
 
   isConnected(): boolean {
     return this.connected;
+  }
+
+  /** True once the client gave up after `maxAuthFailures` rejected logins. */
+  isAuthStopped(): boolean {
+    return this.authStopped;
+  }
+
+  /** Rejected logins since the last successful connect. */
+  getConsecutiveAuthFailures(): number {
+    return this.consecutiveAuthFailures;
   }
 
   getLastError(): string | null {

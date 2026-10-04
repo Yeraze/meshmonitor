@@ -5857,6 +5857,7 @@
   "source.status_connecting": "Connecting",
   "source.status_disabled": "Disabled",
   "source.status_idle": "Idle (manual)",
+  "source.status_auth_stopped": "Login rejected",
   "source.permission_restricted": "restricted",
   "source.publishers_all_connected": "{{count}} gateways",
   "source.publishers_all_connected_one": "{{count}} gateway",

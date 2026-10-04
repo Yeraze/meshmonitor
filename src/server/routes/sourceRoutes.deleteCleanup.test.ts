@@ -17,7 +17,7 @@
  * runs for real so the assertions prove the actual purge, not a mocked call.
  */
 
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import sourceRoutes from './sourceRoutes.js';
 import { createRouteTestApp, type RouteTestHarness } from '../test-helpers/routeTestApp.js';
 import databaseService from '../../services/database.js';
@@ -201,5 +201,97 @@ describe('DELETE /api/sources/:id — coverage receptions cleanup (#5277)', () =
       sourceIds: [harness.sourceB], sinceMs: 0, untilMs: Date.now() + 1000, pageSize: 10,
     });
     expect(pageB.items.length).toBe(1);
+  });
+});
+
+/**
+ * Per-source secrets are cleaned up with the source (#5596).
+ *
+ * `meshcore_observer_keys`, `meshcore_observer_credentials` and
+ * `source_pki_keys` each hold one row per source, keyed by source id, outside
+ * `sources.config`. Nothing removed them on delete, so an encrypted signing
+ * key, broker passwords and a PKI private key outlived the source they
+ * belonged to, with no UI path left to reach them.
+ *
+ * They are NOT cleared by purgeAllNodesAsync: that helper also backs the
+ * "purge nodes" action on a live source, which must leave the keys alone.
+ */
+describe('DELETE /api/sources/:id — per-source secret cleanup (#5596)', () => {
+  let harness: RouteTestHarness;
+
+  beforeEach(async () => {
+    harness = await createRouteTestApp({ mount: (app) => app.use('/', sourceRoutes) });
+    await harness.grant(harness.limited.id, 'sources', 'write');
+
+    for (const [src, tag] of [[harness.sourceA, 'a'], [harness.sourceB, 'b']] as const) {
+      await databaseService.meshcoreObserverKeys.upsert(src, `envelope-${tag}`, `PUB${tag}`, 'manual');
+      await databaseService.meshcoreObserverCredentials.upsert(src, `user-${tag}`, `enc-pass-${tag}`);
+      await databaseService.sourcePkiKeys.upsert(src, null, `pki-envelope-${tag}`, `pkipub-${tag}`);
+    }
+  });
+
+  afterEach(async () => {
+    for (const src of [harness.sourceA, harness.sourceB]) {
+      await databaseService.meshcoreObserverKeys.deleteBySourceId(src).catch(() => {});
+      await databaseService.meshcoreObserverCredentials.deleteBySourceId(src).catch(() => {});
+      await databaseService.sourcePkiKeys.deleteBySourceId(src).catch(() => {});
+    }
+    await harness.cleanup();
+  });
+
+  it('removes the deleted source\'s Analyzer Observer key row', async () => {
+    const agent = await harness.loginAs(harness.limited);
+    const res = await agent.delete(`/${harness.sourceA}`);
+    expect(res.status).toBe(200);
+
+    expect(await databaseService.meshcoreObserverKeys.getBySourceId(harness.sourceA)).toBeNull();
+    expect(await databaseService.meshcoreObserverKeys.hasKey(harness.sourceA)).toBe(false);
+  });
+
+  it('leaves another source\'s Analyzer Observer key untouched', async () => {
+    const agent = await harness.loginAs(harness.limited);
+    expect((await agent.delete(`/${harness.sourceA}`)).status).toBe(200);
+
+    const keyB = await databaseService.meshcoreObserverKeys.getBySourceId(harness.sourceB);
+    expect(keyB).not.toBeNull();
+    expect(keyB!.encryptedPrivateKey).toBe('envelope-b');
+    expect(keyB!.publicKey).toBe('PUBb');
+  });
+
+  it('removes the deleted source\'s Observer credentials and PKI key, and only those', async () => {
+    const agent = await harness.loginAs(harness.limited);
+    expect((await agent.delete(`/${harness.sourceA}`)).status).toBe(200);
+
+    expect(await databaseService.meshcoreObserverCredentials.getBySourceId(harness.sourceA)).toBeNull();
+    expect(await databaseService.sourcePkiKeys.getBySourceId(harness.sourceA)).toBeNull();
+
+    expect(await databaseService.meshcoreObserverCredentials.getBySourceId(harness.sourceB)).not.toBeNull();
+    expect(await databaseService.sourcePkiKeys.getBySourceId(harness.sourceB)).not.toBeNull();
+  });
+
+  it('a failed key purge does not fail the delete or skip the other purges', async () => {
+    const spy = vi
+      .spyOn(databaseService.meshcoreObserverKeys, 'deleteBySourceId')
+      .mockRejectedValueOnce(new Error('disk on fire'));
+    try {
+      const agent = await harness.loginAs(harness.limited);
+      const res = await agent.delete(`/${harness.sourceA}`);
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      expect(await databaseService.meshcoreObserverCredentials.getBySourceId(harness.sourceA)).toBeNull();
+      expect(await databaseService.sourcePkiKeys.getBySourceId(harness.sourceA)).toBeNull();
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it('a node purge on a live source keeps its keys', async () => {
+    // The reason this cleanup lives in the delete route and not in the purge
+    // helper: purging nodes is routine maintenance on a source that stays.
+    await databaseService.purgeAllNodesAsync(harness.sourceA);
+
+    expect(await databaseService.meshcoreObserverKeys.getBySourceId(harness.sourceA)).not.toBeNull();
+    expect(await databaseService.meshcoreObserverCredentials.getBySourceId(harness.sourceA)).not.toBeNull();
+    expect(await databaseService.sourcePkiKeys.getBySourceId(harness.sourceA)).not.toBeNull();
   });
 });
