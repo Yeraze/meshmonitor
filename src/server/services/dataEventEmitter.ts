@@ -89,11 +89,30 @@ export interface NodeUpdateOrigin {
 }
 
 /**
+ * MeshCore contact facts carried on node:discovered and meshcore:node:changed
+ * (#5595), so automation templates can render them. MeshCore has no node number,
+ * so `{{ node.* }}` hydration cannot supply these.
+ */
+export interface MeshCoreNodeEventFacts {
+  /** Advert type: 1 Companion, 2 Repeater, 3 Room Server, 4 Sensor; 0 unknown. */
+  advType?: number;
+  /**
+   * Relays the advert FRAME that caused this event crossed (0 = heard direct).
+   * Undefined when no raw advert frame caused it. Never the cached route length.
+   */
+  hops?: number;
+  /** Hop count of the cached forwarding route to the node; undefined = flood. */
+  routeHops?: number;
+  /** When this source last heard the node, epoch MILLISECONDS. */
+  lastHeard?: number;
+}
+
+/**
  * A node heard live for the first time on a source (#5534) — no row existed
  * for it there. Meshtastic sets `nodeNum`; MeshCore sets `publicKey` (and
  * `nodeNum: null`). Device NodeDB / contact-list syncs never raise this.
  */
-export interface NodeDiscoveredData {
+export interface NodeDiscoveredData extends MeshCoreNodeEventFacts {
   nodeNum: number | null;
   publicKey?: string;
   /** MeshCore display name, when known. */
@@ -107,7 +126,7 @@ export interface NodeDiscoveredData {
  * name, position, node type, or path. Re-adverts that change nothing never
  * raise this.
  */
-export interface MeshCoreNodeChangedData {
+export interface MeshCoreNodeChangedData extends MeshCoreNodeEventFacts {
   publicKey: string;
   name?: string;
   changed: string[];
@@ -284,6 +303,11 @@ class DataEventEmitter extends EventEmitter {
     const packetId = Number(data.packetId);
     if (Number.isFinite(packetId) && packetId !== 0) payload.packetId = packetId >>> 0;
     if (data.packetHash) payload.packetHash = data.packetHash;
+    // #5595 MeshCore contact facts. 0 is a real value for hops / routeHops.
+    if (data.advType != null) payload.advType = data.advType;
+    if (data.hops != null) payload.hops = data.hops;
+    if (data.routeHops != null) payload.routeHops = data.routeHops;
+    if (data.lastHeard != null) payload.lastHeard = data.lastHeard;
     this.emit('data', { type: 'node:discovered', data: payload, timestamp: Date.now(), sourceId } as DataEvent);
     logger.debug(`[DataEventEmitter] Node discovered: ${data.nodeNum ?? data.publicKey}`);
   }

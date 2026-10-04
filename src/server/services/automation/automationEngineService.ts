@@ -58,7 +58,7 @@ import {
 } from './triggerContext.js';
 import type { MeshCoreMessage } from '../../meshcoreManager.js';
 import type { ReticulumMessageRow } from '../../../db/repositories/reticulum.js';
-import type { NodeAircraftData, NodeUpdateOrigin } from '../dataEventEmitter.js';
+import type { MeshCoreNodeEventFacts, NodeAircraftData, NodeUpdateOrigin } from '../dataEventEmitter.js';
 import { scheduleCron, validateCron } from '../../utils/cronScheduler.js';
 import { haversineKm, geofenceFires, pointInShape, geofenceCenter, normalizeGeofenceParams, normalizeGeofenceAnchor, shapeFromWaypoint, type GeofenceMode, type GeofenceShape } from './geo.js';
 import { evaluateGraph, type EvaluatorHooks } from './graphEvaluator.js';
@@ -1018,11 +1018,12 @@ export class AutomationEngineService {
     sourceId: string | null,
     origin?: NodeUpdateOrigin,
     name?: string | null,
+    facts?: MeshCoreNodeEventFacts,
   ): Promise<number> {
     if (!publicKey) return 0;
     if (await this.isSelfMeshCore(sourceId, publicKey)) return 0;
     return this.runTrigger(
-      buildMeshCoreNodeContext(kind, publicKey, changedKeys, sourceId, this.now(), origin, name),
+      buildMeshCoreNodeContext(kind, publicKey, changedKeys, sourceId, this.now(), origin, name, facts),
     );
   }
 

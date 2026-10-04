@@ -1,5 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { validTokenSet, classifyToken, tokenize, diagnoseTokens } from './tokenHints';
+import { TRIGGER_TOKENS } from './SubstitutionsHelp';
+import { numericFields, stringFields } from './catalog';
 
 describe('validTokenSet', () => {
   it('includes NOW, the trigger tokens, universals, and known vars', () => {
@@ -93,6 +95,48 @@ describe('node trigger packet tokens (#5534)', () => {
       const set = validTokenSet(t, []);
       expect(set.has('trigger.packetId')).toBe(true);
       expect(set.has('trigger.packetHash')).toBe(true);
+    }
+  });
+});
+
+describe('MeshCore node trigger tokens (#5595)', () => {
+  const NODE_TRIGGERS = ['trigger.nodeUpdated', 'trigger.nodeDiscovered'];
+
+  it('offers roleName, hops, routeHops and lastHeard on both node triggers', () => {
+    for (const t of NODE_TRIGGERS) {
+      const set = validTokenSet(t, []);
+      for (const k of ['roleName', 'hops', 'routeHops', 'lastHeard', 'name', 'publicKey']) {
+        expect(set.has(`trigger.${k}`)).toBe(true);
+        expect(classifyToken(`trigger.${k}`, set)).toBe('ok');
+      }
+    }
+  });
+
+  it('has no trigger.shortName: MeshCore has no short name, so it reads as a typo', () => {
+    for (const t of NODE_TRIGGERS) {
+      const set = validTokenSet(t, []);
+      expect(set.has('trigger.shortName')).toBe(false);
+      expect(classifyToken('trigger.shortName', set)).toBe('bad');
+    }
+  });
+
+  it('the help text says MeshCore has no short name, and tells hops from routeHops', () => {
+    for (const t of NODE_TRIGGERS) {
+      const help = Object.fromEntries(TRIGGER_TOKENS[t]);
+      expect(help.name).toMatch(/no short name/i);
+      expect(help.hops).toMatch(/advert/i);
+      expect(help.routeHops).toMatch(/not the same as hops/i);
+      expect(help.lastHeard).toMatch(/epoch ms/i);
+      expect(help.roleName).toMatch(/Companion, Repeater, Room Server or Sensor/);
+    }
+  });
+
+  it('offers the MeshCore facts as condition fields on both node triggers', () => {
+    for (const t of NODE_TRIGGERS) {
+      const numeric = numericFields(t).flatMap((g) => g.options.map((o) => o.value));
+      const strings = stringFields(t).flatMap((g) => g.options.map((o) => o.value));
+      expect(numeric).toEqual(expect.arrayContaining(['nodeNum', 'hops', 'routeHops']));
+      expect(strings).toEqual(expect.arrayContaining(['roleName', 'name']));
     }
   });
 });

@@ -87,7 +87,12 @@ export default function AutomationTester({ getConfig, variables, sources }: Prop
           offerRegion: numOrUndef(ev.offerRegion), offerPreset: numOrUndef(ev.offerPreset) };
       case 'nodeUpdated':
       case 'nodeDiscovered':
-        return { ...base, nodeNum: numOrUndef(ev.nodeNum), changed: (ev.changed ?? '').split(',').map((s) => s.trim()).filter(Boolean) };
+        return { ...base, nodeNum: numOrUndef(ev.nodeNum), changed: (ev.changed ?? '').split(',').map((s) => s.trim()).filter(Boolean),
+          // #5595: a public key makes the dry run a MeshCore event.
+          ...(ev.publicKey ? {
+            publicKey: ev.publicKey, name: ev.name || undefined, advType: numOrUndef(ev.advType),
+            hops: numOrUndef(ev.hops), routeHops: numOrUndef(ev.routeHops), lastHeard: numOrUndef(ev.lastHeard),
+          } : {}) };
       case 'system':
         return { ...base, event: ev.event || undefined, latestVersion: ev.latestVersion || undefined, currentVersion: ev.currentVersion || undefined, reason: ev.reason || undefined };
       case 'geofence':
@@ -249,6 +254,15 @@ const TELEMETRY_METRIC_OPTIONS: Array<{ value: string; label: string }> = [
   { value: 'airUtilTx', label: 'Air util TX' },
 ];
 
+// #5595: MeshCore advert types for the node-trigger dry run.
+const MESHCORE_ROLE_OPTIONS = [
+  { value: '', label: 'Unknown' },
+  { value: '1', label: 'Companion' },
+  { value: '2', label: 'Repeater' },
+  { value: '3', label: 'Room Server' },
+  { value: '4', label: 'Sensor' },
+];
+
 function renderEventInputs(
   kind: string,
   ev: EventState,
@@ -296,7 +310,17 @@ function renderEventInputs(
       </>;
     case 'nodeUpdated':
     case 'nodeDiscovered':
-      return <>{f('Node #', 'nodeNum', 'number')}{f('Changed fields (csv)', 'changed')}</>;
+      return <>
+        {f('Node #', 'nodeNum', 'number')}{f('Changed fields (csv)', 'changed')}
+        {f('MeshCore public key', 'publicKey')}
+        {ev.publicKey ? <>
+          {f('Name', 'name')}
+          {sel('Role', 'advType', MESHCORE_ROLE_OPTIONS, '')}
+          {f('Advert hops', 'hops', 'number')}
+          {f('Stored route hops', 'routeHops', 'number')}
+          {f('Last heard (epoch ms)', 'lastHeard', 'number')}
+        </> : <div className="ae-muted" style={{ alignSelf: 'end' }}>Enter a public key to test a MeshCore node (name, role, hops, last heard).</div>}
+      </>;
     case 'system':
       return <>{sel('Event', 'event', SYSTEM_EVENT_OPTIONS, 'bootup')}{f('Latest version', 'latestVersion')}{f('Current version', 'currentVersion')}</>;
     case 'geofence':
