@@ -14,7 +14,7 @@ import { logger } from '../../utils/logger.js';
 import { PortNum, CHANNEL_DB_OFFSET } from '../constants/meshtastic.js';
 import { filterPacketsByPermissions, getAllowedChannels } from './packetPermissions.js';
 import { isAnyMeshCoreManager } from '../sourceManagerTypes.js';
-import { isAnyMeshCoreSourceType } from '../../utils/nodeTypeCategory.js';
+import { isAnyMeshCoreSourceType, isDeviceMeshCoreSourceType } from '../../utils/nodeTypeCategory.js';
 import {
   getUserReadableVirtualChannelIds,
   canReadVirtualChannel,
@@ -34,6 +34,13 @@ import type { DbMeshCorePacket } from '../../db/repositories/meshcore.js';
 import { resolveMeshcoreKeyAccess, filterKeyedMessages } from '../utils/meshcoreKeyAccess.js';
 import { keyedChannelNames } from '../utils/meshcoreKeyedChannels.js';
 import type { MeshCoreKeyAccessFilter } from '../../db/repositories/index.js';
+import { ALL_SOURCES } from '../../db/repositories/base.js';
+import { channelKeyFingerprint, pskToHex } from '../services/meshcoreFrameIngest.js';
+import {
+  clusterMeshCoreReceptions,
+  meshcoreChannelIndexOf,
+  type MeshCoreMergeItem,
+} from '../utils/meshcoreMessageMerge.js';
 import {
   resolveCrossSourceIndex,
   classifyMeshtasticReception,
@@ -235,6 +242,12 @@ router.get('/channels', async (req: Request, res: Response) => {
  * count, SNR, RSSI, rxTime). This lets the frontend compare reception quality
  * across the fleet while still rendering one bubble per message.
  *
+ * Meshtastic rows merge on the mesh packet id. MeshCore has none, so its rows
+ * merge on content: channel secret + sender + text + the wire sender
+ * timestamp, with a `createdAt` window between different sources as the
+ * fallback (#5587, `utils/meshcoreMessageMerge.ts`). Both merges see only rows
+ * that already passed this viewer's per-source checks.
+ *
  * Query params:
  *   ?channel=<name>   Filter by channel NAME (not number — sources may place
  *                     the same name on different slots). If omitted, returns
@@ -334,27 +347,55 @@ router.get('/messages', async (req: Request, res: Response) => {
     // headroom. Inflating fetchLimit here would only add per-poll fetch cost.
     const fetchLimit = limit * 2;
 
-    // MeshCore channel identity is index-keyed via the synthesised
-    // `channel-${idx}` pseudo-pubkey (see meshcoreManager / MeshCoreChannelsView).
-    // Returns the channel index a message belongs to, or null for a DM.
-    const meshcoreChannelIndex = (m: { fromPublicKey: string; toPublicKey?: string | null }): number | null => {
-      const probe = (s: string | null | undefined): number | null => {
-        if (s && s.startsWith('channel-')) {
-          const n = parseInt(s.slice('channel-'.length), 10);
-          return Number.isFinite(n) && n >= 0 ? n : null;
-        }
-        return null;
-      };
-      return probe(m.fromPublicKey) ?? probe(m.toPublicKey);
-    };
-
     // MeshCore messages live in `meshcore_messages` (not the Meshtastic
     // `messages` table), so they need their own fetch + mapping onto the unified
     // shape. MeshCore has no nodeNum (identity is a public key) and no mesh
-    // packet id, so we synthesise a per-source dedupKey and leave the numeric
-    // node fields at 0. Channel names resolve through the SAME channels table
-    // the Meshtastic path uses (MeshCore syncs its channels there), so the
-    // `/channels` picker already lists them.
+    // packet id, so the numeric node fields stay 0 and the cross-source
+    // dedupKey is derived from row content (#5587, see
+    // utils/meshcoreMessageMerge.ts). Channel names resolve through the SAME
+    // channels table the Meshtastic path uses (MeshCore syncs its channels
+    // there), so the `/channels` picker already lists them.
+    //
+    // Rows are only COLLECTED per source here, after that source's permission
+    // checks and the keyed-row gate; they are merged once every source is in.
+    // A row the viewer may not read never reaches the merge, so a merged entry
+    // cannot name a source the viewer cannot read.
+    type MeshCoreRow = Awaited<ReturnType<typeof databaseService.meshcore.getChannelMessages>>[number];
+    type MeshCoreItem = MeshCoreMergeItem<MeshCoreRow> & {
+      source: { id: string; name: string; type: string };
+      channelIdx: number | null;
+      channelName: string;
+    };
+    const meshcoreItems: MeshCoreItem[] = [];
+
+    // A channel's index differs per source (device slot, keyed bucket, MQTT),
+    // so two sources hold the same channel when they hold the same SECRET. The
+    // fingerprint of that secret is the cross-source channel identity.
+    const fingerprintOfPsk = (psk: unknown): string | null => {
+      const secretHex = typeof psk === 'string' ? pskToHex(psk) : null;
+      return secretHex ? channelKeyFingerprint(secretHex) : null;
+    };
+    // An MQTT ingest source owns no channel rows: it files a message under the
+    // slot of whichever source's key opened it, and does not record which
+    // source that was. The slot names a secret only when every source that
+    // uses that slot holds the same one. Read once, on first need.
+    let slotFingerprints: Promise<Map<number, Set<string>>> | null = null;
+    const loadSlotFingerprints = async (): Promise<Map<number, Set<string>>> => {
+      const out = new Map<number, Set<string>>();
+      try {
+        for (const c of (await databaseService.channels.getAllChannels(ALL_SOURCES)) ?? []) {
+          const fp = fingerprintOfPsk(c.psk);
+          if (!fp) continue;
+          const idx = Number(c.id);
+          const set = out.get(idx) ?? new Set<string>();
+          set.add(fp);
+          out.set(idx, set);
+        }
+      } catch (err) {
+        logger.debug('Failed to read channel keys for MeshCore merge:', err);
+      }
+      return out;
+    };
     // #5551: repeater-decrypted channel rows are gated on access to their key.
     let meshcoreKeyAccess: Promise<MeshCoreKeyAccessFilter> | null = null;
     const ingestMeshCore = async (source: { id: string; name: string; type: string }): Promise<void> => {
@@ -375,6 +416,11 @@ router.get('/messages', async (req: Request, res: Response) => {
       for (const c of chans) {
         const nm = unifiedChannelDisplayName(c as any, presetName);
         if (nm) nameByIdx.set((c as any).id as number, nm);
+      }
+      const fingerprintBySlot = new Map<number, string>();
+      for (const c of chans) {
+        const fp = fingerprintOfPsk(c.psk);
+        if (fp) fingerprintBySlot.set(Number(c.id), fp);
       }
       // Keyed channels (#5551) have no slot on this source; name them from
       // the channel that holds their key.
@@ -413,42 +459,23 @@ router.get('/messages', async (req: Request, res: Response) => {
       rows = filterKeyedMessages(rows, await meshcoreKeyAccess);
 
       for (const m of rows) {
-        if (before !== undefined && !(m.createdAt < before)) continue;
-        const idx = meshcoreChannelIndex(m);
-        const reception: Reception = {
+        const idx = meshcoreChannelIndexOf(m);
+        let channelIdentity: string | null = null;
+        if (idx !== null) {
+          channelIdentity = m.keyFingerprint ?? fingerprintBySlot.get(idx) ?? null;
+          if (!channelIdentity && !isDeviceMeshCoreSourceType(source.type)) {
+            slotFingerprints ??= loadSlotFingerprints();
+            const candidates = (await slotFingerprints).get(idx);
+            if (candidates?.size === 1) channelIdentity = [...candidates][0];
+          }
+        }
+        meshcoreItems.push({
+          row: m,
           sourceId: source.id,
-          sourceName: source.name,
-          sourceType: source.type,
-          hopStart: null,
-          hopLimit: null,
-          hopCount: m.hopCount ?? null,
-          rxSnr: m.snr ?? null,
-          rxRssi: m.rssi ?? null,
-          rxTime: null,
-          timestamp: m.timestamp,
-          // MeshCore has no XEdDSA packet signing concept.
-          xeddsaSigned: null,
-        };
-        // MeshCore ids are unique within a source; we don't cross-source-dedup
-        // MeshCore (each radio is a distinct receiver), so key by source + id.
-        merged.set(`mc:${source.id}:${m.id}`, {
-          dedupKey: `mc:${source.id}:${m.id}`,
-          packetId: null,
-          requestId: null,
-          fromNodeNum: 0,
-          fromNodeId: m.fromPublicKey,
-          fromNodeLongName: m.fromName ?? undefined,
-          fromNodeShortName: undefined,
-          toNodeNum: 0,
-          toNodeId: m.toPublicKey ?? '',
-          channel: idx ?? -1,
+          channelIdentity,
+          source,
+          channelIdx: idx,
           channelName: idx != null ? (nameByIdx.get(idx) ?? channelName) : '',
-          text: m.text ?? '',
-          emoji: null,
-          replyId: null,
-          timestamp: m.timestamp,
-          createdAt: m.createdAt,
-          receptions: [reception],
         });
       }
     };
@@ -715,6 +742,52 @@ router.get('/messages', async (req: Request, res: Response) => {
         }
       })
     );
+
+    // MeshCore: one entry per logical message, one reception per source that
+    // heard it (#5587). The `before` cursor applies to the ENTRY's createdAt
+    // (its earliest reception), not to each row: filtering rows first would
+    // strip the later receptions off a message that straddles the cursor.
+    // Keys cannot collide with Meshtastic entries in `merged`: those start
+    // with a node number, these with `mc:` / `mcx:`.
+    for (const cluster of clusterMeshCoreReceptions(meshcoreItems)) {
+      const first = cluster.members[0];
+      const m = first.row;
+      if (before !== undefined && !(m.createdAt < before)) continue;
+      merged.set(cluster.dedupKey, {
+        dedupKey: cluster.dedupKey,
+        packetId: null,
+        requestId: null,
+        fromNodeNum: 0,
+        fromNodeId: m.fromPublicKey,
+        // The sender name and channel label come from the first reception
+        // that has one: a keyed channel can be unnamed on one source.
+        fromNodeLongName: cluster.members.find((x) => x.row.fromName)?.row.fromName ?? undefined,
+        fromNodeShortName: undefined,
+        toNodeNum: 0,
+        toNodeId: m.toPublicKey ?? '',
+        channel: first.channelIdx ?? -1,
+        channelName: cluster.members.find((x) => x.channelName)?.channelName ?? '',
+        text: m.text ?? '',
+        emoji: null,
+        replyId: null,
+        timestamp: m.timestamp,
+        createdAt: m.createdAt,
+        receptions: cluster.members.map((x): Reception => ({
+          sourceId: x.source.id,
+          sourceName: x.source.name,
+          sourceType: x.source.type,
+          hopStart: null,
+          hopLimit: null,
+          hopCount: x.row.hopCount ?? null,
+          rxSnr: x.row.snr ?? null,
+          rxRssi: x.row.rssi ?? null,
+          rxTime: null,
+          timestamp: x.row.timestamp,
+          // MeshCore has no XEdDSA packet signing concept.
+          xeddsaSigned: null,
+        })),
+      });
+    }
 
     // Sort receptions within each merged entry so the frontend modal renders
     // them in a stable order (earliest-heard first).

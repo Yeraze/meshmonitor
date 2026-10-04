@@ -72,4 +72,20 @@ describe('foldUnifiedMessagePages', () => {
   it('keeps a generous default cap', () => {
     expect(DEFAULT_ACCUMULATOR_CAP).toBeGreaterThanOrEqual(2000);
   });
+  // #5587: a MeshCore message heard by a second source after the first was
+  // already on screen. The server keeps the dedupKey, so the fold replaces the
+  // shown entry in place: one row, now with both receptions, same position.
+  it('upgrades a shown row in place when a second reception arrives on a later poll', () => {
+    const acc = new Map<string, Msg>();
+
+    const first = foldUnifiedMessagePages(acc, [[msg('mcx:abc', 100, 1), msg('other', 90)]]);
+    expect(first.map((m) => m.dedupKey)).toEqual(['other', 'mcx:abc']);
+
+    // Same key, same createdAt (the earliest reception), one more reception.
+    const second = foldUnifiedMessagePages(acc, [[msg('newer', 110), msg('mcx:abc', 100, 2), msg('other', 90)]]);
+    expect(second.map((m) => m.dedupKey)).toEqual(['other', 'mcx:abc', 'newer']);
+    expect(second.filter((m) => m.dedupKey === 'mcx:abc')).toHaveLength(1);
+    expect(second.find((m) => m.dedupKey === 'mcx:abc')?.receptions).toBe(2);
+    expect(acc.size).toBe(3);
+  });
 });
