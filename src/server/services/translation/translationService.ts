@@ -16,13 +16,24 @@ import { getTranslationCache } from './translationCache.js';
 import { computeTranslationCacheKey, normalizeTargetLang } from './cacheKey.js';
 import { logger } from '../../../utils/logger.js';
 import { STANDARD_LANGUAGES, type TranslationLanguageOption } from '../../../types/translation.js';
+import type { TranslationProvider } from '../../../types/translation.js';
+import {
+  DEFAULT_TRANSLATION_PROVIDER,
+  buildTranslationProviderConfig,
+  getTranslationProviderFields,
+  isTranslationProvider,
+  missingRequiredTranslationFields,
+  TranslationConfigError,
+  type TranslationProviderSettingKey,
+} from '../../../types/translationProviders.js';
 import {
   getTranslationProvider,
   buildServiceEndpoint,
   type ProviderConfig,
 } from './providers/index.js';
 
-export type TranslationProvider = 'libretranslate' | 'openai' | 'deepl' | 'google';
+export type { TranslationProvider };
+export { TranslationConfigError };
 
 export interface TranslationRequest {
   text: string;
@@ -52,13 +63,13 @@ export interface TranslateMessageRequest {
   sourceLang?: string;
 }
 
-export interface TestTranslationConfig {
+/**
+ * A test-connection request. The provider fields are the tested provider's
+ * `configKey`s; a field left `undefined` falls back to that provider's STORED
+ * setting, and a field sent as a string (even blank) is used as sent.
+ */
+export interface TestTranslationConfig extends ProviderConfig {
   provider: TranslationProvider;
-  url?: string;
-  deeplUrl?: string;
-  apiKey?: string;
-  model?: string;
-  openAiBaseUrl?: string;
   sourceLanguage?: string;
   targetLanguage?: string;
   text?: string;
@@ -122,28 +133,32 @@ export class TranslationService {
   async getSettings() {
     const enabledRaw = await databaseService.getSettingAsync('translationEnabled');
     const enabled = enabledRaw === 'true' || enabledRaw === '1';
-    const provider = ((await databaseService.getSettingAsync('translationProvider')) as TranslationProvider) || 'libretranslate';
-    const url = (await databaseService.getSettingAsync('translationUrl')) || '';
-    const deeplUrl = (await databaseService.getSettingAsync('translationDeeplUrl')) || '';
-    const apiKey = (await databaseService.getSettingAsync('translationApiKey')) || '';
-    const model = (await databaseService.getSettingAsync('translationModel')) || '';
-    const openAiBaseUrl = (await databaseService.getSettingAsync('translationOpenAiBaseUrl')) || '';
+    const storedProvider = await databaseService.getSettingAsync('translationProvider');
+    const provider = isTranslationProvider(storedProvider) ? storedProvider : DEFAULT_TRANSLATION_PROVIDER;
     const defaultLanguage = (await databaseService.getSettingAsync('translationDefaultLanguage')) || 'en';
     const defaultOutgoingLanguage = (await databaseService.getSettingAsync('translationDefaultOutgoingLanguage')) || 'ja';
 
     return {
       enabled,
       provider,
-      url,
-      deeplUrl,
-      apiKey,
-      model,
-      openAiBaseUrl,
       targetLanguage: defaultLanguage,
       defaultOutgoingLanguage,
       sourceLanguage: 'auto',
       autoIncoming: false,
     };
+  }
+
+  /**
+   * The stored config of ONE provider. Reads that provider's own settings
+   * keys and nothing else, so a key saved for one provider is never handed to
+   * another (#5518).
+   */
+  async getStoredProviderConfig(provider: TranslationProvider): Promise<ProviderConfig> {
+    const stored = new Map<TranslationProviderSettingKey, string>();
+    for (const field of getTranslationProviderFields(provider)) {
+      stored.set(field.settingKey, (await databaseService.getSettingAsync(field.settingKey)) || '');
+    }
+    return buildTranslationProviderConfig(provider, (key) => stored.get(key));
   }
 
   /**
@@ -196,7 +211,7 @@ export class TranslationService {
     // Determine target language, source language, and provider strictly from settings / request
     const targetLang = (request.targetLang || settings.targetLanguage || 'en').trim();
     const sourceLang = (request.sourceLang || 'auto').trim();
-    const provider = (settings.provider || 'libretranslate') as TranslationProvider;
+    const provider = settings.provider;
 
     const useCache = options.useCache === true;
     const cache = getTranslationCache();
@@ -225,13 +240,7 @@ export class TranslationService {
       };
     }
 
-    const providerConfig: ProviderConfig = {
-      url: settings.url,
-      deeplUrl: settings.deeplUrl,
-      apiKey: settings.apiKey,
-      model: settings.model,
-      openAiBaseUrl: settings.openAiBaseUrl,
-    };
+    const providerConfig = await this.getStoredProviderConfig(provider);
 
     const result = await this.executeTranslation(text, sourceLang, targetLang, provider, providerConfig);
 
@@ -299,13 +308,20 @@ export class TranslationService {
     const sourceLang = (config.sourceLanguage || 'en').trim();
     const targetLang = (config.targetLanguage || 'es').trim();
 
-    const providerConfig: ProviderConfig = {
-      url: config.url,
-      deeplUrl: config.deeplUrl,
-      apiKey: config.apiKey,
-      model: config.model,
-      openAiBaseUrl: config.openAiBaseUrl,
-    };
+    if (!isTranslationProvider(config.provider)) {
+      throw new Error(`Unsupported translation provider: ${String(config.provider)}`);
+    }
+
+    // Only the tested provider's own fields are read — from the request when
+    // sent, else from that provider's stored settings. A field that belongs
+    // to another provider is ignored even if the caller sends it.
+    const stored = await this.getStoredProviderConfig(config.provider);
+    const providerConfig: ProviderConfig = {};
+    for (const field of getTranslationProviderFields(config.provider)) {
+      const sent = config[field.configKey];
+      const value = typeof sent === 'string' ? sent : stored[field.configKey];
+      if (typeof value === 'string') providerConfig[field.configKey] = value;
+    }
 
     return this.executeTranslation(testText, sourceLang, targetLang, config.provider, providerConfig);
   }
@@ -320,6 +336,12 @@ export class TranslationService {
     provider: TranslationProvider,
     providerConfig: ProviderConfig
   ): Promise<TranslationResult> {
+    // Reject an incomplete config before any request is sent (#5518).
+    const missing = missingRequiredTranslationFields(provider, providerConfig);
+    if (missing.length > 0) {
+      throw new TranslationConfigError(provider, missing.map((field) => field.settingKey));
+    }
+
     const providerInstance = getTranslationProvider(provider);
     const result = await providerInstance.translate(text, sourceLang, targetLang, providerConfig);
 
@@ -338,5 +360,3 @@ export class TranslationService {
 
 export const translationService = new TranslationService();
 export default translationService;
-
-

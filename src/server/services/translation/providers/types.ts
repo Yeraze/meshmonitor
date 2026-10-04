@@ -1,12 +1,14 @@
 import type { TranslationProvider } from '../../../../types/translation.js';
 
-export interface ProviderConfig {
-  url?: string;
-  deeplUrl?: string;
-  apiKey?: string;
-  model?: string;
-  openAiBaseUrl?: string;
-}
+import type { TranslationProviderConfig } from '../../../../types/translationProviders.js';
+
+/**
+ * What a provider's `translate()` receives. Its keys are the `configKey`s the
+ * provider descriptors declare (`src/types/translationProviders.ts`, #5518),
+ * and the service fills it from the ACTIVE provider's fields only — `apiKey`
+ * is always that provider's own key.
+ */
+export type ProviderConfig = TranslationProviderConfig;
 
 export interface TranslationProviderResult {
   /** The translated message text. */

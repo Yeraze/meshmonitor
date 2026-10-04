@@ -37,7 +37,7 @@ For most users, **DeepL API Free** provides the best balance of speed, translati
 4. Check **Enable Message Translation**.
 5. Select **DeepL API (Free / Pro)** from the **Translation Provider** dropdown.
 6. Paste your authentication key into the **DeepL Auth Key** field.
-7. Leave **API URL** blank.
+7. Leave **Custom DeepL Base URL** blank.
 8. Click **Test Connection** to verify connectivity.
 9. Click **Save Changes** in the bottom save bar.
 
@@ -57,7 +57,7 @@ MeshMonitor supports **OpenAI** and OpenAI-compatible providers (such as [OpenRo
 2. Generate an API secret key from the [OpenAI API Keys Dashboard](https://platform.openai.com/api-keys). For full API details and rate limits, consult the [OpenAI API Documentation](https://platform.openai.com/docs).
 3. In MeshMonitor under **Settings** → **Message Translation**:
    - Set **Translation Provider** to `OpenAI-Compatible (Ollama, OpenRouter, OpenAI, vLLM)`.
-   - Set **OpenAI URL** to `https://api.openai.com/v1/chat/completions`.
+   - Set **OpenAI API Base URL** to `https://api.openai.com/v1`.
    - Set **Model Name** to `gpt-4o-mini` (or `gpt-4o`).
    - Paste your key (`sk-...`) into the **API Key** field.
 4. Click **Test Connection** and then **Save Changes**.
@@ -97,9 +97,33 @@ ollama run llama3.2
 
 In MeshMonitor:
 - Set **Translation Provider** to `OpenAI-Compatible (Ollama, OpenRouter, OpenAI, vLLM)`.
-- Set **OpenAI Base URL** to `http://host.docker.internal:11434/v1` (or leave blank to use the default `http://host.docker.internal:11434/v1/chat/completions`).
+- Set **OpenAI API Base URL** to `http://host.docker.internal:11434/v1` (or leave blank to use the default `http://host.docker.internal:11434/v1/chat/completions`).
 - Set **Model Name** to your desired model (e.g. `llama3.2`, `qwen2.5`, or `mistral`).
 - Leave the API key blank for local Ollama instances.
+
+---
+
+## Provider Settings and API Keys
+
+Each provider has its own settings, and **its own API key**. The settings page shows only the fields of the provider you select:
+
+| Provider | Fields | Required |
+| :--- | :--- | :--- |
+| **LibreTranslate** | LibreTranslate URL, API key | Neither (blank URL uses `http://libretranslate:5000`) |
+| **OpenAI-Compatible** | Base URL, model name, API key | None (blank URL uses local Ollama, blank model uses `gpt-4o-mini`) |
+| **DeepL API** | Auth key, custom base URL | **Auth key** |
+| **Google Cloud Translation** | API key | **API key** |
+
+- A key is sent only to the provider it was entered for. Switching provider never reuses another provider's key: a DeepL key is not sent to your OpenAI-compatible URL.
+- Keys you entered for other providers stay stored. Switch back and the key is still there.
+- A provider with a required key cannot be tested or used without one. **Test Connection** reports the missing field without calling the provider.
+- **Test Connection** tests the values on screen, saved or not.
+
+::: warning Upgrading from a version with one shared API key
+Earlier versions stored one API key shared by every provider. On upgrade, MeshMonitor moves that key to the provider that is **selected at the time of the upgrade**. The other providers start with a blank key.
+
+If you used the same key field with more than one provider, select each of the other providers and enter its key again. The old shared key is removed from the database. A backup taken before the upgrade is converted the same way: restore it, then restart MeshMonitor.
+:::
 
 ---
 
@@ -149,7 +173,8 @@ LoRa packet payloads are typically constrained to approximately **200 to 220 UTF
 
 - **Authentication & Permission Gating**: Translation endpoints (`POST /api/translate` and `POST /api/v1/translate`) require an authenticated user with `messages:read` permission. Unauthenticated visitors or users lacking message permissions cannot access translation endpoints, and translation action buttons are hidden in the UI.
 - **Dedicated Rate Limiting**: Translation endpoints are protected by a dedicated user/IP rate limiter (`RATE_LIMIT_TRANSLATE`, defaulting to 30 requests/minute in production and 120 in development) to defend provider API quota against automated loops and excessive usage.
-- **Secret Masking**: Sensitive translation API keys and authentication tokens are stored securely server-side and automatically stripped from `GET /api/settings` for non-admin viewers.
+- **Secret Masking**: Each provider's API key is stored server-side under its own setting and stripped from `GET /api/settings` for non-admin viewers. A settings save by a non-admin never changes a key. The connection test never returns a key.
+- **One Key per Provider**: A provider receives only its own key and URL. See [Provider Settings and API Keys](#provider-settings-and-api-keys).
 - **Admin Gating**: Connection testing (`POST /api/translate/test`) requires administrative privileges (`requireAdmin()`).
 - **Telemetry Filtering**: Raw telemetry packets, system status logs, emojis, and standard radio pings (`ack`, `ping`, `test`, `73`) are automatically detected and filtered out to prevent unnecessary API queries and costs.
 - **Payload Limits**: Inbound translation requests enforce a maximum character limit of 5,000 characters and include automatic request timeouts.
