@@ -1398,9 +1398,11 @@ Send a test Web Push notification (admin only).
 
 #### GET /api/push/preferences
 
-Get current user's notification preferences.
+Get the current user's notification preferences for one source.
 
 **Authentication:** Required
+
+**Query:** `sourceId` — the source to read. Preferences are saved per source. A source with nothing saved answers with the built-in defaults and `usingDefaults: true`; it never answers with another source's settings. Without `sourceId` the reply is the user's unsourced row, or the defaults.
 
 **Response:**
 ```json
@@ -1410,13 +1412,17 @@ Get current user's notification preferences.
   "enabledChannels": [0, 1, 2],
   "enableDirectMessages": true,
   "whitelist": ["Help", "Emergency"],
-  "blacklist": ["Test", "Copy"]
+  "blacklist": ["Test", "Copy"],
+  "usingDefaults": false,
+  "sourceFallback": false
 }
 ```
 
+`sourceFallback` is `true` when the mute lists were carried from the user's legacy unsourced row (Meshtastic sources only).
+
 #### POST /api/push/preferences
 
-Update notification preferences.
+Update notification preferences for one source (`sourceId` in the body). A partial update: only the fields sent change. The first save for a source creates its row from the built-in defaults plus the fields sent.
 
 **Authentication:** Required
 
