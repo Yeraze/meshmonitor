@@ -44,7 +44,7 @@ describe('translateUtils', () => {
       expect(buildServiceEndpoint('http://localhost:5000', 'default', 'translate')).toBe('http://localhost:5000/translate');
     });
 
-    it('should append versionSubpath when URL path is a single version segment', () => {
+    it('should append versionSubpath when URL path ends in a version segment', () => {
       // OpenAI /v1 -> /v1/chat/completions
       expect(buildServiceEndpoint('http://host.docker.internal:11434/v1', 'default', '/v1/chat/completions', '/chat/completions')).toBe('http://host.docker.internal:11434/v1/chat/completions');
       expect(buildServiceEndpoint('https://api.openai.com/v1/', 'default', '/v1/chat/completions', '/chat/completions')).toBe('https://api.openai.com/v1/chat/completions');
@@ -56,9 +56,22 @@ describe('translateUtils', () => {
       expect(buildServiceEndpoint('https://api.deepl.com/v2', 'default', '/v2/translate', '/translate')).toBe('https://api.deepl.com/v2/translate');
       expect(buildServiceEndpoint('https://my-proxy:8080/v2/', 'default', '/v2/translate', '/translate')).toBe('https://my-proxy:8080/v2/translate');
       expect(buildServiceEndpoint('https://my-proxy:8080/v1', 'default', '/v2/translate', '/translate')).toBe('https://my-proxy:8080/v1/translate');
+
+      // A prefix before the version is still a base URL (OpenRouter, Groq, reverse proxies)
+      expect(buildServiceEndpoint('https://openrouter.ai/api/v1', 'default', '/v1/chat/completions', '/chat/completions')).toBe('https://openrouter.ai/api/v1/chat/completions');
+      expect(buildServiceEndpoint('https://api.groq.com/openai/v1', 'default', '/v1/chat/completions', '/chat/completions')).toBe('https://api.groq.com/openai/v1/chat/completions');
+      expect(buildServiceEndpoint('https://custom.proxy/api/v1/', 'default', '/v1/chat/completions', '/chat/completions')).toBe('https://custom.proxy/api/v1/chat/completions');
+      expect(buildServiceEndpoint('https://my-proxy:8080/deepl/v2', 'default', '/v2/translate', '/translate')).toBe('https://my-proxy:8080/deepl/v2/translate');
     });
 
-    it('should preserve single version segment verbatim when versionSubpath is omitted', () => {
+    it('should not treat a version segment in the middle of the path, or a look-alike, as a base', () => {
+      expect(buildServiceEndpoint('https://custom.proxy/v1/custom-translate', 'default', '/v1/chat/completions', '/chat/completions')).toBe('https://custom.proxy/v1/custom-translate');
+      expect(buildServiceEndpoint('https://custom.proxy/api/v1beta/openai', 'default', '/v1/chat/completions', '/chat/completions')).toBe('https://custom.proxy/api/v1beta/openai');
+      expect(buildServiceEndpoint('https://custom.proxy/dev1', 'default', '/v1/chat/completions', '/chat/completions')).toBe('https://custom.proxy/dev1');
+      expect(buildServiceEndpoint('https://custom.proxy/api/version', 'default', '/v1/chat/completions', '/chat/completions')).toBe('https://custom.proxy/api/version');
+    });
+
+    it('should preserve a trailing version segment verbatim when versionSubpath is omitted', () => {
       expect(buildServiceEndpoint('http://localhost:5000/v1', 'default', '/translate')).toBe('http://localhost:5000/v1');
       expect(buildServiceEndpoint('http://localhost:5000/v1/', 'default', '/translate')).toBe('http://localhost:5000/v1');
     });
@@ -67,18 +80,17 @@ describe('translateUtils', () => {
       expect(buildServiceEndpoint('localhost:5000', 'not-a-valid-url', '/translate')).toBe('https://localhost:5000/translate');
     });
 
-    it('should use URL with a path beyond a single version segment verbatim', () => {
+    it('should use a URL whose path does not end in a version segment verbatim', () => {
       expect(buildServiceEndpoint('http://localhost:5000/translate', 'default', '/translate')).toBe('http://localhost:5000/translate');
       expect(buildServiceEndpoint('http://proxy.internal/my-service/v1', 'default', '/translate')).toBe('http://proxy.internal/my-service/v1');
       expect(buildServiceEndpoint('https://api.deepl.com/v2/translate', 'default', '/v2/translate', '/translate')).toBe('https://api.deepl.com/v2/translate');
       expect(buildServiceEndpoint('http://host.docker.internal:11434/v1/chat/completions', 'default', '/v1/chat/completions', '/chat/completions')).toBe('http://host.docker.internal:11434/v1/chat/completions');
-      expect(buildServiceEndpoint('https://custom.proxy/api/v1', 'default', '/v1/chat/completions', '/chat/completions')).toBe('https://custom.proxy/api/v1');
     });
 
     it('should strip trailing slash from path beyond origin', () => {
       expect(buildServiceEndpoint('http://localhost:5000/translate/', 'default', '/translate')).toBe('http://localhost:5000/translate');
       expect(buildServiceEndpoint('https://proxy.internal/custom/v1/', 'default', '/chat/completions')).toBe('https://proxy.internal/custom/v1');
-      expect(buildServiceEndpoint('https://proxy.internal/api/v1/', 'default', '/v1/chat/completions', '/chat/completions')).toBe('https://proxy.internal/api/v1');
+      expect(buildServiceEndpoint('https://proxy.internal/api/translate/', 'default', '/v1/chat/completions', '/chat/completions')).toBe('https://proxy.internal/api/translate');
     });
 
     it('should preserve query parameters and hashes if present', () => {

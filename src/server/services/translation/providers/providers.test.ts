@@ -497,11 +497,21 @@ describe('Translation Providers', () => {
       );
 
       await provider.translate('Hello world', 'en', 'nb', {
-        openAiBaseUrl: 'https://custom.proxy/api/v1',
+        openAiBaseUrl: 'https://custom.proxy/api/custom-endpoint',
         model: 'custom-model',
       });
       expect(global.fetch).toHaveBeenCalledWith(
-        'https://custom.proxy/api/v1',
+        'https://custom.proxy/api/custom-endpoint',
+        expect.any(Object)
+      );
+
+      // A base URL with a prefix before the version (OpenRouter) still gets the subpath
+      await provider.translate('Hello world', 'en', 'nb', {
+        openAiBaseUrl: 'https://openrouter.ai/api/v1',
+        model: 'custom-model',
+      });
+      expect(global.fetch).toHaveBeenCalledWith(
+        'https://openrouter.ai/api/v1/chat/completions',
         expect.any(Object)
       );
     });

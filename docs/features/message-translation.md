@@ -109,8 +109,8 @@ When configuring custom service URLs for LibreTranslate, OpenAI-compatible backe
 
 - **Leave Blank**: Uses the provider's default endpoint.
 - **Bare Origin** (e.g. `http://localhost:5000` or `http://localhost:11434`): The provider's standard default path (such as `/translate`, `/v1/chat/completions`, or `/v2/translate`) is automatically appended.
-- **Version Base Path** (e.g. `http://host.docker.internal:11434/v1` or `https://api.deepl.com/v2`): Automatically appends the required subpath (`/chat/completions` or `/translate`).
-- **Full Endpoint / Custom Path** (e.g. `https://my-proxy.internal/v1/custom-translate` or `https://api.openai.com/v1/chat/completions`): Used verbatim as the full request destination.
+- **Version Base Path** (a path that ends in a version, e.g. `http://host.docker.internal:11434/v1`, `https://openrouter.ai/api/v1`, `https://api.groq.com/openai/v1` or `https://api.deepl.com/v2`): Automatically appends the required subpath (`/chat/completions` or `/translate`).
+- **Full Endpoint / Custom Path** (any other path, e.g. `https://my-proxy.internal/v1/custom-translate` or `https://api.openai.com/v1/chat/completions`): Used verbatim as the full request destination. A base URL that does not end in a version (such as Gemini's `.../v1beta/openai`) must be entered as the full endpoint, ending in `/chat/completions`.
 - **No Protocol Specified** (e.g. `localhost:5000`): Automatically adopts the default protocol (`http://` or `https://`) for that provider.
 
 ---
