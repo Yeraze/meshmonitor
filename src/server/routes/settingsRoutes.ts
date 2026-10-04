@@ -22,6 +22,7 @@ import { invalidateCoverageMqttEnabled } from '../services/coverageMqttSettings.
 import { invalidateSignFlipContext, SIGN_FLIP_SETTING_KEYS } from '../services/signFlipCorrection.js';
 import { COVERAGE_MQTT_ENABLED_SETTING } from '../../utils/coverage.js';
 import { VALID_SETTINGS_KEYS, GLOBAL_ONLY_SETTINGS_KEYS, stripSecretSettings, isSecretSettingKey } from '../constants/settings.js';
+import { TRANSLATION_PROVIDER_URL_SETTING_KEYS } from '../../types/translationProviders.js';
 import { ok, fail } from '../utils/apiResponse.js';
 import { resolveOwnMeshtasticManager } from '../utils/resolveSourceManager.js';
 import { validateFilterNameRegexOnSave } from '../utils/filterNameRegex.js';
@@ -1013,7 +1014,8 @@ router.post('/', requirePermission('settings', 'write', { sourceIdFrom: 'query' 
     }
 
     // Validate translation endpoint URLs on save
-    for (const key of ['translationUrl', 'translationOpenAiBaseUrl', 'translationDeeplUrl'] as const) {
+    // (every `kind: 'url'` field in the provider descriptors, #5518)
+    for (const key of TRANSLATION_PROVIDER_URL_SETTING_KEYS) {
       if (key in filteredSettings) {
         const raw = (filteredSettings[key] || '').trim();
         if (raw.length > 0) {

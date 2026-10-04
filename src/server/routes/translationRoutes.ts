@@ -11,7 +11,16 @@
  * and every read is rate limited without a second limiter here.
  */
 import express from 'express';
-import { translationService, STANDARD_LANGUAGES, type TranslationProvider } from '../services/translation/translationService.js';
+import {
+  translationService,
+  STANDARD_LANGUAGES,
+  type TestTranslationConfig,
+} from '../services/translation/translationService.js';
+import {
+  TranslationConfigError,
+  getTranslationProviderFields,
+  isTranslationProvider,
+} from '../../types/translationProviders.js';
 import { isValidLangCode, normalizeTargetLang } from '../services/translation/cacheKey.js';
 import databaseService from '../../services/database.js';
 import type { DbMessage } from '../../db/types.js';
@@ -191,26 +200,49 @@ router.get('/stored', async (req, res) => {
  */
 router.post('/test', requireAdmin(), translateLimiter, async (req, res) => {
   try {
-    const { provider, url, deeplUrl, apiKey, model, openAiBaseUrl, sourceLanguage, targetLanguage } = req.body || {};
+    const body: Record<string, unknown> = req.body && typeof req.body === 'object' ? req.body : {};
+    const { provider, sourceLanguage, targetLanguage } = body;
 
     if (!provider || typeof provider !== 'string') {
       return fail(res, 400, 'INVALID_INPUT', 'provider is required');
     }
+    if (!isTranslationProvider(provider)) {
+      return fail(res, 400, 'INVALID_INPUT', 'provider is not a supported translation provider');
+    }
+    for (const key of ['sourceLanguage', 'targetLanguage'] as const) {
+      if (body[key] !== undefined && typeof body[key] !== 'string') {
+        return fail(res, 400, 'INVALID_INPUT', `${key} must be a string`);
+      }
+    }
 
-    const result = await translationService.testConfig({
-      provider: provider as TranslationProvider,
-      url,
-      deeplUrl,
-      apiKey,
-      model,
-      openAiBaseUrl,
-      sourceLanguage,
-      targetLanguage,
-    });
+    // Take ONLY the tested provider's own fields from the request (#5518). A
+    // field the request omits falls back to that provider's stored setting
+    // inside testConfig; a key that belongs to another provider is dropped.
+    const config: TestTranslationConfig = {
+      provider,
+      sourceLanguage: sourceLanguage as string | undefined,
+      targetLanguage: targetLanguage as string | undefined,
+    };
+    for (const field of getTranslationProviderFields(provider)) {
+      const value = body[field.configKey];
+      if (value === undefined || value === null) continue;
+      if (typeof value !== 'string') {
+        return fail(res, 400, 'INVALID_INPUT', `${field.configKey} must be a string`);
+      }
+      config[field.configKey] = value;
+    }
+
+    // The result carries the translated sample only — never the config.
+    const result = await translationService.testConfig(config);
 
     return ok(res, result);
 
   } catch (error: unknown) {
+    if (error instanceof TranslationConfigError) {
+      return fail(res, 400, 'TRANSLATION_CONFIG_INCOMPLETE', error.message, {
+        missingFields: error.missingFields,
+      });
+    }
     const message = error instanceof Error ? error.message : String(error);
     logger.error('Translation test error:', error);
     return fail(res, 400, 'TRANSLATION_TEST_FAILED', message || 'Failed to test translation backend');
