@@ -27,6 +27,9 @@
 export const FRAME_APP_TO_NODE = 0x3c; // "<" — frames the app sends us
 export const FRAME_NODE_TO_APP = 0x3e; // ">" — frames we send the app
 
+import { parsePathHops } from '../utils/meshcorePath.js';
+import { encodeOutPathLen, OUT_PATH_UNKNOWN } from './meshcoreNativeBackend.js';
+
 /** Companion protocol version this virtual node speaks (meshcore.js v1.13.0). */
 export const SUPPORTED_COMPANION_PROTOCOL_VERSION = 1;
 
@@ -416,7 +419,11 @@ export interface AddUpdateContactCmd {
   publicKey: string;
   type: number;
   flags: number;
-  /** Signed: -1 (0xff) is OUT_PATH_UNKNOWN. */
+  /**
+   * The packed `out_path_len` byte, read SIGNED as meshcore.js does: -1 (0xff)
+   * is OUT_PATH_UNKNOWN, and any 3-byte-hash path is negative too. Mask with
+   * `& 0xff` before comparing or decoding.
+   */
   outPathLen: number;
   outPath: Buffer;
   advName: string;
@@ -667,12 +674,56 @@ export function encodeEndOfContacts(mostRecentLastmod: number): Buffer {
   return b;
 }
 
+/**
+ * Turn a contact's stored route into the two wire fields of a contact record.
+ *
+ * MeshMonitor stores a route as `pathLen` (hop COUNT, null = no route) and
+ * `outPath` (comma-separated hop hashes, each token one hop: "a3,7f" for
+ * 1-byte hashes, "a3f2,7f01" for 2-byte, "a3f201,7f0102" for 3-byte). The
+ * hash width is not stored on its own; it is the width of the tokens.
+ *
+ * Firmware writes `out_path_len` to the app exactly as it holds it
+ * (`writeContactRespFrame`: `out_frame[i++] = contact.out_path_len`), and that
+ * byte is PACKED: top 2 bits = hash width - 1, bottom 6 bits = hop count,
+ * 0xFF = OUT_PATH_UNKNOWN. So the hop count alone is only right for 1-byte
+ * hashes.
+ *
+ * The tokens are the truth for both fields, so the length byte always frames
+ * exactly the bytes that follow it:
+ *   - `pathLen` null/undefined              → 0xFF, no path bytes
+ *   - no usable tokens, `pathLen` 0         → 0x00 (zero-hop direct)
+ *   - no usable tokens, `pathLen` > 0       → 0xFF (a count with no hashes
+ *                                             behind it is not a route)
+ *   - tokens of mixed width, or a path
+ *     firmware would refuse                 → 0xFF
+ *   - otherwise                             → packed(width, token count)
+ */
+export function storedOutPathToWire(
+  outPath: string | null | undefined,
+  pathLen: number | null | undefined,
+): { outPathLen: number; outPath: Buffer } {
+  const unknown = { outPathLen: OUT_PATH_UNKNOWN, outPath: Buffer.alloc(0) };
+  if (pathLen === undefined || pathLen === null) return unknown;
+  const hops = parsePathHops(outPath);
+  if (hops.length === 0) {
+    return pathLen === 0 ? { outPathLen: 0, outPath: Buffer.alloc(0) } : unknown;
+  }
+  const width = hops[0].length / 2;
+  if (hops.some((h) => h.length !== hops[0].length)) return unknown;
+  const packed = encodeOutPathLen(hops.length, width);
+  if (packed === OUT_PATH_UNKNOWN) return unknown;
+  return { outPathLen: packed, outPath: Buffer.from(hops.join(''), 'hex') };
+}
+
 export interface ContactWire {
   /** 32-byte public key. */
   publicKey: Uint8Array;
   type: number;
   flags: number;
-  /** Cached out-path hop count; -1 (OUT_PATH_UNKNOWN) when the route is unknown. */
+  /**
+   * The PACKED `out_path_len` wire byte (see {@link storedOutPathToWire}), not
+   * a hop count. 0xFF — or -1, its signed reading — is OUT_PATH_UNKNOWN.
+   */
   outPathLen: number;
   /** Out-path hop-hash bytes (≤64); zero-padded to 64 on the wire. */
   outPath: Uint8Array;
@@ -698,7 +749,9 @@ export function encodeContact(c: ContactWire): Buffer {
   pubKey.copy(head, o); o += 32;
   head[o++] = c.type & 0xff;
   head[o++] = c.flags & 0xff;
-  head.writeInt8(clampInt8(c.outPathLen), o); o += 1;
+  // Unsigned: a 3-byte-hash path has bit 7 set (0x80 | hops), which a signed
+  // clamp would mangle. -1 still lands as 0xFF.
+  head[o++] = c.outPathLen & 0xff;
   outPath.copy(head, o); o += 64;
 
   const tail = Buffer.alloc(4 + 4 + 4 + 4); // lastAdvert + advLat + advLon + lastMod

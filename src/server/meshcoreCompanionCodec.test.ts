@@ -45,6 +45,7 @@ import {
   unpackTelemetryMode,
   toEpochSeconds,
   type SelfInfoWire,
+  storedOutPathToWire,
 } from './meshcoreCompanionCodec.js';
 
 /** Decode one of our response payloads via meshcore.js and return the event object. */
@@ -227,6 +228,79 @@ describe('meshcoreCompanionCodec — encoders round-trip through meshcore.js dec
     expect(decoded.advLat).toBe(degreesToFixed(40.1));
     expect(decoded.advLon).toBe(degreesToFixed(-105.2));
     expect(decoded.lastMod).toBe(1_750_000_500);
+  });
+
+  it('Contact writes a packed 3-byte-hash length unsigned (bit 7 set)', () => {
+    // 0x82 = 3-byte hashes, 2 hops. A signed clamp must not touch it.
+    const frame = encodeContact({
+      publicKey: pubKeyHexToBytes(SAMPLE_PUBKEY),
+      type: 1, flags: 0, outPathLen: 0x82, outPath: hexToBytes('a3f2017f0102'),
+      advName: 'X', lastAdvert: 0, advLat: 0, advLon: 0, lastMod: 0,
+    });
+    expect(frame[35]).toBe(0x82); // [code][key:32][type][flags][out_path_len]
+    expect(frame.subarray(36, 42).toString('hex')).toBe('a3f2017f0102');
+  });
+
+  describe('storedOutPathToWire', () => {
+    const hex = (r: { outPath: Buffer }) => r.outPath.toString('hex');
+
+    it('packs 1-byte hashes as the plain hop count', () => {
+      const r = storedOutPathToWire('a3,7f,02', 3);
+      expect(r.outPathLen).toBe(0x03);
+      expect(hex(r)).toBe('a37f02');
+    });
+
+    it('packs 2-byte hashes with width bits 01', () => {
+      const r = storedOutPathToWire('a3f2,7f01', 2);
+      expect(r.outPathLen).toBe(0x42);
+      expect(hex(r)).toBe('a3f27f01');
+    });
+
+    it('packs 3-byte hashes with width bits 10', () => {
+      const r = storedOutPathToWire('a3f201,7f0102', 2);
+      expect(r.outPathLen).toBe(0x82);
+      expect(hex(r)).toBe('a3f2017f0102');
+    });
+
+    it('packs zero-hop direct as 0x00 with no path bytes', () => {
+      expect(storedOutPathToWire('', 0)).toEqual({ outPathLen: 0, outPath: Buffer.alloc(0) });
+      expect(storedOutPathToWire(null, 0)).toEqual({ outPathLen: 0, outPath: Buffer.alloc(0) });
+    });
+
+    it('packs no route as 0xFF, as firmware stores OUT_PATH_UNKNOWN', () => {
+      expect(storedOutPathToWire(null, null).outPathLen).toBe(0xff);
+      expect(storedOutPathToWire(undefined, undefined).outPathLen).toBe(0xff);
+      // A path string with no hop count is still "no route".
+      expect(storedOutPathToWire('a3,7f', null)).toEqual({ outPathLen: 0xff, outPath: Buffer.alloc(0) });
+    });
+
+    it('frames exactly the bytes it writes: length byte matches the tokens', () => {
+      // A stale hop count must not misframe the path.
+      const r = storedOutPathToWire('a3f2,7f01,0b0c', 2);
+      expect(r.outPathLen).toBe(0x43);
+      expect(r.outPath.length).toBe(6);
+    });
+
+    it('reports no route rather than a hop count with no hashes behind it', () => {
+      expect(storedOutPathToWire(null, 3).outPathLen).toBe(0xff);
+      expect(storedOutPathToWire('', 3).outPathLen).toBe(0xff);
+    });
+
+    it('reports no route for mixed-width tokens', () => {
+      expect(storedOutPathToWire('a3,7f01', 2)).toEqual({ outPathLen: 0xff, outPath: Buffer.alloc(0) });
+    });
+
+    it('packs the longest path each width allows, and refuses one hop more', () => {
+      const path = (width: number, hops: number) =>
+        Array.from({ length: hops }, (_, i) => (i + 1).toString(16).padStart(2, '0').repeat(width)).join(',');
+      expect(storedOutPathToWire(path(1, 63), 63).outPathLen).toBe(0x3f);
+      expect(storedOutPathToWire(path(2, 32), 32).outPathLen).toBe(0x40 | 32);
+      expect(storedOutPathToWire(path(2, 32), 32).outPath.length).toBe(64);
+      expect(storedOutPathToWire(path(3, 21), 21).outPathLen).toBe(0x80 | 21);
+      expect(storedOutPathToWire(path(1, 64), 64).outPathLen).toBe(0xff);
+      expect(storedOutPathToWire(path(2, 33), 33).outPathLen).toBe(0xff);
+      expect(storedOutPathToWire(path(3, 22), 22).outPathLen).toBe(0xff);
+    });
   });
 
   it('Contact encodes OUT_PATH_UNKNOWN (-1) for an unknown route', async () => {
