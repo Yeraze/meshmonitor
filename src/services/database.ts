@@ -2353,6 +2353,13 @@ class DatabaseService {
    * deduplication logic for all backends (not a delegation to the sync form).
    * For PG/MySQL it awaits the async repo dedup path; for SQLite it runs the
    * transactional sync upsert (which is itself synchronous under the hood).
+   *
+   * `tracerouteData` is a REPLY packet: `fromNodeNum` answered, `toNodeNum`
+   * asked. When a pending row exists it is `{ from: asker, to: answerer }`
+   * and is updated in place, so that run is stored requester-first; with no
+   * pending row the reply is inserted as it came. Both forms therefore sit in
+   * the table, and the repository's read methods turn them into one. See
+   * `src/utils/tracerouteOrientation.ts`.
    */
   async insertTracerouteAsync(tracerouteData: DbTraceroute, sourceId?: string): Promise<void> {
     // For PostgreSQL/MySQL, use async repository with full dedup logic

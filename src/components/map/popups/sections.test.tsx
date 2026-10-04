@@ -16,6 +16,7 @@ import {
 } from './sections';
 import { toNodeCardModel, type NodeCardModel } from './nodeCardModel';
 import type { DbTraceroute } from '../../../services/database';
+import { orientTracerouteRow } from '../../../utils/tracerouteOrientation';
 
 vi.mock('../../../contexts/SettingsContext', () => ({
   // #4880: NodeCardHeader reads the node-list color style; default to monochrome.
@@ -404,6 +405,39 @@ describe('TracerouteBody', () => {
     timestamp: Date.now(),
     createdAt: Date.now(),
   };
+
+  // One run is stored two ways (src/utils/tracerouteOrientation.ts): with our
+  // radio in `from` when MeshMonitor sent it, and with the answering node in
+  // `from` when the reply had no pending row. The server orients both with
+  // `orientTracerouteRow` before the panel sees them; the panel must then show
+  // the same forward and return path for either.
+  describe('forward and return for both stored forms of one run', () => {
+    const LOCAL = 0x7b000001, H1 = 0x7b000002, H2 = 0x7b000003, REMOTE = 0x7b000004, H3 = 0x7b000005;
+    const named = (nodeNum: number, longName: string) => ({ nodeNum, user: { id: `!${nodeNum.toString(16)}`, longName } });
+    const nodes = [
+      named(LOCAL, 'Our Radio'), named(H1, 'Hop One'), named(H2, 'Hop Two'), named(REMOTE, 'Far End'), named(H3, 'Hop Three'),
+    ] as any;
+    const arrays = {
+      route: JSON.stringify([H1, H2]), routeBack: JSON.stringify([H3]),
+      snrTowards: '[4,8,12]', snrBack: '[16,20]',
+      timestamp: Date.now(), createdAt: Date.now(),
+    };
+    const stored: Record<string, DbTraceroute> = {
+      'sent from MeshMonitor': { fromNodeNum: LOCAL, toNodeNum: REMOTE, fromNodeId: '!7b000001', toNodeId: '!7b000004', ...arrays },
+      'reply with no pending row': { fromNodeNum: REMOTE, toNodeNum: LOCAL, fromNodeId: '!7b000004', toNodeId: '!7b000001', ...arrays },
+    };
+
+    it.each(Object.keys(stored))('%s', (form) => {
+      const served = orientTracerouteRow(stored[form], LOCAL);
+      const { container } = render(<TracerouteBody recentTraceroute={served} nodes={nodes} distanceUnit="km" />);
+      const [forward, back] = Array.from(container.querySelectorAll('.traceroute-route')).map((el) => el.textContent ?? '');
+      // Forward starts at the node that asked; return starts at the far end.
+      expect(forward).toMatch(/^Our Radio.* → Hop One.* → Hop Two.* → Far End/);
+      expect(back).toMatch(/^Far End.* → Hop Three.* → Our Radio/);
+      expect(forward).not.toContain('Hop Three');
+      expect(back).not.toContain('Hop One');
+    });
+  });
 
   it('renders "no recent traceroute" when recentTraceroute is null', () => {
     render(<TracerouteBody recentTraceroute={null} nodes={[]} distanceUnit="km" />);

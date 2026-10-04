@@ -11,6 +11,8 @@ import { MySql2Database } from 'drizzle-orm/mysql2';
 import * as schema from '../schema/index.js';
 import { DatabaseType } from '../types.js';
 import { buildActiveSchema, ActiveSchema } from '../activeSchema.js';
+import type { OrientableTraceroute } from '../../utils/tracerouteOrientation.js';
+import { orientTracerouteRows } from './tracerouteRowOrientation.js';
 
 // Specific database types for type narrowing
 export type SQLiteDrizzle = BetterSQLite3Database<typeof schema>;
@@ -279,6 +281,18 @@ export abstract class BaseRepository {
       );
     }
     return eq(table.sourceId, sourceId);
+  }
+
+  /**
+   * Raw `traceroutes` rows -> requester-first (`fromNodeNum` = the node that
+   * asked). The table holds the same run in two orientations; see
+   * `src/utils/tracerouteOrientation.ts`. EVERY method that hands traceroute
+   * rows to a reader must pass them through here, once.
+   */
+  protected orientTracerouteRows<T extends OrientableTraceroute & { sourceId?: string | null }>(
+    rows: T[],
+  ): Promise<T[]> {
+    return orientTracerouteRows(this.db, this.tables.settings, rows);
   }
 
   /**
