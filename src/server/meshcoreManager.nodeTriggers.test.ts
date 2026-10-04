@@ -96,8 +96,9 @@ describe('MeshCoreManager node triggers (#5534)', () => {
     const hash = hearAdvert(m, KEY, { adv_name: 'Hilltop', adv_type: 2 });
     expect(hash).toMatch(/^[0-9A-F]{16}$/);
     expect(emitNodeDiscovered).toHaveBeenCalledTimes(1);
+    // #5595 added contact facts to the payload; see nodeTriggerTokens.test.ts.
     expect(emitNodeDiscovered).toHaveBeenCalledWith(
-      { nodeNum: null, publicKey: KEY, name: 'Hilltop', packetHash: hash },
+      expect.objectContaining({ nodeNum: null, publicKey: KEY, name: 'Hilltop', packetHash: hash }),
       SOURCE,
     );
     expect(emitMeshCoreNodeChanged).not.toHaveBeenCalled();
@@ -123,7 +124,7 @@ describe('MeshCoreManager node triggers (#5534)', () => {
     hearAdvert(m, KEY, { adv_name: 'Hilltop', adv_type: 2, latitude: 1, longitude: 2 });
     const hash2 = hearAdvert(m, KEY, { adv_name: 'Hilltop', adv_type: 2, latitude: 1.5, longitude: 2 }, '02000000');
     expect(emitMeshCoreNodeChanged).toHaveBeenCalledWith(
-      { publicKey: KEY, name: 'Hilltop', changed: ['latitude'], packetHash: hash2 },
+      expect.objectContaining({ publicKey: KEY, name: 'Hilltop', changed: ['latitude'], packetHash: hash2 }),
       SOURCE,
     );
   });

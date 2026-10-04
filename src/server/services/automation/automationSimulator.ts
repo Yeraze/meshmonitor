@@ -30,6 +30,7 @@ import { executeAction, actionStepDetail, type ActionDeps } from './actionExecut
 import {
   buildMessageContext,
   buildNodeContext,
+  buildMeshCoreNodeContext,
   buildTelemetryContext,
   buildMeshBeaconContext,
   buildSystemContext,
@@ -75,6 +76,17 @@ export interface SimEventInput {
   changed?: string[];
   /** #5534: MeshCore packet hash for node events (packetId above doubles for Meshtastic). */
   packetHash?: string;
+  /**
+   * #5595: a public key makes a nodeDiscovered / nodeUpdated dry run a MeshCore
+   * event (MeshCore has no node number), so the MeshCore-only tokens below can
+   * be previewed. Same meaning as the live payload (MeshCoreNodeEventFacts).
+   */
+  publicKey?: string;
+  name?: string;
+  advType?: number;
+  hops?: number;
+  routeHops?: number;
+  lastHeard?: number;
   // telemetry
   telemetryType?: string;
   value?: number;
@@ -295,6 +307,17 @@ function buildContext(graph: AutomationGraph, ev: SimEventInput, node: Partial<N
     case 'nodeDiscovered':
     case 'nodeUpdated': {
       const kind = ev.kind === 'nodeDiscovered' ? 'trigger.nodeDiscovered' : 'trigger.nodeUpdated';
+      if (ev.publicKey) {
+        // #5595: MeshCore-shaped event — the same builder the live engine uses.
+        return {
+          ctx: buildMeshCoreNodeContext(
+            kind, String(ev.publicKey), ev.changed ?? [], sourceId, now,
+            { packetHash: ev.packetHash }, ev.name,
+            { advType: ev.advType, hops: ev.hops, routeHops: ev.routeHops, lastHeard: ev.lastHeard },
+          ),
+          matched: true,
+        };
+      }
       return {
         ctx: buildNodeContext(kind, Number(ev.nodeNum ?? 0), ev.changed ?? [], sourceId, now, {
           packetId: ev.packetId,

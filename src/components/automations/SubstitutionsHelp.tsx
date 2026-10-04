@@ -16,9 +16,15 @@ const NODE_EVENT_PACKET_ID_TOKEN: [string, string] = [
   'packetId',
   'Meshtastic only: id of the received packet that caused the event, unsigned 32-bit. Empty for MeshCore and when no packet caused it (device sync, manual edits)',
 ];
+// #5595: MeshCore has no node number, so {{ node.* }} is empty for it; these
+// trigger.* tokens carry the contact's facts instead. Empty on Meshtastic.
 const NODE_EVENT_MESHCORE_TOKENS: Array<[string, string]> = [
   ['publicKey', 'Public key (MeshCore; empty for Meshtastic)'],
-  ['name', 'Display name (MeshCore; use node.longName on Meshtastic)'],
+  ['name', 'Display name (MeshCore; use node.longName on Meshtastic). MeshCore has no short name — there is no shortName token, and node.shortName is empty'],
+  ['roleName', 'MeshCore only: Companion, Repeater, Room Server or Sensor; empty when the type is unknown. On Meshtastic use node.roleName'],
+  ['hops', 'MeshCore only: relays the advert that caused the event passed through (0 = heard direct). Empty when no advert caused it (path updates, discovery sweeps, contact re-reads). On Meshtastic use node.hopsAway'],
+  ['routeHops', 'MeshCore only: hops on the stored route this source would send on. Not the same as hops — it can differ from the path the advert took. Empty when no route is stored (sends flood)'],
+  ['lastHeard', 'MeshCore only: when this source last heard the node (epoch ms, same as Node silent). On Meshtastic use node.lastHeard'],
 ];
 const NODE_EVENT_PACKET_HASH_TOKEN: [string, string] = [
   'packetHash',

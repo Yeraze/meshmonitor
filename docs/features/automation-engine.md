@@ -1043,9 +1043,46 @@ On MeshCore, **A node is updated** fires only when the name, position, node type
 A re-advert that changes nothing does not fire it. `{{ trigger.changed }}` lists the fields:
 `name`, `latitude`, `longitude`, `advType`, `outPath`, `pathLen`.
 
-MeshCore nodes have no node number, so `{{ node.* }}` is empty for them. Use
-`{{ trigger.publicKey }}` and `{{ trigger.name }}` instead. Cooldowns keyed per node use the public
-key.
+MeshCore nodes have no node number, so `{{ node.* }}` is empty for them. Use the `trigger.*` tokens
+below instead. Cooldowns keyed per node use the public key.
+
+### Node triggers — MeshCore node details
+
+Both node triggers carry these on a MeshCore source. All are empty on Meshtastic, where the
+`{{ node.* }}` tokens do the same job.
+
+| Token | Value |
+|-------|-------|
+| `{{ trigger.publicKey }}` | The node's public key. |
+| `{{ trigger.name }}` | The node's name. |
+| `{{ trigger.roleName }}` | `Companion`, `Repeater`, `Room Server` or `Sensor`. Empty when the node type is unknown. |
+| `{{ trigger.hops }}` | How many repeaters the advert that caused the event passed through. `0` means the source heard it direct. |
+| `{{ trigger.routeHops }}` | Hop count of the route this source has stored for the node, the one it would send on. Empty when no route is stored (sends flood). |
+| `{{ trigger.lastHeard }}` | When this source last heard the node, in epoch milliseconds — the same unit as on **Node silent**. |
+
+**`hops` and `routeHops` are different numbers.** `hops` describes one received advert: the path
+that packet took to reach you. `routeHops` describes the stored route for sending to the node, which
+is learned separately and can be shorter, longer, or missing. MeshMonitor never fills one from the
+other.
+
+`{{ trigger.hops }}` is **empty** whenever no advert caused the event: a path change, a reply to a
+**Discover** sweep, or a contact re-read. It follows the same rule as `{{ trigger.packetHash }}`
+below, and comes from the same raw frame. If that frame is missing, the token is empty.
+
+**MeshCore has no short name.** There is no `{{ trigger.shortName }}`, and `{{ node.shortName }}` is
+empty on MeshCore. A template that uses either renders an empty string there; it does not fail. Use
+`{{ trigger.name }}`.
+
+`roleName`, `name`, `hops` and `routeHops` are also offered as fields in **Number comparison** and
+**Text comparison** conditions, for example "only notify when `roleName` equals `Repeater`". A number
+condition on an empty `hops` or `routeHops` is false.
+
+Example notification body:
+
+```text
+New {{ trigger.roleName }}: {{ trigger.name }} ({{ trigger.hops }} hops)
+https://map.meshcore.com.hr/#/packets/{{ trigger.packetHash }}
+```
 
 ### Node triggers — originating packet
 
