@@ -57,7 +57,7 @@ Add MeshCore sources from the UI — they hot-connect immediately without a rest
 3. Pick **MeshCore** as the source type
 4. Choose the transport — **USB** (enter the serial port, e.g. `/dev/ttyACM0`) or **TCP** (enter the host and port; see [TCP Transport](#tcp-transport) below)
 5. Pick the **device type** — **Companion** for full-featured devices, **Repeater** for direct-serial repeaters (USB only)
-6. *(Optional)* Set a **Heartbeat** interval in seconds (0 = off). When set, MeshMonitor periodically probes the Companion node and automatically reconnects with exponential backoff if the link drops — the same setting Meshtastic sources have. Applies to Companion devices only.
+6. *(Optional)* Set a **Heartbeat** interval in seconds (0 = off). When set, MeshMonitor periodically probes the node and automatically reconnects with exponential backoff if the link drops — the same setting Meshtastic sources have. It works for Companion and Repeater devices. On a Repeater the probe is a `clock` command on the serial console: it uses no airtime, and three missed replies in a row reopen the port. A Repeater whose serial port closes (USB unplug, device reset) reconnects on its own even with the heartbeat off.
 7. Save — the source connects immediately if **Auto-connect** is on
 
 Sources you create from the UI are wired into the per-source MeshCore manager registry the same way Meshtastic TCP sources are, so create / update / delete / connect / disconnect all work without a process restart.
@@ -622,6 +622,8 @@ The **MeshCore Messaging** section of global **Settings** hosts an opt-in toggle
 - It is **one-shot**: the resend is never itself retried, so at most one extra transmission ever occurs per logical send.
 - The resend does **not** create a second message bubble and does **not** re-enter the automation event bus, so it can never trigger a fresh automation.
 
+A split Auto-Acknowledge reply (see [Long Replies on MeshCore](/features/automation#meshcore-long-replies)) counts as one automated send per part, so each part can be resent once.
+
 This is **distinct from the direct-message retry**, which is always on and follows the firmware's own same-path/flood ACK cadence. Because a channel send has no delivery ACK, the retry can only guess from the heard-repeater signal — so with this enabled you may occasionally see a duplicate on the mesh if a late echo arrives right around the 30-second mark. Leave it off if duplicates are unacceptable for your deployment.
 
 ## Room Servers
@@ -712,6 +714,17 @@ Capture is opt-in. The view exposes an **Enable** toggle and retention controls 
 - **Raw hex dump** — the full OTA frame, accessible via the detail modal
 
 New packets stream in live over the existing Socket.io connection (no separate subscription is needed). The view can be **paused** and **exported** (`.jsonl` format) for offline analysis. Filtering by payload type and route type narrows the display.
+
+### Decoding channel packets
+
+Click a row to open **Packet Decode**. Adverts, ACKs and control packets decode in full. Channel packets (`GRP_TXT` and `GRP_DATA`) are encrypted, so the modal asks the server to open them:
+
+- The server tries every channel key it holds: this source's channels, channels on your other sources, and MeshCore entries in the [Channel Database](/features/channel-database).
+- A `GRP_TXT` packet shows the channel name, sender, the sender's timestamp and the text. A `GRP_DATA` packet shows the channel name, the data type and a hex + ASCII dump of the body.
+- The modal says where the key came from: **this source**, another source by name, or a **virtual channel**.
+- You see the plaintext only if you could read that channel's messages anyway (`channel_N:read` or `messages:read` on a source that holds the key, or **Read** on the virtual channel). Otherwise the modal shows **Unknown channel (hash 0xNN)**, the same as when the server has no matching key. Signed-out viewers always see that.
+
+Decryption happens when you open the modal. The packet list, the live feed and the `.jsonl` export stay ciphertext, no plaintext is stored in the packet log, and channel keys never leave the server.
 
 The `packetmonitor:write` permission is required to clear the log; `settings:write` is required to toggle capture on/off and adjust retention.
 

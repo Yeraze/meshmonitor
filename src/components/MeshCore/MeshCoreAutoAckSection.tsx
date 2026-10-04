@@ -6,6 +6,8 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useSaveBar } from '../../hooks/useSaveBar';
 import { ScopeSelectField, type ScopeMode } from './ScopeSelectField';
 import { MeshCoreReceiveOnlyNote } from './MeshCoreReceiveOnlyNote';
+import { UiIcon } from '../icons';
+import styles from './MeshCoreAutoAckSection.module.css';
 
 interface MeshCoreAutoAckSectionProps {
   baseUrl: string;
@@ -29,6 +31,8 @@ interface AutoAckSettings {
   testMessages: string;
   /** Per-sender ignore list — key prefixes and/or contact names (#4391). */
   ignoredNodes: string;
+  /** Split a long reply into up to 3 sends instead of truncating it (#5564). */
+  splitLongMessages: boolean;
   /** MeshCore scope/region for the ack reply (#3833). */
   scopeMode: ScopeMode;
   scopeName: string;
@@ -54,6 +58,7 @@ const DEFAULTS: AutoAckSettings = {
   preSendDelaySeconds: 0,
   testMessages: DEFAULT_TEST_MESSAGES,
   ignoredNodes: '',
+  splitLongMessages: false,
   scopeMode: 'inherit',
   scopeName: '',
 };
@@ -122,6 +127,7 @@ export const MeshCoreAutoAckSection: React.FC<MeshCoreAutoAckSectionProps> = ({ 
           preSendDelaySeconds: typeof json.data.preSendDelaySeconds === 'number' ? json.data.preSendDelaySeconds : 0,
           testMessages: json.data.testMessages || DEFAULT_TEST_MESSAGES,
           ignoredNodes: typeof json.data.ignoredNodes === 'string' ? json.data.ignoredNodes : '',
+          splitLongMessages: json.data.splitLongMessages === true,
           scopeMode: (json.data.scopeMode as ScopeMode) || 'inherit',
           scopeName: json.data.scopeName || '',
         };
@@ -174,6 +180,7 @@ export const MeshCoreAutoAckSection: React.FC<MeshCoreAutoAckSectionProps> = ({ 
       settings.preSendDelaySeconds !== initial.preSendDelaySeconds ||
       settings.testMessages !== initial.testMessages ||
       settings.ignoredNodes !== initial.ignoredNodes ||
+      settings.splitLongMessages !== initial.splitLongMessages ||
       settings.scopeMode !== initial.scopeMode ||
       settings.scopeName !== initial.scopeName ||
       channelsChanged,
@@ -204,6 +211,7 @@ export const MeshCoreAutoAckSection: React.FC<MeshCoreAutoAckSectionProps> = ({ 
             preSendDelaySeconds: settings.preSendDelaySeconds,
             testMessages: settings.testMessages,
             ignoredNodes: settings.ignoredNodes,
+            splitLongMessages: settings.splitLongMessages,
             scopeMode: settings.scopeMode,
             scopeName: settings.scopeName,
           }),
@@ -535,6 +543,40 @@ export const MeshCoreAutoAckSection: React.FC<MeshCoreAutoAckSectionProps> = ({ 
             }}>
               {sample}
             </div>
+          </div>
+        </div>
+
+        {/* Long replies (#5564): truncate (default) or split into up to 3 sends. */}
+        <div className="setting-item" style={{ marginTop: '1.5rem' }}>
+          <label>
+            {t('meshcore.automation.autoack.split_label', 'Long Replies')}
+            <span className="setting-description">
+              {t(
+                'meshcore.automation.autoack.split_description',
+                'A MeshCore message holds about 150 bytes in a DM and 120 to 130 bytes on a channel. A longer reply is cut to fit unless you split it. Applies to DM and channel replies.',
+              )}
+            </span>
+          </label>
+          <div className={styles.toggleRow}>
+            <input
+              type="checkbox"
+              id="meshcoreAutoAckSplitLongMessages"
+              checked={settings.splitLongMessages}
+              onChange={(e) => update('splitLongMessages', e.target.checked)}
+              disabled={disabled || !canWrite}
+            />
+            <label htmlFor="meshcoreAutoAckSplitLongMessages" className={styles.toggleLabel}>
+              {t('meshcore.automation.autoack.split_toggle', 'Split long messages')}
+            </label>
+          </div>
+          <div className={styles.warning} role="note">
+            <UiIcon name="alert" size={14} />
+            <span>
+              {t(
+                'meshcore.automation.autoack.split_warning',
+                'Long replies go out as up to 3 messages, 10 seconds apart, each marked like "(1/3)". Each one is repeated by every repeater in range.',
+              )}
+            </span>
           </div>
         </div>
 

@@ -377,6 +377,8 @@ export const VALID_SETTINGS_KEYS = [
   'meshcoreAutoAckUseDM',
   'meshcoreAutoAckCooldownSeconds',
   'meshcoreAutoAckPreSendDelaySeconds',
+  // Split a long reply into up to 3 sends instead of truncating it (#5564)
+  'meshcoreAutoAckSplitLongMessages',
   'meshcoreAutoAckTestMessages',
   // Per-sender ignore list for the MeshCore auto-responder (#4391)
   'meshcoreAutoAckIgnoredNodes',
@@ -605,6 +607,8 @@ export const PER_SOURCE_SETTINGS_KEYS = [
   'meshcoreAutoAckUseDM',
   'meshcoreAutoAckCooldownSeconds',
   'meshcoreAutoAckPreSendDelaySeconds',
+  // Split a long reply into up to 3 sends instead of truncating it (#5564)
+  'meshcoreAutoAckSplitLongMessages',
   'meshcoreAutoAckTestMessages',
   // Per-sender ignore list for the MeshCore auto-responder (#4391)
   'meshcoreAutoAckIgnoredNodes',

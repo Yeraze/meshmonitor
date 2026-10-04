@@ -287,6 +287,27 @@ export interface TracerouteHistoryEntry {
  * (machine-readable identifier from the server body) to pick a UX-appropriate
  * message instead of collapsing every failure to a single generic string.
  */
+/** Where the key that opened a MeshCore group packet is stored (#5568). */
+export type MeshCoreGroupKeyOrigin =
+  | { kind: 'source'; sourceName: string; currentSource: boolean }
+  | { kind: 'virtual' };
+
+/**
+ * Body of `POST /api/sources/:id/meshcore/packets/decode`. Mirrors
+ * `GroupPacketPlaintext` in `src/server/utils/meshcorePacketPlaintext.ts`.
+ */
+export type MeshCoreGroupPacketPlaintext =
+  | { decrypted: false; payloadType: number; channelHash: string }
+  | {
+      decrypted: true;
+      payloadType: number;
+      channelHash: string;
+      channelName: string;
+      keyOrigin: MeshCoreGroupKeyOrigin;
+      text?: { sender: string | null; timestampSec: number; text: string };
+      data?: { dataType: number; dataHex: string };
+    };
+
 export class ApiError extends Error {
   status: number;
   code?: string;
@@ -2180,6 +2201,20 @@ class ApiService {
     // Meshtastic rows only by default: callers treat an entry as a Meshtastic
     // virtual channel. Pass 'all' to include MeshCore rows (#5552).
     return this.get(protocol ? `/api/channel-database?protocol=${protocol}` : '/api/channel-database');
+  }
+
+  /**
+   * Ask the server to open one captured GRP_TXT / GRP_DATA frame (#5567,
+   * #5568). The server decrypts with a channel key the viewer may read and
+   * returns plaintext only; `decrypted: false` covers both "no such key" and
+   * "no access to it".
+   */
+  async decodeMeshCoreGroupPacket(sourceId: string, rawHex: string): Promise<MeshCoreGroupPacketPlaintext> {
+    const body = await this.post<{ success: boolean; data: MeshCoreGroupPacketPlaintext }>(
+      `/api/sources/${encodeURIComponent(sourceId)}/meshcore/packets/decode`,
+      { rawHex },
+    );
+    return body.data;
   }
 
   /**

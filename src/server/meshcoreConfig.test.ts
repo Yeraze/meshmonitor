@@ -101,6 +101,14 @@ describe('meshcoreConfigFromSource', () => {
     expect(cfg?.heartbeatIntervalSeconds).toBeUndefined();
   });
 
+  it('leaves a Repeater source created without the field unset, so its serial probe stays off (#5563)', () => {
+    const cfg = meshcoreConfigFromSource(
+      fakeSource({ config: { transport: 'usb', port: '/dev/ttyUSB0', deviceType: 'repeater' } }),
+    );
+    expect(cfg?.firmwareType).toBe('repeater');
+    expect(cfg?.heartbeatIntervalSeconds).toBeUndefined();
+  });
+
   it('maps repeater device type correctly', () => {
     const cfg = meshcoreConfigFromSource(
       fakeSource({ config: { transport: 'usb', port: '/dev/ttyUSB0', deviceType: 'repeater' } }),

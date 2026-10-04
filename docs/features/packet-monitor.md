@@ -31,8 +31,8 @@ Both views require the `packetmonitor:read` permission and must be enabled in Se
 
 ## What the Packet Monitor Shows
 
-::: info Incoming Packets Only
-The Packet Monitor displays **only incoming packets** received from the mesh network. It acts as a "radio sniffer" showing what your node hears over the air, not what MeshMonitor transmits.
+::: info Received and sent packets
+The Packet Monitor is a "radio sniffer": most rows are packets your node heard from the mesh (**RX**). Packets MeshMonitor sends through the source, such as a text message or a traceroute, are logged too and carry a **TX** marker.
 :::
 
 ### Packets That Appear
@@ -61,21 +61,13 @@ Packets carrying a firmware-verified **XEdDSA signature** (Meshtastic's new pack
 
 The following packets are not logged to the Packet Monitor:
 
-**Outgoing packets sent by MeshMonitor:**
-- **Outgoing text messages** - Messages you send via the chat interface
-- **Outgoing traceroute requests** - Traceroutes initiated manually or by Auto Traceroute
-- **Outgoing position requests** - Position exchange requests
-- **Auto-acknowledge responses** - Automated replies sent by MeshMonitor
-- **Auto-welcome messages** - Welcome messages sent to new nodes
-- **Auto-announcements** - Scheduled announcement messages
-
 **Internal management packets (to/from local node):**
 - **ADMIN_APP (6)** - Administrative packets for local device configuration
 - **ROUTING_APP (5)** - Routing acknowledgments to/from your connected node
 
 These internal packets are filtered to reduce noise and keep the log focused on actual mesh traffic. ADMIN and ROUTING packets between remote nodes on the mesh are still logged.
 
-This is by design - the Packet Monitor shows mesh network traffic, not MeshMonitor's internal operations or local device management.
+This is by design - the Packet Monitor shows mesh network traffic, not local device management.
 
 ## Filtering Packets
 
@@ -91,6 +83,14 @@ Common filters include:
 - **NODEINFO** - Show only node information packets
 
 Alongside the type dropdown, a **free-text search** field matches against decoded packet content and metadata (node names, node IDs, message text, evidence). The type filter and the search field combine with AND, so you can narrow a single portnum down to only rows that mention a specific node or word.
+
+### Hide Own Packets
+
+The filter drawer (the funnel button) has a **Hide Own Packets** checkbox, on by default. It hides your own packets when the radio hears them back: RX rows whose sender is your node, returned by a rebroadcast over RF or by MQTT or UDP. These echoes repeat what you sent and add clutter.
+
+It does **not** hide **TX** rows. A packet the source sent always stays in the list, so you can confirm a message or traceroute left the radio. (Before v4.17.0 the filter matched on the sender alone and hid TX rows as well.)
+
+When the filter is hiding rows, a small **"N hidden"** chip appears beside the packet count. It counts hidden rows among the packets loaded so far. Hover for the reason, or click it to open the filter drawer. The filter runs in your browser, so the "total" figure and JSONL export still include the hidden rows.
 
 Every packet monitor view, the main Meshtastic one, the per-source MQTT gateway monitor, and the MeshCore over-the-air monitor, exposes the same **Stop capturing** control at the top so a run does not need to be left open to sample a short window.
 
