@@ -52,6 +52,12 @@ export interface SourceStatus {
    * MeshCore sources (no meshtastic nodeNum) and while disconnected.
    */
   nodeNum?: number;
+  /**
+   * True when a MeshCore MQTT ingest source gave up reconnecting because the
+   * broker kept rejecting its login (#5596). The reason text arrives as
+   * `permissionMessage`. A config save or a manual connect clears it.
+   */
+  authStopped?: boolean;
   /** Total nodes heard by this source — populated by GET /api/sources/:id/status. */
   nodeCount?: number;
   /**
