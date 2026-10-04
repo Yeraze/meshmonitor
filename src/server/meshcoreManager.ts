@@ -6643,7 +6643,7 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
       logger.debug(`[MeshCore] Trace path to ${publicKey.substring(0, 16)}… via ${tracedHops.join(',')}: ${hops.length} hops, lastSnr=${lastSnr}`);
       return { ok: true, hops, lastSnr, path: tracedHops };
     } catch (error) {
-      logger.error('[MeshCore] traceContactPath threw:', error);
+      logger.error('[MeshCore] traceContactPathDetailed threw:', error);
       return failed;
     }
   }

@@ -14,20 +14,8 @@
  * Mesh impact: none. The countdown is UI-only; it never resends the request
  * (MeshCore One's retransmit is deliberately left out — it would add airtime).
  */
-import {
-  MESHCORE_FLOOD_WAIT_DEFAULT_MS,
-  MESHCORE_FLOOD_WAIT_GRACE_MS,
-  MESHCORE_FLOOD_WAIT_MAX_MS,
-  MESHCORE_FLOOD_WAIT_MIN_MS,
-  MESHCORE_FLOOD_WAIT_MULTIPLIER,
-  meshcoreFloodWaitMs,
-} from './meshcoreFirmwareTimeout.js';
+import { meshcoreFloodWaitMs } from './meshcoreFirmwareTimeout.js';
 
-export const MESHCORE_PATH_DISCOVERY_FLOOD_DEFAULT_MS = MESHCORE_FLOOD_WAIT_DEFAULT_MS;
-export const MESHCORE_PATH_DISCOVERY_MULTIPLIER = MESHCORE_FLOOD_WAIT_MULTIPLIER;
-export const MESHCORE_PATH_DISCOVERY_GRACE_MS = MESHCORE_FLOOD_WAIT_GRACE_MS;
-export const MESHCORE_PATH_DISCOVERY_MIN_MS = MESHCORE_FLOOD_WAIT_MIN_MS;
-export const MESHCORE_PATH_DISCOVERY_MAX_MS = MESHCORE_FLOOD_WAIT_MAX_MS;
 export const MESHCORE_PATH_DISCOVERY_FLOOR_MS = 20_000;
 
 /** UI wait budget (ms) for a firmware `suggested_timeout_ms`. */

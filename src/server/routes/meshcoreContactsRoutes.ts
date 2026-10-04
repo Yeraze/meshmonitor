@@ -76,11 +76,6 @@ const REGIONS_DISCOVER_TIMEOUT_MS = 180_000;
  */
 const PUSH_TO_DEVICE_TIMEOUT_MS = 300_000;
 
-/**
- * Socket timeout for trace-path: above the longest trace wait (60 s) and the
- * bridge timeout over it, so the handler always answers first.
- */
-const TRACE_REQUEST_SOCKET_TIMEOUT_MS = MESHCORE_TRACE_SOCKET_TIMEOUT_MS;
 
 const router = Router({ mergeParams: true });
 
@@ -484,10 +479,11 @@ router.post(
 // The trace can wait up to 60 s for the radio, past the server's 30 s socket
 // timeout (server.ts). Closing the socket with no reply makes the browser
 // resend the POST, and each resend starts another trace on RF (#5494). Give
-// this request a socket timeout longer than the trace itself.
+// this request a socket timeout above the longest trace wait and the bridge
+// timeout over it, so the handler always answers first.
 router.post(
   '/contacts/:publicKey/trace-path',
-  extendRequestTimeout(TRACE_REQUEST_SOCKET_TIMEOUT_MS),
+  extendRequestTimeout(MESHCORE_TRACE_SOCKET_TIMEOUT_MS),
   meshcoreDeviceLimiter,
   requireAuth(),
   requirePermission('nodes', 'write', { sourceIdFrom: 'params.id' }),
