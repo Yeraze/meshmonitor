@@ -106,8 +106,11 @@ export const NodeInfoModal: React.FC<NodeInfoModalProps> = ({
   };
 
   // Format address with port for display
-  const currentAddress = `${nodeIp}:${tcpPort}`;
-  const defaultAddress = `${defaultIp}:${defaultPort}`;
+  // An empty host means the server withheld the address from this viewer
+  // (it needs `sources:read`). Say so instead of rendering a bare ":4403".
+  const hidden = t('node_info.address_hidden', 'Hidden');
+  const currentAddress = nodeIp ? `${nodeIp}:${tcpPort}` : hidden;
+  const defaultAddress = defaultIp ? `${defaultIp}:${defaultPort}` : hidden;
 
   return (
     <div className="modal-overlay" onClick={onClose}>

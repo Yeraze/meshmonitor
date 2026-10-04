@@ -32,6 +32,12 @@ import { ok, fail } from '../utils/apiResponse.js';
 import { normalizeBrokerUrl } from '../transports/mqttBrokerClient.js';
 import { observerBrokerKey } from '../meshcoreConfig.js';
 import { getForwardingSummary } from '../services/forwardingStateService.js';
+import {
+  mayViewSourceEndpoint,
+  projectSourceConfig,
+  resolveSourceConfigAudience,
+  type SourceConfigAudience,
+} from '../utils/sourceConfigRedaction.js';
 
 const router = Router();
 
@@ -715,25 +721,39 @@ function stripObserverKeyMaterial<T extends Record<string, unknown>>(cfg: T): T 
   return { ...cfg, observer: safeObserver } as T;
 }
 
-// MM-SEC-8: shared credential strip applied to source records leaving the
-// HTTP boundary. The `mqtt` and `meshcore` source types carry connection
-// credentials in their `config` blob; both the list and singular GET
-// endpoints must remove them for non-admin callers. Admins receive the
-// full record so the existing source-edit UI continues to round-trip
-// values (the form re-posts the same blob it loaded).
-function stripSourceSecrets<T extends { config?: unknown } | null | undefined>(
+// What a source record looks like when it leaves the HTTP boundary, per caller.
+//
+//   admin   the full config, so the source-edit form round-trips it. Observer
+//           key material is still removed: it never leaves the process.
+//   editor  a signed-in non-admin holding `sources:write`. They save the whole
+//           config back through PUT, so they get every field except the
+//           passwords — `preserveSourceCredentials` restores those when the
+//           form leaves them blank. Withholding more here would make their
+//           next save drop it.
+//   viewer  a signed-in non-admin holding `sources:read`: the allowlist in
+//           utils/sourceConfigRedaction.ts, connection endpoints included.
+//   public  everyone else, signed in or not: the allowlist without endpoints.
+//
+// `endpointHidden` tells the UI the address was withheld, so it can say so
+// rather than fall back to another value.
+function redactSourceForCaller<T extends { type?: unknown; config?: unknown } | null | undefined>(
   source: T,
-  isAdmin: boolean,
+  audience: SourceConfigAudience,
 ): T {
   if (!source) return source;
+  if (audience === 'viewer' || audience === 'public') {
+    return {
+      ...source,
+      config: projectSourceConfig(String(source.type ?? ''), source.config, audience),
+      ...(audience === 'public' ? { endpointHidden: true } : {}),
+    };
+  }
   const baseCfg = stripObserverKeyMaterial((source.config as Record<string, unknown> | null | undefined) ?? {});
-  if (isAdmin) return { ...source, config: baseCfg };
+  if (audience === 'admin') return { ...source, config: baseCfg };
   const { password, apiKey, ...rest } = baseCfg;
   void password;
   void apiKey;
   // mqtt_broker and mqtt_bridge nest their credentials inside sub-objects.
-  // Clone-and-redact rather than passing through so non-admins never see the
-  // password in plaintext.
   if (rest.auth && typeof rest.auth === 'object') {
     rest.auth = { ...rest.auth, password: undefined };
   }
@@ -828,12 +848,10 @@ function computeSourceRadioSummary(sourceId: string): SourceRadioSummary | null 
 router.get('/', optionalAuth(), async (req: Request, res: Response) => {
   try {
     const sources = await databaseService.sources.getAllSources();
-    const isAdmin = req.user?.isAdmin === true;
-    // Project to public-safe metadata, then run through the shared
-    // credential strip so admins still receive `password`/`apiKey`
-    // (needed for the source-edit UI round-trip) and everyone else
-    // does not.
-    const projected = sources.map(s => stripSourceSecrets({
+    const audience = await resolveSourceConfigAudience(req);
+    // Project to list metadata, then redact `config` for this caller — see
+    // redactSourceForCaller.
+    const projected = sources.map(s => redactSourceForCaller({
       id: s.id,
       name: s.name,
       type: s.type,
@@ -842,7 +860,7 @@ router.get('/', optionalAuth(), async (req: Request, res: Response) => {
       updatedAt: s.updatedAt,
       config: s.config,
       radio: computeSourceRadioSummary(s.id),
-    }, isAdmin));
+    }, audience));
     res.json(projected);
   } catch (error) {
     logger.error('Error listing sources:', error);
@@ -863,8 +881,8 @@ router.post('/reorder', requirePermission('sources', 'write'), async (req: Reque
       return res.status(400).json({ error: 'order must be an array of source IDs' });
     }
     const sources = await databaseService.sources.reorderSources(order);
-    const isAdmin = req.user?.isAdmin === true;
-    const projected = sources.map(s => stripSourceSecrets({
+    const audience = await resolveSourceConfigAudience(req);
+    const projected = sources.map(s => redactSourceForCaller({
       id: s.id,
       name: s.name,
       type: s.type,
@@ -872,7 +890,7 @@ router.post('/reorder', requirePermission('sources', 'write'), async (req: Reque
       createdAt: s.createdAt,
       updatedAt: s.updatedAt,
       config: s.config,
-    }, isAdmin));
+    }, audience));
     res.json(projected);
   } catch (error: any) {
     // reorderSources throws on a non-permutation payload — surface as 400.
@@ -883,18 +901,17 @@ router.post('/reorder', requirePermission('sources', 'write'), async (req: Reque
 
 // Get single source
 //
-// MM-SEC-8: pass the row through the same `stripSourceSecrets` helper as the
-// list endpoint above. `sources:read` covers source metadata (name, type,
-// enabled, etc.); credentials embedded in the `config` blob are admin-only,
-// matching the MM-SEC-1 pattern for `GET /api/settings`.
+// MM-SEC-8: the row goes through the same `redactSourceForCaller` helper as
+// the list endpoint above. `sources:read` covers source metadata and the
+// connection endpoints; credentials embedded in the `config` blob never
+// leave for a non-admin, matching the MM-SEC-1 pattern for `GET /api/settings`.
 router.get('/:id', requirePermission('sources', 'read'), async (req: Request, res: Response) => {
   try {
     const source = await databaseService.sources.getSource(req.params.id);
     if (!source) {
       return res.status(404).json({ error: 'Source not found' });
     }
-    const isAdmin = req.user?.isAdmin === true;
-    res.json(stripSourceSecrets(source, isAdmin));
+    res.json(redactSourceForCaller(source, await resolveSourceConfigAudience(req)));
   } catch (error) {
     logger.error('Error fetching source:', error);
     res.status(500).json({ error: 'Failed to fetch source' });
@@ -1109,7 +1126,9 @@ router.post('/', requirePermission('sources', 'write'), async (req: Request, res
       }
     }
 
-    res.status(201).json(source);
+    // The caller holds `sources:write`, which is not the same as admin: the
+    // stored row goes back through the same redaction as a read.
+    res.status(201).json(redactSourceForCaller(source, await resolveSourceConfigAudience(req)));
   } catch (error) {
     logger.error('Error creating source:', error);
     res.status(500).json({ error: 'Failed to create source' });
@@ -1553,7 +1572,7 @@ router.put('/:id', requirePermission('sources', 'write'), async (req: Request, r
       }
     }
 
-    res.json(source);
+    res.json(redactSourceForCaller(source, await resolveSourceConfigAudience(req)));
   } catch (error) {
     logger.error('Error updating source:', error);
     res.status(500).json({ error: 'Failed to update source' });
@@ -1701,6 +1720,49 @@ async function forwardingStatusFor(
   }
 }
 
+/**
+ * A status payload for a caller who may not see where the source connects to.
+ *
+ * Connection state and counters stay. What goes is anything that can name a
+ * host: the free-text `lastError` (socket errors quote the address), the same
+ * field on each per-gateway publisher, and the Observer brokers' URLs. The
+ * shape is kept — fields are blanked, not dropped — so the UI reads the same
+ * object either way. A `meshcore_mqtt` source keeps `lastError`: its manager
+ * only ever sets a fixed sentence there (#5596).
+ */
+function withoutEndpointDetail(status: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = { ...status };
+  if ('lastError' in out && out.sourceType !== 'meshcore_mqtt') out.lastError = null;
+  if (out.publishers && typeof out.publishers === 'object') {
+    out.publishers = Object.fromEntries(
+      Object.entries(out.publishers as Record<string, Record<string, unknown>>).map(
+        ([clientId, entry]) => [clientId, { ...entry, lastError: null }],
+      ),
+    );
+  }
+  if (out.observer && typeof out.observer === 'object') {
+    const observer = out.observer as Record<string, unknown>;
+    out.observer = {
+      ...observer,
+      lastError: null,
+      ...(Array.isArray(observer.brokers)
+        ? {
+            brokers: observer.brokers.map((b: Record<string, unknown>, i: number) => ({
+              ...b,
+              // The real key is the broker URL; the UI only needs it unique.
+              key: `broker-${i}`,
+              url: '',
+              label: null,
+              tokenAudience: null,
+              lastError: null,
+            })),
+          }
+        : {}),
+    };
+  }
+  return out;
+}
+
 router.get('/:id/status', optionalAuth(), async (req: Request, res: Response) => {
   try {
     const source = await databaseService.sources.getSource(req.params.id);
@@ -1738,6 +1800,12 @@ router.get('/:id/status', optionalAuth(), async (req: Request, res: Response) =>
     // only when the source has rules — otherwise the pill has nothing to show.
     const forwarding = await forwardingStatusFor(user, isAdmin, source);
     if (forwarding) status = { ...status, forwarding };
+
+    // Free-text errors and the Observer broker list name the hosts a source
+    // connects to. Only a caller who may see the endpoint gets them.
+    if (!isAdmin && !(await mayViewSourceEndpoint(req))) {
+      status = withoutEndpointDetail(status as Record<string, unknown>);
+    }
 
     if (!canReadNodes) {
       // Analyzer Observer status (#4457 Phase 2, D-10) can leak the broker

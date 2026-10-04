@@ -92,7 +92,7 @@ export interface MeshCoreMqttSourceConfig {
    *
    * Stored as plaintext in the source's `config` blob, like `mqtt_broker`'s
    * `auth.password` — there is no encryption layer for source config. It is
-   * kept out of non-admin API responses by `stripSourceSecrets`, and preserved
+   * kept out of non-admin API responses by `redactSourceForCaller`, and preserved
    * across an edit that leaves the field blank by `preserveSourceCredentials`.
    */
   password?: string;

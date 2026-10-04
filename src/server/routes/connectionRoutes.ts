@@ -7,6 +7,7 @@ import { sourceManagerRegistry } from '../sourceManagerRegistry.js';
 import { isMeshtasticManager, isMqttConnectionStatusManager } from '../sourceManagerTypes.js';
 import { requireMeshtasticDeviceSource } from '../utils/requireMeshtasticDeviceSource.js';
 import { getEnvironmentConfig } from '../config/environment.js';
+import { mayViewSourceEndpoint } from '../utils/sourceConfigRedaction.js';
 
 const NOT_CONNECTED = {
   connected: false,
@@ -47,8 +48,9 @@ router.get('/', optionalAuth(), async (req: Request, res: Response) => {
     // state, never the primary radio's.
     const ownStatus = await nonMeshtasticConnectionStatus(connSourceId);
     const status = ownStatus ?? await resolveSourceManager(connSourceId).getConnectionStatus();
-    // Hide nodeIp from anonymous users
-    if (!req.session.userId) {
+    // The node address is a connection endpoint: signed in with `sources:read`
+    // (or admin) only, the same rule the source list applies to `config.host`.
+    if (!(await mayViewSourceEndpoint(req))) {
       const { nodeIp: _nodeIp, ...statusWithoutNodeIp } = status;
       res.json(statusWithoutNodeIp);
     } else {
@@ -127,6 +129,18 @@ router.get('/info', requireAuth(), async (req: Request, res: Response) => {
     const env = getEnvironmentConfig();
     const ipOverride = await databaseService.settings.getSetting('meshtasticNodeIpOverride');
     const portOverride = await databaseService.settings.getSetting('meshtasticTcpPortOverride');
+
+    // Signed in is not enough to see the address — see mayViewSourceEndpoint.
+    if (!(await mayViewSourceEndpoint(req))) {
+      const { nodeIp: _nodeIp, ...rest } = status;
+      res.json({
+        ...rest,
+        defaultPort: env.meshtasticTcpPort,
+        isOverridden: !!(ipOverride || portOverride),
+        tcpPort: portOverride ? parseInt(portOverride, 10) : env.meshtasticTcpPort,
+      });
+      return;
+    }
 
     res.json({
       ...status,

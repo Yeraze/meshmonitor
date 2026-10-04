@@ -19,6 +19,7 @@ import { resolveSourceConnectionConfig } from '../utils/resolveSourceConnectionC
 import { isValidModuleConfigType } from '../constants/moduleConfig.js';
 import { validateMeshBeaconConfigPayload } from '../constants/meshtastic.js';
 import { getEnvironmentConfig } from '../config/environment.js';
+import { mayViewSourceEndpoint } from '../utils/sourceConfigRedaction.js';
 import { fail } from '../utils/apiResponse.js';
 import { isTxDisabledError } from '../errors/txDisabledError.js';
 import { safeJson } from '../utils/redactSecrets.js';
@@ -66,7 +67,8 @@ router.get('/', optionalAuth(), async (req, res) => {
     const conn = await resolveSourceConnectionConfig(configSourceId);
 
     res.json({
-      ...(req.session.userId ? { meshtasticNodeIp: conn.host ?? '' } : {}),
+      // A connection endpoint: signed in with `sources:read` (or admin) only.
+      ...((await mayViewSourceEndpoint(req)) ? { meshtasticNodeIp: conn.host ?? '' } : {}),
       meshtasticTcpPort: conn.port ?? env.meshtasticTcpPort,
       meshtasticUseTls: false, // We're using TCP, not TLS
       meshtasticSourceType: conn.sourceType,
