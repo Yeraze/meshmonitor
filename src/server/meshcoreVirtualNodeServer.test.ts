@@ -15,6 +15,7 @@ import {
   degreesToFixed,
 } from './meshcoreCompanionCodec.js';
 import type { MeshCoreNode, MeshCoreContact, MeshCoreMessage, MeshCoreLoginResult } from './meshcoreManager.js';
+import { decodeOutPathLen, formatOutPath } from './meshcoreNativeBackend.js';
 
 // Audit logging is fire-and-forget; stub it so the test doesn't touch the DB.
 // `settings.getSetting` backs the configurable CLI reply-timeout (#4027); default
@@ -2589,6 +2590,156 @@ describe('MeshCoreVirtualNodeServer — contact / device commands (#5350)', () =
       const frames = await client.expectFrames(3);
       const contact = await decode(ResponseCodes.Contact, frames[1]);
       expect(contact.flags).toBe(0x03);
+    });
+  });
+
+  // The out_path_len byte is PACKED on the wire (firmware Packet.h:
+  // top 2 bits = hash width - 1, bottom 6 = hop count, 0xFF = no route), and
+  // firmware sends a contact's byte as stored (writeContactRespFrame). The VN
+  // used to send the bare hop count, right only for 1-byte hashes.
+  describe('GetContacts out_path_len (packed)', () => {
+    const LEN_AT = 1 + 32 + 1 + 1; // [code][key:32][type][flags] → out_path_len
+    const PATH_AT = LEN_AT + 1;
+
+    async function contactFrame(route: { outPath: string | null; pathLen: number | null }): Promise<Buffer> {
+      await startWith({ contacts: [{ ...SAMPLE_CONTACTS[0], ...route }] });
+      client.send([CommandCodes.GetContacts]);
+      const frames = await client.expectFrames(3);
+      expect(frames[1][0]).toBe(ResponseCodes.Contact);
+      return frames[1];
+    }
+
+    /**
+     * Read the frame the way a real client does: meshcore.js parses it, then
+     * MeshMonitor's own read side (decodeOutPathLen + formatOutPath, as
+     * get_contacts uses them) turns it back into the stored form.
+     */
+    async function readBack(frame: Buffer) {
+      const c = await decode(ResponseCodes.Contact, frame);
+      const d = decodeOutPathLen(c.outPathLen);
+      if (d === null || d === undefined) return { outPathHex: null, pathLen: null };
+      return formatOutPath(c.outPath, d.byteCount, d.hopHashBytes);
+    }
+
+    it('1-byte hashes: the byte is the hop count', async () => {
+      const frame = await contactFrame({ outPath: 'a3,7f', pathLen: 2 });
+      expect(frame[LEN_AT]).toBe(0x02);
+      expect(frame.subarray(PATH_AT, PATH_AT + 2).toString('hex')).toBe('a37f');
+      expect(frame.subarray(PATH_AT + 2, PATH_AT + 64).every((b) => b === 0)).toBe(true);
+      expect(await readBack(frame)).toEqual({ outPathHex: 'a3,7f', pathLen: 2 });
+    });
+
+    it('2-byte hashes: width bits 01, and the path reads back whole', async () => {
+      const frame = await contactFrame({ outPath: 'a3f2,7f01', pathLen: 2 });
+      expect(frame[LEN_AT]).toBe(0x42); // was 0x02: read as two 1-byte hops a3, f2
+      expect(frame.subarray(PATH_AT, PATH_AT + 4).toString('hex')).toBe('a3f27f01');
+      expect(await readBack(frame)).toEqual({ outPathHex: 'a3f2,7f01', pathLen: 2 });
+    });
+
+    it('3-byte hashes: width bits 10, sent unsigned', async () => {
+      const frame = await contactFrame({ outPath: 'a3f201,7f0102,0b0c0d', pathLen: 3 });
+      expect(frame[LEN_AT]).toBe(0x83);
+      expect(frame.subarray(PATH_AT, PATH_AT + 9).toString('hex')).toBe('a3f2017f01020b0c0d');
+      expect(await readBack(frame)).toEqual({ outPathHex: 'a3f201,7f0102,0b0c0d', pathLen: 3 });
+    });
+
+    it('zero-hop direct: 0x00 and an all-zero path', async () => {
+      const frame = await contactFrame({ outPath: '', pathLen: 0 });
+      expect(frame[LEN_AT]).toBe(0x00);
+      expect(frame.subarray(PATH_AT, PATH_AT + 64).every((b) => b === 0)).toBe(true);
+      expect(await readBack(frame)).toEqual({ outPathHex: '', pathLen: 0 });
+    });
+
+    it('no route: OUT_PATH_UNKNOWN (0xFF) and an all-zero path', async () => {
+      const frame = await contactFrame({ outPath: null, pathLen: null });
+      expect(frame[LEN_AT]).toBe(0xff);
+      expect(frame.subarray(PATH_AT, PATH_AT + 64).every((b) => b === 0)).toBe(true);
+      expect(await readBack(frame)).toEqual({ outPathHex: null, pathLen: null });
+    });
+
+    it.each([
+      [1, 63, 0x3f],
+      [2, 32, 0x40 | 32],
+      [3, 21, 0x80 | 21],
+    ])('max hops for %i-byte hashes (%i hops) → 0x%s', async (width, hops, byte) => {
+      const outPath = Array.from({ length: hops }, (_, i) =>
+        (i + 1).toString(16).padStart(2, '0').repeat(width)).join(',');
+      const frame = await contactFrame({ outPath, pathLen: hops });
+      expect(frame[LEN_AT]).toBe(byte);
+      expect(frame.length).toBe(PATH_AT + 64 + 32 + 16); // the path never spills past its 64 bytes
+      expect(await readBack(frame)).toEqual({ outPathHex: outPath, pathLen: hops });
+    });
+
+    it('a hop count with no stored hashes is sent as no route, not as a bogus length', async () => {
+      const frame = await contactFrame({ outPath: null, pathLen: 3 });
+      expect(frame[LEN_AT]).toBe(0xff);
+    });
+  });
+
+  // The client echoes the contact back in AddUpdateContact. The diff must
+  // compare against the packed byte we sent, or a faithful echo of a
+  // multi-byte route reads as a manual route edit.
+  describe('AddUpdateContact (9) with a packed out_path_len', () => {
+    const TWO_BYTE = { outPath: 'a3f2,7f01', pathLen: 2 };
+    const THREE_BYTE = { outPath: 'a3f201,7f0102', pathLen: 2 };
+
+    it('acks a faithful echo of a 2-byte-hash route without touching the node', async () => {
+      await startWith({ contacts: [{ ...SAMPLE_CONTACTS[0], ...TWO_BYTE }] });
+      const res = await client.request(await addUpdateFrame({ outPathLen: 0x42, outPath: [0xa3, 0xf2, 0x7f, 0x01] }));
+      expect(res[0]).toBe(ResponseCodes.Ok);
+      expect(manager.resetContactPathMock).not.toHaveBeenCalled();
+      expect(manager.setContactNameMock).not.toHaveBeenCalled();
+    });
+
+    it('acks a faithful echo of a 3-byte-hash route (bit 7 set, read signed)', async () => {
+      await startWith({ contacts: [{ ...SAMPLE_CONTACTS[0], ...THREE_BYTE }] });
+      const res = await client.request(
+        await addUpdateFrame({ outPathLen: 0x82, outPath: [0xa3, 0xf2, 0x01, 0x7f, 0x01, 0x02] }),
+      );
+      expect(res[0]).toBe(ResponseCodes.Ok);
+      expect(manager.resetContactPathMock).not.toHaveBeenCalled();
+    });
+
+    it('echoes GetContacts straight back: what we send is what we accept', async () => {
+      await startWith({ contacts: [{ ...SAMPLE_CONTACTS[0], ...THREE_BYTE }] });
+      client.send([CommandCodes.GetContacts]);
+      const sent = await decode(ResponseCodes.Contact, (await client.expectFrames(3))[1]);
+      const res = await client.request(await appFrame((c) => c.sendCommandAddUpdateContact(
+        sent.publicKey, sent.type, sent.flags, sent.outPathLen & 0xff, sent.outPath,
+        sent.advName, sent.lastAdvert, sent.advLat, sent.advLon,
+      )));
+      expect(res[0]).toBe(ResponseCodes.Ok);
+      expect(manager.resetContactPathMock).not.toHaveBeenCalled();
+      expect(manager.setContactNameMock).not.toHaveBeenCalled();
+      expect(manager.setNodeFavoriteMock).not.toHaveBeenCalled();
+    });
+
+    it('still refuses a changed multi-byte route: same hops, different width', async () => {
+      await startWith({ contacts: [{ ...SAMPLE_CONTACTS[0], ...TWO_BYTE }] });
+      // Plain hop count 2 = two 1-byte hops. Not the route we advertised.
+      const res = await client.request(await addUpdateFrame({ outPathLen: 0x02, outPath: [0xa3, 0xf2, 0x7f, 0x01] }));
+      expectErr(res, ErrorCodes.UnsupportedCmd);
+      expect(manager.resetContactPathMock).not.toHaveBeenCalled();
+    });
+
+    it('still refuses a multi-byte route whose hashes changed', async () => {
+      await startWith({ contacts: [{ ...SAMPLE_CONTACTS[0], ...TWO_BYTE }] });
+      const res = await client.request(await addUpdateFrame({ outPathLen: 0x42, outPath: [0xa3, 0xf2, 0x7f, 0x99] }));
+      expectErr(res, ErrorCodes.UnsupportedCmd);
+    });
+
+    it('resets a multi-byte route set to OUT_PATH_UNKNOWN', async () => {
+      await startWith({ contacts: [{ ...SAMPLE_CONTACTS[0], ...THREE_BYTE }] });
+      const res = await client.request(await addUpdateFrame({ outPathLen: 0xff, outPath: [] }));
+      expect(res[0]).toBe(ResponseCodes.Ok);
+      expect(manager.resetContactPathMock).toHaveBeenCalledWith(KEY);
+    });
+
+    it('does not reset a contact that already has no route', async () => {
+      await startWith({ contacts: [{ ...SAMPLE_CONTACTS[0], outPath: null, pathLen: null }] });
+      const res = await client.request(await addUpdateFrame({ outPathLen: 0xff, outPath: [] }));
+      expect(res[0]).toBe(ResponseCodes.Ok);
+      expect(manager.resetContactPathMock).not.toHaveBeenCalled();
     });
   });
 
