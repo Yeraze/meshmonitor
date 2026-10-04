@@ -24,6 +24,13 @@
  *    under `MAIN_CHUNK_BUDGET_BYTES`. Catches creep back into "everything is
  *    in the main chunk again" even though no single chunk is near the PWA cap
  *    (lazy route chunks can each be large without tripping check 1).
+ * 3. A stylesheet linked from `dist/index.html` holds the theme rules
+ *    (`:root[data-theme='mocha']` and friends, from src/App.css). The
+ *    `meshmonitor-eager-css` plugin in vite.config.ts is what keeps them in
+ *    the entry sheet. When it silently did nothing on Windows (#5558), the
+ *    theme rules stayed in a lazy route chunk, the landing page loaded none of
+ *    them, and the Desktop build opened on a white page. The desktop workflows
+ *    run this script on Windows and macOS for that reason.
  *
  * `PWA_PRECACHE_CAP_BYTES` mirrors `maximumFileSizeToCacheInBytes` in
  * vite.config.ts (VitePWA -> injectManifest). vite.config.ts is TypeScript, so
@@ -42,10 +49,10 @@
  *   unreviewed regression — if the main chunk grew, check whether something
  *   that should be a lazy route/vendor chunk leaked back into it.
  */
-import { readdirSync, readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { gzipSync } from 'node:zlib';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(__dirname, '..');
@@ -138,6 +145,72 @@ export function readJsAssets(assetsDir) {
     });
 }
 
+// The default dark and light themes (DEFAULT_DARK_THEME / DEFAULT_LIGHT_THEME
+// in src/contexts/SettingsContext.tsx). A first-run user gets one of these, so
+// both must be styled before any lazy route loads.
+export const REQUIRED_EAGER_THEMES = ['mocha', 'latte'];
+
+/** Hrefs of every `<link rel="stylesheet">` in an HTML document, in order. */
+export function extractStylesheetHrefs(html) {
+  const hrefs = [];
+  for (const [tag] of html.matchAll(/<link\b[^>]*>/gi)) {
+    if (!/\brel\s*=\s*["']?stylesheet\b/i.test(tag)) continue;
+    const href = tag.match(/\bhref\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/i);
+    const value = href && (href[1] ?? href[2] ?? href[3]);
+    if (value) hrefs.push(value);
+  }
+  return hrefs;
+}
+
+/** True when `css` holds a `[data-theme=<theme>]` selector (minified or not). */
+export function hasThemeRule(css, theme) {
+  const escaped = theme.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp(`\\[data-theme=["']?${escaped}["']?\\]`).test(css);
+}
+
+/**
+ * Check 3: the stylesheets `index.html` links must, between them, hold a rule
+ * for every theme in `themes`. Reads `<distDir>/index.html` and the local
+ * sheets it links. Returns `{ ok, errors, stylesheets }` and never throws.
+ */
+export function evaluateEagerThemeCss(distDir, { themes = REQUIRED_EAGER_THEMES } = {}) {
+  const indexPath = path.join(distDir, 'index.html');
+  if (!existsSync(indexPath)) {
+    return { ok: false, errors: [`${indexPath} does not exist, so the eager theme CSS could not be checked.`], stylesheets: [] };
+  }
+  const hrefs = extractStylesheetHrefs(readFileSync(indexPath, 'utf8'))
+    // Sheets on another origin are not ours to check.
+    .filter((href) => !/^(?:[a-z][a-z0-9+.-]*:)?\/\//i.test(href));
+  const stylesheets = [];
+  const errors = [];
+  let css = '';
+  for (const href of hrefs) {
+    const relative = href.replace(/[?#].*$/, '').replace(/^\.?\/+/, '');
+    const file = path.join(distDir, relative);
+    if (!existsSync(file)) {
+      errors.push(`index.html links ${href}, but ${file} does not exist.`);
+      continue;
+    }
+    const contents = readFileSync(file, 'utf8');
+    stylesheets.push({ href, size: Buffer.byteLength(contents) });
+    css += contents;
+  }
+  if (stylesheets.length === 0 && errors.length === 0) {
+    errors.push('index.html links no stylesheet, so the landing page would load with no theme rules.');
+  }
+  const missing = themes.filter((theme) => !hasThemeRule(css, theme));
+  if (stylesheets.length > 0 && missing.length > 0) {
+    errors.push(
+      `No stylesheet linked from index.html holds the theme rules for: ${missing.join(', ')} ` +
+        `(checked ${stylesheets.map((s) => `${s.href} = ${formatBytes(s.size)}`).join(', ')}). ` +
+        `The landing page would render white until a lazy route loads its CSS (#5558). ` +
+        `The meshmonitor-eager-css plugin in vite.config.ts should keep every page's CSS in the entry sheet — ` +
+        `check that it still fills src/eagerStyles.ts on this platform.`,
+    );
+  }
+  return { ok: errors.length === 0, errors, stylesheets };
+}
+
 function printTable(assets) {
   const top = [...assets].sort((a, b) => b.size - a.size).slice(0, 10);
   const nameWidth = Math.max(4, ...top.map((a) => a.name.length));
@@ -176,13 +249,22 @@ function main() {
 
   printTable(assets);
 
-  const { ok, errors } = evaluateBundleBudgets(assets);
-  if (ok) {
-    console.log('OK — all JS assets are within the configured size budgets.');
+  const cssCount = readdirSync(assetsDir).filter((name) => name.endsWith('.css')).length;
+  const theme = evaluateEagerThemeCss(path.dirname(assetsDir));
+  console.log(`CSS assets: ${cssCount} total. Stylesheets linked from index.html:`);
+  for (const sheet of theme.stylesheets) {
+    console.log(`  ${sheet.href}  ${formatBytes(sheet.size)}`);
+  }
+  console.log('');
+
+  const budgets = evaluateBundleBudgets(assets);
+  const errors = [...budgets.errors, ...theme.errors];
+  if (errors.length === 0) {
+    console.log('OK — all JS assets are within the configured size budgets, and the entry stylesheet holds the theme rules.');
     return;
   }
 
-  console.error(`FAIL — ${errors.length} bundle-size budget violation(s):\n`);
+  console.error(`FAIL — ${errors.length} bundle check violation(s):\n`);
   for (const message of errors) {
     console.error(`  - ${message}`);
   }
@@ -192,6 +274,9 @@ function main() {
 
 // Only run as a CLI entry point — importing this module for its exports (e.g.
 // from the test file) must not trigger a filesystem scan.
-if (import.meta.url === `file://${process.argv[1]}`) {
+// `pathToFileURL` rather than a hand-built `file://` string: on Windows argv[1]
+// is `D:\a\...` and the URL is `file:///D:/a/...`, so the string form never
+// matched and this script exited 0 there without checking anything.
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   main();
 }
