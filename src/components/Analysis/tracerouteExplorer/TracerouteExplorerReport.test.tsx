@@ -49,6 +49,7 @@ vi.mock('../../TracerouteHistoryModal', () => ({
 
 import TracerouteExplorerReport from './TracerouteExplorerReport';
 import type { ExplorerResponse, ExplorerRunWire } from './explorerModel';
+import { orientTracerouteRow } from '../../../utils/tracerouteOrientation';
 
 const A = 0xa1, B = 0xb2, R1 = 0x11, R2 = 0x22;
 const NOW = Date.now();
@@ -142,6 +143,41 @@ describe('TracerouteExplorerReport', () => {
     expect(within(detail).getByTestId('strip-stub')).toBeInTheDocument();
     expect(screen.getByTestId('map-stub').dataset.focus).toBe('src-1:1');
     expect(within(detail).getAllByText('1 of 2 answered runs')).toHaveLength(2);
+  });
+
+  // One run is stored two ways (src/utils/tracerouteOrientation.ts). The
+  // server orients both with `orientTracerouteRow`, so the report must fold a
+  // run we sent and a reply-only run over the same path into ONE pair with ONE
+  // path, reading out from the node that asked.
+  it('shows both stored forms of a run as one pair and one path, forward from the requester', async () => {
+    const arrays = {
+      route: JSON.stringify([R1, R2]), routeBack: JSON.stringify([R2, R1]),
+      snrTowards: '[20,8,4]', snrBack: '[12,4,8]',
+    };
+    const storedSent = run({ id: 10, timestamp: NOW - 1000, fromNodeNum: A, toNodeNum: B, ...arrays });
+    const storedReplyOnly = run({ id: 11, timestamp: NOW - 2000, fromNodeNum: B, toNodeNum: A, ...arrays });
+    fetchExplorer.mockResolvedValue(
+      response({ runs: [storedSent, storedReplyOnly].map(r => orientTracerouteRow(r, A)) }),
+    );
+
+    const user = userEvent.setup();
+    renderReport();
+    const pairs = await screen.findAllByTestId('explorer-pair-row');
+    expect(pairs).toHaveLength(1);
+    expect(within(pairs[0]).getByText('100% answered')).toBeInTheDocument();
+    expect(pairs[0].textContent).toMatch(/BASE.*CAR1/);
+
+    await user.click(pairs[0]);
+    const runs = screen.getAllByTestId('explorer-run-row');
+    expect(runs).toHaveLength(2);
+
+    for (const row of runs) {
+      await user.click(row);
+      const detail = screen.getByTestId('traceroute-explorer-detail');
+      expect(within(detail).getByRole('heading').textContent).toBe('Base StationCar One');
+      expect(within(detail).getByText('BASE › RDG1 › PEAK › CAR1')).toBeInTheDocument();
+      expect(within(detail).getByText('2 of 2 answered runs')).toBeInTheDocument();
+    }
   });
 
   it('lists every run in flat mode and filters by result', async () => {

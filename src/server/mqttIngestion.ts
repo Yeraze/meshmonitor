@@ -305,6 +305,8 @@ async function ingestServiceEnvelopeInner(input: MqttIngestionInput): Promise<Mq
             // The originator's ok_to_mqtt bit must survive server-side decrypt —
             // violation detection reads it off the synthesized shape (#4114).
             bitfield?: number;
+            // Tells a traceroute reply from a request (see TRACEROUTE_APP below).
+            requestId?: number;
           };
         }).decoded = {
           portnum: r.portnum,
@@ -313,6 +315,7 @@ async function ingestServiceEnvelopeInner(input: MqttIngestionInput): Promise<Mq
           replyId: r.replyId,
           channelDatabaseId: r.channelDatabaseId,
           bitfield: r.bitfield,
+          requestId: r.requestId,
         };
       }
     } catch (err) {
@@ -788,7 +791,11 @@ async function ingestServiceEnvelopeInner(input: MqttIngestionInput): Promise<Mq
     }
 
     case PortNum.TRACEROUTE_APP: {
-      await ingestTraceroute(sourceId, packet, payload as Record<string, any>, fromNum, fromNodeId, toNum, toNodeId, nowMs, effectiveChannel);
+      // Only a REPLY (request_id set) is a traceroute result; ingestTraceroute
+      // refreshes the two nodes for a request and stores nothing else.
+      const requestId = Number((decoded as { requestId?: number | string }).requestId ?? 0);
+      const isReply = Number.isFinite(requestId) && requestId !== 0;
+      await ingestTraceroute(sourceId, packet, payload as Record<string, any>, fromNum, fromNodeId, toNum, toNodeId, nowMs, effectiveChannel, isReply);
       return { ingested: true, portnum };
     }
 
@@ -864,6 +871,8 @@ export async function ingestServiceEnvelope(input: MqttIngestionInput): Promise<
 /**
  * TRACEROUTE_APP — persist the traceroute record, a hop-count telemetry
  * datum, and any route segments we can compute from known node positions.
+ * The record is written in REPLY-PACKET form (`fromNodeNum` answered,
+ * `toNodeNum` asked); readers get it requester-first from the repository.
  * Mirrors the TCP path's storage side (skipping presentation-only steps
  * like human-readable route text generation and the autoresponder
  * delivery hook, which don't apply to MQTT-sourced traceroutes).
@@ -878,6 +887,7 @@ async function ingestTraceroute(
   toNodeId: string,
   nowMs: number,
   effectiveChannel: number,
+  isReply: boolean,
 ): Promise<void> {
   const BROADCAST_ADDR = 4294967295;
   // Replay guard (see utils/replayGuard.ts): undefined for a stale replay so the
@@ -925,6 +935,18 @@ async function ingestTraceroute(
       sourceId,
     );
   }
+
+  // A gateway also uplinks the REQUEST while it is still in flight: `from` is
+  // the node that asked and `route` holds only the hops so far. Stored as a
+  // run it reads as "the destination answered over this path", which joins
+  // the last hop heard to a destination the packet never reached, in the
+  // traceroute row, the hop-count datum and the route segments alike. The TCP
+  // path skips requests for the same reason (#3622). The two nodes above are
+  // still refreshed: the packet does prove the sender is alive.
+  //
+  // With requests out, every MQTT row is in reply-packet form, which is what
+  // `orientTracerouteRow` assumes for a source with no radio of its own.
+  if (!isReply) return;
 
   const rawRoute: number[] = Array.isArray(routeDiscovery.route) ? routeDiscovery.route : [];
   const rawRouteBack: number[] = Array.isArray(routeDiscovery.routeBack) ? routeDiscovery.routeBack : [];

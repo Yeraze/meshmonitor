@@ -10,6 +10,8 @@
  */
 import { describe, it, expect, beforeEach, afterEach, afterAll, beforeAll } from 'vitest';
 import { TraceroutesRepository } from './traceroutes.js';
+import { SettingsRepository } from './settings.js';
+import { localNodeNumSettingKey } from '../localNodeNumKey.js';
 import { ALL_SOURCES } from './base.js';
 import {
   TestBackend,
@@ -22,9 +24,18 @@ import {
 import { DbTraceroute, DbRouteSegment } from '../types.js';
 import { createTestDb } from '../../server/test-helpers/testDb.js';
 
+// `settings` is here because every traceroute READ looks up each source's
+// local node number to orient the rows (src/utils/tracerouteOrientation.ts).
 const POSTGRES_CREATE = `
   DROP TABLE IF EXISTS route_segments CASCADE;
   DROP TABLE IF EXISTS traceroutes CASCADE;
+  DROP TABLE IF EXISTS settings CASCADE;
+  CREATE TABLE settings (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL,
+    "createdAt" BIGINT NOT NULL,
+    "updatedAt" BIGINT NOT NULL
+  );
   CREATE TABLE traceroutes (
     id SERIAL PRIMARY KEY,
     "fromNodeNum" BIGINT NOT NULL,
@@ -66,6 +77,13 @@ const POSTGRES_CREATE = `
 const MYSQL_CREATE = `
   DROP TABLE IF EXISTS route_segments;
   DROP TABLE IF EXISTS traceroutes;
+  DROP TABLE IF EXISTS settings;
+  CREATE TABLE settings (
+    \`key\` VARCHAR(255) PRIMARY KEY,
+    value TEXT NOT NULL,
+    createdAt BIGINT NOT NULL,
+    updatedAt BIGINT NOT NULL
+  );
   CREATE TABLE traceroutes (
     id INT AUTO_INCREMENT PRIMARY KEY,
     fromNodeNum BIGINT NOT NULL,
@@ -475,6 +493,167 @@ function runTraceroutesTests(getBackend: () => TestBackend) {
     expect(capped.map(r => Number(r.packetId))).toEqual([2]);
 
     expect(await repo.getTraceroutesForSources({ sourceIds: [], limit: 10 })).toEqual([]);
+  });
+
+  // ============ ROW ORIENTATION ============
+
+  /*
+   * One run is stored two ways (src/utils/tracerouteOrientation.ts). These
+   * build both through the repository's own write calls, the ones
+   * DatabaseService.insertTracerouteAsync makes: a pending row filled in by
+   * updateTracerouteResponse, and a reply inserted with no pending row.
+   */
+  const LOCAL = 3639506708; // above 2^31: also proves the BIGINT round-trip
+  const REMOTE = 944633591;
+  const HOP_OUT = 111111;
+  const HOP_BACK = 222222;
+  const arrays = {
+    route: JSON.stringify([HOP_OUT]),
+    routeBack: JSON.stringify([HOP_BACK]),
+    snrTowards: '[8,12]',
+    snrBack: '[16,20]',
+  };
+
+  const idOf = (n: number) => `!${n.toString(16).padStart(8, '0')}`;
+
+  const setLocalNode = (sourceId: string, nodeNum: number) => {
+    const backend = getBackend();
+    return new SettingsRepository(backend.drizzleDb, backend.dbType)
+      .setSetting(localNodeNumSettingKey(sourceId), String(nodeNum));
+  };
+
+  /** Sent from MeshMonitor: stored { from: requester, to: responder }. */
+  const writeSent = async (sourceId: string, requester: number, responder: number, ts: number, packetId: number) => {
+    await repo.insertTraceroute(makeTraceroute({
+      fromNodeNum: requester, toNodeNum: responder, fromNodeId: idOf(requester), toNodeId: idOf(responder),
+      timestamp: ts - 5, createdAt: ts - 5,
+    }), sourceId);
+    const pending = await repo.findPendingTraceroute(requester, responder, 0, sourceId);
+    await repo.updateTracerouteResponse(pending!.id, arrays.route, arrays.routeBack, arrays.snrTowards, arrays.snrBack, ts, packetId);
+  };
+
+  /** A reply with no pending row: stored { from: responder, to: requester }. */
+  const writeReplyOnly = (sourceId: string, requester: number, responder: number, ts: number, packetId: number) =>
+    repo.insertTraceroute(makeTraceroute({
+      fromNodeNum: responder, toNodeNum: requester, fromNodeId: idOf(responder), toNodeId: idOf(requester),
+      ...arrays, packetId, timestamp: ts, createdAt: ts,
+    }), sourceId);
+
+  it('orientation - every read method serves both stored forms requester-first', async () => {
+    const backend = getBackend();
+    if (!backend.available) {
+      console.log(`⚠ Skipped: ${backend.skipReason}`);
+      return;
+    }
+    await setLocalNode('src-a', LOCAL);
+    const now = Date.now();
+    await writeSent('src-a', LOCAL, REMOTE, now - 2000, 1);
+    await writeReplyOnly('src-a', LOCAL, REMOTE, now - 1000, 2);
+
+    const reads = {
+      getAllTraceroutes: await repo.getAllTraceroutes(10, 'src-a'),
+      getTraceroutesForSources: await repo.getTraceroutesForSources({ sourceIds: ['src-a'], limit: 10 }),
+      getTraceroutesByNodes: await repo.getTraceroutesByNodes(REMOTE, LOCAL, 10, 'src-a'),
+      endpointOnly: await repo.getTraceroutesInvolvingNode(REMOTE, { sourceId: 'src-a', endpointOnly: true }),
+      participation: await repo.getTraceroutesInvolvingNode(HOP_OUT, { sourceId: 'src-a' }),
+    };
+    for (const [name, rows] of Object.entries(reads)) {
+      expect(rows.map(r => Number(r.packetId)), name).toEqual([2, 1]);
+      for (const row of rows) {
+        expect({ from: Number(row.fromNodeNum), to: Number(row.toNodeNum), fromId: row.fromNodeId, toId: row.toNodeId }, name)
+          .toEqual({ from: LOCAL, to: REMOTE, fromId: idOf(LOCAL), toId: idOf(REMOTE) });
+        // The arrays are never rewritten: route still runs from the requester.
+        expect(row, name).toMatchObject(arrays);
+      }
+    }
+  });
+
+  it('orientation - a source with no local node (MQTT) holds reply packets, served requester-first', async () => {
+    const backend = getBackend();
+    if (!backend.available) {
+      console.log(`⚠ Skipped: ${backend.skipReason}`);
+      return;
+    }
+    await writeReplyOnly('src-mqtt', LOCAL, REMOTE, Date.now(), 7);
+    const [row] = await repo.getAllTraceroutes(10, 'src-mqtt');
+    expect({ from: Number(row.fromNodeNum), to: Number(row.toNodeNum) }).toEqual({ from: LOCAL, to: REMOTE });
+  });
+
+  it('orientation - our own outgoing reply (our radio in from, no return leg) reads as the other node asking', async () => {
+    const backend = getBackend();
+    if (!backend.available) {
+      console.log(`⚠ Skipped: ${backend.skipReason}`);
+      return;
+    }
+    await setLocalNode('src-a', LOCAL);
+    const now = Date.now();
+    await repo.insertTraceroute(makeTraceroute({
+      fromNodeNum: LOCAL, toNodeNum: REMOTE, route: JSON.stringify([HOP_OUT]), routeBack: '[]',
+      snrTowards: '[8,12]', snrBack: '[]', timestamp: now, createdAt: now,
+    }), 'src-a');
+    const [row] = await repo.getAllTraceroutes(10, 'src-a');
+    expect({ from: Number(row.fromNodeNum), to: Number(row.toNodeNum) }).toEqual({ from: REMOTE, to: LOCAL });
+  });
+
+  it('orientation - a pending or unanswered request stays as written', async () => {
+    const backend = getBackend();
+    if (!backend.available) {
+      console.log(`⚠ Skipped: ${backend.skipReason}`);
+      return;
+    }
+    // No local node on record: a NULL route alone marks it requester-first.
+    await repo.insertTraceroute(makeTraceroute({ fromNodeNum: LOCAL, toNodeNum: REMOTE }), 'src-a');
+    const [row] = await repo.getAllTraceroutes(10, 'src-a');
+    expect({ from: Number(row.fromNodeNum), to: Number(row.toNodeNum) }).toEqual({ from: LOCAL, to: REMOTE });
+  });
+
+  it('orientation - one source\'s local node is never applied to another source\'s rows', async () => {
+    const backend = getBackend();
+    if (!backend.available) {
+      console.log(`⚠ Skipped: ${backend.skipReason}`);
+      return;
+    }
+    await setLocalNode('src-a', LOCAL);
+    const now = Date.now();
+    // Identical stored rows on two sources. On src-a LOCAL is the radio, so
+    // the row is a run it sent. On src-b nothing says so: a reply packet.
+    for (const sourceId of ['src-a', 'src-b']) {
+      await repo.insertTraceroute(makeTraceroute({
+        fromNodeNum: LOCAL, toNodeNum: REMOTE, ...arrays, timestamp: now, createdAt: now,
+      }), sourceId);
+    }
+    const rows = await repo.getTraceroutesForSources({ sourceIds: ['src-a', 'src-b'], limit: 10 });
+    const bySource = new Map(rows.map(r => [r.sourceId, { from: Number(r.fromNodeNum), to: Number(r.toNodeNum) }]));
+    expect(bySource.get('src-a')).toEqual({ from: LOCAL, to: REMOTE });
+    expect(bySource.get('src-b')).toEqual({ from: REMOTE, to: LOCAL });
+  });
+
+  it('cleanupOldTraceroutesForPair - one limit for the pair, whichever way round the rows are stored', async () => {
+    const backend = getBackend();
+    if (!backend.available) {
+      console.log(`⚠ Skipped: ${backend.skipReason}`);
+      return;
+    }
+    await setLocalNode('src-a', LOCAL);
+    const now = Date.now();
+    // Six runs between the same two nodes, alternating stored form.
+    for (let i = 0; i < 6; i++) {
+      const write = i % 2 === 0 ? writeSent : writeReplyOnly;
+      await write('src-a', LOCAL, REMOTE, now + i * 1000, i);
+    }
+    // Other rows that must survive: another pair, and the same pair elsewhere.
+    await writeReplyOnly('src-a', LOCAL, 5005, now, 90);
+    await writeReplyOnly('src-b', LOCAL, REMOTE, now, 91);
+
+    // Called as the reply path calls it: (reply.from, reply.to).
+    await repo.cleanupOldTraceroutesForPair(REMOTE, LOCAL, 3, 'src-a');
+
+    const kept = await repo.getTraceroutesByNodes(LOCAL, REMOTE, 50, 'src-a');
+    // The newest three, across both forms. Keyed by (from, to) alone this
+    // kept all six: three under each key.
+    expect(kept.map(r => Number(r.packetId))).toEqual([5, 4, 3]);
+    expect(await repo.getTraceroutesByNodes(LOCAL, 5005, 50, 'src-a')).toHaveLength(1);
+    expect(await repo.getTraceroutesByNodes(LOCAL, REMOTE, 50, 'src-b')).toHaveLength(1);
   });
 
   it('getTracerouteCount - returns correct count', async () => {
@@ -913,6 +1092,7 @@ describe.skipIf(!postgresAvailable)('TraceroutesRepository - PostgreSQL Backend'
     if (!backend.available) return;
     await clearTable(backend, 'traceroutes');
     await clearTable(backend, 'route_segments');
+    await clearTable(backend, 'settings');
   });
 
   runTraceroutesTests(() => backend);
@@ -941,6 +1121,7 @@ describe.skipIf(!mysqlAvailable)('TraceroutesRepository - MySQL Backend', () => 
     if (!backend.available) return;
     await clearTable(backend, 'traceroutes');
     await clearTable(backend, 'route_segments');
+    await clearTable(backend, 'settings');
   });
 
   runTraceroutesTests(() => backend);

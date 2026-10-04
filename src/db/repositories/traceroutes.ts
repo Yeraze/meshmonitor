@@ -3,6 +3,13 @@
  *
  * Handles traceroute and route segment database operations.
  * Supports SQLite, PostgreSQL, and MySQL through Drizzle ORM.
+ *
+ * ROW ORIENTATION: the table stores one run as `{ from: requester, to:
+ * responder }` or as `{ from: responder, to: requester }`, depending on the
+ * writer (see `src/utils/tracerouteOrientation.ts`). The WRITE methods here
+ * work on rows as stored. Every READ method returns requester-first rows, by
+ * passing them through `orientTracerouteRows`. A new read method must do the
+ * same, or its callers get the route attached to the wrong end.
  */
 import { eq, and, desc, lt, or, isNull, gte, inArray, notInArray, count, sql, type SQL } from 'drizzle-orm';
 import { BaseRepository, DrizzleDatabase, SourceScope } from './base.js';
@@ -95,13 +102,14 @@ export class TraceroutesRepository extends BaseRepository {
   /**
    * Delete old traceroutes for a node pair, keeping only the most recent N.
    * Uses direct DELETE WHERE with notInArray for optimal performance.
+   *
+   * The pair is UNORDERED. One pair's runs are stored in both orientations
+   * (see the module doc), so matching only `(from, to)` split a pair's history
+   * across two keys and let it grow to twice the limit.
    */
   async cleanupOldTraceroutesForPair(fromNodeNum: number, toNodeNum: number, keepCount: number, sourceId?: string): Promise<void> {
     const { traceroutes } = this.tables;
-    const baseConditions = [
-      eq(traceroutes.fromNodeNum, fromNodeNum),
-      eq(traceroutes.toNodeNum, toNodeNum),
-    ];
+    const baseConditions = [this.pairCondition(fromNodeNum, toNodeNum)];
     if (sourceId !== undefined) {
       baseConditions.push(eq(traceroutes.sourceId, sourceId));
     }
@@ -122,6 +130,15 @@ export class TraceroutesRepository extends BaseRepository {
     }
   }
 
+  /** Rows between two nodes, whichever way round they are stored. */
+  private pairCondition(a: number, b: number): SQL {
+    const { traceroutes } = this.tables;
+    return or(
+      and(eq(traceroutes.fromNodeNum, a), eq(traceroutes.toNodeNum, b)),
+      and(eq(traceroutes.fromNodeNum, b), eq(traceroutes.toNodeNum, a)),
+    )!;
+  }
+
   /**
    * Get all traceroutes with pagination
    */
@@ -134,7 +151,7 @@ export class TraceroutesRepository extends BaseRepository {
       .orderBy(desc(traceroutes.timestamp))
       .limit(limit);
 
-    return this.normalizeBigInts(result) as DbTraceroute[];
+    return this.orientTracerouteRows(this.normalizeBigInts(result) as DbTraceroute[]);
   }
 
   /**
@@ -162,7 +179,7 @@ export class TraceroutesRepository extends BaseRepository {
       .orderBy(desc(traceroutes.timestamp), desc(traceroutes.id))
       .limit(opts.limit);
 
-    return this.normalizeBigInts(result) as Array<DbTraceroute & { sourceId: string }>;
+    return this.orientTracerouteRows(this.normalizeBigInts(result) as Array<DbTraceroute & { sourceId: string }>);
   }
 
   /**
@@ -199,7 +216,7 @@ export class TraceroutesRepository extends BaseRepository {
       .orderBy(desc(traceroutes.timestamp))
       .limit(limit);
 
-    return this.normalizeBigInts(result) as DbTraceroute[];
+    return this.orientTracerouteRows(this.normalizeBigInts(result) as DbTraceroute[]);
   }
 
   /**
@@ -276,7 +293,7 @@ export class TraceroutesRepository extends BaseRepository {
       // null only when the node is neither an endpoint nor a hop, and the SQL
       // predicate above already proved it is an endpoint. It is a defensive
       // default for a classifier/predicate divergence, not a real case.
-      return (this.normalizeBigInts(rows) as DbTraceroute[]).map(row => ({
+      return (await this.orientTracerouteRows(this.normalizeBigInts(rows) as DbTraceroute[])).map(row => ({
         ...row,
         participation: tracerouteParticipationKind(row, nodeNum) ?? 'endpoint',
       }));
@@ -289,7 +306,7 @@ export class TraceroutesRepository extends BaseRepository {
       .orderBy(desc(traceroutes.timestamp))
       .limit(scanLimit);
 
-    const normalized = this.normalizeBigInts(rows) as DbTraceroute[];
+    const normalized = await this.orientTracerouteRows(this.normalizeBigInts(rows) as DbTraceroute[]);
     const matched: Array<DbTraceroute & { participation: TracerouteParticipation }> = [];
     for (const row of normalized) {
       const participation = tracerouteParticipationKind(row, nodeNum);
@@ -718,10 +735,9 @@ export class TraceroutesRepository extends BaseRepository {
       }
 
       // Step 3: prune — keep only the most recent `historyLimit` rows for
-      // this (fromNodeNum, toNodeNum[, sourceId]) pair.
+      // this node pair[, sourceId]. Unordered: see cleanupOldTraceroutesForPair.
       const scopeConditions = [
-        eq(traceroutes.fromNodeNum, tracerouteData.fromNodeNum),
-        eq(traceroutes.toNodeNum, tracerouteData.toNodeNum),
+        this.pairCondition(tracerouteData.fromNodeNum, tracerouteData.toNodeNum),
       ];
       if (sourceId !== undefined) {
         scopeConditions.push(eq(traceroutes.sourceId, sourceId));
@@ -869,6 +885,10 @@ export class TraceroutesRepository extends BaseRepository {
   /**
    * Synchronously get all traceroutes for the legacy runDataMigrations
    * bootstrap flow (SQLite only).
+   *
+   * Returns rows AS STORED, not requester-first: its one caller pairs
+   * adjacent intermediate hops and never reads the endpoint columns. Do not
+   * use it for anything that does.
    */
   getAllTraceroutesSync(): DbTraceroute[] {
     const db = this.getSqliteDb();

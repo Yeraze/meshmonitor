@@ -142,6 +142,13 @@ function envFor(from: number, portnum: number): ServiceEnvelopeShape {
   };
 }
 
+/** A traceroute REPLY: request_id names the request it answers. */
+function tracerouteReplyEnvFor(from: number): ServiceEnvelopeShape {
+  const env = envFor(from, 70 /* TRACEROUTE_APP */);
+  (env.packet!.decoded as { requestId?: number }).requestId = 0x0badcafe;
+  return env;
+}
+
 describe('ingestServiceEnvelope — fail-open back-compat (#4115)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -809,7 +816,7 @@ describe('ingestServiceEnvelope — TRACEROUTE_APP', () => {
   it('persists the traceroute record and a messageHops telemetry datum', async () => {
     const result = await ingestServiceEnvelope({
       sourceId: 'bridge-1',
-      envelope: envFor(NODE_IN, 70 /* TRACEROUTE_APP */),
+      envelope: tracerouteReplyEnvFor(NODE_IN),
     });
     expect(result.ingested).toBe(true);
     expect(databaseService.insertTracerouteAsync).toHaveBeenCalledTimes(1);
@@ -831,13 +838,77 @@ describe('ingestServiceEnvelope — TRACEROUTE_APP', () => {
   it('upserts the sender node when it has not been seen before', async () => {
     await ingestServiceEnvelope({
       sourceId: 'bridge-1',
-      envelope: envFor(NODE_IN, 70 /* TRACEROUTE_APP */),
+      envelope: tracerouteReplyEnvFor(NODE_IN),
     });
     expect(databaseService.nodes.upsertNode).toHaveBeenCalled();
     const senderUpsert = (databaseService.nodes.upsertNode as any).mock.calls
       .find((c: any[]) => c[0].nodeNum === NODE_IN);
     expect(senderUpsert).toBeDefined();
     expect(senderUpsert[1]).toBe('bridge-1');
+  });
+
+  // A gateway uplinks the REQUEST while it is still in flight. Its `from` is
+  // the node that asked and its route is only the hops so far. Stored as a
+  // run it would read as "the destination answered over this path".
+  it('a request still in flight (no request_id) stores no run, no hop count and no segments', async () => {
+    const result = await ingestServiceEnvelope({
+      sourceId: 'bridge-1',
+      envelope: envFor(NODE_IN, 70 /* TRACEROUTE_APP */),
+    });
+    expect(result.ingested).toBe(true);
+    expect(databaseService.insertTracerouteAsync).not.toHaveBeenCalled();
+    expect(databaseService.insertRouteSegmentAsync).not.toHaveBeenCalled();
+    const hopsCall = (databaseService.insertTelemetryAsync as any).mock.calls
+      .find((c: any[]) => c[0].telemetryType === 'messageHops');
+    expect(hopsCall).toBeUndefined();
+    // The packet still proves the sender is alive.
+    const senderUpsert = (databaseService.nodes.upsertNode as any).mock.calls
+      .find((c: any[]) => c[0].nodeNum === NODE_IN);
+    expect(senderUpsert).toBeDefined();
+  });
+
+  // Public brokers republish packets still encrypted, so most traceroutes
+  // reach this code through server-side decryption. The synthesized `decoded`
+  // must carry request_id, or every such reply would be taken for a request.
+  describe('server-decrypted packets', () => {
+    const encryptedEnv = (): ServiceEnvelopeShape => ({
+      channelId: 'LongFast',
+      gatewayId: '!00000001',
+      packet: { id: 0x12345678, from: NODE_IN, to: 0x11111111, channel: 0, encrypted: new Uint8Array([1, 2, 3]) } as any,
+    });
+    const spies: Array<{ mockRestore: () => void }> = [];
+    const decryptsTo = async (requestId: number | undefined) => {
+      const { channelDecryptionService } = await import('./services/channelDecryptionService.js');
+      spies.push(
+        vi.spyOn(channelDecryptionService, 'isEnabled').mockReturnValue(true),
+        vi.spyOn(channelDecryptionService, 'tryDecrypt').mockResolvedValue({
+          success: true, portnum: 70, payload: new Uint8Array([0]), requestId,
+        }),
+      );
+    };
+    afterEach(() => {
+      for (const spy of spies.splice(0)) spy.mockRestore();
+    });
+
+    it('a reply is stored', async () => {
+      await decryptsTo(0x0badcafe);
+      await ingestServiceEnvelope({ sourceId: 'bridge-1', envelope: encryptedEnv() });
+      expect(databaseService.insertTracerouteAsync).toHaveBeenCalledTimes(1);
+    });
+
+    it('a request is not', async () => {
+      await decryptsTo(undefined);
+      await ingestServiceEnvelope({ sourceId: 'bridge-1', envelope: encryptedEnv() });
+      expect(databaseService.insertTracerouteAsync).not.toHaveBeenCalled();
+    });
+  });
+
+  it('stores the reply as it arrived: from = the node that answered', async () => {
+    const env = tracerouteReplyEnvFor(NODE_IN);
+    env.packet!.to = 0x11111111;
+    await ingestServiceEnvelope({ sourceId: 'bridge-1', envelope: env });
+    const [record] = (databaseService.insertTracerouteAsync as any).mock.calls[0];
+    expect(record).toMatchObject({ fromNodeNum: NODE_IN, toNodeNum: 0x11111111 });
   });
 });
 
@@ -877,7 +948,7 @@ describe('ingestServiceEnvelope — TRACEROUTE_APP route segments (#5101)', () =
         from: RESPONDER,
         to: REQUESTER,
         channel: 0,
-        decoded: { portnum: 70 /* TRACEROUTE_APP */, payload: new Uint8Array([0]) },
+        decoded: { portnum: 70 /* TRACEROUTE_APP */, payload: new Uint8Array([0]), requestId: 0x0badcafe } as any,
       },
     };
 
@@ -1182,7 +1253,7 @@ describe('ingestServiceEnvelope — channel_database resolution', () => {
 
     const result = await ingestServiceEnvelope({
       sourceId: 'bridge-1',
-      envelope: envFor(NODE_IN, 70 /* TRACEROUTE_APP */),
+      envelope: tracerouteReplyEnvFor(NODE_IN),
     });
     expect(result.ingested).toBe(true);
     const [record] = (databaseService.insertTracerouteAsync as any).mock.calls[0];

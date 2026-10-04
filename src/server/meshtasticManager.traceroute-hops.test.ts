@@ -487,6 +487,37 @@ describe('MeshtasticManager — traceroute intermediate hop handling (issues 261
     // Known intermediate hop — never upserted by the hop loop.
     expect(upsertCallsFor(0xaaaa8888)).toEqual([]);
   });
+
+  // The client merges this event straight into the rows it got from the API,
+  // which are requester-first. The record handed to the DATABASE stays in
+  // reply-packet form: insertTracerouteAsync matches the pending row from it.
+  it('emits traceroute:complete requester-first, and stores the reply as it arrived', async () => {
+    mockGetNode.mockImplementation((nodeNum: number) => ({ nodeNum, nodeId: `!${nodeNum.toString(16)}`, longName: 'Node', shortName: 'ND' }));
+    const RESPONDER = 0xdddddddd;
+    const REQUESTER = 0x11111111;
+    const packet = makeTraceroutePacket(RESPONDER, REQUESTER);
+    await (manager as any).processTracerouteMessage(packet, {
+      route: [0xaaaa1111], routeBack: [0xaaaa2222], snrTowards: [40, 30], snrBack: [20, 10],
+    });
+
+    const [stored] = mockInsertTraceroute.mock.calls[0];
+    expect(stored).toMatchObject({ fromNodeNum: RESPONDER, toNodeNum: REQUESTER });
+
+    const { dataEventEmitter } = await import('./services/dataEventEmitter.js');
+    const [emitted] = (dataEventEmitter.emitTracerouteComplete as any).mock.calls[0];
+    expect(emitted).toMatchObject({
+      fromNodeNum: REQUESTER, toNodeNum: RESPONDER,
+      fromNodeId: '!11111111', toNodeId: '!dddddddd',
+      route: JSON.stringify([0xaaaa1111]), routeBack: JSON.stringify([0xaaaa2222]),
+      snrTowards: '[40,30]', snrBack: '[20,10]',
+    });
+
+    // The notification title reads asker → answerer.
+    const { notificationService } = await import('./services/notificationService.js');
+    await vi.waitFor(() => expect(notificationService.notifyTraceroute).toHaveBeenCalled());
+    const [asker, answerer] = (notificationService.notifyTraceroute as any).mock.calls[0];
+    expect([asker, answerer]).toEqual(['!11111111', '!dddddddd']);
+  });
 });
 
 describe('MeshtasticManager — per-hop transport on route segments (#5101)', () => {
