@@ -51,9 +51,8 @@ export interface MessagePushInput {
 
 /** Resolve a display name for the message's channel, including virtual (channel_database) ids. */
 /**
- * Human-readable service label from a Source.type, for notification titles
- * (#4845). Lets a mobile notification say "New Meshtastic Message" vs
- * "New MeshCore Message" at a glance across a multi-source install.
+ * Human-readable service label from a Source.type (#4845). Since #5593 it is
+ * the `{{ serviceLabel }}` template token rather than part of a fixed title.
  */
 function serviceLabelFromSourceType(type: string | undefined): string {
   switch (type) {
