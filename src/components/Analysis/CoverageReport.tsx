@@ -85,6 +85,11 @@ const RANGE_PRESETS: Array<{ id: Exclude<CoverageRangePreset, 'custom'>; key: st
 // advert always has a value on this list (#5277 P3 WP3, spec §2.6).
 const HOPS_OPTIONS = [0, 1, 2, 3, 4, 5, 6, 7, 8];
 
+/** Docs section the setup guidance links to (#5591). The anchor is the
+ *  "Why a survey looks sparse" heading in docs/features/coverage-report.md. */
+const COVERAGE_SPARSE_DOCS_URL =
+  'https://meshmonitor.org/features/coverage-report#why-a-survey-looks-sparse';
+
 /** The Meshtastic hop_limit / airtime-cost table (spec §0), shown in the
  *  collapsible setup guidance panel. Multipliers are the spec's own rough
  *  per-fix transmission-count estimates. */
@@ -821,8 +826,24 @@ export const CoverageReport: React.FC<CoverageReportProps> = ({ initialLink }) =
             <p>
               {t(
                 'analysis.coverage.guidance_recommend',
-                'Recommended survey-node settings: hop_limit 0, smart position enabled (it honours hop_limit 0), and a position interval of 30 seconds or more.',
+                'Recommended survey-node settings: hop_limit 0, smart position enabled (it honours hop_limit 0), and a smart position minimum interval of 30 seconds or more. 30 seconds needs a private channel: on a default channel the firmware raises it to 5 minutes.',
               )}
+            </p>
+            {/* #5591: one hint, one docs link. No control here changes a
+               node — this report sends nothing. */}
+            <p data-testid="coverage-sparse-hint">
+              {t(
+                'analysis.coverage.guidance_sparse_hint',
+                'Fewer dots than you expected? Firmware holds back and drops position packets.',
+              )}{' '}
+              <a
+                className={styles.guidanceLink}
+                href={COVERAGE_SPARSE_DOCS_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                {t('analysis.coverage.guidance_sparse_link', 'Why a survey looks sparse')}
+              </a>
             </p>
             <p>
               {t(
