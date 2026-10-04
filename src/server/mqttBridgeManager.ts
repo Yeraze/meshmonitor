@@ -549,7 +549,18 @@ export class MqttBridgeManager extends EventEmitter implements ISourceManager {
       old.removeAllListeners();
       old.on('error', () => {});
       await old.disconnect().catch(() => {});
-      await this.connectSubscriber();
+      // The Client ID and the shared reconnect coordinator were set by start()
+      // and are reused, so the new client joins the same backoff as the pool.
+      try {
+        await this.connectSubscriber();
+      } catch (err) {
+        // Only a failed SUBSCRIBE can land here (the login itself never
+        // rejects). The new client is live, registered with the coordinator,
+        // and re-subscribes on its next connect, so report and carry on.
+        logger.warn(
+          `MQTT bridge ${this.sourceId}: subscribe failed after a manual reconnect: ${(err as Error).message}`,
+        );
+      }
     }
     return { subscriber, gateways };
   }

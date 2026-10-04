@@ -318,6 +318,36 @@ describe('MqttBridgeManager — auth stop per upstream client', () => {
       expect(bridge.getStatus().downlinkIn).toBe(1);
     });
 
+    it('reconnectAuthStopped survives a failed SUBSCRIBE: the new client stays in charge', async () => {
+      await startBridge('reject');
+      await rejectUntilStopped(SUBSCRIBER_ID);
+
+      const reconnecting = bridge.reconnectAuthStopped();
+      await flush();
+      const sock = lastSocketFor(SUBSCRIBER_ID);
+      // The connect handler's own re-subscribe is fine; the explicit one fails.
+      sock.subscribe
+        .mockImplementationOnce((_t: string[], _o: unknown, cb?: any) => cb && cb(null, [], {}))
+        .mockImplementationOnce((_t: string[], _o: unknown, cb?: any) => cb && cb(new Error('client disconnecting')));
+      accept(sock);
+
+      await expect(reconnecting).resolves.toEqual({ subscriber: true, gateways: 0 });
+      expect(bridge.getStatus()).toMatchObject({ connected: true, authStopped: false });
+      // Still wired: a drop is retried on the normal backoff.
+      sock.emit('close');
+      await vi.advanceTimersByTimeAsync(70_000);
+      expect(sock.reconnect).toHaveBeenCalledTimes(1);
+    });
+
+    it('a subscribe_only bridge that stopped still refuses publish() outright', async () => {
+      await startBridge('reject', baseConfig({ mode: 'subscribe_only' }));
+      await rejectUntilStopped(SUBSCRIBER_ID);
+      expect(bridge.getStatus().authStopped).toBe(true);
+
+      await expect(bridge.publish('msh/US/t', Buffer.from('x'))).rejects.toThrow(/subscribe_only/);
+      expect(bridge.getStatus().uplinkAuthStoppedDrops).toBe(0);
+    });
+
     it('reconnectAuthStopped leaves a healthy bridge alone', async () => {
       const sock = await startBridge('accept');
       const before = sockets().length;

@@ -1741,11 +1741,17 @@ function redactBridgeGatewayIds(status: Record<string, unknown>): Record<string,
   const publishers = rest.publishers;
   if (!publishers || typeof publishers !== 'object') return rest;
   const anonymous: Record<string, unknown> = {};
+  // The labels follow the pool's insertion order. They are a count, not an
+  // identity: nothing may rely on "gateway 2" meaning the same node twice.
   Object.values(publishers as Record<string, Record<string, unknown>>).forEach((entry, i) => {
     const label = `gateway ${i + 1}`;
     anonymous[label] = {
       ...entry,
       clientId: label,
+      // A stopped gateway's lastError is the pool's fixed text
+      // (GATEWAY_AUTH_STOPPED_MESSAGE), safe for anyone. Any other value is
+      // the broker's or the socket's own words, so it is withheld. Do not
+      // "simplify" this to always-null or always-passthrough.
       lastError: entry.authStopped ? entry.lastError : null,
     };
   });
