@@ -227,7 +227,6 @@
   },
   "src/components/NotificationsTab.tsx": {
     "@typescript-eslint/no-explicit-any": 2,
-    "meshmonitor-ui/no-hardcoded-color": 70,
     "no-useless-escape": 1,
     "react-hooks/exhaustive-deps": 1
   },
