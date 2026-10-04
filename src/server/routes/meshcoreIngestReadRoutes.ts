@@ -19,6 +19,7 @@ import { optionalAuth, requirePermission } from '../auth/authMiddleware.js';
 import { sourceManagerRegistry } from '../sourceManagerRegistry.js';
 import { isMeshCoreMqttManager } from '../sourceManagerTypes.js';
 import type { MeshCoreMqttManager } from '../meshcoreMqttManager.js';
+import databaseService from '../../services/database.js';
 import { logger } from '../../utils/logger.js';
 import { ok, fail } from '../utils/apiResponse.js';
 import { meshcoreMessageFilter } from '../services/meshcoreMessageFilter.js';
@@ -39,6 +40,23 @@ function ingestManagerFor(req: Request): MeshCoreMqttManager | null {
   return mgr && isMeshCoreMqttManager(mgr) ? mgr : null;
 }
 
+/**
+ * May this viewer see which broker the source connects to?
+ *
+ * The overview is gated on `nodes:read`, which the anonymous user often holds
+ * so a public dashboard can list nodes. The broker host is source CONFIG, not
+ * mesh data, so it takes the same grant as `GET /api/sources/:id`: a signed-in
+ * user with `sources:read`, or an admin. Anonymous viewers never see it, even
+ * if someone grants `sources:read` to the anonymous account — #5596 keeps the
+ * host away from callers with no login.
+ */
+async function mayViewBrokerHost(req: Request): Promise<boolean> {
+  const user = (req as Request & { user?: { id: number; username?: string; isAdmin?: boolean } }).user;
+  if (!user || user.username === 'anonymous') return false;
+  if (user.isAdmin === true) return true;
+  return databaseService.checkPermissionAsync(user.id, 'sources', 'read');
+}
+
 function refuseDeviceSource(res: Response) {
   return fail(
     res,
@@ -54,6 +72,9 @@ function refuseDeviceSource(res: Response) {
  * What the ingest source page needs for its header: which broker and region it
  * reads, whether it is connected, and the observers heard from — including each
  * observer's own battery / uptime / noise floor from its `/status` heartbeat.
+ *
+ * `region` is always present. `brokerUrl` is the redacted URL for a viewer who
+ * may read source config, and null for everyone else.
  */
 router.get(
   '/ingest/overview',
@@ -79,9 +100,17 @@ router.get(
 
       const nodes = await mgr.getAllNodes();
 
+      // Region is the topic segment every observer publishes under — public by
+      // nature. The broker host is not: see mayViewBrokerHost. The URL arrives
+      // from the manager with any `user:password@` already redacted.
+      const feed = mgr.getFeedEndpoint();
+      const brokerUrl = (await mayViewBrokerHost(req)) ? feed.brokerUrl : null;
+
       return ok(res, {
         connected: mgr.isConnected(),
         status,
+        region: feed.region,
+        brokerUrl,
         nodeCount: nodes.length,
         observers,
       });
