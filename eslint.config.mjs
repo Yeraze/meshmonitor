@@ -5,6 +5,7 @@ import typescriptParser from '@typescript-eslint/parser';
 import reactHooks from 'eslint-plugin-react-hooks';
 import reactRefresh from 'eslint-plugin-react-refresh';
 import globals from 'globals';
+import { noHardcodedColor } from './scripts/eslint-rules/no-hardcoded-color.mjs';
 import { noHardcodedUiGlyph } from './scripts/eslint-rules/no-hardcoded-ui-glyph.mjs';
 import { requireRelativeImportExtension } from './scripts/eslint-rules/require-relative-import-extension.mjs';
 import { stableI18nMock } from './scripts/eslint-rules/stable-i18n-mock.mjs';
@@ -50,6 +51,7 @@ export default [
       'react-refresh': reactRefresh,
       'meshmonitor-ui': {
         rules: {
+          'no-hardcoded-color': noHardcodedColor,
           'no-hardcoded-ui-glyph': noHardcodedUiGlyph,
           'require-relative-import-extension': requireRelativeImportExtension,
           'stable-i18n-mock': stableI18nMock,
@@ -198,6 +200,29 @@ export default [
     ],
     rules: {
       'meshmonitor-ui/no-hardcoded-ui-glyph': 'error',
+    },
+  },
+  {
+    // #5594: inline styles take colours from the --color-* role tokens in
+    // src/App.css. A hex / rgb() / hsl() literal keeps one theme's colour under
+    // every theme (#5592, #5558, #5247, #5135, #4910). Existing sites are frozen
+    // by the ratchet; migrate them to a CSS module as files are touched.
+    //
+    // Its own rule on purpose: a second `no-restricted-syntax` block would
+    // REPLACE the fetch ban above for the same files (flat-config semantics)
+    // and share its ruleId, so the ratchet could not count the two apart.
+    //
+    // TSX only. Plain .ts palettes, canvas and map-style code hold colour as
+    // data and are out of scope; SVG attributes and drawing options are skipped
+    // by the rule itself. Companion check for stylesheets:
+    // scripts/check-css-colors.mjs.
+    files: ['src/**/*.tsx'],
+    ignores: [
+      '**/*.test.tsx',
+      '**/*.spec.tsx',
+    ],
+    rules: {
+      'meshmonitor-ui/no-hardcoded-color': 'error',
     },
   },
   {

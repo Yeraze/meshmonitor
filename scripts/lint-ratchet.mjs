@@ -5,6 +5,11 @@
 // Usage:
 //   node scripts/lint-ratchet.mjs          — CI gate (exits 1 on regressions)
 //   node scripts/lint-ratchet.mjs --update — regenerate eslint-baseline.json
+//   node scripts/lint-ratchet.mjs --update --rule <ruleId>
+//                                          — rewrite that one rule's counts and
+//                                            leave every other number alone (use
+//                                            when adding a rule, so the baseline
+//                                            diff shows the new rule and nothing else)
 //
 // Semantics:
 //   current > baseline → FAIL (new violation)
@@ -18,6 +23,8 @@ import { fileURLToPath } from 'node:url';
 const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const BASELINE = path.join(ROOT, 'eslint-baseline.json');
 const UPDATE = process.argv.includes('--update');
+const RULE_FLAG = process.argv.indexOf('--rule');
+const ONLY_RULE = RULE_FLAG === -1 ? null : process.argv[RULE_FLAG + 1];
 
 export function runEslint(cwd = ROOT) {
   let out;
@@ -102,9 +109,52 @@ export function compare(counts, base, lines = {}) {
   return { failures, advisories };
 }
 
+/**
+ * A baseline with one rule's counts replaced by the current tally and every
+ * other rule's counts carried over untouched.
+ * Pure function — no IO. Exported for unit tests.
+ *
+ * A plain `--update` rewrites every rule, so it also locks in whatever other
+ * rules happen to have improved (or, with stray worktrees on disk, adds their
+ * files). Adding a rule should change that rule's numbers only.
+ *
+ * @param {Record<string, Record<string, number>>} base   Existing baseline
+ * @param {Record<string, Record<string, number>>} counts Current tally
+ * @param {string} rule                                   The ruleId to rewrite
+ * @returns {Record<string, Record<string, number>>}
+ */
+export function mergeRule(base, counts, rule) {
+  const merged = {};
+  for (const [file, rules] of Object.entries(base)) {
+    const kept = Object.fromEntries(Object.entries(rules).filter(([id]) => id !== rule));
+    if (Object.keys(kept).length) merged[file] = kept;
+  }
+  for (const [file, rules] of Object.entries(counts)) {
+    if (rules[rule]) merged[file] = { ...merged[file], [rule]: rules[rule] };
+  }
+  return merged;
+}
+
 // --- main ---
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const { counts, lines } = tally(runEslint());
+
+  if (UPDATE && RULE_FLAG !== -1) {
+    if (!ONLY_RULE || ONLY_RULE.startsWith('--')) {
+      console.error('--rule needs a ruleId, e.g. --rule meshmonitor-ui/no-hardcoded-color');
+      process.exit(2);
+    }
+    if (!existsSync(BASELINE)) {
+      console.error('Missing eslint-baseline.json — run: npm run lint:baseline');
+      process.exit(2);
+    }
+    const merged = mergeRule(JSON.parse(readFileSync(BASELINE, 'utf8')), counts, ONLY_RULE);
+    writeFileSync(BASELINE, JSON.stringify(sortObj(merged), null, 2) + '\n');
+    const files = Object.values(merged).filter(r => r[ONLY_RULE]);
+    const total = files.reduce((n, r) => n + r[ONLY_RULE], 0);
+    console.log(`Wrote ${ONLY_RULE}: ${total} in ${files.length} files. Other rules untouched.`);
+    process.exit(0);
+  }
 
   if (UPDATE) {
     writeFileSync(BASELINE, JSON.stringify(sortObj(counts), null, 2) + '\n');
