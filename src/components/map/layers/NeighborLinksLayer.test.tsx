@@ -193,6 +193,26 @@ describe('NeighborLinksLayer', () => {
       expect(JSON.parse(marker.getAttribute('data-position') ?? 'null')).toEqual([5, 0]);
     });
 
+    it('draws no reverse arrows unless asked', () => {
+      renderLayer([link({ key: 'a', arrows: { color: '#ffcc00', fractions: [0.5] } })]);
+      expect(screen.getAllByTestId('arrow-marker')).toHaveLength(1);
+    });
+
+    it('#5580: `reverseFractions` adds arrows on the same line, making it double-headed', () => {
+      renderLayer([
+        link({
+          key: 'a',
+          positions: [[10, 0], [0, 0]],
+          arrows: { color: '#ffcc00', fractions: [0.8], reverseFractions: [0.2] },
+        }),
+      ]);
+      const markers = screen.getAllByTestId('arrow-marker');
+      expect(markers).toHaveLength(2);
+      // Same interpolation from positions[1] toward positions[0] for both.
+      expect(markers.map((m) => JSON.parse(m.getAttribute('data-position') ?? 'null'))).toEqual([[8, 0], [2, 0]]);
+      for (const m of markers) expect(m).toHaveAttribute('data-interactive', 'false');
+    });
+
     it('renders arrow markers as non-interactive', () => {
       renderLayer([link({ key: 'a', arrows: { color: '#ffcc00', fractions: [0.5] } })]);
       expect(screen.getByTestId('arrow-marker')).toHaveAttribute('data-interactive', 'false');

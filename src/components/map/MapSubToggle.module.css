@@ -1,0 +1,4 @@
+/* A Map Features toggle that depends on the one above it (#5580). */
+.subToggle {
+  padding-left: 1.5rem;
+}

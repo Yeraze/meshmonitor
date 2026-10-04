@@ -81,6 +81,8 @@ import { MapLoadingOverlay } from '../map/MapLoadingOverlay';
 import { TraceroutePathsLayer } from '../map/layers/TraceroutePathsLayer';
 import { NeighborLinksLayer, type NeighborLinkDescriptor } from '../map/layers/NeighborLinksLayer';
 import { CrossSourceLinksLayer } from '../map/layers/CrossSourceLinksLayer';
+import { TracerouteConfirmedLinksLayer } from '../map/layers/TracerouteConfirmedLinksLayer';
+import subToggleStyles from '../map/MapSubToggle.module.css';
 import { AccuracyRegionsLayer, type AccuracyRegionDescriptor } from '../map/layers/AccuracyRegionsLayer';
 import { snrToNeighborOpacity, dedupByUnorderedPair } from '../../utils/neighborLinks';
 import { UiIcon } from '../icons';
@@ -328,6 +330,8 @@ export default function DashboardMap({
     setShowNeighborInfo,
     showCrossSourceLinks,
     setShowCrossSourceLinks,
+    showTracerouteConfirmedLinks,
+    setShowTracerouteConfirmedLinks,
     showWaypoints,
     setShowWaypoints,
     showAtakContacts,
@@ -906,6 +910,7 @@ export default function DashboardMap({
             showNeighbors={showNeighborInfo}
             showTraceroutes={showPaths || showRoute}
             showCrossSourceLinks={showCrossSourceLinks === true && polarSourceIds.length > 0}
+            showTracerouteConfirmedLinks={showCrossSourceLinks === true && showTracerouteConfirmedLinks === true && polarSourceIds.length > 0}
             lookbackHours={effectiveMaxAge}
             visibleNodeNums={visible3DNodeNums}
             visibleMeshCoreKeys={visible3DMeshCoreKeys}
@@ -1008,6 +1013,12 @@ export default function DashboardMap({
             it fetches nothing when off. */}
         {showCrossSourceLinks && polarSourceIds.length > 0 && (
           <CrossSourceLinksLayer enabled sourceIds={polarSourceIds} lookbackHours={effectiveMaxAge} />
+        )}
+
+        {/* Traceroute-confirmed reciprocal links (#5580): a sub-layer of the
+            one above. Mounted only while both toggles are on. */}
+        {showCrossSourceLinks && showTracerouteConfirmedLinks && polarSourceIds.length > 0 && (
+          <TracerouteConfirmedLinksLayer enabled sourceIds={polarSourceIds} lookbackHours={effectiveMaxAge} />
         )}
       </BaseMap>
       )}
@@ -1140,6 +1151,20 @@ export default function DashboardMap({
             />
             <span>{t('map.cross_source.toggle', 'Show Cross-Source Links')}</span>
           </label>
+          {/* #5580: sub-toggle, offered only while the parent is on. */}
+          {showCrossSourceLinks === true && (
+            <label
+              className={`map-control-item ${subToggleStyles.subToggle}`}
+              title={t('map.traceroute_confirmed.toggle_hint', 'Links between one of your radios and a remote node that a traceroute used both ways: out and back through the same neighbour. Double-headed, dash-dot. Read from stored traceroutes; sends none.')}
+            >
+              <input
+                type="checkbox"
+                checked={showTracerouteConfirmedLinks === true}
+                onChange={(e) => setShowTracerouteConfirmedLinks(e.target.checked)}
+              />
+              <span>{t('map.traceroute_confirmed.toggle', 'Traceroute-Confirmed Links')}</span>
+            </label>
+          )}
           <label className="map-control-item" title={unavailableIn3DTitle}>
             <input
               type="checkbox"

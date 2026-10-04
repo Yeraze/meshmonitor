@@ -52,6 +52,16 @@ vi.mock('../../hooks/useCrossSourceLinks', () => ({
   },
 }));
 
+// #5580: traceroute-confirmed reciprocal lines, likewise.
+const confirmedSpy = vi.fn();
+const confirmedState: { lines: Line3DFeature[] } = { lines: [] };
+vi.mock('../../hooks/useTracerouteConfirmedLinks', () => ({
+  use3DTracerouteConfirmedLines: (params: { enabled: boolean }) => {
+    confirmedSpy(params);
+    return params.enabled ? confirmedState.lines : [];
+  },
+}));
+
 const line = (key: string): Line3DFeature => ({
   key,
   from: [30, -90],
@@ -136,6 +146,20 @@ describe('Map3DView', () => {
     );
     expect(screen.getByTestId('base-3d-map').getAttribute('data-line-keys')).toContain('xs:1');
     crossSourceState.lines = [];
+  });
+
+  it('#5580: traceroute-confirmed lines are off by default and merged in when the host turns them on', () => {
+    confirmedState.lines = [line('trc:1')];
+    const { rerender } = render(<Map3DView {...baseProps} />);
+    expect(confirmedSpy).toHaveBeenLastCalledWith(expect.objectContaining({ enabled: false }));
+    expect(screen.getByTestId('base-3d-map').getAttribute('data-line-keys')).not.toContain('trc:1');
+
+    rerender(<Map3DView {...baseProps} showTracerouteConfirmedLinks />);
+    expect(confirmedSpy).toHaveBeenLastCalledWith(
+      expect.objectContaining({ enabled: true, sources: baseProps.sourceIds, lookbackHours: baseProps.lookbackHours }),
+    );
+    expect(screen.getByTestId('base-3d-map').getAttribute('data-line-keys')).toContain('trc:1');
+    confirmedState.lines = [];
   });
 
   it('forwards the exaggeration seed to Base3DMap', () => {

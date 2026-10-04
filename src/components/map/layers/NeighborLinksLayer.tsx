@@ -32,6 +32,10 @@ export interface NeighborLinkDescriptor {
     /** Fractions along the line (0–1) at which to draw an arrow. Default:
      *  {@link neighborArrowFractions} (25%/50%/75%). */
     fractions?: number[];
+    /** Fractions (same 0–1 scale, measured from `positions[1]`) at which to
+     *  draw an arrow pointing the OTHER way, toward `positions[1]`. With
+     *  `fractions` this makes a double-headed line (#5580). Default: none. */
+    reverseFractions?: number[];
   };
   /** `<Popup>`/`<Tooltip>` — consumer owns content. Omit for a select-only
    *  (no popup) line. */
@@ -117,6 +121,17 @@ export function NeighborLinksLayer({ links }: NeighborLinksLayerProps) {
                   interactive={false}
                 />
               ))}
+            {arrows?.reverseFractions?.map((fraction) => (
+              <Marker
+                key={`${link.key}-arrow-rev-${fraction}`}
+                position={[
+                  neighborPos[0] + (nodePos[0] - neighborPos[0]) * fraction,
+                  neighborPos[1] + (nodePos[1] - neighborPos[1]) * fraction,
+                ]}
+                icon={createArrowIcon((bearing + 180) % 360, arrows.color)}
+                interactive={false}
+              />
+            ))}
           </Fragment>
         );
       })}

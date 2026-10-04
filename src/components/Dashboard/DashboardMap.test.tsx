@@ -48,8 +48,13 @@ const mocks = vi.hoisted(() => ({
     showAircraftTrails: false,
     // #5561 cross-source "heard here" edges.
     showCrossSourceLinks: false,
+    // #5580 traceroute-confirmed sub-toggle (default on in the real context).
+    showTracerouteConfirmedLinks: true,
   },
   setShowCrossSourceLinks: vi.fn(),
+  setShowTracerouteConfirmedLinks: vi.fn(),
+  // #5580: props the map hands the confirmed-links layer (null = not mounted).
+  confirmedLayerProps: null as null | { enabled: boolean; sourceIds: string[]; lookbackHours: number },
   // #5561: props the map hands the cross-source layer (null = not mounted).
   crossSourceLayerProps: null as null | { enabled: boolean; sourceIds: string[]; lookbackHours: number },
   // #5364/#5365 Phase 3: what `useAircraftTrails` returns, the args it was
@@ -188,6 +193,8 @@ vi.mock('../../contexts/MapContext', () => ({
     setShowPolarGrid: vi.fn(),
     showCrossSourceLinks: mocks.mapContext.showCrossSourceLinks,
     setShowCrossSourceLinks: mocks.setShowCrossSourceLinks,
+    showTracerouteConfirmedLinks: mocks.mapContext.showTracerouteConfirmedLinks,
+    setShowTracerouteConfirmedLinks: mocks.setShowTracerouteConfirmedLinks,
     showAgedOutAircraft: mocks.mapContext.showAgedOutAircraft,
     setShowAgedOutAircraft: vi.fn(),
     aircraftDisplayMode: mocks.mapContext.aircraftDisplayMode,
@@ -213,6 +220,13 @@ vi.mock('../map/layers/CrossSourceLinksLayer', () => ({
   CrossSourceLinksLayer: (p: { enabled: boolean; sourceIds: string[]; lookbackHours: number }) => {
     mocks.crossSourceLayerProps = p;
     return <div data-testid="cross-source-links" />;
+  },
+}));
+// #5580: likewise for the traceroute-confirmed sibling layer.
+vi.mock('../map/layers/TracerouteConfirmedLinksLayer', () => ({
+  TracerouteConfirmedLinksLayer: (p: { enabled: boolean; sourceIds: string[]; lookbackHours: number }) => {
+    mocks.confirmedLayerProps = p;
+    return <div data-testid="traceroute-confirmed-links" />;
   },
 }));
 vi.mock('../map/layers/AircraftTrailsLayer', () => ({
@@ -475,8 +489,10 @@ describe('DashboardMap', () => {
       aircraftDisplayMode: 'mark',
       showAircraftTrails: false,
       showCrossSourceLinks: false,
+      showTracerouteConfirmedLinks: true,
     };
     mocks.crossSourceLayerProps = null;
+    mocks.confirmedLayerProps = null;
     mocks.aircraftTrails = [];
     mocks.aircraftTrailArgs = null;
     mocks.renderedTrails = [];
@@ -549,6 +565,41 @@ describe('DashboardMap', () => {
     render(<DashboardMap {...defaultProps} sourceId="src-1" />);
     expect(screen.getByTestId('cross-source-links')).toBeInTheDocument();
     expect(mocks.crossSourceLayerProps).toMatchObject({ enabled: true, sourceIds: ['src-1'] });
+  });
+
+  describe('#5580: traceroute-confirmed links sub-toggle', () => {
+    const subToggle = () =>
+      screen.queryByRole('checkbox', { name: /map\.traceroute_confirmed\.toggle|Traceroute-Confirmed Links/ });
+
+    it('is hidden, and its layer unmounted, while Show Cross-Source Links is off', () => {
+      render(<DashboardMap {...defaultProps} sourceId="src-1" />);
+      expect(subToggle()).not.toBeInTheDocument();
+      expect(screen.queryByTestId('traceroute-confirmed-links')).not.toBeInTheDocument();
+    });
+
+    it('appears checked under the parent, and mounts the sibling layer for the map\'s sources', () => {
+      mocks.mapContext.showCrossSourceLinks = true;
+      render(<DashboardMap {...defaultProps} sourceId="src-1" />);
+      expect(subToggle()).toBeChecked();
+      expect(screen.getByTestId('traceroute-confirmed-links')).toBeInTheDocument();
+      expect(mocks.confirmedLayerProps).toMatchObject({ enabled: true, sourceIds: ['src-1'] });
+      // The parent layer is still there: the two are siblings.
+      expect(screen.getByTestId('cross-source-links')).toBeInTheDocument();
+    });
+
+    it('unticking it calls the setter; when off the sibling layer is not mounted but the parent stays', () => {
+      mocks.mapContext.showCrossSourceLinks = true;
+      const { unmount } = render(<DashboardMap {...defaultProps} sourceId="src-1" />);
+      fireEvent.click(subToggle()!);
+      expect(mocks.setShowTracerouteConfirmedLinks).toHaveBeenCalledWith(false);
+      unmount();
+
+      mocks.mapContext.showTracerouteConfirmedLinks = false;
+      render(<DashboardMap {...defaultProps} sourceId="src-1" />);
+      expect(subToggle()).not.toBeChecked();
+      expect(screen.queryByTestId('traceroute-confirmed-links')).not.toBeInTheDocument();
+      expect(screen.getByTestId('cross-source-links')).toBeInTheDocument();
+    });
   });
 
   it('collapses the map controls sidebar when the collapse button is clicked (#4909)', () => {
