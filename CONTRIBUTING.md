@@ -123,6 +123,13 @@ describe('YourFeature', () => {
 - User-authored content and protocol/domain data (for example messages, reactions, waypoint symbols, and script-selected emoji) remain data, not interface icons. Any new source-level exception needs an issue-referenced ESLint disable explaining why it is content rather than UI.
 - `npm run lint:ci` blocks new hardcoded UI glyphs. Existing violations are ratcheted while they are migrated to `UiIcon`.
 
+### Colours
+
+- Take every colour from a `--color-*` role token (`var(--color-surface)`, `var(--color-border)`, ...; defined per theme in `src/App.css`), in a CSS module where practical. A hex, `rgb()` or `hsl()` literal keeps one theme's colour under every theme, which is how light mode keeps getting dark panels.
+- `npm run lint:ci` blocks new literals in inline styles (`meshmonitor-ui/no-hardcoded-color`) and in stylesheets (`scripts/check-css-colors.mjs`). Existing ones are ratcheted: a file's count may fall, never rise.
+- SVG `fill` / `stroke` attributes, map and chart drawing options, and `--x:` custom-property definitions are not checked.
+- For a colour that is data rather than theme, add an issue-referenced exception: `// eslint-disable-next-line meshmonitor-ui/no-hardcoded-color -- #1234 reason` in TSX, `/* color-ok: #1234 reason */` on or above the line in CSS.
+
 Our CI/CD pipeline runs automatically on all PRs:
 
 ### GitHub Actions Workflows

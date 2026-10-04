@@ -4,15 +4,21 @@
 // #5135 and #4910 — dark panels in light mode, each found in production.
 //
 // Scope, on purpose narrow:
-//   1. any string or template literal under a JSX `style` attribute;
-//   2. the value of an object property keyed by a CSS colour property
-//      (`backgroundColor`, `border`, `boxShadow`, ...), wherever the object
-//      lives, since style objects are often built outside the JSX.
+//   1. any string or template literal in a style context: a JSX `style`
+//      attribute or one named `*Style` (`contentStyle`, `labelStyle`: DOM
+//      styles all the same), or a variable typed `CSSProperties`. A variable
+//      merely NAMED `*Style` is not one: `ringStyle` and `waterStyle` in the
+//      map code are Leaflet and MapLibre options;
+//   2. anywhere else, the value of an object property keyed by a property
+//      that only CSS has (`backgroundColor`, `borderLeft`, `boxShadow`, ...).
 //
-// Not in scope: SVG presentation attributes (`fill="#fff"`), and drawing
-// options for canvas / map / chart libraries, which need a concrete colour
-// because a CSS variable does not resolve there. Those are recognised by a
-// sibling key no CSS style object has (`fillColor`, `weight`, ...).
+// Not in scope: SVG presentation attributes (`fill="#fff"`), drawing options
+// for canvas / map / chart libraries, which need a concrete colour because a
+// CSS variable does not resolve there, and palette records such as a chart
+// series. Outside a style context a bare `color` key is therefore NOT flagged
+// (Leaflet path options and `{ key, label, color }` records both use it), and
+// neither is a kebab-case key (`'background-color'` is a MapLibre paint
+// property; React style objects are camelCase).
 
 const HEX = String.raw`(?<![\w&])#(?:[0-9a-fA-F]{8}|[0-9a-fA-F]{6}|[0-9a-fA-F]{3,4})(?![\w-])`;
 const FUNCTION_OPEN = /\b(?:rgb|rgba|hsl|hsla)\(/g;
@@ -64,44 +70,16 @@ const COLOR_PROPERTY = new RegExp(
     ')$',
 );
 
-/** `background-color` and `backgroundColor` are the same property. */
+/** A camelCase React style key that takes a colour. */
 export function isCssColorProperty(name) {
-  if (typeof name !== 'string') return false;
-  const camel = name.replace(/-([a-z])/g, (_, c) => c.toUpperCase());
-  return COLOR_PROPERTY.test(camel);
+  return typeof name === 'string' && COLOR_PROPERTY.test(name);
 }
-
-// Keys that mark an object as drawing options for Leaflet, MapLibre, canvas or
-// a chart library rather than a CSS style object.
-const DRAWING_OPTION_KEYS = new Set([
-  'fillColor',
-  'fillOpacity',
-  'weight',
-  'dashArray',
-  'dashOffset',
-  'lineCap',
-  'lineJoin',
-  'radius',
-  'stroke',
-  'strokeColor',
-  'strokeOpacity',
-  'strokeWidth',
-  'strokeDasharray',
-  'pointRadius',
-  'tension',
-]);
 
 function keyName(property) {
   if (property.computed) return null;
   if (property.key.type === 'Identifier') return property.key.name;
   if (property.key.type === 'Literal' && typeof property.key.value === 'string') return property.key.value;
   return null;
-}
-
-function isDrawingOptions(objectExpression) {
-  return objectExpression.properties.some(
-    (p) => p.type === 'Property' && DRAWING_OPTION_KEYS.has(keyName(p)),
-  );
 }
 
 // Wrappers a literal can sit in and still be "the value" of its property:
@@ -124,6 +102,9 @@ function passesValueThrough(parent, child) {
   }
 }
 
+// Stands in for `${...}` when a template's static text is scanned.
+const INTERPOLATION = '\u0001';
+
 export const noHardcodedColor = {
   meta: {
     type: 'problem',
@@ -137,21 +118,28 @@ export const noHardcodedColor = {
     },
   },
   create(context) {
+    const isStyleContext = (ancestor) => {
+      if (ancestor.type === 'JSXAttribute') {
+        return ancestor.name?.type === 'JSXIdentifier' && /^style$|Style$/.test(ancestor.name.name);
+      }
+      if (ancestor.type === 'VariableDeclarator' && ancestor.id.type === 'Identifier') {
+        const annotation = ancestor.id.typeAnnotation;
+        return Boolean(annotation) && context.sourceCode.getText(annotation).includes('CSSProperties');
+      }
+      return false;
+    };
+
     const inColorContext = (node) => {
       const ancestors = context.sourceCode.getAncestors(node);
+      if (ancestors.some(isStyleContext)) return true;
 
-      const underStyleAttribute = ancestors.some(
-        (a) => a.type === 'JSXAttribute' && a.name?.type === 'JSXIdentifier' && a.name.name === 'style',
-      );
-      if (underStyleAttribute) return true;
-
+      // Otherwise: the literal must be the value of a CSS-only property.
       let child = node;
       for (let i = ancestors.length - 1; i >= 0; i--) {
         const parent = ancestors[i];
         if (parent.type === 'Property') {
-          if (parent.value !== child || !isCssColorProperty(keyName(parent))) return false;
-          const owner = ancestors[i - 1];
-          return owner?.type === 'ObjectExpression' && !isDrawingOptions(owner);
+          const name = keyName(parent);
+          return parent.value === child && name !== 'color' && isCssColorProperty(name);
         }
         if (!passesValueThrough(parent, child)) return false;
         child = parent;
@@ -160,9 +148,17 @@ export const noHardcodedColor = {
     };
 
     const check = (node, text) => {
-      const literals = findColorLiterals(text);
+      // `rgb(${c.r}, ${c.g}, ${c.b})` is assembled from data, like `#${hex}`.
+      // `rgba(0, 0, 0, ${alpha})` still names a colour, so digits decide.
+      const literals = findColorLiterals(text).filter(
+        (literal) => !literal.includes(INTERPOLATION) || /\d/.test(literal),
+      );
       if (literals.length === 0 || !inColorContext(node)) return;
-      context.report({ node, messageId: 'hardcoded', data: { literal: literals.join(', ') } });
+      context.report({
+        node,
+        messageId: 'hardcoded',
+        data: { literal: literals.join(', ').replaceAll(INTERPOLATION, '${…}') },
+      });
     };
 
     return {
@@ -171,9 +167,9 @@ export const noHardcodedColor = {
       },
       // One report per template, on the static text only: an interpolated
       // literal (`${on ? '#fff' : '#000'}`) is its own node and reports itself.
-      // Quasis are joined with a space so `#${hex}` does not read as a colour.
+      // Quasis are joined with a marker so `#${hex}` does not read as a colour.
       TemplateLiteral(node) {
-        check(node, node.quasis.map((q) => q.value.cooked ?? q.value.raw).join(' '));
+        check(node, node.quasis.map((q) => q.value.cooked ?? q.value.raw).join(INTERPOLATION));
       },
     };
   },

@@ -31,6 +31,7 @@
   "src/components/AdminCommandsTab.tsx": {
     "@typescript-eslint/no-explicit-any": 62,
     "@typescript-eslint/no-unused-vars": 1,
+    "meshmonitor-ui/no-hardcoded-color": 11,
     "no-case-declarations": 2,
     "preserve-caught-error": 2,
     "react-hooks/exhaustive-deps": 1
@@ -39,17 +40,21 @@
     "react-hooks/exhaustive-deps": 1
   },
   "src/components/AutoAcknowledgeSection.tsx": {
+    "meshmonitor-ui/no-hardcoded-color": 2,
     "react-hooks/exhaustive-deps": 1
   },
   "src/components/AutoAnnounceSection.tsx": {
     "@typescript-eslint/no-explicit-any": 1,
+    "meshmonitor-ui/no-hardcoded-color": 3,
     "react-hooks/exhaustive-deps": 3
   },
   "src/components/AutoDeleteByDistanceSection.tsx": {
-    "@typescript-eslint/no-unused-vars": 1
+    "@typescript-eslint/no-unused-vars": 1,
+    "meshmonitor-ui/no-hardcoded-color": 3
   },
   "src/components/AutoFavoriteSection.tsx": {
     "@typescript-eslint/no-unused-vars": 1,
+    "meshmonitor-ui/no-hardcoded-color": 3,
     "react-hooks/exhaustive-deps": 1
   },
   "src/components/AutoHeapManagementSection.tsx": {
@@ -57,19 +62,30 @@
     "react-hooks/exhaustive-deps": 2
   },
   "src/components/AutoKeyManagementSection.tsx": {
+    "meshmonitor-ui/no-hardcoded-color": 2,
     "react-hooks/exhaustive-deps": 1
   },
   "src/components/AutoLocalStatsSection.tsx": {
+    "meshmonitor-ui/no-hardcoded-color": 2,
     "react-hooks/exhaustive-deps": 1
+  },
+  "src/components/AutoPingSection.tsx": {
+    "meshmonitor-ui/no-hardcoded-color": 2
   },
   "src/components/AutoResponderSection.tsx": {
     "@typescript-eslint/no-explicit-any": 6,
+    "meshmonitor-ui/no-hardcoded-color": 2,
     "react-hooks/exhaustive-deps": 1
   },
+  "src/components/AutoTimeSyncSection.tsx": {
+    "meshmonitor-ui/no-hardcoded-color": 2
+  },
   "src/components/AutoTracerouteSection.tsx": {
+    "meshmonitor-ui/no-hardcoded-color": 2,
     "react-hooks/exhaustive-deps": 1
   },
   "src/components/AutoWelcomeSection.tsx": {
+    "meshmonitor-ui/no-hardcoded-color": 2,
     "react-hooks/exhaustive-deps": 1
   },
   "src/components/ChangePasswordModal.tsx": {
@@ -77,10 +93,12 @@
   },
   "src/components/ChannelsTab.tsx": {
     "@typescript-eslint/no-explicit-any": 1,
+    "meshmonitor-ui/no-hardcoded-color": 3,
     "react-hooks/exhaustive-deps": 1
   },
   "src/components/ConfigurationTab.tsx": {
     "@typescript-eslint/no-explicit-any": 4,
+    "meshmonitor-ui/no-hardcoded-color": 13,
     "react-hooks/exhaustive-deps": 2
   },
   "src/components/CopyNodeInfoModal/CopyNodeInfoModal.tsx": {
@@ -98,24 +116,39 @@
   "src/components/Dashboard/DashboardSidebar.tsx": {
     "@typescript-eslint/no-explicit-any": 6
   },
+  "src/components/Dashboard/components/DashboardFilters.tsx": {
+    "meshmonitor-ui/no-hardcoded-color": 3
+  },
   "src/components/Dashboard/hooks/useDashboardData.ts": {
     "no-useless-assignment": 1
   },
   "src/components/EmbedMap.tsx": {
-    "@typescript-eslint/no-explicit-any": 1
+    "@typescript-eslint/no-explicit-any": 1,
+    "meshmonitor-ui/no-hardcoded-color": 8
   },
   "src/components/EmojiPickerModal/EmojiPickerModal.tsx": {
     "react-refresh/only-export-components": 1
+  },
+  "src/components/GeoJsonLayerManager.tsx": {
+    "meshmonitor-ui/no-hardcoded-color": 10
   },
   "src/components/GeofenceTriggersSection.test.tsx": {
     "@typescript-eslint/no-unused-vars": 1
   },
   "src/components/GeofenceTriggersSection.tsx": {
     "@typescript-eslint/no-unused-vars": 1,
+    "meshmonitor-ui/no-hardcoded-color": 2,
     "react-hooks/exhaustive-deps": 1
+  },
+  "src/components/HopCountDisplay.tsx": {
+    "meshmonitor-ui/no-hardcoded-color": 1
+  },
+  "src/components/IgnoredNodesSection.tsx": {
+    "meshmonitor-ui/no-hardcoded-color": 2
   },
   "src/components/InfoTab.tsx": {
     "@typescript-eslint/no-explicit-any": 8,
+    "meshmonitor-ui/no-hardcoded-color": 9,
     "react-hooks/exhaustive-deps": 7
   },
   "src/components/LinkPreview.tsx": {
@@ -130,23 +163,32 @@
   "src/components/MQTT/mqttBridgeConfig.ts": {
     "@typescript-eslint/no-explicit-any": 10
   },
+  "src/components/MapAnalysis/LinkProfileDrawer.tsx": {
+    "meshmonitor-ui/no-hardcoded-color": 3
+  },
   "src/components/MapAnalysis/MapAnalysisContext.tsx": {
     "react-refresh/only-export-components": 1
   },
   "src/components/MapAnalysis/layers/NeighborLinksLayer.tsx": {
     "@typescript-eslint/no-explicit-any": 2
   },
+  "src/components/MapStyleManager.tsx": {
+    "meshmonitor-ui/no-hardcoded-color": 28
+  },
   "src/components/MeshCore/CliConsoleBody.tsx": {
     "react-hooks/exhaustive-deps": 1
   },
   "src/components/MeshCore/MeshCoreAutoAckSection.tsx": {
-    "@typescript-eslint/no-explicit-any": 2
+    "@typescript-eslint/no-explicit-any": 2,
+    "meshmonitor-ui/no-hardcoded-color": 1
   },
   "src/components/MeshCore/MeshCoreAutoAnnounceSection.tsx": {
-    "@typescript-eslint/no-explicit-any": 2
+    "@typescript-eslint/no-explicit-any": 2,
+    "meshmonitor-ui/no-hardcoded-color": 1
   },
   "src/components/MeshCore/MeshCoreAutoResponderSection.tsx": {
-    "@typescript-eslint/no-explicit-any": 3
+    "@typescript-eslint/no-explicit-any": 3,
+    "meshmonitor-ui/no-hardcoded-color": 1
   },
   "src/components/MeshCore/MeshCoreChannelsConfigSection.tsx": {
     "@typescript-eslint/no-explicit-any": 3
@@ -157,27 +199,41 @@
   "src/components/MeshCore/MeshCoreConfigurationView.tsx": {
     "react-hooks/exhaustive-deps": 3
   },
+  "src/components/MeshCore/MeshCoreContactDetailPanel.tsx": {
+    "meshmonitor-ui/no-hardcoded-color": 2
+  },
+  "src/components/MeshCore/MeshCoreMessageStream.tsx": {
+    "meshmonitor-ui/no-hardcoded-color": 1
+  },
+  "src/components/MeshCore/MeshCoreNodesView.tsx": {
+    "meshmonitor-ui/no-hardcoded-color": 2
+  },
   "src/components/MeshCore/MeshCoreTimerTriggersSection.tsx": {
-    "@typescript-eslint/no-explicit-any": 5
+    "@typescript-eslint/no-explicit-any": 5,
+    "meshmonitor-ui/no-hardcoded-color": 1
   },
   "src/components/MeshCore/hooks/useMeshCoreUnread.ts": {
     "@typescript-eslint/no-explicit-any": 2
   },
   "src/components/MessagesTab.tsx": {
+    "meshmonitor-ui/no-hardcoded-color": 13,
     "react-hooks/exhaustive-deps": 2
   },
   "src/components/NodesTab.tsx": {
     "@typescript-eslint/no-explicit-any": 8,
+    "meshmonitor-ui/no-hardcoded-color": 5,
     "no-useless-assignment": 1,
     "react-hooks/exhaustive-deps": 4
   },
   "src/components/NotificationsTab.tsx": {
     "@typescript-eslint/no-explicit-any": 2,
+    "meshmonitor-ui/no-hardcoded-color": 70,
     "no-useless-escape": 1,
     "react-hooks/exhaustive-deps": 1
   },
   "src/components/PacketMonitorPanel.tsx": {
-    "@typescript-eslint/no-unused-vars": 1
+    "@typescript-eslint/no-unused-vars": 1,
+    "meshmonitor-ui/no-hardcoded-color": 3
   },
   "src/components/PacketRateChart.tsx": {
     "react-refresh/only-export-components": 1
@@ -191,36 +247,57 @@
   "src/components/PolarGridOverlay.tsx": {
     "react-hooks/exhaustive-deps": 3
   },
+  "src/components/PositionEstimationSection.tsx": {
+    "meshmonitor-ui/no-hardcoded-color": 1
+  },
   "src/components/RebootModal.tsx": {
+    "meshmonitor-ui/no-hardcoded-color": 1,
     "prefer-const": 1,
     "react-hooks/exhaustive-deps": 1
   },
   "src/components/RemoteAdminScannerSection.tsx": {
     "@typescript-eslint/no-explicit-any": 5,
+    "meshmonitor-ui/no-hardcoded-color": 2,
     "react-hooks/exhaustive-deps": 1
   },
   "src/components/RouteSegmentTraceroutesModal.tsx": {
     "@typescript-eslint/no-unused-vars": 1
   },
+  "src/components/ScriptTestModal.tsx": {
+    "meshmonitor-ui/no-hardcoded-color": 1
+  },
   "src/components/SecurityTab.tsx": {
     "@typescript-eslint/no-explicit-any": 2,
+    "meshmonitor-ui/no-hardcoded-color": 1,
     "react-hooks/exhaustive-deps": 2
   },
   "src/components/SettingsTab.tsx": {
-    "@typescript-eslint/no-explicit-any": 1
+    "@typescript-eslint/no-explicit-any": 1,
+    "meshmonitor-ui/no-hardcoded-color": 6
   },
   "src/components/SmartHopsChart.tsx": {
     "react-refresh/only-export-components": 1
   },
   "src/components/TelemetryChart.tsx": {
+    "meshmonitor-ui/no-hardcoded-color": 4,
     "react-refresh/only-export-components": 2
+  },
+  "src/components/TelemetryGraphs.tsx": {
+    "meshmonitor-ui/no-hardcoded-color": 1
+  },
+  "src/components/ThemeDocumentation.tsx": {
+    "meshmonitor-ui/no-hardcoded-color": 1
   },
   "src/components/ThemeEditor.tsx": {
     "@typescript-eslint/no-explicit-any": 5
   },
   "src/components/TimerTriggersSection.tsx": {
     "@typescript-eslint/no-unused-vars": 1,
+    "meshmonitor-ui/no-hardcoded-color": 3,
     "react-hooks/exhaustive-deps": 1
+  },
+  "src/components/Toast.tsx": {
+    "meshmonitor-ui/no-hardcoded-color": 1
   },
   "src/components/ToastContainer.tsx": {
     "react-refresh/only-export-components": 2
@@ -244,7 +321,8 @@
     "@typescript-eslint/no-explicit-any": 4
   },
   "src/components/admin-commands/DeviceConfigurationSection.tsx": {
-    "@typescript-eslint/no-explicit-any": 5
+    "@typescript-eslint/no-explicit-any": 5,
+    "meshmonitor-ui/no-hardcoded-color": 1
   },
   "src/components/admin-commands/ModuleConfigurationSection.tsx": {
     "@typescript-eslint/no-explicit-any": 5
@@ -274,6 +352,9 @@
   "src/components/automations/AutomationsPage.tsx": {
     "@typescript-eslint/no-explicit-any": 8
   },
+  "src/components/automations/NodeMultiFieldInput.tsx": {
+    "meshmonitor-ui/no-hardcoded-color": 1
+  },
   "src/components/automations/SubstitutionsHelp.tsx": {
     "react-refresh/only-export-components": 2
   },
@@ -283,37 +364,108 @@
   "src/components/automations/outcomeMeta.tsx": {
     "react-refresh/only-export-components": 1
   },
+  "src/components/configuration/AmbientLightingConfigSection.tsx": {
+    "meshmonitor-ui/no-hardcoded-color": 4
+  },
+  "src/components/configuration/AudioConfigSection.tsx": {
+    "meshmonitor-ui/no-hardcoded-color": 1
+  },
   "src/components/configuration/BackupManagementSection.tsx": {
+    "meshmonitor-ui/no-hardcoded-color": 2,
     "react-hooks/exhaustive-deps": 1
+  },
+  "src/components/configuration/CannedMessageConfigSection.tsx": {
+    "meshmonitor-ui/no-hardcoded-color": 1
   },
   "src/components/configuration/ChannelDatabaseSection.tsx": {
     "@typescript-eslint/no-explicit-any": 1,
+    "meshmonitor-ui/no-hardcoded-color": 6,
     "react-hooks/exhaustive-deps": 2
   },
   "src/components/configuration/ChannelsConfigSection.tsx": {
-    "@typescript-eslint/no-explicit-any": 1
+    "@typescript-eslint/no-explicit-any": 1,
+    "meshmonitor-ui/no-hardcoded-color": 5
   },
   "src/components/configuration/DatabaseMaintenanceSection.tsx": {
     "react-hooks/exhaustive-deps": 1
   },
+  "src/components/configuration/DetectionSensorConfigSection.tsx": {
+    "meshmonitor-ui/no-hardcoded-color": 1
+  },
   "src/components/configuration/DeviceConfigSection.tsx": {
+    "meshmonitor-ui/no-hardcoded-color": 32,
     "react-hooks/exhaustive-deps": 1
   },
+  "src/components/configuration/DisplayConfigSection.tsx": {
+    "meshmonitor-ui/no-hardcoded-color": 3
+  },
   "src/components/configuration/ExportConfigModal.tsx": {
-    "@typescript-eslint/no-explicit-any": 3
+    "@typescript-eslint/no-explicit-any": 3,
+    "meshmonitor-ui/no-hardcoded-color": 2
+  },
+  "src/components/configuration/ExternalNotificationConfigSection.tsx": {
+    "meshmonitor-ui/no-hardcoded-color": 1
   },
   "src/components/configuration/FirmwareUpdateSection.tsx": {
     "@typescript-eslint/no-explicit-any": 1,
+    "meshmonitor-ui/no-hardcoded-color": 6,
     "react-hooks/exhaustive-deps": 1
+  },
+  "src/components/configuration/GpioPinSummary.tsx": {
+    "meshmonitor-ui/no-hardcoded-color": 5
   },
   "src/components/configuration/ImportConfigModal.tsx": {
     "@typescript-eslint/no-explicit-any": 5,
-    "@typescript-eslint/no-unused-vars": 2
+    "@typescript-eslint/no-unused-vars": 2,
+    "meshmonitor-ui/no-hardcoded-color": 1
+  },
+  "src/components/configuration/LoRaConfigSection.tsx": {
+    "meshmonitor-ui/no-hardcoded-color": 12
+  },
+  "src/components/configuration/MQTTConfigSection.tsx": {
+    "meshmonitor-ui/no-hardcoded-color": 2
+  },
+  "src/components/configuration/NeighborInfoSection.tsx": {
+    "meshmonitor-ui/no-hardcoded-color": 1
+  },
+  "src/components/configuration/NetworkConfigSection.tsx": {
+    "meshmonitor-ui/no-hardcoded-color": 1
+  },
+  "src/components/configuration/NodeIdentitySection.tsx": {
+    "meshmonitor-ui/no-hardcoded-color": 1
+  },
+  "src/components/configuration/PaxcounterConfigSection.tsx": {
+    "meshmonitor-ui/no-hardcoded-color": 1
+  },
+  "src/components/configuration/PositionConfigSection.tsx": {
+    "meshmonitor-ui/no-hardcoded-color": 2
+  },
+  "src/components/configuration/PowerConfigSection.tsx": {
+    "meshmonitor-ui/no-hardcoded-color": 5
+  },
+  "src/components/configuration/RangeTestConfigSection.tsx": {
+    "meshmonitor-ui/no-hardcoded-color": 1
+  },
+  "src/components/configuration/RemoteHardwareConfigSection.tsx": {
+    "meshmonitor-ui/no-hardcoded-color": 1
+  },
+  "src/components/configuration/SecurityConfigSection.tsx": {
+    "meshmonitor-ui/no-hardcoded-color": 3
+  },
+  "src/components/configuration/SerialConfigSection.tsx": {
+    "meshmonitor-ui/no-hardcoded-color": 1
+  },
+  "src/components/configuration/StatusMessageConfigSection.tsx": {
+    "meshmonitor-ui/no-hardcoded-color": 1
+  },
+  "src/components/configuration/StoreForwardConfigSection.tsx": {
+    "meshmonitor-ui/no-hardcoded-color": 1
   },
   "src/components/configuration/SystemBackupSection.tsx": {
     "react-hooks/exhaustive-deps": 1
   },
   "src/components/configuration/TelemetryConfigSection.tsx": {
+    "meshmonitor-ui/no-hardcoded-color": 6,
     "react-hooks/exhaustive-deps": 1
   },
   "src/components/settings/EmbedSettings.tsx": {
@@ -480,6 +632,7 @@
     "@typescript-eslint/no-explicit-any": 2
   },
   "src/embed.tsx": {
+    "meshmonitor-ui/no-hardcoded-color": 1,
     "react-refresh/only-export-components": 1
   },
   "src/hooks/mergeNodeUpdate.ts": {
@@ -518,6 +671,9 @@
   },
   "src/pages/DashboardPage.tsx": {
     "@typescript-eslint/no-explicit-any": 10
+  },
+  "src/pages/UnifiedMessagesPage.tsx": {
+    "meshmonitor-ui/no-hardcoded-color": 1
   },
   "src/server/auth/authMiddleware.ts": {
     "@typescript-eslint/no-explicit-any": 1
