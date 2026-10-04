@@ -138,6 +138,10 @@ interface MapContextType {
   /** #5561: cross-source "heard here" edges. Per-browser (localStorage), default off. */
   showCrossSourceLinks: boolean;
   setShowCrossSourceLinks: (show: boolean) => void;
+  /** #5580: traceroute-confirmed reciprocal links, a sub-toggle of the one
+   *  above (drawn only while both are on). Per-browser, default ON. */
+  showTracerouteConfirmedLinks: boolean;
+  setShowTracerouteConfirmedLinks: (show: boolean) => void;
   animatedNodes: Set<string>;
   triggerNodeAnimation: (nodeId: string) => void;
   mapCenterTarget: [number, number] | null;
@@ -237,6 +241,14 @@ export const MapProvider: React.FC<MapProviderProps> = ({ children }) => {
       return localStorage.getItem('showCrossSourceLinks') === 'true';
     } catch {
       return false;
+    }
+  });
+  // #5580: default ON, so only an explicit 'false' turns it off.
+  const [showTracerouteConfirmedLinks, setShowTracerouteConfirmedLinksState] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem('showTracerouteConfirmedLinks') !== 'false';
+    } catch {
+      return true;
     }
   });
   const [animatedNodes, setAnimatedNodes] = useState<Set<string>>(new Set());
@@ -388,6 +400,15 @@ export const MapProvider: React.FC<MapProviderProps> = ({ children }) => {
     setShowCrossSourceLinksState(value);
     try {
       localStorage.setItem('showCrossSourceLinks', value.toString());
+    } catch {
+      // storage unavailable: the toggle still works for this session
+    }
+  }, []);
+
+  const setShowTracerouteConfirmedLinks = React.useCallback((value: boolean) => {
+    setShowTracerouteConfirmedLinksState(value);
+    try {
+      localStorage.setItem('showTracerouteConfirmedLinks', value.toString());
     } catch {
       // storage unavailable: the toggle still works for this session
     }
@@ -632,6 +653,8 @@ export const MapProvider: React.FC<MapProviderProps> = ({ children }) => {
     setShowPolarGrid,
     showCrossSourceLinks,
     setShowCrossSourceLinks,
+    showTracerouteConfirmedLinks,
+    setShowTracerouteConfirmedLinks,
     animatedNodes,
     triggerNodeAnimation,
     mapCenterTarget,
@@ -683,6 +706,7 @@ export const MapProvider: React.FC<MapProviderProps> = ({ children }) => {
     showAccuracyRegions, setShowAccuracyRegions,
     showPolarGrid, setShowPolarGrid,
     showCrossSourceLinks, setShowCrossSourceLinks,
+    showTracerouteConfirmedLinks, setShowTracerouteConfirmedLinks,
     animatedNodes, triggerNodeAnimation,
     mapCenterTarget, setMapCenterTarget,
     mapCenter, setMapCenter,

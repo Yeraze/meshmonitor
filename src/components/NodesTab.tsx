@@ -88,6 +88,8 @@ import roleGroupingStyles from './NodeRoleGrouping.module.css';
 import listHeaderStyles from './NodesListHeader.module.css';
 import { NeighborLinksLayer, type NeighborLinkDescriptor } from './map/layers/NeighborLinksLayer';
 import { CrossSourceLinksLayer } from './map/layers/CrossSourceLinksLayer';
+import { TracerouteConfirmedLinksLayer } from './map/layers/TracerouteConfirmedLinksLayer';
+import subToggleStyles from './map/MapSubToggle.module.css';
 import { AccuracyRegionsLayer, type AccuracyRegionDescriptor } from './map/layers/AccuracyRegionsLayer';
 import { NodeCard } from './map/popups/NodeCard';
 import { IdentityItems, SignalItems, LastHeardFooter, TracerouteBody, NodeActions, type NodeActionSpec } from './map/popups/sections';
@@ -579,6 +581,8 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
     setShowNeighborInfo,
     showCrossSourceLinks,
     setShowCrossSourceLinks,
+    showTracerouteConfirmedLinks,
+    setShowTracerouteConfirmedLinks,
     showRoute,
     setShowRoute,
     showMotion,
@@ -3108,6 +3112,20 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                     />
                     <span>{t('map.cross_source.toggle', 'Show Cross-Source Links')}</span>
                   </label>
+                  {/* #5580: sub-toggle, offered only while the parent is on. */}
+                  {showCrossSourceLinks && (
+                    <label
+                      className={`map-control-item ${subToggleStyles.subToggle}`}
+                      title={t('map.traceroute_confirmed.toggle_hint', 'Links between one of your radios and a remote node that a traceroute used both ways: out and back through the same neighbour. Double-headed, dash-dot. Read from stored traceroutes; sends none.')}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={showTracerouteConfirmedLinks}
+                        onChange={(e) => setShowTracerouteConfirmedLinks(e.target.checked)}
+                      />
+                      <span>{t('map.traceroute_confirmed.toggle', 'Traceroute-Confirmed Links')}</span>
+                    </label>
+                  )}
                   <label className="map-control-item">
                     <input
                       type="checkbox"
@@ -3442,6 +3460,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                   showNeighbors={!!currentSourceId && showNeighborInfo}
                   showTraceroutes={!!currentSourceId && (showPaths || showRoute)}
                   showCrossSourceLinks={!!currentSourceId && showCrossSourceLinks}
+                  showTracerouteConfirmedLinks={!!currentSourceId && showCrossSourceLinks && showTracerouteConfirmedLinks}
                   lookbackHours={effectiveMapMaxAge}
                   visibleNodeNums={visible3DNodeNums}
                   renderPopup={(key) => {
@@ -3577,6 +3596,16 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                   while on, so it fetches nothing when off. */}
               {showCrossSourceLinks && currentSourceId && (
                 <CrossSourceLinksLayer
+                  enabled
+                  sourceIds={[currentSourceId]}
+                  lookbackHours={effectiveMapMaxAge}
+                />
+              )}
+
+              {/* Traceroute-confirmed reciprocal links (#5580): a sub-layer
+                  of the one above. Mounted only while both toggles are on. */}
+              {showCrossSourceLinks && showTracerouteConfirmedLinks && currentSourceId && (
+                <TracerouteConfirmedLinksLayer
                   enabled
                   sourceIds={[currentSourceId]}
                   lookbackHours={effectiveMapMaxAge}

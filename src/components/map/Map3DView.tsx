@@ -5,6 +5,7 @@ import type { Basemap3DSource } from '../../config/basemap3d';
 import { use3DNeighborLines } from '../MapAnalysis/use3DNeighborLines';
 import { use3DTracerouteLines } from '../MapAnalysis/use3DTracerouteLines';
 import { use3DCrossSourceLines } from '../../hooks/useCrossSourceLinks';
+import { use3DTracerouteConfirmedLines } from '../../hooks/useTracerouteConfirmedLinks';
 
 export interface Map3DViewProps {
   /** Initial center, [lat, lng]. Mount-only (Base3DMap convention). */
@@ -31,6 +32,9 @@ export interface Map3DViewProps {
   showTraceroutes: boolean;
   /** Gate cross-source "heard here" edges (#5561) — mirrors the host's toggle. Default off. */
   showCrossSourceLinks?: boolean;
+  /** Gate traceroute-confirmed reciprocal links (#5580). The host passes
+   *  "both toggles on". Default off. */
+  showTracerouteConfirmedLinks?: boolean;
   /** Fetch lookback window in hours for the neighbor/traceroute data. */
   lookbackHours: number;
   /**
@@ -80,6 +84,7 @@ export function Map3DView({
   showNeighbors,
   showTraceroutes,
   showCrossSourceLinks = false,
+  showTracerouteConfirmedLinks = false,
   lookbackHours,
   visibleNodeNums,
   visibleMeshCoreKeys,
@@ -116,9 +121,16 @@ export function Map3DView({
     lookbackHours,
   });
 
+  // #5580: reciprocal links confirmed by stored traceroutes; no fetch while off.
+  const tracerouteConfirmedLines = use3DTracerouteConfirmedLines({
+    enabled: showTracerouteConfirmedLinks,
+    sources: sourceIds,
+    lookbackHours,
+  });
+
   const lines: Line3DFeature[] = useMemo(
-    () => [...neighborLines.lines, ...tracerouteLines.lines, ...crossSourceLines],
-    [neighborLines.lines, tracerouteLines.lines, crossSourceLines],
+    () => [...neighborLines.lines, ...tracerouteLines.lines, ...crossSourceLines, ...tracerouteConfirmedLines],
+    [neighborLines.lines, tracerouteLines.lines, crossSourceLines, tracerouteConfirmedLines],
   );
 
   return (
