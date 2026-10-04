@@ -19,7 +19,7 @@
 | Auth + permissions | `src/server/auth/`, `src/db/repositories/auth.ts`, `src/db/repositories/permissions.ts` |
 | Database backends | `src/db/drivers/{sqlite,postgres,mysql}.ts`, `src/db/schema/`, `src/db/repositories/` |
 | Migrations | `src/server/migrations/NNN_*.ts` (75+ total), registry in `src/db/migrations.ts` |
-| Backup/restore | `src/server/services/systemBackupService.ts`, `systemRestoreService.ts` |
+| Backup/restore | `src/server/services/systemBackupService.ts`, `systemRestoreService.ts`, `systemBackupTables.ts` (the table lists: every schema table is in `BACKUP_TABLES` or `BACKUP_EXCLUDED_TABLES`, test-enforced), `systemBackupIo.ts` (streaming read/write) |
 | Routes | `src/server/routes/*` |
 | Packet monitors | Meshtastic: `packet_log` table + `packetLogService.ts` + `packetRoutes.ts` + `PacketMonitorPanel.tsx`. MeshCore (OTA via `LogRxData`): `meshcore_packet_log` table + `meshcorePacketLogService.ts` + `/packets` routes in `meshcorePacketRoutes.ts` (mounted via the `meshcoreRoutes.ts` barrel) + `MeshCorePacketMonitorView.tsx`. MQTT (per-gateway receptions, N rows per packet, deduped at query time): `mqtt_packet_log` table + `mqttPacketLogService.ts` + `mqttPacketRoutes.ts` (`/api/sources/:id/mqtt/packets`), hooked via the `ingestServiceEnvelope` wrapper. All opt-in (`*_packet_log_enabled`). |
 | Frontend pages | `src/pages/*` (`Unified*Page` = multi-source aware) |
@@ -332,6 +332,10 @@ The remainder of this file is reference detail used less often than the rules ab
 2. Register it in `src/db/migrations.ts` with `registry.register({ number, name, settingsKey, sqlite, postgres, mysql })`.
    `src/db/migrations.test.ts` does **not** need editing — its assertions are registry-derived and automatically cover the new entry.
    **`settingsKey` is required** (every migration but the 001 baseline has one) — all three backends use it for idempotency tracking. SQLite checks it inline in its loop; PostgreSQL/MySQL go through the ledger in `src/db/migrationLedger.ts` (#4233).
+   **A new table must also be classified for system backup**: add it to `BACKUP_TABLES` in
+   `src/server/services/systemBackupTables.ts`, after any table it has a foreign key to (or, with a
+   security reason, to `BACKUP_EXCLUDED_TABLES`). `systemBackupService.tables.test.ts` fails until
+   you do. If it holds a key, credential or token, list it in `BACKUP_SECRET_TABLES` too.
 3. Make migrations **idempotent** using the shared helpers in `src/server/migrations/helpers.ts`.
    The ledger means a migration normally runs once per database, but a crash between the migration and its ledger write re-runs it, so **idempotency is still mandatory on every backend**. In particular, never write a migration that unconditionally deletes and rebuilds a table — that is what made 030 wipe and rebuild 865k `route_segments` rows on every single boot (#4233). Guard destructive work behind a "has this already been applied?" check, and batch bulk inserts rather than issuing one round-trip per row.
    - SQLite: `addColumnIfMissing(db, table, column, ddl)` — catches "duplicate column"; re-throws others.

@@ -7,75 +7,40 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import * as crypto from 'crypto';
 import { logger } from '../../utils/logger.js';
 import databaseService from '../../services/database.js';
+import {
+  BACKUP_TABLES,
+  BACKUP_EXCLUDED_TABLES,
+  BACKUP_SECRET_TABLES,
+  planRestoreTables,
+} from './systemBackupTables.js';
+import {
+  BACKUP_DIR_MODE,
+  BACKUP_FILE_MODE,
+  checksumFile,
+  inBatches,
+  openBackupReadSession,
+  writeTableFile,
+  BACKUP_BATCH_ROWS,
+  type BackupDatabase,
+  type BackupReadSession,
+  type BackupRow,
+} from './systemBackupIo.js';
 
 const SYSTEM_BACKUP_DIR = process.env.SYSTEM_BACKUP_DIR || '/data/system-backups';
 
-// All tables that should be backed up
-// NOTE: Excluded tables per ARCHITECTURE_LESSONS.md: sessions, push_subscriptions, backup_history, sqlite_sequence
-export const BACKUP_TABLES = [
-  // 'sources' must come first: every downstream table carries a sourceId
-  // foreign key, so a future restore must recreate source definitions
-  // before inserting any source-scoped rows.
-  'sources',
-  // #5277 P4b (U5): saved surveys — small, global (no sourceId FK) metadata.
-  'coverage_surveys',
-  // #5277 P4b (U3): NOT a raw table dump — see FILTERED_EXPORTERS below.
-  // Exports only the receptions that fall inside a saved survey's effective
-  // window (any source, `id` omitted — the PG-sequence-trap avoidance
-  // documented on FILTERED_EXPORTERS). Restore still DELETEs the whole table
-  // first, same as every other table here, so non-survey receptions are lost
-  // on restore — regenerable, and a restore already rewinds time. Kept next
-  // to `coverage_surveys` for readability; there is no FK ordering
-  // requirement between the two.
-  'coverage_receptions',
-  'nodes',
-  'messages',
-  'channels',
-  'telemetry',
-  'traceroutes',
-  'route_segments',
-  'neighbor_info',
-  'settings',
-  'users',
-  'permissions',
-  'audit_log',
-  'read_messages',
-  'user_notification_preferences',
-  'auto_traceroute_nodes',
-  'packet_log',
-  'solar_estimates',
-  'system_backup_history',
-  // 2608: automated remote favorites management config + assignment ledger
-  'auto_favorite_targets',
-  'auto_favorite_assignments',
-  // 5156: operator-hosted privacy/terms/contact documents. Table-backed rather
-  // than filesystem-backed precisely so they ride backup/restore — this list is
-  // tables only, and directory-hosted assets are silently outside every backup.
-  'privacy_documents',
-  // #3195: operator's manual solar classification per physical node (global).
-  'solar_node_overrides',
-  // #5354: tracked-asset flags (global). The history they retain is valuable,
-  // so the flag must survive a backup/restore.
-  'asset_nodes',
-  // #5520: stored message translations. `translation_cache` (global, hashed
-  // text only) before `message_translations` (per-source links into it), so a
-  // restore inserts the entries before the links that reference them. Pinned
-  // phrases and translations shown to viewers are worth keeping.
-  'translation_cache',
-  'message_translations',
-  // #5596: Analyzer Observer signing keys, one row per MeshCore source. They
-  // were left out, so a restore brought back a source whose Observer config
-  // pointed at a key that no longer existed. Each row is an AES-256-GCM
-  // envelope keyed from SESSION_SECRET plus the public key in the clear — the
-  // backup holds no plaintext key, and a stolen backup without SESSION_SECRET
-  // yields nothing. The same property means a restore under a DIFFERENT
-  // SESSION_SECRET brings back rows that cannot be decrypted: they are kept,
-  // and the key store reports them as `key_rotated` (see systemRestoreService).
-  'meshcore_observer_keys'
-];
+/**
+ * 1.0: each table file is the whole array, pretty-printed.
+ * 1.1: one row per line (see systemBackupIo.ts), and every schema table that
+ *      is not on the exclusion list. Restore reads both.
+ */
+const BACKUP_FORMAT_VERSION = '1.1';
+
+// The table lists live in systemBackupTables.ts (no imports, so the drift test
+// and the restore allowlist can read them without a database). Re-exported
+// because this is where callers have always imported BACKUP_TABLES from.
+export { BACKUP_TABLES, BACKUP_EXCLUDED_TABLES, BACKUP_SECRET_TABLES };
 
 /**
  * Per-table exporter overrides (#5277 P4b WP2, spec §2b.6, decision U3).
@@ -124,14 +89,29 @@ interface SystemBackupInfo {
   schemaVersion: number;
 }
 
+/** Thrown by createBackup when another backup is still being written. */
+export class SystemBackupInProgressError extends Error {
+  constructor() {
+    super('A system backup is already running');
+    this.name = 'SystemBackupInProgressError';
+  }
+}
+
 class SystemBackupService {
+  /**
+   * A backup of a large database runs for minutes. A second one started
+   * meanwhile (a double click, the nightly schedule) would double the disk and
+   * database load for no gain, so it is refused.
+   */
+  private backupRunning = false;
+
   /**
    * Initialize system backup directory
    */
   initializeBackupDirectory(): void {
     try {
       if (!fs.existsSync(SYSTEM_BACKUP_DIR)) {
-        fs.mkdirSync(SYSTEM_BACKUP_DIR, { recursive: true });
+        fs.mkdirSync(SYSTEM_BACKUP_DIR, { recursive: true, mode: BACKUP_DIR_MODE });
         logger.info(`📁 Created system backup directory: ${SYSTEM_BACKUP_DIR}`);
       }
     } catch (error) {
@@ -144,10 +124,23 @@ class SystemBackupService {
    * Create a complete system backup
    */
   async createBackup(type: 'manual' | 'automatic' = 'manual'): Promise<string> {
+    if (this.backupRunning) {
+      throw new SystemBackupInProgressError();
+    }
+    this.backupRunning = true;
+    try {
+      return await this.writeBackup(type);
+    } finally {
+      this.backupRunning = false;
+    }
+  }
+
+  private async writeBackup(type: 'manual' | 'automatic'): Promise<string> {
     this.initializeBackupDirectory();
 
     const startTime = Date.now();
     logger.debug(`📦 Starting ${type} system backup...`);
+    let partialBackupPath: string | null = null;
 
     try {
       // Create timestamped directory for this backup
@@ -155,7 +148,10 @@ class SystemBackupService {
       const dirname = this.formatBackupDirname(now);
       const backupPath = path.join(SYSTEM_BACKUP_DIR, dirname);
 
-      fs.mkdirSync(backupPath, { recursive: true });
+      // A backup holds keys, password hashes and tokens: keep it private to
+      // the server's user.
+      fs.mkdirSync(backupPath, { recursive: true, mode: BACKUP_DIR_MODE });
+      partialBackupPath = backupPath;
       logger.debug(`📁 Created backup directory: ${dirname}`);
 
       // Get MeshMonitor version from package.json
@@ -167,31 +163,31 @@ class SystemBackupService {
       // Get current schema version (migration 021 = schema version 21)
       const schemaVersion = this.getCurrentSchemaVersion();
 
-      // Export each table to JSON
+      // Export each table to JSON, streamed: rows go from the database to the
+      // file in batches, so a table of any size costs one batch of memory.
       const checksums: Record<string, string> = {};
       let totalSize = 0;
+      let totalRows = 0;
 
-      for (const tableName of BACKUP_TABLES) {
-        const tableFile = path.join(backupPath, `${tableName}.json`);
-        const data = await this.exportTable(tableName);
-        const json = JSON.stringify(data, null, 2);
+      const session = await openBackupReadSession(this.backupDatabase());
+      try {
+        for (const tableName of BACKUP_TABLES) {
+          const tableFile = path.join(backupPath, `${tableName}.json`);
+          const written = await writeTableFile(tableFile, this.exportTable(session, tableName));
 
-        fs.writeFileSync(tableFile, json, 'utf8');
+          checksums[tableName] = written.checksum;
+          totalSize += written.bytes;
+          totalRows += written.rows;
 
-        // Calculate SHA-256 checksum
-        const hash = crypto.createHash('sha256');
-        hash.update(json);
-        checksums[tableName] = hash.digest('hex');
-
-        const stats = fs.statSync(tableFile);
-        totalSize += stats.size;
-
-        logger.debug(`  ✅ Exported ${tableName}: ${data.length} rows, ${this.formatFileSize(stats.size)}`);
+          logger.debug(`  ✅ Exported ${tableName}: ${written.rows} rows, ${this.formatFileSize(written.bytes)}`);
+        }
+      } finally {
+        await session.close();
       }
 
       // Create metadata file
       const metadata: SystemBackupMetadata = {
-        backupVersion: '1.0',
+        backupVersion: BACKUP_FORMAT_VERSION,
         meshmonitorVersion,
         timestamp: now.toISOString(),
         timestampUnix: now.getTime(),
@@ -202,10 +198,9 @@ class SystemBackupService {
       };
 
       const metadataFile = path.join(backupPath, 'metadata.json');
-      fs.writeFileSync(metadataFile, JSON.stringify(metadata, null, 2), 'utf8');
-
-      const metadataStats = fs.statSync(metadataFile);
-      totalSize += metadataStats.size;
+      const metadataJson = JSON.stringify(metadata, null, 2);
+      fs.writeFileSync(metadataFile, metadataJson, { encoding: 'utf8', mode: BACKUP_FILE_MODE });
+      totalSize += Buffer.byteLength(metadataJson, 'utf8');
 
       // Record in database
       await this.recordBackupInDatabase(
@@ -218,8 +213,11 @@ class SystemBackupService {
         schemaVersion
       );
 
+      // Recorded: from here the retention purge owns the directory.
+      partialBackupPath = null;
+
       const duration = ((Date.now() - startTime) / 1000).toFixed(2);
-      logger.info(`💾 System backup completed: ${dirname} (${this.formatFileSize(totalSize)}, ${duration}s)`);
+      logger.info(`💾 System backup completed: ${dirname} (${BACKUP_TABLES.length} tables, ${totalRows} rows, ${this.formatFileSize(totalSize)}, ${duration}s)`);
 
       // Purge old backups if necessary
       await this.purgeOldBackups();
@@ -227,63 +225,53 @@ class SystemBackupService {
       return dirname;
     } catch (error) {
       logger.error('❌ Failed to create system backup:', error);
+      // A half-written backup is not in the history table, so nothing would
+      // ever purge it, and it can be gigabytes. Remove it.
+      if (partialBackupPath) {
+        try {
+          fs.rmSync(partialBackupPath, { recursive: true, force: true });
+        } catch (cleanupError) {
+          logger.warn(`⚠️  Could not remove the partial backup at ${partialBackupPath}:`, cleanupError);
+        }
+      }
       throw new Error(`Failed to create system backup: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
 
+  /** The live database, in the shape the streaming reader takes. */
+  private backupDatabase(): BackupDatabase {
+    const dbType = databaseService.getDatabaseType();
+    if (dbType === 'postgres') {
+      const pool = databaseService.getPostgresPool();
+      if (!pool) throw new Error('PostgreSQL pool not initialized');
+      return { type: 'postgres', pool };
+    }
+    if (dbType === 'mysql') {
+      const pool = databaseService.getMySQLPool();
+      if (!pool) throw new Error('MySQL pool not initialized');
+      return { type: 'mysql', pool };
+    }
+    return { type: 'sqlite', db: databaseService.db };
+  }
+
   /**
-   * Export a single table to array of objects
-   * Supports SQLite, PostgreSQL, and MySQL
+   * One table's rows, in batches. Never the whole table at once: the generic
+   * path reads `BACKUP_BATCH_ROWS` rows at a time from the database (see
+   * systemBackupIo.ts for how each backend does it).
    */
-  private async exportTable(tableName: string): Promise<any[]> {
+  private async *exportTable(session: BackupReadSession, tableName: string): AsyncGenerator<BackupRow[]> {
     try {
       const filteredExporter = FILTERED_EXPORTERS[tableName];
       if (filteredExporter) {
-        return this.normalizeRows(await filteredExporter());
+        // Bounded by the saved surveys' windows, not by the table.
+        yield* inBatches((await filteredExporter()) as BackupRow[], BACKUP_BATCH_ROWS);
+        return;
       }
-
-      const dbType = databaseService.getDatabaseType();
-
-      if (dbType === 'postgres') {
-        // PostgreSQL: Use async query via pool
-        const pool = databaseService.getPostgresPool();
-        if (!pool) throw new Error('PostgreSQL pool not initialized');
-        const result = await pool.query(`SELECT * FROM "${tableName}"`);
-        return this.normalizeRows(result.rows);
-      } else if (dbType === 'mysql') {
-        // MySQL: Use async query via pool
-        const pool = databaseService.getMySQLPool();
-        if (!pool) throw new Error('MySQL pool not initialized');
-        const [rows] = await pool.query(`SELECT * FROM \`${tableName}\``);
-        return this.normalizeRows(rows as any[]);
-      } else {
-        // SQLite: Use synchronous query
-        const db = databaseService.db;
-        const stmt = db.prepare(`SELECT * FROM ${tableName}`);
-        const rows = stmt.all();
-        return this.normalizeRows(rows);
-      }
+      yield* session.batches(tableName);
     } catch (error) {
       logger.error(`❌ Failed to export table ${tableName}:`, error);
       throw error;
     }
-  }
-
-  /**
-   * Normalize row values for JSON serialization
-   */
-  private normalizeRows(rows: any[]): any[] {
-    return rows.map((row: any) => {
-      const normalized: any = {};
-      for (const [key, value] of Object.entries(row)) {
-        if (typeof value === 'bigint') {
-          normalized[key] = Number(value);
-        } else {
-          normalized[key] = value;
-        }
-      }
-      return normalized;
-    });
   }
 
   /**
@@ -504,21 +492,25 @@ class SystemBackupService {
         return { valid: false, errors };
       }
 
+      // Only names on the allowlist are looked at. `metadata.tables` comes
+      // from the backup file, and each name becomes a file path here and SQL
+      // text in restore; an unknown name is skipped, as restore skips it.
+      const { tables, skipped } = planRestoreTables(metadata.tables);
+      for (const name of skipped) {
+        logger.warn(`⚠️  Ignoring table not in backup allowlist: ${name}`);
+      }
+      const checksums = metadata.checksums ?? {};
+
       // Validate all table files exist
-      for (const tableName of metadata.tables) {
+      for (const tableName of tables) {
         const tableFile = path.join(backupPath, `${tableName}.json`);
         if (!fs.existsSync(tableFile)) {
           errors.push(`Missing table file: ${tableName}.json`);
           continue;
         }
 
-        // Verify checksum
-        const content = fs.readFileSync(tableFile, 'utf8');
-        const hash = crypto.createHash('sha256');
-        hash.update(content);
-        const checksum = hash.digest('hex');
-
-        if (metadata.checksums[tableName] !== checksum) {
+        // Verify checksum, streamed: table files can be large.
+        if (checksums[tableName] !== (await checksumFile(tableFile))) {
           errors.push(`Checksum mismatch for table: ${tableName}`);
         }
       }

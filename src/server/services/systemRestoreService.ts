@@ -19,15 +19,38 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { logger } from '../../utils/logger.js';
 import databaseService from '../../services/database.js';
-import { systemBackupService, BACKUP_TABLES } from './systemBackupService.js';
+import { systemBackupService } from './systemBackupService.js';
+import { BACKUP_IDENTIFIER_PATTERN, planRestoreTables } from './systemBackupTables.js';
+import { readTableFileSync, type BackupRow } from './systemBackupIo.js';
 import { getDatabaseConfig } from '../../db/index.js';
 import { resetPostgresSequences } from '../migrations/postgresSequences.js';
 import { getMeshCoreObserverKeyStore } from './meshcoreObserverKeyStore.js';
+import { getMeshCoreObserverCredentialStore } from './meshcoreObserverCredentialStore.js';
+import { getSourcePkiKeyStore } from './sourcePkiKeyStore.js';
+import { getMeshCoreCredentialStore } from './meshcoreCredentialStore.js';
 import { Pool } from 'pg';
 import mysql from 'mysql2/promise';
 
 const SYSTEM_BACKUP_DIR = process.env.SYSTEM_BACKUP_DIR || '/data/system-backups';
 const RESTORE_MARKER_FILE = '/data/.restore-completed';
+
+/**
+ * PostgreSQL and MySQL cap a statement at 65,535 bind parameters. Rows go in
+ * as multi-row INSERTs sized to stay well under it.
+ */
+const MAX_INSERT_PARAMS = 30_000;
+const MAX_INSERT_ROWS = 500;
+
+/**
+ * Restored secrets the current SESSION_SECRET cannot open, by kind. Ids only:
+ * a source id, or `sourceId/publicKey-prefix` for a MeshCore node.
+ */
+export interface UnreadableSecrets {
+  unreadableObserverKeys: string[];
+  unreadablePkiKeys: string[];
+  unreadableObserverCredentials: string[];
+  unreadableMeshcoreNodeCredentials: string[];
+}
 
 interface RestoreResult {
   success: boolean;
@@ -163,10 +186,9 @@ class SystemRestoreService {
         tablesRestored = result.tablesRestored;
       }
 
-      // Phase 4b: say so when a restored Observer key cannot be read (#5596).
-      const unreadableObserverKeys = metadata.tables.includes('meshcore_observer_keys')
-        ? await this.findUnreadableObserverKeys()
-        : [];
+      // Phase 4b: say so when a restored key or credential cannot be read
+      // under this install's SESSION_SECRET (#5596).
+      const unreadable = await this.findUnreadableSecrets(new Set(planRestoreTables(metadata.tables).tables));
 
       // Phase 5: Run schema migrations if needed
       if (migrationRequired) {
@@ -194,9 +216,9 @@ class SystemRestoreService {
           backupSchemaVersion,
           currentSchemaVersion,
           migrationRequired,
-          // Source ids only. Present so the audit trail records that Observer
-          // publishing needs attention after this restore.
-          ...(unreadableObserverKeys.length > 0 ? { unreadableObserverKeys } : {})
+          // Ids only. Present so the audit trail records which keys and
+          // credentials need attention after this restore.
+          ...Object.fromEntries(Object.entries(unreadable).filter(([, ids]) => ids.length > 0))
         }),
         null // No IP address during startup
       );
@@ -250,43 +272,112 @@ class SystemRestoreService {
   }
 
   /**
-   * Find restored Analyzer Observer keys the current SESSION_SECRET cannot
-   * decrypt, and warn about each (#5596).
+   * Find restored keys and credentials the current SESSION_SECRET cannot
+   * decrypt, and warn about each kind (#5596).
    *
-   * A key row is an AES-256-GCM envelope keyed from SESSION_SECRET. A backup
-   * restored onto an install with a different secret brings the rows back
-   * intact but unreadable. Restore does what the key store already does for a
-   * rotated secret: it KEEPS the row. Nothing is deleted or rewritten, so
-   * putting the original SESSION_SECRET back makes the key usable again; until
-   * then `load()` returns `key_rotated`, the Observer does not publish for that
-   * source, and the Observer settings panel shows the "key rotated" state with
-   * its re-import action.
+   * Four things in a backup are AES-256-GCM envelopes keyed from
+   * SESSION_SECRET: Analyzer Observer signing keys, Observer broker
+   * credentials, per-source PKI private keys, and the repeater/room passwords
+   * saved on MeshCore nodes. A backup restored onto an install with a
+   * different secret brings the rows back intact but unreadable. Restore does
+   * what each store already does for a rotated secret: it KEEPS the row.
+   * Nothing is deleted or rewritten, so putting the original SESSION_SECRET
+   * back makes every one usable again; until then each store reports
+   * `key_rotated` and its feature asks for the secret to be entered again.
    *
-   * Reads only the envelope's version and key fingerprint — it never decrypts
-   * and never logs key material. Best-effort: a failure here must not turn a
-   * good restore into a failed one.
+   * Reads only each envelope's version and key fingerprint — it never decrypts
+   * and never logs key material. Each kind is checked on its own and
+   * best-effort: a failure here must not turn a good restore into a failed one.
    */
-  private async findUnreadableObserverKeys(): Promise<string[]> {
-    try {
+  private async findUnreadableSecrets(restored: ReadonlySet<string>): Promise<UnreadableSecrets> {
+    const check = async (table: string, label: string, find: () => Promise<string[]>): Promise<string[]> => {
+      if (!restored.has(table)) return [];
+      try {
+        return await find();
+      } catch (error) {
+        logger.warn(`⚠️  Could not check restored ${label}:`, error);
+        return [];
+      }
+    };
+
+    const unreadableObserverKeys = await check('meshcore_observer_keys', 'Analyzer Observer keys', async () => {
       const store = getMeshCoreObserverKeyStore();
-      const sourceIds = await databaseService.meshcoreObserverKeys.listSourceIds();
-      const unreadable: string[] = [];
-      for (const sourceId of sourceIds) {
-        if ((await store.status(sourceId)).keyRotated) unreadable.push(sourceId);
+      const out: string[] = [];
+      for (const sourceId of await databaseService.meshcoreObserverKeys.listSourceIds()) {
+        if ((await store.status(sourceId)).keyRotated) out.push(sourceId);
       }
-      if (unreadable.length > 0) {
-        logger.warn(
-          `⚠️  Restored ${unreadable.length} Analyzer Observer signing key(s) that the current ` +
-            `SESSION_SECRET cannot decrypt (sources: ${unreadable.join(', ')}). The rows were kept. ` +
-            'Set SESSION_SECRET to the value the backup was made under, or re-import the key for ' +
-            'each source; until then the Observer will not publish for them.'
-        );
-      }
-      return unreadable;
-    } catch (error) {
-      logger.warn('⚠️  Could not check restored Analyzer Observer keys:', error);
-      return [];
+      return out;
+    });
+    if (unreadableObserverKeys.length > 0) {
+      logger.warn(
+        `⚠️  Restored ${unreadableObserverKeys.length} Analyzer Observer signing key(s) that the current ` +
+          `SESSION_SECRET cannot decrypt (sources: ${unreadableObserverKeys.join(', ')}). The rows were kept. ` +
+          'Set SESSION_SECRET to the value the backup was made under, or re-import the key for ' +
+          'each source; until then the Observer will not publish for them.'
+      );
     }
+
+    const unreadablePkiKeys = await check('source_pki_keys', 'PKI private keys', async () => {
+      const store = getSourcePkiKeyStore();
+      const out: string[] = [];
+      for (const sourceId of await databaseService.sourcePkiKeys.listSourceIds()) {
+        if (await store.isKeyRotated(sourceId)) out.push(sourceId);
+      }
+      return out;
+    });
+    if (unreadablePkiKeys.length > 0) {
+      logger.warn(
+        `⚠️  Restored ${unreadablePkiKeys.length} PKI private key(s) that the current SESSION_SECRET cannot ` +
+          `decrypt (sources: ${unreadablePkiKeys.join(', ')}). The rows were kept. Set SESSION_SECRET to the ` +
+          'value the backup was made under, or enter the key again for each source; until then encrypted ' +
+          'direct messages to those nodes stay undecrypted.'
+      );
+    }
+
+    const unreadableObserverCredentials = await check(
+      'meshcore_observer_credentials',
+      'Analyzer Observer broker credentials',
+      async () => {
+        const store = getMeshCoreObserverCredentialStore();
+        const out: string[] = [];
+        for (const sourceId of await databaseService.meshcoreObserverCredentials.listSourceIds()) {
+          if ((await store.status(sourceId)).keyRotated) out.push(sourceId);
+        }
+        return out;
+      },
+    );
+    if (unreadableObserverCredentials.length > 0) {
+      logger.warn(
+        `⚠️  Restored Analyzer Observer broker credentials for ${unreadableObserverCredentials.length} ` +
+          `source(s) that the current SESSION_SECRET cannot decrypt (sources: ` +
+          `${unreadableObserverCredentials.join(', ')}). The rows were kept. Set SESSION_SECRET to the value ` +
+          'the backup was made under, or enter the broker password again; until then the Observer cannot ' +
+          'log in to those brokers.'
+      );
+    }
+
+    const unreadableMeshcoreNodeCredentials = await check(
+      'meshcore_nodes',
+      'MeshCore saved passwords',
+      async () =>
+        (await getMeshCoreCredentialStore().listRotated()).map(
+          (entry) => `${entry.sourceId}/${entry.publicKey.substring(0, 8)}`,
+        ),
+    );
+    if (unreadableMeshcoreNodeCredentials.length > 0) {
+      logger.warn(
+        `⚠️  Restored ${unreadableMeshcoreNodeCredentials.length} saved MeshCore repeater password(s) that the ` +
+          `current SESSION_SECRET cannot decrypt (${unreadableMeshcoreNodeCredentials.join(', ')}). The rows ` +
+          'were kept. Set SESSION_SECRET to the value the backup was made under, or enter each password again.'
+      );
+    }
+
+    return {
+      unreadableObserverKeys,
+      unreadablePkiKeys,
+      unreadableObserverCredentials,
+      unreadableMeshcoreNodeCredentials,
+    };
   }
 
   /**
@@ -394,6 +485,40 @@ class SystemRestoreService {
   }
 
   /**
+   * The tables to restore, in restore order.
+   *
+   * Table names from a backup's metadata.json are interpolated into SQL and
+   * into file paths, so a crafted backup could otherwise inject statements.
+   * Only names on the BACKUP_TABLES allowlist are used, on every backend; any
+   * other name is logged and skipped (SQL/Drizzle audit MEDIUM-3).
+   *
+   * The order is BACKUP_TABLES order, not the file's: parents are cleared and
+   * refilled before their children (see systemBackupTables.ts).
+   */
+  private allowedTables(tables: string[]): string[] {
+    const plan = planRestoreTables(tables);
+    for (const name of plan.skipped) {
+      logger.warn(`⚠️  Skipping table not in backup allowlist: ${name}`);
+    }
+    return plan.tables;
+  }
+
+  /**
+   * The column list for a table's INSERT, taken from the first row of its
+   * file. Column names are interpolated into the statement, so anything that
+   * is not a plain SQL identifier is rejected, which rolls the restore back.
+   */
+  private insertColumns(tableName: string, row: BackupRow): string[] {
+    const columns = Object.keys(row);
+    for (const col of columns) {
+      if (!BACKUP_IDENTIFIER_PATTERN.test(col)) {
+        throw new Error(`Invalid column name in backup for table ${tableName}: ${col}`);
+      }
+    }
+    return columns;
+  }
+
+  /**
    * Restore database using SQLite (synchronous transaction)
    */
   private restoreSQLite(backupPath: string, tables: string[]): { rowsRestored: number; tablesRestored: number } {
@@ -401,20 +526,11 @@ class SystemRestoreService {
     let totalRowsRestored = 0;
     let tablesRestored = 0;
 
-    // Allowlist of tables that can be restored. Table names from a backup's
-    // metadata.json are otherwise interpolated directly into SQL, so a crafted
-    // backup could inject arbitrary statements. See SQL/Drizzle audit MEDIUM-3.
-    const allowedTables = new Set<string>(BACKUP_TABLES);
-    const identifierPattern = /^[a-zA-Z_][a-zA-Z0-9_]*$/;
+    const allowed = this.allowedTables(tables);
 
     const transaction = db.transaction(() => {
-      for (const tableName of tables) {
+      for (const tableName of allowed) {
         try {
-          if (!allowedTables.has(tableName)) {
-            logger.warn(`⚠️  Skipping table not in backup allowlist: ${tableName}`);
-            continue;
-          }
-
           const tableFile = path.join(backupPath, `${tableName}.json`);
 
           if (!fs.existsSync(tableFile)) {
@@ -422,38 +538,28 @@ class SystemRestoreService {
             continue;
           }
 
-          const data = JSON.parse(fs.readFileSync(tableFile, 'utf8'));
-
           // Clear existing table data
           db.prepare(`DELETE FROM ${tableName}`).run();
 
-          // Insert backup data
-          if (data.length > 0) {
-            const columns = Object.keys(data[0]);
-            // Column names are interpolated into the INSERT statement, so
-            // reject anything that isn't a plain SQL identifier.
-            for (const col of columns) {
-              if (!identifierPattern.test(col)) {
-                throw new Error(
-                  `Invalid column name in backup for table ${tableName}: ${col}`
-                );
-              }
+          // Insert backup data, one row at a time off the file.
+          let columns: string[] | null = null;
+          let stmt: { run: (...values: unknown[]) => unknown } | null = null;
+          let rows = 0;
+          for (const row of readTableFileSync(tableFile)) {
+            if (!columns || !stmt) {
+              columns = this.insertColumns(tableName, row);
+              const placeholders = columns.map(() => '?').join(', ');
+              stmt = db.prepare<unknown[]>(
+                `INSERT INTO ${tableName} (${columns.join(', ')}) VALUES (${placeholders})`
+              );
             }
-            const placeholders = columns.map(() => '?').join(', ');
-            const stmt = db.prepare(
-              `INSERT INTO ${tableName} (${columns.join(', ')}) VALUES (${placeholders})`
-            );
-
-            for (const row of data) {
-              const values = columns.map(col => row[col]);
-              stmt.run(...values);
-            }
-
-            totalRowsRestored += data.length;
+            stmt.run(...columns.map(col => toSqliteValue(row[col])));
+            rows++;
           }
 
+          totalRowsRestored += rows;
           tablesRestored++;
-          logger.debug(`  ✅ Restored ${tableName}: ${data.length} rows`);
+          logger.debug(`  ✅ Restored ${tableName}: ${rows} rows`);
 
         } catch (error) {
           logger.error(`  ❌ Failed to restore table ${tableName}:`, error);
@@ -472,6 +578,7 @@ class SystemRestoreService {
    * Restore database using PostgreSQL (async transaction)
    */
   private async restorePostgres(backupPath: string, tables: string[], connectionString: string): Promise<{ rowsRestored: number; tablesRestored: number }> {
+    const allowed = this.allowedTables(tables);
     const pool = new Pool({ connectionString });
     const client = await pool.connect();
     let totalRowsRestored = 0;
@@ -480,7 +587,7 @@ class SystemRestoreService {
     try {
       await client.query('BEGIN');
 
-      for (const tableName of tables) {
+      for (const tableName of allowed) {
         try {
           const tableFile = path.join(backupPath, `${tableName}.json`);
 
@@ -499,30 +606,51 @@ class SystemRestoreService {
             continue;
           }
 
-          const data = JSON.parse(fs.readFileSync(tableFile, 'utf8'));
-
           // Clear existing table data (quote table name for case-sensitivity)
           await client.query(`DELETE FROM "${tableName}"`);
 
-          // Insert backup data
-          if (data.length > 0) {
-            const columns = Object.keys(data[0]);
+          // Insert backup data in multi-row statements, streamed off the file.
+          let columns: string[] | null = null;
+          let quotedColumns = '';
+          let rows = 0;
+          let batchRows = MAX_INSERT_ROWS;
+          const flush = async (batch: BackupRow[]): Promise<void> => {
+            if (batch.length === 0 || !columns) return;
+            const cols = columns;
             // PostgreSQL uses $1, $2, etc. for placeholders
-            // Quote column names to preserve case-sensitivity
-            const placeholders = columns.map((_, i) => `$${i + 1}`).join(', ');
-            const quotedColumns = columns.map(c => `"${c}"`).join(', ');
-            const insertSql = `INSERT INTO "${tableName}" (${quotedColumns}) VALUES (${placeholders})`;
+            const tuples = batch
+              .map((_, r) => `(${cols.map((__, c) => `$${r * cols.length + c + 1}`).join(', ')})`)
+              .join(', ');
+            const values = batch.flatMap(row => cols.map(col => row[col] ?? null));
+            // OVERRIDING SYSTEM VALUE: several tables declare `id` as GENERATED
+            // ALWAYS AS IDENTITY, which refuses an explicit id without it. The
+            // clause is a no-op for every other table.
+            await client.query(
+              `INSERT INTO "${tableName}" (${quotedColumns}) OVERRIDING SYSTEM VALUE VALUES ${tuples}`,
+              values
+            );
+            rows += batch.length;
+          };
 
-            for (const row of data) {
-              const values = columns.map(col => row[col]);
-              await client.query(insertSql, values);
+          let pending: BackupRow[] = [];
+          for (const row of readTableFileSync(tableFile)) {
+            if (!columns) {
+              columns = this.insertColumns(tableName, row);
+              // Quote column names to preserve case-sensitivity
+              quotedColumns = columns.map(c => `"${c}"`).join(', ');
+              batchRows = insertBatchRows(columns.length);
             }
-
-            totalRowsRestored += data.length;
+            pending.push(row);
+            if (pending.length >= batchRows) {
+              await flush(pending);
+              pending = [];
+            }
           }
+          await flush(pending);
 
+          totalRowsRestored += rows;
           tablesRestored++;
-          logger.debug(`  ✅ Restored ${tableName}: ${data.length} rows`);
+          logger.debug(`  ✅ Restored ${tableName}: ${rows} rows`);
 
         } catch (error) {
           logger.error(`  ❌ Failed to restore table ${tableName}:`, error);
@@ -558,6 +686,8 @@ class SystemRestoreService {
    * Restore database using MySQL (async transaction)
    */
   private async restoreMySQL(backupPath: string, tables: string[], connectionString: string): Promise<{ rowsRestored: number; tablesRestored: number }> {
+    const allowed = this.allowedTables(tables);
+
     // Parse the connection string
     const parsed = this.parseMySQLUrl(connectionString);
     if (!parsed) {
@@ -580,7 +710,7 @@ class SystemRestoreService {
     try {
       await connection.beginTransaction();
 
-      for (const tableName of tables) {
+      for (const tableName of allowed) {
         try {
           const tableFile = path.join(backupPath, `${tableName}.json`);
 
@@ -600,29 +730,45 @@ class SystemRestoreService {
             continue;
           }
 
-          const data = JSON.parse(fs.readFileSync(tableFile, 'utf8'));
-
           // Clear existing table data (use backticks for MySQL identifiers)
           await connection.execute(`DELETE FROM \`${tableName}\``);
 
-          // Insert backup data
-          if (data.length > 0) {
-            const columns = Object.keys(data[0]);
+          // Insert backup data in multi-row statements, streamed off the file.
+          let columns: string[] | null = null;
+          let quotedColumns = '';
+          let rows = 0;
+          let batchRows = MAX_INSERT_ROWS;
+          const flush = async (batch: BackupRow[]): Promise<void> => {
+            if (batch.length === 0 || !columns) return;
+            const cols = columns;
             // MySQL uses ? for placeholders like SQLite
-            const placeholders = columns.map(() => '?').join(', ');
-            const quotedColumns = columns.map(c => `\`${c}\``).join(', ');
-            const insertSql = `INSERT INTO \`${tableName}\` (${quotedColumns}) VALUES (${placeholders})`;
+            const tuple = `(${cols.map(() => '?').join(', ')})`;
+            const values = batch.flatMap(row => cols.map(col => row[col] ?? null));
+            await connection.query(
+              `INSERT INTO \`${tableName}\` (${quotedColumns}) VALUES ${batch.map(() => tuple).join(', ')}`,
+              values
+            );
+            rows += batch.length;
+          };
 
-            for (const row of data) {
-              const values = columns.map(col => row[col]);
-              await connection.execute(insertSql, values);
+          let pendingMysql: BackupRow[] = [];
+          for (const row of readTableFileSync(tableFile)) {
+            if (!columns) {
+              columns = this.insertColumns(tableName, row);
+              quotedColumns = columns.map(c => `\`${c}\``).join(', ');
+              batchRows = insertBatchRows(columns.length);
             }
-
-            totalRowsRestored += data.length;
+            pendingMysql.push(row);
+            if (pendingMysql.length >= batchRows) {
+              await flush(pendingMysql);
+              pendingMysql = [];
+            }
           }
+          await flush(pendingMysql);
 
+          totalRowsRestored += rows;
           tablesRestored++;
-          logger.debug(`  ✅ Restored ${tableName}: ${data.length} rows`);
+          logger.debug(`  ✅ Restored ${tableName}: ${rows} rows`);
 
         } catch (error) {
           logger.error(`  ❌ Failed to restore table ${tableName}:`, error);
@@ -668,6 +814,22 @@ class SystemRestoreService {
       return null;
     }
   }
+}
+
+/** Rows per multi-row INSERT for a table with this many columns. */
+function insertBatchRows(columnCount: number): number {
+  return Math.max(1, Math.min(MAX_INSERT_ROWS, Math.floor(MAX_INSERT_PARAMS / Math.max(1, columnCount))));
+}
+
+/**
+ * better-sqlite3 binds numbers, strings, bigints, buffers and null. A backup
+ * made on PostgreSQL holds booleans; a row from an older file may lack a
+ * column the first row had.
+ */
+function toSqliteValue(value: unknown): unknown {
+  if (value === undefined) return null;
+  if (typeof value === 'boolean') return value ? 1 : 0;
+  return value;
 }
 
 export const systemRestoreService = new SystemRestoreService();

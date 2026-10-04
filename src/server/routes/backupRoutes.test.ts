@@ -32,6 +32,7 @@ vi.mock('../services/backupFileService.js', () => ({
 
 vi.mock('../services/systemBackupService.js', () => ({
   systemBackupService: mockSystemBackupService,
+  SystemBackupInProgressError: class SystemBackupInProgressError extends Error {},
 }));
 
 vi.mock('../services/deviceRestoreService.js', () => ({
@@ -52,12 +53,15 @@ vi.mock('../../services/database.js', () => ({
   },
 }));
 
-vi.mock('../auth/authMiddleware.js', () => ({
-  requirePermission: () => (req: any, _res: any, next: any) => {
+vi.mock('../auth/authMiddleware.js', () => {
+  const asAdmin = () => (req: any, _res: any, next: any) => {
     req.user = { id: 1, isAdmin: true };
     next();
-  },
-}));
+  };
+  // The system-backup download is admin-only; who gets through the real
+  // middleware is covered in backupRoutes.systemBackup.permissions.test.ts.
+  return { requirePermission: asAdmin, requireAdmin: asAdmin };
+});
 
 import databaseService from '../../services/database.js';
 import { backupRouter, systemBackupRouter } from './backupRoutes.js';

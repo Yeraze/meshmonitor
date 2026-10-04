@@ -52,6 +52,36 @@ vi.mock('../../services/database.js', () => ({
   default: mockDb,
 }));
 
+// ─── Backup I/O mock ──────────────────────────────────────────────────────────
+// This file tests the service's LOGIC against a mocked `fs` and database. The
+// streaming reader/writer need a real file descriptor and a real database, so
+// they are stood in for here by thin equivalents over the same mocks; the real
+// ones are exercised end to end in systemBackupIo.test.ts and
+// systemBackupRestore.roundTrip*.test.ts.
+
+vi.mock('./systemBackupIo.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./systemBackupIo.js')>();
+  const { createHash } = await import('crypto');
+  return {
+    ...actual,
+    openBackupReadSession: async () => ({
+      async *batches(table: string) {
+        yield mockDb.db.prepare(`SELECT * FROM ${table}`).all();
+      },
+      async close() {},
+    }),
+    writeTableFile: async (file: string, batches: AsyncIterable<unknown[]>) => {
+      const rows: unknown[] = [];
+      for await (const batch of batches) rows.push(...batch);
+      const json = JSON.stringify(rows);
+      fsMock.writeFileSync(file, json, 'utf8');
+      return { rows: rows.length, bytes: json.length, checksum: createHash('sha256').update(json).digest('hex') };
+    },
+    checksumFile: async (file: string) =>
+      createHash('sha256').update(fsMock.readFileSync(file, 'utf8') as string).digest('hex'),
+  };
+});
+
 // ─── Import service AFTER mocks ───────────────────────────────────────────────
 
 import { systemBackupService, BACKUP_TABLES } from './systemBackupService.js';
@@ -80,7 +110,8 @@ describe('systemBackupService.initializeBackupDirectory', () => {
   it('creates directory when it does not exist', () => {
     fsMock.existsSync.mockReturnValue(false);
     systemBackupService.initializeBackupDirectory();
-    expect(fsMock.mkdirSync).toHaveBeenCalledWith(expect.any(String), { recursive: true });
+    // Private to the server's user: a backup holds keys and password hashes.
+    expect(fsMock.mkdirSync).toHaveBeenCalledWith(expect.any(String), { recursive: true, mode: 0o700 });
   });
 
   it('does not create directory when it already exists', () => {

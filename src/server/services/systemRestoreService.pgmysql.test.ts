@@ -23,7 +23,10 @@ vi.mock('../../services/database.js', () => ({ default: {} }));
 
 import { systemRestoreService } from './systemRestoreService.js';
 
-const restoreTable = pgTable('restore_seq_probe', {
+// Restore only touches tables on the backup allowlist, so the probe table
+// borrows an allowlisted name. The isolated database holds nothing else; the
+// shape (a SERIAL id) is what the test is about.
+const restoreTable = pgTable('auto_traceroute_log', {
   id: serial('id').primaryKey(),
   label: text('label'),
 });
@@ -36,14 +39,14 @@ describe.skipIf(!postgresAvailable)('systemRestoreService.restorePostgres — se
 
   beforeAll(async () => {
     ({ pool, databaseName, cleanup } = await createIsolatedPostgresDatabase('restoreseq'));
-    await pool.query('CREATE TABLE restore_seq_probe (id SERIAL PRIMARY KEY, label TEXT)');
+    await pool.query('CREATE TABLE auto_traceroute_log (id SERIAL PRIMARY KEY, label TEXT)');
     // Live rows before the restore: the sequence sits at 2, so without the
     // fix the first post-restore insert draws 3, a restored id.
-    await pool.query(`INSERT INTO restore_seq_probe (label) VALUES ('live1'), ('live2')`);
+    await pool.query(`INSERT INTO auto_traceroute_log (label) VALUES ('live1'), ('live2')`);
 
     backupDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mm-restore-seq-'));
     const rows = [1, 2, 3, 40].map((id) => ({ id, label: `backup${id}` }));
-    fs.writeFileSync(path.join(backupDir, 'restore_seq_probe.json'), JSON.stringify(rows));
+    fs.writeFileSync(path.join(backupDir, 'auto_traceroute_log.json'), JSON.stringify(rows));
   });
 
   afterAll(async () => {
@@ -56,15 +59,15 @@ describe.skipIf(!postgresAvailable)('systemRestoreService.restorePostgres — se
     // restorePostgres is private; call it directly with a URL the test owns.
     const result = await (systemRestoreService as unknown as {
       restorePostgres: (p: string, t: string[], u: string) => Promise<{ rowsRestored: number; tablesRestored: number }>;
-    }).restorePostgres(backupDir, ['restore_seq_probe'], url);
+    }).restorePostgres(backupDir, ['auto_traceroute_log'], url);
     expect(result).toEqual({ rowsRestored: 4, tablesRestored: 1 });
 
-    const { rows: restored } = await pool.query('SELECT id FROM restore_seq_probe ORDER BY id');
+    const { rows: restored } = await pool.query('SELECT id FROM auto_traceroute_log ORDER BY id');
     expect(restored.map((r) => r.id)).toEqual([1, 2, 3, 40]);
 
     // Plain insert: next id past the highest restored id.
     const { rows: plain } = await pool.query(
-      `INSERT INTO restore_seq_probe (label) VALUES ('after') RETURNING id`,
+      `INSERT INTO auto_traceroute_log (label) VALUES ('after') RETURNING id`,
     );
     expect(plain[0].id).toBe(41);
 
@@ -78,7 +81,7 @@ describe.skipIf(!postgresAvailable)('systemRestoreService.restorePostgres — se
       .returning({ id: restoreTable.id });
     expect(ignored).toEqual([{ id: 42 }]);
 
-    const { rows: count } = await pool.query('SELECT COUNT(*)::int AS n FROM restore_seq_probe');
+    const { rows: count } = await pool.query('SELECT COUNT(*)::int AS n FROM auto_traceroute_log');
     expect(count[0].n).toBe(6);
   });
 });

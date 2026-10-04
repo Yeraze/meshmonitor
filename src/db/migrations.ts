@@ -215,6 +215,7 @@ import { migration as createCrossSourceLinksMigration, runMigration193Postgres, 
 import { migration as addMeshcoreLastAdvertHadPositionMigration, runMigration194Postgres, runMigration194Mysql } from '../server/migrations/194_add_meshcore_last_advert_had_position.js';
 import { migration as splitTranslationApiKeyMigration, runMigration195Postgres, runMigration195Mysql } from '../server/migrations/195_split_translation_api_key.js';
 import { migration as addNotificationMessageTemplatesMigration, runMigration196Postgres, runMigration196Mysql } from '../server/migrations/196_add_notification_message_templates.js';
+import { migration as widenSystemBackupTotalSizeMigration, runMigration197Postgres, runMigration197Mysql } from '../server/migrations/197_widen_system_backup_total_size.js';
 
 // ============================================================================
 // Registry
@@ -3180,4 +3181,19 @@ registry.register({
   sqlite: (db) => addNotificationMessageTemplatesMigration.up(db),
   postgres: (client) => runMigration196Postgres(client),
   mysql: (pool) => runMigration196Mysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 197: widen system_backup_history.totalSize to BIGINT on PostgreSQL
+// and MySQL. GLOBAL table. A system backup now holds every table and can pass
+// 2 GiB, which a 32-bit INTEGER cannot record. SQLite INTEGER is already 64-bit.
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 197,
+  name: 'widen_system_backup_total_size',
+  settingsKey: 'migration_197_widen_system_backup_total_size',
+  sqlite: (db) => widenSystemBackupTotalSizeMigration.up(db),
+  postgres: (client) => runMigration197Postgres(client),
+  mysql: (pool) => runMigration197Mysql(pool),
 });

@@ -1,15 +1,18 @@
 import { Router, Request, Response } from 'express';
 import { promises as fsp } from 'fs';
-import { requirePermission } from '../auth/authMiddleware.js';
+import { requireAdmin, requirePermission } from '../auth/authMiddleware.js';
 import databaseService from '../../services/database.js';
 import { backupFileService } from '../services/backupFileService.js';
-import { systemBackupService } from '../services/systemBackupService.js';
+import { systemBackupService, SystemBackupInProgressError } from '../services/systemBackupService.js';
 import { deviceRestoreService } from '../services/deviceRestoreService.js';
 import { resolveSourceManager } from '../utils/resolveSourceManager.js';
 import { requireMeshtasticDeviceSource } from '../utils/requireMeshtasticDeviceSource.js';
 import { ok, fail } from '../utils/apiResponse.js';
 import { logger } from '../../utils/logger.js';
 import { extendRequestTimeout } from '../middleware/requestTimeout.js';
+
+/** System backup: streams every table to disk. Minutes on a large database. */
+const SYSTEM_BACKUP_TIMEOUT_MS = 15 * 60_000;
 
 /** Device config restore: pushes every backed-up admin config section to the node in sequence. */
 const DEVICE_RESTORE_TIMEOUT_MS = 90_000;
@@ -184,8 +187,10 @@ backupRouter.post('/restore/:filename', extendRequestTimeout(DEVICE_RESTORE_TIME
  */
 const systemBackupRouter = Router();
 
-// Create a system backup (exports all database tables to JSON)
-systemBackupRouter.post('/', requirePermission('configuration', 'write'), async (req: Request, res: Response) => {
+// Create a system backup (exports all database tables to JSON).
+// The export streams every table to disk; a database with millions of rows
+// takes minutes, so the request outlives the default 30 s socket timeout.
+systemBackupRouter.post('/', extendRequestTimeout(SYSTEM_BACKUP_TIMEOUT_MS), requirePermission('configuration', 'write'), async (req: Request, res: Response) => {
   try {
     logger.debug('📦 System backup requested...');
 
@@ -208,6 +213,9 @@ systemBackupRouter.post('/', requirePermission('configuration', 'write'), async 
       message: 'System backup created successfully',
     });
   } catch (error) {
+    if (error instanceof SystemBackupInProgressError) {
+      return fail(res, 409, 'BACKUP_IN_PROGRESS', error.message);
+    }
     logger.error('❌ Error creating system backup:', error);
     res.status(500).json({
       error: 'Failed to create system backup',
@@ -230,8 +238,13 @@ systemBackupRouter.get('/list', requirePermission('configuration', 'read'), asyn
   }
 });
 
-// Download a system backup as tar.gz
-systemBackupRouter.get('/download/:dirname', requirePermission('configuration', 'read'), async (req: Request, res: Response) => {
+// Download a system backup as tar.gz.
+// Admin only. The archive is the whole database: password hashes, API token
+// hashes, channel decryption keys in the clear, and the encrypted PKI and
+// Observer keys. `configuration:read` can be granted to a non-admin (and to the
+// anonymous user), and no single permission should carry all of that out of
+// the install.
+systemBackupRouter.get('/download/:dirname', requireAdmin(), async (req: Request, res: Response) => {
   try {
     const { dirname } = req.params;
 

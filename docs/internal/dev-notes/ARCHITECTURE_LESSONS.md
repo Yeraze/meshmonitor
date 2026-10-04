@@ -342,9 +342,29 @@ async function sendWithRetry(operation: Operation) {
 
 **Exclude**:
 - Temporary data (in-flight operations)
-- Cached data (can be regenerated)
 - Session tokens (security risk)
 - Secrets (.env files)
+
+**The backup is the whole schema minus a short exclusion list, not an opt-in list.**
+For years `BACKUP_TABLES` was a hand-kept list of tables to include. Every new
+table had to be remembered, and most were not: by #5602 the backup held 28 of 83
+tables, and a restore of a MeshCore-only install brought back no nodes, no
+messages and no automations. The rule now, enforced by
+`systemBackupService.tables.test.ts` against the real schema on all three
+backends:
+
+- Every table is in `BACKUP_TABLES` or in `BACKUP_EXCLUDED_TABLES` with a reason
+  (`src/server/services/systemBackupTables.ts`). A new table fails the test
+  until it is in one of them.
+- `BACKUP_TABLES` is in restore order: a table comes after every table it has a
+  foreign key to. Restore clears and refills in that order, so a parent listed
+  after its child would cascade-delete the child's freshly restored rows.
+- The same list is the restore allowlist on SQLite, PostgreSQL and MySQL. Table
+  names in a backup's `metadata.json` are untrusted input.
+- A backup holds keys and tokens. It is created `0700`/`0600` and only an admin
+  can download it. Do not add a second way to read one.
+- Export and restore stream. Never read a whole table, or a whole table file,
+  into memory: `route_segments` alone can pass a gigabyte.
 
 ### Backup Format
 
