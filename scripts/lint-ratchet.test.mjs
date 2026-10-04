@@ -3,7 +3,7 @@
  * No ESLint is spawned — only the diff-logic is exercised.
  */
 import { describe, it, expect } from 'vitest';
-import { compare, tally, sortObj } from './lint-ratchet.mjs';
+import { compare, tally, sortObj, mergeRule } from './lint-ratchet.mjs';
 
 // ---- compare() tests -------------------------------------------------------
 
@@ -132,5 +132,48 @@ describe('sortObj()', () => {
     const input = { a: [3, 1, 2] };
     const sorted = sortObj(input);
     expect(sorted.a).toEqual([3, 1, 2]);
+  });
+});
+
+// ---- mergeRule() tests -----------------------------------------------------
+
+describe('mergeRule()', () => {
+  const RULE = 'meshmonitor-ui/no-hardcoded-color';
+
+  it('adds the new rule and leaves every other number alone', () => {
+    const base = {
+      'src/a.tsx': { '@typescript-eslint/no-explicit-any': 5 },
+      'src/b.ts': { 'prefer-const': 1 },
+    };
+    // The live tally has drifted on other rules: `any` improved in a.tsx and a
+    // new file carries an unrelated violation. Neither may leak into the result.
+    const counts = {
+      'src/a.tsx': { '@typescript-eslint/no-explicit-any': 2, [RULE]: 7 },
+      'src/c.tsx': { [RULE]: 3, 'react-hooks/exhaustive-deps': 1 },
+      'src/d.ts': { '@typescript-eslint/no-explicit-any': 9 },
+    };
+    expect(mergeRule(base, counts, RULE)).toEqual({
+      'src/a.tsx': { '@typescript-eslint/no-explicit-any': 5, [RULE]: 7 },
+      'src/b.ts': { 'prefer-const': 1 },
+      'src/c.tsx': { [RULE]: 3 },
+    });
+  });
+
+  it('rewrites the rule where it already exists and drops it where it is gone', () => {
+    const base = {
+      'src/a.tsx': { [RULE]: 7, 'prefer-const': 1 },
+      'src/b.tsx': { [RULE]: 4 },
+    };
+    const counts = { 'src/a.tsx': { [RULE]: 2 } };
+    expect(mergeRule(base, counts, RULE)).toEqual({
+      'src/a.tsx': { [RULE]: 2, 'prefer-const': 1 },
+    });
+  });
+
+  it('does not mutate its inputs', () => {
+    const base = { 'src/a.tsx': { 'prefer-const': 1 } };
+    const counts = { 'src/a.tsx': { [RULE]: 1 } };
+    mergeRule(base, counts, RULE);
+    expect(base).toEqual({ 'src/a.tsx': { 'prefer-const': 1 } });
   });
 });
