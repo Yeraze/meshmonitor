@@ -265,6 +265,37 @@ export function decodeOutPathLen(
   return { hopHashBytes, hopCount, byteCount: hopCount * hopHashBytes };
 }
 
+/** Firmware `OUT_PATH_UNKNOWN`: no cached route, sends flood. */
+export const OUT_PATH_UNKNOWN = 0xff;
+/** Firmware `MAX_PATH_SIZE`: the fixed size of a contact's `out_path`. */
+export const MAX_OUT_PATH_BYTES = 64;
+
+/**
+ * Pack a hop count and hop-hash width into the `out_path_len` wire byte: the
+ * inverse of {@link decodeOutPathLen}.
+ *
+ * Firmware `Packet::setPathHashSizeAndCount`:
+ * `path_len = ((sz - 1) << 6) | (n & 63)`. A null or undefined count means no
+ * route, which firmware stores as OUT_PATH_UNKNOWN (0xFF).
+ *
+ * Anything firmware's `Packet::isValidPathLen` would refuse — a width outside
+ * 1..3, more than 63 hops, or more than 64 path bytes — also packs to 0xFF:
+ * a reader then sees "no route" rather than a length that misframes the
+ * path bytes behind it.
+ *
+ * Returns the UNSIGNED wire byte (0..255).
+ */
+export function encodeOutPathLen(
+  hopCount: number | null | undefined,
+  hopHashBytes: number = 1,
+): number {
+  if (hopCount === undefined || hopCount === null) return OUT_PATH_UNKNOWN;
+  if (!Number.isInteger(hopCount) || hopCount < 0 || hopCount > 0x3f) return OUT_PATH_UNKNOWN;
+  if (hopHashBytes !== 1 && hopHashBytes !== 2 && hopHashBytes !== 3) return OUT_PATH_UNKNOWN;
+  if (hopCount * hopHashBytes > MAX_OUT_PATH_BYTES) return OUT_PATH_UNKNOWN;
+  return ((hopHashBytes - 1) << 6) | hopCount;
+}
+
 /**
  * Render a MeshCore contact's `out_path` blob into a comma-separated hex
  * chain like "a3,7f,02" (1-byte hashes) or "a37f,02b0" (2-byte hashes).

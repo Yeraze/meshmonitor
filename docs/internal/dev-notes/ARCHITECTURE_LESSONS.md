@@ -970,6 +970,8 @@ In Meshtastic, a traceroute records the hops a packet visited after the fact. In
 
 `ContactInfo.out_path` is the cached route **the local device uses next time it sends to this contact**. `out_path_len = OUT_PATH_UNKNOWN (0xFF)` means "we don't know — next send floods to discover." meshcore.js reads `out_path_len` as `Int8`, so the sentinel arrives as either `0xFF` or `-1` depending on platform; `formatOutPath()` in `src/server/meshcoreNativeBackend.ts` handles both.
 
+`out_path_len` is a **packed** byte, not a hop count: top 2 bits = hop-hash width − 1 (1/2/3-byte hashes; `11` is reserved), bottom 6 bits = hop count (firmware `Packet.h` `setPathHashSizeAndCount`). It only equals the hop count for 1-byte hashes. Firmware sends and accepts the byte as stored (`writeContactRespFrame` / `updateContactFromFrame`), so anything that speaks the companion protocol — the device read side **and** the MeshCore Virtual Node — must pack and unpack it. Use the one helper pair in `src/server/meshcoreNativeBackend.ts`: `decodeOutPathLen()` and `encodeOutPathLen()`. The Virtual Node turns MeshMonitor's stored form (`pathLen` = hop count, `outPath` = comma-separated hop tokens whose width is the hash width) into the wire fields with `storedOutPathToWire()` in `meshcoreCompanionCodec.ts`, and diffs an `AddUpdateContact` echo against that same result.
+
 The firmware learns the path passively: send floods, destination replies via `PAYLOAD_TYPE_PATH` containing the reversed hop chain, manager stores it via `onContactPathRecv`. After that, sends to this contact are ROUTE_TYPE_DIRECT — much cheaper than flooding.
 
 ### The four user actions, and why they're distinct
