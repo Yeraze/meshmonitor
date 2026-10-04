@@ -448,52 +448,29 @@ describe('settingsRoutes', () => {
       });
     });
 
-    describe('translation endpoint URL sanitization on save', () => {
-      it('should sanitize translationUrl, translationOpenAiBaseUrl, and translationDeeplUrl', async () => {
+    describe('translation endpoint URL validation', () => {
+      it('should accept valid translation URLs and empty strings without mutating them', async () => {
         const app = createApp(adminUser);
 
         await request(app)
           .post('/api/settings')
           .send({
             translationUrl: 'http://custom-libre:5000',
-            translationOpenAiBaseUrl: 'http://localhost:11434',
-            translationDeeplUrl: 'https://my-deepl-proxy.internal',
-            translationApiKey: 'key:fx',
-          })
-          .expect(200);
-
-        expect(databaseService.settings.setSettings).toHaveBeenCalledWith(
-          expect.objectContaining({
-            translationUrl: 'http://custom-libre:5000/translate',
-            translationOpenAiBaseUrl: 'http://localhost:11434/chat/completions',
-            translationDeeplUrl: 'https://my-deepl-proxy.internal/translate',
-          })
-        );
-      });
-
-      it('should resolve default endpoints when translation URLs are empty strings', async () => {
-        const app = createApp(adminUser);
-
-        await request(app)
-          .post('/api/settings')
-          .send({
-            translationUrl: '',
-            translationOpenAiBaseUrl: '',
+            translationOpenAiBaseUrl: 'http://localhost:11434/v1',
             translationDeeplUrl: '',
-            translationApiKey: 'pro-key',
           })
           .expect(200);
 
         expect(databaseService.settings.setSettings).toHaveBeenCalledWith(
           expect.objectContaining({
-            translationUrl: 'http://libretranslate:5000/translate',
-            translationOpenAiBaseUrl: 'http://host.docker.internal:11434/v1/chat/completions',
-            translationDeeplUrl: 'https://api.deepl.com/v2/translate',
+            translationUrl: 'http://custom-libre:5000',
+            translationOpenAiBaseUrl: 'http://localhost:11434/v1',
+            translationDeeplUrl: '',
           })
         );
       });
 
-      it('should return 400 when translationUrl is not a valid URL', async () => {
+      it('should return 400 with INVALID_TRANSLATION_URL when translationUrl is malformed', async () => {
         const app = createApp(adminUser);
 
         const res = await request(app)
@@ -501,10 +478,14 @@ describe('settingsRoutes', () => {
           .send({ translationUrl: 'this isnt a valid url yo!' })
           .expect(400);
 
-        expect(res.body.error).toBe('translationUrl must be a valid http(s) URL');
+        expect(res.body).toMatchObject({
+          success: false,
+          code: 'INVALID_TRANSLATION_URL',
+          error: 'translationUrl must be a valid http(s) URL',
+        });
       });
 
-      it('should return 400 when translationOpenAiBaseUrl is not a valid URL', async () => {
+      it('should return 400 with INVALID_TRANSLATION_URL when translationOpenAiBaseUrl has unsupported protocol', async () => {
         const app = createApp(adminUser);
 
         const res = await request(app)
@@ -512,10 +493,14 @@ describe('settingsRoutes', () => {
           .send({ translationOpenAiBaseUrl: 'ftp://invalid-protocol.com' })
           .expect(400);
 
-        expect(res.body.error).toBe('translationOpenAiBaseUrl must be a valid http(s) URL');
+        expect(res.body).toMatchObject({
+          success: false,
+          code: 'INVALID_TRANSLATION_URL',
+          error: 'translationOpenAiBaseUrl must be a valid http(s) URL',
+        });
       });
 
-      it('should return 400 when translationDeeplUrl is not a valid URL', async () => {
+      it('should return 400 with INVALID_TRANSLATION_URL when translationDeeplUrl has file protocol', async () => {
         const app = createApp(adminUser);
 
         const res = await request(app)
@@ -523,7 +508,11 @@ describe('settingsRoutes', () => {
           .send({ translationDeeplUrl: 'file:///etc/passwd' })
           .expect(400);
 
-        expect(res.body.error).toBe('translationDeeplUrl must be a valid http(s) URL');
+        expect(res.body).toMatchObject({
+          success: false,
+          code: 'INVALID_TRANSLATION_URL',
+          error: 'translationDeeplUrl must be a valid http(s) URL',
+        });
       });
     });
 

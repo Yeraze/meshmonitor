@@ -5,20 +5,13 @@ import { buildServiceEndpoint } from './translateUtils.js';
 export class LibreTranslateProvider implements ITranslationProvider {
   readonly id: TranslationProvider = 'libretranslate';
 
-  resolveEndpoint(url?: string): string {
-    return buildServiceEndpoint(url || '', 'http://libretranslate:5000/translate', '/translate');
-  }
-
   async translate(
     text: string,
     sourceLang: string,
     targetLang: string,
     config: ProviderConfig
   ): Promise<TranslationProviderResult> {
-    const endpoint = (config.url || '').trim();
-    if (!endpoint) {
-      throw new Error('LibreTranslate URL is required');
-    }
+    const endpoint = buildServiceEndpoint(config.url || '', 'http://libretranslate:5000/translate', '/translate');
 
     const body: Record<string, unknown> = {
       q: text,

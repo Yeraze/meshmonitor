@@ -203,12 +203,12 @@ export const TranslationConfigSection: React.FC<TranslationConfigSectionProps> =
                     type="text"
                     value={openAiBaseUrl}
                     onChange={(e) => onOpenAiBaseUrlChange(e.target.value)}
-                    placeholder="http://host.docker.internal:11434/v1/chat/completions"
+                    placeholder="http://host.docker.internal:11434/v1 or https://api.openai.com/v1"
                     className={styles.input}
                     data-testid="openai-base-url-input"
                   />
                   <span className={styles.hint}>
-                    {t('settings.translation_openai_base_url_desc', 'Enter the Ollama, OpenRouter, or OpenAI URL, or leave blank to use the default (http://host.docker.internal:11434/v1/chat/completions).')}
+                    {t('settings.translation_openai_base_url_desc', 'Ollama (e.g. http://host.docker.internal:11434/v1), OpenRouter, or OpenAI base URL, or leave blank to use the default.')}
                   </span>
                 </div>
 

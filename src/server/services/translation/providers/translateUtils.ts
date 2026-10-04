@@ -3,18 +3,27 @@
  *
  * Rules:
  * 1. If baseUrl is empty or only whitespace, return defaultEndpoint.
- * 2. If no protocol (http:// or https://) is provided, prepend https://.
+ * 2. If no protocol (http:// or https://) is provided, inherit the protocol from defaultEndpoint
+ *    (or fallback to https:// if defaultEndpoint is unspecified/invalid).
  * 3. If a bare origin is provided (e.g. "http://host", "https://host:5000", "localhost:5000"),
- *    append the provider's default path (e.g. "/translate").
- * 4. If a URL is provided with a path beyond the origin (e.g. "https://host/api/translate",
+ *    append the provider's defaultPath (e.g. "/v1/chat/completions", "/v2/translate", "/translate").
+ * 4. If a URL has a path that is just a single version segment (e.g. "/v1", "/v2", "/v1/"),
+ *    append versionSubpath if provided (e.g. "/chat/completions" or "/translate").
+ * 5. If a URL is provided with a path beyond a single version segment (e.g. "https://host/api/translate",
  *    "http://proxy:8080/custom/v1"), use it verbatim as the full endpoint (stripping any trailing slash).
  *
  * @param baseUrl The configured base URL or full endpoint URL.
  * @param defaultEndpoint The default fallback endpoint when baseUrl is empty.
- * @param defaultPath The default path to append if a bare origin is provided (e.g. '/translate').
+ * @param defaultPath The default path to append if a bare origin is provided.
+ * @param versionSubpath Optional subpath to append when baseUrl has only a single version segment.
  * @returns The resolved endpoint URL.
  */
-export function buildServiceEndpoint(baseUrl: string, defaultEndpoint: string, defaultPath: string): string {
+export function buildServiceEndpoint(
+  baseUrl: string,
+  defaultEndpoint: string,
+  defaultPath: string,
+  versionSubpath?: string
+): string {
   const trimmed = (baseUrl || '').trim();
   if (!trimmed) {
     return defaultEndpoint;
@@ -54,8 +63,13 @@ export function buildServiceEndpoint(baseUrl: string, defaultEndpoint: string, d
   // Bare origin check (pathname is empty or '/')
   if (!parsed.pathname || parsed.pathname === '/') {
     parsed.pathname = normalizedPath;
+  } else if (versionSubpath && /^\/v\d+\/?$/i.test(parsed.pathname)) {
+    // Path is just a single version segment (e.g. '/v1', '/v2', '/v1/')
+    const cleanVersion = parsed.pathname.replace(/\/+$/, '');
+    const normalizedSubpath = versionSubpath.startsWith('/') ? versionSubpath : `/${versionSubpath}`;
+    parsed.pathname = `${cleanVersion}${normalizedSubpath}`;
   } else {
-    // Path beyond origin: strip trailing slashes
+    // Path beyond origin / version segment: strip trailing slashes
     parsed.pathname = parsed.pathname.replace(/\/+$/, '');
   }
 

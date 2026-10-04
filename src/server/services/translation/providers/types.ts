@@ -35,15 +35,6 @@ export interface ITranslationProvider {
   readonly id: TranslationProvider;
 
   /**
-   * Resolves and sanitizes the endpoint URL before persisting or testing.
-   *
-   * @param url The user-provided URL string.
-   * @param apiKey Optional API key (used by providers like DeepL for automatic free/pro routing).
-   * @returns The fully-resolved, sanitized endpoint URL.
-   */
-  resolveEndpoint?(url?: string, apiKey?: string): string;
-
-  /**
    * Translates text from sourceLang to targetLang.
    *
    * @param text The input text to translate.

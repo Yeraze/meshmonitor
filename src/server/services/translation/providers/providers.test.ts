@@ -54,21 +54,98 @@ describe('Translation Providers', () => {
 
     it('should throw error when API key is missing', async () => {
       await expect(
-        provider.translate('Hello', 'en', 'nb', { apiKey: '', deeplUrl: 'https://api-free.deepl.com/v2/translate' })
+        provider.translate('Hello', 'en', 'nb', { apiKey: '' })
       ).rejects.toThrow('DeepL API key is required');
     });
 
-    it('should throw error when endpoint URL is missing', async () => {
-      await expect(
-        provider.translate('Hello', 'en', 'nb', { apiKey: 'test-key', deeplUrl: '' })
-      ).rejects.toThrow('DeepL endpoint URL is required');
+    it('should automatically route to Free endpoint for :fx keys when deeplUrl is omitted/blank', async () => {
+      global.fetch = vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          translations: [{ text: 'Hallo verden', detected_source_language: 'EN' }],
+        }),
+      } as unknown as Response);
+
+      await provider.translate('Hello world', 'auto', 'nb', { apiKey: 'test-key:fx' });
+
+      expect(global.fetch).toHaveBeenCalledWith(
+        'https://api-free.deepl.com/v2/translate',
+        expect.any(Object)
+      );
     });
 
-    it('should resolve endpoint automatically based on key or custom URL', () => {
-      expect(provider.resolveEndpoint('', 'test-key:fx')).toBe('https://api-free.deepl.com/v2/translate');
-      expect(provider.resolveEndpoint('', 'pro-key')).toBe('https://api.deepl.com/v2/translate');
-      expect(provider.resolveEndpoint('https://custom-proxy.internal', 'pro-key')).toBe('https://custom-proxy.internal/translate');
-      expect(provider.resolveEndpoint('https://custom-proxy.internal/v1/translate', 'pro-key')).toBe('https://custom-proxy.internal/v1/translate');
+    it('should automatically route to Pro endpoint for non-:fx keys when deeplUrl is omitted/blank', async () => {
+      global.fetch = vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          translations: [{ text: 'Hallo verden', detected_source_language: 'EN' }],
+        }),
+      } as unknown as Response);
+
+      await provider.translate('Hello world', 'auto', 'nb', { apiKey: 'pro-key' });
+
+      expect(global.fetch).toHaveBeenCalledWith(
+        'https://api.deepl.com/v2/translate',
+        expect.any(Object)
+      );
+    });
+
+    it('should use custom deeplUrl when provided (bare origin appends /v2/translate, /v1 and /v2 append /translate, custom path preserved)', async () => {
+      global.fetch = vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          translations: [{ text: 'Hallo verden', detected_source_language: 'EN' }],
+        }),
+      } as unknown as Response);
+
+      // Bare origin (appends /v2/translate)
+      await provider.translate('Hello world', 'auto', 'nb', {
+        apiKey: 'pro-key',
+        deeplUrl: 'https://custom-proxy.internal',
+      });
+      expect(global.fetch).toHaveBeenCalledWith(
+        'https://custom-proxy.internal/v2/translate',
+        expect.any(Object)
+      );
+
+      // /v1 base (appends /translate)
+      await provider.translate('Hello world', 'auto', 'nb', {
+        apiKey: 'pro-key',
+        deeplUrl: 'https://custom-proxy.internal/v1',
+      });
+      expect(global.fetch).toHaveBeenCalledWith(
+        'https://custom-proxy.internal/v1/translate',
+        expect.any(Object)
+      );
+
+      // /v2 base (appends /translate)
+      await provider.translate('Hello world', 'auto', 'nb', {
+        apiKey: 'pro-key',
+        deeplUrl: 'https://custom-proxy.internal/v2',
+      });
+      expect(global.fetch).toHaveBeenCalledWith(
+        'https://custom-proxy.internal/v2/translate',
+        expect.any(Object)
+      );
+
+      // Full / custom path (preserved verbatim)
+      await provider.translate('Hello world', 'auto', 'nb', {
+        apiKey: 'pro-key',
+        deeplUrl: 'https://custom-proxy.internal/v1/translate',
+      });
+      expect(global.fetch).toHaveBeenCalledWith(
+        'https://custom-proxy.internal/v1/translate',
+        expect.any(Object)
+      );
+
+      await provider.translate('Hello world', 'auto', 'nb', {
+        apiKey: 'pro-key',
+        deeplUrl: 'https://custom-proxy.internal/custom/endpoint',
+      });
+      expect(global.fetch).toHaveBeenCalledWith(
+        'https://custom-proxy.internal/custom/endpoint',
+        expect.any(Object)
+      );
     });
 
     it('should map Norwegian nb and no to NB for target_lang', async () => {
@@ -193,19 +270,7 @@ describe('Translation Providers', () => {
   describe('LibreTranslateProvider', () => {
     const provider = new LibreTranslateProvider();
 
-    it('should throw error when URL is missing', async () => {
-      await expect(
-        provider.translate('Hello', 'en', 'nb', { url: '' })
-      ).rejects.toThrow('LibreTranslate URL is required');
-    });
-
-    it('should resolve endpoint with defaults and custom URLs', () => {
-      expect(provider.resolveEndpoint('')).toBe('http://libretranslate:5000/translate');
-      expect(provider.resolveEndpoint('http://custom-libre:5000')).toBe('http://custom-libre:5000/translate');
-      expect(provider.resolveEndpoint('https://custom.internal/api/v1')).toBe('https://custom.internal/api/v1');
-    });
-
-    it('should translate using provided url and lowercase codes', async () => {
+    it('should translate using default URL when url config is omitted or empty', async () => {
       global.fetch = vi.fn().mockResolvedValue({
         ok: true,
         json: async () => ({
@@ -214,8 +279,27 @@ describe('Translation Providers', () => {
         }),
       } as unknown as Response);
 
+      const res = await provider.translate('Hello world', 'auto', 'nb', {});
+
+      expect(res.translatedText).toBe('Hei verden');
+      expect(global.fetch).toHaveBeenCalledWith(
+        'http://libretranslate:5000/translate',
+        expect.any(Object)
+      );
+    });
+
+    it('should translate using custom URL (bare origin appends /translate, /v1, /v2, and custom paths preserved verbatim)', async () => {
+      global.fetch = vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          translatedText: 'Hei verden',
+          detectedLanguage: { language: 'en', confidence: 99 },
+        }),
+      } as unknown as Response);
+
+      // Bare origin (appends /translate)
       const res = await provider.translate('Hello world', 'auto', 'nb', {
-        url: 'http://custom-libre:5000/translate',
+        url: 'http://custom-libre:5000',
         apiKey: 'libre-key',
       });
 
@@ -234,6 +318,41 @@ describe('Translation Providers', () => {
             api_key: 'libre-key',
           }),
         })
+      );
+
+      // /v1 base (verbatim for LibreTranslate)
+      await provider.translate('Hello world', 'auto', 'nb', {
+        url: 'http://custom-libre:5000/v1',
+      });
+      expect(global.fetch).toHaveBeenCalledWith(
+        'http://custom-libre:5000/v1',
+        expect.any(Object)
+      );
+
+      // /v2 base (verbatim for LibreTranslate)
+      await provider.translate('Hello world', 'auto', 'nb', {
+        url: 'http://custom-libre:5000/v2',
+      });
+      expect(global.fetch).toHaveBeenCalledWith(
+        'http://custom-libre:5000/v2',
+        expect.any(Object)
+      );
+
+      // Full / custom path (verbatim)
+      await provider.translate('Hello world', 'auto', 'nb', {
+        url: 'http://custom-libre:5000/translate',
+      });
+      expect(global.fetch).toHaveBeenCalledWith(
+        'http://custom-libre:5000/translate',
+        expect.any(Object)
+      );
+
+      await provider.translate('Hello world', 'auto', 'nb', {
+        url: 'http://custom-libre:5000/custom/api',
+      });
+      expect(global.fetch).toHaveBeenCalledWith(
+        'http://custom-libre:5000/custom/api',
+        expect.any(Object)
       );
     });
 
@@ -278,19 +397,24 @@ describe('Translation Providers', () => {
   describe('OpenAIProvider', () => {
     const provider = new OpenAIProvider();
 
-    it('should throw error when endpoint URL is missing', async () => {
-      await expect(
-        provider.translate('Hello', 'en', 'nb', { openAiBaseUrl: '' })
-      ).rejects.toThrow('OpenAI endpoint URL is required');
+    it('should format request with default endpoint when openAiBaseUrl is omitted or empty', async () => {
+      global.fetch = vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          choices: [{ message: { content: 'Hei verden' } }],
+        }),
+      } as unknown as Response);
+
+      const res = await provider.translate('Hello world', 'en', 'nb', {});
+
+      expect(res.translatedText).toBe('Hei verden');
+      expect(global.fetch).toHaveBeenCalledWith(
+        'http://host.docker.internal:11434/v1/chat/completions',
+        expect.any(Object)
+      );
     });
 
-    it('should resolve endpoint with defaults and custom URLs', () => {
-      expect(provider.resolveEndpoint('')).toBe('http://host.docker.internal:11434/v1/chat/completions');
-      expect(provider.resolveEndpoint('http://host:11434')).toBe('http://host:11434/chat/completions');
-      expect(provider.resolveEndpoint('https://api.openai.com/v1/chat/completions')).toBe('https://api.openai.com/v1/chat/completions');
-    });
-
-    it('should format request and return translation content', async () => {
+    it('should format request and return translation content with custom base URL (/v1 appends /chat/completions)', async () => {
       global.fetch = vi.fn().mockResolvedValue({
         ok: true,
         json: async () => ({
@@ -299,20 +423,86 @@ describe('Translation Providers', () => {
       } as unknown as Response);
 
       const res = await provider.translate('Hello world', 'en', 'nb', {
-        openAiBaseUrl: 'http://ollama:11434/v1/chat/completions',
+        openAiBaseUrl: 'http://host.docker.internal:11434/v1',
         model: 'llama3',
         apiKey: 'ollama-key',
       });
 
       expect(res.translatedText).toBe('Hei verden');
       expect(global.fetch).toHaveBeenCalledWith(
-        'http://ollama:11434/v1/chat/completions',
+        'http://host.docker.internal:11434/v1/chat/completions',
         expect.objectContaining({
           method: 'POST',
           headers: expect.objectContaining({
             Authorization: 'Bearer ollama-key',
           }),
         })
+      );
+    });
+
+    it('should format request and return translation content with bare origin (appends /v1/chat/completions)', async () => {
+      global.fetch = vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          choices: [{ message: { content: 'Hei verden' } }],
+        }),
+      } as unknown as Response);
+
+      const res = await provider.translate('Hello world', 'en', 'nb', {
+        openAiBaseUrl: 'http://localhost:11434',
+        model: 'llama3',
+      });
+
+      expect(res.translatedText).toBe('Hei verden');
+      expect(global.fetch).toHaveBeenCalledWith(
+        'http://localhost:11434/v1/chat/completions',
+        expect.any(Object)
+      );
+    });
+
+    it('should append /chat/completions for /v2 base URL', async () => {
+      global.fetch = vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          choices: [{ message: { content: 'Hei verden' } }],
+        }),
+      } as unknown as Response);
+
+      await provider.translate('Hello world', 'en', 'nb', {
+        openAiBaseUrl: 'http://localhost:11434/v2',
+        model: 'llama3',
+      });
+
+      expect(global.fetch).toHaveBeenCalledWith(
+        'http://localhost:11434/v2/chat/completions',
+        expect.any(Object)
+      );
+    });
+
+    it('should preserve full or custom endpoint paths verbatim', async () => {
+      global.fetch = vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          choices: [{ message: { content: 'Hei verden' } }],
+        }),
+      } as unknown as Response);
+
+      await provider.translate('Hello world', 'en', 'nb', {
+        openAiBaseUrl: 'https://api.openai.com/v1/chat/completions',
+        model: 'gpt-4o',
+      });
+      expect(global.fetch).toHaveBeenCalledWith(
+        'https://api.openai.com/v1/chat/completions',
+        expect.any(Object)
+      );
+
+      await provider.translate('Hello world', 'en', 'nb', {
+        openAiBaseUrl: 'https://custom.proxy/api/v1',
+        model: 'custom-model',
+      });
+      expect(global.fetch).toHaveBeenCalledWith(
+        'https://custom.proxy/api/v1',
+        expect.any(Object)
       );
     });
 

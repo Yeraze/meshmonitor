@@ -97,7 +97,7 @@ ollama run llama3.2
 
 In MeshMonitor:
 - Set **Translation Provider** to `OpenAI-Compatible (Ollama, OpenRouter, OpenAI, vLLM)`.
-- Set **OpenAI URL** to `http://host.docker.internal:11434/v1/chat/completions` (or leave blank to use default `http://host.docker.internal:11434/v1/chat/completions`).
+- Set **OpenAI Base URL** to `http://host.docker.internal:11434/v1` (or leave blank to use the default `http://host.docker.internal:11434/v1/chat/completions`).
 - Set **Model Name** to your desired model (e.g. `llama3.2`, `qwen2.5`, or `mistral`).
 - Leave the API key blank for local Ollama instances.
 
@@ -108,8 +108,9 @@ In MeshMonitor:
 When configuring custom service URLs for LibreTranslate, OpenAI-compatible backends, or DeepL custom gateways, MeshMonitor applies the following resolution rules:
 
 - **Leave Blank**: Uses the provider's default endpoint.
-- **Bare Origin** (e.g. `http://localhost:5000` or `https://my-proxy:8080`): The provider's standard path (such as `/translate` or `/chat/completions`) is automatically appended.
-- **Full Endpoint / Custom Path** (e.g. `https://my-proxy.internal/v1/custom-translate` or `https://api.openai.com/v1/chat/completions`): The URL is used verbatim as the full request destination.
+- **Bare Origin** (e.g. `http://localhost:5000` or `http://localhost:11434`): The provider's standard default path (such as `/translate`, `/v1/chat/completions`, or `/v2/translate`) is automatically appended.
+- **Version Base Path** (e.g. `http://host.docker.internal:11434/v1` or `https://api.deepl.com/v2`): Automatically appends the required subpath (`/chat/completions` or `/translate`).
+- **Full Endpoint / Custom Path** (e.g. `https://my-proxy.internal/v1/custom-translate` or `https://api.openai.com/v1/chat/completions`): Used verbatim as the full request destination.
 - **No Protocol Specified** (e.g. `localhost:5000`): Automatically adopts the default protocol (`http://` or `https://`) for that provider.
 
 ---

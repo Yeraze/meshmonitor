@@ -141,11 +141,11 @@ describe('translationService', () => {
       expect(result.translatedText).toBe('ping');
     });
 
-    it('should translate using LibreTranslate provider', async () => {
+    it('should translate using LibreTranslate provider with bare origin URL', async () => {
       vi.mocked(databaseService.getSettingAsync).mockImplementation(async (key: string) => {
         if (key === 'translationEnabled') return 'true';
         if (key === 'translationProvider') return 'libretranslate';
-        if (key === 'translationUrl') return 'http://libretranslate:5000/translate';
+        if (key === 'translationUrl') return 'http://libretranslate:5000';
         return null;
       });
 
@@ -173,11 +173,41 @@ describe('translationService', () => {
       );
     });
 
+    it('should translate using LibreTranslate provider with blank URL (using default endpoint)', async () => {
+      vi.mocked(databaseService.getSettingAsync).mockImplementation(async (key: string) => {
+        if (key === 'translationEnabled') return 'true';
+        if (key === 'translationProvider') return 'libretranslate';
+        if (key === 'translationUrl') return '';
+        return null;
+      });
+
+      global.fetch = vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          translatedText: 'Hola mundo',
+          detectedLanguage: { language: 'en', confidence: 99 },
+        }),
+      } as unknown as Response);
+
+      const result = await translationService.translate({
+        text: 'Hello world',
+        targetLang: 'es',
+      });
+
+      expect(result.translatedText).toBe('Hola mundo');
+      expect(global.fetch).toHaveBeenCalledWith(
+        'http://libretranslate:5000/translate',
+        expect.objectContaining({
+          method: 'POST',
+        })
+      );
+    });
+
     it('should translate using OpenAI-compatible provider', async () => {
       vi.mocked(databaseService.getSettingAsync).mockImplementation(async (key: string) => {
         if (key === 'translationEnabled') return 'true';
         if (key === 'translationProvider') return 'openai';
-        if (key === 'translationOpenAiBaseUrl') return 'http://localhost:11434/v1/chat/completions';
+        if (key === 'translationOpenAiBaseUrl') return 'http://localhost:11434/v1';
         if (key === 'translationModel') return 'llama3';
         if (key === 'translationApiKey') return 'sk-test';
         return null;
@@ -214,12 +244,12 @@ describe('translationService', () => {
       );
     });
 
-    it('should translate using DeepL provider', async () => {
+    it('should translate using DeepL provider and auto-route to free endpoint when URL is blank', async () => {
       vi.mocked(databaseService.getSettingAsync).mockImplementation(async (key: string) => {
         if (key === 'translationEnabled') return 'true';
         if (key === 'translationProvider') return 'deepl';
         if (key === 'translationApiKey') return 'deepl-api-key:fx';
-        if (key === 'translationDeeplUrl') return 'https://api-free.deepl.com/v2/translate';
+        if (key === 'translationDeeplUrl') return '';
         return null;
       });
 
@@ -255,7 +285,7 @@ describe('translationService', () => {
         if (key === 'translationEnabled') return 'true';
         if (key === 'translationProvider') return 'deepl';
         if (key === 'translationApiKey') return 'deepl-api-key';
-        if (key === 'translationDeeplUrl') return 'https://my-proxy.internal/v2/translate';
+        if (key === 'translationDeeplUrl') return 'https://my-proxy.internal/v2';
         return null;
       });
 
@@ -279,12 +309,12 @@ describe('translationService', () => {
       );
     });
 
-    it('should use Pro DeepL endpoint when configured in settings', async () => {
+    it('should use Pro DeepL endpoint for non-:fx keys when URL is blank', async () => {
       vi.mocked(databaseService.getSettingAsync).mockImplementation(async (key: string) => {
         if (key === 'translationEnabled') return 'true';
         if (key === 'translationProvider') return 'deepl';
         if (key === 'translationApiKey') return 'deepl-pro-api-key';
-        if (key === 'translationDeeplUrl') return 'https://api.deepl.com/v2/translate';
+        if (key === 'translationDeeplUrl') return null;
         return null;
       });
 
@@ -306,22 +336,6 @@ describe('translationService', () => {
           method: 'POST',
         })
       );
-    });
-
-    it('should throw error when provider endpoint URL is empty at runtime', async () => {
-      vi.mocked(databaseService.getSettingAsync).mockImplementation(async (key: string) => {
-        if (key === 'translationEnabled') return 'true';
-        if (key === 'translationProvider') return 'libretranslate';
-        if (key === 'translationUrl') return '';
-        return null;
-      });
-
-      await expect(
-        translationService.translate({
-          text: 'Hello world',
-          targetLang: 'es',
-        })
-      ).rejects.toThrow('LibreTranslate URL is required');
     });
 
     it('should translate using Google Cloud Translation API', async () => {

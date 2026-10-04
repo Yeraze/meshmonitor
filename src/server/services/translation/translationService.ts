@@ -76,7 +76,7 @@ export interface TranslationResult {
 }
 
 export type LanguageOption = TranslationLanguageOption;
-export { STANDARD_LANGUAGES, buildServiceEndpoint, getTranslationProvider };
+export { STANDARD_LANGUAGES, buildServiceEndpoint };
 
 /**
  * Filter out raw telemetry packets, standard radio tests, and emoji-only messages
@@ -300,11 +300,11 @@ export class TranslationService {
     const targetLang = (config.targetLanguage || 'es').trim();
 
     const providerConfig: ProviderConfig = {
-      url: getTranslationProvider('libretranslate').resolveEndpoint?.(config.url),
-      deeplUrl: getTranslationProvider('deepl').resolveEndpoint?.(config.deeplUrl, config.apiKey),
+      url: config.url,
+      deeplUrl: config.deeplUrl,
       apiKey: config.apiKey,
       model: config.model,
-      openAiBaseUrl: getTranslationProvider('openai').resolveEndpoint?.(config.openAiBaseUrl),
+      openAiBaseUrl: config.openAiBaseUrl,
     };
 
     return this.executeTranslation(testText, sourceLang, targetLang, config.provider, providerConfig);
