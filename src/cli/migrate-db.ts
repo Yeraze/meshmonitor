@@ -91,6 +91,9 @@ const COLUMN_MAPPINGS: Record<string, Record<string, string>> = {
     waypoint_radius_km: 'waypointRadiusKm',
     waypoint_center_lat: 'waypointCenterLat',
     waypoint_center_lon: 'waypointCenterLon',
+    // #5593 message-notification templates — same reason as the waypoint four.
+    message_title_template: 'messageTitleTemplate',
+    message_body_template: 'messageBodyTemplate',
     prefix_with_node_name: 'prefixWithNodeName',
     enable_apprise: 'appriseEnabled',             // Old: enable_apprise → New: appriseEnabled
     apprise_urls: 'appriseUrls',

@@ -3,6 +3,7 @@ import { optionalAuth, requireAuth, requirePermission, requireAdmin } from '../a
 import databaseService from '../../services/database.js';
 import { logger } from '../../utils/logger.js';
 import { fail } from '../utils/apiResponse.js';
+import { validateMessageTemplate, normalizeTemplate } from '../../utils/notificationTemplate.js';
 import { pushNotificationService } from '../services/pushNotificationService.js';
 import { appriseNotificationService, resolveAppriseServerUrl } from '../services/appriseNotificationService.js';
 import { fallbackManager } from '../meshtasticManager.js';
@@ -264,6 +265,9 @@ const DEFAULT_NOTIFICATION_PREFERENCES: NotificationPreferences = {
   appriseUrls: [],
   mutedChannels: [],
   mutedDMs: [],
+  // #5593: null = the built-in message-notification template.
+  messageTitleTemplate: null,
+  messageBodyTemplate: null,
 };
 
 // Mute lists are keyed by Meshtastic channel number / node id. A source of
@@ -319,7 +323,13 @@ pushRouter.get(
       const sourceFallback = sourceId
         ? !(await databaseService.notifications.getUserPreferences(userId, sourceId))
         : false;
-      res.json({ ...prefs, sourceFallback });
+      // Message templates are strictly per source (#5593): a row borrowed
+      // from another source must not lend its templates.
+      res.json({
+        ...prefs,
+        ...(sourceFallback ? { messageTitleTemplate: null, messageBodyTemplate: null } : {}),
+        sourceFallback,
+      });
     } else {
       res.json({ ...DEFAULT_NOTIFICATION_PREFERENCES });
     }
@@ -466,6 +476,25 @@ pushRouter.post(
       return res.status(400).json({ error: 'mutedDMs entries must have nodeUuid (string) and muteUntil (number|null)' });
     }
 
+    // Message-notification templates (#5593). null or blank clears the
+    // template (back to the built-in default). An unknown `{{ token }}` is
+    // REJECTED here rather than saved and rendered empty, so a typo is caught
+    // at save instead of showing up as a hole in a notification.
+    for (const [field, kind] of [
+      ['messageTitleTemplate', 'title'],
+      ['messageBodyTemplate', 'body'],
+    ] as const) {
+      if (body[field] === undefined) continue;
+      const problem = validateMessageTemplate(body[field], kind);
+      if (problem) {
+        return fail(res, 400, problem.code, problem.message, {
+          field,
+          ...(problem.unknownTokens ? { unknownTokens: problem.unknownTokens } : {}),
+        });
+      }
+      body[field] = normalizeTemplate(body[field]);
+    }
+
     // Base row. The own-row read rethrows: a failed read must fail the save,
     // not fall through to defaults and overwrite the user's settings.
     //
@@ -483,6 +512,11 @@ pushRouter.post(
       base = ownRow;
     } else {
       base = (await getUserNotificationPreferencesAsync(userId, sourceId)) ?? DEFAULT_NOTIFICATION_PREFERENCES;
+      // Message templates are strictly per source (#5593): a source's first
+      // row never inherits another row's templates.
+      if (sourceId) {
+        base = { ...base, messageTitleTemplate: null, messageBodyTemplate: null };
+      }
       // A non-Meshtastic source's first row must not inherit the '' row's
       // Meshtastic-keyed mute lists (#5487).
       if (sourceId) {

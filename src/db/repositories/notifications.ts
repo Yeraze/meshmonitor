@@ -64,6 +64,12 @@ export interface NotificationPreferences {
   appriseUrls: string[];
   mutedChannels: MutedChannel[];
   mutedDMs: MutedDM[];
+  /**
+   * Message-notification templates (#5593), `{{ token }}` syntax. NULL means
+   * the built-in default. See src/utils/notificationTemplate.ts.
+   */
+  messageTitleTemplate: string | null;
+  messageBodyTemplate: string | null;
 }
 
 /**
@@ -314,6 +320,8 @@ export class NotificationsRepository extends BaseRepository {
       notifyOnMqtt: prefs.notifyOnMqtt,
       mutedChannels: JSON.stringify(prefs.mutedChannels ?? []),
       mutedDMs: JSON.stringify(prefs.mutedDMs ?? []),
+      messageTitleTemplate: prefs.messageTitleTemplate ?? null,
+      messageBodyTemplate: prefs.messageBodyTemplate ?? null,
       updatedAt: now,
     };
 
@@ -1370,6 +1378,8 @@ export class NotificationsRepository extends BaseRepository {
       appriseUrls: parseJsonArray(row.appriseUrls) as string[],
       mutedChannels: parseJsonArray(row.mutedChannels) as unknown as MutedChannel[],
       mutedDMs: parseJsonArray(row.mutedDMs) as unknown as MutedDM[],
+      messageTitleTemplate: typeof row.messageTitleTemplate === 'string' && row.messageTitleTemplate.length > 0 ? row.messageTitleTemplate : null,
+      messageBodyTemplate: typeof row.messageBodyTemplate === 'string' && row.messageBodyTemplate.length > 0 ? row.messageBodyTemplate : null,
     };
   }
 }

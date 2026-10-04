@@ -1,6 +1,7 @@
 import { logger } from '../../utils/logger.js';
 import databaseService from '../../services/database.js';
-import { getUserNotificationPreferencesAsync, getUsersWithServiceEnabledAsync, shouldFilterNotificationAsync, applyNodeNamePrefixAsync, resolveAppriseTargetAsync } from '../utils/notificationFiltering.js';
+import { getUserNotificationPreferencesAsync, getUsersWithServiceEnabledAsync, shouldFilterNotificationAsync, applyNodeNamePrefixAsync, resolveAppriseTargetAsync, renderMessagePayloadForUserAsync } from '../utils/notificationFiltering.js';
+import type { MessageTemplateContext } from '../../utils/notificationTemplate.js';
 import { fallbackManager } from '../meshtasticManager.js';
 import { sourceManagerRegistry } from '../sourceManagerRegistry.js';
 import { getPrimaryMeshtasticManager } from '../sourceManagerTypes.js';
@@ -13,6 +14,11 @@ export interface AppriseNotificationPayload {
   sourceId: string;
   /** Phase B: human-readable source name used to prefix title/body. */
   sourceName: string;
+  /**
+   * Message notifications only (#5593): the values `broadcastWithFiltering`
+   * renders each recipient's title/body template from. Never sent to Apprise.
+   */
+  message?: MessageTemplateContext;
 }
 
 interface AppriseConfig {
@@ -370,12 +376,6 @@ class AppriseNotificationService {
       return { sent: 0, failed: 0, filtered: 0 };
     }
 
-    // Prefix title with source name (body kept clean — title already disambiguates source)
-    const prefixedPayload: AppriseNotificationPayload = {
-      ...payload,
-      title: `[${filterContext.sourceName}] ${payload.title}`,
-    };
-
     // Get users who have Apprise enabled
     const users = await this.getUsersWithAppriseEnabledAsync();
 
@@ -415,11 +415,13 @@ class AppriseNotificationService {
         continue;
       }
 
+      // Render AFTER the filter decision (#5593): the user's templates shape
+      // the text only, never whether a notification is sent.
+      const rendered = await renderMessagePayloadForUserAsync(userId, payload, filterContext.sourceId, filterContext.sourceName);
+
       // Apply node name prefix if user has it enabled (per-source prefs)
-      const prefixedBody = await applyNodeNamePrefixAsync(userId, prefixedPayload.body, localNodeName, filterContext.sourceId);
-      const notificationPayload = prefixedBody !== prefixedPayload.body
-        ? { ...prefixedPayload, body: prefixedBody }
-        : prefixedPayload;
+      const body = await applyNodeNamePrefixAsync(userId, rendered.body, localNodeName, filterContext.sourceId);
+      const notificationPayload: AppriseNotificationPayload = { ...payload, title: rendered.title, body };
 
       // Send to user's specific URLs
       const success = await this.sendNotificationToUrls(notificationPayload, prefs.appriseUrls);

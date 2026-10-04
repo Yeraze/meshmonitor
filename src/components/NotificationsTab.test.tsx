@@ -169,6 +169,39 @@ describe('NotificationsTab — saves send only the fields this tab edits', () =>
     expect(body).toMatchObject({ enableWebPush: false, notifyOnLowBattery: true, lowBatteryThreshold: 20 });
   });
 
+  it('Save preferences sends the message templates edited in the format section (#5593)', async () => {
+    renderWithSource('meshtastic_tcp');
+    await waitFor(() => {
+      expect(document.getElementById('notif-format-title')).not.toBeNull();
+    });
+
+    // Untouched: both go up as null, i.e. "use the default".
+    fireEvent.click(screen.getByText(/notifications\.save_preferences/));
+    await waitFor(() => expect(prefPosts()).toHaveLength(1));
+    expect(prefPosts()[0][1]).toMatchObject({ messageTitleTemplate: null, messageBodyTemplate: null });
+
+    fireEvent.change(document.getElementById('notif-format-title')!, { target: { value: '{{ channelName }}' } });
+    fireEvent.change(document.getElementById('notif-format-body')!, { target: { value: '{{ senderShortName }}: {{ text }}' } });
+    fireEvent.click(screen.getByText(/notifications\.save_preferences/));
+    await waitFor(() => expect(prefPosts()).toHaveLength(2));
+    const body = prefPosts()[1][1] as Record<string, unknown>;
+    expect(body).toMatchObject({
+      messageTitleTemplate: '{{ channelName }}',
+      messageBodyTemplate: '{{ senderShortName }}: {{ text }}',
+      sourceId: 'src-1',
+    });
+    // Still a partial save: the mute lists stay out of it.
+    expect(body).not.toHaveProperty('mutedChannels');
+  });
+
+  it('MeshCore: the message format section is hidden (message notifications do not fire there)', async () => {
+    renderWithSource('meshcore');
+    await waitFor(() => {
+      expect(document.getElementById('lowBatteryVoltageThreshold')).not.toBeNull();
+    });
+    expect(document.getElementById('notif-format-title')).toBeNull();
+  });
+
   it('Save Apprise config sends only the URL list', async () => {
     // The Apprise section renders only when Apprise is enabled on the row.
     const defaultGet = (api.get as ReturnType<typeof vi.fn>).getMockImplementation()!;

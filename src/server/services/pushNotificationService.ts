@@ -3,7 +3,8 @@ import { getEnvironmentConfig } from '../config/environment.js';
 import { logger } from '../../utils/logger.js';
 import databaseService from '../../services/database.js';
 import type { DbPushSubscription } from '../../db/types.js';
-import { getUserNotificationPreferencesAsync, shouldFilterNotificationAsync, applyNodeNamePrefixAsync } from '../utils/notificationFiltering.js';
+import { getUserNotificationPreferencesAsync, shouldFilterNotificationAsync, applyNodeNamePrefixAsync, renderMessagePayloadForUserAsync } from '../utils/notificationFiltering.js';
+import type { MessageTemplateContext } from '../../utils/notificationTemplate.js';
 import { fallbackManager } from '../meshtasticManager.js';
 import { sourceManagerRegistry } from '../sourceManagerRegistry.js';
 import { getPrimaryMeshtasticManager } from '../sourceManagerTypes.js';
@@ -24,6 +25,11 @@ export interface PushNotificationPayload {
   sourceId?: string;
   /** Phase C: human-readable source name. */
   sourceName?: string;
+  /**
+   * Message notifications only (#5593): the values `broadcastWithFiltering`
+   * renders each recipient's title/body template from. Never sent on the wire.
+   */
+  message?: MessageTemplateContext;
 }
 
 class PushNotificationService {
@@ -424,12 +430,6 @@ class PushNotificationService {
     const localNodeInfo = mgr.getLocalNodeInfo();
     const localNodeName = localNodeInfo?.longName || null;
 
-    // Prefix title with source name (body kept clean — title already disambiguates source)
-    const prefixedPayload: PushNotificationPayload = {
-      ...payload,
-      title: `[${filterContext.sourceName}] ${payload.title}`,
-    };
-
     for (const subscription of subscriptions) {
       // Get user preferences
       const userId = subscription.userId;
@@ -441,11 +441,15 @@ class PushNotificationService {
         continue;
       }
 
+      // Render AFTER the filter decision (#5593): the user's templates shape
+      // the text only, never whether a notification is sent.
+      const rendered = await renderMessagePayloadForUserAsync(userId, payload, filterContext.sourceId, filterContext.sourceName);
+
       // Apply node name prefix if user has it enabled (per-source prefs)
-      const prefixedBody = await applyNodeNamePrefixAsync(userId, prefixedPayload.body, localNodeName, filterContext.sourceId);
-      const notificationPayload = prefixedBody !== prefixedPayload.body
-        ? { ...prefixedPayload, body: prefixedBody }
-        : prefixedPayload;
+      const body = await applyNodeNamePrefixAsync(userId, rendered.body, localNodeName, filterContext.sourceId);
+      // `message` is render input, not wire data: keep it out of the push payload.
+      const notificationPayload: PushNotificationPayload = { ...payload, title: rendered.title, body };
+      delete notificationPayload.message;
 
       const success = await this.sendToSubscription(subscription, notificationPayload);
       if (success) {

@@ -122,6 +122,8 @@ const POSTGRES_CREATE = `
     "notifyOnMqtt" BOOLEAN DEFAULT TRUE,
     "mutedChannels" TEXT,
     "mutedDMs" TEXT,
+    "messageTitleTemplate" TEXT,
+    "messageBodyTemplate" TEXT,
     "createdAt" BIGINT NOT NULL,
     "updatedAt" BIGINT NOT NULL,
     UNIQUE("userId", "sourceId")
@@ -263,6 +265,8 @@ const MYSQL_CREATE = `
     notifyOnMqtt BOOLEAN DEFAULT TRUE,
     mutedChannels TEXT,
     mutedDMs TEXT,
+    messageTitleTemplate TEXT,
+    messageBodyTemplate TEXT,
     createdAt BIGINT NOT NULL,
     updatedAt BIGINT NOT NULL,
     FOREIGN KEY (userId) REFERENCES users(id) ON DELETE CASCADE
@@ -620,6 +624,44 @@ function runNotificationsTests(getBackend: () => TestBackend) {
       expect(result!.appriseUrls).toEqual(['http://apprise.example.com']);
       expect(result!.monitoredNodes).toEqual(['!node1', '!node2']);
       expect(result!.enabledChannels).toEqual([0, 1]);
+    });
+
+    it('message templates (#5593) - default NULL, round-trip, cleared, and isolated per source', async () => {
+      const backend = getBackend();
+      if (!backend.available) { console.log(`⚠ Skipped: ${backend.skipReason}`); return; }
+
+      await backend.exec(insertUserSql(backend, 1, 'testuser'));
+
+      // A row saved without templates reads back NULL (the built-in default).
+      await repo.saveUserPreferences(1, makeDefaultPrefs(), 'src-b');
+      expect(await repo.getUserPreferences(1, 'src-b')).toMatchObject({
+        messageTitleTemplate: null,
+        messageBodyTemplate: null,
+      });
+
+      await repo.saveUserPreferences(1, makeDefaultPrefs({
+        messageTitleTemplate: '{{ channelName }} · {{ sourceName }}',
+        messageBodyTemplate: '{{ senderShortName }}:\n{{ text }}',
+      }), 'src-a');
+      expect(await repo.getUserPreferences(1, 'src-a')).toMatchObject({
+        messageTitleTemplate: '{{ channelName }} · {{ sourceName }}',
+        messageBodyTemplate: '{{ senderShortName }}:\n{{ text }}',
+      });
+      // Source B is untouched by source A's save.
+      expect(await repo.getUserPreferences(1, 'src-b')).toMatchObject({
+        messageTitleTemplate: null,
+        messageBodyTemplate: null,
+      });
+
+      // Clearing writes NULL back, on the update path too.
+      await repo.saveUserPreferences(1, makeDefaultPrefs({
+        messageTitleTemplate: null,
+        messageBodyTemplate: '{{ text }}',
+      }), 'src-a');
+      expect(await repo.getUserPreferences(1, 'src-a')).toMatchObject({
+        messageTitleTemplate: null,
+        messageBodyTemplate: '{{ text }}',
+      });
     });
 
     it('saveUserPreferences - upserts on duplicate userId', async () => {

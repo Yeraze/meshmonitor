@@ -66,10 +66,22 @@ describe('sendMessagePushNotification', () => {
 
     expect(broadcast).toHaveBeenCalledTimes(1);
     const [payload, filterCtx] = (broadcast as any).mock.calls[0];
-    // #4845: title carries the service; body carries channel • source then sender.
-    expect(payload.title).toBe('New Meshtastic Message');
-    expect(payload.body).toContain('Public Bridge');
-    expect(payload.body).toContain('Far Node: hello mesh');
+    // #5593 default: channel · source in the title, sender + text in the body.
+    // The source name appears exactly once across title and body.
+    expect(payload.title).toBe('Channel 0 · Public Bridge');
+    expect(payload.body).toBe('Far Node: hello mesh');
+    expect(`${payload.title}\n${payload.body}`.split('Public Bridge')).toHaveLength(2);
+    // The raw values travel with the payload so each delivery wrapper can
+    // render the recipient's own template after its filter decision.
+    expect(payload.message).toEqual({
+      sourceName: 'Public Bridge',
+      channelName: 'Channel 0',
+      senderName: 'Far Node',
+      senderShortName: 'FAR',
+      text: 'hello mesh',
+      serviceLabel: 'Meshtastic',
+      isDM: false,
+    });
     expect(payload.sourceId).toBe('bridge-1');
     expect(payload.sourceName).toBe('Public Bridge');
     expect(payload.data).toMatchObject({ type: 'channel', sourceId: 'bridge-1', channelId: 0 });
@@ -85,10 +97,10 @@ describe('sendMessagePushNotification', () => {
     });
 
     const p = (broadcast as any).mock.calls[0][0];
-    expect(p.title).toBe('New Meshtastic Message');
-    // Virtual (channel_database) channel named, not its offset id (#4845 body line 1).
-    expect(p.body).toContain('LongFast • Public Bridge');
-    expect(p.body).toContain('Far Node: hi');
+    // Virtual (channel_database) channel named, not its offset id (#4845).
+    expect(p.title).toBe('LongFast · Public Bridge');
+    expect(p.body).toBe('Far Node: hi');
+    expect(p.message.channelName).toBe('LongFast');
   });
 
   it('titles a DM and carries the sender node id for deep linking', async () => {
@@ -100,11 +112,12 @@ describe('sendMessagePushNotification', () => {
     });
 
     const payload = (broadcast as any).mock.calls[0][0];
-    // #4845: DM title carries the service; body drops the channel line (source only).
-    expect(payload.title).toBe('New Meshtastic Direct Message');
-    expect(payload.body).toContain('Public Bridge');
-    expect(payload.body).toContain('Far Node: psst');
-    expect(payload.body).not.toContain('•');
+    // #5593 default for a DM: sender · source in the title, the text alone in
+    // the body. Source once, no channel.
+    expect(payload.title).toBe('Far Node · Public Bridge');
+    expect(payload.body).toBe('psst');
+    expect(`${payload.title}\n${payload.body}`.split('Public Bridge')).toHaveLength(2);
+    expect(payload.message).toMatchObject({ isDM: true, channelName: '' });
     expect(payload.data).toMatchObject({ type: 'dm', senderNodeId: '!0a0b0c0d' });
   });
 
