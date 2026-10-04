@@ -2,6 +2,15 @@ import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import apiService from '../../services/api';
 import { type TranslationProvider, STANDARD_LANGUAGES } from '../../types/translation';
+import {
+  TRANSLATION_PROVIDER_DESCRIPTORS,
+  TRANSLATION_PROVIDER_IDS,
+  buildTranslationProviderConfig,
+  getTranslationProviderFields,
+  missingRequiredTranslationFields,
+  type TranslationProviderFieldValues,
+  type TranslationProviderSettingKey,
+} from '../../types/translationProviders';
 import { UiIcon } from '../icons/index';
 import styles from './TranslationConfigSection.module.css';
 
@@ -10,37 +19,29 @@ export interface TranslationConfigSectionProps {
   onEnabledChange: (val: boolean) => void;
   provider: TranslationProvider;
   onProviderChange: (val: TranslationProvider) => void;
-  url: string;
-  onUrlChange: (val: string) => void;
-  deeplUrl?: string;
-  onDeeplUrlChange?: (val: string) => void;
-  apiKey: string;
-  onApiKeyChange: (val: string) => void;
-  model: string;
-  onModelChange: (val: string) => void;
-  openAiBaseUrl: string;
-  onOpenAiBaseUrlChange: (val: string) => void;
+  /** One value per provider settings key (every provider, not just the active one). */
+  values: TranslationProviderFieldValues;
+  /** `key` is the settings key of the edited field. */
+  onFieldChange: (key: TranslationProviderSettingKey, value: string) => void;
   defaultLanguage: string;
   onDefaultLanguageChange: (val: string) => void;
   defaultOutgoingLanguage: string;
   onDefaultOutgoingLanguageChange: (val: string) => void;
 }
 
+/**
+ * Message Translation settings. The provider list and each provider's inputs
+ * are rendered from the provider descriptors
+ * (`src/types/translationProviders.ts`, #5518): only the active provider's
+ * fields are shown, and each field reads and writes its own settings key.
+ */
 export const TranslationConfigSection: React.FC<TranslationConfigSectionProps> = ({
   enabled,
   onEnabledChange,
   provider,
   onProviderChange,
-  url,
-  onUrlChange,
-  deeplUrl = '',
-  onDeeplUrlChange,
-  apiKey,
-  onApiKeyChange,
-  model,
-  onModelChange,
-  openAiBaseUrl,
-  onOpenAiBaseUrlChange,
+  values,
+  onFieldChange,
   defaultLanguage,
   onDefaultLanguageChange,
   defaultOutgoingLanguage,
@@ -50,31 +51,44 @@ export const TranslationConfigSection: React.FC<TranslationConfigSectionProps> =
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
 
+  const fields = getTranslationProviderFields(provider);
+
   const handleTest = async () => {
-    setTesting(true);
     setTestResult(null);
 
+    // The active provider's fields only, under the names the provider reads.
+    const providerConfig = buildTranslationProviderConfig(provider, (key) => values[key] ?? '');
+    const missing = missingRequiredTranslationFields(provider, providerConfig);
+    if (missing.length > 0) {
+      setTestResult({
+        success: false,
+        message: t('settings.translation_required_field', '{{field}} is required', {
+          field: t(missing[0].labelKey),
+        }),
+      });
+      return;
+    }
+
+    setTesting(true);
     try {
       const res = await apiService.testTranslationConfig({
         provider,
-        url,
-        deeplUrl,
-        apiKey,
-        model,
-        openAiBaseUrl,
+        ...providerConfig,
         targetLanguage: defaultOutgoingLanguage || 'ja',
         sourceLanguage: defaultLanguage || 'en',
       });
 
       setTestResult({
         success: true,
-        message: `Success! Sample translation: "${res.translatedText}"`,
+        message: t('settings.translation_test_sample', 'Success! Sample translation: "{{text}}"', {
+          text: res.translatedText,
+        }),
       });
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       setTestResult({
         success: false,
-        message: msg || 'Translation test failed. Check settings and API key.',
+        message: msg || t('settings.translation_test_failed_generic', 'Translation test failed. Check settings and API key.'),
       });
     } finally {
       setTesting(false);
@@ -113,10 +127,11 @@ export const TranslationConfigSection: React.FC<TranslationConfigSectionProps> =
                 className={styles.select}
                 data-testid="translation-provider-select"
               >
-                <option value="libretranslate">LibreTranslate (Local / Self-Hosted / Cloud)</option>
-                <option value="openai">OpenAI-Compatible (Ollama, OpenRouter, OpenAI, vLLM)</option>
-                <option value="deepl">DeepL API (Free / Pro)</option>
-                <option value="google">Google Cloud Translation</option>
+                {TRANSLATION_PROVIDER_IDS.map((id) => (
+                  <option key={id} value={id}>
+                    {t(TRANSLATION_PROVIDER_DESCRIPTORS[id].labelKey)}
+                  </option>
+                ))}
               </select>
             </div>
 
@@ -160,145 +175,26 @@ export const TranslationConfigSection: React.FC<TranslationConfigSectionProps> =
               </span>
             </div>
 
-            {provider === 'libretranslate' && (
-              <>
-                <div className={styles.formGroup}>
-                  <label htmlFor="libretranslate-url">{t('settings.translation_url', 'LibreTranslate URL')}</label>
-                  <input
-                    id="libretranslate-url"
-                    type="text"
-                    value={url}
-                    onChange={(e) => onUrlChange(e.target.value)}
-                    placeholder="http://libretranslate:5000"
-                    className={styles.input}
-                    data-testid="libretranslate-url-input"
-                  />
-                  <span className={styles.hint}>
-                    {t('settings.translation_libretranslate_url_desc', 'URL of your LibreTranslate instance (e.g. http://localhost:5000 or http://libretranslate:5000 in Docker), or leave blank to use the default (http://libretranslate:5000).')}
-                  </span>
-                </div>
-
-                <div className={styles.formGroup}>
-                  <label htmlFor="libretranslate-api-key">{t('settings.translation_api_key', 'API Key (Optional)')}</label>
-                  <input
-                    id="libretranslate-api-key"
-                    type="password"
-                    value={apiKey}
-                    onChange={(e) => onApiKeyChange(e.target.value)}
-                    placeholder="Leave empty if your server does not require a key"
-                    className={styles.input}
-                    autoComplete="off"
-                    data-testid="libretranslate-api-key-input"
-                  />
-                </div>
-              </>
-            )}
-
-            {provider === 'openai' && (
-              <>
-                <div className={styles.formGroup}>
-                  <label htmlFor="openai-base-url">{t('settings.translation_openai_base_url', 'OpenAI Base URL')}</label>
-                  <input
-                    id="openai-base-url"
-                    type="text"
-                    value={openAiBaseUrl}
-                    onChange={(e) => onOpenAiBaseUrlChange(e.target.value)}
-                    placeholder="http://host.docker.internal:11434/v1 or https://api.openai.com/v1"
-                    className={styles.input}
-                    data-testid="openai-base-url-input"
-                  />
-                  <span className={styles.hint}>
-                    {t('settings.translation_openai_base_url_desc', 'Ollama (e.g. http://host.docker.internal:11434/v1), OpenRouter, or OpenAI base URL, or leave blank to use the default.')}
-                  </span>
-                </div>
-
-                <div className={styles.formGroup}>
-                  <label htmlFor="openai-model">{t('settings.translation_model', 'Model Name')}</label>
-                  <input
-                    id="openai-model"
-                    type="text"
-                    value={model}
-                    onChange={(e) => onModelChange(e.target.value)}
-                    placeholder="gpt-4o-mini or llama3 or qwen2.5"
-                    className={styles.input}
-                    data-testid="openai-model-input"
-                  />
-                  <span className={styles.hint}>
-                    {t('settings.translation_openai_model_desc', "The model identifier on your server (e.g. 'llama3.2', 'qwen2.5', or 'gpt-4o-mini').")}
-                  </span>
-                </div>
-
-                <div className={styles.formGroup}>
-                  <label htmlFor="openai-api-key">{t('settings.translation_api_key', 'API Key (Optional for local Ollama)')}</label>
-                  <input
-                    id="openai-api-key"
-                    type="password"
-                    value={apiKey}
-                    onChange={(e) => onApiKeyChange(e.target.value)}
-                    placeholder="sk-..."
-                    className={styles.input}
-                    autoComplete="off"
-                    data-testid="openai-api-key-input"
-                  />
-                </div>
-              </>
-            )}
-
-            {provider === 'deepl' && (
-              <>
-                <div className={styles.formGroup}>
-                  <label htmlFor="deepl-api-key">{t('settings.translation_api_key', 'DeepL Auth Key')}</label>
-                  <input
-                    id="deepl-api-key"
-                    type="password"
-                    value={apiKey}
-                    onChange={(e) => onApiKeyChange(e.target.value)}
-                    placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx:fx"
-                    className={styles.input}
-                    autoComplete="off"
-                    data-testid="deepl-api-key-input"
-                  />
-                  <span className={styles.hint}>
-                    {t('settings.deepl_api_key_hint', 'Keys ending in :fx will automatically use the DeepL Free API endpoint.')}
-                  </span>
-                </div>
-
-                <div className={styles.formGroup}>
-                  <label htmlFor="deepl-url">{t('settings.translation_deepl_url', 'Custom DeepL Base URL (Optional)')}</label>
-                  <input
-                    id="deepl-url"
-                    type="text"
-                    value={deeplUrl}
-                    onChange={(e) => onDeeplUrlChange && onDeeplUrlChange(e.target.value)}
-                    placeholder={t('settings.translation_deepl_url_placeholder', 'Leave empty for automatic endpoint selection')}
-                    className={styles.input}
-                    data-testid="deepl-url-input"
-                  />
-                  <span className={styles.hint}>
-                    {t('settings.translation_deepl_url_desc', 'Most users should leave this blank to automatically route based on your auth key (DeepL Free vs. Pro). Only enter a URL if using a custom reverse proxy or enterprise gateway.')}
-                  </span>
-                </div>
-              </>
-            )}
-
-            {provider === 'google' && (
-              <div className={styles.formGroup}>
-                <label htmlFor="google-api-key">{t('settings.translation_api_key', 'Google Cloud Translation API Key')}</label>
+            {fields.map((field) => (
+              <div className={styles.formGroup} key={field.settingKey}>
+                <label htmlFor={field.inputId}>
+                  {t(field.labelKey)}
+                  {field.required && <span aria-hidden="true"> *</span>}
+                </label>
                 <input
-                  id="google-api-key"
-                  type="password"
-                  value={apiKey}
-                  onChange={(e) => onApiKeyChange(e.target.value)}
-                  placeholder="AIzaSy..."
+                  id={field.inputId}
+                  type={field.kind === 'secret' ? 'password' : 'text'}
+                  value={values[field.settingKey] ?? ''}
+                  onChange={(e) => onFieldChange(field.settingKey, e.target.value)}
+                  placeholder={'placeholderKey' in field ? t(field.placeholderKey) : field.placeholder}
                   className={styles.input}
-                  autoComplete="off"
-                  data-testid="google-api-key-input"
+                  autoComplete={field.kind === 'secret' ? 'off' : undefined}
+                  aria-required={field.required}
+                  data-testid={`${field.inputId}-input`}
                 />
-                <span className={styles.hint}>
-                  {t('settings.translation_google_api_key_desc', 'API key from your Google Cloud Console with Cloud Translation API enabled.')}
-                </span>
+                {'hintKey' in field && <span className={styles.hint}>{t(field.hintKey)}</span>}
               </div>
-            )}
+            ))}
 
             <div className={styles.testRow}>
               <button

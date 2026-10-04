@@ -213,6 +213,7 @@ import { migration as addMeshcoreRepeaterIngestColumnsMigration, runMigration191
 import { migration as addChannelDatabaseProtocolMigration, runMigration192Postgres, runMigration192Mysql } from '../server/migrations/192_add_channel_database_protocol.js';
 import { migration as createCrossSourceLinksMigration, runMigration193Postgres, runMigration193Mysql } from '../server/migrations/193_create_cross_source_links.js';
 import { migration as addMeshcoreLastAdvertHadPositionMigration, runMigration194Postgres, runMigration194Mysql } from '../server/migrations/194_add_meshcore_last_advert_had_position.js';
+import { migration as splitTranslationApiKeyMigration, runMigration195Postgres, runMigration195Mysql } from '../server/migrations/195_split_translation_api_key.js';
 
 // ============================================================================
 // Registry
@@ -3148,4 +3149,19 @@ registry.register({
   sqlite: (db) => addMeshcoreLastAdvertHadPositionMigration.up(db),
   postgres: (client) => runMigration194Postgres(client),
   mysql: (pool) => runMigration194Mysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 195: one translation API key per provider (#5518). GLOBAL settings
+// rows only. Moves the shared `translationApiKey` to the ACTIVE provider's
+// own key, leaves the other providers blank, and deletes the old row.
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 195,
+  name: 'split_translation_api_key',
+  settingsKey: 'migration_195_split_translation_api_key',
+  sqlite: (db) => splitTranslationApiKeyMigration.up(db),
+  postgres: (client) => runMigration195Postgres(client),
+  mysql: (pool) => runMigration195Mysql(pool),
 });

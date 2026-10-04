@@ -1,3 +1,8 @@
+import {
+  TRANSLATION_PROVIDER_SETTING_KEYS,
+  TRANSLATION_PROVIDER_SECRET_SETTING_KEYS,
+} from '../../types/translationProviders.js';
+
 /**
  * Valid settings keys allowlist.
  *
@@ -438,16 +443,14 @@ export const VALID_SETTINGS_KEYS = [
   // #5255: per-script update sources an admin typed in, as a JSON object keyed
   // by script filename. Global, since scripts live on disk, not per source.
   'scriptUpdateSources',
-  // Message translation settings
+  // Message translation settings. The per-provider fields (URLs, model, one
+  // API key per provider) come from the provider descriptors (#5518) — add a
+  // field there, not here.
   'translationEnabled',
   'translationProvider',
-  'translationUrl',
-  'translationDeeplUrl',
-  'translationApiKey',
-  'translationModel',
-  'translationOpenAiBaseUrl',
   'translationDefaultLanguage',
   'translationDefaultOutgoingLanguage',
+  ...TRANSLATION_PROVIDER_SETTING_KEYS,
 ] as const;
 
 export type ValidSettingKey = typeof VALID_SETTINGS_KEYS[number];
@@ -845,16 +848,13 @@ export const GLOBAL_ONLY_SETTINGS_KEYS = new Set<string>([
   'preferredSortField',
   'preferredSortDirection',
   'preferredDashboardSortOption',
-  // Translation settings (global provider and default config)
+  // Translation settings (global provider and default config). Per-provider
+  // fields come from the provider descriptors (#5518).
   'translationEnabled',
   'translationProvider',
-  'translationUrl',
-  'translationDeeplUrl',
-  'translationApiKey',
-  'translationModel',
-  'translationOpenAiBaseUrl',
   'translationDefaultLanguage',
   'translationDefaultOutgoingLanguage',
+  ...TRANSLATION_PROVIDER_SETTING_KEYS,
 ]);
 
 /**
@@ -929,7 +929,9 @@ export const SECRET_SETTINGS_KEYS = new Set<string>([
   // May embed an API key; server-only (all elevation fetches are
   // server-proxied, so no frontend consumer ever needs the raw URL).
   'elevationSourceUrl',
-  'translationApiKey',
+  // One API key per translation provider (#5518): every `kind: 'secret'`
+  // field in the provider descriptors.
+  ...TRANSLATION_PROVIDER_SECRET_SETTING_KEYS,
   // Message Forwarding rules (#5446). Not a secret, but readable only with
   // per-source `automation` read via GET /api/sources/:id/forwarding. The
   // generic GET /api/settings is public (optionalAuth), so keep the rules out
