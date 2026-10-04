@@ -30,6 +30,13 @@ import { CustomThemeManagement } from './CustomThemeManagement';
 import { CustomTilesetManager } from './CustomTilesetManager';
 import { TranslationConfigSection } from './configuration/TranslationConfigSection';
 import { type TranslationProvider } from '../types/translation';
+import {
+  DEFAULT_TRANSLATION_PROVIDER,
+  TRANSLATION_PROVIDER_SETTING_KEYS,
+  emptyTranslationProviderFieldValues,
+  isTranslationProvider,
+  type TranslationProviderFieldValues,
+} from '../types/translationProviders';
 import { getEffectiveTileset, type Theme, type AppearanceMode, type NodeHopsCalculation, useSettings } from '../contexts/SettingsContext';
 import { type SortOption as DashboardSortOption } from './Dashboard/types';
 import { LanguageSelector } from './LanguageSelector';
@@ -218,11 +225,18 @@ interface SettingsDraft {
   // Translation settings (global)
   translationEnabled: boolean;
   translationProvider: TranslationProvider;
+  // Provider fields (#5518): one draft field per settings key in the provider
+  // descriptors (src/types/translationProviders.ts). Hand-written on purpose;
+  // `updateField(key, …)` in the section mount below fails to compile if a
+  // descriptor key is missing here.
   translationUrl: string;
-  translationDeeplUrl: string;
-  translationApiKey: string;
-  translationModel: string;
+  translationLibreTranslateApiKey: string;
   translationOpenAiBaseUrl: string;
+  translationModel: string;
+  translationOpenAiApiKey: string;
+  translationDeeplApiKey: string;
+  translationDeeplUrl: string;
+  translationGoogleApiKey: string;
   translationDefaultLanguage: string;
   translationDefaultOutgoingLanguage: string;
 }
@@ -548,12 +562,8 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
     cotFeedEnabled: false,
     cotFeedPort: 8088,
     translationEnabled: false,
-    translationProvider: 'libretranslate',
-    translationUrl: '',
-    translationDeeplUrl: '',
-    translationApiKey: '',
-    translationModel: '',
-    translationOpenAiBaseUrl: '',
+    translationProvider: DEFAULT_TRANSLATION_PROVIDER,
+    ...emptyTranslationProviderFieldValues(),
     translationDefaultLanguage: 'en',
     translationDefaultOutgoingLanguage: 'ja',
   }));
@@ -627,12 +637,12 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
   const [initialCotFeedPort, setInitialCotFeedPort] = useState(8088);
   // Translation settings (global)
   const [initialTranslationEnabled, setInitialTranslationEnabled] = useState(false);
-  const [initialTranslationProvider, setInitialTranslationProvider] = useState<TranslationProvider>('libretranslate');
-  const [initialTranslationUrl, setInitialTranslationUrl] = useState('');
-  const [initialTranslationDeeplUrl, setInitialTranslationDeeplUrl] = useState('');
-  const [initialTranslationApiKey, setInitialTranslationApiKey] = useState('');
-  const [initialTranslationModel, setInitialTranslationModel] = useState('');
-  const [initialTranslationOpenAiBaseUrl, setInitialTranslationOpenAiBaseUrl] = useState('');
+  const [initialTranslationProvider, setInitialTranslationProvider] = useState<TranslationProvider>(DEFAULT_TRANSLATION_PROVIDER);
+  // Every provider-owned field (URLs, model, one API key per provider), keyed
+  // by settings key and driven by the provider descriptors (#5518). Admins get
+  // stored keys unmasked from GET /api/settings, so an untouched key field
+  // saves back the value it loaded.
+  const [initialTranslationFields, setInitialTranslationFields] = useState<TranslationProviderFieldValues>(emptyTranslationProviderFieldValues);
   const [initialTranslationDefaultLanguage, setInitialTranslationDefaultLanguage] = useState('en');
   const [initialTranslationDefaultOutgoingLanguage, setInitialTranslationDefaultOutgoingLanguage] = useState('ja');
   // Transient/derived UI state — stays as plain useState (not draft fields, see §1.3 of the Task
@@ -898,24 +908,18 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
           const translationOn = settings.translationEnabled === 'true' || settings.translationEnabled === '1';
           updateField('translationEnabled', translationOn);
           setInitialTranslationEnabled(translationOn);
-          const translationProvider = (settings.translationProvider as TranslationProvider) || 'libretranslate';
+          const translationProvider: TranslationProvider = isTranslationProvider(settings.translationProvider)
+            ? settings.translationProvider
+            : DEFAULT_TRANSLATION_PROVIDER;
           updateField('translationProvider', translationProvider);
           setInitialTranslationProvider(translationProvider);
-          const translationUrl = typeof settings.translationUrl === 'string' ? settings.translationUrl : '';
-          updateField('translationUrl', translationUrl);
-          setInitialTranslationUrl(translationUrl);
-          const translationDeeplUrl = typeof settings.translationDeeplUrl === 'string' ? settings.translationDeeplUrl : '';
-          updateField('translationDeeplUrl', translationDeeplUrl);
-          setInitialTranslationDeeplUrl(translationDeeplUrl);
-          const translationApiKey = typeof settings.translationApiKey === 'string' ? settings.translationApiKey : '';
-          updateField('translationApiKey', translationApiKey);
-          setInitialTranslationApiKey(translationApiKey);
-          const translationModel = typeof settings.translationModel === 'string' ? settings.translationModel : '';
-          updateField('translationModel', translationModel);
-          setInitialTranslationModel(translationModel);
-          const translationOpenAiBaseUrl = typeof settings.translationOpenAiBaseUrl === 'string' ? settings.translationOpenAiBaseUrl : '';
-          updateField('translationOpenAiBaseUrl', translationOpenAiBaseUrl);
-          setInitialTranslationOpenAiBaseUrl(translationOpenAiBaseUrl);
+          const translationFields = emptyTranslationProviderFieldValues();
+          for (const key of TRANSLATION_PROVIDER_SETTING_KEYS) {
+            const stored = settings[key];
+            translationFields[key] = typeof stored === 'string' ? stored : '';
+            updateField(key, translationFields[key]);
+          }
+          setInitialTranslationFields(translationFields);
           const translationDefaultLanguage = typeof settings.translationDefaultLanguage === 'string' ? settings.translationDefaultLanguage : 'en';
           updateField('translationDefaultLanguage', translationDefaultLanguage);
           setInitialTranslationDefaultLanguage(translationDefaultLanguage);
@@ -1038,11 +1042,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       cotFeedPort: initialCotFeedPort,
       translationEnabled: initialTranslationEnabled,
       translationProvider: initialTranslationProvider,
-      translationUrl: initialTranslationUrl,
-      translationDeeplUrl: initialTranslationDeeplUrl,
-      translationApiKey: initialTranslationApiKey,
-      translationModel: initialTranslationModel,
-      translationOpenAiBaseUrl: initialTranslationOpenAiBaseUrl,
+      ...initialTranslationFields,
       translationDefaultLanguage: initialTranslationDefaultLanguage,
       translationDefaultOutgoingLanguage: initialTranslationDefaultOutgoingLanguage,
     };
@@ -1064,7 +1064,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       initialPrivacyPolicyUrl, initialTermsOfServiceUrl, initialContactUrl,
       initialCartoApiKey, initialCotFeedEnabled, initialCotFeedPort,
       initialAdsbMatchEnabled, initialAdsbFeed, initialAdsbApiToken,
-      initialTranslationEnabled, initialTranslationProvider, initialTranslationUrl, initialTranslationDeeplUrl, initialTranslationApiKey, initialTranslationModel, initialTranslationOpenAiBaseUrl, initialTranslationDefaultLanguage, initialTranslationDefaultOutgoingLanguage]);
+      initialTranslationEnabled, initialTranslationProvider, initialTranslationFields, initialTranslationDefaultLanguage, initialTranslationDefaultOutgoingLanguage]);
 
   // Re-seed the draft's category-A/B fields whenever the upstream props/context values change.
   // PINNED BEHAVIOR (do not add a dirty-guard here — that would be a behavior change, out of
@@ -1274,11 +1274,9 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
     setInitialCotFeedPort(d.cotFeedPort);
     setInitialTranslationEnabled(d.translationEnabled);
     setInitialTranslationProvider(d.translationProvider);
-    setInitialTranslationUrl(d.translationUrl.trim());
-    setInitialTranslationDeeplUrl(d.translationDeeplUrl.trim());
-    setInitialTranslationApiKey(d.translationApiKey.trim());
-    setInitialTranslationModel(d.translationModel.trim());
-    setInitialTranslationOpenAiBaseUrl(d.translationOpenAiBaseUrl.trim());
+    const savedTranslationFields = emptyTranslationProviderFieldValues();
+    for (const key of TRANSLATION_PROVIDER_SETTING_KEYS) savedTranslationFields[key] = d[key].trim();
+    setInitialTranslationFields(savedTranslationFields);
     setInitialTranslationDefaultLanguage(d.translationDefaultLanguage.trim());
     setInitialTranslationDefaultOutgoingLanguage(d.translationDefaultOutgoingLanguage.trim());
   }, [setNeighborInfoMinZoom, setDefaultMapCenterLat, setDefaultMapCenterLon, setDefaultMapCenterZoom,
@@ -1387,11 +1385,16 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
         cotFeedPort: String(draft.cotFeedPort),
         translationEnabled: draft.translationEnabled ? 'true' : 'false',
         translationProvider: draft.translationProvider,
+        // Provider fields (#5518). Hand-written: the persistence test reads
+        // this literal, and its guard fails if a descriptor key is missing.
         translationUrl: draft.translationUrl.trim(),
-        translationDeeplUrl: draft.translationDeeplUrl.trim(),
-        translationApiKey: draft.translationApiKey.trim(),
-        translationModel: draft.translationModel.trim(),
+        translationLibreTranslateApiKey: draft.translationLibreTranslateApiKey.trim(),
         translationOpenAiBaseUrl: draft.translationOpenAiBaseUrl.trim(),
+        translationModel: draft.translationModel.trim(),
+        translationOpenAiApiKey: draft.translationOpenAiApiKey.trim(),
+        translationDeeplApiKey: draft.translationDeeplApiKey.trim(),
+        translationDeeplUrl: draft.translationDeeplUrl.trim(),
+        translationGoogleApiKey: draft.translationGoogleApiKey.trim(),
         translationDefaultLanguage: draft.translationDefaultLanguage.trim(),
         translationDefaultOutgoingLanguage: draft.translationDefaultOutgoingLanguage.trim(),
       };
@@ -3383,20 +3386,12 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
           <TranslationConfigSection
             enabled={draft.translationEnabled}
             provider={draft.translationProvider}
-            url={draft.translationUrl}
-            deeplUrl={draft.translationDeeplUrl}
-            apiKey={draft.translationApiKey}
-            model={draft.translationModel}
-            openAiBaseUrl={draft.translationOpenAiBaseUrl}
+            values={draft}
             defaultLanguage={draft.translationDefaultLanguage}
             defaultOutgoingLanguage={draft.translationDefaultOutgoingLanguage}
             onEnabledChange={(enabled) => updateField('translationEnabled', enabled)}
             onProviderChange={(provider) => updateField('translationProvider', provider)}
-            onUrlChange={(url) => updateField('translationUrl', url)}
-            onDeeplUrlChange={(deeplUrl) => updateField('translationDeeplUrl', deeplUrl)}
-            onApiKeyChange={(apiKey) => updateField('translationApiKey', apiKey)}
-            onModelChange={(model) => updateField('translationModel', model)}
-            onOpenAiBaseUrlChange={(openAiBaseUrl) => updateField('translationOpenAiBaseUrl', openAiBaseUrl)}
+            onFieldChange={(key, value) => updateField(key, value)}
             onDefaultLanguageChange={(defaultLanguage) => updateField('translationDefaultLanguage', defaultLanguage)}
             onDefaultOutgoingLanguageChange={(defaultOutgoingLanguage) => updateField('translationDefaultOutgoingLanguage', defaultOutgoingLanguage)}
           />

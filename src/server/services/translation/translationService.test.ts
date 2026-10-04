@@ -3,6 +3,7 @@ import {
   isNonConversational,
   buildServiceEndpoint,
   translationService,
+  TranslationConfigError,
 } from './translationService.js';
 import {
   NoOpTranslationCache,
@@ -106,7 +107,7 @@ describe('translationService', () => {
           translationEnabled: 'true',
           translationProvider: 'libretranslate',
           translationUrl: 'http://libretranslate:5000',
-          translationApiKey: 'secret-key',
+          translationLibreTranslateApiKey: 'secret-key',
           translationModel: '',
           translationOpenAiBaseUrl: '',
           translationDefaultLanguage: 'ja',
@@ -117,9 +118,20 @@ describe('translationService', () => {
       const config = await translationService.getSettings();
       expect(config.enabled).toBe(true);
       expect(config.provider).toBe('libretranslate');
-      expect(config.url).toBe('http://libretranslate:5000');
-      expect(config.apiKey).toBe('secret-key');
       expect(config.targetLanguage).toBe('ja');
+      // Provider fields are no longer part of getSettings (#5518).
+      expect(config).not.toHaveProperty('apiKey');
+
+      expect(await translationService.getStoredProviderConfig('libretranslate')).toEqual({
+        url: 'http://libretranslate:5000',
+        apiKey: 'secret-key',
+      });
+    });
+
+    it('falls back to the default provider when the stored one is unknown', async () => {
+      vi.mocked(databaseService.getSettingAsync).mockImplementation(async (key: string) =>
+        key === 'translationProvider' ? 'not-a-provider' : null);
+      expect((await translationService.getSettings()).provider).toBe('libretranslate');
     });
   });
 
@@ -209,7 +221,7 @@ describe('translationService', () => {
         if (key === 'translationProvider') return 'openai';
         if (key === 'translationOpenAiBaseUrl') return 'http://localhost:11434/v1';
         if (key === 'translationModel') return 'llama3';
-        if (key === 'translationApiKey') return 'sk-test';
+        if (key === 'translationOpenAiApiKey') return 'sk-test';
         return null;
       });
 
@@ -248,7 +260,7 @@ describe('translationService', () => {
       vi.mocked(databaseService.getSettingAsync).mockImplementation(async (key: string) => {
         if (key === 'translationEnabled') return 'true';
         if (key === 'translationProvider') return 'deepl';
-        if (key === 'translationApiKey') return 'deepl-api-key:fx';
+        if (key === 'translationDeeplApiKey') return 'deepl-api-key:fx';
         if (key === 'translationDeeplUrl') return '';
         return null;
       });
@@ -284,7 +296,7 @@ describe('translationService', () => {
       vi.mocked(databaseService.getSettingAsync).mockImplementation(async (key: string) => {
         if (key === 'translationEnabled') return 'true';
         if (key === 'translationProvider') return 'deepl';
-        if (key === 'translationApiKey') return 'deepl-api-key';
+        if (key === 'translationDeeplApiKey') return 'deepl-api-key';
         if (key === 'translationDeeplUrl') return 'https://my-proxy.internal/v2';
         return null;
       });
@@ -313,7 +325,7 @@ describe('translationService', () => {
       vi.mocked(databaseService.getSettingAsync).mockImplementation(async (key: string) => {
         if (key === 'translationEnabled') return 'true';
         if (key === 'translationProvider') return 'deepl';
-        if (key === 'translationApiKey') return 'deepl-pro-api-key';
+        if (key === 'translationDeeplApiKey') return 'deepl-pro-api-key';
         if (key === 'translationDeeplUrl') return null;
         return null;
       });
@@ -342,7 +354,7 @@ describe('translationService', () => {
       vi.mocked(databaseService.getSettingAsync).mockImplementation(async (key: string) => {
         if (key === 'translationEnabled') return 'true';
         if (key === 'translationProvider') return 'google';
-        if (key === 'translationApiKey') return 'google-api-key';
+        if (key === 'translationGoogleApiKey') return 'google-api-key';
         return null;
       });
 
@@ -628,6 +640,10 @@ describe('translationService', () => {
 
 
   describe('testConfig', () => {
+    beforeEach(() => {
+      vi.mocked(databaseService.getSettingAsync).mockResolvedValue(null);
+    });
+
     it('should test LibreTranslate successfully', async () => {
       global.fetch = vi.fn().mockResolvedValue({
         ok: true,
@@ -677,6 +693,135 @@ describe('translationService', () => {
           body: expect.stringContaining('MeshMonitor test message for radio translation.'),
         })
       );
+    });
+  });
+
+  describe('per-provider keys (#5518)', () => {
+    /** Every provider has a key stored; plus the retired shared key. */
+    const STORED: Record<string, string> = {
+      translationEnabled: 'true',
+      translationApiKey: 'LEGACY-SHARED-KEY',
+      translationLibreTranslateApiKey: 'LIBRE-KEY',
+      translationOpenAiApiKey: 'OPENAI-KEY',
+      translationDeeplApiKey: 'DEEPL-KEY',
+      translationGoogleApiKey: 'GOOGLE-KEY',
+      translationOpenAiBaseUrl: 'http://llm.internal/v1',
+      translationDeeplUrl: 'https://deepl-proxy.internal/v2',
+      translationUrl: 'http://libre.internal:5000',
+      translationModel: 'llama3',
+    };
+    const store = (overrides: Record<string, string | null> = {}) => {
+      const map: Record<string, string | null> = { ...STORED, ...overrides };
+      vi.mocked(databaseService.getSettingAsync).mockImplementation(async (key: string) => map[key] ?? null);
+    };
+    const okFetch = () => {
+      global.fetch = vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          translatedText: 'ok',
+          choices: [{ message: { content: 'ok' } }],
+          translations: [{ text: 'ok' }],
+          data: { translations: [{ translatedText: 'ok' }] },
+        }),
+      } as unknown as Response);
+    };
+    /** Everything the one fetch call sent: URL, headers and body. */
+    const sent = () => JSON.stringify(vi.mocked(global.fetch).mock.calls);
+
+    const OWN_KEY: Record<string, string> = {
+      libretranslate: 'LIBRE-KEY', openai: 'OPENAI-KEY', deepl: 'DEEPL-KEY', google: 'GOOGLE-KEY',
+    };
+
+    it.each(Object.keys(OWN_KEY))('%s sends its own key and no other provider\'s', async (provider) => {
+      store({ translationProvider: provider });
+      okFetch();
+      await translationService.translate({ text: 'Hello world', targetLang: 'es' });
+
+      expect(global.fetch).toHaveBeenCalledTimes(1);
+      const wire = sent();
+      expect(wire).toContain(OWN_KEY[provider]);
+      for (const [other, key] of Object.entries(OWN_KEY)) {
+        if (other !== provider) expect(wire).not.toContain(key);
+      }
+      expect(wire).not.toContain('LEGACY-SHARED-KEY');
+    });
+
+    it('the openai provider never receives the DeepL key, even with no key of its own', async () => {
+      store({ translationProvider: 'openai', translationOpenAiApiKey: null });
+      okFetch();
+      const spy = vi.spyOn(
+        (await import('./providers/index.js')).getTranslationProvider('openai'),
+        'translate',
+      );
+
+      await translationService.translate({ text: 'Hello world', targetLang: 'es' });
+
+      const config = spy.mock.calls[0][3];
+      expect(config).toEqual({ openAiBaseUrl: 'http://llm.internal/v1', model: 'llama3', apiKey: '' });
+      const [url, init] = vi.mocked(global.fetch).mock.calls[0];
+      expect(url).toBe('http://llm.internal/v1/chat/completions');
+      expect((init?.headers as Record<string, string>).Authorization).toBeUndefined();
+      expect(sent()).not.toContain('DEEPL-KEY');
+      spy.mockRestore();
+    });
+
+    it('translate() rejects a missing required key before any fetch', async () => {
+      store({ translationProvider: 'deepl', translationDeeplApiKey: null });
+      okFetch();
+      await expect(translationService.translate({ text: 'Hello world', targetLang: 'es' }))
+        .rejects.toBeInstanceOf(TranslationConfigError);
+      expect(global.fetch).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      ['deepl', 'translationDeeplApiKey'],
+      ['google', 'translationGoogleApiKey'],
+    ] as const)('testConfig rejects %s with a blank required key before any fetch', async (provider, settingKey) => {
+      store({ [settingKey]: null });
+      okFetch();
+      for (const apiKey of [undefined, '', '   ']) {
+        const err = await translationService.testConfig({ provider, apiKey }).catch((e: unknown) => e);
+        expect(err).toBeInstanceOf(TranslationConfigError);
+        expect((err as TranslationConfigError).missingFields).toEqual([settingKey]);
+      }
+      expect(global.fetch).not.toHaveBeenCalled();
+    });
+
+    it('testConfig uses the stored key of the TESTED provider when the request omits it', async () => {
+      // Active provider is openai; the test is of deepl.
+      store({ translationProvider: 'openai' });
+      okFetch();
+      await translationService.testConfig({ provider: 'deepl' });
+
+      const [url, init] = vi.mocked(global.fetch).mock.calls[0];
+      expect(url).toBe('https://deepl-proxy.internal/v2/translate');
+      expect((init?.headers as Record<string, string>).Authorization).toBe('DeepL-Auth-Key DEEPL-KEY');
+      expect(sent()).not.toContain('OPENAI-KEY');
+    });
+
+    it('testConfig prefers a key sent in the request, and a blank one is not replaced by the stored key', async () => {
+      store();
+      okFetch();
+      await translationService.testConfig({ provider: 'openai', apiKey: 'TYPED-KEY' });
+      expect(sent()).toContain('Bearer TYPED-KEY');
+      expect(sent()).not.toContain('OPENAI-KEY');
+
+      okFetch();
+      await translationService.testConfig({ provider: 'openai', apiKey: '' });
+      const [, init] = vi.mocked(global.fetch).mock.calls[0];
+      expect((init?.headers as Record<string, string>).Authorization).toBeUndefined();
+    });
+
+    it('testConfig ignores fields that belong to another provider', async () => {
+      store();
+      okFetch();
+      // `deeplUrl` is not an openai field: the request must still go to the openai URL.
+      await translationService.testConfig({ provider: 'openai', deeplUrl: 'https://evil.example/v2' });
+      expect(vi.mocked(global.fetch).mock.calls[0][0]).toBe('http://llm.internal/v1/chat/completions');
+    });
+
+    it('testConfig rejects an unknown provider', async () => {
+      await expect(translationService.testConfig({ provider: 'nope' as never })).rejects.toThrow(/Unsupported/);
     });
   });
 

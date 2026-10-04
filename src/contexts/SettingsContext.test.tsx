@@ -458,6 +458,46 @@ describe('SettingsProvider', () => {
     expect(document.documentElement.getAttribute('data-theme')).toBe('latte');
   });
 
+  // #5558 guard. The white landing page on the Windows Desktop build was a
+  // build fault (the theme CSS never reached the entry stylesheet), not a
+  // state fault: this passed before that fix too. It stays to pin the state
+  // side: a cold load with nothing stored must still end on the server's dark
+  // theme, even when the OS prefers light.
+  it('should apply the server dark theme on a cold load with empty localStorage (#5558)', async () => {
+    expect(localStorage.length).toBe(0);
+    mockSystemIsDark = false;
+    installMatchMediaMock();
+    mockFetch.mockReset();
+    createFetchMock({ appearanceMode: 'dark', darkTheme: 'mocha', lightTheme: 'latte' });
+    const { SettingsProvider, useSettings } = await import('./SettingsContext');
+
+    let contextValue: any;
+    const Consumer = () => {
+      contextValue = useSettings();
+      return <div data-testid="consumer">loaded</div>;
+    };
+
+    await act(async () => {
+      render(
+        <SettingsProvider>
+          <Consumer />
+        </SettingsProvider>
+      );
+    });
+
+    await waitFor(() => {
+      expect(contextValue.isLoading).toBe(false);
+    });
+
+    await waitFor(() => {
+      expect(contextValue.appearanceMode).toBe('dark');
+    });
+    expect(contextValue.darkTheme).toBe('mocha');
+    expect(contextValue.theme).toBe('mocha');
+    expect(document.documentElement.getAttribute('data-theme')).toBe('mocha');
+    expect(localStorage.getItem('appearanceMode')).toBe('dark');
+  });
+
   it('should migrate legacy mocha users to system appearance with mocha and latte', async () => {
     localStorage.setItem('theme', 'mocha');
     mockFetch.mockReset();
