@@ -36,6 +36,26 @@
   max-width: 100%;
 }
 
+/*
+ * Gateway publishers that stopped after repeated rejected logins. Error tone:
+ * unlike the amber "n/m gateways" badge beside it, nothing is retrying.
+ */
+.gatewayStoppedBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  margin-left: 4px;
+  padding: 1px 6px;
+  border-radius: 8px;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1.4;
+  background: color-mix(in srgb, var(--color-error) 18%, transparent);
+  color: var(--color-error);
+  cursor: help;
+  white-space: nowrap;
+}
+
 .activityCount {
   font-variant-numeric: tabular-nums;
 }

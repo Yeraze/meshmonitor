@@ -9,7 +9,7 @@ import { MeshtasticManager } from '../meshtasticManager.js';
 import { meshcoreConfigFromSource, ensureMeshCoreManagerStarted } from '../meshcoreConfig.js';
 import { MeshCoreManager } from '../meshcoreManager.js';
 import { reticulumConfigFromSource, ensureReticulumManagerStarted } from '../reticulumConfig.js';
-import { isMeshCoreManager, isMeshCoreMqttManager, isMeshtasticManager, isReticulumManager } from '../sourceManagerTypes.js';
+import { isMeshCoreManager, isMeshCoreMqttManager, isMeshtasticManager, isMqttBridgeManager, isReticulumManager } from '../sourceManagerTypes.js';
 import { loRaCenterFrequencyMhz, REGION_SHORT_NAME } from '../../utils/loraFrequency.js';
 import { MqttBrokerManager, MAX_HOP_LIMIT, type MqttBrokerSourceConfig } from '../mqttBrokerManager.js';
 import { MAX_RAISE_TARGET, RAISEABLE_PORTNUMS } from '../mqttHopLimitPolicy.js';
@@ -1117,6 +1117,20 @@ router.post('/', requirePermission('sources', 'write'), async (req: Request, res
 });
 
 // Update source
+/** Stable JSON: object keys sorted, so key order never reads as a change. */
+function stableJson(value: unknown): string {
+  return JSON.stringify(value, (_key, v) =>
+    v && typeof v === 'object' && !Array.isArray(v)
+      ? Object.fromEntries(Object.entries(v as Record<string, unknown>).sort(([a], [b]) => a.localeCompare(b)))
+      : v,
+  );
+}
+
+/** True when two stored source configs hold the same settings. */
+function sameStoredConfig(a: unknown, b: unknown): boolean {
+  return stableJson(a ?? {}) === stableJson(b ?? {});
+}
+
 /**
  * (Re)start the ingest manager for a `meshcore_mqtt` source from its stored
  * config (#5596).
@@ -1446,9 +1460,22 @@ router.put('/:id', requirePermission('sources', 'write'), async (req: Request, r
           logger.warn(`Could not start MQTT manager for source ${source.id}:`, err);
         }
       }
+    } else if (
+      wasEnabled && isNowEnabled && source.type === 'mqtt_bridge' && config !== undefined &&
+      sameStoredConfig(existing.config, source.config)
+    ) {
+      // The edit form sends the whole config with every save, so a rename
+      // arrives here with a config that changes nothing. Leave the running
+      // bridge alone: a restart would drop a healthy upstream session, and it
+      // would hand a bridge that stopped after rejected logins a fresh set of
+      // attempts without anything having been fixed. To retry an unchanged
+      // config, use POST /:id/connect.
+      logger.debug(`MQTT bridge ${source.id} saved with an unchanged config; not restarting`);
     } else if (wasEnabled && isNowEnabled && (source.type === 'mqtt_broker' || source.type === 'mqtt_bridge') && config !== undefined) {
       // MQTT source config changed while enabled — full restart, since the
       // listener port / upstream URL / filter set are all baked in at start.
+      // For a bridge the new manager is also what clears an auth stop: every
+      // upstream client starts again with a fresh count of rejected logins.
       try {
         await sourceManagerRegistry.removeManager(source.id);
         const manager = buildMqttManagerForSource(source.id, source.name, source.type, source.config);
@@ -1701,6 +1728,30 @@ async function forwardingStatusFor(
   }
 }
 
+/**
+ * Bridge status for a caller who may not read this source's nodes.
+ *
+ * A per-gateway publisher's id is a node id (`!<8-hex>`). Such a caller still
+ * gets how many gateways there are, which are connected, and how many stopped
+ * after rejected logins — but not which nodes they are, and not the broker's
+ * error text for each (it can name the broker host).
+ */
+function redactBridgeGatewayIds(status: Record<string, unknown>): Record<string, unknown> {
+  const { authStoppedGateways: _ids, ...rest } = status;
+  const publishers = rest.publishers;
+  if (!publishers || typeof publishers !== 'object') return rest;
+  const anonymous: Record<string, unknown> = {};
+  Object.values(publishers as Record<string, Record<string, unknown>>).forEach((entry, i) => {
+    const label = `gateway ${i + 1}`;
+    anonymous[label] = {
+      ...entry,
+      clientId: label,
+      lastError: entry.authStopped ? entry.lastError : null,
+    };
+  });
+  return { ...rest, publishers: anonymous };
+}
+
 router.get('/:id/status', optionalAuth(), async (req: Request, res: Response) => {
   try {
     const source = await databaseService.sources.getSource(req.params.id);
@@ -1738,6 +1789,10 @@ router.get('/:id/status', optionalAuth(), async (req: Request, res: Response) =>
     // only when the source has rules — otherwise the pill has nothing to show.
     const forwarding = await forwardingStatusFor(user, isAdmin, source);
     if (forwarding) status = { ...status, forwarding };
+
+    if (!canReadNodes && source.type === 'mqtt_bridge') {
+      status = redactBridgeGatewayIds(status as Record<string, unknown>);
+    }
 
     if (!canReadNodes) {
       // Analyzer Observer status (#4457 Phase 2, D-10) can leak the broker
@@ -2053,14 +2108,36 @@ router.post('/:id/connect', requirePermission('sources', 'write'), async (req: R
       source.type !== 'meshtastic_tcp' &&
       source.type !== 'meshcore' &&
       source.type !== 'reticulum' &&
-      source.type !== 'meshcore_mqtt'
+      source.type !== 'meshcore_mqtt' &&
+      source.type !== 'mqtt_bridge'
     ) {
       return fail(
         res,
         400,
         'CONNECT_NOT_SUPPORTED',
-        'Manual connect is only supported for meshtastic_tcp, meshcore, meshcore_mqtt, and reticulum sources',
+        'Manual connect is only supported for meshtastic_tcp, meshcore, meshcore_mqtt, mqtt_bridge, and reticulum sources',
       );
+    }
+    if (source.type === 'mqtt_bridge') {
+      // Reconnecting by hand is one of the two ways to clear an auth stop (the
+      // other is saving a changed config). Only the upstream clients that
+      // stopped after rejected logins are rebuilt; a connected or still-
+      // retrying client is left alone, so a repeated click cannot churn a
+      // healthy session or add login attempts.
+      const existingMgr = sourceManagerRegistry.getManager(source.id);
+      if (existingMgr && isMqttBridgeManager(existingMgr)) {
+        if (!existingMgr.hasAuthStop()) {
+          return res.json({ success: true, alreadyRunning: true });
+        }
+        const restarted = await existingMgr.reconnectAuthStopped();
+        return res.json({ success: true, restarted });
+      }
+      if (existingMgr) {
+        return res.json({ success: true, alreadyRunning: true });
+      }
+      const bridge = buildMqttManagerForSource(source.id, source.name, 'mqtt_bridge', source.config);
+      await sourceManagerRegistry.addManager(bridge);
+      return res.json({ success: true });
     }
     if (source.type === 'meshcore_mqtt') {
       // MeshCore MQTT ingest (#5596). Reconnecting by hand is one of the two
