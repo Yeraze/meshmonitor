@@ -4,9 +4,7 @@
  * `extendRequestTimeout(...)` as route middleware, so a future refactor that
  * drops it is caught here instead of surfacing as a silent 504 in the field.
  *
- * Also pins the two explicit exclusions:
- *  - MeshCore `/contacts/:publicKey/trace-path` is handled by a separate PR
- *    (#5490) and must NOT be touched here.
+ * Also pins the one explicit exclusion:
  *  - `POST /api/automations/:id/run-now` has an unbounded worst case and
  *    intentionally relies on the global `respondOnSocketTimeout()` 504 safety
  *    net instead of a per-route extension.
@@ -50,6 +48,7 @@ describe('extendRequestTimeout route coverage (pin test)', () => {
       file: 'meshcoreContactsRoutes.ts',
       paths: [
         '/contacts/:publicKey/ping',
+        '/contacts/:publicKey/trace-path',
         '/contacts/:publicKey/neighbours',
         '/nodes/:publicKey/neighbours/poll',
         '/nodes/:publicKey/time-sync',
@@ -119,11 +118,6 @@ describe('extendRequestTimeout route coverage (pin test)', () => {
       }
     });
   }
-
-  it('does NOT extend the timeout on MeshCore trace-path (owned by #5490)', () => {
-    const content = readRoute('meshcoreContactsRoutes.ts');
-    expect(pathExtendsTimeout(content, '/contacts/:publicKey/trace-path')).toBe(false);
-  });
 
   it('does NOT extend the timeout on automation run-now (unbounded; relies on the global 504 safety net)', () => {
     const content = readRoute('automationRoutes.ts');

@@ -8,14 +8,15 @@
  * CALLER; it does not cancel `fn` or advance the chain.
  *
  * Covers:
- *   1. A stuck op is eventually released by runExclusiveRadioOp's own 60s
+ *   1. A stuck op is eventually released by runExclusiveRadioOp's own 65s
  *      backstop, so a queued op behind it still runs (not forever-parked).
  *   2. `set_out_path` — the confirmed culprit in #5243 — settles on its own
- *      15s inner timer well before the 60s backstop.
+ *      15s inner timer well before the 65s backstop.
  */
 import { describe, it, expect, afterEach, vi } from 'vitest';
 import { EventEmitter } from 'events';
 import { MeshCoreNativeBackend, __setMeshCoreModule } from './meshcoreNativeBackend.js';
+import { MESHCORE_RADIO_OP_BACKSTOP_MS } from './constants/meshcoreFirmwareTimeout.js';
 import { logger } from '../utils/logger.js';
 
 const ResponseCodes = {
@@ -85,7 +86,7 @@ describe('MeshCoreNativeBackend — runExclusiveRadioOp chain bound (#5243)', ()
     vi.restoreAllMocks();
   });
 
-  it('a radio op that never settles is released by the 60s backstop instead of parking the chain forever', async () => {
+  it('a radio op that never settles is released by the 65s backstop instead of parking the chain forever', async () => {
     installMockModule();
     const { backend, conn } = await connectedBackend();
     const warnSpy = vi.spyOn(logger, 'warn').mockImplementation(() => {});
@@ -110,7 +111,7 @@ describe('MeshCoreNativeBackend — runExclusiveRadioOp chain bound (#5243)', ()
     expect(r1.error).toMatch(/Native command timeout: discover_nodes/);
     expect(conn.sentFrames.length).toBe(1);
 
-    // runExclusiveRadioOp's own 60s backstop fires next and releases the
+    // runExclusiveRadioOp's own 65s backstop fires next and releases the
     // chain, so op 2's executor — including the actual serial write — runs.
     // runAllTimersAsync (rather than a bare advance) also flushes the Ok ack
     // that op 2's own sendToRadioFrame schedules once it finally executes.
@@ -120,11 +121,11 @@ describe('MeshCoreNativeBackend — runExclusiveRadioOp chain bound (#5243)', ()
     expect(r2.success).toBe(true);
     expect(conn.sentFrames.length).toBe(2);
     expect(warnSpy).toHaveBeenCalledWith(
-      expect.stringContaining("radio-op 'discover_nodes' did not settle within 60000ms"),
+      expect.stringContaining(`radio-op 'discover_nodes' did not settle within ${MESHCORE_RADIO_OP_BACKSTOP_MS}ms`),
     );
   });
 
-  it('set_out_path settles on its own 15s inner timer, well before the 60s backstop, and still releases the chain', async () => {
+  it('set_out_path settles on its own 15s inner timer, well before the 65s backstop, and still releases the chain', async () => {
     installMockModule();
     const { backend, conn } = await connectedBackend();
     vi.useFakeTimers();
