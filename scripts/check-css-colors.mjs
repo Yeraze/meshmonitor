@@ -26,7 +26,7 @@
 //   current > baseline → FAIL
 //   current < baseline → PASS + advisory (run with --update to lock in)
 //   file absent from baseline with literals → FAIL
-import { readFileSync, writeFileSync, existsSync, readdirSync } from 'node:fs';
+import { readFileSync, writeFileSync, readdirSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { findColorLiterals } from './eslint-rules/no-hardcoded-color.mjs';
@@ -189,11 +189,14 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     process.exit(0);
   }
 
-  if (!existsSync(BASELINE)) {
+  let base;
+  try {
+    base = JSON.parse(readFileSync(BASELINE, 'utf8'));
+  } catch (e) {
+    if (e.code !== 'ENOENT') throw e;
     console.error('Missing css-color-baseline.json — run: node scripts/check-css-colors.mjs --update');
     process.exit(2);
   }
-  const base = JSON.parse(readFileSync(BASELINE, 'utf8'));
   const { failures, advisories } = compare(counts, base, lines);
 
   if (advisories.length) {

@@ -144,11 +144,17 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
       console.error('--rule needs a ruleId, e.g. --rule meshmonitor-ui/no-hardcoded-color');
       process.exit(2);
     }
-    if (!existsSync(BASELINE)) {
+    // Read without a prior existsSync(): checking and then writing the same
+    // path is a check-then-use race. A missing file surfaces as ENOENT here.
+    let existing;
+    try {
+      existing = JSON.parse(readFileSync(BASELINE, 'utf8'));
+    } catch (e) {
+      if (e.code !== 'ENOENT') throw e;
       console.error('Missing eslint-baseline.json — run: npm run lint:baseline');
       process.exit(2);
     }
-    const merged = mergeRule(JSON.parse(readFileSync(BASELINE, 'utf8')), counts, ONLY_RULE);
+    const merged = mergeRule(existing, counts, ONLY_RULE);
     writeFileSync(BASELINE, JSON.stringify(sortObj(merged), null, 2) + '\n');
     const files = Object.values(merged).filter(r => r[ONLY_RULE]);
     const total = files.reduce((n, r) => n + r[ONLY_RULE], 0);
