@@ -6,6 +6,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased]
 
+### Fixed
+- **Notification settings no longer cross sources.** A source you had never saved notification settings for used the settings saved for another source: its channel ticks (by channel number, which is a different channel on the other source), keyword lists, direct message / emoji / MQTT / new-node / traceroute / server-event toggles, waypoint radius and Apprise URLs. It now uses the built-in defaults, and the Notifications tab says so until you save. **If you run several sources and saved settings on only one, check the others:** Apprise is off there until you add URLs for that source, channel messages are off until you pick channels, and direct message, new-node and traceroute alerts are on. Web Push for new nodes, traceroutes and server events now reaches only browsers subscribed on the source the event came from (it went to every subscribed browser, twice if subscribed on two sources). No migration; saved settings are untouched.
+
 ## [4.17.0-rc1] - 2026-09-30
 
 ### Added

@@ -195,4 +195,62 @@ describe('pushNotificationService.broadcastToPreferenceUsers (#4020)', () => {
       expect(result).toEqual({ sent: 0, failed: 0, filtered: 1 });
     });
   });
+
+  // An untargeted broadcast is about one source, so only browsers subscribed
+  // on that source hear it. It used to go to every subscription row of every
+  // source: a browser subscribed on A got B's new-node pushes, twice if it was
+  // subscribed on B too.
+  describe('which subscriptions a broadcast reaches', () => {
+    const subscriptionsBySource = (rows: Array<typeof SUB>) =>
+      h.getAllSubscriptionsMock.mockImplementation(async (sourceId?: string) =>
+        rows.filter((r) => sourceId === undefined || r.sourceId === sourceId));
+
+    const SUB_ON_A = { ...SUB, id: 1, sourceId: 'src-a' };
+    const SUB_ON_B = { ...SUB, id: 2, sourceId: 'src-b' };
+
+    it('untargeted: only the subscriptions of the event\'s source', async () => {
+      subscriptionsBySource([SUB_ON_A, SUB_ON_B]);
+      h.getUserNotificationPreferencesAsyncMock.mockResolvedValue({ enableWebPush: true, notifyOnNewNode: true });
+
+      const result = await pushNotificationService.broadcastToPreferenceUsers('notifyOnNewNode', PAYLOAD, undefined, 'src-a');
+
+      expect(h.getAllSubscriptionsMock).toHaveBeenCalledWith('src-a');
+      // One push, to the row for src-a — not two to the same browser.
+      expect(result).toEqual({ sent: 1, failed: 0, filtered: 0 });
+      expect(pushNotificationService.sendToSubscription).toHaveBeenCalledTimes(1);
+      expect(vi.mocked(pushNotificationService.sendToSubscription).mock.calls[0][0]).toMatchObject({ sourceId: 'src-a' });
+    });
+
+    it('untargeted: a browser subscribed on another source only gets nothing', async () => {
+      subscriptionsBySource([SUB_ON_B]);
+      h.getUserNotificationPreferencesAsyncMock.mockResolvedValue({ enableWebPush: true, notifyOnNewNode: true });
+
+      const result = await pushNotificationService.broadcastToPreferenceUsers('notifyOnNewNode', PAYLOAD, undefined, 'src-a');
+
+      expect(result).toEqual({ sent: 0, failed: 0, filtered: 0 });
+      expect(pushNotificationService.sendToSubscription).not.toHaveBeenCalled();
+    });
+
+    it('untargeted: the source comes from the payload when no sourceId argument is given', async () => {
+      subscriptionsBySource([SUB_ON_A, SUB_ON_B]);
+      h.getUserNotificationPreferencesAsyncMock.mockResolvedValue({ enableWebPush: true, notifyOnServerEvents: true });
+
+      const result = await pushNotificationService.broadcastToPreferenceUsers('notifyOnServerEvents', PAYLOAD);
+
+      expect(h.getAllSubscriptionsMock).toHaveBeenCalledWith('src-a');
+      expect(result.sent).toBe(1);
+    });
+
+    it('targeted: every subscription of that user, whatever its source (#4020)', async () => {
+      subscriptionsBySource([SUB_ON_B]);
+      h.getUserPreferenceRowsMock.mockResolvedValue([
+        { sourceId: 'src-b', prefs: { enableWebPush: true, notifyOnLowBattery: true } },
+      ]);
+
+      const result = await pushNotificationService.broadcastToPreferenceUsers('notifyOnLowBattery', PAYLOAD, 7, 'src-a');
+
+      expect(h.getAllSubscriptionsMock).toHaveBeenCalledWith(undefined);
+      expect(result).toEqual({ sent: 1, failed: 0, filtered: 0 });
+    });
+  });
 });

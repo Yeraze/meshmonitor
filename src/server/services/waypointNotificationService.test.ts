@@ -132,6 +132,19 @@ describe('waypointNotificationService.notifyIfInRange', () => {
     broadcastToPreferenceUsers.mockResolvedValue({ sent: 1, failed: 0, filtered: 0 });
   });
 
+  it('a user who opted in on source A is not alerted for a waypoint on source B, and still is on A', async () => {
+    // The only row is for SOURCE. A waypoint on another source finds no row
+    // for that source, so the built-in default applies: waypoint alerts off.
+    getUsersWithWaypointNotifications.mockResolvedValue([prefRow({ sourceId: SOURCE, waypointRadiusKm: 20000 })]);
+
+    await waypointNotificationService.notifyIfInRange(waypointAt(NEAR.lat, NEAR.lon), 'never-configured-source');
+    expect(broadcastToPreferenceUsers).not.toHaveBeenCalled();
+    expect(markNotifiedAsync).not.toHaveBeenCalled();
+
+    await waypointNotificationService.notifyIfInRange(waypointAt(NEAR.lat, NEAR.lon), SOURCE);
+    expect(broadcastToPreferenceUsers).toHaveBeenCalledTimes(1);
+  });
+
   it('notifies for a waypoint inside the radius', async () => {
     await waypointNotificationService.notifyIfInRange(waypointAt(NEAR.lat, NEAR.lon), SOURCE);
     expect(broadcastToPreferenceUsers).toHaveBeenCalledTimes(1);

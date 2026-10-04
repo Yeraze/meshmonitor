@@ -576,6 +576,41 @@ Users can enable or disable notification services independently:
 
 Both services can be enabled simultaneously, and they share the same filtering preferences.
 
+### Settings Are Saved Per Source
+
+Every setting on the **Notifications** tab is saved for the source you are looking at, and only that source: the Web Push and Apprise switches, Apprise URLs, enabled channels, keyword lists, the direct message, emoji, MQTT, new-node, traceroute, server-event and waypoint toggles, and the message format. Channel numbers and node IDs mean different things on each source, so one source never uses another's settings.
+
+A source you have never saved settings for uses the **built-in defaults**. The tab shows a note saying so, and the first **Save** creates that source's own settings.
+
+| Setting | Built-in default |
+| --- | --- |
+| Web Push | On (you still have to subscribe the browser on that source) |
+| Apprise | Off, no URLs |
+| Enabled channels | None |
+| Direct messages | On |
+| Emoji reactions | On |
+| MQTT messages | On |
+| Newly found nodes | On |
+| Successful traceroutes | On |
+| Server events | Off |
+| Waypoint arrivals | Off, 10 km radius |
+| Inactive node / low battery | Off (20 %, 3300 mV) |
+| Whitelist | `Hi`, `Help` |
+| Blacklist | `Test`, `Copy` |
+| Message format | The default template |
+
+So on a source you have not set up, you are notified of direct messages, of channel messages that contain a whitelist word, and — over Web Push, if this browser is subscribed on that source — of new nodes and traceroutes. Channel messages are otherwise off until you pick channels and save.
+
+::: warning Changed in the next release
+A source with no saved settings used to borrow the settings you saved for another source: its channel ticks, keywords, toggles and Apprise URLs. It now uses the defaults above. If you run several sources and only ever saved settings on one, open the **Notifications** tab on each of the others and save what you want there. In particular, Apprise is off on a source until you turn it on and add URLs for that source, and new-node and traceroute alerts are on until you turn them off.
+:::
+
+Three things are not per source:
+
+- **Channel and DM mutes** set before per-source mutes existed still apply on a Meshtastic source that has no settings of its own. They are copied into that source's settings on its first save.
+- **Inactive node and low battery alerts** use one watch list per user: the nodes you picked on any source's tab are watched wherever they appear, and the alert goes out through whichever of your sources has Web Push or Apprise set up.
+- **Web Push for new nodes, traceroutes and server events** goes only to browsers subscribed on the source the event came from, the same as message notifications.
+
 ### Filtering Preferences
 
 Notification filtering applies to **both Web Push and Apprise** notifications:
@@ -715,7 +750,7 @@ MeshCore sources have their own **Notifications** tab, and the settings are tail
 | **Web Push / Apprise / Monitored-node picker** | ✅ | Delivery and node selection work the same as Meshtastic. |
 | Direct Messages, Emoji Reactions, MQTT, Traceroutes, Waypoint arrivals, Channel selection, Keyword filtering, percentage battery threshold | ❌ | Hidden for MeshCore — these depend on Meshtastic-only protocol features or data. |
 
-All preferences are scoped per-source, so a MeshCore source and a Meshtastic source can have independent thresholds and monitored-node lists.
+Preferences are saved per source, so a MeshCore source and a Meshtastic source can have independent thresholds. The monitored-node watch list is the exception: nodes picked on any source's tab are watched together (see [Settings Are Saved Per Source](#settings-are-saved-per-source)).
 
 ### Client-Side Settings (Web Push Only)
 

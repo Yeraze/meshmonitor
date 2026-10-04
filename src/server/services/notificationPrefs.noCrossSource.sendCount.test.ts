@@ -2,14 +2,14 @@
  * What removing the cross-source preference fallback does to notification
  * volume, counted.
  *
- * Two users, two Meshtastic sources (A and B), both users subscribed to Web
- * Push on both sources:
+ * Three users, two Meshtastic sources (A and B):
  *
- *   - user 1 saved settings on source A only. A typical tuned row: two
- *     channels on, one of them muted, direct messages off, emoji / MQTT /
- *     new-node / traceroute off, server events on, own keyword lists, Apprise
- *     on with a URL.
- *   - user 2 never saved anything.
+ *   - user 1 saved settings on source A only, and is subscribed to Web Push on
+ *     A and B. A typical tuned row: two channels on, one of them muted, direct
+ *     messages off, emoji / MQTT / new-node / traceroute off, server events
+ *     on, own keyword lists, Apprise on with a URL.
+ *   - user 2 never saved anything, and is subscribed to Web Push on A and B.
+ *   - user 3 never saved anything, and is subscribed to Web Push on A only.
  *
  * The same fifteen events are delivered on A and on B, through the REAL
  * delivery wrappers (web push, Apprise, desktop), the REAL filter and the REAL
@@ -53,7 +53,7 @@ vi.mock('../../services/database.js', async () => {
       sources: {
         getSource: async (id: string) => ({ id, name: id, type: 'meshtastic_tcp' }),
       },
-      auth: { getAllUsers: async () => [{ id: 1, isActive: true }, { id: 2, isActive: true }] },
+      auth: { getAllUsers: async () => [1, 2, 3].map((id) => ({ id, isActive: true })) },
       getSettingAsync: async () => null,
       checkPermissionAsync: async () => true,
       waitForReady: async () => undefined,
@@ -133,14 +133,78 @@ type Matrix = Record<string, string>;
 
 /** Measured on origin/main (d4dfb15b0): run this file with PREF_FALLBACK_BASELINE=1. */
 const BEFORE: Record<string, Matrix> = {
-  [SOURCE_A]: {},
-  [SOURCE_B]: {},
+  [SOURCE_A]: {
+    'channel 0, plain text': 'push:1,2,3 apprise:1 desktop:1',
+    'channel 1, plain text': 'push:2,3 apprise:- desktop:0',
+    'channel 5, plain text': 'push:2,3 apprise:- desktop:0',
+    'channel 5, "urgent" (user 1 allow word)': 'push:1,2,3 apprise:1 desktop:1',
+    'channel 0, "spam" (user 1 block word)': 'push:2,3 apprise:- desktop:0',
+    'channel 0, via MQTT': 'push:2,3 apprise:- desktop:0',
+    'channel 0, emoji only': 'push:2,3 apprise:- desktop:0',
+    'channel 5, "Help" (default allow word)': 'push:2,3 apprise:- desktop:0',
+    'channel 5, "Is this thing on" (contains "hi")': 'push:2,3 apprise:- desktop:0',
+    'channel 0, "Radio test" (default block word)': 'push:1,2,3 apprise:1 desktop:1',
+    'direct message, plain text': 'push:2,3 apprise:- desktop:0',
+    'direct message, emoji only': 'push:2,3 apprise:- desktop:0',
+    'new node': 'push:- apprise:- desktop:0',
+    'traceroute': 'push:- apprise:- desktop:0',
+    'server event': 'push:1,1 apprise:1 desktop:1',
+  },
+  [SOURCE_B]: {
+    'channel 0, plain text': 'push:1,2 apprise:1 desktop:1',
+    'channel 1, plain text': 'push:2 apprise:- desktop:0',
+    'channel 5, plain text': 'push:2 apprise:- desktop:0',
+    'channel 5, "urgent" (user 1 allow word)': 'push:1,2 apprise:1 desktop:1',
+    'channel 0, "spam" (user 1 block word)': 'push:2 apprise:- desktop:0',
+    'channel 0, via MQTT': 'push:2 apprise:- desktop:0',
+    'channel 0, emoji only': 'push:2 apprise:- desktop:0',
+    'channel 5, "Help" (default allow word)': 'push:2 apprise:- desktop:0',
+    'channel 5, "Is this thing on" (contains "hi")': 'push:2 apprise:- desktop:0',
+    'channel 0, "Radio test" (default block word)': 'push:1,2 apprise:1 desktop:1',
+    'direct message, plain text': 'push:2 apprise:- desktop:0',
+    'direct message, emoji only': 'push:2 apprise:- desktop:0',
+    'new node': 'push:- apprise:- desktop:0',
+    'traceroute': 'push:- apprise:- desktop:0',
+    'server event': 'push:1,1 apprise:1 desktop:1',
+  },
 };
 
 /** This branch. */
 const AFTER: Record<string, Matrix> = {
-  [SOURCE_A]: {},
-  [SOURCE_B]: {},
+  [SOURCE_A]: {
+    'channel 0, plain text': 'push:1 apprise:1 desktop:1',
+    'channel 1, plain text': 'push:- apprise:- desktop:0',
+    'channel 5, plain text': 'push:- apprise:- desktop:0',
+    'channel 5, "urgent" (user 1 allow word)': 'push:1 apprise:1 desktop:1',
+    'channel 0, "spam" (user 1 block word)': 'push:- apprise:- desktop:0',
+    'channel 0, via MQTT': 'push:- apprise:- desktop:0',
+    'channel 0, emoji only': 'push:- apprise:- desktop:0',
+    'channel 5, "Help" (default allow word)': 'push:2,3 apprise:- desktop:1',
+    'channel 5, "Is this thing on" (contains "hi")': 'push:2,3 apprise:- desktop:1',
+    'channel 0, "Radio test" (default block word)': 'push:1 apprise:1 desktop:1',
+    'direct message, plain text': 'push:2,3 apprise:- desktop:1',
+    'direct message, emoji only': 'push:2,3 apprise:- desktop:1',
+    'new node': 'push:2,3 apprise:- desktop:1',
+    'traceroute': 'push:2,3 apprise:- desktop:1',
+    'server event': 'push:1 apprise:1 desktop:1',
+  },
+  [SOURCE_B]: {
+    'channel 0, plain text': 'push:- apprise:- desktop:0',
+    'channel 1, plain text': 'push:- apprise:- desktop:0',
+    'channel 5, plain text': 'push:- apprise:- desktop:0',
+    'channel 5, "urgent" (user 1 allow word)': 'push:- apprise:- desktop:0',
+    'channel 0, "spam" (user 1 block word)': 'push:- apprise:- desktop:0',
+    'channel 0, via MQTT': 'push:- apprise:- desktop:0',
+    'channel 0, emoji only': 'push:- apprise:- desktop:0',
+    'channel 5, "Help" (default allow word)': 'push:1,2 apprise:- desktop:1',
+    'channel 5, "Is this thing on" (contains "hi")': 'push:1,2 apprise:- desktop:1',
+    'channel 0, "Radio test" (default block word)': 'push:- apprise:- desktop:0',
+    'direct message, plain text': 'push:1,2 apprise:- desktop:1',
+    'direct message, emoji only': 'push:1,2 apprise:- desktop:1',
+    'new node': 'push:1,2 apprise:- desktop:1',
+    'traceroute': 'push:1,2 apprise:- desktop:1',
+    'server event': 'push:- apprise:- desktop:0',
+  },
 };
 
 const BASELINE_RUN = process.env.PREF_FALLBACK_BASELINE === '1';
@@ -155,11 +219,12 @@ describe('notification volume with a row on source A only', () => {
       INSERT INTO users (id, username, password_hash, auth_provider, is_admin, is_active, mfa_enabled, created_at, updated_at)
       VALUES
         (1, 'tuned-on-a', 'hash', 'local', 0, 1, 0, ${now}, ${now}),
-        (2, 'never-saved', 'hash', 'local', 0, 1, 0, ${now}, ${now})
+        (2, 'never-saved', 'hash', 'local', 0, 1, 0, ${now}, ${now}),
+        (3, 'never-saved-a-only', 'hash', 'local', 0, 1, 0, ${now}, ${now})
     `);
     await h.repo.saveUserPreferences(1, USER_1_ROW_ON_A, SOURCE_A);
-    for (const userId of [1, 2]) {
-      for (const sourceId of [SOURCE_A, SOURCE_B]) {
+    for (const [userId, sourceIds] of [[1, [SOURCE_A, SOURCE_B]], [2, [SOURCE_A, SOURCE_B]], [3, [SOURCE_A]]] as const) {
+      for (const sourceId of sourceIds) {
         await h.repo.saveSubscription({
           userId,
           sourceId,
@@ -244,17 +309,51 @@ describe('notification volume with a row on source A only', () => {
   });
 
   it('the totals, before and after', () => {
-    const totals = (m: Record<string, Matrix>) => ({
-      'A push user 1': pushCount(m[SOURCE_A], 1),
-      'A push user 2': pushCount(m[SOURCE_A], 2),
-      'A apprise': appriseCount(m[SOURCE_A]),
-      'A desktop': desktopCount(m[SOURCE_A]),
-      'B push user 1': pushCount(m[SOURCE_B], 1),
-      'B push user 2': pushCount(m[SOURCE_B], 2),
-      'B apprise': appriseCount(m[SOURCE_B]),
-      'B desktop': desktopCount(m[SOURCE_B]),
+    // Events that reached each recipient, out of the fifteen per source.
+    const totals = (m: Record<string, Matrix>) => {
+      const out: Record<string, number> = {};
+      for (const [name, sourceId] of [['A', SOURCE_A], ['B', SOURCE_B]] as const) {
+        for (const userId of [1, 2, 3]) out[`${name} push user ${userId}`] = pushCount(m[sourceId], userId);
+        out[`${name} apprise`] = appriseCount(m[sourceId]);
+        out[`${name} desktop`] = desktopCount(m[sourceId]);
+      }
+      return out;
+    };
+    expect(totals(BEFORE)).toEqual({
+      'A push user 1': 4,
+      'A push user 2': 12,
+      'A push user 3': 12,
+      'A apprise': 4,
+      'A desktop': 4,
+      'B push user 1': 4,
+      'B push user 2': 12,
+      'B push user 3': 0,
+      'B apprise': 4,
+      'B desktop': 4,
     });
-    expect(totals(BEFORE)).toEqual({});
-    expect(totals(AFTER)).toEqual({});
+    expect(totals(AFTER)).toEqual({
+      'A push user 1': 4,
+      'A push user 2': 6,
+      'A push user 3': 6,
+      'A apprise': 4,
+      'A desktop': 10,
+      'B push user 1': 6,
+      'B push user 2': 6,
+      'B push user 3': 0,
+      'B apprise': 0,
+      'B desktop': 6,
+    });
+  });
+
+  it('user 1 on source A is untouched, apart from the duplicate server-event push', () => {
+    const user1 = (cell: string) => cell.split(' ')[0].slice('push:'.length).split(',').filter((id) => id === '1').length;
+    for (const label of Object.keys(EVENTS)) {
+      const before = user1(BEFORE[SOURCE_A][label]);
+      const after = user1(AFTER[SOURCE_A][label]);
+      // main sent a server event once per subscription row (A and B share one
+      // browser endpoint), so twice; it is now sent once.
+      expect(after, label).toBe(label === 'server event' ? 1 : before);
+      expect(AFTER[SOURCE_A][label].split(' ')[1], label).toBe(BEFORE[SOURCE_A][label].split(' ')[1]);
+    }
   });
 });
