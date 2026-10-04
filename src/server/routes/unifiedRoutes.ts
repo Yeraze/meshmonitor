@@ -747,6 +747,8 @@ router.get('/messages', async (req: Request, res: Response) => {
     // heard it (#5587). The `before` cursor applies to the ENTRY's createdAt
     // (its earliest reception), not to each row: filtering rows first would
     // strip the later receptions off a message that straddles the cursor.
+    // Keys cannot collide with Meshtastic entries in `merged`: those start
+    // with a node number, these with `mc:` / `mcx:`.
     for (const cluster of clusterMeshCoreReceptions(meshcoreItems)) {
       const first = cluster.members[0];
       const m = first.row;

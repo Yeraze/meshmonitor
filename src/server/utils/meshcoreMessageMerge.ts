@@ -128,6 +128,7 @@ export function normaliseMeshCoreChannelContent(row: {
     return { name: storedName, body: text.trim() };
   }
   const wire = storedName ? `${storedName}: ${text}` : text;
+  // `s` flag: a body may hold newlines; the name may not (`[^:\n]`).
   const m = wire.match(/^([^:\n]{1,32}):\s*(.*)$/s);
   if (!m) return { name: '', body: wire.trim() };
   return { name: m[1].trim(), body: m[2].trim() };

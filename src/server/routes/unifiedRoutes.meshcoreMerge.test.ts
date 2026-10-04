@@ -227,6 +227,41 @@ describe('GET /api/unified/messages — MeshCore cross-source merge (#5587)', ()
     expect(heardBy(body[0])).toEqual(['Hilltop Companion', 'Third Radio']);
   });
 
+  describe('MQTT ingest source (owns no channel rows)', () => {
+    const MQTT = 'mcmerge-mqtt';
+    beforeEach(async () => {
+      await harness.db.sources.deleteSource(MQTT).catch(() => {});
+      await harness.db.sources.createSource({ id: MQTT, name: 'Region Feed', type: 'meshcore_mqtt', config: {}, enabled: true });
+    });
+    afterEach(async () => {
+      await harness.db.meshcore.deleteAllMessagesForSource(MQTT).catch(() => {});
+      await harness.db.sources.deleteSource(MQTT).catch(() => {});
+    });
+    /** A slot-keyed MQTT row: filed under the key holder's slot, no fingerprint. */
+    const mqttRow = () => companionRow(MQTT, { id: 'mqtt_row_1', messageType: 'channel', createdAt: T0 + 1500 });
+
+    it('merges when the slot maps to one secret across all sources', async () => {
+      await harness.db.channels.deleteChannel(1, OTHER);
+      await companionRow(COMPANION);
+      await mqttRow();
+
+      const { body } = await feed(harness.admin);
+      expect(body).toHaveLength(1);
+      expect(heardBy(body[0])).toEqual(['Hilltop Companion', 'Region Feed']);
+    });
+
+    it('does not merge when two sources hold different secrets in that slot', async () => {
+      // COMPANION and OTHER both have a slot 1, with different secrets: the
+      // MQTT row cannot say which one opened it.
+      await companionRow(COMPANION);
+      await mqttRow();
+
+      const { body } = await feed(harness.admin);
+      expect(body).toHaveLength(2);
+      expect(body.map(heardBy).sort()).toEqual([['Hilltop Companion'], ['Region Feed']]);
+    });
+  });
+
   describe('permissions', () => {
     it('shows a one-source viewer one reception and no trace of the other source', async () => {
       await companionRow(COMPANION);
