@@ -422,9 +422,9 @@ class SecurityDigestService {
         return { sourceId, success: true, message: 'No issues found, digest suppressed' };
       }
 
-      // Prefix every digest body with the source name so operators can tell
-      // which mesh it came from when they run several.
-      const body = `[${sourceName}]\n${rawBody}`;
+      // The title names the source, so operators can tell which mesh a digest
+      // came from when they run several. The body does not repeat it (#5593).
+      const body = rawBody;
 
       // Reuse the same Apprise API server resolution chain as every other
       // dispatch path (setting → appriseApiServerUrl → APPRISE_URL → bundled

@@ -18,6 +18,7 @@ import databaseService from '../../services/database.js';
 import { PortNum, CHANNEL_DB_OFFSET } from '../constants/meshtastic.js';
 import { isOwnNodeNum } from '../utils/ownNodes.js';
 import { logger } from '../../utils/logger.js';
+import { renderMessageNotification, type MessageTemplateContext } from '../../utils/notificationTemplate.js';
 
 /**
  * The subset of a message row this notifier reads. Structurally satisfied by
@@ -127,18 +128,25 @@ export async function sendMessagePushNotification(input: MessagePushInput): Prom
     const sourceName = source?.name || sourceId;
     const serviceLabel = serviceLabelFromSourceType(source?.type);
 
-    // Determine notification title and body (#4845):
-    //   Title: "New {Service} Message" / "New {Service} Direct Message"
-    //   Body:  line 1 "{Channel} • {Source}" (DM: just "{Source}")
-    //          line 2 "{Sender}: {text}"
-    const truncatedText = messageText.length > 100 ? messageText.substring(0, 97) + '...' : messageText;
-    const title = isDirectMessage
-      ? `New ${serviceLabel} Direct Message`
-      : `New ${serviceLabel} Message`;
-    const locationLine = isDirectMessage
-      ? sourceName
-      : `${await resolveChannelName(message.channel, sourceId)} • ${sourceName}`;
-    const body = `${locationLine}\n${senderName}: ${truncatedText}`;
+    // The values a notification can show (#5593). Each delivery wrapper
+    // renders the recipient's own title/body template from these, AFTER its
+    // filter decision. With no saved template the built-in default applies:
+    //   channel  title "{Channel} · {Source}"  body "{Sender}: {text}"
+    //   DM       title "{Sender} · {Source}"   body "{text}"
+    // so the source name appears exactly once (it used to appear in the title
+    // prefix and again in the body).
+    const templateContext: MessageTemplateContext = {
+      sourceName,
+      channelName: isDirectMessage ? '' : await resolveChannelName(message.channel, sourceId),
+      senderName,
+      senderShortName: fromNode?.shortName || senderName,
+      text: messageText,
+      serviceLabel,
+      isDM: isDirectMessage,
+    };
+    // Default rendering: the fallback for a delivery path that does not render
+    // per recipient, and what the debug log shows.
+    const { title, body } = renderMessageNotification(templateContext);
 
     // Build navigation data for push notification click handling.
     // `sourceId` is required for the cold-launch deep link: the service
@@ -165,6 +173,7 @@ export async function sendMessagePushNotification(input: MessagePushInput): Prom
       data: navigationData,
       sourceId,
       sourceName,
+      message: templateContext,
     }, {
       messageText,
       channelId: message.channel,

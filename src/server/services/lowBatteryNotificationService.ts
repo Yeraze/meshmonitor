@@ -369,7 +369,8 @@ class LowBatteryNotificationService {
   private async sendLowBatteryNotification(userId: number, node: LowBatteryNodeCheck): Promise<void> {
     try {
       const payload = {
-        title: `[${node.sourceName}] 🔋 Low Battery: ${node.longName}`,
+        // Source once (#5593): on the body; the title leads with the node.
+        title: `🔋 Low Battery: ${node.longName}`,
         body: `[${node.sourceName}] ${node.shortName} (${node.nodeId}) battery at ${node.valueLabel} (threshold: ${node.thresholdLabel})`,
         type: 'warning' as const,
         sourceId: node.sourceId,

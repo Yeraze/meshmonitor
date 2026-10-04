@@ -53,8 +53,9 @@ class ServerEventNotificationService {
         : 'No optional features enabled';
 
       const payload = {
-        title: `[${sourceName}] MeshMonitor Started (v${info.version})`,
-        body: `[${sourceName}] ${featuresText}`,
+        // Source once (#5593): the title is short, so it carries the source.
+        title: `MeshMonitor Started (v${info.version}) · ${sourceName}`,
+        body: featuresText,
         type: 'info' as const,
         sourceId,
         sourceName,
@@ -92,8 +93,8 @@ class ServerEventNotificationService {
           : 'unknown duration';
 
         const payload = {
-          title: `[${sourceName}] Node Reconnected`,
-          body: `[${sourceName}] Connection to Meshtastic node restored (was offline for ${disconnectDuration})`,
+          title: `Node Reconnected · ${sourceName}`,
+          body: `Connection to Meshtastic node restored (was offline for ${disconnectDuration})`,
           type: 'success' as const,
           sourceId,
           sourceName,
@@ -131,8 +132,8 @@ class ServerEventNotificationService {
 
     try {
       const payload = {
-        title: `[${sourceName}] Node Disconnected`,
-        body: `[${sourceName}] Lost connection to Meshtastic node`,
+        title: `Node Disconnected · ${sourceName}`,
+        body: 'Lost connection to Meshtastic node',
         type: 'warning' as const,
         sourceId,
         sourceName,

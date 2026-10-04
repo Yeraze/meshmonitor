@@ -37,6 +37,7 @@ import { isOwnReticulumAddress } from './utils/ownNodes.js';
 import type { ISourceManager, SourceStatus } from './sourceManagerRegistry.js';
 import { dataEventEmitter } from './services/dataEventEmitter.js';
 import { notificationService } from './services/notificationService.js';
+import { renderMessageNotification, type MessageTemplateContext } from '../utils/notificationTemplate.js';
 import { ReticulumBridgeClient } from './reticulumBridgeClient.js';
 import type { ReticulumConfig } from './reticulumConfig.js';
 import type {
@@ -789,15 +790,27 @@ export class ReticulumManager extends EventEmitter implements ISourceManager {
       const source = await databaseService.sources.getSource(this.sourceId);
       const sourceName = source?.name || this.sourceId;
       const text = row.content ?? '';
-      const body = text.length > 100 ? `${text.substring(0, 97)}...` : text;
+      // Same templates as every other message notification (#5593): the
+      // source name appears once, wherever the recipient's template puts it.
+      const templateContext: MessageTemplateContext = {
+        sourceName,
+        channelName: '',
+        senderName: row.fromHash,
+        senderShortName: row.fromHash,
+        text,
+        serviceLabel: 'Reticulum',
+        isDM: true,
+      };
+      const { title, body } = renderMessageNotification(templateContext);
 
       await notificationService.broadcast(
         {
-          title: `Direct Message from ${row.fromHash}`,
+          title,
           body,
           sourceId: this.sourceId,
           sourceName,
           data: { type: 'dm', messageId: row.id, senderNodeId: row.fromHash },
+          message: templateContext,
         },
         {
           messageText: text,

@@ -1,5 +1,9 @@
 import { logger } from '../../utils/logger.js';
 import databaseService from '../../services/database.js';
+import {
+  renderMessageNotification,
+  type MessageTemplateContext,
+} from '../../utils/notificationTemplate.js';
 
 export interface NotificationFilterContext {
   messageText: string;
@@ -50,6 +54,9 @@ export interface NotificationPreferences {
   appriseUrls: string[];
   mutedChannels: MutedChannel[];
   mutedDMs: MutedDM[];
+  /** Message-notification templates (#5593). NULL = the built-in default. */
+  messageTitleTemplate: string | null;
+  messageBodyTemplate: string | null;
 }
 
 /**
@@ -159,6 +166,9 @@ export async function getUserNotificationPreferencesAsync(userId: number, source
         appriseUrls: oldPrefs.appriseUrls || [],
         mutedChannels: oldPrefs.mutedChannels || [],
         mutedDMs: oldPrefs.mutedDMs || [],
+        // Templates postdate the legacy blob (#5593): always the default.
+        messageTitleTemplate: null,
+        messageBodyTemplate: null,
       };
     }
 
@@ -342,6 +352,54 @@ export async function resolveAppriseTargetAsync(
     }
   }
   return null;
+}
+
+/**
+ * Title and body of a message notification for ONE recipient (#5593).
+ *
+ * Call this only AFTER the filter decision for that recipient: it reads the
+ * user's templates and nothing else, so it cannot change who is notified or
+ * how many notifications go out.
+ *
+ * - `message` present: render the user's templates for this source (or the
+ *   built-in default — anonymous subscribers always get the default). The
+ *   source name is wherever the template puts it; no `[sourceName]` prefix is
+ *   added, so the default shows it exactly once.
+ *
+ *   Templates come from the EXACT (userId, sourceId) row only. They do not go
+ *   through `getUserNotificationPreferencesAsync`, whose #4020 fallback answers
+ *   a source with no row of its own from another row of the same user — fine
+ *   for "is this user subscribed at all", wrong here: a template saved for
+ *   source A must never shape a notification from source B.
+ * - `message` absent (a caller that built its own strings): keep the legacy
+ *   `[sourceName] title`, which is that caller's only mention of the source.
+ *
+ * The per-user `[localNodeName]` prefix is NOT applied here; delivery wrappers
+ * add it to the rendered body afterwards, the same for a default and a custom
+ * template.
+ */
+export async function renderMessagePayloadForUserAsync(
+  userId: number | null | undefined,
+  payload: { title: string; body: string; message?: MessageTemplateContext },
+  sourceId: string,
+  sourceName: string,
+): Promise<{ title: string; body: string }> {
+  if (!payload.message) {
+    return { title: `[${sourceName}] ${payload.title}`, body: payload.body };
+  }
+  let prefs: NotificationPreferences | null = null;
+  if (userId && sourceId) {
+    try {
+      prefs = await databaseService.notifications.getUserPreferences(userId, sourceId);
+    } catch (error) {
+      // A failed read must not cost the user the notification: use the default.
+      logger.error(`Failed to load message templates for user ${userId} on source ${sourceId}:`, error);
+    }
+  }
+  return renderMessageNotification(payload.message, {
+    titleTemplate: prefs?.messageTitleTemplate,
+    bodyTemplate: prefs?.messageBodyTemplate,
+  });
 }
 
 /**

@@ -608,6 +608,69 @@ When "Emoji Reactions" is disabled, notifications will be suppressed for message
 New Node and Traceroute notifications bypass normal message filtering (whitelist/blacklist/channel settings) and are only sent if you have that specific preference enabled. These notifications help you stay informed about mesh network topology changes and connectivity testing without cluttering your message notifications.
 :::
 
+### Message Notification Format
+
+You choose what a new-message notification says. Open a source's **Notifications** tab and find **Message Notification Format**: two templates, one for the title and one for the body, with a live preview underneath. Templates are saved per user and per source, so a template you set for one source never changes another source's notifications, or another user's.
+
+Leave a field empty to use the default.
+
+#### The default
+
+| | Title | Body |
+|---|---|---|
+| Channel message | `{{ channelName }} · {{ sourceName }}` | `{{ senderName }}: {{ text }}` |
+| Direct message | `{{ senderName }} · {{ sourceName }}` | `{{ text }}` |
+
+So a channel message reads:
+
+```
+LongFast · Home Base
+Alice Mobile: Anyone on the summit today?
+```
+
+The source name appears once. Earlier versions put it in a `[Source]` prefix on the title and again on the first line of the body, which left little room on a phone's lock screen for the sender and the text.
+
+#### Tokens
+
+Write a token as <code v-pre>{{ name }}</code>. Anything else in the template is shown as typed.
+
+| Token | Shows |
+|---|---|
+| <code v-pre>{{ sourceName }}</code> | Name of the source that heard the message |
+| <code v-pre>{{ channelName }}</code> | Channel name. Empty for a direct message |
+| <code v-pre>{{ senderName }}</code> | Sender's long name |
+| <code v-pre>{{ senderShortName }}</code> | Sender's short name (the long name when there is none) |
+| <code v-pre>{{ text }}</code> | The message text, cut to 100 characters |
+| <code v-pre>{{ serviceLabel }}</code> | Network type: Meshtastic, MeshCore, MQTT or Reticulum |
+| <code v-pre>{{ isDM }}</code> | `DM` for a direct message, empty otherwise |
+
+Examples:
+
+| Title template | Body template | Result |
+|---|---|---|
+| <code v-pre>{{ channelName }}</code> | <code v-pre>{{ senderShortName }}: {{ text }}</code> | `LongFast` / `ALC: Anyone on the summit today?` |
+| <code v-pre>{{ isDM }} {{ senderName }}</code> | <code v-pre>{{ text }}</code> | `DM Alice Mobile` / `Anyone on the summit today?` |
+| <code v-pre>{{ serviceLabel }} · {{ sourceName }}</code> | <code v-pre>{{ channelName }} · {{ senderName }}: {{ text }}</code> | `Meshtastic · Home Base` / `LongFast · Alice Mobile: Anyone on the summit today?` |
+
+#### Rules
+
+- **One pair for channels and direct messages.** Your templates apply to both. For a direct message <code v-pre>{{ channelName }}</code> is empty, and a separator left dangling beside an empty token (`·`, `•`, `|`, `:`, `,`, `-`, `/`) is dropped, so <code v-pre>{{ channelName }} · {{ sourceName }}</code> reads `Home Base` for a DM, not `· Home Base`. The preview shows both cases.
+- **Unknown tokens are rejected when you save.** A typo such as <code v-pre>{{ source_name }}</code> is flagged under the field and the save fails with a message that names it. Only the seven tokens above are valid here; Automation tokens such as <code v-pre>{{ trigger.text }}</code> are not.
+- **Limits.** A title template can be 200 characters and a body template 500. The rendered title is cut at 150 characters and the body at 400. The title is one line; the body may have several.
+- **Plain text only.** `<` and `>` are not allowed in a template, and nothing in a notification is treated as markup.
+- **A template that renders to nothing falls back to the default**, so a notification is never blank.
+- **Filters are not affected.** Whitelist and blacklist keywords match the original message text, never the formatted notification. A template changes what a notification says, not whether it is sent.
+- **Prefix with Node Name still works.** With that option on, `[YourNodeName] ` goes in front of the body after your template is rendered. It never goes in the title.
+
+Templates apply to message notifications. Other alerts keep their own wording, and each of them also names the source once:
+
+| Alert | Where the source name is |
+|---|---|
+| New node | Body ("… detected by Home Base") |
+| Traceroute, low battery, inactive node, waypoint | Start of the body (`[Home Base] …`) |
+| Server start, node connected / disconnected | End of the title (`Node Disconnected · Home Base`) |
+| Security digest | Start of the title (`[Home Base] MeshMonitor Security Digest`) |
+
 ### Waypoint Arrivals
 
 Alerts you when someone places a waypoint near you. Configured per source, on that source's **Notifications** tab, beside the other alert toggles. Meshtastic only — MeshCore has no waypoint concept, so the block is hidden there.

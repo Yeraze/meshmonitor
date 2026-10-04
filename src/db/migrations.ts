@@ -213,6 +213,7 @@ import { migration as addMeshcoreRepeaterIngestColumnsMigration, runMigration191
 import { migration as addChannelDatabaseProtocolMigration, runMigration192Postgres, runMigration192Mysql } from '../server/migrations/192_add_channel_database_protocol.js';
 import { migration as createCrossSourceLinksMigration, runMigration193Postgres, runMigration193Mysql } from '../server/migrations/193_create_cross_source_links.js';
 import { migration as addMeshcoreLastAdvertHadPositionMigration, runMigration194Postgres, runMigration194Mysql } from '../server/migrations/194_add_meshcore_last_advert_had_position.js';
+import { migration as addNotificationMessageTemplatesMigration, runMigration196Postgres, runMigration196Mysql } from '../server/migrations/196_add_notification_message_templates.js';
 
 // ============================================================================
 // Registry
@@ -3148,4 +3149,19 @@ registry.register({
   sqlite: (db) => addMeshcoreLastAdvertHadPositionMigration.up(db),
   postgres: (client) => runMigration194Postgres(client),
   mysql: (pool) => runMigration194Mysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 196: message-notification templates (#5593). PER-USER, PER-SOURCE.
+// Two nullable text columns on user_notification_preferences; NULL = the
+// built-in default template.
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 196,
+  name: 'add_notification_message_templates',
+  settingsKey: 'migration_196_add_notification_message_templates',
+  sqlite: (db) => addNotificationMessageTemplatesMigration.up(db),
+  postgres: (client) => runMigration196Postgres(client),
+  mysql: (pool) => runMigration196Mysql(pool),
 });
