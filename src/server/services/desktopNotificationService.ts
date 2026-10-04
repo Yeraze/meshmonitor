@@ -13,7 +13,8 @@ import notifier from 'node-notifier';
 import path from 'path';
 import { logger } from '../../utils/logger.js';
 import databaseService from '../../services/database.js';
-import { shouldFilterNotificationAsync, getUserNotificationPreferencesAsync } from '../utils/notificationFiltering.js';
+import { shouldFilterNotificationAsync, getUserNotificationPreferencesAsync, renderMessagePayloadForUserAsync } from '../utils/notificationFiltering.js';
+import type { MessageTemplateContext } from '../../utils/notificationTemplate.js';
 
 export interface DesktopNotificationPayload {
   title: string;
@@ -23,6 +24,11 @@ export interface DesktopNotificationPayload {
   sourceId: string;
   /** Phase B: human-readable source name used to prefix title/body. */
   sourceName: string;
+  /**
+   * Message notifications only (#5593): the values `broadcastWithFiltering`
+   * renders the recipient's title/body template from.
+   */
+  message?: MessageTemplateContext;
 }
 
 export interface DesktopNotificationFilterContext {
@@ -83,12 +89,6 @@ class DesktopNotificationService {
 
     let filtered = 0;
 
-    // Phase B: prefix title with source name (body kept clean — title already disambiguates source)
-    const prefixedPayload: DesktopNotificationPayload = {
-      ...payload,
-      title: `[${filterContext.sourceName}] ${payload.title}`,
-    };
-
     try {
       const users = await databaseService.auth.getAllUsers();
 
@@ -118,7 +118,10 @@ class DesktopNotificationService {
           continue;
         }
 
-        this.send(prefixedPayload);
+        // Render AFTER the filter decision (#5593), with the templates of the
+        // user this single desktop notification is sent for.
+        const rendered = await renderMessagePayloadForUserAsync(user.id, payload, filterContext.sourceId, filterContext.sourceName);
+        this.send({ ...payload, title: rendered.title, body: rendered.body });
         // Only send once — single desktop machine
         return { sent: 1, failed: 0, filtered };
       }

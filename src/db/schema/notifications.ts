@@ -77,6 +77,10 @@ export const userNotificationPreferencesSqlite = sqliteTable('user_notification_
   notifyOnMqtt: integer('notify_on_mqtt', { mode: 'boolean' }).default(true),
   mutedChannels: text('muted_channels'),
   mutedDMs: text('muted_dms'),
+  // Message-notification templates (#5593). NULL = the built-in default.
+  // `{{ token }}` syntax; see src/utils/notificationTemplate.ts.
+  messageTitleTemplate: text('message_title_template'),
+  messageBodyTemplate: text('message_body_template'),
   createdAt: integer('created_at').notNull(),
   updatedAt: integer('updated_at').notNull(),
 }, (t) => ({
@@ -112,6 +116,8 @@ export const userNotificationPreferencesPostgres = pgTable('user_notification_pr
   notifyOnMqtt: pgBoolean('notifyOnMqtt').default(true),
   mutedChannels: pgText('mutedChannels'),
   mutedDMs: pgText('mutedDMs'),
+  messageTitleTemplate: pgText('messageTitleTemplate'),
+  messageBodyTemplate: pgText('messageBodyTemplate'),
   createdAt: pgBigint('createdAt', { mode: 'number' }).notNull(),
   updatedAt: pgBigint('updatedAt', { mode: 'number' }).notNull(),
 }, (t) => ({
@@ -179,6 +185,8 @@ export const userNotificationPreferencesMysql = mysqlTable('user_notification_pr
   notifyOnMqtt: myBoolean('notifyOnMqtt').default(true),
   mutedChannels: myText('mutedChannels'),
   mutedDMs: myText('mutedDMs'),
+  messageTitleTemplate: myText('messageTitleTemplate'),
+  messageBodyTemplate: myText('messageBodyTemplate'),
   createdAt: myBigint('createdAt', { mode: 'number' }).notNull(),
   updatedAt: myBigint('updatedAt', { mode: 'number' }).notNull(),
 }, (t) => ({

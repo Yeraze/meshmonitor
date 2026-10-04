@@ -153,6 +153,12 @@ A static-credential broker on `mqtt://…:1883` has no TLS, so your username and
 
 If `SESSION_SECRET` changes after a credential is stored, that credential can no longer be decrypted. The Configuration page shows a **rotated** warning for the affected broker in that case — re-import/re-paste the signing key, or re-enter that broker's password, to recover. In signed-token mode the public key stays correct and visible throughout, for every broker.
 
+### Backups
+
+A system backup includes the signing key, as the same encrypted envelope that is stored in the database — never the plain key. Restore the backup on an install with the **same** `SESSION_SECRET` and the key works at once.
+
+Restore it under a different `SESSION_SECRET` and the key row is kept but cannot be decrypted: the restore log names the affected sources, the page shows the **rotated** warning above, and the Observer does not publish for that source until you set `SESSION_SECRET` back to the original value or re-import the key. Stored broker passwords are not part of a system backup; re-enter them after a restore.
+
 ## Step 3 — Verify
 
 Back on the Configuration page, the **Analyzer Observer** section shows an aggregate status block, followed by a **Brokers** panel with one card per configured broker:

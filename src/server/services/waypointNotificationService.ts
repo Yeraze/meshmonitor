@@ -184,7 +184,8 @@ class WaypointNotificationService {
       const icon = waypoint.iconEmoji || '📍';
       const label = waypoint.name || `Waypoint ${waypoint.waypointId}`;
       const payload = {
-        title: `[${sourceName}] ${icon} ${label}`,
+        // Source once (#5593): on the body; the title leads with the waypoint.
+        title: `${icon} ${label}`,
         body: waypoint.description
           ? `[${sourceName}] ${waypoint.description}`
           : `[${sourceName}] Waypoint received at ${waypoint.latitude.toFixed(5)}, ${waypoint.longitude.toFixed(5)}`,

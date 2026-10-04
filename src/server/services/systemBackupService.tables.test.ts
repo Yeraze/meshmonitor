@@ -46,6 +46,13 @@ describe('BACKUP_TABLES allowlist', () => {
     expect(links).toBeGreaterThan(BACKUP_TABLES.indexOf('messages'));
   });
 
+  it('backs up the Analyzer Observer signing keys (#5596)', () => {
+    // Left out until #5596, so a restore silently lost every key. The rows are
+    // AES-256-GCM envelopes keyed from SESSION_SECRET, so unlike the forbidden
+    // tables above a stolen backup alone does not expose them.
+    expect(BACKUP_TABLES).toContain('meshcore_observer_keys');
+  });
+
   it('is a non-empty allowlist of distinct table names', () => {
     expect(BACKUP_TABLES.length).toBeGreaterThan(0);
     expect(new Set(BACKUP_TABLES).size).toBe(BACKUP_TABLES.length);
