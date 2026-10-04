@@ -116,6 +116,7 @@ export const PushCodes = {
  * `REQ_TYPE_*` defines). `req_data[0]` selects the request.
  */
 export const BinaryRequestTypes = {
+  GetStatus: 0x01, // REQ_TYPE_GET_STATUS
   GetTelemetryData: 0x03, // REQ_TYPE_GET_TELEMETRY_DATA
   GetNeighbours: 0x06, // REQ_TYPE_GET_NEIGHBOURS
 } as const;
@@ -937,11 +938,16 @@ export interface RepeaterStatusData {
   lastSnr?: number;
   directDups?: number;
   floodDups?: number;
+  rxAirTimeSecs?: number;
 }
 
-/** Serialize the 48-byte repeater status blob (inverse of meshcore.js `getStatus`). */
-export function encodeRepeaterStatusData(s: RepeaterStatusData): Buffer {
-  const b = Buffer.alloc(48);
+/**
+ * Serialize the repeater status blob (inverse of meshcore.js `getStatus`):
+ * 48 bytes by default, 52 with `withRxAirTime` (appends total_rx_air_time_secs,
+ * which the SendBinaryReq/GetStatus decoder in current clients expects).
+ */
+export function encodeRepeaterStatusData(s: RepeaterStatusData, withRxAirTime = false): Buffer {
+  const b = Buffer.alloc(withRxAirTime ? 52 : 48);
   let o = 0;
   b.writeUInt16LE((s.batteryMv ?? 0) & 0xffff, o); o += 2; // batt_milli_volts
   b.writeUInt16LE((s.queueLen ?? 0) & 0xffff, o); o += 2; // curr_tx_queue_len
@@ -958,7 +964,8 @@ export function encodeRepeaterStatusData(s: RepeaterStatusData): Buffer {
   b.writeUInt16LE((s.errors ?? 0) & 0xffff, o); o += 2; // err_events
   b.writeInt16LE(clampInt16(s.lastSnr ?? 0), o); o += 2; // last_snr
   b.writeUInt16LE((s.directDups ?? 0) & 0xffff, o); o += 2; // n_direct_dups
-  b.writeUInt16LE((s.floodDups ?? 0) & 0xffff, o); // n_flood_dups (last field)
+  b.writeUInt16LE((s.floodDups ?? 0) & 0xffff, o); o += 2; // n_flood_dups
+  if (withRxAirTime) b.writeUInt32LE((s.rxAirTimeSecs ?? 0) >>> 0, o); // total_rx_air_time_secs
   return b;
 }
 
