@@ -28,6 +28,17 @@ describe('countCssColors()', () => {
     expect(countCssColors(css)).toEqual({ count: 3, lines: [3, 4, 5] });
   });
 
+  it('gives a repeated literal its own line each time', () => {
+    const css = `.a {
+  background: linear-gradient(
+    #fff,
+    transparent,
+    #fff
+  );
+}`;
+    expect(countCssColors(css)).toEqual({ count: 2, lines: [3, 5] });
+  });
+
   it('skips custom-property definitions', () => {
     const css = `
 :root[data-theme='latte'] {

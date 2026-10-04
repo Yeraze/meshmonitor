@@ -124,7 +124,7 @@ export const noHardcodedColor = {
       }
       if (ancestor.type === 'VariableDeclarator' && ancestor.id.type === 'Identifier') {
         const annotation = ancestor.id.typeAnnotation;
-        return Boolean(annotation) && context.sourceCode.getText(annotation).includes('CSSProperties');
+        return Boolean(annotation) && /\bCSSProperties\b/.test(context.sourceCode.getText(annotation));
       }
       return false;
     };

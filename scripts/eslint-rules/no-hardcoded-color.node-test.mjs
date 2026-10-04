@@ -18,6 +18,12 @@ test('finds hex, rgb and hsl literals, bare or inside a shorthand', () => {
   assert.deepEqual(findColorLiterals('0 2px 4px rgb(0 0 0 / 20%)'), ['rgb(0 0 0 / 20%)']);
   assert.deepEqual(findColorLiterals('hsl(210, 50%, 40%)'), ['hsl(210, 50%, 40%)']);
   assert.deepEqual(findColorLiterals('hsla(210 50% 40% / 0.5)'), ['hsla(210 50% 40% / 0.5)']);
+  // A nested call inside a colour function: the span ends at the function's
+  // own closing paren, not the inner one and not a later one.
+  assert.deepEqual(
+    findColorLiterals('0 2px rgba(0, calc(255 * 0.5), min(1, 2), 1) 4px, 0 0 (x)'),
+    ['rgba(0, calc(255 * 0.5), min(1, 2), 1)'],
+  );
   assert.deepEqual(
     findColorLiterals('linear-gradient(#000, rgba(1,2,3,.4) 50%, #fff)'),
     ['#000', 'rgba(1,2,3,.4)', '#fff'],
@@ -143,6 +149,8 @@ const VALID = [
   // A variable named *Style is not proof of CSS: this one is Leaflet's.
   `const ringStyle = { color: '#38bdf8', weight: 3, fillColor: '#38bdf8', fillOpacity: 0.15 };`,
   `const waterStyle = { paint: { 'fill-color': '#a0c8f0' } };`,
+  // Only the CSSProperties type itself marks a style context.
+  `const box: NoCSSPropertiesHere = { color: '#fff' };`,
   // A bare `color` key outside a style context is not known to be CSS.
   `const s = { color: '#ff0000' };`,
   `const s = { color: (dark ? '#fff' : '#000') as string };`,
@@ -191,6 +199,7 @@ const INVALID = [
   // A variable typed CSSProperties is a style context: every literal in it
   // counts, a bare `color` included.
   hit(`const box: React.CSSProperties = { color: '#fff' };`),
+  hit(`const box: Partial<CSSProperties> = { color: '#fff' };`),
   hit(`const box: CSSProperties = { color: dark ? '#fff' : '#000' };`, 2),
 ];
 
