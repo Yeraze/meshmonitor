@@ -78,11 +78,13 @@ import {
   parseExportContact,
   parseImportContact,
   parseAddUpdateContact,
+  storedOutPathToWire,
   parseReboot,
   parseGetStats,
   type ParsedCommand,
   type SendBinaryReqCmd,
 } from './meshcoreCompanionCodec.js';
+import { OUT_PATH_UNKNOWN } from './meshcoreNativeBackend.js';
 
 /**
  * Minimal surface the virtual node server needs from a MeshCoreManager. Kept as
@@ -1117,17 +1119,17 @@ export class MeshCoreVirtualNodeServer extends EventEmitter {
    * AddUpdateContact(9) apply step, run inside handleConfigCommand (so it is
    * already behind allowAdminCommands). A real node overwrites the whole
    * contact record from the frame. We cannot relay it verbatim: MeshMonitor
-   * owns the favourite bit (reconcileDeviceFavorites), and the path the app
-   * echoes back is the hop count we advertised in GetContacts, not the packed
-   * out_path_len the device stores for multi-byte hashes. Writing the frame
-   * as-is could silently corrupt the route or drop a favourite.
+   * owns the favourite bit (reconcileDeviceFavorites), and the route the app
+   * echoes back is our mirror of the device's path, which can lag the device.
+   * Writing the frame as-is could silently corrupt the route or drop a
+   * favourite.
    *
    * So the frame is diffed against the contact as this VN advertised it, and
    * only the edits the app UI actually makes are applied, each through the
    * manager method that already handles it safely:
    *   - name changed              → setContactName (rename)
    *   - favourite bit changed     → setNodeFavorite (MeshMonitor + device bit)
-   *   - route set to UNKNOWN (-1) → resetContactPath
+   *   - route set to UNKNOWN (0xFF) → resetContactPath
    * type / coords / advert time are app echoes and are ignored. A manual route
    * or a telemetry-permission change is not relayed: if that is the ONLY
    * change, reply Err(UnsupportedCmd) rather than claim an edit we did not
@@ -1158,13 +1160,16 @@ export class MeshCoreVirtualNodeServer extends EventEmitter {
     const favorite = wantFav !== currentFav ? wantFav : undefined;
     const permsChanged = contact.flags !== undefined && (req.flags & ~0x01 & 0xff) !== (currentFlags & ~0x01 & 0xff);
 
-    // Mirror handleGetContacts: hop count, or -1 (OUT_PATH_UNKNOWN).
-    const advertisedLen = contact.pathLen == null ? -1 : contact.pathLen;
-    const advertisedPath = hexToBytes(contact.outPath);
-    const resetPath = req.outPathLen === -1 && advertisedLen !== -1;
+    // Diff against exactly what handleGetContacts sent: the packed
+    // out_path_len byte and the path bytes it frames. The parser reads the
+    // byte signed, so unsign it first — a 3-byte-hash path is negative there.
+    const advertised = storedOutPathToWire(contact.outPath, contact.pathLen);
+    const reqLen = req.outPathLen & 0xff;
+    const resetPath = reqLen === OUT_PATH_UNKNOWN && advertised.outPathLen !== OUT_PATH_UNKNOWN;
     const routeChanged =
-      req.outPathLen !== -1 &&
-      (req.outPathLen !== advertisedLen || !req.outPath.subarray(0, advertisedPath.length).equals(advertisedPath));
+      reqLen !== OUT_PATH_UNKNOWN &&
+      (reqLen !== advertised.outPathLen ||
+        !req.outPath.subarray(0, advertised.outPath.length).equals(advertised.outPath));
 
     const unsupported = [routeChanged && 'manual route', permsChanged && 'telemetry permissions'].filter(Boolean);
     const hasEdit = rename !== undefined || favorite !== undefined || resetPath;
@@ -1682,9 +1687,9 @@ export class MeshCoreVirtualNodeServer extends EventEmitter {
         // telemetry permissions) so an app that echoes it back in
         // AddUpdateContact sees the true state (#5350).
         flags: c.flags ?? (c.deviceFavorite ? 0x01 : 0),
-        // OUT_PATH_UNKNOWN (-1) when no cached route, else the hop count.
-        outPathLen: c.pathLen == null ? -1 : c.pathLen,
-        outPath: c.outPath ? hexToBytes(c.outPath) : Buffer.alloc(0),
+        // The packed out_path_len byte (hash width + hop count, 0xFF = no
+        // route) and the path bytes it frames, as firmware sends them.
+        ...storedOutPathToWire(c.outPath, c.pathLen),
         advName: c.advName || c.name || '',
         lastAdvert,
         advLat: degreesToFixed(c.latitude),
