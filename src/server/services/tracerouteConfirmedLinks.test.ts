@@ -1,9 +1,14 @@
 /**
  * #5580: the rule for a traceroute-confirmed reciprocal link.
  *
- * Stored convention (see `useTracerouteAnalysis`): `toNodeNum` is the
- * requester (us), `fromNodeNum` the responder. Out leg `[us, ...route, dest]`,
- * back leg `[dest, ...routeBack, us]`; SNR arrays are raw firmware ints (dB x4).
+ * Out leg `[us, ...route, dest]`, back leg `[dest, ...routeBack, us]`; SNR
+ * arrays are raw firmware ints (dB x4).
+ *
+ * The table stores a completed run in TWO orientations (see the module doc):
+ * `{ from: dest, to: us }` when the reply was inserted as it arrived, and
+ * `{ from: us, to: dest }` when the reply updated the pending row written at
+ * send time. The default fixture is the first; `sent()` is the second. The
+ * route harness test writes rows through the real DatabaseService path.
  */
 import { describe, it, expect } from 'vitest';
 import {
@@ -32,6 +37,63 @@ const row = (o: Partial<ConfirmedLinkTracerouteRow> = {}): ConfirmedLinkTracerou
   transportMechanism: TX_LORA,
   timestamp: 1_000,
   ...o,
+});
+
+/** The pending-row orientation: we sent it from MeshMonitor, the reply updated the row. */
+const sent = (o: Partial<ConfirmedLinkTracerouteRow> = {}): ConfirmedLinkTracerouteRow =>
+  row({ fromNodeNum: US, toNodeNum: DEST, ...o });
+
+describe('confirmedLinkFromTraceroute — stored orientation', () => {
+  it('reads the row MeshMonitor writes for its own traceroute: our radio in fromNodeNum', () => {
+    // The live row that exposed the bug: Sandbox -> BLESandbox, zero hops.
+    const obs = confirmedLinkFromTraceroute({
+      sourceId: 'sandbox', fromNodeNum: 3639506708, toNodeNum: 944633591,
+      route: '[]', routeBack: '[]', snrTowards: '[44]', snrBack: '[46]',
+      transportMechanism: TX_LORA, timestamp: 5,
+    }, 3639506708);
+    expect(obs).toEqual({
+      sourceId: 'sandbox', localNodeNum: 3639506708, neighborNodeNum: 944633591, transportClass: 'rf',
+      direct: true, snrOutDb: 11, snrBackDb: 11.5, timestamp: 5,
+    });
+  });
+
+  it('both orientations of one run give the same link and the same SNR directions', () => {
+    const arrays = {
+      route: JSON.stringify([HOP_A, HOP_B]), snrTowards: '[20, 8, -12]',
+      routeBack: JSON.stringify([HOP_C, HOP_A]), snrBack: '[4, -8, 28]',
+    };
+    const replyInserted = confirmedLinkFromTraceroute(row(arrays), US);
+    const pendingUpdated = confirmedLinkFromTraceroute(sent(arrays), US);
+    expect(pendingUpdated).toEqual(replyInserted);
+    // snrTowards[0]: the neighbour hearing us. Last snrBack: us hearing it.
+    expect(pendingUpdated).toMatchObject({ neighborNodeNum: HOP_A, snrOutDb: 5, snrBackDb: 7, direct: false });
+  });
+
+  it('the mismatch rule holds in the pending-row orientation too', () => {
+    expect(confirmedLinkFromTraceroute(sent({
+      route: JSON.stringify([HOP_A]), snrTowards: '[0, -54]',
+      routeBack: JSON.stringify([HOP_B]), snrBack: '[-48, 0]',
+    }), US)).toBeNull();
+  });
+
+  it('our own outgoing reply to someone else\'s traceroute confirms nothing', () => {
+    // Recorded as { from: us (responder), to: requester } before any relay
+    // filled in the return leg: route data, but no return path.
+    expect(confirmedLinkFromTraceroute(sent({ snrTowards: '[20]', routeBack: '[]', snrBack: '[]' }), US)).toBeNull();
+    expect(confirmedLinkFromTraceroute(sent({
+      route: JSON.stringify([HOP_A]), snrTowards: '[20, 8]', routeBack: '[]', snrBack: '[]',
+    }), US)).toBeNull();
+  });
+
+  it('a pending row (sent, no reply yet) confirms nothing', () => {
+    expect(confirmedLinkFromTraceroute(sent({ route: null, routeBack: null, snrTowards: null, snrBack: null }), US)).toBeNull();
+  });
+
+  it('a row our radio is not an endpoint of confirms nothing', () => {
+    expect(confirmedLinkFromTraceroute(row({ toNodeNum: HOP_B }), US)).toBeNull();
+    expect(confirmedLinkFromTraceroute(sent({ fromNodeNum: HOP_B }), US)).toBeNull();
+    expect(confirmedLinkFromTraceroute(row({ fromNodeNum: US, toNodeNum: US }), US)).toBeNull();
+  });
 });
 
 describe('confirmedLinkFromTraceroute', () => {
@@ -75,14 +137,6 @@ describe('confirmedLinkFromTraceroute', () => {
   it('a pending run with no outbound route data is not completed', () => {
     expect(confirmedLinkFromTraceroute(row({ route: null }), US)).toBeNull();
     expect(confirmedLinkFromTraceroute(row({ route: 'null' }), US)).toBeNull();
-  });
-
-  it('ignores a traceroute our radio did not request', () => {
-    // Someone else's run this source merely stored (MQTT copy, Virtual Node).
-    expect(confirmedLinkFromTraceroute(row({ toNodeNum: HOP_B }), US)).toBeNull();
-    // We were the destination: the reply's return path never reaches us.
-    expect(confirmedLinkFromTraceroute(row({ fromNodeNum: US, toNodeNum: DEST }), US)).toBeNull();
-    expect(confirmedLinkFromTraceroute(row({ fromNodeNum: US }), US)).toBeNull();
   });
 
   it('a placeholder first hop (a relay that never named itself) confirms nothing', () => {
@@ -153,6 +207,12 @@ describe('aggregateConfirmedLinks / buildConfirmedLinks', () => {
       row({ transportMechanism: TX_MULTICAST_UDP }),
     ], locals);
     expect(links.map((l) => [l.transportClass, l.count]).sort()).toEqual([['mqtt', 1], ['rf', 2], ['udp', 1]]);
+  });
+
+  it('counts both stored orientations of the same link together', () => {
+    const [a, ...rest] = buildConfirmedLinks([row({ timestamp: 1 }), sent({ timestamp: 2 })], locals);
+    expect(rest).toEqual([]);
+    expect(a).toMatchObject({ neighborNodeNum: DEST, count: 2, directCount: 2, lastConfirmedAt: 2 });
   });
 
   it('keeps neighbours and sources apart', () => {

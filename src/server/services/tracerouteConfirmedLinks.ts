@@ -12,8 +12,28 @@
  *   out:  [us, ...route, destination]         snrTowards[i] measured at out[i+1]
  *   back: [destination, ...routeBack, us]     snrBack[i]    measured at back[i+1]
  *
- * (`toNodeNum` is the requester — us; `fromNodeNum` is the responder.)
+ * ## Which column is "us"
  *
+ * Either. The table holds the same completed run in two orientations,
+ * depending on which writer made the row:
+ *
+ *  - We sent the request through MeshMonitor: `recordTracerouteRequest` wrote
+ *    a pending row `{ from: us, to: destination }`, and the reply UPDATED that
+ *    row in place (route, routeBack, SNR). `from`/`to` are not flipped.
+ *  - The reply found no pending row (the request came from a phone app or the
+ *    Virtual Node, or the pending row had timed out): `insertTraceroute` wrote
+ *    the reply packet as it arrived, `{ from: destination, to: us }`.
+ *
+ * `route` / `routeBack` / `snrTowards` / `snrBack` mean the same thing in
+ * both: `route` runs from the requester toward the responder. So our radio is
+ * whichever endpoint equals the source's local node, and the other endpoint
+ * is the destination.
+ *
+ * One more row has our radio in `from`: our own outgoing REPLY when another
+ * node traceroutes us. It is recorded before any relay has filled in the
+ * return leg, so it has no return path and fails the "completed" test below.
+ * A run where we were the destination can therefore never confirm a link.
+  *
  * The leg next to our radio is the first hop out and the last hop back. When
  * both name the SAME neighbour — for a zero-hop run, the destination itself —
  * that one RF link carried a packet each way: the neighbour heard us
@@ -85,8 +105,9 @@ function readSnr(raw: number | undefined): { db: number | null; unknown: boolean
 /**
  * The reciprocal link one traceroute confirms, or null.
  *
- * Null when: the run was not requested by `localNodeNum`; it has no outbound
- * route data or no recorded return path (not completed); the neighbour on the
+ * Null when: `localNodeNum` is neither endpoint; the run has no outbound
+ * route data or no recorded return path (not completed, which also rules out
+ * our own outgoing reply to someone else's traceroute); the neighbour on the
  * way out differs from the one on the way back; or that neighbour is a
  * firmware placeholder rather than a real node.
  */
@@ -94,10 +115,16 @@ export function confirmedLinkFromTraceroute(
   row: ConfirmedLinkTracerouteRow,
   localNodeNum: number,
 ): ConfirmedLinkObservation | null {
-  const requester = Number(row.toNodeNum);
-  const responder = Number(row.fromNodeNum);
-  if (!Number.isFinite(requester) || !Number.isFinite(responder)) return null;
-  if (requester !== localNodeNum || responder === requester) return null;
+  const from = Number(row.fromNodeNum);
+  const to = Number(row.toNodeNum);
+  if (!Number.isFinite(from) || !Number.isFinite(to) || from === to) return null;
+  // Our radio is one endpoint; the row can be stored either way round (see
+  // "Which column is us" in the module doc). The other end is the destination.
+  let responder: number;
+  if (from === localNodeNum) responder = to;
+  else if (to === localNodeNum) responder = from;
+  else return null;
+  const requester = localNodeNum;
 
   if (!hasRouteData(row.route)) return null;
   const route = parseHopArray(row.route);

@@ -90,6 +90,94 @@ describe('Traceroute-confirmed link route (#5580)', () => {
     expect(res.body.data.historyLimitPerPair).toBeGreaterThan(0);
   });
 
+  describe('rows written by the real ingest path', () => {
+    // What MeshtasticManager does: `sendTraceroute` calls
+    // recordTracerouteRequestAsync(local, destination), and
+    // processTracerouteMessage hands the reply to insertTracerouteAsync with
+    // from = the reply's sender (the destination) and to = us. These tests use
+    // those two DatabaseService calls, not a hand-made row, so the stored
+    // orientation is whatever the app really stores.
+    const reply = (o: Record<string, unknown> = {}) => ({
+      fromNodeNum: REMOTE_A, toNodeNum: LOCAL_A,
+      fromNodeId: nodeIdFor(REMOTE_A), toNodeId: nodeIdFor(LOCAL_A),
+      route: '[]', routeBack: '[]', snrTowards: '[44]', snrBack: '[46]',
+      routePositions: '{}', channel: 0, packetId: 1234, transportMechanism: TX_LORA,
+      timestamp: Date.now(), createdAt: Date.now(),
+      ...o,
+    });
+    const storedRows = async () =>
+      (await databaseService.traceroutes.getTraceroutesForSources({ sourceIds: [harness.sourceA], limit: 50 }));
+
+    beforeEach(async () => {
+      await databaseService.traceroutes.deleteAllTraceroutes(ALL_SOURCES);
+    });
+
+    it('a traceroute sent from MeshMonitor: the reply fills the pending row, our radio stays in fromNodeNum, and the link is drawn', async () => {
+      await databaseService.recordTracerouteRequestAsync(LOCAL_A, REMOTE_A, harness.sourceA);
+      await databaseService.insertTracerouteAsync(reply() as any, harness.sourceA);
+
+      const rows = await storedRows();
+      expect(rows).toHaveLength(1);
+      // The orientation the first version of this feature got wrong.
+      expect(Number(rows[0].fromNodeNum)).toBe(LOCAL_A);
+      expect(Number(rows[0].toNodeNum)).toBe(REMOTE_A);
+      expect(rows[0]).toMatchObject({ route: '[]', routeBack: '[]', snrTowards: '[44]', snrBack: '[46]' });
+
+      const agent = await harness.loginAs(harness.admin);
+      const links = (await agent.get(`${URL}?sources=${harness.sourceA}`)).body.data.links;
+      expect(links).toHaveLength(1);
+      expect(links[0]).toMatchObject({
+        localNodeNum: LOCAL_A, localName: 'Radio A', neighborNodeNum: REMOTE_A, neighborName: 'Hilltop',
+        transportClass: 'rf', count: 1, directCount: 1,
+        snrOutAvg: 11,    // snrTowards[0] / 4: Hilltop hearing Radio A
+        snrBackAvg: 11.5, // snrBack[0] / 4: Radio A hearing Hilltop
+        from: [30.1, -90.1], to: [30.2, -90.2],
+      });
+    });
+
+    it('a reply with no pending row (sent from a phone app): stored the other way round, same link', async () => {
+      await databaseService.insertTracerouteAsync(reply() as any, harness.sourceA);
+      const rows = await storedRows();
+      expect(rows).toHaveLength(1);
+      expect(Number(rows[0].fromNodeNum)).toBe(REMOTE_A);
+      expect(Number(rows[0].toNodeNum)).toBe(LOCAL_A);
+
+      const agent = await harness.loginAs(harness.admin);
+      const links = (await agent.get(`${URL}?sources=${harness.sourceA}`)).body.data.links;
+      expect(links).toHaveLength(1);
+      expect(links[0]).toMatchObject({ neighborNodeNum: REMOTE_A, count: 1, snrOutAvg: 11, snrBackAvg: 11.5 });
+    });
+
+    it('one of each orientation counts as two runs on one link', async () => {
+      await databaseService.insertTracerouteAsync(reply({ packetId: 1 }) as any, harness.sourceA);
+      await databaseService.recordTracerouteRequestAsync(LOCAL_A, REMOTE_A, harness.sourceA);
+      await databaseService.insertTracerouteAsync(reply({ packetId: 2 }) as any, harness.sourceA);
+      expect(await storedRows()).toHaveLength(2);
+      const agent = await harness.loginAs(harness.admin);
+      const links = (await agent.get(`${URL}?sources=${harness.sourceA}`)).body.data.links;
+      expect(links).toHaveLength(1);
+      expect(links[0].count).toBe(2);
+    });
+
+    it('a sent traceroute that got no reply (pending row only) draws nothing', async () => {
+      await databaseService.recordTracerouteRequestAsync(LOCAL_A, REMOTE_A, harness.sourceA);
+      const agent = await harness.loginAs(harness.admin);
+      expect((await agent.get(`${URL}?sources=${harness.sourceA}`)).body.data.links).toEqual([]);
+    });
+
+    it('our own outgoing reply when another node traceroutes us draws nothing', async () => {
+      // processTracerouteMessage records it as from = us, with no return leg yet.
+      await databaseService.insertTracerouteAsync(reply({
+        fromNodeNum: LOCAL_A, toNodeNum: REMOTE_A,
+        fromNodeId: nodeIdFor(LOCAL_A), toNodeId: nodeIdFor(REMOTE_A),
+        snrTowards: '[44]', routeBack: '[]', snrBack: '[]',
+      }) as any, harness.sourceA);
+      expect(await storedRows()).toHaveLength(1);
+      const agent = await harness.loginAs(harness.admin);
+      expect((await agent.get(`${URL}?sources=${harness.sourceA}`)).body.data.links).toEqual([]);
+    });
+  });
+
   it('groups by transport class and counts repeat runs', async () => {
     await run(harness.sourceA, LOCAL_A, REMOTE_A, { snrTowards: '[-25]', snrBack: '[-37]' });
     await run(harness.sourceA, LOCAL_A, REMOTE_A, { transportMechanism: TX_MQTT });
