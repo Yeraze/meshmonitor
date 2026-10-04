@@ -24,6 +24,13 @@
   color: var(--color-text-muted);
 }
 
+/* "Nothing saved for this source yet" note above the sections. */
+.root .defaultsNotice {
+  border: 1px solid var(--color-info);
+  background-color: var(--color-surface);
+  color: var(--color-text);
+}
+
 /* The two service tiles (Web Push, Apprise). */
 .root .serviceCard {
   background-color: var(--color-surface);

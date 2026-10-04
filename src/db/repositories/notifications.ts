@@ -17,6 +17,7 @@ import {
 import { BaseRepository, DrizzleDatabase, SourceScope } from './base.js';
 import { DatabaseType, DbPushSubscription } from '../types.js';
 import { logger } from '../../utils/logger.js';
+import { defaultNotificationPreferences } from '../../utils/notificationDefaults.js';
 
 // Re-export for convenience
 export type { DbPushSubscription } from '../types.js';
@@ -226,13 +227,18 @@ export class NotificationsRepository extends BaseRepository {
   // ============ USER NOTIFICATION PREFERENCES ============
 
   /**
-   * Get notification preferences for a user
-   */
-  /**
-   * Read one user's preferences row. Errors are logged and read as "no row"
-   * unless `opts.rethrow` is set — a read-modify-write caller must pass it, or
-   * a failed read would look like a missing row and the write would replace
-   * the user's settings with defaults.
+   * Read ONE preferences row: the row for exactly (userId, sourceId).
+   *
+   * `sourceId` omitted or '' reads the user's unsourced '' row and nothing
+   * else. It used to drop the source filter and return the user's first row of
+   * ANY source, so a caller with no source in hand (and the #4020 fallback
+   * built on top of it) was answered with another source's channel numbers,
+   * keyword lists and toggles. A missing row is `null`; the caller decides what
+   * that means (see `resolveNotificationPreferencesAsync`).
+   *
+   * Errors are logged and read as "no row" unless `opts.rethrow` is set — a
+   * read-modify-write caller must pass it, or a failed read would look like a
+   * missing row and the write would replace the user's settings with defaults.
    */
   async getUserPreferences(
     userId: number,
@@ -246,28 +252,14 @@ export class NotificationsRepository extends BaseRepository {
 
     try {
       const { userNotificationPreferences } = this.tables;
-      const whereClause = sourceId
-        ? and(
-            eq(userNotificationPreferences.userId, userId),
-            eq(userNotificationPreferences.sourceId, sourceId)
-          )
-        : eq(userNotificationPreferences.userId, userId);
-      // Deterministic tie-break when no sourceId is given and a user has rows
-      // for multiple sources: '' (the legacy/default row) sorts first in all
-      // three dialects, so callers that don't specify a source consistently
-      // see the same row rather than whichever the query planner returns.
-      const rows = sourceId
-        ? await this.db
-            .select()
-            .from(userNotificationPreferences)
-            .where(whereClause)
-            .limit(1)
-        : await this.db
-            .select()
-            .from(userNotificationPreferences)
-            .where(whereClause)
-            .orderBy(asc(userNotificationPreferences.sourceId))
-            .limit(1);
+      const rows = await this.db
+        .select()
+        .from(userNotificationPreferences)
+        .where(and(
+          eq(userNotificationPreferences.userId, userId),
+          eq(userNotificationPreferences.sourceId, sourceId ?? ''),
+        ))
+        .limit(1);
 
       if (rows.length === 0) {
         return null;
@@ -511,10 +503,9 @@ export class NotificationsRepository extends BaseRepository {
    * Preference rows for every user who has waypoint alerts enabled on at least
    * one row (#4750).
    *
-   * Returns ALL of that user's rows, not just the flagged one, for the same
-   * split-row reason as the two queries below it (#4020): a user's flag may
-   * live on the legacy '' row while their radius and centre were saved later
-   * against a real source id. The caller resolves which row wins per concern.
+   * Returns ALL of that user's rows. The caller (`resolveUserSettings`) keeps
+   * only the row saved for the waypoint's own source: waypoint alerts are a
+   * per-source switch and one source never borrows another's.
    */
   async getUsersWithWaypointNotifications(): Promise<Array<{
     userId: number;
@@ -1353,25 +1344,31 @@ export class NotificationsRepository extends BaseRepository {
       }
     };
 
+    // A column this backend lacks (an older schema) reads as the built-in
+    // default, from the one shared definition.
+    const d = defaultNotificationPreferences();
+    const boolOr = (value: unknown, fallback: boolean): boolean =>
+      value !== undefined ? Boolean(value) : fallback;
+
     return {
       enableWebPush: Boolean(row.notifyOnMessage),
       enableApprise: Boolean(row.appriseEnabled),
       enabledChannels: parseJsonArray(row.enabledChannels) as number[],
       enableDirectMessages: Boolean(row.notifyOnDirectMessage),
-      notifyOnEmoji: row.notifyOnEmoji !== undefined ? Boolean(row.notifyOnEmoji) : true,
-      notifyOnMqtt: row.notifyOnMqtt !== undefined ? Boolean(row.notifyOnMqtt) : true,
-      notifyOnNewNode: row.notifyOnNewNode !== undefined ? Boolean(row.notifyOnNewNode) : true,
-      notifyOnTraceroute: row.notifyOnTraceroute !== undefined ? Boolean(row.notifyOnTraceroute) : true,
-      notifyOnInactiveNode: row.notifyOnInactiveNode !== undefined ? Boolean(row.notifyOnInactiveNode) : false,
-      notifyOnLowBattery: row.notifyOnLowBattery !== undefined ? Boolean(row.notifyOnLowBattery) : false,
-      lowBatteryThreshold: row.lowBatteryThreshold != null ? Number(row.lowBatteryThreshold) : 20,
-      lowBatteryVoltageThreshold: row.lowBatteryVoltageThreshold != null ? Number(row.lowBatteryVoltageThreshold) : 3300,
-      notifyOnServerEvents: row.notifyOnServerEvents !== undefined ? Boolean(row.notifyOnServerEvents) : false,
-      notifyOnWaypoint: row.notifyOnWaypoint !== undefined ? Boolean(row.notifyOnWaypoint) : false,
-      waypointRadiusKm: row.waypointRadiusKm != null ? Number(row.waypointRadiusKm) : 10,
+      notifyOnEmoji: boolOr(row.notifyOnEmoji, d.notifyOnEmoji),
+      notifyOnMqtt: boolOr(row.notifyOnMqtt, d.notifyOnMqtt),
+      notifyOnNewNode: boolOr(row.notifyOnNewNode, d.notifyOnNewNode),
+      notifyOnTraceroute: boolOr(row.notifyOnTraceroute, d.notifyOnTraceroute),
+      notifyOnInactiveNode: boolOr(row.notifyOnInactiveNode, d.notifyOnInactiveNode),
+      notifyOnLowBattery: boolOr(row.notifyOnLowBattery, d.notifyOnLowBattery),
+      lowBatteryThreshold: row.lowBatteryThreshold != null ? Number(row.lowBatteryThreshold) : d.lowBatteryThreshold,
+      lowBatteryVoltageThreshold: row.lowBatteryVoltageThreshold != null ? Number(row.lowBatteryVoltageThreshold) : d.lowBatteryVoltageThreshold,
+      notifyOnServerEvents: boolOr(row.notifyOnServerEvents, d.notifyOnServerEvents),
+      notifyOnWaypoint: boolOr(row.notifyOnWaypoint, d.notifyOnWaypoint),
+      waypointRadiusKm: row.waypointRadiusKm != null ? Number(row.waypointRadiusKm) : d.waypointRadiusKm,
       waypointCenterLat: row.waypointCenterLat != null ? Number(row.waypointCenterLat) : null,
       waypointCenterLon: row.waypointCenterLon != null ? Number(row.waypointCenterLon) : null,
-      prefixWithNodeName: row.prefixWithNodeName !== undefined ? Boolean(row.prefixWithNodeName) : false,
+      prefixWithNodeName: boolOr(row.prefixWithNodeName, d.prefixWithNodeName),
       monitoredNodes: parseJsonArray(row.monitoredNodes) as string[],
       whitelist: parseJsonArray(row.whitelist) as string[],
       blacklist: parseJsonArray(row.blacklist) as string[],

@@ -609,7 +609,7 @@ class PushNotificationService {
       }
 
       // Apply node name prefix if user has it enabled
-      const prefixedBody = await applyNodeNamePrefixAsync(userId, payload.body, localNodeName);
+      const prefixedBody = await applyNodeNamePrefixAsync(userId, payload.body, localNodeName, effectiveSourceId);
       const notificationPayload = prefixedBody !== payload.body
         ? { ...payload, body: prefixedBody }
         : payload;

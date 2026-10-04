@@ -74,19 +74,38 @@ describe('resolveUserSettings', () => {
     expect(resolveUserSettings([prefRow({ notifyOnWaypoint: false })], SOURCE)).toEqual([]);
   });
 
-  it('keeps a user flagged on ANY row, per the #4020 split-row rule', () => {
+  // No cross-source borrowing: only the row saved for the waypoint's own
+  // source counts. (These three used to assert the opposite — "any row true",
+  // values from the '' row or the user's first row.)
+  it('does not alert on a source whose own row has the flag off, whatever another row says', () => {
     const rows = [
-      prefRow({ sourceId: '', notifyOnWaypoint: true, waypointRadiusKm: null, waypointCenterLat: null, waypointCenterLon: null }),
+      prefRow({ sourceId: '', notifyOnWaypoint: true, waypointRadiusKm: 3 }),
+      prefRow({ sourceId: 'other-source', notifyOnWaypoint: true, waypointRadiusKm: 500 }),
       prefRow({ sourceId: SOURCE, notifyOnWaypoint: false, waypointRadiusKm: 25 }),
     ];
-    const [resolved] = resolveUserSettings(rows, SOURCE);
-    // Exact-source row wins for the VALUE even though the flag came from ''.
-    expect(resolved.radiusKm).toBe(25);
+    expect(resolveUserSettings(rows, SOURCE)).toEqual([]);
   });
 
-  it('falls back to the legacy blank-source row when there is no exact match', () => {
-    const rows = [prefRow({ sourceId: '', waypointRadiusKm: 3 })];
-    expect(resolveUserSettings(rows, SOURCE)[0].radiusKm).toBe(3);
+  it('does not alert on a source the user never configured', () => {
+    const rows = [
+      prefRow({ sourceId: 'other-source', notifyOnWaypoint: true, waypointRadiusKm: 500, waypointCenterLat: 1, waypointCenterLon: 2 }),
+      prefRow({ sourceId: '', notifyOnWaypoint: true, waypointRadiusKm: 3 }),
+    ];
+    expect(resolveUserSettings(rows, SOURCE)).toEqual([]);
+  });
+
+  it('measures with the exact source row, never another row of the same user', () => {
+    const rows = [
+      prefRow({ sourceId: 'a-first-by-sort', notifyOnWaypoint: true, waypointRadiusKm: 500, waypointCenterLat: 1, waypointCenterLon: 2 }),
+      prefRow({ sourceId: SOURCE, notifyOnWaypoint: true, waypointRadiusKm: 25, waypointCenterLat: null, waypointCenterLon: null }),
+    ];
+    expect(resolveUserSettings(rows, SOURCE)).toEqual([
+      { userId: 1, radiusKm: 25, centerLat: null, centerLon: null },
+    ]);
+    // And the other source still resolves from its own row.
+    expect(resolveUserSettings(rows, 'a-first-by-sort')).toEqual([
+      { userId: 1, radiusKm: 500, centerLat: 1, centerLon: 2 },
+    ]);
   });
 
   it('substitutes the default radius for a null or non-positive one', () => {

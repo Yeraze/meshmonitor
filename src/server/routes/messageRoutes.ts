@@ -1187,12 +1187,13 @@ router.get('/unread-counts', optionalAuth(), async (req, res) => {
 /**
  * The channel and DM mutes currently in force for a user on one source.
  *
- * Reads the same row as push/Apprise filtering (`shouldFilterNotificationAsync`
- * → `getUserNotificationPreferencesAsync(userId, sourceId)`): the per-source
- * row when one exists, else the user's '' (default) row. Before #5487 this read
- * the '' row unconditionally, so a badge and a push could disagree about
- * whether a channel was muted. `sourceId` undefined (a cross-source view) reads
- * the '' row, as before.
+ * Reads the same preferences as push/Apprise filtering
+ * (`shouldFilterNotificationAsync` → `getUserNotificationPreferencesAsync(userId,
+ * sourceId)`), so a badge and a push agree about whether a channel is muted:
+ * the row saved for this source, else the built-in defaults plus — on a
+ * Meshtastic source — the active mutes on the user's legacy '' row (#5487).
+ * Never another source's row. `sourceId` undefined (a cross-source view) reads
+ * the '' row.
  */
 async function loadActiveMutes(
   userId: number | null,

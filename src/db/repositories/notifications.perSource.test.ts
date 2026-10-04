@@ -158,4 +158,59 @@ describe('NotificationsRepository — per-source isolation (#4020)', () => {
     expect(user2Rows[0].prefs.enableApprise).toBe(true);
     expect(user2Rows[0].prefs.enableWebPush).toBe(false);
   });
+
+  /**
+   * One case per preference field: a value saved for source-a must not show
+   * on source-b (which has its own row), on a source with no row, or on a read
+   * with no source at all. Before the fix the last two returned source-a's row.
+   */
+  describe('every preference field is per source', () => {
+    const FIELD_CASES: Array<[keyof NotificationPreferences, unknown, unknown]> = [
+      // field, value saved on source-a, value saved on source-b
+      ['enableWebPush', true, false],
+      ['enableApprise', true, false],
+      ['enabledChannels', [0, 3], [5]],
+      ['enableDirectMessages', true, false],
+      ['notifyOnEmoji', true, false],
+      ['notifyOnMqtt', true, false],
+      ['notifyOnNewNode', true, false],
+      ['notifyOnTraceroute', true, false],
+      ['notifyOnInactiveNode', true, false],
+      ['notifyOnLowBattery', true, false],
+      ['lowBatteryThreshold', 7, 33],
+      ['lowBatteryVoltageThreshold', 3111, 3555],
+      ['notifyOnServerEvents', true, false],
+      ['notifyOnWaypoint', true, false],
+      ['waypointRadiusKm', 42, 9],
+      ['waypointCenterLat', 12.5, null],
+      ['waypointCenterLon', -45.25, null],
+      ['prefixWithNodeName', true, false],
+      ['monitoredNodes', ['!aaaa0001'], ['!bbbb0001']],
+      ['whitelist', ['alpha'], ['bravo']],
+      ['blacklist', ['spam-a'], []],
+      ['appriseUrls', ['mailto://a@example.com'], []],
+      ['mutedChannels', [{ channelId: 3, muteUntil: null }], []],
+      ['mutedDMs', [{ nodeUuid: '!aaaa0002', muteUntil: null }], [{ nodeUuid: '!bbbb0003', muteUntil: null }]],
+      ['messageTitleTemplate', 'A {{ sender }}', null],
+      ['messageBodyTemplate', 'A {{ text }}', 'B {{ text }}'],
+    ];
+
+    it('covers every field of NotificationPreferences', async () => {
+      await repo.saveUserPreferences(1, makeDefaultPrefs(), 'source-a');
+      const stored = await repo.getUserPreferences(1, 'source-a');
+      expect(FIELD_CASES.map(([field]) => field).sort()).toEqual(Object.keys(stored!).sort());
+    });
+
+    it.each(FIELD_CASES)('%s', async (field, valueA, valueB) => {
+      await repo.saveUserPreferences(1, makeDefaultPrefs({ [field]: valueA }), 'source-a');
+      await repo.saveUserPreferences(1, makeDefaultPrefs({ [field]: valueB }), 'source-b');
+
+      expect((await repo.getUserPreferences(1, 'source-a'))![field]).toEqual(valueA);
+      expect((await repo.getUserPreferences(1, 'source-b'))![field]).toEqual(valueB);
+      // No row for this source, and no source at all: a miss, not source-a's row.
+      expect(await repo.getUserPreferences(1, 'source-c')).toBeNull();
+      expect(await repo.getUserPreferences(1)).toBeNull();
+      expect(await repo.getUserPreferences(1, '')).toBeNull();
+    });
+  });
 });

@@ -594,7 +594,7 @@ class AppriseNotificationService {
       // whose URLs we're sending to).
       const bodyToSend = targetUserId !== undefined
         ? (prefixWithNodeName && localNodeName ? `[${localNodeName}] ${payload.body}` : payload.body)
-        : await applyNodeNamePrefixAsync(userId, payload.body, localNodeName);
+        : await applyNodeNamePrefixAsync(userId, payload.body, localNodeName, effectiveSourceId);
       const notificationPayload = bodyToSend !== payload.body
         ? { ...payload, body: bodyToSend }
         : payload;

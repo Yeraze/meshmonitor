@@ -15,6 +15,7 @@ import {
 import { UiIcon } from './icons';
 import NotificationFormatSection from './NotificationFormatSection';
 import styles from './NotificationsTab.module.css';
+import { defaultNotificationPreferences } from '../utils/notificationDefaults';
 
 type StatusTone = 'info' | 'success' | 'warning' | 'error';
 interface StatusFeedback {
@@ -134,32 +135,12 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
 
   // Notification preferences
   const [channels, setChannels] = useState<Channel[]>([]);
-  const [preferences, setPreferences] = useState<NotificationPreferences>({
-    enableWebPush: false,
-    enableApprise: false,
-    enabledChannels: [],
-    enableDirectMessages: true,
-    notifyOnEmoji: true,
-    notifyOnMqtt: true,
-    notifyOnNewNode: true,
-    notifyOnTraceroute: true,
-    notifyOnInactiveNode: false,
-    notifyOnLowBattery: false,
-    lowBatteryThreshold: 20,
-    lowBatteryVoltageThreshold: 3300,
-    notifyOnWaypoint: false,
-    waypointRadiusKm: 10,
-    waypointCenterLat: null,
-    waypointCenterLon: null,
-    notifyOnServerEvents: false,
-    prefixWithNodeName: false,
-    monitoredNodes: [],
-    whitelist: ['Hi', 'Help'],
-    blacklist: ['Test', 'Copy'],
-    appriseUrls: [],
-    messageTitleTemplate: null,
-    messageBodyTemplate: null
-  });
+  // Starts from the app's one definition of the built-in defaults, the same
+  // one the server answers with for a source that has no saved settings.
+  const [preferences, setPreferences] = useState<NotificationPreferences>(() => defaultNotificationPreferences());
+  // Nothing is saved for this source yet: the values shown are the built-in
+  // defaults, not another source's settings. The first save creates the row.
+  const [usingDefaults, setUsingDefaults] = useState(false);
   const [whitelistText, setWhitelistText] = useState('Hi\nHelp');
   const [blacklistText, setBlacklistText] = useState('Test\nCopy');
   const [isSavingPreferences, setIsSavingPreferences] = useState(false);
@@ -345,8 +326,10 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
   const loadPreferences = async () => {
     try {
       const qs = currentSourceId ? `?sourceId=${encodeURIComponent(currentSourceId)}` : '';
-      const response = await api.get<NotificationPreferences>(`/api/push/preferences${qs}`);
+      const { usingDefaults: responseUsingDefaults, ...response } =
+        await api.get<NotificationPreferences & { usingDefaults?: boolean }>(`/api/push/preferences${qs}`);
 
+      setUsingDefaults(responseUsingDefaults === true);
       setPreferences(prev => ({ ...prev, ...response }));
       setWhitelistText(response.whitelist.join('\n'));
       setBlacklistText(response.blacklist.join('\n'));
@@ -408,6 +391,7 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
         sourceId: currentSourceId ?? undefined,
       });
       setPreferences(prefs);
+      setUsingDefaults(false);
       logger.info('Notification preferences saved');
       showToast(t('notifications.preferences_saved'), 'success');
     } catch (error) {
@@ -692,6 +676,17 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
         noMatchesLabel={t('config_search.no_sections', 'No matching sections')}
         items={notificationsNavItems(t)}
       />
+
+      {usingDefaults && currentSourceId && (
+        <p
+          className={styles.defaultsNotice}
+          role="status"
+          style={{ display: 'flex', alignItems: 'flex-start', gap: '8px', margin: '0 0 16px', padding: '10px 12px', borderRadius: '6px', fontSize: '14px' }}
+        >
+          <UiIcon name="info" size={16} />
+          <span>{t('notifications.using_defaults_notice')}</span>
+        </p>
+      )}
 
       {/* ========================================
           SECTION 1: Notification Services & Filtering (Top)

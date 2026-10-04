@@ -1012,24 +1012,137 @@ function runNotificationsTests(getBackend: () => TestBackend) {
     });
   });
 
-  // ============ getUserPreferences determinism (no sourceId given) ============
+  // ============ getUserPreferences never crosses sources ============
 
-  describe('getUserPreferences — determinism without a sourceId (#4020)', () => {
-    it('prefers the \'\' row over a named-source row when no sourceId is given', async () => {
+  describe('getUserPreferences — exact source only, never another source\'s row', () => {
+    // Every field set away from its default and away from the other row, so a
+    // read that returned the wrong row would show in any one of them.
+    const ROW_A: NotificationPreferences = {
+      enableWebPush: false,
+      enableApprise: true,
+      enabledChannels: [0, 3],
+      enableDirectMessages: false,
+      notifyOnEmoji: false,
+      notifyOnMqtt: false,
+      notifyOnNewNode: false,
+      notifyOnTraceroute: false,
+      notifyOnInactiveNode: true,
+      notifyOnLowBattery: true,
+      lowBatteryThreshold: 7,
+      lowBatteryVoltageThreshold: 3111,
+      notifyOnServerEvents: true,
+      notifyOnWaypoint: true,
+      waypointRadiusKm: 42,
+      waypointCenterLat: 12.5,
+      waypointCenterLon: -45.25,
+      prefixWithNodeName: true,
+      monitoredNodes: ['!aaaa0001'],
+      whitelist: ['alpha'],
+      blacklist: ['spam-a'],
+      appriseUrls: ['mailto://a@example.com'],
+      mutedChannels: [{ channelId: 3, muteUntil: null }],
+      mutedDMs: [{ nodeUuid: '!aaaa0002', muteUntil: null }],
+      messageTitleTemplate: 'A {{ sender }}',
+      messageBodyTemplate: 'A {{ text }}',
+    };
+    const ROW_B: NotificationPreferences = {
+      enableWebPush: true,
+      enableApprise: false,
+      enabledChannels: [5],
+      enableDirectMessages: true,
+      notifyOnEmoji: true,
+      notifyOnMqtt: true,
+      notifyOnNewNode: true,
+      notifyOnTraceroute: true,
+      notifyOnInactiveNode: false,
+      notifyOnLowBattery: false,
+      lowBatteryThreshold: 33,
+      lowBatteryVoltageThreshold: 3555,
+      notifyOnServerEvents: false,
+      notifyOnWaypoint: false,
+      waypointRadiusKm: 9,
+      waypointCenterLat: null,
+      waypointCenterLon: null,
+      prefixWithNodeName: false,
+      monitoredNodes: ['!bbbb0001', '!bbbb0002'],
+      whitelist: ['bravo'],
+      blacklist: [],
+      appriseUrls: [],
+      mutedChannels: [],
+      mutedDMs: [{ nodeUuid: '!bbbb0003', muteUntil: 4102444800000 }],
+      messageTitleTemplate: null,
+      messageBodyTemplate: 'B {{ text }}',
+    };
+
+    it('an empty or missing sourceId never returns a source\'s row', async () => {
       const backend = getBackend();
       if (!backend.available) { console.log(`⚠ Skipped: ${backend.skipReason}`); return; }
 
-      await backend.exec(insertUserSql(backend, 1, 'determinism_user'));
-      // Insert the named-source row FIRST so a non-deterministic query would
-      // be tempted to return whichever row got inserted first / has the
-      // lowest primary key, rather than the '' row.
-      await repo.saveUserPreferences(1, makeDefaultPrefs({ enableApprise: true }), 'mc-x');
-      await repo.saveUserPreferences(1, makeDefaultPrefs({ enableWebPush: true, enableApprise: false }), '');
+      await backend.exec(insertUserSql(backend, 1, 'exact_user'));
+      // The only row this user has belongs to a source. The old read dropped
+      // the source filter for '' / undefined and handed this row back.
+      await repo.saveUserPreferences(1, ROW_A, 'src-a');
 
-      const result = await repo.getUserPreferences(1, undefined);
-      expect(result).not.toBeNull();
-      expect(result!.enableWebPush).toBe(true);
-      expect(result!.enableApprise).toBe(false);
+      expect(await repo.getUserPreferences(1)).toBeNull();
+      expect(await repo.getUserPreferences(1, undefined)).toBeNull();
+      expect(await repo.getUserPreferences(1, '')).toBeNull();
+      // A source the user never configured is a miss too, not A's row.
+      expect(await repo.getUserPreferences(1, 'src-b')).toBeNull();
+      // Same with rethrow set (the read-modify-write path).
+      expect(await repo.getUserPreferences(1, '', { rethrow: true })).toBeNull();
+      expect(await repo.getUserPreferences(1, 'src-a')).toEqual(ROW_A);
+    });
+
+    it('reads the unsourced \'\' row only when asked for it', async () => {
+      const backend = getBackend();
+      if (!backend.available) { console.log(`⚠ Skipped: ${backend.skipReason}`); return; }
+
+      await backend.exec(insertUserSql(backend, 1, 'legacy_user'));
+      // Named-source row saved FIRST, so a query without the filter would be
+      // tempted to return the lowest primary key.
+      await repo.saveUserPreferences(1, ROW_A, 'src-a');
+      await repo.saveUserPreferences(1, ROW_B, '');
+
+      expect(await repo.getUserPreferences(1)).toEqual(ROW_B);
+      expect(await repo.getUserPreferences(1, '')).toEqual(ROW_B);
+      expect(await repo.getUserPreferences(1, 'src-a')).toEqual(ROW_A);
+      // The '' row is not a fallback at this layer either.
+      expect(await repo.getUserPreferences(1, 'src-b')).toBeNull();
+    });
+
+    it('keeps every preference field separate per source', async () => {
+      const backend = getBackend();
+      if (!backend.available) { console.log(`⚠ Skipped: ${backend.skipReason}`); return; }
+
+      await backend.exec(insertUserSql(backend, 1, 'two_source_user'));
+      await repo.saveUserPreferences(1, ROW_A, 'src-a');
+      await repo.saveUserPreferences(1, ROW_B, 'src-b');
+
+      const readA = await repo.getUserPreferences(1, 'src-a');
+      const readB = await repo.getUserPreferences(1, 'src-b');
+      expect(readA).toEqual(ROW_A);
+      expect(readB).toEqual(ROW_B);
+      // The two fixtures differ in every field, so the two equalities above
+      // cover each one.
+      const same = (Object.keys(ROW_A) as Array<keyof NotificationPreferences>)
+        .filter(k => JSON.stringify(ROW_A[k]) === JSON.stringify(ROW_B[k]));
+      expect(same).toEqual([]);
+
+      // Rewriting B leaves A alone, field for field.
+      await repo.saveUserPreferences(1, { ...ROW_B, enabledChannels: [8], whitelist: ['changed'] }, 'src-b');
+      expect(await repo.getUserPreferences(1, 'src-a')).toEqual(ROW_A);
+    });
+
+    it('does not hand one user another user\'s row for the same source', async () => {
+      const backend = getBackend();
+      if (!backend.available) { console.log(`⚠ Skipped: ${backend.skipReason}`); return; }
+
+      await backend.exec(insertUserSql(backend, 1, 'owner'));
+      await backend.exec(insertUserSql(backend, 2, 'other'));
+      await repo.saveUserPreferences(1, ROW_A, 'src-a');
+
+      expect(await repo.getUserPreferences(2, 'src-a')).toBeNull();
+      expect(await repo.getUserPreferences(2)).toBeNull();
     });
   });
 
