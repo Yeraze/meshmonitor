@@ -1,0 +1,89 @@
+/* TypedConfirmDialog: confirm for hard-to-undo actions (#5614, #5615). */
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  padding: 1rem 1.5rem 1.5rem;
+}
+
+.body {
+  color: var(--color-text);
+  line-height: 1.5;
+}
+
+.body p {
+  margin: 0 0 0.75rem;
+}
+
+.body ul {
+  margin: 0 0 0.75rem;
+  padding-left: 1.25rem;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.label {
+  color: var(--color-text);
+  font-weight: 600;
+}
+
+.input {
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--color-surface-active);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-family: inherit;
+  font-size: 1rem;
+}
+
+.input:focus {
+  outline: none;
+  border-color: var(--color-accent);
+}
+
+.actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.cancel,
+.confirm {
+  padding: 0.6rem 1.25rem;
+  border: 1px solid var(--color-surface-active);
+  border-radius: var(--radius-sm);
+  font-family: inherit;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.cancel {
+  background: var(--color-surface-hover);
+  color: var(--color-text);
+}
+
+.confirm {
+  background: var(--color-accent);
+  border-color: var(--color-accent);
+  color: var(--color-accent-text);
+}
+
+.danger {
+  background: var(--color-error);
+  border-color: var(--color-error);
+  color: var(--color-accent-text);
+}
+
+.cancel:disabled,
+.confirm:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
