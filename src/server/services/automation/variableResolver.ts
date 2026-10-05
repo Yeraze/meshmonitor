@@ -20,6 +20,8 @@ import {
 export interface VarContext {
   sourceId?: string | null;
   nodeNum?: number | null;
+  /** MeshCore subject public key (#5636); used only when there is no nodeNum. */
+  nodeKey?: string | null;
 }
 
 export interface SetResult {
@@ -51,6 +53,24 @@ export class VariableResolver {
       return enc === null ? null : decodeValue(def.type, enc);
     }
     return null;
+  }
+
+  /**
+   * Would {@link setValue} accept this write? Runs every check it runs —
+   * unknown variable, readonly, missing scope context, value not representable
+   * as the type — and writes nothing. The simulator uses it so a dry run
+   * reports the same failure a real run would (#5636).
+   */
+  async checkSet(name: string, value: unknown, ctx: VarContext): Promise<SetResult> {
+    const def = await this.repo.getVariableByName(name);
+    if (!def) return { ok: false, error: `unknown variable "${name}"` };
+    if (def.readonly) return { ok: false, error: `variable "${name}" is readonly` };
+    const scopeKey = VarsRepo.buildScopeKey(def.scope, ctx);
+    if (scopeKey === null) return { ok: false, error: `missing scope context for "${name}" (${def.scope})` };
+    if (def.type !== 'flag' && encodeValue(def.type, value) === null) {
+      return { ok: false, error: `value not representable as ${def.type}` };
+    }
+    return { ok: true };
   }
 
   /**

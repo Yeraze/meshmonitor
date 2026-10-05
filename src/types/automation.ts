@@ -389,8 +389,213 @@ export interface AutomationGraph {
 export interface ValidationResult {
   valid: boolean;
   errors: string[];
+  /**
+   * Non-blocking findings (#5636): `{{ steps.* }}` references that will, or
+   * may, render empty. Present only when valid and there is something to say.
+   */
+  warnings?: string[];
   /** Present only when valid. */
   graph?: AutomationGraph;
+}
+
+// ─── Run-scoped step outputs (#5636) ─────────────────────────────────────────
+//
+// A step can keep its result for the rest of the SAME run under a name the
+// user gives it (`params.outputName`); later steps read it as
+// `{{ steps.<name>.output }}`. The name is the key, never the node id: the
+// builder regenerates node ids from position on every save (compile.ts).
+
+/** A run-output name: lower-case letter first, then letters, digits or `_`; 1–32 chars. */
+export const STEP_OUTPUT_NAME_PATTERN = /^[a-z][a-z0-9_]{0,31}$/;
+
+/** Most bytes of one step's output kept for the run; longer output is cut. */
+export const STEP_OUTPUT_MAX_BYTES = 64 * 1024;
+
+/** Action types that can store a run output. v1: "Run a script" only. */
+export const STEP_OUTPUT_ACTION_TYPES: readonly ActionType[] = ['action.runScript'];
+
+export function isStepOutputName(raw: unknown): raw is string {
+  return typeof raw === 'string' && STEP_OUTPUT_NAME_PATTERN.test(raw);
+}
+
+/** The run-output name a node stores under, or undefined when it stores none. */
+export function stepOutputNameOf(node: Pick<AutomationNode, 'type' | 'params'>): string | undefined {
+  if (!STEP_OUTPUT_ACTION_TYPES.includes(node.type as ActionType)) return undefined;
+  const name = node.params?.outputName;
+  return isStepOutputName(name) ? name : undefined;
+}
+
+// Mirrors the engine's interpolate TOKEN regex.
+const STEP_REF_TOKEN = /\{\{\s*([^}]+?)\s*\}\}/g;
+
+/** Distinct run-output names that `{{ steps.<name>… }}` tokens in `text` refer to. */
+export function stepOutputRefs(text: string): string[] {
+  if (typeof text !== 'string' || !text.includes('{{')) return [];
+  const names = new Set<string>();
+  for (const m of text.matchAll(STEP_REF_TOKEN)) {
+    const path = m[1].trim();
+    if (!path.startsWith('steps.')) continue;
+    names.add(path.slice('steps.'.length).split('.')[0]);
+  }
+  return [...names];
+}
+
+function collectStrings(value: unknown, out: string[]): void {
+  if (typeof value === 'string') out.push(value);
+  else if (Array.isArray(value)) for (const v of value) collectStrings(v, out);
+  else if (isPlainObject(value)) for (const v of Object.values(value)) collectStrings(v, out);
+}
+
+/** Which run outputs a node can read. */
+export interface StepOutputScope {
+  /** Stored by a step that always runs before this node. */
+  guaranteed: Set<string>;
+  /** Stored by a step that runs before this node on at least one path. */
+  possible: Set<string>;
+}
+
+/**
+ * For every node, the run outputs it can read (#5636). Works on DAG ancestry,
+ * not list order, because rules interleave: a step in Rule 2 never sees an
+ * output stored in Rule 1.
+ *
+ * `guaranteed` follows the evaluator's activation rules (graphEvaluator.ts):
+ * a plain node or an ANY collapse runs when at least one incoming edge is
+ * satisfied, so only what every incoming path has in common is certain; an
+ * ALL collapse needs every edge, so it is certain of them all; NONE / ALWAYS
+ * collapses can run with no satisfied edge, so nothing on the rules is
+ * certain. A step that runs on every event (no condition in front of it) is
+ * certain wherever it is an ancestor.
+ *
+ * Expects a structurally valid DAG; on a cyclic graph the nodes on the cycle
+ * get empty scopes.
+ */
+export function stepOutputScopes(graph: Pick<AutomationGraph, 'nodes' | 'edges'>): Map<string, StepOutputScope> {
+  const nodes = Array.isArray(graph.nodes) ? graph.nodes : [];
+  const edges = Array.isArray(graph.edges) ? graph.edges : [];
+  const byId = new Map(nodes.map((n) => [n.id, n]));
+  const incoming = new Map<string, string[]>();
+  const outgoing = new Map<string, string[]>();
+  const indeg = new Map<string, number>();
+  for (const n of nodes) { incoming.set(n.id, []); outgoing.set(n.id, []); indeg.set(n.id, 0); }
+  for (const e of edges) {
+    if (!byId.has(e.from) || !byId.has(e.to)) continue;
+    incoming.get(e.to)!.push(e.from);
+    outgoing.get(e.from)!.push(e.to);
+    indeg.set(e.to, (indeg.get(e.to) ?? 0) + 1);
+  }
+  const order: string[] = [];
+  const queue = nodes.filter((n) => (indeg.get(n.id) ?? 0) === 0).map((n) => n.id);
+  while (queue.length) {
+    const u = queue.shift()!;
+    order.push(u);
+    for (const v of outgoing.get(u) ?? []) {
+      indeg.set(v, (indeg.get(v) ?? 0) - 1);
+      if (indeg.get(v) === 0) queue.push(v);
+    }
+  }
+
+  const isCondition = (id: string) => categoryOf(byId.get(id)!.type) === 'condition';
+  const ancestors = new Map<string, Set<string>>();
+  const certain = new Map<string, Set<string>>();
+  /** Nodes that run on every event. */
+  const always = new Set<string>();
+
+  for (const id of order) {
+    const node = byId.get(id)!;
+    const preds = incoming.get(id) ?? [];
+    const anc = new Set<string>();
+    for (const p of preds) { anc.add(p); for (const a of ancestors.get(p) ?? []) anc.add(a); }
+    ancestors.set(id, anc);
+
+    const mode = node.type === 'flow.collapse' ? ((node.params?.mode as CollapseMode) ?? 'ANY') : null;
+    const sureEdges = preds.filter((p) => always.has(p) && !isCondition(p)).length;
+    if (preds.length === 0) {
+      if (categoryOf(node.type) === 'trigger') always.add(id);
+    } else if (mode === 'ALWAYS') always.add(id);
+    else if (mode === 'ALL') { if (sureEdges === preds.length) always.add(id); }
+    else if (mode !== 'NONE' && sureEdges >= 1) always.add(id);
+
+    const viaEdge = preds.map((p) => new Set<string>([p, ...(certain.get(p) ?? [])]));
+    let sure = new Set<string>();
+    if (mode === 'ALL') {
+      for (const s of viaEdge) for (const x of s) sure.add(x);
+    } else if (mode !== 'NONE' && mode !== 'ALWAYS' && viaEdge.length > 0) {
+      sure = new Set([...viaEdge[0]].filter((x) => viaEdge.every((s) => s.has(x))));
+    }
+    for (const a of anc) if (always.has(a)) sure.add(a);
+    certain.set(id, sure);
+  }
+
+  const nameOf = new Map<string, string>();
+  for (const n of nodes) { const name = stepOutputNameOf(n); if (name) nameOf.set(n.id, name); }
+  const names = (ids: Set<string> | undefined) =>
+    new Set([...(ids ?? [])].map((x) => nameOf.get(x)).filter((x): x is string => x !== undefined));
+  const scopes = new Map<string, StepOutputScope>();
+  for (const n of nodes) {
+    scopes.set(n.id, { guaranteed: names(certain.get(n.id)), possible: names(ancestors.get(n.id)) });
+  }
+  return scopes;
+}
+
+export type StepOutputRefProblem = 'unknown' | 'notBefore' | 'maybe';
+
+/**
+ * Why `{{ steps.<name>… }}` read from a node with `scope` will, or may, render
+ * empty; undefined when the output is certain to be there. `allNames` is every
+ * run-output name in the automation.
+ */
+export function stepOutputRefProblem(
+  name: string,
+  scope: StepOutputScope | undefined,
+  allNames: ReadonlySet<string>,
+): StepOutputRefProblem | undefined {
+  if (!allNames.has(name)) return 'unknown';
+  if (!scope || !scope.possible.has(name)) return 'notBefore';
+  return scope.guaranteed.has(name) ? undefined : 'maybe';
+}
+
+/** Builder / validation copy for a {@link StepOutputRefProblem}. */
+export function stepOutputProblemDetail(problem: StepOutputRefProblem, name: string): string {
+  if (problem === 'unknown') return `is always empty: no step stores its output as "${name}"`;
+  if (problem === 'notBefore') return `is always empty: the step that stores "${name}" does not run before this one`;
+  return `may be empty: the step that stores "${name}" does not always run before this one`;
+}
+
+export interface StepOutputDiagnostic {
+  nodeId: string;
+  name: string;
+  /** 'error' = always empty; 'warn' = may be empty. */
+  severity: 'error' | 'warn';
+  message: string;
+}
+
+/** Every `{{ steps.* }}` reference in `graph` that will, or may, render empty (#5636). */
+export function analyzeStepOutputRefs(graph: Pick<AutomationGraph, 'nodes' | 'edges'>): StepOutputDiagnostic[] {
+  const scopes = stepOutputScopes(graph);
+  const allNames = new Set<string>();
+  for (const n of graph.nodes ?? []) { const name = stepOutputNameOf(n); if (name) allNames.add(name); }
+  const out: StepOutputDiagnostic[] = [];
+  for (const n of graph.nodes ?? []) {
+    const strings: string[] = [];
+    collectStrings(n.params ?? {}, strings);
+    const seen = new Set<string>();
+    for (const s of strings) {
+      for (const name of stepOutputRefs(s)) {
+        if (seen.has(name)) continue;
+        seen.add(name);
+        const problem = stepOutputRefProblem(name, scopes.get(n.id), allNames);
+        if (!problem) continue;
+        out.push({
+          nodeId: n.id,
+          name,
+          severity: problem === 'maybe' ? 'warn' : 'error',
+          message: `${n.type} "${n.id}": {{ steps.${name} }} ${stepOutputProblemDetail(problem, name)}`,
+        });
+      }
+    }
+  }
+  return out;
 }
 
 /**
@@ -566,8 +771,24 @@ export function validateAutomationGraph(input: unknown): ValidationResult {
 
   // ── light per-block param checks ──
   if (errors.length === 0) {
+    /** Run-output names seen so far → the node that took each (#5636). */
+    const outputNames = new Map<string, string>();
     for (const n of rawNodes as AutomationNode[]) {
       const p = (n.params ?? {}) as Record<string, unknown>;
+      // Run-scoped step output (#5636). Optional; absent/blank = store nothing
+      // for the run. The name is what later steps read, so it must be
+      // well-formed and unique within the automation.
+      if (p.outputName != null && p.outputName !== '') {
+        if (!STEP_OUTPUT_ACTION_TYPES.includes(n.type as ActionType)) {
+          errors.push(`${n.type} "${n.id}" cannot store a run output (params.outputName); only action.runScript can`);
+        } else if (!isStepOutputName(p.outputName)) {
+          errors.push(`${n.type} "${n.id}" requires params.outputName to be 1–32 characters: a lower-case letter, then lower-case letters, digits or _`);
+        } else if (outputNames.has(p.outputName)) {
+          errors.push(`${n.type} "${n.id}" reuses the run output name "${p.outputName}" (already used by "${outputNames.get(p.outputName)}"); names must be unique within an automation`);
+        } else {
+          outputNames.set(p.outputName, n.id);
+        }
+      }
       // Cooldown scope (#4340 Phase 2) is a trigger-level param every trigger type
       // shares, so it is checked once here rather than duplicated into seven cases
       // (which would silently miss any trigger type added later). Optional:
@@ -800,5 +1021,9 @@ export function validateAutomationGraph(input: unknown): ValidationResult {
   if (errors.length > 0) {
     return { valid: false, errors };
   }
-  return { valid: true, errors: [], graph: input as unknown as AutomationGraph };
+  const graph = input as unknown as AutomationGraph;
+  // Non-blocking, like the builder's token hints: an empty reference is safe
+  // (it renders '' and an empty message is not sent), so it must not stop a save.
+  const warnings = analyzeStepOutputRefs(graph).map((d) => d.message);
+  return { valid: true, errors: [], ...(warnings.length > 0 ? { warnings } : {}), graph };
 }
