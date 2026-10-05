@@ -32,9 +32,13 @@ import { ok, fail } from '../utils/apiResponse.js';
 import { normalizeBrokerUrl } from '../transports/mqttBrokerClient.js';
 import { observerBrokerKey } from '../meshcoreConfig.js';
 import { getForwardingSummary } from '../services/forwardingStateService.js';
+import { getMeshCoreObserverCredentialStore } from '../services/meshcoreObserverCredentialStore.js';
 import {
   mayViewSourceEndpoint,
+  maskSourceConfigForEditor,
+  mergeSourceConfigOnSave,
   projectSourceConfig,
+  sameUrlEndpoint,
   resolveSourceConfigAudience,
   type SourceConfigAudience,
 } from '../utils/sourceConfigRedaction.js';
@@ -635,12 +639,18 @@ function validateMqttBridgeRewrites(config: Record<string, any>): string | null 
 }
 
 // Restore credentials the edit UI intentionally omitted from the save
-// payload. The source-edit form clears the password field on load (the GET
-// endpoint strips it for non-admins) and drops the field from the PUT body
-// when the user did not type a new one, expecting the server to round-trip
-// the stored value. Without this merge, editing an unrelated field (e.g.
-// the geofence bounding box) writes back a config with no password and
-// wipes the saved credential.
+// payload. The source-edit form never seeds a password or token field and
+// drops it from the PUT body when the user did not type a new one, expecting
+// the server to keep the stored value. Without this merge, editing an
+// unrelated field writes back a config with no password and wipes the saved
+// credential.
+//
+// This is the ADMIN form of the merge: a missing or blank credential keeps the
+// stored one, `null` clears it. Which fields are credentials comes from the
+// typed spec in utils/sourceConfigRedaction.ts, so a new one is covered as soon
+// as it is classified. A non-admin editor goes through the stricter
+// `mergeSourceConfigOnSave(..., 'editor')` in the PUT handler below.
+//
 // Exported for direct unit testing: a missing branch here silently WIPES a
 // stored credential on the next save, which is invisible in a route-level test
 // unless you assert on the persisted config. See sourceRoutes.credentials.test.ts.
@@ -649,42 +659,7 @@ export function preserveSourceCredentials(
   existingConfig: Record<string, unknown> | undefined,
   incomingConfig: Record<string, unknown>,
 ): Record<string, unknown> {
-  const merged: Record<string, unknown> = { ...incomingConfig };
-  if (type === 'mqtt_broker') {
-    const existingAuth = (existingConfig as any)?.auth;
-    const incomingAuth = (incomingConfig as any)?.auth;
-    if (
-      existingAuth?.password &&
-      incomingAuth && typeof incomingAuth === 'object' &&
-      (incomingAuth.password === undefined || incomingAuth.password === '')
-    ) {
-      merged.auth = { ...incomingAuth, password: existingAuth.password };
-    }
-  } else if (type === 'mqtt_bridge') {
-    const existingUpstream = (existingConfig as any)?.upstream;
-    const incomingUpstream = (incomingConfig as any)?.upstream;
-    if (
-      existingUpstream?.password &&
-      incomingUpstream && typeof incomingUpstream === 'object' &&
-      (incomingUpstream.password === undefined || incomingUpstream.password === '')
-    ) {
-      merged.upstream = { ...incomingUpstream, password: existingUpstream.password };
-    }
-  } else if (type === 'meshcore_mqtt') {
-    // Top-level `password` rather than a nested auth block (#5040). The edit
-    // form OMITS the field when left blank rather than sending '', so check for
-    // absence as well as empty string — without this the whole config object is
-    // replaced and the stored credential is silently dropped on every save.
-    const existingPassword = (existingConfig as { password?: unknown } | undefined)?.password;
-    const incomingPassword = (incomingConfig as { password?: unknown }).password;
-    if (
-      typeof existingPassword === 'string' && existingPassword !== '' &&
-      (incomingPassword === undefined || incomingPassword === '')
-    ) {
-      merged.password = existingPassword;
-    }
-  }
-  return merged;
+  return mergeSourceConfigOnSave(type, existingConfig, incomingConfig, 'admin');
 }
 
 // Shared by stripObserverKeyMaterial for both the block itself and every
@@ -726,10 +701,12 @@ function stripObserverKeyMaterial<T extends Record<string, unknown>>(cfg: T): T 
 //   admin   the full config, so the source-edit form round-trips it. Observer
 //           key material is still removed: it never leaves the process.
 //   editor  a signed-in non-admin holding `sources:write`. They save the whole
-//           config back through PUT, so they get every field except the
-//           passwords — `preserveSourceCredentials` restores those when the
-//           form leaves them blank. Withholding more here would make their
-//           next save drop it.
+//           config back through PUT, so they get every classified field, with
+//           each credential masked: passwords and tokens are left out, URLs
+//           lose their credentials, query string and fragment. The paths of
+//           the masked fields go out as `maskedConfigFields`, so the form can
+//           say a value is stored. The PUT handler keeps the stored value for
+//           a masked field the editor did not touch.
 //   viewer  a signed-in non-admin holding `sources:read`: the allowlist in
 //           utils/sourceConfigRedaction.ts, connection endpoints included.
 //   public  everyone else, signed in or not: the allowlist without endpoints.
@@ -750,17 +727,8 @@ function redactSourceForCaller<T extends { type?: unknown; config?: unknown } | 
   }
   const baseCfg = stripObserverKeyMaterial((source.config as Record<string, unknown> | null | undefined) ?? {});
   if (audience === 'admin') return { ...source, config: baseCfg };
-  const { password, apiKey, ...rest } = baseCfg;
-  void password;
-  void apiKey;
-  // mqtt_broker and mqtt_bridge nest their credentials inside sub-objects.
-  if (rest.auth && typeof rest.auth === 'object') {
-    rest.auth = { ...rest.auth, password: undefined };
-  }
-  if (rest.upstream && typeof rest.upstream === 'object') {
-    rest.upstream = { ...rest.upstream, password: undefined };
-  }
-  return { ...source, config: rest };
+  const { config, masked } = maskSourceConfigForEditor(String(source.type ?? ''), baseCfg);
+  return { ...source, config, maskedConfigFields: masked };
 }
 
 // Public, non-secret per-source radio summary attached to GET /api/sources
@@ -1172,21 +1140,59 @@ async function restartMeshCoreMqttManager(
 
 router.put('/:id', requirePermission('sources', 'write'), async (req: Request, res: Response) => {
   try {
-    const { name, config, enabled } = req.body;
     const existing = await databaseService.sources.getSource(req.params.id);
     if (!existing) {
       return res.status(404).json({ error: 'Source not found' });
     }
 
+    const { name, enabled } = req.body;
+    const incomingConfig = req.body.config;
+    if (incomingConfig !== undefined && (!incomingConfig || typeof incomingConfig !== 'object' || Array.isArray(incomingConfig))) {
+      return res.status(400).json({ error: 'config must be an object' });
+    }
+
+    // What gets stored: the saved config with every credential the caller was
+    // not shown, or left blank, put back from the stored one. An admin was
+    // shown everything; anyone else saved the masked config. Everything below
+    // validates and compares THIS config — it is what the row will hold.
+    const audience = await resolveSourceConfigAudience(req);
+    const config: Record<string, any> | undefined =
+      incomingConfig === undefined
+        ? undefined
+        : mergeSourceConfigOnSave(
+            existing.type,
+            // Observer key material in a row written before validation rejected
+            // it is never carried forward.
+            stripObserverKeyMaterial((existing.config as Record<string, unknown> | null | undefined) ?? {}),
+            incomingConfig,
+            audience === 'admin' ? 'admin' : 'editor',
+          );
+
+    // The Observer's stored broker login (the single, pre-#5014 one) is used
+    // for whichever broker `observer.brokerUrl` names. A non-admin may not
+    // point that field at another endpoint while one is stored: the login
+    // would follow it there.
+    if (config !== undefined && audience !== 'admin' && existing.type === 'meshcore') {
+      const urlOf = (cfg: unknown): string => {
+        const u = (cfg as { observer?: { brokerUrl?: unknown } } | null | undefined)?.observer?.brokerUrl;
+        return typeof u === 'string' ? u : '';
+      };
+      if (!sameUrlEndpoint(urlOf(existing.config), urlOf(config))) {
+        const legacyLogin = await getMeshCoreObserverCredentialStore().load(existing.id);
+        if (legacyLogin.kind !== 'none') {
+          return fail(
+            res,
+            409,
+            'OBSERVER_CREDENTIALS_STORED',
+            'A broker login is stored for the Observer broker this source uses now. Clear it under Observer credentials, or ask an administrator, before changing that broker.',
+          );
+        }
+      }
+    }
+
     const updates: any = {};
     if (name !== undefined) updates.name = name.trim();
-    if (config !== undefined) {
-      updates.config = preserveSourceCredentials(
-        existing.type,
-        existing.config as Record<string, unknown> | undefined,
-        config,
-      );
-    }
+    if (config !== undefined) updates.config = config;
     if (enabled !== undefined) updates.enabled = enabled;
 
     // Validate VN config if config is being updated
@@ -1202,10 +1208,8 @@ router.put('/:id', requirePermission('sources', 'write'), async (req: Request, r
         return fail(res, observerErr.status, observerErr.code, observerErr.error);
       }
 
-      // Validate mqtt_bridge topic rewrites (#3166) against the incoming
-      // config — preserveSourceCredentials only round-trips passwords, so
-      // the rewrite fields and the brokerSourceId in `config` reflect the
-      // post-save state.
+      // Validate mqtt_bridge topic rewrites (#3166) against the post-save
+      // config.
       if (existing.type === 'mqtt_bridge') {
         const rewriteError = validateMqttBridgeRewrites(config);
         if (rewriteError) {

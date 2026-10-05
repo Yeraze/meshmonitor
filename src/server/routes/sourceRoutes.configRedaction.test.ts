@@ -25,6 +25,9 @@ import type { Source } from '../../db/repositories/sources.js';
 import {
   SOURCE_CONFIG_SPECS,
   classifiedFieldPaths,
+  editClassPaths,
+  mergeSourceConfigOnSave,
+  type FieldRule,
   projectSourceConfig,
   redactEndpointUrl,
 } from '../utils/sourceConfigRedaction.js';
@@ -52,7 +55,9 @@ vi.mock('../meshtasticManager.js', () => ({
 const KEY = 'KEYSENTINEL';
 /** Passwords: admin only. */
 const PW = 'PWSENTINEL';
-/** Usernames, tokens, URL credentials, unneeded and unclassified fields: no viewer. */
+/** Tokens, URL credentials, and fields no spec classifies: admin only. */
+const SEC = 'SECSENTINEL';
+/** Usernames and settings a viewer has no use for: editors and admins. */
 const PRIV = 'PRIVSENTINEL';
 /** Connection endpoints: signed-in `sources:read` and up. */
 const EP = 'EPSENTINEL';
@@ -61,7 +66,10 @@ const EP = 'EPSENTINEL';
 const ENDPOINT_PORTS = [47101, 47102, 47103, 47104, 47105, 47106];
 
 const url = (scheme: string, tag: string) =>
-  `${scheme}://${PRIV}-user-${tag}:${PRIV}-urlpw-${tag}@${EP}-${tag}.example:8883/path?token=${PRIV}-query-${tag}#${PRIV}-frag-${tag}`;
+  `${scheme}://${SEC}-user-${tag}:${SEC}-urlpw-${tag}@${EP}-${tag}.example:8883/path?token=${SEC}-query-${tag}#${SEC}-frag-${tag}`;
+
+/** The same URL as an editor is shown it. */
+const editorUrl = (scheme: string, tag: string) => `${scheme}://${EP}-${tag}.example:8883/path`;
 
 /** Stored on every fixture: a field no spec knows about. */
 const UNCLASSIFIED = 'futureField';
@@ -76,7 +84,7 @@ const FIXTURES: Record<Source['type'], Record<string, unknown>> = {
     passiveMode: true,
     passiveResyncStaleMs: 60000,
     autoConnect: false,
-    [UNCLASSIFIED]: `${PRIV}-future-mt`,
+    [UNCLASSIFIED]: `${SEC}-future-mt`,
   },
   meshcore: {
     transport: 'tcp',
@@ -112,7 +120,7 @@ const FIXTURES: Record<Source['type'], Record<string, unknown>> = {
         },
       ],
     },
-    [UNCLASSIFIED]: `${PRIV}-future-mc`,
+    [UNCLASSIFIED]: `${SEC}-future-mc`,
   },
   meshcore_mqtt: {
     brokerUrl: url('mqtts', 'ingest'),
@@ -121,7 +129,7 @@ const FIXTURES: Record<Source['type'], Record<string, unknown>> = {
     password: `${PW}-ingest`,
     rejectUnauthorized: false,
     autoConnect: false,
-    [UNCLASSIFIED]: `${PRIV}-future-ingest`,
+    [UNCLASSIFIED]: `${SEC}-future-ingest`,
   },
   mqtt_bridge: {
     brokerSourceId: 'cfgred-mqtt_broker',
@@ -140,7 +148,7 @@ const FIXTURES: Record<Source['type'], Record<string, unknown>> = {
     ignoreOkToMqtt: true,
     dropAutomationUplinks: true,
     autoConnect: false,
-    [UNCLASSIFIED]: `${PRIV}-future-bridge`,
+    [UNCLASSIFIED]: `${SEC}-future-bridge`,
   },
   mqtt_broker: {
     listener: { port: ENDPOINT_PORTS[4], host: `${EP}-listener-host` },
@@ -154,12 +162,12 @@ const FIXTURES: Record<Source['type'], Record<string, unknown>> = {
     // Legacy top-level credential names the old denylist knew about.
     password: `${PW}-legacy-top`,
     apiKey: `${PW}-legacy-apikey`,
-    [UNCLASSIFIED]: `${PRIV}-future-broker`,
+    [UNCLASSIFIED]: `${SEC}-future-broker`,
   },
   reticulum: {
     mode: 'tcp_peer',
     bridgeUrl: url('ws', 'rns-bridge'),
-    token: `${PRIV}-rns-token`,
+    token: `${SEC}-rns-token`,
     autoConnect: false,
     configDir: `${PRIV}-rns-config-dir`,
     peers: [{ host: `${EP}-rns-peer`, port: ENDPOINT_PORTS[5] }],
@@ -172,7 +180,7 @@ const FIXTURES: Record<Source['type'], Record<string, unknown>> = {
     stAlock: 10,
     ltAlock: 5,
     remoteAllowed: [`${PRIV}-remote-identity`],
-    [UNCLASSIFIED]: `${PRIV}-future-rns`,
+    [UNCLASSIFIED]: `${SEC}-future-rns`,
   },
 };
 
@@ -209,14 +217,15 @@ const CALLERS: Caller[] = ['anonymous', 'anonymousWithRead', 'limited', 'viewer'
 
 /** Which sentinel families each caller must never receive. */
 const FORBIDDEN: Record<Caller, string[]> = {
-  anonymous: [KEY, PW, PRIV, EP],
+  anonymous: [KEY, PW, SEC, PRIV, EP],
   // `sources:read` granted to the anonymous account buys nothing: no login,
   // no endpoint.
-  anonymousWithRead: [KEY, PW, PRIV, EP],
-  limited: [KEY, PW, PRIV, EP],
-  viewer: [KEY, PW, PRIV],
-  // An editor saves the whole config back, so gets it all bar the passwords.
-  editor: [KEY, PW],
+  anonymousWithRead: [KEY, PW, SEC, PRIV, EP],
+  limited: [KEY, PW, SEC, PRIV, EP],
+  viewer: [KEY, PW, SEC, PRIV],
+  // An editor saves the whole config back, so gets the settings, usernames and
+  // hosts — and no password, token or URL credential.
+  editor: [KEY, PW, SEC],
   admin: [KEY],
 };
 
@@ -515,18 +524,95 @@ describe('source config redaction', () => {
       expect(rows.meshcore.config).toEqual({ ...FIXTURES.meshcore, observer });
     });
 
-    it('an editor gets every field but the passwords, so the edit form round-trips', async () => {
+    it('an editor gets every setting, username and host, with each credential masked', async () => {
       const agent = await agentFor('editor');
-      const rows = byType((await agent.get('/')).body);
-      expect(rows.meshtastic_tcp.config).toEqual(FIXTURES.meshtastic_tcp);
-      expect(rows.reticulum.config).toEqual(FIXTURES.reticulum);
-      const { password: _pw, ...ingest } = FIXTURES.meshcore_mqtt;
-      expect(rows.meshcore_mqtt.config).toEqual(ingest);
-      expect(rows.mqtt_bridge.config.upstream).toEqual({
-        url: (FIXTURES.mqtt_bridge.upstream as Record<string, unknown>).url,
-        username: `${PRIV}-bridge-user`,
+      const rows = byType((await agent.get('/')).body) as Record<
+        Source['type'],
+        { config: Record<string, any>; maskedConfigFields?: string[] }
+      >;
+
+      const without = (obj: Record<string, unknown>, ...keys: string[]) =>
+        Object.fromEntries(Object.entries(obj).filter(([k]) => !keys.includes(k)));
+
+      expect(rows.meshtastic_tcp.config).toEqual(without(FIXTURES.meshtastic_tcp, UNCLASSIFIED));
+      expect(rows.meshtastic_tcp.maskedConfigFields).toEqual([]);
+
+      const observer = FIXTURES.meshcore.observer as Record<string, any>;
+      expect(rows.meshcore.config).toEqual({
+        ...without(FIXTURES.meshcore, UNCLASSIFIED),
+        observer: {
+          ...without(observer, 'privateKey'),
+          brokerUrl: editorUrl('mqtts', 'obs-legacy'),
+          brokers: [{ ...without(observer.brokers[0], 'password'), url: editorUrl('wss', 'obs-broker') }],
+        },
       });
-      expect(rows.mqtt_broker.config.auth).toEqual({ username: `${PRIV}-broker-user` });
+      expect(rows.meshcore.maskedConfigFields!.sort()).toEqual(['observer.brokerUrl', 'observer.brokers.0.url']);
+
+      expect(rows.meshcore_mqtt.config).toEqual({
+        ...without(FIXTURES.meshcore_mqtt, UNCLASSIFIED, 'password'),
+        brokerUrl: editorUrl('mqtts', 'ingest'),
+      });
+      expect(rows.meshcore_mqtt.maskedConfigFields!.sort()).toEqual(['brokerUrl', 'password']);
+
+      expect(rows.mqtt_bridge.config).toEqual({
+        ...without(FIXTURES.mqtt_bridge, UNCLASSIFIED),
+        upstream: { url: editorUrl('mqtt', 'bridge'), username: `${PRIV}-bridge-user` },
+      });
+      expect(rows.mqtt_bridge.maskedConfigFields!.sort()).toEqual(['upstream.password', 'upstream.url']);
+
+      expect(rows.mqtt_broker.config).toEqual({
+        ...without(FIXTURES.mqtt_broker, UNCLASSIFIED, 'password', 'apiKey'),
+        auth: { username: `${PRIV}-broker-user` },
+      });
+      expect(rows.mqtt_broker.maskedConfigFields).toEqual(['auth.password']);
+
+      expect(rows.reticulum.config).toEqual({
+        ...without(FIXTURES.reticulum, UNCLASSIFIED, 'token'),
+        bridgeUrl: editorUrl('ws', 'rns-bridge'),
+      });
+      expect(rows.reticulum.maskedConfigFields!.sort()).toEqual(['bridgeUrl', 'token']);
+    });
+
+    it.each(['anonymous', 'limited', 'viewer', 'admin'] as Caller[])(
+      '%s is not told which fields are masked',
+      async (caller) => {
+        const agent = await agentFor(caller);
+        for (const row of ours((await agent.get('/')).body)) {
+          expect(row).not.toHaveProperty('maskedConfigFields');
+        }
+      },
+    );
+  });
+
+  describe('every credential is classified as one', () => {
+    // The table the PR documents. A field moving out of `secret`/`url` here is
+    // a field an editor starts receiving.
+    const credentialFields = (type: Source['type']) =>
+      Object.entries(editClassPaths(type))
+        .filter(([, cls]) => cls === 'secret' || cls === 'url')
+        .map(([path, cls]) => `${path}:${cls}`)
+        .sort();
+
+    it('lists the credential-bearing fields of each type', () => {
+      expect(credentialFields('meshtastic_tcp')).toEqual([]);
+      expect(credentialFields('meshcore')).toEqual(['observer.brokerUrl:url', 'observer.brokers.url:url']);
+      expect(credentialFields('meshcore_mqtt')).toEqual(['brokerUrl:url', 'password:secret']);
+      expect(credentialFields('mqtt_bridge')).toEqual(['upstream.password:secret', 'upstream.url:url']);
+      expect(credentialFields('mqtt_broker')).toEqual(['auth.password:secret']);
+      expect(credentialFields('reticulum')).toEqual(['bridgeUrl:url', 'token:secret']);
+    });
+
+    it.each(TYPES)('a secret bound to an endpoint names a URL field beside it: %s', (type) => {
+      const walk = (spec: Record<string, FieldRule>): void => {
+        for (const rule of Object.values(spec)) {
+          if (rule.edit === 'secret' && rule.endpoint !== undefined) {
+            expect(spec[rule.endpoint]?.edit).toBe('url');
+          }
+          if (rule.edit === 'list') expect(typeof rule.identity).toBe('function');
+          if (rule.fields) walk(rule.fields);
+        }
+      };
+      walk(SOURCE_CONFIG_SPECS[type]);
     });
   });
 
@@ -539,13 +625,38 @@ describe('source config redaction', () => {
       const { password: _omitted, ...withoutPassword } = loaded;
       const res = await agent.put(`/${id}`).send({ config: { ...withoutPassword, region: 'TPA' } });
       expect(res.status).toBe(200);
+      expectNoForbidden(res.body, caller, 'PUT /:id');
 
       const stored = (await harness.db.sources.getSource(id))!.config as Record<string, unknown>;
       expect(stored.password).toBe(`${PW}-ingest`);
       expect(stored.region).toBe('TPA');
-      // Nothing the caller was shown got lost on the way back.
+      // Nothing got lost on the way back — including what the caller was not shown.
       expect(stored.brokerUrl).toBe(FIXTURES.meshcore_mqtt.brokerUrl);
       expect(stored.username).toBe(FIXTURES.meshcore_mqtt.username);
+    });
+
+    it.each(TYPES)('editor: saving the config exactly as loaded changes nothing stored: %s', async (type) => {
+      const agent = await agentFor('editor');
+      const id = idFor(type);
+      const loaded = (await agent.get(`/${id}`)).body.config as Record<string, unknown>;
+
+      if (type === 'meshcore') {
+        // The sentinel observer block is not a valid one (its IATA code is a
+        // sentinel), so the route would refuse the save. The merge itself is
+        // checked directly; sourceRoutes.editorMerge.test.ts saves a valid
+        // observer block through the route.
+        const observer = { ...(FIXTURES.meshcore.observer as Record<string, any>) };
+        delete observer.privateKey;
+        observer.brokers = observer.brokers.map(({ password: _password, ...rest }: Record<string, unknown>) => rest);
+        const withoutKeys = { ...FIXTURES.meshcore, observer };
+        expect(mergeSourceConfigOnSave(type, withoutKeys, loaded, 'editor')).toEqual(withoutKeys);
+        return;
+      }
+
+      const res = await agent.put(`/${id}`).send({ config: loaded });
+      expect(res.status).toBe(200);
+      expectNoForbidden(res.body, 'editor', `PUT /${type}`);
+      expect((await harness.db.sources.getSource(id))!.config).toEqual(FIXTURES[type]);
     });
   });
 });

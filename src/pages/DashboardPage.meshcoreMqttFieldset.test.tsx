@@ -18,7 +18,7 @@ vi.mock('react-router-dom', async () => {
   return { ...actual, useNavigate: () => mockNavigate };
 });
 
-function makeSource(config: Record<string, any>) {
+function makeSource(config: Record<string, any>): Record<string, any> {
   return {
     id: 'src-rns',
     name: 'Region Feed',
@@ -360,5 +360,43 @@ describe('MeshCore MQTT ingest source fieldset (#5040 Phase 1)', () => {
     // The stored password must never round-trip into the DOM; the server keeps
     // it when this is left blank.
     expect(screen.queryByDisplayValue('should-not-be-seeded')).not.toBeInTheDocument();
+  });
+
+  it('tells an admin a password is stored, without showing it', () => {
+    currentSource = makeSource({ brokerUrl: 'wss://broker.example:443', region: 'AMS', password: 'stored-password' });
+    const { container } = renderPage();
+    openEditModal();
+
+    const password = container.querySelector('input[type="password"]') as HTMLInputElement;
+    expect(password.value).toBe('');
+    expect(password.placeholder).toBe('source.form.secret_stored_placeholder');
+    expect(screen.queryByTestId('hidden-url-parts-note')).toBeNull();
+  });
+
+  it('tells a non-admin editor what is stored but masked', () => {
+    currentSource = {
+      ...makeSource({ brokerUrl: 'wss://broker.example:443', region: 'AMS', username: 'meshcore' }),
+      maskedConfigFields: ['password', 'brokerUrl'],
+    };
+    const { container } = renderPage();
+    openEditModal();
+
+    const password = container.querySelector('input[type="password"]') as HTMLInputElement;
+    expect(password.value).toBe('');
+    expect(password.placeholder).toBe('source.form.secret_stored_placeholder');
+    expect(screen.getByTestId('hidden-url-parts-note')).toBeInTheDocument();
+    expect(screen.queryByTestId('dropped-secret-note')).toBeNull();
+
+    fireEvent.change(screen.getByPlaceholderText('wss://mqtt.meshmapper.net:443'), {
+      target: { value: 'wss://elsewhere.example:443' },
+    });
+    expect(screen.getByTestId('dropped-secret-note')).toBeInTheDocument();
+  });
+
+  it('shows no placeholder when no password is stored', () => {
+    currentSource = { ...makeSource({ brokerUrl: 'wss://broker.example:443', region: 'AMS' }), maskedConfigFields: [] };
+    const { container } = renderPage();
+    openEditModal();
+    expect((container.querySelector('input[type="password"]') as HTMLInputElement).placeholder).toBe('');
   });
 });
