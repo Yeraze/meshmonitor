@@ -138,6 +138,24 @@ function makeTraceroute(overrides: Partial<DbTraceroute> = {}): DbTraceroute {
   };
 }
 
+/**
+ * A reply as the writer hands it over: `from` is the node that ANSWERED, so
+ * the endpoints are the reverse of the pending row `makeTraceroute()` builds.
+ */
+function makeReply(overrides: Partial<DbTraceroute> = {}): DbTraceroute {
+  return makeTraceroute({
+    fromNodeNum: 2002,
+    toNodeNum: 1001,
+    fromNodeId: '!aabb2002',
+    toNodeId: '!aabb1001',
+    route: '1001,3003,2002',
+    routeBack: '2002,3003,1001',
+    snrTowards: '10.5,8.2',
+    snrBack: '9.1,7.3',
+    ...overrides,
+  });
+}
+
 // Helper to create a route segment data object
 function makeSegment(overrides: Partial<DbRouteSegment> = {}): DbRouteSegment {
   return {
@@ -305,14 +323,7 @@ function runTraceroutesTests(getBackend: () => TestBackend) {
 
     // Update it
     const updatedTs = now + 5000;
-    await repo.updateTracerouteResponse(
-      pending!.id,
-      '1001,3003,2002',
-      '2002,3003,1001',
-      '10.5,8.2',
-      '9.1,7.3',
-      updatedTs
-    );
+    await repo.updateTracerouteResponse(pending!.id, makeReply({ timestamp: updatedTs }));
 
     // Verify: it should no longer be pending
     const stillPending = await repo.findPendingTraceroute(1001, 2002, now - 60000);
@@ -360,15 +371,7 @@ function runTraceroutesTests(getBackend: () => TestBackend) {
     expect(pending).not.toBeNull();
 
     const packetId = 3_500_000_123;
-    await repo.updateTracerouteResponse(
-      pending!.id,
-      '1001,3003,2002',
-      '2002,3003,1001',
-      '10.5,8.2',
-      '9.1,7.3',
-      now + 5000,
-      packetId,
-    );
+    await repo.updateTracerouteResponse(pending!.id, makeReply({ timestamp: now + 5000, packetId }));
 
     const all = await repo.getAllTraceroutes(100, ALL_SOURCES);
     expect(all.length).toBe(1);
@@ -422,16 +425,11 @@ function runTraceroutesTests(getBackend: () => TestBackend) {
     const pending = await repo.findPendingTraceroute(1001, 2002, now - 60000);
     expect(pending).not.toBeNull();
 
-    await repo.updateTracerouteResponse(
-      pending!.id,
-      '1001,3003,2002',
-      '2002,3003,1001',
-      '10.5,8.2',
-      '9.1,7.3',
-      now + 5000,
-      3_500_000_124,
-      5, // MQTT
-    );
+    await repo.updateTracerouteResponse(pending!.id, makeReply({
+      timestamp: now + 5000,
+      packetId: 3_500_000_124,
+      transportMechanism: 5, // MQTT
+    }));
 
     const all = await repo.getAllTraceroutes(100, ALL_SOURCES);
     expect(all.length).toBe(1);
@@ -495,6 +493,76 @@ function runTraceroutesTests(getBackend: () => TestBackend) {
     expect(await repo.getTraceroutesForSources({ sourceIds: [], limit: 10 })).toEqual([]);
   });
 
+  // ============ POSITION SNAPSHOT + CHANNEL ============
+
+  /*
+   * `routePositions` (#1862: where each node stood when the run was recorded)
+   * and `channel` (what `maskTraceroutesByChannel` gates the row on) must be
+   * stored by BOTH write paths. The pending-row update used to drop both on
+   * every backend, so no run sent from MeshMonitor had a snapshot.
+   */
+  const SNAPSHOT = JSON.stringify({ 1001: { lat: 30.1, lng: -90.1 }, 3003: { lat: 30.2, lng: -90.2, alt: 12 }, 2002: { lat: 30.3, lng: -90.3 } });
+
+  it('snapshot - a reply inserted with no pending row stores routePositions and channel', async () => {
+    const backend = getBackend();
+    if (!backend.available) {
+      console.log(`⚠ Skipped: ${backend.skipReason}`);
+      return;
+    }
+    await repo.insertTraceroute(makeReply({ routePositions: SNAPSHOT, channel: 3 }), 'src-a');
+
+    const all = await repo.getAllTraceroutes(10, 'src-a');
+    expect(all).toHaveLength(1);
+    expect(all[0].routePositions).toBe(SNAPSHOT);
+    expect(Number(all[0].channel)).toBe(3);
+  });
+
+  it('snapshot - a pending row filled by the reply stores routePositions and channel, and keeps its own endpoints', async () => {
+    const backend = getBackend();
+    if (!backend.available) {
+      console.log(`⚠ Skipped: ${backend.skipReason}`);
+      return;
+    }
+    const now = Date.now();
+    await repo.insertTraceroute(makeTraceroute({ timestamp: now, createdAt: now }), 'src-a');
+    const pending = await repo.findPendingTraceroute(1001, 2002, now - 60000, 'src-a');
+    expect(pending).not.toBeNull();
+
+    await repo.updateTracerouteResponse(pending!.id, makeReply({ routePositions: SNAPSHOT, channel: 3, timestamp: now + 5000 }));
+
+    // Raw row: the read methods would orient it, and this asserts what is on disk.
+    const { traceroutes } = (repo as any).tables;
+    const stored = await (repo as any).db.select().from(traceroutes);
+    expect(stored).toHaveLength(1);
+    expect(stored[0].routePositions).toBe(SNAPSHOT);
+    expect(Number(stored[0].channel)).toBe(3);
+    expect(Number(stored[0].fromNodeNum)).toBe(1001);
+    expect(Number(stored[0].toNodeNum)).toBe(2002);
+    expect(stored[0].route).toBe('1001,3003,2002');
+    expect(Number(stored[0].createdAt)).toBe(now);
+  });
+
+  it('snapshot - a reply with no snapshot or channel stores NULL for both, on either path', async () => {
+    const backend = getBackend();
+    if (!backend.available) {
+      console.log(`⚠ Skipped: ${backend.skipReason}`);
+      return;
+    }
+    const now = Date.now();
+    await repo.insertTraceroute(makeTraceroute({ timestamp: now, createdAt: now }), 'src-a');
+    const pending = await repo.findPendingTraceroute(1001, 2002, now - 60000, 'src-a');
+    await repo.updateTracerouteResponse(pending!.id, makeReply({ timestamp: now + 5000 }));
+    await repo.insertTraceroute(makeReply({ timestamp: now + 6000 }), 'src-a');
+
+    const { traceroutes } = (repo as any).tables;
+    const stored = await (repo as any).db.select().from(traceroutes);
+    expect(stored).toHaveLength(2);
+    for (const row of stored) {
+      expect(row.routePositions).toBeNull();
+      expect(row.channel).toBeNull();
+    }
+  });
+
   // ============ ROW ORIENTATION ============
 
   /*
@@ -529,7 +597,12 @@ function runTraceroutesTests(getBackend: () => TestBackend) {
       timestamp: ts - 5, createdAt: ts - 5,
     }), sourceId);
     const pending = await repo.findPendingTraceroute(requester, responder, 0, sourceId);
-    await repo.updateTracerouteResponse(pending!.id, arrays.route, arrays.routeBack, arrays.snrTowards, arrays.snrBack, ts, packetId);
+    // The reply packet has the endpoints the other way round; the update must
+    // not copy them onto the pending row.
+    await repo.updateTracerouteResponse(pending!.id, makeTraceroute({
+      fromNodeNum: responder, toNodeNum: requester, fromNodeId: idOf(responder), toNodeId: idOf(requester),
+      ...arrays, packetId, timestamp: ts, createdAt: ts,
+    }));
   };
 
   /** A reply with no pending row: stored { from: responder, to: requester }. */
@@ -1067,6 +1140,60 @@ describe('TraceroutesRepository - SQLite Backend', () => {
   });
 
   runTraceroutesTests(() => backend);
+
+  /*
+   * SQLite's production writer is the transactional `upsertTracerouteSync`
+   * (DatabaseService.insertTracerouteAsync delegates to it). It left
+   * `routePositions` and `channel` out of BOTH branches, so no SQLite row ever
+   * had a snapshot, and no SQLite traceroute was ever channel-gated.
+   */
+  describe('upsertTracerouteSync (the SQLite write path)', () => {
+    const SNAPSHOT = JSON.stringify({ 1001: { lat: 30.1, lng: -90.1 }, 2002: { lat: 30.3, lng: -90.3 } });
+    const storedRows = async (repo: TraceroutesRepository) => {
+      const { traceroutes } = (repo as any).tables;
+      return (repo as any).db.select().from(traceroutes) as Promise<any[]>;
+    };
+
+    it('insert branch (no pending row) stores routePositions and channel', async () => {
+      const repo = new TraceroutesRepository(backend.drizzleDb, 'sqlite');
+      repo.upsertTracerouteSync(makeReply({ routePositions: SNAPSHOT, channel: 2 }), 5 * 60_000, 50, 'src-a');
+
+      const stored = await storedRows(repo);
+      expect(stored).toHaveLength(1);
+      expect(stored[0].routePositions).toBe(SNAPSHOT);
+      expect(stored[0].channel).toBe(2);
+      // Reply-packet form: stored as the packet arrived.
+      expect([stored[0].fromNodeNum, stored[0].toNodeNum]).toEqual([2002, 1001]);
+    });
+
+    it('update branch (pending row filled by the reply) stores routePositions and channel', async () => {
+      const repo = new TraceroutesRepository(backend.drizzleDb, 'sqlite');
+      const now = Date.now();
+      // The pending row, as recordTracerouteRequest writes it (timeout 0 = always insert).
+      repo.upsertTracerouteSync(makeTraceroute({ timestamp: now, createdAt: now }), 0, 50, 'src-a');
+      repo.upsertTracerouteSync(makeReply({ routePositions: SNAPSHOT, channel: 2, timestamp: now + 1000 }), 5 * 60_000, 50, 'src-a');
+
+      const stored = await storedRows(repo);
+      expect(stored).toHaveLength(1);
+      expect(stored[0].routePositions).toBe(SNAPSHOT);
+      expect(stored[0].channel).toBe(2);
+      expect(stored[0].route).toBe('1001,3003,2002');
+      // Requester-first: the pending row keeps its own endpoints.
+      expect([stored[0].fromNodeNum, stored[0].toNodeNum]).toEqual([1001, 2002]);
+    });
+
+    it('a pending row itself has no snapshot and no channel', async () => {
+      const repo = new TraceroutesRepository(backend.drizzleDb, 'sqlite');
+      const now = Date.now();
+      repo.upsertTracerouteSync(makeTraceroute({ timestamp: now, createdAt: now }), 0, 50, 'src-a');
+
+      const stored = await storedRows(repo);
+      expect(stored).toHaveLength(1);
+      expect(stored[0].route).toBeNull();
+      expect(stored[0].routePositions).toBeNull();
+      expect(stored[0].channel).toBeNull();
+    });
+  });
 });
 
 // --- PostgreSQL Backend ---

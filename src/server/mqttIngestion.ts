@@ -94,7 +94,7 @@ import {
   TransportMechanism,
 } from './constants/meshtastic.js';
 import { calculateDistance } from '../utils/distance.js';
-import { getEffectiveDbNodePosition } from './utils/nodeEnhancer.js';
+import { buildRoutePositionsSnapshot } from './utils/tracerouteSnapshot.js';
 import { canonicalTelemetryType, canonicalTelemetryUnit } from './utils/telemetryKeys.js';
 import { resolveLastHeardSec, resolvePositionObservedAtMs } from './utils/replayGuard.js';
 import { plausibleRxTime } from './utils/messageTime.js';
@@ -1004,20 +1004,13 @@ async function ingestTraceroute(
   // this to draw lines that survive a hop node going stale / un-positioned
   // after the traceroute was recorded. Uses the effective (override-aware)
   // position so user-pinned coordinates render correctly.
-  const routePositions: Record<number, { lat: number; lng: number; alt?: number }> = {};
+  // One builder for every writer: src/server/utils/tracerouteSnapshot.ts.
   const pathNodes = new Set<number>([fromNum, ...route, ...routeBack]);
   if (toNum !== null && toNum !== BROADCAST_ADDR) pathNodes.add(toNum);
-  for (const nodeNum of pathNodes) {
-    const node = await databaseService.nodes.getNode(nodeNum, sourceId);
-    const eff = getEffectiveDbNodePosition(node);
-    if (eff.latitude != null && eff.longitude != null) {
-      routePositions[nodeNum] = {
-        lat: eff.latitude,
-        lng: eff.longitude,
-        ...(eff.altitude != null ? { alt: eff.altitude } : {}),
-      };
-    }
-  }
+  const routePositions = await buildRoutePositionsSnapshot(
+    pathNodes,
+    nodeNum => databaseService.nodes.getNode(nodeNum, sourceId),
+  );
 
   const record: DbTraceroute = {
     fromNodeNum: fromNum,
@@ -1028,7 +1021,7 @@ async function ingestTraceroute(
     routeBack: JSON.stringify(routeBack),
     snrTowards: JSON.stringify(snrTowards),
     snrBack: JSON.stringify(snrBack),
-    routePositions: JSON.stringify(routePositions),
+    routePositions,
     // #5101: every row this path writes arrived over MQTT. Without this the
     // column stays NULL, which reads as RF (classifyNodeTransport's fallback).
     transportMechanism: TransportMechanism.MQTT,
