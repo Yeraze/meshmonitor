@@ -34,10 +34,13 @@ export function utf8ByteLength(text: string): number {
  * is missing: that can split a ZWJ sequence between its parts, but never
  * inside one code point.
  */
+const graphemeSegmenter = typeof Intl !== 'undefined' && typeof Intl.Segmenter === 'function'
+  ? new Intl.Segmenter(undefined, { granularity: 'grapheme' })
+  : null;
+
 function splitGraphemes(text: string): string[] {
-  if (typeof Intl !== 'undefined' && typeof Intl.Segmenter === 'function') {
-    const segmenter = new Intl.Segmenter(undefined, { granularity: 'grapheme' });
-    return Array.from(segmenter.segment(text), part => part.segment);
+  if (graphemeSegmenter) {
+    return Array.from(graphemeSegmenter.segment(text), part => part.segment);
   }
   return Array.from(text);
 }

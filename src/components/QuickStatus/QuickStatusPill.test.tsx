@@ -236,10 +236,24 @@ describe('QuickStatusPill — popover', () => {
     expect(screen.queryByTestId('quick-status-popover')).toBeNull();
   });
 
-  it('closes on a click outside', async () => {
+  it('closes on a click or tap outside', async () => {
     renderPill();
     await openPopover();
-    fireEvent.mouseDown(document.body);
+    fireEvent.pointerDown(document.body);
+    expect(screen.queryByTestId('quick-status-popover')).toBeNull();
+  });
+
+  it('stays open on a press inside the popover', async () => {
+    renderPill();
+    const popover = await openPopover();
+    fireEvent.pointerDown(popover);
+    expect(screen.getByTestId('quick-status-popover')).toBeInTheDocument();
+  });
+
+  it('closes when the pill is clicked again', async () => {
+    renderPill();
+    await openPopover();
+    fireEvent.click(screen.getByTestId('quick-status-pill'));
     expect(screen.queryByTestId('quick-status-popover')).toBeNull();
   });
 

@@ -101,7 +101,8 @@ export const QuickStatusPill: React.FC<QuickStatusPillProps> = ({ sourceId }) =>
   // Close on a click outside the pill and on Escape.
   useEffect(() => {
     if (!open) return;
-    const onPointerDown = (event: MouseEvent) => {
+    // `pointerdown`, not `mousedown`: a tap on a touch screen must close it too.
+    const onPointerDown = (event: PointerEvent) => {
       if (wrapperRef.current && !wrapperRef.current.contains(event.target as Node)) {
         close();
       }
@@ -109,10 +110,10 @@ export const QuickStatusPill: React.FC<QuickStatusPillProps> = ({ sourceId }) =>
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') close();
     };
-    document.addEventListener('mousedown', onPointerDown);
+    document.addEventListener('pointerdown', onPointerDown);
     document.addEventListener('keydown', onKeyDown);
     return () => {
-      document.removeEventListener('mousedown', onPointerDown);
+      document.removeEventListener('pointerdown', onPointerDown);
       document.removeEventListener('keydown', onKeyDown);
     };
   }, [open, close]);
