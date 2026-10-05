@@ -55,7 +55,8 @@ export const systemBackupHistoryPostgres = pgTable('system_backup_history', {
   backupType: pgText('backupType').notNull(),
   schemaVersion: pgInteger('schemaVersion'),
   appVersion: pgText('appVersion'),
-  totalSize: pgInteger('totalSize'),
+  // Bytes. BIGINT since migration 197: a backup can pass 2 GiB.
+  totalSize: pgBigint('totalSize', { mode: 'number' }),
   tableCount: pgInteger('tableCount'),
   rowCount: pgInteger('rowCount'),
   timestamp: pgBigint('timestamp', { mode: 'number' }).notNull(),
@@ -381,7 +382,8 @@ export const systemBackupHistoryMysql = mysqlTable('system_backup_history', {
   backupType: myVarchar('backupType', { length: 32 }).notNull(),
   schemaVersion: myInt('schemaVersion'),
   appVersion: myVarchar('appVersion', { length: 32 }),
-  totalSize: myInt('totalSize'),
+  // Bytes. BIGINT since migration 197: a backup can pass 2 GiB.
+  totalSize: myBigint('totalSize', { mode: 'number' }),
   tableCount: myInt('tableCount'),
   rowCount: myInt('rowCount'),
   timestamp: myBigint('timestamp', { mode: 'number' }).notNull(),

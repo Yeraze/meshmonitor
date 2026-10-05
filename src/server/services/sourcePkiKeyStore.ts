@@ -131,6 +131,23 @@ export class SourcePkiKeyStore {
     }
   }
 
+  /**
+   * True when a key row exists for the source but was sealed under a different
+   * SESSION_SECRET (or is malformed), so `load()` would return `key_rotated`.
+   * Compares the envelope's version and key fingerprint only — it never
+   * decrypts. Used by system restore to report keys that came back unreadable.
+   */
+  async isKeyRotated(sourceId: string): Promise<boolean> {
+    const row = await databaseService.sourcePkiKeys.getBySourceId(sourceId);
+    if (!row) return false;
+    try {
+      const env = JSON.parse(row.encryptedPrivateKey) as StoredEnvelope;
+      return env.v !== KDF_VERSION || env.kid !== this.currentKid;
+    } catch {
+      return true;
+    }
+  }
+
   /** Clear any stored key for a source. */
   async clear(sourceId: string): Promise<void> {
     await databaseService.sourcePkiKeys.deleteBySourceId(sourceId);
