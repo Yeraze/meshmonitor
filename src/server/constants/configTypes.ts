@@ -61,7 +61,8 @@ export const CONFIG_TYPES: readonly ConfigTypeEntry[] = [
   { id: 'paxcounter', kind: 'module', adminType: 12, field: 'paxcounter' },
   { id: 'statusmessage', kind: 'module', adminType: 13, field: 'statusmessage' },
   { id: 'trafficmanagement', kind: 'module', adminType: 14, field: 'trafficManagement' },
-  // TAK_CONFIG = 15 is deliberately absent — MeshMonitor surfaces no TAK module UI.
+  // TAK team + role (#5613). Firmware 2.8.0+; read only when the device role is TAK_TRACKER.
+  { id: 'tak', kind: 'module', adminType: 15, field: 'tak' },
   { id: 'meshbeacon', kind: 'module', adminType: 16, field: 'meshBeacon' },
 ];
 

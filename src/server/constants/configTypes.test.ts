@@ -38,6 +38,7 @@ describe('config type registry', () => {
     paxcounter: { type: 12, isModule: true, field: 'paxcounter' },
     statusmessage: { type: 13, isModule: true, field: 'statusmessage' },
     trafficmanagement: { type: 14, isModule: true, field: 'trafficManagement' },
+    tak: { type: 15, isModule: true, field: 'tak' },
     meshbeacon: { type: 16, isModule: true, field: 'meshBeacon' },
   };
 

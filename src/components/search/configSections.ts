@@ -205,6 +205,7 @@ export function configurationNavItems(t: Translate): NavItem[] {
     { id: 'config-statusmessage', label: t('statusmessage_config.title', 'Status Message') },
     { id: 'config-trafficmanagement', label: t('trafficmanagement_config.title', 'Traffic Management'), keywords: ['airtime', 'duty', 'rate'] },
     { id: 'config-meshbeacon', label: t('meshbeacon_config.title', 'MeshBeacon'), keywords: ['beacon', 'onboarding'] },
+    { id: 'config-tak', label: t('tak_config.title', 'TAK'), keywords: ['atak', 'team', 'role', 'tracker', 'cot'] },
     { id: 'config-serial', label: t('serial_config.title', 'Serial'), keywords: ['uart', 'baud', 'gpio'] },
     { id: 'config-ambientlighting', label: t('ambientlighting_config.title', 'Ambient Lighting'), keywords: ['led', 'rgb', 'color'] },
     { id: 'config-security', label: t('security_config.title', 'Security'), keywords: ['pki', 'keys', 'admin', 'serial'] },
