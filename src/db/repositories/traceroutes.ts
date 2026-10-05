@@ -34,6 +34,8 @@ import { transportClassCondition } from './transportSql.js';
  */
 function replyColumns(reply: DbTraceroute) {
   return {
+    // `||` on the four arrays: an empty string is "no data" there (see
+    // `hasRouteData`). `??` on the rest: `'{}'` and channel 0 are real values.
     route: reply.route || null,
     routeBack: reply.routeBack || null,
     snrTowards: reply.snrTowards || null,
