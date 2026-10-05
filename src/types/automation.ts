@@ -425,17 +425,26 @@ export function stepOutputNameOf(node: Pick<AutomationNode, 'type' | 'params'>):
   return isStepOutputName(name) ? name : undefined;
 }
 
-// Mirrors the engine's interpolate TOKEN regex.
-const STEP_REF_TOKEN = /\{\{\s*([^}]+?)\s*\}\}/g;
-
-/** Distinct run-output names that `{{ steps.<name>… }}` tokens in `text` refer to. */
+/**
+ * Distinct run-output names that `{{ steps.<name>… }}` tokens in `text` refer
+ * to. Scans with indexOf rather than a regex: the text is user-supplied, and
+ * a lazy `\s*…\s*` token pattern backtracks badly on crafted input. Token
+ * bounds match the engine's interpolate TOKEN: `{{`, then up to the first `}`,
+ * which must begin `}}`.
+ */
 export function stepOutputRefs(text: string): string[] {
-  if (typeof text !== 'string' || !text.includes('{{')) return [];
+  if (typeof text !== 'string') return [];
   const names = new Set<string>();
-  for (const m of text.matchAll(STEP_REF_TOKEN)) {
-    const path = m[1].trim();
-    if (!path.startsWith('steps.')) continue;
-    names.add(path.slice('steps.'.length).split('.')[0]);
+  let from = 0;
+  for (;;) {
+    const open = text.indexOf('{{', from);
+    if (open === -1) break;
+    const close = text.indexOf('}', open + 2);
+    if (close === -1) break;
+    if (text[close + 1] !== '}') { from = open + 1; continue; }
+    const path = text.slice(open + 2, close).trim();
+    if (path.startsWith('steps.')) names.add(path.slice('steps.'.length).split('.')[0]);
+    from = close + 2;
   }
   return [...names];
 }

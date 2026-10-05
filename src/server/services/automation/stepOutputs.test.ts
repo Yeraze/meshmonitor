@@ -177,6 +177,13 @@ describe('capStepOutput', () => {
     expect(/^€+$/.test(text)).toBe(true);
   });
 
+  it('a value that cannot be written as JSON is kept as nothing, so the token renders empty', () => {
+    const loop: Record<string, unknown> = {};
+    loop.self = loop;
+    expect(capStepOutput(loop)).toEqual({ value: undefined, truncated: false });
+    expect(capStepOutput({ n: 10n })).toEqual({ value: undefined, truncated: false });
+  });
+
   it('keeps over-size JSON as its cut text', () => {
     const r = capStepOutput({ blob: 'x'.repeat(STEP_OUTPUT_MAX_BYTES) });
     expect(r.truncated).toBe(true);

@@ -93,6 +93,31 @@ describe('AutomationEngineService — run-scoped step outputs (#5636)', () => {
     expect(sent.map((s) => s.text)).toEqual(['true: out:tell me']);
   });
 
+  it('a script step that a condition skipped stores nothing, so the reference renders empty', async () => {
+    await createEnabled('gated', {
+      version: 1,
+      nodes: [
+        { id: 't', type: 'trigger.message', params: {} },
+        { id: 'f', type: 'flow.fanout', params: {} },
+        { id: 'c', type: 'condition.numeric', params: { field: 'hops', op: '==', value: 99 } },
+        { id: 's', type: 'action.runScript', params: { scriptPath: 'joke.py', outputName: 'joke' } },
+        { id: 'n', type: 'action.nothing', params: {} },
+        { id: 'col', type: 'flow.collapse', params: { mode: 'ALWAYS' } },
+        { id: 'm', type: 'action.sendMessage', params: { text: '[{{ steps.joke.output }}|{{ steps.joke.ok }}]' } },
+      ],
+      edges: [
+        { from: 't', to: 'f' }, { from: 'f', to: 'c' }, { from: 'c', to: 's' }, { from: 'f', to: 'n' },
+        { from: 's', to: 'col' }, { from: 'n', to: 'col' }, { from: 'col', to: 'm' },
+      ],
+    });
+    let ran = 0;
+    const { engine, sent } = harness({ runScript: async () => { ran++; return { success: true, stdout: 'x' }; } });
+    await engine.load();
+    await engine.onMessage(message(), 'default');
+    expect(ran).toBe(0);
+    expect(sent.map((x) => x.text)).toEqual(['[|]']);
+  });
+
   it('two interleaved runs of the same automation never see each other\'s output', async () => {
     await createEnabled('joke', jokeGraph());
     // Hold every run at its Pause step until both scripts have finished, so

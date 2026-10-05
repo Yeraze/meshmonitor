@@ -21,6 +21,7 @@ import {
   COLLAPSE_MODES,
   NUMERIC_OPS,
   forwardingToggleSourceIds,
+  isStepOutputName,
 } from '../../types/automation.js';
 import { isForwardingEnabled } from '../services/forwardingStateService.js';
 import { reloadAutomations, getAutomationEngine } from '../services/automation/automationEngineSingleton.js';
@@ -210,11 +211,13 @@ router.delete('/variables/:id', canWrite, async (req: Request, res: Response) =>
  */
 function sampleStepOutputs(raw: unknown): Record<string, string> | undefined {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return undefined;
-  const out: Record<string, string> = {};
+  // Only well-formed run-output names are kept, and the object is built from
+  // entries, so a request key such as `__proto__` never becomes a property write.
+  const entries: Array<[string, string]> = [];
   for (const [name, text] of Object.entries(raw as Record<string, unknown>)) {
-    if (typeof text === 'string') out[name] = text.slice(0, 1024 * 1024);
+    if (isStepOutputName(name) && typeof text === 'string') entries.push([name, text.slice(0, 1024 * 1024)]);
   }
-  return out;
+  return Object.fromEntries(entries);
 }
 
 async function runSimulation(req: Request, res: Response, configRaw: unknown, automationId?: string): Promise<Response | void> {

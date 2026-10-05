@@ -70,6 +70,17 @@ describe('run-output names', () => {
       .toEqual(['joke', 'wx']);
     expect(stepOutputRefs('no tokens')).toEqual([]);
   });
+
+  it('uses the engine\'s token bounds, and stays fast on hostile text', () => {
+    expect(stepOutputRefs('{{steps.a.output}}{{ steps.b.ok }}')).toEqual(['a', 'b']);
+    expect(stepOutputRefs('{{ steps.a.output } {{ steps.b.output }}')).toEqual(['b']); // a lone } ends nothing
+    expect(stepOutputRefs('{{{{ steps.c.output }}')).toEqual([]); // path is "{{ steps.c.output", as the engine reads it
+    expect(stepOutputRefs('{{ steps.d.output')).toEqual([]);
+    const started = Date.now();
+    expect(stepOutputRefs('{{{{' + ' '.repeat(200_000))).toEqual([]);
+    expect(stepOutputRefs('{{'.repeat(100_000))).toEqual([]);
+    expect(Date.now() - started).toBeLessThan(2000);
+  });
 });
 
 describe('validateAutomationGraph — outputName', () => {

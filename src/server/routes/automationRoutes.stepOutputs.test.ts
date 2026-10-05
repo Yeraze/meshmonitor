@@ -74,7 +74,7 @@ describe('automation routes — run-scoped step outputs (#5636)', () => {
     const agent = await writer();
     const before = (await databaseService.automations.listAutomations()).length;
     const res = await agent.post('/api/automations/test')
-      .send({ config: graph(), event: EVENT, stepOutputs: { joke: 'A mesh walks into a bar.', other: 5 } });
+      .send({ config: graph(), event: EVENT, stepOutputs: { joke: 'A mesh walks into a bar.', other: 5, __proto__: 'x', 'Bad Name': 'y' } });
     expect(res.status).toBe(200);
     expect(res.body.status).toBe('completed');
     expect(res.body.actions[1]).toMatchObject({
