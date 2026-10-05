@@ -11,6 +11,8 @@ type SupportedModules = Partial<Record<ExcludedModuleKey, boolean>> & {
   statusmessage: boolean;
   trafficManagement: boolean;
   meshBeacon: boolean;
+  /** Firmware carries the TAK module config (2.8.0+). Absent on an older server. */
+  takConfig?: boolean;
   rangeTest?: boolean;
 };
 import { useQueryClient } from '@tanstack/react-query';
@@ -41,6 +43,8 @@ import RemoteHardwareConfigSection from './configuration/RemoteHardwareConfigSec
 import DetectionSensorConfigSection from './configuration/DetectionSensorConfigSection';
 import PaxcounterConfigSection from './configuration/PaxcounterConfigSection';
 import StatusMessageConfigSection from './configuration/StatusMessageConfigSection';
+import TAKConfigSection from './configuration/TAKConfigSection';
+import { normalizeTakConfig } from '../utils/takConfig';
 import TrafficManagementConfigSection from './configuration/TrafficManagementConfigSection';
 import MeshBeaconConfigSection from './configuration/MeshBeaconConfigSection';
 import { unpackMeshBeaconFlags, pskToBase64, buildMeshBeaconConfigPayload, MESH_BEACON_MIN_INTERVAL_SECS, type BroadcastTarget } from './admin-commands/useAdminCommandsState';
@@ -286,6 +290,10 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
 
   // Status Message Config State
   const [statusMessageNodeStatus, setStatusMessageNodeStatus] = useState('');
+
+  // TAK Config State (#5613): team colour + member role, firmware 2.8.0+
+  const [takTeam, setTakTeam] = useState(0);
+  const [takRole, setTakRole] = useState(0);
 
   // Traffic Management Config State
   // Traffic Management — v2.8 "non-zero implies enabled" schema. The nine bool
@@ -716,6 +724,13 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
         if (config.moduleConfig?.statusmessage) {
           const sm = config.moduleConfig.statusmessage;
           setStatusMessageNodeStatus(sm.nodeStatus || '');
+        }
+
+        // Populate TAK config. Absent means both fields are at their default.
+        {
+          const tak = normalizeTakConfig(config.moduleConfig?.tak);
+          setTakTeam(tak.team);
+          setTakRole(tak.role);
         }
 
         // Populate Traffic Management config
@@ -1454,6 +1469,23 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
       const errorMsg = error instanceof Error ? error.message : t('config.statusmessage_failed', 'Failed to save Status Message config');
       setStatusMessage(`Error: ${errorMsg}`);
       showToast(`${t('config.statusmessage_failed', 'Failed to save Status Message config')}: ${errorMsg}`, 'error');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleSaveTAKConfig = async () => {
+    setIsSaving(true);
+    setStatusMessage('');
+    try {
+      await apiService.setModuleConfig('tak', { team: takTeam, role: takRole }, sourceId);
+      setStatusMessage(t('config.tak_saved'));
+      showToast(t('config.tak_saved_toast'), 'success');
+    } catch (error) {
+      logger.error('Error saving TAK config:', error);
+      const errorMsg = error instanceof Error ? error.message : t('config.tak_failed');
+      setStatusMessage(`Error: ${errorMsg}`);
+      showToast(`${t('config.tak_failed')}: ${errorMsg}`, 'error');
     } finally {
       setIsSaving(false);
     }
@@ -2716,6 +2748,20 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
             isSaving={isSaving}
             onSave={handleSaveMeshBeaconConfig}
           />
+        </div>
+
+        <div id="config-tak">
+          <ModuleAvailabilityGate available={supportedModules?.tak} moduleName="TAK">
+            <TAKConfigSection
+              team={takTeam}
+              setTeam={setTakTeam}
+              role={takRole}
+              setRole={setTakRole}
+              isDisabled={!supportedModules?.takConfig}
+              isSaving={isSaving}
+              onSave={handleSaveTAKConfig}
+            />
+          </ModuleAvailabilityGate>
         </div>
 
         <div id="config-serial">

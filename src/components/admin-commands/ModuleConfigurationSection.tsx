@@ -3,6 +3,8 @@ import { useTranslation } from 'react-i18next';
 import { MODEM_PRESET_OPTIONS, REGION_OPTIONS } from '../configuration/constants';
 import BroadcastTargetsEditor from '../configuration/BroadcastTargetsEditor';
 import statusMessageStyles from '../configuration/StatusMessageConfigSection.module.css';
+import takStyles from '../configuration/TAKConfigSection.module.css';
+import TAKConfigFields from '../configuration/TAKConfigFields';
 import {
   MESH_BEACON_MIN_INTERVAL_SECS,
   MESH_BEACON_MESSAGE_MAX_BYTES,
@@ -111,6 +113,13 @@ interface ModuleConfigurationSectionProps {
   statusMessageHeaderActions?: React.ReactNode;
   trafficManagementHeaderActions?: React.ReactNode;
   meshBeaconHeaderActions?: React.ReactNode;
+  // TAK team + role (firmware 2.8+, #5613)
+  takTeam: number;
+  takRole: number;
+  onTAKConfigChange: (field: 'team' | 'role', value: number) => void;
+  onSaveTAKConfig: () => Promise<void>;
+  takIsDisabled: boolean;
+  takHeaderActions?: React.ReactNode;
 }
 
 export const ModuleConfigurationSection: React.FC<ModuleConfigurationSectionProps> = ({
@@ -180,6 +189,12 @@ export const ModuleConfigurationSection: React.FC<ModuleConfigurationSectionProp
   statusMessageHeaderActions,
   trafficManagementHeaderActions,
   meshBeaconHeaderActions,
+  takTeam,
+  takRole,
+  onTAKConfigChange,
+  onSaveTAKConfig,
+  takIsDisabled,
+  takHeaderActions,
 }) => {
   const { t } = useTranslation();
 
@@ -816,6 +831,37 @@ export const ModuleConfigurationSection: React.FC<ModuleConfigurationSectionProp
             }}
           >
             {isExecuting ? t('common.saving') : t('trafficmanagement_config.save_button', 'Save Traffic Management Config')}
+          </button>
+        </div>
+      </CollapsibleSection>
+
+      {/* TAK Config Section (firmware 2.8+, #5613) */}
+      <CollapsibleSection
+        id="admin-tak-config"
+        title={t('tak_config.title')}
+        nested={true}
+        headerActions={takHeaderActions}
+      >
+        {takIsDisabled && (
+          <div className={takStyles.unsupported} data-testid="admin-tak-unsupported">
+            {t('tak_config.unsupported')}
+          </div>
+        )}
+        <div className={takIsDisabled ? takStyles.dimmed : undefined}>
+          <TAKConfigFields
+            team={takTeam}
+            role={takRole}
+            onChange={onTAKConfigChange}
+            disabled={isExecuting || takIsDisabled}
+            idPrefix="adminTak"
+          />
+          <button
+            className="save-button"
+            data-testid="admin-tak-save"
+            onClick={onSaveTAKConfig}
+            disabled={isExecuting || selectedNodeNum === null || takIsDisabled}
+          >
+            {isExecuting ? t('common.saving') : t('tak_config.save_button')}
           </button>
         </div>
       </CollapsibleSection>

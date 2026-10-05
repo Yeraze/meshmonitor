@@ -16,6 +16,7 @@ import SectionNav from './SectionNav';
 import { adminCommandsNavItems } from './search/configSections';
 import { encodePositionFlags, decodePositionFlags, decodePositionFlagNames } from '../utils/positionFlags';
 import { getHardwareModelName, getRoleName } from '../utils/nodeHelpers';
+import { normalizeTakConfig } from '../utils/takConfig';
 import { DeviceConfigurationSection } from './admin-commands/DeviceConfigurationSection';
 import AutoFavoriteManagementSection from './admin-commands/AutoFavoriteManagementSection';
 import { ModuleConfigurationSection } from './admin-commands/ModuleConfigurationSection';
@@ -71,6 +72,7 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
     setStatusMessageConfig,
     setTrafficManagementConfig,
     setMeshBeaconConfig,
+    setTAKConfig,
   } = useAdminCommandsState();
 
   // UI and non-config state (keep as useState for now)
@@ -134,6 +136,7 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
     statusmessage: 'idle',
     trafficmanagement: 'idle',
     meshbeacon: 'idle',
+    tak: 'idle',
     owner: 'idle',
     channels: 'idle'
   });
@@ -467,12 +470,13 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
       statusmessage: 'loading',
       trafficmanagement: 'loading',
       meshbeacon: 'loading',
+      tak: 'loading',
       owner: 'loading',
       channels: 'loading'
     });
     const errors: string[] = [];
     const loaded: string[] = [];
-    const totalConfigs = 14; // device, lora, position, mqtt, security, bluetooth, network, neighborinfo, telemetry, statusmessage, trafficmanagement, meshbeacon, owner, channels
+    const totalConfigs = 15; // device, lora, position, mqtt, security, bluetooth, network, neighborinfo, telemetry, statusmessage, trafficmanagement, meshbeacon, tak, owner, channels
 
     try {
       // Load all config types sequentially to avoid conflicts and timeouts
@@ -697,12 +701,17 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
       });
       await new Promise(resolve => setTimeout(resolve, 200));
 
+      await loadConfig('tak', 13, (result) => {
+        setTAKConfig(normalizeTakConfig(result.config));
+      });
+      await new Promise(resolve => setTimeout(resolve, 200));
+
       // Load owner info
-      await loadOwner(13);
+      await loadOwner(14);
       await new Promise(resolve => setTimeout(resolve, 200));
 
       // Load channels (extracted logic to avoid duplicate loading state and toasts)
-      setLoadingProgress({ current: 14, total: totalConfigs, configType: 'channels' });
+      setLoadingProgress({ current: 15, total: totalConfigs, configType: 'channels' });
       try {
         const localNodeNum = nodes.find(n => (n.user?.id || n.nodeId) === currentNodeId)?.nodeNum;
         const isLocalNode = selectedNodeNum === localNodeNum || selectedNodeNum === 0;
@@ -1203,6 +1212,9 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
                   healthUpdateInterval: config.healthUpdateInterval ?? 900,
                   healthScreenEnabled: config.healthScreenEnabled ?? false
                 });
+                break;
+              case 'tak':
+                setTAKConfig(normalizeTakConfig(config));
                 break;
             }
             setSectionLoadStatus(prev => ({ ...prev, [configType]: 'success' }));
@@ -2051,6 +2063,20 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
       console.error('Set TrafficManagement config command failed:', error);
     }
   }, [configState.trafficManagement, executeCommand]);
+
+  const handleTAKConfigChange = useCallback((field: 'team' | 'role', value: number) => {
+    setTAKConfig({ [field]: value });
+  }, [setTAKConfig]);
+
+  const handleSetTAKConfig = useCallback(async () => {
+    try {
+      await executeCommand('setTAKConfig', {
+        config: { team: configState.tak.team, role: configState.tak.role },
+      });
+    } catch (error) {
+      console.error('Set TAK config command failed:', error);
+    }
+  }, [configState.tak, executeCommand]);
 
   const handleMeshBeaconConfigChange = useCallback((field: string, value: string | number | boolean | null) => {
     setMeshBeaconConfig({ [field]: value });
@@ -3507,6 +3533,12 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
         statusMessageHeaderActions={renderSectionLoadButton('statusmessage')}
         trafficManagementHeaderActions={renderSectionLoadButton('trafficmanagement')}
         meshBeaconHeaderActions={renderSectionLoadButton('meshbeacon')}
+        takTeam={configState.tak.team}
+        takRole={configState.tak.role}
+        onTAKConfigChange={handleTAKConfigChange}
+        onSaveTAKConfig={handleSetTAKConfig}
+        takIsDisabled={sectionLoadStatus.tak === 'error'}
+        takHeaderActions={renderSectionLoadButton('tak')}
       />
 
       {/* Import/Export Configuration Section */}

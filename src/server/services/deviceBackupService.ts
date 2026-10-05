@@ -6,6 +6,7 @@
 import databaseService from '../../services/database.js';
 import { ALL_SOURCES } from '../../db/repositories/index.js';
 import { logger } from '../../utils/logger.js';
+import { normalizeTakConfig, takRoleName, takTeamName } from '../../utils/takConfig.js';
 import { getEffectiveDbNodePosition } from '../utils/nodeEnhancer.js';
 import { MODEM_PRESET_NAMES } from '../../utils/loraFrequency.js';
 
@@ -416,6 +417,21 @@ class DeviceBackupService {
   }
 
   /**
+   * The TAK module section for a backup: each non-default field under its
+   * proto enum name (`team: Red`, `role: TeamLead`), as the Meshtastic CLI
+   * writes it. Defaults are left out, like every other proto3 default here.
+   */
+  private cleanTakConfig(value: unknown): Record<string, string> {
+    const { team, role } = normalizeTakConfig(value);
+    const out: Record<string, string> = {};
+    const teamName = team !== 0 ? takTeamName(team) : undefined;
+    const roleName = role !== 0 ? takRoleName(role) : undefined;
+    if (teamName) out.team = teamName;
+    if (roleName) out.role = roleName;
+    return out;
+  }
+
+  /**
    * Clean configuration object by removing empty/null values
    * and organizing nested structures
    */
@@ -425,6 +441,17 @@ class DeviceBackupService {
     for (const [key, value] of Object.entries(config)) {
       // Skip null, undefined, or empty objects
       if (value === null || value === undefined) {
+        continue;
+      }
+
+      // TAK team + role (#5613) must not go through convertEnumValue: that
+      // maps by key name, so TAKConfig.role (a MemberRole) would be written as
+      // a DEVICE role name — MemberRole 2 (TeamLead) would export as "ROUTER".
+      if (key === 'tak' && typeof value === 'object' && !Array.isArray(value)) {
+        const takSection = this.cleanTakConfig(value);
+        if (Object.keys(takSection).length > 0) {
+          cleaned[key] = takSection;
+        }
         continue;
       }
 

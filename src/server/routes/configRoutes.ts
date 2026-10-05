@@ -18,6 +18,7 @@ import { requireMeshtasticDeviceSource } from '../utils/requireMeshtasticDeviceS
 import { resolveSourceConnectionConfig } from '../utils/resolveSourceConnectionConfig.js';
 import { isValidModuleConfigType } from '../constants/moduleConfig.js';
 import { validateMeshBeaconConfigPayload } from '../constants/meshtastic.js';
+import { normalizeTakConfig, validateTakConfigPayload } from '../../utils/takConfig.js';
 import { getEnvironmentConfig } from '../config/environment.js';
 import { mayViewSourceEndpoint } from '../utils/sourceConfigRedaction.js';
 import { fail } from '../utils/apiResponse.js';
@@ -270,7 +271,8 @@ router.post('/module/request', requirePermission('configuration', 'write'), requ
 });
 
 // Generic module config endpoint - handles extnotif, storeforward, rangetest, cannedmsg, audio,
-// remotehardware, detectionsensor, paxcounter, serial, ambientlighting, statusmessage, trafficmanagement
+// remotehardware, detectionsensor, paxcounter, serial, ambientlighting, statusmessage, trafficmanagement,
+// meshbeacon, tak
 router.post('/module/:moduleType', requirePermission('configuration', 'write'), requireMeshtasticDeviceSource('body'), async (req, res) => {
   try {
     const { moduleType } = req.params;
@@ -294,6 +296,17 @@ router.post('/module/:moduleType', requirePermission('configuration', 'write'), 
       if (meshBeaconError) {
         return fail(res, 400, 'INVALID_MESHBEACON_CONFIG', meshBeaconError);
       }
+    }
+
+    // TAK team + role (#5613): refuse a value outside the two enums, then send
+    // exactly the two fields as numbers.
+    if (moduleType === 'tak') {
+      const takError = validateTakConfigPayload(config);
+      if (takError) {
+        return fail(res, 400, 'INVALID_TAK_CONFIG', takError);
+      }
+      await cfgModManager.setGenericModuleConfig(moduleType, normalizeTakConfig(config));
+      return res.json({ success: true, message: `${moduleType} configuration sent` });
     }
 
     await cfgModManager.setGenericModuleConfig(moduleType, config);

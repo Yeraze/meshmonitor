@@ -23,6 +23,7 @@ import { getRoutingErrorName, validateMeshBeaconConfigPayload } from '../constan
 import { CONFIG_TYPE_MAP, MODULE_FIELD_BY_ID, DEVICE_FIELD_BY_ID } from '../constants/configTypes.js';
 import { autoFavoriteManagementScheduler } from '../services/autoFavoriteManagementService.js';
 import protobufService from '../protobufService.js';
+import { normalizeTakConfig, validateTakConfigPayload } from '../../utils/takConfig.js';
 import { fail, ok } from '../utils/apiResponse.js';
 import { isTxDisabledError } from '../errors/txDisabledError.js';
 import {
@@ -317,7 +318,15 @@ router.post('/load-config', extendRequestTimeout(LOAD_CONFIG_TIMEOUT_MS), requir
         }
         
         const finalConfig = currentConfig;
-        
+
+        // TAK config needs firmware 2.8.0 (#5613). Older firmware never answers
+        // the request, and the fallback below would then hand back defaults that
+        // look like a real reply. Say "unsupported" instead, so the section is
+        // shown as such rather than as an editable 0 / 0.
+        if (configType === 'tak' && !adminLoadManager.supportsTakConfig()) {
+          return fail(res, 404, 'TAK_CONFIG_UNSUPPORTED', 'TAK config needs Meshtastic firmware 2.8.0 or newer');
+        }
+
         switch (configType) {
           case 'device':
             if (finalConfig.deviceConfig?.device) {
@@ -471,6 +480,7 @@ router.post('/load-config', extendRequestTimeout(LOAD_CONFIG_TIMEOUT_MS), requir
           case 'statusmessage':
           case 'trafficmanagement':
           case 'meshbeacon':
+          case 'tak':
             const moduleKey = MODULE_FIELD_BY_ID[configType];
             if (moduleKey && finalConfig.moduleConfig?.[moduleKey]) {
               config = finalConfig.moduleConfig[moduleKey];
@@ -618,6 +628,7 @@ router.post('/load-config', extendRequestTimeout(LOAD_CONFIG_TIMEOUT_MS), requir
           case 'statusmessage':
           case 'trafficmanagement':
           case 'meshbeacon':
+          case 'tak':
             config = remoteConfig || { enabled: false };
             break;
         }
@@ -653,6 +664,13 @@ router.post('/load-config', extendRequestTimeout(LOAD_CONFIG_TIMEOUT_MS), requir
 
       if (!config && configType !== 'channel') {
         return res.status(400).json({ error: `Unknown config type: ${configType}` });
+      }
+
+      // TAK team + role (#5613): both enums default to 0, which proto3 leaves
+      // off the wire, and a decoded message can carry them as names. Answer
+      // with plain numbers whichever way the node's reply was decoded.
+      if (configType === 'tak') {
+        config = normalizeTakConfig(config);
       }
 
       res.json({ config });
@@ -1934,6 +1952,20 @@ router.post('/commands', requireAdmin(), requireMeshtasticDeviceSource('body'), 
         }
         buildAdminMessage = (passkey) => protobufService.createSetModuleConfigMessageGeneric('trafficmanagement', params.config, passkey);
         break;
+      case 'setTAKConfig': {
+        if (!params.config) {
+          return fail(res, 400, 'MISSING_CONFIG', 'config is required for setTAKConfig');
+        }
+        // TAK team + role (#5613). Refuse a value outside the two enums, then
+        // send exactly the two fields as numbers.
+        const takError = validateTakConfigPayload(params.config);
+        if (takError) {
+          return fail(res, 400, 'INVALID_TAK_CONFIG', takError);
+        }
+        const takConfig = normalizeTakConfig(params.config);
+        buildAdminMessage = (passkey) => protobufService.createSetModuleConfigMessageGeneric('tak', takConfig, passkey);
+        break;
+      }
       case 'setMeshBeaconConfig':
         if (!params.config) {
           return res.status(400).json({ error: 'config is required for setMeshBeaconConfig' });

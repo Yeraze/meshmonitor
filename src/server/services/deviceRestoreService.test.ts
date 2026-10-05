@@ -208,4 +208,40 @@ describe('deviceRestoreService', () => {
     await expect(runRestore(mgr, sampleBackup())).rejects.toThrow('Failed to start configuration transaction');
     expect(mgr.setDeviceConfig).not.toHaveBeenCalled();
   });
+
+  describe('TAK module config (#5613)', () => {
+    /** module_config with a tak section, as deviceBackupService writes it (enum names). */
+    const withTak = (tak: Record<string, unknown>) =>
+      sampleBackup({ module_config: { serial: { enabled: false }, tak } });
+
+    it('restores team and role from their enum names as numbers', async () => {
+      const mgr = makeManager();
+      const result = await runRestore(mgr, withTak({ team: 'Red', role: 'TeamLead' }));
+
+      expect(mgr.setGenericModuleConfig).toHaveBeenCalledWith('tak', { team: 5, role: 2 });
+      expect(result.applied).toContain('module.tak');
+    });
+
+    it('a field the backup left out (a proto3 default) restores as 0', async () => {
+      const mgr = makeManager();
+      await runRestore(mgr, withTak({ team: 'Dark_Green' }));
+
+      expect(mgr.setGenericModuleConfig).toHaveBeenCalledWith('tak', { team: 13, role: 0 });
+    });
+
+    it('also takes numbers, for a hand-edited backup', async () => {
+      const mgr = makeManager();
+      await runRestore(mgr, withTak({ team: 9, role: 8 }));
+
+      expect(mgr.setGenericModuleConfig).toHaveBeenCalledWith('tak', { team: 9, role: 8 });
+    });
+
+    it('a backup with no tak section sends no TAK config', async () => {
+      const mgr = makeManager();
+      await runRestore(mgr, sampleBackup());
+
+      const types = mgr.setGenericModuleConfig.mock.calls.map((c: unknown[]) => c[0]);
+      expect(types).not.toContain('tak');
+    });
+  });
 });

@@ -21,6 +21,7 @@
 import YAML from 'yamljs';
 import { EnumMappings } from './deviceBackupService.js';
 import { logger } from '../../utils/logger.js';
+import { normalizeTakConfig } from '../../utils/takConfig.js';
 
 /**
  * The subset of the Meshtastic manager the restore drives. The real
@@ -106,6 +107,7 @@ const MODULE_FIELD_TO_TYPE: Record<string, string> = {
   statusmessage: 'statusmessage',
   trafficManagement: 'trafficmanagement',
   meshBeacon: 'meshbeacon',
+  tak: 'tak',
 };
 
 export interface RestoreResult {
@@ -217,6 +219,10 @@ class DeviceRestoreService {
       let payload: ConfigSection = section;
       if (field === 'detectionSensor' && section.detectionTriggerType !== undefined) {
         payload = { ...section, detectionTriggerType: toEnumNum(DETECTION_TRIGGER_TO_NUM, section.detectionTriggerType) };
+      }
+      if (field === 'tak') {
+        // The backup holds enum names (`team: Red`); the encoder needs numbers.
+        payload = { ...normalizeTakConfig(section) };
       }
       await runSection(`module.${field}`, () => manager.setGenericModuleConfig(moduleType, payload));
     }
