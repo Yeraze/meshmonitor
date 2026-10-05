@@ -18,14 +18,22 @@ import { ImportConfigModal } from './configuration/ImportConfigModal';
 import { ExportConfigModal } from './configuration/ExportConfigModal';
 import SectionNav from './SectionNav';
 import { adminCommandsNavItems } from './search/configSections';
-import { encodePositionFlags, decodePositionFlags, decodePositionFlagNames } from '../utils/positionFlags';
+import { encodePositionFlags, decodePositionFlagNames } from '../utils/positionFlags';
 import { getHardwareModelName, getRoleName } from '../utils/nodeHelpers';
-import { normalizeTakConfig } from '../utils/takConfig';
 import { DeviceConfigurationSection } from './admin-commands/DeviceConfigurationSection';
 import AutoFavoriteManagementSection from './admin-commands/AutoFavoriteManagementSection';
 import { ModuleConfigurationSection } from './admin-commands/ModuleConfigurationSection';
 import { DeviceActionsSection } from './admin-commands/DeviceActionsSection';
-import { useAdminCommandsState, buildMeshBeaconConfigPayload, parseMeshBeaconConfig, buildSecurityConfigUpdates } from './admin-commands/useAdminCommandsState';
+import { useAdminCommandsState, buildMeshBeaconConfigPayload } from './admin-commands/useAdminCommandsState';
+import {
+  ADMIN_LOAD_SECTIONS,
+  LOAD_CONFIG_TYPES,
+  allSectionStatus,
+  applyLoadedConfig,
+  type LoadConfigType,
+  type LoadedConfigSetters,
+  type SectionLoadState,
+} from './admin-commands/applyLoadedConfig';
 import {
   DEFAULT_PUBLIC_PSK,
   PUBLIC_CHANNEL_PRECISION_MAX_BITS,
@@ -82,6 +90,28 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
     setTAKConfig,
   } = useAdminCommandsState();
 
+  // The setters a config load writes to. Both load paths hand this to
+  // applyLoadedConfig, so a section cannot be applied by one and not the other.
+  const loadedConfigSetters = useMemo<LoadedConfigSetters>(() => ({
+    setDeviceConfig,
+    setLoRaConfig,
+    setPositionConfig,
+    setMQTTConfig,
+    setSecurityConfig,
+    setBluetoothConfig,
+    setNetworkConfig,
+    setNeighborInfoConfig,
+    setTelemetryConfig,
+    setStatusMessageConfig,
+    setTrafficManagementConfig,
+    setMeshBeaconConfig,
+    setTAKConfig,
+  }), [
+    setDeviceConfig, setLoRaConfig, setPositionConfig, setMQTTConfig, setSecurityConfig,
+    setBluetoothConfig, setNetworkConfig, setNeighborInfoConfig, setTelemetryConfig,
+    setStatusMessageConfig, setTrafficManagementConfig, setMeshBeaconConfig, setTAKConfig,
+  ]);
+
   // UI and non-config state (keep as useState for now)
   const [selectedNodeNum, setSelectedNodeNum] = useState<number | null>(null);
   // Per-send retry override (#4487). null = defer to the `adminRetryAttempts`
@@ -130,23 +160,7 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
   const [isLoadingChannels, setIsLoadingChannels] = useState(false);
 
   // Per-section loading status: 'idle' | 'loading' | 'success' | 'error'
-  const [sectionLoadStatus, setSectionLoadStatus] = useState<Record<string, 'idle' | 'loading' | 'success' | 'error'>>({
-    device: 'idle',
-    lora: 'idle',
-    position: 'idle',
-    mqtt: 'idle',
-    security: 'idle',
-    bluetooth: 'idle',
-    network: 'idle',
-    neighborinfo: 'idle',
-    telemetry: 'idle',
-    statusmessage: 'idle',
-    trafficmanagement: 'idle',
-    meshbeacon: 'idle',
-    tak: 'idle',
-    owner: 'idle',
-    channels: 'idle'
-  });
+  const [sectionLoadStatus, setSectionLoadStatus] = useState<Record<string, SectionLoadState>>(() => allSectionStatus('idle'));
   // Track remote node favorite/ignored status separately (key: nodeNum, value: {isFavorite, isIgnored})
   const [remoteNodeStatus, setRemoteNodeStatus] = useState<Map<number, { isFavorite: boolean; isIgnored: boolean }>>(new Map());
 
@@ -452,17 +466,7 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
     setRemoteNodeChannels([]);
 
     // Reset section load statuses when switching nodes
-    setSectionLoadStatus({
-      device: 'idle',
-      lora: 'idle',
-      position: 'idle',
-      mqtt: 'idle',
-      security: 'idle',
-      bluetooth: 'idle',
-      neighborinfo: 'idle',
-      owner: 'idle',
-      channels: 'idle'
-    });
+    setSectionLoadStatus(allSectionStatus('idle'));
   }, [nodeOptions]);
 
   const handleLoadAllConfigs = async () => {
@@ -474,30 +478,14 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
     setIsLoadingAllConfigs(true);
     setLoadingProgress(null);
     // Reset all section statuses to loading
-    setSectionLoadStatus({
-      device: 'loading',
-      lora: 'loading',
-      position: 'loading',
-      mqtt: 'loading',
-      security: 'loading',
-      bluetooth: 'loading',
-      network: 'loading',
-      neighborinfo: 'loading',
-      telemetry: 'loading',
-      statusmessage: 'loading',
-      trafficmanagement: 'loading',
-      meshbeacon: 'loading',
-      tak: 'loading',
-      owner: 'loading',
-      channels: 'loading'
-    });
+    setSectionLoadStatus(allSectionStatus('loading'));
     const errors: string[] = [];
     const loaded: string[] = [];
-    const totalConfigs = 15; // device, lora, position, mqtt, security, bluetooth, network, neighborinfo, telemetry, statusmessage, trafficmanagement, meshbeacon, tak, owner, channels
+    const totalConfigs = ADMIN_LOAD_SECTIONS.length; // every load-config section, then owner, then channels
 
     try {
       // Load all config types sequentially to avoid conflicts and timeouts
-      const loadConfig = async (configType: string, step: number, loadFn: (result: any) => void) => {
+      const loadConfig = async (configType: LoadConfigType, step: number) => {
         setLoadingProgress({ current: step, total: totalConfigs, configType });
         setSectionLoadStatus(prev => ({ ...prev, [configType]: 'loading' }));
         try {
@@ -506,11 +494,13 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
             configType,
             ...(sourceId ? { sourceId } : {})
           });
-          if (result?.config) {
-            loadFn(result);
+          if (applyLoadedConfig(configType, result?.config, loadedConfigSetters, { nodeNum: selectedNodeNum })) {
             loaded.push(configType);
             setSectionLoadStatus(prev => ({ ...prev, [configType]: 'success' }));
           } else {
+            // An empty reply filled nothing: count it as a failure so the
+            // summary toast does not claim every config loaded.
+            errors.push(configType);
             setSectionLoadStatus(prev => ({ ...prev, [configType]: 'error' }));
           }
         } catch (_err) {
@@ -538,6 +528,7 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
             loaded.push('owner');
             setSectionLoadStatus(prev => ({ ...prev, owner: 'success' }));
           } else {
+            errors.push('owner');
             setSectionLoadStatus(prev => ({ ...prev, owner: 'error' }));
           }
         } catch (_err) {
@@ -547,188 +538,17 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
       };
 
       // Load configs sequentially with small delays between requests
-      await loadConfig('device', 1, (result) => {
-        const config = result.config;
-        setDeviceConfig({
-          role: config.role,
-          nodeInfoBroadcastSecs: config.nodeInfoBroadcastSecs,
-          rebroadcastMode: config.rebroadcastMode ?? 0,
-          tzdef: config.tzdef ?? '',
-          doubleTapAsButtonPress: config.doubleTapAsButtonPress ?? false,
-          disableTripleClick: config.disableTripleClick ?? false,
-          ledHeartbeatDisabled: config.ledHeartbeatDisabled ?? false,
-          buzzerMode: config.buzzerMode ?? 0,
-          buttonGpio: config.buttonGpio ?? 0,
-          buzzerGpio: config.buzzerGpio ?? 0,
-        });
-      });
-      await new Promise(resolve => setTimeout(resolve, 200)); // Small delay between requests
-
-      await loadConfig('lora', 2, (result) => {
-        const config = result.config;
-        setLoRaConfig({
-          usePreset: config.usePreset,
-          modemPreset: config.modemPreset,
-          bandwidth: config.bandwidth,
-          spreadFactor: config.spreadFactor,
-          codingRate: config.codingRate,
-          frequencyOffset: config.frequencyOffset,
-          overrideFrequency: config.overrideFrequency,
-          region: config.region,
-          hopLimit: config.hopLimit,
-          txPower: config.txPower,
-          channelNum: config.channelNum,
-          // FEM_LNA_Mode: proto3 elides the zero value, so default undefined to 0 (DISABLED)
-          femLnaMode: config.femLnaMode ?? 0,
-          sx126xRxBoostedGain: config.sx126xRxBoostedGain,
-          ignoreMqtt: config.ignoreMqtt,
-          configOkToMqtt: config.configOkToMqtt,
-          txEnabled: config.txEnabled !== false,  // Default true only when genuinely absent; reflect an explicit device `false` (#4294)
-          overrideDutyCycle: config.overrideDutyCycle ?? false,
-          paFanDisabled: config.paFanDisabled ?? false
-        });
-      });
-      await new Promise(resolve => setTimeout(resolve, 200));
-
-      await loadConfig('position', 3, (result) => {
-        const config = result.config;
-        const positionConfig: any = {
-          positionBroadcastSecs: config.positionBroadcastSecs,
-          positionSmartEnabled: config.positionBroadcastSmartEnabled ?? config.positionSmartEnabled,
-          fixedPosition: config.fixedPosition,
-          fixedLatitude: config.fixedLatitude,
-          fixedLongitude: config.fixedLongitude,
-          fixedAltitude: config.fixedAltitude,
-          gpsUpdateInterval: config.gpsUpdateInterval,
-          rxGpio: config.rxGpio,
-          txGpio: config.txGpio,
-          broadcastSmartMinimumDistance: config.broadcastSmartMinimumDistance,
-          broadcastSmartMinimumIntervalSecs: config.broadcastSmartMinimumIntervalSecs,
-          gpsEnGpio: config.gpsEnGpio,
-          gpsMode: config.gpsMode
-        };
-        if (config.positionFlags !== undefined) {
-          positionConfig.positionFlags = decodePositionFlags(config.positionFlags);
-        }
-        setPositionConfig(positionConfig);
-      });
-      await new Promise(resolve => setTimeout(resolve, 200));
-
-      await loadConfig('mqtt', 4, (result) => {
-        const config = result.config;
-        setMQTTConfig({
-          enabled: config.enabled,
-          address: config.address,
-          username: config.username,
-          password: config.password,
-          encryptionEnabled: config.encryptionEnabled,
-          jsonEnabled: config.jsonEnabled,
-          root: config.root
-        });
-      });
-      await new Promise(resolve => setTimeout(resolve, 200));
-
-      await loadConfig('security', 5, (result) => {
-        applyLoadedSecurityConfig(result.config, selectedNodeNum);
-      });
-      await new Promise(resolve => setTimeout(resolve, 200));
-
-      await loadConfig('bluetooth', 6, (result) => {
-        const config = result.config;
-        setBluetoothConfig({
-          enabled: config.enabled,
-          mode: config.mode,
-          fixedPin: config.fixedPin
-        });
-      });
-      await new Promise(resolve => setTimeout(resolve, 200));
-
-      await loadConfig('network', 7, (result) => {
-        const config = result.config;
-        const ipv4 = config.ipv4Config || {};
-        setNetworkConfig({
-          wifiEnabled: config.wifiEnabled || false,
-          wifiSsid: config.wifiSsid || '',
-          wifiPsk: config.wifiPsk || '',
-          ntpServer: config.ntpServer || '',
-          addressMode: config.addressMode || 0,
-          ipv4Address: ipv4.ip || '',
-          ipv4Gateway: ipv4.gateway || '',
-          ipv4Subnet: ipv4.subnet || '',
-          ipv4Dns: ipv4.dns || ''
-        });
-      });
-      await new Promise(resolve => setTimeout(resolve, 200));
-
-      await loadConfig('neighborinfo', 8, (result) => {
-        const config = result.config;
-        setNeighborInfoConfig({
-          enabled: config.enabled,
-          updateInterval: config.updateInterval,
-          transmitOverLora: config.transmitOverLora
-        });
-      });
-      await new Promise(resolve => setTimeout(resolve, 200));
-
-      await loadConfig('telemetry', 9, (result) => {
-        const config = result.config;
-        setTelemetryConfig({
-          deviceUpdateInterval: config.deviceUpdateInterval ?? 900,
-          deviceTelemetryEnabled: config.deviceTelemetryEnabled ?? false,
-          environmentUpdateInterval: config.environmentUpdateInterval ?? 900,
-          environmentMeasurementEnabled: config.environmentMeasurementEnabled ?? false,
-          environmentScreenEnabled: config.environmentScreenEnabled ?? false,
-          environmentDisplayFahrenheit: config.environmentDisplayFahrenheit ?? false,
-          airQualityEnabled: config.airQualityEnabled ?? false,
-          airQualityInterval: config.airQualityInterval ?? 900,
-          powerMeasurementEnabled: config.powerMeasurementEnabled ?? false,
-          powerUpdateInterval: config.powerUpdateInterval ?? 900,
-          powerScreenEnabled: config.powerScreenEnabled ?? false,
-          healthMeasurementEnabled: config.healthMeasurementEnabled ?? false,
-          healthUpdateInterval: config.healthUpdateInterval ?? 900,
-          healthScreenEnabled: config.healthScreenEnabled ?? false
-        });
-      });
-      await new Promise(resolve => setTimeout(resolve, 200));
-
-      await loadConfig('statusmessage', 10, (result) => {
-        const config = result.config;
-        setStatusMessageConfig({
-          nodeStatus: config.nodeStatus ?? ''
-        });
-      });
-      await new Promise(resolve => setTimeout(resolve, 200));
-
-      await loadConfig('trafficmanagement', 11, (result) => {
-        const config = result.config;
-        setTrafficManagementConfig({
-          positionMinIntervalSecs: config.positionMinIntervalSecs ?? 0,
-          nodeinfoDirectResponseMaxHops: config.nodeinfoDirectResponseMaxHops ?? 0,
-          rateLimitWindowSecs: config.rateLimitWindowSecs ?? 0,
-          rateLimitMaxPackets: config.rateLimitMaxPackets ?? 0,
-          unknownPacketThreshold: config.unknownPacketThreshold ?? 0
-        });
-      });
-      await new Promise(resolve => setTimeout(resolve, 200));
-
-      await loadConfig('meshbeacon', 12, (result) => {
-        // Shared parser owns the load-time normalisation (flags, optional
-        // presets, UNSET regions, targets) — see parseMeshBeaconConfig.
-        setMeshBeaconConfig(parseMeshBeaconConfig(result.config));
-      });
-      await new Promise(resolve => setTimeout(resolve, 200));
-
-      await loadConfig('tak', 13, (result) => {
-        setTAKConfig(normalizeTakConfig(result.config));
-      });
-      await new Promise(resolve => setTimeout(resolve, 200));
+      for (const [index, configType] of LOAD_CONFIG_TYPES.entries()) {
+        await loadConfig(configType, index + 1);
+        await new Promise(resolve => setTimeout(resolve, 200)); // Small delay between requests
+      }
 
       // Load owner info
-      await loadOwner(14);
+      await loadOwner(LOAD_CONFIG_TYPES.length + 1);
       await new Promise(resolve => setTimeout(resolve, 200));
 
       // Load channels (extracted logic to avoid duplicate loading state and toasts)
-      setLoadingProgress({ current: 15, total: totalConfigs, configType: 'channels' });
+      setLoadingProgress({ current: totalConfigs, total: totalConfigs, configType: 'channels' });
       try {
         const localNodeNum = nodes.find(n => (n.user?.id || n.nodeId) === currentNodeId)?.nodeNum;
         const isLocalNode = selectedNodeNum === localNodeNum || selectedNodeNum === 0;
@@ -1001,20 +821,6 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
   };
 
   // Individual section load handlers
-  /*
-   * #5077: the security payload is applied from two places — the "load all"
-   * sequence and the per-section Load button. They were near-identical copies,
-   * and the #4736 `loadedForNodeNum` stamp was added to the first one only. The
-   * per-section load therefore populated the fields but left the Save gate
-   * closed forever, so a remote node's security config could be edited and
-   * never saved. One applier, so the two paths cannot drift again.
-   */
-  const applyLoadedSecurityConfig = useCallback((config: any, forNodeNum: number | null) => {
-    const { adminKeys, updates } = buildSecurityConfigUpdates(config, forNodeNum);
-    if (adminKeys) setSecurityConfig({ adminKeys });
-    setSecurityConfig(updates);
-  }, [setSecurityConfig]);
-
   const handleLoadSingleConfig = async (configType: string) => {
     if (selectedNodeNum === null) {
       showToast(t('admin_commands.please_select_node'), 'error');
@@ -1115,131 +921,10 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
             ...(sourceId ? { sourceId } : {})
           });
 
-          if (result?.config) {
-            const config = result.config;
-            switch (configType) {
-              case 'device':
-                setDeviceConfig({
-                  role: config.role,
-                  nodeInfoBroadcastSecs: config.nodeInfoBroadcastSecs,
-                  rebroadcastMode: config.rebroadcastMode ?? 0,
-                  tzdef: config.tzdef ?? '',
-                  doubleTapAsButtonPress: config.doubleTapAsButtonPress ?? false,
-                  disableTripleClick: config.disableTripleClick ?? false,
-                  ledHeartbeatDisabled: config.ledHeartbeatDisabled ?? false,
-                  buzzerMode: config.buzzerMode ?? 0,
-                  buttonGpio: config.buttonGpio ?? 0,
-                  buzzerGpio: config.buzzerGpio ?? 0,
-                });
-                break;
-              case 'lora':
-                setLoRaConfig({
-                  usePreset: config.usePreset,
-                  modemPreset: config.modemPreset,
-                  bandwidth: config.bandwidth,
-                  spreadFactor: config.spreadFactor,
-                  codingRate: config.codingRate,
-                  frequencyOffset: config.frequencyOffset,
-                  overrideFrequency: config.overrideFrequency,
-                  region: config.region,
-                  hopLimit: config.hopLimit,
-                  txPower: config.txPower,
-                  channelNum: config.channelNum,
-                  // FEM_LNA_Mode: proto3 elides the zero value, so default undefined to 0 (DISABLED)
-                  femLnaMode: config.femLnaMode ?? 0,
-                  sx126xRxBoostedGain: config.sx126xRxBoostedGain,
-                  ignoreMqtt: config.ignoreMqtt,
-                  configOkToMqtt: config.configOkToMqtt,
-                  txEnabled: config.txEnabled !== false,  // Default true only when genuinely absent; reflect an explicit device `false` (#4294)
-                  overrideDutyCycle: config.overrideDutyCycle ?? false,
-                  paFanDisabled: config.paFanDisabled ?? false
-                });
-                break;
-              case 'position':
-                setPositionConfig({
-                  positionBroadcastSecs: config.positionBroadcastSecs,
-                  positionSmartEnabled: config.positionBroadcastSmartEnabled ?? config.positionSmartEnabled,
-                  fixedPosition: config.fixedPosition,
-                  fixedLatitude: config.fixedLatitude,
-                  fixedLongitude: config.fixedLongitude,
-                  fixedAltitude: config.fixedAltitude,
-                  gpsUpdateInterval: config.gpsUpdateInterval,
-                  rxGpio: config.rxGpio,
-                  txGpio: config.txGpio,
-                  broadcastSmartMinimumDistance: config.broadcastSmartMinimumDistance,
-                  broadcastSmartMinimumIntervalSecs: config.broadcastSmartMinimumIntervalSecs,
-                  gpsEnGpio: config.gpsEnGpio,
-                  gpsMode: config.gpsMode
-                });
-                if (config.positionFlags !== undefined) {
-                  setPositionFlags(decodePositionFlags(config.positionFlags));
-                }
-                break;
-              case 'mqtt':
-                setMQTTConfig({
-                  enabled: config.enabled,
-                  address: config.address,
-                  username: config.username,
-                  password: config.password,
-                  encryptionEnabled: config.encryptionEnabled,
-                  jsonEnabled: config.jsonEnabled,
-                  root: config.root
-                });
-                break;
-              case 'security':
-                applyLoadedSecurityConfig(config, selectedNodeNum);
-                break;
-              case 'bluetooth':
-                setBluetoothConfig({
-                  enabled: config.enabled,
-                  mode: config.mode,
-                  fixedPin: config.fixedPin
-                });
-                break;
-              case 'network':
-                // Handle ipv4Config which may be nested
-                const ipv4 = config.ipv4Config || {};
-                setNetworkConfig({
-                  wifiEnabled: config.wifiEnabled || false,
-                  wifiSsid: config.wifiSsid || '',
-                  wifiPsk: config.wifiPsk || '',
-                  ntpServer: config.ntpServer || '',
-                  addressMode: config.addressMode || 0,
-                  ipv4Address: ipv4.ip || '',
-                  ipv4Gateway: ipv4.gateway || '',
-                  ipv4Subnet: ipv4.subnet || '',
-                  ipv4Dns: ipv4.dns || ''
-                });
-                break;
-              case 'neighborinfo':
-                setNeighborInfoConfig({
-                  enabled: config.enabled,
-                  updateInterval: config.updateInterval,
-                  transmitOverLora: config.transmitOverLora
-                });
-                break;
-              case 'telemetry':
-                setTelemetryConfig({
-                  deviceUpdateInterval: config.deviceUpdateInterval ?? 900,
-                  deviceTelemetryEnabled: config.deviceTelemetryEnabled ?? false,
-                  environmentUpdateInterval: config.environmentUpdateInterval ?? 900,
-                  environmentMeasurementEnabled: config.environmentMeasurementEnabled ?? false,
-                  environmentScreenEnabled: config.environmentScreenEnabled ?? false,
-                  environmentDisplayFahrenheit: config.environmentDisplayFahrenheit ?? false,
-                  airQualityEnabled: config.airQualityEnabled ?? false,
-                  airQualityInterval: config.airQualityInterval ?? 900,
-                  powerMeasurementEnabled: config.powerMeasurementEnabled ?? false,
-                  powerUpdateInterval: config.powerUpdateInterval ?? 900,
-                  powerScreenEnabled: config.powerScreenEnabled ?? false,
-                  healthMeasurementEnabled: config.healthMeasurementEnabled ?? false,
-                  healthUpdateInterval: config.healthUpdateInterval ?? 900,
-                  healthScreenEnabled: config.healthScreenEnabled ?? false
-                });
-                break;
-              case 'tak':
-                setTAKConfig(normalizeTakConfig(config));
-                break;
-            }
+          // One applier for both load paths. It answers false when there is no
+          // config in the reply or the section has no applier; either way the
+          // form was not filled, so the section must not read as loaded.
+          if (applyLoadedConfig(configType, result?.config, loadedConfigSetters, { nodeNum: selectedNodeNum })) {
             setSectionLoadStatus(prev => ({ ...prev, [configType]: 'success' }));
             showToast(t('admin_commands.config_loaded_success', { configType: t(`admin_commands.${configType}_config_short`, configType) }), 'success');
             return; // Success - exit
