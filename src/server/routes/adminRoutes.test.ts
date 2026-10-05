@@ -611,7 +611,13 @@ describe('adminRoutes — setSecurityConfig private key (#4632)', () => {
       stop: vi.fn().mockResolvedValue(undefined),
       getStatus: vi.fn().mockReturnValue({ sourceId: harness.sourceA, sourceName: 'A', sourceType: 'meshtastic_tcp', connected: true }),
       getLocalNodeInfo: vi.fn().mockReturnValue({ nodeNum: 1, nodeId: '!00000001', longName: 'Local', shortName: 'LOC' }),
-      getSecurityKeys: vi.fn().mockReturnValue({ publicKey: 'OLDPUBLICKEYbase64AAAAAAAAAAAAAAAAAAAAAAAAA=', privateKey: 'OLDPRIVATEKEYbase64AAAAAAAAAAAAAAAAAAAAAAAA=' }),
+      // The local node's keys now come from a fresh read of the device, not
+      // from the getSecurityKeys() cache.
+      refreshLocalSecurityConfig: vi.fn().mockResolvedValue({
+        publicKey: Buffer.from('OLDPUBLICKEYbase64AAAAAAAAAAAAAAAAAAAAAAAAA=', 'base64'),
+        privateKey: Buffer.from('OLDPRIVATEKEYbase64AAAAAAAAAAAAAAAAAAAAAAAA=', 'base64'),
+        adminKey: [],
+      }),
       getSessionPasskey: vi.fn().mockReturnValue(new Uint8Array([1, 2, 3, 4])),
       getSessionPasskeyStatus: vi.fn().mockReturnValue({ hasPasskey: true }),
       sendAdminCommand: vi.fn().mockResolvedValue(undefined),
@@ -707,11 +713,14 @@ describe('adminRoutes — setSecurityConfig private key (#4632)', () => {
   });
 
   it('treats re-submitting the current key (even base64:-prefixed) as unchanged', async () => {
-    // getSecurityKeys reports a bare key; the client hands back the same one
+    // The device reports a bare key; the client hands back the same one
     // with a base64: prefix. Normalized comparison must see them as equal and
     // preserve the identity rather than deriving a "new" public key.
     await sourceManagerRegistry.addManager(makeManager({
-      getSecurityKeys: vi.fn().mockReturnValue({ publicKey: pair.pub, privateKey: pair.priv }),
+      refreshLocalSecurityConfig: vi.fn().mockResolvedValue({
+        publicKey: Buffer.from(pair.pub, 'base64'),
+        privateKey: Buffer.from(pair.priv, 'base64'),
+      }),
     }));
     const agent = await harness.loginAs(harness.admin);
 
@@ -846,7 +855,7 @@ describe('adminRoutes — setSecurityConfig private key (#4632)', () => {
     });
 
     expect(res.status).toBe(200);
-    // Local keys come from the manager cache; no extra mesh round-trip.
+    // Local state comes from a read over the local link; no mesh round-trip.
     expect(requestRemoteConfig).not.toHaveBeenCalled();
   });
 

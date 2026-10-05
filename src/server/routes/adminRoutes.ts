@@ -30,7 +30,13 @@ import {
   type AdminOperationStatus,
   type AdminOperationResult,
 } from '../services/adminOperationService.js';
-import { isValidMeshtasticKey, derivePublicKey, normalizeMeshtasticKey } from '../utils/meshtasticKeys.js';
+import { isValidMeshtasticKey } from '../utils/meshtasticKeys.js';
+import {
+  buildSecurityConfigWrite,
+  toCurrentSecurityState,
+  type CurrentSecurityState,
+  type RawSecurityConfig,
+} from '../utils/securityConfigWrite.js';
 import { channelPskToStoredBase64 } from '../utils/channelPsk.js';
 import { extendRequestTimeout } from '../middleware/requestTimeout.js';
 
@@ -1961,36 +1967,60 @@ router.post('/commands', requireAdmin(), requireMeshtasticDeviceSource('body'), 
           }
         }
         {
-          // Preserve the node's identity keypair and signature policy across the
-          // update. The LOCAL node reads them from the manager's own cache. A
-          // REMOTE node needs a round-trip to the device, so that read happens in
-          // `preSend` below — INSIDE the background executor — not here.
+          // Firmware replaces the whole security struct on a set, so the write
+          // must carry what the node holds NOW: its identity keypair (#4736)
+          // and its packet signature policy (firmware 2.8, field 9). Both come
+          // from a read of the node itself, made in `preSend`, and both are
+          // merged by `buildSecurityConfigWrite` — one helper for the local
+          // and the remote node, so the two paths cannot drift apart. They did:
+          // the local path used to merge the keys from the manager's cache and
+          // never the policy, so every local Security save reset a node the
+          // phone app had set to BALANCED or STRICT back to COMPATIBLE.
           //
-          // #4482 deliberately moved mesh round-trips out of this handler because
-          // they blocked the HTTP request for up to 45s; doing the read here
-          // would reintroduce exactly that. The cost is that an unreachable node
+          // Why a fresh read for the LOCAL node too, and not the cache: the
+          // cache is filled at connect and the device does not push later
+          // changes, so a policy set from another client after we connected is
+          // not in it. The read is one admin packet on the local link — no
+          // airtime.
+          //
+          // The REMOTE read is a mesh round-trip. It runs in `preSend`, INSIDE
+          // the background executor, not in this handler: #4482 moved mesh
+          // round-trips out of the handler because they blocked the HTTP
+          // request for up to 45s. The cost is that an unreachable node
           // surfaces as a failed operation rather than a synchronous 4xx.
-          let remoteSecurity: { publicKey: string; privateKey: string; packetSignaturePolicy?: number } | null = null;
-          if (!isLocalNode) {
+          let currentSecurity: CurrentSecurityState | null = null;
+          if (isLocalNode) {
+            preSend = async () => {
+              const liveLocal = await acManager.refreshLocalSecurityConfig();
+              // Fail CLOSED. An unknown policy is not "COMPATIBLE"; guessing
+              // is the silent downgrade this read exists to prevent.
+              if (!liveLocal) {
+                throw adminError(
+                  'SECURITY_CONFIG_READBACK_FAILED',
+                  'Could not read the current security config from the local node. ' +
+                  'Saving without it could lower the node\'s packet signature policy or replace its identity keypair, ' +
+                  'so nothing was sent. Check the connection and try again.',
+                );
+              }
+              currentSecurity = toCurrentSecurityState(liveLocal);
+            };
+          } else {
             preSend = async () => {
               const securityInfo = CONFIG_TYPE_MAP['security'];
-              let liveRemote:
-                | { publicKey?: Uint8Array; privateKey?: Uint8Array; packetSignaturePolicy?: number }
-                | null;
+              let liveRemote: RawSecurityConfig | null;
               try {
                 liveRemote = await acManager.requestRemoteConfig(destinationNodeNum, securityInfo.type, securityInfo.isModule);
               } catch (error) {
                 logger.warn(`Failed to read security config from remote node ${destinationNodeNum} before update:`, error);
                 liveRemote = null;
               }
-              const livePublic = liveRemote?.publicKey ? bytesToBase64(liveRemote.publicKey) : null;
-              const livePrivate = liveRemote?.privateKey ? bytesToBase64(liveRemote.privateKey) : null;
+              const remoteState = toCurrentSecurityState(liveRemote);
 
               // Fail CLOSED. Sending without the node's real keypair is the
               // destructive case this whole change exists to prevent, so an
               // unreachable node must abort the save rather than proceed and
               // regenerate the node's identity.
-              if (!livePublic || !livePrivate) {
+              if (!remoteState.publicKey || !remoteState.privateKey) {
                 throw adminError(
                   'SECURITY_CONFIG_READBACK_FAILED',
                   `Could not read the current security config from node ${destinationNodeNum}. ` +
@@ -1998,111 +2028,42 @@ router.post('/commands', requireAdmin(), requireMeshtasticDeviceSource('body'), 
                   'Check the node is reachable and try again.',
                 );
               }
-              remoteSecurity = {
-                publicKey: livePublic,
-                privateKey: livePrivate,
-                packetSignaturePolicy: liveRemote?.packetSignaturePolicy,
-              };
+              currentSecurity = remoteState;
             };
           }
 
           // A function, not a value: the builder runs after this handler
-          // returns, and for a remote node the keypair only exists once
-          // preSend has completed.
+          // returns, and the node's current state only exists once preSend has
+          // completed.
           const resolveConfigToSend = () => {
-            if (isLocalNode) {
-              const existingKeys = acManager.getSecurityKeys();
-              // A caller-supplied private key that differs from the stored one
-              // is a deliberate identity change (#4632). The firmware stores the
-              // pair verbatim rather than re-deriving, so we must send the
-              // PUBLIC key that matches the NEW private key — preserving the old
-              // public key here would leave the node advertising a key that no
-              // longer matches its secret and break PKI DMs to it. For every
-              // other security setting the private key is absent and both keys
-              // are preserved unchanged, exactly as before.
-              const providedPrivate = typeof params.config.privateKey === 'string'
-                ? params.config.privateKey.trim()
-                : '';
-              // Compare normalized (strip any base64: prefix) so re-submitting
-              // the SAME key the firmware reported — possibly with a prefix — is
-              // correctly seen as unchanged and preserves the identity.
-              const isNewPrivateKey = providedPrivate.length > 0
-                && normalizeMeshtasticKey(providedPrivate)
-                   !== normalizeMeshtasticKey(existingKeys.privateKey ?? '');
-              if (isNewPrivateKey) {
-                // Validity is already enforced above (400); this is the trusted
-                // path that derives the matching public key.
-                logger.info('Setting a new private key for the local node; deriving the matching public key');
-                return {
-                  ...params.config,
-                  privateKey: providedPrivate,
-                  publicKey: derivePublicKey(providedPrivate),
-                };
-              }
-              logger.debug('Preserving existing public/private keys for local node security config update');
-              return {
-                ...params.config,
-                // Include existing keys if not explicitly provided. Normalize a
-                // provided key (strip any base64: prefix) before it reaches the
-                // protobuf encoder — re-submitting the current key with a prefix
-                // must not send `base64:…`, which is not valid base64 and would
-                // corrupt the identity.
-                publicKey: params.config.publicKey
-                  ? normalizeMeshtasticKey(params.config.publicKey)
-                  : existingKeys.publicKey,
-                privateKey: params.config.privateKey
-                  ? normalizeMeshtasticKey(params.config.privateKey)
-                  : existingKeys.privateKey
-              };
-            }
-            // Remote node (#4736).
+            // Non-null by construction, and the construction is an ORDERING
+            // invariant worth stating: `executeAdminCommand` always awaits
+            // `preSend` before calling `buildAdminMessage` (see its "2. Build
+            // and send" step). preSend is what populates `currentSecurity`,
+            // and it throws rather than returning when the node cannot be read.
             //
-            // This branch used to strip publicKey/privateKey with a comment
-            // claiming firmware would "preserve them". It does not, and that
-            // belief is why this button was hard-disabled back in #1602.
-            // Firmware's handleSetConfig does:
+            // So if this ever trips, the cause is that call order changing.
+            // Failing loudly here is deliberate: a config sent without the
+            // node's keypair or policy is the destructive outcome.
+            if (!currentSecurity) {
+              throw new Error(
+                'internal: current security config unresolved — preSend must run before buildAdminMessage',
+              );
+            }
+            // Keys: a client-supplied private key is honored for the LOCAL
+            // node only (#4632; the guard above already 400s it for a remote
+            // one). For a remote node the server cannot tell an honest echo
+            // from an identity hijack, so the node's own keys always win, and
+            // its private key never reaches the browser.
+            //
+            // A remote save used to strip the keys on the belief that firmware
+            // would "preserve them". It does not (handleSetConfig):
             //
             //     config.security = c.payload_variant.security;   // wholesale
             //     if (config.security.private_key.size != 32)
             //         crypto->generateKeyPair(...);               // NEW identity
-            //
-            // so stripping the keys did not preserve them — it made the node
-            // mint a brand-new keypair, changing its identity mesh-wide.
-            //
-            // The merge happens HERE, from `remoteSecurity`, a read this
-            // handler just performed against the node itself. Deliberately not
-            // from anything the client sent: the #4632 guard above still
-            // rejects a client-supplied private key for a remote node, because
-            // the server cannot tell an honest echo from an identity hijack.
-            // Merging server-side keeps that guard intact AND keeps the remote
-            // node's private key out of the browser entirely.
-            // Non-null by construction, and the construction is an ORDERING
-            // invariant worth stating: `executeAdminCommand` always awaits
-            // `preSend` before calling `buildAdminMessage` (see its "2. Build
-            // and send" step). preSend is what populates `remoteSecurity`, and
-            // it throws rather than returning when the node cannot be read.
-            //
-            // So if this ever trips, the cause is that call order changing —
-            // not a missing key. Failing loudly here is deliberate: silently
-            // sending a config without the keypair is the destructive outcome
-            // this whole change exists to prevent.
-            if (!remoteSecurity) {
-              throw new Error(
-                'internal: remote security keys unresolved — preSend must run before buildAdminMessage',
-              );
-            }
-            return {
-              ...params.config,
-              publicKey: remoteSecurity.publicKey,
-              privateKey: remoteSecurity.privateKey,
-              // Omitted, this silently resets the node from STRICT/BALANCED to
-              // COMPATIBLE (0). The firmware's own bug report called that worse
-              // than losing the admin keys, since nothing surfaces it.
-              packetSignaturePolicy: remoteSecurity.packetSignaturePolicy,
-            };
+            return buildSecurityConfigWrite(params.config, currentSecurity, { allowClientKeys: isLocalNode });
           };
-          // Evaluated lazily: for a remote node `configToSend` depends on
-          // `remoteSecurity`, which preSend fills in moments earlier.
           buildAdminMessage = (passkey) => protobufService.createSetSecurityConfigMessage(resolveConfigToSend(), passkey);
         }
         break;
@@ -2253,6 +2214,11 @@ router.post('/commands', requireAdmin(), requireMeshtasticDeviceSource('body'), 
   } catch (error: any) {
     if (isTxDisabledError(error)) {
       return fail(res, 409, 'TX_DISABLED', 'Transmit is disabled on this source');
+    }
+    // A local Security save that could not read the node first (remote ones
+    // fail the same way on their operation record).
+    if (error?.code === 'SECURITY_CONFIG_READBACK_FAILED') {
+      return fail(res, 409, 'SECURITY_CONFIG_READBACK_FAILED', error.message);
     }
     logger.error('Error executing admin command:', error);
     res.status(500).json({ error: error.message || 'Failed to execute admin command' });
