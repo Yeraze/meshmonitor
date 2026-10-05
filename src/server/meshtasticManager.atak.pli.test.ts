@@ -9,7 +9,7 @@
  * than propagated (RX-only, best-effort).
  *
  * Modeled on meshtasticManager.atak.test.ts (hoisted vi.mock of
- * database.js, module.fallbackManager, direct private-method calls).
+ * database.js, managerModule.fallbackManager, direct private-method calls).
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
@@ -215,6 +215,11 @@ vi.mock('../utils/nodeHelpers.js', () => ({
   isNodeComplete: vi.fn(),
 }));
 
+// Loaded once while the file is collected, not inside a hook. A dynamic import in
+// `beforeEach` charged the manager's module load (~2 s idle, 10 s+ on a busy
+// host) to the first test's hook budget; collection has no such budget.
+const managerModule = await import('./meshtasticManager.js');
+
 describe('MeshtasticManager - ATAK PLI contact persistence (processTakPacket)', () => {
   let manager: any;
 
@@ -230,8 +235,7 @@ describe('MeshtasticManager - ATAK PLI contact persistence (processTakPacket)', 
     mockGetChannelById.mockReturnValue({ id: 0, name: 'Primary', role: 1 });
     mockUpsertContact.mockResolvedValue(undefined);
 
-    const module = await import('./meshtasticManager.js');
-    manager = module.fallbackManager;
+    manager = managerModule.fallbackManager;
   });
 
   afterEach(() => {

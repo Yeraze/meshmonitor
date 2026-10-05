@@ -48,14 +48,18 @@ const PEER_ROW = {
   keyMismatchDetected: false,
 };
 
+// Loaded once while the file is collected, not inside a hook. A dynamic import in
+// `beforeEach` charged the manager's module load (~2 s idle, 10 s+ on a busy
+// host) to the first test's hook budget; collection has no such budget.
+const managerModule = await import('./meshtasticManager.js');
+
 describe('MeshtasticManager — add_contact push guard (#4368)', () => {
   let manager: any;
   let pushSpy: any;
 
   beforeEach(async () => {
     vi.clearAllMocks();
-    const module = await import('./meshtasticManager.js');
-    manager = module.fallbackManager;
+    manager = managerModule.fallbackManager;
     manager.localNodeInfo = { nodeNum: LOCAL };
     manager.isConnected = true;
     manager.transport = { send: vi.fn().mockResolvedValue(undefined) };

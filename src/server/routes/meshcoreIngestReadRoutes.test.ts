@@ -82,13 +82,17 @@ function makeDeviceManager(sourceId: string) {
 
 let app: express.Express;
 
-beforeEach(async () => {
+// Loaded once while the file is collected, not inside a hook. A dynamic import in
+// `beforeEach` charged the router's module load (~2 s idle, 10 s+ on a busy
+// host) to the first test's hook budget; collection has no such budget.
+const { default: meshcoreRoutes } = await import('./meshcoreRoutes.js');
+
+beforeEach(() => {
   managers.clear();
   managers.set('ingest-1', makeIngestManager('ingest-1'));
   managers.set('device-1', makeDeviceManager('device-1'));
   managers.set('meshtastic-1', { sourceId: 'meshtastic-1', sourceType: 'meshtastic_tcp' });
 
-  const { default: meshcoreRoutes } = await import('./meshcoreRoutes.js');
   app = express();
   app.use(express.json());
   app.use('/api/sources/:id/meshcore', meshcoreRoutes);

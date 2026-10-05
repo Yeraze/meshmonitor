@@ -202,6 +202,11 @@ const mockTargetNode = {
   channel: 0,
 };
 
+// Loaded once while the file is collected, not inside a hook. A dynamic import in
+// `beforeEach` charged the manager's module load (~2 s idle, 10 s+ on a busy
+// host) to the first test's hook budget; collection has no such budget.
+const managerModule = await import('./meshtasticManager.js');
+
 describe('MeshtasticManager - Traceroute Scheduler', () => {
   let manager: any;
 
@@ -212,9 +217,7 @@ describe('MeshtasticManager - Traceroute Scheduler', () => {
     // Make jitter deterministic: 0 jitter means immediate execution
     vi.spyOn(Math, 'random').mockReturnValue(0);
 
-    // Dynamic import to get fresh module instance with mocks applied
-    const module = await import('./meshtasticManager.js');
-    manager = module.fallbackManager;
+    manager = managerModule.fallbackManager;
 
     // Set up the manager to think it's connected with local node info
     manager.isConnected = true;

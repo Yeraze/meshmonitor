@@ -135,6 +135,11 @@ vi.mock('./config/environment.js', () => ({
 vi.mock('../utils/autoResponderUtils.js', () => ({ normalizeTriggerPatterns: vi.fn() }));
 vi.mock('../utils/nodeHelpers.js', () => ({ isNodeComplete: vi.fn() }));
 
+// Loaded once while the file is collected, not inside a hook. A dynamic import in
+// `beforeEach` charged the manager's module load (~2 s idle, 10 s+ on a busy
+// host) to the first test's hook budget; collection has no such budget.
+const managerModule = await import('./meshtasticManager.js');
+
 describe('MeshtasticManager - issue #3270 orphaned-transport flap', () => {
   let manager: any;
 
@@ -142,8 +147,7 @@ describe('MeshtasticManager - issue #3270 orphaned-transport flap', () => {
     vi.clearAllMocks();
     createdTransports.length = 0;
 
-    const module = await import('./meshtasticManager.js');
-    manager = module.fallbackManager;
+    manager = managerModule.fallbackManager;
 
     // Use a per-source config override so getConfig() short-circuits without
     // touching settings.

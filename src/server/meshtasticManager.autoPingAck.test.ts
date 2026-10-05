@@ -34,13 +34,17 @@ const REQUESTER = 0x11111111; // the node that asked for pings (= the DM destina
 const RELAY = 0x99999999;     // some intermediate node
 const REQ_ID = 4242;          // pending sent packet id
 
+// Loaded once while the file is collected, not inside a hook. A dynamic import in
+// `beforeEach` charged the manager's module load (~2 s idle, 10 s+ on a busy
+// host) to the first test's hook budget; collection has no such budget.
+const managerModule = await import('./meshtasticManager.js');
+
 describe('MeshtasticManager - auto-ping ACK matching (request_id + from)', () => {
   let manager: any;
 
   beforeEach(async () => {
     vi.clearAllMocks();
-    const module = await import('./meshtasticManager.js');
-    manager = module.fallbackManager;
+    manager = managerModule.fallbackManager;
     manager.localNodeInfo = { nodeNum: LOCAL };
     (manager as any).autoPingSessions.clear();
     vi.spyOn(manager as any, 'emitAutoPingUpdate').mockResolvedValue(undefined);
@@ -141,8 +145,7 @@ describe('MeshtasticManager - auto-ping send race', () => {
 
   beforeEach(async () => {
     vi.clearAllMocks();
-    const module = await import('./meshtasticManager.js');
-    manager = module.fallbackManager;
+    manager = managerModule.fallbackManager;
     manager.localNodeInfo = { nodeNum: LOCAL };
     (manager as any).autoPingSessions.clear();
     (manager as any).messageQueue = { recordExternalSend: vi.fn(), handleAck: vi.fn() };

@@ -215,6 +215,11 @@ const LOCAL_NODE_NUM = 1234567890;
 const LOCAL_NODE_ID = '!499602d2';
 const REMOTE_NODE_NUM = 987654321;
 
+// Loaded once while the file is collected, not inside a hook. A dynamic import in
+// `beforeEach` charged the manager's module load (~2 s idle, 10 s+ on a busy
+// host) to the first test's hook budget; collection has no such budget.
+const managerModule = await import('./meshtasticManager.js');
+
 describe('MeshtasticManager - Node Identity Guards', () => {
   let manager: any;
   let loggerModule: any;
@@ -222,8 +227,7 @@ describe('MeshtasticManager - Node Identity Guards', () => {
   beforeEach(async () => {
     vi.clearAllMocks();
 
-    const module = await import('./meshtasticManager.js');
-    manager = module.fallbackManager;
+    manager = managerModule.fallbackManager;
     loggerModule = await import('../utils/logger.js');
 
     // Set up the manager with local node info

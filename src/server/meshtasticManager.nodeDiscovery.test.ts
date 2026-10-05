@@ -36,6 +36,11 @@ vi.mock('./services/transportTrafficService.js', () => ({
 const NEW_NODE = 0x11111111;
 const POSITION_APP = 3;
 
+// Loaded once while the file is collected, not inside a hook. A dynamic import in
+// `beforeEach` charged the manager's module load (~2 s idle, 10 s+ on a busy
+// host) to the first test's hook budget; collection has no such budget.
+const managerModule = await import('./meshtasticManager.js');
+
 describe('MeshtasticManager node discovery (#5534)', () => {
   let manager: any;
   let discoveredSpy: ReturnType<typeof vi.spyOn>;
@@ -43,8 +48,7 @@ describe('MeshtasticManager node discovery (#5534)', () => {
   beforeEach(async () => {
     vi.clearAllMocks();
     mockGetNode.mockResolvedValue(null);
-    const module = await import('./meshtasticManager.js');
-    manager = module.fallbackManager;
+    manager = managerModule.fallbackManager;
     vi.spyOn(manager, 'trackPKIEncryption').mockResolvedValue(undefined);
     vi.spyOn(manager, 'maybeRecordHeardReflood').mockResolvedValue(undefined);
     manager.localNodeInfo = { nodeNum: 0xaaaaaaaa, nodeId: '!aaaaaaaa', longName: 'Local', shortName: 'LOCL' };

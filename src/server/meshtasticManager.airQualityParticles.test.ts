@@ -38,13 +38,17 @@ function storedTypes(): string[] {
   return mockInsertTelemetry.mock.calls.map((c) => c[0]?.telemetryType);
 }
 
+// Loaded once while the file is collected, not inside a hook. A dynamic import in
+// `beforeEach` charged the manager's module load (~2 s idle, 10 s+ on a busy
+// host) to the first test's hook budget; collection has no such budget.
+const managerModule = await import('./meshtasticManager.js');
+
 describe('MeshtasticManager - air-quality particle telemetry (protobuf.js snake_case quirk)', () => {
   let manager: any;
 
   beforeEach(async () => {
     vi.clearAllMocks();
-    const module = await import('./meshtasticManager.js');
-    manager = module.fallbackManager;
+    manager = managerModule.fallbackManager;
     // trackPKIEncryption hits other state/DB; not under test here.
     vi.spyOn(manager, 'trackPKIEncryption').mockResolvedValue(undefined);
   });

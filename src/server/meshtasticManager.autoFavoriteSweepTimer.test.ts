@@ -19,14 +19,18 @@ vi.mock('../utils/logger.js', () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }));
 
+// Loaded once while the file is collected, not inside a hook. A dynamic import in
+// `beforeEach` charged the manager's module load (~2 s idle, 10 s+ on a busy
+// host) to the first test's hook budget; collection has no such budget.
+const managerModule = await import('./meshtasticManager.js');
+
 describe('MeshtasticManager auto-favorite sweep timer', () => {
   let manager: any;
   const HOUR = 60 * 60 * 1000;
 
   beforeEach(async () => {
     vi.useFakeTimers();
-    const module = await import('./meshtasticManager.js');
-    manager = module.fallbackManager;
+    manager = managerModule.fallbackManager;
     vi.spyOn(manager, 'autoFavoriteSweep').mockResolvedValue(undefined);
   });
 

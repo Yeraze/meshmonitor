@@ -22,6 +22,11 @@ vi.mock('../utils/logger.js', () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }));
 
+// Loaded once while the file is collected, not inside a hook. A dynamic import in
+// `beforeEach` charged the manager's module load (~2 s idle, 10 s+ on a busy
+// host) to the first test's hook budget; collection has no such budget.
+const managerModule = await import('./meshtasticManager.js');
+
 describe('MeshtasticManager node:updated packetId (#5534)', () => {
   let manager: any;
   let emitSpy: ReturnType<typeof vi.spyOn>;
@@ -30,8 +35,7 @@ describe('MeshtasticManager node:updated packetId (#5534)', () => {
   beforeEach(async () => {
     vi.clearAllMocks();
     mockGetNode.mockResolvedValue(null);
-    const module = await import('./meshtasticManager.js');
-    manager = module.fallbackManager;
+    manager = managerModule.fallbackManager;
     vi.spyOn(manager, 'trackPKIEncryption').mockResolvedValue(undefined);
     const { dataEventEmitter } = await import('./services/dataEventEmitter.js');
     emitSpy = vi.spyOn(dataEventEmitter, 'emitNodeUpdate');
