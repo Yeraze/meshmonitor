@@ -2167,6 +2167,9 @@ class ApiService {
     // Optional: set a new private key on the LOCAL node (#4632). Omitted for
     // every other security change so the firmware keeps the existing identity.
     privateKey?: string;
+    // Optional: sent only when the user changed the policy (#5612). Left out,
+    // the server keeps the value it reads from the node.
+    packetSignaturePolicy?: number;
   }, sourceId?: string | null): Promise<{ success: boolean }> {
     return this.post('/api/admin/commands', {
       command: 'setSecurityConfig',

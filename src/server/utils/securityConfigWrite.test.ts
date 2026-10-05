@@ -46,20 +46,47 @@ describe('buildSecurityConfigWrite', () => {
     expect('packetSignaturePolicy' in write).toBe(false);
   });
 
-  it('drops a client-supplied policy, whichever way it points', () => {
+  it('client value wins when sent, whichever way it points (#5612)', () => {
     const down = buildSecurityConfigWrite(
       { ...client, packetSignaturePolicy: 0 },
       { publicKey: PUB, privateKey: PRIV, packetSignaturePolicy: 2 },
       { allowClientKeys: true },
     );
-    expect(down.packetSignaturePolicy).toBe(2);
+    // An explicit COMPATIBLE is a choice: field 9 stays off the wire, which
+    // firmware reads as COMPATIBLE. It must not fall back to the node's STRICT.
+    expect('packetSignaturePolicy' in down).toBe(false);
 
     const up = buildSecurityConfigWrite(
       { ...client, packetSignaturePolicy: 2 },
       { publicKey: PUB, privateKey: PRIV },
       { allowClientKeys: false },
     );
-    expect('packetSignaturePolicy' in up).toBe(false);
+    expect(up.packetSignaturePolicy).toBe(2);
+
+    const sideways = buildSecurityConfigWrite(
+      { ...client, packetSignaturePolicy: 1 },
+      { publicKey: PUB, privateKey: PRIV, packetSignaturePolicy: 2 },
+      { allowClientKeys: false },
+    );
+    expect(sideways.packetSignaturePolicy).toBe(1);
+  });
+
+  it('keeps the node policy when the client sends none', () => {
+    const write = buildSecurityConfigWrite(
+      client,
+      { publicKey: PUB, privateKey: PRIV, packetSignaturePolicy: 2 },
+      { allowClientKeys: false },
+    );
+    expect(write.packetSignaturePolicy).toBe(2);
+  });
+
+  it.each([[3], [-1], ['2'], [null], [1.5]])('keeps the node policy when the client value %j is not one we know', (bad) => {
+    const write = buildSecurityConfigWrite(
+      { ...client, packetSignaturePolicy: bad },
+      { publicKey: PUB, privateKey: PRIV, packetSignaturePolicy: 1 },
+      { allowClientKeys: true },
+    );
+    expect(write.packetSignaturePolicy).toBe(1);
   });
 
   it('remote: the node keys win over anything the client sent', () => {

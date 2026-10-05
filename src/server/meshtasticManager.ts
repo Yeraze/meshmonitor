@@ -109,7 +109,7 @@ import { detectLocalNodeSpoof, SentPacketIdCache, type SpoofDetectionResult } fr
 import { automationPacketTracker, randomPacketId, type SendOrigin } from './utils/automationPacketTracker.js';
 import { resolveBroadcastChannel } from './utils/resolveDestinationChannel.js';
 import { applyHomoglyphOptimization } from '../utils/homoglyph.js';
-import { PortNum, RoutingError, isPkiError, getRoutingErrorName, CHANNEL_DB_OFFSET, TransportMechanism, resolveRadioPacketTransport, isViaMqtt, MIN_TRACEROUTE_INTERVAL_MS, StoreForwardRequestResponse, getStoreForwardRequestResponseName, isUdpBroadcastEnabled, resolveHopLimit } from './constants/meshtastic.js';
+import { PortNum, RoutingError, isPkiError, getRoutingErrorName, CHANNEL_DB_OFFSET, TransportMechanism, resolveRadioPacketTransport, isViaMqtt, MIN_TRACEROUTE_INTERVAL_MS, StoreForwardRequestResponse, getStoreForwardRequestResponseName, isUdpBroadcastEnabled, resolveHopLimit, PacketSignaturePolicy } from './constants/meshtastic.js';
 import { normalizeChannelRole } from './constants/channelRole.js';
 import { createRequire } from 'module';
 import { validateCron, scheduleCron, type CronJob } from './utils/cronScheduler.js';
@@ -5877,7 +5877,13 @@ class MeshtasticManager implements ISourceManager {
         isManaged: deviceConfig.security.isManaged !== undefined ? deviceConfig.security.isManaged : false,
         serialEnabled: deviceConfig.security.serialEnabled !== undefined ? deviceConfig.security.serialEnabled : false,
         debugLogApiEnabled: deviceConfig.security.debugLogApiEnabled !== undefined ? deviceConfig.security.debugLogApiEnabled : false,
-        adminChannelEnabled: deviceConfig.security.adminChannelEnabled !== undefined ? deviceConfig.security.adminChannelEnabled : false
+        adminChannelEnabled: deviceConfig.security.adminChannelEnabled !== undefined ? deviceConfig.security.adminChannelEnabled : false,
+        // #5612: proto3 leaves a zero enum off the wire and the spread above
+        // copies own fields only, so COMPATIBLE would vanish. State it, so a
+        // loaded security section always carries a policy the UI can show.
+        packetSignaturePolicy: typeof deviceConfig.security.packetSignaturePolicy === 'number'
+          ? deviceConfig.security.packetSignaturePolicy
+          : PacketSignaturePolicy.COMPATIBLE
       };
 
       deviceConfig = {
