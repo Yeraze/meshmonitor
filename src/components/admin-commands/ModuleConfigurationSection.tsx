@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { MODEM_PRESET_OPTIONS, REGION_OPTIONS } from '../configuration/constants';
 import BroadcastTargetsEditor from '../configuration/BroadcastTargetsEditor';
 import statusMessageStyles from '../configuration/StatusMessageConfigSection.module.css';
+import { NODE_STATUS_MAX_BYTES, truncateToUtf8Bytes, utf8ByteLength } from '../../utils/statusMessage';
 import {
   MESH_BEACON_MIN_INTERVAL_SECS,
   MESH_BEACON_MESSAGE_MAX_BYTES,
@@ -692,7 +693,7 @@ export const ModuleConfigurationSection: React.FC<ModuleConfigurationSectionProp
             fontStyle: 'italic',
             marginBottom: '1rem'
           }}>
-            {t('statusmessage_config.unsupported', 'Unsupported by device firmware — Requires firmware 2.7.19 or greater')}
+            {t('statusmessage_config.unsupported', 'Unsupported by device firmware — Requires firmware 2.7.20 or greater')}
           </div>
         )}
         <div style={statusMessageIsDisabled ? { opacity: 0.4, pointerEvents: 'none' } : undefined}>
@@ -700,21 +701,25 @@ export const ModuleConfigurationSection: React.FC<ModuleConfigurationSectionProp
             <label>
               {t('statusmessage_config.node_status', 'Node Status')}
               <span className="setting-description">
-                {t('statusmessage_config.node_status_description', 'A short status message displayed on the node. Maximum 80 characters.')}
+                {t(
+                  'statusmessage_config.node_status_description_bytes',
+                  'A short status message shown for this node. Up to {{max}} bytes: an emoji takes 4 or more.',
+                  { max: NODE_STATUS_MAX_BYTES },
+                )}
               </span>
             </label>
             <div className={statusMessageStyles.field}>
               <input
                 type="text"
-                maxLength={80}
                 value={statusMessageNodeStatus}
-                onChange={(e) => onStatusMessageConfigChange('nodeStatus', e.target.value)}
+                // Byte limit, not a character count (#5616): see NODE_STATUS_MAX_BYTES.
+                onChange={(e) => onStatusMessageConfigChange('nodeStatus', truncateToUtf8Bytes(e.target.value))}
                 disabled={isExecuting || statusMessageIsDisabled}
                 className={`setting-input ${statusMessageStyles.input}`}
                 placeholder={t('statusmessage_config.node_status_placeholder', 'Enter status message...')}
               />
-              <span className={statusMessageNodeStatus.length >= 70 ? `${statusMessageStyles.counter} ${statusMessageStyles.counterNearLimit}` : statusMessageStyles.counter}>
-                {statusMessageNodeStatus.length}/80
+              <span className={utf8ByteLength(statusMessageNodeStatus) >= NODE_STATUS_MAX_BYTES - 10 ? `${statusMessageStyles.counter} ${statusMessageStyles.counterNearLimit}` : statusMessageStyles.counter}>
+                {t('statusmessage_config.byte_counter', '{{used}}/{{max}} bytes', { used: utf8ByteLength(statusMessageNodeStatus), max: NODE_STATUS_MAX_BYTES })}
               </span>
             </div>
           </div>

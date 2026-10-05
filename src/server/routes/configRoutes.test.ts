@@ -449,4 +449,130 @@ describe('configRoutes', () => {
       expect(res.status).toBe(200);
     });
   });
+
+  /**
+   * Quick-status pill (#5616) writes through this route, so its permission gate
+   * and its byte limit are tested here.
+   *
+   * `node_status` is `max_size:80` in module_config.options: a nanopb `char[80]`
+   * that holds 79 bytes of text plus the NUL. One byte over and the node drops
+   * the whole admin message with no error.
+   */
+  describe('POST /module/statusmessage — permission and byte limit (#5616)', () => {
+    let setGenericModuleConfig: ReturnType<typeof vi.fn>;
+
+    const fakeManager = (sourceId: string): ISourceManager => ({
+      sourceId,
+      sourceType: 'meshtastic_tcp',
+      start: vi.fn().mockResolvedValue(undefined),
+      stop: vi.fn().mockResolvedValue(undefined),
+      getStatus: vi.fn().mockReturnValue({ sourceId, sourceName: sourceId, sourceType: 'meshtastic_tcp', connected: true }),
+      getLocalNodeInfo: vi.fn().mockReturnValue(null),
+      startDistanceDeleteScheduler: vi.fn().mockResolvedValue(undefined),
+      stopDistanceDeleteScheduler: vi.fn(),
+      setGenericModuleConfig,
+    } as unknown as ISourceManager);
+
+    beforeEach(async () => {
+      setGenericModuleConfig = vi.fn().mockResolvedValue(undefined);
+      await sourceManagerRegistry.addManager(fakeManager(harness.sourceA));
+      await sourceManagerRegistry.addManager(fakeManager(harness.sourceB));
+    });
+
+    afterEach(async () => {
+      await sourceManagerRegistry.removeManager(harness.sourceA);
+      await sourceManagerRegistry.removeManager(harness.sourceB);
+    });
+
+    const post = (agent: Awaited<ReturnType<RouteTestHarness['loginAs']>>, sourceId: string, nodeStatus: unknown) =>
+      agent.post('/module/statusmessage').send({ sourceId, nodeStatus });
+
+    describe('permission', () => {
+      it('saves for a user with configuration:write on that source', async () => {
+        await harness.grant(harness.limited.id, 'configuration', 'write', harness.sourceA);
+        const agent = await harness.loginAs(harness.limited);
+        const res = await post(agent, harness.sourceA, 'Available');
+        expect(res.status).toBe(200);
+        expect(setGenericModuleConfig).toHaveBeenCalledWith('statusmessage', { nodeStatus: 'Available' });
+      });
+
+      it('403s for a user with only configuration:read', async () => {
+        await harness.grant(harness.limited.id, 'configuration', 'read', harness.sourceA);
+        const agent = await harness.loginAs(harness.limited);
+        const res = await post(agent, harness.sourceA, 'Available');
+        expect(res.status).toBe(403);
+        expect(setGenericModuleConfig).not.toHaveBeenCalled();
+      });
+
+      it('403s on another source the user cannot write', async () => {
+        await harness.grant(harness.limited.id, 'configuration', 'write', harness.sourceA);
+        const agent = await harness.loginAs(harness.limited);
+        const res = await post(agent, harness.sourceB, 'Available');
+        expect(res.status).toBe(403);
+        expect(setGenericModuleConfig).not.toHaveBeenCalled();
+      });
+
+      it('refuses an anonymous caller', async () => {
+        const agent = await harness.loginAs(null);
+        const res = await post(agent, harness.sourceA, 'Available');
+        expect([401, 403]).toContain(res.status);
+        expect(setGenericModuleConfig).not.toHaveBeenCalled();
+      });
+
+      it('saves for an admin without an explicit grant', async () => {
+        const agent = await harness.loginAs(harness.admin);
+        const res = await post(agent, harness.sourceA, 'Available');
+        expect(res.status).toBe(200);
+      });
+    });
+
+    describe('byte limit', () => {
+      let agent: Awaited<ReturnType<RouteTestHarness['loginAs']>>;
+
+      beforeEach(async () => {
+        await harness.grant(harness.limited.id, 'configuration', 'write', harness.sourceA);
+        agent = await harness.loginAs(harness.limited);
+      });
+
+      it('accepts exactly 79 bytes', async () => {
+        const res = await post(agent, harness.sourceA, 'a'.repeat(79));
+        expect(res.status).toBe(200);
+        expect(setGenericModuleConfig).toHaveBeenCalled();
+      });
+
+      it('rejects 80 bytes before touching the device', async () => {
+        const res = await post(agent, harness.sourceA, 'a'.repeat(80));
+        expect(res.status).toBe(400);
+        expect(res.body.success).toBe(false);
+        expect(res.body.code).toBe('INVALID_STATUSMESSAGE_CONFIG');
+        expect(res.body.error).toMatch(/79 bytes/);
+        expect(setGenericModuleConfig).not.toHaveBeenCalled();
+      });
+
+      it('counts UTF-8 bytes, not characters', async () => {
+        // 20 emoji: 20 characters by eye, 40 UTF-16 units, 80 bytes.
+        const res = await post(agent, harness.sourceA, '\u{1F7E2}'.repeat(20));
+        expect(res.status).toBe(400);
+        expect(setGenericModuleConfig).not.toHaveBeenCalled();
+      });
+
+      it('accepts emoji that fit', async () => {
+        // 19 emoji = 76 bytes.
+        const res = await post(agent, harness.sourceA, '\u{1F7E2}'.repeat(19));
+        expect(res.status).toBe(200);
+      });
+
+      it('accepts an empty status (Clear)', async () => {
+        const res = await post(agent, harness.sourceA, '');
+        expect(res.status).toBe(200);
+        expect(setGenericModuleConfig).toHaveBeenCalledWith('statusmessage', { nodeStatus: '' });
+      });
+
+      it('rejects a status that is not a string', async () => {
+        const res = await post(agent, harness.sourceA, { text: 'x' });
+        expect(res.status).toBe(400);
+        expect(setGenericModuleConfig).not.toHaveBeenCalled();
+      });
+    });
+  });
 });

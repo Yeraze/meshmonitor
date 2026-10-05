@@ -25,6 +25,7 @@ import { autoFavoriteManagementScheduler } from '../services/autoFavoriteManagem
 import protobufService from '../protobufService.js';
 import { fail, ok } from '../utils/apiResponse.js';
 import { isTxDisabledError } from '../errors/txDisabledError.js';
+import { validateStatusMessageConfigPayload } from '../../utils/statusMessage.js';
 import {
   adminOperationService,
   type AdminOperationStatus,
@@ -1925,6 +1926,14 @@ router.post('/commands', requireAdmin(), requireMeshtasticDeviceSource('body'), 
       case 'setStatusMessageConfig':
         if (!params.config) {
           return res.status(400).json({ error: 'config is required for setStatusMessageConfig' });
+        }
+        // node_status holds 79 UTF-8 bytes; a longer one is dropped by the
+        // node with no error (#5616). Same guard as the local config route.
+        {
+          const statusMessageError = validateStatusMessageConfigPayload(params.config);
+          if (statusMessageError) {
+            return fail(res, 400, 'INVALID_STATUSMESSAGE_CONFIG', statusMessageError);
+          }
         }
         buildAdminMessage = (passkey) => protobufService.createSetModuleConfigMessageGeneric('statusmessage', params.config, passkey);
         break;
