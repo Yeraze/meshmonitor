@@ -1,5 +1,9 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
+import { policyToSend } from '../utils/packetSignaturePolicy';
+import { usePolicyChangeConfirm } from '../hooks/usePolicyChangeConfirm';
+import { PacketSignaturePolicyPicker } from './configuration/PacketSignaturePolicyPicker';
+import { PacketSignaturePolicyConfirmDialog } from './configuration/PacketSignaturePolicyConfirmDialog';
 import { useQueryClient } from '@tanstack/react-query';
 import apiService, { type AdminCommandAck } from '../services/api';
 import { useToast } from './ToastContainer';
@@ -40,6 +44,8 @@ interface AdminCommandsTabProps {
 
 const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeId, channels: _channels = [], onChannelsUpdated: _onChannelsUpdated }) => {
   const { t } = useTranslation();
+  // #5612: confirm before a packet signature policy change goes out.
+  const { confirmPolicyChange, dialogProps: policyConfirmProps } = usePolicyChangeConfirm();
   const { showToast } = useToast();
   const queryClient = useQueryClient();
   // Resolve a concrete sourceId (context source, else primary) — channel-write
@@ -360,7 +366,13 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
     setPasskeyStatus(null);
     // #4736: invalidate the security load gate — the values on screen belong
     // to the node we just navigated away from.
-    setSecurityConfig({ loadedForNodeNum: null });
+    setSecurityConfig({
+      loadedForNodeNum: null,
+      // #5612: the policy and firmware on screen were that node's too.
+      packetSignaturePolicy: null,
+      loadedPacketSignaturePolicy: null,
+      firmwareVersion: null,
+    });
   }, [selectedNodeNum, setSecurityConfig]);
 
   // Fetch and update passkey status for remote nodes
@@ -908,6 +920,11 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
         ...(sourceId ? { sourceId } : {})
       });
       if (result?.deviceMetadata) {
+        // #5612: the Protection Level picker is gated on this node's firmware.
+        // Switching nodes clears it again.
+        if (typeof result.deviceMetadata.firmwareVersion === 'string') {
+          setSecurityConfig({ firmwareVersion: result.deviceMetadata.firmwareVersion });
+        }
         setDeviceMetadata(result.deviceMetadata);
         showToast(t('admin_commands.device_metadata_loaded'), 'success');
       } else {
@@ -1866,6 +1883,26 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
     );
     if (!confirmed) return;
 
+    // #5612: the policy goes out only when the user changed it. Balanced asks
+    // for a plain confirm, Strict for the node's short name typed out; back to
+    // Compatible asks nothing.
+    const newSignaturePolicy = policyToSend(
+      configState.security.loadedPacketSignaturePolicy,
+      configState.security.packetSignaturePolicy,
+    );
+    if (newSignaturePolicy !== undefined) {
+      const policyConfirmed = await confirmPolicyChange(
+        configState.security.loadedPacketSignaturePolicy,
+        newSignaturePolicy,
+        {
+          label: nodeLabel,
+          shortName: targetNode?.shortName ?? '',
+          fallbackWord: targetNode?.nodeId ?? String(selectedNodeNum),
+        },
+      );
+      if (!policyConfirmed) return;
+    }
+
     // Filter out empty admin keys
     const validAdminKeys = configState.security.adminKeys.filter(key => key && key.trim().length > 0);
 
@@ -1875,13 +1912,19 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
       serialEnabled: configState.security.serialEnabled,
       debugLogApiEnabled: configState.security.debugLogApiEnabled,
       adminChannelEnabled: configState.security.adminChannelEnabled,
-      // No keypair or packetSignaturePolicy here on purpose: the server merges
-      // those from its own fresh read of the node (#4736), so the private key
-      // never crosses this boundary and the #4632 guard stays intact.
+      // No keypair here on purpose: the server merges it from its own fresh
+      // read of the node (#4736), so the private key never crosses this
+      // boundary and the #4632 guard stays intact. The policy is left out too
+      // unless the user changed it; the server then keeps the node's own.
+      ...(newSignaturePolicy !== undefined ? { packetSignaturePolicy: newSignaturePolicy } : {}),
     };
 
     try {
       await executeCommand('setSecurityConfig', { config });
+      if (newSignaturePolicy !== undefined) {
+        // The node now holds it: the form is no longer "changed".
+        setSecurityConfig({ loadedPacketSignaturePolicy: newSignaturePolicy });
+      }
     } catch (error) {
       // Error already handled by executeCommand (toast shown)
       console.error('Set security config command failed:', error);
@@ -1893,6 +1936,8 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
     selectedNodeNum,
     nodeOptions,
     t,
+    confirmPolicyChange,
+    setSecurityConfig,
   ]);
 
   const handleSetBluetoothConfig = useCallback(async () => {
@@ -3194,6 +3239,16 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
             </div>
           </label>
         </div>
+        {/* Packet signature policy (#5612). Unknown until this node's security
+            config has been loaded. */}
+        <PacketSignaturePolicyPicker
+          loadedPolicy={securityConfigLoadedForSelectedNode ? configState.security.loadedPacketSignaturePolicy : null}
+          value={securityConfigLoadedForSelectedNode ? configState.security.packetSignaturePolicy : null}
+          onChange={(policy) => setSecurityConfig({ packetSignaturePolicy: policy })}
+          firmwareVersion={configState.security.firmwareVersion}
+          disabled={isExecuting || remoteAdminBlocked}
+        />
+        <PacketSignaturePolicyConfirmDialog {...policyConfirmProps} />
         {/*
           #4736: re-enabled after being hard-disabled since #1602. The standard
           dynamic condition every other save button uses, PLUS the requirement

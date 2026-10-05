@@ -13,8 +13,13 @@
  * The local and the remote save both build their write here, so the two paths
  * cannot drift apart again: the local path used to carry the keys but not the
  * policy.
+ *
+ * Keys and policy differ in who may set them. Keys: the node's own always win
+ * for a remote node, and the private key never reaches the client (#4736,
+ * #4632). Policy: the client's value wins when it sends one (#5612).
  */
 import { derivePublicKey, normalizeMeshtasticKey } from './meshtasticKeys.js';
+import { isPacketSignaturePolicy } from '../constants/meshtastic.js';
 
 /** What the node holds right now, read from the node itself. */
 export interface CurrentSecurityState {
@@ -79,16 +84,18 @@ export function buildSecurityConfigWrite(
   current: CurrentSecurityState,
   options: BuildSecurityConfigWriteOptions,
 ): Record<string, unknown> {
-  // The policy never comes from the client in this version: there is no UI for
-  // it, so a value in the request body is not a user's choice. Strip it and
-  // carry the node's own.
+  // Client value wins when sent (#5612): the UI sends a policy only when the
+  // user changed it, so a valid one in the body is a choice. Absent (or not a
+  // value we know) keeps the node's own. The route validates the value and the
+  // node's firmware before this runs.
   //
-  // #5612 hook: to let a caller set the policy, change the line below to
-  //   normalizePolicy(clientPolicy) ?? current.packetSignaturePolicy
-  // after validating `clientPolicy` (an explicit COMPATIBLE needs its own
-  // "client sent a value" check, since 0 normalizes to undefined).
-  const { packetSignaturePolicy: _clientPolicy, ...rest } = clientConfig;
-  const packetSignaturePolicy = normalizePolicy(current.packetSignaturePolicy);
+  // An explicit COMPATIBLE needs the `isPacketSignaturePolicy` test rather
+  // than `normalizePolicy(client) ?? current`: 0 normalizes to undefined, which
+  // would read as "not sent" and keep a BALANCED/STRICT node where it is.
+  const { packetSignaturePolicy: clientPolicy, ...rest } = clientConfig;
+  const packetSignaturePolicy = normalizePolicy(
+    isPacketSignaturePolicy(clientPolicy) ? clientPolicy : current.packetSignaturePolicy,
+  );
 
   const write: Record<string, unknown> = { ...rest };
   delete write.publicKey;

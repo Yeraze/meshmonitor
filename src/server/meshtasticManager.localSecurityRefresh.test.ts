@@ -183,3 +183,34 @@ describe('MeshtasticManager — refreshLocalSecurityConfig', () => {
     await expect(Promise.all([a, b])).resolves.toEqual([fresh, fresh]);
   });
 });
+
+describe('MeshtasticManager — getCurrentConfig reports the packet signature policy (#5612)', () => {
+  const policyOf = (security: unknown) => {
+    const mgr = makeManager();
+    (mgr as any).actualDeviceConfig = { security };
+    return mgr.getCurrentConfig().deviceConfig.security?.packetSignaturePolicy;
+  };
+
+  it.each([[1], [2]])('passes a set policy (%i) through', (policy) => {
+    expect(policyOf({ packetSignaturePolicy: policy })).toBe(policy);
+  });
+
+  it('states COMPATIBLE (0) when the field is not on the wire', () => {
+    // proto3 leaves a zero enum out; the UI must still get a policy to show.
+    expect(policyOf({ isManaged: true })).toBe(0);
+  });
+
+  it('states COMPATIBLE for a decoded message whose 0 lives on the prototype', () => {
+    // A protobuf.js message: unset fields read off the prototype, and an
+    // object spread copies own fields only.
+    const decoded = Object.create({ packetSignaturePolicy: 0 });
+    decoded.isManaged = false;
+    expect(policyOf(decoded)).toBe(0);
+  });
+
+  it('reports no policy when there is no security section: unknown stays unknown', () => {
+    const mgr = makeManager();
+    (mgr as any).actualDeviceConfig = { lora: { hopLimit: 3 } };
+    expect(mgr.getCurrentConfig().deviceConfig.security).toBeUndefined();
+  });
+});
