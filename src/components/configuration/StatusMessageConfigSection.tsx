@@ -2,6 +2,7 @@ import React, { useRef, useMemo, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSaveBar } from '../../hooks/useSaveBar';
 import styles from './StatusMessageConfigSection.module.css';
+import { NODE_STATUS_MAX_BYTES, truncateToUtf8Bytes, utf8ByteLength } from '../../utils/statusMessage';
 
 interface StatusMessageConfigSectionProps {
   nodeStatus: string;
@@ -19,6 +20,7 @@ const StatusMessageConfigSection: React.FC<StatusMessageConfigSectionProps> = ({
   onSave
 }) => {
   const { t } = useTranslation();
+  const nodeStatusBytes = utf8ByteLength(nodeStatus);
 
   // Track initial values for change detection
   const initialValuesRef = useRef({
@@ -91,25 +93,31 @@ const StatusMessageConfigSection: React.FC<StatusMessageConfigSectionProps> = ({
           <label htmlFor="statusMessageNodeStatus">
             {t('statusmessage_config.node_status', 'Node Status')}
             <span className="setting-description">
-              {t('statusmessage_config.node_status_description', 'A short status message displayed on the node. Maximum 80 characters.')}
+              {t(
+                'statusmessage_config.node_status_description_bytes',
+                'A short status message shown for this node. Up to {{max}} bytes: an emoji takes 4 or more.',
+                { max: NODE_STATUS_MAX_BYTES },
+              )}
             </span>
           </label>
           <div className={styles.field}>
             <input
               id="statusMessageNodeStatus"
               type="text"
-              maxLength={80}
               value={nodeStatus}
-              onChange={(e) => setNodeStatus(e.target.value)}
+              // The firmware limit is in UTF-8 bytes, so `maxLength` (which
+              // counts UTF-16 units) let emoji overflow it (#5616). Cut at the
+              // byte limit on whole characters instead.
+              onChange={(e) => setNodeStatus(truncateToUtf8Bytes(e.target.value))}
               className={`setting-input ${styles.input}`}
               disabled={isDisabled}
               placeholder={t('statusmessage_config.node_status_placeholder', 'Enter status message...')}
             />
             <span
-              className={nodeStatus.length >= 70 ? `${styles.counter} ${styles.counterNearLimit}` : styles.counter}
+              className={nodeStatusBytes >= NODE_STATUS_MAX_BYTES - 10 ? `${styles.counter} ${styles.counterNearLimit}` : styles.counter}
               data-testid="status-message-counter"
             >
-              {nodeStatus.length}/80
+              {t('statusmessage_config.byte_counter', '{{used}}/{{max}} bytes', { used: nodeStatusBytes, max: NODE_STATUS_MAX_BYTES })}
             </span>
           </div>
         </div>

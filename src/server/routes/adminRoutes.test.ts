@@ -876,3 +876,71 @@ describe('adminRoutes — setSecurityConfig private key (#4632)', () => {
     expect(sentConfig.privateKey).toMatch(/^OLDPRIVATE/);
   });
 });
+
+/**
+ * `node_status` is a nanopb `char[80]`: 79 bytes of text plus the NUL. A longer
+ * status makes the node drop the whole admin message with no error, so the
+ * remote-admin path refuses it up front, as the local config route does.
+ */
+describe('adminRoutes — setStatusMessageConfig byte limit (#5616)', () => {
+  let harness: RouteTestHarness;
+  let sendAdminCommand: ReturnType<typeof vi.fn>;
+
+  beforeEach(async () => {
+    harness = await createRouteTestApp({ mount: (app) => app.use('/', adminRoutes) });
+    vi.spyOn(protobufService, 'createSetModuleConfigMessageGeneric').mockReturnValue(new Uint8Array([0]));
+    sendAdminCommand = vi.fn().mockResolvedValue(undefined);
+    await sourceManagerRegistry.addManager({
+      sourceId: harness.sourceA,
+      sourceType: 'meshtastic_tcp',
+      start: vi.fn().mockResolvedValue(undefined),
+      stop: vi.fn().mockResolvedValue(undefined),
+      getStatus: vi.fn().mockReturnValue({ sourceId: harness.sourceA, sourceName: 'A', sourceType: 'meshtastic_tcp', connected: true }),
+      getLocalNodeInfo: vi.fn().mockReturnValue({ nodeNum: 1, nodeId: '!00000001', longName: 'Local', shortName: 'LOC' }),
+      getSessionPasskey: vi.fn().mockReturnValue(new Uint8Array([1, 2, 3, 4])),
+      getSessionPasskeyStatus: vi.fn().mockReturnValue({ hasPasskey: true }),
+      sendAdminCommand,
+      sendAdminCommandAwaitAck: vi.fn().mockResolvedValue({ acked: true, timedOut: false }),
+      updateCachedDeviceConfig: vi.fn(),
+      updateCachedModuleConfig: vi.fn(),
+      isTxEnabled: vi.fn().mockReturnValue(true),
+    } as unknown as ISourceManager);
+  });
+
+  afterEach(async () => {
+    vi.restoreAllMocks();
+    await sourceManagerRegistry.removeManager(harness.sourceA);
+    await harness.cleanup();
+  });
+
+  const send = async (nodeStatus: unknown) => {
+    const agent = await harness.loginAs(harness.admin);
+    return agent.post('/commands').send({
+      command: 'setStatusMessageConfig',
+      sourceId: harness.sourceA,
+      nodeNum: 1,
+      config: { nodeStatus },
+    });
+  };
+
+  it('accepts a status of exactly 79 bytes', async () => {
+    const res = await send('a'.repeat(79));
+    expect(res.status).toBe(200);
+    expect(protobufService.createSetModuleConfigMessageGeneric).toHaveBeenCalled();
+  });
+
+  it('rejects 80 bytes with 400, before touching the device', async () => {
+    const res = await send('a'.repeat(80));
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe('INVALID_STATUSMESSAGE_CONFIG');
+    expect(res.body.error).toMatch(/79 bytes/);
+    expect(sendAdminCommand).not.toHaveBeenCalled();
+    expect(protobufService.createSetModuleConfigMessageGeneric).not.toHaveBeenCalled();
+  });
+
+  it('counts UTF-8 bytes: 20 emoji are 80 bytes', async () => {
+    const res = await send('\u{1F7E2}'.repeat(20));
+    expect(res.status).toBe(400);
+    expect(sendAdminCommand).not.toHaveBeenCalled();
+  });
+});
