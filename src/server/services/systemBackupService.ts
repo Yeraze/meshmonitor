@@ -48,10 +48,9 @@ export { BACKUP_TABLES, BACKUP_EXCLUDED_TABLES, BACKUP_SECRET_TABLES };
  * `coverage_receptions` is excluded from the generic `SELECT * FROM
  * coverage_receptions` path below: the table can be arbitrarily large (every
  * RF reception ever recorded, bounded only by the retention sweep), while a
- * backup only needs the rows inside a saved survey's window. Depends on
- * `databaseService.coverageSurveys` / the repository's `exportSurveyReceptions`
- * method — WP1 (spec §2b.4), not yet present in this worktree; see this
- * file's git history / PR body for the resulting (expected) `tsc` errors.
+ * backup only needs the rows inside a saved survey's window. Reads through
+ * `databaseService.coverageSurveys.getExemptionWindows` and the reception
+ * repository's `exportSurveyReceptions` (spec §2b.4).
  *
  * `id` is intentionally omitted from the exported rows by
  * `exportSurveyReceptions` itself (not here) — see `systemRestoreService.ts`
@@ -662,7 +661,7 @@ class SystemBackupService {
       const stats = await this.queryOne(`
         SELECT
           COUNT(*) as count,
-          ${dbType === 'sqlite' ? 'SUM(size)' : 'COALESCE(SUM(size), 0)'} as "totalSize",
+          COALESCE(SUM(${dbType === 'postgres' ? '"totalSize"' : 'totalSize'}), 0) as "totalSize",
           MIN(timestamp) as "oldestTimestamp",
           MAX(timestamp) as "newestTimestamp"
         FROM system_backup_history

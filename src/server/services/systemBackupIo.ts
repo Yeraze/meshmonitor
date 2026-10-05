@@ -168,6 +168,9 @@ async function openPostgresSession(pool: PgPool, batchRows: number): Promise<Bac
   return {
     async *batches(table: string) {
       assertIdentifier(table);
+      // One fixed cursor name is enough: this client is the session's own, a
+      // session reads one table at a time, and the cursor is closed before the
+      // next table opens.
       await client.query(`DECLARE mm_backup_cursor NO SCROLL CURSOR FOR SELECT * FROM "${table}"`);
       try {
         for (;;) {
@@ -370,6 +373,9 @@ function isLineFormat(file: string): boolean {
  * throws, which rolls the restore back.
  */
 export function* readTableFileSync(file: string): Generator<BackupRow> {
+  if (fs.statSync(file).size === 0) {
+    throw new Error(`Backup table file is empty: ${file}`);
+  }
   if (!isLineFormat(file)) {
     const data: unknown = JSON.parse(fs.readFileSync(file, 'utf8'));
     if (!Array.isArray(data)) throw new Error(`Backup table file is not a JSON array: ${file}`);

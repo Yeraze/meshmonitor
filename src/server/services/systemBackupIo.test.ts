@@ -152,6 +152,11 @@ describe('readTableFileSync', () => {
     expect(() => [...readTableFileSync(file('cut.json'))]).toThrow(/truncated/);
   });
 
+  it('throws on an empty file, by name', () => {
+    fs.writeFileSync(file('zero.json'), '');
+    expect(() => [...readTableFileSync(file('zero.json'))]).toThrow(/Backup table file is empty/);
+  });
+
   it('throws when the file is not an array of objects', () => {
     fs.writeFileSync(file('object.json'), '{"not":"an array"}');
     expect(() => [...readTableFileSync(file('object.json'))]).toThrow(/not a JSON array/);

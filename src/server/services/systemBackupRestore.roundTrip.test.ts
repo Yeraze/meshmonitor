@@ -136,12 +136,20 @@ async function captureWarnings<T>(run: () => Promise<T>): Promise<{ result: T; w
  * instead of somewhere in the middle of a comparison.
  */
 async function waitForStartupSeeding(): Promise<void> {
+  const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
   const deadline = Date.now() + 30_000;
   while (Date.now() < deadline) {
     if (db().prepare("SELECT 1 FROM users WHERE username = 'anonymous'").get()) break;
-    await new Promise((resolve) => setTimeout(resolve, 25));
+    await sleep(25);
   }
-  await new Promise((resolve) => setTimeout(resolve, 250));
+  // Its permission rows follow the user row. Done when the count holds still.
+  let seen = -1;
+  while (Date.now() < deadline) {
+    const now = count('permissions');
+    if (now === seen) break;
+    seen = now;
+    await sleep(200);
+  }
 }
 
 beforeAll(async () => {
@@ -572,6 +580,24 @@ describe('export is batched, not loaded whole', () => {
     const result = await systemRestoreService.restoreFromBackup(dirname);
     expect(result.success).toBe(true);
     expect(allRows('meshcore_packet_log')).toEqual(before);
+  });
+});
+
+describe('backup history', () => {
+  it('lists the backups made and adds up their sizes', async () => {
+    wipe();
+    await systemBackupService.createBackup('manual');
+    await new Promise((resolve) => setTimeout(resolve, 1100)); // directory names are per-second
+    await systemBackupService.createBackup('automatic');
+
+    const backups = await systemBackupService.listBackups();
+    expect(backups.map((b) => b.type).sort()).toEqual(['automatic', 'manual']);
+    expect(backups[0]).toMatchObject({ tableCount: BACKUP_TABLES.length });
+
+    const stats = await systemBackupService.getBackupStats();
+    expect(stats.count).toBe(backups.length);
+    expect(stats.totalSize).toBe(backups.reduce((sum, b) => sum + b.size, 0));
+    expect(stats.totalSize).toBeGreaterThan(0);
   });
 });
 
