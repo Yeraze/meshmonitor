@@ -1036,16 +1036,26 @@ router.post('/reboot', extendRequestTimeout(REBOOT_TIMEOUT_MS), requireAdmin(), 
     const arManager = resolveSourceManager(arSourceId);
     const destinationNodeNum = nodeNum !== undefined ? Number(nodeNum) : (arManager.getLocalNodeInfo()?.nodeNum || 0);
 
+    const arLocalNodeNum = arManager.getLocalNodeInfo()?.nodeNum || 0;
+
+    await auditDeviceAction(req, 'reboot', {
+      sourceId: arManager.sourceId,
+      destinationNodeNum,
+      isLocalNode: destinationNodeNum === 0 || destinationNodeNum === arLocalNodeNum,
+      seconds: Number(seconds),
+    });
+
     await arManager.sendRebootCommand(destinationNodeNum, Number(seconds));
 
     logger.debug(`✅ Sent reboot command to node ${destinationNodeNum} (in ${seconds} seconds)`);
+    // Bare shape kept: the consumer reads `message` at the top level.
     res.json({ success: true, message: `Reboot command sent (node will reboot in ${seconds} seconds)` });
   } catch (error: any) {
     if (isTxDisabledError(error)) {
       return fail(res, 409, 'TX_DISABLED', 'Transmit is disabled on this source');
     }
     logger.error('Error sending reboot command:', error);
-    res.status(500).json({ error: error.message || 'Failed to send reboot command' });
+    return fail(res, 500, 'REBOOT_FAILED', error.message || 'Failed to send reboot command');
   }
 });
 
@@ -1538,6 +1548,71 @@ const ACK_AWAITED_COMMANDS = new Set([
   'removeIgnoredNode',
 ]);
 
+/**
+ * Device actions that change whether the node is running at all (#5614, #5615):
+ * reboot, DFU, shutdown and the two factory resets.
+ *
+ * Each is sent ONCE. None may be in `ACK_AWAITED_COMMANDS`, and the remote
+ * retry loop below is pinned to a single attempt for them: a second factory
+ * reset or shutdown packet arriving after the node came back would act on a
+ * node the operator has already started to recover.
+ *
+ * The value is the audit-log action; every one of these is audited.
+ */
+export const ONE_SHOT_DEVICE_ACTIONS: Readonly<Record<string, string>> = {
+  reboot: 'admin_reboot',
+  enterDfuMode: 'admin_enter_dfu_mode',
+  shutdown: 'admin_shutdown',
+  factoryResetConfig: 'admin_factory_reset_config',
+  factoryResetDevice: 'admin_factory_reset_device',
+};
+
+const isOneShotDeviceAction = (command: string): boolean =>
+  Object.prototype.hasOwnProperty.call(ONE_SHOT_DEVICE_ACTIONS, command);
+
+/**
+ * Device actions MeshMonitor sends only to the node this source is wired to.
+ * The server enforces it; the UI gating is a courtesy. A remote node sent into
+ * DFU or factory reset cannot be reached again over the mesh (a reset clears
+ * its channels and admin keys), so nobody could undo it from here.
+ */
+export const LOCAL_ONLY_DEVICE_ACTIONS: ReadonlySet<string> = new Set([
+  'enterDfuMode',
+  'factoryResetConfig',
+  'factoryResetDevice',
+]);
+
+/** Default delay for a shutdown, matching the reboot control's default. */
+const DEFAULT_SHUTDOWN_SECONDS = 5;
+
+/**
+ * Record who asked for which device action on which node.
+ *
+ * Written BEFORE the packet leaves, so a factory reset is on record even when
+ * the send then fails or the source drops. `auditLogAsync` never rejects.
+ */
+async function auditDeviceAction(
+  req: express.Request,
+  command: string,
+  target: { sourceId: string; destinationNodeNum: number; isLocalNode: boolean; seconds?: number },
+): Promise<void> {
+  const nodeId = `!${(target.destinationNodeNum >>> 0).toString(16).padStart(8, '0')}`;
+  await databaseService.auditLogAsync(
+    req.user?.id ?? req.session?.userId ?? null,
+    ONE_SHOT_DEVICE_ACTIONS[command],
+    'admin',
+    JSON.stringify({
+      command,
+      sourceId: target.sourceId,
+      nodeNum: target.destinationNodeNum,
+      nodeId,
+      target: target.isLocalNode ? 'local' : 'remote',
+      ...(target.seconds !== undefined ? { seconds: target.seconds } : {}),
+    }),
+    req.ip || null,
+  );
+}
+
 /** Error carrying a SCREAMING_SNAKE machine code for the operation record. */
 function adminError(code: string, message: string): Error & { code: string } {
   return Object.assign(new Error(message), { code });
@@ -1626,7 +1701,7 @@ async function executeAdminCommand(ctx: {
   const adminMessage = buildAdminMessage(sessionPasskey);
 
   let ack: { acked: boolean; errorReason: number | null; timedOut: boolean } | null = null;
-  if (ACK_AWAITED_COMMANDS.has(command) && !isLocalNode) {
+  if (ACK_AWAITED_COMMANDS.has(command) && !isOneShotDeviceAction(command) && !isLocalNode) {
     onStatus?.('awaiting_ack');
     ack = await acManager.sendAdminCommandAwaitAck(adminMessage, destinationNodeNum);
   } else {
@@ -1802,10 +1877,45 @@ router.post('/commands', requireAdmin(), requireMeshtasticDeviceSource('body'), 
     // executor once the passkey is known.
     let preSend: ((sessionPasskey?: Uint8Array) => Promise<void>) | null = null;
 
+    // DFU and the factory resets go to the local node only (#5614, #5615).
+    if (LOCAL_ONLY_DEVICE_ACTIONS.has(command) && !isLocalNode) {
+      return fail(
+        res,
+        400,
+        'LOCAL_NODE_ONLY',
+        `'${command}' can only be sent to the node this source is connected to`,
+      );
+    }
+
+    // Seconds recorded in the audit entry for the timed device actions.
+    let auditSeconds: number | undefined;
+
     // Create the appropriate admin message based on command type
     switch (command) {
       case 'reboot':
+        auditSeconds = params.seconds || 10;
         buildAdminMessage = (passkey) => protobufService.createRebootMessage(params.seconds || 10, passkey);
+        break;
+      case 'enterDfuMode':
+        buildAdminMessage = (passkey) => protobufService.createEnterDfuModeMessage(passkey);
+        break;
+      case 'shutdown': {
+        // A negative value cancels a pending shutdown in firmware; this route
+        // does not offer that, so refuse it rather than send something the
+        // caller did not mean.
+        const shutdownSeconds = params.seconds === undefined ? DEFAULT_SHUTDOWN_SECONDS : Number(params.seconds);
+        if (!Number.isInteger(shutdownSeconds) || shutdownSeconds < 0) {
+          return fail(res, 400, 'INVALID_SECONDS', 'seconds must be a whole number of 0 or more');
+        }
+        auditSeconds = shutdownSeconds;
+        buildAdminMessage = (passkey) => protobufService.createShutdownMessage(shutdownSeconds, passkey);
+        break;
+      }
+      case 'factoryResetConfig':
+        buildAdminMessage = (passkey) => protobufService.createFactoryResetConfigMessage(passkey);
+        break;
+      case 'factoryResetDevice':
+        buildAdminMessage = (passkey) => protobufService.createFactoryResetDeviceMessage(passkey);
         break;
       case 'setOwner':
         if (!params.longName || !params.shortName) {
@@ -2140,8 +2250,23 @@ router.post('/commands', requireAdmin(), requireMeshtasticDeviceSource('body'), 
       onStatus,
     });
 
+    const oneShot = isOneShotDeviceAction(command);
+    if (oneShot) {
+      await auditDeviceAction(req, command, {
+        sourceId: acManager.sourceId,
+        destinationNodeNum,
+        isLocalNode,
+        seconds: auditSeconds,
+      });
+    }
+
     if (isLocalNode) {
       const result = await execute();
+      // The new device actions use the envelope. `reboot` keeps the bare shape
+      // its existing consumers read `message` from.
+      if (oneShot && command !== 'reboot') {
+        return ok(res, result);
+      }
       return res.json({ success: true, ...result });
     }
 
@@ -2154,7 +2279,9 @@ router.post('/commands', requireAdmin(), requireMeshtasticDeviceSource('body'), 
       userId: req.session?.userId ?? null,
     });
 
-    const maxAttempts = await resolveAdminRetryAttempts(params.retryAttempts);
+    // One-shot device actions never retry, whatever the request or the
+    // adminRetryAttempts setting says.
+    const maxAttempts = oneShot ? 1 : await resolveAdminRetryAttempts(params.retryAttempts);
 
     void (async () => {
       try {
