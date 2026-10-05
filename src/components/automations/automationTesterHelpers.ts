@@ -2,6 +2,8 @@
  * Pure helpers for the automation Test panel (kept out of the component file so
  * the `.tsx` exports only a component — react-refresh/only-export-components).
  */
+import { stepOutputNameOf, type AutomationNode } from '../../types/automation';
+
 export type EventState = Record<string, string>;
 export type FactState = Record<string, string>;
 
@@ -41,4 +43,16 @@ export function leftHomeModeHint(ev: EventState, facts: FactState, automationThr
     return `${thr} Using the distance field (${ev.distanceMeters} m). Fill home lat/lon and current lat/lon to compute distance from coordinates instead (coordinates take precedence).`;
   }
   return `${thr} Set either (1) home lat/lon + current lat/lon, or (2) a distance in metres. Dry-run fires only when the node is on the watch list and distance > threshold.`;
+}
+
+/** Run-output names (#5636) stored by "Run a script" steps in a compiled config. */
+export function namedStepOutputs(config: unknown): string[] {
+  const nodes = (config as { nodes?: unknown } | null | undefined)?.nodes;
+  if (!Array.isArray(nodes)) return [];
+  const names = new Set<string>();
+  for (const n of nodes) {
+    const name = n && typeof n === 'object' ? stepOutputNameOf(n as AutomationNode) : undefined;
+    if (name) names.add(name);
+  }
+  return [...names];
 }

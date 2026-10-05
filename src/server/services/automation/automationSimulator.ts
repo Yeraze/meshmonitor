@@ -17,6 +17,7 @@
  */
 import {
   categoryOf,
+  stepOutputNameOf,
   type AutomationGraph,
   type AutomationNode,
 } from '../../../types/automation.js';
@@ -42,10 +43,12 @@ import {
   type TriggerContext,
   type SystemEvent,
 } from './triggerContext.js';
+import { parseScriptOutput } from '../../utils/scriptRunner.js';
 import { haversineKm, geofenceCenter, normalizeGeofenceParams, type GeofenceMode } from './geo.js';
 import {
   varContextFromTrigger,
   resolveOperand,
+  createStepOutputs,
   type EngineEvalContext,
   type NodeDataProvider,
   type NodeFacts,
@@ -149,6 +152,14 @@ export interface SimulateOptions {
    * with forwarding on.
    */
   lookupSourceForwarding?: (sourceId: string) => Promise<{ id: string; name: string; enabled: boolean } | null>;
+  /**
+   * Sample stdout for "Run a script" steps that store a run output (#5636),
+   * keyed by the step's output name. The dry run never runs a script, so this
+   * is what such a step "printed": it is parsed exactly as real stdout is
+   * (JSON when it parses, text otherwise) and later steps render it through
+   * `{{ steps.<name>.output }}`. A step with no sample prints nothing.
+   */
+  stepOutputs?: Record<string, string>;
 }
 
 /** ActionDeps that perform no IO — each call resolves to its received params. */
@@ -235,7 +246,17 @@ class SimVariableResolver extends VariableResolver {
     }
     return super.getValue(name, ctx, now);
   }
-  async setValue(name: string, value: unknown): Promise<SetResult> { this.writes.push({ name, op: 'set', value }); return { ok: true }; }
+  /**
+   * Record the write without persisting it — but only if a real run would
+   * accept it (#5636). A dry run that reported success for an unknown,
+   * read-only or wrong-type variable hid the failure until the rule was live.
+   */
+  async setValue(name: string, value: unknown, ctx: VarContext = {}): Promise<SetResult> {
+    const check = await this.checkSet(name, value, ctx);
+    if (!check.ok) return check;
+    this.writes.push({ name, op: 'set', value });
+    return { ok: true };
+  }
   async setFlag(name: string): Promise<SetResult> { this.writes.push({ name, op: 'flag' }); return { ok: true }; }
   async clearFlag(name: string): Promise<SetResult> { this.writes.push({ name, op: 'clear' }); return { ok: true }; }
   async increment(name: string, delta: number): Promise<SetResult> { this.writes.push({ name, op: 'increment', value: delta }); return { ok: true }; }
@@ -255,7 +276,8 @@ async function simApplySetVar(node: AutomationNode, ctx: EngineEvalContext): Pro
     return;
   }
   const value = await resolveOperand(ctx, p.value);
-  await ctx.vars.setValue(name, value, ctx.varCtx, ctx.now);
+  const r = await ctx.vars.setValue(name, value, ctx.varCtx, ctx.now);
+  if (!r.ok) throw new Error(r.error);
 }
 
 /** Build a synthetic DbMessage from a message sim-event. */
@@ -475,11 +497,23 @@ export async function simulateAutomation(opts: SimulateOptions): Promise<SimResu
   const data = stubData(opts.node, opts.telemetry, opts.liveData);
   const evalCtx: EngineEvalContext = {
     trigger: ctx, vars, data, varCtx: varContextFromTrigger(ctx), now, automationId: opts.automationId,
+    stepOutputs: createStepOutputs(),
+  };
+
+  // #5636: a "Run a script" step that stores a run output "prints" its sample.
+  // Still no process is spawned — the sample goes through the same parser real
+  // stdout does, then through the real executor.
+  const samples = opts.stepOutputs ?? {};
+  const depsFor = (n: AutomationNode): ActionDeps => {
+    const name = stepOutputNameOf(n);
+    if (!name || !Object.prototype.hasOwnProperty.call(samples, name)) return deps;
+    const stdout = String(samples[name] ?? '');
+    return { ...deps, runScript: async () => ({ success: true, stdout, returnValue: parseScriptOutput(stdout).returnValue }) };
   };
 
   const result = await evaluateGraph(opts.graph, evalCtx, {
     evaluateCondition: (n, c) => evaluateCondition(n, c),
-    executeAction: (n, c) => executeAction(n, c, deps),
+    executeAction: (n, c) => executeAction(n, c, depsFor(n)),
     applySetVar: (n, c) => simApplySetVar(n, c),
     stepDetail: (n, v) => actionStepDetail(n, v),
     haltReason: (c) => c.halt?.reason,

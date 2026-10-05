@@ -2,7 +2,8 @@
  * Shared "{{ }} substitutions" reference drawer (#3653).
  *
  * Lists every interpolation token usable in action text fields (message body,
- * notify title/body): `{{ trigger.* }}` per trigger type, `{{ var.* }}`, `{{ NOW }}`.
+ * notify title/body): `{{ trigger.* }}` per trigger type, `{{ var.* }}`,
+ * `{{ steps.* }}` (#5636) and `{{ NOW }}`.
  * Used by both the builder (next to the message fields) and the Test panel.
  */
 import { UiIcon } from '../icons';
@@ -101,8 +102,11 @@ const TRIGGER_LABEL: Record<string, string> = {
 };
 
 /** Drawer listing every available substitution token (current trigger first). */
-export default function SubstitutionsHelpDrawer({ triggerType, variables, onClose }: {
-  triggerType: string; variables: Array<{ name: string }>; onClose: () => void;
+export default function SubstitutionsHelpDrawer({ triggerType, variables, stepNames = [], onClose }: {
+  triggerType: string; variables: Array<{ name: string }>;
+  /** Run-output names stored by this automation's steps (#5636). */
+  stepNames?: string[];
+  onClose: () => void;
 }) {
   const order = [triggerType, ...Object.keys(TRIGGER_TOKENS).filter((t) => t !== triggerType)];
   // Docked, non-modal slide-in panel (no backdrop / click-away) so it stays open
@@ -118,6 +122,18 @@ export default function SubstitutionsHelpDrawer({ triggerType, variables, onClos
         <dt>{'{{ var.NAME }}'}</dt><dd>Any user variable{variables.length ? `: ${variables.map((v) => v.name).join(', ')}` : ' (none defined yet)'}.</dd>
         <dt>{'{{ var.NAME.a.b }}'}</dt><dd>Index into a <strong>json</strong> variable (e.g. a “Run a script” result) — dotted path into the stored object/array. A whole object renders as JSON.</dd>
         <dt>{'{{ NOW }}'}</dt><dd>Current time (rendered as a local date/time).</dd>
+      </dl>
+
+      <h3>Step results — this run only</h3>
+      <p className="ae-muted">A “Run a script” step set to store its result for <strong>This run only</strong> gives it a name. Steps after it in the same rule can read it; nothing is saved once the run ends.</p>
+      <dl>
+        {stepNames.flatMap((n) => [
+          <dt key={`${n}-t`}>{`{{ steps.${n}.output }}`}</dt>,
+          <dd key={`${n}-d`}>Result of the step named <strong>{n}</strong>.</dd>,
+        ])}
+        <dt>{'{{ steps.NAME.output }}'}</dt><dd>What the script printed. JSON output renders as JSON{stepNames.length ? '' : ' (no step stores a result yet)'}.</dd>
+        <dt>{'{{ steps.NAME.output.a.b }}'}</dt><dd>Index into JSON output — a dotted path into the object/array.</dd>
+        <dt>{'{{ steps.NAME.ok }}'}</dt><dd><code>true</code> if the script ran, <code>false</code> if it failed. Empty if the step did not run.</dd>
       </dl>
 
       {(SUBJECT_NODE_TRIGGER_TYPES as readonly string[]).includes(triggerType) && (

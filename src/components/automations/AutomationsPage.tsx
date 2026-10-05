@@ -17,7 +17,7 @@ import TemplateGallery, { type InstalledAutomationRow } from './TemplateGallery'
 import { StepList, type TraceStep } from './outcomeMeta';
 import { summarizeTriggerEvent, parseJsonColumn } from './eventSummary';
 import { UiIcon } from '../icons';
-import { compile, decompile, type WorkflowForm } from './compile';
+import { compile, decompile, outputNameErrors, type WorkflowForm } from './compile';
 import './AutomationsPage.css';
 
 interface Automation {
@@ -81,6 +81,7 @@ function validateForm(form: WorkflowForm): string[] {
     }
   });
   if (form.combine && form.combine.actions.length === 0) errs.push('The FINALLY step needs at least one action.');
+  errs.push(...outputNameErrors(form));
   return errs;
 }
 

@@ -21,6 +21,7 @@ import {
   COLLAPSE_MODES,
   NUMERIC_OPS,
   forwardingToggleSourceIds,
+  isStepOutputName,
 } from '../../types/automation.js';
 import { isForwardingEnabled } from '../services/forwardingStateService.js';
 import { reloadAutomations, getAutomationEngine } from '../services/automation/automationEngineSingleton.js';
@@ -203,6 +204,22 @@ router.delete('/variables/:id', canWrite, async (req: Request, res: Response) =>
  * IO, no Apprise dispatch, no variable persistence, no run-log row. Gated on
  * `automations:write` (same as editing). Used by the builder's Test panel.
  */
+/**
+ * The Test panel's sample script outputs (#5636): `{ <outputName>: <text> }`.
+ * Keeps string values only and cuts each at the script runner's own 1 MiB
+ * stdout cap, so a dry run cannot be fed more than a real script could print.
+ */
+function sampleStepOutputs(raw: unknown): Record<string, string> | undefined {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return undefined;
+  // Only well-formed run-output names are kept, and the object is built from
+  // entries, so a request key such as `__proto__` never becomes a property write.
+  const entries: Array<[string, string]> = [];
+  for (const [name, text] of Object.entries(raw as Record<string, unknown>)) {
+    if (isStepOutputName(name) && typeof text === 'string') entries.push([name, text.slice(0, 1024 * 1024)]);
+  }
+  return Object.fromEntries(entries);
+}
+
 async function runSimulation(req: Request, res: Response, configRaw: unknown, automationId?: string): Promise<Response | void> {
   const v = validateConfig(configRaw);
   if (!v.ok) return res.status(400).json({ error: 'invalid automation config', details: v.errors });
@@ -218,6 +235,8 @@ async function runSimulation(req: Request, res: Response, configRaw: unknown, au
     graph: JSON.parse(v.json),
     event: event as SimEventInput,
     node, telemetry, variables,
+    // #5636: sample stdout per named "Run a script" step. Text only.
+    stepOutputs: sampleStepOutputs((req.body ?? {}).stepOutputs),
     varsRepo: databaseService.automationVariablesRepo,
     liveData: createMeshNodeDataProvider(),
     automationId,

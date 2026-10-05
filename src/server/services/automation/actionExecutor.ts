@@ -14,9 +14,11 @@ import {
   WAYPOINT_KEY_MAX_LENGTH,
   parseSendMaxAttempts,
   parseAutomationEnabledFlag,
+  STEP_OUTPUT_MAX_BYTES,
+  stepOutputNameOf,
 } from '../../../types/automation.js';
 import { parseHopLimitOverride } from '../../../utils/hopLimitOverride.js';
-import { type EngineEvalContext, interpolateAsync, resolveOperand } from './engineContext.js';
+import { type EngineEvalContext, interpolateAsync, resolveOperand, capStepOutput } from './engineContext.js';
 import { isTxDisabledError } from '../../errors/txDisabledError.js';
 import { hopCountEmoji } from '../../../utils/hopEmoji.js';
 import { tokenizeArgv } from '../../utils/argvTokenizer.js';
@@ -159,6 +161,14 @@ export interface SetAutomationEnabledResult {
 export function actionStepDetail(node: AutomationNode, value: unknown): Record<string, unknown> | undefined {
   if (value == null || typeof value !== 'object') return undefined;
   const v = value as Record<string, unknown>;
+  // #5636: an empty send that was held back, with why.
+  if (v.emptySend === true && typeof v.reason === 'string') return { skipped: true, reason: v.reason };
+  // #5636: say the run output was cut. Never the output itself.
+  if (node.type === 'action.runScript') {
+    return v.outputTruncated === true
+      ? { reason: `output "${String(v.outputName)}" was cut to ${STEP_OUTPUT_MAX_BYTES / 1024} KiB for this run` }
+      : undefined;
+  }
   if (node.type === 'action.setSourceForwardingEnabled') {
     return { sourceId: v.sourceId, sourceName: v.sourceName, mode: v.mode, enabled: v.enabled, previous: v.previous };
   }
@@ -253,6 +263,15 @@ async function pushOrSkipTxDisabled<T>(results: unknown[], fn: () => Promise<T>)
 }
 
 /**
+ * Result of a send held back by the empty-send rule (#5636): nothing reached
+ * the deps. Same `{ skipped, reason }` shape as the MeshCore / TX-disabled
+ * skips; `emptySend` lets {@link actionStepDetail} put the reason in the run log.
+ */
+function emptySendSkip(reason: string): { skipped: true; emptySend: true; reason: string } {
+  return { skipped: true, emptySend: true, reason };
+}
+
+/**
  * Execute an action node against the injected deps. Throws on unknown action
  * type or missing required data; the graph evaluator catches and records it.
  */
@@ -302,20 +321,59 @@ export async function executeAction(node: AutomationNode, ctx: EngineEvalContext
         }
       }
 
+      // Run-scoped output (#5636): the name later steps read as
+      // {{ steps.<name>.output }}. Lenient at run time (a bad name stores
+      // nothing); validateAutomationGraph rejects it at save time.
+      const outputName = stepOutputNameOf(node);
+
       const result = await deps.runScript({ scriptPath, scriptArgs, env: triggerEnv(ctx), timeoutMs });
-      if (!result.success) throw new Error(`script "${scriptPath}" failed: ${result.error ?? 'non-zero exit'}`);
-      // Store the script's JSON result into a variable (usable later as
-      // {{ var.NAME.a.b }}); fall back to trimmed stdout when there's no JSON.
+      if (!result.success) {
+        // A failed script does not stop the run, so record the failure where a
+        // later step can test it: {{ steps.<name>.ok }} renders "false".
+        if (outputName) ctx.stepOutputs?.set(outputName, { ok: false });
+        throw new Error(`script "${scriptPath}" failed: ${result.error ?? 'non-zero exit'}`);
+      }
+      // The script's JSON result, else its trimmed stdout.
+      const value = result.returnValue !== undefined ? result.returnValue : result.stdout.trim();
+
+      // Keep it for this run first, so a later step can still read it when the
+      // variable write below fails.
+      let outputTruncated = false;
+      if (outputName && ctx.stepOutputs) {
+        const capped = capStepOutput(value);
+        outputTruncated = capped.truncated;
+        ctx.stepOutputs.set(outputName, { ok: true, output: capped.value });
+      }
+
+      // Store it in a variable (usable later as {{ var.NAME.a.b }}). The write
+      // can be refused — unknown variable, read-only, wrong type, or no node /
+      // source to scope it by — and that used to pass silently (#5636). The
+      // script did run, but the step fails so the run log and the Test panel
+      // say the result was lost; later steps still run, as after any failure.
       const resultVar = typeof p.resultVariable === 'string' ? p.resultVariable : '';
       if (resultVar) {
-        const value = result.returnValue !== undefined ? result.returnValue : result.stdout.trim();
-        await ctx.vars.setValue(resultVar, value, ctx.varCtx, ctx.now);
+        const stored = await ctx.vars.setValue(resultVar, value, ctx.varCtx, ctx.now);
+        if (!stored.ok) {
+          throw new Error(
+            `script "${scriptPath}" ran, but its result was not stored in variable "${resultVar}": ${stored.error ?? 'write refused'}`,
+          );
+        }
       }
-      return { scriptPath, success: true, returnValue: result.returnValue };
+      return {
+        scriptPath,
+        success: true,
+        returnValue: result.returnValue,
+        ...(outputTruncated ? { outputName, outputTruncated: true } : {}),
+      };
     }
 
     case 'action.sendMessage': {
       let text = await interpolateAsync(String(p.text ?? ''), ctx);
+      // Empty-send rule (#5636): a message whose text renders to nothing is
+      // never transmitted — DM or channel, every protocol, every target
+      // source. Checked on the rendered template, before the MeshCore reply
+      // mention below would wrap an empty body in "@[Name]: ".
+      if (text.trim().length === 0) return emptySendSkip('the message text rendered empty, so nothing was sent');
       // Destination resolution is deferred into the per-source loop below (#4018):
       // a MeshCore DM target is a pubkey string, a Meshtastic DM target is a node
       // number, and which applies depends on each target source's protocol —
@@ -544,6 +602,8 @@ export async function executeAction(node: AutomationNode, ctx: EngineEvalContext
       } else {
         emoji = String(p.emoji ?? '👍');
       }
+      // Empty-send rule (#5636): a blank reaction is not sent.
+      if (emoji.trim().length === 0) return emptySendSkip('the tapback emoji is blank, so nothing was sent');
       // Default replyId is the triggering packet; route the way the trigger arrived.
       const replyId = p.replyId != null ? await num(ctx, p.replyId) : (ctx.trigger.fields.packetId as number | undefined);
       const destination = isDM ? (ctx.trigger.fields.from as number | undefined) : undefined;
@@ -671,6 +731,11 @@ export async function executeAction(node: AutomationNode, ctx: EngineEvalContext
     case 'action.notify': {
       const title = await interpolateAsync(String(p.title ?? 'MeshMonitor automation'), ctx);
       const body = await interpolateAsync(String(p.body ?? ''), ctx);
+      // Empty-send rule (#5636): a notification with neither a title nor a body
+      // says nothing, so it is not dispatched. A title on its own still goes.
+      if (title.trim().length === 0 && body.trim().length === 0) {
+        return emptySendSkip('the notification title and body both rendered empty, so nothing was sent');
+      }
       const type = typeof p.type === 'string' ? p.type : undefined;
       // `urls` is an optional newline/comma-separated list of Apprise service
       // URLs entered on the action. Interpolation is restricted to {{ var.* }} —

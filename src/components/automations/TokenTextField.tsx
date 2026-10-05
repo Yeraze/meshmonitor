@@ -11,12 +11,12 @@
  * variable namespaces, and every other token is flagged as unrecognized.
  */
 import { useMemo, useRef } from 'react';
-import { tokenize, diagnoseTokens, validTokenSet, type TokenDiag, type TokenSegment } from './tokenHints';
+import { tokenize, diagnoseTokens, validTokenSet, type TokenDiag, type TokenSegment, type StepTokenScope } from './tokenHints';
 import { UiIcon } from '../icons';
 import './TokenTextField.css';
 
 export default function TokenTextField({
-  value, onChange, multiline, placeholder, triggerType = '', variableNames, validTokens,
+  value, onChange, multiline, placeholder, triggerType = '', variableNames, validTokens, steps,
   fieldClassName, id, maxLength, ariaLabel,
 }: {
   value: string;
@@ -29,6 +29,8 @@ export default function TokenTextField({
   variableNames?: string[];
   /** Exact set of valid token paths. Overrides `triggerType`/`variableNames`. */
   validTokens?: ReadonlySet<string>;
+  /** Automation builder: the run outputs this field's step can read (#5636). */
+  steps?: StepTokenScope;
   /** Field chrome class for backdrop + input. Defaults to `ae-input`/`ae-textarea`. */
   fieldClassName?: string;
   id?: string;
@@ -42,16 +44,16 @@ export default function TokenTextField({
   );
   const strict = validTokens !== undefined;
   const segs = useMemo<TokenSegment[]>(() => {
-    const out = tokenize(value, valid);
+    const out = tokenize(value, valid, steps);
     // A fixed token set has no "belongs to another trigger" tier.
     return strict ? out.map((s) => (s.status === 'foreign' ? { ...s, status: 'bad' as const } : s)) : out;
-  }, [value, valid, strict]);
+  }, [value, valid, strict, steps]);
   const diags = useMemo<TokenDiag[]>(() => {
-    const out = diagnoseTokens(value, valid);
+    const out = diagnoseTokens(value, valid, steps);
     return strict
       ? out.map((d) => ({ token: d.token, severity: 'error' as const, detail: 'is not a recognized token' }))
       : out;
-  }, [value, valid, strict]);
+  }, [value, valid, strict, steps]);
 
   const cls = fieldClassName ?? (multiline ? 'ae-textarea' : 'ae-input');
   const markClass = (status: string) =>

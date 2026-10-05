@@ -13,6 +13,7 @@ import {
   UNIVERSAL_TOKENS,
 } from './SubstitutionsHelp';
 import { NODE_TOKENS, SUBJECT_NODE_TRIGGER_TYPES } from './substitutionNodeTokens';
+import { stepOutputRefProblem, stepOutputProblemDetail } from '../../types/automation';
 
 // Mirrors the engine's interpolate TOKEN regex.
 const TOKEN_RE = /\{\{\s*([^}]+?)\s*\}\}/g;
@@ -52,9 +53,42 @@ export function anyNodeTokenSet(): Set<string> {
   return anyNodeCache;
 }
 
+/**
+ * Run outputs (#5636) the field's own step can read through `{{ steps.* }}`:
+ * `guaranteed` are stored by a step that always runs first, `possible` by one
+ * that runs first on some path, `all` is every name in the automation.
+ * `'refused'` marks a field that takes `{{ var.* }}` only. Absent (a field
+ * outside the builder) means no step outputs exist.
+ */
+export type StepTokenScope =
+  | { guaranteed: ReadonlySet<string>; possible: ReadonlySet<string>; all: ReadonlySet<string> }
+  | 'refused';
+
+const NO_STEP_NAMES: ReadonlySet<string> = new Set<string>();
+
+/** What is wrong with a `steps.*` token path, or null when it will resolve. */
+export function stepTokenProblem(path: string, steps?: StepTokenScope): { severity: TokenSeverity; detail: string } | null {
+  if (steps === 'refused') return { severity: 'error', detail: 'is always empty: this field takes {{ var.* }} only' };
+  const [, name = '', head, ...rest] = path.split('.');
+  if (name.length === 0 || (head !== 'output' && !(head === 'ok' && rest.length === 0))) {
+    return { severity: 'error', detail: 'is always empty: write steps.NAME.output or steps.NAME.ok' };
+  }
+  const problem = stepOutputRefProblem(
+    name,
+    steps ? { guaranteed: new Set(steps.guaranteed), possible: new Set(steps.possible) } : undefined,
+    steps?.all ?? NO_STEP_NAMES,
+  );
+  if (!problem) return null;
+  return { severity: problem === 'maybe' ? 'warn' : 'error', detail: stepOutputProblemDetail(problem, name) };
+}
+
 /** Classify a single token path against the current-trigger valid set. */
-export function classifyToken(path: string, valid: Set<string>): TokenStatus {
+export function classifyToken(path: string, valid: Set<string>, steps?: StepTokenScope): TokenStatus {
   if (path.length === 0 || valid.has(path)) return 'ok';
+  if (path.startsWith('steps.')) {
+    const problem = stepTokenProblem(path, steps);
+    return problem === null ? 'ok' : problem.severity === 'warn' ? 'foreign' : 'bad';
+  }
   if (path.startsWith('trigger.') && anyTriggerTokenSet().has(path)) return 'foreign';
   if (path.startsWith('node.') && anyNodeTokenSet().has(path)) return 'foreign';
   return 'bad';
@@ -63,14 +97,14 @@ export function classifyToken(path: string, valid: Set<string>): TokenStatus {
 export interface TokenSegment { text: string; token: boolean; status: TokenStatus }
 
 /** Split text into plain + token segments for highlighting. */
-export function tokenize(text: string, valid: Set<string>): TokenSegment[] {
+export function tokenize(text: string, valid: Set<string>, steps?: StepTokenScope): TokenSegment[] {
   const segs: TokenSegment[] = [];
   let last = 0;
   for (const m of text.matchAll(TOKEN_RE)) {
     const start = m.index ?? 0;
     if (start > last) segs.push({ text: text.slice(last, start), token: false, status: 'ok' });
     const path = m[1].trim();
-    segs.push({ text: m[0], token: path.length > 0, status: classifyToken(path, valid) });
+    segs.push({ text: m[0], token: path.length > 0, status: classifyToken(path, valid, steps) });
     last = start + m[0].length;
   }
   if (last < text.length) segs.push({ text: text.slice(last), token: false, status: 'ok' });
@@ -88,16 +122,21 @@ export interface TokenDiag { token: string; severity: TokenSeverity; detail: str
  *   - `{{ trigger.x }}` of no trigger        → error "is not a recognized trigger field"
  *   - `{{ node.x }}` with no subject node    → warn  "needs a subject-node trigger"
  *   - `{{ node.x }}` unknown prop            → error "is not a recognized node field"
+ *   - `{{ steps.x.output }}` never stored before this step → error "is always empty"
+ *   - `{{ steps.x.output }}` stored on only some paths     → warn  "may be empty"
  *   - anything else                          → error "is not a recognized token"
  */
-export function diagnoseTokens(text: string, valid: Set<string>): TokenDiag[] {
+export function diagnoseTokens(text: string, valid: Set<string>, steps?: StepTokenScope): TokenDiag[] {
   const seen = new Set<string>();
   const out: TokenDiag[] = [];
   for (const m of text.matchAll(TOKEN_RE)) {
     const path = m[1].trim();
     if (path.length === 0 || valid.has(path) || seen.has(path)) continue;
     seen.add(path);
-    if (path.startsWith('var.')) {
+    if (path.startsWith('steps.')) {
+      const problem = stepTokenProblem(path, steps);
+      if (problem) out.push({ token: path, ...problem });
+    } else if (path.startsWith('var.')) {
       out.push({ token: path, severity: 'error', detail: 'does not exist' });
     } else if (path.startsWith('trigger.')) {
       out.push(anyTriggerTokenSet().has(path)
