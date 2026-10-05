@@ -2380,16 +2380,7 @@ class DatabaseService {
 
           if (pendingRecord) {
             // Update existing pending record
-            await this.traceroutesRepo.updateTracerouteResponse(
-              pendingRecord.id,
-              tracerouteData.route || null,
-              tracerouteData.routeBack || null,
-              tracerouteData.snrTowards || null,
-              tracerouteData.snrBack || null,
-              tracerouteData.timestamp,
-              tracerouteData.packetId ?? null,
-              tracerouteData.transportMechanism ?? null
-            );
+            await this.traceroutesRepo.updateTracerouteResponse(pendingRecord.id, tracerouteData);
           } else {
             // Insert new traceroute
             await this.traceroutesRepo.insertTraceroute(tracerouteData, sourceId);

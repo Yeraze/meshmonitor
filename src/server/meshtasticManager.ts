@@ -100,6 +100,7 @@ import { canonicalMessageTime, plausibleRxTime } from './utils/messageTime.js';
 import { canonicalTelemetryType, canonicalTelemetryUnit } from './utils/telemetryKeys.js';
 import { isNodeComplete } from '../utils/nodeHelpers.js';
 import { getEffectiveDbNodePosition } from './utils/nodeEnhancer.js';
+import { buildRoutePositionsSnapshot } from './utils/tracerouteSnapshot.js';
 import { getCachedSignFlipContext, getDisplayDbNodePosition, correctLatLon } from './services/signFlipCorrection.js';
 import { migrateAutomationChannels } from './utils/automationChannelMigration.js';
 import { detectChannelMoves } from './utils/channelMoveDetection.js';
@@ -9051,24 +9052,13 @@ class MeshtasticManager implements ISourceManager {
       // Build position snapshot for all nodes in the traceroute path (Issue #1862)
       // This captures where each node was at traceroute time so historical traceroutes
       // render correctly even when nodes move
-      const routePositions: Record<number, { lat: number; lng: number; alt?: number }> = {};
-      const allPathNodes = [toNum, ...route, fromNum];
-      const allBackNodes = routeBack || [];
-      const allUniqueNodes = [...new Set([...allPathNodes, ...allBackNodes])];
-
-      for (const nodeNum of allUniqueNodes) {
-        const node = await databaseService.nodes.getNode(nodeNum, tracerouteScopeSourceId);
-        // Snapshot the effective position so historical traceroute renders
-        // anchor on the user-set override when one is configured (issue #2847).
-        const eff = getEffectiveDbNodePosition(node);
-        if (eff.latitude != null && eff.longitude != null) {
-          routePositions[nodeNum] = {
-            lat: eff.latitude,
-            lng: eff.longitude,
-            ...(eff.altitude != null ? { alt: eff.altitude } : {}),
-          };
-        }
-      }
+      // (both endpoints, every hop out and back). One builder for every
+      // writer; see src/server/utils/tracerouteSnapshot.ts for what it holds
+      // and what it leaves out (a private position override).
+      const routePositions = await buildRoutePositionsSnapshot(
+        [toNum, ...route, fromNum, ...(routeBack || [])],
+        nodeNum => databaseService.nodes.getNode(nodeNum, tracerouteScopeSourceId),
+      );
 
       // Save to traceroutes table (save raw data including broadcast addresses).
       // This record is in REPLY-PACKET form: fromNodeNum = the node that
@@ -9090,7 +9080,7 @@ class MeshtasticManager implements ISourceManager {
         routeBack: JSON.stringify(routeBack),
         snrTowards: JSON.stringify(snrTowards),
         snrBack: JSON.stringify(snrBack),
-        routePositions: JSON.stringify(routePositions),
+        routePositions,
         channel: channelIndex >= 0 ? channelIndex : null,
         packetId: meshPacket.id != null ? Number(meshPacket.id) : null,
         // #5097 — which transport carried this traceroute, so the map's
