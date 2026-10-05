@@ -268,6 +268,12 @@ docker stop meshmonitor-test && docker rm meshmonitor-test
 - **Solution**: Check `/data/system-backups/` for available backups
 - **Check**: Use `docker exec meshmonitor ls /data/system-backups`
 
+### "Backup metadata not found" After Copying a Backup In
+
+- **Cause**: Backup directories are `0700` and their files `0600`. A backup copied in by another user (for example `cp` as root on a host where the server does not run as root) cannot be read by the server
+- **Solution**: Give the files to the user the server runs as: `chown -R <user> /data/system-backups/<backup>`
+- **Note**: The Docker image does this itself at start, when it runs as root
+
 ### "Integrity validation failed" Error
 
 - **Cause**: Backup files corrupted or modified
