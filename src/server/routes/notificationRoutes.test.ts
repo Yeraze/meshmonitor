@@ -20,6 +20,7 @@ const mockApprise = vi.hoisted(() => ({
 
 const mockNotif = vi.hoisted(() => ({
   getUserNotificationPreferencesAsync: vi.fn(),
+  resolveNotificationPreferencesAsync: vi.fn(),
   saveUserNotificationPreferencesAsync: vi.fn(),
   applyNodeNamePrefixAsync: vi.fn(),
 }));
@@ -190,36 +191,51 @@ describe('notificationRoutes - push', () => {
     expect(res.body).toMatchObject({ success: true, sent: 2, failed: 0 });
   });
 
-  it('GET /push/preferences returns defaults when none stored', async () => {
-    mockNotif.getUserNotificationPreferencesAsync.mockResolvedValue(null);
+  // The resolver itself (row, else defaults, never another source) is covered
+  // against a real database in notificationRoutes.noCrossSource.test.ts; these
+  // only pin how the route shapes the resolver's answer.
+  it('GET /push/preferences marks an answer that is not a saved row', async () => {
+    mockNotif.resolveNotificationPreferencesAsync.mockResolvedValue({
+      prefs: { enableWebPush: true, whitelist: ['Hi', 'Help'] },
+      origin: 'default',
+      legacyMutes: false,
+    });
 
     const res = await request(app).get('/push/preferences');
 
     expect(res.status).toBe(200);
-    expect(res.body.enableWebPush).toBe(true);
-    expect(res.body.whitelist).toEqual(['Hi', 'Help']);
+    expect(res.body).toEqual({
+      enableWebPush: true,
+      whitelist: ['Hi', 'Help'],
+      usingDefaults: true,
+      sourceFallback: false,
+    });
   });
 
   it('GET /push/preferences returns stored prefs', async () => {
-    mockNotif.getUserNotificationPreferencesAsync.mockResolvedValue({ enableWebPush: false });
+    mockNotif.resolveNotificationPreferencesAsync.mockResolvedValue({
+      prefs: { enableWebPush: false },
+      origin: 'row',
+      legacyMutes: false,
+    });
 
-    const res = await request(app).get('/push/preferences');
+    const res = await request(app).get('/push/preferences?sourceId=src-x');
 
-    expect(res.body).toEqual({ enableWebPush: false, sourceFallback: false });
+    expect(res.body).toEqual({ enableWebPush: false, usingDefaults: false, sourceFallback: false });
+    expect(mockNotif.resolveNotificationPreferencesAsync).toHaveBeenLastCalledWith(expect.any(Number), 'src-x');
   });
 
-  it('GET /push/preferences?sourceId flags a read answered by the \'\' row (#5487)', async () => {
-    mockNotif.getUserNotificationPreferencesAsync.mockResolvedValue({ enableWebPush: false });
-    const db = (await import('../../services/database.js')).default as any;
+  it('GET /push/preferences?sourceId flags mutes carried from the legacy \'\' row (#5487)', async () => {
+    mockNotif.resolveNotificationPreferencesAsync.mockResolvedValue({
+      prefs: { enableWebPush: true, mutedChannels: [{ channelId: 2, muteUntil: null }] },
+      origin: 'default',
+      legacyMutes: true,
+    });
 
-    db.notifications.getUserPreferences.mockResolvedValueOnce(null);
-    const fallback = await request(app).get('/push/preferences?sourceId=src-x');
-    expect(fallback.body.sourceFallback).toBe(true);
-    expect(db.notifications.getUserPreferences).toHaveBeenLastCalledWith(expect.any(Number), 'src-x');
+    const res = await request(app).get('/push/preferences?sourceId=src-x');
 
-    db.notifications.getUserPreferences.mockResolvedValueOnce({ enableWebPush: false });
-    const own = await request(app).get('/push/preferences?sourceId=src-x');
-    expect(own.body.sourceFallback).toBe(false);
+    expect(res.body.sourceFallback).toBe(true);
+    expect(res.body.usingDefaults).toBe(true);
   });
 
   it('POST /push/preferences rejects invalid payload', async () => {
@@ -340,7 +356,12 @@ describe('notificationRoutes - push', () => {
   });
 
   it('GET /push/preferences includes the waypoint defaults', async () => {
-    mockNotif.getUserNotificationPreferencesAsync.mockResolvedValue(null);
+    const { defaultNotificationPreferences } = await import('../../utils/notificationDefaults.js');
+    mockNotif.resolveNotificationPreferencesAsync.mockResolvedValue({
+      prefs: defaultNotificationPreferences(),
+      origin: 'default',
+      legacyMutes: false,
+    });
     const res = await request(app).get('/push/preferences');
     expect(res.body.notifyOnWaypoint).toBe(false);
     expect(res.body.waypointRadiusKm).toBe(10);

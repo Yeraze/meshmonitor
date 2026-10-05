@@ -1,5 +1,6 @@
 import { logger } from '../../utils/logger.js';
 import databaseService from '../../services/database.js';
+import { defaultNotificationPreferences } from '../../utils/notificationDefaults.js';
 import {
   renderMessageNotification,
   type MessageTemplateContext,
@@ -95,89 +96,217 @@ function isEmojiOnlyMessage(text: string): boolean {
 }
 
 /**
- * Load notification preferences for a user from the database
- * Uses the notifications repository for database-agnostic queries
+ * Source types whose channel numbering and node ids are NOT Meshtastic's.
+ * Mute lists on the legacy '' row were set from the Meshtastic Channels tab,
+ * so they never carry to a source of one of these types (#5487).
  */
-export async function getUserNotificationPreferencesAsync(userId: number, sourceId?: string): Promise<NotificationPreferences | null> {
-  // Validate userId
+export const NON_MESHTASTIC_SOURCE_TYPES: ReadonlySet<string> = new Set(['meshcore', 'meshcore_mqtt', 'reticulum']);
+
+/**
+ * The built-in preferences: what a (user, source) pair gets until the user
+ * saves settings for that source. One definition for the whole app — see
+ * src/utils/notificationDefaults.ts.
+ */
+export function getDefaultNotificationPreferences(): NotificationPreferences {
+  return defaultNotificationPreferences();
+}
+
+/** Where a resolved set of preferences came from. */
+export interface ResolvedNotificationPreferences {
+  prefs: NotificationPreferences;
+  /**
+   * - `row`: the user's saved row for exactly this source.
+   * - `legacyBlob`: the pre-4.0 `push_prefs_<userId>` settings blob.
+   * - `default`: nothing saved; the built-in defaults.
+   */
+  origin: 'row' | 'legacyBlob' | 'default';
+  /** The mute lists include rules carried from the user's legacy '' row. */
+  legacyMutes: boolean;
+}
+
+/**
+ * Read the pre-4.0 per-user settings blob, if the user still has one.
+ *
+ * This is the one real "global" preference record left from before
+ * multi-source: `push_prefs_<userId>` in the settings table, written by 3.x and
+ * never written since. Migration 028 deleted the per-source rows that predated
+ * the per-source schema, so a user who has not saved preferences in 4.0+ has
+ * only this. It is the user's own record, not another source's row, so it
+ * still answers for a source with no row. Hardcoding the notify* toggles to
+ * `true` here once re-enabled categories the user had turned off (#2867), so
+ * every saved value is respected and only an absent field reads as the default.
+ */
+async function readLegacyPreferencesBlobAsync(userId: number): Promise<NotificationPreferences | null> {
+  try {
+    const prefsJson = await databaseService.getSettingAsync(`push_prefs_${userId}`);
+    if (!prefsJson) return null;
+    const oldPrefs = JSON.parse(prefsJson);
+    if (!oldPrefs || typeof oldPrefs !== 'object') return null;
+    const d = defaultNotificationPreferences();
+    const boolOr = (value: unknown, fallback: boolean): boolean =>
+      typeof value === 'boolean' ? value : fallback;
+    const numOr = (value: unknown, fallback: number): number =>
+      typeof value === 'number' ? value : fallback;
+    return {
+      enableWebPush: boolOr(oldPrefs.enableWebPush, d.enableWebPush),
+      enableApprise: boolOr(oldPrefs.enableApprise, d.enableApprise),
+      enabledChannels: oldPrefs.enabledChannels || [],
+      enableDirectMessages: boolOr(oldPrefs.enableDirectMessages, d.enableDirectMessages),
+      notifyOnEmoji: boolOr(oldPrefs.notifyOnEmoji, d.notifyOnEmoji),
+      notifyOnMqtt: boolOr(oldPrefs.notifyOnMqtt, d.notifyOnMqtt),
+      // An absent field means ON here, as it did in 3.x when the blob was
+      // written. This is a saved record, not a never-configured source, so it
+      // keeps its own meaning rather than the quieter built-in default.
+      notifyOnNewNode: boolOr(oldPrefs.notifyOnNewNode, true),
+      notifyOnTraceroute: boolOr(oldPrefs.notifyOnTraceroute, true),
+      notifyOnInactiveNode: boolOr(oldPrefs.notifyOnInactiveNode, d.notifyOnInactiveNode),
+      notifyOnLowBattery: boolOr(oldPrefs.notifyOnLowBattery, d.notifyOnLowBattery),
+      // Waypoint alerts postdate the legacy blob entirely, so there is
+      // nothing to read back — they are off until the user opts in (#4750).
+      notifyOnWaypoint: boolOr(oldPrefs.notifyOnWaypoint, d.notifyOnWaypoint),
+      waypointRadiusKm: numOr(oldPrefs.waypointRadiusKm, d.waypointRadiusKm),
+      waypointCenterLat: typeof oldPrefs.waypointCenterLat === 'number' ? oldPrefs.waypointCenterLat : null,
+      waypointCenterLon: typeof oldPrefs.waypointCenterLon === 'number' ? oldPrefs.waypointCenterLon : null,
+      lowBatteryThreshold: numOr(oldPrefs.lowBatteryThreshold, d.lowBatteryThreshold),
+      lowBatteryVoltageThreshold: numOr(oldPrefs.lowBatteryVoltageThreshold, d.lowBatteryVoltageThreshold),
+      notifyOnServerEvents: boolOr(oldPrefs.notifyOnServerEvents, d.notifyOnServerEvents),
+      prefixWithNodeName: boolOr(oldPrefs.prefixWithNodeName, d.prefixWithNodeName),
+      monitoredNodes: oldPrefs.monitoredNodes || [],
+      // The blob predates the default keyword lists; an absent list is empty.
+      whitelist: oldPrefs.whitelist || [],
+      blacklist: oldPrefs.blacklist || [],
+      appriseUrls: oldPrefs.appriseUrls || [],
+      mutedChannels: oldPrefs.mutedChannels || [],
+      mutedDMs: oldPrefs.mutedDMs || [],
+      // Templates postdate the legacy blob (#5593): always the default.
+      messageTitleTemplate: null,
+      messageBodyTemplate: null,
+    };
+  } catch (error) {
+    logger.error(`Failed to read legacy preferences blob for user ${userId}:`, error);
+    return null;
+  }
+}
+
+/** Union two mute lists by key; where both mute the same key, `extra` wins. */
+function unionMutes<T extends { muteUntil: number | null }>(base: T[], extra: T[], key: (r: T) => string | number): T[] {
+  const extraKeys = new Set(extra.map(key));
+  return [...base.filter(r => !extraKeys.has(key(r))), ...extra];
+}
+
+/**
+ * The ACTIVE mute rules on the user's legacy '' row, when they apply to
+ * `sourceId`; null when there are none or the source is not Meshtastic.
+ *
+ * The '' row is not a source's row. Before #5487 the Channels tab saved every
+ * mute without a source id, so mutes landed there, and migration 186 left them
+ * there for any source that had no row of its own ("its mutes are already in
+ * force there"). They are the one thing that still carries from the '' row to
+ * a never-configured source. Nothing else on that row does: its other fields
+ * were filled in by the old leaky read and are a stale copy of some other
+ * source's settings. A mute can only silence, so carrying it cannot add a
+ * notification.
+ */
+async function readLegacyMutesAsync(
+  userId: number,
+  sourceId: string,
+): Promise<{ mutedChannels: MutedChannel[]; mutedDMs: MutedDM[] } | null> {
+  const legacyRow = await databaseService.notifications.getUserPreferences(userId, '');
+  if (!legacyRow) return null;
+  const mutedChannels = (legacyRow.mutedChannels ?? []).filter(r => isMuteActive(r.muteUntil));
+  const mutedDMs = (legacyRow.mutedDMs ?? []).filter(r => isMuteActive(r.muteUntil));
+  if (mutedChannels.length === 0 && mutedDMs.length === 0) return null;
+
+  // Only a known Meshtastic-numbered source takes them: the rules are keyed by
+  // Meshtastic channel number, which is an unrelated channel on MeshCore.
+  try {
+    const source = await databaseService.sources.getSource(sourceId);
+    if (!source || NON_MESHTASTIC_SOURCE_TYPES.has(source.type)) return null;
+  } catch (error) {
+    logger.debug(`Could not resolve source ${sourceId} for legacy mutes:`, error);
+    return null;
+  }
+  return { mutedChannels, mutedDMs };
+}
+
+/**
+ * Resolve the preferences in force for (userId, sourceId), and say where they
+ * came from.
+ *
+ * Order:
+ * 1. The saved row for EXACTLY this source.
+ * 2. The pre-4.0 per-user settings blob, if the user still has one.
+ * 3. The built-in defaults.
+ *
+ * A source the user never configured does NOT borrow another source's row.
+ * Until this change it did: a miss fell back to `getUserPreferences(userId, '')`
+ * (#4020), and with an empty source id the repository dropped the source
+ * filter and returned the user's first row of any source. Source B then used
+ * the channel numbers, keyword lists and toggles saved for source A.
+ *
+ * For steps 2 and 3 only, a Meshtastic source also takes the active mute rules
+ * from the user's legacy '' row (see `readLegacyMutesAsync`).
+ *
+ * `sourceId` omitted or '' (a caller with no source in hand, or the unsourced
+ * view) reads the '' row itself, then steps 2 and 3.
+ *
+ * Returns null only for an invalid userId. A failed row read is logged by the
+ * repository and resolves as "no row".
+ */
+export async function resolveNotificationPreferencesAsync(
+  userId: number,
+  sourceId?: string,
+): Promise<ResolvedNotificationPreferences | null> {
   if (!Number.isInteger(userId) || userId <= 0) {
     logger.error(`❌ Invalid userId: ${userId}`);
     return null;
   }
+  const scopedSourceId = sourceId || '';
 
   try {
-    const prefs = await databaseService.notifications.getUserPreferences(userId, sourceId);
-    if (prefs) {
-      return prefs;
+    const row = await databaseService.notifications.getUserPreferences(userId, scopedSourceId);
+    if (row) {
+      return { prefs: row, origin: 'row', legacyMutes: false };
     }
 
-    // #4020 Rule B: a user's preferences can live entirely on the ''
-    // (default-source) row while sourceId names a specific source that has
-    // no row of its own — e.g. the row was saved before this source existed.
-    // Only fall back when there is NO exact-sourceId row at all (an exact
-    // miss above just means one wasn't found for `sourceId`); this preserves
-    // deliberate per-source opt-outs (a user who explicitly saved a
-    // muted/disabled row for THIS source keeps that row, since it wins in the
-    // `getUserPreferences(userId, sourceId)` call above whenever it exists).
-    if (sourceId && sourceId !== '') {
-      const defaultSourcePrefs = await databaseService.notifications.getUserPreferences(userId, '');
-      if (defaultSourcePrefs) {
-        return defaultSourcePrefs;
-      }
+    const blob = await readLegacyPreferencesBlobAsync(userId);
+    const base: NotificationPreferences = blob ?? defaultNotificationPreferences();
+    const origin = blob ? 'legacyBlob' : 'default';
+
+    if (scopedSourceId === '') {
+      return { prefs: base, origin, legacyMutes: false };
     }
 
-    // Fall back to old settings table for backward compatibility.
-    // Migration 028 deletes per-source rows that predate the per-source schema,
-    // so any user who hasn't re-saved preferences in 4.0+ relies entirely on
-    // this path. Hardcoding the notify* toggles to `true` here silently
-    // re-enabled push categories that the user had explicitly turned off in
-    // the legacy blob (issue #2867 — traceroute audio firing despite the
-    // toggle being off). Respect every saved value; only fall back to defaults
-    // when a field isn't present at all.
-    const prefsJson = await databaseService.getSettingAsync(`push_prefs_${userId}`);
-    if (prefsJson) {
-      const oldPrefs = JSON.parse(prefsJson);
-      const boolOr = (value: unknown, fallback: boolean): boolean =>
-        typeof value === 'boolean' ? value : fallback;
-      return {
-        enableWebPush: boolOr(oldPrefs.enableWebPush, true),
-        enableApprise: boolOr(oldPrefs.enableApprise, false),
-        enabledChannels: oldPrefs.enabledChannels || [],
-        enableDirectMessages: boolOr(oldPrefs.enableDirectMessages, true),
-        notifyOnEmoji: boolOr(oldPrefs.notifyOnEmoji, true),
-        notifyOnMqtt: boolOr(oldPrefs.notifyOnMqtt, true),
-        notifyOnNewNode: boolOr(oldPrefs.notifyOnNewNode, true),
-        notifyOnTraceroute: boolOr(oldPrefs.notifyOnTraceroute, true),
-        notifyOnInactiveNode: boolOr(oldPrefs.notifyOnInactiveNode, false),
-        notifyOnLowBattery: boolOr(oldPrefs.notifyOnLowBattery, false),
-        // Waypoint alerts postdate the legacy blob entirely, so there is
-        // nothing to read back — they are off until the user opts in (#4750).
-        notifyOnWaypoint: boolOr(oldPrefs.notifyOnWaypoint, false),
-        waypointRadiusKm: typeof oldPrefs.waypointRadiusKm === 'number' ? oldPrefs.waypointRadiusKm : 10,
-        waypointCenterLat: typeof oldPrefs.waypointCenterLat === 'number' ? oldPrefs.waypointCenterLat : null,
-        waypointCenterLon: typeof oldPrefs.waypointCenterLon === 'number' ? oldPrefs.waypointCenterLon : null,
-        lowBatteryThreshold: typeof oldPrefs.lowBatteryThreshold === 'number' ? oldPrefs.lowBatteryThreshold : 20,
-        lowBatteryVoltageThreshold: typeof oldPrefs.lowBatteryVoltageThreshold === 'number' ? oldPrefs.lowBatteryVoltageThreshold : 3300,
-        notifyOnServerEvents: boolOr(oldPrefs.notifyOnServerEvents, false),
-        prefixWithNodeName: boolOr(oldPrefs.prefixWithNodeName, false),
-        monitoredNodes: oldPrefs.monitoredNodes || [],
-        whitelist: oldPrefs.whitelist || [],
-        blacklist: oldPrefs.blacklist || [],
-        appriseUrls: oldPrefs.appriseUrls || [],
-        mutedChannels: oldPrefs.mutedChannels || [],
-        mutedDMs: oldPrefs.mutedDMs || [],
-        // Templates postdate the legacy blob (#5593): always the default.
-        messageTitleTemplate: null,
-        messageBodyTemplate: null,
-      };
+    const legacy = await readLegacyMutesAsync(userId, scopedSourceId);
+    if (!legacy) {
+      return { prefs: base, origin, legacyMutes: false };
     }
-
-    logger.debug(`No preferences found for user ${userId}`);
-    return null;
+    return {
+      prefs: {
+        ...base,
+        mutedChannels: unionMutes(base.mutedChannels ?? [], legacy.mutedChannels, r => r.channelId),
+        mutedDMs: unionMutes(base.mutedDMs ?? [], legacy.mutedDMs, r => r.nodeUuid),
+      },
+      origin,
+      legacyMutes: true,
+    };
   } catch (error) {
+    // Defaults, not "allow everything": a failed read must not open the gate.
     logger.error(`Failed to load preferences for user ${userId}:`, error);
-    return null;
+    return { prefs: defaultNotificationPreferences(), origin: 'default', legacyMutes: false };
   }
+}
+
+/**
+ * The preferences in force for (userId, sourceId): the saved row for that
+ * source, else the built-in defaults. Never another source's row. See
+ * `resolveNotificationPreferencesAsync` for the full order.
+ *
+ * Returns null only for an invalid userId.
+ */
+export async function getUserNotificationPreferencesAsync(userId: number, sourceId?: string): Promise<NotificationPreferences | null> {
+  const resolved = await resolveNotificationPreferencesAsync(userId, sourceId);
+  return resolved ? resolved.prefs : null;
 }
 
 /**
@@ -248,11 +377,13 @@ export async function shouldFilterNotificationAsync(
     return true; // Fail-closed on permission errors to avoid leaking cross-source data
   }
 
-  // Load user preferences (per-source)
+  // Load user preferences for THIS source: its saved row, else the built-in
+  // defaults. A user with no row used to pass every message here ("no
+  // preferences = allow"), which disagreed with the defaults the settings page
+  // showed; both now read one definition.
   const prefs = await getUserNotificationPreferencesAsync(userId, filterContext.sourceId);
   if (!prefs) {
-    logger.debug(`No preferences for user ${userId} on source ${filterContext.sourceId}, allowing notification`);
-    return false; // Allow if no preferences found
+    return false; // Unreachable: only an invalid userId resolves to null, and that returned above.
   }
 
   const messageTextLower = filterContext.messageText.toLowerCase();
@@ -329,6 +460,13 @@ export async function shouldFilterNotificationAsync(
  * then '' (default), then any remaining rows (already sourceId ASC) — and
  * returns the first row with both Apprise enabled and at least one URL.
  * Returns null when no row has a usable channel.
+ *
+ * This is deliberate and is NOT the per-source read that message and
+ * new-node/traceroute/server-event notifications use. Low-battery and
+ * inactive-node alerts are about a watch list of named nodes, which the user
+ * edits from any source's tab and which can name nodes on other sources; the
+ * alert must reach the user wherever they set up delivery. Only the answer to
+ * "where do I send it" crosses rows here, never a filter decision.
  */
 export async function resolveAppriseTargetAsync(
   userId: number,
@@ -366,11 +504,8 @@ export async function resolveAppriseTargetAsync(
  *   source name is wherever the template puts it; no `[sourceName]` prefix is
  *   added, so the default shows it exactly once.
  *
- *   Templates come from the EXACT (userId, sourceId) row only. They do not go
- *   through `getUserNotificationPreferencesAsync`, whose #4020 fallback answers
- *   a source with no row of its own from another row of the same user — fine
- *   for "is this user subscribed at all", wrong here: a template saved for
- *   source A must never shape a notification from source B.
+ *   Templates come from the EXACT (userId, sourceId) row only: a template
+ *   saved for source A never shapes a notification from source B.
  * - `message` absent (a caller that built its own strings): keep the legacy
  *   `[sourceName] title`, which is that caller's only mention of the source.
  *

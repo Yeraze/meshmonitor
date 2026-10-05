@@ -6,10 +6,12 @@ import {
   shouldFilterNotificationAsync,
   applyNodeNamePrefixAsync,
   resolveAppriseTargetAsync,
+  resolveNotificationPreferencesAsync,
   type NotificationFilterContext,
   type NotificationPreferences,
 } from './notificationFiltering.js';
 import databaseService from '../../services/database.js';
+import { defaultNotificationPreferences } from '../../utils/notificationDefaults.js';
 
 vi.mock('../../services/database.js', () => ({
   default: {
@@ -19,6 +21,7 @@ vi.mock('../../services/database.js', () => ({
       getUsersWithServiceEnabled: vi.fn(),
       getUserPreferenceRows: vi.fn(),
     },
+    sources: { getSource: vi.fn() },
     getSettingAsync: vi.fn(),
     checkPermissionAsync: vi.fn(),
   },
@@ -54,6 +57,7 @@ beforeEach(() => {
   mockDb.notifications.getUserPreferenceRows.mockResolvedValue([]);
   mockDb.getSettingAsync.mockResolvedValue(null);
   mockDb.checkPermissionAsync.mockResolvedValue(true);
+  mockDb.sources.getSource.mockResolvedValue({ id: 'any', type: 'meshtastic_tcp' });
 });
 
 // ─── getUserNotificationPreferencesAsync ─────────────────────────────────────
@@ -78,7 +82,8 @@ describe('getUserNotificationPreferencesAsync', () => {
   it('returns preferences from database when found', async () => {
     const result = await getUserNotificationPreferencesAsync(42);
     expect(result).toEqual(defaultPrefs);
-    expect(mockDb.notifications.getUserPreferences).toHaveBeenCalledWith(42, undefined);
+    // No source in hand reads the unsourced '' row, and only that row.
+    expect(mockDb.notifications.getUserPreferences).toHaveBeenCalledWith(42, '');
   });
 
   it('falls back to settings table when no preferences in notifications table', async () => {
@@ -95,18 +100,18 @@ describe('getUserNotificationPreferencesAsync', () => {
     expect(result!.enableApprise).toBe(false); // new feature default
   });
 
-  it('returns null when neither notifications nor settings found', async () => {
+  it('returns the built-in defaults when neither a row nor the legacy blob exists', async () => {
     mockDb.notifications.getUserPreferences.mockResolvedValue(null);
     mockDb.getSettingAsync.mockResolvedValue(null);
 
     const result = await getUserNotificationPreferencesAsync(5);
-    expect(result).toBeNull();
+    expect(result).toEqual(defaultNotificationPreferences());
   });
 
-  it('returns null on database error', async () => {
+  it('returns the built-in defaults on database error, not "no preferences"', async () => {
     mockDb.notifications.getUserPreferences.mockRejectedValue(new Error('DB error'));
     const result = await getUserNotificationPreferencesAsync(1);
-    expect(result).toBeNull();
+    expect(result).toEqual(defaultNotificationPreferences());
   });
 
   // Regression coverage for issue #2867 — the legacy push_prefs fallback was
@@ -242,11 +247,16 @@ describe('shouldFilterNotificationAsync', () => {
     expect(result).toBe(false);
   });
 
-  it('returns false (allow) when no preferences found', async () => {
+  // A user with no row used to pass EVERY message ("no preferences = allow"),
+  // while the settings page showed defaults with no channel enabled. Both now
+  // read one definition: channels off, direct messages on.
+  it('applies the built-in defaults when no preferences are saved', async () => {
     mockDb.notifications.getUserPreferences.mockResolvedValue(null);
     mockDb.getSettingAsync.mockResolvedValue(null);
-    const result = await shouldFilterNotificationAsync(1, baseContext);
-    expect(result).toBe(false);
+    expect(await shouldFilterNotificationAsync(1, { ...baseContext, messageText: 'Morning all', isDirectMessage: false }))
+      .toBe(true);
+    expect(await shouldFilterNotificationAsync(1, { ...baseContext, messageText: 'Morning all', isDirectMessage: true }))
+      .toBe(false);
   });
 
   it('returns false (allow) for message on enabled channel', async () => {
@@ -396,7 +406,8 @@ describe('Per-source preference isolation', () => {
     expect(prefsA?.enabledChannels).toEqual([1, 2]);
     expect(prefsB?.enableApprise).toBe(false);
     expect(prefsB?.enabledChannels).toEqual([9]);
-    expect(prefsC).toBeNull();
+    // A source with no row gets the built-in defaults, not A's or B's row.
+    expect(prefsC).toEqual(defaultNotificationPreferences());
   });
 
   it('cross-user isolation: same sourceId returns each user their own prefs', async () => {
@@ -567,14 +578,40 @@ describe('shouldFilterNotificationAsync — per-source mutes (#5487)', () => {
     expect(await shouldFilterNotificationAsync(1, { ...baseCtx, sourceId: 'source-A' })).toBe(false);
   });
 
-  it('falls back to the \'\' row mutes when the source has no row', async () => {
+  it('carries the \'\' row\'s active DM mute to a Meshtastic source that has no row', async () => {
     mockDb.notifications.getUserPreferences.mockImplementation(
       async (_userId: number, sourceId?: string) => {
-        if (sourceId === '') return { ...defaultPrefs, mutedChannels: [{ channelId: 1, muteUntil: null }] };
+        if (sourceId === '') return { ...defaultPrefs, mutedDMs: [{ nodeUuid: 'node-x', muteUntil: null }] };
         return null;
       }
     );
-    expect(await shouldFilterNotificationAsync(1, { ...baseCtx, sourceId: 'source-A' })).toBe(true);
+    const dm = { ...baseCtx, isDirectMessage: true, sourceId: 'source-A' };
+    // The defaults allow direct messages, so only the carried mute can filter this.
+    expect(await shouldFilterNotificationAsync(1, { ...dm, nodeUuid: 'node-x' })).toBe(true);
+    expect(await shouldFilterNotificationAsync(1, { ...dm, nodeUuid: 'node-y' })).toBe(false);
+  });
+
+  it('does not carry \'\' row mutes to a MeshCore source, or expired ones anywhere', async () => {
+    mockDb.notifications.getUserPreferences.mockImplementation(
+      async (_userId: number, sourceId?: string) => {
+        if (sourceId === '') {
+          return {
+            ...defaultPrefs,
+            mutedDMs: [{ nodeUuid: 'node-x', muteUntil: null }, { nodeUuid: 'node-old', muteUntil: Date.now() - 1000 }],
+          };
+        }
+        return null;
+      }
+    );
+    const dm = { ...baseCtx, isDirectMessage: true, sourceId: 'source-mc', nodeUuid: 'node-x' };
+    mockDb.sources.getSource.mockResolvedValue({ id: 'source-mc', type: 'meshcore' });
+    expect(await shouldFilterNotificationAsync(1, dm)).toBe(false);
+    expect((await resolveNotificationPreferencesAsync(1, 'source-mc'))!.legacyMutes).toBe(false);
+
+    mockDb.sources.getSource.mockResolvedValue({ id: 'source-A', type: 'meshtastic_tcp' });
+    const resolved = await resolveNotificationPreferencesAsync(1, 'source-A');
+    expect(resolved!.legacyMutes).toBe(true);
+    expect(resolved!.prefs.mutedDMs).toEqual([{ nodeUuid: 'node-x', muteUntil: null }]);
   });
 
   it('an expired per-source mute no longer filters, and the whitelist overrides an active one', async () => {
@@ -622,7 +659,7 @@ describe('applyNodeNamePrefixAsync', () => {
     expect(result).toBe('[MyNode] Hello');
   });
 
-  it('returns original body when no preferences found', async () => {
+  it('returns original body when no preferences are saved (default: no prefix)', async () => {
     mockDb.notifications.getUserPreferences.mockResolvedValue(null);
     mockDb.getSettingAsync.mockResolvedValue(null);
     const result = await applyNodeNamePrefixAsync(1, 'Hello', 'MyNode');
@@ -630,49 +667,68 @@ describe('applyNodeNamePrefixAsync', () => {
   });
 });
 
-// ─── getUserNotificationPreferencesAsync — Rule B '' fallback (#4020) ───────
+// ─── No cross-source fallback ────────────────────────────────────────────────
 
-describe('getUserNotificationPreferencesAsync — \'\' fallback for untargeted broadcasts (#4020)', () => {
-  it('falls back to the \'\' row when there is no exact-sourceId row', async () => {
+describe('resolveNotificationPreferencesAsync — a source never borrows another row', () => {
+  const rowA = { ...defaultPrefs, enableApprise: true, enableWebPush: false, enabledChannels: [1, 2], whitelist: ['alpha'] };
+
+  it('answers a source with no row from the built-in defaults, not the \'\' row (was the #4020 fallback)', async () => {
     mockDb.notifications.getUserPreferences.mockImplementation(
       async (_userId: number, sourceId?: string) => {
-        if (sourceId === '') return { ...defaultPrefs, enableApprise: true };
-        return null; // no row for 'source-without-its-own-row'
-      }
-    );
-
-    const result = await getUserNotificationPreferencesAsync(1, 'source-without-its-own-row');
-    expect(result).not.toBeNull();
-    expect(result!.enableApprise).toBe(true);
-    expect(mockDb.notifications.getUserPreferences).toHaveBeenNthCalledWith(1, 1, 'source-without-its-own-row');
-    expect(mockDb.notifications.getUserPreferences).toHaveBeenNthCalledWith(2, 1, '');
-  });
-
-  it('does NOT fall back to \'\' when an exact-sourceId row exists (preserves a deliberate per-source opt-out)', async () => {
-    mockDb.notifications.getUserPreferences.mockImplementation(
-      async (_userId: number, sourceId?: string) => {
-        if (sourceId === 'source-A') return { ...defaultPrefs, enableWebPush: false }; // explicit opt-out
-        if (sourceId === '') return { ...defaultPrefs, enableWebPush: true };
+        if (sourceId === '') return { ...defaultPrefs, enableApprise: true, enabledChannels: [7], whitelist: ['legacy'] };
+        if (sourceId === 'source-A') return rowA;
         return null;
       }
     );
 
-    const result = await getUserNotificationPreferencesAsync(1, 'source-A');
-    expect(result).not.toBeNull();
-    expect(result!.enableWebPush).toBe(false); // the exact row's opt-out wins, not the '' row
+    const resolved = await resolveNotificationPreferencesAsync(1, 'source-B');
+    expect(resolved).toEqual({ prefs: defaultNotificationPreferences(), origin: 'default', legacyMutes: false });
+  });
+
+  it('keeps the exact row for a configured source', async () => {
+    mockDb.notifications.getUserPreferences.mockImplementation(
+      async (_userId: number, sourceId?: string) => (sourceId === 'source-A' ? rowA : null)
+    );
+
+    expect(await resolveNotificationPreferencesAsync(1, 'source-A')).toEqual({ prefs: rowA, origin: 'row', legacyMutes: false });
+    // One read: an exact hit never looks at any other row.
     expect(mockDb.notifications.getUserPreferences).toHaveBeenCalledTimes(1);
   });
 
-  it('does not attempt the \'\' fallback when sourceId is already \'\' or undefined', async () => {
+  it('reads only the unsourced \'\' row when no source is given', async () => {
+    mockDb.notifications.getUserPreferences.mockImplementation(
+      async (_userId: number, sourceId?: string) => (sourceId === 'source-A' ? rowA : null)
+    );
+
+    for (const sourceId of ['', undefined]) {
+      mockDb.notifications.getUserPreferences.mockClear();
+      const resolved = await resolveNotificationPreferencesAsync(1, sourceId);
+      expect(resolved!.origin).toBe('default');
+      expect(resolved!.prefs).toEqual(defaultNotificationPreferences());
+      expect(mockDb.notifications.getUserPreferences.mock.calls).toEqual([[1, '']]);
+    }
+  });
+
+  it('still answers from the pre-4.0 settings blob, the user\'s own global record', async () => {
+    mockDb.notifications.getUserPreferences.mockImplementation(
+      async (_userId: number, sourceId?: string) => (sourceId === 'source-A' ? rowA : null)
+    );
+    mockDb.getSettingAsync.mockResolvedValue(JSON.stringify({ notifyOnTraceroute: false, enabledChannels: [3] }));
+
+    const resolved = await resolveNotificationPreferencesAsync(1, 'source-B');
+    expect(resolved!.origin).toBe('legacyBlob');
+    expect(resolved!.prefs.notifyOnTraceroute).toBe(false);
+    expect(resolved!.prefs.enabledChannels).toEqual([3]);
+    expect(mockDb.getSettingAsync).toHaveBeenCalledWith('push_prefs_1');
+  });
+
+  it('hands out a fresh defaults object each time', async () => {
     mockDb.notifications.getUserPreferences.mockResolvedValue(null);
-    mockDb.getSettingAsync.mockResolvedValue(null);
-
-    await getUserNotificationPreferencesAsync(1, '');
-    expect(mockDb.notifications.getUserPreferences).toHaveBeenCalledTimes(1);
-
-    mockDb.notifications.getUserPreferences.mockClear();
-    await getUserNotificationPreferencesAsync(1, undefined);
-    expect(mockDb.notifications.getUserPreferences).toHaveBeenCalledTimes(1);
+    const first = (await resolveNotificationPreferencesAsync(1, 'source-B'))!.prefs;
+    first.enabledChannels.push(99);
+    first.whitelist.length = 0;
+    const second = (await resolveNotificationPreferencesAsync(1, 'source-B'))!.prefs;
+    expect(second).toEqual(defaultNotificationPreferences());
   });
 });
 

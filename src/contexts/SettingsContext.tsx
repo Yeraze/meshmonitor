@@ -1273,10 +1273,12 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
   // #5487 these calls omitted sourceId, so mutes landed on the '' (default)
   // row and stopped blocking push once the user saved per-source settings.
   //
-  // A source with no row of its own is answered from the '' row
-  // (`sourceFallback: true`). Those mute lists are keyed by Meshtastic channel
-  // number / node id, so a non-Meshtastic view (MeshCore, Reticulum) ignores
-  // them rather than reading Meshtastic channel 1's mute as its own channel 1.
+  // A source with no row of its own is answered with the built-in defaults.
+  // On a Meshtastic source the server adds the active mutes from the user's
+  // legacy '' row and flags it (`sourceFallback: true`). Those lists are keyed
+  // by Meshtastic channel number / node id, so the server never adds them for
+  // a non-Meshtastic source; this check stays as a second guard for a view
+  // whose source type the server could not resolve.
   const muteScopeIsMeshtastic = sourceType !== 'meshcore'
     && sourceType !== 'meshcore_mqtt'
     && sourceType !== 'reticulum';
