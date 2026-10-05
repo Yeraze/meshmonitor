@@ -148,8 +148,10 @@ describe('GET /:id/status — Analyzer Observer visibility (#4457 Phase 2)', () 
     expect(res.body).not.toHaveProperty('observer');
   });
 
-  it('includes the full observer shape for a user granted nodes:read on this source', async () => {
+  it('includes the full observer shape for a user granted nodes:read and sources:read', async () => {
     await harness.grant(harness.limited.id, 'nodes', 'read', SOURCE_ID);
+    // The broker URL and error text name the host: that takes `sources:read`.
+    await harness.grant(harness.limited.id, 'sources', 'read');
     const agent = await harness.loginAs(harness.limited);
     const res = await agent.get(`/${SOURCE_ID}/status`);
     expect(res.status).toBe(200);
@@ -183,8 +185,27 @@ describe('GET /:id/status — Analyzer Observer visibility (#4457 Phase 2)', () 
     expect(JSON.stringify(res.body)).not.toContain('mqtt.meshmapper.net');
   });
 
-  it('includes the full observer shape with brokers[] for a user granted nodes:read', async () => {
+  it('keeps the observer counters but blanks the hosts for nodes:read without sources:read', async () => {
     await harness.grant(harness.limited.id, 'nodes', 'read', BROKERS_SOURCE_ID);
+    const agent = await harness.loginAs(harness.limited);
+    const res = await agent.get(`/${BROKERS_SOURCE_ID}/status`);
+    expect(res.status).toBe(200);
+    expect(res.body.observer.connected).toBe(MULTI_BROKER_OBSERVER_STATUS.connected);
+    expect(res.body.observer.brokers).toHaveLength(MULTI_BROKER_OBSERVER_STATUS.brokers.length);
+    expect(res.body.observer.brokers.map((b: { connected: boolean }) => b.connected)).toEqual(
+      MULTI_BROKER_OBSERVER_STATUS.brokers.map((b) => b.connected),
+    );
+    // Distinct keys so the broker cards still render as a list.
+    expect(new Set(res.body.observer.brokers.map((b: { key: string }) => b.key)).size).toBe(
+      MULTI_BROKER_OBSERVER_STATUS.brokers.length,
+    );
+    expect(res.body.observer.lastError).toBeNull();
+    expect(JSON.stringify(res.body)).not.toContain('mqtt.meshmapper.net');
+  });
+
+  it('includes the full observer shape with brokers[] for nodes:read plus sources:read', async () => {
+    await harness.grant(harness.limited.id, 'nodes', 'read', BROKERS_SOURCE_ID);
+    await harness.grant(harness.limited.id, 'sources', 'read');
     const agent = await harness.loginAs(harness.limited);
     const res = await agent.get(`/${BROKERS_SOURCE_ID}/status`);
     expect(res.status).toBe(200);

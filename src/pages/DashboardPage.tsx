@@ -493,7 +493,7 @@ function DashboardInner() {
       setFormRnsMode(rnsMode);
       setFormRnsConfigDir(cfg?.configDir ?? '');
       setFormRnsBridgeUrl(cfg?.bridgeUrl ?? '');
-      // Admins receive the full config record (stripSourceSecrets exempts
+      // Admins receive the full config record (redactSourceForCaller exempts
       // them, mirroring the mqtt_broker/meshcore round-trip), and there is
       // no server-side "keep existing on blank" merge for this field, so
       // hydrating the real value here (rather than blanking it, as the mqtt

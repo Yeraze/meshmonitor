@@ -40,6 +40,26 @@ describe('configRoutes', () => {
       expect(res.body).not.toHaveProperty('meshtasticNodeIp');
     });
 
+    // The node address is a connection endpoint: signed in is not enough,
+    // it takes `sources:read` (or admin).
+    it('withholds the node address from a signed-in caller without sources:read', async () => {
+      const agent = await harness.loginAs(harness.limited);
+      const res = await agent.get('/').query({ sourceId: harness.sourceA });
+      expect(res.status).toBe(200);
+      expect(res.body).not.toHaveProperty('meshtasticNodeIp');
+      expect(res.body).toHaveProperty('meshtasticTcpPort');
+    });
+
+    it('returns the node address to a signed-in caller holding sources:read, and to an admin', async () => {
+      await harness.grant(harness.limited.id, 'sources', 'read');
+      for (const user of [harness.limited, harness.admin]) {
+        const agent = await harness.loginAs(user);
+        const res = await agent.get('/').query({ sourceId: harness.sourceA });
+        expect(res.status).toBe(200);
+        expect(res.body).toHaveProperty('meshtasticNodeIp');
+      }
+    });
+
     it('includes localNodeInfo for an authenticated caller once localNodeNum is set', async () => {
       await harness.db.nodes.upsertNode(
         {
