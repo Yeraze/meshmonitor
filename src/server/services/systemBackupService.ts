@@ -461,8 +461,12 @@ class SystemBackupService {
         return null;
       }
 
-      const metadata = JSON.parse(fs.readFileSync(metadataFile, 'utf8'));
-      return metadata;
+      const metadata: unknown = JSON.parse(fs.readFileSync(metadataFile, 'utf8'));
+      // Valid JSON is not yet a metadata object (`null`, a list, a number).
+      if (metadata === null || typeof metadata !== 'object' || Array.isArray(metadata)) {
+        return null;
+      }
+      return metadata as SystemBackupMetadata;
     } catch (error) {
       logger.error(`❌ Failed to get backup metadata for ${dirname}:`, error);
       return null;

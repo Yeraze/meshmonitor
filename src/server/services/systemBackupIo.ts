@@ -323,10 +323,9 @@ export async function checksumFile(file: string): Promise<string> {
 const READ_CHUNK_BYTES = 1 << 20;
 const NEWLINE = 0x0a;
 
-/** Yield the file's lines without holding more than one chunk and one line. */
-function* readLinesSync(file: string): Generator<string> {
-  const fd = fs.openSync(file, 'r');
-  try {
+/** Yield an open file's lines without holding more than one chunk and one line. */
+function* readLinesSync(fd: number): Generator<string> {
+  {
     const chunk = Buffer.allocUnsafe(READ_CHUNK_BYTES);
     let carry: Buffer = Buffer.alloc(0);
     for (;;) {
@@ -346,26 +345,20 @@ function* readLinesSync(file: string): Generator<string> {
       if (start < read) carry = Buffer.concat([carry, chunk.subarray(start, read)]);
     }
     if (carry.length > 0) yield carry.toString('utf8');
-  } finally {
-    fs.closeSync(fd);
   }
 }
 
 /**
- * What a table file is, from its first bytes: `lines` when it starts `[`
+ * What an open table file is, from its first bytes: `lines` when it starts `[`
  * newline `{` (the one-row-per-line format), `empty` when it has no bytes at
- * all, otherwise `whole` (parse it in one go).
+ * all, otherwise `whole` (parse it in one go). Reads at offset 0 and leaves the
+ * descriptor's position where it was.
  */
-function sniffTableFile(file: string): 'lines' | 'empty' | 'whole' {
-  const fd = fs.openSync(file, 'r');
-  try {
-    const head = Buffer.alloc(3);
-    const read = fs.readSync(fd, head, 0, 3, 0);
-    if (read === 0) return 'empty';
-    return read === 3 && head.toString('latin1') === '[\n{' ? 'lines' : 'whole';
-  } finally {
-    fs.closeSync(fd);
-  }
+function sniffTableFile(fd: number): 'lines' | 'empty' | 'whole' {
+  const head = Buffer.alloc(3);
+  const read = fs.readSync(fd, head, 0, 3, 0);
+  if (read === 0) return 'empty';
+  return read === 3 && head.toString('latin1') === '[\n{' ? 'lines' : 'whole';
 }
 
 /**
@@ -378,34 +371,41 @@ function sniffTableFile(file: string): 'lines' | 'empty' | 'whole' {
  * throws, which rolls the restore back.
  */
 export function* readTableFileSync(file: string): Generator<BackupRow> {
-  const format = sniffTableFile(file);
-  if (format === 'empty') {
-    throw new Error(`Backup table file is empty: ${file}`);
-  }
-  if (format === 'whole') {
-    const data: unknown = JSON.parse(fs.readFileSync(file, 'utf8'));
-    if (!Array.isArray(data)) throw new Error(`Backup table file is not a JSON array: ${file}`);
-    for (const row of data) yield assertRow(row, file);
-    return;
-  }
+  // One descriptor for the whole read: what is sniffed is what is parsed, even
+  // if the name is pointed at another file meanwhile.
+  const fd = fs.openSync(file, 'r');
+  try {
+    const format = sniffTableFile(fd);
+    if (format === 'empty') {
+      throw new Error(`Backup table file is empty: ${file}`);
+    }
+    if (format === 'whole') {
+      const data: unknown = JSON.parse(fs.readFileSync(fd, 'utf8'));
+      if (!Array.isArray(data)) throw new Error(`Backup table file is not a JSON array: ${file}`);
+      for (const row of data) yield assertRow(row, file);
+      return;
+    }
 
-  let closed = false;
-  let lineNumber = 0;
-  for (const raw of readLinesSync(file)) {
-    lineNumber++;
-    if (lineNumber === 1) continue; // the opening `[`
-    if (raw === ']') {
-      closed = true;
-      continue;
+    let closed = false;
+    let lineNumber = 0;
+    for (const raw of readLinesSync(fd)) {
+      lineNumber++;
+      if (lineNumber === 1) continue; // the opening `[`
+      if (raw === ']') {
+        closed = true;
+        continue;
+      }
+      if (closed) {
+        if (raw.trim() === '') continue;
+        throw new Error(`Backup table file has data after the closing bracket: ${file}`);
+      }
+      const text = raw.endsWith(',') ? raw.slice(0, -1) : raw;
+      yield assertRow(JSON.parse(text), file);
     }
-    if (closed) {
-      if (raw.trim() === '') continue;
-      throw new Error(`Backup table file has data after the closing bracket: ${file}`);
-    }
-    const text = raw.endsWith(',') ? raw.slice(0, -1) : raw;
-    yield assertRow(JSON.parse(text), file);
+    if (!closed) throw new Error(`Backup table file is truncated: ${file}`);
+  } finally {
+    fs.closeSync(fd);
   }
-  if (!closed) throw new Error(`Backup table file is truncated: ${file}`);
 }
 
 function assertRow(row: unknown, file: string): BackupRow {

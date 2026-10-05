@@ -217,8 +217,8 @@ systemBackupRouter.post('/', extendRequestTimeout(SYSTEM_BACKUP_TIMEOUT_MS), req
       return fail(res, 409, 'BACKUP_IN_PROGRESS', error.message);
     }
     logger.error('❌ Error creating system backup:', error);
-    res.status(500).json({
-      error: 'Failed to create system backup',
+    // `details` is kept beside the envelope: the settings page reads it.
+    return fail(res, 500, 'BACKUP_FAILED', 'Failed to create system backup', {
       details: error instanceof Error ? error.message : 'Unknown error',
     });
   }

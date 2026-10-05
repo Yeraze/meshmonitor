@@ -152,6 +152,20 @@ describe('readTableFileSync', () => {
     expect(() => [...readTableFileSync(file('cut.json'))]).toThrow(/truncated/);
   });
 
+  it.skipIf(process.platform === 'win32')('parses the file it sniffed, even if the name is repointed mid-read', () => {
+    fs.writeFileSync(file('real.json'), JSON.stringify([{ id: 1 }, { id: 2 }], null, 2));
+    fs.writeFileSync(file('other.json'), JSON.stringify([{ id: 'swapped' }], null, 2));
+    fs.symlinkSync(file('real.json'), file('link.json'));
+
+    const reader = readTableFileSync(file('link.json'));
+    // The generator opens the file on the first pull. Repoint the name after.
+    const first = reader.next();
+    fs.unlinkSync(file('link.json'));
+    fs.symlinkSync(file('other.json'), file('link.json'));
+
+    expect([first.value, ...reader]).toEqual([{ id: 1 }, { id: 2 }]);
+  });
+
   it('throws on an empty file, by name', () => {
     fs.writeFileSync(file('zero.json'), '');
     expect(() => [...readTableFileSync(file('zero.json'))]).toThrow(/Backup table file is empty/);

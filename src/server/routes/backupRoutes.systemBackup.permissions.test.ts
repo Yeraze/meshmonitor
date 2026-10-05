@@ -115,6 +115,33 @@ describe('POST /system/backup — one backup at a time', () => {
     expect(res.body).toMatchObject({ success: true, dirname: '2099-01-01_000000' });
   });
 
+  it('a non-admin with configuration:write can create a backup but cannot download it', async () => {
+    backup.createBackup.mockResolvedValue('2099-01-01_000000');
+    backup.dir = await mkdtemp(join(tmpdir(), 'mm-backup-create-perm-'));
+    try {
+      await harness.grant(harness.limited.id, 'configuration', 'write', harness.sourceA);
+      const agent = await harness.loginAs(harness.limited);
+
+      expect((await agent.post('/system/backup')).status).toBe(200);
+      expect((await agent.get('/system/backup/download/2099-01-01_000000')).status).toBe(403);
+    } finally {
+      await rm(backup.dir, { recursive: true, force: true });
+    }
+  });
+
+  it('a failed backup answers 500 BACKUP_FAILED with the reason', async () => {
+    backup.createBackup.mockRejectedValue(new Error('Failed to create system backup: disk full'));
+    const agent = await harness.loginAs(harness.admin);
+
+    const res = await agent.post('/system/backup');
+    expect(res.status).toBe(500);
+    expect(res.body).toMatchObject({
+      success: false,
+      code: 'BACKUP_FAILED',
+      details: 'Failed to create system backup: disk full',
+    });
+  });
+
   it('refuses a user without configuration:write', async () => {
     const agent = await harness.loginAs(harness.limited);
     expect((await agent.post('/system/backup')).status).toBe(403);
