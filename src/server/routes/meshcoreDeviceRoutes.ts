@@ -177,7 +177,7 @@ router.get('/snapshot', optionalAuth(), requirePermission('connection', 'read', 
     const manager = managerFor(req, res);
     const status = manager.getConnectionStatus();
     const localNode = manager.getLocalNode();
-    const contacts = manager.getContacts();
+    const contacts = await manager.getContactsForView();
     const nodes = await manager.getAllNodes();
 
     const sourceId = (req.params as { id: string }).id;

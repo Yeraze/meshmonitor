@@ -761,6 +761,32 @@ export interface MeshCoreContact {
   onDevice?: boolean;
 }
 
+/**
+ * Build the contact record the client views read from a durable
+ * `meshcore_nodes` row. The one mapping for both users: seeding a companion's
+ * in-memory contact map, and the contact list of a source that keeps none
+ * (a Repeater, #5632). `onDevice` stays unset: a row says nothing about a
+ * radio's contact table.
+ */
+export function contactFromNodeRow(n: DbMeshCoreNode): MeshCoreContact {
+  return {
+    publicKey: n.publicKey,
+    advName: n.name ?? undefined,
+    name: n.name ?? undefined,
+    advType: (n.advType ?? undefined) as MeshCoreDeviceType | undefined,
+    rssi: n.rssi ?? undefined,
+    snr: n.snr ?? undefined,
+    latitude: n.latitude ?? undefined,
+    longitude: n.longitude ?? undefined,
+    // #5578: keep the stored latest-advert flag with the contact.
+    lastAdvertHadPosition: n.lastAdvertHadPosition ?? undefined,
+    // Drop a drifted value stored before #5339 rather than pass it on.
+    lastSeen: plausibleMeshCoreTimeMsOrUndefined(n.lastHeard),
+    outPath: n.outPath ?? null,
+    pathLen: n.pathLen ?? null,
+  };
+}
+
 /** Sentinel RSSI (dBm) below which a configured `rssiMin` threshold is a no-op. */
 export const MC_PF_RSSI_FLOOR = -200;
 /** Sentinel SNR (dB) below which a configured `snrMin` threshold is a no-op. */
@@ -4311,15 +4337,23 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
       skipPublicKey: this.repeaterPublicKey,
     });
     if (!advert?.publicKey) return;
-    dataEventEmitter.emitMeshCoreContactUpdated({
-      publicKey: advert.publicKey,
-      advName: advert.name ?? undefined,
-      name: advert.name ?? undefined,
-      advType: (typeof advert.advType === 'number' ? advert.advType : MeshCoreDeviceType.UNKNOWN) as MeshCoreDeviceType,
-      lastSeen: now,
-      latitude: advert.latitude,
-      longitude: advert.longitude,
-    }, this.sourceId);
+    await this.emitStoredContact(advert.publicKey);
+  }
+
+  /**
+   * Push the STORED row for `publicKey` to open clients as a contact update.
+   *
+   * A Repeater keeps no in-memory contact map, and the client replaces its
+   * contact record with whatever this event carries. Sending the bare advert
+   * therefore dropped the node's position from the map, and from Node
+   * Details, as soon as an advert without coordinates arrived, though the
+   * stored row kept them (#5632). The row is what `upsertNode` merged, so it
+   * is also what a page reload would show.
+   */
+  private async emitStoredContact(publicKey: string): Promise<void> {
+    const row = await databaseService.meshcore.getNodeByPublicKeyAndSource(publicKey, this.sourceId);
+    if (!row) return;
+    dataEventEmitter.emitMeshCoreContactUpdated(contactFromNodeRow(row), this.sourceId);
   }
 
   /**
@@ -5028,22 +5062,7 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
       for (const n of dbNodes) {
         if (n.isLocalNode) continue;
         if (this.contacts.has(n.publicKey)) continue;
-        this.contacts.set(n.publicKey, {
-          publicKey: n.publicKey,
-          advName: n.name ?? undefined,
-          name: n.name ?? undefined,
-          advType: (n.advType ?? undefined) as MeshCoreDeviceType | undefined,
-          rssi: n.rssi ?? undefined,
-          snr: n.snr ?? undefined,
-          latitude: n.latitude ?? undefined,
-          longitude: n.longitude ?? undefined,
-          // #5578: keep the stored latest-advert flag with the seeded contact.
-          lastAdvertHadPosition: n.lastAdvertHadPosition ?? undefined,
-          // Drop a drifted value stored before #5339 rather than seed it.
-          lastSeen: plausibleMeshCoreTimeMsOrUndefined(n.lastHeard),
-          outPath: n.outPath ?? null,
-          pathLen: n.pathLen ?? null,
-        });
+        this.contacts.set(n.publicKey, contactFromNodeRow(n));
         seeded++;
       }
       if (seeded > 0) {
@@ -8542,17 +8561,14 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
         logger.warn(`[MeshCore:${this.sourceId}] failed to upsert neighbour ${publicKey.substring(0, 12)}…: ${(err as Error).message}`);
         continue;
       }
-      const contact: MeshCoreContact = {
-        publicKey,
-        advName: name ?? undefined,
-        name: name ?? undefined,
-        advType: advType as MeshCoreDeviceType,
-        lastSeen: lastHeard,
-        snr: entry.snr,
-        latitude: hasPosition ? row.latitude! : undefined,
-        longitude: hasPosition ? row.longitude! : undefined,
-      };
-      dataEventEmitter.emitMeshCoreContactUpdated(contact, this.sourceId);
+      // The stored row, not this poll's fields alone: the client replaces its
+      // contact record with the event, so a partial one would blank what an
+      // advert already stored (#5632).
+      try {
+        await this.emitStoredContact(publicKey);
+      } catch (err) {
+        logger.debug(`[MeshCore:${this.sourceId}] neighbour contact push failed: ${(err as Error).message}`);
+      }
       resolved.push({ publicKey, name, snr: entry.snr, lastHeardSecs });
     }
 
@@ -9547,6 +9563,36 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
 
   getContacts(): MeshCoreContact[] {
     return Array.from(this.contacts.values());
+  }
+
+  /**
+   * The contact list the client views read (snapshot, `GET /contacts`): the
+   * Nodes map, Node Details and the DM sidebar all look a node up here.
+   *
+   * A Companion answers from its in-memory map. A Repeater has no contact
+   * table and never fills that map, so its list is built from the durable
+   * `meshcore_nodes` rows its advert ingest and neighbours poll write.
+   * Without this the Nodes list (which reads the rows) showed nodes that
+   * Node Details and the map could not find (#5632).
+   */
+  async getContactsForView(): Promise<MeshCoreContact[]> {
+    if (!this.keepsNoContactTable()) return this.getContacts();
+    try {
+      const self = this.repeaterPublicKey?.toLowerCase();
+      const rows = await databaseService.meshcore.getNodesBySource(this.sourceId);
+      return rows
+        .filter((n) => !n.isLocalNode && n.publicKey.toLowerCase() !== self)
+        .map(contactFromNodeRow);
+    } catch (err) {
+      logger.warn(`[MeshCore:${this.sourceId}] getContactsForView: DB read failed: ${(err as Error).message}`);
+      return this.getContacts();
+    }
+  }
+
+  /** A Repeater source, connected or not (`deviceType` resets on disconnect). */
+  private keepsNoContactTable(): boolean {
+    return this.deviceType === MeshCoreDeviceType.REPEATER
+      || (this.config?.connectionType === ConnectionType.SERIAL && this.config?.firmwareType === 'repeater');
   }
 
   /**

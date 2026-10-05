@@ -54,6 +54,7 @@ const meshcoreManager = {
   getLocalTelemetryNodeId: vi.fn().mockReturnValue(null),
   getAllNodes: vi.fn().mockReturnValue([]),
   getContacts: vi.fn().mockReturnValue([]),
+  getContactsForView: vi.fn().mockResolvedValue([]),
   getContact: vi.fn().mockReturnValue(undefined),
   getRecentMessages: vi.fn().mockReturnValue([]),
   getChannelMessages: vi.fn().mockResolvedValue([]),

@@ -248,6 +248,14 @@ describe('ingestRepeaterNeighborsReply (#5500)', () => {
       return (rows[prefix] ?? []) as never;
     });
     upsertSpy = vi.spyOn(databaseService.meshcore, 'upsertNode').mockResolvedValue(undefined);
+    // #5632: the contact push is built from the STORED row. `upsertNode` is a
+    // stub here, so hand back the row it would have left behind.
+    vi.spyOn(databaseService.meshcore, 'getNodeByPublicKeyAndSource').mockImplementation(async (publicKey: string, sourceId: string) => {
+      const written = upsertSpy.mock.calls
+        .filter((call: unknown[]) => (call[0] as { publicKey: string }).publicKey === publicKey && call[1] === sourceId)
+        .at(-1)?.[0] as Record<string, unknown> | undefined;
+      return (written ? { ...written, sourceId } : null) as never;
+    });
     insertSpy = vi.spyOn(databaseService.meshcore, 'insertNeighborsBatch').mockResolvedValue(undefined);
     storedSpy = vi.spyOn(databaseService.meshcore, 'getNeighborsForReporter').mockResolvedValue([]);
     emitSpy = vi.spyOn(dataEventEmitter, 'emitMeshCoreContactUpdated').mockImplementation(() => undefined);

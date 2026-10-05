@@ -44,6 +44,7 @@ function makeStubManager(sourceId: string) {
     getConnectionStatus: () => ({ connected: true, deviceType: 1, config: null }),
     getLocalNode: () => null,
     getContacts: () => [],
+    getContactsForView: async () => [],
     getAllNodes: async () => [],
     getRecentMessages: (_limit?: number) => [],
     getChannelMessages: async () => [],

@@ -30,6 +30,7 @@ vi.mock('../sourceManagerRegistry.js', () => {
     getConnectionStatus: () => ({ connected: true, deviceType: 1, config: null }),
     getLocalNode: () => null,
     getContacts: () => [],
+    getContactsForView: async () => [],
     getAllNodes: async () => [],
     getRecentMessages: (_limit?: number) => STUB_MESSAGES,
   });
