@@ -40,6 +40,11 @@ interface ObserverCardConfig {
     enabled?: boolean;
     brokers?: unknown[];
     brokerUrl?: string;
+    /**
+     * Sent in place of the broker list to a viewer who may not see the hosts.
+     * Absent for admins, who get the list itself.
+     */
+    brokerCount?: number;
   };
 }
 interface ObserverCardStatus {
@@ -789,7 +794,8 @@ const DashboardSidebar: React.FC<DashboardSidebarProps> = ({
                 const vn = (source.config as any)?.virtualNode;
                 return vn?.enabled ? (
                   <span className="dashboard-source-card-badge" title={t('source.virtual_node_badge_title')}>
-                    VN:{vn.port}
+                    {/* The port is withheld from viewers without `sources:read`. */}
+                    {vn.port ? `VN:${vn.port}` : 'VN'}
                   </span>
                 ) : null;
               })()}
@@ -801,7 +807,9 @@ const DashboardSidebar: React.FC<DashboardSidebarProps> = ({
                 const obs = (source.config as ObserverCardConfig | undefined)?.observer;
                 if (obs?.enabled !== true) return null;
                 const configuredCount =
-                  Array.isArray(obs.brokers) && obs.brokers.length > 0
+                  typeof obs.brokerCount === 'number'
+                    ? obs.brokerCount
+                    : Array.isArray(obs.brokers) && obs.brokers.length > 0
                     ? obs.brokers.length
                     : typeof obs.brokerUrl === 'string' && obs.brokerUrl.trim()
                       ? 1

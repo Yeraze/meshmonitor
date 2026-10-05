@@ -16,9 +16,8 @@
  *
  * MM-SEC-8: `GET /api/sources/:id` previously returned the raw source row,
  *           skipping the `password` / `apiKey` strip applied to the list
- *           endpoint. The fix routes both endpoints through a shared
- *           `stripSourceSecrets` helper that removes credentials for
- *           non-admin callers.
+ *           endpoint. Both endpoints now go through `redactSourceForCaller`;
+ *           its tests live in sourceRoutes.configRedaction.test.ts.
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
@@ -197,76 +196,6 @@ describe('MM-SEC-7 — /api/sources/:id/channels does not leak PSKs', () => {
 
 // ────────────────────────────────────────────────────────────────────────
 // MM-SEC-8 — `GET /api/sources` and `GET /api/sources/:id` strip credentials
-// ────────────────────────────────────────────────────────────────────────
-describe('MM-SEC-8 — sources endpoints strip credentials for non-admins', () => {
-  const mqttSource = {
-    id: 'mqtt-1',
-    name: 'mqtt-1',
-    type: 'mqtt',
-    enabled: true,
-    createdAt: 0,
-    updatedAt: 0,
-    config: {
-      host: 'mqtt.example.com',
-      port: 1883,
-      username: 'msmuser',
-      password: 'super-secret-mqtt-password',
-      apiKey: 'tok_aaaaaaaaaaaaaaaa',
-      topicPrefix: 'msh/US',
-    },
-  };
-
-  beforeEach(() => {
-    vi.clearAllMocks();
-    mockDb.sources.getSource.mockResolvedValue(mqttSource);
-    mockDb.sources.getAllSources.mockResolvedValue([mqttSource]);
-    mockDb.checkPermissionAsync.mockResolvedValue(true);
-    mockDb.getUserPermissionSetAsync.mockResolvedValue({ resources: {}, isAdmin: false });
-  });
-
-  it('anonymous list — strips password and apiKey', async () => {
-    mockDb.findUserByIdAsync.mockResolvedValue(null);
-
-    const res = await request(createApp(null)).get('/');
-    expect(res.status).toBe(200);
-    expect(res.body).toHaveLength(1);
-    expect(res.body[0].config.password).toBeUndefined();
-    expect(res.body[0].config.apiKey).toBeUndefined();
-    // Non-secret fields still present
-    expect(res.body[0].config.host).toBe('mqtt.example.com');
-    expect(JSON.stringify(res.body)).not.toContain('super-secret-mqtt-password');
-    expect(JSON.stringify(res.body)).not.toContain('tok_aaaaaaaaaaaaaaaa');
-  });
-
-  it('non-admin singular GET — strips password and apiKey (was leaking pre-MM-SEC-8)', async () => {
-    mockDb.findUserByIdAsync.mockResolvedValue(regularUser);
-
-    const res = await request(createApp(regularUser.id)).get('/mqtt-1');
-    expect(res.status).toBe(200);
-    expect(res.body.config.password).toBeUndefined();
-    expect(res.body.config.apiKey).toBeUndefined();
-    expect(res.body.config.host).toBe('mqtt.example.com');
-    expect(JSON.stringify(res.body)).not.toContain('super-secret-mqtt-password');
-    expect(JSON.stringify(res.body)).not.toContain('tok_aaaaaaaaaaaaaaaa');
-  });
-
-  it('admin singular GET — receives credentials so the source-edit UI can round-trip', async () => {
-    mockDb.findUserByIdAsync.mockResolvedValue(adminUser);
-    mockDb.getUserPermissionSetAsync.mockResolvedValue({});
-
-    const res = await request(createApp(adminUser.id)).get('/mqtt-1');
-    expect(res.status).toBe(200);
-    expect(res.body.config.password).toBe('super-secret-mqtt-password');
-    expect(res.body.config.apiKey).toBe('tok_aaaaaaaaaaaaaaaa');
-  });
-
-  it('admin list — receives credentials (mirrors singular admin behaviour)', async () => {
-    mockDb.findUserByIdAsync.mockResolvedValue(adminUser);
-    mockDb.getUserPermissionSetAsync.mockResolvedValue({});
-
-    const res = await request(createApp(adminUser.id)).get('/');
-    expect(res.status).toBe(200);
-    expect(res.body[0].config.password).toBe('super-secret-mqtt-password');
-    expect(res.body[0].config.apiKey).toBe('tok_aaaaaaaaaaaaaaaa');
-  });
-});
+// MM-SEC-8 (source `config` redaction on the list and singular GET) moved to
+// sourceRoutes.configRedaction.test.ts, which runs every source type and every
+// kind of caller through the real auth middleware via createRouteTestApp.

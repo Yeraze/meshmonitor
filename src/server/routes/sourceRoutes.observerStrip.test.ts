@@ -1,12 +1,12 @@
 /**
- * Analyzer Observer (#4457 Phase 1, WP2) — stripSourceSecrets defence-in-depth.
+ * Analyzer Observer (#4457 Phase 1, WP2) — redactSourceForCaller defence-in-depth.
  *
  * The observer config block itself carries no secrets by design (brokerUrl /
  * iataCode / tokenAudience are all public-by-nature), and validateObserverConfig's
  * OBSERVER_KEY_IN_CONFIG check rejects any attempt to write key material into
  * `sources.config` going forward. This test covers the defence-in-depth case: a
  * row written *before* that validation existed, still carrying a raw
- * `observer.privateKey`. `stripSourceSecrets` must remove it for every caller —
+ * `observer.privateKey`. `redactSourceForCaller` must remove it for every caller —
  * including admins, unlike the pre-existing `password`/`apiKey` strip which only
  * applies to non-admins (see docs/internal/dev-notes/MESHCORE_OBSERVER_PHASE1_SPEC.md §5.4).
  *
@@ -37,10 +37,10 @@ vi.mock('../meshtasticManager.js', () => ({
 
 const OBSERVER_SOURCE_ID = 'obs-strip-source';
 // 128 hex chars — shape of a real orlp Ed25519 private key. Must never survive
-// stripSourceSecrets, for any caller.
+// redactSourceForCaller, for any caller.
 const LEAKED_PRIVATE_KEY = 'ab'.repeat(64);
 
-describe('sourceRoutes — stripSourceSecrets omits observer key material (#4457)', () => {
+describe('sourceRoutes — redactSourceForCaller omits observer key material (#4457)', () => {
   let harness: RouteTestHarness;
 
   beforeEach(async () => {
@@ -126,7 +126,7 @@ describe('sourceRoutes — stripSourceSecrets omits observer key material (#4457
 
 // Test 15 (#5014 Phase 1 WP1): the same strip must also reach into
 // observer.brokers[] entries, not just the block itself.
-describe('sourceRoutes — stripSourceSecrets omits observer.brokers[] key material (#5014)', () => {
+describe('sourceRoutes — redactSourceForCaller omits observer.brokers[] key material (#5014)', () => {
   let harness: RouteTestHarness;
 
   const BROKERS_SOURCE_ID = 'obs-strip-brokers-source';

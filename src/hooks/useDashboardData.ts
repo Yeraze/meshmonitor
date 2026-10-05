@@ -35,6 +35,12 @@ export interface DashboardSource {
    * or when the manager isn't reachable; absent on older cached responses.
    */
   radio?: SourceRadioSummary | null;
+  /**
+   * True when the server withheld this source's connection endpoint (node
+   * host, serial path, broker host) from `config` for the current viewer.
+   * Those fields need a signed-in user with `sources:read`.
+   */
+  endpointHidden?: boolean;
 }
 
 /**

@@ -143,7 +143,9 @@ const MQTTConfigSection: React.FC<MQTTConfigSectionProps> = ({
         // Parse host:port out of mqtt[s]://host:port — leave alone if empty.
         const match = url.match(/^mqtts?:\/\/([^/]+)/i);
         if (match) {
-          setMqttAddress(match[1]);
+          // Drop any `user:password@` (or the server's `***@` redaction): the
+          // address field takes host:port only.
+          setMqttAddress(match[1].slice(match[1].lastIndexOf('@') + 1));
           setTlsEnabled(url.toLowerCase().startsWith('mqtts://'));
         }
         if (cfg?.upstream?.username) setMqttUsername(cfg.upstream.username);

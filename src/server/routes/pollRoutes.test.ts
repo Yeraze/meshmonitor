@@ -54,6 +54,26 @@ describe('pollRoutes — GET /poll', () => {
     expect(res.body.config).not.toHaveProperty('deviceMetadata');
   });
 
+  // The node address is a connection endpoint: signed in is not enough, it
+  // takes `sources:read` (or admin).
+  it('withholds the node address from a signed-in caller without sources:read', async () => {
+    const agent = await harness.loginAs(harness.limited);
+    const res = await agent.get('/poll');
+    expect(res.status).toBe(200);
+    expect(res.body.config).not.toHaveProperty('meshtasticNodeIp');
+    expect(res.body.connection ?? {}).not.toHaveProperty('nodeIp');
+  });
+
+  it('returns the node address to a signed-in caller holding sources:read, and to an admin', async () => {
+    await harness.grant(harness.limited.id, 'sources', 'read');
+    for (const user of [harness.limited, harness.admin]) {
+      const agent = await harness.loginAs(user);
+      const res = await agent.get('/poll');
+      expect(res.status).toBe(200);
+      expect(res.body.config).toHaveProperty('meshtasticNodeIp');
+    }
+  });
+
   it('scopes to a sourceId when provided and reports a clean disconnected state for an unregistered source', async () => {
     const agent = await harness.loginAs(harness.admin);
     const res = await agent.get('/poll').query({ sourceId: 'rt-source-a' });

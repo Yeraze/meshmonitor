@@ -93,7 +93,12 @@ const InfoTab: React.FC<InfoTabProps> = React.memo(({
   // `nodeAddress` is the server's Meshtastic node IP (the env default when the
   // source row has no host). An MQTT-only source has no node, so only show
   // an address its own config supplies (#5367).
-  const displayNodeAddress = getSourceEndpointLabel(activeSource) ?? (isMqttOnlySource ? null : nodeAddress);
+  // The server withholds the address from a viewer without `sources:read` and
+  // says so with `endpointHidden`. Show that, not the global fallback.
+  const endpointHidden = activeSource?.endpointHidden === true && !isMqttOnlySource;
+  const displayNodeAddress = endpointHidden
+    ? t('info.node_address_hidden', 'Hidden')
+    : getSourceEndpointLabel(activeSource) ?? (isMqttOnlySource ? null : nodeAddress);
   const [longestActiveSegment, setLongestActiveSegment] = useState<RouteSegmentRecords | null>(null);
   const [recordHolderSegment, setRecordHolderSegment] = useState<RouteSegmentRecords | null>(null);
   const [loadingSegments, setLoadingSegments] = useState(false);

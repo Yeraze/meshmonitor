@@ -29,6 +29,7 @@ import { PortNum } from '../constants/meshtastic.js';
 import { transformDbMessageToMeshMessage } from '../utils/transformDbMessage.js';
 import { resolveSourceConnectionConfig } from '../utils/resolveSourceConnectionConfig.js';
 import { getEnvironmentConfig } from '../config/environment.js';
+import { mayViewSourceEndpoint } from '../utils/sourceConfigRedaction.js';
 import { getMaxNodeAgeHours } from '../services/nodeDisplaySettings.js';
 
 const env = getEnvironmentConfig();
@@ -67,6 +68,9 @@ router.get('/poll', optionalAuth(), async (req, res) => {
     // Pre-compute shared values used across multiple sections
     const user = (req as any).user;
     const userId = req.user?.id ?? null;
+    // Checked once: both the connection status and the config block carry the
+    // node address.
+    const mayViewEndpoint = await mayViewSourceEndpoint(req);
     // Unread DM counting keys off THIS source's own node. A source with no
     // local node (MQTT broker/bridge) skips DM-to-local counting instead of
     // counting the primary TCP node's DMs (#5375).
@@ -128,8 +132,8 @@ router.get('/poll', optionalAuth(), async (req, res) => {
         const connectionStatusManager =
           rawPollManager && isMqttConnectionStatusManager(rawPollManager) ? rawPollManager : activeManager;
         const connectionStatus = await connectionStatusManager.getConnectionStatus();
-        // Hide nodeIp from anonymous users
-        if (!req.session.userId) {
+        // The node address is a connection endpoint — see mayViewSourceEndpoint.
+        if (!mayViewEndpoint) {
           const { nodeIp, ...statusWithoutNodeIp } = connectionStatus;
           result.connection = statusWithoutNodeIp;
         } else {
@@ -418,7 +422,7 @@ router.get('/poll', optionalAuth(), async (req, res) => {
       const conn = await resolveSourceConnectionConfig(pollSourceId);
 
       result.config = {
-        ...(req.session.userId ? { meshtasticNodeIp: conn.host ?? '' } : {}),
+        ...(mayViewEndpoint ? { meshtasticNodeIp: conn.host ?? '' } : {}),
         meshtasticTcpPort: conn.port ?? env.meshtasticTcpPort,
         meshtasticUseTls: false,
         meshtasticSourceType: conn.sourceType,

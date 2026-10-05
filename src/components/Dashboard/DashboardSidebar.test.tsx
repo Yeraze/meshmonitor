@@ -1118,3 +1118,67 @@ describe('DashboardSidebar', () => {
     });
   });
 });
+
+// A viewer without `sources:read` gets the flags the card draws from but not
+// the endpoints behind them: no Virtual Node port, no Observer broker list.
+describe('source card with endpoints withheld', () => {
+  it('shows a bare VN badge when the Virtual Node port is withheld', () => {
+    renderSidebar({
+      sources: [
+        { id: 'vn-1', name: 'VN Source', type: 'meshtastic_tcp', enabled: true, config: { virtualNode: { enabled: true } } },
+      ],
+      statusMap: new Map([['vn-1', { sourceId: 'vn-1', connected: true } as SourceStatus]]),
+      nodeCounts: new Map([['vn-1', 0]]),
+    });
+    const badge = document.querySelector('.dashboard-source-card-badge[title="source.virtual_node_badge_title"]');
+    expect(badge).not.toBeNull();
+    expect(badge!.textContent).toBe('VN');
+    expect(document.body.textContent).not.toContain('undefined');
+  });
+
+  it('keeps the port on the VN badge when the server sends it', () => {
+    renderSidebar({
+      sources: [
+        {
+          id: 'vn-1',
+          name: 'VN Source',
+          type: 'meshtastic_tcp',
+          enabled: true,
+          config: { virtualNode: { enabled: true, port: 4404 } },
+        },
+      ],
+      statusMap: new Map([['vn-1', { sourceId: 'vn-1', connected: true } as SourceStatus]]),
+      nodeCounts: new Map([['vn-1', 0]]),
+    });
+    const badge = document.querySelector('.dashboard-source-card-badge[title="source.virtual_node_badge_title"]');
+    expect(badge!.textContent).toBe('VN:4404');
+  });
+
+  it('draws the Observer badge from brokerCount when the broker list is withheld', () => {
+    renderSidebar({
+      sources: [
+        {
+          id: 'obs-1',
+          name: 'Observer Source',
+          type: 'meshcore',
+          enabled: true,
+          config: { observer: { enabled: true, brokerCount: 2 } },
+        },
+      ],
+      statusMap: new Map([
+        [
+          'obs-1',
+          {
+            sourceId: 'obs-1',
+            connected: true,
+            observer: { connected: true, brokers: [{ connected: true }, { connected: false }] },
+          } as unknown as SourceStatus,
+        ],
+      ]),
+      nodeCounts: new Map([['obs-1', 0]]),
+    });
+    const badge = document.querySelector('.dashboard-source-card-badge[title*="observer_badge_title"]');
+    expect(badge).not.toBeNull();
+    expect(badge!.textContent).toContain('OBS 1/2');
+  });
+});

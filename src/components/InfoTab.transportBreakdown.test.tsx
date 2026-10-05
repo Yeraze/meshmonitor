@@ -31,7 +31,7 @@ import type { NodeTransportClass } from '../utils/nodeTransport';
 
 // `vi.hoisted` is required because `vi.mock` factories run before any
 // module-scope `const` in this file would otherwise be initialized.
-const { mockUseSource, mockHasPermission, mockGetMessageCounts, mockGetPacketDistributionStats, mockApiService } = vi.hoisted(() => {
+const { mockUseSource, mockHasPermission, mockGetMessageCounts, mockGetPacketDistributionStats, mockApiService, mockDashboardSources } = vi.hoisted(() => {
   const mockGetMessageCounts = vi.fn();
   // Grants everything by default so the existing (pre-permission-gate) tests
   // don't need to know about the traceroute permission; tests that exercise
@@ -39,6 +39,9 @@ const { mockUseSource, mockHasPermission, mockGetMessageCounts, mockGetPacketDis
   const mockHasPermission = vi.fn((_resource: string, _action: string) => true);
   return {
     mockUseSource: vi.fn(),
+    // The sources list as GET /api/sources returned it; empty unless a test
+    // needs the active source's row.
+    mockDashboardSources: vi.fn((): unknown[] => []),
     mockHasPermission,
     mockGetMessageCounts,
     mockGetPacketDistributionStats: vi.fn(),
@@ -64,7 +67,7 @@ vi.mock('../contexts/AuthContext', () => ({
 }));
 
 vi.mock('../hooks/useDashboardData', () => ({
-  useDashboardSources: () => ({ data: [] }),
+  useDashboardSources: () => ({ data: mockDashboardSources() }),
 }));
 
 vi.mock('../services/api', () => ({
@@ -550,5 +553,49 @@ describe('InfoTab virtual node section (#5380)', () => {
     expect(await screen.findByText('info.virtual_node_admin_commands')).toBeInTheDocument();
     expect(screen.queryByText('info.virtual_node_pki_export')).not.toBeInTheDocument();
     expect(screen.queryByText('info.virtual_node_pki_import')).not.toBeInTheDocument();
+  });
+});
+
+describe('InfoTab node address', () => {
+  const addressLine = () =>
+    screen.queryByText('info.node_address')?.closest('p')?.textContent ?? null;
+
+  beforeEach(() => {
+    mockDashboardSources.mockReset().mockReturnValue([]);
+  });
+
+  it('shows the address the source row carries', () => {
+    mockDashboardSources.mockReturnValue([
+      { id: 'source-a', name: 'Source A', type: 'meshtastic_tcp', enabled: true, config: { host: '10.0.0.7', port: 4403 } },
+    ]);
+    render(<InfoTab {...baseProps} nodes={[]} isAuthenticated />);
+    expect(addressLine()).toContain('10.0.0.7:4403');
+  });
+
+  it('says the address is hidden when the server withheld it, and never falls back', () => {
+    mockDashboardSources.mockReturnValue([
+      { id: 'source-a', name: 'Source A', type: 'meshtastic_tcp', enabled: true, config: {}, endpointHidden: true },
+    ]);
+    render(<InfoTab {...baseProps} nodes={[]} isAuthenticated />);
+    expect(addressLine()).toContain('info.node_address_hidden');
+    expect(addressLine()).not.toContain(baseProps.nodeAddress);
+    expect(addressLine()).not.toContain('undefined');
+  });
+
+  it('shows no address line to a viewer who is not signed in', () => {
+    mockDashboardSources.mockReturnValue([
+      { id: 'source-a', name: 'Source A', type: 'meshtastic_tcp', enabled: true, config: {}, endpointHidden: true },
+    ]);
+    render(<InfoTab {...baseProps} nodes={[]} />);
+    expect(addressLine()).toBeNull();
+  });
+
+  it('adds no "Hidden" line to an MQTT-only source, which never had an address line', () => {
+    mockUseSource.mockReturnValue({ sourceId: 'source-a', sourceName: 'Source A', sourceType: 'mqtt_bridge' });
+    mockDashboardSources.mockReturnValue([
+      { id: 'source-a', name: 'Source A', type: 'mqtt_bridge', enabled: true, config: {}, endpointHidden: true },
+    ]);
+    render(<InfoTab {...baseProps} nodes={[]} isAuthenticated />);
+    expect(addressLine()).toBeNull();
   });
 });
