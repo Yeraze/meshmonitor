@@ -282,8 +282,7 @@ router.post('/module/:moduleType', requirePermission('configuration', 'write'), 
     // Validate moduleType against the shared allow-list (kept in sync with
     // protobufService.createSetModuleConfigMessageGeneric's configFieldMap). See #3464.
     if (!isValidModuleConfigType(moduleType)) {
-      res.status(400).json({ error: `Invalid module type: ${moduleType}` });
-      return;
+      return fail(res, 400, 'INVALID_MODULE_TYPE', `Invalid module type: ${moduleType}`);
     }
 
     // MeshBeacon's nanopb limits fail silently on the device: an over-long
@@ -313,7 +312,7 @@ router.post('/module/:moduleType', requirePermission('configuration', 'write'), 
     res.json({ success: true, message: `${moduleType} configuration sent` });
   } catch (error) {
     logger.error(`Error setting ${req.params.moduleType} config:`, error);
-    res.status(500).json({ error: `Failed to set ${req.params.moduleType} configuration` });
+    return fail(res, 500, 'MODULE_CONFIG_FAILED', `Failed to set ${req.params.moduleType} configuration`);
   }
 });
 

@@ -2750,6 +2750,9 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
           />
         </div>
 
+        {/* Two gates, two flags: `tak` is false when this firmware BUILD left
+            the module out (excluded_modules bit 0x20000); `takConfig` is false
+            when the firmware is older than 2.8.0. */}
         <div id="config-tak">
           <ModuleAvailabilityGate available={supportedModules?.tak} moduleName="TAK">
             <TAKConfigSection

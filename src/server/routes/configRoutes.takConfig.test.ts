@@ -61,12 +61,28 @@ describe('configRoutes — POST /module/tak', () => {
     [{ team: 0, role: 9 }],
     [{ team: 'Chartreuse', role: 0 }],
     [{ team: 0, role: 'ROUTER' }],
+    [{ team: true, role: 0 }],
+    [{ team: 1.5, role: 0 }],
   ])('refuses %j before touching the device', async (body) => {
     const res = await postTak(body);
 
     expect(res.status).toBe(400);
     expect(res.body).toMatchObject({ success: false, code: 'INVALID_TAK_CONFIG' });
     expect(setGenericModuleConfig).not.toHaveBeenCalled();
+  });
+
+  it('an unknown module type and a failed send both answer in the error envelope', async () => {
+    await harness.grant(harness.limited.id, 'configuration', 'write', harness.sourceA);
+    const agent = await harness.loginAs(harness.limited);
+
+    const unknown = await agent.post('/module/bogus').send({ sourceId: harness.sourceA });
+    expect(unknown.status).toBe(400);
+    expect(unknown.body).toMatchObject({ success: false, code: 'INVALID_MODULE_TYPE' });
+
+    setGenericModuleConfig.mockRejectedValueOnce(new Error('Not connected'));
+    const failed = await agent.post('/module/tak').send({ sourceId: harness.sourceA, team: 5, role: 2 });
+    expect(failed.status).toBe(500);
+    expect(failed.body).toMatchObject({ success: false, code: 'MODULE_CONFIG_FAILED' });
   });
 
   it('needs configuration:write on the source', async () => {
