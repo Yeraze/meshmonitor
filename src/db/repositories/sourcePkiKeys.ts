@@ -88,6 +88,13 @@ export class SourcePkiKeysRepository extends BaseRepository {
     }
   }
 
+  /** Every source that has a stored key. Ids only — never the envelope. */
+  async listSourceIds(): Promise<string[]> {
+    const { sourcePkiKeys } = this.tables;
+    const rows = await this.db.select({ sourceId: sourcePkiKeys.sourceId }).from(sourcePkiKeys);
+    return (rows as Array<{ sourceId: string }>).map((r) => r.sourceId);
+  }
+
   /** Delete the stored key for a source. No-op if none exists. */
   async deleteBySourceId(sourceId: string): Promise<void> {
     const { sourcePkiKeys } = this.tables;

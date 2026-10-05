@@ -59,6 +59,15 @@ export class MeshCoreObserverCredentialsRepository extends BaseRepository {
     }
   }
 
+  /** Every source that has stored credentials. Ids only — never the envelope. */
+  async listSourceIds(): Promise<string[]> {
+    const { meshcoreObserverCredentials } = this.tables;
+    const rows = await this.db
+      .select({ sourceId: meshcoreObserverCredentials.sourceId })
+      .from(meshcoreObserverCredentials);
+    return (rows as Array<{ sourceId: string }>).map((r) => r.sourceId);
+  }
+
   /** Delete the stored credentials for a source. No-op if none exists. */
   async deleteBySourceId(sourceId: string): Promise<void> {
     const { meshcoreObserverCredentials } = this.tables;

@@ -58,6 +58,21 @@ vi.mock('./systemBackupService.js', async () => {
   };
 });
 
+// ─── Backup I/O mock ──────────────────────────────────────────────────────────
+// The real reader streams from a file descriptor; this file mocks `fs`, so read
+// through the mock instead. The real reader is covered in systemBackupIo.test.ts
+// and the round-trip suites.
+
+vi.mock('./systemBackupIo.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./systemBackupIo.js')>();
+  return {
+    ...actual,
+    readTableFileSync: function* (file: string) {
+      yield* JSON.parse(fsMock.readFileSync(file, 'utf8') as string);
+    },
+  };
+});
+
 // ─── getDatabaseConfig mock ───────────────────────────────────────────────────
 
 vi.mock('../../db/index.js', () => ({
