@@ -1419,20 +1419,48 @@ export class NodesRepository extends BaseRepository {
   }
 
   /**
-   * Get nodes eligible for auto-traceroute
-   * Returns nodes that haven't been traced recently based on:
-   * - Category 1: No traceroute exists, retry every 3 hours
-   * - Category 2: Traceroute exists, retry every expirationHours
+   * Nodes auto-traceroute may send to now, newest-heard first. This decides
+   * WHEN the scheduler transmits, so read the whole rule before changing it.
    *
-   * Keeps branching: raw SQL with different column quoting per dialect.
+   * A candidate is a node on `sourceId`, not our own radio, heard since
+   * `activeNodeCutoffSeconds`. Its wait is measured from
+   * `nodes.lastTracerouteRequest`: the last time WE sent it a request, stored
+   * per source in the database, so a settings save or a restart does not reset
+   * it. A node we have never sent to is always eligible. Otherwise:
    *
-   * "Traceroute exists" here means a row STORED with our radio in
-   * `fromNodeNum`: a request we sent (answered or not), and also our own
-   * outgoing reply to that node. A run to the node asked from a phone app is
-   * stored the other way round (see `src/utils/tracerouteOrientation.ts`) and
-   * is not counted, so the node stays on the 3-hour retry. Left as is on
-   * purpose: this predicate decides WHEN auto-traceroute transmits, and
-   * changing it is a mesh-airtime decision, not a read fix.
+   *  - TRACED: wait the expiry interval (`expirationMsAgo`, the
+   *    `tracerouteExpirationHours` setting, default 24 h).
+   *  - NOT TRACED: retry after 3 hours (`threeHoursAgoMs`).
+   *
+   * "Traced" is true when either of these holds:
+   *
+   *  A. A row is stored with our radio in `fromNodeNum` and the node in
+   *     `toNodeNum`. This is the rule as it always was, kept exactly: it
+   *     matches a run we sent and got an answer to, but also a request still
+   *     pending or never answered, and our own outgoing reply to that node. It
+   *     is not scoped to `sourceId` either. Narrowing any of that would move
+   *     nodes from the expiry interval to the 3-hour retry, which SENDS MORE,
+   *     and is an airtime decision nobody has taken.
+   *  B. A completed run from our radio to the node, stored in reply-packet
+   *     form on THIS source: `{ from: node, to: our radio }` with route data.
+   *     A run asked from a phone app or a Virtual Node client, or one whose
+   *     pending row had timed out when the reply came, is stored this way (see
+   *     `src/utils/tracerouteOrientation.ts`; by `isStoredRequesterFirst` such
+   *     a row is reply-packet form, so its requester is `toNodeNum`). Rule A
+   *     alone missed these and kept the node on the 3-hour retry.
+   *
+   * B can only REMOVE a node from the result. It is written as one more
+   * condition on the not-traced branch: a node that A does not match, but B
+   * does, must also have waited out the expiry interval. Nothing else changes,
+   * so every node this returns, the A-only rule returned too. When the expiry
+   * interval is under 3 hours the extra condition is always true and B changes
+   * nothing; that keeps B from ever shortening a wait.
+   *
+   * B is skipped when no `sourceId` is given: without it there is no way to
+   * keep another source's rows (an MQTT feed that heard the same reply) out.
+   *
+   * One query for all three backends; only identifier quoting differs
+   * (`col()`), and `executeQuery` unwraps each driver's result.
    */
   async getEligibleNodesForTraceroute(
     localNodeNum: number,
@@ -1441,95 +1469,57 @@ export class NodesRepository extends BaseRepository {
     expirationMsAgo: number,
     sourceId?: string
   ): Promise<DbNode[]> {
-    if (this.isSQLite()) {
-      const db = this.getSqliteDb();
-      const sourceFilter = sourceId ? sql` AND n.sourceId = ${sourceId}` : sql``;
-      // SQLite uses raw SQL for the complex subquery
-      const results = await db.all<DbNode>(sql`
-        SELECT n.*
-        FROM nodes n
-        WHERE n.nodeNum != ${localNodeNum}
-          AND n.lastHeard > ${activeNodeCutoffSeconds}
-          ${sourceFilter}
-          AND (
-            -- Category 1: No traceroute exists, and (never requested OR requested > 3 hours ago)
-            (
-              (SELECT COUNT(*) FROM traceroutes t
-               WHERE t.fromNodeNum = ${localNodeNum} AND t.toNodeNum = n.nodeNum) = 0
-              AND (n.lastTracerouteRequest IS NULL OR n.lastTracerouteRequest < ${threeHoursAgoMs})
-            )
-            OR
-            -- Category 2: Traceroute exists, and (never requested OR requested > expiration hours ago)
-            (
-              (SELECT COUNT(*) FROM traceroutes t
-               WHERE t.fromNodeNum = ${localNodeNum} AND t.toNodeNum = n.nodeNum) > 0
-              AND (n.lastTracerouteRequest IS NULL OR n.lastTracerouteRequest < ${expirationMsAgo})
-            )
-          )
-        ORDER BY n.lastHeard DESC
-      `);
-      return results.map(r => this.normalizeNode(r));
-    } else if (this.isMySQL()) {
-      const db = this.getMysqlDb();
-      const sourceFilter = sourceId ? sql` AND n.sourceId = ${sourceId}` : sql``;
-      const results = await db.execute(sql`
-        SELECT n.*
-        FROM nodes n
-        WHERE n.nodeNum != ${localNodeNum}
-          AND n.lastHeard > ${activeNodeCutoffSeconds}
-          ${sourceFilter}
-          AND (
-            (
-              (SELECT COUNT(*) FROM traceroutes t
-               WHERE t.fromNodeNum = ${localNodeNum} AND t.toNodeNum = n.nodeNum) = 0
-              AND (n.lastTracerouteRequest IS NULL OR n.lastTracerouteRequest < ${threeHoursAgoMs})
-            )
-            OR
-            (
-              (SELECT COUNT(*) FROM traceroutes t
-               WHERE t.fromNodeNum = ${localNodeNum} AND t.toNodeNum = n.nodeNum) > 0
-              AND (n.lastTracerouteRequest IS NULL OR n.lastTracerouteRequest < ${expirationMsAgo})
+    const nodeNum = this.col('nodeNum');
+    const lastHeard = this.col('lastHeard');
+    const lastRequest = this.col('lastTracerouteRequest');
+    const fromNodeNum = this.col('fromNodeNum');
+    const toNodeNum = this.col('toNodeNum');
+    const route = this.col('route');
+    const sourceIdCol = this.col('sourceId');
+
+    const sourceFilter = sourceId ? sql` AND n.${sourceIdCol} = ${sourceId}` : sql``;
+
+    // Rule A: any row stored { from: our radio, to: node }.
+    const storedFromUs = sql`EXISTS (
+      SELECT 1 FROM traceroutes t
+      WHERE t.${fromNodeNum} = ${localNodeNum} AND t.${toNodeNum} = n.${nodeNum}
+    )`;
+
+    // Rule B: a completed run stored { from: node, to: our radio } on this
+    // source. The route test is `hasRouteData` (tracerouteSegments.ts) in SQL.
+    const answeredInReplyForm = sourceId
+      ? sql`EXISTS (
+          SELECT 1 FROM traceroutes t
+          WHERE t.${sourceIdCol} = ${sourceId}
+            AND t.${fromNodeNum} = n.${nodeNum} AND t.${toNodeNum} = ${localNodeNum}
+            AND t.${route} IS NOT NULL AND t.${route} <> 'null' AND t.${route} <> ''
+        )`
+      : sql`1 = 0`;
+
+    const rows = await this.executeQuery(sql`
+      SELECT n.*
+      FROM nodes n
+      WHERE n.${nodeNum} != ${localNodeNum}
+        AND n.${lastHeard} > ${activeNodeCutoffSeconds}
+        ${sourceFilter}
+        AND (
+          (
+            NOT ${storedFromUs}
+            AND (n.${lastRequest} IS NULL OR n.${lastRequest} < ${threeHoursAgoMs})
+            AND (
+              n.${lastRequest} IS NULL OR n.${lastRequest} < ${expirationMsAgo}
+              OR NOT ${answeredInReplyForm}
             )
           )
-        ORDER BY n.lastHeard DESC
-      `);
-      // MySQL returns [rows, fields] tuple
-      const rows = (results as unknown as [unknown[], unknown])[0] as DbNode[];
-      return rows.map(r => this.normalizeNode(r));
-    } else {
-      // PostgreSQL
-      const db = this.getPostgresDb();
-      const nodeNum = this.col('nodeNum');
-      const lastHeard = this.col('lastHeard');
-      const fromNodeNum = this.col('fromNodeNum');
-      const toNodeNum = this.col('toNodeNum');
-      const lastTracerouteRequest = this.col('lastTracerouteRequest');
-      const sourceFilter = sourceId ? sql` AND n."sourceId" = ${sourceId}` : sql``;
-      const results = await db.execute(sql`
-        SELECT n.*
-        FROM nodes n
-        WHERE n.${nodeNum} != ${localNodeNum}
-          AND n.${lastHeard} > ${activeNodeCutoffSeconds}
-          ${sourceFilter}
-          AND (
-            (
-              (SELECT COUNT(*) FROM traceroutes t
-               WHERE t.${fromNodeNum} = ${localNodeNum} AND t.${toNodeNum} = n.${nodeNum}) = 0
-              AND (n.${lastTracerouteRequest} IS NULL OR n.${lastTracerouteRequest} < ${threeHoursAgoMs})
-            )
-            OR
-            (
-              (SELECT COUNT(*) FROM traceroutes t
-               WHERE t.${fromNodeNum} = ${localNodeNum} AND t.${toNodeNum} = n.${nodeNum}) > 0
-              AND (n.${lastTracerouteRequest} IS NULL OR n.${lastTracerouteRequest} < ${expirationMsAgo})
-            )
+          OR
+          (
+            ${storedFromUs}
+            AND (n.${lastRequest} IS NULL OR n.${lastRequest} < ${expirationMsAgo})
           )
-        ORDER BY n.${lastHeard} DESC
-      `);
-      // PostgreSQL returns { rows: [...] }
-      const rows = (results as unknown as { rows: unknown[] }).rows as DbNode[];
-      return rows.map(r => this.normalizeNode(r));
-    }
+        )
+      ORDER BY n.${lastHeard} DESC
+    `);
+    return (rows as DbNode[]).map(r => this.normalizeNode(r));
   }
 
   /**
