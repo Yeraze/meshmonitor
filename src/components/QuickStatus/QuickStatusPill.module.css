@@ -1,0 +1,296 @@
+/*
+ * Header quick-status pill and its popover (#5616).
+ *
+ * The pill sits in `.header-right` (AppHeader.css), which is `flex-shrink: 0`:
+ * every pixel it takes comes out of `.header-left`, the half that holds the
+ * source name. So the pill is capped on desktop and collapses to its icon on
+ * phones, the same trade the connection badge makes at the 768px breakpoint.
+ *
+ * It must NOT live in `.header-left`: that half is `overflow: hidden` and
+ * would clip the popover.
+ *
+ * Colours are theme role tokens only.
+ */
+
+.wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  max-width: 14rem;
+  padding: 0.2rem 0.6rem;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 999px;
+  color: var(--color-text-muted);
+  font-size: 0.8rem;
+  line-height: 1.4;
+  cursor: pointer;
+  transition: background 0.2s ease, color 0.2s ease, border-color 0.2s ease;
+}
+
+.pill:hover,
+.pill:focus-visible {
+  background: var(--color-surface-hover);
+  color: var(--color-text);
+}
+
+.pillSet {
+  color: var(--color-text);
+  border-color: var(--color-accent);
+}
+
+/* A save is on its way to the node: the text is the optimistic value. */
+.pillPending {
+  opacity: 0.6;
+}
+
+.pillIcon {
+  display: inline-flex;
+  flex-shrink: 0;
+}
+
+.pillText {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.popover {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  width: 20rem;
+  max-width: calc(100vw - 2rem);
+  max-height: calc(100dvh - var(--app-header-height) - 1rem);
+  overflow-y: auto;
+  box-sizing: border-box;
+  padding: 0.75rem;
+  background: var(--color-bg);
+  border: 1px solid var(--color-surface-active);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  color: var(--color-text);
+  font-size: 0.85rem;
+  /* The header is z-index 10000; this only has to beat its own siblings. */
+  z-index: 1;
+}
+
+.heading {
+  font-weight: 600;
+  margin-bottom: 0.5rem;
+}
+
+.presets {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.25rem;
+}
+
+.preset {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-width: 0;
+  padding: 0.35rem 0.5rem;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  color: var(--color-text);
+  font-size: 0.85rem;
+  text-align: left;
+  cursor: pointer;
+}
+
+.preset:hover:not(:disabled),
+.preset:focus-visible {
+  background: var(--color-surface-hover);
+}
+
+.preset:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.presetActive {
+  border-color: var(--color-accent);
+  background: var(--color-surface);
+}
+
+.presetEmoji {
+  flex-shrink: 0;
+}
+
+.presetLabel {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.custom {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  margin-top: 0.75rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--color-border-subtle);
+}
+
+.customLabel {
+  font-size: 0.75rem;
+  color: var(--color-text-subtle);
+}
+
+.input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 0.4rem 0.5rem;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-md);
+  color: var(--color-text);
+  /* 16px stops iOS Safari zooming the page when the input takes focus. */
+  font-size: 1rem;
+}
+
+.input:focus-visible {
+  outline: none;
+  border-color: var(--color-accent);
+}
+
+.counter {
+  align-self: flex-end;
+  font-size: 0.75rem;
+  color: var(--color-text-subtle);
+}
+
+.counterNearLimit {
+  color: var(--color-caution);
+}
+
+.actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  margin-top: 0.25rem;
+}
+
+.clearButton,
+.saveButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.35rem 0.75rem;
+  border-radius: var(--radius-md);
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.clearButton {
+  background: transparent;
+  border: 1px solid var(--color-border-subtle);
+  color: var(--color-text-muted);
+}
+
+.clearButton:hover:not(:disabled) {
+  background: var(--color-surface-hover);
+  color: var(--color-text);
+}
+
+.saveButton {
+  background: var(--color-accent);
+  border: 1px solid var(--color-accent);
+  color: var(--color-accent-text);
+  font-weight: 600;
+}
+
+.clearButton:disabled,
+.saveButton:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.note {
+  display: flex;
+  gap: 0.4rem;
+  margin: 0.75rem 0 0;
+  padding: 0.5rem;
+  background: var(--color-surface);
+  border-radius: var(--radius-md);
+  color: var(--color-text-muted);
+  font-size: 0.75rem;
+  line-height: 1.4;
+}
+
+.noteIcon {
+  display: inline-flex;
+  flex-shrink: 0;
+  margin-top: 0.1rem;
+  color: var(--color-caution);
+}
+
+/*
+ * Phones (portrait). Same breakpoint the header uses to hide its logo and
+ * collapse the connection badge to icons.
+ *
+ * The pill drops to its icon: the status text stays in the accessibility tree
+ * and in the popover. The popover stops anchoring to the pill, which sits
+ * left of the user menu here, so a 20rem box hung off its right edge would run
+ * off the left of a 390px screen. With the wrapper unpositioned, the popover's
+ * containing block is the fixed `.app-header`, and it spans the bar with a
+ * gutter each side.
+ */
+@media (max-width: 768px) {
+  .wrapper {
+    position: static;
+  }
+
+  .pill {
+    padding: 0.3rem;
+    max-width: none;
+  }
+
+  .pillText {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+
+  .popover {
+    top: 100%;
+    left: 0.5rem;
+    right: 0.5rem;
+    width: auto;
+    max-width: none;
+  }
+}
+
+/*
+ * Landscape phones. These are WIDER than 768px, so the block above does not
+ * reach them (the max-width-only trap fixed in #5051-#5054) and the header
+ * still carries desktop-sized content in very little height. Keep the text but
+ * cap it harder, and let the popover scroll inside the short viewport.
+ */
+@media (max-height: 500px) and (orientation: landscape) {
+  .pill {
+    max-width: 9rem;
+    font-size: 0.75rem;
+  }
+
+  .popover {
+    max-height: calc(100dvh - var(--app-header-height) - 0.5rem);
+  }
+
+  .presets {
+    grid-template-columns: 1fr 1fr 1fr;
+  }
+}

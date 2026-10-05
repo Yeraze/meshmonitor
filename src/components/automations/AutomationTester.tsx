@@ -17,9 +17,10 @@ import {
   leftHomeThresholdFromConfig,
   leftHomeInputMode,
   leftHomeModeHint,
+  namedStepOutputs,
 } from './automationTesterHelpers';
 import SubstitutionsHelpDrawer from './SubstitutionsHelp';
-import { OUTCOME_META } from './outcomeMeta';
+import { StepList } from './outcomeMeta';
 import { UiIcon } from '../icons';
 
 export interface SimResult {
@@ -30,7 +31,7 @@ export interface SimResult {
   conditionResults: Record<string, boolean>;
   actions: Array<{ nodeId: string; type: string; ok: boolean; resolvedParams?: unknown; error?: string }>;
   variableWrites: Array<{ name: string; op: string; value?: unknown }>;
-  steps: Array<{ nodeId: string; type: string; outcome: string; error?: string }>;
+  steps: Array<{ nodeId: string; type: string; outcome: string; error?: string; detail?: Record<string, unknown> }>;
 }
 
 interface Props {
@@ -62,6 +63,9 @@ export default function AutomationTester({ getConfig, variables, sources }: Prop
   const [ev, setEv] = useState<EventState>({});
   const [facts, setFacts] = useState<FactState>({});
   const [varOverrides, setVarOverrides] = useState<Record<string, string>>({});
+  // #5636: what each named "Run a script" step "prints" in the dry run.
+  const [sampleOutputs, setSampleOutputs] = useState<Record<string, string>>({});
+  const outputNames = namedStepOutputs(cfg.config);
   const [result, setResult] = useState<SimResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [running, setRunning] = useState(false);
@@ -151,6 +155,8 @@ export default function AutomationTester({ getConfig, variables, sources }: Prop
     try {
       const res = await apiService.post<SimResult>('/api/automations/test', {
         config: cfg.config, event: buildEvent(), node: buildNode(), variables: buildVars(),
+        // Only steps still in the workflow; a step left blank prints nothing.
+        stepOutputs: Object.fromEntries(outputNames.map((n) => [n, sampleOutputs[n] ?? ''])),
       });
       setResult(res);
     } catch (e: any) {
@@ -165,7 +171,7 @@ export default function AutomationTester({ getConfig, variables, sources }: Prop
         <span className="ae-muted" style={{ marginLeft: '0.5rem' }}>simulated — nothing is sent or saved</span>
         <button className="ae-help-icon" style={{ marginLeft: 'auto' }} title="All {{ }} substitutions" onClick={() => setShowHelp(true)}>?</button>
       </div>
-      {showHelp && <SubstitutionsHelpDrawer triggerType={triggerType} variables={variables} onClose={() => setShowHelp(false)} />}
+      {showHelp && <SubstitutionsHelpDrawer triggerType={triggerType} variables={variables} stepNames={outputNames} onClose={() => setShowHelp(false)} />}
 
       <div className="ae-test-inputs">
         {sources.length > 0 && (
@@ -184,6 +190,23 @@ export default function AutomationTester({ getConfig, variables, sources }: Prop
           leftHomeHint: kind === 'leftHome' ? leftHomeModeHint(ev, facts, automationThreshold) : undefined,
         })}
       </div>
+
+      {outputNames.length > 0 && (
+        <div>
+          <div className="ae-field-label" style={{ margin: '0.6rem 0 0.2rem' }}>Sample script output</div>
+          <div className="ae-muted" style={{ marginBottom: '0.3rem' }}>
+            A test never runs a script. Type what each one would print, and later steps render it. Left blank, the script prints nothing.
+          </div>
+          {outputNames.map((n) => (
+            <div className="ae-field" key={n}>
+              <label className="ae-field-label" htmlFor={`ae-sample-${n}`}>{n} <span className="ae-muted">— <code>{`{{ steps.${n}.output }}`}</code></span></label>
+              <textarea id={`ae-sample-${n}`} className="ae-textarea" spellCheck={false} value={sampleOutputs[n] ?? ''}
+                placeholder={'Plain text, or JSON such as {"joke": "…"}'}
+                onChange={(e) => setSampleOutputs((s) => ({ ...s, [n]: e.target.value }))} />
+            </div>
+          ))}
+        </div>
+      )}
 
       <button className="ae-btn ae-btn--ghost" style={{ marginTop: '0.4rem' }} onClick={() => setShowAdvanced((s) => !s)}>
         {showAdvanced ? '▾' : '▸'} Subject-node facts & variable overrides
@@ -366,7 +389,15 @@ function ActionView({ a }: { a: SimResult['actions'][number] }) {
   const p = (a.resolvedParams ?? {}) as Record<string, unknown>;
   let headline: string = a.type.replace('action.', '');
   let sent: ReactNode = null;
-  if (a.type === 'action.sendMessage') {
+  // #5636: an empty send that was held back. Nothing would be transmitted.
+  const held = p.emptySend === true ? String(p.reason ?? '') : null;
+  if (held !== null) {
+    const what = a.type === 'action.tapback' ? 'Tapback' : a.type === 'action.notify' ? 'Notify (Apprise)' : 'Send message';
+    headline = `${what}: not sent`;
+    sent = <div className="ae-test-note">Skipped: {held}.</div>;
+  } else if (a.type === 'action.runScript') {
+    headline = `Run script ${String(p.scriptPath ?? '')} (not run in a test)`;
+  } else if (a.type === 'action.sendMessage') {
     // #4340 Phase 3: maxAttempts (action.sendMessage's DM resend cap, see
     // catalog.ts) only applies to a DM — proof the param crossed the deps
     // boundary (§5.3 of the phase 3 spec).
@@ -466,19 +497,7 @@ function TestResult({ result }: { result: SimResult }) {
       {result.matched && (
         <>
           <div className="ae-field-label" style={{ margin: '0.6rem 0 0.3rem' }}>Execution trace</div>
-          <div className="ae-trace">
-            {result.steps.length === 0 && <div className="ae-muted">No steps.</div>}
-            {result.steps.map((s, i) => {
-              const m = OUTCOME_META[s.outcome] ?? { icon: 'info' as const, cls: 'muted', label: s.outcome };
-              return (
-                <div className={`ae-trace-step ae-trace-step--${m.cls}`} key={i}>
-                  <span className="ae-trace-icon"><UiIcon name={m.icon} size={15} /></span>
-                  <span className="ae-trace-type">{s.type}</span>
-                  <span className="ae-muted">{m.label}{s.error ? ` — ${s.error}` : ''}</span>
-                </div>
-              );
-            })}
-          </div>
+          <StepList steps={result.steps} />
 
           {result.actions.length > 0 && (
             <>

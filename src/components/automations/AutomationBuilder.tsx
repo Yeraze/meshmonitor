@@ -5,10 +5,12 @@
  * → THEN actions) → an optional FINALLY combine step (ANY/ALL/NONE). Compiles to
  * the graph model in compile.ts.
  */
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { TRIGGERS, CONDITIONS, ACTIONS, BLOCK_BY_TYPE, fieldsFor, fieldVisible, fieldPlaceholder, type BlockDef, type FieldDef } from './catalog';
-import type { WorkflowForm, FormBlock, Rule } from './compile';
+import { compile, blockNodeId, formOutputNames, type WorkflowForm, type FormBlock, type Rule, type BlockLocation } from './compile';
+import type { StepTokenScope } from './tokenHints';
+import { STEP_OUTPUT_NAME_PATTERN, stepOutputScopes } from '../../types/automation';
 import SubstitutionsHelpDrawer from './SubstitutionsHelp';
 import GeofenceFieldInput from './GeofenceFieldInput';
 import NodeMultiFieldInput, { type NodeMultiOption } from './NodeMultiFieldInput';
@@ -152,14 +154,106 @@ export interface FieldInputProps {
   field: FieldDef; value: unknown; onChange: (v: unknown) => void; variables: VariableOption[]; sources: SourceOption[]; channels: UnifiedChannelOption[]; scripts: ScriptOption[]; regions: string[]; nodes: NodeMultiOption[]; triggerType: string;
   /** Optional so existing callers (TemplateGallery, tests) need no change (#5445). */
   automations?: AutomationOption[];
+  /** The whole block's params, for a field that edits more than one (#5636). */
+  params?: Record<string, unknown>;
+  /** Merge a patch into the block's params; an `undefined` value removes the key (#5636). */
+  onPatch?: (patch: Record<string, unknown>) => void;
+  /** Run outputs this block can read through `{{ steps.* }}` (#5636). */
+  steps?: StepTokenScope;
+  /** Run-output names used by more than one step in the form (#5636). */
+  duplicateOutputNames?: ReadonlySet<string>;
 }
 
-export function FieldInput({ field, value, onChange, variables, sources, channels, scripts, regions, nodes, triggerType, automations = [] }: FieldInputProps) {
+/**
+ * Text for a `{{ }}` token field. A graph written as JSON or imported can hold
+ * a number there (a numeric condition's `value: 0`), and the highlighter needs
+ * a string.
+ */
+const tokenText = (value: unknown): string => (value == null ? '' : String(value));
+
+/** The select value that stands for "This run only". Never stored in params. */
+const RUN_ONLY = '::run-only::';
+
+/**
+ * "Store result in" for Run a script (#5636): nowhere, a saved variable
+ * (`params.resultVariable`), or this run only (`params.outputName`, with a
+ * name box). The two params are separate on purpose — picking one clears the
+ * other, and neither is overloaded with a marker value.
+ */
+function ResultTargetInput({ params, onPatch, variables, duplicateOutputNames }: {
+  params: Record<string, unknown>;
+  onPatch: (patch: Record<string, unknown>) => void;
+  variables: VariableOption[];
+  duplicateOutputNames?: ReadonlySet<string>;
+}) {
+  const { t } = useTranslation();
+  const runOnly = typeof params.outputName === 'string';
+  const name = runOnly ? (params.outputName as string) : '';
+  const variable = typeof params.resultVariable === 'string' ? params.resultVariable : '';
+  const choose = (v: string) => {
+    if (v === RUN_ONLY) onPatch({ resultVariable: undefined, outputName: name });
+    else onPatch({ resultVariable: v === '' ? undefined : v, outputName: undefined });
+  };
+  const badName = runOnly && name !== '' && !STEP_OUTPUT_NAME_PATTERN.test(name);
+  const duplicate = runOnly && !badName && name !== '' && duplicateOutputNames?.has(name);
+  return (
+    <>
+      <select className="ae-select" value={runOnly ? RUN_ONLY : variable} onChange={(e) => choose(e.target.value)}
+        aria-label={t('automation.stepOutput.target_label', 'Store result in')}>
+        <option value="">{t('automation.stepOutput.none', '— do not store —')}</option>
+        <option value={RUN_ONLY}>{t('automation.stepOutput.run_only', 'This run only')}</option>
+        {variables.map((v) => <option key={v.name} value={v.name}>{v.name} ({v.type})</option>)}
+        {variable && !variables.some((v) => v.name === variable) && <option value={variable}>{variable}</option>}
+      </select>
+      {runOnly && (
+        <div style={{ marginTop: '0.35rem' }}>
+          <input className="ae-input" value={name} maxLength={32} spellCheck={false}
+            placeholder={t('automation.stepOutput.name_placeholder', 'name, e.g. joke')}
+            aria-label={t('automation.stepOutput.name_label', 'Name for this run')}
+            onChange={(e) => onPatch({ outputName: e.target.value })} />
+          {name === '' && (
+            <div className="ae-field-error">{t('automation.stepOutput.name_required', 'Give the result a name.')}</div>
+          )}
+          {badName && (
+            <div className="ae-field-error">
+              {t('automation.stepOutput.name_invalid', 'Start with a lower-case letter; then lower-case letters, digits or _ (32 characters at most).')}
+            </div>
+          )}
+          {duplicate && (
+            <div className="ae-field-error">
+              {t('automation.stepOutput.name_duplicate', 'Another step already uses this name. Each name must be unique.')}
+            </div>
+          )}
+          {name !== '' && !badName && (
+            <div className="ae-help-text">
+              {t('automation.stepOutput.usage', 'Later steps read it as')}{' '}
+              <code>{`{{ steps.${name}.output }}`}</code>
+            </div>
+          )}
+        </div>
+      )}
+    </>
+  );
+}
+
+export function FieldInput({ field, value, onChange, variables, sources, channels, scripts, regions, nodes, triggerType, automations = [], params, onPatch, steps, duplicateOutputNames }: FieldInputProps) {
   const { t } = useTranslation();
   let control;
   const varNames = variables.map((v) => v.name);
   const placeholder = fieldPlaceholder(field, triggerType);
+  // A `{{ var.* }}`-only field refuses step outputs whatever the block could read.
+  const stepScope: StepTokenScope | undefined = field.varsOnly ? 'refused' : steps;
   switch (field.kind) {
+    case 'resultTarget':
+      control = (
+        <ResultTargetInput
+          params={params ?? { [field.name]: value }}
+          onPatch={onPatch ?? ((patch) => { if (field.name in patch) onChange(patch[field.name] ?? ''); })}
+          variables={variables}
+          duplicateOutputNames={duplicateOutputNames}
+        />
+      );
+      break;
     case 'number':
       control = <input className="ae-input" type="number" value={(value ?? '') as string} placeholder={placeholder}
         onChange={(e) => onChange(e.target.value === '' ? '' : Number(e.target.value))} />;
@@ -169,8 +263,8 @@ export function FieldInput({ field, value, onChange, variables, sources, channel
       break;
     case 'textarea':
       control = field.tokens
-        ? <TokenTextField multiline value={(value ?? '') as string} placeholder={placeholder}
-            triggerType={triggerType} variableNames={varNames} onChange={onChange} />
+        ? <TokenTextField multiline value={tokenText(value)} placeholder={placeholder}
+            triggerType={triggerType} variableNames={varNames} steps={stepScope} onChange={onChange} />
         : <textarea className="ae-textarea" value={(value ?? '') as string} placeholder={placeholder} onChange={(e) => onChange(e.target.value)} />;
       break;
     case 'select': {
@@ -247,7 +341,7 @@ export function FieldInput({ field, value, onChange, variables, sources, channel
       break;
     case 'automationSelect':
       control = <AutomationIdFieldInput value={value} onChange={onChange} automations={automations}
-        triggerType={triggerType} variableNames={varNames} />;
+        triggerType={triggerType} variableNames={varNames} steps={stepScope} />;
       break;
     case 'regionSelect':
       // Editable combobox: pick a saved region or type any region name (incl. a
@@ -377,8 +471,8 @@ export function FieldInput({ field, value, onChange, variables, sources, channel
     }
     default:
       control = field.tokens
-        ? <TokenTextField value={(value ?? '') as string} placeholder={placeholder}
-            triggerType={triggerType} variableNames={varNames} onChange={onChange} />
+        ? <TokenTextField value={tokenText(value)} placeholder={placeholder}
+            triggerType={triggerType} variableNames={varNames} steps={stepScope} onChange={onChange} />
         : <input className="ae-input" value={(value ?? '') as string} placeholder={placeholder} onChange={(e) => onChange(e.target.value)} />;
   }
   return (
@@ -390,25 +484,42 @@ export function FieldInput({ field, value, onChange, variables, sources, channel
   );
 }
 
-function BlockFields({ block, triggerType, variables, sources, channels, scripts, regions, nodes, automations, onParams }: {
+/** What the builder knows about run outputs (#5636), threaded down to each field. */
+interface StepOutputInfo {
+  scopeAt: (loc: BlockLocation | null) => StepTokenScope;
+  duplicates: ReadonlySet<string>;
+}
+
+function BlockFields({ block, triggerType, variables, sources, channels, scripts, regions, nodes, automations, onParams, steps, duplicateOutputNames }: {
   block: FormBlock; triggerType: string; variables: VariableOption[]; sources: SourceOption[]; channels: UnifiedChannelOption[]; scripts: ScriptOption[]; regions: string[]; nodes: NodeMultiOption[]; automations: AutomationOption[]; onParams: (p: Record<string, unknown>) => void;
+  steps: StepTokenScope; duplicateOutputNames: ReadonlySet<string>;
 }) {
   const def = BLOCK_BY_TYPE[block.type];
   if (!def) return null;
+  const patch = (changes: Record<string, unknown>) => {
+    const next: Record<string, unknown> = { ...block.params };
+    for (const [k, v] of Object.entries(changes)) {
+      if (v === undefined) delete next[k];
+      else next[k] = v;
+    }
+    onParams(next);
+  };
   return (
     <>
       {def.fields.filter((f) => fieldVisible(f, block.params)).map((f) => {
         const field = f.kind === 'fieldselect' ? { ...f, groups: fieldsFor(block.type, triggerType) } : f;
         return <FieldInput key={f.name} field={field} value={block.params[f.name]} variables={variables} sources={sources} channels={channels} scripts={scripts} regions={regions} nodes={nodes} automations={automations} triggerType={triggerType}
+          params={block.params} onPatch={patch} steps={steps} duplicateOutputNames={duplicateOutputNames}
           onChange={(v) => onParams({ ...block.params, [f.name]: v })} />;
       })}
     </>
   );
 }
 
-function BlockListEditor({ blocks, options, triggerType, variables, sources, channels, scripts, regions, nodes, automations, onChange, addLabel }: {
+function BlockListEditor({ blocks, options, triggerType, variables, sources, channels, scripts, regions, nodes, automations, onChange, addLabel, stepInfo, locate }: {
   blocks: FormBlock[]; options: BlockDef[]; triggerType: string; variables: VariableOption[]; sources: SourceOption[]; channels: UnifiedChannelOption[]; scripts: ScriptOption[]; regions: string[]; nodes: NodeMultiOption[]; automations: AutomationOption[];
   onChange: (b: FormBlock[]) => void; addLabel: string;
+  stepInfo: StepOutputInfo; locate: (index: number) => BlockLocation;
 }) {
   const update = (i: number, b: FormBlock) => { const l = [...blocks]; l[i] = b; onChange(l); };
   return (
@@ -422,13 +533,16 @@ function BlockListEditor({ blocks, options, triggerType, variables, sources, cha
             </select>
             <button className="ae-btn ae-btn--ghost" onClick={() => onChange(blocks.filter((_, j) => j !== i))} aria-label="Remove block"><UiIcon name="close" size={15} /></button>
           </div>
-          <BlockFields block={b} triggerType={triggerType} variables={variables} sources={sources} channels={channels} scripts={scripts} regions={regions} nodes={nodes} automations={automations} onParams={(p) => update(i, { ...b, params: p })} />
+          <BlockFields block={b} triggerType={triggerType} variables={variables} sources={sources} channels={channels} scripts={scripts} regions={regions} nodes={nodes} automations={automations} onParams={(p) => update(i, { ...b, params: p })}
+            steps={stepInfo.scopeAt(locate(i))} duplicateOutputNames={stepInfo.duplicates} />
         </div>
       ))}
       <button className="ae-btn" onClick={() => onChange([...blocks, { type: options[0].type, params: defaultParams(options[0].type, triggerType) }])}>{addLabel}</button>
     </>
   );
 }
+
+const NO_NAMES: ReadonlySet<string> = new Set<string>();
 
 export default function AutomationBuilder({ form, variables, sources, channels, scripts, regions, nodes = [], automations = [], onChange }: Props) {
   const triggerType = form.trigger.type;
@@ -441,11 +555,29 @@ export default function AutomationBuilder({ form, variables, sources, channels, 
   const removeRule = (i: number) => onChange({ ...form, rules: form.rules.filter((_, j) => j !== i) });
   const setCombine = (combine: WorkflowForm['combine']) => onChange({ ...form, combine });
 
+  // #5636: which run outputs each block can read. Worked out on the compiled
+  // graph (ancestry, not list order), so the builder flags exactly what the
+  // engine would leave empty.
+  const stepInfo = useMemo<StepOutputInfo>(() => {
+    const names = formOutputNames(form);
+    const all = new Set(names);
+    const duplicates = new Set(names.filter((n, i) => names.indexOf(n) !== i));
+    const scopes = stepOutputScopes(compile(form));
+    return {
+      duplicates,
+      scopeAt: (loc) => {
+        const scope = loc ? scopes.get(blockNodeId(form, loc)) : undefined;
+        return { guaranteed: scope?.guaranteed ?? NO_NAMES, possible: scope?.possible ?? NO_NAMES, all };
+      },
+    };
+  }, [form]);
+  const stepNames = useMemo(() => [...new Set(formOutputNames(form))], [form]);
+
   return (
     <div>
-      {showHelp && <SubstitutionsHelpDrawer triggerType={triggerType} variables={variables} onClose={() => setShowHelp(false)} />}
+      {showHelp && <SubstitutionsHelpDrawer triggerType={triggerType} variables={variables} stepNames={stepNames} onClose={() => setShowHelp(false)} />}
       <div className="ae-row ae-builder-hint" style={{ marginBottom: '0.6rem' }}>
-        <span className="ae-muted">Tip: insert <code>{'{{ trigger.* }}'}</code> / <code>{'{{ var.* }}'}</code> tokens in any message or notification text.</span>
+        <span className="ae-muted">Tip: insert <code>{'{{ trigger.* }}'}</code> / <code>{'{{ var.* }}'}</code> / <code>{'{{ steps.* }}'}</code> tokens in any message or notification text.</span>
         <button className="ae-help-icon" style={{ marginLeft: '0.4rem' }} title="All available substitutions" onClick={() => setShowHelp(true)}>?</button>
       </div>
 
@@ -459,7 +591,8 @@ export default function AutomationBuilder({ form, variables, sources, channels, 
             </select>
             <div className="ae-help-text">{BLOCK_BY_TYPE[triggerType]?.description}</div>
           </div>
-          <BlockFields block={form.trigger} triggerType={triggerType} variables={variables} sources={sources} channels={channels} scripts={scripts} regions={regions} nodes={nodes} automations={automations} onParams={setTriggerParams} />
+          <BlockFields block={form.trigger} triggerType={triggerType} variables={variables} sources={sources} channels={channels} scripts={scripts} regions={regions} nodes={nodes} automations={automations} onParams={setTriggerParams}
+            steps={stepInfo.scopeAt(null)} duplicateOutputNames={stepInfo.duplicates} />
         </div>
       </div>
 
@@ -474,9 +607,11 @@ export default function AutomationBuilder({ form, variables, sources, channels, 
             <div className="ae-field-label" style={{ marginBottom: '0.4rem' }}>IF — all of these are true (optional)</div>
             {rule.conditions.length === 0 && <div className="ae-muted" style={{ marginBottom: '0.5rem' }}>No conditions — runs every time the trigger fires.</div>}
             <BlockListEditor blocks={rule.conditions} options={CONDITIONS} triggerType={triggerType} variables={variables} sources={sources} channels={channels} scripts={scripts} regions={regions} nodes={nodes} automations={automations}
+              stepInfo={stepInfo} locate={(k) => ({ section: 'condition', rule: i, index: k })}
               onChange={(c) => updateRule(i, { ...rule, conditions: c })} addLabel="+ Add condition" />
             <div className="ae-field-label" style={{ margin: '0.9rem 0 0.4rem' }}>THEN — do this</div>
             <BlockListEditor blocks={rule.actions} options={ACTIONS} triggerType={triggerType} variables={variables} sources={sources} channels={channels} scripts={scripts} regions={regions} nodes={nodes} automations={automations}
+              stepInfo={stepInfo} locate={(k) => ({ section: 'action', rule: i, index: k })}
               onChange={(a) => updateRule(i, { ...rule, actions: a })} addLabel="+ Add action" />
           </div>
         </div>
@@ -506,6 +641,7 @@ export default function AutomationBuilder({ form, variables, sources, channels, 
             </div>
             <div className="ae-field-label" style={{ margin: '0.6rem 0 0.4rem' }}>THEN — do this</div>
             <BlockListEditor blocks={form.combine.actions} options={ACTIONS} triggerType={triggerType} variables={variables} sources={sources} channels={channels} scripts={scripts} regions={regions} nodes={nodes} automations={automations}
+              stepInfo={stepInfo} locate={(k) => ({ section: 'finally', index: k })}
               onChange={(a) => setCombine({ ...form.combine!, actions: a })} addLabel="+ Add action" />
           </div>
         </div>

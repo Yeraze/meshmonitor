@@ -20,6 +20,7 @@ import { normalizeTakConfig } from '../utils/takConfig';
 import { DeviceConfigurationSection } from './admin-commands/DeviceConfigurationSection';
 import AutoFavoriteManagementSection from './admin-commands/AutoFavoriteManagementSection';
 import { ModuleConfigurationSection } from './admin-commands/ModuleConfigurationSection';
+import { DeviceActionsSection } from './admin-commands/DeviceActionsSection';
 import { useAdminCommandsState, buildMeshBeaconConfigPayload, parseMeshBeaconConfig, buildSecurityConfigUpdates } from './admin-commands/useAdminCommandsState';
 import {
   DEFAULT_PUBLIC_PSK,
@@ -154,7 +155,8 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
   const [deviceMetadata, setDeviceMetadata] = useState<{
     firmwareVersion: string;
     deviceStateVersion: number;
-    canShutdown: boolean;
+    /** null: the node has not reported it yet. */
+    canShutdown: boolean | null;
     hasWifi: boolean;
     hasBluetooth: boolean;
     hasEthernet: boolean;
@@ -165,6 +167,9 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
     /** Firmware 2.8+ build capability: XEdDSA signature verification compiled in (#3923). */
     hasXeddsa?: boolean;
   } | null>(null);
+  // The node `deviceMetadata` was read from. It is not cleared when the
+  // selection changes, so anything that gates on it must check this first.
+  const [deviceMetadataNodeNum, setDeviceMetadataNodeNum] = useState<number | null>(null);
 
   // Reboot and Set Time command states
   const [isLoadingReboot, setIsLoadingReboot] = useState(false);
@@ -918,6 +923,7 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
       });
       if (result?.deviceMetadata) {
         setDeviceMetadata(result.deviceMetadata);
+        setDeviceMetadataNodeNum(selectedNodeNum);
         showToast(t('admin_commands.device_metadata_loaded'), 'success');
       } else {
         showToast(t('admin_commands.failed_device_metadata'), 'error');
@@ -1489,7 +1495,10 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
         ...(retryAttemptsOverride != null ? { retryAttempts: retryAttemptsOverride } : {}),
         ...params
       });
-      showToast(result.message || t('admin_commands.command_executed', { command }), 'success');
+      // The device actions (#5614, #5615) answer in the `{ success, data }`
+      // envelope, so their message sits one level down.
+      const message = result.message || (result as { data?: { message?: string } }).data?.message;
+      showToast(message || t('admin_commands.command_executed', { command }), 'success');
       return result;
     } catch (error: any) {
       // A 409 TX_DISABLED can still slip through as a race (TX flipped off
@@ -4243,6 +4252,18 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
             <UiIcon name="delete" /> {t('admin_commands.purge_node_database')}
           </button>
         </div>
+
+        <DeviceActionsSection
+          node={selectedNode ?? null}
+          canShutdown={
+            deviceMetadata && deviceMetadataNodeNum === selectedNodeNum && typeof deviceMetadata.canShutdown === 'boolean'
+              ? deviceMetadata.canShutdown
+              : null
+          }
+          disabled={isExecuting || selectedNodeNum === null || remoteAdminBlocked}
+          disabledReason={remoteAdminBlocked ? t('tx_disabled.remote_admin_notice') : undefined}
+          executeCommand={executeCommand}
+        />
       </CollapsibleSection>
 
       {/* Import/Export Config Modals */}

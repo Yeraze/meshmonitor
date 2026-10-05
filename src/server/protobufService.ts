@@ -1789,6 +1789,78 @@ class ProtobufService {
   }
 
   /**
+   * Encode an AdminMessage that carries one payload-variant field.
+   * Shared by the one-shot device actions below (#5614, #5615).
+   */
+  private createSingleFieldAdminMessage(
+    field: string,
+    value: number | boolean,
+    label: string,
+    sessionPasskey?: Uint8Array,
+  ): Uint8Array {
+    try {
+      const root = getProtobufRoot();
+      const AdminMessage = root?.lookupType('meshtastic.AdminMessage');
+      if (!AdminMessage) {
+        throw new Error('AdminMessage type not found in loaded proto files');
+      }
+
+      const adminMsgData: Record<string, unknown> = { [field]: value };
+      if (sessionPasskey && sessionPasskey.length > 0) {
+        adminMsgData.sessionPasskey = sessionPasskey;
+      }
+
+      const encoded = AdminMessage.encode(AdminMessage.create(adminMsgData)).finish();
+      logger.debug(`⚙️ Created ${label} admin message (${field}=${value})`);
+      return encoded;
+    } catch (error) {
+      logger.error(`Failed to create ${label} message:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Create an AdminMessage that puts the node into its (UF2) DFU bootloader:
+   * `bool enter_dfu_mode_request = 21` (#5614). There is no delay field.
+   *
+   * Firmware acts on it only on nRF52 and RP2040 (and STM32 on the 2.8 line);
+   * ESP32 ignores it. This is NOT `reboot_ota_seconds = 95`, which is
+   * deprecated and ESP32-only.
+   */
+  createEnterDfuModeMessage(sessionPasskey?: Uint8Array): Uint8Array {
+    return this.createSingleFieldAdminMessage('enterDfuModeRequest', true, 'Enter DFU mode', sessionPasskey);
+  }
+
+  /**
+   * Create an AdminMessage to shut the node down: `int32 shutdown_seconds = 98`
+   * (#5615). A negative value cancels a pending shutdown.
+   * @param seconds Seconds to wait before the node powers off
+   */
+  createShutdownMessage(seconds: number, sessionPasskey?: Uint8Array): Uint8Array {
+    return this.createSingleFieldAdminMessage('shutdownSeconds', seconds, 'Shutdown', sessionPasskey);
+  }
+
+  /**
+   * Create an AdminMessage for a config factory reset:
+   * `int32 factory_reset_config = 99` (#5615). Firmware ignores the value.
+   * Wipes config, module config, channels, NodeDB and region; keeps the
+   * private key and BLE bonds. The node reboots.
+   */
+  createFactoryResetConfigMessage(sessionPasskey?: Uint8Array): Uint8Array {
+    return this.createSingleFieldAdminMessage('factoryResetConfig', 1, 'Factory reset (config)', sessionPasskey);
+  }
+
+  /**
+   * Create an AdminMessage for a full factory reset:
+   * `int32 factory_reset_device = 94` (#5615). Firmware ignores the value.
+   * Wipes everything the config reset does, plus the private key (the node
+   * comes back with a new identity), BLE bonds and ESP32 NVS. The node reboots.
+   */
+  createFactoryResetDeviceMessage(sessionPasskey?: Uint8Array): Uint8Array {
+    return this.createSingleFieldAdminMessage('factoryResetDevice', 1, 'Factory reset (device)', sessionPasskey);
+  }
+
+  /**
    * Create an AdminMessage to purge the node database
    * @param seconds Number of seconds to wait before purging (typically 0 for immediate)
    * @param sessionPasskey Optional session passkey for authentication

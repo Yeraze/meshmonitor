@@ -1,0 +1,96 @@
+/* Shutdown, DFU and factory reset: the danger group under Reboot (#5614, #5615). */
+
+.group {
+  margin-top: 2rem;
+  padding: 1rem 1.25rem 1.25rem;
+  border: 1px solid var(--color-error);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+}
+
+.heading {
+  margin: 0 0 0.5rem;
+  color: var(--color-error);
+  font-size: 1.1rem;
+}
+
+.intro {
+  margin: 0 0 1rem;
+  color: var(--color-text);
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.item {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 0.75rem 1rem;
+}
+
+.button {
+  flex: 0 0 auto;
+  min-width: 16rem;
+  padding: 0.75rem 1.25rem;
+  border: 1px solid var(--color-error);
+  border-radius: var(--radius-sm);
+  background: var(--color-error);
+  color: var(--color-accent-text);
+  font-family: inherit;
+  font-size: 1rem;
+  font-weight: 700;
+  text-align: left;
+  cursor: pointer;
+}
+
+.button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.notes {
+  display: flex;
+  flex: 1 1 16rem;
+  flex-direction: column;
+  gap: 0.25rem;
+  color: var(--color-text-subtle);
+  font-size: 0.9rem;
+  line-height: 1.4;
+}
+
+.blocked {
+  color: var(--color-warning);
+  font-weight: 600;
+}
+
+.sent {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  margin-top: 1rem;
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--color-warning);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg);
+  color: var(--color-text);
+  line-height: 1.4;
+}
+
+.warn {
+  color: var(--color-warning);
+  font-weight: 600;
+}
+
+@media (max-width: 600px) {
+  .button {
+    width: 100%;
+    min-width: 0;
+  }
+}

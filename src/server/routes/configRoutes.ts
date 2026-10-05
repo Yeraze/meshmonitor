@@ -19,6 +19,7 @@ import { resolveSourceConnectionConfig } from '../utils/resolveSourceConnectionC
 import { isValidModuleConfigType } from '../constants/moduleConfig.js';
 import { validateMeshBeaconConfigPayload } from '../constants/meshtastic.js';
 import { normalizeTakConfig, validateTakConfigPayload } from '../../utils/takConfig.js';
+import { validateStatusMessageConfigPayload } from '../../utils/statusMessage.js';
 import { getEnvironmentConfig } from '../config/environment.js';
 import { mayViewSourceEndpoint } from '../utils/sourceConfigRedaction.js';
 import { fail } from '../utils/apiResponse.js';
@@ -273,7 +274,13 @@ router.post('/module/request', requirePermission('configuration', 'write'), requ
 // Generic module config endpoint - handles extnotif, storeforward, rangetest, cannedmsg, audio,
 // remotehardware, detectionsensor, paxcounter, serial, ambientlighting, statusmessage, trafficmanagement,
 // meshbeacon, tak
-router.post('/module/:moduleType', requirePermission('configuration', 'write'), requireMeshtasticDeviceSource('body'), async (req, res) => {
+//
+// The permission is checked against the body's sourceId (#5616). Without
+// `sourceIdFrom`, `configuration` is checked as a union across sources, so a
+// user who may write source A's configuration could write source B's module
+// config by naming B in the body. A request with no sourceId keeps the old
+// union check (the legacy single-source path).
+router.post('/module/:moduleType', requirePermission('configuration', 'write', { sourceIdFrom: 'body' }), requireMeshtasticDeviceSource('body'), async (req, res) => {
   try {
     const { moduleType } = req.params;
     const { sourceId: cfgModSourceId, ...config } = req.body;
@@ -294,6 +301,17 @@ router.post('/module/:moduleType', requirePermission('configuration', 'write'), 
       const meshBeaconError = validateMeshBeaconConfigPayload(config);
       if (meshBeaconError) {
         return fail(res, 400, 'INVALID_MESHBEACON_CONFIG', meshBeaconError);
+      }
+    }
+
+    // Same failure shape for the Status Message text (#5616): node_status is a
+    // 80-byte nanopb buffer that holds 79 bytes of text. A longer string makes
+    // the node drop the whole admin message, so the status never saves and
+    // nothing says why. Counted in UTF-8 bytes: emoji take 4 or more each.
+    if (moduleType === 'statusmessage') {
+      const statusMessageError = validateStatusMessageConfigPayload(config);
+      if (statusMessageError) {
+        return fail(res, 400, 'INVALID_STATUSMESSAGE_CONFIG', statusMessageError);
       }
     }
 

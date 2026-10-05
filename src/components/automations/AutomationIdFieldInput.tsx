@@ -7,18 +7,21 @@
  */
 import { useState } from 'react';
 import TokenTextField from './TokenTextField';
+import type { StepTokenScope } from './tokenHints';
 import styles from './AutomationIdFieldInput.module.css';
 
 export interface AutomationOption { id: string; name: string; enabled?: boolean; }
 
 const CUSTOM = '__custom__';
 
-export default function AutomationIdFieldInput({ value, onChange, automations, triggerType, variableNames }: {
+export default function AutomationIdFieldInput({ value, onChange, automations, triggerType, variableNames, steps }: {
   value: unknown;
   onChange: (v: unknown) => void;
   automations: AutomationOption[];
   triggerType: string;
   variableNames: string[];
+  /** Run outputs this block can read through `{{ steps.* }}` (#5636). */
+  steps?: StepTokenScope;
 }) {
   const current = typeof value === 'string' ? value : '';
   const known = automations.some((a) => a.id === current);
@@ -60,6 +63,7 @@ export default function AutomationIdFieldInput({ value, onChange, automations, t
             placeholder="automation id, or {{ var.targetAutomation }}"
             triggerType={triggerType}
             variableNames={variableNames}
+            steps={steps}
             onChange={onChange}
           />
           {current !== '' && !current.includes('{{') && !known && automations.length > 0 && (
