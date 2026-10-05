@@ -6,7 +6,7 @@
  * all run for real. Nothing here transmits: there is no serial port.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { MeshCoreManager, MeshCoreDeviceType, type MeshCoreContact, type MeshCoreMessage } from './meshcoreManager.js';
+import { MeshCoreManager, MeshCoreDeviceType, ConnectionType, type MeshCoreContact, type MeshCoreMessage } from './meshcoreManager.js';
 import databaseService from '../services/database.js';
 import meshcorePacketLogService from './services/meshcorePacketLogService.js';
 import { dataEventEmitter } from './services/dataEventEmitter.js';
@@ -242,6 +242,23 @@ describe('repeater RAW ingest (#5553, #5551)', () => {
         const { m } = repeater();
         expect((await m.getContactsForView()).find((c) => c.publicKey === SELF_KEY)).toBeUndefined();
         await databaseService.meshcore.deleteNode(SELF_KEY, REP);
+      });
+
+      it('a disconnected Repeater still lists its stored nodes', async () => {
+        // disconnect() resets deviceType to UNKNOWN; the source config still
+        // says Repeater, and that must be enough.
+        const key = '54'.repeat(32);
+        await databaseService.meshcore.upsertNode({ publicKey: key, name: 'Kept', advType: 2 }, REP);
+        const m = new MeshCoreManager(REP);
+        const i = m as unknown as Internals & { config: unknown };
+        i.deviceType = MeshCoreDeviceType.UNKNOWN;
+        i.config = { connectionType: ConnectionType.SERIAL, firmwareType: 'repeater' };
+        expect((await m.getContactsForView()).find((c) => c.publicKey === key)).toMatchObject({ advName: 'Kept' });
+
+        // The same state on a Companion config reads the (empty) memory map.
+        i.config = { connectionType: ConnectionType.SERIAL, firmwareType: 'companion' };
+        expect(await m.getContactsForView()).toEqual([]);
+        await databaseService.meshcore.deleteNode(key, REP);
       });
 
       it('a companion still answers from its in-memory map', async () => {
