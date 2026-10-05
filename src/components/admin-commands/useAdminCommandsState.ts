@@ -182,6 +182,12 @@ export interface StatusMessageConfigState {
 // Protobufs commit d4f7ddb1 removed the nine bool toggles and
 // position_precision_bits and reserved their tags; every knob left is a uint32
 // that the firmware treats as enabled when non-zero (#5123).
+/** TAK team colour + member role (#5613), firmware 2.8.0+. */
+export interface TAKConfigState {
+  team: number;
+  role: number;
+}
+
 export interface TrafficManagementConfigState {
   positionMinIntervalSecs: number;
   nodeinfoDirectResponseMaxHops: number;
@@ -440,6 +446,7 @@ export interface AdminCommandsState {
   telemetry: TelemetryConfigState;
   statusMessage: StatusMessageConfigState;
   trafficManagement: TrafficManagementConfigState;
+  tak: TAKConfigState;
   meshBeacon: MeshBeaconConfigState;
 }
 
@@ -458,6 +465,7 @@ type AdminCommandsAction =
   | { type: 'SET_TELEMETRY_CONFIG'; payload: Partial<TelemetryConfigState> }
   | { type: 'SET_STATUSMESSAGE_CONFIG'; payload: Partial<StatusMessageConfigState> }
   | { type: 'SET_TRAFFICMANAGEMENT_CONFIG'; payload: Partial<TrafficManagementConfigState> }
+  | { type: 'SET_TAK_CONFIG'; payload: Partial<TAKConfigState> }
   | { type: 'SET_MESHBEACON_CONFIG'; payload: Partial<MeshBeaconConfigState> }
   | { type: 'SET_ADMIN_KEY'; payload: { index: number; value: string } }
   | { type: 'ADD_ADMIN_KEY' }
@@ -597,6 +605,10 @@ const initialState: AdminCommandsState = {
     rateLimitMaxPackets: 0,
     unknownPacketThreshold: 0,
   },
+  tak: {
+    team: 0,
+    role: 0,
+  },
   meshBeacon: {
     listenEnabled: false,
     broadcastEnabled: false,
@@ -680,6 +692,11 @@ function adminCommandsReducer(state: AdminCommandsState, action: AdminCommandsAc
       return {
         ...state,
         trafficManagement: { ...state.trafficManagement, ...action.payload },
+      };
+    case 'SET_TAK_CONFIG':
+      return {
+        ...state,
+        tak: { ...state.tak, ...action.payload },
       };
     case 'SET_MESHBEACON_CONFIG':
       return {
@@ -869,6 +886,11 @@ export function useAdminCommandsState() {
     dispatch({ type: 'SET_TRAFFICMANAGEMENT_CONFIG', payload: config });
   }, []);
 
+  // TAK config actions (firmware 2.8+, #5613)
+  const setTAKConfig = useCallback((config: Partial<TAKConfigState>) => {
+    dispatch({ type: 'SET_TAK_CONFIG', payload: config });
+  }, []);
+
   // MeshBeacon config actions (firmware 2.8+, #3854)
   const setMeshBeaconConfig = useCallback((config: Partial<MeshBeaconConfigState>) => {
     dispatch({ type: 'SET_MESHBEACON_CONFIG', payload: config });
@@ -910,6 +932,8 @@ export function useAdminCommandsState() {
     setStatusMessageConfig,
     // TrafficManagement
     setTrafficManagementConfig,
+    // TAK
+    setTAKConfig,
     // MeshBeacon
     setMeshBeaconConfig,
     // Reset

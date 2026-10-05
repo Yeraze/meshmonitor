@@ -1,0 +1,22 @@
+/* TAK team + role section (#5613). Also used by its Admin Commands copy. */
+
+.unsupported {
+  margin-bottom: 1rem;
+  padding: 1rem;
+  border-radius: var(--radius-md);
+  background-color: var(--color-surface);
+  color: var(--color-text-subtle);
+  font-style: italic;
+}
+
+.dimmed {
+  opacity: 0.4;
+  pointer-events: none;
+}
+
+.note {
+  margin: 0 0 0.75rem;
+  color: var(--color-text-subtle);
+  font-size: 0.9rem;
+  line-height: 1.4;
+}

@@ -27,6 +27,10 @@ export const EXCLUDED_MODULE_BITS = {
   paxcounter: 0x1000,
   bluetooth: 0x2000,
   network: 0x4000,
+  // TAK_CONFIG (#5613). The enum's 0x8000 (STATUSMESSAGE), 0x10000
+  // (TRAFFICMANAGEMENT) and 0x40000 (MESHBEACON) are not read here: those
+  // sections are gated on firmware version alone.
+  tak: 0x20000,
 } as const;
 
 export type ExcludedModuleKey = keyof typeof EXCLUDED_MODULE_BITS;

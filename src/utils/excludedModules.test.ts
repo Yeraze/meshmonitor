@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
+  EXCLUDED_MODULE_BITS,
   EXCLUDED_MODULE_KEYS,
   isModuleExcluded,
   moduleAvailabilityFromMask,
@@ -55,7 +56,18 @@ describe('moduleAvailabilityFromMask (#5065)', () => {
     expect(Object.values(availability).every(Boolean)).toBe(true);
   });
 
-  it('covers all 15 bits from the protobuf enum', () => {
-    expect(EXCLUDED_MODULE_KEYS).toHaveLength(15);
+  it('covers the 16 bits MeshMonitor has a section for', () => {
+    // The first 15 enum bits plus TAK_CONFIG (#5613). The enum also has
+    // STATUSMESSAGE (0x8000), TRAFFICMANAGEMENT (0x10000) and MESHBEACON
+    // (0x40000); those sections are still gated on firmware version alone.
+    expect(EXCLUDED_MODULE_KEYS).toHaveLength(16);
+  });
+
+  it('tak is the TAK_CONFIG bit, 0x20000', () => {
+    expect(EXCLUDED_MODULE_BITS.tak).toBe(0x20000);
+    expect(isModuleExcluded(0x20000, 'tak')).toBe(true);
+    expect(isModuleExcluded(0x10000 | 0x40000, 'tak')).toBe(false);
+    expect(moduleAvailabilityFromMask(0x20000).tak).toBe(false);
+    expect(moduleAvailabilityFromMask(undefined).tak).toBe(true);
   });
 });

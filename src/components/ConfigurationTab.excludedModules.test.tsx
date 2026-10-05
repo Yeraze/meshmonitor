@@ -13,7 +13,7 @@
  */
 import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -93,6 +93,21 @@ vi.mock('./configuration/PaxcounterConfigSection', async () => {
 vi.mock('./configuration/StatusMessageConfigSection', () => ({ default: () => null }));
 vi.mock('./configuration/TrafficManagementConfigSection', () => ({ default: () => null }));
 vi.mock('./configuration/MeshBeaconConfigSection', () => ({ default: () => null }));
+// TAK (#5613): header, notice, then a marker that shows the firmware gate.
+vi.mock('./configuration/TAKConfigSection', async () => {
+  const { default: ModuleAvailabilityNotice } = await vi.importActual<
+    typeof import('./configuration/ModuleAvailabilityNotice')
+  >('./configuration/ModuleAvailabilityNotice');
+  return {
+    default: ({ isDisabled }: { isDisabled: boolean }) => (
+      <div className="settings-section">
+        <h3>TAK</h3>
+        <ModuleAvailabilityNotice />
+        <div data-testid="tak-controls" data-disabled={String(isDisabled)} />
+      </div>
+    ),
+  };
+});
 vi.mock('./configuration/SerialConfigSection', () => ({ default: () => null }));
 vi.mock('./configuration/AmbientLightingConfigSection', () => ({ default: () => null }));
 vi.mock('./configuration/SecurityConfigSection', () => ({ default: () => null }));
@@ -147,6 +162,41 @@ describe('ConfigurationTab — excluded module gating (#5065)', () => {
  * and sections joined flush. The gap now lives on the wrappers' container.
  * jsdom does not apply stylesheets, so this pins the class hook and the rule.
  */
+describe('ConfigurationTab — TAK section gating (#5613)', () => {
+  it('firmware 2.8.0+ and not excluded: the section is enabled, no notice', async () => {
+    h.currentConfig = { supportedModules: { tak: true, takConfig: true } };
+    render(<ConfigurationTab nodes={[]} channels={[]} />);
+
+    const controls = await screen.findByTestId('tak-controls');
+    await waitFor(() => expect(controls.getAttribute('data-disabled')).toBe('false'));
+    expect(document.getElementById('config-tak')!.contains(controls)).toBe(true);
+    expect(screen.queryByText(NOTICE)).not.toBeInTheDocument();
+  });
+
+  it('older firmware (takConfig false): the section is disabled', async () => {
+    h.currentConfig = { supportedModules: { tak: true, takConfig: false } };
+    render(<ConfigurationTab nodes={[]} channels={[]} />);
+
+    const controls = await screen.findByTestId('tak-controls');
+    expect(controls.getAttribute('data-disabled')).toBe('true');
+  });
+
+  it('a server that predates the flag reads as unsupported, not as editable', async () => {
+    h.currentConfig = { supportedModules: {} };
+    render(<ConfigurationTab nodes={[]} channels={[]} />);
+
+    expect((await screen.findByTestId('tak-controls')).getAttribute('data-disabled')).toBe('true');
+  });
+
+  it('a build that excluded TAK_CONFIG shows the build notice inside the TAK wrapper', async () => {
+    h.currentConfig = { supportedModules: { tak: false, takConfig: true } };
+    render(<ConfigurationTab nodes={[]} channels={[]} />);
+
+    const notice = await screen.findByText(NOTICE);
+    expect(document.getElementById('config-tak')!.contains(notice)).toBe(true);
+  });
+});
+
 describe('ConfigurationTab — gap between config sections', () => {
   it('spaces the section wrappers from a class on their container', async () => {
     h.currentConfig = { supportedModules: { paxcounter: false } };

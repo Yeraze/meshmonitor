@@ -49,6 +49,7 @@ const LOCAL_MODULE_CONFIG_TYPE_KEYS: { [key: number]: string } = {
   9: 'neighborInfo',
   13: 'statusmessage',
   14: 'trafficManagement',
+  15: 'tak',
   16: 'meshBeacon'
 };
 
@@ -738,7 +739,8 @@ export class RemoteAdminService {
       12, // PAXCOUNTER_CONFIG
       13, // STATUSMESSAGE_CONFIG
       14, // TRAFFICMANAGEMENT_CONFIG
-      // 15 (TAK_CONFIG) is skipped — MeshMonitor surfaces no TAK module UI.
+      15, // TAK_CONFIG (firmware 2.8+, #5613). As with 16, older firmware
+          // never answers; the cost there is one unanswered local packet.
       16  // MESHBEACON_CONFIG (firmware 2.8+, #3854). Pre-2.8 firmware simply
           // never answers this request; the send is fire-and-forget, so the only
           // cost on older devices is one unanswered packet.

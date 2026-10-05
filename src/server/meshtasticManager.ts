@@ -1,5 +1,6 @@
 import databaseService, { type DbMessage } from '../services/database.js';
 import { moduleAvailabilityFromMask, readExcludedModules, type ExcludedModuleKey } from '../utils/excludedModules.js';
+import { normalizeTakConfig } from '../utils/takConfig.js';
 import { buildContactRow, buildContactRowV2 } from './services/atakContactService.js';
 import meshtasticProtobufService, { formatTakPreview, formatTakV2Preview } from './meshtasticProtobufService.js';
 import { takV2Variant } from './takV2Decoder.js';
@@ -24,6 +25,8 @@ type SupportedModules = Record<ExcludedModuleKey, boolean> & {
   statusmessage: boolean;
   trafficManagement: boolean;
   meshBeacon: boolean;
+  /** Firmware carries `ModuleConfig.tak` (2.8.0+). `tak` says the build kept it. */
+  takConfig: boolean;
   /** Legacy alias of `rangetest`, read by the Config tab since #5041. */
   rangeTest: boolean;
 };
@@ -6010,6 +6013,16 @@ class MeshtasticManager implements ISourceManager {
       logger.debug(`[CONFIG] Converted network config IP addresses to strings`);
     }
 
+    // TAK team + role (#5613). Both are enums whose default (0) never reaches
+    // the wire, and a decoded message would serialise them as NAMES through
+    // res.json(). Hand the UI plain numbers.
+    if (moduleConfig.tak) {
+      moduleConfig = {
+        ...moduleConfig,
+        tak: normalizeTakConfig(moduleConfig.tak)
+      };
+    }
+
     // Apply Proto3 defaults to StatusMessage module config
     if (moduleConfig.statusmessage) {
       const statusMessageConfigWithDefaults = {
@@ -6067,6 +6080,7 @@ class MeshtasticManager implements ISourceManager {
         statusmessage: this.supportsStatusMessage(),
         trafficManagement: this.supportsTrafficManagement(),
         meshBeacon: this.supportsMeshBeacon(),
+        takConfig: this.supportsTakConfig(),
         // Range Test has two reasons to be unavailable, and they get separate
         // keys because the UI explains them differently: `rangetest` (from the
         // bitmask spread above) means this build left the module out, while
@@ -14406,6 +14420,18 @@ class MeshtasticManager implements ISourceManager {
    * advertise the module as editable.
    */
   supportsMeshBeacon(): boolean {
+    return this.firmwareVersionAtLeast(2, 8, 0);
+  }
+
+  /**
+   * Check if the local device firmware carries the TAK module config (#5613).
+   *
+   * `ModuleConfig.tak` (oneof field 16, TAK_CONFIG module type 15) is marked
+   * `since_firmware: "2.8.0"` in module_config.proto. Older firmware decodes
+   * the set-config admin message and drops it, so a save would look fine and
+   * not stick.
+   */
+  supportsTakConfig(): boolean {
     return this.firmwareVersionAtLeast(2, 8, 0);
   }
 

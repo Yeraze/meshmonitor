@@ -18,6 +18,7 @@ import { requireMeshtasticDeviceSource } from '../utils/requireMeshtasticDeviceS
 import { resolveSourceConnectionConfig } from '../utils/resolveSourceConnectionConfig.js';
 import { isValidModuleConfigType } from '../constants/moduleConfig.js';
 import { validateMeshBeaconConfigPayload } from '../constants/meshtastic.js';
+import { normalizeTakConfig, validateTakConfigPayload } from '../../utils/takConfig.js';
 import { validateStatusMessageConfigPayload } from '../../utils/statusMessage.js';
 import { getEnvironmentConfig } from '../config/environment.js';
 import { mayViewSourceEndpoint } from '../utils/sourceConfigRedaction.js';
@@ -271,7 +272,8 @@ router.post('/module/request', requirePermission('configuration', 'write'), requ
 });
 
 // Generic module config endpoint - handles extnotif, storeforward, rangetest, cannedmsg, audio,
-// remotehardware, detectionsensor, paxcounter, serial, ambientlighting, statusmessage, trafficmanagement
+// remotehardware, detectionsensor, paxcounter, serial, ambientlighting, statusmessage, trafficmanagement,
+// meshbeacon, tak
 //
 // The permission is checked against the body's sourceId (#5616). Without
 // `sourceIdFrom`, `configuration` is checked as a union across sources, so a
@@ -287,8 +289,7 @@ router.post('/module/:moduleType', requirePermission('configuration', 'write', {
     // Validate moduleType against the shared allow-list (kept in sync with
     // protobufService.createSetModuleConfigMessageGeneric's configFieldMap). See #3464.
     if (!isValidModuleConfigType(moduleType)) {
-      res.status(400).json({ error: `Invalid module type: ${moduleType}` });
-      return;
+      return fail(res, 400, 'INVALID_MODULE_TYPE', `Invalid module type: ${moduleType}`);
     }
 
     // MeshBeacon's nanopb limits fail silently on the device: an over-long
@@ -314,11 +315,22 @@ router.post('/module/:moduleType', requirePermission('configuration', 'write', {
       }
     }
 
+    // TAK team + role (#5613): refuse a value outside the two enums, then send
+    // exactly the two fields as numbers.
+    if (moduleType === 'tak') {
+      const takError = validateTakConfigPayload(config);
+      if (takError) {
+        return fail(res, 400, 'INVALID_TAK_CONFIG', takError);
+      }
+      await cfgModManager.setGenericModuleConfig(moduleType, normalizeTakConfig(config));
+      return res.json({ success: true, message: `${moduleType} configuration sent` });
+    }
+
     await cfgModManager.setGenericModuleConfig(moduleType, config);
     res.json({ success: true, message: `${moduleType} configuration sent` });
   } catch (error) {
     logger.error(`Error setting ${req.params.moduleType} config:`, error);
-    res.status(500).json({ error: `Failed to set ${req.params.moduleType} configuration` });
+    return fail(res, 500, 'MODULE_CONFIG_FAILED', `Failed to set ${req.params.moduleType} configuration`);
   }
 });
 
