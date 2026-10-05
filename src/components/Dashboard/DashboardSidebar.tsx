@@ -962,6 +962,32 @@ const DashboardSidebar: React.FC<DashboardSidebarProps> = ({
                   </span>
                 );
               })()}
+              {(() => {
+                // Gateway publishers that stopped after repeated rejected
+                // logins. The bridge itself may be connected, so this is a
+                // badge of its own rather than the "Login rejected" state.
+                if (!isMqttBridge) return null;
+                const stoppedCount = status?.authStoppedGatewayCount ?? 0;
+                if (stoppedCount <= 0) return null;
+                const label = t('source.gateways_rejected', {
+                  defaultValue: '{{count}} gateways rejected',
+                  count: stoppedCount,
+                });
+                // Ids only reach viewers who may read the source's nodes.
+                const ids = status?.authStoppedGateways ?? [];
+                const title = [t('source.gateways_rejected_help'), ...ids].join('\n');
+                return (
+                  <span
+                    className={styles.gatewayStoppedBadge}
+                    data-testid="gateway-stopped-badge"
+                    title={title}
+                    aria-label={`${label}. ${title}`}
+                  >
+                    <UiIcon name="alert" size={12} />
+                    {label}
+                  </span>
+                );
+              })()}
             </div>
 
             <div className="dashboard-source-card-actions">
@@ -989,10 +1015,15 @@ const DashboardSidebar: React.FC<DashboardSidebarProps> = ({
               {!isUnified && isAdmin && source.enabled &&
                 // autoConnect off, or a source that stopped itself after
                 // repeated rejected logins (#5596) — both wait for a click.
-                ((source.config as any)?.autoConnect === false || status?.authStopped === true) &&
-                !status?.connected &&
+                // A bridge whose gateway publishers stopped gets the button
+                // even while its subscriber is connected: the click restarts
+                // only the stopped gateways.
+                ((((source.config as any)?.autoConnect === false || status?.authStopped === true) &&
+                  !status?.connected) ||
+                  (status?.authStoppedGatewayCount ?? 0) > 0) &&
                 onConnectSource && (() => {
                   const pending = connectingIds?.has(source.id) === true;
+                  const gatewaysOnly = status?.connected === true;
                   return (
                     <button
                       className="dashboard-open-btn"
@@ -1004,10 +1035,15 @@ const DashboardSidebar: React.FC<DashboardSidebarProps> = ({
                       title={
                         (status?.authStopped
                           ? (status as { permissionMessage?: string | null }).permissionMessage
-                          : null) ?? t('source.connect_help')
+                          : null) ??
+                        (gatewaysOnly ? t('source.retry_gateways_help') : t('source.connect_help'))
                       }
                     >
-                      {pending ? t('source.connecting') : t('source.connect')}
+                      {pending
+                        ? t('source.connecting')
+                        : gatewaysOnly
+                          ? t('source.retry_gateways')
+                          : t('source.connect')}
                     </button>
                   );
                 })()}

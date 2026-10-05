@@ -59,11 +59,19 @@ export interface SourceStatus {
    */
   nodeNum?: number;
   /**
-   * True when a MeshCore MQTT ingest source gave up reconnecting because the
-   * broker kept rejecting its login (#5596). The reason text arrives as
-   * `permissionMessage`. A config save or a manual connect clears it.
+   * True when a MeshCore MQTT ingest source, or an MQTT bridge's subscriber,
+   * gave up reconnecting because the broker kept rejecting its login (#5596).
+   * The reason text arrives as `permissionMessage`. A config save or a manual
+   * connect clears it.
    */
   authStopped?: boolean;
+  /**
+   * MQTT bridge only: how many per-gateway publishers gave up the same way.
+   * The bridge itself can still be connected.
+   */
+  authStoppedGatewayCount?: number;
+  /** Their `!<8-hex>` ids. Present only when the viewer may read the source's nodes. */
+  authStoppedGateways?: string[];
   /** Total nodes heard by this source — populated by GET /api/sources/:id/status. */
   nodeCount?: number;
   /**

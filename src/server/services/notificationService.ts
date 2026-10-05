@@ -258,6 +258,10 @@ class NotificationService {
   /**
    * Send notification for successful traceroute (bypasses normal filtering)
    * Only sends if user has notifyOnTraceroute enabled
+   *
+   * `fromNodeId` is the node that ASKED and `toNodeId` the node that answered,
+   * so the title reads the way the trace ran. The caller holds a reply
+   * packet, whose own from/to are the other way round.
    */
   public async notifyTraceroute(
     fromNodeId: string,

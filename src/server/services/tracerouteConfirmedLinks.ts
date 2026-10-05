@@ -14,22 +14,17 @@
  *
  * ## Which column is "us"
  *
- * Either. The table holds the same completed run in two orientations,
- * depending on which writer made the row:
- *
- *  - We sent the request through MeshMonitor: `recordTracerouteRequest` wrote
- *    a pending row `{ from: us, to: destination }`, and the reply UPDATED that
- *    row in place (route, routeBack, SNR). `from`/`to` are not flipped.
- *  - The reply found no pending row (the request came from a phone app or the
- *    Virtual Node, or the pending row had timed out): `insertTraceroute` wrote
- *    the reply packet as it arrived, `{ from: destination, to: us }`.
+ * The table holds the same completed run in two orientations, depending on
+ * which writer made the row; `src/utils/tracerouteOrientation.ts` has the
+ * full account. The repository hands rows out requester-first, so a run we
+ * sent arrives here with our radio in `from`. `confirmedLinkFromTraceroute`
+ * still accepts our radio at either end, so it also gives the right answer
+ * for a raw stored row.
  *
  * `route` / `routeBack` / `snrTowards` / `snrBack` mean the same thing in
- * both: `route` runs from the requester toward the responder. So our radio is
- * whichever endpoint equals the source's local node, and the other endpoint
- * is the destination.
+ * both: `route` runs from the requester toward the responder.
  *
- * One more row has our radio in `from`: our own outgoing REPLY when another
+ * One more row has our radio at an end: our own outgoing REPLY when another
  * node traceroutes us. It is recorded before any relay has filled in the
  * return leg, so it has no return path and fails the "completed" test below.
  * A run where we were the destination can therefore never confirm a link.
@@ -118,8 +113,9 @@ export function confirmedLinkFromTraceroute(
   const from = Number(row.fromNodeNum);
   const to = Number(row.toNodeNum);
   if (!Number.isFinite(from) || !Number.isFinite(to) || from === to) return null;
-  // Our radio is one endpoint; the row can be stored either way round (see
-  // "Which column is us" in the module doc). The other end is the destination.
+  // Our radio is one endpoint. An oriented row has it in `from`; a raw row
+  // can be either way round (see "Which column is us" in the module doc).
+  // The other end is the destination.
   let responder: number;
   if (from === localNodeNum) responder = to;
   else if (to === localNodeNum) responder = from;

@@ -77,8 +77,11 @@ export function formatNodeName(nodeNum: number, nodes: DeviceInfo[]): string {
  * Formats a traceroute path with node names, SNR values, and optional distance calculation.
  *
  * **IMPORTANT DATA MODEL:**
- * - `fromNum` = Responder/remote node (where the traceroute response came from)
- * - `toNum` = Requester/local node (where the traceroute was initiated)
+ * - `fromNum` = the node this leg STARTS at, `toNum` = the node it ends at.
+ *   Traceroute rows come from the API requester-first (`fromNodeNum` asked,
+ *   `toNodeNum` answered; see `src/utils/tracerouteOrientation.ts`), so the
+ *   forward leg starts at `tr.fromNodeNum` and the return leg at
+ *   `tr.toNodeNum`, as below.
  * - `route` = Array of intermediate node numbers
  * - `snr` = Array of SNR values corresponding to each node in the path
  *

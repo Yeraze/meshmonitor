@@ -42,12 +42,21 @@ describe('GET /api/traceroutes/explorer', () => {
     opts: { from?: number; to?: number; route?: string | null; agoMs?: number; channel?: number; packetId?: number } = {},
   ) => {
     const ts = Date.now() - (opts.agoMs ?? 0);
+    // `from` asked, `to` answered. An answered run is stored the way a reply
+    // with no pending request is (`from` = the node that answered); an
+    // unanswered one (route null) is a pending row, which is requester-first.
+    // The route under test must serve both requester-first.
+    const requester = opts.from ?? N_FROM;
+    const responder = opts.to ?? N_TO;
+    const answered = opts.route !== null;
+    const storedFrom = answered ? responder : requester;
+    const storedTo = answered ? requester : responder;
     await harness.db.traceroutes.insertTraceroute(
       {
-        fromNodeNum: opts.from ?? N_FROM,
-        toNodeNum: opts.to ?? N_TO,
-        fromNodeId: nodeIdFor(opts.from ?? N_FROM),
-        toNodeId: nodeIdFor(opts.to ?? N_TO),
+        fromNodeNum: storedFrom,
+        toNodeNum: storedTo,
+        fromNodeId: nodeIdFor(storedFrom),
+        toNodeId: nodeIdFor(storedTo),
         route: opts.route === undefined ? JSON.stringify([N_HOP]) : opts.route,
         routeBack: opts.route === undefined ? JSON.stringify([N_HOP]) : null,
         snrTowards: opts.route === undefined ? '[24,-12]' : null,
@@ -178,7 +187,8 @@ describe('GET /api/traceroutes/explorer', () => {
     const ts = Date.now();
     await harness.db.traceroutes.insertTraceroute(
       {
-        fromNodeNum: N_FROM, toNodeNum: N_TO, fromNodeId: nodeIdFor(N_FROM), toNodeId: nodeIdFor(N_TO),
+        // Reply-packet form: N_TO answered N_FROM.
+        fromNodeNum: N_TO, toNodeNum: N_FROM, fromNodeId: nodeIdFor(N_TO), toNodeId: nodeIdFor(N_FROM),
         route: '[]', routeBack: '[]', snrTowards: '[20]', snrBack: '[16]', channel: null,
         packetId: 71, timestamp: ts, createdAt: ts,
       },

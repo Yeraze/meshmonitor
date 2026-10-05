@@ -39,6 +39,7 @@ import {
 } from './utils/schedulerInterval.js';
 import { transportColumnForPacket, classifyNodeTransport } from '../utils/nodeTransport.js';
 import { segmentTransportMechanism } from '../utils/tracerouteTransport.js';
+import { replyPacketToRequesterFirst } from '../utils/tracerouteOrientation.js';
 import {
   parseFirmwareVersion as parseFirmwareVersionShared,
   isParsedFirmwareAtLeast,
@@ -9069,11 +9070,17 @@ class MeshtasticManager implements ISourceManager {
         }
       }
 
-      // Save to traceroutes table (save raw data including broadcast addresses)
-      // Store traceroute data exactly as Meshtastic provides it (no transformations)
-      // fromNodeNum = responder (remote), toNodeNum = requester (local)
-      // route = intermediate hops from requester toward responder
-      // routeBack = intermediate hops from responder toward requester
+      // Save to traceroutes table (save raw data including broadcast addresses).
+      // This record is in REPLY-PACKET form: fromNodeNum = the node that
+      // answered, toNodeNum = the node that asked.
+      //   route     = intermediate hops from requester toward responder
+      //   routeBack = intermediate hops from responder toward requester
+      // That is NOT how every stored row reads. If we sent the request, a
+      // pending row { from: us, to: destination } already exists and
+      // insertTracerouteAsync fills it in WITHOUT flipping from/to, so the
+      // same run ends up requester-first on disk. Readers never see either
+      // form raw: the repository hands out requester-first rows. See
+      // src/utils/tracerouteOrientation.ts.
       const tracerouteRecord = {
         fromNodeNum: fromNum,
         toNodeNum: toNum,
@@ -9116,8 +9123,10 @@ class MeshtasticManager implements ISourceManager {
         packetId: meshPacket.id ? Number(meshPacket.id) : undefined,
       }, this.sourceId);
 
-      // Emit WebSocket event for traceroute completion
-      dataEventEmitter.emitTracerouteComplete(tracerouteRecord as any, this.sourceId);
+      // Emit WebSocket event for traceroute completion. The client merges
+      // this payload straight into the rows it got from the API, which are
+      // requester-first, so flip the reply-packet record to match.
+      dataEventEmitter.emitTracerouteComplete(replyPacketToRequesterFirst(tracerouteRecord) as any, this.sourceId);
 
       logger.debug(`💾 Saved traceroute record to traceroutes table`);
 
@@ -9162,9 +9171,10 @@ class MeshtasticManager implements ISourceManager {
         logger.debug(`🔍 Autoresponder traceroute result for ${fromNodeId} replied to !${pending.replyToNodeNum.toString(16).padStart(8, '0')}`);
       }
 
-      // Send notification for successful traceroute
+      // Send notification for successful traceroute. The title reads
+      // "asker → answerer"; in this reply packet that is to → from.
       this.getSourceName()
-        .then(sourceName => notificationService.notifyTraceroute(fromNodeId, toNodeId, routeText, this.sourceId, sourceName))
+        .then(sourceName => notificationService.notifyTraceroute(toNodeId, fromNodeId, routeText, this.sourceId, sourceName))
         .catch(err => logger.error('Failed to send traceroute notification:', err));
 
       // Calculate and store route segment distances, and estimate positions for nodes without GPS.

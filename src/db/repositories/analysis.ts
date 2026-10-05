@@ -22,6 +22,8 @@ import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import type { MySql2Database } from 'drizzle-orm/mysql2';
 import { and, desc, gte, inArray, isNotNull, lt, max, or, eq } from 'drizzle-orm';
 import { isBogusPosition } from '../../utils/nullIsland.js';
+import { buildActiveSchema } from '../activeSchema.js';
+import { orientTracerouteRows } from './tracerouteRowOrientation.js';
 import { reachTransportClass } from '../../utils/tracerouteTransport.js';
 import type { NodeTransportClass } from '../../utils/nodeTransport.js';
 import {
@@ -597,7 +599,10 @@ export class AnalysisRepository {
       .limit(fetchLimit);
     /* eslint-enable @typescript-eslint/no-explicit-any */
 
-    const mapped: TracerouteRow[] = rows.map((r) => ({
+    // Requester-first, like every other reader of this table (see
+    // `src/utils/tracerouteOrientation.ts`). The row has no node-id columns,
+    // so only the two numbers move.
+    const raw: TracerouteRow[] = rows.map((r) => ({
       id: Number(r.id),
       fromNodeNum: Number(r.fromNodeNum),
       toNodeNum: Number(r.toNodeNum),
@@ -610,6 +615,7 @@ export class AnalysisRepository {
       createdAt: Number(r.createdAt),
       packetId: r.packetId == null ? null : Number(r.packetId),
     }));
+    const mapped = await orientTracerouteRows(this.db, buildActiveSchema(this.dbType).settings, raw);
 
     const hasMore = mapped.length > pageSize;
     const items = mapped.slice(0, pageSize);

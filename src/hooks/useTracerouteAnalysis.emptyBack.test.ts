@@ -64,13 +64,14 @@ function makeParams(overrides: Partial<AnalyzeParams>): AnalyzeParams {
 describe('analyzeTraceroutes — empty routeBack + empty snrBack (issue #3622)', () => {
   it('does NOT draw a direct segment when routeBack=[] and snrBack=[] (unresolved return path)', () => {
     // This represents the "local node response seen before relay nodes populate routeBack":
-    //   fromNodeNum = L (responder/local), toNodeNum = A (requester)
+    //   stored fromNodeNum = L (responder/local), toNodeNum = A (requester);
+    //   served requester-first, so the hook sees from = A, to = L
     //   route = [C] (forward path A→C→L), routeBack = [] (not yet populated)
     //   snrTowards = [raw_snr1, raw_snr2], snrBack = []
     const tr: TracerouteAnalysisInput = {
       id: 1,
-      fromNodeNum: L,
-      toNodeNum: A,
+      fromNodeNum: A,
+      toNodeNum: L,
       sourceId: 's1',
       route: JSON.stringify([C]),
       routeBack: '[]',
@@ -107,13 +108,13 @@ describe('analyzeTraceroutes — empty routeBack + empty snrBack (issue #3622)',
   it('DOES draw a direct segment when routeBack=[] but snrBack has data (genuine direct RF hop)', () => {
     // This is a legitimate single-hop traceroute where the return path is direct
     // but the firmware reports an SNR for that hop.
-    //   fromNodeNum = L, toNodeNum = A
+    //   served requester-first: fromNodeNum = A, toNodeNum = L
     //   route = [], routeBack = []
     //   snrBack = [raw_snr] — confirms an actual RF reception at A
     const tr: TracerouteAnalysisInput = {
       id: 2,
-      fromNodeNum: L,
-      toNodeNum: A,
+      fromNodeNum: A,
+      toNodeNum: L,
       sourceId: 's1',
       route: '[]',
       routeBack: '[]',
@@ -144,8 +145,8 @@ describe('analyzeTraceroutes — empty routeBack + empty snrBack (issue #3622)',
     // its full set of directed segments.
     const tr: TracerouteAnalysisInput = {
       id: 3,
-      fromNodeNum: L,
-      toNodeNum: A,
+      fromNodeNum: A,
+      toNodeNum: L,
       sourceId: 's1',
       route: JSON.stringify([C]),
       routeBack: '[]',
@@ -180,8 +181,8 @@ describe('analyzeTraceroutes — empty routeBack + empty snrBack (issue #3622)',
     // Confirms that once relay nodes populate routeBack, the return path is visible.
     const tr: TracerouteAnalysisInput = {
       id: 4,
-      fromNodeNum: L,
-      toNodeNum: A,
+      fromNodeNum: A,
+      toNodeNum: L,
       sourceId: 's1',
       route: JSON.stringify([C]),
       routeBack: JSON.stringify([C]),  // relay populated the return path

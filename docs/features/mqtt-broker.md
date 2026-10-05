@@ -99,7 +99,7 @@ The field is stored in the bridge's `config.mode` JSON field; omitting it (or st
 | **Can serve as a `mqttLink` client-proxy target?** | Yes | Yes | **Yes** — primary use case |
 | **TLS / WSS?** | Plain TCP only in v1 | `mqtts://` upstream supported | `mqtts://` upstream supported |
 | **Survives a sibling source restart?** | Independent — broker keeps listening if a bridge restarts | Detaches if parent broker stops; reattaches when it comes back | Independent — runs without any sibling |
-| **Status fields on `/api/sources/:id/status`** | `listening`, `clientCount`, `packetsIn`, `packetsIngested`, `packetsDropped`, `lastError` | `upstreamConnected`, `parentBrokerAttached`, `downlinkIn`, `downlinkIngested`, `downlinkRepublished`, `uplinkOut`, downlink/uplink drop counters, `uplinkOkToMqttDrops`, `uplinkAutomationDrops`, `permissionMessage` | Same as attached, but `parentBrokerAttached: false` and `uplinkOut` stays at 0 |
+| **Status fields on `/api/sources/:id/status`** | `listening`, `clientCount`, `packetsIn`, `packetsIngested`, `packetsDropped`, `lastError` | `upstreamConnected`, `parentBrokerAttached`, `downlinkIn`, `downlinkIngested`, `downlinkRepublished`, `uplinkOut`, downlink/uplink drop counters, `uplinkOkToMqttDrops`, `uplinkAutomationDrops`, `uplinkAuthStoppedDrops`, `authStopped`, `authStoppedGatewayCount`, `permissionMessage` | Same as attached, but `parentBrokerAttached: false` and `uplinkOut` stays at 0 |
 | **Required pair?** | Standalone — no bridge required | Requires a sibling `mqtt_broker` | None |
 
 ### Use-case recipes
@@ -410,6 +410,19 @@ Most upstream traffic and most device-publish traffic is encrypted at the channe
 ### Bridge reports `lastError: "Bad username or password"`
 
 The credentials configured on the bridge don't match what the upstream accepts for an MQTT subscriber. For `mqtt.meshtastic.org`, the public subscriber credentials are `meshdev / large4cats` ([Meshtastic public MQTT docs](https://meshtastic.org/docs/configuration/module/mqtt/#default-public-server)). Other community brokers may use uplink-only credentials that don't work for raw MQTT subscribers; check with the operator.
+
+### Bridge shows "Login rejected", or "N gateways rejected"
+
+A rejected login does not fix itself, so a bridge stops retrying it. Each upstream connection counts on its own, and five rejections in a row (CONNACK 4 or 5) stop that connection:
+
+- **The subscriber connection** — the card reads **Login rejected** with a **Connect** button. Intake from the upstream broker halts. Per-gateway publishers that the broker still accepts keep publishing.
+- **One gateway's publisher** (`per_gateway` forwarding) — the card shows **N gateways rejected** and a **Retry** button. The tooltip lists the gateway ids for viewers who may read the source's nodes. Only those gateways stop; the bridge and the other gateways carry on. This is what you see when a broker refuses one Client ID.
+
+A stopped connection drops the uplink packets it would have carried. They are counted (`uplinkAuthStoppedDrops` on the status), never queued, and never sent later.
+
+To start again, fix the credentials or the broker's rules and save the source, or click **Connect** / **Retry**. Either gives each stopped connection five fresh attempts; connections that are working are left alone. A save that changes nothing (a rename, say) does not restart the bridge. A restart of MeshMonitor also gives five fresh attempts: the count is kept in memory, not in the database.
+
+Any other failure — broker down, network drop, TLS error — keeps retrying on the normal backoff (1 second, doubling to 60 seconds) and never stops.
 
 ### Deleting the broker source
 

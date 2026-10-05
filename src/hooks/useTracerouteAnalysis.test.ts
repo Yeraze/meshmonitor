@@ -17,8 +17,10 @@ import {
 } from './useTracerouteAnalysis';
 
 // Node numbers used across the fixtures.
-const REQ = 100; // requester (local) -> stored as toNodeNum
-const RESP = 200; // responder (remote) -> stored as fromNodeNum
+// Rows reach the hook requester-first: the API orients them whichever way
+// round they are stored (src/utils/tracerouteOrientation.ts).
+const REQ = 100; // requester (local) -> served as fromNodeNum
+const RESP = 200; // responder (remote) -> served as toNodeNum
 const MID = 150; // an intermediate hop
 
 // Positions for everyone so segments are renderable.
@@ -57,8 +59,8 @@ function directTrace(
 ): TracerouteAnalysisInput {
   return {
     id,
-    fromNodeNum: RESP,
-    toNodeNum: REQ,
+    fromNodeNum: REQ,
+    toNodeNum: RESP,
     sourceId: 's1',
     route: '[]',
     routeBack: '[]',
@@ -108,8 +110,8 @@ describe('analyzeTraceroutes', () => {
     // route=[MID]: forward path req -> MID -> resp. snrTowards[0]@MID, snrTowards[1]@resp.
     const tr: TracerouteAnalysisInput = {
       id: 2,
-      fromNodeNum: RESP,
-      toNodeNum: REQ,
+      fromNodeNum: REQ,
+      toNodeNum: RESP,
       sourceId: 's1',
       route: JSON.stringify([MID]),
       routeBack: '[]',

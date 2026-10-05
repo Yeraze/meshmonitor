@@ -143,7 +143,9 @@ describe('AnalysisRepository.getTraceroutes', () => {
   it('returns traceroutes for given sources, newest first', async () => {
     const r = await repo.getTraceroutes({ sourceIds: ['src-a'], sinceMs: 0, pageSize: 10 });
     expect(r.items).toHaveLength(1);
-    expect(r.items[0]).toMatchObject({ fromNodeNum: 1, toNodeNum: 2, sourceId: 'src-a' });
+    // Stored { from: 1, to: 2 } on a source with no local radio: a reply
+    // packet, so node 1 answered and node 2 asked. Served requester-first.
+    expect(r.items[0]).toMatchObject({ fromNodeNum: 2, toNodeNum: 1, sourceId: 'src-a' });
     // No packetId was supplied on insert (pre-migration-style row) — must round-trip as null.
     expect(r.items[0].packetId).toBeNull();
     expect(r.hasMore).toBe(false);
@@ -158,9 +160,29 @@ describe('AnalysisRepository.getTraceroutes', () => {
       )
       .run(5, 6, '!00000005', '!00000006', 'src-a', '[]', '[]', '[]', '[]', now + 20, now + 20, 424242);
     const r = await repo.getTraceroutes({ sourceIds: ['src-a'], sinceMs: 0, pageSize: 10 });
-    const withPacketId = r.items.find((i) => i.fromNodeNum === 5);
+    const withPacketId = r.items.find((i) => i.toNodeNum === 5);
     expect(withPacketId).toBeDefined();
     expect(withPacketId?.packetId).toBe(424242);
+  });
+
+  it('serves a run we sent and a reply-only run the same way round (requester first)', async () => {
+    const now = Date.now();
+    // src-b owns node 100. Run A: sent from MeshMonitor, stored { from: us,
+    // to: 200 }. Run B: the same path asked from a phone app, stored as the
+    // reply arrived, { from: 200, to: us }.
+    sqlite.prepare('INSERT INTO settings (key, value, createdAt, updatedAt) VALUES (?,?,?,?)')
+      .run('localNodeNum_src-b', '100', now, now);
+    const insert = sqlite.prepare(
+      'INSERT INTO traceroutes (fromNodeNum, toNodeNum, fromNodeId, toNodeId, sourceId, route, routeBack, snrTowards, snrBack, timestamp, createdAt, packetId) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)',
+    );
+    insert.run(100, 200, '!00000064', '!000000c8', 'src-b', '[150]', '[160]', '[8,12]', '[16,20]', now + 1, now, 1);
+    insert.run(200, 100, '!000000c8', '!00000064', 'src-b', '[150]', '[160]', '[8,12]', '[16,20]', now + 2, now + 2, 2);
+
+    const r = await repo.getTraceroutes({ sourceIds: ['src-b'], sinceMs: 0, pageSize: 10 });
+    expect(r.items).toHaveLength(2);
+    for (const item of r.items) {
+      expect(item).toMatchObject({ fromNodeNum: 100, toNodeNum: 200, route: '[150]', routeBack: '[160]' });
+    }
   });
 
   it('returns empty when no sources given', async () => {

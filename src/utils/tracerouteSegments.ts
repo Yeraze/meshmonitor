@@ -439,11 +439,11 @@ function buildLegSegments(
  * (dedup, usage counting, zoom-adaptive filtering — data-side) on top; this
  * function does NOT aggregate across multiple traceroute records.
  *
- * - Forward leg: `[fromNodeNum, ...route, toNodeNum]` with `snrTowards`,
- *   matching the existing convention shared by useTraceroutePaths/Widget/
- *   DashboardMap (NOT the `useTracerouteAnalysis` requester/responder
- *   convention, which is a separate, untouched data hook). Gated solely by
- *   `hasRouteData(traceroute.route)`.
+ * - Forward leg: `[fromNodeNum, ...route, toNodeNum]` with `snrTowards`.
+ *   This needs a REQUESTER-FIRST row (`fromNodeNum` asked), which is what the
+ *   API serves; a raw stored row may be the other way round and must go
+ *   through `orientTracerouteRow` first (`src/utils/tracerouteOrientation.ts`).
+ *   Gated solely by `hasRouteData(traceroute.route)`.
  * - Return leg: only emitted when `hasReturnPath` is true (#2051); sequence
  *   `[toNodeNum, ...routeBack, fromNodeNum]` with `snrBack`. Gated
  *   independently of the forward leg — a traceroute with no forward `route`

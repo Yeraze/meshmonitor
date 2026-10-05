@@ -383,6 +383,128 @@ describe('DashboardSidebar', () => {
     });
   });
 
+  describe('MQTT bridge stopped after rejected logins', () => {
+    const bridge: DashboardSource[] = [
+      { id: 'bridge-9', name: 'Upstream Bridge', type: 'mqtt_bridge', enabled: true },
+    ];
+    const counts = new Map([['bridge-9', 0]]);
+    const REASON = 'Broker rejected the login 5 times in a row, so this bridge stopped reconnecting.';
+    const statusOf = (over: Record<string, unknown>) =>
+      new Map<string, SourceStatus | null>([
+        ['bridge-9', { sourceId: 'bridge-9', connected: true, ...over } as SourceStatus],
+      ]);
+    const subscriberStopped = statusOf({
+      connected: false,
+      authStopped: true,
+      authStoppedGatewayCount: 0,
+      permissionMessage: REASON,
+      lastError: REASON,
+    });
+    const gatewayBadge = () => screen.queryByTestId('gateway-stopped-badge');
+
+    it('a stopped subscriber reads "Login rejected", with the reason and a Connect button', () => {
+      const onConnectSource = vi.fn();
+      renderSidebar({ sources: bridge, statusMap: subscriberStopped, nodeCounts: counts, isAdmin: true, onConnectSource });
+
+      expect(screen.getByText('source.status_auth_stopped')).toBeInTheDocument();
+      expect(screen.queryByText('source.status_connecting')).toBeNull();
+      expect(document.querySelector('.dashboard-permission-badge')!.getAttribute('title')).toBe(REASON);
+      expect(gatewayBadge()).toBeNull();
+
+      const button = screen.getByText('source.connect');
+      expect(button.getAttribute('title')).toBe(REASON);
+      fireEvent.click(button);
+      expect(onConnectSource).toHaveBeenCalledWith('bridge-9');
+    });
+
+    it('stopped gateways show a count badge, with the ids in the tooltip when the viewer gets them', () => {
+      renderSidebar({
+        sources: bridge,
+        statusMap: statusOf({ authStoppedGatewayCount: 2, authStoppedGateways: ['!0000aaaa', '!0000bbbb'] }),
+        nodeCounts: counts,
+      });
+
+      // The bridge itself is still connected.
+      expect(screen.getByText('source.status_connected')).toBeInTheDocument();
+      const badge = gatewayBadge()!;
+      expect(badge.textContent).toMatch(/source\.gateways_rejected/);
+      const title = badge.getAttribute('title') ?? '';
+      expect(title).toContain('source.gateways_rejected_help');
+      expect(title).toContain('!0000aaaa');
+      expect(title).toContain('!0000bbbb');
+    });
+
+    it('a viewer who gets no ids still sees the count, and a tooltip without ids', () => {
+      renderSidebar({
+        sources: bridge,
+        statusMap: statusOf({ authStoppedGatewayCount: 2 }),
+        nodeCounts: counts,
+        isAuthenticated: false,
+      });
+
+      const badge = gatewayBadge()!;
+      expect(badge.textContent).toMatch(/source\.gateways_rejected/);
+      expect(badge.getAttribute('title')).toBe('source.gateways_rejected_help');
+    });
+
+    it('offers an admin a Retry for stopped gateways while the bridge stays connected', () => {
+      const onConnectSource = vi.fn();
+      renderSidebar({
+        sources: bridge,
+        statusMap: statusOf({ authStoppedGatewayCount: 1, authStoppedGateways: ['!0000aaaa'] }),
+        nodeCounts: counts,
+        isAdmin: true,
+        onConnectSource,
+      });
+
+      expect(screen.queryByText('source.connect')).toBeNull();
+      const button = screen.getByText('source.retry_gateways');
+      expect(button.getAttribute('title')).toBe('source.retry_gateways_help');
+      fireEvent.click(button);
+      expect(onConnectSource).toHaveBeenCalledWith('bridge-9');
+    });
+
+    it('offers a non-admin no Retry', () => {
+      renderSidebar({
+        sources: bridge,
+        statusMap: statusOf({ authStoppedGatewayCount: 1 }),
+        nodeCounts: counts,
+        isAdmin: false,
+        onConnectSource: vi.fn(),
+      });
+
+      expect(gatewayBadge()).not.toBeNull();
+      expect(screen.queryByText('source.retry_gateways')).toBeNull();
+    });
+
+    it('a healthy bridge shows no rejected badge and no Connect or Retry', () => {
+      renderSidebar({
+        sources: bridge,
+        statusMap: statusOf({ authStopped: false, authStoppedGatewayCount: 0, authStoppedGateways: [] }),
+        nodeCounts: counts,
+        isAdmin: true,
+        onConnectSource: vi.fn(),
+      });
+
+      expect(gatewayBadge()).toBeNull();
+      expect(screen.queryByText('source.connect')).toBeNull();
+      expect(screen.queryByText('source.retry_gateways')).toBeNull();
+    });
+
+    it('a bridge that is merely retrying shows "connecting" and no Connect button', () => {
+      renderSidebar({
+        sources: bridge,
+        statusMap: statusOf({ connected: false, authStopped: false, authStoppedGatewayCount: 0 }),
+        nodeCounts: counts,
+        isAdmin: true,
+        onConnectSource: vi.fn(),
+      });
+
+      expect(screen.getByText('source.status_connecting')).toBeInTheDocument();
+      expect(screen.queryByText('source.connect')).toBeNull();
+    });
+  });
+
   describe('Per-gateway publisher badge (mqtt_bridge)', () => {
     const bridgeSources: DashboardSource[] = [
       { id: 'bridge-1', name: 'Bridge Up', type: 'mqtt_bridge', enabled: true },
