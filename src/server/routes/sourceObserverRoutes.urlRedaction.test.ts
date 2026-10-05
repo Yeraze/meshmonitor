@@ -41,7 +41,10 @@ const EP = 'EPSENTINEL';
 
 const URL_ONE = `wss://${SEC}-user:${SEC}-pw@${EP}-one.example:443/mqtt?token=${SEC}-query#${SEC}-frag`;
 const URL_TWO = `mqtts://${EP}-two.example:8883`;
+// `***@` is what `redactEndpointUrl` leaves, here as in the source list (#5619).
 const SHOWN_ONE = `wss://***@${EP}-one.example:443/mqtt`;
+/** The key: what the form derives from the URL a non-admin has in the source config. */
+const SHOWN_KEY = `wss://${EP}-one.example:443/mqtt`.toLowerCase();
 
 const CONFIG = {
   transport: 'usb',
@@ -158,7 +161,7 @@ describe('sourceObserverRoutes — broker URLs per caller', () => {
       expect(text(res.body)).not.toContain(sec);
       const [one] = res.body.data.brokers;
       expect(one.url).toBe(SHOWN_ONE);
-      expect(one.key).toBe(SHOWN_ONE.toLowerCase());
+      expect(one.key).toBe(SHOWN_KEY);
       expect(one.label).toBe(`${EP}-label-one`);
       if (mode === 'running') {
         // The error still names the host; the credentials in it are gone.
@@ -199,7 +202,7 @@ describe('sourceObserverRoutes — broker URLs per caller', () => {
       expect(text(res.body)).not.toContain(sec);
       expect(res.body.data.username).toBe(`${EP}-legacy-user`);
       expect(res.body.data.brokers).toEqual([
-        { brokerKey: SHOWN_ONE.toLowerCase(), username: `${EP}-broker-user` },
+        { brokerKey: SHOWN_KEY, username: `${EP}-broker-user` },
       ]);
     });
 
@@ -252,7 +255,7 @@ describe('sourceObserverRoutes — broker URLs per caller', () => {
     it('accepts the shown key and stores under the real one', async () => {
       const agent = await writer();
       const shown = (await agent.get(`/api/sources/${SOURCE}/observer/status`)).body.data.brokers[0].key;
-      expect(shown).toBe(SHOWN_ONE.toLowerCase());
+      expect(shown).toBe(SHOWN_KEY);
 
       const res = await agent
         .put(`/api/sources/${SOURCE}/observer/credentials`)

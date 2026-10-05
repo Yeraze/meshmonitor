@@ -16,6 +16,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import sourceRoutes from './sourceRoutes.js';
 import { createRouteTestApp, type RouteTestHarness } from '../test-helpers/routeTestApp.js';
 import type { Source } from '../../db/repositories/sources.js';
+import { observerBrokerKey } from '../meshcoreConfig.js';
 import {
   MeshCoreObserverCredentialStore,
   getMeshCoreObserverCredentialStore,
@@ -528,8 +529,30 @@ describe('saving a source as a non-admin editor', () => {
     expect(JSON.stringify(cfg)).not.toContain(`${SECRET}-urlpw`);
   });
 
-  it('refuses a config that is not an object', async () => {
-    const res = await (await editor()).put(`/${IDS.ingest}`).send({ config: ['x'] });
+  it('leaves a per-broker Observer login behind when its broker is pointed elsewhere', async () => {
+    const store = new MeshCoreObserverCredentialStore('test-secret', true);
+    setMeshCoreObserverCredentialStoreForTesting(store);
+    try {
+      const oldKey = observerBrokerKey(`wss://a-user:${SECRET}-a@a.example:443/mqtt`);
+      await store.storeForBroker(IDS.mc, oldKey, 'a-login', `${SECRET}-a-login`);
+      const res = await editAs(await editor(), IDS.mc, (c) => ({
+        ...c,
+        observer: {
+          ...c.observer,
+          brokers: [{ ...c.observer.brokers[0], url: 'wss://elsewhere.example:443/mqtt' }, c.observer.brokers[1]],
+        },
+      }));
+      expect(res.status).toBe(200);
+      // Logins are stored per broker key; the new broker has none.
+      expect((await store.loadForBroker(IDS.mc, observerBrokerKey('wss://elsewhere.example:443/mqtt'))).kind).toBe('none');
+      expect((await store.loadForBroker(IDS.mc, oldKey)).kind).toBe('ok');
+    } finally {
+      setMeshCoreObserverCredentialStoreForTesting(null);
+    }
+  });
+
+  it.each([[['x']], [null], ['text']])('refuses a config that is not an object: %j', async (bad) => {
+    const res = await (await editor()).put(`/${IDS.ingest}`).send({ config: bad });
     expect(res.status).toBe(400);
     expect(await stored(IDS.ingest)).toEqual(STORED.ingest.config);
   });

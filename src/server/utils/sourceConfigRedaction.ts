@@ -171,6 +171,11 @@ export function splitUrl(url: string): UrlParts | null {
   };
 }
 
+/**
+ * Put a URL back together. An explicit empty part (a bare `?` or `#`, an `@`
+ * with nothing before it) is how a save says "clear this", so it is not
+ * written out: the stored URL simply has no such part.
+ */
 function joinUrl(p: UrlParts): string {
   return (
     p.scheme +

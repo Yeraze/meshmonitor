@@ -988,11 +988,6 @@ function DashboardInner() {
           } else {
             delete bridgeConfig.uplinkTopicRewrite;
           }
-          // GETs strip credential fields for non-admins; defensively drop
-          // any masked password marker so we don't try to round-trip it.
-          if (bridgeConfig.upstream?.password === '••••••••') {
-            delete bridgeConfig.upstream.password;
-          }
           try {
             await api.put(`/api/sources/${bridgeId}`, {
               name: bridge.name,

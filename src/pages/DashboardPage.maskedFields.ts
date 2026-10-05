@@ -55,7 +55,12 @@ export function endpointIdentity(url: string): string {
   const text = url.trim();
   const scheme = /^[a-z][a-z0-9+.-]*:\/\//i.exec(text)?.[0] ?? '';
   const rest = text.slice(scheme.length);
-  const afterCredentials = rest.slice(rest.lastIndexOf('@') + 1);
+  const lastAt = rest.lastIndexOf('@');
+  // The server gives such a URL no identity (it matches only an identical
+  // one): an `@` after a `/`, `?` or `#`, or a character URL parsers disagree
+  // on. Returning the text itself has the same effect here.
+  if (/[\\\s\x00-\x1f\x7f]/.test(text) || (lastAt >= 0 && /[/?#]/.test(rest.slice(0, lastAt)))) return text;
+  const afterCredentials = rest.slice(lastAt + 1);
   const hostport = /^[^/?#]*/.exec(afterCredentials)?.[0] ?? '';
   return `${scheme}${hostport}`.toLowerCase();
 }

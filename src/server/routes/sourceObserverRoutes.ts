@@ -44,7 +44,7 @@ import { deriveObserverPublicKey, isValidObserverPrivateKey } from '../services/
 import { observerConfigFromSource, type MeshCoreSourceConfig, type NormalizedObserverConfig } from '../meshcoreConfig.js';
 import type { MeshCoreObserverStatus, MeshCoreObserverBrokerStatus } from '../services/meshcoreObserverStatus.js';
 import type { Source } from '../../db/repositories/sources.js';
-import { isSignedInCaller, redactEndpointUrl, splitUrl } from '../utils/sourceConfigRedaction.js';
+import { isSignedInCaller, maskUrlForEditor, redactEndpointUrl, splitUrl } from '../utils/sourceConfigRedaction.js';
 
 const router = Router({ mergeParams: true });
 
@@ -141,7 +141,7 @@ function validateBrokerKeyParam(
   // A non-admin is given the key without credentials or query string (see
   // `observerUrlsFor`), so that form is accepted too — when it names exactly
   // one configured broker. The stored key is what the store is written under.
-  const byShownKey = brokers.filter((broker) => redactEndpointUrl(broker.key) === raw);
+  const byShownKey = brokers.filter((broker) => shownBrokerKey(broker.key) === raw);
   if (byShownKey.length === 1) return { brokerKey: byShownKey[0].key };
   // The message echoes only what the caller sent.
   return { error: { status: 400, code: 'UNKNOWN_BROKER', message: `Unknown or unconfigured broker: ${raw}` } };
@@ -155,7 +155,7 @@ function validateBrokerKeyParam(
 //
 //   admin      the responses as built.
 //   signed in  every URL (a broker's `url`, and its `key`, which is the URL
-//              again) without `user:password@`, query string or fragment —
+//              again — see `shownBrokerKey`) without `user:password@`, query string or fragment —
 //              the same form the source list gives a `sources:read` holder.
 //              Free-text errors lose any such part of a configured URL.
 //   no login   no host at all, whatever the anonymous account was granted:
@@ -163,6 +163,16 @@ function validateBrokerKeyParam(
 //              username and error text are blanked. Same rule as the source
 //              list and `GET /:id/status`.
 // ---------------------------------------------------------------------------
+
+/**
+ * A broker key for a non-admin. The key is an identity, not something shown:
+ * the edit form matches it against the key it derives from the URL in the
+ * source config, which for a non-admin has no credentials at all — so the
+ * key drops them the same way, with no `***@` left in their place.
+ */
+function shownBrokerKey(key: string): string {
+  return maskUrlForEditor(key).url ?? redactEndpointUrl(key);
+}
 
 type ObserverUrlAudience = 'admin' | 'signedIn' | 'noLogin';
 
@@ -238,7 +248,7 @@ function redactObserverStatus<T extends MeshCoreObserverStatus>(
     lastError: scrubObserverError(status.lastError, secrets),
     brokers: status.brokers.map((b) => ({
       ...b,
-      key: redactEndpointUrl(b.key),
+      key: shownBrokerKey(b.key),
       url: redactEndpointUrl(b.url),
       lastError: scrubObserverError(b.lastError, secrets),
     })),
@@ -261,7 +271,7 @@ function redactCredentialStatus(body: CredentialStatusBody, audience: ObserverUr
   }
   return {
     ...body,
-    brokers: body.brokers.map((b) => ({ ...b, brokerKey: redactEndpointUrl(b.brokerKey) })),
+    brokers: body.brokers.map((b) => ({ ...b, brokerKey: shownBrokerKey(b.brokerKey) })),
   };
 }
 

@@ -43,6 +43,9 @@ describe('stored credentials in the source form', () => {
     expect(endpointIdentity('WSS://u:p@Host:443/a?b#c')).toBe('wss://host:443');
     expect(endpointIdentity(' host:1883 ')).toBe('host:1883');
     expect(endpointIdentity('mqtt://u:p@ss@host')).toBe('mqtt://host');
+    // No identity, as on the server: such a URL matches only itself.
+    expect(endpointIdentity('mqtt://host/p@th')).toBe('mqtt://host/p@th');
+    expect(endpointIdentity('wss://evil\\@host')).toBe('wss://evil\\@host');
   });
 
   it('warns only a non-admin, only for a stored secret left blank, only on an endpoint change', () => {
