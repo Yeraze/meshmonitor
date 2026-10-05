@@ -172,7 +172,7 @@ router.get('/nodes', optionalAuth(), async (req, res) => {
     res.json([...enhancedNodes, ...meshcoreNodes]);
   } catch (error) {
     logger.error('Error fetching nodes:', error);
-    res.status(500).json({ error: 'Failed to fetch nodes' });
+    fail(res, 500, 'INTERNAL_ERROR', 'Failed to fetch nodes');
   }
 });
 
