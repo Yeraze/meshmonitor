@@ -3,6 +3,7 @@ import { moduleAvailabilityFromMask, readExcludedModules, type ExcludedModuleKey
 import { buildContactRow, buildContactRowV2 } from './services/atakContactService.js';
 import meshtasticProtobufService, { formatTakPreview, formatTakV2Preview } from './meshtasticProtobufService.js';
 import { takV2Variant } from './takV2Decoder.js';
+import type { RawSecurityConfig } from './utils/securityConfigWrite.js';
 import protobufService, { convertIpv4ConfigToStrings } from './protobufService.js';
 import { getProtobufRoot, type MeshBeaconPayload } from './protobufLoader.js';
 import { TcpTransport } from './tcpTransport.js';
@@ -141,6 +142,11 @@ import * as net from 'net';
 import { safeJson } from './utils/redactSecrets.js';
 
 const POST_RESET_COOLDOWN_MS = 5000;
+// AdminMessage.ConfigType.SECURITY_CONFIG, and how long a local read of it may
+// take. The local link answers in well under a second; 5s leaves room for a
+// busy serial bridge and stays far inside the HTTP request timeout.
+const SECURITY_CONFIG_ADMIN_TYPE = 7;
+const LOCAL_SECURITY_READ_TIMEOUT_MS = 5000;
 const TCP_READY_TIMEOUT_MS = 15000;
 const TCP_READY_INTERVAL_MS = 500;
 const TCP_READY_CONNECT_TIMEOUT_MS = 1500;
@@ -1155,6 +1161,8 @@ class MeshtasticManager implements ISourceManager {
   }> = new Map();
   // Track pending module config requests so empty Proto3 responses can be mapped to the correct key
   private pendingModuleConfigRequests: Map<number, string> = new Map();
+  // Callers of refreshLocalSecurityConfig() waiting on the device's answer
+  private localSecurityConfigWaiters: Array<(security: RawSecurityConfig | null) => void> = [];
   // Track whether module configs have ever been fetched this process lifetime (skip on reconnect)
   private moduleConfigsEverFetched: boolean = false;
   // Per-node channel storage for remote nodes
@@ -14030,6 +14038,16 @@ class MeshtasticManager implements ISourceManager {
           if (nodeConfig.deviceConfig.position) {
             logger.debug(`📊 Position config details:`, JSON.stringify(Object.keys(nodeConfig.deviceConfig.position)));
           }
+        } else if (adminMsg.getConfigResponse.security) {
+          // Local node, security section: the answer to
+          // refreshLocalSecurityConfig(). Replace the cached section (the
+          // device's own answer is the truth) and wake whoever asked.
+          const security: RawSecurityConfig = adminMsg.getConfigResponse.security;
+          this.actualDeviceConfig = { ...(this.actualDeviceConfig ?? {}), security };
+          const waiters = this.localSecurityConfigWaiters;
+          this.localSecurityConfigWaiters = [];
+          waiters.forEach((resolve) => resolve(security));
+          logger.debug(`📊 Refreshed local security config from device (${waiters.length} waiter(s))`);
         }
       }
 
@@ -14556,6 +14574,46 @@ class MeshtasticManager implements ISourceManager {
       logger.error('❌ Error requesting config:', error);
       throw error;
     }
+  }
+
+  /**
+   * Read the LOCAL node's security config from the device, now.
+   *
+   * A security write replaces the whole struct on the node, so the writer must
+   * send back what the node holds. The cache (`actualDeviceConfig.security`)
+   * is filled at connect and the device does not push later changes, so a
+   * phone app that set `packet_signature_policy` after we connected leaves the
+   * cache stale. This asks the device and waits for its answer, which
+   * `processAdminMessage` also writes into the cache.
+   *
+   * One admin packet over the local link (serial/TCP). Nothing goes on air.
+   *
+   * @returns the security config, or null when the device did not answer in
+   *          time or the request could not be sent. Callers must treat null as
+   *          "unknown", not as "defaults".
+   */
+  async refreshLocalSecurityConfig(timeoutMs: number = LOCAL_SECURITY_READ_TIMEOUT_MS): Promise<RawSecurityConfig | null> {
+    let settle: (security: RawSecurityConfig | null) => void = () => {};
+    const answer = new Promise<RawSecurityConfig | null>((resolve) => {
+      const timer = setTimeout(() => settle(null), timeoutMs);
+      settle = (security: RawSecurityConfig | null) => {
+        clearTimeout(timer);
+        this.localSecurityConfigWaiters = this.localSecurityConfigWaiters.filter((w) => w !== settle);
+        resolve(security);
+      };
+    });
+    this.localSecurityConfigWaiters.push(settle);
+    try {
+      await this.requestConfig(SECURITY_CONFIG_ADMIN_TYPE);
+    } catch (error) {
+      logger.warn(`[MeshtasticManager:${this.sourceId}] Could not request local security config:`, error);
+      settle(null);
+    }
+    const security = await answer;
+    if (!security) {
+      logger.warn(`[MeshtasticManager:${this.sourceId}] No local security config answer within ${timeoutMs}ms`);
+    }
+    return security;
   }
 
   /**
