@@ -30,6 +30,8 @@ export interface TracerouteRunSpec {
   transportMechanism?: number | null;
   timestamp?: number;
   channel?: number | null;
+  /** The #1862 position snapshot JSON, as the writer built it. Default `'{}'`. */
+  routePositions?: string;
 }
 
 export type StoredForm = 'sent' | 'replyOnly';
@@ -56,7 +58,7 @@ function replyRecord(spec: TracerouteRunSpec) {
     routeBack: JSON.stringify(spec.routeBack ?? []),
     snrTowards: JSON.stringify(spec.snrTowards ?? []),
     snrBack: JSON.stringify(spec.snrBack ?? []),
-    routePositions: '{}',
+    routePositions: spec.routePositions ?? '{}',
     channel: spec.channel ?? 0,
     packetId: spec.packetId ?? null,
     transportMechanism: spec.transportMechanism ?? null,

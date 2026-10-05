@@ -19,6 +19,39 @@ import { classifyNodeTransport, type NodeTransportClass } from '../../utils/node
 import { transportClassCondition } from './transportSql.js';
 
 /**
+ * The columns a traceroute REPLY fills in: the ONE definition every writer of
+ * a completed row uses, on every backend (`insertTraceroute`,
+ * `updateTracerouteResponse`, and both branches of `upsertTracerouteSync`).
+ *
+ * It used to be spelled out per writer, and the copies drifted: the SQLite
+ * upsert and the pending-row update both left out `routePositions` (the #1862
+ * position snapshot) and `channel`, so every SQLite row, and every run sent
+ * from MeshMonitor on any backend, was stored without them. Add a column here
+ * and all four writers carry it.
+ *
+ * `from`/`to` are NOT here on purpose: a reply that fills a pending row must
+ * leave them alone (see `src/utils/tracerouteOrientation.ts`).
+ */
+function replyColumns(reply: DbTraceroute) {
+  return {
+    // `||` on the four arrays: an empty string is "no data" there (see
+    // `hasRouteData`). `??` on the rest: `'{}'` and channel 0 are real values.
+    route: reply.route || null,
+    routeBack: reply.routeBack || null,
+    snrTowards: reply.snrTowards || null,
+    snrBack: reply.snrBack || null,
+    routePositions: reply.routePositions ?? null,
+    channel: reply.channel ?? null,
+    packetId: reply.packetId ?? null,
+    // #5097: a pending row was written when WE sent the request, so it carries
+    // no transport. The reply is the packet that crossed the mesh, so its
+    // mechanism is the one the map filters on.
+    transportMechanism: reply.transportMechanism ?? null,
+    timestamp: reply.timestamp,
+  };
+}
+
+/**
  * Repository for traceroute operations
  */
 export class TraceroutesRepository extends BaseRepository {
@@ -38,15 +71,7 @@ export class TraceroutesRepository extends BaseRepository {
       toNodeNum: tracerouteData.toNodeNum,
       fromNodeId: tracerouteData.fromNodeId,
       toNodeId: tracerouteData.toNodeId,
-      route: tracerouteData.route,
-      routeBack: tracerouteData.routeBack,
-      snrTowards: tracerouteData.snrTowards,
-      snrBack: tracerouteData.snrBack,
-      routePositions: tracerouteData.routePositions ?? null,
-      channel: tracerouteData.channel ?? null,
-      packetId: tracerouteData.packetId ?? null,
-      transportMechanism: tracerouteData.transportMechanism ?? null,
-      timestamp: tracerouteData.timestamp,
+      ...replyColumns(tracerouteData),
       createdAt: tracerouteData.createdAt,
     };
     if (sourceId) {
@@ -80,22 +105,15 @@ export class TraceroutesRepository extends BaseRepository {
   }
 
   /**
-   * Update a pending traceroute with response data
+   * Fill a pending row with the reply that answers it. `reply` is the reply
+   * record as the writer built it; only its reply columns are written, so the
+   * pending row keeps its own `from`/`to` (requester-first) and `createdAt`.
    */
-  async updateTracerouteResponse(id: number, route: string | null, routeBack: string | null, snrTowards: string | null, snrBack: string | null, timestamp: number, packetId?: number | null, transportMechanism?: number | null): Promise<void> {
+  async updateTracerouteResponse(id: number, reply: DbTraceroute): Promise<void> {
     const { traceroutes } = this.tables;
-    const set: any = { route, routeBack, snrTowards, snrBack, timestamp };
-    // Only overwrite packetId when the response carries one — preserves any id
-    // already stored on the pending row if this update doesn't supply it.
-    if (packetId !== undefined) set.packetId = packetId;
-    // #5097: the pending row was written when WE sent the request, so it
-    // carries no transport. The response is the packet that actually crossed
-    // the mesh, so its mechanism is the one the map should filter on. Same
-    // "only when supplied" rule as packetId.
-    if (transportMechanism !== undefined) set.transportMechanism = transportMechanism;
     await this.db
       .update(traceroutes)
-      .set(set)
+      .set(replyColumns(reply))
       .where(eq(traceroutes.id, id));
   }
 
@@ -702,17 +720,7 @@ export class TraceroutesRepository extends BaseRepository {
       if (pendingRows.length > 0) {
         const id = Number((pendingRows[0] as any).id);
         tx.update(traceroutes)
-          .set({
-            route: tracerouteData.route || null,
-            routeBack: tracerouteData.routeBack || null,
-            snrTowards: tracerouteData.snrTowards || null,
-            snrBack: tracerouteData.snrBack || null,
-            packetId: tracerouteData.packetId ?? null,
-            // #5097 — see updateTracerouteResponse for why the response's
-            // mechanism, not the pending request's, is the one stored.
-            transportMechanism: tracerouteData.transportMechanism ?? null,
-            timestamp: tracerouteData.timestamp,
-          })
+          .set(replyColumns(tracerouteData))
           .where(eq(traceroutes.id, id))
           .run();
       } else {
@@ -721,13 +729,7 @@ export class TraceroutesRepository extends BaseRepository {
           toNodeNum: tracerouteData.toNodeNum,
           fromNodeId: tracerouteData.fromNodeId,
           toNodeId: tracerouteData.toNodeId,
-          route: tracerouteData.route || null,
-          routeBack: tracerouteData.routeBack || null,
-          snrTowards: tracerouteData.snrTowards || null,
-          snrBack: tracerouteData.snrBack || null,
-          packetId: tracerouteData.packetId ?? null,
-          transportMechanism: tracerouteData.transportMechanism ?? null,
-          timestamp: tracerouteData.timestamp,
+          ...replyColumns(tracerouteData),
           createdAt: tracerouteData.createdAt,
           sourceId: sourceId ?? null,
         };
