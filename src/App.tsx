@@ -24,6 +24,7 @@ import PacketMonitorPanel from './components/PacketMonitorPanel';
 import MqttPacketMonitorView from './components/MQTT/MqttPacketMonitorView';
 import AutomationTab from './components/AutomationTab';
 import { ToastProvider, useToast } from './components/ToastContainer';
+import { shouldShowQuickStatus } from './components/QuickStatus/quickStatusGate';
 import DeviceNotificationToaster from './components/DeviceNotificationToaster';
 import { RebootModal } from './components/RebootModal';
 import { AppBanners } from './components/AppBanners';
@@ -3436,6 +3437,16 @@ function App() {
         sourceName={sourceName}
         onBackToSources={sourceId ? () => navigate('/', { state: { showList: true } }) : undefined}
         mqttReadOnly={isMqttBridge}
+        // Quick-status pill (#5616): Meshtastic device sources only, for a
+        // signed-in user who may write that source's configuration, while the
+        // node is connected.
+        showQuickStatus={shouldShowQuickStatus({
+          authenticated: !!authStatus?.authenticated,
+          sourceType,
+          connectionStatus,
+          canWriteConfiguration: hasPermission('configuration', 'write'),
+        })}
+        quickStatusSourceId={sourceId}
       />
 
       <AppBanners

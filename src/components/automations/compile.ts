@@ -14,7 +14,7 @@
  * OR the fanout/collapse shape, and returns null for anything more exotic (so the
  * page falls back to the raw-JSON editor / future canvas).
  */
-import type { AutomationGraph, AutomationNode } from '../../types/automation.js';
+import { isStepOutputName, type AutomationGraph, type AutomationNode } from '../../types/automation.js';
 
 export type CollapseMode = 'ANY' | 'ALL' | 'NONE' | 'ALWAYS';
 
@@ -42,6 +42,28 @@ function clean(params: Record<string, unknown>): Record<string, unknown> {
 
 // ─── compile ────────────────────────────────────────────────────────────────
 
+/** Where a block sits in the form. */
+export type BlockLocation =
+  | { section: 'condition' | 'action'; rule: number; index: number }
+  | { section: 'finally'; index: number };
+
+/** True when the form compiles to the plain chain (one rule, no FINALLY). */
+function isLinear(form: WorkflowForm): boolean {
+  return form.rules.length <= 1 && !form.combine;
+}
+
+/**
+ * The graph node id {@link compile} gives the block at `loc`. Ids come from
+ * POSITION and so change when blocks are added, removed or reordered — never
+ * store one. The builder uses this only to look a block up in a freshly
+ * compiled graph (e.g. which run outputs it can read, #5636).
+ */
+export function blockNodeId(form: WorkflowForm, loc: BlockLocation): string {
+  if (loc.section === 'finally') return `f${loc.index}`;
+  const kind = loc.section === 'condition' ? 'c' : 'a';
+  return isLinear(form) ? `${kind}${loc.index}` : `r${loc.rule}${kind}${loc.index}`;
+}
+
 export function compile(form: WorkflowForm): AutomationGraph {
   const nodes: AutomationNode[] = [];
   const edges: { from: string; to: string }[] = [];
@@ -52,10 +74,10 @@ export function compile(form: WorkflowForm): AutomationGraph {
   const rules = form.rules.length ? form.rules : [{ conditions: [], actions: [] }];
 
   // Minimal linear chain: one rule, no combine → no fanout/collapse.
-  if (rules.length === 1 && !form.combine) {
+  if (isLinear(form)) {
     let prev = 't';
-    rules[0].conditions.forEach((c, k) => { const id = `c${k}`; add(id, c.type, c.params); edges.push({ from: prev, to: id }); prev = id; });
-    rules[0].actions.forEach((a, k) => { const id = `a${k}`; add(id, a.type, a.params); edges.push({ from: prev, to: id }); prev = id; });
+    rules[0].conditions.forEach((c, k) => { const id = blockNodeId(form, { section: 'condition', rule: 0, index: k }); add(id, c.type, c.params); edges.push({ from: prev, to: id }); prev = id; });
+    rules[0].actions.forEach((a, k) => { const id = blockNodeId(form, { section: 'action', rule: 0, index: k }); add(id, a.type, a.params); edges.push({ from: prev, to: id }); prev = id; });
     return { version: 1, nodes, edges };
   }
 
@@ -65,8 +87,8 @@ export function compile(form: WorkflowForm): AutomationGraph {
   const tails: string[] = [];
   rules.forEach((rule, i) => {
     let prev = 'f';
-    rule.conditions.forEach((c, k) => { const id = `r${i}c${k}`; add(id, c.type, c.params); edges.push({ from: prev, to: id }); prev = id; });
-    rule.actions.forEach((a, k) => { const id = `r${i}a${k}`; add(id, a.type, a.params); edges.push({ from: prev, to: id }); prev = id; });
+    rule.conditions.forEach((c, k) => { const id = blockNodeId(form, { section: 'condition', rule: i, index: k }); add(id, c.type, c.params); edges.push({ from: prev, to: id }); prev = id; });
+    rule.actions.forEach((a, k) => { const id = blockNodeId(form, { section: 'action', rule: i, index: k }); add(id, a.type, a.params); edges.push({ from: prev, to: id }); prev = id; });
     tails.push(prev); // tail = last action, or last condition, or 'f' for an empty rule
   });
 
@@ -75,10 +97,45 @@ export function compile(form: WorkflowForm): AutomationGraph {
     add('col', 'flow.collapse', { mode: form.combine.mode });
     tails.forEach((tail) => edges.push({ from: tail, to: 'col' }));
     let prev = 'col';
-    form.combine.actions.forEach((a, k) => { const id = `f${k}`; add(id, a.type, a.params); edges.push({ from: prev, to: id }); prev = id; });
+    form.combine.actions.forEach((a, k) => { const id = blockNodeId(form, { section: 'finally', index: k }); add(id, a.type, a.params); edges.push({ from: prev, to: id }); prev = id; });
   }
 
   return { version: 1, nodes, edges };
+}
+
+/** Every action block in the form, with a label for messages ("Rule 2", "FINALLY"). */
+function actionBlocks(form: WorkflowForm): Array<{ block: FormBlock; where: string }> {
+  const out: Array<{ block: FormBlock; where: string }> = [];
+  form.rules.forEach((r, i) => r.actions.forEach((block) => out.push({ block, where: `Rule ${i + 1}` })));
+  form.combine?.actions.forEach((block) => out.push({ block, where: 'FINALLY' }));
+  return out;
+}
+
+/** Run-output names (#5636) stored by the form's steps, in form order, repeats kept. */
+export function formOutputNames(form: WorkflowForm): string[] {
+  return actionBlocks(form)
+    .map(({ block }) => block.params.outputName)
+    .filter((n): n is string => typeof n === 'string' && n.length > 0);
+}
+
+/**
+ * Builder-side check of "This run only" names (#5636), in plain words. The
+ * server re-checks on save; this catches a blank name, which compile() would
+ * otherwise drop without a word.
+ */
+export function outputNameErrors(form: WorkflowForm): string[] {
+  const errs: string[] = [];
+  const seen = new Set<string>();
+  for (const { block, where } of actionBlocks(form)) {
+    if (!('outputName' in block.params)) continue;
+    const name = block.params.outputName;
+    if (name === undefined || name === null) continue;
+    if (name === '') errs.push(`${where}: name the script result you keep for this run.`);
+    else if (!isStepOutputName(name)) errs.push(`${where}: the run result name "${String(name)}" must start with a lower-case letter and use only lower-case letters, digits and _ (32 characters at most).`);
+    else if (seen.has(name)) errs.push(`${where}: the run result name "${name}" is used twice. Each name must be unique.`);
+    else seen.add(name);
+  }
+  return errs;
 }
 
 // ─── decompile ──────────────────────────────────────────────────────────────

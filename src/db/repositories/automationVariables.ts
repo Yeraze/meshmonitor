@@ -65,6 +65,9 @@ export interface AutomationVariableValueRecord {
   updatedAt: number;
 }
 
+/** Prefix of a MeshCore node's part of a variable scope key (#5636). */
+export const MESHCORE_SCOPE_PREFIX = 'mc:';
+
 export class AutomationVariablesRepository extends BaseRepository {
   constructor(db: DrizzleDatabase, dbType: DatabaseType) {
     super(db, dbType);
@@ -78,21 +81,30 @@ export class AutomationVariablesRepository extends BaseRepository {
    *  sourceNode → `${sourceId}:${nodeNum}`
    * Returns null when required context is missing (e.g. a node-scoped variable
    * with no node in context) so callers can skip rather than mis-key.
+   *
+   * MeshCore (#5636) has no node number; its subject is a public key, passed
+   * as `nodeKey` and used ONLY when `nodeNum` is absent. It is stored as
+   * `mc:<lower-case key>`. A Meshtastic key is decimal digits only, so the
+   * `mc:` prefix can never equal one, and existing Meshtastic rows keep their
+   * keys unchanged.
    */
   static buildScopeKey(
     scope: VariableScope,
-    ctx: { sourceId?: string | null; nodeNum?: number | null },
+    ctx: { sourceId?: string | null; nodeNum?: number | null; nodeKey?: string | null },
   ): string | null {
+    const node = ctx.nodeNum != null
+      ? String(ctx.nodeNum)
+      : (typeof ctx.nodeKey === 'string' && ctx.nodeKey.length > 0 ? `${MESHCORE_SCOPE_PREFIX}${ctx.nodeKey.toLowerCase()}` : null);
     switch (scope) {
       case 'global':
         return '';
       case 'source':
         return ctx.sourceId ? String(ctx.sourceId) : null;
       case 'node':
-        return ctx.nodeNum == null ? null : String(ctx.nodeNum);
+        return node;
       case 'sourceNode':
-        if (!ctx.sourceId || ctx.nodeNum == null) return null;
-        return `${ctx.sourceId}:${ctx.nodeNum}`;
+        if (!ctx.sourceId || node == null) return null;
+        return `${ctx.sourceId}:${node}`;
       default:
         return null;
     }

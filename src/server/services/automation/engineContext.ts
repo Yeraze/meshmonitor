@@ -10,10 +10,10 @@
  * `node.*` (hydrated subject node incl. calculated `ageMinutes`/`roleName`), and
  * `telemetry.*` (latest reading per metric for the subject node).
  */
-import { type TriggerContext, resolveTriggerPath, subjectKeyOf } from './triggerContext.js';
+import { type TriggerContext, resolveTriggerPath, subjectKeyOf, meshCoreSubjectKey } from './triggerContext.js';
 import type { VariableResolver, VarContext } from './variableResolver.js';
 import { interpolate, extractPaths, type InterpolationValue } from './interpolate.js';
-import type { CooldownScope } from '../../../types/automation.js';
+import { STEP_OUTPUT_MAX_BYTES, type CooldownScope } from '../../../types/automation.js';
 import { isNodeComplete } from '../../../utils/nodeHelpers.js';
 
 /** Subset of a node record used for condition fields. */
@@ -187,6 +187,13 @@ export interface EngineEvalContext {
   /** Id of the automation this run belongs to. Absent in the simulator / tests (#5445). */
   automationId?: string;
   /**
+   * Run-scoped step outputs (#5636), keyed by the name the user gave the step.
+   * One Map per run, made where the run starts (`fireAutomation`, the
+   * simulator) and dropped with this context when it ends, so two runs of the
+   * same automation never share one. Never persisted, logged or traced.
+   */
+  stepOutputs?: Map<string, StepOutput>;
+  /**
    * Set by an action to stop the rest of this run (#5445: the automation just
    * disabled itself). The engine's `haltReason` hook reads it after each action.
    */
@@ -221,7 +228,64 @@ export const NODE_COMPLETENESS = ['complete', 'incomplete', 'unknown'] as const;
 export type NodeCompleteness = (typeof NODE_COMPLETENESS)[number];
 
 export function varContextFromTrigger(trigger: TriggerContext): VarContext {
-  return { sourceId: trigger.sourceId, nodeNum: trigger.subjectNodeNum };
+  return { sourceId: trigger.sourceId, nodeNum: trigger.subjectNodeNum, nodeKey: meshCoreSubjectKey(trigger) };
+}
+
+/** What one step kept for the rest of its run (#5636). */
+export interface StepOutput {
+  /** False when the step failed; `output` is then undefined. */
+  ok: boolean;
+  /** Parsed JSON, or text. */
+  output?: unknown;
+}
+
+/** A fresh, empty run-output store. Call once per run. */
+export function createStepOutputs(): Map<string, StepOutput> {
+  return new Map();
+}
+
+/**
+ * Cut `value` to {@link STEP_OUTPUT_MAX_BYTES} for the run store (#5636). Text
+ * is cut on a UTF-8 character boundary. A JSON value whose text is over the cap
+ * cannot be cut and stay JSON, so it is kept as its cut TEXT: the whole-value
+ * token still renders, and a dotted path into it renders empty.
+ */
+export function capStepOutput(value: unknown): { value: unknown; truncated: boolean } {
+  const isText = typeof value === 'string';
+  let text: string;
+  try {
+    text = isText ? (value as string) : (JSON.stringify(value) ?? '');
+  } catch {
+    return { value: undefined, truncated: false };
+  }
+  if (Buffer.byteLength(text, 'utf8') <= STEP_OUTPUT_MAX_BYTES) return { value, truncated: false };
+  const buf = Buffer.from(text, 'utf8');
+  let end = STEP_OUTPUT_MAX_BYTES;
+  // Step back off a UTF-8 continuation byte so no character is split.
+  while (end > 0 && (buf[end] & 0xc0) === 0x80) end--;
+  return { value: buf.subarray(0, end).toString('utf8'), truncated: true };
+}
+
+/**
+ * Resolve the part of a `steps.` token after the namespace (#5636):
+ * `<name>.output`, `<name>.output.a.b` (a walk into parsed JSON, own
+ * properties only) or `<name>.ok`. Anything else — an unknown name, a step
+ * that has not run, a missing path segment, a bare `<name>` — is undefined,
+ * which renders empty like every other unresolved token.
+ */
+export function resolveStepValue(outputs: Map<string, StepOutput> | undefined, rest: string): unknown {
+  if (!outputs) return undefined;
+  const [name, head, ...segments] = rest.split('.');
+  const entry = outputs.get(name);
+  if (!entry) return undefined;
+  if (head === 'ok') return segments.length === 0 ? entry.ok : undefined;
+  if (head !== 'output') return undefined;
+  let value: unknown = entry.output;
+  for (const seg of segments) {
+    if (value == null || typeof value !== 'object' || !Object.prototype.hasOwnProperty.call(value, seg)) return undefined;
+    value = (value as Record<string, unknown>)[seg];
+  }
+  return value;
 }
 
 /** Truncate a long subject id (a 64-char MeshCore pubkey) for trace/log copy. */
@@ -244,9 +308,9 @@ export interface CooldownKeyResolution {
  * Key shapes intentionally match AutomationVariablesRepository.buildScopeKey's
  * global/node/sourceNode shapes ('' / '<node>' / '<source>:<node>') — pinned by
  * a cross-check test — so cooldown keys and variable scope keys read alike.
- * It is NOT called directly: buildScopeKey's ctx.nodeNum is typed `number` and
- * widening it to accept a MeshCore pubkey string would silently let VARIABLE
- * scoping key off pubkeys too, a behaviour change we explicitly do not want.
+ * It is NOT called directly: the two differ for MeshCore. A cooldown key is the
+ * bare public key; a variable scope key is `mc:<key>` (#5636), because variable
+ * values are stored and must never collide with a Meshtastic node number.
  *
  * When the requested scope cannot be honoured (no subject node on a schedule /
  * system / MeshCore-channel event, or no sourceId under 'sourceNode'), this
@@ -308,6 +372,14 @@ export async function resolvePath(ctx: EngineEvalContext, path: string): Promise
     // Render objects/arrays as JSON so {{ var.obj }} shows the blob; scalars pass through.
     return typeof v === 'object' ? JSON.stringify(v) : (v as InterpolationValue);
   }
+  // Run-scoped step outputs (#5636). The value is returned as DATA: the caller
+  // substitutes it once and never re-scans it, so `{{ }}` inside a script's
+  // output is not expanded.
+  if (path.startsWith('steps.')) {
+    const v = resolveStepValue(ctx.stepOutputs, path.slice('steps.'.length));
+    if (v == null) return undefined;
+    return typeof v === 'object' ? JSON.stringify(v) : (v as InterpolationValue);
+  }
   // Same namespaces conditions use (`node.*` / `telemetry.*`) so message templates
   // can say {{ node.longName }} on becameMobile / leftHome / nodeUpdated / …
   if (path.startsWith('node.') || path.startsWith('telemetry.')) {
@@ -329,7 +401,8 @@ export async function interpolateAsync(
   for (const p of paths) {
     // `varsOnly` (used for sensitive fields like Apprise URLs) permits only
     // `var.*` — never mesh-controlled `trigger.*`, which would let an inbound
-    // message inject an arbitrary notification target.
+    // message inject an arbitrary notification target. `steps.*` (#5636) is
+    // refused for the same reason: a script's output can echo the message.
     if (opts?.varsOnly && !p.startsWith('var.')) { resolved.set(p, undefined); continue; }
     resolved.set(p, await resolvePath(ctx, p));
   }

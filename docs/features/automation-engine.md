@@ -365,6 +365,10 @@ Reacts to the triggering message with an emoji. Minimal by design — it carries
 
 Sends text to a channel or as a DM, with full `{{ }}` token interpolation in the body.
 
+> **An empty message is never sent.** If the text renders to nothing — blank, or only spaces and
+> line breaks, for instance because a token had no value — the action sends nothing and the step
+> is logged as skipped, with the reason. See [The empty-send rule](#the-empty-send-rule).
+
 - **Send via sources** — a multi-select of which radios to transmit through. **MQTT sources are
   receive-only and excluded.** Both **Meshtastic and MeshCore** sources are valid send targets.
   Leave it empty to use the source that triggered the automation — but a source **is required** for
@@ -482,14 +486,94 @@ Responder uses) when the automation fires.
   `MM_TRIGGER_TYPE`, `MM_SOURCE_ID`, `MM_NODE_NUM`, `MM_TIMESTAMP`, and each trigger field as
   `MM_<UPPER_SNAKE_NAME>` (object values are JSON-stringified). Message-style aliases (`MESSAGE`,
   `FROM_NODE`, …) are provided for compatibility with existing scripts.
-- **Store result in** *(optional)* — captures the script's JSON stdout into a variable. Use a
-  **`json`** typed variable and index into the result later with `{{ var.name.field }}` (see
-  [Variables](#variables) and [Tokens](#tokens)).
+- **Store result in** *(optional)* — where the script's output goes. The output is the script's
+  JSON stdout when it parses as JSON, otherwise its trimmed text.
+  - **— do not store —** — the default.
+  - **This run only** — keep it until this run ends, under a name you give it, and read it in later
+    steps as `{{ steps.name.output }}`. No variable to define, nothing saved. See
+    [Step results for this run](#step-results-for-this-run).
+  - **A variable** — keep it after the run. Use a **`json`** typed variable and index into the
+    result later with `{{ var.name.field }}` (see [Variables](#variables) and [Tokens](#tokens)).
 - A non-zero exit code is recorded as an action error on the run. Path-traversal protection, the
   interpreter pick, and the execution timeout are reused from the existing script runner.
+- **If the variable cannot take the result, the step fails.** That happens when the variable no
+  longer exists, is a read-only constant, has a type the result does not fit (text into an
+  `integer`), or is scoped to a node or source the event does not have. The script still ran; the
+  run log and the Test panel show `script "…" ran, but its result was not stored in variable "…"`
+  with the cause, and the run is marked failed. Later steps still run, as after any failed action.
+  Before 4.17 this write failed without a word.
 
-> The script itself does **not** send messages — capture its output into a variable, then use a
-> separate **Send a message** action to relay it.
+> The script itself does **not** send messages — store its output, then use a separate
+> **Send a message** action to relay it.
+
+### Step results for this run
+
+A step can hand its result to the steps after it without a variable. Set **Store result in** to
+**This run only** and name the result. The name is yours: a lower-case letter, then lower-case
+letters, digits or `_`, 32 characters at most, and unique within the automation.
+
+| Token | Renders |
+| --- | --- |
+| `{{ steps.name.output }}` | What the script printed. JSON output renders as JSON |
+| `{{ steps.name.output.a.b }}` | A dotted path into JSON output, array indexes included (`items.0.title`) |
+| `{{ steps.name.ok }}` | `true` if the script ran, `false` if it failed. Empty if the step did not run |
+
+Only **Run a script** can store a result this way for now.
+
+**Worked example — a `/joke` responder.** No variable, and two people asking at once each get
+their own joke.
+
+1. **WHEN** *Message received*, **Text contains** `/joke`.
+2. **THEN** *Run a script* — **Script** `joke.py`, **Store result in** *This run only*, name `joke`.
+3. **THEN** *Send a message* — **Text** `{{ steps.joke.output }}`, with **Reply to the triggering
+   message** ticked.
+
+If `joke.py` prints `Why did the node cross the mesh?`, that line is the reply. If it prints
+JSON such as `{"setup": "Knock knock", "by": "Bob"}`, use
+`{{ steps.joke.output.setup }} — {{ steps.joke.output.by }}`. If the script fails or prints
+nothing, the text renders empty and **nothing is sent** (below).
+
+What to know:
+
+- **It lasts one run.** Each run has its own results. Two runs of the same automation at the same
+  moment never see each other's, and nothing is kept once the run ends. Use a variable when the
+  value must outlive the run.
+- **A step only sees results stored before it, on its own path.** A later step in the same rule
+  can read it. A step in **another rule** cannot, even when that rule is listed first: rules run
+  side by side. A **FINALLY** step can read a rule's result, but under **ANY**, **NONE** or
+  **ALWAYS** that rule may not have run. The builder flags both: *always empty* (an error) when
+  no step stores the name or that step does not run first, *may be empty* (a warning) when it
+  runs first only some of the time. Neither stops a save.
+- **Output is data, never a template.** `{{ … }}` text inside a script's output is sent as it is;
+  it is not expanded. A script that echoes a mesh message cannot read your variables.
+- **Size.** At most 64 KiB of one step's output is kept for the run. Longer output is cut and the
+  step's run-log line says so. Cut JSON is kept as its text, so the whole-value token still
+  renders but a dotted path into it is empty.
+- **It is not logged.** The output is not written to run history or the live trace, and is not in
+  the audit log. Only what you put in a message or notification leaves the run.
+- **Not in Apprise URLs or waypoint keys.** Those fields take `{{ var.* }}` only, so a script's
+  output (which can echo a mesh message) cannot pick where a notification goes.
+- **Names, not positions.** References use the name you gave, so adding, removing or reordering
+  steps does not break them. Export, import and duplicate keep the name.
+
+### The empty-send rule
+
+An action that would send **nothing** sends nothing. This holds for every automation, whether or
+not it uses step results:
+
+| Action | Held back when |
+| --- | --- |
+| **Send a message** (channel or DM, Meshtastic or MeshCore, every selected source and channel) | the text renders empty or to white space only |
+| **Send a tapback** | the emoji is blank |
+| **Send a notification** | the title **and** the body both render empty. A title with no body still goes |
+
+The step is logged as *skipped* with the reason — in the run log, the live trace and the Test
+panel — and the run still counts as completed. On MeshCore, a reply whose body is empty is held
+back too, rather than sent as a bare `@[Name]:` mention.
+
+The rule only ever removes a transmission. It adds no packets and changes no cooldown, rate limit
+or self-origin check. **Broadcast a waypoint** and **Request data** are not covered: neither has a
+message body, and a waypoint with no name is still a position worth sending.
 
 ### Enable or disable an automation
 
@@ -948,6 +1032,17 @@ For scoped variables the key is resolved from the trigger context automatically 
 source. Schedule and system triggers have no subject node, so a node-scoped variable there needs an
 explicit reference.
 
+**MeshCore nodes.** MeshCore has no node number, so a `node` / `sourceNode` variable keys off the
+node's **public key** instead: the sender of a MeshCore DM or room post, or the node of a MeshCore
+*Node discovered / updated / silent / recovered* event. (Before 4.17 such a variable never saved on
+a MeshCore trigger.) A MeshCore **channel** post has no sender key — every poster shares the
+channel slot — so a node-scoped variable has nothing to key on there, and writing one fails the
+step with `missing scope context`. Meshtastic values are untouched, and a MeshCore key can never
+match a Meshtastic node number.
+
+When you only need a value for the rest of the run, skip the variable: see
+[Step results for this run](#step-results-for-this-run).
+
 **Nested access:** for `json` variables (and any object value), index into fields with
 `{{ var.name.a.b }}`. Referencing the whole variable renders it as JSON. Variable **names must be
 dot-free identifiers** so the `name.path` split is unambiguous.
@@ -964,6 +1059,7 @@ values, the set-variable value) accept **double-brace tokens**:
 | `{{ trigger.viaMqttSource }}` | `true` when the message came in through an MQTT Bridge / MQTT Broker source rather than over RF — the `#️⃣` case. Distinct from `viaMqtt`, which is the packet's own relay flag |
 | `{{ trigger.sourceId }}` / `{{ trigger.timestamp }}` | Available for every trigger; `timestamp` renders as a local date/time |
 | `{{ var.name }}` | A user-defined variable; `{{ var.name.field }}` for nested `json` access |
+| `{{ steps.name.output }}` / `{{ steps.name.ok }}` | The result a **Run a script** step stored for this run, and whether it ran; `{{ steps.name.output.field }}` for nested JSON. See [Step results for this run](#step-results-for-this-run) |
 | `{{ NOW }}` | The current time, rendered as a local `YYYY-MM-DD HH:mm:ss` |
 
 ### Universal message tokens (Meshtastic + MeshCore)
@@ -1114,11 +1210,17 @@ Recognition is built from the trigger's token set plus your known variable names
 **non-blocking hint** — it won't stop you saving, so a valid-but-unenumerated token is never
 falsely rejected.
 
+`{{ steps.* }}` tokens are checked against the steps that run **before** the field's own step:
+*always empty* (red) when no step stores that name or it does not run first, *may be empty*
+(amber) when it runs first on only some paths — see
+[Step results for this run](#step-results-for-this-run).
+
 ### Substitutions help drawer
 
 A **`?`** button at the top of the builder opens a docked, non-modal **Substitutions** sidebar that
 stays open while you edit. It lists every `{{ trigger.* }}` token for the current trigger type (and
-the rest), plus `{{ var.* }}` and `{{ NOW }}`, so you can author tokens without leaving the field.
+the rest), plus `{{ var.* }}`, the `{{ steps.* }}` results this automation's steps store, and
+`{{ NOW }}`, so you can author tokens without leaving the field.
 
 ## Testing (dry-run)
 
@@ -1127,6 +1229,13 @@ The builder includes a **▶ Test panel** that runs the automation against a **s
 trigger matched, each condition's verdict, the resolved action parameters, and any simulated
 variable writes. A **Run a script** action is stubbed in the dry-run, so testing never spawns a
 process.
+
+When a script step stores its result for **This run only**, the panel shows a **Sample script
+output** box for each named step. Type what the script would print — text or JSON — and the later
+steps render it, so you can see the message exactly as it would be sent. Left blank, the script
+prints nothing; a message built only from it then shows as **not sent**, which is what the
+[empty-send rule](#the-empty-send-rule) does in a real run. A write to a variable that a real run
+would refuse (unknown, read-only, wrong type) shows as a failed step here too.
 
 You supply the synthetic inputs the conditions need:
 

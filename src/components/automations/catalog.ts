@@ -7,7 +7,7 @@
  */
 import { HOP_COUNT_EMOJIS, HOP_EMOJI_MAX, MQTT_SOURCE_EMOJI } from '../../utils/hopEmoji';
 
-export type FieldKind = 'text' | 'number' | 'nodeNum' | 'textarea' | 'select' | 'checkbox' | 'variable' | 'emoji' | 'fieldselect' | 'sourceMulti' | 'sendSourceMulti' | 'channelMulti' | 'geofence' | 'scriptselect' | 'regionSelect' | 'nodeMulti' | 'automationSelect' | 'meshtasticSourceSelect' | 'forwardingSourceSelect';
+export type FieldKind = 'text' | 'number' | 'nodeNum' | 'textarea' | 'select' | 'checkbox' | 'variable' | 'emoji' | 'fieldselect' | 'sourceMulti' | 'sendSourceMulti' | 'channelMulti' | 'geofence' | 'scriptselect' | 'regionSelect' | 'nodeMulti' | 'automationSelect' | 'meshtasticSourceSelect' | 'forwardingSourceSelect' | 'resultTarget';
 
 export interface FieldOpt { value: string; label: string; }
 export interface FieldGroup { label: string; options: FieldOpt[]; }
@@ -40,6 +40,11 @@ export interface FieldDef {
   advanced?: boolean;
   /** This `text`/`textarea` field accepts `{{ }}` tokens → highlight + typo-check. */
   tokens?: boolean;
+  /**
+   * The engine resolves only `{{ var.* }}` in this field (identity fields a
+   * mesh message must not steer). The builder flags `{{ steps.* }}` here (#5636).
+   */
+  varsOnly?: boolean;
   /**
    * Restrict a source/channel picker (`sourceMulti` / `sendSourceMulti` /
    * `channelMulti`) to one protocol's options. `'meshcore'` shows only MeshCore
@@ -800,7 +805,7 @@ export const ACTIONS: BlockDef[] = [
     fields: [
       { name: 'sourceId', label: 'Send via source', kind: 'meshtasticSourceSelect', help: 'The Meshtastic radio that owns and broadcasts this waypoint.' },
       {
-        name: 'waypointKey', label: 'Waypoint key', kind: 'text', tokens: true, placeholder: 'e.g. border-north',
+        name: 'waypointKey', label: 'Waypoint key', kind: 'text', tokens: true, varsOnly: true, placeholder: 'e.g. border-north',
         help: 'Names this waypoint within the automation, so each run updates it instead of creating a new one. Use a different key for each waypoint. Accepts {{ var.* }} only.',
       },
       { name: 'latitude', label: 'Latitude', kind: 'text', tokens: true, placeholder: '32.5423 or {{ var.wait.lat }}' },
@@ -939,13 +944,16 @@ export const ACTIONS: BlockDef[] = [
   {
     type: 'action.runScript',
     label: 'Run a script',
-    description: 'Run a script from the server’s scripts folder. The trigger context is passed as MM_* environment variables; the script’s JSON output can be stored in a variable.',
+    description: 'Run a script from the server’s scripts folder. The trigger context is passed as MM_* environment variables; the script’s output can be stored in a variable, or kept for this run only and read by later steps.',
     fields: [
       { name: 'scriptPath', label: 'Script', kind: 'scriptselect', help: 'A script file in the server’s scripts directory ($DATA_DIR/scripts).' },
       { name: 'args', label: 'Arguments', kind: 'text', tokens: true, advanced: true,
         placeholder: 'e.g. --from {{ trigger.from }} --text "{{ trigger.text }}"',
         help: 'Optional CLI arguments. Supports {{ var.x }} and {{ trigger.field }} templates. Shell-style quoting is honored, so "hello world" stays one arg.' },
-      { name: 'resultVariable', label: 'Store result in', kind: 'variable', advanced: true, help: 'Optional. Stores the script’s JSON output in this variable — use a "json" variable and index it later as {{ var.name.field }}.' },
+      // `resultTarget` edits TWO params: `resultVariable` (a saved variable) or
+      // `outputName` (#5636, kept for this run only). The field is named for the
+      // first; AutomationBuilder writes whichever the user picks.
+      { name: 'resultVariable', label: 'Store result in', kind: 'resultTarget', advanced: true, help: 'Optional. A variable keeps the script’s output after the run — use a "json" variable and index it later as {{ var.name.field }}. “This run only” keeps it just until this run ends, with no variable to define.' },
       { name: 'timeoutSeconds', label: 'Timeout (seconds)', kind: 'number', advanced: true, placeholder: '30' },
     ],
   },

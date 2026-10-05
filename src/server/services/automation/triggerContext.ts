@@ -33,9 +33,10 @@ export interface TriggerContext {
    * is only MeshCore, whose senders are pubkey strings. An explicit `null`
    * means "this event has no stable per-subject identity at all".
    *
-   * Deliberately NOT reused for variable scoping or node hydration: both call
-   * getNode(sourceId, nodeNum) / buildScopeKey with a NUMBER and must keep
-   * doing so. This field is cooldown-only.
+   * Not used for node hydration: getNode(sourceId, nodeNum) takes a NUMBER.
+   * Variable scoping reads it only through {@link meshCoreSubjectKey} (#5636),
+   * which hands MeshCore public keys to buildScopeKey under their own `mc:`
+   * prefix; Meshtastic scope keys still come from subjectNodeNum alone.
    */
   subjectNodeKey?: string | null;
   timestamp: number;
@@ -50,6 +51,25 @@ export interface TriggerContext {
 export function subjectKeyOf(ctx: TriggerContext): string | null {
   if (ctx.subjectNodeKey !== undefined) return ctx.subjectNodeKey;
   return ctx.subjectNodeNum == null ? null : String(ctx.subjectNodeNum);
+}
+
+/**
+ * The MeshCore public key that node-scoped VARIABLES key off (#5636), or null.
+ *
+ * MeshCore has no node number, so a node / sourceNode variable had nothing to
+ * key on and never saved on a MeshCore trigger. A MeshCore context already
+ * carries the subject's public key in `subjectNodeKey` (DM / room-post sender,
+ * discovered / updated / silent / recovered node). Null for:
+ *  - any event with a node number (Meshtastic keeps its numeric key);
+ *  - a MeshCore CHANNEL post, whose only "sender" is the `channel-<idx>` slot
+ *    every poster shares (subjectNodeKey is null there);
+ *  - Reticulum, which is not MeshCore and whose scoping this does not change.
+ */
+export function meshCoreSubjectKey(ctx: TriggerContext): string | null {
+  if (ctx.subjectNodeNum != null) return null;
+  if (typeof ctx.subjectNodeKey !== 'string' || ctx.subjectNodeKey.length === 0) return null;
+  if (ctx.fields?.protocol === 'reticulum') return null;
+  return ctx.subjectNodeKey;
 }
 
 /** Derived hop count: hopStart − hopLimit when both present (0 ⇒ direct/zero-hop). */

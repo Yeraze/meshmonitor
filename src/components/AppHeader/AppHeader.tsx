@@ -8,6 +8,7 @@ import UserMenu from '../UserMenu';
 import './AppHeader.css';
 import { UiIcon } from '../icons';
 import { CyclingConnectionStatus } from './CyclingConnectionStatus';
+import { QuickStatusPill } from '../QuickStatus/QuickStatusPill';
 
 interface DeviceInfoProp {
   localNodeInfo?: LocalNodeInfo;
@@ -51,6 +52,15 @@ interface AppHeaderProps {
    * into the header. Hides the node-info slot entirely when true.
    */
   mqttReadOnly?: boolean;
+  /**
+   * Show the quick-status pill (#5616). The caller sets this only for a
+   * signed-in user with `configuration:write` on a connected Meshtastic DEVICE
+   * source: MQTT, MeshCore and Reticulum sources have no Status Message module.
+   * The pill hides itself when the node's firmware lacks the module.
+   */
+  showQuickStatus?: boolean;
+  /** Source the quick-status pill reads and writes. */
+  quickStatusSourceId?: string | null;
 }
 
 export const AppHeader: React.FC<AppHeaderProps> = ({
@@ -69,6 +79,8 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
   sourceName,
   onBackToSources,
   mqttReadOnly = false,
+  showQuickStatus = false,
+  quickStatusSourceId = null,
 }) => {
   const { t } = useTranslation();
 
@@ -176,6 +188,9 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
         )}
       </div>
       <div className="header-right">
+        {/* In header-right, not header-left: the left half is `overflow:
+            hidden` and would clip the popover (#5616). */}
+        {showQuickStatus && <QuickStatusPill sourceId={quickStatusSourceId} />}
         <div className="connection-status-container">
           {/* The badge cycles through Connected → Battery → Airtime for the
               local node when connected and telemetry is available (#4917). The

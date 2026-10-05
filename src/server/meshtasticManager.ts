@@ -1135,6 +1135,9 @@ class MeshtasticManager implements ISourceManager {
     // #3923: firmware 2.8 build capability — XEdDSA signature verification
     // compiled in. Distinguishes "cannot sign" from "did not sign this packet".
     hasXeddsa?: boolean;
+    // DeviceMetadata.can_shutdown. Undefined until metadata arrives, which
+    // is not the same as false: see the Shut down action (#5615).
+    canShutdown?: boolean;
     // #5065: DeviceMetadata.excluded_modules — the bitmask of module configs
     // this firmware build left out. Undefined until a device reports it, which
     // means "nothing excluded"; see src/server/utils/excludedModules.ts.
@@ -5477,7 +5480,7 @@ class MeshtasticManager implements ISourceManager {
     // Note: Local node's public key is extracted from security config when received
   }
 
-  getLocalNodeInfo(): { nodeNum: number; nodeId: string; longName: string; shortName: string; hwModel?: number; firmwareVersion?: string; rebootCount?: number; isLocked?: boolean; hasWifi?: boolean; hasEthernet?: boolean; hasBluetooth?: boolean; hasXeddsa?: boolean } | null {
+  getLocalNodeInfo(): { nodeNum: number; nodeId: string; longName: string; shortName: string; hwModel?: number; firmwareVersion?: string; rebootCount?: number; isLocked?: boolean; hasWifi?: boolean; hasEthernet?: boolean; hasBluetooth?: boolean; hasXeddsa?: boolean; canShutdown?: boolean } | null {
     return this.localNodeInfo;
   }
 
@@ -6111,6 +6114,7 @@ class MeshtasticManager implements ISourceManager {
     // Firmware 2.8 build capability, surfaced alongside the transport flags so
     // the local node reports it the same way a remote node does (#3923).
     localNodeInfo.hasXeddsa = metadata.hasXeddsa === true;
+    localNodeInfo.canShutdown = metadata.canShutdown === true;
     // #5065: which module configs this build excluded. Absent on firmware that
     // predates the field, and left undefined then so every module stays shown.
     const excludedModules = readExcludedModules(metadata);
