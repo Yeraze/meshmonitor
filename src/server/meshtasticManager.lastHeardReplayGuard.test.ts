@@ -15,7 +15,7 @@
  * fresh case.
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 const mockUpsertNodeAsync = vi.fn().mockResolvedValue(undefined);
 const mockGetNode = vi.fn().mockResolvedValue(null);
@@ -36,20 +36,35 @@ vi.mock('../utils/logger.js', () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }));
 
+// Loaded once while the file is collected, not inside a hook. A dynamic import in
+// `beforeEach` charged the manager's module load (~2 s idle, 10 s+ on a busy
+// host) to the first test's hook budget; collection has no such budget.
+const managerModule = await import('./meshtasticManager.js');
+
 describe('MeshtasticManager - lastHeard replay guard coverage (#4192/#4445)', () => {
   let manager: any;
-  const nowSec = Math.floor(Date.now() / 1000);
+  // A pinned clock, not the wall clock. `nowSec` used to be read while the file
+  // was collected and compared with the `Date.now()` the manager read during the
+  // test; a slow module load put more than the 5 s tolerance between the two.
+  // With `Date` faked the manager reads exactly NOW_MS, so the stamps are exact.
+  const NOW_MS = Date.UTC(2026, 0, 15, 12, 0, 0);
+  const nowSec = NOW_MS / 1000;
   const staleRxTime = nowSec - 24 * 60 * 60; // 24h old — well past the 6h threshold
   const freshRxTime = nowSec - 30; // 30s old — clearly live
 
-  beforeEach(async () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(NOW_MS);
     vi.clearAllMocks();
     mockGetNode.mockResolvedValue(null);
     mockGetDirectMessages.mockResolvedValue([]);
     mockGetMessage.mockResolvedValue(null);
-    const module = await import('./meshtasticManager.js');
-    manager = module.fallbackManager;
+    manager = managerModule.fallbackManager;
     vi.spyOn(manager, 'trackPKIEncryption').mockResolvedValue(undefined);
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   function lastHeardArg(): number | undefined {
@@ -74,7 +89,7 @@ describe('MeshtasticManager - lastHeard replay guard coverage (#4192/#4445)', ()
         deviceMetrics: { batteryLevel: 90 },
       });
 
-      expect(lastHeardArg()).toBeCloseTo(nowSec, -1);
+      expect(lastHeardArg()).toBe(nowSec);
     });
   });
 
@@ -90,7 +105,7 @@ describe('MeshtasticManager - lastHeard replay guard coverage (#4192/#4445)', ()
       const meshPacket = { from: 0x22222222, id: 4, rxTime: freshRxTime };
       await manager.processPaxcounterMessageProtobuf(meshPacket, { wifi: 5, ble: 2 });
 
-      expect(lastHeardArg()).toBeCloseTo(nowSec, -1);
+      expect(lastHeardArg()).toBe(nowSec);
     });
   });
 
@@ -114,7 +129,7 @@ describe('MeshtasticManager - lastHeard replay guard coverage (#4192/#4445)', ()
         heartbeat: { period: 900, secondary: 0 },
       });
 
-      expect(lastHeardArg()).toBeCloseTo(nowSec, -1);
+      expect(lastHeardArg()).toBe(nowSec);
     });
   });
 
@@ -133,7 +148,7 @@ describe('MeshtasticManager - lastHeard replay guard coverage (#4192/#4445)', ()
       const meshPacket = { from: 0x44444444, id: 8, rxTime: freshRxTime };
       await manager.processPositionMessageProtobuf(meshPacket, position);
 
-      expect(lastHeardArg()).toBeCloseTo(nowSec, -1);
+      expect(lastHeardArg()).toBe(nowSec);
     });
 
     // #5401: positionTimestamp is when the fix was OBSERVED. A NodeDB replay
@@ -153,11 +168,10 @@ describe('MeshtasticManager - lastHeard replay guard coverage (#4192/#4445)', ()
     });
 
     it('stamps a live position with now (#5401)', async () => {
-      const before = Date.now();
       const meshPacket = { from: 0x44444444, id: 10, rxTime: freshRxTime };
       await manager.processPositionMessageProtobuf(meshPacket, position);
 
-      expect(positionTimestampArg()).toBeGreaterThanOrEqual(before);
+      expect(positionTimestampArg()).toBe(NOW_MS);
     });
   });
 

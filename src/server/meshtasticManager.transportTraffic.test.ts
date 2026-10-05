@@ -8,7 +8,7 @@
  * mocking only what that path touches (database, packet log, the heard-reflood
  * diagnostic write) so the real classification/gate logic runs unmocked.
  */
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 const mockUpsertNodeAsync = vi.fn().mockResolvedValue(undefined);
 const mockGetNode = vi.fn().mockResolvedValue(null);
@@ -41,20 +41,35 @@ const TX_LORA = 1;
 const TX_MQTT = 5;
 const TX_MULTICAST_UDP = 6;
 
+// Loaded once while the file is collected, not inside a hook. A dynamic import in
+// `beforeEach` charged the manager's module load (~2 s idle, 10 s+ on a busy
+// host) to the first test's hook budget; collection has no such budget.
+const managerModule = await import('./meshtasticManager.js');
+
 describe('MeshtasticManager — transport-traffic counter hook (#5101 P3 WP3)', () => {
   let manager: any;
-  const nowSec = Math.floor(Date.now() / 1000);
+  // A pinned clock, not the wall clock. `nowSec` used to be read while the file
+  // was collected and compared with the `Date.now()` the manager read during the
+  // test; a slow module load put more than the 5 s tolerance between the two.
+  // With `Date` faked the manager reads exactly NOW_MS, so the stamps are exact.
+  const NOW_MS = Date.UTC(2026, 0, 15, 12, 0, 0);
+  const nowSec = NOW_MS / 1000;
   const freshRxTime = nowSec - 30; // clearly live
   const staleRxTime = nowSec - 24 * 60 * 60; // well past the replay-guard threshold
 
-  beforeEach(async () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(NOW_MS);
     vi.clearAllMocks();
     mockGetNode.mockResolvedValue(null);
-    const module = await import('./meshtasticManager.js');
-    manager = module.fallbackManager;
+    manager = managerModule.fallbackManager;
     vi.spyOn(manager, 'trackPKIEncryption').mockResolvedValue(undefined);
     vi.spyOn(manager, 'maybeRecordHeardReflood').mockResolvedValue(undefined);
     manager.localNodeInfo = { nodeNum: 0xaaaaaaaa, nodeId: '!aaaaaaaa', longName: 'Local', shortName: 'LOCL' };
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   function basePacket(overrides: Record<string, unknown>) {
@@ -123,10 +138,9 @@ describe('MeshtasticManager — transport-traffic counter hook (#5101 P3 WP3)', 
       );
       expect(mockUpsertNodeAsync).toHaveBeenCalled();
       const call = mockUpsertNodeAsync.mock.calls[mockUpsertNodeAsync.mock.calls.length - 1];
-      // stamped with "now" (not the replay's 30-min-old rx_time) — close, not
-      // exact, since resolveLastHeardSec reads a fresh Date.now() internally.
-      expect(call[0].lastHeard).toBeCloseTo(nowSec, -1);
-      expect(call[0].transportLastRf).toBeCloseTo(nowSec, -1);
+      // stamped with "now", not the replay's 30-min-old rx_time.
+      expect(call[0].lastHeard).toBe(nowSec);
+      expect(call[0].transportLastRf).toBe(nowSec);
     });
 
     it('still records a genuinely fresh packet on the same node', async () => {

@@ -240,6 +240,11 @@ const LOCAL = 0x0a0a0a0a;
 const PEER = 0x22222222;
 const toNodeId = (n: number) => `!${n.toString(16).padStart(8, '0')}`;
 
+// Loaded once while the file is collected, not inside a hook. A dynamic import in
+// `beforeEach` charged the manager's module load (~2 s idle, 10 s+ on a busy
+// host) to the first test's hook budget; collection has no such budget.
+const managerModule = await import('./meshtasticManager.js');
+
 describe('MeshtasticManager - delivery-diagnostics event recording (#4816 Phase 3)', () => {
   let manager: any;
 
@@ -258,8 +263,7 @@ describe('MeshtasticManager - delivery-diagnostics event recording (#4816 Phase 
     mockUpsertNodeAsync.mockResolvedValue(undefined);
     mockCreateTextMessage.mockReturnValue({ data: new Uint8Array([1, 2, 3]), messageId: 999 });
 
-    const module = await import('./meshtasticManager.js');
-    manager = module.fallbackManager;
+    manager = managerModule.fallbackManager;
     manager.localNodeInfo = { nodeNum: LOCAL, nodeId: toNodeId(LOCAL) };
     manager.isConnected = true;
     manager.transport = { send: vi.fn().mockResolvedValue(undefined) };

@@ -38,6 +38,11 @@ vi.mock('../utils/logger.js', () => ({
 // A fixed instant so "now" is deterministic across runs.
 const FIXED_NOW = new Date('2025-03-09T14:05:00');
 
+// Loaded once while the file is collected, not inside a hook. A dynamic import in
+// `beforeEach` charged the manager's module load (~2 s idle, 10 s+ on a busy
+// host) to the first test's hook budget; collection has no such budget.
+const managerModule = await import('./meshtasticManager.js');
+
 describe('MeshtasticManager - {DATE} / {TIME} announcement tokens', () => {
   let manager: any;
 
@@ -45,8 +50,7 @@ describe('MeshtasticManager - {DATE} / {TIME} announcement tokens', () => {
     vi.clearAllMocks();
     vi.useFakeTimers();
     vi.setSystemTime(FIXED_NOW);
-    const module = await import('./meshtasticManager.js');
-    manager = module.fallbackManager;
+    manager = managerModule.fallbackManager;
   });
 
   afterEach(() => {

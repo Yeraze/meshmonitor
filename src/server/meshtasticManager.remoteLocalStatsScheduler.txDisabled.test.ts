@@ -202,6 +202,11 @@ const mockTargetNode = {
   hopsAway: 1,
 };
 
+// Loaded once while the file is collected, not inside a hook. A dynamic import in
+// `beforeEach` charged the manager's module load (~2 s idle, 10 s+ on a busy
+// host) to the first test's hook budget; collection has no such budget.
+const managerModule = await import('./meshtasticManager.js');
+
 describe('MeshtasticManager - Remote LocalStats Scheduler TX-disabled skip (#4294 WP3)', () => {
   let manager: any;
 
@@ -210,8 +215,7 @@ describe('MeshtasticManager - Remote LocalStats Scheduler TX-disabled skip (#429
     vi.clearAllMocks();
     vi.spyOn(Math, 'random').mockReturnValue(0);
 
-    const module = await import('./meshtasticManager.js');
-    manager = module.fallbackManager;
+    manager = managerModule.fallbackManager;
 
     manager.isConnected = true;
     manager.localNodeInfo = {

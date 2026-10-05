@@ -56,6 +56,11 @@ function neighborInfoPacket(requestId: number) {
   };
 }
 
+// Loaded once while the file is collected, not inside a hook. A dynamic import in
+// `beforeEach` charged the manager's module load (~2 s idle, 10 s+ on a busy
+// host) to the first test's hook budget; collection has no such budget.
+const managerModule = await import('./meshtasticManager.js');
+
 describe('MeshtasticManager - telemetry NeighborInfo hijack auto-retry (#4210)', () => {
   let manager: any;
 
@@ -68,8 +73,7 @@ describe('MeshtasticManager - telemetry NeighborInfo hijack auto-retry (#4210)',
     mockDeleteNeighbor.mockResolvedValue(undefined);
     mockInsertNeighborBatch.mockResolvedValue(undefined);
 
-    const module = await import('./meshtasticManager.js');
-    manager = module.fallbackManager;
+    manager = managerModule.fallbackManager;
     manager.pendingTelemetryRequests.clear();
     for (const t of manager.telemetryRetryTimers) clearTimeout(t);
     manager.telemetryRetryTimers.clear();

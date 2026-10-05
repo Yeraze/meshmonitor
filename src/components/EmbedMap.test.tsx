@@ -16,7 +16,7 @@
  * components' own behavior is covered by their own test files).
  */
 import type { ReactNode } from 'react';
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach, type Mock } from 'vitest';
 import { render, screen, waitFor, cleanup } from '@testing-library/react';
 import { EmbedMap } from './EmbedMap';
 import type { TraceroutePathsLayerProps } from './map/layers/TraceroutePathsLayer';
@@ -189,11 +189,19 @@ function mockFetchSequence(opts: {
         ok: true,
         json: () => Promise.resolve(body),
       } as Response);
+    // The data endpoints answer a little after `/config`, as they do in the
+    // app. EmbedMap renders its layers as soon as the config lands, with no
+    // data yet, so every run now passes through that empty first render
+    // rather than only the runs where the host happens to be slow.
+    const respondLate = (body: unknown) =>
+      new Promise<Response>((resolve) => {
+        setTimeout(() => resolve({ ok: true, json: () => Promise.resolve(body) } as Response), 20);
+      });
 
     if (url.endsWith('/config')) return respond(config);
     if (url.endsWith('/nodes')) return respond(nodes);
-    if (url.endsWith('/neighborinfo')) return respond(neighborInfo);
-    if (url.endsWith('/traceroutes')) return respond(traceroutes);
+    if (url.endsWith('/neighborinfo')) return respondLate(neighborInfo);
+    if (url.endsWith('/traceroutes')) return respondLate(traceroutes);
     if (url.endsWith('/geojson/layers')) return respond(geojsonLayers);
     return Promise.resolve({ ok: false, json: () => Promise.resolve({ error: 'not found' }) } as Response);
   }) as unknown as typeof fetch;
@@ -205,6 +213,29 @@ async function renderEmbedMap() {
     expect(screen.getByTestId('map-container')).toBeInTheDocument();
   });
 }
+
+/**
+ * Props of a layer's latest render, once `ready` holds for them.
+ *
+ * "The spy was called" does not mean "the data arrived": the layer's first
+ * render carries an empty list. Tests that waited only for a call and then
+ * read `mock.calls.at(-1)` failed in CI with `expected [] to have a length of
+ * 1` or `Cannot read properties of undefined (reading 'key')` whenever the
+ * assertion ran between the two renders.
+ */
+async function latestProps<P>(spy: Mock, ready: (props: P) => boolean): Promise<P> {
+  await waitFor(() => {
+    const props = spy.mock.calls.at(-1)?.[0] as P | undefined;
+    expect(props !== undefined && ready(props)).toBe(true);
+  });
+  return spy.mock.calls.at(-1)![0] as P;
+}
+
+const tracerouteProps = (segments: number) =>
+  latestProps<TraceroutePathsLayerProps>(tracerouteLayerSpy, (p) => p.segments.length === segments);
+
+const neighborProps = (links: number) =>
+  latestProps<NeighborLinksLayerProps>(neighborLinksSpy, (p) => p.links.length === links);
 
 beforeEach(() => {
   tracerouteLayerSpy.mockClear();
@@ -226,8 +257,7 @@ describe('EmbedMap traceroute rendering (#4047 P6 WP2)', () => {
     mockFetchSequence({ traceroutes: [forwardSegment] });
     await renderEmbedMap();
 
-    await waitFor(() => expect(tracerouteLayerSpy).toHaveBeenCalled());
-    const props = tracerouteLayerSpy.mock.calls.at(-1)![0] as TraceroutePathsLayerProps;
+    const props = await tracerouteProps(1);
 
     expect(props.colorMode).toBe('snr');
     expect(props.curvature).toBe(0);
@@ -252,11 +282,7 @@ describe('EmbedMap traceroute rendering (#4047 P6 WP2)', () => {
     mockFetchSequence({ traceroutes: [forwardSegment, returnSegment] });
     await renderEmbedMap();
 
-    await waitFor(() => {
-      const props = tracerouteLayerSpy.mock.calls.at(-1)?.[0] as TraceroutePathsLayerProps | undefined;
-      expect(props?.segments.length).toBe(2);
-    });
-    const props = tracerouteLayerSpy.mock.calls.at(-1)![0] as TraceroutePathsLayerProps;
+    const props = await tracerouteProps(2);
 
     const forward = props.segments.find((s) => s.leg === 'forward');
     const back = props.segments.find((s) => s.leg === 'return');
@@ -276,8 +302,7 @@ describe('EmbedMap traceroute rendering (#4047 P6 WP2)', () => {
     mockFetchSequence({ traceroutes: [mqttSegment] });
     await renderEmbedMap();
 
-    await waitFor(() => expect(tracerouteLayerSpy).toHaveBeenCalled());
-    const props = tracerouteLayerSpy.mock.calls.at(-1)![0] as TraceroutePathsLayerProps;
+    const props = await tracerouteProps(1);
     expect(props.segments).toHaveLength(1);
     expect(props.segments[0].isMqtt).toBe(true);
     expect(props.segments[0].avgSnr).toBeNull();
@@ -287,8 +312,7 @@ describe('EmbedMap traceroute rendering (#4047 P6 WP2)', () => {
     mockFetchSequence({ traceroutes: [legacyOnlySegment] });
     await renderEmbedMap();
 
-    await waitFor(() => expect(tracerouteLayerSpy).toHaveBeenCalled());
-    const props = tracerouteLayerSpy.mock.calls.at(-1)![0] as TraceroutePathsLayerProps;
+    const props = await tracerouteProps(1);
     expect(props.segments).toHaveLength(1);
     const seg = props.segments[0];
     // Defaults: leg -> 'forward', avgSnr falls back to the legacy `snr` field,
@@ -305,8 +329,7 @@ describe('EmbedMap traceroute rendering (#4047 P6 WP2)', () => {
     mockFetchSequence({ config: baseConfig({ tileset: 'cartoDark' }), traceroutes: [forwardSegment] });
     await renderEmbedMap();
 
-    await waitFor(() => expect(tracerouteLayerSpy).toHaveBeenCalled());
-    const props = tracerouteLayerSpy.mock.calls.at(-1)![0] as TraceroutePathsLayerProps;
+    const props = await tracerouteProps(1);
     expect(props.snrColors).toEqual(getOverlayColors('dark').snrColors);
   });
 
@@ -314,8 +337,7 @@ describe('EmbedMap traceroute rendering (#4047 P6 WP2)', () => {
     mockFetchSequence({ config: baseConfig({ tileset: 'osmHot' }), traceroutes: [forwardSegment] });
     await renderEmbedMap();
 
-    await waitFor(() => expect(tracerouteLayerSpy).toHaveBeenCalled());
-    const props = tracerouteLayerSpy.mock.calls.at(-1)![0] as TraceroutePathsLayerProps;
+    const props = await tracerouteProps(1);
     const lightColors = getOverlayColors('light').snrColors;
     const darkColors = getOverlayColors('dark').snrColors;
     expect(props.snrColors).toEqual(lightColors);
@@ -326,8 +348,7 @@ describe('EmbedMap traceroute rendering (#4047 P6 WP2)', () => {
     mockFetchSequence({ traceroutes: [forwardSegment] });
     await renderEmbedMap();
 
-    await waitFor(() => expect(tracerouteLayerSpy).toHaveBeenCalled());
-    const props = tracerouteLayerSpy.mock.calls.at(-1)![0] as TraceroutePathsLayerProps;
+    const props = await tracerouteProps(1);
     expect(typeof props.renderPopup).toBe('function');
 
     const seg = props.segments[0];
@@ -341,8 +362,7 @@ describe('EmbedMap traceroute rendering (#4047 P6 WP2)', () => {
     mockFetchSequence({ config: baseConfig({ showPopups: false }), traceroutes: [forwardSegment] });
     await renderEmbedMap();
 
-    await waitFor(() => expect(tracerouteLayerSpy).toHaveBeenCalled());
-    const props = tracerouteLayerSpy.mock.calls.at(-1)![0] as TraceroutePathsLayerProps;
+    const props = await tracerouteProps(1);
     expect(props.renderPopup).toBeUndefined();
   });
 });
@@ -409,8 +429,7 @@ describe('EmbedMap neighbor-link adapter (#4047 P7 §4.1)', () => {
     });
     await renderEmbedMap();
 
-    await waitFor(() => expect(neighborLinksSpy).toHaveBeenCalled());
-    const props = neighborLinksSpy.mock.calls.at(-1)![0] as NeighborLinksLayerProps;
+    const props = await neighborProps(1);
     expect(props.links).toHaveLength(1);
     const link = props.links[0];
     expect(link.positions).toEqual([[40.0, -105.0], [40.2, -105.2]]);
@@ -430,8 +449,7 @@ describe('EmbedMap neighbor-link adapter (#4047 P7 §4.1)', () => {
     });
     await renderEmbedMap();
 
-    await waitFor(() => expect(neighborLinksSpy).toHaveBeenCalled());
-    const props = neighborLinksSpy.mock.calls.at(-1)![0] as NeighborLinksLayerProps;
+    const props = await neighborProps(1);
     expect(props.links[0].children).toBeUndefined();
   });
 

@@ -193,14 +193,18 @@ function localRouter() {
 
 // ─── Tests ────────────────────────────────────────────────────────────────────
 
+// Loaded once while the file is collected, not inside a hook. A dynamic import in
+// `beforeEach` charged the manager's module load (~2 s idle, 10 s+ on a busy
+// host) to the first test's hook budget; collection has no such budget.
+const managerModule = await import('./meshtasticManager.js');
+
 describe('MeshtasticManager - Auto Favorite per-source scoping', () => {
   let manager: any;
 
   beforeEach(async () => {
     vi.clearAllMocks();
 
-    const module = await import('./meshtasticManager.js');
-    manager = module.fallbackManager;
+    manager = managerModule.fallbackManager;
 
     // Pin the singleton to a known sourceId for assertions
     manager.sourceId = SOURCE_A;
