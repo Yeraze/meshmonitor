@@ -45,7 +45,7 @@
     "@liamcottle/meshcore.js": "github:Yeraze/meshcore.js#bd710fccbe56e86258c37a3d0e4ddcc905d1ec2c",
     "@maplibre/maplibre-gl-leaflet": "^0.1.4",
     "@michaelhart/meshcore-decoder": "^0.3.0",
-    "@tanstack/react-query": "^5.103.2",
+    "@tanstack/react-query": "^5.104.0",
     "@tanstack/react-virtual": "^3.14.13",
     "@tmcw/togeojson": "^7.1.2",
     "@types/leaflet.heat": "^0.2.5",
