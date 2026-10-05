@@ -154,7 +154,7 @@ router.get(
 router.get('/contacts', optionalAuth(), requirePermission('nodes', 'read', { sourceIdFrom: 'params.id' }), async (req: Request, res: Response) => {
   try {
     const manager = managerFor(req, res);
-    const contacts = manager.getContacts();
+    const contacts = await manager.getContactsForView();
     const localNode = manager.getLocalNode();
 
     // Include local node in contacts list if it has coordinates

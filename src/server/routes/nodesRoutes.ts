@@ -119,11 +119,23 @@ router.get('/nodes', optionalAuth(), async (req, res) => {
     // pass includeAllMeshcore=true to drop the position gate.
     const includeAllMeshcore = req.query.includeAllMeshcore === 'true';
     const meshcoreNodes: any[] = [];
+    const mcUser = req.user ?? null;
     for (const mgr of meshcoreManagers) {
+      // Per-source gates, the same two the MeshCore routes and the dashboard
+      // apply (#4559): `nodes:read` lists a source's nodes, `nodes:viewOnMap`
+      // shows where they are. This branch had neither, so any caller — an
+      // anonymous one too — got every MeshCore node's name and position
+      // (#5632). `hasPermission` passes admins.
+      const canRead = mcUser ? await hasPermission(mcUser, 'nodes', 'read', mgr.sourceId) : false;
+      const canViewOnMap = mcUser ? await hasPermission(mcUser, 'nodes', 'viewOnMap', mgr.sourceId) : false;
+      if (!canRead && !canViewOnMap) continue;
       const mcSignFlipCtx = await signFlipFor(mgr.sourceId); // #5363
       for (const n of await mgr.getAllNodes()) {
-        const hasPosition = n.latitude != null && n.longitude != null && !(n.latitude === 0 && n.longitude === 0);
-        if (!hasPosition && !includeAllMeshcore) continue;
+        const hasPosition = canViewOnMap
+          && n.latitude != null && n.longitude != null && !(n.latitude === 0 && n.longitude === 0);
+        // A row with no position to show needs `nodes:read` AND the caller's
+        // opt-in; map-only access sees positioned rows and nothing else.
+        if (!hasPosition && !(includeAllMeshcore && canRead)) continue;
         const lastHeard = typeof n.lastHeard === 'number'
           ? Math.floor(n.lastHeard / 1000)
           : Math.floor(Date.now() / 1000);
@@ -150,8 +162,9 @@ router.get('/nodes', optionalAuth(), async (req, res) => {
           hopsAway: 0,
           role: 0,
           // #5578: latest-advert position flag for the map's hide toggle.
-          lastAdvertHadPosition: n.lastAdvertHadPosition ?? null,
-          positionSource: n.positionSource ?? null,
+          // Position data too, so it follows the same `viewOnMap` gate.
+          lastAdvertHadPosition: canViewOnMap ? n.lastAdvertHadPosition ?? null : null,
+          positionSource: canViewOnMap ? n.positionSource ?? null : null,
         }, mcSignFlipCtx));
       }
     }

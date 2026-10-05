@@ -48,6 +48,7 @@ vi.mock('../sourceManagerRegistry.js', () => {
     getConnectionStatus: () => ({ connected: true, deviceType: 1, config: null }),
     getLocalNode: () => null,
     getContacts: () => [STUB_CONTACT],
+    getContactsForView: async () => [STUB_CONTACT],
     getAllNodes: async () => [STUB_NODE],
     getRecentMessages: (_limit?: number) => [],
     refreshContacts: async () => new Map([[STUB_CONTACT.publicKey, STUB_CONTACT]]),

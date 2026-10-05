@@ -134,3 +134,42 @@ describe('MeshCoreMap — hide nodes without a current position advert (#5578)',
     expect(markerKeys()).not.toContain(KEY_STALE);
   });
 });
+
+// #5632: a Repeater source's contact list now holds every stored node, most of
+// them advert-only with no coordinates. Those must never become a marker.
+describe('MeshCoreMap — nodes with no stored position (#5632)', () => {
+  const KEY_ADVERT_ONLY = 'e7'.repeat(32);
+  const KEY_ZERO = 'e8'.repeat(32);
+  const withPositionless = [
+    ...contacts,
+    // As the server sends it: no latitude/longitude keys at all.
+    { publicKey: KEY_ADVERT_ONLY, advName: 'Advert Only', advType: 1, lastAdvertHadPosition: false, outPath: null, pathLen: null },
+    { publicKey: KEY_ZERO, advName: 'Null Island', advType: 2, latitude: 0, longitude: 0 },
+  ];
+
+  beforeEach(() => {
+    localStorage.clear();
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false }));
+  });
+
+  it('draws no marker for them, with the hide toggle off or on', () => {
+    render(<MeshCoreMap contacts={withPositionless} selectedPublicKey={null} />);
+    expect(markerKeys()).not.toContain(KEY_ADVERT_ONLY);
+    expect(markerKeys()).not.toContain(KEY_ZERO);
+    expect(markerKeys()).toContain(KEY_FRESH);
+    fireEvent.click(toggle());
+    expect(markerKeys()).not.toContain(KEY_ADVERT_ONLY);
+  });
+
+  it('selecting one draws nothing and does not throw', () => {
+    render(<MeshCoreMap contacts={withPositionless} selectedPublicKey={KEY_ADVERT_ONLY} />);
+    expect(markerKeys()).not.toContain(KEY_ADVERT_ONLY);
+    expect(markerKeys()).toContain(KEY_FRESH);
+  });
+
+  it('a node whose later advert had no position keeps its marker at the stored fix', () => {
+    // KEY_STALE is exactly that record: coordinates kept, flag false.
+    render(<MeshCoreMap contacts={withPositionless} selectedPublicKey={null} />);
+    expect(markerKeys()).toContain(KEY_STALE);
+  });
+});

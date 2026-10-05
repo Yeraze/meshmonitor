@@ -6,7 +6,7 @@
  * all run for real. Nothing here transmits: there is no serial port.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { MeshCoreManager, MeshCoreDeviceType, type MeshCoreMessage } from './meshcoreManager.js';
+import { MeshCoreManager, MeshCoreDeviceType, type MeshCoreContact, type MeshCoreMessage } from './meshcoreManager.js';
 import databaseService from '../services/database.js';
 import meshcorePacketLogService from './services/meshcorePacketLogService.js';
 import { dataEventEmitter } from './services/dataEventEmitter.js';
@@ -122,6 +122,134 @@ describe('repeater RAW ingest (#5553, #5551)', () => {
       expect(node!.repeaterNeighborAt).toBeGreaterThan(0);
       const all = await m.getAllNodes();
       expect(all.find((n) => n.publicKey === key)?.repeaterNeighborAt).toBeGreaterThan(0);
+    });
+
+    // #5632: a Repeater keeps no in-memory contact map, and the client
+    // replaces its contact record with each pushed event. The push used to
+    // carry the bare advert, so an advert without coordinates took the node
+    // off the map though the stored row still had them.
+    describe('position survives a later advert without one (#5632)', () => {
+      const key = '77'.repeat(32);
+      const lastEventFor = (publicKey: string) =>
+        contactSpy.mock.calls
+          .map((call: unknown[]) => call[0] as MeshCoreContact)
+          .filter((c: MeshCoreContact) => c.publicKey === publicKey)
+          .at(-1);
+
+      it('the stored row and the pushed contact both keep the coordinates', async () => {
+        const { feed } = repeater();
+        feed(buildAdvertFrame({ publicKey: key, advType: 2, name: 'Ridge', lat: 45.5, lon: -122.5 }));
+        await vi.waitFor(() => expect(lastEventFor(key)).toBeTruthy());
+        expect(lastEventFor(key)).toMatchObject({ advName: 'Ridge', advType: 2, lastAdvertHadPosition: true });
+        expect(lastEventFor(key)!.latitude).toBeCloseTo(45.5, 4);
+
+        // Same node, next advert: name only, no position flag on the wire.
+        feed(buildAdvertFrame({ publicKey: key, advType: 2, name: 'Ridge', timestamp: 1_700_000_120 }));
+        await vi.waitFor(() => expect(lastEventFor(key)?.lastAdvertHadPosition).toBe(false));
+
+        const row = await databaseService.meshcore.getNodeByPublicKeyAndSource(key, REP);
+        expect(row!.latitude).toBeCloseTo(45.5, 4);
+        expect(row!.longitude).toBeCloseTo(-122.5, 4);
+        expect(row!.lastAdvertHadPosition).toBe(false);
+
+        const pushed = lastEventFor(key)!;
+        expect(pushed.latitude).toBeCloseTo(45.5, 4);
+        expect(pushed.longitude).toBeCloseTo(-122.5, 4);
+        expect(pushed).toMatchObject({ advName: 'Ridge', advType: 2 });
+        expect(typeof pushed.lastSeen).toBe('number');
+      });
+
+      it('a nameless later advert keeps the stored name in the pushed contact', async () => {
+        const nameKey = '78'.repeat(32);
+        const { feed } = repeater();
+        feed(buildAdvertFrame({ publicKey: nameKey, advType: 1, name: 'Ridge', lat: 45.5, lon: -122.5 }));
+        await vi.waitFor(() => expect(lastEventFor(nameKey)).toBeTruthy());
+        contactSpy.mockClear();
+        feed(buildAdvertFrame({ publicKey: nameKey, advType: 1, timestamp: 1_700_000_240 }));
+        await vi.waitFor(() => expect(lastEventFor(nameKey)).toBeTruthy());
+        expect(lastEventFor(nameKey)).toMatchObject({ advName: 'Ridge', name: 'Ridge' });
+      });
+
+      it('the neighbours poll pushes the stored row, not its own fields alone', async () => {
+        const nKey = '9abcdef0' + '6'.repeat(56);
+        const { m, feed } = repeater();
+        feed(buildAdvertFrame({ publicKey: nKey, advType: 2, name: 'Tower', lat: 10.25, lon: 20.5 }));
+        await vi.waitFor(() => expect(lastEventFor(nKey)).toBeTruthy());
+        feed(buildAdvertFrame({ publicKey: nKey, advType: 2, name: 'Tower', timestamp: 1_700_000_300 }));
+        await vi.waitFor(() => expect(lastEventFor(nKey)?.lastAdvertHadPosition).toBe(false));
+        contactSpy.mockClear();
+
+        await m.ingestRepeaterNeighborsReply('-> 9abcdef0:5:-8');
+        const pushed = lastEventFor(nKey)!;
+        expect(pushed).toMatchObject({ advName: 'Tower', advType: 2, snr: -2, lastAdvertHadPosition: false });
+        expect(pushed.latitude).toBeCloseTo(10.25, 4);
+      });
+    });
+
+    // #5632: Node Details and the Nodes map look a node up in the CONTACT
+    // list. A Repeater never fills the in-memory map, so that list was empty
+    // and every node the Nodes list showed opened as a bare public key.
+    describe('contact list for the client views (#5632)', () => {
+      it('is built from the stored rows, with and without a position', async () => {
+        const withFix = '21'.repeat(32);
+        const advertOnly = '43'.repeat(32);
+        const { m, feed } = repeater();
+        feed(buildAdvertFrame({ publicKey: withFix, advType: 2, name: 'Has Fix', lat: 45.5, lon: -122.5 }));
+        feed(buildAdvertFrame({ publicKey: advertOnly, advType: 1, name: 'No Fix' }));
+        await vi.waitFor(async () => {
+          expect(await databaseService.meshcore.getNodeByPublicKeyAndSource(advertOnly, REP)).toBeTruthy();
+          expect(await databaseService.meshcore.getNodeByPublicKeyAndSource(withFix, REP)).toBeTruthy();
+        });
+
+        expect(m.getContacts()).toEqual([]);
+        const contacts = await m.getContactsForView();
+        const a = contacts.find((c) => c.publicKey === withFix)!;
+        const b = contacts.find((c) => c.publicKey === advertOnly)!;
+        expect(a).toMatchObject({ advName: 'Has Fix', advType: 2, lastAdvertHadPosition: true });
+        expect(a.latitude).toBeCloseTo(45.5, 4);
+        expect(typeof a.lastSeen).toBe('number');
+        expect(b).toMatchObject({ advName: 'No Fix', advType: 1, lastAdvertHadPosition: false });
+        expect(b.latitude).toBeUndefined();
+        expect(b.longitude).toBeUndefined();
+        // Every contact is a row the Nodes list also reads.
+        const nodeKeys = (await m.getAllNodes()).map((n) => n.publicKey);
+        for (const c of contacts) expect(nodeKeys).toContain(c.publicKey);
+      });
+
+      it("never lists another source's node, even one with the same key", async () => {
+        const shared = '65'.repeat(32);
+        await databaseService.meshcore.upsertNode(
+          { publicKey: shared, name: 'On Companion', advType: 1, latitude: 1, longitude: 2 },
+          COMPANION,
+        );
+        const onlyThere = '87'.repeat(32);
+        await databaseService.meshcore.upsertNode({ publicKey: onlyThere, name: 'Elsewhere', advType: 1 }, COMPANION);
+        const { m, feed } = repeater();
+        feed(buildAdvertFrame({ publicKey: shared, advType: 2, name: 'On Repeater' }));
+        await vi.waitFor(async () => {
+          expect(await databaseService.meshcore.getNodeByPublicKeyAndSource(shared, REP)).toBeTruthy();
+        });
+
+        const contacts = await m.getContactsForView();
+        expect(contacts.find((c) => c.publicKey === onlyThere)).toBeUndefined();
+        const mine = contacts.find((c) => c.publicKey === shared)!;
+        expect(mine).toMatchObject({ advName: 'On Repeater', advType: 2 });
+        expect(mine.latitude).toBeUndefined();
+      });
+
+      it("leaves out the repeater's own key", async () => {
+        await databaseService.meshcore.upsertNode({ publicKey: SELF_KEY, name: 'Me' }, REP);
+        const { m } = repeater();
+        expect((await m.getContactsForView()).find((c) => c.publicKey === SELF_KEY)).toBeUndefined();
+        await databaseService.meshcore.deleteNode(SELF_KEY, REP);
+      });
+
+      it('a companion still answers from its in-memory map', async () => {
+        const m = new MeshCoreManager(COMPANION);
+        (m as unknown as Internals).deviceType = MeshCoreDeviceType.COMPANION;
+        await databaseService.meshcore.upsertNode({ publicKey: 'f0'.repeat(32), name: 'Row Only' }, COMPANION);
+        expect(await m.getContactsForView()).toEqual([]);
+      });
     });
 
     it("skips the repeater's own advert", async () => {
