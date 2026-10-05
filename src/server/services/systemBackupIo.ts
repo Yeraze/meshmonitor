@@ -351,13 +351,18 @@ function* readLinesSync(file: string): Generator<string> {
   }
 }
 
-/** True when the file starts `[` newline `{` — the one-row-per-line format. */
-function isLineFormat(file: string): boolean {
+/**
+ * What a table file is, from its first bytes: `lines` when it starts `[`
+ * newline `{` (the one-row-per-line format), `empty` when it has no bytes at
+ * all, otherwise `whole` (parse it in one go).
+ */
+function sniffTableFile(file: string): 'lines' | 'empty' | 'whole' {
   const fd = fs.openSync(file, 'r');
   try {
     const head = Buffer.alloc(3);
     const read = fs.readSync(fd, head, 0, 3, 0);
-    return read === 3 && head.toString('latin1') === '[\n{';
+    if (read === 0) return 'empty';
+    return read === 3 && head.toString('latin1') === '[\n{' ? 'lines' : 'whole';
   } finally {
     fs.closeSync(fd);
   }
@@ -373,10 +378,11 @@ function isLineFormat(file: string): boolean {
  * throws, which rolls the restore back.
  */
 export function* readTableFileSync(file: string): Generator<BackupRow> {
-  if (fs.statSync(file).size === 0) {
+  const format = sniffTableFile(file);
+  if (format === 'empty') {
     throw new Error(`Backup table file is empty: ${file}`);
   }
-  if (!isLineFormat(file)) {
+  if (format === 'whole') {
     const data: unknown = JSON.parse(fs.readFileSync(file, 'utf8'));
     if (!Array.isArray(data)) throw new Error(`Backup table file is not a JSON array: ${file}`);
     for (const row of data) yield assertRow(row, file);
