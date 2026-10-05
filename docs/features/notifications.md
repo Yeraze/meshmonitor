@@ -590,19 +590,19 @@ A source you have never saved settings for uses the **built-in defaults**. The t
 | Direct messages | On |
 | Emoji reactions | On |
 | MQTT messages | On |
-| Newly found nodes | On |
-| Successful traceroutes | On |
+| Newly found nodes | Off |
+| Successful traceroutes | Off |
 | Server events | Off |
 | Waypoint arrivals | Off, 10 km radius |
 | Inactive node / low battery | Off (20 %, 3300 mV) |
-| Whitelist | `Hi`, `Help` |
-| Blacklist | `Test`, `Copy` |
+| Whitelist | Empty |
+| Blacklist | Empty |
 | Message format | The default template |
 
-So on a source you have not set up, you are notified of direct messages, of channel messages that contain a whitelist word, and — over Web Push, if this browser is subscribed on that source — of new nodes and traceroutes. Channel messages are otherwise off until you pick channels and save.
+So on a source you have not set up, you are notified of direct messages only, over Web Push, if this browser is subscribed on that source. Channel messages, new-node alerts and traceroute alerts are off until you turn them on and save.
 
 ::: warning Changed in the next release
-A source with no saved settings used to borrow the settings you saved for another source: its channel ticks, keywords, toggles and Apprise URLs. It now uses the defaults above. If you run several sources and only ever saved settings on one, open the **Notifications** tab on each of the others and save what you want there. In particular, Apprise is off on a source until you turn it on and add URLs for that source, and new-node and traceroute alerts are on until you turn them off.
+A source with no saved settings used to borrow the settings you saved for another source: its channel ticks, keywords, toggles and Apprise URLs. It now uses the defaults above. If you run several sources and only ever saved settings on one, open the **Notifications** tab on each of the others and save what you want there. In particular, Apprise is off on a source until you turn it on and add URLs for that source, and channel, new-node and traceroute alerts are off until you turn them on. The defaults also changed: new-node and traceroute alerts used to default to on, and the keyword lists used to start with `Hi`, `Help` and `Test`, `Copy`. Settings you already saved are not changed.
 :::
 
 Three things are not per source:

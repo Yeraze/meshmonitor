@@ -141,8 +141,8 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
   // Nothing is saved for this source yet: the values shown are the built-in
   // defaults, not another source's settings. The first save creates the row.
   const [usingDefaults, setUsingDefaults] = useState(false);
-  const [whitelistText, setWhitelistText] = useState('Hi\nHelp');
-  const [blacklistText, setBlacklistText] = useState('Test\nCopy');
+  const [whitelistText, setWhitelistText] = useState('');
+  const [blacklistText, setBlacklistText] = useState('');
   const [isSavingPreferences, setIsSavingPreferences] = useState(false);
   
   // Inactive node monitoring
@@ -684,7 +684,7 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
           style={{ display: 'flex', alignItems: 'flex-start', gap: '8px', margin: '0 0 16px', padding: '10px 12px', borderRadius: '6px', fontSize: '14px' }}
         >
           <UiIcon name="info" size={16} />
-          <span>{t('notifications.using_defaults_notice')}</span>
+          <span>{t(isMeshCore ? 'notifications.using_defaults_notice_meshcore' : 'notifications.using_defaults_notice')}</span>
         </p>
       )}
 

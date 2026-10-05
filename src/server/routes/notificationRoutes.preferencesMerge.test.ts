@@ -118,8 +118,10 @@ describe('POST /push/preferences — partial update', () => {
       enableWebPush: defaults.enableWebPush,
       enableDirectMessages: defaults.enableDirectMessages,
       notifyOnMqtt: true,
-      whitelist: ['Hi', 'Help'],
-      blacklist: ['Test', 'Copy'],
+      notifyOnNewNode: false,
+      notifyOnTraceroute: false,
+      whitelist: [],
+      blacklist: [],
       waypointRadiusKm: 10,
       mutedChannels: [{ channelId: 1, muteUntil: null }],
       mutedDMs: [],
@@ -139,17 +141,17 @@ describe('POST /push/preferences — partial update', () => {
 
     await agent.post('/push/preferences').send({
       sourceId: harness.sourceB,
-      notifyOnNewNode: false,
+      notifyOnNewNode: true,
     }).expect(200);
 
     expect(await rowFor(harness.sourceB)).toMatchObject({
       enableWebPush: true,
       appriseUrls: [],
-      notifyOnNewNode: false,
+      notifyOnNewNode: true,
       mutedChannels: [{ channelId: 3, muteUntil: null }],
     });
     // The '' row is untouched.
-    expect(await rowFor('')).toMatchObject({ notifyOnNewNode: true, enableWebPush: false });
+    expect(await rowFor('')).toMatchObject({ notifyOnNewNode: false, enableWebPush: false });
   });
 
   it('a new MeshCore row takes nothing from the \'\' row, Meshtastic-keyed mutes included', async () => {

@@ -61,8 +61,10 @@ export function defaultNotificationPreferences(): NotificationPreferenceDefaults
     enableDirectMessages: true,
     notifyOnEmoji: true,
     notifyOnMqtt: true,
-    notifyOnNewNode: true,
-    notifyOnTraceroute: true,
+    // Off until the user asks: on a busy source these fire far more often
+    // than messages, and "never configured" should mean direct messages only.
+    notifyOnNewNode: false,
+    notifyOnTraceroute: false,
     notifyOnInactiveNode: false,
     notifyOnLowBattery: false,
     lowBatteryThreshold: 20,
@@ -74,8 +76,11 @@ export function defaultNotificationPreferences(): NotificationPreferenceDefaults
     waypointCenterLon: null,
     prefixWithNodeName: false,
     monitoredNodes: [],
-    whitelist: ['Hi', 'Help'],
-    blacklist: ['Test', 'Copy'],
+    // No keywords. An allow word beats "channel not enabled" and matches as
+    // a substring (the old default `Hi` matched "this" and "which"), so a
+    // default allow list notified for channels the user never picked.
+    whitelist: [],
+    blacklist: [],
     appriseUrls: [],
     mutedChannels: [],
     mutedDMs: [],

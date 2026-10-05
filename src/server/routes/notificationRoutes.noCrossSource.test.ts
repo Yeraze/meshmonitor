@@ -38,8 +38,8 @@ const ROW_A = {
   enableDirectMessages: false,
   notifyOnEmoji: false,
   notifyOnMqtt: false,
-  notifyOnNewNode: false,
-  notifyOnTraceroute: false,
+  notifyOnNewNode: true,
+  notifyOnTraceroute: true,
   notifyOnInactiveNode: true,
   notifyOnLowBattery: true,
   lowBatteryThreshold: 7,
@@ -206,11 +206,11 @@ describe('notification preferences never cross sources', () => {
       await agent.post('/push/preferences').send({
         sourceId: harness.sourceB,
         enabledChannels: [5],
-        notifyOnNewNode: false,
+        notifyOnNewNode: true,
       }).expect(200);
 
       // B's new row: the two posted fields, the defaults for the rest. Nothing of A's.
-      expect(await rowFor(harness.sourceB)).toEqual({ ...DEFAULTS, enabledChannels: [5], notifyOnNewNode: false });
+      expect(await rowFor(harness.sourceB)).toEqual({ ...DEFAULTS, enabledChannels: [5], notifyOnNewNode: true });
       // A is untouched.
       expect(await rowFor(harness.sourceA)).toEqual(ROW_A);
 
@@ -218,7 +218,7 @@ describe('notification preferences never cross sources', () => {
       expect(res.body).toEqual({
         ...DEFAULTS,
         enabledChannels: [5],
-        notifyOnNewNode: false,
+        notifyOnNewNode: true,
         usingDefaults: false,
         sourceFallback: false,
       });

@@ -154,8 +154,11 @@ async function readLegacyPreferencesBlobAsync(userId: number): Promise<Notificat
       enableDirectMessages: boolOr(oldPrefs.enableDirectMessages, d.enableDirectMessages),
       notifyOnEmoji: boolOr(oldPrefs.notifyOnEmoji, d.notifyOnEmoji),
       notifyOnMqtt: boolOr(oldPrefs.notifyOnMqtt, d.notifyOnMqtt),
-      notifyOnNewNode: boolOr(oldPrefs.notifyOnNewNode, d.notifyOnNewNode),
-      notifyOnTraceroute: boolOr(oldPrefs.notifyOnTraceroute, d.notifyOnTraceroute),
+      // An absent field means ON here, as it did in 3.x when the blob was
+      // written. This is a saved record, not a never-configured source, so it
+      // keeps its own meaning rather than the quieter built-in default.
+      notifyOnNewNode: boolOr(oldPrefs.notifyOnNewNode, true),
+      notifyOnTraceroute: boolOr(oldPrefs.notifyOnTraceroute, true),
       notifyOnInactiveNode: boolOr(oldPrefs.notifyOnInactiveNode, d.notifyOnInactiveNode),
       notifyOnLowBattery: boolOr(oldPrefs.notifyOnLowBattery, d.notifyOnLowBattery),
       // Waypoint alerts postdate the legacy blob entirely, so there is
