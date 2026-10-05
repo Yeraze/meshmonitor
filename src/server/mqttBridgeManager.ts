@@ -45,6 +45,7 @@ import type { DeviceInfo } from './meshtasticManager.js';
 import {
   MqttBridgePublisherPool,
   formatGatewayClientId,
+  type PoolPublishResult,
   type PublisherStatus,
 } from './mqttBridgePublisherPool.js';
 import { allowsUplink, resolveOkToMqttForEnvelope } from './utils/okToMqtt.js';
@@ -153,6 +154,26 @@ export interface MqttBridgeSourceConfig {
   dropAutomationUplinks?: boolean;
 }
 
+/**
+ * Rejected logins in a row before one of a bridge's upstream clients stops
+ * reconnecting. Counted per client: the subscriber and each per-gateway
+ * publisher have their own count, and a successful connect resets it.
+ * Same number the MeshCore ingest source uses (#5596).
+ */
+export const BRIDGE_MAX_AUTH_FAILURES = 5;
+
+/**
+ * What the bridge status says once the broker has rejected the subscriber's
+ * login {@link BRIDGE_MAX_AUTH_FAILURES} times.
+ *
+ * A fixed string on purpose: `/api/sources/:id/status` is readable without a
+ * login, so nothing from the config (username, password, broker host) and
+ * nothing from the broker's own error text may ride along.
+ */
+export const BRIDGE_AUTH_STOPPED_MESSAGE =
+  `Broker rejected the login ${BRIDGE_MAX_AUTH_FAILURES} times in a row, so this bridge stopped ` +
+  'reconnecting. Fix the username or password and save the source, or reconnect it.';
+
 /** Literal prefix replacement rule applied to a Meshtastic MQTT topic. */
 export interface TopicRewriteRule {
   from: string;
@@ -217,6 +238,25 @@ export interface MqttBridgeStatus extends SourceStatus {
    * them and `dropAutomationUplinks` is on (#5414).
    */
   uplinkAutomationDrops: number;
+  /**
+   * True once the SUBSCRIBER client gave up after
+   * {@link BRIDGE_MAX_AUTH_FAILURES} rejected logins in a row. Intake is
+   * halted; per-gateway publishers that still log in keep working. A config
+   * save or a manual connect clears it.
+   */
+  authStopped: boolean;
+  /**
+   * `!<8-hex>` ids of the per-gateway publishers that gave up the same way.
+   * Node ids: the status route removes this list for callers without
+   * `nodes:read` and leaves them {@link authStoppedGatewayCount}.
+   */
+  authStoppedGateways: string[];
+  authStoppedGatewayCount: number;
+  /**
+   * Uplink packets thrown away because the client that would carry them was
+   * stopped. Dropped, never queued and never replayed.
+   */
+  uplinkAuthStoppedDrops: number;
   lastError: string | null;
   /**
    * Inferred broker ACL state. `permissionMessage` is non-null when the
@@ -302,6 +342,21 @@ export class MqttBridgeManager extends EventEmitter implements ISourceManager {
   private readonly distanceDeleteScheduler: DistanceDeleteScheduler;
   /** Stats from the most recent geo sweep (MQTT Geo-Ignore epic, Phase 3). */
   private lastGeoSweep: GeoSweepStats | null = null;
+  /** Client ID the subscriber logs in with; undefined = random `mm-bridge-…`. */
+  private subscriberClientId: string | undefined;
+  /**
+   * True once the broker rejected the subscriber's login
+   * {@link BRIDGE_MAX_AUTH_FAILURES} times in a row and it gave up.
+   *
+   * In memory only, by design: a process restart is five fresh attempts, then
+   * the stop applies again. Stopping sends nothing, so there is no timer for a
+   * save to re-arm; a config save builds a new manager (five fresh attempts),
+   * and `reconnectAuthStopped()` rebuilds only the stopped clients. Persisting
+   * the stop would leave a bridge dead after the operator fixed the broker.
+   */
+  private subscriberAuthStopped = false;
+  /** Uplink packets dropped on the stopped subscriber client. */
+  private subscriberAuthStoppedDrops = 0;
 
   constructor(sourceId: string, sourceName: string, config: MqttBridgeSourceConfig) {
     super();
@@ -378,10 +433,33 @@ export class MqttBridgeManager extends EventEmitter implements ISourceManager {
         password: this.config.upstream.password,
         poolLabel: this.sourceId,
         reconnectCoordinator: this.reconnectCoordinator,
+        maxAuthFailures: BRIDGE_MAX_AUTH_FAILURES,
       });
     }
 
-    this.client = new MqttBrokerClient({
+    this.subscriberClientId = subscriberClientId;
+    this.subscriberAuthStopped = false;
+    await this.connectSubscriber();
+    if (mode === 'publish_only') {
+      logger.info(
+        `MQTT bridge ${this.sourceId} started in publish_only mode — skipping upstream subscribe`,
+      );
+      return;
+    }
+    logger.info(
+      `MQTT bridge ${this.sourceId} subscribed to ${this.config.subscriptions.length} upstream topic(s) (mode=${mode}, forwarding=${forwardingMode})`,
+    );
+  }
+
+  /**
+   * Build the subscriber client, log in, and subscribe. Used by `start()` and
+   * by `reconnectAuthStopped()`; each call is a new client, so a new count of
+   * rejected logins.
+   */
+  private async connectSubscriber(): Promise<void> {
+    const mode = this.getMode();
+    const subscriberClientId = this.subscriberClientId;
+    const client = new MqttBrokerClient({
       url: this.config.upstream.url,
       username: this.config.upstream.username,
       password: this.config.upstream.password,
@@ -390,12 +468,16 @@ export class MqttBridgeManager extends EventEmitter implements ISourceManager {
       // when no parent broker is attached (standalone bridge).
       clientId: subscriberClientId,
       clientIdPrefix: subscriberClientId ? undefined : `mm-bridge-${this.sourceId}`,
+      // A rejected login does not fix itself; without this a wrong password
+      // costs the broker a CONNECT every ~60 s for ever.
+      maxAuthFailures: BRIDGE_MAX_AUTH_FAILURES,
     });
-    this.client.setCoordinator(this.reconnectCoordinator);
-    this.client.on('error', (err) => {
+    this.client = client;
+    if (this.reconnectCoordinator) client.setCoordinator(this.reconnectCoordinator);
+    client.on('error', (err) => {
       this.lastError = err.message;
     });
-    this.client.on('permission-denied', (info: { kind: 'auth' | 'subscribe'; message: string }) => {
+    client.on('permission-denied', (info: { kind: 'auth' | 'subscribe'; message: string }) => {
       // In publish_only mode the operator has explicitly opted out of
       // subscribing, so suppress SUBACK-denied noise — only surface auth
       // failures, which are still actionable.
@@ -409,21 +491,83 @@ export class MqttBridgeManager extends EventEmitter implements ISourceManager {
       );
       this.emit('permission-denied', info);
     });
-    this.client.on('message', (msg) => this.handleDownlink(msg.topic, msg.payload, msg.retained));
+    client.on('message', (msg) => this.handleDownlink(msg.topic, msg.payload, msg.retained));
+    client.on('auth-stopped', () => this.onSubscriberAuthStopped(client));
 
-    await this.client.connect();
-    if (mode === 'publish_only') {
-      logger.info(
-        `MQTT bridge ${this.sourceId} started in publish_only mode — skipping upstream subscribe`,
-      );
-      return;
+    await client.connect();
+    // stop() or an auth stop may have run while the login was in flight.
+    if (this.client !== client || this.subscriberAuthStopped) return;
+    if (mode !== 'publish_only' && this.config.subscriptions.length > 0) {
+      await client.subscribe(this.config.subscriptions);
     }
-    if (this.config.subscriptions.length > 0) {
-      await this.client.subscribe(this.config.subscriptions);
-    }
-    logger.info(
-      `MQTT bridge ${this.sourceId} subscribed to ${this.config.subscriptions.length} upstream topic(s) (mode=${mode}, forwarding=${forwardingMode})`,
+  }
+
+  /**
+   * The broker rejected the subscriber's login too many times: give up until
+   * someone acts.
+   *
+   * The client has already stopped scheduling retries. Here we record why and
+   * close the socket. Intake halts; per-gateway publishers are separate
+   * clients with their own counts and keep going. `this.client` stays set (a
+   * closed, never-connected object) so the pool path in `handleUplink` still
+   * runs.
+   */
+  private onSubscriberAuthStopped(client: MqttBrokerClient): void {
+    if (this.client !== client) return; // A stale client from before a restart.
+    this.subscriberAuthStopped = true;
+    this.lastError = BRIDGE_AUTH_STOPPED_MESSAGE;
+    logger.warn(
+      `MQTT bridge ${this.sourceId}: broker rejected the subscriber login ${BRIDGE_MAX_AUTH_FAILURES} times in a row; ` +
+        'stopped reconnecting until the source is saved or reconnected',
     );
+    // Listeners stay attached until the socket is closed: the client still
+    // emits 'error' for this same rejection, and an EventEmitter with no
+    // 'error' listener throws.
+    void client.disconnect().catch((err) => {
+      logger.debug(`MQTT bridge ${this.sourceId}: error closing rejected client:`, err);
+    });
+  }
+
+  /**
+   * Manual reconnect: give every client that stopped after rejected logins a
+   * fresh start, and leave the rest alone. A healthy or still-retrying client
+   * is never touched, so a repeated click cannot churn a working session or
+   * add login attempts.
+   *
+   * Sends nothing to the mesh and replays nothing: packets dropped while a
+   * client was stopped are gone.
+   */
+  async reconnectAuthStopped(): Promise<{ subscriber: boolean; gateways: number }> {
+    const gateways = this.publisherPool?.restartAuthStopped() ?? 0;
+    let subscriber = false;
+    if (this.subscriberAuthStopped && this.client) {
+      const old = this.client;
+      subscriber = true;
+      this.subscriberAuthStopped = false;
+      this.subscriberAuthStoppedDrops = 0;
+      this.lastError = null;
+      old.removeAllListeners();
+      old.on('error', () => {});
+      await old.disconnect().catch(() => {});
+      // The Client ID and the shared reconnect coordinator were set by start()
+      // and are reused, so the new client joins the same backoff as the pool.
+      try {
+        await this.connectSubscriber();
+      } catch (err) {
+        // Only a failed SUBSCRIBE can land here (the login itself never
+        // rejects). The new client is live, registered with the coordinator,
+        // and re-subscribes on its next connect, so report and carry on.
+        logger.warn(
+          `MQTT bridge ${this.sourceId}: subscribe failed after a manual reconnect: ${(err as Error).message}`,
+        );
+      }
+    }
+    return { subscriber, gateways };
+  }
+
+  /** True when the subscriber or any gateway publisher stopped after rejected logins. */
+  hasAuthStop(): boolean {
+    return this.subscriberAuthStopped || (this.publisherPool?.getAuthStoppedGateways().length ?? 0) > 0;
   }
 
   /** Resolves the configured mode, defaulting to `'bidirectional'`. */
@@ -447,6 +591,8 @@ export class MqttBridgeManager extends EventEmitter implements ISourceManager {
       this.reconnectCoordinator = null;
     }
     this.brokerGatewayNum = null;
+    // Stopped by hand is not "stopped by the broker"; start() begins clean.
+    this.subscriberAuthStopped = false;
   }
 
   getStatus(): MqttBridgeStatus {
@@ -458,6 +604,12 @@ export class MqttBridgeManager extends EventEmitter implements ISourceManager {
     // is effectively zero — passing 0 keeps buildPermissionMessage from
     // reporting "0 subscriptions denied" when there's no real failure.
     const requestedSubs = mode === 'publish_only' ? 0 : this.config.subscriptions.length;
+    const stoppedGateways = this.publisherPool?.getAuthStoppedGateways() ?? [];
+    // Fixed text only for a stop — this status is served to callers with no
+    // login, so it never carries the broker's own words, host, or credentials.
+    // Stopped gateways are reported by count and id below; the sidebar words
+    // that itself, so `permissionMessage` only speaks for the subscriber.
+    const stoppedMessage = this.subscriberAuthStopped ? BRIDGE_AUTH_STOPPED_MESSAGE : null;
     return {
       sourceId: this.sourceId,
       sourceName: this.sourceName,
@@ -471,9 +623,16 @@ export class MqttBridgeManager extends EventEmitter implements ISourceManager {
       uplinkOut: this.uplinkOut,
       downlinkDrops: this.downlinkFilter.getDropCounters(),
       uplinkDrops: this.uplinkFilter.getDropCounters(),
-      lastError: this.lastError ?? this.client?.getLastError() ?? null,
+      authStopped: this.subscriberAuthStopped,
+      authStoppedGateways: stoppedGateways,
+      authStoppedGatewayCount: stoppedGateways.length,
+      uplinkAuthStoppedDrops:
+        this.subscriberAuthStoppedDrops + (this.publisherPool?.getAuthStoppedDrops() ?? 0),
+      lastError: this.subscriberAuthStopped
+        ? BRIDGE_AUTH_STOPPED_MESSAGE
+        : this.lastError ?? this.client?.getLastError() ?? null,
       capabilities,
-      permissionMessage: buildPermissionMessage(capabilities, requestedSubs),
+      permissionMessage: stoppedMessage ?? buildPermissionMessage(capabilities, requestedSubs),
       mode,
       forwardingMode: this.getForwardingMode(),
       publishers: this.publisherPool?.getStatus() ?? {},
@@ -576,10 +735,27 @@ export class MqttBridgeManager extends EventEmitter implements ISourceManager {
     if (this.getMode() === 'subscribe_only') {
       throw new Error(`MQTT bridge ${this.sourceId} is subscribe_only — publish refused`);
     }
+    if (this.subscriberAuthStopped) {
+      // Stopped after rejected logins: drop and count. No throw, so the caller
+      // has nothing to log per packet and nothing to retry.
+      this.noteSubscriberDrop();
+      return;
+    }
     if (!this.client || !this.client.isConnected()) {
       throw new Error(`MQTT bridge ${this.sourceId} not connected to upstream`);
     }
     await this.client.publish(topic, payload, retained);
+  }
+
+  /** Count an uplink packet dropped on the stopped subscriber; log the first. */
+  private noteSubscriberDrop(): void {
+    this.subscriberAuthStoppedDrops++;
+    if (this.subscriberAuthStoppedDrops === 1) {
+      logger.warn(
+        `MQTT bridge ${this.sourceId}: subscriber is stopped after rejected logins; ` +
+          'dropping the uplink packets it would carry until the source is saved or reconnected',
+      );
+    }
   }
 
   private attachParentBroker(): void {
@@ -822,7 +998,10 @@ export class MqttBridgeManager extends EventEmitter implements ISourceManager {
       gatewayNum !== null &&
       gatewayNum !== this.brokerGatewayNum;
 
-    const onSuccess = () => {
+    const onSuccess = (result: PoolPublishResult | void) => {
+      // A stopped gateway dropped the packet (the pool counted it). Nothing
+      // went upstream, so there is nothing to count or to echo-suppress.
+      if (result === 'dropped') return;
       this.uplinkOut++;
       this.recordEcho(this.uplinkEchoes, publishTopic, packetId);
     };
@@ -836,6 +1015,10 @@ export class MqttBridgeManager extends EventEmitter implements ISourceManager {
         .then(onSuccess)
         .catch(onError);
     } else {
+      if (this.subscriberAuthStopped) {
+        this.noteSubscriberDrop();
+        return;
+      }
       if (!this.client.isConnected()) return;
       this.client
         .publish(publishTopic, p.payload, p.retained)

@@ -40,7 +40,26 @@ export interface PublisherPoolOptions {
   poolLabel: string;
   /** Shared reconnect coordinator — all pool entries use the same backoff timer. */
   reconnectCoordinator?: MqttReconnectCoordinator;
+  /**
+   * Stop a gateway's client after this many rejected logins in a row. Each
+   * gateway counts on its own: a broker that refuses one Client ID stops that
+   * gateway only, and the rest keep publishing. Unset = retry for ever.
+   */
+  maxAuthFailures?: number;
 }
+
+/**
+ * What a stopped gateway's status says in place of an error.
+ *
+ * A fixed string on purpose: the bridge status is readable without a login, so
+ * nothing from the config and nothing from the broker's own error text may ride
+ * along.
+ */
+export const GATEWAY_AUTH_STOPPED_MESSAGE =
+  'Broker rejected this gateway\'s login repeatedly; it stopped reconnecting.';
+
+/** `published` = handed to mqtt.js. `dropped` = the gateway is stopped. */
+export type PoolPublishResult = 'published' | 'dropped';
 
 export interface PublisherStatus {
   /** `!<8-hex>` representation of the gateway, matching the entry's clientId. */
@@ -49,6 +68,10 @@ export interface PublisherStatus {
   publishes: number;
   lastPublishAt: number | null;
   lastError: string | null;
+  /** True once the broker rejected this gateway's login too many times. */
+  authStopped: boolean;
+  /** Uplink packets thrown away because this gateway is stopped. */
+  droppedPublishes: number;
 }
 
 interface PoolEntry {
@@ -59,6 +82,13 @@ interface PoolEntry {
   lastError: string | null;
   /** Resolves once the initial CONNACK lands (or the first reconnect, etc.). */
   ready: Promise<void>;
+  /**
+   * True once the broker rejected this gateway's login too many times. The
+   * entry stays in the map as a marker: without it the next packet from this
+   * gateway would build a fresh client and hand the broker five more logins.
+   */
+  authStopped: boolean;
+  droppedPublishes: number;
 }
 
 /**
@@ -74,6 +104,8 @@ export class MqttBridgePublisherPool {
   private readonly options: PublisherPoolOptions;
   private readonly entries = new Map<number, PoolEntry>();
   private closed = false;
+  /** Uplink packets dropped on stopped gateways, over the pool's lifetime. */
+  private authStoppedDrops = 0;
 
   constructor(options: PublisherPoolOptions) {
     this.options = options;
@@ -99,10 +131,43 @@ export class MqttBridgePublisherPool {
         connected: entry.client.isConnected(),
         publishes: entry.publishes,
         lastPublishAt: entry.lastPublishAt,
-        lastError: entry.lastError,
+        // Fixed text for a stopped gateway, never the broker's own words.
+        lastError: entry.authStopped ? GATEWAY_AUTH_STOPPED_MESSAGE : entry.lastError,
+        authStopped: entry.authStopped,
+        droppedPublishes: entry.droppedPublishes,
       };
     }
     return out;
+  }
+
+  /** `!<8-hex>` ids of the gateways that stopped after rejected logins, sorted. */
+  getAuthStoppedGateways(): string[] {
+    return Array.from(this.entries.values())
+      .filter((e) => e.authStopped)
+      .map((e) => e.clientId)
+      .sort();
+  }
+
+  /** Uplink packets dropped because their gateway was stopped. */
+  getAuthStoppedDrops(): number {
+    return this.authStoppedDrops;
+  }
+
+  /**
+   * Give every stopped gateway a fresh client, and so a fresh set of login
+   * attempts. Healthy and still-retrying gateways are left alone. Returns how
+   * many gateways were restarted.
+   *
+   * The dropped packets are gone: nothing is replayed.
+   */
+  restartAuthStopped(): number {
+    if (this.closed) return 0;
+    const stopped = Array.from(this.entries.entries()).filter(([, e]) => e.authStopped);
+    for (const [key] of stopped) {
+      this.entries.delete(key);
+      this.ensureEntry(key);
+    }
+    return stopped.length;
   }
 
   /**
@@ -117,26 +182,71 @@ export class MqttBridgePublisherPool {
    * Errors are recorded on the entry's `lastError` and rethrown so the
    * caller can log them at the bridge level. They don't tear the pool
    * entry down — mqtt.js handles reconnection.
+   *
+   * A gateway that stopped after rejected logins takes no publishes: the
+   * packet is dropped and counted, and the call resolves `'dropped'`. It does
+   * not throw, so nothing upstream sees a failure to retry.
    */
   async publish(
     gatewayNum: number,
     topic: string,
     payload: Buffer,
     retained = false,
-  ): Promise<void> {
+  ): Promise<PoolPublishResult> {
     if (this.closed) {
       throw new Error(`Publisher pool ${this.options.poolLabel} is closed`);
     }
     const entry = this.ensureEntry(gatewayNum);
+    if (entry.authStopped) {
+      this.noteDrop(entry);
+      return 'dropped';
+    }
     try {
       await entry.client.publish(topic, payload, retained);
       entry.publishes++;
       entry.lastPublishAt = Date.now();
       entry.lastError = null;
+      return 'published';
     } catch (err) {
+      // The stop can land while the publish is in flight.
+      if (entry.authStopped) {
+        this.noteDrop(entry);
+        return 'dropped';
+      }
       entry.lastError = err instanceof Error ? err.message : String(err);
       throw err;
     }
+  }
+
+  private noteDrop(entry: PoolEntry): void {
+    entry.droppedPublishes++;
+    this.authStoppedDrops++;
+    // Once per stop, not per packet.
+    if (entry.droppedPublishes === 1) {
+      logger.warn(
+        `Publisher pool ${this.options.poolLabel}: gateway ${entry.clientId} is stopped after rejected logins; ` +
+          'dropping its uplink packets until the source is saved or reconnected',
+      );
+    }
+  }
+
+  /**
+   * The broker rejected this gateway's login too many times. Mark the entry
+   * and close its client, which also throws away whatever mqtt.js had queued
+   * while the logins were failing. Other gateways are untouched.
+   */
+  private onAuthStopped(entry: PoolEntry): void {
+    if (entry.authStopped) return;
+    entry.authStopped = true;
+    logger.warn(
+      `Publisher pool ${this.options.poolLabel}: broker rejected gateway ${entry.clientId} ` +
+        `${this.options.maxAuthFailures} times in a row; that gateway stopped reconnecting`,
+    );
+    // The 'error' listener stays on: the client still emits 'error' for this
+    // same rejection, and an EventEmitter with no 'error' listener throws.
+    void entry.client.disconnect().catch((err) => {
+      logger.debug(`Publisher pool ${this.options.poolLabel}: error closing rejected client:`, err);
+    });
   }
 
   /**
@@ -185,6 +295,7 @@ export class MqttBridgePublisherPool {
       username: this.options.username,
       password: this.options.password,
       clientId,
+      maxAuthFailures: this.options.maxAuthFailures,
     });
     if (this.options.reconnectCoordinator) {
       client.setCoordinator(this.options.reconnectCoordinator);
@@ -198,10 +309,13 @@ export class MqttBridgePublisherPool {
       // connect() returns a promise that resolves on the first CONNACK;
       // we keep it so prepare() callers can await it explicitly.
       ready: client.connect(),
+      authStopped: false,
+      droppedPublishes: 0,
     };
     client.on('error', (err) => {
       entry.lastError = err.message;
     });
+    client.on('auth-stopped', () => this.onAuthStopped(entry));
     this.entries.set(key, entry);
     logger.info(
       `Publisher pool ${this.options.poolLabel}: created entry for gateway ${clientId}`,

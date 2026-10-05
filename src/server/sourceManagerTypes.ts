@@ -104,6 +104,11 @@ export function isMqttConnectionStatusManager(m: ISourceManager): m is MqttBridg
   return isMqttSourceType(m.sourceType);
 }
 
+/** Narrows an ISourceManager to an upstream MQTT bridge (`mqtt_bridge`). */
+export function isMqttBridgeManager(m: ISourceManager): m is MqttBridgeManager {
+  return m.sourceType === 'mqtt_bridge';
+}
+
 /**
  * Resolve the primary MeshtasticManager from a registry.
  *

@@ -681,6 +681,20 @@ describe('MqttBrokerClient — auth stop (#5596)', () => {
     expect(fake.reconnect).not.toHaveBeenCalled();
   });
 
+  it('a stopped client refuses publishes instead of queueing them in mqtt.js', async () => {
+    const { client, fake } = start(1);
+    // Before the stop a publish goes to mqtt.js, which queues it offline.
+    await client.publish('t', Buffer.from('queued'));
+    expect(fake.publish).toHaveBeenCalledTimes(1);
+
+    reject(fake);
+    expect(client.isAuthStopped()).toBe(true);
+    for (let i = 0; i < 100; i++) {
+      await expect(client.publish('t', Buffer.from('x'))).rejects.toThrow(/stopped after rejected logins/);
+    }
+    expect(fake.publish).toHaveBeenCalledTimes(1);
+  });
+
   it('never logs the username or password', () => {
     const { fake } = start(5);
     for (let i = 0; i < 5; i++) rejectAndWait(fake);
