@@ -221,3 +221,57 @@ describe('NotificationsTab — saves send only the fields this tab edits', () =>
     (api.get as ReturnType<typeof vi.fn>).mockImplementation(defaultGet);
   });
 });
+
+describe('NotificationsTab — a source with nothing saved', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    window.matchMedia = vi.fn().mockReturnValue({
+      matches: false,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    }) as unknown as typeof window.matchMedia;
+  });
+
+  const answerPreferencesWith = (extra: Record<string, unknown>) => {
+    const defaultGet = (api.get as ReturnType<typeof vi.fn>).getMockImplementation()!;
+    (api.get as ReturnType<typeof vi.fn>).mockImplementation((url: string) =>
+      url.startsWith('/api/push/preferences')
+        ? Promise.resolve({ ...SAVED_PREFS, ...extra })
+        : defaultGet(url),
+    );
+    return () => (api.get as ReturnType<typeof vi.fn>).mockImplementation(defaultGet);
+  };
+
+  const NOTICE = /notifications\.using_defaults_notice/;
+
+  it('says the built-in defaults are in use, and stops saying so after a save', async () => {
+    const restore = answerPreferencesWith({ usingDefaults: true });
+    try {
+      renderWithSource('meshtastic_tcp');
+      await waitFor(() => expect(screen.queryByText(NOTICE)).not.toBeNull());
+
+      fireEvent.click(screen.getByText(/notifications\.save_preferences/));
+      await waitFor(() => expect(screen.queryByText(NOTICE)).toBeNull());
+
+      // The flag is GET-only: it never goes back up with a save.
+      const posts = (api.post as ReturnType<typeof vi.fn>).mock.calls.filter(([url]) => url === '/api/push/preferences');
+      expect(posts).toHaveLength(1);
+      expect(posts[0][1]).not.toHaveProperty('usingDefaults');
+    } finally {
+      restore();
+    }
+  });
+
+  it('shows no notice for a source that has saved settings', async () => {
+    const restore = answerPreferencesWith({ usingDefaults: false });
+    try {
+      renderWithSource('meshtastic_tcp');
+      await waitFor(() => {
+        expect(document.getElementById('lowBatteryThreshold')).not.toBeNull();
+      });
+      expect(screen.queryByText(NOTICE)).toBeNull();
+    } finally {
+      restore();
+    }
+  });
+});

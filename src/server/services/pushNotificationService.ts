@@ -525,7 +525,22 @@ class PushNotificationService {
     // Phase C: scope preference broadcasts by sourceId so prefs/permissions are per-source.
     // sourceId defaults to the payload's sourceId if not explicitly given.
     const effectiveSourceId = sourceId ?? payload.sourceId;
-    const subscriptions = await this.getAllSubscriptionsAsync();
+    // An untargeted broadcast (new node, traceroute, server event) is about one
+    // source, so it goes only to browsers subscribed on THAT source — the same
+    // rule message pushes follow. It used to go to every subscription row of
+    // every source, so a browser subscribed on A received B's new-node pushes
+    // (twice, if it was subscribed on B as well: one endpoint, two rows), even
+    // after the user unsubscribed from B (#5493). That mattered little while a
+    // source with no saved preferences borrowed another source's row; with the
+    // built-in defaults (new-node and traceroute alerts on) it would notify
+    // for every source the user can read.
+    //
+    // A targeted alert (low battery, inactive node, waypoint) keeps every
+    // subscription of that user: the check service already decided this user
+    // must hear about it, wherever they set up delivery (#4020).
+    const subscriptions = targetUserId === undefined && effectiveSourceId
+      ? await this.getAllSubscriptionsAsync(effectiveSourceId)
+      : await this.getAllSubscriptionsAsync();
     let sent = 0;
     let failed = 0;
     let filtered = 0;
@@ -609,7 +624,7 @@ class PushNotificationService {
       }
 
       // Apply node name prefix if user has it enabled
-      const prefixedBody = await applyNodeNamePrefixAsync(userId, payload.body, localNodeName);
+      const prefixedBody = await applyNodeNamePrefixAsync(userId, payload.body, localNodeName, effectiveSourceId);
       const notificationPayload = prefixedBody !== payload.body
         ? { ...payload, body: prefixedBody }
         : payload;

@@ -118,15 +118,20 @@ describe('POST /push/preferences — partial update', () => {
       enableWebPush: defaults.enableWebPush,
       enableDirectMessages: defaults.enableDirectMessages,
       notifyOnMqtt: true,
-      whitelist: ['Hi', 'Help'],
-      blacklist: ['Test', 'Copy'],
+      notifyOnNewNode: false,
+      notifyOnTraceroute: false,
+      whitelist: [],
+      blacklist: [],
       waypointRadiusKm: 10,
       mutedChannels: [{ channelId: 1, muteUntil: null }],
       mutedDMs: [],
     });
   });
 
-  it('a new per-source row inherits the default (\'\') row, mutes included, for a Meshtastic source', async () => {
+  // A source's first row starts from the built-in defaults. The '' row lends
+  // its active mutes (a mute can only silence) and nothing else: its other
+  // fields are not this source's settings.
+  it('a new per-source row takes the \'\' row\'s mutes, and nothing else from it, on a Meshtastic source', async () => {
     const agent = await harness.loginAs(harness.limited);
     await agent.post('/push/preferences').send({
       enableWebPush: false,
@@ -136,20 +141,20 @@ describe('POST /push/preferences — partial update', () => {
 
     await agent.post('/push/preferences').send({
       sourceId: harness.sourceB,
-      notifyOnNewNode: false,
+      notifyOnNewNode: true,
     }).expect(200);
 
     expect(await rowFor(harness.sourceB)).toMatchObject({
-      enableWebPush: false,
-      appriseUrls: ['mailto://default'],
-      notifyOnNewNode: false,
+      enableWebPush: true,
+      appriseUrls: [],
+      notifyOnNewNode: true,
       mutedChannels: [{ channelId: 3, muteUntil: null }],
     });
     // The '' row is untouched.
-    expect(await rowFor('')).toMatchObject({ notifyOnNewNode: true });
+    expect(await rowFor('')).toMatchObject({ notifyOnNewNode: false, enableWebPush: false });
   });
 
-  it('a new MeshCore row does not inherit the default row\'s Meshtastic-keyed mutes', async () => {
+  it('a new MeshCore row takes nothing from the \'\' row, Meshtastic-keyed mutes included', async () => {
     const agent = await harness.loginAs(harness.limited);
     await agent.post('/push/preferences').send({
       enableWebPush: false,
@@ -163,7 +168,7 @@ describe('POST /push/preferences — partial update', () => {
     }).expect(200);
 
     expect(await rowFor(MESHCORE_SOURCE)).toMatchObject({
-      enableWebPush: false,
+      enableWebPush: true,
       mutedChannels: [{ channelId: 4, muteUntil: null }],
       mutedDMs: [],
     });

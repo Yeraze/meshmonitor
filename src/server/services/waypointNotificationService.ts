@@ -47,7 +47,7 @@ export interface NotifiableWaypoint {
 /** Matches the migration's column default. */
 const DEFAULT_RADIUS_KM = 10;
 
-/** One user's resolved waypoint-alert settings, merged across their rows. */
+/** One user's waypoint-alert settings for one source. */
 interface ResolvedUserSettings {
   userId: number;
   radiusKm: number;
@@ -56,11 +56,18 @@ interface ResolvedUserSettings {
 }
 
 /**
- * Merge a user's preference rows into one setting set for `sourceId`.
+ * Pick, per user, the waypoint settings in force for `sourceId`.
  *
- * Mirrors §1 Rule A of the #4020 split-row design used by the inactive-node and
- * low-battery services: eligibility is "any row true", and a per-source value
- * comes from the exact-source row, else the legacy '' row, else the first row.
+ * Only the row saved for EXACTLY this source counts. A user who turned
+ * waypoint alerts on for source A and never configured source B gets the
+ * built-in default on B, which is off — so a waypoint on B does not alert
+ * them, and A's radius and centre never measure B's waypoints. (This used to
+ * be "any row true", with the radius taken from the exact row, else the ''
+ * row, else the user's first row of any source: B borrowed A's settings.)
+ *
+ * Unlike the low-battery and inactive-node watch lists, which name specific
+ * nodes and are meant to follow the user across sources, this is a per-source
+ * switch about that source's own traffic.
  */
 export function resolveUserSettings(
   rows: Array<{
@@ -73,20 +80,13 @@ export function resolveUserSettings(
   }>,
   sourceId: string,
 ): ResolvedUserSettings[] {
-  const byUser = new Map<number, typeof rows>();
-  for (const row of rows) {
-    const list = byUser.get(row.userId);
-    if (list) list.push(row);
-    else byUser.set(row.userId, [row]);
-  }
-
   const resolved: ResolvedUserSettings[] = [];
-  for (const [userId, userRows] of byUser) {
-    if (!userRows.some((r) => r.notifyOnWaypoint)) continue;
-    const preferred =
-      userRows.find((r) => r.sourceId === sourceId) ??
-      userRows.find((r) => r.sourceId === '') ??
-      userRows[0];
+  const seen = new Set<number>();
+  for (const preferred of rows) {
+    if (preferred.sourceId !== sourceId || !preferred.notifyOnWaypoint) continue;
+    if (seen.has(preferred.userId)) continue;
+    seen.add(preferred.userId);
+    const userId = preferred.userId;
 
     const radiusKm =
       preferred.waypointRadiusKm != null && preferred.waypointRadiusKm > 0

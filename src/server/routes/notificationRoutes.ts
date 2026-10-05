@@ -4,6 +4,7 @@ import databaseService from '../../services/database.js';
 import { logger } from '../../utils/logger.js';
 import { fail } from '../utils/apiResponse.js';
 import { validateMessageTemplate, normalizeTemplate } from '../../utils/notificationTemplate.js';
+import { defaultNotificationPreferences } from '../../utils/notificationDefaults.js';
 import { pushNotificationService } from '../services/pushNotificationService.js';
 import { appriseNotificationService, resolveAppriseServerUrl } from '../services/appriseNotificationService.js';
 import { fallbackManager } from '../meshtasticManager.js';
@@ -11,6 +12,7 @@ import { sourceManagerRegistry } from '../sourceManagerRegistry.js';
 import { getPrimaryMeshtasticManager } from '../sourceManagerTypes.js';
 import {
   getUserNotificationPreferencesAsync,
+  resolveNotificationPreferencesAsync,
   saveUserNotificationPreferencesAsync,
   applyNodeNamePrefixAsync,
   type NotificationPreferences,
@@ -237,42 +239,10 @@ pushRouter.post('/test', requireAdmin(), async (req: Request, res: Response) => 
   }
 });
 
-// Defaults for a user with no saved preferences anywhere. GET answers with
-// these, and a partial POST that creates a user's first row fills the fields
-// it doesn't send from here.
-const DEFAULT_NOTIFICATION_PREFERENCES: NotificationPreferences = {
-  enableWebPush: true,
-  enableApprise: false,
-  enabledChannels: [],
-  enableDirectMessages: true,
-  notifyOnEmoji: true,
-  notifyOnMqtt: true,
-  notifyOnNewNode: true,
-  notifyOnTraceroute: true,
-  notifyOnInactiveNode: false,
-  notifyOnLowBattery: false,
-  lowBatteryThreshold: 20,
-  lowBatteryVoltageThreshold: 3300,
-  notifyOnWaypoint: false,
-  waypointRadiusKm: 10,
-  waypointCenterLat: null,
-  waypointCenterLon: null,
-  notifyOnServerEvents: false,
-  prefixWithNodeName: false,
-  monitoredNodes: [],
-  whitelist: ['Hi', 'Help'],
-  blacklist: ['Test', 'Copy'],
-  appriseUrls: [],
-  mutedChannels: [],
-  mutedDMs: [],
-  // #5593: null = the built-in message-notification template.
-  messageTitleTemplate: null,
-  messageBodyTemplate: null,
-};
-
-// Mute lists are keyed by Meshtastic channel number / node id. A source of
-// one of these types must not inherit them from the '' row (#5487).
-const NON_MESHTASTIC_SOURCE_TYPES = new Set(['meshcore', 'meshcore_mqtt', 'reticulum']);
+// The built-in defaults: what GET answers for a source the user never
+// configured, and what a partial POST that creates a source's first row fills
+// the unsent fields from. Same definition the filter path decides with.
+const DEFAULT_NOTIFICATION_PREFERENCES: NotificationPreferences = defaultNotificationPreferences();
 
 const BOOLEAN_PREF_FIELDS = [
   'enableWebPush',
@@ -313,26 +283,21 @@ pushRouter.get(
       ? req.query.sourceId
       : undefined;
 
-    const prefs = await getUserNotificationPreferencesAsync(userId, sourceId);
-
-    if (prefs) {
-      // Tell the client when a source-scoped read was answered by the user's
-      // '' (default) row because this source has no row of its own (#5487).
-      // Mute lists on that row are keyed by Meshtastic channel number, so a
-      // MeshCore view must not read them as its own channel mutes.
-      const sourceFallback = sourceId
-        ? !(await databaseService.notifications.getUserPreferences(userId, sourceId))
-        : false;
-      // Message templates are strictly per source (#5593): a row borrowed
-      // from another source must not lend its templates.
-      res.json({
-        ...prefs,
-        ...(sourceFallback ? { messageTitleTemplate: null, messageBodyTemplate: null } : {}),
-        sourceFallback,
-      });
-    } else {
-      res.json({ ...DEFAULT_NOTIFICATION_PREFERENCES });
+    const resolved = await resolveNotificationPreferencesAsync(userId, sourceId);
+    if (!resolved) {
+      return res.status(401).json({ error: 'Authentication required' });
     }
+
+    res.json({
+      ...resolved.prefs,
+      // True when nothing is saved for this source and the answer is the
+      // built-in defaults (or the user's pre-4.0 settings). Never another
+      // source's row. The first save creates the row.
+      usingDefaults: resolved.origin !== 'row',
+      // True when the mute lists were carried from the user's legacy '' row
+      // (#5487). The server only does that for a Meshtastic source.
+      sourceFallback: resolved.legacyMutes,
+    });
   } catch (error: any) {
     logger.error('Error loading notification preferences:', error);
     res.status(500).json({ error: error.message || 'Failed to load preferences' });
@@ -345,10 +310,11 @@ pushRouter.get(
  *
  * Partial update: only the fields in the body change. The rest come from the
  * stored row for (user, sourceId), or — for a source with no row yet — from
- * whatever GET would answer (the '' row, the legacy settings blob, then the
- * defaults). Each client sends only the fields it edits, so the Notifications
- * tab can't overwrite a channel/DM mute set elsewhere after it loaded, and a
- * mute save can't overwrite Notifications-tab edits.
+ * whatever GET would answer: the built-in defaults (never another source's
+ * row), plus the legacy '' row's active mutes on a Meshtastic source. Each
+ * client sends only the fields it edits, so the Notifications tab can't
+ * overwrite a channel/DM mute set elsewhere after it loaded, and a mute save
+ * can't overwrite Notifications-tab edits.
  */
 pushRouter.post(
   '/preferences',
@@ -507,25 +473,13 @@ pushRouter.post(
       sourceId,
       { rethrow: true },
     );
-    let base: NotificationPreferences;
-    if (ownRow) {
-      base = ownRow;
-    } else {
-      base = (await getUserNotificationPreferencesAsync(userId, sourceId)) ?? DEFAULT_NOTIFICATION_PREFERENCES;
-      // Message templates are strictly per source (#5593): a source's first
-      // row never inherits another row's templates.
-      if (sourceId) {
-        base = { ...base, messageTitleTemplate: null, messageBodyTemplate: null };
-      }
-      // A non-Meshtastic source's first row must not inherit the '' row's
-      // Meshtastic-keyed mute lists (#5487).
-      if (sourceId) {
-        const source = await databaseService.sources.getSource(sourceId);
-        if (source && NON_MESHTASTIC_SOURCE_TYPES.has(source.type)) {
-          base = { ...base, mutedChannels: [], mutedDMs: [] };
-        }
-      }
-    }
+    // No row yet: start from what GET answers for this source. That is the
+    // built-in defaults, so a first save never copies another source's
+    // channels, keywords, toggles or templates. A Meshtastic source keeps the
+    // legacy '' row's active mutes (#5487), so the first save does not unmute.
+    const base: NotificationPreferences = ownRow
+      ?? (await resolveNotificationPreferencesAsync(userId, sourceId))?.prefs
+      ?? DEFAULT_NOTIFICATION_PREFERENCES;
 
     const patch: Partial<NotificationPreferences> = {};
     for (const field of PREF_FIELDS) {
@@ -637,7 +591,7 @@ appriseRouter.post(
 
     // Apply prefix if user has it enabled
     const baseBody = 'This is a test notification from MeshMonitor via Apprise';
-    const body = await applyNodeNamePrefixAsync(userId, baseBody, localNodeName);
+    const body = await applyNodeNamePrefixAsync(userId, baseBody, localNodeName, sourceId);
 
     // Send to user's configured URLs
     const success = await appriseNotificationService.sendNotificationToUrls(

@@ -948,6 +948,8 @@
   "notifications.failed_subscribe": "Failed to subscribe to push notifications",
   "notifications.failed_unsubscribe": "Failed to unsubscribe",
   "notifications.preferences_saved": "Notification preferences saved",
+  "notifications.using_defaults_notice": "You have not saved notification settings for this source, so it uses the built-in defaults shown below: direct messages only. Settings you saved for another source do not apply here. Channel messages stay off until you pick channels and save.",
+  "notifications.using_defaults_notice_meshcore": "You have not saved notification settings for this source, so it uses the built-in defaults shown below. Settings you saved for another source do not apply here. Alerts stay off until you turn them on and save.",
   "notifications.alert_save_failed": "Failed to save notification preferences",
   "notifications.alert_not_supported": "Push notifications are not supported in your browser",
   "notifications.alert_permission_failed": "Failed to request notification permission. Please try again.",
