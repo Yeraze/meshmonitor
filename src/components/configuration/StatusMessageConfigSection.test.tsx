@@ -3,7 +3,7 @@
  *
  * Status Message config section layout.
  *
- * The "0/80" counter used to be absolutely positioned below the input, so it
+ * The byte counter used to be absolutely positioned below the input, so it
  * escaped the section and sat on the next section's header ("Traffic
  * Management"). It now lives in normal flow beside the input, inside the
  * section, and the input fills the column instead of the global 200px.
@@ -37,7 +37,7 @@ describe('StatusMessageConfigSection layout', () => {
     const input = screen.getByLabelText(/Node Status/);
     const counter = screen.getByTestId('status-message-counter');
 
-    expect(counter.textContent).toBe('5/80');
+    expect(counter.textContent).toBe('5/79 bytes');
     // Same wrapper as the input, so it cannot drift away from it.
     expect(counter.parentElement).toBe(input.parentElement);
     // Inside the Status Message section, not spilling into the next one.
