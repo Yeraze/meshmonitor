@@ -5,6 +5,10 @@ import { useSaveBar } from '../../hooks/useSaveBar';
 // Shared with the server so the client's save gate can't drift from what the
 // backend accepts (#4632).
 import { isValidMeshtasticKey } from '../../utils/meshtasticKeyFormat';
+import { policyToSend } from '../../utils/packetSignaturePolicy';
+import { usePolicyChangeConfirm } from '../../hooks/usePolicyChangeConfirm';
+import { PacketSignaturePolicyPicker } from './PacketSignaturePolicyPicker';
+import { PacketSignaturePolicyConfirmDialog } from './PacketSignaturePolicyConfirmDialog';
 
 /**
  * Validates if a string is valid base64 format
@@ -47,6 +51,17 @@ interface SecurityConfigSectionProps {
   setSerialEnabled: (value: boolean) => void;
   setDebugLogApiEnabled: (value: boolean) => void;
   setAdminChannelEnabled: (value: boolean) => void;
+  // Packet signature policy (#5612). `loadedPacketSignaturePolicy` is what the
+  // node holds (null = could not be read); the parent moves it only after a
+  // save that worked. The policy is sent only when the two differ.
+  packetSignaturePolicy: number | null;
+  setPacketSignaturePolicy: (value: number | null) => void;
+  loadedPacketSignaturePolicy: number | null;
+  firmwareVersion: string | null | undefined;
+  /** The local node's short name: typed to confirm Strict. */
+  nodeShortName: string;
+  /** How the local node is named in the confirm dialog. */
+  nodeLabel: string;
   // Common
   isSaving: boolean;
   onSave: () => Promise<void>;
@@ -66,10 +81,22 @@ const SecurityConfigSection: React.FC<SecurityConfigSectionProps> = ({
   setSerialEnabled,
   setDebugLogApiEnabled,
   setAdminChannelEnabled,
+  packetSignaturePolicy,
+  setPacketSignaturePolicy,
+  loadedPacketSignaturePolicy,
+  firmwareVersion,
+  nodeShortName,
+  nodeLabel,
   isSaving,
   onSave
 }) => {
   const { t } = useTranslation();
+  const { confirmPolicyChange, dialogProps: policyConfirmProps } = usePolicyChangeConfirm();
+
+  // Compared with what the NODE holds, not with a snapshot taken at mount: a
+  // save that failed must leave the change pending, so the next save asks
+  // again before it sends Balanced or Strict.
+  const policyChanged = policyToSend(loadedPacketSignaturePolicy, packetSignaturePolicy) !== undefined;
 
   // Private-key editing (#4632). Off until the user opts in; the input is
   // cleared for paste rather than pre-filled with the existing secret.
@@ -112,9 +139,10 @@ const SecurityConfigSection: React.FC<SecurityConfigSectionProps> = ({
       serialEnabled !== initial.serialEnabled ||
       debugLogApiEnabled !== initial.debugLogApiEnabled ||
       adminChannelEnabled !== initial.adminChannelEnabled ||
-      privateKeyChanged
+      privateKeyChanged ||
+      policyChanged
     );
-  }, [adminKeys, isManaged, serialEnabled, debugLogApiEnabled, adminChannelEnabled, privateKeyChanged]);
+  }, [adminKeys, isManaged, serialEnabled, debugLogApiEnabled, adminChannelEnabled, privateKeyChanged, policyChanged]);
 
   // Reset to initial values (for SaveBar dismiss)
   const resetChanges = useCallback(() => {
@@ -126,7 +154,8 @@ const SecurityConfigSection: React.FC<SecurityConfigSectionProps> = ({
     setAdminChannelEnabled(initial.adminChannelEnabled);
     setPrivateKey?.(initial.privateKey);
     setIsEditingPrivateKey(false);
-  }, [setAdminKeys, setIsManaged, setSerialEnabled, setDebugLogApiEnabled, setAdminChannelEnabled, setPrivateKey]);
+    setPacketSignaturePolicy(loadedPacketSignaturePolicy);
+  }, [setAdminKeys, setIsManaged, setSerialEnabled, setDebugLogApiEnabled, setAdminChannelEnabled, setPrivateKey, setPacketSignaturePolicy, loadedPacketSignaturePolicy]);
 
   // Check if any admin keys have invalid format
   const hasInvalidKeys = adminKeys.some(key => key.trim() && !isValidBase64(key));
@@ -149,6 +178,19 @@ const SecurityConfigSection: React.FC<SecurityConfigSectionProps> = ({
         return;
       }
     }
+    // Balanced asks for a plain confirm, Strict for the node's short name
+    // typed out; back to Compatible, or no change, asks nothing (#5612).
+    // A save is one packet with everything in it, so declining here sends
+    // nothing at all: a private-key change confirmed just above is not sent
+    // either, and stays pending in the form.
+    if (policyChanged) {
+      const confirmed = await confirmPolicyChange(loadedPacketSignaturePolicy, packetSignaturePolicy, {
+        label: nodeLabel,
+        shortName: nodeShortName,
+        fallbackWord: nodeLabel,
+      });
+      if (!confirmed) return;
+    }
     await onSave();
     initialValuesRef.current = {
       adminKeys: [...adminKeys],
@@ -159,7 +201,7 @@ const SecurityConfigSection: React.FC<SecurityConfigSectionProps> = ({
       privateKey
     };
     setIsEditingPrivateKey(false);
-  }, [onSave, adminKeys, isManaged, serialEnabled, debugLogApiEnabled, adminChannelEnabled, privateKey, privateKeyChanged, privateKeyValid, hasInvalidKeys, t]);
+  }, [onSave, adminKeys, isManaged, serialEnabled, debugLogApiEnabled, adminChannelEnabled, privateKey, privateKeyChanged, privateKeyValid, hasInvalidKeys, t, policyChanged, confirmPolicyChange, loadedPacketSignaturePolicy, packetSignaturePolicy, nodeLabel, nodeShortName]);
 
   // Register with SaveBar
   useSaveBar({
@@ -489,6 +531,16 @@ const SecurityConfigSection: React.FC<SecurityConfigSectionProps> = ({
           </div>
         </label>
       </div>
+
+      {/* Packet signature policy (#5612) */}
+      <PacketSignaturePolicyPicker
+        loadedPolicy={loadedPacketSignaturePolicy}
+        value={packetSignaturePolicy}
+        onChange={setPacketSignaturePolicy}
+        firmwareVersion={firmwareVersion}
+        disabled={isSaving}
+      />
+      <PacketSignaturePolicyConfirmDialog {...policyConfirmProps} />
     </div>
   );
 };

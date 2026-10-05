@@ -20,6 +20,7 @@ import { UiIcon } from './icons';
 import { useTranslation } from 'react-i18next';
 import apiService from '../services/api';
 import { normalizeMeshtasticKey } from '../utils/meshtasticKeyFormat';
+import { policyToSend, toKnownPolicy } from '../utils/packetSignaturePolicy';
 import { useToast } from './ToastContainer';
 import { useSource } from '../contexts/SourceContext';
 import type { DeviceInfo, Channel } from '../types/device';
@@ -359,6 +360,10 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
   const [securitySerialEnabled, setSecuritySerialEnabled] = useState(false);
   const [securityDebugLogApiEnabled, setSecurityDebugLogApiEnabled] = useState(false);
   const [securityAdminChannelEnabled, setSecurityAdminChannelEnabled] = useState(false);
+  // Packet signature policy (#5612): what the node holds, and what the form
+  // shows. null = not read from the node; the picker then stays disabled.
+  const [securityLoadedSignaturePolicy, setSecurityLoadedSignaturePolicy] = useState<number | null>(null);
+  const [securitySignaturePolicy, setSecuritySignaturePolicy] = useState<number | null>(null);
 
   // UI State
   const [isSaving, setIsSaving] = useState(false);
@@ -834,6 +839,11 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
           setSecuritySerialEnabled(sec.serialEnabled === true);
           setSecurityDebugLogApiEnabled(sec.debugLogApiEnabled || false);
           setSecurityAdminChannelEnabled(sec.adminChannelEnabled || false);
+          // #5612: the node's own policy. Anything we cannot read as a known
+          // value stays null ("unknown"), never Compatible.
+          const loadedPolicy = toKnownPolicy(sec.packetSignaturePolicy);
+          setSecurityLoadedSignaturePolicy(loadedPolicy);
+          setSecuritySignaturePolicy(loadedPolicy);
         }
 
         // Fetch security keys (public/private) separately
@@ -1611,16 +1621,24 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
         newPrivateKey.length > 0 &&
         normalizeMeshtasticKey(newPrivateKey) !== normalizeMeshtasticKey(loadedSecurityPrivateKeyRef.current);
 
+      // The policy goes out only when the user changed it (#5612). Left out,
+      // the server keeps the value it reads from the node.
+      const newSignaturePolicy = policyToSend(securityLoadedSignaturePolicy, securitySignaturePolicy);
+
       await apiService.setSecurityConfig({
         adminKeys: validAdminKeys,
         isManaged: securityIsManaged,
         serialEnabled: securitySerialEnabled,
         debugLogApiEnabled: securityDebugLogApiEnabled,
         adminChannelEnabled: securityAdminChannelEnabled,
-        ...(privateKeyChanged ? { privateKey: newPrivateKey } : {})
+        ...(privateKeyChanged ? { privateKey: newPrivateKey } : {}),
+        ...(newSignaturePolicy !== undefined ? { packetSignaturePolicy: newSignaturePolicy } : {})
       }, sourceId);
       if (privateKeyChanged) {
         loadedSecurityPrivateKeyRef.current = newPrivateKey;
+      }
+      if (newSignaturePolicy !== undefined) {
+        setSecurityLoadedSignaturePolicy(newSignaturePolicy);
       }
       setStatusMessage(t('config.security_saved'));
       showToast(t('config.security_saved_toast'), 'success');
@@ -2826,6 +2844,12 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
             setSerialEnabled={setSecuritySerialEnabled}
             setDebugLogApiEnabled={setSecurityDebugLogApiEnabled}
             setAdminChannelEnabled={setSecurityAdminChannelEnabled}
+            packetSignaturePolicy={securitySignaturePolicy}
+            setPacketSignaturePolicy={setSecuritySignaturePolicy}
+            loadedPacketSignaturePolicy={securityLoadedSignaturePolicy}
+            firmwareVersion={localFirmwareVersion}
+            nodeShortName={shortName}
+            nodeLabel={longName || shortName}
             isSaving={isSaving}
             onSave={handleSaveSecurityConfig}
           />

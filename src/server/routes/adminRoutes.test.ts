@@ -611,6 +611,7 @@ describe('adminRoutes — setSecurityConfig private key (#4632)', () => {
       stop: vi.fn().mockResolvedValue(undefined),
       getStatus: vi.fn().mockReturnValue({ sourceId: harness.sourceA, sourceName: 'A', sourceType: 'meshtastic_tcp', connected: true }),
       getLocalNodeInfo: vi.fn().mockReturnValue({ nodeNum: 1, nodeId: '!00000001', longName: 'Local', shortName: 'LOC' }),
+      isDeviceConnected: vi.fn().mockReturnValue(true),
       // The local node's keys now come from a fresh read of the device, not
       // from the getSecurityKeys() cache.
       refreshLocalSecurityConfig: vi.fn().mockResolvedValue({

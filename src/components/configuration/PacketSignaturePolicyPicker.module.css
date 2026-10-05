@@ -1,0 +1,62 @@
+/* Packet signature policy picker (#5612), shared by the local Configuration
+   tab and the remote Admin Commands tab. */
+
+.select {
+  width: 100%;
+  max-width: 600px;
+}
+
+.reason {
+  display: block;
+  margin-top: 0.5rem;
+  color: var(--color-text-subtle);
+  font-size: 0.85rem;
+}
+
+.warning {
+  display: flex;
+  gap: 0.6rem;
+  align-items: flex-start;
+  margin-top: 0.75rem;
+  padding: 0.75rem 1rem;
+  max-width: 600px;
+  border: 1px solid var(--color-warning);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-hover);
+  color: var(--color-text);
+  font-size: 0.9rem;
+  line-height: 1.45;
+}
+
+.danger {
+  composes: warning;
+  border-color: var(--color-error);
+}
+
+.warningIcon {
+  flex-shrink: 0;
+  margin-top: 0.15rem;
+  color: var(--color-warning);
+}
+
+.danger .warningIcon {
+  color: var(--color-error);
+}
+
+.warningBody p {
+  margin: 0 0 0.5rem;
+}
+
+.warningBody p:last-child,
+.warningBody ul:last-child {
+  margin-bottom: 0;
+}
+
+.warningBody ul {
+  margin: 0 0 0.5rem;
+  padding-left: 1.25rem;
+}
+
+.warningTitle {
+  font-weight: 600;
+}

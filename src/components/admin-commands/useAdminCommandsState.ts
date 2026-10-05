@@ -1,3 +1,4 @@
+import { toKnownPolicy } from '../../utils/packetSignaturePolicy';
 import { useReducer, useCallback } from 'react';
 import { decodePositionFlags } from '../../utils/positionFlags';
 
@@ -76,12 +77,23 @@ export interface SecurityConfigState {
   debugLogApiEnabled: boolean;
   adminChannelEnabled: boolean;
 
+  // --- Packet signature policy (#5612) ---
+  //
+  // `loadedPacketSignaturePolicy` is what the node holds, `packetSignaturePolicy`
+  // what the form shows; null = not read from this node. The save carries the
+  // policy only when the two differ, and the server keeps the node's own
+  // value otherwise. `firmwareVersion` is the version the server holds for the
+  // node (null = not known), which gates the picker.
+  packetSignaturePolicy: number | null;
+  loadedPacketSignaturePolicy: number | null;
+  firmwareVersion: string | null;
+
   // --- Load gate (#4736) ---
   //
-  // The node's keypair and packet_signature_policy are deliberately NOT held
-  // here. Firmware wholesale-replaces the security struct and mints a new
-  // keypair when the incoming private key is absent, so those fields must
-  // survive a save — but they are merged SERVER-side from a fresh read of the
+  // The node's keypair is deliberately NOT held here. Firmware
+  // wholesale-replaces the security struct and mints a new keypair when the
+  // incoming private key is absent, so it must survive a save — but it is
+  // merged SERVER-side from a fresh read of the
   // node, so a remote node's PRIVATE KEY never reaches the browser. That also
   // keeps the #4632 guard intact: a client-supplied private key aimed at a
   // remote node stays rejected, because an honest echo and an identity hijack
@@ -523,6 +535,9 @@ const initialState: AdminCommandsState = {
     serialEnabled: false,
     debugLogApiEnabled: false,
     adminChannelEnabled: false,
+    packetSignaturePolicy: null,
+    loadedPacketSignaturePolicy: null,
+    firmwareVersion: null,
     loadedForNodeNum: null,
   },
   bluetooth: {
@@ -756,6 +771,14 @@ export function buildSecurityConfigUpdates(
   for (const field of ['isManaged', 'serialEnabled', 'debugLogApiEnabled', 'adminChannelEnabled'] as const) {
     if (config[field] !== undefined) result.updates[field] = config[field];
   }
+
+  // #5612: always stamped, like the gate below. A load that carried no policy
+  // (or one this code does not know) must read as "unknown", not keep the
+  // previous node's value on screen.
+  const policy = toKnownPolicy(config.packetSignaturePolicy);
+  result.updates.packetSignaturePolicy = policy;
+  result.updates.loadedPacketSignaturePolicy = policy;
+  result.updates.firmwareVersion = typeof config.firmwareVersion === 'string' ? config.firmwareVersion : null;
 
   result.updates.loadedForNodeNum = forNodeNum;
   return result;

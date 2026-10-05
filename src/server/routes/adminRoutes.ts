@@ -19,7 +19,15 @@ import { requireAdmin } from '../auth/authMiddleware.js';
 import { resolveSourceManager } from '../utils/resolveSourceManager.js';
 import { requireMeshtasticDeviceSource } from '../utils/requireMeshtasticDeviceSource.js';
 import { getEffectiveDbNodePosition } from '../utils/nodeEnhancer.js';
-import { getRoutingErrorName, validateMeshBeaconConfigPayload } from '../constants/meshtastic.js';
+import {
+  getRoutingErrorName,
+  validateMeshBeaconConfigPayload,
+  PacketSignaturePolicy,
+  PACKET_SIGNATURE_POLICY_MIN_FIRMWARE_LABEL,
+  isPacketSignaturePolicy,
+  getPacketSignaturePolicyName,
+  supportsPacketSignaturePolicy,
+} from '../constants/meshtastic.js';
 import { CONFIG_TYPE_MAP, MODULE_FIELD_BY_ID, DEVICE_FIELD_BY_ID } from '../constants/configTypes.js';
 import { autoFavoriteManagementScheduler } from '../services/autoFavoriteManagementService.js';
 import protobufService from '../protobufService.js';
@@ -445,7 +453,11 @@ router.post('/load-config', extendRequestTimeout(LOAD_CONFIG_TIMEOUT_MS), requir
                 isManaged: finalConfig.deviceConfig.security.isManaged,
                 serialEnabled: finalConfig.deviceConfig.security.serialEnabled,
                 debugLogApiEnabled: finalConfig.deviceConfig.security.debugLogApiEnabled,
-                adminChannelEnabled: finalConfig.deviceConfig.security.adminChannelEnabled
+                adminChannelEnabled: finalConfig.deviceConfig.security.adminChannelEnabled,
+                // #5612: the picker shows the node's real policy. The keys are
+                // left out on purpose (#4736).
+                packetSignaturePolicy: readPacketSignaturePolicy(finalConfig.deviceConfig.security),
+                firmwareVersion: adminLoadManager.getLocalNodeInfo()?.firmwareVersion ?? null
               };
             } else {
               return res.status(404).json({ error: 'Security config not available. The device may not have sent its configuration yet.' });
@@ -601,7 +613,12 @@ router.post('/load-config', extendRequestTimeout(LOAD_CONFIG_TIMEOUT_MS), requir
               isManaged: remoteConfig.isManaged,
               serialEnabled: remoteConfig.serialEnabled,
               debugLogApiEnabled: remoteConfig.debugLogApiEnabled,
-              adminChannelEnabled: remoteConfig.adminChannelEnabled
+              adminChannelEnabled: remoteConfig.adminChannelEnabled,
+              // #5612: the policy, and the firmware version we hold for this
+              // node (null until its device metadata has been retrieved). The
+              // keys are left out on purpose (#4736).
+              packetSignaturePolicy: readPacketSignaturePolicy(remoteConfig),
+              firmwareVersion: await resolveNodeFirmwareVersion(adminLoadManager, destinationNodeNum, false)
             };
             break;
           // Additional device configs - return raw config
@@ -1640,6 +1657,77 @@ function adminError(code: string, message: string): Error & { code: string } {
   return Object.assign(new Error(message), { code });
 }
 
+/**
+ * The policy in a security config a node sent us, as a number.
+ *
+ * Absent reads as COMPATIBLE, which is what absent means on the wire: proto3
+ * leaves a zero enum out, and firmware older than 2.8 has no such field. The
+ * caller pairs this with the firmware version to tell the two apart.
+ *
+ * Any integer the node DID send passes through as it is, including one newer
+ * than this code knows. The UI reads such a value as "unknown" and keeps the
+ * picker disabled (`toKnownPolicy`); mapping it to COMPATIBLE here would hide
+ * that.
+ */
+function readPacketSignaturePolicy(security: { packetSignaturePolicy?: unknown } | null | undefined): number {
+  const value = security?.packetSignaturePolicy;
+  return typeof value === 'number' && Number.isInteger(value) ? value : PacketSignaturePolicy.COMPATIBLE;
+}
+
+/**
+ * The firmware version we hold for a node, or null when we have none.
+ *
+ * Local: the connected node's own metadata. Remote: the node row for this
+ * source, which `/get-device-metadata` fills (`remoteAdminMetadata`). No mesh
+ * traffic: this reads what we already have.
+ */
+async function resolveNodeFirmwareVersion(
+  manager: { sourceId: string; getLocalNodeInfo(): { firmwareVersion?: string } | null },
+  nodeNum: number,
+  isLocalNode: boolean,
+): Promise<string | null> {
+  if (isLocalNode) return manager.getLocalNodeInfo()?.firmwareVersion ?? null;
+  try {
+    const row = await databaseService.nodes.getNode(nodeNum, manager.sourceId) as
+      { firmwareVersion?: string | null; remoteAdminMetadata?: string | null } | null;
+    if (row?.remoteAdminMetadata) {
+      try {
+        const metadata = JSON.parse(row.remoteAdminMetadata) as { firmwareVersion?: unknown };
+        if (typeof metadata.firmwareVersion === 'string' && metadata.firmwareVersion) return metadata.firmwareVersion;
+      } catch {
+        // Unreadable metadata is the same as none.
+      }
+    }
+    return row?.firmwareVersion || null;
+  } catch (error) {
+    logger.warn(`Could not read the firmware version for node ${nodeNum}:`, error);
+    return null;
+  }
+}
+
+/**
+ * How long after a local Security save a failed read is put down to the reboot
+ * that save causes (firmware reboots on every security set).
+ */
+const SECURITY_SAVE_REBOOT_WINDOW_MS = 90_000;
+
+/**
+ * When each source manager last sent a Security save to its local node. Only
+ * picks the wording of an error; it guards nothing, so losing it on a restart
+ * is fine. Keyed on the manager so it goes away with the source.
+ */
+const lastLocalSecuritySaveAt = new WeakMap<object, number>();
+
+/** True when a local Security save went out recently enough that the node is likely rebooting. */
+function localNodeLikelyRebooting(manager: object): boolean {
+  const at = lastLocalSecuritySaveAt.get(manager);
+  return at !== undefined && Date.now() - at < SECURITY_SAVE_REBOOT_WINDOW_MS;
+}
+
+const LOCAL_NODE_RESTARTING_MESSAGE =
+  'The node is restarting or not connected, so its current security config could not be read. ' +
+  'Nothing was sent. Try again in a moment.';
+
 /** Loose bag of per-command parameters off the request body. */
 type AdminCommandParams = Record<string, unknown>;
 
@@ -1686,11 +1774,13 @@ async function executeAdminCommand(ctx: {
   isLocalNode: boolean;
   buildAdminMessage: (sessionPasskey?: Uint8Array) => Uint8Array;
   preSend: ((sessionPasskey?: Uint8Array) => Promise<void>) | null;
+  /** Runs once the packet has been handed to the node. */
+  afterSend?: (() => void) | null;
   onStatus?: (status: AdminOperationStatus) => void;
 }): Promise<AdminOperationResult> {
   const {
     command, params, acManager, destinationNodeNum, localNodeNum,
-    isLocalNode, buildAdminMessage, preSend, onStatus,
+    isLocalNode, buildAdminMessage, preSend, afterSend, onStatus,
   } = ctx;
 
   // 1. Session passkey (remote only) — the 45s leg.
@@ -1743,6 +1833,7 @@ async function executeAdminCommand(ctx: {
       adminChannelEnabled: securityConfig.adminChannelEnabled
     });
   }
+  afterSend?.();
 
   // For setChannel on the local node, mirror the new channel into the database
   // (#5183). The device does not push channel changes to a connected client, so
@@ -1894,6 +1985,8 @@ router.post('/commands', requireAdmin(), requireMeshtasticDeviceSource('body'), 
     // input still gets an immediate 400), while the passkey — the only input
     // that requires a mesh round-trip — is supplied later by the executor.
     let buildAdminMessage: (sessionPasskey?: Uint8Array) => Uint8Array;
+    // Runs once the packet has been handed to the node.
+    let afterSend: (() => void) | null = null;
 
     // Extra packets some commands must send before the main one, run by the
     // executor once the passkey is known.
@@ -2121,6 +2214,36 @@ router.post('/commands', requireAdmin(), requireMeshtasticDeviceSource('body'), 
           }
         }
         {
+          // #5612: a policy in the body is the user's choice (the UI sends it
+          // only when it was changed). Check the value and the node's firmware
+          // here, before anything is read or sent.
+          const requestedPolicy: unknown = params.config.packetSignaturePolicy;
+          if (requestedPolicy !== undefined) {
+            if (!isPacketSignaturePolicy(requestedPolicy)) {
+              return fail(
+                res,
+                400,
+                'INVALID_SIGNATURE_POLICY',
+                `packetSignaturePolicy must be ${PacketSignaturePolicy.COMPATIBLE} (Compatible), ` +
+                `${PacketSignaturePolicy.BALANCED} (Balanced) or ${PacketSignaturePolicy.STRICT} (Strict)`,
+              );
+            }
+            // Unknown firmware is refused too: field 9 means nothing to a node
+            // older than 2.8, so the save would report a policy that is not in
+            // force.
+            const targetFirmware = await resolveNodeFirmwareVersion(acManager, destinationNodeNum, isLocalNode);
+            if (!supportsPacketSignaturePolicy(targetFirmware)) {
+              return fail(
+                res,
+                400,
+                'SIGNATURE_POLICY_UNSUPPORTED',
+                targetFirmware
+                  ? `The packet signature policy needs firmware ${PACKET_SIGNATURE_POLICY_MIN_FIRMWARE_LABEL} or later; this node runs ${targetFirmware}`
+                  : `The packet signature policy needs firmware ${PACKET_SIGNATURE_POLICY_MIN_FIRMWARE_LABEL} or later, and this node's firmware version is not known. Retrieve its device metadata first.`,
+              );
+            }
+          }
+
           // Firmware replaces the whole security struct on a set, so the write
           // must carry what the node holds NOW: its identity keypair (#4736)
           // and its packet signature policy (firmware 2.8, field 9). Both come
@@ -2145,10 +2268,21 @@ router.post('/commands', requireAdmin(), requireMeshtasticDeviceSource('body'), 
           let currentSecurity: CurrentSecurityState | null = null;
           if (isLocalNode) {
             preSend = async () => {
+              // A node that is not connected cannot answer: say so at once
+              // rather than wait out the read.
+              if (!acManager.isDeviceConnected()) {
+                throw adminError('LOCAL_NODE_RESTARTING', LOCAL_NODE_RESTARTING_MESSAGE);
+              }
               const liveLocal = await acManager.refreshLocalSecurityConfig();
               // Fail CLOSED. An unknown policy is not "COMPATIBLE"; guessing
               // is the silent downgrade this read exists to prevent.
               if (!liveLocal) {
+                // The usual cause: a second save while the node reboots after
+                // the first. The link can still look up for a few seconds, so
+                // a recent save counts as well as a dropped connection.
+                if (!acManager.isDeviceConnected() || localNodeLikelyRebooting(acManager)) {
+                  throw adminError('LOCAL_NODE_RESTARTING', LOCAL_NODE_RESTARTING_MESSAGE);
+                }
                 throw adminError(
                   'SECURITY_CONFIG_READBACK_FAILED',
                   'Could not read the current security config from the local node. ' +
@@ -2218,7 +2352,59 @@ router.post('/commands', requireAdmin(), requireMeshtasticDeviceSource('body'), 
             //         crypto->generateKeyPair(...);               // NEW identity
             return buildSecurityConfigWrite(params.config, currentSecurity, { allowClientKeys: isLocalNode });
           };
-          buildAdminMessage = (passkey) => protobufService.createSetSecurityConfigMessage(resolveConfigToSend(), passkey);
+
+          // Audit a policy change: who, which node, from -> to (#5612). Written
+          // after the read (which is what tells us "from") and before the
+          // packet leaves, as the device actions do. Once per request: a
+          // remote save runs preSend again on a retry.
+          // The flag is set only when the row is about to be written, so an
+          // attempt whose read failed leaves it clear and the retry that does
+          // read the node still audits.
+          let policyChangeAudited = false;
+          const readCurrentSecurity = preSend;
+          preSend = async (passkey) => {
+            await readCurrentSecurity(passkey);
+            if (policyChangeAudited || !isPacketSignaturePolicy(requestedPolicy) || !currentSecurity) return;
+            const from = currentSecurity.packetSignaturePolicy ?? PacketSignaturePolicy.COMPATIBLE;
+            if (from === requestedPolicy) return;
+            policyChangeAudited = true;
+            const targetNodeNum = isLocalNode ? localNodeNum : destinationNodeNum;
+            // auditLogAsync never rejects.
+            await databaseService.auditLogAsync(
+              req.user?.id ?? req.session?.userId ?? null,
+              'admin_set_packet_signature_policy',
+              'admin',
+              JSON.stringify({
+                command,
+                sourceId: acManager.sourceId,
+                nodeNum: targetNodeNum,
+                nodeId: `!${(targetNodeNum >>> 0).toString(16).padStart(8, '0')}`,
+                target: isLocalNode ? 'local' : 'remote',
+                from: getPacketSignaturePolicyName(from),
+                to: getPacketSignaturePolicyName(requestedPolicy),
+              }),
+              req.ip || null,
+              JSON.stringify({ packetSignaturePolicy: from }),
+              JSON.stringify({ packetSignaturePolicy: requestedPolicy }),
+            );
+          };
+
+          let writtenPolicy: number = PacketSignaturePolicy.COMPATIBLE;
+          buildAdminMessage = (passkey) => {
+            const write = resolveConfigToSend();
+            writtenPolicy = typeof write.packetSignaturePolicy === 'number'
+              ? write.packetSignaturePolicy
+              : PacketSignaturePolicy.COMPATIBLE;
+            return protobufService.createSetSecurityConfigMessage(write, passkey);
+          };
+          if (isLocalNode) {
+            afterSend = () => {
+              // Keep the cached section in step with what the node now holds,
+              // so a read before the reconnect shows the new policy.
+              acManager.updateCachedDeviceConfig('security', { packetSignaturePolicy: writtenPolicy });
+              lastLocalSecuritySaveAt.set(acManager, Date.now());
+            };
+          }
         }
         break;
       case 'setFixedPosition':
@@ -2291,6 +2477,7 @@ router.post('/commands', requireAdmin(), requireMeshtasticDeviceSource('body'), 
       isLocalNode,
       buildAdminMessage,
       preSend,
+      afterSend,
       onStatus,
     });
 
@@ -2388,8 +2575,8 @@ router.post('/commands', requireAdmin(), requireMeshtasticDeviceSource('body'), 
     }
     // A local Security save that could not read the node first (remote ones
     // fail the same way on their operation record).
-    if (error?.code === 'SECURITY_CONFIG_READBACK_FAILED') {
-      return fail(res, 409, 'SECURITY_CONFIG_READBACK_FAILED', error.message);
+    if (error?.code === 'SECURITY_CONFIG_READBACK_FAILED' || error?.code === 'LOCAL_NODE_RESTARTING') {
+      return fail(res, 409, error.code, error.message);
     }
     logger.error('Error executing admin command:', error);
     res.status(500).json({ error: error.message || 'Failed to execute admin command' });
