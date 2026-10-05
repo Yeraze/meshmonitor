@@ -425,6 +425,12 @@ export class MqttBrokerClient extends EventEmitter {
 
   publish(topic: string, payload: Buffer, retained = false): Promise<void> {
     if (!this.client) return Promise.reject(new Error('MqttBrokerClient not connected'));
+    // A client that gave up after repeated rejected logins never connects
+    // again, so mqtt.js would hold every publish in its offline queue for as
+    // long as the object lives. Refuse instead; the owner counts the drop.
+    if (this.authStopped) {
+      return Promise.reject(new Error('MqttBrokerClient stopped after rejected logins'));
+    }
     return new Promise<void>((resolve, reject) => {
       this.client!.publish(topic, payload, { qos: 0, retain: retained }, (err) => {
         if (err) reject(err);
