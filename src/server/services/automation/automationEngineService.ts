@@ -72,6 +72,7 @@ import {
   varContextFromTrigger,
   resolveOperand,
   cooldownKeyFor,
+  createStepOutputs,
 } from './engineContext.js';
 
 interface LoadedAutomation {
@@ -799,6 +800,10 @@ export class AutomationEngineService {
       varCtx: varContextFromTrigger(ctx),
       now,
       automationId: a.id,
+      // #5636: this run's own step outputs. A new Map per call, reachable only
+      // through evalCtx, so concurrent runs of one automation cannot see each
+      // other's, and it is freed with evalCtx when this method returns.
+      stepOutputs: createStepOutputs(),
     };
     try {
       const result = await evaluateGraph(a.graph, evalCtx, this.hooks(), { maxActions: this.maxActions });
@@ -831,6 +836,10 @@ export class AutomationEngineService {
         actions: [],
         steps: [{ nodeId: a.id, type: 'engine', outcome: 'engine:error', error: e?.message }],
       };
+    } finally {
+      // The run is over: drop its step outputs now rather than when the
+      // context is collected (#5636). They can be up to 64 KiB each.
+      evalCtx.stepOutputs?.clear();
     }
   }
 

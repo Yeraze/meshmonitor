@@ -36,7 +36,7 @@ function ctx(fields: Record<string, unknown> = {}): EngineEvalContext {
   const store = new Map<string, unknown>();
   const vars = {
     getValue: async (name: string) => store.get(name) ?? null,
-    setValue: async (name: string, value: unknown) => { store.set(name, value); },
+    setValue: async (name: string, value: unknown) => { store.set(name, value); return { ok: true }; },
   } as unknown as VariableResolver;
   return {
     trigger: { triggerType: 'trigger.schedule', sourceId: null, subjectNodeNum: null, timestamp: 0, fields },

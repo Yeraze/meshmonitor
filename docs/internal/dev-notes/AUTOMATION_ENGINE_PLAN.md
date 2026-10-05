@@ -313,6 +313,18 @@ reusable values, separate from any single automation. A variable is referenced e
 > for telemetry/node events); `source`/`sourceNode` → `trigger.sourceId`. Schedule/system triggers have
 > no subject node, so node-scoped variables there require an explicit node reference.
 
+> **#5636 additions.** (1) MeshCore has no node number, so `node` / `sourceNode` scope keys off the
+> subject's public key: `mc:<lower-case key>` and `${sourceId}:mc:<key>`. A Meshtastic key is
+> decimal digits only, so the two never collide; Meshtastic rows are unchanged. A MeshCore channel
+> post has no sender key and still has no node scope. (2) **Run-scoped step outputs**: a
+> `Map<name, { ok, output }>` on the per-run `EngineEvalContext` (`stepOutputs`), made in
+> `fireAutomation` and cleared when it returns. Keyed by the user's `params.outputName`, never the
+> node id — the builder regenerates ids from position on every save. Read as
+> `{{ steps.<name>.output[.path] }}` / `{{ steps.<name>.ok }}`; capped at 64 KiB; never written to
+> the run log or the trace; refused in `varsOnly` fields. v1: `action.runScript` only.
+> (3) **Empty-send rule**: `action.sendMessage` / `action.tapback` / `action.notify` hold back a
+> send whose body renders empty and return `{ skipped, emptySend, reason }`.
+
 **Tables (migration 099):**
 - `automation_variables` (definitions, **global**): `id`, `name` (unique slug used in `{{ var.name }}`),
   `description`, `type`, `scope`, `readonly`, `config` JSON (`{ flagDurationSeconds?, defaultValue? }`),
