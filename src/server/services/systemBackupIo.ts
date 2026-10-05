@@ -7,6 +7,10 @@
  * of rows. Nothing here loads a whole table: rows move in batches from the
  * database to the file, and line by line from the file back to the database.
  *
+ * Every table of one backup is read from the SAME snapshot of the database, on
+ * all three backends, so the tables agree with each other however long the
+ * export takes.
+ *
  * File format (backupVersion 1.1): a JSON array with ONE ROW PER LINE.
  *
  *     [
@@ -22,7 +26,9 @@
 import * as fs from 'fs';
 import * as crypto from 'crypto';
 import { once } from 'events';
+import Database from 'better-sqlite3';
 import type BetterSqlite3 from 'better-sqlite3';
+import { logger } from '../../utils/logger.js';
 import type { Pool as PgPool, PoolClient as PgClient } from 'pg';
 import type { Pool as MySQLPool, PoolConnection as MySQLConnection } from 'mysql2/promise';
 import { BACKUP_IDENTIFIER_PATTERN } from './systemBackupTables.js';
@@ -56,15 +62,72 @@ function assertIdentifier(name: string): void {
 const SQLITE_ROWID_ALIAS = '__mm_backup_rowid';
 
 /**
- * SQLite: page through the table by rowid.
+ * A frozen view of a SQLite database for the length of a backup.
  *
- * The app has one SQLite connection, and better-sqlite3 refuses any other
- * statement while a cursor is open on it. So an open cursor cannot be held
- * across an `await`; each page is a complete query, and the event loop runs
- * between pages. Rows written while a table is being read may or may not be in
- * the backup — no row is read twice and none is torn.
+ * A backup of a large database runs for minutes while the app keeps writing.
+ * Tables read at different moments do not agree with each other: a user
+ * created after `users` was exported but before `permissions` was gives a
+ * backup whose permissions point at a user it does not hold, and restore —
+ * which is all-or-nothing — then refuses the whole backup. Every table must
+ * come from ONE moment.
+ *
+ *   - File database in WAL mode (every real install): a second, read-only
+ *     connection inside a read transaction. WAL readers see the database as it
+ *     was when the transaction began and do not block the app's writes.
+ *   - In-memory database (the test suites): a second connection cannot see it,
+ *     so the snapshot is a serialized copy.
+ *   - A file database that is NOT in WAL mode: a read transaction there would
+ *     block every write for the length of the backup, so there is no snapshot.
+ *     The tables are read from the live connection and a warning says so.
  */
-function openSqliteSession(db: BetterSqlite3.Database, batchRows: number): BackupReadSession {
+function openSqliteSnapshot(db: BetterSqlite3.Database): { db: BetterSqlite3.Database; close(): void } | null {
+  if (db.memory) {
+    const copy = new Database(db.serialize());
+    return { db: copy, close: () => copy.close() };
+  }
+
+  const journalMode = String(db.pragma('journal_mode', { simple: true })).toLowerCase();
+  if (journalMode !== 'wal') {
+    logger.warn(
+      `⚠️  System backup: the database is in "${journalMode}" journal mode, not WAL, so its tables cannot be ` +
+        'read from one snapshot. Changes made while the backup runs may leave it inconsistent.'
+    );
+    return null;
+  }
+
+  const reader = new Database(db.name, { readonly: true, fileMustExist: true });
+  try {
+    reader.pragma('busy_timeout = 5000');
+    reader.exec('BEGIN');
+    // A deferred transaction takes its snapshot at the first read.
+    reader.prepare('SELECT COUNT(*) FROM sqlite_master').get();
+  } catch (error) {
+    reader.close();
+    throw error;
+  }
+  return {
+    db: reader,
+    close: () => {
+      try {
+        reader.exec('ROLLBACK');
+      } finally {
+        reader.close();
+      }
+    },
+  };
+}
+
+/**
+ * SQLite: read every table from one snapshot (see openSqliteSnapshot), a page
+ * of rows at a time by rowid.
+ *
+ * Paging rather than one long cursor keeps each read short: better-sqlite3 is
+ * synchronous, so the event loop runs between pages and the server keeps
+ * answering requests while a multi-gigabyte table is exported.
+ */
+function openSqliteSession(live: BetterSqlite3.Database, batchRows: number): BackupReadSession {
+  const snapshot = openSqliteSnapshot(live);
+  const db = snapshot?.db ?? live;
   return {
     async *batches(table: string) {
       assertIdentifier(table);
@@ -84,7 +147,7 @@ function openSqliteSession(db: BetterSqlite3.Database, batchRows: number): Backu
       }
     },
     async close() {
-      /* nothing held open */
+      snapshot?.close();
     },
   };
 }

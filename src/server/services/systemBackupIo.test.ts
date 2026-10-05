@@ -5,12 +5,13 @@
  * What matters here is that nothing needs a whole table in memory: rows are
  * read in batches, written as they arrive, and read back one line at a time.
  */
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import * as crypto from 'crypto';
 import Database from 'better-sqlite3';
+import { logger } from '../../utils/logger.js';
 import {
   BACKUP_FILE_MODE,
   checksumFile,
@@ -197,7 +198,7 @@ describe('openBackupReadSession — SQLite', () => {
     );
   });
 
-  it('never holds a cursor open between batches, so the app can use the connection meanwhile', async () => {
+  it('leaves the app\'s connection free while a table is being exported', async () => {
     const session = await openBackupReadSession({ type: 'sqlite', db }, 500);
     let batches = 0;
     for await (const batch of session.batches('log_rows')) {
@@ -233,5 +234,82 @@ describe('openBackupReadSession — SQLite', () => {
       for await (const _ of session.batches('log_rows"; DROP TABLE log_rows; --')) { /* never */ }
     }).rejects.toThrow(/non-identifier/);
     expect((db.prepare('SELECT COUNT(*) AS n FROM log_rows').get() as { n: number }).n).toBeGreaterThan(0);
+  });
+});
+
+describe('openBackupReadSession — SQLite reads every table from one snapshot', () => {
+  // The fault this guards against: a user created after `users` was exported
+  // but before `permissions` was. The backup then holds a permission for a
+  // user it does not hold, and restore refuses the whole backup.
+  const schema = `
+    CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT);
+    CREATE TABLE permissions (id INTEGER PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users(id));
+    INSERT INTO users VALUES (1, 'admin');
+    INSERT INTO permissions VALUES (1, 1);
+  `;
+
+  async function exportWithAWriteInBetween(db: Database.Database) {
+    const session = await openBackupReadSession({ type: 'sqlite', db });
+    try {
+      const users: BackupRow[] = [];
+      for await (const batch of session.batches('users')) users.push(...batch);
+
+      // The app carries on while the backup is running.
+      db.exec("INSERT INTO users VALUES (2, 'created-mid-backup'); INSERT INTO permissions VALUES (2, 2);");
+
+      const permissions: BackupRow[] = [];
+      for await (const batch of session.batches('permissions')) permissions.push(...batch);
+      return { users, permissions };
+    } finally {
+      await session.close();
+    }
+  }
+
+  it('in-memory database: a row written mid-backup is in neither table', async () => {
+    const db = new Database(':memory:');
+    db.exec(schema);
+    const { users, permissions } = await exportWithAWriteInBetween(db);
+
+    expect(users.map((r) => r.id)).toEqual([1]);
+    expect(permissions.map((r) => r.user_id)).toEqual([1]);
+    // The write itself went through.
+    expect((db.prepare('SELECT COUNT(*) AS n FROM users').get() as { n: number }).n).toBe(2);
+    db.close();
+  });
+
+  it('file database in WAL mode: a row written mid-backup is in neither table, and the write is not blocked', async () => {
+    const db = new Database(file('wal.db'));
+    db.pragma('journal_mode = WAL');
+    db.exec(schema);
+    const { users, permissions } = await exportWithAWriteInBetween(db);
+
+    expect(users.map((r) => r.id)).toEqual([1]);
+    expect(permissions.map((r) => r.user_id)).toEqual([1]);
+    expect((db.prepare('SELECT COUNT(*) AS n FROM users').get() as { n: number }).n).toBe(2);
+
+    // The snapshot is released on close: a new backup sees the new rows.
+    const session = await openBackupReadSession({ type: 'sqlite', db });
+    const later: BackupRow[] = [];
+    for await (const batch of session.batches('permissions')) later.push(...batch);
+    await session.close();
+    expect(later.map((r) => r.user_id)).toEqual([1, 2]);
+    db.close();
+  });
+
+  it('file database not in WAL mode: reads the live tables and says the backup may be inconsistent', async () => {
+    const db = new Database(file('rollback.db'));
+    db.pragma('journal_mode = DELETE');
+    db.exec(schema);
+    const warn = vi.spyOn(logger, 'warn').mockImplementation(() => {});
+    try {
+      const { users, permissions } = await exportWithAWriteInBetween(db);
+      // No snapshot is possible without blocking the app's writes.
+      expect(users.map((r) => r.id)).toEqual([1]);
+      expect(permissions.map((r) => r.user_id)).toEqual([1, 2]);
+      expect(warn.mock.calls.map((c) => String(c[0])).join('\n')).toMatch(/not WAL.*cannot be read from one snapshot/s);
+    } finally {
+      warn.mockRestore();
+      db.close();
+    }
   });
 });

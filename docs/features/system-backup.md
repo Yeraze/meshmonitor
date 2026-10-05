@@ -132,6 +132,8 @@ Each backup is a timestamped directory (e.g., `2025-11-08_143026`) containing:
 └── ...                    # One file per backed-up table (80 in all)
 ```
 
+Every table in a backup is read from the same snapshot of the database, so the tables agree with each other even when the backup takes minutes and the mesh keeps talking. Changes made after the backup starts are not in it.
+
 Each table file is a JSON array with one row per line. MeshMonitor writes and reads these files a batch at a time, so the size of a table does not set how much memory a backup or a restore needs.
 
 ### Size

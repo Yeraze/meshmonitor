@@ -129,9 +129,25 @@ async function captureWarnings<T>(run: () => Promise<T>): Promise<{ result: T; w
   }
 }
 
+/**
+ * The database service seeds the anonymous user in the background after it
+ * reports ready (a bcrypt hash, then the user row, then its permissions). These
+ * tests compare whole tables, so let that land before the first one runs
+ * instead of somewhere in the middle of a comparison.
+ */
+async function waitForStartupSeeding(): Promise<void> {
+  const deadline = Date.now() + 30_000;
+  while (Date.now() < deadline) {
+    if (db().prepare("SELECT 1 FROM users WHERE username = 'anonymous'").get()) break;
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+  await new Promise((resolve) => setTimeout(resolve, 250));
+}
+
 beforeAll(async () => {
   await databaseService.waitForReady();
-});
+  await waitForStartupSeeding();
+}, 60_000);
 
 afterAll(() => {
   setSourcePkiKeyStoreForTesting(null);
