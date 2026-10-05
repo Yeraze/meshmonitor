@@ -617,6 +617,21 @@ describe('adminRoutes — setSecurityConfig keeps packet_signature_policy', () =
       expect(res.body.config.publicKey).toBeUndefined();
     });
 
+    it('passes a policy newer than this code knows through, so the UI can show "unknown"', async () => {
+      await seedRemoteFirmware(FW_28);
+      await sourceManagerRegistry.addManager(makeManager({
+        requestRemoteConfig: vi.fn().mockResolvedValue(
+          deviceAnswer({ publicKey: PUB, privateKey: PRIV, packetSignaturePolicy: 3 }),
+        ),
+      }));
+
+      const res = await load(REMOTE);
+
+      expect(res.status).toBe(200);
+      // Not COMPATIBLE: the picker reads 3 as unknown and stays disabled.
+      expect(res.body.config.packetSignaturePolicy).toBe(3);
+    });
+
     it('remote node with no known firmware: firmwareVersion is null', async () => {
       await seedRemoteFirmware(null);
       await sourceManagerRegistry.addManager(makeManager({

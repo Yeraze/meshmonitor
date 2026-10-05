@@ -7,7 +7,7 @@
  */
 import React, { useState } from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { act, render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { PacketSignaturePolicy } from '../../utils/packetSignaturePolicy';
 
@@ -174,6 +174,59 @@ describe('SecurityConfigSection packet signature policy (#5612)', () => {
     expect(onSave).not.toHaveBeenCalled();
     expect(saveBar().hasChanges).toBe(true);
     expect(select.value).toBe(String(STRICT));
+  });
+
+  it('declining the policy confirm after accepting a private-key change sends nothing', async () => {
+    const VALID_KEY = btoa(String.fromCharCode(...new Uint8Array(32).fill(7)));
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
+    const onSave = vi.fn().mockResolvedValue(undefined);
+    function KeyHarness() {
+      const [policy, setPolicy] = useState<number | null>(COMPATIBLE);
+      const [privateKey, setPrivateKey] = useState('PRIV');
+      return (
+        <SecurityConfigSection
+          publicKey="PUB"
+          privateKey={privateKey}
+          setPrivateKey={setPrivateKey}
+          adminKeys={['']}
+          isManaged={false}
+          serialEnabled={false}
+          debugLogApiEnabled={false}
+          adminChannelEnabled={false}
+          setAdminKeys={vi.fn()}
+          setIsManaged={vi.fn()}
+          setSerialEnabled={vi.fn()}
+          setDebugLogApiEnabled={vi.fn()}
+          setAdminChannelEnabled={vi.fn()}
+          packetSignaturePolicy={policy}
+          setPacketSignaturePolicy={setPolicy}
+          loadedPacketSignaturePolicy={COMPATIBLE}
+          firmwareVersion="2.8.0.abcdef0"
+          nodeShortName="BASE"
+          nodeLabel="Base Station"
+          isSaving={false}
+          onSave={onSave}
+        />
+      );
+    }
+    render(<KeyHarness />);
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: /security_config\.set_private_key/ }));
+    await user.type(screen.getByLabelText(/security_config\.private_key/), VALID_KEY);
+    await user.selectOptions(screen.getByRole('combobox'), String(BALANCED));
+
+    const saving = startSave();
+    const dialog = await screen.findByRole('dialog');
+    expect(confirmSpy).toHaveBeenCalledWith('security_config.set_private_key_confirm');
+    await user.click(within(dialog).getByRole('button', { name: 'common.cancel' }));
+    await act(async () => {
+      await saving;
+    });
+
+    // One packet carries both changes, so neither went out.
+    expect(onSave).not.toHaveBeenCalled();
+    expect(saveBar().hasChanges).toBe(true);
+    confirmSpy.mockRestore();
   });
 
   it('asks again on the next save when the first one did not reach the node', async () => {

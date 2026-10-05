@@ -2,6 +2,9 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { policyChangeConfirmKind } from '../utils/packetSignaturePolicy';
 import type { PendingPolicyChange } from '../components/configuration/PacketSignaturePolicyConfirmDialog';
 
+/** Typed when a node has neither a short name nor a fallback to offer. */
+export const LAST_RESORT_CONFIRM_WORD = 'STRICT';
+
 export interface PolicyChangeNode {
   /** How the node is named in the dialog. */
   label: string;
@@ -48,7 +51,7 @@ export function usePolicyChangeConfirm() {
           nodeLabel: node.label,
           // Never an empty word: that would turn the typed confirm into a
           // plain one.
-          confirmWord: node.shortName.trim() || node.fallbackWord,
+          confirmWord: node.shortName.trim() || node.fallbackWord.trim() || LAST_RESORT_CONFIRM_WORD,
         });
       });
     },

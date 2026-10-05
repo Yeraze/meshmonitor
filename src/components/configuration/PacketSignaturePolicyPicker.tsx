@@ -84,7 +84,11 @@ export const PacketSignaturePolicyPicker: React.FC<PacketSignaturePolicyPickerPr
         id={selectId}
         className={`setting-input ${styles.select}`}
         value={shown === null ? '' : String(shown)}
-        onChange={(e) => onChange(Number(e.target.value))}
+        onChange={(e) => {
+          // The "Unknown" placeholder has an empty value, and Number('') is 0:
+          // never report that as a pick of Compatible.
+          if (e.target.value !== '') onChange(Number(e.target.value));
+        }}
         disabled={locked || disabled}
         aria-describedby={locked ? reasonId : undefined}
       >

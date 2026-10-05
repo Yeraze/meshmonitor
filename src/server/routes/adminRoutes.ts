@@ -1566,6 +1566,11 @@ function adminError(code: string, message: string): Error & { code: string } {
  * Absent reads as COMPATIBLE, which is what absent means on the wire: proto3
  * leaves a zero enum out, and firmware older than 2.8 has no such field. The
  * caller pairs this with the firmware version to tell the two apart.
+ *
+ * Any integer the node DID send passes through as it is, including one newer
+ * than this code knows. The UI reads such a value as "unknown" and keeps the
+ * picker disabled (`toKnownPolicy`); mapping it to COMPATIBLE here would hide
+ * that.
  */
 function readPacketSignaturePolicy(security: { packetSignaturePolicy?: unknown } | null | undefined): number {
   const value = security?.packetSignaturePolicy;
@@ -2198,6 +2203,9 @@ router.post('/commands', requireAdmin(), requireMeshtasticDeviceSource('body'), 
           // after the read (which is what tells us "from") and before the
           // packet leaves, as the device actions do. Once per request: a
           // remote save runs preSend again on a retry.
+          // The flag is set only when the row is about to be written, so an
+          // attempt whose read failed leaves it clear and the retry that does
+          // read the node still audits.
           let policyChangeAudited = false;
           const readCurrentSecurity = preSend;
           preSend = async (passkey) => {

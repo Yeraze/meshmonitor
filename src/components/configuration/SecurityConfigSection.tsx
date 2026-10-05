@@ -180,6 +180,9 @@ const SecurityConfigSection: React.FC<SecurityConfigSectionProps> = ({
     }
     // Balanced asks for a plain confirm, Strict for the node's short name
     // typed out; back to Compatible, or no change, asks nothing (#5612).
+    // A save is one packet with everything in it, so declining here sends
+    // nothing at all: a private-key change confirmed just above is not sent
+    // either, and stays pending in the form.
     if (policyChanged) {
       const confirmed = await confirmPolicyChange(loadedPacketSignaturePolicy, packetSignaturePolicy, {
         label: nodeLabel,
