@@ -41,6 +41,13 @@ export interface DashboardSource {
    * Those fields need a signed-in user with `sources:read`.
    */
   endpointHidden?: boolean;
+  /**
+   * Present for a signed-in non-admin who may edit sources: the dotted paths
+   * of the credentials the server left out of `config` (`upstream.password`,
+   * `brokerUrl` for a URL that lost its credentials). The server keeps the
+   * stored value for each when a save leaves it untouched.
+   */
+  maskedConfigFields?: string[];
 }
 
 /**

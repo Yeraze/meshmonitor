@@ -18,7 +18,7 @@ vi.mock('react-router-dom', async () => {
   return { ...actual, useNavigate: () => mockNavigate };
 });
 
-function makeSource(config: Record<string, any>) {
+function makeSource(config: Record<string, any>): Record<string, any> {
   return {
     id: 'src-rns',
     name: 'RNS Source',
@@ -355,7 +355,12 @@ describe('Reticulum source fieldset (#3960 Phase 1b WP6)', () => {
     expect(screen.getByPlaceholderText('amsterdam.connect.reticulum.network')).toHaveValue('rns.example.org');
     expect(screen.getByPlaceholderText('4965')).toHaveValue(4242);
     expect(screen.getByPlaceholderText('ws://127.0.0.1:8765')).toHaveValue('wss://bridge.example.org:8765');
-    expect(screen.getByPlaceholderText('••••••••')).toHaveValue('existing-token');
+    // The stored token is never put into the input; the placeholder says one is stored.
+    expect(screen.getByLabelText('reticulum.form.token')).toHaveValue('');
+    expect(screen.getByLabelText('reticulum.form.token')).toHaveAttribute(
+      'placeholder',
+      'source.form.secret_stored_placeholder',
+    );
     expect(screen.getByRole('checkbox', { name: 'source.form.auto_connect' })).not.toBeChecked();
 
     saveModal();
@@ -366,8 +371,101 @@ describe('Reticulum source fieldset (#3960 Phase 1b WP6)', () => {
       mode: 'tcp_peer',
       autoConnect: false,
       bridgeUrl: 'wss://bridge.example.org:8765',
-      token: 'existing-token',
+      // Left blank: omitted, so the server keeps the stored token.
       peers: [{ host: 'rns.example.org', port: 4242 }],
+    });
+    expect(findPutCall()![1].body as string).not.toContain('existing-token');
+    expect(findPutCall()![1].body as string).not.toContain('secret_stored_placeholder');
+  });
+
+  // ── stored credentials the form does not show ────────────────────────
+  describe('a stored token', () => {
+    /** What a non-admin editor is sent: no token, and the list of masked fields. */
+    function maskedSource(masked: string[], config: Record<string, any> = {}) {
+      return {
+        ...makeSource({ mode: 'attach', configDir: '/rns', autoConnect: true, ...config }),
+        maskedConfigFields: masked,
+      };
+    }
+
+    it('shows no placeholder when nothing is stored', async () => {
+      currentSource = maskedSource([]);
+      renderPage();
+      openEditModal();
+      const token = await screen.findByLabelText('reticulum.form.token');
+      expect(token).toHaveValue('');
+      expect(token).toHaveAttribute('placeholder', '');
+      expect(screen.queryByTestId('hidden-url-parts-note')).toBeNull();
+    });
+
+    it('says a masked token is unchanged, and saves without it', async () => {
+      currentSource = maskedSource(['token']);
+      mockFetchOk();
+      renderPage();
+      openEditModal();
+      const token = await screen.findByLabelText('reticulum.form.token');
+      expect(token).toHaveValue('');
+      expect(token).toHaveAttribute('placeholder', 'source.form.secret_stored_placeholder');
+      expect(screen.queryByTestId('dropped-secret-note')).toBeNull();
+
+      saveModal();
+      await waitFor(() => expect(findPutCall()).toBeTruthy());
+      const body = JSON.parse(findPutCall()![1].body as string);
+      expect(body.config).toEqual({ mode: 'attach', autoConnect: true, configDir: '/rns' });
+    });
+
+    it('sends a token the user types', async () => {
+      currentSource = maskedSource(['token']);
+      mockFetchOk();
+      renderPage();
+      openEditModal();
+      fireEvent.change(await screen.findByLabelText('reticulum.form.token'), { target: { value: 'typed' } });
+      saveModal();
+      await waitFor(() => expect(findPutCall()).toBeTruthy());
+      expect(JSON.parse(findPutCall()![1].body as string).config.token).toBe('typed');
+    });
+
+    it('says a URL has hidden parts', async () => {
+      currentSource = maskedSource(['bridgeUrl'], { bridgeUrl: 'wss://bridge.example.org:8765' });
+      renderPage();
+      openEditModal();
+      await screen.findByLabelText('reticulum.form.token');
+      expect(screen.getByTestId('hidden-url-parts-note')).toBeInTheDocument();
+    });
+
+    it('warns that the token is dropped once the bridge URL names another host', async () => {
+      currentSource = maskedSource(['token'], { bridgeUrl: 'wss://bridge.example.org:8765' });
+      renderPage();
+      openEditModal();
+      await screen.findByLabelText('reticulum.form.token');
+      const url = screen.getByPlaceholderText('ws://127.0.0.1:8765');
+
+      fireEvent.change(url, { target: { value: 'wss://bridge.example.org:8765/other' } });
+      expect(screen.queryByTestId('dropped-secret-note')).toBeNull();
+
+      fireEvent.change(url, { target: { value: 'wss://elsewhere.example.org:8765' } });
+      expect(screen.getByTestId('dropped-secret-note')).toBeInTheDocument();
+
+      // Retyping the token answers the warning.
+      fireEvent.change(screen.getByLabelText('reticulum.form.token'), { target: { value: 'typed' } });
+      expect(screen.queryByTestId('dropped-secret-note')).toBeNull();
+    });
+
+    it('does not warn an admin, whose blank token is kept whatever the host', async () => {
+      currentSource = makeSource({
+        mode: 'attach',
+        configDir: '/rns',
+        autoConnect: true,
+        bridgeUrl: 'wss://bridge.example.org:8765',
+        token: 'existing-token',
+      });
+      renderPage();
+      openEditModal();
+      await screen.findByLabelText('reticulum.form.token');
+      fireEvent.change(screen.getByPlaceholderText('ws://127.0.0.1:8765'), {
+        target: { value: 'wss://elsewhere.example.org:8765' },
+      });
+      expect(screen.queryByTestId('dropped-secret-note')).toBeNull();
     });
   });
 
