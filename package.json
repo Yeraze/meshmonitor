@@ -138,7 +138,7 @@
     "@types/web-push": "^3.6.4",
     "@types/ws": "^8.18.1",
     "@types/yamljs": "^0.2.34",
-    "@typescript-eslint/eslint-plugin": "^8.70.1",
+    "@typescript-eslint/eslint-plugin": "^8.71.0",
     "@typescript-eslint/parser": "^8.70.1",
     "@vitejs/plugin-react": "^6.1.1",
     "@vitest/coverage-v8": "^5.0.3",
