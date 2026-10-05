@@ -80,8 +80,17 @@ describe('GET /api/v1/sources/:sourceId/messages/search', () => {
 
   const texts = (body: { data: Array<{ text: string }> }) => body.data.map((m) => m.text).sort();
 
+  // One token per user per test. Minting one costs a bcrypt-12 hash (~250 ms
+  // idle), and a fresh mint on every request made the seven-search test spend
+  // ~4 s of its 10 s budget on hashing, so it timed out on a busy host.
+  let tokens = new Map<number, string>();
+
   const search = async (user: RouteTestHarness['admin'], sourceId: string, qs: string) => {
-    const token = await harness.tokenFor(user);
+    let token = tokens.get(user.id);
+    if (!token) {
+      token = await harness.tokenFor(user);
+      tokens.set(user.id, token);
+    }
     return request(harness.app)
       .get(`/api/v1/sources/${sourceId}/messages/search?${qs}`)
       .set('Authorization', `Bearer ${token}`);
@@ -89,6 +98,7 @@ describe('GET /api/v1/sources/:sourceId/messages/search', () => {
 
   beforeEach(async () => {
     seq = 0;
+    tokens = new Map();
     harness = await createRouteTestApp({
       mount: (app: express.Express) => app.use('/api/v1', v1Router),
       useOptionalAuth: false,
@@ -196,16 +206,30 @@ describe('GET /api/v1/sources/:sourceId/messages/search', () => {
       expect(asked.body.total).toBe(0);
     });
 
-    it('honours the channels, fromNodeId, caseSensitive and scope filters', async () => {
-      await seed(harness.sourceA, 0, 'Hello zero');
-      await seed(harness.sourceA, 1, 'hello one');
-      expect(texts((await search(harness.admin, harness.sourceA, 'q=hello&channels=1')).body)).toEqual(['hello one']);
-      expect(texts((await search(harness.admin, harness.sourceA, 'q=Hello&caseSensitive=true')).body)).toEqual(['Hello zero']);
-      expect((await search(harness.admin, harness.sourceA, 'q=hello')).body.total).toBe(2);
-      expect((await search(harness.admin, harness.sourceA, 'q=hello&fromNodeId=!deadbeef')).body.total).toBe(0);
-      expect((await search(harness.admin, harness.sourceA, `q=hello&fromNodeId=${encodeURIComponent(PEER.nodeId)}`)).body.total).toBe(2);
-      expect((await search(harness.admin, harness.sourceA, 'q=hello&scope=dms')).body.total).toBe(0);
-      expect((await search(harness.admin, harness.sourceA, 'q=hello&scope=meshcore')).body.total).toBe(0);
+    // Three tests, not one: every request runs a real bcrypt-12 compare in the
+    // token check, and seven of them in one test left too little of the 10 s
+    // budget on a busy host.
+    describe('filters', () => {
+      beforeEach(async () => {
+        await seed(harness.sourceA, 0, 'Hello zero');
+        await seed(harness.sourceA, 1, 'hello one');
+      });
+
+      it('honours the channels and caseSensitive filters', async () => {
+        expect(texts((await search(harness.admin, harness.sourceA, 'q=hello&channels=1')).body)).toEqual(['hello one']);
+        expect(texts((await search(harness.admin, harness.sourceA, 'q=Hello&caseSensitive=true')).body)).toEqual(['Hello zero']);
+        expect((await search(harness.admin, harness.sourceA, 'q=hello')).body.total).toBe(2);
+      });
+
+      it('honours the fromNodeId filter', async () => {
+        expect((await search(harness.admin, harness.sourceA, 'q=hello&fromNodeId=!deadbeef')).body.total).toBe(0);
+        expect((await search(harness.admin, harness.sourceA, `q=hello&fromNodeId=${encodeURIComponent(PEER.nodeId)}`)).body.total).toBe(2);
+      });
+
+      it('honours the scope filter', async () => {
+        expect((await search(harness.admin, harness.sourceA, 'q=hello&scope=dms')).body.total).toBe(0);
+        expect((await search(harness.admin, harness.sourceA, 'q=hello&scope=meshcore')).body.total).toBe(0);
+      });
     });
 
     it('pages with limit and offset', async () => {

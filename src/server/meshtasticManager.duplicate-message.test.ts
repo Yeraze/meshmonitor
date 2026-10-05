@@ -205,6 +205,11 @@ vi.mock('../utils/nodeHelpers.js', () => ({
   isNodeComplete: vi.fn(),
 }));
 
+// Loaded once while the file is collected, not inside a hook. A dynamic import in
+// `beforeEach` charged the manager's module load (~2 s idle, 10 s+ on a busy
+// host) to the first test's hook budget; collection has no such budget.
+const managerModule = await import('./meshtasticManager.js');
+
 describe('MeshtasticManager - Duplicate message suppression', () => {
   let manager: any;
 
@@ -222,9 +227,7 @@ describe('MeshtasticManager - Duplicate message suppression', () => {
     // Channel 0 exists
     mockGetChannelById.mockReturnValue({ id: 0, name: 'Primary', role: 1 });
 
-    // Dynamic import to get fresh module with mocks
-    const module = await import('./meshtasticManager.js');
-    manager = module.fallbackManager;
+    manager = managerModule.fallbackManager;
   });
 
   afterEach(() => {
