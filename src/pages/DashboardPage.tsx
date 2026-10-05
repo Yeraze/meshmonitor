@@ -25,6 +25,13 @@ import {
 import { useMeshCoreNeighbors } from '../hooks/useMapAnalysisData';
 import { useMaxNodeAgeHoursAcross, useMaxInfraNodeAgeHoursAcross } from '../hooks/useNodeDisplaySettings';
 import type { DashboardSource, SourceStatus } from '../hooks/useDashboardData';
+import {
+  hasHiddenUrlParts,
+  hasStoredSecret,
+  storedSecretWillBeDropped,
+  type MaskedFieldSource,
+} from './DashboardPage.maskedFields';
+import { DroppedSecretNote, HiddenUrlPartsNote } from '../components/Dashboard/StoredSecretNotes';
 import DashboardSidebar from '../components/Dashboard/DashboardSidebar';
 import DashboardMap from '../components/Dashboard/DashboardMap';
 import type { NodeSourceRef } from '../components/Dashboard/DashboardNodePopup';
@@ -69,6 +76,9 @@ import { UiIcon } from '../components/icons';
 // ---------------------------------------------------------------------------
 // DashboardInner — rendered inside SettingsProvider
 // ---------------------------------------------------------------------------
+
+/** The bridge URL a Reticulum source uses when the field is left blank. */
+const RETICULUM_DEFAULT_BRIDGE_URL = 'ws://127.0.0.1:8765';
 
 function DashboardInner() {
   const { t } = useTranslation();
@@ -463,6 +473,18 @@ function DashboardInner() {
     setShowSourceModal(true);
   };
 
+  // The source being edited, for what the form may say about stored
+  // credentials it does not show (see DashboardPage.maskedFields.ts).
+  const editingSource: (MaskedFieldSource & { id: string }) | undefined = editingSourceId
+    ? sources.find((s) => s.id === editingSourceId)
+    : undefined;
+
+  /** Placeholder for a password or token input: says so when a value is stored. */
+  const secretPlaceholder = (path: string): string =>
+    hasStoredSecret(editingSource, path)
+      ? t('source.form.secret_stored_placeholder', 'Unchanged (leave blank to keep)')
+      : '';
+
   const onEditSource = (id: string) => {
     const source = sources.find((s) => s.id === id);
     if (!source) return;
@@ -493,13 +515,9 @@ function DashboardInner() {
       setFormRnsMode(rnsMode);
       setFormRnsConfigDir(cfg?.configDir ?? '');
       setFormRnsBridgeUrl(cfg?.bridgeUrl ?? '');
-      // Admins receive the full config record (redactSourceForCaller exempts
-      // them, mirroring the mqtt_broker/meshcore round-trip), and there is
-      // no server-side "keep existing on blank" merge for this field, so
-      // hydrating the real value here (rather than blanking it, as the mqtt
-      // broker password field does) is what keeps a re-save from silently
-      // wiping the token.
-      setFormRnsToken(cfg?.token ?? '');
+      // Never seed the token back into the form — the server keeps the stored
+      // value when this is left blank, as it does for the broker passwords.
+      setFormRnsToken('');
       setFormRnsAutoConnect(cfg?.autoConnect !== false);
       const peer = Array.isArray(cfg?.peers) ? cfg.peers[0] : undefined;
       setFormRnsPeerHost(peer?.host ?? '');
@@ -1486,7 +1504,8 @@ function DashboardInner() {
                     type="password"
                     value={formMqttPassword}
                     onChange={(e) => setFormMqttPassword(e.target.value)}
-                    placeholder={editingSourceId ? '••••••••' : ''}
+                    autoComplete="new-password"
+                    placeholder={secretPlaceholder('auth.password')}
                   />
                 </label>
                 <label className="dashboard-form-field">
@@ -1644,6 +1663,7 @@ function DashboardInner() {
                     onChange={(e) => setFormMqttBridgeUrl(e.target.value)}
                     placeholder="mqtt://mqtt.meshtastic.org:1883"
                   />
+                  <HiddenUrlPartsNote hidden={hasHiddenUrlParts(editingSource, 'upstream.url')} />
                 </label>
                 <label className="dashboard-form-field">
                   <span className="dashboard-form-label">{t('source.form.mqtt_username', 'Username')}</span>
@@ -1661,7 +1681,17 @@ function DashboardInner() {
                     type="password"
                     value={formMqttBridgePassword}
                     onChange={(e) => setFormMqttBridgePassword(e.target.value)}
-                    placeholder={editingSourceId ? '••••••••' : ''}
+                    autoComplete="new-password"
+                    placeholder={secretPlaceholder('upstream.password')}
+                  />
+                  <DroppedSecretNote
+                    dropped={storedSecretWillBeDropped(
+                      editingSource,
+                      'upstream.password',
+                      formMqttBridgePassword,
+                      String((editingSource?.config as { upstream?: { url?: unknown } } | undefined)?.upstream?.url ?? ''),
+                      formMqttBridgeUrl,
+                    )}
                   />
                 </label>
                 <label className="dashboard-form-field">
@@ -2066,6 +2096,7 @@ function DashboardInner() {
                     onChange={(e) => setFormMcMqttBrokerUrl(e.target.value)}
                     placeholder="wss://mqtt.meshmapper.net:443"
                   />
+                  <HiddenUrlPartsNote hidden={hasHiddenUrlParts(editingSource, 'brokerUrl')} />
                   <span className="dashboard-form-help">
                     {t('source.form.mc_mqtt_broker_url_help', 'One broker per source. Accepts ws://, wss://, mqtt://, mqtts://, or host:port. Add a second source for a second broker.')}
                   </span>
@@ -2104,7 +2135,16 @@ function DashboardInner() {
                     value={formMcMqttPassword}
                     onChange={(e) => setFormMcMqttPassword(e.target.value)}
                     autoComplete="new-password"
-                    placeholder={editingSourceId ? t('source.form.unchanged_placeholder', 'Leave blank to keep existing') : ''}
+                    placeholder={secretPlaceholder('password')}
+                  />
+                  <DroppedSecretNote
+                    dropped={storedSecretWillBeDropped(
+                      editingSource,
+                      'password',
+                      formMcMqttPassword,
+                      String(editingSource?.config?.brokerUrl ?? ''),
+                      formMcMqttBrokerUrl,
+                    )}
                   />
                   <span className="dashboard-form-help">
                     {t('source.form.mc_mqtt_password_help', 'Only for brokers using fixed MQTT credentials. Leave both blank for an open broker.')}
@@ -2200,6 +2240,7 @@ function DashboardInner() {
                     onChange={(e) => setFormRnsBridgeUrl(e.target.value)}
                     placeholder="ws://127.0.0.1:8765"
                   />
+                  <HiddenUrlPartsNote hidden={hasHiddenUrlParts(editingSource, 'bridgeUrl')} />
                   <p style={{ fontSize: 11, color: 'var(--color-text-subtle)', margin: '4px 0 0' }}>
                     {t('reticulum.form.bridge_url_help', 'WebSocket URL of the meshmonitor-rns-bridge sidecar. Defaults to ws://127.0.0.1:8765 when left blank.')}
                   </p>
@@ -2216,7 +2257,17 @@ function DashboardInner() {
                     aria-label={t('reticulum.form.token', 'Bridge token')}
                     value={formRnsToken}
                     onChange={(e) => setFormRnsToken(e.target.value)}
-                    placeholder={editingSourceId ? '••••••••' : ''}
+                    autoComplete="new-password"
+                    placeholder={secretPlaceholder('token')}
+                  />
+                  <DroppedSecretNote
+                    dropped={storedSecretWillBeDropped(
+                      editingSource,
+                      'token',
+                      formRnsToken,
+                      String(editingSource?.config?.bridgeUrl ?? '') || RETICULUM_DEFAULT_BRIDGE_URL,
+                      formRnsBridgeUrl.trim() || RETICULUM_DEFAULT_BRIDGE_URL,
+                    )}
                   />
                   <p style={{ fontSize: 11, color: 'var(--color-text-subtle)', margin: '4px 0 0' }}>
                     {t('reticulum.form.token_help', "Shared secret for the bridge's hello handshake — must match the bridge sidecar's BRIDGE_TOKEN.")}

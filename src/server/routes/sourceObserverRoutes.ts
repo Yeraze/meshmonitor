@@ -44,6 +44,7 @@ import { deriveObserverPublicKey, isValidObserverPrivateKey } from '../services/
 import { observerConfigFromSource, type MeshCoreSourceConfig, type NormalizedObserverConfig } from '../meshcoreConfig.js';
 import type { MeshCoreObserverStatus, MeshCoreObserverBrokerStatus } from '../services/meshcoreObserverStatus.js';
 import type { Source } from '../../db/repositories/sources.js';
+import { isSignedInCaller, redactEndpointUrl, splitUrl } from '../utils/sourceConfigRedaction.js';
 
 const router = Router({ mergeParams: true });
 
@@ -135,11 +136,133 @@ function validateBrokerKeyParam(
       },
     };
   }
-  const known = observer?.brokers.some((broker) => broker.key === raw) ?? false;
-  if (!known) {
-    return { error: { status: 400, code: 'UNKNOWN_BROKER', message: `Unknown or unconfigured broker: ${raw}` } };
+  const brokers = observer?.brokers ?? [];
+  if (brokers.some((broker) => broker.key === raw)) return { brokerKey: raw };
+  // A non-admin is given the key without credentials or query string (see
+  // `observerUrlsFor`), so that form is accepted too — when it names exactly
+  // one configured broker. The stored key is what the store is written under.
+  const byShownKey = brokers.filter((broker) => redactEndpointUrl(broker.key) === raw);
+  if (byShownKey.length === 1) return { brokerKey: byShownKey[0].key };
+  // The message echoes only what the caller sent.
+  return { error: { status: 400, code: 'UNKNOWN_BROKER', message: `Unknown or unconfigured broker: ${raw}` } };
+}
+
+// ---------------------------------------------------------------------------
+// What a caller is shown of the broker URLs these routes carry.
+//
+// `configuration:read` on the source is the gate for the routes themselves.
+// On top of it:
+//
+//   admin      the responses as built.
+//   signed in  every URL (a broker's `url`, and its `key`, which is the URL
+//              again) without `user:password@`, query string or fragment —
+//              the same form the source list gives a `sources:read` holder.
+//              Free-text errors lose any such part of a configured URL.
+//   no login   no host at all, whatever the anonymous account was granted:
+//              keys become `broker-N`, and URL, label, token audience, stored
+//              username and error text are blanked. Same rule as the source
+//              list and `GET /:id/status`.
+// ---------------------------------------------------------------------------
+
+type ObserverUrlAudience = 'admin' | 'signedIn' | 'noLogin';
+
+function observerUrlAudience(req: Request): ObserverUrlAudience {
+  if (!isSignedInCaller(req)) return 'noLogin';
+  return (req as Request & { user?: { isAdmin?: boolean } }).user?.isAdmin === true ? 'admin' : 'signedIn';
+}
+
+/** The parts of this source's configured broker URLs that must not be shown. */
+function observerUrlSecrets(source: Source): string[] {
+  const observer = (source.config as { observer?: { brokerUrl?: unknown; brokers?: unknown } } | null)?.observer;
+  const urls: string[] = [];
+  if (typeof observer?.brokerUrl === 'string') urls.push(observer.brokerUrl);
+  if (Array.isArray(observer?.brokers)) {
+    for (const entry of observer.brokers) {
+      const url = (entry as { url?: unknown } | null)?.url;
+      if (typeof url === 'string') urls.push(url);
+    }
   }
-  return { brokerKey: raw };
+  const secrets = new Set<string>();
+  for (const url of urls) {
+    const parts = splitUrl(url);
+    if (!parts) {
+      secrets.add(url);
+      continue;
+    }
+    if (parts.userinfo) {
+      secrets.add(parts.userinfo);
+      const colon = parts.userinfo.indexOf(':');
+      if (colon >= 0) secrets.add(parts.userinfo.slice(colon + 1));
+    }
+    if (parts.query && parts.query.length > 1) secrets.add(parts.query.slice(1));
+    if (parts.fragment && parts.fragment.length > 1) secrets.add(parts.fragment.slice(1));
+  }
+  // Longest first, so a password is not left half-replaced by its own prefix.
+  return [...secrets].filter((s) => s.length > 0).sort((a, b) => b.length - a.length);
+}
+
+/** Error text with no URL credentials, query string or fragment in it. */
+function scrubObserverError(text: string | null, secrets: string[]): string | null {
+  if (text === null || text === undefined) return null;
+  let out = String(text);
+  for (const secret of secrets) out = out.split(secret).join('***');
+  // Any other URL the broker or socket quoted back.
+  return out
+    .replace(/([a-z][a-z0-9+.-]*:\/\/)[^/\s@]*@/gi, '$1***@')
+    .replace(/([a-z][a-z0-9+.-]*:\/\/[^\s?#]*)[?#]\S*/gi, '$1');
+}
+
+function redactObserverStatus<T extends MeshCoreObserverStatus>(
+  status: T,
+  audience: ObserverUrlAudience,
+  source: Source,
+): T {
+  if (audience === 'admin') return status;
+  if (audience === 'noLogin') {
+    return {
+      ...status,
+      lastError: null,
+      brokers: status.brokers.map((b, i) => ({
+        ...b,
+        key: `broker-${i}`,
+        url: '',
+        label: null,
+        tokenAudience: null,
+        lastError: null,
+      })),
+    };
+  }
+  const secrets = observerUrlSecrets(source);
+  return {
+    ...status,
+    lastError: scrubObserverError(status.lastError, secrets),
+    brokers: status.brokers.map((b) => ({
+      ...b,
+      key: redactEndpointUrl(b.key),
+      url: redactEndpointUrl(b.url),
+      lastError: scrubObserverError(b.lastError, secrets),
+    })),
+  };
+}
+
+type CredentialStatusBody = Record<string, unknown> & {
+  username?: string | null;
+  brokers: Array<{ brokerKey: string; username: string | null }>;
+};
+
+function redactCredentialStatus(body: CredentialStatusBody, audience: ObserverUrlAudience): CredentialStatusBody {
+  if (audience === 'admin') return body;
+  if (audience === 'noLogin') {
+    return {
+      ...body,
+      username: null,
+      brokers: body.brokers.map((_b, i) => ({ brokerKey: `broker-${i}`, username: null })),
+    };
+  }
+  return {
+    ...body,
+    brokers: body.brokers.map((b) => ({ ...b, brokerKey: redactEndpointUrl(b.brokerKey) })),
+  };
 }
 
 /**
@@ -198,12 +321,13 @@ router.get(
       const mgr = sourceManagerRegistry.getManager(source.id);
       const status = mgr && isMeshCoreManager(mgr) ? mgr.getObserverStatus() : undefined;
 
+      const audience = observerUrlAudience(req);
       if (status) {
-        ok(res, { running: true, ...status });
+        ok(res, { running: true, ...redactObserverStatus(status, audience, source) });
         return;
       }
 
-      ok(res, { running: false, ...synthesizeNotRunningStatus(source) });
+      ok(res, { running: false, ...redactObserverStatus(synthesizeNotRunningStatus(source), audience, source) });
     } catch (error) {
       logger.error(`[API] Observer status error for ${req.params.id}:`, error);
       fail(res, 500, 'INTERNAL_ERROR', 'Failed to get Analyzer Observer status');
@@ -390,7 +514,7 @@ router.get(
       // `brokers` field (kept omitted-when-empty there for its pre-#5014
       // `Object.keys` back-compat contract), the route response always
       // carries the array so the UI never has to special-case its absence.
-      ok(res, { ...status, brokers });
+      ok(res, redactCredentialStatus({ ...status, brokers }, observerUrlAudience(req)));
     } catch (error) {
       logger.error(`[API] Observer credential status error for ${req.params.id}:`, error);
       fail(res, 500, 'INTERNAL_ERROR', 'Failed to get Analyzer Observer credential status');
@@ -469,7 +593,7 @@ router.put(
       });
       await refreshObserverPublisher(source);
       const [status, brokers] = await Promise.all([store.status(source.id), store.listBrokers(source.id)]);
-      ok(res, { ...status, brokers });
+      ok(res, redactCredentialStatus({ ...status, brokers }, observerUrlAudience(req)));
     } catch (error) {
       logger.error(`[API] Observer credential set error for ${req.params.id}:`, error);
       fail(res, 500, 'INTERNAL_ERROR', 'Failed to set Analyzer Observer broker credentials');
@@ -512,7 +636,7 @@ router.delete(
       });
       await refreshObserverPublisher(source);
       const [status, brokers] = await Promise.all([store.status(source.id), store.listBrokers(source.id)]);
-      ok(res, { ...status, brokers });
+      ok(res, redactCredentialStatus({ ...status, brokers }, observerUrlAudience(req)));
     } catch (error) {
       logger.error(`[API] Observer credential clear error for ${req.params.id}:`, error);
       fail(res, 500, 'INTERNAL_ERROR', 'Failed to clear Analyzer Observer broker credentials');
