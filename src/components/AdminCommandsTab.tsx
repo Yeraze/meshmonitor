@@ -152,7 +152,8 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
   const [deviceMetadata, setDeviceMetadata] = useState<{
     firmwareVersion: string;
     deviceStateVersion: number;
-    canShutdown: boolean;
+    /** null: the node has not reported it yet. */
+    canShutdown: boolean | null;
     hasWifi: boolean;
     hasBluetooth: boolean;
     hasEthernet: boolean;
@@ -4223,8 +4224,8 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
         <DeviceActionsSection
           node={selectedNode ?? null}
           canShutdown={
-            deviceMetadata && deviceMetadataNodeNum === selectedNodeNum
-              ? Boolean(deviceMetadata.canShutdown)
+            deviceMetadata && deviceMetadataNodeNum === selectedNodeNum && typeof deviceMetadata.canShutdown === 'boolean'
+              ? deviceMetadata.canShutdown
               : null
           }
           disabled={isExecuting || selectedNodeNum === null || remoteAdminBlocked}

@@ -287,4 +287,35 @@ describe('adminRoutes — one-shot device actions', () => {
       expect(res.body).toMatchObject({ success: false, code: 'REBOOT_FAILED' });
     });
   });
+
+  describe('POST /get-device-metadata — canShutdown for the local node', () => {
+    // The Shut down button is disabled when metadata says canShutdown is
+    // false. The local branch used to hardcode false, which would have
+    // disabled it for every local node.
+    async function localMetadata(canShutdown: boolean | undefined) {
+      await sourceManagerRegistry.removeManager(harness.sourceA);
+      await sourceManagerRegistry.addManager(makeManager({
+        getLocalNodeInfo: vi.fn().mockReturnValue({
+          nodeNum: LOCAL, nodeId: '!00000001', longName: 'Local', shortName: 'LOC', firmwareVersion: '2.8.0', canShutdown,
+        }),
+        isLocalNodeBridged: vi.fn().mockReturnValue(false),
+      }));
+      const agent = await harness.loginAs(harness.admin);
+      const res = await agent.post('/get-device-metadata').send({ sourceId: harness.sourceA, nodeNum: LOCAL });
+      expect(res.status).toBe(200);
+      return res.body.deviceMetadata.canShutdown;
+    }
+
+    it('true when the node said it can', async () => {
+      expect(await localMetadata(true)).toBe(true);
+    });
+
+    it('false when the node said it cannot', async () => {
+      expect(await localMetadata(false)).toBe(false);
+    });
+
+    it('null, not false, while the node has not reported it', async () => {
+      expect(await localMetadata(undefined)).toBeNull();
+    });
+  });
 });

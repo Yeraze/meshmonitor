@@ -970,7 +970,10 @@ router.post('/get-device-metadata', extendRequestTimeout(GET_DEVICE_METADATA_TIM
             hasEthernet: localNodeInfo.hasEthernet ?? false,
             hasXeddsa: localNodeInfo.hasXeddsa ?? false,
             isBridged: gdmManager.isLocalNodeBridged(),
-            canShutdown: false,
+            // The node's own answer, or null while its metadata has not
+            // arrived. This used to be a hardcoded false, which the Shut down
+            // button (#5615) would read as "this node cannot shut down".
+            canShutdown: localNodeInfo.canShutdown ?? null,
             hasRemoteHardware: false,
             deviceStateVersion: 0,
             positionFlags: 0
