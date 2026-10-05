@@ -8,6 +8,21 @@
 import { MODEM_PRESET_CHANNEL_NAMES } from '../../utils/loraFrequency.js';
 
 /**
+ * `Config.SecurityConfig.PacketSignaturePolicy` (firmware 2.8.0+). Defined in
+ * a browser-safe file because the Security picker reads it too (#5612).
+ */
+export {
+  PacketSignaturePolicy,
+  PACKET_SIGNATURE_POLICIES,
+  PACKET_SIGNATURE_POLICY_MIN_FIRMWARE,
+  PACKET_SIGNATURE_POLICY_MIN_FIRMWARE_LABEL,
+  isPacketSignaturePolicy,
+  getPacketSignaturePolicyName,
+  supportsPacketSignaturePolicy,
+  type PacketSignaturePolicyValue,
+} from '../../utils/packetSignaturePolicy.js';
+
+/**
  * Port numbers for different Meshtastic application types.
  * From meshtastic.PortNum enum in portnums.proto
  */
