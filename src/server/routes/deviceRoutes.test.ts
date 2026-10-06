@@ -2,7 +2,11 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import request from 'supertest';
 import express from 'express';
 
+// resolveSourceManager is mocked to hand back this one manager for any id. The
+// routes refuse a named source that resolved to another source's manager, so
+// its sourceId matches the id these tests name.
 const mockManager = vi.hoisted(() => ({
+  sourceId: 'src-1',
   getDeviceConfig: vi.fn(),
   getLocalNodeInfo: vi.fn(),
   rebootDevice: vi.fn(),

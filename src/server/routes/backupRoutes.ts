@@ -5,8 +5,7 @@ import databaseService from '../../services/database.js';
 import { backupFileService } from '../services/backupFileService.js';
 import { systemBackupService, SystemBackupInProgressError } from '../services/systemBackupService.js';
 import { deviceRestoreService } from '../services/deviceRestoreService.js';
-import { resolveSourceManager } from '../utils/resolveSourceManager.js';
-import { requireMeshtasticDeviceSource } from '../utils/requireMeshtasticDeviceSource.js';
+import { requireDeviceSourcePermission, getDeviceSourceTarget } from '../utils/deviceSourcePermission.js';
 import { ok, fail } from '../utils/apiResponse.js';
 import { logger } from '../../utils/logger.js';
 import { extendRequestTimeout } from '../middleware/requestTimeout.js';
@@ -146,7 +145,7 @@ backupRouter.delete('/delete/:filename', requirePermission('configuration', 'wri
 // Restore a saved backup to the connected local device (#4926).
 // Writes each config section back via admin messages. Overwrites current
 // device config, so the frontend confirms before calling this.
-backupRouter.post('/restore/:filename', extendRequestTimeout(DEVICE_RESTORE_TIMEOUT_MS), requirePermission('configuration', 'write'), requireMeshtasticDeviceSource('body'), async (req: Request, res: Response) => {
+backupRouter.post('/restore/:filename', extendRequestTimeout(DEVICE_RESTORE_TIMEOUT_MS), requireDeviceSourcePermission('configuration', 'write', 'body'), async (req: Request, res: Response) => {
   try {
     const { filename } = req.params;
 
@@ -155,8 +154,7 @@ backupRouter.post('/restore/:filename', extendRequestTimeout(DEVICE_RESTORE_TIME
       return fail(res, 400, 'INVALID_FILENAME', 'Invalid filename format');
     }
 
-    const sourceId = req.body?.sourceId as string | undefined;
-    const manager = resolveSourceManager(sourceId);
+    const { manager, sourceId } = getDeviceSourceTarget(req);
 
     const content = await backupFileService.getBackup(filename);
     const result = await deviceRestoreService.restoreBackup(manager, content);
@@ -165,7 +163,7 @@ backupRouter.post('/restore/:filename', extendRequestTimeout(DEVICE_RESTORE_TIME
       req.user!.id,
       'device_backup_restored',
       'device_backup',
-      JSON.stringify({ filename, sourceId: sourceId ?? null, applied: result.applied.length, failed: result.failed.length }),
+      JSON.stringify({ filename, sourceId, applied: result.applied.length, failed: result.failed.length }),
       req.ip || null
     );
 

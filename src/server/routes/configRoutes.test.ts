@@ -152,16 +152,16 @@ describe('configRoutes', () => {
       expect(res.status).toBe(200);
     });
 
-    it('200s with configuration:read granted', async () => {
-      // 'configuration' is a sourcey resource (SOURCEY_RESOURCES). This route's
-      // requirePermission() call has no sourceIdFrom option, so it always checks
-      // with sourceId=undefined — the "union across sources" branch, which only
-      // matches grants that carry a (non-null) sourceId. A global (sourceId=null)
-      // grant would never satisfy a sourcey resource here.
+    it('403s with no sourceId when the grant is not on the primary source', async () => {
+      // 'configuration' is a per-source resource. With no sourceId the route
+      // acts on the primary Meshtastic source, so the check is made there. No
+      // Meshtastic manager is registered here, so the target is the
+      // unconfigured fallback and a grant on source A does not cover it.
+      // deviceSourcePermission.scope.test.ts covers the allowed paths.
       await harness.grant(harness.limited.id, 'configuration', 'read', harness.sourceA);
       const agent = await harness.loginAs(harness.limited);
       const res = await agent.get('/current');
-      expect(res.status).toBe(200);
+      expect(res.status).toBe(403);
     });
   });
 
@@ -172,16 +172,15 @@ describe('configRoutes', () => {
       expect(res.status).toBe(403);
     });
 
-    it('passes the permission gate with configuration:write granted (fails downstream — no live device in tests)', async () => {
-      // Same sourcey-union nuance as GET /current above.
+    it('409s for a granted source whose device is not connected', async () => {
+      // The grant passes the permission gate. Source A has a row but no live
+      // manager in this test, so the device guard refuses it rather than let
+      // the write fall through to another source's radio.
       await harness.grant(harness.limited.id, 'configuration', 'write', harness.sourceA);
       const agent = await harness.loginAs(harness.limited);
-      const res = await agent.post('/device').send({ nodeAddress: '1.2.3.4' });
-      // Not 403: the grant let the request past requirePermission. The handler
-      // itself then 500s because there is no live Meshtastic transport in this
-      // test process (setDeviceConfig throws "Not connected to Meshtastic node").
-      expect(res.status).not.toBe(403);
-      expect(res.status).toBe(500);
+      const res = await agent.post('/device').send({ nodeAddress: '1.2.3.4', sourceId: harness.sourceA });
+      expect(res.status).toBe(409);
+      expect(res.body.code).toBe('SOURCE_NOT_CONNECTED');
     });
 
     it('passes the permission gate for admin without an explicit grant', async () => {
