@@ -32,6 +32,9 @@ import { formatPrecisionAccuracy } from '../../utils/distance';
 // Default public PSK (base64 encoded value of single byte 0x01) — shared
 // definition lives in utils/publicChannel.ts (#4705).
 import { DEFAULT_PUBLIC_PSK } from '../../utils/publicChannel';
+import { NumberInput } from '../common/NumberInput';
+import { NumberInputScope } from '../common/NumberInputScope';
+import { useNumberInputScope } from '../common/numberInputScope';
 
 /** A device channel sharing its key with a differently-named Channel Database
  *  (server-decryption) entry (#3644). */
@@ -182,6 +185,8 @@ const ChannelsConfigSection: React.FC<ChannelsConfigSectionProps> = ({
 
   const [editingChannel, setEditingChannel] = useState<ChannelEditState | null>(null);
   const [showEditModal, setShowEditModal] = useState(false);
+  // #5649: a blank or out-of-range number in the edit modal blocks Save Channel.
+  const numberScope = useNumberInputScope();
   const [showImportModal, setShowImportModal] = useState(false);
   const [importSlotId, setImportSlotId] = useState<number>(0);
   const [importFileContent, setImportFileContent] = useState<string>('');
@@ -285,6 +290,7 @@ const ChannelsConfigSection: React.FC<ChannelsConfigSectionProps> = ({
 
   const handleSaveChannel = async () => {
     if (!editingChannel) return;
+    if (numberScope.invalid) return;
 
     // Allow empty names (Meshtastic supports unnamed channels)
     if (editingChannel.name && editingChannel.name.length > 11) {
@@ -462,6 +468,7 @@ const ChannelsConfigSection: React.FC<ChannelsConfigSectionProps> = ({
   };
 
   return (
+    <NumberInputScope scope={numberScope}>
     <>
       <div className="settings-section">
         <h3 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
@@ -801,13 +808,13 @@ const ChannelsConfigSection: React.FC<ChannelsConfigSectionProps> = ({
                   {t('channels_config.position_precision_description')}
                 </span>
               </label>
-              <input
+              <NumberInput
                 id="edit-channel-precision"
-                type="number"
-                min="0"
-                max="32"
+                min={0}
+                max={32}
+                integer
                 value={editingChannel.positionPrecision}
-                onChange={(e) => setEditingChannel({ ...editingChannel, positionPrecision: parseInt(e.target.value) || 0 })}
+                onChange={(value) => setEditingChannel({ ...editingChannel, positionPrecision: value })}
                 className="setting-input"
                 placeholder="32"
               />
@@ -851,7 +858,7 @@ const ChannelsConfigSection: React.FC<ChannelsConfigSectionProps> = ({
             <div style={{ display: 'flex', gap: '0.5rem', marginTop: '1.5rem' }}>
               <button
                 onClick={handleSaveChannel}
-                disabled={isSaving}
+                disabled={isSaving || numberScope.invalid}
                 style={{
                   flex: 1,
                   padding: '0.75rem',
@@ -859,8 +866,8 @@ const ChannelsConfigSection: React.FC<ChannelsConfigSectionProps> = ({
                   color: 'var(--color-bg)',
                   border: 'none',
                   borderRadius: '4px',
-                  cursor: isSaving ? 'not-allowed' : 'pointer',
-                  opacity: isSaving ? 0.6 : 1
+                  cursor: isSaving || numberScope.invalid ? 'not-allowed' : 'pointer',
+                  opacity: isSaving || numberScope.invalid ? 0.6 : 1
                 }}
               >
                 {isSaving ? t('common.saving') : t('channels_config.save_channel')}
@@ -990,6 +997,7 @@ const ChannelsConfigSection: React.FC<ChannelsConfigSectionProps> = ({
         </div>
       )}
     </>
+    </NumberInputScope>
   );
 };
 

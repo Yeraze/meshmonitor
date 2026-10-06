@@ -4,6 +4,9 @@ import { useToast } from './ToastContainer';
 import { useCsrfFetch } from '../hooks/useCsrfFetch';
 import { useSaveBar } from '../hooks/useSaveBar';
 import { ISSUE_TYPE_LABELS, ruleIdsByTier, ruleShortId, buildRuleMuteSettingsPatch } from './Analysis/meshIssueRuleIds';
+import { NumberInput } from './common/NumberInput';
+import { NumberInputScope } from './common/NumberInputScope';
+import { useNumberInputScope } from './common/numberInputScope';
 
 interface MeshIssuesSectionProps {
   baseUrl: string;
@@ -316,7 +319,9 @@ const MeshIssuesSection: React.FC<MeshIssuesSectionProps> = ({ baseUrl }) => {
     clusterMaxLinkKm,
   ]);
 
+  const numberScope = useNumberInputScope();
   useSaveBar({
+    numberScope,
     id: 'mesh-issues',
     sectionName: t('automation.mesh_issues.title', 'Mesh Issues Analysis'),
     hasChanges,
@@ -380,6 +385,7 @@ const MeshIssuesSection: React.FC<MeshIssuesSectionProps> = ({ baseUrl }) => {
   });
 
   return (
+    <NumberInputScope scope={numberScope}>
     <>
       <div className="automation-section-header" style={{
         display: 'flex',
@@ -581,16 +587,12 @@ const MeshIssuesSection: React.FC<MeshIssuesSectionProps> = ({ baseUrl }) => {
             {t('automation.mesh_issues.air_util_tx', 'Airtime TX ceiling (%)')}
             <span style={badgeStyle('official')}>{t('automation.mesh_issues.badge_official', '[official]')}</span>
           </label>
-          <input
-            type="number"
+          <NumberInput
             min={1}
             max={50}
             step={1}
             value={localAirUtilTxPct}
-            onChange={(e) => {
-              const v = parseFloat(e.target.value);
-              setLocalAirUtilTxPct(Number.isFinite(v) ? v : 8);
-            }}
+            onChange={setLocalAirUtilTxPct}
             disabled={!localEnabled}
             className="setting-input"
           />
@@ -605,16 +607,12 @@ const MeshIssuesSection: React.FC<MeshIssuesSectionProps> = ({ baseUrl }) => {
             {t('automation.mesh_issues.channel_util', 'Channel utilization ceiling (%)')}
             <span style={badgeStyle('official')}>{t('automation.mesh_issues.badge_official', '[official]')}</span>
           </label>
-          <input
-            type="number"
+          <NumberInput
             min={5}
             max={100}
             step={1}
             value={localChannelUtilPct}
-            onChange={(e) => {
-              const v = parseFloat(e.target.value);
-              setLocalChannelUtilPct(Number.isFinite(v) ? v : 25);
-            }}
+            onChange={setLocalChannelUtilPct}
             disabled={!localEnabled}
             className="setting-input"
           />
@@ -629,16 +627,12 @@ const MeshIssuesSection: React.FC<MeshIssuesSectionProps> = ({ baseUrl }) => {
             {t('automation.mesh_issues.mobile_span', 'Mobile span (metres)')}
             <span style={badgeStyle('ours')}>{t('automation.mesh_issues.badge_meshmonitor', '[MeshMonitor]')}</span>
           </label>
-          <input
-            type="number"
+          <NumberInput
             min={50}
             max={50000}
             step={10}
             value={localMobileSpanMeters}
-            onChange={(e) => {
-              const v = parseFloat(e.target.value);
-              setLocalMobileSpanMeters(Number.isFinite(v) ? v : 500);
-            }}
+            onChange={setLocalMobileSpanMeters}
             disabled={!localEnabled}
             className="setting-input"
           />
@@ -653,16 +647,12 @@ const MeshIssuesSection: React.FC<MeshIssuesSectionProps> = ({ baseUrl }) => {
             {t('automation.mesh_issues.snr_asymmetry', 'Link SNR asymmetry (dB)')}
             <span style={badgeStyle('ours')}>{t('automation.mesh_issues.badge_meshmonitor', '[MeshMonitor]')}</span>
           </label>
-          <input
-            type="number"
+          <NumberInput
             min={1}
             max={30}
             step={1}
             value={localSnrAsymmetryDb}
-            onChange={(e) => {
-              const v = parseFloat(e.target.value);
-              setLocalSnrAsymmetryDb(Number.isFinite(v) ? v : 6);
-            }}
+            onChange={setLocalSnrAsymmetryDb}
             disabled={!localEnabled}
             className="setting-input"
           />
@@ -677,16 +667,12 @@ const MeshIssuesSection: React.FC<MeshIssuesSectionProps> = ({ baseUrl }) => {
             {t('automation.mesh_issues.over_broadcast', 'Broadcast interval floor (seconds)')}
             <span style={badgeStyle('ours')}>{t('automation.mesh_issues.badge_meshmonitor', '[MeshMonitor]')}</span>
           </label>
-          <input
-            type="number"
+          <NumberInput
             min={30}
             max={3600}
             step={10}
             value={localOverBroadcastSeconds}
-            onChange={(e) => {
-              const v = parseFloat(e.target.value);
-              setLocalOverBroadcastSeconds(Number.isFinite(v) ? v : 300);
-            }}
+            onChange={setLocalOverBroadcastSeconds}
             disabled={!localEnabled}
             className="setting-input"
           />
@@ -701,16 +687,12 @@ const MeshIssuesSection: React.FC<MeshIssuesSectionProps> = ({ baseUrl }) => {
             {t('automation.mesh_issues.auto_close_runs', 'Auto-close after')}
             <span style={badgeStyle('ours')}>{t('automation.mesh_issues.badge_meshmonitor', '[MeshMonitor]')}</span>
           </label>
-          <input
-            type="number"
+          <NumberInput
             min={1}
             max={20}
             step={1}
             value={localAutoCloseRuns}
-            onChange={(e) => {
-              const v = parseFloat(e.target.value);
-              setLocalAutoCloseRuns(Number.isFinite(v) ? v : 3);
-            }}
+            onChange={setLocalAutoCloseRuns}
             disabled={!localEnabled}
             className="setting-input"
           />
@@ -725,16 +707,12 @@ const MeshIssuesSection: React.FC<MeshIssuesSectionProps> = ({ baseUrl }) => {
             {t('automation.mesh_issues.cluster_max_link_km', 'Router cluster max link (km)')}
             <span style={badgeStyle('ours')}>{t('automation.mesh_issues.badge_meshmonitor', '[MeshMonitor]')}</span>
           </label>
-          <input
-            type="number"
+          <NumberInput
             min={1}
             max={500}
             step={1}
             value={localClusterMaxLinkKm}
-            onChange={(e) => {
-              const v = parseFloat(e.target.value);
-              setLocalClusterMaxLinkKm(Number.isFinite(v) ? v : 30);
-            }}
+            onChange={setLocalClusterMaxLinkKm}
             disabled={!localEnabled}
             className="setting-input"
           />
@@ -773,6 +751,7 @@ const MeshIssuesSection: React.FC<MeshIssuesSectionProps> = ({ baseUrl }) => {
         )}
       </div>
     </>
+    </NumberInputScope>
   );
 };
 

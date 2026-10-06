@@ -1,5 +1,8 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { clampInt, COOLDOWN_SECONDS_MAX } from './automationInputLimits';
+import { COOLDOWN_SECONDS_MAX } from './automationInputLimits';
+import { NumberInput } from './common/NumberInput';
+import { NumberInputScope } from './common/NumberInputScope';
+import { useNumberInputScope } from './common/numberInputScope';
 import { useTranslation, Trans } from 'react-i18next';
 import { useToast } from './ToastContainer';
 import { useCsrfFetch } from '../hooks/useCsrfFetch';
@@ -62,6 +65,8 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
   const [newVerifyResponse, setNewVerifyResponse] = useState(false);
   const [newChannels, setNewChannels] = useState<Array<number | 'dm'>>(['dm']);
   const [newCooldownSeconds, setNewCooldownSeconds] = useState(0);
+  // #5649: covers the add-trigger cooldown only; each TriggerItem gates its own edit.
+  const addNumberScope = useNumberInputScope();
   const [testMessages, setTestMessages] = useState('w 33076\ntemp 72\nmsg hello world\nset temperature to 72');
   const [editingId, setEditingId] = useState<string | null>(null);
   const [availableScripts, setAvailableScripts] = useState<ScriptMetadata[]>([]);
@@ -377,6 +382,7 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
   };
 
   const addTrigger = () => {
+    if (addNumberScope.invalid) return;
     const triggerValidation = validateTrigger(newTrigger);
     if (!triggerValidation.valid) {
       showToast(triggerValidation.error || t('auto_responder.invalid_trigger'), 'error');
@@ -796,16 +802,18 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
             {/* Cooldown for new trigger */}
             <div className={layout.cooldownGroup} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.5rem' }}>
               <label style={{ fontSize: '0.9rem', fontWeight: 'bold' }}>{t('auto_responder.cooldown_label')}</label>
-              <input
-                type="number"
-                value={newCooldownSeconds}
-                onChange={(e) => setNewCooldownSeconds(clampInt(e.target.value, 0, COOLDOWN_SECONDS_MAX))}
-                min={0}
-                max={COOLDOWN_SECONDS_MAX}
-                disabled={!localEnabled}
-                className="setting-input"
-                style={{ width: '80px' }}
-              />
+              <NumberInputScope scope={addNumberScope}>
+                <NumberInput
+                  value={newCooldownSeconds}
+                  onChange={setNewCooldownSeconds}
+                  min={0}
+                  max={COOLDOWN_SECONDS_MAX}
+                  integer
+                  disabled={!localEnabled}
+                  className="setting-input"
+                  style={{ width: '80px' }}
+                />
+              </NumberInputScope>
               <span className={layout.cooldownHint} style={{ fontSize: '0.75rem', color: 'var(--color-text-subtle)' }}>
                 {t('auto_responder.cooldown_help')}
               </span>
@@ -813,13 +821,13 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
             <div className={layout.buttonGroup}>
             <button
               onClick={addTrigger}
-              disabled={!localEnabled || !newTrigger.trim() || (newResponseType !== 'mailbox' && !newResponse.trim()) || !newTriggerValidation.valid}
+              disabled={!localEnabled || !newTrigger.trim() || (newResponseType !== 'mailbox' && !newResponse.trim()) || !newTriggerValidation.valid || addNumberScope.invalid}
               className="btn-primary"
               style={{
                 padding: '0.5rem 1rem',
                 fontSize: '14px',
-                opacity: (localEnabled && newTrigger.trim() && (newResponseType === 'mailbox' || !!newResponse.trim()) && newTriggerValidation.valid) ? 1 : 0.5,
-                cursor: (localEnabled && newTrigger.trim() && (newResponseType === 'mailbox' || !!newResponse.trim()) && newTriggerValidation.valid) ? 'pointer' : 'not-allowed'
+                opacity: (localEnabled && newTrigger.trim() && (newResponseType === 'mailbox' || !!newResponse.trim()) && newTriggerValidation.valid && !addNumberScope.invalid) ? 1 : 0.5,
+                cursor: (localEnabled && newTrigger.trim() && (newResponseType === 'mailbox' || !!newResponse.trim()) && newTriggerValidation.valid && !addNumberScope.invalid) ? 'pointer' : 'not-allowed'
               }}
             >
               {t('common.add')}

@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { getTelemetryLabel } from '../../TelemetryChart';
 import { type SortOption } from '../types';
 import { UiIcon } from '../../icons';
+import { NumberInput } from '../../common/NumberInput';
 
 interface DashboardFiltersProps {
   // Days to view
@@ -84,14 +85,14 @@ const DashboardFilters: React.FC<DashboardFiltersProps> = ({
           <label htmlFor="daysToView" style={{ marginRight: '0.5rem', fontWeight: '500' }}>
             {t('dashboard.days_to_view')}
           </label>
-          <input
-            type="number"
+          <NumberInput
             id="daysToView"
             className="dashboard-number-input"
-            min="1"
+            integer
+            min={1}
             max={maxDays}
             value={daysToView}
-            onChange={e => onDaysToViewChange(parseInt(e.target.value) || 1)}
+            onChange={onDaysToViewChange}
             style={{
               width: '80px',
               padding: '0.5rem',

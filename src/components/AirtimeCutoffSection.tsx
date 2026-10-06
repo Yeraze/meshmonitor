@@ -5,6 +5,9 @@ import { useSourceQuery } from '../hooks/useSourceQuery';
 import { useSaveBar } from '../hooks/useSaveBar';
 import { useToast } from './ToastContainer';
 import { UiIcon } from './icons';
+import { NumberInput } from './common/NumberInput';
+import { NumberInputScope } from './common/NumberInputScope';
+import { useNumberInputScope } from './common/numberInputScope';
 
 interface AirtimeCutoffSectionProps {
   baseUrl: string;
@@ -150,7 +153,9 @@ const AirtimeCutoffSection: React.FC<AirtimeCutoffSectionProps> = ({ baseUrl }) 
     if (initialMaxHops !== null) setLocalMaxHops(initialMaxHops);
   }, [initialThreshold, initialSource, initialMaxHops]);
 
+  const numberScope = useNumberInputScope();
   useSaveBar({
+    numberScope,
     id: 'airtime-cutoff',
     sectionName: t('automation.airtime_cutoff.title', 'Cutoff Airtime Utilization Threshold'),
     hasChanges,
@@ -180,6 +185,7 @@ const AirtimeCutoffSection: React.FC<AirtimeCutoffSectionProps> = ({ baseUrl }) 
       : 'var(--color-success)';
 
   return (
+    <NumberInputScope scope={numberScope}>
     <>
       <div className="automation-section-header" style={{
         display: 'flex',
@@ -308,17 +314,13 @@ const AirtimeCutoffSection: React.FC<AirtimeCutoffSectionProps> = ({ baseUrl }) 
                 )}
               </span>
             </label>
-            <input
+            <NumberInput
               id="airtimeCutoffNeighborMaxHops"
-              type="number"
               min={0}
               max={MAX_HOPS_CAP}
               value={localMaxHops}
-              onChange={(e) => {
-                const raw = parseInt(e.target.value, 10);
-                const clamped = Number.isNaN(raw) ? 0 : Math.max(0, Math.min(MAX_HOPS_CAP, raw));
-                setLocalMaxHops(clamped);
-              }}
+              integer
+              onChange={setLocalMaxHops}
               className="setting-input"
             />
           </div>
@@ -333,22 +335,19 @@ const AirtimeCutoffSection: React.FC<AirtimeCutoffSectionProps> = ({ baseUrl }) 
                 'Channel Utilization percent above which automations pause. 0 disables; default 30.')}
             </span>
           </label>
-          <input
+          <NumberInput
             id="airtimeCutoffThreshold"
-            type="number"
             min={0}
             max={100}
             value={localThreshold}
-            onChange={(e) => {
-              const raw = parseInt(e.target.value, 10);
-              const clamped = Number.isNaN(raw) ? 0 : Math.max(0, Math.min(100, raw));
-              setLocalThreshold(clamped);
-            }}
+            integer
+            onChange={setLocalThreshold}
             className="setting-input"
           />
         </div>
       </div>
     </>
+    </NumberInputScope>
   );
 };
 

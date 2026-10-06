@@ -9,6 +9,9 @@ import {
   type BroadcastTarget,
 } from '../admin-commands/useAdminCommandsState';
 import type { Channel } from '../../types/device';
+import { NumberInput } from '../common/NumberInput';
+import { NumberInputScope } from '../common/NumberInputScope';
+import { useNumberInputScope } from '../common/numberInputScope';
 
 /**
  * MeshBeacon module config editor (firmware 2.8+, issue #3854).
@@ -149,6 +152,7 @@ const MeshBeaconConfigSection: React.FC<MeshBeaconConfigSectionProps> = ({
   );
   const messageTooLong = messageBytes > MESH_BEACON_MESSAGE_MAX_BYTES;
 
+  const numberScope = useNumberInputScope();
   useSaveBar({
     id: 'meshbeacon-config',
     sectionName: t('meshbeacon_config.title', 'MeshBeacon'),
@@ -157,7 +161,8 @@ const MeshBeaconConfigSection: React.FC<MeshBeaconConfigSectionProps> = ({
     hasChanges: hasChanges && !isDisabled && !messageTooLong,
     isSaving,
     onSave: handleSave,
-    onDismiss: resetChanges
+    onDismiss: resetChanges,
+    numberScope
   });
 
   const subGroupStyle = {
@@ -176,6 +181,7 @@ const MeshBeaconConfigSection: React.FC<MeshBeaconConfigSectionProps> = ({
   };
 
   return (
+    <NumberInputScope scope={numberScope}>
     <div className="settings-section">
       <h3 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
         {t('meshbeacon_config.title', 'MeshBeacon')}
@@ -358,12 +364,12 @@ const MeshBeaconConfigSection: React.FC<MeshBeaconConfigSectionProps> = ({
 
               <div className="setting-item">
                 <label htmlFor="meshBeaconInterval">{t('meshbeacon_config.interval', 'Broadcast Interval (seconds)')}</label>
-                <input
+                <NumberInput
                   id="meshBeaconInterval"
-                  type="number"
                   min={MESH_BEACON_MIN_INTERVAL_SECS}
+                  integer
                   value={broadcastIntervalSecs}
-                  onChange={(e) => setBroadcastIntervalSecs(parseInt(e.target.value) || 0)}
+                  onChange={setBroadcastIntervalSecs}
                   disabled={isDisabled}
                   className="setting-input"
                 />
@@ -381,6 +387,7 @@ const MeshBeaconConfigSection: React.FC<MeshBeaconConfigSectionProps> = ({
         )}
       </div>
     </div>
+    </NumberInputScope>
   );
 };
 

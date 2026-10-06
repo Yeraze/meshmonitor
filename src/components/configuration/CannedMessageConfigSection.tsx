@@ -2,6 +2,9 @@ import React, { useState, useRef, useMemo, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { UiIcon } from '../icons';
 import { useSaveBar } from '../../hooks/useSaveBar';
+import { NumberInput } from '../common/NumberInput';
+import { NumberInputScope } from '../common/NumberInputScope';
+import { useNumberInputScope } from '../common/numberInputScope';
 import ModuleAvailabilityNotice from './ModuleAvailabilityNotice';
 
 // Input event character options matching protobuf enum
@@ -130,16 +133,19 @@ const CannedMessageConfigSection: React.FC<CannedMessageConfigSectionProps> = ({
       sendBell, allowInputSource]);
 
   // Register with SaveBar
+  const numberScope = useNumberInputScope();
   useSaveBar({
     id: 'cannedmsg-config',
     sectionName: t('cannedmsg_config.title'),
     hasChanges,
     isSaving,
     onSave: handleSave,
-    onDismiss: resetChanges
+    onDismiss: resetChanges,
+    numberScope
   });
 
   return (
+    <NumberInputScope scope={numberScope}>
     <div className="settings-section">
       <h3 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
         {t('cannedmsg_config.title')}
@@ -290,13 +296,13 @@ const CannedMessageConfigSection: React.FC<CannedMessageConfigSectionProps> = ({
               {t('cannedmsg_config.pin_a')}
               <span className="setting-description">{t('cannedmsg_config.pin_a_description')}</span>
             </label>
-            <input
+            <NumberInput
               id="cannedmsgPinA"
-              type="number"
-              min="0"
-              max="255"
+              min={0}
+              max={255}
               value={inputbrokerPinA}
-              onChange={(e) => setInputbrokerPinA(parseInt(e.target.value) || 0)}
+              integer
+              onChange={setInputbrokerPinA}
               className="setting-input"
               style={{ width: '100px' }}
             />
@@ -308,13 +314,13 @@ const CannedMessageConfigSection: React.FC<CannedMessageConfigSectionProps> = ({
               {t('cannedmsg_config.pin_b')}
               <span className="setting-description">{t('cannedmsg_config.pin_b_description')}</span>
             </label>
-            <input
+            <NumberInput
               id="cannedmsgPinB"
-              type="number"
-              min="0"
-              max="255"
+              min={0}
+              max={255}
               value={inputbrokerPinB}
-              onChange={(e) => setInputbrokerPinB(parseInt(e.target.value) || 0)}
+              integer
+              onChange={setInputbrokerPinB}
               className="setting-input"
               style={{ width: '100px' }}
             />
@@ -326,13 +332,13 @@ const CannedMessageConfigSection: React.FC<CannedMessageConfigSectionProps> = ({
               {t('cannedmsg_config.pin_press')}
               <span className="setting-description">{t('cannedmsg_config.pin_press_description')}</span>
             </label>
-            <input
+            <NumberInput
               id="cannedmsgPinPress"
-              type="number"
-              min="0"
-              max="255"
+              min={0}
+              max={255}
               value={inputbrokerPinPress}
-              onChange={(e) => setInputbrokerPinPress(parseInt(e.target.value) || 0)}
+              integer
+              onChange={setInputbrokerPinPress}
               className="setting-input"
               style={{ width: '100px' }}
             />
@@ -407,6 +413,7 @@ const CannedMessageConfigSection: React.FC<CannedMessageConfigSectionProps> = ({
         </>
       )}
     </div>
+    </NumberInputScope>
   );
 };
 

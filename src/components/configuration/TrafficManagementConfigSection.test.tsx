@@ -100,9 +100,19 @@ describe('TrafficManagementConfigSection (v2.8 schema)', () => {
     const setters = renderSection();
     fireEvent.change(document.getElementById('rateLimitWindowSecs')!, { target: { value: '60' } });
     expect(setters.setRateLimitWindowSecs).toHaveBeenCalledWith(60);
-    // Clearing the field must land on 0 ("disabled"), never NaN.
-    fireEvent.change(document.getElementById('rateLimitWindowSecs')!, { target: { value: '' } });
+    // #5649: clearing the field is an invalid state, not a value. It used to
+    // land on 0, which here means "feature off" — a blank field must not
+    // switch a traffic limit off by itself. Nothing is emitted (never NaN,
+    // never 0); the field is marked invalid until a number is typed.
+    const field = document.getElementById('rateLimitWindowSecs') as HTMLInputElement;
+    fireEvent.change(field, { target: { value: '' } });
+    expect(setters.setRateLimitWindowSecs).toHaveBeenCalledTimes(1);
+    expect(field.value).toBe('');
+    expect(field.getAttribute('aria-invalid')).toBe('true');
+    // 0 is still a legal, explicit choice.
+    fireEvent.change(field, { target: { value: '0' } });
     expect(setters.setRateLimitWindowSecs).toHaveBeenLastCalledWith(0);
+    expect(field.getAttribute('aria-invalid')).toBeNull();
   });
 
   it('surfaces the firmware gate when the device is below 2.8.0', () => {

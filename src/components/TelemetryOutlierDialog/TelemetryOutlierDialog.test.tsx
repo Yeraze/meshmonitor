@@ -147,10 +147,17 @@ describe('TelemetryOutlierDialog', () => {
     renderNodeMode();
     const preview = () => screen.getByText('telemetry_outliers.preview_button');
 
-    fireEvent.change(screen.getByLabelText('telemetry_outliers.k_label'), { target: { value: '50' } });
-    expect(screen.getByText('telemetry_outliers.invalid_k')).toBeInTheDocument();
+    // Held in a variable: while the field is invalid its reason sits inside
+    // the <label>, so the label text is no longer an exact match.
+    const kField = screen.getByLabelText('telemetry_outliers.k_label');
+    fireEvent.change(kField, { target: { value: '50' } });
+    // #5649: out-of-range k is flagged on the field (with a visible reason) and
+    // is not applied; it used to reach the form and raise `invalid_k` there.
+    expect(kField).toHaveAttribute('aria-invalid', 'true');
+    expect(screen.getByText('number_input.range')).toBeInTheDocument();
     expect(preview()).toBeDisabled();
-    fireEvent.change(screen.getByLabelText('telemetry_outliers.k_label'), { target: { value: '6' } });
+    fireEvent.change(kField, { target: { value: '6' } });
+    expect(kField).not.toHaveAttribute('aria-invalid');
 
     fireEvent.change(screen.getByLabelText('telemetry_outliers.min_label'), { target: { value: '10' } });
     fireEvent.change(screen.getByLabelText('telemetry_outliers.max_label'), { target: { value: '5' } });

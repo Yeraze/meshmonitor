@@ -1,6 +1,9 @@
 import React, { useRef, useMemo, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSaveBar } from '../../hooks/useSaveBar';
+import { NumberInput } from '../common/NumberInput';
+import { NumberInputScope } from '../common/NumberInputScope';
+import { useNumberInputScope } from '../common/numberInputScope';
 import { UiIcon } from '../icons';
 import styles from './RangeTestConfigSection.module.css';
 import ModuleAvailabilityNotice from './ModuleAvailabilityNotice';
@@ -75,16 +78,19 @@ const RangeTestConfigSection: React.FC<RangeTestConfigSectionProps> = ({
 
   // Register with SaveBar. A removed module must never offer a save — the
   // firmware would drop the admin message silently.
+  const numberScope = useNumberInputScope();
   useSaveBar({
     id: 'rangetest-config',
     sectionName: t('rangetest_config.title'),
     hasChanges: hasChanges && !isDisabled,
     isSaving,
     onSave: handleSave,
-    onDismiss: resetChanges
+    onDismiss: resetChanges,
+    numberScope
   });
 
   return (
+    <NumberInputScope scope={numberScope}>
     <div className="settings-section">
       <h3 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
         {t('rangetest_config.title')}
@@ -146,14 +152,14 @@ const RangeTestConfigSection: React.FC<RangeTestConfigSectionProps> = ({
                 {t('rangetest_config.sender')}
                 <span className="setting-description">{t('rangetest_config.sender_description')}</span>
               </label>
-              <input
+              <NumberInput
                 id="rangetestSender"
-                type="number"
-                min="0"
-                max="65535"
+                min={0}
+                max={65535}
                 value={sender}
                 disabled={isDisabled}
-                onChange={(e) => setSender(parseInt(e.target.value) || 0)}
+                integer
+                onChange={setSender}
                 className="setting-input"
                 placeholder="0"
               />
@@ -180,6 +186,7 @@ const RangeTestConfigSection: React.FC<RangeTestConfigSectionProps> = ({
         )}
       </div>
     </div>
+    </NumberInputScope>
   );
 };
 

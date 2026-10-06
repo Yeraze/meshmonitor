@@ -1,5 +1,8 @@
 import React from 'react';
 import { useTranslation } from 'react-i18next';
+import { NumberInput } from '../common/NumberInput';
+import { NumberInputScope } from '../common/NumberInputScope';
+import { useNumberInputScope } from '../common/numberInputScope';
 import { MODEM_PRESET_OPTIONS, REGION_OPTIONS } from '../configuration/constants';
 import BroadcastTargetsEditor from '../configuration/BroadcastTargetsEditor';
 import statusMessageStyles from '../configuration/StatusMessageConfigSection.module.css';
@@ -206,6 +209,13 @@ export const ModuleConfigurationSection: React.FC<ModuleConfigurationSectionProp
   const meshBeaconMessageBytes = new TextEncoder().encode(meshBeaconBroadcastMessage).length;
   const meshBeaconMessageTooLong = meshBeaconMessageBytes > MESH_BEACON_MESSAGE_MAX_BYTES;
 
+  // #5649: one scope per independently-saved group. A blank or out-of-range
+  // number field blocks only its own Save, so nothing invalid goes to the node.
+  const neighborInfoNumbers = useNumberInputScope();
+  const telemetryNumbers = useNumberInputScope();
+  const trafficManagementNumbers = useNumberInputScope();
+  const meshBeaconNumbers = useNumberInputScope();
+
   return (
     <CollapsibleSection
       id="module-config"
@@ -339,6 +349,7 @@ export const ModuleConfigurationSection: React.FC<ModuleConfigurationSectionProp
       </CollapsibleSection>
 
       {/* Neighbor Info Config Section */}
+      <NumberInputScope scope={neighborInfoNumbers}>
       <CollapsibleSection
         id="admin-neighborinfo-config"
         title={t('admin_commands.neighborinfo_configuration', 'Neighbor Info Configuration')}
@@ -367,11 +378,12 @@ export const ModuleConfigurationSection: React.FC<ModuleConfigurationSectionProp
                 {t('admin_commands.neighbor_info_update_interval', 'Update Interval (seconds)')}
                 <span className="setting-description">{t('admin_commands.neighbor_info_update_interval_description', 'Interval in seconds of how often we should try to send our Neighbor Info (minimum is 14400, i.e., 4 hours)')}</span>
               </label>
-              <input
-                type="number"
-                min="14400"
+              <NumberInput
+                integer
+                min={14400}
+                alsoValid={[0]}
                 value={neighborInfoUpdateInterval}
-                onChange={(e) => onNeighborInfoConfigChange('updateInterval', parseInt(e.target.value) || 14400)}
+                onChange={(v) => onNeighborInfoConfigChange('updateInterval', v)}
                 disabled={isExecuting}
                 className="setting-input"
                 style={{ width: '100%', maxWidth: '600px' }}
@@ -397,18 +409,20 @@ export const ModuleConfigurationSection: React.FC<ModuleConfigurationSectionProp
         )}
         <button
           className="save-button"
-          onClick={onSaveNeighborInfoConfig}
-          disabled={isExecuting || selectedNodeNum === null}
+          onClick={neighborInfoNumbers.invalid ? undefined : onSaveNeighborInfoConfig}
+          disabled={isExecuting || selectedNodeNum === null || neighborInfoNumbers.invalid}
           style={{
-            opacity: (isExecuting || selectedNodeNum === null) ? 0.5 : 1,
-            cursor: (isExecuting || selectedNodeNum === null) ? 'not-allowed' : 'pointer'
+            opacity: (isExecuting || selectedNodeNum === null || neighborInfoNumbers.invalid) ? 0.5 : 1,
+            cursor: (isExecuting || selectedNodeNum === null || neighborInfoNumbers.invalid) ? 'not-allowed' : 'pointer'
           }}
         >
           {isExecuting ? t('common.saving') : t('admin_commands.save_neighbor_info_config', 'Save Neighbor Info Config')}
         </button>
       </CollapsibleSection>
+      </NumberInputScope>
 
       {/* Telemetry Config Section */}
+      <NumberInputScope scope={telemetryNumbers}>
       <CollapsibleSection
         id="admin-telemetry-config"
         title={t('admin_commands.telemetry_configuration', 'Telemetry Configuration')}
@@ -440,11 +454,11 @@ export const ModuleConfigurationSection: React.FC<ModuleConfigurationSectionProp
               {t('telemetry_config.device_interval', 'Device Update Interval (seconds)')}
               <span className="setting-description">{t('telemetry_config.device_interval_description', 'How often to collect and transmit device metrics (battery, voltage, etc.)')}</span>
             </label>
-            <input
-              type="number"
-              min="0"
+            <NumberInput
+              integer
+              min={0}
               value={telemetryDeviceUpdateInterval}
-              onChange={(e) => onTelemetryConfigChange('deviceUpdateInterval', parseInt(e.target.value) || 0)}
+              onChange={(v) => onTelemetryConfigChange('deviceUpdateInterval', v)}
               disabled={isExecuting}
               className="setting-input"
               style={{ width: '100%', maxWidth: '600px' }}
@@ -479,11 +493,11 @@ export const ModuleConfigurationSection: React.FC<ModuleConfigurationSectionProp
                 {t('telemetry_config.environment_interval', 'Environment Update Interval (seconds)')}
                 <span className="setting-description">{t('telemetry_config.environment_interval_description', 'How often to collect and transmit environment metrics')}</span>
               </label>
-              <input
-                type="number"
-                min="0"
+              <NumberInput
+                integer
+                min={0}
                 value={telemetryEnvironmentUpdateInterval}
-                onChange={(e) => onTelemetryConfigChange('environmentUpdateInterval', parseInt(e.target.value) || 0)}
+                onChange={(v) => onTelemetryConfigChange('environmentUpdateInterval', v)}
                 disabled={isExecuting}
                 className="setting-input"
                 style={{ width: '100%', maxWidth: '600px' }}
@@ -554,11 +568,11 @@ export const ModuleConfigurationSection: React.FC<ModuleConfigurationSectionProp
                 {t('telemetry_config.air_quality_interval', 'Air Quality Interval (seconds)')}
                 <span className="setting-description">{t('telemetry_config.air_quality_interval_description', 'How often to collect air quality metrics')}</span>
               </label>
-              <input
-                type="number"
-                min="0"
+              <NumberInput
+                integer
+                min={0}
                 value={telemetryAirQualityInterval}
-                onChange={(e) => onTelemetryConfigChange('airQualityInterval', parseInt(e.target.value) || 0)}
+                onChange={(v) => onTelemetryConfigChange('airQualityInterval', v)}
                 disabled={isExecuting}
                 className="setting-input"
                 style={{ width: '100%', maxWidth: '600px' }}
@@ -593,11 +607,11 @@ export const ModuleConfigurationSection: React.FC<ModuleConfigurationSectionProp
                   {t('telemetry_config.power_interval', 'Power Update Interval (seconds)')}
                   <span className="setting-description">{t('telemetry_config.power_interval_description', 'How often to collect power metrics')}</span>
                 </label>
-                <input
-                  type="number"
-                  min="0"
+                <NumberInput
+                  integer
+                  min={0}
                   value={telemetryPowerUpdateInterval}
-                  onChange={(e) => onTelemetryConfigChange('powerUpdateInterval', parseInt(e.target.value) || 0)}
+                  onChange={(v) => onTelemetryConfigChange('powerUpdateInterval', v)}
                   disabled={isExecuting}
                   className="setting-input"
                   style={{ width: '100%', maxWidth: '600px' }}
@@ -648,11 +662,11 @@ export const ModuleConfigurationSection: React.FC<ModuleConfigurationSectionProp
                   {t('telemetry_config.health_interval', 'Health Update Interval (seconds)')}
                   <span className="setting-description">{t('telemetry_config.health_interval_description', 'How often to send health metrics to the mesh')}</span>
                 </label>
-                <input
-                  type="number"
-                  min="0"
+                <NumberInput
+                  integer
+                  min={0}
                   value={telemetryHealthUpdateInterval}
-                  onChange={(e) => onTelemetryConfigChange('healthUpdateInterval', parseInt(e.target.value) || 0)}
+                  onChange={(v) => onTelemetryConfigChange('healthUpdateInterval', v)}
                   disabled={isExecuting}
                   className="setting-input"
                   style={{ width: '100%', maxWidth: '600px' }}
@@ -680,17 +694,18 @@ export const ModuleConfigurationSection: React.FC<ModuleConfigurationSectionProp
 
         <button
           className="save-button"
-          onClick={onSaveTelemetryConfig}
-          disabled={isExecuting || selectedNodeNum === null}
+          onClick={telemetryNumbers.invalid ? undefined : onSaveTelemetryConfig}
+          disabled={isExecuting || selectedNodeNum === null || telemetryNumbers.invalid}
           style={{
             marginTop: '1rem',
-            opacity: (isExecuting || selectedNodeNum === null) ? 0.5 : 1,
-            cursor: (isExecuting || selectedNodeNum === null) ? 'not-allowed' : 'pointer'
+            opacity: (isExecuting || selectedNodeNum === null || telemetryNumbers.invalid) ? 0.5 : 1,
+            cursor: (isExecuting || selectedNodeNum === null || telemetryNumbers.invalid) ? 'not-allowed' : 'pointer'
           }}
         >
           {isExecuting ? t('common.saving') : t('telemetry_config.save_button', 'Save Telemetry Config')}
         </button>
       </CollapsibleSection>
+      </NumberInputScope>
 
       {/* Status Message Config Section */}
       <CollapsibleSection
@@ -754,6 +769,7 @@ export const ModuleConfigurationSection: React.FC<ModuleConfigurationSectionProp
       </CollapsibleSection>
 
       {/* Traffic Management Config Section */}
+      <NumberInputScope scope={trafficManagementNumbers}>
       <CollapsibleSection
         id="admin-trafficmanagement-config"
         title={t('trafficmanagement_config.title', 'Traffic Management')}
@@ -786,7 +802,7 @@ export const ModuleConfigurationSection: React.FC<ModuleConfigurationSectionProp
             <div style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--color-text)', marginBottom: '0.5rem' }}>{t('trafficmanagement_config.position_dedup', 'Position Deduplication')}</div>
             <div className="setting-item">
               <label>{t('trafficmanagement_config.position_min_interval_secs', 'Min Interval (seconds)')}</label>
-              <input type="number" min="0" value={trafficManagementPositionMinIntervalSecs} onChange={(e) => onTrafficManagementConfigChange('positionMinIntervalSecs', parseInt(e.target.value) || 0)} disabled={isExecuting || trafficManagementIsDisabled} className="setting-input" />
+              <NumberInput integer min={0} value={trafficManagementPositionMinIntervalSecs} onChange={(v) => onTrafficManagementConfigChange('positionMinIntervalSecs', v)} disabled={isExecuting || trafficManagementIsDisabled} className="setting-input" />
               <span className="setting-description">{t('trafficmanagement_config.position_min_interval_secs_desc_v28', 'Minimum seconds between position updates per node. 0 disables position deduplication. Precision comes from the channel\'s own Position Precision setting.')}</span>
             </div>
           </div>
@@ -796,7 +812,7 @@ export const ModuleConfigurationSection: React.FC<ModuleConfigurationSectionProp
             <div style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--color-text)', marginBottom: '0.5rem' }}>{t('trafficmanagement_config.nodeinfo_direct_response', 'NodeInfo Direct Response')}</div>
             <div className="setting-item">
               <label>{t('trafficmanagement_config.nodeinfo_max_hops', 'Max Hops')}</label>
-              <input type="number" min="0" max="7" value={trafficManagementNodeinfoDirectResponseMaxHops} onChange={(e) => onTrafficManagementConfigChange('nodeinfoDirectResponseMaxHops', parseInt(e.target.value) || 0)} disabled={isExecuting || trafficManagementIsDisabled} className="setting-input" />
+              <NumberInput integer min={0} max={7} value={trafficManagementNodeinfoDirectResponseMaxHops} onChange={(v) => onTrafficManagementConfigChange('nodeinfoDirectResponseMaxHops', v)} disabled={isExecuting || trafficManagementIsDisabled} className="setting-input" />
               <span className="setting-description">{t('trafficmanagement_config.nodeinfo_max_hops_desc_v28', 'Max hop distance from the requestor at which NodeInfo is answered from cache. 0 disables direct response.')}</span>
             </div>
           </div>
@@ -806,12 +822,12 @@ export const ModuleConfigurationSection: React.FC<ModuleConfigurationSectionProp
             <div style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--color-text)', marginBottom: '0.5rem' }}>{t('trafficmanagement_config.rate_limiting', 'Rate Limiting')}</div>
             <div className="setting-item">
               <label>{t('trafficmanagement_config.rate_limit_window', 'Window (seconds)')}</label>
-              <input type="number" min="0" value={trafficManagementRateLimitWindowSecs} onChange={(e) => onTrafficManagementConfigChange('rateLimitWindowSecs', parseInt(e.target.value) || 0)} disabled={isExecuting || trafficManagementIsDisabled} className="setting-input" />
+              <NumberInput integer min={0} value={trafficManagementRateLimitWindowSecs} onChange={(v) => onTrafficManagementConfigChange('rateLimitWindowSecs', v)} disabled={isExecuting || trafficManagementIsDisabled} className="setting-input" />
               <span className="setting-description">{t('trafficmanagement_config.rate_limit_pair_desc', 'Rate limiting runs only when both Window and Max Packets are non-zero.')}</span>
             </div>
             <div className="setting-item">
               <label>{t('trafficmanagement_config.rate_limit_max_packets', 'Max Packets Per Window')}</label>
-              <input type="number" min="0" value={trafficManagementRateLimitMaxPackets} onChange={(e) => onTrafficManagementConfigChange('rateLimitMaxPackets', parseInt(e.target.value) || 0)} disabled={isExecuting || trafficManagementIsDisabled} className="setting-input" />
+              <NumberInput integer min={0} value={trafficManagementRateLimitMaxPackets} onChange={(v) => onTrafficManagementConfigChange('rateLimitMaxPackets', v)} disabled={isExecuting || trafficManagementIsDisabled} className="setting-input" />
             </div>
           </div>
 
@@ -820,25 +836,26 @@ export const ModuleConfigurationSection: React.FC<ModuleConfigurationSectionProp
             <div style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--color-text)', marginBottom: '0.5rem' }}>{t('trafficmanagement_config.drop_unknown', 'Drop Unknown Packets')}</div>
             <div className="setting-item">
               <label>{t('trafficmanagement_config.unknown_packet_threshold', 'Unknown Packet Threshold')}</label>
-              <input type="number" min="0" value={trafficManagementUnknownPacketThreshold} onChange={(e) => onTrafficManagementConfigChange('unknownPacketThreshold', parseInt(e.target.value) || 0)} disabled={isExecuting || trafficManagementIsDisabled} className="setting-input" />
+              <NumberInput integer min={0} value={trafficManagementUnknownPacketThreshold} onChange={(v) => onTrafficManagementConfigChange('unknownPacketThreshold', v)} disabled={isExecuting || trafficManagementIsDisabled} className="setting-input" />
               <span className="setting-description">{t('trafficmanagement_config.unknown_packet_threshold_desc_v28', 'Unknown/undecryptable packets from a node within the rate window before it is dropped. 0 disables unknown-packet filtering.')}</span>
             </div>
           </div>
 
           <button
             className="save-button"
-            onClick={onSaveTrafficManagementConfig}
-            disabled={isExecuting || selectedNodeNum === null || trafficManagementIsDisabled}
+            onClick={trafficManagementNumbers.invalid ? undefined : onSaveTrafficManagementConfig}
+            disabled={isExecuting || selectedNodeNum === null || trafficManagementIsDisabled || trafficManagementNumbers.invalid}
             style={{
               marginTop: '1rem',
-              opacity: (isExecuting || selectedNodeNum === null || trafficManagementIsDisabled) ? 0.5 : 1,
-              cursor: (isExecuting || selectedNodeNum === null || trafficManagementIsDisabled) ? 'not-allowed' : 'pointer'
+              opacity: (isExecuting || selectedNodeNum === null || trafficManagementIsDisabled || trafficManagementNumbers.invalid) ? 0.5 : 1,
+              cursor: (isExecuting || selectedNodeNum === null || trafficManagementIsDisabled || trafficManagementNumbers.invalid) ? 'not-allowed' : 'pointer'
             }}
           >
             {isExecuting ? t('common.saving') : t('trafficmanagement_config.save_button', 'Save Traffic Management Config')}
           </button>
         </div>
       </CollapsibleSection>
+      </NumberInputScope>
 
       {/* TAK Config Section (firmware 2.8+, #5613) */}
       <CollapsibleSection
@@ -872,6 +889,7 @@ export const ModuleConfigurationSection: React.FC<ModuleConfigurationSectionProp
       </CollapsibleSection>
 
       {/* MeshBeacon Config Section (firmware 2.8+, #3854) */}
+      <NumberInputScope scope={meshBeaconNumbers}>
       <CollapsibleSection
         id="admin-meshbeacon-config"
         title={t('meshbeacon_config.title', 'MeshBeacon')}
@@ -1041,11 +1059,11 @@ export const ModuleConfigurationSection: React.FC<ModuleConfigurationSectionProp
 
               <div className="setting-item">
                 <label>{t('meshbeacon_config.interval', 'Broadcast Interval (seconds)')}</label>
-                <input
-                  type="number"
+                <NumberInput
+                  integer
                   min={MESH_BEACON_MIN_INTERVAL_SECS}
                   value={meshBeaconBroadcastIntervalSecs}
-                  onChange={(e) => onMeshBeaconConfigChange('broadcastIntervalSecs', parseInt(e.target.value) || 0)}
+                  onChange={(v) => onMeshBeaconConfigChange('broadcastIntervalSecs', v)}
                   disabled={isExecuting || meshBeaconIsDisabled}
                   className="setting-input"
                 />
@@ -1063,18 +1081,19 @@ export const ModuleConfigurationSection: React.FC<ModuleConfigurationSectionProp
 
           <button
             className="save-button"
-            onClick={onSaveMeshBeaconConfig}
-            disabled={isExecuting || selectedNodeNum === null || meshBeaconIsDisabled || meshBeaconMessageTooLong}
+            onClick={meshBeaconNumbers.invalid ? undefined : onSaveMeshBeaconConfig}
+            disabled={isExecuting || selectedNodeNum === null || meshBeaconIsDisabled || meshBeaconMessageTooLong || meshBeaconNumbers.invalid}
             style={{
               marginTop: '1rem',
-              opacity: (isExecuting || selectedNodeNum === null || meshBeaconIsDisabled || meshBeaconMessageTooLong) ? 0.5 : 1,
-              cursor: (isExecuting || selectedNodeNum === null || meshBeaconIsDisabled || meshBeaconMessageTooLong) ? 'not-allowed' : 'pointer'
+              opacity: (isExecuting || selectedNodeNum === null || meshBeaconIsDisabled || meshBeaconMessageTooLong || meshBeaconNumbers.invalid) ? 0.5 : 1,
+              cursor: (isExecuting || selectedNodeNum === null || meshBeaconIsDisabled || meshBeaconMessageTooLong || meshBeaconNumbers.invalid) ? 'not-allowed' : 'pointer'
             }}
           >
             {isExecuting ? t('common.saving') : t('meshbeacon_config.save_button', 'Save MeshBeacon Config')}
           </button>
         </div>
       </CollapsibleSection>
+      </NumberInputScope>
     </CollapsibleSection>
   );
 };

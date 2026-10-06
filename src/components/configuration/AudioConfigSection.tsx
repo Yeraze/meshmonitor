@@ -2,6 +2,9 @@ import React, { useState, useRef, useMemo, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { UiIcon } from '../icons';
 import { useSaveBar } from '../../hooks/useSaveBar';
+import { NumberInput } from '../common/NumberInput';
+import { NumberInputScope } from '../common/NumberInputScope';
+import { useNumberInputScope } from '../common/numberInputScope';
 import ModuleAvailabilityNotice from './ModuleAvailabilityNotice';
 
 // Audio bitrate options matching protobuf enum
@@ -97,16 +100,19 @@ const AudioConfigSection: React.FC<AudioConfigSectionProps> = ({
   }, [onSave, codec2Enabled, pttPin, bitrate, i2sWs, i2sSd, i2sDin, i2sSck]);
 
   // Register with SaveBar
+  const numberScope = useNumberInputScope();
   useSaveBar({
     id: 'audio-config',
     sectionName: t('audio_config.title'),
     hasChanges,
     isSaving,
     onSave: handleSave,
-    onDismiss: resetChanges
+    onDismiss: resetChanges,
+    numberScope
   });
 
   return (
+    <NumberInputScope scope={numberScope}>
     <div className="settings-section">
       <h3 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
         {t('audio_config.title')}
@@ -201,13 +207,13 @@ const AudioConfigSection: React.FC<AudioConfigSectionProps> = ({
                   {t('audio_config.ptt_pin')}
                   <span className="setting-description">{t('audio_config.ptt_pin_description')}</span>
                 </label>
-                <input
+                <NumberInput
                   id="audioPttPin"
-                  type="number"
-                  min="0"
-                  max="255"
+                  min={0}
+                  max={255}
                   value={pttPin}
-                  onChange={(e) => setPttPin(parseInt(e.target.value) || 0)}
+                  integer
+                  onChange={setPttPin}
                   className="setting-input"
                   style={{ width: '100px' }}
                 />
@@ -224,13 +230,13 @@ const AudioConfigSection: React.FC<AudioConfigSectionProps> = ({
                   {t('audio_config.i2s_ws')}
                   <span className="setting-description">{t('audio_config.i2s_ws_description')}</span>
                 </label>
-                <input
+                <NumberInput
                   id="audioI2sWs"
-                  type="number"
-                  min="0"
-                  max="255"
+                  min={0}
+                  max={255}
                   value={i2sWs}
-                  onChange={(e) => setI2sWs(parseInt(e.target.value) || 0)}
+                  integer
+                  onChange={setI2sWs}
                   className="setting-input"
                   style={{ width: '100px' }}
                 />
@@ -242,13 +248,13 @@ const AudioConfigSection: React.FC<AudioConfigSectionProps> = ({
                   {t('audio_config.i2s_sd')}
                   <span className="setting-description">{t('audio_config.i2s_sd_description')}</span>
                 </label>
-                <input
+                <NumberInput
                   id="audioI2sSd"
-                  type="number"
-                  min="0"
-                  max="255"
+                  min={0}
+                  max={255}
                   value={i2sSd}
-                  onChange={(e) => setI2sSd(parseInt(e.target.value) || 0)}
+                  integer
+                  onChange={setI2sSd}
                   className="setting-input"
                   style={{ width: '100px' }}
                 />
@@ -260,13 +266,13 @@ const AudioConfigSection: React.FC<AudioConfigSectionProps> = ({
                   {t('audio_config.i2s_din')}
                   <span className="setting-description">{t('audio_config.i2s_din_description')}</span>
                 </label>
-                <input
+                <NumberInput
                   id="audioI2sDin"
-                  type="number"
-                  min="0"
-                  max="255"
+                  min={0}
+                  max={255}
                   value={i2sDin}
-                  onChange={(e) => setI2sDin(parseInt(e.target.value) || 0)}
+                  integer
+                  onChange={setI2sDin}
                   className="setting-input"
                   style={{ width: '100px' }}
                 />
@@ -278,13 +284,13 @@ const AudioConfigSection: React.FC<AudioConfigSectionProps> = ({
                   {t('audio_config.i2s_sck')}
                   <span className="setting-description">{t('audio_config.i2s_sck_description')}</span>
                 </label>
-                <input
+                <NumberInput
                   id="audioI2sSck"
-                  type="number"
-                  min="0"
-                  max="255"
+                  min={0}
+                  max={255}
                   value={i2sSck}
-                  onChange={(e) => setI2sSck(parseInt(e.target.value) || 0)}
+                  integer
+                  onChange={setI2sSck}
                   className="setting-input"
                   style={{ width: '100px' }}
                 />
@@ -294,6 +300,7 @@ const AudioConfigSection: React.FC<AudioConfigSectionProps> = ({
         </>
       )}
     </div>
+    </NumberInputScope>
   );
 };
 

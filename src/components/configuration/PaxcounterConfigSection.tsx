@@ -1,6 +1,9 @@
 import React, { useRef, useMemo, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSaveBar } from '../../hooks/useSaveBar';
+import { NumberInput } from '../common/NumberInput';
+import { NumberInputScope } from '../common/NumberInputScope';
+import { useNumberInputScope } from '../common/numberInputScope';
 import ModuleAvailabilityNotice from './ModuleAvailabilityNotice';
 
 interface PaxcounterConfigSectionProps {
@@ -64,16 +67,19 @@ const PaxcounterConfigSection: React.FC<PaxcounterConfigSectionProps> = ({
   }, [onSave, enabled, paxcounterUpdateInterval, wifiThreshold, bleThreshold]);
 
   // Register with SaveBar
+  const numberScope = useNumberInputScope();
   useSaveBar({
     id: 'paxcounter-config',
     sectionName: t('paxcounter_config.title'),
     hasChanges,
     isSaving,
     onSave: handleSave,
-    onDismiss: resetChanges
+    onDismiss: resetChanges,
+    numberScope
   });
 
   return (
+    <NumberInputScope scope={numberScope}>
     <div className="settings-section">
       <h3 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
         {t('paxcounter_config.title')}
@@ -118,13 +124,13 @@ const PaxcounterConfigSection: React.FC<PaxcounterConfigSectionProps> = ({
               {t('paxcounter_config.update_interval')}
               <span className="setting-description">{t('paxcounter_config.update_interval_description')}</span>
             </label>
-            <input
+            <NumberInput
               id="paxcounterUpdateInterval"
-              type="number"
-              min="0"
-              max="86400"
+              min={0}
+              max={86400}
               value={paxcounterUpdateInterval}
-              onChange={(e) => setPaxcounterUpdateInterval(parseInt(e.target.value) || 0)}
+              integer
+              onChange={setPaxcounterUpdateInterval}
               className="setting-input"
               placeholder="900"
             />
@@ -136,13 +142,13 @@ const PaxcounterConfigSection: React.FC<PaxcounterConfigSectionProps> = ({
               {t('paxcounter_config.wifi_threshold')}
               <span className="setting-description">{t('paxcounter_config.wifi_threshold_description')}</span>
             </label>
-            <input
+            <NumberInput
               id="paxcounterWifiThreshold"
-              type="number"
-              min="-127"
-              max="0"
+              min={-127}
+              max={0}
               value={wifiThreshold}
-              onChange={(e) => setWifiThreshold(parseInt(e.target.value) || -80)}
+              integer
+              onChange={setWifiThreshold}
               className="setting-input"
               placeholder="-80"
             />
@@ -154,13 +160,13 @@ const PaxcounterConfigSection: React.FC<PaxcounterConfigSectionProps> = ({
               {t('paxcounter_config.ble_threshold')}
               <span className="setting-description">{t('paxcounter_config.ble_threshold_description')}</span>
             </label>
-            <input
+            <NumberInput
               id="paxcounterBleThreshold"
-              type="number"
-              min="-127"
-              max="0"
+              min={-127}
+              max={0}
               value={bleThreshold}
-              onChange={(e) => setBleThreshold(parseInt(e.target.value) || -80)}
+              integer
+              onChange={setBleThreshold}
               className="setting-input"
               placeholder="-80"
             />
@@ -168,6 +174,7 @@ const PaxcounterConfigSection: React.FC<PaxcounterConfigSectionProps> = ({
         </>
       )}
     </div>
+    </NumberInputScope>
   );
 };
 

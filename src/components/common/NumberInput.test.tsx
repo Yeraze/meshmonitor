@@ -114,6 +114,25 @@ describe('NumberInput: invalid state', () => {
     expect(field()).toHaveAttribute('title', 'Enter a number');
   });
 
+  it('keeps the reason out of a wrapping label, so the field keeps its name', async () => {
+    const user = userEvent.setup();
+    function Labelled() {
+      const [v, setV] = useState(5);
+      return (
+        <label>
+          Cooldown
+          <NumberInput value={v} onChange={setV} />
+        </label>
+      );
+    }
+    render(<Labelled />);
+    await user.clear(screen.getByLabelText('Cooldown'));
+    const el = screen.getByLabelText('Cooldown');
+    expect(el).toHaveAttribute('aria-invalid', 'true');
+    expect(el.closest('label')!.textContent).toBe('Cooldown');
+    expect(el).toHaveAccessibleDescription('Enter a number');
+  });
+
   it('is invalid on first render when the parent has no number', () => {
     render(<Harness initial={null} />);
     expect(field().value).toBe('');
@@ -265,6 +284,35 @@ describe('NumberInput: value changed from outside', () => {
     expect(field().value).toBe('2.6');
     await user.tab();
     expect(field().value).toBe('3');
+  });
+});
+
+describe('NumberInput: alsoValid', () => {
+  it('accepts a sentinel under the floor, and still blocks the rest of the gap', async () => {
+    const user = userEvent.setup();
+    const onEmit = vi.fn();
+    // 0 = "use the firmware default"; a real interval must be 32 or more.
+    render(<Harness initial={0} min={32} max={86400} integer alsoValid={[0]} onEmit={onEmit} />);
+    expect(field()).not.toHaveAttribute('aria-invalid');
+
+    await user.clear(field());
+    await user.type(field(), '5');
+    expect(field()).toHaveAttribute('aria-invalid', 'true');
+    expect(onEmit).not.toHaveBeenCalled();
+
+    await user.clear(field());
+    await user.type(field(), '0');
+    expect(field()).not.toHaveAttribute('aria-invalid');
+    expect(onEmit).toHaveBeenLastCalledWith(0);
+  });
+});
+
+describe('NumberInput: load from server', () => {
+  it('shows the new value in the same commit as the parent, with no stale frame', () => {
+    const { rerender } = render(<NumberInput aria-label="field" value={0} onChange={() => {}} />);
+    rerender(<NumberInput aria-label="field" value={900} onChange={() => {}} />);
+    // No waitFor: a form that reads its fields right after a load must see 900.
+    expect(field().value).toBe('900');
   });
 });
 

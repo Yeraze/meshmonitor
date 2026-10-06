@@ -4,6 +4,9 @@ import { useCsrfFetch } from '../../hooks/useCsrfFetch';
 import { useToast } from '../ToastContainer';
 import { useAuth } from '../../contexts/AuthContext';
 import { useSaveBar } from '../../hooks/useSaveBar';
+import { NumberInput } from '../common/NumberInput';
+import { NumberInputScope } from '../common/NumberInputScope';
+import { useNumberInputScope } from '../common/numberInputScope';
 import { ScopeSelectField, type ScopeMode } from './ScopeSelectField';
 import { MeshCoreReceiveOnlyNote } from './MeshCoreReceiveOnlyNote';
 import { UiIcon } from '../icons';
@@ -240,7 +243,9 @@ export const MeshCoreAutoAckSection: React.FC<MeshCoreAutoAckSectionProps> = ({ 
     setHasChanges(false);
   }, [initial]);
 
+  const numberScope = useNumberInputScope();
   useSaveBar({
+    numberScope,
     id: 'meshcore-auto-ack',
     sectionName: t('meshcore.automation.autoack.title', 'Auto-Acknowledge'),
     hasChanges,
@@ -263,6 +268,7 @@ export const MeshCoreAutoAckSection: React.FC<MeshCoreAutoAckSectionProps> = ({ 
   const disabled = !settings.enabled;
 
   return (
+    <NumberInputScope scope={numberScope}>
     <>
       <div className="automation-section-header" style={{
         display: 'flex',
@@ -421,12 +427,12 @@ export const MeshCoreAutoAckSection: React.FC<MeshCoreAutoAckSectionProps> = ({ 
             </span>
           </label>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.5rem' }}>
-            <input
-              type="number"
+            <NumberInput
               value={settings.cooldownSeconds}
-              onChange={(e) => update('cooldownSeconds', Math.max(0, parseInt(e.target.value, 10) || 0))}
+              onChange={(v) => update('cooldownSeconds', v)}
               min={0}
               max={3600}
+              integer
               disabled={disabled || !canWrite}
               style={{ width: '100px', padding: '2px 4px' }}
             />
@@ -448,12 +454,12 @@ export const MeshCoreAutoAckSection: React.FC<MeshCoreAutoAckSectionProps> = ({ 
             </span>
           </label>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.5rem' }}>
-            <input
-              type="number"
+            <NumberInput
               value={settings.preSendDelaySeconds}
-              onChange={(e) => update('preSendDelaySeconds', Math.max(0, Math.min(120, parseInt(e.target.value, 10) || 0)))}
+              onChange={(v) => update('preSendDelaySeconds', v)}
               min={0}
               max={120}
+              integer
               disabled={disabled || !canWrite}
               style={{ width: '100px', padding: '2px 4px' }}
             />
@@ -656,6 +662,7 @@ export const MeshCoreAutoAckSection: React.FC<MeshCoreAutoAckSectionProps> = ({ 
         </div>
       </div>
     </>
+    </NumberInputScope>
   );
 };
 

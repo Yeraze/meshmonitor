@@ -520,6 +520,19 @@ const GeofenceMapEditor: React.FC<GeofenceMapEditorProps> = ({
     handleFieldCommit(field);
   };
 
+  // #5649: these three fields stay raw number inputs, not `NumberInput`.
+  // They already hold a text draft (so they can be cleared and retyped), mark
+  // bad text with aria-invalid plus a visible reason, and never emit an invalid
+  // value. What `NumberInput` cannot carry is the rest of their contract: the
+  // fixed-width text they show ("10.500000", "7.00"), a blank that means "keep
+  // the circle's value", the debounced commit that keeps "1", "12" on the way
+  // to "123" off the map, and a radius past the cap that is clamped on commit
+  // rather than refused. Listed as the one exception to no-raw-number-input.
+  const blurOnWheel = (e: React.WheelEvent<HTMLInputElement>) => {
+    // A focused number input changes value on wheel while the page scrolls.
+    if (document.activeElement === e.currentTarget) e.currentTarget.blur();
+  };
+
   // An out-of-range coordinate never reaches the shape, so the map keeps the
   // last valid centre. Say so next to the field instead of failing silently.
   const latInvalid = isOutOfRange(centerLat, -90, 90);
@@ -563,6 +576,7 @@ const GeofenceMapEditor: React.FC<GeofenceMapEditorProps> = ({
               onChange={(e) => handleFieldChange('lat', e.target.value)}
               onBlur={() => handleFieldCommit('lat')}
               onKeyDown={handleFieldKeyDown('lat')}
+              onWheel={blurOnWheel}
               className={latInvalid ? `${styles.fieldInput} ${styles.fieldInputInvalid}` : styles.fieldInput}
               aria-invalid={latInvalid || undefined}
               aria-describedby={latInvalid ? `${latId}-error` : undefined}
@@ -590,6 +604,7 @@ const GeofenceMapEditor: React.FC<GeofenceMapEditorProps> = ({
               onChange={(e) => handleFieldChange('lng', e.target.value)}
               onBlur={() => handleFieldCommit('lng')}
               onKeyDown={handleFieldKeyDown('lng')}
+              onWheel={blurOnWheel}
               className={lngInvalid ? `${styles.fieldInput} ${styles.fieldInputInvalid}` : styles.fieldInput}
               aria-invalid={lngInvalid || undefined}
               aria-describedby={lngInvalid ? `${lngId}-error` : undefined}
@@ -617,6 +632,7 @@ const GeofenceMapEditor: React.FC<GeofenceMapEditorProps> = ({
               onChange={(e) => handleFieldChange('radius', e.target.value)}
               onBlur={() => handleFieldCommit('radius')}
               onKeyDown={handleFieldKeyDown('radius')}
+              onWheel={blurOnWheel}
               className={radiusInvalid ? `${styles.fieldInput} ${styles.fieldInputInvalid}` : styles.fieldInput}
               aria-invalid={radiusInvalid || undefined}
               aria-describedby={radiusInvalid ? `${radiusId}-error` : undefined}

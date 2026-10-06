@@ -6,6 +6,9 @@ import { useSaveBar } from '../hooks/useSaveBar';
 import { useData } from '../contexts/DataContext';
 import { useSourceQuery } from '../hooks/useSourceQuery';
 import { UiIcon } from './icons';
+import { NumberInput } from './common/NumberInput';
+import { NumberInputScope } from './common/NumberInputScope';
+import { useNumberInputScope } from './common/numberInputScope';
 
 interface AutoTimeSyncSectionProps {
   baseUrl: string;
@@ -173,7 +176,9 @@ const AutoTimeSyncSection: React.FC<AutoTimeSyncSectionProps> = ({
   }, [localEnabled, localInterval, expirationHours, filterEnabled, selectedNodeNums, baseUrl, csrfFetch, showToast, t, sourceQuery]);
 
   // Register with SaveBar
+  const numberScope = useNumberInputScope();
   useSaveBar({
+    numberScope,
     id: 'auto-time-sync',
     sectionName: t('automation.time_sync.title'),
     hasChanges,
@@ -238,6 +243,7 @@ const AutoTimeSyncSection: React.FC<AutoTimeSyncSectionProps> = ({
   };
 
   return (
+    <NumberInputScope scope={numberScope}>
     <>
       <div className="automation-section-header" style={{
         display: 'flex',
@@ -285,13 +291,13 @@ const AutoTimeSyncSection: React.FC<AutoTimeSyncSectionProps> = ({
               {t('automation.time_sync.interval_description')}
             </span>
           </label>
-          <input
+          <NumberInput
             id="timeSyncInterval"
-            type="number"
-            min="15"
-            max="1440"
+            min={15}
+            max={1440}
             value={localInterval}
-            onChange={(e) => setLocalInterval(parseInt(e.target.value) || 15)}
+            integer
+            onChange={setLocalInterval}
             disabled={!localEnabled}
             className="setting-input"
           />
@@ -304,13 +310,13 @@ const AutoTimeSyncSection: React.FC<AutoTimeSyncSectionProps> = ({
               {t('automation.time_sync.expiration_hours_description')}
             </span>
           </label>
-          <input
+          <NumberInput
             id="timeSyncExpiration"
-            type="number"
-            min="1"
-            max="24"
+            min={1}
+            max={24}
             value={expirationHours}
-            onChange={(e) => setExpirationHours(parseInt(e.target.value) || 24)}
+            integer
+            onChange={setExpirationHours}
             disabled={!localEnabled}
             className="setting-input"
           />
@@ -460,6 +466,7 @@ const AutoTimeSyncSection: React.FC<AutoTimeSyncSectionProps> = ({
         </div>
       </div>
     </>
+    </NumberInputScope>
   );
 };
 

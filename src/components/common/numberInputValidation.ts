@@ -15,6 +15,8 @@ export interface NumberDraftRules {
   integer?: boolean;
   /** Blank is a legal value: it evaluates to `null`, not to an error. */
   allowEmpty?: boolean;
+  /** Values that are valid even outside min/max (a sentinel such as 0 = default). */
+  alsoValid?: readonly number[];
 }
 
 export type NumberDraftResult =
@@ -47,6 +49,8 @@ export function evaluateNumberDraft(
   const value = Number(trimmed);
   if (!Number.isFinite(value)) return { valid: false, reason: 'notANumber' };
   if (rules.integer && !Number.isInteger(value)) return { valid: false, reason: 'integer' };
+
+  if (rules.alsoValid?.includes(value)) return { valid: true, value };
 
   const { min, max } = rules;
   const belowMin = typeof min === 'number' && value < min;

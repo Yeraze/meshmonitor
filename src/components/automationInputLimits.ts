@@ -1,7 +1,7 @@
 /**
  * Bounds for the number inputs on the Meshtastic Automation page.
  *
- * Every `<input type="number">` needs an explicit `max`. Without one, Chrome
+ * Every number field (`<NumberInput>`, #5649) needs an explicit `max`. Without one, Chrome
  * exposes the spinbutton to assistive tech as `aria-valuemax="0"`, so a screen
  * reader announces a range of "0 to 0" on a field that takes 60. The values
  * here are the real accepted range: the server bound where one exists, or a
@@ -39,10 +39,3 @@ export const LAST_HEARD_FILTER_HOURS_MAX = 8760;
  * to accept 10 or the default itself would read as out of range.
  */
 export const HOP_FILTER_MAX = 10;
-
-/** Clamp an integer parsed from a number input into [min, max]; NaN falls back to `min`. */
-export function clampInt(raw: string, min: number, max: number): number {
-  const n = parseInt(raw, 10);
-  if (Number.isNaN(n)) return min;
-  return Math.max(min, Math.min(max, n));
-}

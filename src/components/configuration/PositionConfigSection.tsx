@@ -3,6 +3,9 @@ import { useTranslation } from 'react-i18next';
 import { UiIcon } from '../icons';
 import { GPS_MODE_OPTIONS, POSITION_FLAGS } from './constants';
 import { useSaveBar } from '../../hooks/useSaveBar';
+import { NumberInput } from '../common/NumberInput';
+import { NumberInputScope } from '../common/NumberInputScope';
+import { useNumberInputScope } from '../common/numberInputScope';
 
 interface PositionConfigSectionProps {
   positionBroadcastSecs: number;
@@ -173,13 +176,15 @@ const PositionConfigSection: React.FC<PositionConfigSectionProps> = ({
       positionFlags, rxGpio, txGpio, gpsEnGpio]);
 
   // Register with SaveBar
+  const numberScope = useNumberInputScope();
   useSaveBar({
     id: 'position-config',
     sectionName: t('position_config.title'),
     hasChanges,
     isSaving,
     onSave: handleSave,
-    onDismiss: resetChanges
+    onDismiss: resetChanges,
+    numberScope
   });
 
   // Helper to toggle a flag bit
@@ -192,6 +197,7 @@ const PositionConfigSection: React.FC<PositionConfigSectionProps> = ({
   };
 
   return (
+    <NumberInputScope scope={numberScope}>
     <div className="settings-section">
       <h3 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
         {t('position_config.title')}
@@ -214,13 +220,14 @@ const PositionConfigSection: React.FC<PositionConfigSectionProps> = ({
           {t('position_config.broadcast_interval')}
           <span className="setting-description">{t('position_config.broadcast_interval_description')}</span>
         </label>
-        <input
+        <NumberInput
           id="positionBroadcastSecs"
-          type="number"
-          min="32"
-          max="4294967295"
+          min={32}
+          alsoValid={[0]}
+          max={4294967295}
+          integer
           value={positionBroadcastSecs}
-          onChange={(e) => setPositionBroadcastSecs(parseInt(e.target.value))}
+          onChange={setPositionBroadcastSecs}
           className="setting-input"
         />
       </div>
@@ -263,14 +270,13 @@ const PositionConfigSection: React.FC<PositionConfigSectionProps> = ({
                 {t('position_config.latitude_description')} • <a href="https://www.latlong.net/" target="_blank" rel="noopener noreferrer" style={{ color: '#4a9eff', textDecoration: 'underline' }}>{t('position_config.find_coordinates')}</a>
               </span>
             </label>
-            <input
+            <NumberInput
               id="fixedLatitude"
-              type="number"
-              step="0.000001"
-              min="-90"
-              max="90"
+              step={0.000001}
+              min={-90}
+              max={90}
               value={fixedLatitude}
-              onChange={(e) => setFixedLatitude(parseFloat(e.target.value))}
+              onChange={setFixedLatitude}
               className="setting-input"
             />
           </div>
@@ -279,14 +285,13 @@ const PositionConfigSection: React.FC<PositionConfigSectionProps> = ({
               {t('position_config.longitude')}
               <span className="setting-description">{t('position_config.longitude_description')}</span>
             </label>
-            <input
+            <NumberInput
               id="fixedLongitude"
-              type="number"
-              step="0.000001"
-              min="-180"
-              max="180"
+              step={0.000001}
+              min={-180}
+              max={180}
               value={fixedLongitude}
-              onChange={(e) => setFixedLongitude(parseFloat(e.target.value))}
+              onChange={setFixedLongitude}
               className="setting-input"
             />
           </div>
@@ -295,12 +300,12 @@ const PositionConfigSection: React.FC<PositionConfigSectionProps> = ({
               {t('position_config.altitude')}
               <span className="setting-description">{t('position_config.altitude_description')}</span>
             </label>
-            <input
+            <NumberInput
               id="fixedAltitude"
-              type="number"
-              step="1"
+              step={1}
+              integer
               value={fixedAltitude}
-              onChange={(e) => setFixedAltitude(parseInt(e.target.value))}
+              onChange={setFixedAltitude}
               className="setting-input"
             />
           </div>
@@ -332,13 +337,13 @@ const PositionConfigSection: React.FC<PositionConfigSectionProps> = ({
           {t('position_config.gps_update_interval')}
           <span className="setting-description">{t('position_config.gps_update_interval_description')}</span>
         </label>
-        <input
+        <NumberInput
           id="gpsUpdateInterval"
-          type="number"
-          min="0"
-          max="4294967295"
+          min={0}
+          max={4294967295}
+          integer
           value={gpsUpdateInterval}
-          onChange={(e) => setGpsUpdateInterval(parseInt(e.target.value) || 0)}
+          onChange={setGpsUpdateInterval}
           className="setting-input"
         />
       </div>
@@ -358,13 +363,13 @@ const PositionConfigSection: React.FC<PositionConfigSectionProps> = ({
               {t('position_config.smart_min_distance')}
               <span className="setting-description">{t('position_config.smart_min_distance_description')}</span>
             </label>
-            <input
+            <NumberInput
               id="broadcastSmartMinimumDistance"
-              type="number"
-              min="0"
-              max="4294967295"
+              min={0}
+              max={4294967295}
+              integer
               value={broadcastSmartMinimumDistance}
-              onChange={(e) => setBroadcastSmartMinimumDistance(parseInt(e.target.value) || 0)}
+              onChange={setBroadcastSmartMinimumDistance}
               className="setting-input"
               style={{ width: '150px' }}
             />
@@ -376,13 +381,13 @@ const PositionConfigSection: React.FC<PositionConfigSectionProps> = ({
               {t('position_config.smart_min_interval')}
               <span className="setting-description">{t('position_config.smart_min_interval_description')}</span>
             </label>
-            <input
+            <NumberInput
               id="broadcastSmartMinimumIntervalSecs"
-              type="number"
-              min="0"
-              max="4294967295"
+              min={0}
+              max={4294967295}
+              integer
               value={broadcastSmartMinimumIntervalSecs}
-              onChange={(e) => setBroadcastSmartMinimumIntervalSecs(parseInt(e.target.value) || 0)}
+              onChange={setBroadcastSmartMinimumIntervalSecs}
               className="setting-input"
               style={{ width: '150px' }}
             />
@@ -450,13 +455,13 @@ const PositionConfigSection: React.FC<PositionConfigSectionProps> = ({
               {t('position_config.rx_gpio')}
               <span className="setting-description">{t('position_config.rx_gpio_description')}</span>
             </label>
-            <input
+            <NumberInput
               id="rxGpio"
-              type="number"
-              min="0"
-              max="255"
+              min={0}
+              max={255}
+              integer
               value={rxGpio}
-              onChange={(e) => setRxGpio(parseInt(e.target.value) || 0)}
+              onChange={setRxGpio}
               className="setting-input"
               style={{ width: '100px' }}
             />
@@ -468,13 +473,13 @@ const PositionConfigSection: React.FC<PositionConfigSectionProps> = ({
               {t('position_config.tx_gpio')}
               <span className="setting-description">{t('position_config.tx_gpio_description')}</span>
             </label>
-            <input
+            <NumberInput
               id="txGpio"
-              type="number"
-              min="0"
-              max="255"
+              min={0}
+              max={255}
+              integer
               value={txGpio}
-              onChange={(e) => setTxGpio(parseInt(e.target.value) || 0)}
+              onChange={setTxGpio}
               className="setting-input"
               style={{ width: '100px' }}
             />
@@ -486,13 +491,13 @@ const PositionConfigSection: React.FC<PositionConfigSectionProps> = ({
               {t('position_config.gps_en_gpio')}
               <span className="setting-description">{t('position_config.gps_en_gpio_description')}</span>
             </label>
-            <input
+            <NumberInput
               id="gpsEnGpio"
-              type="number"
-              min="0"
-              max="255"
+              min={0}
+              max={255}
+              integer
               value={gpsEnGpio}
-              onChange={(e) => setGpsEnGpio(parseInt(e.target.value) || 0)}
+              onChange={setGpsEnGpio}
               className="setting-input"
               style={{ width: '100px' }}
             />
@@ -500,6 +505,7 @@ const PositionConfigSection: React.FC<PositionConfigSectionProps> = ({
         </div>
       )}
     </div>
+    </NumberInputScope>
   );
 };
 

@@ -2,6 +2,9 @@ import React, { useState, useRef, useMemo, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { UiIcon } from '../icons';
 import { useSaveBar } from '../../hooks/useSaveBar';
+import { NumberInput } from '../common/NumberInput';
+import { NumberInputScope } from '../common/NumberInputScope';
+import { useNumberInputScope } from '../common/numberInputScope';
 
 // OLED type options from protobufs
 const OLED_TYPES = [
@@ -139,13 +142,15 @@ const DisplayConfigSection: React.FC<DisplayConfigSectionProps> = ({
       displayMode, headingBold, wakeOnTapOrMotion, compassOrientation]);
 
   // Register with SaveBar
+  const numberScope = useNumberInputScope();
   useSaveBar({
     id: 'display-config',
     sectionName: t('display_config.title'),
     hasChanges,
     isSaving,
     onSave: handleSave,
-    onDismiss: resetChanges
+    onDismiss: resetChanges,
+    numberScope
   });
 
   // Convert seconds to human-readable format
@@ -157,6 +162,7 @@ const DisplayConfigSection: React.FC<DisplayConfigSectionProps> = ({
   };
 
   return (
+    <NumberInputScope scope={numberScope}>
     <div className="settings-section">
       <h3 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
         {t('display_config.title')}
@@ -188,13 +194,13 @@ const DisplayConfigSection: React.FC<DisplayConfigSectionProps> = ({
             )}
           </span>
         </label>
-        <input
+        <NumberInput
           id="screenOnSecs"
-          type="number"
-          min="0"
-          max="4294967295"
+          min={0}
+          max={4294967295}
+          integer
           value={screenOnSecs}
-          onChange={(e) => setScreenOnSecs(parseInt(e.target.value) || 0)}
+          onChange={setScreenOnSecs}
           className="setting-input"
           placeholder="60"
         />
@@ -213,13 +219,13 @@ const DisplayConfigSection: React.FC<DisplayConfigSectionProps> = ({
             )}
           </span>
         </label>
-        <input
+        <NumberInput
           id="autoScreenCarouselSecs"
-          type="number"
-          min="0"
-          max="4294967295"
+          min={0}
+          max={4294967295}
+          integer
           value={autoScreenCarouselSecs}
-          onChange={(e) => setAutoScreenCarouselSecs(parseInt(e.target.value) || 0)}
+          onChange={setAutoScreenCarouselSecs}
           className="setting-input"
           placeholder="0"
         />
@@ -388,6 +394,7 @@ const DisplayConfigSection: React.FC<DisplayConfigSectionProps> = ({
         </div>
       )}
     </div>
+    </NumberInputScope>
   );
 };
 

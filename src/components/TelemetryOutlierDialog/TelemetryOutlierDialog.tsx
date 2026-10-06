@@ -13,6 +13,9 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import Modal from '../common/Modal';
+import { NumberInput } from '../common/NumberInput';
+import { NumberInputScope } from '../common/NumberInputScope';
+import { useNumberInputScope } from '../common/numberInputScope';
 import apiService, { ApiError, type TelemetryOutlierRequest } from '../../services/api';
 import {
   OUTLIER_K_DEFAULT,
@@ -71,6 +74,7 @@ const TelemetryOutlierDialog: React.FC<TelemetryOutlierDialogProps> = ({
   const [k, setK] = useState(String(OUTLIER_K_DEFAULT));
   const [min, setMin] = useState('');
   const [max, setMax] = useState('');
+  const numberScope = useNumberInputScope();
   const [step, setStep] = useState<Step>('configure');
   const [preview, setPreview] = useState<OutlierPreview | null>(null);
   const [busy, setBusy] = useState(false);
@@ -131,10 +135,13 @@ const TelemetryOutlierDialog: React.FC<TelemetryOutlierDialogProps> = ({
         ? t('telemetry_outliers.no_criteria')
         : t('telemetry_outliers.invalid_bounds');
 
-  const canPreview = validation.ok && Boolean(sourceId) && Boolean(telemetryType) && !busy;
+  const canPreview =
+    validation.ok && !numberScope.invalid && Boolean(sourceId) && Boolean(telemetryType) && !busy;
 
   const buildRequest = (): TelemetryOutlierRequest | null => {
-    if (!validation.ok) return null;
+    // #5649: a field holding invalid text was never applied to the criteria, so
+    // neither preview nor purge may run on what the form still remembers.
+    if (!validation.ok || numberScope.invalid) return null;
     return {
       sourceId,
       telemetryType,
@@ -205,6 +212,7 @@ const TelemetryOutlierDialog: React.FC<TelemetryOutlierDialogProps> = ({
 
   return (
     <Modal isOpen={isOpen} onClose={onClose} title={title} maxWidth="640px">
+      <NumberInputScope scope={numberScope}>
       <div className={styles.body}>
         {step === 'done' ? (
           <>
@@ -277,15 +285,16 @@ const TelemetryOutlierDialog: React.FC<TelemetryOutlierDialogProps> = ({
               </label>
               <label className={styles.field}>
                 <span>{t('telemetry_outliers.k_label', { min: OUTLIER_K_MIN, max: OUTLIER_K_MAX })}</span>
-                <input
+                <NumberInput
                   className={styles.input}
-                  type="number"
+                  allowEmpty
                   min={OUTLIER_K_MIN}
                   max={OUTLIER_K_MAX}
                   step={0.5}
-                  value={k}
+                  value={k.trim() === '' ? null : Number(k)}
                   disabled={!auto}
-                  onChange={e => edit(setK)(e.target.value)}
+                  showReason
+                  onChange={v => edit(setK)(v === null ? '' : String(v))}
                 />
               </label>
               <p className={styles.hint}>{t('telemetry_outliers.auto_help', { min: OUTLIER_MIN_SAMPLES })}</p>
@@ -295,20 +304,22 @@ const TelemetryOutlierDialog: React.FC<TelemetryOutlierDialogProps> = ({
               <div className={styles.row}>
                 <label className={styles.field}>
                   <span>{t('telemetry_outliers.min_label')}</span>
-                  <input
+                  <NumberInput
                     className={styles.input}
-                    type="number"
-                    value={min}
-                    onChange={e => edit(setMin)(e.target.value)}
+                    allowEmpty
+                    step="any"
+                    value={min.trim() === '' ? null : Number(min)}
+                    onChange={v => edit(setMin)(v === null ? '' : String(v))}
                   />
                 </label>
                 <label className={styles.field}>
                   <span>{t('telemetry_outliers.max_label')}</span>
-                  <input
+                  <NumberInput
                     className={styles.input}
-                    type="number"
-                    value={max}
-                    onChange={e => edit(setMax)(e.target.value)}
+                    allowEmpty
+                    step="any"
+                    value={max.trim() === '' ? null : Number(max)}
+                    onChange={v => edit(setMax)(v === null ? '' : String(v))}
                   />
                 </label>
               </div>
@@ -412,7 +423,7 @@ const TelemetryOutlierDialog: React.FC<TelemetryOutlierDialogProps> = ({
                   >
                     {t('telemetry_outliers.cancel')}
                   </button>
-                  <button type="button" className={styles.danger} onClick={runPurge} disabled={busy}>
+                  <button type="button" className={styles.danger} onClick={runPurge} disabled={busy || numberScope.invalid}>
                     {busy ? t('telemetry_outliers.deleting') : t('telemetry_outliers.confirm_button')}
                   </button>
                 </div>
@@ -435,7 +446,8 @@ const TelemetryOutlierDialog: React.FC<TelemetryOutlierDialogProps> = ({
           </>
         )}
       </div>
-    </Modal>
+        </NumberInputScope>
+      </Modal>
   );
 };
 

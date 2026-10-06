@@ -468,4 +468,40 @@ describe('MqttPacketMonitorView', () => {
       'ok_to_mqtt violation detection keeps running while capture is off — turning capture on only makes the per-packet violation badge visible here. Confirmed violations are always listed in Analysis & Reports → ok_to_mqtt violations.'
     )).toBeNull();
   });
+
+  it('does not save a blank or out-of-range retention limit on blur (#5649)', async () => {
+    installFetchRouter({ packets: [basePacket()] });
+    localStorage.setItem('mqttPacketMonitor.showFilters', 'true');
+
+    render(<MqttPacketMonitorView baseUrl={baseUrl} sourceId={sourceId} />);
+    await screen.findByText('hello world');
+    const maxCount = screen.getByLabelText('Max count') as HTMLInputElement;
+    await waitFor(() => expect(maxCount.value).toBe('5000'));
+    const settingsPosts = () => csrfFetchMock.mock.calls.filter(
+      ([, options]) => (options as RequestInit | undefined)?.method === 'POST'
+    );
+
+    // Blank: stays blank, outlined, and nothing is written (it used to save "0").
+    fireEvent.focus(maxCount);
+    fireEvent.change(maxCount, { target: { value: '' } });
+    fireEvent.blur(maxCount);
+    expect(maxCount.value).toBe('');
+    expect(maxCount).toHaveAttribute('aria-invalid', 'true');
+    expect(settingsPosts()).toHaveLength(0);
+
+    // Under the 100-row floor: same.
+    fireEvent.focus(maxCount);
+    fireEvent.change(maxCount, { target: { value: '5' } });
+    fireEvent.blur(maxCount);
+    expect(maxCount).toHaveAttribute('aria-invalid', 'true');
+    expect(settingsPosts()).toHaveLength(0);
+
+    // A valid limit saves as before.
+    fireEvent.focus(maxCount);
+    fireEvent.change(maxCount, { target: { value: '2000' } });
+    fireEvent.blur(maxCount);
+    await waitFor(() => expect(settingsPosts()).toHaveLength(1));
+    expect(JSON.parse((settingsPosts()[0][1] as RequestInit).body as string))
+      .toEqual({ mqtt_packet_log_max_count: '2000' });
+  });
 });

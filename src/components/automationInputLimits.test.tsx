@@ -5,9 +5,12 @@
  *
  * With `max` absent, Chrome exposes the spinbutton with `aria-valuemax="0"`, so
  * the Geofence Cooldown field read as a 0-to-0 range while it took any value.
- * These tests pin the Geofence inputs' bounds and clamping, then sweep every
- * number input in the Automation sections so a new one cannot ship without a
- * `max`.
+ * These tests pin the Geofence inputs' bounds, then sweep every number input in
+ * the Automation sections so a new one cannot ship without a `max`.
+ *
+ * #5649: the fields no longer clamp a keystroke into range (that is what made
+ * them impossible to clear). Out-of-range text stays as typed, is marked
+ * invalid, and blocks the form's button, so the limit still holds.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { readFileSync } from 'node:fs';
@@ -15,7 +18,6 @@ import { resolve } from 'node:path';
 import { render, screen, fireEvent } from '@testing-library/react';
 import GeofenceTriggersSection from './GeofenceTriggersSection';
 import {
-  clampInt,
   GEOFENCE_COOLDOWN_MINUTES_MAX,
   GEOFENCE_INTERVAL_MINUTES_MAX,
 } from './automationInputLimits';
@@ -45,35 +47,32 @@ describe('Geofence number inputs', () => {
     expect(Number(cooldown.max)).toBeGreaterThan(0);
   });
 
-  it('clamps Cooldown into range', () => {
+  it('refuses a Cooldown past the max instead of clamping the keystroke (#5649)', () => {
     renderGeofence();
     const cooldown = screen.getByLabelText('automation.geofence_triggers.cooldown') as HTMLInputElement;
     fireEvent.change(cooldown, { target: { value: '999999' } });
-    expect(cooldown.value).toBe(String(GEOFENCE_COOLDOWN_MINUTES_MAX));
+    expect(cooldown.value).toBe('999999');
+    expect(cooldown.getAttribute('aria-invalid')).toBe('true');
     fireEvent.change(cooldown, { target: { value: '30' } });
     expect(cooldown.value).toBe('30');
+    expect(cooldown.getAttribute('aria-invalid')).toBeNull();
   });
 
-  it('gives the while-inside Interval a real range and clamps it', () => {
+  it('gives the while-inside Interval a real range and refuses values outside it', () => {
     renderGeofence();
     fireEvent.change(screen.getByDisplayValue('automation.geofence_triggers.event_entry'), { target: { value: 'while_inside' } });
     const interval = screen.getByLabelText('automation.geofence_triggers.while_inside_interval') as HTMLInputElement;
     expect(interval.getAttribute('min')).toBe('1');
     expect(interval.getAttribute('max')).toBe(String(GEOFENCE_INTERVAL_MINUTES_MAX));
     fireEvent.change(interval, { target: { value: '99999' } });
-    expect(interval.value).toBe(String(GEOFENCE_INTERVAL_MINUTES_MAX));
+    expect(interval.value).toBe('99999');
+    expect(interval.getAttribute('aria-invalid')).toBe('true');
+    // Below the floor: red and held back, never swapped for 0 or for the minimum.
     fireEvent.change(interval, { target: { value: '0' } });
-    expect(interval.value).toBe('1');
-  });
-});
-
-describe('clampInt', () => {
-  it('parses, clamps and falls back to min on garbage', () => {
-    expect(clampInt('42', 0, 100)).toBe(42);
-    expect(clampInt('-5', 0, 100)).toBe(0);
-    expect(clampInt('500', 0, 100)).toBe(100);
-    expect(clampInt('', 1, 100)).toBe(1);
-    expect(clampInt('abc', 0, 100)).toBe(0);
+    expect(interval.value).toBe('0');
+    expect(interval.getAttribute('aria-invalid')).toBe('true');
+    fireEvent.change(interval, { target: { value: '15' } });
+    expect(interval.getAttribute('aria-invalid')).toBeNull();
   });
 });
 
@@ -91,8 +90,11 @@ describe('every Automation-page number input declares max', () => {
   it.each(files)('%s', (name) => {
     const src = readFileSync(resolve(`src/components/${name}.tsx`), 'utf-8');
     const missing: number[] = [];
-    for (const m of src.matchAll(/<input\b([\s\S]*?)\/>/g)) {
-      if (/type="number"/.test(m[1]) && !/\bmax=/.test(m[1])) {
+    // Number fields are `<NumberInput>` since #5649; a raw one (the map
+    // editor's circle fields) is still swept.
+    for (const m of src.matchAll(/<(input|NumberInput)\b([\s\S]*?)\/>/g)) {
+      const isNumber = m[1] === 'NumberInput' || /type="number"/.test(m[2]);
+      if (isNumber && !/\bmax=/.test(m[2])) {
         missing.push(src.slice(0, m.index).split('\n').length);
       }
     }

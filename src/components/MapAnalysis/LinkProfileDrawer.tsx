@@ -36,6 +36,7 @@ import { aglFromNodeAltitude, analyzeLinkProfile, VERDICT_LABEL, VERDICT_COLOR }
 import { computeLinkBudget, DEFAULT_K_FACTOR } from '../../utils/linkBudget';
 import { formatDistance } from '../../utils/distance';
 import { UiIcon } from '../icons';
+import { NumberInput } from '../common/NumberInput';
 
 // Documented defaults (LINK_PROFILE_TOOL_SPEC.md §0.7).
 const DEFAULT_FREQ_MHZ = 915;
@@ -413,13 +414,12 @@ const LinkProfileDrawer: React.FC = () => {
         <div className="map-analysis-link-drawer-form">
           <label>
             Frequency (MHz)
-            <input
-              type="number"
+            <NumberInput
+              step="any"
               className="map-analysis-tr-num"
               value={freqMhz}
-              onChange={e => {
-                const v = Number(e.target.value);
-                if (!Number.isNaN(v)) setFreqMhz(v);
+              onChange={v => {
+                setFreqMhz(v);
                 setFreqEdited(true);
               }}
             />
@@ -429,16 +429,13 @@ const LinkProfileDrawer: React.FC = () => {
           )}
           <label>
             Antenna A height AGL (m)
-            <input
-              type="number"
+            <NumberInput
+              step="any"
               className="map-analysis-tr-num"
               value={aglA}
-              onChange={e => {
-                const v = Number(e.target.value);
-                if (!Number.isNaN(v)) {
-                  setAglA(v);
-                  setAglAEdited(true);
-                }
+              onChange={v => {
+                setAglA(v);
+                setAglAEdited(true);
               }}
             />
           </label>
@@ -447,16 +444,13 @@ const LinkProfileDrawer: React.FC = () => {
           )}
           <label>
             Antenna B height AGL (m)
-            <input
-              type="number"
+            <NumberInput
+              step="any"
               className="map-analysis-tr-num"
               value={aglB}
-              onChange={e => {
-                const v = Number(e.target.value);
-                if (!Number.isNaN(v)) {
-                  setAglB(v);
-                  setAglBEdited(true);
-                }
+              onChange={v => {
+                setAglB(v);
+                setAglBEdited(true);
               }}
             />
           </label>
@@ -465,76 +459,59 @@ const LinkProfileDrawer: React.FC = () => {
           )}
           <label>
             TX power (dBm)
-            <input
-              type="number"
+            <NumberInput
+              step="any"
               className="map-analysis-tr-num"
               value={txPowerDbm}
-              onChange={e => {
-                const v = Number(e.target.value);
-                if (!Number.isNaN(v)) setTxPowerDbm(v);
-              }}
+              onChange={setTxPowerDbm}
             />
           </label>
           <label>
             TX gain (dBi)
-            <input
-              type="number"
+            <NumberInput
+              step="any"
               className="map-analysis-tr-num"
               value={txGainDbi}
-              onChange={e => {
-                const v = Number(e.target.value);
-                if (!Number.isNaN(v)) setTxGainDbi(v);
-              }}
+              onChange={setTxGainDbi}
             />
           </label>
           <label>
             RX gain (dBi)
-            <input
-              type="number"
+            <NumberInput
+              step="any"
               className="map-analysis-tr-num"
               value={rxGainDbi}
-              onChange={e => {
-                const v = Number(e.target.value);
-                if (!Number.isNaN(v)) setRxGainDbi(v);
-              }}
+              onChange={setRxGainDbi}
             />
           </label>
           <label>
             Cable loss (dB)
-            <input
-              type="number"
+            <NumberInput
+              step="any"
               className="map-analysis-tr-num"
               value={cableLossDb}
-              onChange={e => {
-                const v = Number(e.target.value);
-                if (!Number.isNaN(v)) setCableLossDb(v);
-              }}
+              onChange={setCableLossDb}
             />
           </label>
           <label>
             RX sensitivity (dBm)
-            <input
-              type="number"
+            <NumberInput
+              step="any"
               className="map-analysis-tr-num"
               value={rxSensitivityDbm}
-              onChange={e => {
-                const v = Number(e.target.value);
-                if (!Number.isNaN(v)) setRxSensitivityDbm(v);
+              onChange={v => {
+                setRxSensitivityDbm(v);
                 setRxEdited(true);
               }}
             />
           </label>
           <label>
             Earth k-factor
-            <input
-              type="number"
-              step="0.01"
+            <NumberInput
+              step={0.01}
               className="map-analysis-tr-num"
               value={kFactor}
-              onChange={e => {
-                const v = Number(e.target.value);
-                if (!Number.isNaN(v)) setKFactor(v);
-              }}
+              onChange={setKFactor}
             />
           </label>
         </div>

@@ -1,4 +1,5 @@
 import React, { useEffect, useId, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import { useEnclosingNumberInputScope } from './numberInputScope';
 import {
@@ -21,6 +22,11 @@ interface NumberInputBaseProps extends PassThroughProps {
   step?: number | 'any';
   /** Only whole numbers are valid. */
   integer?: boolean;
+  /**
+   * Values that are valid even outside min/max: a sentinel such as 0 for
+   * "use the firmware default" on a field whose real floor is higher.
+   */
+  alsoValid?: readonly number[];
   /** Told whenever the field turns valid or invalid. Most forms use a scope instead. */
   onValidityChange?: (valid: boolean) => void;
   /** Show the reason under the field as well as to assistive tech. */
@@ -80,6 +86,7 @@ export const NumberInput: React.FC<NumberInputProps> = (props) => {
     step,
     integer,
     allowEmpty,
+    alsoValid,
     onValidityChange,
     showReason,
     className,
@@ -106,27 +113,30 @@ export const NumberInput: React.FC<NumberInputProps> = (props) => {
   // Follow the parent when its value changes from outside (server load, reset)
   // and the user is not in the field. The user's own keystrokes also change
   // `value`, but the field has focus then, so the text is left alone.
-  const lastValueRef = useRef(value);
-  useEffect(() => {
-    if (Object.is(lastValueRef.current, value)) return;
-    lastValueRef.current = value;
-    if (focusedRef.current) return;
-    setDraft(formatNumberDraft(value));
-    setBadInput(false);
-  }, [value]);
+  //
+  // Done while rendering, not in an effect: the new text must be on screen in
+  // the same commit as the parent's new value, or a form reads one frame of
+  // stale numbers after a load.
+  const [seenValue, setSeenValue] = useState(value);
+  if (!Object.is(seenValue, value)) {
+    setSeenValue(value);
+    if (!focusedRef.current) {
+      setDraft(formatNumberDraft(value));
+      setBadInput(false);
+    }
+  }
 
   // A form reset leaves `value` unchanged when the invalid text was never
   // emitted, so the scope has to say so.
   const resetSignal = scope?.resetSignal ?? 0;
-  const lastResetRef = useRef(resetSignal);
-  useEffect(() => {
-    if (lastResetRef.current === resetSignal) return;
-    lastResetRef.current = resetSignal;
-    setDraft(formatNumberDraft(lastValueRef.current));
+  const [seenReset, setSeenReset] = useState(resetSignal);
+  if (seenReset !== resetSignal) {
+    setSeenReset(resetSignal);
+    setDraft(formatNumberDraft(value));
     setBadInput(false);
-  }, [resetSignal]);
+  }
 
-  const rules = { min, max, integer, allowEmpty };
+  const rules = { min, max, integer, allowEmpty, alsoValid };
   const result = evaluateNumberDraft(draft, rules, badInput);
   const invalid = !result.valid && !disabled && !readOnly;
 
@@ -169,7 +179,7 @@ export const NumberInput: React.FC<NumberInputProps> = (props) => {
     // Valid text settles on the parent's value ("1." -> "1", or whatever the
     // parent made of it). Invalid text stays as typed, blank included.
     if (evaluateNumberDraft(draft, rules, badInput).valid) {
-      setDraft(formatNumberDraft(lastValueRef.current));
+      setDraft(formatNumberDraft(value));
     }
     onBlur?.(e);
   };
@@ -209,10 +219,20 @@ export const NumberInput: React.FC<NumberInputProps> = (props) => {
         onBlur={handleBlur}
         onWheel={handleWheel}
       />
-      {invalid && (
-        <span id={reasonId} className={showReason ? styles.reasonVisible : styles.reason}>
+      {/*
+        The reason is read through aria-describedby. Hidden, it lives in
+        <body>: as a sibling it would join the text of a wrapping <label> (and
+        so the field's name) and add a child to the form's flex row. Shown, it
+        is aria-hidden so that the label does not pick it up either.
+      */}
+      {invalid && showReason && (
+        <span id={reasonId} className={styles.reasonVisible} aria-hidden="true">
           {reason}
         </span>
+      )}
+      {invalid && !showReason && createPortal(
+        <span id={reasonId} className={styles.reason}>{reason}</span>,
+        document.body,
       )}
     </>
   );

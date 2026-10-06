@@ -4,6 +4,9 @@ import apiService, { ApiError } from '../../services/api';
 import { useToast } from '../ToastContainer';
 import { logger } from '../../utils/logger';
 import { useSaveBar } from '../../hooks/useSaveBar';
+import { NumberInput } from '../common/NumberInput';
+import { NumberInputScope } from '../common/NumberInputScope';
+import { useNumberInputScope } from '../common/numberInputScope';
 
 interface MaintenanceStats {
   messagesDeleted: number;
@@ -196,14 +199,16 @@ const DatabaseMaintenanceSection: React.FC = () => {
     }
   };
 
-  // Register with SaveBar
+  // Register with SaveBar. The scope blocks Save while a number field is blank (#5649).
+  const numberScope = useNumberInputScope();
   useSaveBar({
     id: 'database-maintenance',
     sectionName: t('maintenance.title'),
     hasChanges,
     isSaving,
     onSave: handleSaveSettings,
-    onDismiss: resetChanges
+    onDismiss: resetChanges,
+    numberScope
   });
 
   const handleRunNow = async () => {
@@ -257,6 +262,7 @@ const DatabaseMaintenanceSection: React.FC = () => {
   }
 
   return (
+    <NumberInputScope scope={numberScope}>
     <div id="settings-maintenance" className="settings-section" style={{ marginTop: '2rem' }}>
       <h3>{t('maintenance.title')}</h3>
 
@@ -359,12 +365,12 @@ const DatabaseMaintenanceSection: React.FC = () => {
                   <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 500 }}>
                     {t('maintenance.message_retention')}
                   </label>
-                  <input
-                    type="number"
+                  <NumberInput
                     value={messageRetentionDays}
-                    onChange={(e) => setMessageRetentionDays(parseInt(e.target.value) || 30)}
-                    min="7"
-                    max="365"
+                    onChange={setMessageRetentionDays}
+                    min={7}
+                    max={365}
+                    integer
                     style={{
                       padding: '0.5rem',
                       borderRadius: '4px',
@@ -382,12 +388,12 @@ const DatabaseMaintenanceSection: React.FC = () => {
                   <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 500 }}>
                     {t('maintenance.traceroute_retention')}
                   </label>
-                  <input
-                    type="number"
+                  <NumberInput
                     value={tracerouteRetentionDays}
-                    onChange={(e) => setTracerouteRetentionDays(parseInt(e.target.value) || 30)}
-                    min="7"
-                    max="365"
+                    onChange={setTracerouteRetentionDays}
+                    min={7}
+                    max={365}
+                    integer
                     style={{
                       padding: '0.5rem',
                       borderRadius: '4px',
@@ -405,12 +411,12 @@ const DatabaseMaintenanceSection: React.FC = () => {
                   <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 500 }}>
                     {t('maintenance.routesegment_retention')}
                   </label>
-                  <input
-                    type="number"
+                  <NumberInput
                     value={routeSegmentRetentionDays}
-                    onChange={(e) => setRouteSegmentRetentionDays(parseInt(e.target.value) || 30)}
-                    min="7"
-                    max="365"
+                    onChange={setRouteSegmentRetentionDays}
+                    min={7}
+                    max={365}
+                    integer
                     style={{
                       padding: '0.5rem',
                       borderRadius: '4px',
@@ -428,12 +434,12 @@ const DatabaseMaintenanceSection: React.FC = () => {
                   <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 500 }}>
                     {t('maintenance.neighborinfo_retention')}
                   </label>
-                  <input
-                    type="number"
+                  <NumberInput
                     value={neighborInfoRetentionDays}
-                    onChange={(e) => setNeighborInfoRetentionDays(parseInt(e.target.value) || 30)}
-                    min="7"
-                    max="365"
+                    onChange={setNeighborInfoRetentionDays}
+                    min={7}
+                    max={365}
+                    integer
                     style={{
                       padding: '0.5rem',
                       borderRadius: '4px',
@@ -456,6 +462,7 @@ const DatabaseMaintenanceSection: React.FC = () => {
         </div>
       </div>
     </div>
+    </NumberInputScope>
   );
 };
 

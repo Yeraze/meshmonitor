@@ -4,6 +4,9 @@ import apiService from '../../services/api';
 import { useToast } from '../ToastContainer';
 import { ROLE_NAMES, DeviceRole } from '../../constants/index';
 import { UiIcon, type UiIconName } from '../icons';
+import { NumberInput } from '../common/NumberInput';
+import { NumberInputScope } from '../common/NumberInputScope';
+import { useNumberInputScope } from '../common/numberInputScope';
 
 /**
  * Automated Remote Favorites Management (issue #2608).
@@ -108,8 +111,13 @@ const AutoFavoriteManagementSection: React.FC<AutoFavoriteManagementSectionProps
     });
   }, []);
 
+  // #5649: these are mesh timers. A blank or below-minimum value is never saved.
+  const numberScope = useNumberInputScope();
+  const numbersInvalid = numberScope.invalid;
+
   const handleSave = useCallback(async () => {
     if (selectedNodeNum === null || !sourceId || !config) return;
+    if (numbersInvalid) return;
     setIsSaving(true);
     try {
       await apiService.put(`/api/admin/auto-favorite-targets/${selectedNodeNum}`, {
@@ -130,7 +138,7 @@ const AutoFavoriteManagementSection: React.FC<AutoFavoriteManagementSectionProps
     } finally {
       setIsSaving(false);
     }
-  }, [selectedNodeNum, sourceId, config, showToast, t, loadConfig]);
+  }, [selectedNodeNum, sourceId, config, numbersInvalid, showToast, t, loadConfig]);
 
   const handleRunNow = useCallback(async () => {
     if (selectedNodeNum === null || !sourceId) return;
@@ -210,21 +218,19 @@ const AutoFavoriteManagementSection: React.FC<AutoFavoriteManagementSectionProps
         {label}
         <span className="setting-description">{description}</span>
       </label>
-      <input
-        type="number"
+      <NumberInput
+        integer
         className="setting-input"
         min={min}
         value={value}
-        onChange={(e) => {
-          const n = parseInt(e.target.value, 10);
-          onChange(Number.isFinite(n) ? Math.max(min, n) : min);
-        }}
+        onChange={onChange}
         style={{ maxWidth: '160px' }}
       />
     </div>
   );
 
   return (
+    <NumberInputScope scope={numberScope}>
     <div id="admin-auto-favorites" className="settings-section">
       <h3><UiIcon name="favorite" /> {t('auto_favorite.title', 'Automatic Favorites Management')}</h3>
 
@@ -374,8 +380,8 @@ const AutoFavoriteManagementSection: React.FC<AutoFavoriteManagementSectionProps
             <button
               className="btn btn-primary"
               onClick={handleSave}
-              disabled={isSaving}
-              style={{ opacity: isSaving ? 0.6 : 1 }}
+              disabled={isSaving || numbersInvalid}
+              style={{ opacity: isSaving || numbersInvalid ? 0.6 : 1 }}
             >
               {isSaving ? t('auto_favorite.saving', 'Saving…') : t('auto_favorite.save', 'Save Settings')}
             </button>
@@ -392,6 +398,7 @@ const AutoFavoriteManagementSection: React.FC<AutoFavoriteManagementSectionProps
         </>
       )}
     </div>
+    </NumberInputScope>
   );
 };
 

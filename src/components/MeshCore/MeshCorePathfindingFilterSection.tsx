@@ -2,6 +2,9 @@ import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { useTranslation } from 'react-i18next';
 import { useCsrfFetch } from '../../hooks/useCsrfFetch';
 import { useSaveBar } from '../../hooks/useSaveBar';
+import { NumberInput } from '../common/NumberInput';
+import { NumberInputScope } from '../common/NumberInputScope';
+import { useNumberInputScope } from '../common/numberInputScope';
 import { meshcoreAgeCutoffMs, isWithinMeshcoreAge } from '../../utils/meshcoreAge';
 import { MeshCoreReceiveOnlyNote } from './MeshCoreReceiveOnlyNote';
 
@@ -235,7 +238,9 @@ export const MeshCorePathfindingFilterSection: React.FC<MeshCorePathfindingFilte
   // Triggers) already registers into. That group already renders N independently
   // dirty sections behind one "Save All" bar, so a 6th section here is the
   // established pattern, not a new one.
+  const numberScope = useNumberInputScope();
   useSaveBar({
+    numberScope,
     id: 'meshcore-pathfinding-filter',
     sectionName: t('meshcore.automation.pathfinding.filter.title', 'Target Filter'),
     hasChanges,
@@ -381,6 +386,7 @@ export const MeshCorePathfindingFilterSection: React.FC<MeshCorePathfindingFilte
   }, [matchingContacts, debouncedMatching.length]);
 
   return (
+    <NumberInputScope scope={numberScope}>
     <div style={{ marginTop: '1.5rem', marginLeft: '1.75rem' }}>
       <div style={sectionHeaderStyle}>
         <input
@@ -566,13 +572,13 @@ export const MeshCorePathfindingFilterSection: React.FC<MeshCorePathfindingFilte
             <label htmlFor="pfFilterLastHeardHours" style={{ display: 'block', fontSize: '0.8rem', color: 'var(--color-text-subtle)', marginBottom: '0.25rem' }}>
               {t('meshcore.automation.pathfinding.filter.last_heard_label', 'Heard within (hours)')}
             </label>
-            <input
+            <NumberInput
               id="pfFilterLastHeardHours"
-              type="number"
               min={1}
               max={8760}
+              integer
               value={settings.lastHeardHours}
-              onChange={(e) => update('lastHeardHours', Math.min(8760, Math.max(1, parseInt(e.target.value, 10) || 1)))}
+              onChange={(v) => update('lastHeardHours', v)}
               disabled={!canWrite}
               className="setting-input"
               style={{ width: '120px' }}
@@ -597,13 +603,12 @@ export const MeshCorePathfindingFilterSection: React.FC<MeshCorePathfindingFilte
             <div style={{ display: 'flex', gap: '1rem', marginBottom: '0.35rem' }}>
               <label style={{ fontSize: '0.8rem', color: 'var(--color-text-subtle)' }}>
                 {t('meshcore.automation.pathfinding.filter.hops_min_label', 'Min hops')}
-                <input
-                  type="number"
+                <NumberInput
                   min={0}
                   max={10}
+                  integer
                   value={settings.hopsMin}
-                  onChange={(e) => {
-                    const v = Math.min(10, Math.max(0, parseInt(e.target.value, 10) || 0));
+                  onChange={(v) => {
                     update('hopsMin', v);
                     if (v > settings.hopsMax) update('hopsMax', v);
                   }}
@@ -614,15 +619,12 @@ export const MeshCorePathfindingFilterSection: React.FC<MeshCorePathfindingFilte
               </label>
               <label style={{ fontSize: '0.8rem', color: 'var(--color-text-subtle)' }}>
                 {t('meshcore.automation.pathfinding.filter.hops_max_label', 'Max hops')}
-                <input
-                  type="number"
-                  min={0}
+                <NumberInput
+                  min={settings.hopsMin}
                   max={10}
+                  integer
                   value={settings.hopsMax}
-                  onChange={(e) => {
-                    const v = Math.min(10, Math.max(0, parseInt(e.target.value, 10) || 0));
-                    update('hopsMax', Math.max(v, settings.hopsMin));
-                  }}
+                  onChange={(v) => update('hopsMax', v)}
                   disabled={!canWrite}
                   className="setting-input"
                   style={{ width: '80px', display: 'block', marginTop: '0.25rem' }}
@@ -653,12 +655,12 @@ export const MeshCorePathfindingFilterSection: React.FC<MeshCorePathfindingFilte
             <div style={{ display: 'flex', gap: '1rem', marginBottom: '0.35rem' }}>
               <label style={{ fontSize: '0.8rem', color: 'var(--color-text-subtle)' }}>
                 {t('meshcore.automation.pathfinding.filter.rssi_min_label', 'Min RSSI (dBm)')}
-                <input
-                  type="number"
+                <NumberInput
                   min={-200}
                   max={0}
+                  integer
                   value={settings.rssiMin}
-                  onChange={(e) => update('rssiMin', Math.min(0, Math.max(-200, parseInt(e.target.value, 10) || -200)))}
+                  onChange={(v) => update('rssiMin', v)}
                   disabled={!canWrite}
                   className="setting-input"
                   style={{ width: '90px', display: 'block', marginTop: '0.25rem' }}
@@ -666,12 +668,12 @@ export const MeshCorePathfindingFilterSection: React.FC<MeshCorePathfindingFilte
               </label>
               <label style={{ fontSize: '0.8rem', color: 'var(--color-text-subtle)' }}>
                 {t('meshcore.automation.pathfinding.filter.snr_min_label', 'Min SNR (dB)')}
-                <input
-                  type="number"
+                <NumberInput
                   min={-100}
                   max={100}
+                  integer
                   value={settings.snrMin}
-                  onChange={(e) => update('snrMin', Math.min(100, Math.max(-100, parseInt(e.target.value, 10) || -100)))}
+                  onChange={(v) => update('snrMin', v)}
                   disabled={!canWrite}
                   className="setting-input"
                   style={{ width: '90px', display: 'block', marginTop: '0.25rem' }}
@@ -736,5 +738,6 @@ export const MeshCorePathfindingFilterSection: React.FC<MeshCorePathfindingFilte
         </div>
       </div>
     </div>
+    </NumberInputScope>
   );
 };

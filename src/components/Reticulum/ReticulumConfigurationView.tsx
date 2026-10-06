@@ -16,6 +16,9 @@ import api from '../../services/api';
 import { useAuth } from '../../contexts/AuthContext';
 import { UiIcon } from '../icons';
 import styles from './ReticulumConfigurationView.module.css';
+import { NumberInput } from '../common/NumberInput';
+import { NumberInputScope } from '../common/NumberInputScope';
+import { useNumberInputScope } from '../common/numberInputScope';
 
 interface RadioConfig {
   frequency: number | null;
@@ -64,6 +67,7 @@ export const ReticulumConfigurationView: React.FC<ReticulumConfigurationViewProp
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
+  const numberScope = useNumberInputScope();
 
   const base = `/api/sources/${encodeURIComponent(sourceId)}/reticulum`;
 
@@ -88,12 +92,15 @@ export const ReticulumConfigurationView: React.FC<ReticulumConfigurationViewProp
 
   useEffect(() => { void load(); }, [load]);
 
-  const setField = (key: keyof RadioConfig, value: string) => {
-    const num = value === '' ? null : Number(value);
-    setConfig(prev => ({ ...prev, [key]: Number.isNaN(num as number) ? prev[key] : num }));
+  // Blank is legal here: a null field is left out of the patch (#5649: the
+  // field emits null for blank and never emits out-of-range text).
+  const setField = (key: keyof RadioConfig, value: number | null) => {
+    setConfig(prev => ({ ...prev, [key]: value }));
   };
 
   const save = async () => {
+    // A value outside a field's range must never reach the RNode.
+    if (numberScope.invalid) return;
     setSaving(true);
     setError(null);
     setStatus(null);
@@ -115,6 +122,7 @@ export const ReticulumConfigurationView: React.FC<ReticulumConfigurationViewProp
   const disabled = !canWrite || saving;
 
   return (
+    <NumberInputScope scope={numberScope}>
     <div className={styles.view}>
       {!canWrite && (
         <div className={styles.banner} role="status">
@@ -130,38 +138,38 @@ export const ReticulumConfigurationView: React.FC<ReticulumConfigurationViewProp
         <div className={styles.grid}>
           <label className={styles.field}>
             <span>{t('reticulum.config.frequency', 'Frequency (Hz)')}</span>
-            <input type="number" value={config.frequency ?? ''} disabled={disabled}
-              onChange={e => setField('frequency', e.target.value)} />
+            <NumberInput allowEmpty value={config.frequency} disabled={disabled}
+              onChange={v => setField('frequency', v)} />
           </label>
           <label className={styles.field}>
             <span>{t('reticulum.config.bandwidth', 'Bandwidth (Hz)')}</span>
-            <input type="number" value={config.bandwidth ?? ''} disabled={disabled}
-              onChange={e => setField('bandwidth', e.target.value)} />
+            <NumberInput allowEmpty value={config.bandwidth} disabled={disabled}
+              onChange={v => setField('bandwidth', v)} />
           </label>
           <label className={styles.field}>
             <span>{t('reticulum.config.sf', 'Spreading Factor')}</span>
-            <input type="number" min={5} max={12} value={config.spreadingFactor ?? ''} disabled={disabled}
-              onChange={e => setField('spreadingFactor', e.target.value)} />
+            <NumberInput allowEmpty min={5} max={12} value={config.spreadingFactor} disabled={disabled}
+              onChange={v => setField('spreadingFactor', v)} />
           </label>
           <label className={styles.field}>
             <span>{t('reticulum.config.cr', 'Coding Rate')}</span>
-            <input type="number" min={5} max={8} value={config.codingRate ?? ''} disabled={disabled}
-              onChange={e => setField('codingRate', e.target.value)} />
+            <NumberInput allowEmpty min={5} max={8} value={config.codingRate} disabled={disabled}
+              onChange={v => setField('codingRate', v)} />
           </label>
           <label className={styles.field}>
             <span>{t('reticulum.config.txPower', 'TX Power (dBm)')}</span>
-            <input type="number" min={0} max={22} value={config.txPower ?? ''} disabled={disabled}
-              onChange={e => setField('txPower', e.target.value)} />
+            <NumberInput allowEmpty min={0} max={22} value={config.txPower} disabled={disabled}
+              onChange={v => setField('txPower', v)} />
           </label>
           <label className={styles.field}>
             <span>{t('reticulum.config.stAlock', 'Short Airtime Lock (%)')}</span>
-            <input type="number" min={0} max={100} value={config.stAlock ?? ''} disabled={disabled}
-              onChange={e => setField('stAlock', e.target.value)} />
+            <NumberInput allowEmpty min={0} max={100} value={config.stAlock} disabled={disabled}
+              onChange={v => setField('stAlock', v)} />
           </label>
           <label className={styles.field}>
             <span>{t('reticulum.config.ltAlock', 'Long Airtime Lock (%)')}</span>
-            <input type="number" min={0} max={100} value={config.ltAlock ?? ''} disabled={disabled}
-              onChange={e => setField('ltAlock', e.target.value)} />
+            <NumberInput allowEmpty min={0} max={100} value={config.ltAlock} disabled={disabled}
+              onChange={v => setField('ltAlock', v)} />
           </label>
           <label className={styles.checkField}>
             <input type="checkbox" checked={config.radioState === 1} disabled={disabled}
@@ -170,7 +178,7 @@ export const ReticulumConfigurationView: React.FC<ReticulumConfigurationViewProp
           </label>
         </div>
         <div className={styles.actions}>
-          <button className={styles.saveBtn} onClick={() => void save()} disabled={disabled}>
+          <button className={styles.saveBtn} onClick={() => void save()} disabled={disabled || numberScope.invalid}>
             {saving ? t('common.saving', 'Applying…') : t('reticulum.config.apply', 'Apply')}
           </button>
         </div>
@@ -190,6 +198,7 @@ export const ReticulumConfigurationView: React.FC<ReticulumConfigurationViewProp
         )}
       </section>
     </div>
+    </NumberInputScope>
   );
 };
 

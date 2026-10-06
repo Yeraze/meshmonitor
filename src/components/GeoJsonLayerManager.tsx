@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import type { GeoJsonLayer } from '../server/services/geojsonService.js';
 import api from '../services/api';
+import { NumberInput } from './common/NumberInput';
 import { useCsrfFetch } from '../hooks/useCsrfFetch';
 import styles from './GeoJsonLayerManager.module.css';
 
@@ -226,12 +227,12 @@ const GeoJsonLayerManager: React.FC = () => {
               {/* Weight */}
               <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.85em' }}>
                 Line Width
-                <input
-                  type="number"
-                  min="1"
-                  max="10"
+                <NumberInput
+                  min={1}
+                  max={10}
+                  integer
                   value={layer.style.weight}
-                  onChange={(e) => updateLayer(layer.id, { style: { ...layer.style, weight: parseInt(e.target.value) } })}
+                  onChange={(weight) => updateLayer(layer.id, { style: { ...layer.style, weight } })}
                   style={{ width: '50px', padding: '2px 4px', border: '1px solid var(--border-color, #ccc)', borderRadius: '3px', background: 'var(--input-bg, #fff)', color: 'var(--text-color, #000)' }}
                 />
               </label>

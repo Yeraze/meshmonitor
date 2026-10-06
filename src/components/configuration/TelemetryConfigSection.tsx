@@ -3,6 +3,9 @@ import { useTranslation } from 'react-i18next';
 import { UiIcon } from '../icons';
 import { useSaveBar } from '../../hooks/useSaveBar';
 import ModuleAvailabilityNotice from './ModuleAvailabilityNotice';
+import { NumberInput } from '../common/NumberInput';
+import { NumberInputScope } from '../common/NumberInputScope';
+import { useNumberInputScope } from '../common/numberInputScope';
 
 interface TelemetryConfigSectionProps {
   // Config version - increment when config is loaded from device to sync saved state
@@ -155,13 +158,15 @@ const TelemetryConfigSection: React.FC<TelemetryConfigSectionProps> = ({
       healthMeasurementEnabled, healthUpdateInterval, healthScreenEnabled]);
 
   // Register with SaveBar
+  const numberScope = useNumberInputScope();
   useSaveBar({
     id: 'telemetry-config',
     sectionName: t('telemetry_config.title'),
     hasChanges,
     isSaving,
     onSave: handleSave,
-    onDismiss: resetChanges
+    onDismiss: resetChanges,
+    numberScope
   });
 
   // Convert seconds to human-readable format
@@ -174,6 +179,7 @@ const TelemetryConfigSection: React.FC<TelemetryConfigSectionProps> = ({
   };
 
   return (
+    <NumberInputScope scope={numberScope}>
     <div className="settings-section">
       <h3 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
         {t('telemetry_config.title')}
@@ -229,13 +235,13 @@ const TelemetryConfigSection: React.FC<TelemetryConfigSectionProps> = ({
               )}
             </span>
           </label>
-          <input
+          <NumberInput
             id="deviceUpdateInterval"
-            type="number"
-            min="0"
-            max="4294967295"
+            min={0}
+            max={4294967295}
+            integer
             value={deviceUpdateInterval}
-            onChange={(e) => setDeviceUpdateInterval(parseInt(e.target.value) || 0)}
+            onChange={setDeviceUpdateInterval}
             className="setting-input"
             placeholder="900"
           />
@@ -277,13 +283,13 @@ const TelemetryConfigSection: React.FC<TelemetryConfigSectionProps> = ({
             )}
           </span>
         </label>
-        <input
+        <NumberInput
           id="environmentUpdateInterval"
-          type="number"
-          min="0"
-          max="4294967295"
+          min={0}
+          max={4294967295}
+          integer
           value={environmentUpdateInterval}
-          onChange={(e) => setEnvironmentUpdateInterval(parseInt(e.target.value) || 0)}
+          onChange={setEnvironmentUpdateInterval}
           className="setting-input"
           placeholder="900"
         />
@@ -388,13 +394,13 @@ const TelemetryConfigSection: React.FC<TelemetryConfigSectionProps> = ({
                 )}
               </span>
             </label>
-            <input
+            <NumberInput
               id="airQualityInterval"
-              type="number"
-              min="0"
-              max="4294967295"
+              min={0}
+              max={4294967295}
+              integer
               value={airQualityInterval}
-              onChange={(e) => setAirQualityInterval(parseInt(e.target.value) || 0)}
+              onChange={setAirQualityInterval}
               className="setting-input"
               placeholder="900"
             />
@@ -435,13 +441,13 @@ const TelemetryConfigSection: React.FC<TelemetryConfigSectionProps> = ({
                 )}
               </span>
             </label>
-            <input
+            <NumberInput
               id="powerUpdateInterval"
-              type="number"
-              min="0"
-              max="4294967295"
+              min={0}
+              max={4294967295}
+              integer
               value={powerUpdateInterval}
-              onChange={(e) => setPowerUpdateInterval(parseInt(e.target.value) || 0)}
+              onChange={setPowerUpdateInterval}
               className="setting-input"
               placeholder="900"
             />
@@ -501,13 +507,13 @@ const TelemetryConfigSection: React.FC<TelemetryConfigSectionProps> = ({
                     )}
                   </span>
                 </label>
-                <input
+                <NumberInput
                   id="healthUpdateInterval"
-                  type="number"
-                  min="0"
-                  max="4294967295"
+                  min={0}
+                  max={4294967295}
+                  integer
                   value={healthUpdateInterval}
-                  onChange={(e) => setHealthUpdateInterval(parseInt(e.target.value) || 0)}
+                  onChange={setHealthUpdateInterval}
                   className="setting-input"
                   placeholder="900"
                 />
@@ -534,6 +540,7 @@ const TelemetryConfigSection: React.FC<TelemetryConfigSectionProps> = ({
         </div>
       )}
     </div>
+    </NumberInputScope>
   );
 };
 

@@ -27,6 +27,7 @@ import {
 import MeshCorePacketDetailModal from './MeshCorePacketDetailModal';
 import './MeshCorePacketMonitor.css';
 import styles from './MeshCorePacketMonitorView.module.css';
+import { NumberInput } from '../common/NumberInput';
 
 interface MeshCorePacketMonitorViewProps {
   baseUrl: string;
@@ -374,22 +375,27 @@ export const MeshCorePacketMonitorView: React.FC<MeshCorePacketMonitorViewProps>
               </label>
               <label>
                 {t('meshcore.packets.maxCount', 'Max count')}
-                <input
-                  type="number"
+                <NumberInput
                   min={100}
                   max={isIngestSource ? 500000 : 50000}
                   step={100}
+                  integer
                   value={maxCount}
-                  onChange={e => setMaxCount(Number(e.target.value))}
-                  onBlur={() => void saveSettings(
-                    // Retention is per-source-kind (#5040): an MQTT region feed
-                    // writes one row per observer and has its own key, so
-                    // writing the device key here would silently cap the wrong
-                    // sources.
-                    isIngestSource
-                      ? { meshcore_mqtt_packet_log_max_count: String(maxCount) }
-                      : { meshcore_packet_log_max_count: String(maxCount) },
-                  )}
+                  onChange={setMaxCount}
+                  onBlur={e => {
+                    // Saves on blur. Invalid text was never emitted, so there
+                    // is nothing new to send: skip the write (#5649).
+                    if (e.currentTarget.dataset.numberInvalid === 'true') return;
+                    void saveSettings(
+                      // Retention is per-source-kind (#5040): an MQTT region feed
+                      // writes one row per observer and has its own key, so
+                      // writing the device key here would silently cap the wrong
+                      // sources.
+                      isIngestSource
+                        ? { meshcore_mqtt_packet_log_max_count: String(maxCount) }
+                        : { meshcore_packet_log_max_count: String(maxCount) },
+                    );
+                  }}
                 />
               </label>
               {isIngestSource && (
@@ -402,13 +408,16 @@ export const MeshCorePacketMonitorView: React.FC<MeshCorePacketMonitorViewProps>
               )}
               <label>
                 {t('meshcore.packets.maxAgeHours', 'Max age (h)')}
-                <input
-                  type="number"
+                <NumberInput
                   min={1}
                   max={720}
+                  integer
                   value={maxAgeHours}
-                  onChange={e => setMaxAgeHours(Number(e.target.value))}
-                  onBlur={() => void saveSettings({ meshcore_packet_log_max_age_hours: String(maxAgeHours) })}
+                  onChange={setMaxAgeHours}
+                  onBlur={e => {
+                    if (e.currentTarget.dataset.numberInvalid === 'true') return;
+                    void saveSettings({ meshcore_packet_log_max_age_hours: String(maxAgeHours) });
+                  }}
                 />
               </label>
             </>

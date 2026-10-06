@@ -16,6 +16,7 @@ import GeofenceFieldInput from './GeofenceFieldInput';
 import NodeMultiFieldInput, { type NodeMultiOption } from './NodeMultiFieldInput';
 import AutomationIdFieldInput, { type AutomationOption } from './AutomationIdFieldInput';
 import TokenTextField from './TokenTextField';
+import { NumberInput } from '../common/NumberInput';
 import type { GeofenceShape } from '../auto-responder/types';
 import { UiIcon } from '../icons';
 import { parseNodeNumInput } from '../../utils/nodeHelpers';
@@ -236,6 +237,13 @@ function ResultTargetInput({ params, onPatch, variables, duplicateOutputNames }:
   );
 }
 
+/** A stored number param as the field's value: '' / absent / junk shows blank. */
+function numberParamValue(value: unknown): number | null {
+  if (value === '' || value === null || value === undefined) return null;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
 export function FieldInput({ field, value, onChange, variables, sources, channels, scripts, regions, nodes, triggerType, automations = [], params, onPatch, steps, duplicateOutputNames }: FieldInputProps) {
   const { t } = useTranslation();
   let control;
@@ -255,8 +263,10 @@ export function FieldInput({ field, value, onChange, variables, sources, channel
       );
       break;
     case 'number':
-      control = <input className="ae-input" type="number" value={(value ?? '') as string} placeholder={placeholder}
-        onChange={(e) => onChange(e.target.value === '' ? '' : Number(e.target.value))} />;
+      // Every catalog number param is optional: blank is stored as '' and the
+      // server falls back to its default. Only numbers are ever emitted.
+      control = <NumberInput className="ae-input" value={numberParamValue(value)} placeholder={placeholder}
+        step="any" allowEmpty onChange={(v) => onChange(v === null ? '' : v)} />;
       break;
     case 'nodeNum':
       control = <NodeNumFieldInput value={value} onChange={onChange} placeholder={placeholder} />;

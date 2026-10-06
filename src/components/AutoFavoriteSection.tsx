@@ -8,6 +8,9 @@ import { useSaveBar } from '../hooks/useSaveBar';
 import { useToast } from './ToastContainer';
 import { ROLE_NAMES, DeviceRole } from '../constants';
 import { UiIcon } from './icons';
+import { NumberInput } from './common/NumberInput';
+import { NumberInputScope } from './common/NumberInputScope';
+import { useNumberInputScope } from './common/numberInputScope';
 
 interface AutoFavoriteSectionProps {
   baseUrl: string;
@@ -121,7 +124,9 @@ const AutoFavoriteSection: React.FC<AutoFavoriteSectionProps> = ({ baseUrl }) =>
     }
   }, [initialSettings]);
 
+  const numberScope = useNumberInputScope();
   useSaveBar({
+    numberScope,
     id: 'auto-favorite',
     sectionName: t('automation.auto_favorite.title', 'Auto Favorite'),
     hasChanges,
@@ -139,6 +144,7 @@ const AutoFavoriteSection: React.FC<AutoFavoriteSectionProps> = ({ baseUrl }) =>
   };
 
   return (
+    <NumberInputScope scope={numberScope}>
     <>
       <div className="automation-section-header" style={{
         display: 'flex',
@@ -279,13 +285,13 @@ const AutoFavoriteSection: React.FC<AutoFavoriteSectionProps> = ({ baseUrl }) =>
                 'Nodes not heard from within this period are automatically unfavorited.')}
             </span>
           </label>
-          <input
+          <NumberInput
             id="autoFavoriteStaleHours"
-            type="number"
             min={1}
             max={720}
             value={localStaleHours}
-            onChange={(e) => setLocalStaleHours(parseInt(e.target.value) || 72)}
+            integer
+            onChange={setLocalStaleHours}
             disabled={!localEnabled}
             className="setting-input"
           />
@@ -412,6 +418,7 @@ const AutoFavoriteSection: React.FC<AutoFavoriteSectionProps> = ({ baseUrl }) =>
         )}
       </div>
     </>
+    </NumberInputScope>
   );
 };
 

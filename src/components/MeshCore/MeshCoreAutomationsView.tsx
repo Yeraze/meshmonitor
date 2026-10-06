@@ -3,6 +3,9 @@ import { Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useCsrfFetch } from '../../hooks/useCsrfFetch';
 import { useSaveBar } from '../../hooks/useSaveBar';
+import { NumberInput } from '../common/NumberInput';
+import { NumberInputScope } from '../common/NumberInputScope';
+import { useNumberInputScope } from '../common/numberInputScope';
 import { useAuth } from '../../contexts/AuthContext';
 import { MeshCoreAutoAckSection } from './MeshCoreAutoAckSection';
 import { MeshCoreAutoAnnounceSection } from './MeshCoreAutoAnnounceSection';
@@ -135,7 +138,9 @@ export const MeshCoreAutomationsView: React.FC<MeshCoreAutomationsViewProps> = (
     setHasChanges(false);
   }, [initial]);
 
+  const numberScope = useNumberInputScope();
   useSaveBar({
+    numberScope,
     id: 'meshcore-auto-pathfinding',
     sectionName: t('meshcore.automation.pathfinding.title', 'Auto-Pathfinding'),
     hasChanges,
@@ -149,6 +154,7 @@ export const MeshCoreAutomationsView: React.FC<MeshCoreAutomationsViewProps> = (
   };
 
   return (
+    <NumberInputScope scope={numberScope}>
     <div className="meshcore-automations-view" style={{ padding: '1rem', overflowY: 'auto', height: '100%', minHeight: 0 }}>
       <h1 style={{ marginBottom: '1.5rem' }}>
         {t('meshcore.automation.title', 'Automations')}
@@ -283,13 +289,13 @@ export const MeshCoreAutomationsView: React.FC<MeshCoreAutomationsViewProps> = (
                 'Delay between each individual path discovery or neighbor request to avoid flooding the mesh.')}
             </span>
           </label>
-          <input
+          <NumberInput
             id="pathfindingInterval"
-            type="number"
             min={3}
             max={60}
+            integer
             value={settings.intervalMinutes}
-            onChange={(e) => update('intervalMinutes', Math.max(3, parseInt(e.target.value) || 3))}
+            onChange={(v) => update('intervalMinutes', v)}
             disabled={!canWrite}
             className="setting-input"
             style={{ width: '100px', marginTop: '0.5rem' }}
@@ -305,13 +311,13 @@ export const MeshCoreAutomationsView: React.FC<MeshCoreAutomationsViewProps> = (
                 'How often the full cycle runs. All eligible contacts are processed in each cycle.')}
             </span>
           </label>
-          <input
+          <NumberInput
             id="pathfindingRepeat"
-            type="number"
             min={1}
             max={168}
+            integer
             value={settings.repeatHours}
-            onChange={(e) => update('repeatHours', Math.max(1, parseInt(e.target.value) || 1))}
+            onChange={(v) => update('repeatHours', v)}
             disabled={!canWrite}
             className="setting-input"
             style={{ width: '100px', marginTop: '0.5rem' }}
@@ -344,5 +350,6 @@ export const MeshCoreAutomationsView: React.FC<MeshCoreAutomationsViewProps> = (
       {/* Timer Triggers Section */}
       <MeshCoreTimerTriggersSection baseUrl={baseUrl} sourceId={sourceId} receiveOnly={receiveOnly} />
     </div>
+    </NumberInputScope>
   );
 };
