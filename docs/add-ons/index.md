@@ -60,7 +60,7 @@ The Mesh widget ships in Widgets Pack **v1.4.3**. Treat it as a preview. Before 
 
 - **Use a read-only user.** An API token can do whatever its creator can do. Create a user that can only read, and issue the token from that account.
 - **The token sits in plain text** in Zebar's storage on your computer, not in the system keychain.
-- **Each open widget polls every 60 seconds** with three GET requests: `/api/v1/sources/{source}/nodes`, `/status`, and `/messages?limit=25`.
+- **Each open widget polls every 60 seconds** with three GET requests: `/api/v1/sources/{source}/nodes`, `/api/v1/sources/{source}/status`, and `/api/v1/sources/{source}/messages?limit=25`.
 :::
 
 **By [maxhayim](https://github.com/maxhayim/widgets-pack)**
