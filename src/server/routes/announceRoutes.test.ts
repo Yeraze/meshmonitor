@@ -3,7 +3,10 @@ import request from 'supertest';
 import express from 'express';
 import announceRoutes from './announceRoutes.js';
 
+// The gate refuses a named source that resolves to another source's manager,
+// so the manager carries the id these tests name.
 const mockManager = vi.hoisted(() => ({
+  sourceId: 'src1',
   sendAutoAnnouncement: vi.fn(),
   previewAnnouncementMessage: vi.fn(),
 }));

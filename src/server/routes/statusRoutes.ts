@@ -1,7 +1,8 @@
 import { Router, Request, Response } from 'express';
-import { requireAuth, requirePermission } from '../auth/authMiddleware.js';
+import { requireAuth } from '../auth/authMiddleware.js';
 import { logger } from '../../utils/logger.js';
-import { resolveSourceManager } from '../utils/resolveSourceManager.js';
+import { fail } from '../utils/apiResponse.js';
+import { requireDeviceSourcePermission, getDeviceSourceTarget } from '../utils/deviceSourcePermission.js';
 import { sourceManagerRegistry } from '../sourceManagerRegistry.js';
 
 const router = Router();
@@ -51,14 +52,16 @@ router.get('/virtual-node/status', requireAuth(), (_req: Request, res: Response)
   }
 });
 
-router.get('/automation/airtime-status', requirePermission('automation', 'read'), async (req: Request, res: Response) => {
+// Reads ONE source's device: the `sourceId` in the query, or the primary
+// Meshtastic source when it is omitted. `automation` is a per-source
+// permission, so it is checked on that source. A source with no live
+// Meshtastic device is refused; it used to report the primary's airtime.
+router.get('/automation/airtime-status', requireDeviceSourcePermission('automation', 'read', 'query', 'airtime status'), async (req: Request, res: Response) => {
   try {
-    const airtimeSourceId = (req.query.sourceId as string) || null;
-    const mgr = resolveSourceManager(airtimeSourceId);
-    res.json(await mgr.getAirtimeCutoffStatus());
+    res.json(await getDeviceSourceTarget(req).manager.getAirtimeCutoffStatus());
   } catch (error) {
     logger.error('Error fetching airtime cutoff status:', error);
-    res.status(500).json({ error: 'Failed to fetch airtime cutoff status' });
+    fail(res, 500, 'INTERNAL_ERROR', 'Failed to fetch airtime cutoff status');
   }
 });
 
