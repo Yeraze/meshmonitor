@@ -109,17 +109,10 @@
   font-size: 0.8rem;
 }
 
-/* Body row: sub-toolbar + content */
-.pageBody {
-  display: flex;
-  flex: 1;
-  min-height: 0;
-  overflow: hidden;
-}
-
+/* The body row (sub-toolbar + content) is the shared SourceNavLayout
+   (src/components/nav/SourceNavLayout.module.css), which also owns the phone
+   flip to a bottom bar. Only the pane's own scrolling is set here. */
 .content {
-  flex: 1;
-  min-width: 0;
   overflow: auto;
 }
 
