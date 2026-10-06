@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
-import { clampInt, LAST_HEARD_FILTER_HOURS_MAX } from './automationInputLimits';
+import { LAST_HEARD_FILTER_HOURS_MAX } from './automationInputLimits';
 import { useTranslation } from 'react-i18next';
 import { useToast } from './ToastContainer';
 import { useCsrfFetch } from '../hooks/useCsrfFetch';
@@ -7,6 +7,9 @@ import { useSourceQuery } from '../hooks/useSourceQuery';
 import { DEVICE_ROLES } from '../utils/deviceRole';
 import { useSaveBar } from '../hooks/useSaveBar';
 import { UiIcon } from './icons';
+import { NumberInput } from './common/NumberInput';
+import { NumberInputScope } from './common/NumberInputScope';
+import { useNumberInputScope } from './common/numberInputScope';
 
 interface AutoLocalStatsSectionProps {
   intervalMinutes: number;
@@ -368,7 +371,9 @@ const AutoLocalStatsSection: React.FC<AutoLocalStatsSectionProps> = ({
       filterLastHeardEnabled, filterLastHeardHours, scheduleEnabled, scheduleStart, scheduleEnd,
       baseUrl, csrfFetch, showToast, t, onIntervalChange, sourceQuery]);
 
+  const numberScope = useNumberInputScope();
   useSaveBar({
+    numberScope,
     id: 'auto-localstats',
     sectionName: t('automation.auto_localstats.title'),
     hasChanges,
@@ -410,6 +415,7 @@ const AutoLocalStatsSection: React.FC<AutoLocalStatsSectionProps> = ({
   };
 
   return (
+    <NumberInputScope scope={numberScope}>
     <>
       <div className="automation-section-header" style={{
         display: 'flex', alignItems: 'center', marginBottom: '1.5rem',
@@ -446,13 +452,13 @@ const AutoLocalStatsSection: React.FC<AutoLocalStatsSectionProps> = ({
             {t('automation.auto_localstats.interval')}
             <span className="setting-description">{t('automation.auto_localstats.interval_description')}</span>
           </label>
-          <input
+          <NumberInput
             id="remoteLocalStatsInterval"
-            type="number"
-            min="5"
-            max="1440"
+            min={5}
+            max={1440}
             value={localInterval}
-            onChange={(e) => setLocalInterval(Math.max(5, parseInt(e.target.value) || 5))}
+            integer
+            onChange={setLocalInterval}
             disabled={!localEnabled}
             className="setting-input"
           />
@@ -643,8 +649,9 @@ const AutoLocalStatsSection: React.FC<AutoLocalStatsSectionProps> = ({
                     <div style={{ padding: '0.5rem', background: 'var(--color-bg)', borderRadius: '4px' }}>
                       <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '12px' }}>
                         {t('automation.auto_localstats.last_heard_within')}
-                        <input type="number" value={filterLastHeardHours}
-                          onChange={(e) => setFilterLastHeardHours(clampInt(e.target.value, 1, LAST_HEARD_FILTER_HOURS_MAX))}
+                        <NumberInput value={filterLastHeardHours}
+                          integer
+                          onChange={setFilterLastHeardHours}
                           min={1} max={LAST_HEARD_FILTER_HOURS_MAX} style={{ width: '80px', padding: '2px 4px' }} />
                         {t('automation.auto_localstats.hours')}
                       </label>
@@ -679,6 +686,7 @@ const AutoLocalStatsSection: React.FC<AutoLocalStatsSectionProps> = ({
         </div>
       </div>
     </>
+    </NumberInputScope>
   );
 };
 

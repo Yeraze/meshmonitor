@@ -69,13 +69,19 @@ describe('GnssDopPanel', () => {
     vi.restoreAllMocks();
   });
 
-  it('clamps the elevation-mask input into [0, 90]', () => {
+  it('keeps the elevation mask inside [0, 90]: out-of-range text is flagged, not applied', () => {
+    // #5649: the keystroke is no longer clamped (95 used to become 90). The
+    // field turns invalid and nothing outside the range reaches the caller.
     render(<GnssDopPanel open params={params()} meta={null} onChange={onChange} onClose={onClose} />);
     const mask = screen.getByTestId('gnss-dop-mask');
     fireEvent.change(mask, { target: { value: '95' } });
-    expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({ maskDeg: 90 }));
+    expect(mask).toHaveAttribute('aria-invalid', 'true');
     fireEvent.change(mask, { target: { value: '-5' } });
-    expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({ maskDeg: 0 }));
+    expect(mask).toHaveAttribute('aria-invalid', 'true');
+    expect(onChange).not.toHaveBeenCalled();
+    fireEvent.change(mask, { target: { value: '90' } });
+    expect(mask).not.toHaveAttribute('aria-invalid');
+    expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({ maskDeg: 90 }));
   });
 
   it('offers GPS enabled and the other constellations disabled (v1)', () => {

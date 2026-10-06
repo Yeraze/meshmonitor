@@ -5,6 +5,8 @@ export interface SaveBarSection {
   sectionName: string;
   hasChanges: boolean;
   isSaving: boolean;
+  /** A number field in the section is blank or out of range (#5649): Save is blocked. */
+  invalid?: boolean;
   onSave: () => Promise<void>;
   onDismiss: () => void;
   /**

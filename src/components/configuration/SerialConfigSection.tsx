@@ -2,6 +2,9 @@ import React, { useState, useRef, useMemo, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { UiIcon } from '../icons';
 import { useSaveBar } from '../../hooks/useSaveBar';
+import { NumberInput } from '../common/NumberInput';
+import { NumberInputScope } from '../common/NumberInputScope';
+import { useNumberInputScope } from '../common/numberInputScope';
 import ModuleAvailabilityNotice from './ModuleAvailabilityNotice';
 
 // Serial baud rate options matching protobuf enum
@@ -123,16 +126,19 @@ const SerialConfigSection: React.FC<SerialConfigSectionProps> = ({
   }, [onSave, enabled, echo, rxd, txd, baud, timeout, mode, overrideConsoleSerialPort]);
 
   // Register with SaveBar
+  const numberScope = useNumberInputScope();
   useSaveBar({
     id: 'serial-config',
     sectionName: t('serial_config.title'),
     hasChanges,
     isSaving,
     onSave: handleSave,
-    onDismiss: resetChanges
+    onDismiss: resetChanges,
+    numberScope
   });
 
   return (
+    <NumberInputScope scope={numberScope}>
     <div className="settings-section">
       <h3 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
         {t('serial_config.title')}
@@ -264,13 +270,13 @@ const SerialConfigSection: React.FC<SerialConfigSectionProps> = ({
                   {t('serial_config.rxd')}
                   <span className="setting-description">{t('serial_config.rxd_description')}</span>
                 </label>
-                <input
+                <NumberInput
                   id="serialRxd"
-                  type="number"
-                  min="0"
-                  max="255"
+                  min={0}
+                  max={255}
                   value={rxd}
-                  onChange={(e) => setRxd(parseInt(e.target.value) || 0)}
+                  integer
+                  onChange={setRxd}
                   className="setting-input"
                   style={{ width: '100px' }}
                 />
@@ -282,13 +288,13 @@ const SerialConfigSection: React.FC<SerialConfigSectionProps> = ({
                   {t('serial_config.txd')}
                   <span className="setting-description">{t('serial_config.txd_description')}</span>
                 </label>
-                <input
+                <NumberInput
                   id="serialTxd"
-                  type="number"
-                  min="0"
-                  max="255"
+                  min={0}
+                  max={255}
                   value={txd}
-                  onChange={(e) => setTxd(parseInt(e.target.value) || 0)}
+                  integer
+                  onChange={setTxd}
                   className="setting-input"
                   style={{ width: '100px' }}
                 />
@@ -300,13 +306,13 @@ const SerialConfigSection: React.FC<SerialConfigSectionProps> = ({
                   {t('serial_config.timeout')}
                   <span className="setting-description">{t('serial_config.timeout_description')}</span>
                 </label>
-                <input
+                <NumberInput
                   id="serialTimeout"
-                  type="number"
-                  min="0"
-                  max="65535"
+                  min={0}
+                  max={65535}
                   value={timeout}
-                  onChange={(e) => setTimeout(parseInt(e.target.value) || 0)}
+                  integer
+                  onChange={setTimeout}
                   className="setting-input"
                   placeholder="0"
                 />
@@ -333,6 +339,7 @@ const SerialConfigSection: React.FC<SerialConfigSectionProps> = ({
         </>
       )}
     </div>
+    </NumberInputScope>
   );
 };
 

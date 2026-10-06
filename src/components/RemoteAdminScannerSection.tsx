@@ -7,6 +7,9 @@ import { useSaveBar } from '../hooks/useSaveBar';
 import { useSettings } from '../contexts/SettingsContext';
 import { formatDateTime } from '../utils/datetime';
 import { UiIcon } from './icons';
+import { NumberInput } from './common/NumberInput';
+import { NumberInputScope } from './common/NumberInputScope';
+import { useNumberInputScope } from './common/numberInputScope';
 
 interface RemoteAdminScannerSectionProps {
   baseUrl: string;
@@ -226,6 +229,9 @@ const RemoteAdminScannerSection: React.FC<RemoteAdminScannerSectionProps> = ({
     }
   }, [localEnabled, localInterval, expirationHours, scheduleEnabled, scheduleStart, scheduleEnd, baseUrl, csrfFetch, showToast, t]);
 
+  // #5649: a blank or out-of-range scan interval / expiry must never be saved.
+  const numberScope = useNumberInputScope();
+
   // Register with SaveBar
   useSaveBar({
     id: 'remote-admin-scanner',
@@ -233,7 +239,8 @@ const RemoteAdminScannerSection: React.FC<RemoteAdminScannerSectionProps> = ({
     hasChanges,
     isSaving,
     onSave: handleSaveForSaveBar,
-    onDismiss: resetChanges
+    onDismiss: resetChanges,
+    numberScope
   });
 
   if (isLoading) {
@@ -250,7 +257,7 @@ const RemoteAdminScannerSection: React.FC<RemoteAdminScannerSectionProps> = ({
   }
 
   return (
-    <>
+    <NumberInputScope scope={numberScope}>
       <div className="automation-section-header" style={{
         display: 'flex',
         alignItems: 'center',
@@ -334,13 +341,13 @@ const RemoteAdminScannerSection: React.FC<RemoteAdminScannerSectionProps> = ({
               {t('automation.remote_admin_scanner.interval_description')}
             </span>
           </label>
-          <input
+          <NumberInput
+            integer
             id="scannerInterval"
-            type="number"
-            min="1"
-            max="60"
+            min={1}
+            max={60}
             value={localInterval}
-            onChange={(e) => setLocalInterval(parseInt(e.target.value) || 5)}
+            onChange={setLocalInterval}
             disabled={!localEnabled}
             className="setting-input"
           />
@@ -353,13 +360,13 @@ const RemoteAdminScannerSection: React.FC<RemoteAdminScannerSectionProps> = ({
               {t('automation.remote_admin_scanner.expiration_hours_description')}
             </span>
           </label>
-          <input
+          <NumberInput
+            integer
             id="scannerExpiration"
-            type="number"
-            min="24"
-            max="168"
+            min={24}
+            max={168}
             value={expirationHours}
-            onChange={(e) => setExpirationHours(parseInt(e.target.value) || 168)}
+            onChange={setExpirationHours}
             disabled={!localEnabled}
             className="setting-input"
           />
@@ -490,7 +497,7 @@ const RemoteAdminScannerSection: React.FC<RemoteAdminScannerSectionProps> = ({
           </div>
         )}
       </div>
-    </>
+    </NumberInputScope>
   );
 };
 

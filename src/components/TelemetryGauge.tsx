@@ -1,5 +1,6 @@
 import React from 'react';
 import type { WidgetRange } from '../hooks/useWidgetRange';
+import { NumberInput } from './common/NumberInput';
 
 interface TelemetryGaugeProps {
   value: number;
@@ -73,15 +74,9 @@ const TelemetryGauge: React.FC<TelemetryGaugeProps> = ({
   const displayMin = formatValue ? formatValue(min) : String(min);
   const displayMax = formatValue ? formatValue(max) : String(max);
 
-  const handleMinChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const v = parseFloat(e.target.value);
-    if (!isNaN(v)) onRangeChange({ min: v, max });
-  };
+  const handleMinChange = (v: number) => onRangeChange({ min: v, max });
 
-  const handleMaxChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const v = parseFloat(e.target.value);
-    if (!isNaN(v)) onRangeChange({ min, max: v });
-  };
+  const handleMaxChange = (v: number) => onRangeChange({ min, max: v });
 
   return (
     <div className="telemetry-gauge">
@@ -127,16 +122,16 @@ const TelemetryGauge: React.FC<TelemetryGaugeProps> = ({
       </svg>
       {canEditRange && (
         <div className="gauge-range-row">
-          <input
-            type="number"
+          <NumberInput
+            step="any"
             className="gauge-range-input"
             value={min}
             onChange={handleMinChange}
             aria-label="Gauge minimum"
           />
           <span className="gauge-range-dash">───</span>
-          <input
-            type="number"
+          <NumberInput
+            step="any"
             className="gauge-range-input"
             value={max}
             onChange={handleMaxChange}

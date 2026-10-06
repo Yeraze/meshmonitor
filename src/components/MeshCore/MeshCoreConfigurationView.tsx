@@ -8,6 +8,9 @@ import { MeshCoreLocalConsole } from './MeshCoreLocalConsole';
 import { MeshCoreObserverSection } from './MeshCoreObserverSection';
 import { CollapsibleSection } from './CollapsibleSection';
 import { UiIcon } from '../icons';
+import { NumberInput } from '../common/NumberInput';
+import { NumberInputScope } from '../common/NumberInputScope';
+import { useNumberInputScope } from '../common/numberInputScope';
 
 const TELEMETRY_MODE_OPTIONS: TelemetryMode[] = ['always', 'device', 'never'];
 // MeshCore device types: COMPANION=1, REPEATER=2, ROOM_SERVER=3.
@@ -48,6 +51,10 @@ export const MeshCoreConfigurationView: React.FC<MeshCoreConfigurationViewProps>
   const [cr, setCr] = useState<number>(local?.radioCr ?? 5);
   const [lat, setLat] = useState<number>(local?.latitude ?? 0);
   const [lon, setLon] = useState<number>(local?.longitude ?? 0);
+  // #5649: one scope per Save button, so a blank frequency does not block the
+  // location Save and the reverse.
+  const locationNumbers = useNumberInputScope();
+  const radioNumbers = useNumberInputScope();
   const [advLoc, setAdvLoc] = useState<boolean>(local?.advLocPolicy === 1);
   const [telBase, setTelBase] = useState<TelemetryMode>(local?.telemetryModeBase ?? 'always');
   const [telLoc, setTelLoc] = useState<TelemetryMode>(local?.telemetryModeLoc ?? 'always');
@@ -67,6 +74,8 @@ export const MeshCoreConfigurationView: React.FC<MeshCoreConfigurationViewProps>
     const preset = RADIO_PRESETS.find(p => p.id === id);
     if (!preset) return;
     setFreq(preset.freq);
+    // The preset may equal the saved frequency, which the field cannot see as a change.
+    radioNumbers.reset();
     setBw(preset.bw);
     setSf(preset.sf);
     setCr(preset.cr);
@@ -130,6 +139,8 @@ export const MeshCoreConfigurationView: React.FC<MeshCoreConfigurationViewProps>
   };
 
   const handleSaveRadio = async () => {
+    // #5649: a blank or out-of-range frequency must never reach the radio.
+    if (radioNumbers.invalid) return;
     setSavingRadio(true);
     setRadioSaved(false);
     const ok = await actions.setRadioParams({ freq, bw, sf, cr });
@@ -152,7 +163,7 @@ export const MeshCoreConfigurationView: React.FC<MeshCoreConfigurationViewProps>
   };
 
   const handleSaveLocation = async () => {
-    if (!Number.isFinite(lat) || !Number.isFinite(lon)) return;
+    if (!Number.isFinite(lat) || !Number.isFinite(lon) || locationNumbers.invalid) return;
     setSavingLocation(true);
     setLocationSaved(false);
     const ok = await actions.setCoords(lat, lon);
@@ -256,29 +267,31 @@ export const MeshCoreConfigurationView: React.FC<MeshCoreConfigurationViewProps>
         <div className="form-row">
           <div>
             <label htmlFor="mc-cfg-lat">{t('meshcore.config.latitude', 'Latitude')}</label>
-            <input
-              id="mc-cfg-lat"
-              type="number"
-              step="0.000001"
-              min={-90}
-              max={90}
-              value={lat}
-              onChange={e => setLat(parseFloat(e.target.value))}
-              disabled={!connected || savingLocation}
-            />
+            <NumberInputScope scope={locationNumbers}>
+              <NumberInput
+                id="mc-cfg-lat"
+                step={0.000001}
+                min={-90}
+                max={90}
+                value={lat}
+                onChange={setLat}
+                disabled={!connected || savingLocation}
+              />
+            </NumberInputScope>
           </div>
           <div>
             <label htmlFor="mc-cfg-lon">{t('meshcore.config.longitude', 'Longitude')}</label>
-            <input
-              id="mc-cfg-lon"
-              type="number"
-              step="0.000001"
-              min={-180}
-              max={180}
-              value={lon}
-              onChange={e => setLon(parseFloat(e.target.value))}
-              disabled={!connected || savingLocation}
-            />
+            <NumberInputScope scope={locationNumbers}>
+              <NumberInput
+                id="mc-cfg-lon"
+                step={0.000001}
+                min={-180}
+                max={180}
+                value={lon}
+                onChange={setLon}
+                disabled={!connected || savingLocation}
+              />
+            </NumberInputScope>
           </div>
         </div>
         <div>
@@ -286,6 +299,7 @@ export const MeshCoreConfigurationView: React.FC<MeshCoreConfigurationViewProps>
             onClick={() => void handleSaveLocation()}
             disabled={
               !connected || savingLocation || !Number.isFinite(lat) || !Number.isFinite(lon) || !canWriteConfig
+              || locationNumbers.invalid
             }
           >
             {savingLocation
@@ -338,16 +352,17 @@ export const MeshCoreConfigurationView: React.FC<MeshCoreConfigurationViewProps>
         <div className="form-row">
           <div>
             <label htmlFor="mc-cfg-freq">{t('meshcore.config.frequency', 'Frequency (MHz)')}</label>
-            <input
-              id="mc-cfg-freq"
-              type="number"
-              step="0.001"
-              min={137}
-              max={1020}
-              value={freq}
-              onChange={e => setFreq(parseFloat(e.target.value))}
-              disabled={!connected || savingRadio}
-            />
+            <NumberInputScope scope={radioNumbers}>
+              <NumberInput
+                id="mc-cfg-freq"
+                step={0.001}
+                min={137}
+                max={1020}
+                value={freq}
+                onChange={setFreq}
+                disabled={!connected || savingRadio}
+              />
+            </NumberInputScope>
           </div>
           <div>
             <label htmlFor="mc-cfg-bw">{t('meshcore.config.bandwidth', 'Bandwidth (kHz)')}</label>
@@ -393,7 +408,7 @@ export const MeshCoreConfigurationView: React.FC<MeshCoreConfigurationViewProps>
         <div>
           <button
             onClick={() => void handleSaveRadio()}
-            disabled={!connected || savingRadio || !canWriteConfig}
+            disabled={!connected || savingRadio || !canWriteConfig || radioNumbers.invalid}
           >
             {savingRadio
               ? t('meshcore.config.saving', 'Saving…')

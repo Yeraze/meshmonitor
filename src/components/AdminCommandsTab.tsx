@@ -43,6 +43,9 @@ import {
 import { buildNodeOptions, filterNodes, sortNodeOptionsForRemoteAdmin, type NodeOption } from './admin-commands/nodeOptionsUtils';
 import { createEmptyChannelSlot, createChannelFromResponse, isRetryableChannelError, countLoadedChannels } from './admin-commands/channelLoadingUtils';
 import { UiIcon } from './icons';
+import { NumberInput } from './common/NumberInput';
+import { NumberInputScope } from './common/NumberInputScope';
+import { useNumberInputScope } from './common/numberInputScope';
 
 interface AdminCommandsTabProps {
   nodes: any[];
@@ -129,6 +132,11 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
 
   // Command-specific state
   const [rebootSeconds, setRebootSeconds] = useState(5);
+  // #5649: one scope per independently-sent group. A blank or out-of-range
+  // number field blocks only its own button, so nothing invalid goes to the node.
+  const loraNumbers = useNumberInputScope();
+  const channelNumbers = useNumberInputScope();
+  const rebootNumbers = useNumberInputScope();
   const [isRoleDropdownOpen, setIsRoleDropdownOpen] = useState(false);
 
   // Channel Config state - for editing a specific channel
@@ -2316,22 +2324,21 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
               {t('admin_commands.retry_attempts_description', 'Leave blank to use the Remote Administration setting. Only a command that gets no reply is retried — one the node refuses is never resent. Range 1–10.')}
             </span>
           </label>
-          <input
+          <NumberInput
             id="adminRetryAttemptsOverride"
-            type="number"
-            min="1"
-            max="10"
+            min={1}
+            max={10}
             className="setting-input"
             style={{ width: '120px' }}
             placeholder={t('admin_commands.retry_attempts_placeholder', 'default')}
-            value={retryAttemptsOverride ?? ''}
+            integer
+            allowEmpty
+            value={retryAttemptsOverride}
             disabled={isExecuting}
-            onChange={(e) => {
-              const raw = e.target.value.trim();
-              if (raw === '') { setRetryAttemptsOverride(null); return; }
-              const n = parseInt(raw, 10);
-              setRetryAttemptsOverride(Number.isNaN(n) ? null : Math.min(10, Math.max(1, n)));
-            }}
+            onChange={setRetryAttemptsOverride}
+            // #5649: out-of-range text is outlined, not clamped. While it is
+            // outlined no override applies, so commands use the configured default.
+            onValidityChange={(valid) => { if (!valid) setRetryAttemptsOverride(null); }}
           />
         </div>
         <div className="setting-item">
@@ -2565,6 +2572,7 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
         title={t('admin_commands.radio_configuration', 'Radio Configuration')}
       >
         {/* LoRa Config Section */}
+        <NumberInputScope scope={loraNumbers}>
         <CollapsibleSection
           id="admin-lora-config"
           title={t('admin_commands.lora_configuration')}
@@ -2608,10 +2616,10 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
           <>
             <div className="setting-item">
               <label>{t('admin_commands.bandwidth')}</label>
-              <input
-                type="number"
+              <NumberInput
+                integer
                 value={configState.lora.bandwidth}
-                onChange={(e) => setLoRaConfig({ bandwidth: Number(e.target.value) })}
+                onChange={(v) => setLoRaConfig({ bandwidth: v })}
                 disabled={isExecuting}
                 className="setting-input"
                 style={{ width: '200px' }}
@@ -2619,12 +2627,12 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
             </div>
             <div className="setting-item">
               <label>{t('admin_commands.spread_factor')}</label>
-              <input
-                type="number"
-                min="7"
-                max="12"
+              <NumberInput
+                integer
+                min={7}
+                max={12}
                 value={configState.lora.spreadFactor}
-                onChange={(e) => setLoRaConfig({ spreadFactor: Number(e.target.value) })}
+                onChange={(v) => setLoRaConfig({ spreadFactor: v })}
                 disabled={isExecuting}
                 className="setting-input"
                 style={{ width: '200px' }}
@@ -2632,10 +2640,10 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
             </div>
             <div className="setting-item">
               <label>Coding Rate</label>
-              <input
-                type="number"
+              <NumberInput
+                integer
                 value={configState.lora.codingRate}
-                onChange={(e) => setLoRaConfig({ codingRate: Number(e.target.value) })}
+                onChange={(v) => setLoRaConfig({ codingRate: v })}
                 disabled={isExecuting}
                 className="setting-input"
                 style={{ width: '200px' }}
@@ -2643,10 +2651,10 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
             </div>
             <div className="setting-item">
               <label>Frequency Offset</label>
-              <input
-                type="number"
+              <NumberInput
+                step="any"
                 value={configState.lora.frequencyOffset}
-                onChange={(e) => setLoRaConfig({ frequencyOffset: Number(e.target.value) })}
+                onChange={(v) => setLoRaConfig({ frequencyOffset: v })}
                 disabled={isExecuting}
                 className="setting-input"
                 style={{ width: '200px' }}
@@ -2654,10 +2662,10 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
             </div>
             <div className="setting-item">
               <label>Override Frequency (Hz)</label>
-              <input
-                type="number"
+              <NumberInput
+                step="any"
                 value={configState.lora.overrideFrequency}
-                onChange={(e) => setLoRaConfig({ overrideFrequency: Number(e.target.value) })}
+                onChange={(v) => setLoRaConfig({ overrideFrequency: v })}
                 disabled={isExecuting}
                 className="setting-input"
                 style={{ width: '200px' }}
@@ -2683,12 +2691,13 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
         </div>
         <div className="setting-item">
           <label>Hop Limit (1-7)</label>
-          <input
-            type="number"
-            min="1"
-            max="7"
+          <NumberInput
+            integer
+            min={1}
+            alsoValid={[0]}
+            max={7}
             value={configState.lora.hopLimit}
-            onChange={(e) => setLoRaConfig({ hopLimit: Number(e.target.value) })}
+            onChange={(v) => setLoRaConfig({ hopLimit: v })}
             disabled={isExecuting}
             className="setting-input"
             style={{ width: '200px' }}
@@ -2696,10 +2705,10 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
         </div>
         <div className="setting-item">
           <label>TX Power</label>
-          <input
-            type="number"
+          <NumberInput
+            integer
             value={configState.lora.txPower}
-            onChange={(e) => setLoRaConfig({ txPower: Number(e.target.value) })}
+            onChange={(v) => setLoRaConfig({ txPower: v })}
             disabled={isExecuting}
             className="setting-input"
             style={{ width: '200px' }}
@@ -2707,10 +2716,10 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
         </div>
         <div className="setting-item">
           <label>Channel Number</label>
-          <input
-            type="number"
+          <NumberInput
+            integer
             value={configState.lora.channelNum}
-            onChange={(e) => setLoRaConfig({ channelNum: Number(e.target.value) })}
+            onChange={(v) => setLoRaConfig({ channelNum: v })}
             disabled={isExecuting}
             className="setting-input"
             style={{ width: '200px' }}
@@ -2837,17 +2846,18 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
         </div>
         <button
           className="save-button"
-          onClick={handleSetLoRaConfig}
-          disabled={isExecuting || selectedNodeNum === null || remoteAdminBlocked}
+          onClick={loraNumbers.invalid ? undefined : handleSetLoRaConfig}
+          disabled={isExecuting || selectedNodeNum === null || remoteAdminBlocked || loraNumbers.invalid}
           title={remoteAdminBlocked ? t('tx_disabled.remote_admin_notice') : undefined}
           style={{
-            opacity: (isExecuting || selectedNodeNum === null || remoteAdminBlocked) ? 0.5 : 1,
-            cursor: (isExecuting || selectedNodeNum === null || remoteAdminBlocked) ? 'not-allowed' : 'pointer'
+            opacity: (isExecuting || selectedNodeNum === null || remoteAdminBlocked || loraNumbers.invalid) ? 0.5 : 1,
+            cursor: (isExecuting || selectedNodeNum === null || remoteAdminBlocked || loraNumbers.invalid) ? 'not-allowed' : 'pointer'
           }}
         >
           {isExecuting ? t('common.saving') : t('admin_commands.save_lora_config')}
         </button>
       </CollapsibleSection>
+        </NumberInputScope>
 
         {/* Security Config Section */}
         <CollapsibleSection
@@ -3742,16 +3752,18 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
                 {t('admin_commands.position_precision')}
                 <span className="setting-description">{t('admin_commands.position_precision_description')}</span>
               </label>
-              <input
-                type="number"
-                min="0"
-                max="32"
+              <NumberInputScope scope={channelNumbers}>
+              <NumberInput
+                integer
+                min={0}
+                max={32}
                 value={channelPositionPrecision}
-                onChange={(e) => setChannelPositionPrecision(Number(e.target.value))}
+                onChange={setChannelPositionPrecision}
                 disabled={isExecuting}
                 className="setting-input"
                 style={{ width: '100%' }}
               />
+              </NumberInputScope>
               {/*
                 #4705: firmware 2.8+ silently clamps position precision to 15
                 bits on known-public channels. Warn rather than cap the input —
@@ -3786,11 +3798,11 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
             <div style={{ display: 'flex', gap: '1rem', marginTop: '1.5rem' }}>
               <button
                 className="save-button"
-                onClick={handleSaveChannel}
-                disabled={isExecuting || selectedNodeNum === null}
+                onClick={channelNumbers.invalid ? undefined : handleSaveChannel}
+                disabled={isExecuting || selectedNodeNum === null || channelNumbers.invalid}
                 style={{
-                  opacity: (isExecuting || selectedNodeNum === null) ? 0.5 : 1,
-                  cursor: (isExecuting || selectedNodeNum === null) ? 'not-allowed' : 'pointer'
+                  opacity: (isExecuting || selectedNodeNum === null || channelNumbers.invalid) ? 0.5 : 1,
+                  cursor: (isExecuting || selectedNodeNum === null || channelNumbers.invalid) ? 'not-allowed' : 'pointer'
                 }}
               >
                 {isExecuting ? t('common.saving') : t('admin_commands.save_channel')}
@@ -3941,20 +3953,22 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
           <div style={{ display: 'flex', gap: '1rem', alignItems: 'center', flexWrap: 'wrap' }}>
             <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--color-text)' }}>
               {t('admin_commands.reboot_delay_label')}:
-              <input
-                type="number"
-                min="0"
-                max="60"
+              <NumberInputScope scope={rebootNumbers}>
+              <NumberInput
+                integer
+                min={0}
+                max={60}
                 value={rebootSeconds}
-                onChange={(e) => setRebootSeconds(Number(e.target.value))}
+                onChange={setRebootSeconds}
                 disabled={isExecuting || selectedNodeNum === null}
                 className="setting-input"
                 style={{ width: '100px' }}
               />
+              </NumberInputScope>
             </label>
             <button
-              onClick={handleReboot}
-              disabled={isExecuting || selectedNodeNum === null || remoteAdminBlocked}
+              onClick={rebootNumbers.invalid ? undefined : handleReboot}
+              disabled={isExecuting || selectedNodeNum === null || remoteAdminBlocked || rebootNumbers.invalid}
               title={remoteAdminBlocked ? t('tx_disabled.remote_admin_notice') : undefined}
               style={{
                 backgroundColor: '#ff6b6b',

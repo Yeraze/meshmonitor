@@ -1,6 +1,9 @@
 import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { UiIcon } from './icons';
+import { NumberInput } from './common/NumberInput';
+import { NumberInputScope } from './common/NumberInputScope';
+import { useNumberInputScope } from './common/numberInputScope';
 import { useSettings } from '../contexts/SettingsContext';
 import { validateTileUrl, isVectorTileUrl, type CustomTileset } from '../config/tilesets';
 import { testTileServer, formatTileSize, autodetectTileServer, type TileTestResult, type AutodetectResult, type AutodetectProgress } from '../utils/tileServerTest';
@@ -32,6 +35,7 @@ export function CustomTilesetManager() {
   const [formData, setFormData] = useState<FormData>(DEFAULT_FORM_DATA);
   const [urlValidation, setUrlValidation] = useState<{ valid: boolean; error?: string } | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const numberScope = useNumberInputScope();
   const [isTesting, setIsTesting] = useState(false);
   const [testResult, setTestResult] = useState<TileTestResult | null>(null);
   const [isAutodetecting, setIsAutodetecting] = useState(false);
@@ -95,6 +99,11 @@ export function CustomTilesetManager() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    // #5649: a blank or out-of-range zoom is never saved.
+    if (numberScope.invalid) {
+      return;
+    }
 
     if (!validateForm()) {
       return;
@@ -295,6 +304,7 @@ export function CustomTilesetManager() {
       )}
 
       {(isAdding || editingId) && (
+        <NumberInputScope scope={numberScope}>
         <form onSubmit={handleSubmit} className="tileset-form">
           <div className="form-header">
             <h4>{editingId ? t('tileset_manager.edit_form_title') : t('tileset_manager.add_form_title')}</h4>
@@ -548,13 +558,13 @@ export function CustomTilesetManager() {
             <label htmlFor="tileset-maxzoom">
               {t('tileset_manager.field_max_zoom')} <span className="required">*</span>
             </label>
-            <input
+            <NumberInput
               id="tileset-maxzoom"
-              type="number"
               value={formData.maxZoom}
-              onChange={(e) => setFormData({ ...formData, maxZoom: parseInt(e.target.value) || 18 })}
+              onChange={(maxZoom) => setFormData({ ...formData, maxZoom })}
               min={1}
               max={22}
+              integer
               required
               disabled={isSaving}
             />
@@ -593,7 +603,7 @@ export function CustomTilesetManager() {
           </div>
 
           <div className="form-actions">
-            <button type="submit" className="btn-save" disabled={isSaving}>
+            <button type="submit" className="btn-save" disabled={isSaving || numberScope.invalid}>
               {isSaving ? t('common.saving') : t('common.save')}
             </button>
             <button
@@ -606,6 +616,7 @@ export function CustomTilesetManager() {
             </button>
           </div>
         </form>
+        </NumberInputScope>
       )}
 
       {!isAdding && !editingId && (

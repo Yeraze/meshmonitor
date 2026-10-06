@@ -77,6 +77,7 @@ const { saveBarCapture } = vi.hoisted(() => ({
       isSaving: boolean;
       onSave: () => Promise<void>;
       onDismiss: () => void;
+      numberScope?: { invalid: boolean };
     },
   },
 }));
@@ -267,13 +268,19 @@ describe('MeshCoreNodeDisplaySection', () => {
     const input = document.getElementById('maxNodeAge') as HTMLInputElement;
     fireEvent.change(input, { target: { value: '' } });
 
-    // The draft falls back to the last-known-good value rather than NaN, so
-    // the input never renders the literal string "NaN"...
-    expect(input.value).toBe('48');
+    // #5649: the field stays blank and is marked invalid (it used to snap back
+    // to 48, which is what made it impossible to clear and retype). It never
+    // renders the literal string "NaN", and the SaveBar is told to block Save.
+    expect(input.value).toBe('');
+    expect(input).toHaveAttribute('aria-invalid', 'true');
+    expect(saveBarCapture.current?.numberScope?.invalid).toBe(true);
+
+    // Even if a save ran anyway, the blank was never handed to the section:
+    // the draft still holds the last valid number.
 
     await saveBarCapture.current!.onSave();
 
-    // ...and the saved payload carries that same numeric string, not "NaN".
+    // The payload carries that numeric string, not "" and not "NaN".
     await waitFor(() => expect(csrfFetchMock).toHaveBeenCalled());
     const [, opts] = csrfFetchMock.mock.calls[0];
     const body = JSON.parse(opts.body);

@@ -1,6 +1,7 @@
 import React from 'react';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../contexts/AuthContext';
+import { NumberInput } from './common/NumberInput';
 
 interface PacketMonitorSettingsProps {
   enabled: boolean;
@@ -45,14 +46,14 @@ const PacketMonitorSettings: React.FC<PacketMonitorSettingsProps> = ({
             {t('packet_monitor.settings.max_packets_desc')}
           </span>
         </label>
-        <input
+        <NumberInput
           id="packet-max-count"
-          type="number"
-          min="100"
-          max="10000"
-          step="100"
+          min={100}
+          max={10000}
+          step={100}
+          integer
           value={maxCount}
-          onChange={(e) => onMaxCountChange(parseInt(e.target.value, 10))}
+          onChange={onMaxCountChange}
           className="setting-input"
           disabled={!canWrite || !enabled}
         />
@@ -65,13 +66,13 @@ const PacketMonitorSettings: React.FC<PacketMonitorSettingsProps> = ({
             {t('packet_monitor.settings.keep_packets_desc')}
           </span>
         </label>
-        <input
+        <NumberInput
           id="packet-max-age"
-          type="number"
-          min="1"
-          max="168"
+          min={1}
+          max={168}
+          integer
           value={maxAgeHours}
-          onChange={(e) => onMaxAgeHoursChange(parseInt(e.target.value, 10))}
+          onChange={onMaxAgeHoursChange}
           className="setting-input"
           disabled={!canWrite || !enabled}
         />

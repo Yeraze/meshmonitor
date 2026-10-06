@@ -2,6 +2,9 @@ import React, { useState, useRef, useMemo, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { UiIcon } from '../icons';
 import { useSaveBar } from '../../hooks/useSaveBar';
+import { NumberInput } from '../common/NumberInput';
+import { NumberInputScope } from '../common/NumberInputScope';
+import { useNumberInputScope } from '../common/numberInputScope';
 
 interface PowerConfigSectionProps {
   // Power saving
@@ -100,13 +103,15 @@ const PowerConfigSection: React.FC<PowerConfigSectionProps> = ({
       waitBluetoothSecs, sdsSecs, lsSecs, minWakeSecs, deviceBatteryInaAddress]);
 
   // Register with SaveBar
+  const numberScope = useNumberInputScope();
   useSaveBar({
     id: 'power-config',
     sectionName: t('power_config.title'),
     hasChanges,
     isSaving,
     onSave: handleSave,
-    onDismiss: resetChanges
+    onDismiss: resetChanges,
+    numberScope
   });
 
   // Convert seconds to human-readable format
@@ -119,6 +124,7 @@ const PowerConfigSection: React.FC<PowerConfigSectionProps> = ({
   };
 
   return (
+    <NumberInputScope scope={numberScope}>
     <div className="settings-section">
       <h3 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
         {t('power_config.title')}
@@ -165,13 +171,13 @@ const PowerConfigSection: React.FC<PowerConfigSectionProps> = ({
             )}
           </span>
         </label>
-        <input
+        <NumberInput
           id="onBatteryShutdownAfterSecs"
-          type="number"
-          min="0"
-          max="4294967295"
+          min={0}
+          max={4294967295}
+          integer
           value={onBatteryShutdownAfterSecs}
-          onChange={(e) => setOnBatteryShutdownAfterSecs(parseInt(e.target.value) || 0)}
+          onChange={setOnBatteryShutdownAfterSecs}
           className="setting-input"
           placeholder="0"
         />
@@ -183,14 +189,13 @@ const PowerConfigSection: React.FC<PowerConfigSectionProps> = ({
           {t('power_config.adc_multiplier')}
           <span className="setting-description">{t('power_config.adc_multiplier_description')}</span>
         </label>
-        <input
+        <NumberInput
           id="adcMultiplierOverride"
-          type="number"
-          min="0"
-          max="10"
-          step="0.01"
+          min={0}
+          max={10}
+          step={0.01}
           value={adcMultiplierOverride}
-          onChange={(e) => setAdcMultiplierOverride(parseFloat(e.target.value) || 0)}
+          onChange={setAdcMultiplierOverride}
           className="setting-input"
           placeholder="0"
         />
@@ -209,13 +214,13 @@ const PowerConfigSection: React.FC<PowerConfigSectionProps> = ({
             )}
           </span>
         </label>
-        <input
+        <NumberInput
           id="waitBluetoothSecs"
-          type="number"
-          min="0"
-          max="4294967295"
+          min={0}
+          max={4294967295}
+          integer
           value={waitBluetoothSecs}
-          onChange={(e) => setWaitBluetoothSecs(parseInt(e.target.value) || 0)}
+          onChange={setWaitBluetoothSecs}
           className="setting-input"
           placeholder="60"
         />
@@ -234,13 +239,13 @@ const PowerConfigSection: React.FC<PowerConfigSectionProps> = ({
             )}
           </span>
         </label>
-        <input
+        <NumberInput
           id="sdsSecs"
-          type="number"
-          min="0"
-          max="4294967295"
+          min={0}
+          max={4294967295}
+          integer
           value={sdsSecs}
-          onChange={(e) => setSdsSecs(parseInt(e.target.value) || 0)}
+          onChange={setSdsSecs}
           className="setting-input"
           placeholder="31536000"
         />
@@ -259,13 +264,13 @@ const PowerConfigSection: React.FC<PowerConfigSectionProps> = ({
             )}
           </span>
         </label>
-        <input
+        <NumberInput
           id="lsSecs"
-          type="number"
-          min="0"
-          max="4294967295"
+          min={0}
+          max={4294967295}
+          integer
           value={lsSecs}
-          onChange={(e) => setLsSecs(parseInt(e.target.value) || 0)}
+          onChange={setLsSecs}
           className="setting-input"
           placeholder="300"
         />
@@ -277,13 +282,13 @@ const PowerConfigSection: React.FC<PowerConfigSectionProps> = ({
           {t('power_config.min_wake')}
           <span className="setting-description">{t('power_config.min_wake_description')}</span>
         </label>
-        <input
+        <NumberInput
           id="minWakeSecs"
-          type="number"
-          min="0"
-          max="4294967295"
+          min={0}
+          max={4294967295}
+          integer
           value={minWakeSecs}
-          onChange={(e) => setMinWakeSecs(parseInt(e.target.value) || 0)}
+          onChange={setMinWakeSecs}
           className="setting-input"
           placeholder="10"
         />
@@ -325,13 +330,13 @@ const PowerConfigSection: React.FC<PowerConfigSectionProps> = ({
               {t('power_config.ina_address')}
               <span className="setting-description">{t('power_config.ina_address_description')}</span>
             </label>
-            <input
+            <NumberInput
               id="deviceBatteryInaAddress"
-              type="number"
-              min="0"
-              max="127"
+              min={0}
+              max={127}
+              integer
               value={deviceBatteryInaAddress}
-              onChange={(e) => setDeviceBatteryInaAddress(parseInt(e.target.value) || 0)}
+              onChange={setDeviceBatteryInaAddress}
               className="setting-input"
               placeholder="0"
             />
@@ -339,6 +344,7 @@ const PowerConfigSection: React.FC<PowerConfigSectionProps> = ({
         </div>
       )}
     </div>
+    </NumberInputScope>
   );
 };
 

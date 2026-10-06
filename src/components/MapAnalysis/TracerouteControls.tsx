@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useMapAnalysisCtx } from './MapAnalysisContext';
+import { NumberInput } from '../common/NumberInput';
 import { getTracerouteOptions, type TracerouteLayerOptions } from '../../hooks/useMapAnalysisConfig';
 
 const DIRECTIONS: Array<{ key: TracerouteLayerOptions['directionMode']; label: string }> = [
@@ -57,30 +58,24 @@ export default function TracerouteControls() {
           </label>
 
           <div className="map-analysis-popover-label">Min occurrences</div>
-          <input
-            type="number"
+          <NumberInput
+            integer
             min={1}
             className="map-analysis-tr-num"
             value={opts.minOccurrences}
             aria-label="Minimum occurrences"
-            onChange={(e) => {
-              const v = Math.max(1, Math.floor(Number(e.target.value) || 1));
-              update({ minOccurrences: v });
-            }}
+            onChange={(v) => update({ minOccurrences: v })}
           />
 
           <div className="map-analysis-popover-label">Min SNR (dB)</div>
-          <input
-            type="number"
+          <NumberInput
+            allowEmpty
             step={1}
             className="map-analysis-tr-num"
             placeholder="off"
-            value={opts.minSnr ?? ''}
+            value={opts.minSnr}
             aria-label="Minimum SNR in dB"
-            onChange={(e) => {
-              const raw = e.target.value;
-              update({ minSnr: raw === '' ? null : Number(raw) });
-            }}
+            onChange={(v) => update({ minSnr: v })}
           />
         </div>
       )}

@@ -28,6 +28,9 @@ import { useSaveBar } from '../../hooks/useSaveBar';
 import { logger } from '../../utils/logger';
 import { UiIcon } from '../icons';
 import styles from './ReticulumSettingsView.module.css';
+import { NumberInput } from '../common/NumberInput';
+import { NumberInputScope } from '../common/NumberInputScope';
+import { useNumberInputScope } from '../common/numberInputScope';
 
 interface ReticulumSettingsViewProps {
   /** Source UUID. Accepted for interface parity with the other Reticulum
@@ -96,7 +99,9 @@ export const ReticulumSettingsView: React.FC<ReticulumSettingsViewProps> = ({ so
     setValue(initial);
   }, [initial]);
 
+  const numberScope = useNumberInputScope();
   useSaveBar({
+    numberScope,
     id: 'reticulum-settings',
     sectionName: t('reticulum.settings.title', 'Reticulum Settings'),
     hasChanges,
@@ -106,6 +111,7 @@ export const ReticulumSettingsView: React.FC<ReticulumSettingsViewProps> = ({ so
   });
 
   return (
+    <NumberInputScope scope={numberScope}>
     <div className={styles.view} data-testid="reticulum-settings-view">
       <section className={styles.card}>
         <header className={styles.cardHeader}>
@@ -123,22 +129,20 @@ export const ReticulumSettingsView: React.FC<ReticulumSettingsViewProps> = ({ so
               'Maximum announced destinations kept per source. Once a source exceeds this, the oldest non-favorite destinations are pruned. Favorites are never pruned. This cap applies to every Reticulum source.',
             )}
           </p>
-          <input
+          <NumberInput
             id="reticulumDestinationsMax"
-            type="number"
             value={value}
             min={MIN_DESTINATIONS_MAX}
             max={MAX_DESTINATIONS_MAX}
+            integer
             disabled={!canWrite || !loaded}
-            onChange={(e) => {
-              const next = parseInt(e.target.value, 10);
-              setValue(Number.isFinite(next) ? Math.max(MIN_DESTINATIONS_MAX, Math.min(MAX_DESTINATIONS_MAX, next)) : MIN_DESTINATIONS_MAX);
-            }}
+            onChange={setValue}
             className={styles.input}
           />
         </div>
       </section>
     </div>
+    </NumberInputScope>
   );
 };
 

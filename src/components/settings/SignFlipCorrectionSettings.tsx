@@ -8,6 +8,7 @@
 import React from 'react';
 import { useTranslation } from 'react-i18next';
 import { UiIcon } from '../icons';
+import { NumberInput } from '../common/NumberInput';
 import { kmToMiles } from '../../utils/distance';
 import { SIGN_FLIP_RANGE_KM, clampSignFlipRangeKm, isSignFlipReferenceValid } from '../../utils/signFlipPosition';
 import type { DistanceUnit } from '../../contexts/SettingsContext';
@@ -85,18 +86,15 @@ export const SignFlipCorrectionSettings: React.FC<SignFlipCorrectionSettingsProp
         <label htmlFor="signFlipCorrectionRange">
           {t('settings.sign_flip.range_label', 'Range ({{unit}})', { unit: unitLabel })}
         </label>
-        <input
+        <NumberInput
           id="signFlipCorrectionRange"
-          type="number"
           min={displayMin}
           max={displayMax}
-          step="1"
+          step={1}
+          integer
           disabled={disabled || !enabled}
           value={displayRange}
-          onChange={(e) => {
-            const v = parseInt(e.target.value, 10);
-            if (!Number.isNaN(v)) onRangeKmChange(isMiles ? v * KM_PER_MILE : v);
-          }}
+          onChange={(v) => onRangeKmChange(isMiles ? v * KM_PER_MILE : v)}
           onBlur={() => onRangeKmChange(clampSignFlipRangeKm(rangeKm))}
           className="setting-input"
         />

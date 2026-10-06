@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
-import { clampInt, HOP_FILTER_MAX, LAST_HEARD_FILTER_HOURS_MAX } from './automationInputLimits';
+import { HOP_FILTER_MAX, LAST_HEARD_FILTER_HOURS_MAX } from './automationInputLimits';
 import { useTranslation } from 'react-i18next';
 import { useToast } from './ToastContainer';
 import { useCsrfFetch } from '../hooks/useCsrfFetch';
@@ -8,6 +8,9 @@ import { DEVICE_ROLES } from '../utils/deviceRole';
 import { getHardwareModelName } from '../utils/hardwareModel';
 import { useSaveBar } from '../hooks/useSaveBar';
 import { UiIcon } from './icons';
+import { NumberInput } from './common/NumberInput';
+import { NumberInputScope } from './common/NumberInputScope';
+import { useNumberInputScope } from './common/numberInputScope';
 
 interface AutoTracerouteSectionProps {
   intervalMinutes: number;
@@ -790,7 +793,9 @@ const AutoTracerouteSection: React.FC<AutoTracerouteSectionProps> = ({
   }, [localEnabled, localInterval, filterEnabled, selectedNodeNums, filterChannels, filterRoles, filterHwModels, filterNameRegex, filterNodesEnabled, filterChannelsEnabled, filterRolesEnabled, filterHwModelsEnabled, filterRegexEnabled, filterNodesMode, filterChannelsMode, filterRolesMode, filterHwModelsMode, filterRegexMode, filterLastHeardEnabled, filterLastHeardHours, filterHopsEnabled, filterHopsMin, filterHopsMax, expirationHours, sortByHops, scheduleEnabled, scheduleStart, scheduleEnd, baseUrl, csrfFetch, showToast, t, onIntervalChange, sourceQuery]);
 
   // Register with SaveBar
+  const numberScope = useNumberInputScope();
   useSaveBar({
+    numberScope,
     id: 'auto-traceroute',
     sectionName: t('automation.auto_traceroute.title'),
     hasChanges,
@@ -864,6 +869,7 @@ const AutoTracerouteSection: React.FC<AutoTracerouteSectionProps> = ({
   };
 
   return (
+    <NumberInputScope scope={numberScope}>
     <>
       <div className="automation-section-header" style={{
         display: 'flex',
@@ -911,13 +917,13 @@ const AutoTracerouteSection: React.FC<AutoTracerouteSectionProps> = ({
               {t('automation.auto_traceroute.interval_description')}
             </span>
           </label>
-          <input
+          <NumberInput
             id="tracerouteInterval"
-            type="number"
-            min="3"
-            max="60"
+            min={3}
+            max={60}
             value={localInterval}
-            onChange={(e) => setLocalInterval(Math.max(3, parseInt(e.target.value) || 3))}
+            integer
+            onChange={setLocalInterval}
             disabled={!localEnabled}
             className="setting-input"
           />
@@ -930,13 +936,13 @@ const AutoTracerouteSection: React.FC<AutoTracerouteSectionProps> = ({
               {t('automation.auto_traceroute.expiration_hours_description')}
             </span>
           </label>
-          <input
+          <NumberInput
             id="expirationHours"
-            type="number"
-            min="0"
-            max="168"
+            min={0}
+            max={168}
             value={expirationHours}
-            onChange={(e) => setExpirationHours(Math.max(0, parseInt(e.target.value) || 0))}
+            integer
+            onChange={setExpirationHours}
             disabled={!localEnabled}
             className="setting-input"
           />
@@ -1389,10 +1395,10 @@ const AutoTracerouteSection: React.FC<AutoTracerouteSectionProps> = ({
                   <div style={{ padding: '0.5rem', background: 'var(--color-bg)', borderRadius: '4px' }}>
                     <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '12px' }}>
                       {t('automation.auto_traceroute.last_heard_within')}
-                      <input
-                        type="number"
+                      <NumberInput
                         value={filterLastHeardHours}
-                        onChange={(e) => setFilterLastHeardHours(clampInt(e.target.value, 1, LAST_HEARD_FILTER_HOURS_MAX))}
+                        integer
+                        onChange={setFilterLastHeardHours}
                         min={1}
                         max={LAST_HEARD_FILTER_HOURS_MAX}
                         style={{ width: '80px', padding: '2px 4px' }}
@@ -1431,10 +1437,10 @@ const AutoTracerouteSection: React.FC<AutoTracerouteSectionProps> = ({
                   <div style={{ padding: '0.5rem', background: 'var(--color-bg)', borderRadius: '4px', display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '12px' }}>
                     <label style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
                       {t('automation.auto_traceroute.min_hops')}
-                      <input
-                        type="number"
+                      <NumberInput
                         value={filterHopsMin}
-                        onChange={(e) => setFilterHopsMin(Math.max(0, parseInt(e.target.value) || 0))}
+                        integer
+                        onChange={setFilterHopsMin}
                         min={0}
                         max={filterHopsMax}
                         style={{ width: '60px', padding: '2px 4px' }}
@@ -1443,10 +1449,10 @@ const AutoTracerouteSection: React.FC<AutoTracerouteSectionProps> = ({
                     <span>—</span>
                     <label style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
                       {t('automation.auto_traceroute.max_hops')}
-                      <input
-                        type="number"
+                      <NumberInput
                         value={filterHopsMax}
-                        onChange={(e) => setFilterHopsMax(Math.max(filterHopsMin, parseInt(e.target.value) || 0))}
+                        integer
+                        onChange={setFilterHopsMax}
                         min={filterHopsMin}
                         max={HOP_FILTER_MAX}
                         style={{ width: '60px', padding: '2px 4px' }}
@@ -1601,6 +1607,7 @@ const AutoTracerouteSection: React.FC<AutoTracerouteSectionProps> = ({
         )}
       </div>
     </>
+    </NumberInputScope>
   );
 };
 

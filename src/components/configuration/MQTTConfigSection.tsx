@@ -8,6 +8,9 @@ import { useAuth } from '../../contexts/AuthContext';
 import apiService from '../../services/api';
 import { logger } from '../../utils/logger';
 import ModuleAvailabilityNotice from './ModuleAvailabilityNotice';
+import { NumberInput } from '../common/NumberInput';
+import { NumberInputScope } from '../common/NumberInputScope';
+import { useNumberInputScope } from '../common/numberInputScope';
 
 interface MQTTConfigSectionProps {
   mqttEnabled: boolean;
@@ -273,16 +276,19 @@ const MQTTConfigSection: React.FC<MQTTConfigSectionProps> = ({
   // source, the inputs are disabled (see fieldset below) so there shouldn't
   // be changes; this is belt-and-suspenders so a stale local state can't
   // make the SaveBar offer a "Save" action that will 403 server-side.
+  const numberScope = useNumberInputScope();
   useSaveBar({
     id: 'mqtt-config',
     sectionName: t('mqtt_config.title'),
     hasChanges: canEditMqtt && hasChanges,
     isSaving,
     onSave: handleSave,
-    onDismiss: resetChanges
+    onDismiss: resetChanges,
+    numberScope
   });
 
   return (
+    <NumberInputScope scope={numberScope}>
     <div className="settings-section">
       <h3 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
         {t('mqtt_config.title')}
@@ -593,13 +599,13 @@ const MQTTConfigSection: React.FC<MQTTConfigSectionProps> = ({
                   {t('mqtt_config.map_publish_interval')}
                   <span className="setting-description">{t('mqtt_config.map_publish_interval_description')}</span>
                 </label>
-                <input
+                <NumberInput
                   id="mapPublishIntervalSecs"
-                  type="number"
-                  min="0"
-                  max="4294967295"
+                  min={0}
+                  max={4294967295}
+                  integer
                   value={mapPublishIntervalSecs}
-                  onChange={(e) => setMapPublishIntervalSecs(parseInt(e.target.value) || 0)}
+                  onChange={setMapPublishIntervalSecs}
                   className="setting-input"
                   style={{ width: '150px' }}
                 />
@@ -609,13 +615,14 @@ const MQTTConfigSection: React.FC<MQTTConfigSectionProps> = ({
                   {t('mqtt_config.map_position_precision')}
                   <span className="setting-description">{t('mqtt_config.map_position_precision_description')}</span>
                 </label>
-                <input
+                <NumberInput
                   id="mapPositionPrecision"
-                  type="number"
-                  min="10"
-                  max="19"
+                  min={10}
+                  max={19}
+                  alsoValid={[0]}
+                  integer
                   value={mapPositionPrecision}
-                  onChange={(e) => setMapPositionPrecision(parseInt(e.target.value) || 0)}
+                  onChange={setMapPositionPrecision}
                   className="setting-input"
                   style={{ width: '100px' }}
                 />
@@ -626,6 +633,7 @@ const MQTTConfigSection: React.FC<MQTTConfigSectionProps> = ({
       )}
       </fieldset>
     </div>
+    </NumberInputScope>
   );
 };
 

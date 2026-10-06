@@ -9,6 +9,9 @@
 import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { UiIcon } from './icons';
+import { NumberInput } from './common/NumberInput';
+import { NumberInputScope } from './common/NumberInputScope';
+import { useNumberInputScope } from './common/numberInputScope';
 import styles from './AssetTrackingSection.module.css';
 import { useAssetEstimate, useClearAsset, useSetAsset } from '../hooks/useAssetTracking';
 import {
@@ -33,6 +36,7 @@ const AssetTrackingSection: React.FC<AssetTrackingSectionProps> = ({ nodeNum, as
   const setAsset = useSetAsset();
   const clearAsset = useClearAsset();
   const saving = setAsset.isPending || clearAsset.isPending;
+  const numberScope = useNumberInputScope();
 
   // Re-sync when the selected node, or its stored flag, changes.
   useEffect(() => {
@@ -66,7 +70,7 @@ const AssetTrackingSection: React.FC<AssetTrackingSectionProps> = ({ nodeNum, as
   };
 
   const handleSaveDays = () => {
-    if (parsedDays == null || !dirty) return;
+    if (parsedDays == null || !dirty || numberScope.invalid) return;
     setError(null);
     setAsset.mutate({ nodeNum, retentionDays: parsedDays }, { onError: saveError });
   };
@@ -107,23 +111,25 @@ const AssetTrackingSection: React.FC<AssetTrackingSectionProps> = ({ nodeNum, as
               <label htmlFor={`asset-days-${nodeNum}`}>
                 {t('node_details.asset_retention_days', 'Keep history for (days)')}
               </label>
-              <input
-                id={`asset-days-${nodeNum}`}
-                className={styles.daysInput}
-                type="number"
-                min={ASSET_RETENTION_DAYS_RANGE.min}
-                max={ASSET_RETENTION_DAYS_RANGE.max}
-                step={1}
-                value={daysDraft}
-                disabled={saving}
-                onChange={(e) => setDaysDraft(e.target.value)}
-              />
-              <button type="button" className={styles.save} onClick={handleSaveDays} disabled={saving || !dirty}>
+              <NumberInputScope scope={numberScope}>
+                <NumberInput
+                  id={`asset-days-${nodeNum}`}
+                  className={styles.daysInput}
+                  min={ASSET_RETENTION_DAYS_RANGE.min}
+                  max={ASSET_RETENTION_DAYS_RANGE.max}
+                  step={1}
+                  integer
+                  value={daysDraft === '' ? null : Number(daysDraft)}
+                  disabled={saving}
+                  onChange={(v) => setDaysDraft(String(v))}
+                />
+              </NumberInputScope>
+              <button type="button" className={styles.save} onClick={handleSaveDays} disabled={saving || !dirty || numberScope.invalid}>
                 {saving ? t('common.saving', 'Saving…') : t('common.save', 'Save')}
               </button>
             </div>
           )}
-          {enabled && parsedDays == null && (
+          {enabled && (parsedDays == null || numberScope.invalid) && (
             <span className={styles.error}>
               {t('node_details.asset_retention_invalid', {
                 min: ASSET_RETENTION_DAYS_RANGE.min,

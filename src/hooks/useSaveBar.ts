@@ -1,5 +1,6 @@
 import { useEffect, useRef, useCallback } from 'react';
 import { useSaveBarContext, useSaveBarGroup, SaveBarSection } from '../contexts/SaveBarContext';
+import type { NumberInputScopeHandle } from '../components/common/numberInputScope';
 
 export interface UseSaveBarOptions {
   id: string;
@@ -13,6 +14,12 @@ export interface UseSaveBarOptions {
    * Pass `null` to force this section to save individually even inside a group.
    */
   group?: string | null;
+  /**
+   * The section's `useNumberInputScope()` handle (#5649). While any number field
+   * under that scope is blank or out of range the SaveBar will not save this
+   * section, and Dismiss also puts those fields back to their saved values.
+   */
+  numberScope?: NumberInputScopeHandle;
 }
 
 /**
@@ -20,7 +27,9 @@ export interface UseSaveBarOptions {
  * When hasChanges is true, the SaveBar will appear allowing the user to save or dismiss changes.
  */
 export const useSaveBar = (options: UseSaveBarOptions): void => {
-  const { id, sectionName, hasChanges, isSaving, onSave, onDismiss } = options;
+  const { id, sectionName, hasChanges, isSaving, onSave, onDismiss, numberScope } = options;
+  const invalid = numberScope?.invalid ?? false;
+  const resetNumbers = numberScope?.reset;
   const { registerSection, unregisterSection, updateSection, setActiveSection, activeSection } = useSaveBarContext();
   const inheritedGroup = useSaveBarGroup();
   // Resolve the group: an explicit option wins (including `null` to opt out of
@@ -50,8 +59,16 @@ export const useSaveBar = (options: UseSaveBarOptions): void => {
     await onSaveRef.current();
   }, []);
 
+  // The fields never sent their invalid text to the section, so the section's
+  // own dismiss cannot undo it: the scope has to.
+  const resetNumbersRef = useRef(resetNumbers);
+  useEffect(() => {
+    resetNumbersRef.current = resetNumbers;
+  }, [resetNumbers]);
+
   const stableOnDismiss = useCallback(() => {
     onDismissRef.current();
+    resetNumbersRef.current?.();
   }, []);
 
   // Register section on mount, unregister on unmount
@@ -61,6 +78,7 @@ export const useSaveBar = (options: UseSaveBarOptions): void => {
       sectionName,
       hasChanges,
       isSaving,
+      invalid,
       onSave: stableOnSave,
       onDismiss: stableOnDismiss,
       group
@@ -74,8 +92,8 @@ export const useSaveBar = (options: UseSaveBarOptions): void => {
 
   // Update hasChanges and isSaving when they change
   useEffect(() => {
-    updateSection(id, { hasChanges, isSaving });
-  }, [id, hasChanges, isSaving, updateSection]);
+    updateSection(id, { hasChanges, isSaving, invalid });
+  }, [id, hasChanges, isSaving, invalid, updateSection]);
 
   // Auto-select this section when it has changes and nothing else is selected
   useEffect(() => {

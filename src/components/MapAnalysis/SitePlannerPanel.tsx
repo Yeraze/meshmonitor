@@ -20,6 +20,9 @@ import type { PredictedCoverage } from '../map/layers/predictedCoverageGeometry'
 import { radiusLimitedFraction, hasAnyDataGaps, hasAnyPockets } from '../map/layers/predictedCoverageGeometry';
 import type { SitePlannerOrigin } from './SitePlannerOriginController';
 import styles from './SitePlannerPanel.module.css';
+import { NumberInput } from '../common/NumberInput';
+import { NumberInputScope } from '../common/NumberInputScope';
+import { useNumberInputScope } from '../common/numberInputScope';
 
 export interface SitePlannerPanelProps {
   open: boolean;
@@ -43,6 +46,8 @@ export default function SitePlannerPanel({
   const [seededFor, setSeededFor] = useState<string | null | undefined>(undefined);
   const seeded = seededFor === (sourceId ?? null);
   const [running, setRunning] = useState(false);
+  const numberScope = useNumberInputScope();
+  const numbersInvalid = numberScope.invalid;
   const [error, setError] = useState<string | null>(null);
   // Keep the last result so the panel can explain the SHAPE — a circle usually
   // means the link budget outran terrain within the radius, or terrain data was
@@ -75,7 +80,8 @@ export default function SitePlannerPanel({
     setParams((p) => ({ ...p, [key]: value }));
 
   const predict = useCallback(async () => {
-    if (!origin) return;
+    // #5649: never predict on a blank or half-typed parameter.
+    if (!origin || numbersInvalid) return;
     setRunning(true);
     setError(null);
     try {
@@ -103,24 +109,24 @@ export default function SitePlannerPanel({
     } finally {
       setRunning(false);
     }
-  }, [origin, params, onCoverage, t]);
+  }, [origin, params, onCoverage, t, numbersInvalid]);
 
   if (!open) return null;
 
   const num = (key: keyof SitePlannerDefaults, label: string, step = 1) => (
     <label className={styles.sitePlannerField}>
       <span>{label}</span>
-      <input
-        type="number"
+      <NumberInput
         step={step}
         value={params[key] as number}
         data-testid={`site-planner-${key}`}
-        onChange={(e) => update(key, Number(e.target.value) as never)}
+        onChange={(v) => update(key, v as never)}
       />
     </label>
   );
 
   return (
+    <NumberInputScope scope={numberScope}>
     <aside className={styles.sitePlanner} data-testid="site-planner-panel">
       <header className={styles.sitePlannerHead}>
         <h3><UiIcon name="activity" /> {t('site_planner.title')}</h3>
@@ -146,12 +152,11 @@ export default function SitePlannerPanel({
             had no way to correct the band (review, #4746). */}
         <label className={styles.sitePlannerField}>
           <span>{t('site_planner.frequency')}</span>
-          <input
-            type="number"
+          <NumberInput
             step={0.1}
             value={Math.round((params.frequencyHz / 1e6) * 10) / 10}
             data-testid="site-planner-frequencyMhz"
-            onChange={(e) => update('frequencyHz', Number(e.target.value) * 1e6)}
+            onChange={(v) => update('frequencyHz', v * 1e6)}
           />
         </label>
         {num('txHeightM', t('site_planner.tx_height'))}
@@ -178,8 +183,8 @@ export default function SitePlannerPanel({
         <button
           type="button"
           className={styles.sitePlannerRun}
-          disabled={!origin || running}
-          data-testid="site-planner-run"
+          disabled={!origin || running || numbersInvalid}
+            data-testid="site-planner-run"
           onClick={() => void predict()}
         >
           {running ? t('site_planner.running') : t('site_planner.predict')}
@@ -222,5 +227,6 @@ export default function SitePlannerPanel({
 
       <p className={styles.sitePlannerCaveat}>{t('site_planner.caveat')}</p>
     </aside>
+    </NumberInputScope>
   );
 }

@@ -39,6 +39,7 @@ import type { MeasurePoint } from '../../utils/measureDistance';
 import { NodeCard } from '../map/popups/NodeCard';
 import { toNodeCardModel } from '../map/popups/nodeCardModel';
 import { MeshCoreDetails, LastHeardFooter, NodeActions, type NodeActionSpec } from '../map/popups/sections';
+import { NumberInput } from '../common/NumberInput';
 
 const MESHCORE_COLOR = '#cba6f7';
 const NEIGHBOR_COLOR = '#06b6d4';
@@ -604,14 +605,18 @@ export const MeshCoreMap: React.FC<MeshCoreMapProps> = ({ contacts, selectedPubl
                 aria-label="Position history length (hours)"
               />
               <span style={{ fontSize: '0.85em', marginTop: '4px' }}>Keep history (days)</span>
-              <input
-                type="number"
+              <NumberInput
                 min={1}
                 max={365}
                 step={1}
+                integer
                 value={retentionDays}
-                onChange={(e) => setRetentionDays(parseInt(e.target.value, 10) || 1)}
-                onBlur={(e) => saveRetentionDays(parseInt(e.target.value, 10) || 7)}
+                onChange={setRetentionDays}
+                // Saves on blur; blank or out-of-range text is not saved (#5649).
+                onBlur={(e) => {
+                  if (e.currentTarget.dataset.numberInvalid === 'true') return;
+                  saveRetentionDays(retentionDays);
+                }}
                 aria-label="Position history retention (days)"
                 style={{ width: '4rem' }}
               />

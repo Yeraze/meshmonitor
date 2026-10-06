@@ -5,6 +5,9 @@ import { useCsrfFetch } from '../../hooks/useCsrfFetch';
 import { useToast } from '../ToastContainer';
 import { useAuth } from '../../contexts/AuthContext';
 import { useSaveBar } from '../../hooks/useSaveBar';
+import { NumberInput } from '../common/NumberInput';
+import { NumberInputScope } from '../common/NumberInputScope';
+import { useNumberInputScope } from '../common/numberInputScope';
 import { useNodeDisplaySettings, useSignFlipFormSettings, nodeDisplaySettingsQueryKey } from '../../hooks/useNodeDisplaySettings';
 import { useSettingsOptional } from '../../contexts/SettingsContext';
 import SignFlipCorrectionSettings from '../settings/SignFlipCorrectionSettings';
@@ -141,10 +144,9 @@ export const MeshCoreNodeDisplaySection: React.FC<MeshCoreNodeDisplaySectionProp
   }, [draft, initial]);
 
   const update = (key: MeshCoreNodeDisplayNumericKey, value: number) => {
-    // Clearing a number input yields `parseInt(...) === NaN` — fall back to
-    // the current draft value rather than letting NaN reach state, where it
-    // would render as the literal string "NaN" and serialize the same way
-    // in the save POST body (#4433 review).
+    // NumberInput emits valid numbers only (#5649), so NaN cannot arrive from
+    // a field any more. The guard stays as a backstop: NaN in state would
+    // serialize as "NaN" in the save POST body (#4433 review).
     setDraft((prev) => ({ ...prev, [key]: Number.isNaN(value) ? prev[key] : value }));
   };
 
@@ -194,7 +196,9 @@ export const MeshCoreNodeDisplaySection: React.FC<MeshCoreNodeDisplaySectionProp
     setHasChanges(false);
   }, [initial]);
 
+  const numberScope = useNumberInputScope();
   useSaveBar({
+    numberScope,
     id: 'meshcore-node-display',
     sectionName: t('settings.node_display', 'Node Display'),
     hasChanges,
@@ -210,6 +214,7 @@ export const MeshCoreNodeDisplaySection: React.FC<MeshCoreNodeDisplaySectionProp
   const cooldownRange = NODE_DISPLAY_RANGES.inactiveNodeCooldownHours!;
 
   return (
+    <NumberInputScope scope={numberScope}>
     <div className="form-section">
       <h3>{t('settings.node_display', 'Node Display')}</h3>
 
@@ -223,13 +228,13 @@ export const MeshCoreNodeDisplaySection: React.FC<MeshCoreNodeDisplaySectionProp
             )}
           </span>
         </label>
-        <input
+        <NumberInput
           id="maxNodeAge"
-          type="number"
           min={maxNodeAgeRange.min}
           max={maxNodeAgeRange.max}
+          integer
           value={draft.maxNodeAgeHours}
-          onChange={(e) => update('maxNodeAgeHours', parseInt(e.target.value, 10))}
+          onChange={(v) => update('maxNodeAgeHours', v)}
           disabled={!canWrite}
           className="setting-input"
         />
@@ -245,13 +250,13 @@ export const MeshCoreNodeDisplaySection: React.FC<MeshCoreNodeDisplaySectionProp
             )}
           </span>
         </label>
-        <input
+        <NumberInput
           id="maxInfraNodeAge"
-          type="number"
           min={infraAgeRange.min}
           max={infraAgeRange.max}
+          integer
           value={draft.maxInfraNodeAgeHours}
-          onChange={(e) => update('maxInfraNodeAgeHours', parseInt(e.target.value, 10))}
+          onChange={(v) => update('maxInfraNodeAgeHours', v)}
           disabled={!canWrite}
           className="setting-input"
         />
@@ -267,13 +272,13 @@ export const MeshCoreNodeDisplaySection: React.FC<MeshCoreNodeDisplaySectionProp
             )}
           </span>
         </label>
-        <input
+        <NumberInput
           id="inactiveNodeThresholdHours"
-          type="number"
           min={thresholdRange.min}
           max={thresholdRange.max}
+          integer
           value={draft.inactiveNodeThresholdHours}
-          onChange={(e) => update('inactiveNodeThresholdHours', parseInt(e.target.value, 10))}
+          onChange={(v) => update('inactiveNodeThresholdHours', v)}
           disabled={!canWrite}
           className="setting-input"
         />
@@ -289,13 +294,13 @@ export const MeshCoreNodeDisplaySection: React.FC<MeshCoreNodeDisplaySectionProp
             )}
           </span>
         </label>
-        <input
+        <NumberInput
           id="inactiveNodeCheckIntervalMinutes"
-          type="number"
           min={checkIntervalRange.min}
           max={checkIntervalRange.max}
+          integer
           value={draft.inactiveNodeCheckIntervalMinutes}
-          onChange={(e) => update('inactiveNodeCheckIntervalMinutes', parseInt(e.target.value, 10))}
+          onChange={(v) => update('inactiveNodeCheckIntervalMinutes', v)}
           disabled={!canWrite}
           className="setting-input"
         />
@@ -311,13 +316,13 @@ export const MeshCoreNodeDisplaySection: React.FC<MeshCoreNodeDisplaySectionProp
             )}
           </span>
         </label>
-        <input
+        <NumberInput
           id="inactiveNodeCooldownHours"
-          type="number"
           min={cooldownRange.min}
           max={cooldownRange.max}
+          integer
           value={draft.inactiveNodeCooldownHours}
-          onChange={(e) => update('inactiveNodeCooldownHours', parseInt(e.target.value, 10))}
+          onChange={(v) => update('inactiveNodeCooldownHours', v)}
           disabled={!canWrite}
           className="setting-input"
         />
@@ -338,6 +343,7 @@ export const MeshCoreNodeDisplaySection: React.FC<MeshCoreNodeDisplaySectionProp
         onReferenceLongitudeChange={(v) => setDraft((prev) => ({ ...prev, signFlipReferenceLongitude: v }))}
       />
     </div>
+    </NumberInputScope>
   );
 };
 

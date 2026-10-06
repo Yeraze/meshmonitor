@@ -55,13 +55,21 @@ vi.mock('../hooks/useSaveBar', () => ({
       hasChanges: boolean;
       onSave: () => Promise<void>;
       onDismiss: () => void;
+      numberScope?: { invalid: boolean; reset: () => void };
     };
   },
 }));
 
 const { saveBarCapture } = vi.hoisted(() => ({
   saveBarCapture: {
-    current: null as null | { hasChanges: boolean; onSave: () => Promise<void>; onDismiss: () => void },
+    current: null as null | {
+      hasChanges: boolean;
+      onSave: () => Promise<void>;
+      onDismiss: () => void;
+      // #5649: SettingsTab hands the SaveBar its number-field scope; the real
+      // SaveBar refuses to save while `invalid` is true.
+      numberScope?: { invalid: boolean; reset: () => void };
+    },
   },
 }));
 
@@ -576,7 +584,11 @@ describe('SettingsTab — likely-aircraft detection (#5364/#5365 Phase 1 WP5)', 
     expect(globalBody).not.toHaveProperty('aircraftAglThresholdMeters');
   });
 
-  it('clamps an out-of-range AGL threshold into AIRCRAFT_AGL_RANGE on change', async () => {
+  // #5649: these two used to assert a clamp on every keystroke (10 -> 50,
+  // 99999 -> 20000). The limit is unchanged, but it is now enforced by
+  // blocking: the text stays as typed, the field is marked invalid, the draft
+  // keeps the last valid number, and the SaveBar scope reports invalid.
+  it('blocks an out-of-range AGL threshold (AIRCRAFT_AGL_RANGE) instead of clamping the keystroke', async () => {
     render(<SettingsTab {...baseProps} mode="source" />);
 
     const agl = await waitFor(() => {
@@ -585,14 +597,23 @@ describe('SettingsTab — likely-aircraft detection (#5364/#5365 Phase 1 WP5)', 
       return el;
     });
 
-    fireEvent.change(agl, { target: { value: '10' } });
-    await waitFor(() => expect(agl.value).toBe('50')); // below min (50) -> clamped up
+    fireEvent.change(agl, { target: { value: '10' } }); // below min (50)
+    await waitFor(() => expect(saveBarCapture.current!.numberScope!.invalid).toBe(true));
+    expect(agl.value).toBe('10');
+    expect(agl).toHaveAttribute('aria-invalid', 'true');
+    expect(saveBarCapture.current!.hasChanges).toBe(false); // 10 never reached the draft
 
-    fireEvent.change(agl, { target: { value: '99999' } });
-    await waitFor(() => expect(agl.value).toBe('20000')); // above max (20000) -> clamped down
+    fireEvent.change(agl, { target: { value: '99999' } }); // above max (20000)
+    expect(agl.value).toBe('99999');
+    expect(agl).toHaveAttribute('aria-invalid', 'true');
+    expect(saveBarCapture.current!.numberScope!.invalid).toBe(true);
+
+    fireEvent.change(agl, { target: { value: '50' } }); // the floor itself is legal
+    await waitFor(() => expect(saveBarCapture.current!.numberScope!.invalid).toBe(false));
+    expect(agl).not.toHaveAttribute('aria-invalid');
   });
 
-  it('clamps an out-of-range MSL threshold into AIRCRAFT_MSL_RANGE on change', async () => {
+  it('blocks an out-of-range MSL threshold (AIRCRAFT_MSL_RANGE) instead of clamping the keystroke', async () => {
     render(<SettingsTab {...baseProps} mode="source" />);
 
     const msl = await waitFor(() => {
@@ -601,11 +622,17 @@ describe('SettingsTab — likely-aircraft detection (#5364/#5365 Phase 1 WP5)', 
       return el;
     });
 
-    fireEvent.change(msl, { target: { value: '10' } });
-    await waitFor(() => expect(msl.value).toBe('500')); // below min (500) -> clamped up
+    fireEvent.change(msl, { target: { value: '10' } }); // below min (500)
+    await waitFor(() => expect(saveBarCapture.current!.numberScope!.invalid).toBe(true));
+    expect(msl.value).toBe('10');
+    expect(msl).toHaveAttribute('aria-invalid', 'true');
 
-    fireEvent.change(msl, { target: { value: '99999' } });
-    await waitFor(() => expect(msl.value).toBe('20000')); // above max (20000) -> clamped down
+    fireEvent.change(msl, { target: { value: '99999' } }); // above max (20000)
+    expect(msl.value).toBe('99999');
+    expect(msl).toHaveAttribute('aria-invalid', 'true');
+
+    fireEvent.change(msl, { target: { value: '20000' } });
+    await waitFor(() => expect(saveBarCapture.current!.numberScope!.invalid).toBe(false));
   });
 
   it('disables the threshold inputs when detection is off', async () => {
@@ -698,7 +725,9 @@ describe('SettingsTab — aircraft age-out (#5364/#5365 Phase 2)', () => {
     expect(screen.getByTestId('aircraft-age-out-last-run')).not.toHaveTextContent('never');
   });
 
-  it('clamps hours into 6-168 on change', async () => {
+  // #5649: was "clamps hours into 6-168 on change" (2 -> 6, 500 -> 168). Same
+  // limits, now enforced by blocking rather than by rewriting the keystroke.
+  it('blocks hours outside 6-168 instead of clamping the keystroke', async () => {
     serverSettings = { aircraftAgeOutEnabled: 'true' };
     render(<SettingsTab {...baseProps} mode="source" />);
 
@@ -708,9 +737,14 @@ describe('SettingsTab — aircraft age-out (#5364/#5365 Phase 2)', () => {
       return el;
     });
     fireEvent.change(hours, { target: { value: '2' } });
-    await waitFor(() => expect(hours.value).toBe('6'));
+    await waitFor(() => expect(saveBarCapture.current!.numberScope!.invalid).toBe(true));
+    expect(hours.value).toBe('2');
+    expect(hours).toHaveAttribute('aria-invalid', 'true');
     fireEvent.change(hours, { target: { value: '500' } });
-    await waitFor(() => expect(hours.value).toBe('168'));
+    expect(hours.value).toBe('500');
+    expect(hours).toHaveAttribute('aria-invalid', 'true');
+    fireEvent.change(hours, { target: { value: '168' } });
+    await waitFor(() => expect(saveBarCapture.current!.numberScope!.invalid).toBe(false));
   });
 
   it('saving sends the three postable keys on the scoped POST only, never the server-written pair', async () => {
@@ -752,5 +786,129 @@ describe('SettingsTab — aircraft age-out (#5364/#5365 Phase 2)', () => {
     }
     expect(scopedBody).not.toHaveProperty('aircraftAgeOutLastRunAt');
     expect(scopedBody).not.toHaveProperty('aircraftAgeOutLastResult');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// #5649: number settings can be cleared; a blank or out-of-range field blocks
+// Save and never reaches the POST body. `useSaveBar` is mocked in this file,
+// so the block is observed as the `numberScope.invalid` flag SettingsTab hands
+// it; SaveBar.test.tsx covers the bar refusing to save a section so flagged.
+// ---------------------------------------------------------------------------
+describe('SettingsTab — clearable number fields (#5649)', () => {
+  const byId = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
+  const renderScoped = () =>
+    render(
+      <SourceProvider sourceId="source-a" sourceType="meshtastic_tcp">
+        <SettingsTab {...baseProps} mode="source" />
+      </SourceProvider>
+    );
+  const scope = () => saveBarCapture.current!.numberScope!;
+  const postedBodies = () => {
+    const calls = csrfFetchMock.mock.calls as [string, RequestInit][];
+    return calls
+      .filter(([url, init]) => url.includes('/api/settings') && init?.method === 'POST')
+      .map(([, init]) => JSON.parse(init.body as string) as Record<string, unknown>);
+  };
+
+  it('a blanked interval stays blank, marks the section invalid, and is fixed by typing a number', async () => {
+    serverSettings = { localStatsIntervalMinutes: '45' };
+    renderScoped();
+    const input = await waitFor(() => {
+      const el = byId<HTMLInputElement>('localStatsIntervalMinutes');
+      expect(el.value).toBe('45');
+      return el;
+    });
+    expect(scope().invalid).toBe(false);
+
+    fireEvent.change(input, { target: { value: '' } });
+    await waitFor(() => expect(scope().invalid).toBe(true));
+    // Nothing put 45 (or 0, which would mean "disabled") back in the field.
+    expect(input.value).toBe('');
+    expect(input).toHaveAttribute('aria-invalid', 'true');
+    // The blank never reached the draft, so there is nothing to save yet.
+    expect(saveBarCapture.current!.hasChanges).toBe(false);
+
+    fireEvent.change(input, { target: { value: '20' } });
+    await waitFor(() => expect(scope().invalid).toBe(false));
+    expect(input).not.toHaveAttribute('aria-invalid');
+    expect(saveBarCapture.current!.hasChanges).toBe(true);
+
+    await saveBarCapture.current!.onSave();
+    const bodies = postedBodies();
+    const scoped = bodies.find((b) => 'localStatsIntervalMinutes' in b)!;
+    // Same wire type as before the migration: this key goes as a string.
+    expect(scoped.localStatsIntervalMinutes).toBe('20');
+  });
+
+  it('keeps the wire types and never posts a blank, NaN or null number', async () => {
+    serverSettings = { localStatsIntervalMinutes: '45' };
+    renderScoped();
+    const age = await waitFor(() => {
+      const el = byId<HTMLInputElement>('maxNodeAge');
+      expect(el).not.toBeNull();
+      return el;
+    });
+    const stats = byId<HTMLInputElement>('localStatsIntervalMinutes');
+    await waitFor(() => expect(stats.value).toBe('45'));
+
+    // One field holds a real edit; another is left blank.
+    fireEvent.change(age, { target: { value: '48' } });
+    fireEvent.change(stats, { target: { value: '' } });
+    await waitFor(() => expect(scope().invalid).toBe(true));
+    expect(saveBarCapture.current!.hasChanges).toBe(true);
+
+    // The real SaveBar would not call onSave here. Force it anyway: even then
+    // the blank field contributes its last valid number, not '' / NaN / null.
+    await saveBarCapture.current!.onSave();
+    const bodies = postedBodies();
+    expect(bodies.length).toBeGreaterThan(0);
+    const scoped = bodies.find((b) => 'maxNodeAgeHours' in b)!;
+    expect(scoped.maxNodeAgeHours).toBe(48); // a number, as before
+    expect(scoped.localStatsIntervalMinutes).toBe('45');
+    for (const body of bodies) {
+      for (const [key, value] of Object.entries(body)) {
+        if (typeof value === 'number') expect(Number.isFinite(value), key).toBe(true);
+        expect(value, key).not.toBe('NaN');
+      }
+      expect(JSON.stringify(body)).not.toContain('NaN');
+    }
+  });
+
+  it('blocks a check interval below its floor rather than saving it or turning it into 0', async () => {
+    renderScoped();
+    const interval = await waitFor(() => {
+      const el = byId<HTMLInputElement>('inactiveNodeCheckIntervalMinutes');
+      expect(el).not.toBeNull();
+      return el;
+    });
+    const before = interval.value;
+
+    fireEvent.change(interval, { target: { value: '0' } }); // floor is 1 minute
+    await waitFor(() => expect(scope().invalid).toBe(true));
+    expect(interval.value).toBe('0');
+    expect(interval).toHaveAttribute('aria-invalid', 'true');
+    expect(saveBarCapture.current!.hasChanges).toBe(false);
+
+    // Dismiss on the real SaveBar calls the scope's reset: the field shows the saved value again.
+    scope().reset();
+    await waitFor(() => expect(interval.value).toBe(before));
+    await waitFor(() => expect(scope().invalid).toBe(false));
+  });
+
+  it('accepts 0 for the node window: the server and the help text both define it as "show all"', async () => {
+    renderScoped();
+    const age = await waitFor(() => {
+      const el = byId<HTMLInputElement>('maxNodeAge');
+      expect(el).not.toBeNull();
+      return el;
+    });
+    fireEvent.change(age, { target: { value: '0' } });
+    await waitFor(() => expect(saveBarCapture.current!.hasChanges).toBe(true));
+    expect(age).not.toHaveAttribute('aria-invalid');
+    expect(scope().invalid).toBe(false);
+
+    fireEvent.change(age, { target: { value: '-1' } });
+    await waitFor(() => expect(scope().invalid).toBe(true));
   });
 });

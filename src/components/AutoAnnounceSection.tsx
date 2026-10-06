@@ -11,6 +11,9 @@ import { useSaveBar } from '../hooks/useSaveBar';
 import { UiIcon } from './icons';
 import apiService from '../services/api';
 import { HopLimitOverrideSelect } from './HopLimitOverrideSelect';
+import { NumberInput } from './common/NumberInput';
+import { NumberInputScope } from './common/NumberInputScope';
+import { useNumberInputScope } from './common/numberInputScope';
 
 interface AutoAnnounceSectionProps {
   enabled: boolean;
@@ -251,7 +254,9 @@ const AutoAnnounceSection: React.FC<AutoAnnounceSectionProps> = ({
   }, [localUseSchedule, scheduleError, localEnabled, localInterval, localMessage, localChannelIndexes, localAnnounceOnStart, localSchedule, localHopLimit, localNodeInfoEnabled, localNodeInfoChannels, localNodeInfoDelaySeconds, baseUrl, csrfFetch, showToast, t, onEnabledChange, onIntervalChange, onMessageChange, onChannelIndexesChange, onAnnounceOnStartChange, onUseScheduleChange, onScheduleChange, onHopLimitChange, onNodeInfoEnabledChange, onNodeInfoChannelsChange, onNodeInfoDelayChange]);
 
   // Register with SaveBar
+  const numberScope = useNumberInputScope();
   useSaveBar({
+    numberScope,
     id: 'auto-announce',
     sectionName: t('automation.auto_announce.title'),
     hasChanges,
@@ -343,6 +348,7 @@ const AutoAnnounceSection: React.FC<AutoAnnounceSectionProps> = ({
   }, [insertToken]);
 
   return (
+    <NumberInputScope scope={numberScope}>
     <>
       <div className="automation-section-header" style={{
         display: 'flex',
@@ -524,13 +530,13 @@ const AutoAnnounceSection: React.FC<AutoAnnounceSectionProps> = ({
                 {t('automation.auto_announce.interval_description')}
               </span>
             </label>
-            <input
+            <NumberInput
               id="announceInterval"
-              type="number"
-              min="3"
-              max="24"
+              min={3}
+              max={24}
               value={localInterval}
-              onChange={(e) => setLocalInterval(parseInt(e.target.value))}
+              integer
+              onChange={setLocalInterval}
               disabled={!localEnabled}
               className="setting-input"
             />
@@ -858,13 +864,13 @@ const AutoAnnounceSection: React.FC<AutoAnnounceSectionProps> = ({
                     {t('automation.auto_announce.nodeinfo_delay_description')}
                   </span>
                 </label>
-                <input
+                <NumberInput
                   id="nodeInfoDelay"
-                  type="number"
-                  min="10"
-                  max="300"
+                  min={10}
+                  max={300}
                   value={localNodeInfoDelaySeconds}
-                  onChange={(e) => setLocalNodeInfoDelaySeconds(parseInt(e.target.value) || 30)}
+                  integer
+                  onChange={setLocalNodeInfoDelaySeconds}
                   disabled={!localEnabled}
                   className="setting-input"
                   style={{ width: '100px' }}
@@ -878,6 +884,7 @@ const AutoAnnounceSection: React.FC<AutoAnnounceSectionProps> = ({
         </div>
       </div>
     </>
+    </NumberInputScope>
   );
 };
 

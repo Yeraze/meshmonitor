@@ -2,6 +2,9 @@ import React, { useState, useRef, useMemo, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { UiIcon } from '../icons';
 import { useSaveBar } from '../../hooks/useSaveBar';
+import { NumberInput } from '../common/NumberInput';
+import { NumberInputScope } from '../common/NumberInputScope';
+import { useNumberInputScope } from '../common/numberInputScope';
 import ModuleAvailabilityNotice from './ModuleAvailabilityNotice';
 
 // Trigger type options matching protobuf enum
@@ -105,16 +108,19 @@ const DetectionSensorConfigSection: React.FC<DetectionSensorConfigSectionProps> 
       monitorPin, detectionTriggerType, usePullup]);
 
   // Register with SaveBar
+  const numberScope = useNumberInputScope();
   useSaveBar({
     id: 'detectionsensor-config',
     sectionName: t('detectionsensor_config.title'),
     hasChanges,
     isSaving,
     onSave: handleSave,
-    onDismiss: resetChanges
+    onDismiss: resetChanges,
+    numberScope
   });
 
   return (
+    <NumberInputScope scope={numberScope}>
     <div className="settings-section">
       <h3 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
         {t('detectionsensor_config.title')}
@@ -176,13 +182,13 @@ const DetectionSensorConfigSection: React.FC<DetectionSensorConfigSectionProps> 
               {t('detectionsensor_config.monitor_pin')}
               <span className="setting-description">{t('detectionsensor_config.monitor_pin_description')}</span>
             </label>
-            <input
+            <NumberInput
               id="detectionsensorPin"
-              type="number"
-              min="0"
-              max="255"
+              min={0}
+              max={255}
               value={monitorPin}
-              onChange={(e) => setMonitorPin(parseInt(e.target.value) || 0)}
+              integer
+              onChange={setMonitorPin}
               className="setting-input"
               style={{ width: '100px' }}
             />
@@ -278,13 +284,13 @@ const DetectionSensorConfigSection: React.FC<DetectionSensorConfigSectionProps> 
                   {t('detectionsensor_config.min_broadcast_secs')}
                   <span className="setting-description">{t('detectionsensor_config.min_broadcast_secs_description')}</span>
                 </label>
-                <input
+                <NumberInput
                   id="detectionsensorMinBroadcast"
-                  type="number"
-                  min="0"
-                  max="86400"
+                  min={0}
+                  max={86400}
                   value={minimumBroadcastSecs}
-                  onChange={(e) => setMinimumBroadcastSecs(parseInt(e.target.value) || 0)}
+                  integer
+                  onChange={setMinimumBroadcastSecs}
                   className="setting-input"
                   placeholder="0"
                 />
@@ -296,13 +302,13 @@ const DetectionSensorConfigSection: React.FC<DetectionSensorConfigSectionProps> 
                   {t('detectionsensor_config.state_broadcast_secs')}
                   <span className="setting-description">{t('detectionsensor_config.state_broadcast_secs_description')}</span>
                 </label>
-                <input
+                <NumberInput
                   id="detectionsensorStateBroadcast"
-                  type="number"
-                  min="0"
-                  max="86400"
+                  min={0}
+                  max={86400}
                   value={stateBroadcastSecs}
-                  onChange={(e) => setStateBroadcastSecs(parseInt(e.target.value) || 0)}
+                  integer
+                  onChange={setStateBroadcastSecs}
                   className="setting-input"
                   placeholder="0"
                 />
@@ -312,6 +318,7 @@ const DetectionSensorConfigSection: React.FC<DetectionSensorConfigSectionProps> 
         </>
       )}
     </div>
+    </NumberInputScope>
   );
 };
 

@@ -6,6 +6,9 @@ import { useSaveBar } from '../hooks/useSaveBar';
 import { useToast } from './ToastContainer';
 import { useData } from '../contexts/DataContext';
 import { useSource } from '../contexts/SourceContext';
+import { NumberInput } from './common/NumberInput';
+import { NumberInputScope } from './common/NumberInputScope';
+import { useNumberInputScope } from './common/numberInputScope';
 
 /** Row shape of the session-authed GET /api/telemetry/:nodeId. */
 interface TelemetryRow {
@@ -125,7 +128,9 @@ const AutoHeapManagementSection: React.FC<AutoHeapManagementSectionProps> = ({ b
     }
   }, [initialSettings]);
 
+  const numberScope = useNumberInputScope();
   useSaveBar({
+    numberScope,
     id: 'auto-heap-management',
     sectionName: t('automation.auto_heap.title', 'Auto Heap Management'),
     hasChanges,
@@ -135,6 +140,7 @@ const AutoHeapManagementSection: React.FC<AutoHeapManagementSectionProps> = ({ b
   });
 
   return (
+    <NumberInputScope scope={numberScope}>
     <>
       <div className="automation-section-header" style={{
         display: 'flex',
@@ -201,19 +207,20 @@ const AutoHeapManagementSection: React.FC<AutoHeapManagementSectionProps> = ({ b
                 'Trigger a purge when the node reports less than this amount of free heap memory.')}
             </span>
           </label>
-          <input
+          <NumberInput
             id="autoHeapThresholdKb"
-            type="number"
             min={1}
             max={500}
             value={localThresholdKb}
-            onChange={(e) => setLocalThresholdKb(parseInt(e.target.value) || 20)}
+            integer
+            onChange={setLocalThresholdKb}
             disabled={!localEnabled}
             className="setting-input"
           />
         </div>
       </div>
     </>
+    </NumberInputScope>
   );
 };
 

@@ -24,6 +24,7 @@ import {
   type GnssDopUiParams,
 } from '../map/layers/gnssDopGeometry';
 import styles from './GnssDopPanel.module.css';
+import { NumberInput } from '../common/NumberInput';
 
 export interface GnssDopPanelProps {
   open: boolean;
@@ -123,14 +124,13 @@ export default function GnssDopPanel({ open, params, meta, onChange, onClose }: 
 
       <label className={styles.gnssDopField}>
         <span>{t('gnss_dop.mask')}</span>
-        <input
-          type="number"
+        <NumberInput
           min={0}
           max={90}
           step={1}
           value={params.maskDeg}
           data-testid="gnss-dop-mask"
-          onChange={(e) => setMask(Number(e.target.value))}
+          onChange={setMask}
         />
       </label>
 

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { clampInt, COOLDOWN_SECONDS_MAX } from './automationInputLimits';
+import { COOLDOWN_SECONDS_MAX } from './automationInputLimits';
 import { useTranslation } from 'react-i18next';
 import { useToast } from './ToastContainer';
 import { useCsrfFetch } from '../hooks/useCsrfFetch';
@@ -19,6 +19,9 @@ import { hasRE2IncompatibleConstructs } from '../utils/autoAckRegex';
 import { UiIcon } from './icons';
 import AutoAckConvertDialog from './autoack/AutoAckConvertDialog';
 import { HopLimitOverrideSelect } from './HopLimitOverrideSelect';
+import { NumberInput } from './common/NumberInput';
+import { NumberInputScope } from './common/NumberInputScope';
+import { useNumberInputScope } from './common/numberInputScope';
 
 interface AutoAcknowledgeSectionProps {
   enabled: boolean;
@@ -340,7 +343,9 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
   }, [localRegex, localEnabled, localMessage, localMessageDirect, localEnabledChannels, localSkipIncompleteNodes, localIgnoredNodes, localMatrix, localCooldownSeconds, localPreSendDelaySeconds, localMaxAttempts, localHopLimit, testMessages, baseUrl, csrfFetch, sourceQuery, showToast, t, onEnabledChange, onRegexChange, onMessageChange, onMessageDirectChange, onChannelsChange, onSkipIncompleteNodesChange, onIgnoredNodesChange, onMatrixChange, onCooldownSecondsChange, onPreSendDelaySecondsChange, onMaxAttemptsChange, onHopLimitChange, onTestMessagesChange]);
 
   // Register with SaveBar
+  const numberScope = useNumberInputScope();
   useSaveBar({
+    numberScope,
     id: 'auto-acknowledge',
     sectionName: t('automation.auto_ack.title'),
     hasChanges,
@@ -362,6 +367,7 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
       : undefined;
 
   return (
+    <NumberInputScope scope={numberScope}>
     <>
       <div className="automation-section-header" style={{
         display: 'flex',
@@ -547,10 +553,10 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
               {t('automation.auto_ack.cooldown_description')}
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <input
-                type="number"
+              <NumberInput
                 value={localCooldownSeconds}
-                onChange={(e) => setLocalCooldownSeconds(clampInt(e.target.value, 0, COOLDOWN_SECONDS_MAX))}
+                integer
+                onChange={setLocalCooldownSeconds}
                 min={0}
                 max={COOLDOWN_SECONDS_MAX}
                 disabled={!localEnabled}
@@ -571,10 +577,10 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
               {t('automation.auto_ack.presend_delay_description', 'Wait this many seconds before sending the acknowledgement. Gives a repeater time to finish its own transmission so a zero-hop ack is not dropped. 0 sends immediately.')}
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <input
-                type="number"
+              <NumberInput
                 value={localPreSendDelaySeconds}
-                onChange={(e) => setLocalPreSendDelaySeconds(Math.max(0, Math.min(120, parseInt(e.target.value) || 0)))}
+                integer
+                onChange={setLocalPreSendDelaySeconds}
                 min={0}
                 max={120}
                 disabled={!localEnabled}
@@ -865,6 +871,7 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
         </div>
       </div>
     </>
+    </NumberInputScope>
   );
 };
 

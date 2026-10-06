@@ -3,6 +3,9 @@ import { useTranslation } from 'react-i18next';
 import { UiIcon } from '../icons';
 import { ROLE_OPTIONS, TIMEZONE_PRESETS, REBROADCAST_MODE_OPTIONS, BUZZER_MODE_OPTIONS } from './constants';
 import { useSaveBar } from '../../hooks/useSaveBar';
+import { NumberInput } from '../common/NumberInput';
+import { NumberInputScope } from '../common/NumberInputScope';
+import { useNumberInputScope } from '../common/numberInputScope';
 
 interface DeviceConfigSectionProps {
   role: number;
@@ -113,13 +116,15 @@ const DeviceConfigSection: React.FC<DeviceConfigSectionProps> = ({
       setBuzzerMode, setButtonGpio, setBuzzerGpio]);
 
   // Register with SaveBar
+  const numberScope = useNumberInputScope();
   useSaveBar({
     id: 'device-config',
     sectionName: t('device_config.title'),
     hasChanges,
     isSaving,
     onSave: onSave,
-    onDismiss: resetChanges
+    onDismiss: resetChanges,
+    numberScope
   });
 
   const handleRoleChange = (newRole: number) => {
@@ -173,6 +178,7 @@ const DeviceConfigSection: React.FC<DeviceConfigSectionProps> = ({
   };
 
   return (
+    <NumberInputScope scope={numberScope}>
     <div className="settings-section">
       <h3 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
         {t('device_config.title')}
@@ -292,13 +298,14 @@ const DeviceConfigSection: React.FC<DeviceConfigSectionProps> = ({
           {t('device_config.node_info_broadcast')}
           <span className="setting-description">{t('device_config.node_info_broadcast_description')}</span>
         </label>
-        <input
+        <NumberInput
           id="nodeInfoBroadcastSecs"
-          type="number"
-          min="3600"
-          max="4294967295"
+          min={3600}
+          alsoValid={[0]}
+          max={4294967295}
+          integer
           value={nodeInfoBroadcastSecs}
-          onChange={(e) => setNodeInfoBroadcastSecs(parseInt(e.target.value))}
+          onChange={setNodeInfoBroadcastSecs}
           className="setting-input"
         />
       </div>
@@ -635,13 +642,13 @@ const DeviceConfigSection: React.FC<DeviceConfigSectionProps> = ({
               {t('device_config.button_gpio')}
               <span className="setting-description">{t('device_config.button_gpio_description')}</span>
             </label>
-            <input
+            <NumberInput
               id="buttonGpio"
-              type="number"
-              min="0"
-              max="255"
+              min={0}
+              max={255}
+              integer
               value={buttonGpio}
-              onChange={(e) => setButtonGpio(parseInt(e.target.value) || 0)}
+              onChange={setButtonGpio}
               className="setting-input"
               style={{ width: '100px' }}
             />
@@ -653,13 +660,13 @@ const DeviceConfigSection: React.FC<DeviceConfigSectionProps> = ({
               {t('device_config.buzzer_gpio')}
               <span className="setting-description">{t('device_config.buzzer_gpio_description')}</span>
             </label>
-            <input
+            <NumberInput
               id="buzzerGpio"
-              type="number"
-              min="0"
-              max="255"
+              min={0}
+              max={255}
+              integer
               value={buzzerGpio}
-              onChange={(e) => setBuzzerGpio(parseInt(e.target.value) || 0)}
+              onChange={setBuzzerGpio}
               className="setting-input"
               style={{ width: '100px' }}
             />
@@ -667,6 +674,7 @@ const DeviceConfigSection: React.FC<DeviceConfigSectionProps> = ({
         </div>
       )}
     </div>
+    </NumberInputScope>
   );
 };
 

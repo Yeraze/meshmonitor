@@ -3,6 +3,9 @@ import { useTranslation } from 'react-i18next';
 import { UiIcon } from '../icons';
 import { useSaveBar } from '../../hooks/useSaveBar';
 import ModuleAvailabilityNotice from './ModuleAvailabilityNotice';
+import { NumberInput } from '../common/NumberInput';
+import { NumberInputScope } from '../common/NumberInputScope';
+import { useNumberInputScope } from '../common/numberInputScope';
 
 interface NeighborInfoSectionProps {
   neighborInfoEnabled: boolean;
@@ -59,16 +62,19 @@ const NeighborInfoSection: React.FC<NeighborInfoSectionProps> = ({
   }, [onSave, neighborInfoEnabled, neighborInfoInterval, neighborInfoTransmitOverLora]);
 
   // Register with SaveBar
+  const numberScope = useNumberInputScope();
   useSaveBar({
     id: 'neighbor-info',
     sectionName: t('neighbor_info.title'),
     hasChanges,
     isSaving,
     onSave: handleSave,
-    onDismiss: resetChanges
+    onDismiss: resetChanges,
+    numberScope
   });
 
   return (
+    <NumberInputScope scope={numberScope}>
     <div className="settings-section">
       <h3 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
         {t('neighbor_info.title')}
@@ -109,13 +115,13 @@ const NeighborInfoSection: React.FC<NeighborInfoSectionProps> = ({
               {t('neighbor_info.interval')}
               <span className="setting-description">{t('neighbor_info.interval_description')}</span>
             </label>
-            <input
+            <NumberInput
               id="neighborInfoInterval"
-              type="number"
-              min="14400"
-              max="86400"
+              min={14400}
+              max={86400}
+              integer
               value={neighborInfoInterval}
-              onChange={(e) => setNeighborInfoInterval(parseInt(e.target.value))}
+              onChange={setNeighborInfoInterval}
               className="setting-input"
             />
           </div>
@@ -137,6 +143,7 @@ const NeighborInfoSection: React.FC<NeighborInfoSectionProps> = ({
         </>
       )}
     </div>
+    </NumberInputScope>
   );
 };
 
