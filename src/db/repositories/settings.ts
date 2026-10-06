@@ -104,6 +104,24 @@ export class SettingsRepository extends BaseRepository {
   }
 
   /**
+   * Delete every global setting, and the per-source settings of `sourceIds`
+   * only. Other sources' `source:{id}:{key}` rows are kept: a caller who may
+   * write settings on some sources must not reset the rest.
+   */
+  async deleteGlobalAndSourceSettings(sourceIds: readonly string[]): Promise<void> {
+    const { settings } = this.tables;
+    const rows = await this.db.select({ key: settings.key }).from(settings);
+    const prefixes = sourceIds.map((id) => `source:${id}:`);
+    const doomed = (rows as Array<{ key: string }>)
+      .map((row) => row.key)
+      .filter((key) => !key.startsWith('source:') || prefixes.some((prefix) => key.startsWith(prefix)));
+    const CHUNK = 200;
+    for (let i = 0; i < doomed.length; i += CHUNK) {
+      await this.db.delete(settings).where(inArray(settings.key, doomed.slice(i, i + CHUNK)));
+    }
+  }
+
+  /**
    * Check if a setting exists
    */
   async hasSetting(key: string): Promise<boolean> {
