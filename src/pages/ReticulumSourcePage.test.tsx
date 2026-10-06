@@ -242,4 +242,26 @@ describe('ReticulumSourcePage', () => {
       expect(fetchUrls.some((u) => u.includes('/api/sources/rns-src-1/reticulum/messages'))).toBe(true);
     });
   });
+
+  it('renders its nav and content through the shared SourceNavLayout', async () => {
+    // The phone layout bug: this page had its own copy of the nav + content
+    // row with no mobile rule, so the bottom bar filled the screen and the
+    // content pane got a width of 0.
+    // jsdom does no layout and matches no media query, so this cannot see the
+    // bar's size. It pins the structure the shared stylesheet acts on;
+    // `SourceNavLayout.mobile.test.ts` pins the stylesheet.
+    authValue.hasPermission = () => true;
+    const { container } = renderPage();
+    const nav = await waitFor(() => {
+      const el = container.querySelector('[data-mobile-variant="bottom-bar"]');
+      expect(el).not.toBeNull();
+      return el as HTMLElement;
+    });
+    const row = nav.parentElement as HTMLElement;
+    expect(row.hasAttribute('data-source-nav-layout')).toBe(true);
+    // Nav first, content pane second — `column-reverse` relies on that order.
+    expect(row.children).toHaveLength(2);
+    expect(row.children[0]).toBe(nav);
+    expect(row.children[1].hasAttribute('data-source-nav-content')).toBe(true);
+  });
 });
