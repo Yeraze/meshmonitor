@@ -833,7 +833,7 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
     const localNodeNum = nodes.find(n => (n.user?.id || n.nodeId) === currentNodeId)?.nodeNum;
     const isRemoteNode = selectedNodeNum !== localNodeNum && selectedNodeNum !== 0;
 
-    // Retry configuration - matches channel loading pattern
+    // Retry configuration - used by the owner load only (load-config does not retry)
     const maxRetries = 2;
     const isRetryableError = (error: any): boolean => {
       const msg = error?.message || '';
@@ -907,39 +907,37 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
         return;
       }
 
-      // Generic config types with retry logic
+      // Generic config types: ONE request per click, no automatic retry.
+      //
+      // For a remote node each request is an admin packet over the mesh, and
+      // the server already waits 20 s for the reply. This used to re-send up to
+      // twice more on a 404 / timeout, so one click on a node that did not
+      // answer cost three packets (times the hop count) and a minute of
+      // spinner. A failed load now shows the error mark; the user decides
+      // whether to press Load again.
       let lastError: any = null;
-      for (let attempt = 0; attempt <= maxRetries; attempt++) {
-        try {
-          if (attempt > 0) {
-            await new Promise(resolve => setTimeout(resolve, 1000 * attempt)); // Exponential backoff
-          }
+      try {
+        const result = await apiService.post<{ config: any }>('/api/admin/load-config', {
+          nodeNum: selectedNodeNum,
+          configType,
+          ...(sourceId ? { sourceId } : {})
+        });
 
-          const result = await apiService.post<{ config: any }>('/api/admin/load-config', {
-            nodeNum: selectedNodeNum,
-            configType,
-            ...(sourceId ? { sourceId } : {})
-          });
-
-          // One applier for both load paths. It answers false when there is no
-          // config in the reply or the section has no applier; either way the
-          // form was not filled, so the section must not read as loaded.
-          if (applyLoadedConfig(configType, result?.config, loadedConfigSetters, { nodeNum: selectedNodeNum })) {
-            setSectionLoadStatus(prev => ({ ...prev, [configType]: 'success' }));
-            showToast(t('admin_commands.config_loaded_success', { configType: t(`admin_commands.${configType}_config_short`, configType) }), 'success');
-            return; // Success - exit
-          }
-
-          // No config data - treat as retryable error
-          lastError = new Error(`No ${configType} config data received`);
-          if (!isRetryableError(lastError) || attempt >= maxRetries) break;
-        } catch (error: any) {
-          lastError = error;
-          if (!isRetryableError(error) || attempt >= maxRetries) break;
+        // One applier for both load paths. It answers false when there is no
+        // config in the reply or the section has no applier; either way the
+        // form was not filled, so the section must not read as loaded.
+        if (applyLoadedConfig(configType, result?.config, loadedConfigSetters, { nodeNum: selectedNodeNum })) {
+          setSectionLoadStatus(prev => ({ ...prev, [configType]: 'success' }));
+          showToast(t('admin_commands.config_loaded_success', { configType: t(`admin_commands.${configType}_config_short`, configType) }), 'success');
+          return; // Success - exit
         }
+
+        lastError = new Error(`No ${configType} config data received`);
+      } catch (error: any) {
+        lastError = error;
       }
 
-      // All retries exhausted or non-retryable error
+      // The request failed or answered with nothing to apply
       setSectionLoadStatus(prev => ({ ...prev, [configType]: 'error' }));
       showToast(lastError?.message || t('admin_commands.config_load_failed', { configType: t(`admin_commands.${configType}_config_short`, configType) }), 'error');
     } catch (error: any) {

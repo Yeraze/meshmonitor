@@ -204,6 +204,27 @@ describe('AdminCommandsTab per-section Load', () => {
     },
   );
 
+  // Each remote load is an admin packet over the mesh. The handler used to
+  // re-send up to twice on exactly this error, so one click cost three packets.
+  it.each([
+    "Config type 'meshbeacon' not received from remote node 944633591. The node may not be reachable or may not have responded.",
+    'HTTP 404',
+    'Request timeout',
+  ])('sends one request per click and does not retry after "%s"', async (message) => {
+    answers.meshbeacon = () => {
+      throw new Error(message);
+    };
+    renderTab();
+
+    await load('meshbeacon');
+    // Longer than the old first back-off (1 s): a retry would have gone out by now.
+    await new Promise(resolve => setTimeout(resolve, 1300));
+
+    expect(loadConfigRequests()).toEqual(['meshbeacon']);
+    expect(isMarkedFailed('meshbeacon')).toBe(true);
+    expect(h.showToast).toHaveBeenCalledWith(message, 'error');
+  });
+
   it('keeps the form defaults when a load fails', async () => {
     answers.trafficmanagement = () => {
       throw new Error('Admin request refused');
