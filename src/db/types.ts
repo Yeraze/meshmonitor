@@ -204,6 +204,8 @@ export interface DbMessage {
  */
 export interface DbChannel {
   id: number;
+  /** Source this row belongs to. Present on every row read from the table. */
+  sourceId?: string | null;
   name: string;
   psk?: string;
   role?: number; // 0=Disabled, 1=Primary, 2=Secondary

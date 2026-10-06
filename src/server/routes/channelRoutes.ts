@@ -142,7 +142,8 @@ router.get('/all', optionalAuth(), async (req: Request, res: Response) => {
         continue;
       }
       const channelResource = `channel_${channel.id}` as import('../../types/permission.js').ResourceType;
-      if (req.user && await hasPermission(req.user, channelResource, 'read')) {
+      // Per-source permission: check it on the source this row belongs to.
+      if (req.user && await hasPermission(req.user, channelResource, 'read', allChannelsSourceId ?? channel.sourceId ?? undefined)) {
         accessible.push(channel);
       }
     }
@@ -154,7 +155,7 @@ router.get('/all', optionalAuth(), async (req: Request, res: Response) => {
     const projected = await Promise.all(accessible.map(async (channel) => {
       const channelResource = `channel_${channel.id}` as import('../../types/permission.js').ResourceType;
       const includePsk = isAdmin || (req.user
-        ? await hasPermission(req.user, channelResource, 'write', allChannelsSourceId)
+        ? await hasPermission(req.user, channelResource, 'write', allChannelsSourceId ?? channel.sourceId ?? undefined)
         : false);
       return transformChannel(channel, { includePsk });
     }));
@@ -246,7 +247,8 @@ router.get('/', optionalAuth(), async (req: Request, res: Response) => {
         continue;
       }
       const channelResource = `channel_${channel.id}` as import('../../types/permission.js').ResourceType;
-      if (req.user && await hasPermission(req.user, channelResource, 'read')) {
+      // Per-source permission: check it on the source this row belongs to.
+      if (req.user && await hasPermission(req.user, channelResource, 'read', channelsSourceId ?? channel.sourceId ?? undefined)) {
         accessible.push(channel);
       }
     }
@@ -294,7 +296,7 @@ router.get('/', optionalAuth(), async (req: Request, res: Response) => {
     const projected = await Promise.all(filteredChannels.map(async (channel) => {
       const channelResource = `channel_${channel.id}` as import('../../types/permission.js').ResourceType;
       const includePsk = isAdmin || (req.user
-        ? await hasPermission(req.user, channelResource, 'write', channelsSourceId)
+        ? await hasPermission(req.user, channelResource, 'write', channelsSourceId ?? channel.sourceId ?? undefined)
         : false);
       return transformChannel(channel, { includePsk, presetName: channelsPresetName });
     }));
@@ -330,7 +332,8 @@ router.get('/collisions', optionalAuth(), async (req: Request, res: Response) =>
         continue;
       }
       const channelResource = `channel_${channel.id}` as import('../../types/permission.js').ResourceType;
-      if (req.user && await hasPermission(req.user, channelResource, 'read')) {
+      // Per-source permission: check it on the source this row belongs to.
+      if (req.user && await hasPermission(req.user, channelResource, 'read', sourceId ?? channel.sourceId ?? undefined)) {
         accessible.push(channel);
       }
     }
@@ -360,8 +363,11 @@ router.get('/:id/export', requireAuth(), requireSourceId('query'), async (req: R
     // MM-SEC-4: gate per-channel. Export includes the raw PSK, so the caller
     // must have read permission for the SPECIFIC channel they're exporting,
     // not just channel_0.
+    // Presence is validated by requireSourceId('query'). The permission is
+    // per-source, so it is checked on the source being exported from.
+    const exportSourceId = req.query.sourceId as string;
     const channelResource = `channel_${channelId}` as import('../../types/permission.js').ResourceType;
-    if (!req.user?.isAdmin && !(req.user && await hasPermission(req.user, channelResource, 'read'))) {
+    if (!req.user?.isAdmin && !(req.user && await hasPermission(req.user, channelResource, 'read', exportSourceId))) {
       return res.status(403).json({
         error: 'Insufficient permissions',
         code: 'FORBIDDEN',
@@ -371,8 +377,6 @@ router.get('/:id/export', requireAuth(), requireSourceId('query'), async (req: R
 
     // Scope to the required source (#3712) so a multi-source install can't
     // export the PSK from a different source's channel that shares this slot.
-    // Presence is validated by requireSourceId('query').
-    const exportSourceId = req.query.sourceId as string;
     const channel = await databaseService.channels.getChannelById(channelId, exportSourceId);
     if (!channel) {
       return res.status(404).json({ error: 'Channel not found' });
@@ -493,9 +497,10 @@ router.put('/:id', requireAuth(), requireSourceId('body'), async (req: Request, 
     }
 
     // MM-SEC-4: per-channel write gate — caller needs write permission for
-    // the SPECIFIC channel they're modifying, not just channel_0.
+    // the SPECIFIC channel they're modifying, not just channel_0, on the
+    // source being written (requireSourceId('body') validated it).
     const channelResource = `channel_${channelId}` as import('../../types/permission.js').ResourceType;
-    if (!req.user?.isAdmin && !(req.user && await hasPermission(req.user, channelResource, 'write'))) {
+    if (!req.user?.isAdmin && !(req.user && await hasPermission(req.user, channelResource, 'write', chanSourceId))) {
       return res.status(403).json({
         error: 'Insufficient permissions',
         code: 'FORBIDDEN',
@@ -706,9 +711,9 @@ router.delete('/:id', requireAuth(), async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'Cannot delete primary channel' });
     }
 
-    // MM-SEC-4: per-channel write gate.
+    // MM-SEC-4: per-channel write gate, on the source being deleted from.
     const channelResource = `channel_${channelId}` as import('../../types/permission.js').ResourceType;
-    if (!req.user?.isAdmin && !(req.user && await hasPermission(req.user, channelResource, 'write'))) {
+    if (!req.user?.isAdmin && !(req.user && await hasPermission(req.user, channelResource, 'write', deleteChannelSourceId))) {
       return res.status(403).json({
         error: 'Insufficient permissions',
         code: 'FORBIDDEN',
@@ -759,9 +764,10 @@ router.post('/:slotId/import', requireAuth(), requireSourceId('body'), async (re
     }
 
     // MM-SEC-4: per-channel write gate. Importing a channel into slot N
-    // overwrites slot N — caller needs write permission for that slot.
+    // overwrites slot N — caller needs write permission for that slot on the
+    // source being written (requireSourceId('body') validated it).
     const slotResource = `channel_${slotId}` as import('../../types/permission.js').ResourceType;
-    if (!req.user?.isAdmin && !(req.user && await hasPermission(req.user, slotResource, 'write'))) {
+    if (!req.user?.isAdmin && !(req.user && await hasPermission(req.user, slotResource, 'write', req.body.sourceId as string))) {
       return res.status(403).json({
         error: 'Insufficient permissions',
         code: 'FORBIDDEN',
@@ -915,7 +921,7 @@ router.post('/reorder', requireAuth(), requireSourceId('body'), requireMeshtasti
       }
       for (const slot of affectedSlots) {
         const slotResource = `channel_${slot}` as import('../../types/permission.js').ResourceType;
-        if (!(req.user && await hasPermission(req.user, slotResource, 'write'))) {
+        if (!(req.user && await hasPermission(req.user, slotResource, 'write', reorderSourceId))) {
           return res.status(403).json({
             error: 'Insufficient permissions',
             code: 'FORBIDDEN',
@@ -1310,19 +1316,20 @@ router.post('/import-config', requireSourceId('body'), requireDeviceSourcePermis
   }
 });
 
-// Manual channel-database refresh
-router.post('/refresh', requirePermission('messages', 'write'), requireMeshtasticDeviceSource('body'), async (req: Request, res: Response) => {
+// Manual channel-database refresh. Refreshes ONE source's device: the
+// `sourceId` in the body, or the primary Meshtastic source when it is omitted.
+// The permission is checked on that source, and the count returned is that
+// source's (it used to span every source when none was named, whatever the
+// caller could read).
+router.post('/refresh', requireDeviceSourcePermission('messages', 'write', 'body'), async (req: Request, res: Response) => {
   try {
     logger.debug('🔄 Manual channel refresh requested...');
 
-    const { sourceId: chanRefreshSourceId } = req.body;
-    const chanRefreshManager = (resolveSourceManager(chanRefreshSourceId));
+    const { manager: chanRefreshManager, sourceId: chanRefreshSourceId } = getDeviceSourceTarget(req);
     // Trigger full node database refresh (includes channels)
     await chanRefreshManager.refreshNodeDatabase();
 
-    const channelCount = await databaseService.channels.getChannelCount(
-      typeof chanRefreshSourceId === 'string' && chanRefreshSourceId.length > 0 ? chanRefreshSourceId : ALL_SOURCES,
-    );
+    const channelCount = await databaseService.channels.getChannelCount(chanRefreshSourceId);
 
     logger.debug(`✅ Channel refresh complete: ${channelCount} channels`);
 
@@ -1333,8 +1340,7 @@ router.post('/refresh', requirePermission('messages', 'write'), requireMeshtasti
     });
   } catch (error) {
     logger.error('❌ Failed to refresh channels:', error);
-    res.status(500).json({
-      error: 'Failed to refresh channel database',
+    fail(res, 500, 'INTERNAL_ERROR', 'Failed to refresh channel database', {
       details: error instanceof Error ? error.message : 'Unknown error',
     });
   }

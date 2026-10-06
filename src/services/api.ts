@@ -1185,7 +1185,7 @@ class ApiService {
     return response.json();
   }
 
-  async requestPosition(nodeId: string) {
+  async requestPosition(nodeId: string, sourceId?: string) {
     // Validate node ID format
     const validatedNodeId = validateNodeId(nodeId);
     if (!validatedNodeId) {
@@ -1197,7 +1197,7 @@ class ApiService {
       method: 'POST',
       headers: this.getHeadersWithCsrf(),
       credentials: 'include',
-      body: JSON.stringify({ destination: validatedNodeId }),
+      body: JSON.stringify({ destination: validatedNodeId, sourceId }),
     });
 
     if (!response.ok) {

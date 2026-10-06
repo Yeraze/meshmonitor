@@ -1,5 +1,5 @@
 import { Router, Request, Response } from 'express';
-import { optionalAuth, requireAuth, requirePermission, requireAdmin } from '../auth/authMiddleware.js';
+import { optionalAuth, requireAuth, requireAdmin } from '../auth/authMiddleware.js';
 import databaseService from '../../services/database.js';
 import { logger } from '../../utils/logger.js';
 import { resolveSourceManager } from '../utils/resolveSourceManager.js';
@@ -8,6 +8,8 @@ import { isMeshtasticManager, isMqttConnectionStatusManager } from '../sourceMan
 import { requireMeshtasticDeviceSource } from '../utils/requireMeshtasticDeviceSource.js';
 import { getEnvironmentConfig } from '../config/environment.js';
 import { mayViewSourceEndpoint } from '../utils/sourceConfigRedaction.js';
+import { requireDeviceSourcePermission, getDeviceSourceTarget } from '../utils/deviceSourcePermission.js';
+import { fail } from '../utils/apiResponse.js';
 
 const NOT_CONNECTED = {
   connected: false,
@@ -62,13 +64,17 @@ router.get('/', optionalAuth(), async (req: Request, res: Response) => {
   }
 });
 
-// Disconnect / reconnect / configure act on a Meshtastic TCP link. A
-// non-Meshtastic sourceId would act on the PRIMARY radio instead (#5375).
-router.post('/disconnect', requirePermission('connection', 'write'), requireMeshtasticDeviceSource('body', 'connection controls'), async (req: Request, res: Response) => {
+// Disconnect / reconnect / configure act on ONE Meshtastic TCP link: the
+// `sourceId` in the body, or the primary source when it is omitted. A
+// non-Meshtastic sourceId would act on the PRIMARY radio instead (#5375), and
+// `connection` is a per-source permission, so the gate resolves the source
+// once and checks the permission on it. MeshCore and MQTT sources are
+// connected and disconnected through `/api/sources/:id/(dis)connect`.
+const connectionWriteGate = requireDeviceSourcePermission('connection', 'write', 'body', 'connection controls');
+
+router.post('/disconnect', connectionWriteGate, async (req: Request, res: Response) => {
   try {
-    const { sourceId: disconnectSourceId } = req.body;
-    const disconnectManager = (resolveSourceManager(disconnectSourceId));
-    await disconnectManager.userDisconnect();
+    await getDeviceSourceTarget(req).manager.userDisconnect();
 
     // Audit log
     void databaseService.auditLogAsync(
@@ -82,16 +88,14 @@ router.post('/disconnect', requirePermission('connection', 'write'), requireMesh
     res.json({ success: true, status: 'user-disconnected' });
   } catch (error) {
     logger.error('Error disconnecting:', error);
-    res.status(500).json({ error: 'Failed to disconnect' });
+    fail(res, 500, 'INTERNAL_ERROR', 'Failed to disconnect');
   }
 });
 
 // User-initiated reconnect endpoint
-router.post('/reconnect', requirePermission('connection', 'write'), requireMeshtasticDeviceSource('body', 'connection controls'), async (req: Request, res: Response) => {
+router.post('/reconnect', connectionWriteGate, async (req: Request, res: Response) => {
   try {
-    const { sourceId: reconnectSourceId } = req.body;
-    const reconnectManager = (resolveSourceManager(reconnectSourceId));
-    const success = await reconnectManager.userReconnect();
+    const success = await getDeviceSourceTarget(req).manager.userReconnect();
 
     // Audit log
     void databaseService.auditLogAsync(
@@ -108,7 +112,7 @@ router.post('/reconnect', requirePermission('connection', 'write'), requireMesht
     });
   } catch (error) {
     logger.error('Error reconnecting:', error);
-    res.status(500).json({ error: 'Failed to reconnect' });
+    fail(res, 500, 'INTERNAL_ERROR', 'Failed to reconnect');
   }
 });
 

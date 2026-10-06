@@ -299,7 +299,10 @@ const AutoAnnounceSection: React.FC<AutoAnnounceSectionProps> = ({
       }
       setIsPreviewLoading(true);
       try {
-        const data = await apiService.get<{ preview: string }>(`/api/announce/preview?message=${encodeURIComponent(localMessage)}`);
+        const data = await apiService.get<{ preview: string }>(
+          // Name the source: the preview fills its tokens from that source's node.
+          `/api/announce/preview?message=${encodeURIComponent(localMessage)}${currentSourceId ? `&sourceId=${encodeURIComponent(currentSourceId)}` : ''}`,
+        );
         setPreviewMessage(data.preview);
       } catch {
         setPreviewMessage(localMessage);
@@ -309,7 +312,7 @@ const AutoAnnounceSection: React.FC<AutoAnnounceSectionProps> = ({
     }, 500);
 
     return () => clearTimeout(timer);
-  }, [localMessage, baseUrl]);
+  }, [localMessage, baseUrl, currentSourceId]);
 
   const handleSendNow = async () => {
     setIsSendingNow(true);
