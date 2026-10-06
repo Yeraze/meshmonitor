@@ -75,7 +75,7 @@ The MQTT Client Proxy behaves like the official Meshtastic mobile apps - it uses
 
 ### Prerequisites
 
-1. **Virtual Node enabled** - The MQTT Proxy requires MeshMonitor's Virtual Node feature
+1. **Virtual Node enabled** - The MQTT Proxy requires MeshMonitor's Virtual Node. Turn it on for your source in **Dashboard → Edit Source → Virtual Node** (see [Enabling Virtual Node on a Source](/configuration/virtual-node#enabling-virtual-node-on-a-source))
 2. **Node MQTT configured** - Your Meshtastic node must have MQTT settings configured
 3. **Client Proxy mode enabled** - On your node, enable "Proxy to Client" in MQTT settings
 
@@ -93,7 +93,7 @@ In MeshMonitor's Device Configuration tab, or using the Meshtastic mobile app:
 Use the [Docker Configurator](/configurator) to generate your docker-compose.yml with the MQTT Proxy enabled:
 
 1. Check **"Enable MQTT Client Proxy Sidecar"** in the Additional Settings section
-2. The Virtual Node will be automatically enabled if not already
+2. The configurator publishes the Virtual Node port for you. It cannot turn the Virtual Node on: do that after the container starts, in **Dashboard → Edit Source → Virtual Node**, with the port the configurator shows
 3. Copy the generated docker-compose.yml
 
 ### Step 3: Deploy
@@ -117,10 +117,8 @@ services:
   meshmonitor:
     image: ghcr.io/yeraze/meshmonitor:latest
     # ... your existing MeshMonitor configuration ...
-    environment:
-      - ENABLE_VIRTUAL_NODE=true
-      - VIRTUAL_NODE_PORT=4404
-      # ... other environment variables ...
+    # Virtual Node has no environment variable: enable it on the source
+    # in Dashboard → Edit Source → Virtual Node, port 4404.
 
   # MQTT Client Proxy - routes MQTT through MeshMonitor
   # Credit: https://github.com/LN4CY/mqtt-proxy

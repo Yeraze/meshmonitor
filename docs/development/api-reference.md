@@ -9,7 +9,7 @@ MeshMonitor exposes a REST API for interacting with your mesh network programmat
 ## Quick start
 
 1. Start MeshMonitor (locally or access your deployment).
-2. Open **Settings → API Tokens** and generate a token.
+2. Open the user menu, choose **API Token**, and generate a token.
 3. Click **Authorize** in the Swagger UI below and paste the token.
 4. Expand any endpoint and click **Try it out** to make live calls against your instance.
 

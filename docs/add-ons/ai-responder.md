@@ -53,7 +53,7 @@ Key features:
 
 ### Prerequisites
 
-1. **Virtual Node enabled** — The AI Responder requires MeshMonitor's Virtual Node feature (`ENABLE_VIRTUAL_NODE=true`)
+1. **Virtual Node enabled** — The AI Responder requires MeshMonitor's Virtual Node. Turn it on for your source in **Dashboard → Edit Source → Virtual Node** and set the port to 4404 (see [Enabling Virtual Node on a Source](/configuration/virtual-node#enabling-virtual-node-on-a-source))
 2. **AI provider** — Either a local Ollama instance or a cloud API key (Gemini, OpenAI, or Anthropic)
 
 ### Docker Compose Setup
@@ -65,10 +65,8 @@ services:
   meshmonitor:
     image: ghcr.io/yeraze/meshmonitor:latest
     # ... your existing MeshMonitor configuration ...
-    environment:
-      - ENABLE_VIRTUAL_NODE=true
-      - VIRTUAL_NODE_PORT=4404
-      # ... other environment variables ...
+    # Virtual Node has no environment variable: enable it on the source
+    # in Dashboard → Edit Source → Virtual Node, port 4404.
 
   # AI Responder - AI-powered mesh assistant
   # Credit: https://github.com/LN4CY/ai-responder
