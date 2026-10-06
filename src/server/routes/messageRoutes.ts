@@ -1,14 +1,21 @@
 import express, { Request, Response } from 'express';
 import databaseService, { DbMessage } from '../../services/database.js';
 import { ALL_SOURCES } from '../../db/repositories/index.js';
-import { isMeshtasticManager, getPrimaryMeshtasticManager } from '../sourceManagerTypes.js';
+import { getPrimaryMeshtasticManager } from '../sourceManagerTypes.js';
 import { sourceManagerRegistry } from '../sourceManagerRegistry.js';
 import { logger } from '../../utils/logger.js';
 import { RequestHandler } from 'express';
 import { fallbackManager } from '../meshtasticManager.js';
 import { resolveSourceManager, resolveOwnMeshtasticManager } from '../utils/resolveSourceManager.js';
 import { refuseNonMeshtasticSource, isNonMeshtasticSource } from '../utils/requireMeshtasticDeviceSource.js';
-import { optionalAuth, requirePermission, hasPermission } from '../auth/authMiddleware.js';
+import {
+  requireSourcePermission,
+  getSourceTarget,
+  listPermittedSourceIds,
+  readNewestAcrossSources,
+  readRequestSourceId,
+} from '../utils/sourceScopedAccess.js';
+import { optionalAuth, hasPermission } from '../auth/authMiddleware.js';
 import {
   getUserReadableVirtualChannelIds,
   canReadVirtualChannelNumber,
@@ -696,17 +703,16 @@ router.post('/nodes/:nodeNum/purge-from-device', requireMessagesWrite, async (re
       });
     }
 
-    // Get the meshtasticManager instance (source-aware)
-    const { sourceId: purgeSourceId } = req.body || {};
-    const _purgeBase = purgeSourceId ? sourceManagerRegistry.getManager(purgeSourceId) : null;
-    const meshtasticManager = (_purgeBase && isMeshtasticManager(_purgeBase))
-      ? _purgeBase
-      : getPrimaryMeshtasticManager(sourceManagerRegistry);
+    // The source requireMessagesWrite checked `messages:write` on. The admin
+    // packet goes to THAT source's own radio. This used to read the body only
+    // and fall back to the primary, so a sourceId sent in the query, or one
+    // naming a source with no radio (MQTT, MeshCore), had its permission
+    // checked on one source and the node removed from the primary's NodeDB.
+    const purgeSourceId: string = (req as any).scopedSourceId;
+    if (await refuseNonMeshtasticSource(res, purgeSourceId, 'device NodeDB purges')) return;
+    const meshtasticManager = resolveOwnMeshtasticManager(purgeSourceId);
     if (!meshtasticManager) {
-      return res.status(500).json({
-        error: 'Internal server error',
-        message: 'Meshtastic manager not available'
-      });
+      return fail(res, 404, 'SOURCE_NOT_FOUND', `Source "${purgeSourceId}" was not found.`);
     }
 
     // Prevent purging the local node
@@ -719,9 +725,7 @@ router.post('/nodes/:nodeNum/purge-from-device', requireMessagesWrite, async (re
     }
 
     // Get node name for logging (async for multi-database support).
-    // Use purgeSourceId if available; fall back to ALL_SOURCES for the name lookup (log-only, low stakes).
-    const nameScope = (typeof purgeSourceId === 'string' && purgeSourceId.length > 0) ? purgeSourceId : ALL_SOURCES;
-    const nodes = await databaseService.nodes.getAllNodes(nameScope);
+    const nodes = await databaseService.nodes.getAllNodes(purgeSourceId);
     const node = nodes.find((n: any) => Number(n.nodeNum) === nodeNum);
     const nodeName = node?.shortName || node?.longName || `Node ${nodeNum}`;
 
@@ -738,12 +742,6 @@ router.post('/nodes/:nodeNum/purge-from-device', requireMessagesWrite, async (re
     }
 
     // Also delete from local database (async for multi-database support)
-    if (!purgeSourceId) {
-      return res.status(400).json({
-        error: 'Bad request',
-        message: 'sourceId is required in body'
-      });
-    }
     const result = await databaseService.deleteNodeAsync(nodeNum, purgeSourceId);
 
     if (!result.nodeDeleted) {
@@ -826,6 +824,24 @@ router.get('/', optionalAuth(), async (req, res) => {
 
     const limit = parseInt(req.query.limit as string) || 100;
     const defaultMgr = getPrimaryMeshtasticManager(sourceManagerRegistry) ?? fallbackManager;
+
+    // No sourceId and not an admin: the union check above only says the caller
+    // may read something somewhere. Read each source on its own and filter it
+    // with that source's grants, so a grant on source A never shows source B's
+    // messages. Admins keep the single query over every source.
+    if (!messagesSourceId && !access.isAdmin) {
+      const perSource: Awaited<ReturnType<typeof defaultMgr.getRecentMessages>> = [];
+      for (const source of await databaseService.sources.getAllSources()) {
+        const sourceAccess = await resolveMessageReadAccess(req.user, source.id);
+        if (!sourceAccess.canReadAny) continue;
+        const rows = await defaultMgr.getRecentMessages(limit, source.id);
+        perSource.push(...rows.filter(msg => sourceAccess.canReadChannel(msg.channel)));
+      }
+      perSource.sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
+      res.json(perSource.slice(0, limit));
+      return;
+    }
+
     let messages = await defaultMgr.getRecentMessages(limit, messagesSourceId);
 
     messages = messages.filter(msg => access.canReadChannel(msg.channel));
@@ -893,9 +909,25 @@ router.get('/channel/:channel', optionalAuth(), async (req, res) => {
     // Fetch limit+1 to accurately detect if more messages exist. When a sourceId
     // is provided, bypass the sync facade (which doesn't accept sourceId) and
     // go directly through the repository so the query is source-scoped.
-    const dbMessages = sourceIdParam
-      ? (await databaseService.messages.getMessagesByChannel(messageChannel, limit + 1, offset, sourceIdParam)) as DbMessage[]
-      : await databaseService.getMessagesByChannelAsync(messageChannel, limit + 1, offset);
+    //
+    // No sourceId, a physical channel and not an admin: the check above passed
+    // on a `channel_N:read` grant for SOME source. Read only the sources the
+    // caller holds it on. (A virtual channel's grant is global by design.)
+    let dbMessages: DbMessage[];
+    if (sourceIdParam) {
+      dbMessages = (await databaseService.messages.getMessagesByChannel(messageChannel, limit + 1, offset, sourceIdParam)) as DbMessage[];
+    } else if (req.user?.isAdmin || isVirtualChannelNumber(messageChannel)) {
+      dbMessages = await databaseService.getMessagesByChannelAsync(messageChannel, limit + 1, offset);
+    } else {
+      const readable = await listPermittedSourceIds(req.user, `channel_${messageChannel}` as import('../../types/permission.js').ResourceType, 'read');
+      dbMessages = await readNewestAcrossSources(
+        readable as string[],
+        async (id, pageLimit) => (await databaseService.messages.getMessagesByChannel(messageChannel, pageLimit, 0, id)) as DbMessage[],
+        (row) => Number(row.createdAt ?? 0),
+        limit + 1,
+        offset,
+      );
+    }
     const hasMore = dbMessages.length > limit;
     // Return only the requested limit
     const messages = dbMessages.slice(0, limit).map(transformDbMessageToMeshMessage);
@@ -910,26 +942,35 @@ router.get('/channel/:channel', optionalAuth(), async (req, res) => {
  * GET /api/messages/direct/:nodeId1/:nodeId2
  * Extracted verbatim from server.ts (was L2442).
  */
-router.get('/direct/:nodeId1/:nodeId2', requirePermission('messages', 'read'), async (req, res) => {
+router.get('/direct/:nodeId1/:nodeId2', requireSourcePermission('messages', 'read', { whenOmitted: 'permitted' }), async (req, res) => {
   try {
     const { nodeId1, nodeId2 } = req.params;
     // Validate and clamp limit (1-500) and offset (0-50000) to prevent abuse
     const limit = Math.max(1, Math.min(parseInt(req.query.limit as string) || 100, 500));
     const offset = Math.max(0, Math.min(parseInt(req.query.offset as string) || 0, 50000));
-    // Optional source scope — DM threads are per-source (each source has its
-    // own view of a node pair). When omitted, returns DMs across every source.
-    const sourceIdParam = typeof req.query.sourceId === 'string' && req.query.sourceId.length > 0
-      ? req.query.sourceId
-      : undefined;
+    // DM threads are per-source (each source has its own view of a node
+    // pair). `messages:read` is the DM gate on every message route, checked
+    // per source. With a sourceId: that source. With none: every source for
+    // an admin, and for anyone else only the sources they hold
+    // `messages:read` on; another source's DMs are never returned.
+    const { sourceIds } = getSourceTarget(req);
     // Fetch limit+1 to accurately detect if more messages exist
-    const dbMessages = await databaseService.messages.getDirectMessages(nodeId1, nodeId2, limit + 1, offset, sourceIdParam ?? ALL_SOURCES) as DbMessage[]; // intentional cross-source when sourceId omitted
+    const dbMessages = sourceIds === 'all'
+      ? await databaseService.messages.getDirectMessages(nodeId1, nodeId2, limit + 1, offset, ALL_SOURCES) as DbMessage[] // intentional cross-source: admin, no sourceId
+      : await readNewestAcrossSources(
+          sourceIds,
+          async (id, pageLimit) => (await databaseService.messages.getDirectMessages(nodeId1, nodeId2, pageLimit, 0, id)) as DbMessage[],
+          (row) => Number(row.createdAt ?? 0),
+          limit + 1,
+          offset,
+        );
     const hasMore = dbMessages.length > limit;
     // Return only the requested limit
     const messages = dbMessages.slice(0, limit).map(transformDbMessageToMeshMessage);
     res.json({ messages, hasMore });
   } catch (error) {
     logger.error('Error fetching direct messages:', error);
-    res.status(500).json({ error: 'Failed to fetch direct messages' });
+    fail(res, 500, 'INTERNAL_ERROR', 'Failed to fetch direct messages');
   }
 });
 
@@ -943,6 +984,10 @@ router.post('/mark-read', optionalAuth(), async (req, res) => {
     // The local node is THIS source's own node. A non-Meshtastic source has
     // none; falling back to the primary would mark the primary's DMs (#5375).
     const markReadManager = resolveOwnMeshtasticManager(markReadSourceId);
+    // The source the permission checks below are tied to. Read state is the
+    // caller's own, so with no sourceId the checks keep their any-source
+    // meaning; with one, they are checked on it.
+    const markReadScope = typeof markReadSourceId === 'string' && markReadSourceId.length > 0 ? markReadSourceId : undefined;
 
     // If marking by channelId, check per-channel read permission. Virtual
     // (Channel Database) channels use per-entry `canRead` grants rather than a
@@ -960,7 +1005,9 @@ router.post('/mark-read', optionalAuth(), async (req, res) => {
         }
       } else {
         const channelResource = `channel_${channelId}` as import('../../types/permission.js').ResourceType;
-        if (!req.user?.isAdmin && !(req.user ? await hasPermission(req.user, channelResource, 'read') : false)) {
+        // Scoped to the named source. Unscoped, a `channel_N:read` grant on
+        // one source marked (and counted) channel N on any source named here.
+        if (!req.user?.isAdmin && !(req.user ? await hasPermission(req.user, channelResource, 'read', markReadScope) : false)) {
           return res.status(403).json({
             error: 'Insufficient permissions',
             code: 'FORBIDDEN',
@@ -972,7 +1019,7 @@ router.post('/mark-read', optionalAuth(), async (req, res) => {
 
     // If marking by nodeId (DMs) or allDMs, check messages permission
     if ((nodeId && channelId === -1) || allDMs) {
-      const hasMessagesRead = req.user?.isAdmin || (req.user ? await hasPermission(req.user, 'messages', 'read') : false);
+      const hasMessagesRead = req.user?.isAdmin || (req.user ? await hasPermission(req.user, 'messages', 'read', markReadScope) : false);
       if (!hasMessagesRead) {
         return res.status(403).json({
           error: 'Insufficient permissions',
@@ -1152,7 +1199,7 @@ router.get('/unread-counts', optionalAuth(), async (req, res) => {
           continue;
         } else if (!isAdmin && req.user) {
           const channelResource = `channel_${channelId}` as import('../../types/permission.js').ResourceType;
-          if (!(await hasPermission(req.user, channelResource, 'read'))) continue;
+          if (!(await hasPermission(req.user, channelResource, 'read', unreadSourceId))) continue;
         } else if (!req.user && !isAdmin) {
           continue;
         }
@@ -1495,7 +1542,7 @@ router.get('/first-unread', optionalAuth(), async (req, res) => {
           continue;
         } else if (!isAdmin && req.user) {
           const channelResource = `channel_${channelId}` as import('../../types/permission.js').ResourceType;
-          if (!(await hasPermission(req.user, channelResource, 'read'))) continue;
+          if (!(await hasPermission(req.user, channelResource, 'read', scopedSourceId))) continue;
         } else if (!req.user && !isAdmin) {
           continue;
         }
@@ -1534,10 +1581,19 @@ router.get('/first-unread', optionalAuth(), async (req, res) => {
  */
 router.post('/send', optionalAuth(), async (req, res) => {
   try {
-    const { text, channel, destination, replyId, emoji, sourceId: reqSourceId } = req.body;
+    const { text, channel, destination, replyId, emoji } = req.body;
     if (!text || typeof text !== 'string') {
       return res.status(400).json({ error: 'Message text is required' });
     }
+
+    // The source this message is sent through, resolved ONCE: the named one,
+    // else the primary. The permission checks, the node lookups and the send
+    // below all use it. The checks used to be unscoped, so a write grant on
+    // one source let its holder transmit through any source named here.
+    const named = readRequestSourceId(req, res);
+    if (!named.ok) return;
+    const sendManager = resolveOwnMeshtasticManager(named.sourceId);
+    const reqSourceId: string | undefined = named.sourceId ?? sendManager?.sourceId;
 
     // Validate replyId if provided
     if (replyId !== undefined && (typeof replyId !== 'number' || replyId < 0 || !Number.isInteger(replyId))) {
@@ -1589,7 +1645,7 @@ router.post('/send', optionalAuth(), async (req, res) => {
     // Check permissions based on whether this is a DM or channel message
     if (destinationNum) {
       // Direct message - check 'messages' write permission
-      if (!req.user?.isAdmin && !(req.user ? await hasPermission(req.user, 'messages', 'write') : false)) {
+      if (!req.user?.isAdmin && !(req.user ? await hasPermission(req.user, 'messages', 'write', reqSourceId) : false)) {
         return res.status(403).json({
           error: 'Insufficient permissions',
           code: 'FORBIDDEN',
@@ -1599,7 +1655,7 @@ router.post('/send', optionalAuth(), async (req, res) => {
     } else {
       // Channel message - check per-channel write permission
       const channelResource = `channel_${meshChannel}` as import('../../types/permission.js').ResourceType;
-      if (!req.user?.isAdmin && !(req.user ? await hasPermission(req.user, channelResource, 'write') : false)) {
+      if (!req.user?.isAdmin && !(req.user ? await hasPermission(req.user, channelResource, 'write', reqSourceId) : false)) {
         return res.status(403).json({
           error: 'Insufficient permissions',
           code: 'FORBIDDEN',
@@ -1613,8 +1669,12 @@ router.post('/send', optionalAuth(), async (req, res) => {
     // transmit through a radio the user did not pick (#5375). Refuse instead.
     if (await refuseNonMeshtasticSource(res, reqSourceId, 'message sends')) return;
 
-    // Route to the correct source manager when sourceId is provided
-    const activeManager = (resolveSourceManager(reqSourceId));
+    // The resolved source's own manager. An id that names no source used to
+    // fall back to the primary radio; it is a 404 now.
+    if (!sendManager) {
+      return fail(res, 404, 'SOURCE_NOT_FOUND', `Source "${reqSourceId}" was not found.`);
+    }
+    const activeManager = sendManager;
 
     // Send the message to the mesh network (with optional destination for DMs, replyId, and emoji flag)
     // Note: sendTextMessage() now handles saving the message to the database

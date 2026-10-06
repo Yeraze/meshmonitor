@@ -1,21 +1,19 @@
 import { Router, Request, Response } from 'express';
-import { requirePermission } from '../auth/authMiddleware.js';
 import databaseService from '../../services/database.js';
 import { logger } from '../../utils/logger.js';
-import { resolveRequestSourceId } from '../utils/sourceResolver.js';
+import { requireSourcePermission, getSourceTarget } from '../utils/sourceScopedAccess.js';
 import { fail } from '../utils/apiResponse.js';
 
 const router = Router();
 
-router.get('/', requirePermission('nodes', 'read'), async (req: Request, res: Response) => {
+// Both routes serve every source type (the ignore list is rows, not a radio).
+// The permission is checked on the source the list belongs to: the named one,
+// else the first enabled source the caller holds it on. `resolveRequestSourceId`
+// used to accept a named id here without checking the permission on it.
+
+router.get('/', requireSourcePermission('nodes', 'read', { whenOmitted: 'first-permitted' }), async (req: Request, res: Response) => {
   try {
-    const listSourceId = await resolveRequestSourceId(req, 'nodes', 'read');
-    if (!listSourceId) {
-      fail(res, 400, 'MISSING_SOURCE_ID', 'No permitted source', {
-        details: 'Provide ?sourceId=, or ensure your account has nodes:read on at least one enabled source',
-      });
-      return;
-    }
+    const listSourceId = getSourceTarget(req).sourceId as string;
     const ignoredNodes = await databaseService.ignoredNodes.getIgnoredNodesAsync(listSourceId);
     res.json(ignoredNodes);
   } catch (error) {
@@ -26,7 +24,7 @@ router.get('/', requirePermission('nodes', 'read'), async (req: Request, res: Re
   }
 });
 
-router.delete('/:nodeId', requirePermission('nodes', 'write'), async (req: Request, res: Response) => {
+router.delete('/:nodeId', requireSourcePermission('nodes', 'write', { whenOmitted: 'first-permitted' }), async (req: Request, res: Response) => {
   try {
     const { nodeId } = req.params;
 
@@ -39,14 +37,7 @@ router.delete('/:nodeId', requirePermission('nodes', 'write'), async (req: Reque
       return;
     }
 
-    const deleteSourceId = await resolveRequestSourceId(req, 'nodes', 'write');
-    if (!deleteSourceId) {
-      fail(res, 400, 'MISSING_SOURCE_ID', 'No permitted source', {
-        details: 'Provide ?sourceId=, or ensure your account has nodes:write on at least one enabled source',
-      });
-      return;
-    }
-
+    const deleteSourceId = getSourceTarget(req).sourceId as string;
     const nodeNum = parseInt(nodeNumStr, 16);
 
     await databaseService.ignoredNodes.removeIgnoredNodeAsync(nodeNum, deleteSourceId);

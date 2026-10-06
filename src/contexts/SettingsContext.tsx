@@ -832,12 +832,15 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
         method: 'POST',
         headers,
         credentials: 'include',
-        body: JSON.stringify({ intervalMinutes: value })
+        // Name the source being viewed. Without it the server applies the
+        // interval to the primary source's scheduler, whichever source the
+        // Automation tab is open on.
+        body: JSON.stringify({ intervalMinutes: value, ...(sourceId ? { sourceId } : {}) })
       });
     } catch (error) {
       logger.error('Error updating traceroute interval:', error);
     }
-  }, [baseUrl, getCsrfToken]);
+  }, [baseUrl, getCsrfToken, sourceId]);
 
   const setRemoteLocalStatsIntervalMinutes = React.useCallback(async (value: number) => {
     setRemoteLocalStatsIntervalMinutesState(value);
@@ -852,12 +855,12 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
         method: 'POST',
         headers,
         credentials: 'include',
-        body: JSON.stringify({ intervalMinutes: value })
+        body: JSON.stringify({ intervalMinutes: value, ...(sourceId ? { sourceId } : {}) })
       });
     } catch (error) {
       logger.error('Error updating remote LocalStats interval:', error);
     }
-  }, [baseUrl, getCsrfToken]);
+  }, [baseUrl, getCsrfToken, sourceId]);
 
   const setTemperatureUnit = React.useCallback((unit: TemperatureUnit) => {
     setTemperatureUnitState(unit);

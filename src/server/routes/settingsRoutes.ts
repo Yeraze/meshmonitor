@@ -24,7 +24,12 @@ import { COVERAGE_MQTT_ENABLED_SETTING } from '../../utils/coverage.js';
 import { VALID_SETTINGS_KEYS, GLOBAL_ONLY_SETTINGS_KEYS, stripSecretSettings, isSecretSettingKey } from '../constants/settings.js';
 import { TRANSLATION_PROVIDER_URL_SETTING_KEYS } from '../../types/translationProviders.js';
 import { ok, fail } from '../utils/apiResponse.js';
-import { resolveOwnMeshtasticManager } from '../utils/resolveSourceManager.js';
+import {
+  requireSourcePermission,
+  getSourceTarget,
+  listPermittedSourceIds,
+  readNewestAcrossSources,
+} from '../utils/sourceScopedAccess.js';
 import { validateFilterNameRegexOnSave } from '../utils/filterNameRegex.js';
 import { positionEstimationScheduler } from '../services/positionEstimationScheduler.js';
 import {
@@ -1491,11 +1496,22 @@ router.post('/test-apprise', requirePermission('settings', 'write'), async (req:
 });
 
 // DELETE /settings — reset to defaults
+//
+// Not tied to one source: it clears the global rows, which by the standing
+// ruling (PER_SOURCE_NODE_DISPLAY_PHASE6_SPEC §11) anyone holding
+// `settings:write` on some source may write. It also clears per-source rows,
+// and those only for the sources the caller holds `settings:write` on (every
+// source for an admin). It used to delete every source's rows for anyone.
 router.delete('/', requirePermission('settings', 'write'), async (req: Request, res: Response) => {
   try {
     const currentSettings = await databaseService.settings.getAllSettings();
 
-    await databaseService.settings.deleteAllSettings();
+    const writable = await listPermittedSourceIds(req.user, 'settings', 'write');
+    if (writable === 'all') {
+      await databaseService.settings.deleteAllSettings();
+    } else {
+      await databaseService.settings.deleteGlobalAndSourceSettings(writable);
+    }
     callbacks.setTracerouteInterval?.(0);
 
     void databaseService.auditLogAsync(
@@ -1520,50 +1536,59 @@ router.delete('/', requirePermission('settings', 'write'), async (req: Request, 
 // server.ts; moved verbatim (only the leading route registration rewritten
 // from `apiRouter.<m>('/settings/...')` to `router.<m>('/...')`).
 
-router.post('/traceroute-interval', requirePermission('settings', 'write'), (req, res) => {
+// The per-source automation routes below share one rule. The gate resolves
+// the source once: the named `sourceId` (query or body), else the primary
+// Meshtastic source. `settings:read`/`write` is checked on that source, and
+// the handler reads and writes that source's rows and re-arms that source's
+// own scheduler. They serve every source type: a source with no radio of its
+// own keeps its settings and has no scheduler to re-arm.
+const perSourceSettings = (action: 'read' | 'write') =>
+  requireSourcePermission('settings', action, { whenOmitted: 'primary' });
+
+router.post('/traceroute-interval', perSourceSettings('write'), (req, res) => {
   try {
-    const { intervalMinutes, sourceId: traceIntervalSourceId } = req.body;
+    const { intervalMinutes } = req.body;
     if (typeof intervalMinutes !== 'number' || intervalMinutes < 0 || intervalMinutes > 60) {
-      return res.status(400).json({ error: 'Invalid interval. Must be between 0 and 60 minutes (0 = disabled).' });
+      return fail(res, 400, 'INVALID_INTERVAL', 'Invalid interval. Must be between 0 and 60 minutes (0 = disabled).');
     }
 
     // Apply only to THIS source's own radio. A non-Meshtastic source has none;
     // re-arming the primary's scheduler would change its airtime (#5375).
-    resolveOwnMeshtasticManager(traceIntervalSourceId)?.setTracerouteInterval(intervalMinutes);
+    getSourceTarget(req).manager?.setTracerouteInterval(intervalMinutes);
     res.json({ success: true, intervalMinutes });
   } catch (error) {
     logger.error('Error setting traceroute interval:', error);
-    res.status(500).json({ error: 'Failed to set traceroute interval' });
+    fail(res, 500, 'INTERNAL_ERROR', 'Failed to set traceroute interval');
   }
 });
 
-router.post('/remote-localstats-interval', requirePermission('settings', 'write'), (req, res) => {
+router.post('/remote-localstats-interval', perSourceSettings('write'), (req, res) => {
   try {
-    const { intervalMinutes, sourceId: rlsIntervalSourceId } = req.body;
+    const { intervalMinutes } = req.body;
     if (typeof intervalMinutes !== 'number' || intervalMinutes < 0 || intervalMinutes > 1440) {
-      return res.status(400).json({ error: 'Invalid interval. Must be between 0 and 1440 minutes (0 = disabled).' });
+      return fail(res, 400, 'INVALID_INTERVAL', 'Invalid interval. Must be between 0 and 1440 minutes (0 = disabled).');
     }
     // Own radio only; never the primary's scheduler (#5375).
-    resolveOwnMeshtasticManager(rlsIntervalSourceId)?.setRemoteLocalStatsInterval(intervalMinutes);
+    getSourceTarget(req).manager?.setRemoteLocalStatsInterval(intervalMinutes);
     res.json({ success: true, intervalMinutes });
   } catch (error) {
     logger.error('Error setting remote LocalStats interval:', error);
-    res.status(500).json({ error: 'Failed to set remote LocalStats interval' });
+    fail(res, 500, 'INTERNAL_ERROR', 'Failed to set remote LocalStats interval');
   }
 });
 
-router.get('/traceroute-nodes', requirePermission('settings', 'read'), async (req, res) => {
+router.get('/traceroute-nodes', perSourceSettings('read'), async (req, res) => {
   try {
-    const traceNodesSourceId = req.query.sourceId as string | undefined;
+    const traceNodesSourceId = getSourceTarget(req).sourceId as string;
     const settings = await databaseService.getTracerouteFilterSettingsAsync(traceNodesSourceId);
     res.json(settings);
   } catch (error) {
     logger.error('Error fetching auto-traceroute node filter:', error);
-    res.status(500).json({ error: 'Failed to fetch auto-traceroute node filter' });
+    fail(res, 500, 'INTERNAL_ERROR', 'Failed to fetch auto-traceroute node filter');
   }
 });
 
-router.post('/traceroute-nodes', requirePermission('settings', 'write'), async (req, res) => {
+router.post('/traceroute-nodes', perSourceSettings('write'), async (req, res) => {
   try {
     const {
       enabled, nodeNums, filterChannels, filterRoles, filterHwModels, filterNameRegex,
@@ -1576,17 +1601,17 @@ router.post('/traceroute-nodes', requirePermission('settings', 'write'), async (
 
     // Validate input
     if (typeof enabled !== 'boolean') {
-      return res.status(400).json({ error: 'Invalid enabled value. Must be a boolean.' });
+      return fail(res, 400, 'INVALID_REQUEST', 'Invalid enabled value. Must be a boolean.');
     }
 
     if (!Array.isArray(nodeNums)) {
-      return res.status(400).json({ error: 'Invalid nodeNums value. Must be an array.' });
+      return fail(res, 400, 'INVALID_REQUEST', 'Invalid nodeNums value. Must be an array.');
     }
 
     // Validate all node numbers are valid integers
     for (const nodeNum of nodeNums) {
       if (!Number.isInteger(nodeNum) || nodeNum < 0) {
-        return res.status(400).json({ error: 'All node numbers must be positive integers.' });
+        return fail(res, 400, 'INVALID_REQUEST', 'All node numbers must be positive integers.');
       }
     }
 
@@ -1612,12 +1637,12 @@ router.post('/traceroute-nodes', requirePermission('settings', 'write'), async (
       validatedRoles = validateIntArray(filterRoles, 'filterRoles');
       validatedHwModels = validateIntArray(filterHwModels, 'filterHwModels');
     } catch (error) {
-      return res.status(400).json({ error: (error as Error).message });
+      return fail(res, 400, 'INVALID_REQUEST', (error as Error).message);
     }
 
     // Current stored settings — needed to decide whether the regex must be
     // hard-validated (see validateFilterNameRegexOnSave / #3934).
-    const traceNodesPostSourceId = (req.query.sourceId as string | undefined) || (req.body?.sourceId as string | undefined);
+    const traceNodesPostSourceId = getSourceTarget(req).sourceId as string;
     const currentTraceSettings = await databaseService.getTracerouteFilterSettingsAsync(traceNodesPostSourceId);
 
     // Validate regex if provided — only hard-validate (RE2) when it will actually
@@ -1626,7 +1651,7 @@ router.post('/traceroute-nodes', requirePermission('settings', 'write'), async (
     let validatedRegex = '.*';
     if (filterNameRegex !== undefined && filterNameRegex !== null) {
       if (typeof filterNameRegex !== 'string') {
-        return res.status(400).json({ error: 'Invalid filterNameRegex value. Must be a string.' });
+        return fail(res, 400, 'INVALID_REQUEST', 'Invalid filterNameRegex value. Must be a string.');
       }
       const regexWillBeApplied =
         enabled &&
@@ -1636,7 +1661,7 @@ router.post('/traceroute-nodes', requirePermission('settings', 'write'), async (
         storedRegex: currentTraceSettings.filterNameRegex,
       });
       if ('error' in regexResult) {
-        return res.status(400).json({ error: regexResult.error });
+        return fail(res, 400, 'INVALID_REQUEST', regexResult.error);
       }
       validatedRegex = regexResult.regex;
     }
@@ -1664,7 +1689,7 @@ router.post('/traceroute-nodes', requirePermission('settings', 'write'), async (
       validatedFilterRegexEnabled = validateOptionalBoolean(filterRegexEnabled, 'filterRegexEnabled');
       validatedSortByHops = validateOptionalBoolean(sortByHops, 'sortByHops');
     } catch (error) {
-      return res.status(400).json({ error: (error as Error).message });
+      return fail(res, 400, 'INVALID_REQUEST', (error as Error).message);
     }
 
     // Validate the per-filter combine modes (#5230). Rejected rather than
@@ -1691,14 +1716,14 @@ router.post('/traceroute-nodes', requirePermission('settings', 'write'), async (
       validatedFilterHwModelsMode = validateOptionalMode(filterHwModelsMode, 'filterHwModelsMode');
       validatedFilterRegexMode = validateOptionalMode(filterRegexMode, 'filterRegexMode');
     } catch (error) {
-      return res.status(400).json({ error: (error as Error).message });
+      return fail(res, 400, 'INVALID_REQUEST', (error as Error).message);
     }
 
     // Validate expirationHours (optional, must be an integer between 0 and 168; 0 = always retraceroute)
     let validatedExpirationHours: number | undefined;
     if (expirationHours !== undefined) {
       if (!Number.isInteger(expirationHours) || expirationHours < 0 || expirationHours > 168) {
-        return res.status(400).json({ error: 'Invalid expirationHours value. Must be an integer between 0 and 168.' });
+        return fail(res, 400, 'INVALID_REQUEST', 'Invalid expirationHours value. Must be an integer between 0 and 168.');
       }
       validatedExpirationHours = expirationHours;
     }
@@ -1708,14 +1733,14 @@ router.post('/traceroute-nodes', requirePermission('settings', 'write'), async (
     try {
       validatedFilterLastHeardEnabled = validateOptionalBoolean(filterLastHeardEnabled, 'filterLastHeardEnabled');
     } catch (error) {
-      return res.status(400).json({ error: (error as Error).message });
+      return fail(res, 400, 'INVALID_REQUEST', (error as Error).message);
     }
 
     // Validate filterLastHeardHours (optional, must be integer >= 1)
     let validatedFilterLastHeardHours: number | undefined;
     if (filterLastHeardHours !== undefined) {
       if (!Number.isInteger(filterLastHeardHours) || filterLastHeardHours < 1) {
-        return res.status(400).json({ error: 'Invalid filterLastHeardHours value. Must be an integer >= 1.' });
+        return fail(res, 400, 'INVALID_REQUEST', 'Invalid filterLastHeardHours value. Must be an integer >= 1.');
       }
       validatedFilterLastHeardHours = filterLastHeardHours;
     }
@@ -1725,7 +1750,7 @@ router.post('/traceroute-nodes', requirePermission('settings', 'write'), async (
     try {
       validatedFilterHopsEnabled = validateOptionalBoolean(filterHopsEnabled, 'filterHopsEnabled');
     } catch (error) {
-      return res.status(400).json({ error: (error as Error).message });
+      return fail(res, 400, 'INVALID_REQUEST', (error as Error).message);
     }
 
     // Validate filterHopsMin/Max (optional, must be integers >= 0, min <= max)
@@ -1733,18 +1758,18 @@ router.post('/traceroute-nodes', requirePermission('settings', 'write'), async (
     let validatedFilterHopsMax: number | undefined;
     if (filterHopsMin !== undefined) {
       if (!Number.isInteger(filterHopsMin) || filterHopsMin < 0) {
-        return res.status(400).json({ error: 'Invalid filterHopsMin value. Must be a non-negative integer.' });
+        return fail(res, 400, 'INVALID_REQUEST', 'Invalid filterHopsMin value. Must be a non-negative integer.');
       }
       validatedFilterHopsMin = filterHopsMin;
     }
     if (filterHopsMax !== undefined) {
       if (!Number.isInteger(filterHopsMax) || filterHopsMax < 0) {
-        return res.status(400).json({ error: 'Invalid filterHopsMax value. Must be a non-negative integer.' });
+        return fail(res, 400, 'INVALID_REQUEST', 'Invalid filterHopsMax value. Must be a non-negative integer.');
       }
       validatedFilterHopsMax = filterHopsMax;
     }
     if (validatedFilterHopsMin !== undefined && validatedFilterHopsMax !== undefined && validatedFilterHopsMin > validatedFilterHopsMax) {
-      return res.status(400).json({ error: 'filterHopsMin cannot be greater than filterHopsMax.' });
+      return fail(res, 400, 'INVALID_REQUEST', 'filterHopsMin cannot be greater than filterHopsMax.');
     }
 
     // Update all settings (scoped to source when provided; sourceId resolved above)
@@ -1783,22 +1808,23 @@ router.post('/traceroute-nodes', requirePermission('settings', 'write'), async (
     });
   } catch (error) {
     logger.error('Error updating auto-traceroute node filter:', error);
-    res.status(500).json({ error: 'Failed to update auto-traceroute node filter' });
+    fail(res, 500, 'INTERNAL_ERROR', 'Failed to update auto-traceroute node filter');
   }
 });
 
-router.get('/remote-localstats-nodes', requirePermission('settings', 'read'), async (req, res) => {
+router.get('/remote-localstats-nodes', perSourceSettings('read'), async (req, res) => {
   try {
-    const sourceId = req.query.sourceId as string | undefined;
+    const sourceId = getSourceTarget(req).sourceId as string;
     const settings = await databaseService.getRemoteLocalStatsFilterSettingsAsync(sourceId);
     res.json(settings);
   } catch (error) {
     logger.error('Error fetching remote LocalStats node filter:', error);
-    res.status(500).json({ error: 'Failed to fetch remote LocalStats node filter' });
+    fail(res, 500, 'INTERNAL_ERROR', 'Failed to fetch remote LocalStats node filter');
   }
 });
 
-router.post('/remote-localstats-nodes', requirePermission('settings', 'write'), async (req, res) => {
+// Explicit sourceId only, as before: 400 MISSING_SOURCE_ID without one.
+router.post('/remote-localstats-nodes', requireSourcePermission('settings', 'write', { whenOmitted: 'required' }), async (req, res) => {
   try {
     const {
       enabled, nodeNums, filterRoles, filterNameRegex,
@@ -1807,14 +1833,14 @@ router.post('/remote-localstats-nodes', requirePermission('settings', 'write'), 
     } = req.body;
 
     if (typeof enabled !== 'boolean') {
-      return res.status(400).json({ error: 'Invalid enabled value. Must be a boolean.' });
+      return fail(res, 400, 'INVALID_REQUEST', 'Invalid enabled value. Must be a boolean.');
     }
     if (!Array.isArray(nodeNums)) {
-      return res.status(400).json({ error: 'Invalid nodeNums value. Must be an array.' });
+      return fail(res, 400, 'INVALID_REQUEST', 'Invalid nodeNums value. Must be an array.');
     }
     for (const nodeNum of nodeNums) {
       if (!Number.isInteger(nodeNum) || nodeNum < 0) {
-        return res.status(400).json({ error: 'All node numbers must be positive integers.' });
+        return fail(res, 400, 'INVALID_REQUEST', 'All node numbers must be positive integers.');
       }
     }
 
@@ -1835,15 +1861,11 @@ router.post('/remote-localstats-nodes', requirePermission('settings', 'write'), 
     try {
       validatedRoles = validateIntArray(filterRoles, 'filterRoles');
     } catch (error) {
-      return res.status(400).json({ error: (error as Error).message });
+      return fail(res, 400, 'INVALID_REQUEST', (error as Error).message);
     }
 
-    // sourceId is required here; resolve it up-front so we can read the current
-    // stored settings for the regex guard below.
-    const sourceId = (req.query.sourceId as string | undefined) || (req.body?.sourceId as string | undefined);
-    if (!sourceId) {
-      return res.status(400).json({ error: 'sourceId is required for remote LocalStats filter settings.' });
-    }
+    // sourceId is required here (the gate refuses a request without one).
+    const sourceId = getSourceTarget(req).sourceId as string;
     const currentRemoteSettings = await databaseService.getRemoteLocalStatsFilterSettingsAsync(sourceId);
 
     // Validate regex — only hard-validate (RE2) when it will actually be applied
@@ -1852,7 +1874,7 @@ router.post('/remote-localstats-nodes', requirePermission('settings', 'write'), 
     let validatedRegex = '.*';
     if (filterNameRegex !== undefined && filterNameRegex !== null) {
       if (typeof filterNameRegex !== 'string') {
-        return res.status(400).json({ error: 'Invalid filterNameRegex value. Must be a string.' });
+        return fail(res, 400, 'INVALID_REQUEST', 'Invalid filterNameRegex value. Must be a string.');
       }
       const regexWillBeApplied =
         enabled &&
@@ -1862,7 +1884,7 @@ router.post('/remote-localstats-nodes', requirePermission('settings', 'write'), 
         storedRegex: currentRemoteSettings.filterNameRegex,
       });
       if ('error' in regexResult) {
-        return res.status(400).json({ error: regexResult.error });
+        return fail(res, 400, 'INVALID_REQUEST', regexResult.error);
       }
       validatedRegex = regexResult.regex;
     }
@@ -1887,13 +1909,13 @@ router.post('/remote-localstats-nodes', requirePermission('settings', 'write'), 
       validatedFilterRegexEnabled = validateOptionalBoolean(filterRegexEnabled, 'filterRegexEnabled');
       validatedFilterLastHeardEnabled = validateOptionalBoolean(filterLastHeardEnabled, 'filterLastHeardEnabled');
     } catch (error) {
-      return res.status(400).json({ error: (error as Error).message });
+      return fail(res, 400, 'INVALID_REQUEST', (error as Error).message);
     }
 
     let validatedFilterLastHeardHours: number | undefined;
     if (filterLastHeardHours !== undefined) {
       if (!Number.isInteger(filterLastHeardHours) || filterLastHeardHours < 1) {
-        return res.status(400).json({ error: 'Invalid filterLastHeardHours value. Must be an integer >= 1.' });
+        return fail(res, 400, 'INVALID_REQUEST', 'Invalid filterLastHeardHours value. Must be an integer >= 1.');
       }
       validatedFilterLastHeardHours = filterLastHeardHours;
     }
@@ -1915,73 +1937,89 @@ router.post('/remote-localstats-nodes', requirePermission('settings', 'write'), 
     res.json({ success: true, ...updatedSettings });
   } catch (error) {
     logger.error('Error updating remote LocalStats node filter:', error);
-    res.status(500).json({ error: 'Failed to update remote LocalStats node filter' });
+    fail(res, 500, 'INTERNAL_ERROR', 'Failed to update remote LocalStats node filter');
   }
 });
 
-router.get('/traceroute-log', requirePermission('settings', 'read'), async (req, res) => {
+// The three log routes and the two bulk actions below share the other rule.
+// With a `sourceId`, the permission is checked on it and only its rows are
+// read or changed. With none they cover several sources: every source for an
+// admin (unchanged), and for anyone else only the sources they hold the
+// permission on. A source the caller lacks it on is never read or changed.
+const acrossSources = (action: 'read' | 'write') =>
+  requireSourcePermission('settings', action, { whenOmitted: 'permitted' });
+
+router.get('/traceroute-log', acrossSources('read'), async (req, res) => {
   try {
-    const traceLogSourceId = req.query.sourceId as string | undefined;
-    const log = await databaseService.getAutoTracerouteLogAsync(10, traceLogSourceId);
+    const { sourceId: traceLogSourceId, sourceIds } = getSourceTarget(req);
+    const log = sourceIds === 'all'
+      ? await databaseService.getAutoTracerouteLogAsync(10, traceLogSourceId ?? undefined)
+      : await readNewestAcrossSources(
+          sourceIds,
+          (id, limit) => databaseService.getAutoTracerouteLogAsync(limit, id),
+          (row) => row.timestamp,
+          10,
+        );
     res.json({
       success: true,
       log,
     });
   } catch (error) {
     logger.error('Error fetching auto-traceroute log:', error);
-    res.status(500).json({ error: 'Failed to fetch auto-traceroute log' });
+    fail(res, 500, 'INTERNAL_ERROR', 'Failed to fetch auto-traceroute log');
   }
 });
 
-router.get('/time-sync-nodes', requirePermission('settings', 'read'), async (req, res) => {
+router.get('/time-sync-nodes', perSourceSettings('read'), async (req, res) => {
   try {
-    const sourceId = (req.query.sourceId as string | undefined) || undefined;
+    const sourceId = getSourceTarget(req).sourceId as string;
     const settings = await databaseService.getTimeSyncFilterSettingsAsync(sourceId);
     res.json(settings);
   } catch (error) {
     logger.error('Error fetching auto time sync settings:', error);
-    res.status(500).json({ error: 'Failed to fetch auto time sync settings' });
+    fail(res, 500, 'INTERNAL_ERROR', 'Failed to fetch auto time sync settings');
   }
 });
 
-router.post('/time-sync-nodes', requirePermission('settings', 'write'), async (req, res) => {
+router.post('/time-sync-nodes', perSourceSettings('write'), async (req, res) => {
   try {
     const { enabled, nodeNums, filterEnabled, expirationHours, intervalMinutes } = req.body;
-    const sourceId = (req.query.sourceId as string | undefined) || (req.body.sourceId as string | undefined) || undefined;
+    const { sourceId: resolvedSourceId, manager: timeSyncManager } = getSourceTarget(req);
+    const sourceId = resolvedSourceId as string;
 
     // Validate input
     if (enabled !== undefined && typeof enabled !== 'boolean') {
-      return res.status(400).json({ error: 'Invalid enabled value. Must be a boolean.' });
+      return fail(res, 400, 'INVALID_REQUEST', 'Invalid enabled value. Must be a boolean.');
     }
 
     if (nodeNums !== undefined && !Array.isArray(nodeNums)) {
-      return res.status(400).json({ error: 'Invalid nodeNums value. Must be an array.' });
+      return fail(res, 400, 'INVALID_REQUEST', 'Invalid nodeNums value. Must be an array.');
     }
 
     // Validate all node numbers are valid integers
     if (nodeNums) {
       for (const nodeNum of nodeNums) {
         if (!Number.isInteger(nodeNum) || nodeNum < 0) {
-          return res.status(400).json({ error: 'All node numbers must be positive integers.' });
+          return fail(res, 400, 'INVALID_REQUEST', 'All node numbers must be positive integers.');
         }
       }
     }
 
     if (filterEnabled !== undefined && typeof filterEnabled !== 'boolean') {
-      return res.status(400).json({ error: 'Invalid filterEnabled value. Must be a boolean.' });
+      return fail(res, 400, 'INVALID_REQUEST', 'Invalid filterEnabled value. Must be a boolean.');
     }
 
     if (expirationHours !== undefined) {
       const hours = Number(expirationHours);
       if (!Number.isInteger(hours) || hours < 1 || hours > 24) {
-        return res.status(400).json({ error: 'Expiration hours must be an integer between 1 and 24.' });
+        return fail(res, 400, 'INVALID_REQUEST', 'Expiration hours must be an integer between 1 and 24.');
       }
     }
 
     if (intervalMinutes !== undefined) {
       const minutes = Number(intervalMinutes);
       if (!Number.isInteger(minutes) || (minutes !== 0 && (minutes < 15 || minutes > 1440))) {
-        return res.status(400).json({ error: 'Interval must be 0 (disabled) or between 15 and 1440 minutes.' });
+        return fail(res, 400, 'INVALID_REQUEST', 'Interval must be 0 (disabled) or between 15 and 1440 minutes.');
       }
     }
 
@@ -1998,7 +2036,6 @@ router.post('/time-sync-nodes', requirePermission('settings', 'write'), async (r
     const timeSyncSourceId = sourceId;
     // Own radio only; a non-Meshtastic source never re-arms the primary's
     // time-sync scheduler (#5375).
-    const timeSyncManager = resolveOwnMeshtasticManager(timeSyncSourceId);
     if (!timeSyncManager) {
       // Settings are saved above; there is no local radio to apply them to.
     } else if (intervalMinutes !== undefined) {
@@ -2020,16 +2057,15 @@ router.post('/time-sync-nodes', requirePermission('settings', 'write'), async (r
     });
   } catch (error) {
     logger.error('Error updating auto time sync settings:', error);
-    res.status(500).json({ error: 'Failed to update auto time sync settings' });
+    fail(res, 500, 'INTERNAL_ERROR', 'Failed to update auto time sync settings');
   }
 });
 
-router.get('/auto-ping', requirePermission('settings', 'read'), async (req, res) => {
+router.get('/auto-ping', perSourceSettings('read'), async (req, res) => {
   try {
-    const autoPingSourceId = req.query.sourceId as string | undefined;
     // Sessions come from THIS source's own radio; a source with none (MQTT
     // broker/bridge, disconnected TCP) has no sessions, not the primary's (#5375).
-    const autoPingManager = resolveOwnMeshtasticManager(autoPingSourceId);
+    const { sourceId: autoPingSourceId, manager: autoPingManager } = getSourceTarget(req);
     // Per-source settings layered on top of globals (source override wins)
     const sourceOverrides = autoPingSourceId
       ? await databaseService.settings.getSourceSettings(autoPingSourceId)
@@ -2048,14 +2084,14 @@ router.get('/auto-ping', requirePermission('settings', 'read'), async (req, res)
     res.json({ settings, sessions });
   } catch (error) {
     logger.error('Error fetching auto-ping settings:', error);
-    res.status(500).json({ error: 'Failed to fetch auto-ping settings' });
+    fail(res, 500, 'INTERNAL_ERROR', 'Failed to fetch auto-ping settings');
   }
 });
 
-router.post('/auto-ping', requirePermission('settings', 'write'), async (req, res) => {
+router.post('/auto-ping', perSourceSettings('write'), async (req, res) => {
   try {
     const { autoPingEnabled, autoPingIntervalSeconds, autoPingMaxPings, autoPingTimeoutSeconds } = req.body;
-    const autoPingSourceId = req.query.sourceId as string | undefined;
+    const autoPingSourceId = getSourceTarget(req).sourceId;
     const writeSetting = async (key: string, value: string) => {
       if (autoPingSourceId) {
         await databaseService.settings.setSourceSetting(autoPingSourceId, key, value);
@@ -2078,7 +2114,7 @@ router.post('/auto-ping', requirePermission('settings', 'write'), async (req, re
     if (autoPingIntervalSeconds !== undefined) {
       const val = parseInt(String(autoPingIntervalSeconds), 10);
       if (isNaN(val) || val < 10) {
-        return res.status(400).json({ error: 'Interval must be at least 10 seconds.' });
+        return fail(res, 400, 'INVALID_INTERVAL', 'Interval must be at least 10 seconds.');
       }
       await writeSetting('autoPingIntervalSeconds', String(val));
       sourceOverrides['autoPingIntervalSeconds'] = String(val);
@@ -2086,7 +2122,7 @@ router.post('/auto-ping', requirePermission('settings', 'write'), async (req, re
     if (autoPingMaxPings !== undefined) {
       const val = parseInt(String(autoPingMaxPings), 10);
       if (isNaN(val) || val < 1 || val > 100) {
-        return res.status(400).json({ error: 'Max pings must be between 1 and 100.' });
+        return fail(res, 400, 'INVALID_MAX_PINGS', 'Max pings must be between 1 and 100.');
       }
       await writeSetting('autoPingMaxPings', String(val));
       sourceOverrides['autoPingMaxPings'] = String(val);
@@ -2094,7 +2130,7 @@ router.post('/auto-ping', requirePermission('settings', 'write'), async (req, re
     if (autoPingTimeoutSeconds !== undefined) {
       const val = parseInt(String(autoPingTimeoutSeconds), 10);
       if (isNaN(val) || val < 10) {
-        return res.status(400).json({ error: 'Timeout must be at least 10 seconds.' });
+        return fail(res, 400, 'INVALID_TIMEOUT', 'Timeout must be at least 10 seconds.');
       }
       await writeSetting('autoPingTimeoutSeconds', String(val));
       sourceOverrides['autoPingTimeoutSeconds'] = String(val);
@@ -2110,46 +2146,67 @@ router.post('/auto-ping', requirePermission('settings', 'write'), async (req, re
     res.json({ success: true, settings });
   } catch (error) {
     logger.error('Error updating auto-ping settings:', error);
-    res.status(500).json({ error: 'Failed to update auto-ping settings' });
+    fail(res, 500, 'INTERNAL_ERROR', 'Failed to update auto-ping settings');
   }
 });
 
-router.get('/key-repair-log', requirePermission('settings', 'read'), async (req, res) => {
+router.get('/key-repair-log', acrossSources('read'), async (req, res) => {
   try {
-    const krSourceId = req.query.sourceId as string | undefined;
-    const log = await databaseService.getKeyRepairLogAsync(50, krSourceId);
+    const { sourceId: krSourceId, sourceIds } = getSourceTarget(req);
+    const log = sourceIds === 'all'
+      ? await databaseService.getKeyRepairLogAsync(50, krSourceId ?? undefined)
+      : await readNewestAcrossSources(
+          sourceIds,
+          (id, limit) => databaseService.getKeyRepairLogAsync(limit, id),
+          (row) => row.timestamp,
+          50,
+        );
     res.json({
       success: true,
       log,
     });
   } catch (error) {
     logger.error('Error fetching auto key repair log:', error);
-    res.status(500).json({ error: 'Failed to fetch auto key repair log' });
+    fail(res, 500, 'INTERNAL_ERROR', 'Failed to fetch auto key repair log');
   }
 });
 
-router.get('/distance-delete/log', requirePermission('settings', 'read'), async (req, res) => {
+router.get('/distance-delete/log', acrossSources('read'), async (req, res) => {
   try {
-    const distLogSourceId = req.query.sourceId as string | undefined;
-    const entries = await databaseService.distanceDeleteLog.getDistanceDeleteLog(10, distLogSourceId);
+    const { sourceId: distLogSourceId, sourceIds } = getSourceTarget(req);
+    const entries = sourceIds === 'all'
+      ? await databaseService.distanceDeleteLog.getDistanceDeleteLog(10, distLogSourceId ?? undefined)
+      : await readNewestAcrossSources(
+          sourceIds,
+          (id, limit) => databaseService.distanceDeleteLog.getDistanceDeleteLog(limit, id),
+          (row) => Number(row.timestamp),
+          10,
+        );
     res.json(entries);
   } catch (error) {
     logger.error('Error fetching distance-delete log:', error);
-    res.status(500).json({ error: 'Failed to fetch log' });
+    fail(res, 500, 'INTERNAL_ERROR', 'Failed to fetch log');
   }
 });
 
-router.post('/distance-delete/run-now', requirePermission('settings', 'write'), async (req, res) => {
+// Deletes or ignores nodes. One source when named. With none: an admin runs
+// the unscoped cycle as before; anyone else runs one cycle per source they
+// hold `settings:write` on, each with that source's own settings.
+router.post('/distance-delete/run-now', acrossSources('write'), async (req, res) => {
   try {
-    const distDelSourceId =
-      (req.body && req.body.sourceId) ||
-      (req.query.sourceId as string | undefined) ||
-      undefined;
-    const result = await autoDeleteByDistanceService.runNow(distDelSourceId);
-    res.json(result);
+    const { sourceId: distDelSourceId, sourceIds } = getSourceTarget(req);
+    if (sourceIds === 'all') {
+      res.json(await autoDeleteByDistanceService.runNow(distDelSourceId ?? undefined));
+      return;
+    }
+    let deletedCount = 0;
+    for (const id of sourceIds) {
+      deletedCount += (await autoDeleteByDistanceService.runNow(id)).deletedCount;
+    }
+    res.json({ deletedCount });
   } catch (error) {
     logger.error('Error running distance-delete:', error);
-    res.status(500).json({ error: 'Failed to run distance delete' });
+    fail(res, 500, 'INTERNAL_ERROR', 'Failed to run distance delete');
   }
 });
 
@@ -2226,10 +2283,17 @@ router.post('/auto-enrichment/run-now', requirePermission('settings', 'write'), 
   }
 });
 
-router.post('/mark-all-welcomed', requirePermission('settings', 'write'), async (req, res) => {
+router.post('/mark-all-welcomed', acrossSources('write'), async (req, res) => {
   try {
-    const sourceId = (req.query.sourceId as string | undefined) ?? (req.body?.sourceId as string | undefined) ?? null;
-    const count = await databaseService.markAllNodesAsWelcomedAsync(sourceId);
+    const { sourceId, sourceIds } = getSourceTarget(req);
+    let count = 0;
+    if (sourceIds === 'all') {
+      count = await databaseService.markAllNodesAsWelcomedAsync(sourceId);
+    } else {
+      for (const id of sourceIds) {
+        count += await databaseService.markAllNodesAsWelcomedAsync(id);
+      }
+    }
     logger.debug(`👋 Manually marked ${count} nodes as welcomed via API${sourceId ? ` (source=${sourceId})` : ''}`);
 
     // Audit log
@@ -2246,7 +2310,7 @@ router.post('/mark-all-welcomed', requirePermission('settings', 'write'), async 
     res.json({ success: true, count, message: `Marked ${count} nodes as welcomed` });
   } catch (error) {
     logger.error('Error marking all nodes as welcomed:', error);
-    res.status(500).json({ error: 'Failed to mark nodes as welcomed' });
+    fail(res, 500, 'INTERNAL_ERROR', 'Failed to mark nodes as welcomed');
   }
 });
 

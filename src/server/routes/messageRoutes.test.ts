@@ -789,17 +789,17 @@ describe('Message Deletion Routes', () => {
       registryStub.getPrimaryMeshtasticSourceId.mockReset().mockReturnValue(null);
     });
 
-    it('should return 500 when meshtasticManager not available', async () => {
+    it('should return 404 when the named source has no manager', async () => {
       const app = createApp({ id: 1, username: 'admin', isAdmin: true });
 
-      // Nothing registered for 'source-a' and no primary/fallback available —
-      // both the sourceId-scoped lookup and getPrimaryMeshtasticManager() miss.
+      // Nothing registered for 'source-a'. The route no longer falls back to
+      // the primary radio for a source it cannot resolve.
       const response = await request(app)
         .post('/api/messages/nodes/123456/purge-from-device')
         .send({ sourceId: 'source-a' });
 
-      expect(response.status).toBe(500);
-      expect(response.body.error).toBe('Internal server error');
+      expect(response.status).toBe(404);
+      expect(response.body.code).toBe('SOURCE_NOT_FOUND');
     });
 
     it('should return 400 for invalid nodeNum', async () => {

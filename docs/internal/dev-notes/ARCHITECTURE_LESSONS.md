@@ -953,6 +953,17 @@ async getMessagesByChannel(channel: number, limit = 100, offset = 0, sourceId?: 
 
 Routes that fall back to the primary source when `sourceId` is omitted must resolve the source ONCE and use that value for both the check and the action. For Meshtastic device routes use `requireDeviceSourcePermission(resource, action, 'query' | 'body')` (`src/server/utils/deviceSourcePermission.ts`) and read the manager with `getDeviceSourceTarget(req)`; do not call `resolveSourceManager()` again in the handler. `deviceSourcePermission.scope.test.ts` enumerates the registered routes and fails on a `configuration` route added without it.
 
+Routes whose source is not always a Meshtastic device, or whose "no `sourceId`" case is not "the primary", use `requireSourcePermission(resource, action, { whenOmitted, device? })` (`src/server/utils/sourceScopedAccess.ts`) and read the result with `getSourceTarget(req)`. It reads `sourceId` from the query or the body (400 `SOURCE_ID_CONFLICT` if they differ), checks the permission on the resolved source, and 404s `SOURCE_NOT_FOUND` for an id that names no source. `whenOmitted` states what the route does with no `sourceId`:
+
+- `'primary'`: one radio or one source's rows; the check is on the primary Meshtastic source.
+- `'permitted'`: the route covers several sources. `target.sourceIds` is `'all'` for an admin and otherwise the sources the caller holds the permission on. Read and write only those. Never return or change a source the caller lacks the permission on, and never refuse outright a caller who holds it somewhere.
+- `'first-permitted'`: the caller's first enabled source with the permission.
+- `'required'`: 400 `MISSING_SOURCE_ID`.
+
+A route that reads one source and writes another (copy NodeInfo) uses `requireSourcePairPermission()`: read on the source copied from AND write on the source copied to. A listing route (`/nodes/:nodeNum/sources`, copy candidates) lists only sources the caller can read.
+
+`sourceScopedAccess.scope.test.ts` enumerates every route on `nodesRoutes`, `ignoredNodeRoutes`, `settingsRoutes` and `messageRoutes` and fails when a new one is not classified. Global settings rows stay writable on a `settings:write` grant for any source (the ruling in `PER_SOURCE_NODE_DISPLAY_PHASE6_SPEC.md` §11); per-source rows do not.
+
 Tests that mock `getUserPermissionSetAsync` must mock the `(userId, sourceId)` signature, not the legacy `(userId)` signature, or the source-scoping branch silently falls through.
 
 ### Frontend Source Awareness

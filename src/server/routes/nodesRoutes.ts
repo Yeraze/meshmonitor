@@ -23,13 +23,19 @@ import databaseService from '../../services/database.js';
 import { ALL_SOURCES } from '../../db/repositories/index.js';
 import { fallbackManager } from '../meshtasticManager.js';
 import { sourceManagerRegistry } from '../sourceManagerRegistry.js';
-import { resolveSourceManager, resolveOwnMeshtasticManager } from '../utils/resolveSourceManager.js';
-import { requireMeshtasticDeviceSource } from '../utils/requireMeshtasticDeviceSource.js';
+import { resolveOwnMeshtasticManager } from '../utils/resolveSourceManager.js';
+import {
+  requireSourcePermission,
+  requireSourcePairPermission,
+  getSourceTarget,
+  getDeviceTarget,
+  getSourcePairTarget,
+  listPermittedSourceIds,
+} from '../utils/sourceScopedAccess.js';
 import { isMeshCoreManager, getPrimaryMeshtasticManager } from '../sourceManagerTypes.js';
 import { filterNodesByChannelPermission, enhanceNodeForClient, checkNodeChannelAccess, attachUptimeToNodes } from '../utils/nodeEnhancer.js';
 import { createSignFlipResolver, applySignFlipCorrection, rowSourceId } from '../services/signFlipCorrection.js';
 import { pivotPositionHistory } from '../utils/positionHistoryPivot.js';
-import { resolveRequestSourceId } from '../utils/sourceResolver.js';
 import { requireSourceId } from '../utils/requireSourceId.js';
 import { optionalAuth, requirePermission, requireAdmin, hasPermission } from '../auth/authMiddleware.js';
 import { logger } from '../../utils/logger.js';
@@ -537,20 +543,25 @@ router.post(
  * knows about the node — a node may be nameless on one MQTT feed but named
  * on the direct TCP source). Empty array when the node isn't on any source.
  *
- * Unscoped by design: the picker's job is enumeration; the caller decides
- * which source to open. `nodes:read` is still required.
+ * Lists only the sources the caller holds `nodes:read` on (every source for an
+ * admin). A source the caller cannot read is left out, so its existence and
+ * the node's name there are not revealed. `?sourceId=` narrows to one source.
  */
-router.get('/nodes/:nodeNum/sources', requirePermission('nodes', 'read'), async (req, res) => {
+router.get('/nodes/:nodeNum/sources', requireSourcePermission('nodes', 'read', { whenOmitted: 'permitted' }), async (req, res) => {
   try {
     const nodeNum = parseNodeNumParam(req.params.nodeNum);
     if (nodeNum === null) {
       return fail(res, 400, 'INVALID_NODE_NUM', 'nodeNum must be a decimal node number or a !hex node id');
     }
 
-    const [nodeRows, sources] = await Promise.all([
+    const { sourceIds } = getSourceTarget(req);
+    const [allNodeRows, sources] = await Promise.all([
       databaseService.nodes.getSourcesForNode(nodeNum),
       databaseService.sources.getAllSources(),
     ]);
+    const nodeRows = sourceIds === 'all'
+      ? allNodeRows
+      : allNodeRows.filter((r) => sourceIds.includes(r.sourceId));
 
     const sourceNameById = new Map(sources.map((s) => [s.id, s.name] as const));
 
@@ -578,26 +589,31 @@ import {
   type NodeInfoField,
 } from '../services/nodeInfoCopyService.js';
 
-router.get('/nodes/:nodeNum/copy-candidates', requirePermission('nodes', 'read'), async (req, res) => {
+// `nodes:read` is checked on the target source. A candidate is another
+// source's row for the node, so each one is shown only when the caller also
+// holds `nodes:read` on that source: the same right copy-nodeinfo asks for on
+// the source copied from.
+router.get('/nodes/:nodeNum/copy-candidates', requireSourcePermission('nodes', 'read', { whenOmitted: 'required' }), async (req, res) => {
   try {
-    const sourceId = typeof req.query.sourceId === 'string' ? req.query.sourceId : undefined;
-    if (!sourceId) {
-      return res.status(400).json({ error: 'sourceId query parameter is required' });
-    }
+    const sourceId = getSourceTarget(req).sourceId as string;
     const nodeNum = Number(req.params.nodeNum);
     if (isNaN(nodeNum)) {
-      return res.status(400).json({ error: 'nodeNum must be a number' });
+      return fail(res, 400, 'INVALID_NODE_NUM', 'nodeNum must be a number');
     }
     // `target` is the node's current row on the target source (null if unseen
     // there) so callers without the row in hand can render the copy diff.
-    const [candidates, target] = await Promise.all([
+    const [allCandidates, target, readable] = await Promise.all([
       findCopyCandidates(nodeNum, sourceId),
       getNodeInfoSnapshot(nodeNum, sourceId),
+      listPermittedSourceIds(req.user, 'nodes', 'read'),
     ]);
+    const candidates = readable === 'all'
+      ? allCandidates
+      : allCandidates.filter((c) => readable.includes(c.sourceId));
     res.json({ success: true, data: { candidates, target } });
   } catch (error) {
     logger.error('Error getting copy candidates:', error);
-    res.status(500).json({ error: 'Failed to retrieve copy candidates' });
+    fail(res, 500, 'INTERNAL_ERROR', 'Failed to retrieve copy candidates');
   }
 });
 
@@ -672,25 +688,23 @@ router.get('/nodes/:nodeNum/position-estimate', requirePermission('nodes', 'read
   }
 });
 
-router.post('/nodes/:nodeNum/copy-nodeinfo', requirePermission('nodes', 'write'), async (req, res) => {
+// Two sources: `nodes:read` on the source copied from, `nodes:write` on the
+// source copied to. Holding one without the other is a 403.
+router.post('/nodes/:nodeNum/copy-nodeinfo', requireSourcePairPermission('nodes', { readFrom: 'fromSourceId', writeTo: 'toSourceId' }), async (req, res) => {
   try {
     const nodeNum = Number(req.params.nodeNum);
     if (isNaN(nodeNum)) {
-      return res.status(400).json({ error: 'nodeNum must be a number' });
+      return fail(res, 400, 'INVALID_NODE_NUM', 'nodeNum must be a number');
     }
-    const { fromSourceId, toSourceId, pushToNodeDb, fields } = req.body ?? {};
-    if (!fromSourceId || !toSourceId) {
-      return res.status(400).json({ error: 'fromSourceId and toSourceId are required' });
-    }
+    const { fromSourceId, toSourceId } = getSourcePairTarget(req);
+    const { pushToNodeDb, fields } = req.body ?? {};
     // #4244: optional per-field selection. Reject unknown names rather than
     // silently ignoring them, so a client typo surfaces instead of quietly
     // copying nothing.
     let selectedFields: NodeInfoField[] | undefined;
     if (fields !== undefined) {
       if (!Array.isArray(fields) || !fields.every(isNodeInfoField)) {
-        return res.status(400).json({
-          error: `fields must be an array of: ${NODE_INFO_FIELDS.join(', ')}`,
-        });
+        return fail(res, 400, 'INVALID_FIELDS', `fields must be an array of: ${NODE_INFO_FIELDS.join(', ')}`);
       }
       selectedFields = fields;
     }
@@ -700,8 +714,8 @@ router.post('/nodes/:nodeNum/copy-nodeinfo', requirePermission('nodes', 'write')
     res.json({ success: true, data: result });
   } catch (error: any) {
     logger.error('Error copying node info:', error);
-    const status = error.message?.includes('not found') ? 404 : 500;
-    res.status(status).json({ error: error.message || 'Failed to copy node info' });
+    const notFound = error.message?.includes('not found');
+    fail(res, notFound ? 404 : 500, notFound ? 'NODE_NOT_FOUND' : 'INTERNAL_ERROR', error.message || 'Failed to copy node info');
   }
 });
 
@@ -1028,13 +1042,14 @@ router.post('/nodes/:nodeId/favorite-lock', requirePermission('nodes', 'write', 
 });
 
 // Get auto-favorite status (local role, firmware, managed nodes)
-router.get('/auto-favorite/status', requirePermission('nodes', 'read'), async (req, res) => {
+// `nodes:read` is checked on the named source, or on the primary when none is
+// named. Valid for any source type: one with no radio reports "not supported".
+router.get('/auto-favorite/status', requireSourcePermission('nodes', 'read', { whenOmitted: 'primary' }), async (req, res) => {
   try {
-    const afSourceId = req.query.sourceId as string | undefined;
     // THIS source's own radio only. A source with no live Meshtastic manager
     // (MQTT broker/bridge, a disconnected TCP source) has no local node to
     // auto-favorite for; report that instead of the primary's status (#5375).
-    const afManager = resolveOwnMeshtasticManager(afSourceId);
+    const afManager = getSourceTarget(req).manager;
     if (!afManager) {
       res.json({ localNodeRole: null, firmwareVersion: null, supportsFavorites: false, autoFavoriteNodes: [] });
       return;
@@ -1077,17 +1092,17 @@ router.get('/auto-favorite/status', requirePermission('nodes', 'read'), async (r
     });
   } catch (error) {
     logger.error('Error fetching auto-favorite status:', error);
-    const errorResponse: ApiErrorResponse = {
-      error: 'Failed to fetch auto-favorite status',
-      code: 'INTERNAL_ERROR',
+    fail(res, 500, 'INTERNAL_ERROR', 'Failed to fetch auto-favorite status', {
       details: error instanceof Error ? error.message : 'Unknown error occurred',
-    };
-    res.status(500).json(errorResponse);
+    });
   }
 });
 
 // Set node ignored status (with optional device sync)
-router.post('/nodes/:nodeId/ignored', requirePermission('nodes', 'write', { sourceIdFrom: 'body' }), async (req, res) => {
+// `nodes:write` is checked on the source the block applies to: the named one,
+// else the first source the caller holds `nodes:write` on. The gate resolves
+// it once; the query used to win in the handler while the check read the body.
+router.post('/nodes/:nodeId/ignored', requireSourcePermission('nodes', 'write', { whenOmitted: 'first-permitted' }), async (req, res) => {
   try {
     const { nodeId } = req.params;
     const { isIgnored, syncToDevice = true, destinationNodeNum } = req.body;
@@ -1102,18 +1117,8 @@ router.post('/nodes/:nodeId/ignored', requirePermission('nodes', 'write', { sour
       return;
     }
 
-    // Per-source blocklist: accept sourceId from body, else fall back to the
-    // first source this caller has nodes:write on.
-    const ignoreSourceId = await resolveRequestSourceId(req, 'nodes', 'write');
-    if (!ignoreSourceId) {
-      const errorResponse: ApiErrorResponse = {
-        error: 'No permitted source',
-        code: 'MISSING_SOURCE_ID',
-        details: 'Provide a sourceId, or ensure your account has nodes:write on at least one enabled source',
-      };
-      res.status(400).json(errorResponse);
-      return;
-    }
+    // Per-source blocklist, resolved by the gate.
+    const ignoreSourceId = getSourceTarget(req).sourceId as string;
 
     // Convert nodeId (hex string like !a1b2c3d4) to nodeNum (integer)
     const nodeNumStr = nodeId.replace('!', '');
@@ -1494,13 +1499,24 @@ router.post('/nodes/:nodeId/hide-from-map', requirePermission('nodes', 'write', 
     const nodeNum = parseInt(nodeNumStr, 16);
 
     // #4137: unified/cross-source views toggle the logical node, not one
-    // source's row. hideFromMap is map-visibility metadata (not a
-    // security-sensitive field), so requiring write permission on the
-    // request's anchor sourceId is a sufficient permission check even
-    // though the write fans out to every source's row for this nodeNum —
-    // sourceId above remains required and stays the RBAC anchor either way.
+    // source's row. The anchor sourceId stays required and is what the gate
+    // checked. The fan-out reaches every source for an admin, and for anyone
+    // else only the sources they hold `nodes:write` on: a grant on one source
+    // does not change another source's rows.
     if (allSources === true) {
-      await databaseService.setNodeHideFromMapAllSourcesAsync(nodeNum, hideFromMap);
+      const writable = await listPermittedSourceIds(req.user, 'nodes', 'write');
+      if (writable === 'all') {
+        await databaseService.setNodeHideFromMapAllSourcesAsync(nodeNum, hideFromMap);
+      } else {
+        // Only sources that hold a row for this node; the single-source
+        // write throws on a missing one. The anchor is written regardless,
+        // so an unknown node is still reported.
+        const withRow = (await databaseService.nodes.getSourcesForNode(nodeNum)).map((r) => r.sourceId);
+        const targets = new Set([hfmSourceId, ...writable.filter((id) => withRow.includes(id))]);
+        for (const writableSourceId of targets) {
+          await databaseService.setNodeHideFromMapAsync(nodeNum, hideFromMap, writableSourceId);
+        }
+      }
     } else {
       await databaseService.setNodeHideFromMapAsync(nodeNum, hideFromMap, hfmSourceId);
     }
@@ -1636,38 +1652,25 @@ router.delete('/nodes/:nodeId/neighbors', requirePermission('nodes', 'write', { 
 });
 
 // Manually scan a node for remote admin capability
-router.post('/nodes/:nodeNum/scan-remote-admin', requirePermission('settings', 'write'), requireMeshtasticDeviceSource('either', 'mesh requests'), async (req, res) => {
+// Transmits an admin request. `settings:write` is checked on the source whose
+// radio sends it: the named one, else the primary.
+router.post('/nodes/:nodeNum/scan-remote-admin', requireSourcePermission('settings', 'write', { whenOmitted: 'primary', device: 'meshtastic', what: 'mesh requests' }), async (req, res) => {
   try {
     const { nodeNum } = req.params;
     const parsedNodeNum = parseInt(nodeNum, 10);
 
     if (isNaN(parsedNodeNum)) {
-      const errorResponse: ApiErrorResponse = {
-        error: 'Invalid nodeNum format',
-        code: 'INVALID_NODE_NUM',
-        details: 'nodeNum must be a valid integer',
-      };
-      res.status(400).json(errorResponse);
+      fail(res, 400, 'INVALID_NODE_NUM', 'Invalid nodeNum format', { details: 'nodeNum must be a valid integer' });
       return;
     }
 
-    const { sourceId: bodySourceId } = (req.body || {}) as { sourceId?: string };
-    const querySourceId = typeof req.query.sourceId === 'string' && req.query.sourceId
-      ? (req.query.sourceId as string)
-      : undefined;
-    const scanSourceId = querySourceId ?? bodySourceId;
-    const scanManager = (resolveSourceManager(scanSourceId));
+    const { sourceId: scanSourceId, manager: scanManager } = getDeviceTarget(req);
 
     // Check if the node exists on the scoped source (same nodeNum may exist
     // on other sources that aren't the scan target).
     const node = await databaseService.nodes.getNode(parsedNodeNum, scanSourceId);
     if (!node) {
-      const errorResponse: ApiErrorResponse = {
-        error: 'Node not found',
-        code: 'NODE_NOT_FOUND',
-        details: `No node found with nodeNum ${parsedNodeNum}`,
-      };
-      res.status(404).json(errorResponse);
+      fail(res, 404, 'NODE_NOT_FOUND', 'Node not found', { details: `No node found with nodeNum ${parsedNodeNum}` });
       return;
     }
 
@@ -1684,17 +1687,16 @@ router.post('/nodes/:nodeNum/scan-remote-admin', requirePermission('settings', '
     });
   } catch (error) {
     logger.error('Error scanning node for remote admin:', error);
-    const errorResponse: ApiErrorResponse = {
-      error: 'Failed to scan node for remote admin',
-      code: 'INTERNAL_ERROR',
+    fail(res, 500, 'INTERNAL_ERROR', 'Failed to scan node for remote admin', {
       details: error instanceof Error ? error.message : 'Unknown error occurred',
-    };
-    res.status(500).json(errorResponse);
+    });
   }
 });
 
 // Send key security warning DM to a specific node
-router.post('/nodes/:nodeId/send-key-warning', requirePermission('messages', 'write'), requireMeshtasticDeviceSource('body', 'message sends'), async (req, res) => {
+// Transmits a DM. `messages:write` is checked on the source whose radio sends
+// it: the named one, else the primary.
+router.post('/nodes/:nodeId/send-key-warning', requireSourcePermission('messages', 'write', { whenOmitted: 'primary', device: 'meshtastic', what: 'message sends' }), async (req, res) => {
   try {
     const { nodeId } = req.params;
 
@@ -1703,40 +1705,28 @@ router.post('/nodes/:nodeId/send-key-warning', requirePermission('messages', 'wr
 
     // Validate hex string format
     if (!/^[0-9a-fA-F]{8}$/.test(nodeNumStr)) {
-      const errorResponse: ApiErrorResponse = {
-        error: 'Invalid nodeId format',
-        code: 'INVALID_NODE_ID',
+      fail(res, 400, 'INVALID_NODE_ID', 'Invalid nodeId format', {
         details: 'nodeId must be in format !XXXXXXXX (8 hex characters)',
-      };
-      res.status(400).json(errorResponse);
+      });
       return;
     }
 
     const nodeNum = parseInt(nodeNumStr, 16);
 
-    const { sourceId: warnSourceId } = req.body || {};
-    const warnManager = resolveSourceManager(warnSourceId);
+    const { sourceId: warnSourceId, manager: warnManager } = getDeviceTarget(req);
 
     // Verify the node actually has a security issue on the target source
     // (security flags are per-source — the same nodeNum may be safe on another source).
     const node = await databaseService.nodes.getNode(nodeNum, warnSourceId);
     if (!node) {
-      const errorResponse: ApiErrorResponse = {
-        error: 'Node not found',
-        code: 'NODE_NOT_FOUND',
-        details: `No node found with ID ${nodeId}`,
-      };
-      res.status(404).json(errorResponse);
+      fail(res, 404, 'NODE_NOT_FOUND', 'Node not found', { details: `No node found with ID ${nodeId}` });
       return;
     }
 
     if (!node.keyIsLowEntropy && !node.duplicateKeyDetected) {
-      const errorResponse: ApiErrorResponse = {
-        error: 'Node has no security issues',
-        code: 'NO_SECURITY_ISSUE',
+      fail(res, 400, 'NO_SECURITY_ISSUE', 'Node has no security issues', {
         details: 'This node does not have any detected key security issues',
-      };
-      res.status(400).json(errorResponse);
+      });
       return;
     }
 
@@ -1761,17 +1751,17 @@ router.post('/nodes/:nodeId/send-key-warning', requirePermission('messages', 'wr
     });
   } catch (error) {
     logger.error('Error sending key warning:', error);
-    const errorResponse: ApiErrorResponse = {
-      error: 'Failed to send key warning',
-      code: 'INTERNAL_ERROR',
+    fail(res, 500, 'INTERNAL_ERROR', 'Failed to send key warning', {
       details: error instanceof Error ? error.message : 'Unknown error occurred',
-    };
-    res.status(500).json(errorResponse);
+    });
   }
 });
 
 // Scan all nodes for duplicate keys and update database
-router.post('/nodes/scan-duplicate-keys', requirePermission('nodes', 'write'), async (_req, res) => {
+// Rewrites security flags on node rows. With a sourceId, that source only.
+// With none, every Meshtastic-model source for an admin, and for anyone else
+// only the sources they hold `nodes:write` on.
+router.post('/nodes/scan-duplicate-keys', requireSourcePermission('nodes', 'write', { whenOmitted: 'permitted' }), async (req, res) => {
   try {
     // Duplicate detection is scoped per-source — a node on source A sharing a
     // public key with a node on source B is NOT treated as a duplicate, because
@@ -1784,8 +1774,10 @@ router.post('/nodes/scan-duplicate-keys', requirePermission('nodes', 'write'), a
 
     // Duplicate key detection is Meshtastic-only — MeshCore nodes don't use the
     // shared `nodes` table and have no Meshtastic PKI model to scan.
+    const { sourceIds: allowed } = getSourceTarget(req);
     const managers = sourceManagerRegistry.getAllManagers().filter(m => m.sourceType !== 'meshcore');
-    const sourceIds: string[] = managers.length > 0 ? managers.map(m => m.sourceId) : ['default'];
+    const scannable: string[] = managers.length > 0 ? managers.map(m => m.sourceId) : ['default'];
+    const sourceIds = allowed === 'all' ? scannable : scannable.filter(id => allowed.includes(id));
 
     let totalScanned = 0;
     let totalDuplicateGroups = 0;
@@ -1847,33 +1839,27 @@ router.post('/nodes/scan-duplicate-keys', requirePermission('nodes', 'write'), a
     });
   } catch (error) {
     logger.error('Error scanning for duplicate keys:', error);
-    const errorResponse: ApiErrorResponse = {
-      error: 'Failed to scan for duplicate keys',
-      code: 'INTERNAL_ERROR',
+    fail(res, 500, 'INTERNAL_ERROR', 'Failed to scan for duplicate keys', {
       details: error instanceof Error ? error.message : 'Unknown error occurred',
-    };
-    res.status(500).json(errorResponse);
+    });
   }
 });
 
 // Device configuration endpoint
 // ==========================================
 // Refresh nodes from device endpoint
-router.post('/nodes/refresh', requirePermission('nodes', 'write'), requireMeshtasticDeviceSource('body'), async (req, res) => {
+// Asks one radio to resend its node database. `nodes:write` is checked on that
+// source: the named one, else the primary. The counts are that source's.
+router.post('/nodes/refresh', requireSourcePermission('nodes', 'write', { whenOmitted: 'primary', device: 'meshtastic' }), async (req, res) => {
   try {
     logger.debug('🔄 Manual node database refresh requested...');
 
-    const { sourceId: refreshSourceId } = req.body || {};
-    const refreshManager = (resolveSourceManager(refreshSourceId));
+    const { sourceId: refreshSourceId, manager: refreshManager } = getDeviceTarget(req);
     // Trigger full node database refresh
     await refreshManager.refreshNodeDatabase();
 
-    const nodeCount = await databaseService.nodes.getNodeCount(
-      typeof refreshSourceId === 'string' && refreshSourceId.length > 0 ? refreshSourceId : ALL_SOURCES,
-    );
-    const channelCount = await databaseService.channels.getChannelCount(
-      typeof refreshSourceId === 'string' && refreshSourceId.length > 0 ? refreshSourceId : ALL_SOURCES,
-    );
+    const nodeCount = await databaseService.nodes.getNodeCount(refreshSourceId);
+    const channelCount = await databaseService.channels.getChannelCount(refreshSourceId);
 
     logger.debug(`✅ Node refresh complete: ${nodeCount} nodes, ${channelCount} channels`);
 
@@ -1885,8 +1871,7 @@ router.post('/nodes/refresh', requirePermission('nodes', 'write'), requireMeshta
     });
   } catch (error) {
     logger.error('❌ Failed to refresh nodes:', error);
-    res.status(500).json({
-      error: 'Failed to refresh node database',
+    fail(res, 500, 'INTERNAL_ERROR', 'Failed to refresh node database', {
       details: error instanceof Error ? error.message : 'Unknown error',
     });
   }
@@ -1896,19 +1881,19 @@ router.post('/nodes/refresh', requirePermission('nodes', 'write'), requireMeshta
 
 // Force-stop an active auto-ping session
 // Sessions live on the source's own manager; never stop the primary's (#5375).
-router.post('/auto-ping/stop/:nodeNum', requirePermission('settings', 'write'), requireMeshtasticDeviceSource('body', 'auto-ping controls'), (req, res) => {
+// `settings:write` is checked on the source whose session is stopped: the
+// named one, else the primary.
+router.post('/auto-ping/stop/:nodeNum', requireSourcePermission('settings', 'write', { whenOmitted: 'primary', device: 'meshtastic', what: 'auto-ping controls' }), (req, res) => {
   try {
     const nodeNum = parseInt(req.params.nodeNum, 10);
     if (isNaN(nodeNum)) {
-      return res.status(400).json({ error: 'Invalid node number.' });
+      return fail(res, 400, 'INVALID_NODE_NUM', 'Invalid node number.');
     }
-    const { sourceId: stopPingSourceId } = req.body || {};
-    const stopPingManager = resolveSourceManager(stopPingSourceId);
-    stopPingManager.stopAutoPingSession(nodeNum, 'force_stopped');
+    getDeviceTarget(req).manager.stopAutoPingSession(nodeNum, 'force_stopped');
     res.json({ success: true });
   } catch (error) {
     logger.error('Error stopping auto-ping session:', error);
-    res.status(500).json({ error: 'Failed to stop auto-ping session' });
+    fail(res, 500, 'INTERNAL_ERROR', 'Failed to stop auto-ping session');
   }
 });
 
