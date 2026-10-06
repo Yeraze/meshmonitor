@@ -276,7 +276,8 @@ router.get('/channels', async (req: Request, res: Response) => {
  */
 router.get('/messages', async (req: Request, res: Response) => {
   try {
-    const channelName = ((req.query.channel as string) || '').trim();
+    const channelParam = ((req.query.channel as string) || '').trim();
+    const channelName = channelParam === '__all__' ? '' : channelParam;
     const beforeRaw = req.query.before as string | undefined;
     const before = beforeRaw ? parseInt(beforeRaw, 10) : undefined;
     const limit = Math.min(parseInt((req.query.limit as string) || '100', 10), 500);
@@ -475,7 +476,9 @@ router.get('/messages', async (req: Request, res: Response) => {
           channelIdentity,
           source,
           channelIdx: idx,
-          channelName: idx != null ? (nameByIdx.get(idx) ?? channelName) : '',
+          channelName:
+            (idx != null ? nameByIdx.get(idx) : null) ??
+            (channelName || (idx != null ? (idx === 0 ? PRIMARY_CHANNEL_NAME : `Channel ${idx}`) : '')),
         });
       }
     };
@@ -506,11 +509,18 @@ router.get('/messages', async (req: Request, res: Response) => {
         let allowedChannelsOnSource: Set<number> | null = null;
 
         const [chansResult, nodesResult] = await Promise.allSettled([
-          channelName
-            ? databaseService.channels.getAllChannels(source.id)
-            : Promise.resolve(null),
+          databaseService.channels.getAllChannels(source.id),
           databaseService.nodes.getAllNodes(source.id),
         ]);
+
+        const presetName = sourcePresets.get(source.id) ?? null;
+        const channelNameByNum = new Map<number, string>();
+        if (chansResult.status === 'fulfilled') {
+          for (const c of chansResult.value ?? []) {
+            const dn = unifiedChannelDisplayName(c, presetName);
+            if (dn) channelNameByNum.set(c.id, dn);
+          }
+        }
 
         // Virtual channels are global — every enabled channel-database entry
         // can decrypt packets on this source — so every readable virtual
@@ -520,6 +530,11 @@ router.get('/messages', async (req: Request, res: Response) => {
           (vc) => vc.id != null &&
             canReadVirtualChannel(vc.id, readableVirtualIds),
         );
+        for (const vc of vcsOnSource) {
+          if (vc.id != null && vc.name) {
+            channelNameByNum.set(CHANNEL_DB_OFFSET + vc.id, vc.name.trim());
+          }
+        }
 
         if (channelName) {
           if (chansResult.status === 'rejected') {
@@ -717,8 +732,16 @@ router.get('/messages', async (req: Request, res: Response) => {
             if (existing.replyId == null && m.replyId != null && m.replyId > 0) {
               existing.replyId = m.replyId;
             }
+            if (!existing.channelName) {
+              const chName = channelName || channelNameByNum.get(m.channel);
+              if (chName) existing.channelName = chName;
+            }
           } else {
             const sender = nodeMap.get(fromNum);
+            const resolvedChannelName =
+              channelName ||
+              channelNameByNum.get(m.channel) ||
+              (m.channel === 0 ? (presetName ?? PRIMARY_CHANNEL_NAME) : `Channel ${m.channel}`);
             merged.set(dedupKey, {
               dedupKey,
               packetId,
@@ -730,7 +753,7 @@ router.get('/messages', async (req: Request, res: Response) => {
               toNodeNum: Number(m.toNodeNum),
               toNodeId: m.toNodeId,
               channel: m.channel,
-              channelName,
+              channelName: resolvedChannelName,
               text: m.text ?? '',
               emoji: m.emoji ?? null,
               replyId: m.replyId ?? null,
