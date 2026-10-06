@@ -67,41 +67,54 @@ The Mesh widget ships in Widgets Pack **v1.4.3**. Treat it as a preview. Before 
 
 ## How Add-ons Work
 
-All community add-ons connect to MeshMonitor through the Virtual Node server:
+An add-on reaches MeshMonitor in one of two ways. Neither kind talks to your radio: MeshMonitor holds that link.
 
 ```
 ┌─────────────────────────────────────────────────────┐
 │                   Your Server                       │
 │                                                     │
 │  ┌────────────────┐     ┌────────────────────────┐  │
-│  │  MeshMonitor   │◄───►│  MQTT Proxy            │  │
-│  │                │     │  (sidecar)             │  │
-│  │  Virtual Node  │     └────────────────────────┘  │
-│  │  (port 4404)   │                                 │
-│  │                │     ┌────────────────────────┐  │
+│  │  MeshMonitor   │     │  MQTT Proxy            │  │
 │  │                │◄───►│  AI Responder          │  │
-│  │                │     │  (sidecar)             │  │
-│  └───────┬────────┘     └────────────────────────┘  │
-│          │                                          │
-└──────────┼──────────────────────────────────────────┘
-           │ TCP (port 4403)
-           ▼
-   ┌───────────────┐
-   │  Meshtastic   │
-   │    Node       │
-   └───────────────┘
+│  │  Virtual Node  │     │  (sidecars)            │  │
+│  │  (port 4404)   │     └────────────────────────┘  │
+│  │                │                                 │
+│  │  REST API      │◄─────────────────┐              │
+│  │  (/api/v1)     │                  │              │
+│  └───────┬────────┘                  │              │
+│          │                           │              │
+└──────────┼───────────────────────────┼──────────────┘
+           │ TCP (port 4403)           │ HTTP(S) + API token
+           ▼                           │
+   ┌───────────────┐     ┌─────────────┴──────────┐
+   │  Meshtastic   │     │  CardMesh              │
+   │    Node       │     │  Mesh Screensaver      │
+   └───────────────┘     │  Mesh Widget           │
+                         │  (REST API clients)    │
+                         └────────────────────────┘
 ```
 
-### Prerequisites
+### Virtual Node sidecars
 
-All add-ons require:
-1. **Virtual Node enabled** in MeshMonitor (`ENABLE_VIRTUAL_NODE=true`)
-2. **Virtual Node port exposed** (default: 4404)
-3. **Docker networking** so sidecar containers can reach MeshMonitor
+MQTT Proxy and AI Responder open a TCP connection to the [Virtual Node](/configuration/virtual-node) and speak the Meshtastic protocol, as a phone app does. They need:
 
-### Deploying Add-ons
+1. **A Meshtastic TCP source with Virtual Node on.** Virtual Node is off by default and you set it per source: **Dashboard → Edit Source → Virtual Node**. See [Enabling Virtual Node on a Source](/configuration/virtual-node#enabling-virtual-node-on-a-source). MeshMonitor 4.0 removed the `ENABLE_VIRTUAL_NODE` and `VIRTUAL_NODE_PORT` environment variables; they now do nothing.
+2. **The port you set there.** Most setups use 4404. Point the add-on at the same port.
+3. **A network path to that port.** A sidecar in the same Docker Compose file reaches it as `meshmonitor:<port>`. Publish the port on the host only if the add-on runs somewhere else.
 
-The easiest way to deploy add-ons is with the [Docker Compose Configurator](/configurator), which can generate the appropriate configuration. You can also add them manually to your existing `docker-compose.yml`.
+The [Docker Compose Configurator](/configurator) can add the MQTT Proxy to your compose file. Add the AI Responder by hand; its page has the block to paste.
+
+### REST API clients
+
+CardMesh, Mesh Screensaver, and Mesh Widget call the [v1 REST API](/development/api-reference) over HTTP(S). They never open the Virtual Node, so you can leave it off. They need:
+
+1. **MeshMonitor's web address**: the one you open in a browser, with your [`BASE_URL`](/configuration/#optional-variables) path if you set one.
+2. **An API token.** Sign in, open the user menu, choose **API Token**, and generate one. The client sends it as `Authorization: Bearer <token>`. Each user holds one token; a new one revokes the old.
+3. **A read-only user to own the token.** A token can do whatever its creator can do. Create a user that can only read the sources the add-on needs, sign in as that user, and generate the token there.
+4. **Source-scoped paths.** Mesh data lives under `/api/v1/sources/{sourceId}/…`, and `default` names the primary source. MeshMonitor 4.14 removed the old root paths such as `/api/v1/nodes`; they return `404`.
+5. **An [`ALLOWED_ORIGINS`](/configuration/#security-reverse-proxy-variables) entry, for clients that run in a browser.** A web page or a widget host sends an `Origin` header, and MeshMonitor rejects origins that are not on the list. Native apps send no `Origin` header and need no entry.
+
+Each project's README covers install steps. The [API reference](/development/api-reference) lists every endpoint, and your own server shows the same docs at `/api/v1/docs`.
 
 ## Building Your Own Add-on
 
