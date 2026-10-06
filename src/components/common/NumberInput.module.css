@@ -1,0 +1,42 @@
+/**
+ * NumberInput (#5649). The input keeps whatever class its form gives it; this
+ * module only adds the invalid state.
+ */
+
+/*
+ * `!important` is deliberate: the invalid state has to win over ~40 legacy
+ * global rules (`.setting-input:focus`, `.meshcore-input`, `input[type=number]`
+ * under various parents) whose specificity and order differ per form. A field
+ * that is blocking Save must never look valid.
+ *
+ * The outline is thicker than any resting border, so the state does not rest
+ * on hue alone; the reason is also in the tooltip and in `.reason`.
+ */
+.invalid,
+.invalid:focus,
+.invalid:focus-visible {
+  border-color: var(--color-error) !important;
+  outline: 2px solid var(--color-error) !important;
+  outline-offset: -1px;
+}
+
+/* Read by assistive tech through aria-describedby; takes no room in the form. */
+.reason {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* Opt-in (`showReason`): the same text, visible, for forms with room for it. */
+.reasonVisible {
+  display: block;
+  margin-top: 4px;
+  font-size: 0.8rem;
+  color: var(--color-error);
+}

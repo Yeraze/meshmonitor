@@ -6,6 +6,7 @@ import reactHooks from 'eslint-plugin-react-hooks';
 import reactRefresh from 'eslint-plugin-react-refresh';
 import globals from 'globals';
 import { noHardcodedColor } from './scripts/eslint-rules/no-hardcoded-color.mjs';
+import { noRawNumberInput } from './scripts/eslint-rules/no-raw-number-input.mjs';
 import { noHardcodedUiGlyph } from './scripts/eslint-rules/no-hardcoded-ui-glyph.mjs';
 import { requireRelativeImportExtension } from './scripts/eslint-rules/require-relative-import-extension.mjs';
 import { stableI18nMock } from './scripts/eslint-rules/stable-i18n-mock.mjs';
@@ -53,6 +54,7 @@ export default [
         rules: {
           'no-hardcoded-color': noHardcodedColor,
           'no-hardcoded-ui-glyph': noHardcodedUiGlyph,
+          'no-raw-number-input': noRawNumberInput,
           'require-relative-import-extension': requireRelativeImportExtension,
           'stable-i18n-mock': stableI18nMock,
         },
@@ -223,6 +225,20 @@ export default [
     ],
     rules: {
       'meshmonitor-ui/no-hardcoded-color': 'error',
+    },
+  },
+  {
+    // #5649: a raw <input type="number"> bound to number state cannot be
+    // cleared and can save a blank or out-of-range value. Every number field
+    // goes through NumberInput, which is the one file allowed to render one.
+    files: ['src/**/*.tsx'],
+    ignores: [
+      '**/*.test.tsx',
+      '**/*.spec.tsx',
+      'src/components/common/NumberInput.tsx',
+    ],
+    rules: {
+      'meshmonitor-ui/no-raw-number-input': 'error',
     },
   },
   {
