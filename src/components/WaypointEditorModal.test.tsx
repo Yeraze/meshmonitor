@@ -77,11 +77,13 @@ describe('WaypointEditorModal — create mode', () => {
     const inputs = container.querySelectorAll('input[type="number"][step="0.000001"]');
     fireEvent.change(inputs[0]!, { target: { value: '200' } });
     fireEvent.change(inputs[1]!, { target: { value: '0' } });
+    // #5649: the field itself is now marked invalid (with a visible reason) and
+    // Create is disabled, where a click used to raise a form-level alert.
+    expect(inputs[0]!).toHaveAttribute('aria-invalid', 'true');
+    const reasonId = inputs[0]!.getAttribute('aria-describedby')!;
+    expect(document.getElementById(reasonId)?.textContent).toBeTruthy();
+    expect(getByText(/Create/)).toBeDisabled();
     fireEvent.click(getByText(/Create/));
-
-    await waitFor(() => {
-      expect(container.querySelector('[role="alert"]')?.textContent).toMatch(/Latitude/);
-    });
     expect(onSave).not.toHaveBeenCalled();
   });
 

@@ -5,6 +5,9 @@ import { useCsrfFetch } from '../hooks/useCsrfFetch';
 import { useSourceQuery } from '../hooks/useSourceQuery';
 import { useSaveBar } from '../hooks/useSaveBar';
 import { UiIcon, type UiIconName } from './icons';
+import { NumberInput } from './common/NumberInput';
+import { NumberInputScope } from './common/NumberInputScope';
+import { useNumberInputScope } from './common/numberInputScope';
 
 interface AutoKeyManagementSectionProps {
   enabled: boolean;
@@ -155,7 +158,9 @@ const AutoKeyManagementSection: React.FC<AutoKeyManagementSectionProps> = ({
   }, [localEnabled, localInterval, localMaxExchanges, localAutoPurge, localImmediatePurge, baseUrl, csrfFetch, showToast, t, onEnabledChange, onIntervalChange, onMaxExchangesChange, onAutoPurgeChange, onImmediatePurgeChange]);
 
   // Register with SaveBar
+  const numberScope = useNumberInputScope();
   useSaveBar({
+    numberScope,
     id: 'auto-key-management',
     sectionName: t('automation.auto_key_management.title'),
     hasChanges,
@@ -206,6 +211,7 @@ const AutoKeyManagementSection: React.FC<AutoKeyManagementSectionProps> = ({
   };
 
   return (
+    <NumberInputScope scope={numberScope}>
     <>
       <div
         className="automation-section-header"
@@ -259,18 +265,13 @@ const AutoKeyManagementSection: React.FC<AutoKeyManagementSectionProps> = ({
               {t('automation.auto_key_management.interval_description')}
             </span>
           </label>
-          <input
+          <NumberInput
             id="keyRepairInterval"
-            type="number"
-            min="1"
-            max="60"
+            min={1}
+            max={60}
             value={localInterval}
-            onChange={(e) => {
-              const value = parseInt(e.target.value);
-              if (value >= 1 && value <= 60) {
-                setLocalInterval(value);
-              }
-            }}
+            integer
+            onChange={setLocalInterval}
             disabled={!localEnabled}
             className="setting-input"
             style={{ width: '100px' }}
@@ -284,18 +285,13 @@ const AutoKeyManagementSection: React.FC<AutoKeyManagementSectionProps> = ({
               {t('automation.auto_key_management.max_exchanges_description')}
             </span>
           </label>
-          <input
+          <NumberInput
             id="maxExchanges"
-            type="number"
-            min="1"
-            max="10"
+            min={1}
+            max={10}
             value={localMaxExchanges}
-            onChange={(e) => {
-              const value = parseInt(e.target.value);
-              if (value >= 1 && value <= 10) {
-                setLocalMaxExchanges(value);
-              }
-            }}
+            integer
+            onChange={setLocalMaxExchanges}
             disabled={!localEnabled}
             className="setting-input"
             style={{ width: '100px' }}
@@ -459,6 +455,7 @@ const AutoKeyManagementSection: React.FC<AutoKeyManagementSectionProps> = ({
         </div>
       </div>
     </>
+    </NumberInputScope>
   );
 };
 

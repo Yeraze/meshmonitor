@@ -3,6 +3,9 @@ import { useTranslation } from 'react-i18next';
 import { useToast } from './ToastContainer';
 import { useCsrfFetch } from '../hooks/useCsrfFetch';
 import { useSaveBar } from '../hooks/useSaveBar';
+import { NumberInput } from './common/NumberInput';
+import { NumberInputScope } from './common/NumberInputScope';
+import { useNumberInputScope } from './common/numberInputScope';
 
 interface PositionEstimationSectionProps {
   baseUrl: string;
@@ -119,7 +122,9 @@ const PositionEstimationSection: React.FC<PositionEstimationSectionProps> = ({ b
     setLocalMaxUncertaintyKm(maxUncertaintyKm);
   }, [enabled, frequencyHours, lookbackHours, maxUncertaintyKm]);
 
+  const numberScope = useNumberInputScope();
   useSaveBar({
+    numberScope,
     id: 'position-estimation',
     sectionName: t('automation.position_estimation.title', 'Position Estimation'),
     hasChanges,
@@ -162,6 +167,7 @@ const PositionEstimationSection: React.FC<PositionEstimationSectionProps> = ({ b
   };
 
   return (
+    <NumberInputScope scope={numberScope}>
     <>
       <div className="automation-section-header" style={{
         display: 'flex',
@@ -238,15 +244,11 @@ const PositionEstimationSection: React.FC<PositionEstimationSectionProps> = ({ b
 
         <div className="setting-item" style={{ marginTop: '1rem' }}>
           <label>{t('automation.position_estimation.max_uncertainty', 'Maximum acceptable accuracy (km)')}</label>
-          <input
-            type="number"
+          <NumberInput
             min={0}
             step={0.5}
             value={localMaxUncertaintyKm}
-            onChange={(e) => {
-              const v = parseFloat(e.target.value);
-              setLocalMaxUncertaintyKm(Number.isFinite(v) && v > 0 ? v : 0);
-            }}
+            onChange={setLocalMaxUncertaintyKm}
             disabled={!localEnabled}
             className="setting-input"
           />
@@ -285,6 +287,7 @@ const PositionEstimationSection: React.FC<PositionEstimationSectionProps> = ({ b
         )}
       </div>
     </>
+    </NumberInputScope>
   );
 };
 

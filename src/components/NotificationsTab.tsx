@@ -5,6 +5,9 @@ import { logger } from '../utils/logger';
 import { Channel } from '../types/device';
 import { useToast } from './ToastContainer';
 import SectionNav from './SectionNav';
+import { NumberInput } from './common/NumberInput';
+import { NumberInputScope } from './common/NumberInputScope';
+import { useNumberInputScope } from './common/numberInputScope';
 import { notificationsNavItems } from './search/configSections';
 import { useSource } from '../contexts/SourceContext';
 import {
@@ -144,6 +147,7 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
   const [whitelistText, setWhitelistText] = useState('');
   const [blacklistText, setBlacklistText] = useState('');
   const [isSavingPreferences, setIsSavingPreferences] = useState(false);
+  const numberScope = useNumberInputScope();
   
   // Inactive node monitoring
   const [selectedMonitoredNodes, setSelectedMonitoredNodes] = useState<string[]>([]);
@@ -357,6 +361,8 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
   };
 
   const savePreferences = async () => {
+    // #5649: a blank or out-of-range number field is never saved.
+    if (numberScope.invalid) return;
     setIsSavingPreferences(true);
     try {
       const whitelist = whitelistText
@@ -666,6 +672,7 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
   const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
 
   return (
+    <NumberInputScope scope={numberScope}>
     <div className={`tab-content ${styles.root}`}>
       <h2>{t('notifications.title')}</h2>
 
@@ -920,19 +927,15 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
                       <label htmlFor="waypointRadiusKm" style={{ margin: 0, fontSize: '0.9em', color: 'var(--color-text-subtle)' }}>
                         {t('notifications.waypoint_radius_label', 'Alert within')}
                       </label>
-                      <input
+                      <NumberInput
                         id="waypointRadiusKm"
-                        type="number"
+                        // A zero radius would read as "on" while silently
+                        // matching nothing, so the floor is 1 km.
                         min={1}
                         max={20037}
+                        step="any"
                         value={preferences.waypointRadiusKm}
-                        onChange={(e) => {
-                          const raw = parseFloat(e.target.value);
-                          // A zero radius would read as "on" while silently
-                          // matching nothing, so the floor is 1 km.
-                          const clamped = isNaN(raw) ? 1 : Math.max(1, Math.min(20037, raw));
-                          setPreferences(prev => ({ ...prev, waypointRadiusKm: clamped }));
-                        }}
+                        onChange={(waypointRadiusKm) => setPreferences(prev => ({ ...prev, waypointRadiusKm }))}
                         style={{
                           width: '80px',
                           padding: '0.35rem 0.5rem',
@@ -949,19 +952,13 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
                       <label htmlFor="waypointCenterLat" style={{ margin: 0, fontSize: '0.9em', color: 'var(--color-text-subtle)' }}>
                         {t('notifications.waypoint_center_label', 'Measured from')}
                       </label>
-                      <input
+                      <NumberInput
                         id="waypointCenterLat"
-                        type="number"
                         step="any"
+                        allowEmpty
                         placeholder={t('notifications.waypoint_center_lat_placeholder', 'latitude')}
-                        value={preferences.waypointCenterLat ?? ''}
-                        onChange={(e) => {
-                          const raw = e.target.value === '' ? null : parseFloat(e.target.value);
-                          setPreferences(prev => ({
-                            ...prev,
-                            waypointCenterLat: raw === null || isNaN(raw) ? null : raw
-                          }));
-                        }}
+                        value={preferences.waypointCenterLat}
+                        onChange={(waypointCenterLat) => setPreferences(prev => ({ ...prev, waypointCenterLat }))}
                         style={{
                           width: '120px',
                           padding: '0.35rem 0.5rem',
@@ -971,20 +968,14 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
                           color: 'var(--color-text)'
                         }}
                       />
-                      <input
+                      <NumberInput
                         id="waypointCenterLon"
-                        type="number"
                         step="any"
+                        allowEmpty
                         aria-label={t('notifications.waypoint_center_lon_placeholder', 'longitude')}
                         placeholder={t('notifications.waypoint_center_lon_placeholder', 'longitude')}
-                        value={preferences.waypointCenterLon ?? ''}
-                        onChange={(e) => {
-                          const raw = e.target.value === '' ? null : parseFloat(e.target.value);
-                          setPreferences(prev => ({
-                            ...prev,
-                            waypointCenterLon: raw === null || isNaN(raw) ? null : raw
-                          }));
-                        }}
+                        value={preferences.waypointCenterLon}
+                        onChange={(waypointCenterLon) => setPreferences(prev => ({ ...prev, waypointCenterLon }))}
                         style={{
                           width: '120px',
                           padding: '0.35rem 0.5rem',
@@ -1048,20 +1039,13 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
                     <label htmlFor="lowBatteryThreshold" style={{ margin: 0, fontSize: '0.9em', color: 'var(--color-text-subtle)' }}>
                       {t('notifications.low_battery_threshold_label')}
                     </label>
-                    <input
+                    <NumberInput
                       id="lowBatteryThreshold"
-                      type="number"
                       min={0}
                       max={100}
+                      integer
                       value={preferences.lowBatteryThreshold}
-                      onChange={(e) => {
-                        const raw = parseInt(e.target.value, 10);
-                        const clamped = isNaN(raw) ? 0 : Math.max(0, Math.min(100, raw));
-                        setPreferences(prev => ({
-                          ...prev,
-                          lowBatteryThreshold: clamped
-                        }));
-                      }}
+                      onChange={(lowBatteryThreshold) => setPreferences(prev => ({ ...prev, lowBatteryThreshold }))}
                       style={{
                         width: '70px',
                         padding: '0.35rem 0.5rem',
@@ -1080,21 +1064,14 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
                     <label htmlFor="lowBatteryVoltageThreshold" style={{ margin: 0, fontSize: '0.9em', color: 'var(--color-text-subtle)' }}>
                       {t('notifications.low_battery_voltage_threshold_label')}
                     </label>
-                    <input
+                    <NumberInput
                       id="lowBatteryVoltageThreshold"
-                      type="number"
                       min={0}
                       max={20000}
                       step={50}
+                      integer
                       value={preferences.lowBatteryVoltageThreshold}
-                      onChange={(e) => {
-                        const raw = parseInt(e.target.value, 10);
-                        const clamped = isNaN(raw) ? 0 : Math.max(0, Math.min(20000, raw));
-                        setPreferences(prev => ({
-                          ...prev,
-                          lowBatteryVoltageThreshold: clamped
-                        }));
-                      }}
+                      onChange={(lowBatteryVoltageThreshold) => setPreferences(prev => ({ ...prev, lowBatteryVoltageThreshold }))}
                       style={{
                         width: '90px',
                         padding: '0.35rem 0.5rem',
@@ -1489,7 +1466,7 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
           <button
             className="button button-primary"
             onClick={savePreferences}
-            disabled={isSavingPreferences}
+            disabled={isSavingPreferences || numberScope.invalid}
             style={{ minWidth: '150px' }}
           >
             {isSavingPreferences ? t('common.saving') : <><UiIcon name="save" /> {t('notifications.save_preferences')}</>}
@@ -1805,6 +1782,7 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
       </div>
       )}
     </div>
+    </NumberInputScope>
   );
 };
 

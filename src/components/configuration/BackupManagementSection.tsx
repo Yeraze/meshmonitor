@@ -4,6 +4,9 @@ import apiService, { ApiError } from '../../services/api';
 import { useToast } from '../ToastContainer';
 import { logger } from '../../utils/logger';
 import { useSaveBar } from '../../hooks/useSaveBar';
+import { NumberInput } from '../common/NumberInput';
+import { NumberInputScope } from '../common/NumberInputScope';
+import { useNumberInputScope } from '../common/numberInputScope';
 import { useSource } from '../../contexts/SourceContext';
 import '../../styles/BackupManagement.css';
 
@@ -116,14 +119,16 @@ const BackupManagementSection: React.FC<BackupManagementSectionProps> = ({ onBac
     }
   };
 
-  // Register with SaveBar
+  // Register with SaveBar. The scope blocks Save while a number field is blank (#5649).
+  const numberScope = useNumberInputScope();
   useSaveBar({
     id: 'backup-management',
     sectionName: t('backup_management.title'),
     hasChanges,
     isSaving: isSavingSettings,
     onSave: handleSaveBackupSettings,
-    onDismiss: resetChanges
+    onDismiss: resetChanges,
+    numberScope
   });
 
   const handleManualBackup = async () => {
@@ -254,6 +259,7 @@ const BackupManagementSection: React.FC<BackupManagementSectionProps> = ({ onBac
   };
 
   return (
+    <NumberInputScope scope={numberScope}>
     <div className="settings-section" style={{ marginTop: '2rem' }}>
       <h3>{t('backup_management.title')}</h3>
 
@@ -337,12 +343,12 @@ const BackupManagementSection: React.FC<BackupManagementSectionProps> = ({ onBac
             <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 'bold' }}>
               {t('backup_management.max_backups')}
             </label>
-            <input
-              type="number"
-              min="1"
-              max="365"
+            <NumberInput
+              min={1}
+              max={365}
+              integer
               value={maxBackups}
-              onChange={(e) => setMaxBackups(parseInt(e.target.value) || 7)}
+              onChange={setMaxBackups}
               disabled={!autoBackupEnabled}
               style={{
                 padding: '0.5rem',
@@ -477,6 +483,7 @@ const BackupManagementSection: React.FC<BackupManagementSectionProps> = ({ onBac
         </div>
       )}
     </div>
+    </NumberInputScope>
   );
 };
 

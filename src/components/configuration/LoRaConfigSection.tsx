@@ -16,6 +16,9 @@ import {
 import { MODEM_PRESET_NAMES } from '../../utils/loraFrequency';
 import { useSaveBar } from '../../hooks/useSaveBar';
 import styles from './LoRaConfigSection.module.css';
+import { NumberInput } from '../common/NumberInput';
+import { NumberInputScope } from '../common/NumberInputScope';
+import { useNumberInputScope } from '../common/numberInputScope';
 
 interface LoRaConfigSectionProps {
   usePreset: boolean;
@@ -239,16 +242,19 @@ const LoRaConfigSection: React.FC<LoRaConfigSectionProps> = ({
   }, [txEnabled, setTxEnabled, t]);
 
   // Register with SaveBar
+  const numberScope = useNumberInputScope();
   useSaveBar({
     id: 'lora-config',
     sectionName: t('lora_config.title'),
     hasChanges,
     isSaving,
     onSave: handleSave,
-    onDismiss: resetChanges
+    onDismiss: resetChanges,
+    numberScope
   });
 
   return (
+    <NumberInputScope scope={numberScope}>
     <div className="settings-section">
       <h3 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
         {t('lora_config.title')}
@@ -450,13 +456,13 @@ const LoRaConfigSection: React.FC<LoRaConfigSectionProps> = ({
               {t('lora_config.bandwidth')}
               <span className="setting-description">{t('lora_config.bandwidth_description')}</span>
             </label>
-            <input
+            <NumberInput
               id="bandwidth"
-              type="number"
-              min="1"
-              max="500"
+              min={1}
+              max={500}
+              integer
               value={bandwidth}
-              onChange={(e) => setBandwidth(parseInt(e.target.value))}
+              onChange={setBandwidth}
               className="setting-input"
             />
           </div>
@@ -465,13 +471,13 @@ const LoRaConfigSection: React.FC<LoRaConfigSectionProps> = ({
               {t('lora_config.spread_factor')}
               <span className="setting-description">{t('lora_config.spread_factor_description')}</span>
             </label>
-            <input
+            <NumberInput
               id="spreadFactor"
-              type="number"
-              min="7"
-              max="12"
+              min={7}
+              max={12}
+              integer
               value={spreadFactor}
-              onChange={(e) => setSpreadFactor(parseInt(e.target.value))}
+              onChange={setSpreadFactor}
               className="setting-input"
             />
           </div>
@@ -480,13 +486,13 @@ const LoRaConfigSection: React.FC<LoRaConfigSectionProps> = ({
               {t('lora_config.coding_rate')}
               <span className="setting-description">{t('lora_config.coding_rate_description')}</span>
             </label>
-            <input
+            <NumberInput
               id="codingRate"
-              type="number"
-              min="5"
-              max="8"
+              min={5}
+              max={8}
+              integer
               value={codingRate}
-              onChange={(e) => setCodingRate(parseInt(e.target.value))}
+              onChange={setCodingRate}
               className="setting-input"
             />
           </div>
@@ -495,12 +501,11 @@ const LoRaConfigSection: React.FC<LoRaConfigSectionProps> = ({
               {t('lora_config.frequency_offset')}
               <span className="setting-description">{t('lora_config.frequency_offset_description')}</span>
             </label>
-            <input
+            <NumberInput
               id="frequencyOffset"
-              type="number"
-              step="0.001"
+              step={0.001}
               value={frequencyOffset}
-              onChange={(e) => setFrequencyOffset(parseFloat(e.target.value))}
+              onChange={setFrequencyOffset}
               className="setting-input"
             />
           </div>
@@ -511,12 +516,11 @@ const LoRaConfigSection: React.FC<LoRaConfigSectionProps> = ({
           {t('lora_config.override_frequency')}
           <span className="setting-description">{t('lora_config.override_frequency_description')}</span>
         </label>
-        <input
+        <NumberInput
           id="overrideFrequency"
-          type="number"
-          step="0.001"
+          step={0.001}
           value={overrideFrequency}
-          onChange={(e) => setOverrideFrequency(parseFloat(e.target.value))}
+          onChange={setOverrideFrequency}
           className="setting-input"
         />
       </div>
@@ -560,13 +564,14 @@ const LoRaConfigSection: React.FC<LoRaConfigSectionProps> = ({
           {t('lora_config.hop_limit')}
           <span className="setting-description">{t('lora_config.hop_limit_description')}</span>
         </label>
-        <input
+        <NumberInput
           id="hopLimit"
-          type="number"
-          min="1"
-          max="7"
+          min={1}
+          alsoValid={[0]}
+          max={7}
+          integer
           value={hopLimit}
-          onChange={(e) => setHopLimit(parseInt(e.target.value))}
+          onChange={setHopLimit}
           className="setting-input"
         />
       </div>
@@ -575,11 +580,11 @@ const LoRaConfigSection: React.FC<LoRaConfigSectionProps> = ({
           {t('lora_config.tx_power')}
           <span className="setting-description">{t('lora_config.tx_power_description')}</span>
         </label>
-        <input
+        <NumberInput
           id="txPower"
-          type="number"
+          integer
           value={txPower}
-          onChange={(e) => setTxPower(parseInt(e.target.value))}
+          onChange={setTxPower}
           className="setting-input"
         />
       </div>
@@ -588,13 +593,13 @@ const LoRaConfigSection: React.FC<LoRaConfigSectionProps> = ({
           {t('lora_config.channel_num')}
           <span className="setting-description">{t('lora_config.channel_num_description')}</span>
         </label>
-        <input
+        <NumberInput
           id="channelNum"
-          type="number"
-          min="0"
-          max="255"
+          min={0}
+          max={255}
+          integer
           value={channelNum}
-          onChange={(e) => setChannelNum(parseInt(e.target.value))}
+          onChange={setChannelNum}
           className="setting-input"
         />
       </div>
@@ -707,6 +712,7 @@ const LoRaConfigSection: React.FC<LoRaConfigSectionProps> = ({
         </label>
       </div>
     </div>
+    </NumberInputScope>
   );
 };
 

@@ -44,8 +44,12 @@ export const SaveBar: React.FC = () => {
     : [effectiveSection];
   const isBatch = groupSections.length > 1;
   const anySaving = isBatchSaving || groupSections.some(s => s.isSaving);
+  // #5649: a blank or out-of-range number field must never be saved. The field
+  // is already outlined; say why Save is off so the state does not rest on colour.
+  const anyInvalid = groupSections.some(s => s.invalid);
 
   const handleSave = async () => {
+    if (anyInvalid) return;
     // Save sequentially so sections that hit the same endpoint don't race.
     // Each section's onSave handles its own errors/toasts, but guard anyway so
     // one failure doesn't abort the rest of the batch.
@@ -95,10 +99,12 @@ export const SaveBar: React.FC = () => {
               ))}
             </div>
           )}
-          <span className="save-bar-message">
-            {isBatch
-              ? t('savebar.save_all_changes', { count: groupSections.length })
-              : t('savebar.save_changes_to', { section: effectiveSection.sectionName })}
+          <span className="save-bar-message" role={anyInvalid ? 'status' : undefined}>
+            {anyInvalid
+              ? t('savebar.fix_invalid_fields')
+              : isBatch
+                ? t('savebar.save_all_changes', { count: groupSections.length })
+                : t('savebar.save_changes_to', { section: effectiveSection.sectionName })}
           </span>
         </div>
         <div className="save-bar-actions">
@@ -112,7 +118,8 @@ export const SaveBar: React.FC = () => {
           <button
             className="save-bar-save"
             onClick={handleSave}
-            disabled={anySaving}
+            disabled={anySaving || anyInvalid}
+            title={anyInvalid ? t('savebar.fix_invalid_fields') : undefined}
           >
             {anySaving
               ? t('common.saving')

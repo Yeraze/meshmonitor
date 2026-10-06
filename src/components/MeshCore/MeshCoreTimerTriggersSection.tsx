@@ -5,6 +5,9 @@ import { useCsrfFetch } from '../../hooks/useCsrfFetch';
 import { useToast } from '../ToastContainer';
 import { useAuth } from '../../contexts/AuthContext';
 import { useSaveBar } from '../../hooks/useSaveBar';
+import { NumberInput } from '../common/NumberInput';
+import { NumberInputScope } from '../common/NumberInputScope';
+import { useNumberInputScope } from '../common/numberInputScope';
 import { ScopeSelectField, type ScopeMode } from './ScopeSelectField';
 import { MeshCoreReceiveOnlyNote } from './MeshCoreReceiveOnlyNote';
 import { isTxDisabledBody } from '../../utils/txDisabled';
@@ -247,7 +250,9 @@ export const MeshCoreTimerTriggersSection: React.FC<MeshCoreTimerTriggersSection
     setHasChanges(false);
   }, [initial]);
 
+  const numberScope = useNumberInputScope();
   useSaveBar({
+    numberScope,
     id: 'meshcore-timer-triggers',
     sectionName: t('meshcore.automation.timers.title', 'Timer Triggers'),
     hasChanges,
@@ -306,6 +311,7 @@ export const MeshCoreTimerTriggersSection: React.FC<MeshCoreTimerTriggersSection
   const contactOptions = useMemo(() => contacts.map(c => ({ value: c.publicKey, label: c.name })), [contacts]);
 
   return (
+    <NumberInputScope scope={numberScope}>
     <>
       <div className="automation-section-header" style={{
         display: 'flex',
@@ -411,12 +417,12 @@ export const MeshCoreTimerTriggersSection: React.FC<MeshCoreTimerTriggersSection
               ) : (
                 <label style={{ fontSize: '0.85rem' }}>
                   {t('meshcore.automation.timers.interval_minutes', 'Interval (minutes)')}
-                  <input
-                    type="number"
+                  <NumberInput
                     min={1}
                     max={10080}
+                    integer
                     value={tr.intervalMinutes ?? 60}
-                    onChange={(e) => updateTrigger(tr.id, { intervalMinutes: Math.max(1, parseInt(e.target.value, 10) || 60) })}
+                    onChange={(v) => updateTrigger(tr.id, { intervalMinutes: v })}
                     disabled={!canWrite}
                     className="meshcore-input"
                     style={{ width: '100%', marginTop: '0.25rem' }}
@@ -616,6 +622,7 @@ export const MeshCoreTimerTriggersSection: React.FC<MeshCoreTimerTriggersSection
         </div>
       </div>
     </>
+    </NumberInputScope>
   );
 };
 

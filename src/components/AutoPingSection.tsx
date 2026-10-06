@@ -5,6 +5,9 @@ import { useCsrfFetch } from '../hooks/useCsrfFetch';
 import { useSaveBar } from '../hooks/useSaveBar';
 import { useSourceQuery } from '../hooks/useSourceQuery';
 import { useSource } from '../contexts/SourceContext';
+import { NumberInput } from './common/NumberInput';
+import { NumberInputScope } from './common/NumberInputScope';
+import { useNumberInputScope } from './common/numberInputScope';
 
 interface AutoPingSectionProps {
   baseUrl: string;
@@ -160,7 +163,9 @@ const AutoPingSection: React.FC<AutoPingSectionProps> = ({ baseUrl }) => {
     }
   }, [localEnabled, localInterval, localMaxPings, localTimeout, baseUrl, csrfFetch, sourceQuery, showToast, t]);
 
+  const numberScope = useNumberInputScope();
   useSaveBar({
+    numberScope,
     id: 'auto-ping',
     sectionName: t('automation.auto_ping.title', 'Auto Ping'),
     hasChanges,
@@ -194,6 +199,7 @@ const AutoPingSection: React.FC<AutoPingSectionProps> = ({ baseUrl }) => {
   };
 
   return (
+    <NumberInputScope scope={numberScope}>
     <>
       <div className="automation-section-header" style={{
         display: 'flex',
@@ -241,13 +247,13 @@ const AutoPingSection: React.FC<AutoPingSectionProps> = ({ baseUrl }) => {
               {t('automation.auto_ping.interval_description', 'Time between each ping in a session')}
             </span>
           </label>
-          <input
+          <NumberInput
             id="autoPingInterval"
-            type="number"
-            min="10"
-            max="300"
+            min={10}
+            max={300}
             value={localInterval}
-            onChange={(e) => setLocalInterval(parseInt(e.target.value) || 30)}
+            integer
+            onChange={setLocalInterval}
             disabled={!localEnabled}
             className="setting-input"
           />
@@ -260,13 +266,13 @@ const AutoPingSection: React.FC<AutoPingSectionProps> = ({ baseUrl }) => {
               {t('automation.auto_ping.max_pings_description', 'Maximum number of pings a user can request in a single session')}
             </span>
           </label>
-          <input
+          <NumberInput
             id="autoPingMaxPings"
-            type="number"
-            min="1"
-            max="100"
+            min={1}
+            max={100}
             value={localMaxPings}
-            onChange={(e) => setLocalMaxPings(parseInt(e.target.value) || 20)}
+            integer
+            onChange={setLocalMaxPings}
             disabled={!localEnabled}
             className="setting-input"
           />
@@ -279,13 +285,13 @@ const AutoPingSection: React.FC<AutoPingSectionProps> = ({ baseUrl }) => {
               {t('automation.auto_ping.timeout_description', 'How long to wait for a response before marking a ping as timed out')}
             </span>
           </label>
-          <input
+          <NumberInput
             id="autoPingTimeout"
-            type="number"
-            min="10"
-            max="300"
+            min={10}
+            max={300}
             value={localTimeout}
-            onChange={(e) => setLocalTimeout(parseInt(e.target.value) || 60)}
+            integer
+            onChange={setLocalTimeout}
             disabled={!localEnabled}
             className="setting-input"
           />
@@ -380,6 +386,7 @@ const AutoPingSection: React.FC<AutoPingSectionProps> = ({ baseUrl }) => {
         )}
       </div>
     </>
+    </NumberInputScope>
   );
 };
 

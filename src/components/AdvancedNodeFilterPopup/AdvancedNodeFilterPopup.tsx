@@ -5,6 +5,7 @@ import type { Channel } from '../../types/device';
 import { ROLE_NAMES } from '../../constants';
 import './AdvancedNodeFilterPopup.css';
 import { UiIcon } from '../icons';
+import { NumberInput } from '../common/NumberInput';
 
 interface AdvancedNodeFilterPopupProps {
   isOpen: boolean;
@@ -345,25 +346,22 @@ export const AdvancedNodeFilterPopup: React.FC<AdvancedNodeFilterPopupProps> = (
             <div className="filter-range-group">
               <div className="filter-range-input">
                 <label>{t('node_filter.min', 'Min')}:</label>
-                <input
-                  type="number"
-                  min="0"
-                  max="10"
+                <NumberInput
+                  integer
+                  min={0}
+                  max={10}
                   value={nodeFilters.minHops}
-                  onChange={e => onNodeFiltersChange({ ...nodeFilters, minHops: parseInt(e.target.value) || 0 })}
+                  onChange={v => onNodeFiltersChange({ ...nodeFilters, minHops: v })}
                 />
               </div>
               <div className="filter-range-input">
                 <label>{t('node_filter.max', 'Max')}:</label>
-                <input
-                  type="number"
-                  min="0"
-                  max="10"
+                <NumberInput
+                  integer
+                  min={0}
+                  max={10}
                   value={nodeFilters.maxHops}
-                  onChange={e => {
-                    const val = parseInt(e.target.value);
-                    onNodeFiltersChange({ ...nodeFilters, maxHops: isNaN(val) ? 10 : val });
-                  }}
+                  onChange={v => onNodeFiltersChange({ ...nodeFilters, maxHops: v })}
                 />
               </div>
             </div>

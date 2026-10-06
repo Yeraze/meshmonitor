@@ -7,6 +7,9 @@ import mapFrame from '../map/EmbeddedMapFrame.module.css';
 import apiService from '../../services/api';
 import { useCsrfFetch } from '../../hooks/useCsrfFetch';
 import { useToast } from '../ToastContainer';
+import { NumberInput } from '../common/NumberInput';
+import { NumberInputScope } from '../common/NumberInputScope';
+import { useNumberInputScope } from '../common/numberInputScope';
 import { getAllTilesets } from '../../config/tilesets';
 import { useSettings } from '../../contexts/SettingsContext';
 import { useDashboardSources } from '../../hooks/useDashboardData';
@@ -114,6 +117,7 @@ const EmbedSettings = () => {
   // Modal state: null = closed, 'new' = creating, string = editing that id
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState<ProfileFormData>({ ...DEFAULT_FORM });
+  const numberScope = useNumberInputScope();
 
   // Raw text for the allowed-origins input so users can type commas freely
   const [originsText, setOriginsText] = useState('');
@@ -256,6 +260,8 @@ const EmbedSettings = () => {
 
   // ---- CRUD ----
   const handleSave = async () => {
+    // #5649: a blank or out-of-range poll interval is never saved.
+    if (numberScope.invalid) return;
     if (!form.name.trim()) {
       showToast(t('settings.embed.name_required', 'Profile name is required'), 'error');
       return;
@@ -329,6 +335,7 @@ const EmbedSettings = () => {
   }
 
   return (
+    <NumberInputScope scope={numberScope}>
     <div className="embed-settings">
       <p className="setting-description">
         {t('settings.embed.description', 'Create embed profiles to share interactive maps on external websites via iframe.')}
@@ -534,17 +541,13 @@ const EmbedSettings = () => {
               {/* Poll interval */}
               <div className="setting-item">
                 <label htmlFor="embed-poll">{t('settings.embed.poll_interval', 'Poll Interval (seconds)')}</label>
-                <input
+                <NumberInput
                   id="embed-poll"
                   className="setting-input"
-                  type="number"
                   min={10}
                   max={300}
                   value={form.pollIntervalSeconds}
-                  onChange={e => {
-                    const val = Math.max(10, Math.min(300, Number(e.target.value) || 30));
-                    setForm(prev => ({ ...prev, pollIntervalSeconds: val }));
-                  }}
+                  onChange={pollIntervalSeconds => setForm(prev => ({ ...prev, pollIntervalSeconds }))}
                 />
               </div>
 
@@ -586,7 +589,7 @@ const EmbedSettings = () => {
 
               {/* Actions */}
               <div className="settings-buttons">
-                <button className="settings-button settings-button-primary" onClick={handleSave}>
+                <button className="settings-button settings-button-primary" onClick={handleSave} disabled={numberScope.invalid}>
                   {editingId === 'new' ? t('settings.embed.create_btn', 'Create') : t('settings.embed.save_btn', 'Save')}
                 </button>
                 <button className="settings-button" onClick={closeModal}>
@@ -630,6 +633,7 @@ const EmbedSettings = () => {
         </div>
       )}
     </div>
+    </NumberInputScope>
   );
 };
 

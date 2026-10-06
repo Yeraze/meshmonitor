@@ -2,6 +2,9 @@ import React, { useState, useRef, useMemo, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { UiIcon } from '../icons';
 import { useSaveBar } from '../../hooks/useSaveBar';
+import { NumberInput } from '../common/NumberInput';
+import { NumberInputScope } from '../common/NumberInputScope';
+import { useNumberInputScope } from '../common/numberInputScope';
 import ModuleAvailabilityNotice from './ModuleAvailabilityNotice';
 
 interface ExternalNotificationConfigSectionProps {
@@ -146,16 +149,19 @@ const ExternalNotificationConfigSection: React.FC<ExternalNotificationConfigSect
       useI2sAsBuzzer, outputVibra, outputBuzzer]);
 
   // Register with SaveBar
+  const numberScope = useNumberInputScope();
   useSaveBar({
     id: 'extnotif-config',
     sectionName: t('extnotif_config.title'),
     hasChanges,
     isSaving,
     onSave: handleSave,
-    onDismiss: resetChanges
+    onDismiss: resetChanges,
+    numberScope
   });
 
   return (
+    <NumberInputScope scope={numberScope}>
     <div className="settings-section">
       <h3 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
         {t('extnotif_config.title')}
@@ -200,13 +206,13 @@ const ExternalNotificationConfigSection: React.FC<ExternalNotificationConfigSect
               {t('extnotif_config.output_ms')}
               <span className="setting-description">{t('extnotif_config.output_ms_description')}</span>
             </label>
-            <input
+            <NumberInput
               id="extnotifOutputMs"
-              type="number"
-              min="0"
-              max="60000"
+              min={0}
+              max={60000}
               value={outputMs}
-              onChange={(e) => setOutputMs(parseInt(e.target.value) || 0)}
+              integer
+              onChange={setOutputMs}
               className="setting-input"
               placeholder="1000"
             />
@@ -406,13 +412,13 @@ const ExternalNotificationConfigSection: React.FC<ExternalNotificationConfigSect
                   {t('extnotif_config.nag_timeout')}
                   <span className="setting-description">{t('extnotif_config.nag_timeout_description')}</span>
                 </label>
-                <input
+                <NumberInput
                   id="extnotifNagTimeout"
-                  type="number"
-                  min="0"
-                  max="3600"
+                  min={0}
+                  max={3600}
                   value={nagTimeout}
-                  onChange={(e) => setNagTimeout(parseInt(e.target.value) || 0)}
+                  integer
+                  onChange={setNagTimeout}
                   className="setting-input"
                   placeholder="0"
                 />
@@ -429,13 +435,13 @@ const ExternalNotificationConfigSection: React.FC<ExternalNotificationConfigSect
                   {t('extnotif_config.output_gpio')}
                   <span className="setting-description">{t('extnotif_config.output_gpio_description')}</span>
                 </label>
-                <input
+                <NumberInput
                   id="extnotifOutput"
-                  type="number"
-                  min="0"
-                  max="255"
+                  min={0}
+                  max={255}
                   value={output}
-                  onChange={(e) => setOutput(parseInt(e.target.value) || 0)}
+                  integer
+                  onChange={setOutput}
                   className="setting-input"
                   style={{ width: '100px' }}
                 />
@@ -447,13 +453,13 @@ const ExternalNotificationConfigSection: React.FC<ExternalNotificationConfigSect
                   {t('extnotif_config.output_vibra_gpio')}
                   <span className="setting-description">{t('extnotif_config.output_vibra_gpio_description')}</span>
                 </label>
-                <input
+                <NumberInput
                   id="extnotifOutputVibra"
-                  type="number"
-                  min="0"
-                  max="255"
+                  min={0}
+                  max={255}
                   value={outputVibra}
-                  onChange={(e) => setOutputVibra(parseInt(e.target.value) || 0)}
+                  integer
+                  onChange={setOutputVibra}
                   className="setting-input"
                   style={{ width: '100px' }}
                 />
@@ -465,13 +471,13 @@ const ExternalNotificationConfigSection: React.FC<ExternalNotificationConfigSect
                   {t('extnotif_config.output_buzzer_gpio')}
                   <span className="setting-description">{t('extnotif_config.output_buzzer_gpio_description')}</span>
                 </label>
-                <input
+                <NumberInput
                   id="extnotifOutputBuzzer"
-                  type="number"
-                  min="0"
-                  max="255"
+                  min={0}
+                  max={255}
                   value={outputBuzzer}
-                  onChange={(e) => setOutputBuzzer(parseInt(e.target.value) || 0)}
+                  integer
+                  onChange={setOutputBuzzer}
                   className="setting-input"
                   style={{ width: '100px' }}
                 />
@@ -481,6 +487,7 @@ const ExternalNotificationConfigSection: React.FC<ExternalNotificationConfigSect
         </>
       )}
     </div>
+    </NumberInputScope>
   );
 };
 

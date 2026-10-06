@@ -4,6 +4,9 @@ import { useCsrfFetch } from '../../hooks/useCsrfFetch';
 import { useToast } from '../ToastContainer';
 import { useAuth } from '../../contexts/AuthContext';
 import { useSaveBar } from '../../hooks/useSaveBar';
+import { NumberInput } from '../common/NumberInput';
+import { NumberInputScope } from '../common/NumberInputScope';
+import { useNumberInputScope } from '../common/numberInputScope';
 import { ScopeSelectField, type ScopeMode } from './ScopeSelectField';
 import { MeshCoreReceiveOnlyNote } from './MeshCoreReceiveOnlyNote';
 
@@ -220,7 +223,9 @@ export const MeshCoreAutoResponderSection: React.FC<MeshCoreAutoResponderSection
     setHasChanges(false);
   }, [initialEnabled, initialTriggers]);
 
+  const numberScope = useNumberInputScope();
   useSaveBar({
+    numberScope,
     id: 'meshcore-auto-responder',
     sectionName: t('meshcore.automation.responder.title', 'Auto-Responder'),
     hasChanges,
@@ -259,6 +264,7 @@ export const MeshCoreAutoResponderSection: React.FC<MeshCoreAutoResponderSection
   const disabled = !enabled;
 
   return (
+    <NumberInputScope scope={numberScope}>
     <>
       <div className="automation-section-header" style={{
         display: 'flex',
@@ -434,12 +440,12 @@ export const MeshCoreAutoResponderSection: React.FC<MeshCoreAutoResponderSection
                 </label>
                 <label style={{ fontSize: '0.85rem' }}>
                   {t('meshcore.automation.responder.cooldown', 'Cooldown (s)')}{' '}
-                  <input
-                    type="number"
+                  <NumberInput
                     min={0}
                     max={3600}
+                    integer
                     value={tr.cooldownSeconds}
-                    onChange={(e) => updateTrigger(tr.id, { cooldownSeconds: Math.max(0, Math.min(3600, parseInt(e.target.value, 10) || 0)) })}
+                    onChange={(v) => updateTrigger(tr.id, { cooldownSeconds: v })}
                     disabled={disabled || !canWrite}
                     className="meshcore-input"
                     style={{ width: '80px' }}
@@ -453,12 +459,12 @@ export const MeshCoreAutoResponderSection: React.FC<MeshCoreAutoResponderSection
                   )}
                 >
                   {t('meshcore.automation.responder.presend_delay', 'Pre-Send Delay (s)')}{' '}
-                  <input
-                    type="number"
+                  <NumberInput
                     min={0}
                     max={120}
+                    integer
                     value={tr.preSendDelaySeconds ?? 0}
-                    onChange={(e) => updateTrigger(tr.id, { preSendDelaySeconds: Math.max(0, Math.min(120, parseInt(e.target.value, 10) || 0)) })}
+                    onChange={(v) => updateTrigger(tr.id, { preSendDelaySeconds: v })}
                     disabled={disabled || !canWrite}
                     className="meshcore-input"
                     style={{ width: '80px' }}
@@ -552,6 +558,7 @@ export const MeshCoreAutoResponderSection: React.FC<MeshCoreAutoResponderSection
         </div>
       </div>
     </>
+    </NumberInputScope>
   );
 };
 

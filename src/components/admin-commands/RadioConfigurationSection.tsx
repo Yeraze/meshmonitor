@@ -1,5 +1,8 @@
 import React from 'react';
 import { useTranslation } from 'react-i18next';
+import { NumberInput } from '../common/NumberInput';
+import { NumberInputScope } from '../common/NumberInputScope';
+import { useNumberInputScope } from '../common/numberInputScope';
 import { UiIcon } from '../icons';
 import { MODEM_PRESET_OPTIONS, REGION_OPTIONS, isAmateurRadioRegion, getLegalPresetOptions } from '../configuration/constants';
 import type { Channel } from '../../types/device';
@@ -109,12 +112,17 @@ export const RadioConfigurationSection: React.FC<RadioConfigurationSectionProps>
   const legalPresetOptions = getLegalPresetOptions(region, modemPreset, firmwareVersion);
   const hasFilteredPresets = legalPresetOptions.length < MODEM_PRESET_OPTIONS.length;
 
+  // #5649: one scope per independently-saved group. A blank or out-of-range
+  // number field blocks only its own Save, so nothing invalid goes to the node.
+  const loraNumbers = useNumberInputScope();
+
   return (
     <CollapsibleSection
       id="radio-config"
       title={t('admin_commands.radio_configuration', 'Radio Configuration')}
     >
       {/* LoRa Config Section */}
+      <NumberInputScope scope={loraNumbers}>
       <CollapsibleSection
         id="admin-lora-config"
         title={t('admin_commands.lora_configuration')}
@@ -161,10 +169,10 @@ export const RadioConfigurationSection: React.FC<RadioConfigurationSectionProps>
           <>
             <div className="setting-item">
               <label>{t('admin_commands.bandwidth')}</label>
-              <input
-                type="number"
+              <NumberInput
+                integer
                 value={bandwidth}
-                onChange={(e) => onLoRaConfigChange('bandwidth', Number(e.target.value))}
+                onChange={(v) => onLoRaConfigChange('bandwidth', v)}
                 disabled={isExecuting}
                 className="setting-input"
                 style={{ width: '200px' }}
@@ -172,12 +180,12 @@ export const RadioConfigurationSection: React.FC<RadioConfigurationSectionProps>
             </div>
             <div className="setting-item">
               <label>{t('admin_commands.spread_factor')}</label>
-              <input
-                type="number"
-                min="7"
-                max="12"
+              <NumberInput
+                integer
+                min={7}
+                max={12}
                 value={spreadFactor}
-                onChange={(e) => onLoRaConfigChange('spreadFactor', Number(e.target.value))}
+                onChange={(v) => onLoRaConfigChange('spreadFactor', v)}
                 disabled={isExecuting}
                 className="setting-input"
                 style={{ width: '200px' }}
@@ -185,10 +193,10 @@ export const RadioConfigurationSection: React.FC<RadioConfigurationSectionProps>
             </div>
             <div className="setting-item">
               <label>Coding Rate</label>
-              <input
-                type="number"
+              <NumberInput
+                integer
                 value={codingRate}
-                onChange={(e) => onLoRaConfigChange('codingRate', Number(e.target.value))}
+                onChange={(v) => onLoRaConfigChange('codingRate', v)}
                 disabled={isExecuting}
                 className="setting-input"
                 style={{ width: '200px' }}
@@ -196,10 +204,10 @@ export const RadioConfigurationSection: React.FC<RadioConfigurationSectionProps>
             </div>
             <div className="setting-item">
               <label>Frequency Offset</label>
-              <input
-                type="number"
+              <NumberInput
+                step="any"
                 value={frequencyOffset}
-                onChange={(e) => onLoRaConfigChange('frequencyOffset', Number(e.target.value))}
+                onChange={(v) => onLoRaConfigChange('frequencyOffset', v)}
                 disabled={isExecuting}
                 className="setting-input"
                 style={{ width: '200px' }}
@@ -207,10 +215,10 @@ export const RadioConfigurationSection: React.FC<RadioConfigurationSectionProps>
             </div>
             <div className="setting-item">
               <label>Override Frequency (Hz)</label>
-              <input
-                type="number"
+              <NumberInput
+                step="any"
                 value={overrideFrequency}
-                onChange={(e) => onLoRaConfigChange('overrideFrequency', Number(e.target.value))}
+                onChange={(v) => onLoRaConfigChange('overrideFrequency', v)}
                 disabled={isExecuting}
                 className="setting-input"
                 style={{ width: '200px' }}
@@ -253,12 +261,12 @@ export const RadioConfigurationSection: React.FC<RadioConfigurationSectionProps>
         </div>
         <div className="setting-item">
           <label>Hop Limit (1-7)</label>
-          <input
-            type="number"
-            min="1"
-            max="7"
+          <NumberInput
+            integer
+            min={1}
+            max={7}
             value={hopLimit}
-            onChange={(e) => onLoRaConfigChange('hopLimit', Number(e.target.value))}
+            onChange={(v) => onLoRaConfigChange('hopLimit', v)}
             disabled={isExecuting}
             className="setting-input"
             style={{ width: '200px' }}
@@ -266,10 +274,10 @@ export const RadioConfigurationSection: React.FC<RadioConfigurationSectionProps>
         </div>
         <div className="setting-item">
           <label>TX Power</label>
-          <input
-            type="number"
+          <NumberInput
+            integer
             value={txPower}
-            onChange={(e) => onLoRaConfigChange('txPower', Number(e.target.value))}
+            onChange={(v) => onLoRaConfigChange('txPower', v)}
             disabled={isExecuting}
             className="setting-input"
             style={{ width: '200px' }}
@@ -277,10 +285,10 @@ export const RadioConfigurationSection: React.FC<RadioConfigurationSectionProps>
         </div>
         <div className="setting-item">
           <label>Channel Number</label>
-          <input
-            type="number"
+          <NumberInput
+            integer
             value={channelNum}
-            onChange={(e) => onLoRaConfigChange('channelNum', Number(e.target.value))}
+            onChange={(v) => onLoRaConfigChange('channelNum', v)}
             disabled={isExecuting}
             className="setting-input"
             style={{ width: '200px' }}
@@ -333,16 +341,17 @@ export const RadioConfigurationSection: React.FC<RadioConfigurationSectionProps>
         </div>
         <button
           className="save-button"
-          onClick={onSaveLoRaConfig}
-          disabled={isExecuting || selectedNodeNum === null}
+          onClick={loraNumbers.invalid ? undefined : onSaveLoRaConfig}
+          disabled={isExecuting || selectedNodeNum === null || loraNumbers.invalid}
           style={{
-            opacity: (isExecuting || selectedNodeNum === null) ? 0.5 : 1,
-            cursor: (isExecuting || selectedNodeNum === null) ? 'not-allowed' : 'pointer'
+            opacity: (isExecuting || selectedNodeNum === null || loraNumbers.invalid) ? 0.5 : 1,
+            cursor: (isExecuting || selectedNodeNum === null || loraNumbers.invalid) ? 'not-allowed' : 'pointer'
           }}
         >
           {isExecuting ? t('common.saving') : t('admin_commands.save_lora_config')}
         </button>
       </CollapsibleSection>
+      </NumberInputScope>
 
       {/* Security Config Section */}
       <CollapsibleSection

@@ -4,6 +4,9 @@ import { useTranslation } from 'react-i18next';
 import { UiIcon } from './icons';
 import '../styles/settings.css';
 import { useSaveBar } from '../hooks/useSaveBar';
+import { NumberInput } from './common/NumberInput';
+import { NumberInputScope } from './common/NumberInputScope';
+import { useNumberInputScope } from './common/numberInputScope';
 import { TemperatureUnit } from '../utils/temperature';
 import { SortField, SortDirection } from '../types/ui';
 import { version } from '../../package.json';
@@ -1467,14 +1470,17 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
     }
   }, [draft, applyDraft, sourceQuery, csrfFetch, baseUrl, showToast, t, queryClient]);
 
-  // Register with SaveBar
+  // Register with SaveBar. The scope blocks Save while a number field is blank
+  // or out of range, and Dismiss puts such a field back (#5649).
+  const numberScope = useNumberInputScope();
   useSaveBar({
     id: 'settings',
     sectionName: t('settings.title'),
     hasChanges,
     isSaving,
     onSave: handleSave,
-    onDismiss: resetChanges
+    onDismiss: resetChanges,
+    numberScope
   });
 
   const handleTestAppriseConnection = useCallback(async () => {
@@ -1848,6 +1854,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
   );
 
   return (
+    <NumberInputScope scope={numberScope}>
     <div className="tab-content">
       <div className="settings-header-card">
         <img src={`${baseUrl}/logo.png`} alt="MeshMonitor Logo" className="settings-logo" />
@@ -2345,16 +2352,13 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
                 {t('settings.meshcore_cli_timeout_description', 'How long the MeshCore CLI console (repeater/room-server remote admin and the local device console) waits for a reply before giving up, so you can re-fire a command. Lower it when your repeater is in direct range to avoid waiting the full default. Range 1–60s; default 15s.')}
               </span>
             </label>
-            <input
+            <NumberInput
               id="meshcoreCliTimeoutSeconds"
-              type="number"
-              min="1"
-              max="60"
+              min={1}
+              max={60}
+              integer
               value={draft.meshcoreCliTimeoutSeconds}
-              onChange={(e) => {
-                const n = parseInt(e.target.value, 10);
-                updateField('meshcoreCliTimeoutSeconds', Number.isNaN(n) ? 15 : Math.min(60, Math.max(1, n)));
-              }}
+              onChange={(n) => updateField('meshcoreCliTimeoutSeconds', n)}
               className="setting-input"
             />
           </div>
@@ -2460,18 +2464,13 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
               {t('settings.neighbor_info_min_zoom_label')}
               <span className="setting-description">{t('settings.neighbor_info_min_zoom_description')}</span>
             </label>
-            <input
+            <NumberInput
               id="neighborInfoMinZoom"
-              type="number"
-              min="1"
-              max="18"
+              min={1}
+              max={18}
+              integer
               value={draft.neighborInfoMinZoom}
-              onChange={(e) => {
-                const value = parseInt(e.target.value);
-                if (value >= 1 && value <= 18) {
-                  updateField('neighborInfoMinZoom', value);
-                }
-              }}
+              onChange={(value) => updateField('neighborInfoMinZoom', value)}
               className="setting-input"
               style={{ width: '100px' }}
             />
@@ -2481,18 +2480,13 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
               {t('settings.map_center_target_zoom_label')}
               <span className="setting-description">{t('settings.map_center_target_zoom_description')}</span>
             </label>
-            <input
+            <NumberInput
               id="mapCenterTargetZoom"
-              type="number"
-              min="1"
-              max="18"
+              min={1}
+              max={18}
+              integer
               value={draft.mapCenterTargetZoom}
-              onChange={(e) => {
-                const value = parseInt(e.target.value);
-                if (value >= 1 && value <= 18) {
-                  updateField('mapCenterTargetZoom', value);
-                }
-              }}
+              onChange={(value) => updateField('mapCenterTargetZoom', value)}
               className="setting-input"
               style={{ width: '100px' }}
             />
@@ -2502,20 +2496,15 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
               {t('settings.map_zoom_gate_threshold_label')}
               <span className="setting-description">{t('settings.map_zoom_gate_threshold_description')}</span>
             </label>
-            <input
+            <NumberInput
               id="mapZoomGateThreshold"
-              type="number"
-              min="0"
-              max="18"
+              // #4551: 0 is a real value here ("never gate"), so this range
+              // starts at 0 rather than 1 like the target-zoom field above.
+              min={0}
+              max={18}
+              integer
               value={draft.mapZoomGateThreshold}
-              onChange={(e) => {
-                // #4551: 0 is a real value here ("never gate"), so this range
-                // starts at 0 rather than 1 like the target-zoom field above.
-                const value = parseInt(e.target.value);
-                if (value >= 0 && value <= 18) {
-                  updateField('mapZoomGateThreshold', value);
-                }
-              }}
+              onChange={(value) => updateField('mapZoomGateThreshold', value)}
               className="setting-input"
               style={{ width: '100px' }}
             />
@@ -2574,13 +2563,15 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
               {t('settings.node_window_label')}
               <span className="setting-description">{t('settings.node_window_description')}</span>
             </label>
-            <input
+            <NumberInput
               id="maxNodeAge"
-              type="number"
-              min="1"
-              max="720"
+              // 0 = show all (#4947): the server floor and the help text both say so,
+              // so the field's floor is 0 as well (NODE_DISPLAY_RANGES.maxNodeAgeHours).
+              min={0}
+              max={720}
+              integer
               value={draft.maxNodeAgeHours}
-              onChange={(e) => updateField('maxNodeAgeHours', parseInt(e.target.value))}
+              onChange={(n) => updateField('maxNodeAgeHours', n)}
               className="setting-input"
             />
           </div>
@@ -2593,14 +2584,14 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
                 {t('settings.tx_target_window_warning')}
               </span>
             </label>
-            <input
+            <NumberInput
               id="txTargetMaxAgeHoursWhenUnlimited"
-              type="number"
               min={TX_TARGET_MAX_AGE_HOURS_WHEN_UNLIMITED_RANGE.min}
               max={TX_TARGET_MAX_AGE_HOURS_WHEN_UNLIMITED_RANGE.max}
-              step="1"
+              step={1}
+              integer
               value={draft.txTargetMaxAgeHoursWhenUnlimited}
-              onChange={(e) => updateField('txTargetMaxAgeHoursWhenUnlimited', parseInt(e.target.value))}
+              onChange={(n) => updateField('txTargetMaxAgeHoursWhenUnlimited', n)}
               className="setting-input"
             />
           </div>
@@ -2609,13 +2600,13 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
               {t('settings.inactive_node_threshold_label')}
               <span className="setting-description">{t('settings.inactive_node_threshold_description')}</span>
             </label>
-            <input
+            <NumberInput
               id="inactiveNodeThresholdHours"
-              type="number"
-              min="1"
-              max="720"
+              min={1}
+              max={720}
+              integer
               value={draft.inactiveNodeThresholdHours}
-              onChange={(e) => updateField('inactiveNodeThresholdHours', parseInt(e.target.value))}
+              onChange={(n) => updateField('inactiveNodeThresholdHours', n)}
               className="setting-input"
             />
           </div>
@@ -2624,13 +2615,13 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
               {t('settings.inactive_node_check_interval_label')}
               <span className="setting-description">{t('settings.inactive_node_check_interval_description')}</span>
             </label>
-            <input
+            <NumberInput
               id="inactiveNodeCheckIntervalMinutes"
-              type="number"
-              min="1"
-              max="1440"
+              min={1}
+              max={1440}
+              integer
               value={draft.inactiveNodeCheckIntervalMinutes}
-              onChange={(e) => updateField('inactiveNodeCheckIntervalMinutes', parseInt(e.target.value))}
+              onChange={(n) => updateField('inactiveNodeCheckIntervalMinutes', n)}
               className="setting-input"
             />
           </div>
@@ -2639,13 +2630,13 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
               {t('settings.inactive_node_cooldown_label')}
               <span className="setting-description">{t('settings.inactive_node_cooldown_description')}</span>
             </label>
-            <input
+            <NumberInput
               id="inactiveNodeCooldownHours"
-              type="number"
-              min="1"
-              max="720"
+              min={1}
+              max={720}
+              integer
               value={draft.inactiveNodeCooldownHours}
-              onChange={(e) => updateField('inactiveNodeCooldownHours', parseInt(e.target.value))}
+              onChange={(n) => updateField('inactiveNodeCooldownHours', n)}
               className="setting-input"
             />
           </div>
@@ -2660,13 +2651,13 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
               {t('settings.local_stats_interval_label')}
               <span className="setting-description">{t('settings.local_stats_interval_description')}</span>
             </label>
-            <input
+            <NumberInput
               id="localStatsIntervalMinutes"
-              type="number"
-              min="0"
-              max="60"
+              min={0}
+              max={60}
+              integer
               value={draft.localStatsIntervalMinutes}
-              onChange={(e) => updateField('localStatsIntervalMinutes', parseInt(e.target.value))}
+              onChange={(n) => updateField('localStatsIntervalMinutes', n)}
               className="setting-input"
             />
           </div>
@@ -2721,14 +2712,13 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
                   {t('settings.node_dimming_start_hours')}
                   <span className="setting-description">{t('settings.node_dimming_start_hours_description')}</span>
                 </label>
-                <input
+                <NumberInput
                   id="nodeDimmingStartHours"
-                  type="number"
-                  min="0.5"
-                  max="24"
-                  step="0.5"
+                  min={0.5}
+                  max={24}
+                  step={0.5}
                   value={draft.nodeDimmingStartHours}
-                  onChange={(e) => updateField('nodeDimmingStartHours', Math.min(24, Math.max(0.5, parseFloat(e.target.value) || 1)))}
+                  onChange={(n) => updateField('nodeDimmingStartHours', n)}
                   className="setting-input"
                 />
               </div>
@@ -2737,14 +2727,13 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
                   {t('settings.node_dimming_min_opacity')}
                   <span className="setting-description">{t('settings.node_dimming_min_opacity_description')}</span>
                 </label>
-                <input
+                <NumberInput
                   id="nodeDimmingMinOpacity"
-                  type="number"
-                  min="0.1"
-                  max="0.9"
-                  step="0.1"
+                  min={0.1}
+                  max={0.9}
+                  step={0.1}
                   value={draft.nodeDimmingMinOpacity}
-                  onChange={(e) => updateField('nodeDimmingMinOpacity', Math.min(0.9, Math.max(0.1, parseFloat(e.target.value) || 0.3)))}
+                  onChange={(n) => updateField('nodeDimmingMinOpacity', n)}
                   className="setting-input"
                 />
               </div>
@@ -2778,18 +2767,15 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
             <label htmlFor="aircraftAglThresholdMeters">
               {t('settings.aircraft.agl_threshold_label', 'Height above ground threshold (m)')}
             </label>
-            <input
+            <NumberInput
               id="aircraftAglThresholdMeters"
-              type="number"
               min={AIRCRAFT_AGL_RANGE.min}
               max={AIRCRAFT_AGL_RANGE.max}
-              step="10"
+              step={10}
               disabled={!draft.aircraftDetectionEnabled}
               value={draft.aircraftAglThresholdMeters}
-              onChange={(e) => updateField(
-                'aircraftAglThresholdMeters',
-                Math.min(AIRCRAFT_AGL_RANGE.max, Math.max(AIRCRAFT_AGL_RANGE.min, Math.round(parseFloat(e.target.value)) || DEFAULT_AIRCRAFT_AGL_THRESHOLD_M)),
-              )}
+              // A typed fraction is rounded, as before; the field shows the result on blur.
+              onChange={(n) => updateField('aircraftAglThresholdMeters', Math.round(n))}
               className="setting-input"
             />
           </div>
@@ -2797,18 +2783,15 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
             <label htmlFor="aircraftMslThresholdMeters">
               {t('settings.aircraft.msl_threshold_label', 'Fallback: altitude above sea level (m)')}
             </label>
-            <input
+            <NumberInput
               id="aircraftMslThresholdMeters"
-              type="number"
               min={AIRCRAFT_MSL_RANGE.min}
               max={AIRCRAFT_MSL_RANGE.max}
-              step="100"
+              step={100}
               disabled={!draft.aircraftDetectionEnabled}
               value={draft.aircraftMslThresholdMeters}
-              onChange={(e) => updateField(
-                'aircraftMslThresholdMeters',
-                Math.min(AIRCRAFT_MSL_RANGE.max, Math.max(AIRCRAFT_MSL_RANGE.min, Math.round(parseFloat(e.target.value)) || DEFAULT_AIRCRAFT_MSL_THRESHOLD_M)),
-              )}
+              // A typed fraction is rounded, as before; the field shows the result on blur.
+              onChange={(n) => updateField('aircraftMslThresholdMeters', Math.round(n))}
               className="setting-input"
             />
           </div>
@@ -2850,18 +2833,15 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
             <label htmlFor="aircraftAgeOutHours">
               {t('settings.aircraft.age_out_hours_label', 'Age out after (hours)')}
             </label>
-            <input
+            <NumberInput
               id="aircraftAgeOutHours"
-              type="number"
               min={AIRCRAFT_AGE_OUT_HOURS_RANGE.min}
               max={AIRCRAFT_AGE_OUT_HOURS_RANGE.max}
-              step="1"
+              step={1}
               disabled={!draft.aircraftDetectionEnabled || !draft.aircraftAgeOutEnabled}
               value={draft.aircraftAgeOutHours}
-              onChange={(e) => updateField(
-                'aircraftAgeOutHours',
-                Math.min(AIRCRAFT_AGE_OUT_HOURS_RANGE.max, Math.max(AIRCRAFT_AGE_OUT_HOURS_RANGE.min, Math.round(parseFloat(e.target.value)) || AIRCRAFT_AGE_OUT_HOURS_DEFAULT)),
-              )}
+              // A typed fraction is rounded, as before; the field shows the result on blur.
+              onChange={(n) => updateField('aircraftAgeOutHours', Math.round(n))}
               className="setting-input"
             />
           </div>
@@ -2922,13 +2902,13 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
               {t('settings.telemetry_hours_label')}
               <span className="setting-description">{t('settings.telemetry_hours_description')}</span>
             </label>
-            <input
-              type="number"
+            <NumberInput
               id="telemetryVisualizationHours"
-              min="1"
-              max="168"
+              min={1}
+              max={168}
+              integer
               value={draft.telemetryVisualizationHours}
-              onChange={(e) => updateField('telemetryVisualizationHours', Math.min(168, Math.max(1, parseInt(e.target.value) || 24)))}
+              onChange={(n) => updateField('telemetryVisualizationHours', n)}
               className="setting-input"
             />
           </div>
@@ -2937,13 +2917,13 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
               {t('settings.fav_telemetry_label')}
               <span className="setting-description">{t('settings.fav_telemetry_description')}</span>
             </label>
-            <input
-              type="number"
+            <NumberInput
               id="favoriteTelemetryStorageDays"
-              min="7"
-              max="90"
+              min={7}
+              max={90}
+              integer
               value={draft.favoriteTelemetryStorageDays}
-              onChange={(e) => updateField('favoriteTelemetryStorageDays', Math.min(90, Math.max(7, parseInt(e.target.value) || 7)))}
+              onChange={(n) => updateField('favoriteTelemetryStorageDays', n)}
               className="setting-input"
             />
           </div>
@@ -3051,14 +3031,13 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
                     {t('settings.solar_latitude_description')} • <a href="https://www.latlong.net/" target="_blank" rel="noopener noreferrer" style={{ color: '#4a9eff', textDecoration: 'underline' }}>{t('settings.solar_find_coords')}</a>
                   </span>
                 </label>
-                <input
+                <NumberInput
                   id="solarLatitude"
-                  type="number"
-                  min="-90"
-                  max="90"
-                  step="0.0001"
+                  min={-90}
+                  max={90}
+                  step={0.0001}
                   value={draft.solarMonitoringLatitude}
-                  onChange={(e) => updateField('solarMonitoringLatitude', parseFloat(e.target.value) || 0)}
+                  onChange={(n) => updateField('solarMonitoringLatitude', n)}
                   className="setting-input"
                 />
               </div>
@@ -3067,14 +3046,13 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
                   {t('settings.solar_longitude')}
                   <span className="setting-description">{t('settings.solar_longitude_description')}</span>
                 </label>
-                <input
+                <NumberInput
                   id="solarLongitude"
-                  type="number"
-                  min="-180"
-                  max="180"
-                  step="0.0001"
+                  min={-180}
+                  max={180}
+                  step={0.0001}
                   value={draft.solarMonitoringLongitude}
-                  onChange={(e) => updateField('solarMonitoringLongitude', parseFloat(e.target.value) || 0)}
+                  onChange={(n) => updateField('solarMonitoringLongitude', n)}
                   className="setting-input"
                 />
               </div>
@@ -3083,14 +3061,14 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
                   {t('settings.solar_azimuth')}
                   <span className="setting-description">{t('settings.solar_azimuth_description')}</span>
                 </label>
-                <input
+                <NumberInput
                   id="solarAzimuth"
-                  type="number"
-                  min="-180"
-                  max="180"
-                  step="1"
+                  min={-180}
+                  max={180}
+                  step={1}
+                  integer
                   value={draft.solarMonitoringAzimuth}
-                  onChange={(e) => updateField('solarMonitoringAzimuth', parseInt(e.target.value) || 0)}
+                  onChange={(n) => updateField('solarMonitoringAzimuth', n)}
                   className="setting-input"
                 />
               </div>
@@ -3099,14 +3077,14 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
                   {t('settings.solar_declination')}
                   <span className="setting-description">{t('settings.solar_declination_description')}</span>
                 </label>
-                <input
+                <NumberInput
                   id="solarDeclination"
-                  type="number"
-                  min="0"
-                  max="90"
-                  step="1"
+                  min={0}
+                  max={90}
+                  step={1}
+                  integer
                   value={draft.solarMonitoringDeclination}
-                  onChange={(e) => updateField('solarMonitoringDeclination', parseInt(e.target.value) || 30)}
+                  onChange={(n) => updateField('solarMonitoringDeclination', n)}
                   className="setting-input"
                 />
               </div>
@@ -3145,16 +3123,13 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
                 {t('settings.admin_retry_attempts_description', 'How many times a remote admin command is attempted before giving up. Only a command that gets NO reply is retried — one the node explicitly refuses is never resent. Raise this for nodes on weak or lossy links. Each extra attempt is additional airtime, so the default of 1 sends exactly once. Range 1–10; default 1.')}
               </span>
             </label>
-            <input
+            <NumberInput
               id="adminRetryAttempts"
-              type="number"
-              min="1"
-              max="10"
+              min={1}
+              max={10}
+              integer
               value={draft.adminRetryAttempts}
-              onChange={(e) => {
-                const n = parseInt(e.target.value, 10);
-                updateField('adminRetryAttempts', Number.isNaN(n) ? 1 : Math.min(10, Math.max(1, n)));
-              }}
+              onChange={(n) => updateField('adminRetryAttempts', n)}
               className="setting-input"
             />
           </div>
@@ -3169,16 +3144,13 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
                 {t('settings.coverage_retention_help', 'How long Coverage Report RF receptions are kept before the hourly sweep deletes them. Lowering this value permanently deletes older receptions on the next sweep — that cannot be undone. Range 1-90; default 7.')}
               </span>
             </label>
-            <input
+            <NumberInput
               id="coverageRetentionDays"
-              type="number"
-              min="1"
-              max="90"
+              min={1}
+              max={90}
+              integer
               value={draft.coverageRetentionDays}
-              onChange={(e) => {
-                const n = parseInt(e.target.value, 10);
-                updateField('coverageRetentionDays', clampCoverageRetentionDays(Number.isNaN(n) ? undefined : n));
-              }}
+              onChange={(n) => updateField('coverageRetentionDays', n)}
               className="setting-input"
             />
           </div>
@@ -3430,14 +3402,14 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
                 {t('settings.atak_cot_port_description', 'TCP port ATAK/WinTAK clients connect to. Default 8088.')}
               </span>
             </label>
-            <input
+            <NumberInput
               id="cotFeedPort"
-              type="number"
-              min="1"
-              max="65535"
+              min={1}
+              max={65535}
+              integer
               disabled={!draft.cotFeedEnabled}
               value={draft.cotFeedPort}
-              onChange={(e) => updateField('cotFeedPort', parseInt(e.target.value))}
+              onChange={(n) => updateField('cotFeedPort', n)}
               className="setting-input"
             />
           </div>
@@ -3757,6 +3729,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
         </div>}
       </div>
     </div>
+    </NumberInputScope>
   );
 };
 

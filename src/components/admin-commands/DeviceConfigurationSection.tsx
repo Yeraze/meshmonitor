@@ -1,5 +1,8 @@
 import React from 'react';
 import { useTranslation } from 'react-i18next';
+import { NumberInput } from '../common/NumberInput';
+import { NumberInputScope } from '../common/NumberInputScope';
+import { useNumberInputScope } from '../common/numberInputScope';
 import { UiIcon } from '../icons';
 import { ROLE_OPTIONS, REBROADCAST_MODE_OPTIONS, BUZZER_MODE_OPTIONS, TIMEZONE_PRESETS } from '../configuration/constants';
 
@@ -175,6 +178,12 @@ export const DeviceConfigurationSection: React.FC<DeviceConfigurationSectionProp
 }) => {
   const { t } = useTranslation();
 
+  // #5649: one scope per independently-saved group. A blank or out-of-range
+  // number field blocks only its own Save, so nothing invalid goes to the node.
+  const deviceNumbers = useNumberInputScope();
+  const positionNumbers = useNumberInputScope();
+  const bluetoothNumbers = useNumberInputScope();
+
   return (
     <CollapsibleSection
       id="device-config"
@@ -266,6 +275,7 @@ export const DeviceConfigurationSection: React.FC<DeviceConfigurationSectionProp
       </CollapsibleSection>
 
       {/* Device Config Section */}
+      <NumberInputScope scope={deviceNumbers}>
       <CollapsibleSection
         id="admin-device-config"
         title={t('admin_commands.device_configuration')}
@@ -400,12 +410,13 @@ export const DeviceConfigurationSection: React.FC<DeviceConfigurationSectionProp
               {t('admin_commands.node_info_broadcast_description')}
             </span>
           </label>
-          <input
-            type="number"
-            min="3600"
-            max="4294967295"
+          <NumberInput
+            integer
+            min={3600}
+            alsoValid={[0]}
+            max={4294967295}
             value={nodeInfoBroadcastSecs}
-            onChange={(e) => onDeviceConfigChange('nodeInfoBroadcastSecs', parseInt(e.target.value))}
+            onChange={(v) => onDeviceConfigChange('nodeInfoBroadcastSecs', v)}
             disabled={isExecuting}
             className="setting-input"
             style={{ width: '200px' }}
@@ -542,12 +553,12 @@ export const DeviceConfigurationSection: React.FC<DeviceConfigurationSectionProp
             <div>
               <label>
                 {t('configuration.button_gpio', 'Button GPIO')}
-                <input
-                  type="number"
-                  min="0"
-                  max="255"
+                <NumberInput
+                  integer
+                  min={0}
+                  max={255}
                   value={buttonGpio}
-                  onChange={(e) => onDeviceConfigChange('buttonGpio', parseInt(e.target.value) || 0)}
+                  onChange={(v) => onDeviceConfigChange('buttonGpio', v)}
                   disabled={isExecuting}
                   className="setting-input"
                   style={{ width: '150px', marginLeft: '0.5rem' }}
@@ -557,12 +568,12 @@ export const DeviceConfigurationSection: React.FC<DeviceConfigurationSectionProp
             <div>
               <label>
                 {t('configuration.buzzer_gpio', 'Buzzer GPIO')}
-                <input
-                  type="number"
-                  min="0"
-                  max="255"
+                <NumberInput
+                  integer
+                  min={0}
+                  max={255}
                   value={buzzerGpio}
-                  onChange={(e) => onDeviceConfigChange('buzzerGpio', parseInt(e.target.value) || 0)}
+                  onChange={(v) => onDeviceConfigChange('buzzerGpio', v)}
                   disabled={isExecuting}
                   className="setting-input"
                   style={{ width: '150px', marginLeft: '0.5rem' }}
@@ -573,18 +584,20 @@ export const DeviceConfigurationSection: React.FC<DeviceConfigurationSectionProp
         </div>
         <button
           className="save-button"
-          onClick={onSaveDeviceConfig}
-          disabled={isExecuting || selectedNodeNum === null}
+          onClick={deviceNumbers.invalid ? undefined : onSaveDeviceConfig}
+          disabled={isExecuting || selectedNodeNum === null || deviceNumbers.invalid}
           style={{
-            opacity: (isExecuting || selectedNodeNum === null) ? 0.5 : 1,
-            cursor: (isExecuting || selectedNodeNum === null) ? 'not-allowed' : 'pointer'
+            opacity: (isExecuting || selectedNodeNum === null || deviceNumbers.invalid) ? 0.5 : 1,
+            cursor: (isExecuting || selectedNodeNum === null || deviceNumbers.invalid) ? 'not-allowed' : 'pointer'
           }}
         >
           {isExecuting ? t('common.saving') : t('admin_commands.save_device_config')}
         </button>
       </CollapsibleSection>
+      </NumberInputScope>
 
       {/* Position Config Section */}
+      <NumberInputScope scope={positionNumbers}>
       <CollapsibleSection
         id="admin-position-config"
         title={t('admin_commands.position_configuration')}
@@ -596,12 +609,13 @@ export const DeviceConfigurationSection: React.FC<DeviceConfigurationSectionProp
             {t('admin_commands.position_broadcast_interval')}
             <span className="setting-description">{t('admin_commands.position_broadcast_interval_description')}</span>
           </label>
-          <input
-            type="number"
-            min="32"
-            max="4294967295"
+          <NumberInput
+            integer
+            min={32}
+            alsoValid={[0]}
+            max={4294967295}
             value={positionBroadcastSecs}
-            onChange={(e) => onPositionConfigChange('positionBroadcastSecs', parseInt(e.target.value))}
+            onChange={(v) => onPositionConfigChange('positionBroadcastSecs', v)}
             disabled={isExecuting}
             className="setting-input"
             style={{ width: '200px' }}
@@ -644,13 +658,12 @@ export const DeviceConfigurationSection: React.FC<DeviceConfigurationSectionProp
                 Latitude
                 <span className="setting-description">Fixed latitude coordinate (-90 to 90)</span>
               </label>
-              <input
-                type="number"
-                step="0.000001"
-                min="-90"
-                max="90"
+              <NumberInput
+                step={0.000001}
+                min={-90}
+                max={90}
                 value={fixedLatitude}
-                onChange={(e) => onPositionConfigChange('fixedLatitude', parseFloat(e.target.value))}
+                onChange={(v) => onPositionConfigChange('fixedLatitude', v)}
                 disabled={isExecuting}
                 className="setting-input"
                 style={{ width: '200px' }}
@@ -661,13 +674,12 @@ export const DeviceConfigurationSection: React.FC<DeviceConfigurationSectionProp
                 Longitude
                 <span className="setting-description">Fixed longitude coordinate (-180 to 180)</span>
               </label>
-              <input
-                type="number"
-                step="0.000001"
-                min="-180"
-                max="180"
+              <NumberInput
+                step={0.000001}
+                min={-180}
+                max={180}
                 value={fixedLongitude}
-                onChange={(e) => onPositionConfigChange('fixedLongitude', parseFloat(e.target.value))}
+                onChange={(v) => onPositionConfigChange('fixedLongitude', v)}
                 disabled={isExecuting}
                 className="setting-input"
                 style={{ width: '200px' }}
@@ -678,11 +690,11 @@ export const DeviceConfigurationSection: React.FC<DeviceConfigurationSectionProp
                 Altitude (meters)
                 <span className="setting-description">Fixed altitude above sea level</span>
               </label>
-              <input
-                type="number"
-                step="1"
+              <NumberInput
+                integer
+                step={1}
                 value={fixedAltitude}
-                onChange={(e) => onPositionConfigChange('fixedAltitude', parseInt(e.target.value))}
+                onChange={(v) => onPositionConfigChange('fixedAltitude', v)}
                 disabled={isExecuting}
                 className="setting-input"
                 style={{ width: '200px' }}
@@ -695,12 +707,12 @@ export const DeviceConfigurationSection: React.FC<DeviceConfigurationSectionProp
             {t('admin_commands.gps_update_interval')}
             <span className="setting-description">{t('admin_commands.gps_update_interval_description')}</span>
           </label>
-          <input
-            type="number"
-            min="0"
-            max="4294967295"
+          <NumberInput
+            integer
+            min={0}
+            max={4294967295}
             value={gpsUpdateInterval}
-            onChange={(e) => onPositionConfigChange('gpsUpdateInterval', parseInt(e.target.value))}
+            onChange={(v) => onPositionConfigChange('gpsUpdateInterval', v)}
             disabled={isExecuting}
             className="setting-input"
             style={{ width: '200px' }}
@@ -730,12 +742,12 @@ export const DeviceConfigurationSection: React.FC<DeviceConfigurationSectionProp
                 {t('admin_commands.broadcast_smart_minimum_distance')}
                 <span className="setting-description">{t('admin_commands.broadcast_smart_minimum_distance_description')}</span>
               </label>
-              <input
-                type="number"
-                min="0"
-                max="4294967295"
+              <NumberInput
+                integer
+                min={0}
+                max={4294967295}
                 value={broadcastSmartMinimumDistance}
-                onChange={(e) => onPositionConfigChange('broadcastSmartMinimumDistance', parseInt(e.target.value))}
+                onChange={(v) => onPositionConfigChange('broadcastSmartMinimumDistance', v)}
                 disabled={isExecuting}
                 className="setting-input"
                 style={{ width: '200px' }}
@@ -746,12 +758,12 @@ export const DeviceConfigurationSection: React.FC<DeviceConfigurationSectionProp
                 {t('admin_commands.broadcast_smart_minimum_interval')}
                 <span className="setting-description">{t('admin_commands.broadcast_smart_minimum_interval_description')}</span>
               </label>
-              <input
-                type="number"
-                min="0"
-                max="4294967295"
+              <NumberInput
+                integer
+                min={0}
+                max={4294967295}
                 value={broadcastSmartMinimumIntervalSecs}
-                onChange={(e) => onPositionConfigChange('broadcastSmartMinimumIntervalSecs', parseInt(e.target.value))}
+                onChange={(v) => onPositionConfigChange('broadcastSmartMinimumIntervalSecs', v)}
                 disabled={isExecuting}
                 className="setting-input"
                 style={{ width: '200px' }}
@@ -876,12 +888,12 @@ export const DeviceConfigurationSection: React.FC<DeviceConfigurationSectionProp
             <div>
               <label>
                 {t('admin_commands.gps_rx_gpio')}
-                <input
-                  type="number"
-                  min="0"
-                  max="255"
-                  value={rxGpio ?? ''}
-                  onChange={(e) => onPositionConfigChange('rxGpio', e.target.value ? parseInt(e.target.value) : undefined)}
+                <NumberInput
+                  integer allowEmpty
+                  min={0}
+                  max={255}
+                  value={rxGpio}
+                  onChange={(v) => onPositionConfigChange('rxGpio', v ?? undefined)}
                   disabled={isExecuting}
                   className="setting-input"
                   style={{ width: '150px', marginLeft: '0.5rem' }}
@@ -892,12 +904,12 @@ export const DeviceConfigurationSection: React.FC<DeviceConfigurationSectionProp
             <div>
               <label>
                 {t('admin_commands.gps_tx_gpio')}
-                <input
-                  type="number"
-                  min="0"
-                  max="255"
-                  value={txGpio ?? ''}
-                  onChange={(e) => onPositionConfigChange('txGpio', e.target.value ? parseInt(e.target.value) : undefined)}
+                <NumberInput
+                  integer allowEmpty
+                  min={0}
+                  max={255}
+                  value={txGpio}
+                  onChange={(v) => onPositionConfigChange('txGpio', v ?? undefined)}
                   disabled={isExecuting}
                   className="setting-input"
                   style={{ width: '150px', marginLeft: '0.5rem' }}
@@ -908,12 +920,12 @@ export const DeviceConfigurationSection: React.FC<DeviceConfigurationSectionProp
             <div>
               <label>
                 {t('admin_commands.gps_en_gpio')}
-                <input
-                  type="number"
-                  min="0"
-                  max="255"
-                  value={gpsEnGpio ?? ''}
-                  onChange={(e) => onPositionConfigChange('gpsEnGpio', e.target.value ? parseInt(e.target.value) : undefined)}
+                <NumberInput
+                  integer allowEmpty
+                  min={0}
+                  max={255}
+                  value={gpsEnGpio}
+                  onChange={(v) => onPositionConfigChange('gpsEnGpio', v ?? undefined)}
                   disabled={isExecuting}
                   className="setting-input"
                   style={{ width: '150px', marginLeft: '0.5rem' }}
@@ -925,18 +937,20 @@ export const DeviceConfigurationSection: React.FC<DeviceConfigurationSectionProp
         </div>
         <button
           className="save-button"
-          onClick={onSavePositionConfig}
-          disabled={isExecuting || selectedNodeNum === null}
+          onClick={positionNumbers.invalid ? undefined : onSavePositionConfig}
+          disabled={isExecuting || selectedNodeNum === null || positionNumbers.invalid}
           style={{
-            opacity: (isExecuting || selectedNodeNum === null) ? 0.5 : 1,
-            cursor: (isExecuting || selectedNodeNum === null) ? 'not-allowed' : 'pointer'
+            opacity: (isExecuting || selectedNodeNum === null || positionNumbers.invalid) ? 0.5 : 1,
+            cursor: (isExecuting || selectedNodeNum === null || positionNumbers.invalid) ? 'not-allowed' : 'pointer'
           }}
         >
           {isExecuting ? t('common.saving') : t('admin_commands.save_position_config')}
         </button>
       </CollapsibleSection>
+      </NumberInputScope>
 
       {/* Bluetooth Config Section */}
+      <NumberInputScope scope={bluetoothNumbers}>
       <CollapsibleSection
         id="admin-bluetooth-config"
         title={t('admin_commands.bluetooth_configuration', 'Bluetooth Configuration')}
@@ -983,12 +997,12 @@ export const DeviceConfigurationSection: React.FC<DeviceConfigurationSectionProp
                   {t('admin_commands.bluetooth_fixed_pin', 'Fixed PIN')}
                   <span className="setting-description">{t('admin_commands.bluetooth_fixed_pin_description', 'PIN code for pairing (required when using Fixed PIN mode)')}</span>
                 </label>
-                <input
-                  type="number"
-                  min="0"
-                  max="999999"
+                <NumberInput
+                  integer
+                  min={0}
+                  max={999999}
                   value={bluetoothFixedPin}
-                  onChange={(e) => onBluetoothConfigChange('fixedPin', parseInt(e.target.value) || 0)}
+                  onChange={(v) => onBluetoothConfigChange('fixedPin', v)}
                   disabled={isExecuting}
                   className="setting-input"
                   style={{ width: '100%', maxWidth: '600px' }}
@@ -1000,16 +1014,17 @@ export const DeviceConfigurationSection: React.FC<DeviceConfigurationSectionProp
         )}
         <button
           className="save-button"
-          onClick={onSaveBluetoothConfig}
-          disabled={isExecuting || selectedNodeNum === null}
+          onClick={bluetoothNumbers.invalid ? undefined : onSaveBluetoothConfig}
+          disabled={isExecuting || selectedNodeNum === null || bluetoothNumbers.invalid}
           style={{
-            opacity: (isExecuting || selectedNodeNum === null) ? 0.5 : 1,
-            cursor: (isExecuting || selectedNodeNum === null) ? 'not-allowed' : 'pointer'
+            opacity: (isExecuting || selectedNodeNum === null || bluetoothNumbers.invalid) ? 0.5 : 1,
+            cursor: (isExecuting || selectedNodeNum === null || bluetoothNumbers.invalid) ? 'not-allowed' : 'pointer'
           }}
         >
           {isExecuting ? t('common.saving') : t('admin_commands.save_bluetooth_config', 'Save Bluetooth Config')}
         </button>
       </CollapsibleSection>
+      </NumberInputScope>
 
       {/* Network Configuration */}
       <CollapsibleSection

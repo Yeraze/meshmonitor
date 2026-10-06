@@ -199,15 +199,17 @@ describe('MeshCoreNodeTimeSyncConfig', () => {
     );
   });
 
-  it('rejects a sub-floor interval, reverts the field, and never sends it', async () => {
+  it('rejects a sub-floor interval, marks the field invalid, and never sends it', async () => {
     renderPanel();
     const input = await screen.findByLabelText('Interval (minutes)');
     fireEvent.change(input, { target: { value: '5' } });
     fireEvent.blur(input);
 
     expect(await screen.findByRole('alert')).toHaveTextContent(/between 60 and/);
-    // Reverted to the persisted value rather than left holding an invalid one.
-    expect((input as HTMLInputElement).value).toBe('720');
+    // #5649: the text stays as typed, outlined, rather than snapping back to
+    // the saved value. It is never replaced by the floor or by 0.
+    expect((input as HTMLInputElement).value).toBe('5');
+    expect(input).toHaveAttribute('aria-invalid', 'true');
     const patchCalls = csrfFetchMock.mock.calls.filter(
       (c: unknown[]) => (c[1] as { method?: string } | undefined)?.method === 'PATCH',
     );

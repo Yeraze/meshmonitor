@@ -1,6 +1,9 @@
 import React, { useRef, useMemo, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSaveBar } from '../../hooks/useSaveBar';
+import { NumberInput } from '../common/NumberInput';
+import { NumberInputScope } from '../common/NumberInputScope';
+import { useNumberInputScope } from '../common/numberInputScope';
 
 /**
  * Traffic Management (TMM) module config — v2.8 "non-zero implies enabled" schema.
@@ -92,13 +95,15 @@ const TrafficManagementConfigSection: React.FC<TrafficManagementConfigSectionPro
   }, [onSave, positionMinIntervalSecs, nodeinfoDirectResponseMaxHops,
     rateLimitWindowSecs, rateLimitMaxPackets, unknownPacketThreshold]);
 
+  const numberScope = useNumberInputScope();
   useSaveBar({
     id: 'trafficmanagement-config',
     sectionName: t('trafficmanagement_config.title', 'Traffic Management'),
     hasChanges: hasChanges && !isDisabled,
     isSaving,
     onSave: handleSave,
-    onDismiss: resetChanges
+    onDismiss: resetChanges,
+    numberScope
   });
 
   const subGroupStyle = {
@@ -117,6 +122,7 @@ const TrafficManagementConfigSection: React.FC<TrafficManagementConfigSectionPro
   };
 
   return (
+    <NumberInputScope scope={numberScope}>
     <div className="settings-section">
       <h3 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
         {t('trafficmanagement_config.title', 'Traffic Management')}
@@ -149,12 +155,12 @@ const TrafficManagementConfigSection: React.FC<TrafficManagementConfigSectionPro
               {t('trafficmanagement_config.position_min_interval_secs', 'Minimum Interval (seconds)')}
               <span className="setting-description">{t('trafficmanagement_config.position_min_interval_secs_description', 'Minimum seconds between position updates from the same node. 0 disables position deduplication. Position precision is taken from the channel\'s own Position Precision setting.')}</span>
             </label>
-            <input
+            <NumberInput
               id="positionMinIntervalSecs"
-              type="number"
-              min="0"
+              min={0}
+              integer
               value={positionMinIntervalSecs}
-              onChange={(e) => setPositionMinIntervalSecs(parseInt(e.target.value) || 0)}
+              onChange={setPositionMinIntervalSecs}
               disabled={isDisabled}
               className="setting-input"
             />
@@ -170,13 +176,13 @@ const TrafficManagementConfigSection: React.FC<TrafficManagementConfigSectionPro
               {t('trafficmanagement_config.nodeinfo_max_hops', 'Max Hops')}
               <span className="setting-description">{t('trafficmanagement_config.nodeinfo_max_hops_description', 'Maximum hop distance from the requestor at which NodeInfo requests are answered from the local cache. 0 disables direct response.')}</span>
             </label>
-            <input
+            <NumberInput
               id="nodeinfoDirectResponseMaxHops"
-              type="number"
-              min="0"
-              max="7"
+              min={0}
+              max={7}
+              integer
               value={nodeinfoDirectResponseMaxHops}
-              onChange={(e) => setNodeinfoDirectResponseMaxHops(parseInt(e.target.value) || 0)}
+              onChange={setNodeinfoDirectResponseMaxHops}
               disabled={isDisabled}
               className="setting-input"
             />
@@ -192,12 +198,12 @@ const TrafficManagementConfigSection: React.FC<TrafficManagementConfigSectionPro
               {t('trafficmanagement_config.rate_limit_window', 'Window (seconds)')}
               <span className="setting-description">{t('trafficmanagement_config.rate_limit_window_description', 'Time window for rate limiting calculations. Rate limiting runs only when both this and Max Packets are non-zero.')}</span>
             </label>
-            <input
+            <NumberInput
               id="rateLimitWindowSecs"
-              type="number"
-              min="0"
+              min={0}
+              integer
               value={rateLimitWindowSecs}
-              onChange={(e) => setRateLimitWindowSecs(parseInt(e.target.value) || 0)}
+              onChange={setRateLimitWindowSecs}
               disabled={isDisabled}
               className="setting-input"
             />
@@ -208,12 +214,12 @@ const TrafficManagementConfigSection: React.FC<TrafficManagementConfigSectionPro
               {t('trafficmanagement_config.rate_limit_max_packets', 'Max Packets Per Window')}
               <span className="setting-description">{t('trafficmanagement_config.rate_limit_max_packets_description', 'Maximum packets allowed per node within the window. Rate limiting runs only when both this and Window are non-zero.')}</span>
             </label>
-            <input
+            <NumberInput
               id="rateLimitMaxPackets"
-              type="number"
-              min="0"
+              min={0}
+              integer
               value={rateLimitMaxPackets}
-              onChange={(e) => setRateLimitMaxPackets(parseInt(e.target.value) || 0)}
+              onChange={setRateLimitMaxPackets}
               disabled={isDisabled}
               className="setting-input"
             />
@@ -229,12 +235,12 @@ const TrafficManagementConfigSection: React.FC<TrafficManagementConfigSectionPro
               {t('trafficmanagement_config.unknown_packet_threshold', 'Unknown Packet Threshold')}
               <span className="setting-description">{t('trafficmanagement_config.unknown_packet_threshold_description', 'Number of unknown/undecryptable packets from a node within the rate window before it is dropped. 0 disables unknown-packet filtering.')}</span>
             </label>
-            <input
+            <NumberInput
               id="unknownPacketThreshold"
-              type="number"
-              min="0"
+              min={0}
+              integer
               value={unknownPacketThreshold}
-              onChange={(e) => setUnknownPacketThreshold(parseInt(e.target.value) || 0)}
+              onChange={setUnknownPacketThreshold}
               disabled={isDisabled}
               className="setting-input"
             />
@@ -242,6 +248,7 @@ const TrafficManagementConfigSection: React.FC<TrafficManagementConfigSectionPro
         </div>
       </div>
     </div>
+    </NumberInputScope>
   );
 };
 

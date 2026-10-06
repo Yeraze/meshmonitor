@@ -10,6 +10,8 @@ import { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { isValidCron } from 'cron-validator';
 import apiService from '../../services/api';
+import { NumberInputScope } from '../common/NumberInputScope';
+import { useNumberInputScope } from '../common/numberInputScope';
 import AutomationBuilder, { type VariableOption, type SourceOption, type UnifiedChannelOption, type ScriptOption, type NodeMultiOption, type AutomationOption } from './AutomationBuilder';
 import AutomationTester from './AutomationTester';
 import LiveTracePanel from './LiveTracePanel';
@@ -222,6 +224,7 @@ function triggerLabel(a: Automation): string {
 }
 
 function AutomationEditor({ automation, onClose }: { automation: Automation | 'new'; onClose: () => void }) {
+  const numberScope = useNumberInputScope();
   const isNew = automation === 'new';
   const initial = isNew ? null : (automation as Automation);
   const [name, setName] = useState(initial?.name ?? '');
@@ -336,6 +339,8 @@ function AutomationEditor({ automation, onClose }: { automation: Automation | 'n
   };
 
   const save = async () => {
+    // #5649: a half-typed number field holds text the form never received.
+    if (numberScope.invalid) return;
     setSaving(true); setErrors([]);
     let config: unknown;
     if (mode === 'builder') {
@@ -358,6 +363,7 @@ function AutomationEditor({ automation, onClose }: { automation: Automation | 'n
 
   const resetHomes = async () => {
     if (isNew || !initial?.id) return;
+    if (numberScope.invalid) return;
     if (form.trigger.type !== 'trigger.leftHome' && mode === 'builder') {
       setResetHomesMsg('Switch the WHEN trigger to “Left home” (and save) before resetting homes.');
       return;
@@ -453,7 +459,11 @@ function AutomationEditor({ automation, onClose }: { automation: Automation | 'n
       </div>
 
       {mode === 'builder'
-        ? <AutomationBuilder form={form} variables={variables} sources={sources} channels={channels} scripts={scripts} regions={regions} nodes={nodes} automations={automationOptions} onChange={setForm} />
+        ? (
+          <NumberInputScope scope={numberScope}>
+            <AutomationBuilder form={form} variables={variables} sources={sources} channels={channels} scripts={scripts} regions={regions} nodes={nodes} automations={automationOptions} onChange={setForm} />
+          </NumberInputScope>
+        )
         : (
           <div className="ae-field">
             <label className="ae-field-label">Workflow graph (JSON)</label>
@@ -463,7 +473,7 @@ function AutomationEditor({ automation, onClose }: { automation: Automation | 'n
 
       {errors.length > 0 && <ul className="ae-error-list">{errors.map((er, i) => <li key={i}>{er}</li>)}</ul>}
       <div className="ae-btn-row" style={{ marginTop: '0.75rem' }}>
-        <button className="ae-btn ae-btn--primary" disabled={saving} onClick={save}>{saving ? 'Saving…' : 'Save automation'}</button>
+        <button className="ae-btn ae-btn--primary" disabled={saving || numberScope.invalid} onClick={save}>{saving ? 'Saving…' : 'Save automation'}</button>
         <button className="ae-btn" onClick={() => setShowTest((s) => !s)}>{!showTest && <UiIcon name="play" size={15} />} {showTest ? 'Hide test' : 'Test'}</button>
         {!isNew && (
           <button

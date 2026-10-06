@@ -5,6 +5,9 @@ import apiService, { ApiError } from '../../services/api';
 import { useToast } from '../ToastContainer';
 import { logger } from '../../utils/logger';
 import { useSaveBar } from '../../hooks/useSaveBar';
+import { NumberInput } from '../common/NumberInput';
+import { NumberInputScope } from '../common/NumberInputScope';
+import { useNumberInputScope } from '../common/numberInputScope';
 import '../../styles/BackupManagement.css';
 
 interface SystemBackupFile {
@@ -115,14 +118,16 @@ const SystemBackupSection: React.FC = () => {
     }
   };
 
-  // Register with SaveBar
+  // Register with SaveBar. The scope blocks Save while a number field is blank (#5649).
+  const numberScope = useNumberInputScope();
   useSaveBar({
     id: 'system-backup',
     sectionName: t('system_backup.title'),
     hasChanges,
     isSaving: isSavingSettings,
     onSave: handleSaveBackupSettings,
-    onDismiss: resetChanges
+    onDismiss: resetChanges,
+    numberScope
   });
 
   const handleManualBackup = async () => {
@@ -212,6 +217,7 @@ const SystemBackupSection: React.FC = () => {
   };
 
   return (
+    <NumberInputScope scope={numberScope}>
     <div className="settings-section" style={{ marginTop: '2rem' }}>
       <h3>{t('system_backup.title')}</h3>
 
@@ -304,12 +310,12 @@ const SystemBackupSection: React.FC = () => {
                 <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 500 }}>
                   {t('system_backup.max_backups')}
                 </label>
-                <input
-                  type="number"
+                <NumberInput
                   value={maxBackups}
-                  onChange={(e) => setMaxBackups(parseInt(e.target.value) || 7)}
-                  min="1"
-                  max="365"
+                  onChange={setMaxBackups}
+                  min={1}
+                  max={365}
+                  integer
                   style={{
                     padding: '0.5rem',
                     borderRadius: '4px',
@@ -414,6 +420,7 @@ const SystemBackupSection: React.FC = () => {
         </div>
       )}
     </div>
+    </NumberInputScope>
   );
 };
 

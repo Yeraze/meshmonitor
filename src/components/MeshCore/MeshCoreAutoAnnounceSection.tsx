@@ -5,6 +5,9 @@ import { useCsrfFetch } from '../../hooks/useCsrfFetch';
 import { useToast } from '../ToastContainer';
 import { useAuth } from '../../contexts/AuthContext';
 import { useSaveBar } from '../../hooks/useSaveBar';
+import { NumberInput } from '../common/NumberInput';
+import { NumberInputScope } from '../common/NumberInputScope';
+import { useNumberInputScope } from '../common/numberInputScope';
 import { ScopeSelectField, type ScopeMode } from './ScopeSelectField';
 import { MESHCORE_AUTOMATION_TOKENS } from './meshcoreAutomationTokens';
 import { MeshCoreReceiveOnlyNote } from './MeshCoreReceiveOnlyNote';
@@ -253,7 +256,9 @@ export const MeshCoreAutoAnnounceSection: React.FC<MeshCoreAutoAnnounceSectionPr
     setHasChanges(false);
   }, [initial]);
 
+  const numberScope = useNumberInputScope();
   useSaveBar({
+    numberScope,
     id: 'meshcore-auto-announce',
     sectionName: t('meshcore.automation.announce.title', 'Auto-Announce'),
     hasChanges,
@@ -328,6 +333,7 @@ export const MeshCoreAutoAnnounceSection: React.FC<MeshCoreAutoAnnounceSectionPr
   }, [channels, settings.channelIndexes, t]);
 
   return (
+    <NumberInputScope scope={numberScope}>
     <>
       <div className="automation-section-header" style={{
         display: 'flex',
@@ -421,13 +427,13 @@ export const MeshCoreAutoAnnounceSection: React.FC<MeshCoreAutoAnnounceSectionPr
             <label htmlFor="meshcoreAnnounceInterval">
               {t('meshcore.automation.announce.interval_label', 'Interval (hours)')}
             </label>
-            <input
+            <NumberInput
               id="meshcoreAnnounceInterval"
-              type="number"
               value={settings.intervalHours}
-              onChange={(e) => update('intervalHours', Math.max(1, parseInt(e.target.value, 10) || 1))}
+              onChange={(v) => update('intervalHours', v)}
               min={1}
               max={168}
+              integer
               disabled={disabled || !canWrite}
               className="setting-input"
               style={{ width: '120px' }}
@@ -594,12 +600,12 @@ export const MeshCoreAutoAnnounceSection: React.FC<MeshCoreAutoAnnounceSectionPr
           </div>
           {settings.advertEnabled && (
             <div style={{ marginTop: '0.5rem', marginLeft: '1.75rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <input
-                type="number"
+              <NumberInput
                 value={settings.advertDelaySeconds}
-                onChange={(e) => update('advertDelaySeconds', Math.max(0, Math.min(600, parseInt(e.target.value, 10) || 0)))}
+                onChange={(v) => update('advertDelaySeconds', v)}
                 min={0}
                 max={600}
+                integer
                 disabled={disabled || !canWrite}
                 style={{ width: '100px', padding: '2px 4px' }}
               />
@@ -627,6 +633,7 @@ export const MeshCoreAutoAnnounceSection: React.FC<MeshCoreAutoAnnounceSectionPr
         )}
       </div>
     </>
+    </NumberInputScope>
   );
 };
 

@@ -132,6 +132,9 @@
   "src/components/GeoJsonLayerManager.tsx": {
     "meshmonitor-ui/no-hardcoded-color": 10
   },
+  "src/components/GeofenceMapEditor.tsx": {
+    "meshmonitor-ui/no-raw-number-input": 3
+  },
   "src/components/GeofenceTriggersSection.test.tsx": {
     "@typescript-eslint/no-unused-vars": 1
   },

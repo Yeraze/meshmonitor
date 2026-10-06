@@ -14,13 +14,15 @@ import { UiIcon } from './icons';
 import { useSourceQuery } from '../hooks/useSourceQuery';
 import { Channel, DeviceInfo } from '../types/device';
 import { useSaveBar } from '../hooks/useSaveBar';
+import { NumberInput } from './common/NumberInput';
+import { NumberInputScope } from './common/NumberInputScope';
+import { useNumberInputScope } from './common/numberInputScope';
 import GeofenceMapEditor from './GeofenceMapEditor';
 import GeofenceNodeSelector from './GeofenceNodeSelector';
 import ScriptTestModal from './ScriptTestModal';
 import apiService from '../services/api';
 import layout from './AutomationFormLayout.module.css';
 import {
-  clampInt,
   GEOFENCE_COOLDOWN_MINUTES_MAX,
   GEOFENCE_INTERVAL_MINUTES_MAX,
   GEOFENCE_INTERVAL_MINUTES_MIN,
@@ -88,6 +90,9 @@ const GeofenceTriggersSection: React.FC<GeofenceTriggersSectionProps> = ({
   const [newChannel, setNewChannel] = useState<number | 'dm' | 'none'>('dm');
   const [newVerifyResponse, setNewVerifyResponse] = useState(false);
   const [newCooldownMinutes, setNewCooldownMinutes] = useState<number>(0);
+  // #5649: the add/edit form's interval and cooldown. Blank or out-of-range text
+  // never reaches the state above, so the form's own button has to ask.
+  const formNumberScope = useNumberInputScope();
 
   // Edit mode state
   const [editingTriggerId, setEditingTriggerId] = useState<string | null>(null);
@@ -168,6 +173,7 @@ const GeofenceTriggersSection: React.FC<GeofenceTriggersSectionProps> = ({
   });
 
   const handleAddOrUpdateTrigger = () => {
+    if (formNumberScope.invalid) return;
     if (!newName.trim()) {
       showToast(t('automation.geofence_triggers.name_required', 'Name is required'), 'error');
       return;
@@ -259,6 +265,7 @@ const GeofenceTriggersSection: React.FC<GeofenceTriggersSectionProps> = ({
 
   const handleStartEdit = (trigger: GeofenceTrigger) => {
     setEditingTriggerId(trigger.id);
+    formNumberScope.reset();
     setNewName(trigger.name);
     setNewShapeType(trigger.shape.type);
     setNewShape(trigger.shape);
@@ -276,6 +283,7 @@ const GeofenceTriggersSection: React.FC<GeofenceTriggersSectionProps> = ({
 
   const handleCancelEdit = () => {
     setEditingTriggerId(null);
+    formNumberScope.reset();
     setNewName('');
     setNewShape(null);
     setNewShapeType('circle');
@@ -439,16 +447,18 @@ const GeofenceTriggersSection: React.FC<GeofenceTriggersSectionProps> = ({
                 <label className={layout.numberLabel} htmlFor="geofence-while-inside-interval" style={{ fontSize: '0.9rem' }}>
                   {t('automation.geofence_triggers.while_inside_interval', 'Interval (minutes):')}
                 </label>
-                <input
-                  id="geofence-while-inside-interval"
-                  type="number"
-                  value={newWhileInsideInterval}
-                  onChange={(e) => setNewWhileInsideInterval(clampInt(e.target.value, GEOFENCE_INTERVAL_MINUTES_MIN, GEOFENCE_INTERVAL_MINUTES_MAX))}
-                  className="setting-input"
-                  style={{ width: '100px' }}
-                  min={GEOFENCE_INTERVAL_MINUTES_MIN}
-                  max={GEOFENCE_INTERVAL_MINUTES_MAX}
-                />
+                <NumberInputScope scope={formNumberScope}>
+                  <NumberInput
+                    id="geofence-while-inside-interval"
+                    value={newWhileInsideInterval}
+                    onChange={setNewWhileInsideInterval}
+                    className="setting-input"
+                    style={{ width: '100px' }}
+                    min={GEOFENCE_INTERVAL_MINUTES_MIN}
+                    max={GEOFENCE_INTERVAL_MINUTES_MAX}
+                    integer
+                  />
+                </NumberInputScope>
                 <span className={layout.inlineHint} style={{ fontSize: '0.75rem', color: 'var(--color-text-subtle)' }}>
                   {t('automation.geofence_triggers.while_inside_interval_help', 'How often to fire while nodes remain inside')}
                 </span>
@@ -460,16 +470,18 @@ const GeofenceTriggersSection: React.FC<GeofenceTriggersSectionProps> = ({
               <label className={layout.numberLabel} htmlFor="geofence-cooldown-minutes" style={{ fontSize: '0.9rem' }}>
                 {t('automation.geofence_triggers.cooldown', 'Cooldown (minutes):')}
               </label>
-              <input
-                id="geofence-cooldown-minutes"
-                type="number"
-                value={newCooldownMinutes}
-                onChange={(e) => setNewCooldownMinutes(clampInt(e.target.value, 0, GEOFENCE_COOLDOWN_MINUTES_MAX))}
-                className="setting-input"
-                style={{ width: '100px' }}
-                min={0}
-                max={GEOFENCE_COOLDOWN_MINUTES_MAX}
-              />
+              <NumberInputScope scope={formNumberScope}>
+                <NumberInput
+                  id="geofence-cooldown-minutes"
+                  value={newCooldownMinutes}
+                  onChange={setNewCooldownMinutes}
+                  className="setting-input"
+                  style={{ width: '100px' }}
+                  min={0}
+                  max={GEOFENCE_COOLDOWN_MINUTES_MAX}
+                  integer
+                />
+              </NumberInputScope>
               <span className={layout.inlineHint} style={{ fontSize: '0.75rem', color: 'var(--color-text-subtle)' }}>
                 {t('automation.geofence_triggers.cooldown_help', 'Minimum time between triggers for each node. 0 = no cooldown.')}
               </span>
@@ -667,11 +679,11 @@ const GeofenceTriggersSection: React.FC<GeofenceTriggersSectionProps> = ({
               )}
               <button
                 onClick={handleAddOrUpdateTrigger}
-                disabled={!newName.trim() || !newShape || (newResponseType === 'script' ? !newScriptPath : !newResponse.trim())}
+                disabled={!newName.trim() || !newShape || (newResponseType === 'script' ? !newScriptPath : !newResponse.trim()) || formNumberScope.invalid}
                 className="settings-button settings-button-primary"
                 style={{
-                  opacity: (!newName.trim() || !newShape || (newResponseType === 'script' ? !newScriptPath : !newResponse.trim())) ? 0.5 : 1,
-                  cursor: (!newName.trim() || !newShape || (newResponseType === 'script' ? !newScriptPath : !newResponse.trim())) ? 'not-allowed' : 'pointer',
+                  opacity: (!newName.trim() || !newShape || (newResponseType === 'script' ? !newScriptPath : !newResponse.trim()) || formNumberScope.invalid) ? 0.5 : 1,
+                  cursor: (!newName.trim() || !newShape || (newResponseType === 'script' ? !newScriptPath : !newResponse.trim()) || formNumberScope.invalid) ? 'not-allowed' : 'pointer',
                 }}
               >
                 {editingTriggerId

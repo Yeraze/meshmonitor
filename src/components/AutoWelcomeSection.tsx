@@ -7,6 +7,9 @@ import { useCsrfFetch } from '../hooks/useCsrfFetch';
 import { useSourceQuery } from '../hooks/useSourceQuery';
 import { useSaveBar } from '../hooks/useSaveBar';
 import { UiIcon } from './icons';
+import { NumberInput } from './common/NumberInput';
+import { NumberInputScope } from './common/NumberInputScope';
+import { useNumberInputScope } from './common/numberInputScope';
 
 interface AutoWelcomeSectionProps {
   enabled: boolean;
@@ -162,7 +165,9 @@ const AutoWelcomeSection: React.FC<AutoWelcomeSectionProps> = ({
   }, [localEnabled, localMessage, localTarget, localWaitForName, localMaxHops, baseUrl, csrfFetch, showToast, t, onEnabledChange, onMessageChange, onTargetChange, onWaitForNameChange, onMaxHopsChange]);
 
   // Register with SaveBar
+  const numberScope = useNumberInputScope();
   useSaveBar({
+    numberScope,
     id: 'auto-welcome',
     sectionName: t('automation.auto_welcome.title'),
     hasChanges,
@@ -210,6 +215,7 @@ const AutoWelcomeSection: React.FC<AutoWelcomeSectionProps> = ({
   };
 
   return (
+    <NumberInputScope scope={numberScope}>
     <>
       <div className="automation-section-header" style={{
         display: 'flex',
@@ -292,18 +298,13 @@ const AutoWelcomeSection: React.FC<AutoWelcomeSectionProps> = ({
               {t('automation.auto_welcome.max_hops_description')}
             </span>
           </label>
-          <input
+          <NumberInput
             id="maxHops"
-            type="number"
-            min="1"
-            max="10"
+            min={1}
+            max={10}
             value={localMaxHops}
-            onChange={(e) => {
-              const value = parseInt(e.target.value);
-              if (value >= 1 && value <= 10) {
-                setLocalMaxHops(value);
-              }
-            }}
+            integer
+            onChange={setLocalMaxHops}
             disabled={!localEnabled}
             className="setting-input"
             style={{ width: '100px' }}
@@ -317,18 +318,13 @@ const AutoWelcomeSection: React.FC<AutoWelcomeSectionProps> = ({
               {t('automation.auto_welcome.delay_description', 'Wait this long after first hearing a node before sending its welcome. Gives the node time to finish its startup transmit burst and become ready to receive — important after a nodeDB reset when many nodes come online at once. 0–120 seconds; default 30.')}
             </span>
           </label>
-          <input
+          <NumberInput
             id="welcomeDelay"
-            type="number"
-            min="0"
-            max="120"
+            min={0}
+            max={120}
             value={localDelay}
-            onChange={(e) => {
-              const value = parseInt(e.target.value);
-              if (Number.isFinite(value) && value >= 0 && value <= 120) {
-                setLocalDelay(value);
-              }
-            }}
+            integer
+            onChange={setLocalDelay}
             disabled={!localEnabled}
             className="setting-input"
             style={{ width: '100px' }}
@@ -434,6 +430,7 @@ const AutoWelcomeSection: React.FC<AutoWelcomeSectionProps> = ({
         </div>
       </div>
     </>
+    </NumberInputScope>
   );
 };
 

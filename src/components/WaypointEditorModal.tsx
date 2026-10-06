@@ -13,6 +13,9 @@ import { UiIcon } from './icons';
 import { useTranslation } from 'react-i18next';
 import { HopLimitOverrideSelect } from './HopLimitOverrideSelect';
 import { hopLimitSettingValue } from '../utils/hopLimitOverride';
+import { NumberInput } from './common/NumberInput';
+import { NumberInputScope } from './common/NumberInputScope';
+import { useNumberInputScope } from './common/numberInputScope';
 
 const DEFAULT_EMOJIS = ['📍', '🏠', '🏕️', '⛺', '🚗', '🛟', '⚠️', '⭐', '🚩', '🛠️'];
 
@@ -85,6 +88,7 @@ export default function WaypointEditorModal(props: WaypointEditorModalProps) {
   const [hopLimit, setHopLimit] = useState('');
   const { t } = useTranslation();
   const [error, setError] = useState<string | null>(null);
+  const numberScope = useNumberInputScope();
   const [saving, setSaving] = useState(false);
 
   // A waypoint can name a slot the source no longer reports (renamed, or the
@@ -190,6 +194,8 @@ export default function WaypointEditorModal(props: WaypointEditorModalProps) {
   }
 
   async function handleSave() {
+    // #5649: a blank or out-of-range number field is never sent to the mesh.
+    if (numberScope.invalid) return;
     const input = validate();
     if (!input) return;
     setSaving(true);
@@ -212,27 +218,32 @@ export default function WaypointEditorModal(props: WaypointEditorModalProps) {
       title={initial ? 'Edit Waypoint' : 'New Waypoint'}
       maxWidth="500px"
       className="waypoint-editor-modal"
-    >
-      <div className="waypoint-editor-form">
+      >
+        <NumberInputScope scope={numberScope}>
+        <div className="waypoint-editor-form">
         <div className="form-row">
           <label className="form-label">
             Latitude
-            <input
+            <NumberInput
               className="form-input"
-              type="number"
-              step="0.000001"
-              value={lat}
-              onChange={(e) => setLat(e.target.value)}
+              step={0.000001}
+              min={-90}
+              max={90}
+              value={lat === '' ? null : Number(lat)}
+              onChange={(v) => setLat(String(v))}
+              showReason
             />
           </label>
           <label className="form-label">
             Longitude
-            <input
+            <NumberInput
               className="form-input"
-              type="number"
-              step="0.000001"
-              value={lon}
-              onChange={(e) => setLon(e.target.value)}
+              step={0.000001}
+              min={-180}
+              max={180}
+              value={lon === '' ? null : Number(lon)}
+              onChange={(v) => setLon(String(v))}
+              showReason
             />
           </label>
         </div>
@@ -375,13 +386,14 @@ export default function WaypointEditorModal(props: WaypointEditorModalProps) {
 
         <label className="form-label">
           Rebroadcast every (minutes, optional)
-          <input
+          <NumberInput
             className="form-input"
-            type="number"
+            allowEmpty
+            integer
             min={10}
             step={1}
-            value={rebroadcast}
-            onChange={(e) => setRebroadcast(e.target.value)}
+            value={rebroadcast.trim() === '' ? null : Number(rebroadcast)}
+            onChange={(v) => setRebroadcast(v === null ? '' : String(v))}
           />
           <span className="form-hint">
             Minimum 10 minutes. The scheduler rebroadcasts at most one waypoint per minute across the whole mesh.
@@ -414,12 +426,13 @@ export default function WaypointEditorModal(props: WaypointEditorModalProps) {
             type="button"
             className="form-button form-button-primary"
             onClick={handleSave}
-            disabled={saving}
-          >
+              disabled={saving || numberScope.invalid}
+            >
             {saving ? 'Saving…' : initial ? 'Save' : 'Create'}
           </button>
-        </div>
-      </div>
-    </Modal>
+              </div>
+            </div>
+            </NumberInputScope>
+          </Modal>
   );
 }

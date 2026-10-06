@@ -6,6 +6,10 @@ import { normalizeTriggerChannels } from '../../utils/autoResponderUtils';
 import ScriptTestModal from '../ScriptTestModal';
 import AutoResponderDialog from './AutoResponderDialog';
 import { UiIcon } from '../icons';
+import { COOLDOWN_SECONDS_MAX } from '../automationInputLimits';
+import { NumberInput } from '../common/NumberInput';
+import { NumberInputScope } from '../common/NumberInputScope';
+import { useNumberInputScope } from '../common/numberInputScope';
 
 /**
  * Format script for dropdown display
@@ -32,6 +36,7 @@ const TriggerItem: React.FC<TriggerItemProps> = ({
 }) => {
   const { t } = useTranslation();
   const [showRemoveModal, setShowRemoveModal] = useState(false);
+  const numberScope = useNumberInputScope();
   const [showTestModal, setShowTestModal] = useState(false);
   // Format trigger for editing (convert array to comma-separated string)
   const formatTriggerForEdit = (trigger: string | string[]): string => {
@@ -116,6 +121,8 @@ const TriggerItem: React.FC<TriggerItemProps> = ({
   }, [editTrigger, isEditing]);
 
   const handleSave = () => {
+    // #5649: the cooldown field is blank or below 0; nothing valid to save.
+    if (numberScope.invalid) return;
     if (editChannels.length === 0) {
       showToast?.(t('auto_responder.no_channels_selected'), 'error');
       return;
@@ -446,14 +453,17 @@ const TriggerItem: React.FC<TriggerItemProps> = ({
             <div style={{ marginTop: '0.5rem' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                 <label style={{ minWidth: '80px', fontSize: '0.9rem', fontWeight: 'bold' }}>{t('auto_responder.cooldown_label')}</label>
-                <input
-                  type="number"
-                  value={editCooldownSeconds}
-                  onChange={(e) => setEditCooldownSeconds(Math.max(0, parseInt(e.target.value) || 0))}
-                  min={0}
-                  className="setting-input"
-                  style={{ width: '80px' }}
-                />
+                <NumberInputScope scope={numberScope}>
+                  <NumberInput
+                    value={editCooldownSeconds}
+                    onChange={setEditCooldownSeconds}
+                    min={0}
+                    max={COOLDOWN_SECONDS_MAX}
+                    integer
+                    className="setting-input"
+                    style={{ width: '80px' }}
+                  />
+                </NumberInputScope>
                 <span style={{ fontSize: '0.75rem', color: 'var(--color-text-subtle)' }}>
                   {t('auto_responder.cooldown_help')}
                 </span>
@@ -466,6 +476,7 @@ const TriggerItem: React.FC<TriggerItemProps> = ({
           <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
             <button
               onClick={handleSave}
+              disabled={numberScope.invalid}
               style={{
                 padding: '0.25rem 0.75rem',
                 fontSize: '12px',

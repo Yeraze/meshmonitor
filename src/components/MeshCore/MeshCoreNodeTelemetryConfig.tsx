@@ -17,6 +17,7 @@ import { useCsrfFetch } from '../../hooks/useCsrfFetch';
 import { useToast } from '../ToastContainer';
 import { isTxDisabledBody } from '../../utils/txDisabled';
 import { MeshCoreReceiveOnlyNote } from './MeshCoreReceiveOnlyNote';
+import { NumberInput } from '../common/NumberInput';
 
 interface MeshCoreNodeTelemetryConfigProps {
   /** Frontend basename (e.g. '' or '/meshmonitor'). */
@@ -144,11 +145,14 @@ export const MeshCoreNodeTelemetryConfig: React.FC<MeshCoreNodeTelemetryConfigPr
     void save({ enabled: next });
   };
 
+  const showIntervalRangeError = () => {
+    setError(t('meshcore.telemetry_config.interval_range', `Interval must be between ${MIN_INTERVAL} and ${MAX_INTERVAL} minutes`));
+  };
+
   const handleIntervalCommit = () => {
     const n = parseInt(intervalDraft, 10);
     if (!Number.isFinite(n) || n < MIN_INTERVAL || n > MAX_INTERVAL) {
-      setIntervalDraft(String(cfg.intervalMinutes));
-      setError(t('meshcore.telemetry_config.interval_range', `Interval must be between ${MIN_INTERVAL} and ${MAX_INTERVAL} minutes`));
+      showIntervalRangeError();
       return;
     }
     if (n === cfg.intervalMinutes) return;
@@ -250,13 +254,21 @@ export const MeshCoreNodeTelemetryConfig: React.FC<MeshCoreNodeTelemetryConfigPr
               {t('meshcore.telemetry_config.interval_label', 'Interval (minutes)')}
             </div>
             <div className="node-detail-value">
-              <input
-                type="number"
+              <NumberInput
                 min={MIN_INTERVAL}
                 max={MAX_INTERVAL}
-                value={intervalDraft}
-                onChange={(e) => setIntervalDraft(e.target.value)}
-                onBlur={handleIntervalCommit}
+                integer
+                value={intervalDraft === '' ? null : Number(intervalDraft)}
+                onChange={(v) => setIntervalDraft(String(v))}
+                // Commits on blur. Blank or out-of-range text stays in the field,
+                // outlined, with the range shown, and is not sent (#5649).
+                onBlur={(e) => {
+                  if (e.currentTarget.dataset.numberInvalid === 'true') {
+                    showIntervalRangeError();
+                    return;
+                  }
+                  handleIntervalCommit();
+                }}
                 disabled={!canWriteConfig || saving}
                 style={{ width: '6rem' }}
               />

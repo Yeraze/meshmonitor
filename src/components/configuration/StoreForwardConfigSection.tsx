@@ -2,6 +2,9 @@ import React, { useRef, useMemo, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { UiIcon } from '../icons';
 import { useSaveBar } from '../../hooks/useSaveBar';
+import { NumberInput } from '../common/NumberInput';
+import { NumberInputScope } from '../common/NumberInputScope';
+import { useNumberInputScope } from '../common/numberInputScope';
 import ModuleAvailabilityNotice from './ModuleAvailabilityNotice';
 
 interface StoreForwardConfigSectionProps {
@@ -77,16 +80,19 @@ const StoreForwardConfigSection: React.FC<StoreForwardConfigSectionProps> = ({
   }, [onSave, enabled, heartbeat, records, historyReturnMax, historyReturnWindow, isServer]);
 
   // Register with SaveBar
+  const numberScope = useNumberInputScope();
   useSaveBar({
     id: 'storeforward-config',
     sectionName: t('storeforward_config.title'),
     hasChanges,
     isSaving,
     onSave: handleSave,
-    onDismiss: resetChanges
+    onDismiss: resetChanges,
+    numberScope
   });
 
   return (
+    <NumberInputScope scope={numberScope}>
     <div className="settings-section">
       <h3 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
         {t('storeforward_config.title')}
@@ -165,13 +171,13 @@ const StoreForwardConfigSection: React.FC<StoreForwardConfigSectionProps> = ({
               {t('storeforward_config.records')}
               <span className="setting-description">{t('storeforward_config.records_description')}</span>
             </label>
-            <input
+            <NumberInput
               id="storeforwardRecords"
-              type="number"
-              min="0"
-              max="65535"
+              min={0}
+              max={65535}
               value={records}
-              onChange={(e) => setRecords(parseInt(e.target.value) || 0)}
+              integer
+              onChange={setRecords}
               className="setting-input"
               placeholder="0"
             />
@@ -183,13 +189,13 @@ const StoreForwardConfigSection: React.FC<StoreForwardConfigSectionProps> = ({
               {t('storeforward_config.history_return_max')}
               <span className="setting-description">{t('storeforward_config.history_return_max_description')}</span>
             </label>
-            <input
+            <NumberInput
               id="storeforwardHistoryReturnMax"
-              type="number"
-              min="0"
-              max="255"
+              min={0}
+              max={255}
               value={historyReturnMax}
-              onChange={(e) => setHistoryReturnMax(parseInt(e.target.value) || 0)}
+              integer
+              onChange={setHistoryReturnMax}
               className="setting-input"
               placeholder="0"
             />
@@ -201,13 +207,13 @@ const StoreForwardConfigSection: React.FC<StoreForwardConfigSectionProps> = ({
               {t('storeforward_config.history_return_window')}
               <span className="setting-description">{t('storeforward_config.history_return_window_description')}</span>
             </label>
-            <input
+            <NumberInput
               id="storeforwardHistoryReturnWindow"
-              type="number"
-              min="0"
-              max="86400"
+              min={0}
+              max={86400}
               value={historyReturnWindow}
-              onChange={(e) => setHistoryReturnWindow(parseInt(e.target.value) || 0)}
+              integer
+              onChange={setHistoryReturnWindow}
               className="setting-input"
               placeholder="0"
             />
@@ -215,6 +221,7 @@ const StoreForwardConfigSection: React.FC<StoreForwardConfigSectionProps> = ({
         </>
       )}
     </div>
+    </NumberInputScope>
   );
 };
 

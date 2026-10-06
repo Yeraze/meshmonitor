@@ -13,6 +13,7 @@ import { UiIcon } from '../icons';
 import apiService from '../../services/api';
 import { useAuth } from '../../contexts/AuthContext';
 import { SolarOverridesPanel, type SolarOverrideEntry, type SolarPickerNode } from './SolarOverridesPanel';
+import { NumberInput } from '../common/NumberInput';
 import {
   Area,
   CartesianGrid,
@@ -182,15 +183,12 @@ const SolarMonitoringReport: React.FC = () => {
         <div className="reports-controls">
           <label className="reports-controls__field">
             <span>{t('analysis.solar_monitoring.lookback', 'Lookback (days):')}</span>
-            <input
-              type="number"
+            <NumberInput
+              integer
               min={1}
               max={90}
               value={lookbackDays}
-              onChange={(e) => {
-                const n = parseInt(e.target.value, 10);
-                if (Number.isFinite(n)) setLookbackDays(Math.min(90, Math.max(1, n)));
-              }}
+              onChange={setLookbackDays}
             />
           </label>
           <button

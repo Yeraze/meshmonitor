@@ -31,6 +31,7 @@ import type { MqttGroupedPacket, MqttGateway } from './mqttPacketTypes';
 import MqttPacketDetailModal from './MqttPacketDetailModal';
 import { okToMqttState } from './okToMqttState';
 import MqttOkToMqttMarker from './MqttOkToMqttMarker';
+import { NumberInput } from '../common/NumberInput';
 import './MqttPacketMonitor.css';
 
 interface MqttPacketMonitorViewProps {
@@ -433,11 +434,12 @@ export const MqttPacketMonitorView: React.FC<MqttPacketMonitorViewProps> = ({ ba
           </label>
           <label>
             {t('mqtt.packets.portnum', 'Port')}
-            <input
-              type="number"
+            <NumberInput
               min={0}
-              value={portnumFilter}
-              onChange={e => setPortnumFilter(e.target.value === '' ? '' : Number(e.target.value))}
+              integer
+              allowEmpty
+              value={portnumFilter === '' ? null : portnumFilter}
+              onChange={v => setPortnumFilter(v === null ? '' : v)}
             />
           </label>
           {selectedGateways.length > 0 && (
@@ -453,25 +455,33 @@ export const MqttPacketMonitorView: React.FC<MqttPacketMonitorViewProps> = ({ ba
               </label>
               <label>
                 {t('mqtt.packets.maxCount', 'Max count')}
-                <input
-                  type="number"
+                <NumberInput
                   min={100}
                   max={50000}
                   step={100}
+                  integer
                   value={maxCount}
-                  onChange={e => setMaxCount(Number(e.target.value))}
-                  onBlur={() => void saveSettings({ mqtt_packet_log_max_count: String(maxCount) })}
+                  onChange={setMaxCount}
+                  // Saves on blur. Invalid text was never emitted, so there is
+                  // nothing new to send: skip the write (#5649).
+                  onBlur={e => {
+                    if (e.currentTarget.dataset.numberInvalid === 'true') return;
+                    void saveSettings({ mqtt_packet_log_max_count: String(maxCount) });
+                  }}
                 />
               </label>
               <label>
                 {t('mqtt.packets.maxAgeHours', 'Max age (h)')}
-                <input
-                  type="number"
+                <NumberInput
                   min={1}
                   max={720}
+                  integer
                   value={maxAgeHours}
-                  onChange={e => setMaxAgeHours(Number(e.target.value))}
-                  onBlur={() => void saveSettings({ mqtt_packet_log_max_age_hours: String(maxAgeHours) })}
+                  onChange={setMaxAgeHours}
+                  onBlur={e => {
+                    if (e.currentTarget.dataset.numberInvalid === 'true') return;
+                    void saveSettings({ mqtt_packet_log_max_age_hours: String(maxAgeHours) });
+                  }}
                 />
               </label>
             </>

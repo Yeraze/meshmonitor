@@ -7,6 +7,9 @@ import { useSourceQuery } from '../hooks/useSourceQuery';
 import { useSaveBar } from '../hooks/useSaveBar';
 import { kmToMiles } from '../utils/distance';
 import { useSettings } from '../contexts/SettingsContext';
+import { NumberInput } from './common/NumberInput';
+import { NumberInputScope } from './common/NumberInputScope';
+import { useNumberInputScope } from './common/numberInputScope';
 
 interface AutoDeleteByDistanceSectionProps {
   enabled: boolean;
@@ -178,7 +181,9 @@ const AutoDeleteByDistanceSection: React.FC<AutoDeleteByDistanceSectionProps> = 
     setLocalAction(action);
   }, [enabled, intervalHours, thresholdKm, homeLat, homeLon, action]);
 
+  const numberScope = useNumberInputScope();
   useSaveBar({
+    numberScope,
     id: 'auto-delete-by-distance',
     sectionName: t('automation.distance_delete.title'),
     hasChanges,
@@ -222,6 +227,7 @@ const AutoDeleteByDistanceSection: React.FC<AutoDeleteByDistanceSectionProps> = 
   const unitLabel = isMiles ? 'mi' : 'km';
 
   return (
+    <NumberInputScope scope={numberScope}>
     <>
       <div className="automation-section-header" style={{
         display: 'flex',
@@ -288,26 +294,26 @@ const AutoDeleteByDistanceSection: React.FC<AutoDeleteByDistanceSectionProps> = 
             {t('automation.distance_delete.home_coordinate')}
           </label>
           <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
-            <input
-              type="number"
+            <NumberInput
               step="any"
               min={-90}
               max={90}
               placeholder={t('automation.distance_delete.latitude')}
-              value={localHomeLat}
-              onChange={(e) => setLocalHomeLat(e.target.value)}
+              value={localHomeLat === '' ? null : Number(localHomeLat)}
+              allowEmpty
+              onChange={(v) => setLocalHomeLat(v === null ? '' : String(v))}
               disabled={!localEnabled}
               className="setting-input"
               style={{ width: '140px' }}
             />
-            <input
-              type="number"
+            <NumberInput
               step="any"
               min={-180}
               max={180}
               placeholder={t('automation.distance_delete.longitude')}
-              value={localHomeLon}
-              onChange={(e) => setLocalHomeLon(e.target.value)}
+              value={localHomeLon === '' ? null : Number(localHomeLon)}
+              allowEmpty
+              onChange={(v) => setLocalHomeLon(v === null ? '' : String(v))}
               disabled={!localEnabled}
               className="setting-input"
               style={{ width: '140px' }}
@@ -328,18 +334,13 @@ const AutoDeleteByDistanceSection: React.FC<AutoDeleteByDistanceSectionProps> = 
           <label>
             {t('automation.distance_delete.threshold')} ({unitLabel})
           </label>
-          <input
-            type="number"
-            min="1"
+          <NumberInput
+            min={1}
             max={Math.floor(toDisplayUnit(DISTANCE_DELETE_THRESHOLD_KM_MAX))}
-            step="1"
+            step={1}
             value={Math.round(displayThreshold)}
-            onChange={(e) => {
-              const val = parseInt(e.target.value, 10);
-              if (!isNaN(val) && val > 0) {
-                setLocalThresholdKm(Math.round(fromDisplayUnit(val) * 10) / 10);
-              }
-            }}
+            integer
+            onChange={(val) => setLocalThresholdKm(Math.round(fromDisplayUnit(val) * 10) / 10)}
             disabled={!localEnabled}
             className="setting-input"
             style={{ width: '120px' }}
@@ -468,6 +469,7 @@ const AutoDeleteByDistanceSection: React.FC<AutoDeleteByDistanceSectionProps> = 
         </div>
       </div>
     </>
+    </NumberInputScope>
   );
 };
 

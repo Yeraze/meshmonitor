@@ -1,6 +1,9 @@
 import React, { useRef, useMemo, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSaveBar } from '../../hooks/useSaveBar';
+import { NumberInput } from '../common/NumberInput';
+import { NumberInputScope } from '../common/NumberInputScope';
+import { useNumberInputScope } from '../common/numberInputScope';
 import ModuleAvailabilityNotice from './ModuleAvailabilityNotice';
 
 interface AmbientLightingConfigSectionProps {
@@ -70,19 +73,22 @@ const AmbientLightingConfigSection: React.FC<AmbientLightingConfigSectionProps> 
   }, [onSave, ledState, current, red, green, blue]);
 
   // Register with SaveBar
+  const numberScope = useNumberInputScope();
   useSaveBar({
     id: 'ambientlighting-config',
     sectionName: t('ambientlighting_config.title'),
     hasChanges,
     isSaving,
     onSave: handleSave,
-    onDismiss: resetChanges
+    onDismiss: resetChanges,
+    numberScope
   });
 
   // Generate preview color
   const previewColor = `rgb(${red}, ${green}, ${blue})`;
 
   return (
+    <NumberInputScope scope={numberScope}>
     <div className="settings-section">
       <h3 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
         {t('ambientlighting_config.title')}
@@ -127,13 +133,13 @@ const AmbientLightingConfigSection: React.FC<AmbientLightingConfigSectionProps> 
               {t('ambientlighting_config.current')}
               <span className="setting-description">{t('ambientlighting_config.current_description')}</span>
             </label>
-            <input
+            <NumberInput
               id="ambientCurrent"
-              type="number"
-              min="0"
-              max="255"
+              min={0}
+              max={255}
               value={current}
-              onChange={(e) => setCurrent(parseInt(e.target.value) || 0)}
+              integer
+              onChange={setCurrent}
               className="setting-input"
               placeholder="10"
               style={{ width: '100px' }}
@@ -176,12 +182,12 @@ const AmbientLightingConfigSection: React.FC<AmbientLightingConfigSectionProps> 
                 onChange={(e) => setRed(parseInt(e.target.value))}
                 style={{ flex: 1 }}
               />
-              <input
-                type="number"
-                min="0"
-                max="255"
+              <NumberInput
+                min={0}
+                max={255}
                 value={red}
-                onChange={(e) => setRed(Math.min(255, Math.max(0, parseInt(e.target.value) || 0)))}
+                integer
+                onChange={setRed}
                 className="setting-input"
                 style={{ width: '70px' }}
               />
@@ -201,12 +207,12 @@ const AmbientLightingConfigSection: React.FC<AmbientLightingConfigSectionProps> 
                 onChange={(e) => setGreen(parseInt(e.target.value))}
                 style={{ flex: 1 }}
               />
-              <input
-                type="number"
-                min="0"
-                max="255"
+              <NumberInput
+                min={0}
+                max={255}
                 value={green}
-                onChange={(e) => setGreen(Math.min(255, Math.max(0, parseInt(e.target.value) || 0)))}
+                integer
+                onChange={setGreen}
                 className="setting-input"
                 style={{ width: '70px' }}
               />
@@ -226,12 +232,12 @@ const AmbientLightingConfigSection: React.FC<AmbientLightingConfigSectionProps> 
                 onChange={(e) => setBlue(parseInt(e.target.value))}
                 style={{ flex: 1 }}
               />
-              <input
-                type="number"
-                min="0"
-                max="255"
+              <NumberInput
+                min={0}
+                max={255}
                 value={blue}
-                onChange={(e) => setBlue(Math.min(255, Math.max(0, parseInt(e.target.value) || 0)))}
+                integer
+                onChange={setBlue}
                 className="setting-input"
                 style={{ width: '70px' }}
               />
@@ -240,6 +246,7 @@ const AmbientLightingConfigSection: React.FC<AmbientLightingConfigSectionProps> 
         </>
       )}
     </div>
+    </NumberInputScope>
   );
 };
 

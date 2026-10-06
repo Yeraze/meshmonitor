@@ -3,6 +3,9 @@ import { useTranslation } from 'react-i18next';
 import Modal from '../common/Modal';
 import { useResolvedSourceId } from '../../hooks/useResolvedSourceId';
 import apiService from '../../services/api';
+import { NumberInput } from '../common/NumberInput';
+import { NumberInputScope } from '../common/NumberInputScope';
+import { useNumberInputScope } from '../common/numberInputScope';
 import './PositionOverrideModal.css';
 
 interface Node {
@@ -51,6 +54,7 @@ export const PositionOverrideModal: React.FC<PositionOverrideModalProps> = ({
   // Validation state
   const [latError, setLatError] = useState<string | null>(null);
   const [lngError, setLngError] = useState<string | null>(null);
+  const numberScope = useNumberInputScope();
 
   // Track if we've loaded data for current modal session to prevent poll refresh from resetting
   const loadedForNodeRef = useRef<string | null>(null);
@@ -121,6 +125,8 @@ export const PositionOverrideModal: React.FC<PositionOverrideModalProps> = ({
   };
 
   const handleSave = async () => {
+    // #5649: a blank or out-of-range coordinate is never stored.
+    if (numberScope.invalid) return;
     setError(null);
 
     // Validate if enabled
@@ -149,22 +155,15 @@ export const PositionOverrideModal: React.FC<PositionOverrideModalProps> = ({
     }
   };
 
-  const handleLatitudeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setLatitude(e.target.value);
-    if (e.target.value) {
-      validateLatitude(e.target.value);
-    } else {
-      setLatError(null);
-    }
+  // NumberInput emits only numbers inside min/max, so a change clears the error.
+  const handleLatitudeChange = (value: number) => {
+    setLatitude(String(value));
+    setLatError(null);
   };
 
-  const handleLongitudeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setLongitude(e.target.value);
-    if (e.target.value) {
-      validateLongitude(e.target.value);
-    } else {
-      setLngError(null);
-    }
+  const handleLongitudeChange = (value: number) => {
+    setLongitude(String(value));
+    setLngError(null);
   };
 
   return (
@@ -174,6 +173,7 @@ export const PositionOverrideModal: React.FC<PositionOverrideModalProps> = ({
       title={t('position_override.title', { nodeName })}
       className="position-override-modal"
     >
+      <NumberInputScope scope={numberScope}>
       {loading ? (
         <div className="position-override-loading">
           {t('common.loading')}...
@@ -224,16 +224,16 @@ export const PositionOverrideModal: React.FC<PositionOverrideModalProps> = ({
                     {t('position_override.latitude_description')}
                   </span>
                 </label>
-                <input
+                <NumberInput
                   id="override-latitude"
-                  type="number"
-                  step="0.000001"
-                  min="-90"
-                  max="90"
-                  value={latitude}
+                  step={0.000001}
+                  min={-90}
+                  max={90}
+                  value={latitude === '' ? null : Number(latitude)}
                   onChange={handleLatitudeChange}
                   disabled={saving}
                   className={latError ? 'input-error' : ''}
+                  showReason
                 />
                 {latError && <span className="error-message">{latError}</span>}
               </div>
@@ -245,16 +245,16 @@ export const PositionOverrideModal: React.FC<PositionOverrideModalProps> = ({
                     {t('position_override.longitude_description')}
                   </span>
                 </label>
-                <input
+                <NumberInput
                   id="override-longitude"
-                  type="number"
-                  step="0.000001"
-                  min="-180"
-                  max="180"
-                  value={longitude}
+                  step={0.000001}
+                  min={-180}
+                  max={180}
+                  value={longitude === '' ? null : Number(longitude)}
                   onChange={handleLongitudeChange}
                   disabled={saving}
                   className={lngError ? 'input-error' : ''}
+                  showReason
                 />
                 {lngError && <span className="error-message">{lngError}</span>}
               </div>
@@ -266,12 +266,12 @@ export const PositionOverrideModal: React.FC<PositionOverrideModalProps> = ({
                     {t('position_override.altitude_description')}
                   </span>
                 </label>
-                <input
+                <NumberInput
                   id="override-altitude"
-                  type="number"
-                  step="1"
-                  value={altitude}
-                  onChange={e => setAltitude(e.target.value)}
+                  allowEmpty
+                  step={1}
+                  value={altitude === '' ? null : Number(altitude)}
+                  onChange={v => setAltitude(v === null ? '' : String(v))}
                   disabled={saving}
                 />
               </div>
@@ -305,13 +305,14 @@ export const PositionOverrideModal: React.FC<PositionOverrideModalProps> = ({
             <button
               className="save-btn"
               onClick={handleSave}
-              disabled={saving || (enabled && (latError !== null || lngError !== null))}
+              disabled={saving || numberScope.invalid || (enabled && (latError !== null || lngError !== null))}
             >
               {saving ? t('common.saving') : t('common.save')}
             </button>
           </div>
         </>
       )}
+      </NumberInputScope>
     </Modal>
   );
 };

@@ -9,6 +9,7 @@
  */
 import { useState, type ReactNode } from 'react';
 import apiService from '../../services/api';
+import { NumberInput } from '../common/NumberInput';
 import type { VariableOption, SourceOption } from './AutomationBuilder';
 import {
   type EventState,
@@ -257,7 +258,17 @@ function Field({ label, value, onChange, type }: { label: string; value: string 
   return (
     <div className="ae-field">
       <label className="ae-field-label">{label}</label>
-      <input className="ae-input" type={type ?? 'text'} value={value ?? ''} onChange={(e) => onChange(e.target.value)} />
+      {type === 'number' ? (
+        <NumberInput
+          className="ae-input"
+          step="any"
+          value={value === undefined || value === '' || !Number.isFinite(Number(value)) ? null : Number(value)}
+          allowEmpty
+          onChange={(v) => onChange(v === null ? '' : String(v))}
+        />
+      ) : (
+        <input className="ae-input" type={type ?? 'text'} value={value ?? ''} onChange={(e) => onChange(e.target.value)} />
+      )}
     </div>
   );
 }
@@ -369,7 +380,7 @@ function renderEventInputs(
         />
         <div className="ae-field">
           <label className="ae-field-label">Threshold (m)</label>
-          <input className="ae-input" type="number" value={thr} disabled readOnly title="From the automation trigger" />
+          <NumberInput className="ae-input" value={Number(thr)} onChange={() => {}} disabled readOnly title="From the automation trigger" />
         </div>
         <div className="ae-muted" style={{ gridColumn: '1 / -1' }}>
           {opts?.leftHomeHint}

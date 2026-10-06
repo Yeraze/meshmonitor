@@ -8,6 +8,7 @@
  */
 import { useEffect, useState } from 'react';
 import apiService from '../../services/api';
+import { NumberInput } from '../common/NumberInput';
 import type { SourceOption } from './AutomationBuilder';
 import { isCompleteAnchor, type GeofenceWaypointAnchor } from './geofenceAnchor';
 
@@ -106,14 +107,13 @@ export default function GeofenceWaypointPicker({ value, sources, onChange }: {
       )}
 
       <label className="ae-field-label" htmlFor="ae-wp-radius">Radius (km)</label>
-      <input
+      <NumberInput
         id="ae-wp-radius"
         className="ae-input"
-        type="number"
-        min="0"
-        step="0.1"
+        min={0}
+        step={0.1}
         value={radiusKm}
-        onChange={(e) => emit({ radiusKm: e.target.value === '' ? undefined : Number(e.target.value) })}
+        onChange={(v) => emit({ radiusKm: v })}
       />
       <div className="ae-help-text">
         The fence follows the waypoint — move the waypoint and the region moves with it.

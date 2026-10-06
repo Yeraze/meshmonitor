@@ -37,6 +37,9 @@ import DashboardMap from '../components/Dashboard/DashboardMap';
 import type { NodeSourceRef } from '../components/Dashboard/DashboardNodePopup';
 import { buildBridgeConfig, formFromBridgeConfig } from '../components/MQTT/mqttBridgeConfig';
 import HopLimitPolicyFields from '../components/MQTT/HopLimitPolicyFields';
+import { NumberInput } from '../components/common/NumberInput';
+import { NumberInputScope } from '../components/common/NumberInputScope';
+import { useNumberInputScope } from '../components/common/numberInputScope';
 import {
   EMPTY_HOP_LIMIT_POLICY_FORM,
   formFromHopLimitConfig,
@@ -269,6 +272,7 @@ function DashboardInner() {
   const [formRnsPeerPort, setFormRnsPeerPort] = useState('4965');
   const [formError, setFormError] = useState('');
   const [formSaving, setFormSaving] = useState(false);
+  const sourceFormNumbers = useNumberInputScope();
 
   // ----- data -----
   const { data: sources = [], isSuccess } = useDashboardSources();
@@ -658,6 +662,8 @@ function DashboardInner() {
   };
 
   const onSaveSource = async () => {
+    // #5649: a blank or out-of-range port / interval is never saved.
+    if (sourceFormNumbers.invalid) return;
     if (!formName.trim()) { setFormError(t('source.form.error_name_required')); return; }
 
     let cfg: Record<string, any>;
@@ -1423,6 +1429,7 @@ function DashboardInner() {
       {showSourceModal && (
         <div className="dashboard-confirm-overlay" onClick={() => setShowSourceModal(false)}>
           <div className="dashboard-confirm-dialog" style={{ maxWidth: 480, maxHeight: '85vh', overflowY: 'auto' }} onClick={(e) => e.stopPropagation()}>
+            <NumberInputScope scope={sourceFormNumbers}>
             <h3>{editingSourceId ? t('source.edit') : t('source.add')}</h3>
 
             {/* Type selector (slice 4): only meaningful when adding — type is
@@ -1472,11 +1479,13 @@ function DashboardInner() {
               <>
                 <label className="dashboard-form-field">
                   <span className="dashboard-form-label">{t('source.form.mqtt_listen_port', 'Listen port')}</span>
-                  <input
+                  <NumberInput
                     className="dashboard-form-input"
-                    type="number"
-                    value={formMqttListenPort}
-                    onChange={(e) => setFormMqttListenPort(e.target.value)}
+                    integer
+                    min={1}
+                    max={65535}
+                    value={formMqttListenPort.trim() === '' ? null : Number(formMqttListenPort)}
+                    onChange={(v) => setFormMqttListenPort(String(v))}
                     placeholder="1883"
                   />
                   <p style={{ fontSize: 11, color: 'var(--color-text-subtle)', margin: '4px 0 0' }}>
@@ -1767,11 +1776,13 @@ function DashboardInner() {
 
                     <label className="dashboard-form-field">
                       <span className="dashboard-form-label">{t('source.form.tcp_port')}</span>
-                      <input
+                      <NumberInput
                         className="dashboard-form-input"
-                        type="number"
-                        value={formMcTcpPort}
-                        onChange={(e) => setFormMcTcpPort(e.target.value)}
+                        integer
+                        min={1}
+                        max={65535}
+                        value={formMcTcpPort.trim() === '' ? null : Number(formMcTcpPort)}
+                        onChange={(v) => setFormMcTcpPort(String(v))}
                         placeholder={MESHCORE_DEFAULT_TCP_PORT}
                       />
                     </label>
@@ -1814,13 +1825,13 @@ function DashboardInner() {
 
                 <label className="dashboard-form-field">
                   <span className="dashboard-form-label">{t('source.form.heartbeat')}</span>
-                  <input
+                  <NumberInput
                     className="dashboard-form-input"
-                    type="number"
+                    integer
                     min={0}
                     max={3600}
-                    value={formHeartbeat}
-                    onChange={(e) => { setFormHeartbeat(e.target.value); setFormHeartbeatTouched(true); }}
+                    value={formHeartbeat.trim() === '' ? null : Number(formHeartbeat)}
+                    onChange={(v) => { setFormHeartbeat(String(v)); setFormHeartbeatTouched(true); }}
                     placeholder="0"
                   />
                   <p style={{ fontSize: 11, color: 'var(--color-text-subtle)', margin: '4px 0 0' }}>
@@ -1854,13 +1865,13 @@ function DashboardInner() {
                     <>
                       <label className="dashboard-form-field" style={{ marginTop: 8 }}>
                         <span className="dashboard-form-label">{t('source.form.virtual_node_port')}</span>
-                        <input
+                        <NumberInput
                           className="dashboard-form-input"
-                          type="number"
+                          integer
                           min={1}
                           max={65535}
-                          value={formVnPort}
-                          onChange={(e) => setFormVnPort(e.target.value)}
+                          value={formVnPort.trim() === '' ? null : Number(formVnPort)}
+                          onChange={(v) => setFormVnPort(String(v))}
                           placeholder="5000"
                         />
                         <p style={{ fontSize: 11, color: 'var(--color-text-subtle)', margin: '4px 0 0' }}>
@@ -2215,11 +2226,13 @@ function DashboardInner() {
                     </label>
                     <label className="dashboard-form-field">
                       <span className="dashboard-form-label">{t('source.form.tcp_port')}</span>
-                      <input
+                      <NumberInput
                         className="dashboard-form-input"
-                        type="number"
-                        value={formRnsPeerPort}
-                        onChange={(e) => setFormRnsPeerPort(e.target.value)}
+                        integer
+                        min={1}
+                        max={65535}
+                        value={formRnsPeerPort.trim() === '' ? null : Number(formRnsPeerPort)}
+                        onChange={(v) => setFormRnsPeerPort(String(v))}
                         placeholder="4965"
                       />
                     </label>
@@ -2296,24 +2309,26 @@ function DashboardInner() {
 
             <label className="dashboard-form-field">
               <span className="dashboard-form-label">{t('source.form.tcp_port')}</span>
-              <input
+              <NumberInput
                 className="dashboard-form-input"
-                type="number"
-                value={formPort}
-                onChange={(e) => setFormPort(e.target.value)}
+                integer
+                min={1}
+                max={65535}
+                value={formPort.trim() === '' ? null : Number(formPort)}
+                onChange={(v) => setFormPort(String(v))}
                 placeholder="4403"
               />
             </label>
 
             <label className="dashboard-form-field">
               <span className="dashboard-form-label">{t('source.form.heartbeat')}</span>
-              <input
+              <NumberInput
                 className="dashboard-form-input"
-                type="number"
+                integer
                 min={0}
                 max={3600}
-                value={formHeartbeat}
-                onChange={(e) => { setFormHeartbeat(e.target.value); setFormHeartbeatTouched(true); }}
+                value={formHeartbeat.trim() === '' ? null : Number(formHeartbeat)}
+                onChange={(v) => { setFormHeartbeat(String(v)); setFormHeartbeatTouched(true); }}
                 placeholder="0"
               />
               <p style={{ fontSize: 11, color: 'var(--color-text-subtle)', margin: '4px 0 0' }}>
@@ -2353,14 +2368,14 @@ function DashboardInner() {
                 <span className="dashboard-form-label">
                   {t('source.form.passive_resync_stale_hours', 'Resync staleness window (hours)')}
                 </span>
-                <input
+                <NumberInput
                   className="dashboard-form-input"
-                  type="number"
+                  allowEmpty
                   min={0.0167}
                   max={168}
                   step={0.5}
-                  value={formPassiveResyncStaleHours}
-                  onChange={(e) => setFormPassiveResyncStaleHours(e.target.value)}
+                  value={formPassiveResyncStaleHours.trim() === '' ? null : Number(formPassiveResyncStaleHours)}
+                  onChange={(v) => setFormPassiveResyncStaleHours(v === null ? '' : String(v))}
                   placeholder={t('source.form.passive_resync_stale_default', '4 (default)')}
                 />
                 <p style={{ fontSize: 11, color: 'var(--color-text-subtle)', margin: '4px 0 0' }}>
@@ -2386,11 +2401,13 @@ function DashboardInner() {
                 <>
                   <label className="dashboard-form-field" style={{ marginTop: 8 }}>
                     <span className="dashboard-form-label">{t('source.form.virtual_node_port')}</span>
-                    <input
+                    <NumberInput
                       className="dashboard-form-input"
-                      type="number"
-                      value={formVnPort}
-                      onChange={(e) => setFormVnPort(e.target.value)}
+                      integer
+                      min={1}
+                      max={65535}
+                      value={formVnPort.trim() === '' ? null : Number(formVnPort)}
+                      onChange={(v) => setFormVnPort(String(v))}
                       placeholder="4403"
                     />
                   </label>
@@ -2445,11 +2462,12 @@ function DashboardInner() {
 
             <div className="dashboard-confirm-actions" style={{ marginTop: 16 }}>
               <button onClick={() => setShowSourceModal(false)}>{t('common.cancel')}</button>
-              <button onClick={onSaveSource} disabled={formSaving} style={{ background: 'var(--color-accent)', color: 'var(--color-bg)' }}>
+              <button onClick={onSaveSource} disabled={formSaving || sourceFormNumbers.invalid} style={{ background: 'var(--color-accent)', color: 'var(--color-bg)' }}>
                 {formSaving ? t('common.saving') : t('common.save')}
-              </button>
-            </div>
-          </div>
+                    </button>
+                  </div>
+                  </NumberInputScope>
+                </div>
         </div>
       )}
     </div>
