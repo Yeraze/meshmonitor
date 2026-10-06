@@ -77,3 +77,15 @@ export const MODULE_FIELD_BY_ID: Record<string, string> =
 /** device id → camelCase deviceConfig field. */
 export const DEVICE_FIELD_BY_ID: Record<string, string> =
   Object.fromEntries(CONFIG_TYPES.filter((e) => e.kind === 'device').map((e) => [e.id, e.field]));
+
+/**
+ * Numeric AdminMessage.ModuleConfigType → camelCase moduleConfig field. This is
+ * the key `processAdminMessage` stores a `getModuleConfigResponse` under (the
+ * decoded ModuleConfig oneof name), so it is also the key to read a reply back by.
+ */
+export const MODULE_FIELD_BY_ADMIN_TYPE: Readonly<Record<number, string>> =
+  Object.fromEntries(CONFIG_TYPES.filter((e) => e.kind === 'module').map((e) => [e.adminType, e.field]));
+
+/** Numeric AdminMessage.ConfigType → camelCase deviceConfig field. */
+export const DEVICE_FIELD_BY_ADMIN_TYPE: Readonly<Record<number, string>> =
+  Object.fromEntries(CONFIG_TYPES.filter((e) => e.kind === 'device').map((e) => [e.adminType, e.field]));

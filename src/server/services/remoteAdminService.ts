@@ -38,20 +38,61 @@ import { getProtobufRoot } from '../protobufLoader.js';
 import { getEnvironmentConfig } from '../config/environment.js';
 import { logger } from '../../utils/logger.js';
 import { TxDisabledError } from '../errors/txDisabledError.js';
+import { DEVICE_FIELD_BY_ADMIN_TYPE, MODULE_FIELD_BY_ADMIN_TYPE } from '../constants/configTypes.js';
 
-// Maps AdminMessage.ModuleConfigType enum values to the ModuleConfig oneof key
-// used in decoded responses. Covers the module types MeshMonitor surfaces a
-// config UI for; used to map empty (all-default, Proto3-omitted) responses back
-// to the correct key via pendingModuleConfigRequests.
-const LOCAL_MODULE_CONFIG_TYPE_KEYS: { [key: number]: string } = {
-  0: 'mqtt',
-  5: 'telemetry',
-  9: 'neighborInfo',
-  13: 'statusmessage',
-  14: 'trafficManagement',
-  15: 'tak',
-  16: 'meshBeacon'
-};
+/**
+ * Where a config reply lands in `remoteNodeConfigs` (and, for modules, in the
+ * local `actualModuleConfig`): the camelCase oneof name of the decoded
+ * `Config` / `ModuleConfig`, which is what `processAdminMessage` stores it
+ * under. Both come from the one registry in `constants/configTypes.ts`.
+ *
+ * `requestRemoteConfig` used to carry three inline copies of the module map and
+ * two of the device map. The module copies stopped at type 14, so a remote
+ * `tak` (15) or `meshBeacon` (16) reply was stored and never matched: every
+ * remote load of those two polled for the full 20 s and answered 404. The
+ * device "clear before request" copy had lost power/network/display, so those
+ * returned whatever an earlier load had cached. One lookup, so the request,
+ * the clear and the poll cannot disagree.
+ */
+export function remoteConfigKey(configType: number, isModuleConfig: boolean): string | undefined {
+  return (isModuleConfig ? MODULE_FIELD_BY_ADMIN_TYPE : DEVICE_FIELD_BY_ADMIN_TYPE)[configType];
+}
+
+/**
+ * Module types whose LOCAL request is tracked in pendingModuleConfigRequests, so
+ * an empty (all-default, Proto3-omitted) reply can be filed under the right
+ * key. These are the modules MeshMonitor has a config UI for. Key names come
+ * from the registry; only the membership is kept here.
+ */
+export const LOCAL_PENDING_MODULE_CONFIG_TYPES: readonly number[] = [0, 5, 9, 13, 14, 15, 16];
+
+const LOCAL_MODULE_CONFIG_TYPE_KEYS: { [key: number]: string } = Object.fromEntries(
+  LOCAL_PENDING_MODULE_CONFIG_TYPES.map((type) => [type, MODULE_FIELD_BY_ADMIN_TYPE[type]]),
+);
+
+/** Every AdminMessage.ModuleConfigType `requestAllModuleConfigs` asks the local node for. */
+export const ALL_MODULE_CONFIG_TYPES: readonly number[] = [
+  0,  // MQTT_CONFIG
+  1,  // SERIAL_CONFIG
+  2,  // EXTNOTIF_CONFIG
+  3,  // STOREFORWARD_CONFIG
+  4,  // RANGETEST_CONFIG
+  5,  // TELEMETRY_CONFIG
+  6,  // CANNEDMSG_CONFIG
+  7,  // AUDIO_CONFIG
+  8,  // REMOTEHARDWARE_CONFIG
+  9,  // NEIGHBORINFO_CONFIG
+  10, // AMBIENTLIGHTING_CONFIG
+  11, // DETECTIONSENSOR_CONFIG
+  12, // PAXCOUNTER_CONFIG
+  13, // STATUSMESSAGE_CONFIG
+  14, // TRAFFICMANAGEMENT_CONFIG
+  15, // TAK_CONFIG (firmware 2.8+, #5613). As with 16, older firmware
+      // never answers; the cost there is one unanswered local packet.
+  16  // MESHBEACON_CONFIG (firmware 2.8+, #3854). Pre-2.8 firmware simply
+      // never answers this request; the send is fire-and-forget, so the only
+      // cost on older devices is one unanswered packet.
+];
 
 export class RemoteAdminService {
   constructor(private readonly mgr: MeshtasticManager) {}
@@ -223,52 +264,24 @@ export class RemoteAdminService {
       const adminMsg = AdminMessage.create(adminMsgData);
       const encoded = AdminMessage.encode(adminMsg).finish();
 
+      // The key the reply is stored under; the clear, the pending tracker and
+      // the poll below all use this one value.
+      const configKey = remoteConfigKey(configType, isModuleConfig);
+
       // Clear any existing config for this type before requesting (to ensure fresh data)
       // This must happen BEFORE sending to prevent race conditions where responses arrive
       // and get immediately deleted, causing polling loops to timeout
-      // Map config types to their keys
-      if (isModuleConfig) {
-        const moduleConfigMap: { [key: number]: string } = {
-          0: 'mqtt',
-          5: 'telemetry',
-          9: 'neighborInfo',
-          13: 'statusmessage',
-          14: 'trafficManagement'
-        };
-        const configKey = moduleConfigMap[configType];
-        if (configKey) {
-          const nodeConfig = this.mgr.getRemoteNodeConfig(destinationNodeNum);
-          if (nodeConfig?.moduleConfig) {
-            delete nodeConfig.moduleConfig[configKey];
-          }
-        }
-      } else {
-        const deviceConfigMap: { [key: number]: string } = {
-          0: 'device',
-          1: 'position',  // POSITION_CONFIG (was incorrectly 6)
-          5: 'lora',
-          6: 'bluetooth',  // BLUETOOTH_CONFIG (for completeness)
-          7: 'security'  // SECURITY_CONFIG
-        };
-        const configKey = deviceConfigMap[configType];
-        if (configKey) {
-          const nodeConfig = this.mgr.getRemoteNodeConfig(destinationNodeNum);
-          if (nodeConfig?.deviceConfig) {
-            delete nodeConfig.deviceConfig[configKey];
-          }
+      if (configKey) {
+        const nodeConfig = this.mgr.getRemoteNodeConfig(destinationNodeNum);
+        const section = isModuleConfig ? nodeConfig?.moduleConfig : nodeConfig?.deviceConfig;
+        if (section) {
+          delete section[configKey];
         }
       }
 
       // Track pending module config request so empty Proto3 responses can be mapped
-      if (isModuleConfig) {
-        const moduleConfigMap: { [key: number]: string } = {
-          0: 'mqtt', 5: 'telemetry', 9: 'neighborInfo',
-          13: 'statusmessage', 14: 'trafficManagement'
-        };
-        const pendingKey = moduleConfigMap[configType];
-        if (pendingKey) {
-          this.mgr.setPendingModuleConfigRequest(destinationNodeNum, pendingKey);
-        }
+      if (isModuleConfig && configKey) {
+        this.mgr.setPendingModuleConfigRequest(destinationNodeNum, configKey);
       }
 
       // Send the request
@@ -288,39 +301,10 @@ export class RemoteAdminService {
 
         // Check if we have the config for this remote node
         const nodeConfig = this.mgr.getRemoteNodeConfig(destinationNodeNum);
-        if (nodeConfig) {
-          if (isModuleConfig) {
-            // Map module config types to their keys
-            const moduleConfigMap: { [key: number]: string } = {
-              0: 'mqtt',
-              5: 'telemetry',
-              9: 'neighborInfo',
-              13: 'statusmessage',
-              14: 'trafficManagement'
-            };
-            const configKey = moduleConfigMap[configType];
-            if (configKey && nodeConfig.moduleConfig?.[configKey]) {
-              logger.debug(`✅ Received ${configKey} config from remote node ${destinationNodeNum}`);
-              return nodeConfig.moduleConfig[configKey];
-            }
-          } else {
-            // Map device config types to their keys
-            const deviceConfigMap: { [key: number]: string } = {
-              0: 'device',
-              1: 'position',  // POSITION_CONFIG
-              2: 'power',     // POWER_CONFIG
-              3: 'network',   // NETWORK_CONFIG
-              4: 'display',   // DISPLAY_CONFIG
-              5: 'lora',      // LORA_CONFIG
-              6: 'bluetooth', // BLUETOOTH_CONFIG
-              7: 'security'   // SECURITY_CONFIG
-            };
-            const configKey = deviceConfigMap[configType];
-            if (configKey && nodeConfig.deviceConfig?.[configKey]) {
-              logger.debug(`✅ Received ${configKey} config from remote node ${destinationNodeNum}`);
-              return nodeConfig.deviceConfig[configKey];
-            }
-          }
+        const section = isModuleConfig ? nodeConfig?.moduleConfig : nodeConfig?.deviceConfig;
+        if (configKey && section?.[configKey]) {
+          logger.debug(`✅ Received ${configKey} config from remote node ${destinationNodeNum}`);
+          return section[configKey];
         }
       }
 
@@ -722,29 +706,7 @@ export class RemoteAdminService {
       throw new Error('Not connected to Meshtastic node');
     }
 
-    // All module config types from admin.proto ModuleConfigType enum
-    const moduleConfigTypes = [
-      0,  // MQTT_CONFIG
-      1,  // SERIAL_CONFIG
-      2,  // EXTNOTIF_CONFIG
-      3,  // STOREFORWARD_CONFIG
-      4,  // RANGETEST_CONFIG
-      5,  // TELEMETRY_CONFIG
-      6,  // CANNEDMSG_CONFIG
-      7,  // AUDIO_CONFIG
-      8,  // REMOTEHARDWARE_CONFIG
-      9,  // NEIGHBORINFO_CONFIG
-      10, // AMBIENTLIGHTING_CONFIG
-      11, // DETECTIONSENSOR_CONFIG
-      12, // PAXCOUNTER_CONFIG
-      13, // STATUSMESSAGE_CONFIG
-      14, // TRAFFICMANAGEMENT_CONFIG
-      15, // TAK_CONFIG (firmware 2.8+, #5613). As with 16, older firmware
-          // never answers; the cost there is one unanswered local packet.
-      16  // MESHBEACON_CONFIG (firmware 2.8+, #3854). Pre-2.8 firmware simply
-          // never answers this request; the send is fire-and-forget, so the only
-          // cost on older devices is one unanswered packet.
-    ];
+    const moduleConfigTypes = ALL_MODULE_CONFIG_TYPES;
 
     logger.debug('📦 Requesting all module configs for complete backup...');
 
