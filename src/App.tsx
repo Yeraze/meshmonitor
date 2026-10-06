@@ -1554,9 +1554,13 @@ function App() {
   const requestFullNodeDatabase = async () => {
     try {
       logger.debug('📡 Requesting full node database refresh...');
-      const refreshQuery = sourceId ? `?sourceId=${encodeURIComponent(sourceId)}` : '';
-      const response = await authFetch(`${baseUrl}/api/nodes/refresh${refreshQuery}`, {
+      // sourceId goes in the body, where this route has always read it. It
+      // was sent in the query, so the server refreshed the primary source
+      // whichever source was open.
+      const response = await authFetch(`${baseUrl}/api/nodes/refresh`, {
         method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(sourceId ? { sourceId } : {}),
       });
 
       if (response.ok) {
