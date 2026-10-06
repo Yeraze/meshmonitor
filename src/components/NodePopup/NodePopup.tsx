@@ -18,16 +18,142 @@
  * now also shows the hops row that the pre-Phase-5 version omitted — the
  * default `SignalItems` composition (`showHops` defaults to `true`) is used
  * rather than suppressing it.
+ *
+ * #5645 adds, to THIS popup only: the node's status message, a relative
+ * last-heard line, and keyboard/focus handling. The status is rendered here
+ * from the `DeviceInfo` and is kept out of `NodeCardModel` on purpose, so the
+ * map popups that share the model cannot pick it up (map status text is a
+ * separate follow-up).
  */
-import React from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { NodePopupState } from '../../types/ui';
 import type { DeviceInfo } from '../../types/device';
 import type { ResourceType } from '../../types/permission';
 import type { DbTraceroute } from '../../services/database';
 import { NodeCard } from '../map/popups/NodeCard';
-import { IdentityItems, SignalItems, PositionItem, LastHeardFooter, TracerouteBody, NodeActions, type NodeActionSpec } from '../map/popups/sections';
+import { IdentityItems, SignalItems, PositionItem, TracerouteBody, NodeActions, type NodeActionSpec } from '../map/popups/sections';
 import { toNodeCardModel, useRecentTraceroute } from '../map/popups/nodeCardModel';
+import { UiIcon } from '../icons';
+import { formatDateTime, formatRelativeTime } from '../../utils/datetime';
+import { computePopupPlacement, POPUP_ANCHOR_GAP, type PopupPlacement } from './popupPlacement';
+import styles from './NodePopup.module.css';
+
+/** A node unheard for longer than this gets a dimmed last-heard line. */
+const STALE_AFTER_SECONDS = 24 * 60 * 60;
+
+const FOCUSABLE = 'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
+/**
+ * The fixed frame: placement, focus and keyboard (#5645).
+ *
+ * Mounted only while the popup is open. `useDialogA11y` does not fit here: it
+ * locks body scroll and hands focus back on every unmount, and this popup is
+ * not modal. A mouse click outside closes it, and that click must keep the
+ * focus it lands on. Only Escape returns focus to the trigger.
+ */
+const NodePopupFrame: React.FC<{
+  nodePopup: NodePopupState;
+  label: string;
+  onClose: () => void;
+  children: React.ReactNode;
+}> = ({ nodePopup, label, onClose, children }) => {
+  const frameRef = useRef<HTMLDivElement>(null);
+  const [placement, setPlacement] = useState<PopupPlacement | null>(null);
+
+  const anchorTop = nodePopup.position.y;
+  const anchorBottom = nodePopup.anchorBottom ?? anchorTop;
+
+  const place = useCallback(() => {
+    const frame = frameRef.current;
+    if (!frame) return;
+    const next = computePopupPlacement({
+      anchorTop,
+      anchorBottom,
+      popupHeight: frame.getBoundingClientRect().height,
+      viewportHeight: window.innerHeight,
+    });
+    setPlacement(prev => (prev && prev.side === next.side && prev.top === next.top ? prev : next));
+  }, [anchorTop, anchorBottom]);
+
+  // Measure before paint, so the popup never shows on the wrong side first.
+  useLayoutEffect(() => {
+    place();
+  }, [place]);
+
+  // The card grows and shrinks (tab switch, a status arriving): place again.
+  useEffect(() => {
+    const frame = frameRef.current;
+    if (!frame || typeof ResizeObserver !== 'function') return;
+    const observer = new ResizeObserver(() => place());
+    observer.observe(frame);
+    return () => observer.disconnect();
+  }, [place]);
+
+  // Move focus into the popup on open, and again when another trigger
+  // re-targets an open popup.
+  useEffect(() => {
+    frameRef.current?.focus({ preventScroll: true });
+  }, [nodePopup]);
+
+  // Escape closes and hands focus back to the trigger.
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      e.stopPropagation();
+      const trigger = nodePopup.trigger;
+      onClose();
+      if (trigger && trigger.isConnected) trigger.focus();
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [nodePopup, onClose]);
+
+  // Tab and Shift+Tab stay inside the popup while it is open.
+  const onKeyDown = (e: React.KeyboardEvent) => {
+    const frame = frameRef.current;
+    if (e.key !== 'Tab' || !frame) return;
+    const focusable = Array.from(frame.querySelectorAll<HTMLElement>(FOCUSABLE));
+    if (focusable.length === 0) {
+      e.preventDefault();
+      return;
+    }
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    const active = document.activeElement;
+    if (e.shiftKey) {
+      if (active === first || active === frame) {
+        e.preventDefault();
+        last.focus();
+      }
+    } else if (active === last) {
+      e.preventDefault();
+      first.focus();
+    }
+  };
+
+  return (
+    <div
+      ref={frameRef}
+      role="dialog"
+      aria-label={label}
+      tabIndex={-1}
+      data-placement={placement?.side ?? 'above'}
+      onKeyDown={onKeyDown}
+      style={{
+        position: 'fixed',
+        left: nodePopup.position.x,
+        // Until the first measure this is the old "above" placement, so a
+        // runtime with no layout (tests) renders as before.
+        top: placement ? placement.top : anchorTop - POPUP_ANCHOR_GAP,
+        transform: placement ? 'translateX(-50%)' : 'translateX(-50%) translateY(-100%)',
+        zIndex: 10002, // Above sidebar (10001)
+      }}
+    >
+      {children}
+    </div>
+  );
+};
 
 interface NodePopupProps {
   nodePopup: NodePopupState | null;
@@ -145,21 +271,26 @@ export const NodePopup: React.FC<NodePopupProps> = ({
     }
   }
 
+  // Status is free text from someone else's radio. React renders it as text,
+  // and it gets no alert styling whatever it says or starts with (#5645).
+  const status = node.nodeStatus || '';
+
+  const lastHeardMs = model.lastHeard != null ? model.lastHeard * 1000 : null;
+  const isStale = model.lastHeard != null && Date.now() / 1000 - model.lastHeard > STALE_AFTER_SECONDS;
+
   return (
-    <div
-      style={{
-        position: 'fixed',
-        left: nodePopup.position.x,
-        top: nodePopup.position.y - 10,
-        transform: 'translateX(-50%) translateY(-100%)',
-        zIndex: 10002, // Above sidebar (10001)
-      }}
-    >
+    <NodePopupFrame nodePopup={nodePopup} label={model.longName} onClose={onClose}>
       <NodeCard
         model={model}
         className="node-popup-overlay"
         sections={
           <>
+            {status && (
+              <div className={styles.status} data-testid="popup-node-status">
+                <div className={styles.statusLabel}>{t('node_details.status_message', 'Status')}</div>
+                <div className={styles.statusText} title={status}>{status}</div>
+              </div>
+            )}
             <div className="node-popup-grid">
               <IdentityItems model={model} />
               <SignalItems model={model} showAltitude showPluggedIn snrDecimals={1} distanceUnit={distanceUnit} />
@@ -172,13 +303,22 @@ export const NodePopup: React.FC<NodePopupProps> = ({
                 />
               )}
             </div>
-            <LastHeardFooter
-              lastHeard={model.lastHeard}
-              firstHeard={model.firstHeard}
-              mode="absolute"
-              timeFormat={timeFormat}
-              dateFormat={dateFormat}
-            />
+            {lastHeardMs != null && (
+              <div
+                className={isStale ? `node-popup-footer ${styles.stale}` : 'node-popup-footer'}
+                data-testid="popup-last-heard"
+                title={formatDateTime(new Date(lastHeardMs), timeFormat, dateFormat)}
+              >
+                <span className="node-popup-icon"><UiIcon name="time" /></span>
+                {formatRelativeTime(lastHeardMs, timeFormat, dateFormat)}
+              </div>
+            )}
+            {lastHeardMs != null && model.firstHeard != null && (
+              <div className="node-popup-footer" data-testid="popup-first-heard">
+                <span className="node-popup-icon"><UiIcon name="calendar" /></span>
+                {t('node_details.first_heard', 'First Heard')}: {formatDateTime(new Date(model.firstHeard * 1000), timeFormat, dateFormat)}
+              </div>
+            )}
           </>
         }
         actions={<NodeActions actions={actions} />}
@@ -204,6 +344,6 @@ export const NodePopup: React.FC<NodePopupProps> = ({
           />
         ) : undefined}
       />
-    </div>
+    </NodePopupFrame>
   );
 };

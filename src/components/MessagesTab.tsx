@@ -33,6 +33,7 @@ import { getMessageSortTime } from '../utils/messageSort';
 import KeyMismatchWarning from './security/KeyMismatchWarning';
 import { NodeIdentityChangeNotice } from './NodeIdentityChangeNotice';
 import { getUtf8ByteLength, formatByteCount, isEmoji } from '../utils/text';
+import { SenderAvatar, SenderNameButton, StatusEmojiIndicator } from './SenderAvatar';
 import { isDeviceDbWarningMitigatable } from '../utils/deviceDbWarning';
 import { applyHomoglyphOptimization } from '../utils/homoglyph';
 import { calculateDistance, formatDistance, getDistanceToNode } from '../utils/distance';
@@ -286,6 +287,10 @@ export interface MessagesTabProps {
    */
   mqttReadOnly?: boolean;
 }
+
+/** Stand-in for `{{name}}` when splitting a translated sentence (#5645). A
+ *  private-use code point, so it cannot occur in a locale string. */
+const NAME_SLOT = '\uE000';
 
 const MessagesTab: React.FC<MessagesTabProps> = ({
   processedNodes,
@@ -676,6 +681,15 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
       handleSenderClick(nodeId, event as React.MouseEvent),
     selfNodeId: currentNodeId,
   }), [getNodeName, handleSenderClick, currentNodeId]);
+
+  // Status message per sender, for the avatar badge (#5645).
+  const statusByNodeId = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const node of nodes) {
+      if (node.user?.id && node.nodeStatus) map.set(node.user.id, node.nodeStatus);
+    }
+    return map;
+  }, [nodes]);
 
   const getNodeShortName = useCallback(
     (nodeId: string): string => {
@@ -1144,6 +1158,17 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
 
   const selectedNode = selectedDMNode ? nodes.find(n => n.user?.id === selectedDMNode) : null;
 
+  // #5645: "Conversation with {{name}}" with the name as a button. Translate
+  // with a private-use placeholder and split on it. A locale string with no
+  // placeholder falls back to the whole sentence as the button.
+  const conversationWithParts = (() => {
+    const name = selectedDMNode ? getNodeName(selectedDMNode) : '';
+    const parts = t('messages.conversation_with', { name: NAME_SLOT }).split(NAME_SLOT);
+    return parts.length === 2
+      ? { before: parts[0], name, after: parts[1] }
+      : { before: '', name: t('messages.conversation_with', { name }), after: '' };
+  })();
+
   // Two distinct read-only states (see computeMessagesReadOnlyState):
   //  - dmReadOnly      → hide the DM log + composer (MQTT mirror OR unmessageable
   //                      node, #3755).
@@ -1293,6 +1318,9 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                               <UiIcon name={node.keyMismatchDetected ? 'unlock' : 'alert'} size={16} />
                             </span>
                           )}
+                          {/* #5645: the row has no avatar, so a leading status
+                              emoji joins the indicator strip. */}
+                          <StatusEmojiIndicator status={node.nodeStatus} className="node-indicator-icon" />
                           <div
                             className={`node-short ${stickyNodes.has(node.nodeNum) ? 'sticky' : ''}`}
                             onClick={(e) => toggleStickyNode(node.nodeNum, e)}
@@ -1470,7 +1498,17 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
             <div className="dm-header">
               <div className="dm-header-top">
                 <h3>
-                  {t('messages.conversation_with', { name: getNodeName(selectedDMNode) })}
+                  {/* #5645: the name opens the node popup. Split the
+                      translated sentence around the name so every locale
+                      keeps its own word order. */}
+                  {conversationWithParts.before}
+                  <SenderNameButton
+                    variant="header"
+                    name={conversationWithParts.name}
+                    title={t('channels.sender_click_title', { name: getNodeName(selectedDMNode) })}
+                    onActivate={e => handleSenderClick(selectedDMNode, e)}
+                  />
+                  {conversationWithParts.after}
                   {selectedNode?.lastHeard && (
                     <div style={{ fontSize: '0.75em', fontWeight: 'normal', color: '#888', marginTop: '4px' }}>
                       {t('messages.last_seen', { time: formatDateTime(new Date(selectedNode.lastHeard * 1000), timeFormat, dateFormat) })}
@@ -2053,14 +2091,13 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                         data-message-id={msg.id}
                       >
                         {!isMine && (
-                          <div
-                            className={`sender-dot clickable ${isEmoji(getNodeShortName(msg.from)) ? 'is-emoji' : ''}`}
-                            title={`Click for ${getNodeName(msg.from)} details`}
-                            onClick={e => handleSenderClick(msg.from, e)}
+                          <SenderAvatar
+                            shortName={getNodeShortName(msg.from)}
+                            status={statusByNodeId.get(msg.from)}
+                            title={t('channels.sender_click_title', { name: getNodeName(msg.from) })}
+                            onActivate={e => handleSenderClick(msg.from, e)}
                             style={senderColor.background ? { background: senderColor.background, color: senderColor.text } : undefined}
-                          >
-                            {getNodeShortName(msg.from)}
-                          </div>
+                          />
                         )}
                         <div className="message-content">
                           {msg.replyId && (
