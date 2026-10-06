@@ -1,0 +1,40 @@
+/*
+ * Shared body row for the in-flow per-source pages: SourceNav + content pane.
+ *
+ * One owner for the rule that keeps breaking. On a phone SourceNav turns into
+ * a full-width bottom bar (`.mobileBottomBar`, `width: 100%; flex-shrink: 0`).
+ * If the row that holds it stays `flex-direction: row`, the bar takes the
+ * whole row, stretches to its full height, and the content pane beside it gets
+ * a width of 0. MeshCore hit this in landscape (#5311); Reticulum copied
+ * MeshCore's desktop rules into its own module and left the mobile flip out,
+ * so it hit it at every phone size.
+ *
+ * MeshCorePage and ReticulumPage both render this through `SourceNavLayout`.
+ * Meshtastic does not: its Sidebar is `position: fixed` and App.css reserves
+ * room for the bar with `--app-nav-bar-height`.
+ */
+.body {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.content {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+}
+
+/*
+ * Must be the same query as SourceNav.module.css's bottom-bar block, or the
+ * bar and the row disagree about which mode they are in.
+ * `SourceNavLayout.mobile.test.ts` pins the two together.
+ */
+@media (max-width: 768px), (max-height: 500px) and (orientation: landscape) {
+  /* Bar docks under the content. `column-reverse` keeps the nav first in the
+     DOM, so tab order and the desktop rail are unchanged. */
+  .body {
+    flex-direction: column-reverse;
+  }
+}

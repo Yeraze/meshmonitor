@@ -43,6 +43,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { SaveBarProvider, SaveBarGroup } from '../../contexts/SaveBarContext';
 import { useOptionalChannelMuteSettings } from '../../contexts/SettingsContext';
 import { SaveBar } from '../SaveBar';
+import { SourceNavLayout } from '../nav/SourceNavLayout';
 import './MeshCoreTab.css';
 import './MeshCorePage.css';
 // The automation views (auto-ack, auto-announce, auto-responder, timer
@@ -177,128 +178,132 @@ export const MeshCorePage: React.FC<MeshCorePageProps> = ({ baseUrl, sourceId, e
         </div>
       )}
 
-      <div className="meshcore-page-body">
-        <MeshCoreSubToolbar
-          view={view}
-          onSelect={selectView}
-          expanded={toolbarExpanded}
-          onToggleExpanded={() => setToolbarExpanded(v => !v)}
-          pinned={navPinned}
-          onTogglePin={handleToggleNavPin}
-          showInfo
-          unread={{ channels: unread.channels, dms: unread.dms }}
-        />
-        <div className="meshcore-content">
-          {view === 'nodes' && (
-            <MeshCoreNodesView
-              nodes={visibleNodes}
-              contacts={visibleContacts}
-              onImportContact={actions.importContact}
-              onNavigateToDm={navigateToDm}
-              onToggleFavorite={actions.setNodeFavorite}
-              onDiscoverNodes={actions.discoverNodes}
-              canDiscover={(status?.connected ?? false) && status?.deviceType === DEVICE_TYPE_COMPANION}
-              mapIsLoading={!hasLoadedOnce}
-              receiveOnly={receiveOnly}
-              isRepeaterSource={status?.deviceType === DEVICE_TYPE_REPEATER}
-            />
-          )}
-          {view === 'channels' && (
-            <MeshCoreChannelsView
-              messages={messages}
-              contacts={contacts}
-              status={status}
-              actions={actions}
-              baseUrl={baseUrl}
-              sourceId={sourceId}
-              onNodeNameClick={navigateToDm}
-              receiveOnly={receiveOnly}
-            />
-          )}
-          {view === 'rooms' && (
-            <MeshCoreRoomsView
-              messages={messages}
-              contacts={contacts}
-              status={status}
-              actions={actions}
-              baseUrl={baseUrl}
-              sourceId={sourceId}
-              onNodeNameClick={navigateToDm}
-              receiveOnly={receiveOnly}
-            />
-          )}
-          {view === 'dms' && (
-            <MeshCoreDirectMessagesView
-              messages={messages}
-              contacts={contacts}
-              nodes={nodes}
-              status={status}
-              actions={actions}
-              baseUrl={baseUrl}
-              sourceId={sourceId}
-              initialSelectedContact={pendingDmContact}
-              receiveOnly={receiveOnly}
-              ignoredNodes={ignoredNodesQuery.data}
-              onSetIgnoredNode={handleSetIgnoredNode}
-              onRemoveIgnoredNode={handleRemoveIgnoredNode}
-            />
-          )}
-          {view === 'telemetry' && (
-            <MeshCoreTelemetryView baseUrl={baseUrl} />
-          )}
-          {view === 'packets' && (
-            <MeshCorePacketMonitorView
-              baseUrl={baseUrl}
-              sourceId={sourceId}
-              isRepeaterSource={status?.deviceType === DEVICE_TYPE_REPEATER}
-            />
-          )}
-          {view === 'info' && (
-            <MeshCoreInfoView baseUrl={baseUrl} sourceId={sourceId} status={status} onSyncTime={actions.syncDeviceTime} />
-          )}
-          {view === 'configuration' && (
-            <MeshCoreConfigurationView
-              status={status}
-              actions={actions}
-              baseUrl={baseUrl}
-              sourceId={sourceId}
-              receiveOnly={receiveOnly}
-            />
-          )}
-          {view === 'automations' && (
-            <SaveBarProvider>
-              <SaveBarGroup id="meshcore-automation">
-                <MeshCoreAutomationsView
-                  baseUrl={baseUrl}
-                  sourceId={sourceId}
-                  receiveOnly={receiveOnly}
-                />
-              </SaveBarGroup>
-              <SaveBar />
-            </SaveBarProvider>
-          )}
-          {view === 'notifications' && (
-            <div className="meshcore-notifications-view">
-              <NotificationsTab isAdmin={isAdmin} />
-            </div>
-          )}
-          {view === 'settings' && (
-            <SaveBarProvider>
-              <SaveBarGroup id="meshcore-settings">
-                <MeshCoreSettingsView
-                  status={status}
-                  loading={loading}
-                  actions={actions}
-                  baseUrl={baseUrl}
-                  sourceId={sourceId}
-                  receiveOnly={receiveOnly}
-                />
-              </SaveBarGroup>
-              <SaveBar />
-            </SaveBarProvider>
-          )}
-        </div>
-      </div>
+      {/* Shared with ReticulumPage: SourceNavLayout owns the nav + content
+          row, including the phone flip that docks the nav as a bottom bar. */}
+      <SourceNavLayout
+        contentClassName="meshcore-content"
+        nav={(
+          <MeshCoreSubToolbar
+            view={view}
+            onSelect={selectView}
+            expanded={toolbarExpanded}
+            onToggleExpanded={() => setToolbarExpanded(v => !v)}
+            pinned={navPinned}
+            onTogglePin={handleToggleNavPin}
+            showInfo
+            unread={{ channels: unread.channels, dms: unread.dms }}
+          />
+        )}
+      >
+        {view === 'nodes' && (
+          <MeshCoreNodesView
+            nodes={visibleNodes}
+            contacts={visibleContacts}
+            onImportContact={actions.importContact}
+            onNavigateToDm={navigateToDm}
+            onToggleFavorite={actions.setNodeFavorite}
+            onDiscoverNodes={actions.discoverNodes}
+            canDiscover={(status?.connected ?? false) && status?.deviceType === DEVICE_TYPE_COMPANION}
+            mapIsLoading={!hasLoadedOnce}
+            receiveOnly={receiveOnly}
+            isRepeaterSource={status?.deviceType === DEVICE_TYPE_REPEATER}
+          />
+        )}
+        {view === 'channels' && (
+          <MeshCoreChannelsView
+            messages={messages}
+            contacts={contacts}
+            status={status}
+            actions={actions}
+            baseUrl={baseUrl}
+            sourceId={sourceId}
+            onNodeNameClick={navigateToDm}
+            receiveOnly={receiveOnly}
+          />
+        )}
+        {view === 'rooms' && (
+          <MeshCoreRoomsView
+            messages={messages}
+            contacts={contacts}
+            status={status}
+            actions={actions}
+            baseUrl={baseUrl}
+            sourceId={sourceId}
+            onNodeNameClick={navigateToDm}
+            receiveOnly={receiveOnly}
+          />
+        )}
+        {view === 'dms' && (
+          <MeshCoreDirectMessagesView
+            messages={messages}
+            contacts={contacts}
+            nodes={nodes}
+            status={status}
+            actions={actions}
+            baseUrl={baseUrl}
+            sourceId={sourceId}
+            initialSelectedContact={pendingDmContact}
+            receiveOnly={receiveOnly}
+            ignoredNodes={ignoredNodesQuery.data}
+            onSetIgnoredNode={handleSetIgnoredNode}
+            onRemoveIgnoredNode={handleRemoveIgnoredNode}
+          />
+        )}
+        {view === 'telemetry' && (
+          <MeshCoreTelemetryView baseUrl={baseUrl} />
+        )}
+        {view === 'packets' && (
+          <MeshCorePacketMonitorView
+            baseUrl={baseUrl}
+            sourceId={sourceId}
+            isRepeaterSource={status?.deviceType === DEVICE_TYPE_REPEATER}
+          />
+        )}
+        {view === 'info' && (
+          <MeshCoreInfoView baseUrl={baseUrl} sourceId={sourceId} status={status} onSyncTime={actions.syncDeviceTime} />
+        )}
+        {view === 'configuration' && (
+          <MeshCoreConfigurationView
+            status={status}
+            actions={actions}
+            baseUrl={baseUrl}
+            sourceId={sourceId}
+            receiveOnly={receiveOnly}
+          />
+        )}
+        {view === 'automations' && (
+          <SaveBarProvider>
+            <SaveBarGroup id="meshcore-automation">
+              <MeshCoreAutomationsView
+                baseUrl={baseUrl}
+                sourceId={sourceId}
+                receiveOnly={receiveOnly}
+              />
+            </SaveBarGroup>
+            <SaveBar />
+          </SaveBarProvider>
+        )}
+        {view === 'notifications' && (
+          <div className="meshcore-notifications-view">
+            <NotificationsTab isAdmin={isAdmin} />
+          </div>
+        )}
+        {view === 'settings' && (
+          <SaveBarProvider>
+            <SaveBarGroup id="meshcore-settings">
+              <MeshCoreSettingsView
+                status={status}
+                loading={loading}
+                actions={actions}
+                baseUrl={baseUrl}
+                sourceId={sourceId}
+                receiveOnly={receiveOnly}
+              />
+            </SaveBarGroup>
+            <SaveBar />
+          </SaveBarProvider>
+        )}
+      </SourceNavLayout>
     </div>
   );
 };

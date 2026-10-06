@@ -229,4 +229,25 @@ describe('MeshCoreSourcePage', () => {
       expect(screen.getByText('Connected')).toBeInTheDocument();
     });
   });
+
+  it('renders its nav and content through the shared SourceNavLayout', async () => {
+    // The phone layout bug: Reticulum had a private copy of this row with
+    // no mobile rule. Both pages now share one, so check MeshCore still does.
+    // jsdom does no layout and matches no media query, so this cannot see the
+    // bar's size. It pins the structure the shared stylesheet acts on;
+    // `SourceNavLayout.mobile.test.ts` pins the stylesheet.
+    authValue.hasPermission = () => true;
+    const { container } = renderPage();
+    const nav = await waitFor(() => {
+      const el = container.querySelector('[data-mobile-variant="bottom-bar"]');
+      expect(el).not.toBeNull();
+      return el as HTMLElement;
+    });
+    const row = nav.parentElement as HTMLElement;
+    expect(row.hasAttribute('data-source-nav-layout')).toBe(true);
+    // Nav first, content pane second — `column-reverse` relies on that order.
+    expect(row.children).toHaveLength(2);
+    expect(row.children[0]).toBe(nav);
+    expect(row.children[1].hasAttribute('data-source-nav-content')).toBe(true);
+  });
 });

@@ -22,6 +22,7 @@ import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useReticulum } from './hooks/useReticulum';
 import { ReticulumSubToolbar } from './ReticulumSubToolbar';
+import { SourceNavLayout } from '../nav/SourceNavLayout';
 import { ReticulumDestinationsView } from './ReticulumDestinationsView';
 import { ReticulumInterfacesView } from './ReticulumInterfacesView';
 import { ReticulumDmsView } from './ReticulumDmsView';
@@ -103,77 +104,81 @@ export const ReticulumPage: React.FC<ReticulumPageProps> = ({ baseUrl, sourceId,
         </div>
       )}
 
-      <div className={styles.pageBody}>
-        <ReticulumSubToolbar
-          view={view}
-          onSelect={setView}
-          expanded={toolbarExpanded}
-          onToggleExpanded={() => setToolbarExpanded(v => !v)}
-          sourceMode={status?.mode ?? null}
-        />
-        <div className={styles.content}>
-          {view === 'destinations' && (
-            <ReticulumDestinationsView
-              destinations={destinations}
-              onToggleFavorite={toggleFavorite}
-              loading={loading}
-            />
-          )}
-          {view === 'dms' && (
-            <ReticulumDmsView
-              sourceId={sourceId}
-              conversations={conversations}
-              conversationsLoading={conversationsLoading}
-              activePeerHash={activePeerHash}
-              messages={messages}
-              messagesLoading={messagesLoading}
-              hasMoreMessages={hasMoreMessages}
-              identity={identity}
-              destinations={destinations}
-              onSelectConversation={loadConversation}
-              onLoadMoreMessages={loadMoreMessages}
-              onSend={sendMessage}
-            />
-          )}
-          {view === 'interfaces' && (
-            <ReticulumInterfacesView
-              interfaces={interfaces}
-              baseUrl={baseUrl}
-              sourceId={sourceId}
-              loading={loading}
-            />
-          )}
-          {view === 'paths' && (
-            <ReticulumPathsView
-              paths={paths}
-              loading={loading}
-              probeResult={probeResult}
-              probingHash={probingHash}
-              onProbe={probe}
-              remoteStatus={remoteStatus}
-              remoteStatusLoading={remoteStatusLoading}
-              onQueryRemoteStatus={queryRemoteStatus}
-            />
-          )}
-          {view === 'map' && (
-            <ReticulumMap destinations={destinations} paths={paths} loading={loading} />
-          )}
-          {view === 'configuration' && (
-            <ReticulumConfigurationView sourceId={sourceId} />
-          )}
-          {view === 'info' && (
-            <ReticulumInfoView status={status} loading={loading} />
-          )}
-          {view === 'settings' && (
-            <SaveBarProvider>
-              <SaveBarGroup id="reticulum-settings">
-                <ReticulumSettingsView sourceId={sourceId} />
-              </SaveBarGroup>
-              <SaveBar />
-            </SaveBarProvider>
-          )}
-        </div>
-      </div>
+      {/* Shared with MeshCorePage: SourceNavLayout owns the nav + content row,
+          including the phone flip that docks the nav as a bottom bar. */}
+      <SourceNavLayout
+        contentClassName={styles.content}
+        nav={(
+          <ReticulumSubToolbar
+            view={view}
+            onSelect={setView}
+            expanded={toolbarExpanded}
+            onToggleExpanded={() => setToolbarExpanded(v => !v)}
+            sourceMode={status?.mode ?? null}
+          />
+        )}
+      >
+        {view === 'destinations' && (
+          <ReticulumDestinationsView
+            destinations={destinations}
+            onToggleFavorite={toggleFavorite}
+            loading={loading}
+          />
+        )}
+        {view === 'dms' && (
+          <ReticulumDmsView
+            sourceId={sourceId}
+            conversations={conversations}
+            conversationsLoading={conversationsLoading}
+            activePeerHash={activePeerHash}
+            messages={messages}
+            messagesLoading={messagesLoading}
+            hasMoreMessages={hasMoreMessages}
+            identity={identity}
+            destinations={destinations}
+            onSelectConversation={loadConversation}
+            onLoadMoreMessages={loadMoreMessages}
+            onSend={sendMessage}
+          />
+        )}
+        {view === 'interfaces' && (
+          <ReticulumInterfacesView
+            interfaces={interfaces}
+            baseUrl={baseUrl}
+            sourceId={sourceId}
+            loading={loading}
+          />
+        )}
+        {view === 'paths' && (
+          <ReticulumPathsView
+            paths={paths}
+            loading={loading}
+            probeResult={probeResult}
+            probingHash={probingHash}
+            onProbe={probe}
+            remoteStatus={remoteStatus}
+            remoteStatusLoading={remoteStatusLoading}
+            onQueryRemoteStatus={queryRemoteStatus}
+          />
+        )}
+        {view === 'map' && (
+          <ReticulumMap destinations={destinations} paths={paths} loading={loading} />
+        )}
+        {view === 'configuration' && (
+          <ReticulumConfigurationView sourceId={sourceId} />
+        )}
+        {view === 'info' && (
+          <ReticulumInfoView status={status} loading={loading} />
+        )}
+        {view === 'settings' && (
+          <SaveBarProvider>
+            <SaveBarGroup id="reticulum-settings">
+              <ReticulumSettingsView sourceId={sourceId} />
+            </SaveBarGroup>
+            <SaveBar />
+          </SaveBarProvider>
+        )}
+      </SourceNavLayout>
     </div>
   );
 };

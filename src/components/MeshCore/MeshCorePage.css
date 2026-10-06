@@ -111,13 +111,10 @@
   font-size: 0.8rem;
 }
 
-/* Body row: sub-toolbar + content */
-.meshcore-page-body {
-  display: flex;
-  flex: 1;
-  min-height: 0;
-  overflow: hidden;
-}
+/* The body row (sub-toolbar + content) is the shared SourceNavLayout
+   (src/components/nav/SourceNavLayout.module.css). It owns the row, the
+   content pane's flex sizing, and the phone flip to a bottom bar, so
+   Reticulum and MeshCore cannot drift apart again. */
 
 /* The sub-toolbar is now the shared SourceNav (#4473) — its structural
    styles live in src/components/nav/SourceNav.module.css, and the MeshCore
@@ -134,10 +131,8 @@
   margin-right: 2px;
 }
 
-/* Content area */
+/* Content area — flex sizing comes from SourceNavLayout's `.content`. */
 .meshcore-content {
-  flex: 1;
-  min-width: 0;
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -1618,7 +1613,8 @@
  * both `(max-width: 768px), (max-height: 500px) and (orientation: landscape)`).
  * While it was width-only it missed landscape, where a phone is 956 CSS px
  * wide: the nav switched to its full-width bottom bar while
- * `.meshcore-page-body` stayed `flex-direction: row`, so the bar took the whole
+ * page body row (then `.meshcore-page-body`, now the shared SourceNavLayout)
+ * stayed `flex-direction: row`, so the bar took the whole
  * row as a flex item and the content pane beside it got nothing (#5311). Same
  * trap as #5051-#5054 — in landscape the width is the LONG axis, so a
  * width-only mobile query never fires. `MeshCorePage.mobileQuery.test.ts` pins
@@ -1627,10 +1623,8 @@
 
 @media (max-width: 768px), (max-height: 500px) and (orientation: landscape) {
 
-  /* --- Page body: toolbar moves to bottom --- */
-  .meshcore-page-body {
-    flex-direction: column-reverse;
-  }
+  /* The page body's flip to `column-reverse` (toolbar moves to the bottom)
+     now lives in SourceNavLayout.module.css, under this same query. */
 
   /* The bottom-bar treatment moved to the shared SourceNav (#4473). The old
      rules here split the row evenly (`flex: 1 1 0; min-width: 0`), which gave
