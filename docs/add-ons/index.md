@@ -32,6 +32,39 @@ CardMesh is at **v0.1.0** and under active development. The dashboard is impleme
 
 **By [maxhayim](https://github.com/maxhayim/cardmeshformeshmonitor)**
 
+### [Mesh Screensaver](https://github.com/maxhayim/screensaver-mesh)
+A screen saver that draws your mesh from live MeshMonitor data. Active nodes drift across the screen, and new messages travel between them as packets. It reads MeshMonitor's REST API and never talks to a radio. It shows no message text, node names, or node IDs. Builds exist for macOS, Windows, and Linux (XScreenSaver), plus a WebAssembly build for web pages. MIT licensed.
+
+::: tip Early preview
+Mesh Screensaver is at **v0.2.0**. Treat it as a preview. Before you install it:
+
+- **Use a read-only user.** An API token can do whatever its creator can do. Create a user that can only read, and issue the token from that account.
+- **The token sits in plain text** on your computer: in the screen saver's preferences on macOS, in the registry on Windows, and in a config file on Linux.
+- **The macOS and Windows builds are not signed or notarized**, so the OS warns you the first time you open them.
+- **The web build needs its page origin in [`ALLOWED_ORIGINS`](/configuration/#security-reverse-proxy-variables).** The native builds do not.
+- **It polls while it runs:** every 4 seconds for new messages and every 5 minutes for nodes.
+:::
+
+**By [maxhayim](https://github.com/maxhayim/screensaver-mesh)**
+
+### [Mesh Widget (Zebar)](https://github.com/maxhayim/widgets-pack)
+A desktop widget that shows your mesh from live MeshMonitor data: node counts, the state of your local node, and the latest channel message. It never shows direct messages. The widget is part of Widgets Pack and runs in [Zebar](https://github.com/glzr-io/zebar) 3.x on Windows, macOS, and Linux. It reads MeshMonitor's REST API and never talks to a radio. MIT licensed.
+
+To set it up:
+
+1. Add `http://127.0.0.1:6124` to [`ALLOWED_ORIGINS`](/configuration/#security-reverse-proxy-variables) in MeshMonitor. Zebar serves widgets from that address.
+2. Enter your server address and API token in the widget's settings.
+
+::: tip Early preview
+The Mesh widget ships in Widgets Pack **v1.4.3**. Treat it as a preview. Before you install it:
+
+- **Use a read-only user.** An API token can do whatever its creator can do. Create a user that can only read, and issue the token from that account.
+- **The token sits in plain text** in Zebar's storage on your computer, not in the system keychain.
+- **Each open widget polls every 60 seconds** with three GET requests: `/api/v1/sources/{source}/nodes`, `/status`, and `/messages?limit=25`.
+:::
+
+**By [maxhayim](https://github.com/maxhayim/widgets-pack)**
+
 ## How Add-ons Work
 
 All community add-ons connect to MeshMonitor through the Virtual Node server:
