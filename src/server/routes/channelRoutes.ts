@@ -40,6 +40,7 @@ import { isMeshCoreManager } from '../sourceManagerTypes.js';
 import { fail } from '../utils/apiResponse.js';
 import { listKeyedChannelsForViewer } from '../utils/meshcoreKeyedChannels.js';
 import { requireSourceId } from '../utils/requireSourceId.js';
+import { requireDeviceSourcePermission, getDeviceSourceTarget } from '../utils/deviceSourcePermission.js';
 import { safeJson } from '../utils/redactSecrets.js';
 
 const router: Router = Router();
@@ -1062,11 +1063,10 @@ router.post('/decode-url', requirePermission('configuration', 'read'), async (re
 });
 
 // Encode current configuration to Meshtastic URL
-router.post('/encode-url', requirePermission('configuration', 'read'), requireSourceId('body'), requireMeshtasticDeviceSource('body'), async (req: Request, res: Response) => {
+router.post('/encode-url', requireSourceId('body'), requireDeviceSourcePermission('configuration', 'read', 'body'), async (req: Request, res: Response) => {
   try {
-    const { channelIds, includeLoraConfig, sourceId: encodeUrlSourceId } = req.body;
-    const encodeUrlManager = resolveSourceManager(encodeUrlSourceId);
-    const encodeUrlSourceScope = encodeUrlManager.sourceId;
+    const { channelIds, includeLoraConfig } = req.body;
+    const { manager: encodeUrlManager, sourceId: encodeUrlSourceScope } = getDeviceSourceTarget(req);
 
     if (!Array.isArray(channelIds)) {
       return res.status(400).json({ error: 'channelIds must be an array' });
@@ -1144,9 +1144,10 @@ router.post('/encode-url', requirePermission('configuration', 'read'), requireSo
 });
 
 // Import configuration from URL
-router.post('/import-config', requirePermission('configuration', 'write'), requireSourceId('body'), requireMeshtasticDeviceSource('body'), async (req: Request, res: Response) => {
+router.post('/import-config', requireSourceId('body'), requireDeviceSourcePermission('configuration', 'write', 'body'), async (req: Request, res: Response) => {
   try {
-    const { url: configUrl, sourceId: configSourceId } = req.body;
+    const { url: configUrl } = req.body;
+    const { manager: configImportManager, sourceId: configSourceId } = getDeviceSourceTarget(req);
 
     if (!configUrl || typeof configUrl !== 'string') {
       return res.status(400).json({ error: 'URL is required' });
@@ -1167,7 +1168,6 @@ router.post('/import-config', requirePermission('configuration', 'write'), requi
     logger.debug(`📥 Decoded ${decoded.channels?.length || 0} channels, LoRa config: ${!!decoded.loraConfig}`);
 
     // Begin edit settings transaction to batch all changes
-    const configImportManager = (resolveSourceManager(configSourceId));
     try {
       logger.debug(`🔄 Beginning edit settings transaction for import`);
       await configImportManager.beginEditSettings();

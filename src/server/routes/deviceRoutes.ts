@@ -6,46 +6,46 @@
  * POST /device/reboot        — reboot the device
  * POST /device/purge-nodedb  — purge the device + local node database
  *
- * Extracted from server.ts. All handlers resolve the per-source manager via
- * resolveSourceManager and delegate to importable services, so the module has
- * no server.ts-local coupling.
+ * Extracted from server.ts. Every route is gated by
+ * requireDeviceSourcePermission(): it resolves the target source once (the
+ * request's sourceId, or the primary Meshtastic source when omitted), checks
+ * `configuration` on that source, and the handler takes the same manager from
+ * getDeviceSourceTarget(). deviceSourcePermission.scope.test.ts fails on a
+ * route added without it.
  */
 
 import { Router, Request, Response } from 'express';
-import { requirePermission } from '../auth/authMiddleware.js';
 import databaseService from '../../services/database.js';
 import { logger } from '../../utils/logger.js';
-import { resolveSourceManager } from '../utils/resolveSourceManager.js';
-import { requireMeshtasticDeviceSource } from '../utils/requireMeshtasticDeviceSource.js';
+import { requireDeviceSourcePermission, getDeviceSourceTarget } from '../utils/deviceSourcePermission.js';
+import { fail } from '../utils/apiResponse.js';
 import { deviceBackupService } from '../services/deviceBackupService.js';
 import { backupFileService } from '../services/backupFileService.js';
 
 const router: Router = Router();
 
-router.get('/device-config', requirePermission('configuration', 'read'), requireMeshtasticDeviceSource('query'), async (req: Request, res: Response) => {
+router.get('/device-config', requireDeviceSourcePermission('configuration', 'read', 'query'), async (req: Request, res: Response) => {
   try {
-    const dcSourceId = req.query.sourceId as string | undefined;
-    const dcManager = resolveSourceManager(dcSourceId);
+    const { manager: dcManager } = getDeviceSourceTarget(req);
     const config = await dcManager.getDeviceConfig();
     if (config) {
       res.json(config);
     } else {
-      res.status(503).json({ error: 'Unable to retrieve device configuration' });
+      fail(res, 503, 'DEVICE_CONFIG_UNAVAILABLE', 'Unable to retrieve device configuration');
     }
   } catch (error) {
     logger.error('Error fetching device config:', error);
-    res.status(500).json({ error: 'Failed to fetch device configuration' });
+    fail(res, 500, 'DEVICE_CONFIG_FAILED', 'Failed to fetch device configuration');
   }
 });
 
 // Export complete device configuration as YAML backup
 // Compatible with Meshtastic CLI --export-config format
 // Query param ?save=true will save to disk instead of just downloading
-router.get('/device/backup', requirePermission('configuration', 'read'), requireMeshtasticDeviceSource('query'), async (req: Request, res: Response) => {
+router.get('/device/backup', requireDeviceSourcePermission('configuration', 'read', 'query'), async (req: Request, res: Response) => {
   try {
     const saveToFile = req.query.save === 'true';
-    const backupSourceId = req.query.sourceId as string | undefined;
-    const backupManager = resolveSourceManager(backupSourceId);
+    const { manager: backupManager } = getDeviceSourceTarget(req);
     logger.debug(`📦 Device backup requested (save=${saveToFile})...`);
 
     // Generate YAML backup using the device backup service
@@ -81,31 +81,33 @@ router.get('/device/backup', requirePermission('configuration', 'read'), require
     }
   } catch (error) {
     logger.error('❌ Error generating device backup:', error);
-    res.status(500).json({
-      error: 'Failed to generate device backup',
+    fail(res, 500, 'DEVICE_BACKUP_FAILED', 'Failed to generate device backup', {
       details: error instanceof Error ? error.message : 'Unknown error',
     });
   }
 });
 
-router.post('/device/reboot', requirePermission('configuration', 'write'), requireMeshtasticDeviceSource('body'), async (req: Request, res: Response) => {
+router.post('/device/reboot', requireDeviceSourcePermission('configuration', 'write', 'body'), async (req: Request, res: Response) => {
   try {
-    const { seconds: rebootSeconds, sourceId: rebootSourceId } = req.body || {};
+    const { seconds: rebootSeconds } = req.body || {};
     const seconds = rebootSeconds || 10;
-    const rebootManager = resolveSourceManager(rebootSourceId);
+    const { manager: rebootManager } = getDeviceSourceTarget(req);
     await rebootManager.rebootDevice(seconds);
     res.json({ success: true, message: `Device will reboot in ${seconds} seconds` });
   } catch (error) {
     logger.error('Error rebooting device:', error);
-    res.status(500).json({ error: 'Failed to reboot device' });
+    fail(res, 500, 'DEVICE_REBOOT_FAILED', 'Failed to reboot device');
   }
 });
 
-router.post('/device/purge-nodedb', requirePermission('configuration', 'write'), requireMeshtasticDeviceSource('body'), async (req: Request, res: Response) => {
+router.post('/device/purge-nodedb', requireDeviceSourcePermission('configuration', 'write', 'body'), async (req: Request, res: Response) => {
   try {
-    const { seconds: purgeSeconds, sourceId: purgeSourceId } = req.body || {};
+    const { seconds: purgeSeconds } = req.body || {};
     const seconds = purgeSeconds || 0;
-    const purgeManager = resolveSourceManager(purgeSourceId);
+    // The local purge below uses the SAME source the permission was checked
+    // on and the device purge went to. It is never undefined: an undefined
+    // sourceId makes purgeAllNodesAsync wipe every source's rows.
+    const { manager: purgeManager, sourceId: purgeSourceId } = getDeviceSourceTarget(req);
 
     // Purge the device's node database
     await purgeManager.purgeNodeDb(seconds);
@@ -123,7 +125,7 @@ router.post('/device/purge-nodedb', requirePermission('configuration', 'write'),
     });
   } catch (error) {
     logger.error('Error purging node database:', error);
-    res.status(500).json({ error: 'Failed to purge node database' });
+    fail(res, 500, 'NODEDB_PURGE_FAILED', 'Failed to purge node database');
   }
 });
 

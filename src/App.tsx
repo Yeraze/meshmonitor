@@ -1649,7 +1649,9 @@ function App() {
       setConnectionStatus('rebooting');
 
       // Send reboot command
-      await api.rebootDevice(5);
+      // Name the source this view is on. Without it the server reboots the
+      // primary source's device, whichever source's Configuration tab asked.
+      await api.rebootDevice(5, sourceId);
       logger.debug('✅ Reboot command sent, device will restart in 5 seconds');
 
       // Wait for reconnection

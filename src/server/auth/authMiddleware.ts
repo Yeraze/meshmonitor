@@ -387,7 +387,16 @@ export function requireAuth() {
  * Works with both authenticated and anonymous users
  */
 export interface RequirePermissionOptions {
-  sourceIdFrom?: 'params.id' | 'query' | 'body';
+  /** Where the request names its source. `'params.id'`, `'query'` and `'body'`
+   *  read `req.params.id`, `req.query.sourceId` and `req.body.sourceId`. A
+   *  function is called with the request and returns the source id: use it
+   *  when an earlier middleware has already resolved the source the handler
+   *  will act on (see `requireDeviceSourcePermission`).
+   *
+   *  ABSENT: the check is not tied to any source. For a per-source resource it
+   *  passes if the user holds the permission on ANY source, so a route that
+   *  then acts on a source named in the request must not omit this. */
+  sourceIdFrom?: 'params.id' | 'query' | 'body' | ((req: Request) => unknown);
   /** If the primary resource check fails, try this resource as a fallback.
    *  Useful for endpoints consumed by the dashboard — `dashboard:read`
    *  grants access even if the specific resource permission is missing. */
@@ -399,12 +408,29 @@ export interface RequirePermissionOptions {
   requireSourceId?: boolean;
 }
 
+/** What a `requirePermission()` middleware checks. Read by route guard tests
+ *  to find a per-source resource gated without a source. */
+export interface PermissionGate {
+  resource: ResourceType;
+  action: PermissionAction;
+  /** True when the check is tied to a source (`sourceIdFrom` was given). */
+  sourceScoped: boolean;
+}
+
+const PERMISSION_GATE = Symbol.for('meshmonitor.permissionGate');
+
+/** The gate a middleware function enforces, or undefined if it is not one
+ *  built by `requirePermission()`. */
+export function getPermissionGate(handler: unknown): PermissionGate | undefined {
+  return (handler as { [PERMISSION_GATE]?: PermissionGate } | null | undefined)?.[PERMISSION_GATE];
+}
+
 export function requirePermission(
   resource: ResourceType,
   action: PermissionAction,
   options?: RequirePermissionOptions
 ) {
-  return async (req: Request, res: Response, next: NextFunction) => {
+  const middleware = async (req: Request, res: Response, next: NextFunction) => {
     try {
       let user;
 
@@ -412,7 +438,9 @@ export function requirePermission(
       let scopedSourceId: string | undefined;
       if (options?.sourceIdFrom) {
         let raw: unknown;
-        if (options.sourceIdFrom === 'params.id') {
+        if (typeof options.sourceIdFrom === 'function') {
+          raw = options.sourceIdFrom(req);
+        } else if (options.sourceIdFrom === 'params.id') {
           raw = req.params?.id;
         } else if (options.sourceIdFrom === 'query') {
           raw = req.query?.sourceId;
@@ -509,6 +537,9 @@ export function requirePermission(
       });
     }
   };
+  const gate: PermissionGate = { resource, action, sourceScoped: !!options?.sourceIdFrom };
+  (middleware as unknown as { [PERMISSION_GATE]: PermissionGate })[PERMISSION_GATE] = gate;
+  return middleware;
 }
 
 /**

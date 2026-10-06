@@ -2,8 +2,8 @@
  * Config Routes
  *
  * GET /config           — public configuration (optionalAuth)
- * GET /config/current   — current device config (configuration:read)
- * POST /config/*        — 13 device configuration setters (configuration:write)
+ * GET /config/current   — current device config (configuration:read on the target source)
+ * POST /config/*        — 13 device configuration setters (configuration:write on the target source)
  *
  * Extracted verbatim from server.ts (was `apiRouter.get('/config', ...)` L3262
  * and `apiRouter.get('/config/current', ...)` + 13 POSTs, L4283–4488) as part
@@ -12,9 +12,8 @@
 import express from 'express';
 import databaseService from '../../services/database.js';
 import { logger } from '../../utils/logger.js';
-import { optionalAuth, requirePermission } from '../auth/authMiddleware.js';
-import { resolveSourceManager } from '../utils/resolveSourceManager.js';
-import { requireMeshtasticDeviceSource } from '../utils/requireMeshtasticDeviceSource.js';
+import { optionalAuth } from '../auth/authMiddleware.js';
+import { requireDeviceSourcePermission, getDeviceSourceTarget } from '../utils/deviceSourcePermission.js';
 import { resolveSourceConnectionConfig } from '../utils/resolveSourceConnectionConfig.js';
 import { isValidModuleConfigType } from '../constants/moduleConfig.js';
 import { validateMeshBeaconConfigPayload } from '../constants/meshtastic.js';
@@ -90,49 +89,58 @@ router.get('/', optionalAuth(), async (req, res) => {
 });
 
 // Configuration endpoints
+//
+// Every route below reads or writes ONE source's device. Each is gated by
+// requireDeviceSourcePermission(), which resolves that source once (the
+// request's sourceId, or the primary Meshtastic source when it is omitted),
+// checks `configuration` on exactly that source, and hands the handler the
+// same manager through getDeviceSourceTarget(). A plain
+// requirePermission('configuration', ...) is not enough here: with no source
+// it passes on a grant for ANY source. configRoutes.scope.test.ts fails on a
+// route added without the scoped gate.
+//
 // GET current configuration
-router.get('/current', requirePermission('configuration', 'read'), requireMeshtasticDeviceSource('query'), (req, res) => {
+router.get('/current', requireDeviceSourcePermission('configuration', 'read', 'query'), (req, res) => {
   try {
-    const ccSourceId = req.query.sourceId as string | undefined;
-    const ccManager = resolveSourceManager(ccSourceId);
+    const { manager: ccManager } = getDeviceSourceTarget(req);
     const config = ccManager.getCurrentConfig();
     // Surface bridged-node status alongside the config so the configuration UI
     // can advise that a bridged node (no native IP) needs MQTT Client Proxy.
     res.json({ ...config, isBridged: ccManager.isLocalNodeBridged() });
   } catch (error) {
     logger.error('Error getting current config:', error);
-    res.status(500).json({ error: 'Failed to get current configuration' });
+    fail(res, 500, 'CONFIG_READ_FAILED', 'Failed to get current configuration');
   }
 });
 
-router.post('/device', requirePermission('configuration', 'write'), requireMeshtasticDeviceSource('body'), async (req, res) => {
+router.post('/device', requireDeviceSourcePermission('configuration', 'write', 'body'), async (req, res) => {
   try {
-    const { sourceId: cfgDevSourceId, ...config } = req.body;
-    const cfgDevManager = resolveSourceManager(cfgDevSourceId);
+    const { sourceId: _sourceId, ...config } = req.body;
+    const { manager: cfgDevManager } = getDeviceSourceTarget(req);
     await cfgDevManager.setDeviceConfig(config);
     res.json({ success: true, message: 'Device configuration sent' });
   } catch (error) {
     logger.error('Error setting device config:', error);
-    res.status(500).json({ error: 'Failed to set device configuration' });
+    fail(res, 500, 'DEVICE_CONFIG_FAILED', 'Failed to set device configuration');
   }
 });
 
-router.post('/network', requirePermission('configuration', 'write'), requireMeshtasticDeviceSource('body'), async (req, res) => {
+router.post('/network', requireDeviceSourcePermission('configuration', 'write', 'body'), async (req, res) => {
   try {
-    const { sourceId: cfgNetSourceId, ...config } = req.body;
-    const cfgNetManager = resolveSourceManager(cfgNetSourceId);
+    const { sourceId: _sourceId, ...config } = req.body;
+    const { manager: cfgNetManager } = getDeviceSourceTarget(req);
     await cfgNetManager.setNetworkConfig(config);
     res.json({ success: true, message: 'Network configuration sent' });
   } catch (error) {
     logger.error('Error setting network config:', error);
-    res.status(500).json({ error: 'Failed to set network configuration' });
+    fail(res, 500, 'NETWORK_CONFIG_FAILED', 'Failed to set network configuration');
   }
 });
 
-router.post('/lora', requirePermission('configuration', 'write'), requireMeshtasticDeviceSource('body'), async (req, res) => {
+router.post('/lora', requireDeviceSourcePermission('configuration', 'write', 'body'), async (req, res) => {
   try {
-    const { sourceId: cfgLoraSourceId, ...config } = req.body;
-    const cfgLoraManager = resolveSourceManager(cfgLoraSourceId);
+    const { sourceId: _sourceId, ...config } = req.body;
+    const { manager: cfgLoraManager } = getDeviceSourceTarget(req);
 
     // Pass through the submitted txEnabled as-is (issue #4294) — this is the
     // one legitimate place a user sets TX on/off. Do NOT force it to true here;
@@ -173,76 +181,76 @@ router.post('/lora', requirePermission('configuration', 'write'), requireMeshtas
   }
 });
 
-router.post('/position', requirePermission('configuration', 'write'), requireMeshtasticDeviceSource('body'), async (req, res) => {
+router.post('/position', requireDeviceSourcePermission('configuration', 'write', 'body'), async (req, res) => {
   try {
-    const { sourceId: cfgPosSourceId, ...config } = req.body;
-    const cfgPosManager = resolveSourceManager(cfgPosSourceId);
+    const { sourceId: _sourceId, ...config } = req.body;
+    const { manager: cfgPosManager } = getDeviceSourceTarget(req);
     await cfgPosManager.setPositionConfig(config);
     res.json({ success: true, message: 'Position configuration sent' });
   } catch (error) {
     logger.error('Error setting position config:', error);
-    res.status(500).json({ error: 'Failed to set position configuration' });
+    fail(res, 500, 'POSITION_CONFIG_FAILED', 'Failed to set position configuration');
   }
 });
 
-router.post('/mqtt', requirePermission('configuration', 'write'), requireMeshtasticDeviceSource('body'), async (req, res) => {
+router.post('/mqtt', requireDeviceSourcePermission('configuration', 'write', 'body'), async (req, res) => {
   try {
-    const { sourceId: cfgMqttSourceId, ...config } = req.body;
-    const cfgMqttManager = resolveSourceManager(cfgMqttSourceId);
+    const { sourceId: _sourceId, ...config } = req.body;
+    const { manager: cfgMqttManager } = getDeviceSourceTarget(req);
     await cfgMqttManager.setMQTTConfig(config);
     res.json({ success: true, message: 'MQTT configuration sent' });
   } catch (error) {
     logger.error('Error setting MQTT config:', error);
-    res.status(500).json({ error: 'Failed to set MQTT configuration' });
+    fail(res, 500, 'MQTT_CONFIG_FAILED', 'Failed to set MQTT configuration');
   }
 });
 
-router.post('/neighborinfo', requirePermission('configuration', 'write'), requireMeshtasticDeviceSource('body'), async (req, res) => {
+router.post('/neighborinfo', requireDeviceSourcePermission('configuration', 'write', 'body'), async (req, res) => {
   logger.debug('🔍 DEBUG: /config/neighborinfo endpoint called with body:', safeJson(req.body));
   try {
-    const { sourceId: cfgNiSourceId, ...config } = req.body;
-    const cfgNiManager = resolveSourceManager(cfgNiSourceId);
+    const { sourceId: _sourceId, ...config } = req.body;
+    const { manager: cfgNiManager } = getDeviceSourceTarget(req);
     await cfgNiManager.setNeighborInfoConfig(config);
     res.json({ success: true, message: 'NeighborInfo configuration sent' });
   } catch (error) {
     logger.error('Error setting NeighborInfo config:', error);
-    res.status(500).json({ error: 'Failed to set NeighborInfo configuration' });
+    fail(res, 500, 'NEIGHBORINFO_CONFIG_FAILED', 'Failed to set NeighborInfo configuration');
   }
 });
 
-router.post('/power', requirePermission('configuration', 'write'), requireMeshtasticDeviceSource('body'), async (req, res) => {
+router.post('/power', requireDeviceSourcePermission('configuration', 'write', 'body'), async (req, res) => {
   try {
-    const { sourceId: cfgPwrSourceId, ...config } = req.body;
-    const cfgPwrManager = resolveSourceManager(cfgPwrSourceId);
+    const { sourceId: _sourceId, ...config } = req.body;
+    const { manager: cfgPwrManager } = getDeviceSourceTarget(req);
     await cfgPwrManager.setPowerConfig(config);
     res.json({ success: true, message: 'Power configuration sent' });
   } catch (error) {
     logger.error('Error setting power config:', error);
-    res.status(500).json({ error: 'Failed to set power configuration' });
+    fail(res, 500, 'POWER_CONFIG_FAILED', 'Failed to set power configuration');
   }
 });
 
-router.post('/display', requirePermission('configuration', 'write'), requireMeshtasticDeviceSource('body'), async (req, res) => {
+router.post('/display', requireDeviceSourcePermission('configuration', 'write', 'body'), async (req, res) => {
   try {
-    const { sourceId: cfgDispSourceId, ...config } = req.body;
-    const cfgDispManager = resolveSourceManager(cfgDispSourceId);
+    const { sourceId: _sourceId, ...config } = req.body;
+    const { manager: cfgDispManager } = getDeviceSourceTarget(req);
     await cfgDispManager.setDisplayConfig(config);
     res.json({ success: true, message: 'Display configuration sent' });
   } catch (error) {
     logger.error('Error setting display config:', error);
-    res.status(500).json({ error: 'Failed to set display configuration' });
+    fail(res, 500, 'DISPLAY_CONFIG_FAILED', 'Failed to set display configuration');
   }
 });
 
-router.post('/module/telemetry', requirePermission('configuration', 'write'), requireMeshtasticDeviceSource('body'), async (req, res) => {
+router.post('/module/telemetry', requireDeviceSourcePermission('configuration', 'write', 'body'), async (req, res) => {
   try {
-    const { sourceId: cfgTelSourceId, ...config } = req.body;
-    const cfgTelManager = resolveSourceManager(cfgTelSourceId);
+    const { sourceId: _sourceId, ...config } = req.body;
+    const { manager: cfgTelManager } = getDeviceSourceTarget(req);
     await cfgTelManager.setTelemetryConfig(config);
     res.json({ success: true, message: 'Telemetry configuration sent' });
   } catch (error) {
     logger.error('Error setting telemetry config:', error);
-    res.status(500).json({ error: 'Failed to set telemetry configuration' });
+    fail(res, 500, 'TELEMETRY_CONFIG_FAILED', 'Failed to set telemetry configuration');
   }
 });
 
@@ -252,14 +260,14 @@ router.post('/module/telemetry', requirePermission('configuration', 'write'), re
 // this handler permanently unreachable (found while adding TX-disabled 409 mapping,
 // issue #4294 — the frontend's `/api/config/module/request` call was 400ing with
 // "Invalid module type: request" instead of ever reaching this handler).
-router.post('/module/request', requirePermission('configuration', 'write'), requireMeshtasticDeviceSource('body'), async (req, res) => {
+router.post('/module/request', requireDeviceSourcePermission('configuration', 'write', 'body'), async (req, res) => {
   try {
-    const { configType, sourceId: cfgModReqSourceId } = req.body;
+    const { configType } = req.body;
     if (configType === undefined) {
-      res.status(400).json({ error: 'configType is required' });
+      fail(res, 400, 'MISSING_CONFIG_TYPE', 'configType is required');
       return;
     }
-    const cfgModReqManager = resolveSourceManager(cfgModReqSourceId);
+    const { manager: cfgModReqManager } = getDeviceSourceTarget(req);
     await cfgModReqManager.requestModuleConfig(configType);
     res.json({ success: true, message: 'Module config request sent' });
   } catch (error) {
@@ -267,7 +275,7 @@ router.post('/module/request', requirePermission('configuration', 'write'), requ
       return fail(res, 409, 'TX_DISABLED', 'Transmit is disabled on this source');
     }
     logger.error('Error requesting module config:', error);
-    res.status(500).json({ error: 'Failed to request module configuration' });
+    fail(res, 500, 'MODULE_CONFIG_REQUEST_FAILED', 'Failed to request module configuration');
   }
 });
 
@@ -275,16 +283,11 @@ router.post('/module/request', requirePermission('configuration', 'write'), requ
 // remotehardware, detectionsensor, paxcounter, serial, ambientlighting, statusmessage, trafficmanagement,
 // meshbeacon, tak
 //
-// The permission is checked against the body's sourceId (#5616). Without
-// `sourceIdFrom`, `configuration` is checked as a union across sources, so a
-// user who may write source A's configuration could write source B's module
-// config by naming B in the body. A request with no sourceId keeps the old
-// union check (the legacy single-source path).
-router.post('/module/:moduleType', requirePermission('configuration', 'write', { sourceIdFrom: 'body' }), requireMeshtasticDeviceSource('body'), async (req, res) => {
+router.post('/module/:moduleType', requireDeviceSourcePermission('configuration', 'write', 'body'), async (req, res) => {
   try {
     const { moduleType } = req.params;
-    const { sourceId: cfgModSourceId, ...config } = req.body;
-    const cfgModManager = resolveSourceManager(cfgModSourceId);
+    const { sourceId: _sourceId, ...config } = req.body;
+    const { manager: cfgModManager } = getDeviceSourceTarget(req);
 
     // Validate moduleType against the shared allow-list (kept in sync with
     // protobufService.createSetModuleConfigMessageGeneric's configFieldMap). See #3464.
@@ -334,35 +337,35 @@ router.post('/module/:moduleType', requirePermission('configuration', 'write', {
   }
 });
 
-router.post('/owner', requirePermission('configuration', 'write'), requireMeshtasticDeviceSource('body'), async (req, res) => {
+router.post('/owner', requireDeviceSourcePermission('configuration', 'write', 'body'), async (req, res) => {
   try {
-    const { longName, shortName, isUnmessagable, isLicensed, sourceId: ownerSourceId } = req.body;
+    const { longName, shortName, isUnmessagable, isLicensed } = req.body;
     if (!longName || !shortName) {
-      res.status(400).json({ error: 'longName and shortName are required' });
+      fail(res, 400, 'MISSING_OWNER_NAME', 'longName and shortName are required');
       return;
     }
-    const ownerManager = resolveSourceManager(ownerSourceId);
+    const { manager: ownerManager } = getDeviceSourceTarget(req);
     await ownerManager.setNodeOwner(longName, shortName, isUnmessagable, isLicensed);
     res.json({ success: true, message: 'Node owner updated' });
   } catch (error) {
     logger.error('Error setting node owner:', error);
-    res.status(500).json({ error: 'Failed to set node owner' });
+    fail(res, 500, 'OWNER_UPDATE_FAILED', 'Failed to set node owner');
   }
 });
 
-router.post('/request', requirePermission('configuration', 'write'), requireMeshtasticDeviceSource('body'), async (req, res) => {
+router.post('/request', requireDeviceSourcePermission('configuration', 'write', 'body'), async (req, res) => {
   try {
-    const { configType, sourceId: cfgReqSourceId } = req.body;
+    const { configType } = req.body;
     if (configType === undefined) {
-      res.status(400).json({ error: 'configType is required' });
+      fail(res, 400, 'MISSING_CONFIG_TYPE', 'configType is required');
       return;
     }
-    const cfgReqManager = resolveSourceManager(cfgReqSourceId);
+    const { manager: cfgReqManager } = getDeviceSourceTarget(req);
     await cfgReqManager.requestConfig(configType);
     res.json({ success: true, message: 'Config request sent' });
   } catch (error) {
     logger.error('Error requesting config:', error);
-    res.status(500).json({ error: 'Failed to request configuration' });
+    fail(res, 500, 'CONFIG_REQUEST_FAILED', 'Failed to request configuration');
   }
 });
 
