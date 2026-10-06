@@ -2937,7 +2937,9 @@ function App() {
       const response = await authFetch(`${baseUrl}/api/position/request`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ destination: 4294967295, channel }),
+        // Name the source this view is on. Without it the server broadcasts
+        // through the primary source's radio, whichever source is open.
+        body: JSON.stringify({ destination: 4294967295, channel, sourceId: sourceId || undefined }),
       });
 
       if (response.ok) {

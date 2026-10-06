@@ -953,6 +953,8 @@ async getMessagesByChannel(channel: number, limit = 100, offset = 0, sourceId?: 
 
 Routes that fall back to the primary source when `sourceId` is omitted must resolve the source ONCE and use that value for both the check and the action. For Meshtastic device routes use `requireDeviceSourcePermission(resource, action, 'query' | 'body')` (`src/server/utils/deviceSourcePermission.ts`) and read the manager with `getDeviceSourceTarget(req)`; do not call `resolveSourceManager()` again in the handler. `deviceSourcePermission.scope.test.ts` enumerates the registered routes and fails on a `configuration` route added without it.
 
+**`hasPermission(user, resource, action)` has the same fault inside a handler.** The fourth argument is the source; without it a per-source resource passes on a grant for any source. The per-channel checks in `channelRoutes.ts` (export, edit, delete, import, reorder, the list filters) omitted it, so `channel_1:write` on source A allowed a write to source B's slot 1. Route enumeration cannot see a check made inside a handler: `meshSourcePermission.scope.test.ts` reads `channelRoutes.ts` and fails on a `hasPermission()` call with three arguments, and covers the mesh-request, announce, connection, channel-refresh and airtime-status routes the same way the device-config test covers its own.
+
 Tests that mock `getUserPermissionSetAsync` must mock the `(userId, sourceId)` signature, not the legacy `(userId)` signature, or the source-scoping branch silently falls through.
 
 ### Frontend Source Awareness
