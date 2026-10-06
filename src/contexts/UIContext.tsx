@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useMemo, useCallback, ReactNode } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
-import { TabType, SortField, SortDirection, VALID_TABS } from '../types/ui';
+import { TabType, SortField, SortDirection, VALID_TABS, type NodePopupState } from '../types/ui';
 
 interface UIContextType {
   activeTab: TabType;
@@ -31,8 +31,8 @@ interface UIContextType {
   setShowStatusModal: React.Dispatch<React.SetStateAction<boolean>>;
   systemStatus: any;
   setSystemStatus: React.Dispatch<React.SetStateAction<any>>;
-  nodePopup: {nodeId: string, position: {x: number, y: number}} | null;
-  setNodePopup: React.Dispatch<React.SetStateAction<{nodeId: string, position: {x: number, y: number}} | null>>;
+  nodePopup: NodePopupState | null;
+  setNodePopup: React.Dispatch<React.SetStateAction<NodePopupState | null>>;
   showNodeFilterPopup: boolean;
   setShowNodeFilterPopup: React.Dispatch<React.SetStateAction<boolean>>;
   isNodeListCollapsed: boolean;
@@ -107,7 +107,7 @@ export const UIProvider: React.FC<UIProviderProps> = ({ children }) => {
   });
   const [showStatusModal, setShowStatusModal] = useState<boolean>(false);
   const [systemStatus, setSystemStatus] = useState<any>(null);
-  const [nodePopup, setNodePopup] = useState<{nodeId: string, position: {x: number, y: number}} | null>(null);
+  const [nodePopup, setNodePopup] = useState<NodePopupState | null>(null);
   const [showNodeFilterPopup, setShowNodeFilterPopup] = useState<boolean>(false);
   // Start with node list collapsed on mobile devices (screens <= 768px)
   const [isNodeListCollapsed, setIsNodeListCollapsed] = useState<boolean>(() => {

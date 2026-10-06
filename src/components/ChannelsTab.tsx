@@ -19,6 +19,7 @@ import apiService, { type ChannelDatabaseEntry } from '../services/api';
 import { formatMessageTime, getMessageDateSeparator, shouldShowDateSeparator } from '../utils/datetime';
 import { getMessageSortTime } from '../utils/messageSort';
 import { getUtf8ByteLength, formatByteCount, isEmoji } from '../utils/text';
+import { SenderAvatar, SenderNameButton } from './SenderAvatar';
 import { scrollInputIntoView } from '../utils/scrollInputIntoView';
 import { applyHomoglyphOptimization } from '../utils/homoglyph';
 import { renderMessageWithLinks } from '../utils/linkRenderer';
@@ -236,6 +237,15 @@ export default function ChannelsTab({
 }: ChannelsTabProps) {
   const { t } = useTranslation();
   const { nodes } = useNodes();
+  // Status message per sender, for the avatar badge (#5645). One pass over the
+  // node list rather than a lookup per message row.
+  const statusByNodeId = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const node of nodes) {
+      if (node.user?.id && node.nodeStatus) map.set(node.user.id, node.nodeStatus);
+    }
+    return map;
+  }, [nodes]);
   const { distanceUnit } = useSettings();
   const { isChannelMuted, muteChannel, unmuteChannel } = useNotificationMuteSettings();
   // Oldest-unread timestamp for the open channel, pinned at entry (#4607).
@@ -1238,17 +1248,20 @@ export default function ChannelsTab({
                                 data-message-id={msg.id}
                               >
                                 {!isMine && (
-                                  <div
-                                    className={`sender-dot clickable ${isEmoji(getNodeShortName(msg.from)) ? 'is-emoji' : ''}`}
+                                  <SenderAvatar
+                                    shortName={getNodeShortName(msg.from)}
+                                    status={statusByNodeId.get(msg.from)}
                                     title={t('channels.sender_click_title', { name: getNodeName(msg.from) })}
-                                    onClick={e => handleSenderClick(msg.from, e)}
-                                  >
-                                    {getNodeShortName(msg.from)}
-                                  </div>
+                                    onActivate={e => handleSenderClick(msg.from, e)}
+                                  />
                                 )}
                                 <div className="message-content">
                                   {!isMine && (
-                                    <div className="sender-name">{getNodeName(msg.from)}</div>
+                                    <SenderNameButton
+                                      name={getNodeName(msg.from)}
+                                      title={t('channels.sender_click_title', { name: getNodeName(msg.from) })}
+                                      onActivate={e => handleSenderClick(msg.from, e)}
+                                    />
                                   )}
                                   {msg.replyId && !isReaction && (
                                     <div className="replied-message">

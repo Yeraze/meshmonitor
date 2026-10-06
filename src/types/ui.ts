@@ -60,7 +60,13 @@ export interface ChartData {
  */
 export interface NodePopupState {
   nodeId: string;
+  /** `x`: centre of the trigger. `y`: the trigger's top edge. Viewport px. */
   position: { x: number; y: number };
+  /** The trigger's bottom edge, so the popup can flip below it (#5645).
+   *  Absent = same as `position.y`. */
+  anchorBottom?: number;
+  /** The element that opened the popup; Escape returns focus to it (#5645). */
+  trigger?: HTMLElement | null;
 }
 
 /**
