@@ -3296,7 +3296,7 @@ function App() {
     // So the left edge will be at x - 150px
     const popupHalfWidth = 150;
     let x = rect.left + rect.width / 2;
-    let y = rect.top;
+    const y = rect.top;
 
     // Ensure popup doesn't go under the sidebar (with 10px padding for safety)
     const minX = sidebarWidth + popupHalfWidth + 10;
@@ -3310,26 +3310,23 @@ function App() {
       x = maxX;
     }
 
-    // Ensure popup doesn't go above the viewport (popup appears above click point)
-    // Popup is approximately 300px tall max, and uses translateY(-100%)
-    const minY = 320; // Approximate popup height + padding
-    if (y < minY) {
-      y = minY;
-    }
-
+    // The popup places itself above the trigger and flips below when there
+    // is no room (#5645), so pass both edges and leave y alone.
     setNodePopup({
       nodeId,
       position: {
         x,
         y,
       },
+      anchorBottom: rect.bottom,
+      trigger: target ?? null,
     });
   }, []);
 
   // Close popup when clicking outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
-      if (nodePopup && !(event.target as Element).closest('.node-popup-overlay, .sender-dot')) {
+      if (nodePopup && !(event.target as Element).closest('.node-popup-overlay, .sender-dot, [data-node-popup-trigger]')) {
         setNodePopup(null);
       }
     };

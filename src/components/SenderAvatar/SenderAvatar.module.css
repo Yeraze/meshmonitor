@@ -1,0 +1,85 @@
+/* Sender avatar badge + name button (#5645). The dot itself is still styled
+   by the global `.sender-dot` rules (messages.css / nodes.css, both frozen);
+   this module only adds what is new. */
+
+/* Anchor for the badge. `position: relative` moves nothing. */
+.avatar {
+  position: relative;
+}
+
+/* One corner slot, top right. Out of flow and blind to the pointer, so it
+   changes neither the row's layout nor the dot's hit area.
+   A neutral disc in theme tokens keeps the emoji legible on any avatar tint,
+   light or dark. Never an alert style: the emoji is someone's free text. */
+.badge {
+  position: absolute;
+  top: -5px;
+  right: -5px;
+  width: 16px;
+  height: 16px;
+  border-radius: var(--radius-full);
+  background: var(--color-surface);
+  box-shadow: 0 0 0 1px var(--color-border);
+  color: var(--color-text);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: normal;
+  font-style: normal;
+  line-height: 1;
+  letter-spacing: 0;
+  text-transform: none;
+  overflow: hidden;
+  pointer-events: none;
+  user-select: none;
+}
+
+.avatar:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+/* The name as a button: strip the button chrome, keep the look the plain
+   text had (`.sender-name` still sets size, colour and spacing). */
+.nameButton {
+  appearance: none;
+  background: none;
+  border: 0;
+  padding-top: 0;
+  padding-right: 0;
+  padding-bottom: 0;
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+  /* Only as wide as the name, so the empty space beside it is not a target. */
+  align-self: flex-start;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+
+.nameButton:hover {
+  text-decoration: underline;
+}
+
+.nameButton:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
+/* Inline in the DM thread heading: take the heading's own type. */
+.headerName {
+  padding-left: 0;
+  font-size: inherit;
+  font-weight: inherit;
+  line-height: inherit;
+  color: inherit;
+}
+
+/* The DM list has no avatar: the emoji sits in the indicator strip. */
+.inlineStatus {
+  font-size: 0.85rem;
+  line-height: 1;
+  cursor: help;
+}

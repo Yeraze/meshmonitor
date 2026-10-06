@@ -38,11 +38,65 @@ const graphemeSegmenter = typeof Intl !== 'undefined' && typeof Intl.Segmenter =
   ? new Intl.Segmenter(undefined, { granularity: 'grapheme' })
   : null;
 
-function splitGraphemes(text: string): string[] {
+export function splitGraphemes(text: string): string[] {
   if (graphemeSegmenter) {
     return Array.from(graphemeSegmenter.segment(text), part => part.segment);
   }
   return Array.from(text);
+}
+
+/** A keycap: digit, `#` or `*`, an optional variation selector, then U+20E3. */
+const KEYCAP = /^[0-9#*]\uFE0F?\u20E3$/u;
+/** A flag: exactly two regional indicators. One alone is half a flag. */
+const FLAG = /^\p{Regional_Indicator}{2}$/u;
+const STARTS_WITH_REGIONAL_INDICATOR = /^\p{Regional_Indicator}/u;
+/**
+ * A grapheme that draws as an emoji: it starts with a code point that is an
+ * emoji by default, or with a pictograph forced to emoji style by U+FE0F, or
+ * with a base that carries a skin tone.
+ *
+ * `\p{Emoji}` is not used: it matches the digits, `#` and `*` (keycap bases),
+ * so "1-800" would pass. `\p{Extended_Pictographic}` alone is not used either:
+ * it misses flags, and it matches text symbols such as (c) and (tm) that draw
+ * as plain glyphs unless U+FE0F follows.
+ */
+const STARTS_AS_EMOJI = /^(?:\p{Emoji_Presentation}|\p{Extended_Pictographic}\uFE0F|\p{Emoji_Modifier_Base}\p{Emoji_Modifier})/u;
+
+function isEmojiGrapheme(grapheme: string): boolean {
+  if (KEYCAP.test(grapheme)) return true;
+  if (STARTS_WITH_REGIONAL_INDICATOR.test(grapheme)) return FLAG.test(grapheme);
+  return STARTS_AS_EMOJI.test(grapheme);
+}
+
+/**
+ * `getLeadingEmoji` with the segmenter passed in, so tests can cover a runtime
+ * that has no `Intl.Segmenter`.
+ *
+ * Without a segmenter there is no safe way to find where the first grapheme
+ * ends: a code-point split would cut a flag or a ZWJ family in half and show a
+ * broken glyph. So that runtime gets no badge at all.
+ */
+export function leadingEmojiWith(
+  status: string | null | undefined,
+  segmenter: Intl.Segmenter | null,
+): string | null {
+  if (!status || !segmenter) return null;
+  const first = segmenter.segment(status)[Symbol.iterator]().next();
+  if (first.done) return null;
+  const grapheme = first.value.segment;
+  return isEmojiGrapheme(grapheme) ? grapheme : null;
+}
+
+/**
+ * The first grapheme of a status message when it is an emoji, else null
+ * (#5645). The rule is literal: leading whitespace, a letter, a digit or
+ * punctuation all mean "no emoji", with no trimming or searching ahead.
+ *
+ * A flag, a ZWJ family, a skin-tone emoji and a keycap each come back whole.
+ * The result is text for React to render: never parse it as HTML.
+ */
+export function getLeadingEmoji(status: string | null | undefined): string | null {
+  return leadingEmojiWith(status, graphemeSegmenter);
 }
 
 /**
