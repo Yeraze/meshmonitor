@@ -98,6 +98,8 @@ interface ChannelCollisionRow {
 
 // ── Constants ────────────────────────────────────────────────────────────
 
+export const ALL_CHANNELS_FILTER = '__all__';
+
 const PAGE_SIZE = 100;
 const POLL_INTERVAL_MS = 10_000;
 
@@ -212,7 +214,7 @@ export default function UnifiedMessagesPage() {
   // Names of channels colliding with the viewed channel — the "other side" of
   // each collision (the entry messages may be landing under, or vice versa).
   const overshadowNames = useMemo(() => {
-    if (!selectedChannel) return [] as string[];
+    if (!selectedChannel || selectedChannel === ALL_CHANNELS_FILTER) return [] as string[];
     const sel = selectedChannel.trim().toLowerCase();
     const names = new Set<string>();
     for (const c of channelCollisions) {
@@ -237,7 +239,9 @@ export default function UnifiedMessagesPage() {
     queryKey: ['unified', 'messages', selectedChannel],
     queryFn: async ({ pageParam }) => {
       const params = new URLSearchParams();
-      if (selectedChannel) params.set('channel', selectedChannel);
+      if (selectedChannel && selectedChannel !== ALL_CHANNELS_FILTER) {
+        params.set('channel', selectedChannel);
+      }
       params.set('limit', String(PAGE_SIZE));
       if (pageParam !== undefined && pageParam !== null) {
         params.set('before', String(pageParam));
@@ -431,9 +435,11 @@ export default function UnifiedMessagesPage() {
         <div className="unified-header__title">
           <h1>{t('unified.messages.title')}</h1>
           <p>
-            {selectedChannel
-              ? t('unified.messages.subtitle_channel', { channel: selectedChannel })
-              : t('unified.messages.subtitle_none')}
+            {selectedChannel === ALL_CHANNELS_FILTER
+              ? t('unified.messages.subtitle_all_channels', 'All Channels across all connected nodes')
+              : selectedChannel
+                ? t('unified.messages.subtitle_channel', { channel: selectedChannel })
+                : t('unified.messages.subtitle_none')}
           </p>
         </div>
 
@@ -446,6 +452,11 @@ export default function UnifiedMessagesPage() {
             aria-label={t('unified.messages.channel_aria')}
           >
             {channels.length === 0 && <option value="">{t('unified.messages.no_channels')}</option>}
+            {channels.length > 0 && (
+              <option value={ALL_CHANNELS_FILTER}>
+                {t('unified.messages.all_channels', 'All Channels')}
+              </option>
+            )}
             {channels.map((c) => (
               <option key={c.name} value={c.name}>
                 {t('unified.messages.channel_option', { name: c.name, count: c.sources.length })}
@@ -508,7 +519,11 @@ export default function UnifiedMessagesPage() {
         )}
         {canReadAnyMessages && !loadingMessages && feedMessages.length === 0 && !messagesError && (
           <div className="unified-empty">
-            {selectedChannel ? t('unified.messages.empty_channel') : t('unified.messages.choose_channel')}
+            {selectedChannel === ALL_CHANNELS_FILTER
+              ? t('unified.messages.empty_all_channels', 'No messages received on any channel.')
+              : selectedChannel
+                ? t('unified.messages.empty_channel')
+                : t('unified.messages.choose_channel')}
           </div>
         )}
 
@@ -562,6 +577,17 @@ export default function UnifiedMessagesPage() {
                 }}
               >
                 <div className="unified-msg-card__meta">
+                  {selectedChannel === ALL_CHANNELS_FILTER && (
+                    <span
+                      className="unified-msg-card__channel-tag"
+                      title={t('unified.messages.channel_label', {
+                        channel: msg.channelName || (msg.channel === 0 ? 'Primary' : `Channel ${msg.channel}`),
+                        defaultValue: `Channel: #${msg.channelName || (msg.channel === 0 ? 'Primary' : `Channel ${msg.channel}`)}`,
+                      })}
+                    >
+                      #{msg.channelName || (msg.channel === 0 ? 'Primary' : `Channel ${msg.channel}`)}
+                    </span>
+                  )}
                   {msg.receptions.map((r) => (
                     <span
                       key={r.sourceId}
@@ -678,6 +704,7 @@ export default function UnifiedMessagesPage() {
                         {r.sourceName}
                         {r.xeddsaSigned ? (
                           <span
+                            // eslint-disable-next-line meshmonitor-ui/no-hardcoded-color -- pre-existing fallback
                             style={{ marginLeft: '4px', color: 'var(--success-color, #16a34a)' }}
                             title={t('messages.xeddsa_signed', 'Cryptographically signed (XEdDSA)')}
                             aria-label={t('messages.xeddsa_signed', 'Cryptographically signed (XEdDSA)')}
@@ -704,7 +731,7 @@ export default function UnifiedMessagesPage() {
         isOpen={exportOpen}
         onClose={() => setExportOpen(false)}
         channels={channels}
-        initialChannel={selectedChannel || undefined}
+        initialChannel={selectedChannel === ALL_CHANNELS_FILTER ? undefined : (selectedChannel || undefined)}
       />
     </div>
   );

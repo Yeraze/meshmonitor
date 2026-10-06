@@ -623,6 +623,23 @@ describe('Unified Routes', () => {
       const res = await request(app).get('/messages');
       expect(res.status).toBe(500);
     });
+
+    it('treats channel=__all__ as all channels and enriches channelName on messages (#5361)', async () => {
+      mockDb.sources.getAllSources.mockResolvedValue([SOURCE_A]);
+      mockDb.channels.getAllChannels.mockResolvedValue(CHANNELS_A);
+      mockDb.messages.getMessages.mockResolvedValue([
+        mkMsg({ id: '1', text: 'slot0', channel: 0, fromNodeNum: NODE_ONE.nodeNum, requestId: 101, rxTime: 100 }),
+        mkMsg({ id: '2', text: 'slot1', channel: 1, fromNodeNum: NODE_ONE.nodeNum, requestId: 102, rxTime: 200 }),
+      ]);
+
+      const app = createApp(adminUser);
+      const res = await request(app).get('/messages?channel=__all__');
+
+      expect(res.status).toBe(200);
+      expect(res.body).toHaveLength(2);
+      expect(res.body.find((m: any) => m.channel === 0)?.channelName).toBe('Primary');
+      expect(res.body.find((m: any) => m.channel === 1)?.channelName).toBe('Admin');
+    });
   });
 
   // ── /messages (channel + before cursor) ──────────────────────────────────
