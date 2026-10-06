@@ -41,7 +41,13 @@ vi.mock('../config/environment.js', () => ({
   getEnvironmentConfig: (...args: unknown[]) => getEnvironmentConfigMock(...args),
 }));
 
-import { RemoteAdminService } from './remoteAdminService.js';
+import {
+  RemoteAdminService,
+  remoteConfigKey,
+  ALL_MODULE_CONFIG_TYPES,
+  LOCAL_PENDING_MODULE_CONFIG_TYPES,
+} from './remoteAdminService.js';
+import { CONFIG_TYPES } from '../constants/configTypes.js';
 
 const LOCAL_NODE_NUM = 111;
 
@@ -174,6 +180,142 @@ describe('RemoteAdminService', () => {
         // Let it time out quickly to finish the test — not the behavior under test.
         await vi.advanceTimersByTimeAsync(20000);
         await promise;
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+  });
+
+  describe('config reply keys — one registry for request, clear and poll', () => {
+    it('has a storage key for every module type requestAllModuleConfigs asks for', () => {
+      for (const type of ALL_MODULE_CONFIG_TYPES) {
+        expect(remoteConfigKey(type, true), `module type ${type}`).toBeTypeOf('string');
+      }
+    });
+
+    it('asks for every module type in the registry, once', () => {
+      const registered = CONFIG_TYPES.filter((e) => e.kind === 'module').map((e) => e.adminType).sort((a, b) => a - b);
+      expect([...ALL_MODULE_CONFIG_TYPES].sort((a, b) => a - b)).toEqual(registered);
+    });
+
+    it('tracks pending local requests only for types that are requested', () => {
+      for (const type of LOCAL_PENDING_MODULE_CONFIG_TYPES) {
+        expect(ALL_MODULE_CONFIG_TYPES).toContain(type);
+        expect(remoteConfigKey(type, true)).toBeTypeOf('string');
+      }
+    });
+
+    it('uses the key names processAdminMessage stores replies under', () => {
+      expect(remoteConfigKey(13, true)).toBe('statusmessage');
+      expect(remoteConfigKey(14, true)).toBe('trafficManagement');
+      expect(remoteConfigKey(15, true)).toBe('tak');
+      expect(remoteConfigKey(16, true)).toBe('meshBeacon');
+      expect(remoteConfigKey(9, true)).toBe('neighborInfo');
+      expect(remoteConfigKey(3, false)).toBe('network');
+      expect(remoteConfigKey(99, true)).toBeUndefined();
+    });
+
+    /** Run one remote request; the reply is written to the map after `replyAfterMs`. */
+    async function remoteLoad(
+      configType: number,
+      isModule: boolean,
+      reply: { key: string; value: unknown } | null,
+      seed?: (cfg: { deviceConfig: any; moduleConfig: any }) => void,
+    ) {
+      const mgr = makeFakeManager({ sessionPasskeys: new Map([[222, new Uint8Array([1])]]) });
+      const stored = { deviceConfig: {} as any, moduleConfig: {} as any, lastUpdated: 0 };
+      seed?.(stored);
+      mgr.state.remoteNodeConfigs.set(222, stored);
+      const svc = new RemoteAdminService(mgr as any);
+
+      let settled = false;
+      const promise = svc.requestRemoteConfig(222, configType, isModule).then((value) => {
+        settled = true;
+        return value;
+      });
+      await vi.advanceTimersByTimeAsync(1);
+      if (reply) {
+        // What processAdminMessage does when the node answers.
+        (isModule ? stored.moduleConfig : stored.deviceConfig)[reply.key] = reply.value;
+      }
+      await vi.advanceTimersByTimeAsync(250);
+      const answeredOnFirstPoll = settled;
+      await vi.advanceTimersByTimeAsync(20000);
+      return { result: await promise, answeredOnFirstPoll, mgr, stored };
+    }
+
+    it.each([
+      [16, 'meshBeacon', { flags: 1, broadcastMessage: 'hi' }],
+      [15, 'tak', { team: 3, role: 2 }],
+      [13, 'statusmessage', { nodeStatus: 'up the hill' }],
+      [14, 'trafficManagement', { rateLimitWindowSecs: 90 }],
+    ])('returns a stored module type %i (%s) reply on the next poll, not after the 20 s timeout', async (type, key, value) => {
+      vi.useFakeTimers();
+      try {
+        const { result, answeredOnFirstPoll, mgr } = await remoteLoad(type, true, { key, value });
+        expect(answeredOnFirstPoll).toBe(true);
+        expect(result).toEqual(value);
+        expect(mgr.sendLocalAdminPacket).toHaveBeenCalledTimes(1);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it.each(CONFIG_TYPES.filter((e) => e.kind === 'module').map((e) => [e.adminType, e.field] as const))(
+      'matches a reply for module type %i under %s',
+      async (type, field) => {
+        vi.useFakeTimers();
+        try {
+          const { result, answeredOnFirstPoll } = await remoteLoad(type, true, { key: field, value: { marker: type } });
+          expect(answeredOnFirstPoll).toBe(true);
+          expect(result).toEqual({ marker: type });
+        } finally {
+          vi.useRealTimers();
+        }
+      },
+    );
+
+    it('returns an all-default MeshBeacon reply, which arrives empty and is filed by the pending key', async () => {
+      vi.useFakeTimers();
+      try {
+        const { result, mgr } = await remoteLoad(16, true, { key: 'meshBeacon', value: {} });
+        expect(mgr.setPendingModuleConfigRequest).toHaveBeenCalledWith(222, 'meshBeacon');
+        expect(result).toEqual({});
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('clears a cached MeshBeacon reply before asking, so a stale one is not returned', async () => {
+      vi.useFakeTimers();
+      try {
+        const { result } = await remoteLoad(16, true, null, (cfg) => { cfg.moduleConfig.meshBeacon = { stale: true }; });
+        expect(result).toBeNull();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it.each([[2, 'power'], [3, 'network'], [4, 'display']])(
+      'clears a cached device type %i (%s) reply before asking',
+      async (type, key) => {
+        vi.useFakeTimers();
+        try {
+          const { result } = await remoteLoad(type, false, null, (cfg) => { cfg.deviceConfig[key] = { stale: true }; });
+          expect(result).toBeNull();
+        } finally {
+          vi.useRealTimers();
+        }
+      },
+    );
+
+    it('still times out with null, after one packet, when the node never answers', async () => {
+      vi.useFakeTimers();
+      try {
+        const { result, answeredOnFirstPoll, mgr } = await remoteLoad(16, true, null);
+        expect(answeredOnFirstPoll).toBe(false);
+        expect(result).toBeNull();
+        expect(mgr.sendLocalAdminPacket).toHaveBeenCalledTimes(1);
       } finally {
         vi.useRealTimers();
       }
