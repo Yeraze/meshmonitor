@@ -949,6 +949,10 @@ async getMessagesByChannel(channel: number, limit = 100, offset = 0, sourceId?: 
 
 `permissions.sourceId` is part of the row. `requirePermission(resource, action)` middleware looks up the calling user's permission set scoped to the route's `sourceId` (read from path params or body). A user can be admin on one source and have read-only on another.
 
+**`requirePermission` is only per-source when you tell it where the source is.** Pass `sourceIdFrom` (`'params.id'`, `'query'`, `'body'`, or a function). Without it the check for a per-source resource passes on a grant for ANY source, so a route that then acts on a `sourceId` from the request lets a user with rights on source A act on source B. `/api/config/module/:moduleType` had this fault (#5639), then the rest of `/api/config/*` and `/api/device/*`.
+
+Routes that fall back to the primary source when `sourceId` is omitted must resolve the source ONCE and use that value for both the check and the action. For Meshtastic device routes use `requireDeviceSourcePermission(resource, action, 'query' | 'body')` (`src/server/utils/deviceSourcePermission.ts`) and read the manager with `getDeviceSourceTarget(req)`; do not call `resolveSourceManager()` again in the handler. `deviceSourcePermission.scope.test.ts` enumerates the registered routes and fails on a `configuration` route added without it.
+
 Tests that mock `getUserPermissionSetAsync` must mock the `(userId, sourceId)` signature, not the legacy `(userId)` signature, or the source-scoping branch silently falls through.
 
 ### Frontend Source Awareness

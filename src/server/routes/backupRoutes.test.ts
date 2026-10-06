@@ -23,8 +23,11 @@ const mockDeviceRestoreService = vi.hoisted(() => ({
   restoreBackup: vi.fn(),
 }));
 
+// resolveSourceManager is mocked to hand back this one manager whatever id is
+// asked for. The restore route refuses a named source that resolved to some
+// other source's manager, so a test that names a source sets `sourceId` here.
 const mockManager = vi.hoisted(() => ({ sourceId: 'primary' }));
-const mockResolveSourceManager = vi.hoisted(() => vi.fn(() => mockManager));
+const mockResolveSourceManager = vi.hoisted(() => vi.fn((_sourceId?: string | null) => mockManager));
 
 vi.mock('../services/backupFileService.js', () => ({
   backupFileService: mockBackupFileService,
@@ -174,6 +177,7 @@ describe('backupRoutes - config backups', () => {
     mockBackupFileService.getBackup.mockResolvedValue('yaml-content');
     const result = { applied: ['config.lora'], failed: [], channels: 2, requiresReboot: true };
     mockDeviceRestoreService.restoreBackup.mockResolvedValue(result);
+    mockManager.sourceId = 'src-b';
 
     const res = await request(app).post('/backup/restore/my_backup.yaml').send({ sourceId: 'src-b' });
 
@@ -182,8 +186,18 @@ describe('backupRoutes - config backups', () => {
     expect(mockResolveSourceManager).toHaveBeenCalledWith('src-b');
     expect(mockDeviceRestoreService.restoreBackup).toHaveBeenCalledWith(mockManager, 'yaml-content');
     expect(databaseService.auditLogAsync).toHaveBeenCalledWith(
-      1, 'device_backup_restored', 'device_backup', expect.any(String), expect.anything()
+      1, 'device_backup_restored', 'device_backup', expect.stringContaining('"sourceId":"src-b"'), expect.anything()
     );
+  });
+
+  it('POST /backup/restore 404s when the named source resolves to another source\'s manager', async () => {
+    mockManager.sourceId = 'primary';
+
+    const res = await request(app).post('/backup/restore/my_backup.yaml').send({ sourceId: 'src-b' });
+
+    expect(res.status).toBe(404);
+    expect(res.body.code).toBe('SOURCE_NOT_FOUND');
+    expect(mockDeviceRestoreService.restoreBackup).not.toHaveBeenCalled();
   });
 
   it('POST /backup/restore maps a not-connected failure to 409', async () => {
