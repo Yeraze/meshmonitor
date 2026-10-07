@@ -2435,11 +2435,7 @@ export class FirmwareUpdateService {
    */
   updateStatus(partial: Partial<UpdateStatus>): void {
     this.status = { ...this.status, ...partial };
-    dataEventEmitter.emit('data', {
-      type: 'firmware:status',
-      data: this.getStatus(),
-      timestamp: Date.now(),
-    });
+    dataEventEmitter.emitFirmwareStatus(this.getStatus());
   }
 
   /**

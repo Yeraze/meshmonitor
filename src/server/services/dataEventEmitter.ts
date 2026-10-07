@@ -49,7 +49,8 @@ export type DataEventType =
   | 'meshcore:ota-packet'
   | 'meshbeacon:received'
   | 'reticulum:message'
-  | 'reticulum:delivery-state:updated';
+  | 'reticulum:delivery-state:updated'
+  | 'firmware:status';
 
 export interface DataEvent {
   type: DataEventType;
@@ -856,6 +857,20 @@ class DataEventEmitter extends EventEmitter {
     };
     this.emit('data', event);
     logger.debug(`[DataEventEmitter] Reticulum delivery state: ${data.hash} -> ${data.state} (source: ${sourceId})`);
+  }
+
+  /**
+   * Emit the firmware updater's status (progress, logs). It belongs to no
+   * source; the WebSocket gate sends it to admins only, as the firmware
+   * routes are admin only.
+   */
+  emitFirmwareStatus(status: unknown): void {
+    const event: DataEvent = {
+      type: 'firmware:status',
+      data: status,
+      timestamp: Date.now(),
+    };
+    this.emit('data', event);
   }
 
   /**

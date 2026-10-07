@@ -19,6 +19,7 @@ import { mfaService } from '../services/mfa.js';
 import databaseService from '../../services/database.js';
 import { logger } from '../../utils/logger.js';
 import { getEnvironmentConfig } from '../config/environment.js';
+import { notifyAccessChange } from '../../db/accessChanges.js';
 
 const router = Router();
 
@@ -326,12 +327,17 @@ router.post('/logout', (req: Request, res: Response) => {
   const userId = req.session.userId;
   const username = req.session.username;
   const authProvider = req.session.authProvider;
+  const sessionId = req.sessionID;
 
   req.session.destroy((err) => {
     if (err) {
       logger.error('Error destroying session:', err);
       return res.status(500).json({ error: 'Failed to logout' });
     }
+
+    // Close any WebSocket opened with this session: it would otherwise keep
+    // receiving events until its next re-check.
+    if (sessionId) notifyAccessChange({ kind: 'session', sessionId });
 
     // Audit log
     if (userId) {

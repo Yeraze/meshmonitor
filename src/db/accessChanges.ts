@@ -16,6 +16,8 @@ export type AccessChange =
   | { kind: 'user'; userId: number }
   /** An API token was revoked or deleted. */
   | { kind: 'tokens' }
+  /** A session ended (logout). */
+  | { kind: 'session'; sessionId: string }
   /** Something every user's access may depend on: a source or a channel-database entry. */
   | { kind: 'all' };
 
