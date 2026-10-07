@@ -33,8 +33,15 @@ vi.mock('../../../services/database.js', () => ({
       getPacketCountsByPortSince: vi.fn(),
     },
     checkPermissionAsync: vi.fn(),
+    // The route reads the token user's grants once (loadSourcePermissions).
+    auth: { getPermissionsForUser: vi.fn() },
+    getChannelDatabasePermissionsForUserAsSetAsync: vi.fn(),
   },
 }));
+
+/** Permission rows: `read` (and `viewOnMap`) on each resource, on one source. */
+const grantRows = (sourceId: string, resources: string[]) =>
+  resources.map((resource) => ({ resource, sourceId, canRead: true, canWrite: false, canViewOnMap: true }));
 
 vi.mock('../../sourceManagerRegistry.js', () => ({
   sourceManagerRegistry: {
@@ -179,6 +186,8 @@ describe('Metrics API Routes', () => {
       { portnum: 512, portnumName: null, packetCount: 7 },
     ]);
     vi.mocked(databaseService.checkPermissionAsync).mockResolvedValue(true);
+    vi.mocked(databaseService.auth.getPermissionsForUser).mockResolvedValue([] as never);
+    vi.mocked(databaseService.getChannelDatabasePermissionsForUserAsSetAsync).mockResolvedValue({} as never);
     // src_mqtt deliberately has no manager -> reported as down
     vi.mocked(sourceManagerRegistry.getAllManagers).mockReturnValue([connectedTcpManager]);
   });
@@ -230,9 +239,8 @@ describe('Metrics API Routes', () => {
     });
 
     it('skips sources the token has no nodes read permission on', async () => {
-      vi.mocked(databaseService.checkPermissionAsync).mockImplementation(
-        async (_userId, resource, _action, sourceId) =>
-          resource === 'nodes' && sourceId === 'src_tcp'
+      vi.mocked(databaseService.auth.getPermissionsForUser).mockResolvedValue(
+        grantRows('src_tcp', ['nodes']) as never
       );
 
       const app = createApp(readOnlyUser);
@@ -246,8 +254,8 @@ describe('Metrics API Routes', () => {
     });
 
     it('exports the message-volume gauge when the token also has messages read', async () => {
-      vi.mocked(databaseService.checkPermissionAsync).mockImplementation(
-        async (_userId, _resource, _action, sourceId) => sourceId === 'src_tcp'
+      vi.mocked(databaseService.auth.getPermissionsForUser).mockResolvedValue(
+        grantRows('src_tcp', ['nodes', 'messages', 'packetmonitor', 'channel_0']) as never
       );
 
       const app = createApp(readOnlyUser);
@@ -279,9 +287,8 @@ describe('Metrics API Routes', () => {
     });
 
     it('withholds the packet mix without packetmonitor read permission', async () => {
-      vi.mocked(databaseService.checkPermissionAsync).mockImplementation(
-        async (_userId, resource, _action, sourceId) =>
-          sourceId === 'src_tcp' && resource !== 'packetmonitor'
+      vi.mocked(databaseService.auth.getPermissionsForUser).mockResolvedValue(
+        grantRows('src_tcp', ['nodes', 'messages', 'channel_0']) as never
       );
 
       const app = createApp(readOnlyUser);

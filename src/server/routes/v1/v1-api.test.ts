@@ -94,6 +94,15 @@ vi.mock('../../../services/database.js', () => {
         return true;
       }),
       updateApiTokenLastUsedAsync: vi.fn(async () => {}),
+      // The read handlers load the token user's grants once
+      // (loadSourcePermissions): everything on the test source, except
+      // nodes_private.
+      auth: {
+        getPermissionsForUser: vi.fn(async () =>
+          ['nodes', 'messages', 'traceroute', 'packetmonitor', ...[0, 1, 2, 3, 4, 5, 6, 7].map((n) => `channel_${n}`)]
+            .map((resource) => ({ resource, sourceId: 'test-source', canRead: true, canWrite: true, canViewOnMap: true })),
+        ),
+      },
       getUserPermissionSetAsync: vi.fn(async () => ({
         nodes: { read: true, write: false },
         messages: { read: true, write: true },
@@ -1322,9 +1331,8 @@ describe('GET /api/v1/sources/test-source/nodes/:nodeId/position-history', () =>
 
   it('should return 403 for private-position node without nodes_private:read', async () => {
     const databaseService = await import('../../../services/database.js');
-    // getNode is called by checkNodeChannelAccess (async, via nodes repo) and by privacy check (also async, via nodes repo)
+    // One node read on this source feeds both the channel check and the privacy check.
     vi.mocked(databaseService.default.nodes.getNode)
-      .mockResolvedValueOnce({ channel: 0, positionOverrideIsPrivate: true } as any)
       .mockResolvedValueOnce({ channel: 0, positionOverrideIsPrivate: true } as any);
     vi.mocked(databaseService.default.getUserPermissionSetAsync).mockResolvedValue({
       nodes: { read: true },

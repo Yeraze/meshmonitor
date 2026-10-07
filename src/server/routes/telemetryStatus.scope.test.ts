@@ -428,9 +428,10 @@ function registeredRoutes(router: Router): RegisteredRoute[] {
  *    the handler resolves the caller's sources itself (`/rates`).
  *  - `reduced`: open to every caller; the handler adds fields by grant. Tested above.
  *  - `global`: an install-wide grant and no per-source rows in the reply.
+ *  - `admin-only`: requireAdmin(). Acts on the whole install.
  *  - `public`: no rows from any source.
  */
-type Kind = 'global-then-source' | 'in-handler' | 'reduced' | 'global' | 'public';
+type Kind = 'global-then-source' | 'in-handler' | 'reduced' | 'global' | 'admin-only' | 'public';
 
 const CLASSIFIED: Record<'telemetry' | 'system', Record<string, Kind>> = {
   telemetry: {
@@ -447,8 +448,8 @@ const CLASSIFIED: Record<'telemetry' | 'system', Record<string, Kind>> = {
     'GET /status': 'reduced',
     'GET /system/status': 'global',
     'GET /version/check': 'public',
-    // `settings:write` with no source: restarts the whole process. Not a read; not changed here.
-    'POST /system/restart': 'global',
+    // Stops the whole process: no per-source grant covers that.
+    'POST /system/restart': 'admin-only',
   },
 };
 
@@ -470,15 +471,18 @@ describe('guard: telemetry and system routes are classified', () => {
     expect(routes.map(key).sort()).toEqual(Object.keys(CLASSIFIED[name]).sort());
     for (const route of routes) {
       const kind = CLASSIFIED[name][key(route)];
-      const expected = kind === 'global-then-source' || kind === 'global' ? 'permission' : 'ungated';
+      const expected = kind === 'admin-only'
+        ? 'admin-only'
+        : kind === 'global-then-source' || kind === 'global' ? 'permission' : 'ungated';
       expect(detected(route), key(route)).toBe(expected);
     }
   });
 
-  it('a requirePermission() with no source on the telemetry router gates an install-wide resource only', () => {
+  it('a requirePermission() with no source on the telemetry and system routers gates an install-wide resource only', () => {
     // `requirePermission('nodes', 'read')` with no source passes on a grant for
     // any source. `info` is install-wide, so it may open a route; the handler
-    // then picks the sources. `POST /system/restart` is the one known exception.
+    // then picks the sources. No system route is an exception any more:
+    // `POST /system/restart` is admin only.
     for (const route of registeredRoutes(telemetryRoutes)) {
       for (const gate of route.handlers.map((h) => getPermissionGate(h)).filter((g) => g !== undefined)) {
         expect(gate.sourceScoped || !isSourceyResource(gate.resource), key(route)).toBe(true);
@@ -490,7 +494,7 @@ describe('guard: telemetry and system routes are classified', () => {
         return gate !== undefined && !gate.sourceScoped && isSourceyResource(gate.resource);
       }))
       .map(key);
-    expect(unscoped).toEqual(['POST /system/restart']);
+    expect(unscoped).toEqual([]);
   });
 
   it('every hasPermission() call on a per-source resource names a source', () => {

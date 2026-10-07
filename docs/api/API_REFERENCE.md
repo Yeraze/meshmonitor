@@ -173,7 +173,13 @@ Check for available software updates from GitHub releases.
 ### POST /api/system/restart
 Restart the container or shutdown the application.
 
-**Authentication:** Required (admin permissions on `settings` resource)
+**Authentication:** Required. Administrators only (session or admin API token).
+Other callers get `403` with `code: "FORBIDDEN_ADMIN"`.
+
+::: warning Changed in 4.17
+This used to accept `settings:write` on any source. It stops the whole process,
+which no per-source grant covers, so it is now admin only.
+:::
 
 **Request:** None (no body required)
 

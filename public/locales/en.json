@@ -1969,6 +1969,7 @@
   "settings.reset_traceroutes_button": "Reset Traceroutes",
   "settings.restart_container_title": "Restart Container",
   "settings.shutdown_title": "Shutdown MeshMonitor",
+  "settings.restart_admin_only": "Only an administrator can restart or shut down MeshMonitor. It affects every source.",
   "settings.restart_container_description": "Restarts the Docker container. The system will be unavailable for approximately 10-30 seconds.",
   "settings.shutdown_description": "Shuts down MeshMonitor. You will need to manually restart it.",
   "settings.restarting": "Restarting...",

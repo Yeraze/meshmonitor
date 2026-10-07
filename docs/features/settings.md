@@ -902,6 +902,8 @@ These actions are **irreversible** and can result in data loss. Use with extreme
 
 **Description**: Restarts the MeshMonitor container (Docker) or shuts down the application (bare metal).
 
+**Who can use it**: Administrators only. The button is disabled for other users. (Changed in 4.17: it used to be open to anyone with `settings:write` on a source.)
+
 **Effect**:
 - **Docker**: The container restarts automatically and will be unavailable for approximately 10-30 seconds
 - **Bare Metal**: MeshMonitor shuts down and must be manually restarted

@@ -7,7 +7,6 @@
 
 import express, { Request, Response } from 'express';
 import databaseService from '../../../services/database.js';
-import { ALL_SOURCES } from '../../../db/repositories/index.js';
 import { resolveSourceManager } from '../../utils/resolveSourceManager.js';
 import { refuseNonMeshtasticSource } from '../../utils/requireMeshtasticDeviceSource.js';
 import { parseMessageSearchQuery, searchReadableMessages } from '../../utils/messageSearch.js';
@@ -16,65 +15,33 @@ import { ResourceType } from '../../../types/permission.js';
 import { messageLimiter } from '../../middleware/rateLimiters.js';
 import { logger } from '../../../utils/logger.js';
 import { MAX_MESSAGE_BYTES, PortNum } from '../../constants/meshtastic.js';
-import { resolvedSourceIdFromPath } from './sourceParam.js';
+import { loadV1Access, requireScopedSourceId } from './sourceParam.js';
+import type { NodeViewAccess } from '../../utils/nodeEnhancer.js';
 import { isTxDisabledError } from '../../errors/txDisabledError.js';
 
 /** Maximum number of message parts allowed when splitting long messages */
 const MAX_MESSAGE_PARTS = 3;
 
 /**
- * Get set of channel IDs the user has read access to
+ * The channel ids the token user may read ON THIS SOURCE, from grants already
+ * loaded for the request. `null` means every channel (admin); -1 stands for
+ * direct messages (`messages:read`).
  */
-async function getAccessibleChannels(userId: number | null, isAdmin: boolean, sourceId?: string): Promise<Set<number> | null> {
-  // Admins can access all channels
-  if (isAdmin) {
-    return null; // null means all channels
-  }
-
-  // When a sourceId is given, check each channel/messages permission scoped to source
+function getAccessibleChannels(access: NodeViewAccess, sourceId: string): Set<number> | null {
+  if (access.isAdmin) return null;
   const accessibleChannels = new Set<number>();
-  if (sourceId) {
-    if (userId === null) return accessibleChannels;
-    for (let i = 0; i <= 7; i++) {
-      const channelResource = `channel_${i}` as ResourceType;
-      if (await databaseService.checkPermissionAsync(userId, channelResource, 'read', sourceId)) {
-        accessibleChannels.add(i);
-      }
-    }
-    if (await databaseService.checkPermissionAsync(userId, 'messages', 'read', sourceId)) {
-      accessibleChannels.add(-1);
-    }
-    return accessibleChannels;
-  }
-
-  // Get user permissions (global)
-  const permissions = userId !== null
-    ? await databaseService.getUserPermissionSetAsync(userId)
-    : {};
-
-  // Build set of accessible channel IDs
   for (let i = 0; i <= 7; i++) {
-    const channelResource = `channel_${i}` as ResourceType;
-    if (permissions[channelResource]?.read === true) {
+    if (access.permissions.can(`channel_${i}` as ResourceType, 'read', sourceId)) {
       accessibleChannels.add(i);
     }
   }
-
-  // Also check if user has messages:read permission (for DMs)
-  const hasMessagesRead = permissions.messages?.read === true;
-  if (hasMessagesRead) {
-    accessibleChannels.add(-1); // -1 represents DMs
+  if (access.permissions.can('messages', 'read', sourceId)) {
+    accessibleChannels.add(-1);
   }
-
   return accessibleChannels;
 }
 
 const router = express.Router({ mergeParams: true });
-
-/** Resolve sourceId from the :sourceId path param. */
-function getScopedSourceId(req: Request): string | undefined {
-  return resolvedSourceIdFromPath(req);
-}
 
 /**
  * GET /api/v1/messages
@@ -90,19 +57,17 @@ function getScopedSourceId(req: Request): string | undefined {
  */
 router.get('/', async (req: Request, res: Response) => {
   try {
-    const user = (req as any).user;
-    const userId = user?.id ?? null;
-    const isAdmin = user?.isAdmin ?? false;
-
     const { channel, fromNodeId, toNodeId, since, limit } = req.query;
-    const sourceIdStr = getScopedSourceId(req);
+    const sourceIdStr = requireScopedSourceId(req, res);
+    if (!sourceIdStr) return;
+    const access = await loadV1Access(req);
 
     const maxLimit = parseInt(limit as string) || 100;
     const sinceTimestamp = since ? parseInt(since as string) : undefined;
     const channelNum = channel ? parseInt(channel as string) : undefined;
 
     // Get accessible channels for this user (scoped to source if provided)
-    const accessibleChannels = await getAccessibleChannels(userId, isAdmin, sourceIdStr);
+    const accessibleChannels = getAccessibleChannels(access, sourceIdStr);
 
     // If requesting a specific channel, check permission first
     if (channelNum !== undefined && accessibleChannels !== null) {
@@ -119,12 +84,12 @@ router.get('/', async (req: Request, res: Response) => {
     let messages;
 
     if (channelNum !== undefined) {
-      messages = await databaseService.messages.getMessagesByChannel(channelNum, maxLimit, 0, sourceIdStr ?? ALL_SOURCES); // intentional cross-source when sourceId omitted
+      messages = await databaseService.messages.getMessagesByChannel(channelNum, maxLimit, 0, sourceIdStr);
     } else if (sinceTimestamp) {
-      messages = await databaseService.messages.getMessagesAfterTimestamp(sinceTimestamp, sourceIdStr ?? ALL_SOURCES); // intentional cross-source when sourceId omitted
+      messages = await databaseService.messages.getMessagesAfterTimestamp(sinceTimestamp, sourceIdStr);
       messages = messages.slice(0, maxLimit);
     } else {
-      messages = await databaseService.messages.getMessages(maxLimit, 0, sourceIdStr ?? ALL_SOURCES, [PortNum.TRACEROUTE_APP]); // intentional cross-source when sourceId omitted
+      messages = await databaseService.messages.getMessages(maxLimit, 0, sourceIdStr, [PortNum.TRACEROUTE_APP]);
     }
 
     // Filter messages by accessible channels (unless admin)
@@ -176,6 +141,8 @@ router.get('/', async (req: Request, res: Response) => {
 router.get('/search', async (req: Request, res: Response) => {
   try {
     const user = (req as any).user;
+    const searchSourceId = requireScopedSourceId(req, res);
+    if (!searchSourceId) return;
 
     const parsed = parseMessageSearchQuery(req.query);
     if (!parsed.ok) {
@@ -190,7 +157,7 @@ router.get('/search', async (req: Request, res: Response) => {
     // shared search narrows further to readable channels / DMs in SQL, and
     // reads MeshCore history from the database whether or not the source is
     // connected.
-    const { results, total } = await searchReadableMessages(user, getScopedSourceId(req), parsed.params);
+    const { results, total } = await searchReadableMessages(user, searchSourceId, parsed.params);
 
     res.json({
       success: true,
@@ -215,12 +182,10 @@ router.get('/search', async (req: Request, res: Response) => {
  */
 router.get('/:messageId', async (req: Request, res: Response) => {
   try {
-    const user = (req as any).user;
-    const userId = user?.id ?? null;
-    const isAdmin = user?.isAdmin ?? false;
-
     const { messageId } = req.params;
-    const msgLookupSourceId = getScopedSourceId(req);
+    const msgLookupSourceId = requireScopedSourceId(req, res);
+    if (!msgLookupSourceId) return;
+    const access = await loadV1Access(req);
     const allMessages = await databaseService.messages.getMessages(10000, 0, msgLookupSourceId);
     const message = allMessages.find(m => m.id === messageId);
 
@@ -233,8 +198,8 @@ router.get('/:messageId', async (req: Request, res: Response) => {
     }
 
     // Check permission for the message's channel (unless admin)
-    if (!isAdmin) {
-      const accessibleChannels = await getAccessibleChannels(userId, isAdmin, msgLookupSourceId);
+    if (!access.isAdmin) {
+      const accessibleChannels = getAccessibleChannels(access, msgLookupSourceId);
       const msgChannel = message.channel ?? -1; // DMs have channel -1 or undefined
 
       if (accessibleChannels !== null && !accessibleChannels.has(msgChannel)) {
@@ -290,7 +255,8 @@ router.post('/', messageLimiter, async (req: Request, res: Response) => {
   try {
     const { text, channel, toNodeId, replyId } = req.body;
     // Scope priority: path (:sourceId) → query → body.sourceId.
-    const msgSourceId = getScopedSourceId(req);
+    const msgSourceId = requireScopedSourceId(req, res);
+    if (!msgSourceId) return;
     const activeManager = resolveSourceManager(msgSourceId);
 
     // Validate text is provided
