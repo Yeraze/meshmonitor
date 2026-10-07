@@ -58,6 +58,7 @@ import type { ReticulumSourceConfig } from '../reticulumConfig.js';
 import type { TcpPeerConfig } from '../reticulumProtocol.js';
 import type { MeshtasticMqttLink } from '../meshtasticManager.js';
 import { redactBrokerUrl } from './brokerUrl.js';
+import type { SourcePermissions } from './sourcePermissions.js';
 
 /** Who is asking, as far as source config goes. */
 export type SourceConfigAudience = 'public' | 'viewer' | 'editor' | 'admin';
@@ -101,6 +102,20 @@ export async function mayViewSourceEndpoint(req: Request): Promise<boolean> {
   if (!user || user.username === 'anonymous') return false;
   if (user.isAdmin === true) return true;
   return databaseService.checkPermissionAsync(user.id, 'sources', 'read');
+}
+
+/**
+ * `mayViewSourceEndpoint` for a handler that has already loaded the caller's
+ * grants (`loadSourcePermissions`): the same rule, with no query. `sources` is
+ * a global resource, so the answer does not depend on a source.
+ */
+export function mayViewSourceEndpointWith(
+  user: RequestUser | null | undefined,
+  permissions: Pick<SourcePermissions, 'isAdmin' | 'can'>,
+): boolean {
+  if (!user || user.username === 'anonymous') return false;
+  if (user.isAdmin === true) return true;
+  return permissions.can('sources', 'read', '');
 }
 
 /**
