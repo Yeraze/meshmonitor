@@ -22,6 +22,7 @@ import { mayViewSourceEndpointWith } from '../utils/sourceConfigRedaction.js';
 import { resolveMeshcoreKeyAccess } from '../utils/meshcoreKeyAccess.js';
 import type { MeshCoreKeyAccessFilter } from '../../db/repositories/index.js';
 import type { ResourceType, PermissionAction } from '../../types/permission.js';
+import { holdsAnyGrantOn } from '../utils/sourcePermissions.js';
 
 /** The longest a socket acts on grants it has not re-read. */
 export const SOCKET_ACCESS_TTL_MS = 30_000;
@@ -95,8 +96,7 @@ async function buildViewer(userId: number): Promise<SocketViewer | null> {
     userId,
     isAdmin: false,
     can: (resource, action, sourceId) => permissions.can(resource, action, sourceId),
-    holdsAnyGrantOn: (sourceId) =>
-      Object.values(permissions.on(sourceId)).some((grant) => !!grant && (grant.read || grant.write || grant.viewOnMap)),
+    holdsAnyGrantOn: (sourceId) => holdsAnyGrantOn(permissions, sourceId),
     canViewNode: (sourceId, channel) => nodes.canViewNode(sourceId, channel),
     canViewPrivate: (sourceId) => nodes.canViewPrivate(sourceId),
     readableVirtual,

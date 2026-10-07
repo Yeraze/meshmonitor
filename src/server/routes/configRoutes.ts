@@ -1,7 +1,8 @@
 /**
  * Config Routes
  *
- * GET /config           — public configuration (optionalAuth)
+ * GET /config           — public configuration (optionalAuth); the local node's
+ *                         identity and firmware need a grant on that source
  * GET /config/current   — current device config (configuration:read on the target source)
  * POST /config/*        — 13 device configuration setters (configuration:write on the target source)
  *
@@ -20,7 +21,9 @@ import { validateMeshBeaconConfigPayload } from '../constants/meshtastic.js';
 import { normalizeTakConfig, validateTakConfigPayload } from '../../utils/takConfig.js';
 import { validateStatusMessageConfigPayload } from '../../utils/statusMessage.js';
 import { getEnvironmentConfig } from '../config/environment.js';
-import { mayViewSourceEndpoint } from '../utils/sourceConfigRedaction.js';
+import { mayViewSourceEndpointWith } from '../utils/sourceConfigRedaction.js';
+import { loadSourcePermissions, holdsAnyGrantOn } from '../utils/sourcePermissions.js';
+import { resolveOwnMeshtasticManager } from '../utils/resolveSourceManager.js';
 import { fail } from '../utils/apiResponse.js';
 import {
   isIntervalBelowFloor,
@@ -43,14 +46,27 @@ router.get('/', optionalAuth(), async (req, res) => {
     // (and reboot count / display names) for the specific source the caller
     // is rendering, rather than whichever source happened to write the
     // global localNodeNum setting last.
-    const configSourceId = req.query.sourceId as string | undefined;
+    const configSourceId = (typeof req.query.sourceId === 'string' && req.query.sourceId) || undefined;
+
+    // The `config` rule of GET /api/poll (POLL_SECTION_GATES). The local
+    // node's identity and firmware describe ONE source: a signed-in caller
+    // holding some grant on that source (the named one, else the primary).
+    // This route used to return them for any named source to every caller,
+    // signed in or not.
+    const user = req.user ?? null;
+    const signedIn = !!user && user.username !== 'anonymous';
+    const permissions = await loadSourcePermissions(user);
+    const deviceSourceId = configSourceId ?? resolveOwnMeshtasticManager(undefined)?.sourceId ?? null;
+    const mayViewDevice = signedIn && (permissions.isAdmin || holdsAnyGrantOn(permissions, deviceSourceId));
+    const mayViewEndpoint = mayViewSourceEndpointWith(user, permissions);
+
     const localNodeNumStr = await databaseService.settings.getLocalNodeNumForSource(
       configSourceId ?? null,
     );
 
     let deviceMetadata = undefined;
     let localNodeInfo = undefined;
-    if (localNodeNumStr) {
+    if (mayViewDevice && localNodeNumStr) {
       const localNodeNum = parseInt(localNodeNumStr, 10);
       const currentNode = await databaseService.nodes.getNode(localNodeNum, configSourceId);
 
@@ -60,7 +76,6 @@ router.get('/', optionalAuth(), async (req, res) => {
           rebootCount: currentNode.rebootCount,
         };
 
-        // Include local node identity information for anonymous users
         localNodeInfo = {
           nodeId: currentNode.nodeId,
           longName: currentNode.longName,
@@ -74,8 +89,10 @@ router.get('/', optionalAuth(), async (req, res) => {
 
     res.json({
       // A connection endpoint: signed in with `sources:read` (or admin) only.
-      ...((await mayViewSourceEndpoint(req)) ? { meshtasticNodeIp: conn.host ?? '' } : {}),
-      meshtasticTcpPort: conn.port ?? env.meshtasticTcpPort,
+      ...(mayViewEndpoint ? { meshtasticNodeIp: conn.host ?? '' } : {}),
+      // The source's own port is part of its endpoint; everyone else gets
+      // the default.
+      meshtasticTcpPort: mayViewEndpoint ? conn.port ?? env.meshtasticTcpPort : env.meshtasticTcpPort,
       meshtasticUseTls: false, // We're using TCP, not TLS
       meshtasticSourceType: conn.sourceType,
       baseUrl: BASE_URL,

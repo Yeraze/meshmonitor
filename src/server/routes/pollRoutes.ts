@@ -34,6 +34,7 @@ import { resolveSourceConnectionConfig } from '../utils/resolveSourceConnectionC
 import { getEnvironmentConfig } from '../config/environment.js';
 import { mayViewSourceEndpointWith } from '../utils/sourceConfigRedaction.js';
 import { getMaxNodeAgeHours } from '../services/nodeDisplaySettings.js';
+import { holdsAnyGrantOn } from '../utils/sourcePermissions.js';
 
 const env = getEnvironmentConfig();
 const BASE_URL = env.baseUrl;
@@ -172,9 +173,6 @@ router.get('/poll', optionalAuth(), async (req, res) => {
       );
       canViewPrivate = true;
     }
-    /** True when the caller holds some grant on `sourceId`. */
-    const holdsAnyGrantOn = (sourceId: string | null | undefined): boolean =>
-      !!sourceId && Object.values(permissions.on(sourceId)).some((grant) => !!grant && (grant.read || grant.write || grant.viewOnMap));
     /** Node ids visible on one source (DM senders whose counts may be shown). */
     const visibleNodeIdsOn = (sourceId: string | undefined): Set<string> =>
       acrossPermitted
@@ -539,7 +537,7 @@ router.get('/poll', optionalAuth(), async (req, res) => {
       // in, and holding some grant on that source. Signed in alone used to be
       // enough, so naming a source showed its node to a user with no access
       // to it.
-      const mayViewDevice = !!req.session.userId && (isAdmin || holdsAnyGrantOn(deviceSourceId));
+      const mayViewDevice = !!req.session.userId && (isAdmin || holdsAnyGrantOn(permissions, deviceSourceId));
 
       result.config = {
         ...(mayViewEndpoint ? { meshtasticNodeIp: conn.host ?? '' } : {}),
