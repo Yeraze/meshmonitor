@@ -10,7 +10,7 @@ import { CollapsibleSection } from './CollapsibleSection';
 import { UiIcon } from '../icons';
 import { NumberInput } from '../common/NumberInput';
 import { NumberInputScope } from '../common/NumberInputScope';
-import { useNumberInputScope } from '../common/numberInputScope';
+import { useNumberInputScope } from '../common/numberInputScopeContext';
 
 const TELEMETRY_MODE_OPTIONS: TelemetryMode[] = ['always', 'device', 'never'];
 // MeshCore device types: COMPANION=1, REPEATER=2, ROOM_SERVER=3.

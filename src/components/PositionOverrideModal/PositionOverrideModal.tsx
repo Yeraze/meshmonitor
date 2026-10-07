@@ -5,7 +5,7 @@ import { useResolvedSourceId } from '../../hooks/useResolvedSourceId';
 import apiService from '../../services/api';
 import { NumberInput } from '../common/NumberInput';
 import { NumberInputScope } from '../common/NumberInputScope';
-import { useNumberInputScope } from '../common/numberInputScope';
+import { useNumberInputScope } from '../common/numberInputScopeContext';
 import './PositionOverrideModal.css';
 
 interface Node {

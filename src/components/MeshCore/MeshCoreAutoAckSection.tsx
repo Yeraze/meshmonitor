@@ -6,7 +6,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useSaveBar } from '../../hooks/useSaveBar';
 import { NumberInput } from '../common/NumberInput';
 import { NumberInputScope } from '../common/NumberInputScope';
-import { useNumberInputScope } from '../common/numberInputScope';
+import { useNumberInputScope } from '../common/numberInputScopeContext';
 import { ScopeSelectField, type ScopeMode } from './ScopeSelectField';
 import { MeshCoreReceiveOnlyNote } from './MeshCoreReceiveOnlyNote';
 import { UiIcon } from '../icons';

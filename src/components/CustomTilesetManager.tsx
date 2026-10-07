@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { UiIcon } from './icons';
 import { NumberInput } from './common/NumberInput';
 import { NumberInputScope } from './common/NumberInputScope';
-import { useNumberInputScope } from './common/numberInputScope';
+import { useNumberInputScope } from './common/numberInputScopeContext';
 import { useSettings } from '../contexts/SettingsContext';
 import { validateTileUrl, isVectorTileUrl, type CustomTileset } from '../config/tilesets';
 import { testTileServer, formatTileSize, autodetectTileServer, type TileTestResult, type AutodetectResult, type AutodetectProgress } from '../utils/tileServerTest';

@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { COOLDOWN_SECONDS_MAX } from './automationInputLimits';
 import { NumberInput } from './common/NumberInput';
 import { NumberInputScope } from './common/NumberInputScope';
-import { useNumberInputScope } from './common/numberInputScope';
+import { useNumberInputScope } from './common/numberInputScopeContext';
 import { useTranslation, Trans } from 'react-i18next';
 import { useToast } from './ToastContainer';
 import { useCsrfFetch } from '../hooks/useCsrfFetch';

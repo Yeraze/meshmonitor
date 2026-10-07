@@ -1,7 +1,7 @@
 import React, { useEffect, useId, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
-import { useEnclosingNumberInputScope } from './numberInputScope';
+import { useEnclosingNumberInputScope } from './numberInputScopeContext';
 import {
   evaluateNumberDraft,
   formatNumberDraft,

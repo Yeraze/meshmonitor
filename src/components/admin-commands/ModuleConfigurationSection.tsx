@@ -2,7 +2,7 @@ import React from 'react';
 import { useTranslation } from 'react-i18next';
 import { NumberInput } from '../common/NumberInput';
 import { NumberInputScope } from '../common/NumberInputScope';
-import { useNumberInputScope } from '../common/numberInputScope';
+import { useNumberInputScope } from '../common/numberInputScopeContext';
 import { MODEM_PRESET_OPTIONS, REGION_OPTIONS } from '../configuration/constants';
 import BroadcastTargetsEditor from '../configuration/BroadcastTargetsEditor';
 import statusMessageStyles from '../configuration/StatusMessageConfigSection.module.css';

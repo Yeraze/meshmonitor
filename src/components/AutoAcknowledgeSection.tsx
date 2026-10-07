@@ -21,7 +21,7 @@ import AutoAckConvertDialog from './autoack/AutoAckConvertDialog';
 import { HopLimitOverrideSelect } from './HopLimitOverrideSelect';
 import { NumberInput } from './common/NumberInput';
 import { NumberInputScope } from './common/NumberInputScope';
-import { useNumberInputScope } from './common/numberInputScope';
+import { useNumberInputScope } from './common/numberInputScopeContext';
 
 interface AutoAcknowledgeSectionProps {
   enabled: boolean;
