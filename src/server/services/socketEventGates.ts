@@ -163,8 +163,8 @@ interface NodeFacts {
 
 async function loadNodeFacts(nodeNum: number, sourceId: string | undefined): Promise<NodeFacts | null> {
   if (!sourceId) return null;
-  const row = await databaseService.nodes.getNode(Number(nodeNum), sourceId);
-  return row ? { channel: row.channel, isPrivate: !!row.positionOverrideIsPrivate } : null;
+  const row = await databaseService.nodes.getNodeViewFacts(Number(nodeNum), sourceId);
+  return row ? { channel: row.channel, isPrivate: row.positionOverrideIsPrivate } : null;
 }
 
 /**

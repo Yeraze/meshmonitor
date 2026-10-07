@@ -126,6 +126,8 @@ interface EventContext {
   payload(): unknown | Promise<unknown>;
   /** The gate's `prepare` result. */
   prep(): unknown | Promise<unknown>;
+  /** True once some viewer who is not an admin asked for `prep`. */
+  prepStarted: boolean;
   /** Every channel row, for the cross-source slot remap. */
   channels(): Promise<Array<{ sourceId?: string | null; id: number; name?: string | null; psk?: string | null; role?: number | null }>>;
 }
@@ -136,6 +138,7 @@ function contextFor(event: DataEvent, gate: SocketEventGate): EventContext {
     gate,
     payload: once(() => (gate.shape ? gate.shape(event) : event.data)),
     prep: once(() => (gate.prepare ? gate.prepare(event) : undefined)),
+    prepStarted: false,
     // intentional cross-source: the map covers all sources to find equivalent slots on the joined source
     channels: once(() => databaseService.channels.getAllChannels(ALL_SOURCES)) as EventContext['channels'],
   };
@@ -259,7 +262,10 @@ function deliverSync(socket: Socket, state: SocketState, viewer: SocketViewer, c
   if (!viewer.isAdmin) {
     if (gate.scope === 'source' && !event.sourceId) return true; // no source to check a grant on
     if (gate.ensure?.(viewer, event)) return false;
-    if (gate.prepare && isThenable(ctx.prep())) return false;
+    if (gate.prepare) {
+      ctx.prepStarted = true;
+      if (isThenable(ctx.prep())) return false;
+    }
   }
   const payload = ctx.payload();
   if (isThenable(payload)) return false;
@@ -308,6 +314,7 @@ function dispatch(event: DataEvent): void {
   const ctx = contextFor(event, gate);
   const now = Date.now();
   const sourceId = gate.scope === 'source' ? event.sourceId : undefined;
+  let waiting: Array<[Socket, SocketState]> | undefined;
   for (const socket of sockets.values()) {
     const state = stateOf(socket);
     if (!state) continue;
@@ -315,6 +322,34 @@ function dispatch(event: DataEvent): void {
     if (sourceId && !state.allSources && state.sources.size > 0 && !state.sources.has(sourceId)) continue;
     const viewer = freshViewer(state, now);
     if (viewer && deliverSync(socket, state, viewer, ctx)) continue;
+    (waiting ??= []).push([socket, state]);
+  }
+  if (waiting) void deliverWaiting(ctx, waiting);
+}
+
+/**
+ * Finish an event for the sockets that could not be served at once. The work
+ * the event itself needs (its payload, its facts) is awaited ONCE here; after
+ * that most sockets are served with no await of their own. Only a socket whose
+ * own access must be re-read takes the per-socket path.
+ */
+async function deliverWaiting(ctx: EventContext, waiting: Array<[Socket, SocketState]>): Promise<void> {
+  try {
+    await ctx.payload();
+    if (ctx.prepStarted) await ctx.prep();
+  } catch {
+    // Left to deliverAsync below, which logs it per socket and withholds.
+  }
+  const now = Date.now();
+  for (const [socket, state] of waiting) {
+    if (!socket.connected) continue;
+    const viewer = freshViewer(state, now);
+    try {
+      if (viewer && deliverSync(socket, state, viewer, ctx)) continue;
+    } catch (err) {
+      logger.warn(`[WebSocket] ${ctx.event.type} withheld from ${socket.id}: gate failed:`, err);
+      continue;
+    }
     void deliverAsync(socket, state, ctx);
   }
 }
