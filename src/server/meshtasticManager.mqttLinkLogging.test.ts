@@ -183,6 +183,23 @@ describe('proxy traffic with no link attached', () => {
     expect(linesWith(warnSpy, NEEDLE)).toHaveLength(2);
   });
 
+  it('warns again when an attached link detaches mid-connection', async () => {
+    const broker = { publish: vi.fn().mockResolvedValue(undefined), off: vi.fn() };
+    const mgr = makeManager({ broker, link: { enabled: true, mqttBrokerSourceId: 'broker-1' } });
+    // An earlier no-link spell on this connection already logged.
+    (mgr as any).mqttProxyNoLinkLogged = true;
+    (mgr as any).mqttLinkBrokerListener = () => {};
+
+    // The linked source stops: setupMqttLink's manager-stopped handler calls this.
+    (mgr as any).detachMqttLinkBroker();
+    await (mgr as any).handleDeviceMqttProxyMessage(proxyMsg());
+    await (mgr as any).handleDeviceMqttProxyMessage(proxyMsg());
+
+    const lines = linesWith(warnSpy, NEEDLE);
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toContain('linked source broker-1 is not running');
+  });
+
   it('names a configured link whose target is not running', async () => {
     const mgr = makeManager({ link: { enabled: true, mqttBrokerSourceId: 'broker-1' } });
 

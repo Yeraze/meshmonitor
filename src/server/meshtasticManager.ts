@@ -705,8 +705,9 @@ class MeshtasticManager implements ISourceManager {
   private mqttLinkEchoBrokerToDevice: Array<{ topic: string; packetId: number; expiresAt: number }> = [];
   /**
    * "Proxy traffic with no link" has been logged for this connection (#5013).
-   * Cleared on each connect and whenever the link changes, so the line shows
-   * once per connection, not once per packet.
+   * Cleared on each connect and whenever a link attaches or detaches, so the
+   * line shows once per connection and per loss of the link, not once per
+   * packet.
    */
   private mqttProxyNoLinkLogged = false;
   private postResetCooldownUntil: number = 0;
@@ -1385,6 +1386,9 @@ class MeshtasticManager implements ISourceManager {
   private detachMqttLinkBroker(): void {
     if (this.mqttLinkBroker && this.mqttLinkBrokerListener) {
       this.mqttLinkBroker.off('local-packet', this.mqttLinkBrokerListener);
+      // The link was carrying MQTT and now is not (target stopped, or the link
+      // was removed): the next dropped frame is news again.
+      this.mqttProxyNoLinkLogged = false;
     }
     this.mqttLinkBroker = null;
     this.mqttLinkBrokerListener = null;

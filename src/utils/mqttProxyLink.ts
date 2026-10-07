@@ -23,7 +23,11 @@ export const MQTT_TRAFFIC_DOCS_URL = 'https://meshmonitor.org/features/mqtt-brok
 export interface MqttProxyLinkSource {
   id: string;
   type: string;
-  /** `false` = disabled, so no manager runs and a link to it attaches to nothing. */
+  /**
+   * `false` = disabled, so no manager runs and a link to it attaches to
+   * nothing. Absent or `null` reads as enabled: only an explicit `false`
+   * makes a link target unusable.
+   */
   enabled?: boolean | null;
   config?: unknown;
 }
