@@ -983,6 +983,8 @@ A route that reads one source and writes another (copy NodeInfo) uses `requireSo
 
 **`GET /api/status` is reduced by caller.** Anyone gets `status`, `timestamp`, `version`, `nodeEnv`, `uptime` and `connection.connected`. `connection.localNode` needs `nodes:read` on the primary source. `statistics` (counts across every source) is admin only. Build such a reply from named fields, so a field added later is not handed out by default.
 
+**`GET /api/poll` follows the same rules, section by section.** `POLL_SECTION_GATES` in `pollRoutes.ts` lists every top-level key of the reply with its gate; the reply object is typed from it, and `pollRoutes.scope.test.ts` fails on a key that is not listed. The handler loads the caller's grants once (`loadNodeViewAccess`, no query for an admin) and answers every check from them for the source the data is from: the named source, or with no `sourceId` each row's own source. A caller who names a source they hold nothing on gets `200` with empty sections, not a 403, because every page polls this route. `traceroutes`, `deviceNodeNums` and `config.localNodeInfo` / `deviceMetadata` had no per-source gate before. With no `sourceId` there is no `messages` section for any caller.
+
 **A job that works on every source is admin only**, not `settings:write`: a grant on one source is not a grant over the others (`POST /api/settings/auto-enrichment/run-now`, `/position-estimation/run-now`). The scope guards detect `requireAdmin()` through `isAdminGate()`.
 
 Tests that mock `getUserPermissionSetAsync` must mock the `(userId, sourceId)` signature, not the legacy `(userId)` signature, or the source-scoping branch silently falls through.
