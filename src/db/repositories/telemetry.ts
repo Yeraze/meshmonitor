@@ -1328,7 +1328,7 @@ export class TelemetryRepository extends BaseRepository {
   /**
    * Get all nodes with their telemetry types
    */
-  async getAllNodesTelemetryTypes(sourceId?: SourceScope): Promise<Map<string, string[]>> {
+  async getAllNodesTelemetryTypes(sourceId?: SourceSetScope): Promise<Map<string, string[]>> {
     const map = new Map<string, string[]>();
     const { telemetry } = this.tables;
 
