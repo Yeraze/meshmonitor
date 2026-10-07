@@ -110,8 +110,27 @@ describe('nodeEnhancer: enhanceNodeForClient', () => {
     expect(result.latitudeOverride).toBeUndefined();
   });
 
+  it('checks nodes_private on the node\'s own source when no pre-computed value is passed', async () => {
+    const { hasPermission } = await import('../auth/authMiddleware.js');
+    vi.mocked(hasPermission).mockClear();
+    await enhanceNodeForClient({ ...mockNode, sourceId: 'src-b' }, adminUser);
+    // Without the source the check passes on a grant for ANY source.
+    expect(hasPermission).toHaveBeenCalledWith(adminUser, 'nodes_private', 'read', 'src-b');
+  });
+
+  it('masks a private override on a node that names no source, unless the caller is an admin', async () => {
+    // No source to check the per-source permission on: admins only.
+    const masked = await enhanceNodeForClient(mockNode, adminUser);
+    expect(masked.positionIsOverride).toBe(false);
+    expect(masked.latitudeOverride).toBeUndefined();
+
+    const shown = await enhanceNodeForClient(mockNode, { username: 'root', isAdmin: true });
+    expect(shown.positionIsOverride).toBe(true);
+    expect(shown.latitudeOverride).toBe(30);
+  });
+
   it('should show private override for user with permission', async () => {
-    const result = await enhanceNodeForClient(mockNode, adminUser);
+    const result = await enhanceNodeForClient({ ...mockNode, sourceId: 'src-a' }, adminUser);
 
     // Should use override position
     expect(result.position.latitude).toBe(30);

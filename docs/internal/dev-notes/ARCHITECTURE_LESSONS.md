@@ -966,6 +966,19 @@ A route that reads one source and writes another (copy NodeInfo) uses `requireSo
 
 `sourceScopedAccess.scope.test.ts` enumerates every route on `nodesRoutes`, `ignoredNodeRoutes`, `settingsRoutes` and `messageRoutes` and fails when a new one is not classified. Global settings rows stay writable on a `settings:write` grant for any source (the ruling in `PER_SOURCE_NODE_DISPLAY_PHASE6_SPEC.md` §11); per-source rows do not.
 
+**A read that returns rows from several sources must check each row on its own source.** `filterNodesByChannelPermission(rows, user)` and `getUserPermissionSetAsync(userId)` with no source merge the caller's grants across every source, so `channel_0:viewOnMap` on source A showed channel-0 rows of source B. `GET /api/nodes`, `/api/nodes/active`, `/api/messages/unread-counts` and `/api/messages/first-unread` had this fault when `sourceId` was omitted. The pattern now:
+
+- Load the grants once: `loadSourcePermissions(user)` (`src/server/utils/sourcePermissions.ts`, one query) answers `can(resource, action, sourceId)` with no further query; `loadNodeViewAccess(user)` (`nodeEnhancer.ts`) adds the channel rule (`canViewNode(sourceId, channel)`), the private-position rule (`canViewPrivate(sourceId)`, since `nodes_private` is per-source) and the list of sources worth querying. Do not call `hasPermission()` per row or per source in a loop.
+- Push the source list into the query. `withSourceScope(table, sourceIds)` accepts a list (`IN (...)`; an empty list matches nothing), typed `SourceSetScope`. A method must name that type to take a list: several older methods treat any non-string scope as "all sources".
+- Admins keep the single unscoped query.
+- When rows are merged across sources (`mergeNodesAcrossSources`), drop and mask rows BEFORE the merge, or a field from a row the caller may not see is back-filled into the merged row (`loadVisibleNodesAcrossSources`).
+
+**A permission check at the door is not a source filter on the query.** `GET /api/nodes/:id/position-history` and `/positions` checked the caller's channel access on the named source and then read the node's position telemetry from every source. `resolveNodePositionScope()` returns the sources the read may draw on and the handler passes that to `getPositionTelemetryByNode`.
+
+**Connection reads.** `GET /api/connection` and `/api/connection/info` give every caller they admit the four link flags, because the app shell waits on `connected`. The rest of the status needs `connection:read` on that source, and the addresses also need `sources:read` (`mayViewSourceEndpoint`, #5619). `GET /api/virtual-node/status` lists only sources the caller holds `connection:read` on; the client list (IP addresses) also needs `sources:read`. `perSourceReads.scope.test.ts` classifies every route on those two routers and covers the reads above.
+
+**A job that works on every source is admin only**, not `settings:write`: a grant on one source is not a grant over the others (`POST /api/settings/auto-enrichment/run-now`, `/position-estimation/run-now`). The scope guards detect `requireAdmin()` through `isAdminGate()`.
+
 Tests that mock `getUserPermissionSetAsync` must mock the `(userId, sourceId)` signature, not the legacy `(userId)` signature, or the source-scoping branch silently falls through.
 
 ### Frontend Source Awareness

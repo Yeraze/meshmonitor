@@ -542,11 +542,19 @@ export function requirePermission(
   return middleware;
 }
 
+const ADMIN_GATE = Symbol.for('meshmonitor.adminGate');
+
+/** True when `handler` is a middleware built by `requireAdmin()`. Read by
+ *  route guard tests to tell an admin-only route from an ungated one. */
+export function isAdminGate(handler: unknown): boolean {
+  return (handler as { [ADMIN_GATE]?: boolean } | null | undefined)?.[ADMIN_GATE] === true;
+}
+
 /**
  * Require admin role
  */
 export function requireAdmin() {
-  return async (req: Request, res: Response, next: NextFunction) => {
+  const middleware = async (req: Request, res: Response, next: NextFunction) => {
     try {
       if (!req.session.userId) {
         // No session — accept a Bearer API token before rejecting, the same
@@ -609,6 +617,8 @@ export function requireAdmin() {
       });
     }
   };
+  (middleware as unknown as { [ADMIN_GATE]: boolean })[ADMIN_GATE] = true;
+  return middleware;
 }
 
 /**
