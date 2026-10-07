@@ -568,6 +568,7 @@ const LoRaConfigSection: React.FC<LoRaConfigSectionProps> = ({
           id="hopLimit"
           min={1}
           alsoValid={[0]}
+          zeroHint={t('zero_hint.hop_limit')}
           max={7}
           integer
           value={hopLimit}

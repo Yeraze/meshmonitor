@@ -89,6 +89,41 @@ async function dirtyTheSection(user: ReturnType<typeof userEvent.setup>) {
   await waitFor(() => expect(saveButton()).not.toBeNull());
 }
 
+describe('PositionConfigSection broadcast interval: a stored 0', () => {
+  // The i18n mock answers with the key; zeroHints.test.ts pins the English text.
+  const hint = () => screen.queryByText('zero_hint.position_broadcast');
+
+  it('says what 0 means when the node reports 0, and 0 stays saveable', async () => {
+    const user = userEvent.setup();
+    const onSave = vi.fn();
+    render(<Harness initialBroadcastSecs={0} onBroadcastSecs={vi.fn()} onSave={onSave} />);
+
+    expect(interval().value).toBe('0');
+    expect(hint()).not.toBeNull();
+    expect(interval()).toHaveAccessibleDescription('zero_hint.position_broadcast');
+    expect(interval().getAttribute('aria-invalid')).toBeNull();
+
+    await dirtyTheSection(user);
+    expect(saveButton()!.disabled).toBe(false);
+  });
+
+  it('has no hint at a real interval, shows it when 0 is typed, and drops it again', async () => {
+    const user = userEvent.setup();
+    const onBroadcastSecs = vi.fn();
+    render(<Harness onBroadcastSecs={onBroadcastSecs} onSave={vi.fn()} />);
+    expect(hint()).toBeNull();
+
+    await user.clear(interval());
+    await user.type(interval(), '0');
+    expect(hint()).not.toBeNull();
+    expect(onBroadcastSecs).toHaveBeenLastCalledWith(0);
+
+    await user.clear(interval());
+    await user.type(interval(), '900');
+    expect(hint()).toBeNull();
+  });
+});
+
 describe('PositionConfigSection broadcast interval (#5649)', () => {
   it('can be cleared and retyped: 900 -> 1800 by backspacing', async () => {
     const user = userEvent.setup();

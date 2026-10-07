@@ -40,3 +40,11 @@
   font-size: 0.8rem;
   color: var(--color-error);
 }
+
+/* `zeroHint`: what a 0 in the field means, shown only while the value is 0. */
+.hint {
+  display: block;
+  margin-top: 4px;
+  font-size: 0.8rem;
+  color: var(--color-text-subtle);
+}

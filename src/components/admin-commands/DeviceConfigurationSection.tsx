@@ -414,6 +414,7 @@ export const DeviceConfigurationSection: React.FC<DeviceConfigurationSectionProp
             integer
             min={3600}
             alsoValid={[0]}
+            zeroHint={t('zero_hint.node_info_broadcast')}
             max={4294967295}
             value={nodeInfoBroadcastSecs}
             onChange={(v) => onDeviceConfigChange('nodeInfoBroadcastSecs', v)}
@@ -613,6 +614,7 @@ export const DeviceConfigurationSection: React.FC<DeviceConfigurationSectionProp
             integer
             min={32}
             alsoValid={[0]}
+            zeroHint={t('zero_hint.position_broadcast')}
             max={4294967295}
             value={positionBroadcastSecs}
             onChange={(v) => onPositionConfigChange('positionBroadcastSecs', v)}
