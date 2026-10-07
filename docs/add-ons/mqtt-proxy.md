@@ -178,6 +178,13 @@ docker compose logs mqtt-proxy -f
 - Enable MQTT in your node's configuration
 - Enable "Proxy to Client" mode
 
+#### The node gets no MQTT traffic
+- With "Proxy to Client" on, the node gets broker traffic only from the proxy. Check that the proxy container is running and connected to the Virtual Node.
+- The node still drops a packet when its channel lacks **Downlink Enabled**, when the node does not have that channel, or when LoRa **Ignore MQTT** is on.
+- MeshMonitor may show **MQTT not linked** on the source card, or "Client proxy is enabled but no broker is linked" on Device → MQTT, until the proxy passes its first broker packet to the node. It cannot see the proxy before then. With a working proxy you can ignore both.
+- Do not also link an MQTT source to the same node: use the proxy or the link, not both.
+- Full walk-through: [Why don't I see MQTT traffic?](/features/mqtt-broker#why-no-mqtt-traffic)
+
 #### Connection Timeouts
 - Verify network connectivity between containers
 - Check that your MQTT broker is accessible
@@ -222,6 +229,7 @@ The proxy writes a health file at `/tmp/healthy` that Docker uses for health che
 
 - [Virtual Node](/configuration/virtual-node) - Required for MQTT Proxy
 - [Device Configuration](/features/device#mqtt-configuration) - Node MQTT settings
+- [Why don't I see MQTT traffic?](/features/mqtt-broker#why-no-mqtt-traffic) - Causes and a test to tell them apart
 - [Docker Configurator](/configurator) - Generate deployment configs
 - [AI Responder](/add-ons/ai-responder) - Another community add-on by LN4CY
 - [Community Add-ons Overview](/add-ons/) - All available add-ons

@@ -92,6 +92,13 @@ export interface SourceStatus {
    * least one rule.
    */
   forwarding?: SourceForwardingStatus;
+  /**
+   * Meshtastic node sources only: the device has MQTT "Proxy to Client" on and
+   * no usable MQTT link, so MeshMonitor carries none of its MQTT traffic
+   * (#5013). Present (always `true`) only when that holds and the caller has
+   * per-source `configuration` read.
+   */
+  mqttProxyUnlinked?: boolean;
   [key: string]: unknown;
 }
 

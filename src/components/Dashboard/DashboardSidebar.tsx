@@ -29,6 +29,7 @@ import { UiIcon } from '../icons';
 import { DRAG_HANDLE_TOUCH_STYLE } from '../dragHandleStyle';
 import SidebarFooter from '../SidebarFooter';
 import styles from './DashboardSidebar.module.css';
+import MqttProxyWarning from './MqttProxyWarning';
 import { isAnyMeshCoreSourceType } from '../../utils/nodeTypeCategory';
 
 // Narrow, LOCAL slices of `source.config` / the status poll for the compact
@@ -894,6 +895,15 @@ const DashboardSidebar: React.FC<DashboardSidebarProps> = ({
                   <span className={styles.activityCount}>{activityBadge.count}</span>
                   <span className={styles.activityWindow}>{activityBadge.window}</span>
                 </span>
+              )}
+              {!isUnified && source.type === 'meshtastic_tcp' && status?.mqttProxyUnlinked === true && (
+                // Proxy to Client is on and nothing carries MQTT (#5013). The
+                // server sends the flag only to viewers who may read this
+                // source's device configuration.
+                <MqttProxyWarning
+                  sourceId={source.id}
+                  onOpenDeviceMqtt={(id) => void navigate(`/source/${id}/configuration`)}
+                />
               )}
               {(() => {
                 // MQTT bridges surface `permissionMessage` on their status

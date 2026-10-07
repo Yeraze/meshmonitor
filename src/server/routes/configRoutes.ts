@@ -111,7 +111,13 @@ router.get('/current', requireDeviceSourcePermission('configuration', 'read', 'q
     const config = ccManager.getCurrentConfig();
     // Surface bridged-node status alongside the config so the configuration UI
     // can advise that a bridged node (no native IP) needs MQTT Client Proxy.
-    res.json({ ...config, isBridged: ccManager.isLocalNodeBridged() });
+    // `mqttProxyClientAttached`: a Virtual Node client is carrying MQTT for this
+    // node, so Device → MQTT need not warn about a missing MQTT link (#5013).
+    res.json({
+      ...config,
+      isBridged: ccManager.isLocalNodeBridged(),
+      mqttProxyClientAttached: ccManager.getMqttClientProxyState()?.proxyClientAttached ?? false,
+    });
   } catch (error) {
     logger.error('Error getting current config:', error);
     fail(res, 500, 'CONFIG_READ_FAILED', 'Failed to get current configuration');

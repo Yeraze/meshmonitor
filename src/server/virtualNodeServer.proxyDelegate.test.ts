@@ -47,6 +47,7 @@ vi.mock('./protobufService.js', () => {
 });
 
 import { VirtualNodeServer } from './virtualNodeServer.js';
+import meshtasticProtobufService from './meshtasticProtobufService.js';
 
 // ────────────────────────────────────────────────────────────────────────────
 // Test helpers
@@ -197,5 +198,41 @@ describe('VirtualNodeServer.broadcastToProxyDelegate — #4037 single-delegate p
 
     expect(a.writes).toHaveLength(1);
     expect(b.writes).toHaveLength(1);
+  });
+});
+
+// ────────────────────────────────────────────────────────────────────────────
+// hasMqttProxyClient (#5013)
+// ────────────────────────────────────────────────────────────────────────────
+
+describe('VirtualNodeServer.hasMqttProxyClient — the only sign of an MQTT Proxy sidecar (#5013)', () => {
+  const proxyFrame = { mqttClientProxyMessage: { topic: 'msh/US/2/e/LongFast/!aabbccdd', data: new Uint8Array(0) } };
+
+  it('is false for clients that have sent no MQTT proxy traffic', async () => {
+    const vn = makeServer();
+    attachFakeClient(vn, 'app', new Date());
+    expect(vn.hasMqttProxyClient()).toBe(false);
+
+    vi.mocked(meshtasticProtobufService.parseToRadio).mockResolvedValueOnce({ heartbeat: {} } as any);
+    await (vn as any).handleClientMessage('app', PAYLOAD);
+    expect(vn.hasMqttProxyClient()).toBe(false);
+  });
+
+  it('turns true once a client injects a ToRadio.mqttClientProxyMessage, and false when it leaves', async () => {
+    const vn = makeServer();
+    attachFakeClient(vn, 'app', new Date());
+    const sidecar = attachFakeClient(vn, 'sidecar', new Date());
+
+    vi.mocked(meshtasticProtobufService.parseToRadio).mockResolvedValueOnce(proxyFrame as any);
+    await (vn as any).handleClientMessage('sidecar', PAYLOAD);
+    expect(vn.hasMqttProxyClient()).toBe(true);
+
+    // A socket that died but is not yet reaped does not count.
+    sidecar.client.socket.destroyed = true;
+    expect(vn.hasMqttProxyClient()).toBe(false);
+    sidecar.client.socket.destroyed = false;
+
+    (vn as any).clients.delete('sidecar');
+    expect(vn.hasMqttProxyClient()).toBe(false);
   });
 });

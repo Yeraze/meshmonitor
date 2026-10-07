@@ -35,6 +35,7 @@ import { getDiscardInvalidPositions } from '../utils/positionIngestConfig.js';
 import { isPointInGeofence, distanceToGeofenceCenter } from '../utils/geometry.js';
 import { formatTime, formatDate } from '../utils/datetime.js';
 import { logger } from '../utils/logger.js';
+import { MQTT_TRAFFIC_DOCS_URL } from '../utils/mqttProxyLink.js';
 import {
   clampIntervalSetting,
   GEOFENCE_WHILE_INSIDE_MINUTES,
@@ -702,6 +703,13 @@ class MeshtasticManager implements ISourceManager {
   private mqttLinkRegistryStoppedListener: ((m: ISourceManager) => void) | null = null;
   private mqttLinkEchoDeviceToBroker: Array<{ topic: string; packetId: number; expiresAt: number }> = [];
   private mqttLinkEchoBrokerToDevice: Array<{ topic: string; packetId: number; expiresAt: number }> = [];
+  /**
+   * "Proxy traffic with no link" has been logged for this connection (#5013).
+   * Cleared on each connect and whenever a link attaches or detaches, so the
+   * line shows once per connection and per loss of the link, not once per
+   * packet.
+   */
+  private mqttProxyNoLinkLogged = false;
   private postResetCooldownUntil: number = 0;
   private virtualNodeServer?: VirtualNodeServer;
   private transport: ITransport | null = null;
@@ -1337,6 +1345,7 @@ class MeshtasticManager implements ISourceManager {
       };
       this.mqttLinkBrokerListener = listener;
       this.mqttLinkBroker.on('local-packet', listener);
+      this.mqttProxyNoLinkLogged = false;
       logger.info(`MQTT link attached: source ${this.sourceId} ↔ ${mgr.sourceType} ${targetId}`);
     };
 
@@ -1377,9 +1386,58 @@ class MeshtasticManager implements ISourceManager {
   private detachMqttLinkBroker(): void {
     if (this.mqttLinkBroker && this.mqttLinkBrokerListener) {
       this.mqttLinkBroker.off('local-packet', this.mqttLinkBrokerListener);
+      // The link was carrying MQTT and now is not (target stopped, or the link
+      // was removed): the next dropped frame is news again.
+      this.mqttProxyNoLinkLogged = false;
     }
     this.mqttLinkBroker = null;
     this.mqttLinkBrokerListener = null;
+  }
+
+  /**
+   * The device is in client-proxy mode and this source has no MQTT link, so
+   * MeshMonitor carries none of its MQTT traffic: publishes stop here and no
+   * broker traffic goes back to the node. This is the cause behind #5013, so
+   * say it in the log — once per connection, since the device sends a proxy
+   * frame for every packet it uplinks.
+   */
+  private logUnlinkedProxyTraffic(topic: string): void {
+    if (this.mqttProxyNoLinkLogged) return;
+    this.mqttProxyNoLinkLogged = true;
+    const vnClients = this.virtualNodeServer?.getClientCount() ?? 0;
+    const configured = this.mqttLink?.enabled && this.mqttLink.mqttBrokerSourceId
+      ? `linked source ${this.mqttLink.mqttBrokerSourceId} is not running`
+      : 'no MQTT source is linked';
+    if (vnClients > 0) {
+      // processIncomingData hands the frame to the newest Virtual Node client.
+      // If that is the MQTT Proxy sidecar, all is well; MeshMonitor cannot tell.
+      logger.info(
+        `[${this.sourceId}] MQTT client proxy: ${configured}; MeshMonitor is not carrying this node's MQTT traffic. ` +
+        `Proxy frames go to the newest of ${vnClients} Virtual Node client(s) instead (first topic=${topic}). ` +
+        `Logged once per connection. ${MQTT_TRAFFIC_DOCS_URL}`,
+      );
+      return;
+    }
+    logger.warn(
+      `[${this.sourceId}] MQTT client proxy: ${configured} and no Virtual Node client is connected — ` +
+      `dropping the node's MQTT traffic, and nothing from a broker reaches the node (first topic=${topic}). ` +
+      `Pick an MQTT source on Device → MQTT, or turn "Proxy to Client" off. ` +
+      `Logged once per connection. ${MQTT_TRAFFIC_DOCS_URL}`,
+    );
+  }
+
+  /**
+   * Client-proxy state for the dashboard warning (#5013). `null` until the
+   * device's MQTT module config has loaded: an unknown flag must not warn.
+   */
+  getMqttClientProxyState(): { mqttEnabled: boolean; proxyToClientEnabled: boolean; proxyClientAttached: boolean } | null {
+    const mqtt = this.actualModuleConfig?.mqtt;
+    if (!mqtt) return null;
+    return {
+      mqttEnabled: mqtt.enabled === true,
+      proxyToClientEnabled: mqtt.proxyToClientEnabled === true,
+      proxyClientAttached: this.virtualNodeServer?.hasMqttProxyClient() ?? false,
+    };
   }
 
   /**
@@ -1391,7 +1449,10 @@ class MeshtasticManager implements ISourceManager {
     logger.debug(
       `📨 [${this.sourceId}] FromRadio.mqttClientProxyMessage topic=${msg.topic} dataLen=${msg.data?.length ?? 0} retained=${msg.retained} link=${this.mqttLinkBroker ? this.mqttLink?.mqttBrokerSourceId : 'none'}`,
     );
-    if (!this.mqttLinkBroker) return;
+    if (!this.mqttLinkBroker) {
+      this.logUnlinkedProxyTraffic(msg.topic);
+      return;
+    }
     if (!msg.topic || msg.data.length === 0) return;
     const packetId = peekServiceEnvelopePacketId(msg.data);
     // Suppress echo from the OPPOSITE direction's history.
@@ -1449,6 +1510,12 @@ class MeshtasticManager implements ISourceManager {
     recordMqttEcho(this.mqttLinkEchoBrokerToDevice, p.topic, packetId);
     try {
       await this.transport.send(bytes);
+      // Debug only: one line per broker packet. Ids and sizes, never the
+      // payload. Its absence, with the linked source's Packet Monitor showing
+      // the packet, means the broker → device leg is the one that failed.
+      logger.debug(
+        `📥 [${this.sourceId}] MQTT link: injected broker message to device topic=${p.topic} channel=${p.envelope.channelId ?? 'unknown'} packetId=${packetId ?? 'unknown'} from=${this.mqttLink?.mqttBrokerSourceId ?? 'unknown'} bytes=${p.payload.length}`,
+      );
     } catch (err) {
       logger.warn(`MQTT link: failed to inject broker message to device: ${(err as Error).message}`);
     }
@@ -2028,6 +2095,8 @@ class MeshtasticManager implements ISourceManager {
 
   private async handleConnected(): Promise<void> {
     logger.debug('TCP connection established, requesting configuration...');
+    // A new connection: let "proxy traffic with no link" log once more (#5013).
+    this.mqttProxyNoLinkLogged = false;
     // Capture the transport reference we connected with. Several awaits below
     // (notifyNodeConnected, channel snapshot, sendWantConfigId) yield the
     // event loop, during which a parallel disconnect/reconnect cycle can
