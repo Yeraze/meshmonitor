@@ -296,22 +296,6 @@ pub fn start_backend<R: Runtime>(app: &AppHandle<R>) -> Result<Child, String> {
             }
             origins
         })
-        .env(
-            "ENABLE_VIRTUAL_NODE",
-            if config.enable_virtual_node {
-                "true"
-            } else {
-                "false"
-            },
-        )
-        .env(
-            "VIRTUAL_NODE_ALLOW_ADMIN_COMMANDS",
-            if config.virtual_node_allow_admin {
-                "true"
-            } else {
-                "false"
-            },
-        )
         .env("IS_DESKTOP", "true")
         .env("FIRMWARE_CHECK_ENABLED", "false");
 
@@ -364,17 +348,6 @@ pub fn start_backend<R: Runtime>(app: &AppHandle<R>) -> Result<Child, String> {
                 .as_ref()
                 .map(|o| format!(",{}", o))
                 .unwrap_or_default()
-        ),
-    );
-    log_to_file(
-        &logs_path,
-        &format!("ENABLE_VIRTUAL_NODE: {}", config.enable_virtual_node),
-    );
-    log_to_file(
-        &logs_path,
-        &format!(
-            "VIRTUAL_NODE_ALLOW_ADMIN_COMMANDS: {}",
-            config.virtual_node_allow_admin
         ),
     );
 

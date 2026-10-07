@@ -18,7 +18,7 @@ import { useSaveBar } from '../../hooks/useSaveBar';
 import styles from './LoRaConfigSection.module.css';
 import { NumberInput } from '../common/NumberInput';
 import { NumberInputScope } from '../common/NumberInputScope';
-import { useNumberInputScope } from '../common/numberInputScope';
+import { useNumberInputScope } from '../common/numberInputScopeContext';
 
 interface LoRaConfigSectionProps {
   usePreset: boolean;

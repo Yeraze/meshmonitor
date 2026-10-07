@@ -30,7 +30,7 @@ import { UiIcon } from '../icons';
 import styles from './ReticulumSettingsView.module.css';
 import { NumberInput } from '../common/NumberInput';
 import { NumberInputScope } from '../common/NumberInputScope';
-import { useNumberInputScope } from '../common/numberInputScope';
+import { useNumberInputScope } from '../common/numberInputScopeContext';
 
 interface ReticulumSettingsViewProps {
   /** Source UUID. Accepted for interface parity with the other Reticulum

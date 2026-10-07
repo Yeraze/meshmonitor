@@ -1,6 +1,6 @@
 import { useEffect, useRef, useCallback } from 'react';
 import { useSaveBarContext, useSaveBarGroup, SaveBarSection } from '../contexts/SaveBarContext';
-import type { NumberInputScopeHandle } from '../components/common/numberInputScope';
+import type { NumberInputScopeHandle } from '../components/common/numberInputScopeContext';
 
 export interface UseSaveBarOptions {
   id: string;

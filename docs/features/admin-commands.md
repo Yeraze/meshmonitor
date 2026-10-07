@@ -93,7 +93,7 @@ Configures device role and node information broadcasting.
   - **CLIENT**: General-purpose mode (default)
   - **CLIENT_MUTE**: Receives but doesn't relay packets
   - **ROUTER**: Always rebroadcasts packets (infrastructure mode)
-- **Node Info Broadcast Interval**: How often to broadcast node information (minimum: 3600 seconds)
+- **Node Info Broadcast Interval**: How often to broadcast node information (minimum: 3600 seconds). A node that shows 0 uses the 3 hour firmware default; MeshMonitor sends that 0 back as 0, but firmware stores 3600 on any save of this section, so enter 10800 to keep 3 hours
 
 **Use Cases:**
 - Optimizing network topology
@@ -147,7 +147,7 @@ When "Use Preset" is disabled, you can manually configure:
 Configure how the device broadcasts its position.
 
 **Settings:**
-- **Position Broadcast Interval**: How often to broadcast position. Firmware does not enforce a minimum for this setting, but MeshMonitor clamps values below 32 seconds. When Smart Position is enabled, firmware will not rebroadcast more often than every 5 minutes (300 seconds).
+- **Position Broadcast Interval**: How often to broadcast position. Firmware does not enforce a minimum for this setting, but MeshMonitor clamps values below 32 seconds. When Smart Position is enabled, firmware will not rebroadcast more often than every 5 minutes (300 seconds). A node that shows 0 uses the firmware default, and MeshMonitor sends that 0 back as 0 so the default stays in place.
 - **Smart Position**: Enable intelligent position broadcasting (reduces broadcasts when stationary)
 - **Fixed Position**: Lock device to a fixed location
   - **Fixed Latitude**: Latitude coordinate

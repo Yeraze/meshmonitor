@@ -10,7 +10,7 @@ import { useSaveBar } from '../hooks/useSaveBar';
 import { UiIcon } from './icons';
 import { NumberInput } from './common/NumberInput';
 import { NumberInputScope } from './common/NumberInputScope';
-import { useNumberInputScope } from './common/numberInputScope';
+import { useNumberInputScope } from './common/numberInputScopeContext';
 
 interface AutoTracerouteSectionProps {
   intervalMinutes: number;

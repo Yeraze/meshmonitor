@@ -22,12 +22,6 @@ pub struct Config {
     pub session_secret: String,
     /// First run completed
     pub setup_completed: bool,
-    /// Enable virtual node server for mobile app connections
-    #[serde(default)]
-    pub enable_virtual_node: bool,
-    /// Allow admin commands via virtual node
-    #[serde(default)]
-    pub virtual_node_allow_admin: bool,
     /// Additional allowed origins for CORS (comma-separated)
     /// Localhost is always included automatically
     #[serde(default)]
@@ -50,8 +44,6 @@ impl Default for Config {
             auto_start: false,
             session_secret: generate_secret(),
             setup_completed: false,
-            enable_virtual_node: false,
-            virtual_node_allow_admin: false,
             allowed_origins: None,
         }
     }
@@ -218,5 +210,40 @@ mod tests {
         let config: Config = serde_json::from_str(json).expect("legacy config should parse");
         assert_eq!(config.meshtastic_ip, "10.0.0.42");
         assert_eq!(config.meshtastic_port, 4403);
+    }
+
+    /// `enable_virtual_node` and `virtual_node_allow_admin` left the struct
+    /// when Virtual Node became a per-source setting (4.0). A config.json
+    /// saved by an older build still carries them: it must load as it is, not
+    /// fall into the "corrupted, reset to defaults" branch of `Config::load`,
+    /// which would throw away the user's port and session secret.
+    #[test]
+    fn test_config_ignores_removed_virtual_node_fields() {
+        let json = r#"{
+            "meshtastic_ip": "",
+            "meshtastic_port": 4403,
+            "web_port": 9090,
+            "auto_start": true,
+            "session_secret": "deadbeef",
+            "setup_completed": true,
+            "enable_virtual_node": true,
+            "virtual_node_allow_admin": true,
+            "allowed_origins": "http://192.168.1.50:9090"
+        }"#;
+        let config: Config =
+            serde_json::from_str(json).expect("config with the removed fields should parse");
+        assert_eq!(config.web_port, 9090);
+        assert!(config.auto_start);
+        assert_eq!(config.session_secret, "deadbeef");
+        assert!(config.setup_completed);
+        assert_eq!(
+            config.allowed_origins.as_deref(),
+            Some("http://192.168.1.50:9090")
+        );
+
+        // Saved again, the dead fields are gone.
+        let saved = serde_json::to_string(&config).expect("config serialises");
+        assert!(!saved.contains("enable_virtual_node"));
+        assert!(!saved.contains("virtual_node_allow_admin"));
     }
 }

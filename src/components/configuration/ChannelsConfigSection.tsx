@@ -34,7 +34,7 @@ import { formatPrecisionAccuracy } from '../../utils/distance';
 import { DEFAULT_PUBLIC_PSK } from '../../utils/publicChannel';
 import { NumberInput } from '../common/NumberInput';
 import { NumberInputScope } from '../common/NumberInputScope';
-import { useNumberInputScope } from '../common/numberInputScope';
+import { useNumberInputScope } from '../common/numberInputScopeContext';
 
 /** A device channel sharing its key with a differently-named Channel Database
  *  (server-decryption) entry (#3644). */

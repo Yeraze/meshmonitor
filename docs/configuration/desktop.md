@@ -124,9 +124,7 @@ The configuration file (`config.json`) contains your basic settings:
   "web_port": 8080,
   "auto_start": false,
   "session_secret": "auto-generated-secret",
-  "setup_completed": true,
-  "enable_virtual_node": false,
-  "virtual_node_allow_admin": false
+  "setup_completed": true
 }
 ```
 
@@ -138,8 +136,6 @@ The configuration file (`config.json`) contains your basic settings:
 | `auto_start` | Start with Windows/macOS | `false` |
 | `session_secret` | Secret key for session cookies | Auto-generated |
 | `setup_completed` | Whether initial setup is done | `true` after setup |
-| `enable_virtual_node` | Enable virtual node server for mobile app connections | `false` |
-| `virtual_node_allow_admin` | Allow admin commands via virtual node connections | `false` |
 
 ### Changing Configuration
 
@@ -235,16 +231,18 @@ The Virtual Node feature allows the official Meshtastic mobile apps (iOS/Android
 
 **To enable Virtual Node:**
 
-1. Stop MeshMonitor (Quit from tray/menu bar)
-2. Edit your `config.json` file
-3. Set `"enable_virtual_node": true`
-4. Optionally set `"virtual_node_allow_admin": true` to allow admin commands
-5. Restart MeshMonitor
+1. Open the MeshMonitor web UI
+2. On the **Dashboard**, open **Edit Source** for the source you want to expose
+3. In the **Virtual Node** section, turn on **Enable Virtual Node** and pick a **Virtual Node Port**
+4. Optionally turn on **Allow admin commands**
+5. Save the source
 
-The virtual node server listens on port **4404** by default. In your Meshtastic mobile app, add a new TCP connection pointing to your computer's IP address and port 4404.
+Each source has its own Virtual Node and its own port. In your Meshtastic mobile app, add a new TCP connection pointing to your computer's IP address and the port you picked.
+
+The desktop settings window no longer has Virtual Node checkboxes, and `config.json` no longer has `enable_virtual_node` or `virtual_node_allow_admin`. Both did nothing since 4.0. An old `config.json` that still holds them loads as before; the two fields are dropped the next time the desktop app saves its settings.
 
 ::: warning Security Notice
-Enabling `virtual_node_allow_admin` allows mobile apps connected via the virtual node to send admin commands to your Meshtastic device. Only enable this on trusted networks.
+**Allow admin commands** lets mobile apps connected through the Virtual Node send admin commands to your Meshtastic device. Only turn it on for trusted networks.
 :::
 
 ## Data Management

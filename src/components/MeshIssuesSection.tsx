@@ -6,7 +6,7 @@ import { useSaveBar } from '../hooks/useSaveBar';
 import { ISSUE_TYPE_LABELS, ruleIdsByTier, ruleShortId, buildRuleMuteSettingsPatch } from './Analysis/meshIssueRuleIds';
 import { NumberInput } from './common/NumberInput';
 import { NumberInputScope } from './common/NumberInputScope';
-import { useNumberInputScope } from './common/numberInputScope';
+import { useNumberInputScope } from './common/numberInputScopeContext';
 
 interface MeshIssuesSectionProps {
   baseUrl: string;

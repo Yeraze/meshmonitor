@@ -2,7 +2,7 @@ import React from 'react';
 import { useTranslation } from 'react-i18next';
 import { NumberInput } from '../common/NumberInput';
 import { NumberInputScope } from '../common/NumberInputScope';
-import { useNumberInputScope } from '../common/numberInputScope';
+import { useNumberInputScope } from '../common/numberInputScopeContext';
 import { UiIcon } from '../icons';
 import { MODEM_PRESET_OPTIONS, REGION_OPTIONS, isAmateurRadioRegion, getLegalPresetOptions } from '../configuration/constants';
 import type { Channel } from '../../types/device';

@@ -18,7 +18,7 @@ import { UiIcon } from '../icons';
 import styles from './ReticulumConfigurationView.module.css';
 import { NumberInput } from '../common/NumberInput';
 import { NumberInputScope } from '../common/NumberInputScope';
-import { useNumberInputScope } from '../common/numberInputScope';
+import { useNumberInputScope } from '../common/numberInputScopeContext';
 
 interface RadioConfig {
   frequency: number | null;

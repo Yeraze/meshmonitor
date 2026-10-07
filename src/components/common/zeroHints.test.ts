@@ -2,7 +2,7 @@
  * The English text of each "0 means..." hint (`NumberInput`'s `zeroHint`).
  *
  * Every field that takes 0 as a sentinel has one, and each must say what a
- * save sends. The numbers here are the floors in the save handlers
+ * save sends. The numbers here come from the save handlers
  * (ConfigurationTab / AdminCommandsTab) and the firmware's own defaults
  * (meshtastic/firmware `src/mesh/Default.h`, `src/mqtt/MQTT.h`); a change to
  * either has to change the hint with it.
@@ -26,9 +26,15 @@ function componentSources(dir: string): string[] {
 describe('zero hints', () => {
   it.each([
     // key, the default it names, what Save sends
-    ['zero_hint.position_broadcast', /15 minutes or 1 hour/, /Save sends 32 seconds, not 0/],
-    ['zero_hint.node_info_broadcast', /\(3 hours\)/, /Save sends 3600 seconds \(1 hour\), not 0/],
-    ['zero_hint.hop_limit', /factory value is 3/, /Save sends 1, not 0/],
+    // A stored 0 goes back as 0 (utils/broadcastIntervalFloor.ts). For the
+    // position interval the node then keeps its default. For node-info it
+    // cannot: AdminModule::handleSetConfig raises anything under 3600 to 3600,
+    // 0 included, so the hint must not promise the 3 hour default.
+    ['zero_hint.position_broadcast', /15 minutes or 1 hour/, /Save sends 0, so the node keeps its firmware default/],
+    ['zero_hint.node_info_broadcast', /\(3 hours\)/, /Save sends 0, but the firmware stores its minimum of 3600 seconds/],
+    // Not a default: firmware sends with exactly config.lora.hop_limit, so a
+    // stored 0 is zero hops (Default::getConfiguredOrDefaultHopLimit).
+    ['zero_hint.hop_limit', /^0 = zero hops.*factory value is 3/, /Save sends 1, not 0/],
     ['zero_hint.neighbor_info_interval', /\(6 hours\)/, /Save sends 0/],
     ['zero_hint.map_position_precision', /14 bits/, /Save sends 0/],
   ] as const)('%s names the default and what a save sends', (key, theDefault, sent) => {

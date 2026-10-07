@@ -16,7 +16,7 @@ import { Channel, DeviceInfo } from '../types/device';
 import { useSaveBar } from '../hooks/useSaveBar';
 import { NumberInput } from './common/NumberInput';
 import { NumberInputScope } from './common/NumberInputScope';
-import { useNumberInputScope } from './common/numberInputScope';
+import { useNumberInputScope } from './common/numberInputScopeContext';
 import GeofenceMapEditor from './GeofenceMapEditor';
 import GeofenceNodeSelector from './GeofenceNodeSelector';
 import ScriptTestModal from './ScriptTestModal';
