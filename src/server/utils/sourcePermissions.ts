@@ -18,7 +18,8 @@ export interface SourcePermissions {
   can(resource: ResourceType, action: PermissionAction, sourceId: string): boolean;
   /** The grants held on one source. Empty for an admin: use `isAdmin`. */
   on(sourceId: string): PermissionSet;
-  /** Sources where the grants satisfy `test`. Not meaningful for an admin. */
+  /** Sources where the grants satisfy `test`. Throws for an admin, who is not
+   *  limited to a list: check `isAdmin` first. */
   sourcesWhere(test: (grants: PermissionSet) => boolean): string[];
 }
 
@@ -36,7 +37,16 @@ export async function loadSourcePermissions(user: User | null | undefined): Prom
     return { isAdmin: false, can: () => false, on: () => NO_GRANTS, sourcesWhere: () => [] };
   }
   if (user.isAdmin) {
-    return { isAdmin: true, can: () => true, on: () => NO_GRANTS, sourcesWhere: () => [] };
+    return {
+      isAdmin: true,
+      can: () => true,
+      on: () => NO_GRANTS,
+      // An admin is not limited to a list of sources. An empty list here would
+      // read as "no source" and silently return nothing.
+      sourcesWhere: () => {
+        throw new Error('SourcePermissions.sourcesWhere: an admin may read every source; check isAdmin first');
+      },
+    };
   }
   // Built from the raw rows, with the same precedence `checkPermissionAsync`
   // applies: for a per-source resource the FIRST row for (resource, source)

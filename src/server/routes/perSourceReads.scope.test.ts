@@ -701,6 +701,13 @@ describe('reads with an optional sourceId: each row is checked on its own source
       }
     });
 
+    it('refuses to list sources for an admin, who is not limited to a list', async () => {
+      const permissions = await loadSourcePermissions({ id: harness.admin.id, isAdmin: true } as never);
+      expect(permissions.isAdmin).toBe(true);
+      expect(permissions.can('nodes', 'write', 'any-source')).toBe(true);
+      expect(() => permissions.sourcesWhere(() => true)).toThrow(/check isAdmin first/);
+    });
+
     it('is "all" for an admin and empty for no user', async () => {
       expect(await listPermittedSourceIds({ id: harness.admin.id, isAdmin: true } as never, 'nodes', 'read')).toBe('all');
       expect(await listPermittedSourceIds(null, 'nodes', 'read')).toEqual([]);
