@@ -7,7 +7,7 @@ import { useToast } from './ToastContainer';
 import { UiIcon } from './icons';
 import { NumberInput } from './common/NumberInput';
 import { NumberInputScope } from './common/NumberInputScope';
-import { useNumberInputScope } from './common/numberInputScope';
+import { useNumberInputScope } from './common/numberInputScopeContext';
 
 interface AirtimeCutoffSectionProps {
   baseUrl: string;

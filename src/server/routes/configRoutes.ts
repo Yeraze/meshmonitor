@@ -22,6 +22,11 @@ import { validateStatusMessageConfigPayload } from '../../utils/statusMessage.js
 import { getEnvironmentConfig } from '../config/environment.js';
 import { mayViewSourceEndpoint } from '../utils/sourceConfigRedaction.js';
 import { fail } from '../utils/apiResponse.js';
+import {
+  isIntervalBelowFloor,
+  NODE_INFO_BROADCAST_FLOOR_SECS,
+  POSITION_BROADCAST_FLOOR_SECS,
+} from '../../utils/broadcastIntervalFloor.js';
 import { isTxDisabledError } from '../errors/txDisabledError.js';
 import { safeJson } from '../utils/redactSecrets.js';
 
@@ -122,6 +127,12 @@ router.get('/current', requireDeviceSourcePermission('configuration', 'read', 'q
 router.post('/device', requireDeviceSourcePermission('configuration', 'write', 'body'), async (req, res) => {
   try {
     const { sourceId: _sourceId, ...config } = req.body;
+    // 0 means "keep the firmware default" and is sent as 0; any other value
+    // under the floor is refused (see utils/broadcastIntervalFloor.ts).
+    if (isIntervalBelowFloor(config.nodeInfoBroadcastSecs, NODE_INFO_BROADCAST_FLOOR_SECS)) {
+      return fail(res, 400, 'NODE_INFO_INTERVAL_BELOW_FLOOR',
+        `nodeInfoBroadcastSecs must be 0 (firmware default) or a whole number of at least ${NODE_INFO_BROADCAST_FLOOR_SECS} seconds`);
+    }
     const { manager: cfgDevManager } = getDeviceSourceTarget(req);
     await cfgDevManager.setDeviceConfig(config);
     res.json({ success: true, message: 'Device configuration sent' });
@@ -190,6 +201,12 @@ router.post('/lora', requireDeviceSourcePermission('configuration', 'write', 'bo
 router.post('/position', requireDeviceSourcePermission('configuration', 'write', 'body'), async (req, res) => {
   try {
     const { sourceId: _sourceId, ...config } = req.body;
+    // 0 means "keep the firmware default" and is sent as 0; any other value
+    // under the floor is refused (see utils/broadcastIntervalFloor.ts).
+    if (isIntervalBelowFloor(config.positionBroadcastSecs, POSITION_BROADCAST_FLOOR_SECS)) {
+      return fail(res, 400, 'POSITION_INTERVAL_BELOW_FLOOR',
+        `positionBroadcastSecs must be 0 (firmware default) or a whole number of at least ${POSITION_BROADCAST_FLOOR_SECS} seconds`);
+    }
     const { manager: cfgPosManager } = getDeviceSourceTarget(req);
     await cfgPosManager.setPositionConfig(config);
     res.json({ success: true, message: 'Position configuration sent' });

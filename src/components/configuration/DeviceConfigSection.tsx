@@ -5,7 +5,7 @@ import { ROLE_OPTIONS, TIMEZONE_PRESETS, REBROADCAST_MODE_OPTIONS, BUZZER_MODE_O
 import { useSaveBar } from '../../hooks/useSaveBar';
 import { NumberInput } from '../common/NumberInput';
 import { NumberInputScope } from '../common/NumberInputScope';
-import { useNumberInputScope } from '../common/numberInputScope';
+import { useNumberInputScope } from '../common/numberInputScopeContext';
 
 interface DeviceConfigSectionProps {
   role: number;

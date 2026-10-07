@@ -5,7 +5,7 @@ import { GPS_MODE_OPTIONS, POSITION_FLAGS } from './constants';
 import { useSaveBar } from '../../hooks/useSaveBar';
 import { NumberInput } from '../common/NumberInput';
 import { NumberInputScope } from '../common/NumberInputScope';
-import { useNumberInputScope } from '../common/numberInputScope';
+import { useNumberInputScope } from '../common/numberInputScopeContext';
 
 interface PositionConfigSectionProps {
   positionBroadcastSecs: number;

@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { useSaveBar } from '../../hooks/useSaveBar';
 import { NumberInput } from '../common/NumberInput';
 import { NumberInputScope } from '../common/NumberInputScope';
-import { useNumberInputScope } from '../common/numberInputScope';
+import { useNumberInputScope } from '../common/numberInputScopeContext';
 import ModuleAvailabilityNotice from './ModuleAvailabilityNotice';
 
 interface AmbientLightingConfigSectionProps {

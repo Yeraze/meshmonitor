@@ -5,7 +5,7 @@
  * Supports SQLite, PostgreSQL, and MySQL through Drizzle ORM.
  */
 import { eq, and, gt, isNull, or, lt, count, notInArray } from 'drizzle-orm';
-import { BaseRepository, DrizzleDatabase, SourceScope } from './base.js';
+import { BaseRepository, DrizzleDatabase, SourceScope, SourceSetScope } from './base.js';
 import { DatabaseType, DbChannel } from '../types.js';
 import { logger } from '../../utils/logger.js';
 
@@ -70,7 +70,7 @@ export class ChannelsRepository extends BaseRepository {
   /**
    * Get all channels ordered by ID, optionally scoped to a source.
    */
-  async getAllChannels(sourceId: SourceScope): Promise<DbChannel[]> {
+  async getAllChannels(sourceId: SourceSetScope): Promise<DbChannel[]> {
     const { channels } = this.tables;
     const result = await this.db
       .select()

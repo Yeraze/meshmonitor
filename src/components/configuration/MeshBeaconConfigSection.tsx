@@ -11,7 +11,7 @@ import {
 import type { Channel } from '../../types/device';
 import { NumberInput } from '../common/NumberInput';
 import { NumberInputScope } from '../common/NumberInputScope';
-import { useNumberInputScope } from '../common/numberInputScope';
+import { useNumberInputScope } from '../common/numberInputScopeContext';
 
 /**
  * MeshBeacon module config editor (firmware 2.8+, issue #3854).

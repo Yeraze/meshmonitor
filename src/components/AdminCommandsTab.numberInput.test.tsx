@@ -122,7 +122,7 @@ describe('AdminCommandsTab number fields (#5649)', () => {
     expect(Number.isInteger(sent.config?.positionBroadcastSecs)).toBe(true);
   });
 
-  it('never sends a position interval under the 32 s floor, and never swaps it for 0', async () => {
+  it('never sends a non-zero position interval under the 32 s floor, and sends a stored 0 as 0', async () => {
     renderTab();
     const interval = field('admin-position-config', '900');
     const save = () => saveButton('admin-position-config', 'admin_commands.save_position_config');
@@ -137,15 +137,15 @@ describe('AdminCommandsTab number fields (#5649)', () => {
     expect(h.apiSendAdminCommand).not.toHaveBeenCalled();
 
     // 0 is what a node reports for "firmware default", so a loaded 0 is not
-    // red. It still never goes out: the save handler raises it to the floor,
-    // as it did before #5649.
+    // red, and it goes back as 0: raising it to the floor made a default node
+    // broadcast its position every 32 seconds.
     fireEvent.change(interval, { target: { value: '0' } });
     expect(interval).not.toHaveAttribute('aria-invalid');
     expect(save()).not.toBeDisabled();
     fireEvent.click(save());
     await waitFor(() => expect(h.apiSendAdminCommand).toHaveBeenCalledTimes(1));
     const [sent] = sentCommands();
-    expect(sent.config?.positionBroadcastSecs).toBe(32);
+    expect(sent.config?.positionBroadcastSecs).toBe(0);
   });
 
   it('never sends a node-info interval under the 3600 s floor', async () => {
@@ -272,7 +272,7 @@ describe('AdminCommandsTab: a 0 in a firmware-default field', () => {
     expect(lora.queryByText('zero_hint.hop_limit')).toBeNull();
   });
 
-  it('explains a 0 position interval and sends the 32 seconds the hint promises', async () => {
+  it('explains a 0 position interval and sends the 0 the hint promises', async () => {
     renderTab();
     const interval = field('admin-position-config', '900');
     const position = within(section('admin-position-config'));
@@ -282,6 +282,6 @@ describe('AdminCommandsTab: a 0 in a firmware-default field', () => {
     expect(position.getByText('zero_hint.position_broadcast')).toBeInTheDocument();
     fireEvent.click(saveButton('admin-position-config', 'admin_commands.save_position_config'));
     await waitFor(() => expect(sentCommands().some(c => c.command === 'setPositionConfig')).toBe(true));
-    expect(sentCommands().find(c => c.command === 'setPositionConfig')!.config!.positionBroadcastSecs).toBe(32);
+    expect(sentCommands().find(c => c.command === 'setPositionConfig')!.config!.positionBroadcastSecs).toBe(0);
   });
 });

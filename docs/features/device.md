@@ -258,7 +258,9 @@ MeshMonitor will warn you before setting ROUTER mode. Only use this for powered,
 
 **Default**: 10800 seconds (3 hours)
 
-**Minimum**: 3600 seconds (1 hour) is the documented floor (`min_node_info_broadcast_secs`, `Default.h`), but firmware only applies it on the compile-time USERPREFS path, not to config set over the air. MeshMonitor clamps values below 3600 on both the Configuration and Admin Commands tabs.
+**Minimum**: 3600 seconds (1 hour) (`min_node_info_broadcast_secs`, `Default.h`). Firmware raises any lower value to 3600 when the Device section is saved (`AdminModule::handleSetConfig`), and MeshMonitor refuses a non-zero value below 3600 on both the Configuration and Admin Commands tabs.
+
+**A value of 0**: a node shows 0 when the interval was never set, and then uses the 3 hour default. MeshMonitor sends that 0 back as 0, but the firmware minimum applies to 0 too: after any save of the Device section the node holds 3600. Enter 10800 to keep 3 hours.
 
 **Effect**: Controls how frequently other nodes receive updated information about your device (name, position, battery status, etc.).
 
@@ -591,7 +593,9 @@ Always select the correct region for your location. Using incorrect frequency ba
 
 **Range**: 1-4294967295 seconds
 
-**Default**: 900 seconds (15 minutes)
+**Default**: 900 seconds (15 minutes) on older firmware; 3600 seconds (1 hour) on current firmware, 43200 seconds (12 hours) for router roles
+
+**A value of 0**: the node uses the firmware default above. MeshMonitor sends a stored 0 back as 0, so saving another field in this section leaves the default in place. Any other value below 32 seconds is refused.
 
 **Effect**: Controls frequency of position broadcasts to the mesh network.
 

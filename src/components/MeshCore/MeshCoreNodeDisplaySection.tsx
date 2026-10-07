@@ -7,7 +7,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useSaveBar } from '../../hooks/useSaveBar';
 import { NumberInput } from '../common/NumberInput';
 import { NumberInputScope } from '../common/NumberInputScope';
-import { useNumberInputScope } from '../common/numberInputScope';
+import { useNumberInputScope } from '../common/numberInputScopeContext';
 import { useNodeDisplaySettings, useSignFlipFormSettings, nodeDisplaySettingsQueryKey } from '../../hooks/useNodeDisplaySettings';
 import { useSettingsOptional } from '../../contexts/SettingsContext';
 import SignFlipCorrectionSettings from '../settings/SignFlipCorrectionSettings';

@@ -22,7 +22,7 @@ import type { SitePlannerOrigin } from './SitePlannerOriginController';
 import styles from './SitePlannerPanel.module.css';
 import { NumberInput } from '../common/NumberInput';
 import { NumberInputScope } from '../common/NumberInputScope';
-import { useNumberInputScope } from '../common/numberInputScope';
+import { useNumberInputScope } from '../common/numberInputScopeContext';
 
 export interface SitePlannerPanelProps {
   open: boolean;

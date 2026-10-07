@@ -33,6 +33,11 @@ import { autoFavoriteManagementScheduler } from '../services/autoFavoriteManagem
 import protobufService from '../protobufService.js';
 import { normalizeTakConfig, validateTakConfigPayload } from '../../utils/takConfig.js';
 import { fail, ok } from '../utils/apiResponse.js';
+import {
+  isIntervalBelowFloor,
+  NODE_INFO_BROADCAST_FLOOR_SECS,
+  POSITION_BROADCAST_FLOOR_SECS,
+} from '../../utils/broadcastIntervalFloor.js';
 import { isTxDisabledError } from '../errors/txDisabledError.js';
 import { validateStatusMessageConfigPayload } from '../../utils/statusMessage.js';
 import {
@@ -2070,6 +2075,12 @@ router.post('/commands', requireAdmin(), requireMeshtasticDeviceSource('body'), 
         if (!params.config) {
           return res.status(400).json({ error: 'config is required for setDeviceConfig' });
         }
+        // 0 means "keep the firmware default" and is sent as 0; any other
+        // value under the floor is refused (see utils/broadcastIntervalFloor.ts).
+        if (isIntervalBelowFloor(params.config.nodeInfoBroadcastSecs, NODE_INFO_BROADCAST_FLOOR_SECS)) {
+          return fail(res, 400, 'NODE_INFO_INTERVAL_BELOW_FLOOR',
+            `nodeInfoBroadcastSecs must be 0 (firmware default) or a whole number of at least ${NODE_INFO_BROADCAST_FLOOR_SECS} seconds`);
+        }
         buildAdminMessage = (passkey) => protobufService.createSetDeviceConfigMessage(params.config, passkey);
         break;
       case 'setLoRaConfig':
@@ -2081,6 +2092,10 @@ router.post('/commands', requireAdmin(), requireMeshtasticDeviceSource('body'), 
       case 'setPositionConfig': {
         if (!params.config) {
           return res.status(400).json({ error: 'config is required for setPositionConfig' });
+        }
+        if (isIntervalBelowFloor(params.config.positionBroadcastSecs, POSITION_BROADCAST_FLOOR_SECS)) {
+          return fail(res, 400, 'POSITION_INTERVAL_BELOW_FLOOR',
+            `positionBroadcastSecs must be 0 (firmware default) or a whole number of at least ${POSITION_BROADCAST_FLOOR_SECS} seconds`);
         }
         // Extract position coordinates from config - these must be sent via a separate
         // setFixedPosition admin message, as Config.PositionConfig has no lat/lon/alt fields.

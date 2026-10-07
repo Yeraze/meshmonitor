@@ -46,6 +46,7 @@ import PaxcounterConfigSection from './configuration/PaxcounterConfigSection';
 import StatusMessageConfigSection from './configuration/StatusMessageConfigSection';
 import TAKConfigSection from './configuration/TAKConfigSection';
 import { normalizeTakConfig } from '../utils/takConfig';
+import { floorKeepingZero, NODE_INFO_BROADCAST_FLOOR_SECS, POSITION_BROADCAST_FLOOR_SECS } from '../utils/broadcastIntervalFloor';
 import TrafficManagementConfigSection from './configuration/TrafficManagementConfigSection';
 import MeshBeaconConfigSection from './configuration/MeshBeaconConfigSection';
 import { unpackMeshBeaconFlags, pskToBase64, buildMeshBeaconConfigPayload, MESH_BEACON_MIN_INTERVAL_SECS, type BroadcastTarget } from './admin-commands/useAdminCommandsState';
@@ -912,8 +913,9 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
     setIsSaving(true);
     setStatusMessage('');
     try {
-      // Enforce minimum value for nodeInfoBroadcastSecs
-      const validNodeInfoBroadcastSecs = Math.max(3600, nodeInfoBroadcastSecs);
+      // A stored 0 goes back as 0 so the node keeps its firmware default;
+      // any other value under the floor is raised and the save is held.
+      const validNodeInfoBroadcastSecs = floorKeepingZero(nodeInfoBroadcastSecs, NODE_INFO_BROADCAST_FLOOR_SECS);
       if (validNodeInfoBroadcastSecs !== nodeInfoBroadcastSecs) {
         setNodeInfoBroadcastSecs(validNodeInfoBroadcastSecs);
         showToast(t('config.node_info_adjusted'), 'warning');
@@ -1029,7 +1031,8 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
     setStatusMessage('');
     try {
       // Enforce MeshMonitor's 32-second floor; firmware itself does not clamp this field (#5055).
-      const validPositionBroadcastSecs = Math.max(32, positionBroadcastSecs);
+      // A stored 0 goes back as 0 so the node keeps its firmware default.
+      const validPositionBroadcastSecs = floorKeepingZero(positionBroadcastSecs, POSITION_BROADCAST_FLOOR_SECS);
       if (validPositionBroadcastSecs !== positionBroadcastSecs) {
         setPositionBroadcastSecs(validPositionBroadcastSecs);
         showToast(t('config.position_interval_adjusted'), 'warning');

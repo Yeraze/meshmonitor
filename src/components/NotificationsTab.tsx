@@ -7,7 +7,7 @@ import { useToast } from './ToastContainer';
 import SectionNav from './SectionNav';
 import { NumberInput } from './common/NumberInput';
 import { NumberInputScope } from './common/NumberInputScope';
-import { useNumberInputScope } from './common/numberInputScope';
+import { useNumberInputScope } from './common/numberInputScopeContext';
 import { notificationsNavItems } from './search/configSections';
 import { useSource } from '../contexts/SourceContext';
 import {

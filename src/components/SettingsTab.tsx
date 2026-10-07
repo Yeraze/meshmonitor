@@ -6,7 +6,7 @@ import '../styles/settings.css';
 import { useSaveBar } from '../hooks/useSaveBar';
 import { NumberInput } from './common/NumberInput';
 import { NumberInputScope } from './common/NumberInputScope';
-import { useNumberInputScope } from './common/numberInputScope';
+import { useNumberInputScope } from './common/numberInputScopeContext';
 import { TemperatureUnit } from '../utils/temperature';
 import { SortField, SortDirection } from '../types/ui';
 import { version } from '../../package.json';
