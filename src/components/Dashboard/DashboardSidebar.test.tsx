@@ -1181,4 +1181,76 @@ describe('source card with endpoints withheld', () => {
     expect(badge).not.toBeNull();
     expect(badge!.textContent).toContain('OBS 1/2');
   });
+  describe('MQTT proxy warning (#5013)', () => {
+    const nodeSources = (): DashboardSource[] => [
+      { id: 'src-1', name: 'Source Alpha', type: 'meshtastic_tcp', enabled: true },
+      { id: 'src-2', name: 'Source Beta', type: 'mqtt_bridge', enabled: true },
+      { id: 'src-3', name: 'Source Gamma', type: 'meshcore', enabled: false },
+    ];
+    // The server sends `mqttProxyUnlinked` only when its rule holds AND the
+    // viewer has `configuration` read on the source; the card draws what it gets.
+    const withFlag = (flag: boolean | undefined) =>
+      new Map<string, SourceStatus | null>([
+        ['src-1', { sourceId: 'src-1', connected: true, ...(flag === undefined ? {} : { mqttProxyUnlinked: flag }) }],
+        ['src-2', { sourceId: 'src-2', connected: true }],
+        ['src-3', null],
+      ]);
+
+    it('is absent when the status carries no flag (rule false, or viewer lacks the grant)', () => {
+      renderSidebar({ sources: nodeSources(), statusMap: withFlag(undefined) });
+      expect(screen.queryByTestId('mqtt-proxy-warning-src-1')).not.toBeInTheDocument();
+    });
+
+    it('is absent when the flag is false', () => {
+      renderSidebar({ sources: nodeSources(), statusMap: withFlag(false) });
+      expect(screen.queryByTestId('mqtt-proxy-warning-src-1')).not.toBeInTheDocument();
+    });
+
+    it('shows on the flagged Meshtastic node card only', () => {
+      renderSidebar({ sources: nodeSources(), statusMap: withFlag(true) });
+      expect(screen.getByTestId('mqtt-proxy-warning-src-1')).toBeInTheDocument();
+      expect(screen.queryByTestId('mqtt-proxy-warning-src-2')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('mqtt-proxy-warning-src-3')).not.toBeInTheDocument();
+    });
+
+    it('ignores the flag on a source that is not a Meshtastic node', () => {
+      renderSidebar({
+        sources: nodeSources(),
+        statusMap: new Map<string, SourceStatus | null>([
+          ['src-1', { sourceId: 'src-1', connected: true }],
+          ['src-2', { sourceId: 'src-2', connected: true, mqttProxyUnlinked: true }],
+          ['src-3', null],
+        ]),
+      });
+      expect(screen.queryByTestId('mqtt-proxy-warning-src-2')).not.toBeInTheDocument();
+    });
+
+    it('opens the detail with the sidecar caveat and both links, without selecting the card', () => {
+      const navigate = vi.fn();
+      vi.mocked(useNavigate).mockReturnValue(navigate);
+      const onSelectSource = vi.fn();
+      renderSidebar({ sources: nodeSources(), statusMap: withFlag(true), onSelectSource });
+
+      const badge = screen.getByTestId('mqtt-proxy-warning-src-1');
+      expect(badge).toHaveAttribute('aria-expanded', 'false');
+      expect(screen.queryByTestId('mqtt-proxy-warning-detail-src-1')).not.toBeInTheDocument();
+
+      fireEvent.click(badge);
+      expect(badge).toHaveAttribute('aria-expanded', 'true');
+      const detail = screen.getByTestId('mqtt-proxy-warning-detail-src-1');
+      // The i18n mock returns keys: the sidecar caveat must be on the card.
+      expect(detail).toHaveTextContent('source.mqtt_proxy_warning_sidecar');
+      const docs = detail.querySelector('a');
+      expect(docs).toHaveAttribute('href', 'https://meshmonitor.org/features/mqtt-broker#why-no-mqtt-traffic');
+      expect(docs).toHaveAttribute('target', '_blank');
+
+      fireEvent.click(screen.getByTestId('mqtt-proxy-warning-open-src-1'));
+      expect(navigate).toHaveBeenCalledWith('/source/src-1/configuration');
+      fireEvent.click(detail);
+      expect(onSelectSource).not.toHaveBeenCalled();
+
+      fireEvent.click(badge);
+      expect(screen.queryByTestId('mqtt-proxy-warning-detail-src-1')).not.toBeInTheDocument();
+    });
+  });
 });

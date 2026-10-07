@@ -60,6 +60,12 @@ interface ConnectedClient {
   lastActivity: Date;
   lastConfigSentAt?: Date;
   lastConfigId?: number;
+  /**
+   * This client has sent a ToRadio.mqttClientProxyMessage on this connection,
+   * so it is carrying MQTT for the node (the MQTT Proxy sidecar, or a phone
+   * app in proxy mode). See hasMqttProxyClient().
+   */
+  sentMqttProxy?: boolean;
 }
 
 interface QueuedMessage {
@@ -633,6 +639,8 @@ export class VirtualNodeServer extends EventEmitter {
         // Then forward to physical radio as normal
         const proxyMsg = toRadio.mqttClientProxyMessage;
         const proxyData = proxyMsg.data;
+        const proxyClient = this.clients.get(clientId);
+        if (proxyClient) proxyClient.sentMqttProxy = true;
 
         if (proxyData && proxyData.length > 0) {
           try {
@@ -1222,6 +1230,20 @@ export class VirtualNodeServer extends EventEmitter {
   /**
    * Get connected client count
    */
+  /**
+   * True when a connected client has injected MQTT proxy traffic on its
+   * current connection (#5013). It is the only sign MeshMonitor has of the
+   * MQTT Proxy sidecar: nothing in the TCP handshake names a client. False
+   * does not mean "no sidecar" — one attached to a quiet broker has sent
+   * nothing yet.
+   */
+  public hasMqttProxyClient(): boolean {
+    for (const client of this.clients.values()) {
+      if (client.sentMqttProxy && !client.socket.destroyed) return true;
+    }
+    return false;
+  }
+
   public getClientCount(): number {
     return this.clients.size;
   }

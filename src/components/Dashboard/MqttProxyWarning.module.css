@@ -1,0 +1,74 @@
+/*
+ * Source-card warning: the node is in MQTT client-proxy mode and nothing
+ * carries its MQTT traffic (#5013). Sits in the card's wrapping status row.
+ */
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 1px 6px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  font-family: inherit;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1.4;
+  white-space: nowrap;
+  background: color-mix(in srgb, var(--color-warning) 18%, transparent);
+  color: var(--color-warning);
+  cursor: pointer;
+}
+
+.badge:hover {
+  border-color: var(--color-warning);
+}
+
+.badge:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 1px;
+}
+
+/* Full-width line under the status row's other items. */
+.detail {
+  flex-basis: 100%;
+  /* After every other item in the row, whatever follows the badge in markup. */
+  order: 1;
+  margin-top: 2px;
+  padding: 6px 8px;
+  border: 1px solid var(--color-warning);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--color-warning) 10%, transparent);
+  color: var(--color-text);
+  font-size: 11px;
+  line-height: 1.4;
+  cursor: default;
+}
+
+.detail p {
+  margin: 0 0 4px;
+}
+
+.links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+}
+
+.link {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 0;
+  border: none;
+  background: none;
+  font: inherit;
+  color: var(--color-accent);
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.link:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 1px;
+}

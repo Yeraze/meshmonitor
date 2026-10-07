@@ -4,13 +4,14 @@ import databaseService from '../../services/database.js';
 import { requirePermission, optionalAuth } from '../auth/authMiddleware.js';
 import { MeshCoreMqttManager, type MeshCoreMqttSourceConfig } from '../meshcoreMqttManager.js';
 import { logger } from '../../utils/logger.js';
-import { sourceManagerRegistry } from '../sourceManagerRegistry.js';
+import { sourceManagerRegistry, type ISourceManager } from '../sourceManagerRegistry.js';
 import { MeshtasticManager } from '../meshtasticManager.js';
 import { meshcoreConfigFromSource, ensureMeshCoreManagerStarted } from '../meshcoreConfig.js';
 import { MeshCoreManager } from '../meshcoreManager.js';
 import { reticulumConfigFromSource, ensureReticulumManagerStarted } from '../reticulumConfig.js';
 import { isMeshCoreManager, isMeshCoreMqttManager, isMeshtasticManager, isMqttBridgeManager, isReticulumManager } from '../sourceManagerTypes.js';
 import { loRaCenterFrequencyMhz, REGION_SHORT_NAME } from '../../utils/loraFrequency.js';
+import { isMqttProxyLinkMisconfigured } from '../../utils/mqttProxyLink.js';
 import { MqttBrokerManager, MAX_HOP_LIMIT, type MqttBrokerSourceConfig } from '../mqttBrokerManager.js';
 import { MAX_RAISE_TARGET, RAISEABLE_PORTNUMS } from '../mqttHopLimitPolicy.js';
 import { MqttBridgeManager, type MqttBridgeSourceConfig } from '../mqttBridgeManager.js';
@@ -1752,6 +1753,40 @@ async function forwardingStatusFor(
 }
 
 /**
+ * True when this node is in MQTT client-proxy mode and nothing carries its
+ * MQTT traffic (#5013) — the rule is isMqttProxyLinkMisconfigured, the same one
+ * Device → MQTT applies to its form.
+ *
+ * The flag is device configuration, so it needs what GET /api/config/current
+ * needs: `configuration` read on this source. Anyone else gets nothing.
+ */
+async function mqttProxyUnlinkedFor(
+  user: { id: number } | undefined,
+  isAdmin: boolean,
+  source: { id: string; type: string },
+  manager: ISourceManager | null | undefined,
+): Promise<boolean> {
+  if (source.type !== 'meshtastic_tcp' || !manager || !isMeshtasticManager(manager)) return false;
+  try {
+    if (!isAdmin && !user) return false;
+    // Device state first: most nodes are not in proxy mode, and then this
+    // 15-second poll needs no permission lookup and no source list. Nothing is
+    // returned before the check.
+    const proxy = manager.getMqttClientProxyState();
+    if (!proxy?.mqttEnabled || !proxy.proxyToClientEnabled) return false;
+    const canRead = isAdmin || (user
+      ? await databaseService.checkPermissionAsync(user.id, 'configuration', 'read', source.id)
+      : false);
+    if (!canRead) return false;
+    const sources = await databaseService.sources.getAllSources();
+    return isMqttProxyLinkMisconfigured({ ...proxy, sourceId: source.id, sources });
+  } catch (error) {
+    logger.debug(`[Sources] MQTT proxy link check for ${source.id} failed: ${(error as Error).message}`);
+    return false;
+  }
+}
+
+/**
  * A status payload for a caller who may not see where the source connects to.
  *
  * Connection state and counters stay. What goes is anything that can name a
@@ -1870,6 +1905,12 @@ router.get('/:id/status', optionalAuth(), async (req: Request, res: Response) =>
     // only when the source has rules — otherwise the pill has nothing to show.
     const forwarding = await forwardingStatusFor(user, isAdmin, source);
     if (forwarding) status = { ...status, forwarding };
+
+    // Client proxy with nothing to carry it (#5013), for the source card's
+    // warning. Rides this poll rather than one config read per card.
+    if (await mqttProxyUnlinkedFor(user, isAdmin, source, manager)) {
+      status = { ...status, mqttProxyUnlinked: true };
+    }
 
     // Free-text errors and the Observer broker list name the hosts a source
     // connects to. Only a caller who may see the endpoint gets them.

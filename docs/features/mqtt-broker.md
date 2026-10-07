@@ -194,7 +194,7 @@ Then on the Meshtastic source in MeshMonitor (**Dashboard → Sources → Edit �
 
 In both cases MeshMonitor forwards `FromRadio.mqttClientProxyMessage` payloads to the target's MQTT layer, and injects the target's inbound MQTT traffic back to the device as `ToRadio.MqttClientProxyMessage`.
 
-If `proxy_to_client_enabled` is on but no `mqttLink` is set, a yellow warning banner appears on the Device → MQTT page — without it, proxy traffic from the firmware would be silently dropped.
+If `proxy_to_client_enabled` is on but no `mqttLink` is set, a yellow warning banner appears on the Device → MQTT page and an **MQTT not linked** badge on the source's dashboard card — without the link, proxy traffic from the firmware is dropped and the node gets nothing from the broker. See [Why don't I see MQTT traffic?](#why-no-mqtt-traffic).
 
 ## Topic rewriting
 
@@ -380,13 +380,94 @@ Topics outside the broker's `rootTopic`, non-decodable payloads, and packets alr
 - **Embedded MQTT Broker** is the right answer when you want **selective bridging** (e.g. only forward msh/US/FL/PALM-BEACH traffic from `mqtt.meshtastic.org`, and only re-broadcast your own self-originated traffic), **multiple upstreams** from one local mesh, **server-side ingestion** (the bridged traffic shows up as MeshMonitor source data, not just relay-through), or you need **devices without WiFi** to publish to a broker that other LAN clients can also subscribe to. Both paths (direct TCP + client-proxy) work simultaneously — you can mix them on a per-device basis.
 - **Standalone MQTT Bridge** (no parent broker) is the right answer when you _don't_ need a local broker at all: either because you just want to **monitor** an upstream broker like `mqtt.meshtastic.org` without hosting anything, or because you have a single BLE/serial Meshtastic device in `proxy_to_client` mode whose MQTT traffic should go **straight upstream** with no intermediate broker. It's a smaller surface area than a broker + attached bridge — one source, one outbound TCP connection, no listener port to expose.
 
+## Why don't I see MQTT traffic? {#why-no-mqtt-traffic}
+
+**The symptom:** a packet sent over MQTT never shows on your node's source, or it shows only when another node nearby repeats it over LoRa.
+
+MeshMonitor does not filter MQTT packets out of a node source. If the node passes a packet to MeshMonitor, you see it. So the question is always: **did the packet reach the node, and did the node keep it?**
+
+### How a node gets MQTT traffic
+
+A node gets broker traffic in one of three ways. Know which one yours uses before you change anything.
+
+| Path | "Proxy to Client" on the node | Who talks to the broker |
+|---|---|---|
+| **The node's own WiFi or Ethernet** | Off | The node. MeshMonitor plays no part. |
+| **Client proxy through MeshMonitor** | On | MeshMonitor, through the MQTT source linked to the node's source. |
+| **Client proxy through the [MQTT Proxy sidecar](/add-ons/mqtt-proxy)** | On | The sidecar container, attached to the source's Virtual Node. |
+
+With **Proxy to Client** on, the node opens no broker connection of its own. It hands each publish to its client and waits for the client to hand broker traffic back. If no client does that job, the node gets nothing from the broker. A node paired with the official phone app works because the phone does that job.
+
+### The node drops the packet
+
+The firmware checks every packet that comes from the broker, on all three paths. It drops the packet when:
+
+1. **The channel does not have Downlink Enabled.** Set it under **Device → Channels Configuration**: edit the channel and tick **Downlink Enabled**. It is off by default.
+2. **The node does not have that channel.** The firmware matches the packet to a channel by name. No channel with that name means no delivery, and a channel with the right name but the wrong key cannot be decrypted.
+3. **Ignore MQTT is on.** Turn it off under **Device → LoRa Radio Configuration**.
+
+Two less common causes: the sender is on the node's ignore list, or the packet arrived unencrypted while the node's MQTT **Encryption Enabled** is on.
+
+::: warning Downlink costs airtime
+A node with Downlink Enabled sends each packet it accepts from the broker out over LoRa. On a busy public channel that is a lot of airtime for every node in range. If you only want to *see* broker traffic, use an [MQTT bridge source](#i-want-to-log-everything-on-the-broker) and leave downlink off.
+:::
+
+### Proxy to Client is on, but nothing is linked
+
+This is the case behind most "only when another node repeats it" reports. The node waits for its client to carry MQTT, and MeshMonitor carries it only through a linked MQTT source. With no link:
+
+- MeshMonitor does not publish the node's MQTT traffic. It passes each frame to the newest app connected to the source's Virtual Node, if there is one, and drops it otherwise.
+- Nothing from a broker goes back to the node.
+
+MeshMonitor tells you in three places:
+
+- The source's card on the dashboard shows **MQTT not linked**.
+- **Device → MQTT Module** shows **Client proxy is enabled but no broker is linked**.
+- The container log has one line per connection that starts `MQTT client proxy:`.
+
+To fix it:
+
+1. If you have no MQTT source yet, add one: **Dashboard → Sources → Add Source**, then pick **MQTT Bridge (forward to/from an upstream broker)** for an outside broker, or **Embedded MQTT Broker (devices connect here)** to host one. See [Quick setup](#quick-setup).
+2. Open the node's source and go to **Device → MQTT Module**.
+3. In **Quick configure from a MeshMonitor MQTT source**, pick the bridge or broker. This links the two sources at once and fills in the form.
+4. Save, so the node gets the new MQTT settings.
+5. Check that the channel has **Downlink Enabled** and that **Ignore MQTT** is off.
+6. Send a test packet from a node that reaches the broker only over MQTT.
+
+A link to a source that has since been deleted or disabled counts as no link.
+
+**If you run the MQTT Proxy sidecar**, you need no link, and you can ignore both warnings. MeshMonitor cannot tell a sidecar from any other app on the Virtual Node until the sidecar passes a broker packet to the node. Once it does, the warnings clear by themselves. Do not use a linked source and a sidecar for the same node.
+
+**If you do not want MeshMonitor to carry MQTT**, turn **Proxy to Client** off. This works only for a node with its own WiFi or Ethernet.
+
+### I want to log everything on the broker
+
+Do not use a radio for this. A node's downlink is filtered by channel, key and the Ignore MQTT flag, and by what the firmware chooses to keep. It will never be a full record of the broker.
+
+Add an **MQTT Bridge** source that points at the broker and topic. MeshMonitor then reads the broker itself and stores what it decodes, with no node involved. To decrypt packets on a private channel, add that channel's key to the **Channel Database**.
+
+### Tell the cases apart
+
+Add an MQTT bridge source for the same broker and topic, turn on packet capture in its [Packet Monitor](/features/packet-monitor#mqtt-sources), and send one test packet from a node that reaches the broker only over MQTT. Then look for that packet in both Packet Monitors.
+
+| Bridge source | Node's source | What it means |
+|---|---|---|
+| Shown | Shown, marked as MQTT | It works. |
+| Shown | Shown, not marked as MQTT | The node heard it over LoRa from another node, not from the broker. Treat it as the row below. |
+| Shown | Missing | The broker has it and the node does not. If Proxy to Client is on, [link an MQTT source](#proxy-to-client-is-on-but-nothing-is-linked). Then check [the three drop rules](#the-node-drops-the-packet). |
+| Missing | Missing | The packet did not reach the broker under a topic the bridge subscribes to. Check the sender's uplink and the bridge's topics. |
+
+If a source is linked and the packet is still missing, set `LOG_LEVEL=debug` and look for `MQTT link: injected broker message to device` with the packet's id. If the line is there, MeshMonitor gave the packet to the node and the node dropped it. If it is not, [open an issue](https://github.com/Yeraze/meshmonitor/issues) with the log.
+
 ## Troubleshooting
 
 ### "Client proxy is enabled but no broker is linked" (yellow banner on Device → MQTT)
 
-`proxy_to_client_enabled` is set on the firmware, but the Meshtastic source has no `mqttLink`. MeshMonitor will silently drop the proxy publishes unless:
-1. You pick an embedded broker from the **Quick Configure** dropdown on Device → MQTT (one click — also stamps the link via PUT); **or**
+`proxy_to_client_enabled` is set on the firmware, but the Meshtastic source has no `mqttLink` to an existing, enabled MQTT source. The source's dashboard card shows **MQTT not linked** for the same reason. MeshMonitor will silently drop the proxy publishes, and the node gets nothing from the broker, unless:
+1. You pick an embedded broker or a bridge from the **Quick Configure** dropdown on Device → MQTT (one click — also stamps the link via PUT); **or**
 2. You have the [MQTT Proxy Sidecar](/add-ons/mqtt-proxy) attached to this source's Virtual Node Server, which publishes to its own configured upstream.
+
+See [Why don't I see MQTT traffic?](#why-no-mqtt-traffic) for the full list of causes and a test that tells them apart.
 
 ### Broker has `clientCount: 0` but I configured a device
 
