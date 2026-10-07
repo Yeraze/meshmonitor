@@ -367,7 +367,7 @@ export class TelemetryRepository extends BaseRepository {
     beforeTimestamp?: number,
     offset: number = 0,
     telemetryType?: string,
-    sourceId?: SourceScope
+    sourceId?: SourceSetScope
   ): Promise<DbTelemetry[]> {
     const { telemetry } = this.tables;
     const conditions = [eq(telemetry.nodeId, nodeId)];
@@ -1902,7 +1902,7 @@ export class TelemetryRepository extends BaseRepository {
     nodeId: string,
     types: string[],
     sinceTimestamp?: number,
-    sourceId?: SourceScope
+    sourceId?: SourceSetScope
   ): Promise<Record<string, Array<{ timestamp: number; ratePerMinute: number }>>> {
     const { telemetry } = this.tables;
 

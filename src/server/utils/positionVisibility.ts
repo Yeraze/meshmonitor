@@ -18,7 +18,11 @@
  *    historical position telemetry must not contribute heatmap or
  *    coverage-grid density either.
  *  - per-channel `viewOnMap` + `positionOverrideIsPrivate`: PERMISSION gates
- *    applied only to non-admins.
+ *    applied only to non-admins. Both are checked on the ROW'S OWN source:
+ *    `channel_N:viewOnMap` on that source, and `nodes_private:read` on that
+ *    source for a private position. `nodes_private` used to be checked with
+ *    no source, which passes on a grant for any source, so a grant on source
+ *    A showed private positions held on source B.
  *
  * The predicate parameter is generalised to the minimal shape it actually
  * needs, `{ sourceId, nodeNum }`, rather than `PositionRow` — `PositionRow`
@@ -28,7 +32,8 @@
  */
 import databaseService from '../../services/database.js';
 import { CHANNEL_DB_OFFSET } from '../constants/meshtastic.js';
-import { hasPermission } from '../auth/authMiddleware.js';
+import { loadSourcePermissions, type SourcePermissions } from './sourcePermissions.js';
+import type { ResourceType } from '../../types/permission.js';
 import type { DbNode } from '../../db/types.js';
 import type { DbMeshCoreNode } from '../../db/repositories/meshcore.js';
 
@@ -65,12 +70,20 @@ export async function loadNodesBySource(sourceIds: string[]): Promise<Map<string
  * `nodesBySource`, when supplied, is used instead of an internal
  * `loadNodesBySource` call — lets a caller that already loaded nodes (e.g.
  * for its own name lookups) avoid a second `getAllNodes` scan.
+ *
+ * `permissions`, when supplied, is the caller's grants already loaded for this
+ * request (`loadSourcePermissions`). A handler that builds this filter and the
+ * MeshCore one passes the same object to both, so the grants are read once.
+ *
+ * The predicate must be called with the row's OWN `sourceId`: that is the
+ * source every permission gate is evaluated on.
  */
 export async function buildPositionFilter(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any -- #5277 req.user's shape isn't exported as a type from authMiddleware; matches the original analysisRoutes.ts signature
   user: any,
   sourceIds: string[],
   nodesBySource?: Map<string, DbNode[]>,
+  permissions?: SourcePermissions,
 ): Promise<(pos: VisibilityRow) => boolean> {
   const isAdmin = !!user?.isAdmin;
   const userId: number | null = user?.id ?? null;
@@ -106,22 +119,12 @@ export async function buildPositionFilter(
     };
   }
 
-  // Fetch channel permission sets once per source
-  const permsBySource = new Map<string, Record<string, { viewOnMap?: boolean } | undefined>>();
-  for (const srcId of sourceIds) {
-    const perms = userId !== null
-      ? await databaseService.getUserPermissionSetAsync(userId, srcId)
-      : {};
-    permsBySource.set(srcId, perms);
-  }
-
-  // Fetch virtual-channel (channel DB) permissions and nodes_private:read once
+  // Every grant the user holds, in one query, answered per source below.
+  // Virtual-channel (channel database) permissions are global by design.
+  const grants = permissions ?? (await loadSourcePermissions(userId !== null ? user : null));
   const channelDbPerms: Record<number, { viewOnMap: boolean } | undefined> = userId !== null
     ? await databaseService.getChannelDatabasePermissionsForUserAsSetAsync(userId)
     : {};
-  const canViewPrivate = userId !== null
-    ? await databaseService.checkPermissionAsync(userId, 'nodes_private', 'read')
-    : false;
 
   return (pos: VisibilityRow): boolean => {
     const info = nodeInfoByKey.get(`${pos.sourceId}:${pos.nodeNum}`);
@@ -134,14 +137,15 @@ export async function buildPositionFilter(
     // #4162/#4163: hidden nodes have no marker, so contribute no density.
     if (info.hideFromMap) return false;
 
-    // Block private-position nodes unless the user has nodes_private:read
-    if (info.positionOverrideIsPrivate && !canViewPrivate) return false;
+    // Block private-position nodes unless the user holds nodes_private:read
+    // on the source that holds this row.
+    if (info.positionOverrideIsPrivate && !grants.can('nodes_private', 'read', pos.sourceId)) return false;
 
-    // Block nodes on channels the user lacks viewOnMap permission for
-    const perms = permsBySource.get(pos.sourceId) ?? {};
+    // Block nodes on channels the user lacks viewOnMap permission for, on
+    // this row's source.
     const ch = info.channel;
     if (ch < CHANNEL_DB_OFFSET) {
-      return perms[`channel_${ch}`]?.viewOnMap === true;
+      return grants.can(`channel_${ch}` as ResourceType, 'viewOnMap', pos.sourceId);
     }
     return channelDbPerms[ch - CHANNEL_DB_OFFSET]?.viewOnMap === true;
   };
@@ -184,9 +188,9 @@ export async function loadMeshCoreNodesBySource(sourceIds: string[]): Promise<Ma
  *    marker anywhere else, so it contributes nothing here either.
  *  - **Permission** (non-admins only): `nodes:viewOnMap` on that row's
  *    source — the same per-source gate `maskContactPositionsForViewOnMap`
- *    (#4559) applies to the MeshCore contact/node list. `hasPermission`
- *    itself short-circuits `true` for `user.isAdmin`, so admins skip this
- *    check but never the presence gate above. Anonymous (`user` null/
+ *    (#4559) applies to the MeshCore contact/node list. The grants answer
+ *    `true` for `user.isAdmin`, so admins skip this check but never the
+ *    presence gate above. Anonymous (`user` null/
  *    undefined) never passes.
  *
  * Branches ONLY on the row's own `(sourceId, publicKey)` — callers select
@@ -198,6 +202,7 @@ export async function buildMeshCorePositionFilter(
   user: any,
   sourceIds: string[],
   mcNodesBySource?: Map<string, DbMeshCoreNode[]>,
+  permissions?: SourcePermissions,
 ): Promise<(row: MeshCoreVisibilityRow) => boolean> {
   const nodesBySourceResolved = mcNodesBySource ?? (await loadMeshCoreNodesBySource(sourceIds));
 
@@ -210,15 +215,13 @@ export async function buildMeshCorePositionFilter(
     }
   }
 
-  // Per-source nodes:viewOnMap, resolved once (hasPermission short-circuits
-  // true for admins internally, so this doubles as the admin bypass).
-  const viewOnMapBySource = new Map<string, boolean>();
-  for (const srcId of sourceIds) {
-    viewOnMapBySource.set(srcId, user ? await hasPermission(user, 'nodes', 'viewOnMap', srcId) : false);
-  }
+  // Per-source nodes:viewOnMap from the user's grants, loaded once (`can` is
+  // always true for an admin, so this doubles as the admin bypass).
+  // Same guard as buildPositionFilter: a user object with no id holds nothing.
+  const grants = permissions ?? (await loadSourcePermissions(user?.id != null ? user : null));
 
   return (row: MeshCoreVisibilityRow): boolean => {
     if (!present.has(`${row.sourceId}:${row.publicKey.toLowerCase()}`)) return false;
-    return viewOnMapBySource.get(row.sourceId) === true;
+    return grants.can('nodes', 'viewOnMap', row.sourceId);
   };
 }

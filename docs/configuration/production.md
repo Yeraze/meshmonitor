@@ -460,7 +460,7 @@ MeshMonitor provides health check endpoints:
 # Basic health check
 curl http://localhost:8080/api/health
 
-# Detailed status with statistics
+# Status: version and whether the primary node link is up
 curl http://localhost:8080/api/status
 ```
 
@@ -472,6 +472,34 @@ curl http://localhost:8080/api/status
   "nodeEnv": "production"
 }
 ```
+
+**Status response (no login):**
+```json
+{
+  "status": "ok",
+  "timestamp": "2025-10-15T12:00:00.000Z",
+  "version": "4.17.0",
+  "nodeEnv": "production",
+  "connection": { "connected": true },
+  "uptime": 86400.5
+}
+```
+
+`/api/status` answers every caller, so it suits an external monitor. What it
+adds depends on who asks:
+
+| Caller | Extra fields |
+|--------|--------------|
+| No login, or a user with no grant on the primary source | none |
+| A session or API token with `nodes:read` on the primary source | `connection.localNode` (the primary node's number, id and names) |
+| An admin | `connection.localNode` and `statistics` (node, message and channel counts across all sources) |
+
+::: warning Changed in 4.17
+Earlier versions returned `connection.localNode` and `statistics` to every
+caller, logged in or not. A monitor that reads those fields without a login
+must now send an admin API token (`Authorization: Bearer mm_v1_...`).
+`connection.connected` is unchanged and needs no login.
+:::
 
 **Status endpoint response:**
 ```json

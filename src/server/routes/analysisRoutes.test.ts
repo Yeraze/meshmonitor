@@ -28,6 +28,28 @@ import databaseService from '../../services/database.js';
 
 const mockDb = databaseService as any;
 
+// The position gate reads the caller's grants as raw permission rows, once
+// (`loadSourcePermissions`). The tests below describe grants through
+// `getUserPermissionSetAsync` (channels, per source) and `checkPermissionAsync`
+// (`nodes_private`); this turns those into the rows, one set per source.
+mockDb.auth = {
+  getPermissionsForUser: vi.fn(async (userId: number) => {
+    const rows: Array<Record<string, unknown>> = [];
+    for (const sourceId of ['src-a', 'src-b']) {
+      const set = ((await mockDb.getUserPermissionSetAsync(userId, sourceId)) ?? {}) as Record<
+        string,
+        { viewOnMap?: boolean; read?: boolean; write?: boolean }
+      >;
+      for (const [resource, grant] of Object.entries(set)) {
+        rows.push({ resource, sourceId, canViewOnMap: !!grant.viewOnMap, canRead: !!grant.read, canWrite: !!grant.write });
+      }
+      const canViewPrivate = await mockDb.checkPermissionAsync(userId, 'nodes_private', 'read', sourceId);
+      rows.push({ resource: 'nodes_private', sourceId, canViewOnMap: false, canRead: !!canViewPrivate, canWrite: false });
+    }
+    return rows;
+  }),
+};
+
 const adminUser = { id: 1, username: 'admin', isActive: true, isAdmin: true };
 const regularUser = { id: 2, username: 'user', isActive: true, isAdmin: false };
 

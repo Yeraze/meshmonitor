@@ -1,7 +1,7 @@
 /**
  * System Routes Tests
  *
- * Tests /system/status, /status, /version/check and /system/restart, plus the
+ * Tests /system/status, /version/check and /system/restart, plus the
  * gracefulShutdown callback injection.
  */
 
@@ -95,26 +95,8 @@ describe('GET /system/status', () => {
   });
 });
 
-describe('GET /status', () => {
-  it('reports connection and statistics', async () => {
-    mockManager.getConnectionStatus.mockResolvedValue({ connected: true });
-    mockManager.getLocalNodeInfo.mockReturnValue({ nodeNum: 1, nodeId: '!1', longName: 'A', shortName: 'A' });
-    const res = await request(app).get('/status');
-    expect(res.status).toBe(200);
-    expect(res.body.status).toBe('ok');
-    expect(res.body.connection.connected).toBe(true);
-    expect(res.body.connection.localNode.nodeNum).toBe(1);
-    expect(res.body.statistics).toEqual({ nodes: 5, messages: 10, channels: 3 });
-  });
-
-  it('returns null localNode when none present', async () => {
-    mockManager.getConnectionStatus.mockResolvedValue({ connected: false });
-    mockManager.getLocalNodeInfo.mockReturnValue(null);
-    const res = await request(app).get('/status');
-    expect(res.status).toBe(200);
-    expect(res.body.connection.localNode).toBeNull();
-  });
-});
+// `GET /status` returns different fields to different callers. It is tested
+// with real permission rows in telemetryStatus.scope.test.ts.
 
 describe('GET /version/check', () => {
   it('returns 404 when version check is disabled', async () => {

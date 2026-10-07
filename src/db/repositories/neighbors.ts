@@ -5,7 +5,7 @@
  * Supports SQLite, PostgreSQL, and MySQL through Drizzle ORM.
  */
 import { eq, desc, and, or, gte, lt, sql, count, max } from 'drizzle-orm';
-import { BaseRepository, DrizzleDatabase, SourceScope } from './base.js';
+import { BaseRepository, DrizzleDatabase, SourceScope, SourceSetScope } from './base.js';
 import { DatabaseType, DbNeighborInfo } from '../types.js';
 
 /**
@@ -291,7 +291,7 @@ export class NeighborsRepository extends BaseRepository {
    */
   async getDirectNeighborRssiAsync(
     hoursBack: number = 24,
-    sourceId?: SourceScope,
+    sourceId?: SourceSetScope,
   ): Promise<Map<number, DirectNeighborStats>> {
     const cutoffTime = Date.now() - (hoursBack * 60 * 60 * 1000);
     const resultMap = new Map<number, DirectNeighborStats>();

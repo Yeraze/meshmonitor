@@ -154,10 +154,12 @@ export async function buildSourceNodes(source: SourceRow, user: ReqUser): Promis
 
   // Apply per-node position override to the flat lat/lng the dashboard map
   // reads (issue #3551). Private overrides are honored only for callers with
-  // nodes_private read, and the override coords are stripped for everyone else.
+  // nodes_private read ON THIS SOURCE, and the override coords are stripped
+  // for everyone else. Checked with no source, a grant on any other source
+  // passed.
   const canViewPrivate = user?.isAdmin
     ? true
-    : (user ? await hasPermission(user, 'nodes_private', 'read') : false);
+    : (user ? await hasPermission(user, 'nodes_private', 'read', source.id) : false);
   const withOverride = masked.map(node => {
     const n = node as any;
     const isPrivate = n.positionOverrideIsPrivate === true;

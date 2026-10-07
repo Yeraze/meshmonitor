@@ -93,6 +93,7 @@ import {
   ThemesRepository,
   ALL_SOURCES,
 } from '../db/repositories/index.js';
+import type { SourceSetScope } from '../db/repositories/index.js';
 import type {
   EstimatedPosition,
   EstimatedPositionInput,
@@ -2331,7 +2332,7 @@ class DatabaseService {
     nodeId: string,
     types: string[],
     sinceTimestamp?: number,
-    sourceId?: string
+    sourceId?: SourceSetScope
   ): Promise<Record<string, Array<{ timestamp: number; ratePerMinute: number }>>> {
     // Backend-agnostic path: the telemetry repository computes rates via Drizzle
     // for SQLite/PostgreSQL/MySQL alike (see TelemetryRepository.getPacketRates).
@@ -4120,8 +4121,13 @@ class DatabaseService {
    * @param hoursBack Number of hours to look back (default 24)
    * @returns Record mapping nodeNum to stats {avgRssi, packetCount, lastHeard}
    */
-  async getDirectNeighborStatsAsync(hoursBack: number = 24): Promise<Record<number, { avgRssi: number; packetCount: number; lastHeard: number }>> {
-    const stats = await this.neighbors.getDirectNeighborRssiAsync(hoursBack);
+  async getDirectNeighborStatsAsync(
+    hoursBack: number = 24,
+    sourceId?: SourceSetScope,
+  ): Promise<Record<number, { avgRssi: number; packetCount: number; lastHeard: number }>> {
+    // `sourceId`: one source, a list (rows from those sources only; an empty
+    // list is no rows), ALL_SOURCES, or omitted (legacy callers: every source).
+    const stats = await this.neighbors.getDirectNeighborRssiAsync(hoursBack, sourceId);
     const result: Record<number, { avgRssi: number; packetCount: number; lastHeard: number }> = {};
 
     for (const [nodeNum, stat] of stats) {

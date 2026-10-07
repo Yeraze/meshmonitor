@@ -65,14 +65,28 @@ async function mayReadConnection(req: Request, sourceId: string | undefined | nu
   return hasPermission(user, 'connection', 'read', sourceId);
 }
 
+/**
+ * The address fields of a reply, when the caller may see where a source
+ * connects to (mayViewSourceEndpoint), else nothing. A field the status does
+ * not carry is left out, not sent as null. For address strings only: do not
+ * route another kind of field through here.
+ */
+function withAddress(mayView: boolean, fields: Record<string, unknown>): Record<string, unknown> {
+  if (!mayView) return {};
+  return Object.fromEntries(Object.entries(fields).filter(([, value]) => value !== undefined));
+}
+
 const router = Router();
 
 // Connection status. Open to every caller, signed in or not, because the app
-// shell polls it. What comes back depends on the caller:
-//   - no `connection:read` on the source: the four link flags only;
-//   - `connection:read` on the source: the full status, without the address;
-//   - that and `sources:read` (or admin): the address (`nodeIp`) too, the
-//     rule the source list applies to `config.host` (mayViewSourceEndpoint).
+// shell polls it. Two independent rules decide what comes back:
+//   - `connection:read` on the source (or admin): the full status. Without
+//     it, the four link flags only.
+//   - `sources:read` (or admin): the address (`nodeIp`). This is the ONE rule
+//     for where a source connects to (mayViewSourceEndpoint), the same one
+//     `/api/poll` and the source list apply. It does not depend on
+//     `connection:read`: a caller the source list already shows the address
+//     to gets it here too, and `connection:read` alone never shows it.
 router.get('/', optionalAuth(), async (req: Request, res: Response) => {
   try {
     const connSourceId = typeof req.query.sourceId === 'string' && req.query.sourceId.length > 0
@@ -91,19 +105,22 @@ router.get('/', optionalAuth(), async (req: Request, res: Response) => {
     const status: Record<string, unknown> = ownStatus ?? { ...(await manager!.getConnectionStatus()) };
     const statusSourceId = connSourceId ?? manager?.sourceId;
 
-    if (!(await mayReadConnection(req, statusSourceId))) {
-      res.json(reducedStatus(status));
+    const [mayRead, mayViewAddress] = await Promise.all([
+      mayReadConnection(req, statusSourceId),
+      mayViewSourceEndpoint(req),
+    ]);
+    if (mayRead && mayViewAddress) {
+      res.json(status);
       return;
     }
-    if (!(await mayViewSourceEndpoint(req))) {
-      const { nodeIp: _nodeIp, ...statusWithoutNodeIp } = status;
-      res.json(statusWithoutNodeIp);
-    } else {
-      res.json(status);
-    }
+    const { nodeIp, ...statusWithoutNodeIp } = status;
+    res.json({
+      ...(mayRead ? statusWithoutNodeIp : reducedStatus(status)),
+      ...withAddress(mayViewAddress, { nodeIp }),
+    });
   } catch (error) {
     logger.error('Error getting connection status:', error);
-    res.status(500).json({ error: 'Failed to get connection status' });
+    fail(res, 500, 'INTERNAL_ERROR', 'Failed to get connection status');
   }
 });
 
@@ -160,10 +177,10 @@ router.post('/reconnect', connectionWriteGate, async (req: Request, res: Respons
 });
 
 // Detailed connection info for the header's node dialog. Signed-in callers
-// only. Same three levels as `GET /` above: without `connection:read` on the
-// source the reply is the link flags alone, so the dialog still opens; the
-// ports and the override flag need `connection:read`; the addresses need
-// `sources:read` as well.
+// only. The same two rules as `GET /` above: without `connection:read` on the
+// source the status is the link flags alone, so the dialog still opens; the
+// ports and the override flag need `connection:read`; the addresses (`nodeIp`,
+// `defaultIp`) need `sources:read` and nothing else.
 router.get('/info', requireAuth(), async (req: Request, res: Response) => {
   try {
     const ciSourceId = typeof req.query.sourceId === 'string' && req.query.sourceId.length > 0
@@ -182,20 +199,25 @@ router.get('/info', requireAuth(), async (req: Request, res: Response) => {
       return;
     }
     const ciManager = resolveSourceManager(ciSourceId);
-    const status = await ciManager.getConnectionStatus();
-    if (!(await mayReadConnection(req, ciSourceId ?? ciManager.sourceId))) {
-      res.json(reducedStatus(status));
+    const status: Record<string, unknown> = { ...(await ciManager.getConnectionStatus()) };
+    const env = getEnvironmentConfig();
+    const [mayRead, mayViewAddress] = await Promise.all([
+      mayReadConnection(req, ciSourceId ?? ciManager.sourceId),
+      mayViewSourceEndpoint(req),
+    ]);
+    // The address fields follow mayViewSourceEndpoint alone.
+    const { nodeIp, ...statusWithoutNodeIp } = status;
+    const addresses = withAddress(mayViewAddress, { nodeIp, defaultIp: env.meshtasticNodeIp });
+    if (!mayRead) {
+      res.json({ ...reducedStatus(status), ...addresses });
       return;
     }
-    const env = getEnvironmentConfig();
     const ipOverride = await databaseService.settings.getSetting('meshtasticNodeIpOverride');
     const portOverride = await databaseService.settings.getSetting('meshtasticTcpPortOverride');
 
-    // `connection:read` is not enough to see the address — see mayViewSourceEndpoint.
-    if (!(await mayViewSourceEndpoint(req))) {
-      const { nodeIp: _nodeIp, ...rest } = status;
+    if (!mayViewAddress) {
       res.json({
-        ...rest,
+        ...statusWithoutNodeIp,
         defaultPort: env.meshtasticTcpPort,
         isOverridden: !!(ipOverride || portOverride),
         tcpPort: portOverride ? parseInt(portOverride, 10) : env.meshtasticTcpPort,
@@ -212,7 +234,7 @@ router.get('/info', requireAuth(), async (req: Request, res: Response) => {
     });
   } catch (error) {
     logger.error('Error getting connection info:', error);
-    res.status(500).json({ error: 'Failed to get connection info' });
+    fail(res, 500, 'INTERNAL_ERROR', 'Failed to get connection info');
   }
 });
 

@@ -1,11 +1,12 @@
 /**
  * Who gets the node address from the connection routes.
  *
- * The address is a connection endpoint, so it follows the rule for
- * `config.host` on the source list (a signed-in user holding `sources:read`,
- * or an admin), and the caller must also hold `connection:read` on the source
- * the status is about: `connection` is a per-source permission. Signed in is
- * not enough on its own, and a caller with no login never gets it.
+ * The address is a connection endpoint, so it follows ONE rule everywhere, the
+ * rule for `config.host` on the source list and for `/api/poll`
+ * (`mayViewSourceEndpoint`): a signed-in user holding `sources:read`, or an
+ * admin. `connection:read` decides the rest of the status (the full status,
+ * the ports, the override flag) and has no say on the address: it neither
+ * grants it nor is needed for it. A caller with no login never gets it.
  *
  * Real session + auth middleware + permission SQL via createRouteTestApp.
  */
@@ -49,17 +50,18 @@ type Caller =
   | 'otherSourceConnection'
   | 'viewer'
   | 'admin';
-/** Who gets the address. */
+/** Who gets the address: `sources:read` (signed in) or admin, and nothing else. */
 const ALLOWED: Record<Caller, boolean> = {
   anonymous: false,
+  // The anonymous user is not signed in, whatever it is granted.
   anonymousWithRead: false,
   limited: false,
   // `sources:read` without `connection:read` on this source.
-  sourcesReadOnly: false,
+  sourcesReadOnly: true,
   // `connection:read` on this source without `sources:read`.
   connectionReadOnly: false,
-  // Both, but the `connection:read` is on another source.
-  otherSourceConnection: false,
+  // `sources:read`, with `connection:read` on another source only.
+  otherSourceConnection: true,
   viewer: true,
   admin: true,
 };
@@ -74,6 +76,8 @@ const READS_CONNECTION: Record<Caller, boolean> = {
   viewer: true,
   admin: true,
 };
+
+const LINK_FLAGS = ['configuring', 'connected', 'nodeResponsive', 'userDisconnected'];
 
 describe('connection routes — node address', () => {
   let harness: RouteTestHarness;
@@ -127,7 +131,8 @@ describe('connection routes — node address', () => {
       expect(JSON.stringify(res.body)).not.toContain(NODE_HOST);
     }
     if (!READS_CONNECTION[caller]) {
-      expect(Object.keys(res.body).sort()).toEqual(['configuring', 'connected', 'nodeResponsive', 'userDisconnected']);
+      // The link flags, plus the address for a caller the one rule allows.
+      expect(Object.keys(res.body).sort()).toEqual([...LINK_FLAGS, ...(ALLOWED[caller] ? ['nodeIp'] : [])].sort());
     }
   });
 
@@ -143,8 +148,9 @@ describe('connection routes — node address', () => {
       expect(res.body.tcpPort).toBe(4403);
       expect(res.body.isOverridden).toBe(false);
     } else {
-      // The link flags and nothing else.
-      expect(Object.keys(res.body).sort()).toEqual(['configuring', 'connected', 'nodeResponsive', 'userDisconnected']);
+      // The link flags, plus the addresses for a caller the one rule allows.
+      // Never the ports or the override flag.
+      expect(Object.keys(res.body).sort()).toEqual([...LINK_FLAGS, ...(ALLOWED[caller] ? ['defaultIp', 'nodeIp'] : [])].sort());
     }
     if (ALLOWED[caller]) {
       expect(res.body.nodeIp).toBe(NODE_HOST);
