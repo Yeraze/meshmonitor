@@ -603,6 +603,8 @@ router.get('/poll', optionalAuth(), async (req, res) => {
       // caller holds it on.
       const tracerouteScope = pollSourceId
         ?? (isAdmin ? ALL_SOURCES : permissions.sourcesWhere((grants) => grants.traceroute?.read === true));
+      // For a named source this is the gate. With none named the scope above
+      // already holds only permitted sources (an empty list reads nothing).
       const mayReadScope = isAdmin || !pollSourceId || can('traceroute', 'read', pollSourceId);
       const allTraceroutes = mayReadScope
         ? await databaseService.traceroutes.getAllTraceroutes(limit, tracerouteScope)

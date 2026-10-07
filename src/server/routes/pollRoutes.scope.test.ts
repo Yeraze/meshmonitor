@@ -559,6 +559,57 @@ describe('GET /poll: every section is gated on the source its data comes from', 
     });
   });
 
+  // ── Virtual (Channel Database) channels: global by design ─────────────────
+  describe('a caller whose only grant is a virtual channel', () => {
+    const VIRTUAL_TEXT = 'VV-VIRTUAL-TEXT';
+    let virtualId: number;
+    let virtualChannel: number;
+
+    beforeEach(async () => {
+      virtualId = await databaseService.channelDatabase.createAsync({ name: 'vv-virtual', psk: 'AQIDBAUGBwgJCgsMDQ4PEA==', pskLength: 16 });
+      virtualChannel = 100 + virtualId; // CHANNEL_DB_OFFSET + id
+      await databaseService.channelDatabase.setPermissionAsync({
+        userId: limited.id, channelDatabaseId: virtualId, canViewOnMap: false, canRead: true,
+      });
+      const now = Date.now();
+      await databaseService.messages.insertMessage(
+        {
+          id: `${harness.sourceB}_virtual`, fromNodeNum: SHARED_NUM, toNodeNum: 0xffffffff, fromNodeId: SHARED_ID, toNodeId: '!ffffffff',
+          text: VIRTUAL_TEXT, channel: virtualChannel, portnum: 1, timestamp: now, rxTime: now, createdAt: now,
+        } as never,
+        harness.sourceB,
+      );
+    });
+
+    afterEach(async () => {
+      await databaseService.channelDatabase.deleteAsync(virtualId);
+    });
+
+    it('reads that channel on any source, and nothing else of the source', async () => {
+      const agent = await harness.loginAs(limited);
+
+      const named = await agent.get('/poll').query({ sourceId: harness.sourceB });
+      const body = named.body as Body;
+
+      expect(body.messages?.map((m) => m.text)).toEqual([VIRTUAL_TEXT]);
+      expect(body.unreadCounts).toEqual({ channels: { [virtualChannel]: 1 } });
+      // The readable message row names its source; nothing else of B may show.
+      for (const marker of B_MARKERS) expect(text(body), `leaked ${marker}`).not.toContain(marker);
+      expect(body.nodes).toEqual([]);
+      expect(body.channels).toEqual([]);
+      expect(body.traceroutes).toEqual([]);
+      expect(body.deviceNodeNums).toEqual([]);
+      expect(body).not.toHaveProperty('deviceConfig');
+      expect(body.config).not.toHaveProperty('localNodeInfo');
+
+      // No source named: counted across every source, that channel only.
+      const unscoped = await agent.get('/poll');
+      expect(unscoped.body.unreadCounts).toEqual({ channels: { [virtualChannel]: 1 } });
+      expectNoB(unscoped.body, harness.sourceB);
+      expect(text(unscoped.body)).not.toContain(A.name);
+    });
+  });
+
   // ── The node address: sources:read alone (#5619) ──────────────────────────
   describe('the node address', () => {
     it('is shown on sources:read alone, with no connection:read', async () => {
