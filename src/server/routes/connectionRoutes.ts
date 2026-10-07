@@ -68,7 +68,8 @@ async function mayReadConnection(req: Request, sourceId: string | undefined | nu
 /**
  * The address fields of a reply, when the caller may see where a source
  * connects to (mayViewSourceEndpoint), else nothing. A field the status does
- * not carry is left out, not sent as null.
+ * not carry is left out, not sent as null. For address strings only: do not
+ * route another kind of field through here.
  */
 function withAddress(mayView: boolean, fields: Record<string, unknown>): Record<string, unknown> {
   if (!mayView) return {};

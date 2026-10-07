@@ -392,11 +392,11 @@ router.delete('/telemetry/:nodeId/:telemetryType', requireAuth(), requirePermiss
       logger.info(`Successfully purged ${telemetryType} telemetry for node ${nodeId}`);
       res.json({ success: true, message: `Telemetry data purged successfully` });
     } else {
-      res.status(404).json({ error: 'No telemetry data found to delete' });
+      fail(res, 404, 'NOT_FOUND', 'No telemetry data found to delete');
     }
   } catch (error) {
     logger.error('Error purging telemetry data:', error);
-    res.status(500).json({ error: 'Failed to purge telemetry data' });
+    fail(res, 500, 'INTERNAL_ERROR', 'Failed to purge telemetry data');
   }
 });
 

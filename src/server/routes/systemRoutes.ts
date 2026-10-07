@@ -136,12 +136,13 @@ router.get('/status', optionalAuth(), async (req: Request, res: Response) => {
       connection,
     };
     if (isAdmin) {
-      body.statistics = {
-        // intentional cross-source, admin only: install-wide totals
-        nodes: await databaseService.nodes.getNodeCount(ALL_SOURCES),
-        messages: await databaseService.messages.getMessageCount(ALL_SOURCES),
-        channels: await databaseService.channels.getChannelCount(ALL_SOURCES),
-      };
+      // intentional cross-source, admin only: install-wide totals
+      const [nodes, messages, channels] = await Promise.all([
+        databaseService.nodes.getNodeCount(ALL_SOURCES),
+        databaseService.messages.getMessageCount(ALL_SOURCES),
+        databaseService.channels.getChannelCount(ALL_SOURCES),
+      ]);
+      body.statistics = { nodes, messages, channels };
     }
     body.uptime = process.uptime();
     res.json(body);

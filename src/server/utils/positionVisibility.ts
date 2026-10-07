@@ -217,7 +217,8 @@ export async function buildMeshCorePositionFilter(
 
   // Per-source nodes:viewOnMap from the user's grants, loaded once (`can` is
   // always true for an admin, so this doubles as the admin bypass).
-  const grants = permissions ?? (await loadSourcePermissions(user ?? null));
+  // Same guard as buildPositionFilter: a user object with no id holds nothing.
+  const grants = permissions ?? (await loadSourcePermissions(user?.id != null ? user : null));
 
   return (row: MeshCoreVisibilityRow): boolean => {
     if (!present.has(`${row.sourceId}:${row.publicKey.toLowerCase()}`)) return false;
