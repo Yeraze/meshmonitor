@@ -5,7 +5,7 @@
  * Supports SQLite, PostgreSQL, and MySQL through Drizzle ORM.
  */
 import { eq, gt, lt, isNull, or, desc, asc, and, isNotNull, ne, sql, inArray, count, countDistinct } from 'drizzle-orm';
-import { BaseRepository, DrizzleDatabase, SourceScope } from './base.js';
+import { BaseRepository, DrizzleDatabase, SourceScope, SourceSetScope } from './base.js';
 import { DatabaseType, DbNode } from '../types.js';
 import { logger } from '../../utils/logger.js';
 import { isValidNodeNum } from '../../server/constants/meshtastic.js';
@@ -358,6 +358,39 @@ export class NodesRepository extends BaseRepository {
   }
 
   /**
+   * One node's row on every source that holds it, reduced to what a position
+   * read needs to decide visibility: the channel the node was last heard on and
+   * whether its position is marked private. Both are per source.
+   */
+  async getNodeVisibilityAcrossSources(
+    nodeNum: number,
+  ): Promise<Array<{ sourceId: string; channel: number; positionOverrideIsPrivate: boolean }>> {
+    if (!isValidNodeNum(nodeNum)) {
+      logger.warn(`NodesRepository.getNodeVisibilityAcrossSources: rejecting out-of-range nodeNum ${nodeNum}`);
+      return [];
+    }
+    const { nodes } = this.tables;
+    const result = await this.db
+      .select({
+        sourceId: nodes.sourceId,
+        channel: nodes.channel,
+        positionOverrideIsPrivate: nodes.positionOverrideIsPrivate,
+      })
+      .from(nodes)
+      .where(eq(nodes.nodeNum, nodeNum));
+
+    const out: Array<{ sourceId: string; channel: number; positionOverrideIsPrivate: boolean }> = [];
+    for (const row of result) {
+      out.push({
+        sourceId: row.sourceId,
+        channel: Number(row.channel ?? 0),
+        positionOverrideIsPrivate: Boolean(row.positionOverrideIsPrivate),
+      });
+    }
+    return out;
+  }
+
+  /**
    * For a batch of nodeNums, the source ids that hold a row for each (#5354).
    *
    * Unscoped by design, like `getSourcesForNode`: global tables keyed by
@@ -435,7 +468,7 @@ export class NodesRepository extends BaseRepository {
   /**
    * Get all nodes ordered by update time
    */
-  async getAllNodes(sourceId: SourceScope): Promise<DbNode[]> {
+  async getAllNodes(sourceId: SourceSetScope): Promise<DbNode[]> {
     const { nodes } = this.tables;
     const result = await this.db
       .select()
@@ -472,7 +505,7 @@ export class NodesRepository extends BaseRepository {
    * per-node series (e.g. the v1 metrics endpoint) so an MQTT-firehose source
    * with thousands of rows can't explode a scrape.
    */
-  async getActiveNodes(sinceDays: number = 7, sourceId?: SourceScope, limit?: number): Promise<DbNode[]> {
+  async getActiveNodes(sinceDays: number = 7, sourceId?: SourceSetScope, limit?: number): Promise<DbNode[]> {
     // lastHeard is stored in seconds (Unix timestamp)
     const cutoff = Math.floor(Date.now() / 1000) - (sinceDays * 24 * 60 * 60);
     const { nodes } = this.tables;

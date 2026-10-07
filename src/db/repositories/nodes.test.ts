@@ -646,6 +646,56 @@ function runNodesTests(getBackend: () => TestBackend) {
     expect(all.length).toBe(3);
   });
 
+  it('getAllNodes / getActiveNodes - a list of sources reads those sources only; an empty list reads none', async () => {
+    const backend = getBackend();
+    if (!backend.available) {
+      console.log(`⚠ Skipped: ${backend.skipReason}`);
+      return;
+    }
+
+    const nowSec = Math.floor(Date.now() / 1000);
+    await repo.upsertNode(makeNode(520, { lastHeard: nowSec }), 'src-list-a');
+    await repo.upsertNode(makeNode(520, { lastHeard: nowSec }), 'src-list-b');
+    await repo.upsertNode(makeNode(521, { lastHeard: nowSec }), 'src-list-b');
+    await repo.upsertNode(makeNode(522, { lastHeard: nowSec }), 'src-list-c');
+
+    const key = (n: { nodeNum: number; sourceId?: string | null }) => `${n.sourceId}:${n.nodeNum}`;
+    const ac = (await repo.getAllNodes(['src-list-a', 'src-list-c'])) as Array<{ nodeNum: number; sourceId?: string }>;
+    expect(ac.map(key).sort()).toEqual(['src-list-a:520', 'src-list-c:522']);
+    expect(await repo.getAllNodes([])).toEqual([]);
+    expect((await repo.getAllNodes('src-list-b')).length).toBe(2);
+
+    const active = (await repo.getActiveNodes(7, ['src-list-b'])) as Array<{ nodeNum: number; sourceId?: string }>;
+    expect(active.map(key).sort()).toEqual(['src-list-b:520', 'src-list-b:521']);
+    expect(await repo.getActiveNodes(7, [])).toEqual([]);
+    expect((await repo.getActiveNodes(7, ALL_SOURCES)).length).toBe(4);
+    await expect(repo.getAllNodes(['src-list-a', ''])).rejects.toThrow(/non-empty string/);
+  });
+
+  it('getNodeVisibilityAcrossSources - one row per source holding the node, with its channel and privacy there', async () => {
+    const backend = getBackend();
+    if (!backend.available) {
+      console.log(`⚠ Skipped: ${backend.skipReason}`);
+      return;
+    }
+
+    // High-bit nodeNum: BIGINT on PostgreSQL/MySQL.
+    const big = 0xfeedbeef;
+    await repo.upsertNode(makeNode(big, { channel: 0 }), 'src-vis-a');
+    await repo.upsertNode(
+      makeNode(big, { channel: 3, positionOverrideEnabled: true, latitudeOverride: 1, longitudeOverride: 2, positionOverrideIsPrivate: true }),
+      'src-vis-b',
+    );
+    await repo.upsertNode(makeNode(531, { channel: 5 }), 'src-vis-b');
+
+    const rows = (await repo.getNodeVisibilityAcrossSources(big)).sort((x, y) => x.sourceId.localeCompare(y.sourceId));
+    expect(rows).toEqual([
+      { sourceId: 'src-vis-a', channel: 0, positionOverrideIsPrivate: false },
+      { sourceId: 'src-vis-b', channel: 3, positionOverrideIsPrivate: true },
+    ]);
+    expect(await repo.getNodeVisibilityAcrossSources(999999)).toEqual([]);
+  });
+
   it('getHeardNodes - every heard node regardless of age, source-scoped, skips never-heard rows (#5376)', async () => {
     const backend = getBackend();
     if (!backend.available) {

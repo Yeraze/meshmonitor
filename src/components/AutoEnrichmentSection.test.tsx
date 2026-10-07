@@ -25,6 +25,12 @@ vi.mock('./ToastContainer', () => ({ useToast: () => ({ showToast: mockShowToast
 
 vi.mock('../hooks/useSaveBar', () => ({ useSaveBar: () => {} }));
 
+// Run now is admin only (the job works on every source).
+let isAdmin = true;
+vi.mock('../contexts/AuthContext', () => ({
+  useAuth: () => ({ authStatus: { authenticated: true, user: { isAdmin } } }),
+}));
+
 function status(overrides: Record<string, unknown> = {}) {
   return {
     enabled: true,
@@ -54,6 +60,28 @@ describe('AutoEnrichmentSection (#5287)', () => {
   beforeEach(() => {
     mockCsrfFetch.mockReset();
     mockShowToast.mockReset();
+    isAdmin = true;
+  });
+
+  it('disables Run now for a user who is not an admin, and says why', async () => {
+    isAdmin = false;
+    mockCsrfFetch.mockImplementation(() => json({ success: true, data: status() }));
+    render(<AutoEnrichmentSection baseUrl="" />);
+
+    const button = await screen.findByRole('button', { name: 'Run now' }) as HTMLButtonElement;
+    expect(button.disabled).toBe(true);
+    expect(button.title).toMatch(/Only an administrator can run this job/);
+    fireEvent.click(button);
+    expect(mockCsrfFetch.mock.calls.some(c => String(c[0]).endsWith('/run-now'))).toBe(false);
+  });
+
+  it('enables Run now for an admin', async () => {
+    mockCsrfFetch.mockImplementation(() => json({ success: true, data: status() }));
+    render(<AutoEnrichmentSection baseUrl="" />);
+
+    const button = await screen.findByRole('button', { name: 'Run now' }) as HTMLButtonElement;
+    await waitFor(() => expect(button.disabled).toBe(false));
+    expect(button.title).toBe('');
   });
 
   it('states the push airtime cost next to the push option', async () => {

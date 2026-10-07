@@ -6617,6 +6617,7 @@
   "automation.auto_enrichment.enable": "Enable auto-enrichment",
   "automation.auto_enrichment.description": "Runs the NodeInfo Enrichment \"Fix All\" on a schedule: blank names, hardware and keys on one source are filled from another source that has them. Nothing is overwritten.",
   "automation.auto_enrichment.run_now": "Run now",
+  "automation.run_now_admin_only": "Only an administrator can run this job. It works on every source.",
   "automation.auto_enrichment.running": "Running…",
   "automation.auto_enrichment.run_result": "Filled {{nodes}} node(s), {{fields}} field(s)",
   "automation.auto_enrichment.run_failed": "Failed to run auto-enrichment",

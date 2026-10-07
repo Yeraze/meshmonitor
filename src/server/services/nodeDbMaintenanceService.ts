@@ -27,9 +27,43 @@
 import type { MeshtasticManager, DeviceInfo } from '../meshtasticManager.js';
 import databaseService from '../../services/database.js';
 import { ALL_SOURCES } from '../../db/repositories/index.js';
+import type { DbNode } from '../../db/types.js';
 import { mergeNodesAcrossSources } from '../utils/mergeNodesAcrossSources.js';
 import protobufService from '../protobufService.js';
 import { logger } from '../../utils/logger.js';
+
+/**
+ * The unified node list for a caller who may see only some rows.
+ *
+ * `getAllNodesAsync()` with no source reads every source and merges the rows
+ * per node. For a caller who is not an admin that merge must be built only
+ * from rows they may see, or one source's name, position or flags reach them
+ * through the merged row. So: read the listed sources, pass each row through
+ * `keep` (which drops it or returns the row to use, with anything the caller
+ * may not see removed), and only then merge. Telemetry is read from the
+ * sources of the rows kept.
+ */
+export async function loadVisibleNodesAcrossSources(
+  sources: typeof ALL_SOURCES | readonly string[],
+  keep: (row: DbNode) => DbNode | null,
+): Promise<DeviceInfo[]> {
+  const rows = await databaseService.nodes.getAllNodes(sources);
+  const kept: DbNode[] = [];
+  for (const row of rows) {
+    const visible = keep(row);
+    if (visible) kept.push(visible);
+  }
+  if (kept.length === 0) return [];
+  const keptSources = [...new Set(kept.map((row) => (row as { sourceId?: string | null }).sourceId).filter((id): id is string => !!id))];
+  const [uptimeSamples, noiseFloorMap] = await Promise.all([
+    databaseService.telemetry.getLatestTelemetrySampleForAllNodes('uptimeSeconds', keptSources),
+    databaseService.telemetry.getLatestTelemetryValueForAllNodes('noiseFloor', keptSources),
+  ]);
+  return mergeNodesAcrossSources(kept).map((node) => {
+    const uptime = uptimeSamples.get(node.nodeId);
+    return mapDbNodeToDeviceInfo(node, uptime?.value, noiseFloorMap.get(node.nodeId), uptime?.timestamp);
+  });
+}
 
 /**
  * Convert a raw DB node row into the `DeviceInfo` shape used throughout the

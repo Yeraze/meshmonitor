@@ -29,7 +29,7 @@ import databaseService from '../../services/database.js';
 import { autoDeleteByDistanceService } from '../services/autoDeleteByDistanceService.js';
 import { createRouteTestApp, type RouteTestHarness } from '../test-helpers/routeTestApp.js';
 import { sourceManagerRegistry, type ISourceManager } from '../sourceManagerRegistry.js';
-import { getPermissionGate } from '../auth/authMiddleware.js';
+import { getPermissionGate, isAdminGate } from '../auth/authMiddleware.js';
 import {
   getSourceScopedGate,
   getSourcePairGate,
@@ -923,15 +923,18 @@ function registeredRoutes(router: Router): RegisteredRoute[] {
 /**
  * How a route is gated:
  *  - `source-gate`: requireSourcePermission() / requireSourcePairPermission().
+ *  - `admin-only`: requireAdmin(). An admin holds every permission on every
+ *    source, so there is no source to check.
  *  - `scoped`: requirePermission() with `sourceIdFrom`.
  *  - `unscoped`: requirePermission() on a per-source resource with no source.
  *  - `global`: requirePermission() on a resource that is not per-source.
  *  - `in-handler`: no requirePermission(); the handler or a local middleware checks.
  */
-type Verdict = 'source-gate' | 'scoped' | 'unscoped' | 'global' | 'in-handler';
+type Verdict = 'source-gate' | 'admin-only' | 'scoped' | 'unscoped' | 'global' | 'in-handler';
 
 function verdict(route: RegisteredRoute): Verdict {
   if (route.handlers.some((h) => getSourceScopedGate(h) || getSourcePairGate(h))) return 'source-gate';
+  if (route.handlers.some((h) => isAdminGate(h))) return 'admin-only';
   const gates = route.handlers.map((h) => getPermissionGate(h)).filter((g) => g !== undefined);
   if (gates.length === 0) return 'in-handler';
   if (gates.some((g) => isSourceyResource(g.resource) && !g.sourceScoped)) return 'unscoped';
@@ -962,10 +965,6 @@ describe('guard: per-source routes on these routers are registered with a source
       // Global, install-wide status of the two batch jobs below.
       'GET /auto-enrichment/status',
       'GET /position-estimation/status',
-      // Install-wide batch jobs over every source. Not narrowed here: see the
-      // PR for #5655's follow-up ("still unscoped").
-      'POST /auto-enrichment/run-now',
-      'POST /position-estimation/run-now',
       // Probes a URL the caller supplies or the global Apprise URL.
       'POST /test-apprise',
     ],
@@ -974,6 +973,31 @@ describe('guard: per-source routes on these routers are registered with a source
 
   it.each(Object.keys(ROUTERS) as RouterName[])('%s: no per-source resource is gated without a source, beyond the commented list', (name) => {
     expect(routesWith(ROUTERS[name], 'unscoped')).toEqual([...UNSCOPED_BY_DESIGN[name]].sort());
+  });
+
+  /**
+   * Routes behind requireAdmin(). A job that works on every source at once
+   * belongs here, not behind a per-source permission: `settings:write` on one
+   * source is not a grant over the others.
+   */
+  const ADMIN_ONLY: Record<RouterName, string[]> = {
+    nodes: [
+      // Re-keys one node's history. Admin only since #5032.
+      'POST /nodes/identity-changes/merge',
+      'POST /nodes/identity-changes/merge/preview',
+      'POST /nodes/identity-changes/merges/:mergeId/undo',
+    ],
+    ignored: [],
+    settings: [
+      // Install-wide batch jobs over every source (maintainer ruling).
+      'POST /auto-enrichment/run-now',
+      'POST /position-estimation/run-now',
+    ],
+    messages: [],
+  };
+
+  it.each(Object.keys(ROUTERS) as RouterName[])('%s: the admin-only routes are the known ones', (name) => {
+    expect(routesWith(ROUTERS[name], 'admin-only')).toEqual([...ADMIN_ONLY[name]].sort());
   });
 
   it('every source-gated route has a row in CASES, and enforces what the row says', () => {

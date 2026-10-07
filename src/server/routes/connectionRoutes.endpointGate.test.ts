@@ -1,10 +1,11 @@
 /**
  * Who gets the node address from the connection routes.
  *
- * The address is a connection endpoint, so it follows the same rule as
- * `config.host` on the source list: a signed-in user holding `sources:read`,
- * or an admin. Signed in is not enough on its own, and a caller with no login
- * never gets it.
+ * The address is a connection endpoint, so it follows the rule for
+ * `config.host` on the source list (a signed-in user holding `sources:read`,
+ * or an admin), and the caller must also hold `connection:read` on the source
+ * the status is about: `connection` is a per-source permission. Signed in is
+ * not enough on its own, and a caller with no login never gets it.
  *
  * Real session + auth middleware + permission SQL via createRouteTestApp.
  */
@@ -39,11 +40,37 @@ vi.mock('../config/environment.js', async (importOriginal) => {
   };
 });
 
-type Caller = 'anonymous' | 'anonymousWithRead' | 'limited' | 'viewer' | 'admin';
+type Caller =
+  | 'anonymous'
+  | 'anonymousWithRead'
+  | 'limited'
+  | 'sourcesReadOnly'
+  | 'connectionReadOnly'
+  | 'otherSourceConnection'
+  | 'viewer'
+  | 'admin';
+/** Who gets the address. */
 const ALLOWED: Record<Caller, boolean> = {
   anonymous: false,
   anonymousWithRead: false,
   limited: false,
+  // `sources:read` without `connection:read` on this source.
+  sourcesReadOnly: false,
+  // `connection:read` on this source without `sources:read`.
+  connectionReadOnly: false,
+  // Both, but the `connection:read` is on another source.
+  otherSourceConnection: false,
+  viewer: true,
+  admin: true,
+};
+/** Who holds `connection:read` on the source, and so gets more than the link flags. */
+const READS_CONNECTION: Record<Caller, boolean> = {
+  anonymous: false,
+  anonymousWithRead: false,
+  limited: false,
+  sourcesReadOnly: false,
+  connectionReadOnly: true,
+  otherSourceConnection: false,
   viewer: true,
   admin: true,
 };
@@ -70,8 +97,19 @@ describe('connection routes — node address', () => {
         return harness.loginAs(null);
       case 'limited':
         return harness.loginAs(harness.limited);
+      case 'sourcesReadOnly':
+        await harness.grant(harness.limited.id, 'sources', 'read');
+        return harness.loginAs(harness.limited);
+      case 'connectionReadOnly':
+        await harness.grant(harness.limited.id, 'connection', 'read', harness.sourceA);
+        return harness.loginAs(harness.limited);
+      case 'otherSourceConnection':
+        await harness.grant(harness.limited.id, 'sources', 'read');
+        await harness.grant(harness.limited.id, 'connection', 'read', harness.sourceB);
+        return harness.loginAs(harness.limited);
       case 'viewer':
         await harness.grant(harness.limited.id, 'sources', 'read');
+        await harness.grant(harness.limited.id, 'connection', 'read', harness.sourceA);
         return harness.loginAs(harness.limited);
       case 'admin':
         return harness.loginAs(harness.admin);
@@ -88,15 +126,26 @@ describe('connection routes — node address', () => {
     } else {
       expect(JSON.stringify(res.body)).not.toContain(NODE_HOST);
     }
+    if (!READS_CONNECTION[caller]) {
+      expect(Object.keys(res.body).sort()).toEqual(['configuring', 'connected', 'nodeResponsive', 'userDisconnected']);
+    }
   });
 
-  it.each(['limited', 'viewer', 'admin'] as Caller[])('GET /connection/info as %s', async (caller) => {
+  const SIGNED_IN: Caller[] = ['limited', 'sourcesReadOnly', 'connectionReadOnly', 'otherSourceConnection', 'viewer', 'admin'];
+
+  it.each(SIGNED_IN)('GET /connection/info as %s', async (caller) => {
     const agent = await agentFor(caller);
     const res = await agent.get('/connection/info');
     expect(res.status).toBe(200);
-    // Ports and the override flag are not an address: everyone signed in gets them.
-    expect(res.body.tcpPort).toBe(4403);
-    expect(res.body.isOverridden).toBe(false);
+    expect(res.body.connected).toBe(true);
+    if (READS_CONNECTION[caller]) {
+      // Ports and the override flag are not an address: `connection:read` gets them.
+      expect(res.body.tcpPort).toBe(4403);
+      expect(res.body.isOverridden).toBe(false);
+    } else {
+      // The link flags and nothing else.
+      expect(Object.keys(res.body).sort()).toEqual(['configuring', 'connected', 'nodeResponsive', 'userDisconnected']);
+    }
     if (ALLOWED[caller]) {
       expect(res.body.nodeIp).toBe(NODE_HOST);
       expect(res.body.defaultIp).toBe(DEFAULT_HOST);
