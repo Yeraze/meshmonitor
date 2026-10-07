@@ -88,8 +88,8 @@ describe('telemetry reads and GET /status are scoped by the caller\'s per-source
       sourceId,
     );
 
-  const sample = (sourceId: string, nodeNum: number, telemetryType: string, value: number, agoMs: number): Promise<unknown> => {
-    const at = Date.now() - agoMs;
+  /** `at` is an absolute time: two samples a rate is computed from must be an exact interval apart. */
+  const sample = (sourceId: string, nodeNum: number, telemetryType: string, value: number, at: number): Promise<unknown> => {
     return databaseService.telemetry.insertTelemetry(
       { nodeId: nodeIdFor(nodeNum), nodeNum, telemetryType, timestamp: at, value, createdAt: at, channel: 0 },
       sourceId,
@@ -123,15 +123,17 @@ describe('telemetry reads and GET /status are scoped by the caller\'s per-source
     await seedNode(harness.sourceB, SHARED);
     await seedNode(harness.sourceB, ONLY_B);
 
+    const t0 = Date.now() - 120_000;
+    const t1 = t0 + 60_000;
     // SHARED reports weather on B only. Device metrics on both.
-    await sample(harness.sourceA, SHARED, 'batteryLevel', 90, 60_000);
-    await sample(harness.sourceB, SHARED, 'temperature', 21, 60_000);
-    await sample(harness.sourceB, ONLY_B, 'temperature', 22, 60_000);
+    await sample(harness.sourceA, SHARED, 'batteryLevel', 90, t1);
+    await sample(harness.sourceB, SHARED, 'temperature', 21, t1);
+    await sample(harness.sourceB, ONLY_B, 'temperature', 22, t1);
     // Packet counters: 60 packets a minute on A, 6000 a minute on B.
-    await sample(harness.sourceA, SHARED, 'numPacketsRx', 0, 120_000);
-    await sample(harness.sourceA, SHARED, 'numPacketsRx', 60, 60_000);
-    await sample(harness.sourceB, SHARED, 'numPacketsRx', 0, 120_000);
-    await sample(harness.sourceB, SHARED, 'numPacketsRx', 6000, 60_000);
+    await sample(harness.sourceA, SHARED, 'numPacketsRx', 0, t0);
+    await sample(harness.sourceA, SHARED, 'numPacketsRx', 60, t1);
+    await sample(harness.sourceB, SHARED, 'numPacketsRx', 0, t0);
+    await sample(harness.sourceB, SHARED, 'numPacketsRx', 6000, t1);
 
     // Zero-hop packets: SHARED heard by both, ONLY_B by B.
     await heard(harness.sourceA, SHARED, -50);
