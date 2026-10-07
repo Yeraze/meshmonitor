@@ -129,6 +129,75 @@ describe('configRoutes', () => {
       }
     });
 
+    // The `config` rule of GET /api/poll: the local node's identity and
+    // firmware describe one source, and need a signed-in caller holding some
+    // grant on THAT source. They used to go to every caller who named it.
+    describe('local node identity is per source', () => {
+      const NODE_A = 2732916600;
+      let keyA: string;
+
+      beforeEach(async () => {
+        await harness.db.nodes.upsertNode(
+          { nodeNum: NODE_A, nodeId: '!a2e175e8', longName: 'IDENT-A', shortName: 'IDA', firmwareVersion: '2.7.1', rebootCount: 3 },
+          harness.sourceA,
+        );
+        keyA = new MeshtasticManager(harness.sourceA).localNodeSettingKey('localNodeNum');
+        await harness.db.settings.setSetting(keyA, String(NODE_A));
+      });
+
+      afterEach(async () => {
+        await harness.db.settings.deleteSetting(keyA);
+      });
+
+      const identityOf = async (user: typeof harness.limited | null, sourceId: string) => {
+        const agent = await harness.loginAs(user);
+        const res = await agent.get('/').query({ sourceId });
+        expect(res.status).toBe(200);
+        // The shell needs these whoever asks.
+        expect(res.body).toHaveProperty('baseUrl');
+        expect(res.body).toHaveProperty('meshtasticTcpPort');
+        return res;
+      };
+
+      it('withholds it from a signed-in caller with no grant on that source', async () => {
+        await harness.grant(harness.limited.id, 'nodes', 'read', harness.sourceB);
+        const res = await identityOf(harness.limited, harness.sourceA);
+        expect(res.body.localNodeInfo).toBeUndefined();
+        expect(res.body.deviceMetadata).toBeUndefined();
+        expect(JSON.stringify(res.body)).not.toContain('IDENT-A');
+      });
+
+      it('returns it to a signed-in caller holding any grant on that source', async () => {
+        await harness.grant(harness.limited.id, 'nodes', 'read', harness.sourceA);
+        const res = await identityOf(harness.limited, harness.sourceA);
+        expect(res.body.localNodeInfo).toEqual({ nodeId: '!a2e175e8', longName: 'IDENT-A', shortName: 'IDA' });
+        expect(res.body.deviceMetadata).toEqual({ firmwareVersion: '2.7.1', rebootCount: 3 });
+      });
+
+      it('withholds it from a signed-out caller, even when anonymous holds a grant there', async () => {
+        await harness.grant(harness.anonymous.id, 'nodes', 'read', harness.sourceA);
+        try {
+          const res = await identityOf(null, harness.sourceA);
+          expect(res.body.localNodeInfo).toBeUndefined();
+          expect(res.body.deviceMetadata).toBeUndefined();
+          expect(JSON.stringify(res.body)).not.toContain('IDENT-A');
+        } finally {
+          await harness.revokeAll(harness.anonymous.id);
+        }
+      });
+
+      it('gives the source\'s own port only with sources:read', async () => {
+        await harness.db.sources.updateSource(harness.sourceA, { config: { host: '192.0.2.44', port: 4999 } });
+        await harness.grant(harness.limited.id, 'nodes', 'read', harness.sourceA);
+        const without = await identityOf(harness.limited, harness.sourceA);
+        expect(without.body.meshtasticTcpPort).not.toBe(4999);
+        expect(JSON.stringify(without.body)).not.toContain('192.0.2.44');
+        const withIt = await identityOf(harness.admin, harness.sourceA);
+        expect(withIt.body.meshtasticTcpPort).toBe(4999);
+        expect(withIt.body.meshtasticNodeIp).toBe('192.0.2.44');
+      });
+    });
+
     it('handles a missing localNodeNum gracefully', async () => {
       const agent = await harness.loginAs(harness.admin);
       const res = await agent.get('/').query({ sourceId: harness.sourceB });

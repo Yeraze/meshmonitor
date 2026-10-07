@@ -508,7 +508,7 @@ describe('WebSocket event gates', () => {
       await harness.grantEverythingOn(harness.limited.id, B);
       const user = await harness.connectAs(harness.limited, { join: 'all' });
       const idleAdmin = await harness.connectAs(harness.admin);
-      dataEventEmitter.emitFirmwareStatus({ state: 'flashing', logs: ['FW-MARK'] });
+      emit('firmware:status', undefined, '', { state: 'flashing', logs: ['FW-MARK'] });
       await user.settle();
       await idleAdmin.settle();
       expect(has(idleAdmin, 'FW-MARK')).toBe(true);
@@ -545,7 +545,7 @@ describe('WebSocket event gates', () => {
 
       await harness.db.auth.updateUser(harness.admin.id, { isAdmin: false });
       emit('message:new', B, 'DEMOTED');
-      dataEventEmitter.emitFirmwareStatus({ logs: ['DEMOTED-FW'] });
+      emit('firmware:status', undefined, '', { logs: ['DEMOTED-FW'] });
       await admin.settle();
       expect(has(admin, 'DEMOTED')).toBe(false);
       expect(has(admin, 'DEMOTED-FW')).toBe(false);

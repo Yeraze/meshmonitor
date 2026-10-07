@@ -860,20 +860,6 @@ class DataEventEmitter extends EventEmitter {
   }
 
   /**
-   * Emit the firmware updater's status (progress, logs). It belongs to no
-   * source; the WebSocket gate sends it to admins only, as the firmware
-   * routes are admin only.
-   */
-  emitFirmwareStatus(status: unknown): void {
-    const event: DataEvent = {
-      type: 'firmware:status',
-      data: status,
-      timestamp: Date.now(),
-    };
-    this.emit('data', event);
-  }
-
-  /**
    * Force flush any pending telemetry (useful for shutdown)
    */
   flushPending(): void {
