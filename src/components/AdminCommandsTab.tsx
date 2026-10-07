@@ -41,7 +41,7 @@ import {
   exceedsPublicChannelPrecisionClamp,
 } from '../utils/publicChannel';
 import { buildNodeOptions, filterNodes, sortNodeOptionsForRemoteAdmin, type NodeOption } from './admin-commands/nodeOptionsUtils';
-import { createEmptyChannelSlot, createChannelFromResponse, isRetryableChannelError, countLoadedChannels } from './admin-commands/channelLoadingUtils';
+import { createEmptyChannelSlot, createChannelFromResponse, countLoadedChannels } from './admin-commands/channelLoadingUtils';
 import { UiIcon } from './icons';
 import { NumberInput } from './common/NumberInput';
 import { NumberInputScope } from './common/NumberInputScope';
@@ -589,141 +589,19 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
           loaded.push('channels');
           setSectionLoadStatus(prev => ({ ...prev, channels: 'success' }));
         } else {
-          // For remote node, request all 8 channels in parallel
-          const loadedChannels: Channel[] = [];
-          const now = Date.now();
-          
-          // First, ensure we have a session passkey
-          try {
-            const passkeyResponse = await apiService.ensureSessionPasskey<{
-              success: boolean;
-              hasPasskey: boolean;
-              remainingSeconds: number | null;
-            }>({
-              nodeNum: selectedNodeNum,
-              ...(sourceId ? { sourceId } : {})
-            });
-            // Update passkey status display
-            if (passkeyResponse.hasPasskey) {
-              setPasskeyStatus({
-                hasPasskey: true,
-                remainingSeconds: passkeyResponse.remainingSeconds
-              });
-            }
-          } catch (error: any) {
-            throw new Error(t('admin_commands.failed_session_passkey', { error: error.message }));
+          // Same single pass as the per-section Load: no re-send of a failed slot.
+          const { channels: loadedChannels, failed, firstError } = await loadRemoteChannelsOnce(selectedNodeNum);
+          if (failed.length === loadedChannels.length) {
+            throw firstError ?? new Error(t('admin_commands.failed_load_channels'));
           }
-
-          // Send all requests in parallel
-          const channelRequests = Array.from({ length: 8 }, (_, index) =>
-            apiService.post<{ channel?: any }>('/api/admin/get-channel', {
-              nodeNum: selectedNodeNum,
-              channelIndex: index,
-              ...(sourceId ? { sourceId } : {})
-            }).then(result => ({ index, result, error: null }))
-              .catch(error => ({ index, result: null, error }))
-          );
-          
-          const results = await Promise.allSettled(channelRequests);
-          const failedChannels: number[] = [];
-          const maxRetries = 2;
-          let retryCount = 0;
-          
-          const processResults = (results: PromiseSettledResult<any>[], useResultIndex: boolean = false): void => {
-            results.forEach((settled, arrayIndex) => {
-              let index: number;
-              if (useResultIndex && settled.status === 'fulfilled') {
-                index = settled.value.index;
-              } else {
-                index = arrayIndex;
-              }
-              
-              if (settled.status === 'fulfilled') {
-                const { result, error } = settled.value;
-                
-                if (error) {
-                  const isRetryableError = error.message?.includes('404') || 
-                                         error.message?.includes('not received') ||
-                                         error.message?.includes('timeout');
-                  if (isRetryableError && retryCount < maxRetries) {
-                    failedChannels.push(index);
-                  }
-                  const existingIndex = loadedChannels.findIndex(ch => ch.id === index);
-                  if (existingIndex === -1) {
-                    loadedChannels.push({
-                      id: index,
-                      name: '',
-                      psk: '',
-                      role: index === 0 ? 1 : 0,
-                      uplinkEnabled: false,
-                      downlinkEnabled: false,
-                      positionPrecision: 32,
-                      createdAt: now,
-                      updatedAt: now
-                    });
-                  }
-                } else if (result?.channel) {
-                  const ch = result.channel;
-                  // Create channel from response using helper function
-                  const channelData = createChannelFromResponse(ch, index, now);
-                  
-                  const existingIndex = loadedChannels.findIndex(ch => ch.id === index);
-                  if (existingIndex !== -1) {
-                    loadedChannels[existingIndex] = channelData;
-                  } else {
-                    loadedChannels.push(channelData);
-                  }
-                } else {
-                  if (retryCount < maxRetries) {
-                    failedChannels.push(index);
-                  }
-                  const existingIndex = loadedChannels.findIndex(ch => ch.id === index);
-                  if (existingIndex === -1) {
-                    loadedChannels.push(createEmptyChannelSlot(index, now));
-                  }
-                }
-              } else {
-                if (!useResultIndex) {
-                  if (retryCount < maxRetries) {
-                    failedChannels.push(index);
-                  }
-                  const existingIndex = loadedChannels.findIndex(ch => ch.id === index);
-                  if (existingIndex === -1) {
-                    loadedChannels.push(createEmptyChannelSlot(index, now));
-                  }
-                }
-              }
-            });
-          };
-          
-          processResults(results, false);
-          
-          // Retry failed channels
-          while (failedChannels.length > 0 && retryCount < maxRetries) {
-            retryCount++;
-            const channelsToRetry = [...new Set(failedChannels)];
-            failedChannels.length = 0;
-            
-            if (channelsToRetry.length > 0) {
-              await new Promise(resolve => setTimeout(resolve, 1000 * retryCount));
-              
-              const retryRequests = channelsToRetry.map(index =>
-                apiService.post<{ channel?: any }>('/api/admin/get-channel', {
-                  nodeNum: selectedNodeNum,
-                  channelIndex: index,
-                  ...(sourceId ? { sourceId } : {})
-                }).then(result => ({ index, result, error: null }))
-                  .catch(error => ({ index, result: null, error }))
-              );
-              
-              const retryResults = await Promise.allSettled(retryRequests);
-              processResults(retryResults, true);
-            }
-          }
-          
           setRemoteNodeChannels(loadedChannels);
-          loaded.push('channels');
-          setSectionLoadStatus(prev => ({ ...prev, channels: 'success' }));
+          if (failed.length > 0) {
+            errors.push('channels');
+            setSectionLoadStatus(prev => ({ ...prev, channels: 'error' }));
+          } else {
+            loaded.push('channels');
+            setSectionLoadStatus(prev => ({ ...prev, channels: 'success' }));
+          }
         }
       } catch (_err) {
         errors.push('channels');
@@ -841,17 +719,9 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
     const localNodeNum = nodes.find(n => (n.user?.id || n.nodeId) === currentNodeId)?.nodeNum;
     const isRemoteNode = selectedNodeNum !== localNodeNum && selectedNodeNum !== 0;
 
-    // Retry configuration - used by the owner load only (load-config does not retry)
-    const maxRetries = 2;
-    const isRetryableError = (error: any): boolean => {
-      const msg = error?.message || '';
-      return msg.includes('404') || msg.includes('timeout') || msg.includes('not received') || msg.includes('not reachable');
-    };
-
     try {
       // For remote nodes, ensure session passkey is available before making any admin request
       // This prevents timeout failures on slow mesh networks
-      // Note: This is done once before retries since the passkey persists
       if (isRemoteNode) {
         try {
           const passkeyResponse = await apiService.ensureSessionPasskey<{
@@ -875,35 +745,30 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
       }
 
       if (configType === 'owner') {
-        // Owner config with retry logic
+        // ONE request per click, as for the generic config types below. This
+        // used to re-send up to twice more on a 404 / timeout / empty reply:
+        // three admin packets (times the hop count) for one click on a remote
+        // node that did not answer.
         let lastError: any = null;
-        for (let attempt = 0; attempt <= maxRetries; attempt++) {
-          try {
-            if (attempt > 0) {
-              await new Promise(resolve => setTimeout(resolve, 1000 * attempt)); // Exponential backoff
-            }
-            const result = await apiService.post<{ owner: any }>('/api/admin/load-owner', {
-              nodeNum: selectedNodeNum,
-              ...(sourceId ? { sourceId } : {})
+        try {
+          const result = await apiService.post<{ owner: any }>('/api/admin/load-owner', {
+            nodeNum: selectedNodeNum,
+            ...(sourceId ? { sourceId } : {})
+          });
+          if (result?.owner) {
+            setOwnerConfig({
+              longName: result.owner.longName,
+              shortName: result.owner.shortName,
+              isUnmessagable: result.owner.isUnmessagable,
+              isLicensed: result.owner.isLicensed
             });
-            if (result?.owner) {
-              setOwnerConfig({
-                longName: result.owner.longName,
-                shortName: result.owner.shortName,
-                isUnmessagable: result.owner.isUnmessagable,
-                isLicensed: result.owner.isLicensed
-              });
-              setSectionLoadStatus(prev => ({ ...prev, owner: 'success' }));
-              showToast(t('admin_commands.config_loaded_success', { configType: t('admin_commands.owner_config_short', 'Owner') }), 'success');
-              return;
-            }
-            // No data in result - treat as retryable
-            lastError = new Error('No owner data received');
-            if (!isRetryableError(lastError) || attempt >= maxRetries) break;
-          } catch (error: any) {
-            lastError = error;
-            if (!isRetryableError(error) || attempt >= maxRetries) break;
+            setSectionLoadStatus(prev => ({ ...prev, owner: 'success' }));
+            showToast(t('admin_commands.config_loaded_success', { configType: t('admin_commands.owner_config_short', 'Owner') }), 'success');
+            return;
           }
+          lastError = new Error('No owner data received');
+        } catch (error: any) {
+          lastError = error;
         }
         setSectionLoadStatus(prev => ({ ...prev, owner: 'error' }));
         showToast(lastError?.message || t('admin_commands.config_load_failed', { configType: t('admin_commands.owner_config_short', 'Owner') }), 'error');
@@ -957,6 +822,65 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
 
   // Legacy handlers - redirect to handleLoadAllConfigs
 
+  /**
+   * One remote channel load: a session passkey, then one `get-channel` request
+   * per slot, all eight in parallel. Nothing is re-sent.
+   *
+   * Each request is an admin packet over the mesh. This used to re-send every
+   * failed slot up to twice more (after 1 s and 2 s) on a 404 / "not received"
+   * / timeout, so one click on a node that had gone quiet cost 24 packets
+   * instead of 8, each times the hop count. A slot that does not answer now
+   * comes back empty and is listed in `failed`; the user decides whether to
+   * press Load again.
+   */
+  const loadRemoteChannelsOnce = async (
+    nodeNum: number,
+  ): Promise<{ channels: Channel[]; failed: number[]; firstError: Error | null }> => {
+    // One passkey up front, so the parallel requests do not each ask for one.
+    try {
+      const passkeyResponse = await apiService.ensureSessionPasskey<{
+        success: boolean;
+        hasPasskey: boolean;
+        remainingSeconds: number | null;
+      }>({
+        nodeNum,
+        ...(sourceId ? { sourceId } : {})
+      });
+      // Update passkey status display
+      if (passkeyResponse.hasPasskey) {
+        setPasskeyStatus({
+          hasPasskey: true,
+          remainingSeconds: passkeyResponse.remainingSeconds
+        });
+      }
+    } catch (error: any) {
+      throw new Error(t('admin_commands.failed_session_passkey', { error: error.message }));
+    }
+
+    const now = Date.now();
+    const failed: number[] = [];
+    let firstError: Error | null = null;
+    const channels = await Promise.all(
+      Array.from({ length: 8 }, async (_, index): Promise<Channel> => {
+        try {
+          const result = await apiService.post<{ channel?: any }>('/api/admin/get-channel', {
+            nodeNum,
+            channelIndex: index,
+            ...(sourceId ? { sourceId } : {})
+          });
+          // A disabled channel (role 0) is still an answer.
+          if (result?.channel) return createChannelFromResponse(result.channel, index, now);
+          firstError ??= new Error(`No channel ${index} data received`);
+        } catch (error: any) {
+          firstError ??= error instanceof Error ? error : new Error(String(error?.message ?? error));
+        }
+        failed.push(index);
+        return createEmptyChannelSlot(index, now);
+      })
+    );
+    return { channels, failed, firstError };
+  };
+
   const handleLoadChannels = async () => {
     if (selectedNodeNum === null) {
       const error = new Error(t('admin_commands.please_select_node'));
@@ -1003,169 +927,23 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
         showToast(t('admin_commands.channels_loaded_local', { count: loadedCount }), 'success');
         setSectionLoadStatus(prev => ({ ...prev, channels: 'success' }));
       } else {
-        // For remote node, request all 8 channels in parallel (like Meshtastic app does)
-        // This is much faster than sequential requests
-        const loadedChannels: Channel[] = [];
-        const now = Date.now();
-        
-        // First, ensure we have a session passkey (prevents conflicts from parallel requests)
-        try {
-          const passkeyResponse = await apiService.ensureSessionPasskey<{
-            success: boolean;
-            hasPasskey: boolean;
-            remainingSeconds: number | null;
-          }>({
-            nodeNum: selectedNodeNum,
-            ...(sourceId ? { sourceId } : {})
-          });
-          // Update passkey status display
-          if (passkeyResponse.hasPasskey) {
-            setPasskeyStatus({
-              hasPasskey: true,
-              remainingSeconds: passkeyResponse.remainingSeconds
-            });
-          }
-        } catch (error: any) {
-          const err = new Error(t('admin_commands.failed_session_passkey', { error: error.message }));
-          showToast(err.message, 'error');
-          setIsLoadingChannels(false);
-          throw err; // Re-throw so Promise.all() can catch it
+        const { channels: loadedChannels, failed, firstError } = await loadRemoteChannelsOnce(selectedNodeNum);
+        if (failed.length === loadedChannels.length) {
+          // Nothing answered: keep whatever was on screen and report the failure.
+          throw firstError ?? new Error(t('admin_commands.failed_load_channels'));
         }
-
-        // Send all requests in parallel (now they can all use the same session passkey)
-        const channelRequests = Array.from({ length: 8 }, (_, index) => 
-          apiService.post<{ channel?: any }>('/api/admin/get-channel', {
-            nodeNum: selectedNodeNum,
-            channelIndex: index,
-            ...(sourceId ? { sourceId } : {})
-          }).then(result => ({ index, result, error: null }))
-            .catch(error => ({ index, result: null, error }))
-        );
-        
-        // Wait for all requests to complete (or timeout)
-        const results = await Promise.allSettled(channelRequests);
-        
-        // Track which channels failed and need retry
-        const failedChannels: number[] = [];
-        const maxRetries = 2; // Retry up to 2 times
-        let retryCount = 0;
-        
-        // Function to process results and identify failures
-        const processResults = (results: PromiseSettledResult<any>[], useResultIndex: boolean = false): void => {
-          results.forEach((settled, arrayIndex) => {
-            // For retry results, use the index from the result object, not the array index
-            // For initial results, use array index (which matches channel index 0-7)
-            let index: number;
-            if (useResultIndex && settled.status === 'fulfilled') {
-              index = settled.value.index; // Use the index from the result object
-            } else {
-              index = arrayIndex; // Use array index to maintain order
-            }
-            
-            if (settled.status === 'fulfilled') {
-              const { result, error } = settled.value;
-              
-              if (error) {
-                // Track failed channels for retry (only 404/timeout errors, not other errors)
-                if (isRetryableChannelError(error) && retryCount < maxRetries) {
-                  failedChannels.push(index);
-                }
-                // 404 errors are expected for channels that don't exist or timed out
-                // Don't log as warning, just add empty channel slot
-                const errorMsg = error?.message || '';
-                if (errorMsg.includes('404') || errorMsg.includes('not received')) {
-                  // Silent - channel not available is expected
-                } else {
-                  console.warn(`Failed to load channel ${index}:`, error);
-                }
-                // Add empty channel slot on error (will be overwritten if retry succeeds)
-                const existingIndex = loadedChannels.findIndex(ch => ch.id === index);
-                if (existingIndex === -1) {
-                  loadedChannels.push(createEmptyChannelSlot(index, now));
-                }
-              } else if (result?.channel) {
-                const ch = result.channel;
-                // Create channel from response using helper function
-                const channelData = createChannelFromResponse(ch, index, now);
-                
-                // Update or add channel
-                const existingIndex = loadedChannels.findIndex(ch => ch.id === index);
-                if (existingIndex !== -1) {
-                  loadedChannels[existingIndex] = channelData;
-                } else {
-                  loadedChannels.push(channelData);
-                }
-                
-                // Don't retry if we got a valid channel response, even if it's disabled (role 0)
-                // Role 0 is a valid state - it just means the channel is disabled
-              } else {
-                // No channel data in result - this is a failure, mark for retry
-                if (retryCount < maxRetries) {
-                  failedChannels.push(index);
-                }
-                // Add empty channel slot if no data received
-                const existingIndex = loadedChannels.findIndex(ch => ch.id === index);
-                if (existingIndex === -1) {
-                  loadedChannels.push(createEmptyChannelSlot(index, now));
-                }
-              }
-            } else {
-              // Promise rejected - this is a failure, mark for retry
-              // For retry results, we can't get the index from a rejected promise
-              // Skip it - it will be retried again if needed
-              if (!useResultIndex) {
-                // Only track failures for initial requests (where arrayIndex = channel index)
-                if (retryCount < maxRetries) {
-                  failedChannels.push(index);
-                }
-                console.warn(`Channel ${index} request was rejected:`, settled.reason);
-                const existingIndex = loadedChannels.findIndex(ch => ch.id === index);
-                if (existingIndex === -1) {
-                  loadedChannels.push(createEmptyChannelSlot(index, now));
-                }
-              } else {
-                // For retry rejections, log but don't add empty slot (we don't know the index)
-                console.warn(`Retry request was rejected (index unknown):`, settled.reason);
-              }
-            }
-          });
-        };
-        
-        // Process initial results (use array index since initial requests are in order 0-7)
-        processResults(results, false);
-        
-        // Retry failed channels (only those that actually failed - 404/timeout/rejected)
-        while (failedChannels.length > 0 && retryCount < maxRetries) {
-          retryCount++;
-          const channelsToRetry = [...new Set(failedChannels)]; // Remove duplicates
-          failedChannels.length = 0; // Clear for this retry round
-          
-          if (channelsToRetry.length > 0) {
-            
-            // Wait a bit before retrying (exponential backoff)
-            await new Promise(resolve => setTimeout(resolve, 1000 * retryCount));
-            
-            // Retry only the failed channels
-            const retryRequests = channelsToRetry.map(index => 
-              apiService.post<{ channel?: any }>('/api/admin/get-channel', {
-                nodeNum: selectedNodeNum,
-                channelIndex: index,
-                ...(sourceId ? { sourceId } : {})
-              }).then(result => ({ index, result, error: null }))
-                .catch(error => ({ index, result: null, error }))
-            );
-            
-            const retryResults = await Promise.allSettled(retryRequests);
-            // For retry results, use the index from the result object (not array index)
-            processResults(retryResults, true);
-          }
-        }
-        
         setRemoteNodeChannels(loadedChannels);
         // Count channels that have actual data (name, PSK, or are primary channel)
         const loadedCount = countLoadedChannels(loadedChannels);
-        showToast(t('admin_commands.channels_loaded_remote', { count: loadedCount }), 'success');
-        setSectionLoadStatus(prev => ({ ...prev, channels: 'success' }));
+        if (failed.length > 0) {
+          // Some slots did not answer. They show as empty, so the section must
+          // not read as loaded; the user can press Load again.
+          showToast(t('admin_commands.channels_loaded_partial', { count: loadedCount, failed: failed.length }), 'warning');
+          setSectionLoadStatus(prev => ({ ...prev, channels: 'error' }));
+        } else {
+          showToast(t('admin_commands.channels_loaded_remote', { count: loadedCount }), 'success');
+          setSectionLoadStatus(prev => ({ ...prev, channels: 'success' }));
+        }
       }
     } catch (error: any) {
       showToast(error.message || t('admin_commands.failed_load_channels'), 'error');
@@ -2695,6 +2473,7 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
             integer
             min={1}
             alsoValid={[0]}
+            zeroHint={t('zero_hint.hop_limit')}
             max={7}
             value={configState.lora.hopLimit}
             onChange={(v) => setLoRaConfig({ hopLimit: v })}

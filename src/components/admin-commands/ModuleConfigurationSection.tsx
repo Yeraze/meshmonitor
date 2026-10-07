@@ -382,6 +382,7 @@ export const ModuleConfigurationSection: React.FC<ModuleConfigurationSectionProp
                 integer
                 min={14400}
                 alsoValid={[0]}
+                zeroHint={t('zero_hint.neighbor_info_interval')}
                 value={neighborInfoUpdateInterval}
                 onChange={(v) => onNeighborInfoConfigChange('updateInterval', v)}
                 disabled={isExecuting}

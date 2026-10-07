@@ -307,6 +307,87 @@ describe('NumberInput: alsoValid', () => {
   });
 });
 
+describe('NumberInput: zeroHint', () => {
+  const HINT = '0 = firmware default (3 hours). Save sends 3600 seconds (1 hour), not 0.';
+  const hint = () => screen.queryByText(HINT);
+  const describedBy = () => (field().getAttribute('aria-describedby') ?? '').split(' ').filter(Boolean);
+
+  it('shows what 0 means under a field loaded with 0, and ties it to the field', () => {
+    render(<Harness initial={0} min={3600} integer alsoValid={[0]} zeroHint={HINT} />);
+
+    expect(hint()).not.toBeNull();
+    expect(hint()!.className).toMatch(/hint/);
+    expect(describedBy()).toContain(hint()!.id);
+    expect(field()).toHaveAccessibleDescription(HINT);
+    // The field's name stays its label: the hint is a description, not a name.
+    expect(hint()).toHaveAttribute('aria-hidden', 'true');
+    expect(field()).not.toHaveAttribute('aria-invalid');
+  });
+
+  it('is hidden for any other value', () => {
+    render(<Harness initial={10800} min={3600} integer alsoValid={[0]} zeroHint={HINT} />);
+    expect(hint()).toBeNull();
+    expect(field()).not.toHaveAttribute('aria-describedby');
+  });
+
+  it('follows the text as the user types 0 and then a real value', async () => {
+    const user = userEvent.setup();
+    const onEmit = vi.fn();
+    render(<Harness initial={10800} min={3600} integer alsoValid={[0]} zeroHint={HINT} onEmit={onEmit} />);
+
+    await user.clear(field());
+    expect(hint()).toBeNull(); // blank is not 0
+    await user.type(field(), '0');
+    expect(hint()).not.toBeNull();
+    expect(onEmit).toHaveBeenLastCalledWith(0);
+
+    await user.type(field(), '7'); // "07" is 7: under the floor, invalid
+    expect(hint()).toBeNull();
+    expect(field()).toHaveAttribute('aria-invalid', 'true');
+
+    await user.clear(field());
+    await user.type(field(), '7200');
+    expect(hint()).toBeNull();
+    expect(field()).not.toHaveAttribute('aria-describedby');
+  });
+
+  it('appears when a server load brings a 0, and goes when it brings a value', () => {
+    function Loader() {
+      const [value, setValue] = useState(900);
+      return (
+        <>
+          <NumberInput aria-label="field" min={32} integer alsoValid={[0]} zeroHint={HINT} value={value} onChange={setValue} />
+          <button onClick={() => setValue(0)}>load zero</button>
+          <button onClick={() => setValue(900)}>load value</button>
+        </>
+      );
+    }
+    render(<Loader />);
+    expect(hint()).toBeNull();
+    fireEvent.click(screen.getByText('load zero'));
+    expect(hint()).not.toBeNull();
+    fireEvent.click(screen.getByText('load value'));
+    expect(hint()).toBeNull();
+  });
+
+  it('keeps the caller\'s own aria-describedby', () => {
+    render(<Harness initial={0} alsoValid={[0]} zeroHint={HINT} aria-describedby="caller-help" />);
+    expect(describedBy()).toEqual(['caller-help', hint()!.id]);
+  });
+
+  it('still explains a 0 on a disabled field', () => {
+    render(<Harness initial={0} min={32} alsoValid={[0]} zeroHint={HINT} disabled />);
+    expect(hint()).not.toBeNull();
+    expect(describedBy()).toContain(hint()!.id);
+  });
+
+  it('shows nothing at 0 when the field has no hint', () => {
+    render(<Harness initial={0} min={0} />);
+    expect(document.querySelector('[data-number-hint]')).toBeNull();
+    expect(field()).not.toHaveAttribute('aria-describedby');
+  });
+});
+
 describe('NumberInput: load from server', () => {
   it('shows the new value in the same commit as the parent, with no stale frame', () => {
     const { rerender } = render(<NumberInput aria-label="field" value={0} onChange={() => {}} />);

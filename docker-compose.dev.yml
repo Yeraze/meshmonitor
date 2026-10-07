@@ -58,7 +58,7 @@ services:
         condition: service_healthy
     ports:
       - "8081:3001"  # Changed to 8081 to avoid conflict with devcontainer
-      - "4405:4404"  # Virtual Node Server on unique external port
+      - "4405:4404"  # Virtual Node (enabled per source in the UI, port 4404) on a unique external port
       - "4503:4503"  # Per-source VN
       - "4504:4504"  # Per-source VN
       - "4505:4505"  # Per-source VN
@@ -88,8 +88,6 @@ services:
       - ACCESS_LOG_ENABLED=true
       - ACCESS_LOG_PATH=/data/logs/access.log
       - ACCESS_LOG_FORMAT=combined
-      - ENABLE_VIRTUAL_NODE=${ENABLE_VIRTUAL_NODE:-true}  # Re-enabled on port 4405
-      - VIRTUAL_NODE_PORT=${VIRTUAL_NODE_PORT:-4404}
 
   # SQLite service (default database)
   # Start with: docker compose -f docker-compose.dev.yml --profile sqlite up -d
@@ -132,9 +130,6 @@ services:
       - ACCESS_LOG_ENABLED=true
       - ACCESS_LOG_PATH=/data/logs/access.log
       - ACCESS_LOG_FORMAT=combined
-      - ENABLE_VIRTUAL_NODE=${ENABLE_VIRTUAL_NODE:-true}
-      - VIRTUAL_NODE_PORT=${VIRTUAL_NODE_PORT:-4404}
-      - VIRTUAL_NODE_ALLOW_ADMIN_COMMANDS=${VIRTUAL_NODE_ALLOW_ADMIN_COMMANDS:-true}
       # News feed URL for testing - use host.docker.internal to access host machine
       - NEWS_FEED_URL=${NEWS_FEED_URL:-}
 
@@ -201,8 +196,6 @@ services:
       - ACCESS_LOG_ENABLED=true
       - ACCESS_LOG_PATH=/data/logs/access.log
       - ACCESS_LOG_FORMAT=combined
-      - ENABLE_VIRTUAL_NODE=${ENABLE_VIRTUAL_NODE:-true}
-      - VIRTUAL_NODE_PORT=${VIRTUAL_NODE_PORT:-4404}
 
 volumes:
   meshmonitor-data:

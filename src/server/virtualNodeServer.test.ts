@@ -39,8 +39,8 @@ describe('Virtual Node Server - Constants and Configuration', () => {
       expect(DEFAULT_VIRTUAL_NODE_PORT).toBe(4404);
     });
 
-    it('should support custom port configuration via environment', () => {
-      // Port should be configurable via VIRTUAL_NODE_PORT env var
+    it('should support custom port configuration per source', () => {
+      // The port comes from the source's Virtual Node settings
       const customPort = 5555;
       expect(customPort).toBeGreaterThan(1024);
       expect(customPort).toBeLessThan(65536);

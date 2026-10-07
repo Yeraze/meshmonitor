@@ -321,10 +321,9 @@ cat > "$ROOTFS_DIR/etc/meshmonitor/meshmonitor.env.example" << 'EOF'
 #MESHCORE_FIRMWARE_TYPE=companion
 
 # ── Virtual Node (optional) ─────────────────────────────────────
-# Proxy server for mobile apps to share a single physical node
-#ENABLE_VIRTUAL_NODE=false
-#VIRTUAL_NODE_PORT=4404
-#VIRTUAL_NODE_ALLOW_ADMIN_COMMANDS=false
+# Proxy server for mobile apps to share a single physical node.
+# Configured per source in the UI (Dashboard -> Edit Source -> Virtual Node);
+# there are no environment variables for it since 4.0.
 
 # ── Database ─────────────────────────────────────────────────────
 # SQLite (default):
