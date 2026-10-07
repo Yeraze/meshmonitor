@@ -288,28 +288,8 @@
                     <p class="hint">Comma-separated URLs to allow access from other devices (localhost is always included)</p>
                 </div>
 
-                <div class="form-group checkbox-group">
-                    <label class="checkbox-label">
-                        <input
-                            type="checkbox"
-                            id="enableVirtualNode"
-                            name="enableVirtualNode"
-                        >
-                        <span>Enable Virtual Node Server</span>
-                    </label>
-                    <p class="hint">Allow Meshtastic mobile app to connect via TCP port 4403</p>
-                </div>
-
-                <div class="form-group checkbox-group">
-                    <label class="checkbox-label">
-                        <input
-                            type="checkbox"
-                            id="virtualNodeAllowAdmin"
-                            name="virtualNodeAllowAdmin"
-                        >
-                        <span>Allow Admin Commands via Virtual Node</span>
-                    </label>
-                    <p class="hint">Allow mobile app to send admin commands (requires Virtual Node)</p>
+                <div class="form-group">
+                    <p class="hint">Virtual Node (for the Meshtastic mobile apps) is set per source: open the web UI, then Dashboard, Edit Source, Virtual Node.</p>
                 </div>
 
                 <div class="form-group checkbox-group">
@@ -347,8 +327,6 @@
                 const config = await invoke('get_config');
                 document.getElementById('webPort').value = config.web_port || 8080;
                 document.getElementById('allowedOrigins').value = config.allowed_origins || '';
-                document.getElementById('enableVirtualNode').checked = config.enable_virtual_node || false;
-                document.getElementById('virtualNodeAllowAdmin').checked = config.virtual_node_allow_admin || false;
                 document.getElementById('autoStart').checked = config.auto_start || false;
             } catch (e) {
                 console.error('Failed to load config:', e);
@@ -387,8 +365,6 @@
 
                 // Get form values
                 const allowedOrigins = document.getElementById('allowedOrigins').value.trim();
-                const enableVirtualNode = document.getElementById('enableVirtualNode').checked;
-                const virtualNodeAllowAdmin = document.getElementById('virtualNodeAllowAdmin').checked;
                 const autoStart = document.getElementById('autoStart').checked;
 
                 // Save config - spread existing config to preserve all fields, then override with form values
@@ -397,8 +373,6 @@
                     web_port: webPort,
                     auto_start: autoStart,
                     allowed_origins: allowedOrigins || null,
-                    enable_virtual_node: enableVirtualNode,
-                    virtual_node_allow_admin: virtualNodeAllowAdmin,
                     setup_completed: true
                 };
 

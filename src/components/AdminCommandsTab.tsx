@@ -11,6 +11,7 @@ import { useResolvedSourceId } from '../hooks/useResolvedSourceId';
 import { useTxStatus } from '../hooks/useTxStatus';
 import { isTxDisabledError } from '../utils/txDisabled';
 import { parseAdminDeepLink } from '../utils/adminDeepLink';
+import { floorKeepingZero, NODE_INFO_BROADCAST_FLOOR_SECS, POSITION_BROADCAST_FLOOR_SECS } from '../utils/broadcastIntervalFloor';
 import { appBasename } from '../init';
 import { REGION_OPTIONS, FEM_LNA_MODE_OPTIONS, getLegalPresetOptions } from './configuration/constants';
 import type { Channel } from '../types/device';
@@ -1214,7 +1215,8 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
   };
 
   const handleSetDeviceConfig = useCallback(async () => {
-    const validNodeInfoBroadcastSecs = Math.max(3600, configState.device.nodeInfoBroadcastSecs);
+    // A stored 0 goes back as 0 so the node keeps its firmware default.
+    const validNodeInfoBroadcastSecs = floorKeepingZero(configState.device.nodeInfoBroadcastSecs, NODE_INFO_BROADCAST_FLOOR_SECS);
     try {
       await executeCommand('setDeviceConfig', {
         config: {
@@ -1281,7 +1283,8 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
     const flags = encodePositionFlags(configState.position.positionFlags);
 
     const config: any = {
-      positionBroadcastSecs: Math.max(32, configState.position.positionBroadcastSecs),
+      // A stored 0 goes back as 0 so the node keeps its firmware default.
+      positionBroadcastSecs: floorKeepingZero(configState.position.positionBroadcastSecs, POSITION_BROADCAST_FLOOR_SECS),
       positionBroadcastSmartEnabled: configState.position.positionSmartEnabled,
       fixedPosition: configState.position.fixedPosition,
       gpsUpdateInterval: configState.position.gpsUpdateInterval,
@@ -1664,13 +1667,20 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
     setShowChannelEditModal(true);
   };
 
-  const handleLoadSingleChannel = async (channelIndex: number, retryCount: number = 0) => {
+  /**
+   * Read one channel back from the node after a save or import: ONE request.
+   *
+   * Each request is an admin packet over the mesh. This used to send up to
+   * three more on any error holding `404`, `timeout` or `not received`, so a
+   * silent node cost four packets and the user was told nothing. Now a failed
+   * read-back says so, says the save itself went through (the caller only gets
+   * here after the save succeeded), and marks the section not-loaded so the
+   * stale row is not taken for the node's answer.
+   */
+  const handleLoadSingleChannel = async (channelIndex: number) => {
     if (selectedNodeNum === null) {
       return;
     }
-
-    const maxRetries = 3;
-    const retryDelay = 1500; // 1.5 seconds between retries
 
     try {
       const channel = await apiService.post<{ channel?: any }>('/api/admin/get-channel', {
@@ -1744,23 +1754,15 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
         return updated;
       });
     } catch (error: any) {
-      // If it's a 404 or timeout error and we haven't exceeded retries, try again
-      const isRetryableError = error.message?.includes('404') || 
-                               error.message?.includes('not received') ||
-                               error.message?.includes('timeout');
-      
-      if (isRetryableError && retryCount < maxRetries) {
-        // Wait before retrying
-        await new Promise(resolve => setTimeout(resolve, retryDelay));
-        // Retry
-        return handleLoadSingleChannel(channelIndex, retryCount + 1);
-      }
-      
-      // Log but don't show toast - the save was successful, this is just a refresh
-      // Only log if we've exhausted retries
-      if (retryCount >= maxRetries) {
-        console.warn(`Failed to refresh channel ${channelIndex} after ${maxRetries} retries:`, error);
-      }
+      console.warn(`Failed to read back channel ${channelIndex}:`, error);
+      showToast(
+        t('admin_commands.channel_readback_failed', {
+          index: channelIndex,
+          error: error?.message || t('admin_commands.failed_load_channels'),
+        }),
+        'warning',
+      );
+      setSectionLoadStatus(prev => ({ ...prev, channels: 'error' }));
     }
   };
 

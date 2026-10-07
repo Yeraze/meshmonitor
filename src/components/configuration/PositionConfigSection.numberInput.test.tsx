@@ -229,7 +229,7 @@ describe('PositionConfigSection broadcast interval (#5649)', () => {
   });
 
   it('a device reporting 0 (firmware default) does not load red', () => {
-    // ConfigurationTab raises 0 to the 32 s floor when it saves, as before #5649.
+    // ConfigurationTab sends that 0 back as 0 (ConfigurationTab.storedZero.test.tsx).
     render(<Harness initialBroadcastSecs={0} onBroadcastSecs={vi.fn()} onSave={vi.fn()} />);
     expect(interval().value).toBe('0');
     expect(interval().getAttribute('aria-invalid')).toBeNull();

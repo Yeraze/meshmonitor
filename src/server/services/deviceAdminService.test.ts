@@ -194,6 +194,23 @@ describe('DeviceAdminService', () => {
       expect(mgr.updateCachedDeviceConfig).toHaveBeenCalledWith('position', { positionBroadcastSecs: 900 });
     });
 
+    it('hands a 0 interval to the encoder as 0 (position and device)', async () => {
+      // The local save, and a device-backup restore, both end here. A stored 0
+      // means "firmware default" and must not be raised on the way out.
+      const mgr = makeFakeManager();
+      const svc = new DeviceAdminService(mgr as any);
+
+      await svc.setPositionConfig({ positionBroadcastSecs: 0, gpsUpdateInterval: 120 });
+      expect(createSetPositionConfigMessage).toHaveBeenCalledWith(
+        { positionBroadcastSecs: 0, gpsUpdateInterval: 120 }, expect.any(Uint8Array),
+      );
+
+      await svc.setDeviceConfig({ role: 2, nodeInfoBroadcastSecs: 0 });
+      expect(createSetDeviceConfigMessage).toHaveBeenCalledWith(
+        { role: 2, nodeInfoBroadcastSecs: 0 }, expect.any(Uint8Array),
+      );
+    });
+
     it('setTelemetryConfig updates actualModuleConfig via updateCachedModuleConfig (not updateCachedDeviceConfig)', async () => {
       const mgr = makeFakeManager();
       const svc = new DeviceAdminService(mgr as any);
