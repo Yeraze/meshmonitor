@@ -49,7 +49,8 @@ export type DataEventType =
   | 'meshcore:ota-packet'
   | 'meshbeacon:received'
   | 'reticulum:message'
-  | 'reticulum:delivery-state:updated';
+  | 'reticulum:delivery-state:updated'
+  | 'firmware:status';
 
 export interface DataEvent {
   type: DataEventType;

@@ -696,6 +696,29 @@ function runNodesTests(getBackend: () => TestBackend) {
     expect(await repo.getNodeVisibilityAcrossSources(999999)).toEqual([]);
   });
 
+  it('getNodeViewFacts - the channel and privacy of one node on ONE source', async () => {
+    const backend = getBackend();
+    if (!backend.available) {
+      console.log(`⚠ Skipped: ${backend.skipReason}`);
+      return;
+    }
+
+    // High-bit nodeNum: BIGINT on PostgreSQL/MySQL.
+    const big = 0xfeedbee0;
+    await repo.upsertNode(makeNode(big, { channel: 0 }), 'src-facts-a');
+    await repo.upsertNode(
+      makeNode(big, { channel: 3, positionOverrideEnabled: true, latitudeOverride: 1, longitudeOverride: 2, positionOverrideIsPrivate: true }),
+      'src-facts-b',
+    );
+
+    expect(await repo.getNodeViewFacts(big, 'src-facts-a')).toEqual({ channel: 0, positionOverrideIsPrivate: false });
+    expect(await repo.getNodeViewFacts(big, 'src-facts-b')).toEqual({ channel: 3, positionOverrideIsPrivate: true });
+    // Never another source's row, and null for a node the source does not hold.
+    expect(await repo.getNodeViewFacts(big, 'src-facts-c')).toBeNull();
+    expect(await repo.getNodeViewFacts(531531, 'src-facts-a')).toBeNull();
+    expect(await repo.getNodeViewFacts(-1, 'src-facts-a')).toBeNull();
+  });
+
   it('getHeardNodes - every heard node regardless of age, source-scoped, skips never-heard rows (#5376)', async () => {
     const backend = getBackend();
     if (!backend.available) {

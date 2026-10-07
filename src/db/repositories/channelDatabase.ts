@@ -8,6 +8,7 @@ import { eq, and, asc, sql } from 'drizzle-orm';
 import { BaseRepository, DrizzleDatabase } from './base.js';
 import { DatabaseType, DbChannelDatabase, DbChannelDatabasePermission, type ChannelDatabaseProtocol } from '../types.js';
 import { logger } from '../../utils/logger.js';
+import { notifyAccessChange } from '../accessChanges.js';
 import { expandShorthandPsk } from '../../server/constants/meshtastic.js';
 
 /**
@@ -361,6 +362,8 @@ export class ChannelDatabaseRepository extends BaseRepository {
       })
       .where(eq(channelDatabase.id, id));
 
+    // Enabled state and the key decide who may read what was decrypted with it.
+    notifyAccessChange({ kind: 'all' });
     logger.debug(`Updated channel database entry ID: ${id}`);
   }
 
@@ -370,6 +373,7 @@ export class ChannelDatabaseRepository extends BaseRepository {
   async deleteAsync(id: number): Promise<void> {
     const { channelDatabase } = this.tables;
     await this.db.delete(channelDatabase).where(eq(channelDatabase.id, id));
+    notifyAccessChange({ kind: 'all' });
     logger.debug(`Deleted channel database entry ID: ${id}`);
   }
 
@@ -507,6 +511,7 @@ export class ChannelDatabaseRepository extends BaseRepository {
       });
     }
 
+    notifyAccessChange({ kind: 'user', userId: data.userId });
     logger.debug(`Set permission for user ${data.userId} on channel_db ${data.channelDatabaseId}: canViewOnMap=${data.canViewOnMap}, canRead=${data.canRead}`);
   }
 
@@ -524,6 +529,7 @@ export class ChannelDatabaseRepository extends BaseRepository {
         )
       );
 
+    notifyAccessChange({ kind: 'user', userId });
     logger.debug(`Deleted permission for user ${userId} on channel_db ${channelDatabaseId}`);
   }
 

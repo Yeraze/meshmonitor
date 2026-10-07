@@ -7,6 +7,7 @@
 import { asc, eq, sql } from 'drizzle-orm';
 import { BaseRepository } from './base.js';
 import { logger } from '../../utils/logger.js';
+import { notifyAccessChange } from '../accessChanges.js';
 
 export interface Source {
   id: string;
@@ -95,6 +96,7 @@ export class SourcesRepository extends BaseRepository {
     await this.executeRun(
       this.db.insert(this.tables.sources).values(row)
     );
+    notifyAccessChange({ kind: 'all' });
     logger.info(`Created source: ${input.name} (${input.type})`);
     return this.toSource(row);
   }
@@ -117,6 +119,7 @@ export class SourcesRepository extends BaseRepository {
     );
     const affected = this.getAffectedRows(result);
     if (affected > 0) {
+      notifyAccessChange({ kind: 'all' });
       logger.info(`Deleted source: ${id}`);
     }
     return affected > 0;

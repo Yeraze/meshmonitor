@@ -23,7 +23,7 @@ import databaseService from '../../services/database.js';
 import { fallbackManager, type MeshtasticManager } from '../meshtasticManager.js';
 import { sourceManagerRegistry } from '../sourceManagerRegistry.js';
 import { getPrimaryMeshtasticManager, isMeshtasticManager } from '../sourceManagerTypes.js';
-import { dataEventEmitter } from './dataEventEmitter.js';
+import { dataEventEmitter, type DataEvent } from './dataEventEmitter.js';
 import {
   getBoardName,
   getPlatformForBoard,
@@ -2435,11 +2435,13 @@ export class FirmwareUpdateService {
    */
   updateStatus(partial: Partial<UpdateStatus>): void {
     this.status = { ...this.status, ...partial };
+    // Belongs to no source. The WebSocket gate sends it to admins only, as
+    // the firmware routes are admin only (SOCKET_EVENT_GATES).
     dataEventEmitter.emit('data', {
       type: 'firmware:status',
       data: this.getStatus(),
       timestamp: Date.now(),
-    });
+    } satisfies DataEvent);
   }
 
   /**

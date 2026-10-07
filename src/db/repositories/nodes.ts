@@ -237,6 +237,31 @@ export class NodesRepository extends BaseRepository {
   }
 
   /**
+   * The two columns the node visibility rule reads (`channel_N:viewOnMap`,
+   * private position override), for one node on one source. Null when the
+   * source holds no such node. A narrow read for the WebSocket gate, which
+   * asks once per live node update: a third of the cost of `getNode`.
+   */
+  async getNodeViewFacts(
+    nodeNum: number,
+    sourceId: string,
+  ): Promise<{ channel: number | null; positionOverrideIsPrivate: boolean } | null> {
+    if (!isValidNodeNum(nodeNum)) return null;
+    const { nodes } = this.tables;
+    const result = await this.db
+      .select({ channel: nodes.channel, positionOverrideIsPrivate: nodes.positionOverrideIsPrivate })
+      .from(nodes)
+      .where(and(eq(nodes.nodeNum, nodeNum), eq(nodes.sourceId, sourceId)))
+      .limit(1);
+    if (result.length === 0) return null;
+    const row = result[0] as { channel: number | null; positionOverrideIsPrivate: unknown };
+    return {
+      channel: row.channel === null || row.channel === undefined ? null : Number(row.channel),
+      positionOverrideIsPrivate: !!row.positionOverrideIsPrivate,
+    };
+  }
+
+  /**
    * Get multiple nodes by nodeNum in a single query
    */
   async getNodesByNums(nodeNums: number[], sourceId?: string): Promise<Map<number, DbNode>> {

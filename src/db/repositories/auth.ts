@@ -16,6 +16,7 @@ import {
 } from '../schema/auth.js';
 import { BaseRepository, DrizzleDatabase } from './base.js';
 import { DatabaseType } from '../types.js';
+import { notifyAccessChange } from '../accessChanges.js';
 
 const TOKEN_PREFIX = 'mm_v1_';
 const TOKEN_LENGTH = 32; // characters after prefix
@@ -289,6 +290,11 @@ export class AuthRepository extends BaseRepository {
       }
       await this.db.update(users).set(updates).where(eq(users.id, id));
     }
+    // Only the two fields a permission check reads: this also runs on every
+    // login (lastLoginAt).
+    if ('isAdmin' in updates || 'isActive' in updates) {
+      notifyAccessChange({ kind: 'user', userId: id });
+    }
   }
 
   /**
@@ -300,6 +306,7 @@ export class AuthRepository extends BaseRepository {
 
     const { users } = this.tables;
     await this.db.delete(users).where(eq(users.id, id));
+    notifyAccessChange({ kind: 'user', userId: id });
     return true;
   }
 
@@ -342,14 +349,17 @@ export class AuthRepository extends BaseRepository {
       // SQLite doesn't have canDelete
       const { canDelete, ...rest } = permissionWithGrantedAt;
       const result = await db.insert(permissions).values(rest);
+      notifyAccessChange({ kind: 'user', userId: permission.userId });
       return Number(result.lastInsertRowid);
     } else if (this.isMySQL()) {
       const db = this.getMysqlDb();
       const result = await db.insert(permissions).values(permissionWithGrantedAt);
+      notifyAccessChange({ kind: 'user', userId: permission.userId });
       return Number(result[0].insertId);
     } else {
       const db = this.getPostgresDb();
       const result = await db.insert(permissions).values(permissionWithGrantedAt).returning({ id: permissionsPostgres.id });
+      notifyAccessChange({ kind: 'user', userId: permission.userId });
       return result[0].id;
     }
   }
@@ -367,6 +377,7 @@ export class AuthRepository extends BaseRepository {
     for (const p of toDelete) {
       await this.db.delete(permissions).where(eq(permissions.id, p.id));
     }
+    notifyAccessChange({ kind: 'user', userId });
     return toDelete.length;
   }
 
@@ -388,6 +399,7 @@ export class AuthRepository extends BaseRepository {
     for (const p of toDelete) {
       await this.db.delete(permissions).where(eq(permissions.id, p.id));
     }
+    notifyAccessChange({ kind: 'user', userId });
     return toDelete.length;
   }
 
@@ -469,6 +481,7 @@ export class AuthRepository extends BaseRepository {
       .where(eq(apiTokens.id, id));
     if (existing.length === 0) return false;
     await this.db.delete(apiTokens).where(eq(apiTokens.id, id));
+    notifyAccessChange({ kind: 'tokens' });
     return true;
   }
 
@@ -575,6 +588,7 @@ export class AuthRepository extends BaseRepository {
         eq(apiTokens.id, tokenId),
         eq(apiTokens.isActive, true)
       ));
+    notifyAccessChange({ kind: 'tokens' });
     return this.getAffectedRows(result) > 0;
   }
 
@@ -591,6 +605,7 @@ export class AuthRepository extends BaseRepository {
         eq(apiTokens.userId, userId),
         eq(apiTokens.isActive, true)
       ));
+    notifyAccessChange({ kind: 'tokens' });
     return this.getAffectedRows(result);
   }
 
@@ -1042,5 +1057,7 @@ export class AuthRepository extends BaseRepository {
         await movePermissions('channel_' + move.from, 'channel_' + move.to);
       }
     }
+    // Every user's channel grants may have moved.
+    notifyAccessChange({ kind: 'all' });
   }
 }

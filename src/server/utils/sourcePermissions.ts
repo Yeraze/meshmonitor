@@ -25,6 +25,16 @@ export interface SourcePermissions {
 
 type Grant = { viewOnMap: boolean; read: boolean; write: boolean };
 
+/**
+ * True when the grants include anything at all on `sourceId`: the test for
+ * "may know this source's own node" (identity, firmware, link state). False
+ * for an admin's grants, which list nothing: check `isAdmin` first.
+ */
+export function holdsAnyGrantOn(permissions: Pick<SourcePermissions, 'on'>, sourceId: string | null | undefined): boolean {
+  return !!sourceId
+    && Object.values(permissions.on(sourceId)).some((grant) => !!grant && (grant.read || grant.write || grant.viewOnMap));
+}
+
 const NO_GRANTS: PermissionSet = Object.freeze({});
 
 /**
