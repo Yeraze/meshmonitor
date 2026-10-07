@@ -339,7 +339,7 @@ export const SOCKET_EVENT_GATES: Record<DataEventType, SocketEventGate> = {
   },
   'meshcore:filters:changed': {
     scope: 'source',
-    rest: 'GET /api/sources/:id/meshcore/filters/...',
+    rest: 'GET /api/sources/:id/meshcore/ignored-nodes, GET .../message-filters',
     rule: '`nodes:read` or `messages:read` on the source.',
     filter: (viewer, sourceId, payload) =>
       viewer.can('nodes', 'read', sourceId) || viewer.can('messages', 'read', sourceId) ? payload : WITHHOLD,
