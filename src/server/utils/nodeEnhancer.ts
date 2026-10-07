@@ -106,10 +106,19 @@ export async function enhanceNodeForClient(
   const hasOverride = node.positionOverrideEnabled === true && node.latitudeOverride != null && node.longitudeOverride != null;
   const isPrivateOverride = node.positionOverrideIsPrivate === true;
 
-  // Check if user has permission to view private positions (use pre-computed value if provided)
+  // Whether the caller may see a private override. Callers pass it, computed
+  // once per request for the node's source (`loadNodeViewAccess`). Without it
+  // the check is made on the node's own source: `nodes_private` is a
+  // per-source permission, and a check with no source passes on a grant for
+  // any source. A node that names no source is shown to admins only.
+  const nodeSourceId = (node as { sourceId?: string | null }).sourceId;
   const canViewPrivate = canViewPrivateOverride !== undefined
     ? canViewPrivateOverride
-    : (user ? await hasPermission(user, 'nodes_private', 'read') : false);
+    : !user
+      ? false
+      : nodeSourceId
+        ? await hasPermission(user, 'nodes_private', 'read', nodeSourceId)
+        : user.isAdmin === true;
   const shouldApplyOverride = hasOverride && (!isPrivateOverride || canViewPrivate);
 
   // CRITICAL: Mask sensitive override coordinates if user is not authorized to see them
@@ -202,10 +211,15 @@ const DEVICE_CHANNEL_RESOURCES: ResourceType[] = [0, 1, 2, 3, 4, 5, 6, 7].map(
 );
 
 export async function loadNodeViewAccess(user: User | null | undefined): Promise<NodeViewAccess> {
-  if (user?.isAdmin || !user) {
+  if (user?.isAdmin) {
+    // Everything, on every source.
     const permissions = await loadSourcePermissions(user);
-    const all = permissions.isAdmin;
-    return { isAdmin: all, permissions, canViewNode: () => all, canViewPrivate: () => all, sources: all ? 'all' : [] };
+    return { isAdmin: true, permissions, canViewNode: () => true, canViewPrivate: () => true, sources: 'all' };
+  }
+  if (!user) {
+    // No user at all: nothing, on any source.
+    const permissions = await loadSourcePermissions(null);
+    return { isAdmin: false, permissions, canViewNode: () => false, canViewPrivate: () => false, sources: [] };
   }
   const [permissions, channelDbPermissions] = await Promise.all([
     loadSourcePermissions(user),
@@ -239,6 +253,11 @@ export async function loadNodeViewAccess(user: User | null | undefined): Promise
  * For device channels (0-7), uses the regular permission system.
  * For virtual channels (>= CHANNEL_DB_OFFSET), uses channel database permissions.
  *
+ *
+ * Pass `sourceId` whenever the rows come from one source. With no `sourceId`
+ * the caller's grants are merged across EVERY source, so a grant on source A
+ * passes a row of source B. A read that returns rows from several sources
+ * must check each row on its own source instead: see `loadNodeViewAccess`.
  * @param nodes - Array of nodes (any type that has an optional channel property)
  * @param user - The user making the request, or null for anonymous
  * @returns Filtered array of nodes the user has permission to see on the map
@@ -296,6 +315,11 @@ export async function filterNodesByChannelPermission<T>(
  * Nodes with no positionChannel recorded are left unchanged (no position to protect).
  * Admins always see full data.
  *
+ *
+ * Pass `sourceId` whenever the rows come from one source. With no `sourceId`
+ * the caller's grants are merged across EVERY source, so a grant on source A
+ * passes a row of source B. A read that returns rows from several sources
+ * must check each row on its own source instead: see `loadNodeViewAccess`.
  * @param nodes - Array of nodes (any type that may have location/positionChannel fields)
  * @param user  - The user making the request, or null/undefined for anonymous
  * @returns Array with location fields stripped where positionChannel is inaccessible

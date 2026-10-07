@@ -1260,6 +1260,9 @@ async function visibleDmSenders(viewer: UnreadViewer, sourceId: string | undefin
 async function unreadCountsFor(viewer: UnreadViewer, sourceId: string | undefined, excludeMqtt: boolean): Promise<UnreadCounts | null> {
   const holds = (resource: ResourceType): boolean =>
     viewer.isAdmin || (!!sourceId && viewer.permissions.can(resource, 'read', sourceId));
+  // Only an admin reads every source in one query. Anyone else is counted one
+  // source at a time, so "no source" can never reach the queries below.
+  if (!sourceId && !viewer.isAdmin) return null;
   const hasChannelsRead = holds('channel_0');
   const hasMessagesRead = holds('messages');
   if (!hasChannelsRead && !hasMessagesRead && !viewer.hasVirtualRead) return null;
@@ -1621,6 +1624,9 @@ interface FirstUnread {
 async function firstUnreadFor(viewer: UnreadViewer, sourceId: string | undefined, excludeMqtt: boolean): Promise<FirstUnread | null> {
   const holds = (resource: ResourceType): boolean =>
     viewer.isAdmin || (!!sourceId && viewer.permissions.can(resource, 'read', sourceId));
+  // Only an admin reads every source in one query. Anyone else is counted one
+  // source at a time, so "no source" can never reach the queries below.
+  if (!sourceId && !viewer.isAdmin) return null;
   const hasChannelsRead = holds('channel_0');
   const hasMessagesRead = holds('messages');
   if (!hasChannelsRead && !hasMessagesRead && !viewer.hasVirtualRead) return null;

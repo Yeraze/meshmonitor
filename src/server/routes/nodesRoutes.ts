@@ -783,7 +783,7 @@ router.get('/nodes/:nodeId/position-history', optionalAuth(), async (req, res) =
     // holds the rows (#3745). The result scopes the query below.
     const scope = await resolveNodePositionScope(nodeId, req.user, posHistSourceId);
     if (!scope.allowed) {
-      return res.status(403).json({ error: 'Insufficient permissions' });
+      return fail(res, 403, 'FORBIDDEN', 'Insufficient permissions');
     }
     // Nothing the caller may see (the position is private in every source
     // they can otherwise read): an empty history, as before.
@@ -838,7 +838,7 @@ router.get('/nodes/:nodeId/positions', optionalAuth(), async (req, res) => {
     // access per source, and the query reads only the sources that pass.
     const scope = await resolveNodePositionScope(nodeId, req.user, positionsSourceId);
     if (!scope.allowed) {
-      return res.status(403).json({ error: 'Insufficient permissions' });
+      return fail(res, 403, 'FORBIDDEN', 'Insufficient permissions');
     }
     if (Array.isArray(scope.sources) && scope.sources.length === 0) {
       res.json([]);
