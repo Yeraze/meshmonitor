@@ -246,3 +246,42 @@ describe('AdminCommandsTab number fields (#5649)', () => {
     expect(h.apiSendAdminCommand.mock.calls[1][0]).toMatchObject({ retryAttempts: 4 });
   });
 });
+
+// A node reports 0 for "not set". The field accepts it and says what a save
+// sends; the handler's floor is what makes that sentence true.
+describe('AdminCommandsTab: a 0 in a firmware-default field', () => {
+  it('explains a 0 hop limit and sends the 1 the hint promises', async () => {
+    renderTab();
+    const hopLimit = field('admin-lora-config', '3');
+    const lora = within(section('admin-lora-config'));
+    expect(lora.queryByText('zero_hint.hop_limit')).toBeNull();
+
+    fireEvent.change(hopLimit, { target: { value: '0' } });
+
+    expect(lora.getByText('zero_hint.hop_limit')).toBeInTheDocument();
+    expect(hopLimit).toHaveAccessibleDescription('zero_hint.hop_limit');
+    expect(hopLimit).not.toHaveAttribute('aria-invalid');
+    const save = saveButton('admin-lora-config', 'admin_commands.save_lora_config');
+    expect(save).not.toBeDisabled();
+
+    fireEvent.click(save);
+    await waitFor(() => expect(sentCommands().some(c => c.command === 'setLoRaConfig')).toBe(true));
+    expect(sentCommands().find(c => c.command === 'setLoRaConfig')!.config!.hopLimit).toBe(1);
+
+    fireEvent.change(hopLimit, { target: { value: '4' } });
+    expect(lora.queryByText('zero_hint.hop_limit')).toBeNull();
+  });
+
+  it('explains a 0 position interval and sends the 32 seconds the hint promises', async () => {
+    renderTab();
+    const interval = field('admin-position-config', '900');
+    const position = within(section('admin-position-config'));
+
+    fireEvent.change(interval, { target: { value: '0' } });
+
+    expect(position.getByText('zero_hint.position_broadcast')).toBeInTheDocument();
+    fireEvent.click(saveButton('admin-position-config', 'admin_commands.save_position_config'));
+    await waitFor(() => expect(sentCommands().some(c => c.command === 'setPositionConfig')).toBe(true));
+    expect(sentCommands().find(c => c.command === 'setPositionConfig')!.config!.positionBroadcastSecs).toBe(32);
+  });
+});

@@ -71,16 +71,6 @@ export function createChannelFromResponse(
 }
 
 /**
- * Helper function to check if an error is retryable
- */
-export function isRetryableChannelError(error: any): boolean {
-  const message = error?.message || '';
-  return message.includes('404') || 
-         message.includes('not received') ||
-         message.includes('timeout');
-}
-
-/**
  * Helper function to count loaded channels with actual data
  */
 export function countLoadedChannels(channels: Channel[]): number {

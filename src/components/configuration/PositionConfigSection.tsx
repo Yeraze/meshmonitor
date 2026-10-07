@@ -224,6 +224,7 @@ const PositionConfigSection: React.FC<PositionConfigSectionProps> = ({
           id="positionBroadcastSecs"
           min={32}
           alsoValid={[0]}
+          zeroHint={t('zero_hint.position_broadcast')}
           max={4294967295}
           integer
           value={positionBroadcastSecs}

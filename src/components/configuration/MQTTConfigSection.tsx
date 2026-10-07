@@ -620,6 +620,7 @@ const MQTTConfigSection: React.FC<MQTTConfigSectionProps> = ({
                   min={10}
                   max={19}
                   alsoValid={[0]}
+                  zeroHint={t('zero_hint.map_position_precision')}
                   integer
                   value={mapPositionPrecision}
                   onChange={setMapPositionPrecision}

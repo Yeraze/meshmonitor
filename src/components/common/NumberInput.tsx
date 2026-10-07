@@ -27,6 +27,13 @@ interface NumberInputBaseProps extends PassThroughProps {
    * "use the firmware default" on a field whose real floor is higher.
    */
   alsoValid?: readonly number[];
+  /**
+   * What a 0 in this field means, shown under the field while its value is 0
+   * (typed or loaded) and read out through `aria-describedby`. For fields
+   * where 0 is a sentinel such as "use the firmware default". Say what a save
+   * sends when that is not 0.
+   */
+  zeroHint?: string;
   /** Told whenever the field turns valid or invalid. Most forms use a scope instead. */
   onValidityChange?: (valid: boolean) => void;
   /** Show the reason under the field as well as to assistive tech. */
@@ -87,6 +94,7 @@ export const NumberInput: React.FC<NumberInputProps> = (props) => {
     integer,
     allowEmpty,
     alsoValid,
+    zeroHint,
     onValidityChange,
     showReason,
     className,
@@ -105,6 +113,7 @@ export const NumberInput: React.FC<NumberInputProps> = (props) => {
   const scope = useEnclosingNumberInputScope();
   const fieldId = useId();
   const reasonId = `${fieldId}-reason`;
+  const hintId = `${fieldId}-hint`;
 
   const [draft, setDraft] = useState(() => formatNumberDraft(value));
   const [badInput, setBadInput] = useState(false);
@@ -196,7 +205,11 @@ export const NumberInput: React.FC<NumberInputProps> = (props) => {
     : undefined;
 
   const classes = [className, invalid ? styles.invalid : ''].filter(Boolean).join(' ') || undefined;
-  const describedByIds = [describedBy, invalid ? reasonId : ''].filter(Boolean).join(' ') || undefined;
+  // Shown on a disabled field too: a loaded 0 needs explaining even when the
+  // form is busy.
+  const hint = zeroHint && result.valid && result.value === 0 ? zeroHint : undefined;
+  const describedByIds = [describedBy, hint ? hintId : '', invalid ? reasonId : '']
+    .filter(Boolean).join(' ') || undefined;
 
   return (
     <>
@@ -225,6 +238,12 @@ export const NumberInput: React.FC<NumberInputProps> = (props) => {
         so the field's name) and add a child to the form's flex row. Shown, it
         is aria-hidden so that the label does not pick it up either.
       */}
+      {/* aria-hidden for the same reason as the visible reason below. */}
+      {hint && (
+        <span id={hintId} className={styles.hint} aria-hidden="true" data-number-hint="zero">
+          {hint}
+        </span>
+      )}
       {invalid && showReason && (
         <span id={reasonId} className={styles.reasonVisible} aria-hidden="true">
           {reason}

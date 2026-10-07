@@ -302,6 +302,7 @@ const DeviceConfigSection: React.FC<DeviceConfigSectionProps> = ({
           id="nodeInfoBroadcastSecs"
           min={3600}
           alsoValid={[0]}
+          zeroHint={t('zero_hint.node_info_broadcast')}
           max={4294967295}
           integer
           value={nodeInfoBroadcastSecs}

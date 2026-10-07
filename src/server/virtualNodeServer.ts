@@ -554,7 +554,7 @@ export class VirtualNodeServer extends EventEmitter {
           }
         } else if (this.allowAdminCommands && normalizedPortNum && this.BLOCKED_PORTNUMS.includes(normalizedPortNum)) {
           // Admin commands are explicitly allowed via configuration
-          logger.debug(`Virtual node: Allowing admin command from ${clientId} (portnum ${normalizedPortNum}/${meshtasticProtobufService.getPortNumName(normalizedPortNum)}) - VIRTUAL_NODE_ALLOW_ADMIN_COMMANDS=true`);
+          logger.debug(`Virtual node: Allowing admin command from ${clientId} (portnum ${normalizedPortNum}/${meshtasticProtobufService.getPortNumName(normalizedPortNum)}) - this source allows admin commands`);
         }
 
         // Process the packet locally so it appears in the web UI

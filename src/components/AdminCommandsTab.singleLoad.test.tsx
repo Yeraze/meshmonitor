@@ -102,6 +102,34 @@ async function load(configType: keyof typeof SECTION_DOM_ID) {
   await waitFor(() => expect(isMarkedLoaded(configType) || isMarkedFailed(configType)).toBe(true));
 }
 
+const REMOTE_NODE_NUM = 200;
+const remoteNode = { nodeNum: REMOTE_NODE_NUM, user: { id: '!000000c8', longName: 'Remote Node', shortName: 'REM1' } };
+
+/** The tab with a remote node picked as the target, as the user would. */
+function renderTabOnRemoteNode() {
+  const expanded: Record<string, boolean> = { 'radio-config': true, 'device-config': true, 'module-config': true };
+  for (const id of Object.values(SECTION_DOM_ID)) expanded[id] = true;
+  localStorage.setItem('adminCommandsExpandedSections', JSON.stringify(expanded));
+  render(<AdminCommandsTab nodes={[localNode, remoteNode]} currentNodeId={LOCAL_NODE_ID} channels={[]} />);
+  fireEvent.focus(screen.getByPlaceholderText('Local Node'));
+  fireEvent.click(screen.getByText('Remote Node'));
+}
+
+const requestsTo = (endpoint: string) =>
+  h.apiPost.mock.calls.filter(([called]) => called === endpoint).map(([, body]) => body as Record<string, unknown>);
+const channelSlotsRequested = () =>
+  requestsTo('/api/admin/get-channel').map(body => body.channelIndex as number).sort((a, b) => a - b);
+
+/** Longer than the old first back-off (1 s): a retry would have gone out by now. */
+const waitPastOldBackoff = () => new Promise(resolve => setTimeout(resolve, 1300));
+
+/** The three shapes of "the node did not answer" the old retry matched on. */
+const NO_ANSWER_ERRORS = [
+  'Owner info not received from remote node 200. The node may not be reachable.',
+  'HTTP 404',
+  'Request timeout',
+];
+
 const loadConfigRequests = () =>
   h.apiPost.mock.calls
     .filter(([endpoint]) => endpoint === '/api/admin/load-config')
@@ -276,5 +304,145 @@ describe('AdminCommandsTab per-section Load', () => {
     expect(isMarkedLoaded('statusmessage')).toBe(true);
     expect(isMarkedLoaded('meshbeacon')).toBe(false);
     expect(isMarkedFailed('meshbeacon')).toBe(true);
+  }, 30000);
+});
+
+// Owner and Channels kept the silent re-send after the generic sections lost
+// it: up to two more requests on a 404 / timeout / "not received". Each one is
+// an admin packet to a remote node.
+describe('AdminCommandsTab Owner and Channels Load: one request per click', () => {
+  /** Answers for the two endpoints; a function is called per request. */
+  let ownerAnswer: () => unknown;
+  let channelAnswer: (index: number) => unknown;
+
+  beforeEach(() => {
+    ownerAnswer = () => ({ owner: { longName: 'Hilltop Relay', shortName: 'HILL', isUnmessagable: false, isLicensed: false } });
+    channelAnswer = (index) => ({ channel: { name: index === 0 ? 'Primary' : '', psk: index === 0 ? 'AQ==' : '', role: index === 0 ? 1 : 0 } });
+    h.apiPost.mockImplementation(async (endpoint: string, body: { configType?: string; channelIndex?: number }) => {
+      if (endpoint === '/api/admin/load-owner') return ownerAnswer();
+      if (endpoint === '/api/admin/get-channel') return channelAnswer(body.channelIndex as number);
+      if (endpoint === '/api/admin/load-config') return { config: {} };
+      return {};
+    });
+  });
+
+  it('loads the owner with one request', async () => {
+    renderTabOnRemoteNode();
+
+    await load('owner');
+
+    expect(requestsTo('/api/admin/load-owner')).toEqual([{ nodeNum: REMOTE_NODE_NUM, sourceId: 'source-1' }]);
+    expect(isMarkedLoaded('owner')).toBe(true);
+    expect(within(section('owner')).getByDisplayValue('Hilltop Relay')).toBeInTheDocument();
+  });
+
+  it.each(NO_ANSWER_ERRORS)('sends one owner request per click and does not retry after "%s"', async (message) => {
+    ownerAnswer = () => {
+      throw new Error(message);
+    };
+    renderTabOnRemoteNode();
+
+    await load('owner');
+    await waitPastOldBackoff();
+
+    expect(requestsTo('/api/admin/load-owner')).toHaveLength(1);
+    expect(isMarkedFailed('owner')).toBe(true);
+    expect(isMarkedLoaded('owner')).toBe(false);
+    expect(h.showToast).toHaveBeenCalledWith(message, 'error');
+    expect(h.showToast).not.toHaveBeenCalledWith(expect.anything(), 'success');
+  });
+
+  it('marks the owner failed, without a second request, when the reply holds no owner', async () => {
+    ownerAnswer = () => ({});
+    renderTabOnRemoteNode();
+
+    await load('owner');
+    await waitPastOldBackoff();
+
+    expect(requestsTo('/api/admin/load-owner')).toHaveLength(1);
+    expect(isMarkedFailed('owner')).toBe(true);
+  });
+
+  it('a second click sends a second owner request', async () => {
+    ownerAnswer = () => {
+      throw new Error('Request timeout');
+    };
+    renderTabOnRemoteNode();
+
+    await load('owner');
+    fireEvent.click(loadButton('owner'));
+    await waitFor(() => expect(requestsTo('/api/admin/load-owner')).toHaveLength(2));
+  });
+
+  it('loads remote channels with one request per slot', async () => {
+    renderTabOnRemoteNode();
+
+    await load('channels');
+
+    expect(channelSlotsRequested()).toEqual([0, 1, 2, 3, 4, 5, 6, 7]);
+    expect(isMarkedLoaded('channels')).toBe(true);
+    expect(h.showToast).toHaveBeenCalledWith('admin_commands.channels_loaded_remote', 'success');
+  });
+
+  it.each(NO_ANSWER_ERRORS)(
+    'sends one request per channel slot and does not retry after "%s"',
+    async (message) => {
+      channelAnswer = () => {
+        throw new Error(message);
+      };
+      renderTabOnRemoteNode();
+
+      await load('channels');
+      await waitPastOldBackoff();
+
+      // Eight, not the 24 the two retry rounds made of it.
+      expect(channelSlotsRequested()).toEqual([0, 1, 2, 3, 4, 5, 6, 7]);
+      expect(isMarkedFailed('channels')).toBe(true);
+      expect(isMarkedLoaded('channels')).toBe(false);
+      expect(h.showToast).toHaveBeenCalledWith(message, 'error');
+      expect(h.showToast).not.toHaveBeenCalledWith(expect.anything(), 'success');
+    },
+  );
+
+  it('does not re-ask for the one slot that failed, and does not call the load a success', async () => {
+    channelAnswer = (index) => {
+      if (index === 3) throw new Error('HTTP 404');
+      return { channel: { name: `ch${index}`, psk: 'AQ==', role: index === 0 ? 1 : 2 } };
+    };
+    renderTabOnRemoteNode();
+
+    await load('channels');
+    await waitPastOldBackoff();
+
+    expect(channelSlotsRequested()).toEqual([0, 1, 2, 3, 4, 5, 6, 7]);
+    expect(isMarkedFailed('channels')).toBe(true);
+    expect(h.showToast).toHaveBeenCalledWith('admin_commands.channels_loaded_partial', 'warning');
+    expect(h.showToast).not.toHaveBeenCalledWith(expect.anything(), 'success');
+    // The seven that answered are on screen.
+    expect(within(section('channels')).getByText(/ch5/)).toBeInTheDocument();
+  });
+
+  // Load All waits 200 ms between its requests: about three seconds of real time.
+  it('"Load All Config" on a silent node sends one owner request and eight channel requests', async () => {
+    ownerAnswer = () => {
+      throw new Error('Request timeout');
+    };
+    channelAnswer = () => {
+      throw new Error('HTTP 404');
+    };
+    renderTabOnRemoteNode();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Load All Config' }));
+    await waitFor(
+      () => expect(h.showToast).toHaveBeenCalledWith('admin_commands.configs_partially_loaded', 'warning'),
+      { timeout: 20000 },
+    );
+    // Past both old back-offs (1 s, then 2 s).
+    await new Promise(resolve => setTimeout(resolve, 3300));
+
+    expect(requestsTo('/api/admin/load-owner')).toHaveLength(1);
+    expect(channelSlotsRequested()).toEqual([0, 1, 2, 3, 4, 5, 6, 7]);
+    expect(isMarkedFailed('owner')).toBe(true);
+    expect(isMarkedFailed('channels')).toBe(true);
   }, 30000);
 });
