@@ -64,11 +64,8 @@ router.get('/:nodeId/position-history', async (req: Request, res: Response) => {
 
         // Check privacy for position history
         if (node?.positionOverrideIsPrivate && !access.canViewPrivate(sourceId)) {
-          return res.status(403).json({
-            success: false,
-            error: 'Forbidden',
-            message: 'Node position is private',
-            required: { resource: 'nodes_private', action: 'read' }
+          return fail(res, 403, 'FORBIDDEN', 'Node position is private', {
+            required: { resource: 'nodes_private', action: 'read' },
           });
         }
       }

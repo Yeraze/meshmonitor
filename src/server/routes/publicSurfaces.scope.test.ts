@@ -483,6 +483,31 @@ describe('public and token-facing surfaces are scoped per source', () => {
       expect((await at(`/nodes/${idOf(PRIV_A)}/position-history`)).status).toBe(200);
     });
 
+    it('telemetry by type leaves out rows heard on a channel the user cannot view, and rows of nodes on one', async () => {
+      const at = Date.now() - 30_000;
+      // A row of a visible node, heard on channel 1.
+      await databaseService.telemetry.insertTelemetry(
+        { nodeId: idOf(SHARED), nodeNum: SHARED, telemetryType: 'temperature', timestamp: at, value: 88.8888, createdAt: at, channel: 1 },
+        harness.sourceA,
+      );
+      // A channel-0 row of a node last heard on channel 1.
+      await sample(harness.sourceA, CH1_A, 'temperature', 99.9999);
+      await giveReads(harness.sourceA);
+      const client = api(await harness.tokenFor(limited));
+
+      for (const path of ['/telemetry?type=temperature', '/telemetry']) {
+        const body = text((await client.get(`/sources/${harness.sourceA}${path}`)).body);
+        expect(body, path).not.toContain('88.8888');
+        expect(body, path).not.toContain('99.9999');
+      }
+      expect(text((await client.get(`/sources/${harness.sourceA}/telemetry?type=temperature`)).body)).toContain(String(A.temp));
+
+      await give('channel_1', ['read', 'viewOnMap'], harness.sourceA);
+      const shown = text((await client.get(`/sources/${harness.sourceA}/telemetry?type=temperature`)).body);
+      expect(shown).toContain('88.8888');
+      expect(shown).toContain('99.9999');
+    });
+
     it('a MeshCore id on the v1 telemetry and position-history routes needs nodes:viewOnMap on the source', async () => {
       await give('nodes', ['read'], harness.sourceA);
       await give('nodes', ['read', 'viewOnMap'], harness.sourceB);
