@@ -5,22 +5,36 @@ import { ALL_SOURCES } from '../../db/repositories/index.js';
 import { isMqttSourceType } from '../../db/repositories/sources.js';
 import { logger } from '../../utils/logger.js';
 import { ok, fail } from '../utils/apiResponse.js';
-import { filterNodesByChannelPermission, maskNodeLocationByChannel, maskTraceroutesByChannel } from '../utils/nodeEnhancer.js';
+import { filterNodesByChannelPermission, maskNodeLocationByChannel, maskTraceroutesByChannel, loadNodeViewAccess } from '../utils/nodeEnhancer.js';
 import { hasRouteData, parseHopArray } from '../../utils/tracerouteSegments.js';
 import { getMaxNodeAgeHours } from '../services/nodeDisplaySettings.js';
-import { applySignFlipToTraceroutes, loadSignFlipContexts } from '../services/signFlipCorrection.js';
+import { applySignFlipToTraceroutes, loadSignFlipContexts, rowSourceId } from '../services/signFlipCorrection.js';
 import { resolvePermittedSourceIds, parseSourcesParam } from '../utils/permittedSources.js';
 import { mergeExplorerNodes, type ExplorerNodeRow } from '../utils/tracerouteExplorerNodes.js';
 import { getEnvironmentConfig } from '../config/environment.js';
 
 const router = Router();
 
-router.get('/recent', async (req: Request, res: Response) => {
+// The `traceroutes` rule of GET /api/poll (POLL_SECTION_GATES), which serves
+// the same rows: `traceroute:read` on the row's source, and `viewOnMap` on the
+// row's channel there when it has one. This route had no check at all and read
+// every source. With no `sourceId` it now reads only the sources the caller
+// holds `traceroute:read` on (every source for an admin).
+router.get('/recent', optionalAuth(), async (req: Request, res: Response) => {
   try {
     const hoursParam = req.query.hours ? parseInt(req.query.hours as string) : 24;
     const cutoffTime = Date.now() - hoursParam * 60 * 60 * 1000;
 
-    const recentSourceId = typeof req.query.sourceId === 'string' ? req.query.sourceId : undefined;
+    const recentSourceId = (typeof req.query.sourceId === 'string' && req.query.sourceId) || undefined;
+
+    const access = await loadNodeViewAccess(req.user ?? null);
+    const { permissions, isAdmin } = access;
+    if (recentSourceId && !isAdmin && !permissions.can('traceroute', 'read', recentSourceId)) {
+      fail(res, 403, 'FORBIDDEN', 'Insufficient permissions', { required: { resource: 'traceroute', action: 'read' } });
+      return;
+    }
+    const scope = recentSourceId
+      ?? (isAdmin ? ALL_SOURCES : permissions.sourcesWhere((grants) => grants.traceroute?.read === true));
 
     let limit: number;
     if (req.query.limit) {
@@ -33,9 +47,19 @@ router.get('/recent', async (req: Request, res: Response) => {
       limit = Math.max(limit, 100);
     }
 
-    const allTraceroutes = await databaseService.traceroutes.getAllTraceroutes(limit, recentSourceId ?? ALL_SOURCES); // intentional cross-source when sourceId omitted
+    // Cross-source when sourceId is omitted, over the permitted sources only
+    // (an empty list reads nothing).
+    const allTraceroutes = await databaseService.traceroutes.getAllTraceroutes(limit, scope);
 
-    const recentTraceroutes = allTraceroutes.filter(tr => tr.timestamp >= cutoffTime);
+    const recentTraceroutes = allTraceroutes.filter((tr) => {
+      if (tr.timestamp < cutoffTime) return false;
+      if (isAdmin) return true;
+      // A route heard on a channel the caller cannot view is not shown
+      // (#3092). A row with no channel recorded has no channel restriction.
+      const channel = (tr as { channel?: number | null }).channel;
+      return channel === undefined || channel === null
+        || access.canViewNode(rowSourceId(tr) ?? recentSourceId, channel);
+    });
 
     const traceroutesWithHops = recentTraceroutes.map(tr => {
       let hopCount = 999;

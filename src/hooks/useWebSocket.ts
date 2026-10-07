@@ -409,12 +409,18 @@ export function useWebSocket(enabled: boolean = true): WebSocketState {
       }));
     });
 
-    // Server acknowledgement — join source room if we're in a source-specific view
+    // Server acknowledgement — say which sources this view wants. The server
+    // sends a socket nothing until it asks: a source-specific view joins its
+    // source, and a unified view (no sourceId) joins every source the user may
+    // read. Either way each event is still checked against the user's grants.
+    // The server sends `connected` again after a reconnect, so this re-joins.
     socket.on('connected', (data: { socketId: string; timestamp: number }) => {
       console.log('[WebSocket] Server acknowledged connection:', data.socketId);
       if (sourceId) {
         socket.emit('join-source', sourceId);
         console.log('[WebSocket] Joined source room:', sourceId);
+      } else {
+        socket.emit('join-all-sources');
       }
     });
 
