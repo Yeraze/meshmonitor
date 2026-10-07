@@ -5,7 +5,7 @@ import { useCsrfFetch } from '../../hooks/useCsrfFetch';
 import { useSaveBar } from '../../hooks/useSaveBar';
 import { NumberInput } from '../common/NumberInput';
 import { NumberInputScope } from '../common/NumberInputScope';
-import { useNumberInputScope } from '../common/numberInputScope';
+import { useNumberInputScope } from '../common/numberInputScopeContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { MeshCoreAutoAckSection } from './MeshCoreAutoAckSection';
 import { MeshCoreAutoAnnounceSection } from './MeshCoreAutoAnnounceSection';

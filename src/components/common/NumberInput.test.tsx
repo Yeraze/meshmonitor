@@ -13,7 +13,7 @@ import { render, screen, fireEvent, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { NumberInput, type NumberInputProps } from './NumberInput';
 import { NumberInputScope } from './NumberInputScope';
-import { useNumberInputScope } from './numberInputScope';
+import { useNumberInputScope } from './numberInputScopeContext';
 import { evaluateNumberDraft, formatNumberDraft } from './numberInputValidation';
 
 vi.mock('react-i18next', async () => {

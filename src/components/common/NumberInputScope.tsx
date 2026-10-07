@@ -3,7 +3,7 @@ import {
   NumberInputScopeContext,
   useEnclosingNumberInputScope,
   type NumberInputScopeHandle,
-} from './numberInputScope';
+} from './numberInputScopeContext';
 
 interface NumberInputScopeProps {
   scope: NumberInputScopeHandle;
@@ -12,7 +12,7 @@ interface NumberInputScopeProps {
 
 /**
  * Binds the `NumberInput` fields below it to a `useNumberInputScope()` handle.
- * See `numberInputScope.ts` for the contract.
+ * See `numberInputScopeContext.ts` for the contract.
  */
 export const NumberInputScope: React.FC<NumberInputScopeProps> = ({ scope, children }) => {
   const outer = useEnclosingNumberInputScope();

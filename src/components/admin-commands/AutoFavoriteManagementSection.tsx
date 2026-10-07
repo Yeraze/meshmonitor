@@ -6,7 +6,7 @@ import { ROLE_NAMES, DeviceRole } from '../../constants/index';
 import { UiIcon, type UiIconName } from '../icons';
 import { NumberInput } from '../common/NumberInput';
 import { NumberInputScope } from '../common/NumberInputScope';
-import { useNumberInputScope } from '../common/numberInputScope';
+import { useNumberInputScope } from '../common/numberInputScopeContext';
 
 /**
  * Automated Remote Favorites Management (issue #2608).

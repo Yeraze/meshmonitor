@@ -155,6 +155,24 @@ describe('deviceRestoreService', () => {
     );
   });
 
+  it('restores a backed-up 0 interval as 0, so the node keeps its firmware default', async () => {
+    // A backup of a node that never had its intervals set holds 0 for both.
+    // Nothing on the restore path may raise that to a floor.
+    const mgr = makeManager();
+    await runRestore(mgr, sampleBackup({
+      config: {
+        device: { role: 'CLIENT', nodeInfoBroadcastSecs: 0 },
+        position: { positionBroadcastSecs: 0, fixedPosition: false, gpsUpdateInterval: 120 },
+      },
+      location: undefined,
+    }));
+
+    expect(mgr.setDeviceConfig).toHaveBeenCalledTimes(1);
+    expect(mgr.setDeviceConfig.mock.calls[0][0].nodeInfoBroadcastSecs).toBe(0);
+    expect(mgr.setPositionConfig).toHaveBeenCalledTimes(1);
+    expect(mgr.setPositionConfig.mock.calls[0][0]).toMatchObject({ positionBroadcastSecs: 0, gpsUpdateInterval: 120 });
+  });
+
   it('restores owner, dedicated module setters, and every decoded channel', async () => {
     const mgr = makeManager();
     const result = await runRestore(mgr, sampleBackup());

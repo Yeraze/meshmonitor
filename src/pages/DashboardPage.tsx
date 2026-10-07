@@ -39,7 +39,7 @@ import { buildBridgeConfig, formFromBridgeConfig } from '../components/MQTT/mqtt
 import HopLimitPolicyFields from '../components/MQTT/HopLimitPolicyFields';
 import { NumberInput } from '../components/common/NumberInput';
 import { NumberInputScope } from '../components/common/NumberInputScope';
-import { useNumberInputScope } from '../components/common/numberInputScope';
+import { useNumberInputScope } from '../components/common/numberInputScopeContext';
 import {
   EMPTY_HOP_LIMIT_POLICY_FORM,
   formFromHopLimitConfig,

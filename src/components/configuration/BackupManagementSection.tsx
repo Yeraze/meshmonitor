@@ -6,7 +6,7 @@ import { logger } from '../../utils/logger';
 import { useSaveBar } from '../../hooks/useSaveBar';
 import { NumberInput } from '../common/NumberInput';
 import { NumberInputScope } from '../common/NumberInputScope';
-import { useNumberInputScope } from '../common/numberInputScope';
+import { useNumberInputScope } from '../common/numberInputScopeContext';
 import { useSource } from '../../contexts/SourceContext';
 import '../../styles/BackupManagement.css';
 

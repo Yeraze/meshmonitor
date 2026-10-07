@@ -15,7 +15,7 @@ import { HopLimitOverrideSelect } from './HopLimitOverrideSelect';
 import { hopLimitSettingValue } from '../utils/hopLimitOverride';
 import { NumberInput } from './common/NumberInput';
 import { NumberInputScope } from './common/NumberInputScope';
-import { useNumberInputScope } from './common/numberInputScope';
+import { useNumberInputScope } from './common/numberInputScopeContext';
 
 const DEFAULT_EMOJIS = ['📍', '🏠', '🏕️', '⛺', '🚗', '🛟', '⚠️', '⭐', '🚩', '🛠️'];
 
