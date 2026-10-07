@@ -49,6 +49,43 @@ Deployment-global (no sourceId):
 - `GET /api/v1/solar`
 - `GET /api/v1/channel-database`
 
+### What a token can read
+
+An API token carries the permissions of the user who made it, and each request
+is checked on the source in its path:
+
+- The mount needs its permission **on that source**: `nodes:read` for `nodes`,
+  `telemetry` and `network`; `messages:read` for `messages` and `channels`;
+  `traceroute:read` for `traceroutes`; `packetmonitor:read` for `packets`.
+  `status` needs the install-wide `info:read`.
+- Node rows, telemetry rows and traceroutes are limited to the channels the
+  user can view **on that source**. A channel grant on one source does not open
+  the same channel number on another.
+- `default` resolves to the first source the user holds the mount's permission
+  on, and is then checked like any other source.
+
+::: warning Changed in 4.17
+These fields and rows are now withheld unless the token's user holds the grant
+named, on the source in the path. Admin tokens, and tokens of users who hold
+every grant, get the same replies as before.
+
+| Endpoint | What changed |
+| --- | --- |
+| `GET …/nodes`, `GET …/nodes/{nodeId}` | `latitudeOverride`, `longitudeOverride` and `altitudeOverride` are left out for a node whose position override is private, unless the user holds `nodes_private:read` on that source. The reported `latitude` / `longitude` are unchanged. `uptimeSeconds` on the single-node read now comes from this source only. |
+| `GET …/network/topology` | Lists the same nodes as `…/nodes` (channel grants apply). `latitude` / `longitude` are the reported position, not a private override, without `nodes_private:read`; `null` when the position came from a channel the user cannot view. `edges` is empty without `traceroute:read` on the source. |
+| `GET …/network` | `tracerouteCount` is `0` without `traceroute:read` on the source. |
+| `GET …/network/direct-neighbors` | Returns the statistics of the source in the path. It used to return every source's. |
+| `GET …/telemetry?type=…`, `GET …/telemetry/count` | Limited to the source in the path. They used to read every source. |
+| `GET …/telemetry`, `GET …/telemetry/{nodeId}` | `latitude` / `longitude` / `altitude` rows of a node with a private position are left out without `nodes_private:read`. A 64-character MeshCore public key needs `nodes:viewOnMap` on the source. |
+| `GET …/nodes/{nodeId}/position-history` | The private-position check reads the node on the source in the path. A MeshCore public key needs `nodes:viewOnMap`. |
+| `GET …/nodes/{nodeNum}/copy-candidates` | Lists another source only when the user holds `nodes:read` on it. |
+| `GET …/status` | `connected` and `nodeResponsive` describe the source in the path (an MQTT or MeshCore source used to answer with the primary source's). `localNodeNum`, `localNodeId`, `longName` and `shortName` are `null` without `nodes:read` on that source. |
+| `GET /api/v1/metrics` | Per-node series are exported only for nodes on channels the user can view on that source. |
+
+Refusals on these routes that changed now use the standard error body
+`{ "success": false, "error": "<message>", "code": "FORBIDDEN" }`.
+:::
+
 ### Migration table
 
 | Legacy v1 path (≤ 4.12)                               | Canonical v1 path (4.13+)                         |

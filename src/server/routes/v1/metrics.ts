@@ -36,6 +36,7 @@ import { createRequire } from 'module';
 import databaseService from '../../../services/database.js';
 import { sourceManagerRegistry } from '../../sourceManagerRegistry.js';
 import { logger } from '../../../utils/logger.js';
+import { loadV1Access } from './sourceParam.js';
 
 const require = createRequire(import.meta.url);
 const packageJson = require('../../../../package.json');
@@ -188,14 +189,12 @@ router.get('/', async (req: Request, res: Response) => {
 
     const sources = (await databaseService.sources.getAllSources()).filter((s) => s.enabled);
 
+    // The token user's grants, loaded once and answered per source below.
+    const access = await loadV1Access(req);
+
     for (const source of sources) {
-      if (!user.isAdmin) {
-        const canReadNodes = await databaseService.checkPermissionAsync(
-          user.id, 'nodes', 'read', source.id
-        );
-        if (!canReadNodes) {
-          continue;
-        }
+      if (!access.permissions.can('nodes', 'read', source.id)) {
+        continue;
       }
 
       sourceInfo.labels(source.id, source.name, source.type).set(1);
@@ -206,9 +205,7 @@ router.get('/', async (req: Request, res: Response) => {
         await databaseService.nodes.getActiveNodeCount(source.id, ACTIVE_WINDOW_SECONDS)
       );
 
-      const canReadMessages =
-        user.isAdmin ||
-        (await databaseService.checkPermissionAsync(user.id, 'messages', 'read', source.id));
+      const canReadMessages = access.permissions.can('messages', 'read', source.id);
       if (canReadMessages) {
         messagesLastHour.labels(source.id).set(
           await databaseService.messages.getMessageCountSince(source.id, 3600 * 1000)
@@ -219,9 +216,7 @@ router.get('/', async (req: Request, res: Response) => {
       // installs that have not enabled packet logging — a config state, not
       // an error, hence no gauge rather than a zero. Mirrors the v1 packets
       // route's permission resource.
-      const canReadPackets =
-        user.isAdmin ||
-        (await databaseService.checkPermissionAsync(user.id, 'packetmonitor', 'read', source.id));
+      const canReadPackets = access.permissions.can('packetmonitor', 'read', source.id);
       if (canReadPackets) {
         const portCounts = await databaseService.packetLog.getPacketCountsByPortSince(
           source.id, 3600 * 1000
@@ -243,6 +238,12 @@ router.get('/', async (req: Request, res: Response) => {
 
       for (const node of activeNodes) {
         if (node.isIgnored) {
+          continue;
+        }
+        // A per-node series names the node. Only nodes the user may see on
+        // this source: `viewOnMap` on the channel it was last heard on, the
+        // rule GET .../nodes applies. Admins see every node.
+        if (!access.canViewNode(source.id, node.channel)) {
           continue;
         }
         const labels = [source.id, node.nodeId, node.shortName || 'unknown'] as const;

@@ -61,10 +61,14 @@ vi.mock('../../../services/database.js', () => ({
 
 // Pass-through channel enrichment so the seeded rows survive to the response.
 vi.mock('../../utils/nodeEnhancer.js', () => ({
-  filterNodesByChannelPermission: vi.fn(async (nodes: unknown[]) => nodes),
-  maskNodeLocationByChannel: vi.fn(async (nodes: unknown[]) => nodes),
-  checkNodeChannelAccess: vi.fn(async () => true),
-  getEffectiveDbNodePosition: vi.fn(() => null),
+  loadNodeViewAccess: vi.fn(async () => ({
+    isAdmin: true,
+    permissions: { isAdmin: true, can: () => true },
+    canViewNode: () => true,
+    canViewPrivate: () => true,
+    sources: 'all',
+  })),
+  scopeNodeRowsForViewer: vi.fn((nodes: unknown[]) => nodes),
 }));
 
 // Import after mocks

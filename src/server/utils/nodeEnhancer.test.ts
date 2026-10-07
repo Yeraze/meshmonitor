@@ -437,15 +437,15 @@ describe('nodeEnhancer: checkNodeChannelAccess', () => {
     expect(await checkNodeChannelAccess('!00000001', noPermUser)).toBe(false);
   });
 
-  it('should allow access for a MeshCore 64-char-hex pubkey even without per-channel viewOnMap permission', async () => {
-    // MeshCore sources do not use the Meshtastic per-channel permission
-    // model; access is controlled at the source-permission level by the
-    // calling route. A user with no channel permissions should still be
-    // able to look up telemetry for a MeshCore contact in a source they
-    // can read.
+  it('does not pass a MeshCore 64-char-hex pubkey for a signed-in user with no source named', async () => {
+    // A MeshCore id has no channel. The grant is `nodes:viewOnMap` on the
+    // source named; with none named there is no source to check it on. It used
+    // to pass for any signed-in user (covered against real permission rows in
+    // publicSurfaces.scope.test.ts).
     const noPermUser = { id: 99, isAdmin: false } as any;
     const meshcorePubkey = 'a'.repeat(64);
-    expect(await checkNodeChannelAccess(meshcorePubkey, noPermUser)).toBe(true);
+    expect(await checkNodeChannelAccess(meshcorePubkey, noPermUser)).toBe(false);
+    expect(await checkNodeChannelAccess(meshcorePubkey, { id: 1, isAdmin: true } as any)).toBe(true);
   });
 
   it('should still deny anonymous access for a MeshCore pubkey', async () => {

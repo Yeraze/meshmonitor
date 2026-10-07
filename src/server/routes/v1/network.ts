@@ -6,31 +6,43 @@
 
 import express, { Request, Response } from 'express';
 import databaseService from '../../../services/database.js';
-import { ALL_SOURCES } from '../../../db/repositories/index.js';
 import { logger } from '../../../utils/logger.js';
-import { getEffectiveDbNodePosition } from '../../utils/nodeEnhancer.js';
-import { resolvedSourceIdFromPath } from './sourceParam.js';
+import { getEffectiveDbNodePosition, scopeNodeRowsForViewer, type NodeViewAccess } from '../../utils/nodeEnhancer.js';
+import { canViewRowChannel, loadV1Access, requireScopedSourceId } from './sourceParam.js';
 
 const router = express.Router({ mergeParams: true });
 
-/** Resolve sourceId from the :sourceId path param. */
-function getScopedSourceId(req: Request): string | undefined {
-  return resolvedSourceIdFromPath(req);
+/**
+ * The source's traceroutes as the token user may see them. `attachSource`
+ * gates this router on `nodes:read`; traceroutes are their own resource, so
+ * they are included only with `traceroute:read` on this source, and then only
+ * those heard on a channel the user may view there (the rule the v1
+ * traceroutes route applies). An admin gets every row.
+ */
+async function visibleTraceroutes(access: NodeViewAccess, sourceId: string, limit: number) {
+  if (!access.permissions.can('traceroute', 'read', sourceId)) return [];
+  const traceroutes = await databaseService.traceroutes.getAllTraceroutes(limit, sourceId);
+  return traceroutes.filter((t) => canViewRowChannel(access, sourceId, (t as { channel?: number | null }).channel));
 }
 
 /**
- * GET /api/v1/network
- * Get network-wide statistics and summary information
+ * GET /api/v1/sources/{sourceId}/network
+ * Statistics for one source. The traceroute count needs `traceroute:read` on it.
  */
 router.get('/', async (req: Request, res: Response) => {
   try {
-    const sourceId = getScopedSourceId(req);
-    // intentional cross-source: omitting sourceId on this route returns data from all sources
-    const allNodes = await databaseService.nodes.getAllNodes(sourceId ?? ALL_SOURCES);
-    const activeNodes = await databaseService.nodes.getActiveNodes(7, sourceId ?? ALL_SOURCES);
-    const traceroutes = await databaseService.traceroutes.getAllTraceroutes(100, sourceId ?? ALL_SOURCES);
+    const sourceId = requireScopedSourceId(req, res);
+    if (!sourceId) return;
+    const access = await loadV1Access(req);
+    const [allNodes, activeNodes, traceroutes] = await Promise.all([
+      databaseService.nodes.getAllNodes(sourceId),
+      databaseService.nodes.getActiveNodes(7, sourceId),
+      visibleTraceroutes(access, sourceId, 100),
+    ]);
 
     const stats = {
+      // Totals for the source, open to `nodes:read` on it (as the per-source
+      // gauges of /api/v1/metrics are).
       totalNodes: allNodes.length,
       activeNodes: activeNodes.length,
       tracerouteCount: traceroutes.length,
@@ -52,19 +64,21 @@ router.get('/', async (req: Request, res: Response) => {
 });
 
 /**
- * GET /api/v1/network/direct-neighbors
+ * GET /api/v1/sources/{sourceId}/network/direct-neighbors
  * Get direct neighbor statistics based on zero-hop packets
  * This helps identify which nodes we've heard directly (no relays)
+ *
+ * The statistics come from the packet log, which is per source. They are read
+ * from the source in the path, on which `attachSource` has checked
+ * `nodes:read` (the rule `/api/direct-neighbors` applies). This used to return
+ * every source's statistics whichever source the path named.
  */
 router.get('/direct-neighbors', async (req: Request, res: Response) => {
   try {
+    const sourceId = requireScopedSourceId(req, res);
+    if (!sourceId) return;
     const hoursBack = parseInt(req.query.hours as string) || 24;
-    // TODO(#2773 follow-up): getDirectNeighborStatsAsync does not yet accept
-    // sourceId — neighbor stats are aggregated across all sources. Extend the
-    // repo to scope by sourceId when this endpoint stabilises on the scoped
-    // URL shape.
-    void getScopedSourceId(req);
-    const stats = await databaseService.getDirectNeighborStatsAsync(hoursBack);
+    const stats = await databaseService.getDirectNeighborStatsAsync(hoursBack, sourceId);
 
     res.json({
       success: true,
@@ -82,15 +96,24 @@ router.get('/direct-neighbors', async (req: Request, res: Response) => {
 });
 
 /**
- * GET /api/v1/network/topology
+ * GET /api/v1/sources/{sourceId}/network/topology
  * Get network topology data (nodes and their connections)
  */
 router.get('/topology', async (req: Request, res: Response) => {
   try {
-    const sourceId = getScopedSourceId(req);
-    // intentional cross-source: omitting sourceId on this route returns data from all sources
-    const nodes = await databaseService.nodes.getAllNodes(sourceId ?? ALL_SOURCES);
-    const traceroutes = await databaseService.traceroutes.getAllTraceroutes(500, sourceId ?? ALL_SOURCES);
+    const sourceId = requireScopedSourceId(req, res);
+    if (!sourceId) return;
+    const access = await loadV1Access(req);
+    const [allNodes, traceroutes] = await Promise.all([
+      databaseService.nodes.getAllNodes(sourceId),
+      visibleTraceroutes(access, sourceId, 500),
+    ]);
+    // Same rows, and the same position rule, as GET .../nodes: a node on a
+    // channel the user cannot view is left out, a position from such a channel
+    // is withheld, and a private override's coordinates are removed without
+    // `nodes_private:read` on this source. The effective position below is
+    // worked out from what is left, so it falls back to the reported position.
+    const nodes = scopeNodeRowsForViewer(allNodes, access, sourceId);
 
     const topology = {
       nodes: nodes.map(n => {
@@ -105,8 +128,9 @@ router.get('/topology', async (req: Request, res: Response) => {
           shortName: n.shortName,
           role: n.role,
           hopsAway: n.hopsAway,
-          latitude: eff.latitude,
-          longitude: eff.longitude,
+          // null, not absent, when the position is withheld: the key set is fixed.
+          latitude: eff.latitude ?? null,
+          longitude: eff.longitude ?? null,
           lastHeard: n.lastHeard,
           // #5390: Unix seconds; null = unknown.
           firstHeard: n.firstHeard != null ? Number(n.firstHeard) : null,

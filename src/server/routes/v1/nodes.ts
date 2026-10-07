@@ -7,14 +7,14 @@
 
 import express, { Request, Response } from 'express';
 import databaseService, { DbNode } from '../../../services/database.js';
-import { ALL_SOURCES } from '../../../db/repositories/index.js';
 import { logger } from '../../../utils/logger.js';
-import { filterNodesByChannelPermission, maskNodeLocationByChannel } from '../../utils/nodeEnhancer.js';
+import { scopeNodeRowsForViewer } from '../../utils/nodeEnhancer.js';
+import { fail } from '../../utils/apiResponse.js';
 import {
   findCopyCandidates, copyNodeInfo, isNodeInfoField, NODE_INFO_FIELDS,
   type NodeInfoField,
 } from '../../services/nodeInfoCopyService.js';
-import { resolvedSourceIdFromPath } from './sourceParam.js';
+import { loadV1Access, requireScopedSourceId } from './sourceParam.js';
 import { handleEnrichmentAnalysis, handleEnrichmentApply } from '../shared/enrichmentHandlers.js';
 
 // mergeParams so this router picks up :sourceId when mounted under
@@ -23,28 +23,11 @@ import { handleEnrichmentAnalysis, handleEnrichmentApply } from '../shared/enric
 const router = express.Router({ mergeParams: true });
 
 /**
- * Resolve the effective source scope for a request from the :sourceId path
- * param (always present under the /sources/:sourceId mount).
- */
-function getScopedSourceId(req: Request): string | undefined {
-  return resolvedSourceIdFromPath(req);
-}
-
-/**
- * Check if user has nodes:read permission
- */
-async function hasNodesReadPermission(userId: number | null, isAdmin: boolean, sourceId?: string): Promise<boolean> {
-  if (isAdmin) return true;
-  if (userId === null) return false;
-  return databaseService.checkPermissionAsync(userId, 'nodes', 'read', sourceId);
-}
-
-/**
  * Enrich node data with latest uptime from telemetry (async - works with all DB backends)
  */
 async function enrichNodesWithUptime(
   nodes: DbNode[],
-  sourceId?: string,
+  sourceId: string,
 ): Promise<(DbNode & { uptimeSeconds?: number })[]> {
   const uptimeMap = await databaseService.telemetry.getLatestTelemetryValueForAllNodes(
     'uptimeSeconds',
@@ -67,40 +50,25 @@ async function enrichNodesWithUptime(
  */
 router.get('/', async (req: Request, res: Response) => {
   try {
-    const user = (req as any).user;
-    const userId = user?.id ?? null;
-    const isAdmin = user?.isAdmin ?? false;
-
-    const sourceId = getScopedSourceId(req);
-
-    // Check permission (scoped to source if provided)
-    if (!await hasNodesReadPermission(userId, isAdmin, sourceId)) {
-      return res.status(403).json({
-        success: false,
-        error: 'Forbidden',
-        message: 'Insufficient permissions',
-        required: { resource: 'nodes', action: 'read' }
-      });
-    }
+    // `attachSource('nodes', 'read')` has checked the token user's grant on
+    // this source. The rows below are read from it and from no other.
+    const sourceId = requireScopedSourceId(req, res);
+    if (!sourceId) return;
+    const access = await loadV1Access(req);
 
     const active = req.query.active === 'true';
     const sinceDays = req.query.sinceDays ? parseInt(req.query.sinceDays as string) : 7;
 
-    // DB-level sourceId filtering — repo accepts it directly, no more
-    // fetch-all-then-filter.
-    // intentional cross-source: omitting sourceId on this route returns nodes from all sources
     const nodes = active
-      ? (await databaseService.nodes.getActiveNodes(sinceDays, sourceId ?? ALL_SOURCES)) as unknown as DbNode[]
-      : (await databaseService.nodes.getAllNodes(sourceId ?? ALL_SOURCES)) as unknown as DbNode[];
+      ? (await databaseService.nodes.getActiveNodes(sinceDays, sourceId)) as unknown as DbNode[]
+      : (await databaseService.nodes.getAllNodes(sourceId)) as unknown as DbNode[];
 
-    // Filter nodes based on channel read permissions
-    const filteredNodes = await filterNodesByChannelPermission(nodes, user, sourceId);
-
-    // Strip location fields for nodes whose position came from an inaccessible channel
-    const locationMaskedNodes = await maskNodeLocationByChannel(filteredNodes, user, sourceId);
+    // Channel visibility, the reported position's channel, and private
+    // position overrides: each decided on this source, from grants loaded once.
+    const visibleNodes = scopeNodeRowsForViewer(nodes, access, sourceId);
 
     // Enrich nodes with uptime data from telemetry (scoped to the requested source)
-    const enrichedNodes = await enrichNodesWithUptime(locationMaskedNodes, sourceId);
+    const enrichedNodes = await enrichNodesWithUptime(visibleNodes, sourceId);
 
     res.json({
       success: true,
@@ -151,43 +119,29 @@ router.post('/enrichment/apply', handleEnrichmentApply);
  */
 router.get('/:nodeId', async (req: Request, res: Response) => {
   try {
-    const user = (req as any).user;
-    const userId = user?.id ?? null;
-    const isAdmin = user?.isAdmin ?? false;
-
-    const sourceId = getScopedSourceId(req);
-
-    // Check permission (scoped to source if provided)
-    if (!await hasNodesReadPermission(userId, isAdmin, sourceId)) {
-      return res.status(403).json({
-        success: false,
-        error: 'Forbidden',
-        message: 'Insufficient permissions',
-        required: { resource: 'nodes', action: 'read' }
-      });
-    }
+    const sourceId = requireScopedSourceId(req, res);
+    if (!sourceId) return;
+    const access = await loadV1Access(req);
 
     const { nodeId } = req.params;
     // Scope the lookup to the requested source so the same nodeNum seen on
     // two sources resolves independently (migration 029 made nodes PK
     // composite (nodeNum, sourceId)).
-    // intentional cross-source: omitting sourceId on this route returns nodes from all sources
-    const sourceNodes = (await databaseService.nodes.getAllNodes(sourceId ?? ALL_SOURCES)) as unknown as DbNode[];
+    const sourceNodes = (await databaseService.nodes.getAllNodes(sourceId)) as unknown as DbNode[];
     const node = sourceNodes.find(n => n.nodeId === nodeId);
 
     if (!node) {
       return res.status(404).json({
         success: false,
         error: 'Not Found',
-        message: sourceId
-          ? `Node ${nodeId} not found in source ${sourceId}`
-          : `Node ${nodeId} not found`
+        message: `Node ${nodeId} not found in source ${sourceId}`
       });
     }
 
-    // Check if user has permission to view this node based on its channel
-    const [filteredNode] = await filterNodesByChannelPermission([node], user, sourceId);
-    if (!filteredNode) {
+    // The node's channel, its position's channel and a private override are
+    // each checked on this source.
+    const [visibleNode] = scopeNodeRowsForViewer([node], access, sourceId);
+    if (!visibleNode) {
       return res.status(403).json({
         success: false,
         error: 'Forbidden',
@@ -196,11 +150,9 @@ router.get('/:nodeId', async (req: Request, res: Response) => {
       });
     }
 
-    // Strip location fields if the position came from an inaccessible channel
-    const [locationMaskedNode] = await maskNodeLocationByChannel([filteredNode], user, sourceId);
-
-    // Enrich with uptime data from telemetry
-    const [enrichedNode] = await enrichNodesWithUptime([locationMaskedNode]);
+    // Uptime from this source's telemetry only. It used to be read with no
+    // source, which returned the newest value any source held for the node.
+    const [enrichedNode] = await enrichNodesWithUptime([visibleNode], sourceId);
 
     res.json({
       success: true,
@@ -223,27 +175,9 @@ router.get('/:nodeId', async (req: Request, res: Response) => {
  */
 router.get('/:nodeNum/copy-candidates', async (req: Request, res: Response) => {
   try {
-    const user = (req as any).user;
-    const userId = user?.id ?? null;
-    const isAdmin = user?.isAdmin ?? false;
-
-    const sourceId = getScopedSourceId(req);
-    if (!sourceId) {
-      return res.status(400).json({
-        success: false,
-        error: 'Bad Request',
-        message: 'sourceId is required',
-      });
-    }
-
-    if (!await hasNodesReadPermission(userId, isAdmin, sourceId)) {
-      return res.status(403).json({
-        success: false,
-        error: 'Forbidden',
-        message: 'Insufficient permissions',
-        required: { resource: 'nodes', action: 'read' },
-      });
-    }
+    const sourceId = requireScopedSourceId(req, res);
+    if (!sourceId) return;
+    const access = await loadV1Access(req);
 
     const nodeNum = Number(req.params.nodeNum);
     if (isNaN(nodeNum)) {
@@ -254,7 +188,11 @@ router.get('/:nodeNum/copy-candidates', async (req: Request, res: Response) => {
       });
     }
 
-    const candidates = await findCopyCandidates(nodeNum, sourceId);
+    // Each candidate is another source's row for the node: shown only when the
+    // token user also holds `nodes:read` on that source, the right
+    // copy-nodeinfo asks for on the source copied from (as /api/nodes does).
+    const candidates = (await findCopyCandidates(nodeNum, sourceId))
+      .filter((candidate) => access.permissions.can('nodes', 'read', candidate.sourceId));
     res.json({ success: true, data: candidates });
   } catch (error) {
     logger.error('Error getting copy candidates:', error);
@@ -275,9 +213,7 @@ router.get('/:nodeNum/copy-candidates', async (req: Request, res: Response) => {
  */
 router.post('/:nodeNum/copy-nodeinfo', async (req: Request, res: Response) => {
   try {
-    const user = (req as any).user;
-    const userId = user?.id ?? null;
-    const isAdmin = user?.isAdmin ?? false;
+    const access = await loadV1Access(req);
 
     const nodeNum = Number(req.params.nodeNum);
     if (isNaN(nodeNum)) {
@@ -310,22 +246,17 @@ router.post('/:nodeNum/copy-nodeinfo', async (req: Request, res: Response) => {
       selectedFields = fields;
     }
 
-    if (!await hasNodesReadPermission(userId, isAdmin, fromSourceId)) {
-      return res.status(403).json({
-        success: false,
-        error: 'Forbidden',
-        message: 'Insufficient read permission on source',
-      });
+    if (typeof fromSourceId !== 'string' || typeof toSourceId !== 'string') {
+      return fail(res, 400, 'BAD_REQUEST', 'fromSourceId and toSourceId must be strings');
     }
 
-    const hasWritePermission = isAdmin || (userId !== null &&
-      await databaseService.checkPermissionAsync(userId, 'nodes', 'write', toSourceId));
-    if (!hasWritePermission) {
-      return res.status(403).json({
-        success: false,
-        error: 'Forbidden',
-        message: 'Insufficient write permission on target source',
-      });
+    // Read on the source copied from AND write on the source copied to. One
+    // refusal for either, so the reply does not say which grant is missing.
+    if (
+      !access.permissions.can('nodes', 'read', fromSourceId) ||
+      !access.permissions.can('nodes', 'write', toSourceId)
+    ) {
+      return fail(res, 403, 'FORBIDDEN', 'Insufficient permissions');
     }
 
     const result = await copyNodeInfo(

@@ -15,7 +15,7 @@
 
 import { createRequire } from 'module';
 import { Router, Request, Response } from 'express';
-import { optionalAuth, requirePermission, hasPermission } from '../auth/authMiddleware.js';
+import { optionalAuth, requirePermission, requireAdmin, hasPermission } from '../auth/authMiddleware.js';
 import { fail } from '../utils/apiResponse.js';
 import databaseService from '../../services/database.js';
 import { ALL_SOURCES } from '../../db/repositories/index.js';
@@ -189,7 +189,11 @@ router.get('/version/check', optionalAuth(), async (_req: Request, res: Response
 });
 
 // Restart/shutdown container endpoint
-router.post('/system/restart', requirePermission('settings', 'write'), (_req: Request, res: Response) => {
+//
+// Admin only. It stops the whole process, so every source and every user is
+// affected; `settings:write` is held per source and covers one of them. It
+// used to pass on `settings:write` for any source.
+router.post('/system/restart', requireAdmin(), (_req: Request, res: Response) => {
   const isDocker = isRunningInDocker();
 
   if (isDocker) {

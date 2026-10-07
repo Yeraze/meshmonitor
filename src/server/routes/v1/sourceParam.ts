@@ -18,15 +18,18 @@
 import type { Request, Response, NextFunction, RequestHandler } from 'express';
 import type { Source } from '../../../db/repositories/sources.js';
 import type { ResourceType, PermissionAction } from '../../../types/permission.js';
+import type { User } from '../../../types/auth.js';
 import databaseService from '../../../services/database.js';
 import { logger } from '../../../utils/logger.js';
+import { loadNodeViewAccess, type NodeViewAccess } from '../../utils/nodeEnhancer.js';
+import { fail } from '../../utils/apiResponse.js';
 
 export const DEFAULT_SOURCE_ALIAS = 'default';
 
 /**
- * Returns the first enabled source (by createdAt ASC) that the given user
- * has the specified permission on. Admins get the first enabled source
- * without a permission probe. Returns null if no such source exists.
+ * Returns the first enabled source (by createdAt ASC) that the token's user
+ * holds the specified permission on. Admins get the first enabled source.
+ * Returns null if no such source exists.
  */
 async function resolveDefaultForUser(
   userId: number,
@@ -58,6 +61,23 @@ async function resolveDefaultForUser(
   return null;
 }
 
+const ACCESS = Symbol.for('meshmonitor.v1NodeViewAccess');
+type AccessCarrier = { [ACCESS]?: Promise<NodeViewAccess> };
+
+/**
+ * The token user's grants for this request, loaded ONCE and answered per
+ * source with no further query: a handler that decides row by row (which
+ * channel, which private position) reads this one object however many rows it
+ * returns. `attachSource` makes its own single check at the door. Every v1
+ * route sits behind `requireAPIToken()`, so `req.user` is the token's creator:
+ * a token carries exactly that user's per-source permissions.
+ */
+export function loadV1Access(req: Request): Promise<NodeViewAccess> {
+  const carrier = req as unknown as AccessCarrier;
+  carrier[ACCESS] ??= loadNodeViewAccess((req as Request & { user?: User }).user ?? null);
+  return carrier[ACCESS];
+}
+
 /**
  * Express middleware factory — attach the resolved source (or short-circuit
  * with 401/403/404) before the route handler runs.
@@ -69,7 +89,7 @@ export function attachSource(
   resource: ResourceType,
   action: PermissionAction = 'read'
 ): RequestHandler {
-  return async (req: Request, res: Response, next: NextFunction) => {
+  const middleware: RequestHandler = async (req: Request, res: Response, next: NextFunction) => {
     const rawSourceId = req.params.sourceId;
     if (typeof rawSourceId !== 'string' || rawSourceId === '') {
       return res.status(400).json({
@@ -112,8 +132,7 @@ export function attachSource(
         });
       }
 
-      // Permission check (admins bypass inside checkPermissionAsync? No — we
-      // must short-circuit explicitly).
+      // The grant must be held on THIS source. Admins pass.
       if (!user.isAdmin) {
         const allowed = await databaseService.checkPermissionAsync(
           user.id,
@@ -138,6 +157,22 @@ export function attachSource(
     req.params.sourceId = resolved.id;
     next();
   };
+  (middleware as unknown as { [ATTACH_SOURCE_GATE]: AttachSourceGate })[ATTACH_SOURCE_GATE] = { resource, action };
+  return middleware;
+}
+
+/** What an `attachSource()` middleware enforces. Read by the route guard tests. */
+export interface AttachSourceGate {
+  resource: ResourceType;
+  action: PermissionAction;
+}
+
+const ATTACH_SOURCE_GATE = Symbol.for('meshmonitor.v1AttachSourceGate');
+
+/** The gate a middleware function enforces, or undefined if it was not built
+ *  by `attachSource()`. */
+export function getAttachSourceGate(handler: unknown): AttachSourceGate | undefined {
+  return (handler as { [ATTACH_SOURCE_GATE]?: AttachSourceGate } | null | undefined)?.[ATTACH_SOURCE_GATE];
 }
 
 /**
@@ -173,4 +208,31 @@ export function resolvedSourceIdFromPath(req: Request): string | undefined {
   const fromSource = (req as MaybeRequestWithSource).source?.id;
   if (typeof fromSource === 'string' && fromSource) return fromSource;
   return typeof req.params.sourceId === 'string' ? req.params.sourceId : undefined;
+}
+
+/**
+ * The one source a per-source v1 handler reads. Every such handler sits behind
+ * `attachSource`, which has checked the token user's grant on it. If a router
+ * is ever mounted without it there is no source the permission check covered:
+ * the handler answers 400 here instead of reading every source, which is what
+ * the old `sourceId ?? ALL_SOURCES` fallbacks did.
+ */
+export function requireScopedSourceId(req: Request, res: Response): string | null {
+  const sourceId = (req as MaybeRequestWithSource).source?.id;
+  if (typeof sourceId === 'string' && sourceId) return sourceId;
+  fail(res, 400, 'MISSING_SOURCE_ID', 'This endpoint is served under /api/v1/sources/{sourceId}/');
+  return null;
+}
+
+/**
+ * May the token user read a row (telemetry, traceroute) heard on `channel` of
+ * `sourceId`? A row with no channel recorded carries no channel restriction.
+ */
+export function canViewRowChannel(
+  access: NodeViewAccess,
+  sourceId: string,
+  channel: number | null | undefined,
+): boolean {
+  if (access.isAdmin || channel === undefined || channel === null) return true;
+  return access.canViewNode(sourceId, channel);
 }
