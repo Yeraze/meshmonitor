@@ -7,18 +7,12 @@
 
 import express, { Request, Response } from 'express';
 import databaseService from '../../../services/database.js';
-import { ALL_SOURCES } from '../../../db/repositories/index.js';
 import { logger } from '../../../utils/logger.js';
 import { ResourceType } from '../../../types/permission.js';
 import { transformChannel } from '../../utils/channelView.js';
-import { resolvedSourceIdFromPath } from './sourceParam.js';
+import { loadV1Access, requireScopedSourceId } from './sourceParam.js';
 
 const router = express.Router({ mergeParams: true });
-
-/** Resolve sourceId from the :sourceId path param. */
-function getScopedSourceId(req: Request): string | undefined {
-  return resolvedSourceIdFromPath(req);
-}
 
 /**
  * GET /api/v1/channels
@@ -27,16 +21,14 @@ function getScopedSourceId(req: Request): string | undefined {
  */
 router.get('/', async (req: Request, res: Response) => {
   try {
-    const user = (req as any).user;
-    const userId = user?.id ?? null;
-    const isAdmin = user?.isAdmin ?? false;
-    const sourceIdQ = getScopedSourceId(req);
+    const sourceId = requireScopedSourceId(req, res);
+    if (!sourceId) return;
+    const access = await loadV1Access(req);
 
-    // Get all channels (scoped to source if provided; intentional cross-source when omitted)
-    const allChannels = await databaseService.channels.getAllChannels(sourceIdQ ?? ALL_SOURCES);
+    const allChannels = await databaseService.channels.getAllChannels(sourceId);
 
     // If admin, return all channels with PSKs included (admin can configure them)
-    if (isAdmin) {
+    if (access.isAdmin) {
       return res.json({
         success: true,
         count: allChannels.length,
@@ -44,26 +36,15 @@ router.get('/', async (req: Request, res: Response) => {
       });
     }
 
-    // Filter channels by read permission (scoped to source). The actual `psk`
-    // is included only when the caller has write permission for that specific
+    // Filter channels by read permission on this source. The actual `psk` is
+    // included only when the caller has write permission for that specific
     // channel — see issue #2951 (the channel-config UI needs to show the
     // existing key to operators who are allowed to change it).
-    const accessibleChannels: any[] = [];
-    for (const channel of allChannels) {
-      const channelResource = `channel_${channel.id}` as ResourceType;
-      const allowed = userId !== null
-        ? await databaseService.checkPermissionAsync(userId, channelResource, 'read', sourceIdQ)
-        : false;
-      if (allowed) accessibleChannels.push(channel);
-    }
-
-    const projected = await Promise.all(accessibleChannels.map(async (channel) => {
-      const channelResource = `channel_${channel.id}` as ResourceType;
-      const includePsk = userId !== null
-        ? await databaseService.checkPermissionAsync(userId, channelResource, 'write', sourceIdQ)
-        : false;
-      return transformChannel(channel, { includePsk });
-    }));
+    const projected = allChannels
+      .filter((channel) => access.permissions.can(`channel_${channel.id}` as ResourceType, 'read', sourceId))
+      .map((channel) => transformChannel(channel, {
+        includePsk: access.permissions.can(`channel_${channel.id}` as ResourceType, 'write', sourceId),
+      }));
 
     res.json({
       success: true,
@@ -98,28 +79,22 @@ router.get('/:channelId', async (req: Request, res: Response) => {
       });
     }
 
-    const user = (req as any).user;
-    const userId = user?.id ?? null;
-    const isAdmin = user?.isAdmin ?? false;
-    const sourceIdQ = getScopedSourceId(req);
+    const sourceId = requireScopedSourceId(req, res);
+    if (!sourceId) return;
+    const access = await loadV1Access(req);
+    const channelResource = `channel_${channelId}` as ResourceType;
 
-    // Check permission (unless admin), scoped to source if provided
-    if (!isAdmin) {
-      const channelResource = `channel_${channelId}` as ResourceType;
-      const allowed = userId !== null
-        ? await databaseService.checkPermissionAsync(userId, channelResource, 'read', sourceIdQ)
-        : false;
-      if (!allowed) {
-        return res.status(403).json({
-          success: false,
-          error: 'Forbidden',
-          message: 'Insufficient permissions',
-          required: { resource: channelResource, action: 'read' }
-        });
-      }
+    // The channel grant is held per source: checked on this one (admins pass).
+    if (!access.permissions.can(channelResource, 'read', sourceId)) {
+      return res.status(403).json({
+        success: false,
+        error: 'Forbidden',
+        message: 'Insufficient permissions',
+        required: { resource: channelResource, action: 'read' }
+      });
     }
 
-    const channel = await databaseService.channels.getChannelById(channelId, sourceIdQ);
+    const channel = await databaseService.channels.getChannelById(channelId, sourceId);
 
     if (!channel) {
       return res.status(404).json({
@@ -130,11 +105,8 @@ router.get('/:channelId', async (req: Request, res: Response) => {
     }
 
     // Include the raw `psk` only for admins or callers with write permission
-    // to this channel (issue #2951).
-    const channelResource = `channel_${channelId}` as ResourceType;
-    const includePsk = isAdmin || (userId !== null
-      ? await databaseService.checkPermissionAsync(userId, channelResource, 'write', sourceIdQ)
-      : false);
+    // to this channel on this source (issue #2951).
+    const includePsk = access.permissions.can(channelResource, 'write', sourceId);
 
     res.json({
       success: true,

@@ -3718,7 +3718,8 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
               <button
                 className="danger-button"
                 onClick={handleRestartContainer}
-                disabled={isRestarting}
+                disabled={isRestarting || !isAdmin}
+                title={isAdmin ? undefined : t('settings.restart_admin_only', 'Only an administrator can restart or shut down MeshMonitor. It affects every source.')}
               >
                 {isRestarting
                   ? (isDocker ? t('settings.restarting') : t('settings.shutting_down'))

@@ -7,6 +7,13 @@
  * These routes are mounted outside the API router (no CSRF, no rate limiter).
  * The embed CSP middleware validates the profile and attaches it to the request.
  * The profile ID itself acts as the authorization token — no session required.
+ *
+ * What an embed may show is decided by the PROFILE alone, in one place
+ * (`visibleEmbedNodes`): the viewer is anonymous and holds no grants. Every
+ * data route below draws from that one node set, so a node the profile does
+ * not show is not a marker, not a line end and not a name in a popup.
+ * Responses carry no cache headers and nothing is cached server-side; each is
+ * built from the profile named in the URL.
  */
 
 import { Router, Request, Response } from 'express';
@@ -17,6 +24,10 @@ import { logger } from '../../utils/logger.js';
 import { loadSignFlipContexts, getDisplayDbNodePosition, rowSourceId } from '../services/signFlipCorrection.js';
 import geojsonService from '../services/geojsonService.js';
 import { decomposeTraceroute } from '../../utils/tracerouteSegments.js';
+import { CHANNEL_DB_OFFSET } from '../constants/meshtastic.js';
+import { fail } from '../utils/apiResponse.js';
+import type { EmbedProfile } from '../../db/repositories/embedProfiles.js';
+import type { DbNode } from '../../db/types.js';
 
 const router = Router();
 
@@ -48,13 +59,84 @@ interface EmbedTracerouteSegmentV2 {
   isMqtt: boolean;
 }
 
+/**
+ * May the profile show something heard on `channel`?
+ *
+ * A profile lists device channels (0-7). An empty list means every device
+ * channel. A channel-database (virtual) channel is one the server decrypts
+ * with a stored key; a profile cannot name one, so it is never in scope.
+ */
+function channelInProfile(profileChannels: Set<number>, channel: number | null | undefined): boolean {
+  const ch = channel ?? 0;
+  if (ch >= CHANNEL_DB_OFFSET) return false;
+  return profileChannels.size === 0 || profileChannels.has(ch);
+}
+
+interface EmbedNode {
+  node: DbNode;
+  latitude: number;
+  longitude: number;
+  altitude: number | null | undefined;
+  name: string;
+}
+
+/**
+ * The nodes one profile shows, each with the position it is shown at. The
+ * single rule for every embed data route:
+ *
+ *  - the profile's source (every source when it names none);
+ *  - not hidden from the map (#3549);
+ *  - NOT a node whose position override is private. A private override needs
+ *    `nodes_private:read` everywhere else; an anonymous viewer holds nothing
+ *    and a profile has no setting that allows it, so the node is left out
+ *    altogether, as `buildPositionFilter` does for a viewer without the grant.
+ *    It used to be drawn at the private coordinates;
+ *  - last heard on a channel in the profile;
+ *  - the position shown is a public override, or a reported position that
+ *    arrived on a channel in the profile;
+ *  - MQTT nodes only when the profile shows them.
+ *
+ * One node read and one sign-flip read per request, none per node.
+ */
+async function visibleEmbedNodes(profile: EmbedProfile): Promise<EmbedNode[]> {
+  const allNodes = await databaseService.nodes.getActiveNodes(7, profile.sourceId ?? ALL_SOURCES); // intentional cross-source: profile without a sourceId spans all sources
+  const profileChannels = new Set(profile.channels);
+  // #5363: display-only sign-flip correction, per row's own source.
+  const signFlip = await loadSignFlipContexts(allNodes.map(rowSourceId));
+  const visible: EmbedNode[] = [];
+  for (const node of allNodes) {
+    if (node.hideFromMap) continue;
+    if (node.positionOverrideIsPrivate) continue;
+    if (!channelInProfile(profileChannels, node.channel)) continue;
+    if (!profile.showMqttNodes && node.viaMqtt) continue;
+
+    // Effective position, so a (public) override is what is drawn (#2847).
+    const eff = getDisplayDbNodePosition(node, signFlip.get(rowSourceId(node) ?? ''));
+    if (eff.latitude == null || eff.longitude == null) continue;
+    if (eff.latitude === 0 && eff.longitude === 0) continue;
+    // A reported position carries the channel it arrived on. Outside the
+    // profile's channels there is no position this profile may show.
+    if (!eff.isOverride && node.positionChannel != null && !channelInProfile(profileChannels, node.positionChannel)) {
+      continue;
+    }
+    visible.push({
+      node,
+      latitude: eff.latitude,
+      longitude: eff.longitude,
+      altitude: eff.altitude,
+      name: node.longName || node.shortName || `!${node.nodeNum.toString(16)}`,
+    });
+  }
+  return visible;
+}
+
 // GET /:profileId/config — return public config for the embed profile
 // The CSP middleware is applied per-route so it can access req.params.profileId
 router.get('/:profileId/config', createEmbedCspMiddleware(), (req: Request, res: Response) => {
-  const profile = (req as any).embedProfile;
+  const profile = (req as { embedProfile?: EmbedProfile }).embedProfile;
 
   if (!profile) {
-    return res.status(404).json({ error: 'Embed profile not found' });
+    return fail(res, 404, 'NOT_FOUND', 'Embed profile not found');
   }
 
   // Fall back to the global Default Map Center when the profile's coordinates
@@ -104,45 +186,17 @@ router.get('/:profileId/config', createEmbedCspMiddleware(), (req: Request, res:
 // The profile ID acts as the auth token — no session/login required.
 // Only returns the minimal fields needed for map display (no sensitive data).
 router.get('/:profileId/nodes', createEmbedCspMiddleware(), async (req: Request, res: Response) => {
-  const profile = (req as any).embedProfile;
+  const profile = (req as { embedProfile?: EmbedProfile }).embedProfile;
 
   if (!profile) {
-    return res.status(404).json({ error: 'Embed profile not found' });
+    return fail(res, 404, 'NOT_FOUND', 'Embed profile not found');
   }
 
   try {
-    const allNodes = await databaseService.nodes.getActiveNodes(7, profile.sourceId ?? ALL_SOURCES); // intentional cross-source: profile without a sourceId spans all sources
-
-    // Filter by the profile's configured channels
-    const profileChannels = new Set(profile.channels as number[]);
-    // Resolve effective position once per node so the override (if set) is the
-    // value used for both filtering and display (issue #2847).
-    // #5363: display-only sign-flip correction, per row's own source.
-    const signFlip = await loadSignFlipContexts(allNodes.map(rowSourceId));
-    const filtered = allNodes
-      .map(node => ({ node, eff: getDisplayDbNodePosition(node, signFlip.get(rowSourceId(node) ?? '')) }))
-      .filter(({ node, eff }) => {
-        // #3549: per-node "Hide from Map" suppresses the marker on every map surface
-        if (node.hideFromMap) return false;
-
-        // Must have a position (override or device-reported)
-        if (eff.latitude == null || eff.longitude == null) return false;
-        if (eff.latitude === 0 && eff.longitude === 0) return false;
-
-        // Filter by channels
-        if (profileChannels.size > 0) {
-          const ch = node.channel ?? 0;
-          if (!profileChannels.has(ch)) return false;
-        }
-
-        // Filter out MQTT nodes if configured
-        if (!profile.showMqttNodes && node.viaMqtt) return false;
-
-        return true;
-      });
+    const visible = await visibleEmbedNodes(profile);
 
     // Return public-safe fields for map display
-    const nodes = filtered.map(({ node, eff }) => ({
+    const nodes = visible.map(({ node, latitude, longitude, altitude }) => ({
       nodeNum: node.nodeNum,
       nodeId: node.nodeId,
       user: {
@@ -151,9 +205,9 @@ router.get('/:profileId/nodes', createEmbedCspMiddleware(), async (req: Request,
         hwModel: node.hwModel,
       },
       position: {
-        latitude: eff.latitude,
-        longitude: eff.longitude,
-        altitude: eff.altitude,
+        latitude,
+        longitude,
+        altitude,
       },
       lastHeard: node.lastHeard,
       // #5390: Unix seconds; undefined = unknown.
@@ -168,41 +222,30 @@ router.get('/:profileId/nodes', createEmbedCspMiddleware(), async (req: Request,
     res.json(nodes);
   } catch (error) {
     logger.error('Error fetching embed nodes:', error);
-    res.status(500).json({ error: 'Failed to fetch nodes' });
+    fail(res, 500, 'INTERNAL_ERROR', 'Failed to fetch nodes');
   }
 });
 
 // GET /:profileId/neighborinfo — return neighbor info with positions for drawing connection lines
 router.get('/:profileId/neighborinfo', createEmbedCspMiddleware(), async (req: Request, res: Response) => {
-  const profile = (req as any).embedProfile;
+  const profile = (req as { embedProfile?: EmbedProfile }).embedProfile;
 
   if (!profile) {
-    return res.status(404).json({ error: 'Embed profile not found' });
+    return fail(res, 404, 'NOT_FOUND', 'Embed profile not found');
+  }
+
+  // The profile must opt in, as it must for traceroutes. The embed page only
+  // asks when the option is on; the route used to answer either way.
+  if (!profile.showNeighborInfo) {
+    return fail(res, 404, 'NOT_FOUND', 'Neighbor info not enabled for this profile');
   }
 
   try {
-    const allNodes = await databaseService.nodes.getActiveNodes(7, profile.sourceId ?? ALL_SOURCES); // intentional cross-source: profile without a sourceId spans all sources
-    const profileChannels = new Set(profile.channels as number[]);
-
-    // Build a lookup of nodes that pass the embed's filters. Use effective
-    // position so a user-set override is what's drawn on the map (issue #2847).
-    const nodeMap = new Map<number, { latitude: number; longitude: number; name: string }>();
-    const signFlip = await loadSignFlipContexts(allNodes.map(rowSourceId)); // #5363
-    for (const node of allNodes) {
-      const eff = getDisplayDbNodePosition(node, signFlip.get(rowSourceId(node) ?? ''));
-      if (eff.latitude == null || eff.longitude == null) continue;
-      if (eff.latitude === 0 && eff.longitude === 0) continue;
-      if (!profile.showMqttNodes && node.viaMqtt) continue;
-      if (profileChannels.size > 0) {
-        const ch = node.channel ?? 0;
-        if (!profileChannels.has(ch)) continue;
-      }
-      nodeMap.set(node.nodeNum, {
-        latitude: eff.latitude,
-        longitude: eff.longitude,
-        name: node.longName || node.shortName || `!${node.nodeNum.toString(16)}`,
-      });
-    }
+    // The nodes this profile shows. A link is drawn only between two of them,
+    // so a hidden, private or out-of-profile node is never a line end. This
+    // route used to skip the hideFromMap check the other two made.
+    const nodeMap = new Map<number, EmbedNode>();
+    for (const entry of await visibleEmbedNodes(profile)) nodeMap.set(entry.node.nodeNum, entry);
 
     const rawNeighbors = await databaseService.neighbors.getAllNeighborInfo(profile.sourceId ?? ALL_SOURCES); // intentional cross-source: profile without a sourceId spans all sources
 
@@ -228,50 +271,34 @@ router.get('/:profileId/neighborinfo', createEmbedCspMiddleware(), async (req: R
     res.json(segments);
   } catch (error) {
     logger.error('Error fetching embed neighbor info:', error);
-    res.status(500).json({ error: 'Failed to fetch neighbor info' });
+    fail(res, 500, 'INTERNAL_ERROR', 'Failed to fetch neighbor info');
   }
 });
 
 // GET /:profileId/traceroutes — return pre-computed traceroute path segments with positions
 router.get('/:profileId/traceroutes', createEmbedCspMiddleware(), async (req: Request, res: Response) => {
-  const profile = (req as any).embedProfile;
+  const profile = (req as { embedProfile?: EmbedProfile }).embedProfile;
 
   if (!profile) {
-    return res.status(404).json({ error: 'Embed profile not found' });
+    return fail(res, 404, 'NOT_FOUND', 'Embed profile not found');
   }
 
   // Profile must explicitly opt in to exposing traceroute topology.
   // Default false avoids leaking mesh topology to embed viewers.
   if (!profile.showTraceroutes) {
-    return res.status(404).json({ error: 'Traceroutes not enabled for this profile' });
+    return fail(res, 404, 'NOT_FOUND', 'Traceroutes not enabled for this profile');
   }
 
   try {
-    const allNodes = await databaseService.nodes.getActiveNodes(7, profile.sourceId ?? ALL_SOURCES); // intentional cross-source: profile without a sourceId spans all sources
-    const profileChannels = new Set(profile.channels as number[]);
+    const profileChannels = new Set(profile.channels);
 
     // Build position lookup for visible nodes — this is the leak boundary
     // (#4047 P6 §6.2): a segment is emitted below only when BOTH endpoints
-    // resolve here, so hidden/filtered nodes never leave the server. Same
-    // filters as GET /:profileId/nodes: effective position (#2847), drop
-    // (0,0), drop hideFromMap (#3549), MQTT filter, channel filter.
+    // resolve here, so hidden/filtered nodes never leave the server. The same
+    // node set as GET /:profileId/nodes.
     const nodePositions = new Map<number, { lat: number; lng: number; name: string }>();
-    const signFlip = await loadSignFlipContexts(allNodes.map(rowSourceId)); // #5363
-    for (const node of allNodes) {
-      if (node.hideFromMap) continue;
-      const eff = getDisplayDbNodePosition(node, signFlip.get(rowSourceId(node) ?? ''));
-      if (eff.latitude == null || eff.longitude == null) continue;
-      if (eff.latitude === 0 && eff.longitude === 0) continue;
-      if (!profile.showMqttNodes && node.viaMqtt) continue;
-      if (profileChannels.size > 0) {
-        const ch = node.channel ?? 0;
-        if (!profileChannels.has(ch)) continue;
-      }
-      nodePositions.set(node.nodeNum, {
-        lat: eff.latitude,
-        lng: eff.longitude,
-        name: node.longName || node.shortName || `!${node.nodeNum.toString(16)}`,
-      });
+    for (const entry of await visibleEmbedNodes(profile)) {
+      nodePositions.set(entry.node.nodeNum, { lat: entry.latitude, lng: entry.longitude, name: entry.name });
     }
 
     // Live-only position resolution — deliberately NO snapshot (#1862's
@@ -300,6 +327,9 @@ router.get('/:profileId/traceroutes', createEmbedCspMiddleware(), async (req: Re
     for (const tr of traceroutes) {
       const tsMs = tr.timestamp < 1e12 ? tr.timestamp * 1000 : tr.timestamp;
       if (tsMs < cutoffMs) continue;
+      // A traceroute heard on a channel outside the profile is not shown,
+      // whoever its endpoints are. No channel recorded: no restriction.
+      if (tr.channel != null && !channelInProfile(profileChannels, tr.channel)) continue;
 
       const renderSegments = decomposeTraceroute(tr, { resolvePosition });
       for (const seg of renderSegments) {
@@ -344,7 +374,7 @@ router.get('/:profileId/traceroutes', createEmbedCspMiddleware(), async (req: Re
     res.json(segments);
   } catch (error) {
     logger.error('Error fetching embed traceroutes:', error);
-    res.status(500).json({ error: 'Failed to fetch traceroutes' });
+    fail(res, 500, 'INTERNAL_ERROR', 'Failed to fetch traceroutes');
   }
 });
 
@@ -352,24 +382,24 @@ router.get('/:profileId/traceroutes', createEmbedCspMiddleware(), async (req: Re
 // GeoJSON layers are global (not per-profile); only layers flagged
 // publiclyVisible are exposed to embed/anonymous viewers.
 router.get('/:profileId/geojson/layers', createEmbedCspMiddleware(), (req: Request, res: Response) => {
-  const profile = (req as any).embedProfile;
+  const profile = (req as { embedProfile?: EmbedProfile }).embedProfile;
   if (!profile) {
-    return res.status(404).json({ error: 'Embed profile not found' });
+    return fail(res, 404, 'NOT_FOUND', 'Embed profile not found');
   }
   try {
     return res.json(geojsonService.getPublicLayers());
   } catch (error) {
     logger.error('Error fetching embed geojson layers:', error);
-    return res.status(500).json({ error: 'Failed to fetch geojson layers' });
+    return fail(res, 500, 'INTERNAL_ERROR', 'Failed to fetch geojson layers');
   }
 });
 
 // GET /:profileId/geojson/layers/:id/data — raw data for a PUBLIC layer only.
 // A private (non-publiclyVisible) layer 404s.
 router.get('/:profileId/geojson/layers/:id/data', createEmbedCspMiddleware(), (req: Request, res: Response) => {
-  const profile = (req as any).embedProfile;
+  const profile = (req as { embedProfile?: EmbedProfile }).embedProfile;
   if (!profile) {
-    return res.status(404).json({ error: 'Embed profile not found' });
+    return fail(res, 404, 'NOT_FOUND', 'Embed profile not found');
   }
   try {
     const data = geojsonService.getPublicLayerData(req.params.id);
@@ -378,10 +408,10 @@ router.get('/:profileId/geojson/layers/:id/data', createEmbedCspMiddleware(), (r
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     if (message.toLowerCase().includes('not found')) {
-      return res.status(404).json({ error: message });
+      return fail(res, 404, 'NOT_FOUND', message);
     }
     logger.error('Error fetching embed geojson layer data:', error);
-    return res.status(500).json({ error: 'Failed to fetch geojson layer data' });
+    return fail(res, 500, 'INTERNAL_ERROR', 'Failed to fetch geojson layer data');
   }
 });
 

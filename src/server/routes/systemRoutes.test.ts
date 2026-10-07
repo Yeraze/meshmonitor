@@ -66,6 +66,8 @@ vi.mock('../utils/systemInfo.js', () => mockSystemInfo);
 vi.mock('../auth/authMiddleware.js', () => ({
   optionalAuth: () => (req: any, _res: any, next: any) => { req.session = req.session || {}; next(); },
   requirePermission: () => (req: any, _res: any, next: any) => { req.user = { id: 1, isAdmin: true }; next(); },
+  // The real admin gate on POST /system/restart is driven in publicSurfaces.scope.test.ts.
+  requireAdmin: () => (req: any, _res: any, next: any) => { req.user = { id: 1, isAdmin: true }; next(); },
 }));
 
 import systemRoutes, { setSystemCallbacks } from './systemRoutes.js';

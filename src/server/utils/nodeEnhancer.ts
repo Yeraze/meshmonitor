@@ -369,20 +369,71 @@ export async function maskNodeLocationByChannel<T>(
     }
 
     // Strip location fields — user cannot access the channel this position came from
-    const masked = { ...node } as Record<string, unknown>;
-    delete masked.latitude;
-    delete masked.longitude;
-    delete masked.altitude;
-    delete masked.positionChannel;
-    delete masked.positionTimestamp;
-    delete masked.positionPrecisionBits;
-    delete masked.positionGpsAccuracy;
-    delete masked.positionHdop;
-    // #5364/#5365 Phase 2: the "confirmed fixed" anchor is a position too.
-    delete masked.aircraftFixedLatitude;
-    delete masked.aircraftFixedLongitude;
-    return masked as T;
+    return stripNodeLocation(node);
   });
+}
+
+/** A copy of a node row without the position it reported. */
+function stripNodeLocation<T>(node: T): T {
+  const masked = { ...node } as Record<string, unknown>;
+  delete masked.latitude;
+  delete masked.longitude;
+  delete masked.altitude;
+  delete masked.positionChannel;
+  delete masked.positionTimestamp;
+  delete masked.positionPrecisionBits;
+  delete masked.positionGpsAccuracy;
+  delete masked.positionHdop;
+  // #5364/#5365 Phase 2: the "confirmed fixed" anchor is a position too.
+  delete masked.aircraftFixedLatitude;
+  delete masked.aircraftFixedLongitude;
+  return masked as T;
+}
+
+/**
+ * One source's raw node rows as a caller may see them, from grants already
+ * loaded for the request (`loadNodeViewAccess`): no query here.
+ *
+ *  - a row is dropped unless the caller holds `viewOnMap` on the channel the
+ *    node was last heard on, on this source;
+ *  - the reported position is removed when it arrived on a channel the caller
+ *    cannot view on this source (`maskNodeLocationByChannel`'s rule);
+ *  - a PRIVATE position override's coordinates are removed unless the caller
+ *    holds `nodes_private:read` on this source. The flags stay, as they do in
+ *    `enhanceNodeForClient`.
+ *
+ * Admins get the rows back untouched.
+ */
+export function scopeNodeRowsForViewer<T>(nodes: T[], access: NodeViewAccess, sourceId: string): T[] {
+  if (access.isAdmin) return nodes;
+  const canViewPrivate = access.canViewPrivate(sourceId);
+  const out: T[] = [];
+  for (const node of nodes) {
+    const row = node as {
+      channel?: number | null;
+      positionChannel?: number | null;
+      positionOverrideIsPrivate?: boolean | number | null;
+    };
+    if (!access.canViewNode(sourceId, row.channel)) continue;
+    let shown = node;
+    if (row.positionChannel != null && !access.canViewNode(sourceId, row.positionChannel)) {
+      shown = stripNodeLocation(shown);
+    }
+    if (row.positionOverrideIsPrivate && !canViewPrivate) {
+      shown = withholdPrivateOverride(shown);
+    }
+    out.push(shown);
+  }
+  return out;
+}
+
+/** A copy of a node row without its position-override coordinates. */
+export function withholdPrivateOverride<T>(node: T): T {
+  const masked = { ...node } as Record<string, unknown>;
+  delete masked.latitudeOverride;
+  delete masked.longitudeOverride;
+  delete masked.altitudeOverride;
+  return masked as T;
 }
 
 /**
@@ -488,13 +539,16 @@ export async function checkNodeChannelAccess(
 ): Promise<boolean> {
   if (user?.isAdmin) return true;
 
-  // MeshCore node identifiers are 64-char hex public keys. The Meshtastic
-  // per-channel viewOnMap permission model does not apply to them — MeshCore
-  // sources gate access at the source-permission level (and the calling
-  // route still enforces the top-level info/dashboard read gate). Short-
-  // circuit to allow so non-admin MeshCore users can fetch telemetry for
-  // contacts in their source. Anonymous callers remain blocked.
-  if (/^[0-9a-fA-F]{64}$/.test(nodeId)) return !!user;
+  // MeshCore node identifiers are 64-char hex public keys. They have no
+  // channel, so the Meshtastic per-channel rule does not apply. The grant is
+  // `nodes:viewOnMap` on the source named, the one the MeshCore position and
+  // telemetry reads use (#4559, `resolveNodePositionScope`). This used to
+  // pass for any signed-in user, on any source. With no source named there is
+  // no source to check the grant on, so the answer is no.
+  if (/^[0-9a-fA-F]{64}$/.test(nodeId)) {
+    if (!user || !sourceId) return false;
+    return hasPermission(user, 'nodes', 'viewOnMap', sourceId);
+  }
 
   // Support both hex nodeId (!abcdef01) and decimal nodeId (2882400001)
   const nodeNum = nodeId.startsWith('!')

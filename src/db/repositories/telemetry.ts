@@ -241,9 +241,12 @@ export class TelemetryRepository extends BaseRepository {
   /**
    * Get telemetry count
    */
-  async getTelemetryCount(): Promise<number> {
+  async getTelemetryCount(sourceId: SourceScope = ALL_SOURCES): Promise<number> {
     const { telemetry } = this.tables;
-    const result = await this.db.select({ count: count() }).from(telemetry);
+    const result = await this.db
+      .select({ count: count() })
+      .from(telemetry)
+      .where(this.withSourceScope(telemetry, sourceId));
     return Number(result[0].count);
   }
 
@@ -489,12 +492,16 @@ export class TelemetryRepository extends BaseRepository {
   /**
    * Get telemetry by type
    */
-  async getTelemetryByType(telemetryType: string, limit: number = 100): Promise<DbTelemetry[]> {
+  async getTelemetryByType(
+    telemetryType: string,
+    limit: number = 100,
+    sourceId: SourceScope = ALL_SOURCES,
+  ): Promise<DbTelemetry[]> {
     const { telemetry } = this.tables;
     const result = await this.db
       .select()
       .from(telemetry)
-      .where(eq(telemetry.telemetryType, telemetryType))
+      .where(and(eq(telemetry.telemetryType, telemetryType), this.withSourceScope(telemetry, sourceId)))
       .orderBy(desc(telemetry.timestamp))
       .limit(limit);
 

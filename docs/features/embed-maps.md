@@ -36,7 +36,7 @@ When creating a new profile, MeshMonitor automatically computes the map center f
 
 ### Channels
 
-Select which Meshtastic channels to include. Only nodes on the selected channels appear on the embedded map. Channel 0 (Primary) is selected by default.
+Select which Meshtastic channels to include. Only nodes on the selected channels appear on the embedded map. Channel 0 (Primary) is selected by default. With no channel selected, nodes on every device channel (0-7) appear. Nodes last heard on a Channel Database (server-decrypted) channel never appear on an embed.
 
 ### Map Defaults
 
@@ -175,6 +175,25 @@ The embed endpoints only return public-safe fields needed for map display:
 - Neighbor info connections and traceroute segments
 
 Sensitive data such as node IP addresses, MQTT configuration, encryption keys, and user accounts are never exposed through embed endpoints.
+
+### What an Embed Never Shows
+
+The viewer of an embed is anonymous, so the profile alone decides what is sent:
+
+- **Private position overrides.** A node whose position override is marked private is left out of the embed: no marker, no neighbor line, no traceroute segment. There is no profile setting that turns this on.
+- **Hidden nodes.** A node with "Hide from Map" set is left out of markers, neighbor lines and traceroute segments.
+- **Other sources.** A profile tied to a source shows that source only.
+- **Other channels.** A node appears only when it was last heard on one of the profile's channels, and its reported position arrived on one of them. A traceroute heard on another channel is not drawn.
+- **Neighbor lines and traceroute paths** are served only when the profile turns them on.
+
+::: warning Changed in 4.17
+Earlier versions drew a node with a private position override at its private
+coordinates, drew neighbor lines to nodes hidden from the map, showed positions
+that arrived on a channel outside the profile, and answered the neighbor-info
+request even when the profile had it turned off. If a node has gone missing
+from an embed after upgrading, check whether its position override is marked
+private or it is hidden from the map.
+:::
 
 ### No Session Required
 

@@ -8,35 +8,12 @@
 
 import express, { Request, Response } from 'express';
 import databaseService from '../../../services/database.js';
-import { ALL_SOURCES } from '../../../db/repositories/index.js';
 import { logger } from '../../../utils/logger.js';
-import { checkNodeChannelAccess } from '../../utils/nodeEnhancer.js';
-import { resolvedSourceIdFromPath } from './sourceParam.js';
+import { fail } from '../../utils/apiResponse.js';
+import { isValidNodeNum } from '../../constants/meshtastic.js';
+import { loadV1Access, requireScopedSourceId } from './sourceParam.js';
 
 const router = express.Router({ mergeParams: true });
-
-/** Resolve sourceId from the :sourceId path param. */
-function getScopedSourceId(req: Request): string | undefined {
-  return resolvedSourceIdFromPath(req);
-}
-
-/**
- * Check if user has nodes:read permission
- */
-async function hasNodesReadPermission(userId: number | null, isAdmin: boolean, sourceId?: string): Promise<boolean> {
-  if (isAdmin) return true;
-  if (userId === null) return false;
-  return databaseService.checkPermissionAsync(userId, 'nodes', 'read', sourceId);
-}
-
-/**
- * Check if user has nodes_private:read permission
- */
-async function hasNodesPrivateReadPermission(userId: number | null, isAdmin: boolean, sourceId?: string): Promise<boolean> {
-  if (isAdmin) return true;
-  if (userId === null) return false;
-  return databaseService.checkPermissionAsync(userId, 'nodes_private', 'read', sourceId);
-}
 
 /**
  * GET /api/v1/nodes/:nodeId/position-history
@@ -52,29 +29,12 @@ async function hasNodesPrivateReadPermission(userId: number | null, isAdmin: boo
  */
 router.get('/:nodeId/position-history', async (req: Request, res: Response) => {
   try {
-    const user = (req as any).user;
-    const userId = user?.id ?? null;
-    const isAdmin = user?.isAdmin ?? false;
-
-    const sourceIdQ = getScopedSourceId(req);
-
-    // Check nodes:read permission (scoped to source)
-    if (!await hasNodesReadPermission(userId, isAdmin, sourceIdQ)) {
-      return res.status(403).json({
-        success: false,
-        error: 'Forbidden',
-        message: 'Insufficient permissions',
-        required: { resource: 'nodes', action: 'read' }
-      });
-    }
+    // `attachSource('nodes', 'read')` has checked the grant on this source.
+    const sourceId = requireScopedSourceId(req, res);
+    if (!sourceId) return;
+    const access = await loadV1Access(req);
 
     const { nodeId } = req.params;
-
-    // Check channel-based access for this node
-    if (!await checkNodeChannelAccess(nodeId, user, sourceIdQ)) {
-      return res.status(403).json({ success: false, error: 'Forbidden', message: 'Insufficient permissions' });
-    }
-
     const { since, before, limit, offset } = req.query;
 
     const maxLimit = Math.min(parseInt(limit as string) || 1000, 10000);
@@ -82,19 +42,35 @@ router.get('/:nodeId/position-history', async (req: Request, res: Response) => {
     const sinceTimestamp = since ? parseInt(since as string) : undefined;
     const beforeTimestamp = before ? parseInt(before as string) : undefined;
 
-    // Check privacy for position history
-    // nodeId is hex with '!' prefix (e.g., '!df6ab854'); getNode() expects the decimal nodeNum
-    const nodeNum = parseInt(nodeId.replace('!', ''), 16);
-    const node = await databaseService.nodes.getNode(nodeNum);
+    if (!access.isAdmin) {
+      if (/^[0-9a-fA-F]{64}$/.test(nodeId)) {
+        // A MeshCore public key has no channel: `nodes:viewOnMap` on this
+        // source, the gate the MeshCore position reads use (#4559).
+        if (!access.permissions.can('nodes', 'viewOnMap', sourceId)) {
+          return fail(res, 403, 'FORBIDDEN', 'Insufficient permissions');
+        }
+      } else {
+        // nodeId is hex with '!' prefix (e.g., '!df6ab854') or a decimal
+        // nodeNum; getNode() expects the number. The row is THIS source's: the
+        // channel the node was last heard on and its privacy flag differ per
+        // source, and the lookup used to name no source.
+        const nodeNum = nodeId.startsWith('!') ? parseInt(nodeId.replace('!', ''), 16) : parseInt(nodeId, 10);
+        const node = isValidNodeNum(nodeNum) ? await databaseService.nodes.getNode(nodeNum, sourceId) : null;
 
-    if (node?.positionOverrideIsPrivate === true) {
-      if (!await hasNodesPrivateReadPermission(userId, isAdmin, sourceIdQ)) {
-        return res.status(403).json({
-          success: false,
-          error: 'Forbidden',
-          message: 'Node position is private',
-          required: { resource: 'nodes_private', action: 'read' }
-        });
+        // Check channel-based access for this node
+        if (!access.canViewNode(sourceId, node?.channel ?? 0)) {
+          return fail(res, 403, 'FORBIDDEN', 'Insufficient permissions');
+        }
+
+        // Check privacy for position history
+        if (node?.positionOverrideIsPrivate && !access.canViewPrivate(sourceId)) {
+          return res.status(403).json({
+            success: false,
+            error: 'Forbidden',
+            message: 'Node position is private',
+            required: { resource: 'nodes_private', action: 'read' }
+          });
+        }
       }
     }
 
@@ -109,7 +85,7 @@ router.get('/:nodeId/position-history', async (req: Request, res: Response) => {
       nodeId,
       internalLimit,
       sinceTimestamp,
-      sourceIdQ ?? ALL_SOURCES // scoped when provided; intentional cross-source otherwise
+      sourceId
     );
 
     // Group by timestamp to build position objects

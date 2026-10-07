@@ -6,17 +6,18 @@
 
 import express, { Request, Response } from 'express';
 import databaseService from '../../../services/database.js';
-import { ALL_SOURCES } from '../../../db/repositories/index.js';
 import { logger } from '../../../utils/logger.js';
-import { maskTraceroutesByChannel } from '../../utils/nodeEnhancer.js';
-import { resolvedSourceIdFromPath } from './sourceParam.js';
+import type { NodeViewAccess } from '../../utils/nodeEnhancer.js';
+import { fail } from '../../utils/apiResponse.js';
+import { canViewRowChannel, loadV1Access, requireScopedSourceId } from './sourceParam.js';
+
+/** A traceroute heard on a channel the token user cannot view on this source
+ *  is left out. */
+function visibleOnSource<T>(rows: T[], access: NodeViewAccess, sourceId: string): T[] {
+  return rows.filter((row) => canViewRowChannel(access, sourceId, (row as { channel?: number | null }).channel));
+}
 
 const router = express.Router({ mergeParams: true });
-
-/** Resolve sourceId from the :sourceId path param. */
-function getScopedSourceId(req: Request): string | undefined {
-  return resolvedSourceIdFromPath(req);
-}
 
 /**
  * GET /api/v1/traceroutes
@@ -33,10 +34,12 @@ function getScopedSourceId(req: Request): string | undefined {
 router.get('/', async (req: Request, res: Response) => {
   try {
     const { fromNodeId, toNodeId, limit } = req.query;
-    const sourceIdStr = getScopedSourceId(req);
+    const sourceId = requireScopedSourceId(req, res);
+    if (!sourceId) return;
+    const access = await loadV1Access(req);
     const maxLimit = parseInt(limit as string) || 100;
 
-    let traceroutes = await databaseService.getAllTraceroutesAsync(maxLimit, sourceIdStr ?? ALL_SOURCES); // intentional cross-source when sourceId omitted
+    let traceroutes = await databaseService.getAllTraceroutesAsync(maxLimit, sourceId);
 
     // Apply filters
     if (fromNodeId) {
@@ -50,7 +53,7 @@ router.get('/', async (req: Request, res: Response) => {
     traceroutes = traceroutes.slice(0, maxLimit);
 
     // Mask traceroutes from channels the user cannot access
-    traceroutes = await maskTraceroutesByChannel(traceroutes, (req as any).user, sourceIdStr);
+    traceroutes = visibleOnSource(traceroutes, access, sourceId);
 
     res.json({
       success: true,
@@ -74,8 +77,10 @@ router.get('/', async (req: Request, res: Response) => {
 router.get('/:fromNodeId/:toNodeId', async (req: Request, res: Response) => {
   try {
     const { fromNodeId, toNodeId } = req.params;
-    const sourceIdParam = getScopedSourceId(req);
-    const allTraceroutes = await databaseService.getAllTraceroutesAsync(100, sourceIdParam ?? ALL_SOURCES); // intentional cross-source when sourceId omitted
+    const sourceId = requireScopedSourceId(req, res);
+    if (!sourceId) return;
+    const access = await loadV1Access(req);
+    const allTraceroutes = await databaseService.getAllTraceroutesAsync(100, sourceId);
     const traceroute = allTraceroutes.find(t => t.fromNodeId === fromNodeId && t.toNodeId === toNodeId);
 
     if (!traceroute) {
@@ -87,13 +92,9 @@ router.get('/:fromNodeId/:toNodeId', async (req: Request, res: Response) => {
     }
 
     // Mask if the traceroute's channel is inaccessible to this user
-    const visible = await maskTraceroutesByChannel([traceroute], (req as any).user, sourceIdParam);
+    const visible = visibleOnSource([traceroute], access, sourceId);
     if (visible.length === 0) {
-      return res.status(403).json({
-        success: false,
-        error: 'Forbidden',
-        message: 'Insufficient permissions'
-      });
+      return fail(res, 403, 'FORBIDDEN', 'Insufficient permissions');
     }
 
     res.json({

@@ -4,20 +4,15 @@
  * Provides access to raw packet log data from the mesh network
  */
 
-import express, { Request } from 'express';
+import express from 'express';
 import packetLogService from '../../services/packetLogService.js';
 import { logger } from '../../../utils/logger.js';
-import { resolvedSourceIdFromPath } from './sourceParam.js';
+import { requireScopedSourceId } from './sourceParam.js';
 
 /** Normalize a `since` timestamp to milliseconds (auto-detect seconds vs ms) */
 function normalizeSinceToMs(value: string): number {
   const n = parseInt(value, 10);
   return n < 10_000_000_000 ? n * 1000 : n;
-}
-
-/** Resolve sourceId from the :sourceId path param. */
-function getScopedSourceId(req: Request): string | undefined {
-  return resolvedSourceIdFromPath(req);
 }
 
 const router = express.Router({ mergeParams: true });
@@ -58,7 +53,8 @@ router.get('/', async (req, res) => {
     const encrypted = req.query.encrypted === 'true' ? true : req.query.encrypted === 'false' ? false : undefined;
     const since = req.query.since ? normalizeSinceToMs(req.query.since as string) : undefined;
 
-    const sourceId = getScopedSourceId(req);
+    const sourceId = requireScopedSourceId(req, res);
+    if (!sourceId) return;
     const filterOptions = { portnum, from_node, to_node, channel, encrypted, since, sourceId };
 
     const [packets, total] = await Promise.all([
@@ -107,15 +103,8 @@ router.get('/:id', async (req, res) => {
     // source: require a sourceId and treat a packet from a different source as
     // Not Found — otherwise a caller on source A could read source B's packet
     // by guessing its id.
-    const sourceId = getScopedSourceId(req);
-    if (!sourceId) {
-      return res.status(400).json({
-        success: false,
-        error: 'Bad Request',
-        code: 'MISSING_SOURCE_ID',
-        message: 'sourceId is required'
-      });
-    }
+    const sourceId = requireScopedSourceId(req, res);
+    if (!sourceId) return;
 
     const packet = await packetLogService.getPacketByIdAsync(id);
     if (!packet || packet.sourceId !== sourceId) {
