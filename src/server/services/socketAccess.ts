@@ -175,7 +175,12 @@ export function invalidateSocketAccess(userId?: number): void {
   }
 }
 
-/** Forget a user with no socket left. */
+/**
+ * Forget a user with no socket left. The caller (the disconnect handler in
+ * `webSocketService`) has checked that no other socket of the user is
+ * connected. An entry with a load in flight is kept: a new connection of the
+ * same user is waiting on it.
+ */
 export function forgetSocketViewer(userId: number): void {
   const entry = cache.get(userId);
   if (entry && !entry.loading) cache.delete(userId);

@@ -552,7 +552,7 @@ router.get('/poll', optionalAuth(), async (req, res) => {
     } catch (error) {
       logger.error('Error in config section of poll:', error);
       result.config = {
-        ...(req.session.userId ? { meshtasticNodeIp: env.meshtasticNodeIp } : {}),
+        ...(mayViewEndpoint ? { meshtasticNodeIp: env.meshtasticNodeIp } : {}),
         meshtasticTcpPort: env.meshtasticTcpPort,
         meshtasticUseTls: false,
         baseUrl: BASE_URL,

@@ -30,11 +30,7 @@ router.get('/recent', optionalAuth(), async (req: Request, res: Response) => {
     const access = await loadNodeViewAccess(req.user ?? null);
     const { permissions, isAdmin } = access;
     if (recentSourceId && !isAdmin && !permissions.can('traceroute', 'read', recentSourceId)) {
-      res.status(403).json({
-        error: 'Insufficient permissions',
-        code: 'FORBIDDEN',
-        required: { resource: 'traceroute', action: 'read' },
-      });
+      fail(res, 403, 'FORBIDDEN', 'Insufficient permissions', { required: { resource: 'traceroute', action: 'read' } });
       return;
     }
     const scope = recentSourceId

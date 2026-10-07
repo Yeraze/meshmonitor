@@ -95,7 +95,11 @@ export function getConnectedClientCount(): number {
 const isThenable = (value: unknown): value is PromiseLike<unknown> =>
   typeof (value as { then?: unknown } | null | undefined)?.then === 'function';
 
-/** Run `compute` once; hand back its value directly once it is known. */
+/**
+ * Run `compute` once; hand back its value directly once it is known. A
+ * failure is kept too: it is not retried for this event, every socket that
+ * needed the value withholds, and the next event starts afresh.
+ */
 function once<T>(compute: () => T | Promise<T>): () => T | Promise<T> {
   let started = false;
   let value: T | Promise<T>;

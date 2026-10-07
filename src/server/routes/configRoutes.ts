@@ -40,6 +40,9 @@ const router = express.Router();
 
 // Configuration endpoint for frontend
 router.get('/', optionalAuth(), async (req, res) => {
+  // Decided inside the try, and read by the fallback reply below: when the
+  // handler fails, the address still goes only to a caller who may see it.
+  let mayViewEndpoint = false;
   try {
     // Get the local node number from settings to include rebootCount.
     // Accepts ?sourceId= so multi-source deployments resolve the local node
@@ -58,7 +61,7 @@ router.get('/', optionalAuth(), async (req, res) => {
     const permissions = await loadSourcePermissions(user);
     const deviceSourceId = configSourceId ?? resolveOwnMeshtasticManager(undefined)?.sourceId ?? null;
     const mayViewDevice = signedIn && (permissions.isAdmin || holdsAnyGrantOn(permissions, deviceSourceId));
-    const mayViewEndpoint = mayViewSourceEndpointWith(user, permissions);
+    mayViewEndpoint = mayViewSourceEndpointWith(user, permissions);
 
     const localNodeNumStr = await databaseService.settings.getLocalNodeNumForSource(
       configSourceId ?? null,
@@ -102,7 +105,7 @@ router.get('/', optionalAuth(), async (req, res) => {
   } catch (error) {
     logger.error('Error in /api/config:', error);
     res.json({
-      ...(req.session.userId ? { meshtasticNodeIp: env.meshtasticNodeIp } : {}),
+      ...(mayViewEndpoint ? { meshtasticNodeIp: env.meshtasticNodeIp } : {}),
       meshtasticTcpPort: env.meshtasticTcpPort,
       meshtasticUseTls: false,
       baseUrl: BASE_URL,

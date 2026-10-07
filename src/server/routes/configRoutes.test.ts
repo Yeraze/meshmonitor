@@ -198,6 +198,20 @@ describe('configRoutes', () => {
       });
     });
 
+    it('the fallback reply after a failure gives the address only to a caller who may see it', async () => {
+      const failing = vi.spyOn(harness.db.settings, 'getLocalNodeNumForSource').mockRejectedValue(new Error('db down'));
+      try {
+        const limited = await (await harness.loginAs(harness.limited)).get('/');
+        expect(limited.status).toBe(200);
+        expect(limited.body).toHaveProperty('baseUrl');
+        expect(limited.body).not.toHaveProperty('meshtasticNodeIp');
+        const admin = await (await harness.loginAs(harness.admin)).get('/');
+        expect(admin.body).toHaveProperty('meshtasticNodeIp');
+      } finally {
+        failing.mockRestore();
+      }
+    });
+
     it('handles a missing localNodeNum gracefully', async () => {
       const agent = await harness.loginAs(harness.admin);
       const res = await agent.get('/').query({ sourceId: harness.sourceB });

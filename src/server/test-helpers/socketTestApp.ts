@@ -22,6 +22,7 @@
 import { createServer, type Server as HttpServer } from 'http';
 import type { AddressInfo } from 'net';
 import { io as ioClient, type Socket as ClientSocket } from 'socket.io-client';
+import type { Express, RequestHandler } from 'express';
 import { createRouteTestApp, type RouteTestHarness, type SeededUser } from './routeTestApp.js';
 import { initializeWebSocket, shutdownWebSocket } from '../services/webSocketService.js';
 import { resetSocketAccess } from '../services/socketAccess.js';
@@ -88,12 +89,24 @@ const PER_SOURCE_RESOURCES = [
 ];
 const GLOBAL_RESOURCES = ['info', 'dashboard', 'sources', 'automations'];
 
+/**
+ * The express-session middleware the route harness mounted on its app, so the
+ * socket server reads the same sessions. Taken from the app's own stack: the
+ * harness does not export it.
+ */
+function sessionMiddlewareOf(app: Express): RequestHandler {
+  const stack = (app as unknown as { router?: { stack?: Array<{ name?: string; handle?: RequestHandler }> } }).router?.stack ?? [];
+  const layer = stack.find((entry) => entry.name === 'session' && typeof entry.handle === 'function');
+  if (!layer?.handle) throw new Error('socketTestApp: the route harness app has no session middleware');
+  return layer.handle;
+}
+
 export async function createSocketTestApp(): Promise<SocketTestHarness> {
   const route = await createRouteTestApp({ mount: () => {} });
   resetSocketAccess();
 
   const httpServer: HttpServer = createServer(route.app);
-  initializeWebSocket(httpServer, route.sessionMiddleware);
+  initializeWebSocket(httpServer, sessionMiddlewareOf(route.app));
   await new Promise<void>((resolve) => httpServer.listen(0, resolve));
   const port = (httpServer.address() as AddressInfo).port;
   const clients: ClientSocket[] = [];
