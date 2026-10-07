@@ -63,6 +63,8 @@ export interface SeededUser {
 export interface RouteTestHarness {
   /** The Express app with real session + optionalAuth mounted, and the router under test. */
   app: Express;
+  /** The app's express-session middleware, for a server that must share its sessions (socket.io). */
+  sessionMiddleware: express.RequestHandler;
   /**
    * The live singleton (already :memory: + migrations + seeded users).
    * Use for extra seeding or assertions: `harness.db.nodes.upsertNode(...)`.
@@ -214,17 +216,16 @@ export async function createRouteTestApp(
 
   const app = express();
   app.use(express.json());
-  app.use(
-    session({
-      secret: 'route-test',
-      resave: false,
-      saveUninitialized: false,
-      cookie: { secure: false },
-      // Cookie name must match requireAuth()'s cookie sniff (authMiddleware.ts L232)
-      // so requireAuth-guarded routes receive the session correctly.
-      name: 'meshmonitor.sid',
-    })
-  );
+  const sessionMiddleware = session({
+    secret: 'route-test',
+    resave: false,
+    saveUninitialized: false,
+    cookie: { secure: false },
+    // Cookie name must match requireAuth()'s cookie sniff (authMiddleware.ts L232)
+    // so requireAuth-guarded routes receive the session correctly.
+    name: 'meshmonitor.sid',
+  });
+  app.use(sessionMiddleware);
 
   // Test-only login route: sets session.userId exactly as the real login does
   // after successful password verification, but skips bcrypt for speed.
@@ -291,6 +292,7 @@ export async function createRouteTestApp(
 
   return {
     app,
+    sessionMiddleware,
     db: databaseService,
     sourceA: SOURCE_A,
     sourceB: SOURCE_B,
