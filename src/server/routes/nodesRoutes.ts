@@ -22,6 +22,8 @@ import express from 'express';
 import databaseService from '../../services/database.js';
 import { ALL_SOURCES } from '../../db/repositories/index.js';
 import { fallbackManager } from '../meshtasticManager.js';
+import type { DeviceInfo } from '../meshtasticManager.js';
+import { loadVisibleNodesAcrossSources } from '../services/nodeDbMaintenanceService.js';
 import { sourceManagerRegistry } from '../sourceManagerRegistry.js';
 import { resolveOwnMeshtasticManager } from '../utils/resolveSourceManager.js';
 import {
@@ -33,7 +35,7 @@ import {
   listPermittedSourceIds,
 } from '../utils/sourceScopedAccess.js';
 import { isMeshCoreManager, getPrimaryMeshtasticManager } from '../sourceManagerTypes.js';
-import { filterNodesByChannelPermission, enhanceNodeForClient, checkNodeChannelAccess, attachUptimeToNodes } from '../utils/nodeEnhancer.js';
+import { loadNodeViewAccess, enhanceNodeForClient, checkNodeChannelAccess, resolveNodePositionScope, attachUptimeToNodes } from '../utils/nodeEnhancer.js';
 import { createSignFlipResolver, applySignFlipCorrection, rowSourceId } from '../services/signFlipCorrection.js';
 import { pivotPositionHistory } from '../utils/positionHistoryPivot.js';
 import { requireSourceId } from '../utils/requireSourceId.js';
@@ -88,27 +90,69 @@ router.get('/nodes', optionalAuth(), async (req, res) => {
       ? (req.query.sourceId as string)
       : undefined;
     const mgr = getPrimaryMeshtasticManager(sourceManagerRegistry) ?? fallbackManager;
-    const allNodes = await mgr.getAllNodesAsync(nodesSourceId);
+    const viewer = req.user ?? null;
+    // The caller's grants, loaded once. Every row is then checked against its
+    // OWN source: the channel it was heard on, and a private position override.
+    const access = await loadNodeViewAccess(viewer);
     const estimatedPositions = await databaseService.getAllNodesEstimatedPositionsAsync();
     const assets = await databaseService.getAssetNodesMapAsync();
 
-    // Filter nodes based on channel read permissions — scope the permission
-    // lookup to the requested source so a guest with channel access on one
-    // source can't see another source's nodes (#3745).
-    const filteredNodes = await filterNodesByChannelPermission(allNodes, (req as any).user, nodesSourceId);
+    let filteredNodes: DeviceInfo[];
+    // What `enhanceNodeForClient` may show of a private override. With no
+    // source named and a caller who is not an admin, rows the caller may not
+    // see have had theirs removed before the merge, so what is left is theirs
+    // to see.
+    let canViewPrivate: boolean;
+    // The sources the uptime below is read from.
+    let uptimeSources: string | readonly string[] | undefined;
+    if (access.isAdmin || nodesSourceId) {
+      // One source, or an admin's unified view: one query, as before.
+      const allNodes = await mgr.getAllNodesAsync(nodesSourceId);
+      filteredNodes = access.isAdmin
+        ? allNodes
+        : allNodes.filter((node) => access.canViewNode(nodesSourceId, (node as { channel?: number }).channel));
+      canViewPrivate = access.canViewPrivate(nodesSourceId);
+      uptimeSources = nodesSourceId;
+    } else {
+      // No source named: only rows from sources the caller holds a channel
+      // grant on, each checked on its own source, merged after the check. A
+      // grant on source A used to show source B's rows here.
+      const seen = new Set<string>();
+      filteredNodes = await loadVisibleNodesAcrossSources(
+        access.sources === 'all' ? ALL_SOURCES : access.sources,
+        (row) => {
+          const rowSource = rowSourceId(row);
+          if (!rowSource || !access.canViewNode(rowSource, row.channel)) return null;
+          seen.add(rowSource);
+          if (row.positionOverrideIsPrivate && !access.canViewPrivate(rowSource)) {
+            return {
+              ...row,
+              positionOverrideEnabled: false,
+              latitudeOverride: undefined,
+              longitudeOverride: undefined,
+              altitudeOverride: undefined,
+            };
+          }
+          return row;
+        },
+      );
+      canViewPrivate = true;
+      uptimeSources = [...seen];
+    }
+
     // #5363: display-only sign-flip correction. Only for a single-source list:
     // an unscoped call returns rows merged across sources, which have no one
     // reference point to correct against.
     const signFlipFor = createSignFlipResolver();
     const nodesSignFlipCtx = await signFlipFor(nodesSourceId);
-    const enhancedNodes = (await Promise.all(filteredNodes.map(node => enhanceNodeForClient(node, (req as any).user, estimatedPositions, undefined, assets))))
+    const enhancedNodes = (await Promise.all(filteredNodes.map(node => enhanceNodeForClient(node, viewer, estimatedPositions, canViewPrivate, assets))))
       .map(node => applySignFlipCorrection(node, nodesSignFlipCtx));
 
     // Enrich each node with its latest uptime from telemetry (#4814). Uptime is
     // not a node column — it lives only in device-metrics telemetry — so the node
     // list needs it attached here to support the "Sort: Uptime" option. One
     // grouped query for all nodes, mirroring the v1 /nodes route.
-    const uptimeMap = await databaseService.telemetry.getLatestTelemetryValueForAllNodes('uptimeSeconds', nodesSourceId);
+    const uptimeMap = await databaseService.telemetry.getLatestTelemetryValueForAllNodes('uptimeSeconds', uptimeSources);
     attachUptimeToNodes(enhancedNodes, uptimeMap);
 
     // Append MeshCore contacts/localNodes so the aggregate dashboard map can
@@ -125,15 +169,15 @@ router.get('/nodes', optionalAuth(), async (req, res) => {
     // pass includeAllMeshcore=true to drop the position gate.
     const includeAllMeshcore = req.query.includeAllMeshcore === 'true';
     const meshcoreNodes: any[] = [];
-    const mcUser = req.user ?? null;
     for (const mgr of meshcoreManagers) {
       // Per-source gates, the same two the MeshCore routes and the dashboard
       // apply (#4559): `nodes:read` lists a source's nodes, `nodes:viewOnMap`
       // shows where they are. This branch had neither, so any caller — an
       // anonymous one too — got every MeshCore node's name and position
-      // (#5632). `hasPermission` passes admins.
-      const canRead = mcUser ? await hasPermission(mcUser, 'nodes', 'read', mgr.sourceId) : false;
-      const canViewOnMap = mcUser ? await hasPermission(mcUser, 'nodes', 'viewOnMap', mgr.sourceId) : false;
+      // (#5632). Admins pass. Answered from the grants loaded above, with no
+      // query per source.
+      const canRead = access.permissions.can('nodes', 'read', mgr.sourceId);
+      const canViewOnMap = access.permissions.can('nodes', 'viewOnMap', mgr.sourceId);
       if (!canRead && !canViewOnMap) continue;
       const mcSignFlipCtx = await signFlipFor(mgr.sourceId); // #5363
       for (const n of await mgr.getAllNodes()) {
@@ -188,10 +232,17 @@ router.get('/nodes/active', optionalAuth(), async (req, res) => {
     const activeNodesSourceId = typeof req.query.sourceId === 'string' && req.query.sourceId.length > 0
       ? (req.query.sourceId as string)
       : undefined;
-    const allDbNodes = await databaseService.nodes.getActiveNodes(days, activeNodesSourceId ?? ALL_SOURCES); // intentional cross-source when sourceId omitted
-
-    // Filter nodes based on channel read permissions (source-scoped, #3745)
-    const dbNodes = await filterNodesByChannelPermission(allDbNodes, (req as any).user, activeNodesSourceId);
+    // The caller's grants, loaded once; each row is checked on its own source.
+    const viewer = req.user ?? null;
+    const access = await loadNodeViewAccess(viewer);
+    // One source when named. With none: every source for an admin, else only
+    // the sources the caller holds a channel grant on.
+    const activeScope = activeNodesSourceId
+      ?? (access.sources === 'all' ? ALL_SOURCES : access.sources);
+    const allDbNodes = await databaseService.nodes.getActiveNodes(days, activeScope);
+    const dbNodes = access.isAdmin
+      ? allDbNodes
+      : allDbNodes.filter((node) => access.canViewNode(rowSourceId(node), node.channel));
 
     const assets = await databaseService.getAssetNodesMapAsync();
 
@@ -214,7 +265,7 @@ router.get('/nodes/active', optionalAuth(), async (req, res) => {
         deviceInfo.position = { latitude: node.latitude, longitude: node.longitude, altitude: node.altitude };
       }
 
-      const enhanced = await enhanceNodeForClient(deviceInfo, (req as any).user, undefined, undefined, assets);
+      const enhanced = await enhanceNodeForClient(deviceInfo, viewer, undefined, access.canViewPrivate(rowSourceId(node)), assets);
       return applySignFlipCorrection(enhanced, await signFlipFor(rowSourceId(node)));
     }));
 
@@ -723,10 +774,22 @@ router.post('/nodes/:nodeNum/copy-nodeinfo', requireSourcePairPermission('nodes'
 router.get('/nodes/:nodeId/position-history', optionalAuth(), async (req, res) => {
   try {
     const { nodeId } = req.params;
+    const posHistSourceId = typeof req.query.sourceId === 'string' && req.query.sourceId.length > 0
+      ? (req.query.sourceId as string)
+      : undefined;
 
-    // Check channel-based access for this node (source-scoped, #3745)
-    if (!await checkNodeChannelAccess(nodeId, req.user, req.query.sourceId as string | undefined)) {
+    // Which sources' fixes this caller may read for this node: the channel
+    // rule and the private-position rule, each applied on the source that
+    // holds the rows (#3745). The result scopes the query below.
+    const scope = await resolveNodePositionScope(nodeId, req.user, posHistSourceId);
+    if (!scope.allowed) {
       return res.status(403).json({ error: 'Insufficient permissions' });
+    }
+    // Nothing the caller may see (the position is private in every source
+    // they can otherwise read): an empty history, as before.
+    if (Array.isArray(scope.sources) && scope.sources.length === 0) {
+      res.json([]);
+      return;
     }
 
     // Allow hours parameter for future use, but default to fetching ALL position history
@@ -746,23 +809,9 @@ router.get('/nodes/:nodeId/position-history', optionalAuth(), async (req, res) =
       ? rawBefore
       : undefined;
 
-    // Check privacy for position history — scope to caller's source so the
-    // privacy setting reflects this source's node (same nodeNum may exist in
-    // multiple sources with different privacy flags).
-    const posHistSourceId = typeof req.query.sourceId === 'string' && req.query.sourceId.length > 0
-      ? (req.query.sourceId as string)
-      : undefined;
-    const nodeNum = parseInt(nodeId.replace('!', ''), 16);
-    const node = await databaseService.nodes.getNode(nodeNum, posHistSourceId);
-    const isPrivate = node?.positionOverrideIsPrivate === true;
-    const canViewPrivate = !!req.user && await hasPermission(req.user, 'nodes_private', 'read');
-    if (isPrivate && !canViewPrivate) {
-      res.json([]);
-      return;
-    }
-
-    // Get only position-related telemetry (lat/lon/alt/speed/track) for the node - much more efficient!
-    const positionTelemetry = await databaseService.getPositionTelemetryByNodeAsync(nodeId, 1500, cutoffTime, beforeTimestamp);
+    // Position telemetry (lat/lon/alt/speed/track) for the node, from the
+    // permitted sources only. It used to read every source's rows.
+    const positionTelemetry = await databaseService.telemetry.getPositionTelemetryByNode(nodeId, 1500, cutoffTime, scope.sources, beforeTimestamp);
 
     // Pivot the per-metric telemetry rows into per-fix position objects.
     // Per-fix receive metadata (SNR + hop info, issue #3492) stamped on the
@@ -781,16 +830,25 @@ router.get('/nodes/:nodeId/position-history', optionalAuth(), async (req, res) =
 router.get('/nodes/:nodeId/positions', optionalAuth(), async (req, res) => {
   try {
     const { nodeId } = req.params;
+    const positionsSourceId = typeof req.query.sourceId === 'string' && req.query.sourceId.length > 0
+      ? (req.query.sourceId as string)
+      : undefined;
 
-    // Check channel-based access for this node (source-scoped, #3745)
-    if (!await checkNodeChannelAccess(nodeId, req.user, req.query.sourceId as string | undefined)) {
+    // Same rule as /position-history above: channel and private-position
+    // access per source, and the query reads only the sources that pass.
+    const scope = await resolveNodePositionScope(nodeId, req.user, positionsSourceId);
+    if (!scope.allowed) {
       return res.status(403).json({ error: 'Insufficient permissions' });
+    }
+    if (Array.isArray(scope.sources) && scope.sources.length === 0) {
+      res.json([]);
+      return;
     }
 
     const limit = req.query.limit ? parseInt(req.query.limit as string) : 2000;
 
     // Get only position-related telemetry (lat/lon/alt) for the node
-    const positionTelemetry = await databaseService.getPositionTelemetryByNodeAsync(nodeId, limit);
+    const positionTelemetry = await databaseService.telemetry.getPositionTelemetryByNode(nodeId, limit, undefined, scope.sources);
 
     // Group by timestamp to get lat/lon pairs
     const positionMap = new Map<number, { lat?: number; lon?: number; alt?: number }>();
@@ -1250,7 +1308,8 @@ router.get('/nodes/:nodeId/position-override', optionalAuth(), requireSourceId('
     }
 
     // CRITICAL: Mask coordinates for private overrides if user lacks permission
-    const canViewPrivate = !!req.user && await hasPermission(req.user, 'nodes_private', 'read');
+    // `nodes_private` is a per-source permission: checked on this source.
+    const canViewPrivate = !!req.user && await hasPermission(req.user, 'nodes_private', 'read', poGetSourceId);
     if (override.isPrivate && !canViewPrivate) {
       const masked = { ...override };
       delete masked.latitude;

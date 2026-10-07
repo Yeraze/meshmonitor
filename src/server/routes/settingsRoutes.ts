@@ -10,7 +10,7 @@
  */
 
 import { Router, Request, Response } from 'express';
-import { optionalAuth, requirePermission } from '../auth/authMiddleware.js';
+import { optionalAuth, requirePermission, requireAdmin } from '../auth/authMiddleware.js';
 import databaseService from '../../services/database.js';
 import { logger } from '../../utils/logger.js';
 import { compileUserRegex } from '../../utils/safeRegex.js';
@@ -2220,7 +2220,10 @@ router.get('/position-estimation/status', requirePermission('settings', 'read'),
   }
 });
 
-router.post('/position-estimation/run-now', requirePermission('settings', 'write'), async (req, res) => {
+// Recomputes the global estimated_positions table from every source's
+// observations. Admin only: `settings:write` on one source is not a grant
+// over the others.
+router.post('/position-estimation/run-now', requireAdmin(), async (req, res) => {
   try {
     const result = await positionEstimationScheduler.runNow();
     void databaseService.auditLogAsync(
@@ -2260,8 +2263,10 @@ router.get('/auto-enrichment/status', requirePermission('settings', 'read'), asy
  * Run now. Resolves after the database pass; any NodeInfo pushes follow in the
  * background under the same per-run cap and spacing as a scheduled run.
  * Counts as a run, so it also resets the schedule's clock.
+ * Admin only: the run copies NodeInfo between every pair of sources and may
+ * push to their radios, so `settings:write` on one source does not cover it.
  */
-router.post('/auto-enrichment/run-now', requirePermission('settings', 'write'), async (req, res) => {
+router.post('/auto-enrichment/run-now', requireAdmin(), async (req, res) => {
   try {
     const summary = await autoEnrichmentScheduler.runNow('manual');
     void databaseService.auditLogAsync(

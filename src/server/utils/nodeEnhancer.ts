@@ -6,6 +6,9 @@ import databaseService from '../../services/database.js';
 import { isBogusPosition } from '../../utils/nullIsland.js';
 import { CHANNEL_DB_OFFSET } from '../constants/meshtastic.js';
 import { effectiveIsMobile } from '../../utils/assetTracking.js';
+import { loadSourcePermissions } from './sourcePermissions.js';
+import type { SourcePermissions } from './sourcePermissions.js';
+import { ALL_SOURCES } from '../../db/repositories/index.js';
 
 /**
  * Effective position fields for a database node row.
@@ -167,6 +170,65 @@ export async function enhanceNodeForClient(
   }
 
   return enhancedNode;
+}
+
+/**
+ * Who may see which node rows, decided per row from the row's OWN source.
+ *
+ * `filterNodesByChannelPermission(nodes, user)` with no source merges the
+ * caller's channel grants across every source, so `channel_0:viewOnMap` on
+ * source A showed channel-0 nodes from source B. Reads that return rows from
+ * several sources use this instead: one load, then a pure check per row.
+ */
+export interface NodeViewAccess {
+  readonly isAdmin: boolean;
+  /** The grants this was built from, for a per-source check on another resource. */
+  readonly permissions: SourcePermissions;
+  /** May the caller see a node last heard on `channel` of `sourceId`? */
+  canViewNode(sourceId: string | null | undefined, channel: number | null | undefined): boolean;
+  /** May the caller see a private position override held on `sourceId`? */
+  canViewPrivate(sourceId: string | null | undefined): boolean;
+  /**
+   * The sources worth querying: `'all'` for an admin, and for a caller with a
+   * virtual-channel grant (those are global by design, so a row on any source
+   * can match). Otherwise the sources where the caller holds `viewOnMap` on
+   * some device channel. `canViewNode` still decides each row.
+   */
+  readonly sources: 'all' | string[];
+}
+
+const DEVICE_CHANNEL_RESOURCES: ResourceType[] = [0, 1, 2, 3, 4, 5, 6, 7].map(
+  (n) => `channel_${n}` as ResourceType,
+);
+
+export async function loadNodeViewAccess(user: User | null | undefined): Promise<NodeViewAccess> {
+  if (user?.isAdmin || !user) {
+    const permissions = await loadSourcePermissions(user);
+    const all = permissions.isAdmin;
+    return { isAdmin: all, permissions, canViewNode: () => all, canViewPrivate: () => all, sources: all ? 'all' : [] };
+  }
+  const [permissions, channelDbPermissions] = await Promise.all([
+    loadSourcePermissions(user),
+    // Global by design: see filterNodesByChannelPermission below.
+    databaseService.getChannelDatabasePermissionsForUserAsSetAsync(user.id),
+  ]);
+  const hasVirtualGrant = Object.values(channelDbPermissions).some((grant) => grant?.viewOnMap === true);
+  return {
+    isAdmin: false,
+    permissions,
+    canViewNode(sourceId, channel) {
+      const channelNum = channel ?? 0;
+      if (channelNum >= CHANNEL_DB_OFFSET) {
+        return channelDbPermissions[channelNum - CHANNEL_DB_OFFSET]?.viewOnMap === true;
+      }
+      if (!sourceId) return false;
+      return permissions.can(`channel_${channelNum}` as ResourceType, 'viewOnMap', sourceId);
+    },
+    canViewPrivate: (sourceId) => (sourceId ? permissions.can('nodes_private', 'read', sourceId) : false),
+    sources: hasVirtualGrant
+      ? 'all'
+      : permissions.sourcesWhere((grants) => DEVICE_CHANNEL_RESOURCES.some((r) => grants[r]?.viewOnMap === true)),
+  };
 }
 
 /**
@@ -437,6 +499,69 @@ export async function checkNodeChannelAccess(
     : {};
   const channelDbId = channelNum - CHANNEL_DB_OFFSET;
   return channelDbPermissions[channelDbId]?.viewOnMap === true;
+}
+
+/** Which sources a position read for one node may draw on. */
+export type NodePositionScope =
+  | { allowed: false }
+  /** `sources` is one source, a list (possibly empty: nothing to show), or every source (admin). */
+  | { allowed: true; sources: typeof ALL_SOURCES | string | string[] };
+
+/**
+ * Decide which sources' position rows a caller may read for one node.
+ *
+ * Position telemetry is stored per source. A read keyed only by node id
+ * returns every source's fixes, so the permission has to become a source
+ * filter on the query, not only a yes/no at the door:
+ *
+ *  - Admin: the named source, or every source.
+ *  - Source named: the caller needs `viewOnMap` on the channel the node was
+ *    last heard on IN THAT SOURCE (channel 0 when the source has no row for
+ *    it, as `checkNodeChannelAccess` does). A node whose position is private
+ *    in that source yields no rows unless the caller holds `nodes_private:read`
+ *    there.
+ *  - None named: the same two rules applied to each source that holds the
+ *    node. Refused when no source passes the channel rule.
+ *  - MeshCore ids (64-hex public keys) have no channel: `nodes:viewOnMap` on
+ *    the source, the gate the MeshCore position reads use (#4559).
+ */
+export async function resolveNodePositionScope(
+  nodeId: string,
+  user: User | null | undefined,
+  sourceId?: string,
+): Promise<NodePositionScope> {
+  const named = sourceId || undefined;
+  if (user?.isAdmin) return { allowed: true, sources: named ?? ALL_SOURCES };
+  if (!user) return { allowed: false };
+
+  if (/^[0-9a-fA-F]{64}$/.test(nodeId)) {
+    const permissions = await loadSourcePermissions(user);
+    if (named) {
+      return permissions.can('nodes', 'viewOnMap', named) ? { allowed: true, sources: named } : { allowed: false };
+    }
+    const sources = permissions.sourcesWhere((grants) => grants.nodes?.viewOnMap === true);
+    return sources.length > 0 ? { allowed: true, sources } : { allowed: false };
+  }
+
+  const nodeNum = nodeId.startsWith('!') ? parseInt(nodeId.replace('!', ''), 16) : parseInt(nodeId, 10);
+  const access = await loadNodeViewAccess(user);
+
+  if (named) {
+    const node = await databaseService.nodes.getNode(nodeNum, named);
+    if (!access.canViewNode(named, node?.channel ?? 0)) return { allowed: false };
+    if (node?.positionOverrideIsPrivate && !access.canViewPrivate(named)) return { allowed: true, sources: [] };
+    return { allowed: true, sources: named };
+  }
+
+  const rows = await databaseService.nodes.getNodeVisibilityAcrossSources(nodeNum);
+  const visible = rows.filter((row) => access.canViewNode(row.sourceId, row.channel));
+  if (visible.length === 0) return { allowed: false };
+  return {
+    allowed: true,
+    sources: visible
+      .filter((row) => !row.positionOverrideIsPrivate || access.canViewPrivate(row.sourceId))
+      .map((row) => row.sourceId),
+  };
 }
 
 /**

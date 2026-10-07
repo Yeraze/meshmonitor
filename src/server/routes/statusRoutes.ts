@@ -4,19 +4,36 @@ import { logger } from '../../utils/logger.js';
 import { fail } from '../utils/apiResponse.js';
 import { requireDeviceSourcePermission, getDeviceSourceTarget } from '../utils/deviceSourcePermission.js';
 import { sourceManagerRegistry } from '../sourceManagerRegistry.js';
+import { listPermittedSourceIds } from '../utils/sourceScopedAccess.js';
+import { mayViewSourceEndpoint } from '../utils/sourceConfigRedaction.js';
 
 const router = Router();
 
-router.get('/virtual-node/status', requireAuth(), (_req: Request, res: Response) => {
+// Virtual-node status, one row per source. Signed-in callers only.
+//
+// A row says whether a source runs a virtual node, what it allows, and who is
+// connected to it, so it is per-source data: a source appears only when the
+// caller holds `connection:read` on it (admins see all). It used to list every
+// source to any signed-in user. The client list carries each client's IP
+// address; that part also needs `sources:read`, the rule for a source's own
+// address (mayViewSourceEndpoint). Without it the count stays and the list is
+// empty.
+router.get('/virtual-node/status', requireAuth(), async (req: Request, res: Response) => {
   try {
+    const [readable, mayViewAddresses] = await Promise.all([
+      listPermittedSourceIds(req.user, 'connection', 'read'),
+      mayViewSourceEndpoint(req),
+    ]);
     const managers = sourceManagerRegistry.getAllManagers() as any[];
-    const sources = managers.map((mgr) => {
+    const sources: unknown[] = [];
+    for (const mgr of managers) {
       const vn = mgr.virtualNodeServer;
       const status = mgr.getStatus?.();
       const sourceId = status?.sourceId ?? mgr.sourceId;
+      if (readable !== 'all' && !readable.includes(sourceId)) continue;
       const sourceName = status?.sourceName ?? sourceId;
       if (!vn) {
-        return {
+        sources.push({
           sourceId,
           sourceName,
           enabled: false,
@@ -24,9 +41,10 @@ router.get('/virtual-node/status', requireAuth(), (_req: Request, res: Response)
           allowAdminCommands: false,
           clientCount: 0,
           clients: [],
-        };
+        });
+        continue;
       }
-      return {
+      sources.push({
         sourceId,
         sourceName,
         enabled: true,
@@ -41,9 +59,9 @@ router.get('/virtual-node/status', requireAuth(), (_req: Request, res: Response)
         // Duck-typed like the rest of this handler: `getAllManagers()` mixes VN
         // implementations, and one missing method used to take the whole
         // endpoint down with a 500 rather than degrading that single source.
-        clients: typeof vn.getClientDetails === 'function' ? vn.getClientDetails() : [],
-      };
-    });
+        clients: mayViewAddresses && typeof vn.getClientDetails === 'function' ? vn.getClientDetails() : [],
+      });
+    }
 
     res.json({ sources });
   } catch (error) {

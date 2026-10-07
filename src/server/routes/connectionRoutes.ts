@@ -1,5 +1,5 @@
 import { Router, Request, Response } from 'express';
-import { optionalAuth, requireAuth, requireAdmin } from '../auth/authMiddleware.js';
+import { optionalAuth, requireAuth, requireAdmin, hasPermission } from '../auth/authMiddleware.js';
 import databaseService from '../../services/database.js';
 import { logger } from '../../utils/logger.js';
 import { resolveSourceManager } from '../utils/resolveSourceManager.js';
@@ -34,12 +34,50 @@ async function nonMeshtasticConnectionStatus(sourceId: string | undefined): Prom
   return { ...NOT_CONNECTED };
 }
 
+/**
+ * What a caller WITHOUT `connection:read` on the source gets: whether the link
+ * is up, and nothing else. The app shell needs this much for every user (the
+ * reboot and config-import dialogs wait on `connected`), and it is no more than
+ * `GET /api/sources/:id/status` already tells anyone. Named fields, not "the
+ * status minus the address", so a field added to the status later is not
+ * handed out by default.
+ */
+function reducedStatus(status: Record<string, unknown>): Record<string, unknown> {
+  return {
+    connected: status.connected === true,
+    nodeResponsive: status.nodeResponsive === true,
+    configuring: status.configuring === true,
+    userDisconnected: status.userDisconnected === true,
+  };
+}
+
+/**
+ * Does the caller hold `connection:read` on the source this read is about?
+ * `connection` is a per-source permission, so it is checked on that source:
+ * the one named, else the source of the manager the status came from (the
+ * primary). Admins pass.
+ */
+async function mayReadConnection(req: Request, sourceId: string | undefined | null): Promise<boolean> {
+  const user = req.user;
+  if (!user) return false;
+  if (user.isAdmin) return true;
+  if (!sourceId) return false;
+  return hasPermission(user, 'connection', 'read', sourceId);
+}
+
 const router = Router();
 
-// Connection status endpoint
+// Connection status. Open to every caller, signed in or not, because the app
+// shell polls it. What comes back depends on the caller:
+//   - no `connection:read` on the source: the four link flags only;
+//   - `connection:read` on the source: the full status, without the address;
+//   - that and `sources:read` (or admin): the address (`nodeIp`) too, the
+//     rule the source list applies to `config.host` (mayViewSourceEndpoint).
 router.get('/', optionalAuth(), async (req: Request, res: Response) => {
   try {
-    const connSourceId = req.query.sourceId as string | undefined;
+    const connSourceId = typeof req.query.sourceId === 'string' && req.query.sourceId.length > 0
+      ? req.query.sourceId
+      : undefined;
     // When the caller explicitly names a sourceId but no manager is registered
     // for it (e.g. autoConnect=false, or user manually disconnected via
     // /api/sources/:id/disconnect — issue #2773), return a stable
@@ -49,9 +87,14 @@ router.get('/', optionalAuth(), async (req: Request, res: Response) => {
     // The same applies to a non-Meshtastic source (#5375): report its own
     // state, never the primary radio's.
     const ownStatus = await nonMeshtasticConnectionStatus(connSourceId);
-    const status = ownStatus ?? await resolveSourceManager(connSourceId).getConnectionStatus();
-    // The node address is a connection endpoint: signed in with `sources:read`
-    // (or admin) only, the same rule the source list applies to `config.host`.
+    const manager = ownStatus ? null : resolveSourceManager(connSourceId);
+    const status: Record<string, unknown> = ownStatus ?? { ...(await manager!.getConnectionStatus()) };
+    const statusSourceId = connSourceId ?? manager?.sourceId;
+
+    if (!(await mayReadConnection(req, statusSourceId))) {
+      res.json(reducedStatus(status));
+      return;
+    }
     if (!(await mayViewSourceEndpoint(req))) {
       const { nodeIp: _nodeIp, ...statusWithoutNodeIp } = status;
       res.json(statusWithoutNodeIp);
@@ -116,25 +159,39 @@ router.post('/reconnect', connectionWriteGate, async (req: Request, res: Respons
   }
 });
 
-// Get detailed connection info (authenticated users only)
+// Detailed connection info for the header's node dialog. Signed-in callers
+// only. Same three levels as `GET /` above: without `connection:read` on the
+// source the reply is the link flags alone, so the dialog still opens; the
+// ports and the override flag need `connection:read`; the addresses need
+// `sources:read` as well.
 router.get('/info', requireAuth(), async (req: Request, res: Response) => {
   try {
-    const ciSourceId = req.query.sourceId as string | undefined;
+    const ciSourceId = typeof req.query.sourceId === 'string' && req.query.sourceId.length > 0
+      ? req.query.sourceId
+      : undefined;
     // A non-Meshtastic source has no node address or TCP override to show;
     // report its own status and say so, not the primary's link (#5375).
     const ownStatus = await nonMeshtasticConnectionStatus(ciSourceId);
     if (ownStatus) {
+      if (!(await mayReadConnection(req, ciSourceId))) {
+        res.json(reducedStatus(ownStatus));
+        return;
+      }
       const { nodeIp: _nodeIp, ...rest } = ownStatus;
       res.json({ ...rest, hasLocalRadio: false });
       return;
     }
     const ciManager = resolveSourceManager(ciSourceId);
     const status = await ciManager.getConnectionStatus();
+    if (!(await mayReadConnection(req, ciSourceId ?? ciManager.sourceId))) {
+      res.json(reducedStatus(status));
+      return;
+    }
     const env = getEnvironmentConfig();
     const ipOverride = await databaseService.settings.getSetting('meshtasticNodeIpOverride');
     const portOverride = await databaseService.settings.getSetting('meshtasticTcpPortOverride');
 
-    // Signed in is not enough to see the address — see mayViewSourceEndpoint.
+    // `connection:read` is not enough to see the address — see mayViewSourceEndpoint.
     if (!(await mayViewSourceEndpoint(req))) {
       const { nodeIp: _nodeIp, ...rest } = status;
       res.json({

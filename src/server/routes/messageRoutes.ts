@@ -14,7 +14,10 @@ import {
   listPermittedSourceIds,
   readNewestAcrossSources,
   readRequestSourceId,
+  loadSourcePermissions,
 } from '../utils/sourceScopedAccess.js';
+import type { SourcePermissions } from '../utils/sourceScopedAccess.js';
+import type { ResourceType } from '../../types/permission.js';
 import { optionalAuth, hasPermission } from '../auth/authMiddleware.js';
 import {
   getUserReadableVirtualChannelIds,
@@ -26,7 +29,8 @@ import {
 import { resolveMessageReadAccess } from '../utils/messageReadAccess.js';
 import { parseDestinationNum } from '../utils/parseDestination.js';
 import { transformDbMessageToMeshMessage } from '../utils/transformDbMessage.js';
-import { filterNodesByChannelPermission } from '../utils/nodeEnhancer.js';
+import { filterNodesByChannelPermission, loadNodeViewAccess } from '../utils/nodeEnhancer.js';
+import type { NodeViewAccess } from '../utils/nodeEnhancer.js';
 import { ok, fail } from '../utils/apiResponse.js';
 import { isTxDisabledError } from '../errors/txDisabledError.js';
 import { PortNum } from '../constants/meshtastic.js';
@@ -1118,118 +1122,184 @@ router.get('/counts', optionalAuth(), async (req, res) => {
  */
 router.get('/unread-counts', optionalAuth(), async (req, res) => {
   try {
-    // Resolved BEFORE the permission gates below, because those gates are
-    // scoped to it. Reading it afterwards is what let the two drift apart.
     const unreadSourceId = typeof req.query.sourceId === 'string' && req.query.sourceId.length > 0
       ? req.query.sourceId
       : undefined;
-
-    // Check if user has either any channel permission or messages permission.
-    //
-    // Both checks are scoped to `unreadSourceId`. They used to be un-scoped
-    // while the queries below answered for the caller-named source, which is
-    // the #3745 cross-source leak in slow motion: holding `messages:read` on
-    // ANY one source was enough to read EVERY source's unread DM counts, one
-    // `?sourceId=` at a time. Observed on a real install — an account with
-    // `messages:read` on three MQTT sources and none on a TCP source could
-    // still read that TCP source's DM counts.
-    //
-    // `/unread-by-source` re-checks per source id for exactly this reason; it
-    // described this handler as "bounded ... the caller names the source and
-    // sees only that source", which is true of the RESPONSE but says nothing
-    // about whether the caller was entitled to name it.
-    //
-    // With `sourceId` omitted the queries deliberately span every source, and
-    // `hasPermission` with no scope keeps its original meaning there.
-    const isAdmin = req.user?.isAdmin === true;
-    const hasChannelsRead = isAdmin || (req.user ? await hasPermission(req.user, 'channel_0', 'read', unreadSourceId) : false);
-    const hasMessagesRead = isAdmin || (req.user ? await hasPermission(req.user, 'messages', 'read', unreadSourceId) : false);
-    // Virtual (Channel Database) channels are gated by per-entry `canRead`
-    // grants; a virtual-channel-only reader still needs to reach the unread
-    // counts for those channels.
-    const readableVirtual = await getUserReadableVirtualChannelIds(req.user, isAdmin);
-    const hasVirtualRead = hasAnyReadableVirtualChannel(readableVirtual);
-
-    if (!hasChannelsRead && !hasMessagesRead && !hasVirtualRead) {
-      return res.status(403).json({
-        error: 'Insufficient permissions',
-        code: 'FORBIDDEN',
-        required: { resource: 'channel_0 or messages', action: 'read' },
-      });
-    }
-
-    const userId = req.user?.id ?? null;
-    // `unreadSourceId` is resolved at the top of the handler (it gates the
-    // permission checks). Multi-source views must only see unread counts for
-    // messages their own source ingested — without that scoping an inactive
-    // source can keep a badge lit for messages that aren't visible in the
-    // current source's tab.
     const excludeMqtt = req.query.excludeMqtt === 'true';
-    // DMs count against THIS source's own node. A non-Meshtastic source has no
-    // local node, so DM-to-local counting is skipped rather than counting the
-    // primary TCP node's DMs (#5375).
-    const unreadManager = resolveSourceManager(unreadSourceId);
-    const localNodeInfo = resolveOwnMeshtasticManager(unreadSourceId)?.getLocalNodeInfo() ?? null;
+    const viewer = await loadUnreadViewer(req.user);
 
-    const result: {
-      channels?: { [channelId: number]: number };
-      directMessages?: { [nodeId: string]: number };
-    } = {};
-
-    // Load mute preferences for the current user (if authenticated), from the
-    // SAME per-source row push/Apprise filtering reads (#5487).
-    const { channels: mutedChannelIds, dms: mutedDMNodeIds } = await loadActiveMutes(userId, unreadSourceId);
-
-    // Get channel unread counts if user can read any channel (physical or
-    // virtual). Only count incoming messages (exclude messages sent by our node).
-    if (hasChannelsRead || hasVirtualRead) {
-      const rawCounts = await databaseService.getUnreadCountsByChannelAsync(userId, localNodeInfo?.nodeId, unreadSourceId ?? ALL_SOURCES, excludeMqtt); // intentional cross-source when sourceId omitted
-
-      // MM-SEC-3: filter by per-channel read permission as well as mute prefs.
-      // The bare `channel_0:read` gate above lets a viewer reach this handler
-      // but they must not learn unread counts for channels they cannot read.
-      // Virtual (Channel Database) channels use per-entry `canRead` grants.
-      const channels: { [channelId: number]: number } = {};
-      for (const [channelIdStr, count] of Object.entries(rawCounts)) {
-        const channelId = Number(channelIdStr);
-        if (mutedChannelIds.has(channelId)) continue;
-        if (isVirtualChannelNumber(channelId)) {
-          if (!isAdmin && !canReadVirtualChannelNumber(channelId, readableVirtual)) continue;
-        } else if (!hasChannelsRead) {
-          continue;
-        } else if (!isAdmin && req.user) {
-          const channelResource = `channel_${channelId}` as import('../../types/permission.js').ResourceType;
-          if (!(await hasPermission(req.user, channelResource, 'read', unreadSourceId))) continue;
-        } else if (!req.user && !isAdmin) {
-          continue;
-        }
-        channels[channelId] = count as number;
-      }
-      result.channels = channels;
+    // One source when named, and for an admin with none named (who reads every
+    // source in one query, as before). Every permission check in
+    // `unreadCountsFor` is made on that source: `messages:read` on any one
+    // source used to return every source's DM counts, one `?sourceId=` at a time.
+    if (unreadSourceId || viewer.isAdmin) {
+      const result = await unreadCountsFor(viewer, unreadSourceId, excludeMqtt);
+      if (!result) return refuseUnread(res);
+      res.json(result);
+      return;
     }
 
-    // Get DM unread counts if user has messages permission (batch query)
-    if (hasMessagesRead && localNodeInfo) {
-      const allUnreadDMs = await databaseService.getBatchUnreadDMCountsAsync(localNodeInfo.nodeId, userId, unreadSourceId ?? ALL_SOURCES); // intentional cross-source when sourceId omitted
-      const allNodes = await unreadManager.getAllNodesAsync(unreadSourceId);
-      const visibleNodes = await filterNodesByChannelPermission(allNodes, req.user, unreadSourceId);
-      const visibleNodeIds = new Set(visibleNodes.map(n => n.user?.id).filter(Boolean));
-      const directMessages: { [nodeId: string]: number } = {};
-      for (const [nodeId, count] of Object.entries(allUnreadDMs)) {
-        // Filter out muted DMs
-        if (visibleNodeIds.has(nodeId) && count > 0 && !mutedDMNodeIds.has(nodeId)) {
-          directMessages[nodeId] = count;
+    // No source named, not an admin: the sum over the sources the caller may
+    // read, each counted under that source's own grants. This used to be one
+    // query over every source, filtered by grants merged across sources, so a
+    // grant on source A counted source B's messages.
+    const perSource = await Promise.all(
+      (await unreadCandidateSources(viewer)).map((id) => unreadCountsFor(viewer, id, excludeMqtt)),
+    );
+    const readable = perSource.filter((entry): entry is UnreadCounts => entry !== null);
+    if (readable.length === 0 && !viewer.hasVirtualRead) return refuseUnread(res);
+
+    const result: UnreadCounts = {};
+    if (viewer.hasVirtualRead) result.channels = {};
+    for (const entry of readable) {
+      if (entry.channels) {
+        const channels = (result.channels ??= {});
+        for (const [id, count] of Object.entries(entry.channels)) {
+          channels[Number(id)] = (channels[Number(id)] ?? 0) + count;
         }
       }
-      result.directMessages = directMessages;
+      if (entry.directMessages) {
+        const dms = (result.directMessages ??= {});
+        for (const [nodeId, count] of Object.entries(entry.directMessages)) {
+          dms[nodeId] = (dms[nodeId] ?? 0) + count;
+        }
+      }
     }
-
     res.json(result);
   } catch (error) {
     logger.error('Error fetching unread counts:', error);
     res.status(500).json({ error: 'Failed to fetch unread counts' });
   }
 });
+
+interface UnreadCounts {
+  channels?: { [channelId: number]: number };
+  directMessages?: { [nodeId: string]: number };
+}
+
+/** Who is asking for unread state, with every grant loaded once. */
+interface UnreadViewer {
+  user: Express.Request['user'];
+  userId: number | null;
+  isAdmin: boolean;
+  permissions: SourcePermissions;
+  nodes: NodeViewAccess;
+  /** Virtual (Channel Database) channels are gated by per-entry `canRead`
+   *  grants, global by design. */
+  readableVirtual: Awaited<ReturnType<typeof getUserReadableVirtualChannelIds>>;
+  hasVirtualRead: boolean;
+}
+
+async function loadUnreadViewer(user: Express.Request['user']): Promise<UnreadViewer> {
+  const isAdmin = user?.isAdmin === true;
+  const [permissions, nodes, readableVirtual] = await Promise.all([
+    loadSourcePermissions(user),
+    loadNodeViewAccess(user),
+    getUserReadableVirtualChannelIds(user, isAdmin),
+  ]);
+  return {
+    user,
+    userId: user?.id ?? null,
+    isAdmin,
+    permissions,
+    nodes,
+    readableVirtual,
+    hasVirtualRead: hasAnyReadableVirtualChannel(readableVirtual),
+  };
+}
+
+function refuseUnread(res: Response): void {
+  res.status(403).json({
+    error: 'Insufficient permissions',
+    code: 'FORBIDDEN',
+    required: { resource: 'channel_0 or messages', action: 'read' },
+  });
+}
+
+/**
+ * The sources an unread read with no `sourceId` covers for a caller who is not
+ * an admin: those where they hold `channel_0:read` or `messages:read` (the two
+ * gates below). A virtual-channel reader may have messages on any source, so
+ * they get every source; the per-channel check still decides each count.
+ */
+async function unreadCandidateSources(viewer: UnreadViewer): Promise<string[]> {
+  if (viewer.hasVirtualRead) {
+    return (await databaseService.sources.getAllSources()).map((source) => source.id);
+  }
+  return viewer.permissions.sourcesWhere(
+    (grants) => grants.channel_0?.read === true || grants.messages?.read === true,
+  );
+}
+
+/** May the viewer read this channel's unread state on this source? */
+function canReadUnreadChannel(viewer: UnreadViewer, channelId: number, sourceId: string | undefined, hasChannelsRead: boolean): boolean {
+  if (isVirtualChannelNumber(channelId)) {
+    return viewer.isAdmin || canReadVirtualChannelNumber(channelId, viewer.readableVirtual);
+  }
+  // MM-SEC-3: the bare `channel_0:read` gate lets a viewer reach the handler,
+  // but they must not learn about channels they cannot read.
+  if (!hasChannelsRead) return false;
+  if (viewer.isAdmin) return true;
+  return !!sourceId && viewer.permissions.can(`channel_${channelId}` as ResourceType, 'read', sourceId);
+}
+
+/** Node ids of the DM senders the viewer may see on this source. */
+async function visibleDmSenders(viewer: UnreadViewer, sourceId: string | undefined): Promise<Set<string>> {
+  const allNodes = await resolveSourceManager(sourceId).getAllNodesAsync(sourceId);
+  const visible = viewer.isAdmin
+    ? allNodes
+    : allNodes.filter((node) => viewer.nodes.canViewNode(sourceId, (node as { channel?: number }).channel));
+  return new Set(visible.map((n) => n.user?.id).filter((id): id is string => typeof id === 'string'));
+}
+
+/**
+ * Unread counts for ONE source, under the viewer's grants on that source.
+ * `sourceId` undefined is the admin's every-source read. Null when the viewer
+ * holds nothing that reaches unread state there.
+ */
+async function unreadCountsFor(viewer: UnreadViewer, sourceId: string | undefined, excludeMqtt: boolean): Promise<UnreadCounts | null> {
+  const holds = (resource: ResourceType): boolean =>
+    viewer.isAdmin || (!!sourceId && viewer.permissions.can(resource, 'read', sourceId));
+  const hasChannelsRead = holds('channel_0');
+  const hasMessagesRead = holds('messages');
+  if (!hasChannelsRead && !hasMessagesRead && !viewer.hasVirtualRead) return null;
+
+  // DMs count against THIS source's own node. A non-Meshtastic source has no
+  // local node, so DM-to-local counting is skipped rather than counting the
+  // primary TCP node's DMs (#5375).
+  const localNodeInfo = resolveOwnMeshtasticManager(sourceId)?.getLocalNodeInfo() ?? null;
+  const result: UnreadCounts = {};
+
+  // Mutes from the SAME per-source row push/Apprise filtering reads (#5487).
+  const { channels: mutedChannelIds, dms: mutedDMNodeIds } = await loadActiveMutes(viewer.userId, sourceId);
+
+  // Only count incoming messages (exclude messages sent by our node).
+  if (hasChannelsRead || viewer.hasVirtualRead) {
+    const rawCounts = await databaseService.getUnreadCountsByChannelAsync(viewer.userId, localNodeInfo?.nodeId, sourceId ?? ALL_SOURCES, excludeMqtt); // cross-source only for an admin with no sourceId
+    const channels: { [channelId: number]: number } = {};
+    for (const [channelIdStr, count] of Object.entries(rawCounts)) {
+      const channelId = Number(channelIdStr);
+      if (mutedChannelIds.has(channelId)) continue;
+      if (!canReadUnreadChannel(viewer, channelId, sourceId, hasChannelsRead)) continue;
+      channels[channelId] = count as number;
+    }
+    result.channels = channels;
+  }
+
+  if (hasMessagesRead && localNodeInfo) {
+    const allUnreadDMs = await databaseService.getBatchUnreadDMCountsAsync(localNodeInfo.nodeId, viewer.userId, sourceId ?? ALL_SOURCES); // cross-source only for an admin with no sourceId
+    const visibleNodeIds = await visibleDmSenders(viewer, sourceId);
+    const directMessages: { [nodeId: string]: number } = {};
+    for (const [nodeId, count] of Object.entries(allUnreadDMs)) {
+      if (visibleNodeIds.has(nodeId) && count > 0 && !mutedDMNodeIds.has(nodeId)) {
+        directMessages[nodeId] = count;
+      }
+    }
+    result.directMessages = directMessages;
+  }
+
+  return result;
+}
 
 /**
  * The channel and DM mutes currently in force for a user on one source.
@@ -1496,75 +1566,90 @@ router.post('/mark-all-dms-read', optionalAuth(), async (req, res) => {
  */
 router.get('/first-unread', optionalAuth(), async (req, res) => {
   try {
-    // Resolved before the gates, which are scoped to it — same reasoning as
-    // `/unread-counts` above, and the same leak if they are left un-scoped:
-    // this handler is shaped identically, so `messages:read` on any one source
-    // would otherwise return the oldest-unread timestamps for a source the
-    // caller holds nothing on, just by naming it in `?sourceId=`.
     const scopedSourceId = typeof req.query.sourceId === 'string' && req.query.sourceId.length > 0
       ? req.query.sourceId
       : undefined;
+    const excludeMqtt = req.query.excludeMqtt === 'true';
+    const viewer = await loadUnreadViewer(req.user);
 
-    const isAdmin = req.user?.isAdmin === true;
-    const hasChannelsRead = isAdmin || (req.user ? await hasPermission(req.user, 'channel_0', 'read', scopedSourceId) : false);
-    const hasMessagesRead = isAdmin || (req.user ? await hasPermission(req.user, 'messages', 'read', scopedSourceId) : false);
-    const readableVirtual = await getUserReadableVirtualChannelIds(req.user, isAdmin);
-    const hasVirtualRead = hasAnyReadableVirtualChannel(readableVirtual);
+    // Same shape as `/unread-counts`: one source when named (or for an admin),
+    // checked on that source.
+    if (scopedSourceId || viewer.isAdmin) {
+      const result = await firstUnreadFor(viewer, scopedSourceId, excludeMqtt);
+      if (!result) return fail(res, 403, 'FORBIDDEN', 'Insufficient permissions');
+      return ok(res, result);
+    }
 
-    if (!hasChannelsRead && !hasMessagesRead && !hasVirtualRead) {
+    // No source named, not an admin: the oldest across the sources the caller
+    // may read, each read under that source's own grants.
+    const perSource = await Promise.all(
+      (await unreadCandidateSources(viewer)).map((id) => firstUnreadFor(viewer, id, excludeMqtt)),
+    );
+    const readable = perSource.filter((entry): entry is FirstUnread => entry !== null);
+    if (readable.length === 0 && !viewer.hasVirtualRead) {
       return fail(res, 403, 'FORBIDDEN', 'Insufficient permissions');
     }
-
-    const userId = req.user?.id ?? null;
-    const excludeMqtt = req.query.excludeMqtt === 'true';
-    const manager = resolveSourceManager(scopedSourceId);
-    // THIS source's own node only; none on a non-Meshtastic source (#5375).
-    const localNodeInfo = resolveOwnMeshtasticManager(scopedSourceId)?.getLocalNodeInfo() ?? null;
-
-    const raw = await databaseService.getFirstUnreadTimestampsAsync(
-      userId,
-      localNodeInfo?.nodeId,
-      scopedSourceId ?? ALL_SOURCES, // intentional cross-source when sourceId omitted
-      excludeMqtt
-    );
-
-    const result: {
-      channels: { [channelId: number]: number };
-      directMessages: { [nodeId: string]: number };
-    } = { channels: {}, directMessages: {} };
-
-    if (hasChannelsRead || hasVirtualRead) {
-      for (const [channelIdStr, ts] of Object.entries(raw.channels)) {
-        const channelId = Number(channelIdStr);
-        if (isVirtualChannelNumber(channelId)) {
-          if (!isAdmin && !canReadVirtualChannelNumber(channelId, readableVirtual)) continue;
-        } else if (!hasChannelsRead) {
-          continue;
-        } else if (!isAdmin && req.user) {
-          const channelResource = `channel_${channelId}` as import('../../types/permission.js').ResourceType;
-          if (!(await hasPermission(req.user, channelResource, 'read', scopedSourceId))) continue;
-        } else if (!req.user && !isAdmin) {
-          continue;
-        }
-        result.channels[channelId] = ts as number;
+    const result: FirstUnread = { channels: {}, directMessages: {} };
+    for (const entry of readable) {
+      for (const [id, ts] of Object.entries(entry.channels)) {
+        const current = result.channels[Number(id)];
+        result.channels[Number(id)] = current === undefined ? ts : Math.min(current, ts);
+      }
+      for (const [nodeId, ts] of Object.entries(entry.directMessages)) {
+        const current = result.directMessages[nodeId];
+        result.directMessages[nodeId] = current === undefined ? ts : Math.min(current, ts);
       }
     }
-
-    if (hasMessagesRead && localNodeInfo) {
-      const allNodes = await manager.getAllNodesAsync(scopedSourceId);
-      const visibleNodes = await filterNodesByChannelPermission(allNodes, req.user, scopedSourceId);
-      const visibleNodeIds = new Set(visibleNodes.map(n => n.user?.id).filter(Boolean));
-      for (const [nodeId, ts] of Object.entries(raw.directMessages)) {
-        if (visibleNodeIds.has(nodeId)) result.directMessages[nodeId] = ts as number;
-      }
-    }
-
     return ok(res, result);
   } catch (error) {
     logger.error('Error fetching first-unread timestamps:', error);
     return fail(res, 500, 'FIRST_UNREAD_FAILED', 'Failed to fetch first-unread timestamps');
   }
 });
+
+interface FirstUnread {
+  channels: { [channelId: number]: number };
+  directMessages: { [nodeId: string]: number };
+}
+
+/**
+ * Oldest-unread timestamps for ONE source, under the viewer's grants on that
+ * source. `sourceId` undefined is the admin's every-source read. Null when the
+ * viewer holds nothing that reaches unread state there. Same gates as
+ * `unreadCountsFor`, so the divider never appears where the badge may not.
+ */
+async function firstUnreadFor(viewer: UnreadViewer, sourceId: string | undefined, excludeMqtt: boolean): Promise<FirstUnread | null> {
+  const holds = (resource: ResourceType): boolean =>
+    viewer.isAdmin || (!!sourceId && viewer.permissions.can(resource, 'read', sourceId));
+  const hasChannelsRead = holds('channel_0');
+  const hasMessagesRead = holds('messages');
+  if (!hasChannelsRead && !hasMessagesRead && !viewer.hasVirtualRead) return null;
+
+  // THIS source's own node only; none on a non-Meshtastic source (#5375).
+  const localNodeInfo = resolveOwnMeshtasticManager(sourceId)?.getLocalNodeInfo() ?? null;
+  const raw = await databaseService.getFirstUnreadTimestampsAsync(
+    viewer.userId,
+    localNodeInfo?.nodeId,
+    sourceId ?? ALL_SOURCES, // cross-source only for an admin with no sourceId
+    excludeMqtt,
+  );
+
+  const result: FirstUnread = { channels: {}, directMessages: {} };
+  if (hasChannelsRead || viewer.hasVirtualRead) {
+    for (const [channelIdStr, ts] of Object.entries(raw.channels)) {
+      const channelId = Number(channelIdStr);
+      if (!canReadUnreadChannel(viewer, channelId, sourceId, hasChannelsRead)) continue;
+      result.channels[channelId] = ts as number;
+    }
+  }
+  if (hasMessagesRead && localNodeInfo) {
+    const visibleNodeIds = await visibleDmSenders(viewer, sourceId);
+    for (const [nodeId, ts] of Object.entries(raw.directMessages)) {
+      if (visibleNodeIds.has(nodeId)) result.directMessages[nodeId] = ts as number;
+    }
+  }
+  return result;
+}
 
 // MM-SEC-6: legacy `/api/channels/debug` removed.
 // The route was a `SELECT *` pass-through gated on the unrelated

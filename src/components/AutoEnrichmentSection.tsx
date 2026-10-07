@@ -14,6 +14,7 @@ import { useTranslation } from 'react-i18next';
 import { useToast } from './ToastContainer';
 import { useCsrfFetch } from '../hooks/useCsrfFetch';
 import { useSaveBar } from '../hooks/useSaveBar';
+import { useAuth } from '../contexts/AuthContext';
 import styles from './AutoEnrichmentSection.module.css';
 
 interface AutoEnrichmentSectionProps {
@@ -178,6 +179,10 @@ const AutoEnrichmentSection: React.FC<AutoEnrichmentSectionProps> = ({ baseUrl }
     onDismiss: () => setDraft(saved),
   });
 
+  // The job runs over every source, so the server takes it from admins only.
+  const { authStatus } = useAuth();
+  const isAdmin = authStatus?.user?.isAdmin === true;
+
   const handleRunNow = useCallback(async () => {
     setIsRunning(true);
     try {
@@ -227,7 +232,8 @@ const AutoEnrichmentSection: React.FC<AutoEnrichmentSectionProps> = ({ baseUrl }
         <button
           type="button"
           onClick={handleRunNow}
-          disabled={busy}
+          disabled={busy || !isAdmin}
+          title={isAdmin ? undefined : t('automation.run_now_admin_only', 'Only an administrator can run this job. It works on every source.')}
           className={`btn-primary ${styles.runNow}`}
         >
           {busy

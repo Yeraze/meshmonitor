@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { useToast } from './ToastContainer';
 import { useCsrfFetch } from '../hooks/useCsrfFetch';
 import { useSaveBar } from '../hooks/useSaveBar';
+import { useAuth } from '../contexts/AuthContext';
 import { NumberInput } from './common/NumberInput';
 import { NumberInputScope } from './common/NumberInputScope';
 import { useNumberInputScope } from './common/numberInputScope';
@@ -133,6 +134,10 @@ const PositionEstimationSection: React.FC<PositionEstimationSectionProps> = ({ b
     onDismiss: resetChanges,
   });
 
+  // The job runs over every source, so the server takes it from admins only.
+  const { authStatus } = useAuth();
+  const isAdmin = authStatus?.user?.isAdmin === true;
+
   const handleRunNow = useCallback(async () => {
     setIsRunning(true);
     try {
@@ -190,13 +195,14 @@ const PositionEstimationSection: React.FC<PositionEstimationSectionProps> = ({ b
         <div className="automation-button-container" style={{ display: 'flex', gap: '0.75rem', marginLeft: 'auto' }}>
           <button
             onClick={handleRunNow}
-            disabled={isRunning || status?.inProgress}
+            disabled={isRunning || status?.inProgress || !isAdmin}
+            title={isAdmin ? undefined : t('automation.run_now_admin_only', 'Only an administrator can run this job. It works on every source.')}
             className="btn-primary"
             style={{
               padding: '0.5rem 1.5rem',
               fontSize: '14px',
-              opacity: (!isRunning && !status?.inProgress) ? 1 : 0.5,
-              cursor: (!isRunning && !status?.inProgress) ? 'pointer' : 'not-allowed'
+              opacity: (!isRunning && !status?.inProgress && isAdmin) ? 1 : 0.5,
+              cursor: (!isRunning && !status?.inProgress && isAdmin) ? 'pointer' : 'not-allowed'
             }}
           >
             {(isRunning || status?.inProgress)

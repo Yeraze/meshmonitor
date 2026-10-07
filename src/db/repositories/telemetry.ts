@@ -5,7 +5,7 @@
  * Supports SQLite, PostgreSQL, and MySQL through Drizzle ORM.
  */
 import { eq, lt, lte, gt, gte, and, asc, desc, inArray, notInArray, isNull, or, not, SQL, count, sql } from 'drizzle-orm';
-import { ALL_SOURCES, BaseRepository, DrizzleDatabase, SourceScope } from './base.js';
+import { ALL_SOURCES, BaseRepository, DrizzleDatabase, SourceScope, SourceSetScope } from './base.js';
 import { DatabaseType, DbTelemetry } from '../types.js';
 import { logger } from '../../utils/logger.js';
 
@@ -451,7 +451,7 @@ export class TelemetryRepository extends BaseRepository {
     nodeId: string,
     limit: number = 1500,
     sinceTimestamp?: number,
-    sourceId?: SourceScope,
+    sourceId?: SourceSetScope,
     beforeTimestamp?: number
   ): Promise<DbTelemetry[]> {
     const positionTypes = ['latitude', 'longitude', 'altitude', 'ground_speed', 'ground_track'];
@@ -685,7 +685,7 @@ export class TelemetryRepository extends BaseRepository {
    */
   async getLatestTelemetryValueForAllNodes(
     telemetryType: string,
-    sourceId?: string,
+    sourceId?: string | readonly string[],
   ): Promise<Map<string, number>> {
     const samples = await this.getLatestTelemetrySampleForAllNodes(telemetryType, sourceId);
     const result = new Map<string, number>();
@@ -713,14 +713,24 @@ export class TelemetryRepository extends BaseRepository {
    */
   async getLatestTelemetrySampleForAllNodes(
     telemetryType: string,
-    sourceId?: string,
+    sourceId?: string | readonly string[],
   ): Promise<Map<string, { value: number; timestamp: number }>> {
     const result = new Map<string, { value: number; timestamp: number }>();
 
+    // One source, a list of sources (`IN`), or none (every source). An empty
+    // list is "no source the caller may read": no rows, and no query.
+    if (Array.isArray(sourceId) && sourceId.length === 0) return result;
+    const scoped = sourceId !== undefined && sourceId !== '';
+    const sourceMatch = (column: SQL): SQL => {
+      if (!scoped) return sql``;
+      if (typeof sourceId === 'string') return sql`AND ${column} = ${sourceId}`;
+      return sql`AND ${column} IN (${sql.join((sourceId as readonly string[]).map((id) => sql`${id}`), sql`, `)})`;
+    };
+
     if (this.isSQLite()) {
       const db = this.getSqliteDb();
-      const innerSourceFilter = sourceId ? sql`AND sourceId = ${sourceId}` : sql``;
-      const outerSourceFilter = sourceId ? sql`AND t.sourceId = ${sourceId}` : sql``;
+      const innerSourceFilter = sourceMatch(sql`sourceId`);
+      const outerSourceFilter = sourceMatch(sql`t.sourceId`);
       const rows = await db.all<{ nodeId: string; value: number; timestamp: number }>(
         sql`SELECT t.nodeId, t.value, t.timestamp FROM telemetry t
             INNER JOIN (
@@ -735,8 +745,8 @@ export class TelemetryRepository extends BaseRepository {
       }
     } else if (this.isMySQL()) {
       const db = this.getMysqlDb();
-      const innerSourceFilter = sourceId ? sql`AND sourceId = ${sourceId}` : sql``;
-      const outerSourceFilter = sourceId ? sql`AND t.sourceId = ${sourceId}` : sql``;
+      const innerSourceFilter = sourceMatch(sql`sourceId`);
+      const outerSourceFilter = sourceMatch(sql`t.sourceId`);
       const [rows] = await (db as any).execute(
         sql`SELECT t.nodeId, t.value, t.timestamp FROM telemetry t
             INNER JOIN (
@@ -751,9 +761,7 @@ export class TelemetryRepository extends BaseRepository {
       }
     } else {
       const db = this.getPostgresDb();
-      const sourceFilter = sourceId
-        ? sql`AND ${this.col('sourceId')} = ${sourceId}`
-        : sql``;
+      const sourceFilter = sourceMatch(this.col('sourceId'));
       const rows = await db.execute(
         sql`SELECT DISTINCT ON (${this.col('nodeId')}) ${this.col('nodeId')}, value, timestamp
             FROM telemetry

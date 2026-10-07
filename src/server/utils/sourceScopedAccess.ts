@@ -51,6 +51,10 @@ import { fail } from './apiResponse.js';
 import { resolveOwnMeshtasticManager } from './resolveSourceManager.js';
 import { refuseNonMeshtasticSource } from './requireMeshtasticDeviceSource.js';
 import { resolveDefaultSourceForUser } from './sourceResolver.js';
+import { loadSourcePermissions } from './sourcePermissions.js';
+
+export { loadSourcePermissions } from './sourcePermissions.js';
+export type { SourcePermissions } from './sourcePermissions.js';
 
 export type OmittedSourceRule = 'primary' | 'permitted' | 'first-permitted' | 'required';
 
@@ -142,7 +146,8 @@ export function getDeviceTarget(req: Request): { sourceId: string; manager: Mesh
 
 /**
  * The sources `user` holds `resource:action` on. `'all'` for an admin, who is
- * not limited to the rows in the sources table.
+ * not limited to the rows in the sources table. Two queries whatever the
+ * number of sources: the source list and the user's grants.
  */
 export async function listPermittedSourceIds(
   user: User | null | undefined,
@@ -151,14 +156,11 @@ export async function listPermittedSourceIds(
 ): Promise<'all' | string[]> {
   if (!user) return [];
   if (user.isAdmin) return 'all';
-  const sources = await databaseService.sources.getAllSources();
-  const permitted: string[] = [];
-  for (const source of sources) {
-    if (await databaseService.checkPermissionAsync(user.id, resource, action, source.id)) {
-      permitted.push(source.id);
-    }
-  }
-  return permitted;
+  const [sources, permissions] = await Promise.all([
+    databaseService.sources.getAllSources(),
+    loadSourcePermissions(user),
+  ]);
+  return sources.filter((source) => permissions.can(resource, action, source.id)).map((source) => source.id);
 }
 
 /** True when `sourceId` is a row in the sources table or a registered manager. */

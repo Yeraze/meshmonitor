@@ -4,7 +4,7 @@
  * Provides common functionality for all repository implementations.
  * Supports SQLite, PostgreSQL, and MySQL through Drizzle ORM.
  */
-import { sql, eq, SQL, type SQLWrapper } from 'drizzle-orm';
+import { sql, eq, inArray, SQL, type SQLWrapper } from 'drizzle-orm';
 import { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
 import { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { MySql2Database } from 'drizzle-orm/mysql2';
@@ -36,6 +36,17 @@ export const ALL_SOURCES: unique symbol = Symbol('ALL_SOURCES');
 
 /** A resolved source scope: a concrete sourceId, or the all-sources sentinel. */
 export type SourceScope = string | typeof ALL_SOURCES;
+
+/**
+ * A source scope that may also be a LIST of sourceIds: "rows from these
+ * sources only". Used by reads that serve a caller who holds a permission on
+ * some sources and not others. An empty list matches no rows.
+ *
+ * A separate type from `SourceScope` on purpose: several methods test
+ * `typeof sourceId === 'string'` and treat anything else as "all sources", so
+ * a list must only reach a method whose signature names this type.
+ */
+export type SourceSetScope = SourceScope | readonly string[];
 
 /**
  * Base repository providing common functionality
@@ -267,12 +278,21 @@ export abstract class BaseRepository {
    * FAIL-CLOSED: a missing/empty sourceId THROWS — the #1 hard rule
    * (per-source isolation) is now enforced at runtime, not by caller discipline.
    * For an intentional cross-source query, pass the ALL_SOURCES sentinel, which
-   * returns `undefined` (no WHERE clause).
+   * returns `undefined` (no WHERE clause). A list of sourceIds scopes to those
+   * sources (`IN (...)`); an empty list matches no rows.
    *
    *   .where(and(eq(nodes.nodeNum, num), this.withSourceScope(nodes, sourceId)))
    */
-  protected withSourceScope(table: any, sourceId: SourceScope | undefined): SQL | undefined {
+  protected withSourceScope(table: any, sourceId: SourceSetScope | undefined): SQL | undefined {
     if (sourceId === ALL_SOURCES) return undefined;           // explicit opt-out
+    if (Array.isArray(sourceId)) {
+      // A list of sources. Empty matches nothing: the caller may read no source.
+      if (sourceId.length === 0) return sql`1 = 0`;
+      if (sourceId.some((id) => typeof id !== 'string' || id === '')) {
+        throw new Error('withSourceScope: every sourceId in a list must be a non-empty string.');
+      }
+      return inArray(table.sourceId, [...sourceId]);
+    }
     if (sourceId === undefined || sourceId === null || sourceId === '') {
       throw new Error(
         'withSourceScope: sourceId is required. Pass a concrete sourceId, or the ' +
