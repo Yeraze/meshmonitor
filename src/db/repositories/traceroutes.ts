@@ -12,7 +12,7 @@
  * same, or its callers get the route attached to the wrong end.
  */
 import { eq, and, desc, lt, or, isNull, gte, inArray, notInArray, count, sql, type SQL } from 'drizzle-orm';
-import { BaseRepository, DrizzleDatabase, SourceScope } from './base.js';
+import { BaseRepository, DrizzleDatabase, SourceScope, SourceSetScope } from './base.js';
 import { DatabaseType, DbTraceroute, DbRouteSegment } from '../types.js';
 import { tracerouteParticipationKind, type TracerouteParticipation } from '../../utils/tracerouteSegments.js';
 import { classifyNodeTransport, type NodeTransportClass } from '../../utils/nodeTransport.js';
@@ -160,7 +160,7 @@ export class TraceroutesRepository extends BaseRepository {
   /**
    * Get all traceroutes with pagination
    */
-  async getAllTraceroutes(limit: number = 100, sourceId?: SourceScope): Promise<DbTraceroute[]> {
+  async getAllTraceroutes(limit: number = 100, sourceId?: SourceSetScope): Promise<DbTraceroute[]> {
     const { traceroutes } = this.tables;
     const result = await this.db
       .select()
