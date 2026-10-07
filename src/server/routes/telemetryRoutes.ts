@@ -11,21 +11,85 @@ import {
   SIGNAL_TREND_MAX_SAMPLES,
 } from '../services/signalTrend.js';
 import { logger } from '../../utils/logger.js';
+import type { DbNode } from '../../db/types.js';
 import { isValidNodeNum } from '../constants/meshtastic.js';
 import {
   filterNodesByChannelPermission,
   checkNodeChannelAccess,
   getEffectiveDbNodePosition,
+  loadNodeViewAccess,
 } from '../utils/nodeEnhancer.js';
+import { listPermittedSourceIds, loadSourcePermissions } from '../utils/sourceScopedAccess.js';
+import type { SourceSetScope } from '../../db/repositories/index.js';
+import type { User } from '../../types/auth.js';
+
+/**
+ * `info` and `dashboard`, which gate this router, are install-wide grants: they
+ * say the caller may open the telemetry views, not which source's rows they
+ * may read. The rows are per source, so every handler below also decides the
+ * source(s) it reads from the caller's per-source grants. A handler that reads
+ * with no source named must not fall back to "every source" for a caller who
+ * is not an admin.
+ */
+
+/** The one `sourceId` a request names in its query, or undefined. */
+function namedSourceId(req: Request): string | undefined {
+  const raw = req.query.sourceId;
+  return typeof raw === 'string' && raw.length > 0 ? raw : undefined;
+}
+
+/**
+ * The sources one node's telemetry may be read from when the request names
+ * none. Admin: every source. Otherwise the sources that hold the node on a
+ * channel the caller has `viewOnMap` on THERE (for a MeshCore public key,
+ * which has no channel: the sources with `nodes:viewOnMap`). `null` when no
+ * source passes.
+ */
+async function nodeTelemetrySources(nodeId: string, user: User | null | undefined): Promise<SourceSetScope | null> {
+  if (user?.isAdmin) return ALL_SOURCES;
+  if (!user) return null;
+  if (/^[0-9a-fA-F]{64}$/.test(nodeId)) {
+    const permissions = await loadSourcePermissions(user);
+    const sources = permissions.sourcesWhere((grants) => grants.nodes?.viewOnMap === true);
+    return sources.length > 0 ? sources : null;
+  }
+  const nodeNum = nodeId.startsWith('!') ? parseInt(nodeId.replace('!', ''), 16) : parseInt(nodeId, 10);
+  if (!isValidNodeNum(nodeNum)) return null;
+  const [access, rows] = await Promise.all([
+    loadNodeViewAccess(user),
+    databaseService.nodes.getNodeVisibilityAcrossSources(nodeNum),
+  ]);
+  const sources = rows.filter((row) => access.canViewNode(row.sourceId, row.channel)).map((row) => row.sourceId);
+  return sources.length > 0 ? sources : null;
+}
 
 const router = Router();
 
 // Get direct neighbor RSSI statistics from zero-hop packets
 // This helps identify which nodes we've heard directly (no relays)
+//
+// The statistics come from the packet log, which is per source. `info:read`
+// opens the route; the rows come only from sources the caller holds
+// `nodes:read` on. `?sourceId=` narrows to one of them. An admin reads every
+// source, or the one named. It used to return every source's statistics to
+// any holder of `info:read`.
 router.get('/direct-neighbors', requirePermission('info', 'read'), async (req: Request, res: Response) => {
   try {
     const hoursBack = parseInt(req.query.hours as string) || 24;
-    const stats = await databaseService.getDirectNeighborStatsAsync(hoursBack);
+    const named = namedSourceId(req);
+    const permitted = await listPermittedSourceIds(req.user, 'nodes', 'read');
+    let scope: SourceSetScope;
+    if (permitted === 'all') {
+      scope = named ?? ALL_SOURCES;
+    } else if (named) {
+      if (!permitted.includes(named)) {
+        return fail(res, 403, 'FORBIDDEN', 'Insufficient permissions');
+      }
+      scope = named;
+    } else {
+      scope = permitted;
+    }
+    const stats = await databaseService.getDirectNeighborStatsAsync(hoursBack, scope);
 
     res.json({
       success: true,
@@ -34,7 +98,7 @@ router.get('/direct-neighbors', requirePermission('info', 'read'), async (req: R
     });
   } catch (error) {
     logger.error('Error getting direct neighbor stats:', error);
-    res.status(500).json({ error: 'Failed to fetch direct neighbor statistics' });
+    fail(res, 500, 'INTERNAL_ERROR', 'Failed to fetch direct neighbor statistics');
   }
 });
 
@@ -53,7 +117,7 @@ router.get('/telemetry/:nodeId', optionalAuth(), requireSourceId('query'), async
     const { nodeId } = req.params;
 
     // Check channel-based access for this node (source-scoped, #3745)
-    if (!await checkNodeChannelAccess(nodeId, req.user, req.query.sourceId as string | undefined)) {
+    if (!await checkNodeChannelAccess(nodeId, req.user, req.query.sourceId as string)) {
       return res.status(403).json({ error: 'Insufficient permissions' });
     }
     // parseFloat (not parseInt) so sub-hour windows like 0.25h (15 minutes)
@@ -78,7 +142,8 @@ router.get('/telemetry/:nodeId', optionalAuth(), requireSourceId('query'), async
       ? await databaseService.nodes.getNode(nodeNum, telSourceId)
       : null;
     const isPrivate = node?.positionOverrideIsPrivate === true;
-    const canViewPrivate = !!req.user && await hasPermission(req.user, 'nodes_private', 'read');
+    // `nodes_private` is a per-source permission: checked on this source.
+    const canViewPrivate = !!req.user && await hasPermission(req.user, 'nodes_private', 'read', telSourceId);
 
     // Use the averaged query for graph data on every backend (SQLite,
     // PostgreSQL, MySQL). The interval is chosen dynamically to target a
@@ -115,13 +180,26 @@ router.get('/telemetry/:nodeId/rates', optionalAuth(), async (req: Request, res:
     }
 
     const { nodeId } = req.params;
+    const ratesSourceId = namedSourceId(req);
 
-    // Check channel-based access for this node (source-scoped, #3745)
-    if (!await checkNodeChannelAccess(nodeId, req.user, req.query.sourceId as string | undefined)) {
-      return res.status(403).json({ error: 'Insufficient permissions' });
+    // The source(s) the samples are read from. Named: that source, when the
+    // caller may see the node on it (source-scoped, #3745). None named: the
+    // sources where the caller may see the node, never "every source" for a
+    // caller who is not an admin.
+    let ratesScope: SourceSetScope;
+    if (ratesSourceId) {
+      if (!await checkNodeChannelAccess(nodeId, req.user, ratesSourceId)) {
+        return fail(res, 403, 'FORBIDDEN', 'Insufficient permissions');
+      }
+      ratesScope = ratesSourceId;
+    } else {
+      const sources = await nodeTelemetrySources(nodeId, req.user);
+      if (sources === null) {
+        return fail(res, 403, 'FORBIDDEN', 'Insufficient permissions');
+      }
+      ratesScope = sources;
     }
     const hoursParam = req.query.hours ? parseInt(req.query.hours as string) : 24;
-    const ratesSourceId = req.query.sourceId as string | undefined;
 
     // Calculate cutoff timestamp for filtering
     const cutoffTime = Date.now() - hoursParam * 60 * 60 * 1000;
@@ -149,7 +227,7 @@ router.get('/telemetry/:nodeId/rates', optionalAuth(), async (req: Request, res:
       // Fetch telemetry for each packet type and calculate rates
       for (const type of packetTypes) {
         const telemetry = await databaseService.telemetry.getTelemetryByNode(
-          nodeId, 5000, cutoffTime, undefined, 0, type, ratesSourceId ?? ALL_SOURCES // intentional cross-source when sourceId omitted
+          nodeId, 5000, cutoffTime, undefined, 0, type, ratesScope
         );
 
         // Sort by timestamp ascending for rate calculation
@@ -173,13 +251,13 @@ router.get('/telemetry/:nodeId/rates', optionalAuth(), async (req: Request, res:
         }
       }
     } else {
-      rates = await databaseService.getPacketRatesAsync(nodeId, packetTypes, cutoffTime, ratesSourceId);
+      rates = await databaseService.getPacketRatesAsync(nodeId, packetTypes, cutoffTime, ratesScope);
     }
 
     res.json(rates);
   } catch (error) {
     logger.error('Error fetching packet rates:', error);
-    res.status(500).json({ error: 'Failed to fetch packet rates' });
+    fail(res, 500, 'INTERNAL_ERROR', 'Failed to fetch packet rates');
   }
 });
 
@@ -198,7 +276,7 @@ router.get('/telemetry/:nodeId/smarthops', optionalAuth(), requireSourceId('quer
     const { nodeId } = req.params;
 
     // Check channel-based access for this node (source-scoped, #3745)
-    if (!await checkNodeChannelAccess(nodeId, req.user, req.query.sourceId as string | undefined)) {
+    if (!await checkNodeChannelAccess(nodeId, req.user, req.query.sourceId as string)) {
       return res.status(403).json({ error: 'Insufficient permissions' });
     }
     // Validate and clamp hours (1-168, default 24)
@@ -234,7 +312,7 @@ router.get('/telemetry/:nodeId/linkquality', optionalAuth(), requireSourceId('qu
     const { nodeId } = req.params;
 
     // Check channel-based access for this node (source-scoped, #3745)
-    if (!await checkNodeChannelAccess(nodeId, req.user, req.query.sourceId as string | undefined)) {
+    if (!await checkNodeChannelAccess(nodeId, req.user, req.query.sourceId as string)) {
       return res.status(403).json({ error: 'Insufficient permissions' });
     }
     // Validate and clamp hours (1-168, default 24)
@@ -270,7 +348,7 @@ router.get('/telemetry/:nodeId/signal-trend', optionalAuth(), requireSourceId('q
     const { nodeId } = req.params;
 
     // Check channel-based access for this node (source-scoped, #3745)
-    if (!await checkNodeChannelAccess(nodeId, req.user, req.query.sourceId as string | undefined)) {
+    if (!await checkNodeChannelAccess(nodeId, req.user, req.query.sourceId as string)) {
       return fail(res, 403, 'FORBIDDEN', 'Insufficient permissions');
     }
 
@@ -300,6 +378,12 @@ router.delete('/telemetry/:nodeId/:telemetryType', requireAuth(), requirePermiss
     // never wipes another source's telemetry for this node.
     const purgeSourceId = req.query.sourceId as string;
 
+    // `info:write` is install-wide; the rows are this source's. The caller
+    // must also be able to see the node on this source.
+    if (!await checkNodeChannelAccess(nodeId, req.user, purgeSourceId)) {
+      return fail(res, 403, 'FORBIDDEN', 'Insufficient permissions');
+    }
+
     logger.info(`Purging telemetry data for node ${nodeId}, type ${telemetryType}, source ${purgeSourceId}`);
 
     const deleted = await databaseService.telemetry.deleteTelemetryByNodeAndType(nodeId, telemetryType, purgeSourceId);
@@ -308,22 +392,54 @@ router.delete('/telemetry/:nodeId/:telemetryType', requireAuth(), requirePermiss
       logger.info(`Successfully purged ${telemetryType} telemetry for node ${nodeId}`);
       res.json({ success: true, message: `Telemetry data purged successfully` });
     } else {
-      res.status(404).json({ error: 'No telemetry data found to delete' });
+      fail(res, 404, 'NOT_FOUND', 'No telemetry data found to delete');
     }
   } catch (error) {
     logger.error('Error purging telemetry data:', error);
-    res.status(500).json({ error: 'Failed to purge telemetry data' });
+    fail(res, 500, 'INTERNAL_ERROR', 'Failed to purge telemetry data');
   }
 });
 
 // Check which nodes have telemetry data
 router.get('/telemetry/available/nodes', requirePermission('info', 'read'), async (req: Request, res: Response) => {
   try {
-    const telAvailSourceId = req.query.sourceId as string | undefined;
-    // intentional cross-source: omitting sourceId returns nodes from all sources
-    const allNodes = await databaseService.nodes.getAllNodes(telAvailSourceId ?? ALL_SOURCES);
-    // Filter nodes based on channel read permissions (source-scoped, #3745)
-    const nodes = await filterNodesByChannelPermission(allNodes, (req as any).user, telAvailSourceId);
+    const telAvailSourceId = namedSourceId(req);
+    const viewer = req.user ?? null;
+
+    let nodes: DbNode[];
+    let nodeTelemetryTypes: Map<string, string[]>;
+    if (viewer?.isAdmin || telAvailSourceId) {
+      // One source, or an admin's view of every source: one query, as before.
+      const allNodes = await databaseService.nodes.getAllNodes(telAvailSourceId ?? ALL_SOURCES);
+      // Filter nodes based on channel read permissions (source-scoped, #3745)
+      nodes = await filterNodesByChannelPermission(allNodes, viewer, telAvailSourceId);
+      // Efficient bulk query: get all telemetry types for all nodes at once
+      nodeTelemetryTypes = await databaseService.getAllNodesTelemetryTypesAsync(telAvailSourceId);
+    } else {
+      // No source named: only rows from sources the caller holds a channel
+      // grant on, each row checked on its OWN source. The caller's grants used
+      // to be merged across sources here, so a grant on source A listed
+      // source B's nodes.
+      const access = await loadNodeViewAccess(viewer);
+      const candidates = await databaseService.nodes.getAllNodes(access.sources === 'all' ? ALL_SOURCES : access.sources);
+      const seen = new Set<string>();
+      nodes = candidates.filter((node) => {
+        const rowSource = (node as { sourceId?: string | null }).sourceId;
+        if (!rowSource || !access.canViewNode(rowSource, node.channel)) return false;
+        seen.add(rowSource);
+        return true;
+      });
+      // Telemetry types from the sources of the rows returned, and no other.
+      // One cached read per source.
+      nodeTelemetryTypes = new Map();
+      const perSource = await Promise.all([...seen].map((id) => databaseService.getAllNodesTelemetryTypesAsync(id)));
+      for (const map of perSource) {
+        for (const [nodeId, types] of map) {
+          const merged = nodeTelemetryTypes.get(nodeId);
+          nodeTelemetryTypes.set(nodeId, merged ? [...new Set([...merged, ...types])] : types);
+        }
+      }
+    }
 
     const nodesWithTelemetry: string[] = [];
     const nodesWithWeather: string[] = [];
@@ -333,8 +449,6 @@ router.get('/telemetry/available/nodes', requirePermission('info', 'read'), asyn
 
     const weatherTypes = new Set(['temperature', 'humidity', 'pressure']);
 
-    // Efficient bulk query: get all telemetry types for all nodes at once
-    const nodeTelemetryTypes = await databaseService.getAllNodesTelemetryTypesAsync(telAvailSourceId);
     // Global estimated positions (one per physical node, pooled across sources).
     const estimatedRows = await databaseService.getAllEstimatedPositionsAsync();
     const estimatedPositionMap = new Map(estimatedRows.map(r => [r.nodeId, r]));
@@ -404,7 +518,7 @@ router.get('/telemetry/available/nodes', requirePermission('info', 'read'), asyn
     });
   } catch (error) {
     logger.error('Error checking telemetry availability:', error);
-    res.status(500).json({ error: 'Failed to check telemetry availability' });
+    fail(res, 500, 'INTERNAL_ERROR', 'Failed to check telemetry availability');
   }
 });
 

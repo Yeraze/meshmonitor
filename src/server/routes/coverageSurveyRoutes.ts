@@ -25,6 +25,7 @@ import {
   buildPositionFilter, loadNodesBySource,
   buildMeshCorePositionFilter, loadMeshCoreNodesBySource,
 } from '../utils/positionVisibility.js';
+import { loadSourcePermissions } from '../utils/sourcePermissions.js';
 import { parseGatewayNodeNum } from '../utils/okToMqtt.js';
 import { parseSenderParam } from '../utils/coverageSenderParam.js';
 import { isMeshCorePubKeyId } from '../../utils/coverage.js';
@@ -101,19 +102,21 @@ interface SenderVisibilityCheckers {
  * `(sourceId, publicKey)` — never a `source.type` string gate (branches on
  * the sender id's own shape via `isMeshCorePubKeyId`, matching
  * `coverageRoutes.ts`'s convention). "Visible" means visible on AT LEAST ONE
- * of `permittedSourceIds`.
+ * of `permittedSourceIds`, each checked with the grants held on that source.
  */
 async function buildSenderVisibilityCheckers(
   req: Request,
   permittedSourceIds: string[],
 ): Promise<SenderVisibilityCheckers> {
-  const [nodesBySource, mcNodesBySource] = await Promise.all([
+  const [nodesBySource, mcNodesBySource, grants] = await Promise.all([
     loadNodesBySource(permittedSourceIds),
     loadMeshCoreNodesBySource(permittedSourceIds),
+    // The caller's grants, read once for both filters.
+    loadSourcePermissions(req.user ?? null),
   ]);
   const [posFilter, mcFilter] = await Promise.all([
-    buildPositionFilter(req.user, permittedSourceIds, nodesBySource),
-    buildMeshCorePositionFilter(req.user, permittedSourceIds, mcNodesBySource),
+    buildPositionFilter(req.user, permittedSourceIds, nodesBySource, grants),
+    buildMeshCorePositionFilter(req.user, permittedSourceIds, mcNodesBySource, grants),
   ]);
   return {
     isVisible(senderId: string): boolean {

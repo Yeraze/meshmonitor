@@ -97,10 +97,35 @@ Health check endpoint.
 }
 ```
 
+### GET /api/status
+Whether the server is up, its version, and whether the primary node link is up. Suits an external monitor.
+
+**Authentication:** Optional. The reply grows with the caller's rights:
+
+| Caller | Fields |
+|--------|--------|
+| Anyone | `status`, `timestamp`, `version`, `nodeEnv`, `uptime`, `connection.connected` |
+| `nodes:read` on the primary source | also `connection.localNode` (`nodeNum`, `nodeId`, `longName`, `shortName`, or `null` when the node is not known yet) |
+| Admin | also `statistics` (`nodes`, `messages`, `channels`: counts across every source) |
+
+**Response (no login):**
+```json
+{
+  "status": "ok",
+  "timestamp": "2025-10-15T12:00:00.000Z",
+  "version": "4.17.0",
+  "nodeEnv": "production",
+  "connection": { "connected": true },
+  "uptime": 86400.5
+}
+```
+
+> **Changed:** `connection.localNode` and `statistics` used to be returned to every caller. They now need the rights above.
+
 ### GET /api/system/status
 Comprehensive system status including database, memory, and version information.
 
-**Authentication:** Optional (public endpoint)
+**Authentication:** Requires `dashboard:read` (the anonymous user holds it by default)
 
 **Response:**
 ```json

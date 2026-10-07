@@ -491,8 +491,7 @@ describe('reads with an optional sourceId: each row is checked on its own source
       expect((await anon.get('/connection').query({ sourceId: harness.sourceB })).body).toEqual(REDUCED);
       expect((await anon.get('/connection')).body).toEqual(REDUCED);
 
-      // sources:read alone used to be enough for the address.
-      await give('sources', ['read']);
+      // connection:read on A says nothing about B.
       await give('connection', ['read'], harness.sourceA);
       const agent = await harness.loginAs(limited);
       const res = await agent.get('/connection').query({ sourceId: harness.sourceB });
@@ -501,18 +500,25 @@ describe('reads with an optional sourceId: each row is checked on its own source
       expectNoB(res.body, harness.sourceB);
     });
 
-    it('gives the full status without the address to connection:read, and the address with sources:read too', async () => {
-      await give('connection', ['read'], harness.sourceA);
-      const agent = await harness.loginAs(limited);
-      const withoutAddress = await agent.get('/connection').query({ sourceId: harness.sourceA });
-      expect(withoutAddress.body).toEqual(REDUCED);
-      expect(text(withoutAddress.body)).not.toContain(A.nodeIp);
-
+    it('gives the address on sources:read alone, the rule the source list and /api/poll apply', async () => {
       await give('sources', ['read']);
-      const withAddress = await agent.get('/connection').query({ sourceId: harness.sourceA });
-      expect(withAddress.body).toEqual({ ...REDUCED, nodeIp: A.nodeIp });
+      const agent = await harness.loginAs(limited);
+
+      // No connection:read anywhere: the link flags and the address.
+      expect((await agent.get('/connection').query({ sourceId: harness.sourceA })).body).toEqual({ ...REDUCED, nodeIp: A.nodeIp });
+      expect((await agent.get('/connection').query({ sourceId: harness.sourceB })).body).toEqual({ ...REDUCED, nodeIp: B.nodeIp });
       // No sourceId is the primary source (A).
       expect((await agent.get('/connection')).body.nodeIp).toBe(A.nodeIp);
+    });
+
+    it('does not give the address on connection:read without sources:read', async () => {
+      await give('connection', ['read'], harness.sourceA);
+      const agent = await harness.loginAs(limited);
+
+      const res = await agent.get('/connection').query({ sourceId: harness.sourceA });
+
+      expect(res.body).toEqual(REDUCED);
+      expect(text(res.body)).not.toContain(A.nodeIp);
     });
 
     it('gives an admin the address of either source', async () => {
@@ -527,7 +533,6 @@ describe('reads with an optional sourceId: each row is checked on its own source
     });
 
     it('gives a signed-in caller without connection:read on the source the link flags only', async () => {
-      await give('sources', ['read']);
       await give('connection', ['read'], harness.sourceA);
       const agent = await harness.loginAs(limited);
 
@@ -537,7 +542,22 @@ describe('reads with an optional sourceId: each row is checked on its own source
       expect(res.body).toEqual(REDUCED);
     });
 
-    it('gives ports to connection:read and addresses to connection:read with sources:read', async () => {
+    it('gives the addresses on sources:read alone, and the ports only with connection:read', async () => {
+      await give('sources', ['read']);
+      const agent = await harness.loginAs(limited);
+
+      const addressOnly = await agent.get('/connection/info').query({ sourceId: harness.sourceA });
+      expect(Object.keys(addressOnly.body).sort()).toEqual([...Object.keys(REDUCED), 'defaultIp', 'nodeIp'].sort());
+      expect(addressOnly.body.nodeIp).toBe(A.nodeIp);
+
+      await give('connection', ['read'], harness.sourceA);
+      const full = await agent.get('/connection/info').query({ sourceId: harness.sourceA });
+      expect(full.body).toMatchObject({ ...REDUCED, nodeIp: A.nodeIp, isOverridden: false });
+      expect(full.body.tcpPort).toEqual(expect.any(Number));
+      expect(full.body).toHaveProperty('defaultIp');
+    });
+
+    it('gives ports and no address to connection:read without sources:read', async () => {
       await give('connection', ['read'], harness.sourceA);
       const agent = await harness.loginAs(limited);
       const ports = await agent.get('/connection/info').query({ sourceId: harness.sourceA });
@@ -545,11 +565,6 @@ describe('reads with an optional sourceId: each row is checked on its own source
       expect(ports.body.tcpPort).toEqual(expect.any(Number));
       expect(ports.body).not.toHaveProperty('nodeIp');
       expect(ports.body).not.toHaveProperty('defaultIp');
-
-      await give('sources', ['read']);
-      const full = await agent.get('/connection/info').query({ sourceId: harness.sourceA });
-      expect(full.body.nodeIp).toBe(A.nodeIp);
-      expect(full.body).toHaveProperty('defaultIp');
     });
 
     it('gives an admin everything', async () => {
@@ -585,6 +600,18 @@ describe('reads with an optional sourceId: each row is checked on its own source
       expect(res.body.sources[0]).toMatchObject({ enabled: true, clientCount: 1, clients: [] });
       expect(text(res.body)).not.toContain(A.clientIp);
       expectNoB(res.body, harness.sourceB);
+    });
+
+    it('keeps client addresses off sources:read alone: they are not the source\'s own address', async () => {
+      await give('sources', ['read']);
+      await give('connection', ['read'], harness.sourceB);
+      const agent = await harness.loginAs(limited);
+
+      const res = await agent.get('/virtual-node/status');
+
+      // B is listed with its clients; A, with no connection:read, is not listed at all.
+      expect(ids(res.body)).toEqual([harness.sourceB]);
+      expect(text(res.body)).not.toContain(A.clientIp);
     });
 
     it('adds the client list for a caller who also holds sources:read', async () => {
@@ -740,8 +767,9 @@ function registeredRoutes(router: Router): RegisteredRoute[] {
  *  - `device`: requireDeviceSourcePermission(), the permission on the one device acted on.
  *  - `admin-only`: requireAdmin().
  *  - `reduced`: no permission middleware. Every caller it admits gets the link
- *    flags; the handler adds the rest only for `connection:read` on the source
- *    (and the addresses only with `sources:read` too). Tested above.
+ *    flags; the handler adds the rest only for `connection:read` on the source,
+ *    and the addresses only for `sources:read` (the one rule for a source's
+ *    address, independent of `connection:read`). Tested above.
  *  - `listed`: no permission middleware. The handler lists only the sources the
  *    caller holds `connection:read` on. Tested above.
  */

@@ -15,9 +15,11 @@ const router = Router();
 // connected to it, so it is per-source data: a source appears only when the
 // caller holds `connection:read` on it (admins see all). It used to list every
 // source to any signed-in user. The client list carries each client's IP
-// address; that part also needs `sources:read`, the rule for a source's own
-// address (mayViewSourceEndpoint). Without it the count stays and the list is
-// empty.
+// address. Those are other people's addresses, not where the source connects
+// to, so they stay stricter than the source's own address (which follows
+// `sources:read` alone): a caller needs `connection:read` on the source, which
+// lists the row at all, AND `sources:read`. Without the second the count
+// stays and the list is empty.
 router.get('/virtual-node/status', requireAuth(), async (req: Request, res: Response) => {
   try {
     const [readable, mayViewAddresses] = await Promise.all([

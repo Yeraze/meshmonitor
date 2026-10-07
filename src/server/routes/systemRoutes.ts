@@ -2,7 +2,7 @@
  * System Routes
  *
  * GET  /system/status   — system statistics (uptime, memory, db, docker)
- * GET  /status          — connection + statistics status
+ * GET  /status          — up/version for anyone; node identity and counts by grant
  * GET  /version/check   — compare current version with latest GitHub release
  * POST /system/restart  — restart (Docker) or shutdown (baremetal) the process
  *
@@ -15,7 +15,8 @@
 
 import { createRequire } from 'module';
 import { Router, Request, Response } from 'express';
-import { optionalAuth, requirePermission } from '../auth/authMiddleware.js';
+import { optionalAuth, requirePermission, hasPermission } from '../auth/authMiddleware.js';
+import { fail } from '../utils/apiResponse.js';
 import databaseService from '../../services/database.js';
 import { ALL_SOURCES } from '../../db/repositories/index.js';
 import { logger } from '../../utils/logger.js';
@@ -90,36 +91,65 @@ router.get('/system/status', requirePermission('dashboard', 'read'), async (_req
   });
 });
 
-// Detailed status endpoint - provides system statistics and connection status
-router.get('/status', optionalAuth(), async (_req: Request, res: Response) => {
-  const mgr = getPrimaryMeshtasticManager(sourceManagerRegistry) ?? fallbackManager;
-  const connectionStatus = await mgr.getConnectionStatus();
-  const localNode = mgr.getLocalNodeInfo();
+// Status endpoint for health checks and monitors. Open to every caller, signed
+// in or not; what comes back depends on the caller:
+//
+//   - anyone: that the server is up, its version, and whether the primary
+//     source's link is up (`connection.connected`). No more than `/api/health`
+//     and `GET /api/connection` already tell an anonymous caller.
+//   - `nodes:read` on the primary source (or admin): `connection.localNode`,
+//     the primary node's number, id and names.
+//   - admin: `statistics`, the node, message and channel counts across EVERY
+//     source. They describe the whole install, so no per-source grant covers
+//     them.
+//
+// It used to give all of this to any caller. Named fields, not "the reply
+// minus a few", so a field added later is not handed out by default.
+router.get('/status', optionalAuth(), async (req: Request, res: Response) => {
+  try {
+    const mgr = getPrimaryMeshtasticManager(sourceManagerRegistry) ?? fallbackManager;
+    const connectionStatus = await mgr.getConnectionStatus();
+    const user = req.user ?? null;
+    const isAdmin = user?.isAdmin === true;
+    const primarySourceId: string | undefined = mgr.sourceId || undefined;
+    const maySeeNode = isAdmin
+      || (!!user && !!primarySourceId && await hasPermission(user, 'nodes', 'read', primarySourceId));
 
-  res.json({
-    status: 'ok',
-    timestamp: new Date().toISOString(),
-    version: packageJson.version,
-    nodeEnv: env.nodeEnv,
-    connection: {
-      connected: connectionStatus.connected,
-      localNode: localNode
+    const connection: Record<string, unknown> = { connected: connectionStatus.connected === true };
+    if (maySeeNode) {
+      const localNode = mgr.getLocalNodeInfo();
+      connection.localNode = localNode
         ? {
             nodeNum: localNode.nodeNum,
             nodeId: localNode.nodeId,
             longName: localNode.longName,
             shortName: localNode.shortName,
           }
-        : null,
-    },
-    statistics: {
-      // intentional cross-source: system stats report global totals
-      nodes: await databaseService.nodes.getNodeCount(ALL_SOURCES),
-      messages: await databaseService.messages.getMessageCount(ALL_SOURCES),
-      channels: await databaseService.channels.getChannelCount(ALL_SOURCES),
-    },
-    uptime: process.uptime(),
-  });
+        : null;
+    }
+
+    const body: Record<string, unknown> = {
+      status: 'ok',
+      timestamp: new Date().toISOString(),
+      version: packageJson.version,
+      nodeEnv: env.nodeEnv,
+      connection,
+    };
+    if (isAdmin) {
+      // intentional cross-source, admin only: install-wide totals
+      const [nodes, messages, channels] = await Promise.all([
+        databaseService.nodes.getNodeCount(ALL_SOURCES),
+        databaseService.messages.getMessageCount(ALL_SOURCES),
+        databaseService.channels.getChannelCount(ALL_SOURCES),
+      ]);
+      body.statistics = { nodes, messages, channels };
+    }
+    body.uptime = process.uptime();
+    res.json(body);
+  } catch (error) {
+    logger.error('Error getting status:', error);
+    fail(res, 500, 'INTERNAL_ERROR', 'Failed to get status');
+  }
 });
 
 // Version check endpoint — cache read through versionCheckService. The single

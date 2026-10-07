@@ -8,7 +8,10 @@
  *   - `getPositionTelemetryByNode(nodeId, ..., sourceIds)` through
  *     `withSourceScope` (position history);
  *   - `getLatestTelemetrySampleForAllNodes(type, sourceIds)`, hand-written SQL
- *     per dialect (the uptime attached to the node list).
+ *     per dialect (the uptime attached to the node list);
+ *   - `getPacketRates(nodeId, types, since, sourceIds)` and
+ *     `getTelemetryByNode(..., sourceIds)` through `withSourceScope` (the
+ *     packet-rate read with no source named).
  *
  * An empty list is "no source": no rows. DDL is hand-written per dialect, as
  * in telemetry.outliers.multiBackend.test.ts. PG/MySQL suites own a private
@@ -210,6 +213,39 @@ function runSourceListTests(getBackend: () => TestBackend) {
     expect((await repo().getLatestTelemetrySampleForAllNodes('uptimeSeconds', SRC_A)).get(NODE.nodeId)?.value).toBe(100);
     expect((await repo().getLatestTelemetrySampleForAllNodes('uptimeSeconds')).get(NODE.nodeId)?.value).toBe(300);
     expect((await repo().getLatestTelemetryValueForAllNodes('uptimeSeconds', [SRC_B, SRC_C])).get(NODE.nodeId)).toBe(300);
+  });
+
+  /** The same counter on three sources, each climbing at its own rate. */
+  const seedCounters = async () => {
+    for (const [sourceId, perMinute] of [[SRC_A, 6], [SRC_B, 60], [SRC_C, 600]] as const) {
+      await insert(sourceId, NODE, 'numPacketsRx', T0, 0);
+      await insert(sourceId, NODE, 'numPacketsRx', T0 + 60_000, perMinute);
+    }
+  };
+
+  it('getPacketRates computes rates from the listed sources only', async () => {
+    if (!getBackend().available) return;
+    await seedCounters();
+
+    const one = await repo().getPacketRates(NODE.nodeId, ['numPacketsRx'], undefined, [SRC_A]);
+    expect(one.numPacketsRx.map((r) => r.ratePerMinute)).toEqual([6]);
+    expect(typeof one.numPacketsRx[0].timestamp).toBe('number');
+    expect((await repo().getPacketRates(NODE.nodeId, ['numPacketsRx'], undefined, SRC_B)).numPacketsRx.map((r) => r.ratePerMinute)).toEqual([60]);
+    expect((await repo().getPacketRates(NODE.nodeId, ['numPacketsRx'], undefined, [])).numPacketsRx).toEqual([]);
+  });
+
+  it('getTelemetryByNode reads only the listed sources', async () => {
+    if (!getBackend().available) return;
+    await seedCounters();
+    const values = async (scope: Parameters<TelemetryRepository['getTelemetryByNode']>[6]): Promise<number[]> =>
+      (await repo().getTelemetryByNode(NODE.nodeId, 100, undefined, undefined, 0, 'numPacketsRx', scope))
+        .map((r) => Number(r.value)).sort((a, b) => a - b);
+
+    expect(await values([SRC_A, SRC_C])).toEqual([0, 0, 6, 600]);
+    expect(await values([SRC_B])).toEqual([0, 60]);
+    expect(await values([])).toEqual([]);
+    expect(await values(SRC_A)).toEqual([0, 6]);
+    expect(await values(ALL_SOURCES)).toEqual([0, 0, 0, 6, 60, 600]);
   });
 
   it('a source id is bound as a value, not spliced into the SQL', async () => {
