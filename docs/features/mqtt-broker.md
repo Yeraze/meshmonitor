@@ -425,6 +425,8 @@ MeshMonitor tells you in three places:
 - **Device → MQTT Module** shows **Client proxy is enabled but no broker is linked**.
 - The container log has one line per connection that starts `MQTT client proxy:`.
 
+![The MQTT not linked badge on a source card, closed and open](/images/features/5013-mqtt-not-linked-card.png)
+
 To fix it:
 
 1. If you have no MQTT source yet, add one: **Dashboard → Sources → Add Source**, then pick **MQTT Bridge (forward to/from an upstream broker)** for an outside broker, or **Embedded MQTT Broker (devices connect here)** to host one. See [Quick setup](#quick-setup).

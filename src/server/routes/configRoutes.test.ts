@@ -231,6 +231,7 @@ describe('configRoutes', () => {
           supportedModules: {},
         }),
         isLocalNodeBridged: vi.fn().mockReturnValue(false),
+        getMqttClientProxyState: vi.fn().mockReturnValue(null),
       } as unknown as ISourceManager & { setLoRaConfig: typeof setLoRaConfig; requestModuleConfig: typeof requestModuleConfig; isTxEnabled: typeof isTxEnabled };
       await sourceManagerRegistry.addManager(fakeManager);
       await harness.grant(harness.limited.id, 'configuration', 'write', harness.sourceA);
@@ -313,6 +314,8 @@ describe('configRoutes', () => {
 
       expect(res.status).toBe(200);
       expect(res.body.localNodeInfo.firmwareVersion).toBe('2.7.26.54e0d8d');
+      // No Virtual Node client carries MQTT here, so Device → MQTT may warn (#5013).
+      expect(res.body.mqttProxyClientAttached).toBe(false);
     });
 
     it('answers a failed save with the error envelope', async () => {

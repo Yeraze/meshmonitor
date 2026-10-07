@@ -81,7 +81,7 @@ const MqttProxyWarning: React.FC<MqttProxyWarningProps> = ({ sourceId, onOpenDev
                 onOpenDeviceMqtt(sourceId);
               }}
             >
-              {t('source.mqtt_proxy_warning_open', 'Open Device → MQTT Module')} <UiIcon name="forward" size={12} />
+              {t('source.mqtt_proxy_warning_open', 'Open Device → MQTT Module')}
             </button>
             <a
               className={styles.link}
