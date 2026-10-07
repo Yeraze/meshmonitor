@@ -95,6 +95,7 @@ function fakeManager(sourceId: string, sourceType = 'meshtastic_tcp'): FakeManag
     ...methods,
     getCurrentConfig: vi.fn().mockReturnValue({ deviceConfig: {}, moduleConfig: {} }),
     isLocalNodeBridged: vi.fn().mockReturnValue(false),
+    getMqttClientProxyState: vi.fn().mockReturnValue(null),
     isTxEnabled: vi.fn().mockReturnValue(true),
     getConfiguredModemPreset: vi.fn().mockReturnValue(0),
     getDeviceConfig: vi.fn().mockResolvedValue({ region: 'US' }),

@@ -8,6 +8,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import apiService from '../../services/api';
 import { logger } from '../../utils/logger';
 import ModuleAvailabilityNotice from './ModuleAvailabilityNotice';
+import { isMqttProxyLinkMisconfigured, MQTT_TRAFFIC_DOCS_URL } from '../../utils/mqttProxyLink';
 import { NumberInput } from '../common/NumberInput';
 import { NumberInputScope } from '../common/NumberInputScope';
 import { useNumberInputScope } from '../common/numberInputScopeContext';
@@ -28,6 +29,10 @@ interface MQTTConfigSectionProps {
   // True when this source's node is bridged (serial/BLE radio behind a TCP
   // proxy, no native IP). Such a node can only use MQTT via Client Proxy.
   isBridged?: boolean;
+  // True when a client on this source's Virtual Node has injected MQTT proxy
+  // traffic (the MQTT Proxy sidecar, or a phone app): it carries MQTT for the
+  // node, so the "no broker is linked" warning stays hidden.
+  proxyClientAttached?: boolean;
   setMqttEnabled: (value: boolean) => void;
   setMqttAddress: (value: string) => void;
   setMqttUsername: (value: string) => void;
@@ -58,6 +63,7 @@ const MQTTConfigSection: React.FC<MQTTConfigSectionProps> = ({
   mapPublishIntervalSecs,
   mapPositionPrecision,
   isBridged = false,
+  proxyClientAttached = false,
   setMqttEnabled,
   setMqttAddress,
   setMqttUsername,
@@ -218,27 +224,25 @@ const MQTTConfigSection: React.FC<MQTTConfigSectionProps> = ({
       mqttEncryptionEnabled, mqttJsonEnabled, mqttRoot, tlsEnabled,
       proxyToClientEnabled, mapReportingEnabled, mapPublishIntervalSecs, mapPositionPrecision]);
 
-  // Detect the "client proxy on, but nothing to proxy through" misconfiguration.
-  // We warn when (a) the user has turned on proxyToClientEnabled in the firmware
-  // and (b) the parent Meshtastic source has no mqttLink pointing at a known
-  // mqtt_broker. The MQTTProxy sidecar — which connects to the Virtual Node
-  // Server and publishes externally — is an alternative escape hatch we can't
-  // detect reliably from the browser, so we mention it in the warning text and
-  // leave the call to the operator.
-  const proxyLinkMisconfigured = useMemo(() => {
-    if (!proxyToClientEnabled) return false;
-    if (!currentSourceId) return false;
-    const parent = allSources.find((s) => s.id === currentSourceId);
-    if (!parent || parent.type !== 'meshtastic_tcp') return false;
-    const link = (parent.config as { mqttLink?: { enabled?: boolean; mqttBrokerSourceId?: string } } | undefined)?.mqttLink;
-    if (!link?.enabled || !link.mqttBrokerSourceId) return true;
-    // Link references a sourceId that's no longer present, or a type
-    // that can't serve as a proxy target. Both mqtt_broker and
-    // mqtt_bridge are valid targets (issue #3134).
-    const linkedTarget = allSources.find((s) => s.id === link.mqttBrokerSourceId);
-    if (!linkedTarget || (linkedTarget.type !== 'mqtt_broker' && linkedTarget.type !== 'mqtt_bridge')) return true;
-    return false;
-  }, [proxyToClientEnabled, currentSourceId, allSources]);
+  // Detect the "client proxy on, but nothing to proxy through" misconfiguration:
+  // the form has MQTT and proxyToClientEnabled on, and the parent Meshtastic
+  // source has no mqttLink to an existing, enabled mqtt_broker / mqtt_bridge.
+  // The rule lives in isMqttProxyLinkMisconfigured, shared with the dashboard
+  // source card (via GET /api/sources/:id/status) so the two cannot disagree.
+  // The MQTT Proxy sidecar is seen only once it has injected broker traffic
+  // (`proxyClientAttached`); a sidecar on a quiet broker looks like no sidecar,
+  // so the warning text still names it and leaves the call to the operator.
+  const proxyLinkMisconfigured = useMemo(
+    () =>
+      isMqttProxyLinkMisconfigured({
+        mqttEnabled,
+        proxyToClientEnabled,
+        sourceId: currentSourceId,
+        sources: allSources,
+        proxyClientAttached,
+      }),
+    [mqttEnabled, proxyToClientEnabled, currentSourceId, allSources, proxyClientAttached],
+  );
 
   // Reset to initial values (for SaveBar dismiss)
   const resetChanges = useCallback(() => {
@@ -360,6 +364,7 @@ const MQTTConfigSection: React.FC<MQTTConfigSectionProps> = ({
       {proxyLinkMisconfigured && (
         <div
           role="alert"
+          data-testid="mqtt-proxy-link-warning"
           style={{
             margin: '8px 0',
             padding: '10px 12px',
@@ -377,7 +382,7 @@ const MQTTConfigSection: React.FC<MQTTConfigSectionProps> = ({
           <div style={{ marginTop: 6 }}>
             {t(
               'mqtt_config.proxy_warning_body',
-              'With "MQTT Client Proxy" on, the device sends its MQTT traffic to MeshMonitor instead of opening its own connection. MeshMonitor will silently drop those messages unless one of:',
+              'With "Proxy to Client" on, the device sends its MQTT traffic to MeshMonitor instead of opening its own connection, and gets broker traffic only from MeshMonitor. MeshMonitor will silently drop those messages unless one of:',
             )}
           </div>
           <ul style={{ margin: '6px 0 0 18px', padding: 0 }}>
@@ -399,6 +404,11 @@ const MQTTConfigSection: React.FC<MQTTConfigSectionProps> = ({
               )}
             </li>
           </ul>
+          <div style={{ marginTop: 6 }}>
+            <a href={MQTT_TRAFFIC_DOCS_URL} target="_blank" rel="noopener noreferrer">
+              {t('mqtt_config.proxy_warning_docs_link', 'Why don’t I see MQTT traffic?')}
+            </a>
+          </div>
         </div>
       )}
       {proxyTargets.length > 0 && (

@@ -635,6 +635,18 @@ The steps below apply to a Meshtastic TCP source. For MeshCore see [MeshCore](/f
 
 ---
 
+### MQTT messages only show up when another node repeats them over LoRa
+
+Your node is not getting the packets from the broker. The usual causes:
+
+- **Proxy to Client** is on and no MQTT source is linked to the node, so nothing carries MQTT for it. The source's dashboard card shows **MQTT not linked**.
+- The channel does not have **Downlink Enabled**.
+- LoRa **Ignore MQTT** is on.
+
+See [Why don't I see MQTT traffic?](/features/mqtt-broker#why-no-mqtt-traffic) for the fix and a test that tells the cases apart. To log everything on a broker, add an MQTT Bridge source instead of relying on a radio.
+
+---
+
 ### Can I use MeshMonitor with a Bluetooth or Serial Meshtastic device?
 
 **Yes!** The solution depends on your connection type:

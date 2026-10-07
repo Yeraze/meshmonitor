@@ -157,6 +157,8 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
   // Whether this source's node is bridged (no native WiFi/Ethernet — reached via
   // a TCP proxy). Drives the MQTT Client Proxy recommendation in the MQTT section.
   const [isBridged, setIsBridged] = useState(false);
+  // A Virtual Node client carries MQTT for this node (#5013); see MQTTConfigSection.
+  const [mqttProxyClientAttached, setMqttProxyClientAttached] = useState(false);
   const [mqttMapReportingEnabled, setMqttMapReportingEnabled] = useState(false);
   const [mqttMapPublishIntervalSecs, setMqttMapPublishIntervalSecs] = useState(0);
   const [mqttMapPositionPrecision, setMqttMapPositionPrecision] = useState(14);
@@ -389,6 +391,7 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
         console.log('[ConfigurationTab] Received config:', config);
 
         setIsBridged(config.isBridged || false);
+        setMqttProxyClientAttached(config.mqttProxyClientAttached === true);
 
         // Populate node info from localNodeInfo
         if (config.localNodeInfo) {
@@ -2472,6 +2475,7 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
               mapPositionPrecision={mqttMapPositionPrecision}
               setMapPositionPrecision={setMqttMapPositionPrecision}
               isBridged={isBridged}
+              proxyClientAttached={mqttProxyClientAttached}
               isSaving={isSaving}
               onSave={handleSaveMQTTConfig}
             />
