@@ -45,6 +45,7 @@ import {
   buildPositionFilter, loadNodesBySource,
   buildMeshCorePositionFilter, loadMeshCoreNodesBySource,
 } from '../utils/positionVisibility.js';
+import { loadSourcePermissions } from '../utils/sourcePermissions.js';
 import { parseSenderParam } from '../utils/coverageSenderParam.js';
 import {
   clampCoverageRetentionDays, COVERAGE_MQTT_ENABLED_SETTING, isCoverageMqttFlagOn,
@@ -345,12 +346,14 @@ router.get('/receivers', async (req: Request, res: Response) => {
     ]);
 
     const mcSourceIds = meshCoreSourceIdsFromReceptionRows(rows);
+    // The caller's grants, read once; both filters check each row on its own source.
+    const grants = await loadSourcePermissions(req.user ?? null);
     const [posFilter, mcNodesBySource] = await Promise.all([
-      buildPositionFilter(req.user, sourceIds, nodesBySource),
+      buildPositionFilter(req.user, sourceIds, nodesBySource, grants),
       loadMeshCoreNodesIfAny(mcSourceIds),
     ]);
     const mcFilter = mcSourceIds.length > 0
-      ? await buildMeshCorePositionFilter(req.user, mcSourceIds, mcNodesBySource)
+      ? await buildMeshCorePositionFilter(req.user, mcSourceIds, mcNodesBySource, grants)
       : null;
     const sourceNameById = new Map(allSources.map((s) => [s.id, s.name] as const));
 
@@ -499,12 +502,14 @@ router.get('/senders', async (req: Request, res: Response) => {
     // unchanged), so MeshCore rows are identified by `senderId`'s own shape
     // (`isMeshCorePubKeyId` — a 64-hex pubkey), not a source-type gate.
     const mcSourceIds = meshCoreSourceIdsFromSenderRows(rows);
+    // The caller's grants, read once; both filters check each row on its own source.
+    const grants = await loadSourcePermissions(req.user ?? null);
     const [posFilter, mcNodesBySource] = await Promise.all([
-      buildPositionFilter(req.user, sourceIds, nodesBySource),
+      buildPositionFilter(req.user, sourceIds, nodesBySource, grants),
       loadMeshCoreNodesIfAny(mcSourceIds),
     ]);
     const mcFilter = mcSourceIds.length > 0
-      ? await buildMeshCorePositionFilter(req.user, mcSourceIds, mcNodesBySource)
+      ? await buildMeshCorePositionFilter(req.user, mcSourceIds, mcNodesBySource, grants)
       : null;
 
     // Merge by senderId across sources: sum fixCount (an upper bound —
@@ -698,12 +703,14 @@ router.get('/receptions', async (req: Request, res: Response) => {
     ]);
 
     const mcSourceIds = meshCoreSourceIdsFromReceptionRows(page.items);
+    // The caller's grants, read once; both filters check each row on its own source.
+    const grants = await loadSourcePermissions(req.user ?? null);
     const [posFilter, mcNodesBySource] = await Promise.all([
-      buildPositionFilter(req.user, sourceIds, nodesBySource),
+      buildPositionFilter(req.user, sourceIds, nodesBySource, grants),
       loadMeshCoreNodesIfAny(mcSourceIds),
     ]);
     const mcFilter = mcSourceIds.length > 0
-      ? await buildMeshCorePositionFilter(req.user, mcSourceIds, mcNodesBySource)
+      ? await buildMeshCorePositionFilter(req.user, mcSourceIds, mcNodesBySource, grants)
       : null;
 
     // Post-filter on the sender's visibility, same gate as /positions

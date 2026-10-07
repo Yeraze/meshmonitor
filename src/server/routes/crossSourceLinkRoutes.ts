@@ -41,6 +41,7 @@ import {
   buildPositionFilter, loadNodesBySource,
   buildMeshCorePositionFilter, loadMeshCoreNodesBySource,
 } from '../utils/positionVisibility.js';
+import { loadSourcePermissions } from '../utils/sourcePermissions.js';
 import { clampCoverageRetentionDays } from '../../utils/coverage.js';
 import type { DbCrossSourceLink } from '../../db/repositories/crossSourceLinks.js';
 import type {
@@ -140,9 +141,12 @@ router.get('/', async (req: Request, res: Response) => {
       loadNodesBySource(involved),
       mcInvolved.length > 0 ? loadMeshCoreNodesBySource(mcInvolved) : Promise.resolve(new Map<string, DbMeshCoreNode[]>()),
     ]);
+    // The caller's grants, read once. Each endpoint is then checked on the
+    // source whose table holds its row.
+    const grants = await loadSourcePermissions(req.user ?? null);
     const [posFilter, mcFilter] = await Promise.all([
-      buildPositionFilter(req.user, involved, nodesBySource),
-      mcInvolved.length > 0 ? buildMeshCorePositionFilter(req.user, mcInvolved, mcNodesBySource) : Promise.resolve(null),
+      buildPositionFilter(req.user, involved, nodesBySource, grants),
+      mcInvolved.length > 0 ? buildMeshCorePositionFilter(req.user, mcInvolved, mcNodesBySource, grants) : Promise.resolve(null),
     ]);
     const sourceNameById = new Map(allSources.map((s) => [s.id, s.name] as const));
 
