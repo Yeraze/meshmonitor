@@ -85,7 +85,7 @@ function refusalText(reason: ReplayRefusalReason, outcome: RuleOutcome, t: TFunc
     case 'PACKET_LOG_DISABLED':
       return {
         why: t('trafficmanagement_replay.refuse_logging_off', 'Packet logging is off, so there is no history to replay.'),
-        fix: t('trafficmanagement_replay.refuse_logging_off_fix', 'Turn on packet logging in the Packet Monitor settings, let it collect traffic, then estimate again.'),
+        fix: t('trafficmanagement_replay.refuse_logging_off_fix', 'Turn on packet logging under Settings → Packet Monitor, let it collect traffic, then estimate again.'),
       };
     case 'HISTORY_TOO_SHORT':
       return {
@@ -93,7 +93,7 @@ function refusalText(reason: ReplayRefusalReason, outcome: RuleOutcome, t: TFunc
           have: span(outcome.historySpanMs, t),
           need: span(outcome.requiredSpanMs, t),
         }),
-        fix: t('trafficmanagement_replay.refuse_history_fix', 'Wait for more history, or raise the packet log\'s row and age limits. The log keeps 1,000 rows across all sources and 24 hours by default.'),
+        fix: t('trafficmanagement_replay.refuse_history_fix', 'Wait for more history, or raise the row and age limits under Settings → Packet Monitor. The log keeps 1,000 rows across all sources and 24 hours by default.'),
       };
     case 'LOOSER_THAN_CURRENT':
       return {
