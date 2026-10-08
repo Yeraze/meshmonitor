@@ -39,20 +39,32 @@ export function filterPacketsByPermissions<
   canReadMessages: boolean
 ): T[] {
   if (isAdmin) return packets;
-  return packets.filter(packet => {
-    // Encrypted packets always visible
-    if (packet.encrypted) return true;
-    // TEXT_MESSAGE_APP DMs require messages:read permission
-    if (packet.portnum === PortNum.TEXT_MESSAGE_APP &&
-        packet.to_node !== undefined && packet.to_node !== null &&
-        packet.to_node !== BROADCAST_NODE) {
-      return canReadMessages;
-    }
-    // Decrypted packets require channel read permission
-    if (packet.channel !== undefined && packet.channel !== null) {
-      return allowedChannels.has(packet.channel);
-    }
-    // Packets with no channel info - allow (e.g. internal packets)
-    return true;
-  });
+  return packets.filter(packet => canSeePacketContent(packet, allowedChannels, isAdmin, canReadMessages));
+}
+
+/**
+ * The per-packet rule behind {@link filterPacketsByPermissions}: may this
+ * caller see the packet's decoded content in the Packet Monitor?
+ */
+export function canSeePacketContent(
+  packet: { encrypted: boolean; channel?: number | null; portnum?: number | null; to_node?: number | null },
+  allowedChannels: Set<number>,
+  isAdmin: boolean,
+  canReadMessages: boolean
+): boolean {
+  if (isAdmin) return true;
+  // Encrypted packets always visible
+  if (packet.encrypted) return true;
+  // TEXT_MESSAGE_APP DMs require messages:read permission
+  if (packet.portnum === PortNum.TEXT_MESSAGE_APP &&
+      packet.to_node !== undefined && packet.to_node !== null &&
+      packet.to_node !== BROADCAST_NODE) {
+    return canReadMessages;
+  }
+  // Decrypted packets require channel read permission
+  if (packet.channel !== undefined && packet.channel !== null) {
+    return allowedChannels.has(packet.channel);
+  }
+  // Packets with no channel info - allow (e.g. internal packets)
+  return true;
 }

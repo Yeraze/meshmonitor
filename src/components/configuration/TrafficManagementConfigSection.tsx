@@ -4,6 +4,9 @@ import { useSaveBar } from '../../hooks/useSaveBar';
 import { NumberInput } from '../common/NumberInput';
 import { NumberInputScope } from '../common/NumberInputScope';
 import { useNumberInputScope } from '../common/numberInputScopeContext';
+import { UiIcon } from '../icons';
+import TrafficManagementReplayPanel from './TrafficManagementReplayPanel';
+import replayStyles from './TrafficManagementReplayPanel.module.css';
 
 /**
  * Traffic Management (TMM) module config — v2.8 "non-zero implies enabled" schema.
@@ -146,6 +149,14 @@ const TrafficManagementConfigSection: React.FC<TrafficManagementConfigSectionPro
           {t('trafficmanagement_config.zero_disables', 'Packet inspection and traffic shaping to reduce channel utilization. Each setting below is enabled by giving it a non-zero value; leave it at 0 to turn that feature off.')}
         </p>
 
+        {/* These settings drop other people's packets: say so beside the controls. */}
+        <div className={replayStyles.dropWarning} data-testid="tm-drop-warning">
+          <UiIcon name="alert" className={replayStyles.icon} />
+          <div>
+            {t('trafficmanagement_config.drop_warning', 'These settings make this node drop other people\'s packets. A dropped packet is not relayed and is not delivered to MeshMonitor, so you will not see what was dropped. On a router this cuts traffic for every node that relies on it. Change one value at a time.')}
+          </div>
+        </div>
+
         {/* Position Dedup Group */}
         <div style={subGroupStyle}>
           <div style={subGroupTitleStyle}>{t('trafficmanagement_config.position_dedup', 'Position Deduplication')}</div>
@@ -153,7 +164,7 @@ const TrafficManagementConfigSection: React.FC<TrafficManagementConfigSectionPro
           <div className="setting-item">
             <label htmlFor="positionMinIntervalSecs">
               {t('trafficmanagement_config.position_min_interval_secs', 'Minimum Interval (seconds)')}
-              <span className="setting-description">{t('trafficmanagement_config.position_min_interval_secs_description', 'Minimum seconds between position updates from the same node. 0 disables position deduplication. Position precision is taken from the channel\'s own Position Precision setting.')}</span>
+              <span className="setting-description">{t('trafficmanagement_config.position_min_interval_secs_description', 'A repeat of the same position from a node is dropped until this many seconds have passed since the last one let through. Counted in 6 minute steps, so anything under 12 minutes acts as 6. Trackers may repeat after 1 hour and lost-and-found nodes after 15 minutes. Only well-known (default key) channels. 0 disables position deduplication. Position precision is taken from the channel\'s own Position Precision setting.')}</span>
             </label>
             <NumberInput
               id="positionMinIntervalSecs"
@@ -196,7 +207,7 @@ const TrafficManagementConfigSection: React.FC<TrafficManagementConfigSectionPro
           <div className="setting-item">
             <label htmlFor="rateLimitWindowSecs">
               {t('trafficmanagement_config.rate_limit_window', 'Window (seconds)')}
-              <span className="setting-description">{t('trafficmanagement_config.rate_limit_window_description', 'Time window for rate limiting calculations. Rate limiting runs only when both this and Max Packets are non-zero.')}</span>
+              <span className="setting-description">{t('trafficmanagement_config.rate_limit_window_description', 'Time window for rate limiting. Counted in 5 minute steps: anything under 10 minutes acts as 5, and 75 minutes is the most. Rate limiting runs only when both this and Max Packets are non-zero.')}</span>
             </label>
             <NumberInput
               id="rateLimitWindowSecs"
@@ -212,7 +223,7 @@ const TrafficManagementConfigSection: React.FC<TrafficManagementConfigSectionPro
           <div className="setting-item">
             <label htmlFor="rateLimitMaxPackets">
               {t('trafficmanagement_config.rate_limit_max_packets', 'Max Packets Per Window')}
-              <span className="setting-description">{t('trafficmanagement_config.rate_limit_max_packets_description', 'Maximum packets allowed per node within the window. Rate limiting runs only when both this and Window are non-zero.')}</span>
+              <span className="setting-description">{t('trafficmanagement_config.rate_limit_max_packets_description', 'Maximum packets allowed per sending node within the window, across all packet types except routing and admin. The firmware caps this at 60. Rate limiting runs only when both this and Window are non-zero.')}</span>
             </label>
             <NumberInput
               id="rateLimitMaxPackets"
@@ -233,7 +244,7 @@ const TrafficManagementConfigSection: React.FC<TrafficManagementConfigSectionPro
           <div className="setting-item">
             <label htmlFor="unknownPacketThreshold">
               {t('trafficmanagement_config.unknown_packet_threshold', 'Unknown Packet Threshold')}
-              <span className="setting-description">{t('trafficmanagement_config.unknown_packet_threshold_description', 'Number of unknown/undecryptable packets from a node within the rate window before it is dropped. 0 disables unknown-packet filtering.')}</span>
+              <span className="setting-description">{t('trafficmanagement_config.unknown_packet_threshold_description', 'Number of unknown/undecryptable packets from a node within a fixed 5 minute window before further ones are dropped. The firmware caps this at 60. 0 disables unknown-packet filtering.')}</span>
             </label>
             <NumberInput
               id="unknownPacketThreshold"
@@ -247,6 +258,13 @@ const TrafficManagementConfigSection: React.FC<TrafficManagementConfigSectionPro
           </div>
         </div>
       </div>
+
+      <TrafficManagementReplayPanel
+        positionMinIntervalSecs={positionMinIntervalSecs}
+        rateLimitWindowSecs={rateLimitWindowSecs}
+        rateLimitMaxPackets={rateLimitMaxPackets}
+        disabled={isDisabled}
+      />
     </div>
     </NumberInputScope>
   );

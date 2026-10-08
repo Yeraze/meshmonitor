@@ -1,0 +1,147 @@
+/* Traffic Management "Estimate impact" panel (#5670). */
+.panel {
+  margin: 1.25rem 0 0 1rem;
+  padding: 1rem;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-surface);
+  color: var(--color-text);
+}
+
+.title {
+  font-size: 0.95rem;
+  font-weight: 600;
+  margin-bottom: 0.4rem;
+}
+
+.note {
+  margin: 0.35rem 0;
+  font-size: 0.85rem;
+  line-height: 1.5;
+  color: var(--color-text-subtle);
+}
+
+.footer {
+  composes: note;
+  margin-top: 0.9rem;
+  margin-bottom: 0;
+}
+
+.result {
+  margin-top: 0.9rem;
+}
+
+.rule {
+  margin-top: 0.9rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--color-border);
+}
+
+.ruleTitle {
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.headline {
+  margin: 0.4rem 0;
+  font-size: 0.9rem;
+  line-height: 1.6;
+}
+
+.rangeValue {
+  font-size: 1.3rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.badge {
+  display: inline-block;
+  margin-left: 0.5rem;
+  padding: 0.05rem 0.5rem;
+  border: 1px solid var(--color-warning);
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.caveats {
+  margin: 0.5rem 0;
+  padding: 0.6rem 0.75rem 0.6rem 1.75rem;
+  border-left: 3px solid var(--color-warning);
+  background: color-mix(in srgb, var(--color-warning) 10%, var(--color-bg));
+  font-size: 0.85rem;
+  line-height: 1.5;
+}
+
+.caveats li + li {
+  margin-top: 0.3rem;
+}
+
+.refusal {
+  display: flex;
+  gap: 0.6rem;
+  align-items: flex-start;
+  margin: 0.6rem 0;
+  padding: 0.7rem;
+  border: 1px solid var(--color-info);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--color-info) 10%, var(--color-bg));
+  font-size: 0.88rem;
+  line-height: 1.5;
+}
+
+.fix {
+  margin-top: 0.25rem;
+  color: var(--color-text-subtle);
+}
+
+.icon {
+  flex-shrink: 0;
+  margin-top: 0.15rem;
+}
+
+.table {
+  width: 100%;
+  max-width: 34rem;
+  margin-top: 0.6rem;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+}
+
+.table th,
+.table td {
+  padding: 0.3rem 0.5rem;
+  border-bottom: 1px solid var(--color-border);
+  text-align: left;
+}
+
+.table th {
+  color: var(--color-text-subtle);
+  font-weight: 600;
+}
+
+.table .numeric {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* Beside the controls: these settings drop other people's packets. */
+.dropWarning {
+  display: flex;
+  gap: 0.6rem;
+  align-items: flex-start;
+  margin: 0 0 1rem 1rem;
+  padding: 0.7rem;
+  border: 2px solid var(--color-warning);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--color-warning) 15%, var(--color-bg));
+  color: var(--color-text);
+  font-size: 0.88rem;
+  line-height: 1.5;
+}
+
+.dropWarning .icon {
+  color: var(--color-warning);
+}
