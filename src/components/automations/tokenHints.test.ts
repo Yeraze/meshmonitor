@@ -131,6 +131,31 @@ describe('MeshCore node trigger tokens (#5595)', () => {
     }
   });
 
+  it('offers ageMinutes on both node triggers, and says it is minutes (#5675)', () => {
+    for (const t of NODE_TRIGGERS) {
+      const set = validTokenSet(t, []);
+      expect(set.has('trigger.ageMinutes')).toBe(true);
+      expect(classifyToken('trigger.ageMinutes', set)).toBe('ok');
+      const help = Object.fromEntries(TRIGGER_TOKENS[t]);
+      expect(help.ageMinutes).toMatch(/whole minutes/i);
+      expect(help.ageMinutes).toMatch(/node\.ageMinutes/);
+      // lastHeard keeps its meaning.
+      expect(help.lastHeard).toMatch(/epoch ms/i);
+      const numeric = numericFields(t).flatMap((g) => g.options.map((o) => o.value));
+      expect(numeric).toContain('ageMinutes');
+    }
+  });
+
+  it('flags trigger.ageMinutes on triggers that do not carry it (#5675)', () => {
+    for (const t of ['trigger.message', 'trigger.telemetry', 'trigger.nodeOnline', 'trigger.schedule']) {
+      const set = validTokenSet(t, []);
+      expect(set.has('trigger.ageMinutes')).toBe(false);
+      expect(classifyToken('trigger.ageMinutes', set)).not.toBe('ok');
+    }
+    // Node silent already had its own ageMinutes; that is untouched.
+    expect(validTokenSet('trigger.nodeStale', []).has('trigger.ageMinutes')).toBe(true);
+  });
+
   it('offers the MeshCore facts as condition fields on both node triggers', () => {
     for (const t of NODE_TRIGGERS) {
       const numeric = numericFields(t).flatMap((g) => g.options.map((o) => o.value));

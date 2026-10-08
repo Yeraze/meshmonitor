@@ -1155,6 +1155,7 @@ Both node triggers carry these on a MeshCore source. All are empty on Meshtastic
 | `{{ trigger.hops }}` | How many repeaters the advert that caused the event passed through. `0` means the source heard it direct. |
 | `{{ trigger.routeHops }}` | Hop count of the route this source has stored for the node, the one it would send on. Empty when no route is stored (sends flood). |
 | `{{ trigger.lastHeard }}` | When this source last heard the node, in epoch milliseconds — the same unit as on **Node silent**. |
+| `{{ trigger.ageMinutes }}` | Whole minutes since this source last heard the node. `0` means just now. Empty when the last-heard time is unknown. |
 
 **`hops` and `routeHops` are different numbers.** `hops` describes one received advert: the path
 that packet took to reach you. `routeHops` describes the stored route for sending to the node, which
@@ -1169,14 +1170,20 @@ below, and comes from the same raw frame. If that frame is missing, the token is
 empty on MeshCore. A template that uses either renders an empty string there; it does not fail. Use
 `{{ trigger.name }}`.
 
-`roleName`, `name`, `hops` and `routeHops` are also offered as fields in **Number comparison** and
-**Text comparison** conditions, for example "only notify when `roleName` equals `Repeater`". A number
-condition on an empty `hops` or `routeHops` is false.
+**Use `ageMinutes` for "Last heard" text, not `lastHeard`.** `{{ trigger.lastHeard }}` is a raw
+timestamp for scripts and webhooks; in a message it prints a 13-digit number.
+`{{ trigger.ageMinutes }}` is the MeshCore match for `{{ node.ageMinutes }}` on Meshtastic and uses
+the same rounding: nearest minute, never below `0`. A node heard for the first time reads `0`.
+
+`roleName`, `name`, `hops`, `routeHops` and `ageMinutes` are also offered as fields in **Number
+comparison** and **Text comparison** conditions, for example "only notify when `roleName` equals
+`Repeater`". A number condition on an empty `hops`, `routeHops` or `ageMinutes` is false.
 
 Example notification body:
 
 ```text
 New {{ trigger.roleName }}: {{ trigger.name }} ({{ trigger.hops }} hops)
+Last heard: {{ trigger.ageMinutes }} m
 https://map.meshcore.com.hr/#/packets/{{ trigger.packetHash }}
 ```
 

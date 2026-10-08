@@ -420,6 +420,9 @@ export function buildNodeContext(
  *    (renders '') when no advert frame fired it. Never the cached route.
  *  - `routeHops`: hop count of the cached forwarding route; undefined = flood.
  *  - `lastHeard`: epoch ms, the same unit as `trigger.nodeStale`.
+ *  - `ageMinutes` (#5675): whole minutes from `lastHeard` to this event, by
+ *    the same formula as `{{ node.ageMinutes }}` on Meshtastic. Undefined
+ *    (renders '') when `lastHeard` is unknown.
  * MeshCore has no short name, so there is no `shortName` field: a template
  * that uses `{{ trigger.shortName }}` renders ''.
  */
@@ -433,6 +436,7 @@ export function buildMeshCoreNodeContext(
   name?: string | null,
   facts?: MeshCoreNodeEventFacts,
 ): TriggerContext {
+  const lastHeard = epochMsOrUndefined(facts?.lastHeard);
   return {
     triggerType,
     sourceId,
@@ -449,7 +453,8 @@ export function buildMeshCoreNodeContext(
       roleName: meshCoreRoleName(facts?.advType),
       hops: hopCountOrUndefined(facts?.hops),
       routeHops: hopCountOrUndefined(facts?.routeHops),
-      lastHeard: epochMsOrUndefined(facts?.lastHeard),
+      lastHeard,
+      ageMinutes: lastHeard === undefined ? undefined : ageMinutesSince(lastHeard, timestamp),
       protocol: 'meshcore',
       protocolShort: 'MC',
       sourceId,
@@ -493,6 +498,17 @@ function epochMsOrUndefined(v: unknown): number | undefined {
   const n = Number(v);
   if (!Number.isFinite(n) || n <= 0) return undefined;
   return Math.round(n < 1e11 ? n * 1000 : n);
+}
+
+/**
+ * Whole minutes from `lastHeardMs` to `nowMs`, both epoch MILLISECONDS: rounded
+ * to the nearest minute and never negative, so a stamp a little ahead of our
+ * clock reads 0. The one formula behind `{{ node.ageMinutes }}` (Meshtastic)
+ * and `{{ trigger.ageMinutes }}` on the MeshCore node triggers (#5675). The
+ * caller settles the unit first; this does not guess it.
+ */
+export function ageMinutesSince(lastHeardMs: number, nowMs: number): number {
+  return Math.max(0, Math.round((nowMs - lastHeardMs) / 60000));
 }
 
 /**
