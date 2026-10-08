@@ -70,6 +70,27 @@ export const WELL_KNOWN_CHANNEL_NAMES: readonly string[] = [
   'NarrowFast', 'NarrowSlow', 'TinyFast', 'TinySlow',
 ];
 
+/**
+ * `Channels::isWellKnownChannel`: a PSK of at most one byte (none, or one of
+ * the public default-key indexes) AND a name equal to a modem preset's display
+ * name. An empty name reads as the current preset's name when the radio uses a
+ * preset (`Channels::getName`), and as "Custom" when it does not.
+ *
+ * MeshMonitor stores an unnamed secondary channel as `Channel <index>`; that
+ * placeholder is treated as the empty name it stands for.
+ */
+export function isWellKnownChannel(channel: {
+  index: number;
+  name: string | null | undefined;
+  pskByteLength: number;
+  usePreset: boolean;
+}): boolean {
+  if (channel.pskByteLength > 1) return false;
+  const name = channel.name ?? '';
+  if (name === '' || name === `Channel ${channel.index}`) return channel.usePreset;
+  return WELL_KNOWN_CHANNEL_NAMES.includes(name);
+}
+
 // --- Replay policy (ours, not firmware) --------------------------------------
 /**
  * The node's tick clocks run on uptime, so MeshMonitor cannot know where a

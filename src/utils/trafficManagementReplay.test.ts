@@ -12,6 +12,7 @@ import {
   positionFingerprint,
   truncateCoordinate,
   dedupPrecisionForChannel,
+  isWellKnownChannel,
   replayOnce,
   simulateTrafficReplay,
   type ReplayChannel,
@@ -118,6 +119,26 @@ describe('position arithmetic', () => {
     expect(dedupPrecisionForChannel({ wellKnown: true, positionPrecision: 32 })).toBe(15);
     expect(dedupPrecisionForChannel({ wellKnown: true, positionPrecision: 0 })).toBe(19);
     expect(dedupPrecisionForChannel(undefined)).toBe(19);
+  });
+});
+
+describe('well-known channel', () => {
+  const ch = (over: Partial<Parameters<typeof isWellKnownChannel>[0]>) =>
+    isWellKnownChannel({ index: 0, name: 'LongFast', pskByteLength: 1, usePreset: true, ...over });
+
+  it('needs a PSK of at most one byte and a modem preset name', () => {
+    expect(ch({})).toBe(true);
+    expect(ch({ pskByteLength: 0, name: 'MediumFast' })).toBe(true);
+    expect(ch({ pskByteLength: 32 })).toBe(false);
+    expect(ch({ pskByteLength: 16 })).toBe(false);
+    expect(ch({ name: 'gauntlet' })).toBe(false);
+  });
+
+  it('reads an empty name as the current preset name, or "Custom" without a preset', () => {
+    expect(ch({ name: '' })).toBe(true);
+    expect(ch({ name: '', usePreset: false })).toBe(false);
+    expect(ch({ index: 2, name: 'Channel 2' })).toBe(true);
+    expect(ch({ index: 2, name: 'Channel 3' })).toBe(false);
   });
 });
 
