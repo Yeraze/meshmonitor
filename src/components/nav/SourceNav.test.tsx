@@ -201,4 +201,37 @@ describe('SourceNav overflow cue', () => {
     expect(nav.getAttribute('data-overflow-start')).toBe('true');
     expect(nav.getAttribute('data-overflow-end')).toBe('false');
   });
+
+  describe('shortLabel (#5683)', () => {
+    const withShort: SourceNavSection[] = [{
+      items: [
+        { id: 'configuration', label: 'Device Configuration', shortLabel: 'Device Config', icon: 'configuration', onClick: () => {} },
+        { id: 'settings', label: 'Settings', icon: 'settings', onClick: () => {} },
+      ],
+    }];
+
+    it('renders both texts and names the button with the full one', () => {
+      const { container } = render(<SourceNav sections={withShort} activeId="" collapsed={false} />);
+      const button = container.querySelector('[data-source-nav-item="configuration"]')!;
+      expect(button.querySelector('[data-source-nav-label]')?.textContent).toBe('Device Configuration');
+      const short = button.querySelector('[data-source-nav-short-label]');
+      expect(short?.textContent).toBe('Device Config');
+      // Hidden from assistive tech so the name is not read twice.
+      expect(short?.getAttribute('aria-hidden')).toBe('true');
+      expect(screen.getByRole('button', { name: 'Device Configuration' })).toBe(button);
+    });
+
+    it('keeps the full text as the collapsed-rail tooltip', () => {
+      const { container } = render(<SourceNav sections={withShort} activeId="" collapsed />);
+      expect(container.querySelector('[data-source-nav-item="configuration"]')?.getAttribute('title'))
+        .toBe('Device Configuration');
+    });
+
+    it('leaves an item without a short label untouched', () => {
+      const { container } = render(<SourceNav sections={withShort} activeId="" collapsed={false} />);
+      const button = container.querySelector('[data-source-nav-item="settings"]')!;
+      expect(button.querySelector('[data-source-nav-short-label]')).toBeNull();
+      expect(button.hasAttribute('aria-label')).toBe(false);
+    });
+  });
 });

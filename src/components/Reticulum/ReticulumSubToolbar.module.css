@@ -7,5 +7,6 @@
  */
 .subToolbar {
   --source-nav-collapsed-width: 56px;
-  --source-nav-expanded-width: 220px;
+  /* 240px, as on Meshtastic: at 220px "Device Configuration" ellipsised (#5683). */
+  --source-nav-expanded-width: 240px;
 }

@@ -68,7 +68,7 @@ beforeEach(() => {
 describe('Sidebar — Settings nav entry visibility for a per-source-only settings grant (#4416)', () => {
   it('shows the Settings nav entry for a per-source-only grant (Sidebar must pass anySource)', () => {
     render(<Sidebar {...baseProps} hasPermission={fakeHasPermission} />);
-    expect(screen.queryByTitle('nav.settings')).not.toBeNull();
+    expect(screen.queryByTitle('Settings')).not.toBeNull();
   });
 
   it('sanity check: the fake itself denies an unscoped call (proves the fixture is not a rubber stamp)', () => {

@@ -10,6 +10,7 @@ import {
   notificationsNavItems,
   settingsNavItems,
 } from './configSections';
+import { matchesQuery, tokenize } from './configSearchMatch';
 
 /** Returns the default where one is given, otherwise the key — as i18next does. */
 const t = ((key: string, defaultValue?: string) => defaultValue ?? key) as unknown as TFunction;
@@ -135,6 +136,26 @@ describe('configSections', () => {
         'admin',
         'global-settings',
       ]);
+    });
+
+    it('names the two per-source pages as the nav does (#5683)', () => {
+      const surfaces = buildConfigSurfaces(t, { ...baseOptions, sourceId: 'abc', canUseAdmin: false });
+      expect(surfaces.find((s) => s.key === 'configuration')?.label).toBe('Device Configuration');
+      expect(surfaces.find((s) => s.key === 'source-settings')?.label).toBe('Settings');
+    });
+
+    it('finds the device page under either word of its old labels (#5683)', () => {
+      // The page was "Device" on Meshtastic and "Configuration" elsewhere. The
+      // palette folds the page name into every hit's haystack (ConfigSearchModal).
+      const surfaces = buildConfigSurfaces(t, { ...baseOptions, sourceId: 'abc', canUseAdmin: false });
+      const configuration = surfaces.find((s) => s.key === 'configuration')!;
+      expect(configuration.items.length).toBeGreaterThan(0);
+      for (const word of ['device', 'configuration', 'device configuration']) {
+        for (const item of configuration.items) {
+          const haystack = [configuration.label, item.label, (item.keywords ?? []).join(' ')].join(' ');
+          expect(matchesQuery(haystack, tokenize(word)), `${word} / ${item.label}`).toBe(true);
+        }
+      }
     });
 
     it('drops the Admin surface for a user who cannot reach that tab', () => {

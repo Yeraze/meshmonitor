@@ -3,7 +3,7 @@
  *
  * Widths are driven by custom properties so each consumer can keep its own
  * geometry without forking the rules: Meshtastic's sidebar is 60/240, MeshCore's
- * sub-toolbar 56/220.
+ * sub-toolbar 56/240.
  */
 .nav {
   --source-nav-collapsed-width: 60px;
@@ -124,6 +124,12 @@
   flex: 1;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* The bottom bar's stand-in for a label too long for its tab (#5683). Hidden
+   everywhere else; must stay after `.label` and one class deep. */
+.shortLabel {
+  display: none;
 }
 
 /* Anchored to the icon's top-right so it holds position collapsed or expanded. */
@@ -345,6 +351,16 @@
     max-width: 100%;
     overflow: hidden;
     text-overflow: ellipsis;
+  }
+
+  /* An item with a short label shows that one on the bar (#5683). Same depth
+     as the `.label` rule above and after it, so source order decides. */
+  .mobileBottomBar .fullLabel {
+    display: none;
+  }
+
+  .mobileBottomBar .shortLabel {
+    display: block;
   }
 
   .mobileBottomBar .active {

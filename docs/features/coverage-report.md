@@ -178,7 +178,7 @@ cannot tell those from a packet lost to poor reach. The
 ### Settings for a survey
 
 Change these on your own nodes, in the Meshtastic app or on MeshMonitor's
-Configuration tab. The Coverage Report changes nothing for you.
+Device Configuration tab. The Coverage Report changes nothing for you.
 
 | Setting | For a survey | Why |
 | --- | --- | --- |

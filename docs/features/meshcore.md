@@ -151,7 +151,7 @@ The Channels page has a **Sort channels by** dropdown with four choices: **Devic
 
 #### Reordering channel slots on the companion
 
-To change the slots stored on the device, open the source's **Configuration** tab, go to **Channels**, and click **Reorder slots on device**. Drag channels into the order you want, then click **Save order to device**.
+To change the slots stored on the device, open the source's **Device Configuration** tab, go to **Channels**, and click **Reorder slots on device**. Drag channels into the order you want, then click **Save order to device**.
 
 - MeshMonitor packs channels into slots 1, 2, 3 and so on, which closes empty slots. Public stays in slot 0.
 - It writes each slot over the serial or TCP link and reads it back to check it. It sends nothing over the radio. Keep the device connected until it finishes.
@@ -390,12 +390,12 @@ Every login screen (remote console, contact details, direct messages and rooms) 
 
 ### Local console (Configuration view)
 
-The Configuration tab gets a **Device console** for the locally connected node. Dispatch depends on the firmware:
+The Device Configuration tab gets a **Device console** for the locally connected node. Dispatch depends on the firmware:
 
 | Local firmware | Console behavior |
 |---|---|
 | Repeater / Room Server | Forwards to the device's native serial CLI via `sendRepeaterCommand`. Same command set as a remote Repeater. |
-| Companion | A small synthetic interpreter on the server side maps `ver` / `stats [core\|radio\|packets]` / `clock` / `advert.zerohop` / `advert` / `help` to existing companion-protocol bridge commands and formats the response as text. Mutating verbs (`set name`, `set radio` …) are intentionally NOT in the synthetic CLI — the existing form fields on the same Configuration tab handle those with proper validation. |
+| Companion | A small synthetic interpreter on the server side maps `ver` / `stats [core\|radio\|packets]` / `clock` / `advert.zerohop` / `advert` / `help` to existing companion-protocol bridge commands and formats the response as text. Mutating verbs (`set name`, `set radio` …) are intentionally NOT in the synthetic CLI — the existing form fields on the same Device Configuration tab handle those with proper validation. |
 
 No login flow: the connection is physical (USB serial or direct TCP), so there's no admin password concept. Gated on the existing `configuration:write` permission.
 
@@ -557,7 +557,7 @@ An advert announces this node so others can add it as a contact. MeshMonitor sen
 - **Zero-hop** reaches only nodes in direct radio range. No repeater forwards it, so it costs one transmission (roughly 0.4–1.3 s of channel time).
 - **Flood** is forwarded by every repeater within 8 hops. With 20 repeaters in reach that is about 9 s (US presets) or 25 s (EU presets) of shared channel time for a single advert.
 
-The status bar and **Configuration → Device actions** offer **Advert (nearby, zero-hop)** as the main button. **Flood advert** sits beside it and asks you to confirm, stating the cost, before it sends. In the device console, `advert.zerohop` sends a zero-hop advert and `advert` sends a flood; the console's quick-action button sends the zero-hop one.
+The status bar and **Settings → Device actions** offer **Advert (nearby, zero-hop)** as the main button. **Flood advert** sits beside it and asks you to confirm, stating the cost, before it sends. In the device console, `advert.zerohop` sends a zero-hop advert and `advert` sends a flood; the console's quick-action button sends the zero-hop one.
 
 Repeater firmware that predates the `advert.zerohop` CLI verb floods when asked for a zero-hop advert. MeshMonitor spots this from the repeater's reply, reports that a flood went out, and refuses further zero-hop requests to that repeater until it reconnects. Update the repeater firmware to fix it.
 

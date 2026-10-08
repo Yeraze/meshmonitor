@@ -34,15 +34,15 @@ const baseProps = {
 describe('Sidebar — hideDeviceConfig (#5367)', () => {
   it('shows Device Configuration and Remote Admin by default', () => {
     render(<Sidebar {...baseProps} />);
-    expect(screen.queryByTitle('nav.device')).not.toBeNull();
+    expect(screen.queryByTitle('Device Configuration')).not.toBeNull();
     expect(screen.queryByTitle('nav.admin_commands')).not.toBeNull();
   });
 
   it('hides Device Configuration and Remote Admin when hideDeviceConfig is set', () => {
     render(<Sidebar {...baseProps} hideDeviceConfig />);
-    expect(screen.queryByTitle('nav.device')).toBeNull();
+    expect(screen.queryByTitle('Device Configuration')).toBeNull();
     expect(screen.queryByTitle('nav.admin_commands')).toBeNull();
     // The rest of the nav is untouched.
-    expect(screen.queryByTitle('nav.settings')).not.toBeNull();
+    expect(screen.queryByTitle('Settings')).not.toBeNull();
   });
 });

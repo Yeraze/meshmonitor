@@ -1,7 +1,12 @@
 import React, { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { type UiIconName } from '../icons';
 import { SourceNav, type SourceNavItem } from '../nav/SourceNav';
+import {
+  DEVICE_CONFIGURATION_NAV_ENTRY,
+  SOURCE_SETTINGS_NAV_ENTRY,
+  sharedSourceNavPresentation,
+  type SharedSourceNavEntry,
+} from '../nav/sourceNavEntries';
 import styles from './MeshCoreSubToolbar.module.css';
 
 import { useMeshCoreViewAccess, type MeshCoreView } from './meshCoreViewAccess';
@@ -22,11 +27,8 @@ interface MeshCoreSubToolbarProps {
   unread?: Partial<Record<MeshCoreView, boolean>>;
 }
 
-interface Item {
+interface Item extends SharedSourceNavEntry {
   id: MeshCoreView;
-  labelKey: string;
-  fallback: string;
-  icon: UiIconName;
 }
 
 const ITEMS: Item[] = [
@@ -39,10 +41,11 @@ const ITEMS: Item[] = [
   { id: 'telemetry', labelKey: 'meshcore.nav.telemetry', fallback: 'Telemetry', icon: 'telemetry' },
   { id: 'packets', labelKey: 'meshcore.nav.packets', fallback: 'Packet Monitor', icon: 'activity' },
   { id: 'info', labelKey: 'meshcore.nav.info', fallback: 'Node Info', icon: 'info' },
-  { id: 'configuration', labelKey: 'meshcore.nav.configuration', fallback: 'Configuration', icon: 'configuration' },
+  // Shared with every source type (#5683): never spell the icon or label here.
+  { id: 'configuration', ...DEVICE_CONFIGURATION_NAV_ENTRY },
   { id: 'automations', labelKey: 'meshcore.nav.automations', fallback: 'Automations', icon: 'bot' },
   { id: 'notifications', labelKey: 'meshcore.nav.notifications', fallback: 'Notifications', icon: 'notifications' },
-  { id: 'settings', labelKey: 'meshcore.nav.settings', fallback: 'Settings', icon: 'settings' },
+  { id: 'settings', ...SOURCE_SETTINGS_NAV_ENTRY },
 ];
 
 /**
@@ -68,8 +71,7 @@ export const MeshCoreSubToolbar: React.FC<MeshCoreSubToolbarProps> = ({
   const items = useMemo<SourceNavItem[]>(() => {
     return ITEMS.filter(item => visibleViews.includes(item.id)).map(item => ({
       id: item.id,
-      label: t(item.labelKey, item.fallback),
-      icon: item.icon,
+      ...sharedSourceNavPresentation(item, t),
       onClick: () => onSelect(item.id),
       unread: unread[item.id] ?? false,
     }));

@@ -106,7 +106,7 @@ The field is stored in the bridge's `config.mode` JSON field; omitting it (or st
 
 - **"Filtered window onto the public Meshtastic broker."** Create one **standalone bridge** to `mqtt://mqtt.meshtastic.org` with a topic pattern and geo bbox that matches your region. No broker needed. You get a sidebar source whose nodes / messages / positions are sourced from upstream, filtered before ingestion.
 - **"My devices on the LAN should fan out to each other, plus selectively reach a public broker."** Create one **broker** + one **attached bridge**. Devices connect to the broker (direct TCP or client-proxy). The bridge applies a filter pipeline in both directions and forwards the selected slice upstream.
-- **"My BLE-only node should publish MQTT through MeshMonitor straight to a public broker, no embedded broker required."** Create one **standalone bridge** pointed at the public broker. On the Meshtastic source, set `mqttLink → <bridge>` (Sources → Edit → "Bridge MQTT proxy to", or use the Quick Configure dropdown on Device → MQTT). Enable `proxy_to_client_enabled` on the firmware. Device → MeshMonitor (over BLE/serial) → bridge → upstream.
+- **"My BLE-only node should publish MQTT through MeshMonitor straight to a public broker, no embedded broker required."** Create one **standalone bridge** pointed at the public broker. On the Meshtastic source, set `mqttLink → <bridge>` (Sources → Edit → "Bridge MQTT proxy to", or use the Quick Configure dropdown on Device Configuration → MQTT). Enable `proxy_to_client_enabled` on the firmware. Device Configuration → MeshMonitor (over BLE/serial) → bridge → upstream.
 - **"Same as above, plus I want a Home Assistant box on the LAN to subscribe to my devices."** Create one **broker** + one **attached bridge**. Devices use client-proxy mode pointing at the broker; Home Assistant subscribes to the broker on port 1883. Bridge handles the upstream fan-out.
 - **"Two upstream brokers, one regional and one global, with different filters per upstream."** Create one **broker** + **two attached bridges**, each with its own topic/geo/portnum rules. Devices publish once; each bridge independently decides what to forward.
 - **"Cross-mesh routing between two MQTT roots (e.g. our LA mesh on `msh/US/LA` and the Houston mesh on `msh/US/TX`)."** Create one **broker** + one **attached bridge** to the foreign upstream. Set the bridge's downlink rewrite `msh/US/TX → msh/US/LA` and uplink rewrite `msh/US/LA → msh/US/TX` so the foreign-root traffic appears under your local root (and vice versa). See [Topic rewriting](#topic-rewriting) below for the details and caveats (PSK match, hop-limit cap, loop suppression).
@@ -121,7 +121,7 @@ The field is stored in the bridge's `config.mode` JSON field; omitting it (or st
 
 In proxy mode, the firmware uses Meshtastic's [`MqttClientProxyMessage`](https://github.com/meshtastic/protobufs/blob/master/meshtastic/mesh.proto) protocol: the device hands every outbound publish off as a `FromRadio.mqttClientProxyMessage` over its existing TCP/serial connection to MeshMonitor, and MeshMonitor publishes on its behalf. Inbound messages from the linked target (broker or bridge) are wrapped as `ToRadio.MqttClientProxyMessage` and injected back to the device. This is the same mechanism the Meshtastic mobile apps use when proxying.
 
-The Device → MQTT **Quick Configure** dropdown lists both brokers and bridges with type tags so you can pick either in one click; for bridges it parses the upstream URL into the firmware's MQTT address field so the device's local config reflects where its traffic is actually going.
+The Device Configuration → MQTT **Quick Configure** dropdown lists both brokers and bridges with type tags so you can pick either in one click; for bridges it parses the upstream URL into the firmware's MQTT address field so the device's local config reflects where its traffic is actually going.
 
 ## Quick setup
 
@@ -168,7 +168,7 @@ A standalone bridge is the right starting point when you have **no embedded brok
 
 ### 3. Configure your Meshtastic devices
 
-**Direct TCP path** — On the device (via MeshMonitor's Device → MQTT tab, the Meshtastic mobile app, or the CLI):
+**Direct TCP path** — On the device (via MeshMonitor's Device Configuration → MQTT tab, the Meshtastic mobile app, or the CLI):
 
 | Field | Value |
 |---|---|
@@ -187,14 +187,14 @@ A standalone bridge is the right starting point when you have **no embedded brok
 | Username / Password | Decorative in proxy mode |
 | `proxy_to_client_enabled` | **true** (firmware hands every publish off via the TCP API) |
 
-Then on the Meshtastic source in MeshMonitor (**Dashboard → Sources → Edit → Bridge MQTT proxy to**), pick either an embedded broker or a bridge as the target. The **Quick Configure** dropdown on the Device → MQTT page does all three of these things (firmware flag, firmware fields, source link) in one click and shows the target type next to the name.
+Then on the Meshtastic source in MeshMonitor (**Dashboard → Sources → Edit → Bridge MQTT proxy to**), pick either an embedded broker or a bridge as the target. The **Quick Configure** dropdown on the Device Configuration → MQTT page does all three of these things (firmware flag, firmware fields, source link) in one click and shows the target type next to the name.
 
 - Picking a **broker** routes the device's MQTT traffic into the embedded broker (and from there, optionally onward via any attached bridge). Other LAN clients connected to the broker also see this traffic.
 - Picking a **bridge** (typically a standalone one) routes the device's MQTT traffic straight to that bridge's upstream connection with no embedded broker in between. Useful when you have no other local MQTT clients.
 
 In both cases MeshMonitor forwards `FromRadio.mqttClientProxyMessage` payloads to the target's MQTT layer, and injects the target's inbound MQTT traffic back to the device as `ToRadio.MqttClientProxyMessage`.
 
-If `proxy_to_client_enabled` is on but no `mqttLink` is set, a yellow warning banner appears on the Device → MQTT page and an **MQTT not linked** badge on the source's dashboard card — without the link, proxy traffic from the firmware is dropped and the node gets nothing from the broker. See [Why don't I see MQTT traffic?](#why-no-mqtt-traffic).
+If `proxy_to_client_enabled` is on but no `mqttLink` is set, a yellow warning banner appears on the Device Configuration → MQTT page and an **MQTT not linked** badge on the source's dashboard card — without the link, proxy traffic from the firmware is dropped and the node gets nothing from the broker. See [Why don't I see MQTT traffic?](#why-no-mqtt-traffic).
 
 ## Topic rewriting
 
@@ -402,9 +402,9 @@ With **Proxy to Client** on, the node opens no broker connection of its own. It 
 
 The firmware checks every packet that comes from the broker, on all three paths. It drops the packet when:
 
-1. **The channel does not have Downlink Enabled.** Set it under **Device → Channels Configuration**: edit the channel and tick **Downlink Enabled**. It is off by default.
+1. **The channel does not have Downlink Enabled.** Set it under **Device Configuration → Channels Configuration**: edit the channel and tick **Downlink Enabled**. It is off by default.
 2. **The node does not have that channel.** The firmware matches the packet to a channel by name. No channel with that name means no delivery, and a channel with the right name but the wrong key cannot be decrypted.
-3. **Ignore MQTT is on.** Turn it off under **Device → LoRa Radio Configuration**.
+3. **Ignore MQTT is on.** Turn it off under **Device Configuration → LoRa Radio Configuration**.
 
 Two less common causes: the sender is on the node's ignore list, or the packet arrived unencrypted while the node's MQTT **Encryption Enabled** is on.
 
@@ -422,7 +422,7 @@ This is the case behind most "only when another node repeats it" reports. The no
 MeshMonitor tells you in three places:
 
 - The source's card on the dashboard shows **MQTT not linked**.
-- **Device → MQTT Module** shows **Client proxy is enabled but no broker is linked**.
+- **Device Configuration → MQTT Module** shows **Client proxy is enabled but no broker is linked**.
 - The container log has one line per connection that starts `MQTT client proxy:`.
 
 ![The MQTT not linked badge on a source card, closed and open](/images/features/5013-mqtt-not-linked-card.png)
@@ -430,7 +430,7 @@ MeshMonitor tells you in three places:
 To fix it:
 
 1. If you have no MQTT source yet, add one: **Dashboard → Sources → Add Source**, then pick **MQTT Bridge (forward to/from an upstream broker)** for an outside broker, or **Embedded MQTT Broker (devices connect here)** to host one. See [Quick setup](#quick-setup).
-2. Open the node's source and go to **Device → MQTT Module**.
+2. Open the node's source and go to **Device Configuration → MQTT Module**.
 3. In **Quick configure from a MeshMonitor MQTT source**, pick the bridge or broker. This links the two sources at once and fills in the form.
 4. Save, so the node gets the new MQTT settings.
 5. Check that the channel has **Downlink Enabled** and that **Ignore MQTT** is off.
@@ -463,10 +463,10 @@ If a source is linked and the packet is still missing, set `LOG_LEVEL=debug` and
 
 ## Troubleshooting
 
-### "Client proxy is enabled but no broker is linked" (yellow banner on Device → MQTT)
+### "Client proxy is enabled but no broker is linked" (yellow banner on Device Configuration → MQTT)
 
 `proxy_to_client_enabled` is set on the firmware, but the Meshtastic source has no `mqttLink` to an existing, enabled MQTT source. The source's dashboard card shows **MQTT not linked** for the same reason. MeshMonitor will silently drop the proxy publishes, and the node gets nothing from the broker, unless:
-1. You pick an embedded broker or a bridge from the **Quick Configure** dropdown on Device → MQTT (one click — also stamps the link via PUT); **or**
+1. You pick an embedded broker or a bridge from the **Quick Configure** dropdown on Device Configuration → MQTT (one click — also stamps the link via PUT); **or**
 2. You have the [MQTT Proxy Sidecar](/add-ons/mqtt-proxy) attached to this source's Virtual Node Server, which publishes to its own configured upstream.
 
 See [Why don't I see MQTT traffic?](#why-no-mqtt-traffic) for the full list of causes and a test that tells them apart.
