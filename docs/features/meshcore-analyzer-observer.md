@@ -1,7 +1,7 @@
 # MeshCore Analyzer Observer
 
 ::: tip Added in 4.14 (#4457), multi-broker in 4.16 (#5014)
-Publish packets your MeshCore Companion hears to one or more MeshCore Analyzer MQTT brokers — MeshMapper, LetsMesh, or a compatible regional broker — so your node counts as an observer everywhere you choose.
+Publish packets your MeshCore Companion hears to one or more MeshCore Analyzer MQTT brokers — MeshMapper, LetsMesh, meshcore.ca, RF Lab, or a compatible regional broker — so your node counts as an observer everywhere you choose.
 :::
 
 ## What it is
@@ -73,7 +73,14 @@ Remove a row with the trash icon next to it. There's no per-broker enable/disabl
 | MeshMapper | `wss://mqtt.meshmapper.net:443` | `mqtt.meshmapper.net` | Signed token |
 | LetsMesh US | `wss://mqtt-us-v1.letsmesh.net:443` | `mqtt-us-v1.letsmesh.net` | Signed token |
 | LetsMesh EU | `wss://mqtt-eu-v1.letsmesh.net:443` | `mqtt-eu-v1.letsmesh.net` | Signed token |
+| meshcore.ca Primary | `wss://mqtt1.meshcore.ca:443` | `mqtt1.meshcore.ca` | Signed token |
+| meshcore.ca Backup | `wss://mqtt2.meshcore.ca:443` | `mqtt2.meshcore.ca` | Signed token |
+| RF Lab | `wss://mqtt.rflab.io:443` | `mqtt.rflab.io` | Signed token |
 | Custom… | *(blank)* | *(blank)* | Signed token |
+
+The two **meshcore.ca** presets are the primary and backup brokers of [MeshCore Canada](https://meshcore.ca/)'s analyzer; add both for a fallback path. Their values come from meshcore.ca's [observer connection reference](https://meshcore.ca/analyzer/broker-reference/) — if a value there ever differs from the table above, the reference wins, and the row is editable.
+
+The **RF Lab** preset is the broker behind [RF Lab](https://rflab.io/)'s analyzer; its values come from RF Lab's [observer setup guide](https://rflab.io/guides/observer-firmware.html).
 
 A preset button just appends a pre-filled row — every field on it stays editable afterward, including switching it to username/password mode. Clicking the same preset twice adds a duplicate URL, which is rejected on save; remove the extra row instead.
 
@@ -103,7 +110,7 @@ The **Username / password** mode exists for regional brokers that don't verify a
 
 | Mode | Use it when | MQTT login |
 |---|---|---|
-| **Signed token (FL Mesh / LetsMesh)** | The broker verifies an Ed25519 token signed by your node — the FL Mesh / LetsMesh backbone convention. The default, and what all three presets use. | Username `v1_{PUBLIC_KEY}`, password a short-lived token MeshMonitor mints and renews. |
+| **Signed token (FL Mesh / LetsMesh)** | The broker verifies an Ed25519 token signed by your node — the FL Mesh / LetsMesh backbone convention. The default, and what every named preset uses. | Username `v1_{PUBLIC_KEY}`, password a short-lived token MeshMonitor mints and renews. |
 | **Username / password** | The broker takes a fixed MQTT login instead — for example [meshcoretel.ru](https://meshcoretel.ru), which uses `meshcore`/`meshcore` across its regions. | Exactly the username and password you store for that broker. Nothing expires, nothing renews. |
 
 Either way, the topics stay the same per broker: `meshcore/{REGION}/{YOUR_NODE_PUBLIC_KEY}/packets` and `.../status`. In username/password mode MeshMonitor takes that public key straight from the node (it's broadcast in every advert), so no signing key is needed at all for that broker.

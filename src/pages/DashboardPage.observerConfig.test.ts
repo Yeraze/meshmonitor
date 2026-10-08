@@ -5,6 +5,8 @@
  * `brokers[]` migration, `buildObserverConfig` check order) and §3.2
  * (presets) / §3.1 (observerErrorMessageKey mapping, unchanged from Phase 1).
  */
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { describe, it, expect } from 'vitest';
 import {
   emptyObserverForm,
@@ -12,6 +14,8 @@ import {
   buildObserverConfig,
   observerErrorMessageKey,
   observerBrokerFormFromPreset,
+  observerBrokerFormKey,
+  emptyObserverBrokerForm,
   OBSERVER_BROKER_PRESETS,
   MAX_OBSERVER_BROKERS,
   type ObserverForm,
@@ -478,11 +482,132 @@ describe('observerFormFromConfig', () => {
 });
 
 describe('OBSERVER_BROKER_PRESETS', () => {
-  it('has all four presets, in order', () => {
-    expect(OBSERVER_BROKER_PRESETS.map((p) => p.id)).toEqual(['meshmapper', 'letsmesh_us', 'letsmesh_eu', 'custom']);
+  it('has all seven presets, in order, with custom last', () => {
+    expect(OBSERVER_BROKER_PRESETS.map((p) => p.id)).toEqual([
+      'meshmapper',
+      'letsmesh_us',
+      'letsmesh_eu',
+      'meshcore_ca_primary',
+      'meshcore_ca_backup',
+      'rflab',
+      'custom',
+    ]);
   });
 
-  it('the three named presets are token mode with host-as-audience', () => {
+  // #5672 — values from https://rflab.io/guides/observer-firmware.html.
+  it('the RF Lab preset carries its broker exactly', () => {
+    expect(OBSERVER_BROKER_PRESETS.find((p) => p.id === 'rflab')).toEqual({
+      id: 'rflab',
+      labelKey: 'meshcore.form.observer_preset_rflab',
+      labelFallback: 'RF Lab',
+      url: 'wss://mqtt.rflab.io:443',
+      tokenAudience: 'mqtt.rflab.io',
+      label: 'RF Lab',
+    });
+  });
+
+  // #5671 — values from https://meshcore.ca/analyzer/broker-reference/.
+  it('the meshcore.ca presets carry the primary and backup broker exactly', () => {
+    const primary = OBSERVER_BROKER_PRESETS.find((p) => p.id === 'meshcore_ca_primary');
+    const backup = OBSERVER_BROKER_PRESETS.find((p) => p.id === 'meshcore_ca_backup');
+    expect(primary).toEqual({
+      id: 'meshcore_ca_primary',
+      labelKey: 'meshcore.form.observer_preset_meshcore_ca_primary',
+      labelFallback: 'meshcore.ca Primary',
+      url: 'wss://mqtt1.meshcore.ca:443',
+      tokenAudience: 'mqtt1.meshcore.ca',
+      label: 'meshcore.ca Primary',
+    });
+    expect(backup).toEqual({
+      id: 'meshcore_ca_backup',
+      labelKey: 'meshcore.form.observer_preset_meshcore_ca_backup',
+      labelFallback: 'meshcore.ca Backup',
+      url: 'wss://mqtt2.meshcore.ca:443',
+      tokenAudience: 'mqtt2.meshcore.ca',
+      label: 'meshcore.ca Backup',
+    });
+  });
+
+  // Table-wide invariants, so the next preset is checked without a new test.
+  const named = OBSERVER_BROKER_PRESETS.filter((p) => p.id !== 'custom');
+
+  it.each(named.map((p) => [p.id, p] as const))('%s is WSS on 443 with the broker host as audience', (_id, preset) => {
+    const parsed = new URL(preset.url);
+    expect(parsed.protocol).toBe('wss:');
+    // WHATWG URL drops the default port for wss, so check the literal too.
+    expect(preset.url.endsWith(':443')).toBe(true);
+    expect(parsed.pathname).toBe('/');
+    expect(preset.tokenAudience).toBe(parsed.hostname);
+    expect(preset.label).toBe(preset.labelFallback);
+    expect(preset.label.length).toBeLessThanOrEqual(64);
+  });
+
+  it('every preset label is in en.json and matches its fallback', () => {
+    const en = JSON.parse(readFileSync(resolve(process.cwd(), 'public/locales/en.json'), 'utf8')) as Record<string, string>;
+    for (const preset of OBSERVER_BROKER_PRESETS) {
+      expect(en[preset.labelKey], preset.labelKey).toBe(preset.labelFallback);
+    }
+  });
+
+  it('ids, URLs (by broker key) and label keys are unique', () => {
+    const unique = (values: string[]) => new Set(values).size === values.length;
+    expect(unique(OBSERVER_BROKER_PRESETS.map((p) => p.id))).toBe(true);
+    expect(unique(OBSERVER_BROKER_PRESETS.map((p) => p.labelKey))).toBe(true);
+    expect(unique(named.map((p) => observerBrokerFormKey(p.url)))).toBe(true);
+  });
+
+  it.each(named.map((p) => [p.id, p] as const))(
+    '%s builds the same config a hand-typed row with its values would',
+    (_id, preset) => {
+      const fromPreset = buildObserverConfig({
+        enabled: true,
+        iataCode: 'YYZ',
+        brokers: [observerBrokerFormFromPreset(preset)],
+      });
+      const typed = buildObserverConfig({
+        enabled: true,
+        iataCode: 'YYZ',
+        brokers: [
+          { ...emptyObserverBrokerForm(), url: preset.url, tokenAudience: preset.tokenAudience, label: preset.label },
+        ],
+      });
+      expect(fromPreset.error).toBeUndefined();
+      expect(fromPreset.config).toEqual(typed.config);
+      expect(fromPreset.config?.brokers).toEqual([
+        { url: preset.url, authMode: 'token', tokenAudience: preset.tokenAudience, label: preset.label },
+      ]);
+    },
+  );
+
+  it.each(named.map((p) => [p.id, p] as const))('%s twice is a duplicate-broker error on the second row', (_id, preset) => {
+    const result = buildObserverConfig({
+      enabled: true,
+      iataCode: 'YYZ',
+      brokers: [observerBrokerFormFromPreset(preset), observerBrokerFormFromPreset(preset)],
+    });
+    expect(result.error?.key).toBe('meshcore.form.observer_error_duplicate_broker');
+    expect(result.error?.params).toEqual({ index: 2 });
+  });
+
+  it('every named preset together is one valid block under the broker cap', () => {
+    expect(named.length).toBeLessThanOrEqual(MAX_OBSERVER_BROKERS);
+    const result = buildObserverConfig({
+      enabled: true,
+      iataCode: 'YYZ',
+      brokers: named.map(observerBrokerFormFromPreset),
+    });
+    expect(result.error).toBeUndefined();
+    expect(result.config?.brokers.map((b) => b.url)).toEqual(named.map((p) => p.url));
+  });
+
+  it('meshcore.ca Primary plus Backup are two distinct brokers', () => {
+    const rows = OBSERVER_BROKER_PRESETS.filter((p) => p.id.startsWith('meshcore_ca_')).map(observerBrokerFormFromPreset);
+    const result = buildObserverConfig({ enabled: true, iataCode: 'YYZ', brokers: rows });
+    expect(result.error).toBeUndefined();
+    expect(result.config?.brokers.map((b) => b.url)).toEqual(['wss://mqtt1.meshcore.ca:443', 'wss://mqtt2.meshcore.ca:443']);
+  });
+
+  it('the original three presets are token mode with host-as-audience', () => {
     const [meshmapper, us, eu] = OBSERVER_BROKER_PRESETS;
     expect(meshmapper.url).toBe('wss://mqtt.meshmapper.net:443');
     expect(meshmapper.tokenAudience).toBe('mqtt.meshmapper.net');

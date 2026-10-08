@@ -485,6 +485,156 @@ describe('MeshCore Analyzer Observer fieldset (#4457 Phase 3, multi-broker #5014
     ]);
   });
 
+  // ── meshcore.ca (#5671) and RF Lab (#5672) presets ─────────────────────────
+  it.each([
+    ['observer_preset_meshcore_ca_primary', 'wss://mqtt1.meshcore.ca:443', 'mqtt1.meshcore.ca', 'meshcore.ca Primary'],
+    ['observer_preset_meshcore_ca_backup', 'wss://mqtt2.meshcore.ca:443', 'mqtt2.meshcore.ca', 'meshcore.ca Backup'],
+    ['observer_preset_rflab', 'wss://mqtt.rflab.io:443', 'mqtt.rflab.io', 'RF Lab'],
+  ])('clicking %s appends a signed-token row with that broker', async (key, url, audience, label) => {
+    mockFetchOk();
+    renderPage();
+    openEditModal();
+
+    const enable = await screen.findByRole('checkbox', { name: 'meshcore.form.observer_enable' });
+    fireEvent.click(enable);
+    fireEvent.change(screen.getByPlaceholderText('MCO'), { target: { value: 'yyz' } });
+
+    clickPreset(key);
+
+    const row = brokerRow(1);
+    expect(within(row).getByPlaceholderText('wss://mqtt-us-v1.letsmesh.net:443')).toHaveValue(url);
+    expect(within(row).getByPlaceholderText('meshcore-mqtt')).toHaveValue(audience);
+    expect(within(row).getByPlaceholderText('MeshMapper')).toHaveValue(label);
+    expect(within(row).getByLabelText('meshcore.form.observer_auth_mode')).toHaveValue('token');
+
+    saveModal();
+
+    await waitFor(() => expect(findPutCall()).toBeTruthy());
+    const body = JSON.parse(findPutCall()![1].body as string);
+    expect(body.config.observer).toEqual({
+      enabled: true,
+      authMode: 'token',
+      iataCode: 'YYZ',
+      brokers: [{ url, authMode: 'token', tokenAudience: audience, label }],
+    });
+  });
+
+  it('meshcore.ca Primary then Backup saves both brokers in click order', async () => {
+    mockFetchOk();
+    renderPage();
+    openEditModal();
+
+    const enable = await screen.findByRole('checkbox', { name: 'meshcore.form.observer_enable' });
+    fireEvent.click(enable);
+    fireEvent.change(screen.getByPlaceholderText('MCO'), { target: { value: 'YYZ' } });
+
+    clickPreset('observer_preset_meshcore_ca_primary');
+    clickPreset('observer_preset_meshcore_ca_backup');
+
+    saveModal();
+
+    await waitFor(() => expect(findPutCall()).toBeTruthy());
+    const body = JSON.parse(findPutCall()![1].body as string);
+    expect(body.config.observer.brokers).toEqual([
+      { url: 'wss://mqtt1.meshcore.ca:443', authMode: 'token', tokenAudience: 'mqtt1.meshcore.ca', label: 'meshcore.ca Primary' },
+      { url: 'wss://mqtt2.meshcore.ca:443', authMode: 'token', tokenAudience: 'mqtt2.meshcore.ca', label: 'meshcore.ca Backup' },
+    ]);
+  });
+
+  it('a meshcore.ca preset row stays editable: edited values are what gets saved', async () => {
+    mockFetchOk();
+    renderPage();
+    openEditModal();
+
+    const enable = await screen.findByRole('checkbox', { name: 'meshcore.form.observer_enable' });
+    fireEvent.click(enable);
+    fireEvent.change(screen.getByPlaceholderText('MCO'), { target: { value: 'YYZ' } });
+
+    clickPreset('observer_preset_meshcore_ca_primary');
+    const row = brokerRow(1);
+    fireEvent.change(within(row).getByPlaceholderText('wss://mqtt-us-v1.letsmesh.net:443'), {
+      target: { value: 'wss://mqtt9.example.org:8443' },
+    });
+    fireEvent.change(within(row).getByPlaceholderText('meshcore-mqtt'), { target: { value: 'mqtt9.example.org' } });
+    fireEvent.change(within(row).getByPlaceholderText('MeshMapper'), { target: { value: 'My broker' } });
+
+    saveModal();
+
+    await waitFor(() => expect(findPutCall()).toBeTruthy());
+    const body = JSON.parse(findPutCall()![1].body as string);
+    expect(body.config.observer.brokers).toEqual([
+      { url: 'wss://mqtt9.example.org:8443', authMode: 'token', tokenAudience: 'mqtt9.example.org', label: 'My broker' },
+    ]);
+  });
+
+  it.each(['observer_preset_meshcore_ca_backup', 'observer_preset_rflab'])(
+    'blocks save with the duplicate-broker message when %s is added twice, issuing no fetch',
+    async (presetKey) => {
+      renderPage();
+      openEditModal();
+
+      const enable = await screen.findByRole('checkbox', { name: 'meshcore.form.observer_enable' });
+      fireEvent.click(enable);
+      fireEvent.change(screen.getByPlaceholderText('MCO'), { target: { value: 'YYZ' } });
+
+      clickPreset(presetKey);
+      clickPreset(presetKey);
+      expect(screen.getAllByTestId(/observer-broker-row-/)).toHaveLength(2);
+
+      global.fetch = vi.fn();
+      saveModal();
+
+      await screen.findByText('meshcore.form.observer_error_duplicate_broker');
+      expect(findPutCall()).toBeUndefined();
+    },
+  );
+
+  it('at the 8-broker cap every preset button, the new ones included, is disabled and adds nothing', async () => {
+    currentSource = makeSource({
+      ...baseConfig,
+      observer: {
+        enabled: true,
+        authMode: 'token',
+        iataCode: 'YYZ',
+        brokers: Array.from({ length: 7 }, (_, i) => ({
+          url: `wss://broker${i}.example.com:443`,
+          authMode: 'token',
+          tokenAudience: `aud${i}`,
+        })),
+      },
+    });
+    mockFetchOk();
+    renderPage();
+    openEditModal();
+
+    expect(await screen.findAllByTestId(/observer-broker-row-/)).toHaveLength(7);
+    const presetButtons = () => screen.getAllByRole('button', { name: /observer_preset_/ });
+    expect(presetButtons()).toHaveLength(7);
+    presetButtons().forEach((button) => expect(button).toBeEnabled());
+
+    // The eighth row is the last one allowed.
+    clickPreset('observer_preset_meshcore_ca_primary');
+    expect(screen.getAllByTestId(/observer-broker-row-/)).toHaveLength(8);
+    presetButtons().forEach((button) => expect(button).toBeDisabled());
+
+    clickPreset('observer_preset_meshcore_ca_backup');
+    expect(screen.getAllByTestId(/observer-broker-row-/)).toHaveLength(8);
+    clickPreset('observer_preset_rflab');
+    expect(screen.getAllByTestId(/observer-broker-row-/)).toHaveLength(8);
+
+    saveModal();
+
+    await waitFor(() => expect(findPutCall()).toBeTruthy());
+    const body = JSON.parse(findPutCall()![1].body as string);
+    expect(body.config.observer.brokers).toHaveLength(8);
+    expect(body.config.observer.brokers[7]).toEqual({
+      url: 'wss://mqtt1.meshcore.ca:443',
+      authMode: 'token',
+      tokenAudience: 'mqtt1.meshcore.ca',
+      label: 'meshcore.ca Primary',
+    });
+  });
+
   it('removes the correct row when three brokers are added and the middle one is removed', async () => {
     mockFetchOk();
     renderPage();
