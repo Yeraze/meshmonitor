@@ -17,7 +17,7 @@ import {
   simulateTrafficReplay,
   type ReplayChannel,
   type ReplayPacket,
-  type ReplayResult,
+  type TrafficReplayResponse,
   type ReplaySettings,
 } from '../../utils/trafficManagementReplay.js';
 
@@ -34,12 +34,6 @@ export interface PacketContentAccess {
   isAdmin: boolean;
   allowedChannels: Set<number>;
   canReadMessages: boolean;
-}
-
-export interface TrafficReplayResponse extends ReplayResult {
-  sourceId: string;
-  /** Names for the senders the result names (all of them visible to the caller). */
-  senders: Record<string, { nodeId: string; shortName: string | null; longName: string | null }>;
 }
 
 export class TrafficReplayUnavailableError extends Error {

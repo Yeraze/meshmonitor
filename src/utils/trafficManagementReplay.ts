@@ -267,6 +267,13 @@ export interface ReplayResult {
   rateLimit: RuleOutcome;
 }
 
+/** What `GET /api/packets/traffic-management/replay` returns. */
+export interface TrafficReplayResponse extends ReplayResult {
+  sourceId: string;
+  /** Names for the senders the result names (all of them visible to the caller). */
+  senders: Record<string, { nodeId: string; shortName: string | null; longName: string | null }>;
+}
+
 // --- Firmware arithmetic ----------------------------------------------------
 /** `secsToMs`: saturates at UINT32_MAX. */
 function secsToMs(secs: number): number {
