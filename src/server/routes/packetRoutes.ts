@@ -374,7 +374,11 @@ const requireReplaySourceId: RequestHandler = (req, res, next) => {
   next();
 };
 
-/** A whole number >= 0 that fits the firmware's uint32, or null. */
+/**
+ * A whole number >= 0 that fits the firmware's uint32, or null. Two steps on
+ * purpose: the pattern rejects signs, decimals and exponents, and the range
+ * check rejects the 10-digit values above 4294967295.
+ */
 function parseReplaySetting(value: unknown): number | null {
   if (typeof value !== 'string' || !/^\d{1,10}$/.test(value)) return null;
   const n = Number(value);

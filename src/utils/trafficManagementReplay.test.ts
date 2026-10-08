@@ -151,6 +151,13 @@ describe('effective settings', () => {
     expect(effectivePositionDedup(10_000_000).ticks).toBe(255);
   });
 
+  it('saturates like the firmware\'s secsToMs for absurd values instead of overflowing', () => {
+    // Past UINT32_MAX ms the interval pins at the 255 tick ceiling.
+    expect(effectivePositionDedup(4_294_968)).toMatchObject({ enabled: true, ticks: 255 });
+    expect(effectivePositionDedup(0xffffffff)).toMatchObject({ enabled: true, ticks: 255 });
+    expect(effectiveRateLimit(0xffffffff, 5)).toMatchObject({ enabled: true, ticks: 15, threshold: 5 });
+  });
+
   it('caps trackers at 1 h and lost-and-found at 15 min, and never lengthens', () => {
     expect(effectivePositionDedup(5 * 3600, 5).effectiveMs).toBe(HOUR); // TRACKER
     expect(effectivePositionDedup(5 * 3600, 10).effectiveMs).toBe(HOUR); // TAK_TRACKER
