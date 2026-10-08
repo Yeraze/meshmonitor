@@ -207,7 +207,7 @@ export const MeshCoreConfigurationView: React.FC<MeshCoreConfigurationViewProps>
   return (
     <div className="meshcore-form-view">
       <h2 style={{ color: 'var(--color-text)', marginBottom: '1rem' }}>
-        {t('meshcore.nav.configuration', 'Configuration')}
+        {t('nav.device_configuration', 'Device Configuration')}
       </h2>
 
       {!connected && (

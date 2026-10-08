@@ -641,7 +641,7 @@ const UsersTab: React.FC = () => {
     // translated "Node Details" tab label and appends the DM scope.
     messages: `${t('nav.messages')} & DM`,
     settings: t('nav.settings'),
-    configuration: t('nav.configuration'),
+    configuration: t('nav.device_configuration'),
     info: t('nav.info'),
     automation: t('nav.automation'),
     audit: t('nav.audit'),

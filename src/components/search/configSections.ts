@@ -23,6 +23,7 @@
 import type { TFunction } from 'i18next';
 import type { NavItem } from '../SectionNav';
 import { isCoverageMqttSourceType } from '../../utils/coverage';
+import { DEVICE_CONFIGURATION_NAV_ENTRY, SOURCE_SETTINGS_NAV_ENTRY } from '../nav/sourceNavEntries';
 
 /**
  * i18next's `t`, exactly as the tabs already hold it.
@@ -296,13 +297,13 @@ export function buildConfigSurfaces(t: Translate, context: ConfigSurfaceContext)
     const base = `/source/${encodeURIComponent(sourceId)}`;
     surfaces.push({
       key: 'source-settings',
-      label: t('nav.settings', 'Settings'),
+      label: t(SOURCE_SETTINGS_NAV_ENTRY.labelKey, SOURCE_SETTINGS_NAV_ENTRY.fallback),
       path: `${base}/settings`,
       items: settingsNavItems(t, { ...settingsOptions, mode: 'source' }),
     });
     surfaces.push({
       key: 'configuration',
-      label: t('nav.configuration', 'Configuration'),
+      label: t(DEVICE_CONFIGURATION_NAV_ENTRY.labelKey, DEVICE_CONFIGURATION_NAV_ENTRY.fallback),
       path: `${base}/configuration`,
       items: configurationNavItems(t),
     });
