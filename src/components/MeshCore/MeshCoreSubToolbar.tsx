@@ -1,11 +1,12 @@
 import React, { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useAuth } from '../../contexts/AuthContext';
 import { type UiIconName } from '../icons';
 import { SourceNav, type SourceNavItem } from '../nav/SourceNav';
 import styles from './MeshCoreSubToolbar.module.css';
 
-export type MeshCoreView = 'nodes' | 'channels' | 'rooms' | 'dms' | 'telemetry' | 'packets' | 'info' | 'configuration' | 'automations' | 'notifications' | 'settings';
+import { useMeshCoreViewAccess, type MeshCoreView } from './meshCoreViewAccess';
+
+export type { MeshCoreView } from './meshCoreViewAccess';
 
 interface MeshCoreSubToolbarProps {
   view: MeshCoreView;
@@ -61,30 +62,18 @@ export const MeshCoreSubToolbar: React.FC<MeshCoreSubToolbarProps> = ({
   unread = {},
 }) => {
   const { t } = useTranslation();
-  const { authStatus, hasPermission } = useAuth();
-  const isAuthenticated = authStatus?.authenticated ?? false;
-  const canReadConfig = hasPermission('configuration', 'read');
-  const canReadAutomation = hasPermission('automation', 'read');
-  const canReadPackets = hasPermission('packetmonitor', 'read');
+  // One rule set for the nav and the page (#5666): see meshCoreViewAccess.ts.
+  const visibleViews = useMeshCoreViewAccess(showInfo);
 
   const items = useMemo<SourceNavItem[]>(() => {
-    return ITEMS.filter(item => {
-      if (item.id === 'configuration' && !canReadConfig) return false;
-      if (item.id === 'automations' && !canReadAutomation) return false;
-      if (item.id === 'packets' && !canReadPackets) return false;
-      // Notifications preferences are per-user — only meaningful when signed in.
-      if (item.id === 'notifications' && !isAuthenticated) return false;
-      // Info is per-source only — it reads /api/sources/:id/meshcore/info.
-      if (item.id === 'info' && !showInfo) return false;
-      return true;
-    }).map(item => ({
+    return ITEMS.filter(item => visibleViews.includes(item.id)).map(item => ({
       id: item.id,
       label: t(item.labelKey, item.fallback),
       icon: item.icon,
       onClick: () => onSelect(item.id),
       unread: unread[item.id] ?? false,
     }));
-  }, [t, onSelect, unread, showInfo, canReadConfig, canReadAutomation, canReadPackets, isAuthenticated]);
+  }, [t, onSelect, unread, visibleViews]);
 
   return (
     <SourceNav
