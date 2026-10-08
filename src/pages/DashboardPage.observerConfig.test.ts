@@ -607,7 +607,7 @@ describe('OBSERVER_BROKER_PRESETS', () => {
     expect(result.config?.brokers.map((b) => b.url)).toEqual(['wss://mqtt1.meshcore.ca:443', 'wss://mqtt2.meshcore.ca:443']);
   });
 
-  it('the three named presets are token mode with host-as-audience', () => {
+  it('the original three presets are token mode with host-as-audience', () => {
     const [meshmapper, us, eu] = OBSERVER_BROKER_PRESETS;
     expect(meshmapper.url).toBe('wss://mqtt.meshmapper.net:443');
     expect(meshmapper.tokenAudience).toBe('mqtt.meshmapper.net');

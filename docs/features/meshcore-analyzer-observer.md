@@ -110,7 +110,7 @@ The **Username / password** mode exists for regional brokers that don't verify a
 
 | Mode | Use it when | MQTT login |
 |---|---|---|
-| **Signed token (FL Mesh / LetsMesh)** | The broker verifies an Ed25519 token signed by your node — the FL Mesh / LetsMesh backbone convention. The default, and what all three presets use. | Username `v1_{PUBLIC_KEY}`, password a short-lived token MeshMonitor mints and renews. |
+| **Signed token (FL Mesh / LetsMesh)** | The broker verifies an Ed25519 token signed by your node — the FL Mesh / LetsMesh backbone convention. The default, and what every named preset uses. | Username `v1_{PUBLIC_KEY}`, password a short-lived token MeshMonitor mints and renews. |
 | **Username / password** | The broker takes a fixed MQTT login instead — for example [meshcoretel.ru](https://meshcoretel.ru), which uses `meshcore`/`meshcore` across its regions. | Exactly the username and password you store for that broker. Nothing expires, nothing renews. |
 
 Either way, the topics stay the same per broker: `meshcore/{REGION}/{YOUR_NODE_PUBLIC_KEY}/packets` and `.../status`. In username/password mode MeshMonitor takes that public key straight from the node (it's broadcast in every advert), so no signing key is needed at all for that broker.
