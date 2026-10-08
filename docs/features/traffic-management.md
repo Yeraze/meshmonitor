@@ -125,6 +125,8 @@ Below the Traffic Management form there is an **Estimate impact** panel. It repl
 1. Edit the values in the form. You do not need to save them.
 2. Press **Estimate**.
 
+![The Estimate impact panel below the Traffic Management form](/images/features/traffic-management-estimate.png)
+
 The panel uses the values in the form as they stand, saved or not. It runs only when you press the button. It reads MeshMonitor's own database: **nothing is sent to the node and nothing is saved.** It costs no airtime.
 
 It needs `packetmonitor:read` and `configuration:read` on that source. It names a sender only if you could already see that node; others are counted under "Other senders".
