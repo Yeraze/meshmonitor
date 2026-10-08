@@ -31,7 +31,7 @@ import {
 } from '../services/meshcoreTimeSyncScheduler.js';
 import databaseService from '../../services/database.js';
 import { logger } from '../../utils/logger.js';
-import { requireAuth, optionalAuth, requirePermission } from '../auth/authMiddleware.js';
+import { requireAuth, optionalAuth, requirePermission, hasPermission } from '../auth/authMiddleware.js';
 import { meshcoreDeviceLimiter } from '../middleware/rateLimiters.js';
 import meshcorePositionHistoryService from '../services/meshcorePositionHistoryService.js';
 import { isBogusPosition } from '../../utils/nullIsland.js';
@@ -125,6 +125,11 @@ router.get(
       // Only a finite, non-negative cutoff is a real window; a negative value
       // would be a no-op cutoff that silently returns the entire history.
       const sinceArg = Number.isFinite(since) && since >= 0 ? since : undefined;
+      // A trail is position data: `nodes:read` opens the route, `nodes:viewOnMap`
+      // pays for the points, as on GET /nodes and GET /contacts (#5667 audit).
+      if (!req.user || !(await hasPermission(req.user, 'nodes', 'viewOnMap', sourceId))) {
+        return res.json({ success: true, count: 0, data: [] });
+      }
       const points = await meshcorePositionHistoryService.getPositionHistory(
         sourceId,
         publicKey,
@@ -1893,6 +1898,10 @@ router.post(
 // ---------------------------------------------------------------------------
 // POST /api/sources/:id/meshcore/neighbors/request
 // Request neighbor data from a MeshCore repeater (remote or local).
+//
+// This transmits, so it stays behind requireAuth(): the anonymous account is
+// refused even with `nodes:read` (#5668). Only the stored read below is open
+// to it. Do not swap this for optionalAuth().
 // ---------------------------------------------------------------------------
 
 router.post('/neighbors/request', extendRequestTimeout(NEIGHBORS_REQUEST_TIMEOUT_MS), meshcoreDeviceLimiter, requireAuth(), requirePermission('nodes', 'read', { sourceIdFrom: 'params.id' }), async (req: Request, res: Response) => {
@@ -1942,9 +1951,12 @@ router.post('/neighbors/request', extendRequestTimeout(NEIGHBORS_REQUEST_TIMEOUT
 // ---------------------------------------------------------------------------
 // GET /api/sources/:id/meshcore/neighbors
 // Query stored MeshCore neighbor data (for map rendering).
+//
+// A read of stored rows: `nodes:read` on the source, for anyone holding it,
+// the anonymous account included (#5668). It sends nothing.
 // ---------------------------------------------------------------------------
 
-router.get('/neighbors', requireAuth(), requirePermission('nodes', 'read', { sourceIdFrom: 'params.id' }), async (req: Request, res: Response) => {
+router.get('/neighbors', optionalAuth(), requirePermission('nodes', 'read', { sourceIdFrom: 'params.id' }), async (req: Request, res: Response) => {
   const sourceId = (req.params as { id?: string }).id!;
   const sinceMs = Number(req.query.since) || 0;
   const nodeFilter = typeof req.query.node === 'string' ? req.query.node : undefined;

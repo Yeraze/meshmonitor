@@ -26,7 +26,8 @@ import {
 } from '../../hooks/useMeshCoreFilters';
 import { useReadStateSync } from './hooks/useReadStateSync';
 import { MeshCoreStatusBar } from './MeshCoreStatusBar';
-import { MeshCoreSubToolbar, MeshCoreView } from './MeshCoreSubToolbar';
+import { MeshCoreSubToolbar } from './MeshCoreSubToolbar';
+import { resolveMeshCoreView, useMeshCoreViewAccess, type MeshCoreView } from './meshCoreViewAccess';
 import { readSidebarPinned, useSidebarPin } from '../nav/useSidebarPin';
 import { MeshCoreNodesView } from './MeshCoreNodesView';
 import { MeshCoreChannelsView } from './MeshCoreChannelsView';
@@ -86,7 +87,15 @@ export const MeshCorePage: React.FC<MeshCorePageProps> = ({ baseUrl, sourceId, e
   // tick with no page reload.
   const { isTxDisabled: receiveOnly } = useTxStatus({ baseUrl, sourceId });
 
-  const [view, setView] = useState<MeshCoreView>('nodes');
+  // `requestedView` is what was asked for; `view` is what is shown. A tab the
+  // viewer has no grant for (#5666) resolves to the Nodes tab instead of a
+  // blank pane, whichever way it was asked for: a nav click, the status bar's
+  // Connect button, or a jump to Node Details. Derived, so the asked-for tab
+  // appears once the grants have loaded.
+  const [requestedView, setView] = useState<MeshCoreView>('nodes');
+  const visibleViews = useMeshCoreViewAccess();
+  const view = resolveMeshCoreView(requestedView, visibleViews);
+  const canOpenSettings = visibleViews.includes('settings');
   // Same Pin sidebar behaviour as the Meshtastic sidebar (#5481): one global
   // pin, the nav starts expanded when pinned, and an unpinned nav collapses
   // after a nav click.
@@ -163,7 +172,9 @@ export const MeshCorePage: React.FC<MeshCorePageProps> = ({ baseUrl, sourceId, e
       <MeshCoreStatusBar
         status={status}
         loading={loading}
-        onOpenSettings={() => setView('settings')}
+        // Connect lives on the Settings tab. Without that tab, connect directly;
+        // POST /connect checks `connection:write` itself.
+        onOpenSettings={() => (canOpenSettings ? setView('settings') : void actions.connect())}
         actions={actions}
         hideConnectionText={!!onStatusChange}
         receiveOnly={receiveOnly}

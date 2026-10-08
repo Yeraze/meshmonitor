@@ -96,4 +96,39 @@ describe('MeshCoreSubToolbar', () => {
     expect(screen.getByText('Node Details')).toBeDefined();
     expect(screen.getByText('Settings')).toBeDefined();
   });
+
+  const labels = (container: HTMLElement): string[] =>
+    Array.from(container.querySelectorAll('[data-source-nav-item]')).map((el) => el.textContent?.trim() ?? '');
+  const renderWith = (grants: string[]) => {
+    authPermission = (resource, action) => action === 'read' && grants.includes(resource);
+    return render(
+      <MeshCoreSubToolbar view="nodes" onSelect={() => {}} expanded onToggleExpanded={() => {}} />,
+    );
+  };
+
+  it('hides the Settings tab without settings:read (#5666)', () => {
+    const { container } = renderWith(['connection', 'nodes', 'channel_0', 'messages', 'configuration', 'automation', 'packetmonitor', 'dashboard']);
+    expect(labels(container)).not.toContain('Settings');
+    expect(labels(container)).toContain('Configuration');
+  });
+
+  it('shows the Settings tab with settings:read', () => {
+    const { container } = renderWith(['settings']);
+    expect(labels(container)).toEqual(['Nodes', 'Node Info', 'Settings']);
+  });
+
+  it('the anonymous viewer from #5666 (connection, nodes, channel_0) sees Nodes, Channels and Node Info', () => {
+    const { container } = renderWith(['connection', 'nodes', 'channel_0']);
+    expect(labels(container)).toEqual(['Nodes', 'Channels', 'Node Info']);
+  });
+
+  it('messages:read adds Rooms and Node Details; a channel grant alone does not', () => {
+    expect(labels(renderWith(['messages']).container)).toEqual(['Nodes', 'Channels', 'Rooms', 'Node Details', 'Node Info']);
+  });
+
+  it('each remaining tab follows its own grant', () => {
+    expect(labels(renderWith(['dashboard']).container)).toEqual(['Nodes', 'Telemetry', 'Node Info']);
+    expect(labels(renderWith(['packetmonitor']).container)).toEqual(['Nodes', 'Packet Monitor', 'Node Info']);
+    expect(labels(renderWith(['automation']).container)).toEqual(['Nodes', 'Node Info', 'Automations']);
+  });
 });

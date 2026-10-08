@@ -275,6 +275,15 @@ export function optionalAuth() {
 /**
  * Require authentication
  */
+const AUTH_GATE = Symbol.for('meshmonitor.authGate');
+
+/** True when `handler` is a middleware built by `requireAuth()`: a signed-in
+ *  account (session or API token) is needed, and the anonymous account is
+ *  refused whatever it has been granted. Read by route guard tests. */
+export function isAuthGate(handler: unknown): boolean {
+  return (handler as { [AUTH_GATE]?: boolean } | null | undefined)?.[AUTH_GATE] === true;
+}
+
 /**
  * Resolve a user from an `Authorization: Bearer <token>` API token, if one is
  * present and valid (#4259). Returns the token's owning user (a full
@@ -330,7 +339,7 @@ async function resolveBearerUser(req: Request): Promise<User | null> {
 }
 
 export function requireAuth() {
-  return async (req: Request, res: Response, next: NextFunction) => {
+  const middleware = async (req: Request, res: Response, next: NextFunction) => {
     try {
       if (!req.session.userId) {
         // No session — accept a Bearer API token before rejecting (#4259).
@@ -380,6 +389,8 @@ export function requireAuth() {
       });
     }
   };
+  (middleware as unknown as { [AUTH_GATE]: boolean })[AUTH_GATE] = true;
+  return middleware;
 }
 
 /**
