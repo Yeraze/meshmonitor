@@ -160,6 +160,9 @@ export interface ObserverBrokerPreset {
  * - meshcore.ca (#5671): https://meshcore.ca/analyzer/broker-reference/ and
  *   the machine-readable https://meshcore.ca/analyzer/observer-config.json
  *   (version 2026.09), read 2026-10-08.
+ * - RF Lab (#5672): https://rflab.io/guides/observer-firmware.html ("RF Lab
+ *   broker" card, pyMC block and Home Assistant table all agree), read
+ *   2026-10-08.
  *
  * `custom` stays last: it is the escape hatch, not an analyzer.
  */
@@ -203,6 +206,14 @@ export const OBSERVER_BROKER_PRESETS: readonly ObserverBrokerPreset[] = [
     url: 'wss://mqtt2.meshcore.ca:443',
     tokenAudience: 'mqtt2.meshcore.ca',
     label: 'meshcore.ca Backup',
+  },
+  {
+    id: 'rflab',
+    labelKey: 'meshcore.form.observer_preset_rflab',
+    labelFallback: 'RF Lab',
+    url: 'wss://mqtt.rflab.io:443',
+    tokenAudience: 'mqtt.rflab.io',
+    label: 'RF Lab',
   },
   {
     id: 'custom',

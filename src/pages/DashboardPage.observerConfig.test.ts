@@ -482,15 +482,28 @@ describe('observerFormFromConfig', () => {
 });
 
 describe('OBSERVER_BROKER_PRESETS', () => {
-  it('has all six presets, in order, with custom last', () => {
+  it('has all seven presets, in order, with custom last', () => {
     expect(OBSERVER_BROKER_PRESETS.map((p) => p.id)).toEqual([
       'meshmapper',
       'letsmesh_us',
       'letsmesh_eu',
       'meshcore_ca_primary',
       'meshcore_ca_backup',
+      'rflab',
       'custom',
     ]);
+  });
+
+  // #5672 — values from https://rflab.io/guides/observer-firmware.html.
+  it('the RF Lab preset carries its broker exactly', () => {
+    expect(OBSERVER_BROKER_PRESETS.find((p) => p.id === 'rflab')).toEqual({
+      id: 'rflab',
+      labelKey: 'meshcore.form.observer_preset_rflab',
+      labelFallback: 'RF Lab',
+      url: 'wss://mqtt.rflab.io:443',
+      tokenAudience: 'mqtt.rflab.io',
+      label: 'RF Lab',
+    });
   });
 
   // #5671 — values from https://meshcore.ca/analyzer/broker-reference/.
@@ -566,15 +579,25 @@ describe('OBSERVER_BROKER_PRESETS', () => {
     },
   );
 
-  it('the same meshcore.ca preset twice is a duplicate-broker error on the second row', () => {
-    const primary = OBSERVER_BROKER_PRESETS.find((p) => p.id === 'meshcore_ca_primary')!;
+  it.each(named.map((p) => [p.id, p] as const))('%s twice is a duplicate-broker error on the second row', (_id, preset) => {
     const result = buildObserverConfig({
       enabled: true,
       iataCode: 'YYZ',
-      brokers: [observerBrokerFormFromPreset(primary), observerBrokerFormFromPreset(primary)],
+      brokers: [observerBrokerFormFromPreset(preset), observerBrokerFormFromPreset(preset)],
     });
     expect(result.error?.key).toBe('meshcore.form.observer_error_duplicate_broker');
     expect(result.error?.params).toEqual({ index: 2 });
+  });
+
+  it('every named preset together is one valid block under the broker cap', () => {
+    expect(named.length).toBeLessThanOrEqual(MAX_OBSERVER_BROKERS);
+    const result = buildObserverConfig({
+      enabled: true,
+      iataCode: 'YYZ',
+      brokers: named.map(observerBrokerFormFromPreset),
+    });
+    expect(result.error).toBeUndefined();
+    expect(result.config?.brokers.map((b) => b.url)).toEqual(named.map((p) => p.url));
   });
 
   it('meshcore.ca Primary plus Backup are two distinct brokers', () => {

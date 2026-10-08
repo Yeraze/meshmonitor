@@ -485,10 +485,11 @@ describe('MeshCore Analyzer Observer fieldset (#4457 Phase 3, multi-broker #5014
     ]);
   });
 
-  // ── meshcore.ca presets (#5671) ────────────────────────────────────────────
+  // ── meshcore.ca (#5671) and RF Lab (#5672) presets ─────────────────────────
   it.each([
     ['observer_preset_meshcore_ca_primary', 'wss://mqtt1.meshcore.ca:443', 'mqtt1.meshcore.ca', 'meshcore.ca Primary'],
     ['observer_preset_meshcore_ca_backup', 'wss://mqtt2.meshcore.ca:443', 'mqtt2.meshcore.ca', 'meshcore.ca Backup'],
+    ['observer_preset_rflab', 'wss://mqtt.rflab.io:443', 'mqtt.rflab.io', 'RF Lab'],
   ])('clicking %s appends a signed-token row with that broker', async (key, url, audience, label) => {
     mockFetchOk();
     renderPage();
@@ -566,26 +567,29 @@ describe('MeshCore Analyzer Observer fieldset (#4457 Phase 3, multi-broker #5014
     ]);
   });
 
-  it('blocks save with the duplicate-broker message when a meshcore.ca preset is added twice, issuing no fetch', async () => {
-    renderPage();
-    openEditModal();
+  it.each(['observer_preset_meshcore_ca_backup', 'observer_preset_rflab'])(
+    'blocks save with the duplicate-broker message when %s is added twice, issuing no fetch',
+    async (presetKey) => {
+      renderPage();
+      openEditModal();
 
-    const enable = await screen.findByRole('checkbox', { name: 'meshcore.form.observer_enable' });
-    fireEvent.click(enable);
-    fireEvent.change(screen.getByPlaceholderText('MCO'), { target: { value: 'YYZ' } });
+      const enable = await screen.findByRole('checkbox', { name: 'meshcore.form.observer_enable' });
+      fireEvent.click(enable);
+      fireEvent.change(screen.getByPlaceholderText('MCO'), { target: { value: 'YYZ' } });
 
-    clickPreset('observer_preset_meshcore_ca_backup');
-    clickPreset('observer_preset_meshcore_ca_backup');
-    expect(screen.getAllByTestId(/observer-broker-row-/)).toHaveLength(2);
+      clickPreset(presetKey);
+      clickPreset(presetKey);
+      expect(screen.getAllByTestId(/observer-broker-row-/)).toHaveLength(2);
 
-    global.fetch = vi.fn();
-    saveModal();
+      global.fetch = vi.fn();
+      saveModal();
 
-    await screen.findByText('meshcore.form.observer_error_duplicate_broker');
-    expect(findPutCall()).toBeUndefined();
-  });
+      await screen.findByText('meshcore.form.observer_error_duplicate_broker');
+      expect(findPutCall()).toBeUndefined();
+    },
+  );
 
-  it('at the 8-broker cap every preset button, meshcore.ca included, is disabled and adds nothing', async () => {
+  it('at the 8-broker cap every preset button, the new ones included, is disabled and adds nothing', async () => {
     currentSource = makeSource({
       ...baseConfig,
       observer: {
@@ -605,7 +609,7 @@ describe('MeshCore Analyzer Observer fieldset (#4457 Phase 3, multi-broker #5014
 
     expect(await screen.findAllByTestId(/observer-broker-row-/)).toHaveLength(7);
     const presetButtons = () => screen.getAllByRole('button', { name: /observer_preset_/ });
-    expect(presetButtons()).toHaveLength(6);
+    expect(presetButtons()).toHaveLength(7);
     presetButtons().forEach((button) => expect(button).toBeEnabled());
 
     // The eighth row is the last one allowed.
@@ -614,6 +618,8 @@ describe('MeshCore Analyzer Observer fieldset (#4457 Phase 3, multi-broker #5014
     presetButtons().forEach((button) => expect(button).toBeDisabled());
 
     clickPreset('observer_preset_meshcore_ca_backup');
+    expect(screen.getAllByTestId(/observer-broker-row-/)).toHaveLength(8);
+    clickPreset('observer_preset_rflab');
     expect(screen.getAllByTestId(/observer-broker-row-/)).toHaveLength(8);
 
     saveModal();

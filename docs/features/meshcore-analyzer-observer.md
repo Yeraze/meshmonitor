@@ -1,7 +1,7 @@
 # MeshCore Analyzer Observer
 
 ::: tip Added in 4.14 (#4457), multi-broker in 4.16 (#5014)
-Publish packets your MeshCore Companion hears to one or more MeshCore Analyzer MQTT brokers — MeshMapper, LetsMesh, meshcore.ca, or a compatible regional broker — so your node counts as an observer everywhere you choose.
+Publish packets your MeshCore Companion hears to one or more MeshCore Analyzer MQTT brokers — MeshMapper, LetsMesh, meshcore.ca, RF Lab, or a compatible regional broker — so your node counts as an observer everywhere you choose.
 :::
 
 ## What it is
@@ -75,9 +75,12 @@ Remove a row with the trash icon next to it. There's no per-broker enable/disabl
 | LetsMesh EU | `wss://mqtt-eu-v1.letsmesh.net:443` | `mqtt-eu-v1.letsmesh.net` | Signed token |
 | meshcore.ca Primary | `wss://mqtt1.meshcore.ca:443` | `mqtt1.meshcore.ca` | Signed token |
 | meshcore.ca Backup | `wss://mqtt2.meshcore.ca:443` | `mqtt2.meshcore.ca` | Signed token |
+| RF Lab | `wss://mqtt.rflab.io:443` | `mqtt.rflab.io` | Signed token |
 | Custom… | *(blank)* | *(blank)* | Signed token |
 
 The two **meshcore.ca** presets are the primary and backup brokers of [MeshCore Canada](https://meshcore.ca/)'s analyzer; add both for a fallback path. Their values come from meshcore.ca's [observer connection reference](https://meshcore.ca/analyzer/broker-reference/) — if a value there ever differs from the table above, the reference wins, and the row is editable.
+
+The **RF Lab** preset is the broker behind [RF Lab](https://rflab.io/)'s analyzer; its values come from RF Lab's [observer setup guide](https://rflab.io/guides/observer-firmware.html).
 
 A preset button just appends a pre-filled row — every field on it stays editable afterward, including switching it to username/password mode. Clicking the same preset twice adds a duplicate URL, which is rejected on save; remove the extra row instead.
 
