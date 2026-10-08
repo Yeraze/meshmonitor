@@ -352,7 +352,7 @@ function renderEventInputs(
           {sel('Role', 'advType', MESHCORE_ROLE_OPTIONS, '')}
           {f('Advert hops', 'hops', 'number')}
           {f('Stored route hops', 'routeHops', 'number')}
-          {f('Last heard (epoch ms)', 'lastHeard', 'number')}
+          {f('Last heard (epoch ms; sets ageMinutes)', 'lastHeard', 'number')}
         </> : <div className="ae-muted" style={{ alignSelf: 'end' }}>Enter a public key to test a MeshCore node (name, role, hops, last heard).</div>}
       </>;
     case 'system':

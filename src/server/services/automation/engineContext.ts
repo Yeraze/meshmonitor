@@ -10,7 +10,7 @@
  * `node.*` (hydrated subject node incl. calculated `ageMinutes`/`roleName`), and
  * `telemetry.*` (latest reading per metric for the subject node).
  */
-import { type TriggerContext, resolveTriggerPath, subjectKeyOf, meshCoreSubjectKey } from './triggerContext.js';
+import { type TriggerContext, resolveTriggerPath, subjectKeyOf, meshCoreSubjectKey, ageMinutesSince } from './triggerContext.js';
 import type { VariableResolver, VarContext } from './variableResolver.js';
 import { interpolate, extractPaths, type InterpolationValue } from './interpolate.js';
 import { STEP_OUTPUT_MAX_BYTES, type CooldownScope } from '../../../types/automation.js';
@@ -435,7 +435,7 @@ export async function resolveFieldValue(ctx: EngineEvalContext, field: string): 
     if (prop === 'ageMinutes') {
       if (node.lastHeard == null) return undefined;
       const lastMs = node.lastHeard > 1e12 ? node.lastHeard : node.lastHeard * 1000; // tolerate s or ms
-      return Math.max(0, Math.round((ctx.now - lastMs) / 60000));
+      return ageMinutesSince(lastMs, ctx.now);
     }
     if (prop === 'roleName') return node.role == null ? undefined : (ROLE_NAMES[node.role] ?? String(node.role));
     return (node as unknown as Record<string, unknown>)[prop];
