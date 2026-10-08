@@ -23,6 +23,7 @@ import {
 import { logger } from '../utils/logger.js';
 import { parseJsonResponse } from '../utils/parseJsonResponse.js';
 import type { NodeTransportClass } from '../utils/nodeTransport.js';
+import type { ReplaySettings, TrafficReplayResponse } from '../utils/trafficManagementReplay.js';
 import type { OutlierPreview, OutlierPurgeResult } from '../utils/telemetryOutliers.js';
 import type { FlightMatch } from '../types/flightMatch.js';
 import type { TranslationRequest, TranslationResponse, TranslationLanguageOption, StoredTranslation } from '../types/translation.js';
@@ -1618,6 +1619,27 @@ class ApiService {
   }
 
   // Configuration methods
+  /**
+   * Traffic Management replay (#5670): what position dedup and rate limit
+   * would have dropped from this source's packet log with the given values.
+   * A read: it sends nothing to the node and saves nothing.
+   */
+  async getTrafficManagementReplay(
+    sourceId: string,
+    settings: ReplaySettings,
+  ): Promise<TrafficReplayResponse> {
+    const params = new URLSearchParams({
+      sourceId,
+      positionMinIntervalSecs: String(settings.positionMinIntervalSecs),
+      rateLimitWindowSecs: String(settings.rateLimitWindowSecs),
+      rateLimitMaxPackets: String(settings.rateLimitMaxPackets),
+    });
+    const body = await this.get<{ success: boolean; data: TrafficReplayResponse }>(
+      `/api/packets/traffic-management/replay?${params}`,
+    );
+    return body.data;
+  }
+
   async getCurrentConfig(sourceId?: string | null) {
     await this.ensureBaseUrl();
     // Add cache-busting parameter to ensure fresh data after device reboot

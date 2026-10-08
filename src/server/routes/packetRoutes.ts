@@ -8,6 +8,10 @@ import { ok, fail } from '../utils/apiResponse.js';
 import { sourceManagerRegistry } from '../sourceManagerRegistry.js';
 import { NODE_ACTIVITY_WINDOWS, NODE_ACTIVITY_DEFAULT_WINDOW } from '../../utils/nodeActivity.js';
 import type { NodeTransportClass } from '../../utils/nodeTransport.js';
+import { requirePermission } from '../auth/authMiddleware.js';
+import { requireDeviceSourcePermission, getDeviceSourceTarget } from '../utils/deviceSourcePermission.js';
+import { loadNodeViewAccess } from '../utils/nodeEnhancer.js';
+import { runTrafficReplay, TrafficReplayUnavailableError } from '../services/trafficManagementReplayService.js';
 
 /** Normalize a `since` timestamp to milliseconds (auto-detect seconds vs ms) */
 function normalizeSinceToMs(value: string): number {
@@ -334,6 +338,100 @@ router.get('/stats/node-activity', requirePacketPermissions, async (req, res) =>
     return fail(res, 500, 'INTERNAL_ERROR', 'Internal server error');
   }
 });
+
+/**
+ * GET /api/packets/traffic-management/replay (#5670)
+ *
+ * What-if for the local node's Traffic Management module: of the packets in
+ * this source's log, which would position dedup and rate limit have dropped
+ * with the proposed (tighter) settings? Read-only: it reads the local
+ * database and the manager's cached config. Nothing is sent to the node and
+ * nothing is saved.
+ *
+ * Query: `sourceId` (required), `positionMinIntervalSecs`,
+ * `rateLimitWindowSecs`, `rateLimitMaxPackets` (whole numbers >= 0).
+ *
+ * Permissions, all on the NAMED source:
+ *   - `packetmonitor:read` — it reads that source's packet log;
+ *   - `configuration:read` — it reads that source's Traffic Management config,
+ *     the same grant `GET /api/config/current` asks for. That gate also
+ *     refuses a source with no Meshtastic device (MQTT, MeshCore, a TCP source
+ *     that is not connected) after the permission check.
+ * Senders are named only when the caller may already see that node on this
+ * source (`loadNodeViewAccess`); a port is named only for packets whose
+ * content the caller could see in the Packet Monitor. The rest are counted
+ * under "other".
+ *
+ * Response: ok() envelope around `TrafficReplayResponse`. A rule the replay
+ * cannot estimate comes back as `status: 'cannot_estimate'` with a reason,
+ * never as a zero.
+ */
+const requireReplaySourceId: RequestHandler = (req, res, next) => {
+  if (typeof req.query.sourceId !== 'string' || req.query.sourceId === '') {
+    fail(res, 400, 'SOURCE_ID_REQUIRED', 'sourceId is required');
+    return;
+  }
+  next();
+};
+
+/**
+ * A whole number >= 0 that fits the firmware's uint32, or null. Two steps on
+ * purpose: the pattern rejects signs, decimals and exponents, and the range
+ * check rejects the 10-digit values above 4294967295.
+ */
+function parseReplaySetting(value: unknown): number | null {
+  if (typeof value !== 'string' || !/^\d{1,10}$/.test(value)) return null;
+  const n = Number(value);
+  return n <= 0xffffffff ? n : null;
+}
+
+router.get(
+  '/traffic-management/replay',
+  requireReplaySourceId,
+  requirePermission('packetmonitor', 'read', { sourceIdFrom: 'query', requireSourceId: true }),
+  requireDeviceSourcePermission('configuration', 'read', 'query', 'Traffic Management estimates'),
+  async (req, res) => {
+    try {
+      const { sourceId, manager } = getDeviceSourceTarget(req);
+
+      const positionMinIntervalSecs = parseReplaySetting(req.query.positionMinIntervalSecs);
+      const rateLimitWindowSecs = parseReplaySetting(req.query.rateLimitWindowSecs);
+      const rateLimitMaxPackets = parseReplaySetting(req.query.rateLimitMaxPackets);
+      if (positionMinIntervalSecs === null || rateLimitWindowSecs === null || rateLimitMaxPackets === null) {
+        return fail(
+          res,
+          400,
+          'INVALID_SETTINGS',
+          'positionMinIntervalSecs, rateLimitWindowSecs and rateLimitMaxPackets must be whole numbers from 0 to 4294967295',
+        );
+      }
+
+      const user = req.user ?? null;
+      const nodeAccess = await loadNodeViewAccess(user);
+      const isAdmin = user?.isAdmin === true;
+      const permissions = user && !isAdmin ? await databaseService.getUserPermissionSetAsync(user.id, sourceId) : {};
+
+      const result = await runTrafficReplay({
+        sourceId,
+        manager,
+        proposed: { positionMinIntervalSecs, rateLimitWindowSecs, rateLimitMaxPackets },
+        nodeAccess,
+        packetAccess: {
+          isAdmin,
+          allowedChannels: getAllowedChannels(permissions),
+          canReadMessages: permissions.messages?.read === true,
+        },
+      });
+      return ok(res, result);
+    } catch (error) {
+      if (error instanceof TrafficReplayUnavailableError) {
+        return fail(res, 409, error.code, error.message);
+      }
+      logger.error('❌ Error running Traffic Management replay:', error);
+      return fail(res, 500, 'INTERNAL_ERROR', 'Internal server error');
+    }
+  },
+);
 
 /**
  * GET /api/packets/relay-nodes

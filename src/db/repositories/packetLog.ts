@@ -4,7 +4,7 @@
  * Handles packet log database operations including analytics.
  * Supports SQLite, PostgreSQL, and MySQL through Drizzle ORM.
  */
-import { eq, asc, and, or, inArray, sql, isNull, gte, gt, isNotNull, max, min, type SQL } from 'drizzle-orm';
+import { eq, asc, desc, and, or, inArray, sql, isNull, gte, gt, lt, isNotNull, max, min, type SQL } from 'drizzle-orm';
 import { BaseRepository, DrizzleDatabase } from './base.js';
 import { DatabaseType, DbPacketLog, DbPacketCountByNode, DbPacketCountByPortnum, DbDistinctRelayNode } from '../types.js';
 import { logger } from '../../utils/logger.js';
@@ -1031,6 +1031,83 @@ export class PacketLogRepository extends BaseRepository {
       return null;
     }
   }
+
+  /**
+   * One page of a source's packet log for the Traffic Management replay
+   * (#5670), newest first, by keyset on `(timestamp, id)`.
+   *
+   * It is one range scan on `idx_packet_log_source_timestamp`
+   * (`sourceId, timestamp`): the caller pages back from the newest row and
+   * stops at its own row cap, so a raised log cap cannot pull the whole table
+   * into memory. Only the columns the replay reads come back. `metadata` (the
+   * big one) is returned for POSITION rows alone; every other row gets NULL, so
+   * nothing parses or even transfers JSON it does not need.
+   *
+   * Errors are thrown, not swallowed: an empty page must mean "no more rows",
+   * never "the query failed".
+   */
+  async scanForTrafficReplay(q: {
+    sourceId: string;
+    limit: number;
+    /** Keyset cursor: return rows strictly older than this `(timestamp, id)`. */
+    before?: { timestamp: number; id: number };
+  }): Promise<TrafficReplayScanRow[]> {
+    const { packetLog } = this.tables;
+    const conditions: SQL[] = [eq(packetLog.sourceId, q.sourceId)];
+    if (q.before) {
+      conditions.push(
+        or(
+          lt(packetLog.timestamp, q.before.timestamp),
+          and(eq(packetLog.timestamp, q.before.timestamp), lt(packetLog.id, q.before.id)),
+        ) as SQL,
+      );
+    }
+    const rows = await this.db
+      .select({
+        id: packetLog.id,
+        timestamp: packetLog.timestamp,
+        from_node: packetLog.from_node,
+        to_node: packetLog.to_node,
+        channel: packetLog.channel,
+        portnum: packetLog.portnum,
+        encrypted: packetLog.encrypted,
+        direction: packetLog.direction,
+        decrypted_by: packetLog.decrypted_by,
+        position_metadata: sql<string | null>`CASE WHEN ${packetLog.portnum} = ${PortNum.POSITION_APP} THEN ${packetLog.metadata} ELSE NULL END`,
+      })
+      .from(packetLog)
+      .where(and(...conditions))
+      .orderBy(desc(packetLog.timestamp), desc(packetLog.id))
+      .limit(Math.max(1, Math.floor(q.limit)));
+
+    return (rows as Array<Record<string, unknown>>).map((r) => ({
+      id: Number(r.id),
+      timestamp: Number(r.timestamp),
+      from_node: Number(r.from_node),
+      to_node: r.to_node === null || r.to_node === undefined ? null : Number(r.to_node),
+      channel: r.channel === null || r.channel === undefined ? null : Number(r.channel),
+      portnum: Number(r.portnum),
+      encrypted: r.encrypted === true || r.encrypted === 1,
+      direction: (r.direction as string | null) ?? null,
+      decrypted_by: (r.decrypted_by as string | null) ?? null,
+      position_metadata: (r.position_metadata as string | null) ?? null,
+    }));
+  }
+}
+
+/** One row of {@link PacketLogRepository.scanForTrafficReplay} (#5670). */
+export interface TrafficReplayScanRow {
+  id: number;
+  timestamp: number;
+  from_node: number;
+  to_node: number | null;
+  channel: number | null;
+  portnum: number;
+  encrypted: boolean;
+  direction: string | null;
+  decrypted_by: string | null;
+  /** The row's `metadata` JSON, for POSITION rows only; NULL for the rest. */
+  position_metadata: string | null;
 }
 
 /** Row cap for {@link PacketLogRepository.getNodeActivity}. `[ours]` (#5557). */
