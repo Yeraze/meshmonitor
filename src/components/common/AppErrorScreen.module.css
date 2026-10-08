@@ -1,0 +1,77 @@
+/* AppErrorScreen: full-page stand-in when an error reaches the root. */
+.screen {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  min-height: 100dvh;
+  padding: 1.5rem;
+  box-sizing: border-box;
+  background: var(--color-bg);
+  color: var(--color-text);
+}
+
+.content {
+  max-width: 32rem;
+  text-align: center;
+}
+
+.title {
+  margin: 0 0 0.5rem;
+  font-size: 1.4rem;
+  color: var(--color-error);
+}
+
+.body {
+  margin: 0 0 1rem;
+  color: var(--color-text-subtle);
+}
+
+.details {
+  margin-bottom: 1rem;
+  padding: 0.5rem;
+  border-radius: var(--radius-md);
+  background: var(--color-bg-raised);
+  text-align: left;
+  font-size: 0.85rem;
+  color: var(--color-text-muted);
+}
+
+.details summary {
+  cursor: pointer;
+}
+
+.details pre {
+  margin: 0.5rem 0 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--color-error);
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.5rem;
+}
+
+.primary,
+.secondary {
+  padding: 0.5rem 1rem;
+  border-radius: var(--radius-md);
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.primary {
+  border: none;
+  background: var(--color-accent);
+  color: var(--color-bg-sunken);
+}
+
+.secondary {
+  border: 1px solid var(--color-border-strong);
+  background: transparent;
+  color: var(--color-text);
+}
