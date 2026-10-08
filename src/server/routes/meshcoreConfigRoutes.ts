@@ -12,7 +12,7 @@ import { sourceManagerRegistry } from '../sourceManagerRegistry.js';
 import { isMeshCoreManager } from '../sourceManagerTypes.js';
 import databaseService from '../../services/database.js';
 import { logger } from '../../utils/logger.js';
-import { requireAuth, requirePermission, hasPermission } from '../auth/authMiddleware.js';
+import { requireAuth, optionalAuth, requirePermission, hasPermission } from '../auth/authMiddleware.js';
 import { ok, fail } from '../utils/apiResponse.js';
 import { ChannelReorderPlanError } from '../meshcoreChannelReorder.js';
 import type { ResourceType } from '../../types/permission.js';
@@ -29,7 +29,7 @@ const router = Router({ mergeParams: true });
  */
 router.get(
   '/config/discoverable',
-  requireAuth(),
+  optionalAuth(),
   requirePermission('configuration', 'read', { sourceIdFrom: 'params.id' }),
   async (req: Request, res: Response) => {
     try {
@@ -76,7 +76,7 @@ router.post(
  */
 router.get(
   '/config/default-scope',
-  requireAuth(),
+  optionalAuth(),
   requirePermission('configuration', 'read', { sourceIdFrom: 'params.id' }),
   async (req: Request, res: Response) => {
     try {
@@ -127,7 +127,7 @@ router.post(
  */
 router.get(
   '/config/default-path-hash-size',
-  requireAuth(),
+  optionalAuth(),
   requirePermission('configuration', 'read', { sourceIdFrom: 'params.id' }),
   async (req: Request, res: Response) => {
     try {
@@ -179,7 +179,7 @@ router.post(
  */
 router.get(
   '/saved-regions',
-  requireAuth(),
+  optionalAuth(),
   requirePermission('configuration', 'read', { sourceIdFrom: 'params.id' }),
   async (_req: Request, res: Response) => {
     try {

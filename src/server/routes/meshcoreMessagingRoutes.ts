@@ -710,7 +710,7 @@ router.post('/rooms/post', messageLimiter, requireAuth(), requirePermission('mes
  * GET /api/meshcore/rooms/sync-config?publicKey=...
  * Retrieve the current room sync configuration for a room server.
  */
-router.get('/rooms/sync-config', requireAuth(), requirePermission('configuration', 'read', { sourceIdFrom: 'params.id' }), async (req: Request, res: Response) => {
+router.get('/rooms/sync-config', optionalAuth(), requirePermission('configuration', 'read', { sourceIdFrom: 'params.id' }), async (req: Request, res: Response) => {
   try {
     const publicKey = req.query.publicKey as string | undefined;
     if (typeof publicKey !== 'string' || !isValidPublicKey(publicKey)) {

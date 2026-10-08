@@ -460,6 +460,9 @@ export function isValidConnectionParams(params: {
  * Meshtastic's `/api/messages/channel/:channel` does.
  */
 
+/** The highest channel slot that has its own `channel_N` resource. */
+export const MESHCORE_CHANNEL_RESOURCE_MAX = 7;
+
 /**
  * RBAC resource for a channel slot, or null when the index has none.
  * Only slots 0-7 exist as resources; MeshCore can carry higher indices, and
@@ -467,7 +470,7 @@ export function isValidConnectionParams(params: {
  * check them against.
  */
 export function channelResourceFor(idx: number): import('../../types/permission.js').ResourceType | null {
-  return Number.isInteger(idx) && idx >= 0 && idx <= 7
+  return Number.isInteger(idx) && idx >= 0 && idx <= MESHCORE_CHANNEL_RESOURCE_MAX
     ? (`channel_${idx}` as import('../../types/permission.js').ResourceType)
     : null;
 }
