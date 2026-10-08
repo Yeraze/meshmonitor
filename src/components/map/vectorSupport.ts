@@ -148,7 +148,9 @@ export function setVectorRenderingForTests(value: boolean | null): void {
   emit();
 }
 
+/** Full reset, override included: back to the real probe with clean state. */
 export function resetVectorSupportForTests(): void {
+  testOverride = null;
   probeResult = null;
   runtimeFailed = false;
   noticeDismissed = null;
