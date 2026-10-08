@@ -164,6 +164,20 @@ OTA works on ESP32-family boards (ESP32, ESP32-S3, ESP32-C3, ESP32-C6). MeshMoni
 | RAK WisBlock, T-Echo and other nRF52 boards | Not offered OTA (no Wi-Fi) |
 | RP2040-based boards | Not supported (no Wi-Fi) |
 
+### Hardware that cannot be updated here
+
+When the selected source's node cannot be updated through MeshMonitor, the Firmware Updates section shows a short card in place of the update controls. The card says why and where to update the node instead. The server refuses the same hardware, so the card and the server always agree.
+
+| Node | What the card says |
+|---|---|
+| `meshtasticd` on Linux (hardware model `PORTDUINO`) | The node is updated on its Linux host. Update the `meshtasticd` package with your system package manager, or pull a newer container image. See the [meshtasticd installation guide](https://meshtastic.org/docs/meshtasticd/installation/). |
+| nRF52, RP2040 and STM32 boards | The platform has no Wi-Fi OTA. Update over USB with the [Meshtastic Web Flasher](https://flasher.meshtastic.org/). |
+| A model MeshMonitor has no firmware build for, or does not know | Update over USB. A newer MeshMonitor may add the board. |
+| A simulator (`ANDROID_SIM`) | There is no firmware to flash. |
+| A node that reports no hardware model (`UNSET`) | Update over USB. |
+
+The card appears once the node has reported its hardware model. Config backups stay available below it.
+
 ### Models that several builds share
 
 Some boards report the same hardware model for more than one firmware build. The node tells MeshMonitor only its model, so MeshMonitor cannot tell which build it runs. A wrong build can leave the node with no working display or radio.
