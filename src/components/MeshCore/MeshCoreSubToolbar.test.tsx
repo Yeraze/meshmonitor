@@ -98,7 +98,8 @@ describe('MeshCoreSubToolbar', () => {
   });
 
   const labels = (container: HTMLElement): string[] =>
-    Array.from(container.querySelectorAll('[data-source-nav-item]')).map((el) => el.textContent?.trim() ?? '');
+    // The full label only: an item may also carry a short one for the phone bar (#5683).
+    Array.from(container.querySelectorAll('[data-source-nav-item] [data-source-nav-label]')).map((el) => el.textContent?.trim() ?? '');
   const renderWith = (grants: string[]) => {
     authPermission = (resource, action) => action === 'read' && grants.includes(resource);
     return render(
