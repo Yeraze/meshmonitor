@@ -124,6 +124,15 @@ export function anyMeshCoreRouteGuard(req: Request, res: Response, next: NextFun
   next();
 }
 
+const TX_GATE = Symbol.for('meshmonitor.meshcoreTxGate');
+
+/** True when `handler` was built by `requireMeshcoreTx()`: the route transmits.
+ *  Read by the route guard test, which requires every such route to sit
+ *  behind `requireAuth()`. */
+export function isMeshcoreTxGate(handler: unknown): boolean {
+  return (handler as { [TX_GATE]?: boolean } | null | undefined)?.[TX_GATE] === true;
+}
+
 /**
  * Router middleware: reject a request on a receive-only MeshCore source with
  * 409 TX_DISABLED (#4547). MUST be placed AFTER requirePermission(...) so a
@@ -138,7 +147,7 @@ export function anyMeshCoreRouteGuard(req: Request, res: Response, next: NextFun
  * shape so callers see one consistent error for an unresolvable manager.
  */
 export function requireMeshcoreTx() {
-  return (req: Request, res: Response, next: NextFunction) => {
+  const middleware = (req: Request, res: Response, next: NextFunction) => {
     const mgr = res.locals.meshcoreManager as MeshCoreManager | undefined;
     if (!mgr) {
       const sourceId = (req.params as { id?: string }).id;
@@ -152,6 +161,8 @@ export function requireMeshcoreTx() {
     }
     next();
   };
+  (middleware as unknown as { [TX_GATE]: boolean })[TX_GATE] = true;
+  return middleware;
 }
 
 /**
@@ -460,6 +471,9 @@ export function isValidConnectionParams(params: {
  * Meshtastic's `/api/messages/channel/:channel` does.
  */
 
+/** The highest channel slot that has its own `channel_N` resource. */
+export const MESHCORE_CHANNEL_RESOURCE_MAX = 7;
+
 /**
  * RBAC resource for a channel slot, or null when the index has none.
  * Only slots 0-7 exist as resources; MeshCore can carry higher indices, and
@@ -467,7 +481,7 @@ export function isValidConnectionParams(params: {
  * check them against.
  */
 export function channelResourceFor(idx: number): import('../../types/permission.js').ResourceType | null {
-  return Number.isInteger(idx) && idx >= 0 && idx <= 7
+  return Number.isInteger(idx) && idx >= 0 && idx <= MESHCORE_CHANNEL_RESOURCE_MAX
     ? (`channel_${idx}` as import('../../types/permission.js').ResourceType)
     : null;
 }
@@ -494,6 +508,14 @@ export async function canAccessMeshcoreChannel(
   return databaseService.checkPermissionAsync(userId, 'messages', action, sourceId);
 }
 
+const CHANNEL_GATE = Symbol.for('meshmonitor.meshcoreChannelGate');
+
+/** The action a `requireMeshcoreChannelAccess()` middleware checks, or
+ *  undefined for any other handler. Read by the route guard test. */
+export function getMeshcoreChannelGate(handler: unknown): 'read' | 'write' | undefined {
+  return (handler as { [CHANNEL_GATE]?: 'read' | 'write' } | null | undefined)?.[CHANNEL_GATE];
+}
+
 /**
  * Gate a `/messages/channel/:idx` route on that channel's permission.
  *
@@ -502,7 +524,7 @@ export async function canAccessMeshcoreChannel(
  * user, which is the case this whole helper exists to make work.
  */
 export function requireMeshcoreChannelAccess(action: 'read' | 'write') {
-  return async (req: Request, res: Response, next: NextFunction) => {
+  const middleware = async (req: Request, res: Response, next: NextFunction) => {
     const idx = parseInt(req.params.idx, 10);
     if (!Number.isInteger(idx) || idx < 0) {
       return res.status(400).json({ success: false, error: 'idx must be a non-negative integer' });
@@ -531,6 +553,8 @@ export function requireMeshcoreChannelAccess(action: 'read' | 'write') {
       required: { resource: channelResourceFor(idx) ?? 'messages', action },
     });
   };
+  (middleware as unknown as { [CHANNEL_GATE]: 'read' | 'write' })[CHANNEL_GATE] = action;
+  return middleware;
 }
 
 /**

@@ -39,7 +39,7 @@ vi.mock('../../hooks/useMeshCoreFilters', () => ({
   useRemoveMeshCoreIgnoredNode: () => ({ mutateAsync: vi.fn() }),
 }));
 vi.mock('./hooks/useMeshCoreUnread', () => ({ useMeshCoreUnread: () => ({ channels: false, dms: false }) }));
-vi.mock('../../contexts/AuthContext', () => ({ useAuth: () => ({ authStatus: { user: { isAdmin: false } } }) }));
+vi.mock('../../contexts/AuthContext', () => ({ useAuth: () => ({ authStatus: { user: { isAdmin: false } }, hasPermission: () => true }) }));
 vi.mock('../NotificationsTab', () => ({ default: () => null }));
 vi.mock('./MeshCoreSubToolbar', () => ({
   MeshCoreSubToolbar: (props: {

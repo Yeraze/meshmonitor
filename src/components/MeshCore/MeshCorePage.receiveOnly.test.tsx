@@ -57,7 +57,7 @@ vi.mock('./hooks/useMeshCoreUnread', () => ({
 }));
 
 vi.mock('../../contexts/AuthContext', () => ({
-  useAuth: () => ({ authStatus: { user: { isAdmin: false } } }),
+  useAuth: () => ({ authStatus: { user: { isAdmin: false } }, hasPermission: () => true }),
 }));
 
 vi.mock('../NotificationsTab', () => ({ default: () => null }));

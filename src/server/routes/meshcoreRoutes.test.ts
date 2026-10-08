@@ -340,6 +340,8 @@ describe('MeshCore Routes', () => {
       await permissionModel.grant({
         userId: user.id,
         resource,
+        // nodes:viewOnMap pays for positions (the position-history trail).
+        canViewOnMap: resource === 'nodes',
         canRead: true,
         canWrite: true,
       });
@@ -452,9 +454,20 @@ describe('MeshCore Routes', () => {
       expect(response.body.regions[0].name).toBe('muenchen');
     });
 
-    it('GET /saved-regions requires authentication', async () => {
+    // A stored read: open to anyone holding configuration:read on the source,
+    // the anonymous account included (#5668 audit). The refusals are covered
+    // with real permission rows in meshcoreRoutes.scope.test.ts.
+    it('GET /saved-regions serves an anonymous viewer holding configuration:read', async () => {
       const response = await request(app).get('/api/sources/test-source/meshcore/saved-regions');
+      expect(response.status).toBe(200);
+    });
+
+    it('POST /saved-regions requires authentication', async () => {
+      const response = await request(app)
+        .post('/api/sources/test-source/meshcore/saved-regions')
+        .send({ name: 'x' });
       expect(response.status).toBe(401);
+      expect((DatabaseService as any).savedRegions.addAsync).not.toHaveBeenCalled();
     });
 
     it('POST /saved-regions adds a region', async () => {
@@ -2459,10 +2472,11 @@ describe('MeshCore Routes', () => {
       meshcoreManager.setRespondToDiscovery.mockResolvedValue(undefined);
     });
 
-    it('GET requires authentication', async () => {
+    // A stored read: see the saved-regions note above (#5668 audit).
+    it('GET serves an anonymous viewer holding configuration:read', async () => {
       const response = await request(app)
         .get('/api/sources/test-source/meshcore/config/discoverable');
-      expect(response.status).toBe(401);
+      expect(response.status).toBe(200);
     });
 
     it('GET returns the current discoverable state', async () => {

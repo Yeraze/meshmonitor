@@ -14,8 +14,9 @@ import { meshcoreMessageFilter } from '../services/meshcoreMessageFilter.js';
 import { resolveMeshcoreKeyAccess, filterKeyedMessages } from '../utils/meshcoreKeyAccess.js';
 import { requireAuth, optionalAuth, requirePermission, hasPermission } from '../auth/authMiddleware.js';
 import { meshcoreDeviceLimiter } from '../middleware/rateLimiters.js';
-import { managerFor, isValidConnectionParams, requireMeshcoreTx, failIfTxDisabled, stripPositions } from './meshcoreRouteShared.js';
-import databaseService from '../../services/database.js';
+import { managerFor, isValidConnectionParams, requireMeshcoreTx, failIfTxDisabled, stripPositions, channelResourceFor, MESHCORE_CHANNEL_RESOURCE_MAX } from './meshcoreRouteShared.js';
+import { meshcoreChannelIdx } from '../services/socketEventGates.js';
+import type { ResourceType, PermissionAction } from '../../types/permission.js';
 import { ok, fail } from '../utils/apiResponse.js';
 import {
   type MeshCoreAdvertMode,
@@ -163,59 +164,87 @@ router.get(
 /**
  * GET /api/sources/:id/meshcore/snapshot
  * Single-call initial load: status, localNode, contacts, nodes, messages, and a seqCursor
- * (the timestamp of the newest message) for reconnect catch-up.
+ * (the timestamp of the newest returned message) for reconnect catch-up.
  *
- * The route itself is gated only by `connection:read` (a viewer needs that
- * just to see the source at all), but `messages` carries DM content, which
- * has its own, stricter `messages:read` grant ("Node Details & DM"). A
- * caller with `connection:read` but not `messages:read` — e.g. an anonymous
- * user given view-only status access — must not receive message content via
- * this bundled payload (issue #4422).
+ * The route is gated by `connection:read` (what a viewer needs to open the
+ * source page at all). That grant pays for the `status` section only. Every
+ * other section is returned only to a caller who could read it through its
+ * own route, on this source, and is otherwise empty, so the page shell still
+ * loads for a caller holding some of the grants (#4422, #4559, #5667):
+ *
+ *   status / localNode   connection:read            (GET /status)
+ *   contacts, nodes      nodes:read                 (GET /contacts, GET /nodes)
+ *     their positions    nodes:viewOnMap
+ *   messages             messages:read: all of them (GET /messages)
+ *                        else channel_N:read: that channel's messages
+ *                                                   (GET /messages/channel/:idx)
+ *     keyed messages     read access to the key too (#5551)
+ *
+ * The same rules gate the live events in `socketEventGates.ts`; keep the two
+ * in step.
  */
 router.get('/snapshot', optionalAuth(), requirePermission('connection', 'read', { sourceIdFrom: 'params.id' }), async (req: Request, res: Response) => {
   try {
     const manager = managerFor(req, res);
     const status = manager.getConnectionStatus();
     const localNode = manager.getLocalNode();
-    const contacts = await manager.getContactsForView();
-    const nodes = await manager.getAllNodes();
 
     const sourceId = (req.params as { id: string }).id;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- #4422 req.user is untyped on Express.Request, matches existing pattern (sourceRoutes.ts)
-    const user = (req as any).user;
-    const isAdmin = user?.isAdmin ?? false;
-    const canReadMessages = isAdmin || (user
-      ? await databaseService.checkPermissionAsync(user.id, 'messages', 'read', sourceId)
-      : false);
-    // Ignore / Block (#5408): flag messages that match the CURRENT lists.
-    // #5551: keyed (repeater-decrypted) rows need access to their key too.
-    const messages = canReadMessages
-      ? meshcoreMessageFilter.annotate(
-          sourceId,
-          filterKeyedMessages(manager.getRecentMessages(50), await resolveMeshcoreKeyAccess(user)),
-          localNode?.publicKey,
-        )
-      : [];
+    const user = req.user ?? null;
+    const can = async (resource: ResourceType, action: PermissionAction): Promise<boolean> =>
+      user ? hasPermission(user, resource, action, sourceId) : false;
+
+    // Messages: `messages:read` reads everything; without it a channel
+    // message needs its own `channel_N:read` and DMs / room posts are withheld.
+    const canReadMessages = await can('messages', 'read');
+    const readableChannels = new Set<number>();
+    if (!canReadMessages) {
+      for (let idx = 0; idx <= MESHCORE_CHANNEL_RESOURCE_MAX; idx++) {
+        const resource = channelResourceFor(idx);
+        if (resource && await can(resource, 'read')) readableChannels.add(idx);
+      }
+    }
+    let messages: ReturnType<typeof manager.getRecentMessages> = [];
+    if (canReadMessages || readableChannels.size > 0) {
+      const recent = canReadMessages
+        ? manager.getRecentMessages(50)
+        : manager.getRecentMessages(50).filter((m) => {
+            const idx = meshcoreChannelIdx(m);
+            return idx !== null && readableChannels.has(idx);
+          });
+      // Ignore / Block (#5408): flag messages that match the CURRENT lists.
+      // #5551: keyed (repeater-decrypted) rows need access to their key too.
+      messages = meshcoreMessageFilter.annotate(
+        sourceId,
+        filterKeyedMessages(recent, await resolveMeshcoreKeyAccess(user)),
+        localNode?.publicKey,
+      );
+    }
     const seqCursor = messages.length > 0 ? Math.max(...messages.map(m => m.timestamp)) : 0;
 
-    // Shares the local-row construction site with GET /contacts and
-    // POST /contacts/refresh (#4438 / #4449) — see meshcoreLocalContactRow.ts.
-    const allContacts: MeshCoreContactResponse[] = withoutLocalFlag(contacts);
-    if (localNode && localNode.latitude && localNode.longitude) {
-      allContacts.unshift(buildLocalContactRow(localNode));
-    }
+    // Contacts and nodes: `nodes:read`, as on GET /contacts and GET /nodes.
+    // Not read at all without it.
+    let maskedContacts: MeshCoreContactResponse[] = [];
+    let maskedNodes: Awaited<ReturnType<typeof manager.getAllNodes>> = [];
+    if (await can('nodes', 'read')) {
+      const contacts = await manager.getContactsForView();
+      const nodes = await manager.getAllNodes();
 
-    // `connection:read` alone does not entitle a caller to positions on the
-    // map — that additionally requires `nodes:viewOnMap`, mirroring the
-    // messages gate above (issue #4559). Strip lat/lon rather than dropping
-    // the rows so the contact list this snapshot also feeds keeps working.
-    // Resolved once (not via maskContactPositionsForViewOnMap per array) —
-    // it's the same user/source for both, so a second permission check would
-    // just be a redundant DB round-trip on every snapshot request.
-    const canViewOnMap = user ? await hasPermission(user, 'nodes', 'viewOnMap', sourceId) : false;
-    // #5363: display-only sign-flip correction of the positions that remain.
-    const maskedContacts = canViewOnMap ? await applySignFlipToMeshCoreRows(allContacts, sourceId) : stripPositions(allContacts);
-    const maskedNodes = canViewOnMap ? await applySignFlipToMeshCoreRows(nodes, sourceId) : stripPositions(nodes);
+      // Shares the local-row construction site with GET /contacts and
+      // POST /contacts/refresh (#4438 / #4449) — see meshcoreLocalContactRow.ts.
+      const allContacts: MeshCoreContactResponse[] = withoutLocalFlag(contacts);
+      if (localNode && localNode.latitude && localNode.longitude) {
+        allContacts.unshift(buildLocalContactRow(localNode));
+      }
+
+      // Positions additionally need `nodes:viewOnMap` (#4559). Strip lat/lon
+      // rather than dropping the rows so the contact list keeps working.
+      // Resolved once for both arrays.
+      const canViewOnMap = await can('nodes', 'viewOnMap');
+      // #5363: display-only sign-flip correction of the positions that remain.
+      maskedContacts = canViewOnMap ? await applySignFlipToMeshCoreRows(allContacts, sourceId) : stripPositions(allContacts);
+      maskedNodes = canViewOnMap ? await applySignFlipToMeshCoreRows(nodes, sourceId) : stripPositions(nodes);
+    }
 
     res.json({
       success: true,

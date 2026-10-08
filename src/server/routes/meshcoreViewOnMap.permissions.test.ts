@@ -195,8 +195,10 @@ describe('MeshCore routes — nodes:viewOnMap gates position data (#4559)', () =
   });
 
   describe('GET /snapshot', () => {
-    it('masks contacts/nodes lat/lon with connection:read but not nodes:viewOnMap', async () => {
+    it('masks contacts/nodes lat/lon with connection:read + nodes:read but not nodes:viewOnMap', async () => {
       await harness.grant(harness.limited.id, 'connection', 'read', harness.sourceA);
+      // The rows themselves need nodes:read (#5667).
+      await harness.grant(harness.limited.id, 'nodes', 'read', harness.sourceA);
       const agent = await harness.loginAs(harness.limited);
 
       const res = await agent.get(`/sources/${harness.sourceA}/meshcore/snapshot`);
