@@ -14,6 +14,7 @@ jobs:
   validate-release:
     name: Validate Release
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     outputs:
       version: ${{ steps.version.outputs.version }}
 
@@ -45,6 +46,7 @@ jobs:
   test-suite:
     name: Full Test Suite
     runs-on: ubuntu-latest
+    timeout-minutes: 150
     needs: validate-release
 
     services:
@@ -164,6 +166,7 @@ jobs:
   build-artifacts:
     name: Build Artifacts
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     needs: [validate-release, test-suite]
 
     steps:
@@ -213,6 +216,7 @@ jobs:
   update-release:
     name: Update Release
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     needs: [validate-release, test-suite, build-artifacts]
     if: github.event_name == 'release'
     permissions:
@@ -265,6 +269,7 @@ jobs:
   notify:
     name: Send Notifications
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     needs: [validate-release, update-release]
     if: always()
 
