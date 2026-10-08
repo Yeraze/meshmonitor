@@ -80,7 +80,7 @@ describe('MeshCoreSubToolbar', () => {
     render(
       <MeshCoreSubToolbar view="nodes" onSelect={() => {}} expanded onToggleExpanded={() => {}} />,
     );
-    expect(screen.getByText('Configuration')).toBeDefined();
+    expect(screen.getByText('Device Configuration')).toBeDefined();
   });
 
   it('hides the Configuration tab when configuration:read is denied', () => {
@@ -89,7 +89,7 @@ describe('MeshCoreSubToolbar', () => {
     render(
       <MeshCoreSubToolbar view="nodes" onSelect={() => {}} expanded onToggleExpanded={() => {}} />,
     );
-    expect(screen.queryByText('Configuration')).toBeNull();
+    expect(screen.queryByText('Device Configuration')).toBeNull();
     // Other tabs still visible.
     expect(screen.getByText('Nodes')).toBeDefined();
     expect(screen.getByText('Channels')).toBeDefined();
@@ -109,7 +109,7 @@ describe('MeshCoreSubToolbar', () => {
   it('hides the Settings tab without settings:read (#5666)', () => {
     const { container } = renderWith(['connection', 'nodes', 'channel_0', 'messages', 'configuration', 'automation', 'packetmonitor', 'dashboard']);
     expect(labels(container)).not.toContain('Settings');
-    expect(labels(container)).toContain('Configuration');
+    expect(labels(container)).toContain('Device Configuration');
   });
 
   it('shows the Settings tab with settings:read', () => {

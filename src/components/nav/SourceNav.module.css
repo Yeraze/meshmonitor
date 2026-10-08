@@ -3,7 +3,7 @@
  *
  * Widths are driven by custom properties so each consumer can keep its own
  * geometry without forking the rules: Meshtastic's sidebar is 60/240, MeshCore's
- * sub-toolbar 56/220.
+ * sub-toolbar 56/240.
  */
 .nav {
   --source-nav-collapsed-width: 60px;

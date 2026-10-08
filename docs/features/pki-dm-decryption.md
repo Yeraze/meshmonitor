@@ -32,7 +32,7 @@ This is the instance-wide kill switch. While it's **off** (the default):
 
 ### 2. Per-source toggle
 
-Open a Meshtastic source, go to its **Configuration** tab, and enable **PKI Direct Message Decryption** for that source. This requires the per-source **`configuration`** [permission](/features/per-source-permissions).
+Open a Meshtastic source, go to its **Device Configuration** tab, and enable **PKI Direct Message Decryption** for that source. This requires the per-source **`configuration`** [permission](/features/per-source-permissions).
 
 When you enable it, MeshMonitor reads that source's local-node private key from the device's security config and stores it **encrypted**. From then on, PKI DMs addressed to that node are decrypted and appear in the unified view (subject to the normal per-source `messages:read` permission). Disabling the source's toggle **immediately forgets** its stored key.
 

@@ -1,6 +1,6 @@
 # Traffic Management
 
-Traffic Management is a Meshtastic **firmware module**. It runs on the node, looks at each packet the node hears, and drops some of them before the node relays them. MeshMonitor does two things with it: it **edits the module's settings** (under **Configuration → Module Settings**), and it can **estimate what a tighter setting would drop** from the packets the node has already let through.
+Traffic Management is a Meshtastic **firmware module**. It runs on the node, looks at each packet the node hears, and drops some of them before the node relays them. MeshMonitor does two things with it: it **edits the module's settings** (under **Device Configuration → Module Settings**), and it can **estimate what a tighter setting would drop** from the packets the node has already let through.
 
 MeshMonitor does not police any traffic itself. All dropping happens in the node's firmware.
 
@@ -12,7 +12,7 @@ Everything on this page was checked against the firmware source, `src/modules/Tr
 
 ## Settings reference
 
-The settings live under **Configuration → Module Settings → Traffic Management**, grouped as they appear in the UI.
+The settings live under **Device Configuration → Module Settings → Traffic Management**, grouped as they appear in the UI.
 
 ::: tip Non-zero enables, 0 disables
 Traffic Management has no on/off checkboxes. Every setting is a number: a **non-zero value turns a feature on**, and **0 turns it off**.

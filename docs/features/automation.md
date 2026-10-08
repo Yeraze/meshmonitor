@@ -213,7 +213,7 @@ Automatically sends traceroute requests to all active nodes at a configured inte
 
 When enabled, MeshMonitor periodically sends traceroute requests to all nodes in the active node list. Traceroutes reveal the path messages take through the mesh network, showing which nodes relay traffic between the source and destination.
 
-Each request goes out at your node's own **hop limit** (**Device → LoRa → Hop Limit**), the same reach as the node's text messages. A node further out than that cannot be traced; raise the device hop limit if you need to reach it, bearing in mind that it widens every message the node sends.
+Each request goes out at your node's own **hop limit** (**Device Configuration → LoRa → Hop Limit**), the same reach as the node's text messages. A node further out than that cannot be traced; raise the device hop limit if you need to reach it, bearing in mind that it widens every message the node sends.
 
 ### Configuration
 
