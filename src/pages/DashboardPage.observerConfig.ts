@@ -125,9 +125,19 @@ export function observerBrokerFormKey(url: string): string {
   return normalized.toLowerCase();
 }
 
-/** A one-click starting point for a broker row (#5014 Phase 2). */
+/**
+ * A one-click starting point for a broker row (#5014 Phase 2).
+ *
+ * This table is the ONLY place a preset is defined: the chooser in
+ * DashboardPage.tsx maps over it, and the server keeps no list of known
+ * brokers (a preset row is saved, validated and published exactly as a
+ * hand-typed row with the same values). Adding an analyzer is one entry here,
+ * one `labelKey` string in public/locales/en.json, and a row in the presets
+ * table of docs/features/meshcore-analyzer-observer.md.
+ */
 export interface ObserverBrokerPreset {
-  id: 'meshmapper' | 'letsmesh_us' | 'letsmesh_eu' | 'custom';
+  /** React key + stable handle for tests. `'custom'` is the blank row. */
+  id: string;
   labelKey: string;
   labelFallback: string;
   /** Blank for 'custom'. */
@@ -138,10 +148,20 @@ export interface ObserverBrokerPreset {
 }
 
 /**
- * Verified against the upstream reference implementation
- * (agessaman/meshcore-packet-capture, presets/meshmapper.toml and
- * presets/letsmesh.toml — see MESHMAPPER_OBSERVER_PHASE2_SPEC.md §1.7). All
- * three named presets are token-mode, WSS on 443, host-as-audience.
+ * Every named preset is token-mode, WSS on 443, host-as-audience, and
+ * publishes the LetsMesh-style `meshcore/{IATA}/{PUBLIC_KEY}/{packets|status}`
+ * topics — the publisher has no per-host behaviour, so that is the bar a new
+ * entry must clear.
+ *
+ * Sources:
+ * - MeshMapper / LetsMesh: the upstream reference implementation
+ *   (agessaman/meshcore-packet-capture, presets/meshmapper.toml and
+ *   presets/letsmesh.toml — see MESHMAPPER_OBSERVER_PHASE2_SPEC.md §1.7).
+ * - meshcore.ca (#5671): https://meshcore.ca/analyzer/broker-reference/ and
+ *   the machine-readable https://meshcore.ca/analyzer/observer-config.json
+ *   (version 2026.09), read 2026-10-08.
+ *
+ * `custom` stays last: it is the escape hatch, not an analyzer.
  */
 export const OBSERVER_BROKER_PRESETS: readonly ObserverBrokerPreset[] = [
   {
@@ -167,6 +187,22 @@ export const OBSERVER_BROKER_PRESETS: readonly ObserverBrokerPreset[] = [
     url: 'wss://mqtt-eu-v1.letsmesh.net:443',
     tokenAudience: 'mqtt-eu-v1.letsmesh.net',
     label: 'LetsMesh EU',
+  },
+  {
+    id: 'meshcore_ca_primary',
+    labelKey: 'meshcore.form.observer_preset_meshcore_ca_primary',
+    labelFallback: 'meshcore.ca Primary',
+    url: 'wss://mqtt1.meshcore.ca:443',
+    tokenAudience: 'mqtt1.meshcore.ca',
+    label: 'meshcore.ca Primary',
+  },
+  {
+    id: 'meshcore_ca_backup',
+    labelKey: 'meshcore.form.observer_preset_meshcore_ca_backup',
+    labelFallback: 'meshcore.ca Backup',
+    url: 'wss://mqtt2.meshcore.ca:443',
+    tokenAudience: 'mqtt2.meshcore.ca',
+    label: 'meshcore.ca Backup',
   },
   {
     id: 'custom',
