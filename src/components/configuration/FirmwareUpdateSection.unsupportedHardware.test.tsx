@@ -157,6 +157,17 @@ describe('FirmwareUpdateSection — hardware that cannot be updated (#5677)', ()
     expectUpdateUi(false);
   });
 
+  it('the unknown-model and unmapped-board cards have their own body copy', () => {
+    setSource('src-a', tcpSource(200));
+    const first = render(<FirmwareUpdateSection baseUrl="" />);
+    const unknown = card()!.querySelector('p')!.textContent;
+    first.unmount();
+
+    setSource('src-a', tcpSource(255));
+    render(<FirmwareUpdateSection baseUrl="" />);
+    expect(card()!.querySelector('p')!.textContent).not.toBe(unknown);
+  });
+
   it('names the platform on the non-OTA card', () => {
     setSource('src-a', tcpSource(9));
     render(<FirmwareUpdateSection baseUrl="" />);

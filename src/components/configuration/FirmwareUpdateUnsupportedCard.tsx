@@ -88,8 +88,8 @@ const FirmwareUpdateUnsupportedCard: React.FC<FirmwareUpdateUnsupportedCardProps
         model,
       });
       body = t(
-        'firmware.unsupported_unknown_body',
-        'This MeshMonitor version has no firmware build for it, so it cannot update this node. Update it over USB instead. A newer MeshMonitor may add this board.'
+        'firmware.unsupported_unmapped_body',
+        'This MeshMonitor version has no firmware build for this board, so it cannot update this node. Update it over USB instead. A newer MeshMonitor may add it.'
       );
       break;
     case 'platform-not-ota':
