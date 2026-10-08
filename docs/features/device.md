@@ -1,6 +1,6 @@
 # Device Configuration
 
-The Configuration tab in MeshMonitor allows you to remotely configure your connected Meshtastic device. Changes are sent directly to the device and typically require a reboot to take effect.
+The **Device Configuration** tab in MeshMonitor allows you to remotely configure your connected Meshtastic device. Changes are sent directly to the device and typically require a reboot to take effect.
 
 ![Device Configuration](/images/features/device-config.png)
 
@@ -1451,7 +1451,7 @@ Example: `43588558-2025-10-28-12-34-18.yaml`
 
 To create an on-demand backup:
 
-1. Navigate to the **Configuration** tab
+1. Navigate to the **Device Configuration** tab
 2. Click the **Backup** button in the top-right corner
 3. Choose whether to save to disk or just download
 4. The backup file will be downloaded to your computer
@@ -1500,7 +1500,7 @@ owner_short: MNN
 
 ### Restoring Configuration from Device Backup Management
 
-*New in 4.15.2.* Every backup listed under **Device → Backups** carries a **Restore** button. Restore is a local, per-source, verbatim replay of the saved YAML back onto whichever device this source is currently connected to. MeshMonitor sends each config chunk in the same order it exported them (device, module, channels), then asks the device to reboot to apply the changes; a banner in the panel surfaces the reboot notice directly from the "did-reboot" flag on the response, so the UI never claims a reboot happened that the device didn't do.
+*New in 4.15.2.* Every backup listed under **Device Configuration → Backups** carries a **Restore** button. Restore is a local, per-source, verbatim replay of the saved YAML back onto whichever device this source is currently connected to. MeshMonitor sends each config chunk in the same order it exported them (device, module, channels), then asks the device to reboot to apply the changes; a banner in the panel surfaces the reboot notice directly from the "did-reboot" flag on the response, so the UI never claims a reboot happened that the device didn't do.
 
 Behavior:
 

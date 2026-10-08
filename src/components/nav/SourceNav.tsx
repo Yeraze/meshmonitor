@@ -24,6 +24,11 @@ export interface SourceNavItem {
   /** Stable id — compared against `activeId` to mark the active entry. */
   id: string;
   label: string;
+  /**
+   * Shorter text for the phone bottom bar, whose tabs cap at 120px (#5683). The
+   * rail, the collapsed-rail tooltip and the accessible name keep `label`.
+   */
+  shortLabel?: string;
   icon: UiIconName;
   onClick: () => void;
   /** Renders a red unread dot on the icon (#3891). */
@@ -225,6 +230,8 @@ export const SourceNav: React.FC<SourceNavProps> = ({
                     // Collapsed rails show no text, so the tooltip is the only
                     // affordance naming the destination.
                     title={collapsed ? item.label : undefined}
+                    // Two label spans would otherwise both feed the name.
+                    aria-label={item.shortLabel ? item.label : undefined}
                   >
                     <span className={styles.icon} data-source-nav-icon="">
                       <UiIcon name={item.icon} size={20} />
@@ -236,9 +243,21 @@ export const SourceNav: React.FC<SourceNavProps> = ({
                         />
                       )}
                     </span>
-                    <span className={styles.label} data-source-nav-label="">
+                    <span
+                      className={`${styles.label} ${item.shortLabel ? styles.fullLabel : ''}`}
+                      data-source-nav-label=""
+                    >
                       {item.label}
                     </span>
+                    {item.shortLabel && (
+                      <span
+                        className={`${styles.label} ${styles.shortLabel}`}
+                        data-source-nav-short-label=""
+                        aria-hidden="true"
+                      >
+                        {item.shortLabel}
+                      </span>
+                    )}
                   </button>
                 );
               })}

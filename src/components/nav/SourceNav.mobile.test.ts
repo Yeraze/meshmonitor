@@ -110,4 +110,26 @@ describe('iOS PWA bottom bar (#4497)', () => {
     expect(css).toMatch(/\.mobileBottomBar\[data-overflow-start='true'\][^}]*mask-image/);
     expect(css).not.toMatch(/\.mobileBottomBar[^{]*::after[^}]*linear-gradient/);
   });
+
+  describe('short labels (#5683)', () => {
+    const at = (needle: RegExp) => css.search(needle);
+
+    it('hides the short label off the bar, after the base label rule', () => {
+      const base = at(/^\.label \{/m);
+      const short = at(/^\.shortLabel \{[^}]*display:\s*none/m);
+      expect(base).toBeGreaterThan(-1);
+      expect(short).toBeGreaterThan(base);
+    });
+
+    it('swaps full for short on the bar, one class deep and after the label rule', () => {
+      // Same specificity as `.mobileBottomBar .label { display: block }`, so
+      // these only win by coming later in the file.
+      const label = at(/\.mobileBottomBar \.label \{[^}]*display:\s*block/);
+      const full = at(/\.mobileBottomBar \.fullLabel \{[^}]*display:\s*none/);
+      const short = at(/\.mobileBottomBar \.shortLabel \{[^}]*display:\s*block/);
+      expect(label).toBeGreaterThan(-1);
+      expect(full).toBeGreaterThan(label);
+      expect(short).toBeGreaterThan(label);
+    });
+  });
 });

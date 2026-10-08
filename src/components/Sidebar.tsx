@@ -7,6 +7,7 @@ import { UiIcon, type UiIconName } from './icons';
 import SidebarFooter from './SidebarFooter';
 import { SourceNav, type SourceNavItem, type SourceNavSection } from './nav/SourceNav';
 import { readSidebarPinned, useSidebarPin } from './nav/useSidebarPin';
+import { deviceConfigurationNav, sourceSettingsNav } from './nav/sourceNavEntries';
 
 interface UnreadCountsData {
   channels?: {[channelId: number]: number};
@@ -150,10 +151,11 @@ const Sidebar: React.FC<SidebarProps> = ({
     id: TabType,
     label: string,
     iconName: UiIconName,
-    opts: { onClick?: () => void; unread?: boolean } = {}
+    opts: { onClick?: () => void; unread?: boolean; shortLabel?: string } = {}
   ): SourceNavItem => ({
     id,
     label,
+    shortLabel: opts.shortLabel,
     icon: iconName,
     unread: opts.unread,
     onClick: () => {
@@ -167,6 +169,12 @@ const Sidebar: React.FC<SidebarProps> = ({
       }
     },
   });
+
+  /** The two entries every source type shares (#5683): icon + label from one place. */
+  const sharedNavItem = (
+    id: TabType,
+    entry: { icon: UiIconName; label: string; shortLabel?: string }
+  ): SourceNavItem => navItem(id, entry.label, entry.icon, { shortLabel: entry.shortLabel });
 
   const mainItems: SourceNavItem[] = [
     /* Labelled "Map" (#4325) — the tab is the map + node list, and the Map icon
@@ -216,16 +224,18 @@ const Sidebar: React.FC<SidebarProps> = ({
        Settings tab, most of whose routes are unscoped, so anySource mirrors the
        server's union check. */
     ...(hasPermission('settings', 'read', { anySource: true })
-      ? [navItem('settings', t('nav.settings'), 'settings')]
+      ? [sharedNavItem('settings', sourceSettingsNav(t))]
       : []),
     ...(!mqttReadOnly && hasPermission('automation', 'read')
       ? [navItem('automation', t('nav.automation'), 'bot')]
       : []),
     ...(!noDeviceConfig && hasPermission('configuration', 'read')
-      ? [navItem('configuration', t('nav.device'), 'configuration')]
+      ? [sharedNavItem('configuration', deviceConfigurationNav(t))]
       : []),
     /* MQTT Bridge sources have no device-config surface; surface a dedicated
-       bridge Configuration page instead. */
+       bridge Configuration page instead. It is NOT the shared Device
+       Configuration entry (#5683): the page holds MeshMonitor's own connection
+       and filter settings for the bridge, and nothing is sent to a device. */
     ...(mqttReadOnly && hasPermission('sources', 'read')
       ? [navItem('mqtt-config', t('nav.mqtt_bridge_config', 'Configuration'), 'configuration')]
       : []),

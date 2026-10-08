@@ -307,7 +307,7 @@ export const MeshCoreSettingsView: React.FC<MeshCoreSettingsViewProps> = ({
   return (
     <div className="meshcore-form-view">
       <h2 style={{ color: 'var(--color-text)', marginBottom: '1rem' }}>
-        {t('meshcore.nav.settings', 'Settings')}
+        {t('nav.settings', 'Settings')}
       </h2>
 
       <div className="form-section">

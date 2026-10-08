@@ -57,7 +57,7 @@ describe('ReticulumSubToolbar', () => {
       expect(item(id)).not.toBeNull();
     }
     // sanity: the label text renders through the i18n fallback
-    expect(screen.getByText('Configuration')).toBeTruthy();
+    expect(screen.getByText('Device Configuration')).toBeTruthy();
   });
 
   // Phase 4 WP4: 'paths' (path table + probe + remote-fleet) exists in every

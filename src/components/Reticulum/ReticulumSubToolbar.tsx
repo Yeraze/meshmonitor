@@ -13,9 +13,14 @@
  */
 import React, { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { type UiIconName } from '../icons';
 import { SourceNav, type SourceNavItem } from '../nav/SourceNav';
 import type { ReticulumView } from '../../types/reticulum';
+import {
+  DEVICE_CONFIGURATION_NAV_ENTRY,
+  SOURCE_SETTINGS_NAV_ENTRY,
+  sharedSourceNavPresentation,
+  type SharedSourceNavEntry,
+} from '../nav/sourceNavEntries';
 import styles from './ReticulumSubToolbar.module.css';
 
 export type { ReticulumView };
@@ -31,11 +36,8 @@ interface ReticulumSubToolbarProps {
   sourceMode?: string | null;
 }
 
-interface Item {
+interface Item extends SharedSourceNavEntry {
   id: ReticulumView;
-  labelKey: string;
-  fallback: string;
-  icon: UiIconName;
 }
 
 const ITEMS: Item[] = [
@@ -51,9 +53,10 @@ const ITEMS: Item[] = [
   // 'map' (Phase 3) — peer positions shared via Sideband telemetry. Always shown.
   { id: 'map', labelKey: 'reticulum.nav.map', fallback: 'Map', icon: 'map' },
   // 'configuration' (Phase 3) — editable RNode radio config; own-mode only (filtered below).
-  { id: 'configuration', labelKey: 'reticulum.nav.configuration', fallback: 'Configuration', icon: 'configuration' },
+  // Icon + label shared with every source type (#5683): never spell them here.
+  { id: 'configuration', ...DEVICE_CONFIGURATION_NAV_ENTRY },
   { id: 'info', labelKey: 'reticulum.nav.info', fallback: 'Info', icon: 'info' },
-  { id: 'settings', labelKey: 'reticulum.nav.settings', fallback: 'Settings', icon: 'settings' },
+  { id: 'settings', ...SOURCE_SETTINGS_NAV_ENTRY },
 ];
 
 /**
@@ -76,8 +79,7 @@ export const ReticulumSubToolbar: React.FC<ReticulumSubToolbarProps> = ({
       .filter(item => item.id !== 'configuration' || sourceMode === 'own')
       .map(item => ({
         id: item.id,
-        label: t(item.labelKey, item.fallback),
-        icon: item.icon,
+        ...sharedSourceNavPresentation(item, t),
         onClick: () => onSelect(item.id),
       }))
   ), [t, onSelect, sourceMode]);
