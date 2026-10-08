@@ -26,6 +26,7 @@ const NODE_EVENT_MESHCORE_TOKENS: Array<[string, string]> = [
   ['hops', 'MeshCore only: relays the advert that caused the event passed through (0 = heard direct). Empty when no advert caused it (path updates, discovery sweeps, contact re-reads). On Meshtastic use node.hopsAway'],
   ['routeHops', 'MeshCore only: hops on the stored route this source would send on. Not the same as hops — it can differ from the path the advert took. Empty when no route is stored (sends flood)'],
   ['lastHeard', 'MeshCore only: when this source last heard the node (epoch ms, same as Node silent). On Meshtastic use node.lastHeard'],
+  ['ageMinutes', 'MeshCore only: whole minutes since this source last heard the node (0 = just now), for text such as "Last heard: 3 m". Empty when the last-heard time is unknown. On Meshtastic use node.ageMinutes'],
 ];
 const NODE_EVENT_PACKET_HASH_TOKEN: [string, string] = [
   'packetHash',

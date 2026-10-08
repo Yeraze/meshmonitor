@@ -377,6 +377,7 @@ const hasSubjectNode = (t: string) => SUBJECT_NODE_TRIGGERS.includes(t);
 const MESHCORE_NODE_EVENT_FIELDS: FieldOpt[] = [
   { value: 'hops', label: 'MeshCore: hops the advert took (0 = direct)' },
   { value: 'routeHops', label: 'MeshCore: hops on the stored route' },
+  { value: 'ageMinutes', label: 'MeshCore: minutes since last heard' },
 ];
 const MESHCORE_NODE_EVENT_STRING_FIELDS: FieldOpt[] = [
   { value: 'roleName', label: 'MeshCore: role (Companion / Repeater / Room Server / Sensor)' },
