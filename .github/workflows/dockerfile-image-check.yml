@@ -10,6 +10,7 @@ jobs:
   verify-images:
     name: Verify Base Images Exist
     runs-on: ubuntu-latest
+    timeout-minutes: 10
 
     steps:
       - name: Checkout code

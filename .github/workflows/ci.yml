@@ -21,6 +21,7 @@ jobs:
   test:
     name: Test Suite
     runs-on: ubuntu-latest
+    timeout-minutes: 90
 
     services:
       postgres:
@@ -130,6 +131,7 @@ jobs:
   build:
     name: Build Check
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     needs: test
 
     steps:
@@ -177,6 +179,7 @@ jobs:
   docs-build:
     name: Documentation Build
     runs-on: ubuntu-latest
+    timeout-minutes: 15
 
     # Absorbed from the retired pr-tests.yml, where it was the ONE job with
     # coverage this workflow did not already have. It is not redundant with
@@ -206,6 +209,7 @@ jobs:
   docker:
     name: Docker Build
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     needs: test
 
     steps:
@@ -235,6 +239,7 @@ jobs:
   security:
     name: Security Scan
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     if: github.event_name == 'pull_request'
 
     steps:
@@ -273,24 +278,60 @@ jobs:
   clamav:
     name: ClamAV Scan
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     if: github.event_name == 'pull_request'
 
     steps:
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7
 
+      # Every network call in this step is bounded and retried. On PR #5665
+      # (run 37674527179) `apt-get update` stalled on the runner's Azure Ubuntu
+      # mirror and, with no timeout anywhere, held this required check for
+      # 3.5 hours. Normal step time is 15-25s; the slowest healthy run on
+      # record took 323s (a 54 kB/s package download).
       - name: Install & update ClamAV
+        timeout-minutes: 20
         run: |
-          set -e
+          set -euo pipefail
+
+          # bounded <label> <seconds per attempt> <command...>
+          # Runs the command under `timeout`, up to 3 attempts, 15s apart.
+          bounded() {
+            local label="$1" limit="$2" attempt status
+            shift 2
+            for attempt in 1 2 3; do
+              status=0
+              sudo timeout --kill-after=15 "$limit" "$@" || status=$?
+              if [ "$status" -eq 0 ]; then
+                return 0
+              fi
+              if [ "$status" -eq 124 ] || [ "$status" -eq 137 ]; then
+                echo "::warning::${label}: attempt ${attempt}/3 stalled (no finish within ${limit}s)"
+              else
+                echo "::warning::${label}: attempt ${attempt}/3 failed (exit ${status})"
+              fi
+              if [ "$attempt" -lt 3 ]; then
+                sleep 15
+              fi
+            done
+            echo "::error::${label} stalled or failed on all 3 attempts (${limit}s limit each). This is a download problem on the runner, not a scan result. Re-run the job."
+            return 1
+          }
+
           # Same reason as the Trivy job above: drop the runner's Chrome apt
           # source so a bad index hash upstream cannot fail this step. `set -e`
           # makes it fatal here immediately, so ClamAV never runs and the job
           # reports a failure it never actually scanned for.
           sudo rm -f /etc/apt/sources.list.d/google-chrome.list
-          sudo apt-get update
+          bounded "apt-get update" 120 apt-get update
+          # Fetch the packages first so a kill for a stalled download can never
+          # land in the middle of dpkg. apt keeps partial files, so a retry
+          # resumes the download.
+          bounded "ClamAV package download" 300 apt-get install -y --download-only clamav clamav-freshclam
           sudo apt-get install -y clamav clamav-freshclam
           sudo systemctl stop clamav-freshclam || true
-          sudo freshclam --verbose
+          bounded "ClamAV virus database download (freshclam)" 300 freshclam --verbose
 
       # A .ign2 allow-list is only honored from inside the database directory —
       # passing it as a second `-d` does NOT work (verified). Installed BEFORE
@@ -346,6 +387,7 @@ jobs:
   pr-comment:
     name: PR Comment
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     needs: [test, build, docker]
     if: github.event_name == 'pull_request'
 

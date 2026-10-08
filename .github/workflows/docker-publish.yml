@@ -238,6 +238,7 @@ jobs:
   # Create multi-arch manifest combining all platforms
   create-manifest:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     needs: [build-main, build-armv7, smoke-test]
     permissions:
       contents: read
