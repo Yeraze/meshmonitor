@@ -9,6 +9,8 @@ import { useData } from '../../contexts/DataContext';
 import { useSource } from '../../contexts/SourceContext';
 import { getHardwareModelName } from '../../utils/hardwareModel';
 import { buildOtaGateway } from '../../utils/otaGateway';
+import { firmwareUpdateSupport } from '../../utils/firmwareHardwareMap';
+import FirmwareUpdateUnsupportedCard from './FirmwareUpdateUnsupportedCard';
 import styles from './FirmwareUpdateSection.module.css';
 
 interface FirmwareUpdateSectionProps {
@@ -164,6 +166,11 @@ const FirmwareUpdateSection: React.FC<FirmwareUpdateSectionProps> = ({ baseUrl }
       gatewayIp: buildOtaGateway(config?.meshtasticNodeIp, config?.meshtasticTcpPort),
       firmwareVersion: config?.deviceMetadata?.firmwareVersion ?? '',
       hwModel: gatewayNode?.user?.hwModel ?? 0,
+      // #5677: false until this source's own node row carries a number. A
+      // missing row or a null model is "not known yet", never UNSET. A source
+      // with no local node (MQTT, MeshCore) has no identity to match a row by.
+      hwModelReported:
+        (nodeId !== '' || nodeNum !== 0) && typeof gatewayNode?.user?.hwModel === 'number',
       nodeId,
       nodeNum,
       // Issue #2981: track the active source's type so we can disable OTA on
@@ -185,6 +192,22 @@ const FirmwareUpdateSection: React.FC<FirmwareUpdateSectionProps> = ({ baseUrl }
     (gatewayInfo.sourceType === null || gatewayInfo.sourceType === 'meshtastic_tcp') &&
     !!gatewayInfo.gatewayIp &&
     !gatewayInfo.isBridged;
+
+  // #5677: hardware MeshMonitor cannot update at all (meshtasticd, a
+  // simulator, an unmapped or non-OTA board) gets a card in place of the
+  // update UI. The verdict comes from the same list OTA preflight enforces.
+  //
+  // The model must be settled first. On a first connect the local node row is
+  // stored with hw model 0 until the node's own NodeInfo arrives, and firmware
+  // sends that before DeviceMetadata. So a 0 counts as UNSET only once the
+  // firmware version (from DeviceMetadata) is known; until then the pane stays
+  // as it was, and a normal node never flashes the card while it loads.
+  const hwModelSettled =
+    gatewayInfo.hwModelReported && (gatewayInfo.hwModel !== 0 || !!gatewayInfo.firmwareVersion);
+  const hardwareSupport = useMemo(
+    () => (hwModelSettled ? firmwareUpdateSupport(gatewayInfo.hwModel) : null),
+    [hwModelSettled, gatewayInfo.hwModel]
+  );
 
   // Issue #3413: a node is considered recovered/reachable only when MeshMonitor
   // currently has a live connection AND the node is answering. This gates the
@@ -655,6 +678,12 @@ const FirmwareUpdateSection: React.FC<FirmwareUpdateSectionProps> = ({ baseUrl }
   const isOtherSourceUpdate = !!(
     isUpdateActive && sourceId && effectiveStatus?.sourceId && effectiveStatus.sourceId !== sourceId
   );
+  // #5677: never put the card over a wizard that belongs to this page, or its
+  // Cancel and Dismiss buttons would be out of reach.
+  const unsupportedHardware =
+    hardwareSupport && !hardwareSupport.supported && !(isUpdateActive && !isOtherSourceUpdate)
+      ? hardwareSupport
+      : null;
 
   return (
     <div id="settings-firmware" className="settings-section" style={{ marginTop: '2rem' }}>
@@ -662,8 +691,9 @@ const FirmwareUpdateSection: React.FC<FirmwareUpdateSectionProps> = ({ baseUrl }
       <p className="setting-description">{t('firmware.description', 'Manage firmware updates for your gateway node.')}</p>
 
       {/* Issue #2981: surface a clear notice when the active source can't be
-          flashed over IP, instead of silently defaulting to 192.168.1.100. */}
-      {!isOtaSupported && (
+          flashed over IP, instead of silently defaulting to 192.168.1.100.
+          Not shown with the hardware card (#5677): that already says why. */}
+      {!isOtaSupported && !unsupportedHardware && (
         <div
           className="setting-item"
           style={{
@@ -708,6 +738,13 @@ const FirmwareUpdateSection: React.FC<FirmwareUpdateSectionProps> = ({ baseUrl }
         </div>
       )}
 
+      {unsupportedHardware && (
+        <FirmwareUpdateUnsupportedCard support={unsupportedHardware} hwModel={gatewayInfo.hwModel} />
+      )}
+
+      {/* Everything that picks, checks for or starts an update. Replaced by
+          the card above when the hardware cannot be updated here (#5677). */}
+      {!unsupportedHardware && (<>
       {/* Channel Selector */}
       <div className="setting-item" style={{ marginTop: '1rem' }}>
         <label htmlFor="firmware-channel">
@@ -924,6 +961,7 @@ const FirmwareUpdateSection: React.FC<FirmwareUpdateSectionProps> = ({ baseUrl }
           {isChecking ? t('firmware.checking', 'Checking...') : t('firmware.check_now', 'Check Now')}
         </button>
       </div>
+      </>)}
 
       {isOtherSourceUpdate && (
         <div
@@ -1329,7 +1367,7 @@ const FirmwareUpdateSection: React.FC<FirmwareUpdateSectionProps> = ({ baseUrl }
       )}
 
       {/* Version List Table (shown when idle) */}
-      {!isUpdateActive && (
+      {!isUpdateActive && !unsupportedHardware && (
         <div style={{ marginTop: '1rem' }}>
           {releases.length === 0 ? (
             <p style={{ color: 'var(--color-text)', fontStyle: 'italic', fontSize: '0.9rem' }}>

@@ -33,6 +33,14 @@ import {
   getOtaSiblingWarnings,
 } from './firmwareHardwareMap.js';
 import type { OtaSiblingWarning } from './firmwareHardwareMap.js';
+// Imported from the shared module, not the server entry point: these only
+// name a refusal, and the unit suites mock './firmwareHardwareMap.js' whole.
+import {
+  FIRMWARE_UPDATE_REFUSAL_CODES,
+  firmwareUpdateRefusalMessage,
+  noBoardReason,
+  type FirmwareUpdateUnsupportedReason,
+} from '../../utils/firmwareHardwareMap.js';
 // Re-export for consumers
 export { getBoardName, getPlatformForBoard, isOtaCapable, getHardwareDisplayName };
 
@@ -1108,16 +1116,32 @@ export class FirmwareUpdateService {
       );
     }
 
+    // #5677: hardware MeshMonitor cannot update is refused with a machine
+    // code (400), not a bare 500. These are the same steps as
+    // firmwareUpdateSupport(), which the Firmware Updates pane uses to show a
+    // card instead of the update UI; hardwareRefusal.test.ts holds them equal.
+    const refuseHardware = (
+      reason: FirmwareUpdateUnsupportedReason,
+      board: string | null,
+      platform: string | null
+    ): never => {
+      throw new OtaPreflightError(
+        FIRMWARE_UPDATE_REFUSAL_CODES[reason],
+        firmwareUpdateRefusalMessage(reason, { hwModel: params.hwModel, board, platform })
+      );
+    };
+
     const boardName = getBoardName(params.hwModel);
     if (!boardName) {
-      throw new Error(`Unknown hardware model ${params.hwModel}: cannot determine board name`);
+      return refuseHardware(noBoardReason(params.hwModel), null, null);
     }
 
     const platform = ambiguous ? ambiguous.platform : getPlatformForBoard(boardName);
-    if (!platform || !isOtaCapable(platform)) {
-      throw new Error(
-        `Board "${boardName}" (platform: ${platform ?? 'unknown'}) is not OTA capable`
-      );
+    if (!platform) {
+      return refuseHardware('unmapped-board', boardName, null);
+    }
+    if (!isOtaCapable(platform)) {
+      return refuseHardware('platform-not-ota', boardName, platform);
     }
 
     // WiFi OTA requires firmware >= 2.7.18 on the running node.

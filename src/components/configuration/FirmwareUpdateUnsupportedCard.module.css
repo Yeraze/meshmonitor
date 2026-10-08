@@ -1,0 +1,41 @@
+/* Card shown in place of the firmware update UI when the node's hardware
+   cannot be updated through MeshMonitor (#5677). */
+.card {
+  display: flex;
+  gap: 0.75rem;
+  align-items: flex-start;
+  margin-top: 1rem;
+  padding: 0.9rem 1rem;
+  border: 1px solid var(--color-info);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--color-info) 10%, var(--color-bg));
+  color: var(--color-text);
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
+.icon {
+  flex-shrink: 0;
+  margin-top: 0.15rem;
+  color: var(--color-info);
+}
+
+.text {
+  min-width: 0;
+}
+
+.title {
+  display: block;
+  margin-bottom: 0.25rem;
+  overflow-wrap: anywhere;
+}
+
+.body {
+  margin: 0;
+}
+
+.link {
+  display: inline-block;
+  margin-top: 0.5rem;
+  color: var(--color-accent);
+}
