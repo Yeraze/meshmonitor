@@ -23,6 +23,7 @@ jobs:
       github.event.pull_request.author_association == 'COLLABORATOR'
 
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     permissions:
       contents: read
       pull-requests: write  # Changed from read to write to allow posting comments

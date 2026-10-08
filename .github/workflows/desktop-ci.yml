@@ -30,6 +30,7 @@ env:
 jobs:
   build-windows:
     runs-on: windows-latest
+    timeout-minutes: 90
 
     steps:
       - name: Checkout repository
@@ -136,6 +137,7 @@ jobs:
 
   build-macos:
     runs-on: macos-latest
+    timeout-minutes: 60
 
     steps:
       - name: Checkout repository
@@ -241,6 +243,7 @@ jobs:
 
   build-macos-x64:
     runs-on: macos-14
+    timeout-minutes: 60
 
     steps:
       - name: Checkout repository
@@ -365,6 +368,7 @@ jobs:
 
   lint-rust:
     runs-on: ubuntu-latest
+    timeout-minutes: 90
 
     steps:
       - name: Checkout repository
