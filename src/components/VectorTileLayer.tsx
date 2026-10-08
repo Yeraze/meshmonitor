@@ -2,6 +2,12 @@ import { useEffect, useRef } from 'react';
 import { useMap } from 'react-leaflet';
 import L from 'leaflet';
 import 'maplibre-gl/dist/maplibre-gl.css';
+// Registers the bundled MapLibre worker URL. Must run before any GL map is
+// built. Base3DMap imports it too, but a page with only this 2D layer (the
+// MeshCore map, the dashboard) never loaded it: MapLibre then asked for
+// `assets/maplibre-gl-worker.mjs`, got a 404, and drew the style's background
+// with no roads, water or labels.
+import './map/maplibreWorker';
 import '@maplibre/maplibre-gl-leaflet';
 import { createCartoTransformRequest } from '../config/cartoKey';
 import { resolveStyleUrl } from '../config/tilesets';

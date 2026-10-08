@@ -99,6 +99,10 @@ vi.mock('@maplibre/maplibre-gl-leaflet', async () => {
   return {};
 });
 vi.mock('maplibre-gl/dist/maplibre-gl.css', () => ({}));
+// vitest.config.ts aliases the `?worker&url` import to this stub (an empty
+// string). Give it a value here so the registration below can be told apart
+// from MapLibre's unset default.
+vi.mock('../test/maplibreWorkerUrlStub', () => ({ default: 'assets/test-maplibre-worker.js' }));
 
 function renderLayer(onUnavailable = vi.fn()) {
   const mapRef = createRef<L.Map>();
@@ -229,5 +233,15 @@ describe('VectorTileLayer when the WebGL context is lost', () => {
     rerender(ui('cartoDarkMatter'));
     expect(glMaps).toHaveLength(2);
     expect(screen.queryByTestId('vector-fallback-notice')).toBeNull();
+  });
+});
+
+describe('VectorTileLayer and the MapLibre worker', () => {
+  // Without a registered URL MapLibre asks for `assets/maplibre-gl-worker.mjs`,
+  // which the build never emits: a 404, a dead worker, and a vector map that
+  // draws its background and nothing else. Only Base3DMap used to register it.
+  it('registers the bundled worker URL just by being imported', async () => {
+    const maplibregl = await import('maplibre-gl');
+    expect(maplibregl.getWorkerUrl()).toBe('assets/test-maplibre-worker.js');
   });
 });

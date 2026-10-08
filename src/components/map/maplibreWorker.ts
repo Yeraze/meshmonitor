@@ -18,8 +18,13 @@
  * `?worker&url` makes Vite bundle the worker as its own chunk — resolving its
  * internal `./maplibre-gl-shared.mjs` import — and hand back a base-aware URL,
  * which we register via `setWorkerUrl` before any map is constructed. Importing
- * this module for its side effect at the top of the (single) map-constructing
- * component guarantees it runs first.
+ * this module for its side effect at the top of a map-constructing component
+ * guarantees it runs first.
+ *
+ * EVERY file that builds a MapLibre map must import it: `Base3DMap` (3D) and
+ * `VectorTileLayer` (2D vector basemaps, through the Leaflet adapter). The 2D
+ * layer was missed at first, so a page that never loaded the 3D view drew a
+ * vector basemap's background and nothing else.
  */
 import * as maplibregl from 'maplibre-gl';
 // Vite virtual import: bundles the worker + its deps, returns the emitted URL.
