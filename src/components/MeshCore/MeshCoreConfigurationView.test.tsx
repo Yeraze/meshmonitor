@@ -7,6 +7,7 @@
  */
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { DEVICE_CONFIGURATION_NAV_ENTRY } from '../nav/sourceNavEntries';
 
 // Auth: default to write-permitted; individual tests can override before
 // rendering by reassigning `authPermission`.
@@ -133,6 +134,14 @@ describe('MeshCoreConfigurationView telemetry section', () => {
       />,
     );
     expect(screen.getByLabelText('meshcore.config.telemetry_base')).toBeDisabled();
+  });
+});
+
+describe('MeshCoreConfigurationView heading (#5683)', () => {
+  it('is titled as the nav entry that opens it', () => {
+    render(<MeshCoreConfigurationView status={makeStatus()} actions={makeActions()} />);
+    // This file's `t` returns the key: the heading must use the nav entry's own key.
+    expect(screen.getByRole('heading', { level: 2, name: DEVICE_CONFIGURATION_NAV_ENTRY.labelKey })).toBeInTheDocument();
   });
 });
 
