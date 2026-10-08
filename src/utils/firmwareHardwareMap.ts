@@ -552,7 +552,8 @@ export type FirmwareUpdateSupport =
       supported: true;
       /** Hardware model enum name, e.g. `HELTEC_V3`. */
       modelName: string;
-      board: string;
+      /** Release board name; null for an ambiguous model, which has several. */
+      board: string | null;
       platform: string;
       /**
        * True when several release builds share this model (#5423): release
@@ -614,7 +615,7 @@ export function firmwareUpdateSupport(hwModel: number): FirmwareUpdateSupport {
   if (!platform) return refuse('unmapped-board', board, null);
   if (!isOtaCapable(platform)) return refuse('platform-not-ota', board, platform);
 
-  return { supported: true, modelName, board, platform, ambiguous: ambiguous !== null };
+  return { supported: true, modelName, board: ambiguous ? null : board, platform, ambiguous: ambiguous !== null };
 }
 
 /**
