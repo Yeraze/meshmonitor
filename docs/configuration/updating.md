@@ -82,6 +82,53 @@ tag the container runs. See the
 full comparison.
 :::
 
+### Upgrading to 4.17: every process runs as `node`
+
+Older images ran `supervisord` and the Apprise notification service as root
+(the MeshMonitor server itself already ran as the `node` user). Starting with
+4.17, the entrypoint drops to `node` (uid/gid 1000, or your `PUID`/`PGID`)
+before it starts anything, so no long-running process in the container runs as
+root.
+
+You do not need to change anything to upgrade. On the first start of the new
+image the entrypoint:
+
+1. Walks `/data` once and hands any file not owned by `node` to `node`, for
+   example Apprise config written by the old root process, or files you
+   created with `docker exec`. It logs
+   `Fixing ownership of /data for node (1000:1000) — one-time pass`.
+2. Records that it did so in `/data/.meshmonitor-internal/.data-owner`. Later
+   starts only check the top level of `/data` (the database and its
+   directories) and skip the full walk, so a large volume with many backups
+   no longer slows every restart.
+
+Changing `PUID`/`PGID` re-runs the full pass once for the new owner. To force
+it again, for example after copying files into the volume as root, set
+`MESHMONITOR_FORCE_CHOWN=true` for one start.
+
+If a host bind mount under `/data` is read-only, the entrypoint cannot chown
+it and says so; make it readable by uid 1000 (or your `PUID`) on the host.
+
+**`docker exec` still defaults to root.** Pass `-u node` when you run a
+command that writes to `/data`, for example the admin password reset:
+
+```bash
+docker compose exec -u node meshmonitor node reset-admin.mjs
+```
+
+A root-owned database file left behind by such a command is fixed on the next
+container start.
+
+**Serial devices** keep working without changes: the entrypoint adds `node` to
+the group that owns each mapped `/dev/ttyUSB*`, `/dev/ttyACM*`, `/dev/ttyAMA*`
+and `/dev/ttyS*` device. See
+[USB serial devices](/configuration/production#usb-serial-devices-and-the-non-root-user).
+
+**Escape hatch.** If something on your install breaks because of the user
+change, set `RUN_AS_ROOT=true` to get the old behaviour back while you fix it,
+and please [open an issue](https://github.com/Yeraze/meshmonitor/issues/new).
+Do not leave it set.
+
 ### Unattended updates with Watchtower
 
 If you want your MeshMonitor container to update itself automatically without

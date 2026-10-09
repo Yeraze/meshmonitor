@@ -76,6 +76,7 @@ node(s) in **Dashboard → Sources**.
 | `TRACEROUTE_HISTORY_LIMIT` | Traceroute history rows to keep per node pair | `50` |
 | `BASE_URL` | Base path if serving from subfolder (e.g., `/meshmonitor`) | `/` (root) |
 | `TZ` | Timezone for log timestamps and scheduled tasks | `America/New_York` |
+| `PUID` / `PGID` | Docker: uid/gid of the unprivileged `node` user every process runs as. See [Docker Security](/configuration/production#docker-security) | `1000` / `1000` |
 
 ### Meshtastic Connection Variables
 

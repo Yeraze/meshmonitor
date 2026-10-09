@@ -273,16 +273,40 @@ affinity: {}
 # Security context
 podSecurityContext:
   fsGroup: 1000
+  fsGroupChangePolicy: OnRootMismatch
+  # supplementalGroups: [20]   # serial device group (dialout), see below
 
 securityContext:
   runAsUser: 1000
+  runAsGroup: 1000
   runAsNonRoot: true
   readOnlyRootFilesystem: false
   allowPrivilegeEscalation: false
   capabilities:
     drop:
       - ALL
+  seccompProfile:
+    type: RuntimeDefault
 ```
+
+### Non-root user and existing volumes
+
+The MeshMonitor container runs as uid/gid 1000 (the image's `node` user) and
+never as root. The entrypoint detects the non-root uid and skips the steps that
+need root (PUID/PGID, serial-device groups, `/data` chown); `fsGroup` gives the
+process access to the PVC instead.
+
+- **PVCs created by this chart** were always written by uid 1000 — nothing to do.
+- **A PVC first written by a root-run container** (for example data migrated
+  from a Docker install) is re-grouped to 1000 and made group-writable by the
+  kubelet through `fsGroup` when it mounts. `fsGroupChangePolicy: OnRootMismatch`
+  makes that walk happen once, not on every pod start.
+- **Volumes without fsGroup support** (`hostPath`, some NFS exports) must be
+  chowned once by hand: `chown -R 1000:1000 <path>`.
+- **Serial devices** passed into the pod are opened by uid 1000. Add the
+  device's owning group on the node to `podSecurityContext.supplementalGroups`
+  (check it with `stat -c %g /dev/ttyUSB0` on the node; `dialout` is 20 on
+  Debian/Ubuntu).
 
 ## Common Configuration Examples
 
