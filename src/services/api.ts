@@ -26,6 +26,7 @@ import type { NodeTransportClass } from '../utils/nodeTransport.js';
 import type { ReplaySettings, TrafficReplayResponse } from '../utils/trafficManagementReplay.js';
 import type { OutlierPreview, OutlierPurgeResult } from '../utils/telemetryOutliers.js';
 import type { FlightMatch } from '../types/flightMatch.js';
+import type { PkiExchangeState } from '../types/pkiExchange.js';
 import type { TranslationRequest, TranslationResponse, TranslationLanguageOption, StoredTranslation } from '../types/translation.js';
 
 /** Body of the telemetry outlier preview/purge requests (#5333). */
@@ -1010,6 +1011,17 @@ class ApiService {
   async getFlightMatch(sourceId: string, nodeNum: number): Promise<FlightMatch | null> {
     const body = await this.get<{ success: boolean; data?: FlightMatch | null }>(
       `/api/sources/${encodeURIComponent(sourceId)}/nodes/${nodeNum >>> 0}/flight-match`,
+    );
+    return body?.data ?? null;
+  }
+
+  /**
+   * Reliable PKI exchange state for one node on one source (#5691).
+   * Unwraps the `ok()` envelope; null when nothing is recorded.
+   */
+  async getPkiExchangeState(sourceId: string, nodeNum: number): Promise<PkiExchangeState | null> {
+    const body = await this.get<{ success: boolean; data?: PkiExchangeState | null }>(
+      `/api/sources/${encodeURIComponent(sourceId)}/nodes/${nodeNum >>> 0}/pki-exchange`,
     );
     return body?.data ?? null;
   }

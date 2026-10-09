@@ -50,6 +50,7 @@ import {
 } from '../../utils/aircraftClassification.js';
 import { aircraftClassificationService } from '../services/aircraftClassificationService.js';
 import { isAdsbFeed, ADSB_FEED_IDS } from '../../utils/adsbFeeds.js';
+import { parseReliablePkiMode, isValidReliablePkiSourceMode } from '../services/reliablePki.js';
 import {
   AUTO_ACK_MAX_RESPONSES_MAX,
   AUTO_ACK_MAX_RESPONSES_MIN,
@@ -408,6 +409,16 @@ router.post('/', requirePermission('settings', 'write', { sourceIdFrom: 'query' 
         return fail(res, 400, 'INVALID_BOOLEAN_SETTING',
           `${key} must be the boolean true or false (received "${v}")`);
       }
+    }
+
+    // Reliable PKI (#5691). An unknown mode would read as 'off' — reject it so
+    // a client bug is visible instead of silently disabling the feature.
+    if ('reliablePkiMode' in filteredSettings && !parseReliablePkiMode(filteredSettings.reliablePkiMode)) {
+      return fail(res, 400, 'INVALID_RELIABLE_PKI_MODE', 'reliablePkiMode must be "off" or "asNeeded"');
+    }
+    if ('reliablePkiSourceMode' in filteredSettings
+      && !isValidReliablePkiSourceMode(filteredSettings.reliablePkiSourceMode)) {
+      return fail(res, 400, 'INVALID_RELIABLE_PKI_MODE', 'reliablePkiSourceMode must be "inherit", "off" or "asNeeded"');
     }
 
     // Auto-Enrichment schedule floor (#5287). The scheduler clamps and rejects

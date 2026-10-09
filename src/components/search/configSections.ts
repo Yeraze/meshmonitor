@@ -91,6 +91,9 @@ export const SOURCE_SETTINGS_SECTIONS = new Set([
   // PKI DM decryption (#5683 follow-up): a MeshMonitor-side switch, moved
   // here from Device Configuration.
   'settings-pki-dm',
+  // Reliable PKI per-source override (#5691): MeshMonitor behaviour for this
+  // source's sends. The install-wide default lives in Global → Security.
+  'settings-reliable-pki',
   'settings-notifications', 'settings-packet-monitor', 'settings-solar',
   'settings-reset-ui',
   // Coverage Report reception recording (#5277 P2 WP3 MQTT gateways, P3 WP4
@@ -170,8 +173,9 @@ export function settingsNavItems(t: Translate, options: SettingsNavOptions): Nav
     { id: 'settings-node-display', label: t('settings.node_display'), keywords: ['nodes', 'list', 'columns', 'age', 'inactive', 'aircraft', 'plane', 'altitude', 'AGL', 'balloon', 'drone'] },
     { id: 'settings-telemetry', label: t('settings.telemetry'), keywords: ['battery', 'voltage', 'charts', 'graphs', 'sensors'] },
     { id: 'settings-notifications', label: t('settings.notifications_and_security'), keywords: ['alerts', 'sounds', 'audio', 'desktop'] },
-    { id: 'settings-security', label: t('settings.security', 'Security'), keywords: ['pki', 'keys', 'encryption'] },
+    { id: 'settings-security', label: t('settings.security', 'Security'), keywords: ['pki', 'keys', 'encryption', 'reliable pki', 'nodeinfo'] },
     { id: 'settings-pki-dm', label: t('config.pki_dm.title', 'PKI Direct Message Decryption'), keywords: ['pki', 'dm', 'direct message', 'decrypt', 'private key', 'encryption'] },
+    { id: 'settings-reliable-pki', label: t('settings.reliable_pki.title', 'Reliable PKI'), keywords: ['pki', 'nodeinfo', 'node info', 'encryption', 'keys', 'prime', 'telemetry', 'dm'] },
     { id: 'settings-packet-monitor', label: t('settings.packet_monitor'), keywords: ['packets', 'logging', 'capture'] },
     { id: 'settings-solar', label: t('settings.solar_monitoring'), keywords: ['sun', 'panel', 'power', 'battery'] },
     { id: 'settings-remote-admin', label: t('settings.remote_admin_section', 'Remote Administration'), keywords: ['admin', 'password', 'credentials'] },
@@ -209,6 +213,8 @@ export function settingsNavItems(t: Translate, options: SettingsNavOptions): Nav
     if (item.id === 'settings-maintenance' && databaseType !== 'sqlite') return false;
     if (item.id === 'settings-mqtt-bridge' && !(sourceType === 'mqtt_bridge' && canReadSources)) return false;
     if (item.id === 'settings-pki-dm' && !(hasDeviceConfigurationPage(sourceType) && canReadConfiguration)) return false;
+    // Reliable PKI only acts on a Meshtastic radio source's own sends.
+    if (item.id === 'settings-reliable-pki' && !hasDeviceConfigurationPage(sourceType)) return false;
     // Coverage recording only means anything on an MQTT-shaped source
     // (mqtt_broker/mqtt_bridge/meshcore_mqtt) — see isCoverageMqttSourceType
     // (#5277 P2 WP3, widened P3 WP4).

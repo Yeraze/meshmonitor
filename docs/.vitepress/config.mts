@@ -135,6 +135,7 @@ const featuresSidebar = [
       { text: 'Low-Entropy Encryption Keys', link: '/security-low-entropy-keys' },
       { text: 'Impersonation Detection', link: '/features/impersonation-detection' },
       { text: 'PKI Direct Message Decryption', link: '/features/pki-dm-decryption' },
+      { text: 'Reliable PKI', link: '/features/reliable-pki' },
       { text: 'Security Advisories', link: '/security/SECURITY_ADVISORY' }
     ]
   },

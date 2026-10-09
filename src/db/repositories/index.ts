@@ -116,6 +116,12 @@ export type {
   DbMeshtasticHeardRepeater,
   RecordMeshtasticHeardRepeaterParams,
 } from './meshtasticHeardRepeaters.js';
+export { PkiExchangeStateRepository } from './pkiExchangeState.js';
+export type {
+  PkiExchangeStateRow,
+  PkiExchangeStateValue,
+  PkiFailureReason,
+} from './pkiExchangeState.js';
 export { CoverageReceptionsRepository } from './coverageReceptions.js';
 export type {
   DbCoverageReception,

@@ -1,0 +1,25 @@
+/* Node Details: Reliable PKI exchange status card (#5691). */
+
+.label {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.ok {
+  color: var(--color-success);
+}
+
+.failed {
+  color: var(--color-warning);
+}
+
+.neutral {
+  color: var(--color-text-subtle);
+}
+
+.sub {
+  margin-top: 0.2rem;
+  font-size: 0.8rem;
+  color: var(--color-text-subtle);
+}

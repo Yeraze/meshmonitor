@@ -42,6 +42,7 @@ Individual Apprise URLs (per user, per source) are not here — users configure 
 - MFA enforcement defaults
 - Rate-limiter thresholds
 - **PKI direct message decryption**: the install-wide enable switch (the per-source switch is on each source's **Settings** page). See [PKI Direct Message Decryption](/features/pki-dm-decryption).
+- **Reliable PKI**: the default for every source, Off or As needed (each Meshtastic source can override it on its **Settings** page). See [Reliable PKI](/features/reliable-pki).
 
 ### Channel Database
 
@@ -96,6 +97,7 @@ Anything that depends on *which* node you're connected to lives on the source, n
 - Scheduled Messages
 - Permissions
 - PKI direct message decryption switch (Meshtastic)
+- Reliable PKI override (Meshtastic)
 - MQTT Bridge Configuration (bridge sources)
 - Receive-only mode, saved regions, node display, and message filters (MeshCore)
 

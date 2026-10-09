@@ -157,6 +157,8 @@ export const BACKUP_TABLES: string[] = [
   // have; leaving them out would start every cooldown from "never fired".
   'auto_key_repair_state',
   'auto_key_repair_log',
+  // #5691 Reliable PKI: per-node exchange outcome and the hourly priming timer.
+  'pki_exchange_state',
   'geofence_cooldowns',
   'news_cache',
 ];
