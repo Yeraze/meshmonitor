@@ -35,6 +35,7 @@ import { useSourceStatuses } from '../../hooks/useDashboardData';
 import { formatRelativeTime } from '../../utils/datetime';
 import { UiIcon } from '../icons';
 import { useSaveBar } from '../../hooks/useSaveBar';
+import { MQTT_BRIDGE_SETTINGS_HASH } from '../../utils/tabHashRedirect';
 import styles from './MqttBridgeConfigurationView.module.css';
 import {
   buildBridgeConfig,
@@ -80,7 +81,7 @@ interface MqttBridgeConfigurationViewProps {
 }
 
 /** The section's id: the Settings nav chip and `#settings-mqtt-bridge` deep links. */
-export const MQTT_BRIDGE_SETTINGS_SECTION_ID = 'settings-mqtt-bridge';
+export const MQTT_BRIDGE_SETTINGS_SECTION_ID = MQTT_BRIDGE_SETTINGS_HASH;
 
 const GEO_KEYS = ['minLat', 'maxLat', 'minLng', 'maxLng'] as const;
 

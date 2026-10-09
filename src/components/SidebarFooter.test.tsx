@@ -87,6 +87,31 @@ describe('SidebarFooter', () => {
     expect(screen.getByTitle('source.sidebar.users')).toBeInTheDocument();
   });
 
+  it('names the gear by the page it opens (#5683 follow-up)', () => {
+    // A source sidebar's gear opens that source's Settings; the dashboard's
+    // opens the install-wide page, and says so in its title and its name.
+    const source = render(<SidebarFooter {...baseProps} />);
+    const sourceGear = screen.getByTitle('source.sidebar.settings');
+    expect(sourceGear).toHaveAccessibleName('source.sidebar.settings');
+    expect(screen.queryByTitle('nav.global_settings')).toBeNull();
+    source.unmount();
+
+    render(<SidebarFooter {...baseProps} settingsScope="global" />);
+    const globalGear = screen.getByTitle('nav.global_settings');
+    expect(globalGear).toHaveAccessibleName('nav.global_settings');
+    expect(screen.queryByTitle('source.sidebar.settings')).toBeNull();
+    fireEvent.click(globalGear);
+    expect(baseProps.onSettingsClick).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps one gear either way: nothing was removed', () => {
+    for (const scope of ['source', 'global'] as const) {
+      const { container, unmount } = render(<SidebarFooter {...baseProps} settingsScope={scope} />);
+      expect(container.querySelectorAll('button').length).toBe(3); // Users, gear, News
+      unmount();
+    }
+  });
+
   it('fires the Users and Settings click handlers', () => {
     render(<SidebarFooter {...baseProps} />);
     fireEvent.click(screen.getByTitle('source.sidebar.users'));

@@ -10,7 +10,7 @@ import './components/map/leafletDefaultIcon';
 import InfoTab from './components/InfoTab';
 import SettingsTab from './components/SettingsTab';
 import ConfigurationTab from './components/ConfigurationTab';
-import MqttBridgeConfigurationView, { MQTT_BRIDGE_SETTINGS_SECTION_ID } from './components/MQTT/MqttBridgeConfigurationView';
+import MqttBridgeConfigurationView from './components/MQTT/MqttBridgeConfigurationView';
 import { canOpenSourceSettings } from './components/nav/sourceSettingsAccess';
 import NotificationsTab from './components/NotificationsTab';
 import UsersTab from './components/UsersTab';
@@ -45,7 +45,7 @@ import { DeviceInfo, Channel } from './types/device';
 import { MeshMessage } from './types/message';
 import { isMqttBridgeMessage } from './utils/messageFilters';
 import { NodeFilters } from './types/ui';
-import { getHashTabRedirectTarget } from './utils/tabHashRedirect';
+import { getHashTabRedirectTarget, getRetiredTabRedirectTarget } from './utils/tabHashRedirect';
 import { ResourceType } from './types/permission';
 import api, { type ChannelDatabaseEntry } from './services/api';
 import { fetchAssetTrack } from './hooks/useAssetTracking';
@@ -134,6 +134,8 @@ function App() {
   const isMqttBridge = sourceType === 'mqtt_bridge';
   const isMqttBroker = sourceType === 'mqtt_broker';
   const isMqtt = isMqttBridge || isMqttBroker;
+  // Where the retired MQTT bridge tab id goes: the bridge section of Settings.
+  const mqttConfigRedirect = getRetiredTabRedirectTarget('mqtt-config', sourceId, sourceType);
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -3662,12 +3664,7 @@ function App() {
                Settings page now (#5683 follow-up). The tab id stays valid so
                bookmarks, `#mqtt-config` links and stored tab state land on
                that section instead of a blank pane. */
-            element={isMqttBridge && sourceId ? (
-              <Navigate
-                to={`/source/${encodeURIComponent(sourceId)}/settings#${MQTT_BRIDGE_SETTINGS_SECTION_ID}`}
-                replace
-              />
-            ) : null}
+            element={mqttConfigRedirect ? <Navigate to={mqttConfigRedirect} replace /> : null}
           />
           <Route
             path="packetmonitor"

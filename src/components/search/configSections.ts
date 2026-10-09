@@ -349,14 +349,20 @@ export function buildConfigSurfaces(t: Translate, context: ConfigSurfaceContext)
       path: `${base}/settings`,
       items: settingsNavItems(t, { ...settingsOptions, mode: 'source' }),
     });
-    surfaces.push({
-      key: 'configuration',
-      label: t(DEVICE_CONFIGURATION_NAV_ENTRY.labelKey, DEVICE_CONFIGURATION_NAV_ENTRY.fallback),
-      path: `${base}/configuration`,
-      items: configurationNavItems(t, {
-        showFirmware: settingsOptions.isAdmin && settingsOptions.firmwareOtaEnabled === true,
-      }),
-    });
+    // An MQTT broker or bridge has no Device Configuration page (#5367), so
+    // the palette must not hand out links to one: a search for "firmware"
+    // there would land on nothing. An unknown type keeps the surface, as before.
+    const sourceType = settingsOptions.sourceType;
+    if (sourceType !== 'mqtt_bridge' && sourceType !== 'mqtt_broker') {
+      surfaces.push({
+        key: 'configuration',
+        label: t(DEVICE_CONFIGURATION_NAV_ENTRY.labelKey, DEVICE_CONFIGURATION_NAV_ENTRY.fallback),
+        path: `${base}/configuration`,
+        items: configurationNavItems(t, {
+          showFirmware: settingsOptions.isAdmin && settingsOptions.firmwareOtaEnabled === true,
+        }),
+      });
+    }
     surfaces.push({
       key: 'automation',
       label: t('nav.automation', 'Automation'),
