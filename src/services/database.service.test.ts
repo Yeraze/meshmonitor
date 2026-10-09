@@ -6,7 +6,7 @@
  *
  * @vitest-environment node
  */
-import { describe, it, expect, vi, beforeEach, afterEach, afterAll } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 // ─── Mock config before singleton construction ────────────────────────────────
 
@@ -229,6 +229,7 @@ vi.mock('../server/services/notificationService.js', () => ({
 
 import databaseService from './database.js';
 import { isNodeComplete } from '../utils/nodeHelpers.js';
+import { waitForBackgroundTasks } from '../utils/backgroundTasks.js';
 
 // ─── Tests ────────────────────────────────────────────────────────────────────
 
@@ -806,7 +807,7 @@ describe('DatabaseService.upsertNodeAsync — new node notification (#3796)', ()
     expect(mockNotifyNewNode).toHaveBeenCalledTimes(1);
   });
 
-  it('waitForPendingNotificationsAsync resolves only after an in-flight notification settles', async () => {
+  it('waitForBackgroundTasks resolves only after an in-flight notification settles', async () => {
     // Tests that seed complete nodes rely on this to keep the notification's
     // dynamic import and error log inside the test file's lifetime.
     vi.mocked(isNodeComplete).mockReturnValue(true);
@@ -820,7 +821,7 @@ describe('DatabaseService.upsertNodeAsync — new node notification (#3796)', ()
     await vi.waitFor(() => expect(mockNotifyNewNode).toHaveBeenCalledTimes(1));
 
     let drained = false;
-    const wait = databaseService.waitForPendingNotificationsAsync().then(() => { drained = true; });
+    const wait = waitForBackgroundTasks().then(() => { drained = true; });
     await settle();
     expect(drained).toBe(false);
 
@@ -829,5 +830,4 @@ describe('DatabaseService.upsertNodeAsync — new node notification (#3796)', ()
     expect(drained).toBe(true);
   });
 
-  afterAll(() => databaseService.waitForPendingNotificationsAsync());
 });

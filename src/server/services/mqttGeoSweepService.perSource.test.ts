@@ -10,7 +10,7 @@
  * prove. Every assertion here demonstrates that a sweep run against source A
  * never reads, ignores, purges, or lifts anything belonging to source B.
  */
-import { describe, it, expect, beforeEach, afterEach, afterAll } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { mqttGeoSweepService } from './mqttGeoSweepService.js';
 import databaseService from '../../services/database.js';
 
@@ -57,11 +57,6 @@ describe('mqttGeoSweepService — per-source isolation', () => {
     await databaseService.sources.deleteSource(SRC_A).catch(() => {});
     await databaseService.sources.deleteSource(SRC_B).catch(() => {});
   });
-
-  // seedNode() fills name + hwModel, so each new node fires a fire-and-forget
-  // "new node" notification. Let it settle before the file ends, or its
-  // dynamic import and error log land after teardown and fail the Vitest run.
-  afterAll(() => databaseService.waitForPendingNotificationsAsync());
 
   it('a sweep on source A ignores + purges only A; source B keeps its node for the same nodeNum', async () => {
     const NODE = 0x20000001;

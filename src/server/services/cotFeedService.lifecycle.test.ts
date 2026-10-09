@@ -91,6 +91,29 @@ describe('CotFeedService lifecycle', () => {
     });
   });
 
+  it('stop() resolves only after each client close handler has logged', async () => {
+    // A close handler that logs after stop() returns can land after Vitest
+    // tears the file down and fail the run (onUserConsoleLog teardown flake).
+    const debug = vi.spyOn(logger, 'debug').mockImplementation(() => {});
+    mockSettings(true, 0);
+    await cotFeedService.startFromSettings();
+    const port = cotFeedService.getStatus().port;
+
+    const net = await import('net');
+    const socket = net.connect(port, '127.0.0.1');
+    socket.on('error', () => {});
+    await new Promise<void>((resolve, reject) => {
+      socket.once('connect', () => resolve());
+      socket.once('error', reject);
+    });
+    await vi.waitFor(() => expect(cotFeedService.getStatus().clientCount).toBe(1));
+
+    await cotFeedService.stop();
+
+    expect(debug.mock.calls.some(([msg]) => String(msg).includes('CoT feed client disconnected'))).toBe(true);
+    socket.destroy();
+  });
+
   it('changing the port while enabled stops the old listener and binds the new one (E11)', async () => {
     mockSettings(true, 0);
     await cotFeedService.startFromSettings();

@@ -11,7 +11,7 @@
  * the donor, never an unrelated third source) and that `analyzeEnrichment`'s
  * read path respects `allowedSourceIds`.
  */
-import { describe, it, expect, beforeEach, afterEach, afterAll } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import databaseService from '../../services/database.js';
 import { analyzeEnrichment, applyEnrichment } from './nodeInfoEnrichmentService.js';
 
@@ -54,11 +54,6 @@ describe('nodeInfoEnrichmentService — per-source isolation', () => {
     await databaseService.sources.deleteSource(SRC_B).catch(() => {});
     await databaseService.sources.deleteSource(SRC_OTHER).catch(() => {});
   });
-
-  // seedNode() with a full name + hwModel fires a fire-and-forget "new node"
-  // notification. Let it settle before the file ends, or its dynamic import
-  // and error log land after teardown and fail the Vitest run.
-  afterAll(() => databaseService.waitForPendingNotificationsAsync());
 
   it('applyEnrichment writes only to targetSourceId; donor row and an unrelated third-source row are untouched', async () => {
     const NODE = 0x30000001;

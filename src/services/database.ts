@@ -5,6 +5,7 @@ import { calculateDistance } from '../utils/distance.js';
 import { compileUserRegex } from '../utils/safeRegex.js';
 import { isNodeComplete } from '../utils/nodeHelpers.js';
 import { logger } from '../utils/logger.js';
+import { trackBackgroundTask } from '../utils/backgroundTasks.js';
 import { getEnvironmentConfig } from '../server/config/environment.js';
 
 import { registry } from '../db/migrations.js';
@@ -504,11 +505,6 @@ class DatabaseService {
   // Track nodes that have already had their "new node" notification sent
   // to avoid duplicate notifications when node data is updated incrementally
   private newNodeNotifiedSet: Set<number> = new Set();
-
-  // In-flight fire-and-forget "new node" notifications. The caller never waits
-  // on them, but a test that seeds complete nodes must, or the dynamic import
-  // and its error log outlive the test file and fail the Vitest run.
-  private pendingNewNodeNotifications: Set<Promise<void>> = new Set();
 
   // Ghost node suppression: nodeNum → expiresAt timestamp
   // Prevents resurrection of ghost nodes after reboot detection
@@ -1649,7 +1645,7 @@ class DatabaseService {
 
     this.newNodeNotifiedSet.add(nodeNum);
     const newNodeSourceId = sourceId ?? (nodeData as any).sourceId ?? (existingNode as any)?.sourceId ?? 'default';
-    const pending: Promise<void> = import('../server/services/notificationService.js').then(async ({ notificationService }) => {
+    trackBackgroundTask(import('../server/services/notificationService.js').then(async ({ notificationService }) => {
       let sourceName = newNodeSourceId;
       try {
         const src = await this.sources.getSource(newNodeSourceId);
@@ -1664,21 +1660,7 @@ class DatabaseService {
         newNodeSourceId,
         sourceName
       );
-    }).catch(err => logger.error('Failed to send new node notification:', err))
-      .finally(() => { this.pendingNewNodeNotifications.delete(pending); });
-    this.pendingNewNodeNotifications.add(pending);
-  }
-
-  /**
-   * Resolve once every in-flight "new node" notification has settled. Never
-   * rejects (each one catches its own error). Production code does not need
-   * this; tests that upsert complete nodes against the real singleton await it
-   * in `afterAll`, so no work outlives the test file.
-   */
-  async waitForPendingNotificationsAsync(): Promise<void> {
-    while (this.pendingNewNodeNotifications.size > 0) {
-      await Promise.all([...this.pendingNewNodeNotifications]);
-    }
+    }).catch(err => logger.error('Failed to send new node notification:', err)));
   }
 
   /**
@@ -4387,18 +4369,22 @@ class DatabaseService {
 
   // Authentication and Authorization
   private ensureAdminUser(): void {
-    // Run asynchronously without blocking initialization
-    this.createAdminIfNeeded().catch(error => {
+    // Run asynchronously without blocking initialization. Track it only up to
+    // the restore gate: past that point it waits for server.ts to mark the
+    // restore complete, which never happens in tests.
+    let restoreGateReached!: () => void;
+    trackBackgroundTask(new Promise<void>(resolve => { restoreGateReached = resolve; }));
+    this.createAdminIfNeeded(restoreGateReached).catch(error => {
       logger.error('❌ Failed to ensure admin user:', error);
-    });
+    }).finally(restoreGateReached);
 
     // Ensure anonymous user exists (runs independently of admin creation)
-    this.ensureAnonymousUser().catch(error => {
+    trackBackgroundTask(this.ensureAnonymousUser().catch(error => {
       logger.error('❌ Failed to ensure anonymous user:', error);
-    });
+    }));
   }
 
-  private async createAdminIfNeeded(): Promise<void> {
+  private async createAdminIfNeeded(onRestoreGate: () => void = () => {}): Promise<void> {
     logger.debug('🔐 Checking for admin user...');
     try {
       // CRITICAL: Wait for any pending restore to complete before checking for admin
@@ -4409,6 +4395,7 @@ class DatabaseService {
         // Use dynamic import to avoid circular dependency (systemRestoreService imports database.ts)
         const { systemRestoreService } = await import('../server/services/systemRestoreService.js');
         logger.debug('🔐 Waiting for any pending restore to complete before admin check...');
+        onRestoreGate();
         await systemRestoreService.waitForRestoreComplete();
         logger.debug('🔐 Restore check complete, proceeding with admin user check');
       } catch (importError) {
@@ -4479,13 +4466,13 @@ class DatabaseService {
       logger.warn('');
 
       // Log to audit log (fire-and-forget)
-      this.auditLogAsync(
+      trackBackgroundTask(this.auditLogAsync(
         adminId,
         'first_run_admin_created',
         'users',
         JSON.stringify({ username: adminUsername }),
         'system'
-      ).catch(err => logger.error('Failed to write audit log:', err));
+      ).catch(err => logger.error('Failed to write audit log:', err)));
 
       // Save to settings
       await this.settings.setSetting('setup_complete', 'true');

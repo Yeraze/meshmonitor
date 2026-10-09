@@ -98,8 +98,6 @@ describe('ingestServiceEnvelope — Coverage Report MQTT recording, per-source i
   });
 
   afterAll(async () => {
-    // Let fire-and-forget new-node notifications settle before the file ends.
-    await databaseService.waitForPendingNotificationsAsync();
     await databaseService.coverageReceptions.deleteForSource(SRC_A).catch(() => {});
     await databaseService.coverageReceptions.deleteForSource(SRC_B).catch(() => {});
     await databaseService.sources.deleteSource(SRC_A).catch(() => {});

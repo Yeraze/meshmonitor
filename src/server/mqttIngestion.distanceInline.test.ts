@@ -67,8 +67,6 @@ describe('ingestServiceEnvelope — inline auto-delete-by-distance (#3900)', () 
   });
 
   afterAll(async () => {
-    // Let fire-and-forget new-node notifications settle before the file ends.
-    await databaseService.waitForPendingNotificationsAsync();
     await databaseService.sources.deleteSource(SRC).catch(() => {});
   });
 
