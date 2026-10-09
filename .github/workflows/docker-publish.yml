@@ -228,6 +228,24 @@ jobs:
             FAILED=1
           fi
 
+          # #5692: the entrypoint must drop to node, and the native modules
+          # (built for this arch) must load from the production-only tree.
+          RUN_UID=$(docker run --rm --platform "$PLATFORM" "$IMAGE" id -u 2>/dev/null | tail -n1)
+          if [ "$RUN_UID" = "1000" ]; then
+            echo "  OK: entrypoint drops to node (uid $RUN_UID)"
+          else
+            echo "FAIL: entrypoint ran the command as uid '$RUN_UID', expected 1000"
+            FAILED=1
+          fi
+          if docker run --rm --entrypoint node -w /app --platform "$PLATFORM" "$IMAGE" -e "
+              const D = require('better-sqlite3'); new D(':memory:').prepare('select 1').get();
+              require('bcrypt'); require('re2'); require('zstd-napi'); require('@serialport/bindings-cpp');"; then
+            echo "  OK: native modules load"
+          else
+            echo "FAIL: a native module did not load"
+            FAILED=1
+          fi
+
           echo "─────────────────────────────────────"
           if [ "$FAILED" -ne 0 ]; then
             echo "SMOKE TEST FAILED for $PLATFORM"
