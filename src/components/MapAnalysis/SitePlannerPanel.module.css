@@ -22,6 +22,12 @@
   gap: 0.5rem;
 }
 
+.sitePlannerHeadButtons {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
 .sitePlannerHead h3 {
   display: flex;
   align-items: center;
@@ -113,4 +119,40 @@
 .sitePlannerRun:disabled {
   opacity: 0.6;
   cursor: not-allowed;
+}
+
+/* Folded to a bar after a prediction (#5687): title, one-line summary and
+   Edit inputs / Clear, so the drawn ring stays visible. */
+.sitePlannerCollapsed {
+  padding: 0.5rem 0.75rem;
+}
+
+.sitePlannerBar .sitePlannerActions {
+  margin-top: 0.4rem;
+}
+
+.sitePlannerSummary {
+  margin: 0.35rem 0 0;
+  font-size: 0.8rem;
+  color: var(--color-text);
+}
+
+/* Phones, portrait or landscape (#5687). Mirrors MOBILE_LAYOUT_MEDIA_QUERY in
+   src/utils/sidebarWidth.ts, which the component reads through
+   useIsMobileLayoutViewport() to decide on the auto-collapse; a width-only
+   query misses a landscape phone (#5060). The expanded form is capped so part
+   of the map always shows below it, and scrolls inside. */
+@media (max-width: 768px), (max-height: 500px) and (orientation: landscape) {
+  .sitePlanner {
+    top: 0.5rem;
+    right: 0.5rem;
+    width: min(340px, calc(100% - 1rem));
+    max-height: 55%;
+    padding: 0.6rem 0.75rem;
+  }
+
+  .sitePlannerCollapsed {
+    max-height: none;
+    padding: 0.4rem 0.6rem;
+  }
 }
