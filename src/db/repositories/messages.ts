@@ -349,7 +349,7 @@ export class MessagesRepository extends BaseRepository {
         this.withSourceScope(messages, sourceId),
       ))
       .limit(limit);
-    return (rows as any[]).map((r) => ({
+    return (rows as Array<{ id: unknown; fromNodeNum: unknown; text: string | null; emoji: unknown; replyId: unknown }>).map((r) => ({
       id: String(r.id),
       fromNodeNum: Number(r.fromNodeNum),
       text: r.text ?? null,
