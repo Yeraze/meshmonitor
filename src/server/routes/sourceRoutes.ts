@@ -18,6 +18,7 @@ import { MqttBridgeManager, type MqttBridgeSourceConfig } from '../mqttBridgeMan
 import waypointRoutes from './waypoints.js';
 import observerRoutes from './sourceObserverRoutes.js';
 import aircraftFlightMatchRoutes from './aircraftFlightMatchRoutes.js';
+import pkiExchangeStateRoutes from './pkiExchangeStateRoutes.js';
 import { PortNum } from '../constants/meshtastic.js';
 import {
   buildSourceNodes,
@@ -2517,6 +2518,7 @@ router.post('/:id/prune-outside-roi', requirePermission('sources', 'write'), asy
 // scoped to the path's `:id` parameter.
 router.use('/:id/waypoints', waypointRoutes);
 router.use('/:id/nodes/:nodeNum/flight-match', aircraftFlightMatchRoutes);
+router.use('/:id/nodes/:nodeNum/pki-exchange', pkiExchangeStateRoutes);
 router.use('/:id/observer', observerRoutes);
 
 export default router;
