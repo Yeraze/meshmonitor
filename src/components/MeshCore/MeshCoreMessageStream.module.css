@@ -34,13 +34,13 @@
   white-space: nowrap;
   background: none;
   border: none;
-  color: var(--color-text-faint);
+  color: var(--color-text-subtle);
   cursor: pointer;
 }
 
 .sentToRadio:hover,
 .sentToRadio:focus-visible {
-  color: var(--color-text-subtle);
+  color: var(--color-text);
   text-decoration: underline;
 }
 

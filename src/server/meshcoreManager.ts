@@ -3232,7 +3232,12 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
    * A match requires ALL of:
    *  - `payload_type === GRP_TXT`;
    *  - a non-empty `path_hops` relay chain (a direct/zero-hop packet names no
-   *    repeaters);
+   *    repeaters). Do not relax this to "credit our own transmission" (#5682):
+   *    the companion never hands our own frame back. `LogRxData` fires on
+   *    receive only and the firmware's `logTx` hook is not wired to the host,
+   *    so a zero-hop frame carrying our name and text is another radio using
+   *    our name. The UI's "Sent to radio" mark rests on the send command's
+   *    `Ok` instead (`getMeshCoreChannelSendState`);
    *  - a known local node name (`selfName`) — needed to confirm self-origin;
    *  - a decodable `raw_hex`; and
    *  - a pending channel send, WITHIN the window, whose channel secret both
