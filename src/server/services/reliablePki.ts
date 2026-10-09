@@ -66,6 +66,13 @@ export const PKI_EXCHANGE_TIMEOUT_MS = 3 * 60 * 1000;
  * returns well inside the 30 s request timeout.
  */
 export const PRIMING_GAP_MS = 5_000;
+/**
+ * At most this many priming NodeInfos per source in any rolling hour
+ * (maintainer decision on #5702). Counted from the persisted `lastPrimedAt`
+ * rows, so a restart or a settings save cannot reset it. A NodeInfo the radio
+ * itself sent after a PKI_UNKNOWN_PUBKEY NAK is stamped too and counts.
+ */
+export const PRIMING_MAX_PER_SOURCE_PER_HOUR = 10;
 /** How often pending exchanges are checked against the deadline. */
 export const PKI_SWEEP_INTERVAL_MS = 30_000;
 /** Upper bound on tracked in-flight exchanges per source. */
@@ -111,6 +118,7 @@ export interface PkiStateStore {
   markSuccessful(sourceId: string, nodeNum: number, now?: number): Promise<PkiExchangeStateRow>;
   markFailed(sourceId: string, nodeNum: number, reason: PkiFailureReason, now?: number): Promise<PkiExchangeStateRow>;
   recordPriming(sourceId: string, nodeNum: number, now?: number): Promise<PkiExchangeStateRow>;
+  countPrimedSince(sourceId: string, since: number): Promise<number>;
 }
 
 export interface ReliablePkiDeps {
@@ -132,7 +140,7 @@ export interface PrimingHooks {
 }
 
 export type PrimingOutcome =
-  | 'off' | 'not_failed' | 'window_closed' | 'in_progress' | 'ineligible' | 'tx_blocked' | 'send_failed' | 'primed';
+  | 'off' | 'not_failed' | 'window_closed' | 'in_progress' | 'ineligible' | 'tx_blocked' | 'source_cap' | 'send_failed' | 'primed';
 
 interface InFlight {
   nodeNum: number;
@@ -148,6 +156,8 @@ export class ReliablePkiTracker {
   private readonly inFlight = new Map<number, InFlight>();
   private readonly primingNow = new Set<number>();
   private sweepTimer: ReturnType<typeof setInterval> | null = null;
+  /** Serializes cap check + stamp, so two nodes primed at once cannot both take the last slot. */
+  private capLock: Promise<unknown> = Promise.resolve();
   private readonly now: () => number;
   private readonly sleep: (ms: number) => Promise<void>;
 
@@ -285,10 +295,18 @@ export class ReliablePkiTracker {
         logger.debug(`Reliable PKI: not priming ${hex(node)} (${blocked}); sending without it`);
         return 'tx_blocked';
       }
-      // Stamp the hourly timer BEFORE the send. A send that throws part-way
-      // (after the frame reached the radio) must still count, or a flaky
-      // error path could prime the same node over and over.
-      await this.deps.store.recordPriming(this.deps.sourceId, node, now);
+      // Per-source cap, then stamp the hourly timer, under one lock. The stamp
+      // goes in BEFORE the send: a send that throws part-way (after the frame
+      // reached the radio) must still count, or a flaky error path could
+      // prime the same node over and over.
+      const reserved = await this.reserveSlot(node, now);
+      if (!reserved) {
+        logger.debug(
+          `Reliable PKI: not priming ${hex(node)} on source ${this.deps.sourceId}: ` +
+          `${PRIMING_MAX_PER_SOURCE_PER_HOUR} priming sends already in the last hour; sending without it`,
+        );
+        return 'source_cap';
+      }
       try {
         await hooks.sendNodeInfo();
       } catch (error) {
@@ -307,6 +325,18 @@ export class ReliablePkiTracker {
     } finally {
       this.primingNow.delete(node);
     }
+  }
+
+  /** Check the per-source hourly cap and stamp this node's timer, atomically within this process. */
+  private reserveSlot(node: number, now: number): Promise<boolean> {
+    const run = this.capLock.then(async () => {
+      const used = await this.deps.store.countPrimedSince(this.deps.sourceId, now - PRIMING_MIN_INTERVAL_MS);
+      if (used >= PRIMING_MAX_PER_SOURCE_PER_HOUR) return false;
+      await this.deps.store.recordPriming(this.deps.sourceId, node, now);
+      return true;
+    });
+    this.capLock = run.catch(() => undefined);
+    return run;
   }
 
   stop(): void {

@@ -8,7 +8,7 @@
  * The state machine itself (which event moves which state) lives in
  * `src/server/services/reliablePki.ts`; this file only stores the result.
  */
-import { and, eq } from 'drizzle-orm';
+import { and, eq, gt, count } from 'drizzle-orm';
 import { BaseRepository, DrizzleDatabase } from './base.js';
 import { DatabaseType } from '../types.js';
 
@@ -149,6 +149,22 @@ export class PkiExchangeStateRepository extends BaseRepository {
       });
     }
     return this.write({ ...prev, lastPrimedAt: now, updatedAt: now });
+  }
+
+  /**
+   * How many nodes on this source got a priming NodeInfo after `since` (ms).
+   * Each node holds one row and at most one priming per hour, so with
+   * `since = now - 1h` this is the number of primings in the last hour: the
+   * per-source cap reads it straight from the persisted timers.
+   */
+  async countPrimedSince(sourceId: string, since: number): Promise<number> {
+    this.requireSource(sourceId, 'countPrimedSince');
+    const t = this.tables.pkiExchangeState;
+    const rows = await this.db
+      .select({ n: count() })
+      .from(t)
+      .where(and(this.withSourceScope(t, sourceId), gt(t.lastPrimedAt, since)));
+    return Number(rows[0]?.n ?? 0);
   }
 
   /** Source deletion cleanup. Returns the number of rows removed. */

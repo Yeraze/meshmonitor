@@ -59,6 +59,8 @@ const { rows, k, blank, store, settingsMap, ignored, nodesMap } = vi.hoisted(() 
       const r: Row = { ...prev, state: 'failed', stateChangedAt: now, failingSince: prev.failingSince ?? now, lastFailureReason: reason, updatedAt: now };
       rows.set(k(s, n), r); return r;
     }),
+    countPrimedSince: fn(async (s: string, since: number) =>
+      [...rows.values()].filter((r) => r.sourceId === s && r.lastPrimedAt != null && r.lastPrimedAt > since).length),
     recordPriming: fn(async (s: string, n: number, now = Date.now()) => {
       const r: Row = { ...(rows.get(k(s, n)) ?? { ...blank(s, n, now), state: 'failed' }), lastPrimedAt: now, updatedAt: now };
       rows.set(k(s, n), r); return r;
@@ -327,6 +329,17 @@ describe('Reliable PKI through MeshtasticManager (#5691)', () => {
     const { mgr, wire } = makeManager();
     await dm(mgr, LOCAL);
     expect(wire().every((w) => w.portnum !== PortNum.NODEINFO_APP)).toBe(true);
+  });
+
+  it('at the per-source cap (10 primings this hour) the DM goes out alone', async () => {
+    settingsMap.set('reliablePkiMode', 'asNeeded');
+    for (let i = 1; i <= 10; i++) seedFailed(SOURCE, 0x30000000 + i, Date.now() - 60_000);
+    seedFailed();
+    const { mgr, wire } = makeManager();
+    await dm(mgr);
+    expect(wire().map((w) => w.portnum)).toEqual([PortNum.TEXT_MESSAGE_APP]);
+    expect(rows.get(k(SOURCE, PEER))?.lastPrimedAt ?? null).toBeNull();
+    expect(vi.mocked(logger.debug).mock.calls.some((c) => String(c[0]).includes('priming sends already in the last hour'))).toBe(true);
   });
 
   it('a telemetry request to a failing node is primed too', async () => {

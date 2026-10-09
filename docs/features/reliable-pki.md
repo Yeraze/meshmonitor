@@ -22,7 +22,8 @@ When a node stops answering encrypted requests, MeshMonitor sends it your node i
 
 - One extra packet per node per hour **at most**, and only after an encrypted exchange with that node failed, and only when you send to that node again.
 - That packet is a node info exchange sent to the node on its channel. Like any packet it is repeated by up to *hop limit* relays, and the node answers with its own node info.
-- The hourly limit is stored in the database per source and node. Restarting MeshMonitor or saving settings does not reset it.
+- **At most 10 priming packets per source in any rolling hour**, whatever the number of failing nodes. Once a source has sent 10 in the last hour, the next encrypted send goes out without priming, exactly as it would with the setting Off. A node info your radio sent on its own after a "no key" reply counts toward the 10.
+- Both limits are worked out from timestamps stored in the database, per source and node. Restarting MeshMonitor or saving settings resets neither.
 - No priming is sent when the source cannot transmit (disconnected, TX disabled), while the [airtime cutoff](/features/automation) pauses automations, to ignored nodes, to your own node, or to a node with a key mismatch (Auto Key Management handles those).
 - If the node info cannot be sent, your message goes out as it would have anyway. Reliable PKI never blocks a send.
 

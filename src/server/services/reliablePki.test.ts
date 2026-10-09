@@ -12,6 +12,7 @@ import {
   PKI_EXCHANGE_TIMEOUT_MS,
   PRIMING_MIN_INTERVAL_MS,
   PRIMING_GAP_MS,
+  PRIMING_MAX_PER_SOURCE_PER_HOUR,
   type PkiStateStore,
   type PrimingHooks,
   type ReliablePkiMode,
@@ -50,6 +51,8 @@ function makeStore() {
       const r = { ...prev, state: 'failed' as const, failingSince: prev.failingSince ?? now, lastFailureReason: reason };
       rows.set(key(s, n), r); return r;
     }),
+    countPrimedSince: vi.fn(async (s: string, since: number) =>
+      [...rows.values()].filter((r) => r.sourceId === s && r.lastPrimedAt != null && r.lastPrimedAt > since).length),
     recordPriming: vi.fn(async (s, n, now = 0) => {
       const r = { ...(rows.get(key(s, n)) ?? { ...base(s, n, now), state: 'failed' as const }), lastPrimedAt: now };
       rows.set(key(s, n), r); return r;
@@ -308,6 +311,66 @@ describe('ReliablePkiTracker — priming decision', () => {
     await t.store.markFailed('src-other', NODE, 'timeout', 0);
     const h = hooks();
     expect(await t.tracker.primeBeforeSend(NODE, h)).toBe('not_failed');
+  });
+});
+
+describe('ReliablePkiTracker — per-source hourly cap', () => {
+  const failNodes = async (t: ReturnType<typeof makeTracker>, n: number, sourceId = SRC) => {
+    for (let i = 1; i <= n; i++) await t.store.markFailed(sourceId, 0x1000 + i, 'timeout', 0);
+  };
+
+  it(`the ${PRIMING_MAX_PER_SOURCE_PER_HOUR + 1}th failing node in an hour is not primed`, async () => {
+    expect(PRIMING_MAX_PER_SOURCE_PER_HOUR).toBe(10);
+    const t = makeTracker();
+    await failNodes(t, 11);
+    const h = hooks();
+    for (let i = 1; i <= 10; i++) {
+      expect(await t.tracker.primeBeforeSend(0x1000 + i, h)).toBe('primed');
+      t.advance(1000);
+    }
+    expect(await t.tracker.primeBeforeSend(0x1000 + 11, h)).toBe('source_cap');
+    expect(h.sendNodeInfo).toHaveBeenCalledTimes(10);
+    expect(t.get(0x1000 + 11)?.lastPrimedAt).toBeNull();
+  });
+
+  it('the cap is a rolling hour: the slot frees when the oldest priming is an hour old', async () => {
+    const t = makeTracker();
+    await failNodes(t, 11);
+    const h = hooks();
+    for (let i = 1; i <= 10; i++) { await t.tracker.primeBeforeSend(0x1000 + i, h); t.advance(1000); }
+    t.advance(PRIMING_MIN_INTERVAL_MS - 10_000);
+    expect(await t.tracker.primeBeforeSend(0x1000 + 11, h)).toBe('primed');
+  });
+
+  it('the cap survives a restart (a new tracker over the same store)', async () => {
+    const t = makeTracker();
+    await failNodes(t, 11);
+    for (let i = 1; i <= 10; i++) await t.tracker.primeBeforeSend(0x1000 + i, hooks());
+    const restarted = new ReliablePkiTracker({
+      sourceId: SRC, store: t.store, getMode: async () => 'asNeeded', now: () => t.nowValue() + 1000, sleep: vi.fn(),
+    });
+    const h = hooks();
+    expect(await restarted.primeBeforeSend(0x1000 + 11, h)).toBe('source_cap');
+    expect(h.sendNodeInfo).not.toHaveBeenCalled();
+  });
+
+  it("the cap is per source: another source's primings do not count", async () => {
+    const t = makeTracker();
+    for (let i = 1; i <= 10; i++) {
+      await t.store.markFailed('src-other', 0x2000 + i, 'timeout', 0);
+      await t.store.recordPriming('src-other', 0x2000 + i, t.nowValue());
+    }
+    await t.store.markFailed(SRC, NODE, 'timeout', 0);
+    expect(await t.tracker.primeBeforeSend(NODE, hooks())).toBe('primed');
+  });
+
+  it('concurrent primings to different nodes never exceed the cap', async () => {
+    const t = makeTracker();
+    await failNodes(t, 15);
+    const h = hooks();
+    const outcomes = await Promise.all(Array.from({ length: 15 }, (_, i) => t.tracker.primeBeforeSend(0x1000 + i + 1, h)));
+    expect(outcomes.filter((o) => o === 'primed')).toHaveLength(10);
+    expect(outcomes.filter((o) => o === 'source_cap')).toHaveLength(5);
   });
 });
 

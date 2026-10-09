@@ -1622,6 +1622,7 @@ class MeshtasticManager implements ISourceManager {
         markSuccessful: (sid, n, now) => databaseService.pkiExchangeState.markSuccessful(sid, n, now),
         markFailed: (sid, n, reason, now) => databaseService.pkiExchangeState.markFailed(sid, n, reason, now),
         recordPriming: (sid, n, now) => databaseService.pkiExchangeState.recordPriming(sid, n, now),
+        countPrimedSince: (sid, since) => databaseService.pkiExchangeState.countPrimedSince(sid, since),
       },
       getMode: () => resolveReliablePkiMode(databaseService.settings, this.sourceId),
     });

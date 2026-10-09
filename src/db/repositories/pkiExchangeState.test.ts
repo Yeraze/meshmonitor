@@ -78,6 +78,16 @@ function runRepoSuite(getRepo: () => PkiExchangeStateRepository, clear: () => Pr
     expect(await repo.getState(SRC_A, NODE)).toMatchObject({ state: 'failed', lastPrimedAt: 1500 });
   });
 
+  it('countPrimedSince counts this source\'s primings after the cutoff only', async () => {
+    await repo.recordPriming(SRC_A, NODE, 1000);
+    await repo.recordPriming(SRC_A, NODE + 1, 5000);
+    await repo.recordPriming(SRC_B, NODE, 5000);
+    await repo.markFailed(SRC_A, NODE + 2, 'timeout', 5000); // never primed
+    expect(await repo.countPrimedSince(SRC_A, 2000)).toBe(1);
+    expect(await repo.countPrimedSince(SRC_A, 0)).toBe(2);
+    expect(await repo.countPrimedSince(SRC_B, 2000)).toBe(1);
+  });
+
   it('keeps sources apart and deleteBySourceId only removes its own rows', async () => {
     await repo.markFailed(SRC_A, NODE, 'timeout', 1000);
     await repo.markSuccessful(SRC_B, NODE, 1000);
