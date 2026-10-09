@@ -163,6 +163,11 @@ const AUTOACK_PARITY: Record<string, ParityRow> = {
     perSource: true, status: 'exists',
     engine: ['type:action.sendMessage', 'param:action.sendMessage.hopLimit', 'param:action.tapback.hopLimit'],
   },
+  // 21c — response cap. checkAutoAcknowledge holds a CHANNEL ack 5-10 s and
+  // drops it once this many other nodes have replied or tapbacked. The engine
+  // has no "wait, then count responses to the trigger" step, so there is no
+  // equivalent to name; the converter reports it as not convertible.
+  autoAckMaxResponses: { perSource: true, status: 'notConvertible', engine: [] },
   // 22 — cell = isDM==0 AND hops==0 AND viaMqtt==0. Phase 3 adds isDM/viaMqtt to
   // the field picker (they already resolved at runtime, but a converter-written
   // value rendered blank and was clobbered on first edit — see spec §9 finding 4).
@@ -259,7 +264,7 @@ describe('autoAckParity (#4340 Phase 3 exit criterion)', () => {
     // ...and a new autoAck* key added to VALID_SETTINGS_KEYS without a row here.
     const extraInTable = tableKeys.filter((k) => !settingsAutoAckKeys.includes(k));
     expect(extraInTable, `keys in AUTOACK_PARITY but not in VALID_SETTINGS_KEYS: ${extraInTable.join(', ')}`).toEqual([]);
-    expect(tableKeys.length).toBe(34);
+    expect(tableKeys.length).toBe(35);
   });
 
   it('perSource flag matches PER_SOURCE_SETTINGS_KEYS membership for every row', () => {

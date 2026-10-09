@@ -402,6 +402,11 @@ export function buildAutoAckAutomations(input: AutoAckConverterInput): AutoAckCo
     label: 'DM resend attempts',
     detail: "checkAutoAcknowledge never reads this — it is MessageQueueService.resolveDmMaxAttempts()'s per-source queue setting, applied to every queued DM on this source. It is intentionally NOT emitted onto action.sendMessage: doing so would change TX-disabled behaviour (a queued send records 'queued', not 'skipped'). The setting survives conversion unchanged and keeps governing this source's other automated DMs.",
   });
+  notConvertible.push({
+    key: 'autoAckMaxResponses',
+    label: 'Maximum number of responses',
+    detail: 'Auto-Acknowledge waits 5-10 seconds before answering a channel message and stays quiet once this many other nodes have replied or tapbacked. The Automation Engine has no "wait, then check for other responses" step, so a converted channel automation answers every matching message at once. Keep Auto-Acknowledge itself if you rely on this.',
+  });
 
   const DEPRECATED_KEYS: Array<{ key: string; label: string; global: boolean }> = [
     { key: 'autoAckDirectMessages', label: 'Legacy: Direct-message type gate', global: false },
