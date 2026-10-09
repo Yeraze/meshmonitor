@@ -11,7 +11,7 @@
  * news: delete the element and its locale keys.
  */
 import React from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useInRouterContext } from 'react-router-dom';
 import { UiIcon } from '../icons';
 import styles from './MovedSettingNote.module.css';
 
@@ -39,16 +39,23 @@ export const MovedSettingNote: React.FC<MovedSettingNoteProps> = ({
   id,
   className,
   testId,
-}) => (
+}) => {
+  // The app always renders this inside its router. Rendered on its own (a
+  // unit test of a host component) it falls back to a plain anchor.
+  const inRouter = useInRouterContext();
+  return (
   <p id={id} className={`${styles.note} ${className ?? ''}`.trim()} data-testid={testId} data-moved-setting-note="">
     <UiIcon name="info" size={14} />
     <span>{text}</span>
     {to ? (
-      <Link className={styles.link} to={to}>{linkLabel}</Link>
+      inRouter
+        ? <Link className={styles.link} to={to}>{linkLabel}</Link>
+        : <a className={styles.link} href={to}>{linkLabel}</a>
     ) : onOpen ? (
       <button type="button" className={styles.link} onClick={onOpen}>{linkLabel}</button>
     ) : null}
   </p>
-);
+  );
+};
 
 export default MovedSettingNote;

@@ -1,10 +1,11 @@
 /**
  * @vitest-environment jsdom
  *
- * ReticulumSettingsView (#3960 Phase 1b WP5) — thin one-setting view for
- * `reticulum_destinations_max`. This key is deliberately GLOBAL (see the
+ * ReticulumRetentionSection — the Global Settings section for
+ * `reticulum_destinations_max` (#3960 Phase 1b WP5; moved off the per-source
+ * Settings page by the #5683 follow-up). This key is GLOBAL (see the
  * module doc on the component) — `ReticulumRepository.getDestinationsMax()`
- * reads it with no `sourceId`, so this view reads/writes the generic
+ * reads it with no `sourceId`, so the section reads/writes the generic
  * `/api/settings` endpoint (no `?sourceId=`), mirroring
  * `DatabaseMaintenanceSection.tsx`'s apiService.get/post + useSaveBar
  * pattern. `useSaveBar` is mocked to capture its options so the save/dismiss
@@ -14,7 +15,7 @@
 import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
-import { ReticulumSettingsView } from './ReticulumSettingsView';
+import { ReticulumRetentionSection, RETICULUM_SETTINGS_SECTION_ID } from './ReticulumRetentionSection';
 
 vi.mock('react-i18next', async () => {
   const { createReactI18nextMock } = await import('../../test/mockI18n');
@@ -56,9 +57,7 @@ vi.mock('../../services/api', () => ({
   ApiError: class ApiError extends Error {},
 }));
 
-const SOURCE_ID = 'rns-source-1';
-
-describe('ReticulumSettingsView', () => {
+describe('ReticulumRetentionSection', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     hasPermissionMock.mockReturnValue(true);
@@ -68,9 +67,10 @@ describe('ReticulumSettingsView', () => {
   });
 
   it('renders and loads the current retention cap from GET /api/settings (no sourceId)', async () => {
-    render(<ReticulumSettingsView sourceId={SOURCE_ID} />);
+    render(<ReticulumRetentionSection />);
 
-    expect(screen.getByTestId('reticulum-settings-view')).toBeInTheDocument();
+    // The anchor the Global Settings nav chip and the old page's pointer use.
+    expect(screen.getByTestId('reticulum-retention-section').id).toBe(RETICULUM_SETTINGS_SECTION_ID);
     await waitFor(() => {
       expect(apiGetMock).toHaveBeenCalledWith('/api/settings');
     });
@@ -81,14 +81,14 @@ describe('ReticulumSettingsView', () => {
 
   it('falls back to the default cap when the setting is unset', async () => {
     apiGetMock.mockResolvedValueOnce({});
-    render(<ReticulumSettingsView sourceId={SOURCE_ID} />);
+    render(<ReticulumRetentionSection />);
 
     const input = await screen.findByLabelText(/destination retention cap/i) as HTMLInputElement;
     await waitFor(() => expect(input.value).toBe('2000'));
   });
 
   it('registers a SaveBar section and saves the new value via POST /api/settings (no sourceId)', async () => {
-    render(<ReticulumSettingsView sourceId={SOURCE_ID} />);
+    render(<ReticulumRetentionSection />);
 
     const input = await screen.findByLabelText(/destination retention cap/i) as HTMLInputElement;
     await waitFor(() => expect(input.value).toBe('3000'));
@@ -104,9 +104,34 @@ describe('ReticulumSettingsView', () => {
     await waitFor(() => expect(saveBarCapture.current?.hasChanges).toBe(false));
   });
 
+  it('saves nothing on mount: a POST needs an edit and a Save', async () => {
+    render(<ReticulumRetentionSection />);
+    const input = await screen.findByLabelText(/destination retention cap/i) as HTMLInputElement;
+    await waitFor(() => expect(input.value).toBe('3000'));
+    expect(saveBarCapture.current?.hasChanges).toBe(false);
+    expect(apiPostMock).not.toHaveBeenCalled();
+  });
+
+  it('Dismiss puts an unsaved edit back and sends nothing', async () => {
+    render(<ReticulumRetentionSection />);
+    const input = await screen.findByLabelText(/destination retention cap/i) as HTMLInputElement;
+    await waitFor(() => expect(input.value).toBe('3000'));
+    fireEvent.change(input, { target: { value: '5000' } });
+    await waitFor(() => expect(saveBarCapture.current?.hasChanges).toBe(true));
+    saveBarCapture.current!.onDismiss();
+    await waitFor(() => expect(input.value).toBe('3000'));
+    expect(apiPostMock).not.toHaveBeenCalled();
+  });
+
+  it('asks for the write grant on any source: the key is global', async () => {
+    render(<ReticulumRetentionSection />);
+    await screen.findByLabelText(/destination retention cap/i);
+    expect(hasPermissionMock).toHaveBeenCalledWith('settings', 'write', { anySource: true });
+  });
+
   it('disables the input when the user lacks settings:write permission', async () => {
     hasPermissionMock.mockReturnValue(false);
-    render(<ReticulumSettingsView sourceId={SOURCE_ID} />);
+    render(<ReticulumRetentionSection />);
 
     const input = await screen.findByLabelText(/destination retention cap/i) as HTMLInputElement;
     await waitFor(() => expect(input).toBeDisabled());

@@ -208,16 +208,20 @@ describe('ReticulumSourcePage', () => {
     });
   });
 
-  it('renders the Settings view without a SaveBarProvider crash', async () => {
-    // Regression for #3960: ReticulumSettingsView calls useSaveBar, so the
-    // page must wrap the settings slot in a SaveBarProvider — otherwise
-    // switching to Settings threw "useSaveBarContext must be used within a
-    // SaveBarProvider" and blanked the view (caught in browser validation).
+  it('renders the Settings view: a pointer to the retention cap on Global Settings', async () => {
+    // The retention cap applies to every Reticulum source, so it moved to
+    // Global Settings (#5683 follow-up). The tab keeps a pointer and holds no
+    // save-bar section, so it needs no SaveBarProvider (the #3960 crash).
     authValue.hasPermission = () => true;
     renderPage();
     const settingsTab = await screen.findByRole('button', { name: 'Settings' });
     fireEvent.click(settingsTab);
-    expect(await screen.findByText('Destination retention cap')).toBeInTheDocument();
+    const note = await screen.findByTestId('reticulum-retention-moved');
+    expect(note).toHaveTextContent(/moved to Global Settings/);
+    expect(note.querySelector('a')?.getAttribute('href')).toBe('/settings#settings-reticulum');
+    expect(screen.queryByText('Destination retention cap')).toBeNull();
+    // The page's own link to Global Settings, for the phone layout.
+    expect(screen.getByTestId('global-settings-link-inline')).toBeInTheDocument();
   });
 
   it('mounts ReticulumDmsView (Phase 2 WP5) when the Messages nav item is selected', async () => {

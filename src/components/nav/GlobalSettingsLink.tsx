@@ -19,7 +19,7 @@
  * dashboard footer uses for its link to the same page.
  */
 import React from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useInRouterContext } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../../contexts/AuthContext';
 import { UiIcon } from '../icons';
@@ -38,6 +38,9 @@ export const GlobalSettingsLink: React.FC<GlobalSettingsLinkProps> = ({
 }) => {
   const { t } = useTranslation();
   const { hasPermission } = useAuth();
+  // The app always renders this inside its router. Rendered on its own (a
+  // unit test of a host nav) it falls back to a plain anchor.
+  const inRouter = useInRouterContext();
   if (!hasPermission('settings', 'read', { anySource: true })) return null;
 
   const { icon, label } = globalSettingsNav(t);
@@ -51,25 +54,34 @@ export const GlobalSettingsLink: React.FC<GlobalSettingsLinkProps> = ({
             'Language, units, map and other install-wide settings are in',
           )}
         </span>{' '}
-        <Link className={styles.inlineLink} to={GLOBAL_SETTINGS_PATH}>
-          <UiIcon name={icon} size={14} /> {label}
-        </Link>
+        {inRouter ? (
+          <Link className={styles.inlineLink} to={GLOBAL_SETTINGS_PATH}>
+            <UiIcon name={icon} size={14} /> {label}
+          </Link>
+        ) : (
+          <a className={styles.inlineLink} href={GLOBAL_SETTINGS_PATH}>
+            <UiIcon name={icon} size={14} /> {label}
+          </a>
+        )}
       </p>
     );
   }
 
-  return (
-    <Link
-      className={`${styles.rail} ${collapsed ? styles.collapsed : ''}`.trim()}
-      to={GLOBAL_SETTINGS_PATH}
-      title={label}
-      aria-label={label}
-      data-testid="global-settings-link"
-    >
+  const railProps = {
+    className: `${styles.rail} ${collapsed ? styles.collapsed : ''}`.trim(),
+    title: label,
+    'aria-label': label,
+    'data-testid': 'global-settings-link',
+  };
+  const railBody = (
+    <>
       <UiIcon name={icon} size={18} />
       {!collapsed && <span className={styles.railLabel}>{label}</span>}
-    </Link>
+    </>
   );
+  return inRouter
+    ? <Link {...railProps} to={GLOBAL_SETTINGS_PATH}>{railBody}</Link>
+    : <a {...railProps} href={GLOBAL_SETTINGS_PATH}>{railBody}</a>;
 };
 
 export default GlobalSettingsLink;

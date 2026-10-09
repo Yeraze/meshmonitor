@@ -681,7 +681,7 @@ const LoRaConfigSection: React.FC<LoRaConfigSectionProps> = ({
             <span className="setting-description">{t('lora_config.tx_enabled_description')}</span>
             {/* Why this one is device configuration while MeshCore's
                 receive-only is under Settings (#5683 follow-up). */}
-            <span className="setting-description" data-testid="tx-enabled-why-here">
+            <span className="setting-description" style={{ display: 'block' }} data-testid="tx-enabled-why-here">
               {t('lora_config.tx_enabled_why_here', "This is the radio's own firmware switch, written to the device, so it is on Device Configuration.")}
             </span>
           </div>

@@ -869,10 +869,14 @@ describe('DashboardSidebar', () => {
       expect(screen.getByTitle('source.sidebar.users')).toBeInTheDocument();
     });
 
-    it('shows Settings for a non-admin viewer with settings:read', () => {
+    it('shows the gear, named Global Settings, for a non-admin viewer with settings:read', () => {
       // Default mock grants every permission; the viewer is not an admin.
+      // The dashboard gear opens /settings, the install-wide page, so it is
+      // not called "Settings" like a source's own gear (#5683 follow-up).
       renderSidebar({ isAdmin: false });
-      expect(screen.getByTitle('source.sidebar.settings')).toBeInTheDocument();
+      const gear = screen.getByTitle('nav.global_settings');
+      expect(gear).toHaveAccessibleName('nav.global_settings');
+      expect(screen.queryByTitle('source.sidebar.settings')).toBeNull();
     });
 
     it('hides Settings when the viewer lacks settings:read', () => {
@@ -880,6 +884,7 @@ describe('DashboardSidebar', () => {
         (resource: string) => resource !== 'settings',
       );
       renderSidebar({ isAdmin: false });
+      expect(screen.queryByTitle('nav.global_settings')).toBeNull();
       expect(screen.queryByTitle('source.sidebar.settings')).toBeNull();
     });
   });
