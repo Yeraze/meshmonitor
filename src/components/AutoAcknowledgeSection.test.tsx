@@ -7,6 +7,9 @@ import userEvent from '@testing-library/user-event';
 import AutoAcknowledgeSection from './AutoAcknowledgeSection';
 import { Channel } from '../types/device';
 import { DEFAULT_AUTOACK_MATRIX } from '../utils/autoAckMatrix';
+import enLocaleJson from '../../public/locales/en.json';
+
+const enLocale = enLocaleJson as Record<string, string>;
 
 // Mock the useCsrfFetch hook
 const mockCsrfFetch = vi.fn();
@@ -832,5 +835,110 @@ describe('AutoAcknowledgeSection — response matrix', () => {
       expect(replyDm).toBeChecked();
       expect(replyDm).toBeDisabled();
     }
+  });
+});
+
+describe('AutoAcknowledgeSection — Maximum number of responses', () => {
+  const props = {
+    enabled: true,
+    regex: '^(test|ping)',
+    message: '🤖 Copy, {NUMBER_HOPS} hops at {TIME}',
+    messageDirect: '🤖 Copy, direct! {TIME}',
+    channels: [
+      { id: 0, name: 'Primary', psk: 'test', uplinkEnabled: true, downlinkEnabled: true, createdAt: 0, updatedAt: 0 },
+    ] as Channel[],
+    enabledChannels: [0],
+    skipIncompleteNodes: false,
+    ignoredNodes: '',
+    matrix: DEFAULT_AUTOACK_MATRIX,
+    baseUrl: '',
+    cooldownSeconds: 60,
+    preSendDelaySeconds: 0,
+    maxAttempts: 3,
+    testMessages: 'test',
+    onEnabledChange: vi.fn(),
+    onRegexChange: vi.fn(),
+    onMessageChange: vi.fn(),
+    onMessageDirectChange: vi.fn(),
+    onChannelsChange: vi.fn(),
+    onSkipIncompleteNodesChange: vi.fn(),
+    onIgnoredNodesChange: vi.fn(),
+    onMatrixChange: vi.fn(),
+    onCooldownSecondsChange: vi.fn(),
+    onPreSendDelaySecondsChange: vi.fn(),
+    onMaxAttemptsChange: vi.fn(),
+    onTestMessagesChange: vi.fn(),
+  };
+
+  // `t` is mocked to echo keys here, so the field is found by id, not label text.
+  const field = () => document.getElementById('autoAckMaxResponses') as HTMLInputElement;
+  /** The newest SaveBar registration (useSaveBar is mocked at the top of this file). */
+  const saveBar = async () => {
+    const { useSaveBar } = await import('../hooks/useSaveBar');
+    return vi.mocked(useSaveBar).mock.calls.at(-1)![0] as { hasChanges: boolean; onSave: () => Promise<void> };
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockCsrfFetch.mockResolvedValue({ ok: true, json: async () => ({ success: true }) });
+  });
+
+  it('shows 2 when the prop is not passed, bounded 0-10', () => {
+    render(<AutoAcknowledgeSection {...props} />);
+    expect(field().value).toBe('2');
+    expect(field().min).toBe('0');
+    expect(field().max).toBe('10');
+  });
+
+  it('explains the wait, that replies and tapbacks both count, and that DMs are exempt', () => {
+    render(<AutoAcknowledgeSection {...props} />);
+    expect(document.querySelector('label[for="autoAckMaxResponses"]')!.textContent)
+      .toBe('automation.auto_ack.max_responses_label');
+    expect(field().getAttribute('aria-describedby')).toContain('autoAckMaxResponsesHelp');
+    expect(document.getElementById('autoAckMaxResponsesHelp')!.textContent)
+      .toBe('automation.auto_ack.max_responses_description');
+    expect(enLocale['automation.auto_ack.max_responses_label']).toBe('Maximum number of responses');
+    const help = enLocale['automation.auto_ack.max_responses_description'];
+    expect(help).toMatch(/waits 5 to 30 seconds \(about 17 on average\)/);
+    expect(help).toMatch(/does not appear at once/);
+    expect(help).toMatch(/replied or sent a tapback/);
+    expect(help).toMatch(/channel message/);
+    expect(help).toMatch(/Direct messages are answered straight away/);
+  });
+
+  it('shows the "no limit" hint only at 0', () => {
+    const { rerender } = render(<AutoAcknowledgeSection {...props} maxResponses={3} />);
+    expect(screen.queryByText('automation.auto_ack.max_responses_zero_hint')).not.toBeInTheDocument();
+    rerender(<AutoAcknowledgeSection {...props} maxResponses={0} />);
+    expect(field().value).toBe('0');
+    expect(screen.getByText('automation.auto_ack.max_responses_zero_hint')).toBeInTheDocument();
+  });
+
+  it('a loaded value is not an unsaved change; an edit is, and saves as a string', async () => {
+    const onMaxResponsesChange = vi.fn();
+    const user = userEvent.setup();
+    render(<AutoAcknowledgeSection {...props} maxResponses={2} onMaxResponsesChange={onMaxResponsesChange} />);
+    expect((await saveBar()).hasChanges).toBe(false);
+
+    await user.clear(field());
+    await user.type(field(), '4');
+    await waitFor(async () => expect((await saveBar()).hasChanges).toBe(true));
+
+    await (await saveBar()).onSave();
+    await waitFor(() => expect(mockCsrfFetch).toHaveBeenCalled());
+    const body = JSON.parse(mockCsrfFetch.mock.calls[0][1].body);
+    expect(body.autoAckMaxResponses).toBe('4');
+    await waitFor(() => expect(onMaxResponsesChange).toHaveBeenCalledWith(4));
+  });
+
+  it('0 saves as "0", not as the default', async () => {
+    const user = userEvent.setup();
+    render(<AutoAcknowledgeSection {...props} maxResponses={2} />);
+    await user.clear(field());
+    await user.type(field(), '0');
+    await waitFor(async () => expect((await saveBar()).hasChanges).toBe(true));
+    await (await saveBar()).onSave();
+    await waitFor(() => expect(mockCsrfFetch).toHaveBeenCalled());
+    expect(JSON.parse(mockCsrfFetch.mock.calls[0][1].body).autoAckMaxResponses).toBe('0');
   });
 });

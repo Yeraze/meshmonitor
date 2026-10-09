@@ -82,6 +82,8 @@ import { MessageQueueService } from './messageQueueService.js';
 import { resolveAutoWelcomeDelaySeconds } from './autoWelcomeDelay.js';
 import { TxDisabledError } from './errors/txDisabledError.js';
 import { resolveAutoAckPreSendDelaySeconds } from './autoAckDelay.js';
+import { AUTO_ACK_MAX_PENDING, autoAckChannelWaitMs, resolveAutoAckMaxResponses } from './autoAckResponseCap.js';
+import { countDistinctResponders } from '../utils/messageReplies.js';
 import { clampHopLimitOverride, parseHopLimitOverride } from '../utils/hopLimitOverride.js';
 import { normalizeTriggerPatterns, normalizeTriggerChannels } from '../utils/autoResponderUtils.js';
 import { matchAutoResponderPattern } from './utils/autoResponderMatcher.js';
@@ -1200,6 +1202,16 @@ class MeshtasticManager implements ISourceManager {
 
   private autoAckCooldowns: Map<number, number> = new Map(); // nodeNum -> lastResponseTimestamp; bounded, see pruneAutoAckCooldowns (#4399)
   private autoAckProcessedPackets: Set<number> = new Set(); // packetIds already auto-acked (dedup guard)
+  // Channel auto-acks waiting out their 5-30 s before the response-cap check
+  // (see autoAckResponseCap.ts). In memory only, on purpose: a restart or a
+  // disconnect drops them, because an ack that arrives late is worthless.
+  // Bounded by AUTO_ACK_MAX_PENDING.
+  private pendingAutoAcks: Map<string, { timer: ReturnType<typeof setTimeout>; fromNum: number }> = new Map();
+  // Bumped by clearPendingAutoAcks(); a waiting ack that is mid-check when the
+  // source disconnects sees a newer generation and sends nothing.
+  private autoAckGeneration = 0;
+  // Source of the random wait. A field so tests can pin it.
+  private autoAckRandom: () => number = Math.random;
   // Packet Monitor recently-seen guard (#4811): key -> expiry ms. Suppresses the
   // firmware's exact-duplicate deliveries and reconnect replays from the packet
   // log while preserving distinct relay/transport copies. Per-source (one map
@@ -2443,6 +2455,8 @@ class MeshtasticManager implements ISourceManager {
   }
 
   private async handleDisconnected(): Promise<void> {
+    // A waiting auto-ack must not fire into a dead (or a later, new) link.
+    this.clearPendingAutoAcks();
     logger.debug('TCP connection lost');
 
     // Losing the link mid-sync means the whole NodeDB stream restarts from
@@ -2759,6 +2773,9 @@ class MeshtasticManager implements ISourceManager {
 
     // Clear per-packet dedup sets (no longer relevant after disconnect)
     this.autoAckProcessedPackets.clear();
+    // Drop channel auto-acks still waiting out their delay: nothing is sent,
+    // and nothing is kept for the next connection.
+    this.clearPendingAutoAcks();
     this.autoResponderProcessedPackets.clear();
 
     // Cancel any scheduled telemetry hijack auto-retries (issue #4210) — a retry
@@ -11483,7 +11500,19 @@ class MeshtasticManager implements ISourceManager {
     });
   }
 
-  private async checkAutoAcknowledge(message: any, messageText: string, channelIndex: number, isDirectMessage: boolean, fromNum: number, packetId?: number, rxSnr?: number, rxRssi?: number): Promise<void> {
+  private async checkAutoAcknowledge(
+    message: any, messageText: string, channelIndex: number, isDirectMessage: boolean, fromNum: number,
+    packetId?: number, rxSnr?: number, rxRssi?: number,
+    /**
+     * Set only by the timer of a channel ack that has finished its 5-30 s wait.
+     * The whole decision below then runs a SECOND time, against the settings as
+     * they are now: Auto-Acknowledge off, a changed regex, channel list, ignore
+     * list or matrix cell, TX disabled, airtime cutoff — any of them drops the
+     * response. Only the dedup guard and the cooldown test are skipped (this
+     * response already passed them and holds its own cooldown).
+     */
+    afterWait?: { generation: number },
+  ): Promise<void> {
     try {
       // Never auto-acknowledge a tapback (#4569).
       //
@@ -11520,7 +11549,7 @@ class MeshtasticManager implements ISourceManager {
       // mesh packet. This can happen when the transport delivers the same packet
       // twice (e.g. LoRa + MQTT proxy, serial retransmission) and the non-awaited
       // processIncomingData handler processes them concurrently (#2642).
-      if (packetId != null) {
+      if (packetId != null && !afterWait) {
         if (this.autoAckProcessedPackets.has(packetId)) {
           logger.debug(`⏭️ Skipping auto-acknowledge for packet ${packetId}: already processed`);
           return;
@@ -11548,6 +11577,13 @@ class MeshtasticManager implements ISourceManager {
 
       // Skip if auto-acknowledge is disabled
       if (autoAckEnabled !== 'true') {
+        if (afterWait) logger.debug(`⏭️ Dropping delayed auto-acknowledge for packet ${packetId} on ${sourceId}: Auto-Acknowledge was turned off`);
+        return;
+      }
+
+      // A response that waited: the link it was armed on must still be up.
+      if (afterWait && (afterWait.generation !== this.autoAckGeneration || !this.isConnected)) {
+        logger.debug(`⏭️ Dropping delayed auto-acknowledge for packet ${packetId} on ${sourceId}: source disconnected`);
         return;
       }
 
@@ -11559,6 +11595,7 @@ class MeshtasticManager implements ISourceManager {
 
       // Airtime cutoff: skip while the mesh is congested
       if (await this.isAutomationAirtimeGated()) {
+        if (afterWait) logger.debug(`⏭️ Dropping delayed auto-acknowledge for packet ${packetId} on ${sourceId}: airtime cutoff`);
         return;
       }
 
@@ -11627,11 +11664,21 @@ class MeshtasticManager implements ISourceManager {
       // Per-node cooldown rate limiting
       const cooldownSetting = await settings.getSettingForSource(sourceId, 'autoAckCooldownSeconds');
       const cooldownSeconds = cooldownSetting ? parseInt(cooldownSetting, 10) : 60;
-      if (cooldownSeconds > 0) {
+      if (cooldownSeconds > 0 && !afterWait) {
         const lastResponse = this.autoAckCooldowns.get(fromNum);
         if (lastResponse && Date.now() - lastResponse < cooldownSeconds * 1000) {
           logger.debug(`⏭️  Skipping auto-acknowledge for node ${fromNum}: cooldown active (${cooldownSeconds}s)`);
           return;
+        }
+        // The wait can outlast a short cooldown. While a response to this node
+        // is still waiting, a new message from it arms nothing — otherwise a
+        // 10 s cooldown and a 30 s wait would let two answers to one node out
+        // closer together than the cooldown allows.
+        for (const pending of this.pendingAutoAcks.values()) {
+          if (pending.fromNum === fromNum) {
+            logger.debug(`⏭️  Skipping auto-acknowledge for node ${fromNum}: a response to it is still waiting`);
+            return;
+          }
         }
       }
 
@@ -11720,6 +11767,75 @@ class MeshtasticManager implements ISourceManager {
         }
       };
 
+      // Channel messages wait 5-30 s and then check how many other nodes have
+      // already answered (see autoAckResponseCap.ts). A DM can only be answered
+      // by us, so it keeps the path above, unchanged.
+      if (!isDirectMessage && !afterWait) {
+        // Arm BEFORE any template work and before the cooldown is stamped: a
+        // burst cannot arm more than AUTO_ACK_MAX_PENDING timers, and a
+        // trigger dropped for want of a slot does not use up its sender's
+        // cooldown. Nothing is built now — when the wait ends this whole
+        // method runs again, so what is sent follows the settings of that
+        // moment.
+        const pendingKey = `${fromNum}:${packetId ?? `t${message.timestamp}`}`;
+        // Order matters: the slot check (inside armDelayedAutoAck) runs BEFORE
+        // the cooldown reservation below. Do not swap them.
+        const armed = this.armDelayedAutoAck(
+          pendingKey,
+          fromNum,
+          autoAckChannelWaitMs(preSendDelaySeconds, this.autoAckRandom()),
+          (generation) => this.checkAutoAcknowledge(
+            message, messageText, channelIndex, false, fromNum, packetId, rxSnr, rxRssi, { generation },
+          ),
+        );
+        if (!armed) return;
+        // RESERVE the sender's cooldown now, at decision time: a second message
+        // from that node inside the window arms nothing, so the wait cannot be
+        // used to slip past the cooldown. It is stamped again when the response
+        // is actually sent (below), and not given back if it is dropped.
+        this.autoAckCooldowns.set(fromNum, Date.now());
+        if (this.autoAckCooldowns.size > AUTO_ACK_COOLDOWNS_MAX) {
+          this.pruneAutoAckCooldowns(cooldownSeconds, Date.now());
+        }
+        return;
+      }
+
+      if (afterWait) {
+        // The trigger must still be there: a message purged during the wait
+        // (channel purge, node purge, retention) gets no answer.
+        const triggerId = typeof message?.id === 'string' ? message.id : null;
+        if (!triggerId || !(await databaseService.messages.getMessage(triggerId))) {
+          logger.debug(`⏭️ Dropping delayed auto-acknowledge for packet ${packetId} on ${sourceId}: the message no longer exists`);
+          return;
+        }
+        const maxResponses = resolveAutoAckMaxResponses(
+          await settings.getSettingForSource(sourceId, 'autoAckMaxResponses'),
+        );
+        // A trigger with no packet id (not seen from a real radio; id 0 is
+        // stored without one) cannot be pointed at by anyone's `reply_id`, so
+        // its true count of other responses is 0 and there is nothing to ask
+        // the database: it is answered after the wait like a cap of 0.
+        if (maxResponses > 0 && packetId != null) {
+          // Candidates come from the database (this source, this channel, this
+          // packet id); whether each one is a tapback on, or a reply to, the
+          // trigger is decided by the same predicates the message views render
+          // with. Our own sends and the trigger's author never count; a node
+          // that sent both a tapback and a reply counts once.
+          const rows = await databaseService.messages.getReplyCandidates(sourceId, packetId, channelIndex);
+          const responders = countDistinctResponders(
+            { id: triggerId }, rows, [this.localNodeInfo?.nodeNum ?? null, fromNum],
+          );
+          if (responders >= maxResponses) {
+            logger.debug(`⏭️ Skipping auto-acknowledge for packet ${packetId} on ${sourceId}: ${responders} other node(s) already responded (max ${maxResponses})`);
+            return;
+          }
+        }
+      }
+
+      // What to send, in order. A DM goes through dispatchAck (its Pre-Send
+      // Delay); a channel ack has already waited and goes straight to the queue.
+      const sends: Array<() => void> = [];
+
       // --- Tapback (hop-count emoji reaction) ---
       // Delivered the same way the trigger arrived: DM→DM, channel→channel.
       // Note: packetId can be 0 (valid unsigned integer), so check explicitly.
@@ -11736,7 +11852,7 @@ class MeshtasticManager implements ISourceManager {
 
         // Route tapback through message queue for rate limiting (after the
         // optional pre-send delay).
-        dispatchAck(() => this.enqueueAutomation(
+        sends.push(() => this.enqueueAutomation(
           hopEmoji,
           isDirectMessage ? fromNum : 0, // destination: node number for DM, 0 for channel
           packetId, // replyId - react to the original message
@@ -11789,7 +11905,7 @@ class MeshtasticManager implements ISourceManager {
 
         // Use message queue to send auto-acknowledge with rate limiting and
         // retry logic (after the optional pre-send delay).
-        dispatchAck(() => this.enqueueAutomation(
+        sends.push(() => this.enqueueAutomation(
           ackText,
           replyDest, // destination: node number for DM, 0 for channel
           replyId, // replyId
@@ -11806,7 +11922,20 @@ class MeshtasticManager implements ISourceManager {
         ));
       }
 
-      // Record cooldown timestamp after successful response
+      if (afterWait) {
+        // The awaits above gave a disconnect a chance to land.
+        if (afterWait.generation !== this.autoAckGeneration || !this.isConnected || !this.canTransmit()) {
+          logger.debug(`⏭️ Dropping delayed auto-acknowledge for packet ${packetId} on ${sourceId}: source went away during the response check`);
+          return;
+        }
+        for (const send of sends) send();
+      } else {
+        for (const send of sends) dispatchAck(send);
+      }
+
+      // Stamp the cooldown at send time. For a channel ack this CONSUMES the
+      // reservation made when it was armed: the sender's window now runs from
+      // the send, so two answers to one node are never closer than the cooldown.
       this.autoAckCooldowns.set(fromNum, Date.now());
       if (this.autoAckCooldowns.size > AUTO_ACK_COOLDOWNS_MAX) {
         this.pruneAutoAckCooldowns(cooldownSeconds, Date.now());
@@ -11814,6 +11943,53 @@ class MeshtasticManager implements ISourceManager {
     } catch (error) {
       logger.error('❌ Error in auto-acknowledge:', error);
     }
+  }
+
+  /**
+   * Hold a channel auto-ack for `waitMs`, then call `fire`. One timer per
+   * trigger. Returns false, arming nothing, when this trigger is already
+   * waiting or the source already holds AUTO_ACK_MAX_PENDING.
+   *
+   * `fire` gets the generation the timer was armed in; a disconnect bumps the
+   * generation, so a response caught mid-check sends nothing.
+   */
+  private armDelayedAutoAck(
+    key: string,
+    fromNum: number,
+    waitMs: number,
+    fire: (generation: number) => Promise<void>,
+  ): boolean {
+    if (this.pendingAutoAcks.has(key)) {
+      logger.debug(`⏭️ Skipping auto-acknowledge ${key}: a response is already waiting`);
+      return false;
+    }
+    if (this.pendingAutoAcks.size >= AUTO_ACK_MAX_PENDING) {
+      logger.debug(`⏭️ Dropping auto-acknowledge ${key}: ${this.pendingAutoAcks.size} responses already waiting on ${this.sourceId} (max ${AUTO_ACK_MAX_PENDING})`);
+      return false;
+    }
+    const generation = this.autoAckGeneration;
+    const timer = setTimeout(() => {
+      // The slot is freed first, whatever happens next: a slot can never leak.
+      this.pendingAutoAcks.delete(key);
+      void fire(generation);
+    }, waitMs);
+    // A waiting ack must not hold the process open at shutdown.
+    (timer as { unref?: () => void }).unref?.();
+    this.pendingAutoAcks.set(key, { timer, fromNum });
+    logger.debug(`⏳ Auto-acknowledge ${key} waits ${waitMs}ms before checking for other responses`);
+    return true;
+  }
+
+  /**
+   * Cancel every waiting channel auto-ack without sending. Called on
+   * disconnect, source removal (stop → disconnect) and server shutdown.
+   */
+  private clearPendingAutoAcks(): void {
+    this.autoAckGeneration++;
+    if (this.pendingAutoAcks.size === 0) return;
+    for (const pending of this.pendingAutoAcks.values()) clearTimeout(pending.timer);
+    logger.debug(`🧹 Cleared ${this.pendingAutoAcks.size} waiting auto-acknowledge response(s) on ${this.sourceId}`);
+    this.pendingAutoAcks.clear();
   }
 
   /**
@@ -15492,6 +15668,7 @@ class MeshtasticManager implements ISourceManager {
    */
   async userDisconnect(): Promise<void> {
     logger.debug('🔌 User-initiated disconnect requested');
+    this.clearPendingAutoAcks();
 
     // #3962 Phase 4.2b C2: USER_DISCONNECT — any -> UserDisconnected.
     // Capture flags are left untouched (terminal transition, matches the

@@ -19,7 +19,7 @@ import { matrixToSettings, type AutoAckMatrix } from '../../../utils/autoAckMatr
 const AUTOACK_KEYS = (VALID_SETTINGS_KEYS as readonly string[]).filter((k) => k.startsWith('autoAck'));
 
 /** Rows whose `autoAckParity.test.ts` status is 'notConvertible'. */
-const PARITY_NOT_CONVERTIBLE_KEYS = ['autoAckTestMessages'];
+const PARITY_NOT_CONVERTIBLE_KEYS = ['autoAckTestMessages', 'autoAckMaxResponses'];
 
 /** Rows whose `autoAckParity.test.ts` status is 'deprecated' (== EXPECTED_DEPRECATED_KEYS there). */
 const PARITY_DEPRECATED_KEYS = [
@@ -36,11 +36,11 @@ const PARITY_DEPRECATED_KEYS = [
 ].sort();
 
 describe('report cross-check sanity', () => {
-  it('every pinned key is one of the 34 autoAck* VALID_SETTINGS_KEYS entries', () => {
+  it('every pinned key is one of the 35 autoAck* VALID_SETTINGS_KEYS entries', () => {
     for (const key of [...PARITY_NOT_CONVERTIBLE_KEYS, ...PARITY_DEPRECATED_KEYS]) {
       expect(AUTOACK_KEYS, `${key} missing from VALID_SETTINGS_KEYS`).toContain(key);
     }
-    expect(AUTOACK_KEYS.length).toBe(34);
+    expect(AUTOACK_KEYS.length).toBe(35);
   });
 });
 

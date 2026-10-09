@@ -137,6 +137,7 @@ function validTestValue(key: string, suffix = ''): string {
     autoAckRegex: 'hello',
     autoAckChannels: '0,1',
     autoAckIgnoredNodes: '!b29fa8d4,!a1b2c3d4',
+    autoAckMaxResponses: '3',
     maxNodeAgeHours: '24',
     maxInfraNodeAgeHours: '168',
     txTargetMaxAgeHoursWhenUnlimited: '48',

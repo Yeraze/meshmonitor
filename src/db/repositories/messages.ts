@@ -318,6 +318,47 @@ export class MessagesRepository extends BaseRepository {
   }
 
   /**
+   * Rows on one source and channel whose `replyId` is `replyId` — the
+   * candidates for "a tapback on, or a reply to, that packet".
+   *
+   * This only SELECTS candidates. Whether a row really answers a given message
+   * is decided by the shared predicates in `src/utils/messageReplies.ts` (the
+   * same ones the message views render with), which the caller applies to
+   * these rows. Keyed on the packet id, never on time, so clock changes do not
+   * matter. `limit` bounds a pathological thread.
+   */
+  async getReplyCandidates(
+    sourceId: string,
+    replyId: number,
+    channel: number,
+    limit: number = 200,
+  ): Promise<Array<{ id: string; fromNodeNum: number; text: string | null; emoji: number | null; replyId: number | null }>> {
+    const { messages } = this.tables;
+    const rows = await this.db
+      .select({
+        id: messages.id,
+        fromNodeNum: messages.fromNodeNum,
+        text: messages.text,
+        emoji: messages.emoji,
+        replyId: messages.replyId,
+      })
+      .from(messages)
+      .where(and(
+        eq(messages.replyId, replyId),
+        eq(messages.channel, channel),
+        this.withSourceScope(messages, sourceId),
+      ))
+      .limit(limit);
+    return (rows as Array<{ id: unknown; fromNodeNum: unknown; text: string | null; emoji: unknown; replyId: unknown }>).map((r) => ({
+      id: String(r.id),
+      fromNodeNum: Number(r.fromNodeNum),
+      text: r.text ?? null,
+      emoji: r.emoji == null ? null : Number(r.emoji),
+      replyId: r.replyId == null ? null : Number(r.replyId),
+    }));
+  }
+
+  /**
    * Count messages whose server arrival time (`createdAt`, milliseconds)
    * falls within the last `sinceMs` milliseconds.
    *

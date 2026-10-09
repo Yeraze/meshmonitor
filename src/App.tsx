@@ -109,6 +109,7 @@ import {
 import TracerouteHistoryModal from './components/TracerouteHistoryModal';
 import RouteSegmentTraceroutesModal from './components/RouteSegmentTraceroutesModal';
 import { hopLimitSettingValue } from './utils/hopLimitOverride';
+import { resolveAutoAckMaxResponses } from './utils/autoAckMaxResponses';
 
 // Icons and helpers are now imported from utils/
 
@@ -648,6 +649,7 @@ function App() {
     setAutoAckCooldownSeconds,
     setAutoAckPreSendDelaySeconds,
     setAutoAckMaxAttempts,
+    setAutoAckMaxResponses,
     setAutoAckHopLimit,
     setAutoAnnounceHopLimit,
     setAutoAckTestMessages,
@@ -1088,6 +1090,7 @@ function App() {
             setAutoAckMaxAttempts(Math.min(3, Math.max(1, parseInt(settings.autoAckMaxAttempts) || 3)));
           }
           setAutoAckHopLimit(hopLimitSettingValue(settings.autoAckHopLimit));
+          setAutoAckMaxResponses(resolveAutoAckMaxResponses(settings.autoAckMaxResponses));
           setAutoAnnounceHopLimit(hopLimitSettingValue(settings.autoAnnounceHopLimit));
 
           if (settings.autoAckTestMessages) {
