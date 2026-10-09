@@ -143,10 +143,10 @@
    query misses a landscape phone (#5060). The expanded form is capped so part
    of the map always shows below it, and scrolls inside. */
 @media (max-width: 768px), (max-height: 500px) and (orientation: landscape) {
+  /* top/right stay as on desktop: they clear the map-controls button in the
+     map's top-right corner. */
   .sitePlanner {
-    top: 0.5rem;
-    right: 0.5rem;
-    width: min(340px, calc(100% - 1rem));
+    width: min(340px, calc(100% - 1.5rem));
     max-height: 55%;
     padding: 0.6rem 0.75rem;
   }

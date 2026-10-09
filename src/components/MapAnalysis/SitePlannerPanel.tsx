@@ -70,6 +70,18 @@ export default function SitePlannerPanel({
   const panelRef = useRef<HTMLElement>(null);
   const toggleRef = useRef<HTMLButtonElement>(null);
   const bodyId = useId();
+  // Where focus goes once a fold/unfold has committed. Applied in an effect so
+  // the target exists and is visible; a frame callback would not run in a
+  // backgrounded tab.
+  const pendingFocus = useRef<'toggle' | 'firstInput' | null>(null);
+  useEffect(() => {
+    const target = pendingFocus.current;
+    pendingFocus.current = null;
+    if (target === 'toggle') toggleRef.current?.focus();
+    else if (target === 'firstInput') {
+      panelRef.current?.querySelector<HTMLInputElement>('[data-testid="site-planner-frequencyMhz"]')?.focus();
+    }
+  }, [collapsed]);
 
   // Re-opening shows the form, as it did before the panel could fold. Adjusted
   // during render (React's prop-change pattern) rather than in an effect.
@@ -107,6 +119,9 @@ export default function SitePlannerPanel({
   const predict = useCallback(async () => {
     // #5649: never predict on a blank or half-typed parameter.
     if (!origin || numbersInvalid) return;
+    // Read before the Run button disables: a disabled button drops focus to
+    // <body>, so after the await this can no longer be asked of the DOM.
+    const focusWasInPanel = !!panelRef.current?.contains(document.activeElement);
     setRunning(true);
     setError(null);
     try {
@@ -128,13 +143,14 @@ export default function SitePlannerPanel({
       setResult(res?.data ?? null);
       onCoverage(res?.data ?? null);
       if (isMobileLayout && res?.data) {
-        // The Run button that held focus is about to be hidden; hand focus to
-        // the expand toggle so keyboard and screen-reader users are not
-        // dropped on <body>. Only when focus was in the panel — a user who
+        // The form is about to be hidden; hand focus to the expand toggle so
+        // keyboard and screen-reader users are not left on <body>. Only when
+        // the user started from the panel and has not moved on — someone who
         // tapped the map while waiting keeps whatever they tapped.
-        const focusWasInPanel = !!panelRef.current?.contains(document.activeElement);
+        const active = document.activeElement;
+        const focusStillOurs = active === document.body || !!panelRef.current?.contains(active);
+        if (focusWasInPanel && focusStillOurs) pendingFocus.current = 'toggle';
         setCollapsed(true);
-        if (focusWasInPanel) requestAnimationFrame(() => toggleRef.current?.focus());
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : t('site_planner.failed'));
@@ -150,11 +166,9 @@ export default function SitePlannerPanel({
   const clear = () => { setResult(null); onCoverage(null); };
 
   const editInputs = () => {
-    setCollapsed(false);
     // Land on the first field: "Edit inputs" means the user wants to type.
-    requestAnimationFrame(() => {
-      panelRef.current?.querySelector<HTMLInputElement>('[data-testid="site-planner-frequencyMhz"]')?.focus();
-    });
+    pendingFocus.current = 'firstInput';
+    setCollapsed(false);
   };
 
   if (!open) return null;
