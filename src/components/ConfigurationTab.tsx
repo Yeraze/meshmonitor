@@ -92,7 +92,7 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ baseUrl = '', nodes
   // PKI DM decryption is a MeshMonitor-side switch and moved to this source's
   // Settings page. A viewer who cannot open that page keeps it here: its
   // routes check `configuration`, the grant this page already needs.
-  const canOpenSourceSettings = hasPermission('settings', 'read', { anySource: true });
+  const canViewSourceSettings = hasPermission('settings', 'read', { anySource: true });
   const queryClient = useQueryClient();
 
   // Device Config State
@@ -2881,7 +2881,7 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ baseUrl = '', nodes
             isSaving={isSaving}
             onSave={handleSaveSecurityConfig}
           />
-          {canOpenSourceSettings ? (
+          {canViewSourceSettings ? (
             sourceId && (
               <MovedSettingNote
                 id="config-pki-dm"
