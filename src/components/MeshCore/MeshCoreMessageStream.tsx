@@ -18,6 +18,7 @@ import { findIgnoredRuns } from './meshcoreIgnoredRuns';
 import Modal from '../common/Modal';
 import { resendAvailability, RESEND_MAX } from './meshcoreResend';
 import styles from './MeshCoreMessageStream.module.css';
+import { getMeshCoreChannelSendState } from '../../utils/deliveryDiagnostics/status';
 
 interface MeshCoreMessageStreamProps {
   messages: MeshCoreMessage[];
@@ -680,6 +681,27 @@ export const MeshCoreMessageStream: React.FC<MeshCoreMessageStreamProps> = ({
                               : 'time'}
                         size={13}
                       />
+                    </button>
+                  )}
+                  {/* "Sent to radio" (#5682): our channel send that no repeater
+                      was heard relaying. The radio accepted the message; it does
+                      not report transmitting, so this claims no more than that.
+                      Gives way to the heard-by badge once a relay is heard.
+                      `deliveryStatus` is the DM ack state; a channel send has
+                      no ack and never carries one. Should one ever appear,
+                      the status icon above speaks for the message instead. */}
+                  {!m.deliveryStatus && getMeshCoreChannelSendState(m, selfPublicKey) === 'sent_to_radio' && (
+                    <button
+                      type="button"
+                      className={styles.sentToRadio}
+                      data-testid="mc-sent-to-radio"
+                      title={t(
+                        'meshcore.sent_to_radio.tooltip',
+                        'Your radio accepted this message for sending. MeshCore radios do not report when they transmit, and no repeater has been heard relaying it yet, so MeshMonitor cannot tell whether it went out or whether anyone heard it.',
+                      )}
+                      onClick={() => setDeliveryDetailsMsg(m)}
+                    >
+                      <UiIcon name="upload" size={13} /> {t('meshcore.sent_to_radio.label', 'Sent to radio')}
                     </button>
                   )}
                   {outgoing && m.heardBy && m.heardBy.length > 0 && (
