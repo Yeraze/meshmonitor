@@ -314,26 +314,87 @@ iptables -A INPUT -i lo -j ACCEPT
 
 ### Docker Security
 
-Run as non-root user:
+The image runs every long-running process (`supervisord`, the MeshMonitor
+server, Apprise) as the unprivileged `node` user, uid/gid 1000 by default. The
+container still *starts* as root so the entrypoint can do three things first,
+and then drops to `node` with `su-exec` (`gosu` on the armv7 image):
 
-```dockerfile
-# In Dockerfile
-USER node
-```
+- renumber `node` to your `PUID`/`PGID`, if set;
+- add `node` to the group that owns each mapped serial device;
+- fix ownership of `/data` (a full pass once per owner, then only the top
+  level; see [Updating](/configuration/updating#upgrading-to-4-17-every-process-runs-as-node)).
 
-Limit container capabilities:
+| Variable | Purpose | Default |
+|----------|---------|---------|
+| `PUID` / `PGID` | uid/gid the `node` user runs as, to match host directory ownership (NAS, bind mounts) | `1000` / `1000` |
+| `MESHMONITOR_FORCE_CHOWN` | `true` re-runs the full `/data` ownership pass on this start | unset |
+| `RUN_AS_ROOT` | `true` restores the pre-4.17 behaviour (supervisord and Apprise as root). Troubleshooting only | unset |
+
+#### Starting fully unprivileged
+
+To keep root out of the container entirely, start it as uid 1000. The
+entrypoint sees a non-root uid and skips the root-only steps, so you take them
+over: the volume must already be owned by that uid, and serial device groups
+come from `group_add`.
 
 ```yaml
 services:
   meshmonitor:
-    image: meshmonitor:latest
+    image: ghcr.io/yeraze/meshmonitor:latest
+    user: "1000:1000"
+    group_add:
+      - dialout        # or the numeric GID that owns your serial device
     security_opt:
       - no-new-privileges:true
     cap_drop:
       - ALL
-    cap_add:
-      - NET_BIND_SERVICE
 ```
+
+If the volume was written by an older image, chown it once before switching:
+`docker run --rm -v meshmonitor-data:/data alpine chown -R 1000:1000 /data`.
+
+`cap_drop: [ALL]` needs `user:` as well. Without it the entrypoint starts as
+root but has no capability to chown `/data` or to switch to `node`, and the
+container exits.
+
+No MeshMonitor port needs root: the web server (3001), virtual node (4404),
+embedded MQTT broker (1883), ATAK/CoT feed (8088) and Apprise (8000, internal)
+are all above 1024. Docker also lets unprivileged processes bind low ports
+inside a container by default, so `NET_BIND_SERVICE` is not needed.
+
+#### USB serial devices and the non-root user
+
+MeshCore companions and repeaters, and any USB serial radio, are opened by the
+`node` user, so `node` needs read/write access to the device node:
+
+```yaml
+services:
+  meshmonitor:
+    devices:
+      - /dev/ttyUSB0:/dev/ttyUSB0
+```
+
+With the default start (as root, then dropping to `node`) that is all you need.
+The entrypoint reads the owning GID of every mapped `/dev/ttyUSB*`,
+`/dev/ttyACM*`, `/dev/ttyAMA*` and `/dev/ttyS*` and adds `node` to that group,
+creating a group for the GID if the image has none. It logs a line such as
+`✓ Granted node user access to /dev/ttyUSB0 via group dialout (gid 20)`.
+`group_add` has no effect in this mode, because the privilege drop rebuilds the
+user's groups.
+
+With `user: "1000:1000"`, the entrypoint cannot change groups, so list the
+device's group under `group_add` as shown above. Check the GID on the host:
+
+```bash
+stat -c '%g %G' /dev/ttyUSB0     # e.g. "20 dialout"
+```
+
+The GID differs between hosts (dialout is 20 on Debian, Ubuntu and Raspberry
+Pi OS); use the number when the name does not exist in the container.
+
+A device plugged in after the container started is not covered: restart the
+container. A device owned by `root:root` (GID 0) is skipped on purpose; fix its
+group on the host with a udev rule instead.
 
 ### Kubernetes Security
 

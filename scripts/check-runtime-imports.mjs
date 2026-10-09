@@ -38,30 +38,85 @@
  * Limitation, stated plainly: only STATIC specifiers. `import(someVariable)`
  * is invisible to it by construction — the lexer reports the site but has no
  * literal to resolve, and those are skipped.
+ *
+ * Package classification (#5692)
+ * ------------------------------
+ * The Docker images install only `dependencies` and `optionalDependencies`
+ * (`npm prune --omit=dev` / `npm install --omit=dev`). A package the server
+ * loads but that sits in `devDependencies` resolves fine in dev, in CI and in
+ * the test suite — all of which have the full tree — and throws
+ * ERR_MODULE_NOT_FOUND only in a shipped image. So every bare specifier on the
+ * reachable graph (ESM `import`, plus `require('x')` through `createRequire`)
+ * must name a package listed in `dependencies` or `optionalDependencies`.
+ * `require()` is found by a literal-string match, not by the lexer; a phantom
+ * match inside a comment can only produce a false failure, never hide a real one.
  */
 import fs from 'node:fs';
 import path from 'node:path';
 import process from 'node:process';
+import { builtinModules } from 'node:module';
 import { init, parse } from 'es-module-lexer';
 
 const DEFAULT_ENTRY = 'dist/server/server.js';
+// Floor for the default entry's reachable graph — see the guard in main().
+const MIN_EXPECTED_MODULES = 400;
 
 function isFile(p) {
   try { return fs.statSync(p).isFile(); } catch { return false; }
+}
+
+/**
+ * The resolved specifier string of one lexer record. es-module-lexer 3 renamed
+ * the field from `n` to `specifier`; reading only `n` turned this whole check
+ * into a silent no-op ("walked 1 modules ... OK") after the 3.0 bump. Accept
+ * both, and see the minimum-walk guard in main().
+ */
+function specifierOf(record) {
+  return record.specifier ?? record.n;
 }
 
 /** Relative specifiers this module imports, re-exports, or dynamically imports. */
 function relativeSpecifiers(src) {
   const [imports] = parse(src);
   return imports
-    // `n` is undefined for a dynamic import whose argument is not a string
-    // literal — nothing to resolve, so nothing to check.
-    .map((i) => i.n)
+    // The specifier is absent for a dynamic import whose argument is not a
+    // string literal — nothing to resolve, so nothing to check.
+    .map(specifierOf)
     .filter((n) => typeof n === 'string' && n.startsWith('.'));
+}
+
+/** Bare (package) specifiers: ESM imports plus literal `require('x')` calls. */
+function bareSpecifiers(src) {
+  const [imports] = parse(src);
+  const out = imports
+    .map(specifierOf)
+    .filter((n) => typeof n === 'string' && !n.startsWith('.') && !n.startsWith('/'));
+  for (const m of src.matchAll(/\brequire\(\s*['"]([^'"]+)['"]\s*\)/g)) {
+    if (!m[1].startsWith('.') && !m[1].startsWith('/')) out.push(m[1]);
+  }
+  return out;
+}
+
+const BUILTINS = new Set(builtinModules);
+
+/** `@scope/pkg/sub` -> `@scope/pkg`, `pkg/sub` -> `pkg`; null for builtins. */
+function packageName(spec) {
+  if (spec.startsWith('node:') || BUILTINS.has(spec) || BUILTINS.has(spec.split('/')[0])) return null;
+  const parts = spec.split('/');
+  return spec.startsWith('@') ? parts.slice(0, 2).join('/') : parts[0];
 }
 
 async function main() {
   await init;
+
+  const pkgJson = JSON.parse(fs.readFileSync(path.resolve('package.json'), 'utf8'));
+  const runtimeDeps = new Set([
+    ...Object.keys(pkgJson.dependencies ?? {}),
+    ...Object.keys(pkgJson.optionalDependencies ?? {}),
+  ]);
+  const devDeps = new Set(Object.keys(pkgJson.devDependencies ?? {}));
+  /** package -> first importer that pulled it in, for packages the image will not ship. */
+  const undeclared = new Map();
 
   const entry = path.resolve(process.argv[2] ?? DEFAULT_ENTRY);
   if (!isFile(entry)) {
@@ -98,6 +153,13 @@ async function main() {
       return;
     }
 
+    for (const spec of bareSpecifiers(src)) {
+      const name = packageName(spec);
+      if (name && !runtimeDeps.has(name) && !undeclared.has(name)) {
+        undeclared.set(name, { importer: file, spec });
+      }
+    }
+
     for (const spec of specs) {
       const target = path.resolve(path.dirname(file), spec);
       if (isFile(target)) { walk(target); continue; }
@@ -114,8 +176,31 @@ async function main() {
   const rel = (p) => path.relative(root, p) || p;
   console.log(`check-runtime-imports: walked ${visited.size} modules from ${rel(entry)}`);
 
+  // The server graph is hundreds of modules. A walk that stops almost at the
+  // entry means the lexer stopped reporting specifiers (an API change, as with
+  // es-module-lexer 3), not that the server shrank — fail rather than pass.
+  if (visited.size < MIN_EXPECTED_MODULES && !process.argv[2]) {
+    console.error(`check-runtime-imports: walked only ${visited.size} module(s) from the server entry;`);
+    console.error(`expected at least ${MIN_EXPECTED_MODULES}. The import lexer is probably not returning specifiers.`);
+    process.exit(2);
+  }
+
+  if (undeclared.size > 0) {
+    console.error(`\nFAIL — ${undeclared.size} package(s) loaded by the server are not runtime dependencies:\n`);
+    for (const [name, { importer, spec }] of undeclared) {
+      const where = devDeps.has(name) ? 'listed in devDependencies' : 'not listed in package.json at all';
+      console.error(`  ${name} (${where})`);
+      console.error(`      first imported by ${rel(importer)} as '${spec}'`);
+    }
+    console.error('\nThe Docker images install dependencies + optionalDependencies only (--omit=dev),');
+    console.error('so these resolve in dev and CI and throw ERR_MODULE_NOT_FOUND in a shipped image.');
+    console.error('Move each one to "dependencies" in package.json — see #5692.');
+  }
+
   if (problems.length === 0) {
-    console.log('OK — every static relative specifier resolves under Node ESM.');
+    if (undeclared.size > 0) process.exit(1);
+    console.log('OK — every static relative specifier resolves under Node ESM,');
+    console.log('     and every package the server loads is a runtime dependency.');
     return;
   }
 

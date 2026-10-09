@@ -46,7 +46,7 @@ MeshCore sources are added through the UI. The Sources sidebar lets you pick a d
 ## Requirements
 
 1. **A MeshCore device** — A LoRa device flashed with MeshCore firmware (Companion, Repeater, or Room Server)
-2. **Serial port access** — If connecting via USB serial, the device must be mapped into the container with `devices:`
+2. **Serial port access** — If connecting via USB serial, the device must be mapped into the container with `devices:`. MeshMonitor opens it as the unprivileged `node` user; the entrypoint grants that user the device's group automatically. See [USB serial devices and the non-root user](/configuration/production#usb-serial-devices-and-the-non-root-user) if you run the container with `user:`.
 
 ## Adding a MeshCore Source
 
@@ -747,7 +747,7 @@ The roadmap is incremental: keep landing MeshCore features each release, keep al
 ## Troubleshooting
 
 ### MeshCore source can't be added or connection fails
-- For **USB** sources: Verify the serial port is accessible inside the container (check `devices:` mapping in docker-compose). The entrypoint auto-grants the `node` user access to mapped tty groups; if you mounted a device after the container started, restart it.
+- For **USB** sources: Verify the serial port is accessible inside the container (check `devices:` mapping in docker-compose). The entrypoint auto-grants the `node` user access to mapped tty groups (look for `Granted node user access to /dev/...` in the container log); if you mounted a device after the container started, restart it. A `Permission denied` opening the port means the grant did not happen: see [USB serial devices and the non-root user](/configuration/production#usb-serial-devices-and-the-non-root-user).
 - For **TCP** sources: Verify the host is reachable from inside the container (the MeshMonitor process resolves it, not your browser). Use a LAN IP rather than `localhost`/`127.0.0.1`, or `host.docker.internal` when the device shares a host with MeshMonitor. **Check the port first — a wrong port is the usual reason a MeshCore TCP source never connects.** Use `5000` for a WiFi/Ethernet build, `4403` for a native-TCP build, or whatever port your `ser2net`/`esp-link` proxy uses.
 - Check MeshMonitor logs for `[MeshCore]` entries for detailed error messages.
 
