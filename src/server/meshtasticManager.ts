@@ -11526,10 +11526,12 @@ class MeshtasticManager implements ISourceManager {
    * Unlike requestLocalStats() (gateway-only), this targets an arbitrary node and
    * explicitly requests the `local_stats` variant — the firmware reply echoes the
    * requested variant, so a generic request would return DeviceMetrics instead.
-   * Sent as a unicast on the node's channel (shared PSK), NOT a PKI DM: unicast
-   * bypasses the firmware's multi-hop-broadcast role gate (so REPEATER/CLIENT nodes
-   * answer too) and channel routing avoids stale-key fragility. The reply is
-   * persisted by the existing telemetry handler.
+   * Sent as a unicast on the node's channel: unicast bypasses the firmware's
+   * multi-hop-broadcast role gate (so REPEATER/CLIENT nodes answer too). Note the
+   * radio still PKI-encrypts it when it holds the node's key — firmware
+   * `wouldEncryptWithPKC` does not look at the channel for TELEMETRY_APP — so it
+   * is covered by Reliable PKI (#5691). The reply is persisted by the existing
+   * telemetry handler.
    */
   async requestRemoteLocalStats(destination: number, channel: number = 0, hopLimit: number = 3, options?: { origin?: SendOrigin }): Promise<{ packetId: number; requestId: number }> {
     if (!this.isConnected || !this.transport) {
