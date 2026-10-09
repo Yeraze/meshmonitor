@@ -1,0 +1,24 @@
+/*
+ * The MQTT bridge setup as a section of the source's Settings page.
+ *
+ * Settings lays its sections out in two CSS columns on a wide screen. This
+ * form is long and holds a map, so it spans both columns and keeps the
+ * readable width it had as a page of its own.
+ */
+.section {
+  column-span: all;
+}
+
+.form {
+  max-width: 720px;
+  margin-top: 1rem;
+}
+
+.readOnly {
+  color: var(--color-warning);
+  font-size: 0.9rem;
+}
+
+.error {
+  color: var(--color-error);
+}

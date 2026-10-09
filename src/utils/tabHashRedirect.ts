@@ -19,6 +19,30 @@ import { VALID_TABS, type TabType } from '../types/ui.js';
  * target path, or null when no redirect is needed (already path-based tab,
  * unrecognized hash, or not a bare source path).
  */
+/**
+ * Where a retired tab id goes (#5683 follow-up).
+ *
+ * `mqtt-config` was the MQTT bridge's own "Configuration" page. Its content is
+ * a section of the bridge source's Settings page now. The id stays in
+ * VALID_TABS, so a bookmark, a `#mqtt-config` link (through the shim below) or
+ * stored tab state still resolves to a tab; App's route for it then redirects
+ * here, to that section, instead of rendering a blank pane.
+ *
+ * Returns null for a tab that is not retired, or when the redirect does not
+ * apply (no source, or a source that is not an MQTT bridge).
+ */
+export const MQTT_BRIDGE_SETTINGS_HASH = 'settings-mqtt-bridge';
+
+export function getRetiredTabRedirectTarget(
+  tab: string,
+  sourceId: string | null | undefined,
+  sourceType: string | null | undefined,
+): string | null {
+  if (tab !== 'mqtt-config') return null;
+  if (!sourceId || sourceType !== 'mqtt_bridge') return null;
+  return `/source/${encodeURIComponent(sourceId)}/settings#${MQTT_BRIDGE_SETTINGS_HASH}`;
+}
+
 export function getHashTabRedirectTarget(pathname: string, hash: string): string | null {
   const hashTab = hash.startsWith('#') ? hash.slice(1) : hash;
   const isBareSourcePath = /^\/source\/[^/]+\/?$/.test(pathname);

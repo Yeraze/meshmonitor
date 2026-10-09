@@ -78,9 +78,47 @@ describe('configSections', () => {
       expect(ids).not.toContain('settings-maintenance');
     });
 
-    it('hides Firmware Updates when OTA is off', () => {
-      const ids = settingsNavItems(t, { ...baseOptions, firmwareOtaEnabled: false }).map((i) => i.id);
-      expect(ids).not.toContain('settings-firmware');
+    it('lists Firmware Updates under Device Configuration, never under Settings (#5683 follow-up)', () => {
+      // It acts on the device. Same gate as before: an admin, with OTA enabled.
+      for (const mode of [undefined, 'source', 'global'] as const) {
+        expect(settingsNavItems(t, { ...baseOptions, mode }).map((i) => i.id)).not.toContain('settings-firmware');
+      }
+      expect(configurationNavItems(t, { showFirmware: true }).map((i) => i.id)).toContain('config-firmware');
+      expect(configurationNavItems(t, { showFirmware: false }).map((i) => i.id)).not.toContain('config-firmware');
+      expect(configurationNavItems(t).map((i) => i.id)).not.toContain('config-firmware');
+    });
+
+    it('lists PKI DM decryption under a radio source\'s Settings, for configuration:read', () => {
+      const radio = { ...baseOptions, mode: 'source' as const, sourceType: 'meshtastic_tcp', canReadConfiguration: true };
+      expect(settingsNavItems(t, radio).map((i) => i.id)).toContain('settings-pki-dm');
+      expect(configurationNavItems(t, { showFirmware: true }).map((i) => i.id)).not.toContain('config-pki-dm');
+      // The grant its route checks, not the one that opens Settings.
+      expect(settingsNavItems(t, { ...radio, canReadConfiguration: false }).map((i) => i.id)).not.toContain('settings-pki-dm');
+      // Sources with no radio key, and the global page.
+      for (const sourceType of ['mqtt_bridge', 'mqtt_broker', 'meshcore', 'reticulum', null, undefined]) {
+        expect(settingsNavItems(t, { ...radio, sourceType }).map((i) => i.id), String(sourceType)).not.toContain('settings-pki-dm');
+      }
+      expect(settingsNavItems(t, { ...radio, mode: 'global' }).map((i) => i.id)).not.toContain('settings-pki-dm');
+    });
+
+    it('lists the MQTT bridge setup under a bridge\'s Settings, for sources:read', () => {
+      const bridge = { ...baseOptions, mode: 'source' as const, sourceType: 'mqtt_bridge', canReadSources: true };
+      expect(settingsNavItems(t, bridge).map((i) => i.id)).toContain('settings-mqtt-bridge');
+      // First on the page, as it is rendered.
+      expect(settingsNavItems(t, bridge)[0].id).toBe('settings-mqtt-bridge');
+      expect(settingsNavItems(t, { ...bridge, canReadSources: false }).map((i) => i.id)).not.toContain('settings-mqtt-bridge');
+      for (const sourceType of ['mqtt_broker', 'meshtastic_tcp', 'meshcore', null]) {
+        expect(settingsNavItems(t, { ...bridge, sourceType }).map((i) => i.id), String(sourceType)).not.toContain('settings-mqtt-bridge');
+      }
+      expect(settingsNavItems(t, { ...bridge, mode: 'global' }).map((i) => i.id)).not.toContain('settings-mqtt-bridge');
+    });
+
+    it('lists the Reticulum retention cap under Global Settings only', () => {
+      expect(settingsNavItems(t, { ...baseOptions, mode: 'global' }).map((i) => i.id)).toContain('settings-reticulum');
+      expect(settingsNavItems(t, { ...baseOptions, mode: 'source', sourceType: 'reticulum' }).map((i) => i.id))
+        .not.toContain('settings-reticulum');
+      expect(GLOBAL_SETTINGS_SECTIONS.has('settings-reticulum')).toBe(true);
+      expect(SOURCE_SETTINGS_SECTIONS.has('settings-reticulum')).toBe(false);
     });
 
     it('hides the settings:write-gated batch jobs without that permission', () => {
@@ -156,6 +194,62 @@ describe('configSections', () => {
           expect(matchesQuery(haystack, tokenize(word)), `${word} / ${item.label}`).toBe(true);
         }
       }
+    });
+
+    describe('a search for a moved control lands on its new page (#5683 follow-up)', () => {
+      const viewer = { ...baseOptions, canUseAdmin: false, canReadSources: true, canReadConfiguration: true };
+      /** [surface key, path#id] of every section the query matches, as the palette matches. */
+      const hits = (query: string, context: Parameters<typeof buildConfigSurfaces>[1]) =>
+        buildConfigSurfaces(t, context).flatMap((surface) =>
+          surface.items
+            .filter((item) => matchesQuery([item.label, (item.keywords ?? []).join(' ')].join(' '), tokenize(query)))
+            .map((item) => `${surface.path}#${item.id}`));
+
+      it('"firmware" on a Meshtastic radio: Device Configuration, not Settings', () => {
+        const found = hits('firmware', { ...viewer, sourceId: 'abc', sourceType: 'meshtastic_tcp' });
+        expect(found).toContain('/source/abc/configuration#config-firmware');
+        expect(found.filter((hit) => hit.startsWith('/source/abc/settings'))).toEqual([]);
+      });
+
+      it('"firmware" is not offered to a non-admin', () => {
+        const found = hits('firmware updates', { ...viewer, isAdmin: false, sourceId: 'abc', sourceType: 'meshtastic_tcp' });
+        expect(found).toEqual([]);
+      });
+
+      it('"pki direct message" on a Meshtastic radio: Settings, not Device Configuration', () => {
+        const found = hits('pki direct message', { ...viewer, sourceId: 'abc', sourceType: 'meshtastic_tcp' });
+        expect(found).toEqual(['/source/abc/settings#settings-pki-dm']);
+      });
+
+      it('"bridge" on an MQTT bridge: the Settings section', () => {
+        const found = hits('bridge', { ...viewer, sourceId: 'abc', sourceType: 'mqtt_bridge' });
+        expect(found).toContain('/source/abc/settings#settings-mqtt-bridge');
+      });
+
+      it.each(['upstream', 'forwarding', 'subscribe', 'publish', 'rewrite', 'geo', 'password'])(
+        'bridge field word "%s" finds the bridge section',
+        (word) => {
+          expect(hits(word, { ...viewer, sourceId: 'abc', sourceType: 'mqtt_bridge' }))
+            .toContain('/source/abc/settings#settings-mqtt-bridge');
+        },
+      );
+
+      it('"retention" finds the Reticulum cap on Global Settings, from anywhere', () => {
+        expect(hits('destination retention', { ...viewer, sourceId: null })).toEqual(['/settings#settings-reticulum']);
+        expect(hits('reticulum', { ...viewer, sourceId: 'abc', sourceType: 'meshtastic_tcp' }))
+          .toContain('/settings#settings-reticulum');
+      });
+
+      it.each(['mqtt_bridge', 'mqtt_broker'])('a %s source offers no Device Configuration page to land on', (sourceType) => {
+        const surfaces = buildConfigSurfaces(t, { ...viewer, sourceId: 'abc', sourceType });
+        expect(surfaces.map((s) => s.key)).not.toContain('configuration');
+        expect(hits('firmware', { ...viewer, sourceId: 'abc', sourceType })).toEqual([]);
+      });
+
+      it('names the install-wide page "Global Settings", from the shared entry', () => {
+        const surfaces = buildConfigSurfaces(t, { ...viewer, sourceId: 'abc', sourceType: 'meshtastic_tcp' });
+        expect(surfaces.find((s) => s.key === 'global-settings')?.label).toBe('Global Settings');
+      });
     });
 
     it('drops the Admin surface for a user who cannot reach that tab', () => {

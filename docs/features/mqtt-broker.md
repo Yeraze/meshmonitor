@@ -211,7 +211,7 @@ By default an `mqtt_bridge` is a byte-for-byte relay — it republishes inbound 
 | `downlinkTopicRewrite` | upstream → parent broker | Republish an inbound topic on the parent broker under a different prefix, so locally-subscribed devices see it. |
 | `uplinkTopicRewrite` | parent broker → upstream | Publish a parent-broker topic upstream under a different prefix, so the foreign mesh sees your local traffic. |
 
-Each rule is `{ from, to }` — literal prefix match (no MQTT `+` / `#` wildcards), trailing slashes normalized away. Configured from the bridge's dedicated **Configuration page** (select the `mqtt_bridge` source in the sidebar → **Configuration** → **Topic rewrites** section). As of 4.8.3 the per-source bridge edit modal is slimmed to connection basics and deep-links to this Configuration page, which hosts the full set of bridge controls (Connection, Forwarding, Subscribe, Publish + advanced topic filter, and Topic rewrites). Equivalent fields are also accepted via the source API on the bridge itself (`PUT /api/sources/<bridgeId>` with `config.downlinkTopicRewrite` and `config.uplinkTopicRewrite`).
+Each rule is `{ from, to }` — literal prefix match (no MQTT `+` / `#` wildcards), trailing slashes normalized away. Configured in the **MQTT Bridge Configuration** section at the top of the bridge source's **Settings** page (select the `mqtt_bridge` source in the sidebar → **Settings** → **Topic rewrites**). The per-source bridge edit modal is slimmed to connection basics and has a **Bridge settings** button that opens this section, which hosts the full set of bridge controls (Connection, Forwarding, Subscribe, Publish + advanced topic filter, and Topic rewrites). Equivalent fields are also accepted via the source API on the bridge itself (`PUT /api/sources/<bridgeId>` with `config.downlinkTopicRewrite` and `config.uplinkTopicRewrite`).
 
 ### Example — LA ↔ TX cross-mesh bridge
 
@@ -253,7 +253,7 @@ Echo suppression is keyed on the **post-rewrite** topic — so an inbound TX pac
 
 When a node has **OK to MQTT** turned on (`config.lora.config_ok_to_mqtt`), the firmware sets the `ok_to_mqtt` bit on every packet MeshMonitor sends through it. MeshMonitor cannot clear the bit on a single packet, so auto-acknowledge tapbacks and other automated replies get published upstream along with your own messages. This is by design: Meshtastic treats `ok_to_mqtt` as the node owner's privacy choice, and declined a per-packet override ([meshtastic/firmware#11994](https://github.com/meshtastic/firmware/issues/11994)).
 
-Turn on **Don't uplink MeshMonitor automation traffic** on the bridge's Configuration page (stored as `dropAutomationUplinks: true`) to stop that. The bridge then skips any uplink packet that MeshMonitor's own automations sent:
+Turn on **Don't uplink MeshMonitor automation traffic** in the bridge's **MQTT Bridge Configuration** section (stored as `dropAutomationUplinks: true`) to stop that. The bridge then skips any uplink packet that MeshMonitor's own automations sent:
 
 - Auto-acknowledge (tapbacks and text replies), auto-responder, auto-welcome, auto-ping
 - Scheduled auto-announce and its NodeInfo broadcasts
@@ -263,7 +263,7 @@ Turn on **Don't uplink MeshMonitor automation traffic** on the bridge's Configur
 
 Messages and requests you send by hand (the UI, the v1 API, the **Send Announcement** button) are not affected.
 
-The packets still go out over LoRa and to the local broker, so nearby nodes and locally connected devices still see them. Only the upstream publish is skipped. Each skipped packet adds one to `uplinkAutomationDrops` in `/api/sources/:id/status`; the Configuration page shows it next to the `ok_to_mqtt` drop count.
+The packets still go out over LoRa and to the local broker, so nearby nodes and locally connected devices still see them. Only the upstream publish is skipped. Each skipped packet adds one to `uplinkAutomationDrops` in `/api/sources/:id/status`; the **MQTT Bridge Configuration** section shows it next to the `ok_to_mqtt` drop count.
 
 The setting is off by default, so upgrading changes nothing.
 

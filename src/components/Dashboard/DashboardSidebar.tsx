@@ -1159,6 +1159,7 @@ const DashboardSidebar: React.FC<DashboardSidebarProps> = ({
         canReadSettings={hasPermission('settings', 'read', { anySource: true })}
         onUsersClick={() => navigate('/users')}
         onSettingsClick={() => navigate('/settings')}
+        settingsScope="global"
         onNewsClick={onNewsClick}
       />
     </aside>

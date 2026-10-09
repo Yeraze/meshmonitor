@@ -23,7 +23,7 @@
 import type { TFunction } from 'i18next';
 import type { NavItem } from '../SectionNav';
 import { isCoverageMqttSourceType } from '../../utils/coverage';
-import { DEVICE_CONFIGURATION_NAV_ENTRY, SOURCE_SETTINGS_NAV_ENTRY } from '../nav/sourceNavEntries';
+import { DEVICE_CONFIGURATION_NAV_ENTRY, GLOBAL_SETTINGS_NAV_ENTRY, SOURCE_SETTINGS_NAV_ENTRY } from '../nav/sourceNavEntries';
 
 /**
  * i18next's `t`, exactly as the tabs already hold it.
@@ -75,13 +75,24 @@ export const GLOBAL_SETTINGS_SECTIONS = new Set([
   'settings-coverage',
   // Message Translation settings (backend provider and defaults)
   'settings-translation',
+  // Reticulum destination retention (#5683 follow-up): one cap for every
+  // Reticulum source, so it left the per-source Settings page.
+  'settings-reticulum',
 ]);
 
 /** Settings sections that belong to a source's own Settings tab. */
 export const SOURCE_SETTINGS_SECTIONS = new Set([
+  // MQTT bridge setup (#5683 follow-up): MeshMonitor's own connection and
+  // filter settings for the bridge, saved to the source row. It used to be a
+  // page of its own under a satellite "Configuration" entry, though nothing
+  // on it is sent to a device.
+  'settings-mqtt-bridge',
   'settings-node-display', 'settings-telemetry',
+  // PKI DM decryption (#5683 follow-up): a MeshMonitor-side switch, moved
+  // here from Device Configuration.
+  'settings-pki-dm',
   'settings-notifications', 'settings-packet-monitor', 'settings-solar',
-  'settings-firmware', 'settings-reset-ui',
+  'settings-reset-ui',
   // Coverage Report reception recording (#5277 P2 WP3 MQTT gateways, P3 WP4
   // MeshCore observers) — shown only on MQTT-shaped sources (see the
   // isCoverageMqttSourceType filter below), so it lives in the source, not
@@ -109,6 +120,29 @@ export interface SettingsNavOptions {
    * global-settings surface where no single source applies.
    */
   sourceType?: string | null;
+  /**
+   * The viewer may read the source list (`sources:read`). With an
+   * `mqtt_bridge` source it shows the bridge setup section, whose
+   * `GET /api/sources/:id` needs that grant.
+   */
+  canReadSources?: boolean;
+  /**
+   * The viewer may read this source's device configuration
+   * (`configuration:read`): the grant `GET /api/sources/:id/pki-dm/status`
+   * checks. Shows the PKI DM decryption section on a Meshtastic radio source.
+   */
+  canReadConfiguration?: boolean;
+}
+
+/**
+ * True for a source whose App-rendered pages include Device Configuration: a
+ * Meshtastic radio. MQTT brokers and bridges have no device (#5367), and
+ * MeshCore and Reticulum sources render their own pages. Mirrors App's
+ * `configuration` tab gate; `null` (no source in view) is false.
+ */
+export function hasDeviceConfigurationPage(sourceType: string | null | undefined): boolean {
+  if (!sourceType) return false;
+  return !['mqtt_bridge', 'mqtt_broker', 'meshcore', 'meshcore_mqtt', 'reticulum'].includes(sourceType);
 }
 
 /**
@@ -119,7 +153,7 @@ export interface SettingsNavOptions {
  * out deep links that land on nothing.
  */
 export function settingsNavItems(t: Translate, options: SettingsNavOptions): NavItem[] {
-  const { mode, isAdmin, canWriteSettings, databaseType, firmwareOtaEnabled, sourceType } = options;
+  const { mode, isAdmin, canWriteSettings, databaseType, sourceType, canReadSources = false, canReadConfiguration = false } = options;
   const inMode = (id: string) =>
     !mode || (mode === 'global' ? GLOBAL_SETTINGS_SECTIONS.has(id) : SOURCE_SETTINGS_SECTIONS.has(id));
 
@@ -132,10 +166,12 @@ export function settingsNavItems(t: Translate, options: SettingsNavOptions): Nav
     { id: 'settings-privacy', label: t('settings.privacy', 'Privacy'), keywords: ['terms', 'policy', 'gdpr', 'contact'] },
     { id: 'settings-meshcore-messaging', label: t('settings.meshcore_messaging', 'MeshCore Messaging'), keywords: ['meshcore', 'chat'] },
     { id: 'settings-map', label: t('settings.map'), keywords: ['tiles', 'tileset', 'basemap', 'markers', 'pins', 'zoom'] },
+    { id: 'settings-mqtt-bridge', label: t('mqtt_bridge_config.title', 'MQTT Bridge Configuration'), keywords: ['bridge', 'broker', 'upstream', 'url', 'username', 'password', 'forwarding', 'subscribe', 'publish', 'topics', 'geo', 'filter', 'rewrite', 'uplink', 'downlink'] },
     { id: 'settings-node-display', label: t('settings.node_display'), keywords: ['nodes', 'list', 'columns', 'age', 'inactive', 'aircraft', 'plane', 'altitude', 'AGL', 'balloon', 'drone'] },
     { id: 'settings-telemetry', label: t('settings.telemetry'), keywords: ['battery', 'voltage', 'charts', 'graphs', 'sensors'] },
     { id: 'settings-notifications', label: t('settings.notifications_and_security'), keywords: ['alerts', 'sounds', 'audio', 'desktop'] },
     { id: 'settings-security', label: t('settings.security', 'Security'), keywords: ['pki', 'keys', 'encryption'] },
+    { id: 'settings-pki-dm', label: t('config.pki_dm.title', 'PKI Direct Message Decryption'), keywords: ['pki', 'dm', 'direct message', 'decrypt', 'private key', 'encryption'] },
     { id: 'settings-packet-monitor', label: t('settings.packet_monitor'), keywords: ['packets', 'logging', 'capture'] },
     { id: 'settings-solar', label: t('settings.solar_monitoring'), keywords: ['sun', 'panel', 'power', 'battery'] },
     { id: 'settings-remote-admin', label: t('settings.remote_admin_section', 'Remote Administration'), keywords: ['admin', 'password', 'credentials'] },
@@ -147,7 +183,7 @@ export function settingsNavItems(t: Translate, options: SettingsNavOptions): Nav
     { id: 'settings-channel-database', label: t('channel_database.title', 'Channel Database'), keywords: ['psk', 'decrypt', 'channels', 'keys'] },
     { id: 'settings-scripts', label: t('settings.scripts_section', 'Scripts'), keywords: ['javascript', 'automation', 'code'] },
     { id: 'settings-maintenance', label: t('maintenance.title', 'Database Maintenance'), keywords: ['vacuum', 'sqlite', 'purge', 'cleanup'] },
-    { id: 'settings-firmware', label: t('firmware.title', 'Firmware Updates'), keywords: ['ota', 'update', 'flash'] },
+    { id: 'settings-reticulum', label: t('reticulum.settings.title', 'Reticulum Settings'), keywords: ['reticulum', 'destinations', 'retention', 'cap', 'prune', 'rnode'] },
     { id: 'settings-reset-ui', label: t('settings.reset_ui_positions'), keywords: ['layout', 'widgets', 'reset'] },
     { id: 'settings-analytics', label: t('settings.analytics'), keywords: ['telemetry', 'usage', 'stats'] },
     { id: 'settings-position-estimation', label: t('automation.position_estimation.title', 'Position Estimation'), keywords: ['gps', 'location', 'estimate', 'triangulation'] },
@@ -171,7 +207,8 @@ export function settingsNavItems(t: Translate, options: SettingsNavOptions): Nav
     if (settingsWriteOnly.has(item.id) && !canWriteSettings) return false;
     // Database Maintenance uses SQLite-specific features like VACUUM.
     if (item.id === 'settings-maintenance' && databaseType !== 'sqlite') return false;
-    if (item.id === 'settings-firmware' && !(isAdmin && firmwareOtaEnabled)) return false;
+    if (item.id === 'settings-mqtt-bridge' && !(sourceType === 'mqtt_bridge' && canReadSources)) return false;
+    if (item.id === 'settings-pki-dm' && !(hasDeviceConfigurationPage(sourceType) && canReadConfiguration)) return false;
     // Coverage recording only means anything on an MQTT-shaped source
     // (mqtt_broker/mqtt_bridge/meshcore_mqtt) — see isCoverageMqttSourceType
     // (#5277 P2 WP3, widened P3 WP4).
@@ -180,9 +217,18 @@ export function settingsNavItems(t: Translate, options: SettingsNavOptions): Nav
   });
 }
 
+export interface ConfigurationNavOptions {
+  /**
+   * Firmware Updates is offered to an admin on an install with OTA enabled:
+   * the same gate the section renders behind. It acts on the device, so it
+   * lives here and not under Settings (#5683 follow-up).
+   */
+  showFirmware?: boolean;
+}
+
 /** Sections of the per-source Configuration (device radio config) tab. */
-export function configurationNavItems(t: Translate): NavItem[] {
-  return [
+export function configurationNavItems(t: Translate, options: ConfigurationNavOptions = {}): NavItem[] {
+  const items: NavItem[] = [
     { id: 'config-danger', label: t('config.warning_title', 'Warning') },
     { id: 'config-import-export', label: t('config.import_export_title', 'Import/Export'), keywords: ['backup', 'restore', 'yaml'] },
     { id: 'config-node-identity', label: t('config.node_identity', 'Node Identity'), keywords: ['name', 'shortname', 'longname', 'role'] },
@@ -212,7 +258,9 @@ export function configurationNavItems(t: Translate): NavItem[] {
     { id: 'config-security', label: t('security_config.title', 'Security'), keywords: ['pki', 'keys', 'admin', 'serial'] },
     { id: 'config-channels', label: t('config.channels', 'Channels'), keywords: ['psk', 'primary', 'slots'] },
     { id: 'config-backup', label: t('config.backup_management', 'Backup'), keywords: ['restore', 'snapshot'] },
+    { id: 'config-firmware', label: t('firmware.title', 'Firmware Updates'), keywords: ['ota', 'update', 'flash', 'firmware'] },
   ];
+  return items.filter((item) => item.id !== 'config-firmware' || options.showFirmware === true);
 }
 
 /** Sections of the per-source Automation tab. */
@@ -301,12 +349,20 @@ export function buildConfigSurfaces(t: Translate, context: ConfigSurfaceContext)
       path: `${base}/settings`,
       items: settingsNavItems(t, { ...settingsOptions, mode: 'source' }),
     });
-    surfaces.push({
-      key: 'configuration',
-      label: t(DEVICE_CONFIGURATION_NAV_ENTRY.labelKey, DEVICE_CONFIGURATION_NAV_ENTRY.fallback),
-      path: `${base}/configuration`,
-      items: configurationNavItems(t),
-    });
+    // An MQTT broker or bridge has no Device Configuration page (#5367), so
+    // the palette must not hand out links to one: a search for "firmware"
+    // there would land on nothing. An unknown type keeps the surface, as before.
+    const sourceType = settingsOptions.sourceType;
+    if (sourceType !== 'mqtt_bridge' && sourceType !== 'mqtt_broker') {
+      surfaces.push({
+        key: 'configuration',
+        label: t(DEVICE_CONFIGURATION_NAV_ENTRY.labelKey, DEVICE_CONFIGURATION_NAV_ENTRY.fallback),
+        path: `${base}/configuration`,
+        items: configurationNavItems(t, {
+          showFirmware: settingsOptions.isAdmin && settingsOptions.firmwareOtaEnabled === true,
+        }),
+      });
+    }
     surfaces.push({
       key: 'automation',
       label: t('nav.automation', 'Automation'),
@@ -331,7 +387,7 @@ export function buildConfigSurfaces(t: Translate, context: ConfigSurfaceContext)
 
   surfaces.push({
     key: 'global-settings',
-    label: t('config_search.global_settings', 'Global Settings'),
+    label: t(GLOBAL_SETTINGS_NAV_ENTRY.labelKey, GLOBAL_SETTINGS_NAV_ENTRY.fallback),
     path: '/settings',
     items: settingsNavItems(t, { ...settingsOptions, mode: 'global' }),
   });

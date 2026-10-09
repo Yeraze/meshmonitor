@@ -16,6 +16,10 @@ vi.mock('../../contexts/AuthContext', () => ({
   useAuth: () => ({ hasPermission: (r: string, a: string) => authPermission(r, a) }),
 }));
 
+// The sections that came from the Settings tab (#5683 follow-up) toast their
+// save results; MeshCoreConfigurationView.movedControls.test.tsx covers them.
+vi.mock('../ToastContainer', () => ({ useToast: () => ({ showToast: vi.fn() }) }));
+
 import { MeshCoreConfigurationView } from './MeshCoreConfigurationView';
 import type { ConnectionStatus, MeshCoreActions } from './hooks/useMeshCore';
 
@@ -35,6 +39,14 @@ function makeActions(overrides: Partial<MeshCoreActions> = {}): MeshCoreActions 
     setTelemetryModeEnv: vi.fn().mockResolvedValue(true),
     refreshAll: vi.fn().mockResolvedValue(undefined),
     clearError: vi.fn(),
+    getDefaultPathHashSize: vi.fn().mockResolvedValue(1),
+    setDefaultPathHashSize: vi.fn().mockResolvedValue(1),
+    getDefaultScope: vi.fn().mockResolvedValue(''),
+    setDefaultScope: vi.fn().mockResolvedValue(''),
+    discoverRegions: vi.fn().mockResolvedValue(null),
+    discoverNodes: vi.fn().mockResolvedValue(null),
+    fetchSavedRegions: vi.fn().mockResolvedValue([]),
+    addSavedRegion: vi.fn().mockResolvedValue(null),
     ...overrides,
   };
 }

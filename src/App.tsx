@@ -11,6 +11,7 @@ import InfoTab from './components/InfoTab';
 import SettingsTab from './components/SettingsTab';
 import ConfigurationTab from './components/ConfigurationTab';
 import MqttBridgeConfigurationView from './components/MQTT/MqttBridgeConfigurationView';
+import { canOpenSourceSettings } from './components/nav/sourceSettingsAccess';
 import NotificationsTab from './components/NotificationsTab';
 import UsersTab from './components/UsersTab';
 import AuditLogTab from './components/AuditLogTab';
@@ -44,7 +45,7 @@ import { DeviceInfo, Channel } from './types/device';
 import { MeshMessage } from './types/message';
 import { isMqttBridgeMessage } from './utils/messageFilters';
 import { NodeFilters } from './types/ui';
-import { getHashTabRedirectTarget } from './utils/tabHashRedirect';
+import { getHashTabRedirectTarget, getRetiredTabRedirectTarget } from './utils/tabHashRedirect';
 import { ResourceType } from './types/permission';
 import api, { type ChannelDatabaseEntry } from './services/api';
 import { fetchAssetTrack } from './hooks/useAssetTracking';
@@ -133,6 +134,8 @@ function App() {
   const isMqttBridge = sourceType === 'mqtt_bridge';
   const isMqttBroker = sourceType === 'mqtt_broker';
   const isMqtt = isMqttBridge || isMqttBroker;
+  // Where the retired MQTT bridge tab id goes: the bridge section of Settings.
+  const mqttConfigRedirect = getRetiredTabRedirectTarget('mqtt-config', sourceId, sourceType);
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -723,11 +726,15 @@ function App() {
       // cross-source (no single sourceId in view here), and 34 of the 36
       // settings routes it protects are unscoped, so { anySource: true }
       // mirrors checkPermissionAsync's union branch for the same routes.
-      settings: () => hasPermission('settings', 'read', { anySource: true }),
+      // An MQTT bridge's Settings page also holds its bridge setup, which
+      // reads `sources` (#5683 follow-up): see canOpenSourceSettings.
+      settings: () => canOpenSourceSettings(hasPermission, isMqttBridge ? 'mqtt_bridge' : null),
       automation: () => !isMqttBridge && hasPermission('automation', 'read'),
       // An MQTT broker has no local radio either: Device Config and Remote
       // Admin there would reach the primary TCP source's device (#5367).
       configuration: () => !isMqtt && hasPermission('configuration', 'read'),
+      // Retired tab id (#5683 follow-up): the bridge setup is a section of
+      // Settings now, and the route below redirects there. Same gate as before.
       'mqtt-config': () => isMqttBridge && hasPermission('sources', 'read'),
       notifications: () => isAuthenticated,
       users: () => isAdmin,
@@ -3653,11 +3660,11 @@ function App() {
           />
           <Route
             path="mqtt-config"
-            element={isMqttBridge && sourceId ? (
-              <ErrorBoundary fallbackTitle="Configuration failed to load">
-                <MqttBridgeConfigurationView key={sourceId} sourceId={sourceId} />
-              </ErrorBoundary>
-            ) : null}
+            /* The bridge's own "Configuration" page is a section of its
+               Settings page now (#5683 follow-up). The tab id stays valid so
+               bookmarks, `#mqtt-config` links and stored tab state land on
+               that section instead of a blank pane. */
+            element={mqttConfigRedirect ? <Navigate to={mqttConfigRedirect} replace /> : null}
           />
           <Route
             path="packetmonitor"
@@ -3780,6 +3787,19 @@ function App() {
             element={
               <ErrorBoundary fallbackTitle="Settings failed to load">
                 <SaveBarGroup id="settings">
+                  {/* A bridge editor with `sources` but no `settings:read` used
+                      to reach the bridge setup through its own tab. They keep
+                      it: the Settings page shows them that one section, since
+                      every other section's routes need `settings:read`. */}
+                  {!hasPermission('settings', 'read', { anySource: true }) ? (
+                    isMqttBridge && sourceId && hasPermission('sources', 'read') ? (
+                      <div className="tab-content">
+                        <div className="settings-content">
+                          <MqttBridgeConfigurationView key={sourceId} sourceId={sourceId} />
+                        </div>
+                      </div>
+                    ) : null
+                  ) : (
                   <SettingsTab
                     mode="source"
                     maxNodeAgeHours={maxNodeAgeHours}
@@ -3836,6 +3856,7 @@ function App() {
                     onSolarMonitoringAzimuthChange={setSolarMonitoringAzimuth}
                     onSolarMonitoringDeclinationChange={setSolarMonitoringDeclination}
                   />
+                  )}
                 </SaveBarGroup>
               </ErrorBoundary>
             }

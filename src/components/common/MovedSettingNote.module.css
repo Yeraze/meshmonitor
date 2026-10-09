@@ -1,0 +1,42 @@
+/* One muted line: an icon, a sentence and a link. See MovedSettingNote.tsx. */
+.note {
+  margin: 0 0 1rem;
+  padding: 0.5rem 0.75rem;
+  border: 1px dashed var(--color-surface-active);
+  border-radius: var(--radius-md);
+  color: var(--color-text-subtle);
+  font-size: 0.85rem;
+  line-height: 1.5;
+}
+
+/* Icon, sentence and link flow as one line of text and wrap as text does. */
+.note > svg,
+.note > span:first-child {
+  margin-right: 0.4rem;
+  vertical-align: -2px;
+}
+
+/*
+ * Doubled class: host pages style every `button` (MeshCore's form view paints
+ * them as filled primary buttons), and this must stay a text link there too.
+ */
+.note .link.link {
+  display: inline;
+  margin: 0 0 0 0.4rem;
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+  color: var(--color-accent);
+  font: inherit;
+  font-weight: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.note .link.link:hover,
+.note .link.link:focus-visible {
+  background: none;
+  color: var(--color-text);
+}

@@ -3,9 +3,10 @@
  *
  * Covers: the toggle renders and reflects the threaded `receiveOnly` prop
  * (not local state), confirm-on-disable-only, the save/invalidate/toast
- * path, and the button gating owned by this package (Send advert, Discover
- * x3, Discover regions — with Refresh contacts and Save scope left enabled
- * as the negative control, per spec §5.1/§5.2).
+ * path, and the button gating of the device actions for a viewer who keeps
+ * them on this tab (Send advert, Discover x3; Refresh contacts stays enabled
+ * as the negative control, per spec §5.1/§5.2). For everyone else those
+ * buttons are on Device Configuration (#5683 follow-up).
  *
  * @vitest-environment jsdom
  */
@@ -64,7 +65,11 @@ function makeActions(overrides: Record<string, unknown> = {}) {
   } as never;
 }
 
-function renderView(receiveOnly: boolean, overrides: Record<string, unknown> = {}) {
+function renderView(
+  receiveOnly: boolean,
+  overrides: Record<string, unknown> = {},
+  props: { canOpenDeviceConfiguration?: boolean } = {},
+) {
   render(
     <MeshCoreSettingsView
       status={{ connected: true, deviceType: 1 } as never}
@@ -73,6 +78,7 @@ function renderView(receiveOnly: boolean, overrides: Record<string, unknown> = {
       baseUrl=""
       sourceId="src-a"
       receiveOnly={receiveOnly}
+      {...props}
     />,
   );
 }
@@ -99,8 +105,12 @@ describe('MeshCoreSettingsView — receive-only toggle rendering', () => {
 });
 
 describe('MeshCoreSettingsView — receive-only button gating', () => {
-  it('disables both advert buttons, Discover x3 and Discover regions, all with the control tooltip', () => {
-    renderView(true);
+  // The transmitting buttons live on Device Configuration (#5683 follow-up);
+  // MeshCoreDeviceActionsSection.test.tsx and MeshCoreDefaultScopeSection.test.tsx
+  // cover their gating there. A viewer who cannot open that page keeps the
+  // device actions on this tab, and they are gated the same way here.
+  it('disables both advert buttons and Discover x3 for a viewer who keeps them here', () => {
+    renderView(true, {}, { canOpenDeviceConfiguration: false });
 
     const gated = [
       screen.getByRole('button', { name: 'Advert (nearby, zero-hop)' }),
@@ -108,48 +118,37 @@ describe('MeshCoreSettingsView — receive-only button gating', () => {
       screen.getByRole('button', { name: 'Discover Nearby Nodes' }),
       screen.getByRole('button', { name: 'Discover Repeaters' }),
       screen.getByRole('button', { name: 'Discover Sensors' }),
-      screen.getByRole('button', { name: 'Discover regions from repeaters' }),
     ];
     for (const btn of gated) {
       expect(btn).toBeDisabled();
       expect(btn).toHaveAttribute('title', TOOLTIP);
     }
-  });
-
-  it('leaves Refresh contacts and Save scope enabled — the negative control', () => {
-    renderView(true);
-
     expect(screen.getByRole('button', { name: 'Refresh contacts' })).not.toBeDisabled();
-    // Save scope is disabled by its own dirty-check (scopeInput === defaultScope
-    // on mount), never by receiveOnly — assert it carries no receive-only tooltip.
-    const saveScope = screen.getByRole('button', { name: 'Save' });
-    expect(saveScope).not.toHaveAttribute('title', TOOLTIP);
   });
 
-  it('enables every gated button again once receiveOnly flips back to false', () => {
-    renderView(false);
-
-    const gated = [
-      screen.getByRole('button', { name: 'Advert (nearby, zero-hop)' }),
-      screen.getByRole('button', { name: 'Flood advert' }),
-      screen.getByRole('button', { name: 'Discover Nearby Nodes' }),
-      screen.getByRole('button', { name: 'Discover Repeaters' }),
-      screen.getByRole('button', { name: 'Discover Sensors' }),
-      screen.getByRole('button', { name: 'Discover regions from repeaters' }),
-    ];
-    for (const btn of gated) {
-      expect(btn).not.toBeDisabled();
+  it('shows none of the transmitting buttons when they are on Device Configuration', () => {
+    renderView(true);
+    for (const name of [
+      'Advert (nearby, zero-hop)', 'Flood advert', 'Discover Nearby Nodes',
+      'Discover Repeaters', 'Discover Sensors', 'Discover regions from repeaters', 'Refresh contacts',
+    ]) {
+      expect(screen.queryByRole('button', { name })).toBeNull();
     }
   });
 
   it('renders the paused note under the discoverable toggle only while receive-only', () => {
     renderView(true);
-    expect(screen.getByRole('status')).toHaveTextContent(/Paused — receive-only mode/);
+    expect(screen.getByText(/Paused — receive-only mode/)).toBeInTheDocument();
   });
 
   it('does not render the paused note when receiveOnly is false', () => {
     renderView(false);
-    expect(screen.queryByRole('status')).toBeNull();
+    expect(screen.queryByText(/Paused — receive-only mode/)).toBeNull();
+  });
+
+  it('says why receive-only is a MeshMonitor setting and not device configuration', () => {
+    renderView(false);
+    expect(screen.getByTestId('receive-only-why-here')).toHaveTextContent(/MeshMonitor setting/);
   });
 });
 

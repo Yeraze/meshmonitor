@@ -1,17 +1,36 @@
 import React, { useCallback, useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useQueryClient } from '@tanstack/react-query';
-import { ConnectionStatus, DiscoveredNode, MeshCoreActions, SavedRegion } from './hooks/useMeshCore';
+import { ConnectionStatus, MeshCoreActions, SavedRegion } from './hooks/useMeshCore';
 import { useToast } from '../ToastContainer';
 import { useAuth } from '../../contexts/AuthContext';
 import { useCsrfFetch } from '../../hooks/useCsrfFetch';
 import { UiIcon } from '../icons';
 import { MeshCoreNodeDisplaySection } from './MeshCoreNodeDisplaySection';
 import { MeshCoreReceiveOnlyNote } from './MeshCoreReceiveOnlyNote';
-import { MeshCoreAdvertButtons } from './MeshCoreAdvertButtons';
+import { MeshCoreDeviceActionsSection } from './MeshCoreDeviceActionsSection';
+import { MovedSettingNote } from '../common/MovedSettingNote';
+import { GlobalSettingsLink } from '../nav/GlobalSettingsLink';
 import { MeshCoreIgnoredNodesSection } from './MeshCoreIgnoredNodesSection';
 import { MeshCoreMessageFiltersSection } from './MeshCoreMessageFiltersSection';
 import { MeshCoreContactSyncSection } from './MeshCoreContactSyncSection';
+
+/**
+ * MeshCoreSettingsView — what MeshMonitor stores and does for this MeshCore
+ * source: connect / disconnect, software receive-only, whether MeshMonitor
+ * answers discovery requests, node display, ignore and filter lists, the
+ * saved-regions catalogue, and purging stored messages.
+ *
+ * What is written to or done on the radio lives on Device Configuration
+ * (#5683 follow-up): default path hash size, default region / scope, radio
+ * contact list sync, and the device actions (Refresh contacts, Send advert,
+ * Discover nodes). A short pointer stays where each used to be.
+ *
+ * A viewer who cannot open Device Configuration (no `configuration:read`)
+ * keeps the contact sync and the device actions here: their routes check
+ * `nodes:write` / `connection:write`, not `configuration`, so moving them
+ * must not take them out of that viewer's reach.
+ */
 
 // MeshCoreDeviceType.COMPANION — active discovery is companion-only.
 const DEVICE_TYPE_COMPANION = 1;
@@ -28,6 +47,11 @@ interface MeshCoreSettingsViewProps {
    *  Phase 2). Plumbed here in WP1; WP2 wires the toggle itself plus the
    *  gating of Send advert / Discover ×3 / Discover regions. */
   receiveOnly?: boolean;
+  /** The viewer may open the Device Configuration tab (`configuration:read`).
+   *  Default true; MeshCorePage passes the nav's own answer. */
+  canOpenDeviceConfiguration?: boolean;
+  /** Switches to the Device Configuration tab: the link in each pointer. */
+  onOpenDeviceConfiguration?: () => void;
 }
 
 export const MeshCoreSettingsView: React.FC<MeshCoreSettingsViewProps> = ({
@@ -37,6 +61,8 @@ export const MeshCoreSettingsView: React.FC<MeshCoreSettingsViewProps> = ({
   baseUrl,
   sourceId,
   receiveOnly = false,
+  canOpenDeviceConfiguration = true,
+  onOpenDeviceConfiguration,
 }) => {
   const { t } = useTranslation();
   const { showToast } = useToast();
@@ -45,55 +71,23 @@ export const MeshCoreSettingsView: React.FC<MeshCoreSettingsViewProps> = ({
   const queryClient = useQueryClient();
   const [savingReceiveOnly, setSavingReceiveOnly] = useState(false);
   const canPurgeMessages = hasPermission('messages', 'write');
+  // "Respond to discovery" is saved through POST …/config/discoverable, which
+  // checks `configuration:write`, not the `settings` grant that opens this tab.
+  const canWriteConfig = hasPermission('configuration', 'write');
   const [purgingMessages, setPurgingMessages] = useState(false);
   const connected = status?.connected ?? false;
   const isCompanion = status?.deviceType === DEVICE_TYPE_COMPANION;
-  // Which discovery (if any) is currently running, so we can disable both
-  // buttons and label the active one "Discovering…".
-  const [discovering, setDiscovering] = useState<'nearby' | 'repeaters' | 'sensors' | null>(null);
-  /**
-   * Who answered the last sweep (#4516). Previously the run reported only
-   * "N returned (M new)", which told a user nothing about *which* nodes are in
-   * range. Reset at the start of every run, so the list always describes the
-   * most recent sweep rather than accumulating across them.
-   */
-  const [discoveredNodes, setDiscoveredNodes] = useState<DiscoveredNode[] | null>(null);
   // "Be discoverable" toggle — whether we answer inbound discovery requests.
   const [discoverable, setDiscoverableState] = useState(false);
   const {
-    getDiscoverable, setDiscoverable, getDefaultScope, setDefaultScope,
-    getDefaultPathHashSize, setDefaultPathHashSize, discoverRegions,
+    getDiscoverable, setDiscoverable,
     fetchSavedRegions, addSavedRegion, deleteSavedRegion,
   } = actions;
 
-  // Default region/scope (#3667). `defaultScope` is the persisted value;
-  // `scopeInput` is the editable field (so we can show a dirty state).
-  const [defaultScope, setDefaultScopeState] = useState('');
-  const [scopeInput, setScopeInput] = useState('');
-  const [savingScope, setSavingScope] = useState(false);
-
-  // Default path hash size (#4945): 1/2/3 bytes, pushed to the companion's
-  // persistent NodePrefs. Wider hashes cut path/loop-table collisions on
-  // larger meshes.
-  const [pathHashSize, setPathHashSizeState] = useState<1 | 2 | 3>(1);
-  // Draft selection; applied to the device only on an explicit Save so an
-  // accidental dropdown change doesn't write persistent firmware state.
-  const [pathHashInput, setPathHashInput] = useState<1 | 2 | 3>(1);
-  const [savingPathHash, setSavingPathHash] = useState(false);
-  // Region discovery (#3667 phase 3) — names served by nearby repeaters.
-  const [discoveredRegions, setDiscoveredRegions] = useState<string[] | null>(null);
-  const [discoveringRegions, setDiscoveringRegions] = useState(false);
   // Saved-regions catalog (#3770) — a user-maintained list of region names.
   const [savedRegions, setSavedRegions] = useState<SavedRegion[]>([]);
   const [newRegionInput, setNewRegionInput] = useState('');
   const [savingRegion, setSavingRegion] = useState(false);
-
-  // Set of saved region names (lowercased) so discovered chips can show a
-  // "saved" affordance / disable re-saving.
-  const savedRegionNames = React.useMemo(
-    () => new Set(savedRegions.map((r) => r.name.toLowerCase())),
-    [savedRegions],
-  );
 
   const refreshSavedRegions = useCallback(async () => {
     const rows = await fetchSavedRegions();
@@ -124,26 +118,8 @@ export const MeshCoreSettingsView: React.FC<MeshCoreSettingsViewProps> = ({
   useEffect(() => {
     if (connected && isCompanion) {
       void getDiscoverable().then(setDiscoverableState);
-      void getDefaultScope().then((s) => { setDefaultScopeState(s); setScopeInput(s); });
-      void getDefaultPathHashSize().then((s) => { setPathHashSizeState(s); setPathHashInput(s); });
     }
-  }, [connected, isCompanion, getDiscoverable, getDefaultScope, getDefaultPathHashSize]);
-
-  const handleSavePathHashSize = async (size: 1 | 2 | 3) => {
-    setSavingPathHash(true);
-    try {
-      const result = await setDefaultPathHashSize(size);
-      if (result === null) {
-        showToast(t('meshcore.path_hash.save_failed', 'Failed to save default path hash size'), 'error');
-        return;
-      }
-      setPathHashSizeState(result);
-      setPathHashInput(result);
-      showToast(t('meshcore.path_hash.saved', 'Default path hash size saved'), 'success');
-    } finally {
-      setSavingPathHash(false);
-    }
-  };
+  }, [connected, isCompanion, getDiscoverable]);
 
   // Load the saved-regions catalog (global; not gated on connection).
   useEffect(() => {
@@ -177,48 +153,6 @@ export const MeshCoreSettingsView: React.FC<MeshCoreSettingsViewProps> = ({
     await refreshSavedRegions();
   };
 
-  const handleSaveScope = async () => {
-    setSavingScope(true);
-    try {
-      const result = await setDefaultScope(scopeInput);
-      if (result === null) {
-        showToast(t('meshcore.scope.save_failed', 'Failed to save default scope'), 'error');
-        return;
-      }
-      setDefaultScopeState(result);
-      setScopeInput(result);
-      setDiscoveredRegions(null); // collapse the suggestion chips once applied
-      showToast(t('meshcore.scope.saved', 'Default scope saved'), 'success');
-    } finally {
-      setSavingScope(false);
-    }
-  };
-
-  const handleDiscoverRegions = async () => {
-    setDiscoveringRegions(true);
-    try {
-      const result = await discoverRegions();
-      if (!result) {
-        showToast(t('meshcore.scope.discover_failed', 'Failed to discover regions'), 'error');
-        return;
-      }
-      setDiscoveredRegions(result.regions);
-      if (result.noZeroHopRepeaters) {
-        showToast(
-          t('meshcore.scope.discover_no_repeaters', 'No nearby (0-hop) repeaters found. Move closer to a repeater and try again.'),
-          'info',
-        );
-      } else if (result.regions.length === 0) {
-        showToast(
-          t('meshcore.scope.discover_none', 'Nearby repeaters reported no regions.'),
-          'info',
-        );
-      }
-    } finally {
-      setDiscoveringRegions(false);
-    }
-  };
-
   const handleToggleDiscoverable = async () => {
     const next = !discoverable;
     setDiscoverableState(next); // optimistic
@@ -226,28 +160,6 @@ export const MeshCoreSettingsView: React.FC<MeshCoreSettingsViewProps> = ({
     if (!ok) {
       setDiscoverableState(!next); // revert on failure
       showToast(t('meshcore.discover.toggle_failed', 'Failed to update setting'), 'error');
-    }
-  };
-
-  const handleDiscover = async (mode: 'nearby' | 'repeaters' | 'sensors') => {
-    setDiscovering(mode);
-    setDiscoveredNodes(null);
-    try {
-      const result = await actions.discoverNodes(mode);
-      if (result) {
-        setDiscoveredNodes(result.nodes);
-        showToast(
-          t('meshcore.discover.result', '{{returned}} contacts returned ({{new}} new)', {
-            returned: result.returned,
-            new: result.newCount,
-          }),
-          'success',
-        );
-      } else {
-        showToast(t('meshcore.discover.failed', 'Discovery failed'), 'error');
-      }
-    } finally {
-      setDiscovering(null);
     }
   };
 
@@ -300,15 +212,19 @@ export const MeshCoreSettingsView: React.FC<MeshCoreSettingsViewProps> = ({
     }
   }, [baseUrl, sourceId, csrfFetch, queryClient, showToast, t]);
 
-  const receiveOnlyTooltip = receiveOnly
-    ? t('meshcore.receive_only.control_tooltip', 'Receive-only mode is on for this MeshCore source. Turn it off in MeshCore Settings to use this.')
-    : undefined;
+  const openDeviceConfiguration = canOpenDeviceConfiguration ? onOpenDeviceConfiguration : undefined;
+  const deviceConfigurationLink = t('moved.open_device_configuration', 'Open Device Configuration');
+  const needsConfigRead = t(
+    'moved.meshcore_needs_configuration_read',
+    'That page needs the Device Configuration read permission on this source.',
+  );
 
   return (
     <div className="meshcore-form-view">
       <h2 style={{ color: 'var(--color-text)', marginBottom: '1rem' }}>
         {t('nav.settings', 'Settings')}
       </h2>
+      <GlobalSettingsLink variant="inline" />
 
       <div className="form-section">
         <h3>{t('meshcore.connection', 'Connection')}</h3>
@@ -364,36 +280,49 @@ export const MeshCoreSettingsView: React.FC<MeshCoreSettingsViewProps> = ({
             'MeshCore firmware has no radio-level transmit switch, so MeshMonitor enforces this in software. Transmissions the node makes on its own — link-layer acknowledgements, and any advert schedule configured outside MeshMonitor — are not affected.',
           )}
         </p>
-      </div>
-
-      {/* Radio contact list vs MeshMonitor (#5502). */}
-      {isCompanion && (
-        <MeshCoreContactSyncSection
-          baseUrl={baseUrl}
-          sourceId={sourceId}
-          connected={connected}
-          canEditConfig={hasPermission('configuration', 'write')}
-          canEditNodes={hasPermission('nodes', 'write')}
-        />
-      )}
-
-      <div className="form-section">
-        <h3>{t('meshcore.settings.actions', 'Device actions')}</h3>
-        <p className="hint">
-          {t('meshcore.settings.actions_hint',
-            'Refresh the contact list from the device, or announce this node. A zero-hop advert reaches nodes in direct radio range; a flood advert crosses the whole mesh and costs much more airtime.')}
+        <p className="hint" data-testid="receive-only-why-here">
+          {t(
+            'meshcore.receive_only.why_here',
+            'That makes this a MeshMonitor setting, so it is on Settings and not on Device Configuration.',
+          )}
         </p>
-        <div style={{ display: 'flex', gap: '0.5rem' }}>
-          <button onClick={() => void actions.refreshContacts()} disabled={!connected || loading}>
-            {t('meshcore.refresh', 'Refresh contacts')}
-          </button>
-          <MeshCoreAdvertButtons
-            onSend={(mode) => actions.sendAdvert(mode)}
-            disabled={!connected || loading || receiveOnly}
-            disabledTitle={receiveOnlyTooltip}
-          />
-        </div>
       </div>
+
+      {/* Radio contact list sync and the device actions live on Device
+          Configuration (#5683 follow-up). A viewer who cannot open that page
+          keeps them here: see the module comment. */}
+      {canOpenDeviceConfiguration ? (
+        <MovedSettingNote
+          testId="meshcore-actions-moved"
+          text={t(
+            'moved.meshcore_actions',
+            'Radio contact list sync, Refresh contacts, Send advert and Discover nodes moved to Device Configuration.',
+          )}
+          linkLabel={deviceConfigurationLink}
+          onOpen={openDeviceConfiguration}
+        />
+      ) : (
+        <>
+          {isCompanion && (
+            <MeshCoreContactSyncSection
+              baseUrl={baseUrl}
+              sourceId={sourceId}
+              connected={connected}
+              canEditConfig={canWriteConfig}
+              canEditNodes={hasPermission('nodes', 'write')}
+            />
+          )}
+          <MeshCoreDeviceActionsSection
+            connected={connected}
+            loading={loading}
+            isCompanion={isCompanion}
+            actions={actions}
+            receiveOnly={receiveOnly}
+            canWriteNodes={hasPermission('nodes', 'write')}
+            canWriteConnection={hasPermission('connection', 'write')}
+          />
+        </>
+      )}
 
       <MeshCoreNodeDisplaySection baseUrl={baseUrl} sourceId={sourceId} />
 
@@ -403,106 +332,17 @@ export const MeshCoreSettingsView: React.FC<MeshCoreSettingsViewProps> = ({
 
       {isCompanion && (
         <div className="form-section">
-          <h3>{t('meshcore.discover.title', 'Discover nodes')}</h3>
-          <p className="hint">
-            {t('meshcore.discover.hint',
-              'Ask nodes in direct radio range to announce themselves. Responders are added as contacts. ' +
-              'Multi-hop nodes will not appear — discovery is zero-hop.')}
-          </p>
-          <div style={{ display: 'flex', gap: '0.5rem' }}>
-            <button
-              onClick={() => void handleDiscover('nearby')}
-              disabled={!connected || loading || discovering !== null || discoveringRegions || receiveOnly}
-              title={receiveOnlyTooltip}
-            >
-              {discovering === 'nearby'
-                ? t('meshcore.discover.running', 'Discovering…')
-                : t('meshcore.discover.nearby', 'Discover Nearby Nodes')}
-            </button>
-            <button
-              onClick={() => void handleDiscover('repeaters')}
-              disabled={!connected || loading || discovering !== null || discoveringRegions || receiveOnly}
-              title={receiveOnlyTooltip}
-            >
-              {discovering === 'repeaters'
-                ? t('meshcore.discover.running', 'Discovering…')
-                : t('meshcore.discover.repeaters', 'Discover Repeaters')}
-            </button>
-            <button
-              onClick={() => void handleDiscover('sensors')}
-              disabled={!connected || loading || discovering !== null || discoveringRegions || receiveOnly}
-              title={receiveOnlyTooltip}
-            >
-              {discovering === 'sensors'
-                ? t('meshcore.discover.running', 'Discovering…')
-                : t('meshcore.discover.sensors', 'Discover Sensors')}
-            </button>
-          </div>
-
-          {/* Who answered the last sweep (#4516). A discovery response carries
-              only key + type + signal, so a name is present only for a node
-              that has advertised or answered the ANON_REQ OWNER pass. */}
-          {discoveredNodes && discoveredNodes.length > 0 && (
-            <div style={{ marginTop: '0.75rem', overflowX: 'auto' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.9em' }}>
-                <thead>
-                  <tr style={{ borderBottom: '1px solid var(--color-surface-hover)', textAlign: 'left' }}>
-                    <th style={{ padding: '0.25rem 0.5rem' }}>
-                      {t('meshcore.discover.col_node', 'Node')}
-                    </th>
-                    <th style={{ padding: '0.25rem 0.5rem', fontFamily: 'var(--font-mono, monospace)' }}>
-                      {t('meshcore.discover.col_key', 'Key')}
-                    </th>
-                    <th style={{ padding: '0.25rem 0.5rem', textAlign: 'right' }}>
-                      {t('meshcore.contact_details.ping_zero_hop_snr_in', 'SNR here')}
-                    </th>
-                    <th style={{ padding: '0.25rem 0.5rem', textAlign: 'right' }}>
-                      {t('meshcore.contact_details.ping_zero_hop_snr_out', 'SNR at node')}
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {discoveredNodes.map((node) => (
-                    <tr key={node.publicKey} style={{ borderBottom: '1px solid var(--color-surface)' }}>
-                      <td style={{ padding: '0.25rem 0.5rem' }}>
-                        {node.name || (
-                          <span style={{ opacity: 0.6 }}>
-                            {t('meshcore.discover.unnamed', 'Unknown')}
-                          </span>
-                        )}
-                        {node.isNew && (
-                          <span
-                            style={{
-                              marginLeft: '0.4rem', padding: '0 0.3rem', borderRadius: 4,
-                              fontSize: '0.75em', fontWeight: 600,
-                              color: 'var(--color-bg)', background: 'var(--color-success)',
-                            }}
-                          >
-                            {t('meshcore.discover.new_badge', 'NEW')}
-                          </span>
-                        )}
-                      </td>
-                      <td style={{ padding: '0.25rem 0.5rem', fontFamily: 'var(--font-mono, monospace)' }}>
-                        {node.publicKey.substring(0, 12)}…
-                      </td>
-                      <td style={{ padding: '0.25rem 0.5rem', textAlign: 'right' }}>
-                        {node.snr !== null ? `${node.snr.toFixed(2)} dB` : '—'}
-                      </td>
-                      <td style={{ padding: '0.25rem 0.5rem', textAlign: 'right' }}>
-                        {node.snrToNode !== null ? `${node.snrToNode.toFixed(2)} dB` : '—'}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-
-          <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.75rem' }}>
+          <h3>{t('meshcore.discover.responder_title', 'Answer discovery requests')}</h3>
+          <label
+            style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}
+            title={!canWriteConfig
+              ? t('meshcore.discover.respond_needs_config_write', 'Changing this needs the Device Configuration write permission on this source.')
+              : undefined}
+          >
             <input
               type="checkbox"
               checked={discoverable}
-              disabled={!connected || loading}
+              disabled={!canWriteConfig || !connected || loading}
               onChange={() => void handleToggleDiscoverable()}
             />
             <span>{t('meshcore.discover.respond_label', 'Respond to discovery requests (let other nodes discover this one)')}</span>
@@ -512,127 +352,30 @@ export const MeshCoreSettingsView: React.FC<MeshCoreSettingsViewProps> = ({
               'MeshCore companion firmware does not answer discovery on its own, so other nodes can only ' +
               'find this one when this is enabled. Replies are zero-hop (direct range) and rate-limited.')}
           </p>
+          {!canWriteConfig && (
+            <p className="hint" role="status">
+              {t('meshcore.discover.respond_needs_config_write', 'Changing this needs the Device Configuration write permission on this source.')}
+            </p>
+          )}
           <MeshCoreReceiveOnlyNote receiveOnly={receiveOnly} />
         </div>
       )}
 
       {isCompanion && (
-        <div className="form-section">
-          <h3>{t('meshcore.path_hash.title', 'Default path hash size')}</h3>
-          <p className="hint">
-            {t('meshcore.path_hash.hint',
-              'Number of bytes used for path/loop-detection hashes on outgoing messages. ' +
-              '1 byte (256 values) is enough for small meshes; 2 bytes (65,536 values) is recommended for ' +
-              'mid-to-large deployments to avoid path-table collisions that drop packets on valid routes. ' +
-              'Applied to the device immediately and re-asserted on reconnect.')}
-          </p>
-          <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-            <select
-              value={pathHashInput}
-              onChange={(e) => setPathHashInput(Number(e.target.value) as 1 | 2 | 3)}
-              disabled={!connected || loading || savingPathHash}
-              aria-label={t('meshcore.path_hash.title', 'Default path hash size')}
-            >
-              <option value={1}>{t('meshcore.path_hash.one', '1 byte')}</option>
-              <option value={2}>{t('meshcore.path_hash.two', '2 bytes (recommended)')}</option>
-              <option value={3}>{t('meshcore.path_hash.three', '3 bytes')}</option>
-            </select>
-            <button
-              onClick={() => void handleSavePathHashSize(pathHashInput)}
-              disabled={!connected || loading || savingPathHash || pathHashInput === pathHashSize}
-              aria-label={t('meshcore.path_hash.save', 'Save path hash size')}
-            >
-              {savingPathHash ? t('common.saving', 'Saving…') : t('common.save', 'Save')}
-            </button>
-          </div>
-        </div>
-      )}
-
-      {isCompanion && (
-        <div className="form-section">
-          <h3>{t('meshcore.scope.title', 'Default region / scope')}</h3>
-          <p className="hint">
-            {t('meshcore.scope.hint',
-              'Region applied to all outgoing flood traffic (direct messages, adverts, requests) that has no channel-specific scope. ' +
-              'Use a large region that includes you and the contacts you message — both your messages and the returning ACKs are scoped to it. ' +
-              'Leave blank to send unscoped (legacy). Letters, digits and hyphens only.')}
-          </p>
-          <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-            <input
-              type="text"
-              value={scopeInput}
-              onChange={(e) => setScopeInput(e.target.value)}
-              placeholder={t('meshcore.scope.placeholder', 'e.g. muenchen — blank for unscoped')}
-              disabled={!connected || loading || savingScope}
-              maxLength={63}
-              spellCheck={false}
-              autoComplete="off"
-              style={{ flex: 1 }}
-            />
-            <button
-              onClick={() => void handleSaveScope()}
-              disabled={!connected || loading || savingScope || scopeInput.trim().replace(/^#/, '') === defaultScope}
-            >
-              {savingScope ? t('common.saving', 'Saving…') : t('common.save', 'Save')}
-            </button>
-          </div>
-
-          <div style={{ marginTop: '0.75rem' }}>
-            <button
-              onClick={() => void handleDiscoverRegions()}
-              disabled={!connected || loading || discoveringRegions || discovering !== null || receiveOnly}
-              title={receiveOnlyTooltip}
-            >
-              {discoveringRegions
-                ? t('meshcore.scope.discovering', 'Discovering regions…')
-                : t('meshcore.scope.discover', 'Discover regions from repeaters')}
-            </button>
-            <p className="hint" style={{ fontSize: '0.8rem', marginTop: '0.25rem' }}>
-              {t('meshcore.scope.discover_hint',
-                'Sweeps for nearby (0-hop / direct-range) repeaters and asks each one which regions it serves.')}
-            </p>
-            {discoveredRegions && discoveredRegions.length > 0 && (
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem', marginTop: '0.5rem' }}>
-                {discoveredRegions.map((region) => {
-                  const isSaved = savedRegionNames.has(region.toLowerCase());
-                  return (
-                    <span
-                      key={region}
-                      style={{
-                        display: 'inline-flex', alignItems: 'center', gap: '0.25rem',
-                        padding: '0.1rem 0.3rem', borderRadius: 999, border: '1px solid var(--color-accent)',
-                        background: scopeInput.trim().replace(/^#/, '') === region ? 'var(--color-accent)' : 'transparent',
-                      }}
-                    >
-                      <button
-                        type="button"
-                        onClick={() => setScopeInput(region)}
-                        title={t('meshcore.scope.use_region', 'Use "{{region}}" as the default scope', { region })}
-                        style={{ padding: '0.1rem 0.3rem', border: 'none', background: 'transparent', cursor: 'pointer' }}
-                      >
-                        {region}
-                      </button>
-                      <button
-                        type="button"
-                        disabled={isSaved || savingRegion}
-                        onClick={() => void handleSaveRegion(region)}
-                        title={isSaved
-                          ? t('meshcore.regions.already_saved', 'Already in saved regions')
-                          : t('meshcore.regions.save_this', 'Save "{{region}}" to your regions list', { region })}
-                        style={{
-                          padding: '0.05rem 0.35rem', border: 'none', background: 'transparent',
-                          cursor: isSaved ? 'default' : 'pointer', opacity: isSaved ? 0.5 : 1,
-                        }}
-                      >
-                        <UiIcon name={isSaved ? 'check' : 'plus'} size={14} />
-                      </button>
-                    </span>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-        </div>
+        <MovedSettingNote
+          testId="meshcore-device-settings-moved"
+          text={canOpenDeviceConfiguration
+            ? t(
+              'moved.meshcore_device_settings',
+              'Default path hash size and default region / scope are written to the device, so they moved to Device Configuration.',
+            )
+            : `${t(
+              'moved.meshcore_device_settings',
+              'Default path hash size and default region / scope are written to the device, so they moved to Device Configuration.',
+            )} ${needsConfigRead}`}
+          linkLabel={deviceConfigurationLink}
+          onOpen={openDeviceConfiguration}
+        />
       )}
 
       <div className="form-section">

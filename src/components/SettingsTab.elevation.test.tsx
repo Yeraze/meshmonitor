@@ -42,6 +42,9 @@ vi.mock('react-i18next', async () => {
 // ---------------------------------------------------------------------------
 vi.mock('../hooks/useSaveBar', () => ({
   useSaveBar: (options: unknown) => {
+    // SettingsTab's own section only: child sections (the Reticulum retention
+    // cap on the global page) register theirs through the same hook.
+    if ((options as { id?: string }).id !== 'settings') return;
     saveBarCapture.current = options as {
       hasChanges: boolean;
       onSave: () => Promise<void>;

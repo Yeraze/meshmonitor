@@ -1,10 +1,20 @@
 /**
- * Dedicated Configuration page for an mqtt_bridge source.
+ * Bridge setup for an mqtt_bridge source: a section of that source's Settings
+ * page (`SettingsTab mode="source"`, see App.tsx).
  *
- * Surfaced as the "Configuration" tab inside the bridge source view (see
- * App.tsx / Sidebar.tsx). Loads the source config via GET /api/sources/:id,
- * presents the full set of bridge options in roomy collapsible sections, and
- * saves the reassembled config via PUT /api/sources/:id.
+ * It was a page of its own under a satellite "Configuration" nav entry until
+ * the #5683 follow-up. Nothing here is sent to a device: every field is
+ * MeshMonitor's own connection and filter setup, stored in the source row. So
+ * it belongs with the source's Settings, and the satellite keeps one meaning.
+ *
+ * Loads the source config via GET /api/sources/:id, presents the full set of
+ * bridge options in collapsible sections, and saves the reassembled config via
+ * PUT /api/sources/:id. Both routes check `sources`, not `settings`: the
+ * section gates itself on `sources:write`, whatever grant opened the page.
+ *
+ * Saving: the section's own Save button, or the page's shared save bar, where
+ * it registers as one section. Either way the PUT is sent only for a form the
+ * user changed and then chose to save.
  *
  * Centralizes options that previously only lived in the cramped create/edit
  * modal, and adds the per-bridge **publish (uplink) topic filter** (#3294).
@@ -24,6 +34,9 @@ import { bboxToFormStrings } from '../../pages/DashboardPage.bboxSeed';
 import { useSourceStatuses } from '../../hooks/useDashboardData';
 import { formatRelativeTime } from '../../utils/datetime';
 import { UiIcon } from '../icons';
+import { useSaveBar } from '../../hooks/useSaveBar';
+import { MQTT_BRIDGE_SETTINGS_HASH } from '../../utils/tabHashRedirect';
+import styles from './MqttBridgeConfigurationView.module.css';
 import {
   buildBridgeConfig,
   formFromBridgeConfig,
@@ -67,6 +80,9 @@ interface MqttBridgeConfigurationViewProps {
   sourceId: string;
 }
 
+/** The section's id: the Settings nav chip and `#settings-mqtt-bridge` deep links. */
+export const MQTT_BRIDGE_SETTINGS_SECTION_ID = MQTT_BRIDGE_SETTINGS_HASH;
+
 const GEO_KEYS = ['minLat', 'maxLat', 'minLng', 'maxLng'] as const;
 
 /** Parse the four geo string fields into a BBoxValue, or null if incomplete. */
@@ -103,6 +119,9 @@ export const MqttBridgeConfigurationView: React.FC<MqttBridgeConfigurationViewPr
   const uplinkAutomationDrops = geoStatus?.uplinkAutomationDrops ?? 0;
 
   const [form, setForm] = useState<BridgeConfigForm>(emptyBridgeForm());
+  // The form as last loaded or saved: what "unsaved changes" is measured
+  // against, and what the save bar's Dismiss puts back.
+  const [savedForm, setSavedForm] = useState<BridgeConfigForm>(emptyBridgeForm());
   const [brokers, setBrokers] = useState<SourceSummary[]>([]);
   const [knownChannels, setKnownChannels] = useState<string[]>([]);
   const [customChannel, setCustomChannel] = useState('');
@@ -144,6 +163,7 @@ export const MqttBridgeConfigurationView: React.FC<MqttBridgeConfigurationViewPr
         if (cancelled) return;
         baseConfigRef.current = (src?.config as Record<string, any>) ?? {};
         setForm(formFromBridgeConfig(src?.config));
+        setSavedForm(formFromBridgeConfig(src?.config));
         if (listRes.ok) {
           const list: SourceSummary[] = await listRes.json();
           if (!cancelled) setBrokers(list.filter((s) => s.type === 'mqtt_broker'));
@@ -205,6 +225,7 @@ export const MqttBridgeConfigurationView: React.FC<MqttBridgeConfigurationViewPr
       // and reflects any server-side normalization).
       baseConfigRef.current = (updated?.config as Record<string, any>) ?? {};
       setForm(formFromBridgeConfig(updated?.config));
+      setSavedForm(formFromBridgeConfig(updated?.config));
       setSaved(true);
     } catch (err) {
       logger.error('Failed to save bridge config:', err);
@@ -213,6 +234,24 @@ export const MqttBridgeConfigurationView: React.FC<MqttBridgeConfigurationViewPr
       setSaving(false);
     }
   }, [form, sourceId, csrfFetch, t]);
+
+  // One section of the page's shared save bar. `hasChanges` is false until the
+  // user edits a field, so opening the page or saving another section never
+  // sends this form.
+  const hasChanges = canWrite && !loading && !loadError
+    && JSON.stringify(form) !== JSON.stringify(savedForm);
+  const handleDismiss = useCallback(() => {
+    setForm(savedForm);
+    setSaveError('');
+  }, [savedForm]);
+  useSaveBar({
+    id: 'mqtt-bridge-settings',
+    sectionName: t('mqtt_bridge_config.title', 'MQTT Bridge Configuration'),
+    hasChanges,
+    isSaving: saving,
+    onSave: handleSave,
+    onDismiss: handleDismiss,
+  });
 
   const selectedChannels = form.uplinkChannels ?? [];
   const toggleChannel = (name: string, checked: boolean) => {
@@ -234,9 +273,23 @@ export const MqttBridgeConfigurationView: React.FC<MqttBridgeConfigurationViewPr
     a.localeCompare(b),
   );
 
+  const heading = (
+    <>
+      <h3>{t('mqtt_bridge_config.title', 'MQTT Bridge Configuration')}</h3>
+      <p className="setting-description">
+        {t(
+          'mqtt_bridge_config.section_description',
+          "MeshMonitor's own connection and filter setup for this bridge. It is stored with the source; nothing here is sent to a device.",
+        )}
+      </p>
+    </>
+  );
+  const sectionClass = `settings-section mqtt-bridge-config ${styles.section}`;
+
   if (loading) {
     return (
-      <div className="mqtt-bridge-config" style={{ padding: 16 }}>
+      <div id={MQTT_BRIDGE_SETTINGS_SECTION_ID} className={sectionClass}>
+        {heading}
         {t('common.loading', 'Loading…')}
       </div>
     );
@@ -244,8 +297,9 @@ export const MqttBridgeConfigurationView: React.FC<MqttBridgeConfigurationViewPr
 
   if (loadError) {
     return (
-      <div className="mqtt-bridge-config" style={{ padding: 16, color: 'var(--color-error)' }}>
-        {loadError}
+      <div id={MQTT_BRIDGE_SETTINGS_SECTION_ID} className={sectionClass}>
+        {heading}
+        <p className={styles.error} role="alert">{loadError}</p>
       </div>
     );
   }
@@ -253,10 +307,17 @@ export const MqttBridgeConfigurationView: React.FC<MqttBridgeConfigurationViewPr
   const attached = !!form.brokerId;
 
   return (
-    <div className="mqtt-bridge-config" style={{ maxWidth: 720, margin: '0 auto', padding: 16 }}>
-      <h2 style={{ marginTop: 0 }}>
-        {t('mqtt_bridge_config.title', 'MQTT Bridge Configuration')}
-      </h2>
+    <div id={MQTT_BRIDGE_SETTINGS_SECTION_ID} className={sectionClass}>
+      {heading}
+      {!canWrite && (
+        <p className={styles.readOnly} role="status">
+          {t(
+            'mqtt_bridge_config.read_only',
+            'You can view this bridge setup but not change it: that needs the Sources write permission.',
+          )}
+        </p>
+      )}
+      <div className={styles.form}>
 
       {/* --- Connection --- */}
       <CollapsibleSection title={t('mqtt_bridge_config.section_connection', 'Connection')}>
@@ -750,6 +811,7 @@ export const MqttBridgeConfigurationView: React.FC<MqttBridgeConfigurationViewPr
         </button>
         {saved && <span style={{ color: 'var(--color-success)' }}><UiIcon name="check" size={14} /> {t('common.saved', 'Saved')}</span>}
         {saveError && <span style={{ color: 'var(--color-error)' }}>{saveError}</span>}
+      </div>
       </div>
     </div>
   );

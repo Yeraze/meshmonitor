@@ -7,15 +7,15 @@
  * left out of the patch), but a value that is present must be in range before
  * Apply can send it to the RNode.
  *
- * ReticulumSettingsView: the destination cap is required, so blank blocks the
- * SaveBar.
+ * ReticulumRetentionSection (the destination cap, on Global Settings since the
+ * #5683 follow-up): the cap is required, so blank blocks the SaveBar.
  */
 import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { ReticulumConfigurationView } from './ReticulumConfigurationView';
-import { ReticulumSettingsView } from './ReticulumSettingsView';
+import { ReticulumRetentionSection } from '../settings/ReticulumRetentionSection';
 
 vi.mock('react-i18next', async () => {
   const { createReactI18nextMock } = await import('../../test/mockI18n');
@@ -123,7 +123,7 @@ describe('ReticulumConfigurationView number fields (#5649)', () => {
   });
 });
 
-describe('ReticulumSettingsView destination cap (#5649)', () => {
+describe('ReticulumRetentionSection destination cap (#5649)', () => {
   beforeEach(() => {
     saveBarCapture.current = null;
     apiGetMock.mockReset().mockResolvedValue({ reticulum_destinations_max: '2000' });
@@ -132,7 +132,7 @@ describe('ReticulumSettingsView destination cap (#5649)', () => {
 
   it('blocks the SaveBar while the cap is blank and saves the retyped value', async () => {
     const user = userEvent.setup();
-    render(<ReticulumSettingsView sourceId="src-rns" />);
+    render(<ReticulumRetentionSection />);
     const cap = document.getElementById('reticulumDestinationsMax') as HTMLInputElement;
     await waitFor(() => expect(cap.disabled).toBe(false));
     expect(cap.value).toBe('2000');
@@ -154,7 +154,7 @@ describe('ReticulumSettingsView destination cap (#5649)', () => {
 
   it('blocks a cap of 0 instead of clamping it to 1', async () => {
     const user = userEvent.setup();
-    render(<ReticulumSettingsView sourceId="src-rns" />);
+    render(<ReticulumRetentionSection />);
     const cap = document.getElementById('reticulumDestinationsMax') as HTMLInputElement;
     await waitFor(() => expect(cap.disabled).toBe(false));
 

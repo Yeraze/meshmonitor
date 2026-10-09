@@ -19,7 +19,7 @@ The Channel Database provides **read-only** decryption capability. You can view 
 
 ## Accessing the Channel Database
 
-The Channel Database is located in the **Configuration** tab under **Channel Database**.
+The Channel Database is under **Global Settings** → **Channel Database**. Only administrators can open it.
 
 ### Permissions Required
 
@@ -28,7 +28,7 @@ The Channel Database is located in the **Configuration** tab under **Channel Dat
 
 ## Adding a Channel
 
-1. Navigate to **Configuration** > **Channel Database**
+1. Navigate to **Global Settings** → **Channel Database**
 2. Click **Add Channel**
 3. Enter the channel details:
    - **Name** - A descriptive name for the channel
@@ -44,7 +44,7 @@ Enter the PSK in Base64 format, the same format used by Meshtastic. You can find
 
 Channels in the database are tried in **sort order** during decryption, with one important refinement: when a packet carries a channel hash, channels whose name+PSK hash **matches that packet** are tried first, then the rest in sort order. The first channel that successfully decrypts a packet wins. You can control the order using drag-and-drop:
 
-1. Navigate to **Configuration** > **Channel Database**
+1. Navigate to **Global Settings** → **Channel Database**
 2. Drag channels using the handle on the left side of each channel card
 3. Drop to reorder - channels higher in the list are tried first
 4. The new order is saved automatically
@@ -64,7 +64,7 @@ The Channel Database supports bulk import and export via JSON files. This is use
 
 ### Exporting Channels
 
-1. Navigate to **Configuration** > **Channel Database**
+1. Navigate to **Global Settings** → **Channel Database**
 2. Click the **Export** button
 3. A file named `meshmonitor-channels-<timestamp>.json` is downloaded to your browser's default download location
 
@@ -76,7 +76,7 @@ Exported JSON files contain your raw PSKs in Base64 form. Treat them like passwo
 
 ### Importing Channels
 
-1. Navigate to **Configuration** > **Channel Database**
+1. Navigate to **Global Settings** → **Channel Database**
 2. Click the **Import** button
 3. Select a `.json` file with one or more channel entries
 4. Review the preview and click **Import**

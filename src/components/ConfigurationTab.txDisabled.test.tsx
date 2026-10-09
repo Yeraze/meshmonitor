@@ -78,6 +78,14 @@ vi.mock('./configuration/SerialConfigSection', () => ({ default: () => null }));
 vi.mock('./configuration/AmbientLightingConfigSection', () => ({ default: () => null }));
 vi.mock('./configuration/SecurityConfigSection', () => ({ default: () => null }));
 vi.mock('./configuration/PkiDmDecryptionSection', () => ({ default: () => null }));
+// Firmware update lives on this page since the #5683 follow-up; it needs an
+// admin and OTA enabled, which this suite does not grant.
+// ConfigurationTab.movedSections.test.tsx covers its placement.
+vi.mock('./configuration/FirmwareUpdateSection', () => ({ default: () => null }));
+vi.mock('../contexts/AuthContext', () => ({
+  useAuth: () => ({ authStatus: { user: { isAdmin: false } }, hasPermission: () => true }),
+}));
+vi.mock('../hooks/useHealth', () => ({ useHealth: () => ({ data: undefined }) }));
 vi.mock('./configuration/ChannelsConfigSection', () => ({ default: () => null }));
 vi.mock('./configuration/GpioPinSummary', () => ({ default: () => null }));
 vi.mock('./configuration/BackupManagementSection', () => ({ default: () => null }));

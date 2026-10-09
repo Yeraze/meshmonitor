@@ -84,8 +84,9 @@ const NAVS: Record<string, { render: () => RenderResult; deviceConfigId: string 
     deviceConfigId: 'configuration',
     settingsId: 'settings',
   },
-  // An MQTT bridge has no device: its `mqtt-config` entry is a different page
-  // (MeshMonitor's own connection and filter settings) and keeps its own label.
+  // An MQTT bridge has no device and no satellite entry. Its bridge setup
+  // (MeshMonitor's own connection and filter settings) is a section of its
+  // Settings page (#5683 follow-up).
   mqtt_bridge: {
     render: () => render(<Sidebar {...sidebarProps} mqttReadOnly />),
     deviceConfigId: null,
@@ -182,11 +183,18 @@ describe('per-source nav convention (#5683)', () => {
     });
   });
 
-  it('leaves the MQTT bridge page under its own label', () => {
-    // It holds MeshMonitor's connection and filter settings for the bridge; no
-    // device is configured there, so "Device Configuration" would be false.
+  it('gives an MQTT bridge no satellite entry: its setup is under Settings', () => {
+    // The bridge's old "Configuration" page held MeshMonitor's connection and
+    // filter settings; no device is configured there. It is a section of the
+    // source's Settings page now, so the satellite means one thing everywhere.
     const { container } = NAVS.mqtt_bridge.render();
-    expect(seen(container, 'mqtt-config')?.label).toBe('Configuration');
+    expect(container.querySelector('[data-source-nav-item="mqtt-config"]')).toBeNull();
+    expect(container.querySelector('[data-source-nav-item="configuration"]')).toBeNull();
+    const satellite = reference(deviceConfigurationNav(t)).icon;
+    const icons = [...container.querySelectorAll('[data-source-nav-item] [data-source-nav-icon] svg')]
+      .map((svg) => svg.outerHTML);
+    expect(icons).not.toContain(satellite);
+    expect(seen(container, 'settings')?.label).toBe('Settings');
   });
 
   it.each([
@@ -220,8 +228,7 @@ describe('no nav spells the shared entries itself (#5683)', () => {
       .replace(/^\s*\/\/.*$/gm, '');
 
   it.each(NAV_SOURCES)('%s takes both entries from sourceNavEntries', (file) => {
-    // The MQTT bridge page is not one of the shared entries; see NAVS above.
-    const source = code(file).split('\n').filter((line) => !line.includes("'mqtt-config'")).join('\n');
+    const source = code(file);
     expect(source).toMatch(/from '\.\.?\/(nav\/)?sourceNavEntries'/);
     // A label key or English text for either entry, written in the nav itself.
     expect(source).not.toMatch(/['"](nav|meshcore\.nav|reticulum\.nav)\.(device|configuration|device_configuration|settings)['"]/);
@@ -231,14 +238,15 @@ describe('no nav spells the shared entries itself (#5683)', () => {
     expect(source).not.toMatch(/navItem\([^)]*'settings'\s*\)/);
   });
 
-  it('uses the configuration icon outside the shared entry only for the MQTT bridge page', () => {
+  it('uses the configuration icon for the shared entry alone', () => {
+    // The MQTT bridge entry was the one exception until its page became a
+    // section of Settings (#5683 follow-up). No nav names it any more.
     for (const file of NAV_SOURCES) {
       const literal = code(file).split('\n').filter((line) => /'configuration'\s*[,)}]/.test(line) && /icon|navItem\(/.test(line));
-      const allowed = literal.filter((line) => line.includes("'mqtt-config'"));
       // sharedNavItem('configuration', ...) names the tab id, not the icon.
-      const offenders = literal.filter((line) => !line.includes("'mqtt-config'") && !line.includes('sharedNavItem('));
+      const offenders = literal.filter((line) => !line.includes('sharedNavItem('));
       expect(offenders, file).toEqual([]);
-      expect(allowed.length).toBe(file.endsWith('Sidebar.tsx') ? 1 : 0);
+      expect(code(file)).not.toContain("'mqtt-config'");
     }
   });
 });
