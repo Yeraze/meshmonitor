@@ -434,7 +434,8 @@ router.post('/load-config', extendRequestTimeout(LOAD_CONFIG_TIMEOUT_MS), requir
                 password: finalConfig.moduleConfig.mqtt.password || '',
                 encryptionEnabled: finalConfig.moduleConfig.mqtt.encryptionEnabled !== false,
                 jsonEnabled: finalConfig.moduleConfig.mqtt.jsonEnabled || false,
-                root: finalConfig.moduleConfig.mqtt.root || ''
+                root: finalConfig.moduleConfig.mqtt.root || '',
+                tlsEnabled: finalConfig.moduleConfig.mqtt.tlsEnabled === true
               };
             } else {
               // MQTT config might not exist if it's not configured, return empty config
@@ -445,7 +446,8 @@ router.post('/load-config', extendRequestTimeout(LOAD_CONFIG_TIMEOUT_MS), requir
                 password: '',
                 encryptionEnabled: true,
                 jsonEnabled: false,
-                root: ''
+                root: '',
+                tlsEnabled: false
               };
             }
             break;
@@ -607,7 +609,8 @@ router.post('/load-config', extendRequestTimeout(LOAD_CONFIG_TIMEOUT_MS), requir
               password: remoteConfig.password || '',
               encryptionEnabled: remoteConfig.encryptionEnabled !== false,
               jsonEnabled: remoteConfig.jsonEnabled || false,
-              root: remoteConfig.root || ''
+              root: remoteConfig.root || '',
+              tlsEnabled: remoteConfig.tlsEnabled === true
             };
             break;
           case 'security':

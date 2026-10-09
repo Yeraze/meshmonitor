@@ -303,3 +303,72 @@ describe('MQTT bridge setup: gated on sources:write', () => {
     expect(puts()).toEqual([]);
   });
 });
+
+describe('MQTT bridge setup: broker presets (#5689)', () => {
+  const presetSelect = () => screen.getByTestId('broker-preset-select') as HTMLSelectElement;
+  const passwordField = () => screen.getByPlaceholderText('••••••••') as HTMLInputElement;
+
+  it('opens on Custom… for a URL that matches no preset, and on the preset for one that does', async () => {
+    await renderSection();
+    expect(presetSelect().value).toBe('custom');
+    fireEvent.change(urlField(), { target: { value: 'mqtts://mqtt.meshtastic.org:8883' } });
+    expect(presetSelect().value).toBe('meshtastic_public_tls');
+  });
+
+  it('fills the URL with scheme and port, sends nothing, and keeps the typed username', async () => {
+    await renderSection();
+    fireEvent.change(presetSelect(), { target: { value: 'meshtastic_public_tls' } });
+    expect(screen.getByDisplayValue('mqtts://mqtt.meshtastic.org:8883')).toBeInTheDocument();
+    expect(screen.getByDisplayValue('bridge-user')).toBeInTheDocument();
+    // A password is stored (admin view), so the field stays blank and says why.
+    expect(passwordField().value).toBe('');
+    expect(screen.getByTestId('broker-preset-kept').textContent).toMatch(/password is saved/);
+    // Fields it does not own stay as loaded.
+    expect(screen.getByDisplayValue('msh/US/#')).toBeInTheDocument();
+    expect(puts()).toHaveLength(0);
+    await waitFor(() => expect(state.saveBar?.hasChanges).toBe(true));
+  });
+
+  it('fills an empty login when no password is stored, and Save sends it', async () => {
+    installFetch({ config: { ...STORED_CONFIG, upstream: { url: 'mqtt://upstream.example:1883' } } });
+    await renderSection();
+    fireEvent.change(presetSelect(), { target: { value: 'meshtastic_public' } });
+    expect(passwordField().value).toBe('large4cats');
+    expect(screen.queryByTestId('broker-preset-kept')).toBeNull();
+    fireEvent.click(saveButton());
+    await waitFor(() => expect(puts()).toHaveLength(1));
+    const upstream = (puts()[0].body as { config: { upstream: unknown } }).config.upstream;
+    expect(upstream).toEqual({ url: 'mqtt://mqtt.meshtastic.org:1883', username: 'meshdev', password: 'large4cats' });
+  });
+
+  it('a non-admin editor: the preset neither blanks nor replaces the masked secret', async () => {
+    installFetch({ config: MASKED_CONFIG, maskedConfigFields: MASKED_FIELDS });
+    await renderSection();
+    fireEvent.change(presetSelect(), { target: { value: 'meshtastic_public' } });
+    expect(passwordField().value).toBe('');
+    expect(screen.getByTestId('broker-preset-kept')).toBeInTheDocument();
+    expect(puts()).toHaveLength(0);
+
+    fireEvent.click(saveButton());
+    await waitFor(() => expect(puts()).toHaveLength(1));
+    const upstream = (puts()[0].body as { config: { upstream: Record<string, unknown> } }).config.upstream;
+    // Missing, not '' or null or the preset's password: the server's merge
+    // decides about the stored secret, exactly as for a hand-typed URL.
+    expect('password' in upstream).toBe(false);
+    expect('username' in upstream).toBe(false);
+    expect(upstream).toEqual({ url: 'mqtt://mqtt.meshtastic.org:1883' });
+  });
+
+  it('Custom… leaves the URL as typed', async () => {
+    await renderSection();
+    fireEvent.change(presetSelect(), { target: { value: 'custom' } });
+    expect(urlField().value).toBe('mqtt://upstream.example:1883');
+    expect(puts()).toHaveLength(0);
+  });
+
+  it('a reader cannot pick a preset', async () => {
+    state.canWrite = false;
+    await renderSection();
+    expect(presetSelect().disabled).toBe(true);
+  });
+});

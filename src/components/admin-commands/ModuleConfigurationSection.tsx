@@ -15,6 +15,8 @@ import {
   type BroadcastTarget,
 } from './useAdminCommandsState';
 import type { Channel } from '../../types/device';
+import BrokerPresetSelector from '../MQTT/BrokerPresetSelector';
+import { applyPresetToDevice, matchDevicePreset } from '../MQTT/brokerPresets';
 
 interface ModuleConfigurationSectionProps {
   // CollapsibleSection component (passed from parent)
@@ -36,6 +38,7 @@ interface ModuleConfigurationSectionProps {
   mqttEncryptionEnabled: boolean;
   mqttJsonEnabled: boolean;
   mqttRoot: string;
+  mqttTlsEnabled: boolean;
   onMQTTConfigChange: (field: string, value: any) => void;
   onSaveMQTTConfig: () => Promise<void>;
 
@@ -135,6 +138,7 @@ export const ModuleConfigurationSection: React.FC<ModuleConfigurationSectionProp
   mqttEncryptionEnabled,
   mqttJsonEnabled,
   mqttRoot,
+  mqttTlsEnabled,
   onMQTTConfigChange,
   onSaveMQTTConfig,
   neighborInfoEnabled,
@@ -245,6 +249,27 @@ export const ModuleConfigurationSection: React.FC<ModuleConfigurationSectionProp
         </div>
         {mqttEnabled && (
           <>
+            <BrokerPresetSelector
+              id="adminMqttBrokerPreset"
+              layout="settings"
+              disabled={isExecuting}
+              matchedPresetId={matchDevicePreset({ address: mqttAddress, tlsEnabled: mqttTlsEnabled })?.id ?? null}
+              onApplyPreset={(preset) => {
+                // #5689: edits the form only; the remote node hears nothing
+                // until the MQTT Save button below.
+                const { fields, kept } = applyPresetToDevice(preset, {
+                  address: mqttAddress,
+                  username: mqttUsername,
+                  password: mqttPassword,
+                  tlsEnabled: mqttTlsEnabled,
+                });
+                onMQTTConfigChange('address', fields.address);
+                onMQTTConfigChange('username', fields.username);
+                onMQTTConfigChange('password', fields.password);
+                onMQTTConfigChange('tlsEnabled', fields.tlsEnabled);
+                return kept;
+              }}
+            />
             <div className="setting-item">
               <label>
                 {t('admin_commands.server_address')}
@@ -313,8 +338,23 @@ export const ModuleConfigurationSection: React.FC<ModuleConfigurationSectionProp
                   style={{ width: 'auto', margin: 0, flexShrink: 0 }}
                 />
                 <div style={{ flex: 1 }}>
-                  <div>Encryption Enabled</div>
-                  <span className="setting-description">Use TLS encryption for MQTT connection</span>
+                  <div>{t('mqtt_config.encryption_enabled', 'Encryption Enabled')}</div>
+                  <span className="setting-description">{t('mqtt_config.encryption_description', 'Send encrypted packets to MQTT')}</span>
+                </div>
+              </label>
+            </div>
+            <div className="setting-item">
+              <label style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '0.5rem', width: '100%' }}>
+                <input
+                  type="checkbox"
+                  checked={mqttTlsEnabled}
+                  onChange={(e) => onMQTTConfigChange('tlsEnabled', e.target.checked)}
+                  disabled={isExecuting}
+                  style={{ width: 'auto', margin: 0, flexShrink: 0 }}
+                />
+                <div style={{ flex: 1 }}>
+                  <div>{t('mqtt_config.tls_enabled', 'TLS Enabled')}</div>
+                  <span className="setting-description">{t('mqtt_config.tls_description', 'Enable TLS/SSL encryption for MQTT connection')}</span>
                 </div>
               </label>
             </div>

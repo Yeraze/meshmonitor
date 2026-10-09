@@ -158,11 +158,23 @@ For each upstream broker (e.g. `mqtt.meshtastic.org`, regional community brokers
 | Field | Notes |
 |---|---|
 | Parent broker (optional) | Pick the `mqtt_broker` source from step 1 to make this an **attached** bridge, or leave as **"None — standalone client proxy"** for a pure upstream client. See [Two source types](#two-source-types) for which to pick. |
-| Upstream URL | `mqtt://mqtt.meshtastic.org` (or `mqtts://...:8883` for TLS) |
+| Upstream URL | `mqtt://mqtt.meshtastic.org:1883` (or `mqtts://mqtt.meshtastic.org:8883` for TLS) |
 | Username / Password | Whatever the upstream needs (e.g. `meshdev / large4cats` for `mqtt.meshtastic.org`) |
 | Upstream topics | One per line, MQTT wildcards allowed (e.g. `msh/US/FL/#`) |
 | Block topics | Optional — drop publishes matching these patterns (e.g. `msh/CA/QC/#`) |
 | Geographic bounding box | Optional — drop position packets outside the box |
+
+Once the bridge exists, its **Settings** page has a **Broker preset** chooser above the Upstream URL:
+
+| Preset | Upstream URL | Username / Password |
+|---|---|---|
+| Meshtastic Official | `mqtt://mqtt.meshtastic.org:1883` | `meshdev` / `large4cats` |
+| Meshtastic Official (TLS) | `mqtts://mqtt.meshtastic.org:8883` | `meshdev` / `large4cats` |
+| Custom… | leaves the fields as typed | |
+
+Choosing one only edits the form; nothing is saved until you press Save. It fills the username and password only when they are empty. If a password is already stored for the bridge, the password field stays blank (blank means "keep the stored one") and a note gives you the public password to type in. Topics, mode and filters are not touched. The same chooser is on the device MQTT settings; see [Broker Preset](/features/device#broker-preset).
+
+Sources for the official broker: the [MQTT module docs](https://meshtastic.org/docs/configuration/module/mqtt/#mqtt-module-config-client-availability) list `mqtt.meshtastic.org`, `meshdev` and `large4cats` as the defaults; the firmware uses port 1883, or 8883 when TLS is on. A new preset needs its operator's consent.
 
 A standalone bridge is the right starting point when you have **no embedded broker** (pure upstream monitoring) or when you plan to wire a Meshtastic source's `mqttLink` directly at the bridge for client-proxy traffic — both are also covered in [Use-case recipes](#use-case-recipes) above.
 
@@ -492,7 +504,7 @@ Most upstream traffic and most device-publish traffic is encrypted at the channe
 
 ### Bridge reports `lastError: "Bad username or password"`
 
-The credentials configured on the bridge don't match what the upstream accepts for an MQTT subscriber. For `mqtt.meshtastic.org`, the public subscriber credentials are `meshdev / large4cats` ([Meshtastic public MQTT docs](https://meshtastic.org/docs/configuration/module/mqtt/#default-public-server)). Other community brokers may use uplink-only credentials that don't work for raw MQTT subscribers; check with the operator.
+The credentials configured on the bridge don't match what the upstream accepts for an MQTT subscriber. For `mqtt.meshtastic.org`, the public subscriber credentials are `meshdev / large4cats` ([Meshtastic public MQTT docs](https://meshtastic.org/docs/configuration/module/mqtt/#connect-to-the-default-public-server)). Other community brokers may use uplink-only credentials that don't work for raw MQTT subscribers; check with the operator.
 
 ### Bridge shows "Login rejected", or "N gateways rejected"
 

@@ -12,6 +12,13 @@ import { isMqttProxyLinkMisconfigured, MQTT_TRAFFIC_DOCS_URL } from '../../utils
 import { NumberInput } from '../common/NumberInput';
 import { NumberInputScope } from '../common/NumberInputScope';
 import { useNumberInputScope } from '../common/numberInputScopeContext';
+import BrokerPresetSelector from '../MQTT/BrokerPresetSelector';
+import {
+  applyPresetToDevice,
+  matchDevicePreset,
+  type BrokerPreset,
+  type KeptCredentials,
+} from '../MQTT/brokerPresets';
 
 interface MQTTConfigSectionProps {
   mqttEnabled: boolean;
@@ -194,6 +201,29 @@ const MQTTConfigSection: React.FC<MQTTConfigSectionProps> = ({
       setMqttEncryptionEnabled,
       setProxyToClientEnabled,
     ],
+  );
+
+  // Broker presets (#5689): fill address, TLS and login only. The fields
+  // reach the radio only through the existing Save, unchanged.
+  const matchedPreset = useMemo(
+    () => matchDevicePreset({ address: mqttAddress, tlsEnabled }),
+    [mqttAddress, tlsEnabled],
+  );
+  const applyBrokerPreset = useCallback(
+    (preset: BrokerPreset): KeptCredentials => {
+      const { fields, kept } = applyPresetToDevice(preset, {
+        address: mqttAddress,
+        username: mqttUsername,
+        password: mqttPassword,
+        tlsEnabled,
+      });
+      setMqttAddress(fields.address);
+      setMqttUsername(fields.username);
+      setMqttPassword(fields.password);
+      setTlsEnabled(fields.tlsEnabled);
+      return kept;
+    },
+    [mqttAddress, mqttUsername, mqttPassword, tlsEnabled, setMqttAddress, setMqttUsername, setMqttPassword, setTlsEnabled],
   );
 
   // Track initial values for change detection
@@ -456,6 +486,12 @@ const MQTTConfigSection: React.FC<MQTTConfigSectionProps> = ({
       </div>
       {mqttEnabled && (
         <>
+          <BrokerPresetSelector
+            id="mqttBrokerPreset"
+            layout="settings"
+            matchedPresetId={matchedPreset?.id ?? null}
+            onApplyPreset={applyBrokerPreset}
+          />
           <div className="setting-item">
             <label htmlFor="mqttAddress">
               {t('mqtt_config.server_address')}

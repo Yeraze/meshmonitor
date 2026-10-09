@@ -174,6 +174,7 @@ export const CONFIG_APPLIERS: Record<LoadConfigType, ConfigApplier> = {
       encryptionEnabled: config.encryptionEnabled,
       jsonEnabled: config.jsonEnabled,
       root: config.root,
+      tlsEnabled: config.tlsEnabled === true,
     });
   },
 
