@@ -59,7 +59,7 @@ import { init, parse } from 'es-module-lexer';
 
 const DEFAULT_ENTRY = 'dist/server/server.js';
 // Floor for the default entry's reachable graph — see the guard in main().
-const MIN_EXPECTED_MODULES = 50;
+const MIN_EXPECTED_MODULES = 400;
 
 function isFile(p) {
   try { return fs.statSync(p).isFile(); } catch { return false; }

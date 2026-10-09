@@ -246,7 +246,7 @@ jobs:
               echo "::error::devDependency '$pkg' is present in the runtime image"; exit 1
             fi
           done
-          docker run --rm --entrypoint node -w /app meshmonitor:test -e "
+          docker run --rm --entrypoint node -w /app meshmonitor:test --input-type=commonjs -e "
             const Database = require('better-sqlite3'); new Database(':memory:').prepare('select 1').get();
             require('bcrypt'); require('re2'); require('zstd-napi');
             require('@serialport/bindings-cpp');
@@ -260,7 +260,7 @@ jobs:
           docker logs mm-smoke 2>&1 | tail -40
           $ok || { echo "::error::/api/health did not answer"; exit 1; }
           docker exec mm-smoke ps -o user=,args= | tee /tmp/ps.txt
-          if grep -E 'supervisord|apprise-api|dist/server/server.js|npm start' /tmp/ps.txt | grep -E '^ *root '; then
+          if grep -E 'supervisord|apprise-api|dist/server/server.js|npm start' /tmp/ps.txt | awk '$1 == "root" { found = 1; print } END { exit !found }'; then
             echo "::error::a long-running process is running as root"; exit 1
           fi
           docker rm -f mm-smoke

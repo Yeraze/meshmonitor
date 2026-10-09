@@ -142,6 +142,10 @@ COPY --chown=node:node --from=jsbuilder /app/dist ./dist
 COPY --from=jsbuilder /app/protobufs ./protobufs
 COPY --from=jsbuilder /app/takpacket-sdk/dictionaries ./takpacket-sdk/dictionaries
 
+# Admin password reset script (docs/faq.md). The amd64/arm64 image has always
+# shipped it; this one did not, so the documented reset failed on armv7.
+COPY reset-admin.mjs /app/reset-admin.mjs
+
 # Create data directory for SQLite database and Apprise configs
 RUN mkdir -p /data/apprise-config /data/scripts && chown -R node:node /data
 

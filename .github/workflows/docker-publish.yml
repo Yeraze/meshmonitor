@@ -237,7 +237,7 @@ jobs:
             echo "FAIL: entrypoint ran the command as uid '$RUN_UID', expected 1000"
             FAILED=1
           fi
-          if docker run --rm --entrypoint node -w /app --platform "$PLATFORM" "$IMAGE" -e "
+          if docker run --rm --entrypoint node -w /app --platform "$PLATFORM" "$IMAGE" --input-type=commonjs -e "
               const D = require('better-sqlite3'); new D(':memory:').prepare('select 1').get();
               require('bcrypt'); require('re2'); require('zstd-napi'); require('@serialport/bindings-cpp');"; then
             echo "  OK: native modules load"
