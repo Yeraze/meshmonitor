@@ -321,6 +321,24 @@ describe('the cap (default 2)', () => {
       .not.toContain('autoAckMaxResponses');
   });
 
+  it('a trigger with no packet id cannot be answered by anyone, so it is sent after the wait without a count', async () => {
+    const manager = makeManager();
+    await manager.checkAutoAcknowledge(
+      { id: `${SOURCE_A}_${SENDER}_1700000000000`, fromNodeId: '!11223344', hopStart: 3, hopLimit: 3, timestamp: 1_700_000_000_000 },
+      'ping', CHANNEL, false, SENDER, undefined,
+    );
+    // Heard twice with the same timestamp: still one waiting response.
+    await manager.checkAutoAcknowledge(
+      { id: `${SOURCE_A}_${SENDER}_1700000000000`, fromNodeId: '!11223344', hopStart: 3, hopLimit: 3, timestamp: 1_700_000_000_000 },
+      'ping', CHANNEL, false, SENDER, undefined,
+    );
+    expect(manager.pendingAutoAcks.size).toBe(1);
+    tables[SOURCE_A].autoAckChannelZeroHopReplyEnabled = 'true'; // a tapback needs a packet id; a reply does not
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(candidates()).not.toHaveBeenCalled();
+    expect(enqueueOf(manager)).toHaveBeenCalledTimes(1);
+  });
+
   it('fails closed: a count that throws sends nothing', async () => {
     const manager = makeManager();
     await receive(manager);

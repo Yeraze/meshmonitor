@@ -11778,6 +11778,8 @@ class MeshtasticManager implements ISourceManager {
         // method runs again, so what is sent follows the settings of that
         // moment.
         const pendingKey = `${fromNum}:${packetId ?? `t${message.timestamp}`}`;
+        // Order matters: the slot check (inside armDelayedAutoAck) runs BEFORE
+        // the cooldown reservation below. Do not swap them.
         const armed = this.armDelayedAutoAck(
           pendingKey,
           fromNum,
@@ -11809,6 +11811,10 @@ class MeshtasticManager implements ISourceManager {
         const maxResponses = resolveAutoAckMaxResponses(
           await settings.getSettingForSource(sourceId, 'autoAckMaxResponses'),
         );
+        // A trigger with no packet id (not seen from a real radio; id 0 is
+        // stored without one) cannot be pointed at by anyone's `reply_id`, so
+        // its true count of other responses is 0 and there is nothing to ask
+        // the database: it is answered after the wait like a cap of 0.
         if (maxResponses > 0 && packetId != null) {
           // Candidates come from the database (this source, this channel, this
           // packet id); whether each one is a tapback on, or a reply to, the

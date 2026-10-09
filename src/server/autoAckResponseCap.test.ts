@@ -61,6 +61,10 @@ describe('autoAckChannelWaitMs', () => {
   it('a Pre-Send Delay under 5 s changes nothing; a longer one becomes the floor', () => {
     expect(autoAckChannelWaitMs(3, 0)).toBe(5_000);
     expect(autoAckChannelWaitMs(3, 1)).toBe(30_000);
+    // Exactly 5 s is the boundary: still the plain 5-30 s window.
+    expect(autoAckChannelWaitMs(5, 0)).toBe(5_000);
+    expect(autoAckChannelWaitMs(5, 1)).toBe(30_000);
+    expect(autoAckChannelWaitMs(6, 0)).toBe(6_000);
     expect(autoAckChannelWaitMs(20, 0)).toBe(20_000);
     expect(autoAckChannelWaitMs(20, 1)).toBe(45_000);
   });

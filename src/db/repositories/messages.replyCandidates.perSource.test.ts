@@ -7,6 +7,10 @@
  *  - no drift: over a table of cases, "the query returned it AND the shared
  *    predicate accepts it" equals what the message views would show under the
  *    parent (utils/messageReplies — the views call the same functions).
+ *
+ * SQLite only, by choice: the query is three Drizzle `eq`s with no dialect
+ * branch, and the PostgreSQL/MySQL BIGINT columns (`fromNodeNum`, `replyId`)
+ * are passed through `Number()` in the method's row mapper.
  */
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import Database from 'better-sqlite3';
