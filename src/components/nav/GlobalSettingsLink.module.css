@@ -1,0 +1,48 @@
+/*
+ * GlobalSettingsLink: the foot-of-rail link, drawn like a SidebarFooter
+ * button (muted, small, a hairline above), and the one-line inline form.
+ */
+
+.rail {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: auto;
+  padding: 8px 12px;
+  border-top: 1px solid var(--color-surface);
+  color: var(--color-text-subtle);
+  font-size: 12px;
+  text-decoration: none;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.rail:hover,
+.rail:focus-visible {
+  background-color: var(--color-surface);
+  color: var(--color-text);
+}
+
+.collapsed {
+  justify-content: center;
+  padding: 8px 4px;
+}
+
+.railLabel {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.inline {
+  margin: 0 0 1rem;
+  color: var(--color-text-subtle);
+  font-size: 0.85rem;
+  line-height: 1.4;
+}
+
+.inlineLink {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  color: var(--color-accent);
+}

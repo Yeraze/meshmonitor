@@ -54,6 +54,10 @@ import SerialConfigSection from './configuration/SerialConfigSection';
 import AmbientLightingConfigSection from './configuration/AmbientLightingConfigSection';
 import SecurityConfigSection from './configuration/SecurityConfigSection';
 import PkiDmDecryptionSection from './configuration/PkiDmDecryptionSection';
+import FirmwareUpdateSection from './configuration/FirmwareUpdateSection';
+import { MovedSettingNote } from './common/MovedSettingNote';
+import { useAuth } from '../contexts/AuthContext';
+import { useHealth } from '../hooks/useHealth';
 import ChannelsConfigSection from './configuration/ChannelsConfigSection';
 import GpioPinSummary from './configuration/GpioPinSummary';
 import BackupManagementSection from './configuration/BackupManagementSection';
@@ -74,10 +78,21 @@ interface ConfigurationTabProps {
   refreshTrigger?: number; // Increment this to trigger config refresh
 }
 
-const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [], onRebootDevice, onConfigChangeTriggeringReboot, onChannelsUpdated, refreshTrigger }) => {
+const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ baseUrl = '', nodes, channels = [], onRebootDevice, onConfigChangeTriggeringReboot, onChannelsUpdated, refreshTrigger }) => {
   const { t } = useTranslation();
   const { showToast } = useToast();
   const { sourceId } = useSource();
+  const { authStatus, hasPermission } = useAuth();
+  const isAdmin = authStatus?.user?.isAdmin ?? false;
+  // Firmware update acts on the device, so it lives here and not on Settings
+  // (#5683 follow-up). Same gate it had there: an admin, on an install with
+  // OTA enabled. Shares TanStack's ['health', baseUrl] cache with App's poll.
+  const { data: health } = useHealth({ baseUrl, refetchInterval: 60000 });
+  const showFirmware = isAdmin && health?.firmwareOtaEnabled === true;
+  // PKI DM decryption is a MeshMonitor-side switch and moved to this source's
+  // Settings page. A viewer who cannot open that page keeps it here: its
+  // routes check `configuration`, the grant this page already needs.
+  const canOpenSourceSettings = hasPermission('settings', 'read', { anySource: true });
   const queryClient = useQueryClient();
 
   // Device Config State
@@ -2032,35 +2047,41 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
     }
   };
 
-  if (isLoading) {
-    return (
-      <div className="tab-content">
-        <div style={{ textAlign: 'center', padding: '2rem' }}>
-          <p>{t('config.loading')}</p>
-        </div>
-      </div>
-    );
-  }
-
+  /*
+   * ONE return, so the firmware section keeps its place in the tree while the
+   * config (re)loads. `isLoading` goes true again on every `refreshTrigger`,
+   * and an OTA update reboots the node, which bumps it. With an early return
+   * for the loading state the section would unmount mid-update and its wizard
+   * (Cancel, Dismiss) would blink out. The loading text swaps only the config
+   * body; the picker, the GPIO summary and the modals wait for the config.
+   */
   return (
     <div className="tab-content">
       {/* Picker + form share one flex row on a landscape phone (#5069): the
           picker becomes a left rail so the form keeps the full usable height. */}
       <div className={styles.configShell}>
+      {!isLoading && (
       <SectionNav
         className={styles.configNav}
         searchable
         searchPlaceholder={t('config_search.filter_configuration', 'Search configuration...')}
         searchLabel={t('config_search.filter_configuration', 'Search configuration...')}
         noMatchesLabel={t('config_search.no_sections', 'No matching sections')}
-        items={configurationNavItems(t)}
+        items={configurationNavItems(t, { showFirmware })}
       />
+      )}
 
       {/* Two-column layout: main content on left, GPIO summary on right */}
       <div className={styles.configBody} style={{ display: 'flex', gap: '1.5rem', alignItems: 'flex-start' }}>
         {/* Main content column */}
         <div style={{ flex: 1, minWidth: 0 }}>
 
+      {isLoading ? (
+        <div style={{ textAlign: 'center', padding: '2rem' }}>
+          <p>{t('config.loading')}</p>
+        </div>
+      ) : (
+      <>
       <div id="config-danger" className="settings-section danger-zone" style={{ marginBottom: '2rem' }}>
         <h2 style={{ color: '#ff4444', marginTop: 0 }}><UiIcon name="alert" /> {t('config.warning_title')}</h2>
         <p style={{ fontSize: '1.1rem', fontWeight: 'bold' }}>
@@ -2860,7 +2881,19 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
             isSaving={isSaving}
             onSave={handleSaveSecurityConfig}
           />
-          <PkiDmDecryptionSection />
+          {canOpenSourceSettings ? (
+            sourceId && (
+              <MovedSettingNote
+                id="config-pki-dm"
+                testId="pki-dm-moved"
+                text={t('moved.pki_dm', 'PKI direct message decryption moved to Settings.')}
+                linkLabel={t('moved.open_source_settings', 'Open Settings')}
+                to={`/source/${encodeURIComponent(sourceId)}/settings#settings-pki-dm`}
+              />
+            )
+          ) : (
+            <PkiDmDecryptionSection canWrite={hasPermission('configuration', 'write')} />
+          )}
         </div>
 
         <div id="config-channels">
@@ -2870,14 +2903,25 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
           />
         </div>
 
+        {/* Backups are held by MeshMonitor, but they are backups OF this
+            device's configuration and restore to it, so the list and schedule
+            stay on Device Configuration (#5683 follow-up decision). */}
         <div id="config-backup">
           <BackupManagementSection />
         </div>
       </div>{/* End settings-content */}
+      </>
+      )}
+
+      {/* Firmware update (#5683 follow-up). Outside the loading swap above, on
+          purpose: see the comment on this return. It keeps every guard it had
+          on Settings; only the page changed. */}
+      {showFirmware && <FirmwareUpdateSection baseUrl={baseUrl} />}
 
         </div>{/* End main content column */}
 
         {/* GPIO Pin Summary sidebar - only show on larger screens */}
+        {!isLoading && (
         <div className="gpio-summary-sidebar" style={{
           width: '280px',
           flexShrink: 0,
@@ -2933,10 +2977,13 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
             serialTxd={serialTxd}
           />
         </div>
+        )}
       </div>{/* End two-column layout */}
       </div>{/* End landscape rail shell */}
 
       {/* Import/Export Modals */}
+      {!isLoading && (
+      <>
       <ImportConfigModal
         isOpen={isImportModalOpen}
         onClose={() => setIsImportModalOpen(false)}
@@ -2959,6 +3006,8 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
           }
         }}
       />
+      </>
+      )}
     </div>
   );
 };

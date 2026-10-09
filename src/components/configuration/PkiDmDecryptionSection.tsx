@@ -6,7 +6,13 @@
  * via MQTT) so they appear in the unified Messages view.
  *
  * Gated server-side by the per-source `configuration` permission. Talks to
- * GET/POST /api/sources/:id/pki-dm.
+ * GET /api/sources/:id/pki-dm/status and POST /api/sources/:id/pki-dm.
+ *
+ * It is a MeshMonitor-side switch, so it sits on the source's Settings page
+ * (#5683 follow-up; it was on Device Configuration). The grant did not move
+ * with it: the status route needs `configuration:read` and the switch needs
+ * `configuration:write`, so the host passes `canWrite` and a viewer without it
+ * gets the switch disabled, with the reason.
  */
 import React, { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -23,7 +29,20 @@ interface PkiDmStatus {
   reason?: string | null;
 }
 
-const PkiDmDecryptionSection: React.FC = () => {
+interface PkiDmDecryptionSectionProps {
+  /** Anchor id of the section on the host page. */
+  sectionId?: string;
+  /** Section class of the host page (`settings-section` on Settings). */
+  className?: string;
+  /** The viewer holds `configuration:write` on this source. Default true. */
+  canWrite?: boolean;
+}
+
+const PkiDmDecryptionSection: React.FC<PkiDmDecryptionSectionProps> = ({
+  sectionId = 'config-pki-dm',
+  className = 'config-section',
+  canWrite = true,
+}) => {
   const { t } = useTranslation();
   const { sourceId } = useSource();
   const csrfFetch = useCsrfFetch();
@@ -75,7 +94,7 @@ const PkiDmDecryptionSection: React.FC = () => {
   if (!sourceId || !status) return null;
 
   return (
-    <div className="config-section" id="config-pki-dm">
+    <div className={className} id={sectionId} data-testid="pki-dm-section">
       <h3><UiIcon name="unlock" /> {t('config.pki_dm.title', 'PKI Direct Message Decryption')}</h3>
       <p className="config-description">
         {t(
@@ -86,7 +105,7 @@ const PkiDmDecryptionSection: React.FC = () => {
 
       {!status.globallyEnabled && (
         <div className="config-warning" role="alert">
-          {t('config.pki_dm.globally_disabled', 'PKI direct message decryption is turned off globally. Enable it under the Security section in Settings before turning it on per source.')}
+          {t('config.pki_dm.globally_disabled_global_settings', 'PKI direct message decryption is turned off globally. Enable it under Security in Global Settings before turning it on per source.')}
         </div>
       )}
 
@@ -100,7 +119,8 @@ const PkiDmDecryptionSection: React.FC = () => {
         <input
           type="checkbox"
           checked={status.enabled}
-          disabled={loading || !status.globallyEnabled || (!status.enabled && !status.canStore)}
+          disabled={!canWrite || loading || !status.globallyEnabled || (!status.enabled && !status.canStore)}
+          title={!canWrite ? t('config.pki_dm.no_write', 'Changing this needs the Device Configuration write permission on this source.') : undefined}
           onChange={(e) => void toggle(e.target.checked)}
         />
         <span>{t('config.pki_dm.enable', 'Decrypt PKI direct messages for this source')}</span>
@@ -114,6 +134,12 @@ const PkiDmDecryptionSection: React.FC = () => {
             : t('config.pki_dm.key_pending', 'Enabled — the key will be extracted the next time this source connects.')
           : t('config.pki_dm.disabled', 'Disabled — PKI DMs to this node are not decrypted server-side.')}
       </div>
+
+      {!canWrite && (
+        <p className="setting-description" role="status">
+          {t('config.pki_dm.no_write', 'Changing this needs the Device Configuration write permission on this source.')}
+        </p>
+      )}
 
       {error && <div className="config-error" role="alert">{error}</div>}
     </div>

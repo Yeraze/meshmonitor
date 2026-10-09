@@ -1733,13 +1733,13 @@ function DashboardInner() {
                         borderRadius: 4,
                         cursor: 'pointer',
                       }}
-                      title={t('source.form.mqtt_bridge_advanced_open', 'Open Configuration page')}
+                      title={t('source.form.mqtt_bridge_open_settings_title', "Open the bridge section of this source's Settings page")}
                       onClick={() => {
                         setShowSourceModal(false);
-                        void navigate(`/source/${editingSourceId}/#mqtt-config`);
+                        void navigate(`/source/${editingSourceId}/settings#settings-mqtt-bridge`);
                       }}
                     >
-                      {t('source.form.mqtt_bridge_advanced_open', 'Configuration')} <UiIcon name="forward" size={14} />
+                      {t('source.form.mqtt_bridge_open_settings', 'Bridge settings')} <UiIcon name="forward" size={14} />
                     </button>
                   )}
                 </div>

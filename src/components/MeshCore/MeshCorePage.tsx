@@ -96,6 +96,8 @@ export const MeshCorePage: React.FC<MeshCorePageProps> = ({ baseUrl, sourceId, e
   const visibleViews = useMeshCoreViewAccess();
   const view = resolveMeshCoreView(requestedView, visibleViews);
   const canOpenSettings = visibleViews.includes('settings');
+  const canOpenDeviceConfiguration = visibleViews.includes('configuration');
+  const openDeviceConfiguration = useCallback(() => setView('configuration'), []);
   // Same Pin sidebar behaviour as the Meshtastic sidebar (#5481): one global
   // pin, the nav starts expanded when pinned, and an unpinned nav collapses
   // after a nav click.
@@ -280,6 +282,7 @@ export const MeshCorePage: React.FC<MeshCorePageProps> = ({ baseUrl, sourceId, e
             baseUrl={baseUrl}
             sourceId={sourceId}
             receiveOnly={receiveOnly}
+            loading={loading}
           />
         )}
         {view === 'automations' && (
@@ -309,6 +312,8 @@ export const MeshCorePage: React.FC<MeshCorePageProps> = ({ baseUrl, sourceId, e
                 baseUrl={baseUrl}
                 sourceId={sourceId}
                 receiveOnly={receiveOnly}
+                canOpenDeviceConfiguration={canOpenDeviceConfiguration}
+                onOpenDeviceConfiguration={openDeviceConfiguration}
               />
             </SaveBarGroup>
             <SaveBar />

@@ -49,6 +49,31 @@ export const SOURCE_SETTINGS_NAV_ENTRY = {
   fallback: 'Settings',
 } as const satisfies SharedSourceNavEntry;
 
+/**
+ * The install-wide settings page, as opposed to a source's own Settings.
+ *
+ * Three pages hold settings, sorted by what a control acts on (#5683
+ * follow-up):
+ *
+ * | Page                 | Holds                                                    |
+ * |----------------------|----------------------------------------------------------|
+ * | Device Configuration | what is written to, or done on, the radio                |
+ * | Settings             | what MeshMonitor stores and does for this one source     |
+ * | Global Settings      | what applies to the whole install                        |
+ *
+ * A per-source gear is always "Settings". Any link that opens `/settings` is
+ * "Global Settings", from this entry, so the two cannot be told apart only by
+ * where they sit.
+ */
+export const GLOBAL_SETTINGS_NAV_ENTRY = {
+  icon: 'settings',
+  labelKey: 'nav.global_settings',
+  fallback: 'Global Settings',
+} as const satisfies SharedSourceNavEntry;
+
+/** Router path of the Global Settings page. */
+export const GLOBAL_SETTINGS_PATH = '/settings';
+
 /** The presentation half of a `SourceNavItem`; the nav adds `id` and `onClick`. */
 export interface SharedSourceNavPresentation {
   icon: UiIconName;
@@ -76,3 +101,7 @@ export const deviceConfigurationNav = (t: Translate): SharedSourceNavPresentatio
 /** Icon + label of the entry that opens MeshMonitor's settings for the source. */
 export const sourceSettingsNav = (t: Translate): SharedSourceNavPresentation =>
   sharedSourceNavPresentation(SOURCE_SETTINGS_NAV_ENTRY, t);
+
+/** Icon + label of a link that opens the install-wide Global Settings page. */
+export const globalSettingsNav = (t: Translate): SharedSourceNavPresentation =>
+  sharedSourceNavPresentation(GLOBAL_SETTINGS_NAV_ENTRY, t);

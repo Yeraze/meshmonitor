@@ -26,6 +26,10 @@ import DatabaseMaintenanceSection from './configuration/DatabaseMaintenanceSecti
 import ScriptsSection from './settings/ScriptsSection';
 import CoverageMqttRecordingSection from './settings/CoverageMqttRecordingSection';
 import FirmwareUpdateSection from './configuration/FirmwareUpdateSection';
+import PkiDmDecryptionSection from './configuration/PkiDmDecryptionSection';
+import MqttBridgeConfigurationView from './MQTT/MqttBridgeConfigurationView';
+import ReticulumRetentionSection from './settings/ReticulumRetentionSection';
+import { MovedSettingNote } from './common/MovedSettingNote';
 import SignFlipCorrectionSettings from './settings/SignFlipCorrectionSettings';
 import { parseSignFlipSettings, clampSignFlipRangeKm, SIGN_FLIP_DEFAULT_RANGE_KM } from '../utils/signFlipPosition';
 import ChannelDatabaseSection from './configuration/ChannelDatabaseSection';
@@ -48,6 +52,7 @@ import {
   GLOBAL_SETTINGS_SECTIONS,
   SOURCE_SETTINGS_SECTIONS,
   settingsNavItems,
+  hasDeviceConfigurationPage,
 } from './search/configSections';
 import PositionEstimationSection from './PositionEstimationSection';
 import AutoEnrichmentSection from './AutoEnrichmentSection';
@@ -417,6 +422,13 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
   // this phase (see PER_SOURCE_NODE_DISPLAY_PHASE6_SPEC.md §5.3) — anySource
   // mirrors the union check the mostly-unscoped settings routes use.
   const canWriteSettings = hasPermission('settings', 'write', { anySource: true });
+  // Sections that came here from other pages keep the grant their own routes
+  // check (#5683 follow-up): the bridge setup reads `sources`, PKI DM
+  // decryption reads and writes this source's `configuration`. Holding
+  // `settings:read` opens this page; it does not open those.
+  const canReadSources = hasPermission('sources', 'read');
+  const canReadConfiguration = hasPermission('configuration', 'read');
+  const canWriteConfiguration = hasPermission('configuration', 'write');
   const {
     customThemes,
     customTilesets,
@@ -1918,9 +1930,19 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
           databaseType,
           firmwareOtaEnabled,
           sourceType,
+          canReadSources,
+          canReadConfiguration,
         })}
       />
       <div className="settings-content settings-multi-column">
+        {/* MQTT bridge setup (#5683 follow-up): MeshMonitor's own connection and
+            filter settings for the bridge. First, because on a bridge it is the
+            setup the rest depends on. It loads and saves through
+            /api/sources/:id and gates itself on `sources`. */}
+        {mode === 'source' && sourceType === 'mqtt_bridge' && canReadSources && purgeSourceId && (
+          <MqttBridgeConfigurationView key={purgeSourceId} sourceId={purgeSourceId} />
+        )}
+
         {show('settings-language') && <div id="settings-language" className="settings-section">
           <h3>{t('settings.language')}</h3>
           <div className="setting-item">
@@ -2363,6 +2385,8 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
             />
           </div>
         </div>}
+
+        {show('settings-reticulum') && mode === 'global' && <ReticulumRetentionSection />}
 
         {show('settings-map') && <div id="settings-map" className="settings-section">
           <h3>{t('settings.map')}</h3>
@@ -2936,6 +2960,17 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
           </div>
         </div>}
 
+        {/* PKI DM decryption (#5683 follow-up): a MeshMonitor-side switch, moved
+            here from Device Configuration. Its routes still check this source's
+            `configuration` grant, so the section does too. */}
+        {mode === 'source' && hasDeviceConfigurationPage(sourceType) && canReadConfiguration && (
+          <PkiDmDecryptionSection
+            sectionId="settings-pki-dm"
+            className="settings-section"
+            canWrite={canWriteConfiguration}
+          />
+        )}
+
         {show('settings-notifications') && <div id="settings-notifications" className="settings-section">
           <h3>{t('settings.notifications_and_security')}</h3>
           <div className="setting-item">
@@ -3427,7 +3462,23 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
 
         {show('settings-maintenance') && <DatabaseMaintenanceSection />}
 
-        {show('settings-firmware') && isAdmin && firmwareOtaEnabled && <FirmwareUpdateSection baseUrl={baseUrl} />}
+        {/* Firmware update acts on the device, so it lives on Device
+            Configuration (#5683 follow-up). A pointer stays here, on the old
+            anchor, for a source that has that page. The legacy all-in-one
+            render (no `mode`) has no such page and keeps the section. */}
+        {!mode && isAdmin && firmwareOtaEnabled && (
+          <FirmwareUpdateSection baseUrl={baseUrl} sectionId="settings-firmware" />
+        )}
+        {mode === 'source' && isAdmin && firmwareOtaEnabled && hasDeviceConfigurationPage(sourceType) && purgeSourceId && (
+          <div id="settings-firmware" className="settings-section">
+            <MovedSettingNote
+              testId="firmware-moved"
+              text={t('moved.firmware', 'Firmware update moved to Device Configuration.')}
+              linkLabel={t('moved.open_device_configuration', 'Open Device Configuration')}
+              to={`/source/${encodeURIComponent(purgeSourceId)}/configuration#config-firmware`}
+            />
+          </div>
+        )}
 
         {show('settings-reset-ui') && <div id="settings-reset-ui" className="settings-section">
           <h3>{t('settings.reset_ui_positions')}</h3>

@@ -7,6 +7,7 @@ import {
   sharedSourceNavPresentation,
   type SharedSourceNavEntry,
 } from '../nav/sourceNavEntries';
+import { GlobalSettingsLink } from '../nav/GlobalSettingsLink';
 import styles from './MeshCoreSubToolbar.module.css';
 
 import { useMeshCoreViewAccess, type MeshCoreView } from './meshCoreViewAccess';
@@ -92,6 +93,9 @@ export const MeshCoreSubToolbar: React.FC<MeshCoreSubToolbarProps> = ({
       collapseLabel={t('meshcore.nav.collapse', 'Collapse')}
       expandLabel={t('meshcore.nav.expand', 'Expand')}
       ariaLabel={t('meshcore.nav.label', 'MeshCore navigation')}
+      /* The install-wide settings page, at the foot of the rail where the
+         Meshtastic sidebar keeps its footer links (#5683 follow-up). */
+      footer={<GlobalSettingsLink collapsed={!expanded} />}
     />
   );
 };
