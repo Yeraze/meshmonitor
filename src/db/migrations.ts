@@ -216,6 +216,7 @@ import { migration as addMeshcoreLastAdvertHadPositionMigration, runMigration194
 import { migration as splitTranslationApiKeyMigration, runMigration195Postgres, runMigration195Mysql } from '../server/migrations/195_split_translation_api_key.js';
 import { migration as addNotificationMessageTemplatesMigration, runMigration196Postgres, runMigration196Mysql } from '../server/migrations/196_add_notification_message_templates.js';
 import { migration as widenSystemBackupTotalSizeMigration, runMigration197Postgres, runMigration197Mysql } from '../server/migrations/197_widen_system_backup_total_size.js';
+import { migration as createPkiExchangeStateMigration, runMigration198Postgres, runMigration198Mysql } from '../server/migrations/198_create_pki_exchange_state.js';
 
 // ============================================================================
 // Registry
@@ -3196,4 +3197,19 @@ registry.register({
   sqlite: (db) => widenSystemBackupTotalSizeMigration.up(db),
   postgres: (client) => runMigration197Postgres(client),
   mysql: (pool) => runMigration197Mysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 198: pki_exchange_state (#5691, Reliable PKI). PER-SOURCE.
+// Outcome of the last PKI exchange with each node, and the persisted hourly
+// timer for priming NodeInfo sends.
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 198,
+  name: 'create_pki_exchange_state',
+  settingsKey: 'migration_198_create_pki_exchange_state',
+  sqlite: (db) => createPkiExchangeStateMigration.up(db),
+  postgres: (client) => runMigration198Postgres(client),
+  mysql: (pool) => runMigration198Mysql(pool),
 });

@@ -67,6 +67,7 @@ import {
   MeshCoreObserverCredentialsRepository,
   MessageEventsRepository,
   MeshtasticHeardRepeatersRepository,
+  PkiExchangeStateRepository,
   CoverageReceptionsRepository,
   CrossSourceLinksRepository,
   CoverageSurveysRepository,
@@ -619,6 +620,7 @@ class DatabaseService {
   public meshcoreObserverCredentialsRepo: MeshCoreObserverCredentialsRepository | null = null;
   public messageEventsRepo: MessageEventsRepository | null = null;
   public meshtasticHeardRepeatersRepo: MeshtasticHeardRepeatersRepository | null = null;
+  public pkiExchangeStateRepo: PkiExchangeStateRepository | null = null;
   public coverageReceptionsRepo: CoverageReceptionsRepository | null = null;
   public coverageSurveysRepo: CoverageSurveysRepository | null = null;
   public crossSourceLinksRepo: CrossSourceLinksRepository | null = null;
@@ -706,6 +708,12 @@ class DatabaseService {
   get meshtasticHeardRepeaters(): MeshtasticHeardRepeatersRepository {
     if (!this.meshtasticHeardRepeatersRepo) throw new Error('Database not initialized');
     return this.meshtasticHeardRepeatersRepo;
+  }
+
+  /** Reliable PKI per-node exchange state (#5691). */
+  get pkiExchangeState(): PkiExchangeStateRepository {
+    if (!this.pkiExchangeStateRepo) throw new Error('Database not initialized');
+    return this.pkiExchangeStateRepo;
   }
 
   get coverageReceptions(): CoverageReceptionsRepository {
@@ -1193,6 +1201,7 @@ class DatabaseService {
       this.meshcoreObserverCredentialsRepo = new MeshCoreObserverCredentialsRepository(drizzleDb, this.drizzleDbType);
       this.messageEventsRepo = new MessageEventsRepository(drizzleDb, this.drizzleDbType);
       this.meshtasticHeardRepeatersRepo = new MeshtasticHeardRepeatersRepository(drizzleDb, this.drizzleDbType);
+      this.pkiExchangeStateRepo = new PkiExchangeStateRepository(drizzleDb, this.drizzleDbType);
       this.coverageReceptionsRepo = new CoverageReceptionsRepository(drizzleDb, this.drizzleDbType);
       this.coverageSurveysRepo = new CoverageSurveysRepository(drizzleDb, this.drizzleDbType);
       this.crossSourceLinksRepo = new CrossSourceLinksRepository(drizzleDb, this.drizzleDbType);

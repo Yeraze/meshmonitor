@@ -125,6 +125,9 @@ import {
   meshtasticHeardRepeatersSqlite, meshtasticHeardRepeatersPostgres, meshtasticHeardRepeatersMysql,
 } from './schema/meshtasticHeardRepeaters.js';
 import {
+  pkiExchangeStateSqlite, pkiExchangeStatePostgres, pkiExchangeStateMysql,
+} from './schema/pkiExchangeState.js';
+import {
   coverageReceptionsSqlite, coverageReceptionsPostgres, coverageReceptionsMysql,
 } from './schema/coverageReceptions.js';
 import {
@@ -329,6 +332,10 @@ export interface ActiveSchema {
   // Meshtastic Heard-By (#4816 Phase 4 WP1)
   meshtasticHeardRepeaters: any;
 
+  // Reliable PKI per-node exchange state (#5691)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- #5691 matches the existing ActiveSchema per-dialect table pattern
+  pkiExchangeState: any;
+
   // Coverage Report RF receptions (#5277 Phase 1 WP1)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any -- #5277 matches the existing ActiveSchema per-dialect table pattern; typing burn-down is #3962 Phase 6
   coverageReceptions: any;
@@ -490,6 +497,7 @@ const SCHEMA_MAP: Record<DatabaseType, ActiveSchema> = {
     meshcoreHeardRepeaters: meshcoreHeardRepeatersSqlite,
     messageEvents: messageEventsSqlite,
     meshtasticHeardRepeaters: meshtasticHeardRepeatersSqlite,
+    pkiExchangeState: pkiExchangeStateSqlite,
     coverageReceptions: coverageReceptionsSqlite,
     coverageSurveys: coverageSurveysSqlite,
     crossSourceLinks: crossSourceLinksSqlite,
@@ -575,6 +583,7 @@ const SCHEMA_MAP: Record<DatabaseType, ActiveSchema> = {
     meshcoreHeardRepeaters: meshcoreHeardRepeatersPostgres,
     messageEvents: messageEventsPostgres,
     meshtasticHeardRepeaters: meshtasticHeardRepeatersPostgres,
+    pkiExchangeState: pkiExchangeStatePostgres,
     coverageReceptions: coverageReceptionsPostgres,
     coverageSurveys: coverageSurveysPostgres,
     crossSourceLinks: crossSourceLinksPostgres,
@@ -660,6 +669,7 @@ const SCHEMA_MAP: Record<DatabaseType, ActiveSchema> = {
     meshcoreHeardRepeaters: meshcoreHeardRepeatersMysql,
     messageEvents: messageEventsMysql,
     meshtasticHeardRepeaters: meshtasticHeardRepeatersMysql,
+    pkiExchangeState: pkiExchangeStateMysql,
     coverageReceptions: coverageReceptionsMysql,
     coverageSurveys: coverageSurveysMysql,
     crossSourceLinks: crossSourceLinksMysql,
