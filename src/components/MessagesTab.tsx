@@ -32,7 +32,8 @@ import { useTraceroutePairHistory } from '../hooks/useTraceroutePairHistory';
 import { getMessageSortTime } from '../utils/messageSort';
 import KeyMismatchWarning from './security/KeyMismatchWarning';
 import { NodeIdentityChangeNotice } from './NodeIdentityChangeNotice';
-import { getUtf8ByteLength, formatByteCount, isEmoji } from '../utils/text';
+import { getUtf8ByteLength, formatByteCount } from '../utils/text';
+import { isReplyTo, isTapbackMessage, isTapbackOf } from '../utils/messageReplies';
 import { SenderAvatar, SenderNameButton, StatusEmojiIndicator } from './SenderAvatar';
 import { isDeviceDbWarningMitigatable } from '../utils/deviceDbWarning';
 import { applyHomoglyphOptimization } from '../utils/homoglyph';
@@ -2006,7 +2007,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                 selectedDMMessages.map((msg, index) => {
                   const isTraceroute = msg.portnum === 70;
                   const isMine = isMyMessage(msg);
-                  const isReaction = msg.emoji === 1 || (msg.replyId != null && isEmoji(msg.text));
+                  const isReaction = isTapbackMessage(msg);
 
                   // #4880: color an incoming ("theirs") bubble + sender dot by
                   // the sender node under the active Node List Style. Own
@@ -2023,13 +2024,11 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
 
                   if (isReaction) return null;
 
-                  const reactions = selectedDMMessages.filter(
-                    m => (m.emoji === 1 || isEmoji(m.text)) && m.replyId && m.replyId.toString() === msg.id.split('_').pop()
-                  );
+                  // Reply / tapback rules live in utils/messageReplies — the
+                  // Auto-Acknowledge response cap counts with the same ones.
+                  const reactions = selectedDMMessages.filter(m => isTapbackOf(m, msg));
 
-                  const repliedMessage = msg.replyId
-                    ? selectedDMMessages.find(m => m.id.split('_').pop() === msg.replyId?.toString())
-                    : null;
+                  const repliedMessage = selectedDMMessages.find(m => isReplyTo(msg, m)) ?? null;
 
                   const currentDate = new Date(msg.timestamp);
                   const prevMsg = index > 0 ? selectedDMMessages[index - 1] : null;

@@ -50,6 +50,11 @@ import {
 } from '../../utils/aircraftClassification.js';
 import { aircraftClassificationService } from '../services/aircraftClassificationService.js';
 import { isAdsbFeed, ADSB_FEED_IDS } from '../../utils/adsbFeeds.js';
+import {
+  AUTO_ACK_MAX_RESPONSES_MAX,
+  AUTO_ACK_MAX_RESPONSES_MIN,
+  isValidAutoAckMaxResponses,
+} from '../autoAckResponseCap.js';
 import { clampIntervalSetting, GEOFENCE_WHILE_INSIDE_MINUTES } from '../utils/schedulerInterval.js';
 import { GEOFENCE_RADIUS_KM_MAX } from '../../utils/geofenceLimits.js';
 
@@ -485,6 +490,13 @@ router.post('/', requirePermission('settings', 'write', { sourceIdFrom: 'query' 
         .map((c) => parseInt(c.trim()))
         .filter((n) => !isNaN(n) && n >= 0 && n < 8);
       filteredSettings.autoAckChannels = validChannels.join(',');
+    }
+
+    // 0-10, whole numbers only (0 = no cap). Rejected, not clamped: a typo
+    // must not silently become "answer every time".
+    if ('autoAckMaxResponses' in filteredSettings && !isValidAutoAckMaxResponses(filteredSettings.autoAckMaxResponses)) {
+      return fail(res, 400, 'INVALID_AUTO_ACK_MAX_RESPONSES',
+        `autoAckMaxResponses must be a whole number between ${AUTO_ACK_MAX_RESPONSES_MIN} and ${AUTO_ACK_MAX_RESPONSES_MAX} (0 = no cap)`);
     }
 
     if ('autoAckIgnoredNodes' in filteredSettings) {
