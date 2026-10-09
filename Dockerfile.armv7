@@ -29,7 +29,7 @@
 # $BUILDPLATFORM is the host buildx runs on, not the target — that is the whole
 # point of this stage. Do NOT let this inherit TARGETPLATFORM.
 # ---------------------------------------------------------------------------
-FROM --platform=$BUILDPLATFORM node:22.22.2-bookworm-slim AS jsbuilder
+FROM --platform=$BUILDPLATFORM node:22.23.3-bookworm-slim AS jsbuilder
 
 WORKDIR /app
 
@@ -58,6 +58,16 @@ RUN if [ ! -f "protobufs/meshtastic/mesh.proto" ]; then \
       exit 1; \
     fi
 
+# ATAK V2 zstd dictionaries (#4317) — runtime data files from the takpacket-sdk
+# submodule. The amd64/arm64 Dockerfile has shipped them since #4317; this image
+# did not, so ATAK V2 decode had no dictionaries on armv7.
+COPY takpacket-sdk/dictionaries ./takpacket-sdk/dictionaries
+RUN if [ ! -f "takpacket-sdk/dictionaries/dict_non_aircraft.zstd" ]; then \
+      echo "ERROR: TAKPacket-SDK dictionaries not found! Git submodule may not be initialized."; \
+      echo "Run: git submodule update --init --recursive"; \
+      exit 1; \
+    fi
+
 COPY tsconfig.json tsconfig.server.json tsconfig.node.json vite.config.ts index.html embed.html ./
 COPY src ./src
 COPY public ./public
@@ -76,7 +86,7 @@ RUN --mount=type=cache,target=/app/.tsc-cache \
 # target, and spelling it as `--platform=$TARGETPLATFORM` makes BuildKit emit
 # `RedundantTargetPlatform`. The emulation this stage needs is the default; it
 # is `jsbuilder` above that has to opt out of it.
-FROM node:22.22.2-bookworm-slim AS deps
+FROM node:22.23.3-bookworm-slim AS deps
 
 WORKDIR /app
 
@@ -88,18 +98,19 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 COPY package*.json ./
 
-# Kept as a full install (not --omit=dev) so the runtime image contains exactly
-# the same node_modules as before this change. Trimming dev dependencies would
-# shrink this further — it is the largest remaining emulated cost — but it
-# changes what ships, so it belongs in its own change with its own verification.
+# Production dependencies only (#5692): the runtime never loads a
+# devDependency, and skipping them also skips compiling/installing them under
+# emulation — this was the largest remaining emulated cost. Native modules
+# (better-sqlite3, bcrypt, re2, zstd-napi, serialport bindings) are
+# dependencies/optionalDependencies and are still built for armv7 here.
 RUN --mount=type=cache,target=/root/.npm \
     PUPPETEER_SKIP_DOWNLOAD=true \
-    npm install --legacy-peer-deps
+    npm install --omit=dev --legacy-peer-deps
 
 # ---------------------------------------------------------------------------
 # Production stage for ARMv7
 # ---------------------------------------------------------------------------
-FROM node:22.22.2-bookworm-slim
+FROM node:22.23.3-bookworm-slim
 
 WORKDIR /app
 
@@ -129,13 +140,14 @@ COPY --from=deps /app/node_modules ./node_modules
 # root-owned exactly as before — the server only reads it.
 COPY --chown=node:node --from=jsbuilder /app/dist ./dist
 COPY --from=jsbuilder /app/protobufs ./protobufs
+COPY --from=jsbuilder /app/takpacket-sdk/dictionaries ./takpacket-sdk/dictionaries
 
 # Create data directory for SQLite database and Apprise configs
 RUN mkdir -p /data/apprise-config /data/scripts && chown -R node:node /data
 
 # Create supervisor configuration to run both Node.js and Apprise
 RUN mkdir -p /etc/supervisor/conf.d
-COPY docker/supervisord.armv7.conf /etc/supervisord.conf
+COPY docker/supervisord.conf /etc/supervisord.conf
 
 # Create Apprise API wrapper script
 COPY docker/apprise-api.py /app/apprise-api.py
@@ -155,6 +167,10 @@ ENV NODE_ENV=production
 ENV PORT=3001
 ENV APPRISE_CONFIG_DIR=/data/apprise-config
 ENV APPRISE_STATEFUL_MODE=simple
+
+# No `USER` directive on purpose (#5692): the entrypoint starts as root for
+# PUID/PGID, serial-device groups and /data ownership, then drops to `node`
+# with gosu before it starts supervisord. See the note in Dockerfile.
 
 # Use entrypoint to deploy scripts before starting supervisor
 ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]

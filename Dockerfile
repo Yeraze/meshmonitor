@@ -1,5 +1,5 @@
 # Build stage
-FROM node:24.15.0-alpine3.22 AS builder
+FROM node:24.21.0-alpine3.24 AS builder
 
 WORKDIR /app
 
@@ -71,8 +71,20 @@ RUN --mount=type=cache,target=/app/node_modules/.vite \
 # TypeScript server build will add to dist directory without clearing it
 RUN npm run build:server
 
+# Drop devDependencies before node_modules is copied into the runtime image
+# (#5692). The build above needs them (tsc, vite, ...); the server never loads
+# them, and shipping them put ~hundreds of MB of unreachable code — and its scan
+# findings — into every image. Pruning here, in the builder, rather than after
+# the COPY in the runtime stage, is what actually shrinks the image: a prune in
+# a later layer would leave the full tree in the layer underneath. Native
+# modules (better-sqlite3, bcrypt, re2, zstd-napi, serialport bindings) are
+# dependencies/optionalDependencies, so their compiled binaries are kept as built.
+# `npm run check:imports` in CI fails if a module the server loads is not listed
+# in dependencies/optionalDependencies.
+RUN npm prune --omit=dev --legacy-peer-deps
+
 # Production stage
-FROM node:24.15.0-alpine3.22
+FROM node:24.21.0-alpine3.24
 
 WORKDIR /app
 
@@ -102,7 +114,7 @@ COPY package*.json ./
 COPY --from=builder /app/node_modules ./node_modules
 
 # Copy built assets from builder stage
-COPY --from=builder /app/dist ./dist
+COPY --chown=node:node --from=builder /app/dist ./dist
 
 # Copy protobuf definitions needed by the server
 COPY --from=builder /app/protobufs ./protobufs
@@ -112,8 +124,6 @@ COPY --from=builder /app/protobufs ./protobufs
 # needed at runtime
 COPY --from=builder /app/takpacket-sdk/dictionaries ./takpacket-sdk/dictionaries
 
-# Fix ownership of dist directory for node user
-RUN chown -R node:node ./dist
 
 # Copy admin password reset script
 COPY reset-admin.mjs /app/reset-admin.mjs
@@ -144,6 +154,14 @@ ENV NODE_ENV=production
 ENV PORT=3001
 ENV APPRISE_CONFIG_DIR=/data/apprise-config
 ENV APPRISE_STATEFUL_MODE=simple
+
+# No `USER` directive on purpose (#5692): the entrypoint starts as root only to
+# renumber node for PUID/PGID, grant node the mapped serial devices' groups and
+# fix /data ownership on volumes written by older root-run images, then drops
+# to `node` with su-exec before it starts supervisord. supervisord, the server
+# and Apprise all run as node. To start fully unprivileged instead, run the
+# container with `user: "1000:1000"` (plus `group_add` for serial devices);
+# the entrypoint detects that and skips the root-only steps.
 
 # Use entrypoint to deploy scripts before starting supervisor
 ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
