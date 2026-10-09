@@ -448,23 +448,30 @@ class CotFeedService {
       this.resendTimer = null;
     }
 
+    // Resolve only after each client's 'close' handler (which logs) has run,
+    // so nothing from this feed fires after stop() returns.
+    const clientsClosed = [...this.clients].map(
+      (socket) => new Promise<void>((resolve) => socket.once('close', () => resolve())),
+    );
     for (const socket of this.clients) {
       socket.destroy();
     }
     this.clients.clear();
 
     const server = this.server;
-    if (!server) {
-      return;
-    }
     this.server = null;
 
-    return new Promise((resolve) => {
-      server.close(() => {
-        logger.info('🛑 CoT feed server stopped');
-        resolve();
-      });
-    });
+    await Promise.all([
+      ...clientsClosed,
+      server
+        ? new Promise<void>((resolve) => {
+          server.close(() => {
+            logger.info('🛑 CoT feed server stopped');
+            resolve();
+          });
+        })
+        : undefined,
+    ]);
   }
 
   getStatus(): CotFeedStatus {

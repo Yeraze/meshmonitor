@@ -229,6 +229,7 @@ vi.mock('../server/services/notificationService.js', () => ({
 
 import databaseService from './database.js';
 import { isNodeComplete } from '../utils/nodeHelpers.js';
+import { waitForBackgroundTasks } from '../utils/backgroundTasks.js';
 
 // ─── Tests ────────────────────────────────────────────────────────────────────
 
@@ -805,4 +806,28 @@ describe('DatabaseService.upsertNodeAsync — new node notification (#3796)', ()
     await settle();
     expect(mockNotifyNewNode).toHaveBeenCalledTimes(1);
   });
+
+  it('waitForBackgroundTasks resolves only after an in-flight notification settles', async () => {
+    // Tests that seed complete nodes rely on this to keep the notification's
+    // dynamic import and error log inside the test file's lifetime.
+    vi.mocked(isNodeComplete).mockReturnValue(true);
+    let release!: () => void;
+    mockNotifyNewNode.mockImplementationOnce(() => new Promise<void>((r) => { release = r; }));
+
+    await databaseService.upsertNodeAsync(
+      { nodeNum: 0x7777abcd, nodeId: '!7777abcd', longName: 'Slow Notify', shortName: 'SN', hwModel: 3 },
+      'src1'
+    );
+    await vi.waitFor(() => expect(mockNotifyNewNode).toHaveBeenCalledTimes(1));
+
+    let drained = false;
+    const wait = waitForBackgroundTasks().then(() => { drained = true; });
+    await settle();
+    expect(drained).toBe(false);
+
+    release();
+    await wait;
+    expect(drained).toBe(true);
+  });
+
 });

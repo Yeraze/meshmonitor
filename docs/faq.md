@@ -355,15 +355,18 @@ Apart from the MeshBeacon module settings, none of this needs any action from yo
 #### For Docker Deployments (SQLite — default):
 
 ```bash
-docker compose exec meshmonitor node reset-admin.mjs
+docker compose exec -u node meshmonitor node reset-admin.mjs
 ```
+
+`-u node` runs the script as the same user as the server, so it cannot leave a
+root-owned database file behind (`exec` otherwise defaults to root).
 
 #### For Docker Deployments (PostgreSQL or MySQL):
 
 The script reads `DATABASE_URL` from the container environment, so it works automatically:
 
 ```bash
-docker compose exec meshmonitor node reset-admin.mjs
+docker compose exec -u node meshmonitor node reset-admin.mjs
 ```
 
 #### For Bare Metal Deployments:
