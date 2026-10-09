@@ -120,6 +120,8 @@ export const TABLE_ORDER = [
   'auto_distance_delete_log',
   'auto_key_repair_state',
   'auto_key_repair_log',
+  // 5691: Reliable PKI per-node exchange state + persisted hourly priming timer.
+  'pki_exchange_state',
   'solar_estimates',
   'system_backup_history',
   // 3271: global estimated positions (no sourceId, no FK — one row per nodeNum)

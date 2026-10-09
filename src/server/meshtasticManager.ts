@@ -137,6 +137,7 @@ import {
 import { CoverageReceiverPositionCache } from './utils/coverageReceiverPositionCache.js';
 import { NodeDbMaintenanceService } from './services/nodeDbMaintenanceService.js';
 import { AutoAnnounceService } from './services/autoAnnounceService.js';
+import { ReliablePkiTracker, resolveReliablePkiMode } from './services/reliablePki.js';
 import { AdminTransactionService } from './services/adminTransactionService.js';
 import { FavoritesService } from './services/favoritesService.js';
 import { DeviceAdminService } from './services/deviceAdminService.js';
@@ -1047,6 +1048,8 @@ class MeshtasticManager implements ISourceManager {
   private static readonly TELEMETRY_HIJACK_RETRY_2_DELAY_MS = 70000;
   // Outstanding auto-retry timers, so they can be cancelled on disconnect/teardown.
   private telemetryRetryTimers = new Set<ReturnType<typeof setTimeout>>();
+  // Reliable PKI (#5691): per-node outcome of PKI exchanges + priming NodeInfo.
+  private reliablePki!: ReliablePkiTracker;
   // Where the cutoff reads ChUtil from: the local node, or the averaged
   // strongest-RSSI infrastructure neighbours reached within maxHops.
   private automationAirtimeCutoffSource: AirtimeCutoffSource = DEFAULT_AIRTIME_CUTOFF_SOURCE;
@@ -1611,6 +1614,18 @@ class MeshtasticManager implements ISourceManager {
   constructor(sourceId: string = 'default', sourceConfig?: { host?: string; port?: number; heartbeatIntervalSeconds?: number; virtualNode?: VirtualNodeConfig; mqttLink?: MeshtasticMqttLink; passiveMode?: boolean; passiveResyncStaleMs?: number | null }) {
     this.sourceId = sourceId;
     this.messageQueue = new MessageQueueService(this.sourceId);
+    this.reliablePki = new ReliablePkiTracker({
+      sourceId: this.sourceId,
+      store: {
+        getState: (sid, n) => databaseService.pkiExchangeState.getState(sid, n),
+        markPending: (sid, n, now) => databaseService.pkiExchangeState.markPending(sid, n, now),
+        markSuccessful: (sid, n, now) => databaseService.pkiExchangeState.markSuccessful(sid, n, now),
+        markFailed: (sid, n, reason, now) => databaseService.pkiExchangeState.markFailed(sid, n, reason, now),
+        recordPriming: (sid, n, now) => databaseService.pkiExchangeState.recordPriming(sid, n, now),
+        countPrimedSince: (sid, since) => databaseService.pkiExchangeState.countPrimedSince(sid, since),
+      },
+      getMode: () => resolveReliablePkiMode(databaseService.settings, this.sourceId),
+    });
     this.nodeDbMaintenanceService = new NodeDbMaintenanceService(this);
     this.autoAnnounceService = new AutoAnnounceService(this);
     this.adminTransactionService = new AdminTransactionService(this);
@@ -2785,6 +2800,10 @@ class MeshtasticManager implements ISourceManager {
     }
     this.telemetryRetryTimers.clear();
     this.pendingTelemetryRequests.clear();
+
+    // Reliable PKI (#5691): drop in-flight exchanges and the sweep timer. Rows
+    // left `pending` stay pending; a disconnect is not a failure.
+    this.reliablePki.stop();
 
     logger.debug('Disconnected from Meshtastic node');
   }
@@ -6897,6 +6916,14 @@ class MeshtasticManager implements ISourceManager {
 
       logger.debug(`📨 Processing payload: portnum=${normalizedPortNum} (${meshtasticProtobufService.getPortNumName(portnum)}), payload size=${payload?.length || 0}`);
 
+      // Reliable PKI (#5691): a reply carrying our packet id as request_id,
+      // from the node we asked, settles that PKI exchange as successful.
+      // Routing acks/naks are judged in processRoutingErrorMessage.
+      const replyRequestId = meshPacket.decoded.requestId ? Number(meshPacket.decoded.requestId) : 0;
+      if (replyRequestId && normalizedPortNum !== PortNum.ROUTING_APP) {
+        void this.reliablePki.observeReply(Number(meshPacket.from), replyRequestId);
+      }
+
       if (payload && payload.length > 0 && normalizedPortNum !== undefined) {
         // Use the unified protobuf service to process the payload
         const processedPayload = meshtasticProtobufService.processPayload(normalizedPortNum, payload);
@@ -9379,6 +9406,16 @@ class MeshtasticManager implements ISourceManager {
 
       const errorName = getRoutingErrorName(errorReason);
 
+      // Reliable PKI (#5691): an ack or nak for one of our PKI exchanges.
+      if (requestId) {
+        void this.reliablePki.observeRouting(
+          fromNum,
+          Number(requestId),
+          typeof errorReason === 'number' ? errorReason : undefined,
+          this.localNodeInfo?.nodeNum,
+        );
+      }
+
       // Resolve any pending admin-command ACK waiter (issue #2608 follow-up).
       // Admin packets set want_response, so the destination node returns a
       // Routing ACK with request_id === our sent packet id. Consume it here so
@@ -9717,6 +9754,12 @@ class MeshtasticManager implements ISourceManager {
       // hop limit (it used to be a hardcoded 3). A stored/requested value is
       // capped at that limit, so it can only shorten reach, never extend it.
       const hopLimit = this.resolveWaypointHopLimit(options.hopLimit);
+      // Reliable PKI (#5691): a waypoint sent to one node goes PKI when the
+      // radio holds its key.
+      const unicastDest = options.destination !== undefined && options.destination !== 0xffffffff
+        ? options.destination : undefined;
+      const pkiTarget = unicastDest !== undefined && await this.isPkiSendTarget(unicastDest);
+      if (pkiTarget && unicastDest !== undefined) await this.primeBeforePkiSend(unicastDest);
       const { data, packetId } = meshtasticProtobufService.createWaypointMessage(waypoint, {
         destination: options.destination,
         channel: options.channel,
@@ -9726,6 +9769,9 @@ class MeshtasticManager implements ISourceManager {
 
       this.recordAutomationPacket(packetId, options.origin);
       await this.transport.send(data);
+      if (pkiTarget && unicastDest !== undefined) {
+        void this.reliablePki.track(packetId, unicastDest, { wantAck: hopLimit !== 0, wantResponse: false });
+      }
 
       const virtualNodeServer = this.virtualNodeServer;
       if (virtualNodeServer) {
@@ -10541,6 +10587,72 @@ class MeshtasticManager implements ISourceManager {
   }
 
   /**
+   * The radio's own 32-byte public key, as it reported it in its security
+   * config on this connection. Null when unknown. Deliberately NOT the
+   * `nodes.publicKey` copy in the database, which can be stale (#2275).
+   */
+  private getOwnPublicKeyBytes(): Uint8Array | null {
+    const key = this.actualDeviceConfig?.security?.publicKey;
+    if (!key || key.length !== 32) return null;
+    return key instanceof Uint8Array ? key : new Uint8Array(key);
+  }
+
+  /**
+   * Reliable PKI (#5691): would the radio PKI-encrypt a unicast to this node?
+   * The firmware PKI-encrypts any unicast it originates to a node whose key it
+   * holds, except TRACEROUTE / NODEINFO / ROUTING / POSITION packets
+   * (firmware Router.cpp `wouldEncryptWithPKC`). MeshMonitor uses the same
+   * test as `sendTextMessage`: we hold the node's key and no key mismatch is
+   * flagged (a mismatch belongs to the key-repair flow, which sends its own
+   * NodeInfo exchanges).
+   */
+  private async isPkiSendTarget(destination: number | undefined): Promise<boolean> {
+    if (!destination || destination === 0xffffffff) return false;
+    try {
+      const node = await databaseService.nodes.getNode(destination, this.sourceId);
+      return !!node?.publicKey && !node.keyMismatchDetected;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Reliable PKI (#5691): before a PKI send, send the node our NodeInfo when
+   * the mode is As needed, the last exchange with it failed, and no priming
+   * went to it from this source in the last hour. Uses the key-repair path
+   * (`sendNodeInfoRequest` on the node's channel, never a PKI DM). Never
+   * throws and never blocks the real send: when priming cannot happen the
+   * caller sends exactly as it would have.
+   */
+  private async primeBeforePkiSend(destination: number): Promise<void> {
+    await this.reliablePki.primeBeforeSend(destination, {
+      isEligibleTarget: async () => {
+        if (this.localNodeInfo && destination === this.localNodeInfo.nodeNum) return false;
+        const node = await databaseService.nodes.getNode(destination, this.sourceId);
+        if (!node?.publicKey || node.keyMismatchDetected) return false;
+        if (node.isIgnored || databaseService.ignoredNodes.isIgnoredCached(destination, this.sourceId)) return false;
+        return true;
+      },
+      txBlockedReason: async () => {
+        if (!this.isConnected || !this.transport) return 'not connected';
+        if (!this.canTransmit()) return 'TX disabled';
+        if (this.rebootMergeInProgress) return 'reboot merge in progress';
+        if (await this.isAutomationAirtimeGated()) return 'airtime cutoff';
+        if (!this.getOwnPublicKeyBytes()) return "radio's public key not known yet";
+        return null;
+      },
+      sendNodeInfo: async () => {
+        // The node's channel, as key repair uses — read here, not carried over
+        // from isEligibleTarget, so this hook does not depend on call order.
+        const node = await databaseService.nodes.getNode(destination, this.sourceId);
+        const channel = node?.channel ?? 0;
+        const { packetId } = await this.sendNodeInfoRequest(destination, channel, { origin: 'automation', includeOwnPublicKey: true });
+        if (!packetId) throw new Error('NodeInfo packet could not be built');
+      },
+    });
+  }
+
+  /**
    * `sendTextMessage` for a send MeshMonitor makes on its own (auto-ping
    * replies, ...). Tags the packet as automation-originated (#5414).
    */
@@ -10622,6 +10734,12 @@ class MeshtasticManager implements ISourceManager {
         }
       }
 
+      // Reliable PKI (#5691): prime the node with our NodeInfo first when the
+      // last PKI exchange with it failed. No-op unless the mode is As needed.
+      if (pkiEncrypted && destination) {
+        await this.primeBeforePkiSend(destination);
+      }
+
       // #5121: an automated send may pin its hop count. Capped at this node's
       // own hop limit so an override can only shorten reach, never extend it.
       const hopLimit = clampHopLimitOverride(options?.hopLimitOverride, this.getConfiguredHopLimit());
@@ -10638,6 +10756,13 @@ class MeshtasticManager implements ISourceManager {
       this.recordAutomationPacket(messageId, options?.origin);
 
       await this.transport.send(textMessageData);
+
+      // Reliable PKI (#5691): a PKI DM asks for an ack unless it is zero-hop.
+      // A zero-hop DM asks for nothing back, so by the maintainer's rule it
+      // leaves the node's state as it was (track() returns early).
+      if (pkiEncrypted && destination) {
+        void this.reliablePki.track(messageId, destination, { wantAck: !zeroHop, wantResponse: false });
+      }
 
       // Log message sending at INFO level for production visibility
       const destinationInfo = destination ? `node !${destination.toString(16).padStart(8, '0')}` : `channel ${channel}`;
@@ -10916,7 +11041,7 @@ class MeshtasticManager implements ISourceManager {
    * This will request the destination node to send back its user information
    * Similar to "Exchange Node Info" feature in mobile apps - triggers key exchange
    */
-  async sendNodeInfoRequest(destination: number, channel: number = 0, options?: { origin?: SendOrigin }): Promise<{ packetId: number; requestId: number }> {
+  async sendNodeInfoRequest(destination: number, channel: number = 0, options?: { origin?: SendOrigin; includeOwnPublicKey?: boolean }): Promise<{ packetId: number; requestId: number }> {
     if (!this.isConnected || !this.transport) {
       throw new Error('Not connected to Meshtastic node');
     }
@@ -10943,6 +11068,9 @@ class MeshtasticManager implements ISourceManager {
         shortName: localNode.shortName || '????',
         hwModel: localNode.hwModel ?? undefined,
         role: localNode.role ?? undefined,
+        // Reliable PKI priming (#5691) only: the radio's own key from its
+        // security config, so the node can store it. Never the DB copy (#2275).
+        publicKey: options?.includeOwnPublicKey ? this.getOwnPublicKeyBytes() ?? undefined : undefined,
       } : undefined;
 
       const { data: nodeInfoRequestData, packetId, requestId } = meshtasticProtobufService.createNodeInfoRequestMessage(
@@ -11005,6 +11133,10 @@ class MeshtasticManager implements ISourceManager {
     }
 
     try {
+      // Reliable PKI (#5691): NEIGHBORINFO_APP unicasts go PKI when the radio holds the key.
+      const pkiTarget = await this.isPkiSendTarget(destination);
+      if (pkiTarget) await this.primeBeforePkiSend(destination);
+
       const { data: neighborInfoRequestData, packetId, requestId } = meshtasticProtobufService.createNeighborInfoRequestMessage(
         destination,
         channel,
@@ -11015,6 +11147,7 @@ class MeshtasticManager implements ISourceManager {
 
       this.recordAutomationPacket(packetId, options?.origin);
       await this.transport.send(neighborInfoRequestData);
+      if (pkiTarget) void this.reliablePki.track(packetId, destination, { wantAck: true, wantResponse: true });
 
       // Broadcast to virtual node clients (including packet monitor)
       const virtualNodeServer = this.virtualNodeServer;
@@ -11238,6 +11371,11 @@ class MeshtasticManager implements ISourceManager {
     }
 
     try {
+      // Reliable PKI (#5691): TELEMETRY_APP unicasts go PKI when the radio holds
+      // the key. A hijack auto-retry is not primed (the original send was).
+      const pkiTarget = await this.isPkiSendTarget(destination);
+      if (pkiTarget && !options?.isAutoRetry) await this.primeBeforePkiSend(destination);
+
       const { data: telemetryRequestData, packetId, requestId } = meshtasticProtobufService.createTelemetryRequestMessage(
         destination,
         channel,
@@ -11250,6 +11388,7 @@ class MeshtasticManager implements ISourceManager {
 
       this.recordAutomationPacket(packetId, options?.origin);
       await this.transport.send(telemetryRequestData);
+      if (pkiTarget) void this.reliablePki.track(packetId, destination, { wantAck: true, wantResponse: true });
 
       // Broadcast to virtual node clients (including packet monitor)
       const virtualNodeServer = this.virtualNodeServer;
@@ -11392,15 +11531,23 @@ class MeshtasticManager implements ISourceManager {
    * Unlike requestLocalStats() (gateway-only), this targets an arbitrary node and
    * explicitly requests the `local_stats` variant — the firmware reply echoes the
    * requested variant, so a generic request would return DeviceMetrics instead.
-   * Sent as a unicast on the node's channel (shared PSK), NOT a PKI DM: unicast
-   * bypasses the firmware's multi-hop-broadcast role gate (so REPEATER/CLIENT nodes
-   * answer too) and channel routing avoids stale-key fragility. The reply is
-   * persisted by the existing telemetry handler.
+   * Sent as a unicast on the node's channel: unicast bypasses the firmware's
+   * multi-hop-broadcast role gate (so REPEATER/CLIENT nodes answer too). Note the
+   * radio still PKI-encrypts it when it holds the node's key — firmware
+   * `wouldEncryptWithPKC` does not look at the channel for TELEMETRY_APP — so it
+   * is covered by Reliable PKI (#5691). The reply is persisted by the existing
+   * telemetry handler.
    */
   async requestRemoteLocalStats(destination: number, channel: number = 0, hopLimit: number = 3, options?: { origin?: SendOrigin }): Promise<{ packetId: number; requestId: number }> {
     if (!this.isConnected || !this.transport) {
       throw new Error('Not connected to Meshtastic node');
     }
+
+    // Reliable PKI (#5691): despite going out on the node's channel, a
+    // TELEMETRY_APP unicast is PKI-encrypted by the radio whenever it holds the
+    // node's key (firmware wouldEncryptWithPKC ignores the channel index).
+    const pkiTarget = await this.isPkiSendTarget(destination);
+    if (pkiTarget) await this.primeBeforePkiSend(destination);
 
     const { data: telemetryRequestData, packetId, requestId } =
       meshtasticProtobufService.createTelemetryRequestMessage(
@@ -11416,6 +11563,7 @@ class MeshtasticManager implements ISourceManager {
 
     this.recordAutomationPacket(packetId, options?.origin);
     await this.transport.send(telemetryRequestData);
+    if (pkiTarget) void this.reliablePki.track(packetId, destination, { wantAck: true, wantResponse: true });
 
     // Broadcast to virtual node clients (including packet monitor) for visibility.
     const virtualNodeServer = this.virtualNodeServer;

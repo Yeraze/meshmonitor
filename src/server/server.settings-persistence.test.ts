@@ -218,6 +218,9 @@ function validTestValue(key: string, suffix = ''): string {
     // known one (INVALID_ADSB_FEED otherwise).
     adsbMatchEnabled: 'true',
     adsbFeed: 'adsb.fi',
+    // Reliable PKI (#5691): enums, INVALID_RELIABLE_PKI_MODE otherwise.
+    reliablePkiMode: 'asNeeded',
+    reliablePkiSourceMode: 'off',
   };
 
   if (key in VALID_VALUES) {

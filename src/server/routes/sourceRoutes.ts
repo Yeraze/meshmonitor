@@ -18,6 +18,7 @@ import { MqttBridgeManager, type MqttBridgeSourceConfig } from '../mqttBridgeMan
 import waypointRoutes from './waypoints.js';
 import observerRoutes from './sourceObserverRoutes.js';
 import aircraftFlightMatchRoutes from './aircraftFlightMatchRoutes.js';
+import pkiExchangeStateRoutes from './pkiExchangeStateRoutes.js';
 import { PortNum } from '../constants/meshtastic.js';
 import {
   buildSourceNodes,
@@ -1692,6 +1693,16 @@ router.delete('/:id', requirePermission('sources', 'write'), async (req: Request
       }
     }
 
+    // #5691: Reliable PKI exchange state. Deliberately NOT inside
+    // purgeAllNodesAsync either: purging a live source's nodes must not reset
+    // the hourly priming timer that protects the mesh. Only deleting the
+    // source itself removes it. Best-effort, like the purges above.
+    try {
+      await databaseService.pkiExchangeState.deleteBySourceId(req.params.id);
+    } catch (pkiStateError) {
+      logger.warn(`Failed to purge Reliable PKI state for deleted source ${req.params.id}:`, pkiStateError);
+    }
+
     // NOTE: `mesh_beacon_offers` (#4723) is cleaned up inside
     // purgeAllNodesAsync above, alongside ATAK contacts (#3691) and Coverage
     // Report RF receptions (#5277) — all three are per-source received state.
@@ -2507,6 +2518,7 @@ router.post('/:id/prune-outside-roi', requirePermission('sources', 'write'), asy
 // scoped to the path's `:id` parameter.
 router.use('/:id/waypoints', waypointRoutes);
 router.use('/:id/nodes/:nodeNum/flight-match', aircraftFlightMatchRoutes);
+router.use('/:id/nodes/:nodeNum/pki-exchange', pkiExchangeStateRoutes);
 router.use('/:id/observer', observerRoutes);
 
 export default router;

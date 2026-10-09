@@ -101,6 +101,17 @@ describe('configSections', () => {
       expect(settingsNavItems(t, { ...radio, mode: 'global' }).map((i) => i.id)).not.toContain('settings-pki-dm');
     });
 
+    it('lists Reliable PKI under a Meshtastic radio source\'s Settings only (#5691)', () => {
+      const radio = { ...baseOptions, mode: 'source' as const, sourceType: 'meshtastic_tcp' };
+      expect(settingsNavItems(t, radio).map((i) => i.id)).toContain('settings-reliable-pki');
+      for (const sourceType of ['mqtt_bridge', 'mqtt_broker', 'meshcore', 'reticulum', null]) {
+        expect(settingsNavItems(t, { ...radio, sourceType }).map((i) => i.id), String(sourceType)).not.toContain('settings-reliable-pki');
+      }
+      // The global default lives inside Global → Security, not as its own section.
+      expect(settingsNavItems(t, { ...radio, mode: 'global' }).map((i) => i.id)).not.toContain('settings-reliable-pki');
+      expect(settingsNavItems(t, { ...radio, mode: 'global' }).map((i) => i.id)).toContain('settings-security');
+    });
+
     it('lists the MQTT bridge setup under a bridge\'s Settings, for sources:read', () => {
       const bridge = { ...baseOptions, mode: 'source' as const, sourceType: 'mqtt_bridge', canReadSources: true };
       expect(settingsNavItems(t, bridge).map((i) => i.id)).toContain('settings-mqtt-bridge');

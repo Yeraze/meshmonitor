@@ -258,6 +258,12 @@ export const VALID_SETTINGS_KEYS = [
   // -> Auto Favorite section.
   'autoFavoriteExcludeAircraft',
   'homoglyphEnabled',
+  // Reliable PKI (#5691): send a node our NodeInfo before a PKI send when the
+  // last PKI exchange with it failed. `reliablePkiMode` is the install-wide
+  // default ('off' | 'asNeeded', default 'off'); `reliablePkiSourceMode` is a
+  // per-source override ('inherit' | 'off' | 'asNeeded'). Validated on save.
+  'reliablePkiMode',
+  'reliablePkiSourceMode',
   // Global privacy toggle (issue #3416): when '0'/'false', the /api/link-preview
   // endpoint refuses to fetch external URLs and the UI renders no preview cards.
   'linkPreviewsEnabled',
@@ -478,6 +484,8 @@ export type ValidSettingKey = typeof VALID_SETTINGS_KEYS[number];
  *     reads target a registered key.
  */
 export const PER_SOURCE_SETTINGS_KEYS = [
+  // Reliable PKI per-source override (#5691), read with getSettingForSource.
+  'reliablePkiSourceMode',
   // Auto-ack
   'autoAckChannels',
   'autoAckCooldownSeconds',
@@ -780,6 +788,9 @@ export const GLOBAL_ONLY_SETTINGS_KEYS = new Set<string>([
   'cartoApiKey',
   // Documented "global" in this file's own inline comments:
   'pkiDmDecryptionGloballyEnabled',         // :82 master switch, gates every source
+  // Reliable PKI default (#5691). A source overrides it with reliablePkiSourceMode,
+  // so a per-source copy of this key would be stored and never read.
+  'reliablePkiMode',
   'position_estimation_enabled',            // :141 global batch job (#3271)
   'position_estimation_frequency_hours',    // :141
   'position_estimation_lookback_hours',     // :141

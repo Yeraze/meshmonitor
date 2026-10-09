@@ -258,6 +258,12 @@ export const NOT_REKEYED: readonly { table: string; reason: string }[] = [
     reason: 'Global (no sourceId) and keyed on the node number. Self-heals on the next key-repair pass.',
   },
   {
+    table: 'pki_exchange_state',
+    reason:
+      'Reliable PKI exchange outcome (#5691). Rebuilt by the next encrypted exchange with the ' +
+      'merged node; the hourly priming timer of the absorbed number is not carried over.',
+  },
+  {
     table: 'geofence_cooldowns',
     reason: 'Global (no sourceId). A stale cooldown expires on its own.',
   },
