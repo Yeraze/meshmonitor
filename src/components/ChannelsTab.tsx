@@ -18,7 +18,8 @@ import { formatPrecisionAccuracy } from '../utils/distance';
 import apiService, { type ChannelDatabaseEntry } from '../services/api';
 import { formatMessageTime, getMessageDateSeparator, shouldShowDateSeparator } from '../utils/datetime';
 import { getMessageSortTime } from '../utils/messageSort';
-import { getUtf8ByteLength, formatByteCount, isEmoji } from '../utils/text';
+import { getUtf8ByteLength, formatByteCount } from '../utils/text';
+import { isReplyTo, isTapbackMessage, isTapbackOf } from '../utils/messageReplies';
 import { SenderAvatar, SenderNameButton } from './SenderAvatar';
 import { scrollInputIntoView } from '../utils/scrollInputIntoView';
 import { applyHomoglyphOptimization } from '../utils/homoglyph';
@@ -606,18 +607,6 @@ export default function ChannelsTab({
     // treat it as one of our own outgoing messages (#2584).
     if (msg.spoofSuspected) return false;
     return msg.from === currentNodeId || msg.isLocalMessage === true;
-  };
-
-  // Helper: find message by ID in channel
-  const findMessageById = (messageId: number, channelId: number): MeshMessage | null => {
-    const messagesForChannel = channelMessages[channelId] || [];
-    return (
-      messagesForChannel.find(msg => {
-        const parts = msg.id.split('_');
-        const msgIdNum = parseInt(parts[parts.length - 1] || '0');
-        return msgIdNum === messageId;
-      }) || null
-    );
   };
 
   // Get selected channel config for modal
@@ -1211,8 +1200,10 @@ export default function ChannelsTab({
                       return messagesForChannel && messagesForChannel.length > 0 ? (
                         messagesForChannel.map((msg, index) => {
                           const isMine = isMyMessage(msg);
-                          const repliedMessage = msg.replyId ? findMessageById(msg.replyId, messageChannel) : null;
-                          const isReaction = msg.emoji === 1 || (msg.replyId != null && isEmoji(msg.text));
+                          // Reply / tapback rules live in utils/messageReplies — the
+                          // Auto-Acknowledge response cap counts with the same ones.
+                          const repliedMessage = (channelMessages[messageChannel] || []).find(m => isReplyTo(msg, m)) ?? null;
+                          const isReaction = isTapbackMessage(msg);
 
                           // Hide reactions (tapbacks) from main message list
                           if (isReaction) {
@@ -1221,9 +1212,7 @@ export default function ChannelsTab({
 
                           // Find ALL reactions in the full channel message list
                           const allChannelMessages = channelMessages[messageChannel] || [];
-                          const reactions = allChannelMessages.filter(
-                            m => (m.emoji === 1 || isEmoji(m.text)) && m.replyId && m.replyId.toString() === msg.id.split('_').pop()
-                          );
+                          const reactions = allChannelMessages.filter(m => isTapbackOf(m, msg));
 
                           // Check if we should show a date separator
                           const currentDate = new Date(msg.timestamp);
