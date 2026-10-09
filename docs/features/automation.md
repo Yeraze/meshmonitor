@@ -132,6 +132,32 @@ When enabled, auto-ack responses are sent as direct messages (DMs) to the sender
 
 **When to use it**: Give a repeater time to finish transmitting the triggering message before your reply goes out, instead of racing it. For anything more elaborate than a single fixed delay — e.g. a delay followed by other actions — use the Automation Engine's [Pause action](/features/automation-engine#pause) instead.
 
+On a Meshtastic **channel** message the delay works with the wait described under [Maximum Number of Responses](#auto-ack-max-responses): a delay of 5 seconds or less changes nothing (the wait is already 5 to 10 seconds), and a longer delay becomes the start of the wait, so a delay of 20 gives a wait of 20 to 25 seconds. Direct messages use the delay exactly as set.
+
+### Maximum Number of Responses {#auto-ack-max-responses}
+
+When several nodes on a channel run Auto Acknowledge, one "ping" can draw a reply or tapback from every one of them. After the first couple, the rest tell the sender nothing and only use airtime.
+
+So before it answers a **channel** message, MeshMonitor waits a random **5 to 10 seconds**. When the wait ends it counts the other nodes that have already replied to that message or sent a tapback on it. If the count has reached **Maximum number of responses**, MeshMonitor stays quiet: it sends neither its tapback nor its reply.
+
+**Default**: `2` — **Range**: `0` to `10` — set per source.
+
+- `0` means no limit: MeshMonitor still waits 5 to 10 seconds, then always answers.
+- A node that sends both a reply and a tapback counts **once**.
+- Replies and tapbacks are recognised the same way the message view shows them under a message: a message that points at the original (its "reply to") is a reply, and one flagged as a reaction, or whose whole text is an emoji, is a tapback.
+- Your own node's sends never count. Neither does a follow-up from the person who sent the original message.
+- Only answers heard on **this source**, on the same channel, count. If two of your sources hear the same message, each decides by what it heard itself.
+- **Direct messages are not affected.** Nobody else can answer a DM sent to you, so it is answered straight away, as before.
+- Meshtastic sources only. MeshCore messages carry no "reply to" reference, so MeshMonitor cannot tell which message another node's reply answers; the MeshCore Auto Acknowledge is unchanged.
+
+The wait can only remove a send or delay it by a few seconds. It never adds one. If, when the wait ends, the source is disconnected, has TX disabled, is over the airtime cutoff, or Auto Acknowledge has been switched off, the answer is dropped, not kept for later. Answers that are still waiting are also dropped when the source disconnects or MeshMonitor restarts. At most 10 answers wait at a time on one source; a burst beyond that is dropped.
+
+Two nodes whose waits end within about a second of each other can both answer before either hears the other, so a busy channel can see one or two answers more than the number set here.
+
+::: warning Upgrade note
+This is on for every Meshtastic source after you upgrade, with the default of `2`. Channel acknowledgements now arrive 5 to 10 seconds after the message instead of at once, and are skipped when two other nodes have already answered. To answer every matching message as before (still after the wait), set **Maximum number of responses** to `0`.
+:::
+
 ### Long Replies on MeshCore {#meshcore-long-replies}
 
 A MeshCore text message is small. MeshMonitor caps one message at **150 bytes** for a DM, **130 bytes** for a channel, and **120 bytes** for a channel reply that carries a region scope. These are UTF-8 bytes, not characters: an emoji takes 4 bytes and a CJK character takes 3. A template that looks short can go over the cap once `{NODE_NAME}`, `{ROUTE}` and the other tokens are filled in.

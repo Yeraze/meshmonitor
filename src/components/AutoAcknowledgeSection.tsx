@@ -20,6 +20,11 @@ import { UiIcon } from './icons';
 import AutoAckConvertDialog from './autoack/AutoAckConvertDialog';
 import { HopLimitOverrideSelect } from './HopLimitOverrideSelect';
 import { NumberInput } from './common/NumberInput';
+import {
+  AUTO_ACK_MAX_RESPONSES_DEFAULT,
+  AUTO_ACK_MAX_RESPONSES_MAX,
+  AUTO_ACK_MAX_RESPONSES_MIN,
+} from '../utils/autoAckMaxResponses';
 import { NumberInputScope } from './common/NumberInputScope';
 import { useNumberInputScope } from './common/numberInputScopeContext';
 
@@ -51,6 +56,9 @@ interface AutoAcknowledgeSectionProps {
   /** Hop-limit override (#5121): '' = inherit, '0'–'7' = pinned. */
   hopLimit?: string;
   onHopLimitChange?: (value: string) => void;
+  /** Response cap for channel acks: 0 = no cap, default 2, max 10. */
+  maxResponses?: number;
+  onMaxResponsesChange?: (value: number) => void;
   testMessages: string;
   onTestMessagesChange: (messages: string) => void;
 }
@@ -85,6 +93,8 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
   onMaxAttemptsChange,
   hopLimit = '',
   onHopLimitChange,
+  maxResponses = AUTO_ACK_MAX_RESPONSES_DEFAULT,
+  onMaxResponsesChange,
   testMessages: testMessagesProp,
   onTestMessagesChange,
 }) => {
@@ -106,6 +116,7 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
   const [localPreSendDelaySeconds, setLocalPreSendDelaySeconds] = useState(preSendDelaySeconds);
   const [localMaxAttempts, setLocalMaxAttempts] = useState(maxAttempts);
   const [localHopLimit, setLocalHopLimit] = useState(hopLimit);
+  const [localMaxResponses, setLocalMaxResponses] = useState(maxResponses);
   const [hasChanges, setHasChanges] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [testMessages, setTestMessages] = useState(testMessagesProp || 'test\nTest message\nping\nPING\nHello world\nTESTING 123');
@@ -127,10 +138,11 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
     setLocalPreSendDelaySeconds(preSendDelaySeconds);
     setLocalMaxAttempts(maxAttempts);
     setLocalHopLimit(hopLimit);
+    setLocalMaxResponses(maxResponses);
     if (testMessagesProp) {
       setTestMessages(testMessagesProp);
     }
-  }, [enabled, regex, message, messageDirect, enabledChannels, skipIncompleteNodes, ignoredNodes, matrix, cooldownSeconds, preSendDelaySeconds, maxAttempts, hopLimit, testMessagesProp]);
+  }, [enabled, regex, message, messageDirect, enabledChannels, skipIncompleteNodes, ignoredNodes, matrix, cooldownSeconds, preSendDelaySeconds, maxAttempts, hopLimit, maxResponses, testMessagesProp]);
 
   // Check if any settings have changed.
   // Compare each local value against the SAME normalized baseline the local
@@ -148,9 +160,9 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
     const maxAttemptsChanged = localMaxAttempts !== maxAttempts;
     const hopLimitChanged = localHopLimit !== hopLimit;
     const matrixChanged = JSON.stringify(localMatrix) !== JSON.stringify(matrix);
-    const changed = localEnabled !== enabled || localRegex !== (regex || '^(test|ping)') || localMessage !== (message || DEFAULT_MESSAGE) || localMessageDirect !== (messageDirect || DEFAULT_MESSAGE_DIRECT) || channelsChanged || localSkipIncompleteNodes !== skipIncompleteNodes || localIgnoredNodes !== (ignoredNodes || '') || matrixChanged || cooldownChanged || preSendDelayChanged || maxAttemptsChanged || hopLimitChanged || testMessages !== (testMessagesProp || 'test\nTest message\nping\nPING\nHello world\nTESTING 123');
+    const changed = localEnabled !== enabled || localRegex !== (regex || '^(test|ping)') || localMessage !== (message || DEFAULT_MESSAGE) || localMessageDirect !== (messageDirect || DEFAULT_MESSAGE_DIRECT) || channelsChanged || localSkipIncompleteNodes !== skipIncompleteNodes || localIgnoredNodes !== (ignoredNodes || '') || matrixChanged || cooldownChanged || preSendDelayChanged || maxAttemptsChanged || hopLimitChanged || localMaxResponses !== maxResponses || testMessages !== (testMessagesProp || 'test\nTest message\nping\nPING\nHello world\nTESTING 123');
     setHasChanges(changed);
-  }, [localEnabled, localRegex, localMessage, localMessageDirect, localEnabledChannels, localSkipIncompleteNodes, localIgnoredNodes, localMatrix, localCooldownSeconds, localPreSendDelaySeconds, localMaxAttempts, localHopLimit, testMessages, enabled, regex, message, messageDirect, enabledChannels, skipIncompleteNodes, ignoredNodes, matrix, cooldownSeconds, preSendDelaySeconds, maxAttempts, hopLimit, testMessagesProp]);
+  }, [localEnabled, localRegex, localMessage, localMessageDirect, localEnabledChannels, localSkipIncompleteNodes, localIgnoredNodes, localMatrix, localCooldownSeconds, localPreSendDelaySeconds, localMaxAttempts, localHopLimit, localMaxResponses, testMessages, enabled, regex, message, messageDirect, enabledChannels, skipIncompleteNodes, ignoredNodes, matrix, cooldownSeconds, preSendDelaySeconds, maxAttempts, hopLimit, maxResponses, testMessagesProp]);
 
   // Reset local state to props (used by SaveBar dismiss)
   const resetChanges = useCallback(() => {
@@ -166,8 +178,9 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
     setLocalPreSendDelaySeconds(preSendDelaySeconds);
     setLocalMaxAttempts(maxAttempts);
     setLocalHopLimit(hopLimit);
+    setLocalMaxResponses(maxResponses);
     setTestMessages(testMessagesProp || 'test\nTest message\nping\nPING\nHello world\nTESTING 123');
-  }, [enabled, regex, message, messageDirect, enabledChannels, skipIncompleteNodes, ignoredNodes, matrix, cooldownSeconds, preSendDelaySeconds, maxAttempts, hopLimit, testMessagesProp]);
+  }, [enabled, regex, message, messageDirect, enabledChannels, skipIncompleteNodes, ignoredNodes, matrix, cooldownSeconds, preSendDelaySeconds, maxAttempts, hopLimit, maxResponses, testMessagesProp]);
 
   // Validate regex pattern for safety
   const validateRegex = (pattern: string): { valid: boolean; error?: string } => {
@@ -294,6 +307,7 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
           autoAckPreSendDelaySeconds: String(localPreSendDelaySeconds),
           autoAckMaxAttempts: String(localMaxAttempts),
           autoAckHopLimit: localHopLimit,
+          autoAckMaxResponses: String(localMaxResponses),
           autoAckTestMessages: testMessages
         })
       });
@@ -330,6 +344,7 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
       onPreSendDelaySecondsChange(localPreSendDelaySeconds);
       onMaxAttemptsChange(localMaxAttempts);
       onHopLimitChange?.(localHopLimit);
+      onMaxResponsesChange?.(localMaxResponses);
       onTestMessagesChange(testMessages);
 
       setHasChanges(false);
@@ -340,7 +355,7 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
     } finally {
       setIsSaving(false);
     }
-  }, [localRegex, localEnabled, localMessage, localMessageDirect, localEnabledChannels, localSkipIncompleteNodes, localIgnoredNodes, localMatrix, localCooldownSeconds, localPreSendDelaySeconds, localMaxAttempts, localHopLimit, testMessages, baseUrl, csrfFetch, sourceQuery, showToast, t, onEnabledChange, onRegexChange, onMessageChange, onMessageDirectChange, onChannelsChange, onSkipIncompleteNodesChange, onIgnoredNodesChange, onMatrixChange, onCooldownSecondsChange, onPreSendDelaySecondsChange, onMaxAttemptsChange, onHopLimitChange, onTestMessagesChange]);
+  }, [localRegex, localEnabled, localMessage, localMessageDirect, localEnabledChannels, localSkipIncompleteNodes, localIgnoredNodes, localMatrix, localCooldownSeconds, localPreSendDelaySeconds, localMaxAttempts, localHopLimit, localMaxResponses, testMessages, baseUrl, csrfFetch, sourceQuery, showToast, t, onEnabledChange, onRegexChange, onMessageChange, onMessageDirectChange, onChannelsChange, onSkipIncompleteNodesChange, onIgnoredNodesChange, onMatrixChange, onCooldownSecondsChange, onPreSendDelaySecondsChange, onMaxAttemptsChange, onHopLimitChange, onMaxResponsesChange, onTestMessagesChange]);
 
   // Register with SaveBar
   const numberScope = useNumberInputScope();
@@ -588,6 +603,33 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
               />
               <span style={{ fontSize: '0.85rem', color: 'var(--color-text-subtle)' }}>
                 {t('automation.auto_ack.presend_delay_help', 'seconds (0 = send immediately, max 120)')}
+              </span>
+            </div>
+          </div>
+
+          {/* Response cap: channel acks wait 5-10 s, then stay quiet if enough others answered. */}
+          <div style={{ marginTop: '1rem' }}>
+            <label htmlFor="autoAckMaxResponses" style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 'bold' }}>
+              {t('automation.auto_ack.max_responses_label', 'Maximum number of responses')}
+            </label>
+            <div id="autoAckMaxResponsesHelp" style={{ marginBottom: '0.5rem', fontSize: '0.85rem', color: 'var(--color-text-subtle)' }}>
+              {t('automation.auto_ack.max_responses_description', 'Before it answers a channel message, MeshMonitor waits 5 to 10 seconds. If this many other nodes have already replied or sent a tapback to that message, it stays quiet. This keeps a channel from filling with acknowledgements that add nothing after the first few. A node that sends both a reply and a tapback counts once. Direct messages are answered straight away.')}
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+              <NumberInput
+                id="autoAckMaxResponses"
+                aria-describedby="autoAckMaxResponsesHelp"
+                value={localMaxResponses}
+                integer
+                onChange={setLocalMaxResponses}
+                min={AUTO_ACK_MAX_RESPONSES_MIN}
+                max={AUTO_ACK_MAX_RESPONSES_MAX}
+                zeroHint={t('automation.auto_ack.max_responses_zero_hint', '0 = no limit: always answer after the wait')}
+                disabled={!localEnabled}
+                style={{ width: '80px', padding: '2px 4px' }}
+              />
+              <span style={{ fontSize: '0.85rem', color: 'var(--color-text-subtle)' }}>
+                {t('automation.auto_ack.max_responses_help', 'other nodes (0 = no limit, default 2, max 10)')}
               </span>
             </div>
           </div>

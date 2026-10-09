@@ -19,12 +19,13 @@ export const AUTO_ACK_RESPONSE_WAIT_MIN_MS = 5_000;
 /** Upper bound of the random wait before a channel auto-ack (ms). */
 export const AUTO_ACK_RESPONSE_WAIT_MAX_MS = 10_000;
 
-/** `autoAckMaxResponses` default: stay quiet once 2 other nodes have answered. */
-export const AUTO_ACK_MAX_RESPONSES_DEFAULT = 2;
-/** `autoAckMaxResponses` lower bound. 0 = no cap (wait, then always answer). */
-export const AUTO_ACK_MAX_RESPONSES_MIN = 0;
-/** `autoAckMaxResponses` upper bound. */
-export const AUTO_ACK_MAX_RESPONSES_MAX = 10;
+export {
+  AUTO_ACK_MAX_RESPONSES_DEFAULT,
+  AUTO_ACK_MAX_RESPONSES_MAX,
+  AUTO_ACK_MAX_RESPONSES_MIN,
+  isValidAutoAckMaxResponses,
+  resolveAutoAckMaxResponses,
+} from '../utils/autoAckMaxResponses.js';
 
 /**
  * Most channel auto-acks one source may hold waiting at a time. A burst of
@@ -32,25 +33,6 @@ export const AUTO_ACK_MAX_RESPONSES_MAX = 10;
  * and N armed timers are N sends a few seconds later.
  */
 export const AUTO_ACK_MAX_PENDING = 10;
-
-/**
- * Resolve a stored `autoAckMaxResponses` value. Absent / blank / malformed
- * reads as the default (2); numbers are clamped to 0-10.
- */
-export function resolveAutoAckMaxResponses(raw: string | null | undefined): number {
-  if (raw == null || raw.trim() === '') return AUTO_ACK_MAX_RESPONSES_DEFAULT;
-  if (!/^\d+$/.test(raw.trim())) return AUTO_ACK_MAX_RESPONSES_DEFAULT;
-  const n = parseInt(raw.trim(), 10);
-  return Math.min(Math.max(n, AUTO_ACK_MAX_RESPONSES_MIN), AUTO_ACK_MAX_RESPONSES_MAX);
-}
-
-/** True when `value` is a legal thing to SAVE for `autoAckMaxResponses`: a whole number 0-10. */
-export function isValidAutoAckMaxResponses(value: unknown): boolean {
-  const text = typeof value === 'number' ? String(value) : value;
-  if (typeof text !== 'string' || !/^\d{1,2}$/.test(text.trim())) return false;
-  const n = parseInt(text.trim(), 10);
-  return n >= AUTO_ACK_MAX_RESPONSES_MIN && n <= AUTO_ACK_MAX_RESPONSES_MAX;
-}
 
 /**
  * How long to wait before a channel auto-ack, in ms.

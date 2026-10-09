@@ -80,6 +80,7 @@ const AutomationTab: React.FC<AutomationTabProps> = ({ baseUrl, channels, nodes,
     autoAckPreSendDelaySeconds, setAutoAckPreSendDelaySeconds,
     autoAckMaxAttempts, setAutoAckMaxAttempts,
     autoAckHopLimit, setAutoAckHopLimit,
+    autoAckMaxResponses, setAutoAckMaxResponses,
     autoAckTestMessages, setAutoAckTestMessages,
     autoAnnounceEnabled, setAutoAnnounceEnabled,
     autoAnnounceIntervalHours, setAutoAnnounceIntervalHours,
@@ -224,6 +225,8 @@ const AutomationTab: React.FC<AutomationTabProps> = ({ baseUrl, channels, nodes,
               maxAttempts={autoAckMaxAttempts}
               onMaxAttemptsChange={setAutoAckMaxAttempts}
               hopLimit={autoAckHopLimit}
+              maxResponses={autoAckMaxResponses}
+              onMaxResponsesChange={setAutoAckMaxResponses}
               onHopLimitChange={setAutoAckHopLimit}
               baseUrl={baseUrl}
               onEnabledChange={setAutoAckEnabled}

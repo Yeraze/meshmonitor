@@ -4,6 +4,7 @@ import { useSource } from './SourceContext';
 import { logger } from '../utils/logger';
 import { AutoAckMatrix, DEFAULT_AUTOACK_MATRIX, settingsToMatrix } from '../utils/autoAckMatrix';
 import { hopLimitSettingValue } from '../utils/hopLimitOverride';
+import { AUTO_ACK_MAX_RESPONSES_DEFAULT, resolveAutoAckMaxResponses } from '../utils/autoAckMaxResponses';
 
 interface AutomationContextType {
   autoAckEnabled: boolean;
@@ -30,6 +31,8 @@ interface AutomationContextType {
   setAutoAckMaxAttempts: React.Dispatch<React.SetStateAction<number>>;
   /** Hop-limit override (#5121): '' = inherit the node's own, else '0'–'7'. */
   autoAckHopLimit: string;
+  autoAckMaxResponses: number;
+  setAutoAckMaxResponses: React.Dispatch<React.SetStateAction<number>>;
   setAutoAckHopLimit: React.Dispatch<React.SetStateAction<string>>;
   autoAckTestMessages: string;
   setAutoAckTestMessages: React.Dispatch<React.SetStateAction<string>>;
@@ -125,6 +128,7 @@ export const AutomationProvider: React.FC<AutomationProviderProps> = ({ children
   const [autoAckPreSendDelaySeconds, setAutoAckPreSendDelaySeconds] = useState<number>(0);
   const [autoAckMaxAttempts, setAutoAckMaxAttempts] = useState<number>(3);
   const [autoAckHopLimit, setAutoAckHopLimit] = useState<string>('');
+  const [autoAckMaxResponses, setAutoAckMaxResponses] = useState<number>(AUTO_ACK_MAX_RESPONSES_DEFAULT);
   const [autoAckTestMessages, setAutoAckTestMessages] = useState<string>('');
   const [autoAnnounceEnabled, setAutoAnnounceEnabled] = useState<boolean>(false);
   const [autoAnnounceIntervalHours, setAutoAnnounceIntervalHours] = useState<number>(6);
@@ -215,6 +219,8 @@ export const AutomationProvider: React.FC<AutomationProviderProps> = ({ children
         if (s.autoAckMaxAttempts !== undefined) setAutoAckMaxAttempts(Math.min(3, Math.max(1, num('autoAckMaxAttempts', 3))));
         // A malformed stored value reads as inherit, matching the server.
         setAutoAckHopLimit(hopLimitSettingValue(s.autoAckHopLimit));
+        // Always set: unset reads as the default (2) and a stored 0 stays 0.
+        setAutoAckMaxResponses(resolveAutoAckMaxResponses(s.autoAckMaxResponses));
         if (s.autoAckTestMessages !== undefined) setAutoAckTestMessages(s.autoAckTestMessages);
 
         if (s.autoAnnounceEnabled !== undefined) setAutoAnnounceEnabled(bool('autoAnnounceEnabled'));
@@ -276,6 +282,7 @@ export const AutomationProvider: React.FC<AutomationProviderProps> = ({ children
     autoAckPreSendDelaySeconds, setAutoAckPreSendDelaySeconds,
     autoAckMaxAttempts, setAutoAckMaxAttempts,
     autoAckHopLimit, setAutoAckHopLimit,
+    autoAckMaxResponses, setAutoAckMaxResponses,
     autoAckTestMessages, setAutoAckTestMessages,
     autoAnnounceEnabled, setAutoAnnounceEnabled,
     autoAnnounceIntervalHours, setAutoAnnounceIntervalHours,
@@ -323,6 +330,7 @@ export const AutomationProvider: React.FC<AutomationProviderProps> = ({ children
     autoAckPreSendDelaySeconds, setAutoAckPreSendDelaySeconds,
     autoAckMaxAttempts, setAutoAckMaxAttempts,
     autoAckHopLimit, setAutoAckHopLimit,
+    autoAckMaxResponses, setAutoAckMaxResponses,
     autoAckTestMessages, setAutoAckTestMessages,
     autoAnnounceEnabled, setAutoAnnounceEnabled,
     autoAnnounceIntervalHours, setAutoAnnounceIntervalHours,

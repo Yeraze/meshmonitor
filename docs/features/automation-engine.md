@@ -969,6 +969,11 @@ group rather than silently dropped:
   convert. If you want the same resend behavior on the converted automation, add it yourself via
   **Send a message**'s [**DM resend attempts**](#send-a-message) field — the converter doesn't
   infer it.
+- **`autoAckMaxResponses`** — Auto-Acknowledge waits 5 to 10 seconds before it answers a channel
+  message and stays quiet once that many other nodes have replied or sent a tapback (see [Maximum
+  Number of Responses](/features/automation#auto-ack-max-responses)). The engine has no "wait, then
+  check for other responses" step, so a converted channel automation answers every matching
+  message at once. Keep Auto-Acknowledge itself if you rely on this.
 - An **empty channel allowlist**. An empty Auto-Acknowledge allowlist means the feature never
   acknowledged *any* channel message — not "every channel" — so the converter creates no Channel
   automation for it rather than one that would newly answer on every channel.
