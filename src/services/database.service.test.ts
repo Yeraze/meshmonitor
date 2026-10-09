@@ -6,7 +6,7 @@
  *
  * @vitest-environment node
  */
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach, afterAll } from 'vitest';
 
 // ─── Mock config before singleton construction ────────────────────────────────
 
@@ -805,4 +805,29 @@ describe('DatabaseService.upsertNodeAsync — new node notification (#3796)', ()
     await settle();
     expect(mockNotifyNewNode).toHaveBeenCalledTimes(1);
   });
+
+  it('waitForPendingNotificationsAsync resolves only after an in-flight notification settles', async () => {
+    // Tests that seed complete nodes rely on this to keep the notification's
+    // dynamic import and error log inside the test file's lifetime.
+    vi.mocked(isNodeComplete).mockReturnValue(true);
+    let release!: () => void;
+    mockNotifyNewNode.mockImplementationOnce(() => new Promise<void>((r) => { release = r; }));
+
+    await databaseService.upsertNodeAsync(
+      { nodeNum: 0x7777abcd, nodeId: '!7777abcd', longName: 'Slow Notify', shortName: 'SN', hwModel: 3 },
+      'src1'
+    );
+    await vi.waitFor(() => expect(mockNotifyNewNode).toHaveBeenCalledTimes(1));
+
+    let drained = false;
+    const wait = databaseService.waitForPendingNotificationsAsync().then(() => { drained = true; });
+    await settle();
+    expect(drained).toBe(false);
+
+    release();
+    await wait;
+    expect(drained).toBe(true);
+  });
+
+  afterAll(() => databaseService.waitForPendingNotificationsAsync());
 });

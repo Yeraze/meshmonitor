@@ -111,7 +111,8 @@ export interface RouteTestHarness {
    */
   tokenFor(user: SeededUser | number): Promise<string>;
   /**
-   * Delete seeded permissions + sources. Call in `afterEach`.
+   * Wait for in-flight new-node notifications, then delete seeded
+   * permissions + sources. Call in `afterEach`.
    * Users are left in place (inactive-safe, unique names).
    */
   cleanup(): Promise<void>;
@@ -264,6 +265,10 @@ export async function createRouteTestApp(
   };
 
   const cleanup = async (): Promise<void> => {
+    // A route that upserts a complete node fires a fire-and-forget "new node"
+    // notification. Let it settle while the test file is still alive, or its
+    // dynamic import and error log land after teardown and fail the run.
+    await databaseService.waitForPendingNotificationsAsync();
     await databaseService.auth.deletePermissionsForUser(limited.id).catch(() => {});
     await databaseService.auth.deletePermissionsForUser(admin.id).catch(() => {});
     await databaseService.sources.deleteSource(SOURCE_A).catch(() => {});

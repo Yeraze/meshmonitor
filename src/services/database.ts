@@ -505,6 +505,11 @@ class DatabaseService {
   // to avoid duplicate notifications when node data is updated incrementally
   private newNodeNotifiedSet: Set<number> = new Set();
 
+  // In-flight fire-and-forget "new node" notifications. The caller never waits
+  // on them, but a test that seeds complete nodes must, or the dynamic import
+  // and its error log outlive the test file and fail the Vitest run.
+  private pendingNewNodeNotifications: Set<Promise<void>> = new Set();
+
   // Ghost node suppression: nodeNum → expiresAt timestamp
   // Prevents resurrection of ghost nodes after reboot detection
   private suppressedGhostNodes: Map<number, number> = new Map();
@@ -1644,7 +1649,7 @@ class DatabaseService {
 
     this.newNodeNotifiedSet.add(nodeNum);
     const newNodeSourceId = sourceId ?? (nodeData as any).sourceId ?? (existingNode as any)?.sourceId ?? 'default';
-    import('../server/services/notificationService.js').then(async ({ notificationService }) => {
+    const pending: Promise<void> = import('../server/services/notificationService.js').then(async ({ notificationService }) => {
       let sourceName = newNodeSourceId;
       try {
         const src = await this.sources.getSource(newNodeSourceId);
@@ -1659,7 +1664,21 @@ class DatabaseService {
         newNodeSourceId,
         sourceName
       );
-    }).catch(err => logger.error('Failed to send new node notification:', err));
+    }).catch(err => logger.error('Failed to send new node notification:', err))
+      .finally(() => { this.pendingNewNodeNotifications.delete(pending); });
+    this.pendingNewNodeNotifications.add(pending);
+  }
+
+  /**
+   * Resolve once every in-flight "new node" notification has settled. Never
+   * rejects (each one catches its own error). Production code does not need
+   * this; tests that upsert complete nodes against the real singleton await it
+   * in `afterAll`, so no work outlives the test file.
+   */
+  async waitForPendingNotificationsAsync(): Promise<void> {
+    while (this.pendingNewNodeNotifications.size > 0) {
+      await Promise.all([...this.pendingNewNodeNotifications]);
+    }
   }
 
   /**

@@ -88,6 +88,8 @@ describe('ingestServiceEnvelope — geo-ignore per-source isolation', () => {
   });
 
   afterAll(async () => {
+    // Let fire-and-forget new-node notifications settle before the file ends.
+    await databaseService.waitForPendingNotificationsAsync();
     // FK ON DELETE CASCADE (migration 048) takes ignored_nodes/nodes/messages/
     // telemetry rows scoped to these sources with them.
     await databaseService.sources.deleteSource(SRC_A).catch(() => {});
