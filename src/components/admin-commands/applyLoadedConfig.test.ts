@@ -35,6 +35,15 @@ describe('applyLoadedConfig', () => {
     expect(Object.keys(CONFIG_APPLIERS).sort()).toEqual([...LOAD_CONFIG_TYPES].sort());
   });
 
+  it('mqtt: carries tlsEnabled, so the broker preset and a re-save see the node\'s TLS (#5689)', () => {
+    const setters = makeSetters();
+    applyLoadedConfig('mqtt', { enabled: true, address: 'mqtt.meshtastic.org', tlsEnabled: true }, setters, { nodeNum: 100 });
+    expect(setters.setMQTTConfig).toHaveBeenCalledWith(expect.objectContaining({ address: 'mqtt.meshtastic.org', tlsEnabled: true }));
+    const off = makeSetters();
+    applyLoadedConfig('mqtt', { enabled: true }, off, { nodeNum: 100 });
+    expect(off.setMQTTConfig).toHaveBeenCalledWith(expect.objectContaining({ tlsEnabled: false }));
+  });
+
   it('lists owner and channels as the only sections with their own loader', () => {
     expect(ADMIN_LOAD_SECTIONS.filter(section => !(LOAD_CONFIG_TYPES as readonly string[]).includes(section)))
       .toEqual(['owner', 'channels']);

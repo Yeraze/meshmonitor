@@ -1060,9 +1060,31 @@ Configure network settings including WiFi, NTP, and static IP addresses.
 - Remote monitoring and control
 - Integration with home automation systems
 
+### Broker Preset
+
+**Description**: A chooser above the address that fills in a known broker. It appears here, in Remote Admin's MQTT section, and in an MQTT bridge source's Settings.
+
+| Preset | Address | TLS | Username / Password |
+|---|---|---|---|
+| Meshtastic Official | `mqtt.meshtastic.org` (port 1883) | off | `meshdev` / `large4cats` |
+| Meshtastic Official (TLS) | `mqtt.meshtastic.org` (port 8883) | on | `meshdev` / `large4cats` |
+| Custom… | your own | your own | your own |
+
+**Effect**: Choosing a preset only edits the form. Nothing reaches the device until you press Save, and Save works as it always has (the device may reboot). A preset sets the address, TLS and login, and leaves root topic, encryption, JSON, client proxy, map reporting and channel uplink/downlink alone.
+
+**Login rule**: A preset fills the username and password only when they are empty. If you already have a login, it stays, and a note under the chooser tells you the public login so you can type it in.
+
+**Which one is selected**: The chooser shows the preset your saved settings already match. An empty address counts as the official broker, because that is what the firmware uses when no address is set. Anything else shows **Custom…**.
+
+**Finding a regional broker**: There is no list of community brokers. Local groups run and publish their own, so the chooser links to the [Meshtastic Local Groups](https://meshtastic.org/docs/community/local-groups/) list and the [MeshMonitor Site Gallery](https://meshmonitor.org/site-gallery.html). MeshMonitor does not read or copy either list.
+
+::: warning Public broker
+Every channel with **uplink** on publishes its traffic to the broker. On the public broker, anyone on the internet can read it. See Meshtastic's [public MQTT server](https://meshtastic.org/docs/software/integrations/mqtt/#public-mqtt-server) rules.
+:::
+
 ### MQTT Address
 
-**Description**: Hostname or IP address of the MQTT broker.
+**Description**: Hostname or IP address of the MQTT broker. Leave it empty to use the default public server (`mqtt.meshtastic.org`).
 
 **Format**: `hostname:port` or `ip:port`
 
@@ -1078,13 +1100,9 @@ Configure network settings including WiFi, NTP, and static IP addresses.
 
 ### MQTT Encryption
 
-**Description**: Enable TLS/SSL encryption for MQTT connections.
+**Description**: Send packets to MQTT still encrypted with the channel key, instead of decrypted.
 
-**Recommendation**: Always enable for public/internet MQTT brokers.
-
-**Effect**: Encrypts MQTT traffic between device and broker.
-
-**Side Effects**: Slightly higher power usage due to encryption overhead
+**Effect**: Only clients holding the channel key can read the packets on the broker. This is separate from TLS, which protects the connection itself.
 
 ### MQTT JSON
 
