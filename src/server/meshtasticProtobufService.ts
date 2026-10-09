@@ -214,7 +214,7 @@ export class MeshtasticProtobufService {
   createNodeInfoRequestMessage(
     destination: number,
     channel?: number,
-    userInfo?: { id: string; longName: string; shortName: string; hwModel?: number; role?: number },
+    userInfo?: { id: string; longName: string; shortName: string; hwModel?: number; role?: number; publicKey?: Uint8Array },
     hopLimit: number = DEFAULT_HOP_LIMIT
   ): { data: Uint8Array; packetId: number; requestId: number } {
     const root = getProtobufRoot();
@@ -244,9 +244,14 @@ export class MeshtasticProtobufService {
         if (userInfo.role !== undefined) {
           userData.role = userInfo.role;
         }
-        // NOTE: publicKey is intentionally omitted. The device firmware handles its own
-        // key distribution. Broadcasting a DB-cached key risks distributing stale keys
-        // if the device has regenerated its key pair. See issue #2275.
+        // NOTE: a DB-cached publicKey is never sent. Broadcasting a stale key
+        // would teach other nodes the wrong identity (#2275). The one exception
+        // is a Reliable PKI priming send (#5691), whose whole purpose is to give
+        // the node our key: the caller passes the key the radio itself reported
+        // in its security config on this connection, and only a 32-byte one.
+        if (userInfo.publicKey && userInfo.publicKey.length === 32) {
+          userData.publicKey = userInfo.publicKey;
+        }
       }
       // If no user info provided, send empty user (fallback behavior)
 

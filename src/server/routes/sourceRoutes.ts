@@ -1692,6 +1692,16 @@ router.delete('/:id', requirePermission('sources', 'write'), async (req: Request
       }
     }
 
+    // #5691: Reliable PKI exchange state. Deliberately NOT inside
+    // purgeAllNodesAsync either: purging a live source's nodes must not reset
+    // the hourly priming timer that protects the mesh. Only deleting the
+    // source itself removes it. Best-effort, like the purges above.
+    try {
+      await databaseService.pkiExchangeState.deleteBySourceId(req.params.id);
+    } catch (pkiStateError) {
+      logger.warn(`Failed to purge Reliable PKI state for deleted source ${req.params.id}:`, pkiStateError);
+    }
+
     // NOTE: `mesh_beacon_offers` (#4723) is cleaned up inside
     // purgeAllNodesAsync above, alongside ATAK contacts (#3691) and Coverage
     // Report RF receptions (#5277) — all three are per-source received state.

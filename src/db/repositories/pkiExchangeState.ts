@@ -19,7 +19,8 @@ export type PkiFailureReason =
   | 'timeout'            // no reply or ack within the exchange deadline
   | 'max_retransmit'     // our radio gave up retransmitting (firmware MAX_RETRANSMIT)
   | 'pki_unknown_pubkey' // the node said it does not hold our public key
-  | 'no_channel';        // the node could not decrypt the packet at all
+  | 'no_channel'         // the node could not decrypt the packet at all
+  | 'radio_refused';     // our own radio would not PKI-encrypt to the node
 
 export interface PkiExchangeStateRow {
   sourceId: string;
