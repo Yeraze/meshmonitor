@@ -53,7 +53,7 @@ const renderPanel = (props: Record<string, unknown> = {}) =>
 beforeEach(() => {
   mobileLayout = false;
   getCurrentConfig.mockReset().mockResolvedValue({ deviceConfig: { lora: { region: 1, txPower: 27 } } });
-  post.mockReset().mockResolvedValue({ success: true, data: { radials: [], assumptions: [] } });
+  post.mockReset().mockResolvedValue({ success: true, data: { radiusKm: 15, radials: [], assumptions: [] } });
 });
 
 describe('SitePlannerPanel', () => {
@@ -357,6 +357,20 @@ describe('SitePlannerPanel', () => {
       expect(toggle().getAttribute('aria-expanded')).toBe('true');
       expect(body().hidden).toBe(false);
       expect(screen.queryByTestId('site-planner-bar')).toBeNull();
+    });
+
+    it('says in the folded bar when terrain data was missing', async () => {
+      mobileLayout = true;
+      const user = userEvent.setup();
+      post.mockResolvedValue({ success: true, data: { ...coverage, radials: [
+        ...coverage.radials, radial({ bearingDeg: 300, reachKm: 4, limitedByRadius: false, hasDataGaps: true }),
+      ] } });
+      renderPanel();
+      await waitFor(() => expect(getCurrentConfig).toHaveBeenCalled());
+      await user.click(screen.getByTestId('site-planner-run'));
+
+      await waitFor(() =>
+        expect(screen.getByTestId('site-planner-summary').textContent).toMatch(/site_planner\.summary_data_gaps/));
     });
 
     it('Clear in the folded bar removes the ring', async () => {
