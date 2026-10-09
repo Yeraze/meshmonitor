@@ -102,6 +102,17 @@ export function getMeshCoreChannelSendState(
   selfPublicKey: string | null | undefined,
 ): MeshCoreChannelSendState | null {
   if (!selfPublicKey || msg.fromPublicKey !== selfPublicKey) return null;
+  return getOwnMeshCoreChannelSendState(msg);
+}
+
+/**
+ * The same reading for a message the CALLER already knows is ours. For callers
+ * that hold a direction and no public key (the Delivery Details builder).
+ * Never call this on a message of unknown origin: it does not check the sender.
+ */
+export function getOwnMeshCoreChannelSendState(
+  msg: Pick<MeshCoreMessage, 'toPublicKey' | 'heardBy' | 'messageType'>,
+): MeshCoreChannelSendState | null {
   if (!msg.toPublicKey || !msg.toPublicKey.startsWith('channel-')) return null;
   if (msg.messageType === 'room_post') return null;
   return msg.heardBy && msg.heardBy.length > 0 ? 'relayed' : 'sent_to_radio';

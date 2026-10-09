@@ -686,7 +686,10 @@ export const MeshCoreMessageStream: React.FC<MeshCoreMessageStreamProps> = ({
                   {/* "Sent to radio" (#5682): our channel send that no repeater
                       was heard relaying. The radio accepted the message; it does
                       not report transmitting, so this claims no more than that.
-                      Gives way to the heard-by badge once a relay is heard. */}
+                      Gives way to the heard-by badge once a relay is heard.
+                      `deliveryStatus` is the DM ack state; a channel send has
+                      no ack and never carries one. Should one ever appear,
+                      the status icon above speaks for the message instead. */}
                   {!m.deliveryStatus && getMeshCoreChannelSendState(m, selfPublicKey) === 'sent_to_radio' && (
                     <button
                       type="button"

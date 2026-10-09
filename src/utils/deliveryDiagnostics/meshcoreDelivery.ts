@@ -6,7 +6,7 @@
  */
 
 import type { MeshCoreMessage } from '../../components/MeshCore/hooks/useMeshCore.js';
-import { getMeshCoreChannelSendState, getMeshCoreDeliveryState } from './status.js';
+import { getMeshCoreDeliveryState, getOwnMeshCoreChannelSendState } from './status.js';
 import type { DeliveryDescription, DeliverySection, DeliveryTone, MessageDirection } from './types.js';
 
 function formatHex(value: number | null | undefined): string | null {
@@ -56,9 +56,10 @@ export function describeMeshCoreDelivery(
   // Our own channel send has no ack to report, but it is not "unknown" either
   // (#5682): the row exists because the radio accepted it, and `heardBy` says
   // whether a repeater was heard relaying it. Same selector as the stream's
-  // mark, so the two cannot disagree.
+  // mark, so the two cannot disagree. `direction === 'sent'` is this builder's
+  // proof that the message is ours; it has no public key to compare.
   if (state === 'unknown' && direction === 'sent') {
-    const channelState = getMeshCoreChannelSendState(msg, msg.fromPublicKey);
+    const channelState = getOwnMeshCoreChannelSendState(msg);
     if (channelState === 'relayed') {
       statusKey = 'delivery_details.mc_status.relayed';
       tone = 'success';
