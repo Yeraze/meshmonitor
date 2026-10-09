@@ -77,6 +77,34 @@ describe('describeMeshCoreDelivery', () => {
     expect(result.tone).toBe('warning');
   });
 
+  it('our channel send with no relay reads "sent to radio", not unknown (#5682)', () => {
+    const result = describeMeshCoreDelivery(baseMessage({ toPublicKey: 'channel-2' }));
+    expect(result.statusKey).toBe('delivery_details.mc_status.sent_to_radio');
+    expect(result.meaningKey).toBe('delivery_details.mc_meaning.sent_to_radio');
+    expect(result.tone).toBe('pending');
+  });
+
+  it('our channel send that a repeater relayed reads "relayed" (#5682)', () => {
+    const result = describeMeshCoreDelivery(
+      baseMessage({ toPublicKey: 'channel-2', heardBy: [{ hash: '7f', name: null, snr: 4 }] }),
+    );
+    expect(result.statusKey).toBe('delivery_details.mc_status.relayed');
+    expect(result.meaningKey).toBe('delivery_details.mc_meaning.relayed');
+    expect(result.tone).toBe('success');
+  });
+
+  it('a DM with no status, and a received channel message, stay unknown (#5682)', () => {
+    expect(describeMeshCoreDelivery(baseMessage({ toPublicKey: 'd'.repeat(64) })).statusKey)
+      .toBe('delivery_details.mc_status.unknown');
+    expect(describeMeshCoreDelivery(baseMessage({ toPublicKey: 'channel-2' }), 'received').statusKey)
+      .toBe('delivery_details.mc_status.unknown');
+  });
+
+  it('a DM ack state wins over the channel reading', () => {
+    expect(describeMeshCoreDelivery(baseMessage({ toPublicKey: 'channel-2', deliveryStatus: 'failed' })).statusKey)
+      .toBe('delivery_details.mc_status.not_confirmed');
+  });
+
   it('hopCount 0 reports a Direct route', () => {
     const result = describeMeshCoreDelivery(baseMessage({ hopCount: 0 }));
     const field = findField(result, 'delivery_details.field.route_type');

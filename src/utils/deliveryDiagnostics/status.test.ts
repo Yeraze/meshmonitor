@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { getMeshtasticDeliveryState, getMeshCoreDeliveryState, TIMEOUT_MS } from './status';
+import { getMeshtasticDeliveryState, getMeshCoreDeliveryState, getMeshCoreChannelSendState, getOwnMeshCoreChannelSendState, TIMEOUT_MS } from './status';
 import { MessageDeliveryState } from '../../types/message';
 
 describe('getMeshtasticDeliveryState', () => {
@@ -96,5 +96,48 @@ describe('getMeshCoreDeliveryState', () => {
 
   it('maps undefined deliveryStatus to unknown', () => {
     expect(getMeshCoreDeliveryState(undefined)).toBe('unknown');
+  });
+});
+
+describe('getMeshCoreChannelSendState (#5682)', () => {
+  const SELF = 'a'.repeat(64);
+  const sent = { fromPublicKey: SELF, toPublicKey: 'channel-1' };
+
+  it('is sent_to_radio for our channel send with no relay heard', () => {
+    expect(getMeshCoreChannelSendState(sent, SELF)).toBe('sent_to_radio');
+    expect(getMeshCoreChannelSendState({ ...sent, heardBy: [] }, SELF)).toBe('sent_to_radio');
+  });
+
+  it('is relayed once a repeater was heard', () => {
+    expect(getMeshCoreChannelSendState({ ...sent, heardBy: [{ hash: '7f' }] }, SELF)).toBe('relayed');
+  });
+
+  it('is null for a received channel message, even with our text', () => {
+    expect(getMeshCoreChannelSendState({ fromPublicKey: 'channel-1', toPublicKey: 'channel-1' }, SELF)).toBeNull();
+    expect(getMeshCoreChannelSendState({ ...sent, fromPublicKey: 'b'.repeat(64) }, SELF)).toBeNull();
+  });
+
+  it('is null for a DM and for a room post', () => {
+    expect(getMeshCoreChannelSendState({ fromPublicKey: SELF, toPublicKey: 'd'.repeat(64) }, SELF)).toBeNull();
+    expect(getMeshCoreChannelSendState({ fromPublicKey: SELF, toPublicKey: 'd'.repeat(64), messageType: 'room_post' }, SELF)).toBeNull();
+    expect(getMeshCoreChannelSendState({ fromPublicKey: SELF }, SELF)).toBeNull();
+  });
+
+  it('is null when our own key is unknown', () => {
+    expect(getMeshCoreChannelSendState(sent, undefined)).toBeNull();
+    expect(getMeshCoreChannelSendState(sent, null)).toBeNull();
+  });
+});
+
+describe('getOwnMeshCoreChannelSendState (#5682)', () => {
+  it('reads the channel state without checking the sender', () => {
+    expect(getOwnMeshCoreChannelSendState({ toPublicKey: 'channel-0' })).toBe('sent_to_radio');
+    expect(getOwnMeshCoreChannelSendState({ toPublicKey: 'channel-0', heardBy: [{ hash: 'a3' }] })).toBe('relayed');
+  });
+
+  it('is null for a DM, a room post, and a message with no target', () => {
+    expect(getOwnMeshCoreChannelSendState({ toPublicKey: 'd'.repeat(64) })).toBeNull();
+    expect(getOwnMeshCoreChannelSendState({ toPublicKey: 'd'.repeat(64), messageType: 'room_post' })).toBeNull();
+    expect(getOwnMeshCoreChannelSendState({})).toBeNull();
   });
 });
