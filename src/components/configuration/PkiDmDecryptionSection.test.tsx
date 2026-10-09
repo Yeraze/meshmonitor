@@ -82,14 +82,14 @@ describe('PkiDmDecryptionSection: where it renders', () => {
     render(<PkiDmDecryptionSection />);
     const section = await screen.findByTestId('pki-dm-section');
     expect(section.id).toBe('config-pki-dm');
-    expect(section.className).toBe('config-section');
+    expect(section.classList.contains('config-section')).toBe(true);
   });
 
   it('takes the Settings anchor and section class when hosted there', async () => {
     render(<PkiDmDecryptionSection sectionId="settings-pki-dm" className="settings-section" />);
     const section = await screen.findByTestId('pki-dm-section');
     expect(section.id).toBe('settings-pki-dm');
-    expect(section.className).toBe('settings-section');
+    expect(section.classList.contains('settings-section')).toBe(true);
   });
 
   it('points at Global Settings for the install-wide switch', async () => {
