@@ -140,6 +140,16 @@ describe('device MQTT config — broker presets (#5689)', () => {
     expect(field('tlsEnabled').checked).toBe(false);
   });
 
+  it('Custom… ends once the fields change: put back to a preset (e.g. Dismiss), the preset shows', () => {
+    render(<Harness initial={{ address: '' }} />);
+    fireEvent.change(select(), { target: { value: 'custom' } });
+    fireEvent.change(field('mqttAddress'), { target: { value: 'my.broker' } });
+    expect(select().value).toBe('custom');
+    // What the save bar's Dismiss does: the stored values come back.
+    fireEvent.change(field('mqttAddress'), { target: { value: '' } });
+    expect(select().value).toBe('meshtastic_public');
+  });
+
   it('falls back to Custom… once the user edits the address away from the preset', () => {
     render(<Harness initial={{ address: '' }} />);
     fireEvent.change(field('mqttAddress'), { target: { value: 'my.broker' } });

@@ -41,21 +41,25 @@ export const BrokerPresetSelector: React.FC<BrokerPresetSelectorProps> = ({
 }) => {
   const { t } = useTranslation();
   // "Custom…" picked while the fields still match a preset: keep showing it
-  // until the user picks a preset again.
-  const [forceCustom, setForceCustom] = useState(false);
+  // while the fields stay as they were. Any change to what the fields match
+  // (an edit, or the save bar's Dismiss putting them back) ends it, so the
+  // chooser never shows "Custom…" next to fields it does not describe.
+  const [customAt, setCustomAt] = useState<{ matched: string | null } | null>(null);
+  if (customAt !== null && customAt.matched !== matchedPresetId) setCustomAt(null);
+  const forceCustom = customAt !== null && customAt.matched === matchedPresetId;
   const [lastApplied, setLastApplied] = useState<{ presetId: string; kept: KeptCredentials } | null>(null);
 
   const value = forceCustom ? CUSTOM_PRESET_ID : matchedPresetId ?? CUSTOM_PRESET_ID;
 
   const handleChange = (next: string) => {
     if (next === CUSTOM_PRESET_ID) {
-      setForceCustom(true);
+      setCustomAt({ matched: matchedPresetId });
       setLastApplied(null);
       return;
     }
     const preset = findBrokerPreset(next);
     if (!preset) return;
-    setForceCustom(false);
+    setCustomAt(null);
     setLastApplied({ presetId: preset.id, kept: onApplyPreset(preset) });
   };
 
