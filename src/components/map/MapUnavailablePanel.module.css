@@ -1,0 +1,66 @@
+/* MapUnavailablePanel: stands in for a map that threw. Fills the map's box. */
+.panel {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  width: 100%;
+  height: 100%;
+  min-height: 8rem;
+  padding: 1rem;
+  box-sizing: border-box;
+  overflow: auto;
+  background: var(--color-bg-sunken);
+  color: var(--color-text);
+  text-align: center;
+  font-size: 0.85rem;
+}
+
+.icon {
+  display: inline-flex;
+  color: var(--color-warning);
+}
+
+.title {
+  font-size: 1rem;
+}
+
+.body {
+  max-width: 28rem;
+  color: var(--color-text-subtle);
+}
+
+.details {
+  max-width: min(100%, 32rem);
+  color: var(--color-text-muted);
+  font-size: 0.8rem;
+}
+
+.details summary {
+  cursor: pointer;
+}
+
+.details pre {
+  margin: 0.4rem 0 0;
+  text-align: left;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--color-error);
+}
+
+.retry {
+  margin-top: 0.3rem;
+  padding: 0.4rem 0.9rem;
+  border: none;
+  border-radius: var(--radius-md);
+  background: var(--color-accent);
+  color: var(--color-bg-sunken);
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.retry:hover {
+  opacity: 0.85;
+}

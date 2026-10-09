@@ -1,0 +1,58 @@
+/* VectorFallbackNotice: "raster shown in place of vector" note.
+ *
+ * Anchored to the Leaflet container (`.leaflet-container` is positioned), so
+ * it sits inside every map that composes BaseMap, whatever wraps it.
+ *
+ * Bottom-left is the free corner: Leaflet's zoom buttons and the tileset
+ * picker are top-left, the Features panel and legend top-right, attribution
+ * and the relocated zoom buttons bottom-right, MapModeIndicator bottom-centre. */
+.notice {
+  position: absolute;
+  left: 10px;
+  bottom: 10px;
+  /* Above the Leaflet panes and controls (800-1000 is the control range),
+     below the draggable overlays and the sidebar. */
+  z-index: 900;
+  display: flex;
+  align-items: flex-start;
+  gap: 0.4rem;
+  max-width: min(22rem, calc(100% - 20px));
+  padding: 0.35rem 0.4rem 0.35rem 0.55rem;
+  border: 1px solid var(--color-warning);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-md);
+  color: var(--color-text);
+  font-size: 0.75rem;
+  line-height: 1.3;
+  cursor: default;
+}
+
+.icon {
+  flex-shrink: 0;
+  display: inline-flex;
+  margin-top: 0.05rem;
+  color: var(--color-warning);
+}
+
+.text {
+  min-width: 0;
+}
+
+.dismiss {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.15rem;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--color-text-subtle);
+  cursor: pointer;
+}
+
+.dismiss:hover {
+  background: var(--color-surface-hover);
+  color: var(--color-text);
+}

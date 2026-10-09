@@ -1,10 +1,15 @@
 import React, { Component, ErrorInfo } from 'react';
 import { logger } from '../../utils/logger';
+import { describeError } from './describeError';
 import './ErrorBoundary.css';
 
 interface ErrorBoundaryProps {
   children: React.ReactNode;
   fallbackTitle?: string;
+  /** Replaces the default panel. Gets the thrown value and a `retry` that
+   *  re-renders the children. Use it where the default panel does not fit:
+   *  a map's box (`BaseMap`), or the whole page (`main.tsx`). */
+  fallback?: (error: unknown, retry: () => void) => React.ReactNode;
 }
 
 interface ErrorBoundaryState {
@@ -12,11 +17,6 @@ interface ErrorBoundaryState {
   /** Whatever was thrown. Usually an `Error`, but libraries can throw plain
    *  strings (leaflet.markercluster does, #5516). */
   error: unknown;
-}
-
-/** Readable text for a thrown value, whether or not it is an `Error`. */
-function describeError(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
 }
 
 class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
@@ -39,6 +39,9 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
 
   render() {
     if (this.state.hasError) {
+      if (this.props.fallback) {
+        return this.props.fallback(this.state.error, this.handleRetry);
+      }
       return (
         <div className="error-boundary-fallback">
           <div className="error-boundary-content">

@@ -5,6 +5,7 @@ import React from 'react';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { TilesetSelector } from './TilesetSelector';
+import { setVectorRenderingForTests } from './map/vectorSupport';
 
 const settings = {
   activeMapTilesetMode: 'light' as 'light' | 'dark',
@@ -36,6 +37,22 @@ describe('TilesetSelector', () => {
   it('identifies the light-mode slot edited by the in-map selector', () => {
     render(<TilesetSelector selectedTilesetId="osm" onTilesetChange={vi.fn()} />);
     expect(screen.getByText('Tileset (Light mode)')).toBeDefined();
+  });
+
+  it('says a vector basemap is shown as raster when the browser has no WebGL', () => {
+    setVectorRenderingForTests(false);
+    render(<TilesetSelector selectedTilesetId="cartoPositron" onTilesetChange={vi.fn()} embedded />);
+    expect(screen.getByTestId('tileset-webgl-warning').textContent).toContain('WebGL');
+  });
+
+  it('shows no WebGL note for a raster basemap, or when WebGL works', () => {
+    setVectorRenderingForTests(false);
+    const { unmount } = render(<TilesetSelector selectedTilesetId="osm" onTilesetChange={vi.fn()} embedded />);
+    expect(screen.queryByTestId('tileset-webgl-warning')).toBeNull();
+    unmount();
+    setVectorRenderingForTests(true);
+    render(<TilesetSelector selectedTilesetId="cartoPositron" onTilesetChange={vi.fn()} embedded />);
+    expect(screen.queryByTestId('tileset-webgl-warning')).toBeNull();
   });
 
   it('identifies the dark-mode slot edited by the in-map selector', () => {
