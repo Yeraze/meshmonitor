@@ -28,6 +28,12 @@ vi.mock('react-i18next', async () => {
 });
 vi.mock('../icons/UiIcon', () => ({ UiIcon: ({ name }: { name: string }) => <i data-icon={name} /> }));
 
+// The phone/desktop split is the shared mobile-layout hook; drive it directly.
+let mobileLayout = false;
+vi.mock('../../hooks/useIsMobileViewport', () => ({
+  useIsMobileLayoutViewport: () => mobileLayout,
+}));
+
 import SitePlannerPanel from './SitePlannerPanel';
 
 const origin = { id: 'n1', lat: 30, lng: -97, isNode: true, name: 'Hilltop' };
@@ -45,6 +51,7 @@ const renderPanel = (props: Record<string, unknown> = {}) =>
   );
 
 beforeEach(() => {
+  mobileLayout = false;
   getCurrentConfig.mockReset().mockResolvedValue({ deviceConfig: { lora: { region: 1, txPower: 27 } } });
   post.mockReset().mockResolvedValue({ success: true, data: { radials: [], assumptions: [] } });
 });
@@ -226,5 +233,158 @@ describe('SitePlannerPanel', () => {
 
     await waitFor(() => expect(post).toHaveBeenCalled());
     expect(screen.queryByTestId('site-planner-notice')).toBeNull();
+  });
+
+  describe('collapsible panel (#5687)', () => {
+    const coverage = {
+      radiusKm: 15, assumptions: [], radials: [
+        radial({ bearingDeg: 0, reachKm: 12.34, limitedByRadius: false }),
+        radial({ bearingDeg: 120, reachKm: 15 }),
+        radial({ bearingDeg: 240, reachKm: 9, limitedByRadius: false }),
+      ],
+    };
+    const body = () => screen.getByTestId('site-planner-body');
+    const toggle = () => screen.getByTestId('site-planner-toggle');
+
+    it('on a phone: edit -> pending -> folded result -> edit inputs keeps the values', async () => {
+      mobileLayout = true;
+      const user = userEvent.setup();
+      let resolvePost: (v: unknown) => void = () => {};
+      post.mockImplementation(() => new Promise((r) => { resolvePost = r; }));
+      const onCoverage = vi.fn();
+      renderPanel({ onCoverage });
+      await waitFor(() =>
+        expect((screen.getByTestId('site-planner-txPowerDbm') as HTMLInputElement).value).toBe('27'));
+
+      // Edit a value, then predict.
+      const height = screen.getByTestId('site-planner-txHeightM') as HTMLInputElement;
+      await user.clear(height);
+      await user.type(height, '42');
+      await user.click(screen.getByTestId('site-planner-run'));
+
+      // Pending: still expanded, progress visible on the Run button.
+      expect(screen.getByTestId('site-planner-panel').dataset.collapsed).toBe('false');
+      expect(body().hidden).toBe(false);
+      expect(screen.getByTestId('site-planner-run').textContent).toBe('site_planner.running');
+      expect((screen.getByTestId('site-planner-run') as HTMLButtonElement).disabled).toBe(true);
+
+      resolvePost({ success: true, data: coverage });
+
+      // Folded: form hidden, summary with reach and the radius-edge share.
+      await waitFor(() => expect(screen.getByTestId('site-planner-panel').dataset.collapsed).toBe('true'));
+      expect(body().hidden).toBe(true);
+      const summary = screen.getByTestId('site-planner-summary').textContent ?? '';
+      expect(summary).toMatch(/site_planner\.summary:\{"reach":"15\.0","radius":15\}/);
+      expect(summary).toMatch(/summary_radius_limited:\{"percent":33\}/);
+      expect(toggle().getAttribute('aria-expanded')).toBe('false');
+      expect(onCoverage).toHaveBeenLastCalledWith(coverage);
+      // Focus moved off the now-hidden Run button onto the expand toggle.
+      await waitFor(() => expect(document.activeElement).toBe(toggle()));
+
+      // Edit inputs: expanded again, same values, focus on the first field.
+      await user.click(screen.getByTestId('site-planner-edit'));
+      expect(body().hidden).toBe(false);
+      expect(toggle().getAttribute('aria-expanded')).toBe('true');
+      expect((screen.getByTestId('site-planner-txHeightM') as HTMLInputElement).value).toBe('42');
+      expect((screen.getByTestId('site-planner-txPowerDbm') as HTMLInputElement).value).toBe('27');
+      await waitFor(() =>
+        expect(document.activeElement).toBe(screen.getByTestId('site-planner-frequencyMhz')));
+      // The ring was not touched by folding or unfolding.
+      expect(onCoverage).toHaveBeenLastCalledWith(coverage);
+    });
+
+    it('keeps the panel expanded with the error shown when a prediction fails', async () => {
+      mobileLayout = true;
+      const user = userEvent.setup();
+      post.mockRejectedValue(new Error('boom'));
+      renderPanel();
+      await waitFor(() => expect(getCurrentConfig).toHaveBeenCalled());
+
+      await user.click(screen.getByTestId('site-planner-run'));
+
+      await waitFor(() => expect(screen.getByRole('alert').textContent).toBe('boom'));
+      expect(screen.getByTestId('site-planner-panel').dataset.collapsed).toBe('false');
+      expect(body().hidden).toBe(false);
+    });
+
+    it('re-expands to show an error when the user folded it while pending', async () => {
+      const user = userEvent.setup();
+      let rejectPost: (e: unknown) => void = () => {};
+      post.mockImplementation(() => new Promise((_r, j) => { rejectPost = j; }));
+      renderPanel();
+      await waitFor(() => expect(getCurrentConfig).toHaveBeenCalled());
+
+      await user.click(screen.getByTestId('site-planner-run'));
+      await user.click(toggle());
+      expect(screen.getByTestId('site-planner-summary').textContent).toBe('site_planner.running');
+
+      rejectPost(new Error('boom'));
+      await waitFor(() => expect(screen.getByRole('alert')).toBeTruthy());
+      expect(body().hidden).toBe(false);
+    });
+
+    it('does not auto-collapse on a desktop layout', async () => {
+      const user = userEvent.setup();
+      post.mockResolvedValue({ success: true, data: coverage });
+      renderPanel();
+      await waitFor(() => expect(getCurrentConfig).toHaveBeenCalled());
+
+      await user.click(screen.getByTestId('site-planner-run'));
+
+      await waitFor(() => expect(screen.getByTestId('site-planner-notice-radius')).toBeTruthy());
+      expect(screen.getByTestId('site-planner-panel').dataset.collapsed).toBe('false');
+      expect(toggle().getAttribute('aria-expanded')).toBe('true');
+    });
+
+    it('collapses and expands manually with a labelled toggle', async () => {
+      const user = userEvent.setup();
+      renderPanel();
+      await waitFor(() => expect(getCurrentConfig).toHaveBeenCalled());
+
+      expect(toggle().getAttribute('aria-expanded')).toBe('true');
+      expect(toggle().getAttribute('aria-label')).toBe('site_planner.collapse');
+      expect(toggle().getAttribute('aria-controls')).toBe(body().id);
+
+      await user.click(toggle());
+      expect(toggle().getAttribute('aria-expanded')).toBe('false');
+      expect(toggle().getAttribute('aria-label')).toBe('site_planner.expand');
+      expect(body().hidden).toBe(true);
+      // No result yet: no summary numbers, no Clear in the bar.
+      expect(screen.getByTestId('site-planner-summary').textContent).toBe('site_planner.collapsed_hint');
+      expect(screen.queryByTestId('site-planner-bar-clear')).toBeNull();
+
+      await user.click(toggle());
+      expect(toggle().getAttribute('aria-expanded')).toBe('true');
+      expect(body().hidden).toBe(false);
+      expect(screen.queryByTestId('site-planner-bar')).toBeNull();
+    });
+
+    it('Clear in the folded bar removes the ring', async () => {
+      mobileLayout = true;
+      const user = userEvent.setup();
+      post.mockResolvedValue({ success: true, data: coverage });
+      const onCoverage = vi.fn();
+      renderPanel({ onCoverage });
+      await waitFor(() => expect(getCurrentConfig).toHaveBeenCalled());
+      await user.click(screen.getByTestId('site-planner-run'));
+      await waitFor(() => expect(screen.getByTestId('site-planner-bar-clear')).toBeTruthy());
+
+      await user.click(screen.getByTestId('site-planner-bar-clear'));
+      expect(onCoverage).toHaveBeenLastCalledWith(null);
+      expect(screen.getByTestId('site-planner-summary').textContent).toBe('site_planner.collapsed_hint');
+    });
+
+    it('re-opens expanded after being closed while folded', async () => {
+      const user = userEvent.setup();
+      const { rerender } = renderPanel();
+      await waitFor(() => expect(getCurrentConfig).toHaveBeenCalled());
+      await user.click(toggle());
+      expect(body().hidden).toBe(true);
+
+      rerender(<SitePlannerPanel open={false} sourceId="src-a" origin={origin} onClose={() => {}} onCoverage={() => {}} />);
+      expect(screen.queryByTestId('site-planner-panel')).toBeNull();
+      rerender(<SitePlannerPanel open sourceId="src-a" origin={origin} onClose={() => {}} onCoverage={() => {}} />);
+      expect(body().hidden).toBe(false);
+    });
   });
 });
