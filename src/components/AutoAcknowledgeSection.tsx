@@ -607,13 +607,13 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
             </div>
           </div>
 
-          {/* Response cap: channel acks wait 5-10 s, then stay quiet if enough others answered. */}
+          {/* Response cap: channel acks wait 5-30 s, then stay quiet if enough others answered. */}
           <div style={{ marginTop: '1rem' }}>
             <label htmlFor="autoAckMaxResponses" style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 'bold' }}>
               {t('automation.auto_ack.max_responses_label', 'Maximum number of responses')}
             </label>
             <div id="autoAckMaxResponsesHelp" style={{ marginBottom: '0.5rem', fontSize: '0.85rem', color: 'var(--color-text-subtle)' }}>
-              {t('automation.auto_ack.max_responses_description', 'Before it answers a channel message, MeshMonitor waits 5 to 10 seconds. If this many other nodes have already replied or sent a tapback to that message, it stays quiet. This keeps a channel from filling with acknowledgements that add nothing after the first few. A node that sends both a reply and a tapback counts once. Direct messages are answered straight away.')}
+              {t('automation.auto_ack.max_responses_description', 'Before it answers a channel message, MeshMonitor waits 5 to 30 seconds (about 17 on average), so the acknowledgement does not appear at once. If this many other nodes have already replied or sent a tapback to that message by then, it stays quiet. This keeps a channel from filling with acknowledgements that add nothing after the first few. A node that sends both a reply and a tapback counts once. Direct messages are answered straight away.')}
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
               <NumberInput

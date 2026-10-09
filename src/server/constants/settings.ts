@@ -51,7 +51,7 @@ export const VALID_SETTINGS_KEYS = [
   'autoAckMaxAttempts',
   // Hop-limit override for Auto-Acknowledge replies and tapbacks (#5121).
   'autoAckHopLimit',
-  // Channel auto-acks wait 5-10 s and stay quiet once this many other nodes
+  // Channel auto-acks wait 5-30 s and stay quiet once this many other nodes
   // have answered the same message. 0 = no cap; default 2; 0-10 enforced on
   // save (settingsRoutes) and clamped on read (autoAckResponseCap.ts).
   'autoAckMaxResponses',

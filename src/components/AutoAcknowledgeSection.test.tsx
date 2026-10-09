@@ -899,7 +899,8 @@ describe('AutoAcknowledgeSection — Maximum number of responses', () => {
       .toBe('automation.auto_ack.max_responses_description');
     expect(enLocale['automation.auto_ack.max_responses_label']).toBe('Maximum number of responses');
     const help = enLocale['automation.auto_ack.max_responses_description'];
-    expect(help).toMatch(/waits 5 to 10 seconds/);
+    expect(help).toMatch(/waits 5 to 30 seconds \(about 17 on average\)/);
+    expect(help).toMatch(/does not appear at once/);
     expect(help).toMatch(/replied or sent a tapback/);
     expect(help).toMatch(/channel message/);
     expect(help).toMatch(/Direct messages are answered straight away/);

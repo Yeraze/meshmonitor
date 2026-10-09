@@ -284,7 +284,7 @@ describe('MeshtasticManager - Auto-Ack/Responder/Ping TX-disabled skip (#4294 WP
         autoAckPreSendDelaySeconds: '0',
       });
 
-      // A DM: channel acks now wait 5-10 s before they are queued (covered in
+      // A DM: channel acks now wait 5-30 s before they are queued (covered in
       // meshtasticManager.autoAckResponseCap.test.ts); a DM is still immediate.
       await manager.checkAutoAcknowledge(autoAckMessage, 'ping', 0, true, REMOTE_NODE_NUM, 222);
 

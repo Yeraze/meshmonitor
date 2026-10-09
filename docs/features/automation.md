@@ -132,17 +132,21 @@ When enabled, auto-ack responses are sent as direct messages (DMs) to the sender
 
 **When to use it**: Give a repeater time to finish transmitting the triggering message before your reply goes out, instead of racing it. For anything more elaborate than a single fixed delay — e.g. a delay followed by other actions — use the Automation Engine's [Pause action](/features/automation-engine#pause) instead.
 
-On a Meshtastic **channel** message the delay works with the wait described under [Maximum Number of Responses](#auto-ack-max-responses): a delay of 5 seconds or less changes nothing (the wait is already 5 to 10 seconds), and a longer delay becomes the start of the wait, so a delay of 20 gives a wait of 20 to 25 seconds. Direct messages use the delay exactly as set.
+On a Meshtastic **channel** message the delay works with the wait described under [Maximum Number of Responses](#auto-ack-max-responses): a delay of 5 seconds or less changes nothing (the wait is already 5 to 30 seconds), and a longer delay becomes the start of the wait, so a delay of 20 gives a wait of 20 to 45 seconds. Direct messages use the delay exactly as set.
 
 ### Maximum Number of Responses {#auto-ack-max-responses}
 
 When several nodes on a channel run Auto Acknowledge, one "ping" can draw a reply or tapback from every one of them. After the first couple, the rest tell the sender nothing and only use airtime.
 
-So before it answers a **channel** message, MeshMonitor waits a random **5 to 10 seconds**. When the wait ends it counts the other nodes that have already replied to that message or sent a tapback on it. If the count has reached **Maximum number of responses**, MeshMonitor stays quiet: it sends neither its tapback nor its reply.
+So before it answers a **channel** message, MeshMonitor waits a random **5 to 30 seconds**. When the wait ends it counts the other nodes that have already replied to that message or sent a tapback on it. If the count has reached **Maximum number of responses**, MeshMonitor stays quiet: it sends neither its tapback nor its reply.
 
 **Default**: `2` — **Range**: `0` to `10` — set per source.
 
-- `0` means no limit: MeshMonitor still waits 5 to 10 seconds, then always answers.
+::: tip Testing with "ping"? Wait for it
+A channel acknowledgement now arrives **5 to 30 seconds** after the message, about 17 seconds on average, and not at all when enough other nodes answered first. Nothing is broken if your "ping" gets no instant reply. To see an answer every time, set the value to `0` and wait up to 30 seconds, or send the ping as a direct message, which is answered at once.
+:::
+
+- `0` means no limit: MeshMonitor still waits 5 to 30 seconds, then always answers.
 - A node that sends both a reply and a tapback counts **once**.
 - Replies and tapbacks are recognised the same way the message view shows them under a message: a message that points at the original (its "reply to") is a reply, and one flagged as a reaction, or whose whole text is an emoji, is a tapback.
 - Your own node's sends never count. Neither does a follow-up from the person who sent the original message.
@@ -150,12 +154,20 @@ So before it answers a **channel** message, MeshMonitor waits a random **5 to 10
 - **Direct messages are not affected.** Nobody else can answer a DM sent to you, so it is answered straight away, as before.
 - Meshtastic sources only. MeshCore messages carry no "reply to" reference, so MeshMonitor cannot tell which message another node's reply answers; the MeshCore Auto Acknowledge is unchanged.
 
-The wait can only remove a send or delay it by a few seconds. It never adds one. If, when the wait ends, the source is disconnected, has TX disabled, is over the airtime cutoff, or Auto Acknowledge has been switched off, the answer is dropped, not kept for later. Answers that are still waiting are also dropped when the source disconnects or MeshMonitor restarts. At most 10 answers wait at a time on one source; a burst beyond that is dropped.
+**Why 5 to 30 seconds.** The 5-second floor gives other nodes' answers time to reach you before you decide; without it you would answer before anyone could have been heard. The spread up to 30 seconds is for large or slow meshes, where an answer needs many seconds to cross several hops: the wider the spread, the fewer nodes finish waiting before they have heard each other.
 
-Two nodes whose waits end within about a second of each other can both answer before either hears the other, so a busy channel can see one or two answers more than the number set here.
+**The wait follows your current settings.** When the wait ends, MeshMonitor decides again from scratch. If in the meantime you turned Auto Acknowledge off, changed the pattern so the message no longer matches, removed the channel, added the sender to the ignore list, lowered the maximum, or the message was deleted, no answer is sent. The answer is also dropped, not kept for later, if the source is disconnected, has TX disabled, or is over the airtime cutoff. Answers still waiting are dropped when the source disconnects or MeshMonitor restarts.
+
+**Cooldown.** The per-node cooldown is checked when the message arrives and starts again when the answer is sent, and a node with an answer still waiting cannot start a second one. Two answers to one node are never closer together than the cooldown, even when the cooldown is shorter than the wait.
+
+**Bursts.** At most 10 answers wait at a time on one source; a burst beyond that is dropped.
+
+The wait can only remove a send or delay it. It never adds one.
+
+The limit is a target, not a guarantee. A node cannot count an answer it has not heard yet, so nodes whose waits end close together can all answer. On a LongFast mesh a few hops across, expect about one answer more than the number set here with 5 nodes answering and about two more with 10. On a slow preset such as LongSlow, where one answer can take 10 to 20 seconds to arrive, expect roughly half of the nodes to answer whatever the limit.
 
 ::: warning Upgrade note
-This is on for every Meshtastic source after you upgrade, with the default of `2`. Channel acknowledgements now arrive 5 to 10 seconds after the message instead of at once, and are skipped when two other nodes have already answered. To answer every matching message as before (still after the wait), set **Maximum number of responses** to `0`.
+This is on for every Meshtastic source after you upgrade, with the default of `2`. Channel acknowledgements now arrive 5 to 30 seconds after the message (about 17 seconds on average) instead of at once, and are skipped when two other nodes have already answered. To answer every matching message as before (still after the wait), set **Maximum number of responses** to `0`. Direct messages are answered at once, as before.
 :::
 
 ### Long Replies on MeshCore {#meshcore-long-replies}

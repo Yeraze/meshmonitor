@@ -1,7 +1,7 @@
 /**
- * Auto-Acknowledge: random 5-10 s wait and "Maximum number of responses".
+ * Auto-Acknowledge: random 5-30 s wait and "Maximum number of responses".
  *
- * A channel message that matches is held for a random 5-10 s. When the wait
+ * A channel message that matches is held for a random 5-30 s. When the wait
  * ends MeshMonitor counts the other nodes that have replied to or tapbacked
  * that message (same rule the message views render with) and sends nothing if
  * the count has reached the cap. Everything here runs on fake timers against a
@@ -31,6 +31,7 @@ vi.mock('../services/database.js', () => ({
     },
     messages: {
       getReplyCandidates: vi.fn().mockResolvedValue([]),
+      getMessage: vi.fn(),
     },
   },
 }));
@@ -120,6 +121,8 @@ beforeEach(() => {
   );
   vi.mocked(databaseService.settings.getSetting).mockResolvedValue(null);
   candidates().mockResolvedValue([]);
+  // The trigger row exists unless a test deletes it.
+  vi.mocked(databaseService.messages.getMessage).mockImplementation(async (id: string) => ({ id }) as any);
 });
 
 afterEach(() => {
@@ -144,9 +147,9 @@ describe('the wait', () => {
 
   it.each([
     [0, 5_000],
-    [0.5, 7_500],
-    [0.999999, 10_000],
-  ])('random %f waits %i ms, inside [5 s, 10 s]', async (random, expectedMs) => {
+    [0.5, 17_500],
+    [0.999999, 30_000],
+  ])('random %f waits %i ms, inside [5 s, 30 s]', async (random, expectedMs) => {
     const manager = makeManager(SOURCE_A, random);
     const spy = vi.spyOn(globalThis, 'setTimeout');
     await receive(manager);
@@ -158,11 +161,11 @@ describe('the wait', () => {
     expect(waits[0]).toBeLessThanOrEqual(AUTO_ACK_RESPONSE_WAIT_MAX_MS);
   });
 
-  it('a longer Pre-Send Delay replaces the 5 s floor and keeps the 5 s spread', async () => {
+  it('a longer Pre-Send Delay replaces the 5 s floor and keeps the 25 s spread', async () => {
     tables[SOURCE_A].autoAckPreSendDelaySeconds = '20';
     const manager = makeManager(SOURCE_A, 0.5);
     await receive(manager);
-    await vi.advanceTimersByTimeAsync(22_499);
+    await vi.advanceTimersByTimeAsync(32_499); // 20 s + half of the 25 s spread
     expect(enqueueOf(manager)).not.toHaveBeenCalled();
     await vi.advanceTimersByTimeAsync(1);
     expect(enqueueOf(manager)).toHaveBeenCalledTimes(1);
@@ -179,7 +182,7 @@ describe('the wait', () => {
   it('what is sent is unchanged: same emoji, channel, replyId, one attempt', async () => {
     const manager = makeManager();
     const packetId = await receive(manager);
-    await vi.advanceTimersByTimeAsync(10_000);
+    await vi.advanceTimersByTimeAsync(30_000);
     const args = enqueueOf(manager).mock.calls[0];
     expect(args[1]).toBe(0);          // channel broadcast
     expect(args[2]).toBe(packetId);   // reacts to the trigger
@@ -201,7 +204,7 @@ describe('the cap (default 2)', () => {
     candidates().mockResolvedValue(
       Array.from({ length: others }, (_, i) => tapback(0x500 + i, packetId)),
     );
-    await vi.advanceTimersByTimeAsync(10_000);
+    await vi.advanceTimersByTimeAsync(30_000);
     expect(enqueueOf(manager)).toHaveBeenCalledTimes(sends ? 1 : 0);
   });
 
@@ -209,7 +212,7 @@ describe('the cap (default 2)', () => {
     const manager = makeManager();
     const packetId = await receive(manager);
     candidates().mockResolvedValue([reply(0x501, packetId), reply(0x502, packetId)]);
-    await vi.advanceTimersByTimeAsync(10_000);
+    await vi.advanceTimersByTimeAsync(30_000);
     expect(enqueueOf(manager)).not.toHaveBeenCalled();
   });
 
@@ -217,7 +220,7 @@ describe('the cap (default 2)', () => {
     const manager = makeManager();
     const packetId = await receive(manager);
     candidates().mockResolvedValue([reply(0x501, packetId), tapback(0x502, packetId)]);
-    await vi.advanceTimersByTimeAsync(10_000);
+    await vi.advanceTimersByTimeAsync(30_000);
     expect(enqueueOf(manager)).not.toHaveBeenCalled();
   });
 
@@ -225,14 +228,14 @@ describe('the cap (default 2)', () => {
     const manager = makeManager();
     const packetId = await receive(manager);
     candidates().mockResolvedValue([tapback(0x501, packetId), reply(0x501, packetId)]);
-    await vi.advanceTimersByTimeAsync(10_000);
+    await vi.advanceTimersByTimeAsync(30_000);
     expect(enqueueOf(manager)).toHaveBeenCalledTimes(1);
   });
 
   it('answers that arrive DURING the wait are counted', async () => {
-    const manager = makeManager(SOURCE_A, 0.999999); // 10 s
+    const manager = makeManager(SOURCE_A, 0.999999); // 30 s
     const packetId = await receive(manager);
-    await vi.advanceTimersByTimeAsync(4_000);
+    await vi.advanceTimersByTimeAsync(24_000);
     // Nothing has been read yet: the count happens when the wait ends.
     expect(candidates()).not.toHaveBeenCalled();
     candidates().mockResolvedValue([tapback(0x501, packetId), reply(0x502, packetId)]);
@@ -249,7 +252,7 @@ describe('the cap (default 2)', () => {
       reply(SENDER, packetId),                          // the author following up
       tapback(0x501, packetId),
     ]);
-    await vi.advanceTimersByTimeAsync(10_000);
+    await vi.advanceTimersByTimeAsync(30_000);
     expect(enqueueOf(manager)).toHaveBeenCalledTimes(1);
   });
 
@@ -257,14 +260,14 @@ describe('the cap (default 2)', () => {
     const manager = makeManager();
     const packetId = await receive(manager);
     candidates().mockResolvedValue([tapback(0x501, packetId + 1), tapback(0x502, packetId + 1)]);
-    await vi.advanceTimersByTimeAsync(10_000);
+    await vi.advanceTimersByTimeAsync(30_000);
     expect(enqueueOf(manager)).toHaveBeenCalledTimes(1);
   });
 
   it('asks only for this source, this channel and this packet id', async () => {
     const manager = makeManager(SOURCE_B);
     const packetId = await receive(manager);
-    await vi.advanceTimersByTimeAsync(10_000);
+    await vi.advanceTimersByTimeAsync(30_000);
     expect(candidates()).toHaveBeenCalledTimes(1);
     expect(candidates()).toHaveBeenCalledWith(SOURCE_B, packetId, CHANNEL);
   });
@@ -287,13 +290,13 @@ describe('the cap (default 2)', () => {
     const quiet = makeManager();
     const p1 = await receive(quiet);
     candidates().mockResolvedValue([tapback(0x501, p1), tapback(0x502, p1)]);
-    await vi.advanceTimersByTimeAsync(10_000);
+    await vi.advanceTimersByTimeAsync(30_000);
     expect(enqueueOf(quiet)).not.toHaveBeenCalled();
 
     const loud = makeManager();
     candidates().mockResolvedValue([]);
     await receive(loud);
-    await vi.advanceTimersByTimeAsync(10_000);
+    await vi.advanceTimersByTimeAsync(30_000);
     expect(enqueueOf(loud)).toHaveBeenCalledTimes(2); // tapback + reply, as before
   });
 
@@ -306,7 +309,7 @@ describe('the cap (default 2)', () => {
     await receive(a, { packetId });
     await receive(b, { packetId });
     candidates().mockResolvedValue([tapback(0x501, packetId)]);
-    await vi.advanceTimersByTimeAsync(10_000);
+    await vi.advanceTimersByTimeAsync(30_000);
 
     expect(enqueueOf(a)).not.toHaveBeenCalled();   // 1 >= cap 1
     expect(enqueueOf(b)).toHaveBeenCalledTimes(1); // 1 <  cap 5
@@ -322,7 +325,7 @@ describe('the cap (default 2)', () => {
     const manager = makeManager();
     await receive(manager);
     candidates().mockRejectedValue(new Error('db gone'));
-    await vi.advanceTimersByTimeAsync(10_000);
+    await vi.advanceTimersByTimeAsync(30_000);
     expect(enqueueOf(manager)).not.toHaveBeenCalled();
   });
 });
@@ -332,7 +335,7 @@ describe('gates are asked again when the wait ends', () => {
     const manager = makeManager();
     await receive(manager);
     manager.isConnected = false; // link state only; timers left armed on purpose
-    await vi.advanceTimersByTimeAsync(10_000);
+    await vi.advanceTimersByTimeAsync(30_000);
     expect(enqueueOf(manager)).not.toHaveBeenCalled();
   });
 
@@ -341,7 +344,7 @@ describe('gates are asked again when the wait ends', () => {
     await receive(manager);
     manager.actualDeviceConfig = { lora: { txEnabled: false } };
     expect(manager.canTransmit()).toBe(false);
-    await vi.advanceTimersByTimeAsync(10_000);
+    await vi.advanceTimersByTimeAsync(30_000);
     expect(enqueueOf(manager)).not.toHaveBeenCalled();
   });
 
@@ -350,7 +353,7 @@ describe('gates are asked again when the wait ends', () => {
     await receive(manager);
     manager.actualDeviceConfig = { lora: { txEnabled: false } };
     manager.isUdpBroadcastRelayEnabled = () => true;
-    await vi.advanceTimersByTimeAsync(10_000);
+    await vi.advanceTimersByTimeAsync(30_000);
     expect(enqueueOf(manager)).toHaveBeenCalledTimes(1);
   });
 
@@ -358,7 +361,7 @@ describe('gates are asked again when the wait ends', () => {
     const manager = makeManager();
     await receive(manager);
     manager.isAutomationAirtimeGated = vi.fn().mockResolvedValue(true);
-    await vi.advanceTimersByTimeAsync(10_000);
+    await vi.advanceTimersByTimeAsync(30_000);
     expect(enqueueOf(manager)).not.toHaveBeenCalled();
   });
 
@@ -366,7 +369,7 @@ describe('gates are asked again when the wait ends', () => {
     const manager = makeManager();
     await receive(manager);
     tables[SOURCE_A].autoAckEnabled = 'false';
-    await vi.advanceTimersByTimeAsync(10_000);
+    await vi.advanceTimersByTimeAsync(30_000);
     expect(enqueueOf(manager)).not.toHaveBeenCalled();
   });
 
@@ -374,7 +377,7 @@ describe('gates are asked again when the wait ends', () => {
     const manager = makeManager();
     await receive(manager);
     manager.isAutomationAirtimeGated = vi.fn().mockResolvedValue(true);
-    await vi.advanceTimersByTimeAsync(10_000);
+    await vi.advanceTimersByTimeAsync(30_000);
     manager.isAutomationAirtimeGated = vi.fn().mockResolvedValue(false);
     await vi.advanceTimersByTimeAsync(600_000);
     expect(enqueueOf(manager)).not.toHaveBeenCalled();
@@ -388,7 +391,7 @@ describe('gates are asked again when the wait ends', () => {
       manager.disconnect();
       return [];
     });
-    await vi.advanceTimersByTimeAsync(10_000);
+    await vi.advanceTimersByTimeAsync(30_000);
     expect(enqueueOf(manager)).not.toHaveBeenCalled();
   });
 });
@@ -399,7 +402,7 @@ describe('pending timers', () => {
     await receive(manager, { packetId: 4242 });
     await receive(manager, { packetId: 4242 }); // relayed copy / RF + MQTT
     expect(manager.pendingAutoAcks.size).toBe(1);
-    await vi.advanceTimersByTimeAsync(10_000);
+    await vi.advanceTimersByTimeAsync(30_000);
     expect(enqueueOf(manager)).toHaveBeenCalledTimes(1);
   });
 
@@ -407,7 +410,7 @@ describe('pending timers', () => {
     const manager = makeManager();
     for (let i = 0; i < 200; i++) await receive(manager, { from: 0x2000 + i });
     expect(manager.pendingAutoAcks.size).toBe(AUTO_ACK_MAX_PENDING);
-    await vi.advanceTimersByTimeAsync(10_000);
+    await vi.advanceTimersByTimeAsync(30_000);
     expect(enqueueOf(manager)).toHaveBeenCalledTimes(AUTO_ACK_MAX_PENDING);
     // The dropped ones are gone for good.
     await vi.advanceTimersByTimeAsync(600_000);
@@ -430,7 +433,7 @@ describe('pending timers', () => {
     await receive(manager); // same sender, new packet, 0 s later
     await receive(manager);
     expect(manager.pendingAutoAcks.size).toBe(1);
-    await vi.advanceTimersByTimeAsync(10_000);
+    await vi.advanceTimersByTimeAsync(30_000);
     expect(enqueueOf(manager)).toHaveBeenCalledTimes(1);
   });
 
@@ -446,6 +449,24 @@ describe('pending timers', () => {
     expect(manager.pendingAutoAcks.size).toBe(0);
     await vi.advanceTimersByTimeAsync(600_000);
     expect(enqueueOf(manager)).not.toHaveBeenCalled();
+  });
+
+  it('a busy channel cannot hold the slots forever: all are free again after one window', async () => {
+    const manager = makeManager(SOURCE_A, 0.999999);
+    for (let i = 0; i < 50; i++) await receive(manager, { from: 0x2000 + i });
+    expect(manager.pendingAutoAcks.size).toBe(AUTO_ACK_MAX_PENDING);
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(manager.pendingAutoAcks.size).toBe(0);
+    await receive(manager, { from: 0x7000 });
+    expect(manager.pendingAutoAcks.size).toBe(1);
+  });
+
+  it('a slot is freed even when the response is dropped at send time', async () => {
+    const manager = makeManager();
+    await receive(manager);
+    manager.isAutomationAirtimeGated = vi.fn().mockResolvedValue(true);
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(manager.pendingAutoAcks.size).toBe(0);
   });
 
   it('handleDisconnected and userDisconnect both clear waiting responses', () => {
@@ -465,36 +486,118 @@ describe('pending timers', () => {
   });
 });
 
-describe('a settings save', () => {
-  it('neither fires nor re-arms a waiting response, and leaves the cooldown alone', async () => {
-    tables[SOURCE_A].autoAckCooldownSeconds = '60';
-    const manager = makeManager(SOURCE_A, 0.999999); // 10 s
-    await receive(manager);
-    const cooldownBefore = manager.autoAckCooldowns.get(SENDER);
-    const timerBefore = [...manager.pendingAutoAcks.values()][0];
-    const setTimeoutSpy = vi.spyOn(globalThis, 'setTimeout');
+describe('cooldown and the wait', () => {
+  const at = async (ms: number) => { await vi.advanceTimersByTimeAsync(ms - (Date.now() - t0)); };
+  let t0 = 0;
+  beforeEach(() => { t0 = Date.now(); });
 
-    // Save half way through the wait: every auto-ack key rewritten.
-    await vi.advanceTimersByTimeAsync(5_000);
-    tables[SOURCE_A] = baseSettings({ autoAckCooldownSeconds: '60', autoAckMaxResponses: '4', autoAckRegex: '^(ping|test)' });
+  it('cooldown (10 s) SHORTER than the wait (30 s): one answer, and the window restarts at the send', async () => {
+    tables[SOURCE_A].autoAckCooldownSeconds = '10';
+    const manager = makeManager(SOURCE_A, 0.999999); // 30 s wait
+    await receive(manager);                 // t=0   armed
+    await at(12_000); await receive(manager); // t=12  cooldown over, but a response is still waiting
+    await at(24_000); await receive(manager); // t=24  same
+    expect(manager.pendingAutoAcks.size).toBe(1);
 
-    expect(enqueueOf(manager)).not.toHaveBeenCalled();            // did not fire
-    expect(setTimeoutSpy).not.toHaveBeenCalled();                 // did not re-arm
-    expect([...manager.pendingAutoAcks.values()][0]).toBe(timerBefore);
-    expect(manager.autoAckCooldowns.get(SENDER)).toBe(cooldownBefore);
+    await at(30_000);
+    expect(enqueueOf(manager)).toHaveBeenCalledTimes(1);
 
-    await vi.advanceTimersByTimeAsync(4_999);
-    expect(enqueueOf(manager)).not.toHaveBeenCalled();            // original deadline kept
-    await vi.advanceTimersByTimeAsync(1);
-    expect(enqueueOf(manager)).toHaveBeenCalledTimes(1);          // fired once
-    await vi.advanceTimersByTimeAsync(600_000);
-    expect(enqueueOf(manager)).toHaveBeenCalledTimes(1);          // not twice
-    setTimeoutSpy.mockRestore();
-
-    // The sender is still cooling down after the save.
-    vi.setSystemTime(cooldownBefore + 30_000);
-    await receive(manager);
+    await at(35_000); await receive(manager); // 5 s after the SEND: still cooling down
     expect(manager.pendingAutoAcks.size).toBe(0);
+
+    await at(40_001); await receive(manager); // 10 s after the send: allowed again
+    expect(manager.pendingAutoAcks.size).toBe(1);
+
+    await at(120_000);
+    expect(enqueueOf(manager)).toHaveBeenCalledTimes(2);
+    // The two sends were 40 s apart — never closer than the 10 s cooldown.
+  });
+
+  it('cooldown (120 s) LONGER than the wait: one answer per window, and it does not starve', async () => {
+    tables[SOURCE_A].autoAckCooldownSeconds = '120';
+    const manager = makeManager(SOURCE_A, 0); // 5 s wait
+    await receive(manager);                    // t=0, sends at t=5
+    await at(5_000);
+    expect(enqueueOf(manager)).toHaveBeenCalledTimes(1);
+
+    for (const t of [20_000, 60_000, 124_000]) { // 124 s is past arm+120 but not send+120
+      await at(t); await receive(manager);
+      expect(manager.pendingAutoAcks.size).toBe(0);
+    }
+    await at(125_001); await receive(manager);
+    expect(manager.pendingAutoAcks.size).toBe(1);
+    await at(131_000);
+    expect(enqueueOf(manager)).toHaveBeenCalledTimes(2);
+  });
+
+  it('a response skipped for the cap does not push the cooldown out', async () => {
+    tables[SOURCE_A].autoAckCooldownSeconds = '60';
+    const manager = makeManager(SOURCE_A, 0.999999);
+    const packetId = await receive(manager); // reserved at t=0
+    candidates().mockResolvedValue([tapback(0x501, packetId), tapback(0x502, packetId)]);
+    await at(30_000);
+    expect(enqueueOf(manager)).not.toHaveBeenCalled();
+    candidates().mockResolvedValue([]);
+    await at(60_001); await receive(manager); // 60 s after the ARM, not after a send that never was
+    expect(manager.pendingAutoAcks.size).toBe(1);
+  });
+
+  it('cooldown 0 (disabled): every message from one node may wait at once, up to the slot limit', async () => {
+    const manager = makeManager();
+    await receive(manager); await receive(manager); await receive(manager);
+    expect(manager.pendingAutoAcks.size).toBe(3);
+  });
+
+  it('other senders are not held back by one sender\'s waiting response', async () => {
+    tables[SOURCE_A].autoAckCooldownSeconds = '60';
+    const manager = makeManager();
+    await receive(manager, { from: 0x3001 });
+    await receive(manager, { from: 0x3002 });
+    expect(manager.pendingAutoAcks.size).toBe(2);
+  });
+});
+
+describe('the response follows the settings as they are when the wait ends', () => {
+  it('regex changed so the message no longer matches → dropped', async () => {
+    const manager = makeManager();
+    await receive(manager, { text: 'ping' });
+    tables[SOURCE_A].autoAckRegex = '^hello';
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(enqueueOf(manager)).not.toHaveBeenCalled();
+  });
+
+  it('channel removed from the list → dropped', async () => {
+    const manager = makeManager();
+    await receive(manager);
+    tables[SOURCE_A].autoAckChannels = '0';
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(enqueueOf(manager)).not.toHaveBeenCalled();
+  });
+
+  it('sender added to the ignore list → dropped', async () => {
+    const manager = makeManager();
+    await receive(manager);
+    tables[SOURCE_A].autoAckIgnoredNodes = '!11223344';
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(enqueueOf(manager)).not.toHaveBeenCalled();
+  });
+
+  it('the matrix cell switched off → dropped', async () => {
+    const manager = makeManager();
+    await receive(manager);
+    tables[SOURCE_A].autoAckChannelZeroHopTapbackEnabled = 'false';
+    tables[SOURCE_A].autoAckChannelMultiHopTapbackEnabled = 'false';
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(enqueueOf(manager)).not.toHaveBeenCalled();
+  });
+
+  it('the trigger message was deleted during the wait → dropped', async () => {
+    const manager = makeManager();
+    const packetId = await receive(manager);
+    vi.mocked(databaseService.messages.getMessage).mockResolvedValue(null);
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(vi.mocked(databaseService.messages.getMessage)).toHaveBeenCalledWith(`${SOURCE_A}_${SENDER}_${packetId}`);
+    expect(enqueueOf(manager)).not.toHaveBeenCalled();
   });
 
   it('a cap lowered during the wait applies to the response already waiting', async () => {
@@ -502,7 +605,61 @@ describe('a settings save', () => {
     const packetId = await receive(manager);
     candidates().mockResolvedValue([tapback(0x501, packetId)]);
     tables[SOURCE_A].autoAckMaxResponses = '1';
-    await vi.advanceTimersByTimeAsync(10_000);
+    await vi.advanceTimersByTimeAsync(30_000);
     expect(enqueueOf(manager)).not.toHaveBeenCalled();
+  });
+
+  it('a hop limit or reply switched on during the wait is what gets sent', async () => {
+    const manager = makeManager();
+    await receive(manager);
+    tables[SOURCE_A].autoAckHopLimit = '1';
+    tables[SOURCE_A].autoAckChannelZeroHopReplyEnabled = 'true';
+    await vi.advanceTimersByTimeAsync(30_000);
+    const calls = enqueueOf(manager).mock.calls;
+    expect(calls).toHaveLength(2);            // tapback + the newly enabled reply
+    expect(calls.every((c: any[]) => c[8] === 1)).toBe(true); // current hop limit
+  });
+
+  it('the settings a response is armed under are read again, not remembered', async () => {
+    const manager = makeManager();
+    await receive(manager);
+    const reads = () => vi.mocked(databaseService.settings.getSettingForSource).mock.calls
+      .filter((c) => c[1] === 'autoAckRegex').length;
+    const before = reads();
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(reads()).toBe(before + 1);
+  });
+});
+
+describe('a settings save', () => {
+  it('neither fires nor re-arms a waiting response, and leaves the cooldown alone', async () => {
+    tables[SOURCE_A].autoAckCooldownSeconds = '60';
+    const manager = makeManager(SOURCE_A, 0.999999); // 30 s
+    await receive(manager);
+    const cooldownBefore = manager.autoAckCooldowns.get(SENDER);
+    const timerBefore = [...manager.pendingAutoAcks.values()][0].timer;
+    const setTimeoutSpy = vi.spyOn(globalThis, 'setTimeout');
+
+    // Save half way through the wait: every auto-ack key rewritten.
+    await vi.advanceTimersByTimeAsync(15_000);
+    tables[SOURCE_A] = baseSettings({ autoAckCooldownSeconds: '60', autoAckMaxResponses: '4', autoAckRegex: '^(ping|test)' });
+
+    expect(enqueueOf(manager)).not.toHaveBeenCalled();            // did not fire
+    expect(setTimeoutSpy).not.toHaveBeenCalled();                 // did not re-arm
+    expect([...manager.pendingAutoAcks.values()][0].timer).toBe(timerBefore);
+    expect(manager.autoAckCooldowns.get(SENDER)).toBe(cooldownBefore);
+
+    await vi.advanceTimersByTimeAsync(14_999);
+    expect(enqueueOf(manager)).not.toHaveBeenCalled();            // original deadline kept
+    await vi.advanceTimersByTimeAsync(1);
+    expect(enqueueOf(manager)).toHaveBeenCalledTimes(1);          // fired once
+    setTimeoutSpy.mockRestore();
+
+    // The sender is still cooling down after the save.
+    await vi.advanceTimersByTimeAsync(59_000);
+    await receive(manager);
+    expect(manager.pendingAutoAcks.size).toBe(0);
+    await vi.advanceTimersByTimeAsync(600_000);
+    expect(enqueueOf(manager)).toHaveBeenCalledTimes(1);          // not twice
   });
 });

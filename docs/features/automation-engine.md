@@ -969,7 +969,7 @@ group rather than silently dropped:
   convert. If you want the same resend behavior on the converted automation, add it yourself via
   **Send a message**'s [**DM resend attempts**](#send-a-message) field — the converter doesn't
   infer it.
-- **`autoAckMaxResponses`** — Auto-Acknowledge waits 5 to 10 seconds before it answers a channel
+- **`autoAckMaxResponses`** — Auto-Acknowledge waits 5 to 30 seconds before it answers a channel
   message and stays quiet once that many other nodes have replied or sent a tapback (see [Maximum
   Number of Responses](/features/automation#auto-ack-max-responses)). The engine has no "wait, then
   check for other responses" step, so a converted channel automation answers every matching

@@ -2744,7 +2744,7 @@
   "automation.auto_ack.cooldown_description": "After responding to a node, ignore further triggers from that node for this duration. Prevents abuse from nodes spamming trigger words.",
   "automation.auto_ack.cooldown_help": "seconds (0 = disabled)",
   "automation.auto_ack.max_responses_label": "Maximum number of responses",
-  "automation.auto_ack.max_responses_description": "Before it answers a channel message, MeshMonitor waits 5 to 10 seconds. If this many other nodes have already replied or sent a tapback to that message, it stays quiet. This keeps a channel from filling with acknowledgements that add nothing after the first few. A node that sends both a reply and a tapback counts once. Direct messages are answered straight away.",
+  "automation.auto_ack.max_responses_description": "Before it answers a channel message, MeshMonitor waits 5 to 30 seconds (about 17 on average), so the acknowledgement does not appear at once. If this many other nodes have already replied or sent a tapback to that message by then, it stays quiet. This keeps a channel from filling with acknowledgements that add nothing after the first few. A node that sends both a reply and a tapback counts once. Direct messages are answered straight away.",
   "automation.auto_ack.max_responses_help": "other nodes (0 = no limit, default 2, max 10)",
   "automation.auto_ack.max_responses_zero_hint": "0 = no limit: always answer after the wait",
   "automation.auto_ack.max_attempts_label": "Auto-Ack Resend Attempts",

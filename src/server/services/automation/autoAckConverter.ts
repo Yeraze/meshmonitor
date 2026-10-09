@@ -405,7 +405,7 @@ export function buildAutoAckAutomations(input: AutoAckConverterInput): AutoAckCo
   notConvertible.push({
     key: 'autoAckMaxResponses',
     label: 'Maximum number of responses',
-    detail: 'Auto-Acknowledge waits 5-10 seconds before answering a channel message and stays quiet once this many other nodes have replied or tapbacked. The Automation Engine has no "wait, then check for other responses" step, so a converted channel automation answers every matching message at once. Keep Auto-Acknowledge itself if you rely on this.',
+    detail: 'Auto-Acknowledge waits 5-30 seconds before answering a channel message and stays quiet once this many other nodes have replied or tapbacked. The Automation Engine has no "wait, then check for other responses" step, so a converted channel automation answers every matching message at once. Keep Auto-Acknowledge itself if you rely on this.',
   });
 
   const DEPRECATED_KEYS: Array<{ key: string; label: string; global: boolean }> = [

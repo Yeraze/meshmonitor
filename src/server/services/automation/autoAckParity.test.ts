@@ -163,7 +163,7 @@ const AUTOACK_PARITY: Record<string, ParityRow> = {
     perSource: true, status: 'exists',
     engine: ['type:action.sendMessage', 'param:action.sendMessage.hopLimit', 'param:action.tapback.hopLimit'],
   },
-  // 21c — response cap. checkAutoAcknowledge holds a CHANNEL ack 5-10 s and
+  // 21c — response cap. checkAutoAcknowledge holds a CHANNEL ack 5-30 s and
   // drops it once this many other nodes have replied or tapbacked. The engine
   // has no "wait, then count responses to the trigger" step, so there is no
   // equivalent to name; the converter reports it as not convertible.
