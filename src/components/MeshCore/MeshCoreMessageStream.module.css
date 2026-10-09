@@ -1,6 +1,6 @@
 /*
  * MeshCoreMessageStream CSS module: the channel-message Resend action and its
- * confirm dialog (#5512). Keep new rules here, not in MeshCorePage.css
+ * confirm dialog (#5512), and the "Sent to radio" mark (#5682). Keep new rules here, not in MeshCorePage.css
  * (CLAUDE.md CSS containment).
  */
 
@@ -16,6 +16,32 @@
   border-radius: var(--radius-md);
   color: var(--color-warning);
   cursor: pointer;
+}
+
+/*
+ * "Sent to radio" (#5682). Plain muted text, no border and no accent colour:
+ * it must not read as the heard-by badge (accent) or as a delivered tick
+ * (success). It opens the Delivery Details modal, hence a button.
+ */
+.sentToRadio {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  margin-left: 0.35rem;
+  padding: 0;
+  font: inherit;
+  font-size: 0.75rem;
+  white-space: nowrap;
+  background: none;
+  border: none;
+  color: var(--color-text-faint);
+  cursor: pointer;
+}
+
+.sentToRadio:hover,
+.sentToRadio:focus-visible {
+  color: var(--color-text-subtle);
+  text-decoration: underline;
 }
 
 .resendButton:hover {

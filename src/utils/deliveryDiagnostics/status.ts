@@ -8,7 +8,7 @@
  */
 
 import { MeshMessage, MessageDeliveryState } from '../../types/message.js';
-import type { MessageDeliveryStatus } from '../../components/MeshCore/hooks/useMeshCore.js';
+import type { MeshCoreMessage, MessageDeliveryStatus } from '../../components/MeshCore/hooks/useMeshCore.js';
 
 /** Timeout for pending messages before showing the timeout indicator (ms). */
 export const TIMEOUT_MS = 30000;
@@ -73,4 +73,36 @@ export function getMeshCoreDeliveryState(
     default:
       return 'unknown';
   }
+}
+
+/**
+ * State of one of OUR MeshCore channel sends (#5682).
+ *
+ * - `sent_to_radio`: the companion answered `Ok` to the send command, which is
+ *   the only reason the row exists (a refused or failed send stores no row).
+ *   `Ok` means the firmware built the packet and queued it. The companion
+ *   protocol has no transmit report: `LogRxData` (0x88) fires on receive only,
+ *   and the firmware's `logTx` / `logTxFail` hooks are not wired to the host.
+ *   So this state does NOT say the radio transmitted, and says nothing about
+ *   who heard it.
+ * - `relayed`: MeshMonitor heard at least one repeater re-flood the message
+ *   (`heardBy`, #3700). That does prove it went out.
+ *
+ * Derived from fields the row already carries, so a message reads the same
+ * live, after a reload and after a restart, and a state can only move forward:
+ * `heardBy` is a stored set that never shrinks.
+ *
+ * Returns null for anything else: received messages, DMs (they have a real
+ * ack, see `getMeshCoreDeliveryState`) and room posts.
+ */
+export type MeshCoreChannelSendState = 'sent_to_radio' | 'relayed';
+
+export function getMeshCoreChannelSendState(
+  msg: Pick<MeshCoreMessage, 'fromPublicKey' | 'toPublicKey' | 'heardBy' | 'messageType'>,
+  selfPublicKey: string | null | undefined,
+): MeshCoreChannelSendState | null {
+  if (!selfPublicKey || msg.fromPublicKey !== selfPublicKey) return null;
+  if (!msg.toPublicKey || !msg.toPublicKey.startsWith('channel-')) return null;
+  if (msg.messageType === 'room_post') return null;
+  return msg.heardBy && msg.heardBy.length > 0 ? 'relayed' : 'sent_to_radio';
 }
