@@ -68,7 +68,6 @@ const { rows, k, blank, store, settingsMap, ignored, nodesMap } = vi.hoisted(() 
     rows, k, blank, store,
     settingsMap: new Map<string, string>(),
     ignored: new Set<string>(),
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- test fixture rows
     nodesMap: new Map<number, any>(),
   };
 });
