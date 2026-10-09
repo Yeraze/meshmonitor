@@ -170,6 +170,10 @@ export class ReliablePkiTracker {
     if (!flags.wantAck && !flags.wantResponse) return;
     const now = this.now();
     this.inFlight.set(packetId >>> 0, { nodeNum: nodeNum >>> 0, sentAt: now });
+    // Bound the map. An evicted exchange is dropped, not settled: its row
+    // stays `pending` (read as "unknown" after the deadline), the same as an
+    // exchange lost to a restart. Never marking it failed means eviction can
+    // never cause a priming send.
     while (this.inFlight.size > PKI_MAX_TRACKED) {
       const oldest = this.inFlight.keys().next().value;
       if (oldest === undefined) break;

@@ -10624,14 +10624,12 @@ class MeshtasticManager implements ISourceManager {
    * caller sends exactly as it would have.
    */
   private async primeBeforePkiSend(destination: number): Promise<void> {
-    let channel = 0;
     await this.reliablePki.primeBeforeSend(destination, {
       isEligibleTarget: async () => {
         if (this.localNodeInfo && destination === this.localNodeInfo.nodeNum) return false;
         const node = await databaseService.nodes.getNode(destination, this.sourceId);
         if (!node?.publicKey || node.keyMismatchDetected) return false;
         if (node.isIgnored || databaseService.ignoredNodes.isIgnoredCached(destination, this.sourceId)) return false;
-        channel = node.channel ?? 0;
         return true;
       },
       txBlockedReason: async () => {
@@ -10643,6 +10641,10 @@ class MeshtasticManager implements ISourceManager {
         return null;
       },
       sendNodeInfo: async () => {
+        // The node's channel, as key repair uses — read here, not carried over
+        // from isEligibleTarget, so this hook does not depend on call order.
+        const node = await databaseService.nodes.getNode(destination, this.sourceId);
+        const channel = node?.channel ?? 0;
         const { packetId } = await this.sendNodeInfoRequest(destination, channel, { origin: 'automation', includeOwnPublicKey: true });
         if (!packetId) throw new Error('NodeInfo packet could not be built');
       },
@@ -10755,6 +10757,8 @@ class MeshtasticManager implements ISourceManager {
       await this.transport.send(textMessageData);
 
       // Reliable PKI (#5691): a PKI DM asks for an ack unless it is zero-hop.
+      // A zero-hop DM asks for nothing back, so by the maintainer's rule it
+      // leaves the node's state as it was (track() returns early).
       if (pkiEncrypted && destination) {
         void this.reliablePki.track(messageId, destination, { wantAck: !zeroHop, wantResponse: false });
       }

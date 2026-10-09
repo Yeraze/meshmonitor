@@ -191,6 +191,19 @@ describe('ReliablePkiTracker — state transitions', () => {
     t.tracker.stop();
   });
 
+  it('an exchange evicted at the tracking cap stays pending, never failed', async () => {
+    await t.tracker.track(1, OTHER, { wantAck: true, wantResponse: false });
+    for (let i = 0; i < 512; i++) {
+      await t.tracker.track(1000 + i, NODE, { wantAck: true, wantResponse: false });
+    }
+    expect(t.tracker.trackedCount).toBe(512);
+    t.advance(PKI_EXCHANGE_TIMEOUT_MS);
+    await t.tracker.sweep();
+    expect(t.get(OTHER)?.state).toBe('pending');
+    expect(t.get(NODE)?.state).toBe('failed');
+    t.tracker.stop();
+  });
+
   it('failed → successful clears the streak', async () => {
     await t.tracker.track(42, NODE, { wantAck: true, wantResponse: false });
     await t.tracker.observeRouting(NODE, 42, RoutingError.NO_CHANNEL, LOCAL);
