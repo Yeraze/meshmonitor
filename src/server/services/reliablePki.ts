@@ -281,13 +281,16 @@ export class ReliablePkiTracker {
         logger.debug(`Reliable PKI: not priming ${hex(node)} (${blocked}); sending without it`);
         return 'tx_blocked';
       }
+      // Stamp the hourly timer BEFORE the send. A send that throws part-way
+      // (after the frame reached the radio) must still count, or a flaky
+      // error path could prime the same node over and over.
+      await this.deps.store.recordPriming(this.deps.sourceId, node, now);
       try {
         await hooks.sendNodeInfo();
       } catch (error) {
         logger.debug(`Reliable PKI: priming NodeInfo to ${hex(node)} failed; sending without it:`, error);
         return 'send_failed';
       }
-      await this.safe(() => this.deps.store.recordPriming(this.deps.sourceId, node, this.now()));
       logger.debug(
         `Reliable PKI: sent NodeInfo to ${hex(node)} on source ${this.deps.sourceId} before a PKI send ` +
         `(last exchange failed: ${row.lastFailureReason ?? 'unknown'}); next send in ${PRIMING_GAP_MS / 1000}s`,
