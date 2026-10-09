@@ -11,6 +11,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 const getCurrentConfig = vi.fn();
 const post = vi.fn();
@@ -400,5 +403,122 @@ describe('SitePlannerPanel', () => {
       rerender(<SitePlannerPanel open sourceId="src-a" origin={origin} onClose={() => {}} onCoverage={() => {}} />);
       expect(body().hidden).toBe(false);
     });
+  });
+
+  // The drawn ring must always belong to the transmitter the marker shows.
+  describe('a new origin', () => {
+    const ringData = { radiusKm: 15, assumptions: [], radials: [
+      radial({ bearingDeg: 0 }), radial({ bearingDeg: 120 }), radial({ bearingDeg: 240 }),
+    ] };
+    const elsewhere = { id: 'pt', lat: 31, lng: -98, isNode: false };
+    const panelAt = (o: unknown, onCoverage: (c: unknown) => void) => (
+      <SitePlannerPanel open sourceId="src-a" origin={o as never} onClose={() => {}} onCoverage={onCoverage} />
+    );
+
+    it('clears the ring, the summary and the shape notices', async () => {
+      mobileLayout = true;
+      const user = userEvent.setup();
+      post.mockResolvedValue({ success: true, data: ringData });
+      const onCoverage = vi.fn();
+      const { rerender } = render(panelAt(origin, onCoverage));
+      await waitFor(() => expect(getCurrentConfig).toHaveBeenCalled());
+      await user.click(screen.getByTestId('site-planner-run'));
+      await waitFor(() => expect(screen.getByTestId('site-planner-summary').textContent).toMatch(/site_planner\.summary:/));
+      expect(onCoverage).toHaveBeenLastCalledWith(ringData);
+
+      rerender(panelAt(elsewhere, onCoverage));
+
+      expect(onCoverage).toHaveBeenLastCalledWith(null);
+      expect(screen.getByTestId('site-planner-summary').textContent).toBe('site_planner.collapsed_hint');
+      expect(screen.queryByTestId('site-planner-bar-clear')).toBeNull();
+      expect(screen.queryByTestId('site-planner-notice')).toBeNull();
+    });
+
+    it('keeps the result when the same spot is picked again', async () => {
+      const user = userEvent.setup();
+      post.mockResolvedValue({ success: true, data: ringData });
+      const onCoverage = vi.fn();
+      const { rerender } = render(panelAt(origin, onCoverage));
+      await waitFor(() => expect(getCurrentConfig).toHaveBeenCalled());
+      await user.click(screen.getByTestId('site-planner-run'));
+      await waitFor(() => expect(screen.getByTestId('site-planner-notice')).toBeTruthy());
+
+      rerender(panelAt({ ...origin }, onCoverage));
+      expect(onCoverage).toHaveBeenLastCalledWith(ringData);
+      expect(screen.getByTestId('site-planner-notice')).toBeTruthy();
+    });
+
+    it('drops a reply for the old origin that lands after the pick', async () => {
+      const user = userEvent.setup();
+      let resolve!: (v: unknown) => void;
+      post.mockImplementation(() => new Promise((r) => { resolve = r; }));
+      const onCoverage = vi.fn();
+      const { rerender } = render(panelAt(origin, onCoverage));
+      await waitFor(() => expect(getCurrentConfig).toHaveBeenCalled());
+      await user.click(screen.getByTestId('site-planner-run'));
+      await waitFor(() => expect(post).toHaveBeenCalled());
+
+      rerender(panelAt(elsewhere, onCoverage));
+      // No longer "running": the request belongs to a site nobody has picked.
+      expect((screen.getByTestId('site-planner-run') as HTMLButtonElement).textContent).toBe('site_planner.predict');
+      resolve({ success: true, data: ringData });
+      await new Promise((r) => setTimeout(r, 0));
+
+      expect(onCoverage).not.toHaveBeenCalledWith(ringData);
+      expect(screen.queryByTestId('site-planner-notice')).toBeNull();
+    });
+  });
+
+  describe('edited inputs', () => {
+    it('keeps the ring but says it is out of date until Predict runs again', async () => {
+      const user = userEvent.setup();
+      const onCoverage = vi.fn();
+      renderPanel({ onCoverage });
+      await waitFor(() =>
+        expect((screen.getByTestId('site-planner-txPowerDbm') as HTMLInputElement).value).toBe('27'));
+      await user.click(screen.getByTestId('site-planner-run'));
+      await waitFor(() => expect(onCoverage).toHaveBeenLastCalledWith(expect.objectContaining({ radiusKm: 15 })));
+      expect(screen.queryByTestId('site-planner-stale')).toBeNull();
+
+      const height = screen.getByTestId('site-planner-txHeightM') as HTMLInputElement;
+      await user.clear(height);
+      await user.type(height, '30');
+      expect(screen.getByTestId('site-planner-stale').textContent).toBe('site_planner.result_stale');
+      // The ring stays drawn for comparison.
+      expect(onCoverage).not.toHaveBeenLastCalledWith(null);
+
+      await user.click(screen.getByTestId('site-planner-run'));
+      await waitFor(() => expect(screen.queryByTestId('site-planner-stale')).toBeNull());
+    });
+  });
+});
+
+// jsdom applies no stylesheet, so read the rules that place the planner beside
+// the open Map controls panel (`.map-sidebar`, MapSidebar.css) straight from
+// the module. The DOM order they rely on is pinned in MapAnalysisCanvas.test.tsx.
+describe('SitePlannerPanel.module.css beside the Map controls panel', () => {
+  const css = readFileSync(join(dirname(fileURLToPath(import.meta.url)), 'SitePlannerPanel.module.css'), 'utf8')
+    .replace(/\/\*[\s\S]*?\*\//g, '');
+  const sibling = /:global\(\.map-sidebar\)\s*~\s*\.sitePlanner\s*\{([^}]*)\}/g;
+  const blocks = [...css.matchAll(sibling)].map((m) => ({ at: m.index ?? 0, body: m[1] }));
+  const portraitAt = css.indexOf('@media (max-width: 768px) {');
+  const landscapeAt = css.indexOf('@media (max-height: 500px) and (orientation: landscape) {');
+
+  it('moves left of the 300px panel on desktop', () => {
+    const desktop = blocks.find((b) => b.at < portraitAt && b.at < landscapeAt);
+    expect(desktop?.body).toMatch(/right:\s*calc\(10px \+ 300px \+ 0\.75rem\)/);
+  });
+
+  it('keeps the corner under the portrait full sheet and the landscape rule last', () => {
+    expect(portraitAt).toBeGreaterThan(0);
+    expect(landscapeAt).toBeGreaterThan(portraitAt);
+    const portrait = blocks.find((b) => b.at > portraitAt && b.at < landscapeAt);
+    const landscape = blocks.find((b) => b.at > landscapeAt);
+    expect(portrait?.body).toMatch(/right:\s*0\.75rem/);
+    expect(landscape?.body).toMatch(/right:\s*calc\(min\(300px, 60%\)/);
+  });
+
+  it('leaves the collapsed-controls position alone (the close button clears the toggle)', () => {
+    expect(css).toMatch(/\.sitePlanner\s*\{[^}]*top:\s*4rem;[^}]*right:\s*0\.75rem;/);
   });
 });

@@ -61,6 +61,9 @@ export default function SitePlannerPanel({
   // means the link budget outran terrain within the radius, or terrain data was
   // missing, not that terrain is ignored (#4727 follow-up).
   const [result, setResult] = useState<PredictedCoverage | null>(null);
+  // The inputs the shown result was computed from, to flag it stale once the
+  // user edits them (see `stale` below).
+  const [resultInputs, setResultInputs] = useState<string | null>(null);
   // #5687: folded to a bar so the drawn ring is visible. Auto-set only on the
   // mobile layout (the app's shared phone definition, landscape included);
   // on a desktop the panel sits beside the ring and its shape notices are the
@@ -113,12 +116,55 @@ export default function SitePlannerPanel({
     return () => { cancelled = true; };
   }, [open, seeded, sourceId]);
 
+  /**
+   * A new origin voids the prediction. The marker moves with the click, so a
+   * ring left behind would sit on a different transmitter than the one shown,
+   * and its summary and shape notices would describe a site nobody picked.
+   * Keyed on the coordinates so re-clicking the same node keeps the result.
+   *
+   * `originKeyRef` and `requestSeq` also drop a reply that lands after the
+   * origin moved: without them a slow request still in flight would draw the
+   * old site's ring under the new marker.
+   */
+  const originKey = origin ? `${origin.lat},${origin.lng}` : null;
+  const originKeyRef = useRef(originKey);
+  originKeyRef.current = originKey;
+  const requestSeq = useRef(0);
+  const onCoverageRef = useRef(onCoverage);
+  onCoverageRef.current = onCoverage;
+  const [prevOriginKey, setPrevOriginKey] = useState(originKey);
+  if (originKey !== prevOriginKey) {
+    setPrevOriginKey(originKey);
+    setResult(null);
+    setResultInputs(null);
+    setError(null);
+    setRunning(false);
+  }
+  useEffect(() => {
+    requestSeq.current += 1;
+    onCoverageRef.current(null);
+  }, [originKey]);
+
   const update = <K extends keyof SitePlannerDefaults>(key: K, value: SitePlannerDefaults[K]) =>
     setParams((p) => ({ ...p, [key]: value }));
+
+  /**
+   * Edits to the radio inputs do NOT clear the ring: someone comparing a 10 m
+   * mast with a 20 m one wants the old ring on screen while they type. The
+   * panel says the ring is out of date instead, until Predict runs again.
+   */
+  const inputsKey = JSON.stringify([
+    params.frequencyHz, params.txHeightM, params.rxHeightM, params.radiusKm, params.txPowerDbm,
+    params.txGainDbi, params.rxGainDbi, params.lossesDb, params.sensitivityDbm,
+  ]);
+  const stale = result != null && resultInputs != null && resultInputs !== inputsKey;
 
   const predict = useCallback(async () => {
     // #5649: never predict on a blank or half-typed parameter.
     if (!origin || numbersInvalid) return;
+    const seq = ++requestSeq.current;
+    const askedFor = originKeyRef.current;
+    const isCurrent = () => seq === requestSeq.current && askedFor === originKeyRef.current;
     // Read before the Run button disables: a disabled button drops focus to
     // <body>, so after the await this can no longer be asked of the DOM.
     const focusWasInPanel = !!panelRef.current?.contains(document.activeElement);
@@ -140,7 +186,9 @@ export default function SitePlannerPanel({
           radiusKm: params.radiusKm,
         },
       );
+      if (!isCurrent()) return;
       setResult(res?.data ?? null);
+      setResultInputs(res?.data ? inputsKey : null);
       onCoverage(res?.data ?? null);
       if (isMobileLayout && res?.data) {
         // The form is about to be hidden; hand focus to the expand toggle so
@@ -153,17 +201,25 @@ export default function SitePlannerPanel({
         setCollapsed(true);
       }
     } catch (e) {
+      if (!isCurrent()) return;
       setError(e instanceof Error ? e.message : t('site_planner.failed'));
       setResult(null);
+      setResultInputs(null);
       onCoverage(null);
       // An error is useless folded away: show it next to the inputs.
       setCollapsed(false);
     } finally {
-      setRunning(false);
+      if (isCurrent()) setRunning(false);
     }
-  }, [origin, params, onCoverage, t, numbersInvalid, isMobileLayout]);
+  }, [origin, params, inputsKey, onCoverage, t, numbersInvalid, isMobileLayout]);
 
-  const clear = () => { setResult(null); onCoverage(null); };
+  const clear = () => {
+    requestSeq.current += 1;
+    setResult(null);
+    setResultInputs(null);
+    setRunning(false);
+    onCoverage(null);
+  };
 
   const editInputs = () => {
     // Land on the first field: "Edit inputs" means the user wants to type.
@@ -235,6 +291,11 @@ export default function SitePlannerPanel({
           <p className={styles.sitePlannerSummary} data-testid="site-planner-summary" aria-live="polite">
             {running ? t('site_planner.running') : result ? summarize(result) : t('site_planner.collapsed_hint')}
           </p>
+          {stale && !running && (
+            <p className={styles.sitePlannerStale} data-testid="site-planner-bar-stale">
+              {t('site_planner.result_stale')}
+            </p>
+          )}
           <div className={styles.sitePlannerActions}>
             <button
               type="button"
@@ -317,6 +378,12 @@ export default function SitePlannerPanel({
             {t('site_planner.clear')}
           </button>
         </div>
+
+        {stale && !running && (
+          <p className={styles.sitePlannerStale} data-testid="site-planner-stale" role="status">
+            {t('site_planner.result_stale')}
+          </p>
+        )}
 
         {/* Explain the SHAPE right here in the panel — the per-polygon popup was
             too easy to miss, so a circle read as "terrain ignored" (#4727). */}

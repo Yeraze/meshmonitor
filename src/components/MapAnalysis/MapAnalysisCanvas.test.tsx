@@ -70,6 +70,10 @@ vi.mock('../VectorTileLayer', () => ({
 vi.mock('./FollowController', () => ({
   default: () => null,
 }));
+// Same reason: it calls useMap(). Covered by its own picker tests.
+vi.mock('./SitePlannerOriginController', () => ({
+  default: () => null,
+}));
 
 vi.mock('../../hooks/useMapAnalysisData', () => ({
   useTraceroutes: () => ({
@@ -385,6 +389,35 @@ describe('MapAnalysisCanvas', () => {
       expect(screen.getByTestId('gnss-dop-panel')).toBeInTheDocument();
       fireEvent.click(screen.getByTestId('toggle-gnss-dop'));
       expect(screen.queryByTestId('gnss-dop-panel')).toBeNull();
+    });
+  });
+
+  // The planner moves beside the open Map controls panel through a CSS
+  // sibling selector (`.map-sidebar ~ .sitePlanner`, SitePlannerPanel.module.css).
+  // jsdom does not lay out CSS, so pin the DOM shape that rule depends on: one
+  // parent, controls panel first.
+  describe('Site Planner beside the Map controls panel', () => {
+    function OpenSitePlanner() {
+      const { setSitePlannerMode } = useMapAnalysisCtx();
+      React.useEffect(() => { setSitePlannerMode(true); }, [setSitePlannerMode]);
+      return null;
+    }
+
+    it('renders the open controls panel as an earlier sibling of the planner', () => {
+      render(<><OpenSitePlanner /><MapAnalysisCanvas /></>, { wrapper });
+      const planner = screen.getByTestId('site-planner-panel');
+      const sidebar = document.querySelector('.map-sidebar');
+      expect(sidebar).not.toBeNull();
+      expect(sidebar!.parentElement).toBe(planner.parentElement);
+      expect(sidebar!.compareDocumentPosition(planner) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    });
+
+    it('renders no .map-sidebar while the controls are collapsed, so the planner keeps its corner', () => {
+      localStorage.setItem('mm-map-sidebar-collapsed', 'true');
+      render(<><OpenSitePlanner /><MapAnalysisCanvas /></>, { wrapper });
+      expect(screen.getByTestId('site-planner-panel')).toBeInTheDocument();
+      expect(document.querySelector('.map-sidebar')).toBeNull();
+      expect(document.querySelector('.map-sidebar-toggle')).not.toBeNull();
     });
   });
 

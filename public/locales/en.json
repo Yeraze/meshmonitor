@@ -6608,6 +6608,7 @@
   "site_planner.summary": "Reaches up to {{reach}} km of {{radius}} km searched.",
   "site_planner.summary_radius_limited": "{{percent}}% of directions hit the search edge.",
   "site_planner.summary_data_gaps": "Terrain data missing in places.",
+  "site_planner.result_stale": "Inputs changed since this ring was drawn. Predict again to update it.",
   "gnss_dop.title": "GNSS DOP overlay",
   "gnss_dop.time": "Time",
   "gnss_dop.now": "Now",
