@@ -13,9 +13,15 @@ import { MemoryRouter } from 'react-router-dom';
 
 const en = JSON.parse(readFileSync(resolve('public/locales/en.json'), 'utf-8')) as Record<string, string>;
 
-vi.mock('react-i18next', () => ({
-  useTranslation: () => ({ t: (key: string, fallback?: string) => en[key] ?? fallback ?? key }),
-}));
+vi.mock('react-i18next', async () => {
+  const { createReactI18nextMock } = await import('../../test/mockI18n');
+  const { readFileSync: read } = await import('node:fs');
+  const { resolve: res } = await import('node:path');
+  const locale = JSON.parse(read(res('public/locales/en.json'), 'utf-8')) as Record<string, string>;
+  // English as the app resolves it: the locale file wins, then the inline fallback.
+  return createReactI18nextMock((key: string, fallback?: unknown) =>
+    locale[key] ?? (typeof fallback === 'string' ? fallback : key));
+});
 
 let grants: (resource: string, action: string, options?: { anySource?: boolean }) => boolean = () => true;
 vi.mock('../../contexts/AuthContext', () => ({

@@ -102,15 +102,14 @@ vi.mock('./configuration/PkiDmDecryptionSection', () => ({
 // wizard, so it must not be unmounted while the config reloads.
 vi.mock('./configuration/FirmwareUpdateSection', async () => {
   const { useEffect } = await import('react');
-  return {
-    default: ({ baseUrl, sectionId }: { baseUrl: string; sectionId?: string }) => {
-      useEffect(() => {
-        h.firmwareMounts += 1;
-        return () => { h.firmwareUnmounts += 1; };
-      }, []);
-      return <div data-testid="firmware-update-section" data-base-url={baseUrl} data-section-id={sectionId ?? 'default'} />;
-    },
+  const FirmwareMarker = ({ baseUrl, sectionId }: { baseUrl: string; sectionId?: string }) => {
+    useEffect(() => {
+      h.firmwareMounts += 1;
+      return () => { h.firmwareUnmounts += 1; };
+    }, []);
+    return <div data-testid="firmware-update-section" data-base-url={baseUrl} data-section-id={sectionId ?? 'default'} />;
   };
+  return { default: FirmwareMarker };
 });
 vi.mock('../contexts/AuthContext', () => ({
   useAuth: () => ({

@@ -728,7 +728,7 @@ function App() {
       // mirrors checkPermissionAsync's union branch for the same routes.
       // An MQTT bridge's Settings page also holds its bridge setup, which
       // reads `sources` (#5683 follow-up): see canOpenSourceSettings.
-      settings: () => canOpenSourceSettings(hasPermission, sourceType),
+      settings: () => canOpenSourceSettings(hasPermission, isMqttBridge ? 'mqtt_bridge' : null),
       automation: () => !isMqttBridge && hasPermission('automation', 'read'),
       // An MQTT broker has no local radio either: Device Config and Remote
       // Admin there would reach the primary TCP source's device (#5367).
