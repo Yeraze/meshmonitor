@@ -323,7 +323,7 @@ describe('MQTT bridge setup: broker presets (#5689)', () => {
     // A password is stored (admin view), so the field stays blank and says why.
     expect(passwordField().value).toBe('');
     expect(screen.getByTestId('broker-preset-kept').textContent).toMatch(/password is saved/);
-    // Only the filter and mode fields it does not own are as loaded.
+    // Fields it does not own stay as loaded.
     expect(screen.getByDisplayValue('msh/US/#')).toBeInTheDocument();
     expect(puts()).toHaveLength(0);
     await waitFor(() => expect(state.saveBar?.hasChanges).toBe(true));

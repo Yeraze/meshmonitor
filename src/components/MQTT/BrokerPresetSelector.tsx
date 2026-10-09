@@ -85,7 +85,7 @@ export const BrokerPresetSelector: React.FC<BrokerPresetSelectorProps> = ({
     <select
       id={id}
       data-testid="broker-preset-select"
-      className={`${layout === 'settings' ? 'setting-input' : 'dashboard-form-input'} ${styles.select}`}
+      className={`${layout === 'settings' ? `setting-input ${styles.selectSettings}` : 'dashboard-form-input'} ${styles.select}`}
       value={value}
       disabled={disabled}
       onChange={(e) => handleChange(e.target.value)}

@@ -1,6 +1,10 @@
 /* Broker preset chooser shared by the three MQTT forms (#5689). */
 .select {
   width: 100%;
+}
+
+/* The settings pages cap their inputs at 600px; the bridge form already caps itself. */
+.selectSettings {
   max-width: 600px;
 }
 
