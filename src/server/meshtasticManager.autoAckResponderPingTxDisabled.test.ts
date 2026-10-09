@@ -280,11 +280,13 @@ describe('MeshtasticManager - Auto-Ack/Responder/Ping TX-disabled skip (#4294 WP
       wireSettings({
         autoAckEnabled: 'true',
         autoAckChannels: '0',
-        autoAckChannelZeroHopReplyEnabled: 'true',
+        autoAckDirectZeroHopReplyEnabled: 'true',
         autoAckPreSendDelaySeconds: '0',
       });
 
-      await manager.checkAutoAcknowledge(autoAckMessage, 'ping', 0, false, REMOTE_NODE_NUM, 222);
+      // A DM: channel acks now wait 5-10 s before they are queued (covered in
+      // meshtasticManager.autoAckResponseCap.test.ts); a DM is still immediate.
+      await manager.checkAutoAcknowledge(autoAckMessage, 'ping', 0, true, REMOTE_NODE_NUM, 222);
 
       expect(mockEnqueue).toHaveBeenCalledTimes(1);
     });
