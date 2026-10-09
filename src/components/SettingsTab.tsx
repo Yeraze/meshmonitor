@@ -27,6 +27,7 @@ import ScriptsSection from './settings/ScriptsSection';
 import CoverageMqttRecordingSection from './settings/CoverageMqttRecordingSection';
 import FirmwareUpdateSection from './configuration/FirmwareUpdateSection';
 import PkiDmDecryptionSection from './configuration/PkiDmDecryptionSection';
+import ReliablePkiSection from './settings/ReliablePkiSection';
 import MqttBridgeConfigurationView from './MQTT/MqttBridgeConfigurationView';
 import ReticulumRetentionSection from './settings/ReticulumRetentionSection';
 import { MovedSettingNote } from './common/MovedSettingNote';
@@ -2958,6 +2959,10 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
           <div className="setting-item">
             <PkiDmGlobalToggle />
           </div>
+          {/* Reliable PKI default for every source (#5691). Self-saving. */}
+          <div className="setting-item">
+            <ReliablePkiSection scope="global" />
+          </div>
         </div>}
 
         {/* PKI DM decryption (#5683 follow-up): a MeshMonitor-side switch, moved
@@ -2969,6 +2974,13 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
             className="settings-section"
             canWrite={canWriteConfiguration}
           />
+        )}
+
+        {/* Reliable PKI (#5691): this source's override of the global default.
+            MeshMonitor behaviour for this source's own sends, so it lives on
+            Settings, not Device Configuration. Meshtastic radio sources only. */}
+        {mode === 'source' && hasDeviceConfigurationPage(sourceType) && purgeSourceId && (
+          <ReliablePkiSection key={purgeSourceId} scope="source" sourceId={purgeSourceId} />
         )}
 
         {show('settings-notifications') && <div id="settings-notifications" className="settings-section">

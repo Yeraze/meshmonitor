@@ -22,6 +22,7 @@ import { RemoteAdminLink } from './RemoteAdminLink';
 import { formatAircraftSummary } from '../utils/aircraftClassification';
 import { SignFlipNotice } from './SignFlipNotice';
 import FlightMatchLine from './FlightMatchLine';
+import PkiExchangeStatusCard from './PkiExchangeStatusCard';
 import AssetTrackingSection from './AssetTrackingSection';
 
 interface NodeDetailsBlockProps {
@@ -680,6 +681,16 @@ const NodeDetailsBlock: React.FC<NodeDetailsBlockProps> = ({ node, timeFormat = 
               {publicKey}
             </div>
           </div>
+        )}
+
+        {/* Reliable PKI (#5691): did our last encrypted DM/request get an answer? */}
+        {publicKey && sourceId && (
+          <PkiExchangeStatusCard
+            sourceId={sourceId}
+            nodeNum={node.nodeNum}
+            timeFormat={timeFormat}
+            dateFormat={dateFormat}
+          />
         )}
 
         {shareableContact && (
