@@ -196,11 +196,36 @@ tolerations: []
 affinity: {}
 
 # Security context
+#
+# The pod runs as the image's unprivileged `node` user (uid/gid 1000) from the
+# first instruction: the entrypoint sees a non-root uid and skips its root-only
+# steps (PUID/PGID, serial-device groups, /data chown). File access to the PVC
+# comes from fsGroup instead. Since #5692 the Docker image also drops to node
+# when started as root, so the chart and plain Docker now run the same user.
+#
+# Existing PVCs: the chart has always run as 1000 with fsGroup 1000, so a PVC
+# created by this chart needs nothing. A PVC first populated by a root-run
+# container (e.g. migrated from Docker) is fixed by fsGroup on mount: the
+# kubelet re-groups the volume to 1000 and makes it group-writable.
+# OnRootMismatch makes that a one-time walk instead of one on every pod start.
+# Volume types that do not support fsGroup (hostPath, some NFS) must be
+# chowned to 1000:1000 by hand once.
+#
+# runAsUser/runAsNonRoot sit on the meshmonitor container (securityContext
+# below), not the pod, so they do not also bind the optional reticulum-bridge
+# sidecar, whose image has its own user model.
 podSecurityContext:
   fsGroup: 1000
+  fsGroupChangePolicy: OnRootMismatch
+  # Serial devices (USB MeshCore/Meshtastic radios passed through to the pod)
+  # are opened by uid 1000, so add the device's owning group on the node, e.g.
+  # dialout. The GID differs by distro (dialout is 20 on Debian/Ubuntu, 18 on
+  # Fedora; Arch uses uucp); check with `stat -c %g /dev/ttyUSB0` on the node.
+  # supplementalGroups: [20]
 
 securityContext:
   runAsUser: 1000
+  runAsGroup: 1000
   runAsNonRoot: true
   readOnlyRootFilesystem: false
   allowPrivilegeEscalation: false
