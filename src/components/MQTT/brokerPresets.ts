@@ -211,14 +211,18 @@ export function matchBridgePreset(url: string): BrokerPreset | null {
  * not show (the bridge form never round-trips it; a non-admin editor gets it
  * in `maskedConfigFields`). The preset then leaves the password field blank,
  * which is the server's "keep the stored password" signal, and reports it as
- * kept. It never types over or clears a hidden secret.
+ * kept. It never types over or clears a hidden secret. `usernameStored` does
+ * the same for a username the server masked.
  */
 export function applyPresetToBridge(
   preset: BrokerPreset,
   current: BridgeMqttFields,
-  opts: { passwordStored: boolean },
+  opts: { passwordStored: boolean; usernameStored?: boolean },
 ): { fields: BridgeMqttFields; kept: KeptCredentials } {
-  const username = fillCredential(current.username, preset.username);
+  const username =
+    opts.usernameStored && current.username === ''
+      ? { value: '', kept: true }
+      : fillCredential(current.username, preset.username);
   const storedPassword = opts.passwordStored && current.password === '';
   const password = storedPassword
     ? { value: '', kept: true }

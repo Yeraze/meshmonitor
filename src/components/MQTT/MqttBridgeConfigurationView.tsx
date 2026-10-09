@@ -60,9 +60,13 @@ import {
  * editor's names it in `maskedConfigFields`, #5635).
  */
 function hasStoredPassword(src: { config?: unknown; maskedConfigFields?: unknown } | null | undefined): boolean {
-  if (Array.isArray(src?.maskedConfigFields) && src.maskedConfigFields.includes('upstream.password')) return true;
+  if (isMaskedField(src, 'upstream.password')) return true;
   const pw = (src?.config as { upstream?: { password?: unknown } } | undefined)?.upstream?.password;
   return typeof pw === 'string' && pw !== '';
+}
+
+function isMaskedField(src: { maskedConfigFields?: unknown } | null | undefined, path: string): boolean {
+  return Array.isArray(src?.maskedConfigFields) && src.maskedConfigFields.includes(path);
 }
 
 /**
@@ -152,6 +156,7 @@ export const MqttBridgeConfigurationView: React.FC<MqttBridgeConfigurationViewPr
   // page doesn't render (e.g. node/portnum filters) are preserved, not wiped.
   const baseConfigRef = useRef<Record<string, any> | null>(null);
   const [passwordStored, setPasswordStored] = useState(false);
+  const [usernameMasked, setUsernameMasked] = useState(false);
 
   // Shallow patch helper for the form state.
   const patch = useCallback(
@@ -182,6 +187,7 @@ export const MqttBridgeConfigurationView: React.FC<MqttBridgeConfigurationViewPr
         if (cancelled) return;
         baseConfigRef.current = (src?.config as Record<string, any>) ?? {};
         setPasswordStored(hasStoredPassword(src));
+        setUsernameMasked(isMaskedField(src, 'upstream.username'));
         setForm(formFromBridgeConfig(src?.config));
         setSavedForm(formFromBridgeConfig(src?.config));
         if (listRes.ok) {
@@ -245,6 +251,7 @@ export const MqttBridgeConfigurationView: React.FC<MqttBridgeConfigurationViewPr
       // and reflects any server-side normalization).
       baseConfigRef.current = (updated?.config as Record<string, any>) ?? {};
       setPasswordStored(hasStoredPassword(updated));
+      setUsernameMasked(isMaskedField(updated, 'upstream.username'));
       setForm(formFromBridgeConfig(updated?.config));
       setSavedForm(formFromBridgeConfig(updated?.config));
       setSaved(true);
@@ -281,13 +288,13 @@ export const MqttBridgeConfigurationView: React.FC<MqttBridgeConfigurationViewPr
       const { fields, kept } = applyPresetToBridge(
         preset,
         { url: form.url, username: form.username, password: form.password },
-        { passwordStored },
+        { passwordStored, usernameStored: usernameMasked },
       );
       setForm((prev) => ({ ...prev, ...fields }));
       setSaved(false);
       return kept;
     },
-    [form.url, form.username, form.password, passwordStored],
+    [form.url, form.username, form.password, passwordStored, usernameMasked],
   );
 
   const selectedChannels = form.uplinkChannels ?? [];
