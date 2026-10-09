@@ -1,6 +1,7 @@
-import { expect, afterEach, vi } from 'vitest';
+import { expect, afterEach, beforeEach, vi } from 'vitest';
 import { cleanup } from '@testing-library/react';
 import * as matchers from '@testing-library/jest-dom/matchers';
+import { resetVectorSupportForTests, setVectorRenderingForTests } from '../components/map/vectorSupport';
 
 // Extends Vitest's expect method with methods from react-testing-library
 expect.extend(matchers);
@@ -11,6 +12,17 @@ expect.extend(matchers);
 vi.mock('react-i18next', async () => {
   const { createReactI18nextMock, keyT } = await import('./mockI18n');
   return createReactI18nextMock(keyT);
+});
+
+// jsdom has no WebGL, so the real probe in `vectorSupport.ts` would report
+// "no vector maps" and every suite that renders a vector tileset would
+// quietly test the raster fallback in its place. Default to "available" so
+// those suites keep exercising the vector branch (with their own MapLibre
+// mocks). A test of the fallback calls `setVectorRenderingForTests(null)` to
+// run the real probe, or `(false)` to force it off.
+beforeEach(() => {
+  resetVectorSupportForTests();
+  setVectorRenderingForTests(true);
 });
 
 // Runs a cleanup after each test case (e.g., clearing jsdom)

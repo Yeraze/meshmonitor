@@ -6,6 +6,7 @@ import { isCartoUrl, withCartoKey } from '../config/cartoKey';
 import { useSettings } from '../contexts/SettingsContext';
 import { DraggableOverlay } from './DraggableOverlay';
 import { useIsMobileViewport } from '../hooks/useIsMobileViewport';
+import { useVectorRenderingAvailable } from './map/vectorSupport';
 import './TilesetSelector.css';
 
 interface TilesetSelectorProps {
@@ -49,6 +50,11 @@ export const TilesetSelector: React.FC<TilesetSelectorProps> = ({
   const selectedNeedsCartoKey = Boolean(
     selectedTileset && isCartoUrl(selectedTileset.url) && !cartoApiKey,
   );
+  // A vector basemap needs WebGL2. Without it the map draws the raster form of
+  // the choice (see BaseMap); the choice itself stays selected and saved, so
+  // say so here rather than show one tileset picked and another drawn.
+  const vectorAvailable = useVectorRenderingAvailable();
+  const selectedNeedsWebGl = Boolean(selectedTileset?.isVector) && !vectorAvailable;
   // Floating overlay starts collapsed; embedded-in-sidebar starts expanded
   // (the sidebar itself provides the outer collapse).
   const [isCollapsed, setIsCollapsed] = useState(!embedded);
@@ -87,6 +93,17 @@ export const TilesetSelector: React.FC<TilesetSelectorProps> = ({
             {t(
               'tileset.carto_key_required',
               'This basemap needs a CARTO API key. Without one CARTO returns tiles watermarked "API KEY REQUIRED". Add a free key in Settings, or pick a keyless basemap such as Dark Gray.',
+            )}
+          </span>
+        </div>
+      )}
+      {!isCollapsed && selectedNeedsWebGl && (
+        <div className="tileset-carto-warning" role="status" data-testid="tileset-webgl-warning">
+          <UiIcon name="alert" />
+          <span>
+            {t(
+              'tileset.vector_needs_webgl',
+              'This basemap is drawn with WebGL, which this browser does not provide. A standard (raster) map is shown in its place. Your choice is kept for browsers that can draw it.',
             )}
           </span>
         </div>

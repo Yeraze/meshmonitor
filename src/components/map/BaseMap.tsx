@@ -1,9 +1,13 @@
-import type { CSSProperties, ReactNode, Ref } from 'react';
+import { useCallback, useState, type CSSProperties, type ReactNode, type Ref } from 'react';
 import type { Map as LeafletMap } from 'leaflet';
 import { MapContainer, TileLayer } from 'react-leaflet';
-import { getTilesetById, DEFAULT_TILESET_ID, type TilesetId, type CustomTileset } from '../../config/tilesets';
+import { getTilesetById, getRasterTileset, DEFAULT_TILESET_ID, type TilesetId, type CustomTileset } from '../../config/tilesets';
 import { withCartoKey } from '../../config/cartoKey';
 import { VectorTileLayer } from '../VectorTileLayer';
+import ErrorBoundary from '../common/ErrorBoundary';
+import { MapUnavailablePanel } from './MapUnavailablePanel';
+import { VectorFallbackNotice } from './VectorFallbackNotice';
+import { useVectorRenderingAvailable } from './vectorSupport';
 import { TilesetSelector } from '../TilesetSelector';
 import MapResizeHandler from '../MapResizeHandler';
 import { MapSidebar } from './MapSidebar';
@@ -128,8 +132,28 @@ export interface BaseMapProps {
  * Everything else (markers, draw handlers, view controllers) is the caller's
  * `children`. BaseMap is persistence-agnostic: it takes a controlled
  * `tilesetId`/`onTilesetChange` pair and never reads `useSettings()` itself.
+ *
+ * **No WebGL2 ⇒ raster, for this render only.** A vector tileset needs
+ * MapLibre GL, which needs WebGL2. When the browser has none (or a layer lost
+ * its context for good) the map draws `getRasterTileset(tileset)` through the
+ * raster branch: the style's raster twin for a CARTO preset, `osm` for a
+ * custom `.pbf` tileset. That is the same rule the 3D view and the traceroute
+ * mini-map already use. `tilesetId` and the saved setting are not touched, so
+ * the same account still gets vector tiles in a capable browser.
+ *
+ * **Error boundary.** Anything a map child throws while rendering is caught
+ * here and shown as a "map unavailable" panel in the map's place, so the page
+ * around the map keeps working.
  */
-export function BaseMap({
+export function BaseMap(props: BaseMapProps) {
+  return (
+    <ErrorBoundary fallback={(error, retry) => <MapUnavailablePanel error={error} onRetry={retry} />}>
+      <BaseMapShell {...props} />
+    </ErrorBoundary>
+  );
+}
+
+function BaseMapShell({
   center,
   zoom,
   tilesetId,
@@ -153,7 +177,20 @@ export function BaseMap({
   sidebarTitle,
 }: BaseMapProps) {
   const resolvedId = tilesetId ?? DEFAULT_TILESET_ID;
-  const tileset = getTilesetById(resolvedId, customTilesets ?? []);
+  const selectedTileset = getTilesetById(resolvedId, customTilesets ?? []);
+
+  // Vector tiles need WebGL2. `vectorAvailable` is page-wide (probe, or a
+  // layer that failed to build); `vectorDownFor` is this map only (a context
+  // lost for good) and clears itself when the user picks another tileset.
+  const vectorAvailable = useVectorRenderingAvailable();
+  const [vectorDownFor, setVectorDownFor] = useState<string | null>(null);
+  const handleVectorUnavailable = useCallback(() => setVectorDownFor(resolvedId), [resolvedId]);
+  const wantsVector = Boolean(selectedTileset.isVector);
+  const contextLost = vectorAvailable && vectorDownFor === resolvedId;
+  const rasterFallback = wantsVector && (!vectorAvailable || contextLost);
+  const drawVector = wantsVector && !rasterFallback;
+  // The tileset actually drawn. Equal to the selected one except in fallback.
+  const tileset = rasterFallback ? getRasterTileset(selectedTileset).tileset : selectedTileset;
 
   // Leaflet's setOptions copies EVERY own key of the options object, so an
   // explicit `scrollWheelZoom: undefined` OVERRIDES the prototype default
@@ -195,7 +232,7 @@ export function BaseMap({
         maxBoundsViscosity={1}
         {...interactionOptions}
       >
-        {tileset.isVector
+        {drawVector
           ? (
             <VectorTileLayer
               key={resolvedId}
@@ -205,6 +242,7 @@ export function BaseMap({
               styleJson={styleJson}
               styleUrl={tileset.styleUrl}
               cartoApiKey={cartoApiKey}
+              onUnavailable={handleVectorUnavailable}
             />
           )
           : (
@@ -267,6 +305,7 @@ export function BaseMap({
             world-fill zoom floor (#5556). */}
         <WorldFillMinZoom />
         {children}
+        <VectorFallbackNotice active={rasterFallback} reason={contextLost ? 'context-lost' : 'unsupported'} />
       </MapContainer>
       {showTilesetSelector && (
         <TilesetSelector

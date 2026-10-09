@@ -38,6 +38,8 @@ import { queryClient } from './config/queryClient.ts';
 // contexts below, which is where the old static graph placed page CSS.
 import './eagerStyles.ts';
 import RouteLoading from './components/RouteLoading/RouteLoading.tsx';
+import ErrorBoundary from './components/common/ErrorBoundary.tsx';
+import { AppErrorScreen } from './components/common/AppErrorScreen.tsx';
 import { useDashboardSources } from './hooks/useDashboardData';
 import './index.css';
 import { AuthProvider } from './contexts/AuthContext';
@@ -184,6 +186,9 @@ const sourceRouteProviders = (children: React.ReactNode) => (
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
+    {/* Last resort: without a boundary here an uncaught render or unmount
+        error empties #root and the user sees a blank page. */}
+    <ErrorBoundary fallback={(error, retry) => <AppErrorScreen error={error} onRetry={retry} />}>
     <Suspense fallback={<RouteLoading />}>
       <QueryClientProvider client={queryClient}>
         <BrowserRouter basename={appBasename}>
@@ -263,5 +268,6 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
         <ReactQueryDevtools initialIsOpen={false} />
       </QueryClientProvider>
     </Suspense>
+    </ErrorBoundary>
   </React.StrictMode>
 );
