@@ -1,10 +1,18 @@
-import { expect, afterEach, beforeEach, vi } from 'vitest';
+import { expect, afterEach, afterAll, beforeEach, vi } from 'vitest';
 import { cleanup } from '@testing-library/react';
 import * as matchers from '@testing-library/jest-dom/matchers';
 import { resetVectorSupportForTests, setVectorRenderingForTests } from '../components/map/vectorSupport';
+import { waitForBackgroundTasks } from '../utils/backgroundTasks';
 
 // Extends Vitest's expect method with methods from react-testing-library
 expect.extend(matchers);
+
+// Let fire-and-forget work (DatabaseService's startup user checks, "new node"
+// notifications) settle before Vitest tears this file down. Otherwise its
+// dynamic imports and log lines land after teardown, leave an
+// `onUserConsoleLog` RPC pending, and fail the run with an
+// EnvironmentTeardownError even though every test passed.
+afterAll(() => waitForBackgroundTasks());
 
 // Mock react-i18next for tests. `t` returns the key (with {{var}} filled from
 // an options object). It keeps one identity across renders, as the real hook
