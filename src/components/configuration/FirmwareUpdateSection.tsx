@@ -15,6 +15,11 @@ import styles from './FirmwareUpdateSection.module.css';
 
 interface FirmwareUpdateSectionProps {
   baseUrl: string;
+  /**
+   * Anchor id of the section. `config-firmware` on Device Configuration, where
+   * the section lives (#5683 follow-up).
+   */
+  sectionId?: string;
 }
 
 // Mirror the server-side types for the frontend
@@ -134,7 +139,7 @@ const STEP_ORDER: Array<{ key: string; label: string }> = [
   { key: 'verify', label: 'Verify' },
 ];
 
-const FirmwareUpdateSection: React.FC<FirmwareUpdateSectionProps> = ({ baseUrl }) => {
+const FirmwareUpdateSection: React.FC<FirmwareUpdateSectionProps> = ({ baseUrl, sectionId = 'config-firmware' }) => {
   const { t } = useTranslation();
   const csrfFetch = useCsrfFetch();
   const { showToast } = useToast();
@@ -686,7 +691,7 @@ const FirmwareUpdateSection: React.FC<FirmwareUpdateSectionProps> = ({ baseUrl }
       : null;
 
   return (
-    <div id="settings-firmware" className="settings-section" style={{ marginTop: '2rem' }}>
+    <div id={sectionId} className="settings-section" style={{ marginTop: '2rem' }}>
       <h3>{t('firmware.title', 'Firmware Updates')}</h3>
       <p className="setting-description">{t('firmware.description', 'Manage firmware updates for your gateway node.')}</p>
 

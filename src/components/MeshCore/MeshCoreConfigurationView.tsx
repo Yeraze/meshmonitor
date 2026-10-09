@@ -6,6 +6,10 @@ import { useAuth } from '../../contexts/AuthContext';
 import { MeshCoreChannelsConfigSection } from './MeshCoreChannelsConfigSection';
 import { MeshCoreLocalConsole } from './MeshCoreLocalConsole';
 import { MeshCoreObserverSection } from './MeshCoreObserverSection';
+import { MeshCoreContactSyncSection } from './MeshCoreContactSyncSection';
+import { MeshCoreDeviceActionsSection } from './MeshCoreDeviceActionsSection';
+import { MeshCorePathHashSection } from './MeshCorePathHashSection';
+import { MeshCoreDefaultScopeSection } from './MeshCoreDefaultScopeSection';
 import { CollapsibleSection } from './CollapsibleSection';
 import { UiIcon } from '../icons';
 import { NumberInput } from '../common/NumberInput';
@@ -15,6 +19,10 @@ import { useNumberInputScope } from '../common/numberInputScopeContext';
 const TELEMETRY_MODE_OPTIONS: TelemetryMode[] = ['always', 'device', 'never'];
 // MeshCore device types: COMPANION=1, REPEATER=2, ROOM_SERVER=3.
 const COMPANION_ONLY_DEVICES = new Set([2, 3]);
+// MeshCoreDeviceType.COMPANION, as the connection status reports it. The
+// sections that came from the Settings tab (#5683 follow-up) keep the
+// companion test they had there.
+const DEVICE_TYPE_COMPANION = 1;
 
 interface MeshCoreConfigurationViewProps {
   status: ConnectionStatus | null;
@@ -29,19 +37,44 @@ interface MeshCoreConfigurationViewProps {
    *  (name/location/radio params/TX power/telemetry modes/channel CRUD) is
    *  serial/DB-only and deliberately not gated (§3.7 of the Phase 2 spec). */
   receiveOnly?: boolean;
+  /** A connect / disconnect is in flight: holds the device actions. */
+  loading?: boolean;
 }
 
+/**
+ * Device Configuration for a MeshCore source: what is written to, or done on,
+ * the radio.
+ *
+ * Top to bottom: the saved device settings (name, location, radio, TX power,
+ * telemetry, default path hash size, default region / scope, channels), the
+ * radio contact list, the **Device actions** group (things done on the radio
+ * now, nothing saved), the device console, the Analyzer Observer and the
+ * danger zone.
+ *
+ * Every section saves through its own button; there is no page-wide save.
+ * Each control is gated on the grant its own route checks, which is not
+ * always `configuration`: the device actions need `nodes:write` or
+ * `connection:write`.
+ */
 export const MeshCoreConfigurationView: React.FC<MeshCoreConfigurationViewProps> = ({
   status,
   actions,
   baseUrl,
   sourceId,
   receiveOnly = false,
+  loading = false,
 }) => {
   const { t } = useTranslation();
   const { hasPermission } = useAuth();
   const canWriteConfig = hasPermission('configuration', 'write');
+  const canWriteNodes = hasPermission('nodes', 'write');
+  const canWriteConnection = hasPermission('connection', 'write');
   const connected = status?.connected ?? false;
+  const isCompanion = status?.deviceType === DEVICE_TYPE_COMPANION;
+  // One radio sweep at a time: node discovery and region discovery each hold
+  // the other's button while they run, as they did on the Settings tab.
+  const [nodeSweepRunning, setNodeSweepRunning] = useState(false);
+  const [regionSweepRunning, setRegionSweepRunning] = useState(false);
   const local = status?.localNode;
 
   const [name, setName] = useState(local?.name || '');
@@ -546,6 +579,29 @@ export const MeshCoreConfigurationView: React.FC<MeshCoreConfigurationViewProps>
         </div>
       </CollapsibleSection>
 
+      {/* Written to the device, so they sit with the other saved device
+          settings (#5683 follow-up; both came from the Settings tab). */}
+      {isCompanion && (
+        <MeshCorePathHashSection
+          connected={connected}
+          loading={loading}
+          actions={actions}
+          canWriteConfig={canWriteConfig}
+        />
+      )}
+      {isCompanion && (
+        <MeshCoreDefaultScopeSection
+          connected={connected}
+          loading={loading}
+          actions={actions}
+          receiveOnly={receiveOnly}
+          canWriteConfig={canWriteConfig}
+          canWriteNodes={canWriteNodes}
+          otherSweepRunning={nodeSweepRunning}
+          onSweepRunningChange={setRegionSweepRunning}
+        />
+      )}
+
       {/* Channels — Companion-only and only when the per-source addressing
           props are available (sourceId/baseUrl come from the MeshCorePage). */}
       {baseUrl !== undefined && sourceId && !COMPANION_ONLY_DEVICES.has(local?.advType ?? 1) && (
@@ -555,6 +611,32 @@ export const MeshCoreConfigurationView: React.FC<MeshCoreConfigurationViewProps>
           canWrite={connected && canWriteConfig}
         />
       )}
+
+      {/* Radio contact list vs MeshMonitor (#5502). Gates itself: the auto-add
+          switch on configuration:write, the push on nodes:write. */}
+      {isCompanion && baseUrl !== undefined && sourceId && (
+        <MeshCoreContactSyncSection
+          baseUrl={baseUrl}
+          sourceId={sourceId}
+          connected={connected}
+          canEditConfig={canWriteConfig}
+          canEditNodes={canWriteNodes}
+        />
+      )}
+
+      {/* Device actions: done on the radio when pressed, never saved. Kept
+          apart from the saved settings above. */}
+      <MeshCoreDeviceActionsSection
+        connected={connected}
+        loading={loading}
+        isCompanion={isCompanion}
+        actions={actions}
+        receiveOnly={receiveOnly}
+        canWriteNodes={canWriteNodes}
+        canWriteConnection={canWriteConnection}
+        otherSweepRunning={regionSweepRunning}
+        onSweepRunningChange={setNodeSweepRunning}
+      />
 
       {/* Local CLI console — gated on configuration:write (matches the
           form fields above) and per-source via the route. Available for

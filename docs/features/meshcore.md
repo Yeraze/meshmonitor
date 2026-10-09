@@ -229,6 +229,8 @@ Where you change the device's settings:
 - **Location** — Position and advert-location policy
 - **Radio** — Frequency, bandwidth, spreading factor, coding rate (now with a preset selector)
 - **Telemetry mode** — Which telemetry classes the device emits (see [Telemetry Modes](#telemetry-modes))
+- **Default path hash size** and **Default region / scope** — separate sections after Telemetry
+- **Radio contact list** and **Device actions** — contact list, adverts, and node discovery
 
 ## Telemetry
 
@@ -292,7 +294,7 @@ The MeshCore companion firmware exposes only a **single, global flood scope**, n
 There are three layers, resolved most-specific-first (**channel scope → source default scope → unscoped**):
 
 - **Per-channel Region / Scope** — each channel's settings has a **Region / Scope** field. Traffic on that channel is stamped with this scope.
-- **Per-source default scope** — the MeshCore **Settings** view has a default-scope section backed by the `meshcoreDefaultScope` setting. Channels without their own scope fall back to this, so you can scope a whole source with one value.
+- **Per-source default scope** — the MeshCore **Device Configuration** page has a default-scope section (after Default path hash size) backed by the `meshcoreDefaultScope` setting. Channels without their own scope fall back to this, so you can scope a whole source with one value.
 - **Unscoped** — leave both blank and MeshMonitor asserts a **truly unscoped** flood (companion firmware v12+ accepts a raw `SetFloodScope` payload that clears the device's default), so the packet leaves your radio with no region tag regardless of any default the device itself has configured. On older firmware that lacks the raw form, MeshMonitor falls back to the node's default; upgrade the companion firmware if you rely on unscoped sends from a source whose device is set to a default region.
 
 Channel-settings and the per-message override both offer a region-picker **datalist** drawn from your saved + discovered regions (see below); free typing is still allowed. Region names are normalized (leading `#` stripped; letters, digits, and hyphens kept).
@@ -303,7 +305,7 @@ Originated flood traffic is scoped end-to-end. That covers channel messages, DM 
 
 ### Discover Regions
 
-In the default-scope section of MeshCore **Settings**, the **Discover Regions** button asks nearby repeaters which regions they serve:
+In the default-scope section of MeshCore **Device Configuration**, the **Discover regions from repeaters** button asks nearby repeaters which regions they serve:
 
 - It runs a **0-hop sweep first** and queries **only the repeaters (and room servers) that answer in direct RF range**, in arrival order — not every repeater you've ever heard.
 - If the first sweep finds nothing it **retries once**.
@@ -346,14 +348,14 @@ The firmware setting `manual_add_contacts` decides whether the radio saves the n
 - **Auto-add on** (bit 0 clear, the usual default): the radio stores each node it hears advertising, until the table fills.
 - **Auto-add off** (bit 0 set): the radio stores only contacts added by hand. Nodes it hears still show up in MeshMonitor, but the radio never saves them.
 
-**MeshCore → Settings → Radio contact list** shows the current state (**Auto-add contacts: On / Off**) and a **Turn on / Turn off** button (needs `configuration:write`). The button changes only bit 0. The higher bits (per-type auto-add flags) and the telemetry and advert-location settings sent in the same firmware command stay as they were. It is a local write over the serial or TCP link; nothing is transmitted.
+**MeshCore → Device Configuration → Radio contact list** shows the current state (**Auto-add contacts: On / Off**) and a **Turn on / Turn off** button (needs `configuration:write`). The button changes only bit 0. The higher bits (per-type auto-add flags) and the telemetry and advert-location settings sent in the same firmware command stay as they were. It is a local write over the serial or TCP link; nothing is transmitted.
 
 ### Symptoms when the two are out of step
 
 - MeshMonitor shows the node, even marked as a favourite, but logging in to it is refused with "not in the radio's contact list".
 - Telemetry and status requests to it do nothing, while the radio still hears its adverts.
 - The server log at connect says `N locally-favourited node(s) not in the device contact table`. When auto-add is off the message says so.
-- The Settings page shows a banner: **N favourite(s) are not in the radio's contact list**.
+- The Device Configuration page shows a banner: **N favourite(s) are not in the radio's contact list**.
 
 ### Two fixes
 
@@ -519,7 +521,7 @@ The scheduled autopoll fetches 1 page, strongest signal first. It merges the res
 
 ## Active Node Discovery
 
-Beyond passively reading a repeater's neighbor table, MeshMonitor can actively probe the airwaves for nearby MeshCore devices (added in 4.8.3). The MeshCore **Settings** view exposes two buttons:
+Beyond passively reading a repeater's neighbor table, MeshMonitor can actively probe the airwaves for nearby MeshCore devices (added in 4.8.3). The MeshCore **Device Configuration** page, under **Device actions** → **Discover nodes**, exposes two buttons:
 
 - **Discover Nearby Nodes** — sweep for any MeshCore node in zero-hop (direct RF) range, matching the mobile app's discovery behaviour. Responders are added/refreshed as contacts.
 - **Discover Repeaters** — the same sweep scoped to repeater-class devices.
@@ -559,7 +561,7 @@ An advert announces this node so others can add it as a contact. MeshMonitor sen
 - **Zero-hop** reaches only nodes in direct radio range. No repeater forwards it, so it costs one transmission (roughly 0.4–1.3 s of channel time).
 - **Flood** is forwarded by every repeater within 8 hops. With 20 repeaters in reach that is about 9 s (US presets) or 25 s (EU presets) of shared channel time for a single advert.
 
-The status bar and **Settings → Device actions** offer **Advert (nearby, zero-hop)** as the main button. **Flood advert** sits beside it and asks you to confirm, stating the cost, before it sends. In the device console, `advert.zerohop` sends a zero-hop advert and `advert` sends a flood; the console's quick-action button sends the zero-hop one.
+The status bar and **Device Configuration → Device actions** offer **Advert (nearby, zero-hop)** as the main button. **Flood advert** sits beside it and asks you to confirm, stating the cost, before it sends. In the device console, `advert.zerohop` sends a zero-hop advert and `advert` sends a flood; the console's quick-action button sends the zero-hop one.
 
 Repeater firmware that predates the `advert.zerohop` CLI verb floods when asked for a zero-hop advert. MeshMonitor spots this from the repeater's reply, reports that a flood went out, and refuses further zero-hop requests to that repeater until it reconnects. Update the repeater firmware to fix it.
 
@@ -675,9 +677,9 @@ Virtual Node behavior and the firmware limitation.
 
 ## Per-Source Settings
 
-Alongside the receive-only toggle, MeshCore **Settings** exposes a small set of per-source controls that shape how MeshMonitor talks to the mesh through that specific source:
+Alongside the receive-only toggle, MeshCore **Settings** and **Device Configuration** expose a small set of per-source controls that shape how MeshMonitor talks to the mesh through that specific source:
 
-- **Default Path Hash Size** — how many bytes of a route's next-hop identity to include when sending direct messages that carry a cached route. The default matches the companion firmware default; lower values shave a byte or two off each direct send, higher values reduce ambiguity on very dense networks. Leave it alone unless you have a specific reason to tune it.
+- **Default Path Hash Size** (on **Device Configuration**) — how many bytes of a route's next-hop identity to include when sending direct messages that carry a cached route. The default matches the companion firmware default; lower values shave a byte or two off each direct send, higher values reduce ambiguity on very dense networks. Leave it alone unless you have a specific reason to tune it.
 - **Maximum infrastructure node age (hours)** — a separate age window for repeaters and room servers. The main **Node list & map window** setting applies to all MeshCore nodes; this second slider lets you keep infrastructure nodes on the map for longer than mobile companions. Two views honor it: the map's node-list, and the neighbours summary. Set it to `0` to inherit the main age window.
 - **Telemetry time window** — the telemetry panel in a MeshCore node's details view exposes a time-window selector so you can flip the charts between the last hour, day, or week without leaving the panel.
 

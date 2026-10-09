@@ -5,6 +5,7 @@ import { TabType } from '../types/ui';
 import { ResourceType } from '../types/permission';
 import { UiIcon, type UiIconName } from './icons';
 import SidebarFooter from './SidebarFooter';
+import { canOpenSourceSettings } from './nav/sourceSettingsAccess';
 import { SourceNav, type SourceNavItem, type SourceNavSection } from './nav/SourceNav';
 import { readSidebarPinned, useSidebarPin } from './nav/useSidebarPin';
 import { deviceConfigurationNav, sourceSettingsNav } from './nav/sourceNavEntries';
@@ -212,6 +213,8 @@ const Sidebar: React.FC<SidebarProps> = ({
       : []),
   ];
 
+  const canOpenSettings = canOpenSourceSettings(hasPermission, mqttReadOnly ? 'mqtt_bridge' : null);
+
   const configItems: SourceNavItem[] = [
     /* Like the message-search entry above, this opens an overlay rather than
        switching tabs, so its id never matches activeTab and it never renders
@@ -222,8 +225,9 @@ const Sidebar: React.FC<SidebarProps> = ({
       : []),
     /* 'settings' is sourcey (Phase 6 #4416); this nav link guards the whole
        Settings tab, most of whose routes are unscoped, so anySource mirrors the
-       server's union check. */
-    ...(hasPermission('settings', 'read', { anySource: true })
+       server's union check. On an MQTT bridge the page also holds the bridge
+       setup, which reads `sources`: see canOpenSourceSettings. */
+    ...(canOpenSettings
       ? [sharedNavItem('settings', sourceSettingsNav(t))]
       : []),
     ...(!mqttReadOnly && hasPermission('automation', 'read')
@@ -232,13 +236,9 @@ const Sidebar: React.FC<SidebarProps> = ({
     ...(!noDeviceConfig && hasPermission('configuration', 'read')
       ? [sharedNavItem('configuration', deviceConfigurationNav(t))]
       : []),
-    /* MQTT Bridge sources have no device-config surface; surface a dedicated
-       bridge Configuration page instead. It is NOT the shared Device
-       Configuration entry (#5683): the page holds MeshMonitor's own connection
-       and filter settings for the bridge, and nothing is sent to a device. */
-    ...(mqttReadOnly && hasPermission('sources', 'read')
-      ? [navItem('mqtt-config', t('nav.mqtt_bridge_config', 'Configuration'), 'configuration')]
-      : []),
+    /* An MQTT bridge has no satellite entry (#5683 follow-up). Its old
+       "Configuration" page held only MeshMonitor's own connection and filter
+       settings, so it is a section of the Settings page above. */
     ...(isAuthenticated ? [navItem('notifications', t('nav.notifications'), 'notifications')] : []),
   ];
 
@@ -313,7 +313,7 @@ const Sidebar: React.FC<SidebarProps> = ({
       footer={
         <SidebarFooter
           isAdmin={isAdmin}
-          canReadSettings={hasPermission('settings', 'read', { anySource: true })}
+          canReadSettings={canOpenSettings}
           onUsersClick={() => setActiveTab('users')}
           onSettingsClick={() => setActiveTab('settings')}
           onNewsClick={onNewsClick}

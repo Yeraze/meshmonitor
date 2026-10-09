@@ -6,11 +6,13 @@
 
 ## Opening Global Settings
 
-Click the **gear / settings icon** in the dashboard sidebar (it collapses into a hamburger on mobile). The Global Settings page is admin-gated — regular users see their own **Profile / Preferences** page instead.
+Click the **gear icon** titled **Global Settings** in the dashboard sidebar footer (it collapses into a hamburger on mobile). The Global Settings page is admin-gated — regular users see their own **Profile / Preferences** page instead.
 
 ![Global Settings page with tabbed sections](/images/features/global-settings.png)
 
 ## What lives here
+
+MeshMonitor has three settings pages. **Device Configuration** (satellite icon, per source) holds what MeshMonitor writes to, or does on, the radio. **Settings** (gear icon, per source) holds what MeshMonitor stores and does for that one source. **Global Settings** holds what applies to the whole install. MeshCore and Reticulum source pages link here from the foot of their left nav rail and from the top of their Settings page.
 
 ### Appearance
 
@@ -39,6 +41,15 @@ Individual Apprise URLs (per user, per source) are not here — users configure 
 - Anonymous access policy
 - MFA enforcement defaults
 - Rate-limiter thresholds
+- **PKI direct message decryption**: the install-wide enable switch (the per-source switch is on each source's **Settings** page). See [PKI Direct Message Decryption](/features/pki-dm-decryption).
+
+### Channel Database
+
+Server-side decryption keys (admin only). See [Channel Database](/features/channel-database).
+
+### Reticulum Settings
+
+The destination retention cap. It applies to every Reticulum source. A Reticulum source's own Settings page holds only a pointer to it.
 
 ### Privacy
 
@@ -84,6 +95,9 @@ Anything that depends on *which* node you're connected to lives on the source, n
 - Auto-Responder, Auto-Announce, Auto-Traceroute, Auto-Ack
 - Scheduled Messages
 - Permissions
+- PKI direct message decryption switch (Meshtastic)
+- MQTT Bridge Configuration (bridge sources)
+- Receive-only mode, saved regions, node display, and message filters (MeshCore)
 
 See [Multi-Source](/features/multi-source) for the full per-source list.
 

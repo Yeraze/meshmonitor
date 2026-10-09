@@ -1,114 +1,61 @@
 /**
  * @vitest-environment jsdom
  *
- * ReticulumSettingsView (#3960 Phase 1b WP5) — thin one-setting view for
- * `reticulum_destinations_max`. This key is deliberately GLOBAL (see the
- * module doc on the component) — `ReticulumRepository.getDestinationsMax()`
- * reads it with no `sourceId`, so this view reads/writes the generic
- * `/api/settings` endpoint (no `?sourceId=`), mirroring
- * `DatabaseMaintenanceSection.tsx`'s apiService.get/post + useSaveBar
- * pattern. `useSaveBar` is mocked to capture its options so the save/dismiss
- * path can be driven directly, the same strategy
- * `MeshCoreNodeDisplaySection.test.tsx` uses.
+ * ReticulumSettingsView after the #5683 follow-up: its one control, the
+ * destination retention cap, applies to every Reticulum source and moved to
+ * Global Settings. The tab keeps a pointer and reads or saves nothing.
  */
-import React from 'react';
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor, fireEvent } from '@testing-library/react';
-import { ReticulumSettingsView } from './ReticulumSettingsView';
+import { describe, it, expect, vi } from 'vitest';
+import { render, screen } from '@testing-library/react';
+import { MemoryRouter } from 'react-router-dom';
 
 vi.mock('react-i18next', async () => {
   const { createReactI18nextMock } = await import('../../test/mockI18n');
   return createReactI18nextMock();
 });
+vi.mock('../../contexts/IconStyleContext', () => ({ useIconStyleOptional: () => 'lucide' }));
+let canReadSettings = true;
+vi.mock('../../contexts/AuthContext', () => ({ useAuth: () => ({ hasPermission: () => canReadSettings }) }));
+const { apiGet, apiPost } = vi.hoisted(() => ({ apiGet: vi.fn(), apiPost: vi.fn() }));
+vi.mock('../../services/api', () => ({ default: { get: apiGet, post: apiPost }, ApiError: class extends Error {} }));
 
-const { hasPermissionMock } = vi.hoisted(() => ({ hasPermissionMock: vi.fn(() => true) }));
-vi.mock('../../contexts/AuthContext', () => ({
-  useAuth: () => ({ hasPermission: hasPermissionMock }),
-}));
+import { ReticulumSettingsView } from './ReticulumSettingsView';
 
-const { showToastMock } = vi.hoisted(() => ({ showToastMock: vi.fn() }));
-vi.mock('../ToastContainer', () => ({
-  useToast: () => ({ showToast: showToastMock }),
-}));
-
-const { saveBarCapture } = vi.hoisted(() => ({
-  saveBarCapture: {
-    current: null as null | {
-      hasChanges: boolean;
-      isSaving: boolean;
-      onSave: () => Promise<void>;
-      onDismiss: () => void;
-    },
-  },
-}));
-vi.mock('../../hooks/useSaveBar', () => ({
-  useSaveBar: (options: unknown) => {
-    saveBarCapture.current = options as typeof saveBarCapture.current;
-  },
-}));
-
-const { apiGetMock, apiPostMock } = vi.hoisted(() => ({
-  apiGetMock: vi.fn(),
-  apiPostMock: vi.fn(),
-}));
-vi.mock('../../services/api', () => ({
-  default: { get: apiGetMock, post: apiPostMock },
-  ApiError: class ApiError extends Error {},
-}));
-
-const SOURCE_ID = 'rns-source-1';
+const renderView = () => render(<MemoryRouter><ReticulumSettingsView sourceId="rns-1" /></MemoryRouter>);
 
 describe('ReticulumSettingsView', () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    hasPermissionMock.mockReturnValue(true);
-    saveBarCapture.current = null;
-    apiGetMock.mockResolvedValue({ reticulum_destinations_max: '3000' });
-    apiPostMock.mockResolvedValue({ success: true });
+  it('no longer holds the retention cap', () => {
+    canReadSettings = true;
+    renderView();
+    expect(screen.queryByLabelText(/destination retention cap/i)).toBeNull();
+    expect(screen.queryByRole('spinbutton')).toBeNull();
+    expect(screen.queryByRole('textbox')).toBeNull();
   });
 
-  it('renders and loads the current retention cap from GET /api/settings (no sourceId)', async () => {
-    render(<ReticulumSettingsView sourceId={SOURCE_ID} />);
-
-    expect(screen.getByTestId('reticulum-settings-view')).toBeInTheDocument();
-    await waitFor(() => {
-      expect(apiGetMock).toHaveBeenCalledWith('/api/settings');
-    });
-
-    const input = await screen.findByLabelText(/destination retention cap/i) as HTMLInputElement;
-    await waitFor(() => expect(input.value).toBe('3000'));
+  it('points to the cap on Global Settings, at its section', () => {
+    renderView();
+    expect(screen.getByTestId('reticulum-retention-moved')).toHaveTextContent(
+      'The destination retention cap applies to every Reticulum source, so it moved to Global Settings.',
+    );
+    expect(screen.getByRole('link', { name: 'Open Global Settings' }).getAttribute('href'))
+      .toBe('/settings#settings-reticulum');
   });
 
-  it('falls back to the default cap when the setting is unset', async () => {
-    apiGetMock.mockResolvedValueOnce({});
-    render(<ReticulumSettingsView sourceId={SOURCE_ID} />);
-
-    const input = await screen.findByLabelText(/destination retention cap/i) as HTMLInputElement;
-    await waitFor(() => expect(input.value).toBe('2000'));
+  it('links to Global Settings on the page itself, for the phone layout with no nav foot', () => {
+    renderView();
+    expect(screen.getByRole('link', { name: 'Global Settings' }).getAttribute('href')).toBe('/settings');
   });
 
-  it('registers a SaveBar section and saves the new value via POST /api/settings (no sourceId)', async () => {
-    render(<ReticulumSettingsView sourceId={SOURCE_ID} />);
-
-    const input = await screen.findByLabelText(/destination retention cap/i) as HTMLInputElement;
-    await waitFor(() => expect(input.value).toBe('3000'));
-
-    fireEvent.change(input, { target: { value: '5000' } });
-
-    await waitFor(() => expect(saveBarCapture.current?.hasChanges).toBe(true));
-
-    await saveBarCapture.current!.onSave();
-
-    expect(apiPostMock).toHaveBeenCalledWith('/api/settings', { reticulum_destinations_max: '5000' });
-    expect(showToastMock).toHaveBeenCalledWith(expect.stringMatching(/saved/i), 'success');
-    await waitFor(() => expect(saveBarCapture.current?.hasChanges).toBe(false));
+  it('reads and saves nothing', () => {
+    renderView();
+    expect(apiGet).not.toHaveBeenCalled();
+    expect(apiPost).not.toHaveBeenCalled();
   });
 
-  it('disables the input when the user lacks settings:write permission', async () => {
-    hasPermissionMock.mockReturnValue(false);
-    render(<ReticulumSettingsView sourceId={SOURCE_ID} />);
-
-    const input = await screen.findByLabelText(/destination retention cap/i) as HTMLInputElement;
-    await waitFor(() => expect(input).toBeDisabled());
+  it('keeps the pointer for a viewer without settings:read, without the Global Settings link', () => {
+    canReadSettings = false;
+    renderView();
+    expect(screen.getByTestId('reticulum-retention-moved')).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Global Settings' })).toBeNull();
   });
 });

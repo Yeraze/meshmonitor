@@ -15,6 +15,7 @@ import { BrandIcon, UiIcon } from './icons';
 import PrivacyLinks from './PrivacyLinks';
 import styles from './SidebarFooter.module.css';
 import { appBasename } from '../init';
+import { globalSettingsNav } from './nav/sourceNavEntries';
 
 export const MESHMONITOR_GITHUB_URL = 'https://github.com/Yeraze/meshmonitor';
 export const MESHMONITOR_DISCORD_URL = 'https://discord.gg/JVR3VBETQE';
@@ -30,6 +31,12 @@ export interface SidebarFooterProps {
   onUsersClick: () => void;
   /** Navigates to settings. */
   onSettingsClick: () => void;
+  /**
+   * Which settings page the gear opens (#5683 follow-up). The dashboard's
+   * opens the install-wide page and is named "Global Settings"; a source
+   * sidebar's opens that source's own page and stays "Settings".
+   */
+  settingsScope?: 'global' | 'source';
   /** Opens the News popup. The button renders disabled when absent. */
   onNewsClick?: () => void;
   /** Hides the version line (per-source sidebar collapsed state). */
@@ -51,6 +58,7 @@ const SidebarFooter: React.FC<SidebarFooterProps> = ({
   canReadSettings,
   onUsersClick,
   onSettingsClick,
+  settingsScope = 'source',
   onNewsClick,
   hideVersion = false,
   narrowIcons = false,
@@ -58,6 +66,9 @@ const SidebarFooter: React.FC<SidebarFooterProps> = ({
   hideOnCompactLandscape = false,
 }) => {
   const { t } = useTranslation();
+  const settingsLabel = settingsScope === 'global'
+    ? globalSettingsNav(t).label
+    : t('source.sidebar.settings');
 
   const footerClass = [
     styles.footer,
@@ -84,7 +95,8 @@ const SidebarFooter: React.FC<SidebarFooterProps> = ({
         {canReadSettings && (
           <button
             className={styles.btn}
-            title={t('source.sidebar.settings')}
+            title={settingsLabel}
+            aria-label={settingsLabel}
             onClick={onSettingsClick}
           >
             <UiIcon name="settings" size={18} />

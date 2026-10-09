@@ -11,6 +11,10 @@ import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { ReticulumSubToolbar } from './ReticulumSubToolbar';
 
+// The nav foot links to Global Settings (#5683 follow-up) for a viewer with
+// settings:read; GlobalSettingsLink.test.tsx covers that link.
+vi.mock('../../contexts/AuthContext', () => ({ useAuth: () => ({ hasPermission: () => true }) }));
+
 vi.mock('react-i18next', async () => {
   const { createReactI18nextMock } = await import('../../test/mockI18n');
   return createReactI18nextMock();

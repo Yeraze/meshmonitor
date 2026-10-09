@@ -1,0 +1,67 @@
+/*
+ * Layout for the saved-setting sections that moved from MeshCore Settings to
+ * Device Configuration (#5683 follow-up): default path hash size and default
+ * region / scope.
+ */
+
+/* A field and its Save button. Wraps on a phone. */
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.grow {
+  flex: 1;
+  min-width: 12rem;
+}
+
+.block {
+  margin-top: 0.75rem;
+}
+
+.smallHint {
+  font-size: 0.8rem;
+  margin-top: 0.25rem;
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-top: 0.5rem;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.1rem 0.3rem;
+  border-radius: 999px;
+  border: 1px solid var(--color-accent);
+  background: transparent;
+}
+
+.chipSelected {
+  background: var(--color-accent);
+}
+
+.chipButton {
+  padding: 0.1rem 0.3rem;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+}
+
+.chipSave {
+  padding: 0.05rem 0.35rem;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+}
+
+.chipSave:disabled {
+  cursor: default;
+  opacity: 0.5;
+}

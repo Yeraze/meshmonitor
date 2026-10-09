@@ -1684,6 +1684,10 @@ Create backup templates for different use cases:
 - Restore original config if tests fail
 - No need to manually track settings changes
 
+## Firmware Updates
+
+**Device Configuration → Firmware Updates** is the last section, after Backup. It updates the node over Wi-Fi and is admin-only. It appears only when OTA is enabled, and not on MQTT sources. See [Firmware OTA Updates](/firmware-ota-prerequisites).
+
 ## Related Documentation
 
 - [Settings](/features/settings) - Learn about MeshMonitor settings and backup automation

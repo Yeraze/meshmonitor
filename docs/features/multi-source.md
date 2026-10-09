@@ -156,7 +156,7 @@ Everything that used to be a single global setting is now per-source:
 | Permissions | ✅ |
 | Notifications / Apprise | ✅ (admins and subscribers receive per-source events) |
 
-For global behavior that isn't source-specific (theme, language, map center, push VAPID keys, session policy), use the new **Global Settings** page — accessible from the dashboard sidebar.
+For global behavior that isn't source-specific (theme, language, map center, push VAPID keys, session policy), use the new **Global Settings** page — the gear icon in the dashboard sidebar footer.
 
 ## Migration from 3.x
 

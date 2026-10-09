@@ -4,12 +4,13 @@
 In MeshMonitor 4.0 the old "Settings" tab was split in two:
 
 - **[Global Settings](/features/global-settings)** — appearance, localization, security, notifications, backup, housekeeping. One per deployment.
+- **Device Configuration** — what is written to, or done on, the radio (per source, satellite icon).
 - **Per-Source Settings** — connection, Virtual Node, auto-responder, auto-announce, auto-traceroute, auto-ack, scheduled messages, permissions. Edited in **Dashboard → Sources → Edit Source**. See [Multi-Source](/features/multi-source).
 
 This page covers the **global** options. Connection / Virtual Node / automation knobs now live on the source, not here.
 :::
 
-The Global Settings page customizes MeshMonitor's appearance, localization, security defaults, and housekeeping behavior across the entire deployment. Open it from the **gear icon in the dashboard sidebar** (admin-gated).
+The Global Settings page customizes MeshMonitor's appearance, localization, security defaults, and housekeeping behavior across the entire deployment. Open it from the **Global Settings** gear icon in the dashboard sidebar footer (admin-gated).
 
 ![Settings](/images/features/settings.png)
 

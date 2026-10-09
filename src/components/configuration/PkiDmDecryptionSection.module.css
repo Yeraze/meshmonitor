@@ -1,0 +1,22 @@
+/*
+ * Spacing for the PKI DM decryption section. Its `config-*` class names carry
+ * no rules, so on a Settings card the parts ran together.
+ */
+.body > * + * {
+  margin-top: 0.75rem;
+}
+
+.toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.note {
+  color: var(--color-text-subtle);
+  font-size: 0.85rem;
+}
+
+.warning {
+  color: var(--color-warning);
+}

@@ -21,6 +21,7 @@ import {
   sharedSourceNavPresentation,
   type SharedSourceNavEntry,
 } from '../nav/sourceNavEntries';
+import { GlobalSettingsLink } from '../nav/GlobalSettingsLink';
 import styles from './ReticulumSubToolbar.module.css';
 
 export type { ReticulumView };
@@ -95,6 +96,9 @@ export const ReticulumSubToolbar: React.FC<ReticulumSubToolbarProps> = ({
       collapseLabel={t('reticulum.nav.collapse', 'Collapse')}
       expandLabel={t('reticulum.nav.expand', 'Expand')}
       ariaLabel={t('reticulum.nav.label', 'Reticulum navigation')}
+      /* The install-wide settings page, at the foot of the rail where the
+         Meshtastic sidebar keeps its footer links (#5683 follow-up). */
+      footer={<GlobalSettingsLink collapsed={!expanded} />}
     />
   );
 };

@@ -46,6 +46,10 @@ export const ConfigSearchHost: React.FC<ConfigSearchHostProps> = ({ baseUrl = ''
   // Mirrors SettingsTab's own gate: the tab hosts global and per-source panels
   // behind one mostly-unscoped permission, so anySource matches the server.
   const canWriteSettings = hasPermission('settings', 'write', { anySource: true });
+  // Sections that moved onto Settings keep their own grant (#5683 follow-up):
+  // the palette offers them to the viewers the page shows them to.
+  const canReadSources = hasPermission('sources', 'read');
+  const canReadConfiguration = hasPermission('configuration', 'read');
 
   const surfaces = useMemo(
     () =>
@@ -55,10 +59,12 @@ export const ConfigSearchHost: React.FC<ConfigSearchHostProps> = ({ baseUrl = ''
         isAdmin,
         canWriteSettings,
         canUseAdmin: isAdmin,
+        canReadSources,
+        canReadConfiguration,
         databaseType: health?.databaseType ?? null,
         firmwareOtaEnabled: health?.firmwareOtaEnabled ?? false,
       }),
-    [t, sourceId, sourceType, isAdmin, canWriteSettings, health?.databaseType, health?.firmwareOtaEnabled],
+    [t, sourceId, sourceType, isAdmin, canWriteSettings, canReadSources, canReadConfiguration, health?.databaseType, health?.firmwareOtaEnabled],
   );
 
   const open = useCallback(() => setIsOpen(true), []);
