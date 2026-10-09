@@ -259,6 +259,20 @@ if [ "$RUNNING_AS_ROOT" = "true" ]; then
         echo "❌ FATAL: neither su-exec nor gosu is installed; refusing to run the server as root." >&2
         exit 1
     fi
+    # supervisord re-opens /dev/stdout and /dev/stderr for each program's log
+    # stream. Docker hands the container root-owned 0600 pipes (or a root-owned
+    # pty with -t), so once supervisord is node that open fails with EACCES and
+    # every program goes FATAL ("unknown error making dispatchers"). Give the
+    # container's own stdout/stderr to node. Only pipes and terminals: never
+    # chown a regular file or /dev/null that stdout happens to point at.
+    # No `2>/dev/null` on the chown: that redirect would make fd 2 /dev/null
+    # for the chown itself, so it would chown /dev/null instead of stderr.
+    for fd in 1 2; do
+        if [ -p "/proc/self/fd/$fd" ] || [ -t "$fd" ]; then
+            chown node "/proc/self/fd/$fd" || true
+        fi
+    done
+
     echo "Dropping privileges to node ($(id -u node):$(id -g node)) via $DROP_PRIV"
     exec "$DROP_PRIV" node "$@"
 fi
