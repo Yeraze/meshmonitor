@@ -107,10 +107,21 @@ RUN apk add --no-cache \
     && ln -sf /opt/apprise-venv/bin/meshcli /usr/local/bin/meshcli \
     && ln -sf /usr/bin/python3 /usr/local/bin/python3
 
+# npm stays in the runtime image: `npm start` launches the server, and the
+# user-script dependency installer (scriptDependencyService) runs `npm install`.
+# The npm bundled with the base image carries its own copy of `tar`; 11.19.0
+# (node 24.21.0) bundles tar 7.5.19, which GHSA-r292-9mhp-454m covers. Pin a
+# release in the same major that bundles a fixed tar (11.21.0 -> tar 7.5.22).
+ARG NPM_VERSION=11.21.0
+RUN npm install -g "npm@${NPM_VERSION}" \
+    && npm cache clean --force \
+    && rm -rf /root/.npm
+
 # Copy package files
 COPY package*.json ./
 
-# Copy node_modules from builder (includes compiled native modules)
+# Copy node_modules from builder (production dependencies only, with their
+# compiled native modules — see the prune at the end of the builder stage)
 COPY --from=builder /app/node_modules ./node_modules
 
 # Copy built assets from builder stage

@@ -236,6 +236,35 @@ jobs:
           docker run --rm meshmonitor:test node --version
           docker run --rm meshmonitor:test ls -la /app/
 
+      # #5692: the runtime image ships production dependencies only, runs every
+      # long-running process as `node`, and still loads its native modules.
+      - name: Verify runtime image (no dev deps, non-root, server healthy)
+        run: |
+          set -euo pipefail
+          for pkg in vite vitest typescript eslint puppeteer; do
+            if docker run --rm --entrypoint test meshmonitor:test -e "/app/node_modules/$pkg"; then
+              echo "::error::devDependency '$pkg' is present in the runtime image"; exit 1
+            fi
+          done
+          docker run --rm --entrypoint node -w /app meshmonitor:test -e "
+            const Database = require('better-sqlite3'); new Database(':memory:').prepare('select 1').get();
+            require('bcrypt'); require('re2'); require('zstd-napi');
+            require('@serialport/bindings-cpp');
+            console.log('native modules OK');"
+          docker run -d --name mm-smoke meshmonitor:test
+          ok=false
+          for i in $(seq 1 60); do
+            if docker exec mm-smoke curl -sf http://localhost:3001/api/health >/dev/null; then ok=true; break; fi
+            sleep 2
+          done
+          docker logs mm-smoke 2>&1 | tail -40
+          $ok || { echo "::error::/api/health did not answer"; exit 1; }
+          docker exec mm-smoke ps -o user=,args= | tee /tmp/ps.txt
+          if grep -E 'supervisord|apprise-api|dist/server/server.js|npm start' /tmp/ps.txt | grep -E '^ *root '; then
+            echo "::error::a long-running process is running as root"; exit 1
+          fi
+          docker rm -f mm-smoke
+
   security:
     name: Security Scan
     runs-on: ubuntu-latest
