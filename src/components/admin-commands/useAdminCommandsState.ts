@@ -67,6 +67,7 @@ export interface MQTTConfigState {
   encryptionEnabled: boolean;
   jsonEnabled: boolean;
   root: string;
+  tlsEnabled: boolean;
 }
 
 // Security Config State
@@ -528,6 +529,7 @@ const initialState: AdminCommandsState = {
     encryptionEnabled: true,
     jsonEnabled: false,
     root: '',
+    tlsEnabled: false,
   },
   security: {
     adminKeys: [''],

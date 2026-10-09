@@ -1,0 +1,31 @@
+/* Broker preset chooser shared by the three MQTT forms (#5689). */
+.select {
+  width: 100%;
+  max-width: 600px;
+}
+
+.note {
+  margin: 0.4rem 0 0;
+  font-size: 0.85rem;
+  line-height: 1.4;
+  color: var(--color-text-subtle);
+}
+
+.kept {
+  margin: 0.4rem 0 0;
+  padding: 0.4rem 0.6rem;
+  border-left: 3px solid var(--color-warning);
+  font-size: 0.85rem;
+  line-height: 1.4;
+  color: var(--color-text);
+}
+
+.privacy {
+  display: flex;
+  gap: 0.35rem;
+  align-items: flex-start;
+}
+
+.note a {
+  color: var(--color-accent);
+}

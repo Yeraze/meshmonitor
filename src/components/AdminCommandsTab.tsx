@@ -1323,7 +1323,8 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
       password: configState.mqtt.password,
       encryptionEnabled: configState.mqtt.encryptionEnabled,
       jsonEnabled: configState.mqtt.jsonEnabled,
-      root: configState.mqtt.root
+      root: configState.mqtt.root,
+      tlsEnabled: configState.mqtt.tlsEnabled
     };
 
     try {
@@ -3013,6 +3014,7 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
         mqttEncryptionEnabled={configState.mqtt.encryptionEnabled}
         mqttJsonEnabled={configState.mqtt.jsonEnabled}
         mqttRoot={configState.mqtt.root}
+        mqttTlsEnabled={configState.mqtt.tlsEnabled}
         onMQTTConfigChange={handleMQTTConfigChange}
         onSaveMQTTConfig={handleSetMQTTConfig}
         neighborInfoEnabled={configState.neighborInfo.enabled}
