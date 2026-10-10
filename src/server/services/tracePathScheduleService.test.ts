@@ -61,11 +61,14 @@ describe('TracePathScheduleService (#5723)', () => {
 
   it(`caps a source at ${TRACE_SCHEDULE_MAX_PER_SOURCE_PER_HOUR} traces in a rolling hour`, async () => {
     for (let i = 0; i < TRACE_SCHEDULE_MAX_PER_SOURCE_PER_HOUR; i++) expect((await claim(`p${i}`)).due).toBe(true);
-    expect(await claim('extra')).toEqual({ due: false, reason: 'hourly_cap' });
+    // The first capped skip is reported; later ones in the same hour are quiet.
+    expect(await claim('extra')).toEqual({ due: false, reason: 'hourly_cap', quiet: false });
+    now += MIN;
+    expect(await claim('extra')).toEqual({ due: false, reason: 'hourly_cap', quiet: true });
     // Another source has its own allowance.
     expect((await claim('extra', 10, 's2')).due).toBe(true);
     // A slot frees once the oldest run is an hour old; the capped path was never stamped.
-    now += 60 * MIN + 1;
+    now += 60 * MIN;
     expect((await claim('extra')).due).toBe(true);
   });
 

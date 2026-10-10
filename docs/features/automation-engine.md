@@ -476,7 +476,7 @@ Traces to one or more MeshCore contacts, **each on its own interval**, and keeps
 **Limits** (each trace is a packet relayed hop by hop):
 
 - A path runs **at most every 10 minutes**; the builder and the server both refuse a shorter interval.
-- One source sends **at most 12 scheduled traces an hour**. Paths past that are skipped and wait; the run says so.
+- One source sends **at most 12 scheduled traces an hour**. Paths past that are skipped and wait. The Runs log says so once an hour while the source stays at the cap, not on every tick.
 - Up to 20 paths per step.
 - A path's last run and the hourly count are stored, so restarting MeshMonitor or saving the automation does not make every path fire again. A path that is new runs on the next tick.
 - A trace that fails or gets no reply still counts as that path's run. Nothing is retried.

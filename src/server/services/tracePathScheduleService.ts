@@ -28,12 +28,15 @@ export interface TraceScheduleState {
   last: Record<string, number>;
   /** Run times inside the last hour, ms. */
   runs: number[];
+  /** When a capped path was last reported in the run log, ms. */
+  capNotedAt?: number;
 }
 
 export type TraceClaim =
   | { due: true }
   | { due: false; reason: 'not_due'; nextDueAt: number }
-  | { due: false; reason: 'hourly_cap' };
+  /** `quiet`: the cap was already reported within the last hour, so this skip need not be logged again. */
+  | { due: false; reason: 'hourly_cap'; quiet: boolean };
 
 export interface TraceScheduleDeps {
   getSourceSetting(sourceId: string, key: string): Promise<string | null>;
@@ -63,7 +66,9 @@ export function parseTraceScheduleState(raw: string | null, now: number): TraceS
     const runs = Array.isArray(parsed.runs)
       ? parsed.runs.map(Number).filter((t) => Number.isFinite(t) && t > now - HOUR_MS && t <= now)
       : [];
-    return { last, runs };
+    const noted = Number(parsed.capNotedAt);
+    const capNotedAt = Number.isFinite(noted) && noted > now - HOUR_MS && noted <= now ? noted : undefined;
+    return { last, runs, ...(capNotedAt !== undefined ? { capNotedAt } : {}) };
   } catch {
     return empty;
   }
@@ -80,7 +85,7 @@ export class TracePathScheduleService {
    */
   async claim(a: { sourceId: string; pathKey: string; intervalMinutes: number }): Promise<TraceClaim> {
     const previous = this.locks.get(a.sourceId) ?? Promise.resolve();
-    let result: TraceClaim = { due: false, reason: 'hourly_cap' };
+    let result: TraceClaim = { due: false, reason: 'hourly_cap', quiet: false };
     const run = previous.then(async () => {
       const now = this.deps.now();
       const state = parseTraceScheduleState(await this.deps.getSourceSetting(a.sourceId, SETTING_TRACE_SCHEDULE_STATE), now);
@@ -92,7 +97,13 @@ export class TracePathScheduleService {
         return;
       }
       if (state.runs.length >= TRACE_SCHEDULE_MAX_PER_SOURCE_PER_HOUR) {
-        result = { due: false, reason: 'hourly_cap' };
+        // Report the cap in the run log once an hour, not on every tick.
+        const quiet = state.capNotedAt !== undefined && now - state.capNotedAt < HOUR_MS;
+        if (!quiet) {
+          state.capNotedAt = now;
+          await this.deps.setSourceSetting(a.sourceId, SETTING_TRACE_SCHEDULE_STATE, JSON.stringify(state));
+        }
+        result = { due: false, reason: 'hourly_cap', quiet };
         return;
       }
       state.last[a.pathKey] = now;

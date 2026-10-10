@@ -230,7 +230,9 @@ export function createMeshActionDeps(): ActionDeps {
       if (!claim.due) {
         return claim.reason === 'not_due'
           ? { publicKey: path.publicKey, skipped: true, notDue: true, reason: `${who}: not due until ${new Date(claim.nextDueAt).toISOString()}` }
-          : { publicKey: path.publicKey, skipped: true, reason: `${who}: this source already sent ${TRACE_SCHEDULE_MAX_PER_SOURCE_PER_HOUR} scheduled traces in the last hour` };
+          // `notDue` marks the step idle for the run log; a capped skip is
+          // reported there once an hour (claim.quiet), not on every tick.
+          : { publicKey: path.publicKey, skipped: true, ...(claim.quiet ? { notDue: true } : {}), reason: `${who}: this source already sent ${TRACE_SCHEDULE_MAX_PER_SOURCE_PER_HOUR} scheduled traces in the last hour` };
       }
       const outcome = await raw.traceContactPathDetailed(path.publicKey, {
         autoReturn,

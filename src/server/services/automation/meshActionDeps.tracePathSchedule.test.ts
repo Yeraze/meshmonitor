@@ -67,8 +67,12 @@ describe('runScheduledTrace (#5723)', () => {
     const r = await deps.runScheduledTrace({ sourceId: 'mc', pathKey: 'extra', path: path('b'), autoReturn: false }) as { skipped?: boolean; notDue?: boolean; reason?: string };
     expect(trace).toHaveBeenCalledTimes(TRACE_SCHEDULE_MAX_PER_SOURCE_PER_HOUR);
     expect(r.skipped).toBe(true);
-    expect(r.notDue).toBeUndefined(); // a capped tick is worth a run-log row
+    expect(r.notDue).toBeUndefined(); // the first capped tick is worth a run-log row
     expect(r.reason).toMatch(/12 scheduled traces/);
+    // The next capped tick in the same hour is quiet, so it does not add another row.
+    const again = await deps.runScheduledTrace({ sourceId: 'mc', pathKey: 'extra', path: path('b'), autoReturn: false }) as { notDue?: boolean };
+    expect(again.notDue).toBe(true);
+    expect(trace).toHaveBeenCalledTimes(TRACE_SCHEDULE_MAX_PER_SOURCE_PER_HOUR);
   });
 
   it('a failed or unanswered trace still counts and is never retried', async () => {

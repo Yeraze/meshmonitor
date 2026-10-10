@@ -200,7 +200,8 @@ export interface EngineEvalContext {
   halt?: { reason: string };
   /**
    * Actions in this run that had nothing to do (#5723: a scheduled-trace step
-   * whose paths were all "not due"). When every action that ran was idle, the
+   * whose paths were all "not due", or capped with the cap already reported
+   * this hour). When every action that ran was idle, the
    * engine writes no run-log row, so a one-minute tick does not fill the log.
    */
   idleActions?: number;
