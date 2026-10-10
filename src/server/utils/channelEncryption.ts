@@ -24,6 +24,10 @@
  *
  * Anything this cannot reproduce exactly returns a reason instead of a packet,
  * and the caller sends the packet the normal way.
+ *
+ * Not supported: a firmware build with an OEM AES key (`oemStore.oem_aes_key`)
+ * expands shorthand PSKs with that key, which MeshMonitor cannot know. Such a
+ * radio's shorthand channels would be encrypted with the wrong key.
  */
 import { createCipheriv } from 'node:crypto';
 import { MODEM_PRESET_CHANNEL_NAMES } from '../../utils/loraFrequency.js';

@@ -1165,14 +1165,14 @@ class MeshtasticManager implements ISourceManager {
     isUnmessagable?: boolean;
     isLicensed?: boolean;
   } | null = null;
-  private actualDeviceConfig: any = null;
+  private actualDeviceConfig: any = null;  // Store actual device config (local node)
   /**
    * Channel slots exactly as the radio reported them on this connection (raw
    * name, raw PSK, role, AEAD flag). Used by Reliable PKI "Avoid PKI" (#5711)
    * to channel-encrypt a request the way the radio would. Cleared on
    * disconnect; a slot MeshMonitor reconfigures is dropped until reported again.
    */
-  private readonly radioChannels = new Map<number, RadioChannel>();  // Store actual device config (local node)
+  private readonly radioChannels = new Map<number, RadioChannel>();
   private actualModuleConfig: any = null;  // Store actual module config (local node)
   private sessionPasskey: Uint8Array | null = null;  // Session passkey for local node (backward compatibility)
   private sessionPasskeyExpiry: number | null = null;  // Expiry time for local node (expires after 300 seconds)
@@ -11504,6 +11504,8 @@ class MeshtasticManager implements ISourceManager {
       const typeLabel = telemetryType || 'device';
       logger.debug(`📊 Telemetry request packet created: ${telemetryRequestData.length} bytes for dest=${destination} (0x${destination.toString(16)}), channel=${channel}, type=${typeLabel}, packetId=${packetId}, requestId=${requestId}`);
 
+      // Only the radio gets the ciphertext; virtual-node clients below still
+      // get the plaintext frame, which is what they display.
       const { frame } = avoidPki
         ? await this.channelEncryptRequest(telemetryRequestData, destination, channel, 'telemetry request')
         : { frame: telemetryRequestData };
