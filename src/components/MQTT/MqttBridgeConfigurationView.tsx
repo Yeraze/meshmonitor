@@ -530,6 +530,26 @@ export const MqttBridgeConfigurationView: React.FC<MqttBridgeConfigurationViewPr
             </span>
           </span>
         </label>
+        <label className="dashboard-form-field" style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 8 }}>
+          <input
+            type="checkbox"
+            checked={form.skipRaise}
+            disabled={!canWrite}
+            onChange={(e) => patch('skipRaise', e.target.checked)}
+            style={{ marginTop: 3 }}
+          />
+          <span>
+            <span className="dashboard-form-label" style={{ display: 'block' }}>
+              {t('source.form.mqtt_bridge_skip_raise', 'Skip raise on packets from this bridge')}
+            </span>
+            <span style={labelStyle}>
+              {t(
+                'source.form.mqtt_bridge_skip_raise_help',
+                "The parent broker's \"Raise hop count for backhaul\" never raises packets this bridge brings in; its clamp still applies. Use it for an upstream such as mqtt.meshtastic.org that you want to watch but not re-flood on your local mesh.",
+              )}
+            </span>
+          </span>
+        </label>
       </CollapsibleSection>
 
       {/* --- Subscribe (downlink) --- */}

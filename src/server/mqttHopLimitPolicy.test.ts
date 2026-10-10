@@ -76,27 +76,38 @@ describe('resolveHopLimitPolicy', () => {
 
   it('drops portnums a raise is not allowed to target', () => {
     const policy = resolveHopLimitPolicy({
-      hopLimitPolicy: { raise: { enabled: true, target: 2, portnums: [TEXT] } },
+      hopLimitPolicy: { raise: { enabled: true, target: 2, portnums: [PortNum.TRACEROUTE_APP] } },
     });
     expect(policy).toBeNull();
   });
 
   it('keeps only the allowed portnums from a mixed raise list', () => {
     const policy = resolveHopLimitPolicy({
-      hopLimitPolicy: { raise: { enabled: true, target: 2, portnums: [TEXT, POSITION] } },
+      hopLimitPolicy: { raise: { enabled: true, target: 2, portnums: [PortNum.TRACEROUTE_APP, POSITION] } },
     })!;
     expect(policy.raise?.portnums).toEqual([POSITION]);
   });
 
-  it('exposes every raiseable portnum from the firmware hop-scaling set', () => {
+  it('raises text (channel and DM share the portnum) when the operator opts in (#5709)', () => {
+    const policy = resolveHopLimitPolicy({
+      hopLimitPolicy: { raise: { enabled: true, target: 3, portnums: [TEXT] } },
+    })!;
+    expect(policy.raise?.portnums).toEqual([TEXT]);
+    expect(applyHopLimitPolicy(policy, TEXT, 0)).toBe(3);
+    expect(applyHopLimitPolicy(policy, PortNum.TRACEROUTE_APP, 0)).toBe(0);
+  });
+
+  it('exposes the firmware hop-scaling set plus text, never traceroutes (#5709)', () => {
     expect([...RAISEABLE_PORTNUMS].sort((a, b) => a - b)).toEqual(
       [
+        PortNum.TEXT_MESSAGE_APP,
         PortNum.POSITION_APP,
         PortNum.NODEINFO_APP,
         PortNum.TELEMETRY_APP,
         PortNum.NEIGHBORINFO_APP,
       ].sort((a, b) => a - b),
     );
+    expect(RAISEABLE_PORTNUMS).not.toContain(PortNum.TRACEROUTE_APP);
   });
 });
 

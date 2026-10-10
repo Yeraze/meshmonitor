@@ -502,7 +502,7 @@ function validateMqttBridgeForwardingMode(config: Record<string, any>): string |
  * (#5414, absent ⇒ uplink automation sends as before).
  */
 function validateMqttBridgeIgnoreOkToMqtt(config: Record<string, any>): string | null {
-  for (const key of ['ignoreOkToMqtt', 'dropAutomationUplinks'] as const) {
+  for (const key of ['ignoreOkToMqtt', 'dropAutomationUplinks', 'skipRaise'] as const) {
     const value = config?.[key];
     if (value === undefined || value === null) continue;
     if (typeof value !== 'boolean') {

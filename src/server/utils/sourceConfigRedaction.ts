@@ -509,6 +509,7 @@ const MQTT_BRIDGE: Spec<MqttBridgeSourceConfig> = {
   forwardingMode: withheld,
   ignoreOkToMqtt: withheld,
   dropAutomationUplinks: withheld,
+  skipRaise: withheld,
 };
 
 const MQTT_BROKER: Spec<MqttBrokerSourceConfig> = {
