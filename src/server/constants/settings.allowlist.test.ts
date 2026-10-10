@@ -140,7 +140,7 @@ describe('per-source settings key allowlist invariants', () => {
       ...AIRCRAFT_NODE_DISPLAY_KEYS,
       ...SIGN_FLIP_NODE_DISPLAY_KEYS,
     ]);
-    expect(NODE_DISPLAY_SETTING_KEYS.length).toBe(20);
+    expect(NODE_DISPLAY_SETTING_KEYS.length).toBe(21);
   });
 
   // `localStatsIntervalMinutes` predates this work item (already read
@@ -167,7 +167,8 @@ describe('per-source settings key allowlist invariants', () => {
     // #5364/#5365 Phase 2 added aircraftAgeOutLastRunAt + aircraftAgeOutLastResult.
     // #5446 added forwardingRules (dedicated automation-gated route only).
     // #5537 added forwardingEnabled (same dedicated route).
-    expect(PER_SOURCE_KEYS_NOT_POSTABLE.size).toBe(29);
+    // #5704 added aircraftPositionRequestStarts (persisted hourly cap).
+    expect(PER_SOURCE_KEYS_NOT_POSTABLE.size).toBe(30);
   });
 
   // #5101 Phase 3 WP3: the transport-traffic writer's checkpoint is

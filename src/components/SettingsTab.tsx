@@ -177,6 +177,8 @@ interface SettingsDraft {
   aircraftMslThresholdMeters: number;
   // Aircraft age-out (#5364/#5365 Phase 2) — same per-source routing.
   aircraftAgeOutEnabled: boolean;
+  /** #5704: ask a newly flagged aircraft for its position (opt-in, transmits). */
+  aircraftPositionRequestsEnabled: boolean;
   aircraftAgeOutHours: number;
   aircraftAgeOutAction: AircraftAgeOutAction;
   // Sign-flipped position correction (#5363) — per-source Node Display keys
@@ -542,6 +544,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
     aircraftAglThresholdMeters: DEFAULT_AIRCRAFT_AGL_THRESHOLD_M,
     aircraftMslThresholdMeters: DEFAULT_AIRCRAFT_MSL_THRESHOLD_M,
     aircraftAgeOutEnabled: false,
+    aircraftPositionRequestsEnabled: false,
     aircraftAgeOutHours: AIRCRAFT_AGE_OUT_HOURS_DEFAULT,
     aircraftAgeOutAction: DEFAULT_AIRCRAFT_AGE_OUT_ACTION,
     signFlipCorrectionEnabled: false,
@@ -631,6 +634,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
   // Aircraft age-out (#5364/#5365 Phase 2): same Category C pattern. The
   // last-run pair is server-written and read-only here (not in the draft).
   const [initialAircraftAgeOutEnabled, setInitialAircraftAgeOutEnabled] = useState(false);
+  const [initialAircraftPositionRequestsEnabled, setInitialAircraftPositionRequestsEnabled] = useState(false);
   const [initialAircraftAgeOutHours, setInitialAircraftAgeOutHours] = useState(AIRCRAFT_AGE_OUT_HOURS_DEFAULT);
   const [initialAircraftAgeOutAction, setInitialAircraftAgeOutAction] = useState<AircraftAgeOutAction>(DEFAULT_AIRCRAFT_AGE_OUT_ACTION);
   // Sign-flip correction (#5363): Category C, one snapshot for the four keys.
@@ -880,6 +884,11 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
           updateField('aircraftAgeOutAction', ageOut.action);
           setInitialAircraftAgeOutAction(ageOut.action);
 
+          // #5704: off unless explicitly 'true'.
+          const positionRequests = settings.aircraftPositionRequestsEnabled === 'true';
+          updateField('aircraftPositionRequestsEnabled', positionRequests);
+          setInitialAircraftPositionRequestsEnabled(positionRequests);
+
           // Sign-flip correction (#5363). Off / 500 km / own node when unset.
           // The typed reference strings are kept as stored so a half-entered
           // point shows up for fixing rather than silently vanishing.
@@ -1021,6 +1030,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       aircraftAglThresholdMeters: initialAircraftAglThresholdMeters,
       aircraftMslThresholdMeters: initialAircraftMslThresholdMeters,
       aircraftAgeOutEnabled: initialAircraftAgeOutEnabled,
+      aircraftPositionRequestsEnabled: initialAircraftPositionRequestsEnabled,
       aircraftAgeOutHours: initialAircraftAgeOutHours,
       aircraftAgeOutAction: initialAircraftAgeOutAction,
       signFlipCorrectionEnabled: initialSignFlip.enabled,
@@ -1070,7 +1080,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       linkPreviewsEnabled, discardInvalidPositions, noIndexEnabled, meshcoreChannelRetryEnabled, showIncompleteNodes,
       nodeDimmingEnabled, nodeDimmingStartHours, nodeDimmingMinOpacity,
       initialAircraftDetectionEnabled, initialAircraftAglThresholdMeters, initialAircraftMslThresholdMeters,
-      initialAircraftAgeOutEnabled, initialAircraftAgeOutHours, initialAircraftAgeOutAction,
+      initialAircraftAgeOutEnabled, initialAircraftAgeOutHours, initialAircraftAgeOutAction, initialAircraftPositionRequestsEnabled,
       initialSignFlip,
       solarMonitoringEnabled, solarMonitoringLatitude, solarMonitoringLongitude, solarMonitoringAzimuth, solarMonitoringDeclination,
       initialPacketMonitorSettings, initialHomoglyphEnabled, initialLocalStatsIntervalMinutes, initialTxTargetMaxAgeHoursWhenUnlimited,
@@ -1258,6 +1268,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
     setInitialAircraftAglThresholdMeters(d.aircraftAglThresholdMeters);
     setInitialAircraftMslThresholdMeters(d.aircraftMslThresholdMeters);
     setInitialAircraftAgeOutEnabled(d.aircraftAgeOutEnabled);
+    setInitialAircraftPositionRequestsEnabled(d.aircraftPositionRequestsEnabled);
     setInitialAircraftAgeOutHours(d.aircraftAgeOutHours);
     setInitialAircraftAgeOutAction(d.aircraftAgeOutAction);
     setInitialSignFlip({
@@ -1377,6 +1388,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
         // Aircraft age-out (#5364/#5365 Phase 2). The server-written
         // aircraftAgeOutLastRunAt/LastResult are never posted.
         aircraftAgeOutEnabled: draft.aircraftAgeOutEnabled ? 'true' : 'false',
+        aircraftPositionRequestsEnabled: draft.aircraftPositionRequestsEnabled ? 'true' : 'false',
         aircraftAgeOutHours: String(draft.aircraftAgeOutHours),
         aircraftAgeOutAction: draft.aircraftAgeOutAction,
         // Sign-flip correction (#5363), per-source via NODE_DISPLAY_SETTING_KEYS.
@@ -2831,6 +2843,27 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
             )}
             <p className="setting-description">
               {t('settings.aircraft.help_effects', 'Flagged nodes get an aircraft badge on the map and can be hidden in Map Features. Auto-Favorite exclusion is set in Automation → Auto Favorite.')}
+            </p>
+          </div>
+
+          {/* #5704: ask a newly flagged aircraft for its position. This one
+              TRANSMITS, so it is opt-in and carries its cost beside it. */}
+          <div className="setting-item" data-testid="aircraft-position-requests">
+            <label>
+              <span style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
+                <input
+                  id="aircraftPositionRequestsEnabled"
+                  type="checkbox"
+                  checked={draft.aircraftPositionRequestsEnabled}
+                  disabled={!draft.aircraftDetectionEnabled}
+                  onChange={(e) => updateField('aircraftPositionRequestsEnabled', e.target.checked)}
+                  style={{ cursor: 'pointer' }}
+                />
+                {t('settings.aircraft.position_requests_enabled', 'Ask new aircraft for their position')}
+              </span>
+            </label>
+            <p className="setting-description">
+              {t('settings.aircraft.position_requests_help', 'When a node is first flagged as an aircraft, MeshMonitor asks it for its position 3 times over 4 minutes so its trail shows the flight (at most 2 aircraft an hour on this source). Each request uses airtime. Meshtastic sources only.')}
             </p>
           </div>
 

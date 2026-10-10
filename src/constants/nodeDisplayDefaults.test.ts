@@ -71,8 +71,8 @@ describe('NODE_DISPLAY_SETTING_KEYS (seeded + aircraft + sign-flip)', () => {
     ]);
   });
 
-  it('has exactly twenty entries with no duplicates', () => {
-    expect(NODE_DISPLAY_SETTING_KEYS.length).toBe(20);
+  it('has exactly twenty-one entries with no duplicates', () => {
+    expect(NODE_DISPLAY_SETTING_KEYS.length).toBe(21);
     expect(new Set(NODE_DISPLAY_SETTING_KEYS).size).toBe(NODE_DISPLAY_SETTING_KEYS.length);
   });
 
@@ -248,6 +248,6 @@ describe('TX-target window when maxNodeAgeHours is 0 (#5376)', () => {
     // likely-aircraft keys (#5364/#5365) ride on top of them (3 in P1, 3 in P2),
     // then the four sign-flip keys (#5363).
     expect(NODE_DISPLAY_SEEDED_KEYS).toHaveLength(10);
-    expect(NODE_DISPLAY_SETTING_KEYS).toHaveLength(20);
+    expect(NODE_DISPLAY_SETTING_KEYS).toHaveLength(21);
   });
 });
