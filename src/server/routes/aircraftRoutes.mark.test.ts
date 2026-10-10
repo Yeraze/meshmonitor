@@ -194,6 +194,15 @@ describe('POST /api/aircraft/mark', () => {
       expect(Boolean((await row(PLANE, harness.sourceA))?.likelyAircraft)).toBe(true);
     });
 
+    it('is a harmless 200 on a node with no mark', async () => {
+      const agent = await harness.loginAs(harness.admin);
+      const res = await post(agent, { sourceId: harness.sourceA, nodeNum: GROUND, mode: 'clear' });
+      expect(res.status).toBe(200);
+      const n = await row(GROUND, harness.sourceA);
+      expect(n?.aircraftManualMark ?? null).toBeNull();
+      expect(Boolean(n?.likelyAircraft)).toBe(false);
+    });
+
     it('also releases an automatic fixed mark', async () => {
       await harness.db.nodes.setAircraftFixed(PLANE, harness.sourceA, { atMs: Date.now(), lat: 30, lon: -80 });
       const agent = await harness.loginAs(harness.admin);
