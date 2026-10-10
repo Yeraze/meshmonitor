@@ -135,6 +135,16 @@ The device's channels with the most recent message stream. Channel-message sende
 
 **Sent to radio** — a channel post that no repeater has been heard relaying shows **Sent to radio** in place of the badge. It means your radio accepted the message for sending, and no more. A MeshCore radio does not tell MeshMonitor when it transmits, so the mark does not prove the message went out on the air, and it says nothing about who heard it. If a repeater is heard relaying the post, the mark gives way to the **📡 N** badge. A send that the radio refuses, or that receive-only mode blocks, shows an error and adds no message at all. Click the mark to open [Delivery Details](/features/delivery-diagnostics).
 
+**Direct messages and room posts** — these carry a real acknowledgement, so your own message moves through up to three marks:
+
+| Mark | Direct message | Room post |
+|---|---|---|
+| **Sent to radio** | Your radio accepted it. MeshMonitor is waiting for the recipient's radio to acknowledge it. | Your radio accepted it. MeshMonitor is waiting for the room server to acknowledge it. |
+| Double tick | The recipient's radio acknowledged it. | The room server acknowledged it, so it holds the post. This does not show which members have fetched or read it. |
+| Warning icon (**Not confirmed**) | No acknowledgement after all retries (two on the known path, one flood). | No acknowledgement in the time the radio estimated. MeshMonitor does not resend room posts. |
+
+**Not confirmed** is not proof of loss: the message may have arrived while the acknowledgement was lost on the way back. A room server also sends none when you are not logged in or have read-only access. An acknowledgement that arrives late still turns the mark into the double tick. As with channel posts, no mark says the radio transmitted, and a send the radio refuses adds no message. The marks survive a page reload and a restart. One limit: if MeshMonitor restarts or the radio disconnects while a message is still waiting, the wait is lost, and the message keeps **Sent to radio** with a tooltip saying no acknowledgement is on record.
+
 **Resend** — if no repeater was heard relaying one of your channel posts, a **Resend** button appears next to it 30 seconds after you sent it. Click it and confirm to send the same packet again. The resend carries the original text and the original timestamp, so a repeater that already relayed the first copy drops the resend, and recipients never see the message twice. The resend adds no new message to the stream, and it fires no automations or notifications. If a repeater relays the resend, the **📡 N** badge appears on the original message.
 
 Limits, to protect the mesh:
