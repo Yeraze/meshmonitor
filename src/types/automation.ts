@@ -11,6 +11,7 @@
  */
 
 import { HOP_LIMIT_OVERRIDE_MAX, parseHopLimitOverride } from '../utils/hopLimitOverride.js';
+import { tracePathScheduleParamErrors } from './tracePathSchedule.js';
 import { isMeshCoreAdvertMode } from './meshcoreAdvert.js';
 
 export const AUTOMATION_CONFIG_VERSION = 1;
@@ -52,6 +53,7 @@ export type ActionType =
   | 'action.tapback'
   | 'action.nodeManage'
   | 'action.requestData'
+  | 'action.tracePathSchedule'
   | 'action.deviceReboot'
   | 'action.notify'
   | 'action.runScript'
@@ -109,6 +111,7 @@ export const ACTION_TYPES: readonly ActionType[] = [
   'action.tapback',
   'action.nodeManage',
   'action.requestData',
+  'action.tracePathSchedule',
   'action.deviceReboot',
   'action.notify',
   'action.runScript',
@@ -923,6 +926,11 @@ export function validateAutomationGraph(input: unknown): ValidationResult {
           if (p.advertMode != null && !isMeshCoreAdvertMode(p.advertMode)) {
             errors.push(`action.requestData "${n.id}" requires params.advertMode ∈ {zero_hop,flood}`);
           }
+          break;
+        case 'action.tracePathSchedule':
+          // #5723: per-path interval floor and path count are enforced at save
+          // (and again at run time, from persisted state).
+          for (const e of tracePathScheduleParamErrors(n.id, p)) errors.push(e);
           break;
         case 'action.tapback':
           // Optional. Absent/unset = 'fixed' — every pre-existing stored automation

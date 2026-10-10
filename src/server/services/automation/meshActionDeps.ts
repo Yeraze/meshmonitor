@@ -20,6 +20,8 @@ import { isForwardingEnabled, setForwardingEnabled } from '../forwardingStateSer
 import type { ActionDeps } from './actionExecutor.js';
 import type { SendOrigin } from '../../utils/automationPacketTracker.js';
 import { type MeshCoreAdvertMode, LEGACY_MESHCORE_ADVERT_MODE } from '../../../types/meshcoreAdvert.js';
+import { tracePathScheduleService } from '../tracePathScheduleService.js';
+import { TRACE_SCHEDULE_MAX_PER_SOURCE_PER_HOUR } from '../../../types/tracePathSchedule.js';
 
 /**
  * A Meshtastic manager's per-source outgoing queue (meshtasticManager.ts:1107,
@@ -73,6 +75,7 @@ interface MeshCoreSendManager {
   // Request/operation senders (#3835).
   requestRemoteTelemetry(publicKey: string, timeoutSecs?: number): Promise<unknown>;
   traceContactPath(publicKey: string): Promise<unknown>;
+  traceContactPathDetailed(publicKey: string, opts?: { autoReturn?: boolean; hashBytes?: 1 | 2 }): Promise<{ ok: boolean; reason?: string; hops?: unknown[]; lastSnr?: number }>;
   requestNeighbors(publicKey?: string): Promise<unknown>;
   /** Floor-checked advert for automated senders (see MeshCoreManager.sendAutomatedAdvert). */
   sendAutomatedAdvert(mode: MeshCoreAdvertMode, origin: string): Promise<{ sent: boolean; reason?: string }>;
@@ -214,6 +217,29 @@ export function createMeshActionDeps(): ActionDeps {
         default:
           throw new Error(`unsupported node op "${op}"`);
       }
+    },
+
+    async runScheduledTrace({ sourceId, pathKey, path, autoReturn }) {
+      const who = path.label ? `${path.label} (${path.publicKey.slice(0, 8)}…)` : `${path.publicKey.slice(0, 16)}…`;
+      const raw = resolveManager(sourceId) as Partial<MeshCoreSendManager> | undefined;
+      if (!raw || typeof raw.traceContactPathDetailed !== 'function') {
+        return { publicKey: path.publicKey, skipped: true, reason: 'source is not a connected MeshCore companion' };
+      }
+      // Due-time and hourly-cap check, recorded before the send (#5723).
+      const claim = await tracePathScheduleService.claim({ sourceId, pathKey, intervalMinutes: path.intervalMinutes });
+      if (!claim.due) {
+        return claim.reason === 'not_due'
+          ? { publicKey: path.publicKey, skipped: true, notDue: true, reason: `${who}: not due until ${new Date(claim.nextDueAt).toISOString()}` }
+          : { publicKey: path.publicKey, skipped: true, reason: `${who}: this source already sent ${TRACE_SCHEDULE_MAX_PER_SOURCE_PER_HOUR} scheduled traces in the last hour` };
+      }
+      const outcome = await raw.traceContactPathDetailed(path.publicKey, {
+        autoReturn,
+        ...(path.hashBytes === 'auto' ? {} : { hashBytes: path.hashBytes }),
+      });
+      logger.info(`[Automation] scheduled trace to ${who} on ${sourceId}: ${outcome.ok ? `${outcome.hops?.length ?? 0} hop(s)` : (outcome.reason ?? 'failed')}`);
+      return outcome.ok
+        ? { publicKey: path.publicKey, traced: true, hops: outcome.hops?.length ?? 0, lastSnr: outcome.lastSnr }
+        : { publicKey: path.publicKey, traced: false, reason: `${who}: trace ${outcome.reason === 'timeout' ? 'got no reply' : 'could not be sent (no known path, or the hop width could not be applied)'}` };
     },
 
     async requestData({ sourceId, op, target, channel, telemetryType, advertMode }) {
