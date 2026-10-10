@@ -110,12 +110,19 @@ describe('sourceRoutes — mqtt_broker hopLimitPolicy validation', () => {
     expect(res.status).toBe(400);
   });
 
-  it('rejects a raise on a portnum firmware hop scaling does not touch', async () => {
+  it('rejects a raise on a portnum that may not be raised (traceroute)', async () => {
     const res = await post({
-      raise: { enabled: true, target: 2, portnums: [PortNum.TEXT_MESSAGE_APP] },
+      raise: { enabled: true, target: 2, portnums: [PortNum.TRACEROUTE_APP] },
     });
     expect(res.status).toBe(400);
     expect(res.body.error).toMatch(/raise\.portnums/);
+  });
+
+  it('accepts a raise on text messages (#5709)', async () => {
+    const res = await post({
+      raise: { enabled: true, target: 2, portnums: [PortNum.TEXT_MESSAGE_APP] },
+    });
+    expect(res.status).toBeLessThan(300);
   });
 
   it('rejects an enabled raise with no portnums', async () => {
