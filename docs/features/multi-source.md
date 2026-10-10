@@ -84,6 +84,7 @@ Nearly every top-level view has a **source picker** in the header. It controls w
 
 - **Single-source mode** — pick one source; the view shows only that source's nodes, messages, telemetry, and traceroutes
 - **Unified mode** (where available) — combines messages/telemetry/traceroutes across all sources while still tagging each row with its originating source
+  - On **Unified Messages**, pick **All Channels** in the channel list to read every channel you can open in one feed. Each message carries a tag with its channel and a pill for each source that heard it. Direct messages are left out; read those on the source's own Messages tab.
 
 Your picker choice persists per view and per user.
 
