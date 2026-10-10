@@ -8,6 +8,7 @@ import type { MessageTemplateContext } from '../../utils/notificationTemplate.js
 import { fallbackManager } from '../meshtasticManager.js';
 import { sourceManagerRegistry } from '../sourceManagerRegistry.js';
 import { getPrimaryMeshtasticManager } from '../sourceManagerTypes.js';
+import { notificationDedup, dedupTag, joinSourceNames, type DedupClaim, type NotificationDedupSpec } from './notificationDedup.js';
 
 // Re-export DbPushSubscription for backward compatibility
 export type { DbPushSubscription } from '../../db/types.js';
@@ -21,6 +22,11 @@ export interface PushNotificationPayload {
   data?: any;
   requireInteraction?: boolean;
   silent?: boolean;
+  /**
+   * With a `tag`: false replaces the shown notification without alerting the
+   * user again. Set on every deduped notification (#5729).
+   */
+  renotify?: boolean;
   /** Phase C: source this notification originated from (optional for back-compat with broadcastWithFiltering paths). */
   sourceId?: string;
   /** Phase C: human-readable source name. */
@@ -30,6 +36,19 @@ export interface PushNotificationPayload {
    * renders each recipient's title/body template from. Never sent on the wire.
    */
   message?: MessageTemplateContext;
+  /** Cross-source dedup (#5729); see `notificationDedup.ts`. Never sent on the wire. */
+  dedup?: NotificationDedupSpec;
+}
+
+/**
+ * Dedup recipient for one push subscription (#5729). The browser is the unit:
+ * a user's phone subscribed on source A and laptop on source B must each still
+ * get their one notification. The user id is part of the key so that an
+ * endpoint whose rows belong to different users never mixes their source
+ * lists.
+ */
+function pushDedupRecipient(subscription: DbPushSubscription): string {
+  return `push:${subscription.userId ?? 'anon'}:${subscription.endpoint}`;
 }
 
 class PushNotificationService {
@@ -305,9 +324,14 @@ class PushNotificationService {
       const config = getEnvironmentConfig();
       const ttl = config.pushNotificationTtl;
 
+      // Render and dedup inputs are server-side only: keep them off the wire.
+      const wirePayload: PushNotificationPayload = { ...payload };
+      delete wirePayload.message;
+      delete wirePayload.dedup;
+
       await webpush.sendNotification(
         pushSubscription,
-        JSON.stringify(payload),
+        JSON.stringify(wirePayload),
         {
           TTL: ttl
         }
@@ -443,21 +467,56 @@ class PushNotificationService {
         continue;
       }
 
+      // Cross-source dedup (#5729), AFTER this source's permission and filter
+      // passed for this recipient: only a copy that would have been sent
+      // counts, and only its source is ever named.
+      //   first      → send as before, tagged so a later copy can replace it.
+      //   additional → another source heard the same packet: replace the
+      //                shown notification, silently, with one that lists them.
+      //   duplicate  → nothing.
+      const recipient = pushDedupRecipient(subscription);
+      let claim: DedupClaim | null = null;
+      if (payload.dedup) {
+        claim = notificationDedup.claim(recipient, payload.dedup.key, {
+          sourceId: filterContext.sourceId,
+          sourceName: filterContext.sourceName,
+        });
+        if (claim.outcome === 'duplicate') {
+          filtered++;
+          continue;
+        }
+      }
+      const isUpdate = claim?.outcome === 'additional';
+      // An update keeps the look of the notification it replaces: the first
+      // source's templates and prefix setting, with every source named.
+      const renderSourceId = isUpdate && claim ? claim.sources[0].sourceId : filterContext.sourceId;
+      const shownSourceName = isUpdate && claim ? joinSourceNames(claim.sources) : filterContext.sourceName;
+      const renderInput = isUpdate && payload.message
+        ? { ...payload, message: { ...payload.message, sourceName: shownSourceName } }
+        : payload;
+
       // Render AFTER the filter decision (#5593): the user's templates shape
       // the text only, never whether a notification is sent.
-      const rendered = await renderMessagePayloadForUserAsync(userId, payload, filterContext.sourceId, filterContext.sourceName);
+      const rendered = await renderMessagePayloadForUserAsync(userId, renderInput, renderSourceId, shownSourceName);
 
       // Apply node name prefix if user has it enabled (per-source prefs)
-      const body = await applyNodeNamePrefixAsync(userId, rendered.body, localNodeName, filterContext.sourceId);
-      // `message` is render input, not wire data: keep it out of the push payload.
+      const body = await applyNodeNamePrefixAsync(userId, rendered.body, localNodeName, renderSourceId);
       const notificationPayload: PushNotificationPayload = { ...payload, title: rendered.title, body };
-      delete notificationPayload.message;
+      if (payload.dedup) {
+        notificationPayload.tag = dedupTag(payload.dedup.key);
+        notificationPayload.renotify = false;
+        if (isUpdate) notificationPayload.silent = true;
+      }
 
       const success = await this.sendToSubscription(subscription, notificationPayload);
       if (success) {
         sent++;
       } else {
         failed++;
+        // A first copy that never arrived must not block another source's copy.
+        if (payload.dedup && claim?.outcome === 'first') {
+          notificationDedup.release(recipient, payload.dedup.key, filterContext.sourceId);
+        }
       }
     }
 
@@ -627,17 +686,44 @@ class PushNotificationService {
         }
       }
 
+      // Cross-source dedup (#5729), after every gate above passed for this
+      // recipient. Same three outcomes as `broadcastWithFiltering`. An event
+      // with no `merged` text cannot name several sources, so its later
+      // copies are dropped.
+      const recipient = pushDedupRecipient(subscription);
+      const dedupSourceId = effectiveSourceId ?? '';
+      let claim: DedupClaim | null = null;
+      let base: PushNotificationPayload = payload;
+      if (payload.dedup) {
+        claim = notificationDedup.claim(recipient, payload.dedup.key, {
+          sourceId: dedupSourceId,
+          sourceName: payload.sourceName ?? dedupSourceId,
+        });
+        if (claim.outcome === 'duplicate' || (claim.outcome === 'additional' && !payload.dedup.merged)) {
+          filtered++;
+          continue;
+        }
+        base = { ...payload, tag: dedupTag(payload.dedup.key), renotify: false };
+        if (claim.outcome === 'additional' && payload.dedup.merged) {
+          const merged = payload.dedup.merged(claim.sources.map(s => s.sourceName));
+          base = { ...base, title: merged.title, body: merged.body, silent: true };
+        }
+      }
+
       // Apply node name prefix if user has it enabled
-      const prefixedBody = await applyNodeNamePrefixAsync(userId, payload.body, localNodeName, effectiveSourceId);
-      const notificationPayload = prefixedBody !== payload.body
-        ? { ...payload, body: prefixedBody }
-        : payload;
+      const prefixedBody = await applyNodeNamePrefixAsync(userId, base.body, localNodeName, effectiveSourceId);
+      const notificationPayload = prefixedBody !== base.body
+        ? { ...base, body: prefixedBody }
+        : base;
 
       const success = await this.sendToSubscription(subscription, notificationPayload);
       if (success) {
         sent++;
       } else {
         failed++;
+        if (payload.dedup && claim?.outcome === 'first') {
+          notificationDedup.release(recipient, payload.dedup.key, dedupSourceId);
+        }
       }
     }
 
