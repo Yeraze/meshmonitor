@@ -48,5 +48,7 @@ export function isEmoji(content: string): boolean {
   // This excludes ASCII characters like digits (#, *, 0-9) which are technically in the Emoji category
   // but shouldn't be treated as emoji reactions
   // Allows variation selectors (FE00-FE0F), ZWJ (200D), and emoji modifiers for sequences
-  return /^(?:[\p{Extended_Pictographic}\p{Emoji_Presentation}][\u{FE00}-\u{FE0F}\u{200D}\p{Emoji_Modifier}]*)+$/u.test(content);
+  // Also a keycap (digit/#/* + optional VS-16 + U+20E3, e.g. 1️⃣, sent as a
+  // tapback by phone apps) and tag sequences (subdivision flags like 🏴󠁧󠁢󠁥󠁮󠁧󠁿) (#5720).
+  return /^(?:(?:[0-9#*]\u{FE0F}?\u{20E3}|[\p{Extended_Pictographic}\p{Emoji_Presentation}])[\u{FE00}-\u{FE0F}\u{200D}\p{Emoji_Modifier}\u{E0020}-\u{E007F}]*)+$/u.test(content);
 }
