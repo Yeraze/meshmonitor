@@ -85,7 +85,10 @@ export function usePinAuthoring(active2D: boolean) {
 
   /** The map click that picks the spot. Opens an editor; sends nothing. */
   const pickSpot = useCallback(
-    (lat: number, lon: number) => {
+    (rawLat: number, rawLon: number) => {
+      // A map click gives ~15 decimals; 6 (about 0.1 m) is what the editors' fields hold.
+      const lat = Math.round(rawLat * 1e6) / 1e6;
+      const lon = Math.round(rawLon * 1e6) / 1e6;
       const kind = pinPlaceMode;
       setPinPlaceMode(null);
       if (kind === 'waypoint') {

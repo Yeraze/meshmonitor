@@ -349,6 +349,7 @@ export default function MapAnalysisToolbar() {
             label={t('mapPins.addWaypoint', 'Add Waypoint')}
             active={pinPlaceMode === 'waypoint'}
             onToggle={() => togglePinPlace('waypoint')}
+            closesMenu
             disabled={in3D || waypointSources.length === 0}
             title={in3D
               ? twoDOnlyTitle(t('mapPins.addWaypoint', 'Add Waypoint'))
@@ -364,6 +365,7 @@ export default function MapAnalysisToolbar() {
             label={t('mapPins.addMarker', 'Add Local Marker')}
             active={pinPlaceMode === 'marker'}
             onToggle={() => togglePinPlace('marker')}
+            closesMenu
             disabled={in3D}
             title={in3D
               ? twoDOnlyTitle(t('mapPins.addMarker', 'Add Local Marker'))

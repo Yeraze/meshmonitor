@@ -148,6 +148,16 @@ describe('MapAnalysisToolbar', () => {
       expect(isActive(item('Waypoints'))).toBe(true);
     });
 
+    it('closes the Tools menu on arming, so the next click and Escape belong to the map', () => {
+      pinSources = { waypointSources: [RADIO], markerSources: [RADIO] };
+      render(<MapAnalysisToolbar />, { wrapper });
+      fireEvent.click(item(ADD_WP));
+      expect(trigger('Tools').getAttribute('aria-expanded')).toBe('false');
+      // A plain toggle such as Measure leaves its menu open.
+      fireEvent.click(item('Site Planner'));
+      expect(trigger('Tools').getAttribute('aria-expanded')).toBe('true');
+    });
+
     it('arming a local marker turns the Local Markers layer on and swaps out waypoint placement', () => {
       pinSources = { waypointSources: [RADIO], markerSources: [RADIO] };
       render(<MapAnalysisToolbar />, { wrapper });

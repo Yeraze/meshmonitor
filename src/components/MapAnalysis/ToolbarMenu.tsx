@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Check, ChevronDown } from 'lucide-react';
 import styles from './ToolbarMenu.module.css';
 
@@ -16,6 +16,9 @@ export interface ToolbarMenuProps {
   /** Menu rows — normally `ToolbarMenuItem`s. */
   children: ReactNode;
 }
+
+/** Lets a row close its own menu (`ToolbarMenuItem closesMenu`). */
+const MenuCloseContext = createContext<() => void>(() => {});
 
 /**
  * A labeled dropdown that groups a set of related toolbar controls behind one
@@ -44,6 +47,7 @@ export default function ToolbarMenu({ label, icon, activeCount = 0, children }: 
   }, [open]);
 
   const active = activeCount > 0;
+  const close = useMemo(() => () => setOpen(false), []);
 
   return (
     <div className={styles.wrap} ref={wrapRef}>
@@ -62,7 +66,7 @@ export default function ToolbarMenu({ label, icon, activeCount = 0, children }: 
       </button>
       {open && (
         <div className={styles.panel} role="menu">
-          {children}
+          <MenuCloseContext.Provider value={close}>{children}</MenuCloseContext.Provider>
         </div>
       )}
     </div>
@@ -82,6 +86,12 @@ export interface ToolbarMenuItemProps {
   lookbackHours?: number | null;
   lookbackOptions?: Array<number | null>;
   onLookbackChange?: (h: number | null) => void;
+  /**
+   * Close the menu after the click (#5685). For a tool whose next step is a
+   * click on the map: left open, the menu would take Escape (which also
+   * cancels the tool) and the map click that dismisses it would be the pick.
+   */
+  closesMenu?: boolean;
 }
 
 /**
@@ -100,7 +110,9 @@ export function ToolbarMenuItem({
   lookbackHours,
   lookbackOptions,
   onLookbackChange,
+  closesMenu = false,
 }: ToolbarMenuItemProps) {
+  const closeMenu = useContext(MenuCloseContext);
   const showLookback = !!lookbackOptions && !!onLookbackChange;
   return (
     <div
@@ -110,7 +122,11 @@ export function ToolbarMenuItem({
       aria-label={label}
       className={`${styles.item} ${active ? styles.itemActive : ''} ${disabled ? styles.itemDisabled : ''}`}
       title={title ?? label}
-      onClick={() => { if (!disabled) onToggle(); }}
+      onClick={() => {
+        if (disabled) return;
+        onToggle();
+        if (closesMenu) closeMenu();
+      }}
     >
       <span className={styles.itemIcon}>{icon}</span>
       <span className={styles.itemLabel}>{label}</span>

@@ -158,6 +158,14 @@ describe('placement flow', () => {
     expect(lat.value).toBe('26.5');
   });
 
+  it('rounds the clicked spot to 6 decimals', () => {
+    renderHarness();
+    place('waypoint', 29.87637380707133, -90.15106201171875);
+    const [lat, lon] = Array.from(document.querySelectorAll('input[type="number"][step="0.000001"]')) as HTMLInputElement[];
+    expect(lat.value).toBe('29.876374');
+    expect(lon.value).toBe('-90.151062');
+  });
+
   it('cancels from the hint button and from Escape, opening nothing', () => {
     renderHarness();
     act(() => setMode('waypoint'));
