@@ -10632,7 +10632,11 @@ class MeshtasticManager implements ISourceManager {
   }
 
   /** Remember one channel slot as the radio reported it (Avoid PKI, #5711). */
-  private recordRadioChannel(channel: any): void {
+  private recordRadioChannel(channel: {
+    index?: number;
+    role?: number;
+    settings?: { name?: string; psk?: Uint8Array; useAead?: boolean } | null;
+  }): void {
     const index = channel?.index;
     if (typeof index !== 'number' || index < 0 || index > 7) return;
     const settings = channel.settings;
@@ -10708,7 +10712,7 @@ class MeshtasticManager implements ISourceManager {
       const root = getProtobufRoot();
       if (!root) return fallback('protobufs not loaded');
       const encrypted = channelEncryptToRadio(
-        root as any,
+        root,
         frame,
         resolved.channelKey,
         this.localNodeInfo.nodeNum,
