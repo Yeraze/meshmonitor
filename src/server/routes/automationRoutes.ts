@@ -37,14 +37,14 @@ const canRead = requirePermission('automations', 'read');
 const canWrite = requirePermission('automations', 'write');
 
 /** Normalise a config (object or JSON string) → validated → JSON string. */
-function validateConfig(raw: unknown): { ok: true; json: string } | { ok: false; errors: string[] } {
+function validateConfig(raw: unknown): { ok: true; json: string; warnings: string[] } | { ok: false; errors: string[] } {
   let parsed: unknown = raw;
   if (typeof raw === 'string') {
     try { parsed = JSON.parse(raw); } catch { return { ok: false, errors: ['config is not valid JSON'] }; }
   }
   const result = validateAutomationGraph(parsed);
   if (!result.valid) return { ok: false, errors: result.errors };
-  return { ok: true, json: JSON.stringify(result.graph) };
+  return { ok: true, json: JSON.stringify(result.graph), warnings: result.warnings ?? [] };
 }
 
 /**
@@ -329,7 +329,9 @@ router.post('/', canWrite, async (req: Request, res: Response) => {
       createdByUserId: (req as any).user?.id ?? null,
     });
     await reloadAutomations();
-    res.status(201).json(created);
+    // #5697: non-blocking findings (an empty message, …) ride along so API and
+    // import callers see what the builder shows.
+    res.status(201).json(v.warnings.length > 0 ? { ...created, warnings: v.warnings } : created);
   } catch (error) {
     logger.error('Error creating automation:', error);
     res.status(500).json({ error: 'Failed to create automation' });
@@ -380,7 +382,7 @@ router.post('/import', canWrite, async (req: Request, res: Response) => {
       name, description, enabled: false, config: v.json,
       createdByUserId: (req as any).user?.id ?? null,
     });
-    res.status(201).json(created);
+    res.status(201).json(v.warnings.length > 0 ? { ...created, warnings: v.warnings } : created);
   } catch (error) {
     logger.error('Error importing automation:', error);
     res.status(500).json({ error: 'Failed to import automation' });
@@ -394,16 +396,18 @@ router.put('/:id', canWrite, async (req: Request, res: Response) => {
     if (name !== undefined) patch.name = name;
     if (description !== undefined) patch.description = description;
     if (enabled !== undefined) patch.enabled = !!enabled;
+    let warnings: string[] = [];
     if (config !== undefined) {
       const v = validateConfig(config);
       if (!v.ok) return res.status(400).json({ error: 'invalid automation config', details: v.errors });
       if (!(await checkForwardingTogglePermission(req, res, v.json))) return;
       patch.config = v.json;
+      warnings = v.warnings;
     }
     const updated = await databaseService.automations.updateAutomation(req.params.id, patch);
     if (!updated) return res.status(404).json({ error: 'automation not found' });
     await reloadAutomations();
-    res.json(updated);
+    res.json(warnings.length > 0 ? { ...updated, warnings } : updated);
   } catch (error) {
     logger.error('Error updating automation:', error);
     res.status(500).json({ error: 'Failed to update automation' });

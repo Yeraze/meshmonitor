@@ -25,6 +25,12 @@ export interface FieldDef {
    * current WHEN trigger matches a key, that string wins over `placeholder`.
    */
   placeholderByTrigger?: Record<string, string>;
+  /**
+   * The placeholder is a complete, usable template, not an example (#5697):
+   * while the field is empty the builder offers "Use suggested template",
+   * which copies it in as the real value.
+   */
+  suggestTemplate?: boolean;
   help?: string;
   /**
    * `select` only: the option shown when the param is ABSENT (a block saved
@@ -705,6 +711,7 @@ export const ACTIONS: BlockDef[] = [
         name: 'text', label: 'Message', kind: 'textarea', tokens: true,
         placeholder: 'Hello {{ trigger.senderLabel }}!',
         placeholderByTrigger: MOVEMENT_MESSAGE_HINTS,
+        suggestTemplate: true,
         help: 'Use {{ trigger.field }}, {{ node.longName }}, or {{ var.name }} to insert values. On Became mobile / Left home, prefer {{ node.longName }} (or {{ node.nodeId }}) — those triggers have no senderLabel.',
       },
       { name: 'sourceIds', label: 'Send via sources', kind: 'sendSourceMulti', help: 'Which radios to send through (MQTT sources are receive-only and excluded). Leave none to use the source that triggered the automation — but a source IS required for source-less triggers like System events and Schedules.' },
@@ -899,11 +906,12 @@ export const ACTIONS: BlockDef[] = [
     label: 'Send a notification',
     description: 'Send an external notification (Apprise).',
     fields: [
-      { name: 'title', label: 'Title', kind: 'text', tokens: true, placeholder: 'MeshMonitor alert' },
+      { name: 'title', label: 'Title', kind: 'text', tokens: true, placeholder: 'MeshMonitor alert', suggestTemplate: true },
       {
         name: 'body', label: 'Body', kind: 'textarea', tokens: true,
         placeholder: 'Node {{ trigger.fromId }} said {{ trigger.text }}',
         placeholderByTrigger: MOVEMENT_MESSAGE_HINTS,
+        suggestTemplate: true,
       },
       {
         name: 'type', label: 'Severity', kind: 'select', advanced: true,

@@ -20,7 +20,22 @@ import { StepList, type TraceStep } from './outcomeMeta';
 import { summarizeTriggerEvent, parseJsonColumn } from './eventSummary';
 import { UiIcon } from '../icons';
 import { compile, decompile, outputNameErrors, type WorkflowForm } from './compile';
+import { BLOCK_BY_TYPE } from './catalog';
+import { emptySendFinding } from '../../types/automation';
 import './AutomationsPage.css';
+
+/** One line per action whose text is empty (#5697), named as the builder names it. */
+function emptySendLines(config: unknown): string[] {
+  const nodes = (config as { nodes?: unknown } | null)?.nodes;
+  if (!Array.isArray(nodes)) return [];
+  const out: string[] = [];
+  for (const n of nodes as Array<{ type?: unknown; params?: Record<string, unknown> }>) {
+    if (typeof n?.type !== 'string') continue;
+    const f = emptySendFinding(n.type, n.params);
+    if (f) out.push(`${BLOCK_BY_TYPE[n.type]?.label ?? n.type}: ${f.detail}`);
+  }
+  return out;
+}
 
 interface Automation {
   id: string; name: string; description: string | null; enabled: boolean; config: string;
@@ -350,6 +365,12 @@ function AutomationEditor({ automation, onClose }: { automation: Automation | 'n
     } else {
       try { config = JSON.parse(jsonText); } catch { setErrors(['Config is not valid JSON']); setSaving(false); return; }
     }
+    // #5697: an empty message is allowed (the user may be drafting) but the
+    // save says so, once, with a way back to the form.
+    const emptyLines = emptySendLines(config);
+    if (emptyLines.length > 0 && !window.confirm(
+      `Some steps will not send what you expect:\n\n${emptyLines.map((l) => `• ${l}`).join('\n')}\n\nSave anyway?`,
+    )) { setSaving(false); return; }
     try {
       const body = { name, description, enabled, config };
       if (isNew) await apiService.post('/api/automations', body);

@@ -19,7 +19,8 @@
   position: relative; background: transparent; color: transparent; border-color: transparent;
   caret-color: var(--color-text);
 }
-.ae-tokenfield .ae-tokenfield-input::placeholder { color: var(--color-text-subtle); }
+/* #5697: italic so a template-looking placeholder never reads as saved text. */
+.ae-tokenfield .ae-tokenfield-input::placeholder { color: var(--color-text-subtle); font-style: italic; opacity: 1; }
 .ae-tokenfield:focus-within .ae-tokenfield-backdrop { border-color: var(--color-accent); }
 .ae-tokenfield-backdrop .ae-token-ok {
   background: color-mix(in srgb, var(--color-accent) 22%, transparent);

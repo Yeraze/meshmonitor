@@ -90,7 +90,9 @@ describe('AutomationTester — sample step output (#5636)', () => {
     await user.click(screen.getByRole('button', { name: /run test/i }));
     await waitFor(() => expect(screen.getByText('Send message: not sent')).toBeInTheDocument());
     expect(screen.getByText(`Skipped: ${reason}.`)).toBeInTheDocument();
-    expect(screen.getByText(`action ran — ${reason}`)).toBeInTheDocument();
+    // #5697: a held-back send reads as a warning in the trace, not a routine success.
+    const step = screen.getByText(`nothing sent — ${reason}`);
+    expect(step.closest('.ae-trace-step')).toHaveClass('ae-trace-step--warn');
   });
 
   it('shows a refused variable write as the step\'s error', async () => {
