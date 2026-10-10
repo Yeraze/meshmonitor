@@ -807,7 +807,9 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
     const onMessage = (msg: MeshCoreMessageEvent) => {
       setMessages(prev => {
         if (prev.some(m => m.id === msg.id)) return prev;
-        const enriched: MeshCoreMessage = msg.expectedAckCrc
+        // The server now stamps the ack state on the row (#5682); the CRC
+        // check stays for an older server that sends none.
+        const enriched: MeshCoreMessage = !msg.deliveryStatus && msg.expectedAckCrc
           ? { ...msg, deliveryStatus: 'sent' as const }
           : msg;
         if (enriched.expectedAckCrc && enriched.estTimeout) {

@@ -18,7 +18,8 @@ import { findIgnoredRuns } from './meshcoreIgnoredRuns';
 import Modal from '../common/Modal';
 import { resendAvailability, RESEND_MAX } from './meshcoreResend';
 import styles from './MeshCoreMessageStream.module.css';
-import { getMeshCoreChannelSendState } from '../../utils/deliveryDiagnostics/status';
+import { getMeshCoreChannelSendState, getMeshCoreDirectSendState } from '../../utils/deliveryDiagnostics/status';
+import { directSendLabel } from './meshcoreSendLabel';
 
 interface MeshCoreMessageStreamProps {
   messages: MeshCoreMessage[];
@@ -647,63 +648,52 @@ export const MeshCoreMessageStream: React.FC<MeshCoreMessageStreamProps> = ({
                 <span className="mc-message-meta">
                   <span className="mc-message-time">
                   {formatTime(m.timestamp)}
-                  {outgoing && m.deliveryStatus && (
-                    <button
-                      type="button"
-                      className={`mc-delivery-status mc-delivery-${m.deliveryStatus}`}
-                      title={
-                        m.deliveryStatus === 'delivered'
-                          ? `Delivered (${m.roundTripMs}ms)`
-                          : m.deliveryStatus === 'failed'
-                            ? 'Delivery failed'
-                            : m.deliveryStatus === 'sent'
-                              ? 'Sent, awaiting confirmation'
-                              : 'Sending…'
-                      }
-                      aria-label={
-                        m.deliveryStatus === 'delivered'
-                          ? `Delivered (${m.roundTripMs}ms)`
-                          : m.deliveryStatus === 'failed'
-                            ? 'Delivery failed'
-                            : m.deliveryStatus === 'sent'
-                              ? 'Sent, awaiting confirmation'
-                              : 'Sending…'
-                      }
-                      onClick={() => setDeliveryDetailsMsg(m)}
-                    >
-                      <UiIcon
-                        name={m.deliveryStatus === 'delivered'
-                          ? 'checkAll'
-                          : m.deliveryStatus === 'failed'
-                            ? 'error'
-                            : m.deliveryStatus === 'sent'
-                              ? 'check'
-                              : 'time'}
-                        size={13}
-                      />
-                    </button>
-                  )}
-                  {/* "Sent to radio" (#5682): our channel send that no repeater
-                      was heard relaying. The radio accepted the message; it does
-                      not report transmitting, so this claims no more than that.
-                      Gives way to the heard-by badge once a relay is heard.
-                      `deliveryStatus` is the DM ack state; a channel send has
-                      no ack and never carries one. Should one ever appear,
-                      the status icon above speaks for the message instead. */}
-                  {!m.deliveryStatus && getMeshCoreChannelSendState(m, selfPublicKey) === 'sent_to_radio' && (
-                    <button
-                      type="button"
-                      className={styles.sentToRadio}
-                      data-testid="mc-sent-to-radio"
-                      title={t(
-                        'meshcore.sent_to_radio.tooltip',
-                        'Your radio accepted this message for sending. MeshCore radios do not report when they transmit, and no repeater has been heard relaying it yet, so MeshMonitor cannot tell whether it went out or whether anyone heard it.',
-                      )}
-                      onClick={() => setDeliveryDetailsMsg(m)}
-                    >
-                      <UiIcon name="upload" size={13} /> {t('meshcore.sent_to_radio.label', 'Sent to radio')}
-                    </button>
-                  )}
+                  {/* Our own send's delivery mark (#5682). One selector per
+                      kind, shared with Delivery Details, so the two agree.
+                      A DM or room post has a real ack: a tick once it comes,
+                      a warning when it does not. Until then, and for a channel
+                      send no repeater was heard relaying, the mark is "Sent to
+                      radio": the radio accepted the message. It does not
+                      report transmitting, so the mark claims no more than
+                      that. A channel send gives way to the heard-by badge. */}
+                  {(() => {
+                    const direct = getMeshCoreDirectSendState(m, selfPublicKey);
+                    if (direct && (direct.state === 'delivered' || direct.state === 'not_confirmed')) {
+                      const label = directSendLabel(t, direct, m.roundTripMs);
+                      return (
+                        <button
+                          type="button"
+                          className={`mc-delivery-status mc-delivery-${direct.state === 'delivered' ? 'delivered' : 'failed'}`}
+                          title={label}
+                          aria-label={label}
+                          onClick={() => setDeliveryDetailsMsg(m)}
+                        >
+                          <UiIcon name={direct.state === 'delivered' ? 'checkAll' : 'error'} size={13} />
+                        </button>
+                      );
+                    }
+                    const tooltip = direct
+                      ? directSendLabel(t, direct, m.roundTripMs)
+                      : getMeshCoreChannelSendState(m, selfPublicKey) === 'sent_to_radio'
+                        ? t(
+                          'meshcore.sent_to_radio.tooltip',
+                          'Your radio accepted this message for sending. MeshCore radios do not report when they transmit, and no repeater has been heard relaying it yet, so MeshMonitor cannot tell whether it went out or whether anyone heard it.',
+                        )
+                        : null;
+                    if (!tooltip) return null;
+                    return (
+                      <button
+                        type="button"
+                        className={styles.sentToRadio}
+                        data-testid="mc-sent-to-radio"
+                        data-send-state={direct ? direct.state : 'sent_to_radio'}
+                        title={tooltip}
+                        onClick={() => setDeliveryDetailsMsg(m)}
+                      >
+                        <UiIcon name="upload" size={13} /> {t('meshcore.sent_to_radio.label', 'Sent to radio')}
+                      </button>
+                    );
+                  })()}
                   {outgoing && m.heardBy && m.heardBy.length > 0 && (
                     <button
                       type="button"

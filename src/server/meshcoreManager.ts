@@ -946,6 +946,19 @@ export interface MeshCoreMessage {
   /** Estimated timeout in ms before the message should be considered failed.
    *  Only set on outgoing DMs. */
   estTimeout?: number;
+  /**
+   * Ack state of one of OUR direct sends, a DM or a room post (#5682):
+   *  - `sent`: the radio accepted it and an ack is still awaited.
+   *  - `delivered`: the radio pushed `SendConfirmed` for this send's ack CRC.
+   *  - `failed`: no ack arrived in the time allowed (a DM after all its
+   *    retries, a room post after its one attempt). Not proof it was lost.
+   * Unset on everything else, and on a send whose ack tracking was lost to a
+   * restart or a disconnect: then nothing more can be known about it.
+   * Rebuilt on load from the persisted `message_events` rows.
+   */
+  deliveryStatus?: 'sent' | 'delivered' | 'failed';
+  /** Round trip in ms the radio reported with the ack. */
+  roundTripMs?: number;
   /** Repeaters that re-flooded this (outgoing channel) message, inferred by
    *  self-echo correlation (#3700). Best-effort; only set on outgoing channel
    *  messages that were heard re-flooded. `name` is null when the relay hash
@@ -1621,6 +1634,14 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
   > = new Map();
 
   /**
+   * Room posts awaiting the room server's ack, keyed by the firmware's
+   * `expectedAckCrc` (#5682). One attempt each: the timer only settles the
+   * post's shown state when no ack comes. It never resends, so it costs no
+   * airtime. Cleared in bulk on disconnect.
+   */
+  private pendingRoomPostAcks: Map<number, { messageId: string; timer: NodeJS.Timeout }> = new Map();
+
+  /**
    * In-flight AUTOMATED channel sends awaiting a heard-repeater signal (#3979,
    * Part 2). Keyed by the outgoing message id. A channel/broadcast send is an
    * unacked fire-and-forget flood, so we can't tell delivery from a firmware
@@ -1849,6 +1870,9 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
         rssi: dbMsg.rssi ?? undefined,
         snr: dbMsg.snr ?? undefined,
         sourceId: dbMsg.sourceId ?? undefined,
+        // Without this a reloaded room post loses its tag and drops out of
+        // the Rooms view after a restart (#5682).
+        messageType: dbMsg.messageType ?? undefined,
         // The DB's createdAt IS our own observation clock — same semantic as
         // receivedAt — so historical rows order correctly too, with no migration.
         receivedAt: dbMsg.createdAt ?? undefined,
@@ -1875,6 +1899,8 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
         });
         // Resend count + cooldown clock come from persisted events (#5512).
         this.messages = await this.withResendInfo(this.messages);
+        // Ack outcome of our DMs and room posts, from persisted events (#5682).
+        this.messages = await this.withDeliveryState(this.messages);
       }
     } catch (loadErr) {
       logger.warn(`[MeshCore:${this.sourceId}] Failed to load messages from DB: ${(loadErr as Error).message}`);
@@ -2303,8 +2329,16 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
     // can't reset a path or resend, so don't let a stray timer try.
     for (const [, retry] of this.pendingDmRetries) {
       clearTimeout(retry.timer);
+      // Nobody is left to hear the ack, so "awaiting" would never resolve
+      // (#5682). Drop to the plain accepted-by-radio reading.
+      this.setDeliveryStatus(retry.messageId, undefined);
     }
     this.pendingDmRetries.clear();
+    for (const [, pending] of this.pendingRoomPostAcks) {
+      clearTimeout(pending.timer);
+      this.setDeliveryStatus(pending.messageId, undefined);
+    }
+    this.pendingRoomPostAcks.clear();
 
     // Clear pending channel-send auto-retry timers (#3979) — a torn-down
     // connection can't resend, so don't let a stray timer try.
@@ -2798,6 +2832,7 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
           data.round_trip_ms != null ? JSON.stringify({ roundTripMs: data.round_trip_ms }) : undefined,
         );
       }
+      this.noteSendConfirmed(data.ack_code, data.round_trip_ms, retryPending?.messageId);
       this.emit('send_confirmed', {
         sourceId: this.sourceId,
         ackCode: data.ack_code,
@@ -5386,6 +5421,8 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
           sourceId: this.sourceId,
           expectedAckCrc: ackCrc ?? undefined,
           estTimeout: estTimeout ?? undefined,
+          // A DM the radio gave an ack CRC for is awaiting that ack (#5682).
+          deliveryStatus: !isChannelSend && ackCrc != null && estTimeout != null ? 'sent' : undefined,
           // Record the region/scope this message was actually sent with (#3814)
           // so the UI can display it on the sent message — useful for diagnosing
           // why a scoped message may not have been received. `region` is the
@@ -5651,6 +5688,7 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
     if (msg) {
       msg.expectedAckCrc = newAckCrc;
       msg.estTimeout = newEstTimeout;
+      msg.deliveryStatus = 'sent';
     }
     dataEventEmitter.emitMeshCoreMessageUpdated(
       {
@@ -5677,10 +5715,119 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
     // several give-up branches call this). provenance 'inferred' — we never got
     // an ack, we concluded failure ourselves.
     this.recordMessageEvent(messageId, 'timeout', 'inferred');
+    this.setDeliveryStatus(messageId, 'failed');
     dataEventEmitter.emitMeshCoreMessageUpdated(
       { id: messageId, previousAckCrc: lastAckCrc, deliveryStatus: 'failed' },
       this.sourceId,
     );
+  }
+
+  /**
+   * Set (or clear) the ack state on the in-memory copy of one of our sends
+   * (#5682), so `/messages` and `/snapshot` serve the same state the live
+   * socket events gave. Before this the state lived only in the browser and a
+   * refetch wiped it.
+   */
+  private setDeliveryStatus(
+    messageId: string,
+    status: MeshCoreMessage['deliveryStatus'],
+    roundTripMs?: number,
+  ): void {
+    const msg = this.messages.find(m => m.id === messageId);
+    if (!msg) return;
+    msg.deliveryStatus = status;
+    if (roundTripMs != null) msg.roundTripMs = roundTripMs;
+  }
+
+  /**
+   * The radio pushed `SendConfirmed` for `ackCode` (#5682). Settle whichever of
+   * our sends it belongs to as delivered:
+   *  - a DM still in its retry cadence (`dmMessageId`, already recorded by the
+   *    caller),
+   *  - a room post awaiting its ack,
+   *  - or a send whose timer already gave up: a late ack is still an ack, and
+   *    the browser already flips such a message by CRC, so the stored state
+   *    must agree after a reload.
+   */
+  private noteSendConfirmed(ackCode: unknown, roundTripMs: unknown, dmMessageId?: string): void {
+    if (typeof ackCode !== 'number') return;
+    const rtt = typeof roundTripMs === 'number' ? roundTripMs : undefined;
+    let messageId = dmMessageId;
+    let recorded = dmMessageId !== undefined;
+
+    const room = this.pendingRoomPostAcks.get(ackCode);
+    if (!messageId && room) {
+      clearTimeout(room.timer);
+      this.pendingRoomPostAcks.delete(ackCode);
+      messageId = room.messageId;
+    }
+    if (!messageId) {
+      // Late ack. 0 is the firmware's "no ack expected", never a real CRC.
+      if (ackCode === 0) return;
+      for (let i = this.messages.length - 1; i >= 0; i--) {
+        const m = this.messages[i];
+        if (m.expectedAckCrc === ackCode) {
+          if (m.deliveryStatus !== 'delivered') messageId = m.id;
+          break;
+        }
+      }
+    }
+    if (!messageId) return;
+    if (!recorded) {
+      this.recordMessageEvent(
+        messageId,
+        'delivered',
+        'reported',
+        rtt != null ? JSON.stringify({ roundTripMs: rtt }) : undefined,
+      );
+      recorded = true;
+    }
+    this.setDeliveryStatus(messageId, 'delivered', rtt);
+  }
+
+  /**
+   * Fold the persisted ack outcome into messages loaded from the database
+   * (#5682): a `delivered` event wins over a `timeout` (an ack is proof, a
+   * timeout is only our own conclusion). A send with neither stays unset: its
+   * ack tracking did not survive, so all that is known is that the radio
+   * accepted it. Two batched queries. Never throws.
+   */
+  private async withDeliveryState(messages: MeshCoreMessage[]): Promise<MeshCoreMessage[]> {
+    const ids = messages
+      .filter(m =>
+        !!m.toPublicKey &&
+        !m.toPublicKey.startsWith('channel-') &&
+        !m.fromPublicKey.startsWith('channel-'))
+      .map(m => m.id);
+    if (ids.length === 0) return messages;
+    try {
+      const [delivered, timedOut] = await Promise.all([
+        databaseService.messageEvents.getEventsForMessages(this.sourceId, ids, 'delivered'),
+        databaseService.messageEvents.getEventsForMessages(this.sourceId, ids, 'timeout'),
+      ]);
+      if (delivered.length === 0 && timedOut.length === 0) return messages;
+      const state = new Map<string, { deliveryStatus: 'delivered' | 'failed'; roundTripMs?: number }>();
+      for (const e of timedOut) state.set(e.messageId, { deliveryStatus: 'failed' });
+      for (const e of delivered) {
+        let roundTripMs: number | undefined;
+        if (e.detail) {
+          try {
+            const parsed = JSON.parse(e.detail) as { roundTripMs?: unknown };
+            if (typeof parsed?.roundTripMs === 'number') roundTripMs = parsed.roundTripMs;
+          } catch {
+            // Malformed detail: still delivered, round trip unknown.
+          }
+        }
+        state.set(e.messageId, { deliveryStatus: 'delivered', roundTripMs });
+      }
+      return messages.map(m => {
+        const s = state.get(m.id);
+        return s ? { ...m, ...s } : m;
+      });
+    } catch (err) {
+      logger.warn(`[MeshCore:${this.sourceId}] delivery-state read failed: ${(err as Error).message}`);
+      return messages;
+    }
   }
 
   /**
@@ -8356,8 +8503,16 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
         to: roomPublicKey,
       });
       if (response.success) {
+        // A room post is a DM to the room server, so the radio hands back the
+        // same ack CRC and timeout estimate (#5682). The room server acks a
+        // post it stored; it sends nothing to a client that is not logged in
+        // or has read-only (guest) access.
+        const ackCrc: number | null = response.data?.expectedAckCrc ?? null;
+        const estTimeout: number | null = response.data?.estTimeout ?? null;
+        const tracked = ackCrc != null && ackCrc !== 0 && estTimeout != null;
+        const msgId = `sent-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
         const sentMessage: MeshCoreMessage = {
-          id: `sent-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`,
+          id: msgId,
           fromPublicKey: this.localNode?.publicKey || 'local',
           // Label self-sent room posts by our own name in the Unified feed
           // rather than the raw public key (#4194); see the channel/DM send site.
@@ -8368,10 +8523,15 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
           receivedAt: Date.now(),
           sourceId: this.sourceId,
           messageType: 'room_post',
+          expectedAckCrc: tracked ? ackCrc : undefined,
+          estTimeout: tracked ? estTimeout : undefined,
+          deliveryStatus: tracked ? 'sent' : undefined,
         };
         this.addMessage(sentMessage);
         this.emit('message', sentMessage);
         dataEventEmitter.emitMeshCoreMessage(sentMessage, this.sourceId);
+        this.recordMessageEvent(msgId, 'submitted', 'observed');
+        if (tracked) this.scheduleRoomPostAckTimeout(ackCrc, msgId, estTimeout);
         return true;
       }
       logger.error('[MeshCore] Room post send failed:', response.error);
@@ -8380,6 +8540,24 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
       logger.error('[MeshCore] Failed to send room post:', error);
       return false;
     }
+  }
+
+  /**
+   * Wait for a room post's ack (#5682). No ack inside the radio's estimate
+   * (plus the DM margin) settles the post as not confirmed. Nothing is resent:
+   * retrying a room post is a mesh-traffic decision this does not make.
+   */
+  private scheduleRoomPostAckTimeout(ackCrc: number, messageId: string, estTimeout: number): void {
+    const existing = this.pendingRoomPostAcks.get(ackCrc);
+    if (existing) clearTimeout(existing.timer);
+    const timer = setTimeout(() => {
+      const pending = this.pendingRoomPostAcks.get(ackCrc);
+      if (!pending || pending.messageId !== messageId) return;
+      this.pendingRoomPostAcks.delete(ackCrc);
+      // `failDmDelivery` is the shared "no ack, we concluded it ourselves" seam.
+      this.failDmDelivery(messageId, ackCrc);
+    }, Math.round(estTimeout * MeshCoreManager.DM_ACK_TIMEOUT_MARGIN));
+    this.pendingRoomPostAcks.set(ackCrc, { messageId, timer });
   }
 
   /**

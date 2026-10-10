@@ -53,6 +53,9 @@ export interface MeshCoreMessageEvent {
   sourceId?: string;
   expectedAckCrc?: number;
   estTimeout?: number;
+  /** Ack state of our own DM or room post, stamped by the server (#5682). */
+  deliveryStatus?: 'sent' | 'delivered' | 'failed';
+  roundTripMs?: number;
 }
 
 /**
