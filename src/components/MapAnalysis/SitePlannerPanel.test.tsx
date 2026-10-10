@@ -11,9 +11,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { readFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
 
 const getCurrentConfig = vi.fn();
 const post = vi.fn();
@@ -493,32 +490,5 @@ describe('SitePlannerPanel', () => {
   });
 });
 
-// jsdom applies no stylesheet, so read the rules that place the planner beside
-// the open Map controls panel (`.map-sidebar`, MapSidebar.css) straight from
-// the module. The DOM order they rely on is pinned in MapAnalysisCanvas.test.tsx.
-describe('SitePlannerPanel.module.css beside the Map controls panel', () => {
-  const css = readFileSync(join(dirname(fileURLToPath(import.meta.url)), 'SitePlannerPanel.module.css'), 'utf8')
-    .replace(/\/\*[\s\S]*?\*\//g, '');
-  const sibling = /:global\(\.map-sidebar\)\s*~\s*\.sitePlanner\s*\{([^}]*)\}/g;
-  const blocks = [...css.matchAll(sibling)].map((m) => ({ at: m.index ?? 0, body: m[1] }));
-  const portraitAt = css.indexOf('@media (max-width: 768px) {');
-  const landscapeAt = css.indexOf('@media (max-height: 500px) and (orientation: landscape) {');
-
-  it('moves left of the 300px panel on desktop', () => {
-    const desktop = blocks.find((b) => b.at < portraitAt && b.at < landscapeAt);
-    expect(desktop?.body).toMatch(/right:\s*calc\(10px \+ 300px \+ 0\.75rem\)/);
-  });
-
-  it('keeps the corner under the portrait full sheet and the landscape rule last', () => {
-    expect(portraitAt).toBeGreaterThan(0);
-    expect(landscapeAt).toBeGreaterThan(portraitAt);
-    const portrait = blocks.find((b) => b.at > portraitAt && b.at < landscapeAt);
-    const landscape = blocks.find((b) => b.at > landscapeAt);
-    expect(portrait?.body).toMatch(/right:\s*0\.75rem/);
-    expect(landscape?.body).toMatch(/right:\s*calc\(min\(300px, 60%\)/);
-  });
-
-  it('leaves the collapsed-controls position alone (the close button clears the toggle)', () => {
-    expect(css).toMatch(/\.sitePlanner\s*\{[^}]*top:\s*4rem;[^}]*right:\s*0\.75rem;/);
-  });
-});
+// Where the planner sits beside the open Map controls panel is now the tool
+// column's job: see MapToolPanels.css.test.ts.

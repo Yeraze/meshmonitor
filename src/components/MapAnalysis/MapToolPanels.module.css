@@ -1,0 +1,88 @@
+/* Where Map Analysis tool panels sit on the canvas. Scoped module — see CLAUDE.md.
+ *
+ * The Site Planner and GNSS DOP panels both pin to the canvas's top-right
+ * corner, and the GNSS overlay can stay on while the planner is open. Each used
+ * to place itself, so two open panels drew on top of each other, and only the
+ * planner knew to step aside for the open Map controls panel (#5706). They now
+ * stack in one column, and the column is the only thing that moves.
+ *
+ * The controls panel (`.map-sidebar`, src/components/map/MapSidebar.css) sits
+ * at z-index 1001, above these panels, and exists only while it is open:
+ * collapsed, it is the small `.map-sidebar-toggle` button, which `top: 4rem`
+ * already clears. It renders before the column and the drawer in
+ * `.map-analysis-canvas`, so a sibling selector moves them exactly when the
+ * panel is open. Its geometry comes from the tokens defined in MapSidebar.css,
+ * not copied numbers. */
+
+.toolColumn {
+  position: absolute;
+  top: 4rem;
+  right: 0.75rem;
+  z-index: 1000;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  width: min(340px, calc(100% - 1.5rem));
+  max-height: calc(100% - 5rem);
+  /* The column spans the gap between panels; only the panels take clicks. */
+  pointer-events: none;
+}
+
+.toolColumn > * {
+  flex: 0 1 auto;
+  min-height: 0;
+  pointer-events: auto;
+}
+
+/* Beside the open controls panel, not under it. */
+:global(.map-sidebar) ~ .toolColumn {
+  right: calc(var(--map-sidebar-inset) + var(--map-sidebar-width) + 0.75rem);
+  width: min(340px, calc(100% - var(--map-sidebar-inset) - var(--map-sidebar-width) - 1.5rem));
+}
+
+/* The Link Profile drawer spans the bottom of the canvas, and the controls
+   column reached down over its right end, where the radio inputs are. */
+:global(.map-sidebar) ~ .clearOfControls {
+  right: calc(2 * var(--map-sidebar-inset) + var(--map-sidebar-width));
+}
+
+/* Phones, portrait or landscape (#5687). Mirrors MOBILE_LAYOUT_MEDIA_QUERY in
+   src/utils/sidebarWidth.ts; a width-only query misses a landscape phone
+   (#5060). The column is capped so part of the map always shows below it, and
+   each panel scrolls inside. top/right stay as on desktop: they clear the
+   map-controls button in the map's top-right corner. */
+@media (max-width: 768px), (max-height: 500px) and (orientation: landscape) {
+  .toolColumn {
+    max-height: 55%;
+  }
+}
+
+/* Portrait phone: the open controls panel is a full sheet over the map pane,
+   so there is no room beside it. Back in the corner, under the sheet, until
+   the user closes it. */
+@media (max-width: 768px) {
+  :global(.map-sidebar) ~ .toolColumn {
+    right: 0.75rem;
+    width: min(340px, calc(100% - 1.5rem));
+  }
+
+  :global(.map-sidebar) ~ .clearOfControls {
+    right: 0;
+  }
+}
+
+/* Short landscape: the controls sheet is a right-edge column of the sidebar
+   width capped at 60% of the pane, flush to the edge (MapSidebar.css). The
+   panels take the rest. After the portrait block so it wins on a phone that
+   matches both (667x375); see the cascade note at the top of
+   src/styles/nodes.css. */
+@media (max-height: 500px) and (orientation: landscape) {
+  :global(.map-sidebar) ~ .toolColumn {
+    right: calc(min(var(--map-sidebar-width), 60%) + 0.5rem);
+    width: min(340px, calc(100% - min(var(--map-sidebar-width), 60%) - 1rem));
+  }
+
+  :global(.map-sidebar) ~ .clearOfControls {
+    right: min(var(--map-sidebar-width), 60%);
+  }
+}

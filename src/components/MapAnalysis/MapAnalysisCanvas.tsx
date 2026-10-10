@@ -19,6 +19,7 @@ import LinkProfileDrawer from './LinkProfileDrawer';
 import SitePlannerOriginController from './SitePlannerOriginController';
 import SitePlannerPanel from './SitePlannerPanel';
 import GnssDopPanel from './GnssDopPanel';
+import toolPanelStyles from './MapToolPanels.module.css';
 import PredictedCoverageLayer from '../map/layers/PredictedCoverageLayer';
 import GnssDopLayer from '../map/layers/GnssDopLayer';
 import LinkProfileHoverLayer from './LinkProfileHoverLayer';
@@ -430,20 +431,25 @@ export default function MapAnalysisCanvas() {
       <TimeSliderControl />
       <FollowResumeButton />
       <LinkProfileDrawer />
-      <SitePlannerPanel
-        open={sitePlannerMode}
-        sourceId={activeSourceId}
-        origin={sitePlannerOrigin}
-        onClose={() => setSitePlannerMode(false)}
-        onCoverage={setPredictedCoverage}
-      />
-      <GnssDopPanel
-        open={gnssDopMode}
-        params={gnssDopParams}
-        meta={gnssDopMeta}
-        onChange={setGnssDopParams}
-        onClose={() => setGnssDopMode(false)}
-      />
+      {/* One column for the top-right tool panels, so two open panels stack
+          instead of drawing over each other, and one rule moves both beside
+          the open Map controls panel (MapToolPanels.module.css). */}
+      <div className={toolPanelStyles.toolColumn} data-testid="map-tool-column">
+        <SitePlannerPanel
+          open={sitePlannerMode}
+          sourceId={activeSourceId}
+          origin={sitePlannerOrigin}
+          onClose={() => setSitePlannerMode(false)}
+          onCoverage={setPredictedCoverage}
+        />
+        <GnssDopPanel
+          open={gnssDopMode}
+          params={gnssDopParams}
+          meta={gnssDopMeta}
+          onChange={setGnssDopParams}
+          onClose={() => setGnssDopMode(false)}
+        />
+      </div>
     </div>
   );
 }

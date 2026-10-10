@@ -1,12 +1,8 @@
-/* Site Planner panel (#4727). Scoped module — see CLAUDE.md. */
+/* Site Planner panel (#4727). Scoped module — see CLAUDE.md.
+   Placed by the tool column in MapToolPanels.module.css, which also moves it
+   beside the open Map controls panel. */
 
 .sitePlanner {
-  position: absolute;
-  top: 4rem;
-  right: 0.75rem;
-  z-index: 1000;
-  width: min(340px, calc(100vw - 1.5rem));
-  max-height: calc(100% - 5rem);
   overflow-y: auto;
   padding: 0.85rem 1rem;
   border: 1px solid var(--color-border);
@@ -145,60 +141,16 @@
   color: var(--color-warning);
 }
 
-/* Beside the open Map controls panel, not under it.
- *
- * Both panels live in `.map-analysis-canvas` and pin to its top-right corner,
- * and the controls panel (`.map-sidebar`, src/components/map/MapSidebar.css)
- * sits at z-index 1001 to clear Leaflet's controls, so it covered this one
- * whole. That panel is rendered (by BaseMap) before this one, and only exists
- * while it is open: collapsed, it is the small `.map-sidebar-toggle` button,
- * which the base `top: 4rem` already clears. So a sibling selector moves the
- * planner exactly when the panel is open, with no state shared in JS.
- *
- * 10px + 300px is the open panel's `right` inset and width; keep in step with
- * MapSidebar.css. */
-:global(.map-sidebar) ~ .sitePlanner {
-  right: calc(10px + 300px + 0.75rem);
-  width: min(340px, calc(100% - 310px - 1.5rem));
-}
-
 /* Phones, portrait or landscape (#5687). Mirrors MOBILE_LAYOUT_MEDIA_QUERY in
    src/utils/sidebarWidth.ts, which the component reads through
    useIsMobileLayoutViewport() to decide on the auto-collapse; a width-only
-   query misses a landscape phone (#5060). The expanded form is capped so part
-   of the map always shows below it, and scrolls inside. */
+   query misses a landscape phone (#5060). The tool column caps the height. */
 @media (max-width: 768px), (max-height: 500px) and (orientation: landscape) {
-  /* top/right stay as on desktop: they clear the map-controls button in the
-     map's top-right corner. */
   .sitePlanner {
-    width: min(340px, calc(100% - 1.5rem));
-    max-height: 55%;
     padding: 0.6rem 0.75rem;
   }
 
   .sitePlannerCollapsed {
-    max-height: none;
     padding: 0.4rem 0.6rem;
-  }
-}
-
-/* Portrait phone: the open controls panel is a full sheet over the map pane,
-   so there is no room beside it. Back in the corner, under the sheet, until
-   the user closes it. */
-@media (max-width: 768px) {
-  :global(.map-sidebar) ~ .sitePlanner {
-    right: 0.75rem;
-    width: min(340px, calc(100% - 1.5rem));
-  }
-}
-
-/* Short landscape: the controls sheet is a right-edge column of 300px capped
-   at 60% of the pane, flush to the edge (MapSidebar.css). The planner takes
-   the rest. After the portrait block so it wins on a phone that matches both
-   (667x375); see the cascade note at the top of src/styles/nodes.css. */
-@media (max-height: 500px) and (orientation: landscape) {
-  :global(.map-sidebar) ~ .sitePlanner {
-    right: calc(min(300px, 60%) + 0.5rem);
-    width: min(340px, calc(100% - min(300px, 60%) - 1rem));
   }
 }
