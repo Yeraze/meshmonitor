@@ -120,6 +120,12 @@ export const nodesSqlite = sqliteTable('nodes', {
   aircraftFixedAt: integer('aircraftFixedAt'),
   aircraftFixedLatitude: real('aircraftFixedLatitude'),
   aircraftFixedLongitude: real('aircraftFixedLongitude'),
+  // Manual aircraft mark (#5715, migration 200): 'not_aircraft' | 'aircraft'.
+  // A 'not_aircraft' mark keeps its anchor in aircraftFixed*. Never written by
+  // `upsertNode`.
+  aircraftManualMark: text('aircraftManualMark'),
+  aircraftManualMarkAt: integer('aircraftManualMarkAt'),
+  aircraftManualMarkBy: integer('aircraftManualMarkBy'),
   // Timestamps
   createdAt: integer('createdAt').notNull(),
   updatedAt: integer('updatedAt').notNull(),
@@ -235,6 +241,10 @@ export const nodesPostgres = pgTable('nodes', {
   aircraftFixedAt: pgBigint('aircraftFixedAt', { mode: 'number' }),
   aircraftFixedLatitude: pgDoublePrecision('aircraftFixedLatitude'),
   aircraftFixedLongitude: pgDoublePrecision('aircraftFixedLongitude'),
+  // Manual aircraft mark (#5715, migration 200). See the SQLite table above.
+  aircraftManualMark: pgText('aircraftManualMark'),
+  aircraftManualMarkAt: pgBigint('aircraftManualMarkAt', { mode: 'number' }),
+  aircraftManualMarkBy: pgInteger('aircraftManualMarkBy'),
   // Timestamps
   createdAt: pgBigint('createdAt', { mode: 'number' }).notNull(),
   updatedAt: pgBigint('updatedAt', { mode: 'number' }).notNull(),
@@ -349,6 +359,10 @@ export const nodesMysql = mysqlTable('nodes', {
   aircraftFixedAt: myBigint('aircraftFixedAt', { mode: 'number' }),
   aircraftFixedLatitude: myDouble('aircraftFixedLatitude'),
   aircraftFixedLongitude: myDouble('aircraftFixedLongitude'),
+  // Manual aircraft mark (#5715, migration 200). See the SQLite table above.
+  aircraftManualMark: myVarchar('aircraftManualMark', { length: 16 }),
+  aircraftManualMarkAt: myBigint('aircraftManualMarkAt', { mode: 'number' }),
+  aircraftManualMarkBy: myInt('aircraftManualMarkBy'),
   // Timestamps
   createdAt: myBigint('createdAt', { mode: 'number' }).notNull(),
   updatedAt: myBigint('updatedAt', { mode: 'number' }).notNull(),

@@ -54,6 +54,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import HopCountDisplay from './HopCountDisplay';
 import LinkPreview from './LinkPreview';
 import NodeDetailsBlock from './NodeDetailsBlock';
+import AircraftMarkMenuItems from './AircraftMarkMenuItems';
 import TelemetryGraphs from './TelemetryGraphs';
 import SmartHopsGraphs from './SmartHopsGraphs';
 import LinkQualityGraph from './LinkQualityGraph';
@@ -1725,6 +1726,13 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                               <UiIcon name={selectedNode.isIgnored ? 'unencrypted' : 'blocked'} /> {selectedNode.isIgnored ? t('messages.unignore_node') : t('messages.ignore_node')}
                             </button>
                           </>
+                        )}
+
+                        {/* Aircraft classification override (#5715) — DB only,
+                            gated inside on nodes:write for this source and
+                            hidden on MeshCore/Reticulum sources. */}
+                        {selectedNode && (
+                          <AircraftMarkMenuItems node={selectedNode} onDone={() => setShowActionsMenu(false)} />
                         )}
 
                         {/* Map & Position */}

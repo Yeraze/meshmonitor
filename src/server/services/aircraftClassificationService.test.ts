@@ -70,6 +70,8 @@ function makeDeps(): TestDeps {
     listUnclassifiedWithAltitude: vi.fn(async () => [] as number[]),
     clearClassification: vi.fn(async () => 0),
     setFixed: setFixedFn as unknown as AircraftClassificationDeps['setFixed'],
+    setManualMark: vi.fn(async () => undefined),
+    getSourceType: vi.fn(async () => 'meshtastic_tcp'),
     getSourceSetting: vi.fn(async (sourceId: string, key: string) => sourceSettings.get(`${sourceId}:${key}`) ?? null),
     getGlobalSetting: vi.fn(async (key: string) => globalSettings.get(key) ?? null),
     listSources: vi.fn(async () => [] as Array<{ id: string; type: string }>),
@@ -511,5 +513,119 @@ describe('AircraftClassificationService — fixed anchor', () => {
     // Node 1 stayed false (no write); node 2 flips to true.
     expect(writeFn.mock.calls.map((c) => c[0])).toEqual([2]);
     expect(writeFn.mock.calls[0][2].likelyAircraft).toBe(true);
+  });
+});
+
+// #5715: a person's mark.
+describe('AircraftClassificationService — manual marks', () => {
+  it("a manual 'aircraft' mark holds against a ground-level altitude, on both paths", async () => {
+    const { deps, nodes, writeFn, sourceSettings } = makeDeps();
+    nodes.set('src-a:300', makeNode({ nodeNum: 300, altitude: 210, likelyAircraft: true, aircraftManualMark: 'aircraft' } as any));
+    const svc = new AircraftClassificationService(deps);
+    svc.schedule('src-a', 300, 'position');
+    await svc.drainForTest();
+    expect(nodes.get('src-a:300')!.likelyAircraft).toBe(true);
+
+    sourceSettings.set('src-a:aircraftDetectionEnabled', 'true');
+    (deps.listForReclassify as ReturnType<typeof vi.fn>).mockResolvedValue([{
+      nodeNum: 300, altitude: 210, groundElevation: 200, likelyAircraft: true, aircraftBasis: 'agl', heightAboveGround: 10,
+      positionOverrideEnabled: false, latitudeOverride: null, longitudeOverride: null, altitudeOverride: null,
+      latitude: 45, longitude: -75, aircraftFixedLatitude: null, aircraftFixedLongitude: null, aircraftManualMark: 'aircraft',
+    }] as AircraftReclassifyRow[]);
+    writeFn.mockClear();
+    await svc.reclassifySource('src-a');
+    expect(writeFn.mock.calls.every((c) => c[2].likelyAircraft === true)).toBe(true);
+  });
+
+  it("a 'manual' job never emits, even on a false → true transition", async () => {
+    const { deps, nodes, emitFn } = makeDeps();
+    nodes.set('src-a:301', makeNode({ nodeNum: 301, altitude: 6000, latitude: null, longitude: null, likelyAircraft: false }));
+    const svc = new AircraftClassificationService(deps);
+    svc.schedule('src-a', 301, 'manual');
+    await svc.drainForTest();
+    expect(nodes.get('src-a:301')!.likelyAircraft).toBe(true);
+    expect(emitFn).not.toHaveBeenCalled();
+  });
+
+  it("coalescing: 'position' outranks 'manual', which outranks 'backfill'", async () => {
+    const { deps, nodes, emitFn } = makeDeps();
+    nodes.set('src-a:302', makeNode({ nodeNum: 302, altitude: 6000, latitude: null, longitude: null }));
+    nodes.set('src-a:303', makeNode({ nodeNum: 303, altitude: 6000, latitude: null, longitude: null }));
+    const svc = new AircraftClassificationService(deps);
+    svc.schedule('src-a', 302, 'position');
+    svc.schedule('src-a', 302, 'manual'); // must not downgrade
+    svc.schedule('src-a', 303, 'backfill');
+    svc.schedule('src-a', 303, 'manual'); // upgrades, still silent
+    await svc.drainForTest();
+    expect(emitFn).toHaveBeenCalledTimes(1);
+    expect(emitFn.mock.calls[0][0].nodeNum).toBe(302);
+  });
+
+  describe('applyManualMark', () => {
+    it("'not_aircraft' anchors at the effective (override) position and queues a silent job", async () => {
+      const { deps, nodes } = makeDeps();
+      nodes.set('src-a:310', makeNode({
+        nodeNum: 310, positionOverrideEnabled: true, latitudeOverride: 46, longitudeOverride: -76,
+      } as any));
+      const svc = new AircraftClassificationService(deps);
+      const scheduleSpy = vi.spyOn(svc, 'schedule');
+      const r = await svc.applyManualMark('src-a', 310, 'not_aircraft', 7);
+      expect(r).toEqual({ ok: true, previousMark: null, anchor: { lat: 46, lon: -76 } });
+      expect(deps.setManualMark).toHaveBeenCalledWith(310, 'src-a', {
+        mode: 'not_aircraft', atMs: 1_700_000_000_000, byUserId: 7, lat: 46, lon: -76,
+      });
+      expect(scheduleSpy).toHaveBeenCalledWith('src-a', 310, 'manual');
+    });
+
+    it('never emits node:aircraft, so no position request (#5704) or automation follows a click', async () => {
+      const { deps, nodes, emitFn } = makeDeps();
+      // Ground node → marked aircraft; flagged node with a mark → cleared back to flagged.
+      nodes.set('src-a:320', makeNode({ nodeNum: 320, altitude: 210, likelyAircraft: false }));
+      nodes.set('src-a:321', makeNode({
+        nodeNum: 321, altitude: 9000, likelyAircraft: false, aircraftManualMark: 'not_aircraft',
+        aircraftFixedAt: 1, aircraftFixedLatitude: 45, aircraftFixedLongitude: -75,
+      } as any));
+      (deps.setManualMark as ReturnType<typeof vi.fn>).mockImplementation(async (n: number, src: string, mark: any) => {
+        const key = `${src}:${n}`;
+        const cur = nodes.get(key)!;
+        nodes.set(key, mark === null
+          ? { ...cur, aircraftManualMark: null, aircraftFixedAt: null, aircraftFixedLatitude: null, aircraftFixedLongitude: null }
+          : { ...cur, aircraftManualMark: mark.mode, likelyAircraft: mark.mode === 'aircraft' } as any);
+      });
+      const svc = new AircraftClassificationService(deps);
+      await svc.applyManualMark('src-a', 320, 'aircraft', 1);
+      await svc.applyManualMark('src-a', 321, 'clear', 1);
+      await svc.drainForTest();
+      expect(nodes.get('src-a:320')!.likelyAircraft).toBe(true);
+      expect(nodes.get('src-a:321')!.likelyAircraft).toBe(true);
+      expect(emitFn).not.toHaveBeenCalled();
+    });
+
+    it('refuses a Null Island position as no position', async () => {
+      const { deps, nodes } = makeDeps();
+      nodes.set('src-a:311', makeNode({ nodeNum: 311, latitude: 0, longitude: 0 }));
+      const svc = new AircraftClassificationService(deps);
+      const r = await svc.applyManualMark('src-a', 311, 'not_aircraft', 1);
+      expect(r).toMatchObject({ ok: false, status: 400, code: 'AIRCRAFT_NO_POSITION' });
+      expect(deps.setManualMark).not.toHaveBeenCalled();
+    });
+
+    it.each(['meshcore', 'meshcore_mqtt', 'reticulum'])('refuses a %s source', async (type) => {
+      const { deps } = makeDeps();
+      (deps.getSourceType as ReturnType<typeof vi.fn>).mockResolvedValue(type);
+      const svc = new AircraftClassificationService(deps);
+      const r = await svc.applyManualMark('src-a', 1, 'aircraft', 1);
+      expect(r).toMatchObject({ ok: false, code: 'AIRCRAFT_SOURCE_UNSUPPORTED' });
+      expect(deps.setManualMark).not.toHaveBeenCalled();
+    });
+
+    it("'clear' passes null and reports the previous mark", async () => {
+      const { deps, nodes } = makeDeps();
+      nodes.set('src-a:312', makeNode({ nodeNum: 312, aircraftManualMark: 'aircraft' } as any));
+      const svc = new AircraftClassificationService(deps);
+      const r = await svc.applyManualMark('src-a', 312, 'clear', null);
+      expect(r).toMatchObject({ ok: true, previousMark: 'aircraft' });
+      expect(deps.setManualMark).toHaveBeenCalledWith(312, 'src-a', null);
+    });
   });
 });

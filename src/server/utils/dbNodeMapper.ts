@@ -179,6 +179,16 @@ export function mapDbNodeToDeviceInfo(
   if (node.aircraftFixedAt !== null && node.aircraftFixedAt !== undefined) {
     deviceInfo.aircraftFixedAt = Number(node.aircraftFixedAt);
   }
+  // #5715: manual aircraft mark.
+  if (node.aircraftManualMark === 'not_aircraft' || node.aircraftManualMark === 'aircraft') {
+    deviceInfo.aircraftManualMark = node.aircraftManualMark;
+    if (node.aircraftManualMarkAt !== null && node.aircraftManualMarkAt !== undefined) {
+      deviceInfo.aircraftManualMarkAt = Number(node.aircraftManualMarkAt);
+    }
+    if (node.aircraftManualMarkBy !== null && node.aircraftManualMarkBy !== undefined) {
+      deviceInfo.aircraftManualMarkBy = Number(node.aircraftManualMarkBy);
+    }
+  }
 
   return deviceInfo;
 }

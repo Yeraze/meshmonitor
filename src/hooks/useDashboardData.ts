@@ -380,6 +380,9 @@ function mergeNodeRecords(records: any[]): any {
         // same classification, so they come from the same record too.
         k === 'aircraftAgedOutAt' ||
         k === 'aircraftFixedAt' ||
+        k === 'aircraftManualMark' ||
+        k === 'aircraftManualMarkAt' ||
+        k === 'aircraftManualMarkBy' ||
         // #5363: the sign-flip flag and reported pair describe one record's
         // fix, so they travel with the chosen position too.
         k === 'positionSignFlipCorrected' ||
@@ -471,6 +474,9 @@ function mergeNodeRecords(records: any[]): any {
     merged.heightAboveGround = withPosition.heightAboveGround ?? null;
     merged.aircraftAgedOutAt = withPosition.aircraftAgedOutAt ?? null;
     merged.aircraftFixedAt = withPosition.aircraftFixedAt ?? null;
+    merged.aircraftManualMark = withPosition.aircraftManualMark ?? null;
+    merged.aircraftManualMarkAt = withPosition.aircraftManualMarkAt ?? null;
+    merged.aircraftManualMarkBy = withPosition.aircraftManualMarkBy ?? null;
     // #5363: from the same record, or absent, never spliced from another.
     if (withPosition.positionSignFlipCorrected === true) {
       merged.positionSignFlipCorrected = true;

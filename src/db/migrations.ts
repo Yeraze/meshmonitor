@@ -218,6 +218,7 @@ import { migration as addNotificationMessageTemplatesMigration, runMigration196P
 import { migration as widenSystemBackupTotalSizeMigration, runMigration197Postgres, runMigration197Mysql } from '../server/migrations/197_widen_system_backup_total_size.js';
 import { migration as createPkiExchangeStateMigration, runMigration198Postgres, runMigration198Mysql } from '../server/migrations/198_create_pki_exchange_state.js';
 import { migration as createMapMarkersMigration, runMigration199Postgres, runMigration199Mysql } from '../server/migrations/199_create_map_markers.js';
+import { migration as aircraftManualMarkMigration, runMigration200Postgres, runMigration200Mysql } from '../server/migrations/200_add_node_aircraft_manual_mark.js';
 
 // ============================================================================
 // Registry
@@ -3227,4 +3228,17 @@ registry.register({
   sqlite: (db) => createMapMarkersMigration.up(db),
   postgres: (client) => runMigration199Postgres(client),
   mysql: (pool) => runMigration199Mysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 200: manual aircraft mark on nodes (#5715). PER-SOURCE (nodes row).
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 200,
+  name: 'add_node_aircraft_manual_mark',
+  settingsKey: 'migration_200_add_node_aircraft_manual_mark',
+  sqlite: (db) => aircraftManualMarkMigration.up(db),
+  postgres: (client) => runMigration200Postgres(client),
+  mysql: (pool) => runMigration200Mysql(pool),
 });

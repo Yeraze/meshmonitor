@@ -96,7 +96,17 @@ export interface AircraftReclassifyRow {
   /** Phase 2 "confirmed fixed" anchor (D4); both null when not marked. */
   aircraftFixedLatitude: number | null;
   aircraftFixedLongitude: number | null;
+  /** #5715 manual mark ('not_aircraft' | 'aircraft'); null when none. */
+  aircraftManualMark: string | null;
 }
+
+/**
+ * A manual aircraft mark to store (#5715) — see
+ * {@link NodesRepository.setAircraftManualMark}. `null` clears it.
+ */
+export type AircraftManualMarkWrite =
+  | { mode: 'not_aircraft'; atMs: number; byUserId: number | null; lat: number; lon: number }
+  | { mode: 'aircraft'; atMs: number; byUserId: number | null };
 
 /**
  * One flagged node as read by {@link NodesRepository.listAircraftAgeOutCandidates}
@@ -113,6 +123,8 @@ export interface AircraftAgeOutCandidate {
   isFavorite: boolean;
   isIgnored: boolean;
   aircraftAgedOutAt: number | null;
+  /** #5715: the sweep's fixed rule skips a node a person marked 'aircraft'. */
+  aircraftManualMark: string | null;
   positionOverrideEnabled: boolean | null;
   latitudeOverride: number | null;
   longitudeOverride: number | null;
@@ -2270,11 +2282,12 @@ export class NodesRepository extends BaseRepository {
         longitude: nodes.longitude,
         aircraftFixedLatitude: nodes.aircraftFixedLatitude,
         aircraftFixedLongitude: nodes.aircraftFixedLongitude,
+        aircraftManualMark: nodes.aircraftManualMark,
       })
       .from(nodes)
       .where(and(
         eq(nodes.sourceId, sourceId),
-        or(isNotNull(nodes.altitude), isNotNull(nodes.likelyAircraft)),
+        or(isNotNull(nodes.altitude), isNotNull(nodes.likelyAircraft), isNotNull(nodes.aircraftManualMark)),
       ));
 
     return rows.map((r: typeof rows[number]) => ({ ...r, nodeNum: Number(r.nodeNum) }));
@@ -2318,6 +2331,8 @@ export class NodesRepository extends BaseRepository {
         // Phase 2: disabling detection also drops the "confirmed fixed" mark.
         // Aged-out ignores (`aircraftAgedOutAt`) are deliberately kept.
         isNotNull(nodes.aircraftFixedAt),
+        // #5715: so does a manual mark — it overrides a classifier that is off.
+        isNotNull(nodes.aircraftManualMark),
       ),
     );
     // Node numbers are needed only for the cache sync below; the UPDATE uses
@@ -2340,6 +2355,9 @@ export class NodesRepository extends BaseRepository {
         aircraftFixedAt: null,
         aircraftFixedLatitude: null,
         aircraftFixedLongitude: null,
+        aircraftManualMark: null,
+        aircraftManualMarkAt: null,
+        aircraftManualMarkBy: null,
       })
       .where(classified);
 
@@ -2395,6 +2413,11 @@ export class NodesRepository extends BaseRepository {
    * Set (or, with `null`, clear) the "confirmed fixed" mark (D4). Setting it
    * also clears `likelyAircraft`, since the fixed rule says the node is not an
    * aircraft. Clearing it leaves `likelyAircraft` alone for the classifier.
+   *
+   * #5715: a 'not_aircraft' manual mark lives on this anchor, so clearing the
+   * anchor (the classifier's >1 km release) clears that mark too. Setting an
+   * automatic anchor never touches a manual mark; callers set manual anchors
+   * through {@link setAircraftManualMark}.
    */
   async setAircraftFixed(
     nodeNum: number,
@@ -2410,6 +2433,73 @@ export class NodesRepository extends BaseRepository {
           likelyAircraft: false,
         }
       : { aircraftFixedAt: null, aircraftFixedLatitude: null, aircraftFixedLongitude: null };
+    await this.db
+      .update(nodes)
+      .set(set)
+      .where(and(eq(nodes.nodeNum, nodeNum), eq(nodes.sourceId, sourceId)));
+    if (!fixed) {
+      await this.db
+        .update(nodes)
+        .set({ aircraftManualMark: null, aircraftManualMarkAt: null, aircraftManualMarkBy: null })
+        .where(and(
+          eq(nodes.nodeNum, nodeNum),
+          eq(nodes.sourceId, sourceId),
+          eq(nodes.aircraftManualMark, 'not_aircraft'),
+        ));
+    }
+    await this.syncCacheNode(nodeNum, sourceId);
+  }
+
+  /**
+   * Set or clear a person's aircraft mark (#5715) in one write.
+   *
+   *  - 'not_aircraft': anchors the fixed mark at the given position and clears
+   *    `likelyAircraft`, exactly like the sweep's fixed rule, but tagged as
+   *    manual. Released, like any anchor, by a move of more than 1 km.
+   *  - 'aircraft': sets `likelyAircraft` and drops any fixed anchor, since the
+   *    two disagree. Holds until cleared.
+   *  - null: drops the manual mark AND any fixed anchor (manual or automatic),
+   *    leaving `likelyAircraft` for the classifier to recompute.
+   *
+   * Does not bump `updatedAt` (not node activity).
+   */
+  async setAircraftManualMark(
+    nodeNum: number,
+    sourceId: string,
+    mark: AircraftManualMarkWrite | null,
+  ): Promise<void> {
+    const { nodes } = this.tables;
+    let set: Record<string, unknown>;
+    if (mark === null) {
+      set = {
+        aircraftManualMark: null,
+        aircraftManualMarkAt: null,
+        aircraftManualMarkBy: null,
+        aircraftFixedAt: null,
+        aircraftFixedLatitude: null,
+        aircraftFixedLongitude: null,
+      };
+    } else if (mark.mode === 'not_aircraft') {
+      set = {
+        aircraftManualMark: 'not_aircraft',
+        aircraftManualMarkAt: this.coerceBigintField(mark.atMs),
+        aircraftManualMarkBy: mark.byUserId,
+        aircraftFixedAt: this.coerceBigintField(mark.atMs),
+        aircraftFixedLatitude: mark.lat,
+        aircraftFixedLongitude: mark.lon,
+        likelyAircraft: false,
+      };
+    } else {
+      set = {
+        aircraftManualMark: 'aircraft',
+        aircraftManualMarkAt: this.coerceBigintField(mark.atMs),
+        aircraftManualMarkBy: mark.byUserId,
+        aircraftFixedAt: null,
+        aircraftFixedLatitude: null,
+        aircraftFixedLongitude: null,
+        likelyAircraft: true,
+      };
+    }
     await this.db
       .update(nodes)
       .set(set)
@@ -2434,6 +2524,7 @@ export class NodesRepository extends BaseRepository {
         isFavorite: nodes.isFavorite,
         isIgnored: nodes.isIgnored,
         aircraftAgedOutAt: nodes.aircraftAgedOutAt,
+        aircraftManualMark: nodes.aircraftManualMark,
         positionOverrideEnabled: nodes.positionOverrideEnabled,
         latitudeOverride: nodes.latitudeOverride,
         longitudeOverride: nodes.longitudeOverride,

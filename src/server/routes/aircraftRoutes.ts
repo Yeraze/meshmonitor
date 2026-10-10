@@ -16,15 +16,27 @@
  *     `viewOnMap`).
  *  5. Shape: one trail per `(sourceId, nodeNum)`, at most 500 points each,
  *     at most 200 trails, newest last fix first.
+ *
+ * POST /api/aircraft/mark  { sourceId, nodeNum, mode }   (#5715)
+ *
+ * A person overrides the classifier for one node on one source:
+ * `mode` is 'not_aircraft', 'aircraft' or 'clear'. Needs `nodes:write` on
+ * THAT source. Database-only: sends no packet and fires no automation event.
+ * Every accepted change is audit-logged (who, node, source, mode).
  */
 import { Router, Request, Response } from 'express';
 import databaseService from '../../services/database.js';
-import { optionalAuth } from '../auth/authMiddleware.js';
+import { optionalAuth, requirePermission } from '../auth/authMiddleware.js';
 import { logger } from '../../utils/logger.js';
 import { ok, fail } from '../utils/apiResponse.js';
 import { resolvePermittedSourceIds, parseSourcesParam } from '../utils/permittedSources.js';
 import { buildPositionFilter } from '../utils/positionVisibility.js';
 import { buildAircraftTrails, clampTrailHours } from '../utils/aircraftTrails.js';
+import {
+  aircraftClassificationService,
+  AIRCRAFT_MANUAL_MARK_MODES,
+  type AircraftManualMarkMode,
+} from '../services/aircraftClassificationService.js';
 
 const router = Router();
 router.use(optionalAuth());
@@ -65,5 +77,45 @@ router.get('/trails', async (req: Request, res: Response) => {
     return fail(res, 500, 'AIRCRAFT_TRAILS_FAILED', 'Failed to fetch aircraft trails');
   }
 });
+
+router.post(
+  '/mark',
+  requirePermission('nodes', 'write', { sourceIdFrom: 'body', requireSourceId: true }),
+  async (req: Request, res: Response) => {
+    const sourceId = req.body?.sourceId as string;
+    const nodeNum = req.body?.nodeNum;
+    const mode = req.body?.mode;
+    if (typeof nodeNum !== 'number' || !Number.isInteger(nodeNum) || nodeNum < 0 || nodeNum > 0xffffffff) {
+      return fail(res, 400, 'INVALID_NODE_NUM', 'nodeNum must be an unsigned 32-bit integer');
+    }
+    if (typeof mode !== 'string' || !(AIRCRAFT_MANUAL_MARK_MODES as readonly string[]).includes(mode)) {
+      return fail(res, 400, 'INVALID_MODE', `mode must be one of ${AIRCRAFT_MANUAL_MARK_MODES.join(', ')}`);
+    }
+    try {
+      const result = await aircraftClassificationService.applyManualMark(
+        sourceId,
+        nodeNum,
+        mode as AircraftManualMarkMode,
+        req.user?.id ?? null,
+      );
+      if (!result.ok) {
+        return fail(res, result.status, result.code, result.message);
+      }
+      // No coordinates in the audit row: the anchor may be a private position.
+      void databaseService.auditLogAsync(
+        req.user?.id ?? null,
+        'aircraft_manual_mark',
+        'nodes',
+        JSON.stringify({ sourceId, nodeNum, mode, previousMark: result.previousMark }),
+        req.ip || null,
+      );
+      logger.info(`✈️ Node ${nodeNum} on source ${sourceId}: manual aircraft mark '${mode}' by user ${req.user?.id ?? 'unknown'}`);
+      return ok(res, { sourceId, nodeNum, mode });
+    } catch (error) {
+      logger.error('Error in POST /api/aircraft/mark:', error);
+      return fail(res, 500, 'AIRCRAFT_MARK_FAILED', 'Failed to update the aircraft mark');
+    }
+  },
+);
 
 export default router;

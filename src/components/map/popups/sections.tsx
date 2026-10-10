@@ -220,7 +220,18 @@ export const SignalItems: React.FC<SignalItemsProps> = ({
           <span className="node-popup-value">{t('node_popup.aircraft_aged_out', 'Aged out (likely aircraft)')}</span>
         </div>
       )}
-      {showAltitude && model.aircraftFixed && (
+      {/* #5715: a person's mark reads differently from the sweep's. */}
+      {showAltitude && model.aircraftManualMark && (
+        <div className="node-popup-item node-popup-item-full" data-testid="node-popup-aircraft-manual">
+          <span className="node-popup-icon"><UiIcon name="aircraft" /></span>
+          <span className="node-popup-value">
+            {model.aircraftManualMark === 'not_aircraft'
+              ? t('aircraft_mark.note_not_aircraft', 'Marked as not aircraft')
+              : t('aircraft_mark.note_aircraft', 'Marked as aircraft')}
+          </span>
+        </div>
+      )}
+      {showAltitude && model.aircraftFixed && !model.aircraftManualMark && (
         <div className="node-popup-item node-popup-item-full" data-testid="node-popup-aircraft-fixed">
           <span className="node-popup-icon"><UiIcon name="aircraft" /></span>
           <span className="node-popup-value">{t('node_popup.aircraft_fixed', 'Reclassified as fixed')}</span>
