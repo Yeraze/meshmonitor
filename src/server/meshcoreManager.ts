@@ -5753,7 +5753,8 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
     if (typeof ackCode !== 'number') return;
     const rtt = typeof roundTripMs === 'number' ? roundTripMs : undefined;
     let messageId = dmMessageId;
-    let recorded = dmMessageId !== undefined;
+    // The caller already recorded the event for a DM still in its cadence.
+    const recorded = dmMessageId !== undefined;
 
     const room = this.pendingRoomPostAcks.get(ackCode);
     if (!messageId && room) {
@@ -5780,7 +5781,6 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
         'reported',
         rtt != null ? JSON.stringify({ roundTripMs: rtt }) : undefined,
       );
-      recorded = true;
     }
     this.setDeliveryStatus(messageId, 'delivered', rtt);
   }
