@@ -338,6 +338,8 @@ export interface ActiveSchema {
   // Reliable PKI per-node exchange state (#5691)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any -- #5691 matches the existing ActiveSchema per-dialect table pattern
   pkiExchangeState: any;
+  // Local map markers (#5686)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- #5686 matches the existing ActiveSchema per-dialect table pattern
   mapMarkers: any;
 
   // Coverage Report RF receptions (#5277 Phase 1 WP1)
