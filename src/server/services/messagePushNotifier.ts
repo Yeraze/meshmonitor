@@ -19,6 +19,8 @@ import { PortNum, CHANNEL_DB_OFFSET } from '../constants/meshtastic.js';
 import { isOwnNodeNum } from '../utils/ownNodes.js';
 import { logger } from '../../utils/logger.js';
 import { renderMessageNotification, type MessageTemplateContext } from '../../utils/notificationTemplate.js';
+import { packetDedupKey } from './notificationDedup.js';
+import { extractPacketIdFromRowId } from '../utils/messageRowId.js';
 
 /**
  * The subset of a message row this notifier reads. Structurally satisfied by
@@ -30,6 +32,12 @@ export interface NotifiableMessage {
   fromNodeId?: string | null;
   channel: number;
   portnum?: number | null;
+  /**
+   * The mesh packet id, when the caller has it. Otherwise it is read from the
+   * row id (`${sourceId}_${fromNum}_${packetId}`), the same way the unified
+   * message view does. Used only for cross-source dedup (#5729).
+   */
+  packetId?: number | null;
   viaMqtt?: boolean | null;
   /** Meshtastic tapback flag: 1 marks a reaction (#5720). */
   emoji?: number | null;
@@ -167,6 +175,16 @@ export async function sendMessagePushNotification(input: MessagePushInput): Prom
           messageId: message.id,
         };
 
+    // Cross-source dedup (#5729): every source that hears this packet builds
+    // the same key, so the dispatcher sends one notification per recipient.
+    // A row with no real packet id (the `Date.now()` fallback) yields null and
+    // is never deduped.
+    const dedupKey = packetDedupKey(
+      message.fromNodeNum,
+      message.packetId ?? extractPacketIdFromRowId(message.id),
+      message.portnum,
+    );
+
     // Send notifications (Web Push + Apprise) with filtering to all subscribed users
     const result = await notificationService.broadcast({
       title,
@@ -175,6 +193,7 @@ export async function sendMessagePushNotification(input: MessagePushInput): Prom
       sourceId,
       sourceName,
       message: templateContext,
+      ...(dedupKey ? { dedup: { key: dedupKey } } : {}),
     }, {
       messageText,
       channelId: message.channel,

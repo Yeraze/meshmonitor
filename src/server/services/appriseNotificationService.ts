@@ -5,6 +5,7 @@ import type { MessageTemplateContext } from '../../utils/notificationTemplate.js
 import { fallbackManager } from '../meshtasticManager.js';
 import { sourceManagerRegistry } from '../sourceManagerRegistry.js';
 import { getPrimaryMeshtasticManager } from '../sourceManagerTypes.js';
+import { notificationDedup, type NotificationDedupSpec } from './notificationDedup.js';
 
 export interface AppriseNotificationPayload {
   title: string;
@@ -19,6 +20,16 @@ export interface AppriseNotificationPayload {
    * renders each recipient's title/body template from. Never sent to Apprise.
    */
   message?: MessageTemplateContext;
+  /** Cross-source dedup (#5729); see `notificationDedup.ts`. Never sent to Apprise. */
+  dedup?: NotificationDedupSpec;
+}
+
+/**
+ * Dedup recipient for Apprise (#5729): the user, since a user's Apprise URLs
+ * are that user's one delivery target.
+ */
+function appriseDedupRecipient(userId: number): string {
+  return `apprise:${userId}`;
 }
 
 interface AppriseConfig {
@@ -417,6 +428,22 @@ class AppriseNotificationService {
         continue;
       }
 
+      // Cross-source dedup (#5729), AFTER this source's permission, filter and
+      // URL checks passed for this user. Apprise cannot change a notification
+      // it has already delivered, so only the first copy is sent; it names the
+      // source that heard the packet first.
+      const recipient = appriseDedupRecipient(userId);
+      if (payload.dedup) {
+        const claim = notificationDedup.claim(recipient, payload.dedup.key, {
+          sourceId: filterContext.sourceId,
+          sourceName: filterContext.sourceName,
+        });
+        if (claim.outcome !== 'first') {
+          filtered++;
+          continue;
+        }
+      }
+
       // Render AFTER the filter decision (#5593): the user's templates shape
       // the text only, never whether a notification is sent.
       const rendered = await renderMessagePayloadForUserAsync(userId, payload, filterContext.sourceId, filterContext.sourceName);
@@ -431,6 +458,10 @@ class AppriseNotificationService {
         sent++;
       } else {
         failed++;
+        // A first copy that never arrived must not block another source's copy.
+        if (payload.dedup) {
+          notificationDedup.release(recipient, payload.dedup.key, filterContext.sourceId);
+        }
       }
     }
 
@@ -603,12 +634,30 @@ class AppriseNotificationService {
         ? { ...payload, body: bodyToSend }
         : payload;
 
+      // Cross-source dedup (#5729), after every gate above passed for this
+      // user: Apprise sends the first copy only.
+      const recipient = appriseDedupRecipient(userId);
+      const dedupSourceId = effectiveSourceId ?? '';
+      if (payload.dedup) {
+        const claim = notificationDedup.claim(recipient, payload.dedup.key, {
+          sourceId: dedupSourceId,
+          sourceName: payload.sourceName ?? dedupSourceId,
+        });
+        if (claim.outcome !== 'first') {
+          filtered++;
+          continue;
+        }
+      }
+
       // Send to user's specific URLs
       const success = await this.sendNotificationToUrls(notificationPayload, urls);
       if (success) {
         sent++;
       } else {
         failed++;
+        if (payload.dedup) {
+          notificationDedup.release(recipient, payload.dedup.key, dedupSourceId);
+        }
       }
     }
 

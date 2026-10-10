@@ -779,6 +779,49 @@ Notification permissions are controlled by the browser. If denied, you must rese
 - Configuration stored in persistent `/data/apprise-config/` directory
 - No environment variables required
 
+## One Notification When Several Sources Hear a Packet
+
+With two or more sources on the same mesh, each source that hears a packet used to raise its own notification. MeshMonitor now sends **one** notification per packet to each recipient, however many sources heard it.
+
+**What counts as the same packet:** the same sender, packet id and port number, heard again within **60 seconds** of the first copy. The window is fixed; it is not a setting yet. A copy that arrives later than that is a new notification. So is a packet with a different id or port, so a node's text, position and node info stay apart.
+
+This also covers MQTT: if a radio source and an MQTT source both deliver a packet, or a source hears its own packet come back through MQTT, you are alerted once.
+
+**Your per-source settings still decide.** Nothing about the settings changed. Each source's copy is checked against your settings and permissions for *that* source, exactly as before. A copy that would not have notified you (channel off, muted, blacklisted, MQTT alerts off, no read permission, browser not subscribed on that source) does not count and never uses up the notification. The first copy that passes is the one you get.
+
+**Which sources are named:** only sources whose copy passed your own checks. You never see the name of a source you cannot read.
+
+**What each delivery method does:**
+
+| Method | First copy | Later copies inside 60 s |
+|--------|-----------|--------------------------|
+| **Web Push** | Sent at once, naming the source that heard it first | The notification on screen is replaced, without a new sound or vibration, by one that lists every source: `LongFast · Hilltop, Valley` |
+| **Apprise** | Sent at once, naming the source that heard it first | Not sent. Apprise cannot change a message it has delivered |
+| **Desktop app** | Shown at once, naming the source that heard it first | Not shown. A native notification cannot be changed once shown |
+
+The first notification is never held back to wait for other sources.
+
+**Which events are covered:**
+
+| Event | Deduplicated across sources? |
+|-------|------------------------------|
+| Channel messages and direct messages (Meshtastic radio and MQTT) | Yes, by sender + packet id + port |
+| New MeshCore device | Yes, by the device's public key |
+| Waypoint alerts | Yes, by waypoint id |
+| New Meshtastic node | Already one alert per node (first source to complete it), unchanged |
+| Server events (start, node connect / disconnect) | **No.** These are about a source, so you get one per source |
+| Inactive node, low battery | No. These are periodic checks per source, with their own cooldown |
+| Traceroute results | No. A traceroute belongs to the source that ran it |
+| Security digest, automation notifications | No. A report and an explicit rule; neither is a packet |
+
+::: info After a restart
+The 60-second memory lives in the server's memory only. If the server restarts between two copies of one packet, you may get one extra notification for that packet.
+:::
+
+::: tip Custom templates
+When Web Push lists several sources, it re-renders the template you saved for the source that heard the packet first, with <code v-pre>{{ sourceName }}</code> set to the joined list. A template without <code v-pre>{{ sourceName }}</code> shows the same text for the update.
+:::
+
 ## Troubleshooting
 
 ### Notifications Not Working
