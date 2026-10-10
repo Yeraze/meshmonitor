@@ -9,7 +9,7 @@
  */
 import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import api, { ApiError } from '../../services/api';
+import api from '../../services/api';
 import { UiIcon } from '../icons';
 import { formatRelativeTime } from '../../utils/datetime';
 import { SPARK_W, SPARK_H, sparklinePoints, type HopSnrEnd, type HopSnrLink } from '../../utils/meshcoreHopSnr';
@@ -36,14 +36,18 @@ export const MeshCoreTraceSnrCard: React.FC<MeshCoreTraceSnrCardProps> = ({ sour
     setData(null);
     if (!sourceId || !/^[0-9a-f]{64}$/.test(key)) return;
     let cancelled = false;
-    api.get<Envelope>(`/api/sources/${encodeURIComponent(sourceId)}/meshcore/hop-snr?publicKey=${key}`)
-      .then((body) => { if (!cancelled) setData(body?.data?.links ?? []); })
-      .catch((e: unknown) => {
-        // No traceroute:read on this source, or a read error: show nothing.
-        if (!(e instanceof ApiError && (e.status === 403 || e.status === 401))) {
-          console.debug('MeshCore trace SNR history failed to load', e);
-        }
-      });
+    void (async () => {
+      try {
+        const body = await api.get<Envelope>(`/api/sources/${encodeURIComponent(sourceId)}/meshcore/hop-snr?publicKey=${key}`);
+        if (!cancelled) setData(body?.data?.links ?? []);
+      } catch (e) {
+        // No traceroute:read on this source (401/403) or a read error: show
+        // nothing. The status is read off the error itself, not via
+        // `instanceof`, so a partial mock of the API module cannot break this.
+        const status = (e as { status?: unknown } | null)?.status;
+        if (status !== 401 && status !== 403) console.debug('MeshCore trace SNR history failed to load', e);
+      }
+    })();
     return () => { cancelled = true; };
   }, [sourceId, key]);
 

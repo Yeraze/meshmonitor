@@ -13,17 +13,11 @@ vi.mock('react-i18next', async () => {
 });
 
 const getMock = vi.fn();
-vi.mock('../../services/api', async () => {
-  class ApiError extends Error {
-    status: number;
-    constructor(message: string, status: number) { super(message); this.status = status; }
-  }
-  return { default: { get: (...a: unknown[]) => getMock(...a) }, ApiError };
-});
+// Mocked the way the panel's own tests mock it: no ApiError export.
+vi.mock('../../services/api', () => ({ default: { get: (...a: unknown[]) => getMock(...a) } }));
 
 import { MeshCoreTraceSnrCard } from './MeshCoreTraceSnrCard';
 import { summarizeHopSnrLinks, sparklinePoints, HOP_SNR_POINTS_PER_LINK, type HopSnrSample } from '../../utils/meshcoreHopSnr';
-import { ApiError } from '../../services/api';
 
 const ME = 'a'.repeat(64);
 const REP = 'b'.repeat(64);
@@ -124,7 +118,7 @@ describe('MeshCoreTraceSnrCard (#5722)', () => {
     unmount();
 
     getMock.mockReset();
-    getMock.mockRejectedValue(new ApiError('forbidden', 403));
+    getMock.mockRejectedValue(Object.assign(new Error('forbidden'), { status: 403 }));
     render(wrap(<MeshCoreTraceSnrCard sourceId="src-1" publicKey={ME} />));
     await waitFor(() => expect(getMock).toHaveBeenCalled());
     expect(screen.queryByTestId('meshcore-trace-snr')).not.toBeInTheDocument();

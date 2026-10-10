@@ -75,7 +75,10 @@ export function traceToHopRows(
   timestamp: number,
 ): MeshCoreHopSnrRow[] {
   const hashBytes = trace.hash_bytes;
-  if (hashBytes !== 1 && hashBytes !== 2 && hashBytes !== 4 && hashBytes !== 8) return [];
+  // Firmware packs the width as `1 << (flags & 0x03)`. Companions send 1 or 2;
+  // 4 is accepted as stored (it fits the hash column). 8 does not, and no
+  // firmware sends it, so it is dropped rather than truncated.
+  if (hashBytes !== 1 && hashBytes !== 2 && hashBytes !== 4) return [];
   const hex = (trace.path_hashes_hex ?? '').toLowerCase();
   const width = hashBytes * 2;
   if (hex.length === 0 || hex.length % width !== 0) return [];

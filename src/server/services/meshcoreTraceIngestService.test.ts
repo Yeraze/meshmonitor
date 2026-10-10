@@ -86,6 +86,9 @@ describe('traceToHopRows (#5722)', () => {
     expect(traceToHopRows('s', trace({ path_hashes_hex: '' }), [], LOCAL, 1)).toEqual([]);
     expect(traceToHopRows('s', trace({ hash_bytes: 2, path_hashes_hex: 'b1c2c3' }), [], LOCAL, 1)).toEqual([]);
     expect(traceToHopRows('s', trace({ hash_bytes: 3 }), [], LOCAL, 1)).toEqual([]);
+    expect(traceToHopRows('s', trace({ hash_bytes: 8, path_hashes_hex: 'b1c2c3d4e5f60718' }), [], LOCAL, 1)).toEqual([]);
+    // A 4-byte hash is stored whole (8 hex chars, the column's width).
+    expect(traceToHopRows('s', trace({ hash_bytes: 4, path_hashes_hex: 'b1c2c3d4', path_snrs_q: [1] }), [], LOCAL, 1)[0].receiverHash).toBe('b1c2c3d4');
     expect(traceToHopRows('s', trace({ path_snrs_q: [300, 1] }), [], LOCAL, 1)).toEqual([]);
   });
 
