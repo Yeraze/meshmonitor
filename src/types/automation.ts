@@ -390,8 +390,9 @@ export interface ValidationResult {
   valid: boolean;
   errors: string[];
   /**
-   * Non-blocking findings (#5636): `{{ steps.* }}` references that will, or
-   * may, render empty. Present only when valid and there is something to say.
+   * Non-blocking findings: `{{ steps.* }}` references that will, or may,
+   * render empty (#5636), and actions whose text is empty (#5697). Present
+   * only when valid and there is something to say.
    */
   warnings?: string[];
   /** Present only when valid. */
@@ -603,6 +604,59 @@ export function analyzeStepOutputRefs(graph: Pick<AutomationGraph, 'nodes' | 'ed
         });
       }
     }
+  }
+  return out;
+}
+
+/** An action field left empty so the step sends nothing, or less than intended (#5697). */
+export interface EmptySendFinding {
+  /** Params that are empty. */
+  fields: string[];
+  /** true = the step sends nothing at all; false = it sends, but without this text. */
+  sendsNothing: boolean;
+  /** Builder copy, without the node prefix. */
+  detail: string;
+}
+
+const isBlankParam = (v: unknown): boolean => v == null || (typeof v === 'string' && v.trim() === '');
+
+/**
+ * What an action block will leave out because a text field is empty (#5697).
+ * Mirrors the engine's empty-send rule (#5636, actionExecutor): only literal
+ * emptiness is caught here; a template whose tokens render empty is the
+ * run-time rule's job. Absent params that the engine defaults (a notification
+ * title, a tapback emoji) are not empty.
+ */
+export function emptySendFinding(type: string, params: Record<string, unknown> | undefined): EmptySendFinding | undefined {
+  const p = params ?? {};
+  switch (type) {
+    case 'action.sendMessage':
+      return isBlankParam(p.text)
+        ? { fields: ['text'], sendsNothing: true, detail: 'the message is empty, so this step will send nothing' }
+        : undefined;
+    case 'action.notify': {
+      // An absent title falls back to "MeshMonitor automation"; a blank one stays blank.
+      const titleBlank = typeof p.title === 'string' && p.title.trim() === '';
+      if (!isBlankParam(p.body)) return undefined;
+      return titleBlank
+        ? { fields: ['title', 'body'], sendsNothing: true, detail: 'the title and body are empty, so this step will send nothing' }
+        : { fields: ['body'], sendsNothing: false, detail: 'the body is empty, so the notification will carry only its title' };
+    }
+    case 'action.tapback':
+      return p.emojiMode !== 'hopCount' && typeof p.emoji === 'string' && p.emoji.trim() === ''
+        ? { fields: ['emoji'], sendsNothing: true, detail: 'the emoji is empty, so this step will send nothing' }
+        : undefined;
+    default:
+      return undefined;
+  }
+}
+
+/** Every action in `graph` with an empty text field (#5697), as save warnings. */
+export function analyzeEmptySends(graph: Pick<AutomationGraph, 'nodes'>): string[] {
+  const out: string[] = [];
+  for (const n of graph.nodes ?? []) {
+    const f = emptySendFinding(n.type, n.params);
+    if (f) out.push(`${n.type} "${n.id}": ${f.detail}`);
   }
   return out;
 }
@@ -1033,6 +1087,10 @@ export function validateAutomationGraph(input: unknown): ValidationResult {
   const graph = input as unknown as AutomationGraph;
   // Non-blocking, like the builder's token hints: an empty reference is safe
   // (it renders '' and an empty message is not sent), so it must not stop a save.
-  const warnings = analyzeStepOutputRefs(graph).map((d) => d.message);
+  const warnings = [
+    ...analyzeStepOutputRefs(graph).map((d) => d.message),
+    // #5697: an empty message is allowed (the user may be drafting) but never silent.
+    ...analyzeEmptySends(graph),
+  ];
   return { valid: true, errors: [], ...(warnings.length > 0 ? { warnings } : {}), graph };
 }

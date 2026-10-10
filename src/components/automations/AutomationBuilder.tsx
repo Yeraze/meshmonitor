@@ -5,12 +5,12 @@
  * → THEN actions) → an optional FINALLY combine step (ANY/ALL/NONE). Compiles to
  * the graph model in compile.ts.
  */
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { TRIGGERS, CONDITIONS, ACTIONS, BLOCK_BY_TYPE, fieldsFor, fieldVisible, fieldPlaceholder, type BlockDef, type FieldDef } from './catalog';
 import { compile, blockNodeId, formOutputNames, type WorkflowForm, type FormBlock, type Rule, type BlockLocation } from './compile';
 import type { StepTokenScope } from './tokenHints';
-import { STEP_OUTPUT_NAME_PATTERN, stepOutputScopes } from '../../types/automation';
+import { STEP_OUTPUT_NAME_PATTERN, stepOutputScopes, emptySendFinding } from '../../types/automation';
 import SubstitutionsHelpDrawer from './SubstitutionsHelp';
 import GeofenceFieldInput from './GeofenceFieldInput';
 import NodeMultiFieldInput, { type NodeMultiOption } from './NodeMultiFieldInput';
@@ -244,8 +244,12 @@ function numberParamValue(value: unknown): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
+/** A param the builder treats as unset text: absent, or blank after trimming. */
+const isBlankText = (v: unknown): boolean => v == null || (typeof v === 'string' && v.trim() === '');
+
 export function FieldInput({ field, value, onChange, variables, sources, channels, scripts, regions, nodes, triggerType, automations = [], params, onPatch, steps, duplicateOutputNames }: FieldInputProps) {
   const { t } = useTranslation();
+  const fieldRef = useRef<HTMLDivElement>(null);
   let control;
   const varNames = variables.map((v) => v.name);
   const placeholder = fieldPlaceholder(field, triggerType);
@@ -485,10 +489,30 @@ export function FieldInput({ field, value, onChange, variables, sources, channel
             triggerType={triggerType} variableNames={varNames} steps={stepScope} onChange={onChange} />
         : <input className="ae-input" value={(value ?? '') as string} placeholder={placeholder} onChange={(e) => onChange(e.target.value)} />;
   }
+  // #5697: a placeholder that is a usable template can be copied in with one
+  // tap. Only while the field is empty, so typed text is never replaced.
+  const suggestion = field.suggestTemplate && placeholder && isBlankText(value) ? placeholder : null;
+  const useSuggestion = () => {
+    if (!suggestion) return;
+    onChange(suggestion);
+    // Keep the user in the field, caret at the end, ready to edit.
+    requestAnimationFrame(() => {
+      const el = fieldRef.current?.querySelector<HTMLTextAreaElement | HTMLInputElement>('textarea, input');
+      if (!el) return;
+      el.focus();
+      el.setSelectionRange(el.value.length, el.value.length);
+    });
+  };
   return (
-    <div className="ae-field">
+    <div className="ae-field" ref={fieldRef}>
       <label className="ae-field-label">{field.label}</label>
       {control}
+      {suggestion && (
+        <button type="button" className="ae-suggest-btn" onClick={useSuggestion}
+          aria-label={t('automation.suggestedTemplate.use_aria', 'Use suggested template for {{field}}', { field: field.label })}>
+          <UiIcon name="edit" size={13} /> {t('automation.suggestedTemplate.use', 'Use suggested template')}
+        </button>
+      )}
       {field.help && <div className="ae-help-text">{field.help}</div>}
     </div>
   );
@@ -504,6 +528,7 @@ function BlockFields({ block, triggerType, variables, sources, channels, scripts
   block: FormBlock; triggerType: string; variables: VariableOption[]; sources: SourceOption[]; channels: UnifiedChannelOption[]; scripts: ScriptOption[]; regions: string[]; nodes: NodeMultiOption[]; automations: AutomationOption[]; onParams: (p: Record<string, unknown>) => void;
   steps: StepTokenScope; duplicateOutputNames: ReadonlySet<string>;
 }) {
+  const { t } = useTranslation();
   const def = BLOCK_BY_TYPE[block.type];
   if (!def) return null;
   const patch = (changes: Record<string, unknown>) => {
@@ -514,6 +539,17 @@ function BlockFields({ block, triggerType, variables, sources, channels, scripts
     }
     onParams(next);
   };
+  // #5697: say plainly when this step will send nothing (or less than meant),
+  // with a one-tap fix where the catalog has a suggested template.
+  const empty = emptySendFinding(block.type, block.params);
+  const fixes: Record<string, string> = {};
+  if (empty) {
+    for (const name of empty.fields) {
+      const f = def.fields.find((x) => x.name === name);
+      const ph = f?.suggestTemplate ? fieldPlaceholder(f, triggerType) : undefined;
+      if (ph) fixes[name] = ph;
+    }
+  }
   return (
     <>
       {def.fields.filter((f) => fieldVisible(f, block.params)).map((f) => {
@@ -522,6 +558,24 @@ function BlockFields({ block, triggerType, variables, sources, channels, scripts
           params={block.params} onPatch={patch} steps={steps} duplicateOutputNames={duplicateOutputNames}
           onChange={(v) => onParams({ ...block.params, [f.name]: v })} />;
       })}
+      {empty && (
+        <div className="ae-field-warn ae-empty-send" role="note" data-testid="empty-send-warning">
+          <UiIcon name="alert" size={14} />
+          <span>
+            {empty.sendsNothing
+              ? t('automation.emptySend.nothing', 'This step will send nothing: {{detail}}.', { detail: empty.detail })
+              : t('automation.emptySend.partial', 'Check this step: {{detail}}.', { detail: empty.detail })}
+            {Object.keys(fixes).length > 0 && (
+              <>
+                {' '}
+                <button type="button" className="ae-suggest-btn ae-suggest-btn--inline" onClick={() => patch(fixes)}>
+                  {t('automation.suggestedTemplate.use', 'Use suggested template')}
+                </button>
+              </>
+            )}
+          </span>
+        </div>
+      )}
     </>
   );
 }

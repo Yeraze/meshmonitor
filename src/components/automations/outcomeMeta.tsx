@@ -43,7 +43,12 @@ export function StepList({ steps }: { steps: TraceStep[] }) {
   return (
     <div className="ae-trace">
       {steps.map((s, i) => {
-        const m = OUTCOME_META[s.outcome] ?? { icon: 'info' as const, cls: 'muted', label: s.outcome };
+        // #5697: an action that ran but was held back by the empty-send rule
+        // (#5636) reads as a warning, not a routine success.
+        const heldBack = s.outcome === 'action:ok' && s.detail?.skipped === true;
+        const m = heldBack
+          ? { icon: 'alert' as const, cls: 'warn', label: 'nothing sent' }
+          : OUTCOME_META[s.outcome] ?? { icon: 'info' as const, cls: 'muted', label: s.outcome };
         const detail = formatStepDetail(s.detail);
         return (
           <div className={`ae-trace-step ae-trace-step--${m.cls}`} key={i}>
