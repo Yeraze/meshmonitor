@@ -89,7 +89,7 @@ class DesktopNotificationService {
   /**
    * Send a native OS notification
    */
-  private send(payload: DesktopNotificationPayload): void {
+  private send(payload: DesktopNotificationPayload, releaseSourceId?: string): void {
     try {
       notifier.notify({
         title: payload.title,
@@ -101,6 +101,11 @@ class DesktopNotificationService {
       logger.debug(`🖥️ Desktop notification sent: ${payload.title}`);
     } catch (error) {
       logger.error('❌ Failed to send desktop notification:', error);
+      // A first copy that was never shown must not block another source's
+      // copy (#5729), the same as the Web Push and Apprise paths.
+      if (payload.dedup && releaseSourceId !== undefined) {
+        notificationDedup.release(DESKTOP_DEDUP_RECIPIENT, payload.dedup.key, releaseSourceId);
+      }
     }
   }
 
@@ -154,7 +159,7 @@ class DesktopNotificationService {
         // Render AFTER the filter decision (#5593), with the templates of the
         // user this single desktop notification is sent for.
         const rendered = await renderMessagePayloadForUserAsync(user.id, payload, filterContext.sourceId, filterContext.sourceName);
-        this.send({ ...payload, title: rendered.title, body: rendered.body });
+        this.send({ ...payload, title: rendered.title, body: rendered.body }, filterContext.sourceId);
         // Only send once — single desktop machine
         return { sent: 1, failed: 0, filtered };
       }
@@ -203,7 +208,7 @@ class DesktopNotificationService {
           return { sent: 0, failed: 0, filtered: 1 };
         }
 
-        this.send(payload);
+        this.send(payload, effectiveSourceId ?? payload.sourceId);
         // Only send once — single desktop machine
         return { sent: 1, failed: 0, filtered: 0 };
       }

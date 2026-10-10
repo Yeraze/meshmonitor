@@ -132,6 +132,12 @@ describe('packetDedupKey', () => {
     expect(packetDedupKey(100, undefined, 1)).toBeNull();
     expect(packetDedupKey(100, 42, null)).toBeNull();
     expect(packetDedupKey(undefined, 42, 1)).toBeNull();
+    expect(packetDedupKey(null, 42, 1)).toBeNull();
+    expect(packetDedupKey(100, Number.NaN, 1)).toBeNull();
+  });
+
+  it('accepts port 0, which is a real port', () => {
+    expect(packetDedupKey(100, 42, 0)).toBe('packet:100:42:0');
   });
 });
 

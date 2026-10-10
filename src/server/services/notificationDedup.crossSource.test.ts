@@ -457,6 +457,14 @@ describe('cross-source notification dedup (#5729)', () => {
       expect(delivered[0].silent).toBeUndefined();
     });
 
+    it('desktop: lets the next source\'s copy through', async () => {
+      addUser(1, { 'src-a': {}, 'src-b': {} });
+      h.notify.mockImplementationOnce(() => { throw new Error('no notifier'); });
+      await hear('src-a');
+      await hear('src-b');
+      expect(desktops().map((d) => d.title)).toEqual(['LongFast · Hilltop', 'LongFast · Valley']);
+    });
+
     it('Apprise: lets the next source\'s copy through', async () => {
       addUser(1, { 'src-a': {}, 'src-b': {} });
       fetchMock.mockResolvedValueOnce({ ok: false, status: 500, json: async () => ({ error: 'down' }), text: async () => 'down' });

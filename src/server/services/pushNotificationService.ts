@@ -489,6 +489,8 @@ class PushNotificationService {
       const isUpdate = claim?.outcome === 'additional';
       // An update keeps the look of the notification it replaces: the first
       // source's templates and prefix setting, with every source named.
+      // `claim.sources` is in arrival order (the store only appends), so [0]
+      // is the source whose copy was shown first, not the current one.
       const renderSourceId = isUpdate && claim ? claim.sources[0].sourceId : filterContext.sourceId;
       const shownSourceName = isUpdate && claim ? joinSourceNames(claim.sources) : filterContext.sourceName;
       const renderInput = isUpdate && payload.message
@@ -695,6 +697,9 @@ class PushNotificationService {
       // with no `merged` text cannot name several sources, so its later
       // copies are dropped.
       const recipient = pushDedupRecipient(subscription);
+      // Every caller that sets `dedup` also sets a source. '' is only the
+      // fallback for a payload with none; all such copies then read as one
+      // source, so they collapse to the first and no source list is built.
       const dedupSourceId = effectiveSourceId ?? '';
       let claim: DedupClaim | null = null;
       let base: PushNotificationPayload = payload;

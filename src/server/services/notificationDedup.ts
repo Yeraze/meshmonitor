@@ -166,11 +166,14 @@ export function packetDedupKey(
   packetId: number | null | undefined,
   portnum: number | null | undefined,
 ): string | null {
+  // Missing first: `Number(null)` is 0, which would pass the finite test.
+  if (fromNodeNum == null || packetId == null || portnum == null) return null;
   const from = Number(fromNodeNum);
   const id = Number(packetId);
   const port = Number(portnum);
   if (!Number.isFinite(from) || !Number.isFinite(id) || !Number.isFinite(port)) return null;
-  if (id === 0 || portnum == null) return null;
+  // A packet id of 0 means "none". Port 0 is a real port (UNKNOWN_APP).
+  if (id === 0) return null;
   return `packet:${from >>> 0}:${id >>> 0}:${port}`;
 }
 
