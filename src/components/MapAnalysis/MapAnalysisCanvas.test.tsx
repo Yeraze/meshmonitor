@@ -2,8 +2,8 @@
  * @vitest-environment jsdom
  */
 import React from 'react';
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { render, screen, fireEvent, act } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter } from 'react-router-dom';
 import MapAnalysisCanvas from './MapAnalysisCanvas';
@@ -72,6 +72,11 @@ vi.mock('./FollowController', () => ({
 }));
 // Same reason: it calls useMap(). Covered by its own picker tests.
 vi.mock('./SitePlannerOriginController', () => ({
+  default: () => null,
+}));
+// Same reason (its picker calls useMap().getContainer()); covered by
+// LinkProfileController's own tests. The drawer it pairs with stays real.
+vi.mock('./LinkProfileController', () => ({
   default: () => null,
 }));
 
@@ -338,6 +343,17 @@ function ToggleGnssDop() {
   );
 }
 
+/** Opens tool panels through the context, as the toolbar does. */
+function OpenTools({ link = false }: { link?: boolean }) {
+  const { setSitePlannerMode, setGnssDopMode, setLinkProfileMode } = useMapAnalysisCtx();
+  React.useEffect(() => {
+    if (link) setLinkProfileMode(true);
+    else setSitePlannerMode(true);
+    setGnssDopMode(true);
+  }, [link, setSitePlannerMode, setGnssDopMode, setLinkProfileMode]);
+  return null;
+}
+
 describe('MapAnalysisCanvas', () => {
   beforeEach(() => {
     localStorage.clear();
@@ -392,32 +408,110 @@ describe('MapAnalysisCanvas', () => {
     });
   });
 
-  // The planner moves beside the open Map controls panel through a CSS
-  // sibling selector (`.map-sidebar ~ .sitePlanner`, SitePlannerPanel.module.css).
-  // jsdom does not lay out CSS, so pin the DOM shape that rule depends on: one
-  // parent, controls panel first.
-  describe('Site Planner beside the Map controls panel', () => {
-    function OpenSitePlanner() {
-      const { setSitePlannerMode } = useMapAnalysisCtx();
-      React.useEffect(() => { setSitePlannerMode(true); }, [setSitePlannerMode]);
-      return null;
-    }
-
-    it('renders the open controls panel as an earlier sibling of the planner', () => {
-      render(<><OpenSitePlanner /><MapAnalysisCanvas /></>, { wrapper });
-      const planner = screen.getByTestId('site-planner-panel');
-      const sidebar = document.querySelector('.map-sidebar');
-      expect(sidebar).not.toBeNull();
-      expect(sidebar!.parentElement).toBe(planner.parentElement);
-      expect(sidebar!.compareDocumentPosition(planner) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  // The tool panels move beside the open Map controls panel through CSS
+  // sibling selectors (`.map-sidebar ~ .toolColumn` / `~ .clearOfControls`,
+  // MapToolPanels.module.css). jsdom does not lay out CSS, so pin the DOM shape
+  // those rules depend on: one parent, controls panel first.
+  describe('tool panels beside the Map controls panel', () => {
+    it('stacks the Site Planner and GNSS DOP panels in one column', () => {
+      render(<><OpenTools /><MapAnalysisCanvas /></>, { wrapper });
+      const column = screen.getByTestId('map-tool-column');
+      expect(column.className).toContain('toolColumn');
+      expect(screen.getByTestId('site-planner-panel').parentElement).toBe(column);
+      expect(screen.getByTestId('gnss-dop-panel').parentElement).toBe(column);
     });
 
-    it('renders no .map-sidebar while the controls are collapsed, so the planner keeps its corner', () => {
+    it('renders the open controls panel as an earlier sibling of the column and the Link Profile drawer', () => {
+      render(<><OpenTools link /><MapAnalysisCanvas /></>, { wrapper });
+      const column = screen.getByTestId('map-tool-column');
+      const drawer = screen.getByTestId('link-profile-drawer');
+      expect(drawer.className).toContain('clearOfControls');
+      const sidebar = document.querySelector('.map-sidebar');
+      expect(sidebar).not.toBeNull();
+      for (const el of [column, drawer]) {
+        expect(sidebar!.parentElement).toBe(el.parentElement);
+        expect(sidebar!.compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+      }
+    });
+
+    it('renders no .map-sidebar while the controls are collapsed, so the panels keep their corner', () => {
       localStorage.setItem('mm-map-sidebar-collapsed', 'true');
-      render(<><OpenSitePlanner /><MapAnalysisCanvas /></>, { wrapper });
+      render(<><OpenTools /><MapAnalysisCanvas /></>, { wrapper });
       expect(screen.getByTestId('site-planner-panel')).toBeInTheDocument();
       expect(document.querySelector('.map-sidebar')).toBeNull();
       expect(document.querySelector('.map-sidebar-toggle')).not.toBeNull();
+    });
+  });
+
+  // Resizing across the phone/desktop boundary left the tool panels mounted
+  // all along, but the open Map controls column turned into a sheet over the
+  // whole map and covered them, so they looked closed. Drive the real
+  // `useIsMobileLayoutViewport` through a controllable matchMedia.
+  describe('tool panels across a layout switch', () => {
+    let mobile = false;
+    const listeners = new Set<(e: { matches: boolean }) => void>();
+    const originalMatchMedia = window.matchMedia;
+
+    beforeEach(() => {
+      mobile = false;
+      listeners.clear();
+      window.matchMedia = ((query: string) => ({
+        get matches() { return mobile; },
+        media: query,
+        onchange: null,
+        addListener: () => {},
+        removeListener: () => {},
+        addEventListener: (_: string, fn: (e: { matches: boolean }) => void) => { listeners.add(fn); },
+        removeEventListener: (_: string, fn: (e: { matches: boolean }) => void) => { listeners.delete(fn); },
+        dispatchEvent: () => false,
+      })) as unknown as typeof window.matchMedia;
+    });
+    afterEach(() => {
+      window.matchMedia = originalMatchMedia;
+    });
+
+    const setMobile = (next: boolean) => {
+      act(() => {
+        mobile = next;
+        for (const fn of [...listeners]) fn({ matches: next });
+      });
+    };
+
+    it('keeps the Site Planner and GNSS DOP panels, and what was typed, both ways', () => {
+      render(<><OpenTools /><MapAnalysisCanvas /></>, { wrapper });
+      const planner = screen.getByTestId('site-planner-panel');
+      const gnss = screen.getByTestId('gnss-dop-panel');
+      fireEvent.change(screen.getByTestId('site-planner-txHeightM'), { target: { value: '27' } });
+      fireEvent.change(screen.getByTestId('gnss-dop-mask'), { target: { value: '15' } });
+      expect(document.querySelector('.map-sidebar')).not.toBeNull();
+
+      setMobile(true);
+      // Same nodes, not remounted copies, and the controls sheet folded away.
+      expect(screen.getByTestId('site-planner-panel')).toBe(planner);
+      expect(screen.getByTestId('gnss-dop-panel')).toBe(gnss);
+      expect((screen.getByTestId('site-planner-txHeightM') as HTMLInputElement).value).toBe('27');
+      expect((screen.getByTestId('gnss-dop-mask') as HTMLInputElement).value).toBe('15');
+      expect(document.querySelector('.map-sidebar')).toBeNull();
+      expect(document.querySelector('.map-sidebar-toggle')).not.toBeNull();
+
+      setMobile(false);
+      expect(screen.getByTestId('site-planner-panel')).toBe(planner);
+      expect(screen.getByTestId('gnss-dop-panel')).toBe(gnss);
+      expect((screen.getByTestId('site-planner-txHeightM') as HTMLInputElement).value).toBe('27');
+      expect((screen.getByTestId('gnss-dop-mask') as HTMLInputElement).value).toBe('15');
+      // Desktop gets its controls column back.
+      expect(document.querySelector('.map-sidebar')).not.toBeNull();
+    });
+
+    it('keeps the Link Profile drawer and its inputs', () => {
+      render(<><OpenTools link /><MapAnalysisCanvas /></>, { wrapper });
+      const drawer = screen.getByTestId('link-profile-drawer');
+      fireEvent.change(screen.getByLabelText(/Frequency \(MHz\)/), { target: { value: '868' } });
+
+      setMobile(true);
+      setMobile(false);
+      expect(screen.getByTestId('link-profile-drawer')).toBe(drawer);
+      expect((screen.getByLabelText(/Frequency \(MHz\)/) as HTMLInputElement).value).toBe('868');
     });
   });
 

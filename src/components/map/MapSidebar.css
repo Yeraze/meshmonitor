@@ -2,10 +2,19 @@
    full-screen sheet on mobile. Absolutely positioned within the map wrapper
    (each map pane is position:relative). */
 
+/* The open panel's inset and width, as tokens so a panel that has to sit
+   beside it (the Map Analysis tool column and Link Profile drawer,
+   src/components/MapAnalysis/MapToolPanels.module.css) reads them instead of
+   copying the numbers. */
+:root {
+  --map-sidebar-inset: 10px;
+  --map-sidebar-width: 300px;
+}
+
 .map-sidebar {
   position: absolute;
-  top: 10px;
-  right: 10px;
+  top: var(--map-sidebar-inset);
+  right: var(--map-sidebar-inset);
   /*
    * 34px, not 10px, so the panel stops ABOVE Leaflet's attribution strip
    * (#5099).
@@ -34,7 +43,7 @@
    * `.dashboard-sidebar-backdrop` in src/styles/dashboard.css.
    */
   z-index: 1001;
-  width: 300px;
+  width: var(--map-sidebar-width);
   max-width: calc(100% - 20px);
   display: flex;
   flex-direction: column;
@@ -179,7 +188,7 @@
     bottom: 0;
     /* Undoes `left: 0` from the block above on viewports that match both. */
     left: auto;
-    width: 300px;
+    width: var(--map-sidebar-width);
     /* Never swallow the pane: at least 40% of the map stays on screen, however
        narrow the pane is (the Nodes split-view pane is ~464px at 844x390). */
     max-width: 60%;
