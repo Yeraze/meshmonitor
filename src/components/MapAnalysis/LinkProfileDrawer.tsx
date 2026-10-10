@@ -37,6 +37,7 @@ import { computeLinkBudget, DEFAULT_K_FACTOR } from '../../utils/linkBudget';
 import { formatDistance } from '../../utils/distance';
 import { UiIcon } from '../icons';
 import { NumberInput } from '../common/NumberInput';
+import toolPanelStyles from './MapToolPanels.module.css';
 
 // Documented defaults (LINK_PROFILE_TOOL_SPEC.md §0.7).
 const DEFAULT_FREQ_MHZ = 915;
@@ -275,7 +276,7 @@ const LinkProfileDrawer: React.FC = () => {
   if (!linkProfileMode && linkEndpoints.length === 0) return null;
 
   return (
-    <div className="map-analysis-link-drawer">
+    <div className={`map-analysis-link-drawer ${toolPanelStyles.clearOfControls}`} data-testid="link-profile-drawer">
       <div className="map-analysis-link-drawer-chart">
         {!endpointA || !endpointB ? (
           <div className="map-analysis-link-drawer-empty">

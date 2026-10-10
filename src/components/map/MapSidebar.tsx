@@ -37,6 +37,8 @@ let openSheetCount = 0;
  * - Mobile landscape (≤500px tall, handled in CSS): a full-height right-edge
  *   sheet capped at 60% of the pane, so the map the controls act on stays
  *   visible. Both orientations start collapsed (#5060).
+ * - Resizing into either mobile layout folds an open panel; resizing back to
+ *   desktop restores the saved preference.
  *
  * Presentational only — it owns layout/collapse, not the controls' content.
  */
@@ -68,6 +70,29 @@ export function MapSidebar({
     // of the map), desktop starts expanded (#4909).
     return isMobile;
   });
+
+  // Crossing into the mobile layout folds an open panel. Left open, the
+  // desktop column turns into a sheet over the whole map pane (60% of it in
+  // landscape) and buries whatever sat beside it: on Map Analysis an open Site
+  // Planner or GNSS DOP panel looked closed, and the user went back to Tools
+  // to reopen it. Crossing back restores the saved preference. In memory only,
+  // so a resize never overwrites what the user chose. Adjusted during render
+  // (React's prop-change pattern) rather than in an effect.
+  const [prevIsMobile, setPrevIsMobile] = useState(isMobile);
+  if (isMobile !== prevIsMobile) {
+    setPrevIsMobile(isMobile);
+    if (isMobile) {
+      setCollapsed(true);
+    } else {
+      let stored: string | null = null;
+      try {
+        stored = localStorage.getItem(storageKey);
+      } catch {
+        /* storage unavailable — fall back to the desktop default */
+      }
+      setCollapsed(stored === 'true');
+    }
+  }
 
   useEffect(() => {
     if (collapsed) return;

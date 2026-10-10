@@ -61,4 +61,49 @@ describe('MapSidebar (#4909)', () => {
     expect(screen.getByText('Legend')).toBeTruthy();
     expect(localStorage.getItem('mm-test-sidebar')).toBe('false');
   });
+
+  // Left open across a desktop -> phone resize, the column became a sheet over
+  // the map and buried the Map Analysis tool panels beside it.
+  describe('resizing across the mobile boundary', () => {
+    const ui = (key: string) => <MapSidebar storageKey={key}><div>Legend</div></MapSidebar>;
+
+    it('folds an open panel on entering the mobile layout and reopens it on leaving', () => {
+      const { rerender } = render(ui('mm-test-cross'));
+      expect(screen.getByText('Legend')).toBeTruthy();
+
+      mockIsMobile = true;
+      rerender(ui('mm-test-cross'));
+      expect(screen.queryByText('Legend')).toBeNull();
+      expect(screen.getByTitle(/Show/)).toBeTruthy();
+      expect(document.documentElement.classList.contains('mm-map-sheet-open')).toBe(false);
+
+      mockIsMobile = false;
+      rerender(ui('mm-test-cross'));
+      expect(screen.getByText('Legend')).toBeTruthy();
+      // A resize is not a choice: nothing was written.
+      expect(localStorage.getItem('mm-test-cross')).toBeNull();
+    });
+
+    it('keeps a saved desktop collapse when crossing back', () => {
+      localStorage.setItem('mm-test-cross2', 'true');
+      const { rerender } = render(ui('mm-test-cross2'));
+      mockIsMobile = true;
+      rerender(ui('mm-test-cross2'));
+      mockIsMobile = false;
+      rerender(ui('mm-test-cross2'));
+      expect(screen.queryByText('Legend')).toBeNull();
+      expect(localStorage.getItem('mm-test-cross2')).toBe('true');
+    });
+
+    it('lets the user open the sheet again on the phone', () => {
+      const { rerender } = render(ui('mm-test-cross3'));
+      mockIsMobile = true;
+      rerender(ui('mm-test-cross3'));
+      fireEvent.click(screen.getByLabelText(/Show/));
+      expect(screen.getByText('Legend')).toBeTruthy();
+      // Re-rendering on the same layout must not fold it again.
+      rerender(ui('mm-test-cross3'));
+      expect(screen.getByText('Legend')).toBeTruthy();
+    });
+  });
 });
