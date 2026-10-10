@@ -790,6 +790,33 @@ describe('SettingsTab — aircraft age-out (#5364/#5365 Phase 2)', () => {
     expect(scopedBody).not.toHaveProperty('aircraftAgeOutLastRunAt');
     expect(scopedBody).not.toHaveProperty('aircraftAgeOutLastResult');
   });
+
+  it('aircraft position requests (#5704): off by default, saved per source, cost shown beside it', async () => {
+    render(
+      <SourceProvider sourceId="source-a" sourceType="meshtastic_tcp">
+        <SettingsTab {...baseProps} mode="source" />
+      </SourceProvider>
+    );
+    const box = await waitFor(() => {
+      const el = byId<HTMLInputElement>('aircraftPositionRequestsEnabled');
+      expect(el).not.toBeNull();
+      return el;
+    });
+    expect(box.checked).toBe(false);
+    expect(screen.getByTestId('aircraft-position-requests')).toHaveTextContent('settings.aircraft.position_requests_help');
+
+    fireEvent.click(box);
+    await waitFor(() => expect(saveBarCapture.current!.hasChanges).toBe(true));
+    await saveBarCapture.current!.onSave();
+
+    const calls = csrfFetchMock.mock.calls as [string, RequestInit][];
+    const scopedBody = JSON.parse(calls.find(([url]) => url.includes('sourceId='))![1].body as string);
+    const globalBody = JSON.parse(calls.find(([url]) => !url.includes('sourceId='))![1].body as string);
+    expect(scopedBody.aircraftPositionRequestsEnabled).toBe('true');
+    expect(globalBody).not.toHaveProperty('aircraftPositionRequestsEnabled');
+    // The persisted hourly-cap state is server-written only.
+    expect(scopedBody).not.toHaveProperty('aircraftPositionRequestStarts');
+  });
 });
 
 // ---------------------------------------------------------------------------
