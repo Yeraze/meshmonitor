@@ -18,6 +18,9 @@ import type { Channel } from '../../types/device';
 import BrokerPresetSelector from '../MQTT/BrokerPresetSelector';
 import { applyPresetToDevice, matchDevicePreset } from '../MQTT/brokerPresets';
 
+const MQTT_SAVE_NEEDS_LOAD =
+  'Load this node\u2019s MQTT configuration first. Saving without it would replace the node\u2019s MQTT settings with defaults.';
+
 interface ModuleConfigurationSectionProps {
   // CollapsibleSection component (passed from parent)
   CollapsibleSection: React.FC<{
@@ -39,6 +42,13 @@ interface ModuleConfigurationSectionProps {
   mqttJsonEnabled: boolean;
   mqttRoot: string;
   mqttTlsEnabled: boolean;
+  mqttProxyToClientEnabled: boolean;
+  mqttMapReportingEnabled: boolean;
+  mqttMapPublishIntervalSecs: number;
+  mqttMapPositionPrecision: number;
+  mqttMapShouldReportLocation: boolean;
+  /** Save is blocked until this node's MQTT config is loaded (firmware replaces the struct). */
+  mqttLoadedForSelectedNode: boolean;
   onMQTTConfigChange: (field: string, value: any) => void;
   onSaveMQTTConfig: () => Promise<void>;
 
@@ -139,6 +149,12 @@ export const ModuleConfigurationSection: React.FC<ModuleConfigurationSectionProp
   mqttJsonEnabled,
   mqttRoot,
   mqttTlsEnabled,
+  mqttProxyToClientEnabled,
+  mqttMapReportingEnabled,
+  mqttMapPublishIntervalSecs,
+  mqttMapPositionPrecision,
+  mqttMapShouldReportLocation,
+  mqttLoadedForSelectedNode,
   onMQTTConfigChange,
   onSaveMQTTConfig,
   neighborInfoEnabled,
@@ -215,6 +231,7 @@ export const ModuleConfigurationSection: React.FC<ModuleConfigurationSectionProp
 
   // #5649: one scope per independently-saved group. A blank or out-of-range
   // number field blocks only its own Save, so nothing invalid goes to the node.
+  const mqttNumbers = useNumberInputScope();
   const neighborInfoNumbers = useNumberInputScope();
   const telemetryNumbers = useNumberInputScope();
   const trafficManagementNumbers = useNumberInputScope();
@@ -226,6 +243,7 @@ export const ModuleConfigurationSection: React.FC<ModuleConfigurationSectionProp
       title={t('admin_commands.module_configuration', 'Module Configuration')}
     >
       {/* MQTT Config Section */}
+      <NumberInputScope scope={mqttNumbers}>
       <CollapsibleSection
         id="admin-mqtt-config"
         title={t('admin_commands.mqtt_configuration')}
@@ -373,20 +391,121 @@ export const ModuleConfigurationSection: React.FC<ModuleConfigurationSectionProp
                 </div>
               </label>
             </div>
+            <div className="setting-item">
+              <label style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '0.5rem', width: '100%' }}>
+                <input
+                  type="checkbox"
+                  data-testid="admin-mqtt-proxy-to-client"
+                  checked={mqttProxyToClientEnabled}
+                  onChange={(e) => onMQTTConfigChange('proxyToClientEnabled', e.target.checked)}
+                  disabled={isExecuting}
+                  style={{ width: 'auto', margin: 0, flexShrink: 0 }}
+                />
+                <div style={{ flex: 1 }}>
+                  <div>{t('mqtt_config.proxy_to_client')}</div>
+                  <span className="setting-description">{t('mqtt_config.proxy_to_client_description')}</span>
+                </div>
+              </label>
+            </div>
+            <div className="setting-item">
+              <label style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '0.5rem', width: '100%' }}>
+                <input
+                  type="checkbox"
+                  data-testid="admin-mqtt-map-reporting"
+                  checked={mqttMapReportingEnabled}
+                  onChange={(e) => onMQTTConfigChange('mapReportingEnabled', e.target.checked)}
+                  disabled={isExecuting}
+                  style={{ width: 'auto', margin: 0, flexShrink: 0 }}
+                />
+                <div style={{ flex: 1 }}>
+                  <div>{t('mqtt_config.map_reporting')}</div>
+                  <span className="setting-description">{t('mqtt_config.map_reporting_description')}</span>
+                </div>
+              </label>
+            </div>
+            {mqttMapReportingEnabled && (
+              <div style={{
+                marginLeft: '1rem',
+                paddingLeft: '1rem',
+                borderLeft: '2px solid var(--color-surface-active)',
+                marginTop: '0.5rem',
+                marginBottom: '1rem'
+              }}>
+                <div className="setting-item">
+                  <label htmlFor="adminMqttMapPublishIntervalSecs">
+                    {t('mqtt_config.map_publish_interval')}
+                    <span className="setting-description">{t('mqtt_config.map_publish_interval_description')}</span>
+                  </label>
+                  <NumberInput
+                    id="adminMqttMapPublishIntervalSecs"
+                    min={0}
+                    max={4294967295}
+                    integer
+                    value={mqttMapPublishIntervalSecs}
+                    onChange={(v) => onMQTTConfigChange('mapPublishIntervalSecs', v)}
+                    disabled={isExecuting}
+                    className="setting-input"
+                    style={{ width: '150px' }}
+                  />
+                </div>
+                <div className="setting-item">
+                  <label htmlFor="adminMqttMapPositionPrecision">
+                    {t('mqtt_config.map_position_precision')}
+                    <span className="setting-description">{t('mqtt_config.map_position_precision_description')}</span>
+                  </label>
+                  <NumberInput
+                    id="adminMqttMapPositionPrecision"
+                    min={10}
+                    max={19}
+                    alsoValid={[0]}
+                    zeroHint={t('zero_hint.map_position_precision')}
+                    integer
+                    value={mqttMapPositionPrecision}
+                    onChange={(v) => onMQTTConfigChange('mapPositionPrecision', v)}
+                    disabled={isExecuting}
+                    className="setting-input"
+                    style={{ width: '100px' }}
+                  />
+                </div>
+                <div className="setting-item">
+                  <label style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '0.5rem', width: '100%' }}>
+                    <input
+                      type="checkbox"
+                      data-testid="admin-mqtt-map-report-location"
+                      checked={mqttMapShouldReportLocation}
+                      onChange={(e) => onMQTTConfigChange('mapShouldReportLocation', e.target.checked)}
+                      disabled={isExecuting}
+                      style={{ width: 'auto', margin: 0, flexShrink: 0 }}
+                    />
+                    <div style={{ flex: 1 }}>
+                      <div>{t('mqtt_config.map_report_location')}</div>
+                      <span className="setting-description">{t('mqtt_config.map_report_location_description')}</span>
+                    </div>
+                  </label>
+                </div>
+              </div>
+            )}
           </>
+        )}
+        {selectedNodeNum !== null && !mqttLoadedForSelectedNode && (
+          <div className="setting-description" style={{ marginBottom: '0.5rem', color: 'var(--color-warning)' }}>
+            {t('admin_commands.mqtt_save_needs_load', MQTT_SAVE_NEEDS_LOAD)}
+          </div>
         )}
         <button
           className="save-button"
-          onClick={onSaveMQTTConfig}
-          disabled={isExecuting || selectedNodeNum === null}
+          onClick={mqttNumbers.invalid || !mqttLoadedForSelectedNode ? undefined : onSaveMQTTConfig}
+          disabled={isExecuting || selectedNodeNum === null || mqttNumbers.invalid || !mqttLoadedForSelectedNode}
+          title={!mqttLoadedForSelectedNode ? t('admin_commands.mqtt_save_needs_load', MQTT_SAVE_NEEDS_LOAD) : undefined}
           style={{
-            opacity: (isExecuting || selectedNodeNum === null) ? 0.5 : 1,
-            cursor: (isExecuting || selectedNodeNum === null) ? 'not-allowed' : 'pointer'
+            opacity: (isExecuting || selectedNodeNum === null || mqttNumbers.invalid || !mqttLoadedForSelectedNode) ? 0.5 : 1,
+            cursor: (isExecuting || selectedNodeNum === null || mqttNumbers.invalid || !mqttLoadedForSelectedNode) ? 'not-allowed' : 'pointer'
           }}
         >
           {isExecuting ? t('common.saving') : t('admin_commands.save_mqtt_config')}
         </button>
       </CollapsibleSection>
+      </NumberInputScope>
 
       {/* Neighbor Info Config Section */}
       <NumberInputScope scope={neighborInfoNumbers}>

@@ -59,6 +59,12 @@ function Harness({ initial }: { initial: Partial<Mqtt> }) {
       mqttJsonEnabled={mqtt.jsonEnabled}
       mqttRoot={mqtt.root}
       mqttTlsEnabled={mqtt.tlsEnabled}
+      mqttProxyToClientEnabled={false}
+      mqttMapReportingEnabled={false}
+      mqttMapPublishIntervalSecs={0}
+      mqttMapPositionPrecision={0}
+      mqttMapShouldReportLocation={false}
+      mqttLoadedForSelectedNode={true}
       onMQTTConfigChange={(f, v) => {
         changes.push([f, v]);
         setMqtt((prev) => ({ ...prev, [f]: v }));
