@@ -74,7 +74,7 @@ describe('LocalMarkerEditorModal (#5686)', () => {
   it('needs a label, then saves the clean input', async () => {
     const onSave = vi.fn().mockResolvedValue(undefined);
     const onClose = vi.fn();
-    render(<LocalMarkerEditorModal isOpen defaultCoords={{ lat: 10.5, lon: 20.25 }} onClose={onClose} onSave={onSave} />);
+    render(<LocalMarkerEditorModal isOpen defaultCoords={{ lat: 10.500000123456789, lon: 20.25 }} onClose={onClose} onSave={onSave} />);
     const save = screen.getByRole('button', { name: 'Save' });
     expect(save).toBeDisabled();
     fireEvent.change(screen.getByLabelText('Label'), { target: { value: '  Aid station  ' } });

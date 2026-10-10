@@ -33,6 +33,10 @@ export interface LocalMarkerEditorModalProps {
   onSave: (input: MapMarkerInput) => Promise<void>;
 }
 
+/** A map click gives ~15 decimals; 6 (about 0.1 m) is plenty and fits the field. */
+const roundCoord = (v: number | null | undefined): number | null =>
+  v == null || !Number.isFinite(v) ? null : Math.round(v * 1e6) / 1e6;
+
 export default function LocalMarkerEditorModal({ isOpen, initial, defaultCoords, onClose, onSave }: LocalMarkerEditorModalProps) {
   const { t } = useTranslation();
   const numberScope = useNumberInputScope();
@@ -50,8 +54,8 @@ export default function LocalMarkerEditorModal({ isOpen, initial, defaultCoords,
     if (!isOpen) return;
     setLabel(initial?.label ?? '');
     setDescription(initial?.description ?? '');
-    setLat(initial?.latitude ?? defaultCoords?.lat ?? null);
-    setLon(initial?.longitude ?? defaultCoords?.lon ?? null);
+    setLat(roundCoord(initial?.latitude ?? defaultCoords?.lat));
+    setLon(roundCoord(initial?.longitude ?? defaultCoords?.lon));
     setAltitude(initial?.altitude ?? null);
     setIcon(initial?.icon ?? 'pin');
     setColor(initial?.color ?? 'accent');
@@ -99,12 +103,12 @@ export default function LocalMarkerEditorModal({ isOpen, initial, defaultCoords,
           <div className={styles.row}>
             <label className={styles.field}>
               <span>{t('localMarkers.latitude', 'Latitude')}</span>
-              <NumberInput className={styles.input} step={0.000001} min={-90} max={90} value={lat}
+              <NumberInput className={styles.input} step="any" min={-90} max={90} value={lat}
                 allowEmpty onChange={setLat} />
             </label>
             <label className={styles.field}>
               <span>{t('localMarkers.longitude', 'Longitude')}</span>
-              <NumberInput className={styles.input} step={0.000001} min={-180} max={180} value={lon}
+              <NumberInput className={styles.input} step="any" min={-180} max={180} value={lon}
                 allowEmpty onChange={setLon} />
             </label>
           </div>
