@@ -301,6 +301,30 @@ describe('shouldFilterNotificationAsync', () => {
     expect(result).toBe(true);
   });
 
+  it('filters a protocol tapback when notifyOnEmoji is false, whatever its text (#5720)', async () => {
+    mockDb.notifications.getUserPreferences.mockResolvedValue({ ...defaultPrefs, notifyOnEmoji: false });
+    expect(await shouldFilterNotificationAsync(1, { ...baseContext, messageText: '1️⃣', isTapback: true })).toBe(true);
+    // A tapback whose payload is not emoji (some clients send a word) is still a reaction.
+    expect(await shouldFilterNotificationAsync(1, { ...baseContext, messageText: 'ok', isTapback: true })).toBe(true);
+  });
+
+  it('filters keycap, spaced and newer emoji text without the flag (#5720)', async () => {
+    mockDb.notifications.getUserPreferences.mockResolvedValue({ ...defaultPrefs, notifyOnEmoji: false });
+    for (const messageText of ['1️⃣', '👍 👍', '🫡', '👍🏽']) {
+      expect(await shouldFilterNotificationAsync(1, { ...baseContext, messageText })).toBe(true);
+    }
+  });
+
+  it('never filters a real text reply or a number as a reaction (#5720)', async () => {
+    mockDb.notifications.getUserPreferences.mockResolvedValue({ ...defaultPrefs, notifyOnEmoji: false });
+    expect(await shouldFilterNotificationAsync(1, { ...baseContext, messageText: 'see you at 5', isTapback: false })).toBe(false);
+    expect(await shouldFilterNotificationAsync(1, { ...baseContext, messageText: '42' })).toBe(false);
+  });
+
+  it('keeps a protocol tapback when notifyOnEmoji is true (#5720)', async () => {
+    expect(await shouldFilterNotificationAsync(1, { ...baseContext, messageText: '👍', isTapback: true })).toBe(false);
+  });
+
   it('allows emoji-only message when notifyOnEmoji is true', async () => {
     const result = await shouldFilterNotificationAsync(1, {
       ...baseContext,
