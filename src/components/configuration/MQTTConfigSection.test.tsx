@@ -7,7 +7,7 @@
  */
 import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, fireEvent } from '@testing-library/react';
 
 // --- mocks ---------------------------------------------------------------
 
@@ -61,6 +61,7 @@ const baseProps = {
   mapReportingEnabled: false,
   mapPublishIntervalSecs: 0,
   mapPositionPrecision: 13,
+  mapShouldReportLocation: false,
   setMqttEnabled: vi.fn(),
   setMqttAddress: vi.fn(),
   setMqttUsername: vi.fn(),
@@ -73,6 +74,7 @@ const baseProps = {
   setMapReportingEnabled: vi.fn(),
   setMapPublishIntervalSecs: vi.fn(),
   setMapPositionPrecision: vi.fn(),
+  setMapShouldReportLocation: vi.fn(),
   isSaving: false,
   onSave: vi.fn(async () => {}),
 };
@@ -179,5 +181,32 @@ describe('MQTTConfigSection — "no broker is linked" warning (#5013)', () => {
     sourcesRef.current = [node(), broker()];
     render(<MQTTConfigSection {...proxyOn} proxyClientAttached />);
     expect(screen.queryByTestId(WARNING)).toBeNull();
+  });
+});
+
+// MapReportSettings.should_report_location (fw 2.6.8+): the local form used to
+// have no control for it, and Save sent it as false.
+describe('MQTTConfigSection — Report Location consent', () => {
+  const mapOn = { ...baseProps, mqttEnabled: true, mapReportingEnabled: true };
+
+  beforeEach(() => hasPermissionMock.mockReturnValue(true));
+
+  it('shows the loaded consent under Map Reporting', () => {
+    render(<MQTTConfigSection {...mapOn} mapShouldReportLocation />);
+    expect(screen.getByRole('checkbox', { name: /^mqtt_config\.map_report_location/ })).toBeChecked();
+  });
+
+  it('ticking it calls the setter with the new value', () => {
+    const setMapShouldReportLocation = vi.fn();
+    render(<MQTTConfigSection {...mapOn} setMapShouldReportLocation={setMapShouldReportLocation} />);
+    const box = screen.getByRole('checkbox', { name: /^mqtt_config\.map_report_location/ });
+    expect(box).not.toBeChecked();
+    fireEvent.click(box);
+    expect(setMapShouldReportLocation).toHaveBeenCalledWith(true);
+  });
+
+  it('shows the zero hint for a stored precision of 0', () => {
+    render(<MQTTConfigSection {...mapOn} mapPositionPrecision={0} />);
+    expect(screen.getByText('zero_hint.map_position_precision')).toBeInTheDocument();
   });
 });

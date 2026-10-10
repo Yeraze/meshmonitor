@@ -219,6 +219,16 @@ describe('DeviceAdminService', () => {
       expect(mgr.updateCachedDeviceConfig).not.toHaveBeenCalled();
     });
 
+    it('setMQTTConfig replaces the cached MQTT module config (it used to land in the device config)', async () => {
+      const mgr = makeFakeManager();
+      const svc = new DeviceAdminService(mgr as any);
+      const mqtt = { enabled: true, mapReportSettings: { positionPrecision: 0, shouldReportLocation: true } };
+      await svc.setMQTTConfig(mqtt);
+      expect(createSetMQTTConfigMessage).toHaveBeenCalledWith(mqtt, expect.any(Uint8Array));
+      expect(mgr.updateCachedModuleConfig).toHaveBeenCalledWith('mqtt', mqtt, 'replace');
+      expect(mgr.updateCachedDeviceConfig).not.toHaveBeenCalled();
+    });
+
     it('setNodeOwner builds a set_owner admin message', async () => {
       const mgr = makeFakeManager();
       const svc = new DeviceAdminService(mgr as any);
