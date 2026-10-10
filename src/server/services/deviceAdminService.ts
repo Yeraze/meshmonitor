@@ -234,7 +234,8 @@ export class DeviceAdminService {
       const adminPacket = protobufService.createAdminPacket(setConfigMsg, this.mgr.getLocalNodeInfo()?.nodeNum || 0, this.mgr.getLocalNodeInfo()?.nodeNum);
 
       await this.mgr.sendLocalAdminPacket(adminPacket);
-      this.mgr.updateCachedDeviceConfig('mqtt', config);
+      // MQTT is a module config, and firmware replaces the whole struct (#5045).
+      this.mgr.updateCachedModuleConfig('mqtt', config, 'replace');
       logger.debug('⚙️ Sent set_mqtt_config admin message (direct, no transaction)');
     } catch (error) {
       logger.error('❌ Error sending MQTT config:', error);

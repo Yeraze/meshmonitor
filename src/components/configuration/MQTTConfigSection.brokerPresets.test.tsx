@@ -51,6 +51,7 @@ const untouched = {
   setMapReportingEnabled: vi.fn(),
   setMapPublishIntervalSecs: vi.fn(),
   setMapPositionPrecision: vi.fn(),
+  setMapShouldReportLocation: vi.fn(),
 };
 
 function Harness({ initial }: { initial: Initial }) {
@@ -72,6 +73,7 @@ function Harness({ initial }: { initial: Initial }) {
       mapReportingEnabled
       mapPublishIntervalSecs={3600}
       mapPositionPrecision={13}
+      mapShouldReportLocation
       setMqttAddress={setAddress}
       setMqttUsername={setUsername}
       setMqttPassword={setPassword}

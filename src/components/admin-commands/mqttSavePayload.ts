@@ -1,7 +1,8 @@
 import type { MQTTConfigState } from './useAdminCommandsState';
 
 /**
- * The MQTTConfig a remote-admin Save sends (`setMQTTConfig`).
+ * The MQTTConfig a Save sends: the remote-admin form (`setMQTTConfig`) and the
+ * local Device Configuration form (`POST /api/config/mqtt`) both build it here.
  *
  * Firmware replaces the node's whole MQTT struct with this message, so it must
  * name every MQTTConfig field (module_config.proto, tags 1-11). A field left out
@@ -26,7 +27,10 @@ export interface AdminMqttSavePayload {
   };
 }
 
-export function buildAdminMqttSavePayload(mqtt: MQTTConfigState): AdminMqttSavePayload {
+/** The form fields the payload is built from (the local form has no load gate). */
+export type MqttSaveFields = Omit<MQTTConfigState, 'loadedForNodeNum'>;
+
+export function buildAdminMqttSavePayload(mqtt: MqttSaveFields): AdminMqttSavePayload {
   return {
     enabled: mqtt.enabled,
     address: mqtt.address,
