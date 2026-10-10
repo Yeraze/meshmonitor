@@ -25,6 +25,7 @@ import { isBogusPosition } from '../../utils/nullIsland.js';
 import { LruCache } from '../utils/lruCache.js';
 import type { LatLng } from '../../utils/greatCircle.js';
 import {
+  AIRCRAFT_EXCLUDED_SOURCE_TYPES,
   classifyAircraft,
   isAircraftTransition,
   normalizeAircraftManualMark,
@@ -71,8 +72,8 @@ export const GROUND_MEMO_MAX = 20_000;
 /** Delay after boot before the one-time silent backfill runs (D11). */
 export const BACKFILL_DELAY_MS = 120_000;
 
-/** Non-Meshtastic source types the D11 backfill and reclassify never touch (D2). */
-export const AIRCRAFT_EXCLUDED_SOURCE_TYPES: ReadonlySet<string> = new Set(['meshcore', 'meshcore_mqtt', 'reticulum']);
+/** Non-Meshtastic source types the D11 backfill and reclassify never touch (D2). Lives in the shared util. */
+export { AIRCRAFT_EXCLUDED_SOURCE_TYPES };
 
 interface PendingJob {
   sourceId: string;

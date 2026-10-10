@@ -20,6 +20,34 @@ export type AircraftDisplayMode = 'show' | 'mark' | 'hide';
 export type AircraftManualMark = 'not_aircraft' | 'aircraft';
 export const AIRCRAFT_MANUAL_MARKS: readonly AircraftManualMark[] = ['not_aircraft', 'aircraft'];
 
+/**
+ * Source types aircraft detection never runs on (D2): MeshCore and Reticulum
+ * report no Meshtastic-style altitude. Shared so the server gates and the
+ * Node Details menu agree.
+ */
+export const AIRCRAFT_EXCLUDED_SOURCE_TYPES: ReadonlySet<string> = new Set(['meshcore', 'meshcore_mqtt', 'reticulum']);
+
+/**
+ * Which manual-mark actions Node Details offers for a node (#5715). Pure, so
+ * the menu and its tests share one rule:
+ *  - "Mark as not aircraft" while the node reads as a likely aircraft;
+ *  - "Mark as aircraft" while the classifier says it is not one;
+ *  - "Clear aircraft override" while any mark or fixed anchor is set.
+ * A node never classified (no altitude, or detection off) gets only Clear,
+ * and only if a mark is somehow left over.
+ */
+export function aircraftMarkActions(node: {
+  likelyAircraft?: boolean | null;
+  aircraftManualMark?: string | null;
+  aircraftFixedAt?: number | null;
+}): { notAircraft: boolean; aircraft: boolean; clear: boolean } {
+  return {
+    notAircraft: node.likelyAircraft === true,
+    aircraft: node.likelyAircraft === false,
+    clear: normalizeAircraftManualMark(node.aircraftManualMark) !== null || node.aircraftFixedAt != null,
+  };
+}
+
 /** Narrow a stored value to a manual mark; anything else reads as no mark. */
 export function normalizeAircraftManualMark(v: unknown): AircraftManualMark | null {
   return v === 'not_aircraft' || v === 'aircraft' ? v : null;
