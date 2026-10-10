@@ -449,6 +449,20 @@ The MeshCore map can render **route lines** between your local node and each con
 
 Toggle path visibility from the map toolbar. Paths are populated by the **Discover Path** button in the contact-detail panel (sends firmware CMD 52) or automatically by the [Auto-Pathfinding](#auto-pathfinding) scheduler. When the firmware responds with path discovery results (push code 0x8D), the route is stored and rendered immediately.
 
+## Trace SNR History
+
+A MeshCore trace records, for every hop on its path, how well each node heard the one before it. MeshMonitor stores these per-hop readings from **every completed trace your companion radio hears**: the replies to traces you send from a contact's page, and traces other nodes run that finish within range of your radio. It sends nothing to collect them.
+
+Open a contact in **Node Details** to see **Trace SNR history**: one row per link direction, with the latest SNR, the average and range, the number of samples and a small trend line.
+
+- **Direction matters.** "A heard B" and "B heard A" are separate rows; the two readings are different measurements.
+- **Hops are identified by a 1- or 2-byte hash** of a node's public key. A hash that matches exactly one of your contacts is shown by name. One that matches none shows as unknown, and one that several contacts share is marked as shared; MeshMonitor does not guess.
+- **The first sender of an overheard trace is unknown.** The trace does not carry who started it. For a trace you sent, it is your own node.
+- **Per source.** Each source keeps what its own radio heard. Reading the history needs **Traceroute: read** on that source.
+- **Kept for 90 days.** Included in system backups. Deleted with the source.
+
+Only companion sources collect this (a repeater's serial console and MQTT ingest sources do not report traces).
+
 ## Position History
 
 The MeshCore map can render a per-node movement trail, mirroring the Meshtastic Position History feature:
