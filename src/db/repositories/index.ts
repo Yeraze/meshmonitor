@@ -117,6 +117,7 @@ export type {
   RecordMeshtasticHeardRepeaterParams,
 } from './meshtasticHeardRepeaters.js';
 export { PkiExchangeStateRepository } from './pkiExchangeState.js';
+export { MapMarkersRepository } from './mapMarkers.js';
 export type {
   PkiExchangeStateRow,
   PkiExchangeStateValue,

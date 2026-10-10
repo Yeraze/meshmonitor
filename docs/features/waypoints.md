@@ -113,3 +113,7 @@ Migration **165** adds the four preference columns (`notify_on_waypoint`, `waypo
 - **Automation hooks** for the waypoint message type are not yet available — Auto-Responders and Geofence Triggers do not currently match on waypoint events.
 
 Both are tracked as follow-ups; see [#2936](https://github.com/Yeraze/meshmonitor/issues/2936) for the umbrella issue.
+
+## Local markers
+
+To mark a spot on the map without sending anything to the mesh, use a [local marker](./local-markers.md) instead.

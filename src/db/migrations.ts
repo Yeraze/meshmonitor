@@ -217,6 +217,7 @@ import { migration as splitTranslationApiKeyMigration, runMigration195Postgres, 
 import { migration as addNotificationMessageTemplatesMigration, runMigration196Postgres, runMigration196Mysql } from '../server/migrations/196_add_notification_message_templates.js';
 import { migration as widenSystemBackupTotalSizeMigration, runMigration197Postgres, runMigration197Mysql } from '../server/migrations/197_widen_system_backup_total_size.js';
 import { migration as createPkiExchangeStateMigration, runMigration198Postgres, runMigration198Mysql } from '../server/migrations/198_create_pki_exchange_state.js';
+import { migration as createMapMarkersMigration, runMigration199Postgres, runMigration199Mysql } from '../server/migrations/199_create_map_markers.js';
 
 // ============================================================================
 // Registry
@@ -3212,4 +3213,18 @@ registry.register({
   sqlite: (db) => createPkiExchangeStateMigration.up(db),
   postgres: (client) => runMigration198Postgres(client),
   mysql: (pool) => runMigration198Mysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 199: map_markers (#5686, local map markers). PER-SOURCE.
+// Planning notes on the map; never transmitted.
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 199,
+  name: 'create_map_markers',
+  settingsKey: 'migration_199_create_map_markers',
+  sqlite: (db) => createMapMarkersMigration.up(db),
+  postgres: (client) => runMigration199Postgres(client),
+  mysql: (pool) => runMigration199Mysql(pool),
 });

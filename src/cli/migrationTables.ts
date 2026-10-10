@@ -122,6 +122,8 @@ export const TABLE_ORDER = [
   'auto_key_repair_log',
   // 5691: Reliable PKI per-node exchange state + persisted hourly priming timer.
   'pki_exchange_state',
+  // #5686: local map markers (user planning data; never transmitted).
+  'map_markers',
   'solar_estimates',
   'system_backup_history',
   // 3271: global estimated positions (no sourceId, no FK — one row per nodeNum)

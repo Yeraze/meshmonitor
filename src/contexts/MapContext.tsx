@@ -142,6 +142,9 @@ interface MapContextType {
    *  above (drawn only while both are on). Per-browser, default ON. */
   showTracerouteConfirmedLinks: boolean;
   setShowTracerouteConfirmedLinks: (show: boolean) => void;
+  /** #5686: local map markers (planning notes, never transmitted). Per-browser, default ON. */
+  showLocalMarkers: boolean;
+  setShowLocalMarkers: (show: boolean) => void;
   animatedNodes: Set<string>;
   triggerNodeAnimation: (nodeId: string) => void;
   mapCenterTarget: [number, number] | null;
@@ -247,6 +250,14 @@ export const MapProvider: React.FC<MapProviderProps> = ({ children }) => {
   const [showTracerouteConfirmedLinks, setShowTracerouteConfirmedLinksState] = useState<boolean>(() => {
     try {
       return localStorage.getItem('showTracerouteConfirmedLinks') !== 'false';
+    } catch {
+      return true;
+    }
+  });
+  // #5686: default ON, so only an explicit 'false' turns it off.
+  const [showLocalMarkers, setShowLocalMarkersState] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem('showLocalMarkers') !== 'false';
     } catch {
       return true;
     }
@@ -409,6 +420,15 @@ export const MapProvider: React.FC<MapProviderProps> = ({ children }) => {
     setShowTracerouteConfirmedLinksState(value);
     try {
       localStorage.setItem('showTracerouteConfirmedLinks', value.toString());
+    } catch {
+      // storage unavailable: the toggle still works for this session
+    }
+  }, []);
+
+  const setShowLocalMarkers = React.useCallback((value: boolean) => {
+    setShowLocalMarkersState(value);
+    try {
+      localStorage.setItem('showLocalMarkers', value.toString());
     } catch {
       // storage unavailable: the toggle still works for this session
     }
@@ -655,6 +675,8 @@ export const MapProvider: React.FC<MapProviderProps> = ({ children }) => {
     setShowCrossSourceLinks,
     showTracerouteConfirmedLinks,
     setShowTracerouteConfirmedLinks,
+    showLocalMarkers,
+    setShowLocalMarkers,
     animatedNodes,
     triggerNodeAnimation,
     mapCenterTarget,
@@ -707,6 +729,7 @@ export const MapProvider: React.FC<MapProviderProps> = ({ children }) => {
     showPolarGrid, setShowPolarGrid,
     showCrossSourceLinks, setShowCrossSourceLinks,
     showTracerouteConfirmedLinks, setShowTracerouteConfirmedLinks,
+    showLocalMarkers, setShowLocalMarkers,
     animatedNodes, triggerNodeAnimation,
     mapCenterTarget, setMapCenterTarget,
     mapCenter, setMapCenter,

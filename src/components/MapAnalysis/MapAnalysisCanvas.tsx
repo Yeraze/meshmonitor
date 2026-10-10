@@ -42,6 +42,7 @@ import PositionTrailsLayer from './layers/PositionTrailsLayer';
 import CoverageHeatmapLayer from './layers/CoverageHeatmapLayer';
 import SnrOverlayLayer from './layers/SnrOverlayLayer';
 import WaypointsLayer from '../map/layers/WaypointsLayer';
+import MapMarkersLayer, { LOCAL_MARKERS_PANE_Z } from '../map/layers/MapMarkersLayer';
 import AtakContactsLayer from '../map/layers/AtakContactsLayer';
 import PolarGridLayer from './layers/PolarGridLayer';
 import AccuracyRegionsLayer from './layers/AccuracyRegionsLayer';
@@ -389,6 +390,10 @@ export default function MapAnalysisCanvas() {
         </Pane>
         <Pane name="waypoints" style={{ zIndex: 650 }}>
           {config.layers.waypoints.enabled && <WaypointsLayer />}
+        </Pane>
+        {/* #5686: local map markers (never transmitted), under waypoints and nodes. */}
+        <Pane name="localMarkers" style={{ zIndex: LOCAL_MARKERS_PANE_Z }}>
+          {config.layers.localMarkers?.enabled && <MapMarkersLayer />}
         </Pane>
         <Pane name="atakContacts" style={{ zIndex: 640 }}>
           {config.layers.atakContacts.enabled && <AtakContactsLayer />}

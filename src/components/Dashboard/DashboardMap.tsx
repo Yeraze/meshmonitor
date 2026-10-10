@@ -24,6 +24,7 @@ import { getHopColor } from '../../utils/mapIcons';
 import { NodeMarkersLayer, type NodeMarkerDescriptor } from '../map/layers/NodeMarkersLayer';
 import type { CustomTileset } from '../../config/tilesets';
 import DashboardWaypoints from './DashboardWaypoints';
+import { LocalMarkers } from '../map/layers/MapMarkersLayer';
 import DashboardAtakContacts from './DashboardAtakContacts';
 import DashboardNodePopup, { type NodeSourceRef } from './DashboardNodePopup';
 import DashboardNeighborPopup from './DashboardNeighborPopup';
@@ -334,6 +335,8 @@ export default function DashboardMap({
     setShowTracerouteConfirmedLinks,
     showWaypoints,
     setShowWaypoints,
+    showLocalMarkers,
+    setShowLocalMarkers,
     showAtakContacts,
     setShowAtakContacts,
     showPolarGrid,
@@ -958,6 +961,9 @@ export default function DashboardMap({
 
         {showWaypoints && <DashboardWaypoints sourceId={sourceId} />}
 
+        {/* #5686: local map markers, view-only here (edit them on a source's map). */}
+        {showLocalMarkers && <LocalMarkers sourceId={sourceId} />}
+
         {showAtakContacts && <DashboardAtakContacts sourceId={sourceId} />}
 
         {/* Flight trails (#5364/#5365 Phase 3), below the node markers. */}
@@ -1231,6 +1237,15 @@ export default function DashboardMap({
               onChange={(e) => setShowWaypoints(e.target.checked)}
             />
             <span>Show Waypoints</span>
+          </label>
+          <label className="map-control-item" title={unavailableIn3DTitle}>
+            <input
+              type="checkbox"
+              checked={showLocalMarkers}
+              disabled={effective3D}
+              onChange={(e) => setShowLocalMarkers(e.target.checked)}
+            />
+            <span>Show Local Markers</span>
           </label>
           <label className="map-control-item" title={unavailableIn3DTitle}>
             <input

@@ -128,6 +128,9 @@ import {
   pkiExchangeStateSqlite, pkiExchangeStatePostgres, pkiExchangeStateMysql,
 } from './schema/pkiExchangeState.js';
 import {
+  mapMarkersSqlite, mapMarkersPostgres, mapMarkersMysql,
+} from './schema/mapMarkers.js';
+import {
   coverageReceptionsSqlite, coverageReceptionsPostgres, coverageReceptionsMysql,
 } from './schema/coverageReceptions.js';
 import {
@@ -335,6 +338,9 @@ export interface ActiveSchema {
   // Reliable PKI per-node exchange state (#5691)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any -- #5691 matches the existing ActiveSchema per-dialect table pattern
   pkiExchangeState: any;
+  // Local map markers (#5686)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- #5686 matches the existing ActiveSchema per-dialect table pattern
+  mapMarkers: any;
 
   // Coverage Report RF receptions (#5277 Phase 1 WP1)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any -- #5277 matches the existing ActiveSchema per-dialect table pattern; typing burn-down is #3962 Phase 6
@@ -498,6 +504,7 @@ const SCHEMA_MAP: Record<DatabaseType, ActiveSchema> = {
     messageEvents: messageEventsSqlite,
     meshtasticHeardRepeaters: meshtasticHeardRepeatersSqlite,
     pkiExchangeState: pkiExchangeStateSqlite,
+    mapMarkers: mapMarkersSqlite,
     coverageReceptions: coverageReceptionsSqlite,
     coverageSurveys: coverageSurveysSqlite,
     crossSourceLinks: crossSourceLinksSqlite,
@@ -584,6 +591,7 @@ const SCHEMA_MAP: Record<DatabaseType, ActiveSchema> = {
     messageEvents: messageEventsPostgres,
     meshtasticHeardRepeaters: meshtasticHeardRepeatersPostgres,
     pkiExchangeState: pkiExchangeStatePostgres,
+    mapMarkers: mapMarkersPostgres,
     coverageReceptions: coverageReceptionsPostgres,
     coverageSurveys: coverageSurveysPostgres,
     crossSourceLinks: crossSourceLinksPostgres,
@@ -670,6 +678,7 @@ const SCHEMA_MAP: Record<DatabaseType, ActiveSchema> = {
     messageEvents: messageEventsMysql,
     meshtasticHeardRepeaters: meshtasticHeardRepeatersMysql,
     pkiExchangeState: pkiExchangeStateMysql,
+    mapMarkers: mapMarkersMysql,
     coverageReceptions: coverageReceptionsMysql,
     coverageSurveys: coverageSurveysMysql,
     crossSourceLinks: crossSourceLinksMysql,

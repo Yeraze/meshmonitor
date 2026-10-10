@@ -69,6 +69,7 @@ import {
   MessageEventsRepository,
   MeshtasticHeardRepeatersRepository,
   PkiExchangeStateRepository,
+  MapMarkersRepository,
   CoverageReceptionsRepository,
   CrossSourceLinksRepository,
   CoverageSurveysRepository,
@@ -622,6 +623,7 @@ class DatabaseService {
   public messageEventsRepo: MessageEventsRepository | null = null;
   public meshtasticHeardRepeatersRepo: MeshtasticHeardRepeatersRepository | null = null;
   public pkiExchangeStateRepo: PkiExchangeStateRepository | null = null;
+  public mapMarkersRepo: MapMarkersRepository | null = null;
   public coverageReceptionsRepo: CoverageReceptionsRepository | null = null;
   public coverageSurveysRepo: CoverageSurveysRepository | null = null;
   public crossSourceLinksRepo: CrossSourceLinksRepository | null = null;
@@ -715,6 +717,12 @@ class DatabaseService {
   get pkiExchangeState(): PkiExchangeStateRepository {
     if (!this.pkiExchangeStateRepo) throw new Error('Database not initialized');
     return this.pkiExchangeStateRepo;
+  }
+
+  /** Local map markers (#5686): planning notes, never transmitted. */
+  get mapMarkers(): MapMarkersRepository {
+    if (!this.mapMarkersRepo) throw new Error('Database not initialized');
+    return this.mapMarkersRepo;
   }
 
   get coverageReceptions(): CoverageReceptionsRepository {
@@ -1203,6 +1211,7 @@ class DatabaseService {
       this.messageEventsRepo = new MessageEventsRepository(drizzleDb, this.drizzleDbType);
       this.meshtasticHeardRepeatersRepo = new MeshtasticHeardRepeatersRepository(drizzleDb, this.drizzleDbType);
       this.pkiExchangeStateRepo = new PkiExchangeStateRepository(drizzleDb, this.drizzleDbType);
+      this.mapMarkersRepo = new MapMarkersRepository(drizzleDb, this.drizzleDbType);
       this.coverageReceptionsRepo = new CoverageReceptionsRepository(drizzleDb, this.drizzleDbType);
       this.coverageSurveysRepo = new CoverageSurveysRepository(drizzleDb, this.drizzleDbType);
       this.crossSourceLinksRepo = new CrossSourceLinksRepository(drizzleDb, this.drizzleDbType);
