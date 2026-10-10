@@ -96,11 +96,13 @@ function makeFakeManager(overrides: Partial<{
     isDeviceConnected: vi.fn(() => state.deviceConnected),
     getLocalNodeInfo: vi.fn(() => state.localNodeInfo),
     sendLocalAdminPacket: vi.fn().mockResolvedValue(undefined),
-    updateCachedDeviceConfig: vi.fn((section: string, values: Record<string, any>) => {
-      state.actualDeviceConfig = { ...state.actualDeviceConfig, [section]: { ...state.actualDeviceConfig?.[section], ...values } };
+    updateCachedDeviceConfig: vi.fn((section: string, values: Record<string, any>, mode: 'merge' | 'replace' = 'merge') => {
+      const next = mode === 'replace' ? { ...values } : { ...state.actualDeviceConfig?.[section], ...values };
+      state.actualDeviceConfig = { ...state.actualDeviceConfig, [section]: next };
     }),
-    updateCachedModuleConfig: vi.fn((section: string, values: Record<string, any>) => {
-      state.actualModuleConfig = { ...state.actualModuleConfig, [section]: { ...state.actualModuleConfig?.[section], ...values } };
+    updateCachedModuleConfig: vi.fn((section: string, values: Record<string, any>, mode: 'merge' | 'replace' = 'merge') => {
+      const next = mode === 'replace' ? { ...values } : { ...state.actualModuleConfig?.[section], ...values };
+      state.actualModuleConfig = { ...state.actualModuleConfig, [section]: next };
     }),
     getActualDeviceConfig: vi.fn(() => state.actualDeviceConfig),
     getActualModuleConfig: vi.fn(() => state.actualModuleConfig),
@@ -138,7 +140,7 @@ describe('DeviceAdminService', () => {
       const svc = new DeviceAdminService(mgr as any);
       await svc.setLoRaConfig({ region: 1 });
       expect(mgr.sendLocalAdminPacket).toHaveBeenCalledTimes(1);
-      expect(mgr.updateCachedDeviceConfig).toHaveBeenCalledWith('lora', { region: 1 });
+      expect(mgr.updateCachedDeviceConfig).toHaveBeenCalledWith('lora', { region: 1 }, 'replace');
     });
 
     it('setChannelConfig rejects an out-of-range channel index without sending', async () => {
@@ -191,7 +193,7 @@ describe('DeviceAdminService', () => {
       );
       // One packet for set_fixed_position, one for the position config itself.
       expect(mgr.sendLocalAdminPacket).toHaveBeenCalledTimes(2);
-      expect(mgr.updateCachedDeviceConfig).toHaveBeenCalledWith('position', { positionBroadcastSecs: 900 });
+      expect(mgr.updateCachedDeviceConfig).toHaveBeenCalledWith('position', { positionBroadcastSecs: 900 }, 'replace');
     });
 
     it('hands a 0 interval to the encoder as 0 (position and device)', async () => {
@@ -215,7 +217,7 @@ describe('DeviceAdminService', () => {
       const mgr = makeFakeManager();
       const svc = new DeviceAdminService(mgr as any);
       await svc.setTelemetryConfig({ deviceUpdateInterval: 900 });
-      expect(mgr.updateCachedModuleConfig).toHaveBeenCalledWith('telemetry', { deviceUpdateInterval: 900 });
+      expect(mgr.updateCachedModuleConfig).toHaveBeenCalledWith('telemetry', { deviceUpdateInterval: 900 }, 'replace');
       expect(mgr.updateCachedDeviceConfig).not.toHaveBeenCalled();
     });
 
@@ -227,6 +229,61 @@ describe('DeviceAdminService', () => {
       expect(createSetMQTTConfigMessage).toHaveBeenCalledWith(mqtt, expect.any(Uint8Array));
       expect(mgr.updateCachedModuleConfig).toHaveBeenCalledWith('mqtt', mqtt, 'replace');
       expect(mgr.updateCachedDeviceConfig).not.toHaveBeenCalled();
+    });
+
+    // Each local save caches what it sent in the bucket the protobuf puts it
+    // in (Config → device cache, ModuleConfig → module cache), and replaces
+    // the section, because firmware assigns the whole struct (#5713 follow-up).
+    const SAVES: Array<{
+      name: string;
+      run: (svc: DeviceAdminService, cfg: Record<string, unknown>) => Promise<void>;
+      bucket: 'device' | 'module';
+      key: string;
+    }> = [
+      { name: 'setDeviceConfig', run: (s, c) => s.setDeviceConfig(c), bucket: 'device', key: 'device' },
+      { name: 'setLoRaConfig', run: (s, c) => s.setLoRaConfig(c), bucket: 'device', key: 'lora' },
+      { name: 'setNetworkConfig', run: (s, c) => s.setNetworkConfig(c), bucket: 'device', key: 'network' },
+      { name: 'setPositionConfig', run: (s, c) => s.setPositionConfig(c), bucket: 'device', key: 'position' },
+      { name: 'setPowerConfig', run: (s, c) => s.setPowerConfig(c), bucket: 'device', key: 'power' },
+      { name: 'setDisplayConfig', run: (s, c) => s.setDisplayConfig(c), bucket: 'device', key: 'display' },
+      { name: 'setBluetoothConfig', run: (s, c) => s.setBluetoothConfig(c), bucket: 'device', key: 'bluetooth' },
+      { name: 'setMQTTConfig', run: (s, c) => s.setMQTTConfig(c), bucket: 'module', key: 'mqtt' },
+      { name: 'setNeighborInfoConfig', run: (s, c) => s.setNeighborInfoConfig(c), bucket: 'module', key: 'neighborInfo' },
+      { name: 'setTelemetryConfig', run: (s, c) => s.setTelemetryConfig(c), bucket: 'module', key: 'telemetry' },
+      { name: "setGenericModuleConfig('serial')", run: (s, c) => s.setGenericModuleConfig('serial', c), bucket: 'module', key: 'serial' },
+      { name: "setGenericModuleConfig('statusmessage')", run: (s, c) => s.setGenericModuleConfig('statusmessage', c), bucket: 'module', key: 'statusmessage' },
+      { name: "setGenericModuleConfig('extnotif')", run: (s, c) => s.setGenericModuleConfig('extnotif', c), bucket: 'module', key: 'externalNotification' },
+      { name: "setGenericModuleConfig('meshbeacon')", run: (s, c) => s.setGenericModuleConfig('meshbeacon', c), bucket: 'module', key: 'meshBeacon' },
+    ];
+
+    it.each(SAVES)('$name caches into the $bucket config as $key, replacing the section', async ({ run, bucket, key }) => {
+      const stale = { staleField: 99 };
+      const mgr = makeFakeManager({
+        actualDeviceConfig: bucket === 'device' ? { [key]: stale } : {},
+        actualModuleConfig: bucket === 'module' ? { [key]: stale } : {},
+      });
+      const svc = new DeviceAdminService(mgr as any);
+      const sent = { enabled: true, someInterval: 300 };
+      await run(svc, sent);
+
+      const own = bucket === 'device' ? mgr.updateCachedDeviceConfig : mgr.updateCachedModuleConfig;
+      const other = bucket === 'device' ? mgr.updateCachedModuleConfig : mgr.updateCachedDeviceConfig;
+      expect(own).toHaveBeenCalledTimes(1);
+      expect(own).toHaveBeenCalledWith(key, sent, 'replace');
+      expect(other).not.toHaveBeenCalled();
+
+      // The read-back shows exactly what was sent; the field the save left out is gone.
+      const cache = bucket === 'device' ? mgr.state.actualDeviceConfig : mgr.state.actualModuleConfig;
+      expect(cache[key]).toEqual(sent);
+    });
+
+    it('a failed send leaves the cache alone', async () => {
+      const mgr = makeFakeManager({ actualModuleConfig: { neighborInfo: { enabled: false } } });
+      mgr.sendLocalAdminPacket.mockRejectedValueOnce(new Error('link down'));
+      const svc = new DeviceAdminService(mgr as any);
+      await expect(svc.setNeighborInfoConfig({ enabled: true })).rejects.toThrow('link down');
+      expect(mgr.updateCachedModuleConfig).not.toHaveBeenCalled();
+      expect(mgr.state.actualModuleConfig.neighborInfo).toEqual({ enabled: false });
     });
 
     it('setNodeOwner builds a set_owner admin message', async () => {
