@@ -52,6 +52,7 @@ export * from './meshtasticHeardRepeaters.js';
 // Reliable PKI per-node exchange state (#5691)
 export * from './pkiExchangeState.js';
 export * from './mapMarkers.js';
+export * from './meshcoreHopSnr.js';
 
 // Coverage Report RF receptions (#5277 Phase 1 WP1)
 export * from './coverageReceptions.js';

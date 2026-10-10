@@ -1,0 +1,84 @@
+/* MeshCoreTraceSnrCard (#5722). CSS module. */
+
+.card {
+  margin-top: 1rem;
+  padding: 0.75rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md, 8px);
+  background: var(--color-surface);
+}
+
+.title {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin: 0;
+  font-size: 0.95rem;
+}
+
+.help {
+  margin: 0.25rem 0 0.6rem;
+  font-size: 0.78rem;
+  color: var(--color-text-subtle);
+}
+
+.list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 0.25rem 0.75rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--color-border-subtle);
+}
+
+.row:first-child {
+  padding-top: 0;
+  border-top: none;
+}
+
+.direction {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-size: 0.85rem;
+}
+
+.stats {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  text-align: right;
+}
+
+.last {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.meta {
+  font-size: 0.72rem;
+  color: var(--color-text-subtle);
+}
+
+.spark {
+  color: var(--color-accent);
+  flex-shrink: 0;
+}
+
+@media (max-width: 480px) {
+  .row {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .spark {
+    grid-column: 1 / -1;
+  }
+}

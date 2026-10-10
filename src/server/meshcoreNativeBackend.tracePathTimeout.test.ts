@@ -110,6 +110,10 @@ describe('MeshCoreNativeBackend — trace_path reply wait (#5588)', () => {
     return { promise, tag: frame.readUInt32LE(1) };
   }
 
+  // #5722: one TraceData listener stays for the whole session (passive trace
+  // capture). The helper below counts that key under both spellings, so the
+  // idle state is 2; a trace_path call must add nothing lasting on top of it.
+  const IDLE_LISTENERS = { trace: 2, sent: 0, err: 0 };
   const listenerCounts = () => ({
     trace: conn.listenerCount(String(PushCodes.TraceData)) + conn.listenerCount(PushCodes.TraceData as any),
     sent: conn.listenerCount(ResponseCodes.Sent as any),
@@ -202,7 +206,7 @@ describe('MeshCoreNativeBackend — trace_path reply wait (#5588)', () => {
     const res = await promise;
     expect(res.success).toBe(true);
     expect(res.data.pathSnrs).toEqual([40]);
-    expect(listenerCounts()).toEqual({ trace: 0, sent: 0, err: 0 });
+    expect(listenerCounts()).toEqual(IDLE_LISTENERS);
     expect(vi.getTimerCount()).toBe(0);
   });
 
@@ -226,7 +230,7 @@ describe('MeshCoreNativeBackend — trace_path reply wait (#5588)', () => {
       const res = await promise;
       expect(res.success).toBe(false);
 
-      expect(listenerCounts()).toEqual({ trace: 0, sent: 0, err: 0 });
+      expect(listenerCounts()).toEqual(IDLE_LISTENERS);
       expect(vi.getTimerCount()).toBe(0);
 
       const late = traceBody({ pathHashes: [0x0d, 0x34], pathSz: 1, tag, snrs: [44], lastSnr: 232 });

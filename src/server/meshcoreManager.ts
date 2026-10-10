@@ -11,6 +11,7 @@
 import { advertHasPosition } from '../utils/meshcoreAdvertPosition.js';
 import { EventEmitter } from 'events';
 import { logger } from '../utils/logger.js';
+import { meshcoreTraceIngestService } from './services/meshcoreTraceIngestService.js';
 import {
   clampIntervalSetting,
   MESHCORE_AUTO_ANNOUNCE_HOURS,
@@ -2992,6 +2993,10 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
           `(type=${data.adv_type}, snr=${data.snr}, ${isNew ? 'new' : 'known'})`,
         );
       }
+    } else if (event_type === 'trace_data') {
+      // #5722: a completed TRACE this radio heard (a reply to one we sent, or
+      // one it overheard). Store the per-hop SNRs. Receive-only: sends nothing.
+      void meshcoreTraceIngestService.ingest(this.sourceId, data, this.localNode?.publicKey ?? null);
     } else if (event_type === 'ota_packet') {
       // Self-echo correlation for channel "heard repeaters" (#3700) runs on the
       // raw OTA data FIRST, independent of the opt-in packet monitor, so it

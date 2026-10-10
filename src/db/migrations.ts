@@ -219,6 +219,7 @@ import { migration as widenSystemBackupTotalSizeMigration, runMigration197Postgr
 import { migration as createPkiExchangeStateMigration, runMigration198Postgres, runMigration198Mysql } from '../server/migrations/198_create_pki_exchange_state.js';
 import { migration as createMapMarkersMigration, runMigration199Postgres, runMigration199Mysql } from '../server/migrations/199_create_map_markers.js';
 import { migration as aircraftManualMarkMigration, runMigration200Postgres, runMigration200Mysql } from '../server/migrations/200_add_node_aircraft_manual_mark.js';
+import { migration as createMeshcoreHopSnrMigration, runMigration201Postgres, runMigration201Mysql } from '../server/migrations/201_create_meshcore_hop_snr.js';
 
 // ============================================================================
 // Registry
@@ -3241,4 +3242,18 @@ registry.register({
   sqlite: (db) => aircraftManualMarkMigration.up(db),
   postgres: (client) => runMigration200Postgres(client),
   mysql: (pool) => runMigration200Mysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 201: meshcore_hop_snr (#5722). PER-SOURCE.
+// Per-hop SNR from MeshCore TRACE packets a companion radio heard.
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 201,
+  name: 'create_meshcore_hop_snr',
+  settingsKey: 'migration_201_create_meshcore_hop_snr',
+  sqlite: (db) => createMeshcoreHopSnrMigration.up(db),
+  postgres: (client) => runMigration201Postgres(client),
+  mysql: (pool) => runMigration201Mysql(pool),
 });
