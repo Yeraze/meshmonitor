@@ -7,7 +7,7 @@
  * 1. **Raise** (#5188) — `hop_limit = max(arrived, target)`. A deliberate
  *    bypass of the source radio's own hop scaling, for managed-infrastructure
  *    backhaul. Off by default, capped at {@link MAX_RAISE_TARGET}, and
- *    restricted to the four portnums firmware hop scaling operates on.
+ *    restricted to {@link RAISEABLE_PORTNUMS}.
  * 2. **Clamp** (#5190) — `hop_limit = min(raised, max)`. Airtime protection
  *    against unrestrained upstream nodes. Off by default, applies to every
  *    portnum unless the operator exempts one.
@@ -35,15 +35,20 @@ import { MAX_HOP_LIMIT, PortNum } from './constants/meshtastic.js';
 export const MAX_RAISE_TARGET = 3;
 
 /**
- * The portnums firmware hop scaling (`HAS_VARIABLE_HOPS`) clamps on the
- * originating radio, and therefore the only ones a raise may target. Text,
- * traceroutes and DMs are routing-layer concerns and stay out of scope.
+ * Portnums a raise may target. The first four are the ones firmware hop
+ * scaling (`HAS_VARIABLE_HOPS`) clamps on the originating radio, so a raise
+ * undoes that scaling. Text (#5709, channel broadcasts and DMs alike) is in
+ * scope for a different reason: a broker upstream (mqtt.meshtastic.org)
+ * zero-hops every packet it delivers, text included, and an operator may
+ * choose to give that text local reach again. Traceroutes stay out: raising
+ * one would change what it measures.
  */
 export const RAISEABLE_PORTNUMS: readonly number[] = [
   PortNum.POSITION_APP,
   PortNum.TELEMETRY_APP,
   PortNum.NODEINFO_APP,
   PortNum.NEIGHBORINFO_APP,
+  PortNum.TEXT_MESSAGE_APP,
 ];
 
 /**

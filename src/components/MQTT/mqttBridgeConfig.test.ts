@@ -271,6 +271,7 @@ describe('mqttBridgeConfig', () => {
         forwardingMode: 'single',
         ignoreOkToMqtt: true,
         dropAutomationUplinks: true,
+        skipRaise: true,
         useTopicBlock: true,
         topicBlock: 'msh/CA/#',
         useGeo: true,

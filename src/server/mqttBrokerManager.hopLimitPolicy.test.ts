@@ -169,4 +169,48 @@ describe('MqttBrokerManager hop-limit policy', () => {
     const out = mgr.transformForwardedPayload(TOPIC, buildEnvelope({ hopLimit: 0, hopStart: 0 }));
     expect(readBack(out!).hopLimit).toBe(3);
   });
+
+  describe('per-bridge skip raise (#5708)', () => {
+    const policy = {
+      hopLimitPolicy: {
+        raise: { enabled: true, target: 3, portnums: [PortNum.POSITION_APP, PortNum.TEXT_MESSAGE_APP] },
+        clamp: { enabled: true, max: 2 },
+      },
+    };
+
+    it('a marked packet is clamped but never raised; others are raised as before', () => {
+      const mgr = makeManager({ hopLimitPolicy: { raise: policy.hopLimitPolicy.raise } } as never);
+      const env = buildEnvelope({ hopLimit: 0, portnum: PortNum.POSITION_APP });
+      expect(readBack(mgr.transformForwardedPayload(TOPIC, env)!).hopLimit).toBe(3);
+      mgr.markSkipRaise(0x12345678, 0xabcdef01);
+      expect(mgr.transformForwardedPayload(TOPIC, env)).toBeNull(); // 0 stays 0
+    });
+
+    it('still clamps a marked packet', () => {
+      const mgr = makeManager(policy as never);
+      mgr.markSkipRaise(0x12345678, 0xabcdef01);
+      const out = mgr.transformForwardedPayload(TOPIC, buildEnvelope({ hopLimit: 6, portnum: PortNum.POSITION_APP }));
+      expect(readBack(out!).hopLimit).toBe(2);
+    });
+
+    it('a mark expires after a minute', () => {
+      vi.useFakeTimers();
+      try {
+        const mgr = makeManager({ hopLimitPolicy: { raise: policy.hopLimitPolicy.raise } } as never);
+        mgr.markSkipRaise(0x12345678, 0xabcdef01);
+        vi.advanceTimersByTime(61_000);
+        const out = mgr.transformForwardedPayload(TOPIC, buildEnvelope({ hopLimit: 0, portnum: PortNum.TEXT_MESSAGE_APP }));
+        expect(readBack(out!).hopLimit).toBe(3);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('a mark for another packet id does not apply', () => {
+      const mgr = makeManager({ hopLimitPolicy: { raise: policy.hopLimitPolicy.raise } } as never);
+      mgr.markSkipRaise(0x12345678, 0x1);
+      const out = mgr.transformForwardedPayload(TOPIC, buildEnvelope({ hopLimit: 0, portnum: PortNum.POSITION_APP }));
+      expect(readBack(out!).hopLimit).toBe(3);
+    });
+  });
 });

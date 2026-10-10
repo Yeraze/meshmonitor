@@ -44,11 +44,19 @@ describe('formFromHopLimitConfig', () => {
     expect(form.raisePortnums).toEqual([PORTNUM_POSITION]);
   });
 
-  it('drops raise portnums outside the hop-scaled set', () => {
+  it('drops raise portnums outside the raiseable set (traceroute)', () => {
+    const form = formFromHopLimitConfig({
+      hopLimitPolicy: { raise: { enabled: true, target: 2, portnums: [70] } },
+    });
+    expect(form.raiseEnabled).toBe(false);
+  });
+
+  it('keeps a text raise, which covers channel text and DMs (#5709)', () => {
     const form = formFromHopLimitConfig({
       hopLimitPolicy: { raise: { enabled: true, target: 2, portnums: [PORTNUM_TEXT_MESSAGE] } },
     });
-    expect(form.raiseEnabled).toBe(false);
+    expect(form.raiseEnabled).toBe(true);
+    expect(form.raisePortnums).toEqual([PORTNUM_TEXT_MESSAGE]);
   });
 
   it('loads a legacy override as a clamp with the raise left off', () => {

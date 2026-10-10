@@ -861,6 +861,37 @@ describe('MqttBridgeManager', () => {
     await new Promise<void>((r) => pub.end(true, {}, () => r()));
   });
 
+  it.each([
+    { skipRaise: true, marked: true },
+    { skipRaise: false, marked: false },
+  ])('skipRaise=$skipRaise: tells the parent broker not to raise its packets (#5708)', async ({ skipRaise, marked }) => {
+    bridge = new MqttBridgeManager('skip-raise-bridge', 'SkipRaise', {
+      brokerSourceId: 'local-broker',
+      upstream: { url: `mqtt://127.0.0.1:${upstreamPort}` },
+      subscriptions: ['msh/#'],
+      ...(skipRaise ? { skipRaise: true } : {}),
+    });
+    await sourceManagerRegistry.addManager(bridge);
+    const parent = sourceManagerRegistry.getManager('local-broker') as unknown as { markSkipRaise: (f: number, id: number) => void };
+    const mark = vi.spyOn(parent, 'markSkipRaise');
+
+    const pub = connect(`mqtt://127.0.0.1:${upstreamPort}`, { reconnectPeriod: 0 });
+    await new Promise<void>((resolve, reject) => {
+      const t = setTimeout(() => reject(new Error('pub connect timeout')), 3000);
+      pub.once('connect', () => { clearTimeout(t); resolve(); });
+    });
+    pub.publish('msh/CA/ON/PTBO', buildPositionEnvelope({
+      from: 0x55555555, latI: 440_000_000, lngI: -780_000_000,
+      channelId: 'LongFast', gatewayId: '!55555555', packetId: 0x30000005,
+    }));
+    await new Promise((r) => setTimeout(r, 300));
+
+    if (marked) expect(mark).toHaveBeenCalledWith(0x55555555, 0x30000005);
+    else expect(mark).not.toHaveBeenCalled();
+    mark.mockRestore();
+    await new Promise<void>((r) => pub.end(true, {}, () => r()));
+  });
+
   it('rewrite prefix mismatch falls through to original topic (no-op for non-matching prefixes)', async () => {
     bridge = new MqttBridgeManager('mismatch-bridge', 'Mismatch', {
       brokerSourceId: 'local-broker',

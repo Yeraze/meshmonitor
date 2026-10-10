@@ -152,6 +152,13 @@ export interface MqttBridgeSourceConfig {
    * add a per-packet override (declined in meshtastic/firmware#11994).
    */
   dropAutomationUplinks?: boolean;
+  /**
+   * #5708: packets this bridge republishes into its parent broker are never
+   * RAISED by the broker's hop-limit policy; the clamp still applies. For an
+   * upstream (e.g. mqtt.meshtastic.org, which zero-hops everything) whose
+   * traffic you want to watch but not re-flood locally. Absent ⇒ raise as before.
+   */
+  skipRaise?: boolean;
 }
 
 /**
@@ -921,6 +928,10 @@ export class MqttBridgeManager extends EventEmitter implements ISourceManager {
       // original topic. Echo recorded under the post-rewrite topic so the
       // uplink direction sees the same topic the parent broker emits.
       const publishTopic = applyTopicRewrite(topic, this.config.downlinkTopicRewrite);
+      // #5708: tell the broker not to raise this packet on its way to a radio.
+      if (this.config.skipRaise && fromNum !== null && packetId !== null) {
+        this.parentBroker.markSkipRaise(fromNum, packetId);
+      }
       this.parentBroker
         .publish(publishTopic, payload, retained)
         .then(() => {

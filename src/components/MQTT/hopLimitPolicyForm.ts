@@ -26,15 +26,16 @@ export const PORTNUM_TELEMETRY = 67;
 export const PORTNUM_NEIGHBORINFO = 71;
 
 /**
- * The portnums a raise may target — the ones firmware hop scaling
- * (`HAS_VARIABLE_HOPS`) clamps on the originating radio. Mirrors
- * RAISEABLE_PORTNUMS.
+ * The portnums a raise may target. Mirrors the server's RAISEABLE_PORTNUMS:
+ * the four firmware hop scaling clamps, plus text (#5709) for undoing an
+ * upstream broker's zero-hop delivery.
  */
 export const RAISEABLE_PORTNUMS: ReadonlyArray<{ portnum: number; label: string }> = [
   { portnum: PORTNUM_POSITION, label: 'Position' },
   { portnum: PORTNUM_TELEMETRY, label: 'Telemetry' },
   { portnum: PORTNUM_NODEINFO, label: 'NodeInfo' },
   { portnum: PORTNUM_NEIGHBORINFO, label: 'NeighborInfo' },
+  { portnum: PORTNUM_TEXT_MESSAGE, label: 'Text messages (including DMs)' },
 ];
 
 /**

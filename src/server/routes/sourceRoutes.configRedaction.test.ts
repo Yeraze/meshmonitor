@@ -147,6 +147,7 @@ const FIXTURES: Record<Source['type'], Record<string, unknown>> = {
     forwardingMode: 'per_gateway',
     ignoreOkToMqtt: true,
     dropAutomationUplinks: true,
+    skipRaise: true,
     autoConnect: false,
     [UNCLASSIFIED]: `${SEC}-future-bridge`,
   },
