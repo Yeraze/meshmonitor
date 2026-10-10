@@ -303,7 +303,8 @@ describe('MeshCore DM and room post: what the row proves (#5682)', () => {
       await settle();
       expect(pool(manager).find(r => r.id === msg.id)?.deliveryStatus).toBe('delivered');
       expect(updates).toEqual([]);
-      expect(await eventTypes(sourceId, msg.id)).not.toContain('timeout');
+      // Exactly one `delivered` row, and no `timeout`.
+      expect(await eventTypes(sourceId, msg.id)).toEqual(['submitted', 'delivered']);
     });
 
     it('a restart or disconnect mid-wait leaves no ack state', async () => {

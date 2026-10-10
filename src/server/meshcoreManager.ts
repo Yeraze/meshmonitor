@@ -5756,6 +5756,8 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
     // The caller already recorded the event for a DM still in its cadence.
     const recorded = dmMessageId !== undefined;
 
+    // Not a DM in its cadence: a room post awaiting this CRC? Its `delivered`
+    // event is recorded once, below (the caller records only for a DM).
     const room = this.pendingRoomPostAcks.get(ackCode);
     if (!messageId && room) {
       clearTimeout(room.timer);
@@ -5793,6 +5795,9 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
    * accepted it. Two batched queries. Never throws.
    */
   private async withDeliveryState(messages: MeshCoreMessage[]): Promise<MeshCoreMessage[]> {
+    // "Direct" rows, ours or not: our own key may not be known this early in
+    // connect(). A received DM or room post has no events, so it reads back
+    // nothing and keeps no state.
     const ids = messages
       .filter(m =>
         !!m.toPublicKey &&
