@@ -248,6 +248,8 @@ export const VALID_SETTINGS_KEYS = [
   'aircraftAgeOutEnabled',
   'aircraftAgeOutHours',
   'aircraftAgeOutAction',
+  // #5704: ask a newly flagged aircraft for its position (opt-in; transmits).
+  'aircraftPositionRequestsEnabled',
   // Sign-flipped position correction (#5363), Settings -> Node Display.
   // Per source: the reference is the source's own node. Display only.
   'signFlipCorrectionEnabled',
@@ -560,8 +562,13 @@ export const PER_SOURCE_SETTINGS_KEYS = [
   'aircraftAgeOutEnabled',
   'aircraftAgeOutHours',
   'aircraftAgeOutAction',
+  // #5704: ask a newly flagged aircraft for its position (opt-in; transmits).
+  'aircraftPositionRequestsEnabled',
   'aircraftAgeOutLastRunAt',
   'aircraftAgeOutLastResult',
+  // #5704: start times of recent aircraft position-request sequences (JSON
+  // ms array), written only by aircraftPositionRequestService.
+  'aircraftPositionRequestStarts',
   // Sign-flipped position correction (#5363), Settings -> Node Display.
   'signFlipCorrectionEnabled',
   'signFlipCorrectionRangeKm',
@@ -920,6 +927,7 @@ export const PER_SOURCE_KEYS_NOT_POSTABLE = new Set<string>([
   'meshcoreLastFloodAdvertAt', // meshcoreManager.ts recordFloodAdvert (automated flood-advert floor)
   'autoFavoriteAircraftStrikes', // favoritesService.ts autoFavoriteSweep (#5364/#5365 D19 two-strike rule)
   'aircraftAgeOutLastRunAt',  // aircraftAgeOutService.ts runSweep (#5364/#5365 Phase 2; persisted so a restart is not a run)
+  'aircraftPositionRequestStarts',  // aircraftPositionRequestService.ts (#5704; persisted hourly cap, so a restart or save cannot reset it)
   'aircraftAgeOutLastResult', // aircraftAgeOutService.ts runSweep (#5364/#5365 Phase 2; JSON counts for the settings status line)
   // POST /api/sources/:id/forwarding (forwardingRoutes.ts, #5446) — gated on
   // per-source `automation` write, so the generic `settings` POST must not

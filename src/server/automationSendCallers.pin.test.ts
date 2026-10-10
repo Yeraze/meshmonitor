@@ -70,6 +70,8 @@ const EXPECTED: Record<string, number> = {
   // Queue send + NodeInfo broadcast; origin follows triggeredByAutomation
   // (the "Send Announcement" button is manual). Plus the scheduler's calls.
   'src/server/services/autoAnnounceService.ts': 5,
+  // #5704: position requests to a newly flagged aircraft; tagged automation.
+  'src/server/services/aircraftPositionRequestService.ts': 1,
   'src/server/services/autoFavoriteManagementService.ts': 1,
   // Automation Engine: action.broadcastWaypoint calls deps.broadcastWaypoint
   // (#5482); the real dep is waypointService.upsertAndBroadcastForAutomation,

@@ -1811,6 +1811,8 @@
   "settings.aircraft.help_effects": "Flagged nodes get an aircraft badge on the map and can be hidden in Map Features. Auto-Favorite exclusion is set in Automation → Auto Favorite.",
   "settings.aircraft.age_out_enabled": "Age out likely aircraft",
   "settings.aircraft.age_out_help": "A likely aircraft not heard for this many hours is ignored or deleted. Favorites and your own node are never aged out. An ignored aircraft comes back when it sends a new position.",
+  "settings.aircraft.position_requests_enabled": "Ask new aircraft for their position",
+  "settings.aircraft.position_requests_help": "When a node is first flagged as an aircraft, MeshMonitor asks it for its position 3 times over 4 minutes so its trail shows the flight (at most 2 aircraft an hour on this source). Each request uses airtime. Meshtastic sources only.",
   "settings.aircraft.age_out_hours_label": "Age out after (hours)",
   "settings.aircraft.age_out_action_label": "Action",
   "settings.aircraft.age_out_action_ignore": "Ignore",
