@@ -139,6 +139,7 @@ import { CoverageReceiverPositionCache } from './utils/coverageReceiverPositionC
 import { NodeDbMaintenanceService } from './services/nodeDbMaintenanceService.js';
 import { AutoAnnounceService } from './services/autoAnnounceService.js';
 import { ReliablePkiTracker, resolveReliablePkiMode } from './services/reliablePki.js';
+import { channelEncryptToRadio, resolveChannelKey, type RadioChannel } from './utils/channelEncryption.js';
 import { AdminTransactionService } from './services/adminTransactionService.js';
 import { FavoritesService } from './services/favoritesService.js';
 import { DeviceAdminService } from './services/deviceAdminService.js';
@@ -1164,7 +1165,14 @@ class MeshtasticManager implements ISourceManager {
     isUnmessagable?: boolean;
     isLicensed?: boolean;
   } | null = null;
-  private actualDeviceConfig: any = null;  // Store actual device config (local node)
+  private actualDeviceConfig: any = null;
+  /**
+   * Channel slots exactly as the radio reported them on this connection (raw
+   * name, raw PSK, role, AEAD flag). Used by Reliable PKI "Avoid PKI" (#5711)
+   * to channel-encrypt a request the way the radio would. Cleared on
+   * disconnect; a slot MeshMonitor reconfigures is dropped until reported again.
+   */
+  private readonly radioChannels = new Map<number, RadioChannel>();  // Store actual device config (local node)
   private actualModuleConfig: any = null;  // Store actual module config (local node)
   private sessionPasskey: Uint8Array | null = null;  // Session passkey for local node (backward compatibility)
   private sessionPasskeyExpiry: number | null = null;  // Expiry time for local node (expires after 300 seconds)
@@ -2540,6 +2548,7 @@ class MeshtasticManager implements ISourceManager {
           this.localNodeInfo = null;
           this.actualDeviceConfig = null;
           this.actualModuleConfig = null;
+          this.radioChannels.clear();
           // A sync that died mid-flight must not carry its deferred favorite
           // write-backs into the next session — the device re-reports its own
           // state on reconnect and the reconciliation runs again from there (#5122).
@@ -6287,6 +6296,8 @@ class MeshtasticManager implements ISourceManager {
       useAead: channel.settings?.useAead,
       hasModuleSettings: !!channel.settings?.moduleSettings
     });
+
+    this.recordRadioChannel(channel);
 
     if (channel.settings) {
       // Only save channels that are actually configured and useful
@@ -10620,6 +10631,97 @@ class MeshtasticManager implements ISourceManager {
     }
   }
 
+  /** Remember one channel slot as the radio reported it (Avoid PKI, #5711). */
+  private recordRadioChannel(channel: any): void {
+    const index = channel?.index;
+    if (typeof index !== 'number' || index < 0 || index > 7) return;
+    const settings = channel.settings;
+    if (!settings) {
+      this.radioChannels.delete(index);
+      return;
+    }
+    this.radioChannels.set(index, {
+      index,
+      // proto3 elides DISABLED (0)
+      role: typeof channel.role === 'number' ? channel.role : 0,
+      name: typeof settings.name === 'string' ? settings.name : '',
+      psk: settings.psk ? new Uint8Array(settings.psk) : new Uint8Array(),
+      useAead: !!settings.useAead,
+    });
+  }
+
+  /**
+   * Reliable PKI (#5711): is "Avoid PKI" in effect for this source? Data
+   * requests then go out channel-encrypted (see {@link channelEncryptRequest})
+   * and are never primed or tracked.
+   */
+  private async isAvoidPkiMode(): Promise<boolean> {
+    try {
+      return (await resolveReliablePkiMode(databaseService.settings, this.sourceId)) === 'avoid';
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Avoid PKI (#5711): return `frame` with its `Data` encrypted with the node's
+   * channel key, the way the radio encrypts a channel packet.
+   *
+   * The radio cannot be asked for this: it PKI-encrypts every unicast it
+   * originates to a node whose key it holds, except TRACEROUTE / NODEINFO /
+   * ROUTING / POSITION, and ignores `pki_encrypted = false` (firmware
+   * `Router.cpp` `wouldEncryptWithPKC`). It does send a packet that arrives
+   * already encrypted as is (`Router::send` only encodes `decoded` packets),
+   * so MeshMonitor encrypts it first.
+   *
+   * The channel is the node's channel, the same choice key repair makes for
+   * its NodeInfo exchange (`nodes.channel`): the caller's channel when set,
+   * else the stored channel for the node — which is also what the radio itself
+   * would pick for a unicast on channel 0 (`getEffectiveChannelIndex`).
+   *
+   * When the frame cannot be encrypted exactly as the radio would (channel not
+   * reported yet, AEAD channel, ...) the original frame is returned and the
+   * radio encrypts it as usual.
+   */
+  private async channelEncryptRequest(
+    frame: Uint8Array,
+    destination: number,
+    channel: number,
+    label: string,
+  ): Promise<{ frame: Uint8Array; channelEncrypted: boolean }> {
+    const target = `!${(destination >>> 0).toString(16).padStart(8, '0')}`;
+    const fallback = (reason: string) => {
+      logger.debug(`Avoid PKI: ${label} to ${target} sent the normal way (${reason})`);
+      return { frame, channelEncrypted: false };
+    };
+    try {
+      if (!this.localNodeInfo) return fallback('local node unknown');
+      let channelIndex = channel;
+      if (!channelIndex) {
+        const node = await databaseService.nodes.getNode(destination, this.sourceId);
+        const stored = node?.channel;
+        if (typeof stored === 'number' && stored >= 0 && stored <= 7) channelIndex = stored;
+      }
+      const lora = this.actualDeviceConfig?.lora;
+      const resolved = resolveChannelKey(channelIndex, this.radioChannels, lora);
+      if (!resolved.ok) return fallback(resolved.reason);
+      const root = getProtobufRoot();
+      if (!root) return fallback('protobufs not loaded');
+      const encrypted = channelEncryptToRadio(
+        root as any,
+        frame,
+        resolved.channelKey,
+        this.localNodeInfo.nodeNum,
+        !!lora?.configOkToMqtt,
+      );
+      if (!encrypted) return fallback('frame is not an addressed request');
+      logger.debug(`Avoid PKI: ${label} to ${target} channel-encrypted on channel ${channelIndex}`);
+      return { frame: encrypted, channelEncrypted: true };
+    } catch (error) {
+      return fallback(error instanceof Error ? error.message : String(error));
+    }
+  }
+
   /**
    * Reliable PKI (#5691): before a PKI send, send the node our NodeInfo when
    * the mode is As needed, the last exchange with it failed, and no priming
@@ -11138,7 +11240,9 @@ class MeshtasticManager implements ISourceManager {
 
     try {
       // Reliable PKI (#5691): NEIGHBORINFO_APP unicasts go PKI when the radio holds the key.
-      const pkiTarget = await this.isPkiSendTarget(destination);
+      // Avoid PKI (#5711): channel-encrypted instead, never primed or tracked.
+      const avoidPki = await this.isAvoidPkiMode();
+      const pkiTarget = !avoidPki && await this.isPkiSendTarget(destination);
       if (pkiTarget) await this.primeBeforePkiSend(destination);
 
       const { data: neighborInfoRequestData, packetId, requestId } = meshtasticProtobufService.createNeighborInfoRequestMessage(
@@ -11149,8 +11253,12 @@ class MeshtasticManager implements ISourceManager {
 
       logger.debug(`🏠 NeighborInfo request packet created: ${neighborInfoRequestData.length} bytes for dest=${destination} (0x${destination.toString(16)}), channel=${channel}, packetId=${packetId}, requestId=${requestId}`);
 
+      const { frame } = avoidPki
+        ? await this.channelEncryptRequest(neighborInfoRequestData, destination, channel, 'neighbor info request')
+        : { frame: neighborInfoRequestData };
+
       this.recordAutomationPacket(packetId, options?.origin);
-      await this.transport.send(neighborInfoRequestData);
+      await this.transport.send(frame);
       if (pkiTarget) void this.reliablePki.track(packetId, destination, { wantAck: true, wantResponse: true });
 
       // Broadcast to virtual node clients (including packet monitor)
@@ -11377,7 +11485,9 @@ class MeshtasticManager implements ISourceManager {
     try {
       // Reliable PKI (#5691): TELEMETRY_APP unicasts go PKI when the radio holds
       // the key. A hijack auto-retry is not primed (the original send was).
-      const pkiTarget = await this.isPkiSendTarget(destination);
+      // Avoid PKI (#5711): channel-encrypted instead, never primed or tracked.
+      const avoidPki = await this.isAvoidPkiMode();
+      const pkiTarget = !avoidPki && await this.isPkiSendTarget(destination);
       if (pkiTarget && !options?.isAutoRetry) await this.primeBeforePkiSend(destination);
 
       const { data: telemetryRequestData, packetId, requestId } = meshtasticProtobufService.createTelemetryRequestMessage(
@@ -11390,8 +11500,12 @@ class MeshtasticManager implements ISourceManager {
       const typeLabel = telemetryType || 'device';
       logger.debug(`📊 Telemetry request packet created: ${telemetryRequestData.length} bytes for dest=${destination} (0x${destination.toString(16)}), channel=${channel}, type=${typeLabel}, packetId=${packetId}, requestId=${requestId}`);
 
+      const { frame } = avoidPki
+        ? await this.channelEncryptRequest(telemetryRequestData, destination, channel, 'telemetry request')
+        : { frame: telemetryRequestData };
+
       this.recordAutomationPacket(packetId, options?.origin);
-      await this.transport.send(telemetryRequestData);
+      await this.transport.send(frame);
       if (pkiTarget) void this.reliablePki.track(packetId, destination, { wantAck: true, wantResponse: true });
 
       // Broadcast to virtual node clients (including packet monitor)
@@ -11550,7 +11664,9 @@ class MeshtasticManager implements ISourceManager {
     // Reliable PKI (#5691): despite going out on the node's channel, a
     // TELEMETRY_APP unicast is PKI-encrypted by the radio whenever it holds the
     // node's key (firmware wouldEncryptWithPKC ignores the channel index).
-    const pkiTarget = await this.isPkiSendTarget(destination);
+    // Avoid PKI (#5711): channel-encrypted instead, never primed or tracked.
+    const avoidPki = await this.isAvoidPkiMode();
+    const pkiTarget = !avoidPki && await this.isPkiSendTarget(destination);
     if (pkiTarget) await this.primeBeforePkiSend(destination);
 
     const { data: telemetryRequestData, packetId, requestId } =
@@ -11565,8 +11681,12 @@ class MeshtasticManager implements ISourceManager {
       throw new Error('Failed to build remote LocalStats request');
     }
 
+    const { frame } = avoidPki
+      ? await this.channelEncryptRequest(telemetryRequestData, destination, channel, 'remote LocalStats request')
+      : { frame: telemetryRequestData };
+
     this.recordAutomationPacket(packetId, options?.origin);
-    await this.transport.send(telemetryRequestData);
+    await this.transport.send(frame);
     if (pkiTarget) void this.reliablePki.track(packetId, destination, { wantAck: true, wantResponse: true });
 
     // Broadcast to virtual node clients (including packet monitor) for visibility.
@@ -15242,6 +15362,9 @@ class MeshtasticManager implements ISourceManager {
     /** Omit to keep this source's stored value (#5248). */
     useAead?: boolean;
   }): Promise<void> {
+    // Avoid PKI (#5711) must not encrypt with the slot's old key; it falls back
+    // to a normal send until the radio reports the slot again.
+    this.radioChannels.delete(channelIndex);
     return this.deviceAdminService.setChannelConfig(channelIndex, config);
   }
 

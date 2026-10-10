@@ -34,20 +34,28 @@ import type {
   PkiFailureReason,
 } from '../../db/repositories/pkiExchangeState.js';
 
-export type ReliablePkiMode = 'off' | 'asNeeded';
+/**
+ * - `off`: today's behaviour, no priming.
+ * - `asNeeded`: prime a node with our NodeInfo after a failed PKI exchange.
+ * - `avoid` (#5711): data requests (telemetry, remote LocalStats, neighbor
+ *   info) go out channel-encrypted instead of PKI, so the node never needs our
+ *   key to read them. DMs, remote admin and waypoints are unchanged. Nothing is
+ *   ever primed in this mode.
+ */
+export type ReliablePkiMode = 'off' | 'asNeeded' | 'avoid';
 
-/** Global default. Values: `off` (default) | `asNeeded`. */
+/** Global default. Values: `off` (default) | `asNeeded` | `avoid`. */
 export const RELIABLE_PKI_MODE_KEY = 'reliablePkiMode';
 /**
  * Per-source override, read with the source-scoped key (#5080). Values:
- * `inherit` (or absent) | `off` | `asNeeded`. A separate key from the global
+ * `inherit` (or absent) | `off` | `asNeeded` | `avoid`. A separate key from the global
  * one so the merged `GET /api/settings?sourceId=` view can tell "this source
  * has no override" from "this source overrides to the same value".
  */
 export const RELIABLE_PKI_SOURCE_MODE_KEY = 'reliablePkiSourceMode';
 
-export const RELIABLE_PKI_MODES: readonly ReliablePkiMode[] = ['off', 'asNeeded'];
-export const RELIABLE_PKI_SOURCE_MODES = ['inherit', 'off', 'asNeeded'] as const;
+export const RELIABLE_PKI_MODES: readonly ReliablePkiMode[] = ['off', 'asNeeded', 'avoid'];
+export const RELIABLE_PKI_SOURCE_MODES = ['inherit', 'off', 'asNeeded', 'avoid'] as const;
 export type ReliablePkiSourceMode = typeof RELIABLE_PKI_SOURCE_MODES[number];
 
 /** At most one priming NodeInfo per node per source in this window. */
@@ -90,7 +98,7 @@ const DECODED_ROUTING_REPLIES: ReadonlySet<number> = new Set([
 ]);
 
 export function parseReliablePkiMode(value: unknown): ReliablePkiMode | null {
-  return value === 'off' || value === 'asNeeded' ? value : null;
+  return value === 'off' || value === 'asNeeded' || value === 'avoid' ? value : null;
 }
 
 export function isValidReliablePkiSourceMode(value: unknown): value is ReliablePkiSourceMode {
