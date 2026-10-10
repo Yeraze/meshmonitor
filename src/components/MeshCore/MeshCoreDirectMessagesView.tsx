@@ -610,6 +610,7 @@ export const MeshCoreDirectMessagesView: React.FC<MeshCoreDirectMessagesViewProp
                 canWriteNodes={canWriteNodes && connected}
                 isCompanion={isCompanion}
                 repeaters={contacts}
+                selfPublicKey={selfKey}
                 canRemoteAdmin={canRemoteAdmin && connected}
                 remoteAdminActions={{
                   loginRemote: actions.loginRemote,

@@ -1712,6 +1712,13 @@ router.delete('/:id', requirePermission('sources', 'write'), async (req: Request
       logger.warn(`Failed to purge map markers for deleted source ${req.params.id}:`, markerError);
     }
 
+    // #5722: MeshCore per-hop trace SNR history is the source's own reception.
+    try {
+      await databaseService.meshcoreHopSnr.deleteBySourceId(req.params.id);
+    } catch (hopSnrError) {
+      logger.warn(`Failed to purge MeshCore hop SNR history for deleted source ${req.params.id}:`, hopSnrError);
+    }
+
     // NOTE: `mesh_beacon_offers` (#4723) is cleaned up inside
     // purgeAllNodesAsync above, alongside ATAK contacts (#3691) and Coverage
     // Report RF receptions (#5277) — all three are per-source received state.

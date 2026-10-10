@@ -71,6 +71,7 @@ import {
   MeshtasticHeardRepeatersRepository,
   PkiExchangeStateRepository,
   MapMarkersRepository,
+  MeshCoreHopSnrRepository,
   CoverageReceptionsRepository,
   CrossSourceLinksRepository,
   CoverageSurveysRepository,
@@ -634,6 +635,7 @@ class DatabaseService {
   public meshtasticHeardRepeatersRepo: MeshtasticHeardRepeatersRepository | null = null;
   public pkiExchangeStateRepo: PkiExchangeStateRepository | null = null;
   public mapMarkersRepo: MapMarkersRepository | null = null;
+  public meshcoreHopSnrRepo: MeshCoreHopSnrRepository | null = null;
   public coverageReceptionsRepo: CoverageReceptionsRepository | null = null;
   public coverageSurveysRepo: CoverageSurveysRepository | null = null;
   public crossSourceLinksRepo: CrossSourceLinksRepository | null = null;
@@ -733,6 +735,12 @@ class DatabaseService {
   get mapMarkers(): MapMarkersRepository {
     if (!this.mapMarkersRepo) throw new Error('Database not initialized');
     return this.mapMarkersRepo;
+  }
+
+  /** Per-hop SNR from MeshCore traces (#5722). */
+  get meshcoreHopSnr(): MeshCoreHopSnrRepository {
+    if (!this.meshcoreHopSnrRepo) throw new Error('Database not initialized');
+    return this.meshcoreHopSnrRepo;
   }
 
   get coverageReceptions(): CoverageReceptionsRepository {
@@ -1222,6 +1230,7 @@ class DatabaseService {
       this.meshtasticHeardRepeatersRepo = new MeshtasticHeardRepeatersRepository(drizzleDb, this.drizzleDbType);
       this.pkiExchangeStateRepo = new PkiExchangeStateRepository(drizzleDb, this.drizzleDbType);
       this.mapMarkersRepo = new MapMarkersRepository(drizzleDb, this.drizzleDbType);
+      this.meshcoreHopSnrRepo = new MeshCoreHopSnrRepository(drizzleDb, this.drizzleDbType);
       this.coverageReceptionsRepo = new CoverageReceptionsRepository(drizzleDb, this.drizzleDbType);
       this.coverageSurveysRepo = new CoverageSurveysRepository(drizzleDb, this.drizzleDbType);
       this.crossSourceLinksRepo = new CrossSourceLinksRepository(drizzleDb, this.drizzleDbType);

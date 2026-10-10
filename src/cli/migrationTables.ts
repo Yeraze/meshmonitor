@@ -124,6 +124,8 @@ export const TABLE_ORDER = [
   'pki_exchange_state',
   // #5686: local map markers (user planning data; never transmitted).
   'map_markers',
+  // #5722: per-hop SNR history from MeshCore traces (reception history).
+  'meshcore_hop_snr',
   'solar_estimates',
   'system_backup_history',
   // 3271: global estimated positions (no sourceId, no FK — one row per nodeNum)

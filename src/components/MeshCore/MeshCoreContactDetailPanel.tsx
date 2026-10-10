@@ -23,6 +23,7 @@ import { UiIcon } from '../icons';
 import { ShowCoverageLink } from '../Analysis/ShowCoverageLink';
 import { SignFlipNotice } from '../SignFlipNotice';
 import { MeshCoreNeighboursFetchProgress } from './MeshCoreNeighboursFetchProgress';
+import { MeshCoreTraceSnrCard } from './MeshCoreTraceSnrCard';
 import { useMeshCoreNeighboursFetch } from './hooks/useMeshCoreNeighboursFetch';
 import type { MeshCoreNeighboursFetchActions } from './hooks/meshcoreNeighboursFetchApi';
 
@@ -58,6 +59,8 @@ interface MeshCoreContactDetailPanelProps {
    *  repeater to its first-public-key-byte hop). Typically the full contact
    *  list; the panel filters to repeaters/room servers internally. */
   repeaters?: MeshCoreContact[];
+  /** This source's own node key, so trace SNR rows can say "This node" (#5722). */
+  selfPublicKey?: string | null;
   /** Send a trace-path diagnostic along the contact's cached path and
    *  return per-hop SNR data. Unset hides the Trace Path button. */
   onTracePath?: (publicKey: string, opts?: { autoReturn?: boolean }) => Promise<TracePathResult | TracePathTimeout | null>;
@@ -165,6 +168,7 @@ export const MeshCoreContactDetailPanel: React.FC<MeshCoreContactDetailPanelProp
   onShareContact,
   onSetOutPath,
   repeaters,
+  selfPublicKey,
   onTracePath,
   onPingZeroHop,
   onDiscoverPath,
@@ -1510,6 +1514,10 @@ export const MeshCoreContactDetailPanel: React.FC<MeshCoreContactDetailPanelProp
           </div>
         </div>
       )}
+
+      {/* #5722: per-link SNR from traces this source heard. Hidden without
+          traceroute:read or when there is no history. */}
+      <MeshCoreTraceSnrCard sourceId={sourceId} publicKey={publicKey} contacts={repeaters} localPublicKey={selfPublicKey} />
 
       {remoteAdminActions
         && canRemoteAdmin
