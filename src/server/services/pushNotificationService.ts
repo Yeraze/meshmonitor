@@ -501,7 +501,11 @@ class PushNotificationService {
 
       // Apply node name prefix if user has it enabled (per-source prefs)
       const body = await applyNodeNamePrefixAsync(userId, rendered.body, localNodeName, renderSourceId);
+      // `message` and `dedup` are server-side inputs, not wire data: keep them
+      // out of the push payload.
       const notificationPayload: PushNotificationPayload = { ...payload, title: rendered.title, body };
+      delete notificationPayload.message;
+      delete notificationPayload.dedup;
       if (payload.dedup) {
         notificationPayload.tag = dedupTag(payload.dedup.key);
         notificationPayload.renotify = false;

@@ -24,6 +24,10 @@ export interface FixturePrefs {
   mutedDMs: Array<{ nodeUuid: string; muteUntil: number | null }>;
   messageTitleTemplate: string | null;
   messageBodyTemplate: string | null;
+  /** Event toggles read by `broadcastToPreferenceUsers`; absent = off. */
+  notifyOnNewNode?: boolean;
+  notifyOnWaypoint?: boolean;
+  notifyOnServerEvents?: boolean;
 }
 
 export function fixturePrefs(over: Partial<FixturePrefs> = {}): FixturePrefs {
@@ -51,6 +55,8 @@ export interface FixtureState {
   prefs: Map<string, FixturePrefs>;
   /** Users who lack messages:read. */
   deniedUsers: Set<number>;
+  /** `${userId}|${sourceId}` pairs that lack messages:read on that one source (#5729). */
+  deniedPairs?: Set<string>;
   subscriptions: Array<{ id: number; userId: number | null; sourceId: string; endpoint: string; p256dhKey: string; authKey: string }>;
   appriseUsers: number[];
   users: Array<{ id: number; isActive: boolean }>;
@@ -72,7 +78,11 @@ export function buildDatabaseMock(state: FixtureState) {
     notifications: {
       getUserPreferences: async (userId: number, sourceId?: string) =>
         state.prefs.get(`${userId}|${sourceId ?? ''}`) ?? null,
-      getUserPreferenceRows: async () => [],
+      // Every saved row of the user, as the targeted alert path reads them.
+      getUserPreferenceRows: async (userId: number) =>
+        [...state.prefs.entries()]
+          .filter(([key]) => key.startsWith(`${userId}|`))
+          .map(([key, prefs]) => ({ sourceId: key.slice(key.indexOf('|') + 1), prefs })),
       getUsersWithServiceEnabled: async () => state.appriseUsers,
     },
     settings: {
@@ -82,7 +92,8 @@ export function buildDatabaseMock(state: FixtureState) {
     },
     auth: { getAllUsers: async () => state.users },
     getSettingAsync: async () => null,
-    checkPermissionAsync: async (userId: number) => !state.deniedUsers.has(userId),
+    checkPermissionAsync: async (userId: number, _resource?: string, _action?: string, sourceId?: string) =>
+      !state.deniedUsers.has(userId) && !state.deniedPairs?.has(`${userId}|${sourceId ?? ''}`),
     waitForReady: async () => undefined,
   };
 }
