@@ -192,6 +192,18 @@ class WaypointNotificationService {
         type: 'info' as const,
         sourceId,
         sourceName,
+        // #5729: the "already notified" ledger is per source, so a waypoint
+        // heard by two sources alerts twice. The waypoint id is the same on
+        // every source; one alert per user, naming the sources that heard it.
+        dedup: {
+          key: `waypoint:${waypoint.waypointId}`,
+          merged: (names: string[]) => ({
+            title: `${icon} ${label}`,
+            body: waypoint.description
+              ? `[${names.join(', ')}] ${waypoint.description}`
+              : `[${names.join(', ')}] Waypoint received at ${waypoint.latitude.toFixed(5)}, ${waypoint.longitude.toFixed(5)}`,
+          }),
+        },
       };
 
       for (const user of targets) {

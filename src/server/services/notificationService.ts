@@ -4,6 +4,7 @@ import { pushNotificationService } from './pushNotificationService.js';
 import { appriseNotificationService, AppriseNotificationPayload } from './appriseNotificationService.js';
 import { desktopNotificationService } from './desktopNotificationService.js';
 import type { MessageTemplateContext } from '../../utils/notificationTemplate.js';
+import type { NotificationDedupSpec } from './notificationDedup.js';
 
 export interface NotificationPayload {
   title: string;
@@ -26,6 +27,13 @@ export interface NotificationPayload {
    * its filter decision; `title`/`body` above are then only a fallback.
    */
   message?: MessageTemplateContext;
+  /**
+   * Cross-source dedup (#5729). When set, a recipient gets ONE notification
+   * for this event however many sources raise it inside the window; see
+   * `notificationDedup.ts`. Leave it unset for anything that is about the
+   * source itself (source health), which must reach the user once per source.
+   */
+  dedup?: NotificationDedupSpec;
 }
 
 export interface NotificationFilterContext {
@@ -92,7 +100,8 @@ class NotificationService {
               type: payload.type,
               sourceId: payload.sourceId,
               sourceName: payload.sourceName,
-              message: payload.message
+              message: payload.message,
+              dedup: payload.dedup
             } as AppriseNotificationPayload,
             filterContext
           )
@@ -107,7 +116,8 @@ class NotificationService {
               type: payload.type,
               sourceId: payload.sourceId,
               sourceName: payload.sourceName,
-              message: payload.message
+              message: payload.message,
+              dedup: payload.dedup
             },
             filterContext
           )
@@ -235,13 +245,21 @@ class NotificationService {
   ): Promise<void> {
     try {
       const typeText = deviceTypeLabel ? ` - ${deviceTypeLabel}` : '';
+      const title = `New MeshCore Device Detected`;
       // #4845: title carries the service, body says which instance detected it.
       const payload: NotificationPayload = {
-        title: `New MeshCore Device Detected`,
+        title,
         body: `${displayName} detected by ${sourceName}${typeText}`,
         type: 'info',
         sourceId,
-        sourceName
+        sourceName,
+        // #5729: each MeshCore source keeps its own "already announced" set,
+        // so two sources that hear the same advert both get here. The public
+        // key is the device's identity on every source.
+        dedup: {
+          key: `meshcore-new-node:${publicKey}`,
+          merged: (names) => ({ title, body: `${displayName} detected by ${names.join(', ')}${typeText}` }),
+        },
       };
 
       // Send to users with notifyOnNewNode enabled, scoped to this source

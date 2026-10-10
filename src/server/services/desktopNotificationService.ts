@@ -15,6 +15,15 @@ import { logger } from '../../utils/logger.js';
 import databaseService from '../../services/database.js';
 import { shouldFilterNotificationAsync, getUserNotificationPreferencesAsync, renderMessagePayloadForUserAsync } from '../utils/notificationFiltering.js';
 import type { MessageTemplateContext } from '../../utils/notificationTemplate.js';
+import { notificationDedup, type NotificationDedupSpec } from './notificationDedup.js';
+
+/**
+ * Dedup recipient for the desktop app (#5729): the one machine. A desktop
+ * notification is shown once, for the first user who passes, so the machine
+ * is the unit, not the user. It never lists sources (see `claimDesktop`), so
+ * a shared key cannot show one user another user's source.
+ */
+const DESKTOP_DEDUP_RECIPIENT = 'desktop';
 
 export interface DesktopNotificationPayload {
   title: string;
@@ -29,6 +38,8 @@ export interface DesktopNotificationPayload {
    * renders the recipient's title/body template from.
    */
   message?: MessageTemplateContext;
+  /** Cross-source dedup (#5729); see `notificationDedup.ts`. */
+  dedup?: NotificationDedupSpec;
 }
 
 export interface DesktopNotificationFilterContext {
@@ -62,9 +73,23 @@ class DesktopNotificationService {
   }
 
   /**
+   * Cross-source dedup (#5729). node-notifier cannot replace a notification
+   * it has already shown, so the desktop sends the first copy only; that copy
+   * names the source that heard the packet first. True = send it.
+   */
+  private claimDesktop(payload: DesktopNotificationPayload, sourceId: string): boolean {
+    if (!payload.dedup) return true;
+    const claim = notificationDedup.claim(DESKTOP_DEDUP_RECIPIENT, payload.dedup.key, {
+      sourceId,
+      sourceName: payload.sourceName,
+    });
+    return claim.outcome === 'first';
+  }
+
+  /**
    * Send a native OS notification
    */
-  private send(payload: DesktopNotificationPayload): void {
+  private send(payload: DesktopNotificationPayload, releaseSourceId?: string): void {
     try {
       notifier.notify({
         title: payload.title,
@@ -76,6 +101,11 @@ class DesktopNotificationService {
       logger.debug(`🖥️ Desktop notification sent: ${payload.title}`);
     } catch (error) {
       logger.error('❌ Failed to send desktop notification:', error);
+      // A first copy that was never shown must not block another source's
+      // copy (#5729), the same as the Web Push and Apprise paths.
+      if (payload.dedup && releaseSourceId !== undefined) {
+        notificationDedup.release(DESKTOP_DEDUP_RECIPIENT, payload.dedup.key, releaseSourceId);
+      }
     }
   }
 
@@ -120,10 +150,16 @@ class DesktopNotificationService {
           continue;
         }
 
+        // Dedup AFTER the filter decision (#5729): a copy no user would have
+        // been shown must not use up the event.
+        if (!this.claimDesktop(payload, filterContext.sourceId)) {
+          return { sent: 0, failed: 0, filtered: filtered + 1 };
+        }
+
         // Render AFTER the filter decision (#5593), with the templates of the
         // user this single desktop notification is sent for.
         const rendered = await renderMessagePayloadForUserAsync(user.id, payload, filterContext.sourceId, filterContext.sourceName);
-        this.send({ ...payload, title: rendered.title, body: rendered.body });
+        this.send({ ...payload, title: rendered.title, body: rendered.body }, filterContext.sourceId);
         // Only send once — single desktop machine
         return { sent: 1, failed: 0, filtered };
       }
@@ -168,7 +204,11 @@ class DesktopNotificationService {
         if (!prefs || !prefs.enableWebPush) continue;
         if (!(prefs as any)[preferenceName]) continue;
 
-        this.send(payload);
+        if (!this.claimDesktop(payload, effectiveSourceId ?? payload.sourceId)) {
+          return { sent: 0, failed: 0, filtered: 1 };
+        }
+
+        this.send(payload, effectiveSourceId ?? payload.sourceId);
         // Only send once — single desktop machine
         return { sent: 1, failed: 0, filtered: 0 };
       }

@@ -122,6 +122,11 @@ self.addEventListener('push', event => {
     icon: defaultIcon,
     badge: defaultIcon,
     tag: undefined as string | undefined, // Will be set uniquely per notification
+    // #5729: a later copy of the same event (another source heard the packet)
+    // arrives with the same tag, `renotify: false` and `silent: true`, so it
+    // replaces the shown notification without alerting the user again.
+    renotify: false,
+    silent: false,
     data: undefined as NotificationNavigationData | undefined, // Navigation data for click handling
   };
 
@@ -135,6 +140,9 @@ self.addEventListener('push', event => {
         icon: data.icon || notificationData.icon,
         badge: data.badge || notificationData.badge,
         tag: data.tag, // Use tag from payload, or undefined for unique notifications
+        // `renotify: true` without a tag throws, so it needs both.
+        renotify: data.renotify === true && typeof data.tag === 'string' && data.tag.length > 0,
+        silent: data.silent === true,
         data: data.data, // Navigation data (channelId, messageId, senderNodeId)
       };
     } catch (error) {
@@ -154,6 +162,8 @@ self.addEventListener('push', event => {
       icon: notificationData.icon,
       badge: notificationData.badge,
       tag: finalTag,
+      renotify: notificationData.renotify,
+      silent: notificationData.silent,
       data: notificationData.data, // Attach navigation data to notification
       requireInteraction: false, // Allow notifications to auto-dismiss
     } as NotificationOptions)
