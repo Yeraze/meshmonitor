@@ -461,6 +461,32 @@ Asks a node to report data — the automation equivalent of the manual request b
 - **Channel #** *(advanced; Meshtastic only)* — which channel to send the request on (e.g. a private
   sensor channel); ignored by MeshCore.
 
+### Trace MeshCore paths on a schedule
+
+Traces to one or more MeshCore contacts, **each on its own interval**, and keeps the per-hop SNR. For example, trace to a hilltop repeater every 10 minutes and to a distant room server every 10 hours, in one automation.
+
+| Field | Meaning |
+|---|---|
+| **Paths** | One row per contact: the contact's public key (64 hex characters), an optional name, the hop hash width, and how often to trace (minutes). |
+| **Via MeshCore sources** | Which MeshCore companion sends the traces. A Schedule trigger has no source of its own, so pick one. |
+| **Trace the return leg too** | Brings the trace back along the same route so both directions of each hop are measured. Doubles each trace's airtime. |
+
+**How to set it up:** use a **Schedule** trigger that fires every minute (cron `* * * * *`). On each run the step traces only the paths that are due and leaves the rest alone. A run where nothing was due writes no entry in the Runs log, so the log shows the runs that did something.
+
+**Limits** (each trace is a packet relayed hop by hop):
+
+- A path runs **at most every 10 minutes**; the builder and the server both refuse a shorter interval.
+- One source sends **at most 12 scheduled traces an hour**. Paths past that are skipped and wait; the run says so.
+- Up to 20 paths per step.
+- A path's last run and the hourly count are stored, so restarting MeshMonitor or saving the automation does not make every path fire again. A path that is new runs on the next tick.
+- A trace that fails or gets no reply still counts as that path's run. Nothing is retried.
+
+**Hop hash width.** A trace follows the contact's stored path, which is a list of 1- or 2-byte hashes. "As the contact's path" sends it as stored. Choosing 1 byte shortens a 2-byte path. Choosing 2 bytes widens a 1-byte path, which works only when every hop matches exactly one of your contacts; otherwise that trace is not sent and the run says why.
+
+**Where the results go.** The SNR readings land in each contact's **Trace SNR history** (see [MeshCore: Trace SNR History](/features/meshcore#trace-snr-history)), marked as traces MeshMonitor sent. The contact needs a known path; one with no path is skipped.
+
+MeshCore companion sources only. A **Test** (dry run) sends nothing and does not use up a path's interval.
+
 ### Send a notification (Apprise)
 
 Dispatches an out-of-band notification through [Apprise](/features/notifications) with a `Title`,

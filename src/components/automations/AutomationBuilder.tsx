@@ -14,6 +14,7 @@ import { STEP_OUTPUT_NAME_PATTERN, stepOutputScopes, emptySendFinding } from '..
 import SubstitutionsHelpDrawer from './SubstitutionsHelp';
 import GeofenceFieldInput from './GeofenceFieldInput';
 import NodeMultiFieldInput, { type NodeMultiOption } from './NodeMultiFieldInput';
+import TracePathsFieldInput from './TracePathsFieldInput';
 import AutomationIdFieldInput, { type AutomationOption } from './AutomationIdFieldInput';
 import TokenTextField from './TokenTextField';
 import { NumberInput } from '../common/NumberInput';
@@ -343,6 +344,18 @@ export function FieldInput({ field, value, onChange, variables, sources, channel
       break;
     case 'nodeMulti':
       control = <NodeMultiFieldInput value={value} onChange={onChange} nodes={nodes} />;
+      break;
+    case 'tracePaths':
+      control = (
+        <>
+          <TracePathsFieldInput value={value} onChange={onChange} />
+          {field.warning && (
+            <div className="ae-field-warn" role="note">
+              <UiIcon name="alert" size={14} /> <span>{field.warning}</span>
+            </div>
+          )}
+        </>
+      );
       break;
     case 'scriptselect':
       control = (
