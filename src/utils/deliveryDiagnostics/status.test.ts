@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { getMeshtasticDeliveryState, getMeshCoreDeliveryState, getMeshCoreChannelSendState, getOwnMeshCoreChannelSendState, TIMEOUT_MS } from './status';
+import { getMeshtasticDeliveryState, getMeshCoreDeliveryState, getMeshCoreChannelSendState, getOwnMeshCoreChannelSendState, getMeshCoreDirectSendState, getOwnMeshCoreDirectSendState, TIMEOUT_MS } from './status';
 import { MessageDeliveryState } from '../../types/message';
 
 describe('getMeshtasticDeliveryState', () => {
@@ -139,5 +139,71 @@ describe('getOwnMeshCoreChannelSendState (#5682)', () => {
     expect(getOwnMeshCoreChannelSendState({ toPublicKey: 'd'.repeat(64) })).toBeNull();
     expect(getOwnMeshCoreChannelSendState({ toPublicKey: 'd'.repeat(64), messageType: 'room_post' })).toBeNull();
     expect(getOwnMeshCoreChannelSendState({})).toBeNull();
+  });
+});
+
+describe('getMeshCoreDirectSendState (#5682)', () => {
+  const SELF = 'a'.repeat(64);
+  const PEER = 'd'.repeat(64);
+  const dm = { fromPublicKey: SELF, toPublicKey: PEER };
+  const post = { ...dm, messageType: 'room_post' };
+
+  it.each([
+    [undefined, 'sent_to_radio'],
+    ['sent', 'awaiting_ack'],
+    ['delivered', 'delivered'],
+    ['failed', 'not_confirmed'],
+  ] as const)('deliveryStatus %s reads %s for a DM and for a room post', (deliveryStatus, state) => {
+    expect(getMeshCoreDirectSendState({ ...dm, deliveryStatus }, SELF)).toEqual({ kind: 'dm', state });
+    expect(getMeshCoreDirectSendState({ ...post, deliveryStatus }, SELF)).toEqual({ kind: 'room_post', state });
+  });
+
+  it('is null for a message that is not ours, or when our key is unknown', () => {
+    expect(getMeshCoreDirectSendState({ fromPublicKey: PEER, toPublicKey: SELF }, SELF)).toBeNull();
+    expect(getMeshCoreDirectSendState({ ...post, fromPublicKey: PEER }, SELF)).toBeNull();
+    expect(getMeshCoreDirectSendState(dm, null)).toBeNull();
+    expect(getMeshCoreDirectSendState(dm, undefined)).toBeNull();
+  });
+
+  it('is null for a channel send, which has no ack (the channel selector reads it)', () => {
+    const channel = { fromPublicKey: SELF, toPublicKey: 'channel-3' };
+    expect(getMeshCoreDirectSendState(channel, SELF)).toBeNull();
+    expect(getMeshCoreChannelSendState(channel, SELF)).toBe('sent_to_radio');
+    // And the reverse: the channel selector never reads a DM or a room post.
+    expect(getMeshCoreChannelSendState(dm, SELF)).toBeNull();
+    expect(getMeshCoreChannelSendState(post, SELF)).toBeNull();
+  });
+
+  it('is null for a legacy row with no recipient and no ack state', () => {
+    expect(getOwnMeshCoreDirectSendState({})).toBeNull();
+    expect(getOwnMeshCoreDirectSendState({ deliveryStatus: 'delivered' })).toEqual({ kind: 'dm', state: 'delivered' });
+  });
+
+  it('claims nothing while a send has not reached the radio', () => {
+    expect(getOwnMeshCoreDirectSendState({ toPublicKey: PEER, deliveryStatus: 'sending' })).toBeNull();
+  });
+});
+
+describe('Meshtastic delivery states are untouched by the MeshCore work (#5682)', () => {
+  const NOW = 1_700_000_000_000;
+  const at = (ageMs: number) => new Date(NOW - ageMs);
+  it.each([
+    [{ ackFailed: true }, 'failed'],
+    [{ routingErrorReceived: true }, 'failed'],
+    [{ deliveryState: MessageDeliveryState.FAILED }, 'failed'],
+    [{ deliveryState: MessageDeliveryState.CONFIRMED }, 'confirmed'],
+    [{ deliveryState: MessageDeliveryState.DELIVERED }, 'delivered'],
+    [{}, 'pending'],
+    [{ timestamp: at(TIMEOUT_MS) }, 'timeout'],
+  ] as const)('%o reads %s', (fields, expected) => {
+    expect(getMeshtasticDeliveryState({ timestamp: at(1000), ...fields }, NOW)).toBe(expected);
+  });
+
+  it('has no "sent to radio" state: an unacked Meshtastic send is pending, then timeout', () => {
+    const states = new Set<string>();
+    for (const age of [0, 1000, TIMEOUT_MS - 1, TIMEOUT_MS, TIMEOUT_MS * 10]) {
+      states.add(getMeshtasticDeliveryState({ timestamp: at(age) }, NOW));
+    }
+    expect([...states].sort()).toEqual(['pending', 'timeout']);
   });
 });
