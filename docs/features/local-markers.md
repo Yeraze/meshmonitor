@@ -23,6 +23,14 @@ Waypoints and nodes always draw on top of a local marker at the same spot.
 
 To change or remove a marker, click it and use **Edit** or **Delete** in its popup.
 
+### From Map Analysis
+
+1. Open **Tools** and click **Add Local Marker**, then click the spot. The Local Markers layer turns on if it was off.
+2. Pick the **Source** the marker is kept with. Any source you hold **Waypoints: write** on will do, since no radio sends a marker. With one such source it is chosen for you.
+3. Fill in the rest and click **Save**.
+
+**Edit** and **Delete** in a marker's popup work in Map Analysis too, for sources you can write to.
+
 ## Who can see and change markers
 
 Markers belong to one source and use that source's **Waypoints** permission:
@@ -30,7 +38,7 @@ Markers belong to one source and use that source's **Waypoints** permission:
 - **Waypoints: read** on the source shows its markers.
 - **Waypoints: write** on the source lets you add, edit and delete them.
 
-A grant on another source does not help. The anonymous account follows its own grants, so a public map shows markers only if the anonymous account can read that source's waypoints. The Dashboard and Map Analysis show markers from every source you can read, but you edit them on the source's own map.
+A grant on another source does not help. The anonymous account follows its own grants, so a public map shows markers only if the anonymous account can read that source's waypoints. The Dashboard and Map Analysis show markers from every source you can read. You edit them on the source's own map or in Map Analysis; the Dashboard is read-only.
 
 ## Showing and hiding markers
 

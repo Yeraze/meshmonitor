@@ -38,7 +38,7 @@ The unified "all sources" dashboard renders waypoints from every source you can 
 
 ### Map Analysis
 
-The Map Analysis canvas exposes a **Waypoints** layer in the toolbar. Toggle it to overlay every visible waypoint on top of the existing analysis layers (heatmap, traceroutes, etc.).
+The Map Analysis canvas exposes a **Waypoints** layer in the toolbar. Toggle it to overlay every visible waypoint on top of the existing analysis layers (heatmap, traceroutes, etc.). You can also add, edit and delete waypoints there; see [From Map Analysis](#from-map-analysis).
 
 ### Showing and hiding waypoints
 
@@ -46,7 +46,7 @@ The **Map Features** panel on both the per-source dashboard map and the Nodes ma
 
 ## Creating, editing, and deleting waypoints
 
-Authoring is available on the per-source dashboard map for users with `waypoints:write`.
+Authoring is available on a source's own map and in Map Analysis, for users with `waypoints:write` on the source.
 
 ### Create
 
@@ -65,6 +65,23 @@ Authoring is available on the per-source dashboard map for users with `waypoints
 ### Edit
 
 Click the waypoint marker, then **Edit** in the popup. Editing is suppressed when the waypoint is locked to another node.
+
+### From Map Analysis
+
+Map Analysis shows many sources at once, so it asks which one sends.
+
+1. Open **Tools** and click **Add Waypoint**. The Waypoints layer turns on if it was off.
+2. Click the map at the spot, or press **Esc** to cancel. This sends nothing.
+3. In the editor, pick the **Sending source**. That source's radio broadcasts the waypoint.
+   - Only Meshtastic radio sources you hold `waypoints:write` on are listed. MQTT, MeshCore and Reticulum sources cannot send a waypoint, and a disabled source has no radio to send with.
+   - With one such source it is chosen for you and shown as text.
+   - With several you must choose. If the map's source filter leaves exactly one of them, that one is chosen for you. **Create** stays off until a source is set.
+   - The **Channel** list and **Lock to this node** follow the source you pick. Changing the source puts both back to their defaults, because slot 1 on one radio is not slot 1 on another.
+4. Click **Create**. The waypoint is saved and broadcast once, the same single send as on a source's own map. Nothing goes on air before this click.
+
+**Add Waypoint** is hidden if you have `waypoints:write` on no source. It shows greyed out, with the reason, if you can write only to sources that have no radio, and in the 3D view.
+
+**Edit** and **Delete** appear in a waypoint's popup when its source is a radio source you can write to. They act on the waypoint's own source, and the editor names it. Both are greyed out for a waypoint locked to another node. Delete asks first and names the sending source.
 
 ### Delete
 
