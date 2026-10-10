@@ -104,6 +104,21 @@ describe('text utilities', () => {
       expect(isEmoji('👩‍💻')).toBe(true);       // woman technologist
     });
 
+    it('should return true for keycaps and subdivision flags (#5720)', () => {
+      expect(isEmoji('1️⃣')).toBe(true);   // digit + VS-16 + U+20E3, a phone-app tapback
+      expect(isEmoji('1⃣')).toBe(true);     // keycap without the variation selector
+      expect(isEmoji('#️⃣')).toBe(true);
+      expect(isEmoji('🏴󠁧󠁢󠁥󠁮󠁧󠁿')).toBe(true);    // England: black flag + tag sequence
+      expect(isEmoji('🫡')).toBe(true);     // U+1FAE1, past the old U+1FAD6 cut-off
+    });
+
+    it('still treats bare digits and digit text as text (#5720)', () => {
+      expect(isEmoji('1')).toBe(false);
+      expect(isEmoji('42')).toBe(false);
+      expect(isEmoji('#')).toBe(false);
+      expect(isEmoji('1️⃣ ok')).toBe(false);
+    });
+
     it('should return false for text', () => {
       expect(isEmoji('hello')).toBe(false);
       expect(isEmoji('abc')).toBe(false);
@@ -137,9 +152,9 @@ describe('text utilities', () => {
     });
 
     it('should handle keycap sequences', () => {
-      // Keycap sequences like 1️⃣ are complex and not commonly used as tapbacks
-      // The regex doesn't match these because they start with ASCII digits
-      expect(isEmoji('1️⃣')).toBe(false);
+      // #5720: phone apps send keycaps like 1️⃣ as tapbacks, so they are emoji.
+      // A bare digit is still text (see the #5720 cases above).
+      expect(isEmoji('1️⃣')).toBe(true);
       expect(isEmoji('🔢')).toBe(true);   // input numbers emoji
     });
   });
