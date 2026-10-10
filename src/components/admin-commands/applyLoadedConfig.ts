@@ -100,6 +100,12 @@ export interface LoadedConfigContext {
 // eslint-disable-next-line @typescript-eslint/no-explicit-any -- the load-config reply is untyped protobuf JSON
 type RawConfig = any;
 
+/** A wire number, or 0 (the firmware's "use default") when absent or not a number. */
+const finiteOrZero = (value: unknown): number => {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : 0;
+};
+
 type ConfigApplier = (config: RawConfig, setters: LoadedConfigSetters, context: LoadedConfigContext) => void;
 
 export const CONFIG_APPLIERS: Record<LoadConfigType, ConfigApplier> = {
@@ -180,8 +186,8 @@ export const CONFIG_APPLIERS: Record<LoadConfigType, ConfigApplier> = {
       tlsEnabled: config.tlsEnabled === true,
       proxyToClientEnabled: config.proxyToClientEnabled === true,
       mapReportingEnabled: config.mapReportingEnabled === true,
-      mapPublishIntervalSecs: Number(map.publishIntervalSecs) || 0,
-      mapPositionPrecision: Number(map.positionPrecision) || 0,
+      mapPublishIntervalSecs: finiteOrZero(map.publishIntervalSecs),
+      mapPositionPrecision: finiteOrZero(map.positionPrecision),
       mapShouldReportLocation: map.shouldReportLocation === true,
       loadedForNodeNum: nodeNum,
     });

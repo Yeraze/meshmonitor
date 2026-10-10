@@ -430,7 +430,9 @@ router.post('/load-config', extendRequestTimeout(LOAD_CONFIG_TIMEOUT_MS), requir
             if (finalConfig.moduleConfig?.mqtt) {
               config = formatAdminMqttConfig(finalConfig.moduleConfig.mqtt);
             } else {
-              // MQTT config might not exist if it's not configured, return empty config
+              // No MQTT config cached for the local node yet. Answer with the
+              // firmware's factory values, where encryption is on
+              // (default_mqtt_encryption_enabled), not the proto3 zero values.
               config = { ...formatAdminMqttConfig({}), encryptionEnabled: true };
             }
             break;
