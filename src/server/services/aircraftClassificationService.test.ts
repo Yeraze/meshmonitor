@@ -577,6 +577,30 @@ describe('AircraftClassificationService — manual marks', () => {
       expect(scheduleSpy).toHaveBeenCalledWith('src-a', 310, 'manual');
     });
 
+    it('never emits node:aircraft, so no position request (#5704) or automation follows a click', async () => {
+      const { deps, nodes, emitFn } = makeDeps();
+      // Ground node → marked aircraft; flagged node with a mark → cleared back to flagged.
+      nodes.set('src-a:320', makeNode({ nodeNum: 320, altitude: 210, likelyAircraft: false }));
+      nodes.set('src-a:321', makeNode({
+        nodeNum: 321, altitude: 9000, likelyAircraft: false, aircraftManualMark: 'not_aircraft',
+        aircraftFixedAt: 1, aircraftFixedLatitude: 45, aircraftFixedLongitude: -75,
+      } as any));
+      (deps.setManualMark as ReturnType<typeof vi.fn>).mockImplementation(async (n: number, src: string, mark: any) => {
+        const key = `${src}:${n}`;
+        const cur = nodes.get(key)!;
+        nodes.set(key, mark === null
+          ? { ...cur, aircraftManualMark: null, aircraftFixedAt: null, aircraftFixedLatitude: null, aircraftFixedLongitude: null }
+          : { ...cur, aircraftManualMark: mark.mode, likelyAircraft: mark.mode === 'aircraft' } as any);
+      });
+      const svc = new AircraftClassificationService(deps);
+      await svc.applyManualMark('src-a', 320, 'aircraft', 1);
+      await svc.applyManualMark('src-a', 321, 'clear', 1);
+      await svc.drainForTest();
+      expect(nodes.get('src-a:320')!.likelyAircraft).toBe(true);
+      expect(nodes.get('src-a:321')!.likelyAircraft).toBe(true);
+      expect(emitFn).not.toHaveBeenCalled();
+    });
+
     it('refuses a Null Island position as no position', async () => {
       const { deps, nodes } = makeDeps();
       nodes.set('src-a:311', makeNode({ nodeNum: 311, latitude: 0, longitude: 0 }));
