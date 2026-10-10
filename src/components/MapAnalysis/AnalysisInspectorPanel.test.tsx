@@ -1,13 +1,15 @@
 /**
  * @vitest-environment jsdom
  */
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import AnalysisInspectorPanel from './AnalysisInspectorPanel';
 import { MapAnalysisProvider, useMapAnalysisCtx } from './MapAnalysisContext';
 import { calculateDistance, formatDistance } from '../../utils/distance';
 import type { ElevationProfile } from '../../types/elevation';
+import { MOBILE_LAYOUT_MEDIA_QUERY } from '../../utils/sidebarWidth';
+import inspectorStyles from './AnalysisInspectorPanel.module.css';
 
 // Real /api/sources/:id/nodes returns FLAT telemetry fields (no nested deviceMetrics).
 // Mock matches that shape so the test catches regressions if we ever revert to nested-only reads.
@@ -335,6 +337,89 @@ describe('AnalysisInspectorPanel', () => {
       </Wrapper>,
     );
     expect(screen.getByLabelText(/collapse detail pane/i)).toBeInTheDocument();
+  });
+
+  it('keeps the desktop column: no sheet class, collapse arrow, empty state', () => {
+    render(
+      <Wrapper>
+        <AnalysisInspectorPanel />
+      </Wrapper>,
+    );
+    const pane = screen.getByTestId('analysis-inspector');
+    expect(pane.className).toBe('map-analysis-inspector');
+    expect(screen.queryByLabelText(/close details/i)).toBeNull();
+  });
+
+  // A fixed 340px column left a 390px-wide phone with a ~50px map. On the
+  // phone layout the pane is a docked sheet that shows only for a selection.
+  describe('phone layout', () => {
+    const originalMatchMedia = window.matchMedia;
+    beforeEach(() => {
+      window.matchMedia = ((query: string) => ({
+        matches: query === MOBILE_LAYOUT_MEDIA_QUERY,
+        media: query,
+        onchange: null,
+        addListener: () => {},
+        removeListener: () => {},
+        addEventListener: () => {},
+        removeEventListener: () => {},
+        dispatchEvent: () => false,
+      })) as unknown as typeof window.matchMedia;
+    });
+    afterEach(() => {
+      window.matchMedia = originalMatchMedia;
+    });
+
+    it('takes no room from the map while nothing is selected', () => {
+      render(
+        <Wrapper>
+          <AnalysisInspectorPanel />
+        </Wrapper>,
+      );
+      expect(screen.queryByTestId('analysis-inspector')).toBeNull();
+      expect(screen.queryByLabelText(/expand detail pane/i)).toBeNull();
+      expect(screen.queryByText(/click a node, route segment/i)).toBeNull();
+    });
+
+    it('opens as a sheet with the details when something is selected', () => {
+      render(
+        <Wrapper>
+          <SelectAlpha />
+          <AnalysisInspectorPanel />
+        </Wrapper>,
+      );
+      fireEvent.click(screen.getByText('select'));
+      const pane = screen.getByTestId('analysis-inspector');
+      expect(pane.className).toContain('map-analysis-inspector');
+      expect(pane.className).toContain(inspectorStyles.sheet);
+      expect(screen.getByText('Alpha')).toBeInTheDocument();
+    });
+
+    it('shows the selection even when the desktop pane was folded', () => {
+      localStorage.setItem('mapAnalysis.config.v1', JSON.stringify({ version: 1, inspectorOpen: false }));
+      render(
+        <Wrapper>
+          <SelectAlpha />
+          <AnalysisInspectorPanel />
+        </Wrapper>,
+      );
+      fireEvent.click(screen.getByText('select'));
+      expect(screen.getByText('Alpha')).toBeInTheDocument();
+    });
+
+    it('closes for that selection and reopens on the next one', () => {
+      render(
+        <Wrapper>
+          <SelectAlpha />
+          <AnalysisInspectorPanel />
+        </Wrapper>,
+      );
+      fireEvent.click(screen.getByText('select'));
+      fireEvent.click(screen.getByLabelText(/close details/i));
+      expect(screen.queryByTestId('analysis-inspector')).toBeNull();
+      fireEvent.click(screen.getByText('select'));
+      expect(screen.getByText('Alpha')).toBeInTheDocument();
+    });
   });
 
   // ===== Neighbor-link terrain integration (epic #3826, Phase 1, WP-2) =====

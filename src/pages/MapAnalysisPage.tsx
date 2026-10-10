@@ -10,6 +10,7 @@ import MapAnalysisCanvas from '../components/MapAnalysis/MapAnalysisCanvas';
 import AnalysisInspectorPanel from '../components/MapAnalysis/AnalysisInspectorPanel';
 import { MapAnalysisProvider } from '../components/MapAnalysis/MapAnalysisContext';
 import '../styles/map-analysis.css';
+import inspectorStyles from '../components/MapAnalysis/AnalysisInspectorPanel.module.css';
 
 export default function MapAnalysisPage() {
   return (
@@ -18,7 +19,7 @@ export default function MapAnalysisPage() {
         <MapAnalysisProvider>
           <div className="map-analysis-page">
             <MapAnalysisToolbar />
-            <div className="map-analysis-body">
+            <div className={`map-analysis-body ${inspectorStyles.body}`}>
               <MapAnalysisCanvas />
               <AnalysisInspectorPanel />
             </div>
