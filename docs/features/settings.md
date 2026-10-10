@@ -245,6 +245,18 @@ When an ignored aircraft sends a new live position, its ignore is lifted and it 
 
 The same sweep also looks for nodes that were flagged but sit still: a flagged node heard in the last 24 hours with at least 3 position fixes, all within 200 m of each other, is **reclassified as fixed**. Its flag is cleared and it stays unflagged while it is within 1 km of that spot. If it moves further than 1 km, it is classified normally again. This check runs whenever detection is on, even with age-out off.
 
+#### Marking a node by hand {#aircraft-manual-mark}
+
+The detector can be wrong: a repeater on a mountain top reads as an aircraft, or a drone over a deep valley does not. The node's **Actions** menu on its Node Details page has three entries to fix this:
+
+- **Mark as not aircraft** — shown while the node is flagged. Clears the flag and pins the node's current position. The node stays unflagged while it is within 1 km of that spot, the same rule as **reclassified as fixed**. If it moves further than 1 km, the mark goes away and the node is classified normally again. A node with no known position cannot be marked this way.
+- **Mark as aircraft** — shown while the node is not flagged. Flags the node whatever its altitude says. The mark holds until you clear it. The stationary check above skips the node, but age-out still applies, as for any aircraft.
+- **Clear aircraft override** — shown while the node has a manual mark or a **reclassified as fixed** mark. Drops the mark and classifies the node again from its stored altitude.
+
+Node Details shows who set a manual mark and when ("Marked as not aircraft · By you on …"), so you can tell it apart from the sweep's own **Reclassified as fixed**.
+
+The entries need **Nodes: write** on the node's source, and they do not appear on MeshCore or Reticulum sources or when detection is off for the source. Each change is written to the audit log with the user, node, source and mode. A mark changes MeshMonitor's database only: nothing is sent to the mesh, and it never fires the **became likely aircraft** automation trigger. Turning detection off for the source clears manual marks along with every other classification.
+
 #### Ask new aircraft for their position
 
 A node on a slow broadcast interval gives a trail of one or two points before it flies out of range. With **Ask new aircraft for their position** on, MeshMonitor asks a node for its position when it is first flagged as a likely aircraft: 3 requests, at 0, 2 and 4 minutes, through the source that flagged it.

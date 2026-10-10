@@ -9,6 +9,7 @@
  *     non-ignored node heard in the last 24 h whose last-24 h fixes on this
  *     source all sit within 200 m (`isStationaryFix`) is not an aircraft: the
  *     flag is cleared and a sticky "confirmed fixed" anchor is set.
+ *     A node a person marked 'aircraft' (#5715) is skipped here.
  *  2. **Age-out pass (D2)** — only when `aircraftAgeOutEnabled`. A flagged
  *     node not heard for N hours is ignored (DB-only, `reason 'aircraft'`)
  *     or, on explicit opt-in, deleted. Favourites, the local node, and nodes
@@ -176,6 +177,9 @@ export class AircraftAgeOutService {
     const recentCutoffSec = (now - AIRCRAFT_FIXED_WINDOW_MS) / 1000;
     for (const c of candidates) {
       if (c.isIgnored) continue;
+      // #5715: a person said this is an aircraft; the stationary rule must
+      // not overrule them (a parked drone or balloon still is one).
+      if (c.aircraftManualMark === 'aircraft') continue;
       if (c.lastHeard == null || c.lastHeard < recentCutoffSec) continue;
       try {
         const fixes = await this.deps.getPositionFixes(c.nodeId, now - AIRCRAFT_FIXED_WINDOW_MS, sourceId);

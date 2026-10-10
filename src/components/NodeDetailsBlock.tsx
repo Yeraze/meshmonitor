@@ -22,6 +22,7 @@ import { RemoteAdminLink } from './RemoteAdminLink';
 import { formatAircraftSummary } from '../utils/aircraftClassification';
 import { SignFlipNotice } from './SignFlipNotice';
 import FlightMatchLine from './FlightMatchLine';
+import AircraftMarkNote from './AircraftMarkNote';
 import PkiExchangeStatusCard from './PkiExchangeStatusCard';
 import AssetTrackingSection from './AssetTrackingSection';
 
@@ -640,13 +641,8 @@ const NodeDetailsBlock: React.FC<NodeDetailsBlockProps> = ({ node, timeFormat = 
             </div>
           </div>
         )}
-        {node.aircraftFixedAt != null && (
-          <div className="node-detail-card" data-testid="node-details-aircraft-fixed">
-            <div className="node-detail-label">
-              <UiIcon name="aircraft" size={14} /> {t('node_popup.aircraft_fixed', 'Reclassified as fixed')}
-            </div>
-          </div>
-        )}
+        {/* Manual mark vs automatic fixed mark (#5715) */}
+        <AircraftMarkNote node={node} timeFormat={timeFormat} dateFormat={dateFormat} />
 
         {/* Channel */}
         {node.channel !== undefined && (

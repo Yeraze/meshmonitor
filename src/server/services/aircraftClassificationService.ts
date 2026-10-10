@@ -25,10 +25,13 @@ import { isBogusPosition } from '../../utils/nullIsland.js';
 import { LruCache } from '../utils/lruCache.js';
 import type { LatLng } from '../../utils/greatCircle.js';
 import {
+  AIRCRAFT_EXCLUDED_SOURCE_TYPES,
   classifyAircraft,
   isAircraftTransition,
+  normalizeAircraftManualMark,
   normalizeLikelyAircraft,
   parseAircraftSettings,
+  type AircraftManualMark,
   type AircraftBasis,
   type AircraftPrevious,
   type AircraftSettings,
@@ -36,10 +39,25 @@ import {
 import type { DbNode } from '../../db/types.js';
 import type {
   AircraftClassificationWrite,
+  AircraftManualMarkWrite,
   AircraftReclassifyRow,
 } from '../../db/repositories/nodes.js';
 
-export type AircraftClassifyReason = 'position' | 'backfill';
+/**
+ * Why a job was queued. Only 'position' can emit the became-aircraft event;
+ * 'manual' (#5715, a person set or cleared a mark) and 'backfill' are silent,
+ * so a click in the UI never fires automations or anything hung off them.
+ */
+export type AircraftClassifyReason = 'position' | 'manual' | 'backfill';
+const REASON_PRIORITY: Record<AircraftClassifyReason, number> = { position: 2, manual: 1, backfill: 0 };
+
+/** What a person asked for in Node Details (#5715). */
+export type AircraftManualMarkMode = 'not_aircraft' | 'aircraft' | 'clear';
+export const AIRCRAFT_MANUAL_MARK_MODES: readonly AircraftManualMarkMode[] = ['not_aircraft', 'aircraft', 'clear'];
+
+export type AircraftManualMarkResult =
+  | { ok: true; previousMark: AircraftManualMark | null; anchor: { lat: number; lon: number } | null }
+  | { ok: false; status: number; code: string; message: string };
 
 /** Max points per `ElevationProvider.sample()` call (spec §4.2). */
 export const MAX_BATCH = 100;
@@ -54,8 +72,8 @@ export const GROUND_MEMO_MAX = 20_000;
 /** Delay after boot before the one-time silent backfill runs (D11). */
 export const BACKFILL_DELAY_MS = 120_000;
 
-/** Non-Meshtastic source types the D11 backfill and reclassify never touch (D2). */
-export const AIRCRAFT_EXCLUDED_SOURCE_TYPES: ReadonlySet<string> = new Set(['meshcore', 'meshcore_mqtt', 'reticulum']);
+/** Non-Meshtastic source types the D11 backfill and reclassify never touch (D2). Lives in the shared util. */
+export { AIRCRAFT_EXCLUDED_SOURCE_TYPES };
 
 interface PendingJob {
   sourceId: string;
@@ -109,6 +127,27 @@ function positionOf(eff: { latitude?: number | null; longitude?: number | null }
   return isFiniteNum(eff.latitude) && isFiniteNum(eff.longitude) ? { lat: eff.latitude, lon: eff.longitude } : null;
 }
 
+/** The stored fields `recomputeStoredRow` reads, taken from a full node row. */
+function toReclassifyRow(n: DbNode): AircraftReclassifyRow {
+  return {
+    nodeNum: Number(n.nodeNum),
+    altitude: n.altitude ?? null,
+    groundElevation: n.groundElevation ?? null,
+    likelyAircraft: normalizeLikelyAircraft(n.likelyAircraft),
+    aircraftBasis: n.aircraftBasis ?? null,
+    heightAboveGround: n.heightAboveGround ?? null,
+    positionOverrideEnabled: n.positionOverrideEnabled == null ? null : Boolean(n.positionOverrideEnabled),
+    latitudeOverride: n.latitudeOverride ?? null,
+    longitudeOverride: n.longitudeOverride ?? null,
+    altitudeOverride: n.altitudeOverride ?? null,
+    latitude: n.latitude ?? null,
+    longitude: n.longitude ?? null,
+    aircraftFixedLatitude: n.aircraftFixedLatitude ?? null,
+    aircraftFixedLongitude: n.aircraftFixedLongitude ?? null,
+    aircraftManualMark: n.aircraftManualMark ?? null,
+  };
+}
+
 export interface AircraftClassificationDeps {
   getNode(nodeNum: number, sourceId: string): Promise<DbNode | null>;
   writeClassification(nodeNum: number, sourceId: string, c: AircraftClassificationWrite): Promise<void>;
@@ -117,6 +156,10 @@ export interface AircraftClassificationDeps {
   clearClassification(sourceId: string): Promise<number>;
   /** Phase 2 (D4): clear (null) the "confirmed fixed" mark when the node moved beyond the release radius. */
   setFixed(nodeNum: number, sourceId: string, fixed: { atMs: number; lat: number; lon: number } | null): Promise<void>;
+  /** #5715: store or clear a person's mark. */
+  setManualMark(nodeNum: number, sourceId: string, mark: AircraftManualMarkWrite | null): Promise<void>;
+  /** Source type, or null when the source does not exist. */
+  getSourceType(sourceId: string): Promise<string | null>;
   getSourceSetting(sourceId: string, key: string): Promise<string | null>;
   getGlobalSetting(key: string): Promise<string | null>;
   listSources(): Promise<Array<{ id: string; type: string }>>;
@@ -137,6 +180,8 @@ function defaultDeps(): AircraftClassificationDeps {
       databaseService.nodes.getUnclassifiedNodeNumsWithAltitude(sourceId),
     clearClassification: (sourceId) => databaseService.nodes.clearAircraftClassification(sourceId),
     setFixed: (nodeNum, sourceId, fixed) => databaseService.setAircraftFixedAsync(nodeNum, sourceId, fixed),
+    setManualMark: (nodeNum, sourceId, mark) => databaseService.setAircraftManualMarkAsync(nodeNum, sourceId, mark),
+    getSourceType: async (sourceId) => (await databaseService.sources.getSource(sourceId))?.type ?? null,
     getSourceSetting: (sourceId, key) => databaseService.settings.getSettingForSource(sourceId, key),
     getGlobalSetting: (key) => databaseService.settings.getSetting(key),
     listSources: async () =>
@@ -171,8 +216,8 @@ export class AircraftClassificationService {
   }
 
   /**
-   * Coalesces by `${sourceId}:${nodeNum}`; `'position'` wins over
-   * `'backfill'` when both are pending for the same key. Sync, never throws,
+   * Coalesces by `${sourceId}:${nodeNum}`; a pending job keeps its reason
+   * when the new one ranks lower (`'position'` > `'manual'` > `'backfill'`). Sync, never throws,
    * never awaited by the caller — it just records the job and (if no drain
    * loop is already running) starts one.
    */
@@ -180,7 +225,7 @@ export class AircraftClassificationService {
     try {
       const key = `${sourceId}:${nodeNum}`;
       const existing = this.pending.get(key);
-      if (existing?.reason === 'position' && reason === 'backfill') {
+      if (existing && REASON_PRIORITY[existing.reason] > REASON_PRIORITY[reason]) {
         return; // Keep the higher-priority reason already queued.
       }
       if (!existing && this.pending.size >= MAX_PENDING) {
@@ -451,6 +496,7 @@ export class AircraftClassificationService {
       previous,
       fixedAnchor: fixedAnchorOf(node),
       position: positionOf(eff),
+      manualMark: normalizeAircraftManualMark(node.aircraftManualMark),
     });
     if (c.releaseFixed) {
       // Moved more than AIRCRAFT_FIXED_RELEASE_M from the anchor: drop the
@@ -501,6 +547,85 @@ export class AircraftClassificationService {
   }
 
   /**
+   * #5715: a person marks a node as not aircraft, as aircraft, or clears the
+   * mark. Validates, writes, then queues a silent ('manual') reclassify so the
+   * UI sees the result at once. The caller checks permissions and audits.
+   *
+   *  - 'not_aircraft' anchors at the node's current effective position (the
+   *    same position the classifier and the sweep's fixed rule use); a node
+   *    with no usable position is refused.
+   *  - 'aircraft' holds until cleared, whatever the altitude says.
+   *  - 'clear' drops the manual mark and any fixed anchor, manual or not.
+   *
+   * Never emits the became-aircraft event, so automations and anything hung
+   * off that event stay quiet.
+   */
+  async applyManualMark(
+    sourceId: string,
+    nodeNum: number,
+    mode: AircraftManualMarkMode,
+    byUserId: number | null,
+  ): Promise<AircraftManualMarkResult> {
+    const type = await this.deps.getSourceType(sourceId);
+    if (type === null) {
+      return { ok: false, status: 404, code: 'SOURCE_NOT_FOUND', message: 'Source not found' };
+    }
+    if (AIRCRAFT_EXCLUDED_SOURCE_TYPES.has(type)) {
+      return {
+        ok: false, status: 400, code: 'AIRCRAFT_SOURCE_UNSUPPORTED',
+        message: 'Aircraft detection does not run on this source type',
+      };
+    }
+    const [enabled, agl, msl] = await Promise.all([
+      this.deps.getSourceSetting(sourceId, 'aircraftDetectionEnabled'),
+      this.deps.getSourceSetting(sourceId, 'aircraftAglThresholdMeters'),
+      this.deps.getSourceSetting(sourceId, 'aircraftMslThresholdMeters'),
+    ]);
+    const settings = parseAircraftSettings({ enabled, aglThresholdM: agl, mslThresholdM: msl });
+    if (!settings.enabled) {
+      return {
+        ok: false, status: 409, code: 'AIRCRAFT_DETECTION_DISABLED',
+        message: 'Aircraft detection is off for this source',
+      };
+    }
+    const node = await this.deps.getNode(nodeNum, sourceId);
+    if (!node) {
+      return { ok: false, status: 404, code: 'NODE_NOT_FOUND', message: 'Node not found on this source' };
+    }
+
+    const previousMark = normalizeAircraftManualMark(node.aircraftManualMark);
+    const atMs = this.deps.now();
+    let anchor: { lat: number; lon: number } | null = null;
+    if (mode === 'not_aircraft') {
+      const eff = getEffectiveDbNodePosition(node);
+      anchor = positionOf(eff);
+      if (!anchor || isBogusPosition(anchor.lat, anchor.lon, node.positionPrecisionBits)) {
+        return {
+          ok: false, status: 400, code: 'AIRCRAFT_NO_POSITION',
+          message: 'This node has no known position to anchor the mark to',
+        };
+      }
+      await this.deps.setManualMark(nodeNum, sourceId, { mode: 'not_aircraft', atMs, byUserId, ...anchor });
+    } else if (mode === 'aircraft') {
+      await this.deps.setManualMark(nodeNum, sourceId, { mode: 'aircraft', atMs, byUserId });
+    } else {
+      await this.deps.setManualMark(nodeNum, sourceId, null);
+    }
+    // Recompute now from stored values so the caller's next read already
+    // shows the verdict (a cleared mark would otherwise show the stale flag
+    // until the queue ran). The queued job below still runs, and may sample
+    // the DEM if the node has no stored ground elevation.
+    try {
+      const fresh = await this.deps.getNode(nodeNum, sourceId);
+      if (fresh) await this.recomputeStoredRow(toReclassifyRow(fresh), sourceId, settings);
+    } catch (err) {
+      logger.debug(`Aircraft manual mark: immediate recompute failed for ${nodeNum}@${sourceId}: ${err}`);
+    }
+    this.schedule(sourceId, nodeNum, 'manual');
+    return { ok: true, previousMark, anchor };
+  }
+
+  /**
    * D6/D7: silent, no-network recompute from stored values, run right after
    * a settings save. Detection off → clears the source instead. Never emits
    * (D9) — only a live position job can fire `trigger.becameLikelyAircraft`.
@@ -522,43 +647,7 @@ export class AircraftClassificationService {
       let written = 0;
       for (const row of rows) {
         try {
-          const eff = getEffectiveDbNodePosition(row);
-          const previous: AircraftPrevious = {
-            likelyAircraft: normalizeLikelyAircraft(row.likelyAircraft),
-            basis: (row.aircraftBasis as AircraftBasis | null | undefined) ?? null,
-          };
-          const c = classifyAircraft({
-            altitudeM: eff.altitude,
-            groundElevationM: row.groundElevation,
-            settings,
-            previous,
-            fixedAnchor: fixedAnchorOf(row),
-            position: positionOf(eff),
-          });
-          if (c.releaseFixed) {
-            await this.deps.setFixed(row.nodeNum, sourceId, null);
-          }
-
-          const prevGround = row.groundElevation ?? null;
-          const prevHag = row.heightAboveGround ?? null;
-          const likelyChanged = previous.likelyAircraft !== c.likelyAircraft;
-          const basisChanged = (previous.basis ?? null) !== c.basis;
-          const groundChanged = prevGround !== c.groundElevation;
-          const hagChanged =
-            prevHag === null || c.heightAboveGround === null
-              ? prevHag !== c.heightAboveGround
-              : Math.abs(prevHag - c.heightAboveGround) >= 1;
-
-          if (likelyChanged || basisChanged || groundChanged || hagChanged) {
-            await this.deps.writeClassification(row.nodeNum, sourceId, {
-              likelyAircraft: c.likelyAircraft,
-              aircraftBasis: c.basis,
-              groundElevation: c.groundElevation,
-              heightAboveGround: c.heightAboveGround,
-              aircraftClassifiedAt: this.deps.now(),
-            });
-            written++;
-          }
+          if (await this.recomputeStoredRow(row, sourceId, settings)) written++;
         } catch (err) {
           logger.debug(`Aircraft reclassify: row ${row.nodeNum}@${sourceId} failed: ${err}`);
         }
@@ -568,6 +657,57 @@ export class AircraftClassificationService {
       logger.debug(`Aircraft reclassify failed for source ${sourceId}: ${err}`);
       return 0;
     }
+  }
+
+  /**
+   * Recompute one row's verdict from its stored altitude and ground elevation
+   * (no network, no event). Returns true when it wrote. Shared by
+   * `reclassifySource` and the manual-mark path.
+   */
+  private async recomputeStoredRow(
+    row: AircraftReclassifyRow,
+    sourceId: string,
+    settings: AircraftSettings,
+  ): Promise<boolean> {
+    const eff = getEffectiveDbNodePosition(row);
+    const previous: AircraftPrevious = {
+      likelyAircraft: normalizeLikelyAircraft(row.likelyAircraft),
+      basis: (row.aircraftBasis as AircraftBasis | null | undefined) ?? null,
+    };
+    const c = classifyAircraft({
+      altitudeM: eff.altitude,
+      groundElevationM: row.groundElevation,
+      settings,
+      previous,
+      fixedAnchor: fixedAnchorOf(row),
+      position: positionOf(eff),
+      manualMark: normalizeAircraftManualMark(row.aircraftManualMark),
+    });
+    if (c.releaseFixed) {
+      await this.deps.setFixed(row.nodeNum, sourceId, null);
+    }
+
+    const prevGround = row.groundElevation ?? null;
+    const prevHag = row.heightAboveGround ?? null;
+    const likelyChanged = previous.likelyAircraft !== c.likelyAircraft;
+    const basisChanged = (previous.basis ?? null) !== c.basis;
+    const groundChanged = prevGround !== c.groundElevation;
+    const hagChanged =
+      prevHag === null || c.heightAboveGround === null
+        ? prevHag !== c.heightAboveGround
+        : Math.abs(prevHag - c.heightAboveGround) >= 1;
+
+    if (likelyChanged || basisChanged || groundChanged || hagChanged) {
+      await this.deps.writeClassification(row.nodeNum, sourceId, {
+        likelyAircraft: c.likelyAircraft,
+        aircraftBasis: c.basis,
+        groundElevation: c.groundElevation,
+        heightAboveGround: c.heightAboveGround,
+        aircraftClassifiedAt: this.deps.now(),
+      });
+      return true;
+    }
+    return false;
   }
 
   /**

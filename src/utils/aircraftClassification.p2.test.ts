@@ -14,6 +14,8 @@ import {
   AIRCRAFT_AGE_OUT_HOURS_DEFAULT,
   AIRCRAFT_AGE_OUT_HOURS_RANGE,
   AIRCRAFT_FIXED_RELEASE_M,
+  aircraftMarkActions,
+  normalizeAircraftManualMark,
 } from './aircraftClassification.js';
 
 const settings = parseAircraftSettings({});
@@ -115,5 +117,54 @@ describe('classifyAircraft fixed anchor', () => {
   it('unknown altitude stays null under the mark', () => {
     const r = classifyAircraft({ altitudeM: null, groundElevationM: null, settings, fixedAnchor: anchor, position: anchor });
     expect(r.likelyAircraft).toBeNull();
+  });
+});
+
+// #5715: manual marks.
+describe('classifyAircraft — manual mark', () => {
+  const ground = { altitudeM: 210, groundElevationM: 200, settings };
+  it("'aircraft' forces true over a ground-level verdict and over an anchor", () => {
+    expect(classifyAircraft({ ...ground }).likelyAircraft).toBe(false);
+    expect(classifyAircraft({ ...ground, manualMark: 'aircraft' }).likelyAircraft).toBe(true);
+    const anchored = classifyAircraft({
+      ...ground, manualMark: 'aircraft', fixedAnchor: { lat: 0.1, lon: 0.1 }, position: { lat: 0.1, lon: 0.1 },
+    });
+    expect(anchored.likelyAircraft).toBe(true);
+    expect(anchored.releaseFixed).toBeUndefined();
+  });
+  it("'aircraft' holds with no altitude at all, and keeps the computed basis", () => {
+    const c = classifyAircraft({ altitudeM: null, groundElevationM: null, settings, manualMark: 'aircraft' });
+    expect(c).toMatchObject({ likelyAircraft: true, basis: 'unknown' });
+  });
+  it("'not_aircraft' works through the anchor: false within 1 km, released beyond", () => {
+    const high = { altitudeM: 9000, groundElevationM: 0, settings, manualMark: 'not_aircraft' as const, fixedAnchor: { lat: 10, lon: 10 } };
+    expect(classifyAircraft({ ...high, position: { lat: 10 + 900 * M, lon: 10 } }).likelyAircraft).toBe(false);
+    const moved = classifyAircraft({ ...high, position: { lat: 10 + 1100 * M, lon: 10 } });
+    expect(moved).toMatchObject({ likelyAircraft: true, releaseFixed: true });
+  });
+});
+
+describe('normalizeAircraftManualMark', () => {
+  it('keeps the two marks and drops anything else', () => {
+    expect(normalizeAircraftManualMark('aircraft')).toBe('aircraft');
+    expect(normalizeAircraftManualMark('not_aircraft')).toBe('not_aircraft');
+    for (const v of [null, undefined, '', 'fixed', 1]) expect(normalizeAircraftManualMark(v)).toBeNull();
+  });
+});
+
+describe('aircraftMarkActions', () => {
+  it('flagged: offers "not aircraft"; with a manual aircraft mark also "clear"', () => {
+    expect(aircraftMarkActions({ likelyAircraft: true })).toEqual({ notAircraft: true, aircraft: false, clear: false });
+    expect(aircraftMarkActions({ likelyAircraft: true, aircraftManualMark: 'aircraft' }))
+      .toEqual({ notAircraft: true, aircraft: false, clear: true });
+  });
+  it('not flagged: offers "aircraft"; a fixed anchor (manual or automatic) adds "clear"', () => {
+    expect(aircraftMarkActions({ likelyAircraft: false })).toEqual({ notAircraft: false, aircraft: true, clear: false });
+    expect(aircraftMarkActions({ likelyAircraft: false, aircraftFixedAt: 1 })).toEqual({ notAircraft: false, aircraft: true, clear: true });
+    expect(aircraftMarkActions({ likelyAircraft: false, aircraftManualMark: 'not_aircraft', aircraftFixedAt: 1 }).clear).toBe(true);
+  });
+  it('never classified (no altitude, or detection off): offers nothing', () => {
+    expect(aircraftMarkActions({ likelyAircraft: null })).toEqual({ notAircraft: false, aircraft: false, clear: false });
+    expect(aircraftMarkActions({})).toEqual({ notAircraft: false, aircraft: false, clear: false });
   });
 });

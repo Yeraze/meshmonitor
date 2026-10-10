@@ -358,7 +358,7 @@ The control appears in both the Nodes map and the Dashboard map, and the chosen 
 
 **Show aged-out** — a checkbox under the three modes. When [age-out](/features/settings#age-out-and-reclassify-as-fixed) ignores a likely aircraft, the node drops off the map like any ignored node. Tick **Show aged-out** to draw those nodes again, faded and with the aircraft badge. It only brings back aircraft ignored by age-out; manual and geo ignores stay hidden. The hint line shows how many aged-out nodes the map would draw with your other filters applied. The setting is saved in your browser and applies to both maps and Map Analysis.
 
-A node's popup and details say **Aged out (likely aircraft)** while it is aged out, and **Reclassified as fixed** once the sweep has decided it is a fixed node.
+A node's popup and details say **Aged out (likely aircraft)** while it is aged out, and **Reclassified as fixed** once the sweep has decided it is a fixed node. To correct the detector yourself, see [Marking a node by hand](/features/settings#aircraft-manual-mark).
 
 #### Flight trails
 

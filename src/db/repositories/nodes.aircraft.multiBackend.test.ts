@@ -103,6 +103,9 @@ const SQLITE_CREATE = `
     aircraftFixedAt INTEGER,
     aircraftFixedLatitude REAL,
     aircraftFixedLongitude REAL,
+    aircraftManualMark TEXT,
+    aircraftManualMarkAt INTEGER,
+    aircraftManualMarkBy INTEGER,
     createdAt INTEGER NOT NULL,
     updatedAt INTEGER NOT NULL,
     sourceId TEXT NOT NULL DEFAULT 'default',
@@ -192,6 +195,9 @@ const POSTGRES_CREATE = `
     "aircraftFixedAt" BIGINT,
     "aircraftFixedLatitude" DOUBLE PRECISION,
     "aircraftFixedLongitude" DOUBLE PRECISION,
+    "aircraftManualMark" TEXT,
+    "aircraftManualMarkAt" BIGINT,
+    "aircraftManualMarkBy" INTEGER,
     "createdAt" BIGINT NOT NULL,
     "updatedAt" BIGINT NOT NULL,
     "sourceId" TEXT NOT NULL DEFAULT 'default',
@@ -281,6 +287,9 @@ const MYSQL_CREATE = `
     aircraftFixedAt BIGINT,
     aircraftFixedLatitude DOUBLE,
     aircraftFixedLongitude DOUBLE,
+    aircraftManualMark VARCHAR(16),
+    aircraftManualMarkAt BIGINT,
+    aircraftManualMarkBy INT,
     createdAt BIGINT NOT NULL,
     updatedAt BIGINT NOT NULL,
     sourceId VARCHAR(36) NOT NULL DEFAULT 'default',
@@ -624,6 +633,77 @@ function runAgeOutTests(getBackend: () => TestBackend) {
     const fresh = await repo.getNode(231, SOURCE);
     expect(fresh?.aircraftAgedOutAt ?? null).toBeNull();
     expect(fresh?.aircraftFixedAt ?? null).toBeNull();
+  });
+
+  // #5715: manual marks.
+  it("setAircraftManualMark 'not_aircraft' writes mark + anchor and clears the flag", async () => {
+    const backend = getBackend();
+    if (!backend.available) return;
+    const repo = new NodesRepository(backend.drizzleDb, backend.dbType);
+    await repo.upsertNode(makeNode(240, { altitude: 9000 }), SOURCE);
+    await flag(repo, 240);
+    const at = Date.now();
+    await repo.setAircraftManualMark(240, SOURCE, { mode: 'not_aircraft', atMs: at, byUserId: 7, lat: 40.5, lon: -105.25 });
+    const node = await repo.getNode(240, SOURCE);
+    expect(node?.aircraftManualMark).toBe('not_aircraft');
+    expect(Number(node?.aircraftManualMarkAt)).toBe(at);
+    expect(Number(node?.aircraftManualMarkBy)).toBe(7);
+    expect(Number(node?.aircraftFixedAt)).toBe(at);
+    expect(Number(node?.aircraftFixedLatitude)).toBeCloseTo(40.5);
+    expect(node?.likelyAircraft).toBe(false);
+    const row = (await repo.getAircraftReclassifyRows(SOURCE)).find((r) => r.nodeNum === 240);
+    expect(row?.aircraftManualMark).toBe('not_aircraft');
+  });
+
+  it("setAircraftManualMark 'aircraft' sets the flag and drops any anchor; null clears both", async () => {
+    const backend = getBackend();
+    if (!backend.available) return;
+    const repo = new NodesRepository(backend.drizzleDb, backend.dbType);
+    await repo.upsertNode(makeNode(241, { altitude: 9000 }), SOURCE);
+    await repo.setAircraftFixed(241, SOURCE, { atMs: Date.now(), lat: 1, lon: 2 });
+    await repo.setAircraftManualMark(241, SOURCE, { mode: 'aircraft', atMs: Date.now(), byUserId: null });
+    let node = await repo.getNode(241, SOURCE);
+    expect(node?.aircraftManualMark).toBe('aircraft');
+    expect(node?.aircraftManualMarkBy ?? null).toBeNull();
+    expect(node?.likelyAircraft).toBe(true);
+    expect(node?.aircraftFixedAt ?? null).toBeNull();
+    const cand = (await repo.listAircraftAgeOutCandidates(SOURCE)).find((c) => c.nodeNum === 241);
+    expect(cand?.aircraftManualMark).toBe('aircraft');
+
+    await repo.setAircraftManualMark(241, SOURCE, null);
+    node = await repo.getNode(241, SOURCE);
+    expect(node?.aircraftManualMark ?? null).toBeNull();
+    expect(node?.aircraftManualMarkAt ?? null).toBeNull();
+    expect(node?.likelyAircraft).toBe(true); // left for the classifier
+  });
+
+  it("setAircraftFixed(null) — the >1 km release — clears a 'not_aircraft' mark but never an 'aircraft' one", async () => {
+    const backend = getBackend();
+    if (!backend.available) return;
+    const repo = new NodesRepository(backend.drizzleDb, backend.dbType);
+    await repo.upsertNode(makeNode(242, { altitude: 9000 }), SOURCE);
+    await repo.upsertNode(makeNode(243, { altitude: 9000 }), SOURCE);
+    await repo.setAircraftManualMark(242, SOURCE, { mode: 'not_aircraft', atMs: Date.now(), byUserId: 1, lat: 1, lon: 2 });
+    await repo.setAircraftManualMark(243, SOURCE, { mode: 'aircraft', atMs: Date.now(), byUserId: 1 });
+    await repo.setAircraftFixed(242, SOURCE, null);
+    await repo.setAircraftFixed(243, SOURCE, null);
+    expect((await repo.getNode(242, SOURCE))?.aircraftManualMark ?? null).toBeNull();
+    expect((await repo.getNode(243, SOURCE))?.aircraftManualMark).toBe('aircraft');
+  });
+
+  it('a manual mark is per source, and clearAircraftClassification drops it', async () => {
+    const backend = getBackend();
+    if (!backend.available) return;
+    const repo = new NodesRepository(backend.drizzleDb, backend.dbType);
+    await repo.upsertNode(makeNode(244, { altitude: 9000 }), SOURCE);
+    await repo.upsertNode(makeNode(244, { altitude: 9000 }), OTHER);
+    await repo.setAircraftManualMark(244, SOURCE, { mode: 'aircraft', atMs: Date.now(), byUserId: 1 });
+    expect((await repo.getNode(244, OTHER))?.aircraftManualMark ?? null).toBeNull();
+
+    await repo.setAircraftManualMark(244, OTHER, { mode: 'aircraft', atMs: Date.now(), byUserId: 1 });
+    await repo.clearAircraftClassification(SOURCE);
+    expect((await repo.getNode(244, SOURCE))?.aircraftManualMark ?? null).toBeNull();
+    expect((await repo.getNode(244, OTHER))?.aircraftManualMark).toBe('aircraft');
   });
 }
 

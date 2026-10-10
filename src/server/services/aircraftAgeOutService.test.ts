@@ -25,6 +25,7 @@ function cand(nodeNum: number, o: Partial<AircraftAgeOutCandidate> = {}): Aircra
     isFavorite: false,
     isIgnored: false,
     aircraftAgedOutAt: null,
+    aircraftManualMark: null,
     positionOverrideEnabled: false,
     latitudeOverride: null,
     longitudeOverride: null,
@@ -237,6 +238,22 @@ describe('AircraftAgeOutService.runSweep — fixed pass', () => {
     expect(deps.getPositionFixes).toHaveBeenCalledWith('!00000014', NOW - 24 * HOUR, SRC);
     expect(deps.setFixed).toHaveBeenCalledWith(20, SRC, { atMs: NOW, lat: 40.001, lon: -105.002 });
     expect(r.fixed).toBe(1);
+  });
+
+  it("skips a node a person marked 'aircraft' (#5715), but still ages it out", async () => {
+    const { deps } = makeDeps({
+      settings: AGE_ON,
+      candidates: [
+        cand(22, { lastHeard: recentHeard, aircraftManualMark: 'aircraft' }),
+        cand(23, { aircraftManualMark: 'aircraft' }),
+      ],
+      fixes: { '!00000016': tight },
+    });
+    const r = await new AircraftAgeOutService(deps).runSweep(SRC, NOW);
+    expect(deps.setFixed).not.toHaveBeenCalled();
+    expect(r.fixed).toBe(0);
+    expect(deps.addAircraftIgnore).toHaveBeenCalledWith(23, SRC, '!00000017', 'Node 23', 'N23');
+    expect(r.agedOut).toBe(1);
   });
 
   it('uses the position override as the anchor when one is set', async () => {

@@ -90,6 +90,9 @@ export function mergeNodesAcrossSources(rows: DbNode[]): DbNode[] {
       winner.aircraftFixedAt = bestPosition.aircraftFixedAt ?? null;
       winner.aircraftFixedLatitude = bestPosition.aircraftFixedLatitude ?? null;
       winner.aircraftFixedLongitude = bestPosition.aircraftFixedLongitude ?? null;
+      winner.aircraftManualMark = bestPosition.aircraftManualMark ?? null;
+      winner.aircraftManualMarkAt = bestPosition.aircraftManualMarkAt ?? null;
+      winner.aircraftManualMarkBy = bestPosition.aircraftManualMarkBy ?? null;
     }
 
     winner.isFavorite = group.some((n) => n.isFavorite === true);

@@ -12,6 +12,46 @@ import type { TFunction } from 'i18next';
 
 export type AircraftBasis = 'agl' | 'msl' | 'unknown';
 export type AircraftDisplayMode = 'show' | 'mark' | 'hide';
+/**
+ * A person's override of the classifier (#5715). 'not_aircraft' rides on the
+ * fixed anchor (released by a move of more than AIRCRAFT_FIXED_RELEASE_M);
+ * 'aircraft' holds until someone clears it.
+ */
+export type AircraftManualMark = 'not_aircraft' | 'aircraft';
+export const AIRCRAFT_MANUAL_MARKS: readonly AircraftManualMark[] = ['not_aircraft', 'aircraft'];
+
+/**
+ * Source types aircraft detection never runs on (D2): MeshCore and Reticulum
+ * report no Meshtastic-style altitude. Shared so the server gates and the
+ * Node Details menu agree.
+ */
+export const AIRCRAFT_EXCLUDED_SOURCE_TYPES: ReadonlySet<string> = new Set(['meshcore', 'meshcore_mqtt', 'reticulum']);
+
+/**
+ * Which manual-mark actions Node Details offers for a node (#5715). Pure, so
+ * the menu and its tests share one rule:
+ *  - "Mark as not aircraft" while the node reads as a likely aircraft;
+ *  - "Mark as aircraft" while the classifier says it is not one;
+ *  - "Clear aircraft override" while any mark or fixed anchor is set.
+ * A node never classified (no altitude, or detection off) gets only Clear,
+ * and only if a mark is somehow left over.
+ */
+export function aircraftMarkActions(node: {
+  likelyAircraft?: boolean | null;
+  aircraftManualMark?: string | null;
+  aircraftFixedAt?: number | null;
+}): { notAircraft: boolean; aircraft: boolean; clear: boolean } {
+  return {
+    notAircraft: node.likelyAircraft === true,
+    aircraft: node.likelyAircraft === false,
+    clear: normalizeAircraftManualMark(node.aircraftManualMark) !== null || node.aircraftFixedAt != null,
+  };
+}
+
+/** Narrow a stored value to a manual mark; anything else reads as no mark. */
+export function normalizeAircraftManualMark(v: unknown): AircraftManualMark | null {
+  return v === 'not_aircraft' || v === 'aircraft' ? v : null;
+}
 
 export const DEFAULT_AIRCRAFT_AGL_THRESHOLD_M = 500;
 export const DEFAULT_AIRCRAFT_MSL_THRESHOLD_M = 5000;
@@ -206,8 +246,15 @@ export function classifyAircraft(input: {
   fixedAnchor?: { lat: number; lon: number } | null;
   /** The node's current effective position, compared against `fixedAnchor`. */
   position?: { lat: number; lon: number } | null;
+  /**
+   * #5715 manual mark. 'aircraft' forces `likelyAircraft = true` whatever the
+   * altitude says and beats any anchor. 'not_aircraft' needs no handling here:
+   * it is stored as a fixed anchor, so the anchor rule below applies.
+   */
+  manualMark?: AircraftManualMark | null;
 }): AircraftClassification {
   const base = classifyAircraftCore(input);
+  if (input.manualMark === 'aircraft') return { ...base, likelyAircraft: true };
   const anchor = input.fixedAnchor;
   if (!anchor || !isFiniteNumber(anchor.lat) || !isFiniteNumber(anchor.lon)) return base;
   const pos = input.position;
