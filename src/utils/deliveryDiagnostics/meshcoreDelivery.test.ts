@@ -59,9 +59,10 @@ describe('describeMeshCoreDelivery', () => {
     expect(protocolResult?.provenance).toBe('unknown');
   });
 
-  it('sent: awaiting-confirmation status', () => {
+  it('sent: reads "Sent to radio" while the ack is awaited (#5682)', () => {
     const result = describeMeshCoreDelivery(baseMessage({ deliveryStatus: 'sent' }));
-    expect(result.statusKey).toBe('delivery_details.mc_status.sent_awaiting');
+    expect(result.statusKey).toBe('delivery_details.mc_status.sent_to_radio');
+    expect(result.meaningKey).toBe('delivery_details.mc_meaning.awaiting_ack_dm');
     expect(result.tone).toBe('pending');
   });
 
@@ -93,11 +94,59 @@ describe('describeMeshCoreDelivery', () => {
     expect(result.tone).toBe('success');
   });
 
-  it('a DM with no status, and a received channel message, stay unknown (#5682)', () => {
-    expect(describeMeshCoreDelivery(baseMessage({ toPublicKey: 'd'.repeat(64) })).statusKey)
-      .toBe('delivery_details.mc_status.unknown');
+  it('a received message stays unknown: it has no delivery state of ours (#5682)', () => {
     expect(describeMeshCoreDelivery(baseMessage({ toPublicKey: 'channel-2' }), 'received').statusKey)
       .toBe('delivery_details.mc_status.unknown');
+    expect(describeMeshCoreDelivery(baseMessage({ toPublicKey: 'd'.repeat(64) }), 'received').statusKey)
+      .toBe('delivery_details.mc_status.unknown');
+    expect(
+      describeMeshCoreDelivery(baseMessage({ toPublicKey: 'd'.repeat(64), messageType: 'room_post' }), 'received').statusKey,
+    ).toBe('delivery_details.mc_status.unknown');
+  });
+
+  describe('our own DMs and room posts (#5682)', () => {
+    const PEER = 'd'.repeat(64);
+    const dm = (over: Partial<MeshCoreMessage> = {}) => baseMessage({ toPublicKey: PEER, ...over });
+    const post = (over: Partial<MeshCoreMessage> = {}) => dm({ messageType: 'room_post', ...over });
+    const read = (m: MeshCoreMessage) => {
+      const d = describeMeshCoreDelivery(m);
+      return [d.statusKey.replace('delivery_details.mc_status.', ''), d.tone, d.meaningKey.replace('delivery_details.mc_meaning.', '')];
+    };
+
+    it('DM: every state', () => {
+      expect(read(dm())).toEqual(['sent_to_radio', 'pending', 'sent_to_radio_dm']);
+      expect(read(dm({ deliveryStatus: 'sent', expectedAckCrc: 7 }))).toEqual(['sent_to_radio', 'pending', 'awaiting_ack_dm']);
+      expect(read(dm({ deliveryStatus: 'delivered' }))).toEqual(['delivered', 'success', 'delivered']);
+      expect(read(dm({ deliveryStatus: 'failed' }))).toEqual(['not_confirmed', 'error', 'not_confirmed']);
+    });
+
+    it('room post: every state, in its own words', () => {
+      expect(read(post())).toEqual(['sent_to_radio', 'pending', 'sent_to_radio_room']);
+      expect(read(post({ deliveryStatus: 'sent', expectedAckCrc: 7 }))).toEqual(['sent_to_radio', 'pending', 'awaiting_ack_room']);
+      expect(read(post({ deliveryStatus: 'delivered' }))).toEqual(['room_received', 'success', 'room_received']);
+      expect(read(post({ deliveryStatus: 'failed' }))).toEqual(['not_confirmed', 'error', 'not_confirmed_room']);
+    });
+
+    it('never reads "Unknown" and never claims a channel relay', () => {
+      for (const m of [dm(), post(), dm({ heardBy: [{ hash: '7f' }] })]) {
+        const key = describeMeshCoreDelivery(m).statusKey;
+        expect(key).not.toBe('delivery_details.mc_status.unknown');
+        expect(key).not.toBe('delivery_details.mc_status.relayed');
+      }
+    });
+
+    it('every key it can return exists in en.json', async () => {
+      const { readFileSync } = await import('node:fs');
+      const en = JSON.parse(readFileSync('public/locales/en.json', 'utf8')) as Record<string, string>;
+      const states: Array<MeshCoreMessage['deliveryStatus']> = [undefined, 'sent', 'delivered', 'failed'];
+      for (const make of [dm, post]) {
+        for (const deliveryStatus of states) {
+          const d = describeMeshCoreDelivery(make({ deliveryStatus }));
+          expect(en[d.statusKey], d.statusKey).toBeTruthy();
+          expect(en[d.meaningKey], d.meaningKey).toBeTruthy();
+        }
+      }
+    });
   });
 
   it('a DM ack state wins over the channel reading', () => {

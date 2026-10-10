@@ -6,7 +6,7 @@
  */
 
 import type { MeshCoreMessage } from '../../components/MeshCore/hooks/useMeshCore.js';
-import { getMeshCoreDeliveryState, getOwnMeshCoreChannelSendState } from './status.js';
+import { getMeshCoreDeliveryState, getOwnMeshCoreChannelSendState, getOwnMeshCoreDirectSendState } from './status.js';
 import type { DeliveryDescription, DeliverySection, DeliveryTone, MessageDirection } from './types.js';
 
 function formatHex(value: number | null | undefined): string | null {
@@ -68,6 +68,41 @@ export function describeMeshCoreDelivery(
       statusKey = 'delivery_details.mc_status.sent_to_radio';
       tone = 'pending';
       meaningKey = 'delivery_details.mc_meaning.sent_to_radio';
+    }
+  }
+
+  // Our own DM or room post (#5682). Same selector as the stream's mark. A
+  // room post is a DM to the room server: the same ack, but it proves a
+  // different thing, so it gets its own words. With no ack state on the row
+  // the reading is "Sent to radio", never "Unknown": the row exists because
+  // the radio accepted the send.
+  const direct = direction === 'sent' ? getOwnMeshCoreDirectSendState(msg) : null;
+  if (direct) {
+    const room = direct.kind === 'room_post';
+    switch (direct.state) {
+      case 'sent_to_radio':
+        statusKey = 'delivery_details.mc_status.sent_to_radio';
+        tone = 'pending';
+        meaningKey = room
+          ? 'delivery_details.mc_meaning.sent_to_radio_room'
+          : 'delivery_details.mc_meaning.sent_to_radio_dm';
+        break;
+      case 'awaiting_ack':
+        statusKey = 'delivery_details.mc_status.sent_to_radio';
+        tone = 'pending';
+        meaningKey = room
+          ? 'delivery_details.mc_meaning.awaiting_ack_room'
+          : 'delivery_details.mc_meaning.awaiting_ack_dm';
+        break;
+      case 'delivered':
+        if (room) {
+          statusKey = 'delivery_details.mc_status.room_received';
+          meaningKey = 'delivery_details.mc_meaning.room_received';
+        }
+        break;
+      case 'not_confirmed':
+        if (room) meaningKey = 'delivery_details.mc_meaning.not_confirmed_room';
+        break;
     }
   }
 

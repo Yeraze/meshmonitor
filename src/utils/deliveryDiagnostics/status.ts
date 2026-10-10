@@ -92,8 +92,8 @@ export function getMeshCoreDeliveryState(
  * live, after a reload and after a restart, and a state can only move forward:
  * `heardBy` is a stored set that never shrinks.
  *
- * Returns null for anything else: received messages, DMs (they have a real
- * ack, see `getMeshCoreDeliveryState`) and room posts.
+ * Returns null for anything else: received messages, and DMs and room posts
+ * (they have a real ack, see `getMeshCoreDirectSendState`).
  */
 export type MeshCoreChannelSendState = 'sent_to_radio' | 'relayed';
 
@@ -116,4 +116,68 @@ export function getOwnMeshCoreChannelSendState(
   if (!msg.toPublicKey || !msg.toPublicKey.startsWith('channel-')) return null;
   if (msg.messageType === 'room_post') return null;
   return msg.heardBy && msg.heardBy.length > 0 ? 'relayed' : 'sent_to_radio';
+}
+
+/**
+ * State of one of OUR MeshCore direct sends: a DM or a room post (#5682).
+ * A room post is a DM to the room server, so both use the same ack.
+ *
+ * - `sent_to_radio`: the radio accepted the send (the row exists only because
+ *   it answered `Sent`) and MeshMonitor holds no ack state for it: its ack
+ *   tracking was lost to a restart or a disconnect, or the row predates stored
+ *   ack state. Nothing more can be known.
+ * - `awaiting_ack`: the radio accepted it and MeshMonitor is still waiting for
+ *   the ack. Shown with the same "Sent to radio" mark.
+ * - `delivered`: the radio pushed `SendConfirmed` for this send. For a DM the
+ *   recipient's radio acknowledged it; for a room post the room server stored
+ *   it. Neither says a person read it.
+ * - `not_confirmed`: no ack arrived in the time allowed (a DM after all its
+ *   retries, a room post after its one attempt). The message may still have
+ *   arrived with the ack lost on the way back.
+ *
+ * As with channel sends, no state says the radio transmitted: the companion
+ * protocol has no transmit report. A send the radio REFUSED stores no row.
+ */
+export type MeshCoreDirectSendState = 'sent_to_radio' | 'awaiting_ack' | 'delivered' | 'not_confirmed';
+export type MeshCoreDirectSendKind = 'dm' | 'room_post';
+
+export interface MeshCoreDirectSend {
+  kind: MeshCoreDirectSendKind;
+  state: MeshCoreDirectSendState;
+}
+
+type DirectSendFields = Pick<MeshCoreMessage, 'toPublicKey' | 'messageType' | 'deliveryStatus'>;
+
+export function getMeshCoreDirectSendState(
+  msg: DirectSendFields & Pick<MeshCoreMessage, 'fromPublicKey'>,
+  selfPublicKey: string | null | undefined,
+): MeshCoreDirectSend | null {
+  if (!selfPublicKey || msg.fromPublicKey !== selfPublicKey) return null;
+  return getOwnMeshCoreDirectSendState(msg);
+}
+
+/**
+ * The same reading for a message the CALLER already knows is ours (see
+ * `getOwnMeshCoreChannelSendState`). Never call it on a message of unknown
+ * origin: it does not check the sender.
+ */
+export function getOwnMeshCoreDirectSendState(msg: DirectSendFields): MeshCoreDirectSend | null {
+  if (msg.toPublicKey?.startsWith('channel-')) return null;
+  // No recipient and no ack state: a legacy broadcast row, not a direct send.
+  // An ack state alone still marks a direct send (only those are acked).
+  if (!msg.toPublicKey && !msg.deliveryStatus) return null;
+  const kind: MeshCoreDirectSendKind = msg.messageType === 'room_post' ? 'room_post' : 'dm';
+  switch (msg.deliveryStatus) {
+    case 'delivered':
+      return { kind, state: 'delivered' };
+    case 'failed':
+      return { kind, state: 'not_confirmed' };
+    case 'sent':
+      return { kind, state: 'awaiting_ack' };
+    case 'sending':
+      // Never set today; were it ever, the send has not reached the radio yet.
+      return null;
+    default:
+      return { kind, state: 'sent_to_radio' };
+  }
 }
