@@ -11653,7 +11653,8 @@ class MeshtasticManager implements ISourceManager {
    * multi-hop-broadcast role gate (so REPEATER/CLIENT nodes answer too). Note the
    * radio still PKI-encrypts it when it holds the node's key — firmware
    * `wouldEncryptWithPKC` does not look at the channel for TELEMETRY_APP — so it
-   * is covered by Reliable PKI (#5691). The reply is persisted by the existing
+   * is covered by Reliable PKI (#5691); in Avoid PKI mode (#5711) MeshMonitor
+   * channel-encrypts it first. The reply is persisted by the existing
    * telemetry handler.
    */
   async requestRemoteLocalStats(destination: number, channel: number = 0, hopLimit: number = 3, options?: { origin?: SendOrigin }): Promise<{ packetId: number; requestId: number }> {
