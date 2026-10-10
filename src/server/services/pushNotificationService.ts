@@ -413,6 +413,8 @@ class PushNotificationService {
       channelId: number;
       isDirectMessage: boolean;
       viaMqtt?: boolean;
+      /** #5720: the packet is a protocol tapback (Meshtastic `emoji === 1`). */
+      isTapback?: boolean;
       sourceId: string;
       sourceName: string;
     }
@@ -479,6 +481,8 @@ class PushNotificationService {
       channelId: number;
       isDirectMessage: boolean;
       viaMqtt?: boolean;
+      /** #5720: the packet is a protocol tapback (Meshtastic `emoji === 1`). */
+      isTapback?: boolean;
       sourceId: string;
       sourceName: string;
     }

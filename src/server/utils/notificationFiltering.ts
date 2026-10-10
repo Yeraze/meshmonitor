@@ -1,6 +1,7 @@
 import { logger } from '../../utils/logger.js';
 import databaseService from '../../services/database.js';
 import { defaultNotificationPreferences } from '../../utils/notificationDefaults.js';
+import { isEmoji } from '../../utils/text.js';
 import {
   renderMessageNotification,
   type MessageTemplateContext,
@@ -11,6 +12,8 @@ export interface NotificationFilterContext {
   channelId: number;
   isDirectMessage: boolean;
   viaMqtt?: boolean;
+  /** #5720: the packet is a protocol tapback (Meshtastic `emoji === 1`). */
+  isTapback?: boolean;
   /** For DMs: the UUID of the remote node. Used for per-DM mute checks. */
   nodeUuid?: string;
   /** Phase B: source this notification originated from (required). */
@@ -70,29 +73,13 @@ function isMuteActive(muteUntil: number | null): boolean {
 }
 
 /**
- * Check if a message contains only emojis (including emoji reactions and tapbacks)
- * Matches single emoji or emoji sequences with optional whitespace
+ * Check if a message is emoji only (a reaction typed as text), ignoring
+ * spaces between emoji. Uses the app's shared emoji test (`isEmoji`), so
+ * keycaps, skin tones, ZWJ sequences and flags count here exactly as they do
+ * when the UI decides a row is a tapback (#5720).
  */
 function isEmojiOnlyMessage(text: string): boolean {
-  // Trim whitespace from the message
-  const trimmed = text.trim();
-
-  // Empty message is not considered emoji-only
-  if (trimmed.length === 0) {
-    return false;
-  }
-
-  // Regex pattern to match emoji Unicode ranges and common emoji sequences
-  // This includes:
-  // - Standard emoji ranges (U+1F300-U+1F9FF)
-  // - Emoticons and symbols (U+2600-U+26FF)
-  // - Dingbats (U+2700-U+27BF)
-  // - Miscellaneous Symbols and Pictographs (U+1F900-U+1F9FF)
-  // - Supplemental Symbols and Pictographs (U+1F300-U+1FAD6)
-  // - Emoji modifiers (U+1F3FB-U+1F3FF)
-  const emojiRegex = /^[\u{1F300}-\u{1FAD6}\u{1F900}-\u{1F9FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}\u{1F3FB}-\u{1F3FF}\uFE0F\u200D\s]+$/u;
-
-  return emojiRegex.test(trimmed);
+  return isEmoji(text.replace(/\s+/g, ''));
 }
 
 /**
@@ -420,7 +407,9 @@ export async function shouldFilterNotificationAsync(
   }
 
   // EMOJI CHECK (third priority)
-  if (!prefs.notifyOnEmoji && isEmojiOnlyMessage(filterContext.messageText)) {
+  // A protocol tapback is a reaction whatever its text; the text test is the
+  // fallback for paths that drop the flag (#5720).
+  if (!prefs.notifyOnEmoji && (filterContext.isTapback === true || isEmojiOnlyMessage(filterContext.messageText))) {
     logger.debug(`😀 Emoji-only message filtered for user ${userId}`);
     return true; // Filter
   }

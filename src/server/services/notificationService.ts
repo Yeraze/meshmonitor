@@ -33,6 +33,8 @@ export interface NotificationFilterContext {
   channelId: number;
   isDirectMessage: boolean;
   viaMqtt?: boolean;
+  /** #5720: the packet is a protocol tapback (Meshtastic `emoji === 1`). */
+  isTapback?: boolean;
   /** Phase B: source this notification originated from (required). */
   sourceId: string;
   /** Phase B: human-readable source name. */
