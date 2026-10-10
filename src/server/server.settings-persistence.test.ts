@@ -571,6 +571,8 @@ describe('Settings Persistence', () => {
         // Aircraft age-out (#5364/#5365 Phase 2) — same Category C pattern;
         // read server-side by aircraftAgeOutService.
         'aircraftAgeOutEnabled', 'aircraftAgeOutHours', 'aircraftAgeOutAction',
+        // #5704 — same pattern; read server-side by aircraftPositionRequestService.
+        'aircraftPositionRequestsEnabled',
         // Sign-flipped position correction (#5363) — same Category C pattern;
         // read server-side by signFlipCorrection.ts when node payloads are built.
         'signFlipCorrectionEnabled', 'signFlipCorrectionRangeKm',

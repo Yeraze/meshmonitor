@@ -430,6 +430,10 @@ setTimeout(async () => {
     // Phase 1 transition event; does nothing unless adsbMatchEnabled is on.
     startAdsbFlightMatching();
 
+    // #5704: ask a newly flagged aircraft for its position. Subscribes to the
+    // same transition event; sends nothing unless a source opts in.
+    startAircraftPositionRequests();
+
     // Seed the global "discard invalid GPS positions" ingest gate from settings
     // (default ON = discard, the historical behavior). Refreshed live on save via
     // the setDiscardInvalidPositions callback registered below.
@@ -712,6 +716,7 @@ import autoAckConverterRoutes from './routes/autoAckConverterRoutes.js';
 import { startAutomationEngine } from './services/automation/automationEngineSingleton.js';
 import { startMeshBeaconOfferIngestion } from './services/meshBeaconOfferService.js';
 import { startAdsbFlightMatching } from './services/adsbMatchService.js';
+import { startAircraftPositionRequests } from './services/aircraftPositionRequestService.js';
 import userRoutes from './routes/userRoutes.js';
 import auditRoutes from './routes/auditRoutes.js';
 import securityRoutes from './routes/securityRoutes.js';

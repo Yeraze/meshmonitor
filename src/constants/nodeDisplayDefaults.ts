@@ -54,6 +54,8 @@ export const AIRCRAFT_NODE_DISPLAY_KEYS = [
   'aircraftAgeOutEnabled',
   'aircraftAgeOutHours',
   'aircraftAgeOutAction',
+  // #5704: ask a newly flagged aircraft for its position (opt-in; transmits).
+  'aircraftPositionRequestsEnabled',
 ] as const;
 export type AircraftNodeDisplayKey = typeof AIRCRAFT_NODE_DISPLAY_KEYS[number];
 

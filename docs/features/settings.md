@@ -245,6 +245,20 @@ When an ignored aircraft sends a new live position, its ignore is lifted and it 
 
 The same sweep also looks for nodes that were flagged but sit still: a flagged node heard in the last 24 hours with at least 3 position fixes, all within 200 m of each other, is **reclassified as fixed**. Its flag is cleared and it stays unflagged while it is within 1 km of that spot. If it moves further than 1 km, it is classified normally again. This check runs whenever detection is on, even with age-out off.
 
+#### Ask new aircraft for their position
+
+A node on a slow broadcast interval gives a trail of one or two points before it flies out of range. With **Ask new aircraft for their position** on, MeshMonitor asks a node for its position when it is first flagged as a likely aircraft: 3 requests, at 0, 2 and 4 minutes, through the source that flagged it.
+
+This is the one aircraft setting that **transmits**, so it is off by default and set per source.
+
+- **Cost:** each request is one packet, relayed up to your hop limit, plus the node's reply.
+- **Limit:** at most 2 aircraft an hour per source (6 requests). The count is stored, so a restart or a settings save does not reset it.
+- **When it stops:** if the node is no longer flagged (it landed, or you marked it as not an aircraft), is ignored or deleted, the source disconnects, or a send is refused (TX disabled).
+- **When it does not fire:** for nodes already flagged when MeshMonitor starts, for your own node, and on MQTT, MeshCore and Reticulum sources. A node must stop being flagged and be flagged again before it is asked again.
+- **Replies:** Meshtastic firmware answers a position request at most once every 3 minutes, whoever asks. The request at 2 minutes gets a reply only if the first one did not; the one at 4 minutes is past the limit.
+
+Needs **Likely-aircraft detection** on. Requests are tagged as automation traffic, so a bridge with **Don't uplink MeshMonitor automation traffic** keeps them off the upstream broker.
+
 ## Sign-flipped Position Correction
 
 **Description**: Some operators type their coordinates without the minus sign, which puts the node on the other side of the globe. This setting shows such a node at its corrected point.
