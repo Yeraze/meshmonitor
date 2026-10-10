@@ -80,7 +80,7 @@ describe('empty-send warning in the builder (#5697)', () => {
   it('warns that an empty message sends nothing, with a one-tap fix', () => {
     const get = renderBuilder('trigger.becameLikelyAircraft', { type: 'action.sendMessage', params: { text: '' } });
     const warning = screen.getByTestId('empty-send-warning');
-    expect(warning).toHaveTextContent('This step will send nothing: the message is empty');
+    expect(warning).toHaveTextContent('The message is empty, so this step will send nothing.');
     fireEvent.click(within(warning).getByRole('button', { name: 'Use suggested template' }));
     expect(get().rules[0].actions[0].params.text).toBe(placeholderFor('action.sendMessage', 'text', 'trigger.becameLikelyAircraft'));
     expect(screen.queryByTestId('empty-send-warning')).not.toBeInTheDocument();
@@ -88,7 +88,7 @@ describe('empty-send warning in the builder (#5697)', () => {
 
   it('notes a notification with only its title', () => {
     renderBuilder('trigger.message', { type: 'action.notify', params: { body: '' } });
-    expect(screen.getByTestId('empty-send-warning')).toHaveTextContent('Check this step: the body is empty');
+    expect(screen.getByTestId('empty-send-warning')).toHaveTextContent('The body is empty, so the notification will carry only its title.');
   });
 
   it('says nothing when the message has text', () => {

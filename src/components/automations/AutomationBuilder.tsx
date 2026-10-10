@@ -562,9 +562,7 @@ function BlockFields({ block, triggerType, variables, sources, channels, scripts
         <div className="ae-field-warn ae-empty-send" role="note" data-testid="empty-send-warning">
           <UiIcon name="alert" size={14} />
           <span>
-            {empty.sendsNothing
-              ? t('automation.emptySend.nothing', 'This step will send nothing: {{detail}}.', { detail: empty.detail })
-              : t('automation.emptySend.partial', 'Check this step: {{detail}}.', { detail: empty.detail })}
+            {`${empty.detail.charAt(0).toUpperCase()}${empty.detail.slice(1)}.`}
             {Object.keys(fixes).length > 0 && (
               <>
                 {' '}
