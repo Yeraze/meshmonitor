@@ -6862,6 +6862,8 @@
   "forwarding.pill_title_off_readonly": "Forwarding off ({{total}} rules).",
   "automation.forwardingSource.placeholder": "— select a source —",
   "automation.forwardingSource.none": "No Meshtastic or MeshCore sources.",
+  "automation.suggestedTemplate.use": "Use suggested template",
+  "automation.suggestedTemplate.use_aria": "Use suggested template for {{field}}",
   "automation.stepOutput.target_label": "Store result in",
   "automation.stepOutput.none": "— do not store —",
   "automation.stepOutput.run_only": "This run only",
