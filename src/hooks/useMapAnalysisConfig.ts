@@ -12,7 +12,8 @@ export type LayerKey =
   | 'waypoints'
   | 'polarGrid'
   | 'accuracyRegions'
-  | 'atakContacts';
+  | 'atakContacts'
+  | 'localMarkers';
 
 export interface LayerConfig {
   enabled: boolean;
@@ -90,6 +91,8 @@ export const DEFAULT_CONFIG: MapAnalysisConfig = {
     accuracyRegions: { enabled: false, lookbackHours: null },
     // Default off (#3691), matching the Nodes/Dashboard `showAtakContacts` default.
     atakContacts: { enabled: false, lookbackHours: null },
+    // #5686: local map markers. On by default, like waypoints.
+    localMarkers: { enabled: true, lookbackHours: null },
   },
   nodeTypes: { ...ALL_NODE_TYPES_VISIBLE },
   transports: { rf: true, udp: true, mqtt: true },

@@ -82,6 +82,7 @@ const featuresSidebar = [
       { text: 'Interactive Maps', link: '/features/maps' },
       { text: 'Map Analysis', link: '/features/map-analysis' },
       { text: 'Waypoints', link: '/features/waypoints' },
+      { text: 'Local Markers', link: '/features/local-markers' },
       { text: 'Position Estimation', link: '/features/position-estimation' },
       { text: 'Estimated Accuracy', link: '/features/estimated-accuracy' },
       { text: 'Embed Maps', link: '/features/embed-maps' }

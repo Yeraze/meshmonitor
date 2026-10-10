@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import {
   ArrowLeft, LocateFixed, Maximize, Clock, Ruler, Mountain, RadioTower, RotateCcw,
   MapPin, Palette, Flag, CircleDashed, Radar, Route, Share2, Flame, Spline, Signal, Box, Users, Satellite,
-  Eye, Wrench, Layers, Activity,
+  Eye, Wrench, Layers, Activity, StickyNote,
 } from 'lucide-react';
 import { useDashboardSources } from '../../hooks/useDashboardData';
 import ToolbarMenu, { ToolbarMenuItem } from './ToolbarMenu';
@@ -53,6 +53,7 @@ const UNTIMED_LAYERS: { key: LayerKey; label: string; icon: ReactNode }[] = [
   { key: 'waypoints',   label: 'Waypoints',        icon: <Flag size={ICON} /> },
   { key: 'accuracyRegions', label: 'Accuracy Regions', icon: <CircleDashed size={ICON} /> },
   { key: 'atakContacts', label: 'ATAK Contacts',    icon: <Users size={ICON} /> },
+  { key: 'localMarkers', label: 'Local Markers',    icon: <StickyNote size={ICON} /> },
 ];
 
 export default function MapAnalysisToolbar() {

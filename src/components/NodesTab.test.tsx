@@ -40,6 +40,7 @@ describe('NodesTab', () => {
     it('gates every control whose layer is absent from the 3D surface', () => {
       expectDisabledIn3D('measureActive');
       expectDisabledIn3D('showWaypoints');
+      expectDisabledIn3D('showLocalMarkers');
       expectDisabledIn3D('showAtakContacts');
       expectDisabledIn3D('showAccuracyRegions');
       expectDisabledIn3D('showPolarGrid');

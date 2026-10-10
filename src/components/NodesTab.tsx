@@ -46,6 +46,11 @@ import { nodeColorStyle } from '../utils/nodeColor';
 import { useAuth } from '../contexts/AuthContext';
 import { useSource } from '../contexts/SourceContext';
 import DashboardWaypoints from './Dashboard/DashboardWaypoints';
+import { LocalMarkers } from './map/layers/MapMarkersLayer';
+import LocalMarkerEditorModal from './map/LocalMarkerEditorModal';
+import LocalMarkerPlacementBridge from './map/LocalMarkerPlacementBridge';
+import { useMapMarkers } from '../hooks/useMapMarkers';
+import type { MapMarker, MapMarkerInput } from '../types/mapMarker';
 import DashboardAtakContacts from './Dashboard/DashboardAtakContacts';
 import WaypointEditorModal from './WaypointEditorModal';
 import { useWaypoints } from '../hooks/useWaypoints';
@@ -597,6 +602,8 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
     setShowRfNodes,
     showWaypoints,
     setShowWaypoints,
+    showLocalMarkers,
+    setShowLocalMarkers,
     showAtakContacts,
     setShowAtakContacts,
     showAnimations,
@@ -905,6 +912,44 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
     }),
     [canWriteWaypoints, lockedToOther, handleEditWaypoint, handleDeleteWaypoint],
   );
+
+  // ----- Local map markers (#5686): planning notes, never transmitted -----
+  // Same per-source grant as waypoints: read to see, write to edit.
+  const markerApi = useMapMarkers(currentSourceId, false);
+  const [placingMarker, setPlacingMarker] = useState(false);
+  const [markerEditorOpen, setMarkerEditorOpen] = useState(false);
+  const [markerEditorInitial, setMarkerEditorInitial] = useState<MapMarker | null>(null);
+  const [markerDefaultCoords, setMarkerDefaultCoords] = useState<{ lat: number; lon: number } | null>(null);
+  const pickMarkerSpot = useCallback((lat: number, lon: number) => {
+    setPlacingMarker(false);
+    setMarkerEditorInitial(null);
+    setMarkerDefaultCoords({ lat, lon });
+    setMarkerEditorOpen(true);
+  }, []);
+  const markerActions = useMemo(() => ({
+    canEdit: canWriteWaypoints,
+    onEdit: (m: MapMarker) => {
+      setMarkerEditorInitial(m);
+      setMarkerDefaultCoords(null);
+      setMarkerEditorOpen(true);
+    },
+    onDelete: (m: MapMarker) => {
+      if (!window.confirm(t('localMarkers.confirmDelete', 'Delete local marker "{{label}}"?', { label: m.label }))) return;
+      markerApi.remove(m.id).catch((err: unknown) => {
+        window.alert(err instanceof Error ? err.message : 'Failed to delete marker');
+      });
+    },
+  }), [canWriteWaypoints, markerApi, t]);
+  const handleSaveMarker = useCallback(async (input: MapMarkerInput) => {
+    if (markerEditorInitial) await markerApi.update({ id: markerEditorInitial.id, input });
+    else await markerApi.create(input);
+  }, [markerEditorInitial, markerApi]);
+  useEffect(() => {
+    if (!placingMarker) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setPlacingMarker(false); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [placingMarker]);
 
   // Parse current node ID to get node number for effective hops calculation
   const currentNodeNum = currentNodeId ? parseNodeId(currentNodeId) : null;
@@ -3189,6 +3234,15 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                   <label className="map-control-item" title={unavailableIn3DTitle}>
                     <input
                       type="checkbox"
+                      checked={showLocalMarkers}
+                      disabled={effective3D}
+                      onChange={(e) => setShowLocalMarkers(e.target.checked)}
+                    />
+                    <span>{t('map.showLocalMarkers', 'Show Local Markers')}</span>
+                  </label>
+                  <label className="map-control-item" title={unavailableIn3DTitle}>
+                    <input
+                      type="checkbox"
                       checked={showAtakContacts}
                       disabled={effective3D}
                       onChange={(e) => setShowAtakContacts(e.target.checked)}
@@ -3404,6 +3458,17 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                       <UiIcon name="plus" /> Waypoint
                     </button>
                   )}
+                  {canWriteWaypoints && shouldShowData() && currentSourceId && (
+                    <button
+                      type="button"
+                      className="waypoint-create-button"
+                      onClick={() => { setPlacingWaypoint(false); setPlacingMarker(true); if (!showLocalMarkers) setShowLocalMarkers(true); }}
+                      disabled={placingMarker || effective3D}
+                      title={t('localMarkers.addTitle', 'Place a local marker by clicking on the map. It is never sent to the mesh.')}
+                    >
+                      <UiIcon name="plus" /> {t('localMarkers.add', 'Local marker')}
+                    </button>
+                  )}
                 </>
               </div>
               {!effective3D && showLegend && (
@@ -3499,6 +3564,8 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                 onPick={(lat, lon) => startCreateAtCoords(lat, lon)}
               />
               {showWaypoints && <DashboardWaypoints sourceId={currentSourceId ?? null} actions={waypointActions} />}
+              <LocalMarkerPlacementBridge placing={placingMarker} onPick={pickMarkerSpot} />
+              {showLocalMarkers && <LocalMarkers sourceId={currentSourceId ?? null} actions={markerActions} />}
               {showAtakContacts && <DashboardAtakContacts sourceId={currentSourceId ?? null} />}
               <DefaultCenterController
                 lat={defaultMapCenterLat}
@@ -3683,6 +3750,23 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
           </button>
         </div>
       )}
+
+      {placingMarker && (
+        <div className="waypoint-placement-hint" role="status">
+          <span>{t('localMarkers.placeHint', 'Click the map to place the local marker')}</span>
+          <button type="button" onClick={() => setPlacingMarker(false)}>
+            {t('common.cancel', 'Cancel')}
+          </button>
+        </div>
+      )}
+
+      <LocalMarkerEditorModal
+        isOpen={markerEditorOpen}
+        initial={markerEditorInitial}
+        defaultCoords={markerDefaultCoords}
+        onClose={() => setMarkerEditorOpen(false)}
+        onSave={handleSaveMarker}
+      />
 
       <WaypointEditorModal
         isOpen={waypointEditorOpen}
