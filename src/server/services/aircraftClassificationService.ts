@@ -127,6 +127,27 @@ function positionOf(eff: { latitude?: number | null; longitude?: number | null }
   return isFiniteNum(eff.latitude) && isFiniteNum(eff.longitude) ? { lat: eff.latitude, lon: eff.longitude } : null;
 }
 
+/** The stored fields `recomputeStoredRow` reads, taken from a full node row. */
+function toReclassifyRow(n: DbNode): AircraftReclassifyRow {
+  return {
+    nodeNum: Number(n.nodeNum),
+    altitude: n.altitude ?? null,
+    groundElevation: n.groundElevation ?? null,
+    likelyAircraft: normalizeLikelyAircraft(n.likelyAircraft),
+    aircraftBasis: n.aircraftBasis ?? null,
+    heightAboveGround: n.heightAboveGround ?? null,
+    positionOverrideEnabled: n.positionOverrideEnabled == null ? null : Boolean(n.positionOverrideEnabled),
+    latitudeOverride: n.latitudeOverride ?? null,
+    longitudeOverride: n.longitudeOverride ?? null,
+    altitudeOverride: n.altitudeOverride ?? null,
+    latitude: n.latitude ?? null,
+    longitude: n.longitude ?? null,
+    aircraftFixedLatitude: n.aircraftFixedLatitude ?? null,
+    aircraftFixedLongitude: n.aircraftFixedLongitude ?? null,
+    aircraftManualMark: n.aircraftManualMark ?? null,
+  };
+}
+
 export interface AircraftClassificationDeps {
   getNode(nodeNum: number, sourceId: string): Promise<DbNode | null>;
   writeClassification(nodeNum: number, sourceId: string, c: AircraftClassificationWrite): Promise<void>;
@@ -555,8 +576,13 @@ export class AircraftClassificationService {
         message: 'Aircraft detection does not run on this source type',
       };
     }
-    const enabled = await this.deps.getSourceSetting(sourceId, 'aircraftDetectionEnabled');
-    if (!parseAircraftSettings({ enabled }).enabled) {
+    const [enabled, agl, msl] = await Promise.all([
+      this.deps.getSourceSetting(sourceId, 'aircraftDetectionEnabled'),
+      this.deps.getSourceSetting(sourceId, 'aircraftAglThresholdMeters'),
+      this.deps.getSourceSetting(sourceId, 'aircraftMslThresholdMeters'),
+    ]);
+    const settings = parseAircraftSettings({ enabled, aglThresholdM: agl, mslThresholdM: msl });
+    if (!settings.enabled) {
       return {
         ok: false, status: 409, code: 'AIRCRAFT_DETECTION_DISABLED',
         message: 'Aircraft detection is off for this source',
@@ -585,6 +611,16 @@ export class AircraftClassificationService {
     } else {
       await this.deps.setManualMark(nodeNum, sourceId, null);
     }
+    // Recompute now from stored values so the caller's next read already
+    // shows the verdict (a cleared mark would otherwise show the stale flag
+    // until the queue ran). The queued job below still runs, and may sample
+    // the DEM if the node has no stored ground elevation.
+    try {
+      const fresh = await this.deps.getNode(nodeNum, sourceId);
+      if (fresh) await this.recomputeStoredRow(toReclassifyRow(fresh), sourceId, settings);
+    } catch (err) {
+      logger.debug(`Aircraft manual mark: immediate recompute failed for ${nodeNum}@${sourceId}: ${err}`);
+    }
     this.schedule(sourceId, nodeNum, 'manual');
     return { ok: true, previousMark, anchor };
   }
@@ -611,44 +647,7 @@ export class AircraftClassificationService {
       let written = 0;
       for (const row of rows) {
         try {
-          const eff = getEffectiveDbNodePosition(row);
-          const previous: AircraftPrevious = {
-            likelyAircraft: normalizeLikelyAircraft(row.likelyAircraft),
-            basis: (row.aircraftBasis as AircraftBasis | null | undefined) ?? null,
-          };
-          const c = classifyAircraft({
-            altitudeM: eff.altitude,
-            groundElevationM: row.groundElevation,
-            settings,
-            previous,
-            fixedAnchor: fixedAnchorOf(row),
-            position: positionOf(eff),
-            manualMark: normalizeAircraftManualMark(row.aircraftManualMark),
-          });
-          if (c.releaseFixed) {
-            await this.deps.setFixed(row.nodeNum, sourceId, null);
-          }
-
-          const prevGround = row.groundElevation ?? null;
-          const prevHag = row.heightAboveGround ?? null;
-          const likelyChanged = previous.likelyAircraft !== c.likelyAircraft;
-          const basisChanged = (previous.basis ?? null) !== c.basis;
-          const groundChanged = prevGround !== c.groundElevation;
-          const hagChanged =
-            prevHag === null || c.heightAboveGround === null
-              ? prevHag !== c.heightAboveGround
-              : Math.abs(prevHag - c.heightAboveGround) >= 1;
-
-          if (likelyChanged || basisChanged || groundChanged || hagChanged) {
-            await this.deps.writeClassification(row.nodeNum, sourceId, {
-              likelyAircraft: c.likelyAircraft,
-              aircraftBasis: c.basis,
-              groundElevation: c.groundElevation,
-              heightAboveGround: c.heightAboveGround,
-              aircraftClassifiedAt: this.deps.now(),
-            });
-            written++;
-          }
+          if (await this.recomputeStoredRow(row, sourceId, settings)) written++;
         } catch (err) {
           logger.debug(`Aircraft reclassify: row ${row.nodeNum}@${sourceId} failed: ${err}`);
         }
@@ -658,6 +657,57 @@ export class AircraftClassificationService {
       logger.debug(`Aircraft reclassify failed for source ${sourceId}: ${err}`);
       return 0;
     }
+  }
+
+  /**
+   * Recompute one row's verdict from its stored altitude and ground elevation
+   * (no network, no event). Returns true when it wrote. Shared by
+   * `reclassifySource` and the manual-mark path.
+   */
+  private async recomputeStoredRow(
+    row: AircraftReclassifyRow,
+    sourceId: string,
+    settings: AircraftSettings,
+  ): Promise<boolean> {
+    const eff = getEffectiveDbNodePosition(row);
+    const previous: AircraftPrevious = {
+      likelyAircraft: normalizeLikelyAircraft(row.likelyAircraft),
+      basis: (row.aircraftBasis as AircraftBasis | null | undefined) ?? null,
+    };
+    const c = classifyAircraft({
+      altitudeM: eff.altitude,
+      groundElevationM: row.groundElevation,
+      settings,
+      previous,
+      fixedAnchor: fixedAnchorOf(row),
+      position: positionOf(eff),
+      manualMark: normalizeAircraftManualMark(row.aircraftManualMark),
+    });
+    if (c.releaseFixed) {
+      await this.deps.setFixed(row.nodeNum, sourceId, null);
+    }
+
+    const prevGround = row.groundElevation ?? null;
+    const prevHag = row.heightAboveGround ?? null;
+    const likelyChanged = previous.likelyAircraft !== c.likelyAircraft;
+    const basisChanged = (previous.basis ?? null) !== c.basis;
+    const groundChanged = prevGround !== c.groundElevation;
+    const hagChanged =
+      prevHag === null || c.heightAboveGround === null
+        ? prevHag !== c.heightAboveGround
+        : Math.abs(prevHag - c.heightAboveGround) >= 1;
+
+    if (likelyChanged || basisChanged || groundChanged || hagChanged) {
+      await this.deps.writeClassification(row.nodeNum, sourceId, {
+        likelyAircraft: c.likelyAircraft,
+        aircraftBasis: c.basis,
+        groundElevation: c.groundElevation,
+        heightAboveGround: c.heightAboveGround,
+        aircraftClassifiedAt: this.deps.now(),
+      });
+      return true;
+    }
+    return false;
   }
 
   /**

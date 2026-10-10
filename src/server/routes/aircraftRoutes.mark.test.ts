@@ -185,6 +185,15 @@ describe('POST /api/aircraft/mark', () => {
       expect(Boolean(n?.likelyAircraft)).toBe(true);
     });
 
+    it('recomputes at once from stored values, before the queued job runs', async () => {
+      await harness.db.nodes.setAircraftFixed(PLANE, harness.sourceA, { atMs: Date.now(), lat: 30, lon: -80 });
+      expect(Boolean((await row(PLANE, harness.sourceA))?.likelyAircraft)).toBe(false);
+      const agent = await harness.loginAs(harness.admin);
+      await post(agent, { sourceId: harness.sourceA, nodeNum: PLANE, mode: 'clear' });
+      // No reclassifySource here, and schedule() is stubbed.
+      expect(Boolean((await row(PLANE, harness.sourceA))?.likelyAircraft)).toBe(true);
+    });
+
     it('also releases an automatic fixed mark', async () => {
       await harness.db.nodes.setAircraftFixed(PLANE, harness.sourceA, { atMs: Date.now(), lat: 30, lon: -80 });
       const agent = await harness.loginAs(harness.admin);
