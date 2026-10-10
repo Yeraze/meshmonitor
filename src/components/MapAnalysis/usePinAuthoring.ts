@@ -106,15 +106,23 @@ export function usePinAuthoring(active2D: boolean) {
     [pinPlaceMode, setPinPlaceMode, waypointSources, markerSources, config.sources],
   );
 
+  // Each sending source's own node number. `statuses` is a fresh Map on every
+  // render, so it is folded into a string and the lookup is rebuilt from that
+  // string: the lookup, and the popup actions that depend on it, keep their
+  // identity until a node number really changes.
+  const selfKey = [...statuses].map(([id, st]) => `${id}=${typeof st?.nodeNum === 'number' ? st.nodeNum : ''}`).join('|');
+  const selfBySource = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const part of selfKey.split('|')) {
+      const at = part.lastIndexOf('=');
+      const num = part.slice(at + 1);
+      if (at > 0 && num !== '') m.set(part.slice(0, at), Number(num));
+    }
+    return m;
+  }, [selfKey]);
   const localNodeNum = useCallback(
-    (sourceId: string | null): number | null => {
-      if (!sourceId) return null;
-      const n = statuses.get(sourceId)?.nodeNum;
-      return typeof n === 'number' ? n : null;
-    },
-    // `statuses` is a fresh Map each render; its contents are what matter.
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- #5685 keyed on contents, as useOwnNodePositions does
-    [[...statuses].map(([id, s]) => `${id}:${s?.nodeNum ?? ''}`).join('|')],
+    (sourceId: string | null): number | null => (sourceId ? selfBySource.get(sourceId) ?? null : null),
+    [selfBySource],
   );
 
   // ----- Waypoints -----
@@ -211,7 +219,7 @@ export function usePinAuthoring(active2D: boolean) {
           if (!window.confirm(t('localMarkers.confirmDelete', 'Delete local marker "{{label}}"?', { label: m.label }))) return;
           deleteMapMarker(m.sourceId, m.id)
             .then(() => qc.invalidateQueries({ queryKey: ['mapMarkers', m.sourceId] }))
-            .catch((err: unknown) => window.alert(errorText(err, 'Failed to delete marker')));
+            .catch((err: unknown) => window.alert(errorText(err, t('mapPins.deleteMarkerFailed', 'Failed to delete marker'))));
         },
       };
     },

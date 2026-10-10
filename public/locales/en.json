@@ -1479,6 +1479,7 @@
   "mapPins.hiddenByFilter": "This source is not in the map's source filter, so the new pin will not show until you add it.",
   "mapPins.confirmDeleteWaypoint": "Delete \"{{label}}\"? This will be broadcast to the mesh.\n\nSending source: {{source}}",
   "mapPins.deleteWaypointFailed": "Failed to delete waypoint: {{error}}",
+  "mapPins.deleteMarkerFailed": "Failed to delete marker",
   "mapPins.lockedToOther": "Locked to another node. Only that node can change it.",
   "map.center_on_nodes": "Center on Nodes",
   "map.zoom_in": "Zoom In",
