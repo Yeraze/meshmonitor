@@ -162,7 +162,10 @@ export function getMeshCoreDirectSendState(
  * origin: it does not check the sender.
  */
 export function getOwnMeshCoreDirectSendState(msg: DirectSendFields): MeshCoreDirectSend | null {
-  if (!msg.toPublicKey || msg.toPublicKey.startsWith('channel-')) return null;
+  if (msg.toPublicKey?.startsWith('channel-')) return null;
+  // No recipient and no ack state: a legacy broadcast row, not a direct send.
+  // An ack state alone still marks a direct send (only those are acked).
+  if (!msg.toPublicKey && !msg.deliveryStatus) return null;
   const kind: MeshCoreDirectSendKind = msg.messageType === 'room_post' ? 'room_post' : 'dm';
   switch (msg.deliveryStatus) {
     case 'delivered':

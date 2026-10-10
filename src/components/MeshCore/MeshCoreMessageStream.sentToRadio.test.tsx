@@ -88,21 +88,83 @@ describe('MeshCoreMessageStream delivery marks (#5682)', () => {
     expect(sentMark()).toBeNull();
   });
 
-  it('shows no mark on a room post', () => {
-    renderStream([channelSend({ toPublicKey: PEER, messageType: 'room_post' })]);
-    expect(sentMark()).toBeNull();
-  });
+  describe('our own DMs and room posts', () => {
+    const dm = (over: Partial<MeshCoreMessage> = {}) => channelSend({ toPublicKey: PEER, ...over });
+    const post = (over: Partial<MeshCoreMessage> = {}) => dm({ messageType: 'room_post', ...over });
+    const row = (id: string) => within(document.querySelector(`[data-message-id="${id}"]`) as HTMLElement);
 
-  it('leaves DMs on their own ack states', () => {
-    renderStream([
-      channelSend({ id: 'dm-sent', toPublicKey: PEER, expectedAckCrc: 1, deliveryStatus: 'sent' }),
-      channelSend({ id: 'dm-ok', toPublicKey: PEER, expectedAckCrc: 2, deliveryStatus: 'delivered', roundTripMs: 900 }),
-      channelSend({ id: 'dm-bad', toPublicKey: PEER, expectedAckCrc: 3, deliveryStatus: 'failed' }),
-    ]);
-    expect(sentMark()).toBeNull();
-    expect(screen.getByRole('button', { name: 'Sent, awaiting confirmation' })).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Delivered (900ms)' })).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Delivery failed' })).toBeTruthy();
+    it('DM: "Sent to radio" while the ack is awaited, then a tick, or a warning', () => {
+      renderStream([
+        dm({ id: 'wait', expectedAckCrc: 1, deliveryStatus: 'sent' }),
+        dm({ id: 'ok', expectedAckCrc: 2, deliveryStatus: 'delivered', roundTripMs: 900 }),
+        dm({ id: 'bad', expectedAckCrc: 3, deliveryStatus: 'failed' }),
+      ]);
+      const waiting = row('wait').getByRole('button', { name: 'Sent to radio' });
+      expect(waiting.getAttribute('data-send-state')).toBe('awaiting_ack');
+      expect(waiting.getAttribute('title')).toMatch(/waiting for the recipient's radio to acknowledge/);
+      expect(waiting.getAttribute('title')).toMatch(/do not report when they transmit/);
+
+      expect(row('ok').queryByRole('button', { name: 'Sent to radio' })).toBeNull();
+      const ok = row('ok').getByRole('button', { name: /^Delivered: the recipient's radio acknowledged this message \(900 ms\)\.$/ });
+      expect(ok.className).toContain('mc-delivery-delivered');
+
+      expect(row('bad').queryByRole('button', { name: 'Sent to radio' })).toBeNull();
+      const bad = row('bad').getByRole('button', { name: /^Not confirmed: no acknowledgement arrived after all retries/ });
+      expect(bad.className).toContain('mc-delivery-failed');
+      expect(bad.getAttribute('title')).toMatch(/may still have arrived/);
+    });
+
+    it('DM with no ack state on record (history, or a restart mid-wait): "Sent to radio", no ack claimed', () => {
+      renderStream([dm({ id: 'old' })]);
+      const mark = row('old').getByRole('button', { name: 'Sent to radio' });
+      expect(mark.getAttribute('data-send-state')).toBe('sent_to_radio');
+      expect(mark.getAttribute('title')).toMatch(/has no acknowledgement on record/);
+      expect(mark.getAttribute('title')).not.toMatch(/waiting/);
+    });
+
+    it('a delivered DM loaded from history has no round trip and prints none', () => {
+      renderStream([dm({ id: 'ok', deliveryStatus: 'delivered' })]);
+      const ok = row('ok').getByRole('button', { name: /^Delivered/ });
+      expect(ok.getAttribute('title')).not.toMatch(/undefined|ms/);
+    });
+
+    it('room post: the same states, named for the room server', () => {
+      renderStream([
+        post({ id: 'none' }),
+        post({ id: 'wait', expectedAckCrc: 1, deliveryStatus: 'sent' }),
+        post({ id: 'ok', expectedAckCrc: 2, deliveryStatus: 'delivered', roundTripMs: 1200 }),
+        post({ id: 'bad', expectedAckCrc: 3, deliveryStatus: 'failed' }),
+      ]);
+      const none = row('none').getByRole('button', { name: 'Sent to radio' });
+      expect(none.getAttribute('title')).toMatch(/cannot tell whether the room server got it/);
+      const waiting = row('wait').getByRole('button', { name: 'Sent to radio' });
+      expect(waiting.getAttribute('title')).toMatch(/waiting for the room server to acknowledge/);
+      expect(row('ok').getByRole('button', { name: 'The room server acknowledged this post (1200 ms).' })).toBeTruthy();
+      const bad = row('bad').getByRole('button', { name: /^Not confirmed: the room server did not acknowledge this post in time/ });
+      // Never the DM wording: a room post is not retried.
+      expect(bad.getAttribute('title')).not.toMatch(/retries/);
+    });
+
+    it('none of them is drawn as a relay or as hops', () => {
+      renderStream([dm({ id: 'a' }), post({ id: 'b' }), dm({ id: 'c', deliveryStatus: 'delivered' })]);
+      expect(heardBadge()).toBeNull();
+      expect(screen.queryByText(/hops?\b/)).toBeNull();
+    });
+
+    it('shows no mark on a DM or room post we RECEIVED', () => {
+      renderStream([
+        { id: 'rx-dm', fromPublicKey: PEER, toPublicKey: SELF, text: 'hi', timestamp: T0 },
+        { id: 'rx-post', fromPublicKey: PEER, toPublicKey: 'c'.repeat(64), messageType: 'room_post', text: 'hi', timestamp: T0 },
+      ]);
+      expect(sentMark()).toBeNull();
+      expect(document.querySelector('.mc-delivery-status')).toBeNull();
+    });
+
+    it('the mark opens Delivery Details for that message', () => {
+      renderStream([dm({ id: 'a' }), post({ id: 'b' })]);
+      fireEvent.click(row('b').getByRole('button', { name: 'Sent to radio' }));
+      expect(screen.getByTestId('details-modal').textContent).toBe('b');
+    });
   });
 
   it('shows nothing when our own key is unknown (cannot tell which rows are ours)', () => {
