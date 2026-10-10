@@ -51,15 +51,49 @@ describe('ReliablePkiSection', () => {
     apiPostMock.mockResolvedValue({ success: true });
   });
 
-  it('global: defaults to Off, shows the airtime warning, offers only Off / As needed', async () => {
+  it('global: defaults to Off, shows the airtime warning, offers Off / As needed / Avoid PKI', async () => {
     apiGetMock.mockResolvedValue({});
     render(<ReliablePkiSection scope="global" />);
     await waitFor(() => expect(apiGetMock).toHaveBeenCalledWith('/api/settings'));
     const select = await screen.findByLabelText(/default for every source/i) as HTMLSelectElement;
     await waitFor(() => expect(select.disabled).toBe(false));
     expect(select.value).toBe('off');
-    expect(Array.from(select.options).map((o) => o.value)).toEqual(['off', 'asNeeded']);
+    expect(Array.from(select.options).map((o) => o.value)).toEqual(['off', 'asNeeded', 'avoid']);
     expect(screen.getByTestId('reliable-pki-cost-warning').textContent).toMatch(WARNING);
+    expect(screen.queryByTestId('reliable-pki-avoid-warning')).toBeNull();
+  });
+
+  it('global: Avoid PKI shows the channel-readable note beside the control and saves "avoid" (#5711)', async () => {
+    apiGetMock.mockResolvedValue({ reliablePkiMode: 'off' });
+    render(<ReliablePkiSection scope="global" />);
+    const select = await screen.findByLabelText(/default for every source/i) as HTMLSelectElement;
+    await waitFor(() => expect(select.disabled).toBe(false));
+    fireEvent.change(select, { target: { value: 'avoid' } });
+    expect(screen.getByTestId('reliable-pki-avoid-warning').textContent)
+      .toBe('Requests and their replies are readable by anyone on that channel. DMs are not affected.');
+    expect(screen.queryByTestId('reliable-pki-cost-warning')).toBeNull();
+    await act(async () => { await saveBarCapture.current!.onSave(); });
+    expect(apiPostMock).toHaveBeenCalledWith('/api/settings', { reliablePkiMode: 'avoid' });
+  });
+
+  it('source: inheriting a global Avoid PKI shows it in the inherit label and the note', async () => {
+    apiGetMock.mockResolvedValue({ reliablePkiMode: 'avoid' });
+    render(<ReliablePkiSection scope="source" sourceId="s" />);
+    const select = await screen.findByLabelText(/for this source/i) as HTMLSelectElement;
+    await waitFor(() => expect(select.disabled).toBe(false));
+    expect(select.value).toBe('inherit');
+    expect(select.options[0].textContent).toMatch(/Avoid PKI/);
+    expect(screen.getByTestId('reliable-pki-avoid-warning')).toBeTruthy();
+    fireEvent.change(select, { target: { value: 'asNeeded' } });
+    expect(screen.queryByTestId('reliable-pki-avoid-warning')).toBeNull();
+    expect(screen.getByTestId('reliable-pki-cost-warning')).toBeTruthy();
+  });
+
+  it('source: loads a stored "avoid" override', async () => {
+    apiGetMock.mockResolvedValue({ reliablePkiMode: 'off', reliablePkiSourceMode: 'avoid' });
+    render(<ReliablePkiSection scope="source" sourceId="s" />);
+    const select = await screen.findByLabelText(/for this source/i) as HTMLSelectElement;
+    await waitFor(() => expect(select.value).toBe('avoid'));
   });
 
   it('global: saves reliablePkiMode with no sourceId', async () => {

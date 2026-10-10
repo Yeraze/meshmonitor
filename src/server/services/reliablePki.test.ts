@@ -227,6 +227,14 @@ describe('ReliablePkiTracker — priming decision', () => {
     expect(h.sendNodeInfo).not.toHaveBeenCalled();
   });
 
+  it('Avoid PKI (#5711): never primes, even a failed node with the window open', async () => {
+    const t = makeTracker({ mode: 'avoid' });
+    await t.store.markFailed(SRC, NODE, 'timeout', 0);
+    const h = hooks();
+    expect(await t.tracker.primeBeforeSend(NODE, h)).toBe('off');
+    expect(h.sendNodeInfo).not.toHaveBeenCalled();
+  });
+
   it('As needed but not failed (no row / successful / pending): no priming', async () => {
     const t = makeTracker();
     const h = hooks();
@@ -393,5 +401,10 @@ describe('resolveReliablePkiMode', () => {
   });
   it('ignores garbage values', async () => {
     expect(await resolveReliablePkiMode(reader('always', { s: 'sometimes' }), 's')).toBe('off');
+  });
+  it('Avoid PKI (#5711): global and per-source', async () => {
+    expect(await resolveReliablePkiMode(reader('avoid', {}), 's')).toBe('avoid');
+    expect(await resolveReliablePkiMode(reader('off', { s: 'avoid' }), 's')).toBe('avoid');
+    expect(await resolveReliablePkiMode(reader('avoid', { s: 'asNeeded' }), 's')).toBe('asNeeded');
   });
 });
