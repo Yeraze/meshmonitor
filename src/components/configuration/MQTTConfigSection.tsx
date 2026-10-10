@@ -33,6 +33,8 @@ interface MQTTConfigSectionProps {
   mapReportingEnabled: boolean;
   mapPublishIntervalSecs: number;
   mapPositionPrecision: number;
+  // MapReportSettings.should_report_location (fw 2.6.8+).
+  mapShouldReportLocation: boolean;
   // True when this source's node is bridged (serial/BLE radio behind a TCP
   // proxy, no native IP). Such a node can only use MQTT via Client Proxy.
   isBridged?: boolean;
@@ -52,6 +54,7 @@ interface MQTTConfigSectionProps {
   setMapReportingEnabled: (value: boolean) => void;
   setMapPublishIntervalSecs: (value: number) => void;
   setMapPositionPrecision: (value: number) => void;
+  setMapShouldReportLocation: (value: boolean) => void;
   isSaving: boolean;
   onSave: () => Promise<void>;
 }
@@ -69,6 +72,7 @@ const MQTTConfigSection: React.FC<MQTTConfigSectionProps> = ({
   mapReportingEnabled,
   mapPublishIntervalSecs,
   mapPositionPrecision,
+  mapShouldReportLocation,
   isBridged = false,
   proxyClientAttached = false,
   setMqttEnabled,
@@ -83,6 +87,7 @@ const MQTTConfigSection: React.FC<MQTTConfigSectionProps> = ({
   setMapReportingEnabled,
   setMapPublishIntervalSecs,
   setMapPositionPrecision,
+  setMapShouldReportLocation,
   isSaving,
   onSave
 }) => {
@@ -230,7 +235,8 @@ const MQTTConfigSection: React.FC<MQTTConfigSectionProps> = ({
   const initialValuesRef = useRef({
     mqttEnabled, mqttAddress, mqttUsername, mqttPassword,
     mqttEncryptionEnabled, mqttJsonEnabled, mqttRoot, tlsEnabled,
-    proxyToClientEnabled, mapReportingEnabled, mapPublishIntervalSecs, mapPositionPrecision
+    proxyToClientEnabled, mapReportingEnabled, mapPublishIntervalSecs, mapPositionPrecision,
+    mapShouldReportLocation
   });
 
   // Calculate if there are unsaved changes
@@ -248,11 +254,13 @@ const MQTTConfigSection: React.FC<MQTTConfigSectionProps> = ({
       proxyToClientEnabled !== initial.proxyToClientEnabled ||
       mapReportingEnabled !== initial.mapReportingEnabled ||
       mapPublishIntervalSecs !== initial.mapPublishIntervalSecs ||
-      mapPositionPrecision !== initial.mapPositionPrecision
+      mapPositionPrecision !== initial.mapPositionPrecision ||
+      mapShouldReportLocation !== initial.mapShouldReportLocation
     );
   }, [mqttEnabled, mqttAddress, mqttUsername, mqttPassword,
       mqttEncryptionEnabled, mqttJsonEnabled, mqttRoot, tlsEnabled,
-      proxyToClientEnabled, mapReportingEnabled, mapPublishIntervalSecs, mapPositionPrecision]);
+      proxyToClientEnabled, mapReportingEnabled, mapPublishIntervalSecs, mapPositionPrecision,
+      mapShouldReportLocation]);
 
   // Detect the "client proxy on, but nothing to proxy through" misconfiguration:
   // the form has MQTT and proxyToClientEnabled on, and the parent Meshtastic
@@ -289,9 +297,11 @@ const MQTTConfigSection: React.FC<MQTTConfigSectionProps> = ({
     setMapReportingEnabled(initial.mapReportingEnabled);
     setMapPublishIntervalSecs(initial.mapPublishIntervalSecs);
     setMapPositionPrecision(initial.mapPositionPrecision);
+    setMapShouldReportLocation(initial.mapShouldReportLocation);
   }, [setMqttEnabled, setMqttAddress, setMqttUsername, setMqttPassword,
       setMqttEncryptionEnabled, setMqttJsonEnabled, setMqttRoot, setTlsEnabled,
-      setProxyToClientEnabled, setMapReportingEnabled, setMapPublishIntervalSecs, setMapPositionPrecision]);
+      setProxyToClientEnabled, setMapReportingEnabled, setMapPublishIntervalSecs, setMapPositionPrecision,
+      setMapShouldReportLocation]);
 
   // Update initial values after successful save
   const handleSave = useCallback(async () => {
@@ -299,11 +309,13 @@ const MQTTConfigSection: React.FC<MQTTConfigSectionProps> = ({
     initialValuesRef.current = {
       mqttEnabled, mqttAddress, mqttUsername, mqttPassword,
       mqttEncryptionEnabled, mqttJsonEnabled, mqttRoot, tlsEnabled,
-      proxyToClientEnabled, mapReportingEnabled, mapPublishIntervalSecs, mapPositionPrecision
+      proxyToClientEnabled, mapReportingEnabled, mapPublishIntervalSecs, mapPositionPrecision,
+      mapShouldReportLocation
     };
   }, [onSave, mqttEnabled, mqttAddress, mqttUsername, mqttPassword,
       mqttEncryptionEnabled, mqttJsonEnabled, mqttRoot, tlsEnabled,
-      proxyToClientEnabled, mapReportingEnabled, mapPublishIntervalSecs, mapPositionPrecision]);
+      proxyToClientEnabled, mapReportingEnabled, mapPublishIntervalSecs, mapPositionPrecision,
+      mapShouldReportLocation]);
 
   // Register with SaveBar — but only surface unsaved-changes state to the bar
   // when the caller can actually persist them. If they can't write to this
@@ -673,6 +685,21 @@ const MQTTConfigSection: React.FC<MQTTConfigSectionProps> = ({
                   className="setting-input"
                   style={{ width: '100px' }}
                 />
+              </div>
+              <div className="setting-item">
+                <label htmlFor="mapShouldReportLocation" style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '0.5rem', width: '100%' }}>
+                  <input
+                    id="mapShouldReportLocation"
+                    type="checkbox"
+                    checked={mapShouldReportLocation}
+                    onChange={(e) => setMapShouldReportLocation(e.target.checked)}
+                    style={{ marginTop: '0.2rem', flexShrink: 0 }}
+                  />
+                  <div style={{ flex: 1 }}>
+                    <div>{t('mqtt_config.map_report_location')}</div>
+                    <span className="setting-description">{t('mqtt_config.map_report_location_description')}</span>
+                  </div>
+                </label>
               </div>
             </div>
           )}

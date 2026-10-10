@@ -5,6 +5,7 @@ import { buildContactRow, buildContactRowV2 } from './services/atakContactServic
 import meshtasticProtobufService, { formatTakPreview, formatTakV2Preview } from './meshtasticProtobufService.js';
 import { takV2Variant } from './takV2Decoder.js';
 import type { RawSecurityConfig } from './utils/securityConfigWrite.js';
+import { formatAdminMqttConfig } from './utils/adminMqttConfig.js';
 import protobufService, { convertIpv4ConfigToStrings } from './protobufService.js';
 import { getProtobufRoot, type MeshBeaconPayload } from './protobufLoader.js';
 import { TcpTransport } from './tcpTransport.js';
@@ -6007,16 +6008,10 @@ class MeshtasticManager implements ISourceManager {
 
     // Apply Proto3 defaults to MQTT module config
     if (moduleConfig.mqtt) {
-      const mqttConfigWithDefaults = {
-        ...moduleConfig.mqtt,
-        // IMPORTANT: Proto3 omits boolean false values from JSON serialization
-        enabled: moduleConfig.mqtt.enabled !== undefined ? moduleConfig.mqtt.enabled : false,
-        encryptionEnabled: moduleConfig.mqtt.encryptionEnabled !== undefined ? moduleConfig.mqtt.encryptionEnabled : false,
-        jsonEnabled: moduleConfig.mqtt.jsonEnabled !== undefined ? moduleConfig.mqtt.jsonEnabled : false,
-        tlsEnabled: moduleConfig.mqtt.tlsEnabled !== undefined ? moduleConfig.mqtt.tlsEnabled : false,
-        proxyToClientEnabled: moduleConfig.mqtt.proxyToClientEnabled !== undefined ? moduleConfig.mqtt.proxyToClientEnabled : false,
-        mapReportingEnabled: moduleConfig.mqtt.mapReportingEnabled !== undefined ? moduleConfig.mqtt.mapReportingEnabled : false
-      };
+      // Every MQTTConfig field, stated. The spread this replaced left
+      // mapReportSettings a protobufjs Message, whose toJSON drops 0 and false,
+      // so the form never saw a stored precision of 0 or the location consent.
+      const mqttConfigWithDefaults = formatAdminMqttConfig(moduleConfig.mqtt);
 
       moduleConfig = {
         ...moduleConfig,

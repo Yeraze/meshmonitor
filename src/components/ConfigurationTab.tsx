@@ -30,6 +30,7 @@ import DeviceConfigSection from './configuration/DeviceConfigSection';
 import LoRaConfigSection from './configuration/LoRaConfigSection';
 import PositionConfigSection from './configuration/PositionConfigSection';
 import MQTTConfigSection from './configuration/MQTTConfigSection';
+import { buildAdminMqttSavePayload } from './admin-commands/mqttSavePayload';
 import NeighborInfoSection from './configuration/NeighborInfoSection';
 import NetworkConfigSection from './configuration/NetworkConfigSection';
 import PowerConfigSection from './configuration/PowerConfigSection';
@@ -176,7 +177,11 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ baseUrl = '', nodes
   const [mqttProxyClientAttached, setMqttProxyClientAttached] = useState(false);
   const [mqttMapReportingEnabled, setMqttMapReportingEnabled] = useState(false);
   const [mqttMapPublishIntervalSecs, setMqttMapPublishIntervalSecs] = useState(0);
-  const [mqttMapPositionPrecision, setMqttMapPositionPrecision] = useState(14);
+  // 0 = firmware default (14 bits); a node that reports 0 must load as 0.
+  const [mqttMapPositionPrecision, setMqttMapPositionPrecision] = useState(0);
+  // MapReportSettings.should_report_location (fw 2.6.8+): the node's consent
+  // to put its position in map reports. Save must send it back as loaded.
+  const [mqttMapShouldReportLocation, setMqttMapShouldReportLocation] = useState(false);
 
   // NeighborInfo Config State
   const [neighborInfoEnabled, setNeighborInfoEnabled] = useState(false);
@@ -574,7 +579,9 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ baseUrl = '', nodes
           setMqttProxyToClientEnabled(config.moduleConfig.mqtt.proxyToClientEnabled || false);
           setMqttMapReportingEnabled(config.moduleConfig.mqtt.mapReportingEnabled || false);
           setMqttMapPublishIntervalSecs(config.moduleConfig.mqtt.mapReportSettings?.publishIntervalSecs || 0);
-          setMqttMapPositionPrecision(config.moduleConfig.mqtt.mapReportSettings?.positionPrecision ?? 14);
+          // A stored 0 is "firmware default" and stays 0; it used to load as 14.
+          setMqttMapPositionPrecision(config.moduleConfig.mqtt.mapReportSettings?.positionPrecision ?? 0);
+          setMqttMapShouldReportLocation(config.moduleConfig.mqtt.mapReportSettings?.shouldReportLocation === true);
         }
 
         // Populate NeighborInfo config
@@ -1102,7 +1109,9 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ baseUrl = '', nodes
     setIsSaving(true);
     setStatusMessage('');
     try {
-      await apiService.setMQTTConfig({
+      // Firmware replaces the whole MQTT struct, so every field goes out,
+      // map report settings included even while map reporting is off.
+      await apiService.setMQTTConfig(buildAdminMqttSavePayload({
         enabled: mqttEnabled,
         address: mqttAddress,
         username: mqttUsername,
@@ -1113,11 +1122,10 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ baseUrl = '', nodes
         tlsEnabled: mqttTlsEnabled,
         proxyToClientEnabled: mqttProxyToClientEnabled,
         mapReportingEnabled: mqttMapReportingEnabled,
-        mapReportSettings: mqttMapReportingEnabled ? {
-          publishIntervalSecs: mqttMapPublishIntervalSecs,
-          positionPrecision: mqttMapPositionPrecision
-        } : undefined
-      }, sourceId);
+        mapPublishIntervalSecs: mqttMapPublishIntervalSecs,
+        mapPositionPrecision: mqttMapPositionPrecision,
+        mapShouldReportLocation: mqttMapShouldReportLocation,
+      }), sourceId);
       setStatusMessage(t('config.mqtt_saved'));
       showToast(t('config.mqtt_saved_toast'), 'success');
       // MQTT config changes don't require reboot
@@ -2495,6 +2503,8 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ baseUrl = '', nodes
               setMapPublishIntervalSecs={setMqttMapPublishIntervalSecs}
               mapPositionPrecision={mqttMapPositionPrecision}
               setMapPositionPrecision={setMqttMapPositionPrecision}
+              mapShouldReportLocation={mqttMapShouldReportLocation}
+              setMapShouldReportLocation={setMqttMapShouldReportLocation}
               isBridged={isBridged}
               proxyClientAttached={mqttProxyClientAttached}
               isSaving={isSaving}
