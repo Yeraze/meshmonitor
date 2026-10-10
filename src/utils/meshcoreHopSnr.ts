@@ -84,3 +84,20 @@ export function summarizeHopSnrLinks(rows: readonly HopSnrSample[]): HopSnrLink[
   links.sort((a, b) => b.lastTimestamp - a.lastTimestamp);
   return links;
 }
+
+/** Sparkline box, in SVG units. */
+export const SPARK_W = 96;
+export const SPARK_H = 22;
+
+/** SVG polyline points for a link's samples, scaled to the sparkline box. */
+export function sparklinePoints(points: ReadonlyArray<[number, number]>): string {
+  if (points.length === 0) return '';
+  const values = points.map((p) => p[1]);
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  const span = max - min || 1;
+  const step = points.length > 1 ? SPARK_W / (points.length - 1) : 0;
+  return points
+    .map((p, i) => `${(points.length > 1 ? i * step : SPARK_W / 2).toFixed(1)},${(SPARK_H - 2 - ((p[1] - min) / span) * (SPARK_H - 4)).toFixed(1)}`)
+    .join(' ');
+}

@@ -21,8 +21,8 @@ vi.mock('../../services/api', async () => {
   return { default: { get: (...a: unknown[]) => getMock(...a) }, ApiError };
 });
 
-import { MeshCoreTraceSnrCard, sparklinePoints } from './MeshCoreTraceSnrCard';
-import { summarizeHopSnrLinks, HOP_SNR_POINTS_PER_LINK, type HopSnrSample } from '../../utils/meshcoreHopSnr';
+import { MeshCoreTraceSnrCard } from './MeshCoreTraceSnrCard';
+import { summarizeHopSnrLinks, sparklinePoints, HOP_SNR_POINTS_PER_LINK, type HopSnrSample } from '../../utils/meshcoreHopSnr';
 import { ApiError } from '../../services/api';
 
 const ME = 'a'.repeat(64);

@@ -12,7 +12,7 @@ import { useTranslation } from 'react-i18next';
 import api, { ApiError } from '../../services/api';
 import { UiIcon } from '../icons';
 import { formatRelativeTime } from '../../utils/datetime';
-import type { HopSnrEnd, HopSnrLink } from '../../utils/meshcoreHopSnr';
+import { SPARK_W, SPARK_H, sparklinePoints, type HopSnrEnd, type HopSnrLink } from '../../utils/meshcoreHopSnr';
 import styles from './MeshCoreTraceSnrCard.module.css';
 
 interface Envelope { success: boolean; data?: { hours: number; links: HopSnrLink[] } }
@@ -24,22 +24,6 @@ export interface MeshCoreTraceSnrCardProps {
   contacts?: ReadonlyArray<{ publicKey: string; name?: string | null; advName?: string | null }>;
   /** This source's own node, shown as "This node". */
   localPublicKey?: string | null;
-}
-
-const SPARK_W = 96;
-const SPARK_H = 22;
-
-/** SVG polyline points for a link's samples, scaled to the sparkline box. */
-export function sparklinePoints(points: ReadonlyArray<[number, number]>): string {
-  if (points.length === 0) return '';
-  const values = points.map((p) => p[1]);
-  const min = Math.min(...values);
-  const max = Math.max(...values);
-  const span = max - min || 1;
-  const step = points.length > 1 ? SPARK_W / (points.length - 1) : 0;
-  return points
-    .map((p, i) => `${(points.length > 1 ? i * step : SPARK_W / 2).toFixed(1)},${(SPARK_H - 2 - ((p[1] - min) / span) * (SPARK_H - 4)).toFixed(1)}`)
-    .join(' ');
 }
 
 export const MeshCoreTraceSnrCard: React.FC<MeshCoreTraceSnrCardProps> = ({ sourceId, publicKey, contacts, localPublicKey }) => {

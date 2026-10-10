@@ -69,6 +69,7 @@ const { default: automationRoutes } = await import('./meshcoreAutomationRoutes.j
 const { default: packetRoutes } = await import('./meshcorePacketRoutes.js');
 const { default: ingestReadRoutes } = await import('./meshcoreIngestReadRoutes.js');
 const { default: filterRoutes } = await import('./meshcoreFilterRoutes.js');
+const { default: traceRoutes } = await import('./meshcoreTraceRoutes.js');
 
 /**
  * A MeshCore manager that serves marked reads and records everything else.
@@ -639,6 +640,10 @@ const CLASSIFIED: Record<string, Record<string, Kind>> = {
     'PUT /message-filters/:filterId': 'write',
     'DELETE /message-filters/:filterId': 'write',
   },
+  // #5722: per-hop trace SNR history. Stored data; sends nothing.
+  trace: {
+    'GET /hop-snr': 'read',
+  },
 };
 
 /**
@@ -668,6 +673,7 @@ describe('guard: every MeshCore route is classified', () => {
     packet: packetRoutes,
     ingest: ingestReadRoutes,
     filter: filterRoutes,
+    trace: traceRoutes,
   };
   const key = (r: RegisteredRoute): string => `${r.method.toUpperCase()} ${r.path}`;
 
