@@ -178,6 +178,25 @@ Sources for the official broker: the [MQTT module docs](https://meshtastic.org/d
 
 A standalone bridge is the right starting point when you have **no embedded broker** (pure upstream monitoring) or when you plan to wire a Meshtastic source's `mqttLink` directly at the bridge for client-proxy traffic — both are also covered in [Use-case recipes](#use-case-recipes) above.
 
+#### Scope your subscriptions
+
+The **Upstream topics** you subscribe to decide how much traffic MeshMonitor takes in. On a public broker, a broad topic is a firehose. MeshMonitor can usually keep up; the radios behind it and your node list often cannot.
+
+Meshtastic topics narrow from left to right: `msh/<region>/<state>/<city>/…`. Subscribe as deep as you can.
+
+| Topic | What you get |
+|---|---|
+| `msh/#` | Every node on the broker, worldwide. Never use this on a public broker. |
+| `msh/US/#` | Every US node: thousands. |
+| `msh/US/NY/#` | One state: hundreds to low thousands. |
+| `msh/US/NY/NY/#` | One city. About right for a city operator. |
+
+- **Pick the narrowest topic that still covers your community.** You can list several narrow topics, one per line.
+- **It matters most with a parent broker and radios behind it.** Filters (block topics, bounding box) run after the subscription, so a broad subscription still means more to decode, more nodes in the node list and more position history, and anything that passes the filters can be handed to your radios.
+- **Public brokers zero-hop what they deliver.** `mqtt.meshtastic.org` sends every packet with `hop_limit` 0, so it stays off the air locally unless you raise it. See [Raising packets from mqtt.meshtastic.org](#raising-packets-from-mqtt-meshtastic-org).
+
+Operators of a private broker on their own network can subscribe to `msh/#` safely; nothing here is enforced.
+
 ### 3. Configure your Meshtastic devices
 
 **Direct TCP path** — On the device (via MeshMonitor's Device Configuration → MQTT tab, the Meshtastic mobile app, or the CLI):
@@ -255,7 +274,7 @@ Echo suppression is keyed on the **post-rewrite** topic — so an inbound TX pac
 ::: warning Read before deploying
 - **PSKs must match.** Topic rewriting moves bytes, not encryption. If the two meshes use different channel PSKs, the relayed packets arrive at devices on the other side as undecodable noise.
 - **Filter the firehose first.** Without a topic block-list, channel allow-list, portnum allow-list, or **geographic bounding box** in the downlink filter, dropping the entire `msh/US/TX/#` into a local mesh can saturate RF.
-- **Pair with a hop-limit cap of `0`** on the broker. Without it, inbound foreign-mesh packets arrive carrying their original `hop_limit` and devices on the receiving side will re-broadcast them over RF — re-flooding the foreign mesh's traffic across your local airwaves. Enabling the *raise* here does that on purpose; don't.
+- **Pair with a hop-limit cap of `0`** on the broker. Without it, inbound foreign-mesh packets arrive carrying their original `hop_limit` and devices on the receiving side will re-broadcast them over RF — re-flooding the foreign mesh's traffic across your local airwaves. Enabling the *raise* here does that on purpose; don't. If the same broker also has a trusted bridge you *do* want raised, tick **Skip raise on packets from this bridge** on the foreign one (see [below](#skip-raise-for-one-bridge)).
 - **Standalone bridges cannot rewrite.** A bridge without a parent broker has no parent-broker republish path (downlink) and no `local-packet` event source (uplink), so rewriting would silently do nothing. The validator rejects rewrite fields on standalone bridges.
 - **No wildcards.** `from` / `to` are literal prefixes only. `msh/US/+` is rejected by the validator.
 - **Single rule per direction.** v1 supports one `{from, to}` per direction. Folding multiple foreign roots into one local root (`msh/US/TX/* → msh/US/LA/*` AND `msh/CA/QC/* → msh/US/LA/*`) would need separate bridges today.
@@ -330,10 +349,29 @@ This is a managed-infrastructure knob: enable it when you have a specific backha
 :::
 
 - **Target** — `1`–`3`. Deliberately capped well below the protocol maximum; backhaul is local injection into the receiving cluster, not a wide-area flood.
-- **Packet types** — Position, Telemetry, NodeInfo, NeighborInfo, chosen individually. These are exactly the four firmware hop scaling operates on. Text, direct messages and traceroutes are routing-layer traffic and cannot be raised.
+- **Packet types** — Position, Telemetry, NodeInfo, NeighborInfo and Text messages, chosen individually. The first four are the ones firmware hop scaling lowers, so raising them undoes that scaling. **Text messages** (channel text and DMs, which share one packet type) are there for a different reason: to undo an upstream broker's zero-hop delivery (see the next section). Traceroutes cannot be raised, because a raised traceroute would no longer measure the real path.
 - **Encrypted packets are never raised.** Without a readable packet type there is no way to know the raise applies, so it does not fire.
 
 Typical uses: a dense urban site whose NodeInfo is scaled to 1 hop needs 2 hops of spread at a rural peer site; MQTT-observed nodes from a neighbouring valley need to reach gateways a couple of hops into the local mesh.
+
+::: warning Raising text is loud
+Every text message and DM the broker hands to a radio then floods up to the target number of hops on your local mesh, and text packets are larger than position or telemetry. Raise text only if you really want that traffic on your air. Watch channel utilisation and turn it off if it climbs.
+:::
+
+#### Raising packets from mqtt.meshtastic.org
+
+The official Meshtastic broker rewrites `hop_limit` to `0` on every packet it delivers. Together with the raise, that gives an asymmetry:
+
+- **What you send up is not raised for anyone else.** The raise only changes what this broker hands to *your* radios. Bridges uplink the `hop_limit` a packet arrived with, and the official broker sets it to 0 again before delivering it to its other subscribers.
+- **What comes down is raised for you.** Packets from the official broker arrive at 0. With the raise on for a packet type, they reach your radios at the target, so you undo the official broker's zero-hop rule on your own mesh.
+
+That can be exactly what you want (nearby nodes get a few hops of spread) or exactly what you don't (foreign traffic re-flooding your air). It applies to every bridge attached to this broker unless you skip it per bridge.
+
+#### Skip raise for one bridge
+
+To raise traffic from a trusted backhaul but not from a public upstream on the same broker, open the public bridge's **Settings → MQTT Bridge Configuration** and tick **Skip raise on packets from this bridge** (stored as `skipRaise: true`). Packets that bridge brings in are never raised; the **clamp still applies** to them, because it is airtime protection. Other bridges, and devices publishing to the broker directly, are raised as before. Off by default, so upgrading changes nothing.
+
+The broker recognises the bridge's packets by sender and packet id for 60 seconds after the bridge hands them over, on both delivery paths (MQTT subscribers and TCP-linked devices). A copy of the same packet that arrives through another route within that minute is not raised either.
 
 ### When both are on
 

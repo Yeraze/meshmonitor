@@ -59,6 +59,8 @@ export interface BridgeConfigForm {
   ignoreOkToMqtt: boolean;
   /** Keep MeshMonitor's own automation sends off the upstream broker (#5414). */
   dropAutomationUplinks: boolean;
+  /** Packets from this bridge are clamped but never raised by the parent broker (#5708). */
+  skipRaise: boolean;
   // Subscribe-side (downlink) filtering.
   useTopicBlock: boolean;
   topicBlock: string;
@@ -203,6 +205,10 @@ export function buildBridgeConfig(
     if (form.dropAutomationUplinks) cfg.dropAutomationUplinks = true;
     else delete cfg.dropAutomationUplinks;
   }
+  if (form.skipRaise !== undefined) {
+    if (form.skipRaise) cfg.skipRaise = true;
+    else delete cfg.skipRaise;
+  }
 
   // --- Subscribe-side (downlink) filters: manage topics.block / geo only when
   // the caller supplies them; preserve other downlink subkeys (channels/nodes/
@@ -310,6 +316,7 @@ export function formFromBridgeConfig(config: Record<string, any> | null | undefi
     forwardingMode: savedForwarding === 'single' ? 'single' : 'per_gateway',
     ignoreOkToMqtt: cfg.ignoreOkToMqtt === true,
     dropAutomationUplinks: cfg.dropAutomationUplinks === true,
+    skipRaise: cfg.skipRaise === true,
     useTopicBlock: downTopicBlock.length > 0,
     topicBlock: downTopicBlock.join('\n'),
     useGeo: hasGeo,
@@ -344,6 +351,7 @@ export function emptyBridgeForm(): BridgeConfigForm {
     forwardingMode: 'per_gateway',
     ignoreOkToMqtt: false,
     dropAutomationUplinks: false,
+    skipRaise: false,
     useTopicBlock: false,
     topicBlock: '',
     useGeo: false,

@@ -108,6 +108,10 @@ export interface MqttBrokerLocalPacket {
  * - 'client-connected' (clientId: string)
  * - 'client-disconnected' (clientId: string)
  */
+/** #5708: how long a skip-raise mark lasts, and how many may be held. */
+const SKIP_RAISE_TTL_MS = 60_000;
+const SKIP_RAISE_MAX_ENTRIES = 5_000;
+
 export class MqttBrokerManager extends EventEmitter implements ISourceManager {
   readonly sourceId: string;
   readonly sourceType: Source['type'] = 'mqtt_broker';
@@ -286,6 +290,35 @@ export class MqttBrokerManager extends EventEmitter implements ISourceManager {
    * purpose — ingestion and the uplink bridge must see the wire bytes as they
    * arrived — so that caller applies the transform itself.
    */
+  /**
+   * #5708: packets (by sender + packet id) that a bridge with `skipRaise`
+   * republished into this broker. Both radio egress paths call
+   * {@link transformForwardedPayload}, so one lookup there covers both. An
+   * entry lives {@link SKIP_RAISE_TTL_MS}: long enough for every subscriber
+   * and the mqttLink path to see the packet, short enough not to leak.
+   */
+  private readonly skipRaiseUntil = new Map<string, number>();
+
+  markSkipRaise(fromNum: number, packetId: number): void {
+    const now = Date.now();
+    if (this.skipRaiseUntil.size >= SKIP_RAISE_MAX_ENTRIES) {
+      for (const [k, until] of this.skipRaiseUntil) if (until <= now) this.skipRaiseUntil.delete(k);
+      // Still full of live entries: drop the oldest (Map keeps insertion order).
+      while (this.skipRaiseUntil.size >= SKIP_RAISE_MAX_ENTRIES) {
+        const oldest = this.skipRaiseUntil.keys().next().value;
+        if (oldest === undefined) break;
+        this.skipRaiseUntil.delete(oldest);
+      }
+    }
+    this.skipRaiseUntil.set(`${fromNum >>> 0}:${packetId >>> 0}`, now + SKIP_RAISE_TTL_MS);
+  }
+
+  private shouldSkipRaise(fromNum: number | undefined, packetId: number | undefined): boolean {
+    if (fromNum === undefined || packetId === undefined) return false;
+    const until = this.skipRaiseUntil.get(`${fromNum >>> 0}:${packetId >>> 0}`);
+    return until !== undefined && until > Date.now();
+  }
+
   transformForwardedPayload(topic: string, payload: Buffer): Buffer | null {
     const policy = this.hopLimitPolicy;
     if (!policy) return null;
@@ -293,6 +326,8 @@ export class MqttBrokerManager extends EventEmitter implements ISourceManager {
     const decoded = meshtasticProtobufService.decodeServiceEnvelope(payload, { quiet: true });
     if (!decoded || !decoded.packet) return null;
     const packet = decoded.packet as {
+      from?: number;
+      id?: number;
       hopLimit?: number;
       hopStart?: number;
       decoded?: { portnum?: number };
@@ -302,7 +337,11 @@ export class MqttBrokerManager extends EventEmitter implements ISourceManager {
     const portnum = typeof packet.decoded?.portnum === 'number' ? packet.decoded.portnum : null;
     // proto3 omits zero on the wire, so an absent field means hop_limit 0.
     const arrived = packet.hopLimit ?? 0;
-    const next = applyHopLimitPolicy(policy, portnum, arrived);
+    // #5708: a packet from a skip-raise bridge is clamped but never raised.
+    const effective = policy.raise && this.shouldSkipRaise(packet.from, packet.id)
+      ? { ...policy, raise: undefined }
+      : policy;
+    const next = applyHopLimitPolicy(effective, portnum, arrived);
     if (next === arrived) return null;
     packet.hopLimit = next;
     // hop_start is deliberately left alone — see mqttHopLimitPolicy.ts.
