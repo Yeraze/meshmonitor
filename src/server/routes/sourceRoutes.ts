@@ -19,6 +19,7 @@ import waypointRoutes from './waypoints.js';
 import observerRoutes from './sourceObserverRoutes.js';
 import aircraftFlightMatchRoutes from './aircraftFlightMatchRoutes.js';
 import pkiExchangeStateRoutes from './pkiExchangeStateRoutes.js';
+import mapMarkerRoutes from './mapMarkerRoutes.js';
 import { PortNum } from '../constants/meshtastic.js';
 import {
   buildSourceNodes,
@@ -1703,6 +1704,14 @@ router.delete('/:id', requirePermission('sources', 'write'), async (req: Request
       logger.warn(`Failed to purge Reliable PKI state for deleted source ${req.params.id}:`, pkiStateError);
     }
 
+    // #5686: local map markers belong to their source. Like the PKI state,
+    // only deleting the source removes them; a node purge does not.
+    try {
+      await databaseService.mapMarkers.deleteBySourceId(req.params.id);
+    } catch (markerError) {
+      logger.warn(`Failed to purge map markers for deleted source ${req.params.id}:`, markerError);
+    }
+
     // NOTE: `mesh_beacon_offers` (#4723) is cleaned up inside
     // purgeAllNodesAsync above, alongside ATAK contacts (#3691) and Coverage
     // Report RF receptions (#5277) — all three are per-source received state.
@@ -2519,6 +2528,8 @@ router.post('/:id/prune-outside-roi', requirePermission('sources', 'write'), asy
 router.use('/:id/waypoints', waypointRoutes);
 router.use('/:id/nodes/:nodeNum/flight-match', aircraftFlightMatchRoutes);
 router.use('/:id/nodes/:nodeNum/pki-exchange', pkiExchangeStateRoutes);
+// #5686: local map markers (planning notes; never transmitted).
+router.use('/:id/markers', mapMarkerRoutes);
 router.use('/:id/observer', observerRoutes);
 
 export default router;

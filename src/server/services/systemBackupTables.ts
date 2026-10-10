@@ -159,6 +159,8 @@ export const BACKUP_TABLES: string[] = [
   'auto_key_repair_log',
   // #5691 Reliable PKI: per-node exchange outcome and the hourly priming timer.
   'pki_exchange_state',
+  // #5686: local map markers (user planning data; never transmitted).
+  'map_markers',
   'geofence_cooldowns',
   'news_cache',
 ];
