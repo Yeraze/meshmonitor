@@ -1,4 +1,4 @@
-import { useMemo, type ReactNode } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
 import {
   useDashboardSources,
   useDashboardUnifiedData,
@@ -10,7 +10,7 @@ import {
   type TracerouteAnalysisInput,
 } from '../../hooks/useTracerouteAnalysis';
 import { getTracerouteOptions } from '../../hooks/useMapAnalysisConfig';
-import { useMapAnalysisCtx } from './MapAnalysisContext';
+import { useMapAnalysisCtx, type SelectedTarget } from './MapAnalysisContext';
 import { resolveNodeLatLng, type MaybePositionedNode } from './nodePositionUtil';
 import { useSettings } from '../../contexts/SettingsContext';
 import { useElevationEnabled } from '../../hooks/useElevationEnabled';
@@ -22,6 +22,8 @@ import {
   type EndpointNodeRecord,
 } from './neighborLinkEndpoints';
 import { UiIcon } from '../icons';
+import { useIsMobileLayoutViewport } from '../../hooks/useIsMobileViewport';
+import styles from './AnalysisInspectorPanel.module.css';
 
 interface NodeRecord extends MaybePositionedNode {
   nodeNum: number;
@@ -59,6 +61,13 @@ interface HopEntry {
  * Right-side inspector. Shows node metadata (with hop count) when a node is
  * selected, segment endpoints when a route segment is selected, or an empty
  * placeholder otherwise. Hidden entirely when `inspectorOpen` is false.
+ *
+ * On the phone layout (portrait or short landscape) the pane is a sheet docked
+ * under (portrait) or beside (landscape) the map that shows only while
+ * something is selected: a fixed 340px column left a 390px-wide phone with a
+ * ~50px map. Its close button dismisses the sheet for that selection only;
+ * the next click on the map selects a new target and opens it again. The
+ * persisted `inspectorOpen` flag is the desktop column's and is left alone.
  */
 export default function AnalysisInspectorPanel() {
   const {
@@ -71,6 +80,10 @@ export default function AnalysisInspectorPanel() {
     setViewMode,
   } = useMapAnalysisCtx();
   const { distanceUnit } = useSettings();
+  const isMobileLayout = useIsMobileLayoutViewport();
+  // The selection the user closed the phone sheet on. Every map click sets a
+  // new object, so comparing by identity reopens the sheet on the next click.
+  const [dismissed, setDismissed] = useState<SelectedTarget | null>(null);
   const elevationEnabled = useElevationEnabled();
   const { data: sources = [] } = useDashboardSources();
   const sourceList = sources as Array<{ id: string; name: string }>;
@@ -161,7 +174,9 @@ export default function AnalysisInspectorPanel() {
   const { data: neighborProfile, isLoading: neighborElevLoading } =
     useElevationProfile(profileEndpointA, profileEndpointB);
 
-  if (!config.inspectorOpen) {
+  if (isMobileLayout) {
+    if (!selected || selected === dismissed) return null;
+  } else if (!config.inspectorOpen) {
     return (
       <button
         type="button"
@@ -175,15 +190,29 @@ export default function AnalysisInspectorPanel() {
   }
 
   const wrap = (body: ReactNode) => (
-    <aside className="map-analysis-inspector">
-      <button
-        type="button"
-        className="map-analysis-inspector-close"
-        aria-label="Collapse detail pane"
-        onClick={() => setInspectorOpen(false)}
-      >
-        <UiIcon name="forward" />
-      </button>
+    <aside
+      className={isMobileLayout ? `map-analysis-inspector ${styles.sheet}` : 'map-analysis-inspector'}
+      data-testid="analysis-inspector"
+    >
+      {isMobileLayout ? (
+        <button
+          type="button"
+          className="map-analysis-inspector-close"
+          aria-label="Close details"
+          onClick={() => setDismissed(selected)}
+        >
+          <UiIcon name="close" />
+        </button>
+      ) : (
+        <button
+          type="button"
+          className="map-analysis-inspector-close"
+          aria-label="Collapse detail pane"
+          onClick={() => setInspectorOpen(false)}
+        >
+          <UiIcon name="forward" />
+        </button>
+      )}
       {body}
     </aside>
   );

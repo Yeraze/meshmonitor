@@ -434,6 +434,22 @@ describe('MapAnalysisCanvas', () => {
       }
     });
 
+    // `.map-sidebar ~ .slider` (TimeSliderControl.module.css) centres the
+    // time slider left of the open controls panel.
+    it('renders the open controls panel as an earlier sibling of the time slider', () => {
+      localStorage.setItem(
+        'mapAnalysis.config.v1',
+        JSON.stringify({ version: 1, timeSlider: { enabled: true } }),
+      );
+      render(<MapAnalysisCanvas />, { wrapper });
+      const slider = screen.getByTestId('time-slider');
+      expect(slider.className).toContain('slider');
+      const sidebar = document.querySelector('.map-sidebar');
+      expect(sidebar).not.toBeNull();
+      expect(sidebar!.parentElement).toBe(slider.parentElement);
+      expect(sidebar!.compareDocumentPosition(slider) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    });
+
     it('renders no .map-sidebar while the controls are collapsed, so the panels keep their corner', () => {
       localStorage.setItem('mm-map-sidebar-collapsed', 'true');
       render(<><OpenTools /><MapAnalysisCanvas /></>, { wrapper });

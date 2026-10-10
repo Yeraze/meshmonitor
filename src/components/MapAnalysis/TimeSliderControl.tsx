@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useMapAnalysisCtx } from './MapAnalysisContext';
 import { UiIcon } from '../icons';
+import styles from './TimeSliderControl.module.css';
 
 const LIVE_THRESHOLD_MS = 60_000;
 const LIVE_TICK_MS = 10_000;
@@ -34,10 +35,10 @@ export default function TimeSliderControl() {
   const max = Date.now();
 
   return (
-    <div className="map-analysis-time-slider" data-testid="time-slider">
-      <div className="map-analysis-time-slider-label">
+    <div className={styles.slider} data-testid="time-slider">
+      <div className={styles.label}>
         Window: {new Date(start).toLocaleString()} <UiIcon name="forward" size={14} /> {new Date(end).toLocaleString()}
-        {liveRef.current && <span style={{ marginLeft: 8, fontSize: 11, opacity: 0.7 }}>(live)</span>}
+        {liveRef.current && <span className={styles.live}>(live)</span>}
       </div>
       <input
         aria-label="Window start"

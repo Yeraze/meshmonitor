@@ -1,0 +1,80 @@
+/* Map Analysis time slider. Scoped module (moved from the global
+ * src/styles/map-analysis.css); see CLAUDE.md.
+ *
+ * The slider floats centred at the bottom of the map canvas, above Leaflet's
+ * controls. The open Map controls panel (`.map-sidebar`,
+ * src/components/map/MapSidebar.css) reaches down the canvas's right edge, so
+ * a slider centred on the whole canvas drew over the panel's lower end. The
+ * panel renders before the slider in `.map-analysis-canvas` and exists only
+ * while open, so a sibling selector centres the slider in the map area left of
+ * it, exactly when it is open. Same approach and tokens as
+ * MapToolPanels.module.css. */
+
+.slider {
+  position: absolute;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(520px, calc(100% - 24px));
+  z-index: 2000;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  box-sizing: border-box;
+  padding: 14px 18px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  color: var(--color-text);
+  font-size: 12px;
+  box-shadow: var(--shadow-lg);
+}
+
+.slider input[type="range"] {
+  width: 100%;
+}
+
+.label {
+  text-align: center;
+  color: var(--color-text-muted);
+}
+
+.live {
+  margin-left: 8px;
+  font-size: 11px;
+  opacity: 0.7;
+}
+
+/* Centred in the map area left of the open controls panel, not over it. */
+:global(.map-sidebar) ~ .slider {
+  left: calc((100% - 2 * var(--map-sidebar-inset) - var(--map-sidebar-width)) / 2);
+  width: min(520px, calc(100% - 2 * var(--map-sidebar-inset) - var(--map-sidebar-width) - 24px));
+}
+
+/* Portrait phone: the open controls panel is a full sheet over the map pane.
+   The slider drops under it (the sheet is z-index 1001) rather than covering
+   the bottom of the controls list, and comes back when the sheet closes. */
+@media (max-width: 768px) {
+  .slider {
+    bottom: max(12px, env(safe-area-inset-bottom));
+    padding: 10px 12px;
+  }
+
+  :global(.map-sidebar) ~ .slider {
+    left: 50%;
+    width: min(520px, calc(100% - 24px));
+    z-index: 1000;
+  }
+}
+
+/* Short landscape: the controls sheet is a right-edge column of the sidebar
+   width capped at 60% of the pane (MapSidebar.css). The slider centres in the
+   rest. After the portrait block so it wins on a phone that matches both
+   (667x375); see the cascade note at the top of src/styles/nodes.css. */
+@media (max-height: 500px) and (orientation: landscape) {
+  :global(.map-sidebar) ~ .slider {
+    left: calc((100% - min(var(--map-sidebar-width), 60%)) / 2);
+    width: min(520px, calc(100% - min(var(--map-sidebar-width), 60%) - 24px));
+    z-index: 2000;
+  }
+}

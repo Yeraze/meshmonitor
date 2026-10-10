@@ -1,0 +1,57 @@
+/* The Map Analysis detail pane on the phone layout. Scoped module; the pane's
+ * content styles stay in src/styles/map-analysis.css under
+ * `.map-analysis-inspector`.
+ *
+ * On desktop the pane is a fixed 340px column beside the map. On a 390px-wide
+ * phone that left the map about 50px wide until the user folded the pane. On
+ * the phone layout the pane now renders only while something is selected
+ * (AnalysisInspectorPanel.tsx), and docks:
+ *
+ *   Portrait   - under the map, full width, at most 45% of the height, so the
+ *                map keeps the top half or more and the selection stays in view.
+ *   Landscape  - beside the map, narrower than on desktop, since a 390px-tall
+ *                screen has no height to spare for a bottom sheet.
+ *
+ * Docking (not overlaying) keeps the time slider, the Map controls sheet, and
+ * the tool column inside the map canvas clear of the pane: they all position
+ * against the canvas, which simply gets smaller. BaseMap's ResizeObserver
+ * redraws the map when it does.
+ *
+ * Queries mirror MOBILE_LAYOUT_MEDIA_QUERY (src/utils/sidebarWidth.ts), which
+ * the component uses through useIsMobileLayoutViewport(). The landscape block
+ * comes second so it wins on a phone that matches both (667x375); see the
+ * cascade note at the top of src/styles/nodes.css. Selectors are doubled with
+ * the global class so they outrank the base `.map-analysis-inspector` rule
+ * whatever order the sheets load in. */
+
+@media (max-width: 768px) {
+  .body {
+    flex-direction: column;
+  }
+
+  .body > :global(.map-analysis-canvas) {
+    min-height: 0;
+  }
+
+  :global(.map-analysis-inspector).sheet {
+    flex: 0 0 auto;
+    max-height: 45%;
+    border-left: none;
+    border-top: 1px solid var(--color-border-subtle);
+    padding: 14px 16px max(14px, env(safe-area-inset-bottom));
+  }
+}
+
+@media (max-height: 500px) and (orientation: landscape) {
+  .body {
+    flex-direction: row;
+  }
+
+  :global(.map-analysis-inspector).sheet {
+    flex: 0 0 min(300px, 40%);
+    max-height: none;
+    border-top: none;
+    border-left: 1px solid var(--color-border-subtle);
+    padding: 12px max(14px, env(safe-area-inset-right)) 12px 14px;
+  }
+}
