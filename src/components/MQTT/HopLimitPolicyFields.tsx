@@ -167,7 +167,7 @@ export function HopLimitPolicyFields({ value, onChange, legacyNotice }: HopLimit
             <span className={styles.help}>
               {t(
                 'source.form.hop_raise_help',
-                'Raises hop_limit to at least the target below. Never lowers it. Only the four packet types firmware hop scaling touches can be raised — text, direct messages and traceroutes are out of scope.',
+                'Raises hop_limit to at least the target below. Never lowers it. You choose which packet types to raise: the four firmware hop scaling touches, and text messages. Traceroutes are never raised.',
               )}
             </span>
           </span>
