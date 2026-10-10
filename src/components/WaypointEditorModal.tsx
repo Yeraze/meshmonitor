@@ -16,6 +16,7 @@ import { hopLimitSettingValue } from '../utils/hopLimitOverride';
 import { NumberInput } from './common/NumberInput';
 import { NumberInputScope } from './common/NumberInputScope';
 import { useNumberInputScope } from './common/numberInputScopeContext';
+import PinSourcePicker, { type PinSourceChoice } from './map/PinSourcePicker';
 
 const DEFAULT_EMOJIS = ['📍', '🏠', '🏕️', '⛺', '🚗', '🛟', '⚠️', '⭐', '🚩', '🛠️'];
 
@@ -48,6 +49,13 @@ export interface WaypointEditorModalProps {
   selfNodeNum?: number | null;
   /** Coordinates to seed when opening in create mode (e.g. from a map click). */
   defaultCoords?: { lat: number; lon: number } | null;
+  /**
+   * Which source sends the waypoint, for a surface with no implied source
+   * (Map Analysis, #5685). Shown at the top of the form; Save stays off until
+   * a source is chosen. `channels` and `selfNodeNum` must follow the choice.
+   * Omitted on the Nodes map, where the active source sends.
+   */
+  sendingSource?: PinSourceChoice;
 }
 
 function expireSecondsToLocal(expire: number | null | undefined): string {
@@ -65,8 +73,10 @@ function localToExpireSeconds(local: string): number | null {
 }
 
 export default function WaypointEditorModal(props: WaypointEditorModalProps) {
-  const { isOpen, initial, channels, onPickLocation, onClose, onSave, selfNodeNum, defaultCoords } =
+  const { isOpen, initial, channels, onPickLocation, onClose, onSave, selfNodeNum, defaultCoords, sendingSource } =
     props;
+  const sendingSourceId = sendingSource?.value ?? null;
+  const sourceMissing = Boolean(sendingSource) && !sendingSourceId;
 
   const deviceChannels = useMemo(
     () => (channels ?? []).filter((c) => Number.isInteger(c.id) && c.id >= 0 && c.id <= MAX_CHANNEL_INDEX),
@@ -141,6 +151,18 @@ export default function WaypointEditorModal(props: WaypointEditorModalProps) {
     setError(null);
   }, [isOpen, initial, selfNodeNum, defaultCoords]);
 
+  // A slot index means a different channel on each radio, and "this node" is
+  // a different node. Picking another sending source puts both back to their
+  // defaults instead of carrying the first source's choice over (#4341).
+  const [seenSourceId, setSeenSourceId] = useState(sendingSourceId);
+  if (seenSourceId !== sendingSourceId) {
+    setSeenSourceId(sendingSourceId);
+    if (isOpen && !initial) {
+      setChannel(0);
+      setLockToSelf(false);
+    }
+  }
+
   function validate(): WaypointInput | null {
     const latN = Number(lat);
     const lonN = Number(lon);
@@ -195,7 +217,7 @@ export default function WaypointEditorModal(props: WaypointEditorModalProps) {
 
   async function handleSave() {
     // #5649: a blank or out-of-range number field is never sent to the mesh.
-    if (numberScope.invalid) return;
+    if (numberScope.invalid || sourceMissing) return;
     const input = validate();
     if (!input) return;
     setSaving(true);
@@ -221,6 +243,22 @@ export default function WaypointEditorModal(props: WaypointEditorModalProps) {
       >
         <NumberInputScope scope={numberScope}>
         <div className="waypoint-editor-form">
+        {sendingSource && (
+          <PinSourcePicker
+            id="waypoint-sending-source"
+            label={t('mapPins.waypointSourceLabel', 'Sending source')}
+            placeholder={t('mapPins.chooseSource', 'Choose a source…')}
+            hint={t(
+              'mapPins.waypointSourceHint',
+              "This source's radio broadcasts the waypoint to the mesh when you save. Nothing is sent before that.",
+            )}
+            hiddenNote={t(
+              'mapPins.hiddenByFilter',
+              'This source is not in the map\'s source filter, so the new pin will not show until you add it.',
+            )}
+            choice={sendingSource}
+          />
+        )}
         <div className="form-row">
           <label className="form-label">
             Latitude
@@ -426,7 +464,7 @@ export default function WaypointEditorModal(props: WaypointEditorModalProps) {
             type="button"
             className="form-button form-button-primary"
             onClick={handleSave}
-              disabled={saving || numberScope.invalid}
+              disabled={saving || numberScope.invalid || sourceMissing}
             >
             {saving ? 'Saving…' : initial ? 'Save' : 'Create'}
           </button>

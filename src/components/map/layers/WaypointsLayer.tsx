@@ -99,6 +99,15 @@ export interface WaypointPopupActions {
   onEdit?: (wp: Waypoint) => void;
   /** Caller invokes delete flow with the chosen waypoint. */
   onDelete?: (wp: Waypoint) => void;
+  /**
+   * True when the waypoint is locked to a node other than this source's own
+   * (#5685). Edit and Delete then draw disabled with the reason, instead of
+   * live buttons the server would refuse. Omitted: buttons stay live and the
+   * caller's handlers decide.
+   */
+  lockedToOther?: (wp: Waypoint) => boolean;
+  /** Tooltip for the disabled buttons. */
+  lockedTitle?: string;
 }
 
 export function PerSourceWaypoints({
@@ -116,6 +125,7 @@ export function PerSourceWaypoints({
     <>
       {waypoints.map((wp: Waypoint) => {
         const icon = emojiDivIcon(wp.iconEmoji, Boolean(wp.lockedTo));
+        const locked = actions?.lockedToOther?.(wp) ?? false;
         const ownerLabel =
           wp.ownerNodeNum != null
             ? `!${Number(wp.ownerNodeNum).toString(16).padStart(8, '0')}`
@@ -187,6 +197,8 @@ export function PerSourceWaypoints({
                       {actions.canEdit && (
                         <button
                           type="button"
+                          disabled={locked}
+                          title={locked ? actions.lockedTitle : undefined}
                           onClick={() => actions.onEdit?.(wp)}
                         >
                           <UiIcon name="edit" size={14} /> Edit
@@ -196,6 +208,8 @@ export function PerSourceWaypoints({
                         <button
                           type="button"
                           className="danger"
+                          disabled={locked}
+                          title={locked ? actions.lockedTitle : undefined}
                           onClick={() => actions.onDelete?.(wp)}
                         >
                           <UiIcon name="delete" size={14} /> Delete
@@ -213,7 +227,14 @@ export function PerSourceWaypoints({
   );
 }
 
-export default function WaypointsLayer() {
+/**
+ * Map Analysis: waypoints for the sources in the analysis filter. `actionsFor`
+ * gives the popup actions for one source, or undefined for a read-only popup
+ * (#5685: write permission and the ability to send differ per source).
+ */
+export default function WaypointsLayer({ actionsFor }: {
+  actionsFor?: (source: SourceInfo) => WaypointPopupActions | undefined;
+} = {}) {
   const { config } = useMapAnalysisCtx();
   const { data: sources = [] } = useDashboardSources();
   const sourceList = sources as SourceInfo[];
@@ -226,7 +247,7 @@ export default function WaypointsLayer() {
   return (
     <>
       {visibleSources.map((s) => (
-        <PerSourceWaypoints key={s.id} source={s} />
+        <PerSourceWaypoints key={s.id} source={s} actions={actionsFor?.(s)} />
       ))}
     </>
   );

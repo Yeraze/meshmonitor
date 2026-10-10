@@ -45,6 +45,23 @@ async function postJson<T>(url: string, method: string, body?: unknown): Promise
   return res.json() as Promise<T>;
 }
 
+/**
+ * Plain calls for a surface that picks the source per action (Map Analysis,
+ * #5685), where one hook bound to one source will not do. The caller owns the
+ * cache: invalidate `['waypoints', sourceId]` after each.
+ */
+export function createWaypoint(sourceId: string, input: WaypointInput) {
+  return postJson<{ data: Waypoint }>(waypointsApiBase(sourceId), 'POST', input);
+}
+
+export function updateWaypoint(sourceId: string, waypointId: number, input: Partial<WaypointInput>) {
+  return postJson<{ data: Waypoint }>(`${waypointsApiBase(sourceId)}/${waypointId}`, 'PATCH', input);
+}
+
+export function deleteWaypoint(sourceId: string, waypointId: number) {
+  return postJson<{ success: boolean }>(`${waypointsApiBase(sourceId)}/${waypointId}`, 'DELETE');
+}
+
 export function useWaypoints(sourceId: string | null | undefined) {
   const qc = useQueryClient();
   const enabled = Boolean(sourceId);
@@ -59,7 +76,7 @@ export function useWaypoints(sourceId: string | null | undefined) {
   const create = useMutation({
     mutationFn: async (input: WaypointInput) => {
       if (!sourceId) throw new Error('sourceId required');
-      return postJson<{ data: Waypoint }>(waypointsApiBase(sourceId), 'POST', input);
+      return createWaypoint(sourceId, input);
     },
     onSuccess: () => {
       if (sourceId) void qc.invalidateQueries({ queryKey: ['waypoints', sourceId] });
@@ -69,11 +86,7 @@ export function useWaypoints(sourceId: string | null | undefined) {
   const update = useMutation({
     mutationFn: async (args: { waypointId: number; input: Partial<WaypointInput> }) => {
       if (!sourceId) throw new Error('sourceId required');
-      return postJson<{ data: Waypoint }>(
-        `${waypointsApiBase(sourceId)}/${args.waypointId}`,
-        'PATCH',
-        args.input,
-      );
+      return updateWaypoint(sourceId, args.waypointId, args.input);
     },
     onSuccess: () => {
       if (sourceId) void qc.invalidateQueries({ queryKey: ['waypoints', sourceId] });
@@ -83,10 +96,7 @@ export function useWaypoints(sourceId: string | null | undefined) {
   const remove = useMutation({
     mutationFn: async (waypointId: number) => {
       if (!sourceId) throw new Error('sourceId required');
-      return postJson<{ success: boolean }>(
-        `${waypointsApiBase(sourceId)}/${waypointId}`,
-        'DELETE',
-      );
+      return deleteWaypoint(sourceId, waypointId);
     },
     onSuccess: () => {
       if (sourceId) void qc.invalidateQueries({ queryKey: ['waypoints', sourceId] });

@@ -38,6 +38,9 @@ export interface SelectedTarget {
  * `config.followMode` / `setFollowMode` already do — no extra field needed
  * here; the `...config` spread in `MapAnalysisProvider` carries it through.
  */
+/** What the next map click places: an on-air waypoint, a local marker, or nothing. */
+export type PinPlaceMode = 'waypoint' | 'marker' | null;
+
 type CtxShape = ReturnType<typeof useMapAnalysisConfig> & {
   selected: SelectedTarget | null;
   setSelected: (s: SelectedTarget | null) => void;
@@ -78,6 +81,13 @@ type CtxShape = ReturnType<typeof useMapAnalysisConfig> & {
   gnssDopMeta: GnssDopMeta | null;
   setGnssDopMeta: (v: GnssDopMeta | null) => void;
   setLinkProfileMode: (m: boolean) => void;
+  /**
+   * Add-a-pin placement (#5685): the next map click picks the spot for an
+   * on-air waypoint or a local marker. Transient, not persisted. It captures
+   * map clicks, so the toolbar keeps it exclusive with the other click tools.
+   */
+  pinPlaceMode: PinPlaceMode;
+  setPinPlaceMode: (m: PinPlaceMode) => void;
   /** Picked endpoints (0..2) for the Link Profile tool; transient, not persisted. */
   linkEndpoints: LinkEndpoint[];
   setLinkEndpoints: (e: LinkEndpoint[]) => void;
@@ -142,6 +152,7 @@ export function MapAnalysisProvider({ children }: { children: ReactNode }) {
   const [sitePlannerOrigin, setSitePlannerOrigin] = useState<SitePlannerOrigin | null>(null);
   const [predictedCoverage, setPredictedCoverage] = useState<PredictedCoverage | null>(null);
   const [gnssDopMode, setGnssDopMode] = useState(false);
+  const [pinPlaceMode, setPinPlaceMode] = useState<PinPlaceMode>(null);
   const [gnssDopParams, setGnssDopParams] = useState<GnssDopUiParams>(() => ({
     maskDeg: 5,
     timeMs: Date.now(),
@@ -174,6 +185,8 @@ export function MapAnalysisProvider({ children }: { children: ReactNode }) {
         setPredictedCoverage,
         gnssDopMode,
         setGnssDopMode,
+        pinPlaceMode,
+        setPinPlaceMode,
         gnssDopParams,
         setGnssDopParams,
         gnssDopMeta,

@@ -16,6 +16,7 @@ import {
   MAP_MARKER_COLORS, MAP_MARKER_ICONS, MAP_MARKER_LABEL_MAX, MAP_MARKER_DESCRIPTION_MAX,
   type MapMarker, type MapMarkerColor, type MapMarkerIcon, type MapMarkerInput,
 } from '../../types/mapMarker';
+import PinSourcePicker, { type PinSourceChoice } from './PinSourcePicker';
 import styles from './LocalMarkerEditorModal.module.css';
 
 const ICON_LABELS: Record<MapMarkerIcon, string> = {
@@ -31,13 +32,18 @@ export interface LocalMarkerEditorModalProps {
   defaultCoords?: { lat: number; lon: number } | null;
   onClose: () => void;
   onSave: (input: MapMarkerInput) => Promise<void>;
+  /**
+   * Which source the marker is stored on, for a surface with no implied
+   * source (Map Analysis, #5685). Save stays off until one is chosen.
+   */
+  storingSource?: PinSourceChoice;
 }
 
 /** A map click gives ~15 decimals; 6 (about 0.1 m) is plenty and fits the field. */
 const roundCoord = (v: number | null | undefined): number | null =>
   v == null || !Number.isFinite(v) ? null : Math.round(v * 1e6) / 1e6;
 
-export default function LocalMarkerEditorModal({ isOpen, initial, defaultCoords, onClose, onSave }: LocalMarkerEditorModalProps) {
+export default function LocalMarkerEditorModal({ isOpen, initial, defaultCoords, onClose, onSave, storingSource }: LocalMarkerEditorModalProps) {
   const { t } = useTranslation();
   const numberScope = useNumberInputScope();
   const [label, setLabel] = useState('');
@@ -63,7 +69,8 @@ export default function LocalMarkerEditorModal({ isOpen, initial, defaultCoords,
     setSaving(false);
   }, [isOpen, initial, defaultCoords]);
 
-  const canSave = label.trim().length > 0 && lat !== null && lon !== null && !numberScope.invalid && !saving;
+  const sourceMissing = Boolean(storingSource) && !storingSource?.value;
+  const canSave = !sourceMissing && label.trim().length > 0 && lat !== null && lon !== null && !numberScope.invalid && !saving;
 
   const save = async () => {
     if (!canSave) return;
@@ -90,6 +97,19 @@ export default function LocalMarkerEditorModal({ isOpen, initial, defaultCoords,
             <UiIcon name="visibilityOff" size={14} />
             {t('localMarkers.editorNote', 'Saved in MeshMonitor only. It is never sent to the mesh. Anyone who can see this source\'s map can see it.')}
           </p>
+          {storingSource && (
+            <PinSourcePicker
+              id="local-marker-source"
+              label={t('mapPins.markerSourceLabel', 'Source')}
+              placeholder={t('mapPins.chooseSource', 'Choose a source…')}
+              hint={t('mapPins.markerSourceHint', 'The marker is kept with this source and shows on its maps. No radio sends it.')}
+              hiddenNote={t(
+                'mapPins.hiddenByFilter',
+                'This source is not in the map\'s source filter, so the new pin will not show until you add it.',
+              )}
+              choice={storingSource}
+            />
+          )}
           <label className={styles.field}>
             <span>{t('localMarkers.label', 'Label')}</span>
             <input className={styles.input} value={label} maxLength={MAP_MARKER_LABEL_MAX} required autoFocus
