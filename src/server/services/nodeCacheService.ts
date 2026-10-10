@@ -110,6 +110,10 @@ export class NodeCacheService {
       aircraftFixedAt: node.aircraftFixedAt ?? undefined,
       aircraftFixedLatitude: node.aircraftFixedLatitude ?? undefined,
       aircraftFixedLongitude: node.aircraftFixedLongitude ?? undefined,
+      // #5715: manual aircraft mark.
+      aircraftManualMark: node.aircraftManualMark ?? undefined,
+      aircraftManualMarkAt: node.aircraftManualMarkAt ?? undefined,
+      aircraftManualMarkBy: node.aircraftManualMarkBy ?? undefined,
       sourceId: node.sourceId ?? sourceId,
       createdAt: node.createdAt,
       updatedAt: node.updatedAt,

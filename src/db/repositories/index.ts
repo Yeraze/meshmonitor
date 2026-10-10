@@ -8,7 +8,7 @@ export { BaseRepository, ALL_SOURCES } from './base.js';
 export type { DrizzleDatabase, SQLiteDrizzle, PostgresDrizzle, SourceScope, SourceSetScope } from './base.js';
 export { SettingsRepository } from './settings.js';
 export { ChannelsRepository, type ChannelInput } from './channels.js';
-export { NodesRepository, type NodesCacheHook, type AircraftAgeOutCandidate } from './nodes.js';
+export { NodesRepository, type NodesCacheHook, type AircraftAgeOutCandidate, type AircraftManualMarkWrite } from './nodes.js';
 export { MessagesRepository } from './messages.js';
 export type { MessageSourceScope, MessageChannelScope } from './messages.js';
 export { TelemetryRepository, type TelemetryCadenceAggregate } from './telemetry.js';

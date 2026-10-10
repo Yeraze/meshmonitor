@@ -162,6 +162,12 @@ export interface DeviceInfo {
   aircraftAgedOutAt?: number | null;
   /** ms epoch when the node was reclassified as fixed (sticky mark); null/absent = no mark. */
   aircraftFixedAt?: number | null;
+  /** Manual aircraft mark (#5715): 'not_aircraft' | 'aircraft'; absent = none. */
+  aircraftManualMark?: 'not_aircraft' | 'aircraft' | null;
+  /** ms epoch the manual mark was set. */
+  aircraftManualMarkAt?: number | null;
+  /** users.id of who set the manual mark. */
+  aircraftManualMarkBy?: number | null;
 }
 
 export interface Channel {

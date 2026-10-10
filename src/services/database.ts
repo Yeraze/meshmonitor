@@ -36,6 +36,7 @@ import {
   ChannelsRepository,
   NodesRepository,
   type AircraftAgeOutCandidate,
+  type AircraftManualMarkWrite,
   MessagesRepository,
   TelemetryRepository,
   AuthRepository,
@@ -215,6 +216,15 @@ export interface DbNode {
   /** Anchor of the fixed mark; null when not marked. */
   aircraftFixedLatitude?: number | null;
   aircraftFixedLongitude?: number | null;
+  /**
+   * Manual aircraft mark (#5715): 'not_aircraft' | 'aircraft'; null when none.
+   * A 'not_aircraft' mark keeps its anchor in aircraftFixed*.
+   */
+  aircraftManualMark?: string | null;
+  /** Epoch ms the manual mark was set. */
+  aircraftManualMarkAt?: number | null;
+  /** users.id of who set the manual mark. */
+  aircraftManualMarkBy?: number | null;
   // Remote admin discovery (Migration 055)
   hasRemoteAdmin?: boolean; // Has remote admin access
   lastRemoteAdminCheck?: number; // Unix timestamp ms of last check
@@ -5993,6 +6003,15 @@ class DatabaseService {
     fixed: { atMs: number; lat: number; lon: number } | null,
   ): Promise<void> {
     return this.nodes.setAircraftFixed(nodeNum, sourceId, fixed);
+  }
+
+  /** #5715: set or clear a person's aircraft mark. See NodesRepository.setAircraftManualMark. */
+  async setAircraftManualMarkAsync(
+    nodeNum: number,
+    sourceId: string,
+    mark: AircraftManualMarkWrite | null,
+  ): Promise<void> {
+    return this.nodes.setAircraftManualMark(nodeNum, sourceId, mark);
   }
 
   async listAircraftAgeOutCandidatesAsync(sourceId: string): Promise<AircraftAgeOutCandidate[]> {

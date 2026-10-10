@@ -141,6 +141,15 @@ export interface DbNode {
   /** Anchor of the fixed mark; null when not marked. */
   aircraftFixedLatitude?: number | null;
   aircraftFixedLongitude?: number | null;
+  /**
+   * Manual aircraft mark (#5715): 'not_aircraft' | 'aircraft'; null when none.
+   * A 'not_aircraft' mark keeps its anchor in aircraftFixed*.
+   */
+  aircraftManualMark?: string | null;
+  /** Epoch ms the manual mark was set. */
+  aircraftManualMarkAt?: number | null;
+  /** users.id of who set the manual mark. */
+  aircraftManualMarkBy?: number | null;
   createdAt: number;
   updatedAt: number;
 }
