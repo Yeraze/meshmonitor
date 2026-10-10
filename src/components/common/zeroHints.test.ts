@@ -57,10 +57,11 @@ describe('zero hints', () => {
         sites.push(hint![1]);
       }
     }
-    // Five fields, three of them on both the local and the remote form.
+    // Five fields, four of them on both the local and the remote form.
     expect(sites.sort()).toEqual([
       'zero_hint.hop_limit',
       'zero_hint.hop_limit',
+      'zero_hint.map_position_precision',
       'zero_hint.map_position_precision',
       'zero_hint.neighbor_info_interval',
       'zero_hint.node_info_broadcast',

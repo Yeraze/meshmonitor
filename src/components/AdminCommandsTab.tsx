@@ -26,6 +26,7 @@ import AutoFavoriteManagementSection from './admin-commands/AutoFavoriteManageme
 import { ModuleConfigurationSection } from './admin-commands/ModuleConfigurationSection';
 import { DeviceActionsSection } from './admin-commands/DeviceActionsSection';
 import { useAdminCommandsState, buildMeshBeaconConfigPayload } from './admin-commands/useAdminCommandsState';
+import { buildAdminMqttSavePayload } from './admin-commands/mqttSavePayload';
 import {
   ADMIN_LOAD_SECTIONS,
   LOAD_CONFIG_TYPES,
@@ -404,7 +405,9 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
       loadedPacketSignaturePolicy: null,
       firmwareVersion: null,
     });
-  }, [selectedNodeNum, setSecurityConfig]);
+    // Same for MQTT: the form on screen is the old node's config.
+    setMQTTConfig({ loadedForNodeNum: null });
+  }, [selectedNodeNum, setSecurityConfig, setMQTTConfig]);
 
   // Fetch and update passkey status for remote nodes
   const fetchPasskeyStatus = useCallback(async () => {
@@ -1315,17 +1318,21 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
     }
   }, [configState.position, executeCommand]);
 
+  // Firmware replaces the whole MQTT struct with what we send, so the form must
+  // hold this node's config before a Save can go out. A save from defaults
+  // turns MQTT, client proxy and map reporting off on the node.
+  const mqttConfigLoadedForSelectedNode =
+    selectedNodeNum !== null && configState.mqtt.loadedForNodeNum === selectedNodeNum;
+
   const handleSetMQTTConfig = async () => {
-    const config: any = {
-      enabled: configState.mqtt.enabled,
-      address: configState.mqtt.address,
-      username: configState.mqtt.username,
-      password: configState.mqtt.password,
-      encryptionEnabled: configState.mqtt.encryptionEnabled,
-      jsonEnabled: configState.mqtt.jsonEnabled,
-      root: configState.mqtt.root,
-      tlsEnabled: configState.mqtt.tlsEnabled
-    };
+    if (!mqttConfigLoadedForSelectedNode) {
+      showToast(
+        t('admin_commands.mqtt_save_needs_load', 'Load this node’s MQTT configuration first. Saving without it would replace the node’s MQTT settings with defaults.'),
+        'error',
+      );
+      return;
+    }
+    const config = buildAdminMqttSavePayload(configState.mqtt);
 
     try {
       await executeCommand('setMQTTConfig', { config });
@@ -3015,6 +3022,12 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
         mqttJsonEnabled={configState.mqtt.jsonEnabled}
         mqttRoot={configState.mqtt.root}
         mqttTlsEnabled={configState.mqtt.tlsEnabled}
+        mqttProxyToClientEnabled={configState.mqtt.proxyToClientEnabled}
+        mqttMapReportingEnabled={configState.mqtt.mapReportingEnabled}
+        mqttMapPublishIntervalSecs={configState.mqtt.mapPublishIntervalSecs}
+        mqttMapPositionPrecision={configState.mqtt.mapPositionPrecision}
+        mqttMapShouldReportLocation={configState.mqtt.mapShouldReportLocation}
+        mqttLoadedForSelectedNode={mqttConfigLoadedForSelectedNode}
         onMQTTConfigChange={handleMQTTConfigChange}
         onSaveMQTTConfig={handleSetMQTTConfig}
         neighborInfoEnabled={configState.neighborInfo.enabled}
