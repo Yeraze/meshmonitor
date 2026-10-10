@@ -110,7 +110,7 @@ import {
 } from './services/meshcoreFrameIngest.js';
 import { maybeRecordMeshCoreCoverageReception } from './utils/coverageMeshCore.js';
 import { maybeRecordMeshCoreLink } from './services/crossSourceLinkRecorder.js';
-import { parsePathHops, pathHashBytesOf, resolveRouteNames, buildTracePathHops } from '../utils/meshcorePath.js';
+import { parsePathHops, pathHashBytesOf, resolveRouteNames, buildTracePathHops, rewidthPathHops } from '../utils/meshcorePath.js';
 import { MESHCORE_PUBLIC_CHANNEL_SECRET, tryDecodeGroupTextPayload } from './utils/meshcoreGroupEcho.js';
 import { meshcoreAgeCutoffMs, isWithinMeshcoreAge } from '../utils/meshcoreAge.js';
 import { safeJson } from './utils/redactSecrets.js';
@@ -6778,7 +6778,7 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
    * SNR. Returns the per-hop SNR array plus the final-hop SNR, or `null`
    * on failure (no path, timeout, not Companion).
    */
-  async traceContactPath(publicKey: string, opts: { autoReturn?: boolean } = {}): Promise<MeshCoreTracePathResult | null> {
+  async traceContactPath(publicKey: string, opts: { autoReturn?: boolean; hashBytes?: 1 | 2 } = {}): Promise<MeshCoreTracePathResult | null> {
     const outcome = await this.traceContactPathDetailed(publicKey, opts);
     if (!outcome.ok) return null;
     return { hops: outcome.hops, lastSnr: outcome.lastSnr, path: outcome.path };
@@ -6790,7 +6790,7 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
    * estimate (constants/meshcoreFirmwareTimeout.ts). One trace goes out per
    * call; a timeout is never retried here.
    */
-  async traceContactPathDetailed(publicKey: string, opts: { autoReturn?: boolean } = {}): Promise<MeshCoreTracePathOutcome> {
+  async traceContactPathDetailed(publicKey: string, opts: { autoReturn?: boolean; hashBytes?: 1 | 2 } = {}): Promise<MeshCoreTracePathOutcome> {
     const failed: MeshCoreTracePathOutcome = { ok: false, reason: 'failed' };
     if (this.deviceType !== MeshCoreDeviceType.COMPANION) {
       logger.warn('[MeshCore] Trace-path requires Companion firmware');
@@ -6805,15 +6805,27 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
       logger.warn(`[MeshCore] Trace-path: no known path for ${publicKey.substring(0, 16)}…`);
       return failed;
     }
-    const pathHops = parsePathHops(contact.outPath);
+    let pathHops = parsePathHops(contact.outPath);
     if (pathHops.length === 0) {
       logger.warn(`[MeshCore] Trace-path: cached path for ${publicKey.substring(0, 16)}… is empty or malformed`);
       return failed;
     }
-    const hashBytes = pathHashBytesOf(pathHops);
+    let hashBytes = pathHashBytesOf(pathHops);
     if (pathHops.some((h) => h.length !== hashBytes * 2)) {
       logger.warn(`[MeshCore] Trace-path: cached path for ${publicKey.substring(0, 16)}… has mixed-width hops, aborting`);
       return failed;
+    }
+    // Caller-chosen hop width (#5723). The cached path is a list of key
+    // prefixes, so narrowing is a truncation, but widening needs each hop's
+    // full key: it works only when every hop matches exactly one contact.
+    if (opts.hashBytes !== undefined && opts.hashBytes !== hashBytes) {
+      const rewidthed = rewidthPathHops(pathHops, opts.hashBytes, [...this.contacts.keys()]);
+      if (!rewidthed) {
+        logger.warn(`[MeshCore] Trace-path: cannot send ${publicKey.substring(0, 16)}…'s ${hashBytes}-byte path as ${opts.hashBytes}-byte hops (a hop does not match exactly one contact)`);
+        return { ok: false, reason: 'failed' };
+      }
+      pathHops = rewidthed;
+      hashBytes = opts.hashBytes;
     }
     // CMD_SEND_TRACE_PATH's flags byte only encodes power-of-two hop widths
     // (device: `1 << (flags & 0x03)`), so 1- and 2-byte hops are

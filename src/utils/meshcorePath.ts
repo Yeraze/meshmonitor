@@ -49,6 +49,30 @@ export function pathHashBytesOf(hops: PathHop[]): 1 | 2 | 3 {
 }
 
 /**
+ * Re-express a path at another hop-hash width (#5723). A hop hash is a prefix
+ * of a public key, so narrowing truncates each hop. Widening needs the whole
+ * key: it succeeds only when every hop is a prefix of exactly one of
+ * `knownKeys`. Returns null when any hop is unknown or shared; nothing is
+ * guessed. A path already at `toBytes` is returned unchanged.
+ */
+export function rewidthPathHops(hops: PathHop[], toBytes: 1 | 2 | 3, knownKeys: readonly string[]): PathHop[] | null {
+  const width = toBytes * 2;
+  const out: PathHop[] = [];
+  for (const hop of hops) {
+    if (hop.length === width) {
+      out.push(hop);
+    } else if (hop.length > width) {
+      out.push(hop.slice(0, width));
+    } else {
+      const matches = knownKeys.filter((k) => k.toLowerCase().startsWith(hop));
+      if (matches.length !== 1) return null;
+      out.push(matches[0].slice(0, width).toLowerCase());
+    }
+  }
+  return out;
+}
+
+/**
  * The routing hop hash for a node = the first `hashBytes` bytes of its public
  * key, as lowercase hex. At the default 1-byte width this is the leading byte;
  * at 2/3-byte widths the collision space shrinks accordingly.
