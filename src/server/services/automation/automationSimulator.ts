@@ -191,6 +191,8 @@ function recordingDeps(
     async sendTapback(a) { return { action: 'tapback', ...a }; },
     async manageNode(a) { return { action: 'nodeManage', ...a }; },
     async requestData(a) { return { action: 'requestData', ...a }; },
+    // Dry-run must never trace or use up a path's interval: report the path only.
+    async runScheduledTrace(a) { return { action: 'tracePathSchedule', sourceId: a.sourceId, publicKey: a.path.publicKey, label: a.path.label, intervalMinutes: a.path.intervalMinutes, hashBytes: a.path.hashBytes, autoReturn: a.autoReturn, dryRun: true }; },
     // Dry-run must never actually reboot a device — report the resolved params.
     async rebootDevice(a) { return { action: 'deviceReboot', ...a }; },
     async notify(a) { return { action: 'notify', ...a }; },

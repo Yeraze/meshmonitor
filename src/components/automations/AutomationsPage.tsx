@@ -22,6 +22,7 @@ import { UiIcon } from '../icons';
 import { compile, decompile, outputNameErrors, type WorkflowForm } from './compile';
 import { BLOCK_BY_TYPE } from './catalog';
 import { emptySendFinding } from '../../types/automation';
+import { tracePathScheduleParamErrors } from '../../types/tracePathSchedule';
 import './AutomationsPage.css';
 
 /** One line per action whose text is empty (#5697), named as the builder names it. */
@@ -83,6 +84,15 @@ function validateForm(form: WorkflowForm): string[] {
     const thr = form.trigger.params.thresholdMeters;
     if (thr != null && thr !== '' && !(Number(thr) > 0)) {
       errs.push('Home-distance threshold must be greater than 0 metres.');
+    }
+  }
+  // #5723: the same limits the server enforces, said before the save round trip.
+  for (const rule of form.rules ?? []) {
+    for (const action of rule.actions ?? []) {
+      if (action.type !== 'action.tracePathSchedule') continue;
+      for (const e of tracePathScheduleParamErrors('', action.params ?? {})) {
+        errs.push(e.replace('action.tracePathSchedule "" ', 'Scheduled trace paths: '));
+      }
     }
   }
   if (form.trigger.type === 'trigger.schedule') {

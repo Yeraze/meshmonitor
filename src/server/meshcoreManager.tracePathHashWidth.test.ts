@@ -107,4 +107,34 @@ describe('MeshCoreManager — traceContactPath hop hash width (#4786)', () => {
     expect(result).toBeNull();
     expect(bridgeCalls).toHaveLength(0);
   });
+
+  describe('caller-chosen hop width (#5723)', () => {
+    it('narrows a 2-byte path to 1-byte hops by truncation', async () => {
+      const { manager, bridgeCalls } = makeManager({ outPath: '0d34,a1b2', pathLen: 2 });
+      await manager.traceContactPath(PK, { hashBytes: 1 });
+      expect(bridgeCalls[0].params.path_hash_bytes).toBe(1);
+      expect(Array.from(bridgeCalls[0].params.path)).toEqual([0x0d, 0xa1]);
+    });
+
+    it('widens a 1-byte path only when each hop matches exactly one contact', async () => {
+      const { manager, bridgeCalls } = makeManager({ outPath: 'a3', pathLen: 1 });
+      // PK itself starts "a3ff…", the only contact: the hop resolves to it.
+      await manager.traceContactPath(PK, { hashBytes: 2 });
+      expect(bridgeCalls[0].params.path_hash_bytes).toBe(2);
+      expect(Array.from(bridgeCalls[0].params.path)).toEqual([0xa3, 0xff]);
+    });
+
+    it('sends nothing when a hop cannot be widened without guessing', async () => {
+      const { manager, bridgeCalls } = makeManager({ outPath: '11,22', pathLen: 2 });
+      const outcome = await manager.traceContactPathDetailed(PK, { hashBytes: 2 });
+      expect(outcome.ok).toBe(false);
+      expect(bridgeCalls).toHaveLength(0);
+    });
+
+    it('leaves the path alone when the chosen width already matches', async () => {
+      const { manager, bridgeCalls } = makeManager({ outPath: '11,22', pathLen: 2 });
+      await manager.traceContactPath(PK, { hashBytes: 1 });
+      expect(Array.from(bridgeCalls[0].params.path)).toEqual([0x11, 0x22]);
+    });
+  });
 });

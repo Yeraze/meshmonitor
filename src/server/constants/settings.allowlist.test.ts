@@ -168,7 +168,8 @@ describe('per-source settings key allowlist invariants', () => {
     // #5446 added forwardingRules (dedicated automation-gated route only).
     // #5537 added forwardingEnabled (same dedicated route).
     // #5704 added aircraftPositionRequestStarts (persisted hourly cap).
-    expect(PER_SOURCE_KEYS_NOT_POSTABLE.size).toBe(30);
+    // #5723 added tracePathScheduleState (persisted trace intervals + cap).
+    expect(PER_SOURCE_KEYS_NOT_POSTABLE.size).toBe(31);
   });
 
   // #5101 Phase 3 WP3: the transport-traffic writer's checkpoint is

@@ -569,6 +569,9 @@ export const PER_SOURCE_SETTINGS_KEYS = [
   // #5704: start times of recent aircraft position-request sequences (JSON
   // ms array), written only by aircraftPositionRequestService.
   'aircraftPositionRequestStarts',
+  // #5723: per-path last-run times and the hourly count for scheduled
+  // MeshCore traces (JSON), written only by tracePathScheduleService.
+  'tracePathScheduleState',
   // Sign-flipped position correction (#5363), Settings -> Node Display.
   'signFlipCorrectionEnabled',
   'signFlipCorrectionRangeKm',
@@ -928,6 +931,7 @@ export const PER_SOURCE_KEYS_NOT_POSTABLE = new Set<string>([
   'autoFavoriteAircraftStrikes', // favoritesService.ts autoFavoriteSweep (#5364/#5365 D19 two-strike rule)
   'aircraftAgeOutLastRunAt',  // aircraftAgeOutService.ts runSweep (#5364/#5365 Phase 2; persisted so a restart is not a run)
   'aircraftPositionRequestStarts',  // aircraftPositionRequestService.ts (#5704; persisted hourly cap, so a restart or save cannot reset it)
+  'tracePathScheduleState',  // tracePathScheduleService.ts (#5723; persisted per-path intervals and hourly cap)
   'aircraftAgeOutLastResult', // aircraftAgeOutService.ts runSweep (#5364/#5365 Phase 2; JSON counts for the settings status line)
   // POST /api/sources/:id/forwarding (forwardingRoutes.ts, #5446) — gated on
   // per-source `automation` write, so the generic `settings` POST must not

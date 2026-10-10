@@ -23,6 +23,7 @@ import { isTxDisabledError } from '../../errors/txDisabledError.js';
 import { hopCountEmoji } from '../../../utils/hopEmoji.js';
 import { tokenizeArgv } from '../../utils/argvTokenizer.js';
 import { type MeshCoreAdvertMode, LEGACY_MESHCORE_ADVERT_MODE, resolveMeshCoreAdvertMode } from '../../../types/meshcoreAdvert.js';
+import { parseTracePathEntry, type TracePathEntry } from '../../../types/tracePathSchedule.js';
 
 export type NodeManageOp = 'favorite' | 'unfavorite' | 'ignore' | 'unignore' | 'delete';
 
@@ -76,6 +77,19 @@ export interface ActionDeps {
     telemetryType?: TelemetryKind;
     /** MeshCore advert reach for op `advert` (Meshtastic ignores it). */
     advertMode?: MeshCoreAdvertMode;
+  }): Promise<unknown>;
+  /**
+   * Run one path of an `action.tracePathSchedule` block on one source (#5723).
+   * The real implementation decides whether the path is due and under the
+   * source's hourly cap, records the run, and sends at most one trace. The
+   * dry run reports what it would do and neither records nor sends.
+   */
+  runScheduledTrace(a: {
+    sourceId: string;
+    /** Stable identity of this path across runs and restarts. */
+    pathKey: string;
+    path: TracePathEntry;
+    autoReturn: boolean;
   }): Promise<unknown>;
   /** Reboot the physical device behind a source (#3995). `seconds` is the
    *  Meshtastic reboot delay; MeshCore ignores it. `targetNodeNum` (#4126) is an
@@ -691,6 +705,39 @@ export async function executeAction(node: AutomationNode, ctx: EngineEvalContext
         await pushOrSkipTxDisabled(results, () => deps.requestData({ sourceId: sid, op, target, channel, telemetryType: op === 'telemetry' ? telemetryType : undefined, ...(advertMode ? { advertMode } : {}) }));
       }
       return results.length === 1 ? results[0] : results;
+    }
+
+    case 'action.tracePathSchedule': {
+      // #5723: N MeshCore trace paths, each on its own interval. This runs on
+      // every firing of the automation; only paths that are due (and inside
+      // the source's hourly cap) are traced. The per-hop SNRs are stored by
+      // the passive trace capture (#5722), not here.
+      const sourceIds = Array.isArray(p.sourceIds) && p.sourceIds.length > 0
+        ? (p.sourceIds as unknown[]).map(String)
+        : (sourceId ? [sourceId] : []);
+      if (sourceIds.length === 0) throw new Error('action.tracePathSchedule: pick a MeshCore source (this trigger has none)');
+      const paths: TracePathEntry[] = [];
+      for (const raw of Array.isArray(p.paths) ? p.paths : []) {
+        const parsed = parseTracePathEntry(raw);
+        if ('value' in parsed) paths.push(parsed.value);
+      }
+      const autoReturn = p.autoReturn === true || p.autoReturn === 'true';
+      const results: unknown[] = [];
+      for (const sid of sourceIds) {
+        if (!(await isMeshCoreSource(ctx, sid))) {
+          results.push({ sourceId: sid, skipped: true, reason: 'scheduled trace paths are MeshCore only' });
+          continue;
+        }
+        for (const path of paths) {
+          const pathKey = `${ctx.automationId ?? 'unsaved'}:${node.id}:${path.publicKey}`;
+          await pushOrSkipTxDisabled(results, () => deps.runScheduledTrace({ sourceId: sid, pathKey, path, autoReturn }));
+        }
+      }
+      // Nothing was due on this tick: tell the engine this step was idle.
+      if (results.length > 0 && results.every((r) => (r as { notDue?: unknown } | null)?.notDue === true)) {
+        ctx.idleActions = (ctx.idleActions ?? 0) + 1;
+      }
+      return results;
     }
 
     case 'action.deviceReboot': {

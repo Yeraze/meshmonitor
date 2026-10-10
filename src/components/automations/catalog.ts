@@ -7,7 +7,7 @@
  */
 import { HOP_COUNT_EMOJIS, HOP_EMOJI_MAX, MQTT_SOURCE_EMOJI } from '../../utils/hopEmoji';
 
-export type FieldKind = 'text' | 'number' | 'nodeNum' | 'textarea' | 'select' | 'checkbox' | 'variable' | 'emoji' | 'fieldselect' | 'sourceMulti' | 'sendSourceMulti' | 'channelMulti' | 'geofence' | 'scriptselect' | 'regionSelect' | 'nodeMulti' | 'automationSelect' | 'meshtasticSourceSelect' | 'forwardingSourceSelect' | 'resultTarget';
+export type FieldKind = 'text' | 'number' | 'nodeNum' | 'textarea' | 'select' | 'checkbox' | 'variable' | 'emoji' | 'fieldselect' | 'sourceMulti' | 'sendSourceMulti' | 'channelMulti' | 'geofence' | 'scriptselect' | 'regionSelect' | 'nodeMulti' | 'automationSelect' | 'meshtasticSourceSelect' | 'forwardingSourceSelect' | 'resultTarget' | 'tracePaths';
 
 export interface FieldOpt { value: string; label: string; }
 export interface FieldGroup { label: string; options: FieldOpt[]; }
@@ -741,6 +741,21 @@ export const ACTIONS: BlockDef[] = [
         name: 'scopeName', label: 'Region', kind: 'regionSelect', advanced: true, tokens: true,
         placeholder: 'e.g. paris', help: 'Used when MeshCore scope is "A specific region".',
       },
+    ],
+  },
+  {
+    type: 'action.tracePathSchedule',
+    label: 'Trace MeshCore paths on a schedule',
+    description: 'Trace to one or more MeshCore contacts, each on its own interval, and keep the per-hop SNR.',
+    fields: [
+      {
+        name: 'paths', label: 'Paths', kind: 'tracePaths',
+        // Limits mirror src/types/tracePathSchedule.ts (enforced server-side).
+        help: 'Each path runs on its own interval, at least every 10 minutes. This step only traces the paths that are due, so run the automation from a Schedule trigger that fires every minute (cron: * * * * *). Results appear under Trace SNR history in each contact\u2019s Node Details.',
+        warning: 'Each trace is a packet relayed hop by hop (and back again with the return leg on). One source sends at most 12 scheduled traces an hour; paths past that wait for the next hour.',
+      },
+      { name: 'sourceIds', label: 'Via MeshCore sources', kind: 'sendSourceMulti', protocolFilter: 'meshcore', help: 'Which MeshCore companion sends the traces. A Schedule trigger has no source of its own, so pick one.' },
+      { name: 'autoReturn', label: 'Trace the return leg too', kind: 'checkbox', help: 'Brings the trace back along the same route, so both directions of each hop are measured. Doubles the airtime of each trace.' },
     ],
   },
   {

@@ -808,13 +808,20 @@ export class AutomationEngineService {
     try {
       const result = await evaluateGraph(a.graph, evalCtx, this.hooks(), { maxActions: this.maxActions });
       const anyFailed = result.actions.some((x) => !x.ok);
-      await this.automationsRepo.createRun({
-        automationId: a.id,
-        sourceId: ctx.sourceId,
-        status: anyFailed ? 'failed' : 'completed',
-        triggerEvent: JSON.stringify(ctx.fields),
-        log: JSON.stringify(result.steps),
-      });
+      // #5723: a tick where every action that ran had nothing to do (all
+      // scheduled trace paths "not due") writes no run-log row. A manual Run
+      // Now is always logged.
+      const idleTick = !opts.manual && !anyFailed && result.actions.length > 0
+        && (evalCtx.idleActions ?? 0) === result.actions.length;
+      if (!idleTick) {
+        await this.automationsRepo.createRun({
+          automationId: a.id,
+          sourceId: ctx.sourceId,
+          status: anyFailed ? 'failed' : 'completed',
+          triggerEvent: JSON.stringify(ctx.fields),
+          log: JSON.stringify(result.steps),
+        });
+      }
       return {
         status: anyFailed ? 'failed' : 'completed',
         conditionResults: result.conditionResults,
