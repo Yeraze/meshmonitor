@@ -1350,6 +1350,32 @@ export class MeshCoreRepository extends BaseRepository {
   }
 
   /**
+   * One page of a source's channel traffic, every channel at once and no
+   * direct messages or room posts, newest first by server arrival time
+   * (#5361, the unified "All Channels" view). `before` is a `createdAt`
+   * cursor, so a caller can page back past the newest `limit` rows.
+   */
+  async getRecentChannelMessages(
+    limit: number,
+    sourceId: string,
+    before?: number,
+  ): Promise<DbMeshCoreMessage[]> {
+    const { meshcoreMessages } = this.tables;
+    const conditions: SQL[] = [
+      eq(meshcoreMessages.sourceId, sourceId),
+      sql`NOT (${this.directMessageClause()})`,
+    ];
+    if (before !== undefined) conditions.push(lt(meshcoreMessages.createdAt, before));
+    const result = await this.db
+      .select()
+      .from(meshcoreMessages)
+      .where(and(...conditions))
+      .orderBy(desc(meshcoreMessages.createdAt))
+      .limit(limit);
+    return this.normalizeBigInts(result) as unknown as DbMeshCoreMessage[];
+  }
+
+  /**
    * Keyed channels present on a source (#5551): one entry per (channel key,
    * fingerprint) among rows that carry decrypt provenance, with the latest
    * provenance seen. Feeds the synthesized channel list of a source that has

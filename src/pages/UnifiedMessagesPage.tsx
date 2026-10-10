@@ -37,6 +37,7 @@ import { UiIcon } from '../components/icons';
 import { resolveReplyPreview } from '../utils/replyPreview';
 import { getSourceColor } from '../utils/sourceColors';
 import { isAnyMeshCoreSourceType } from '../utils/nodeTypeCategory';
+import { ALL_CHANNELS_PARAM } from '../utils/unifiedChannelFilter';
 import { hopDisplay } from './unifiedHops';
 import HopBadge from '../components/unified/HopBadge';
 import MessageExportDialog from '../components/MessageExportDialog/MessageExportDialog';
@@ -97,6 +98,14 @@ interface ChannelCollisionRow {
 }
 
 // ── Constants ────────────────────────────────────────────────────────────
+
+/**
+ * Channel shown on a row of the "All Channels" view (#5361). The server names
+ * every row; the fallback covers a slot with no name on any source.
+ */
+function channelTag(msg: { channel: number; channelName?: string }): string {
+  return msg.channelName || `Channel ${msg.channel}`;
+}
 
 const PAGE_SIZE = 100;
 const POLL_INTERVAL_MS = 10_000;
@@ -212,7 +221,7 @@ export default function UnifiedMessagesPage() {
   // Names of channels colliding with the viewed channel — the "other side" of
   // each collision (the entry messages may be landing under, or vice versa).
   const overshadowNames = useMemo(() => {
-    if (!selectedChannel) return [] as string[];
+    if (!selectedChannel || selectedChannel === ALL_CHANNELS_PARAM) return [] as string[];
     const sel = selectedChannel.trim().toLowerCase();
     const names = new Set<string>();
     for (const c of channelCollisions) {
@@ -237,6 +246,8 @@ export default function UnifiedMessagesPage() {
     queryKey: ['unified', 'messages', selectedChannel],
     queryFn: async ({ pageParam }) => {
       const params = new URLSearchParams();
+      // "All Channels" sends its own value: with no `channel` the server
+      // takes the legacy path, which includes DMs and does not page.
       if (selectedChannel) params.set('channel', selectedChannel);
       params.set('limit', String(PAGE_SIZE));
       if (pageParam !== undefined && pageParam !== null) {
@@ -431,9 +442,11 @@ export default function UnifiedMessagesPage() {
         <div className="unified-header__title">
           <h1>{t('unified.messages.title')}</h1>
           <p>
-            {selectedChannel
-              ? t('unified.messages.subtitle_channel', { channel: selectedChannel })
-              : t('unified.messages.subtitle_none')}
+            {selectedChannel === ALL_CHANNELS_PARAM
+              ? t('unified.messages.subtitle_all_channels')
+              : selectedChannel
+                ? t('unified.messages.subtitle_channel', { channel: selectedChannel })
+                : t('unified.messages.subtitle_none')}
           </p>
         </div>
 
@@ -446,6 +459,11 @@ export default function UnifiedMessagesPage() {
             aria-label={t('unified.messages.channel_aria')}
           >
             {channels.length === 0 && <option value="">{t('unified.messages.no_channels')}</option>}
+            {channels.length > 0 && (
+              <option value={ALL_CHANNELS_PARAM}>
+                {t('unified.messages.all_channels')}
+              </option>
+            )}
             {channels.map((c) => (
               <option key={c.name} value={c.name}>
                 {t('unified.messages.channel_option', { name: c.name, count: c.sources.length })}
@@ -508,7 +526,11 @@ export default function UnifiedMessagesPage() {
         )}
         {canReadAnyMessages && !loadingMessages && feedMessages.length === 0 && !messagesError && (
           <div className="unified-empty">
-            {selectedChannel ? t('unified.messages.empty_channel') : t('unified.messages.choose_channel')}
+            {selectedChannel === ALL_CHANNELS_PARAM
+              ? t('unified.messages.empty_all_channels')
+              : selectedChannel
+                ? t('unified.messages.empty_channel')
+                : t('unified.messages.choose_channel')}
           </div>
         )}
 
@@ -562,6 +584,14 @@ export default function UnifiedMessagesPage() {
                 }}
               >
                 <div className="unified-msg-card__meta">
+                  {selectedChannel === ALL_CHANNELS_PARAM && (
+                    <span
+                      className="unified-msg-card__channel-tag"
+                      title={t('unified.messages.channel_label', { channel: channelTag(msg) })}
+                    >
+                      #{channelTag(msg)}
+                    </span>
+                  )}
                   {msg.receptions.map((r) => (
                     <span
                       key={r.sourceId}
@@ -704,7 +734,7 @@ export default function UnifiedMessagesPage() {
         isOpen={exportOpen}
         onClose={() => setExportOpen(false)}
         channels={channels}
-        initialChannel={selectedChannel || undefined}
+        initialChannel={selectedChannel === ALL_CHANNELS_PARAM ? undefined : (selectedChannel || undefined)}
       />
     </div>
   );
