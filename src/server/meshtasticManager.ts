@@ -5796,15 +5796,24 @@ class MeshtasticManager implements ISourceManager {
   /**
    * Update cached device config section after a successful admin command
    * This keeps the cache in sync until the device sends updated config on reconnect
+   *
+   * `mode: 'replace'` drops the previous section, as `AdminModule::handleSetConfig`
+   * does: it assigns `config.<section> = <incoming>` whole, so a field the save
+   * left out is cleared on the node. Several device sections apply without a
+   * reboot (LoRa always; device/power/display when no reboot-only field
+   * changed), so nothing re-downloads the config to correct a merged cache.
+   * `merge` is for callers that cache only part of what they sent (security).
    */
-  updateCachedDeviceConfig(section: string, values: Record<string, any>): void {
+  updateCachedDeviceConfig(section: string, values: Record<string, any>, mode: 'merge' | 'replace' = 'merge'): void {
     if (!this.actualDeviceConfig) {
       this.actualDeviceConfig = {};
     }
-    this.actualDeviceConfig[section] = {
-      ...this.actualDeviceConfig[section],
-      ...values
-    };
+    this.actualDeviceConfig[section] = mode === 'replace'
+      ? { ...values }
+      : {
+        ...this.actualDeviceConfig[section],
+        ...values
+      };
     logger.debug(`📊 Updated cached device config section '${section}':`, Object.keys(values));
   }
 

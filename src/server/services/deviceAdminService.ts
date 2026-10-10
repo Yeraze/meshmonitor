@@ -65,6 +65,9 @@ export class DeviceAdminService {
       const adminPacket = protobufService.createAdminPacket(setConfigMsg, this.mgr.getLocalNodeInfo()?.nodeNum || 0, this.mgr.getLocalNodeInfo()?.nodeNum);
 
       await this.mgr.sendLocalAdminPacket(adminPacket);
+      // No reboot when role, rebroadcast mode and GPIOs are unchanged, so the
+      // cache is all a read sees until the next config download.
+      this.mgr.updateCachedDeviceConfig('device', config, 'replace');
       logger.debug('⚙️ Sent set_device_config admin message');
     } catch (error) {
       logger.error('❌ Error sending device config:', error);
@@ -86,7 +89,7 @@ export class DeviceAdminService {
       const adminPacket = protobufService.createAdminPacket(setConfigMsg, this.mgr.getLocalNodeInfo()?.nodeNum || 0, this.mgr.getLocalNodeInfo()?.nodeNum);
 
       await this.mgr.sendLocalAdminPacket(adminPacket);
-      this.mgr.updateCachedDeviceConfig('lora', config);
+      this.mgr.updateCachedDeviceConfig('lora', config, 'replace');
       logger.debug('⚙️ Sent set_lora_config admin message');
     } catch (error) {
       logger.error('❌ Error sending LoRa config:', error);
@@ -108,7 +111,7 @@ export class DeviceAdminService {
       const adminPacket = protobufService.createAdminPacket(setConfigMsg, this.mgr.getLocalNodeInfo()?.nodeNum || 0, this.mgr.getLocalNodeInfo()?.nodeNum);
 
       await this.mgr.sendLocalAdminPacket(adminPacket);
-      this.mgr.updateCachedDeviceConfig('network', config);
+      this.mgr.updateCachedDeviceConfig('network', config, 'replace');
       logger.debug('⚙️ Sent set_network_config admin message');
     } catch (error) {
       logger.error('❌ Error sending network config:', error);
@@ -212,7 +215,7 @@ export class DeviceAdminService {
       const adminPacket = protobufService.createAdminPacket(setConfigMsg, this.mgr.getLocalNodeInfo()?.nodeNum || 0, this.mgr.getLocalNodeInfo()?.nodeNum);
 
       await this.mgr.sendLocalAdminPacket(adminPacket);
-      this.mgr.updateCachedDeviceConfig('position', positionConfig);
+      this.mgr.updateCachedDeviceConfig('position', positionConfig, 'replace');
       logger.debug('⚙️ Sent set_position_config admin message');
     } catch (error) {
       logger.error('❌ Error sending position config:', error);
@@ -257,7 +260,9 @@ export class DeviceAdminService {
       const adminPacket = protobufService.createAdminPacket(setConfigMsg, this.mgr.getLocalNodeInfo()?.nodeNum || 0, this.mgr.getLocalNodeInfo()?.nodeNum);
 
       await this.mgr.sendLocalAdminPacket(adminPacket);
-      this.mgr.updateCachedDeviceConfig('neighborinfo', config);
+      // NeighborInfo is a module config: it used to land in the device config
+      // under a key nothing reads, so the module cache kept the old values.
+      this.mgr.updateCachedModuleConfig('neighborInfo', config, 'replace');
       logger.debug('⚙️ Sent set_neighborinfo_config admin message (direct, no transaction)');
     } catch (error) {
       logger.error('❌ Error sending NeighborInfo config:', error);
@@ -279,6 +284,7 @@ export class DeviceAdminService {
       const adminPacket = protobufService.createAdminPacket(setConfigMsg, this.mgr.getLocalNodeInfo()?.nodeNum || 0, this.mgr.getLocalNodeInfo()?.nodeNum);
 
       await this.mgr.sendLocalAdminPacket(adminPacket);
+      this.mgr.updateCachedDeviceConfig('power', config, 'replace');
       logger.debug('⚙️ Sent set_power_config admin message');
     } catch (error) {
       logger.error('❌ Error sending power config:', error);
@@ -300,6 +306,7 @@ export class DeviceAdminService {
       const adminPacket = protobufService.createAdminPacket(setConfigMsg, this.mgr.getLocalNodeInfo()?.nodeNum || 0, this.mgr.getLocalNodeInfo()?.nodeNum);
 
       await this.mgr.sendLocalAdminPacket(adminPacket);
+      this.mgr.updateCachedDeviceConfig('display', config, 'replace');
       logger.debug('⚙️ Sent set_display_config admin message');
     } catch (error) {
       logger.error('❌ Error sending display config:', error);
@@ -324,6 +331,7 @@ export class DeviceAdminService {
       const adminPacket = protobufService.createAdminPacket(setConfigMsg, this.mgr.getLocalNodeInfo()?.nodeNum || 0, this.mgr.getLocalNodeInfo()?.nodeNum);
 
       await this.mgr.sendLocalAdminPacket(adminPacket);
+      this.mgr.updateCachedDeviceConfig('bluetooth', config as Record<string, unknown>, 'replace');
       logger.debug('⚙️ Sent set_bluetooth_config admin message');
     } catch (error) {
       logger.error('❌ Error sending bluetooth config:', error);
@@ -347,8 +355,9 @@ export class DeviceAdminService {
       await this.mgr.sendLocalAdminPacket(adminPacket);
       logger.debug('⚙️ Sent set_telemetry_config admin message');
 
-      // Update local cache with the config that was sent
-      this.mgr.updateCachedModuleConfig('telemetry', config);
+      // Update local cache with the config that was sent. Replace: the
+      // firmware assigns the whole struct, so an omitted field is cleared.
+      this.mgr.updateCachedModuleConfig('telemetry', config, 'replace');
       logger.debug('⚙️ Updated actualModuleConfig.telemetry cache');
     } catch (error) {
       logger.error('❌ Error sending telemetry config:', error);
