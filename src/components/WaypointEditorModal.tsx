@@ -111,7 +111,9 @@ export default function WaypointEditorModal(props: WaypointEditorModalProps) {
     );
   }, [deviceChannels, channel]);
 
-  // Reset form when opened or `initial` changes
+  // Reset form when opened or `initial` changes. Not on `selfNodeNum`: it
+  // arrives late and, with a source picker, changes with the picked source,
+  // and a reset then would wipe what the user has typed (#5685).
   useEffect(() => {
     if (!isOpen) return;
     if (initial) {
@@ -122,9 +124,6 @@ export default function WaypointEditorModal(props: WaypointEditorModalProps) {
       setEmoji(initial.iconEmoji ?? '📍');
       setHasExpiry(initial.expireAt != null && initial.expireAt > 0);
       setExpireLocal(expireSecondsToLocal(initial.expireAt));
-      setLockToSelf(
-        initial.lockedTo != null && selfNodeNum != null && initial.lockedTo === selfNodeNum,
-      );
       setVirtual(Boolean(initial.isVirtual));
       // `null` on rows created before #4341 — those went out on slot 0.
       setChannel(initial.channel ?? 0);
@@ -149,7 +148,15 @@ export default function WaypointEditorModal(props: WaypointEditorModalProps) {
       setHopLimit('');
     }
     setError(null);
-  }, [isOpen, initial, selfNodeNum, defaultCoords]);
+  }, [isOpen, initial, defaultCoords]);
+
+  // Edit mode: the lock box follows the stored lock and this source's node.
+  useEffect(() => {
+    if (!isOpen || !initial) return;
+    setLockToSelf(
+      initial.lockedTo != null && selfNodeNum != null && initial.lockedTo === selfNodeNum,
+    );
+  }, [isOpen, initial, selfNodeNum]);
 
   // A slot index means a different channel on each radio, and "this node" is
   // a different node. Picking another sending source puts both back to their

@@ -22,6 +22,16 @@ vi.mock('../../hooks/useDashboardData', () => ({
   useSourceStatuses: () => new Map(),
 }));
 
+// #5685: who may add a pin. Mutable per-test; default = no write anywhere, so
+// the older tests see the toolbar as a read-only user does.
+type PinSource = { id: string; name: string };
+let pinSources: { waypointSources: PinSource[]; markerSources: PinSource[] } = {
+  waypointSources: [], markerSources: [],
+};
+vi.mock('../../hooks/usePinSources', () => ({
+  usePinSources: () => pinSources,
+}));
+
 // #4111 Phase 2: Link Profile button gate. Mutable per-test so a single mock
 // factory can serve both the "feature off" and "feature on" cases.
 let elevationEnabled = true;
@@ -60,6 +70,8 @@ const wrapper = ({ children }: { children: React.ReactNode }) => {
 const MENU_OF: Record<string, string> = {
   'Follow': 'View', 'Auto-zoom': 'View', 'Time Slider': 'View', '3D View': 'View',
   'Measure': 'Tools', 'Link Profile': 'Tools', 'Site Planner': 'Tools',
+  // The global i18n mock returns the key (src/test/setup.ts).
+  'mapPins.addWaypoint': 'Tools', 'mapPins.addMarker': 'Tools', 'Local Markers': 'Layers',
   'Markers': 'Layers', 'Hop Shading': 'Layers', 'Waypoints': 'Layers',
   'Accuracy Regions': 'Layers', 'ATAK Contacts': 'Layers', 'Polar Grid': 'Layers', 'GNSS DOP': 'Layers',
   'Traceroutes': 'Analysis', 'Neighbors': 'Analysis', 'Heatmap': 'Analysis',
@@ -90,6 +102,89 @@ describe('MapAnalysisToolbar', () => {
     elevationEnabled = true;
     unifiedNodes = [];
     terrainCapabilities = { enabled: true, terrainTiles: true, isLoading: false };
+    pinSources = { waypointSources: [], markerSources: [] };
+  });
+
+  describe('Add Waypoint / Add Local Marker (#5685)', () => {
+    const RADIO = { id: 'a', name: 'A' };
+    const BROKER = { id: 'b', name: 'B' };
+    const ADD_WP = 'mapPins.addWaypoint';
+    const ADD_MARKER = 'mapPins.addMarker';
+    const query = (label: string) => {
+      openMenu('Tools');
+      return screen.queryByRole('menuitemcheckbox', { name: label });
+    };
+
+    it('hides both entries from a user with no waypoints:write on any source', () => {
+      render(<MapAnalysisToolbar />, { wrapper });
+      expect(query(ADD_WP)).toBeNull();
+      expect(query(ADD_MARKER)).toBeNull();
+    });
+
+    it('shows Add Waypoint disabled, with the reason, when write is held only on sources with no radio', () => {
+      pinSources = { waypointSources: [], markerSources: [BROKER] };
+      render(<MapAnalysisToolbar />, { wrapper });
+      expect(isDisabled(item(ADD_WP))).toBe(true);
+      expect(item(ADD_WP).getAttribute('title')).toBe('mapPins.noWaypointSource');
+      // A local marker needs no radio.
+      expect(isDisabled(item(ADD_MARKER))).toBe(false);
+    });
+
+    it('arms waypoint placement, turns the Waypoints layer on, and disarms on a second click', () => {
+      pinSources = { waypointSources: [RADIO], markerSources: [RADIO] };
+      localStorage.setItem('mapAnalysis.config.v1', JSON.stringify({
+        version: 1, layers: { waypoints: { enabled: false, lookbackHours: null } },
+      }));
+      render(<MapAnalysisToolbar />, { wrapper });
+      expect(isActive(item('Waypoints'))).toBe(false);
+
+      fireEvent.click(item(ADD_WP));
+      expect(isActive(item(ADD_WP))).toBe(true);
+      expect(isActive(item('Waypoints'))).toBe(true);
+
+      fireEvent.click(item(ADD_WP));
+      expect(isActive(item(ADD_WP))).toBe(false);
+      // Disarming leaves the layer as it is.
+      expect(isActive(item('Waypoints'))).toBe(true);
+    });
+
+    it('arming a local marker turns the Local Markers layer on and swaps out waypoint placement', () => {
+      pinSources = { waypointSources: [RADIO], markerSources: [RADIO] };
+      render(<MapAnalysisToolbar />, { wrapper });
+      fireEvent.click(item(ADD_WP));
+      fireEvent.click(item(ADD_MARKER));
+      expect(isActive(item(ADD_MARKER))).toBe(true);
+      expect(isActive(item(ADD_WP))).toBe(false);
+      expect(isActive(item('Local Markers'))).toBe(true);
+    });
+
+    it('is exclusive with the other click tools, both ways', () => {
+      pinSources = { waypointSources: [RADIO], markerSources: [RADIO] };
+      unifiedNodes = [
+        { nodeNum: 1, latitude: 30, longitude: -90 },
+        { nodeNum: 2, latitude: 31, longitude: -91 },
+      ];
+      render(<MapAnalysisToolbar />, { wrapper });
+      fireEvent.click(item('Measure'));
+      fireEvent.click(item(ADD_WP));
+      expect(isActive(item('Measure'))).toBe(false);
+      expect(isActive(item(ADD_WP))).toBe(true);
+
+      for (const tool of ['Measure', 'Link Profile', 'Site Planner']) {
+        if (!isActive(item(ADD_WP))) fireEvent.click(item(ADD_WP));
+        fireEvent.click(item(tool));
+        expect(isActive(item(tool))).toBe(true);
+        expect(isActive(item(ADD_WP))).toBe(false);
+      }
+    });
+
+    it('is disabled in the 3D view, where there is no placement click', () => {
+      pinSources = { waypointSources: [RADIO], markerSources: [RADIO] };
+      localStorage.setItem('mapAnalysis.config.v1', JSON.stringify({ version: 1, viewMode: '3d' }));
+      render(<MapAnalysisToolbar />, { wrapper });
+      expect(isDisabled(item(ADD_WP))).toBe(true);
+      expect(isDisabled(item(ADD_MARKER))).toBe(true);
+    });
   });
 
   it('renders the four grouped menu triggers', () => {
