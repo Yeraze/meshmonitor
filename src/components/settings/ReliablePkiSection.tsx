@@ -3,12 +3,13 @@
  *
  * When a node stops answering our PKI-encrypted DMs or data requests,
  * MeshMonitor can send it our NodeInfo (with our public key) first, at most
- * once an hour per node. Two placements:
+ * once an hour per node ("As needed"), or send data requests channel-encrypted
+ * so the node never needs our key ("Avoid PKI", #5711). Two placements:
  *
  *   - `scope="global"`: the install-wide default, `reliablePkiMode`
- *     (`off` | `asNeeded`), in Global Settings → Security.
+ *     (`off` | `asNeeded` | `avoid`), in Global Settings → Security.
  *   - `scope="source"`: this source's override, `reliablePkiSourceMode`
- *     (`inherit` | `off` | `asNeeded`), on a Meshtastic source's Settings page.
+ *     (`inherit` | `off` | `asNeeded` | `avoid`), on a Meshtastic source's Settings page.
  *     Saved with `?sourceId=` so the server stores it under the source-scoped key.
  *
  * Self-saving through the shared save bar, like ReticulumRetentionSection.
@@ -30,11 +31,11 @@ export const RELIABLE_PKI_SECTION_ID = 'settings-reliable-pki';
 const GLOBAL_KEY = 'reliablePkiMode';
 const SOURCE_KEY = 'reliablePkiSourceMode';
 
-type GlobalMode = 'off' | 'asNeeded';
+type GlobalMode = 'off' | 'asNeeded' | 'avoid';
 type SourceMode = 'inherit' | GlobalMode;
 
-const parseGlobal = (v: unknown): GlobalMode => (v === 'asNeeded' ? 'asNeeded' : 'off');
-const parseSource = (v: unknown): SourceMode => (v === 'off' || v === 'asNeeded' ? v : 'inherit');
+const parseGlobal = (v: unknown): GlobalMode => (v === 'asNeeded' || v === 'avoid' ? v : 'off');
+const parseSource = (v: unknown): SourceMode => (v === 'off' || v === 'asNeeded' || v === 'avoid' ? v : 'inherit');
 
 export interface ReliablePkiSectionProps {
   scope: 'global' | 'source';
@@ -89,7 +90,7 @@ export const ReliablePkiSection: React.FC<ReliablePkiSectionProps> = ({ scope, s
       const key = scope === 'global' ? GLOBAL_KEY : SOURCE_KEY;
       await apiService.post(`/api/settings${query}`, { [key]: value });
       setInitial(value);
-      if (scope === 'global') setGlobalDefault(value === 'asNeeded' ? 'asNeeded' : 'off');
+      if (scope === 'global') setGlobalDefault(parseGlobal(value));
       showToast(t('settings.reliable_pki.saved', 'Reliable PKI setting saved'), 'success');
     } catch (error) {
       logger.error('Failed to save Reliable PKI setting:', error);
@@ -110,10 +111,14 @@ export const ReliablePkiSection: React.FC<ReliablePkiSectionProps> = ({ scope, s
     onDismiss: handleDismiss,
   });
 
-  const modeLabel = (m: GlobalMode) => (m === 'asNeeded'
-    ? t('settings.reliable_pki.mode_as_needed', 'As needed')
-    : t('settings.reliable_pki.mode_off', 'Off'));
+  const modeLabel = (m: GlobalMode) => {
+    if (m === 'asNeeded') return t('settings.reliable_pki.mode_as_needed', 'As needed');
+    if (m === 'avoid') return t('settings.reliable_pki.mode_avoid', 'Avoid PKI');
+    return t('settings.reliable_pki.mode_off', 'Off');
+  };
   const selectId = `reliablePkiMode-${scope}`;
+  // The mode this control puts in effect: a source left on "inherit" follows the global default.
+  const effectiveMode: GlobalMode = value === 'inherit' ? globalDefault : value;
 
   const body = (
     <div className={styles.field} data-testid={`reliable-pki-${scope}`}>
@@ -125,7 +130,7 @@ export const ReliablePkiSection: React.FC<ReliablePkiSectionProps> = ({ scope, s
       <p className={styles.description}>
         {t(
           'settings.reliable_pki.description',
-          'PKI only works if the other node holds your public key. Off: never send extra packets. As needed: when the last encrypted DM or request to a node got no answer, send that node your node info first, then the message.',
+          'PKI only works if the other node holds your public key. Off: never send extra packets. As needed: when the last encrypted DM or request to a node got no answer, send that node your node info first, then the message. Avoid PKI: send telemetry, LocalStats and neighbor info requests encrypted with the node\'s channel key instead, so the node does not need your key.',
         )}
       </p>
       <select
@@ -145,16 +150,29 @@ export const ReliablePkiSection: React.FC<ReliablePkiSectionProps> = ({ scope, s
         )}
         <option value="off">{modeLabel('off')}</option>
         <option value="asNeeded">{modeLabel('asNeeded')}</option>
+        <option value="avoid">{modeLabel('avoid')}</option>
       </select>
-      <p className={styles.warning} data-testid="reliable-pki-cost-warning">
-        <UiIcon name="alert" size={14} />
-        <span>
-          {t(
-            'settings.reliable_pki.cost_warning',
-            'When a node stops answering encrypted requests, MeshMonitor sends it your node info first (at most once an hour per node). Each one uses airtime on the mesh.',
-          )}
-        </span>
-      </p>
+      {effectiveMode === 'avoid' ? (
+        <p className={styles.warning} data-testid="reliable-pki-avoid-warning">
+          <UiIcon name="alert" size={14} />
+          <span>
+            {t(
+              'settings.reliable_pki.avoid_warning',
+              'Requests and their replies are readable by anyone on that channel. DMs are not affected.',
+            )}
+          </span>
+        </p>
+      ) : (
+        <p className={styles.warning} data-testid="reliable-pki-cost-warning">
+          <UiIcon name="alert" size={14} />
+          <span>
+            {t(
+              'settings.reliable_pki.cost_warning',
+              'When a node stops answering encrypted requests, MeshMonitor sends it your node info first (at most once an hour per node). Each one uses airtime on the mesh.',
+            )}
+          </span>
+        </p>
+      )}
     </div>
   );
 

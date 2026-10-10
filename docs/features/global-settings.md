@@ -42,7 +42,7 @@ Individual Apprise URLs (per user, per source) are not here — users configure 
 - MFA enforcement defaults
 - Rate-limiter thresholds
 - **PKI direct message decryption**: the install-wide enable switch (the per-source switch is on each source's **Settings** page). See [PKI Direct Message Decryption](/features/pki-dm-decryption).
-- **Reliable PKI**: the default for every source, Off or As needed (each Meshtastic source can override it on its **Settings** page). See [Reliable PKI](/features/reliable-pki).
+- **Reliable PKI**: the default for every source, Off, As needed or Avoid PKI (each Meshtastic source can override it on its **Settings** page). See [Reliable PKI](/features/reliable-pki).
 
 ### Channel Database
 

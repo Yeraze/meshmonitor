@@ -414,11 +414,11 @@ router.post('/', requirePermission('settings', 'write', { sourceIdFrom: 'query' 
     // Reliable PKI (#5691). An unknown mode would read as 'off' — reject it so
     // a client bug is visible instead of silently disabling the feature.
     if ('reliablePkiMode' in filteredSettings && !parseReliablePkiMode(filteredSettings.reliablePkiMode)) {
-      return fail(res, 400, 'INVALID_RELIABLE_PKI_MODE', 'reliablePkiMode must be "off" or "asNeeded"');
+      return fail(res, 400, 'INVALID_RELIABLE_PKI_MODE', 'reliablePkiMode must be "off", "asNeeded" or "avoid"');
     }
     if ('reliablePkiSourceMode' in filteredSettings
       && !isValidReliablePkiSourceMode(filteredSettings.reliablePkiSourceMode)) {
-      return fail(res, 400, 'INVALID_RELIABLE_PKI_MODE', 'reliablePkiSourceMode must be "inherit", "off" or "asNeeded"');
+      return fail(res, 400, 'INVALID_RELIABLE_PKI_MODE', 'reliablePkiSourceMode must be "inherit", "off", "asNeeded" or "avoid"');
     }
 
     // Auto-Enrichment schedule floor (#5287). The scheduler clamps and rejects

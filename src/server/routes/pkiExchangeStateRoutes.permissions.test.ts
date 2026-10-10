@@ -92,6 +92,14 @@ describe('GET /sources/:id/nodes/:nodeNum/pki-exchange', () => {
     expect(badSrc.status).toBe(400);
   });
 
+  it('accepts "avoid" (#5711) for the global default and the per-source override', async () => {
+    const admin = await harness.loginAs(harness.admin);
+    expect((await admin.post('/settings').send({ reliablePkiMode: 'avoid' })).status).toBe(200);
+    expect(await harness.db.settings.getSetting('reliablePkiMode')).toBe('avoid');
+    expect((await admin.post(`/settings?sourceId=${harness.sourceA}`).send({ reliablePkiSourceMode: 'avoid' })).status).toBe(200);
+    expect(await harness.db.settings.getSettingForSource(harness.sourceA, 'reliablePkiSourceMode')).toBe('avoid');
+  });
+
   it('a per-source save of the global key is dropped (global-only)', async () => {
     const admin = await harness.loginAs(harness.admin);
     await admin.post(`/settings?sourceId=${harness.sourceA}`).send({ reliablePkiMode: 'asNeeded' });
