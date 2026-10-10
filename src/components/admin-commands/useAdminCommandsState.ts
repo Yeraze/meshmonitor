@@ -68,6 +68,16 @@ export interface MQTTConfigState {
   jsonEnabled: boolean;
   root: string;
   tlsEnabled: boolean;
+  proxyToClientEnabled: boolean;
+  mapReportingEnabled: boolean;
+  // MapReportSettings. 0 means "firmware default" for both numbers.
+  mapPublishIntervalSecs: number;
+  mapPositionPrecision: number;
+  mapShouldReportLocation: boolean;
+  // Firmware replaces the whole MQTT struct on save, so a save built from a
+  // form that was never loaded writes defaults over the node. Save is allowed
+  // only when this matches the selected node (same rule as security, #4736).
+  loadedForNodeNum: number | null;
 }
 
 // Security Config State
@@ -530,6 +540,12 @@ const initialState: AdminCommandsState = {
     jsonEnabled: false,
     root: '',
     tlsEnabled: false,
+    proxyToClientEnabled: false,
+    mapReportingEnabled: false,
+    mapPublishIntervalSecs: 0,
+    mapPositionPrecision: 0,
+    mapShouldReportLocation: false,
+    loadedForNodeNum: null,
   },
   security: {
     adminKeys: [''],

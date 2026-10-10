@@ -53,6 +53,7 @@ import {
   type RawSecurityConfig,
 } from '../utils/securityConfigWrite.js';
 import { channelPskToStoredBase64 } from '../utils/channelPsk.js';
+import { formatAdminMqttConfig } from '../utils/adminMqttConfig.js';
 import { extendRequestTimeout } from '../middleware/requestTimeout.js';
 
 // Admin operations round-trip to the radio and can legitimately run past the
@@ -427,28 +428,10 @@ router.post('/load-config', extendRequestTimeout(LOAD_CONFIG_TIMEOUT_MS), requir
             break;
           case 'mqtt':
             if (finalConfig.moduleConfig?.mqtt) {
-              config = {
-                enabled: finalConfig.moduleConfig.mqtt.enabled || false,
-                address: finalConfig.moduleConfig.mqtt.address || '',
-                username: finalConfig.moduleConfig.mqtt.username || '',
-                password: finalConfig.moduleConfig.mqtt.password || '',
-                encryptionEnabled: finalConfig.moduleConfig.mqtt.encryptionEnabled !== false,
-                jsonEnabled: finalConfig.moduleConfig.mqtt.jsonEnabled || false,
-                root: finalConfig.moduleConfig.mqtt.root || '',
-                tlsEnabled: finalConfig.moduleConfig.mqtt.tlsEnabled === true
-              };
+              config = formatAdminMqttConfig(finalConfig.moduleConfig.mqtt);
             } else {
               // MQTT config might not exist if it's not configured, return empty config
-              config = {
-                enabled: false,
-                address: '',
-                username: '',
-                password: '',
-                encryptionEnabled: true,
-                jsonEnabled: false,
-                root: '',
-                tlsEnabled: false
-              };
+              config = { ...formatAdminMqttConfig({}), encryptionEnabled: true };
             }
             break;
           case 'security':
@@ -602,16 +585,7 @@ router.post('/load-config', extendRequestTimeout(LOAD_CONFIG_TIMEOUT_MS), requir
             }
             break;
           case 'mqtt':
-            config = {
-              enabled: remoteConfig.enabled || false,
-              address: remoteConfig.address || '',
-              username: remoteConfig.username || '',
-              password: remoteConfig.password || '',
-              encryptionEnabled: remoteConfig.encryptionEnabled !== false,
-              jsonEnabled: remoteConfig.jsonEnabled || false,
-              root: remoteConfig.root || '',
-              tlsEnabled: remoteConfig.tlsEnabled === true
-            };
+            config = formatAdminMqttConfig(remoteConfig);
             break;
           case 'security':
             // Convert admin keys from Uint8Array to base64 strings for UI

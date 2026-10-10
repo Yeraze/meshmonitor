@@ -93,7 +93,7 @@ export interface LoadedConfigSetters {
 }
 
 export interface LoadedConfigContext {
-  /** The node the reply came from; stamps the security Save gate (#4736). */
+  /** The node the reply came from; stamps the security (#4736) and MQTT Save gates. */
   nodeNum: number | null;
 }
 
@@ -165,16 +165,25 @@ export const CONFIG_APPLIERS: Record<LoadConfigType, ConfigApplier> = {
     setPositionConfig(positionConfig);
   },
 
-  mqtt: (config, { setMQTTConfig }) => {
+  // Firmware replaces the whole MQTT struct on save, so every field the node
+  // reports is kept here, and the load stamps the Save gate.
+  mqtt: (config, { setMQTTConfig }, { nodeNum }) => {
+    const map = config.mapReportSettings ?? {};
     setMQTTConfig({
-      enabled: config.enabled,
-      address: config.address,
-      username: config.username,
-      password: config.password,
-      encryptionEnabled: config.encryptionEnabled,
-      jsonEnabled: config.jsonEnabled,
-      root: config.root,
+      enabled: config.enabled === true,
+      address: config.address ?? '',
+      username: config.username ?? '',
+      password: config.password ?? '',
+      encryptionEnabled: config.encryptionEnabled === true,
+      jsonEnabled: config.jsonEnabled === true,
+      root: config.root ?? '',
       tlsEnabled: config.tlsEnabled === true,
+      proxyToClientEnabled: config.proxyToClientEnabled === true,
+      mapReportingEnabled: config.mapReportingEnabled === true,
+      mapPublishIntervalSecs: Number(map.publishIntervalSecs) || 0,
+      mapPositionPrecision: Number(map.positionPrecision) || 0,
+      mapShouldReportLocation: map.shouldReportLocation === true,
+      loadedForNodeNum: nodeNum,
     });
   },
 
