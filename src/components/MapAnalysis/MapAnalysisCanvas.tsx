@@ -52,6 +52,9 @@ import FollowController from './FollowController';
 import Follow3DController from './Follow3DController';
 import FollowResumeButton from './FollowResumeButton';
 import MapViewStateController from './MapViewStateController';
+import LocalMarkerPlacementBridge from '../map/LocalMarkerPlacementBridge';
+import MapPinAuthoringOverlay from './MapPinAuthoringOverlay';
+import { usePinAuthoring } from './usePinAuthoring';
 
 const FALLBACK_CENTER: [number, number] = [30, -90];
 const FALLBACK_ZOOM = 10;
@@ -183,6 +186,9 @@ export default function MapAnalysisCanvas() {
   useEffect(() => {
     if (forced2d) setViewMode('2d');
   }, [forced2d, setViewMode]);
+
+  // #5685: add / edit / delete waypoints and local markers. 2D only.
+  const pins = usePinAuthoring(effectiveViewMode === '2d');
 
   // Same shared `useAnalysisNodes()` data the 2D markers layer/picker use
   // (see `analysisNodes` above), mapped to the shape `Base3DMap` expects.
@@ -350,6 +356,9 @@ export default function MapAnalysisCanvas() {
       >
         <MapViewStateController />
         <FollowController />
+        {/* #5685: the next click picks the spot for a waypoint or a local
+            marker. Shared with the Nodes map's local-marker flow (#5717). */}
+        <LocalMarkerPlacementBridge placing={pins.placing !== null} onPick={pins.pickSpot} />
         {measureMode && (
           <MeasureDistanceController
             active={measureMode}
@@ -389,11 +398,11 @@ export default function MapAnalysisCanvas() {
           <GnssDopLayer visible={gnssDopMode} params={gnssDopParams} onMeta={setGnssDopMeta} />
         </Pane>
         <Pane name="waypoints" style={{ zIndex: 650 }}>
-          {config.layers.waypoints.enabled && <WaypointsLayer />}
+          {config.layers.waypoints.enabled && <WaypointsLayer actionsFor={pins.waypointActionsFor} />}
         </Pane>
         {/* #5686: local map markers (never transmitted), under waypoints and nodes. */}
         <Pane name="localMarkers" style={{ zIndex: LOCAL_MARKERS_PANE_Z }}>
-          {config.layers.localMarkers?.enabled && <MapMarkersLayer />}
+          {config.layers.localMarkers?.enabled && <MapMarkersLayer actionsFor={pins.markerActionsFor} />}
         </Pane>
         <Pane name="atakContacts" style={{ zIndex: 640 }}>
           {config.layers.atakContacts.enabled && <AtakContactsLayer />}
@@ -436,6 +445,7 @@ export default function MapAnalysisCanvas() {
       <TimeSliderControl />
       <FollowResumeButton />
       <LinkProfileDrawer />
+      <MapPinAuthoringOverlay pins={pins} />
       {/* One column for the top-right tool panels, so two open panels stack
           instead of drawing over each other, and one rule moves both beside
           the open Map controls panel (MapToolPanels.module.css). */}

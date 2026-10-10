@@ -151,3 +151,56 @@ describe('PerSourceWaypoints — popup actions', () => {
     expect(getByText(/Delete/)).toBeTruthy();
   });
 });
+
+describe('WaypointsLayer — per-source popup actions (#5685)', () => {
+  const renderLayer = (actionsFor: Parameters<typeof WaypointsLayer>[0]['actionsFor']) => {
+    const qc = new QueryClient();
+    return render(
+      <QueryClientProvider client={qc}>
+        <MapAnalysisProvider>
+          <WaypointsLayer actionsFor={actionsFor} />
+        </MapAnalysisProvider>
+      </QueryClientProvider>,
+    );
+  };
+
+  it('asks for actions per source and shows none when the source gets none', () => {
+    const actionsFor = vi.fn(() => undefined);
+    const { queryByText } = renderLayer(actionsFor);
+    expect(actionsFor).toHaveBeenCalledWith(expect.objectContaining({ id: 'src-1' }));
+    expect(queryByText(/Edit$/)).toBeNull();
+    expect(queryByText(/Delete$/)).toBeNull();
+  });
+
+  it('shows live Edit and Delete for a writable source', () => {
+    const onEdit = vi.fn();
+    const onDelete = vi.fn();
+    const { getByText } = renderLayer(() => ({
+      canEdit: true, canDelete: true, onEdit, onDelete, lockedToOther: () => false,
+    }));
+    const edit = getByText(/Edit$/).closest('button') as HTMLButtonElement;
+    expect(edit.disabled).toBe(false);
+    edit.click();
+    getByText(/Delete$/).closest('button')!.click();
+    expect(onEdit).toHaveBeenCalledWith(sample[0]);
+    expect(onDelete).toHaveBeenCalledWith(sample[0]);
+  });
+
+  it('disables both, with the reason, for a waypoint locked to another node', () => {
+    const onEdit = vi.fn();
+    const onDelete = vi.fn();
+    const { getByText } = renderLayer(() => ({
+      canEdit: true, canDelete: true, onEdit, onDelete,
+      lockedToOther: () => true, lockedTitle: 'Locked to another node',
+    }));
+    const edit = getByText(/Edit$/).closest('button') as HTMLButtonElement;
+    const del = getByText(/Delete$/).closest('button') as HTMLButtonElement;
+    expect(edit.disabled).toBe(true);
+    expect(del.disabled).toBe(true);
+    expect(edit.title).toBe('Locked to another node');
+    edit.click();
+    del.click();
+    expect(onEdit).not.toHaveBeenCalled();
+    expect(onDelete).not.toHaveBeenCalled();
+  });
+});

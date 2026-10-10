@@ -3,8 +3,9 @@ import { useNavigate } from 'react-router-dom';
 import {
   ArrowLeft, LocateFixed, Maximize, Clock, Ruler, Mountain, RadioTower, RotateCcw,
   MapPin, Palette, Flag, CircleDashed, Radar, Route, Share2, Flame, Spline, Signal, Box, Users, Satellite,
-  Eye, Wrench, Layers, Activity, StickyNote,
+  Eye, Wrench, Layers, Activity, StickyNote, MapPinPlus,
 } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { useDashboardSources } from '../../hooks/useDashboardData';
 import ToolbarMenu, { ToolbarMenuItem } from './ToolbarMenu';
 import SourceMultiSelect from './SourceMultiSelect';
@@ -14,6 +15,7 @@ import NodeSearchControl from './NodeSearchControl';
 import NodeMultiSelect from './NodeMultiSelect';
 import TracerouteControls from './TracerouteControls';
 import { useAnalysisNodes } from './useAnalysisNodes';
+import { usePinSources } from '../../hooks/usePinSources';
 import { useMapAnalysisCtx } from './MapAnalysisContext';
 import { useOwnNodePositions } from '../../hooks/useOwnNodePositions';
 import { useElevationEnabled } from '../../hooks/useElevationEnabled';
@@ -76,9 +78,14 @@ export default function MapAnalysisToolbar() {
     gnssDopMode,
     setGnssDopMode,
     setLinkProfileMode,
+    pinPlaceMode,
+    setPinPlaceMode,
     reset,
   } = useMapAnalysisCtx();
   const { data: sources = [] } = useDashboardSources();
+  const { t } = useTranslation();
+  // #5685: who may add a pin, and from which sources.
+  const { waypointSources, markerSources } = usePinSources();
   const elevationEnabled = useElevationEnabled();
   // #3826 Phase 2 WP-D: 2D/3D toggle gating. `useTerrainCapabilities` (not
   // `useElevationEnabled`) because the toggle must also distinguish a
@@ -121,6 +128,22 @@ export default function MapAnalysisToolbar() {
   const in3D = useEffectiveViewMode().effectiveViewMode === '3d';
   const twoDOnly = (key: LayerKey) => in3D && !THREE_D_CAPABLE_LAYERS.has(key);
   const twoDOnlyTitle = (label: string) => `${label} — 2D view only`;
+
+  // #5685: arm (or disarm) pin placement. It captures the next map click, so
+  // it turns the other click tools off, and it turns the pin's layer on so the
+  // new pin is not saved out of sight.
+  const togglePinPlace = (kind: 'waypoint' | 'marker') => {
+    if (pinPlaceMode === kind) {
+      setPinPlaceMode(null);
+      return;
+    }
+    setMeasureMode(false);
+    setLinkProfileMode(false);
+    setSitePlannerMode(false);
+    const layer: LayerKey = kind === 'waypoint' ? 'waypoints' : 'localMarkers';
+    if (!config.layers[layer]?.enabled) setLayerEnabled(layer, true);
+    setPinPlaceMode(kind);
+  };
 
   // Polar grid (#3971): centered on each active source's own-node position.
   // Disable the toggle when no active source has a resolvable own node.
@@ -188,7 +211,7 @@ export default function MapAnalysisToolbar() {
     (config.timeSlider.enabled ? 1 : 0) +
     (config.viewMode === '3d' ? 1 : 0);
   const toolsActiveCount =
-    (measureMode ? 1 : 0) + (linkProfileMode ? 1 : 0) + (sitePlannerMode ? 1 : 0);
+    (measureMode ? 1 : 0) + (linkProfileMode ? 1 : 0) + (sitePlannerMode ? 1 : 0) + (pinPlaceMode ? 1 : 0);
   const layersActiveCount =
     UNTIMED_LAYERS.filter((l) => config.layers[l.key].enabled).length +
     (config.layers.polarGrid.enabled && hasOwnNode ? 1 : 0) +
@@ -267,6 +290,7 @@ export default function MapAnalysisToolbar() {
             if (next) {
               setLinkProfileMode(false);
               setSitePlannerMode(false);
+              setPinPlaceMode(null);
             }
           }}
           disabled={analysisNodes.length < 2}
@@ -287,6 +311,7 @@ export default function MapAnalysisToolbar() {
               if (next) {
                 setMeasureMode(false);
                 setSitePlannerMode(false);
+                setPinPlaceMode(null);
               }
             }}
             disabled={analysisNodes.length < 2}
@@ -308,9 +333,43 @@ export default function MapAnalysisToolbar() {
               if (next) {
                 setMeasureMode(false);
                 setLinkProfileMode(false);
+                setPinPlaceMode(null);
               }
             }}
             title="Site Planner — predict outbound coverage over terrain from any point"
+          />
+        )}
+        {/* #5685: add an on-air waypoint. Hidden without waypoints:write on any
+            source; shown disabled when no source the user can write to has a
+            radio that can send one. Placement sends nothing: the broadcast
+            happens on Save in the editor. */}
+        {markerSources.length > 0 && (
+          <ToolbarMenuItem
+            icon={<MapPinPlus size={ICON} />}
+            label={t('mapPins.addWaypoint', 'Add Waypoint')}
+            active={pinPlaceMode === 'waypoint'}
+            onToggle={() => togglePinPlace('waypoint')}
+            closesMenu
+            disabled={in3D || waypointSources.length === 0}
+            title={in3D
+              ? twoDOnlyTitle(t('mapPins.addWaypoint', 'Add Waypoint'))
+              : waypointSources.length === 0
+                ? t('mapPins.noWaypointSource', 'Add Waypoint — none of your sources has a Meshtastic radio that can send one')
+                : t('mapPins.addWaypointTitle', 'Add Waypoint — click the map, then choose the source that broadcasts it to the mesh')}
+          />
+        )}
+        {/* Local marker (#5686): stored in MeshMonitor, never transmitted. */}
+        {markerSources.length > 0 && (
+          <ToolbarMenuItem
+            icon={<StickyNote size={ICON} />}
+            label={t('mapPins.addMarker', 'Add Local Marker')}
+            active={pinPlaceMode === 'marker'}
+            onToggle={() => togglePinPlace('marker')}
+            closesMenu
+            disabled={in3D}
+            title={in3D
+              ? twoDOnlyTitle(t('mapPins.addMarker', 'Add Local Marker'))
+              : t('mapPins.addMarkerTitle', 'Add Local Marker — click the map to place a note. It is never sent to the mesh.')}
           />
         )}
       </ToolbarMenu>

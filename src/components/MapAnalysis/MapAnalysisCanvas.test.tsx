@@ -67,6 +67,14 @@ vi.mock('../VectorTileLayer', () => ({
 // FollowController's own behavior (Follow/Auto-zoom/pause) is covered by its
 // dedicated FollowController.test.tsx; here it's a no-op so this suite can
 // keep useMap() -> null (required by the spiderfier no-op path above).
+// #5685: stands in for the Leaflet click. While placement is armed it renders
+// a button that "clicks the map" at a fixed spot; unarmed it renders nothing,
+// which is how the tests see that the canvas armed (or did not arm) the map.
+vi.mock('../map/LocalMarkerPlacementBridge', () => ({
+  default: ({ placing, onPick }: { placing: boolean; onPick: (lat: number, lon: number) => void }) =>
+    placing ? <button type="button" data-testid="map-click" onClick={() => onPick(12.5, 34.5)}>map</button> : null,
+}));
+
 vi.mock('./FollowController', () => ({
   default: () => null,
 }));
@@ -122,7 +130,17 @@ vi.mock('../../hooks/useDashboardData', () => ({
     isLoading: false,
     isError: false,
   }),
+  // #5685: usePinAuthoring reads each sending source's own node number.
+  useSourceStatuses: () => new Map(),
   UNIFIED_SOURCE_ID: '__unified__',
+}));
+
+// #5685: who may add a pin (usePinAuthoring). Mutable per-test.
+let pinSourcesMock: { waypointSources: Array<{ id: string; name: string }>; markerSources: Array<{ id: string; name: string }> } = {
+  waypointSources: [], markerSources: [],
+};
+vi.mock('../../hooks/usePinSources', () => ({
+  usePinSources: () => pinSourcesMock,
 }));
 
 // Mutable so the vector-fallback test (#3826 Phase 2 WP-D) can swap in a
@@ -354,9 +372,22 @@ function OpenTools({ link = false }: { link?: boolean }) {
   return null;
 }
 
+/** Arms pin placement through the context, as the toolbar's Tools entry does. */
+function ArmPin({ kind }: { kind: 'waypoint' | 'marker' }) {
+  const { setPinPlaceMode } = useMapAnalysisCtx();
+  React.useEffect(() => { setPinPlaceMode(kind); }, [kind, setPinPlaceMode]);
+  return null;
+}
+
+function PinModeProbe() {
+  const { pinPlaceMode } = useMapAnalysisCtx();
+  return <div data-testid="pin-mode-probe">{String(pinPlaceMode)}</div>;
+}
+
 describe('MapAnalysisCanvas', () => {
   beforeEach(() => {
     localStorage.clear();
+    pinSourcesMock = { waypointSources: [], markerSources: [] };
     mapTilesetMock = 'osm';
     customTilesetsMock = [];
     terrainCapabilitiesMock = { enabled: true, terrainTiles: true, isLoading: false };
@@ -386,6 +417,55 @@ describe('MapAnalysisCanvas', () => {
   });
 
   // #4729: GNSS DOP overlay panel is off by default and shows once toggled on.
+  describe('pin authoring wiring (#5685)', () => {
+    const RADIO = { id: 'a', name: 'A Radio' };
+
+    it('does not arm the map, show a hint or open an editor by default', () => {
+      render(<MapAnalysisCanvas />, { wrapper });
+      expect(screen.queryByTestId('map-click')).toBeNull();
+      expect(screen.queryByTestId('pin-placement-hint')).toBeNull();
+      expect(screen.queryByText('New Waypoint')).toBeNull();
+    });
+
+    it('arms the map for a waypoint, and the map click opens the editor at that spot with the one sending source', () => {
+      pinSourcesMock = { waypointSources: [RADIO], markerSources: [RADIO] };
+      const fetchSpy = vi.spyOn(globalThis, 'fetch');
+      render(<><ArmPin kind="waypoint" /><PinModeProbe /><MapAnalysisCanvas /></>, { wrapper });
+      expect(screen.getByTestId('pin-placement-hint')).toBeInTheDocument();
+      const writesBefore = fetchSpy.mock.calls.filter(([, init]) => init?.method && init.method !== 'GET').length;
+
+      fireEvent.click(screen.getByTestId('map-click'));
+      expect(screen.getByTestId('pin-mode-probe')).toHaveTextContent('null');
+      expect(screen.queryByTestId('map-click')).toBeNull();
+      expect(screen.getByText('New Waypoint')).toBeInTheDocument();
+      expect(screen.getByTestId('pin-source-fixed')).toHaveTextContent('A Radio');
+      const lat = document.querySelector('input[type="number"][step="0.000001"]') as HTMLInputElement;
+      expect(lat.value).toBe('12.5');
+      // Arming, clicking the map and opening the editor write nothing.
+      expect(fetchSpy.mock.calls.filter(([, init]) => init?.method && init.method !== 'GET')).toHaveLength(writesBefore);
+      expect(writesBefore).toBe(0);
+      fetchSpy.mockRestore();
+    });
+
+    it('arms the map for a local marker and opens the local-marker editor, not the waypoint one', () => {
+      pinSourcesMock = { waypointSources: [], markerSources: [RADIO] };
+      render(<><ArmPin kind="marker" /><MapAnalysisCanvas /></>, { wrapper });
+      fireEvent.click(screen.getByTestId('map-click'));
+      expect(screen.getByText('New local marker')).toBeInTheDocument();
+      expect(screen.queryByText('New Waypoint')).toBeNull();
+    });
+
+    it('does not arm the 3D map, and drops the armed tool', () => {
+      pinSourcesMock = { waypointSources: [RADIO], markerSources: [RADIO] };
+      localStorage.setItem('mapAnalysis.config.v1', JSON.stringify({ version: 1, viewMode: '3d' }));
+      render(<><ArmPin kind="waypoint" /><PinModeProbe /><MapAnalysisCanvas /></>, { wrapper });
+      expect(screen.getByTestId('base-3d-map')).toBeInTheDocument();
+      expect(screen.queryByTestId('map-click')).toBeNull();
+      expect(screen.queryByTestId('pin-placement-hint')).toBeNull();
+      expect(screen.getByTestId('pin-mode-probe')).toHaveTextContent('null');
+    });
+  });
+
   describe('GNSS DOP overlay wiring', () => {
     it('does not render the DOP panel by default', () => {
       render(<MapAnalysisCanvas />, { wrapper });

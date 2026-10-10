@@ -101,7 +101,10 @@ export function LocalMarkers({ sourceId, actions }: { sourceId: string | null; a
 }
 
 /** Map Analysis: markers for the sources in the analysis filter (all when empty). */
-export default function MapMarkersLayer() {
+export default function MapMarkersLayer({ actionsFor }: {
+  /** Popup actions for one source; undefined = read-only (#5685). */
+  actionsFor?: (source: { id: string; name?: string }) => MapMarkerPopupActions | undefined;
+} = {}) {
   const { config } = useMapAnalysisCtx();
   const { data: sources = [] } = useDashboardSources();
   const list = sources as SourceInfo[];
@@ -111,7 +114,7 @@ export default function MapMarkersLayer() {
   );
   return (
     <>
-      {visible.map((s) => <PerSourceMapMarkers key={s.id} source={s} />)}
+      {visible.map((s) => <PerSourceMapMarkers key={s.id} source={s} actions={actionsFor?.(s)} />)}
     </>
   );
 }

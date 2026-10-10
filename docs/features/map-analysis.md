@@ -53,6 +53,8 @@ The toolbar runs across the top of the canvas. From left to right:
 | **Time slider toggle** | Show/hide the floating time-window slider. |
 | **Measure** | Straight-line distance between two positioned nodes. Disabled until at least two positioned nodes exist; mutually exclusive with Link Profile. |
 | **Link Profile** | Terrain, Fresnel clearance, and link-budget verdict between two points. See [Terrain Link Profile](#terrain-link-profile). Only shown when the server has elevation enabled. |
+| **Add Waypoint** | Under **Tools**. Click the map, choose the source whose radio sends it, fill in the editor. The broadcast happens on **Create**, not before. See [Adding pins](#adding-pins). |
+| **Add Local Marker** | Under **Tools**. A planning note kept in MeshMonitor and never sent to the mesh. See [Adding pins](#adding-pins). |
 | **3D** (box icon) | Toggle between the flat 2D map and a pitched-terrain 3D view. See [3D terrain view](#3d-terrain-view). Disabled with a tooltip when elevation is off or the configured elevation source can't serve DEM tiles. |
 | **Layer buttons (×8)** | Toggle each visualization layer on/off. The right-edge chevron opens a popover for layer-specific options (lookback window, sub-options). |
 | **Progress bar** | Shows aggregate loading state while any layer is fetching. |
@@ -183,6 +185,24 @@ Tints node markers by hop count from each source's local node. Adjacent (0-hop) 
 ### SNR overlay
 
 Drops a colored dot at each position fix, colored by the SNR recorded for that packet. Distinct from trails: trails show *where* a node went, SNR overlay shows *how well it was heard* at each point.
+
+## Adding pins
+
+You can drop two kinds of pin on the Map Analysis map without leaving it. Both live under **Tools**, and both need **Waypoints: write** on at least one source; without it the entries do not show.
+
+| | Add Waypoint | Add Local Marker |
+|---|---|---|
+| Sent to the mesh | **Yes**, once, when you click Create | No, never |
+| Sources you can pick | Meshtastic radio sources you can write to | Any source you can write to |
+| More | [Waypoints](/features/waypoints#from-map-analysis) | [Local Markers](/features/local-markers#from-map-analysis) |
+
+The flow is the same for both: click the entry, click the map, pick the source, fill in the editor, save. Picking the spot and opening the editor send nothing. Press **Esc**, or **Cancel** in the hint at the top of the map, to back out.
+
+- **Which source.** Map Analysis has no "current" source, so the editor asks. If only one source qualifies it is chosen for you. If several do, you choose, unless the source filter leaves exactly one. For a waypoint the choice decides which radio transmits, and the channel list is that radio's.
+- **Source filter.** If you pick a source the map is not showing, the editor says so: the pin is saved but stays out of sight until you add the source to the filter.
+- **Editing.** A waypoint or marker popup shows **Edit** and **Delete** when you can write to its source. For a waypoint the source must also be a radio source, and a waypoint locked to another node has both greyed out.
+- **Other tools.** Adding a pin takes the next map click, so it turns Measure, Link Profile and Site Planner off, and they turn it off.
+- **3D.** Pins are placed on the 2D map. The entries are greyed out in 3D.
 
 ## Terrain Link Profile
 

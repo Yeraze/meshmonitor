@@ -16,6 +16,22 @@ function base(sourceId: string): string {
   return `/api/sources/${encodeURIComponent(sourceId)}/markers`;
 }
 
+/**
+ * Plain calls for a surface that picks the source per action (Map Analysis,
+ * #5685). The caller invalidates `['mapMarkers', sourceId]` after each.
+ */
+export function createMapMarker(sourceId: string, input: MapMarkerInput) {
+  return apiService.post<Envelope<MapMarker>>(base(sourceId), input).then((b) => b.data as MapMarker);
+}
+
+export function updateMapMarker(sourceId: string, id: number, input: MapMarkerInput) {
+  return apiService.put<Envelope<MapMarker>>(`${base(sourceId)}/${id}`, input).then((b) => b.data as MapMarker);
+}
+
+export function deleteMapMarker(sourceId: string, id: number) {
+  return apiService.delete<Envelope<never>>(`${base(sourceId)}/${id}`);
+}
+
 export function useMapMarkers(sourceId: string | null | undefined, enabled = true) {
   const qc = useQueryClient();
   const key = ['mapMarkers', sourceId ?? ''];
@@ -38,17 +54,15 @@ export function useMapMarkers(sourceId: string | null | undefined, enabled = tru
   const invalidate = () => qc.invalidateQueries({ queryKey: key });
 
   const create = useMutation({
-    mutationFn: (input: MapMarkerInput) =>
-      apiService.post<Envelope<MapMarker>>(base(sourceId as string), input).then((b) => b.data as MapMarker),
+    mutationFn: (input: MapMarkerInput) => createMapMarker(sourceId as string, input),
     onSuccess: invalidate,
   });
   const update = useMutation({
-    mutationFn: ({ id, input }: { id: number; input: MapMarkerInput }) =>
-      apiService.put<Envelope<MapMarker>>(`${base(sourceId as string)}/${id}`, input).then((b) => b.data as MapMarker),
+    mutationFn: ({ id, input }: { id: number; input: MapMarkerInput }) => updateMapMarker(sourceId as string, id, input),
     onSuccess: invalidate,
   });
   const remove = useMutation({
-    mutationFn: (id: number) => apiService.delete<Envelope<never>>(`${base(sourceId as string)}/${id}`),
+    mutationFn: (id: number) => deleteMapMarker(sourceId as string, id),
     onSuccess: invalidate,
   });
 
