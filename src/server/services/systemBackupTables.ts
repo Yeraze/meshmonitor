@@ -161,6 +161,8 @@ export const BACKUP_TABLES: string[] = [
   'pki_exchange_state',
   // #5686: local map markers (user planning data; never transmitted).
   'map_markers',
+  // #5722: per-hop SNR history from MeshCore traces (reception history).
+  'meshcore_hop_snr',
   'geofence_cooldowns',
   'news_cache',
 ];

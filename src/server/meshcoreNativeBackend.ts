@@ -87,6 +87,30 @@ interface TraceDataResponse {
   lastSnr: number;
 }
 
+/**
+ * Corrected TraceData(0x89) push parser. The pinned meshcore.js reads
+ * `pathSnrs` as `pathLen` bytes (the raw hash byte count) instead of the hop
+ * count (`pathLen >> path_sz`), so a 2-byte-hop reply over-reads into
+ * `lastSnr` and desyncs (#4786). Installed for the whole session since #5722,
+ * so traces this radio merely overhears parse correctly too.
+ */
+function parseTraceDataPush(bufferReader: TraceDataBufferReader): TraceDataResponse {
+  const reserved = bufferReader.readByte();
+  const pathLen = bufferReader.readUInt8();
+  const flags = bufferReader.readUInt8();
+  const pathSz = flags & 0x03;
+  const tag = bufferReader.readUInt32LE();
+  const authCode = bufferReader.readUInt32LE();
+  const pathHashes = bufferReader.readBytes(pathLen);
+  const hopCount = pathSz > 0 ? pathLen >> pathSz : pathLen;
+  const pathSnrs = bufferReader.readBytes(hopCount);
+  const lastSnr = bufferReader.readInt8() / 4;
+  return { reserved, pathLen, flags, tag, authCode, pathHashes, pathSnrs, lastSnr };
+}
+
+/** How long a trace tag this backend sent is remembered as "ours" (#5722). */
+const OWN_TRACE_TAG_TTL_MS = 5 * 60_000;
+
 /** A raw meshcore.js ChannelInfo response (`getChannel()` / `getChannels()`). */
 interface RawDeviceChannel {
   channelIdx: number;
@@ -405,6 +429,9 @@ export class MeshCoreNativeBackend extends EventEmitter {
   private connected: boolean = false;
   private commandSeq: number = 0;
   private drainInFlight: boolean = false;
+  /** Tags of traces this backend sent, so a TraceData push can be told apart
+   *  from one the radio merely overheard (#5722). tag → expiry ms. */
+  private readonly ownTraceTags = new Map<number, number>();
   /**
    * Recent LogRxData-derived TXT_MSG/GRP_TXT packet metadata, oldest-first. The
    * firmware emits LogRxData immediately before dispatching the txt-msg-specific
@@ -813,6 +840,39 @@ export class MeshCoreNativeBackend extends EventEmitter {
     // so the MeshCore Packet Monitor can show full OTA metadata (route
     // type, payload type, relay path, SNR/RSSI, raw bytes). The monitor is
     // opt-in and gated downstream in the manager, so emitting here is cheap.
+    // TraceData (#5722): the firmware pushes this for EVERY completed TRACE the
+    // radio hears, not only replies to traces we sent. Keep the corrected
+    // parser and a listener for the whole session and surface each one as a
+    // `trace_data` bridge event; the manager stores the per-hop SNRs. This is
+    // receive-only: nothing is sent. The per-request listener in the
+    // `trace_path` dispatch case keeps working beside it.
+    if (typeof PushCodes?.TraceData === 'number') {
+      const c = this.connection;
+      c.onTraceDataPush = (bufferReader: TraceDataBufferReader) => {
+        c.emit(PushCodes.TraceData, parseTraceDataPush(bufferReader));
+      };
+      c.on(PushCodes.TraceData, (trace: TraceDataResponse) => {
+        try {
+          const now = Date.now();
+          for (const [t, until] of this.ownTraceTags) if (until <= now) this.ownTraceTags.delete(t);
+          const hashBytes = 1 << (trace.flags & 0x03);
+          this.emitBridgeEvent('trace_data', {
+            tag: trace.tag >>> 0,
+            auth_code: trace.authCode >>> 0,
+            flags: trace.flags,
+            hash_bytes: hashBytes,
+            path_hashes_hex: bytesToHex(trace.pathHashes),
+            // Per-hop SNR in signed quarter-dB (the wire unit).
+            path_snrs_q: Array.from(trace.pathSnrs, (b) => (b << 24) >> 24),
+            last_snr_q: Math.round(trace.lastSnr * 4),
+            initiated: this.ownTraceTags.has(trace.tag >>> 0),
+          });
+        } catch (err) {
+          logger.debug(`[MeshCoreNative:${this.sourceId}] trace_data push ignored: ${(err as Error).message}`);
+        }
+      });
+    }
+
     if (typeof PushCodes?.LogRxData === 'number' && this.PacketCtor) {
       const PacketCtor = this.PacketCtor;
       const TXT_MSG = PacketCtor.PAYLOAD_TYPE_TXT_MSG;
@@ -1860,6 +1920,7 @@ export class MeshCoreNativeBackend extends EventEmitter {
         // (#4786). Build the frame ourselves so we can set the real width:
         // [SendTracePath][tag:4 LE][auth:4 LE][flags][path bytes].
         const tag = Math.floor(Math.random() * 0x1_0000_0000);
+        this.ownTraceTags.set(tag, Date.now() + OWN_TRACE_TAG_TTL_MS);
         const frame = Buffer.alloc(1 + 4 + 4 + 1 + path.length);
         frame.writeUInt8(K.CommandCodes.SendTracePath, 0);
         frame.writeUInt32LE(tag, 1);
@@ -1889,19 +1950,7 @@ export class MeshCoreNativeBackend extends EventEmitter {
           // Install a corrected parser for exactly this request's window.
           const originalOnTraceDataPush = c.onTraceDataPush;
           c.onTraceDataPush = (bufferReader: TraceDataBufferReader) => {
-            const reserved = bufferReader.readByte();
-            const respPathLen = bufferReader.readUInt8();
-            const respFlags = bufferReader.readUInt8();
-            const respPathSz = respFlags & 0x03;
-            const respTag = bufferReader.readUInt32LE();
-            const authCode = bufferReader.readUInt32LE();
-            const pathHashes = bufferReader.readBytes(respPathLen);
-            const hopCount = respPathSz > 0 ? respPathLen >> respPathSz : respPathLen;
-            const pathSnrs = bufferReader.readBytes(hopCount);
-            const lastSnr = bufferReader.readInt8() / 4;
-            c.emit(K.PushCodes.TraceData, {
-              reserved, pathLen: respPathLen, flags: respFlags, tag: respTag, authCode, pathHashes, pathSnrs, lastSnr,
-            });
+            c.emit(K.PushCodes.TraceData, parseTraceDataPush(bufferReader));
           };
 
           // Own timeout (mirrors request_owner/request_regions above): a

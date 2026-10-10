@@ -26,6 +26,7 @@ import automationRoutes from './meshcoreAutomationRoutes.js';
 import packetRoutes from './meshcorePacketRoutes.js';
 import ingestReadRoutes from './meshcoreIngestReadRoutes.js';
 import filterRoutes from './meshcoreFilterRoutes.js';
+import traceRoutes from './meshcoreTraceRoutes.js';
 
 const router = Router({ mergeParams: true });
 
@@ -40,6 +41,8 @@ router.use(ingestReadRoutes);
 // Ignore / Block lists (#5408): data, not device surface — valid for an
 // ingest source too.
 router.use(filterRoutes);
+// Per-hop trace SNR history (#5722): stored data, read-only.
+router.use(traceRoutes);
 
 // DEVICE routes from here down. This guard refuses an ingest source, and
 // everything below it is connection lifecycle, local-node status, contacts,

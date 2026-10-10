@@ -131,6 +131,9 @@ import {
   mapMarkersSqlite, mapMarkersPostgres, mapMarkersMysql,
 } from './schema/mapMarkers.js';
 import {
+  meshcoreHopSnrSqlite, meshcoreHopSnrPostgres, meshcoreHopSnrMysql,
+} from './schema/meshcoreHopSnr.js';
+import {
   coverageReceptionsSqlite, coverageReceptionsPostgres, coverageReceptionsMysql,
 } from './schema/coverageReceptions.js';
 import {
@@ -341,6 +344,9 @@ export interface ActiveSchema {
   // Local map markers (#5686)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any -- #5686 matches the existing ActiveSchema per-dialect table pattern
   mapMarkers: any;
+  // MeshCore per-hop trace SNR (#5722)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- #5722 matches the existing ActiveSchema per-dialect table pattern
+  meshcoreHopSnr: any;
 
   // Coverage Report RF receptions (#5277 Phase 1 WP1)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any -- #5277 matches the existing ActiveSchema per-dialect table pattern; typing burn-down is #3962 Phase 6
@@ -505,6 +511,7 @@ const SCHEMA_MAP: Record<DatabaseType, ActiveSchema> = {
     meshtasticHeardRepeaters: meshtasticHeardRepeatersSqlite,
     pkiExchangeState: pkiExchangeStateSqlite,
     mapMarkers: mapMarkersSqlite,
+    meshcoreHopSnr: meshcoreHopSnrSqlite,
     coverageReceptions: coverageReceptionsSqlite,
     coverageSurveys: coverageSurveysSqlite,
     crossSourceLinks: crossSourceLinksSqlite,
@@ -592,6 +599,7 @@ const SCHEMA_MAP: Record<DatabaseType, ActiveSchema> = {
     meshtasticHeardRepeaters: meshtasticHeardRepeatersPostgres,
     pkiExchangeState: pkiExchangeStatePostgres,
     mapMarkers: mapMarkersPostgres,
+    meshcoreHopSnr: meshcoreHopSnrPostgres,
     coverageReceptions: coverageReceptionsPostgres,
     coverageSurveys: coverageSurveysPostgres,
     crossSourceLinks: crossSourceLinksPostgres,
@@ -679,6 +687,7 @@ const SCHEMA_MAP: Record<DatabaseType, ActiveSchema> = {
     meshtasticHeardRepeaters: meshtasticHeardRepeatersMysql,
     pkiExchangeState: pkiExchangeStateMysql,
     mapMarkers: mapMarkersMysql,
+    meshcoreHopSnr: meshcoreHopSnrMysql,
     coverageReceptions: coverageReceptionsMysql,
     coverageSurveys: coverageSurveysMysql,
     crossSourceLinks: crossSourceLinksMysql,
