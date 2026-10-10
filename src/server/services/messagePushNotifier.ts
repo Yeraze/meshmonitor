@@ -31,6 +31,8 @@ export interface NotifiableMessage {
   channel: number;
   portnum?: number | null;
   viaMqtt?: boolean | null;
+  /** Meshtastic tapback flag: 1 marks a reaction (#5720). */
+  emoji?: number | null;
 }
 
 export interface MessagePushInput {
@@ -178,6 +180,9 @@ export async function sendMessagePushNotification(input: MessagePushInput): Prom
       channelId: message.channel,
       isDirectMessage,
       viaMqtt: message.viaMqtt === true,
+      // #5720: the protocol flag is authoritative; the text check in the
+      // filter is only the fallback for paths that lose it.
+      isTapback: Number(message.emoji) === 1,
       sourceId,
       sourceName,
     });
