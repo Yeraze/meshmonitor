@@ -219,11 +219,13 @@ function AutomationsList() {
       </div>
       {error && <div className="ae-error-list">{error}</div>}
       {items.length === 0 && <div className="ae-empty">No automations yet. Create one to get started.</div>}
-      {items.map((a) => (
+      {items.map((a) => {
+        const windowStatus = scheduleStatus(a.config, Date.now());
+        return (
         <div className="ae-card" key={a.id}>
           <div className="ae-row">
             <div className="ae-row-main">
-              <div className="ae-row-title">{a.name}<span className="ae-chip">{triggerLabel(a)}</span>{scheduleStatus(a.config, Date.now()) && <span className="ae-chip">{scheduleStatus(a.config, Date.now())}</span>}</div>
+              <div className="ae-row-title">{a.name}<span className="ae-chip">{triggerLabel(a)}</span>{windowStatus && <span className="ae-chip">{windowStatus}</span>}</div>
               {a.description && <div className="ae-muted">{a.description}</div>}
             </div>
             <div className="ae-btn-row">
@@ -237,7 +239,8 @@ function AutomationsList() {
             </div>
           </div>
         </div>
-      ))}
+        );
+      })}
     </div>
   );
 }

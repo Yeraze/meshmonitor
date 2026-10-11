@@ -1460,6 +1460,26 @@ describe('AutomationEngineService', () => {
     engine.stop();
   });
 
+  it('schedule window: enabling an ended rule again with the old dates turns it straight off', async () => {
+    const { calls, deps } = recorder();
+    clock = WIN_END + 60_000;
+    const a = await createEnabled('ended', windowGraph(WINDOW));
+    const { jobs, cron } = fakeCron();
+    const engine = engineWithCron(deps, cron);
+    await engine.load();
+    await settle();
+    expect((await autos.getAutomation(a.id))?.enabled).toBeFalsy();
+
+    // What POST /:id/enable does: write the flag, reload the engine.
+    await autos.setEnabled(a.id, true);
+    await engine.load();
+    await settle();
+    expect((await autos.getAutomation(a.id))?.enabled).toBeFalsy();
+    expect(jobs.filter((j) => !j.stopped)).toHaveLength(0);
+    expect(calls.filter((c) => c.fn === 'notify')).toHaveLength(0);
+    engine.stop();
+  });
+
   it('schedule window: a reload inside the window (a save, a restart) does not fire or end it', async () => {
     const { calls, deps } = recorder();
     clock = WIN_START + 60_000;
