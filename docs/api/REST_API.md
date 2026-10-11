@@ -1074,6 +1074,7 @@ permission on that source.
 | `meshmonitor_node_rssi_dbm` | `source`, `node_id`, `short_name` | RSSI of the last packet from this node |
 | `meshmonitor_node_last_heard_timestamp_seconds` | `source`, `node_id`, `short_name` | Unix time the node was last heard |
 | `meshmonitor_node_hops_away` | `source`, `node_id`, `short_name` | Hop distance from the local node |
+| `meshmonitor_node_last_position_timestamp_seconds` | `source`, `node_id`, `short_name` | Unix time the node's most recent position was observed (absent if it has never sent one) |
 
 Per-node values are the latest reported telemetry — check
 `meshmonitor_node_last_heard_timestamp_seconds` in queries where staleness
@@ -1111,6 +1112,15 @@ time() - meshmonitor_node_last_heard_timestamp_seconds > 900
   and (meshmonitor_node_battery_level <= 100)
   and on (source, node_id)
     (time() - meshmonitor_node_last_heard_timestamp_seconds < 1800)
+
+# GPS tracker heard but without a position for 30 minutes (lost or no fix).
+# Firmware sends no position while it has no fix but keeps sending telemetry,
+# so a node with no position series at all (never had a fix) matches too.
+# Hold it with `for:` long enough to ride out a cold start, and restrict it
+# to your GPS nodes -- a node with no GPS never sends a position either.
+(time() - meshmonitor_node_last_heard_timestamp_seconds < 4500)
+  unless on (source, node_id)
+    (time() - meshmonitor_node_last_position_timestamp_seconds < 1800)
 
 # Gateway link down
 meshmonitor_source_connected == 0
