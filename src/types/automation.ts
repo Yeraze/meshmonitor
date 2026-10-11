@@ -12,6 +12,7 @@
 
 import { HOP_LIMIT_OVERRIDE_MAX, parseHopLimitOverride } from '../utils/hopLimitOverride.js';
 import { tracePathScheduleParamErrors } from './tracePathSchedule.js';
+import { readScheduleWindow } from './scheduleWindow.js';
 import { isMeshCoreAdvertMode } from './meshcoreAdvert.js';
 
 export const AUTOMATION_CONFIG_VERSION = 1;
@@ -860,6 +861,11 @@ export function validateAutomationGraph(input: unknown): ValidationResult {
       // (which would silently miss any trigger type added later). Optional:
       // absent/unset = 'automation', the pre-4.14 behaviour every stored automation
       // depends on — same contract as action.tapback's emojiMode.
+      // Start/end window of a scheduled rule (#5515). Optional: a rule with no
+      // dates has no window, which is every rule saved before it existed.
+      if (n.type === 'trigger.schedule') {
+        for (const e of readScheduleWindow(p).errors) errors.push(`trigger.schedule "${n.id}": ${e}`);
+      }
       if (categoryOf(n.type) === 'trigger'
           && p.cooldownScope != null
           && !COOLDOWN_SCOPES.includes(p.cooldownScope as CooldownScope)) {

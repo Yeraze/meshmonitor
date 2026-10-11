@@ -153,6 +153,36 @@ every hour). It is backed by a live [croner](https://github.com/Hexagon/croner) 
   isn't offered here (see [Cooldown applies to](#cooldown-applies-to)).
 - The cron is **validated at save time** (5-field, no seconds) — an invalid expression is rejected
   in the builder rather than silently never firing.
+- **Fastest allowed: every 5 minutes.** One fire sends to every chosen channel on every chosen
+  source, so a cron that fires each minute to six channels is 360 sends an hour. A save, import or
+  duplicate of a faster cron is refused. A rule saved before this limit keeps running, and can be
+  switched on and off, but must slow down the next time it is edited. The one exception is a rule
+  whose only action is [Trace MeshCore paths on a schedule](#trace-meshcore-paths-on-a-schedule),
+  which may tick each minute because that step paces itself.
+
+#### Timed events: start, end and time zone
+
+Three optional fields turn a schedule into a timed event, for a net, an exercise or a maintenance
+notice:
+
+| Field | What it does |
+|---|---|
+| **Start** | The rule does not fire before this date and time. Blank = it can fire now. |
+| **End** | The rule does not fire at or after this. When it passes, the rule **turns itself off**. Blank = it runs until you turn it off. |
+| **Time zone** | The zone the cron, the start and the end are read in (an IANA name such as `America/New_York`). Blank = the server's zone, which is usually UTC in Docker. Required with a start or end; the builder fills in your browser's zone when you pick a date. |
+
+Example: "every 30 minutes on October 3 from 08:00 to 12:00, New York time" is cron
+`*/30 * * * *`, start `2026-10-03 08:00`, end `2026-10-03 12:00`, zone `America/New_York`. It
+fires at 08:00, 08:30 … 11:30 and is off by 12:00. Pair it with one **Send a message** action
+that lists every Meshtastic and MeshCore channel to post to.
+
+- The automations list shows **Starts …**, **Until …** or **Ended …** beside a timed rule.
+- To run an ended event again, change its dates and enable it. Enabling it with the old dates
+  turns it straight off again.
+- The dates are part of the saved rule, so a restart or a save never counts as a fire and never
+  moves the window. Sends that fell while the server was down are skipped, not caught up.
+- **Run Now** ignores the window, like it ignores the cron.
+- The **Timed Announcement** template in the gallery sets all of this up from one form.
 
 Because a schedule has no triggering message and no subject node, a **Send a message** action under
 a schedule trigger **must name a target source** (see [Send a message](#send-a-message)).

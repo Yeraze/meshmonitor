@@ -1347,10 +1347,10 @@ describe('AutomationEngineService', () => {
 
   // ─── schedule (cron) ───────────────────────────────────────────────────────
   function fakeCron() {
-    const jobs: Array<{ expr: string; cb: () => void; stopped: boolean }> = [];
+    const jobs: Array<{ expr: string; cb: () => void; stopped: boolean; timezone?: string }> = [];
     const cron = {
-      schedule: (expr: string, cb: () => void) => {
-        const j = { expr, cb, stopped: false };
+      schedule: (expr: string, cb: () => void, options?: { timezone?: string }) => {
+        const j = { expr, cb, stopped: false, timezone: options?.timezone };
         jobs.push(j);
         return { stop: () => { j.stopped = true; } };
       },
@@ -1383,6 +1383,129 @@ describe('AutomationEngineService', () => {
     jobs[0].cb();
     await new Promise((r) => setTimeout(r, 0));
     expect(calls.filter((c) => c.fn === 'notify')).toHaveLength(2);
+  });
+
+  // ─── schedule window (#5515) ────────────────────────────────────────────
+  const windowGraph = (params: Record<string, unknown>): AutomationGraph => ({
+    version: 1,
+    nodes: [
+      { id: 't', type: 'trigger.schedule', params: { cron: '*/30 * * * *', ...params } },
+      { id: 'a', type: 'action.notify', params: { body: 'tick' } },
+    ],
+    edges: [{ from: 't', to: 'a' }],
+  });
+  const WIN_START = Date.UTC(2026, 9, 3, 8, 0);
+  const WIN_END = Date.UTC(2026, 9, 3, 12, 0);
+  const WINDOW = { startAt: '2026-10-03T08:00', endAt: '2026-10-03T12:00', timezone: 'UTC' };
+  const settle = () => new Promise((r) => setTimeout(r, 20));
+
+  it('schedule window: runs the cron in the rule time zone', async () => {
+    const { deps } = recorder();
+    clock = WIN_START;
+    await createEnabled('tz', windowGraph({ timezone: 'America/New_York' }));
+    const { jobs, cron } = fakeCron();
+    const engine = engineWithCron(deps, cron);
+    await engine.load();
+    expect(jobs.map((j) => j.timezone)).toEqual(['America/New_York']);
+    engine.stop();
+  });
+
+  it('schedule window: a tick before the start does nothing; inside the window it fires', async () => {
+    const { calls, deps } = recorder();
+    clock = WIN_START - 60_000;
+    const a = await createEnabled('window', windowGraph(WINDOW));
+    const { jobs, cron } = fakeCron();
+    const engine = engineWithCron(deps, cron);
+    await engine.load();
+    expect(jobs).toHaveLength(1);
+
+    expect(await engine.onSchedule(a.id)).toBe(0);
+    expect(calls.filter((c) => c.fn === 'notify')).toHaveLength(0);
+    expect(await autos.listRuns(a.id)).toHaveLength(0);
+
+    clock = WIN_START;
+    expect(await engine.onSchedule(a.id)).toBe(1);
+    clock = WIN_END - 1;
+    expect(await engine.onSchedule(a.id)).toBe(1);
+    expect(calls.filter((c) => c.fn === 'notify')).toHaveLength(2);
+    engine.stop();
+  });
+
+  it('schedule window: a tick at the end sends nothing and turns the rule off', async () => {
+    const { calls, deps } = recorder();
+    clock = WIN_START;
+    const a = await createEnabled('window', windowGraph(WINDOW));
+    const { cron } = fakeCron();
+    const engine = engineWithCron(deps, cron);
+    await engine.load();
+
+    clock = WIN_END;
+    expect(await engine.onSchedule(a.id)).toBe(0);
+    await settle();
+    expect(calls.filter((c) => c.fn === 'notify')).toHaveLength(0);
+    expect((await autos.getAutomation(a.id))?.enabled).toBeFalsy();
+    engine.stop();
+  });
+
+  it('schedule window: a rule already past its end at load is turned off, not scheduled', async () => {
+    const { deps } = recorder();
+    clock = WIN_END + 3_600_000;
+    const a = await createEnabled('late', windowGraph(WINDOW));
+    const { jobs, cron } = fakeCron();
+    const engine = engineWithCron(deps, cron);
+    await engine.load();
+    expect(jobs.filter((j) => !j.stopped)).toHaveLength(0);
+    await settle();
+    expect((await autos.getAutomation(a.id))?.enabled).toBeFalsy();
+    engine.stop();
+  });
+
+  it('schedule window: enabling an ended rule again with the old dates turns it straight off', async () => {
+    const { calls, deps } = recorder();
+    clock = WIN_END + 60_000;
+    const a = await createEnabled('ended', windowGraph(WINDOW));
+    const { jobs, cron } = fakeCron();
+    const engine = engineWithCron(deps, cron);
+    await engine.load();
+    await settle();
+    expect((await autos.getAutomation(a.id))?.enabled).toBeFalsy();
+
+    // What POST /:id/enable does: write the flag, reload the engine.
+    await autos.setEnabled(a.id, true);
+    await engine.load();
+    await settle();
+    expect((await autos.getAutomation(a.id))?.enabled).toBeFalsy();
+    expect(jobs.filter((j) => !j.stopped)).toHaveLength(0);
+    expect(calls.filter((c) => c.fn === 'notify')).toHaveLength(0);
+    engine.stop();
+  });
+
+  it('schedule window: a reload inside the window (a save, a restart) does not fire or end it', async () => {
+    const { calls, deps } = recorder();
+    clock = WIN_START + 60_000;
+    const a = await createEnabled('window', windowGraph(WINDOW));
+    const { jobs, cron } = fakeCron();
+    const engine = engineWithCron(deps, cron);
+    await engine.load();
+    await engine.load();
+    await settle();
+    expect(calls.filter((c) => c.fn === 'notify')).toHaveLength(0);
+    expect((await autos.getAutomation(a.id))?.enabled).toBeTruthy();
+    expect(jobs.filter((j) => !j.stopped)).toHaveLength(1);
+    engine.stop();
+  });
+
+  it('schedule window: a bad window is not scheduled and the rule stays as it is', async () => {
+    const { deps } = recorder();
+    clock = WIN_START;
+    const a = await createEnabled('bad-window', windowGraph({ startAt: '2026-10-03T08:00' }));
+    const { jobs, cron } = fakeCron();
+    const engine = engineWithCron(deps, cron);
+    await engine.load();
+    expect(jobs).toHaveLength(0);
+    await settle();
+    expect((await autos.getAutomation(a.id))?.enabled).toBeTruthy();
+    engine.stop();
   });
 
   it('schedule: an invalid/missing cron is not armed', async () => {

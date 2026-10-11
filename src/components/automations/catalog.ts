@@ -7,7 +7,7 @@
  */
 import { HOP_COUNT_EMOJIS, HOP_EMOJI_MAX, MQTT_SOURCE_EMOJI } from '../../utils/hopEmoji';
 
-export type FieldKind = 'text' | 'number' | 'nodeNum' | 'textarea' | 'select' | 'checkbox' | 'variable' | 'emoji' | 'fieldselect' | 'sourceMulti' | 'sendSourceMulti' | 'channelMulti' | 'geofence' | 'scriptselect' | 'regionSelect' | 'nodeMulti' | 'automationSelect' | 'meshtasticSourceSelect' | 'forwardingSourceSelect' | 'resultTarget' | 'tracePaths';
+export type FieldKind = 'text' | 'number' | 'nodeNum' | 'textarea' | 'select' | 'checkbox' | 'variable' | 'emoji' | 'fieldselect' | 'sourceMulti' | 'sendSourceMulti' | 'channelMulti' | 'geofence' | 'scriptselect' | 'regionSelect' | 'nodeMulti' | 'automationSelect' | 'meshtasticSourceSelect' | 'forwardingSourceSelect' | 'resultTarget' | 'tracePaths' | 'datetimeLocal' | 'timeZone';
 
 export interface FieldOpt { value: string; label: string; }
 export interface FieldGroup { label: string; options: FieldOpt[]; }
@@ -244,9 +244,16 @@ export const TRIGGERS: BlockDef[] = [
   {
     type: 'trigger.schedule',
     label: 'On a schedule',
-    description: 'Fires on a cron schedule (no mesh event).',
+    description: 'Fires on a cron schedule (no mesh event). Add a start and end to run it only during an event.',
     fields: [
-      { name: 'cron', label: 'Cron expression', kind: 'text', placeholder: '0 * * * *', help: 'Standard 5-field cron, e.g. "0 * * * *" = top of every hour.' },
+      {
+        name: 'cron', label: 'Cron expression', kind: 'text', placeholder: '0 * * * *',
+        // SCHEDULE_MIN_INTERVAL_MINUTES in src/types/scheduleWindow.ts; the server enforces it at save.
+        help: 'Standard 5-field cron, e.g. "0 * * * *" = top of every hour, "*/30 * * * *" = every 30 minutes. Fastest allowed: every 5 minutes. Each fire sends to every chosen channel on every chosen source, so a short interval uses a lot of airtime.',
+      },
+      { name: 'startAt', label: 'Start (optional)', kind: 'datetimeLocal', help: 'The rule does not fire before this. Leave blank to start now.' },
+      { name: 'endAt', label: 'End (optional)', kind: 'datetimeLocal', help: 'The rule does not fire at or after this, and turns itself off when it passes. Leave blank to run until you turn it off.' },
+      { name: 'timezone', label: 'Time zone', kind: 'timeZone', help: 'Zone the cron, start and end are read in, e.g. America/New_York. Blank = the server\'s zone (often UTC in Docker). Required with a start or end.' },
     ],
   },
   {
