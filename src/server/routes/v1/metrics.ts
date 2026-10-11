@@ -5,7 +5,8 @@
  *
  * Exposes current mesh health in Prometheus text exposition format so a
  * Prometheus-compatible scraper can alert on it: per-node RF telemetry
- * (channel utilization, battery, voltage, SNR/RSSI, last-heard), per-source
+ * (channel utilization, battery, voltage, SNR/RSSI, last-heard, last
+ * position), per-source
  * node counts, recent message volume, and gateway link state.
  *
  * Deployment-global like `/solar` — one scrape covers every source, with the
@@ -59,7 +60,7 @@ const ACTIVE_WINDOW_SECONDS = 7200;
  * Hard cap on the number of per-node series exported per source per scrape.
  * getActiveNodes returns nodes ordered by lastHeard desc, so the cap keeps the
  * N most-recently-heard nodes — an MQTT-firehose source with thousands of rows
- * inside the window can't explode Prometheus cardinality (~8 series/node). The
+ * inside the window can't explode Prometheus cardinality (~9 series/node). The
  * `meshmonitor_nodes_total` gauge still reports the true count, so truncation
  * stays visible (exported < total).
  */
@@ -178,6 +179,16 @@ router.get('/', async (req: Request, res: Response) => {
       labelNames: nodeLabels,
       registers: [registry],
     });
+    // Paired with last-heard, this tells "heard but no GPS fix" apart from
+    // "silent": firmware sends no position at all while it has no fix, but
+    // keeps sending telemetry and NodeInfo, so a GPS tracker that is heard
+    // with a stale (or absent) position here has lost, or never got, a fix.
+    const nodeLastPosition = new Gauge({
+      name: 'meshmonitor_node_last_position_timestamp_seconds',
+      help: "Unix time this node's most recent position was observed (absent if it has never sent one)",
+      labelNames: nodeLabels,
+      registers: [registry],
+    });
 
     info.labels(String(packageJson.version)).set(1);
 
@@ -271,6 +282,11 @@ router.get('/', async (req: Request, res: Response) => {
         }
         if (node.hopsAway != null) {
           nodeHopsAway.labels(...labels).set(node.hopsAway);
+        }
+        // Stored in ms, exported in seconds like last-heard so the two can be
+        // compared directly in a query.
+        if (node.positionTimestamp != null) {
+          nodeLastPosition.labels(...labels).set(node.positionTimestamp / 1000);
         }
       }
     }
