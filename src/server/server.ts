@@ -434,6 +434,10 @@ setTimeout(async () => {
     // same transition event; sends nothing unless a source opts in.
     startAircraftPositionRequests();
 
+    // MeshCore mention alerts: notifies users who opted in when a channel
+    // message or room post names the source's own node. Sends nothing on air.
+    startMeshCoreMentionNotifications();
+
     // Seed the global "discard invalid GPS positions" ingest gate from settings
     // (default ON = discard, the historical behavior). Refreshed live on save via
     // the setDiscardInvalidPositions callback registered below.
@@ -713,6 +717,7 @@ const apiRouter = express.Router();
 import authRoutes from './routes/authRoutes.js';
 import automationRoutes from './routes/automationRoutes.js';
 import autoAckConverterRoutes from './routes/autoAckConverterRoutes.js';
+import { startMeshCoreMentionNotifications } from './services/meshcoreMentionNotificationService.js';
 import { startAutomationEngine } from './services/automation/automationEngineSingleton.js';
 import { startMeshBeaconOfferIngestion } from './services/meshBeaconOfferService.js';
 import { startAdsbFlightMatching } from './services/adsbMatchService.js';

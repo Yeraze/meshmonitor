@@ -51,6 +51,7 @@ interface NotificationPreferences {
   lowBatteryThreshold: number;
   lowBatteryVoltageThreshold: number;
   notifyOnWaypoint: boolean;
+  notifyOnMention: boolean;
   waypointRadiusKm: number;
   waypointCenterLat: number | null;
   waypointCenterLon: number | null;
@@ -82,6 +83,7 @@ const EDITED_PREFERENCE_FIELDS: ReadonlyArray<keyof NotificationPreferences> = [
   'lowBatteryThreshold',
   'lowBatteryVoltageThreshold',
   'notifyOnWaypoint',
+  'notifyOnMention',
   'waypointRadiusKm',
   'waypointCenterLat',
   'waypointCenterLon',
@@ -894,6 +896,34 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
                   />
                   <span style={{ fontWeight: '500' }}><UiIcon name="route" /> {t('notifications.traceroutes')}</span>
                 </label>
+              </div>
+              )}
+
+              {/* Mentions Toggle: MeshCore only. Fires when a channel message
+                  or room post names this source's own node as @[Name]. */}
+              {isMeshCore && (
+              <div className={styles.row} style={{
+                padding: '12px',
+                borderRadius: '6px',
+                marginBottom: '16px'
+              }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer', margin: 0 }}>
+                  <input
+                    type="checkbox"
+                    checked={preferences.notifyOnMention}
+                    onChange={(e) => {
+                      setPreferences(prev => ({
+                        ...prev,
+                        notifyOnMention: e.target.checked
+                      }));
+                    }}
+                    style={{ width: '18px', height: '18px' }}
+                  />
+                  <span style={{ fontWeight: '500' }}><UiIcon name="messages" /> {t('notifications.notify_on_mention')}</span>
+                </label>
+                <div className={styles.muted} style={{ fontSize: '12px', marginTop: '4px' }}>
+                  {t('notifications.notify_on_mention_help')}
+                </div>
               </div>
               )}
 

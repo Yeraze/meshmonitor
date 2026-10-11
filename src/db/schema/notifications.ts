@@ -64,6 +64,8 @@ export const userNotificationPreferencesSqlite = sqliteTable('user_notification_
   // radius so a user hears about their own area rather than the whole mesh.
   // A NULL centre means "use this source's own node position".
   notifyOnWaypoint: integer('notify_on_waypoint', { mode: 'boolean' }).default(false),
+  // MeshCore @[Name] mentions of the source's own node. Opt-in.
+  notifyOnMention: integer('notify_on_mention', { mode: 'boolean' }).default(false),
   waypointRadiusKm: real('waypoint_radius_km').default(10),
   waypointCenterLat: real('waypoint_center_lat'),
   waypointCenterLon: real('waypoint_center_lon'),
@@ -103,6 +105,7 @@ export const userNotificationPreferencesPostgres = pgTable('user_notification_pr
   lowBatteryVoltageThreshold: pgInteger('lowBatteryVoltageThreshold').default(3300),
   notifyOnServerEvents: pgBoolean('notifyOnServerEvents').default(false),
   notifyOnWaypoint: pgBoolean('notifyOnWaypoint').default(false),
+  notifyOnMention: pgBoolean('notifyOnMention').default(false),
   waypointRadiusKm: pgDouble('waypointRadiusKm').default(10),
   waypointCenterLat: pgDouble('waypointCenterLat'),
   waypointCenterLon: pgDouble('waypointCenterLon'),
@@ -172,6 +175,7 @@ export const userNotificationPreferencesMysql = mysqlTable('user_notification_pr
   lowBatteryVoltageThreshold: myInt('lowBatteryVoltageThreshold').default(3300),
   notifyOnServerEvents: myBoolean('notifyOnServerEvents').default(false),
   notifyOnWaypoint: myBoolean('notifyOnWaypoint').default(false),
+  notifyOnMention: myBoolean('notifyOnMention').default(false),
   waypointRadiusKm: myDouble('waypointRadiusKm').default(10),
   waypointCenterLat: myDouble('waypointCenterLat'),
   waypointCenterLon: myDouble('waypointCenterLon'),

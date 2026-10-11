@@ -46,6 +46,7 @@ const ROW_A = {
   lowBatteryVoltageThreshold: 3111,
   notifyOnServerEvents: true,
   notifyOnWaypoint: true,
+  notifyOnMention: true,
   waypointRadiusKm: 42,
   waypointCenterLat: 12.5,
   waypointCenterLon: -45.25,
