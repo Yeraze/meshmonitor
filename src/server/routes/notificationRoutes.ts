@@ -255,6 +255,7 @@ const BOOLEAN_PREF_FIELDS = [
   'notifyOnInactiveNode',
   'notifyOnLowBattery',
   'notifyOnWaypoint',
+  'notifyOnMention',
   'notifyOnServerEvents',
   'prefixWithNodeName',
 ] as const;

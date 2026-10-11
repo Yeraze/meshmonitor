@@ -27,6 +27,7 @@ export interface FixturePrefs {
   /** Event toggles read by `broadcastToPreferenceUsers`; absent = off. */
   notifyOnNewNode?: boolean;
   notifyOnWaypoint?: boolean;
+  notifyOnMention?: boolean;
   notifyOnServerEvents?: boolean;
 }
 

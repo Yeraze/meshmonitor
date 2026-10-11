@@ -54,6 +54,7 @@ export interface NotificationPreferences {
   notifyOnServerEvents: boolean;
   /** Alert when a waypoint arrives from the mesh within `waypointRadiusKm` (#4750). */
   notifyOnWaypoint: boolean;
+  notifyOnMention: boolean;
   waypointRadiusKm: number;
   /** Explicit centre for the radius. NULL on both means "this source's own node". */
   waypointCenterLat: number | null;
@@ -299,6 +300,7 @@ export class NotificationsRepository extends BaseRepository {
       lowBatteryVoltageThreshold: prefs.lowBatteryVoltageThreshold,
       notifyOnServerEvents: prefs.notifyOnServerEvents,
       notifyOnWaypoint: prefs.notifyOnWaypoint,
+      notifyOnMention: prefs.notifyOnMention,
       waypointRadiusKm: prefs.waypointRadiusKm,
       waypointCenterLat: prefs.waypointCenterLat,
       waypointCenterLon: prefs.waypointCenterLon,
@@ -1365,6 +1367,7 @@ export class NotificationsRepository extends BaseRepository {
       lowBatteryVoltageThreshold: row.lowBatteryVoltageThreshold != null ? Number(row.lowBatteryVoltageThreshold) : d.lowBatteryVoltageThreshold,
       notifyOnServerEvents: boolOr(row.notifyOnServerEvents, d.notifyOnServerEvents),
       notifyOnWaypoint: boolOr(row.notifyOnWaypoint, d.notifyOnWaypoint),
+      notifyOnMention: boolOr(row.notifyOnMention, d.notifyOnMention),
       waypointRadiusKm: row.waypointRadiusKm != null ? Number(row.waypointRadiusKm) : d.waypointRadiusKm,
       waypointCenterLat: row.waypointCenterLat != null ? Number(row.waypointCenterLat) : null,
       waypointCenterLon: row.waypointCenterLon != null ? Number(row.waypointCenterLon) : null,

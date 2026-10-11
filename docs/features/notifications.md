@@ -594,6 +594,7 @@ A source you have never saved settings for uses the **built-in defaults**. The t
 | Successful traceroutes | Off |
 | Server events | Off |
 | Waypoint arrivals | Off, 10 km radius |
+| Mentions (MeshCore) | Off |
 | Inactive node / low battery | Off (20 %, 3300 mV) |
 | Whitelist | Empty |
 | Blacklist | Empty |
@@ -746,11 +747,23 @@ MeshCore sources have their own **Notifications** tab, and the settings are tail
 | **Low Battery** | ✅ | MeshCore reports battery as a **voltage (mV)**, so the threshold is in millivolts (default 3300 mV) rather than a 0–100 percentage. |
 | **Inactive Node** | ✅ | Alerts when a monitored MeshCore node hasn't been heard within the configured window. |
 | **Newly Found Nodes** | ✅ | Sent the first time a contact advertises (display name + device type: Companion / Repeater / Room Server). |
+| **Mentions** | ✅ | Sent when a channel message or room post names this source's own node as `@[Name]`. Off by default. See below. |
 | **Server Events** | ✅ | Source connect/disconnect/reconnect. |
 | **Web Push / Apprise / Monitored-node picker** | ✅ | Delivery and node selection work the same as Meshtastic. |
 | Direct Messages, Emoji Reactions, MQTT, Traceroutes, Waypoint arrivals, Channel selection, Keyword filtering, percentage battery threshold | ❌ | Hidden for MeshCore — these depend on Meshtastic-only protocol features or data. |
 
 Preferences are saved per source, so a MeshCore source and a Meshtastic source can have independent thresholds. The monitored-node watch list is the exception: nodes picked on any source's tab are watched together (see [Settings Are Saved Per Source](#settings-are-saved-per-source)).
+
+#### MeshCore Mentions
+
+Turn on **Mentions** on a MeshCore source's **Notifications** tab to be alerted when someone names that source's node. MeshCore clients write a mention as `@[Name]`, and a reply starts with `@[Name]:`, so a reply to you alerts too.
+
+- The whole name must match the node's current name, ignoring case. `@[Bob]` does not alert a node called `Bobby`. If you rename the node, old mentions of the previous name no longer match.
+- Channel messages and room posts are checked. Direct messages are not.
+- **At most one alert per sender every 5 minutes**, per source. Other senders still get through. The limit is stored, so a restart does not reset it.
+- Your own messages, and senders you have ignored or blocked, never alert.
+- The alert goes to users who have the option on for that source and can read its messages. Channel selection and keyword filters do not apply to it.
+- A MeshCore MQTT source has no node of its own, so it has nothing to mention.
 
 ### Client-Side Settings (Web Push Only)
 
