@@ -245,6 +245,17 @@ function numberParamValue(value: unknown): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
+/** The browser's IANA zone, e.g. America/New_York. */
+function browserTimeZone(): string {
+  try { return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'; } catch { return 'UTC'; }
+}
+
+/** IANA zone names for the time-zone picker; empty on a browser that cannot list them. */
+function timeZoneNames(): string[] {
+  const supported = (Intl as unknown as { supportedValuesOf?: (key: string) => string[] }).supportedValuesOf;
+  try { return typeof supported === 'function' ? supported('timeZone') : []; } catch { return []; }
+}
+
 /** A param the builder treats as unset text: absent, or blank after trimming. */
 const isBlankText = (v: unknown): boolean => v == null || (typeof v === 'string' && v.trim() === '');
 
@@ -275,6 +286,30 @@ export function FieldInput({ field, value, onChange, variables, sources, channel
       break;
     case 'nodeNum':
       control = <NodeNumFieldInput value={value} onChange={onChange} placeholder={placeholder} />;
+      break;
+    case 'datetimeLocal':
+      // A date is read in the rule's time zone (#5515). The first date typed
+      // fills a blank zone with the browser's, so the times mean what the
+      // person sees on their own clock.
+      control = (
+        <input type="datetime-local" className="ae-input" value={typeof value === 'string' ? value : ''}
+          onChange={(e) => {
+            const next = e.target.value;
+            if (next && onPatch && isBlankText(params?.timezone)) onPatch({ [field.name]: next, timezone: browserTimeZone() });
+            else onChange(next);
+          }} />
+      );
+      break;
+    case 'timeZone':
+      control = (
+        <>
+          <input className="ae-input" list="ae-timezones" value={typeof value === 'string' ? value : ''}
+            placeholder={browserTimeZone()} onChange={(e) => onChange(e.target.value)} />
+          <datalist id="ae-timezones">
+            {timeZoneNames().map((z) => <option key={z} value={z} />)}
+          </datalist>
+        </>
+      );
       break;
     case 'textarea':
       control = field.tokens

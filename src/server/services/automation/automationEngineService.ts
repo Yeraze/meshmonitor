@@ -60,6 +60,7 @@ import type { MeshCoreMessage } from '../../meshcoreManager.js';
 import type { ReticulumMessageRow } from '../../../db/repositories/reticulum.js';
 import type { MeshCoreNodeEventFacts, NodeAircraftData, NodeUpdateOrigin } from '../dataEventEmitter.js';
 import { scheduleCron, validateCron } from '../../utils/cronScheduler.js';
+import { readScheduleWindow } from '../../../types/scheduleWindow.js';
 import { haversineKm, geofenceFires, pointInShape, geofenceCenter, normalizeGeofenceParams, normalizeGeofenceAnchor, shapeFromWaypoint, type GeofenceMode, type GeofenceShape } from './geo.js';
 import { evaluateGraph, type EvaluatorHooks } from './graphEvaluator.js';
 import { automationTraceBus } from './automationTraceBus.js';
@@ -244,14 +245,17 @@ function compactEventFields(fields: Record<string, unknown>): Record<string, unk
   return out;
 }
 
+/** Longest delay a Node timer accepts (2^31 - 1 ms, about 24.8 days). */
+const MAX_TIMER_DELAY_MS = 2_147_483_647;
+
 /** Pluggable cron backing for `trigger.schedule` — real croner in prod, a fake in tests. */
 export interface CronScheduler {
-  schedule(expression: string, callback: () => void): { stop: () => void };
+  schedule(expression: string, callback: () => void, options?: { timezone?: string }): { stop: () => void };
   validate(expression: string): boolean;
 }
 
 const REAL_CRON_SCHEDULER: CronScheduler = {
-  schedule: (expr, cb) => scheduleCron(expr, cb),
+  schedule: (expr, cb, options) => scheduleCron(expr, cb, options),
   validate: validateCron,
 };
 
@@ -310,6 +314,10 @@ export class AutomationEngineService {
   private leftHomeAlarmed = new Map<string, Map<number, boolean>>();
   /** automationId → live cron job, for `trigger.schedule` automations. */
   private cronJobs = new Map<string, { stop: () => void }>();
+  /** automationId → timer that turns a timed rule off at its end (#5515). */
+  private endTimers = new Map<string, ReturnType<typeof setTimeout>>();
+  /** Rules whose end-of-window disable is in flight, so a reload does not start a second one. */
+  private ending = new Set<string>();
   /** automationId → "sourceId:nodeKey" → staleness baseline (#4558 Phase A). */
   private staleState = new Map<string, Map<string, StaleEntry>>();
   /** The periodic staleness ticker, or null when not running (#4558 Phase A). */
@@ -431,23 +439,79 @@ export class AutomationEngineService {
   private rescheduleCron(): void {
     for (const job of this.cronJobs.values()) job.stop();
     this.cronJobs.clear();
+    for (const timer of this.endTimers.values()) clearTimeout(timer);
+    this.endTimers.clear();
+    const now = this.now();
     for (const a of this.index.get('trigger.schedule') ?? []) {
-      const cron = String((a.triggerNode.params as Record<string, unknown>)?.cron ?? '').trim();
+      const params = a.triggerNode.params as Record<string, unknown> | undefined;
+      const cron = String(params?.cron ?? '').trim();
       if (!cron || !this.cron.validate(cron)) {
         logger.warn(`[AutomationEngine] automation "${a.name}" has an invalid/missing cron ("${cron}"); not scheduled`);
         continue;
       }
+      // Start/end window (#5515). The dates live in the rule's config, so a
+      // restart or a save reads the same window and never counts as a fire.
+      const window = readScheduleWindow(params);
+      if (window.errors.length > 0) {
+        logger.warn(`[AutomationEngine] automation "${a.name}" has an invalid schedule window (${window.errors.join('; ')}); not scheduled`);
+        continue;
+      }
+      if (window.endMs !== null && window.endMs <= now) {
+        // Already over: enabled past its end, or the server was down when it ended.
+        this.endTimedAutomation(a.id);
+        continue;
+      }
       const job = this.cron.schedule(cron, () => {
         this.onSchedule(a.id).catch((e) => logger.error(`[AutomationEngine] schedule trigger error: ${e?.message}`));
-      });
+      }, window.timeZone ? { timezone: window.timeZone } : undefined);
       this.cronJobs.set(a.id, job);
+      if (window.endMs !== null) this.armEndTimer(a.id, window.endMs);
     }
+  }
+
+  /**
+   * Turn a timed rule off when its end passes, without waiting for its next
+   * cron tick (a daily rule would otherwise show as running for a day). A
+   * timer cannot wait longer than ~24.8 days, so a far end re-arms itself.
+   */
+  private armEndTimer(automationId: string, endMs: number): void {
+    const delay = Math.max(0, endMs - this.now());
+    const timer = setTimeout(() => {
+      this.endTimers.delete(automationId);
+      if (this.now() >= endMs) this.endTimedAutomation(automationId);
+      else this.armEndTimer(automationId, endMs);
+    }, Math.min(delay, MAX_TIMER_DELAY_MS));
+    if (typeof timer.unref === 'function') timer.unref();
+    this.endTimers.set(automationId, timer);
+  }
+
+  /**
+   * A timed rule reached its end (#5515): disable it, so the list shows it as
+   * off and it cannot fire again until someone changes the dates and enables
+   * it. Runs off the current call stack because it reloads the engine, and
+   * this is reached from inside load().
+   */
+  private endTimedAutomation(automationId: string): void {
+    if (this.ending.has(automationId)) return;
+    this.ending.add(automationId);
+    void Promise.resolve()
+      .then(async () => {
+        const row = await this.automationsRepo.getAutomation(automationId);
+        if (!row || !row.enabled) return;
+        await this.automationsRepo.setEnabled(row.id, false);
+        logger.info(`[AutomationEngine] automation "${row.name}" reached its end time and turned itself off`);
+        await this.load();
+      })
+      .catch((e) => logger.error(`[AutomationEngine] could not end timed automation ${automationId}: ${e?.message}`))
+      .finally(() => this.ending.delete(automationId));
   }
 
   /** Stop all cron jobs + the staleness/battery-trend tickers (clean shutdown / test teardown). */
   stop(): void {
     for (const job of this.cronJobs.values()) job.stop();
     this.cronJobs.clear();
+    for (const timer of this.endTimers.values()) clearTimeout(timer);
+    this.endTimers.clear();
     if (this.staleTimer) {
       clearInterval(this.staleTimer);
       this.staleTimer = null;
@@ -495,6 +559,14 @@ export class AutomationEngineService {
     const a = (this.index.get('trigger.schedule') ?? []).find((x) => x.id === automationId);
     if (!a) return 0;
     const now = this.now();
+    // Start/end window (#5515): a tick before the start is not a fire and
+    // writes no run-log row; a tick at or after the end turns the rule off.
+    const window = readScheduleWindow(a.triggerNode.params as Record<string, unknown> | undefined);
+    if (window.startMs !== null && now < window.startMs) return 0;
+    if (window.endMs !== null && now >= window.endMs) {
+      this.endTimedAutomation(a.id);
+      return 0;
+    }
     const ctx = buildScheduleContext(null, now);
     const traced = automationTraceBus.activeCount() > 0 && automationTraceBus.isTracing(a.id, now);
     const gate = this.cooldownGate(a, ctx, now);
