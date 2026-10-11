@@ -121,6 +121,10 @@ The message trigger can filter on text (substring or regex) and on the **channel
 by **channel name** rather than raw slot index: the same logical channel can sit in a different slot
 on different sources, so a name match is portable across your whole mesh.
 
+A channel that MeshMonitor decrypts with a **Channel Database** key (every channel on an MQTT
+source, for example) takes its name from that Channel Database entry. So `LongFast` matches, and
+`{{ trigger.channelName }}` reads `LongFast`, even though the source has no channel slot for it.
+
 - **On channels** *(multi-select)* — pick one or more channels (unified by name across your
   sources). The trigger fires when a message arrives on **any** of the selected channels — an
   OR-list — so a single automation can cover "channel A **or** channel C" without a separate copy

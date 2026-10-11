@@ -11,10 +11,32 @@ import { getCachedSignFlipContext, correctLatLon } from '../signFlipCorrection.j
 import { sourceManagerRegistry } from '../../sourceManagerRegistry.js';
 import { isAnyMeshCoreSourceType } from '../../../utils/nodeTypeCategory.js';
 import { isMeshCoreManager } from '../../sourceManagerTypes.js';
+import { CHANNEL_DB_OFFSET } from '../../constants/meshtastic.js';
 import { isOwnNodeNum as isOwnedByAnySource, isOwnPublicKey as isOwnedPubkeyByAnySource } from '../../utils/ownNodes.js';
 
 function nodeIdOf(nodeNum: number): string {
   return `!${(nodeNum >>> 0).toString(16).padStart(8, '0')}`;
+}
+
+/**
+ * Name of a virtual channel (#5738). A message decrypted with a Channel
+ * Database key is stored on channel `CHANNEL_DB_OFFSET + id`, which has no row
+ * in the per-source `channels` table. An MQTT source has no channel rows at
+ * all, so every one of its channels is named only here.
+ *
+ * Meshtastic rows only, and never for a MeshCore source: a MeshCore channel
+ * index is a device slot, not a Channel Database id.
+ */
+async function virtualChannelName(sourceId: string | null, channelIndex: number): Promise<string | null> {
+  if (!Number.isInteger(channelIndex) || channelIndex < CHANNEL_DB_OFFSET) return null;
+  if (sourceId) {
+    const source = await databaseService.sources.getSource(sourceId);
+    if (source && isAnyMeshCoreSourceType(source.type)) return null;
+  }
+  const entry = await databaseService.channelDatabase.getByIdAsync(channelIndex - CHANNEL_DB_OFFSET);
+  if (!entry || (entry.protocol ?? 'meshtastic') !== 'meshtastic') return null;
+  const name = (entry.name ?? '').trim();
+  return name || null;
 }
 
 export function createMeshNodeDataProvider(): NodeDataProvider {
@@ -67,7 +89,10 @@ export function createMeshNodeDataProvider(): NodeDataProvider {
     async getChannelName(sourceId, channelIndex) {
       try {
         const ch = await databaseService.channels.getChannelById(channelIndex, sourceId ?? undefined);
-        return ch?.name ?? null;
+        // A stored row wins, blank name included: '' is the unnamed primary
+        // slot and a legitimate filter target (#4507).
+        if (ch) return ch.name ?? null;
+        return await virtualChannelName(sourceId, channelIndex);
       } catch {
         return null;
       }
