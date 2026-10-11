@@ -41,7 +41,9 @@ export function parseMentionState(raw: string | null | undefined, now: number): 
     if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
     const out: MentionState = {};
     for (const [key, at] of Object.entries(parsed as Record<string, unknown>)) {
-      if (typeof at === 'number' && Number.isFinite(at) && at <= now && now - at < MENTION_COOLDOWN_MS) out[key] = at;
+      // A stamp slightly ahead of `now` (the clock stepped back) still counts:
+      // dropping it would reopen the window. One a full period ahead is junk.
+      if (typeof at === 'number' && Number.isFinite(at) && Math.abs(now - at) < MENTION_COOLDOWN_MS) out[key] = at;
     }
     return out;
   } catch {

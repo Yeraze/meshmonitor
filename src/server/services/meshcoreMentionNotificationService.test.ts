@@ -66,9 +66,13 @@ describe('mentionVenue / mentionSenderKey', () => {
 });
 
 describe('parseMentionState', () => {
-  it('keeps live entries and drops expired, future and malformed ones', () => {
-    const raw = JSON.stringify({ live: T0 - 1000, old: T0 - MENTION_COOLDOWN_MS, future: T0 + 5, bad: 'x' });
+  it('keeps live entries and drops expired, far-future and malformed ones', () => {
+    const raw = JSON.stringify({ live: T0 - 1000, old: T0 - MENTION_COOLDOWN_MS, farFuture: T0 + MENTION_COOLDOWN_MS, bad: 'x' });
     expect(parseMentionState(raw, T0)).toEqual({ live: T0 - 1000 });
+  });
+
+  it('a stamp just ahead of the clock still holds the window (clock stepped back)', () => {
+    expect(parseMentionState(JSON.stringify({ ahead: T0 + 30_000 }), T0)).toEqual({ ahead: T0 + 30_000 });
     expect(parseMentionState('not json', T0)).toEqual({});
     expect(parseMentionState('[1]', T0)).toEqual({});
   });
