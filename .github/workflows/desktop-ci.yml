@@ -58,6 +58,10 @@ jobs:
         run: npm install --legacy-peer-deps
 
       - name: Build frontend
+        # Vite needs more than the ~2 GB default heap of the macOS runners
+        # (the build ran out of memory there at v4.17.0-rc9).
+        env:
+          NODE_OPTIONS: --max-old-space-size=4096
         run: npm run build
 
       # Fails when the entry stylesheet lacks the theme rules (#5558: the
@@ -165,6 +169,10 @@ jobs:
         run: npm install --legacy-peer-deps
 
       - name: Build frontend
+        # Vite needs more than the ~2 GB default heap of the macOS runners
+        # (the build ran out of memory there at v4.17.0-rc9).
+        env:
+          NODE_OPTIONS: --max-old-space-size=4096
         run: npm run build
 
       # Fails when the entry stylesheet lacks the theme rules (#5558: the
@@ -271,6 +279,10 @@ jobs:
         run: npm install --legacy-peer-deps
 
       - name: Build frontend
+        # Vite needs more than the ~2 GB default heap of the macOS runners
+        # (the build ran out of memory there at v4.17.0-rc9).
+        env:
+          NODE_OPTIONS: --max-old-space-size=4096
         run: npm run build
 
       # Fails when the entry stylesheet lacks the theme rules (#5558: the
