@@ -31,6 +31,9 @@ import { createMeshNodeDataProvider } from '../services/automation/meshNodeData.
 import { unifyChannels, sourceProtocol } from '../services/automation/channelUnify.js';
 import { estimateHomeFromNodeHistory } from '../services/automation/leftHomeFromHistory.js';
 
+import { validateCron, cronMinGapMs } from '../utils/cronScheduler.js';
+import { readScheduleWindow, scheduleMinIntervalMs, SCHEDULE_MIN_INTERVAL_MS, SCHEDULE_MIN_INTERVAL_MINUTES } from '../../types/scheduleWindow.js';
+
 const router = Router();
 
 const canRead = requirePermission('automations', 'read');
@@ -44,7 +47,45 @@ function validateConfig(raw: unknown): { ok: true; json: string; warnings: strin
   }
   const result = validateAutomationGraph(parsed);
   if (!result.valid) return { ok: false, errors: result.errors };
+  const cronErrors = scheduleCronErrors(result.graph);
+  if (cronErrors.length > 0) return { ok: false, errors: cronErrors };
   return { ok: true, json: JSON.stringify(result.graph), warnings: result.warnings ?? [] };
+}
+
+/**
+ * Minimum interval of a scheduled rule (#5515). One fire sends to every chosen
+ * channel on every chosen source, so a cron that fires every minute is a
+ * flood. Checked here, at save, because it needs the cron parser, which the
+ * browser does not ship. A rule saved before the limit keeps running; it just
+ * cannot be saved, imported or duplicated again without slowing down.
+ *
+ * A rule whose only actions are scheduled path traces (#5723) may tick each
+ * minute: see scheduleMinIntervalMs.
+ */
+export function scheduleCronErrors(graph: { nodes: Array<{ id: string; type: string; params?: Record<string, unknown> }> } | undefined): string[] {
+  const errors: string[] = [];
+  const minMs = scheduleMinIntervalMs(graph?.nodes ?? []);
+  for (const n of graph?.nodes ?? []) {
+    if (n.type !== 'trigger.schedule') continue;
+    const cron = typeof n.params?.cron === 'string' ? n.params.cron.trim() : '';
+    if (!cron) continue; // an unset cron is never scheduled; the builder flags it
+    const timezone = readScheduleWindow(n.params).timeZone ?? undefined;
+    if (!validateCron(cron)) {
+      errors.push(`trigger.schedule "${n.id}": "${cron}" is not a valid cron expression`);
+      continue;
+    }
+    const gap = cronMinGapMs(cron, { timezone });
+    if (gap !== null && gap < minMs) {
+      const minimum = minMs === SCHEDULE_MIN_INTERVAL_MS
+        ? `every ${SCHEDULE_MIN_INTERVAL_MINUTES} minutes`
+        : `every ${Math.round(minMs / 1000)} s`;
+      errors.push(
+        `trigger.schedule "${n.id}": "${cron}" fires every ${Math.max(1, Math.round(gap / 1000))} s at its fastest; ` +
+        `the minimum is ${minimum}`,
+      );
+    }
+  }
+  return errors;
 }
 
 /**
@@ -348,6 +389,12 @@ router.post('/:id/duplicate', canWrite, async (req: Request, res: Response) => {
     }
     const name = rawName.length > 0 ? rawName : `${source.name} (copy)`;
     if (!(await checkForwardingTogglePermission(req, res, source.config))) return;
+    // A copy is a new rule, so it must meet the schedule minimum (#5515) even
+    // when the original predates it.
+    let sourceGraph: Parameters<typeof scheduleCronErrors>[0];
+    try { sourceGraph = JSON.parse(source.config); } catch { sourceGraph = undefined; }
+    const cronErrors = scheduleCronErrors(sourceGraph);
+    if (cronErrors.length > 0) return fail(res, 400, 'SCHEDULE_TOO_FREQUENT', cronErrors.join('; '));
     // Duplicates land DISABLED so the user reviews before flipping them on
     // (mirrors the /import path). Uniqueness on `name` is not enforced by the
     // table, matching the plain POST / handler, so no collision check here.

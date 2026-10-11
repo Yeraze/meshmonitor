@@ -42,3 +42,29 @@ export function scheduleCron(
     timezone: options?.timezone,
   }, callback);
 }
+
+/**
+ * Shortest gap between consecutive fires of a cron, in ms, or null when the
+ * expression is invalid or fires fewer than twice. Sampled over the next
+ * `sample` fires from `from`: a cron repeats its pattern daily or hourly, so
+ * a short gap shows up well inside that.
+ */
+export function cronMinGapMs(expression: string, options?: { timezone?: string; from?: Date; sample?: number }): number | null {
+  let job: Cron;
+  try {
+    job = new Cron(expression, { paused: true, timezone: options?.timezone }, () => {});
+  } catch {
+    return null;
+  }
+  try {
+    const runs = job.nextRuns(options?.sample ?? 300, options?.from ?? new Date());
+    let min: number | null = null;
+    for (let i = 1; i < runs.length; i++) {
+      const gap = runs[i].getTime() - runs[i - 1].getTime();
+      if (min === null || gap < min) min = gap;
+    }
+    return min;
+  } finally {
+    job.stop();
+  }
+}
