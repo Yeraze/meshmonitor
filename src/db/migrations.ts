@@ -220,6 +220,7 @@ import { migration as createPkiExchangeStateMigration, runMigration198Postgres, 
 import { migration as createMapMarkersMigration, runMigration199Postgres, runMigration199Mysql } from '../server/migrations/199_create_map_markers.js';
 import { migration as aircraftManualMarkMigration, runMigration200Postgres, runMigration200Mysql } from '../server/migrations/200_add_node_aircraft_manual_mark.js';
 import { migration as createMeshcoreHopSnrMigration, runMigration201Postgres, runMigration201Mysql } from '../server/migrations/201_create_meshcore_hop_snr.js';
+import { migration as addNotifyOnMentionMigration, runMigration202Postgres, runMigration202Mysql } from '../server/migrations/202_add_notify_on_mention.js';
 
 // ============================================================================
 // Registry
@@ -3256,4 +3257,18 @@ registry.register({
   sqlite: (db) => createMeshcoreHopSnrMigration.up(db),
   postgres: (client) => runMigration201Postgres(client),
   mysql: (pool) => runMigration201Mysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 202: notify_on_mention. PER-SOURCE (user_notification_preferences row).
+// Opt-in alert when a MeshCore message names the source's own node as @[Name].
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 202,
+  name: 'add_notify_on_mention',
+  settingsKey: 'migration_202_add_notify_on_mention',
+  sqlite: (db) => addNotifyOnMentionMigration.up(db),
+  postgres: (client) => runMigration202Postgres(client),
+  mysql: (pool) => runMigration202Mysql(pool),
 });

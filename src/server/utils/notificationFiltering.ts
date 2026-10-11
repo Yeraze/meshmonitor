@@ -48,6 +48,8 @@ export interface NotificationPreferences {
   notifyOnServerEvents: boolean;
   /** Waypoint arrival alerts (#4750) — see the repository's mirror of this type. */
   notifyOnWaypoint: boolean;
+  /** MeshCore `@[Name]` mentions of the source's own node. */
+  notifyOnMention: boolean;
   waypointRadiusKm: number;
   waypointCenterLat: number | null;
   waypointCenterLon: number | null;
@@ -151,6 +153,7 @@ async function readLegacyPreferencesBlobAsync(userId: number): Promise<Notificat
       // Waypoint alerts postdate the legacy blob entirely, so there is
       // nothing to read back — they are off until the user opts in (#4750).
       notifyOnWaypoint: boolOr(oldPrefs.notifyOnWaypoint, d.notifyOnWaypoint),
+      notifyOnMention: boolOr(oldPrefs.notifyOnMention, d.notifyOnMention),
       waypointRadiusKm: numOr(oldPrefs.waypointRadiusKm, d.waypointRadiusKm),
       waypointCenterLat: typeof oldPrefs.waypointCenterLat === 'number' ? oldPrefs.waypointCenterLat : null,
       waypointCenterLon: typeof oldPrefs.waypointCenterLon === 'number' ? oldPrefs.waypointCenterLon : null,

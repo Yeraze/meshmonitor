@@ -6783,6 +6783,8 @@
   "config_search.filter_notifications": "Search notification settings...",
   "config_search.filter_admin": "Search admin sections...",
   "notifications.notify_on_waypoint": "Waypoint arrivals",
+  "notifications.notify_on_mention": "Mentions",
+  "notifications.notify_on_mention_help": "Notify when a channel message or room post names this source's node as @[Name]. At most one alert per sender every 5 minutes. Direct messages are not checked.",
   "notifications.waypoint_radius_label": "Alert within",
   "notifications.waypoint_center_label": "Measured from",
   "notifications.waypoint_center_lat_placeholder": "latitude",

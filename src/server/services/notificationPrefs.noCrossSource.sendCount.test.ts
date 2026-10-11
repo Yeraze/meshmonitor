@@ -94,6 +94,7 @@ const USER_1_ROW_ON_A = {
   lowBatteryVoltageThreshold: 3300,
   notifyOnServerEvents: true,
   notifyOnWaypoint: false,
+  notifyOnMention: false,
   waypointRadiusKm: 10,
   waypointCenterLat: null,
   waypointCenterLon: null,

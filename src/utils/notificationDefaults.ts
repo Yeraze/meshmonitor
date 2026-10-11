@@ -31,6 +31,8 @@ export interface NotificationPreferenceDefaults {
   lowBatteryVoltageThreshold: number;
   notifyOnServerEvents: boolean;
   notifyOnWaypoint: boolean;
+  /** MeshCore `@[Name]` mentions of the source's own node. Opt-in. */
+  notifyOnMention: boolean;
   waypointRadiusKm: number;
   waypointCenterLat: number | null;
   waypointCenterLon: number | null;
@@ -71,6 +73,7 @@ export function defaultNotificationPreferences(): NotificationPreferenceDefaults
     lowBatteryVoltageThreshold: 3300,
     notifyOnServerEvents: false,
     notifyOnWaypoint: false,
+    notifyOnMention: false,
     waypointRadiusKm: 10,
     waypointCenterLat: null,
     waypointCenterLon: null,
