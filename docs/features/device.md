@@ -1385,6 +1385,14 @@ Configure the store-and-forward module to cache and replay messages for nodes th
 
 - [Meshtastic Store and Forward Module](https://meshtastic.org/docs/configuration/module/store-and-forward/)
 
+## Status Message
+
+The **Status Message** section, and the quick-status pill in the header, set the short status text your node sends to the mesh (firmware 2.7.20+, up to 79 bytes). The node applies it without a reboot and sends it about every 12 hours.
+
+MeshMonitor confirms the node took the status: after each save it reads the status back from the node and shows an error if the node holds something else or does not answer. Other module settings are not read back.
+
+That check covers the node's running config only. A status that vanishes after a reboot is a node-side save failure (seen on nRF52 nodes with Bluetooth up), which MeshMonitor cannot detect. Set the status again after the reboot.
+
 ## Security Configuration
 
 The **Security** section of Device Configuration shows the local node's public key and its private key (masked). The public key is what other nodes use to send you PKI-encrypted direct messages.

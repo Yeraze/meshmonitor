@@ -118,6 +118,7 @@ import { resolveBroadcastChannel } from './utils/resolveDestinationChannel.js';
 import { applyHomoglyphOptimization } from '../utils/homoglyph.js';
 import { PortNum, RoutingError, isPkiError, getRoutingErrorName, CHANNEL_DB_OFFSET, TransportMechanism, resolveRadioPacketTransport, isViaMqtt, MIN_TRACEROUTE_INTERVAL_MS, StoreForwardRequestResponse, getStoreForwardRequestResponseName, isUdpBroadcastEnabled, resolveHopLimit, PacketSignaturePolicy } from './constants/meshtastic.js';
 import { normalizeChannelRole } from './constants/channelRole.js';
+import { MODULE_FIELD_BY_ADMIN_TYPE } from './constants/configTypes.js';
 import { createRequire } from 'module';
 import { validateCron, scheduleCron, type CronJob } from './utils/cronScheduler.js';
 import {
@@ -142,7 +143,7 @@ import { ReliablePkiTracker, resolveReliablePkiMode } from './services/reliableP
 import { channelEncryptToRadio, resolveChannelKey, type RadioChannel } from './utils/channelEncryption.js';
 import { AdminTransactionService } from './services/adminTransactionService.js';
 import { FavoritesService } from './services/favoritesService.js';
-import { DeviceAdminService } from './services/deviceAdminService.js';
+import { DeviceAdminService, type SetModuleConfigOptions } from './services/deviceAdminService.js';
 import { RemoteAdminService } from './services/remoteAdminService.js';
 import { ConnState, dispatch, type SmContext } from './meshtastic/connectionStateMachine.js';
 import fs from 'fs';
@@ -156,6 +157,8 @@ const POST_RESET_COOLDOWN_MS = 5000;
 // busy serial bridge and stays far inside the HTTP request timeout.
 const SECURITY_CONFIG_ADMIN_TYPE = 7;
 const LOCAL_SECURITY_READ_TIMEOUT_MS = 5000;
+// Same budget for a local module-config read (#5745).
+const LOCAL_MODULE_READ_TIMEOUT_MS = 5000;
 const TCP_READY_TIMEOUT_MS = 15000;
 const TCP_READY_INTERVAL_MS = 500;
 const TCP_READY_CONNECT_TIMEOUT_MS = 1500;
@@ -1191,6 +1194,10 @@ class MeshtasticManager implements ISourceManager {
   private pendingModuleConfigRequests: Map<number, string> = new Map();
   // Callers of refreshLocalSecurityConfig() waiting on the device's answer
   private localSecurityConfigWaiters: Array<(security: RawSecurityConfig | null) => void> = [];
+  // Callers of readLocalModuleConfig() waiting on the device's answer, by
+  // moduleConfig field name ('statusmessage', ...). Settled by
+  // processAdminMessage, by their own timeout, or by a disconnect (#5745).
+  private localModuleConfigWaiters: Map<string, Array<(section: Record<string, unknown> | null) => void>> = new Map();
   // Track whether module configs have ever been fetched this process lifetime (skip on reconnect)
   private moduleConfigsEverFetched: boolean = false;
   // Per-node channel storage for remote nodes
@@ -2481,6 +2488,8 @@ class MeshtasticManager implements ISourceManager {
   private async handleDisconnected(): Promise<void> {
     // A waiting auto-ack must not fire into a dead (or a later, new) link.
     this.clearPendingAutoAcks();
+    // Nor will a module-config read get its answer (#5745).
+    this.cancelLocalModuleConfigWaiters();
     logger.debug('TCP connection lost');
 
     // Losing the link mid-sync means the whole NodeDB stream restarts from
@@ -14650,6 +14659,7 @@ class MeshtasticManager implements ISourceManager {
             const responseKeys = Object.keys(moduleConfigResponse).filter(k => k !== 'payloadVariant' && moduleConfigResponse[k] !== undefined);
             responseKeys.forEach((key) => {
               this.actualModuleConfig[key] = moduleConfigResponse[key];
+              this.settleLocalModuleConfigWaiters(key, moduleConfigResponse[key] ?? {});
             });
 
             // Proto3 omits all-default fields, so an empty response means the
@@ -14666,6 +14676,9 @@ class MeshtasticManager implements ISourceManager {
                 }
                 this.pendingModuleConfigRequests.delete(localNodeKey);
                 this.pendingModuleConfigRequests.delete(fromNum);
+                // The node's answer is "all defaults": hand a waiting reader
+                // that, not the (possibly older) cached section.
+                this.settleLocalModuleConfigWaiters(pendingKey, {});
               }
             }
           }
@@ -15185,6 +15198,59 @@ class MeshtasticManager implements ISourceManager {
   }
 
   /**
+   * Read one module config from the LOCAL node, now, and wait for the answer
+   * (#5745). Sends the same `get_module_config_request` as
+   * `requestModuleConfig`; `processAdminMessage` merges the reply into
+   * `actualModuleConfig` and wakes this caller with the section.
+   *
+   * One admin packet over the local link. Nothing goes on air.
+   *
+   * @returns the module section the node returned (`{}` when every field is
+   *          default), or null when the node did not answer in time, the
+   *          request could not be sent, or the link dropped. Null means
+   *          "unknown", not "defaults".
+   */
+  async readLocalModuleConfig(configType: number, timeoutMs: number = LOCAL_MODULE_READ_TIMEOUT_MS): Promise<Record<string, unknown> | null> {
+    const key = MODULE_FIELD_BY_ADMIN_TYPE[configType];
+    if (!key) {
+      return null;
+    }
+    let settle: (section: Record<string, unknown> | null) => void = () => {};
+    const answer = new Promise<Record<string, unknown> | null>((resolve) => {
+      const timer = setTimeout(() => settle(null), timeoutMs);
+      settle = (section: Record<string, unknown> | null) => {
+        clearTimeout(timer);
+        const rest = (this.localModuleConfigWaiters.get(key) ?? []).filter((w) => w !== settle);
+        if (rest.length > 0) {
+          this.localModuleConfigWaiters.set(key, rest);
+        } else {
+          this.localModuleConfigWaiters.delete(key);
+        }
+        resolve(section);
+      };
+    });
+    this.localModuleConfigWaiters.set(key, [...(this.localModuleConfigWaiters.get(key) ?? []), settle]);
+    try {
+      await this.requestModuleConfig(configType);
+    } catch (error) {
+      logger.warn(`[MeshtasticManager:${this.sourceId}] Could not request local ${key} module config:`, error);
+      settle(null);
+    }
+    return answer;
+  }
+
+  /** Wake every readLocalModuleConfig() caller waiting on `key`. */
+  private settleLocalModuleConfigWaiters(key: string, section: Record<string, unknown> | null): void {
+    // Each waiter removes itself from the map; iterate a copy.
+    [...(this.localModuleConfigWaiters.get(key) ?? [])].forEach((settle) => settle(section));
+  }
+
+  /** The link is gone: no answer is coming. Settle every waiter as "unknown". */
+  private cancelLocalModuleConfigWaiters(): void {
+    [...this.localModuleConfigWaiters.keys()].forEach((key) => this.settleLocalModuleConfigWaiters(key, null));
+  }
+
+  /**
    * Request config from a remote node
    * @param destinationNodeNum The remote node number
    * @param configType The config type to request (DEVICE_CONFIG=0, LORA_CONFIG=5, etc.)
@@ -15429,8 +15495,8 @@ class MeshtasticManager implements ISourceManager {
    * Handles: extnotif, storeforward, rangetest, cannedmsg, audio,
    * remotehardware, detectionsensor, paxcounter, serial, ambientlighting
    */
-  async setGenericModuleConfig(moduleType: string, config: any): Promise<void> {
-    return this.deviceAdminService.setGenericModuleConfig(moduleType, config);
+  async setGenericModuleConfig(moduleType: string, config: any, options?: SetModuleConfigOptions): Promise<void> {
+    return this.deviceAdminService.setGenericModuleConfig(moduleType, config, options);
   }
 
   /**
