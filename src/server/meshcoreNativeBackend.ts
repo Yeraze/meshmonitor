@@ -30,6 +30,12 @@ import {
 import { meshcorePayloadTypeNameOrNull } from '../utils/meshcorePacketDecode.js';
 import { meshCorePacketHashOrUndefined } from './services/meshcoreObserverPacket.js';
 import {
+  parseTraceDataPush,
+  traceDataEventFromPush,
+  type TraceDataBufferReader,
+  type TraceDataResponse,
+} from '../utils/meshcoreTrace.js';
+import {
   deriveMeshCoreChannelHash,
   groupTextBodyMatchesRecv,
   tryDecodeGroupTextPayload,
@@ -63,50 +69,6 @@ interface LoginSuccessFields {
 // out by calling `__setMeshCoreModule(...)`. The default load path is the
 // upstream package; a workspace clone can be aliased via package.json.
 type AnyConnection = any;
-
-/** meshcore.js's internal BufferReader surface, as used by our corrected
- * TraceData(0x89) push parser (see the `trace_path` dispatch case). */
-interface TraceDataBufferReader {
-  readByte(): number;
-  readUInt8(): number;
-  readUInt32LE(): number;
-  readBytes(count: number): Uint8Array;
-  readInt8(): number;
-}
-
-/** Parsed CMD_SEND_TRACE_PATH reply, correcting the pinned meshcore.js's
- * `pathSnrs` over-read for multi-byte hop hashes (#4786). */
-interface TraceDataResponse {
-  reserved: number;
-  pathLen: number;
-  flags: number;
-  tag: number;
-  authCode: number;
-  pathHashes: Uint8Array;
-  pathSnrs: Uint8Array;
-  lastSnr: number;
-}
-
-/**
- * Corrected TraceData(0x89) push parser. The pinned meshcore.js reads
- * `pathSnrs` as `pathLen` bytes (the raw hash byte count) instead of the hop
- * count (`pathLen >> path_sz`), so a 2-byte-hop reply over-reads into
- * `lastSnr` and desyncs (#4786). Installed for the whole session since #5722,
- * so traces this radio merely overhears parse correctly too.
- */
-function parseTraceDataPush(bufferReader: TraceDataBufferReader): TraceDataResponse {
-  const reserved = bufferReader.readByte();
-  const pathLen = bufferReader.readUInt8();
-  const flags = bufferReader.readUInt8();
-  const pathSz = flags & 0x03;
-  const tag = bufferReader.readUInt32LE();
-  const authCode = bufferReader.readUInt32LE();
-  const pathHashes = bufferReader.readBytes(pathLen);
-  const hopCount = pathSz > 0 ? pathLen >> pathSz : pathLen;
-  const pathSnrs = bufferReader.readBytes(hopCount);
-  const lastSnr = bufferReader.readInt8() / 4;
-  return { reserved, pathLen, flags, tag, authCode, pathHashes, pathSnrs, lastSnr };
-}
 
 /** How long a trace tag this backend sent is remembered as "ours" (#5722). */
 const OWN_TRACE_TAG_TTL_MS = 5 * 60_000;
@@ -855,18 +817,7 @@ export class MeshCoreNativeBackend extends EventEmitter {
         try {
           const now = Date.now();
           for (const [t, until] of this.ownTraceTags) if (until <= now) this.ownTraceTags.delete(t);
-          const hashBytes = 1 << (trace.flags & 0x03);
-          this.emitBridgeEvent('trace_data', {
-            tag: trace.tag >>> 0,
-            auth_code: trace.authCode >>> 0,
-            flags: trace.flags,
-            hash_bytes: hashBytes,
-            path_hashes_hex: bytesToHex(trace.pathHashes),
-            // Per-hop SNR in signed quarter-dB (the wire unit).
-            path_snrs_q: Array.from(trace.pathSnrs, (b) => (b << 24) >> 24),
-            last_snr_q: Math.round(trace.lastSnr * 4),
-            initiated: this.ownTraceTags.has(trace.tag >>> 0),
-          });
+          this.emitBridgeEvent('trace_data', traceDataEventFromPush(trace, this.ownTraceTags.has(trace.tag >>> 0)));
         } catch (err) {
           logger.debug(`[MeshCoreNative:${this.sourceId}] trace_data push ignored: ${(err as Error).message}`);
         }
