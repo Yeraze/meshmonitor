@@ -461,7 +461,12 @@ Toggle path visibility from the map toolbar. Paths are populated by the **Discov
 
 ## Trace SNR History
 
-A MeshCore trace records, for every hop on its path, how well each node heard the one before it. MeshMonitor stores these per-hop readings from **every completed trace your companion radio hears**: the replies to traces you send from a contact's page, and traces other nodes run that finish within range of your radio. It sends nothing to collect them.
+A MeshCore trace records, for every hop on its path, how well each node heard the one before it. MeshMonitor stores these per-hop readings from **every trace your source's radio hears**. It sends nothing to collect them.
+
+Both MeshCore source types fill it:
+
+- **Companion** — every completed trace the radio reports: the replies to traces you send from a contact's page, and traces other nodes run that finish within range of your radio.
+- **Repeater** — every trace packet in the repeater's serial packet log, at whatever point of its trip the repeater heard it. This needs a firmware build that logs packets (`MESH_PACKET_LOGGING`), the same one the [Packet Monitor](#packet-monitor) needs on a repeater. A repeater source cannot send a trace, so all of its readings are overheard.
 
 Open a contact in **Node Details** to see **Trace SNR history**: one row per link direction, with the latest SNR, the average and range, the number of samples and a small trend line.
 
@@ -471,7 +476,13 @@ Open a contact in **Node Details** to see **Trace SNR history**: one row per lin
 - **Per source.** Each source keeps what its own radio heard. Reading the history needs **Traceroute: read** on that source.
 - **Kept for 90 days.** Included in system backups. Deleted with the source.
 
-Only companion sources collect this (a repeater's serial console and MQTT ingest sources do not report traces).
+What a repeater source stores from a trace it hears part-way:
+
+- **Only the hops that have reported.** A trace packet gains one SNR at each hop. A copy heard after two of five hops holds two readings, and MeshMonitor stores those two. If the repeater hears later copies of the same trace, it adds the new hops and stores no link twice.
+- **The link into the repeater itself.** Whichever hop sent the copy, the repeater heard that hop, so that reading is stored as "this node heard that hop". The repeater's log gives this SNR in whole dB; the readings inside the packet are in quarter dB.
+- **Not the first leg.** A copy heard straight from the node that started the trace names no sender, so the repeater's own reading of it is dropped.
+
+MQTT ingest sources do not collect trace readings.
 
 ## Position History
 

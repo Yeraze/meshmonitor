@@ -1,7 +1,8 @@
 /**
  * Drizzle schema for `meshcore_hop_snr` (issue #5722).
  *
- * One row per hop of a MeshCore TRACE the source's companion radio heard: the
+ * One row per hop of a MeshCore TRACE the source's radio heard (a Companion's
+ * TraceData push, or a TRACE in a Repeater's serial packet log, #5742): the
  * SNR at which the hop's RECEIVER heard its SENDER. It is directional — "A
  * heard B at X dB" says nothing about how B hears A.
  *
