@@ -60,6 +60,19 @@ Nodes map, the Dashboard map, and the Map Analysis canvas.
 See [Interactive Maps](/features/maps#atak-contacts) for how ATAK contacts
 fit alongside the other map layers.
 
+## TAK team and role on your own node
+
+Firmware 2.8.0 added a TAK module config with two settings: the **Team**
+colour and the **Role** a node reports to TAK clients. MeshMonitor edits both
+in the **TAK** section of Device Configuration, and in the same section of the
+Admin Commands tab for a remote node. Older firmware drops the settings
+without saving, so the section shows as unsupported there.
+
+The node sends its team and role only when its device role is
+**TAK_TRACKER**. With any other device role the values are stored but not
+used. Saving reboots the node. See
+[TAK Configuration](/features/device#tak-configuration) for the option lists.
+
 ## ATAK V2 decoding (portnum 78)
 
 The V2 protocol (`TAKPacketV2`, used by the official plugin for rich CoT —
@@ -143,7 +156,7 @@ been overridden and marked private, it is excluded from the feed entirely.
 
 ### Enabling the feed
 
-1. Sign in as an admin and open **Settings → ATAK / CoT Feed**.
+1. Sign in as an admin and open **Global Settings → ATAK / CoT Feed**.
 2. Check **Enable CoT feed**.
 3. Set **Feed port** (default `8088`).
 4. Save. The feed binds on `0.0.0.0:<port>` inside the container immediately
@@ -198,7 +211,7 @@ volumes:
 ```
 
 The CoT feed is off by default — publish the port in your compose file, then
-enable it in **Settings → ATAK / CoT Feed** as described above.
+enable it in **Global Settings → ATAK / CoT Feed** as described above.
 
 ### Kubernetes/Helm Example
 
@@ -214,4 +227,4 @@ service:
       targetPort: 8088
 ```
 
-After the pod starts, open **Settings → ATAK / CoT Feed** and enable it.
+After the pod starts, open **Global Settings → ATAK / CoT Feed** and enable it.

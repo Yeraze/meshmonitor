@@ -57,7 +57,7 @@ When security issues are detected, nodes are flagged with warning indicators thr
 ```bash
 # docker-compose.yml or environment configuration
 environment:
-  - DUPLICATE_KEY_SCAN_INTERVAL_HOURS=24  # Adjust scan frequency (1-168 hours)
+  - DUPLICATE_KEY_SCAN_INTERVAL_HOURS=24  # Scan frequency in hours
 ```
 
 ### Combined Detection
@@ -196,15 +196,15 @@ Trigger a manual scan for duplicate keys:
 POST /api/nodes/scan-duplicate-keys
 ```
 
-**Authentication**: Requires `nodes:write` permission
+**Authentication**: Requires `nodes:write` permission. The scan covers the Meshtastic sources you can write to, and looks for duplicates within each source, never across sources.
 
 **Response**:
 ```json
 {
   "success": true,
-  "message": "Duplicate key scan completed",
-  "flaggedNodes": 8,
-  "duplicateGroups": 2
+  "duplicatesFound": 2,
+  "affectedNodes": [305419896, 2271560481],
+  "totalNodesScanned": 156
 }
 ```
 
@@ -218,8 +218,10 @@ POST /api/nodes/scan-duplicate-keys
 Retrieve all nodes currently flagged with security issues:
 
 ```bash
-GET /api/security/issues
+GET /api/security/issues?sourceId=<source id>
 ```
+
+**Authentication**: Requires `security:read` permission. The `sourceId` query parameter is required.
 
 **Response**:
 ```json
@@ -314,14 +316,14 @@ GET /api/security/issues
 
 **Solutions**:
 - Check server logs for `🔐` emoji messages
-- Verify the scanner started: Look for "Starting duplicate key scanner"
+- Verify the scanner started: Look for "Starting security scanner"
 - Check environment variable `DUPLICATE_KEY_SCAN_INTERVAL_HOURS`
 - Restart the server to reinitialize the scanner
 
 **Diagnostic Commands**:
 ```bash
-# Get nodes with security issues
-curl http://localhost:8080/api/security/issues
+# Get nodes with security issues (send your session cookie or API token)
+curl "http://localhost:8080/api/security/issues?sourceId=<source id>"
 
 # View scanner logs (Docker)
 docker logs meshmonitor 2>&1 | grep "🔐"
@@ -337,7 +339,7 @@ curl -X POST http://localhost:8080/api/nodes/scan-duplicate-keys
 - Public keys are stored in the database for comparison
 - Key hashes are generated but not stored
 - No private keys are ever transmitted or stored
-- Security flags are visible to all authenticated users
+- Security flags show to anyone who can see the node. The `/api/security/issues` list needs `security:read`
 
 ### Performance Impact
 
@@ -353,6 +355,10 @@ curl -X POST http://localhost:8080/api/nodes/scan-duplicate-keys
 - Requires nodes to broadcast their public keys
 - Scanner only runs while server is running
 
+## Packet Authenticity (Protection Level)
+
+The checks above are MeshMonitor's own. Firmware 2.8.0 adds a control on the node itself: a packet signature policy that decides whether the node accepts packets it cannot prove came from their sender. MeshMonitor sets it with the **Protection Level** picker (Compatible, Balanced or Strict) in the Security section of Device Configuration and of the Admin Commands tab. See [Protection Level](/features/device#protection-level-packet-authenticity) before you raise it: Strict drops most traffic from nodes older than 2.8.
+
 ## Two-Factor Authentication (MFA)
 
 MeshMonitor supports TOTP-based two-factor authentication (MFA) for user accounts, adding an extra layer of security beyond username and password.
@@ -363,8 +369,8 @@ When MFA is enabled on an account, logging in requires both a password and a tim
 
 ### Setting Up MFA
 
-1. Navigate to **Settings > Security**
-2. Click **Enable MFA**
+1. Open the user menu (your username in the header) and choose **Two-Factor Auth**
+2. Click **Enable Two-Factor Authentication**
 3. Scan the QR code with your authenticator app (or manually enter the secret key)
 4. Enter the 6-digit verification code from your app to confirm setup
 5. Save the backup codes displayed after successful setup

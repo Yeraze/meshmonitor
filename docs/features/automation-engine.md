@@ -75,11 +75,11 @@ Every automation has exactly one trigger (the **WHEN**). Each trigger exposes a 
 | **A node enters/leaves a region** | A node crosses a geofence | `Enters` / `Leaves` / `Moves while inside (dwell)`, plus a map region editor |
 | **A watched node becomes mobile** | A hand-selected node flips from stationary → mobile | Multi-select of nodes (stationary candidates highlighted); MeshMonitor’s >100 m position-history heuristic |
 | **A watched node leaves its home position** | A hand-selected node moves farther than a threshold from its home/anchor | Multi-select of nodes, threshold in metres (default 300). Home is seeded from position-history inliers when available (else first live fix); while within half the threshold, home is gently averaged. Saved automations can **Reset homes from history** |
-| **A watched node's heartbeat is lost** | A hand-selected node stops being heard for longer than a per-node deadline | Multi-select of nodes; per-node timeout minutes (default 60); MeshCore parity |
-| **A watched node comes back after a heartbeat loss** | A watched node is heard again after its own lost-heartbeat alert fired | Pairs one-to-one with the loss trigger so a recovery automation only fires for nodes that had actually gone silent |
-| **A watched node rebooted** | An uptime reset is detected (uptime decreases without a matching graceful reboot) | Multi-select of nodes; suppresses matched self-triggered reboots so an automation-initiated `deviceReboot` doesn't re-fire the alert |
-| **A watched node's external power changed** | A node reports losing or restoring external power (voltage / power-source telemetry) | Multi-select of nodes; separate `lost` vs `restored` fires, both exposed as `{{ trigger.event }}` |
-| **A watched node's battery is trending down** | A node's battery drops through a threshold with a sustained negative slope over the window | Multi-select of nodes; threshold percent (default 25); window hours (default 24). Doubles as a solar underperformance proxy on nodes that normally recharge each day |
+| **A node goes silent (heartbeat lost)** | A node has not been heard for longer than the threshold. Checked about once a minute against every node on every source | `Silent for (minutes)`, required (the builder suggests 60). Fires once per node, then again only after the node is heard and goes silent once more. Meshtastic and MeshCore. Narrow it with **Source is one of…** |
+| **A silent node is heard again (recovery)** | A node that had been silent longer than the threshold is heard again | `Was silent for (minutes)`, required. Match it to the value on the paired "goes silent" rule. `{{ trigger.offlineDurationMinutes }}` gives the time offline |
+| **A node reboots unexpectedly** | A node's uptime counter drops (by more than 10 seconds) between two readings | No options. Read from uptime telemetry the node already sends, so no packet is sent. Never fires on a node's first reading. Any reboot counts, one you asked for included |
+| **A node switches power source (mains ↔ battery)** | A node crosses between external power and battery | `Direction`: **Either direction**, **Lost external power**, or **Regained external power**. `{{ trigger.direction }}` reads `lost` or `restored`. On MeshCore this is a guess from battery voltage (4.2 V or more counts as powered), so expect false alerts there |
+| **A node’s battery is steadily draining** | A node's battery level falls by at least a set amount across a lookback window. Checked about every 15 minutes | `Lookback window (hours)` and `Minimum drop (percentage points)`, both required (the builder suggests 12 and 20). Fires once per decline and re-arms when the battery recovers. Meshtastic only. A proxy for a solar node that is not charging |
 | **A node becomes a likely aircraft** | A node's reported altitude puts it more than the source's [likely-aircraft](/features/settings#likely-aircraft-detection) threshold above the terrain (or the sea-level fallback, when terrain elevation is unavailable) | Any node — narrow with a **Source is one of…** condition on a wide MQTT feed. Meshtastic only |
 
 ### Became mobile & left home (tamper / theft monitoring)
@@ -203,9 +203,8 @@ or polygon ray-cast). See also the dedicated [Geofence Triggers](/features/geofe
 
 ### Cooldown applies to
 
-The five triggers with a **Cooldown (seconds)** field — **A message is received**, **A new node is
-discovered**, **A node is updated**, **Telemetry is received**, and **A node enters/leaves a
-region** — also get a **Cooldown applies to** select, directly beneath it. It's hidden until you set
+Every trigger with a **Cooldown (seconds)** field, which is all of them except **On a schedule** and
+**A system event**, also gets a **Cooldown applies to** select, directly beneath it. It's hidden until you set
 a non-zero cooldown, and setting the cooldown back to `0` hides it again without losing your choice
 — the value is remembered if you raise the cooldown again later. (Schedule and System triggers have
 no cooldown field at all, so they get no scope field either.)
@@ -266,7 +265,7 @@ There's no dedicated field for this in the visual builder yet — set it via the
 (the builder's "advanced" JSON fallback, or JSON import/export). The [MT↔MC Bridge
 template](#template-gallery) sets a safe default (20 actions / 60 seconds) for you, exposed as a
 **Max relays per minute** field in its install wizard — see [Recipe — Meshtastic ↔ MeshCore
-bridge](#recipe-—-meshtastic-↔-meshcore-bridge).
+bridge](#recipe-mt-mc-bridge).
 
 ## Conditions
 
@@ -279,6 +278,7 @@ different set — this is how If / ElseIf / Else is built.
 | **Always (no filtering)** | A pass-through that always matches — use it when a rule should act unconditionally |
 | **Number comparison** | A numeric field (`==`, `!=`, `>`, `<`, `>=`, `<=`). Fields come from the event (e.g. hop count, SNR/RSSI, **is a direct message**, **arrived via MQTT**, **direct RF / 0 hops**), the hydrated **node** record (battery, hops away, role, position, age, …), or the node's **latest telemetry**. The value can be a literal or `{{ var.name }}` |
 | **Text comparison** | A string field (`contains`, `equals`, `starts with`, `ends with`, `matches regex`, `doesn't contain`, `is one of`, `isn't one of`) over message text, node name/role, node info completeness, etc. |
+| **MeshCore message scope** | A MeshCore message's region scope: **A specific region…** (one or more region names, with an optional **Also match unscoped**), **Unscoped (no region)**, or **Any scoped message**. Meshtastic messages never match |
 | **Source is one of…** | The **Source filter** — restricts the workflow to a chosen subset of sources (the "global but scopeable" knob). Leave empty to allow any source |
 | **Distance from a point** | The subject node is within / farther than *N* km of a reference lat/lon |
 | **Variable check** | Compares a [user-defined variable](#variables) against a literal or another value; with no operator it tests "is set / flag raised?" |
@@ -411,9 +411,10 @@ Sends text to a channel or as a DM, with full `{{ }}` token interpolation in the
   shown with **MC / MT badges**. The correct local slot is resolved per source, and a Meshtastic
   channel is never sent to a MeshCore source (and vice-versa). Disabled channel slots are excluded.
   Raw channel PSKs are never sent to the browser.
-- **DM to node #** — send as a direct message instead of to a channel (Meshtastic only — MeshCore
-  sends always go to a channel/region, never a DM-by-node). `{{ trigger.from }}` replies to the
-  sender.
+- **DM to node #** — send as a direct message instead of to a channel. On Meshtastic give a node
+  number; on MeshCore give the contact's public key. `{{ trigger.from }}` replies to the sender of
+  a Meshtastic message or a MeshCore DM. It does not work for a MeshCore channel post, which
+  carries no sender key.
 - **Reply to the triggering message** — on **Meshtastic** this threads the reply as a tapback (via
   the triggering packet id). MeshCore has no packet-id/thread concept on the wire, so on **MeshCore**
   this instead **auto-prepends the sender mention** `@[<senderLabel>]: ` to the outgoing text — the same
@@ -422,7 +423,7 @@ Sends text to a channel or as a DM, with full `{{ }}` token interpolation in the
   `{{ trigger.senderLabel }}` (sender name → channel name → id), so even an anonymous channel post
   still gets a sensible mention; if nothing at all can be resolved nothing is prepended, and if your
   text already begins with an `@[…]` mention it is left as-is (no double mention). See
-  [Universal message tokens](#universal-message-tokens-meshtastic--meshcore) — reference the sender via
+  [Universal message tokens](#universal-message-tokens) — reference the sender via
   `{{ trigger.senderLabel }}` / `{{ trigger.fromName }}`, not the raw `{{ trigger.from }}`.
 - **MeshCore scope** *(advanced; MeshCore sources only — ignored by Meshtastic)* — which region a
   MeshCore message floods to: **Inherit (channel / source default)**, **Match the triggering
@@ -554,6 +555,8 @@ Responder uses) when the automation fires.
     [Step results for this run](#step-results-for-this-run).
   - **A variable** — keep it after the run. Use a **`json`** typed variable and index into the
     result later with `{{ var.name.field }}` (see [Variables](#variables) and [Tokens](#tokens)).
+- **Timeout (seconds)** *(advanced, optional)* — how long the script may run. Blank uses the script
+  runner's default of 30 seconds.
 - A non-zero exit code is recorded as an action error on the run. Path-traversal protection, the
   interpreter pick, and the execution timeout are reused from the existing script runner.
 - **If the variable cannot take the result, the step fails.** That happens when the variable no
@@ -585,7 +588,7 @@ their own joke.
 
 1. **WHEN** *Message received*, **Text contains** `/joke`.
 2. **THEN** *Run a script* — **Script** `joke.py`, **Store result in** *This run only*, name `joke`.
-3. **THEN** *Send a message* — **Text** `{{ steps.joke.output }}`, with **Reply to the triggering
+3. **THEN** *Send a message* — **Message** `{{ steps.joke.output }}`, with **Reply to the triggering
    message** ticked.
 
 If `joke.py` prints `Why did the node cross the mesh?`, that line is the reply. If it prints
@@ -754,6 +757,22 @@ Airtime: every node within the hop limit rebroadcasts the waypoint. On a 30-node
 one send is about 30 transmissions, around 30 seconds of channel time at LongFast. At the
 30-minute limit that is under 2 % of the channel per waypoint. Hop limit 0 is one transmission.
 
+### Reboot the node
+
+Reboots the physical device, for example to restart a flaky BLE bridge or MQTT proxy each night.
+
+- **Reboot which node(s)** — the connected node(s) to reboot. Leave none to use the source that
+  triggered the automation. A source is required for Schedule and System triggers. MQTT sources
+  have no device and are left out.
+- **Remote target node #** *(advanced; Meshtastic only)* — blank reboots the connected node. A
+  node number or hex id (`!3ca956de`) reboots that remote node over the mesh by remote admin, so
+  the target must have granted admin access. On a MeshCore source a remote target is skipped.
+- **Reboot delay (seconds)** *(advanced; Meshtastic only)* — how long the device waits before it
+  reboots. Default 10.
+
+A reboot shows up as an uptime reset, so **A node reboots unexpectedly** fires for it like for any
+other reboot.
+
 ### Set a variable / flag
 
 Writes a **dynamic** [variable](#variables): **Set to value**, **Increment by**, **Raise flag**, or
@@ -788,20 +807,26 @@ The gallery ships with these templates today:
   a fixed feature toggle.
 - **MT↔MC Bridge** — relays channel text both ways between a Meshtastic channel and a MeshCore
   channel, tagged with its protocol of origin. See [Recipe — Meshtastic ↔ MeshCore
-  bridge](#recipe-—-meshtastic-↔-meshcore-bridge) below for the full walkthrough, including the
+  bridge](#recipe-mt-mc-bridge) below for the full walkthrough, including the
   flood-safety guidance you should read before enabling it.
-- **Device Health** — a one-click starter for the device-health trigger family (heartbeat lost /
-  recovered, node rebooted, external power changed, battery trending down). Pick the nodes you want
-  to watch and the wizard installs one automation per event, each pre-wired to send an Apprise
-  notification. Automations land disabled for review, so you can tune thresholds and add channels
-  before flipping them on. Works for both Meshtastic and MeshCore nodes.
+- **Device Health** — a one-click starter for node-health alerts: low battery or voltage, high
+  temperature, channel utilization or noise floor, a node gone silent or heard again, a reboot, lost
+  external power, and a steadily draining battery. Tick the alerts you want, and optionally limit
+  them to some sources or nodes (leave both empty to watch everything). The wizard installs one
+  automation per alert, each pre-wired to send an Apprise notification. Automations land disabled
+  for review, so you can tune thresholds before flipping them on. The silent and heard-again alerts
+  work for Meshtastic and MeshCore nodes; the reboot, power and draining-battery alerts are
+  Meshtastic only.
+- **Timed Announcement** — posts a message to the Meshtastic and MeshCore channels you pick, on a
+  repeat (every 5 minutes up to once a day), between a start and an end time. It turns itself off
+  when the event ends. See [Timed events](#timed-events-start-end-and-time-zone).
 
 Every template installs through the same [JSON import](#overview) path as a hand-exported automation
 (`POST /api/automations/import`), so it lands disabled, and a template that installs a **pair** of
 automations (like the Bridge) reports each one's install result separately — a partial failure on one
 automation doesn't silently swallow the other.
 
-## Recipe — per-channel range-test acks (issue #4340)
+## Recipe — per-channel range-test acks (issue #4340) {#recipe-per-channel-range-test-acks-issue-4340}
 
 A common base-station setup runs a busy **primary** community channel plus a quieter secondary
 channel (call it **RangeTest**) set aside for range testers. The operator wants an ack on the
@@ -894,7 +919,7 @@ Engine feature built for exactly that. Two short automations — one per channel
 would-be per-channel Auto-Acknowledge field, and the hop-count tapback carries the "how many hops
 did that take" signal for free, in its own packet, regardless of which text (if any) accompanies it.
 
-## Recipe — Meshtastic ↔ MeshCore bridge
+## Recipe — Meshtastic ↔ MeshCore bridge {#recipe-mt-mc-bridge}
 
 MeshMonitor can bridge **text messages** between a Meshtastic channel and a MeshCore channel — a
 message posted on one side is relayed to the other, tagged with where it came from. This is built
@@ -976,8 +1001,8 @@ existing bridge pair at a wider channel filter and hoping.
 ## Converting Auto-Acknowledge to an automation
 
 The legacy [Auto Acknowledge](/features/automation#auto-acknowledge) feature predates the engine and
-keeps working unchanged. A **Convert to an Automation…** button in its settings section (Info tab →
-**Auto Acknowledge**) turns an existing per-source configuration into one or two editable
+keeps working unchanged. A **Convert to an Automation…** button in its settings section (a
+source's **Automation** tab → **Auto Acknowledge**) turns an existing per-source configuration into one or two editable
 automations, so you can move to the engine without re-typing anything. The button is disabled with
 a tooltip while you have unsaved Auto Acknowledge edits — converting always uses the last **saved**
 configuration.
@@ -1127,7 +1152,7 @@ values, the set-variable value) accept **double-brace tokens**:
 | `{{ steps.name.output }}` / `{{ steps.name.ok }}` | The result a **Run a script** step stored for this run, and whether it ran; `{{ steps.name.output.field }}` for nested JSON. See [Step results for this run](#step-results-for-this-run) |
 | `{{ NOW }}` | The current time, rendered as a local `YYYY-MM-DD HH:mm:ss` |
 
-### Universal message tokens (Meshtastic + MeshCore)
+### Universal message tokens (Meshtastic + MeshCore) {#universal-message-tokens}
 
 A **message** trigger (`trigger.message`) fires on both protocols, so these tokens are **standardized**
 to mean the same thing on each — use them and your automation is portable:
@@ -1151,7 +1176,7 @@ which mesh" tag on a relayed message:
 
 renders as `MT@Alice: hello`. This is exactly the pattern the [MT↔MC Bridge
 template](#template-gallery) uses — see [Recipe — Meshtastic ↔ MeshCore
-bridge](#recipe-—-meshtastic-↔-meshcore-bridge).
+bridge](#recipe-mt-mc-bridge).
 
 `{{ trigger.senderLabel }}` is the **"just works" label for addressing a reply** — it always resolves
 to something usable. Prefer it (or `{{ trigger.fromName }}`) over the **raw identity** tokens:

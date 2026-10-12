@@ -10,7 +10,7 @@ Multi-Source lets a single MeshMonitor deployment talk to **multiple meshes at o
 
 A **source** is one upstream connection MeshMonitor speaks to. Each source has:
 
-- A **type** — `meshtastic_tcp`, `meshcore`, `mqtt_broker` (embedded MQTT broker hosting locally-connected clients), or `mqtt_bridge` (MQTT client to one upstream broker, optionally attached to a sibling `mqtt_broker` for fan-out — see [Embedded MQTT Broker & Bridge](/features/mqtt-broker)). Serial and BLE Meshtastic nodes connect through the Serial Bridge / BLE Bridge sidecars and appear as `meshtastic_tcp` sources pointing at the bridge container. MeshCore connects directly — USB or TCP through the UI. No sidecar either way.
+- A **type**: `meshtastic_tcp`, `meshcore`, `meshcore_mqtt` (reads a MeshCore region feed, no radio; see [MeshCore MQTT Ingest](/features/meshcore-mqtt-ingest)), `mqtt_broker` (embedded MQTT broker hosting locally-connected clients), `mqtt_bridge` (MQTT client to one upstream broker, optionally attached to a sibling `mqtt_broker` for fan-out; see [Embedded MQTT Broker & Bridge](/features/mqtt-broker)), or `reticulum`. Serial and BLE Meshtastic nodes connect through the Serial Bridge / BLE Bridge sidecars and appear as `meshtastic_tcp` sources pointing at the bridge container. MeshCore connects directly — USB or TCP through the UI. No sidecar either way.
 - Its own **connection settings** (host, port, device path, credentials)
 - Its own **scheduler** (auto-responder, auto-announce, auto-traceroute, auto-ack)
 - Its own **Virtual Node** endpoint (TCP sources only)
@@ -85,6 +85,7 @@ Nearly every top-level view has a **source picker** in the header. It controls w
 - **Single-source mode** — pick one source; the view shows only that source's nodes, messages, telemetry, and traceroutes
 - **Unified mode** (where available) — combines messages/telemetry/traceroutes across all sources while still tagging each row with its originating source
   - On **Unified Messages**, pick **All Channels** in the channel list to read every channel you can open in one feed. Each message carries a tag with its channel and a pill for each source that heard it. Direct messages are left out; read those on the source's own Messages tab.
+  - A MeshCore message heard by several of your sources shows as **one row**, with a pill for each source that heard it. Only sources you can read are counted.
   - The **left border** of each message shows its mesh protocol: green for Meshtastic (MQTT sources included), orange for MeshCore, the accent colour for Reticulum. Hover the card to read the protocol name. The **source pills** keep one colour per source, so you can still tell which source heard a message. Channel and DM views on a single source draw the same protocol stripe on each message.
 
 Your picker choice persists per view and per user.

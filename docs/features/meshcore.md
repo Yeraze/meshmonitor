@@ -15,7 +15,9 @@ When a MeshCore source is connected, you get:
 - **Per-source MeshCore page** — Nodes, Channels, Node Details, Configuration, and a Node Info page in a single multi-pane layout
 - **Dashboard integration** — MeshCore sources appear as styled cards in the dashboard sidebar with their own logo, status, and node count
 - **Unified map** — MeshCore contacts with GPS appear on the dashboard map alongside Meshtastic nodes
-- **Local-node telemetry** — Battery, radio stats, packet rates, and duty-cycle graphs from the connected companion
+- **Local-node telemetry** — Battery, radio stats, packet rates, and duty-cycle graphs from the connected companion or repeater
+- **Repeater sources** — A repeater on a serial cable fills Nodes, the Packet Monitor and channel Messages from its own serial log (see [What a Repeater Source Shows](#what-a-repeater-source-shows))
+- **Trace SNR history** — Per-hop SNR from every trace the radio hears, with charts over 24 hours to 90 days
 - **Per-node remote telemetry** — Scheduled cross-mesh telemetry pulls from other MeshCore nodes, written into the same telemetry store as Meshtastic
 - **Radio preset selector** — Pick from the official MeshCore preset list instead of hand-tuning freq/bw/sf/cr
 - **Contact-detail panel** — Hops, RSSI/SNR, last heard, position, and the full public key shown next to DM threads
@@ -26,8 +28,8 @@ When a MeshCore source is connected, you get:
 - **Auto-pathfinding** — Scheduled path discovery and neighbor collection across your entire mesh
 - **Region / scope tagging** — Stamp outgoing flood traffic with a named region so meshes that drop un-scoped packets (e.g. `region denyf *`) forward it; per-channel, per-source default, and per-message override
 - **Room server support** — Login, post, and auto-sync with MeshCore room servers (BBS-style message boards)
-- **@mention highlighting** — Messages mentioning your name are visually highlighted
-- **Delivery status** — Sent DMs show pending/confirmed/failed indicators
+- **@mention highlighting** — Messages mentioning your name are visually highlighted, and an opt-in [Mentions notification](#notifications) alerts you
+- **Delivery status** — Your own DMs and room posts show whether the other end acknowledged them; channel posts show which repeaters relayed them
 - **Clickable contact names** — Names in messages navigate to that contact's DM thread
 - **Mobile-responsive layout** — Full MeshCore page works on mobile with list/detail toggle
 - **Device time sync** — One-click RTC sync from the Node Info page
@@ -113,9 +115,28 @@ MeshMonitor automatically detects the device type on connection:
 | **Repeater** | Lightweight relay with text CLI interface | Direct serial |
 | **Room Server** | Chat room server for group messaging | Native JS backend (meshcore.js) |
 
+## What a Repeater Source Shows
+
+A Repeater source talks to the repeater's text console over USB. It cannot send messages or traces, but it reads a good deal, and none of it costs airtime.
+
+Stock repeater firmware gives you:
+
+- **Zero-hop neighbours in Nodes.** MeshMonitor reads the repeater's `neighbors` table every 5 minutes. Each entry that matches exactly one node MeshMonitor already knows (on any source) is listed with a **Neighbour** tag.
+- **Local telemetry.** The same poller that serves companions reads the repeater's `stats-core`, `stats-radio`, `stats-packets`, `clock`, `ver` and `board` console verbs. **Node Info** shows health and graphs for the repeater. See [Local-Node Telemetry](#local-node-telemetry).
+- **The device console**, the heartbeat probe and auto-reconnect.
+
+A firmware build with packet logging on (`-D MESH_PACKET_LOGGING=1`) prints every frame the repeater hears, and MeshMonitor reads those lines. That adds:
+
+- **Nodes from adverts.** Every advert the repeater hears becomes a node on this source, with its name, type and position. These nodes raise no new-node notification and fire no automation trigger.
+- **Packet Monitor.** Each received frame is logged once you turn capture on. See [Packet Monitor](#packet-monitor).
+- **Channel Messages.** The repeater holds no channel keys, so MeshMonitor decrypts channel text (`GRP_TXT`) with a key from any of your other MeshCore sources, or from a MeshCore entry in the [Channel Database](/features/channel-database#meshcore-channels). These channels are read-only on the repeater source. A user sees a message only if they can read a channel that holds its key.
+- **Trace SNR.** Per-hop readings from traces the repeater overhears. See [Trace SNR History](#trace-snr-history).
+
+On stock firmware the Nodes and Packet Monitor tabs say what is missing and why. Direct messages never appear on a repeater source: they are encrypted to their recipient. The [Analyzer Observer](#analyzer-observer) still needs a Companion.
+
 ## The MeshCore Page
 
-Each MeshCore source has its own multi-pane page accessible by clicking the source in the dashboard sidebar. The page has a sub-toolbar with these views:
+Each MeshCore source has its own multi-pane page accessible by clicking the source in the dashboard sidebar. The sidebar lists **Nodes**, **Channels**, **Rooms**, **Node Details**, **Telemetry**, **Packet Monitor**, **Node Info**, **Device Configuration**, **Automations**, **Notifications** and **Settings**. A tab shows only when you hold the read permission its data needs on that source. The main views:
 
 ### Nodes
 
@@ -127,13 +148,17 @@ On **mobile**, the node list and the map occupy the same area; a toggle button s
 
 The device's channels with the most recent message stream. Channel-message senders are now extracted from the `"Name: body"` prefix that MeshCore embeds in the text body, so the sender column and the message body are no longer collapsed into one string.
 
-**Unread indicators** — channels with messages newer than the last time you opened them show an unread dot and a **bold name** in the channel list. A header badge counts how many channels currently have unread messages, and an optional **"unread first"** sort toggle (persisted) floats those channels to the top. Opening a channel marks it read up to the newest visible message. MeshCore read state is tracked **client-side in `localStorage`, scoped by `sourceId`** — there's no server-side MeshCore read table, so read markers are per-browser rather than per-account.
+**Unread indicators** — channels with messages newer than the last time you opened them show an unread dot and a **bold name** in the channel list. A header badge counts how many channels currently have unread messages, and an optional **"unread first"** sort toggle (persisted) floats those channels to the top. Opening a channel marks it read up to the newest visible message. Read markers are saved **on the server, per user and per source**, so they follow your account to another browser or device. The browser keeps a copy in `localStorage` so the list paints at once, and falls back to that copy when you are signed out.
+
+**Mute** — a signed-in user can mute a channel with the bell button beside the message box. A muted channel shows no unread dot and does not count in the header badge. The mute is yours alone, on this source.
+
+**Protocol stripe** — each message carries a thin left border in the MeshCore colour (orange), the same stripe Unified Messages uses to tell MeshCore from Meshtastic and Reticulum. See [Source picker](/features/multi-source#source-picker).
 
 **Reply** — received channel messages carry a **Reply** button. Clicking it prefills the composer with the sender's MeshCore mention (`@[Sender]: `) and sends the reply **on the scope the original message arrived on**, so a threaded answer stays in the same region. The button appears only on incoming channel messages — not on your own messages, and not in 1:1 DMs.
 
-**Heard repeaters** — outgoing channel posts show a **📡 N** badge with an expandable list of the repeaters that re-flooded the message and the SNR each was heard at. This is populated best-effort by **self-echo correlation**: when a repeater re-floods your `GRP_TXT` packet, MeshMonitor hears it inbound and attributes the relay hashes to the most recent matching channel send within a ~30-second window. Channel sends carry no protocol ACK, so this is a heuristic, not a delivery receipt. Correlation runs on the raw inbound packet before the opt-in packet-monitor gate, so it works **regardless of whether the packet monitor is enabled**. Relay hashes are resolved to repeater names where known; otherwise the raw hash is shown.
+**Heard repeaters** — outgoing channel posts show a **heard badge** (a signal icon and a count) with an expandable list of the repeaters that re-flooded the message and the SNR each was heard at. This is populated best-effort by **self-echo correlation**: when a repeater re-floods your `GRP_TXT` packet, MeshMonitor hears it inbound and attributes the relay hashes to the most recent matching channel send within a ~30-second window. Channel sends carry no protocol ACK, so this is a heuristic, not a delivery receipt. Correlation runs on the raw inbound packet before the opt-in packet-monitor gate, so it works **regardless of whether the packet monitor is enabled**. Relay hashes are resolved to repeater names where known; otherwise the raw hash is shown.
 
-**Sent to radio** — a channel post that no repeater has been heard relaying shows **Sent to radio** in place of the badge. It means your radio accepted the message for sending, and no more. A MeshCore radio does not tell MeshMonitor when it transmits, so the mark does not prove the message went out on the air, and it says nothing about who heard it. If a repeater is heard relaying the post, the mark gives way to the **📡 N** badge. A send that the radio refuses, or that receive-only mode blocks, shows an error and adds no message at all. Click the mark to open [Delivery Details](/features/delivery-diagnostics).
+**Sent to radio** — a channel post that no repeater has been heard relaying shows **Sent to radio** in place of the badge. It means your radio accepted the message for sending, and no more. A MeshCore radio does not tell MeshMonitor when it transmits, so the mark does not prove the message went out on the air, and it says nothing about who heard it. If a repeater is heard relaying the post, the mark gives way to the heard badge. A send that the radio refuses, or that receive-only mode blocks, shows an error and adds no message at all. Click the mark to open [Delivery Details](/features/delivery-diagnostics).
 
 **Direct messages and room posts** — these carry a real acknowledgement, so your own message moves through up to three marks:
 
@@ -145,7 +170,7 @@ The device's channels with the most recent message stream. Channel-message sende
 
 **Not confirmed** is not proof of loss: the message may have arrived while the acknowledgement was lost on the way back. A room server also sends none when you are not logged in or have read-only access. An acknowledgement that arrives late still turns the mark into the double tick. As with channel posts, no mark says the radio transmitted, and a send the radio refuses adds no message. The marks survive a page reload and a restart. One limit: if MeshMonitor restarts or the radio disconnects while a message is still waiting, the wait is lost, and the message keeps **Sent to radio** with a tooltip saying no acknowledgement is on record.
 
-**Resend** — if no repeater was heard relaying one of your channel posts, a **Resend** button appears next to it 30 seconds after you sent it. Click it and confirm to send the same packet again. The resend carries the original text and the original timestamp, so a repeater that already relayed the first copy drops the resend, and recipients never see the message twice. The resend adds no new message to the stream, and it fires no automations or notifications. If a repeater relays the resend, the **📡 N** badge appears on the original message.
+**Resend** — if no repeater was heard relaying one of your channel posts, a **Resend** button appears next to it 30 seconds after you sent it. Click it and confirm to send the same packet again. The resend carries the original text and the original timestamp, so a repeater that already relayed the first copy drops the resend, and recipients never see the message twice. The resend adds no new message to the stream, and it fires no automations or notifications. If a repeater relays the resend, the heard badge appears on the original message.
 
 Limits, to protect the mesh:
 
@@ -159,7 +184,7 @@ The resend count lives in the database, so restarting MeshMonitor does not reset
 
 ### Channel order
 
-The Channels page has a **Sort channels by** dropdown with four choices: **Device order**, **Channel name**, **Last message** and **Custom**. Pick **Custom** and click **Reorder** to drag channels (or use the arrows) into the order you want. MeshMonitor saves the sort choice and the custom order in your browser, per source. This changes only how MeshMonitor lists the channels. The slots on the device stay as they are.
+The Channels page has a **Sort channels by** dropdown with five choices: **Device order**, **Channel name**, **Last message**, **Message count** and **Custom**. **Last message** puts the most recently active channel first and shows how long ago each channel's last message arrived. **Message count** puts the busiest channel first. Channels with no messages sink to the bottom in both. Pick **Custom** and click **Reorder** to drag channels (or use the arrows) into the order you want. MeshMonitor saves the sort choice and the custom order in your browser, per source. This changes only how MeshMonitor lists the channels. The slots on the device stay as they are.
 
 #### Reordering channel slots on the companion
 
@@ -182,11 +207,14 @@ Per-contact DM view (renamed from "Direct Messages" to reflect that it also surf
 - Last heard and last advert
 - Position (if known)
 - Full public key
-- **Discover Path** button — triggers firmware CMD 52 to establish/refresh the route to a companion contact
+- **Discover Path** button — triggers firmware CMD 52 to establish/refresh the route to a companion contact. The button then counts down while it waits for the reply (20 to 60 seconds, from the radio's own estimate) and ends with **Path updated** and the hop count, or **No response from** the contact. The countdown sends nothing and never retries.
+- **Trace Path** button — sends one trace along the contact's stored path and lists the SNR at each hop. It shows only when the contact has a known path of at least one hop. MeshMonitor waits 8 to 60 seconds for the reply, as the radio suggests, and never retries a trace. With **Auto return path** ticked (the default, saved per browser) the trace comes back along the same route, so you get SNR in both directions: it loops through a repeater or room server, and turns at the last repeater for a companion. The return leg costs about twice the airtime. Results also feed [Trace SNR History](#trace-snr-history).
 - **Define Path** editor — manually set the route to a contact when you already know the relay hops, instead of probing for it. Add hops in order and pick the per-hop **hash width** (1, 2, or 3 bytes) — the selector is pre-filled from the current path, and changing the width clears the hop list since the encoding differs. The hop count is capped at 63. Use this when Discover Path can't reach the contact but you know the topology.
-- **Delivery status** — sent DMs show pending / confirmed / failed indicators with timestamp tooltips
+- **Delivery status** — your own DMs show **Sent to radio**, a double tick, or **Not confirmed** (see the table under [Channels](#channels))
 
-Toggling a contact's ⭐ **favorite** syncs to the firmware's favourite bit on
+Discover Path, Trace Path and the other action buttons need **Nodes: write** on the source, and a Companion source.
+
+The star in the panel header, and the one on each row of the Nodes list, toggles a contact's **favorite**. It needs **Nodes: write** and works for every contact type. The favorite syncs to the firmware's favourite bit on
 the device, in both directions. MeshMonitor is the source of truth: to
 un-favourite a contact, do it in MeshMonitor rather than on the device.
 
@@ -197,15 +225,15 @@ The panel is collapsible with state persisted to localStorage.
 The **per-node remote-telemetry config** panel hangs off the contact-detail panel (see [Per-Node Remote Telemetry](#per-node-remote-telemetry) below).
 
 ::: warning Repeaters have no DM composer
-MeshCore repeaters (`advType=2`) can't hold a conversation, so they no longer expose a message composer. The 💬 button is hidden on repeater rows, and selecting a repeater shows its node detail and telemetry/graphs instead of an (empty) conversation pane. The repeater stays listed in the contact sidebar — only the chat surface is dropped. The Meshtastic side does the same for nodes flagged unmessagable.
+MeshCore repeaters (`advType=2`) can't hold a conversation, so they no longer expose a message composer. The message button is hidden on repeater rows, and selecting a repeater shows its node detail and telemetry/graphs instead of an (empty) conversation pane. The repeater stays listed in the contact sidebar — only the chat surface is dropped. The Meshtastic side does the same for nodes flagged unmessagable.
 :::
 
 ### Message route line
 
 Received channel and DM messages show a route line beneath the body, derived from the packet's relay path:
 
-- **📍 direct** — heard with zero hops (direct RF).
-- **🛰 N hops · a3 → 7f → 02** — relayed; the chain lists each relay's hash in order.
+- **direct** (with a pin icon) — heard with zero hops (direct RF). The SNR and RSSI of that link follow it.
+- **N hops** and the chain **a3 → 7f → 02** (with a route icon) — relayed; the chain lists each relay's hash in order.
 
 **Clicking the hash chain** opens a route-detail popup with the message's reception details (sender, time, hops, scope, text) and the route expanded per hop into **repeater / room-server names** from the contact list. Only relay infrastructure ever appears in a MeshCore path — each forwarder appends the leading bytes of its public key at the hash width the original sender chose (1–3 bytes) — so matching is limited to those contacts. Unknown hashes stay as raw hex; when several repeaters share a hash prefix, the popup best-guesses the one closest to the neighbouring hops' positions and labels it as such.
 
@@ -227,7 +255,7 @@ The counter appears only once the draft is non-empty, turns **yellow at 90%** of
 
 ### Node Info
 
-A dashboard-style view of the connected local companion. It graphs the data collected by the local-telemetry poller (see [Local-Node Telemetry](#local-node-telemetry) below) across 1h / 6h / 24h / 3d / 7d ranges, plus identity (firmware version, build, model), current radio settings, current health, and cumulative counters.
+A dashboard-style view of the connected local companion or repeater. It graphs the data collected by the local-telemetry poller (see [Local-Node Telemetry](#local-node-telemetry) below) across 1h / 6h / 24h / 3d / 7d ranges, plus identity (firmware version, build, model), current radio settings, current health, and cumulative counters.
 
 This view is only available when the page is mounted from a per-source URL — the legacy app-shell mount path does not have a `sourceId` and hides the Node Info entry.
 
@@ -249,6 +277,8 @@ MeshMonitor collects three kinds of telemetry from MeshCore sources, all written
 ### Local-Node Telemetry
 
 A module-level singleton polls every connected companion every `MESHCORE_TELEMETRY_INTERVAL_MS` (default 5 minutes). It calls `GetStats core / radio / packets`, `GetDeviceTime`, and `DeviceQuery` — **none of which transmit on the air** — and writes batched rows stamped with `sourceId` and prefixed `mc_`. tx/rx duty-cycle and packet rates are computed as deltas vs the prior sample.
+
+A directly attached **Repeater** source is polled on the same timer. MeshMonitor reads the repeater's serial console (`stats-core`, `stats-radio`, `stats-packets`, `clock`, `ver`, `board`) and writes the same `mc_*` rows. These are local serial reads, and none of them transmits. The repeater's `clock` reply gives hours and minutes only, so clock drift is measured to the minute. The one-click time sync on Node Info stays Companion-only.
 
 This drives the [Node Info](#node-info) view.
 
@@ -335,8 +365,8 @@ Next to the channel compose box is an optional one-off **scope/region override**
 
 Channel and DM messages show a scope line so you can tell which region a message used — on **both** received messages (how it reached you) and your **own sent** messages (which scope it went out on). MeshMonitor recovers the scope by recomputing each of your known region names against the packet (the raw name can't be reversed out of the wire value):
 
-- **🔒 muenchen** — scoped to a region you know; the name is shown.
-- **🔒 #a3f2** — scoped, but to a region not in your known set; the raw code is shown as hex.
+- A lock icon and **muenchen** — scoped to a region you know; the name is shown.
+- A lock icon and **#a3f2** — scoped, but to a region not in your known set; the raw code is shown as hex.
 
 Un-scoped messages show **no scope line at all** — the absence of a badge is itself the signal that the message flooded without a region.
 
@@ -444,7 +474,7 @@ The `details` JSON captures `sourceId`, `publicKey` (where relevant), command te
 ## Analyzer Observer
 
 ::: tip Added in 4.14 (#4457)
-A Companion source can publish the packets it hears to a MeshCore Analyzer MQTT broker (FL Mesh, LetsMesh, or compatible), so your node shows up as a regional observer.
+A Companion source can publish the packets it hears to one or more MeshCore Analyzer MQTT brokers, so your node shows up as a regional observer. One-click presets cover MeshMapper, LetsMesh, meshcore.ca and RF Lab; any compatible broker works too.
 :::
 
 It's observation-only — MeshMonitor never subscribes to the broker or transmits on your behalf. Enable it in the source's edit modal, then fetch or paste the signing key on the Configuration page. See the [MeshCore Analyzer Observer guide](/features/meshcore-analyzer-observer) for setup, a troubleshooting table, and what data leaves your network.
@@ -453,11 +483,17 @@ It's observation-only — MeshMonitor never subscribes to the broker or transmit
 
 The MeshCore map can render **route lines** between your local node and each contact, colored by hop count:
 
-- **Green** — direct (1 hop)
-- **Orange** — 2-3 hops
-- **Red** — 4+ hops
+- **Green** — direct (0 hops), drawn solid
+- **Blue** — 1 or 2 hops, drawn dashed
+- **Orange** — 3 or more hops, drawn dashed
+- **Grey** — hop count unknown
 
-Toggle path visibility from the map toolbar. Paths are populated by the **Discover Path** button in the contact-detail panel (sends firmware CMD 52) or automatically by the [Auto-Pathfinding](#auto-pathfinding) scheduler. When the firmware responds with path discovery results (push code 0x8D), the route is stored and rendered immediately.
+Toggle path visibility with **Show Paths** in the map's **Map controls** panel. Paths are populated by the **Discover Path** button in the contact-detail panel (sends firmware CMD 52) or automatically by the [Auto-Pathfinding](#auto-pathfinding) scheduler. When the firmware responds with path discovery results (push code 0x8D), the route is stored and rendered immediately.
+
+### Map markers
+
+- **Repeater glyph.** A MeshCore repeater draws as a relay glyph: one hub linked to three peers. Meshtastic routers keep the tower glyph, so you can tell the two apart on the Unified map, in legends and on the 3D map.
+- **Hide nodes without a current position advert.** A node that stops sharing its position keeps its last stored spot on the map. This toggle, in **Map controls**, hides a node whose latest advert carried no position. It is off by default. See [MeshCore Nodes Without a Current Position Advert](/features/maps#meshcore-nodes-without-a-current-position-advert).
 
 ## Trace SNR History
 
@@ -486,11 +522,13 @@ What a repeater source stores from a trace it hears part-way:
 
 MQTT ingest sources do not collect trace readings.
 
+To keep the history fresh without clicking **Trace Path** by hand, an automation can trace chosen contacts on a schedule, each on its own interval, through a Companion source. One source sends at most 12 scheduled traces an hour. See [Trace MeshCore paths on a schedule](/features/automation-engine#trace-meshcore-paths-on-a-schedule) for the setup and the limits.
+
 ## Position History
 
 The MeshCore map can render a per-node movement trail, mirroring the Meshtastic Position History feature:
 
-- **Show Position History** toggle and a **history length slider** (1h–7d, default 24h) in the map toolbar, persisted per-browser.
+- **Show Position History** toggle and a **history length slider** (1h–7d, default 24h) in the map's **Map controls** panel, persisted per-browser.
 - Trails render as a gradient polyline per node, oldest fix to newest.
 - **Keep history (days)** — a retention control (default **7 days**) wired to the shared `/api/settings` endpoint; a scheduled hourly sweep prunes fixes older than the configured window.
 
@@ -558,20 +596,23 @@ The scheduled autopoll fetches 1 page, strongest signal first. It merges the res
 
 ## Active Node Discovery
 
-Beyond passively reading a repeater's neighbor table, MeshMonitor can actively probe the airwaves for nearby MeshCore devices (added in 4.8.3). The MeshCore **Device Configuration** page, under **Device actions** → **Discover nodes**, exposes two buttons:
+Beyond passively reading a repeater's neighbor table, MeshMonitor can actively probe the airwaves for nearby MeshCore devices (added in 4.8.3). The MeshCore **Device Configuration** page, under **Device actions** → **Discover nodes**, exposes three buttons:
 
 - **Discover Nearby Nodes** — sweep for any MeshCore node in zero-hop (direct RF) range, matching the mobile app's discovery behaviour. Responders are added/refreshed as contacts.
 - **Discover Repeaters** — the same sweep scoped to repeater-class devices.
+- **Discover Sensors** — the same sweep scoped to sensor-class devices.
 
-Discovery is direct-range only (zero-hop) — it surfaces devices you can hear without relaying. MeshMonitor is also **discoverable** in the other direction: it answers inbound discovery requests from peers, so your source shows up when another node runs the same sweep.
+Discovery is direct-range only (zero-hop) — it surfaces devices you can hear without relaying.
+
+Being **discoverable** in the other direction is opt-in. Companion firmware does not answer discovery requests on its own, so other nodes find your source in the same sweep only when you tick **Respond to discovery requests** under **Answer discovery requests** in the source's MeshCore **Settings**. It is off by default, needs `configuration:write`, and its replies are zero-hop and rate-limited.
 
 ## Auto-Pathfinding
 
-The **Automation** view (accessible from the MeshCore page sub-toolbar) provides scheduled path discovery and neighbor collection:
+The **Automations** view (in the MeshCore page sidebar) provides scheduled path discovery and neighbor collection:
 
 - **Path Discovery** — periodically sends Discover Path requests to all companion contacts to keep route information fresh.
 - **Neighbors for Repeaters** — periodically queries the neighbor list from all repeater contacts and persists results to the database for map rendering.
-- **Configurable schedule** — set the delay between individual requests (default: 5 minutes) and how often the full cycle repeats (default: every 24 hours).
+- **Configurable schedule** — set the delay between individual requests (3 to 60 minutes, default 5) and how often the full cycle repeats (1 to 168 hours, default 24).
 - **Independent toggles** — enable/disable path discovery and neighbor collection independently.
 - **RF-aware throttling** — requests are spaced by the configured interval to avoid flooding the mesh. A global 60-second minimum spacing between any two scheduled mesh operations on the same source is also enforced.
 
@@ -610,7 +651,7 @@ Automated floods are limited to **one per hour per source**. The time of the las
 
 ## Auto-Announce
 
-The **Automation** view also hosts a per-source Auto-Announce that periodically broadcasts a status message to one or more MeshCore channels:
+The **Automations** view also hosts a per-source Auto-Announce that periodically broadcasts a status message to one or more MeshCore channels:
 
 - **Scheduling** — choose either a simple interval (every N hours, 1–168) or a standard 5-field cron expression. An optional *announce on connection* fires a single message whenever the source reconnects.
 - **Message template** — the message body supports token expansion. Available tokens: `{VERSION}`, `{DURATION}`, `{CONTACTCOUNT}`, `{COMPANIONCOUNT}`, `{REPEATERCOUNT}`, `{ROOMCOUNT}`, `{NODE_NAME}`, `{NODE_ID}`. A live preview shows the rendered text, and clickable token buttons insert at the cursor.
@@ -653,13 +694,13 @@ Timer Triggers schedule recurring actions independent of incoming traffic:
 
 ## Automated Channel-Send Auto-Retry
 
-MeshCore channel (broadcast) messages are unacked, fire-and-forget floods — unlike a direct message, there is no firmware ACK to confirm delivery. MeshMonitor instead listens for nearby repeaters re-flooding your own packet (the "heard repeaters" signal, see [Message route line](#message-route-line)). When **no** repeater is heard, the message likely reached no one.
+MeshCore channel (broadcast) messages are unacked, fire-and-forget floods — unlike a direct message, there is no firmware ACK to confirm delivery. MeshMonitor instead listens for nearby repeaters re-flooding your own packet (the "heard repeaters" signal, see [Channels](#channels)). When **no** repeater is heard, the message likely reached no one.
 
 The **MeshCore Messaging** section of global **Settings** hosts an opt-in toggle, **Auto-retry automated MeshCore channel sends** (default **off**). When enabled:
 
 - An **automated** channel send that hears **zero** repeaters within **30 seconds** is resent **exactly once**.
 - It applies only to automated senders: the [Automation Engine](/features/automation-engine) `Send message` action, Auto-Acknowledge, the [Auto-Responder](#auto-responder), [Auto-Announce](#auto-announce), and [Timer Triggers](#timer-triggers).
-- **User-initiated sends are never retried** — a message you type into the send bar goes out once regardless of this setting.
+- **User-initiated sends are never retried automatically** — a message you type into the send bar goes out once regardless of this setting. To send it again yourself, use the **Resend** button (see [Channels](#channels)).
 - It is **one-shot**: the resend is never itself retried, so at most one extra transmission ever occurs per logical send.
 - The resend does **not** create a second message bubble and does **not** re-enter the automation event bus, so it can never trigger a fresh automation.
 
@@ -684,16 +725,25 @@ The aggregate dashboard map and `/api/nodes` endpoint enumerate every connected 
 
 ## Permissions
 
-In 4.5 the global `meshcore` permission is gone. Migration 058 expanded every legacy `meshcore` grant into the per-source **sourcey** resource set, matching how Meshtastic resources are scoped:
+In 4.5 the global `meshcore` permission is gone. Migration 058 expanded every legacy `meshcore` grant into the per-source resource set, matching how Meshtastic resources are scoped:
 
 | Resource | Scope | Description |
 |---|---|---|
-| `connection` | Per-source | Connect/disconnect, status |
+| `connection` | Per-source | Connect/disconnect, status, the Node Info tab |
 | `configuration` | Per-source | Identity, radio, telemetry mode, location, per-node remote-telemetry config |
-| `nodes` | Per-source | Node list, contacts, map data |
-| `messages` | Per-source | Read and send DMs / channel messages |
+| `nodes` | Per-source | Node list, contacts, map data. `nodes:write` covers favorites, Discover Path, Trace Path and Push to radio |
+| `messages` | Per-source | Read and send DMs / channel messages; resend a channel post |
+| `channel_0` to `channel_7` | Per-source | Read one channel slot without full `messages:read` |
+| `traceroute` | Per-source | `traceroute:read` shows Trace SNR history |
+| `packetmonitor` | Per-source | Read the Packet Monitor. Clearing its log is for administrators |
+| `remote_admin` | Per-source | The remote console for repeaters and room servers |
+| `automation` | Per-source | The Automations tab |
+| `dashboard` | Global | The Telemetry tab |
+| `settings` | Per-source | The Settings tab |
 
-Anonymous users can view MeshCore data on sources where the anonymous user has the relevant `*:read` permission. Sending messages, changing config, and toggling remote telemetry all require `configuration:write` (or `messages:write` for sends).
+Each tab in the source's sidebar shows only when you hold the matching `read` grant (on that source, for a per-source resource). The Notifications tab needs a signed-in user, since its preferences are per user.
+
+Anonymous users can view MeshCore data on sources where the anonymous user has the relevant `*:read` permission. Changing config and toggling remote telemetry require `configuration:write`; sending messages requires `messages:write`.
 
 ### UI Permission Gating
 
@@ -743,7 +793,11 @@ Saved radio params are now persisted authoritatively: the backend propagates dev
 
 ## Packet Monitor
 
-The MeshCore page includes a **Packet Monitor** tab (sub-toolbar: **Packets**) that surfaces raw OTA frames captured from the companion's `LogRxData` (0x88) push. This is the MeshCore analogue of the Meshtastic [Packet Monitor](/features/packet-monitor).
+The MeshCore page includes a **Packet Monitor** tab that surfaces raw OTA frames. This is the MeshCore analogue of the Meshtastic [Packet Monitor](/features/packet-monitor). Where the frames come from depends on the source:
+
+- **Companion:** the companion's `LogRxData` (0x88) push. No firmware change is needed.
+- **Repeater:** the repeater's serial packet log. This needs a firmware build with `-D MESH_PACKET_LOGGING=1`. Stock repeater firmware prints no packets over serial, and the tab says so.
+- **MQTT ingest:** every observer's copy of each frame on the region feed. See [MeshCore MQTT Ingest](/features/meshcore-mqtt-ingest).
 
 Capture is opt-in. The view exposes an **Enable** toggle and retention controls (max packet count, max age in hours) inline; no separate settings page is required. Once enabled, the monitor shows:
 
@@ -767,7 +821,15 @@ Click a row to open **Packet Decode**. Adverts, ACKs and control packets decode 
 
 Decryption happens when you open the modal. The packet list, the live feed and the `.jsonl` export stay ciphertext, no plaintext is stored in the packet log, and channel keys never leave the server.
 
-The `packetmonitor:write` permission is required to clear the log; `settings:write` is required to toggle capture on/off and adjust retention.
+Clearing the log needs `packetmonitor:write`. The Users page offers only a read grant for the Packet Monitor, so in practice that means an administrator. `settings:write` is required to toggle capture on/off and adjust retention.
+
+## Notifications
+
+Each MeshCore source has its own **Notifications** tab, with Low Battery, Inactive Node, Newly Found Nodes, Server Events and **Mentions**, delivered by Web Push or Apprise. Settings are saved per user and per source.
+
+**Mentions** alerts you when a channel message or room post names the source's own node as `@[Name]`. A reply to you starts with `@[Name]:`, so it alerts too. It is off until you turn it on. One sender can alert at most once every 5 minutes per source, and that limit is stored, so a restart does not reset it. Direct messages, your own messages, and senders you ignore or block never alert. It sends nothing over the radio.
+
+See [MeshCore Sources](/features/notifications#meshcore-sources) in the Notifications guide for the full list and the rules.
 
 ## Still Early
 
@@ -775,8 +837,8 @@ MeshCore support has come a long way since 4.5 — remote administration, path v
 
 Known gaps and limitations:
 
-- **Repeater / Room Server per-source parity** is behind Companion. Repeater is selectable as a USB device type, but features like local telemetry polling and telemetry-mode toggles require a Companion connection on the source side.
-- **Notifications** for MeshCore events are minimal — apprise/push surfaces aren't yet first-class.
+- **Repeater / Room Server per-source parity** is behind Companion. A Repeater source is USB only, cannot send messages or traces, and cannot run the Analyzer Observer. Most of what it shows beyond neighbours and local telemetry needs a packet-logging firmware build (see [What a Repeater Source Shows](#what-a-repeater-source-shows)).
+- **Notifications** cover fewer events than on Meshtastic. MeshCore sources have no alerts for direct messages, channel messages (other than Mentions) or keywords.
 - **Companion-only telemetry mode toggles** — Repeaters report what they report; the base/loc/env toggle is meaningful on Companions.
 
 The roadmap is incremental: keep landing MeshCore features each release, keep aligning the UI vocabulary with Meshtastic, and gradually close the remaining parity gap.

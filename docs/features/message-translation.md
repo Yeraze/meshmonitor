@@ -33,12 +33,12 @@ For most users, **DeepL API Free** provides the best balance of speed, translati
 
 1. Sign up for a free DeepL API developer account at [deepl.com/pro-api](https://www.deepl.com/pro-api) (select the **DeepL API Free** plan).
 2. Copy your **Authentication Key** from your DeepL account dashboard (Free keys end in `:fx`, such as `xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx:fx`).
-3. In MeshMonitor, navigate to **Settings** → **Message Translation**.
+3. In MeshMonitor, open **Global Settings** → **Message Translation** (admins only).
 4. Check **Enable Message Translation**.
 5. Select **DeepL API (Free / Pro)** from the **Translation Provider** dropdown.
 6. Paste your authentication key into the **DeepL Auth Key** field.
 7. Leave **Custom DeepL Base URL** blank.
-8. Click **Test Connection** to verify connectivity.
+8. Click **Test Translation Connection** to verify connectivity.
 9. Click **Save Changes** in the bottom save bar.
 
 ::: tip Automatic Endpoint Detection
@@ -55,12 +55,12 @@ MeshMonitor supports **OpenAI** and OpenAI-compatible providers (such as [OpenRo
 
 1. Create an account at the [OpenAI Platform](https://platform.openai.com/).
 2. Generate an API secret key from the [OpenAI API Keys Dashboard](https://platform.openai.com/api-keys). For full API details and rate limits, consult the [OpenAI API Documentation](https://platform.openai.com/docs).
-3. In MeshMonitor under **Settings** → **Message Translation**:
+3. In MeshMonitor under **Global Settings** → **Message Translation**:
    - Set **Translation Provider** to `OpenAI-Compatible (Ollama, OpenRouter, OpenAI, vLLM)`.
    - Set **OpenAI API Base URL** to `https://api.openai.com/v1`.
    - Set **Model Name** to `gpt-4o-mini` (or `gpt-4o`).
    - Paste your key (`sk-...`) into the **API Key** field.
-4. Click **Test Connection** and then **Save Changes**.
+4. Click **Test Translation Connection** and then **Save Changes**.
 
 ---
 
@@ -116,8 +116,8 @@ Each provider has its own settings, and **its own API key**. The settings page s
 
 - A key is sent only to the provider it was entered for. Switching provider never reuses another provider's key: a DeepL key is not sent to your OpenAI-compatible URL.
 - Keys you entered for other providers stay stored. Switch back and the key is still there.
-- A provider with a required key cannot be tested or used without one. **Test Connection** reports the missing field without calling the provider.
-- **Test Connection** tests the values on screen, saved or not.
+- A provider with a required key cannot be tested or used without one. **Test Translation Connection** reports the missing field without calling the provider.
+- **Test Translation Connection** tests the values on screen, saved or not.
 
 ::: warning Upgrading from a version with one shared API key
 Earlier versions stored one API key shared by every provider. On upgrade, MeshMonitor moves that key to the provider that is **selected at the time of the upgrade**. The other providers start with a blank key.
@@ -157,6 +157,20 @@ When configuring custom service URLs for LibreTranslate, OpenAI-compatible backe
 6. Click **Translate**.
 7. Review the translation and check the byte counter.
 8. Click **Replace in Draft** to insert the translated text directly into the compose box ready for transmission.
+
+---
+
+## Stored Translations and the Cache
+
+When someone translates a received message, MeshMonitor keeps the result and links it to that message.
+
+- **Every viewer sees it.** Anyone who can read the message sees the stored translation under it without a click, when one exists in their language: the language they last chose, else the browser's, else the server default.
+- **Anonymous viewers** see stored translations only. They get no **Translate** button and no language switch.
+- **A phrase is translated once.** The same text to the same language reuses the cached result and does not call the provider again, whichever source or message it appears in.
+- **The composer is never cached.** Text you translate before sending always goes to the provider.
+- **What is stored.** The cache holds the translation and a hash of the original, never the original text. A cache entry no message uses is dropped 30 days after its last use, and unused entries are capped at 10,000. Entries a message still uses are kept, and a translation used by two or more messages is kept for good.
+
+A stored translation follows the message's own read permission, per source.
 
 ---
 
