@@ -1,0 +1,111 @@
+/* MeshCoreTraceSnrCharts (#5765). CSS module. Card chrome follows the
+   telemetry graphs (.graph-container / .telemetry-range-btn). */
+
+.section {
+  margin-top: 1rem;
+}
+
+.header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.6rem;
+}
+
+.title {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin: 0;
+  font-size: 0.95rem;
+}
+
+.ranges {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+}
+
+.rangeBtn {
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-surface-hover);
+  border-radius: var(--radius-sm);
+  color: var(--color-text-muted);
+  cursor: pointer;
+  font-size: 0.8rem;
+  font-weight: 500;
+  padding: 4px 10px;
+  transition: background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease;
+}
+
+.rangeBtn:hover {
+  color: var(--color-text);
+  border-color: var(--color-surface-active);
+}
+
+.rangeBtnActive {
+  background-color: var(--color-accent);
+  border-color: var(--color-accent);
+  color: var(--color-bg-sunken);
+}
+
+.rangeBtnActive:hover {
+  color: var(--color-bg-sunken);
+}
+
+.empty {
+  margin: 0;
+  padding: 1rem;
+  text-align: center;
+  font-style: italic;
+  color: var(--color-text-subtle);
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr));
+  gap: 0.75rem;
+}
+
+.chart {
+  /* A grid item will not shrink below its content without this (#5093). */
+  min-width: 0;
+  padding: 0.75rem;
+  border: 1px solid var(--color-surface-hover);
+  border-radius: var(--radius-lg);
+  background-color: var(--color-bg-sunken);
+}
+
+.chartTitle {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.chartLabel {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.swatch {
+  flex-shrink: 0;
+  width: 0.7rem;
+  height: 0.7rem;
+  border-radius: 2px;
+  background-color: var(--chart-1);
+}
+
+.chart[data-direction='out'] .swatch {
+  background-color: var(--chart-3);
+}
+
+.meta {
+  margin: 0.15rem 0 0.5rem;
+  font-size: 0.72rem;
+  color: var(--color-text-subtle);
+}

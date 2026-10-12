@@ -38,17 +38,29 @@ export interface HopSnrLink {
   lastTimestamp: number;
   /** How many samples came from traces MeshMonitor sent. */
   initiatedCount: number;
-  /** Oldest first, capped at {@link HOP_SNR_POINTS_PER_LINK}. `[timestamp, dB]`. */
+  /** Oldest first, capped at the request's point cap (default {@link HOP_SNR_POINTS_PER_LINK}). `[timestamp, dB]`. */
   points: Array<[number, number]>;
 }
 
+/** Default point cap per link: enough for the summary card's sparkline. */
 export const HOP_SNR_POINTS_PER_LINK = 120;
+/** Most points per link a caller may ask for (`?points=`). */
+export const HOP_SNR_MAX_POINTS_PER_LINK = 2000;
+/** What the full-size charts ask for (#5765). */
+export const HOP_SNR_CHART_POINTS = 1000;
 
 const endKey = (publicKey: string | null, hash: string | null): string =>
   publicKey ? `k:${publicKey}` : hash ? `h:${hash}` : '?';
 
-/** Group hop rows into directional links, newest link first. */
-export function summarizeHopSnrLinks(rows: readonly HopSnrSample[]): HopSnrLink[] {
+/**
+ * Group hop rows into directional links, newest link first. Each link keeps
+ * its newest `pointsPerLink` samples; the stats cover every row passed in.
+ */
+export function summarizeHopSnrLinks(
+  rows: readonly HopSnrSample[],
+  pointsPerLink: number = HOP_SNR_POINTS_PER_LINK,
+): HopSnrLink[] {
+  const cap = Math.max(1, Math.min(Math.floor(pointsPerLink) || HOP_SNR_POINTS_PER_LINK, HOP_SNR_MAX_POINTS_PER_LINK));
   const byLink = new Map<string, { sender: HopSnrEnd; receiver: HopSnrEnd; samples: HopSnrSample[] }>();
   for (const r of rows) {
     const key = `${endKey(r.senderPublicKey, r.senderHash)}>${endKey(r.receiverPublicKey, r.receiverHash)}`;
@@ -78,7 +90,7 @@ export function summarizeHopSnrLinks(rows: readonly HopSnrSample[]): HopSnrLink[
       maxSnr: Math.max(...db),
       lastTimestamp: last.timestamp,
       initiatedCount: samples.filter((s) => s.initiated).length,
-      points: samples.slice(-HOP_SNR_POINTS_PER_LINK).map((s) => [s.timestamp, s.snrQuarterDb / 4]),
+      points: samples.slice(-cap).map((s) => [s.timestamp, s.snrQuarterDb / 4]),
     });
   }
   links.sort((a, b) => b.lastTimestamp - a.lastTimestamp);
@@ -100,4 +112,61 @@ export function sparklinePoints(points: ReadonlyArray<[number, number]>): string
   return points
     .map((p, i) => `${(points.length > 1 ? i * step : SPARK_W / 2).toFixed(1)},${(SPARK_H - 2 - ((p[1] - min) / span) * (SPARK_H - 4)).toFixed(1)}`)
     .join(' ');
+}
+
+/** One chart datum. `snr` is null on a gap marker, which breaks the line. */
+export interface HopSnrChartDatum {
+  timestamp: number;
+  snr: number | null;
+}
+
+/** Samples further apart than this are not joined (the telemetry charts' rule). */
+export const HOP_SNR_CHART_GAP_MS = 3 * 60 * 60 * 1000;
+
+/**
+ * Chart rows for a link's points, oldest first, with a null marker after any
+ * sample whose successor is more than `gapMs` later.
+ */
+export function hopSnrChartData(
+  points: ReadonlyArray<[number, number]>,
+  gapMs: number = HOP_SNR_CHART_GAP_MS,
+): HopSnrChartDatum[] {
+  const sorted = [...points].sort((a, b) => a[0] - b[0]);
+  const out: HopSnrChartDatum[] = [];
+  for (let i = 0; i < sorted.length; i++) {
+    out.push({ timestamp: sorted[i][0], snr: sorted[i][1] });
+    if (i < sorted.length - 1 && sorted[i + 1][0] - sorted[i][0] > gapMs) {
+      out.push({ timestamp: sorted[i][0] + 1, snr: null });
+    }
+  }
+  return out;
+}
+
+/** The translate function shape the name helper needs. */
+export type HopSnrTranslate = (key: string, fallback: string, vars?: Record<string, unknown>) => string;
+
+export interface HopSnrNameContext {
+  /** The contact whose panel is open, as lowercase hex. */
+  contactKey: string;
+  /** This source's own node. */
+  localPublicKey?: string | null;
+  contacts?: ReadonlyArray<{ publicKey: string; name?: string | null; advName?: string | null }>;
+  t: HopSnrTranslate;
+}
+
+/** Display name for one end of a link. Shared by the card and the charts. */
+export function hopSnrEndName(end: HopSnrEnd, ctx: HopSnrNameContext): string {
+  const { t } = ctx;
+  if (end.publicKey) {
+    if (end.publicKey === ctx.contactKey) return t('meshcore.trace_snr.this_contact', 'this contact');
+    if (ctx.localPublicKey && end.publicKey === ctx.localPublicKey.toLowerCase()) return t('meshcore.trace_snr.this_node', 'This node');
+    const c = ctx.contacts?.find((x) => x.publicKey?.toLowerCase() === end.publicKey);
+    return c?.name || c?.advName || `${end.publicKey.slice(0, 8)}…`;
+  }
+  if (end.hash) {
+    return end.candidates > 1
+      ? t('meshcore.trace_snr.ambiguous', '{{hash}} ({{count}} contacts share it)', { hash: end.hash, count: end.candidates })
+      : t('meshcore.trace_snr.unknown_hash', '{{hash}} (unknown)', { hash: end.hash });
+  }
+  return t('meshcore.trace_snr.unknown_origin', 'unknown sender');
 }
