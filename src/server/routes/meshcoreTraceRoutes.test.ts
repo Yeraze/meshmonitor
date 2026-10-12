@@ -10,6 +10,7 @@ import type { MeshCoreHopSnrRow } from '../../db/repositories/meshcoreHopSnr.js'
 
 const K1 = 'a'.repeat(64);
 const K2 = 'b'.repeat(64);
+const K3 = 'c'.repeat(64);
 
 const row = (sourceId: string, over: Partial<MeshCoreHopSnrRow> = {}): MeshCoreHopSnrRow => ({
   sourceId, traceTag: 1, authCode: 0, hopIndex: 0, hopCount: 2, hashBytes: 1,
@@ -71,6 +72,45 @@ describe('MeshCore hop SNR route (#5722)', () => {
     expect((await admin.get(url(harness.sourceA, '?hours=0'))).body.code).toBe('INVALID_HOURS');
     expect((await admin.get(url(harness.sourceA, '?hours=99999'))).body.code).toBe('INVALID_HOURS');
     expect((await admin.get(url(harness.sourceA, '?hours=1'))).status).toBe(200);
+  });
+
+  it('caps points per link at 120 by default and honours ?points (#5765)', async () => {
+    const now = Date.now();
+    await harness.db.meshcoreHopSnr.insertHops(harness.sourceA, Array.from({ length: 150 }, (_, i) =>
+      row(harness.sourceA, { senderPublicKey: K3, senderHash: 'cc', snrQuarterDb: i, timestamp: now - (150 - i) * 1000 })));
+    const admin = await harness.loginAs(harness.admin);
+    const find = (body: { data: { links: Array<{ sender: { publicKey: string }; count: number; points: Array<[number, number]> }> } }) =>
+      body.data.links.find((l) => l.sender.publicKey === K3)!;
+
+    const byDefault = find((await admin.get(url(harness.sourceA, `?publicKey=${K2}`))).body);
+    expect(byDefault.count).toBe(150);
+    expect(byDefault.points).toHaveLength(120);
+
+    const wide = find((await admin.get(url(harness.sourceA, `?publicKey=${K2}&points=2000`))).body);
+    expect(wide.points).toHaveLength(150);
+
+    // A smaller cap keeps the NEWEST samples, oldest first.
+    const narrow = find((await admin.get(url(harness.sourceA, `?publicKey=${K2}&points=5`))).body);
+    expect(narrow.count).toBe(150);
+    expect(narrow.points.map((p) => p[1])).toEqual([145, 146, 147, 148, 149].map((q) => q / 4));
+  });
+
+  it('rejects a points value that is junk or out of range (#5765)', async () => {
+    const admin = await harness.loginAs(harness.admin);
+    for (const bad of ['0', '-1', '2001', 'abc', '1.5', '']) {
+      const res = await admin.get(url(harness.sourceA, `?points=${bad}`));
+      expect(res.status, `points=${bad}`).toBe(400);
+      expect(res.body).toMatchObject({ success: false, code: 'INVALID_POINTS' });
+    }
+    expect((await admin.get(url(harness.sourceA, '?points=1'))).status).toBe(200);
+    expect((await admin.get(url(harness.sourceA, '?points=2000'))).status).toBe(200);
+  });
+
+  it('the points param does not widen the permission gate (#5765)', async () => {
+    await harness.grant(harness.limited.id, 'traceroute', 'read', harness.sourceB);
+    const agent = await harness.loginAs(harness.limited);
+    expect((await agent.get(url(harness.sourceA, '?points=1000'))).status).toBe(403);
+    expect((await agent.get(url(harness.sourceB, '?points=1000'))).status).toBe(200);
   });
 
   it('anonymous follows the anonymous account grants', async () => {

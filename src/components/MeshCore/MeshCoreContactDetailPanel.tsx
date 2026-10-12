@@ -24,6 +24,7 @@ import { ShowCoverageLink } from '../Analysis/ShowCoverageLink';
 import { SignFlipNotice } from '../SignFlipNotice';
 import { MeshCoreNeighboursFetchProgress } from './MeshCoreNeighboursFetchProgress';
 import { MeshCoreTraceSnrCard } from './MeshCoreTraceSnrCard';
+import { MeshCoreTraceSnrCharts } from './MeshCoreTraceSnrCharts';
 import { useMeshCoreNeighboursFetch } from './hooks/useMeshCoreNeighboursFetch';
 import type { MeshCoreNeighboursFetchActions } from './hooks/meshcoreNeighboursFetchApi';
 
@@ -1518,6 +1519,8 @@ export const MeshCoreContactDetailPanel: React.FC<MeshCoreContactDetailPanelProp
       {/* #5722: per-link SNR from traces this source heard. Hidden without
           traceroute:read or when there is no history. */}
       <MeshCoreTraceSnrCard sourceId={sourceId} publicKey={publicKey} contacts={repeaters} localPublicKey={selfPublicKey} />
+      {/* #5765: the same data as full-size charts, one per link direction. */}
+      <MeshCoreTraceSnrCharts sourceId={sourceId} publicKey={publicKey} contacts={repeaters} localPublicKey={selfPublicKey} />
 
       {remoteAdminActions
         && canRemoteAdmin
