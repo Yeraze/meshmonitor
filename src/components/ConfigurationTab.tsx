@@ -47,6 +47,7 @@ import PaxcounterConfigSection from './configuration/PaxcounterConfigSection';
 import StatusMessageConfigSection from './configuration/StatusMessageConfigSection';
 import TAKConfigSection from './configuration/TAKConfigSection';
 import { normalizeTakConfig } from '../utils/takConfig';
+import { statusMessageSaveErrorText } from '../utils/statusMessage';
 import { floorKeepingZero, NODE_INFO_BROADCAST_FLOOR_SECS, POSITION_BROADCAST_FLOOR_SECS } from '../utils/broadcastIntervalFloor';
 import TrafficManagementConfigSection from './configuration/TrafficManagementConfigSection';
 import MeshBeaconConfigSection from './configuration/MeshBeaconConfigSection';
@@ -1505,7 +1506,11 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ baseUrl = '', nodes
       showToast(t('config.statusmessage_saved_toast', 'Status Message config saved successfully'), 'success');
     } catch (error) {
       logger.error('Error saving Status Message config:', error);
-      const errorMsg = error instanceof Error ? error.message : t('config.statusmessage_failed', 'Failed to save Status Message config');
+      // A save the node did not confirm (#5745) gets its own text.
+      const known = statusMessageSaveErrorText((error as { code?: string } | null)?.code);
+      const errorMsg = known
+        ? t(known.key, known.fallback)
+        : error instanceof Error ? error.message : t('config.statusmessage_failed', 'Failed to save Status Message config');
       setStatusMessage(`Error: ${errorMsg}`);
       showToast(`${t('config.statusmessage_failed', 'Failed to save Status Message config')}: ${errorMsg}`, 'error');
     } finally {

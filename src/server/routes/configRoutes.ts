@@ -31,6 +31,7 @@ import {
   POSITION_BROADCAST_FLOOR_SECS,
 } from '../../utils/broadcastIntervalFloor.js';
 import { isTxDisabledError } from '../errors/txDisabledError.js';
+import { isModuleConfigNotAppliedError, isModuleConfigUnverifiedError } from '../errors/moduleConfigVerifyError.js';
 import { safeJson } from '../utils/redactSecrets.js';
 
 const env = getEnvironmentConfig();
@@ -372,9 +373,26 @@ router.post('/module/:moduleType', requireDeviceSourcePermission('configuration'
       return res.json({ success: true, message: `${moduleType} configuration sent` });
     }
 
+    // The Status Message applies without a reboot and the firmware reports no
+    // error when it drops a write, so read it back before saying "saved"
+    // (#5745). Worst case is two 5 s reads, well inside the socket timeout.
+    // No other module is read back.
+    if (moduleType === 'statusmessage') {
+      await cfgModManager.setGenericModuleConfig(moduleType, config, { verify: true });
+      return res.json({ success: true, message: `${moduleType} configuration sent` });
+    }
+
     await cfgModManager.setGenericModuleConfig(moduleType, config);
     res.json({ success: true, message: `${moduleType} configuration sent` });
   } catch (error) {
+    if (isModuleConfigNotAppliedError(error)) {
+      logger.warn(`Node did not apply the ${req.params.moduleType} config (read-back differs)`);
+      return fail(res, 502, 'STATUSMESSAGE_NOT_APPLIED', 'The node did not apply the status message.');
+    }
+    if (isModuleConfigUnverifiedError(error)) {
+      logger.warn(`Node did not confirm the ${req.params.moduleType} config (no read-back answer)`);
+      return fail(res, 504, 'STATUSMESSAGE_UNVERIFIED', 'The node did not confirm the status message in time. It may not have been saved.');
+    }
     logger.error(`Error setting ${req.params.moduleType} config:`, error);
     return fail(res, 500, 'MODULE_CONFIG_FAILED', `Failed to set ${req.params.moduleType} configuration`);
   }

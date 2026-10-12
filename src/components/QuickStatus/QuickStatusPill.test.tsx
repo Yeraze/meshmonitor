@@ -431,4 +431,27 @@ describe('QuickStatusPill — optimistic update', () => {
     await waitFor(() => expect(showToast).toHaveBeenCalled());
     expect(screen.getByTestId('quick-status-pill-text').textContent).toBe('On watch');
   });
+
+  // #5745: the server reads the status back from the node after a save.
+  it.each([
+    ['STATUSMESSAGE_NOT_APPLIED', 502, 'The node did not take the new status. Try again.'],
+    [
+      'STATUSMESSAGE_UNVERIFIED',
+      504,
+      'The node did not confirm the new status in time. It may not be saved. Check the node, then try again.',
+    ],
+  ])('shows the %s error and rolls back when the node does not confirm the save', async (code, status, text) => {
+    getCurrentConfig.mockResolvedValue(configWith('On watch'));
+    setModuleConfig.mockRejectedValue(Object.assign(new Error('server text'), { status, code }));
+
+    renderPill();
+    await openPopover();
+    const readsBeforeSave = getCurrentConfig.mock.calls.length;
+    fireEvent.click(screen.getByTestId('quick-status-preset-busy'));
+
+    await waitFor(() => expect(showToast).toHaveBeenCalledWith(text, 'error'));
+    expect(screen.getByTestId('quick-status-pill-text').textContent).toBe('On watch');
+    // The pill reads the config again: the server may now hold the node's value.
+    await waitFor(() => expect(getCurrentConfig.mock.calls.length).toBeGreaterThan(readsBeforeSave));
+  });
 });

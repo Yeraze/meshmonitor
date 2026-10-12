@@ -26,6 +26,7 @@ import { UiIcon } from '../icons';
 import { useToast } from '../ToastContainer';
 import {
   NODE_STATUS_MAX_BYTES,
+  statusMessageSaveErrorText,
   truncateToUtf8Bytes,
   utf8ByteLength,
 } from '../../utils/statusMessage';
@@ -89,10 +90,20 @@ export const QuickStatusPill: React.FC<QuickStatusPillProps> = ({ sourceId }) =>
       if (context?.previous) {
         queryClient.setQueryData<QuickStatusData>(queryKey, context.previous);
       }
+      // A save the node did not confirm (#5745) gets its own text; anything
+      // else shows the server's message.
+      const known = statusMessageSaveErrorText((error as { code?: string }).code);
       showToast(
-        t('quick_status.save_failed', 'Could not save the status: {{error}}', { error: error.message }),
+        known
+          ? t(known.key, known.fallback)
+          : t('quick_status.save_failed', 'Could not save the status: {{error}}', { error: error.message }),
         'error',
       );
+      // After a failed read-back the server may hold the node's own value,
+      // which need not be the one rolled back to. Read it again (no radio IO).
+      if (known) {
+        void queryClient.invalidateQueries({ queryKey });
+      }
     },
   });
 
