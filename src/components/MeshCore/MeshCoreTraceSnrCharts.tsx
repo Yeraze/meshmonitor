@@ -154,13 +154,14 @@ export const MeshCoreTraceSnrCharts: React.FC<MeshCoreTraceSnrChartsProps> = ({ 
                   )}
                 </div>
                 <ResponsiveContainer width="100%" height={200}>
-                  <LineChart data={data} margin={{ top: 5, right: 12, bottom: 5, left: 0 }}>
+                  <LineChart data={data} margin={{ top: 5, right: 36, bottom: 5, left: 0 }}>
                     <CartesianGrid strokeDasharray="3 3" stroke="var(--color-surface-hover)" />
                     <XAxis
                       dataKey="timestamp"
                       type="number"
                       domain={['dataMin', 'dataMax']}
                       tick={{ fontSize: 11 }}
+                      minTickGap={24}
                       tickFormatter={(v: number) => formatChartAxisTimestamp(v, span)}
                     />
                     <YAxis tick={{ fontSize: 11 }} domain={['auto', 'auto']} width={40} />
