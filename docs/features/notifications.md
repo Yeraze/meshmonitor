@@ -3,8 +3,8 @@
 MeshMonitor supports two notification methods: **Web Push** notifications for browsers/PWAs and **Apprise** for external notification services. Choose the method that works best for your needs, or use both!
 
 ::: tip 4.0 — notifications are scoped
-- **Per-user, per-source Apprise URLs** — set from **Settings → Notifications**; each user configures their own URLs for each source they subscribe to, so home-source alerts can go to your phone without spamming the warehouse-mesh Discord channel.
-- **Security Digest Apprise URL** — a single admin-set URL in **Settings → Security** that fires the weak-key / duplicate-key digest, independent of any user's preferences.
+- **Per-user, per-source Apprise URLs** — set on each source's **Notifications** tab; each user configures their own URLs for each source they subscribe to, so home-source alerts can go to your phone without spamming the warehouse-mesh Discord channel.
+- **Security Digest Apprise URL** — a single admin-set URL on the **Security** tab that fires the weak-key / duplicate-key digest, independent of any user's preferences.
 :::
 
 ![Notifications](/images/features/notifications.png)
@@ -356,10 +356,10 @@ Admins can send test notifications:
 1. Go to **Configuration → Notifications**
 2. Scroll to "Test Notifications" section
 3. Click **"🧪 Send Test Notification"**
-4. All subscribed users (including yourself) will receive a test notification
+4. Every browser **you** have subscribed receives a test notification
 
-::: warning Test Sends to ALL Users
-The test notification is sent to ALL subscribed users, not just the admin. Use sparingly!
+::: tip Only you receive the test
+The test goes to your own subscriptions, on every source you subscribed a browser on. Other users are not notified. The button shows only when this browser is subscribed.
 :::
 
 ## Apprise Notifications Setup
@@ -389,7 +389,7 @@ See the [full list of supported services](https://github.com/caronc/apprise#supp
 
 1. Navigate to **Configuration → Notifications** in MeshMonitor
 2. In the **Notification Services** section at the top, toggle **"Apprise Notifications"** to enabled (green border)
-3. Click **"Save Notification Settings"**
+3. Click **"Save Preferences"**
 4. The **Apprise Configuration** section will appear below
 
 ### Configuring Notification URLs
@@ -455,7 +455,7 @@ All configured services will receive notifications for new messages.
 After configuring your URLs:
 
 1. Click **"Save Configuration"** to save your Apprise URLs
-2. Click **"Test Connection"** to verify the configuration works
+2. Click **"Send Test Notification"** to verify the configuration works (admins only)
 3. You should receive test notifications on all configured services
 4. Send a test message in MeshMonitor to verify real notifications work
 
@@ -477,7 +477,7 @@ For complete URL format documentation for all services, see the [Apprise Wiki](h
 
 ### Persistent Configuration
 
-Apprise URLs are stored in `/data/apprise-config/urls.txt` inside the Docker container, which is mapped to the persistent `/data` volume. This means your Apprise configuration will survive:
+Apprise URLs are stored in the MeshMonitor database with the rest of your notification settings, per user and per source. This means your Apprise configuration will survive:
 
 - Container restarts
 - Container upgrades
@@ -489,7 +489,7 @@ Apprise URLs are stored in `/data/apprise-config/urls.txt` inside the Docker con
 Apprise URLs contain authentication tokens that allow sending notifications to your services. Keep these URLs secure:
 
 - Don't commit them to version control
-- Restrict access to the Notifications configuration page (admin only)
+- Each user's URLs are stored with that user's own settings and are not shown to other users
 - Rotate tokens if compromised
 - Use read-only or limited-permission tokens when possible
 :::
@@ -499,13 +499,13 @@ Apprise URLs contain authentication tokens that allow sending notifications to y
 #### URLs Not Saving
 
 - Check that you clicked **"Save Configuration"** after entering URLs
-- Verify the `/data` volume is writable
+- Check that you are on the source you meant to configure: URLs are saved per source
 - Check Docker logs for errors: `docker logs meshmonitor`
 
 #### Notifications Not Receiving
 
 1. Verify Apprise is enabled in Notification Services section
-2. Click **"Test Connection"** to verify URLs are correct
+2. Click **"Send Test Notification"** (admins only) to verify URLs are correct
 3. Check Docker logs for error messages:
    ```bash
    docker logs meshmonitor | grep -i apprise
@@ -522,7 +522,7 @@ Apprise URLs contain authentication tokens that allow sending notifications to y
 
 ## Muting Channels and DMs
 
-You can silence notifications for a specific channel or direct message conversation without disabling notifications globally. Mutes are stored on the server and apply across all your devices and browsers.
+You can silence notifications for a specific channel or direct message conversation without disabling notifications globally. Mutes are stored on the server, per source, and apply across all your devices and browsers. Muting a channel on one source does not mute it on another.
 
 ### Muting a Channel
 
@@ -561,9 +561,13 @@ If a message contains a keyword on your notification **whitelist**, it will stil
 Time-based mutes expire automatically — no server-side job runs. Expiry is checked at the moment each notification is evaluated, so a mute that expires while you are away is correctly lifted the next time a message arrives.
 :::
 
+### MeshCore Channels
+
+A MeshCore channel has the same bell button, in the conversation toolbar of the MeshCore **Channels** view, with the same choices. MeshCore channel messages raise no push, Apprise or sound alert, so there the mute only hides unread marks: the dot on the channel row, its share of the header total, and the sidebar Channels dot.
+
 ### Cross-Device Sync
 
-Mute preferences are stored in your user account on the MeshMonitor server (in `user_notification_preferences`). They apply regardless of which browser or device you use to access MeshMonitor.
+Mute preferences are stored in your user account on the MeshMonitor server (in `user_notification_preferences`), with the settings of the source they belong to. They apply regardless of which browser or device you use to access MeshMonitor.
 
 ## Notification Settings
 
@@ -602,7 +606,7 @@ A source you have never saved settings for uses the **built-in defaults**. The t
 
 So on a source you have not set up, you are notified of direct messages only, over Web Push, if this browser is subscribed on that source. Channel messages, new-node alerts and traceroute alerts are off until you turn them on and save.
 
-::: warning Changed in the next release
+::: warning Changed in 4.17
 A source with no saved settings used to borrow the settings you saved for another source: its channel ticks, keywords, toggles and Apprise URLs. It now uses the defaults above. If you run several sources and only ever saved settings on one, open the **Notifications** tab on each of the others and save what you want there. In particular, Apprise is off on a source until you turn it on and add URLs for that source, and channel, new-node and traceroute alerts are off until you turn them on. The defaults also changed: new-node and traceroute alerts used to default to on, and the keyword lists used to start with `Hi`, `Help` and `Test`, `Copy`. Settings you already saved are not changed.
 :::
 
@@ -618,7 +622,7 @@ Notification filtering applies to **both Web Push and Apprise** notifications:
 
 - **Whitelist**: Keywords that always trigger notifications (highest priority)
 - **Blacklist**: Keywords that never trigger notifications (second priority)
-- **Emoji Reactions**: Enable/disable notifications for emoji-only messages (third priority)
+- **Emoji Reactions**: Enable/disable notifications for reactions: tapbacks and emoji-only messages (third priority)
 - **Newly Found Nodes**: Enable/disable notifications when new nodes are discovered
 - **Successful Traceroutes**: Enable/disable notifications for completed traceroute responses
 - **Waypoint Arrivals**: Enable/disable notifications when a waypoint arrives from the mesh nearby
@@ -628,7 +632,7 @@ Notification filtering applies to **both Web Push and Apprise** notifications:
 The filtering follows this priority order for **message notifications**:
 1. **Whitelist** → Always send notification if keyword matches
 2. **Blacklist** → Never send notification if keyword matches
-3. **Emoji Reactions** → Filter emoji-only messages if disabled
+3. **Emoji Reactions** → Filter tapbacks and emoji-only messages if disabled
 4. **Channel/DM Settings** → Send only if channel is enabled or DM is enabled
 
 **Special Event Notifications** (bypass message filtering):
@@ -637,7 +641,7 @@ The filtering follows this priority order for **message notifications**:
 - **Waypoint Arrivals** → Sent the first time a waypoint arrives from the mesh inside your radius (see below)
 
 ::: tip Emoji Reaction Filtering
-When "Emoji Reactions" is disabled, notifications will be suppressed for messages containing only emojis (e.g., "👍", "😀", "❤️"). Messages with emojis mixed with text will still trigger notifications normally. This is useful for reducing notification noise from emoji reactions and tapbacks.
+When "Emoji Reactions" is disabled, notifications are suppressed for tapbacks (reactions sent with the protocol's reaction flag, whatever they contain) and for messages containing only emojis (e.g., "👍", "😀", "❤️"), keycap emoji such as "1️⃣" included. Typed messages that mix emojis with text still trigger notifications normally.
 :::
 
 ::: info Special Event Notifications
@@ -789,7 +793,7 @@ Notification permissions are controlled by the browser. If denied, you must rese
 
 **Apprise:**
 - Bundled Apprise API runs automatically in Docker container
-- Configuration stored in persistent `/data/apprise-config/` directory
+- Each user's Apprise URLs are stored in the database, per source
 - No environment variables required
 
 ## One Notification When Several Sources Hear a Packet
@@ -1050,9 +1054,12 @@ Content-Type: application/json
       "p256dh": "base64-encoded-key",
       "auth": "base64-encoded-key"
     }
-  }
+  },
+  "sourceId": "your-source-id"
 }
 ```
+
+`sourceId` is required. A browser subscribes once per source, and needs `messages:read` on that source.
 
 ### Unsubscribe from Push Notifications
 
@@ -1061,9 +1068,12 @@ POST /api/push/unsubscribe
 Content-Type: application/json
 
 {
-  "endpoint": "https://push.service.com/..."
+  "endpoint": "https://push.service.com/...",
+  "sourceId": "your-source-id"
 }
 ```
+
+This removes the subscription for that source only. The response carries `remainingSources`, the number of other sources the same browser is still subscribed on. `POST /api/push/unsubscribe-all` with only `endpoint` removes the browser from every source.
 
 ### Get VAPID Public Key
 
@@ -1090,10 +1100,13 @@ Content-Type: application/json
 
 Response:
 {
-  "sent": 5,
+  "success": true,
+  "sent": 1,
   "failed": 0
 }
 ```
+
+The test goes to the calling admin's own subscriptions only.
 
 ### Update VAPID Subject (Admin Only)
 
@@ -1106,19 +1119,17 @@ Content-Type: application/json
 }
 ```
 
-### Get VAPID Status (Admin Only)
+### Get VAPID Status
 
 ```http
 GET /api/push/status
 
 Response:
 {
-  "status": {
-    "configured": true,
-    "publicKey": "BFz...",
-    "subject": "mailto:admin@example.com",
-    "subscriptionCount": 5
-  }
+  "configured": true,
+  "publicKey": "BFz...",
+  "subject": "mailto:admin@example.com",
+  "subscriptionCount": 5
 }
 ```
 

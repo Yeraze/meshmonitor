@@ -1,28 +1,32 @@
 # Settings
 
 ::: tip Reorganized in 4.0
-In MeshMonitor 4.0 the old "Settings" tab was split in two:
+MeshMonitor 4.0 split the old "Settings" tab:
 
-- **[Global Settings](/features/global-settings)** — appearance, localization, security, notifications, backup, housekeeping. One per deployment.
-- **Device Configuration** — what is written to, or done on, the radio (per source, satellite icon).
-- **Per-Source Settings** — connection, Virtual Node, auto-responder, auto-announce, auto-traceroute, auto-ack, scheduled messages, permissions. Edited in **Dashboard → Sources → Edit Source**. See [Multi-Source](/features/multi-source).
+- **[Global Settings](/features/global-settings)**: language, units, appearance, map, security defaults, backup, maintenance. One per deployment.
+- **Device Configuration**: what is written to, or done on, the radio (per source, satellite icon).
+- **Settings** (per source, gear icon): what MeshMonitor stores and does for one source: node display, telemetry, notifications, packet monitor, solar, and the danger zone.
 
-This page covers the **global** options. Connection / Virtual Node / automation knobs now live on the source, not here.
+A source's connection details and Virtual Node are edited with **Edit Source** on the dashboard. Its automations are on its **Automation** tab. See [Multi-Source](/features/multi-source).
+
+This page covers both the global and the per-source options. An entry with a **Location** line names the page that holds it.
 :::
 
-The Global Settings page customizes MeshMonitor's appearance, localization, security defaults, and housekeeping behavior across the entire deployment. Open it from the **Global Settings** gear icon in the dashboard sidebar footer (admin-gated).
+Open Global Settings from the **Global Settings** gear icon in the dashboard sidebar footer. Open a source's own Settings from the gear icon in that source's sidebar.
+
+In 4.17, the theme, units, time and date format, sort order and default landing page became install-wide only: a per-source page no longer keeps its own copy of them.
 
 ![Settings](/images/features/settings.png)
 
 ## Node Connection Configuration {#node-connection}
 
 ::: warning 4.0 — moved to per-source
-Changing the address MeshMonitor connects to is now a **per-source** action. Open **Dashboard → Sources → Edit Source** to change host/port, device path, BLE ID, MQTT credentials, or MeshCore config for any source. The previous single-node "Change Connection" modal has been replaced by the Sources UI.
+Changing the address MeshMonitor connects to is now a **per-source** action. On the dashboard, use **Edit Source** to change the host and port, MQTT credentials, or MeshCore config for any source. The previous single-node "Change Connection" modal has been replaced by the Sources UI.
 
 The `MESHTASTIC_NODE_IP` / `MESHTASTIC_TCP_PORT` env vars only **bootstrap** the first source on a fresh deployment — after first boot, edit the source.
 :::
 
-See [Multi-Source → Connection Types](/features/multi-source) for the full list of supported source types (TCP, Serial, BLE, MQTT, MeshCore) and their configuration fields.
+See [Multi-Source → Connection Types](/features/multi-source) for the supported source types (Meshtastic TCP, MeshCore, MeshCore MQTT ingest, embedded MQTT broker, MQTT bridge and Reticulum) and their configuration fields.
 
 ## Node Display
 
@@ -34,7 +38,7 @@ See [Multi-Source → Connection Types](/features/multi-source) for the full lis
 
 *Formerly labeled "Maximum Age of Active Nodes".*
 
-**Range**: 0-168 hours (`0` = show all, no age cap)
+**Range**: 0-720 hours (`0` = show all, no age cap)
 
 **Default**: 24 hours
 
@@ -91,7 +95,7 @@ MeshMonitor records **First Heard** for each node on each source. It sets the va
 - Filtering out nodes that may have overheard traffic but aren't on your encrypted channel
 - Reducing clutter from unconfigured or unknown devices
 
-**Related Settings**: See [Skip Incomplete Nodes for Automation](/features/automation#skip-incomplete-nodes) to prevent auto-ack and auto-responder from responding to incomplete nodes.
+**Related Settings**: See Skip Incomplete Nodes for [Auto Acknowledge](/features/automation#skip-incomplete-nodes-ack) and [Auto Responder](/features/automation#skip-incomplete-nodes-responder) to prevent either from responding to incomplete nodes.
 
 ### Unknown Nodes Filter
 
@@ -514,7 +518,7 @@ Raise the threshold if your nodes sit close together and you keep opening the wr
 
 When **Cluster overlapping markers** is on, this zoom also sets where clustering stops: below it, crowded markers group into numbered circles. A value of `0` turns off both the gate and clustering.
 
-**Location**: Settings → Map Settings
+**Location**: Global Settings → Map
 
 ### Cluster Overlapping Markers
 
@@ -526,7 +530,7 @@ When **Cluster overlapping markers** is on, this zoom also sets where clustering
 
 Clustering makes large node sets much faster to draw. On a busy mesh, expect the map to feel slower with clustering off.
 
-**Location**: Settings → Map Settings
+**Location**: Global Settings → Map
 
 ### Discard Invalid Positions
 
@@ -539,7 +543,7 @@ Clustering makes large node sets much faster to draw. On a busy mesh, expect the
 
 **Effect**: When enabled (default), a (0,0) position is dropped **on ingest**, across every source, and never stored. Disable it to store and display these positions as received — useful if you want to identify which nodes are transmitting bad/unset GPS fixes. Out-of-range or otherwise garbage coordinates (NaN, outside ±90/±180°) are always discarded regardless of this setting.
 
-**Location**: Settings → Map Settings
+**Location**: Global Settings → Map
 
 ### Map Tileset Selection
 
@@ -558,7 +562,7 @@ The tileset is now chosen **separately for light and dark appearance** — a **L
 - **ESRI Satellite** - Satellite imagery
 
 **Location**:
-- **Settings Tab**: Map Settings section (Light Mode Tileset / Dark Mode Tileset)
+- **Global Settings**: Map section (Light Mode Tileset / Dark Mode Tileset)
 - **Nodes Tab**: Bottom-center tileset selector (visual picker) — updates whichever slot matches your current appearance
 
 **Effect**: Changes the base map layer displayed on the interactive map. Different tilesets offer different visual styles, levels of detail, and use cases.
@@ -580,7 +584,7 @@ The tileset is now chosen **separately for light and dark appearance** — a **L
 - **High Availability** - Independence from external tile services
 
 **Configuration**:
-1. Navigate to **Settings → Map Settings → Custom Tile Servers**
+1. Navigate to **Global Settings → Map → Custom Tile Servers**
 2. Click **+ Add Custom Tile Server**
 3. Configure:
    - **Name**: Friendly name (e.g., "Local Tiles")
@@ -630,7 +634,7 @@ Description: Offline OpenStreetMap tiles via TileServer GL
 
 ## Elevation / Terrain (Link Profile) {#elevation-terrain-link-profile}
 
-**Description**: Controls the digital elevation model (DEM) source that powers the [Map Analysis Link Profile tool](/features/map-analysis#terrain-link-profile) — the two-point terrain/line-of-sight/Fresnel-zone link-planning tool. Admin-only settings; visible under **Settings → Elevation / Terrain**.
+**Description**: Controls the digital elevation model (DEM) source that powers the [Map Analysis Link Profile tool](/features/map-analysis#terrain-link-profile) — the two-point terrain/line-of-sight/Fresnel-zone link-planning tool. Admin-only settings; visible under **Global Settings → Elevation / Terrain**.
 
 **Fields**:
 - **Enable terrain elevation** — turns the Link Profile tool's terrain chart on or off. When disabled, the toolbar button disappears from Map Analysis for every user and any in-flight request returns an explicit "disabled" message rather than failing silently. Enabled by default.
@@ -654,7 +658,7 @@ This same elevation source drives Map Analysis's [3D terrain view](/features/map
 
 ## Flight matching (ADS-B) {#flight-matching-ads-b}
 
-**Description**: Looks up a node that becomes a [likely aircraft](#likely-aircraft-detection) on a free, public ADS-B feed and shows the flight in its popup and details. Admin-only, global (not per source); under **Settings → Flight matching (ADS-B)**, next to Elevation / Terrain. Off by default.
+**Description**: Looks up a node that becomes a [likely aircraft](#likely-aircraft-detection) on a free, public ADS-B feed and shows the flight in its popup and details. Admin-only, global (not per source); under **Global Settings → Flight matching (ADS-B)**, next to Elevation / Terrain. Off by default.
 
 **Fields**:
 - **Look up likely aircraft on a public ADS-B feed** — the on/off switch. Off means no outside calls at all.
@@ -677,7 +681,7 @@ Admin-only setting that controls where users land at the root URL (`/`).
 - **Unified View** (default) — current behavior; the multi-source dashboard with all sources side-by-side
 - **Any configured source** — `/` redirects to `/source/:sourceId/` so the page opens straight into that source
 
-**Location**: **Settings → Appearance → Default Landing Page** (admin-only — non-admin users do not see this control).
+**Location**: **Global Settings → Appearance → Default Landing Page** (admin-only — non-admin users do not see this control).
 
 **Effect**: Sets a deployment-wide default. Users still have full navigation:
 
@@ -855,6 +859,8 @@ Looking for the icon-based traceroute strip instead? That's a different surface 
 ### Save Settings
 
 Saves all changes made in the Settings tab. **Changes are not applied until you click this button.**
+
+You can clear a number field while you edit it. A blank or out-of-range field is outlined with a message, and Save stays off until every number is valid.
 
 **Side Effects**: Settings are stored on the server and will affect all browsers accessing this MeshMonitor instance.
 

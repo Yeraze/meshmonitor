@@ -3,7 +3,7 @@
 The Packet Monitor is a diagnostic tool that displays raw Meshtastic packets as they are received from the mesh network. It provides visibility into the low-level packet traffic for debugging and analysis purposes.
 
 ::: tip MeshCore Packet Monitor
-MeshCore sources have their own equivalent — the **OTA Packet Monitor** accessible from the **Packets** tab in the MeshCore source page. It captures raw OTA frames from the companion's `LogRxData` push (route type, payload type, relay chain, SNR/RSSI, and a full hex dump). See the [MeshCore documentation](/features/meshcore#packet-monitor) for details.
+MeshCore sources have their own equivalent — the **OTA Packet Monitor** accessible from the **Packet Monitor** tab in the MeshCore source page. It captures raw OTA frames (route type, payload type, relay chain, SNR/RSSI, and a full hex dump) from a companion's `LogRxData` push, from a repeater's serial packet log (this needs a firmware build with `MESH_PACKET_LOGGING=1`), or from a MeshCore MQTT ingest feed. Its **Packet Decode** view can decrypt channel packets with keys the server holds. See the [MeshCore documentation](/features/meshcore#packet-monitor) for details.
 :::
 
 ::: tip MQTT Packet Monitor
@@ -120,7 +120,7 @@ Each packet entry shows:
 
 ### Access Permission
 
-Viewing the Packet Monitor requires the `packetmonitor:read` permission. This is granted by default to all users (including Anonymous). Administrators can revoke it per-user in **Settings > Users**. The Packet Monitor permission is read-only — there is no write mode.
+Viewing the Packet Monitor requires the `packetmonitor:read` permission. This is granted by default to all users (including Anonymous). Administrators can revoke it per-user in **Settings > Users**. The Packet Monitor permission is read-only: the Users page offers no write grant for it, so only an administrator can clear a packet log, on Meshtastic and MeshCore sources alike.
 
 ### Packet Filtering by Permission
 

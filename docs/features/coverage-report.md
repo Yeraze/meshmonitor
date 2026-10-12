@@ -340,6 +340,8 @@ under **Settings → Coverage recording**, off by default. Each observer shows
 as its own receiver, labelled **Observer**. How many rows an observer feed
 adds hasn't been measured yet, and the toggle says so.
 
+For MQTT sources:
+
 - **Volume:** a regional feed adds about 12,000–14,000 rows a day (about
   90,000–100,000 rows, 35–50 MB, over 7 days of retention). A world-wide
   `msh/#` feed can reach about 1 million rows a day and several GB a week.

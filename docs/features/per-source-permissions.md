@@ -27,6 +27,15 @@ Resources cover per-source items like messages, nodes, channels, schedulers, and
 MeshCore contact positions used to be returned to anyone with `nodes` read access. They now require `canViewOnMap` on that source, matching how Meshtastic nodes have always behaved — so a user granted read-only access can see the contact list without learning where those nodes are. Existing users are backfilled on upgrade: anyone who already had `nodes` read on a MeshCore source keeps map visibility, so nothing disappears for current accounts. New grants must set the flag explicitly.
 :::
 
+## What a grant covers
+
+A grant on one source never opens another. Since 4.17 every route that acts on a source checks your grant on **that** source, and so does live data:
+
+- **Live updates.** Each event the browser receives over the WebSocket (new messages, node updates, telemetry, traceroutes) is checked against your grants for the source it came from. A change to your grants takes effect without a new login.
+- **Views that span sources.** Unified Messages, the dashboard and the map leave out rows from sources you cannot read. A cross-source "heard here" link names two sources, so you see it only when you can read **both**.
+- **Source settings.** A non-admin with `sources:write` can edit a source, but stored passwords, keys and tokens are left out of what they are sent, and URLs lose their credentials. Saving the form keeps the stored secrets.
+- **Admin only.** Restarting MeshMonitor and install-wide jobs need an admin account, whatever per-source grants a user holds.
+
 ## Users page
 
 **Settings → Users** (admin only) is the central management page. Admins can:
