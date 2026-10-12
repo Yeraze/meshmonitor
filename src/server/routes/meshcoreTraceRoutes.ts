@@ -10,7 +10,8 @@ import { optionalAuth, requirePermission } from '../auth/authMiddleware.js';
 import databaseService from '../../services/database.js';
 import { logger } from '../../utils/logger.js';
 import { ok, fail } from '../utils/apiResponse.js';
-import { summarizeHopSnrLinks } from '../../utils/meshcoreHopSnr.js';
+import { summarizeHopSnrLinks, HOP_SNR_POINTS_PER_LINK, HOP_SNR_MAX_POINTS_PER_LINK } from '../../utils/meshcoreHopSnr.js';
+import { HOP_SNR_HISTORY_LIMIT, HOP_SNR_HISTORY_MAX_LIMIT } from '../../db/repositories/meshcoreHopSnr.js';
 
 const router = Router({ mergeParams: true });
 
@@ -18,7 +19,9 @@ const PUBLIC_KEY_RE = /^[0-9a-f]{64}$/i;
 const DEFAULT_HOURS = 24 * 7;
 const MAX_HOURS = 24 * 90;
 
-// GET /api/sources/:id/meshcore/hop-snr?publicKey=<64 hex>&hours=<n>
+// GET /api/sources/:id/meshcore/hop-snr?publicKey=<64 hex>&hours=<n>&points=<n>
+// `points` caps the samples per link (newest kept). Default 120 serves the
+// summary card; the charts ask for more (#5765).
 router.get(
   '/hop-snr',
   optionalAuth(),
@@ -37,11 +40,21 @@ router.get(
           return fail(res, 400, 'INVALID_HOURS', `hours must be between 1 and ${MAX_HOURS}`);
         }
       }
+      let points = HOP_SNR_POINTS_PER_LINK;
+      if (req.query.points !== undefined) {
+        points = Number(req.query.points);
+        if (!Number.isInteger(points) || points <= 0 || points > HOP_SNR_MAX_POINTS_PER_LINK) {
+          return fail(res, 400, 'INVALID_POINTS', `points must be a whole number between 1 and ${HOP_SNR_MAX_POINTS_PER_LINK}`);
+        }
+      }
       const sinceMs = Date.now() - hours * 60 * 60_000;
+      // The row limit spans every link of the read, so a larger point cap
+      // needs more rows or busy contacts would starve their quieter links.
+      const rowLimit = Math.min(HOP_SNR_HISTORY_MAX_LIMIT, Math.max(HOP_SNR_HISTORY_LIMIT, points * 10));
       const rows = typeof rawKey === 'string'
-        ? await databaseService.meshcoreHopSnr.getHistoryForNode(sourceId, rawKey.toLowerCase(), sinceMs)
-        : await databaseService.meshcoreHopSnr.getRecent(sourceId, sinceMs);
-      return ok(res, { hours, links: summarizeHopSnrLinks(rows) });
+        ? await databaseService.meshcoreHopSnr.getHistoryForNode(sourceId, rawKey.toLowerCase(), sinceMs, rowLimit)
+        : await databaseService.meshcoreHopSnr.getRecent(sourceId, sinceMs, rowLimit);
+      return ok(res, { hours, links: summarizeHopSnrLinks(rows, points) });
     } catch (error) {
       logger.error('Error reading MeshCore hop SNR history:', error);
       return fail(res, 500, 'INTERNAL_ERROR', 'Failed to read trace SNR history');

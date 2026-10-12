@@ -36,8 +36,10 @@ export interface MeshCoreHopSnrRow {
   timestamp: number;
 }
 
-/** Most rows one history read returns. */
+/** Rows one history read returns by default. */
 export const HOP_SNR_HISTORY_LIMIT = 2000;
+/** Most rows a caller may ask one history read for (the chart view, #5765). */
+export const HOP_SNR_HISTORY_MAX_LIMIT = 20000;
 
 export class MeshCoreHopSnrRepository extends BaseRepository {
   constructor(db: DrizzleDatabase, dbType: DatabaseType) {
@@ -120,7 +122,7 @@ export class MeshCoreHopSnrRepository extends BaseRepository {
         gte(t.timestamp, sinceMs),
       ))
       .orderBy(desc(t.timestamp), desc(t.id))
-      .limit(Math.max(1, Math.min(limit, HOP_SNR_HISTORY_LIMIT)));
+      .limit(Math.max(1, Math.min(limit, HOP_SNR_HISTORY_MAX_LIMIT)));
     return rows.map((r: Record<string, unknown>) => this.toRow(r));
   }
 
@@ -131,7 +133,7 @@ export class MeshCoreHopSnrRepository extends BaseRepository {
     const rows = await this.db.select().from(t)
       .where(and(this.withSourceScope(t, sourceId), gte(t.timestamp, sinceMs)))
       .orderBy(desc(t.timestamp), desc(t.id))
-      .limit(Math.max(1, Math.min(limit, HOP_SNR_HISTORY_LIMIT)));
+      .limit(Math.max(1, Math.min(limit, HOP_SNR_HISTORY_MAX_LIMIT)));
     return rows.map((r: Record<string, unknown>) => this.toRow(r));
   }
 

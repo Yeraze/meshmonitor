@@ -465,6 +465,8 @@ A MeshCore trace records, for every hop on its path, how well each node heard th
 
 Open a contact in **Node Details** to see **Trace SNR history**: one row per link direction, with the latest SNR, the average and range, the number of samples and a small trend line.
 
+Below it, **Trace SNR over time** draws the same readings as full-size charts, one per link direction, with a time axis and a tooltip that gives the SNR in dB and the time of each sample. The two directions of a link sit side by side in two colours. Pick **24h**, **7d**, **30d** or **90d** to set the window. The line breaks where two samples are more than three hours apart. Each chart draws the newest 1,000 samples in the window.
+
 - **Direction matters.** "A heard B" and "B heard A" are separate rows; the two readings are different measurements.
 - **Hops are identified by a 1- or 2-byte hash** of a node's public key. A hash that matches exactly one of your contacts is shown by name. One that matches none shows as unknown, and one that several contacts share is marked as shared; MeshMonitor does not guess.
 - **The first sender of an overheard trace is unknown.** The trace does not carry who started it. For a trace you sent, it is your own node.

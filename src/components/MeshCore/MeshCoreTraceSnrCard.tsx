@@ -12,7 +12,7 @@ import { useTranslation } from 'react-i18next';
 import api from '../../services/api';
 import { UiIcon } from '../icons';
 import { formatRelativeTime } from '../../utils/datetime';
-import { SPARK_W, SPARK_H, sparklinePoints, type HopSnrEnd, type HopSnrLink } from '../../utils/meshcoreHopSnr';
+import { SPARK_W, SPARK_H, sparklinePoints, hopSnrEndName, type HopSnrEnd, type HopSnrLink, type HopSnrTranslate } from '../../utils/meshcoreHopSnr';
 import styles from './MeshCoreTraceSnrCard.module.css';
 
 interface Envelope { success: boolean; data?: { hours: number; links: HopSnrLink[] } }
@@ -53,20 +53,8 @@ export const MeshCoreTraceSnrCard: React.FC<MeshCoreTraceSnrCardProps> = ({ sour
 
   if (!data || data.length === 0) return null;
 
-  const nameOf = (end: HopSnrEnd): string => {
-    if (end.publicKey) {
-      if (end.publicKey === key) return t('meshcore.trace_snr.this_contact', 'this contact');
-      if (localPublicKey && end.publicKey === localPublicKey.toLowerCase()) return t('meshcore.trace_snr.this_node', 'This node');
-      const c = contacts?.find((x) => x.publicKey?.toLowerCase() === end.publicKey);
-      return c?.name || c?.advName || `${end.publicKey.slice(0, 8)}…`;
-    }
-    if (end.hash) {
-      return end.candidates > 1
-        ? t('meshcore.trace_snr.ambiguous', '{{hash}} ({{count}} contacts share it)', { hash: end.hash, count: end.candidates })
-        : t('meshcore.trace_snr.unknown_hash', '{{hash}} (unknown)', { hash: end.hash });
-    }
-    return t('meshcore.trace_snr.unknown_origin', 'unknown sender');
-  };
+  const nameOf = (end: HopSnrEnd): string =>
+    hopSnrEndName(end, { contactKey: key, localPublicKey, contacts, t: t as unknown as HopSnrTranslate });
 
   return (
     <div className={styles.card} data-testid="meshcore-trace-snr">
