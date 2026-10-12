@@ -306,4 +306,16 @@ describe('MessagesTab status + popup triggers (#5645)', () => {
     expect(handleSenderClick.mock.calls[0][0]).toBe(OTHER_ID);
     expect(screen.getAllByTestId('sender-avatar-status-badge').length).toBeGreaterThan(0);
   });
+
+  it('marks each DM bubble with the Meshtastic protocol stripe (#5744)', () => {
+    const node = makeNode(2, OTHER_ID, 'Other Node', 3000);
+    const { container } = render(
+      <MessagesTab
+        {...makeProps({ processedNodes: [node], nodes: [node], messages: [dmFrom(OTHER_ID, 'hello there')] })}
+      />,
+    );
+    const bubble = container.querySelector('.message-bubble') as HTMLElement;
+    expect(bubble).not.toBeNull();
+    expect(bubble).toHaveAttribute('data-protocol', 'meshtastic');
+  });
 });

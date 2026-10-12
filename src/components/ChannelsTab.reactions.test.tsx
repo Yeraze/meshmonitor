@@ -10,6 +10,7 @@ import { describe, it, expect, vi, beforeAll } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import ChannelsTab from './ChannelsTab';
 import type { MeshMessage } from '../types/message';
+import { SourceProvider } from '../contexts/SourceContext';
 
 // ChannelsTab calls useNodes() directly (line 211), which reaches usePoll ->
 // useCsrfFetch -> useCsrf and requires a CsrfProvider. The node list is
@@ -165,5 +166,33 @@ describe('ChannelsTab reactions (#4243)', () => {
     // Exactly one reaction bubble — the tapback. The parent is a normal message.
     expect(document.querySelectorAll('.reaction').length).toBe(1);
     expect(screen.getByText('anyone around?')).toBeTruthy();
+  });
+});
+
+describe('ChannelsTab protocol stripe (#5744)', () => {
+  const bubble = () => document.querySelector('.message-bubble') as HTMLElement;
+
+  it('marks a bubble as Meshtastic with no source in context (legacy view)', () => {
+    render(<ChannelsTab {...makeProps()} />);
+    expect(bubble()).toHaveAttribute('data-protocol', 'meshtastic');
+  });
+
+  it.each(['meshtastic_tcp', 'mqtt_broker', 'mqtt_bridge'])(
+    'marks a bubble as Meshtastic on a %s source',
+    (sourceType) => {
+      render(
+        <SourceProvider sourceId="src1" sourceName="Src" sourceType={sourceType}>
+          <ChannelsTab {...makeProps()} />
+        </SourceProvider>,
+      );
+      expect(bubble()).toHaveAttribute('data-protocol', 'meshtastic');
+    },
+  );
+
+  it('keeps the spoofed style and the stripe together', () => {
+    const spoofed = { ...parentMsg, spoofSuspected: true } as MeshMessage;
+    render(<ChannelsTab {...makeProps({ channelMessages: { 0: [spoofed] }, messages: [spoofed] })} />);
+    expect(bubble()).toHaveClass('spoofed');
+    expect(bubble()).toHaveAttribute('data-protocol', 'meshtastic');
   });
 });

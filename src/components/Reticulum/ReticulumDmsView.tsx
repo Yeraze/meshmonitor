@@ -49,6 +49,7 @@ import { useSettings } from '../../contexts/SettingsContext';
 import { formatTimeOrDate } from '../../utils/datetime';
 import { UiIcon, type UiIconName } from '../icons';
 import styles from './ReticulumDmsView.module.css';
+import protocolStripe from '../messages/ProtocolStripe.module.css';
 
 export interface ReticulumDmsViewProps {
   sourceId: string;
@@ -315,7 +316,7 @@ export const ReticulumDmsView: React.FC<ReticulumDmsViewProps> = ({
                     data-testid="reticulum-dms-message"
                     data-message-id={m.id}
                   >
-                    <div className={styles.bubble}>
+                    <div className={`${styles.bubble} ${protocolStripe.stripe}`} data-protocol="reticulum">
                       {(m.replyToHash || m.threadHash) && (
                         <div className={styles.badgeRow}>
                           {m.replyToHash && (
@@ -368,7 +369,7 @@ export const ReticulumDmsView: React.FC<ReticulumDmsViewProps> = ({
 
               {pending.map(p => (
                 <div key={p.localId} className={`${styles.messageRow} ${styles.messageRowOutgoing}`} data-testid="reticulum-dms-pending-message">
-                  <div className={`${styles.bubble} ${styles.bubblePending}`}>
+                  <div className={`${styles.bubble} ${styles.bubblePending} ${protocolStripe.stripe}`} data-protocol="reticulum">
                     <div className={styles.messageContent}>{p.content}</div>
                     <div className={styles.messageMeta}>
                       <span
