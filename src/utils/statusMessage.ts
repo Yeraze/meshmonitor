@@ -133,3 +133,25 @@ export function validateStatusMessageConfigPayload(config: unknown): string | nu
   }
   return null;
 }
+
+/**
+ * i18n key and English text for a Status Message save the node did not confirm
+ * (#5745), keyed by the API error `code`. Undefined for any other failure, so
+ * the caller falls back to the server's own message.
+ */
+export function statusMessageSaveErrorText(code: string | undefined): { key: string; fallback: string } | undefined {
+  switch (code) {
+    case 'STATUSMESSAGE_NOT_APPLIED':
+      return {
+        key: 'quick_status.not_applied',
+        fallback: 'The node did not take the new status. Try again.',
+      };
+    case 'STATUSMESSAGE_UNVERIFIED':
+      return {
+        key: 'quick_status.unverified',
+        fallback: 'The node did not confirm the new status in time. It may not be saved. Check the node, then try again.',
+      };
+    default:
+      return undefined;
+  }
+}

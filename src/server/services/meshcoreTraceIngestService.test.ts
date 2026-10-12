@@ -158,3 +158,139 @@ describe('MeshCoreTraceIngestService (#5722)', () => {
     expect(await svc.ingest('s1', trace({ tag: 3 }), LOCAL)).toBe(0);
   });
 });
+
+describe('traces a repeater caught in flight (#5742)', () => {
+  const inFlight = { inFlight: true } as const;
+  // Path: originator → b1 → c3 → b1 → originator (out and back).
+  const stage = (snrs: number[], last: number | null = 20): TraceDataEvent =>
+    trace({ path_hashes_hex: 'b1c3b1', path_snrs_q: snrs, last_snr_q: last });
+
+  describe('traceToHopRows', () => {
+    it('a finished trace reads exactly like the Companion push', () => {
+      const keys = [REP_A, REP_B, LOCAL];
+      expect(traceToHopRows('s', trace(), keys, LOCAL, 1000, inFlight)).toEqual(traceToHopRows('s', trace(), keys, LOCAL, 1000));
+    });
+
+    it('mid-route: only the hops that have an SNR, plus the hop we heard send it', () => {
+      const rows = traceToHopRows('s', stage([34]), [REP_A, REP_B, LOCAL], LOCAL, 1, inFlight);
+      expect(rows).toHaveLength(2);
+      expect(rows[0]).toMatchObject({
+        hopIndex: 0, hopCount: 4, senderPublicKey: null, senderHash: null,
+        receiverPublicKey: REP_A, receiverHash: 'b1', snrQuarterDb: 34,
+      });
+      // b1 added the last SNR, so b1 sent this copy and our radio heard b1.
+      expect(rows[1]).toMatchObject({
+        hopIndex: 1, senderPublicKey: REP_A, senderHash: 'b1',
+        receiverPublicKey: LOCAL, receiverHash: null, receiverCandidates: 1, snrQuarterDb: 20,
+      });
+      // c3 has not heard it yet: no row claims it did.
+      expect(rows.some((r) => r.receiverHash === 'c3')).toBe(false);
+    });
+
+    it('first leg: the sender is the unnamed originator, so nothing is stored', () => {
+      expect(traceToHopRows('s', stage([]), [REP_A, REP_B, LOCAL], LOCAL, 1, inFlight)).toEqual([]);
+    });
+
+    it('no RX line, or no own key yet: path rows only', () => {
+      const noRx = traceToHopRows('s', stage([34, -22], null), [REP_A, REP_B, LOCAL], LOCAL, 1, inFlight);
+      expect(noRx.map((r) => r.receiverHash)).toEqual(['b1', 'c3']);
+      const noKey = traceToHopRows('s', stage([34, -22]), [REP_A, REP_B], null, 1, inFlight);
+      expect(noKey.map((r) => r.receiverHash)).toEqual(['b1', 'c3']);
+    });
+
+    it('still drops a malformed packet, and a Companion push stays strict', () => {
+      expect(traceToHopRows('s', stage([1, 2, 3, 4]), [], LOCAL, 1, inFlight)).toEqual([]);
+      expect(traceToHopRows('s', stage([300]), [], LOCAL, 1, inFlight)).toEqual([]);
+      expect(traceToHopRows('s', stage([34]), [], LOCAL, 1)).toEqual([]);
+      expect(traceToHopRows('s', trace({ last_snr_q: null }), [], LOCAL, 1)).toEqual([]);
+    });
+  });
+
+  describe('ingest', () => {
+    let now: number;
+    let stored: MeshCoreHopSnrRow[];
+    let deps: TraceIngestDeps;
+    let svc: MeshCoreTraceIngestService;
+    const links = () => stored.map((r) => `${r.senderHash ?? '?'}>${r.receiverHash ?? 'local'}@${r.hopIndex}=${r.snrQuarterDb}`);
+
+    beforeEach(() => {
+      now = 1_000_000;
+      stored = [];
+      deps = {
+        listContactKeys: async () => [REP_A, REP_B],
+        hasTrace: async (sourceId, tag, auth, sinceMs) =>
+          stored.some((r) => r.sourceId === sourceId && r.traceTag === tag && r.authCode === auth && r.timestamp >= sinceMs),
+        insertHops: async (_s, rows) => { stored.push(...rows); },
+        deleteOlderThan: vi.fn(async () => undefined),
+        now: () => now,
+      };
+      svc = new MeshCoreTraceIngestService(deps);
+    });
+
+    it('heard at every stage: each link is stored once', async () => {
+      expect(await svc.ingest('s1', stage([], 4), LOCAL, inFlight)).toBe(0);
+      now += 400;
+      expect(await svc.ingest('s1', stage([34], 8), LOCAL, inFlight)).toBe(2);
+      now += 400;
+      expect(await svc.ingest('s1', stage([34, -22], 12), LOCAL, inFlight)).toBe(2);
+      now += 400;
+      expect(await svc.ingest('s1', stage([34, -22, 16], 20), LOCAL, inFlight)).toBe(2);
+      expect(links()).toEqual([
+        '?>b1@0=34', 'b1>local@1=8',
+        'b1>c3@1=-22', 'c3>local@2=12',
+        'c3>b1@2=16', 'b1>local@3=20',
+      ]);
+    });
+
+    it('the same stage heard twice adds nothing', async () => {
+      expect(await svc.ingest('s1', stage([34, -22], 12), LOCAL, inFlight)).toBe(3);
+      expect(await svc.ingest('s1', stage([34, -22], 12), LOCAL, inFlight)).toBe(0);
+      expect(stored).toHaveLength(3);
+    });
+
+    it('two copies at the same instant store once', async () => {
+      const results = await Promise.all([
+        svc.ingest('s1', stage([34], 8), LOCAL, inFlight),
+        svc.ingest('s1', stage([34], 8), LOCAL, inFlight),
+      ]);
+      expect(results.sort()).toEqual([0, 2]);
+    });
+
+    it('when our radio is the next hop, its own reading is not stored twice', async () => {
+      // Path b1 → aa (us, LOCAL starts aa11) → c3.
+      const own = (snrs: number[], last: number | null): TraceDataEvent =>
+        trace({ path_hashes_hex: 'b1aac3', path_snrs_q: snrs, last_snr_q: last });
+      expect(await svc.ingest('s1', own([34], 8), LOCAL, inFlight)).toBe(2);
+      // We forward it with our SNR added; c3 forwards that; we overhear c3.
+      expect(await svc.ingest('s1', own([34, 9, 16], 20), LOCAL, inFlight)).toBe(2);
+      expect(links()).toEqual(['?>b1@0=34', 'b1>local@1=8', 'aa>c3@2=16', 'c3>local@3=20']);
+    });
+
+    it('a new trace after the window is stored again', async () => {
+      await svc.ingest('s1', stage([34], 8), LOCAL, inFlight);
+      now += TRACE_DEDUP_WINDOW_MS + 1;
+      expect(await svc.ingest('s1', stage([34], 8), LOCAL, inFlight)).toBe(2);
+    });
+
+    it('after a restart, a trace already in the table gains no rows', async () => {
+      await svc.ingest('s1', stage([34], 8), LOCAL, inFlight);
+      const restarted = new MeshCoreTraceIngestService(deps);
+      now += 400;
+      expect(await restarted.ingest('s1', stage([34, -22], 12), LOCAL, inFlight)).toBe(0);
+      expect(await restarted.ingest('s1', stage([34, -22, 16], 20), LOCAL, inFlight)).toBe(0);
+      expect(stored).toHaveLength(2);
+    });
+
+    it('a failed table check stores nothing and does not throw', async () => {
+      deps.hasTrace = async () => { throw new Error('db down'); };
+      expect(await svc.ingest('s1', stage([], 8), LOCAL, inFlight)).toBe(0);
+      expect(await svc.ingest('s1', stage([34], 8), LOCAL, inFlight)).toBe(0);
+      expect(stored).toHaveLength(0);
+    });
+
+    it('sources do not share the dedup window', async () => {
+      expect(await svc.ingest('s1', stage([34], 8), LOCAL, inFlight)).toBe(2);
+      expect(await svc.ingest('s2', stage([34], 8), LOCAL, inFlight)).toBe(2);
+    });
+  });
+});

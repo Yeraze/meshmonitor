@@ -1,0 +1,32 @@
+/*
+ * Protocol stripe (#5744): a 3px left border in the colour of the mesh
+ * protocol a message travelled on. Shared by the Unified Messages card, the
+ * Meshtastic channel and DM bubbles, the MeshCore message stream and the
+ * Reticulum DM bubbles.
+ *
+ * Use: className={styles.stripe} plus data-protocol={sourceTypeMeshProtocol(type)}.
+ *
+ * The colours mirror MESH_PROTOCOL_COLOR_VAR in src/utils/meshProtocol.ts;
+ * meshProtocol.test.ts fails if the two differ. No fallback values: every
+ * theme defines these role tokens.
+ *
+ * The class is doubled on purpose. The stripe must win over the host's own
+ * border rules whatever order the sheets load in, and the strongest of those
+ * (`.message-bubble.spoofed`) has two classes.
+ */
+
+.stripe.stripe[data-protocol] {
+  border-left: 3px solid var(--protocol-color);
+}
+
+.stripe[data-protocol='meshtastic'] {
+  --protocol-color: var(--color-success);
+}
+
+.stripe[data-protocol='meshcore'] {
+  --protocol-color: var(--color-caution);
+}
+
+.stripe[data-protocol='reticulum'] {
+  --protocol-color: var(--color-accent);
+}

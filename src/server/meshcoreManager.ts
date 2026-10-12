@@ -11,7 +11,8 @@
 import { advertHasPosition } from '../utils/meshcoreAdvertPosition.js';
 import { EventEmitter } from 'events';
 import { logger } from '../utils/logger.js';
-import { meshcoreTraceIngestService } from './services/meshcoreTraceIngestService.js';
+import { meshcoreTraceIngestService, type TraceIngestOptions } from './services/meshcoreTraceIngestService.js';
+import { decodeTracePacket, traceDataEventFromPacket, type TraceDataEvent } from '../utils/meshcoreTrace.js';
 import {
   clampIntervalSetting,
   MESHCORE_AUTO_ANNOUNCE_HOURS,
@@ -2996,7 +2997,7 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
     } else if (event_type === 'trace_data') {
       // #5722: a completed TRACE this radio heard (a reply to one we sent, or
       // one it overheard). Store the per-hop SNRs. Receive-only: sends nothing.
-      void meshcoreTraceIngestService.ingest(this.sourceId, data, this.localNode?.publicKey ?? null);
+      this.storeTraceData(data);
     } else if (event_type === 'ota_packet') {
       // Self-echo correlation for channel "heard repeaters" (#3700) runs on the
       // raw OTA data FIRST, independent of the opt-in packet monitor, so it
@@ -4302,6 +4303,7 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
       this.repeaterPacketStreamSeen = true;
       logger.info(`[MeshCore:${this.sourceId}] Repeater is streaming packets over serial (MESH_PACKET_LOGGING build)`);
     }
+    this.ingestRepeaterTrace(p);
     const frame = parseObserverFrame(p.rawHex);
     if (!frame.ok) {
       logger.debug(`[MeshCore:${this.sourceId}] Repeater RAW line did not parse as a MeshCore frame; skipped`);
@@ -4332,6 +4334,33 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
       payload_size: frame.totalBytes,
       raw_hex: p.rawHex,
     });
+  }
+
+  /**
+   * Store the per-hop SNRs of one heard TRACE (#5722, #5742). One path for
+   * both source types. Receive-only: sends nothing.
+   *
+   * A Repeater's own key comes from `get public.key`; its `localNode.publicKey`
+   * is a placeholder and must not be stored as a link end.
+   */
+  private storeTraceData(data: TraceDataEvent, options: TraceIngestOptions = {}): void {
+    const localKey = this.deviceType === MeshCoreDeviceType.REPEATER
+      ? this.repeaterPublicKey
+      : this.localNode?.publicKey ?? null;
+    void meshcoreTraceIngestService.ingest(this.sourceId, data, localKey, options);
+  }
+
+  /**
+   * #5742: a TRACE in a Repeater's RAW stream feeds the same hop-SNR store a
+   * Companion's TraceData push does. The packet is read as heard: it may be
+   * part-way along its path, and the paired RX line gives the SNR at which
+   * this repeater heard whoever sent it. Not gated on the packet-log opt-in.
+   */
+  private ingestRepeaterTrace(p: RepeaterRawPacket): void {
+    if (this.deviceType !== MeshCoreDeviceType.REPEATER) return;
+    const packet = decodeTracePacket(p.rawHex);
+    if (!packet) return;
+    this.storeTraceData(traceDataEventFromPacket(packet, p.snr), { inFlight: true });
   }
 
   /**

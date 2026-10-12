@@ -47,6 +47,9 @@ import { useViewTranslations } from '../hooks/useViewTranslations';
 // Default PSK value (publicly known key - not truly secure) — shared
 // definition lives in utils/publicChannel.ts (#4705).
 import { DEFAULT_PUBLIC_PSK } from '../utils/publicChannel';
+import { useSource } from '../contexts/SourceContext';
+import { sourceTypeMeshProtocol } from '../utils/meshProtocol';
+import protocolStripe from './messages/ProtocolStripe.module.css';
 
 // Offset for Channel Database channels
 // IMPORTANT: This value must match CHANNEL_DB_OFFSET in src/server/constants/meshtastic.ts
@@ -237,6 +240,9 @@ export default function ChannelsTab({
   mqttReadOnly = false,
 }: ChannelsTabProps) {
   const { t } = useTranslation();
+  // Protocol stripe on each bubble (#5744). No source type (legacy
+  // single-source view) reads as Meshtastic.
+  const meshProtocol = sourceTypeMeshProtocol(useSource().sourceType);
   const { nodes } = useNodes();
   // Status message per sender, for the avatar badge (#5645). One pass over the
   // node list rather than a lookup per message row.
@@ -1269,7 +1275,10 @@ export default function ChannelsTab({
                                       </div>
                                     </div>
                                   )}
-                                  <div className={`message-bubble ${isMine ? 'mine' : 'theirs'}${msg.spoofSuspected ? ' spoofed' : ''}`}>
+                                  <div
+                                    className={`message-bubble ${isMine ? 'mine' : 'theirs'}${msg.spoofSuspected ? ' spoofed' : ''} ${protocolStripe.stripe}`}
+                                    data-protocol={meshProtocol}
+                                  >
                                     {msg.spoofSuspected && (
                                       <div
                                         className="message-spoof-warning"

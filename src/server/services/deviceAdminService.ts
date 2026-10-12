@@ -43,13 +43,51 @@
 import type { MeshtasticManager } from '../meshtasticManager.js';
 import databaseService from '../../services/database.js';
 import protobufService from '../protobufService.js';
-import { MODULE_FIELD_BY_ID } from '../constants/configTypes.js';
+import { CONFIG_TYPE_MAP, MODULE_FIELD_BY_ID } from '../constants/configTypes.js';
+import { ModuleConfigNotAppliedError, ModuleConfigUnverifiedError } from '../errors/moduleConfigVerifyError.js';
 import { calculateLoRaFrequency, modemPresetDisplayName, resolveBandwidthKHz } from '../../utils/loraFrequency.js';
 import { logger } from '../../utils/logger.js';
 import { safeJson } from '../utils/redactSecrets.js';
 
+export interface SetModuleConfigOptions {
+  /**
+   * Read the module back from the node after the write and fail unless it
+   * holds what was sent (#5745). Only acts for a module listed in
+   * `MODULE_READ_BACK_CHECKS`; any other module saves as before.
+   */
+  verify?: boolean;
+}
+
+/** How long one read-back may take. A BLE bridge is slow; the local link is not. */
+export const MODULE_READ_BACK_TIMEOUT_MS = 5000;
+/**
+ * Reads per verified save: the first, plus one more when the first got no
+ * answer or a different value. Only the READ repeats. The write is sent once.
+ */
+export const MODULE_READ_BACK_ATTEMPTS = 2;
+
+/**
+ * Modules a verified save can read back, each with the test "does the node's
+ * section hold what we sent?". A module belongs here only if the firmware
+ * applies it WITHOUT a reboot (a rebooting node cannot answer) and returns the
+ * sent fields unchanged. Today that is the Status Message alone.
+ */
+const MODULE_READ_BACK_CHECKS: Record<string, (sent: Record<string, unknown>, onNode: Record<string, unknown>) => boolean> = {
+  // One string of up to 79 UTF-8 bytes; the route refuses longer, so the
+  // firmware stores it as sent. Proto3 omits an empty string, so an absent
+  // field on either side is the empty (cleared) status.
+  statusmessage: (sent, onNode) => (sent?.nodeStatus ?? '') === (onNode?.nodeStatus ?? ''),
+};
+
 export class DeviceAdminService {
   constructor(private readonly mgr: MeshtasticManager) {}
+
+  /**
+   * Tail of the verified-save queue. A verified save holds the queue from its
+   * write to the end of its read-back, so one save's read-back can never be
+   * answered with the state another save left behind.
+   */
+  private verifiedSaveQueue: Promise<void> = Promise.resolve();
 
   /**
    * Set device configuration (role, broadcast intervals, etc.)
@@ -370,7 +408,76 @@ export class DeviceAdminService {
    * Handles: extnotif, storeforward, rangetest, cannedmsg, audio,
    * remotehardware, detectionsensor, paxcounter, serial, ambientlighting
    */
-  async setGenericModuleConfig(moduleType: string, config: any): Promise<void> {
+  async setGenericModuleConfig(moduleType: string, config: any, options: SetModuleConfigOptions = {}): Promise<void> {
+    const matches = options.verify ? MODULE_READ_BACK_CHECKS[moduleType] : undefined;
+    if (!matches) {
+      return this.sendGenericModuleConfig(moduleType, config);
+    }
+
+    // One verified save at a time per manager. A failed save must not block
+    // the next, so the queue swallows the outcome; the caller still gets it.
+    const run = this.verifiedSaveQueue.then(() => this.sendAndReadBackModuleConfig(moduleType, config, matches));
+    this.verifiedSaveQueue = run.then(() => undefined, () => undefined);
+    return run;
+  }
+
+  /**
+   * Write a module config, then ask the node for it and compare (#5745).
+   *
+   * The firmware reports no error when it drops or fails a write, and the
+   * optimistic cache in `sendGenericModuleConfig` would show the new value
+   * either way. So the cache is left alone until the node has answered.
+   *
+   * What this proves: the write reached the node and its running (RAM) config
+   * holds the value. What it cannot prove: that the node saved it to flash. A
+   * value that passes here can still be gone after a reboot.
+   *
+   * Cost: one write plus at most `MODULE_READ_BACK_ATTEMPTS` reads, all local
+   * admin packets over the client link. Nothing goes on air. The write is
+   * never re-sent.
+   *
+   * @throws ModuleConfigNotAppliedError the node answered with another value;
+   *         the cache now holds the node's value.
+   * @throws ModuleConfigUnverifiedError no answer; the cache keeps what it had.
+   */
+  private async sendAndReadBackModuleConfig(
+    moduleType: string,
+    config: Record<string, unknown>,
+    matches: (sent: Record<string, unknown>, onNode: Record<string, unknown>) => boolean,
+  ): Promise<void> {
+    await this.sendGenericModuleConfig(moduleType, config, { updateCache: false });
+
+    const cacheKey = MODULE_FIELD_BY_ID[moduleType];
+    const adminType = CONFIG_TYPE_MAP[moduleType].type;
+    let onNode: Record<string, unknown> | null = null;
+
+    for (let attempt = 1; attempt <= MODULE_READ_BACK_ATTEMPTS; attempt++) {
+      const answer = await this.mgr.readLocalModuleConfig(adminType, MODULE_READ_BACK_TIMEOUT_MS);
+      if (!answer) {
+        logger.warn(`⚠️ No answer to ${moduleType} read-back ${attempt}/${MODULE_READ_BACK_ATTEMPTS}`);
+        continue;
+      }
+      onNode = answer;
+      if (matches(config, answer)) {
+        // The node's own answer is the truth, so cache that, not what we sent.
+        this.mgr.updateCachedModuleConfig(cacheKey, answer, 'replace');
+        logger.debug(`⚙️ Node confirmed ${moduleType} config (read-back ${attempt})`);
+        return;
+      }
+      // A different value on the first read may be the late answer to a read
+      // sent before our write (the Configuration tab's refresh, say). Read
+      // once more before calling it a failure.
+      logger.warn(`⚠️ ${moduleType} read-back ${attempt}/${MODULE_READ_BACK_ATTEMPTS} does not match what was sent`);
+    }
+
+    if (onNode) {
+      this.mgr.updateCachedModuleConfig(cacheKey, onNode, 'replace');
+      throw new ModuleConfigNotAppliedError(moduleType, onNode);
+    }
+    throw new ModuleConfigUnverifiedError(moduleType);
+  }
+
+  private async sendGenericModuleConfig(moduleType: string, config: Record<string, unknown>, { updateCache = true }: { updateCache?: boolean } = {}): Promise<void> {
     if (!this.mgr.isTransportReady()) {
       throw new Error('Not connected to Meshtastic node');
     }
@@ -402,7 +509,7 @@ export class DeviceAdminService {
       // for until the next config download; the UI already warns about that
       // floor next to the input.
       const cacheKey = MODULE_FIELD_BY_ID[moduleType];
-      if (cacheKey) {
+      if (cacheKey && updateCache) {
         this.mgr.updateCachedModuleConfig(cacheKey, config, 'replace');
         logger.debug(`⚙️ Updated actualModuleConfig.${cacheKey} cache`);
       }

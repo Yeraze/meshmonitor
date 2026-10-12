@@ -1831,8 +1831,12 @@ class ApiService {
     });
 
     if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.error || `Failed to set ${moduleType} configuration`);
+      const error = await response.json().catch(() => ({})) as { error?: string; code?: string };
+      // ApiError keeps the machine code so a caller can show its own text (#5745).
+      throw new ApiError(error.error || `Failed to set ${moduleType} configuration`, response.status, {
+        code: error.code,
+        body: error,
+      });
     }
 
     return response.json();
