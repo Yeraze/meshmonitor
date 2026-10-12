@@ -18,6 +18,7 @@ import { findIgnoredRuns } from './meshcoreIgnoredRuns';
 import Modal from '../common/Modal';
 import { resendAvailability, RESEND_MAX } from './meshcoreResend';
 import styles from './MeshCoreMessageStream.module.css';
+import protocolStripe from '../messages/ProtocolStripe.module.css';
 import { getMeshCoreChannelSendState, getMeshCoreDirectSendState } from '../../utils/deliveryDiagnostics/status';
 import { directSendLabel } from './meshcoreSendLabel';
 
@@ -630,7 +631,11 @@ export const MeshCoreMessageStream: React.FC<MeshCoreMessageStreamProps> = ({
                   onToggle={() => toggleIgnoredRun(ignoredRun.key)}
                 />
               )}
-              <div className={`mc-message-row ${outgoing ? 'outgoing' : ''}`} data-message-id={m.id}>
+              <div
+                className={`mc-message-row ${outgoing ? 'outgoing' : ''} ${protocolStripe.stripe}`}
+                data-message-id={m.id}
+                data-protocol="meshcore"
+              >
               <div className="mc-message-header">
                 {canClick ? (
                   <button

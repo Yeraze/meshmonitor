@@ -72,6 +72,8 @@ import { useToast } from './ToastContainer';
 import apiService, { type TracerouteParticipationEntry } from '../services/api';
 import { useCsrfFetch } from '../hooks/useCsrfFetch';
 import { useSource } from '../contexts/SourceContext';
+import { sourceTypeMeshProtocol } from '../utils/meshProtocol';
+import protocolStripe from './messages/ProtocolStripe.module.css';
 import { computeMessagesReadOnlyState } from './messagesReadOnlyState';
 import { UiIcon } from './icons';
 import UnreadDivider from './messages/UnreadDivider';
@@ -535,7 +537,10 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
   const [adminScanLoading, setAdminScanLoading] = useState<string | null>(null);
   const { showToast } = useToast();
   const csrfFetch = useCsrfFetch();
-  const { sourceId } = useSource();
+  const { sourceId, sourceType } = useSource();
+  // Protocol stripe on each bubble (#5744). No source type (legacy
+  // single-source view) reads as Meshtastic.
+  const meshProtocol = sourceTypeMeshProtocol(sourceType);
   // Oldest-unread timestamp for the open DM, pinned at entry (#4607) — drives
   // the red "New messages" divider below.
   const { dm: pinnedFirstUnreadDM } = useUnreadDividerAnchors();
@@ -2179,7 +2184,8 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                             </div>
                           )}
                           <div
-                            className={`message-bubble ${isMine ? 'mine' : 'theirs'}${senderColor.background ? ' message-bubble--colored' : ''}`}
+                            className={`message-bubble ${isMine ? 'mine' : 'theirs'}${senderColor.background ? ' message-bubble--colored' : ''} ${protocolStripe.stripe}`}
+                            data-protocol={meshProtocol}
                             style={senderColor.background ? { background: senderColor.background, color: senderColor.text } : undefined}
                           >
                             <div className="message-text-row">

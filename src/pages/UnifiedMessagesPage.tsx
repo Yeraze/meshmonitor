@@ -36,7 +36,8 @@ import '../styles/unified.css';
 import { UiIcon } from '../components/icons';
 import { resolveReplyPreview } from '../utils/replyPreview';
 import { getSourceColor } from '../utils/sourceColors';
-import { isAnyMeshCoreSourceType } from '../utils/nodeTypeCategory';
+import { MESH_PROTOCOL_LABEL, sourceTypeMeshProtocol } from '../utils/meshProtocol';
+import protocolStripe from '../components/messages/ProtocolStripe.module.css';
 import { ALL_CHANNELS_PARAM } from '../utils/unifiedChannelFilter';
 import { hopDisplay } from './unifiedHops';
 import HopBadge from '../components/unified/HopBadge';
@@ -553,8 +554,10 @@ export default function UnifiedMessagesPage() {
           const showDivider = dateLabel !== lastDateLabel;
           if (showDivider) lastDateLabel = dateLabel;
 
-          const primarySourceId = msg.receptions[0]?.sourceId ?? '';
-          const color = sourceColor(primarySourceId);
+          // Left border = mesh protocol (#5744). Every reception of one packet
+          // is on the same protocol, so the first one decides. Source identity
+          // stays on the per-source tags below.
+          const protocol = sourceTypeMeshProtocol(msg.receptions[0]?.sourceType);
           const receptionCount = msg.receptions.length;
 
           const reactions = msg.packetId != null ? reactionsByParent.get(msg.packetId) ?? [] : [];
@@ -571,8 +574,12 @@ export default function UnifiedMessagesPage() {
                 </div>
               )}
               <div
-                className="unified-msg-card unified-msg-card--clickable"
-                style={{ borderLeftColor: color }}
+                className={`unified-msg-card unified-msg-card--clickable ${protocolStripe.stripe}`}
+                data-protocol={protocol}
+                title={t('unified.messages.protocol_title', {
+                  defaultValue: '{{protocol}} message',
+                  protocol: MESH_PROTOCOL_LABEL[protocol],
+                })}
                 onClick={() => openStats(msg)}
                 role="button"
                 tabIndex={0}
@@ -604,11 +611,6 @@ export default function UnifiedMessagesPage() {
                       title={t('unified.messages.heard_by_source', { name: r.sourceName })}
                     >
                       {r.sourceName}
-                      {isAnyMeshCoreSourceType(r.sourceType) && (
-                        <span className="unified-msg-card__proto-badge">
-                          {t('unified.messages.meshcore_badge', 'MeshCore')}
-                        </span>
-                      )}
                       <HopBadge reception={r} sourceName={r.sourceName} />
                     </span>
                   ))}

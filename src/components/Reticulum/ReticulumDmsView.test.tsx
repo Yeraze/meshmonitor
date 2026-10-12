@@ -277,4 +277,19 @@ describe('ReticulumDmsView', () => {
       void resolveSend; // avoid unused-var lint; the promise is intentionally left unresolved
     });
   });
+
+  it('marks message bubbles with the Reticulum protocol stripe (#5744)', () => {
+    render(
+      <ReticulumDmsView
+        {...baseProps}
+        activePeerHash="peerHashA"
+        messages={[makeMessage({ id: 's1_in' }), makeMessage({ id: 's1_out', fromHash: 'selfHash', toHash: 'peerHashA' })]}
+      />,
+    );
+    const rows = screen.getAllByTestId('reticulum-dms-message');
+    expect(rows).toHaveLength(2);
+    for (const row of rows) {
+      expect(row.querySelector('[data-protocol="reticulum"]')).not.toBeNull();
+    }
+  });
 });
