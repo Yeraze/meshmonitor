@@ -191,7 +191,7 @@ Not drawn:
 
 You need read access to **both** sources to see an edge, and both radios'
 positions must be visible to you on the map. Links are kept for the Coverage
-retention period (Settings, Coverage Report) and are not part of backups. They
+retention period (Settings, Coverage Report) and are included in system backups. They
 start filling from the moment this version runs; there is no backfill.
 
 The same toggle works in the 3D view. The choice is saved in your browser.

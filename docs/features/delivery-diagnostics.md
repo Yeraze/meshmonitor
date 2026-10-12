@@ -17,7 +17,7 @@ Every field in the popup carries a small badge showing where the value came from
 
 | Badge | Meaning |
 |-------|---------|
-| **Reported by Protocol** | The radio or companion firmware told MeshMonitor this value directly (e.g., a routing error code, a hop limit, an ACK'ing node). |
+| **Reported by protocol** | The radio or companion firmware told MeshMonitor this value directly (e.g., a routing error code, a hop limit, an ACK'ing node). |
 | **Observed by MeshMonitor** | MeshMonitor derived this by watching the mesh itself, not from a field the protocol handed it directly (e.g., a timestamp it recorded, a relayer it correlated from repeated packets). |
 | **Inferred** | MeshMonitor calculated or estimated this from other data (e.g., hops used, computed as starting hop limit minus remaining hop limit). It is a best-effort derivation, not a reported value. |
 | **Unknown** | Nothing is recorded for this field. MeshMonitor shows "Unknown" rather than guessing or leaving the field blank. |
@@ -55,6 +55,18 @@ The rest of the popup is organized into labeled groups, each field carrying its 
   - On Meshtastic, the last relay is only ever a **1-byte partial node ID** (the protocol doesn't send a full node number in the routing ACK), so MeshMonitor shows the candidate node name only when exactly one known node matches that byte, "N possible relays" when several nodes share it, or "Unknown relay" when nothing matches, always alongside the raw `0xNN` byte so you can judge for yourself. MeshCore reports full relay hashes, so its relay field doesn't have this ambiguity.
 - **Signal** -- SNR and RSSI for the ACK, when reported.
 - **Transport** -- whether the packet traveled over RF or MQTT, whether it passed through Store & Forward, whether it was XEdDSA-signed, and whether "Want ACK" was requested.
+
+### Ack Proof (Meshtastic direct messages)
+
+Newer Meshtastic firmware can prove that an acknowledgement came from the node you sent to: the recipient signs the ack with its key and your radio checks it. When your radio reports a result for the ack that settled a direct message, the **Transport** group shows an **Ack Proof** row:
+
+| Value | Meaning |
+|-------|---------|
+| **Proven receipt: the recipient's key signed this ack** | Your radio checked the proof against the recipient's key. Only that node could have made it. |
+| **Ack proof failed: this ack may be forged** | The ack carried a proof that did not match the recipient's key. Someone else may have sent it. The radio still accepted the ack. |
+| **Receipt not proven** | The ack carried no proof your radio could check, or your radio has no key for the recipient. This is common on multi-hop paths, where a relay's echo settles the message before the recipient's own ack arrives. It does not mean delivery failed. |
+
+The row needs firmware **2.8.1 or later** on your own radio. On older firmware the radio reports nothing and the row is hidden. Channel messages have no ack proof. MeshMonitor only displays the result: it sends nothing extra and raises no notification.
 
 ## Propagation (Heard By)
 

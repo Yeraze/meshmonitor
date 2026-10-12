@@ -114,13 +114,14 @@ The import/export format is a JSON array of channel objects (a single object is 
 | `psk` | string | **Yes** | Pre-Shared Key as a Base64-encoded string. Accepted lengths when decoded: **1 byte** (Meshtastic shorthand: `AQ==` = default key, `Ag==`–`Cg==` = simple1–simple9), **16 bytes** (AES-128), or **32 bytes** (AES-256). PSK value `0` (no encryption) is rejected. |
 | `description` | string | No | Free-form notes. Defaults to empty string. |
 | `isEnabled` | boolean | No | When `true`, MeshMonitor uses this channel for decryption. Defaults to `true` on import. |
-| `enforceNameValidation` | boolean | No | When `true`, only attempt decryption if the packet's channel hash matches this channel's name. Useful when multiple channels share the same PSK. Defaults to `false`. |
+| `enforceNameValidation` | boolean | No | When `true`, only attempt decryption if the packet's channel hash matches this channel's name. Useful when multiple channels share the same PSK. Written on export. The file import does not read it: an imported channel starts with it off, so turn it on by hand if you need it. |
+| `protocol` | string | No | `meshtastic` (the default) or `meshcore`. Exports write it on every entry. For a `meshcore` entry, `psk` is the 16-byte channel secret; see [MeshCore Channels](#meshcore-channels). |
 
 #### Notes
 
 - **Sort order is not preserved on import.** New channels are appended to the end of the existing list. You can reorder them after import using drag-and-drop.
 - **`pskLength` is derived automatically** from the decoded PSK and does not need to be specified.
-- **Duplicate detection is not performed on import.** If you import the same file twice you will get duplicate entries.
+- **Duplicate detection is not performed on import** for Meshtastic entries. If you import the same file twice you will get duplicate entries. MeshCore entries are the exception: a secret that is already stored is refused, and the import stops at that entry.
 - **The `id`, `decryptedPacketCount`, `lastDecryptedAt`, `createdBy`, `createdAt`, and `updatedAt` fields** present on exports are ignored on import — the server assigns fresh values.
 
 #### Example: Minimal Import
@@ -140,6 +141,8 @@ The Channel Database also holds **MeshCore** channel keys. A MeshCore entry is a
 
 - a **MeshCore MQTT ingest** source, and
 - a directly attached **MeshCore repeater** running a `MESH_PACKET_LOGGING` firmware build.
+
+The same keys open channel packets (`GRP_TXT` and `GRP_DATA`) in the MeshCore Packet Monitor's **Packet Decode** view, on any MeshCore source. See [Decoding channel packets](/features/meshcore#decoding-channel-packets).
 
 A companion radio holds about 40 channels. Keys in the Channel Database are held by the server alone, so that limit does not apply. They are never written to a device.
 
@@ -277,7 +280,7 @@ The Channel Database is accessible via the V1 API:
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| GET | `/api/v1/channel-database` | List all channels (filtered by permission) |
+| GET | `/api/v1/channel-database` | List channels (filtered by permission). Returns Meshtastic entries by default; add `?protocol=meshcore` or `?protocol=all` for MeshCore entries |
 | GET | `/api/v1/channel-database/:id` | Get specific channel |
 | POST | `/api/v1/channel-database` | Create new channel (admin only) |
 | PUT | `/api/v1/channel-database/:id` | Update channel (admin only) |

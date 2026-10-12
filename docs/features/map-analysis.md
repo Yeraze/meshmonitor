@@ -33,7 +33,7 @@ The toolbar is now icon-based rather than text-labeled — every button carries 
 ## Toolbar
 
 ::: tip Grouped toolbar menus (New in 4.15.2)
-The toolbar's per-category controls are now organised into **four labelled dropdown menus** — Filters, Layers, View, and Tools — instead of a long, wrap-happy row of buttons. Everything below is still there; open the matching menu to reach it. The Layer buttons live inside **Layers**, the 2D/3D/Follow controls under **View**, Measure and Link Profile under **Tools**, and every filter (source, node type, transport, node search, node multi-select) under **Filters**.
+The toolbar's controls are organised into **four labelled dropdown menus**: View, Tools, Layers, and Analysis. Everything below is still there; open the matching menu to reach it. Follow, Auto-zoom, Time Slider and 3D View live under **View**. Measure, Link Profile, Site Planner, Add Waypoint and Add Local Marker live under **Tools**. The layers that show current state live under **Layers**, and the layers with a lookback window (Traceroutes, Neighbors, Heatmap, Trails, SNR Overlay) under **Analysis**. The filters (source, node type, transport, node search, node multi-select) sit in the toolbar itself, to the left of the menus.
 :::
 
 ::: tip Unified controls sidebar (New in 4.15.2)
@@ -56,16 +56,19 @@ The toolbar runs across the top of the canvas. From left to right:
 | **Add Waypoint** | Under **Tools**. Click the map, choose the source whose radio sends it, fill in the editor. The broadcast happens on **Create**, not before. See [Adding pins](#adding-pins). |
 | **Add Local Marker** | Under **Tools**. A planning note kept in MeshMonitor and never sent to the mesh. See [Adding pins](#adding-pins). |
 | **3D** (box icon) | Toggle between the flat 2D map and a pitched-terrain 3D view. See [3D terrain view](#3d-terrain-view). Disabled with a tooltip when elevation is off or the configured elevation source can't serve DEM tiles. |
-| **Layer buttons (×8)** | Toggle each visualization layer on/off. The right-edge chevron opens a popover for layer-specific options (lookback window, sub-options). |
+| **Layers** and **Analysis** menus | Toggle each visualization layer on/off. **Layers** holds Markers, Hop Shading, Waypoints, Accuracy Regions, ATAK Contacts, Local Markers, Polar Grid and GNSS DOP. **Analysis** holds Traceroutes, Neighbors, Heatmap, Trails and SNR Overlay, each with its own lookback dropdown. |
 | **Progress bar** | Shows aggregate loading state while any layer is fetching. |
-| **Inspector toggle** | Show/hide the right-side detail panel. |
 | **Reset** | Clear all toolbar state back to defaults. |
+
+The Inspector has its own collapse button on its edge; see [Inspector panel](#inspector-panel).
 
 ### Lookback windows
 
-Time-bounded layers (traceroutes, neighbors, heatmap, trails, SNR overlay) have a **lookback** dropdown in their popover: `1h, 6h, 24h, 3d, 7d, 30d, all`. The default is 24h. Lookback determines *how much history is loaded* — once loaded, the time slider can scrub a sub-window without refetching.
+Time-bounded layers (traceroutes, neighbors, heatmap, trails, SNR overlay) have a **lookback** dropdown beside their entry in the **Analysis** menu: `1h, 6h, 24h, 72h, 168h, 720h` (up to 30 days). The default is 24h. Lookback determines *how much history is loaded*. Once loaded, the time slider can scrub a sub-window without refetching.
 
-Markers, range rings, and hop shading represent **current** state and have no lookback.
+The SNR Overlay has one more choice, **Last**, which is its default: it draws one dot per node, coloured by that node's latest SNR, and loads no position history.
+
+Markers, the polar grid, and hop shading represent **current** state and have no lookback.
 
 ### Loading
 
@@ -174,9 +177,9 @@ A heat layer built from accumulated position fixes. At low zoom the server retur
 
 Polylines showing each node's path over the lookback window, colored by node and faded by age (older points are dimmer). Useful for spotting drift, mobile nodes, or stale GPS.
 
-### Range rings
+### Polar grid
 
-A configurable circle around every node showing a nominal coverage radius (default 5 km). Useful for site planning and "would I cover X?" questions.
+Range rings and azimuth sectors centred on each selected source's own node. Use it to read distance and bearing from your radio. The toggle is greyed out when no selected source has a known own-node position.
 
 ### Hop shading
 
@@ -321,7 +324,7 @@ Neighbor links and traceroute paths are **not** elevation-sampled onto the terra
 
 The 3D view still doesn't have full layer parity with 2D. Not yet available while in 3D mode (all still work normally after switching back to 2D):
 
-- Coverage heatmap, position trails, range rings, hop shading, the SNR overlay, accuracy regions, waypoints, and ATAK contacts. As of 4.14 these toggles are **greyed out with a "2D view only" tooltip** while you're in 3D, rather than appearing to work and drawing nothing. Their on/off state is untouched — switch back to 2D and each layer returns exactly as you left it.
+- Coverage heatmap, position trails, the polar grid, hop shading, the SNR overlay, accuracy regions, waypoints, local markers, and ATAK contacts. As of 4.14 these toggles are **greyed out with a "2D view only" tooltip** while you're in 3D, rather than appearing to work and drawing nothing. Their on/off state is untouched — switch back to 2D and each layer returns exactly as you left it.
 - The time slider **UI** (the persisted time-slider window is still honored by 3D's neighbor/traceroute data — switching between 2D and 3D never changes which links are shown, only whether you can drag the slider handles from the 3D canvas)
 - Spiderfying of overlapping markers
 - Launching the Terrain Link Profile tool by picking two points directly on the 3D canvas (use the inspector's **View terrain profile** action on a selected neighbor link instead, which auto-switches to 2D)
@@ -330,7 +333,7 @@ These are candidates for a follow-up phase of the 3D map work.
 
 ## Time slider
 
-The slider appears bottom-center when enabled. It has two handles defining a `[start, end]` window inside the loaded lookback range. Movement is purely client-side — no refetch — and applies only to time-bounded layers (trails, heatmap, SNR overlay, traceroutes, neighbors). Markers, rings, and hop shading always reflect the current state.
+The slider appears bottom-center when enabled. It has two handles defining a `[start, end]` window inside the loaded lookback range. Movement is purely client-side — no refetch — and applies only to time-bounded layers (trails, heatmap, SNR overlay, traceroutes, neighbors). Markers, the polar grid, and hop shading always reflect the current state.
 
 ## Inspector panel
 
@@ -341,7 +344,7 @@ The right-side dock mirrors your current map selection.
 - **Segment selected:** from/to nodes, the last ten traceroutes for the segment with their forward/back SNR, and an **Open full history** button that opens the existing `RouteSegmentTraceroutesModal`.
 - **Neighbor link selected:** both endpoint nodes, reporting source, SNR, and the link's great-circle distance. With elevation enabled, also the ground elevation at each endpoint and a **View terrain profile** shortcut into the Link Profile drawer.
 
-The inspector is collapsible — toggle it from the far-right toolbar button.
+The inspector is collapsible: use the collapse button on the panel, and the tab it leaves behind to bring it back.
 
 ## Cross-source data flow
 
@@ -360,9 +363,9 @@ Map Analysis introduces **no new permission resource**. Page access is public (m
 ## Performance notes
 
 - Default page size is 500, max 2000.
-- Lookback `all` is supported, but on dense meshes prefer narrower windows.
+- The longest lookback is 720h (30 days). On dense meshes prefer narrower windows.
 - The heatmap auto-switches between server-binned grid (low zoom) and raw points (high zoom).
-- Layer render output is memoized by `(layer data, map bounds, zoom)` — pan/zoom is fast even with all eight layers enabled.
+- Layer render output is memoized by `(layer data, map bounds, zoom)` — pan/zoom is fast even with every layer enabled.
 
 ## Persistence
 
@@ -375,7 +378,6 @@ These are intentional v1 scope cuts; track them on GitHub if they matter to you:
 - No server-persisted config or named presets.
 - No annotation layer (user-drawn shapes/labels).
 - No CSV / GeoJSON export of the current selection.
-- Per-node range ring overrides — single global radius only.
 - Real-time push updates inside the canvas — refresh by toggling the layer or moving the slider.
 - Mobile usable but not optimized; desktop-first.
 

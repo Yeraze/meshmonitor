@@ -51,12 +51,12 @@ Authoring is available on a source's own map and in Map Analysis, for users with
 ### Create
 
 1. Open a source's dashboard map.
-2. Open the **Map Features** dropdown and click **➕ Waypoint** (or right-click the map for the same shortcut).
+2. Open the **Map Features** dropdown and click **+ Waypoint** (or right-click the map for the same shortcut).
 3. The cursor switches to a crosshair — click the map at the desired location, or press **Esc** to cancel.
 4. Fill in the waypoint editor:
    - **Name** and **Description**
    - **Icon** — pick an emoji from the picker (rendered with VS-16 forcing so it shows as an emoji on every platform)
-   - **Lock to me** — only your node can edit this waypoint after broadcast
+   - **Lock to this node**: only your node can edit this waypoint after broadcast
    - **Expires** — toggle on to set an expiry timestamp; off means "never expires"
    - **Hop limit** — how many hops the waypoint may travel. Blank uses the node's own hop limit. A value is capped at that limit, so it can only shorten reach.
    - **Channel** — which of the source's channels the waypoint is broadcast on. The list comes from the waypoint's own source, so you only ever see channels that source can transmit on. Leave it alone and the waypoint goes out on Primary (slot 0), the channel every waypoint used before this option existed. The picker is disabled for virtual waypoints, which are never transmitted.
@@ -93,7 +93,7 @@ Waypoints are exposed on the v1 source-scoped routes, gated by `waypoints:read|w
 
 | Method | Path | Purpose |
 | --- | --- | --- |
-| `GET`    | `/api/sources/:id/waypoints` | List waypoints (supports `?bbox=` and `?include_expired=`) |
+| `GET`    | `/api/sources/:id/waypoints` | List waypoints (supports `?bbox=` and `?includeExpired=true`) |
 | `POST`   | `/api/sources/:id/waypoints` | Create a local waypoint and broadcast it |
 | `PATCH`  | `/api/sources/:id/waypoints/:waypointId` | Update name/description/icon/expiry/lock/channel |
 | `DELETE` | `/api/sources/:id/waypoints/:waypointId` | Delete locally and broadcast a tombstone |
@@ -127,7 +127,7 @@ Migration **165** adds the four preference columns (`notify_on_waypoint`, `waypo
 ## Limitations and follow-ups
 
 - **Rebroadcast scheduler is not yet wired**. The `rebroadcast_interval_s` column is persisted and accepted by the API, but no timer fires it. Waypoints you create are broadcast once on save; resends rely on the stock Meshtastic firmware behaviour at this time.
-- **Automation hooks** for the waypoint message type are not yet available — Auto-Responders and Geofence Triggers do not currently match on waypoint events.
+- **No trigger fires on a waypoint.** Auto-Responders and automation triggers do not match on waypoint events. An automation can send one, with the [Broadcast a waypoint](/features/automation-engine#broadcast-a-waypoint) action.
 
 Both are tracked as follow-ups; see [#2936](https://github.com/Yeraze/meshmonitor/issues/2936) for the umbrella issue.
 

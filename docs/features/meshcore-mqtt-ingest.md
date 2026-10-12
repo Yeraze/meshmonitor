@@ -1,6 +1,6 @@
 # MeshCore MQTT Ingest
 
-::: tip Added in 4.17 (#5040)
+::: tip Added in 4.16 (#5040)
 Subscribe to a MeshCore Analyzer MQTT broker and see a whole region's traffic — packets, nodes and channel messages — without your radio having to hear any of it.
 :::
 
@@ -41,9 +41,9 @@ The source subscribes to `meshcore/{REGION}/+/packets` and `meshcore/{REGION}/+/
 
 Deliberate. Add a second source for a second broker — creating two sources on the same broker **and** region is rejected with a 409, because per-observer de-duplication is scoped per source, so a duplicate feed would collapse nowhere and silently double every count.
 
-### Credentials need a fixed `SESSION_SECRET`
+### The broker password is stored as plaintext
 
-Same requirement as the Analyzer Observer. Note that a broker password here is stored as **plaintext** in the source's config — it is withheld from non-admin API responses, but it is not encrypted at rest. Use a broker account you are comfortable storing that way.
+A broker password here is stored as **plaintext** in the source's config. It is withheld from non-admin API responses, but it is not encrypted at rest, so it does not depend on `SESSION_SECRET` the way the Analyzer Observer's credentials do. Use a broker account you are comfortable storing that way.
 
 ### A rejected login stops after five tries
 
@@ -64,9 +64,11 @@ In the grouped view, an **Observers** count of `Local` means your own radio hear
 
 ## Channel messages
 
-Channel traffic is decrypted with the channel keys you already hold. You do not need to add channels to the ingest source — it reads keys from **every** source, which is how the codebase treats decryption keys generally.
+Channel traffic is decrypted with the channel keys you already hold. You do not need to add channels to the ingest source — it reads keys from **every** source, which is how the codebase treats decryption keys generally. It also uses MeshCore entries in the [Channel Database](/features/channel-database#meshcore-channels), so you can read a channel that none of your radios carries.
 
 Only channels you hold a key for are readable; everything else on the feed stays encrypted and is simply skipped.
+
+A message decrypted with a Channel Database key is shown only to users who can read that key. New entries start with no user access. See [Who can read MeshCore channel traffic](/features/channel-database#who-can-read-meshcore-channel-traffic).
 
 ::: warning A clock-less sender can hide a repeat
 MeshCore encrypts `timestamp | flags | text`. When a sender's clock is unset the timestamp is `0`, so two separate transmissions of *identical text on the same channel* are byte-identical on the wire and the second is treated as a duplicate. There is nothing to distinguish them; the alternative would break de-duplication for every observer.

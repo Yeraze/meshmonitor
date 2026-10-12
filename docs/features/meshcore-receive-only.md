@@ -38,10 +38,10 @@ Good reasons to run a MeshCore source this way:
 
 Anything that puts a packet on the air from this node:
 
-- Channel messages and direct messages
+- Channel messages and direct messages, including the **Resend** button on a channel post
 - Self-adverts
 - Remote CLI and remote logins
-- Path discovery and traceroute
+- Path discovery, Trace Path and the zero-hop ping, sent by hand or by a scheduled automation
 - Telemetry and status requests to other nodes
 - Neighbour requests
 - Node and region discovery
@@ -55,7 +55,7 @@ Automation settings are **preserved, not cleared**. Each affected automation sec
 
 The [MeshCore Virtual Node](/configuration/virtual-node#meshcore-virtual-node) port stays up and keeps serving reads while a source is receive-only: identity, contacts, channels, message sync, device info, battery, time, local config setters, and PKI export (where enabled) all keep working, along with the live packet feed. This matters because the Virtual Node port is a raw TCP socket that bypasses MeshMonitor's HTTP API entirely — closing it off is what makes receive-only complete.
 
-The nine transmit-causing companion commands are refused instead: `SendChannelTxtMsg`, `SendTxtMsg` (including the CLI relay), `SendSelfAdvert`, `SendLogin`, `SendTracePath`, `SendTelemetryReq`, `SendStatusReq`, and `SendBinaryReq` (neighbour requests). A third-party MeshCore client connected to the Virtual Node gets a prompt, well-formed refusal on each of these — not a silent drop, and not a timeout.
+The nine transmit-causing companion commands are refused instead: `SendChannelTxtMsg`, `SendTxtMsg` (including the CLI relay), `SendSelfAdvert`, `ShareContact`, `SendLogin`, `SendTracePath`, `SendTelemetryReq`, `SendStatusReq`, and `SendBinaryReq` (status, telemetry and neighbour requests). A third-party MeshCore client connected to the Virtual Node gets a prompt, well-formed refusal on each of these — not a silent drop, and not a timeout.
 
 ::: warning The Virtual Node port is unauthenticated
 Keeping reads available cuts both ways: the Virtual Node port has no authentication, so any client that can reach it can read your identity, contacts, channels and messages. That is existing Virtual Node behaviour and receive-only mode does not change it — but it is worth restating here, because "receive-only" means *this node will not transmit*, not *this node will not disclose anything*. If that distinction matters for your deployment, restrict access to the port, or turn the Virtual Node off.

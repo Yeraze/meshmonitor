@@ -17,7 +17,7 @@ Waypoints and nodes always draw on top of a local marker at the same spot.
 ## Adding a marker
 
 1. Open a source's map (**Nodes**).
-2. Click **+ Local marker** above the map, then click the spot. Press Escape to cancel.
+2. In the map controls sidebar, click **+ Local marker**, then click the spot. Press Escape to cancel.
 3. Enter a label, and optionally notes, altitude, an icon and a colour. Adjust the position if you need to.
 4. Click **Save**.
 

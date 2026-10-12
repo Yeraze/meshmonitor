@@ -5,7 +5,7 @@ The Admin Commands tab provides comprehensive remote management capabilities for
 ![Admin Commands](/images/features/admin-commands.png)
 
 ::: warning
-Admin commands directly modify Meshtastic device settings and can affect device functionality or network connectivity. Always ensure you understand the impact of changes before applying them. Some commands (like factory reset or purge node database) are destructive and cannot be undone.
+Admin commands directly modify Meshtastic device settings and can affect device functionality or network connectivity. Always ensure you understand the impact of changes before applying them. Some commands (like factory reset, shutdown or purge node database) are destructive and cannot be undone from MeshMonitor.
 :::
 
 ## Access
@@ -43,27 +43,39 @@ Reboots the selected node with a configurable delay.
 - All active connections will be lost temporarily
 - Configuration changes take effect after reboot
 
-### Factory Reset
+### Power and Reset
 
-Completely resets the device to factory defaults, erasing all configuration.
+The **Power and reset** group sits in the warning section at the foot of the tab, under Reboot and Purge Node Database. It holds four actions. Each sends one admin packet. MeshMonitor never sends it twice, and none can be undone from MeshMonitor.
+
+| Action | Works on | What it does |
+|---|---|---|
+| **Shut down** | Local and remote nodes | Powers the node off after 5 seconds. It stays off until someone presses its button. Disabled when the node's metadata says it cannot shut down. |
+| **Reboot into DFU mode** | Local node only | Restarts the node into its bootloader. Only nRF52, RP2040 and STM32 boards respond; ESP32 ignores it. The node leaves the mesh until you flash it or reset it by hand. |
+| **Reset config (keeps identity key and BLE bonds)** | Local node only | Wipes all settings, channels and the node database, then reboots. The node keeps its private key, so it keeps its identity and node number, and its Bluetooth pairings. |
+| **Full device reset (new identity)** | Local node only | Wipes everything, the private key included. The node makes a new key pair; on firmware 2.8 that also gives it a new node number, so the mesh sees a new node. |
 
 ::: danger
-**WARNING**: Factory reset is **irreversible**. All device settings, channels, and configurations will be permanently deleted. The device will need to be reconfigured from scratch.
+**WARNING**: A reset is **irreversible**. Both resets wipe:
+
+- All device and module settings, including the LoRa region (set back to unset)
+- All channels and their keys (PSKs), and the admin keys
+- The node database and stored messages
+- WiFi and network settings
+
+A full device reset also wipes the private key, the Bluetooth pairings and, on ESP32, all NVS storage. A node MeshMonitor reaches over WiFi or TCP loses its network settings and drops off MeshMonitor until you set it up again over USB or Bluetooth.
 :::
 
-**What Gets Reset:**
-- All device settings
-- All channel configurations
-- Owner information
-- LoRa settings
-- Position settings
-- MQTT configuration
-- Node database
+**Confirmation:** every action asks you to confirm. Both resets, and a shutdown of a remote node, also make you type the node's short name (or its node ID when it has no short name).
+
+**Local only:** DFU and both resets work only on the node the source is connected to. The server refuses them for a remote node, because a remote node in DFU mode or after a reset cannot be reached over the mesh again.
+
+**Audit log:** reboot, shutdown, DFU and both resets are each written to the **Audit Log** (Admin section of the sidebar) before the packet leaves, with the user, the source, the node and whether it was local or remote.
 
 **Use Cases:**
 - Preparing device for new deployment
 - Resolving severe configuration issues
 - Clearing all data before transfer to new owner
+- Putting an nRF52 or RP2040 board into its bootloader before a USB flash
 
 ### Set Owner
 
@@ -186,6 +198,24 @@ Configure MQTT broker settings for the device.
 - MQTT connection affects device power consumption
 - Network connectivity required for MQTT to function
 - Requires device reboot to take effect
+
+## Security and Module Sections
+
+The tab also carries the node's other config sections, each with the same fields as [Device Configuration](/features/device). Among them:
+
+- **Security**: admin keys and the **Protection Level** picker for the firmware 2.8 packet signature policy. See [Protection Level](/features/device#protection-level-packet-authenticity). Setting a remote node to Strict can cut it off from older peers you reach it through.
+- **Status Message**: see [Status Message](/features/device#status-message).
+- **Traffic Management**: see [Traffic Management](/features/traffic-management). The Estimate impact panel is not here, since MeshMonitor has no packet log for a remote node.
+- **TAK**: team and role, firmware 2.8.0 or newer. See [TAK Configuration](/features/device#tak-configuration).
+
+## Loading a Node's Config
+
+A section shows the node's real values only after you load them. Until then it shows defaults, and saving a section you have not loaded can write those defaults to the node. The MQTT and Security sections refuse to save until loaded.
+
+- **Load All Config** reads every section in turn.
+- **Load** on one section reads that section alone.
+
+Each click sends one request per section (one per channel slot for Channels). MeshMonitor does not re-send on its own when a remote node stays silent: the section shows an error and is not marked as loaded. Click again to retry.
 
 ## Channel Management
 
@@ -442,11 +472,13 @@ that failed, so "1 channel" is distinguishable from "1 of 2 channels".
 
 ### Remote Node Operations
 
-All admin commands work with remote nodes:
-- Device management (reboot, factory reset, set owner, set configs)
+Most admin commands work with remote nodes:
+- Device management (reboot, shut down, set owner, set configs)
 - Channel management (load, edit, import, export)
 - Configuration import/export
 - Database management
+
+Reboot into DFU mode and both factory resets are for the local node only. See [Power and Reset](#power-and-reset).
 
 ### Limitations
 

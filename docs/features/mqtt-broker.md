@@ -161,8 +161,8 @@ For each upstream broker (e.g. `mqtt.meshtastic.org`, regional community brokers
 | Upstream URL | `mqtt://mqtt.meshtastic.org:1883` (or `mqtts://mqtt.meshtastic.org:8883` for TLS) |
 | Username / Password | Whatever the upstream needs (e.g. `meshdev / large4cats` for `mqtt.meshtastic.org`) |
 | Upstream topics | One per line, MQTT wildcards allowed (e.g. `msh/US/FL/#`) |
-| Block topics | Optional — drop publishes matching these patterns (e.g. `msh/CA/QC/#`) |
-| Geographic bounding box | Optional — drop position packets outside the box |
+
+The Add Source form holds only these connection basics. Mode, forwarding, **Block specific topics** (drop publishes matching patterns such as `msh/CA/QC/#`), **Restrict to geographic bounding box** (drop position packets outside the box) and topic rewrites are on the bridge's **Settings** page, under **MQTT Bridge Configuration**. The **Bridge settings** button in the form opens it.
 
 Once the bridge exists, its **Settings** page has a **Broker preset** chooser above the Upstream URL:
 

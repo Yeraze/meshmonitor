@@ -38,7 +38,7 @@ Contributing to MeshMapper is **passive**, like every use of this feature: MeshM
 
 ## Requirements
 
-- A **Companion** source (not a Repeater, not a Room Server) — only the Companion backend reports the packets this feature relays.
+- A **Companion** source (not a Repeater, not a Room Server). The Observer publishes only from the Companion backend, and a repeater cannot export the signing key.
 - The source connected at least once, so MeshMonitor knows the node's public key (and, in signed-token mode, can fetch the signing key from the device — or you can paste one by hand, see [Step 2](#step-2-provide-broker-credentials)).
 - A fixed `SESSION_SECRET`. MeshMonitor encrypts the stored signing key **and** every stored broker password with keys derived from `SESSION_SECRET`. If yours is auto-generated, credential storage is disabled and the UI tells you so. See [Credential store](/features/meshcore#credential-store) for the same requirement on the remote-admin password store, and set `SESSION_SECRET=$(openssl rand -hex 32)` in your environment to enable it.
 - For each broker: a **broker URL**, plus either a **token audience** (signed-token brokers) or a **username and password** (static-credential brokers). A shared **region code** covers every broker on the source.
@@ -118,7 +118,7 @@ Either way, the topics stay the same per broker: `meshcore/{REGION}/{YOUR_NODE_P
 Auth mode is set per broker row, so a source can publish to a signed-token broker (like MeshMapper) and a username/password broker at the same time.
 
 ::: warning Companion only
-Every mode is Companion-only. The repeater/serial backend never reports the over-the-air packets this feature relays, so an observer on a Repeater would sit idle. The enable checkbox is disabled with an explanation when the source's device type is Repeater.
+Every mode is Companion-only. The Observer publishes only from the Companion backend. A Repeater source on a packet-logging firmware build fills its own Packet Monitor, but MeshMonitor does not publish those packets to a broker. The enable checkbox is disabled with an explanation when the source's device type is Repeater.
 :::
 
 ## Step 2 — Provide broker credentials
@@ -196,6 +196,7 @@ The rows below now apply **per broker** — a source with several brokers can sh
 | "Key rotated" / "rotated" warning | `SESSION_SECRET` changed since the credential was stored | Re-import the key (fixes all signed-token brokers), or re-enter the affected broker's password |
 | One broker not connected, error mentions the token | That broker's `tokenAudience` doesn't match its broker's expected value | Match it exactly — check with that broker's operator |
 | "Broker rejected the observer username/password" | Wrong static credentials for that broker, or it actually wants a signed token | Re-check the login with that broker's operator; if they publish a token audience instead, switch that row's mode back |
+| One broker stays disconnected after a rejected login | That broker rejected the login five times in a row, so MeshMonitor stopped retrying it. The other brokers keep publishing | Fix that broker's audience, key or password and save; saving starts it again |
 | One broker not connected, no error shown | That broker is unreachable | Check that row's URL, scheme, and port |
 | "The node has not reported its public key yet" | A username/password broker on a source that hasn't finished connecting | Connect the source — the topic path needs the node's public key |
 | Dropped-packet count climbing on one broker | That broker's socket was down when packets arrived | Expected during a broker outage — nothing is lost on the mesh, only unpublished to that broker |

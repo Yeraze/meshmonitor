@@ -9,7 +9,7 @@ run in the background.
 happens, do that — with conditions, variables, and `{{ token }}` substitution.
 :::
 
-MeshMonitor includes several automation features that can help you manage your mesh network more efficiently. These features run in the background and can be configured through the Info tab.
+MeshMonitor includes several automation features that can help you manage your mesh network more efficiently. These features run in the background. Set them up per source on that source's **Automation** tab, in the sidebar.
 
 ![Automation](/images/features/automation.png)
 
@@ -54,6 +54,8 @@ When enabled, MeshMonitor monitors all incoming messages for patterns matching t
 - **`{FEATURES}`**: Enabled automation features
 - **`{NODECOUNT}`**: Number of active nodes
 - **`{DIRECTCOUNT}`**: Number of direct nodes (0 hops)
+- **`{TOTALNODES}`**: Number of nodes in the database, active or not
+- **`{TRANSPORT}`**: How the message arrived: `LoRa` or `MQTT`
 
 **Default Template (Multi-hop)**:
 ```
@@ -89,7 +91,7 @@ When enabled, MeshMonitor monitors all incoming messages for patterns matching t
 📡 Signal test: {HOPS} hop(s) | Date: {DATE} | Time: {TIME}
 ```
 ```
-👋 Hey {LONG_NAME}! Got your message: "{MESSAGE}"
+👋 Hey {LONG_NAME}! Copy via {TRANSPORT}, last hop {LAST_HOP}
 ```
 
 **Token Insertion**: Click on any token button to insert it at your cursor position, making it easy to build complex templates.
@@ -111,8 +113,8 @@ This granular control lets you respond on your primary channel while ignoring tr
 Auto Acknowledge supports two independent response modes, each with separate toggles for **direct** and **multi-hop** messages:
 
 **Tapback (Emoji Reaction)**: React to the triggering message with an emoji instead of (or in addition to) a text reply:
-- Direct messages receive a 🎯 reaction
-- Multi-hop messages receive a keycap digit emoji indicating the hop count (0️⃣ through 7️⃣)
+- Direct (0-hop) messages receive a *️⃣ reaction
+- Multi-hop messages receive a keycap digit emoji for the hop count (1️⃣ through 7️⃣, with 7️⃣ for 7 or more)
 
 **Text Reply**: Send the configured message template as a text response. This is the traditional auto-ack behavior.
 
@@ -228,7 +230,7 @@ walkthrough.
 
 - Generates additional mesh traffic for each matched message
 - May contribute to network congestion if pattern matches too frequently
-- Replies are sent immediately upon receiving a matching message
+- Direct-message replies go out at once (after any pre-send delay); channel replies wait 5 to 30 seconds, see [Maximum Number of Responses](#auto-ack-max-responses)
 - Uses airtime on the mesh network for responses
 
 ### Use Cases
@@ -259,7 +261,7 @@ Each request goes out at your node's own **hop limit** (**Device Configuration �
 
 **Traceroute Interval**: How often to send traceroute requests to nodes
 
-- **Range**: 1-60 minutes
+- **Range**: 3-60 minutes
 - **Default**: 3 minutes
 - **Recommendation**: Use longer intervals (10-15 minutes) for larger networks or slower mesh presets
 
@@ -386,7 +388,7 @@ Pings use Meshtastic's `NODEINFO_APP` request with `wantResponse: true`, which i
 
 ### Configuration
 
-Navigate to **Settings > Automation** and find the **Auto Ping** section.
+Open the source's **Automation** tab and find the **Auto Ping** section.
 
 **Enable/Disable**: Toggle the checkbox next to "Auto Ping"
 
@@ -454,7 +456,7 @@ Sessions update in real-time via WebSocket events. Admins can force-stop any act
 
 **Session not appearing in UI**:
 - Refresh the browser page
-- Verify you have `settings:read` permission to view the Automation tab
+- Verify you have `automation` read permission on the source, which the Automation tab needs, and `settings` read for the Auto Ping panel
 
 ### Permissions
 
@@ -575,12 +577,12 @@ A node is eligible for time sync if:
 
 ### Configuration
 
-Navigate to **Settings > Automation** and find the **Auto Time Sync** section.
+Open the source's **Automation** tab and find the **Auto Time Sync** section.
 
 | Setting | Description | Default | Range |
 |---------|-------------|---------|-------|
 | **Enable** | Turn auto time sync on or off | Off | - |
-| **Interval** | How often to sync the next eligible node (in minutes) | 60 | 15 - 1440 |
+| **Interval** | How often to sync the next eligible node (in minutes) | 15 | 15 - 1440 |
 | **Expiration** | How many hours before a previously synced node becomes eligible again | 24 | 1 - 24 |
 | **Filter to specific nodes** | When enabled, only sync nodes in the selected list | Off | - |
 
@@ -603,7 +605,7 @@ When the filter is disabled (default), all eligible nodes are included automatic
 
 ### Best Practices
 
-- Start with the default 60-minute interval; there is no need to sync more frequently unless nodes drift quickly
+- The default interval is 15 minutes, the shortest allowed. One node is synced per tick, so on a small mesh a longer interval such as 60 minutes saves airtime
 - Use a 24-hour expiration so each node gets synced roughly once per day
 - If you have a large mesh, the scheduler will cycle through all nodes automatically — one per interval tick
 - Use the node filter if you only want to sync specific nodes (e.g., solar-powered nodes that lose time on reboot)
@@ -619,51 +621,53 @@ Automatically sends a personalized welcome message to new nodes when they join y
 
 ### How It Works
 
-When enabled, MeshMonitor monitors for nodes that appear for the first time in the mesh network. When a new node is detected, it automatically sends a direct message to welcome them with your custom template.
+When enabled, MeshMonitor watches for nodes it has not seen before on this source. When one appears, it sends your welcome message, as a direct message to the new node or on a channel you pick. Each node is welcomed once.
 
 ### Configuration
 
 **Enable/Disable**: Toggle the checkbox next to "Auto Welcome"
 
-**Welcome Channel**: Select which channel to monitor for new nodes
+**Wait for Name**: Hold the welcome until the node has a real long name and short name, not the default `Node !xxxxxxxx`. With this off, the welcome goes out as soon as the node is discovered, and `{LONG_NAME}` may read as a placeholder.
 
-- **Primary**: Monitor only the primary channel (most common)
-- **All Channels**: Monitor all channels for new nodes
-- Choose the channel where you expect new users to appear
+**Maximum Hops**: Only welcome nodes within this many hops
 
-**Maximum Hops Filter**: Limit welcome messages to nodes within a specific hop range
+- **Range**: 1-10 hops
+- **Default**: 5
+- **Purpose**: Skips distant nodes that may not be regular network participants, and saves the airtime of a long multi-hop send
 
-- **Range**: 0-7 hops
-- **Default**: 7 (all nodes)
-- **Purpose**: Prevents welcoming distant nodes that may not be regular network participants
-- **Use Cases**:
-  - Set to 0-1 for welcoming only direct neighbors
-  - Set to 2-3 for local network participants
-  - Set to 7 to welcome all nodes regardless of distance
-- **Benefits**:
-  - Reduces unnecessary mesh traffic for distant nodes
-  - Focuses welcomes on local/active participants
-  - Helps manage network congestion in large meshes
+**Pre-send delay (seconds)**: How long to wait after first hearing a node before sending its welcome
 
-**Custom Welcome Message**: Craft your welcome message using dynamic tokens:
+- **Range**: 0-120 seconds
+- **Default**: 30
+- **Purpose**: Gives the node time to finish its startup burst and be ready to receive. This matters after a nodeDB reset, when many nodes appear at once
 
-- **`{LONG_NAME}`**: Long name of the new node joining (e.g., "Alice's Node")
-- **`{NODEID}`**: Hex ID of the new node (e.g., "!a2b3c4d5")
-- **`{DATE}`**: Date when the node was first seen (e.g., "1/15/2025")
-- **`{TIME}`**: Time when the node was first seen (e.g., "2:30:00 PM")
-- **`{VERSION}`**: Your MeshMonitor version (e.g., "v2.11.3")
+**Broadcast Target**: Where the welcome is sent
+
+- **Direct Message to New Node**: Only the new node sees it
+- **A channel**: Everyone on that channel sees it. Pick a channel from the list of this source's channels
+
+**Welcome Message**: Craft your welcome message using dynamic tokens:
+
+- **`{LONG_NAME}`**: Long name of the new node (e.g., "Alice's Node")
+- **`{SHORT_NAME}`**: Short name of the new node (e.g., "ALI")
+- **`{VERSION}`**: Your MeshMonitor version
+- **`{DURATION}`**: How long ago the node was first seen
+- **`{FEATURES}`**: Enabled automation features as emojis
+- **`{NODECOUNT}`**: Number of active nodes
+- **`{DIRECTCOUNT}`**: Number of direct nodes (0 hops)
+- **`{TOTALNODES}`**: Number of nodes in the database, active or not
 
 **Default Template**:
 ```
-👋 Welcome {LONG_NAME}! Thanks for joining the mesh.
+Welcome {LONG_NAME} ({SHORT_NAME}) to the mesh!
 ```
 
 **Example Custom Templates**:
 ```
-🎉 Hey {LONG_NAME}! Welcome to our mesh network on {DATE} at {TIME}
+🎉 Hey {LONG_NAME}! Welcome to our mesh network, {NODECOUNT} nodes and counting
 ```
 ```
-👋 Welcome aboard {LONG_NAME} ({NODEID})! Check meshmonitor.org for network stats.
+👋 Welcome aboard {LONG_NAME} ({SHORT_NAME})! Check meshmonitor.org for network stats.
 ```
 ```
 🌐 New node detected: {LONG_NAME}. MeshMonitor {VERSION} is watching!
@@ -671,12 +675,14 @@ When enabled, MeshMonitor monitors for nodes that appear for the first time in t
 
 **Token Insertion**: Click on any token button to insert it at your cursor position for easy template creation.
 
+**Mark All Welcomed**: Marks every node already in the database as welcomed, so none of them gets a welcome. Use it before you turn Auto Welcome on for an existing mesh.
+
 ### Side Effects
 
 - **Network Traffic**: Each welcome message consumes airtime and generates mesh traffic
-- **Privacy**: Welcome messages are sent as direct messages to the new node
-- **Spam Protection**: Built-in 24-hour cooldown prevents re-welcoming the same node
-- **First Join Only**: Only triggers when a node is seen for the very first time
+- **Privacy**: A welcome sent to a channel is seen by everyone on it; choose **Direct Message to New Node** to keep it private
+- **Once per node**: MeshMonitor records when it welcomed a node and never welcomes it again
+- **Busy mesh**: Welcomes are skipped while the automation airtime cutoff is active
 
 ### Use Cases
 
@@ -758,6 +764,7 @@ When enabled, MeshMonitor sends a scheduled message to the configured channel at
   - 🗺️ = Auto Traceroute enabled
   - 🤖 = Auto Acknowledge enabled
   - 📢 = Auto Announce enabled
+  - 👋 Auto Welcome, 🏓 Auto Ping, 🔑 Auto Key Management, 💬 Auto Responder, ⏱️ Timed Events, 📍 Geofence Triggers, 🔍 Remote Admin Scanner, 🕐 Auto Time Sync
 - **`{NODECOUNT}`**: Number of active nodes (e.g., "42 nodes")
 - **`{DIRECTCOUNT}`**: Number of direct nodes at 0 hops
 - **`{DATE}`**: Current date when the announcement is sent, formatted per your Date Format preference (e.g., "1/15/2025")
@@ -1557,18 +1564,19 @@ Schedule scripts to run automatically at specified times using cron expressions.
 
 ### How It Works
 
-Timer Triggers execute scripts from `/data/scripts/` on a schedule defined by cron expressions. When a timer fires, the associated script runs and its output is sent to a specified channel on your mesh network.
+Timer Triggers run on a schedule defined by cron expressions. A timer either sends a fixed **Text Message** or runs a **Script** from `/data/scripts/` and sends its output. The output goes to the channel you pick, or nowhere when the channel is set to **None (no mesh output)** for a script that handles its own output.
 
 ### Configuration
 
 **Adding a Timer**:
-1. Navigate to the Automation settings (Info tab)
+1. Open the source's **Automation** tab
 2. Scroll to the "Timed Events" section
 3. Fill out the timer configuration:
    - **Name**: A descriptive name for your timer (e.g., "Daily Weather Report")
    - **Schedule**: A cron expression defining when to run
-   - **Script**: Select a script from `/data/scripts/`
-   - **Channel**: The channel to send script output to
+   - **Type**: Text Message or Script
+   - **Message** or **Script**: The text to send, or a script from `/data/scripts/`
+   - **Channel**: The channel to send the output to
 4. Click "Add Timer"
 5. Click "Save" to persist your changes
 
@@ -1799,7 +1807,7 @@ Geofence Triggers monitor node positions and compare them against defined geogra
 
 **Adding a Geofence Trigger**:
 
-1. Navigate to the Automation settings (Info tab)
+1. Open the source's **Automation** tab
 2. Scroll to the "Geofence Triggers" section
 3. Fill out the trigger configuration:
    - **Name**: A descriptive name for the trigger (e.g., "Base Camp Entry Alert")
@@ -2049,7 +2057,7 @@ The repair process for each node with a key mismatch:
 
 ### Configuration
 
-Navigate to **Settings > Automation** and find the **Auto Key Management** section.
+Open the source's **Automation** tab and find the **Auto Key Management** section.
 
 **Enable/Disable**: Toggle the checkbox next to "Auto Key Management"
 
@@ -2126,12 +2134,12 @@ MeshMonitor distinguishes between **manual** and **auto-managed** favorites usin
 
 ### Configuration
 
-Navigate to **Settings > Automation** and find the **Auto Favorite** section.
+Open the source's **Automation** tab and find the **Auto Favorite** section.
 
 | Setting | Description | Default |
 |---------|-------------|---------|
 | Enable Auto Favorite | Toggle the feature on/off | Off |
-| Stale Hours | Hours since last heard before a node is considered stale and unfavorited | 24 |
+| Stale Hours | Hours since last heard before a node is considered stale and unfavorited (1 to 720) | 72 |
 | Exclude likely aircraft | Never auto-favorite a node flagged by [likely-aircraft detection](/features/settings#likely-aircraft-detection); remove one that was already auto-favorited before it got flagged | On |
 
 ### Eligibility Rules
@@ -2281,7 +2289,7 @@ The Ignored Nodes panel displays:
 ### How to Un-ignore a Node
 
 **From the Automation tab**:
-1. Navigate to **Settings > Automation > Ignored Nodes**
+1. Open the source's **Automation** tab and find **Ignored Nodes**
 2. Find the node in the table
 3. Click the **Un-ignore** button
 
