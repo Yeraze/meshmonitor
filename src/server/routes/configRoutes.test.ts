@@ -13,6 +13,7 @@ import configRoutes from './configRoutes.js';
 import { createRouteTestApp, type RouteTestHarness } from '../test-helpers/routeTestApp.js';
 import { sourceManagerRegistry, type ISourceManager } from '../sourceManagerRegistry.js';
 import { TxDisabledError } from '../errors/txDisabledError.js';
+import { ModuleConfigNotAppliedError, ModuleConfigUnverifiedError } from '../errors/moduleConfigVerifyError.js';
 import { MeshtasticManager } from '../meshtasticManager.js';
 
 describe('configRoutes', () => {
@@ -578,7 +579,7 @@ describe('configRoutes', () => {
         const agent = await harness.loginAs(harness.limited);
         const res = await post(agent, harness.sourceA, 'Available');
         expect(res.status).toBe(200);
-        expect(setGenericModuleConfig).toHaveBeenCalledWith('statusmessage', { nodeStatus: 'Available' });
+        expect(setGenericModuleConfig).toHaveBeenCalledWith('statusmessage', { nodeStatus: 'Available' }, { verify: true });
       });
 
       it('403s for a user with only configuration:read', async () => {
@@ -650,13 +651,58 @@ describe('configRoutes', () => {
       it('accepts an empty status (Clear)', async () => {
         const res = await post(agent, harness.sourceA, '');
         expect(res.status).toBe(200);
-        expect(setGenericModuleConfig).toHaveBeenCalledWith('statusmessage', { nodeStatus: '' });
+        expect(setGenericModuleConfig).toHaveBeenCalledWith('statusmessage', { nodeStatus: '' }, { verify: true });
       });
 
       it('rejects a status that is not a string', async () => {
         const res = await post(agent, harness.sourceA, { text: 'x' });
         expect(res.status).toBe(400);
         expect(setGenericModuleConfig).not.toHaveBeenCalled();
+      });
+    });
+
+    // #5745: the service reads the status back from the node. The route turns
+    // its two typed failures into their own codes so the UI can say which.
+    describe('read-back result (#5745)', () => {
+      let agent: Awaited<ReturnType<RouteTestHarness['loginAs']>>;
+
+      beforeEach(async () => {
+        await harness.grant(harness.limited.id, 'configuration', 'write', harness.sourceA);
+        agent = await harness.loginAs(harness.limited);
+      });
+
+      it('200s with the same body shape when the node confirms', async () => {
+        const res = await post(agent, harness.sourceA, 'Monitoring');
+        expect(res.status).toBe(200);
+        expect(res.body).toEqual({ success: true, message: 'statusmessage configuration sent' });
+      });
+
+      it('502 STATUSMESSAGE_NOT_APPLIED when the node holds another value', async () => {
+        setGenericModuleConfig.mockRejectedValue(new ModuleConfigNotAppliedError('statusmessage', { nodeStatus: 'old' }));
+        const res = await post(agent, harness.sourceA, 'Monitoring');
+        expect(res.status).toBe(502);
+        expect(res.body).toMatchObject({ success: false, code: 'STATUSMESSAGE_NOT_APPLIED' });
+        expect(typeof res.body.error).toBe('string');
+      });
+
+      it('504 STATUSMESSAGE_UNVERIFIED when the node does not answer', async () => {
+        setGenericModuleConfig.mockRejectedValue(new ModuleConfigUnverifiedError('statusmessage'));
+        const res = await post(agent, harness.sourceA, 'Monitoring');
+        expect(res.status).toBe(504);
+        expect(res.body).toMatchObject({ success: false, code: 'STATUSMESSAGE_UNVERIFIED' });
+      });
+
+      it('still 500s MODULE_CONFIG_FAILED on any other error', async () => {
+        setGenericModuleConfig.mockRejectedValue(new Error('Not connected to Meshtastic node'));
+        const res = await post(agent, harness.sourceA, 'Monitoring');
+        expect(res.status).toBe(500);
+        expect(res.body.code).toBe('MODULE_CONFIG_FAILED');
+      });
+
+      it('asks for no read-back on another module', async () => {
+        const res = await agent.post('/module/serial').send({ sourceId: harness.sourceA, enabled: true });
+        expect(res.status).toBe(200);
+        expect(setGenericModuleConfig).toHaveBeenCalledWith('serial', { enabled: true });
       });
     });
   });
