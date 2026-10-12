@@ -85,6 +85,7 @@ Nearly every top-level view has a **source picker** in the header. It controls w
 - **Single-source mode** — pick one source; the view shows only that source's nodes, messages, telemetry, and traceroutes
 - **Unified mode** (where available) — combines messages/telemetry/traceroutes across all sources while still tagging each row with its originating source
   - On **Unified Messages**, pick **All Channels** in the channel list to read every channel you can open in one feed. Each message carries a tag with its channel and a pill for each source that heard it. Direct messages are left out; read those on the source's own Messages tab.
+  - The **left border** of each message shows its mesh protocol: green for Meshtastic (MQTT sources included), orange for MeshCore, the accent colour for Reticulum. Hover the card to read the protocol name. The **source pills** keep one colour per source, so you can still tell which source heard a message. Channel and DM views on a single source draw the same protocol stripe on each message.
 
 Your picker choice persists per view and per user.
 
