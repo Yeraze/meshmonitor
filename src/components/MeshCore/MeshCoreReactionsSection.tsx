@@ -76,7 +76,7 @@ export const MeshCoreReactionsSection: React.FC<MeshCoreReactionsSectionProps> =
   }, [csrfFetch, showToast, t]);
 
   return (
-    <div className="form-section" data-testid="meshcore-reactions-settings">
+    <div className={`form-section ${styles.section}`} data-testid="meshcore-reactions-settings">
       <h3>{t('meshcore.reactions.settings.title', 'Reactions')}</h3>
       <label className={styles.toggle}>
         <input

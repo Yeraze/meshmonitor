@@ -3,10 +3,23 @@
  * global sheets (CLAUDE.md CSS containment rule).
  */
 
-.toggle {
+/* MeshCorePage.css sizes every label and input in a form view for text
+   entry (`.meshcore-form-view label { display: block }`, `input { width: 100% }`).
+   Two classes outrank those one-class rules, so the box sits beside its text. */
+.section .toggle {
   display: flex;
   align-items: center;
   gap: 0.5rem;
+  margin-top: 0.75rem;
+  color: var(--color-text);
+}
+
+.section .toggle input[type="checkbox"] {
+  flex: 0 0 auto;
+  width: auto;
+  max-width: none;
+  margin: 0;
+  padding: 0;
 }
 
 .warning {
