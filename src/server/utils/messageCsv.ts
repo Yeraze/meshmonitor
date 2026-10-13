@@ -29,6 +29,9 @@ export const MESSAGE_EXPORT_COLUMNS = [
   'rssi',
   'snr',
   'hops',
+  // Appended after the original 13 so existing column positions hold.
+  'reaction',
+  'reply_to_id',
 ] as const;
 
 export type MessageExportColumn = (typeof MESSAGE_EXPORT_COLUMNS)[number];

@@ -1675,6 +1675,8 @@ export class MeshCoreRepository extends BaseRepository {
     startMs?: number;
     endMs?: number;
     sender?: string;
+    /** Reaction rows are left out unless this is true (#5759). */
+    includeReactions?: boolean;
     after?: { time: number; id: string };
     limit?: number;
   }): Promise<DbMeshCoreMessage[]> {
@@ -1690,6 +1692,7 @@ export class MeshCoreRepository extends BaseRepository {
     const limit = Math.max(1, Math.min(options.limit ?? 1000, 5000));
 
     const conditions: SQL[] = [scoped, ne(meshcoreMessages.text, '')];
+    if (options.includeReactions !== true) conditions.push(isNull(meshcoreMessages.reactionEmoji));
     const include = (options.includeTerms ?? []).map((t) => t.trim()).filter(Boolean);
     if (include.length > 0) {
       const matches = include.map((t) => this.textContains(meshcoreMessages.text, t));
