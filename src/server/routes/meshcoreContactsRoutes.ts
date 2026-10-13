@@ -894,7 +894,7 @@ router.post(
             res,
             409,
             'CONTACT_TABLE_FULL',
-            "The radio refused: its contact list is full and it is not set to replace old contacts (or every contact is a favourite). Remove a contact first.",
+            "The radio refused: its contact list is full and it is not set to replace old contacts (or every contact is a favourite). In Settings, Radio contact list, turn on replacing the oldest non-favourite contact, or remove non-favourite contacts.",
             { count: result.count, maxContacts: result.maxContacts },
           );
         case 'unknown_type':
