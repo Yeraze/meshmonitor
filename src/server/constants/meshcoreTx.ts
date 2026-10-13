@@ -47,6 +47,7 @@ export const SERIAL_ONLY_BRIDGE_COMMANDS: ReadonlySet<string> = new Set([
   'has_contact', 'add_contact', // #5349: read / write the companion's contact table, no RF TX
   'add_contacts', // #5502: bulk "Push to radio", writes the contact table, no RF TX
   'set_auto_add_contacts', // #5502: SetOtherParams read-modify-write, no RF TX
+  'get_autoadd_config', 'set_autoadd_config', // #5777: auto-add options (58/59), local serial, no RF TX
 ]);
 
 export function isRfBridgeCommand(cmd: string): boolean {

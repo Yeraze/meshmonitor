@@ -76,6 +76,14 @@ const REGIONS_DISCOVER_TIMEOUT_MS = 180_000;
  */
 const PUSH_TO_DEVICE_TIMEOUT_MS = 300_000;
 
+/**
+ * Bulk remove (#5777): one serial write per contact,
+ * a few hundred ms each; ~350 contacts is well under 2 min. 5 min leaves margin;
+ * past it the 504 safety net answers and the run finishes in the background
+ * (a dropped socket would make the browser resend the POST).
+ */
+const BULK_REMOVE_TIMEOUT_MS = 300_000;
+
 
 const router = Router({ mergeParams: true });
 
@@ -298,6 +306,51 @@ router.post(
     } catch (error) {
       logger.error('[API] Error pushing contacts to device:', error);
       return fail(res, 500, 'PUSH_TO_DEVICE_FAILED', 'Failed to push contacts to the radio');
+    }
+  },
+);
+
+/**
+ * POST /api/sources/:id/meshcore/contacts/remove-non-favorites
+ *
+ * Remove every non-favourite contact from the RADIO's contact table (#5777),
+ * one at a time. A favourite on the radio (flags & 0x01) or in MeshMonitor is
+ * kept. MeshMonitor's own node rows and history are NOT touched.
+ * Declared before `/contacts/:publicKey/...` so it never reads as a key.
+ *
+ * Mesh impact: serial writes to the companion only, no RF.
+ */
+router.post(
+  '/contacts/remove-non-favorites',
+  extendRequestTimeout(BULK_REMOVE_TIMEOUT_MS),
+  meshcoreDeviceLimiter,
+  requireAuth(),
+  requirePermission('nodes', 'write', { sourceIdFrom: 'params.id' }),
+  async (req: Request, res: Response) => {
+    try {
+      const result = await managerFor(req, res).removeNonFavoriteContacts();
+      auditMeshcoreEvent(req, 'meshcore_contacts_remove_non_favorites', 'configuration', {
+        sourceId: req.params.id,
+        status: result.status,
+        ...(result.status === 'done'
+          ? { removed: result.removed, kept: result.kept, failed: result.failed, total: result.total }
+          : {}),
+      });
+      switch (result.status) {
+        case 'done': {
+          const { status: _status, ...counts } = result;
+          return ok(res, counts);
+        }
+        case 'busy':
+          return fail(res, 409, 'BULK_REMOVE_RUNNING', 'A bulk remove is already running');
+        case 'unavailable':
+          return fail(res, 409, 'SOURCE_NOT_CONNECTED', 'Removing contacts needs a connected Companion radio');
+        default:
+          return fail(res, 502, 'BULK_REMOVE_FAILED', result.error);
+      }
+    } catch (error) {
+      logger.error('[API] Error removing non-favourite contacts:', error);
+      return fail(res, 500, 'BULK_REMOVE_FAILED', 'Failed to remove contacts from the radio');
     }
   },
 );
