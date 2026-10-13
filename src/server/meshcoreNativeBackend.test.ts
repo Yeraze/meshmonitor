@@ -988,7 +988,32 @@ describe('MeshCoreNativeBackend', () => {
     );
   });
 
-  it('routes SignedPlain (txtType=2) as room_message', async () => {
+  // Build the wire frame meshcore.js receives, and replay it the way the
+  // library does: 'rx' with the raw frame, then the decoded event whose text
+  // went through a lossy UTF-8 decode (#5774).
+  function emitRoomFrame(
+    conn: MockConnection,
+    opts: { prefix: number[]; body: string; tx?: number; skipRx?: boolean; senderPrefix?: number[] },
+  ): void {
+    const senderPrefix = opts.senderPrefix ?? [0x01, 0x02, 0x03, 0x04, 0x05, 0x06];
+    const bodyBytes = new TextEncoder().encode(opts.body);
+    const ts = 1700000099;
+    const frame = Uint8Array.from([
+      7, ...senderPrefix, 2, opts.tx ?? 2,
+      ts & 0xff, (ts >> 8) & 0xff, (ts >> 16) & 0xff, (ts >>> 24) & 0xff,
+      ...opts.prefix, ...bodyBytes,
+    ]);
+    if (!opts.skipRx) conn.emit('rx', frame);
+    conn.emit(ResponseCodes.ContactMsgRecv, {
+      pubKeyPrefix: Uint8Array.from(senderPrefix),
+      pathLen: 2,
+      txtType: opts.tx ?? 2,
+      senderTimestamp: ts,
+      text: new TextDecoder().decode(frame.subarray(13)),
+    });
+  }
+
+  async function connectBackend() {
     const backend = new MeshCoreNativeBackend('src-1', {
       connectionType: 'serial',
       serialPort: '/dev/ttyUSB0',
@@ -996,24 +1021,63 @@ describe('MeshCoreNativeBackend', () => {
     const events: any[] = [];
     backend.on('event', (e) => events.push(e));
     await backend.connect();
-    const conn = lastInstanceRef.current as MockConnection;
+    return { events, conn: lastInstanceRef.current as MockConnection };
+  }
 
-    // SignedPlain: 4-byte author prefix (binary) + text body
-    const authorPrefix = String.fromCharCode(0xab, 0xcd, 0x12, 0x34);
+  it('routes SignedPlain (txtType=2) as room_message', async () => {
+    const { events, conn } = await connectBackend();
+    emitRoomFrame(conn, { prefix: [0x6a, 0x12, 0x34, 0x56], body: 'Hello from room!' });
+
+    const room = events.filter((e) => e.event_type === 'room_message');
+    expect(room).toHaveLength(1);
+    expect(room[0].data.room_pubkey_prefix).toBe('010203040506');
+    expect(room[0].data.author_pubkey_prefix).toBe('6a123456');
+    expect(room[0].data.text).toBe('Hello from room!');
+    expect(room[0].data.sender_timestamp).toBe(1700000099);
+  });
+
+  it.each([
+    [[0x6a, 0xb2, 0xc4, 0xd8], '6ab2c4d8'],
+    [[0xe1, 0x9c, 0xa7, 0xf0], 'e19ca7f0'],
+    [[0xc5, 0x4d, 0x31, 0x9e], 'c54d319e'],
+  ])('keeps author prefix bytes >= 0x80 intact (#5774): %j', async (prefix, hex) => {
+    const { events, conn } = await connectBackend();
+    emitRoomFrame(conn, { prefix, body: 'hi \u{1F44B} caf\u00e9' });
+    const room = events.find((e) => e.event_type === 'room_message');
+    expect(room.data.author_pubkey_prefix).toBe(hex);
+    expect(room.data.text).toBe('hi \u{1F44B} caf\u00e9');
+  });
+
+  it('leaves the author unknown when no raw frame was seen (#5774)', async () => {
+    const { events, conn } = await connectBackend();
+    emitRoomFrame(conn, { prefix: [0x6a, 0xb2, 0xc4, 0xd8], body: 'hello', skipRx: true });
+    const room = events.find((e) => e.event_type === 'room_message');
+    expect(room.data.author_pubkey_prefix).toBe('');
+  });
+
+  it('never reuses one frame for a later message (#5774)', async () => {
+    const { events, conn } = await connectBackend();
+    // Frame A is consumed by its own event; B arrives with no raw frame.
+    emitRoomFrame(conn, { prefix: [0xe1, 0x9c, 0xa7, 0xf0], body: 'first' });
+    emitRoomFrame(conn, { prefix: [0x6a, 0xb2, 0xc4, 0xd8], body: 'second', skipRx: true });
+    const room = events.filter((e) => e.event_type === 'room_message');
+    expect(room[0].data.author_pubkey_prefix).toBe('e19ca7f0');
+    expect(room[1].data.author_pubkey_prefix).toBe('');
+  });
+
+  it('ignores a raw frame that belongs to a different message (#5774)', async () => {
+    const { events, conn } = await connectBackend();
+    // Raw frame from sender X, decoded event from sender Y.
+    conn.emit('rx', Uint8Array.from([7, 9, 9, 9, 9, 9, 9, 2, 2, 0, 0, 0, 0, 0xe1, 0x9c, 0xa7, 0xf0, 0x68]));
     conn.emit(ResponseCodes.ContactMsgRecv, {
-      pubKeyPrefix: Uint8Array.from([0x01, 0x02, 0x03, 0x04, 0x05, 0x06]),
+      pubKeyPrefix: Uint8Array.from([1, 2, 3, 4, 5, 6]),
       pathLen: 2,
-      txtType: 2, // SignedPlain
-      senderTimestamp: 1700000099,
-      text: authorPrefix + 'Hello from room!',
+      txtType: 2,
+      senderTimestamp: 0,
+      text: '\ufffd\ufffd\ufffd\ufffdh',
     });
-
-    expect(events).toHaveLength(1);
-    expect(events[0].event_type).toBe('room_message');
-    expect(events[0].data.room_pubkey_prefix).toBe('010203040506');
-    expect(events[0].data.author_pubkey_prefix).toBe('abcd1234');
-    expect(events[0].data.text).toBe('Hello from room!');
-    expect(events[0].data.sender_timestamp).toBe(1700000099);
+    const room = events.find((e) => e.event_type === 'room_message');
+    expect(room.data.author_pubkey_prefix).toBe('');
   });
 
   it('routes CliData (txtType=1) as cli_reply', async () => {
