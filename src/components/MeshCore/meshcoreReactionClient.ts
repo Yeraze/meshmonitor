@@ -6,8 +6,8 @@ import { DEFAULT_TAPBACK_EMOJIS, type TapbackEmoji } from '../EmojiPickerModal/E
 import { isReactionEmoji } from '../../utils/meshcoreReactions';
 import { foldReactionEmoji, reactionTargetBlocker } from '../../utils/meshcoreReactionTarget';
 
-/** `MeshCoreMessage` plus the client-only flag the optimistic row carries. */
-export type MeshCoreMessageWithPending = MeshCoreMessage & { reactionPending?: boolean };
+/** Kept for callers; `reactionPending` now lives on `MeshCoreMessage`. */
+export type MeshCoreMessageWithPending = MeshCoreMessage;
 
 /** Picker options: the configured list, else the defaults, minus anything MeshCore cannot send. */
 export function reactionEmojiOptions(configured: TapbackEmoji[] | undefined): TapbackEmoji[] {

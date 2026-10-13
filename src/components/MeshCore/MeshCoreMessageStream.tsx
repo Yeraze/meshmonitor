@@ -19,6 +19,10 @@ import { groupMeshCoreReactions } from './meshcoreReactionGroups';
 import { MeshCoreReactionChips, MeshCoreUnmatchedReaction } from './MeshCoreReactionChips';
 import Modal from '../common/Modal';
 import { resendAvailability, RESEND_MAX } from './meshcoreResend';
+import { EmojiPickerModal, type TapbackEmoji } from '../EmojiPickerModal/EmojiPickerModal';
+import { isReactableRow, reactionEmojiOptions } from './meshcoreReactionClient';
+import { isReactionEmoji } from '../../utils/meshcoreReactions';
+import { foldReactionEmoji } from '../../utils/meshcoreReactionTarget';
 import styles from './MeshCoreMessageStream.module.css';
 import protocolStripe from '../messages/ProtocolStripe.module.css';
 import { getMeshCoreChannelSendState, getMeshCoreDirectSendState } from '../../utils/deliveryDiagnostics/status';
@@ -54,6 +58,12 @@ interface MeshCoreMessageStreamProps {
    *  Resend action (#5512). The stream asks for confirmation first; the parent
    *  makes the call. Hidden while `disabled`. */
   onResendMessage?: (message: MeshCoreMessage) => Promise<unknown>;
+  /** When provided, reactable messages show a react button and other people's
+   *  reaction chips become clickable (#5762). The parent makes the call. Hidden
+   *  while `disabled`. */
+  onReact?: (message: MeshCoreMessage, emoji: string) => Promise<boolean>;
+  /** Picker emoji list (the user's tapback settings); filtered to what MeshCore can send. */
+  reactionEmojis?: TapbackEmoji[];
   /** Stable key identifying the current conversation. When it changes, the
    *  stream re-runs its entry scroll (to the first-unread row, or the bottom). */
   conversationKey?: string;
@@ -135,6 +145,8 @@ export const MeshCoreMessageStream: React.FC<MeshCoreMessageStreamProps> = ({
   onReply,
   onDeleteMessage,
   onResendMessage,
+  onReact,
+  reactionEmojis,
   conversationKey,
   maxBytes = 130,
   onLoadOlder,
@@ -170,6 +182,8 @@ export const MeshCoreMessageStream: React.FC<MeshCoreMessageStreamProps> = ({
   // Resend (#5512). The button appears once the 30 s cooldown passes and goes
   // away after an hour, so the stream needs a clock. It only ticks while some
   // message could still become (or stop being) resendable.
+  const reactEnabled = !!onReact && !disabled;
+  const [reactTarget, setReactTarget] = useState<MeshCoreMessage | null>(null);
   const [resendConfirm, setResendConfirm] = useState<MeshCoreMessage | null>(null);
   const [resending, setResending] = useState(false);
   const [now, setNow] = useState(() => Date.now());
@@ -226,6 +240,14 @@ export const MeshCoreMessageStream: React.FC<MeshCoreMessageStreamProps> = ({
     }),
     [allMessages, reactionResolutions, selfPublicKey, youLabel, nameForKey],
   );
+  // Send a reaction (#5762). Skip when we already sent the same emoji here.
+  const handleReact = useCallback((m: MeshCoreMessage, emoji: string) => {
+    if (!onReact) return;
+    const folded = foldReactionEmoji(emoji);
+    const dup = (chipsByTarget.get(m.id) ?? []).some(c => c.mine && foldReactionEmoji(c.emoji) === folded);
+    if (dup) return;
+    void onReact(m, emoji);
+  }, [onReact, chipsByTarget]);
   // Ignore / Block (#5408): consecutive ignored messages collapse into one row,
   // keyed by the run's first message id; `expandedIgnoredRuns` holds the runs
   // shown open.
@@ -770,6 +792,18 @@ export const MeshCoreMessageStream: React.FC<MeshCoreMessageStreamProps> = ({
                     </button>
                   )}
                   </span>
+                  {reactEnabled && isReactableRow(m, selfPublicKey) && (
+                    <button
+                      type="button"
+                      className={styles.reactButton}
+                      data-testid="mc-react-button"
+                      title={t('meshcore.reactions.react_button', 'React')}
+                      aria-label={t('meshcore.reactions.react_button', 'React')}
+                      onClick={() => setReactTarget(m)}
+                    >
+                      <UiIcon name="reaction" size={15} />
+                    </button>
+                  )}
                   {onReply && isChannel && !outgoing && (
                     <button
                       type="button"
@@ -873,7 +907,10 @@ export const MeshCoreMessageStream: React.FC<MeshCoreMessageStreamProps> = ({
                 </ul>
               )}
               {m.text && <LinkPreview text={m.text} />}
-              {chipsByTarget.has(m.id) && <MeshCoreReactionChips chips={chipsByTarget.get(m.id) ?? []} />}
+              {chipsByTarget.has(m.id) && <MeshCoreReactionChips
+                chips={chipsByTarget.get(m.id) ?? []}
+                onAdd={reactEnabled && isReactableRow(m, selfPublicKey) ? (emoji => handleReact(m, emoji)) : undefined}
+              />}
               </div>
             </React.Fragment>
           );
@@ -967,6 +1004,15 @@ export const MeshCoreMessageStream: React.FC<MeshCoreMessageStreamProps> = ({
           </button>
         </div>
       </Modal>
+      {reactEnabled && (
+        <EmojiPickerModal<MeshCoreMessage>
+          message={reactTarget}
+          customEmojis={reactionEmojiOptions(reactionEmojis)}
+          isEmojiAllowed={isReactionEmoji}
+          onSelectEmoji={(emoji, m) => { setReactTarget(null); handleReact(m, emoji); }}
+          onClose={() => setReactTarget(null)}
+        />
+      )}
       {deliveryDetailsMsg && (
         <MessageDetailsModal
           protocol="meshcore"

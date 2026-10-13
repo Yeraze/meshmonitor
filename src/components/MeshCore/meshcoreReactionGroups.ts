@@ -6,7 +6,6 @@
  * clock, so the stream can call it in a memo.
  */
 import type { MeshCoreMessage } from './hooks/useMeshCore';
-import type { MeshCoreMessageWithPending } from './meshcoreReactionClient';
 import { foldReactionEmoji } from '../../utils/meshcoreReactionTarget';
 
 export interface ReactionChip {
@@ -94,7 +93,7 @@ export function groupMeshCoreReactions(
     }
     if (reactors.has(identity)) {
       // The real row after its optimistic copy: the chip is no longer pending.
-      if (ours && !(m as MeshCoreMessageWithPending).reactionPending) {
+      if (ours && !m.reactionPending) {
         const dup = chipsByTarget.get(targetId)?.find(c => foldReactionEmoji(c.emoji) === folded);
         if (dup) dup.pending = false;
       }
@@ -107,7 +106,7 @@ export function groupMeshCoreReactions(
       chips = [];
       chipsByTarget.set(targetId, chips);
     }
-    const isPending = ours && !!(m as MeshCoreMessageWithPending).reactionPending;
+    const isPending = ours && !!m.reactionPending;
     const chip = chips.find(c => foldReactionEmoji(c.emoji) === folded);
     if (chip) {
       chip.count += 1;

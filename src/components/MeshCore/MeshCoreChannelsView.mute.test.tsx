@@ -27,6 +27,7 @@ let muted = new Set<number>();
 const muteChannel = vi.fn(async (idx: number) => { muted.add(idx); });
 const unmuteChannel = vi.fn(async (idx: number) => { muted.delete(idx); });
 vi.mock('../../contexts/SettingsContext', () => ({
+  useSettingsOptional: () => undefined,
   useOptionalChannelMuteSettings: () => ({
     isChannelMuted: (idx: number) => muted.has(idx),
     muteChannel,

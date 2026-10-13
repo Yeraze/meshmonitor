@@ -21,7 +21,7 @@ import { MeshCoreMessage, MeshCoreActions, ConnectionStatus } from './hooks/useM
 import { MeshCoreContact, formatMeshCoreChannelName } from '../../utils/meshcoreHelpers';
 import { MeshCoreMessageStream } from './MeshCoreMessageStream';
 import { useAuth } from '../../contexts/AuthContext';
-import { useOptionalChannelMuteSettings } from '../../contexts/SettingsContext';
+import { useOptionalChannelMuteSettings, useSettingsOptional } from '../../contexts/SettingsContext';
 import { loadChannelLastRead, markChannelRead as persistChannelRead } from './meshcoreUnreadStore';
 import { slotMoveMap, subscribeChannelsReordered } from './meshcoreChannelReorderEvents';
 import { subscribeFiltersChanged } from './meshcoreFilterEvents';
@@ -132,6 +132,7 @@ export const MeshCoreChannelsView: React.FC<MeshCoreChannelsViewProps> = ({
   // row, keyed by MeshCore channel index. Indicator-only for MeshCore — it
   // hides the unread dot/badge; MeshCore channel traffic sends no push today.
   const muteSettings = useOptionalChannelMuteSettings();
+  const tapbackEmojis = useSettingsOptional()?.tapbackEmojis;
   const isChannelMutedFn = muteSettings?.isChannelMuted;
   const canMute = !!muteSettings && authStatus?.authenticated === true;
   const [showMuteMenu, setShowMuteMenu] = useState(false);
@@ -709,6 +710,8 @@ export const MeshCoreChannelsView: React.FC<MeshCoreChannelsViewProps> = ({
 
   const selfKey = status?.localNode?.publicKey;
   const connected = status?.connected ?? false;
+  // Outbound reactions (#5762): needs the per-source switch, a live non-receive-only link, and a sendable channel.
+  const canReact = canSend && connected && !receiveOnly && status?.reactionsOutboundEnabled === true && active?.readOnly !== true;
 
   // Per-message delete + whole-channel clear (#3981). Both confirm first.
   //
@@ -1038,6 +1041,8 @@ export const MeshCoreChannelsView: React.FC<MeshCoreChannelsViewProps> = ({
           emptyText={t('meshcore.no_messages', 'No messages on this channel yet')}
           onDeleteMessage={canSend ? handleDeleteMessage : undefined}
           onResendMessage={canSend ? handleResendMessage : undefined}
+          onReact={canReact ? (m, e) => actions.sendReaction(m, e) : undefined}
+          reactionEmojis={tapbackEmojis}
           onSend={async text => {
             // Pass the one-off scope override only when the operator has opened
             // the control AND typed a value (incl. '' to mean unscoped). When

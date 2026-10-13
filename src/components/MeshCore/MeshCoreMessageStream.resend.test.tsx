@@ -149,6 +149,11 @@ describe('MeshCoreMessageStream — resend (#5512)', () => {
     expect(onResend).not.toHaveBeenCalled();
   });
 
+  it('never offers Resend on our own reaction row', () => {
+    renderStream([sent({ id: 'rx', text: '👍', reactionEmoji: '👍', reactionTargetId: 'gone' })]);
+    expect(resendButton()).toBeNull();
+  });
+
   it('hides the button when a channel_heard update arrives', () => {
     const { rerender } = renderStream([sent()]);
     expect(resendButton()).not.toBeNull();

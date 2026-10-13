@@ -86,3 +86,33 @@
   opacity: 0.6;
   cursor: default;
 }
+
+/*
+ * React button (#5762). Same look as the global .mc-message-reply: subtle until
+ * the row is hovered, always visible on touch screens.
+ */
+.reactButton {
+  background: none;
+  border: none;
+  color: var(--color-text-subtle);
+  cursor: pointer;
+  padding: 0 0.15rem;
+  font-size: 0.8rem;
+  opacity: 0.55;
+  transition: opacity 0.15s, color 0.15s;
+}
+
+:global(.mc-message-row):hover .reactButton {
+  opacity: 1;
+}
+
+.reactButton:hover {
+  color: var(--color-accent-alt);
+  opacity: 1;
+}
+
+@media (hover: none) {
+  .reactButton {
+    opacity: 1;
+  }
+}
