@@ -751,7 +751,29 @@ export class MqttBridgeManager extends EventEmitter implements ISourceManager {
     if (!this.client || !this.client.isConnected()) {
       throw new Error(`MQTT bridge ${this.sourceId} not connected to upstream`);
     }
+    // The client-proxy path lands here without passing handleUplink, so it
+    // needs its own automation check (#5414). Without it, a TCP node whose
+    // MQTT proxy is linked to this bridge uplinked every auto-ack tapback and
+    // other automation send even with `dropAutomationUplinks` on.
+    if (this.config.dropAutomationUplinks && this.isAutomationEnvelope(payload)) {
+      this.uplinkAutomationDrops++;
+      return;
+    }
     await this.client.publish(topic, payload, retained);
+  }
+
+  /**
+   * True when `payload` is a ServiceEnvelope whose packet MeshMonitor's own
+   * automation sent. Anything that does not decode (a JSON topic, a map
+   * report) is not ours to drop.
+   */
+  private isAutomationEnvelope(payload: Uint8Array): boolean {
+    const envelope = meshtasticProtobufService.decodeServiceEnvelope(payload, { quiet: true });
+    const packet = envelope?.packet;
+    if (!packet || packet.id === undefined || packet.id === null) return false;
+    if (packet.from === undefined || packet.from === null) return false;
+    // Coerce like handleUplink: some decode paths hand back a Long.
+    return automationPacketTracker.isAutomationPacket(Number(packet.from) >>> 0, Number(packet.id) >>> 0);
   }
 
   /** Count an uplink packet dropped on the stopped subscriber; log the first. */
