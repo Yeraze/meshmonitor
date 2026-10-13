@@ -68,3 +68,63 @@
   font-size: 0.9em;
   line-height: 1.6;
 }
+
+/* MeshCorePage.css restyles every label and input in .meshcore-form-view
+   (label { display: block }, input { width: 100% }). Two classes outrank
+   those one-class rules, so a box sits beside its text. (#5777) */
+.section .modes {
+  border: 0;
+  margin: 0.5rem 0;
+  padding: 0;
+  min-width: 0;
+}
+
+.section .choice {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.4rem;
+  color: var(--color-text);
+}
+
+.section .choice input[type="radio"],
+.section .choice input[type="checkbox"] {
+  flex: 0 0 auto;
+  width: auto;
+  max-width: none;
+  margin: 0;
+  padding: 0;
+}
+
+.section .types {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 1.25rem;
+  margin-left: 1.5rem;
+}
+
+.section .select {
+  width: auto;
+  max-width: 100%;
+}
+
+/* `.meshcore-form-view button` (MeshCorePage.css) paints every button in the
+   form as a filled accent button. Two classes outrank it; the bare selector
+   covers the confirm button, which the Modal draws outside the form. */
+.section .dangerButton,
+.dangerButton {
+  color: var(--color-error);
+  border: 1px solid var(--color-error);
+  background: transparent;
+}
+
+.section .dangerButton:hover:not(:disabled),
+.dangerButton:hover:not(:disabled) {
+  background: var(--color-surface-hover);
+}
+
+.section .dangerButton:disabled,
+.dangerButton:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}

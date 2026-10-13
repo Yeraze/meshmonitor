@@ -414,12 +414,26 @@ A MeshCore companion radio and MeshMonitor each keep their own list of nodes, an
 
 ### Auto-add contacts
 
-The firmware setting `manual_add_contacts` decides whether the radio saves the nodes it hears:
+The radio has three ways to treat the nodes it hears. Pick one in **MeshCore → Device Configuration → Radio contact list** (needs `configuration:write`):
 
-- **Auto-add on** (bit 0 clear, the usual default): the radio stores each node it hears advertising, until the table fills.
-- **Auto-add off** (bit 0 set): the radio stores only contacts added by hand. Nodes it hears still show up in MeshMonitor, but the radio never saves them.
+- **Add every node it hears** (the usual default): the radio saves each node that adverts, until the table fills. The type boxes are ignored in this mode.
+- **Add only these types**: the radio saves only the types you tick: Companions, Repeaters, Room servers, Sensors.
+- **Add none (manual)**: the radio saves only contacts added by hand. Nodes it hears still show up in MeshMonitor, but the radio never saves them.
 
-**MeshCore → Device Configuration → Radio contact list** shows the current state (**Auto-add contacts: On / Off**) and a **Turn on / Turn off** button (needs `configuration:write`). The button changes only bit 0. The higher bits (per-type auto-add flags) and the telemetry and advert-location settings sent in the same firmware command stay as they were. It is a local write over the serial or TCP link; nothing is transmitted.
+Two more options apply to the first two modes:
+
+- **Max hops**: the radio saves a node only if its advert came in over that many hops or fewer. *No limit*, *Direct only*, or up to 1 to 8 hops (the radio can hold values up to 64; one set elsewhere stays in the list).
+- **Replace the oldest non-favourite contact when the list is full**: off by default. Off, a full radio stops saving new nodes. On, it drops its oldest contact that is not a favourite to make room.
+
+These write settings to the radio over the serial or TCP link. Nothing is transmitted. Each change sends only the field you changed; the radio's other bits (and the telemetry and advert-location settings that share a firmware command) stay as they were. Firmware too old to know these options shows **This firmware does not support auto-add options**; the older on/off toggle still works there.
+
+### What "favourite" protects
+
+A contact is a favourite when the radio's favourite flag is set **or** MeshMonitor marks the node as a favourite. Favourites are never replaced by the option above and never removed by the bulk remove below. Marking a node as a favourite in MeshMonitor also sets the flag on the radio.
+
+### Remove non-favourite contacts
+
+**Remove non-favourite contacts from the radio** (needs `nodes:write`) frees room on a full radio. A dialog shows how many contacts it will remove and how many it keeps. It then removes them one at a time from the radio's table and shows `Removed N, kept N, failed N`. This changes the radio's list only: MeshMonitor keeps its node rows and history, and the nodes come back on the radio the next time they advert (or with **Push to radio**). Only one run can go at a time. A local write; nothing is transmitted.
 
 ### Symptoms when the two are out of step
 
@@ -431,7 +445,7 @@ The firmware setting `manual_add_contacts` decides whether the radio saves the n
 ### Two fixes
 
 1. **Turn auto-add on.** The radio then stores nodes as it hears their next advert. Nodes it already missed come back only when they advert again.
-2. **Push to radio.** The **Push to radio** button in the same section (needs `nodes:write`) copies MeshMonitor's nodes into the radio's table straight away, in this order: favourites first (most recently heard first), then the other nodes by most recently heard. It fills **free slots only**: it never replaces a contact already on the radio. It skips the local node, nodes whose type is not known yet (wait for an advert), and nodes on the Ignore / Block list. If the radio's capacity can't be read, it pushes favourites only. A summary lists what was added, what was already there, what was skipped and why, and how many free slots remain. Like auto-add, this is a local write; nothing is transmitted.
+2. **Push to radio.** The **Push to radio** button in the same section (needs `nodes:write`) copies MeshMonitor's nodes into the radio's table straight away, in this order: favourites first (most recently heard first), then the other nodes by most recently heard. It fills **free slots only**: it never replaces a contact already on the radio. It skips the local node, nodes whose type is not known yet (wait for an advert), and nodes on the Ignore / Block list. If the radio's capacity can't be read, it pushes favourites only. A summary lists what was added, what was already there, what was skipped and why, and how many free slots remain. Like auto-add, this is a local write; nothing is transmitted. If the radio is full, turn on replacing the oldest contact or remove non-favourite contacts first.
 
 To add a single node, open it in **Node Details** and use **Add to radio** on the "Not in the radio's contact list" notice.
 

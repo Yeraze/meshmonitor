@@ -1367,7 +1367,38 @@ export interface DeviceContactSyncStatus {
    * claiming every favourite is missing.
    */
   deviceContactsKnown: boolean;
+  /**
+   * Contacts the radio holds that "Remove non-favourite contacts" (#5777)
+   * would remove / keep. A favourite on the radio (flags & 0x01) OR in
+   * MeshMonitor is kept. Both are 0 until the radio's table has been read.
+   */
+  removableContactCount: number;
+  keptContactCount: number;
 }
+
+/** Companion auto-add options (CMD_GET/SET_AUTOADD_CONFIG, #5777). */
+export interface AutoAddConfig {
+  /** False on firmware that does not know commands 58/59. */
+  supported: boolean;
+  /** Replace the oldest non-favourite contact when the table is full. */
+  overwriteOldest: boolean;
+  types: { chat: boolean; repeater: boolean; room: boolean; sensor: boolean };
+  /** 0 = no limit, 1 = direct only, N = up to N-1 hops. */
+  maxHops: number;
+}
+
+export type AutoAddConfigPatch = {
+  overwriteOldest?: boolean;
+  types?: Partial<AutoAddConfig['types']>;
+  maxHops?: number;
+};
+
+/** Result of `MeshCoreManager.removeNonFavoriteContacts` (#5777). */
+export type RemoveNonFavoritesResult =
+  | { status: 'done'; removed: number; kept: number; failed: number; total: number }
+  | { status: 'busy' }
+  | { status: 'unavailable' }
+  | { status: 'failed'; error: string };
 
 /**
  * MeshCore Manager class
@@ -7719,7 +7750,18 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
       .filter((n) => this.contacts.get(n.publicKey)?.onDevice !== true)
       .map((n) => ({ publicKey: n.publicKey, name: n.name ?? null }));
     let deviceContactCount = 0;
-    for (const c of this.contacts.values()) if (c.onDevice === true) deviceContactCount++;
+    const appFavs = new Set(
+      dbNodes.filter((n) => n.isFavorite === true).map((n) => n.publicKey.toLowerCase()),
+    );
+    let removableContactCount = 0;
+    let keptContactCount = 0;
+    for (const c of this.contacts.values()) {
+      if (c.onDevice !== true) continue;
+      deviceContactCount++;
+      if (!known) continue;
+      if (c.deviceFavorite === true || appFavs.has(c.publicKey.toLowerCase())) keptContactCount++;
+      else removableContactCount++;
+    }
     return {
       available: this.deviceType === MeshCoreDeviceType.COMPANION && this.connected,
       manualAddContacts,
@@ -7727,7 +7769,113 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
       missingFavorites,
       deviceContactCount,
       deviceContactsKnown: known,
+      removableContactCount,
+      keptContactCount,
     };
+  }
+
+  /**
+   * Read the companion's auto-add options (#5777): overwrite-oldest, the
+   * per-type bits and the max-hops limit. `supported: false` on firmware that
+   * does not know commands 58/59. Companion only; local serial read, no RF.
+   */
+  async getAutoAddConfig(): Promise<{ ok: true; config: AutoAddConfig } | { ok: false; error: string }> {
+    if (this.deviceType !== MeshCoreDeviceType.COMPANION || !this.connected) {
+      return { ok: false, error: 'Auto-add options need a connected Companion radio' };
+    }
+    const response = await this.sendBridgeCommand('get_autoadd_config', {}, 10_000);
+    if (!response.success) return { ok: false, error: response.error || 'Could not read the auto-add options' };
+    return { ok: true, config: this.toAutoAddConfig(response.data) };
+  }
+
+  /**
+   * Change the companion's auto-add options (#5777). Only the fields given
+   * change; the backend does the read-modify-write and returns what the radio
+   * kept. Local serial write — nothing is transmitted.
+   */
+  async setAutoAddConfig(patch: AutoAddConfigPatch): Promise<{ ok: true; config: AutoAddConfig } | { ok: false; error: string }> {
+    if (this.deviceType !== MeshCoreDeviceType.COMPANION || !this.connected) {
+      return { ok: false, error: 'Auto-add options need a connected Companion radio' };
+    }
+    const response = await this.sendBridgeCommand(
+      'set_autoadd_config',
+      { overwrite_oldest: patch.overwriteOldest, types: patch.types, max_hops: patch.maxHops },
+      15_000,
+    );
+    if (!response.success) return { ok: false, error: response.error || 'The radio did not accept the options' };
+    const config = this.toAutoAddConfig(response.data);
+    if (config.supported) {
+      logger.info(`[MeshCore:${this.sourceId}] Auto-add options set: ${safeJson(config)}`);
+    }
+    return { ok: true, config };
+  }
+
+  private toAutoAddConfig(raw: unknown): AutoAddConfig {
+    const data = raw as {
+      supported?: boolean;
+      overwrite_oldest?: boolean;
+      types?: Record<string, boolean | undefined>;
+      max_hops?: number;
+    } | null | undefined;
+    return {
+      supported: data?.supported === true,
+      overwriteOldest: data?.overwrite_oldest === true,
+      types: {
+        chat: data?.types?.chat === true,
+        repeater: data?.types?.repeater === true,
+        room: data?.types?.room === true,
+        sensor: data?.types?.sensor === true,
+      },
+      maxHops: typeof data?.max_hops === 'number' ? data.max_hops : 0,
+    };
+  }
+
+  /** Single-flight guard for {@link removeNonFavoriteContacts}. */
+  private bulkRemoveInFlight = false;
+
+  /**
+   * Remove every non-favourite contact from the RADIO's contact table (#5777),
+   * one at a time through {@link removeContact} in its `keepNode` form, so
+   * MeshMonitor keeps its node rows and history. A contact is kept when it is
+   * a favourite on the radio (flags & 0x01) OR in MeshMonitor.
+   * Local serial writes only; nothing is transmitted.
+   */
+  async removeNonFavoriteContacts(): Promise<RemoveNonFavoritesResult> {
+    if (this.deviceType !== MeshCoreDeviceType.COMPANION || !this.connected) {
+      return { status: 'unavailable' };
+    }
+    if (this.bulkRemoveInFlight) return { status: 'busy' };
+    this.bulkRemoveInFlight = true;
+    try {
+      const table = await this.sendBridgeCommand('get_contacts', {});
+      if (!table.success || !Array.isArray(table.data)) {
+        return { status: 'failed', error: table.error || 'Could not read the radio contact list' };
+      }
+      const rows = table.data as Array<{ public_key: string; flags?: number }>;
+      const dbNodes = await databaseService.meshcore.getNodesBySource(this.sourceId);
+      const appFavs = new Set(
+        dbNodes.filter((n) => n.isFavorite === true).map((n) => n.publicKey.toLowerCase()),
+      );
+      let removed = 0;
+      let kept = 0;
+      let failed = 0;
+      for (const row of rows) {
+        const key = String(row.public_key).toLowerCase();
+        const deviceFav = ((typeof row.flags === 'number' ? row.flags : 0) & 0x01) !== 0;
+        if (deviceFav || appFavs.has(key)) {
+          kept++;
+          continue;
+        }
+        if (await this.removeContact(key, { keepNode: true })) removed++;
+        else failed++;
+      }
+      return { status: 'done', removed, kept, failed, total: rows.length };
+    } catch (error) {
+      logger.error(`[MeshCore:${this.sourceId}] removeNonFavoriteContacts threw:`, error);
+      return { status: 'failed', error: (error as Error).message };
+    } finally {
+      this.bulkRemoveInFlight = false;
+    }
   }
 
   /**
@@ -7935,8 +8083,10 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
   /**
    * Remove a contact from the device's contact list. On success, the
    * in-memory contact map and meshcore_nodes row are cleared. Companion only.
+   * With `keepNode` (#5777) only the radio's table changes: the node row and
+   * the in-memory contact stay, marked `onDevice: false`.
    */
-  async removeContact(publicKey: string): Promise<boolean> {
+  async removeContact(publicKey: string, opts: { keepNode?: boolean } = {}): Promise<boolean> {
     if (this.deviceType !== MeshCoreDeviceType.COMPANION) {
       logger.warn('[MeshCore] Remove-contact requires Companion firmware');
       return false;
@@ -7947,6 +8097,12 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
       if (!response.success) {
         logger.warn(`[MeshCore] remove_contact failed for ${publicKey}: ${response.error}`);
         return false;
+      }
+      if (opts.keepNode) {
+        // #5777: radio table only. MeshMonitor keeps the node row and history,
+        // so no tombstone (nothing to resurrect) and no removed-contact event.
+        await this.markContactOnDevice(publicKey, false);
+        return true;
       }
       this.contacts.delete(publicKey);
       // Tombstone before the DB delete so an advert-triggered refresh that races

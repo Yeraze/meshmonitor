@@ -402,6 +402,12 @@ const OTHER_PARAMS_COMMANDS: ReadonlySet<string> = new Set([
   'set_auto_add_contacts',
 ]);
 
+type AutoAddExchangeResult =
+  | { kind: 'reply'; config: number; maxHops: number }
+  | { kind: 'ok' }
+  | { kind: 'err' }
+  | { kind: 'timeout' };
+
 export class MeshCoreNativeBackend extends EventEmitter {
   /** Latest raw ContactMsgRecv frame, awaiting its decoded event (#5774). */
   private lastContactMsgFrame: Uint8Array | null = null;
@@ -1569,6 +1575,59 @@ export class MeshCoreNativeBackend extends EventEmitter {
    */
   private static readonly RADIO_OP_BACKSTOP_MS = MESHCORE_RADIO_OP_BACKSTOP_MS;
 
+  /** How long to wait for the radio to answer a raw auto-add frame (58/59). */
+  private static readonly AUTOADD_REPLY_TIMEOUT_MS = 4_000;
+
+  /**
+   * Send one raw auto-add frame and classify the answer from the raw 'rx' tap
+   * (meshcore.js has no helper for 58/59). Call inside runExclusiveRadioOp.
+   * `reply` = RESP_CODE_AUTOADD_CONFIG (25), `ok`/`err` = the generic acks,
+   * `timeout` = silence. Err and timeout both mean "old firmware" to a reader.
+   */
+  private autoAddExchange(
+    c: AnyConnection,
+    frame: Uint8Array,
+  ): Promise<AutoAddExchangeResult> {
+    const K = this.constants!;
+    const RESP_AUTOADD_CONFIG = 25;
+    return new Promise((resolve) => {
+      const done = (v: AutoAddExchangeResult) => {
+        clearTimeout(timer);
+        c.off('rx', onRx);
+        resolve(v);
+      };
+      const onRx = (f: Uint8Array) => {
+        if (!f || f.length < 1) return;
+        if (f[0] === RESP_AUTOADD_CONFIG && f.length >= 3) {
+          done({ kind: 'reply', config: f[1], maxHops: f[2] });
+        } else if (f[0] === K.ResponseCodes.Ok) {
+          done({ kind: 'ok' });
+        } else if (f[0] === K.ResponseCodes.Err) {
+          done({ kind: 'err' });
+        }
+      };
+      const timer = setTimeout(() => done({ kind: 'timeout' }), MeshCoreNativeBackend.AUTOADD_REPLY_TIMEOUT_MS);
+      c.on('rx', onRx);
+      void c.sendToRadioFrame(frame);
+    });
+  }
+
+  /** Bridge-shaped auto-add payload; `config === null` means unsupported. */
+  private autoAddToData(config: number | null, maxHops: number) {
+    const cfg = config ?? 0;
+    return {
+      supported: config !== null,
+      overwrite_oldest: (cfg & 0x01) !== 0,
+      types: {
+        chat: (cfg & 0x02) !== 0,
+        repeater: (cfg & 0x04) !== 0,
+        room: (cfg & 0x08) !== 0,
+        sensor: (cfg & 0x10) !== 0,
+      },
+      max_hops: config === null ? 0 : maxHops,
+    };
+  }
+
   private runExclusiveRadioOp<T>(fn: () => Promise<T>, label = 'radio-op'): Promise<T> {
     const bounded = (): Promise<T> => {
       this.radioOpHead = label;
@@ -2715,6 +2774,60 @@ export class MeshCoreNativeBackend extends EventEmitter {
           s.advLocPolicy = advLocPolicy;
         }
         return { manual_add_contacts: next, auto_add: (next & 0x01) === 0 };
+      }
+
+      case 'get_autoadd_config': {
+        // CMD_GET_AUTOADD_CONFIG (59) -> RESP_CODE_AUTOADD_CONFIG (25). Older
+        // firmware answers Err or nothing: report `supported: false`.
+        // Local serial read, no RF. Uses the shared radio-op lock because the
+        // raw frame has no tag to match its reply against (the generic
+        // runOtherParamsOp lock is not on this tree).
+        const reply = await this.runExclusiveRadioOp(
+          () => this.autoAddExchange(c, Uint8Array.from([59])),
+          'get_autoadd_config',
+        );
+        return reply.kind === 'reply'
+          ? this.autoAddToData(reply.config, reply.maxHops)
+          : this.autoAddToData(null, 0);
+      }
+
+      case 'set_autoadd_config': {
+        // CMD_SET_AUTOADD_CONFIG (58): [58][autoadd_config][autoadd_max_hops].
+        // Read-modify-write inside ONE radio op: fetch the current bytes, apply
+        // only the fields given, send both bytes, read back what the device
+        // kept. Local serial write, no RF.
+        const patch = params as {
+          overwrite_oldest?: unknown;
+          types?: Record<string, unknown>;
+          max_hops?: unknown;
+        };
+        return await this.runExclusiveRadioOp(async () => {
+          const cur = await this.autoAddExchange(c, Uint8Array.from([59]));
+          if (cur.kind !== 'reply') return this.autoAddToData(null, 0);
+          let config = cur.config;
+          const setBit = (bit: number, v: unknown) => {
+            if (typeof v === 'boolean') config = v ? config | bit : config & ~bit;
+          };
+          setBit(0x01, patch.overwrite_oldest);
+          setBit(0x02, patch.types?.chat);
+          setBit(0x04, patch.types?.repeater);
+          setBit(0x08, patch.types?.room);
+          setBit(0x10, patch.types?.sensor);
+          let maxHops = cur.maxHops;
+          if (patch.max_hops !== undefined && patch.max_hops !== null) {
+            const n = Number(patch.max_hops);
+            if (!Number.isInteger(n) || n < 0 || n > 64) {
+              throw new Error('max_hops must be a whole number from 0 to 64');
+            }
+            maxHops = n;
+          }
+          const ack = await this.autoAddExchange(c, Uint8Array.from([58, config & 0xff, maxHops & 0xff]));
+          if (ack.kind === 'err') throw new Error('Device rejected the auto-add options');
+          if (ack.kind === 'timeout') throw new Error('Device did not answer the auto-add options');
+          const back = await this.autoAddExchange(c, Uint8Array.from([59]));
+          if (back.kind !== 'reply') throw new Error('Could not read back the auto-add options');
+          return this.autoAddToData(back.config, back.maxHops);
+        }, 'set_autoadd_config');
       }
 
       case 'get_stats': {

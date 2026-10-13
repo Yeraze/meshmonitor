@@ -38,11 +38,24 @@ function syncStatus(overrides: Record<string, unknown> = {}) {
 }
 
 /** Route csrfFetch by URL; `status` can change between calls. */
-function mockServer(opts: { status: () => Record<string, unknown>; push?: unknown; autoAdd?: unknown }) {
-  h.csrfFetch.mockImplementation(async (url: string) => {
+function mockServer(opts: {
+  status: () => Record<string, unknown>;
+  push?: unknown;
+  autoAdd?: unknown;
+  config?: () => Record<string, unknown>;
+  configPost?: unknown;
+  remove?: unknown;
+}) {
+  h.csrfFetch.mockImplementation(async (url: string, init?: { method?: string }) => {
     if (url === `${PREFIX}/contacts/device-sync`) return json({ success: true, data: opts.status() });
     if (url === `${PREFIX}/contacts/push-to-device`) return json(opts.push);
     if (url === `${PREFIX}/config/auto-add-contacts`) return json(opts.autoAdd);
+    if (url === `${PREFIX}/config/autoadd-config`) {
+      if (init?.method === 'POST') return json(opts.configPost ?? { success: true, data: {} });
+      if (opts.config) return json({ success: true, data: opts.config() });
+      return json({ success: false, error: 'nope' });
+    }
+    if (url === `${PREFIX}/contacts/remove-non-favorites`) return json(opts.remove);
     throw new Error(`unexpected ${url}`);
   });
 }
@@ -188,5 +201,181 @@ describe('MeshCoreContactSyncSection (#5502)', () => {
     renderSection({ connected: false });
     expect(h.csrfFetch).not.toHaveBeenCalled();
     expect((screen.getByRole('button', { name: /Push to radio/ }) as HTMLButtonElement).disabled).toBe(true);
+  });
+});
+
+function autoAddConfig(overrides: Record<string, unknown> = {}) {
+  return {
+    supported: true,
+    overwriteOldest: false,
+    types: { chat: true, repeater: false, room: false, sensor: false },
+    maxHops: 0,
+    ...overrides,
+  };
+}
+
+const configPosts = () =>
+  h.csrfFetch.mock.calls
+    .filter(([url, init]) => url === `${PREFIX}/config/autoadd-config` && init?.method === 'POST')
+    .map(([, init]) => JSON.parse(init.body));
+
+describe('MeshCoreContactSyncSection auto-add options (#5777)', () => {
+  beforeEach(() => {
+    h.csrfFetch.mockReset();
+  });
+
+  it('derives "every node" from the toggle and disables the type boxes', async () => {
+    mockServer({
+      status: () => syncStatus({ autoAddEnabled: true, manualAddContacts: 0 }),
+      config: () => autoAddConfig({ types: { chat: true, repeater: true, room: false, sensor: false } }),
+    });
+    renderSection();
+    const all = await screen.findByRole('radio', { name: 'Add every node it hears' });
+    expect((all as HTMLInputElement).checked).toBe(true);
+    expect((screen.getByRole('checkbox', { name: 'Repeaters' }) as HTMLInputElement).disabled).toBe(true);
+    expect(screen.getByText(/type boxes do nothing while/)).toBeTruthy();
+  });
+
+  it('reads "only these types" when manual with a type bit set, and enables the boxes', async () => {
+    mockServer({ status: () => syncStatus(), config: () => autoAddConfig() });
+    renderSection();
+    const only = await screen.findByRole('radio', { name: 'Add only these types' });
+    expect((only as HTMLInputElement).checked).toBe(true);
+    expect((screen.getByRole('checkbox', { name: 'Companions' }) as HTMLInputElement).disabled).toBe(false);
+    expect((screen.getByRole('checkbox', { name: 'Companions' }) as HTMLInputElement).checked).toBe(true);
+  });
+
+  it('reads "none" when manual with no type bit, and hides max hops', async () => {
+    mockServer({
+      status: () => syncStatus(),
+      config: () => autoAddConfig({ types: { chat: false, repeater: false, room: false, sensor: false } }),
+    });
+    renderSection();
+    const none = await screen.findByRole('radio', { name: 'Add none (manual)' });
+    expect((none as HTMLInputElement).checked).toBe(true);
+    expect(screen.queryByLabelText('Max hops')).toBeNull();
+  });
+
+  it('sends only the changed type box', async () => {
+    mockServer({ status: () => syncStatus(), config: () => autoAddConfig() });
+    renderSection();
+    await userEvent.click(await screen.findByRole('checkbox', { name: 'Repeaters' }));
+    await waitFor(() => expect(configPosts()).toEqual([{ types: { repeater: true } }]));
+  });
+
+  it('sends max hops and overwrite-oldest', async () => {
+    mockServer({ status: () => syncStatus(), config: () => autoAddConfig({ maxHops: 12 }) });
+    renderSection();
+    const select = await screen.findByLabelText('Max hops');
+    // A value the device reports above the standard list stays selectable.
+    expect(Array.from((select as HTMLSelectElement).options).map((o) => o.value)).toContain('12');
+    await userEvent.selectOptions(select, '2');
+    await userEvent.click(screen.getByRole('checkbox', { name: /Replace the oldest non-favourite contact/ }));
+    await waitFor(() => expect(configPosts()).toEqual([{ maxHops: 2 }, { overwriteOldest: true }]));
+  });
+
+  it('switching to "every node" turns the toggle on', async () => {
+    mockServer({
+      status: () => syncStatus(),
+      config: () => autoAddConfig(),
+      autoAdd: { success: true, data: { autoAddEnabled: true, manualAddContacts: 0 } },
+    });
+    renderSection();
+    await userEvent.click(await screen.findByRole('radio', { name: 'Add every node it hears' }));
+    await waitFor(() => {
+      const call = h.csrfFetch.mock.calls.find(([url]) => url === `${PREFIX}/config/auto-add-contacts`);
+      expect(JSON.parse(call?.[1].body)).toEqual({ enabled: true });
+    });
+  });
+
+  it('switching to "none" turns the toggle off and clears every type', async () => {
+    mockServer({
+      status: () => syncStatus({ autoAddEnabled: true, manualAddContacts: 0 }),
+      config: () => autoAddConfig(),
+      autoAdd: { success: true, data: { autoAddEnabled: false, manualAddContacts: 1 } },
+    });
+    renderSection();
+    await userEvent.click(await screen.findByRole('radio', { name: 'Add none (manual)' }));
+    await waitFor(() =>
+      expect(configPosts()).toEqual([{ types: { chat: false, repeater: false, room: false, sensor: false } }]),
+    );
+    const call = h.csrfFetch.mock.calls.find(([url]) => url === `${PREFIX}/config/auto-add-contacts`);
+    expect(JSON.parse(call?.[1].body)).toEqual({ enabled: false });
+  });
+
+  it('hides the options and shows one hint when the firmware lacks them; the toggle still works', async () => {
+    mockServer({ status: () => syncStatus(), config: () => autoAddConfig({ supported: false }) });
+    renderSection();
+    expect(await screen.findByTestId('meshcore-autoadd-unsupported')).toBeTruthy();
+    expect(screen.queryByRole('radio')).toBeNull();
+    expect(screen.queryByLabelText('Max hops')).toBeNull();
+    expect(screen.getByRole('button', { name: 'Turn on' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: /Push to radio/ })).toBeTruthy();
+  });
+
+  it('disables the config controls without configuration:write', async () => {
+    mockServer({ status: () => syncStatus(), config: () => autoAddConfig() });
+    renderSection({ canEditConfig: false });
+    const radio = await screen.findByRole('radio', { name: 'Add only these types' });
+    expect(radio).toBeDisabled();
+  });
+});
+
+describe('MeshCoreContactSyncSection bulk remove (#5777)', () => {
+  beforeEach(() => {
+    h.csrfFetch.mockReset();
+  });
+
+  const removeButton = () => screen.findByRole('button', { name: /Remove non-favourite contacts from the radio/ });
+
+  it('asks with the exact counts, then shows the result', async () => {
+    mockServer({
+      status: () => syncStatus({ removableContactCount: 7, keptContactCount: 3 }),
+      remove: { success: true, data: { removed: 6, kept: 3, failed: 1, total: 10 } },
+    });
+    renderSection();
+    await userEvent.click(await removeButton());
+    expect(screen.getByTestId('meshcore-remove-confirm-text').textContent).toBe(
+      'This removes 7 contacts from the radio and keeps 3 favourites.',
+    );
+    expect(screen.getByText(/changes the radio's list only/)).toBeTruthy();
+    await userEvent.click(screen.getByRole('button', { name: 'Remove' }));
+    expect((await screen.findByTestId('meshcore-remove-result')).textContent).toBe('Removed 6, kept 3, failed 1');
+    expect(h.csrfFetch.mock.calls.some(([url]) => url === `${PREFIX}/contacts/remove-non-favorites`)).toBe(true);
+  });
+
+  it('cancel sends nothing', async () => {
+    mockServer({ status: () => syncStatus({ removableContactCount: 2, keptContactCount: 0 }) });
+    renderSection();
+    await userEvent.click(await removeButton());
+    await userEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(h.csrfFetch.mock.calls.some(([url]) => url === `${PREFIX}/contacts/remove-non-favorites`)).toBe(false);
+  });
+
+  it('is disabled when nothing would be removed', async () => {
+    mockServer({ status: () => syncStatus({ removableContactCount: 0, keptContactCount: 4 }) });
+    renderSection();
+    expect(((await removeButton()) as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it('is hidden without nodes:write and disabled when not connected', async () => {
+    mockServer({ status: () => syncStatus({ removableContactCount: 2 }) });
+    const { unmount } = renderSection({ canEditNodes: false });
+    await waitFor(() => expect(h.csrfFetch).toHaveBeenCalled());
+    expect(screen.queryByRole('button', { name: /Remove non-favourite contacts/ })).toBeNull();
+    unmount();
+    renderSection({ connected: false });
+    expect((screen.getByRole('button', { name: /Remove non-favourite contacts/ }) as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it('shows the server error', async () => {
+    mockServer({
+      status: () => syncStatus({ removableContactCount: 2 }),
+      remove: { success: false, code: 'BULK_REMOVE_RUNNING', error: 'A bulk remove is already running' },
+    });
+    renderSection();
+    await userEvent.click(await removeButton());
+    await userEvent.click(screen.getByRole('button', { name: 'Remove' }));
+    expect((await screen.findByRole('alert')).textContent).toBe('A bulk remove is already running');
   });
 });

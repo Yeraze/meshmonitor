@@ -17,6 +17,7 @@ import { ok, fail } from '../utils/apiResponse.js';
 import { ChannelReorderPlanError } from '../meshcoreChannelReorder.js';
 import type { ResourceType } from '../../types/permission.js';
 import { meshcoreDeviceLimiter } from '../middleware/rateLimiters.js';
+import type { AutoAddConfigPatch } from '../meshcoreManager.js';
 import { managerFor, isValidName, isValidRadioParams, auditMeshcoreEvent } from './meshcoreRouteShared.js';
 
 const router = Router({ mergeParams: true });
@@ -605,6 +606,86 @@ router.post('/config/auto-add-contacts', meshcoreDeviceLimiter, requireAuth(), r
   } catch (error) {
     logger.error('[API] Error setting auto-add contacts:', error);
     return fail(res, 500, 'AUTO_ADD_UPDATE_FAILED', 'Config error');
+  }
+});
+
+/**
+ * GET /api/sources/:id/meshcore/config/autoadd-config
+ *
+ * The companion's auto-add options (#5777): overwrite-oldest, per-type bits and
+ * max hops. `supported: false` on firmware without commands 58/59 (a normal
+ * answer, not an error). Local serial read, no RF.
+ */
+router.get('/config/autoadd-config', optionalAuth(), requirePermission('nodes', 'read', { sourceIdFrom: 'params.id' }), async (req: Request, res: Response) => {
+  try {
+    const result = await managerFor(req, res).getAutoAddConfig();
+    if (!result.ok) {
+      return fail(res, 409, 'SOURCE_NOT_CONNECTED', result.error);
+    }
+    return ok(res, result.config);
+  } catch (error) {
+    logger.error('[API] Error reading auto-add options:', error);
+    return fail(res, 500, 'AUTOADD_READ_FAILED', 'Failed to read the auto-add options');
+  }
+});
+
+/**
+ * POST /api/sources/:id/meshcore/config/autoadd-config
+ * Body: { overwriteOldest?: boolean, types?: { chat?, repeater?, room?, sensor?: boolean },
+ *         maxHops?: integer 0-64 }
+ *
+ * Change the companion's auto-add options (#5777). Only the fields sent
+ * change; the radio's other bits are kept. Local serial write, no RF.
+ */
+router.post('/config/autoadd-config', meshcoreDeviceLimiter, requireAuth(), requirePermission('configuration', 'write', { sourceIdFrom: 'params.id' }), async (req: Request, res: Response) => {
+  try {
+    const body = (req.body ?? {}) as { overwriteOldest?: unknown; types?: unknown; maxHops?: unknown };
+    const patch: AutoAddConfigPatch = {};
+    if (body.overwriteOldest !== undefined) {
+      if (typeof body.overwriteOldest !== 'boolean') {
+        return fail(res, 400, 'INVALID_INPUT', 'overwriteOldest must be true or false');
+      }
+      patch.overwriteOldest = body.overwriteOldest;
+    }
+    if (body.types !== undefined) {
+      if (typeof body.types !== 'object' || body.types === null || Array.isArray(body.types)) {
+        return fail(res, 400, 'INVALID_INPUT', 'types must be an object');
+      }
+      const types: AutoAddConfigPatch['types'] = {};
+      for (const [k, v] of Object.entries(body.types as Record<string, unknown>)) {
+        if (!['chat', 'repeater', 'room', 'sensor'].includes(k) || typeof v !== 'boolean') {
+          return fail(res, 400, 'INVALID_INPUT', 'types takes chat, repeater, room and sensor as true or false');
+        }
+        types[k as 'chat' | 'repeater' | 'room' | 'sensor'] = v;
+      }
+      patch.types = types;
+    }
+    if (body.maxHops !== undefined) {
+      if (typeof body.maxHops !== 'number' || !Number.isInteger(body.maxHops) || body.maxHops < 0 || body.maxHops > 64) {
+        return fail(res, 400, 'INVALID_INPUT', 'maxHops must be a whole number from 0 to 64');
+      }
+      patch.maxHops = body.maxHops;
+    }
+    if (Object.keys(patch).length === 0) {
+      return fail(res, 400, 'INVALID_INPUT', 'Send at least one of overwriteOldest, types or maxHops');
+    }
+    const manager = managerFor(req, res);
+    const result = await manager.setAutoAddConfig(patch);
+    if (!result.ok) {
+      const code = /need a connected/.test(result.error) ? 'SOURCE_NOT_CONNECTED' : 'AUTOADD_UPDATE_FAILED';
+      return fail(res, code === 'SOURCE_NOT_CONNECTED' ? 409 : 502, code, result.error);
+    }
+    if (!result.config.supported) {
+      return fail(res, 409, 'AUTOADD_UNSUPPORTED', 'This firmware does not support auto-add options');
+    }
+    auditMeshcoreEvent(req, 'meshcore_autoadd_config', 'configuration', {
+      sourceId: req.params.id,
+      ...patch,
+    });
+    return ok(res, result.config);
+  } catch (error) {
+    logger.error('[API] Error setting auto-add options:', error);
+    return fail(res, 500, 'AUTOADD_UPDATE_FAILED', 'Failed to update the auto-add options');
   }
 });
 
