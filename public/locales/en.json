@@ -7166,5 +7166,16 @@
   "meshcore.discover.respond_needs_config_write": "Changing this needs the Device Configuration write permission on this source.",
   "meshcore.scope.save": "Save default scope",
   "meshcore.receive_only.why_here": "That makes this a MeshMonitor setting, so it is on Settings and not on Device Configuration.",
-  "lora_config.tx_enabled_why_here": "This is the radio's own firmware switch, written to the device, so it is on Device Configuration."
+  "lora_config.tx_enabled_why_here": "This is the radio's own firmware switch, written to the device, so it is on Device Configuration.",
+  "meshcore.reactions.unmatched": "{{name}} reacted {{emoji}} to a message not seen here",
+  "meshcore.reactions.raw_text": "Original text: {{text}}",
+  "meshcore.reactions.chip_tooltip": "{{emoji}} {{names}}",
+  "meshcore.reactions.unknown_sender": "Someone",
+  "meshcore.reactions.settings.title": "Reactions",
+  "meshcore.reactions.settings.inbound_label": "Show MeshCore reactions",
+  "meshcore.reactions.settings.inbound_help": "Reactions from MeshCore One and meshcore-open show as chips under the message. Turn this off to keep them as plain text lines.",
+  "meshcore.reactions.settings.ack_label": "Auto-Acknowledge may answer reactions (all MeshCore sources)",
+  "meshcore.reactions.settings.ack_warning": "A reaction is one tap for the sender. With this on, each one can trigger an Auto-Acknowledge reply on the air. Leave it off on busy channels.",
+  "meshcore.reactions.settings.format_note": "Wire format v{{version}} (MeshCore One 1.4.1 and later).",
+  "meshcore.reactions.settings.save_failed": "Failed to save the reaction setting"
 }

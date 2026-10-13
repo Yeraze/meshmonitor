@@ -646,7 +646,7 @@ export class MeshCoreMqttManager extends EventEmitter implements ISourceManager 
       // the sender's clock is implausible.
       const sec = meshcoreWireSecond(plain.timestampSec);
 
-      const row: MeshCoreMessage & MeshCoreReactionFields & { createdAt: number } = {
+      const row: MeshCoreMessage & { createdAt: number } = {
           id,
           // 'channel-N' is how this table encodes channel membership; the
           // channel queries match on it. An empty value here would fall through

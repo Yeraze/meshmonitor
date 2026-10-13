@@ -1,0 +1,28 @@
+/*
+ * MeshCoreReactionsSection (#5759). CSS module — do not add these rules to the
+ * global sheets (CLAUDE.md CSS containment rule).
+ */
+
+.toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.warning {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.4rem;
+  margin: 0.4rem 0;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--color-warning);
+  border-radius: 6px;
+  background: var(--color-surface);
+  color: var(--color-text);
+  font-size: 0.9em;
+}
+
+.warningIcon {
+  flex-shrink: 0;
+  color: var(--color-warning);
+}

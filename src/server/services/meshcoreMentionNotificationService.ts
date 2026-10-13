@@ -14,7 +14,6 @@
  * - our own messages, ignored senders and DMs never alert.
  */
 import { isReactionText, parseMeshCoreReaction } from '../../utils/meshcoreReactions.js';
-import type { MeshCoreReactionFields } from './meshcoreReactionIngest.js';
 import { logger } from '../../utils/logger.js';
 import databaseService from '../../services/database.js';
 import { dataEventEmitter, type DataEvent } from './dataEventEmitter.js';
@@ -113,7 +112,7 @@ export class MeshCoreMentionNotificationService {
 
   constructor(private deps: MentionNotificationDeps = realDeps()) {}
 
-  async handleMessage(msg: MeshCoreMessage & MeshCoreReactionFields, sourceId: string): Promise<MentionOutcome> {
+  async handleMessage(msg: MeshCoreMessage, sourceId: string): Promise<MentionOutcome> {
     // An ignored or blocked sender is stored but must not alert (#5408).
     if (msg.filtered) return 'out_of_scope';
     const venue = mentionVenue(msg);

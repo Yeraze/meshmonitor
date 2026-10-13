@@ -39,6 +39,8 @@ vi.mock('./MeshCoreIgnoredNodesSection', () => ({ MeshCoreIgnoredNodesSection: (
 vi.mock('./MeshCoreMessageFiltersSection', () => ({ MeshCoreMessageFiltersSection: () => null }));
 // Radio contact list (#5502) fetches on mount; covered by its own tests.
 vi.mock('./MeshCoreContactSyncSection', () => ({ MeshCoreContactSyncSection: () => null }));
+// Loads its own settings on mount (#5759); stubbed so the call counts below stay about receive-only.
+vi.mock('./MeshCoreReactionsSection', () => ({ MeshCoreReactionsSection: () => null }));
 vi.mock('./MeshCoreNodeDisplaySection', () => ({
   MeshCoreNodeDisplaySection: () => null,
 }));
