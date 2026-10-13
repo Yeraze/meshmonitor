@@ -117,4 +117,16 @@ describe('MeshCore contact removal + resurrection guard (#3878)', () => {
     const ok = await manager.forgetLocalContact(PUBKEY);
     expect(ok).toBe(true);
   });
+
+  it('removes a leftover row keyed by a corrupted room-post prefix, per source (#5774)', async () => {
+    const manager = new MeshCoreManager('src-a');
+    const GHOST = '6afffdfffdfffd'; // not a 64-hex key
+    deleteNode.mockResolvedValue(true);
+    expect(await manager.forgetLocalContact(GHOST)).toBe(true);
+    expect(deleteNode).toHaveBeenCalledWith(GHOST, 'src-a');
+    expect(emitMeshCoreContactUpdated).toHaveBeenCalledWith(
+      expect.objectContaining({ publicKey: GHOST, removed: true }),
+      'src-a',
+    );
+  });
 });
