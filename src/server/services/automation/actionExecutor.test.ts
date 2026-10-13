@@ -348,6 +348,60 @@ describe('executeAction', () => {
     expect(calls).toHaveLength(0); // deps never invoked
   });
 
+  it('tapback: reacts on a MeshCore source to the triggering MeshCore message (#5762)', async () => {
+    const { calls, deps } = recorder();
+    const result = await executeAction(
+      node('action.tapback', { emoji: '👍' }),
+      ctx({ protocol: 'meshcore', meshcoreMessageId: 'mc_msg_1', channel: 3, isDM: false }, 'mc', 'meshcore'),
+      deps,
+    );
+    expect(result).toBe(2);
+    expect(calls).toHaveLength(1);
+    expect(calls[0].args).toEqual({ sourceId: 'mc', emoji: '👍', meshcoreMessageId: 'mc_msg_1' });
+  });
+
+  it('tapback: MeshCore target without a meshcoreMessageId is a recorded skip (#5762)', async () => {
+    const { calls, deps } = recorder();
+    const result = await executeAction(
+      node('action.tapback', { emoji: '👍' }),
+      ctx({ protocol: 'meshcore', channel: 3 }, 'mc', 'meshcore'),
+      deps,
+    );
+    expect(result).toMatchObject({ skipped: true });
+    expect(calls).toHaveLength(0);
+  });
+
+  it('tapback: MeshCore target on a different source than the trigger is a recorded skip (#5762)', async () => {
+    const { calls, deps } = recorder();
+    const c = ctx({ protocol: 'meshcore', meshcoreMessageId: 'x' }, 'mc1', 'meshcore');
+    const result = await executeAction(node('action.tapback', { emoji: '👍', sourceIds: ['mc2'] }), c, deps);
+    expect(result).toMatchObject({ skipped: true });
+    expect(calls).toHaveLength(0);
+  });
+
+  it('tapback: a Meshtastic trigger aimed at a MeshCore source is a recorded skip (#5762)', async () => {
+    const { calls, deps } = recorder();
+    const data = {
+      getNode: async () => null,
+      getTelemetry: async () => null,
+      getSourceProtocol: async () => 'meshcore',
+    };
+    const c = { ...ctx({ protocol: 'meshtastic', packetId: 9, from: 5 }, 'mt'), data };
+    const result = await executeAction(node('action.tapback', { emoji: '👍', sourceIds: ['mc'] }), c, deps);
+    expect(result).toMatchObject({ skipped: true });
+    expect(calls).toHaveLength(0);
+  });
+
+  it('tapback: TX-disabled MeshCore source records TX_DISABLED (#5762)', async () => {
+    const { deps } = recorderWithTxDisabled('sendTapback');
+    const result = await executeAction(
+      node('action.tapback', { emoji: '👍' }),
+      ctx({ protocol: 'meshcore', meshcoreMessageId: 'm' }, 'mc', 'meshcore'),
+      deps,
+    );
+    expect(result).toEqual({ skipped: true, reason: 'TX_DISABLED' });
+  });
+
   // ── source selection (#3996) ────────────────────────────────────────────
   it('tapback: explicit sourceIds fans out to each selected source', async () => {
     const { calls, deps } = recorder();
@@ -374,7 +428,7 @@ describe('executeAction', () => {
       deps,
     );
     expect(calls.map((c2) => c2.args.sourceId)).toEqual(['radioA']);
-    expect(results).toEqual([2, { skipped: true, reason: 'tapback is not supported on MeshCore' }]);
+    expect(results).toEqual([2, { skipped: true, reason: 'tapback on MeshCore needs a triggering MeshCore message on the same source' }]);
   });
 
   it('tapback: a single-entry explicit sourceIds still unwraps to a scalar result, not a one-element array', async () => {
@@ -450,7 +504,7 @@ describe('executeAction', () => {
       ctx({ from: 5, channel: 3, packetId: 99, isDM: false, hops: 2 }, 'mc', 'meshcore'),
       deps,
     );
-    expect(result).toMatchObject({ skipped: true, reason: 'tapback is not supported on MeshCore' });
+    expect(result).toMatchObject({ skipped: true, reason: 'tapback on MeshCore needs a triggering MeshCore message on the same source' });
     expect(calls).toHaveLength(0);
   });
 

@@ -65,6 +65,8 @@ export interface ActionDeps {
     replyId?: number;
     /** Hop-limit override (#5121) — see sendMessage. */
     hopLimitOverride?: number;
+    /** MeshCore only (#5762): id of the received message to react to. */
+    meshcoreMessageId?: string;
   }): Promise<unknown>;
   manageNode(a: { sourceId: string | null; nodeNum: number; op: NodeManageOp }): Promise<unknown>;
   /** Ask a node/mesh for data or to announce (#3835). `target` is raw — a node # for
@@ -633,11 +635,15 @@ export async function executeAction(node: AutomationNode, ctx: EngineEvalContext
 
       const results: unknown[] = [];
       for (const sid of sourceIds) {
-        // MeshCore has no tapback / emoji-reaction concept. Skip as a recorded
-        // no-op rather than letting the deps throw, which would log a failed run
-        // for every MeshCore message a tapback automation happens to match.
+        // MeshCore (#5762): react only to a MeshCore message this same source
+        // received. Anything else is a recorded skip, not a failed run.
         if (await isMeshCoreSource(ctx, sid)) {
-          results.push({ skipped: true, reason: 'tapback is not supported on MeshCore' });
+          const meshcoreMessageId = ctx.trigger.fields.meshcoreMessageId;
+          if (ctx.trigger.fields.protocol !== 'meshcore' || sid !== ctx.trigger.sourceId || typeof meshcoreMessageId !== 'string') {
+            results.push({ skipped: true, reason: 'tapback on MeshCore needs a triggering MeshCore message on the same source' });
+            continue;
+          }
+          await pushOrSkipTxDisabled(results, () => deps.sendTapback({ sourceId: sid, emoji, meshcoreMessageId }));
           continue;
         }
         await pushOrSkipTxDisabled(results, () => deps.sendTapback({ sourceId: sid, emoji, channel, destination, replyId, ...tapbackHopArg }));

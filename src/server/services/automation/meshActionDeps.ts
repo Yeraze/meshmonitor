@@ -17,6 +17,9 @@ import { runScript as runUserScript } from '../../utils/scriptRunner.js';
 import { logger } from '../../../utils/logger.js';
 import { waypointService } from '../waypointService.js';
 import { isForwardingEnabled, setForwardingEnabled } from '../forwardingStateService.js';
+import type { ISourceManager } from '../../sourceManagerRegistry.js';
+import { isMeshCoreManager } from '../../sourceManagerTypes.js';
+import { isMeshCoreReactionError, MESHCORE_REACTION_SKIP_CODES } from '../../errors/meshcoreReactionError.js';
 import type { ActionDeps } from './actionExecutor.js';
 import type { SendOrigin } from '../../utils/automationPacketTracker.js';
 import { type MeshCoreAdvertMode, LEGACY_MESHCORE_ADVERT_MODE } from '../../../types/meshcoreAdvert.js';
@@ -188,7 +191,26 @@ export function createMeshActionDeps(): ActionDeps {
       return waypointService.upsertAndBroadcastForAutomation(a);
     },
 
-    async sendTapback({ sourceId, emoji, channel, destination, replyId, hopLimitOverride }) {
+    async sendTapback({ sourceId, emoji, channel, destination, replyId, hopLimitOverride, meshcoreMessageId }) {
+      // MeshCore (#5762): a real emoji reaction to a received message. A refusal
+      // the user cannot fix per run is a recorded skip; a send failure fails the step.
+      const mc = sourceId ? (resolveManager(sourceId) as ISourceManager | undefined) : undefined;
+      if (mc && isMeshCoreManager(mc)) {
+        if (typeof meshcoreMessageId !== 'string') {
+          return { skipped: true, reason: 'meshcore reaction: MESSAGE_NOT_FOUND' };
+        }
+        try {
+          return await mc.sendReaction(meshcoreMessageId, emoji);
+        } catch (error) {
+          if (isMeshCoreReactionError(error)) {
+            if (MESHCORE_REACTION_SKIP_CODES.has(error.code)) {
+              return { skipped: true, reason: `meshcore reaction: ${error.code}` };
+            }
+            throw new Error(`meshcore reaction failed: ${error.code}: ${error.message}`);
+          }
+          throw error;
+        }
+      }
       // emoji flag = 1 marks a tapback/reaction; route the way the trigger arrived.
       const options: SendTextOptions = hopLimitOverride !== undefined
         ? { hopLimitOverride, ...AUTOMATION }
