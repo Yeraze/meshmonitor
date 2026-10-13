@@ -472,6 +472,24 @@ describe('MeshCoreVirtualNodeServer — Phase 0 handshake', () => {
     expect(recv.subarray(8).toString('utf8')).toBe('Yeraze MC Sandbox: 🤖 Copy that');
   });
 
+  it('relays a channel reaction as its raw wire text, so a client app can render it (#5761)', async () => {
+    const push = client.next();
+    const raw = '@[Bob]\u{1F44D}\nb45pc4ek';
+    // The manager hands the VN the RAW-text copy of a reaction (no reactionEmoji).
+    manager.emitMessage({
+      id: 'rx1',
+      fromPublicKey: 'channel-1',
+      fromName: 'Alice',
+      text: raw,
+      timestamp: 1_750_000_000_000,
+    });
+    expect((await push)[0]).toBe(PushCodes.MsgWaiting);
+
+    const recv = await client.request([CommandCodes.SyncNextMessage]);
+    expect(recv[0]).toBe(ResponseCodes.ChannelMsgRecv);
+    expect(recv.subarray(8).toString('utf8')).toBe(`Alice: ${raw}`);
+  });
+
   it('does not echo our own channel transmission heard back (matching local name)', async () => {
     manager.emitMessage({
       id: 'c2',

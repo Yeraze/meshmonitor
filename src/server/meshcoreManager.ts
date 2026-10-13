@@ -2669,11 +2669,11 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
         messageType: 'room_post',
       };
       if (verdict.action === 'allow') {
-        this.addMessage(message);
+        void this.addMessage(message);
         this.emit('message', message);
         dataEventEmitter.emitMeshCoreMessage(message, this.sourceId);
       } else if (verdict.action === 'ignore') {
-        this.addMessage(message);
+        void this.addMessage(message);
         this.emitIgnoredMessage(message);
       } else {
         logger.debug(`[MeshCore:${this.sourceId}] Blocked room post from ${authorPrefixHex} (${verdict.entryKind})`);
@@ -8822,7 +8822,7 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
           estTimeout: tracked ? estTimeout : undefined,
           deliveryStatus: tracked ? 'sent' : undefined,
         };
-        this.addMessage(sentMessage);
+        void this.addMessage(sentMessage);
         this.emit('message', sentMessage);
         dataEventEmitter.emitMeshCoreMessage(sentMessage, this.sourceId);
         this.recordMessageEvent(msgId, 'submitted', 'observed');
