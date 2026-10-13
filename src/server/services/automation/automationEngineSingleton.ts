@@ -107,8 +107,12 @@ function subscribe(): void {
  * An ignored MeshCore message (#5408) is stored and shown collapsed, but it
  * must not trigger automations. Its bus event carries `filtered: 'ignore'`.
  */
-export function shouldRouteMeshCoreMessageToAutomations(message: Pick<MeshCoreMessage, 'filtered'>): boolean {
-  return !message.filtered;
+export function shouldRouteMeshCoreMessageToAutomations(
+  message: Pick<MeshCoreMessage, 'filtered' | 'reactionEmoji'>,
+): boolean {
+  // A reaction row (#5759) carries a bare emoji as its text; a trigger.message
+  // regex would read it as chat. Phase 4 adds an isTapback field and lets it in.
+  return !message.filtered && !message.reactionEmoji;
 }
 
 async function handleEvent(event: DataEvent): Promise<void> {

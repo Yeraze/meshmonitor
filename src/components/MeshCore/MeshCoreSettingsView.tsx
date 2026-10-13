@@ -14,6 +14,7 @@ import { GlobalSettingsLink } from '../nav/GlobalSettingsLink';
 import { MeshCoreIgnoredNodesSection } from './MeshCoreIgnoredNodesSection';
 import { MeshCoreMessageFiltersSection } from './MeshCoreMessageFiltersSection';
 import { MeshCoreContactSyncSection } from './MeshCoreContactSyncSection';
+import { MeshCoreReactionsSection } from './MeshCoreReactionsSection';
 
 /**
  * MeshCoreSettingsView — what MeshMonitor stores and does for this MeshCore
@@ -287,6 +288,8 @@ export const MeshCoreSettingsView: React.FC<MeshCoreSettingsViewProps> = ({
           )}
         </p>
       </div>
+
+      <MeshCoreReactionsSection baseUrl={baseUrl} sourceId={sourceId} />
 
       {/* Radio contact list sync and the device actions live on Device
           Configuration (#5683 follow-up). A viewer who cannot open that page

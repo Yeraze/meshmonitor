@@ -59,6 +59,12 @@ describe('computeUnreadDmPeers', () => {
     expect(unread.size).toBe(0);
   });
 
+  it('does not flag a reaction (#5759)', () => {
+    const messages = [{ ...dm(PEER1, SELF, 100), reactionEmoji: '👍' }];
+    const unread = computeUnreadDmPeers({ messages, contacts, selfKey: SELF, dmLastRead: {} });
+    expect(unread.size).toBe(0);
+  });
+
   it('never flags the currently-open peer', () => {
     const messages = [dm(PEER1, SELF, 100)];
     const unread = computeUnreadDmPeers({ messages, contacts, selfKey: SELF, dmLastRead: {}, activePeerKey: PEER1 });

@@ -29,6 +29,8 @@ import { uniquePrefixMatch } from '../../utils/meshcoreKeyMatch';
 
 interface MeshCoreDirectMessagesViewProps {
   messages: MeshCoreMessage[];
+  /** Reaction id → target id for late-resolved reactions (#5759). */
+  reactionResolutions?: Record<string, string>;
   contacts: MeshCoreContact[];
   /**
    * Full node list for this source. Contacts carry no favorite flag (it lives
@@ -85,6 +87,7 @@ const isMobileViewport = (): boolean =>
 
 export const MeshCoreDirectMessagesView: React.FC<MeshCoreDirectMessagesViewProps> = ({
   messages,
+  reactionResolutions,
   contacts,
   nodes = [],
   status,
@@ -201,8 +204,11 @@ export const MeshCoreDirectMessagesView: React.FC<MeshCoreDirectMessagesViewProp
   const dmPeers = useMemo(() => {
     const peers = new Set<string>();
     const lastMessageAt = new Map<string, number>();
+    // A reaction keeps its peer in the list but is not a message (#5759): it
+    // does not move the peer's "last message" time.
+    let countsAsMessage = true;
     const noteMessage = (key: string, ts: number | undefined) => {
-      if (typeof ts !== 'number') return;
+      if (!countsAsMessage || typeof ts !== 'number') return;
       const prev = lastMessageAt.get(key) ?? 0;
       if (ts > prev) lastMessageAt.set(key, ts);
     };
@@ -210,6 +216,7 @@ export const MeshCoreDirectMessagesView: React.FC<MeshCoreDirectMessagesViewProp
       if (!m.toPublicKey) continue;
       if (m.messageType === 'room_post') continue;
       if (isChannelPseudoKey(m.toPublicKey) || isChannelPseudoKey(m.fromPublicKey)) continue;
+      countsAsMessage = !m.reactionEmoji;
       if (selfKey && keysMatch(m.fromPublicKey, selfKey)) {
         const peer = canonicalize(m.toPublicKey);
         peers.add(peer);
@@ -572,6 +579,7 @@ export const MeshCoreDirectMessagesView: React.FC<MeshCoreDirectMessagesViewProp
                 )}
                 <MeshCoreMessageStream
                   messages={filtered}
+                  reactionResolutions={reactionResolutions}
                   contacts={contacts}
                   sourceId={sourceId}
                   selfPublicKey={selfKey}

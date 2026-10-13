@@ -190,9 +190,22 @@ export interface MeshCoreMessage {
   scopeCode?: number | null;
   /** Region name resolved from the scope code; null = unscoped or unknown scope (#3742 Ph2). */
   scopeName?: string | null;
-  /** Wire sender_timestamp (epoch seconds) of our own channel send (#5512).
-   *  Absent on messages sent before resend support; those can't be resent. */
+  /** Wire sender_timestamp (epoch seconds). Set on every row stored since
+   *  reactions (#5759); before that only on our own channel sends (#5512).
+   *  Absent on older rows; an own channel send without it can't be resent. */
   senderTimestamp?: number;
+  /** Reactions (#5759). Set = this row is a reaction and `text` equals it. */
+  reactionEmoji?: string | null;
+  /** Wire format the reaction arrived in (`mc1-channel`, `mc1-dm`, `mco-v3`, …). */
+  reactionFormat?: string | null;
+  /** Id of the message reacted to. Null/absent on a reaction row = unmatched. */
+  reactionTargetId?: string | null;
+  /** Sender the reaction names (MC1 channel form only). */
+  reactionTargetSender?: string | null;
+  /** Hash the reaction names its target by. */
+  reactionTargetHash?: string | null;
+  /** The reaction as it came off the wire. */
+  reactionRawText?: string | null;
   /** User resends so far (#5512). */
   resendCount?: number;
   /** When (ms) the latest resend of any kind went out (#5512). */
@@ -543,6 +556,8 @@ export interface UseMeshCoreState {
   nodes: MeshCoreNode[];
   contacts: MeshCoreContact[];
   messages: MeshCoreMessage[];
+  /** Reaction id → target id for reactions resolved since load (#5759). */
+  reactionResolutions: Record<string, string>;
   loading: boolean;
   /**
    * True once the first contacts/nodes snapshot fetch has resolved (success
@@ -584,6 +599,13 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
   const [nodes, setNodes] = useState<MeshCoreNode[]>([]);
   const [contacts, setContacts] = useState<MeshCoreContact[]>([]);
   const [messages, setMessages] = useState<MeshCoreMessage[]>([]);
+  // Reaction id → target id, for reactions resolved after they were stored
+  // (#5759). Views that hold paged history in their own state read this map,
+  // since the hook cannot patch rows it does not own.
+  const [reactionResolutions, setReactionResolutions] = useState<Record<string, string>>({});
+  useEffect(() => {
+    setReactionResolutions({});
+  }, [sourceId]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // True once the FIRST snapshot fetch (mount-time loadSnapshot below) has
@@ -978,7 +1000,8 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
         if (evt.all) return [];
         if (evt.ids && evt.ids.length > 0) {
           const del = new Set(evt.ids);
-          return prev.filter(m => !del.has(m.id));
+          // A deleted message takes its reactions with it (#5759).
+          return prev.filter(m => !del.has(m.id) && !(m.reactionTargetId && del.has(m.reactionTargetId)));
         }
         if (typeof evt.channelIdx === 'number') {
           const key = `channel-${evt.channelIdx}`;
@@ -995,6 +1018,15 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
         }
         return prev;
       });
+    };
+
+    // A stored reaction found its target later (#5759): the dim "not seen
+    // here" line becomes a chip. Source-room filtered at the socket layer.
+    const onReactionResolved = (evt: { id?: string; reactionTargetId?: string }) => {
+      const { id, reactionTargetId } = evt ?? {};
+      if (!id || !reactionTargetId) return;
+      setMessages(prev => prev.map(m => (m.id === id ? { ...m, reactionTargetId } : m)));
+      setReactionResolutions(prev => (prev[id] === reactionTargetId ? prev : { ...prev, [id]: reactionTargetId }));
     };
 
     // On-device channel reorder (#5379): the server moved every stored
@@ -1017,6 +1049,7 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
 
     socket.on('meshcore:message', onMessage);
     socket.on('meshcore:messages:deleted', onMessagesDeleted);
+    socket.on('meshcore:reaction:resolved', onReactionResolved);
     socket.on('meshcore:channels:reordered', onChannelsReordered);
     socket.on('meshcore:contact:updated', onContactUpdated);
     socket.on('meshcore:status:updated', onStatusUpdated);
@@ -1032,6 +1065,7 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
       socket.off('connect', joinRoom);
       socket.off('meshcore:message', onMessage);
       socket.off('meshcore:messages:deleted', onMessagesDeleted);
+      socket.off('meshcore:reaction:resolved', onReactionResolved);
       socket.off('meshcore:channels:reordered', onChannelsReordered);
       socket.off('meshcore:contact:updated', onContactUpdated);
       socket.off('meshcore:status:updated', onStatusUpdated);
@@ -2332,6 +2366,7 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
     nodes,
     contacts,
     messages,
+    reactionResolutions,
     loading,
     hasLoadedOnce,
     error,

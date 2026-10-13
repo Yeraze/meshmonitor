@@ -13,6 +13,7 @@
  *   so a restart or a settings save does not reopen the window;
  * - our own messages, ignored senders and DMs never alert.
  */
+import { isReactionText, parseMeshCoreReaction } from '../../utils/meshcoreReactions.js';
 import { logger } from '../../utils/logger.js';
 import databaseService from '../../services/database.js';
 import { dataEventEmitter, type DataEvent } from './dataEventEmitter.js';
@@ -103,7 +104,7 @@ function realDeps(): MentionNotificationDeps {
   };
 }
 
-export type MentionOutcome = 'sent' | 'out_of_scope' | 'no_own_name' | 'own_message' | 'not_mentioned' | 'cooldown';
+export type MentionOutcome = 'sent' | 'out_of_scope' | 'no_own_name' | 'own_message' | 'not_mentioned' | 'cooldown' | 'reaction';
 
 export class MeshCoreMentionNotificationService {
   /** Serialises the read-check-write of one source's state. */
@@ -116,6 +117,18 @@ export class MeshCoreMentionNotificationService {
     if (msg.filtered) return 'out_of_scope';
     const venue = mentionVenue(msg);
     if (!venue) return 'out_of_scope';
+
+    // A reaction is not a mention (#5759). The first arm is a stored reaction
+    // row; the second is raw reaction text that stayed text (inbound reactions
+    // off), which would otherwise match our name inside `@[Name]` and alert.
+    // A reaction never claims a cooldown slot.
+    if (
+      msg.reactionEmoji ||
+      (isReactionText(msg.text) &&
+        parseMeshCoreReaction(msg.text, venue.kind === 'channel' ? 'channel' : 'dm') !== null)
+    ) {
+      return 'reaction';
+    }
 
     const own = this.deps.getOwnNode(sourceId);
     const ownName = (own?.name ?? '').trim();

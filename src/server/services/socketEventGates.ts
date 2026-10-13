@@ -190,6 +190,24 @@ const MESHCORE_STATUS = 'GET /api/sources/:id/meshcore/status';
 const RETICULUM_MESSAGES = 'GET /api/sources/:id/reticulum/messages';
 const WAYPOINTS = 'GET /api/sources/:id/waypoints';
 
+/**
+ * Gate shared by `meshcore:message` and `meshcore:reaction:resolved` (#5759): a
+ * resolved reaction is a message row, so it follows the message rules.
+ */
+const MESHCORE_MESSAGE_GATE: SocketEventGate = {
+  scope: 'source',
+  rest: `${MESHCORE_MESSAGES}, GET .../messages/channel/:idx`,
+  rule: '`messages:read` on the source, or for a channel message `channel_N:read` there. A repeater-decrypted message also needs read access to its key (#5551).',
+  ensure: (viewer, event) =>
+    (event.data as { keyFingerprint?: string | null })?.keyFingerprint ? viewer.keyAccess() : undefined,
+  filter: (viewer, sourceId, payload: { fromPublicKey?: string; toPublicKey?: string | null; keyFingerprint?: string | null }) => {
+    if (!mayReadMeshcoreChannel(viewer, sourceId, meshcoreChannelIdx(payload))) return WITHHOLD;
+    if (!payload.keyFingerprint) return payload;
+    const access = viewer.loadedKeyAccess;
+    return access !== undefined && canSeeKeyedMessage(access, payload) ? payload : WITHHOLD;
+  },
+};
+
 export const SOCKET_EVENT_GATES: Record<DataEventType, SocketEventGate> = {
   'message:new': {
     scope: 'source',
@@ -302,19 +320,8 @@ export const SOCKET_EVENT_GATES: Record<DataEventType, SocketEventGate> = {
   'waypoint:deleted': needs('waypoints', 'read', WAYPOINTS),
   'waypoint:expired': needs('waypoints', 'read', WAYPOINTS),
 
-  'meshcore:message': {
-    scope: 'source',
-    rest: `${MESHCORE_MESSAGES}, GET .../messages/channel/:idx`,
-    rule: '`messages:read` on the source, or for a channel message `channel_N:read` there. A repeater-decrypted message also needs read access to its key (#5551).',
-    ensure: (viewer, event) =>
-      (event.data as { keyFingerprint?: string | null })?.keyFingerprint ? viewer.keyAccess() : undefined,
-    filter: (viewer, sourceId, payload: { fromPublicKey?: string; toPublicKey?: string | null; keyFingerprint?: string | null }) => {
-      if (!mayReadMeshcoreChannel(viewer, sourceId, meshcoreChannelIdx(payload))) return WITHHOLD;
-      if (!payload.keyFingerprint) return payload;
-      const access = viewer.loadedKeyAccess;
-      return access !== undefined && canSeeKeyedMessage(access, payload) ? payload : WITHHOLD;
-    },
-  },
+  'meshcore:message': MESHCORE_MESSAGE_GATE,
+  'meshcore:reaction:resolved': MESHCORE_MESSAGE_GATE,
   'meshcore:messages:deleted': {
     scope: 'source',
     rest: MESHCORE_MESSAGES,

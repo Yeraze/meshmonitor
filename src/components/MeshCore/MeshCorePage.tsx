@@ -75,7 +75,7 @@ export const MeshCorePage: React.FC<MeshCorePageProps> = ({ baseUrl, sourceId, e
   const { authStatus } = useAuth();
   const isAdmin = authStatus?.user?.isAdmin ?? false;
   const meshCore = useMeshCore({ baseUrl, sourceId, enabled });
-  const { status, nodes, contacts, messages, loading, hasLoadedOnce, error, actions } = meshCore;
+  const { status, nodes, contacts, messages, reactionResolutions, loading, hasLoadedOnce, error, actions } = meshCore;
 
   // MeshCore strict receive-only mode (#4547 Phase 2 WP1). Phase 1 made
   // GET /api/device/tx-status MeshCore-aware, so `isTxDisabled` for a
@@ -225,6 +225,7 @@ export const MeshCorePage: React.FC<MeshCorePageProps> = ({ baseUrl, sourceId, e
         {view === 'channels' && (
           <MeshCoreChannelsView
             messages={messages}
+            reactionResolutions={reactionResolutions}
             contacts={contacts}
             status={status}
             actions={actions}
@@ -249,6 +250,7 @@ export const MeshCorePage: React.FC<MeshCorePageProps> = ({ baseUrl, sourceId, e
         {view === 'dms' && (
           <MeshCoreDirectMessagesView
             messages={messages}
+            reactionResolutions={reactionResolutions}
             contacts={contacts}
             nodes={nodes}
             status={status}

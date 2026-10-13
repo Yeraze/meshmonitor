@@ -137,7 +137,7 @@ router.get('/messages/channel/:idx', optionalAuth(), requireMeshcoreChannelAcces
 const IGNORE_SCAN_PAGE = 50;
 async function latestExcludingIgnored(
   sourceId: string,
-  manager: { getChannelMessages(idx: number, limit: number, offset: number, keyAccess?: MeshCoreKeyAccessFilter): Promise<Array<{ timestamp: number; fromPublicKey: string; fromName?: string; text: string; messageType?: string; filtered?: 'ignore' | 'block' }>>; getLocalNode(): { publicKey?: string } | null },
+  manager: { getChannelMessages(idx: number, limit: number, offset: number, keyAccess?: MeshCoreKeyAccessFilter): Promise<Array<{ timestamp: number; fromPublicKey: string; fromName?: string; text: string; messageType?: string; reactionEmoji?: string | null; filtered?: 'ignore' | 'block' }>>; getLocalNode(): { publicKey?: string } | null },
   latest: Record<number, number>,
   keyAccess?: MeshCoreKeyAccessFilter,
 ): Promise<Record<number, number>> {
@@ -149,7 +149,8 @@ async function latestExcludingIgnored(
     const page = meshcoreMessageFilter.annotate(sourceId, await manager.getChannelMessages(idx, IGNORE_SCAN_PAGE, 0, keyAccess), selfKey);
     let newest = 0;
     for (const m of page) {
-      if (!m.filtered && m.timestamp > newest) newest = m.timestamp;
+      // A reaction row never counts toward the unread dot (#5759).
+      if (!m.filtered && !m.reactionEmoji && m.timestamp > newest) newest = m.timestamp;
     }
     if (newest > 0) out[idx] = newest;
   }));

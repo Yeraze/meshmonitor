@@ -80,6 +80,20 @@ describe('useMeshCoreUnread', () => {
     await waitFor(() => expect(result.current.channels).toBe(true));
   });
 
+  it('a reaction in the pool makes neither a channel nor a DM unread (#5759)', async () => {
+    routeFetch({});
+    const messages = [
+      { id: 'r1', fromPublicKey: 'channel-1', fromName: 'Bob', timestamp: 5000, text: '👍', reactionEmoji: '👍' },
+      { id: 'r2', fromPublicKey: PEER, toPublicKey: SELF, timestamp: 5000, text: '👍', reactionEmoji: '👍' },
+    ] as any;
+    const { result } = renderHook(() =>
+      useMeshCoreUnread({ baseUrl: '', sourceId: 'src1', messages, contacts, selfKey: SELF, enabled: true }),
+    );
+    await new Promise((r) => setTimeout(r, 10));
+    expect(result.current.channels).toBe(false);
+    expect(result.current.dms).toBe(false);
+  });
+
   it('flags DMs unread from an incoming message in the pool (no fetch needed)', () => {
     routeFetch({});
     const messages = [{ fromPublicKey: PEER, toPublicKey: SELF, timestamp: 1000, text: 'hi' }] as any;

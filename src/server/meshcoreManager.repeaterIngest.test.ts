@@ -12,7 +12,9 @@ import meshcorePacketLogService from './services/meshcorePacketLogService.js';
 import { dataEventEmitter } from './services/dataEventEmitter.js';
 import { notificationService } from './services/notificationService.js';
 import { sourceManagerRegistry } from './sourceManagerRegistry.js';
-import { channelKeyFingerprint, keyedChannelIndex } from './services/meshcoreFrameIngest.js';
+import { channelKeyFingerprint, keyedChannelIndex, frameChannelMessageId } from './services/meshcoreFrameIngest.js';
+import { buildMc1ChannelReaction } from '../utils/meshcoreReactions.js';
+import { mc1HashForChannelWire } from '../utils/meshcoreReactionTarget.js';
 import { buildAdvertFrame, buildGrpTxtFrame } from './test-helpers/meshcoreFrames.js';
 
 const REP = 'src-rep-ingest';
@@ -339,6 +341,52 @@ describe('repeater RAW ingest (#5553, #5551)', () => {
       expect((messageSpy.mock.calls[0][0] as MeshCoreMessage).selfOrigin).toBe(true);
       // Still stored: it is real traffic.
       expect((await storedMessages()).map((r) => r.text)).toContain('pong');
+    });
+    describe('reactions (#5761)', () => {
+      const hash = mc1HashForChannelWire('Bob: hello mesh', 1_700_000_000)!;
+      const reactionBody = buildMc1ChannelReaction('Bob', '\u{1F44D}', hash)!;
+
+      it('stores the wire second and the MC1 hash of an ordinary message', async () => {
+        const { feed } = repeater();
+        feed(buildGrpTxtFrame(1_700_000_000, 'Bob: hello mesh', SECRET));
+        await vi.waitFor(() => expect(messageSpy).toHaveBeenCalledTimes(1));
+        const [row] = await storedMessages();
+        expect(row.senderTimestamp).toBe(1_700_000_000);
+        expect(row.mc1Hash).toBe(hash);
+        expect((messageSpy.mock.calls[0][0] as MeshCoreMessage).senderTimestamp).toBe(1_700_000_000);
+      });
+
+      it('stores a reaction as an emoji row resolved to its target; the id stays raw-derived', async () => {
+        const { feed } = repeater();
+        feed(buildGrpTxtFrame(1_700_000_000, 'Bob: hello mesh', SECRET));
+        await vi.waitFor(() => expect(messageSpy).toHaveBeenCalledTimes(1));
+        feed(buildGrpTxtFrame(1_700_000_010, `Alice: ${reactionBody}`, SECRET));
+        await vi.waitFor(() => expect(messageSpy).toHaveBeenCalledTimes(2));
+
+        const all = await storedMessages();
+        const target = all.find((r) => r.text === 'hello mesh')!;
+        const reaction = all.find((r) => r.reactionEmoji)!;
+        expect(reaction.text).toBe('\u{1F44D}');
+        expect(reaction.reactionTargetId).toBe(target.id);
+        expect(reaction.mc1Hash ?? null).toBeNull();
+        expect(reaction.id).toBe(
+          frameChannelMessageId('rpt', REP, channelKeyFingerprint(SECRET), 1_700_000_010, reactionBody),
+        );
+        const ev = messageSpy.mock.calls[1][0] as MeshCoreMessage;
+        expect(ev).toMatchObject({ text: '\u{1F44D}', reactionTargetId: target.id });
+      });
+
+      it('a second reaction by the same reactor with the same emoji is dropped', async () => {
+        const { feed } = repeater();
+        feed(buildGrpTxtFrame(1_700_000_000, 'Bob: hello mesh', SECRET));
+        await vi.waitFor(() => expect(messageSpy).toHaveBeenCalledTimes(1));
+        feed(buildGrpTxtFrame(1_700_000_010, `Alice: ${reactionBody}`, SECRET));
+        await vi.waitFor(() => expect(messageSpy).toHaveBeenCalledTimes(2));
+        feed(buildGrpTxtFrame(1_700_000_020, `Alice: ${reactionBody}`, SECRET));
+        await new Promise((r) => setTimeout(r, 400));
+        expect(messageSpy).toHaveBeenCalledTimes(2);
+        expect((await storedMessages()).filter((r) => r.reactionEmoji)).toHaveLength(1);
+      });
     });
   });
 });

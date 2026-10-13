@@ -1,0 +1,42 @@
+/*
+ * MeshCore reaction chips and the unmatched-reaction line (#5759). CSS module —
+ * do not add these rules to the global sheets (CLAUDE.md CSS containment rule).
+ * The chip matches the look of the Meshtastic `.reaction` chip in nodes.css
+ * without reusing its classes.
+ */
+
+.reactions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 4px;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 6px;
+  border: 1px solid var(--color-surface-active);
+  border-radius: var(--radius-xl);
+  background: var(--color-surface-hover);
+  font-size: 14px;
+  cursor: default;
+}
+
+.chip:hover {
+  background: var(--color-surface-active);
+}
+
+.count {
+  color: var(--color-text-subtle);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.unmatched {
+  margin: 0.35rem 0;
+  color: var(--color-text-subtle);
+  font-size: 0.8rem;
+  text-align: center;
+}
