@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   REGION_OPTIONS,
+  REBROADCAST_MODE_OPTIONS,
   MODEM_PRESET_OPTIONS,
   getPresetBandwidthKHz,
   isPresetLegalForRegion,
@@ -11,6 +12,41 @@ import {
   LORA_CUSTOM_RECIPES,
   getRecipeIllegalReason
 } from './constants';
+
+// Both local configuration and remote admin use these descriptions (#5779).
+// Guard runtime semantics, including corrections to firmware's stale protobuf comments.
+describe('REBROADCAST_MODE_OPTIONS', () => {
+  it('preserves the firmware enum values and names', () => {
+    expect(REBROADCAST_MODE_OPTIONS.map(({ value, name }) => [value, name])).toEqual([
+      [0, 'ALL'],
+      [1, 'ALL_SKIP_DECODING'],
+      [2, 'LOCAL_ONLY'],
+      [3, 'KNOWN_ONLY'],
+      [4, 'NONE'],
+      [5, 'CORE_PORTNUMS_ONLY'],
+    ]);
+  });
+
+  it.each([
+    { name: 'ALL', required: [/including encrypted packets/i, /matching LoRa params/i] },
+    { name: 'ALL_SKIP_DECODING', required: [/historically/i, /current firmware.*as ALL/i] },
+    { name: 'LOCAL_ONLY', required: [/primary\/secondary channels/i, /no additional hop-count filter/i, /PKI DMs/, /sender or recipient/, /NodeDB/] },
+    { name: 'KNOWN_ONLY', required: [/LOCAL_ONLY/, /sender is not already/i, /NodeDB/] },
+    { name: 'NONE', required: [/never rebroadcast/i, /not permitted on ROUTER or ROUTER_LATE/i, /rewrites to ALL/] },
+    {
+      name: 'CORE_PORTNUMS_ONLY',
+      required: [/decoded packets/, /Text/, /compressed/, /Position/, /NodeInfo/, /Routing/, /Telemetry/,
+        /Admin/, /Alert/, /KeyVerification/, /Waypoint/, /StoreForward/, /\+\+/, /Traceroute/],
+    },
+  ])('$name explains its firmware filtering or role restrictions', ({ name, required }) => {
+    const option = REBROADCAST_MODE_OPTIONS.find((entry) => entry.name === name);
+    expect(option).toBeDefined();
+    for (const pattern of required) {
+      expect(option?.description).toMatch(pattern);
+    }
+    expect(option?.description).not.toMatch(/directly heard|not decoded|for testing/i);
+  });
+});
 
 // RegionCode values used below (see REGION_OPTIONS / config.proto).
 const US = 1;

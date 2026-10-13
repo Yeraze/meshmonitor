@@ -750,13 +750,15 @@ export interface RebroadcastModeOption {
   description: string;
 }
 
+// Descriptions follow firmware runtime behavior, not the stale protobuf comments (#5779).
+// Verified against meshtastic/firmware 6d41e279: RoutingModule.cpp, Router.cpp, AdminModule.cpp.
 export const REBROADCAST_MODE_OPTIONS: RebroadcastModeOption[] = [
-  { value: 0, name: 'ALL', description: 'Rebroadcast any observed packet that was not decoded.' },
-  { value: 1, name: 'ALL_SKIP_DECODING', description: 'Same as ALL but skip decoding of rebroadcast packets. Only for testing.' },
-  { value: 2, name: 'LOCAL_ONLY', description: 'Rebroadcast only packets from our local directly heard nodes.' },
-  { value: 3, name: 'KNOWN_ONLY', description: 'Only rebroadcast from packets in our node database.' },
-  { value: 4, name: 'NONE', description: 'Never rebroadcast any packet. For testing and security.' },
-  { value: 5, name: 'CORE_PORTNUMS_ONLY', description: 'Only rebroadcast core node info and position packets.' }
+  { value: 0, name: 'ALL', description: 'Default. Rebroadcasts any observed packet, including encrypted packets from meshes with matching LoRa params.' },
+  { value: 1, name: 'ALL_SKIP_DECODING', description: 'Historically meant to skip decoding before rebroadcasting; current firmware treats this mode as ALL.' },
+  { value: 2, name: 'LOCAL_ONLY', description: 'Rebroadcasts packets on this node\'s primary/secondary channels, with no additional hop-count filter. Also permits PKI DMs when the sender or recipient is known in NodeDB.' },
+  { value: 3, name: 'KNOWN_ONLY', description: 'Like LOCAL_ONLY, and also drops packets whose sender is not already in this node\'s NodeDB.' },
+  { value: 4, name: 'NONE', description: 'Never rebroadcast any packet. Not permitted on ROUTER or ROUTER_LATE roles (firmware rewrites to ALL).' },
+  { value: 5, name: 'CORE_PORTNUMS_ONLY', description: 'Filters decoded packets to standard portnums: Text (including compressed), Position, NodeInfo, Routing, Telemetry, Admin, Alert, KeyVerification, Waypoint, StoreForward (including ++), and Traceroute. Drops TAK, RangeTest, PaxCounter, etc.' }
 ];
 
 // Buzzer mode options from protobufs
