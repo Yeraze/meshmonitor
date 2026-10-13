@@ -28,6 +28,18 @@ vi.mock('../services/database.js', () => ({
 vi.mock('./services/dataEventEmitter.js', () => ({
   dataEventEmitter: { emitMeshCoreMessage: (...a: unknown[]) => emitMeshCoreMessage(...a) },
 }));
+const isReactionsInboundEnabled = vi.fn();
+const resolveInboundReaction = vi.fn();
+const notePendingReaction = vi.fn();
+const resolvePendingReactionsFor = vi.fn();
+const emitReactionResolutions = vi.fn();
+vi.mock('./services/meshcoreReactionIngest.js', () => ({
+  isReactionsInboundEnabled: (...a: unknown[]) => isReactionsInboundEnabled(...a),
+  resolveInboundReaction: (...a: unknown[]) => resolveInboundReaction(...a),
+  notePendingReaction: (...a: unknown[]) => notePendingReaction(...a),
+  resolvePendingReactionsFor: (...a: unknown[]) => resolvePendingReactionsFor(...a),
+  emitReactionResolutions: (...a: unknown[]) => emitReactionResolutions(...a),
+}));
 vi.mock('./services/meshcorePacketLogService.js', () => ({
   default: { isEnabled: vi.fn().mockResolvedValue(false), logPacket: vi.fn() },
 }));
@@ -50,6 +62,7 @@ vi.mock('./transports/mqttBrokerClient.js', () => ({
 }));
 
 import { MeshCoreMqttManager } from './meshcoreMqttManager.js';
+import { mc1HashForChannelWire } from '../utils/meshcoreReactionTarget.js';
 import { calculateMeshCorePacketHash } from './services/meshcoreObserverPacket.js';
 
 const SECRET_HEX = '0123456789abcdef0123456789abcdef'; // 16 bytes
@@ -111,6 +124,11 @@ beforeEach(() => {
   emitMeshCoreMessage.mockClear();
   getAllChannels.mockResolvedValue([{ id: 0, name: 'Public', psk: SECRET_B64 }]);
   lastClient = null;
+  isReactionsInboundEnabled.mockReset().mockResolvedValue(true);
+  resolveInboundReaction.mockReset().mockResolvedValue({ kind: 'not_reaction' });
+  notePendingReaction.mockReset();
+  resolvePendingReactionsFor.mockReset().mockResolvedValue([]);
+  emitReactionResolutions.mockReset();
 });
 
 describe('channel message ingest (#5040 Phase 4)', () => {
@@ -252,5 +270,139 @@ describe('channel message ingest (#5040 Phase 4)', () => {
     lastClient!.deliver(`meshcore/MCO/${OBSERVER_A}/packets`, msg('0500deadbeef'));
     await settle();
     expect(insertMessage).not.toHaveBeenCalled();
+  });
+});
+
+describe('reactions on the MQTT ingest path (#5759)', () => {
+  const TS = 1_700_000_000;
+  const topic = `meshcore/MCO/${OBSERVER_A}/packets`;
+  const REACTION_BODY = '@[Alice]\u{1F44D}\nb45pc4ek';
+  const fields = (targetId: string | null) => ({
+    reactionEmoji: '\u{1F44D}',
+    reactionFormat: 'mc1-channel',
+    reactionTargetHash: 'b45pc4ek',
+    reactionTargetSender: 'Alice',
+    reactionTargetId: targetId,
+    reactionRawText: REACTION_BODY,
+  });
+
+  it('stores senderTimestamp and the MC1 hash on an ordinary row, and keeps the hash off the event', async () => {
+    await started();
+    lastClient!.deliver(topic, msg(grpTxtFrame(TS, 'Alice: Hello')));
+    await settle();
+
+    const [row] = insertMessage.mock.calls[0];
+    expect(row.senderTimestamp).toBe(TS);
+    expect(row.mc1Hash).toBe(mc1HashForChannelWire('Alice: Hello', TS));
+    expect(row.mc1Hash).toMatch(/^[0-9a-z]{8}$/);
+    const emitted = emitMeshCoreMessage.mock.calls[0][0];
+    expect(emitted.senderTimestamp).toBe(TS);
+    expect(emitted).not.toHaveProperty('mc1Hash');
+    expect(resolveInboundReaction).not.toHaveBeenCalled();
+    expect(resolvePendingReactionsFor).toHaveBeenCalledTimes(1);
+    expect(resolvePendingReactionsFor.mock.calls[0][0]).toBe('src-mqtt');
+    expect(resolvePendingReactionsFor.mock.calls[0][1]).toMatchObject({
+      id: row.id, mc1Hash: row.mc1Hash, senderTimestamp: TS, fromName: 'Alice',
+    });
+  });
+
+  it('stores a matched reaction as an emoji row with the target, keeping the raw-text id', async () => {
+    // Same frame, once as chat and once as a reaction: the id must not move.
+    await started();
+    lastClient!.deliver(topic, msg(grpTxtFrame(TS, `Bob: ${REACTION_BODY}`)));
+    await settle();
+    const chatId = insertMessage.mock.calls[0][0].id;
+    insertMessage.mockClear();
+    emitMeshCoreMessage.mockClear();
+    resolvePendingReactionsFor.mockClear();
+
+    resolveInboundReaction.mockResolvedValue({ kind: 'reaction', fields: fields('tgt-1') });
+    await started();
+    lastClient!.deliver(topic, msg(grpTxtFrame(TS, `Bob: ${REACTION_BODY}`)));
+    await settle();
+
+    expect(resolveInboundReaction).toHaveBeenCalledWith(expect.objectContaining({
+      sourceId: 'src-mqtt', scope: 'channel', channelIdx: 0, body: REACTION_BODY,
+      reactorName: 'Bob', selfName: null, selfKey: null,
+    }));
+    const [row] = insertMessage.mock.calls[0];
+    expect(row.id).toBe(chatId);
+    expect(row).toMatchObject({ text: '\u{1F44D}', fromName: 'Bob', senderTimestamp: TS, ...fields('tgt-1') });
+    expect(row.mc1Hash).toBeNull();
+    const emitted = emitMeshCoreMessage.mock.calls[0][0];
+    expect(emitted).toMatchObject({ text: '\u{1F44D}', reactionEmoji: '\u{1F44D}', reactionTargetId: 'tgt-1' });
+    expect(emitted).not.toHaveProperty('mc1Hash');
+    expect(notePendingReaction).not.toHaveBeenCalled();
+    expect(resolvePendingReactionsFor).not.toHaveBeenCalled();
+  });
+
+  it('records an unmatched reaction as pending', async () => {
+    resolveInboundReaction.mockResolvedValue({ kind: 'reaction', fields: fields(null) });
+    await started();
+    lastClient!.deliver(topic, msg(grpTxtFrame(TS, `Bob: ${REACTION_BODY}`)));
+    await settle();
+
+    const [row] = insertMessage.mock.calls[0];
+    expect(notePendingReaction).toHaveBeenCalledWith('src-mqtt', {
+      id: row.id, reactionFormat: 'mc1-channel', reactionTargetHash: 'b45pc4ek',
+    });
+  });
+
+  it('stores nothing and emits nothing for a duplicate reaction', async () => {
+    resolveInboundReaction.mockResolvedValue({ kind: 'duplicate', existingId: 'x' });
+    await started();
+    lastClient!.deliver(topic, msg(grpTxtFrame(TS, `Bob: ${REACTION_BODY}`)));
+    await settle();
+
+    expect(insertMessage).not.toHaveBeenCalled();
+    expect(emitMeshCoreMessage).not.toHaveBeenCalled();
+  });
+
+  it('stores reaction-shaped text as chat when inbound reactions are off', async () => {
+    isReactionsInboundEnabled.mockResolvedValue(false);
+    await started();
+    lastClient!.deliver(topic, msg(grpTxtFrame(TS, `Bob: ${REACTION_BODY}`)));
+    await settle();
+
+    expect(resolveInboundReaction).not.toHaveBeenCalled();
+    const [row] = insertMessage.mock.calls[0];
+    expect(row.text).toBe(REACTION_BODY);
+    expect(row.reactionEmoji).toBeUndefined();
+    expect(row.mc1Hash).toMatch(/^[0-9a-z]{8}$/);
+  });
+
+  it('a second observer copy of a reaction is still one row and no extra bookkeeping', async () => {
+    resolveInboundReaction.mockResolvedValue({ kind: 'reaction', fields: fields(null) });
+    insertMessage.mockResolvedValueOnce(true).mockResolvedValue(false);
+    await started();
+    const frame = grpTxtFrame(TS, `Bob: ${REACTION_BODY}`);
+    lastClient!.deliver(topic, msg(frame, OBSERVER_A));
+    await settle();
+    lastClient!.deliver(`meshcore/MCO/${OBSERVER_B}/packets`, msg(frame, OBSERVER_B));
+    await settle();
+
+    expect(insertMessage.mock.calls[0][0].id).toBe(insertMessage.mock.calls[1][0].id);
+    expect(emitMeshCoreMessage).toHaveBeenCalledTimes(1);
+    expect(notePendingReaction).toHaveBeenCalledTimes(1);
+  });
+
+  it('emits late resolutions when an ordinary row lets a waiting reaction resolve', async () => {
+    const resolved = [{ reactionId: 'r1', targetId: 't1', droppedDuplicate: false, row: {} }];
+    resolvePendingReactionsFor.mockResolvedValue(resolved);
+    await started();
+    lastClient!.deliver(topic, msg(grpTxtFrame(TS, 'Alice: Hello')));
+    await settle();
+
+    expect(emitReactionResolutions).toHaveBeenCalledWith('src-mqtt', resolved);
+  });
+
+  it('keeps the senderTimestamp off a clock-less sender (no wire second)', async () => {
+    await started();
+    lastClient!.deliver(topic, msg(grpTxtFrame(0, 'Alice: no clock')));
+    await settle();
+
+    const [row] = insertMessage.mock.calls[0];
+    expect(row).not.toHaveProperty('senderTimestamp');
+    expect(row.mc1Hash).toBeNull();
   });
 });

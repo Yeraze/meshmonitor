@@ -11,6 +11,7 @@ import databaseService from '../../../services/database.js';
 import { dataEventEmitter, type DataEvent, type NodeAircraftData, type NodeUpdateData, type NodeDiscoveredData, type MeshCoreNodeChangedData, type MeshCoreNodeEventFacts } from '../dataEventEmitter.js';
 import type { DbMessage, DbTelemetry } from '../../../services/database.js';
 import type { MeshCoreMessage } from '../../meshcoreManager.js';
+import type { MeshCoreReactionFields } from '../meshcoreReactionIngest.js';
 import type { ReticulumMessageRow } from '../../../db/repositories/reticulum.js';
 import { AutomationEngineService } from './automationEngineService.js';
 import { VariableResolver } from './variableResolver.js';
@@ -107,8 +108,12 @@ function subscribe(): void {
  * An ignored MeshCore message (#5408) is stored and shown collapsed, but it
  * must not trigger automations. Its bus event carries `filtered: 'ignore'`.
  */
-export function shouldRouteMeshCoreMessageToAutomations(message: Pick<MeshCoreMessage, 'filtered'>): boolean {
-  return !message.filtered;
+export function shouldRouteMeshCoreMessageToAutomations(
+  message: Pick<MeshCoreMessage, 'filtered'> & Pick<MeshCoreReactionFields, 'reactionEmoji'>,
+): boolean {
+  // A reaction row (#5759) carries a bare emoji as its text; a trigger.message
+  // regex would read it as chat. Phase 4 adds an isTapback field and lets it in.
+  return !message.filtered && !message.reactionEmoji;
 }
 
 async function handleEvent(event: DataEvent): Promise<void> {

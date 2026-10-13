@@ -54,6 +54,20 @@ import {
 import meshcorePacketLogService from './services/meshcorePacketLogService.js';
 import { MC_TELEMETRY_PREFIX, nodeNumFromPubkey } from './services/meshcoreTelemetryPoller.js';
 import databaseService from '../services/database.js';
+import { isReactionText, mc1ChannelBody } from '../utils/meshcoreReactions.js';
+import {
+  meshcoreWireSecond,
+  meshcoreWireChannelText,
+  mc1HashForChannelWire,
+} from '../utils/meshcoreReactionTarget.js';
+import {
+  isReactionsInboundEnabled,
+  resolveInboundReaction,
+  notePendingReaction,
+  resolvePendingReactionsFor,
+  emitReactionResolutions,
+  type MeshCoreReactionFields,
+} from './services/meshcoreReactionIngest.js';
 import { decodeMeshCorePacket } from '../utils/meshcorePacketDecode.js';
 import type { MeshCoreNode, MeshCoreMessage } from './meshcoreManager.js';
 import {
@@ -628,7 +642,11 @@ export class MeshCoreMqttManager extends EventEmitter implements ISourceManager 
       const timestampMs = plain.timestampSec > 0 ? plain.timestampSec * 1000 : Date.now();
       const id = channelMessageId(this.sourceId, group.channelHash, plain.timestampSec, plain.text);
 
-      const row = {
+      // Wire second for MC1 reaction hashing (#5759). Stored raw, even when
+      // the sender's clock is implausible.
+      const sec = meshcoreWireSecond(plain.timestampSec);
+
+      const row: MeshCoreMessage & MeshCoreReactionFields & { createdAt: number } = {
           id,
           // 'channel-N' is how this table encodes channel membership; the
           // channel queries match on it. An empty value here would fall through
@@ -646,6 +664,7 @@ export class MeshCoreMqttManager extends EventEmitter implements ISourceManager 
           snr: decoded.event.snr ?? undefined,
           rssi: decoded.event.rssi ?? undefined,
           createdAt: Date.now(),
+          ...(sec !== null ? { senderTimestamp: sec } : {}),
           // Only for a virtual-channel key (#5552); slot-keyed rows are unchanged.
           ...(plain.keyFingerprint ? { keyFingerprint: plain.keyFingerprint } : {}),
       };
@@ -665,8 +684,63 @@ export class MeshCoreMqttManager extends EventEmitter implements ISourceManager 
         return;
       }
 
-      const inserted = await databaseService.meshcore.insertMessage(row, this.sourceId);
+      // Reactions (#5759): an MQTT source has no node of its own, so no self
+      // name or key. The id above stays derived from the raw text.
+      let fields: Required<MeshCoreReactionFields> | null = null;
+      const parseBody = plain.senderName ? plain.text : mc1ChannelBody(plain.text);
+      if (isReactionText(parseBody) && (await isReactionsInboundEnabled(this.sourceId))) {
+        const res = await resolveInboundReaction({
+          sourceId: this.sourceId,
+          scope: 'channel',
+          channelIdx: plain.channelIdx,
+          body: parseBody,
+          reactorName: plain.senderName,
+          reactorKey: null,
+          selfName: null,
+          selfKey: null,
+          now: Date.now(),
+        });
+        if (res.kind === 'duplicate') return;
+        if (res.kind === 'reaction') fields = res.fields;
+      }
+      if (fields) {
+        Object.assign(row, fields);
+        row.text = fields.reactionEmoji ?? row.text;
+      }
+      // mc1Hash is internal: it goes to the DB row only, never the emitted event.
+      const mc1Hash = fields
+        ? null
+        : mc1HashForChannelWire(meshcoreWireChannelText(plain.senderName, plain.text), sec);
+
+      const inserted = await databaseService.meshcore.insertMessage({ ...row, mc1Hash }, this.sourceId);
       if (!inserted) return; // A different observer's copy already landed.
+      if (fields) {
+        if (!fields.reactionTargetId) {
+          notePendingReaction(this.sourceId, {
+            id,
+            reactionFormat: fields.reactionFormat ?? '',
+            reactionTargetHash: fields.reactionTargetHash ?? '',
+          });
+        }
+      } else {
+        emitReactionResolutions(
+          this.sourceId,
+          await resolvePendingReactionsFor(
+            this.sourceId,
+            {
+              id,
+              fromPublicKey: row.fromPublicKey,
+              fromName: row.fromName ?? null,
+              text: row.text,
+              timestamp: row.timestamp,
+              senderTimestamp: sec,
+              mc1Hash,
+              messageType: 'channel',
+            },
+            { selfName: null, selfKey: null },
+          ),
+        );
+      }
       meshcoreMessageFilter.countHit(this.sourceId, verdict);
       this.stats.channelMessages++;
       noteVirtualChannelDecrypt(plain.key);

@@ -113,6 +113,20 @@ describe('meshcoreSenderSecond', () => {
     expect(meshcoreSenderSecond(row({ timestamp: T0 + 2 * 86_400_000, createdAt: T0 }))).toBeNull();
   });
 
+  it('a received row with an implausible senderTimestamp is null (#5759)', () => {
+    // senderTimestamp now lands on every received row, raw. The plausibility
+    // gate still applies on top of it.
+    expect(meshcoreSenderSecond(row({ timestamp: T0 + 17, senderTimestamp: 1_715_770_351, createdAt: T0 }))).toBeNull();
+    expect(meshcoreSenderSecond(row({ timestamp: T0 + 17, senderTimestamp: SEC, createdAt: T0 }))).toBe(SEC);
+  });
+
+  it('an own DM with senderTimestamp has an exact second (#5759)', () => {
+    expect(meshcoreSenderSecond(row({
+      id: 'sent-dm', fromPublicKey: 'aa'.repeat(32), toPublicKey: 'bb'.repeat(32),
+      timestamp: T0 + 731, senderTimestamp: SEC, messageType: 'direct',
+    }))).toBe(SEC);
+  });
+
   it('accepts an old room post: a room server replays history', () => {
     const old = T0 - 5 * 86_400_000;
     expect(meshcoreSenderSecond(row({ timestamp: old, createdAt: T0, messageType: 'room_post' }))).toBe(old / 1000);
@@ -298,5 +312,24 @@ describe('clusterMeshCoreReceptions', () => {
       expect(backward.map((c) => c.dedupKey)).toEqual(forward.map((c) => c.dedupKey));
       expect(shape(backward)).toEqual(shape(forward));
     });
+  });
+});
+
+describe('own DM merge key (#5759)', () => {
+  const A = 'aa'.repeat(32);
+  const B = 'bb'.repeat(32);
+
+  it('merges our DM with another source\'s copy by the exact second, outside the 15 s window', () => {
+    const own = item('A', {
+      id: 'sent-1', fromPublicKey: A, toPublicKey: B, text: 'hi', timestamp: T0 + 731,
+      senderTimestamp: SEC, createdAt: T0 + 731, messageType: 'direct',
+    }, null);
+    const theirs = item('B', {
+      fromPublicKey: A.slice(0, 12), toPublicKey: B, text: 'hi', timestamp: T0,
+      createdAt: T0 + 120_000, messageType: 'direct',
+    }, null);
+    const out = clusterMeshCoreReceptions([own, theirs]);
+    expect(shape(out)).toEqual([['A', 'B']]);
+    expect(out[0].dedupKey).toBe(meshcoreExactDedupKey(meshcoreLogicalIdentity(own)!, SEC));
   });
 });
