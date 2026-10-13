@@ -8,6 +8,7 @@
  * - Repeater: Lightweight, uses text CLI commands over direct serial
  */
 
+import { UNKNOWN_ROOM_AUTHOR } from '../utils/meshcoreKeyMatch.js';
 import { advertHasPosition } from '../utils/meshcoreAdvertPosition.js';
 import { EventEmitter } from 'events';
 import { logger } from '../utils/logger.js';
@@ -2646,12 +2647,16 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
       // Room server post (TXT_TYPE_SIGNED_PLAIN). The room's pubkey prefix
       // identifies which room, and the author prefix identifies the poster.
       const roomPubkeyPrefix: string = data.room_pubkey_prefix;
-      const authorPrefixHex: string = data.author_pubkey_prefix;
+      // The backend sends 8 lowercase hex chars, or '' when it had no raw
+      // frame to read the bytes from (#5774). Anything else is not a key:
+      // store the author as unknown rather than a string that looks like one.
+      const rawAuthorPrefix: string = typeof data.author_pubkey_prefix === 'string' ? data.author_pubkey_prefix : '';
+      const authorPrefixHex = /^[0-9a-f]{8}$/i.test(rawAuthorPrefix) ? rawAuthorPrefix.toLowerCase() : '';
 
       const roomContact = this.resolveContactByPrefix(roomPubkeyPrefix);
       const roomFullKey = roomContact?.publicKey ?? roomPubkeyPrefix;
-      const authorContact = this.resolveContactByPrefix(authorPrefixHex);
-      const authorFullKey = authorContact?.publicKey ?? authorPrefixHex;
+      const authorContact = authorPrefixHex ? this.resolveContactByPrefix(authorPrefixHex) : undefined;
+      const authorFullKey = authorContact?.publicKey ?? (authorPrefixHex || UNKNOWN_ROOM_AUTHOR);
       const authorName = authorContact?.advName ?? authorContact?.name ?? undefined;
       // Ignore / Block (#5408) keys on the post's author, not the room.
       const verdict = meshcoreMessageFilter.classify(this.sourceId, {

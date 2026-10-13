@@ -755,6 +755,14 @@ router.delete(
       if (!ok) {
         ok = await manager.forgetLocalContact(publicKey);
       }
+      if (!ok && !isValidPublicKey(publicKey)) {
+        // A key that is not 64-hex cannot be a device contact. If no row or
+        // in-memory entry matched it either, it is a leftover (a corrupted
+        // room-post author prefix, #5774) that already has no stored row: the
+        // wanted end state holds, so answer success and let the UI refresh
+        // instead of a 409 the user cannot act on.
+        return res.json({ success: true, removed: false });
+      }
       if (!ok) {
         return res.status(409).json({
           success: false,

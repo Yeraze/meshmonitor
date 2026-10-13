@@ -7171,6 +7171,7 @@
   "meshcore.reactions.raw_text": "Original text: {{text}}",
   "meshcore.reactions.chip_tooltip": "{{emoji}} {{names}}",
   "meshcore.reactions.unknown_sender": "Someone",
+  "meshcore.unknown_sender": "Unknown sender",
   "meshcore.reactions.settings.title": "Reactions",
   "meshcore.reactions.settings.inbound_label": "Show MeshCore reactions",
   "meshcore.reactions.settings.inbound_help": "Reactions from MeshCore One and meshcore-open show as chips under the message. Turn this off to keep them as plain text lines.",

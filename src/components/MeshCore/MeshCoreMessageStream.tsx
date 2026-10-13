@@ -12,7 +12,7 @@ import MessageDetailsModal from '../diagnostics/MessageDetailsModal';
 import { UiIcon } from '../icons';
 import UnreadDivider from '../messages/UnreadDivider';
 import { resolveUnreadAnchorId, shouldSuppressDivider } from '../../utils/unreadAnchor';
-import { uniquePrefixMatch } from '../../utils/meshcoreKeyMatch';
+import { resolveAuthorContact, isUsableSenderKey } from '../../utils/meshcoreKeyMatch';
 import { MeshCoreIgnoredRunRow } from './MeshCoreIgnoredRunRow';
 import { findIgnoredRuns } from './meshcoreIgnoredRuns';
 import { groupMeshCoreReactions } from './meshcoreReactionGroups';
@@ -221,7 +221,7 @@ export const MeshCoreMessageStream: React.FC<MeshCoreMessageStreamProps> = ({
       if (!key) return null;
       // Unique prefix match only (#5349) — never name a message after the
       // first of several contacts sharing its prefix.
-      const hit = exact.get(key) ?? uniquePrefixMatch(list, key);
+      const hit = exact.get(key) ?? resolveAuthorContact(list, key);
       if (!hit) return null;
       return hit.advName || hit.name || null;
     };
@@ -269,7 +269,7 @@ export const MeshCoreMessageStream: React.FC<MeshCoreMessageStreamProps> = ({
     return (key: string): string => {
       if (!key) return key;
       if (exact.has(key)) return key;
-      const hit = uniquePrefixMatch(list, key);
+      const hit = resolveAuthorContact(list, key);
       return hit?.publicKey ?? key;
     };
   }, [contacts]);
@@ -673,13 +673,19 @@ export const MeshCoreMessageStream: React.FC<MeshCoreMessageStreamProps> = ({
               </React.Fragment>
             );
           }
+          const isChannel = m.fromPublicKey.startsWith('channel-');
+          // A pre-#5774 room post stores a corrupted author prefix, and a post
+          // with an unreadable author stores 'unknown': neither names a node.
+          const senderKeyUsable = isChannel || m.fromPublicKey === selfPublicKey
+            || isUsableSenderKey(m.fromPublicKey) || !!friendlyName;
           const fromLabel = outgoing
             ? youLabel
-            : m.fromName ?? friendlyName ?? `${m.fromPublicKey.substring(0, 8)}…`;
-          const isChannel = m.fromPublicKey.startsWith('channel-');
+            : m.fromName ?? friendlyName ?? (senderKeyUsable
+              ? `${m.fromPublicKey.substring(0, 8)}…`
+              : t('meshcore.unknown_sender', 'Unknown sender'));
           const clickTarget = isChannel
             ? (m.fromName ? contactKeyForName(m.fromName) : null)
-            : fullKeyFor(m.fromPublicKey);
+            : senderKeyUsable ? fullKeyFor(m.fromPublicKey) : null;
           const canClick = !outgoing && onNodeNameClick && clickTarget;
           return (
             <React.Fragment key={m.id}>
