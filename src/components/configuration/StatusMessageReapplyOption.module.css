@@ -1,11 +1,4 @@
-.label {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.5rem;
-}
-
 .error {
-  color: var(--color-danger);
+  color: var(--color-error);
   font-size: 0.85rem;
 }

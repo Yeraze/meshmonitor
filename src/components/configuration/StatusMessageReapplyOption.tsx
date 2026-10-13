@@ -60,14 +60,9 @@ const StatusMessageReapplyOption: React.FC<Props> = ({ isDisabled = false }) => 
 
   return (
     <div className="setting-item">
-      <label htmlFor="statusMessageReapplyAfterReboot" className={styles.label}>
-        <input
-          id="statusMessageReapplyAfterReboot"
-          type="checkbox"
-          checked={enabled === true}
-          disabled={isDisabled || saving || enabled === null}
-          onChange={(e) => { void onChange(e.target.checked); }}
-        />
+      {/* Same shape as the other Configuration checkboxes: label and help
+          first, then the box, so the shared `.setting-item` rules lay it out. */}
+      <label htmlFor="statusMessageReapplyAfterReboot">
         {t('statusmessage_config.reapply_label', 'Re-apply after a reboot')}
         <span className="setting-description">
           {t(
@@ -76,6 +71,14 @@ const StatusMessageReapplyOption: React.FC<Props> = ({ isDisabled = false }) => 
           )}
         </span>
       </label>
+      <input
+        id="statusMessageReapplyAfterReboot"
+        type="checkbox"
+        className="setting-checkbox"
+        checked={enabled === true}
+        disabled={isDisabled || saving || enabled === null}
+        onChange={(e) => { void onChange(e.target.checked); }}
+      />
       {error && (
         <span role="alert" className={styles.error}>
           {t('statusmessage_config.reapply_save_failed', 'Could not save this setting.')}
