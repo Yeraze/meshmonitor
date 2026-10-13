@@ -309,6 +309,7 @@ export const VALID_SETTINGS_KEYS = [
   // exactly the pre-#4487 single-attempt behaviour.
   'adminRetryAttempts',
   'localStatsIntervalMinutes',
+  'statusMessageReapplyAfterReboot', // #5745: opt-in, per source; re-apply the last verified Status Message after a reboot
   'nodeHopsCalculation',
   'nodeDimmingEnabled',
   'nodeDimmingStartHours',
@@ -579,6 +580,8 @@ export const PER_SOURCE_SETTINGS_KEYS = [
   // #5723: per-path last-run times and the hourly count for scheduled
   // MeshCore traces (JSON), written only by tracePathScheduleService.
   'tracePathScheduleState',
+  'statusMessageReapplyAfterReboot', // #5745
+  'statusMessageLastVerified', // #5745: server-written, see PER_SOURCE_KEYS_NOT_POSTABLE
   // Per-sender last-alert times for MeshCore mention notifications (JSON),
   // written only by meshcoreMentionNotificationService.
   'meshcoreMentionNotifyState',
@@ -946,6 +949,7 @@ export const PER_SOURCE_KEYS_NOT_POSTABLE = new Set<string>([
   'autoFavoriteAircraftStrikes', // favoritesService.ts autoFavoriteSweep (#5364/#5365 D19 two-strike rule)
   'aircraftAgeOutLastRunAt',  // aircraftAgeOutService.ts runSweep (#5364/#5365 Phase 2; persisted so a restart is not a run)
   'aircraftPositionRequestStarts',  // aircraftPositionRequestService.ts (#5704; persisted hourly cap, so a restart or save cannot reset it)
+  'statusMessageLastVerified',  // deviceAdminService.ts rememberVerifiedStatusMessage (#5745; last Status Message a read-back confirmed on the node)
   'tracePathScheduleState',  // tracePathScheduleService.ts (#5723; persisted per-path intervals and hourly cap)
   'meshcoreMentionNotifyState',  // meshcoreMentionNotificationService.ts (persisted per-sender mention cooldown, never client-writable)
   'aircraftAgeOutLastResult', // aircraftAgeOutService.ts runSweep (#5364/#5365 Phase 2; JSON counts for the settings status line)

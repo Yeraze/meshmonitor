@@ -46,6 +46,7 @@ import protobufService from '../protobufService.js';
 import { CONFIG_TYPE_MAP, MODULE_FIELD_BY_ID } from '../constants/configTypes.js';
 import { ModuleConfigNotAppliedError, ModuleConfigUnverifiedError } from '../errors/moduleConfigVerifyError.js';
 import { calculateLoRaFrequency, modemPresetDisplayName, resolveBandwidthKHz } from '../../utils/loraFrequency.js';
+import { STATUS_MESSAGE_LAST_VERIFIED_KEY } from './statusMessageReapply.js';
 import { logger } from '../../utils/logger.js';
 import { safeJson } from '../utils/redactSecrets.js';
 
@@ -88,6 +89,13 @@ export class DeviceAdminService {
    * answered with the state another save left behind.
    */
   private verifiedSaveQueue: Promise<void> = Promise.resolve();
+  /** Verified saves queued or running; see `isVerifiedSaveInFlight` (#5745). */
+  private verifiedSavesPending = 0;
+
+  /** True while any verified save is queued or running on this manager. */
+  isVerifiedSaveInFlight(): boolean {
+    return this.verifiedSavesPending > 0;
+  }
 
   /**
    * Set device configuration (role, broadcast intervals, etc.)
@@ -416,9 +424,10 @@ export class DeviceAdminService {
 
     // One verified save at a time per manager. A failed save must not block
     // the next, so the queue swallows the outcome; the caller still gets it.
+    this.verifiedSavesPending++;
     const run = this.verifiedSaveQueue.then(() => this.sendAndReadBackModuleConfig(moduleType, config, matches));
     this.verifiedSaveQueue = run.then(() => undefined, () => undefined);
-    return run;
+    return run.finally(() => { this.verifiedSavesPending--; });
   }
 
   /**
@@ -462,6 +471,9 @@ export class DeviceAdminService {
         // The node's own answer is the truth, so cache that, not what we sent.
         this.mgr.updateCachedModuleConfig(cacheKey, answer, 'replace');
         logger.debug(`⚙️ Node confirmed ${moduleType} config (read-back ${attempt})`);
+        if (moduleType === 'statusmessage') {
+          await this.rememberVerifiedStatusMessage(answer);
+        }
         return;
       }
       // A different value on the first read may be the late answer to a read
@@ -475,6 +487,21 @@ export class DeviceAdminService {
       throw new ModuleConfigNotAppliedError(moduleType, onNode);
     }
     throw new ModuleConfigUnverifiedError(moduleType);
+  }
+
+  /**
+   * Remember the Status Message the node just confirmed, for the opt-in
+   * re-apply after a reboot (#5745). Only a read-back match reaches here, so an
+   * unverified save never changes it. An empty string records a verified clear.
+   * A storage failure must not fail a save the node already took.
+   */
+  private async rememberVerifiedStatusMessage(onNode: Record<string, unknown>): Promise<void> {
+    try {
+      const value = typeof onNode?.nodeStatus === 'string' ? onNode.nodeStatus : '';
+      await databaseService.settings.setSourceSetting(this.mgr.sourceId, STATUS_MESSAGE_LAST_VERIFIED_KEY, value);
+    } catch (error) {
+      logger.warn(`Could not remember the verified status message for source ${this.mgr.sourceId}:`, error);
+    }
   }
 
   private async sendGenericModuleConfig(moduleType: string, config: Record<string, unknown>, { updateCache = true }: { updateCache?: boolean } = {}): Promise<void> {

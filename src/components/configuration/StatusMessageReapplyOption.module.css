@@ -1,0 +1,11 @@
+.label {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.error {
+  color: var(--color-danger);
+  font-size: 0.85rem;
+}
