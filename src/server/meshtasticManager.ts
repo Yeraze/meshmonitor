@@ -12083,7 +12083,9 @@ class MeshtasticManager implements ISourceManager {
         const armed = this.armDelayedAutoAck(
           pendingKey,
           fromNum,
-          autoAckChannelWaitMs(preSendDelaySeconds, this.autoAckRandom()),
+          // Nearer instances get the earlier slot (#5788): the floor rises 3 s
+          // per hop the message travelled to reach this node.
+          autoAckChannelWaitMs(preSendDelaySeconds, this.autoAckRandom(), hopsTraveled),
           (generation) => this.checkAutoAcknowledge(
             message, messageText, channelIndex, false, fromNum, packetId, rxSnr, rxRssi, { generation },
           ),
