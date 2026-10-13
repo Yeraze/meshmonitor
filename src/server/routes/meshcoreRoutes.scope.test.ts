@@ -579,6 +579,7 @@ const CLASSIFIED: Record<string, Record<string, Kind>> = {
     'DELETE /messages/:messageId': 'write',
     'POST /messages/send': 'write',
     'POST /messages/:messageId/resend': 'write',
+    'POST /messages/:messageId/reaction': 'write',
     'GET /rooms/servers': 'read',
     'POST /rooms/login': 'write',
     'POST /rooms/login-with-saved': 'write',

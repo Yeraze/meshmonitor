@@ -26,6 +26,7 @@ import { ok, fail } from '../utils/apiResponse.js';
 import { resolveMeshcoreKeyAccess, filterKeyedMessages } from '../utils/meshcoreKeyAccess.js';
 import type { MeshCoreKeyAccessFilter } from '../../db/repositories/index.js';
 import { isMeshCoreResendError, MESHCORE_RESEND_ERROR_STATUS } from '../errors/meshcoreResendError.js';
+import { isMeshCoreReactionError, MESHCORE_REACTION_ERROR_STATUS } from '../errors/meshcoreReactionError.js';
 
 // Room-server login retries over RF can legitimately run past the 30s
 // default socket timeout; extend it so the caller gets the real result
@@ -427,6 +428,46 @@ router.post('/messages/:messageId/resend', messageLimiter, requireAuth(), requir
     }
     logger.error('[API] Error resending MeshCore message:', error);
     return fail(res, 500, 'INTERNAL_ERROR', 'Resend error');
+  }
+});
+
+/**
+ * POST /api/sources/:id/meshcore/messages/:messageId/reaction
+ * Send an emoji reaction to a stored message (#5762). Same gates as
+ * /messages/send; the manager decides every refusal and throws a typed error.
+ * The response never carries the internal mc1Hash.
+ */
+router.post('/messages/:messageId/reaction', messageLimiter, requireAuth(), requirePermission('messages', 'write', { sourceIdFrom: 'params.id' }), requireMeshcoreTx(), async (req: Request, res: Response) => {
+  const messageId = String(req.params.messageId || '');
+  if (!messageId || messageId.length > 128) {
+    return fail(res, 400, 'INVALID_INPUT', 'message id is required');
+  }
+  const emoji = req.body?.emoji;
+  if (typeof emoji !== 'string' || emoji.length === 0 || emoji.length > 64) {
+    return fail(res, 400, 'INVALID_INPUT', 'emoji is required (string, up to 64 characters)');
+  }
+  try {
+    const sent = await managerFor(req, res).sendReaction(messageId, emoji);
+    auditMeshcoreEvent(req, 'meshcore_reaction_sent', 'messages', {
+      sourceId: req.params.id,
+      messageId,
+      emoji,
+    });
+    const { mc1Hash: _mc1Hash, ...message } = sent as typeof sent & { mc1Hash?: unknown };
+    return ok(res, { message });
+  } catch (error) {
+    if (failIfTxDisabled(res, error)) return;
+    if (isMeshCoreReactionError(error)) {
+      return fail(
+        res,
+        MESHCORE_REACTION_ERROR_STATUS[error.code],
+        error.code,
+        error.message,
+        error.existingId ? { existingId: error.existingId } : undefined,
+      );
+    }
+    logger.error('[API] Error sending MeshCore reaction:', error);
+    return fail(res, 500, 'INTERNAL_ERROR', 'Reaction error');
   }
 });
 
