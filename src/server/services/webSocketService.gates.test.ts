@@ -47,6 +47,7 @@ const PAYLOADS: Record<DataEventType, (marker: string) => unknown> = {
   'waypoint:deleted': (marker) => ({ sourceId: marker, waypointId: 5 }),
   'waypoint:expired': (marker) => ({ sourceId: marker, waypointId: 5 }),
   'meshcore:message': (marker) => ({ id: marker, fromPublicKey: 'cd'.repeat(32), toPublicKey: 'channel-1', text: marker, timestamp: Date.now() }),
+  'meshcore:reaction:resolved': (marker) => ({ id: marker, reactionTargetId: 'target', fromPublicKey: 'cd'.repeat(32), toPublicKey: 'channel-1' }),
   'meshcore:messages:deleted': (marker) => ({ ids: [marker] }),
   'meshcore:message:updated': (marker) => ({ id: marker, deliveryStatus: 'delivered' }),
   'meshcore:contact:updated': (marker) => ({ sourceId: marker, contact: { publicKey: 'ef'.repeat(32), advName: marker, latitude: 30.5, longitude: -90.5 } }),
@@ -468,6 +469,22 @@ describe('WebSocket event gates', () => {
       expect(has(user, 'MC-DM')).toBe(false);
       expect(has(user, 'DEL-CH1')).toBe(true);
       expect(has(user, 'DEL-CH2')).toBe(false);
+    });
+
+    it('a resolved reaction follows the message rules: its channel, and its key', async () => {
+      await harness.grantRow(harness.limited.id, 'channel_1', { read: true }, A);
+      const user = await harness.connectAs(harness.limited, { join: A });
+      const reaction = (marker: string, toPublicKey: string, extra: object = {}) =>
+        ({ id: marker, reactionTargetId: 'target', fromPublicKey: 'cd'.repeat(32), toPublicKey, ...extra });
+      emit('meshcore:reaction:resolved', A, '', reaction('RX-CH1', 'channel-1'));
+      emit('meshcore:reaction:resolved', A, '', reaction('RX-CH2', 'channel-2'));
+      emit('meshcore:reaction:resolved', A, '', reaction('RX-DM', 'ee'.repeat(32)));
+      emit('meshcore:reaction:resolved', A, '', reaction('RX-KEYED', 'channel-1', { keyFingerprint: 'feedface' }));
+      await user.settle();
+      expect(has(user, 'RX-CH1')).toBe(true);
+      expect(has(user, 'RX-CH2')).toBe(false);
+      expect(has(user, 'RX-DM')).toBe(false);
+      expect(has(user, 'RX-KEYED')).toBe(false);
     });
 
     it('a repeater-decrypted message also needs access to its key', async () => {
