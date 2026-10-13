@@ -18,6 +18,7 @@ import { managerFor, isValidConnectionParams, requireMeshcoreTx, failIfTxDisable
 import { meshcoreChannelIdx } from '../services/socketEventGates.js';
 import type { ResourceType, PermissionAction } from '../../types/permission.js';
 import { ok, fail } from '../utils/apiResponse.js';
+import { isReactionsOutboundEnabled } from '../services/meshcoreReactionSend.js';
 import {
   type MeshCoreAdvertMode,
   MESHCORE_ADVERT_MODES,
@@ -50,6 +51,7 @@ router.get('/status', optionalAuth(), requirePermission('connection', 'read', { 
         ...status,
         localNode,
         deviceTypeName: MeshCoreDeviceType[status.deviceType],
+        reactionsOutboundEnabled: await isReactionsOutboundEnabled(req.params.id),
       },
     });
   } catch (error) {
@@ -253,6 +255,7 @@ router.get('/snapshot', optionalAuth(), requirePermission('connection', 'read', 
           ...status,
           localNode,
           deviceTypeName: MeshCoreDeviceType[status.deviceType],
+          reactionsOutboundEnabled: await isReactionsOutboundEnabled(req.params.id),
         },
         contacts: maskedContacts,
         nodes: maskedNodes,

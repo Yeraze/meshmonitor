@@ -1,8 +1,9 @@
 /**
  * MeshCoreReactionsSection (#5759).
  *
- * Two switches for emoji reactions from MeshCore One and meshcore-open:
+ * Three switches for emoji reactions from MeshCore One and meshcore-open:
  *  - show them as chips (this source), and
+ *  - send them from MeshMonitor (this source), and
  *  - let Auto-Acknowledge answer them (every MeshCore source).
  *
  * The second one costs airtime: a reaction is one tap for the sender, and each
@@ -15,16 +16,19 @@ import { parseJsonResponse } from '../../utils/parseJsonResponse';
 import { useToast } from '../ToastContainer';
 import { UiIcon } from '../icons';
 import { MC_REACTION_FORMAT_VERSION } from '../../utils/meshcoreReactions';
+import { MESHCORE_REACTIONS_OUTBOUND_DEFAULT, resolveReactionsOutbound } from '../../utils/meshcoreReactionTarget';
 import styles from './MeshCoreReactionsSection.module.css';
 
 interface MeshCoreReactionsSectionProps {
   baseUrl: string;
   sourceId: string;
+  /** Called after the send-reactions switch saved, so the page can refresh its status. */
+  onOutboundChanged?: () => void;
 }
 
 const isOn = (v: unknown): boolean => v === true || v === 'true' || v === '1';
 
-export const MeshCoreReactionsSection: React.FC<MeshCoreReactionsSectionProps> = ({ baseUrl, sourceId }) => {
+export const MeshCoreReactionsSection: React.FC<MeshCoreReactionsSectionProps> = ({ baseUrl, sourceId, onOutboundChanged }) => {
   const { t } = useTranslation();
   const csrfFetch = useCsrfFetch();
   const { showToast } = useToast();
@@ -32,6 +36,7 @@ export const MeshCoreReactionsSection: React.FC<MeshCoreReactionsSectionProps> =
   const globalUrl = `${baseUrl}/api/settings`;
   const [inbound, setInbound] = useState(true);
   const [ack, setAck] = useState(false);
+  const [outbound, setOutbound] = useState(MESHCORE_REACTIONS_OUTBOUND_DEFAULT);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -46,6 +51,7 @@ export const MeshCoreReactionsSection: React.FC<MeshCoreReactionsSectionProps> =
         // On unless stored off.
         setInbound(!(inboundValue === false || inboundValue === 'false' || inboundValue === '0'));
         setAck(isOn(settings.meshcoreReactionsAckOnReceive));
+        setOutbound(resolveReactionsOutbound(settings.meshcoreReactionsOutboundEnabled));
       } catch {
         // Keep the defaults; the boxes stay usable.
       }
@@ -57,7 +63,7 @@ export const MeshCoreReactionsSection: React.FC<MeshCoreReactionsSectionProps> =
 
   const save = useCallback(async (
     url: string,
-    key: 'meshcoreReactionsInboundEnabled' | 'meshcoreReactionsAckOnReceive',
+    key: 'meshcoreReactionsInboundEnabled' | 'meshcoreReactionsAckOnReceive' | 'meshcoreReactionsOutboundEnabled',
     next: boolean,
     apply: (value: boolean) => void,
   ) => {
@@ -72,7 +78,9 @@ export const MeshCoreReactionsSection: React.FC<MeshCoreReactionsSectionProps> =
     if (!saved) {
       apply(!next);
       showToast(t('meshcore.reactions.settings.save_failed', 'Failed to save the reaction setting'), 'error');
+      return false;
     }
+    return true;
   }, [csrfFetch, showToast, t]);
 
   return (
@@ -94,6 +102,35 @@ export const MeshCoreReactionsSection: React.FC<MeshCoreReactionsSectionProps> =
           'Reactions from MeshCore One and meshcore-open show as chips under the message. Turn this off to keep them as plain text lines.',
         )}
       </p>
+      <label className={styles.toggle}>
+        <input
+          type="checkbox"
+          checked={outbound}
+          disabled={saving}
+          data-testid="meshcore-reactions-outbound"
+          onChange={e => {
+            void save(sourceUrl, 'meshcoreReactionsOutboundEnabled', e.target.checked, setOutbound).then(ok => {
+              if (ok) onOutboundChanged?.();
+            });
+          }}
+        />
+        <span>{t('meshcore.reactions.settings.outbound_label', 'Send reactions from MeshMonitor')}</span>
+      </label>
+      <p className="hint">
+        {t(
+          'meshcore.reactions.settings.outbound_help',
+          'Adds a react button to MeshCore messages on this source and lets automations send reactions. Sent in MeshCore One format.',
+        )}
+      </p>
+      <div className={styles.warning} role="note" data-testid="meshcore-reactions-outbound-warning">
+        <span className={styles.warningIcon}><UiIcon name="alert" size={16} /></span>
+        <span>
+          {t(
+            'meshcore.reactions.settings.outbound_warning',
+            'Each reaction is one short packet. On a channel, every repeater in range sends it again.',
+          )}
+        </span>
+      </div>
       <label className={styles.toggle}>
         <input
           type="checkbox"

@@ -168,6 +168,7 @@ describe('MeshCore receive-only — 409 TX_DISABLED mapping (#4547)', () => {
     body?: Record<string, unknown>;
   }> = [
     { name: 'POST /messages/send', method: 'post', path: '/messages/send', body: { text: 'hi' } },
+    { name: 'POST /messages/:messageId/reaction', method: 'post', path: '/messages/m1/reaction', body: { emoji: '👍' } },
     { name: 'POST /rooms/login', method: 'post', path: '/rooms/login', body: { publicKey: VALID_PK, password: '' } },
     { name: 'POST /rooms/login-with-saved', method: 'post', path: '/rooms/login-with-saved', body: { publicKey: VALID_PK } },
     { name: 'POST /rooms/post', method: 'post', path: '/rooms/post', body: { roomPublicKey: VALID_PK, text: 'hi' } },
@@ -191,8 +192,8 @@ describe('MeshCore receive-only — 409 TX_DISABLED mapping (#4547)', () => {
     { name: 'POST /automation/timers/:triggerId/run', method: 'post', path: '/automation/timers/t1/run' },
   ];
 
-  it('sanity: exactly 22 unconditional routes are under test (spec §2.5.2, + #5413 neighbours/fetch)', () => {
-    expect(unconditionalRoutes).toHaveLength(22);
+  it('sanity: exactly 23 unconditional routes are under test (spec §2.5.2, + #5413 neighbours/fetch)', () => {
+    expect(unconditionalRoutes).toHaveLength(23);
   });
 
   describe.each(unconditionalRoutes)('$name', ({ method, path }) => {

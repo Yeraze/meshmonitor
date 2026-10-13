@@ -274,6 +274,32 @@ describe('MeshCoreManager.resendChannelMessage (#5512)', () => {
     await expectRefusal(manager.resendChannelMessage(id), 'ALREADY_HEARD');
   });
 
+  it('never resends a reaction row (#5762)', async () => {
+    const { manager, calls } = makeManager(sourceId);
+    const id = await sendOne(manager);
+    const reactionId = 'sent-reaction-1';
+    await databaseService.meshcore.insertMessage({
+      id: reactionId, fromPublicKey: SELF_KEY, fromName: SELF_NAME, toPublicKey: `channel-${CHANNEL}`,
+      text: '\u{1F44D}', timestamp: T0, sourceId, senderTimestamp: Math.floor(T0 / 1000),
+      reactionEmoji: '\u{1F44D}', reactionFormat: 'mc1-channel', reactionTargetHash: 'abcdefgh',
+      reactionTargetId: id, createdAt: T0,
+    } as any, sourceId);
+    vi.setSystemTime(T0 + 31_000);
+    const before = sends(calls).length;
+    await expectRefusal(manager.resendChannelMessage(reactionId), 'RESEND_UNAVAILABLE');
+    expect(sends(calls)).toHaveLength(before);
+  });
+
+  it('withResendInfo skips reaction rows (#5762)', async () => {
+    const { manager } = makeManager(sourceId);
+    const spy = vi.spyOn(databaseService.messageEvents, 'getEventsForMessages').mockResolvedValue([]);
+    await (manager as any).withResendInfo([
+      { id: 'm1', senderTimestamp: 5, toPublicKey: 'channel-1', fromPublicKey: SELF_KEY, text: 'x', timestamp: 1 },
+      { id: 'm2', senderTimestamp: 5, toPublicKey: 'channel-1', fromPublicKey: SELF_KEY, text: 'e', timestamp: 1, reactionEmoji: 'e' },
+    ]);
+    expect(spy.mock.calls[0][1]).toEqual(['m1']);
+  });
+
   it('refuses a message older than one hour', async () => {
     const { manager } = makeManager(sourceId);
     const id = await sendOne(manager);

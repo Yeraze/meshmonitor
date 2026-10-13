@@ -387,7 +387,7 @@ Reacts to the triggering message with an emoji. Minimal by design — it carries
   whose hop data is missing) record a **skipped no-op**, not a run failure.
 - The **Emoji** field is hidden while hop-count mode is selected; your fixed emoji is remembered if
   you switch back to it later.
-- MeshCore sources are still skipped — MeshCore has no tapback concept on the protocol.
+- On a **MeshCore** source the tapback is sent as a MeshCore One reaction. It works only when the trigger is a MeshCore message that same source received; any other case is recorded as a skip. Hop limit does not apply. The run also skips when the source has **Send reactions from MeshMonitor** off, is in receive-only mode, or already sent that emoji to that message.
 - **Hop limit** *(advanced)* — how far the reaction may travel. Same rules as
   **Hop limit** under [Send a message](#send-a-message). A zero-hop reaction to a zero-hop message is
   the common case: the sender is adjacent by definition, so there is nothing to gain by relaying it.

@@ -28,7 +28,7 @@ describe('groupMeshCoreReactions', () => {
   it('turns a resolved reaction into a chip and drops its row', () => {
     const out = groupMeshCoreReactions([msg('m1'), reaction('r1', '👍', 'm1')], opts);
     expect(out.rows.map(m => m.id)).toEqual(['m1']);
-    expect(out.chipsByTarget.get('m1')).toEqual([{ emoji: '👍', count: 1, reactors: ['Bob'] }]);
+    expect(out.chipsByTarget.get('m1')).toEqual([{ emoji: '👍', count: 1, reactors: ['Bob'], mine: false, pending: false }]);
   });
 
   it('counts each reactor once per emoji and keeps emoji in first-seen order', () => {
@@ -40,8 +40,8 @@ describe('groupMeshCoreReactions', () => {
       reaction('r4', '👍', 'm1'),
     ], opts);
     expect(out.chipsByTarget.get('m1')).toEqual([
-      { emoji: '👍', count: 2, reactors: ['Bob', 'Carol'] },
-      { emoji: '😂', count: 1, reactors: ['Carol'] },
+      { emoji: '👍', count: 2, reactors: ['Bob', 'Carol'], mine: false, pending: false },
+      { emoji: '😂', count: 1, reactors: ['Carol'], mine: false, pending: false },
     ]);
   });
 
@@ -51,7 +51,7 @@ describe('groupMeshCoreReactions', () => {
       reaction('r1', '❤️', 'm1'),
       reaction('r2', '❤', 'm1', { fromName: 'Carol' }),
     ], opts);
-    expect(out.chipsByTarget.get('m1')).toEqual([{ emoji: '❤️', count: 2, reactors: ['Bob', 'Carol'] }]);
+    expect(out.chipsByTarget.get('m1')).toEqual([{ emoji: '❤️', count: 2, reactors: ['Bob', 'Carol'], mine: false, pending: false }]);
   });
 
   it('keeps an unmatched reaction as a row', () => {
@@ -99,6 +99,28 @@ describe('groupMeshCoreReactions', () => {
       reaction('r3', '👍', 'm1', { fromPublicKey: SELF, toPublicKey: PEER, fromName: undefined }),
     ], { youLabel: 'You', selfPublicKey: SELF, nameForKey: () => 'Peer' });
     // The 6-byte prefix and the full key are one reactor.
-    expect(out.chipsByTarget.get('m1')).toEqual([{ emoji: '👍', count: 2, reactors: ['Peer', 'You'] }]);
+    expect(out.chipsByTarget.get('m1')).toEqual([{ emoji: '👍', count: 2, reactors: ['Peer', 'You'], mine: true, pending: false }]);
+  });
+
+  it('marks our chip mine and pending while the optimistic row stands', () => {
+    const out = groupMeshCoreReactions([
+      msg('m1'),
+      reaction('r1', '👍', 'm1', { fromPublicKey: SELF, reactionPending: true } as Partial<MeshCoreMessage>),
+    ], { youLabel: 'You', selfPublicKey: SELF });
+    expect(out.chipsByTarget.get('m1')).toEqual([{ emoji: '👍', count: 1, reactors: ['You'], mine: true, pending: true }]);
+  });
+
+  it('shows one settled chip, count 1, for an optimistic row plus the real one', () => {
+    const out = groupMeshCoreReactions([
+      msg('m1'),
+      reaction('pending-1', '👍', 'm1', { fromPublicKey: SELF, reactionPending: true } as Partial<MeshCoreMessage>),
+      reaction('r1', '👍', 'm1', { fromPublicKey: SELF }),
+    ], { youLabel: 'You', selfPublicKey: SELF });
+    expect(out.chipsByTarget.get('m1')).toEqual([{ emoji: '👍', count: 1, reactors: ['You'], mine: true, pending: false }]);
+  });
+
+  it('leaves mine false for another reactor', () => {
+    const out = groupMeshCoreReactions([msg('m1'), reaction('r1', '👍', 'm1')], { youLabel: 'You', selfPublicKey: SELF });
+    expect(out.chipsByTarget.get('m1')?.[0]).toMatchObject({ mine: false, pending: false });
   });
 });
