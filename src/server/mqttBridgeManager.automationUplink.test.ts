@@ -15,6 +15,7 @@ vi.mock('./utils/okToMqtt.js', () => ({
 import { MqttBridgeManager, type MqttBridgeSourceConfig } from './mqttBridgeManager.js';
 import type { MqttBrokerLocalPacket } from './mqttBrokerManager.js';
 import { automationPacketTracker } from './utils/automationPacketTracker.js';
+import meshtasticProtobufService from './meshtasticProtobufService.js';
 
 const NODE_A = 0xaaaa0001;
 const NODE_B = 0xbbbb0002;
@@ -147,5 +148,78 @@ describe('MqttBridgeManager — dropAutomationUplinks (#5414)', () => {
 
     expect(publish).not.toHaveBeenCalled();
     expect(bridge.getStatus().uplinkAutomationDrops).toBe(2);
+  });
+});
+
+/**
+ * The client-proxy path: a TCP node with MQTT proxy linked to this bridge hands
+ * its uplinks to `publish()` directly, never through `handleUplink`. It used to
+ * skip the automation check, so auto-ack tapbacks leaked upstream.
+ */
+describe('MqttBridgeManager.publish — dropAutomationUplinks on the client-proxy path (#5414)', () => {
+  const payload = Buffer.from([1, 2, 3]);
+  const TOPIC = 'msh/US/2/e/LongFast/!aaaa0001';
+  let decode: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    automationPacketTracker.clear();
+    vi.restoreAllMocks();
+    decode = vi.spyOn(meshtasticProtobufService, 'decodeServiceEnvelope');
+  });
+
+  const envelope = (from: unknown, id: unknown) =>
+    ({ channelId: 'LongFast', gatewayId: '!aaaa0001', packet: { from, id } }) as never;
+
+  it('drops an automation send and counts it', async () => {
+    const { bridge, publish } = makeBridge({ dropAutomationUplinks: true });
+    automationPacketTracker.record('src-a', NODE_A, 0x1001);
+    decode.mockReturnValue(envelope(NODE_A, 0x1001));
+
+    await bridge.publish(TOPIC, payload);
+
+    expect(publish).not.toHaveBeenCalled();
+    expect(bridge.getStatus().uplinkAutomationDrops).toBe(1);
+  });
+
+  it('publishes a manual send', async () => {
+    const { bridge, publish } = makeBridge({ dropAutomationUplinks: true });
+    automationPacketTracker.record('src-a', NODE_A, 0x1001);
+    decode.mockReturnValue(envelope(NODE_A, 0x2002));
+
+    await bridge.publish(TOPIC, payload);
+
+    expect(publish).toHaveBeenCalledTimes(1);
+    expect(bridge.getStatus().uplinkAutomationDrops).toBe(0);
+  });
+
+  it('flag off publishes automation sends and never decodes', async () => {
+    const { bridge, publish } = makeBridge();
+    automationPacketTracker.record('src-a', NODE_A, 0x1001);
+    decode.mockReturnValue(envelope(NODE_A, 0x1001));
+
+    await bridge.publish(TOPIC, payload);
+
+    expect(publish).toHaveBeenCalledTimes(1);
+    expect(decode).not.toHaveBeenCalled();
+  });
+
+  it('publishes a payload that is not a ServiceEnvelope (JSON topic, map report)', async () => {
+    const { bridge, publish } = makeBridge({ dropAutomationUplinks: true });
+    automationPacketTracker.record('src-a', NODE_A, 0x1001);
+    decode.mockReturnValue(null as never);
+
+    await bridge.publish('msh/US/2/json/LongFast/!aaaa0001', payload);
+
+    expect(publish).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not drop another node's packet that shares the id", async () => {
+    const { bridge, publish } = makeBridge({ dropAutomationUplinks: true });
+    automationPacketTracker.record('src-a', NODE_A, 0x1001);
+    decode.mockReturnValue(envelope(NODE_B, 0x1001));
+
+    await bridge.publish(TOPIC, payload);
+
+    expect(publish).toHaveBeenCalledTimes(1);
   });
 });
