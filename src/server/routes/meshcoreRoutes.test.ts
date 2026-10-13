@@ -2311,6 +2311,18 @@ describe('MeshCore Routes', () => {
       expect(response.body.success).toBe(false);
     });
 
+    it('succeeds for a leftover non-key row that has nothing stored (#5774)', async () => {
+      // A corrupted room-post author prefix: not 64-hex, no row, no memory entry.
+      const GHOST = '6afffdfffdfffd';
+      meshcoreManager.removeContact.mockResolvedValueOnce(false);
+      meshcoreManager.forgetLocalContact.mockResolvedValueOnce(false);
+      const response = await authenticatedAgent
+        .delete(`/api/sources/test-source/meshcore/contacts/${GHOST}`);
+      expect(response.status).toBe(200);
+      expect(response.body).toEqual({ success: true, removed: false });
+      expect(meshcoreManager.forgetLocalContact).toHaveBeenCalledWith(GHOST);
+    });
+
     it('returns 404 when the source has no registered manager', async () => {
       const response = await authenticatedAgent
         .delete(`/api/sources/no-such-source/meshcore/contacts/${VALID_PUBKEY}`);

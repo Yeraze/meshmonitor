@@ -214,6 +214,21 @@ interface ConsumedRxPath {
   packetHash?: string;
 }
 
+const CONTACT_MSG_RECV_CODE = 7;
+
+/**
+ * Split a raw ContactMsgRecv frame carrying a SignedPlain (room) post:
+ * `[7][pubKeyPrefix x6][pathLen][txtType][senderTimestamp u32le][author x4][body…]`.
+ * The author prefix is raw key bytes and the body is UTF-8 text.
+ */
+export function splitSignedPlainPayload(frame: Uint8Array): { authorPrefixHex: string; body: string } {
+  const payload = frame.subarray(13);
+  return {
+    authorPrefixHex: bytesToHex(payload.subarray(0, 4)),
+    body: new TextDecoder().decode(payload.subarray(4)),
+  };
+}
+
 function bytesToHex(bytes: Uint8Array | number[]): string {
   const arr = bytes instanceof Uint8Array ? bytes : Uint8Array.from(bytes);
   let out = '';
@@ -388,6 +403,32 @@ const OTHER_PARAMS_COMMANDS: ReadonlySet<string> = new Set([
 ]);
 
 export class MeshCoreNativeBackend extends EventEmitter {
+  /** Latest raw ContactMsgRecv frame, awaiting its decoded event (#5774). */
+  private lastContactMsgFrame: Uint8Array | null = null;
+
+  /**
+   * Hand back the raw frame for this decoded ContactMsgRecv event, once.
+   * Returns null unless the frame is the same one: it must carry the same
+   * sender prefix, txtType and sender timestamp, and be long enough to hold a
+   * 4-byte author prefix.
+   */
+  private takeContactMsgFrame(msg: {
+    pubKeyPrefix?: Uint8Array;
+    txtType?: number;
+    senderTimestamp?: number;
+  }): Uint8Array | null {
+    const frame = this.lastContactMsgFrame;
+    this.lastContactMsgFrame = null;
+    if (!frame || frame.length < 17 || !msg?.pubKeyPrefix) return null;
+    for (let i = 0; i < 6; i++) {
+      if (frame[1 + i] !== msg.pubKeyPrefix[i]) return null;
+    }
+    if (frame[8] !== msg.txtType) return null;
+    const ts = (frame[9] | (frame[10] << 8) | (frame[11] << 16) | (frame[12] << 24)) >>> 0;
+    if (ts !== ((msg.senderTimestamp ?? 0) >>> 0)) return null;
+    return frame;
+  }
+
   public readonly sourceId: string;
   private config: NativeBackendConfig;
   private connection: AnyConnection | null = null;
@@ -948,6 +989,9 @@ export class MeshCoreNativeBackend extends EventEmitter {
     // source pubkey prefix.
     const txtTypes = this.constants.TxtTypes;
     this.connection.on(ResponseCodes.ContactMsgRecv, (msg: any) => {
+      // Consumed exactly once per decoded event, so one frame's bytes can never
+      // attach to another message. Only room posts use it.
+      const rawFrame = this.takeContactMsgFrame(msg);
       const isCliReply =
         txtTypes && typeof msg.txtType === 'number' && msg.txtType === txtTypes.CliData;
       const isRoomPost =
@@ -964,11 +1008,24 @@ export class MeshCoreNativeBackend extends EventEmitter {
         // message — that leak attached a stale SNR/route to an unrelated
         // message (part of issue #3589). We don't surface SNR on room posts.
         this.consumePendingPath({ kind: 'dm', pubKeyPrefix: msg.pubKeyPrefix, pathLen: msg.pathLen });
-        const rawText: string = msg.text ?? '';
-        const authorPrefixHex = Array.from(rawText.substring(0, 4))
-          .map((ch: string) => ch.charCodeAt(0).toString(16).padStart(2, '0'))
-          .join('');
-        const postBody = rawText.substring(4);
+        // meshcore.js decodes the whole payload as UTF-8 before we see it, so
+        // every author-prefix byte >= 0x80 is already U+FFFD in `msg.text`
+        // (#5774). The raw frame, tapped from the 'rx' event that fires just
+        // before the decoded event, is the only source of the true bytes.
+        let authorPrefixHex = '';
+        let postBody: string;
+        if (rawFrame) {
+          const post = splitSignedPlainPayload(rawFrame);
+          authorPrefixHex = post.authorPrefixHex;
+          postBody = post.body;
+        } else {
+          // No matching raw frame: the prefix is unrecoverable. Leave the
+          // author unknown rather than store a corrupted string as a key.
+          logger.debug(
+            `[MeshCoreNative:${this.sourceId}] room post without a matching raw frame; author unknown`,
+          );
+          postBody = String(msg.text ?? '').substring(4);
+        }
 
         this.emitBridgeEvent('room_message', {
           room_pubkey_prefix: bytesToHex(msg.pubKeyPrefix),
@@ -1074,6 +1131,13 @@ export class MeshCoreNativeBackend extends EventEmitter {
     //                        (only when "overwrite oldest" is enabled; it never
     //                        evicts a favourite)
     //   0x90               — a new contact could not be stored: table full
+    // Remember the latest ContactMsgRecv frame: meshcore.js emits 'rx' with the
+    // frame and then, synchronously, the decoded event for that same frame.
+    this.connection.on('rx', (frame: Uint8Array) => {
+      this.lastContactMsgFrame =
+        frame && frame.length > 0 && frame[0] === CONTACT_MSG_RECV_CODE ? frame : null;
+    });
+
     const PUSH_CONTACT_DELETED = 0x8F;
     const PUSH_CONTACTS_FULL = 0x90;
     this.connection.on('rx', (frame: Uint8Array) => {
