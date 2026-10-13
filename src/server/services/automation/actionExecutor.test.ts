@@ -348,6 +348,17 @@ describe('executeAction', () => {
     expect(calls).toHaveLength(0); // deps never invoked
   });
 
+  it('tapback: a MeshCore reaction trigger is a recorded TARGET_IS_REACTION skip (#5763)', async () => {
+    const { calls, deps } = recorder();
+    const result = await executeAction(
+      node('action.tapback', { emoji: '👍' }),
+      ctx({ protocol: 'meshcore', isTapback: true, meshcoreMessageId: 'r1', channel: 3, isDM: false }, 'mc', 'meshcore'),
+      deps,
+    );
+    expect(result).toEqual({ skipped: true, reason: 'meshcore reaction: TARGET_IS_REACTION' });
+    expect(calls).toHaveLength(0);
+  });
+
   it('tapback: reacts on a MeshCore source to the triggering MeshCore message (#5762)', async () => {
     const { calls, deps } = recorder();
     const result = await executeAction(

@@ -61,6 +61,15 @@ describe('MeshCoreRepository — export + search per source (#5517)', () => {
       expect(rows.map((r) => r.text)).toEqual(['alpha']);
     });
 
+    it('includeReactions never returns another source’s reaction', async () => {
+      await insert('src-a', { text: 'plain a' });
+      await insert('src-a', { text: '\u{1F44D}', reactionEmoji: '\u{1F44D}', reactionTargetHash: 'h1' });
+      await insert('src-b', { text: '\u{1F389}', reactionEmoji: '\u{1F389}', reactionTargetHash: 'h2' });
+      const base = { sourceId: 'src-a', channels: 'all' as const, includeDms: true };
+      expect((await repo.getMessagesForExport(base)).map((r) => r.text)).toEqual(['plain a']);
+      expect((await repo.getMessagesForExport({ ...base, includeReactions: true })).map((r) => r.text)).toEqual(['plain a', '\u{1F44D}']);
+    });
+
     it('returns nothing for no channels and no DMs', async () => {
       await insert('src-a');
       expect(await repo.getMessagesForExport({ sourceId: 'src-a', channels: [], includeDms: false })).toEqual([]);

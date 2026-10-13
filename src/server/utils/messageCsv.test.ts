@@ -67,8 +67,19 @@ describe('messageCsv (#5517)', () => {
       rssi: -97,
       snr: 5.25,
       hops: 2,
+      reaction: null,
+      reply_to_id: 17,
     });
-    expect(line).toBe('2026-10-03T14:00:00.000Z,2026-10-03 10:00:00,Meshtastic,Base,LongFast,W1AW,!abcd1234,broadcast,"check-in, all ok",42,-97,5.25,2\r\n');
+    expect(line).toBe('2026-10-03T14:00:00.000Z,2026-10-03 10:00:00,Meshtastic,Base,LongFast,W1AW,!abcd1234,broadcast,"check-in, all ok",42,-97,5.25,2,,17\r\n');
+  });
+
+  it('keeps the first 13 columns in order and appends reaction, reply_to_id', () => {
+    expect(MESSAGE_EXPORT_COLUMNS.slice(0, 13)).toEqual([
+      'timestamp_utc', 'local_time', 'network', 'source', 'channel', 'sender_name', 'sender_id',
+      'destination', 'message', 'message_id', 'rssi', 'snr', 'hops',
+    ]);
+    expect(messageExportHeader()).toBe(`${MESSAGE_EXPORT_COLUMNS.join(',')}\r\n`);
+    expect(MESSAGE_EXPORT_COLUMNS.slice(13)).toEqual(['reaction', 'reply_to_id']);
   });
 
   it('exposes a UTF-8 BOM and a readable truncation marker', () => {

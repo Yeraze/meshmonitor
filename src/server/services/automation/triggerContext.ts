@@ -133,6 +133,7 @@ export function buildMessageContext(
   const isReply = !isTapback && msg.replyId != null;
   const replyContext = isTapback ? REPLY_CONTEXT_TAPBACK : isReply ? REPLY_CONTEXT_REPLY : '';
   const fields: Record<string, unknown> = {
+    isTapback,
     from: Number(msg.fromNodeNum),
     fromId: msg.fromNodeId,
     fromName,
@@ -221,8 +222,12 @@ export function buildMeshCoreMessageContext(
   msg: MeshCoreMessage,
   sourceId: string | null,
   timestamp: number,
-  labels?: { channelName?: string | null },
+  labels?: {
+    channelName?: string | null;
+    reactionTarget?: { text: string; fromName: string | null } | null;
+  },
 ): TriggerContext {
+  const isTapback = !!msg.reactionEmoji;
   const channelIdx = parseMeshCoreChannelIdx(msg.fromPublicKey);
   const isChannel = channelIdx !== undefined;
   const isRoom = msg.messageType === 'room_post';
@@ -251,14 +256,23 @@ export function buildMeshCoreMessageContext(
     toId: msg.toPublicKey,
     text: msg.text,
     // Row id of the received message (#5762): a MeshCore tapback reacts to it.
+    // On a reaction trigger (#5763) this is the reaction row's own id.
     meshcoreMessageId: msg.id,
+    isTapback,
+    emoji: isTapback ? 1 : undefined,
+    replyContext: isTapback ? REPLY_CONTEXT_TAPBACK : '',
+    reactionTargetId: isTapback ? (msg.reactionTargetId ?? undefined) : undefined,
+    reactionTargetText: isTapback ? (labels?.reactionTarget?.text ?? undefined) : undefined,
+    reactionTargetSender: isTapback
+      ? (labels?.reactionTarget?.fromName ?? msg.reactionTargetSender ?? undefined)
+      : undefined,
     channel: channelIdx,
     isDM,
     isChannel,
     isBroadcast: isChannel,
     hops,
-    // #4340: same shared table as the Meshtastic context; MeshCore has no
-    // tapback concept, but the token is usable in action.sendMessage bodies.
+    // #4340: same shared table as the Meshtastic context; the token is usable
+    // in action.sendMessage bodies.
     // #4594: MeshCore sources are never `mqtt_broker`/`mqtt_bridge`, so the MQTT
     // glyph is unreachable here — `hopCountEmoji` directly, and the companion
     // token is a constant false so it is never undefined on a message trigger.
@@ -1003,6 +1017,11 @@ export function messageMatchesFilter(msg: DbMessage, params: Record<string, unkn
   return true;
 }
 
+/** True only for an explicit boolean `true` (the checkbox); absent/'true' stay off. */
+export function messageFilterIncludesMeshCoreReactions(params: Record<string, unknown> = {}): boolean {
+  return params.includeMeshCoreReactions === true;
+}
+
 /**
  * Pre-filter for MeshCore `trigger.message` events — the MeshCore analogue of
  * {@link messageMatchesFilter}. Honors only cross-protocol params (text/regex/
@@ -1019,6 +1038,7 @@ export function meshCoreMessageMatchesFilter(
   channelName?: string | null,
 ): boolean {
   if (params.portnum != null || params.from != null || params.to != null) return false;
+  if (msg.reactionEmoji && !messageFilterIncludesMeshCoreReactions(params)) return false;
   const channelIdx = parseMeshCoreChannelIdx(msg.fromPublicKey);
   const channelNames = messageFilterChannelNames(params);
   if (channelNames.length > 0) {
@@ -1096,6 +1116,9 @@ export function describeMeshCoreFilterMiss(
 ): string | undefined {
   if (params.portnum != null || params.from != null || params.to != null) {
     return 'rule uses Meshtastic-only filters (from/to/portnum) — never matches MeshCore';
+  }
+  if (msg.reactionEmoji && !messageFilterIncludesMeshCoreReactions(params)) {
+    return 'MeshCore reaction: the rule does not have "Also fire on MeshCore reactions" on';
   }
   const channelIdx = parseMeshCoreChannelIdx(msg.fromPublicKey);
   const channelNames = messageFilterChannelNames(params);

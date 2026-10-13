@@ -108,11 +108,11 @@ function subscribe(): void {
  * must not trigger automations. Its bus event carries `filtered: 'ignore'`.
  */
 export function shouldRouteMeshCoreMessageToAutomations(
-  message: Pick<MeshCoreMessage, 'filtered' | 'reactionEmoji'>,
+  message: Pick<MeshCoreMessage, 'filtered'>,
 ): boolean {
-  // A reaction row (#5759) carries a bare emoji as its text; a trigger.message
-  // regex would read it as chat. Phase 4 adds an isTapback field and lets it in.
-  return !message.filtered && !message.reactionEmoji;
+  // A reaction row (#5759) is let through; the per-rule opt-in
+  // (`includeMeshCoreReactions`) is enforced in meshCoreMessageMatchesFilter.
+  return !message.filtered;
 }
 
 async function handleEvent(event: DataEvent): Promise<void> {

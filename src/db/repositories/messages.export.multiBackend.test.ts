@@ -361,7 +361,7 @@ function runExportTests(getBackend: () => TestBackend) {
     expect(seen).toEqual(['Shelter_A 100%', 'shelterXA 100 pct', 'dm shelter_a']);
   });
 
-  it('MeshCore: a reaction row exports with text = emoji (#5759)', async () => {
+  it('MeshCore: a reaction row is left out unless includeReactions, then exports with text = emoji (#5759)', async () => {
     const b = getBackend();
     if (!b.available) return;
     const repo = new MeshCoreRepository(b.drizzleDb, b.dbType);
@@ -370,7 +370,9 @@ function runExportTests(getBackend: () => TestBackend) {
       text: '\u{1F44D}', reactionEmoji: '\u{1F44D}', reactionFormat: 'mc1-channel',
       reactionTargetHash: 'b45pc4ek', reactionRawText: '@[Alice]\u{1F44D}\nb45pc4ek',
     });
-    const rows = await repo.getMessagesForExport({ sourceId: SRC, channels: 'all', includeDms: true });
+    const plain = await repo.getMessagesForExport({ sourceId: SRC, channels: 'all', includeDms: true });
+    expect(plain.map((r) => r.text)).toEqual(['hello']);
+    const rows = await repo.getMessagesForExport({ sourceId: SRC, channels: 'all', includeDms: true, includeReactions: true });
     expect(rows.map((r) => r.text)).toEqual(['hello', '\u{1F44D}']);
     expect(rows[1].reactionEmoji).toBe('\u{1F44D}');
   });

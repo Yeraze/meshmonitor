@@ -13,7 +13,8 @@ import { optionalAuth } from '../auth/authMiddleware.js';
 import { logger } from '../../utils/logger.js';
 import { PortNum, CHANNEL_DB_OFFSET } from '../constants/meshtastic.js';
 import { filterPacketsByPermissions, getAllowedChannels } from './packetPermissions.js';
-import { isAnyMeshCoreManager } from '../sourceManagerTypes.js';
+import { isAnyMeshCoreManager, isMeshCoreManager } from '../sourceManagerTypes.js';
+import { meshcoreMessageFilter } from '../services/meshcoreMessageFilter.js';
 import { isAnyMeshCoreSourceType, isDeviceMeshCoreSourceType } from '../../utils/nodeTypeCategory.js';
 import {
   getUserReadableVirtualChannelIds,
@@ -39,6 +40,7 @@ import { ALL_CHANNELS_PARAM } from '../../utils/unifiedChannelFilter.js';
 import { channelKeyFingerprint, pskToHex } from '../services/meshcoreFrameIngest.js';
 import {
   clusterMeshCoreReceptions,
+  meshcoreClusterRefs,
   MESHCORE_MERGE_WINDOW_MS,
   meshcoreChannelIndexOf,
   type MeshCoreMergeItem,
@@ -270,6 +272,8 @@ router.get('/channels', async (req: Request, res: Response) => {
  *     toNodeNum, toNodeId,
  *     channel, channelName,
  *     text, emoji, replyId,
+ *     meshcoreRowRefs?,                 // MeshCore non-reaction: dedupKey of each row behind it
+ *     reactionEmoji?, reactionTargetRefs?, // MeshCore reaction: emoji; target row dedupKeys ([] = unmatched)
  *     timestamp,        // canonical device time (earliest rxTime seen) — for display
  *     createdAt,        // earliest server DB arrival time across receptions — for ordering/cursor
  *     receptions: [{ sourceId, sourceName, hopStart, hopLimit, hopCount,
@@ -337,6 +341,12 @@ router.get('/messages', async (req: Request, res: Response) => {
       timestamp: number;
       createdAt: number;
       receptions: Reception[];
+      /** MeshCore reaction entry (#5759): its emoji. */
+      reactionEmoji?: string;
+      /** MeshCore reaction entry: dedupKeys of target rows; empty = unmatched. */
+      reactionTargetRefs?: string[];
+      /** MeshCore non-reaction entry: dedupKey of every row behind it. */
+      meshcoreRowRefs?: string[];
     };
 
     const merged = new Map<string, Merged>();
@@ -487,6 +497,25 @@ router.get('/messages', async (req: Request, res: Response) => {
 
       meshcoreKeyAccess ??= resolveMeshcoreKeyAccess(user);
       rows = filterKeyedMessages(rows, await meshcoreKeyAccess);
+
+      // #5759: a reaction from an ignored or blocked sender is dropped. Plain
+      // rows are untouched (Unified applies no ignore list to them).
+      if (rows.some((x) => x.reactionEmoji)) {
+        try {
+          const { sourceManagerRegistry } = await import('../sourceManagerRegistry.js');
+          const mgr = sourceManagerRegistry.getManager(source.id);
+          const selfKey = mgr && isMeshCoreManager(mgr) ? mgr.getLocalNode()?.publicKey ?? null : null;
+          const dropped = new Set(
+            meshcoreMessageFilter
+              .annotate(source.id, rows.filter((x) => x.reactionEmoji), selfKey)
+              .filter((x) => (x as { filtered?: string }).filtered)
+              .map((x) => x.id),
+          );
+          rows = rows.filter((x) => !(x.reactionEmoji && dropped.has(x.id)));
+        } catch (err) {
+          logger.debug('MeshCore reaction filter failed in unified feed:', err);
+        }
+      }
 
       for (const m of rows) {
         // A legacy channel-0 row has no `channel-N` key on either side; in the
@@ -817,6 +846,7 @@ router.get('/messages', async (req: Request, res: Response) => {
       const first = cluster.members[0];
       const m = first.row;
       if (before !== undefined && !(m.createdAt < before)) continue;
+      const refs = meshcoreClusterRefs(cluster);
       merged.set(cluster.dedupKey, {
         dedupKey: cluster.dedupKey,
         packetId: null,
@@ -836,6 +866,9 @@ router.get('/messages', async (req: Request, res: Response) => {
         replyId: null,
         timestamp: m.timestamp,
         createdAt: m.createdAt,
+        ...(refs.reactionEmoji
+          ? { reactionEmoji: refs.reactionEmoji, reactionTargetRefs: refs.reactionTargetRefs ?? [] }
+          : { meshcoreRowRefs: refs.rowRefs }),
         receptions: cluster.members.map((x): Reception => ({
           sourceId: x.source.id,
           sourceName: x.source.name,

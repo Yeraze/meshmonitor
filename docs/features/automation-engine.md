@@ -388,12 +388,36 @@ Reacts to the triggering message with an emoji. Minimal by design — it carries
 - The **Emoji** field is hidden while hop-count mode is selected; your fixed emoji is remembered if
   you switch back to it later.
 - On a **MeshCore** source the tapback is sent as a MeshCore One reaction. It works only when the trigger is a MeshCore message that same source received; any other case is recorded as a skip. Hop limit does not apply. The run also skips when the source has **Send reactions from MeshMonitor** off, is in receive-only mode, or already sent that emoji to that message.
+- When the trigger is itself a MeshCore reaction, the tapback is always a recorded skip: MeshMonitor never reacts to a reaction, so two rules cannot answer each other with emoji.
 - **Hop limit** *(advanced)* — how far the reaction may travel. Same rules as
   **Hop limit** under [Send a message](#send-a-message). A zero-hop reaction to a zero-hop message is
   the common case: the sender is adjacent by definition, so there is nothing to gain by relaying it.
 - **Send via sources** — which radios send the reaction. Leave none to use the source that
   triggered the automation — but a source **is required** for source-less triggers (System events
   and Schedules).
+
+### MeshCore reactions as a trigger {#meshcore-reaction-trigger}
+
+A MeshCore emoji reaction does **not** fire **A message is received** unless the rule has **Also fire on MeshCore reactions** ticked (under the trigger's advanced options). The box is off on every existing rule, so nothing changes on upgrade. It has no effect on Meshtastic, where a tapback always fires a message rule; filter those with `trigger.isTapback`.
+
+When it fires on a reaction:
+
+| Token | Value |
+|---|---|
+| `{{trigger.text}}` | The emoji |
+| `{{trigger.isTapback}}` | `true` (also set on a Meshtastic tapback) |
+| `{{trigger.emoji}}` | `1` |
+| `{{trigger.reactionTargetText}}` | Text of the message reacted to, when this source has it |
+| `{{trigger.reactionTargetSender}}` | Who sent that message |
+| `{{trigger.reactionTargetId}}` | Its id, when matched |
+
+**Reply to the triggering message** on a reaction trigger prefixes `@[reactor]:` and sends where the reaction arrived.
+
+Your own reactions never fire a rule, including one sent by another of your MeshCore sources.
+
+::: warning A reaction is one tap
+A rule that sends a message for every reaction can flood a channel, and there is no built-in limit. Set a **cooldown** on any rule that ticks this box. Take extra care if another node reacts to every message automatically: your reply and its reaction would then answer each other without end.
+:::
 
 ### Send a message
 
