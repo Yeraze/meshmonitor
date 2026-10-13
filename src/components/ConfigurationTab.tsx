@@ -45,6 +45,7 @@ import RemoteHardwareConfigSection from './configuration/RemoteHardwareConfigSec
 import DetectionSensorConfigSection from './configuration/DetectionSensorConfigSection';
 import PaxcounterConfigSection from './configuration/PaxcounterConfigSection';
 import StatusMessageConfigSection from './configuration/StatusMessageConfigSection';
+import StatusMessageReapplyOption from './configuration/StatusMessageReapplyOption';
 import TAKConfigSection from './configuration/TAKConfigSection';
 import { normalizeTakConfig } from '../utils/takConfig';
 import { statusMessageSaveErrorText } from '../utils/statusMessage';
@@ -2762,6 +2763,7 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ baseUrl = '', nodes
             isSaving={isSaving}
             onSave={handleSaveStatusMessageConfig}
           />
+          <StatusMessageReapplyOption isDisabled={!supportedModules?.statusmessage} />
         </div>
 
         <div id="config-trafficmanagement">

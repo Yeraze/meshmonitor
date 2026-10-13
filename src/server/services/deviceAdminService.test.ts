@@ -24,6 +24,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 const getAllChannels = vi.fn();
 const getChannelById = vi.fn();
 const upsertNodeAsync = vi.fn();
+const setSourceSetting = vi.fn();
 
 vi.mock('../../services/database.js', () => ({
   default: {
@@ -32,6 +33,7 @@ vi.mock('../../services/database.js', () => ({
       getChannelById: (...args: unknown[]) => getChannelById(...args),
     },
     upsertNodeAsync: (...args: unknown[]) => upsertNodeAsync(...args),
+    settings: { setSourceSetting: (...args: unknown[]) => setSourceSetting(...args) },
   },
 }));
 
@@ -120,6 +122,7 @@ describe('DeviceAdminService', () => {
     getAllChannels.mockResolvedValue([]);
     getChannelById.mockResolvedValue(null);
     upsertNodeAsync.mockResolvedValue(undefined);
+    setSourceSetting.mockResolvedValue(undefined);
   });
 
   describe('setter round-trip', () => {
@@ -395,6 +398,50 @@ describe('DeviceAdminService', () => {
       expect(mgr.readLocalModuleConfig).toHaveBeenCalledWith(STATUSMESSAGE_ADMIN_TYPE, MODULE_READ_BACK_TIMEOUT_MS);
       expect(mgr.updateCachedModuleConfig).toHaveBeenCalledTimes(1);
       expect(mgr.state.actualModuleConfig.statusmessage).toEqual(fromNode);
+    });
+
+    it('remembers the verified status per source; a verified clear remembers ""', async () => {
+      const mgr = makeFakeManager();
+      const svc = new DeviceAdminService(mgr as any);
+      mgr.readLocalModuleConfig.mockResolvedValue({ nodeStatus: 'Monitoring' });
+      await svc.setGenericModuleConfig('statusmessage', { nodeStatus: 'Monitoring' }, { verify: true });
+      expect(setSourceSetting).toHaveBeenLastCalledWith(mgr.sourceId, 'statusMessageLastVerified', 'Monitoring');
+
+      mgr.readLocalModuleConfig.mockResolvedValue({});
+      await svc.setGenericModuleConfig('statusmessage', { nodeStatus: '' }, { verify: true });
+      expect(setSourceSetting).toHaveBeenLastCalledWith(mgr.sourceId, 'statusMessageLastVerified', '');
+      expect(setSourceSetting).toHaveBeenCalledTimes(2);
+    });
+
+    it('never remembers an unverified or mismatched save', async () => {
+      const mgr = makeFakeManager();
+      const svc = new DeviceAdminService(mgr as any);
+      mgr.readLocalModuleConfig.mockResolvedValue({ nodeStatus: 'old' });
+      await expect(svc.setGenericModuleConfig('statusmessage', { nodeStatus: 'new' }, { verify: true })).rejects.toThrow();
+      mgr.readLocalModuleConfig.mockResolvedValue(null);
+      await expect(svc.setGenericModuleConfig('statusmessage', { nodeStatus: 'new' }, { verify: true })).rejects.toThrow();
+      expect(setSourceSetting).not.toHaveBeenCalled();
+    });
+
+    it('a storage failure does not fail a save the node confirmed', async () => {
+      const mgr = makeFakeManager();
+      const svc = new DeviceAdminService(mgr as any);
+      mgr.readLocalModuleConfig.mockResolvedValue({ nodeStatus: 'Monitoring' });
+      setSourceSetting.mockRejectedValue(new Error('db down'));
+      await expect(svc.setGenericModuleConfig('statusmessage', { nodeStatus: 'Monitoring' }, { verify: true })).resolves.toBeUndefined();
+    });
+
+    it('reports a verified save in flight until it settles', async () => {
+      const mgr = makeFakeManager();
+      const svc = new DeviceAdminService(mgr as any);
+      let answer: (section: Record<string, any> | null) => void = () => {};
+      mgr.readLocalModuleConfig.mockReturnValue(new Promise((resolve) => { answer = resolve; }));
+      expect(svc.isVerifiedSaveInFlight()).toBe(false);
+      const save = svc.setGenericModuleConfig('statusmessage', { nodeStatus: 'A' }, { verify: true });
+      expect(svc.isVerifiedSaveInFlight()).toBe(true);
+      answer({ nodeStatus: 'A' });
+      await save;
+      expect(svc.isVerifiedSaveInFlight()).toBe(false);
     });
 
     it('does not touch the cache before the node answers', async () => {

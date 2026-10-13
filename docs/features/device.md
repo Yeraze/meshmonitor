@@ -1398,7 +1398,18 @@ The **Status Message** section, and the quick-status pill in the header, set the
 
 MeshMonitor confirms the node took the status: after each save it reads the status back from the node and shows an error if the node holds something else or does not answer. Other module settings are not read back.
 
-That check covers the node's running config only. A status that vanishes after a reboot is a node-side save failure (seen on nRF52 nodes with Bluetooth up), which MeshMonitor cannot detect. Set the status again after the reboot.
+That check covers the node's running config only. A status that vanishes after a reboot is a node-side save failure (seen on nRF52 nodes with Bluetooth up), which MeshMonitor cannot detect. Set the status again after the reboot, or turn on the option below.
+
+### Re-apply after a reboot (opt-in)
+
+The root cause is in the node firmware: it can lose a Status Message on reboot without any error. **Re-apply after a reboot** works around it from MeshMonitor's side.
+
+- It is **off by default**, and you set it per source, under the Status Message section.
+- MeshMonitor remembers the last status the node confirmed. When the node connects (including after a MeshMonitor restart) with an **empty** status, MeshMonitor writes the remembered one once more and reads it back.
+- It acts only when the node's status is empty. If the node holds a different status, MeshMonitor leaves it alone and remembers that one instead.
+- It tries once per connection. If the node does not confirm, MeshMonitor logs a warning and does not retry until the next reconnect.
+- It uses local admin packets only. Nothing goes on air.
+- Caveat: a status you cleared from another app looks the same as a status lost in a reboot, so it would be restored too. Clear it in MeshMonitor, or turn the option off.
 
 ### Quick-status pill
 
