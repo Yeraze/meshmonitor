@@ -152,11 +152,21 @@ export interface DbMeshCoreMessage {
   scopeCode?: number | null;
   scopeName?: string | null;
   /**
-   * Wire sender_timestamp (epoch SECONDS) of our own outgoing channel send
-   * (#5512). A user resend reuses it. Null for received messages and for rows
-   * written before migration 187.
+   * Wire sender_timestamp (epoch SECONDS) of this message, any direction.
+   * (#5512) A user resend of our own channel send reuses it; (#5759) received
+   * rows and own DMs carry it too. Null for rows written before, and room posts.
    */
   senderTimestamp?: number | null;
+  /** MC1 reaction hash of this message (#5759, migration 203). Ordinary rows only. */
+  mc1Hash?: string | null;
+  /** Set = this row is a reaction and `text` is the emoji (#5759). */
+  reactionEmoji?: string | null;
+  reactionFormat?: string | null;
+  reactionTargetHash?: string | null;
+  reactionTargetSender?: string | null;
+  /** Id of the target row on the same source; null = unmatched. */
+  reactionTargetId?: string | null;
+  reactionRawText?: string | null;
   /**
    * Decrypt provenance (#5551, migration 191). Set only when this source
    * decrypted the channel message with a key held by another source. Reads
@@ -1475,7 +1485,10 @@ export class MeshCoreRepository extends BaseRepository {
         const result = await this.db
           .select({ count: sql<number>`COUNT(*)` })
           .from(meshcoreMessages)
-          .where(this.withKeyAccess(this.channelWhereClause(idx, sourceId), keyAccess));
+          .where(and(
+            this.withKeyAccess(this.channelWhereClause(idx, sourceId), keyAccess),
+            isNull(meshcoreMessages.reactionEmoji),
+          ));
         return [idx, Number(result[0]?.count ?? 0)] as const;
       }),
     );
@@ -1502,7 +1515,10 @@ export class MeshCoreRepository extends BaseRepository {
         const result = await this.db
           .select({ latest: sql<number>`MAX(${meshcoreMessages.timestamp})` })
           .from(meshcoreMessages)
-          .where(this.withKeyAccess(this.channelWhereClause(idx, sourceId), keyAccess));
+          .where(and(
+            this.withKeyAccess(this.channelWhereClause(idx, sourceId), keyAccess),
+            isNull(meshcoreMessages.reactionEmoji),
+          ));
         const latest = result[0]?.latest;
         return [idx, latest == null ? null : Number(latest)] as const;
       }),
@@ -1618,6 +1634,7 @@ export class MeshCoreRepository extends BaseRepository {
     const conditions: SQL[] = [
       scopeParts.length === 1 ? scopeParts[0] : (or(...scopeParts) as SQL),
       this.textContains(meshcoreMessages.text, options.query, options.caseSensitive ?? false),
+      isNull(meshcoreMessages.reactionEmoji),
     ];
     if (options.fromPublicKey) conditions.push(eq(meshcoreMessages.fromPublicKey, options.fromPublicKey));
     if (options.startDate !== undefined) conditions.push(gte(meshcoreMessages.timestamp, options.startDate));
@@ -1818,6 +1835,165 @@ export class MeshCoreRepository extends BaseRepository {
       .limit(1);
     if (rows.length === 0) return null;
     return (this.normalizeBigInts(rows) as unknown as DbMeshCoreMessage[])[0];
+  }
+
+  // ============ Reactions (#5759) ============
+  //
+  // Every method takes a sourceId and throws on an empty one: a reaction
+  // resolves to a target on the SAME source only.
+
+  private requireReactionSource(method: string, sourceId: string): void {
+    if (!sourceId) {
+      throw new Error(`MeshCoreRepository.${method} requires a sourceId`);
+    }
+  }
+
+  /** Non-reaction rows of a source with this MC1 hash, newest first by createdAt. */
+  async findMessagesByMc1Hash(sourceId: string, hash: string, limit = 10): Promise<DbMeshCoreMessage[]> {
+    this.requireReactionSource('findMessagesByMc1Hash', sourceId);
+    const { meshcoreMessages } = this.tables;
+    const rows = await this.db
+      .select()
+      .from(meshcoreMessages)
+      .where(and(
+        eq(meshcoreMessages.sourceId, sourceId),
+        eq(meshcoreMessages.mc1Hash, hash),
+        isNull(meshcoreMessages.reactionEmoji),
+      ))
+      .orderBy(desc(meshcoreMessages.createdAt), desc(meshcoreMessages.id))
+      .limit(limit);
+    return this.normalizeBigInts(rows) as unknown as DbMeshCoreMessage[];
+  }
+
+  /**
+   * Newest non-reaction rows of one conversation, for hashing at lookup time.
+   * channel: channelWhereClause(idx, sourceId). dm: sourceId + directMessageClause()
+   * + messageType <> 'room_post'. With neither `channelIdx` nor `dm`, returns [].
+   */
+  async getReactionCandidates(sourceId: string, opts: {
+    channelIdx?: number;
+    dm?: boolean;
+    sinceCreatedAt: number;
+    limit: number;
+    onlyUnhashed?: boolean;
+  }): Promise<DbMeshCoreMessage[]> {
+    this.requireReactionSource('getReactionCandidates', sourceId);
+    const { meshcoreMessages } = this.tables;
+    let scope: SQL | undefined;
+    if (opts.channelIdx !== undefined) {
+      scope = this.channelWhereClause(opts.channelIdx, sourceId);
+    } else if (opts.dm) {
+      scope = and(
+        eq(meshcoreMessages.sourceId, sourceId),
+        this.directMessageClause(),
+        or(isNull(meshcoreMessages.messageType), ne(meshcoreMessages.messageType, 'room_post')),
+      );
+    }
+    if (!scope || opts.limit <= 0) return [];
+    const conditions: SQL[] = [
+      scope,
+      isNull(meshcoreMessages.reactionEmoji),
+      gte(meshcoreMessages.createdAt, opts.sinceCreatedAt),
+    ];
+    if (opts.onlyUnhashed) conditions.push(isNull(meshcoreMessages.mc1Hash));
+    const rows = await this.db
+      .select()
+      .from(meshcoreMessages)
+      .where(and(...conditions))
+      .orderBy(desc(meshcoreMessages.createdAt), desc(meshcoreMessages.id))
+      .limit(opts.limit);
+    return this.normalizeBigInts(rows) as unknown as DbMeshCoreMessage[];
+  }
+
+  /** Reaction rows of a source that point at `targetId`, or (unmatched) carry `targetHash`. */
+  async findReactionRows(
+    sourceId: string,
+    by: { targetId: string } | { targetHash: string },
+  ): Promise<DbMeshCoreMessage[]> {
+    this.requireReactionSource('findReactionRows', sourceId);
+    const { meshcoreMessages } = this.tables;
+    const match = 'targetId' in by
+      ? eq(meshcoreMessages.reactionTargetId, by.targetId)
+      : and(
+          isNull(meshcoreMessages.reactionTargetId),
+          eq(meshcoreMessages.reactionTargetHash, by.targetHash),
+        );
+    const rows = await this.db
+      .select()
+      .from(meshcoreMessages)
+      .where(and(
+        eq(meshcoreMessages.sourceId, sourceId),
+        isNotNull(meshcoreMessages.reactionEmoji),
+        match,
+      ))
+      .orderBy(desc(meshcoreMessages.createdAt), desc(meshcoreMessages.id));
+    return this.normalizeBigInts(rows) as unknown as DbMeshCoreMessage[];
+  }
+
+  /** Unmatched reaction rows, newest first. Feeds the in-memory pending index. */
+  async getUnresolvedReactions(sourceId: string, sinceCreatedAt: number, limit: number): Promise<DbMeshCoreMessage[]> {
+    this.requireReactionSource('getUnresolvedReactions', sourceId);
+    if (limit <= 0) return [];
+    const { meshcoreMessages } = this.tables;
+    const rows = await this.db
+      .select()
+      .from(meshcoreMessages)
+      .where(and(
+        eq(meshcoreMessages.sourceId, sourceId),
+        isNotNull(meshcoreMessages.reactionEmoji),
+        isNull(meshcoreMessages.reactionTargetId),
+        gte(meshcoreMessages.createdAt, sinceCreatedAt),
+      ))
+      .orderBy(desc(meshcoreMessages.createdAt), desc(meshcoreMessages.id))
+      .limit(limit);
+    return this.normalizeBigInts(rows) as unknown as DbMeshCoreMessage[];
+  }
+
+  /**
+   * Point an unmatched reaction at its target. False (no-op) when the row is
+   * not a reaction of this source or is already resolved.
+   */
+  async setReactionTarget(reactionId: string, sourceId: string, targetId: string): Promise<boolean> {
+    this.requireReactionSource('setReactionTarget', sourceId);
+    const { meshcoreMessages } = this.tables;
+    const condition = and(
+      eq(meshcoreMessages.id, reactionId),
+      eq(meshcoreMessages.sourceId, sourceId),
+      isNotNull(meshcoreMessages.reactionEmoji),
+      isNull(meshcoreMessages.reactionTargetId),
+    );
+    const existing = await this.db
+      .select({ id: meshcoreMessages.id })
+      .from(meshcoreMessages)
+      .where(condition)
+      .limit(1);
+    if (existing.length === 0) return false;
+    await this.db.update(meshcoreMessages).set({ reactionTargetId: targetId }).where(condition);
+    return true;
+  }
+
+  /** Delete the reactions (on this source) that point at these rows. Returns the deleted ids. */
+  async deleteReactionsForTargets(targetIds: string[], sourceId: string): Promise<string[]> {
+    this.requireReactionSource('deleteReactionsForTargets', sourceId);
+    if (targetIds.length === 0) return [];
+    const { meshcoreMessages } = this.tables;
+    const deletedIds: string[] = [];
+    const CHUNK = 500;
+    for (let i = 0; i < targetIds.length; i += CHUNK) {
+      const condition = and(
+        eq(meshcoreMessages.sourceId, sourceId),
+        isNotNull(meshcoreMessages.reactionEmoji),
+        inArray(meshcoreMessages.reactionTargetId, targetIds.slice(i, i + CHUNK)),
+      );
+      const present = await this.db
+        .select({ id: meshcoreMessages.id })
+        .from(meshcoreMessages)
+        .where(condition);
+      if (present.length === 0) continue;
+      await this.db.delete(meshcoreMessages).where(condition);
+      for (const r of present) deletedIds.push(r.id as string);
+    }
+    return deletedIds;
   }
 
   /**

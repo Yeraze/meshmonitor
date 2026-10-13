@@ -221,6 +221,7 @@ import { migration as createMapMarkersMigration, runMigration199Postgres, runMig
 import { migration as aircraftManualMarkMigration, runMigration200Postgres, runMigration200Mysql } from '../server/migrations/200_add_node_aircraft_manual_mark.js';
 import { migration as createMeshcoreHopSnrMigration, runMigration201Postgres, runMigration201Mysql } from '../server/migrations/201_create_meshcore_hop_snr.js';
 import { migration as addNotifyOnMentionMigration, runMigration202Postgres, runMigration202Mysql } from '../server/migrations/202_add_notify_on_mention.js';
+import { migration as addMeshcoreReactionColumnsMigration, runMigration203Postgres, runMigration203Mysql } from '../server/migrations/203_add_meshcore_reaction_columns.js';
 
 // ============================================================================
 // Registry
@@ -3271,4 +3272,18 @@ registry.register({
   sqlite: (db) => addNotifyOnMentionMigration.up(db),
   postgres: (client) => runMigration202Postgres(client),
   mysql: (pool) => runMigration202Mysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 203: reaction columns on meshcore_messages (#5759). PER-SOURCE
+// (the table already carries sourceId). Seven nullable columns + one index.
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 203,
+  name: 'add_meshcore_reaction_columns',
+  settingsKey: 'migration_203_add_meshcore_reaction_columns',
+  sqlite: (db) => addMeshcoreReactionColumnsMigration.up(db),
+  postgres: (client) => runMigration203Postgres(client),
+  mysql: (pool) => runMigration203Mysql(pool),
 });
