@@ -361,4 +361,40 @@ describe('GET /api/unified/messages — MeshCore cross-source merge (#5587)', ()
       expect(poll2[0].dedupKey).toBe(poll1[0].dedupKey);
     });
   });
+
+  describe('reaction rows (#5759, interim until the chips ship)', () => {
+    const reactionRow = (sourceId: string, over: Record<string, unknown> = {}) =>
+      companionRow(sourceId, {
+        fromName: 'Bob',
+        text: '\u{1F44D}',
+        reactionEmoji: '\u{1F44D}',
+        reactionFormat: 'mc1-channel',
+        reactionTargetHash: 'b45pc4ek',
+        reactionTargetSender: 'Alice',
+        reactionRawText: '@[Alice]\u{1F44D}\nb45pc4ek',
+        ...over,
+      });
+
+    it('comes back as an emoji-only line with no hash text', async () => {
+      await companionRow(COMPANION);
+      await reactionRow(COMPANION, { timestamp: T0 + 5000, createdAt: T0 + 5300 });
+
+      const { body } = await feed(harness.admin);
+      expect(body).toHaveLength(2);
+      const reaction = body.find((m: any) => m.fromNodeLongName === 'Bob');
+      expect(reaction.text).toBe('\u{1F44D}');
+      expect(JSON.stringify(reaction)).not.toContain('b45pc4ek');
+      expect(JSON.stringify(reaction)).not.toContain('@[');
+    });
+
+    it('copies of one reaction from two sources still merge', async () => {
+      await reactionRow(COMPANION);
+      await reactionRow(REPEATER, { fromPublicKey: `channel-${OPS_KEYED}`, keySourceId: COMPANION, keyChannelIdx: 1, keyFingerprint: OPS_FP, messageType: 'channel', createdAt: T0 + 900 });
+
+      const { body } = await feed(harness.admin);
+      expect(body).toHaveLength(1);
+      expect(body[0].text).toBe('\u{1F44D}');
+      expect(heardBy(body[0])).toEqual(['Hilltop Companion', 'Valley Repeater']);
+    });
+  });
 });

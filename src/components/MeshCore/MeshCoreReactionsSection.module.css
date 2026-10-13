@@ -1,0 +1,41 @@
+/*
+ * MeshCoreReactionsSection (#5759). CSS module — do not add these rules to the
+ * global sheets (CLAUDE.md CSS containment rule).
+ */
+
+/* MeshCorePage.css sizes every label and input in a form view for text
+   entry (`.meshcore-form-view label { display: block }`, `input { width: 100% }`).
+   Two classes outrank those one-class rules, so the box sits beside its text. */
+.section .toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+  color: var(--color-text);
+}
+
+.section .toggle input[type="checkbox"] {
+  flex: 0 0 auto;
+  width: auto;
+  max-width: none;
+  margin: 0;
+  padding: 0;
+}
+
+.warning {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.4rem;
+  margin: 0.4rem 0;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--color-warning);
+  border-radius: 6px;
+  background: var(--color-surface);
+  color: var(--color-text);
+  font-size: 0.9em;
+}
+
+.warningIcon {
+  flex-shrink: 0;
+  color: var(--color-warning);
+}

@@ -43,10 +43,24 @@ export const meshcoreMessagesSqlite = sqliteTable('meshcore_messages', {
   scopeCode: integer('scopeCode'),
   scopeName: text('scopeName'),
 
-  // Wire sender_timestamp (epoch SECONDS) of our own outgoing channel send
-  // (#5512, migration 187). A user resend reuses it so repeaters dedupe the
-  // copy. NULL for received messages and rows sent before the migration.
+  // Wire sender_timestamp (epoch SECONDS) of this message, any direction.
+  // Migration 187 (#5512) first stored it for our own channel sends so a
+  // resend can reuse it; #5759 (migration 203) also writes it on received
+  // rows and own DMs. NULL for rows written before, and for room posts.
   senderTimestamp: integer('senderTimestamp'),
+
+  // Reactions (#5759, migration 203). mc1Hash = MC1 reaction hash of this
+  // message (ordinary rows only). The reaction* columns are set on reaction
+  // rows; reactionEmoji non-NULL means "this row is a reaction" and `text`
+  // holds the emoji. reactionTargetId = id of the target row on the same
+  // source (NULL = unmatched).
+  mc1Hash: text('mc1Hash'),
+  reactionEmoji: text('reactionEmoji'),
+  reactionFormat: text('reactionFormat'),
+  reactionTargetHash: text('reactionTargetHash'),
+  reactionTargetSender: text('reactionTargetSender'),
+  reactionTargetId: text('reactionTargetId'),
+  reactionRawText: text('reactionRawText'),
 
   // Decrypt provenance (#5551, migration 191). Set only when this source
   // decrypted a channel message with a key held by ANOTHER source; reads gate
@@ -85,6 +99,13 @@ export const meshcoreMessagesPostgres = pgTable('meshcore_messages', {
   scopeCode: pgInteger('scopeCode'),
   scopeName: pgText('scopeName'),
   senderTimestamp: pgBigint('senderTimestamp', { mode: 'number' }),
+  mc1Hash: pgText('mc1Hash'),
+  reactionEmoji: pgText('reactionEmoji'),
+  reactionFormat: pgText('reactionFormat'),
+  reactionTargetHash: pgText('reactionTargetHash'),
+  reactionTargetSender: pgText('reactionTargetSender'),
+  reactionTargetId: pgText('reactionTargetId'),
+  reactionRawText: pgText('reactionRawText'),
   keySourceId: pgText('keySourceId'),
   keyChannelIdx: pgInteger('keyChannelIdx'),
   keyFingerprint: pgText('keyFingerprint'),
@@ -111,6 +132,13 @@ export const meshcoreMessagesMysql = mysqlTable('meshcore_messages', {
   scopeCode: myInt('scopeCode'),
   scopeName: myText('scopeName'),
   senderTimestamp: myBigint('senderTimestamp', { mode: 'number' }),
+  mc1Hash: myVarchar('mc1Hash', { length: 8 }),
+  reactionEmoji: myVarchar('reactionEmoji', { length: 64 }),
+  reactionFormat: myVarchar('reactionFormat', { length: 24 }),
+  reactionTargetHash: myVarchar('reactionTargetHash', { length: 64 }),
+  reactionTargetSender: myText('reactionTargetSender'),
+  reactionTargetId: myVarchar('reactionTargetId', { length: 64 }),
+  reactionRawText: myText('reactionRawText'),
   keySourceId: myVarchar('keySourceId', { length: 64 }),
   keyChannelIdx: myInt('keyChannelIdx'),
   keyFingerprint: myVarchar('keyFingerprint', { length: 32 }),

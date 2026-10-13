@@ -108,7 +108,7 @@ source, with attribution, not from MC1's copy.
   orders), reaction-emoji test, meshcore-open v3/v1 parse and hash,
   `MC_REACTION_FORMAT_VERSION`. Unit tests with the vectors above. No wiring.
   *Exit:* tests green; nothing imports it at runtime.
-- [ ] **Phase 2 — inbound** (#5761, inbound + ack settings from #5764).
+- [x] **Phase 2 — inbound** (#5761, inbound + ack settings from #5764).
   Migration 203: wire `senderTimestamp` kept on every new row, reaction columns
   on `meshcore_messages`. Ingest detection and target lookup on every ingest
   path (companion, repeater, MQTT); late-target resolution; reaction rows kept
@@ -148,3 +148,31 @@ source, with attribution, not from MC1's copy.
     space-and-tab trim. Decide whether to keep the raw wire body for hashing.
     `@[Alice]👍\nreceived` parses as a reaction (hash `rece1ved`), as in MC1, so
     expect some unmatched reactions that are really chat.
+- 2026-10-13: Phase 2 done. Migration 203 (seven nullable columns, index on
+  `(sourceId, mc1Hash)`, no backfill). Rules in
+  `src/utils/meshcoreReactionTarget.ts`, one resolver for all three ingest
+  paths in `src/server/services/meshcoreReactionIngest.ts`, UI in
+  `meshcoreReactionGroups.ts` and `MeshCoreReactionChips.tsx`. Decisions made
+  on the way:
+  - We keep the raw wire body out of the row. `mc1Hash` is computed at ingest
+    from the wire text and stored, so the lossy `.trim()` no longer matters for
+    new rows. Old rows are matched by a hash rebuilt from the trimmed body.
+  - Bounds: an `mc1Hash` index hit takes the newest 10; old-row and
+    meshcore-open scans read the newest 200 rows inside 7 days; 500 unmatched
+    reactions wait per source.
+  - New event `meshcore:reaction:resolved`, gated like `meshcore:message`, so a
+    viewer with only `channel_N:read` still gets a late chip.
+  - A reaction row skips automations, Auto-Responder, Forwarding and mention
+    alerts. The mention alert is skipped even with inbound off. Auto-Ack runs
+    only when `meshcoreReactionsAckOnReceive` is on, and then sees the raw text.
+  - A reaction from an ignored sender shows nowhere. Deleting a message deletes
+    its reactions.
+  - Until Phase 4: search leaves reactions out; Unified Messages and CSV show
+    an emoji-only line.
+  - Own DMs now store `senderTimestamp` and `mc1Hash` (planned for Phase 3).
+  - **Known limits:** resolution is per source; the meshcore-open v3 hash is 16
+    bits, so a wrong match is possible inside 200 rows; a missed resolve event
+    leaves the dim line until reload; a chip whose target sits on an older page
+    is hidden until that page loads.
+  - **For Phase 3:** the send route, the optimistic row, and a "mine" look for
+    our own chip. `groupMeshCoreReactions` already labels our reaction "You".

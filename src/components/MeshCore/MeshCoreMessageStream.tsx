@@ -15,6 +15,8 @@ import { resolveUnreadAnchorId, shouldSuppressDivider } from '../../utils/unread
 import { uniquePrefixMatch } from '../../utils/meshcoreKeyMatch';
 import { MeshCoreIgnoredRunRow } from './MeshCoreIgnoredRunRow';
 import { findIgnoredRuns } from './meshcoreIgnoredRuns';
+import { groupMeshCoreReactions } from './meshcoreReactionGroups';
+import { MeshCoreReactionChips, MeshCoreUnmatchedReaction } from './MeshCoreReactionChips';
 import Modal from '../common/Modal';
 import { resendAvailability, RESEND_MAX } from './meshcoreResend';
 import styles from './MeshCoreMessageStream.module.css';
@@ -76,6 +78,10 @@ interface MeshCoreMessageStreamProps {
    *  live value would evaporate before the line could be drawn. `null` /
    *  omitted means "no divider" (nothing unread, or unknown). */
   unreadAnchorMs?: number | null;
+  /** Reaction id → target id, for reactions resolved after `messages` was
+   *  loaded (#5759). Lets a view that pages its own history show the chip
+   *  without a reload. */
+  reactionResolutions?: Record<string, string>;
 }
 
 /** Scroll-to-top distance (px) that triggers a load-older request. */
@@ -117,7 +123,7 @@ function renderMessageText(text: string): React.ReactNode {
 }
 
 export const MeshCoreMessageStream: React.FC<MeshCoreMessageStreamProps> = ({
-  messages,
+  messages: allMessages,
   contacts,
   sourceId,
   selfPublicKey,
@@ -135,6 +141,7 @@ export const MeshCoreMessageStream: React.FC<MeshCoreMessageStreamProps> = ({
   hasMoreOlder,
   loadingOlder,
   unreadAnchorMs,
+  reactionResolutions,
 }) => {
   const { t } = useTranslation();
   const [draft, setDraft] = useState('');
@@ -142,9 +149,6 @@ export const MeshCoreMessageStream: React.FC<MeshCoreMessageStreamProps> = ({
   const [showJumpToBottom, setShowJumpToBottom] = useState(false);
   // Message ids whose "heard repeaters" list (#3700) is expanded.
   const [expandedHeardBy, setExpandedHeardBy] = useState<Set<string>>(new Set());
-  // Ignore / Block (#5408): consecutive ignored messages collapse into one row,
-  // keyed by the run's first message id; this set holds the runs shown open.
-  const ignoredRuns = useMemo(() => findIgnoredRuns(messages), [messages]);
   const [expandedIgnoredRuns, setExpandedIgnoredRuns] = useState<Set<string>>(new Set());
   const toggleIgnoredRun = useCallback((key: string) => {
     setExpandedIgnoredRuns(prev => {
@@ -170,16 +174,6 @@ export const MeshCoreMessageStream: React.FC<MeshCoreMessageStreamProps> = ({
   const [resending, setResending] = useState(false);
   const [now, setNow] = useState(() => Date.now());
   const resendEnabled = !!onResendMessage && !disabled;
-  const needsResendClock = useMemo(
-    () => resendEnabled && messages.some(m => resendAvailability(m, selfPublicKey, Date.now()).kind !== 'never'),
-    [resendEnabled, messages, selfPublicKey],
-  );
-  useEffect(() => {
-    if (!needsResendClock) return;
-    setNow(Date.now());
-    const timer = setInterval(() => setNow(Date.now()), 5_000);
-    return () => clearInterval(timer);
-  }, [needsResendClock]);
   const confirmResend = useCallback(async () => {
     if (!resendConfirm || !onResendMessage) return;
     setResending(true);
@@ -219,6 +213,34 @@ export const MeshCoreMessageStream: React.FC<MeshCoreMessageStreamProps> = ({
     };
   }, [contacts]);
 
+  // Reactions (#5759): a reaction row is not a bubble. It folds into a chip
+  // under its target, or stays as one dim line while the target is unknown.
+  // Everything below works on `messages`, the rows that are drawn.
+  const youLabel = t('meshcore.you', 'You');
+  const { rows: messages, chipsByTarget } = useMemo(
+    () => groupMeshCoreReactions(allMessages, {
+      resolutions: reactionResolutions,
+      selfPublicKey,
+      youLabel,
+      nameForKey,
+    }),
+    [allMessages, reactionResolutions, selfPublicKey, youLabel, nameForKey],
+  );
+  // Ignore / Block (#5408): consecutive ignored messages collapse into one row,
+  // keyed by the run's first message id; `expandedIgnoredRuns` holds the runs
+  // shown open.
+  const ignoredRuns = useMemo(() => findIgnoredRuns(messages), [messages]);
+  const needsResendClock = useMemo(
+    () => resendEnabled && messages.some(m => resendAvailability(m, selfPublicKey, Date.now()).kind !== 'never'),
+    [resendEnabled, messages, selfPublicKey],
+  );
+  useEffect(() => {
+    if (!needsResendClock) return;
+    setNow(Date.now());
+    const timer = setInterval(() => setNow(Date.now()), 5_000);
+    return () => clearInterval(timer);
+  }, [needsResendClock]);
+
   const fullKeyFor = useMemo(() => {
     const list = contacts ?? [];
     const exact = new Set(list.map(c => c.publicKey).filter(Boolean));
@@ -252,6 +274,11 @@ export const MeshCoreMessageStream: React.FC<MeshCoreMessageStreamProps> = ({
         ? messages.filter(m => m.fromPublicKey === selfPublicKey).map(m => m.id)
         : []
     );
+    // An unmatched reaction is a dim line, not a message (#5759): the divider
+    // never sits on it.
+    for (const m of messages) {
+      if (m.reactionEmoji) ownIds.add(m.id);
+    }
     const anchorId = resolveUnreadAnchorId({
       messages: messages.map(m => ({ id: m.id, sortTime: m.timestamp })),
       watermarkMs: unreadAnchorMs,
@@ -603,8 +630,29 @@ export const MeshCoreMessageStream: React.FC<MeshCoreMessageStreamProps> = ({
           }
           const outgoing = !!selfPublicKey && m.fromPublicKey === selfPublicKey;
           const friendlyName = outgoing ? null : nameForKey(m.fromPublicKey);
+          if (m.reactionEmoji) {
+            // Still in `messages` = no known target. No bubble, no actions.
+            return (
+              <React.Fragment key={m.id}>
+                {showSeparator && (
+                  <div className="mc-date-separator">
+                    <span className="mc-date-separator-text">
+                      {getMessageDateSeparator(currentDate)}
+                    </span>
+                  </div>
+                )}
+                <MeshCoreUnmatchedReaction
+                  name={outgoing
+                    ? youLabel
+                    : m.fromName ?? friendlyName ?? t('meshcore.reactions.unknown_sender', 'Someone')}
+                  emoji={m.reactionEmoji}
+                  rawText={m.reactionRawText}
+                />
+              </React.Fragment>
+            );
+          }
           const fromLabel = outgoing
-            ? t('meshcore.you', 'You')
+            ? youLabel
             : m.fromName ?? friendlyName ?? `${m.fromPublicKey.substring(0, 8)}…`;
           const isChannel = m.fromPublicKey.startsWith('channel-');
           const clickTarget = isChannel
@@ -825,6 +873,7 @@ export const MeshCoreMessageStream: React.FC<MeshCoreMessageStreamProps> = ({
                 </ul>
               )}
               {m.text && <LinkPreview text={m.text} />}
+              {chipsByTarget.has(m.id) && <MeshCoreReactionChips chips={chipsByTarget.get(m.id) ?? []} />}
               </div>
             </React.Fragment>
           );

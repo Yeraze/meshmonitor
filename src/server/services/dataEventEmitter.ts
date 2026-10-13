@@ -37,6 +37,7 @@ export type DataEventType =
   | 'waypoint:deleted'
   | 'waypoint:expired'
   | 'meshcore:message'
+  | 'meshcore:reaction:resolved'
   | 'meshcore:messages:deleted'
   | 'meshcore:message:updated'
   | 'meshcore:contact:updated'
@@ -609,6 +610,31 @@ class DataEventEmitter extends EventEmitter {
     };
     this.emit('data', event);
     logger.debug(`[DataEventEmitter] MeshCore message from ${message.fromPublicKey}`);
+  }
+
+  /**
+   * Emit that a MeshCore reaction found its target after the fact (#5759). The
+   * key fields are the reaction row's own, so the socket gate can apply the same
+   * channel and key rules it applies to `meshcore:message`.
+   */
+  emitMeshCoreReactionResolved(
+    data: {
+      id: string;
+      reactionTargetId: string;
+      fromPublicKey: string;
+      toPublicKey?: string | null;
+      keyFingerprint?: string | null;
+    },
+    sourceId: string,
+  ): void {
+    const event: DataEvent = {
+      type: 'meshcore:reaction:resolved',
+      data,
+      timestamp: Date.now(),
+      sourceId,
+    };
+    this.emit('data', event);
+    logger.debug(`[DataEventEmitter] MeshCore reaction ${data.id} resolved to ${data.reactionTargetId}`);
   }
 
   /**

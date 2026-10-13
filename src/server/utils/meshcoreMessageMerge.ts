@@ -14,7 +14,8 @@
  * | MQTT ingest          | `channel-<slot of    | as repeater       | as repeater               |
  * |                      | the key's source>`   |                   |                           |
  * | our own send         | `toPublicKey`        | local node name   | `senderTimestamp` (channel|
- * |                      |                      |                   | sends only), else none    |
+ * |                      |                      |                   | sends and, since #5759,   |
+ * |                      |                      |                   | DMs), else none           |
  *
  * This module normalises all four onto one identity and clusters them.
  *
@@ -50,6 +51,7 @@ import {
   isPlausibleMeshCoreMessageTimeMs,
   isPlausibleMeshCoreTimeMs,
 } from '../../utils/meshcoreTimestamp.js';
+import { storedWireSecond } from '../../utils/meshcoreReactionTarget.js';
 
 /**
  * How far apart (server insert time) two receptions from different sources may
@@ -138,7 +140,9 @@ export function normaliseMeshCoreChannelContent(row: {
  * The wire `sender_timestamp` (epoch seconds) a row was stamped with, or null
  * when the row does not hold one.
  *
- * - `senderTimestamp` is set on our own channel sends (#5512).
+ * - `senderTimestamp` is set on our own channel sends (#5512), and since #5759
+ *   on received rows and our own DMs. The raw read is `storedWireSecond`; this
+ *   function only adds the plausibility gate.
  * - A received row keeps it in `timestamp` as whole seconds. A `timestamp`
  *   with a millisecond part is the receipt clock, written when the sender's
  *   clock was rejected. Our own sends (`sent-` ids) always hold the send
@@ -151,17 +155,7 @@ export function normaliseMeshCoreChannelContent(row: {
  * and as "no clock" on a companion, and would never merge.
  */
 export function meshcoreSenderSecond(row: MeshCoreMergeRow): number | null {
-  let sec: number | null = null;
-  if (typeof row.senderTimestamp === 'number' && row.senderTimestamp > 0) {
-    sec = row.senderTimestamp;
-  } else if (
-    !row.id.startsWith('sent-') &&
-    Number.isFinite(row.timestamp) &&
-    row.timestamp > 0 &&
-    row.timestamp % 1000 === 0
-  ) {
-    sec = row.timestamp / 1000;
-  }
+  const sec = storedWireSecond(row);
   if (sec === null) return null;
   // A room server replays its backlog on login, so an old post is real history.
   const plausible = row.messageType === 'room_post'

@@ -73,6 +73,13 @@ const SQLITE_CREATE = `
     scopeCode INTEGER,
     scopeName TEXT,
     senderTimestamp INTEGER,
+    mc1Hash TEXT,
+    reactionEmoji TEXT,
+    reactionFormat TEXT,
+    reactionTargetHash TEXT,
+    reactionTargetSender TEXT,
+    reactionTargetId TEXT,
+    reactionRawText TEXT,
     keySourceId TEXT,
     keyChannelIdx INTEGER,
     keyFingerprint TEXT,
@@ -139,6 +146,13 @@ const POSTGRES_CREATE = `
     "scopeCode" INTEGER,
     "scopeName" TEXT,
     "senderTimestamp" BIGINT,
+    "mc1Hash" TEXT,
+    "reactionEmoji" TEXT,
+    "reactionFormat" TEXT,
+    "reactionTargetHash" TEXT,
+    "reactionTargetSender" TEXT,
+    "reactionTargetId" TEXT,
+    "reactionRawText" TEXT,
     "keySourceId" TEXT,
     "keyChannelIdx" INTEGER,
     "keyFingerprint" TEXT,
@@ -205,6 +219,13 @@ const MYSQL_CREATE = `
     scopeCode INT,
     scopeName TEXT,
     senderTimestamp BIGINT,
+    mc1Hash VARCHAR(8),
+    reactionEmoji VARCHAR(64),
+    reactionFormat VARCHAR(24),
+    reactionTargetHash VARCHAR(64),
+    reactionTargetSender TEXT,
+    reactionTargetId VARCHAR(64),
+    reactionRawText TEXT,
     keySourceId VARCHAR(64),
     keyChannelIdx INT,
     keyFingerprint VARCHAR(32),
@@ -338,6 +359,20 @@ function runExportTests(getBackend: () => TestBackend) {
       after = { time: Number(page[0].timestamp), id: page[0].id };
     }
     expect(seen).toEqual(['Shelter_A 100%', 'shelterXA 100 pct', 'dm shelter_a']);
+  });
+
+  it('MeshCore: a reaction row exports with text = emoji (#5759)', async () => {
+    const b = getBackend();
+    if (!b.available) return;
+    const repo = new MeshCoreRepository(b.drizzleDb, b.dbType);
+    await addMc(repo, { text: 'hello' });
+    await addMc(repo, {
+      text: '\u{1F44D}', reactionEmoji: '\u{1F44D}', reactionFormat: 'mc1-channel',
+      reactionTargetHash: 'b45pc4ek', reactionRawText: '@[Alice]\u{1F44D}\nb45pc4ek',
+    });
+    const rows = await repo.getMessagesForExport({ sourceId: SRC, channels: 'all', includeDms: true });
+    expect(rows.map((r) => r.text)).toEqual(['hello', '\u{1F44D}']);
+    expect(rows[1].reactionEmoji).toBe('\u{1F44D}');
   });
 
   it('MeshCore: the keyed-message gate (#5551) filters every read by key fingerprint', async () => {

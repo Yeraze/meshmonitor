@@ -219,4 +219,20 @@ describe('per-source settings key allowlist invariants', () => {
       expect(GLOBAL_ONLY_SETTINGS_KEYS.has(key)).toBe(false);
     }
   });
+
+  // #5759: MeshCore reactions settings.
+  it('meshcoreReactionsInboundEnabled is per-source and POST-able', () => {
+    const key = 'meshcoreReactionsInboundEnabled';
+    expect((VALID_SETTINGS_KEYS as readonly string[]).includes(key)).toBe(true);
+    expect((PER_SOURCE_SETTINGS_KEYS as readonly string[]).includes(key)).toBe(true);
+    expect(PER_SOURCE_KEYS_NOT_POSTABLE.has(key)).toBe(false);
+    expect(GLOBAL_ONLY_SETTINGS_KEYS.has(key)).toBe(false);
+  });
+
+  it('meshcoreReactionsAckOnReceive is global-only', () => {
+    const key = 'meshcoreReactionsAckOnReceive';
+    expect((VALID_SETTINGS_KEYS as readonly string[]).includes(key)).toBe(true);
+    expect(GLOBAL_ONLY_SETTINGS_KEYS.has(key)).toBe(true);
+    expect((PER_SOURCE_SETTINGS_KEYS as readonly string[]).includes(key)).toBe(false);
+  });
 });

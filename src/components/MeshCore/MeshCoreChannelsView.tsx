@@ -45,6 +45,8 @@ const isMobileViewport = (): boolean =>
 
 interface MeshCoreChannelsViewProps {
   messages: MeshCoreMessage[];
+  /** Reaction id → target id for late-resolved reactions (#5759). */
+  reactionResolutions?: Record<string, string>;
   contacts: MeshCoreContact[];
   status: ConnectionStatus | null;
   actions: MeshCoreActions;
@@ -113,6 +115,7 @@ const SORT_UNREAD_FIRST_KEY = 'meshmonitor-meshcore-channel-sort-unread-first';
 
 export const MeshCoreChannelsView: React.FC<MeshCoreChannelsViewProps> = ({
   messages,
+  reactionResolutions,
   contacts,
   status,
   actions,
@@ -614,8 +617,8 @@ export const MeshCoreChannelsView: React.FC<MeshCoreChannelsViewProps> = ({
     for (const c of displayChannels) {
       const liveMatch = messages.filter(buildChannelFilter(c.id));
       for (const m of liveMatch) {
-        // Ignored messages never count as unread (#5408).
-        if (m.filtered) continue;
+        // Ignored messages never count as unread (#5408), nor do reactions (#5759).
+        if (m.filtered || m.reactionEmoji) continue;
         if (m.timestamp > (map[c.id] ?? 0)) map[c.id] = m.timestamp;
       }
     }
@@ -651,14 +654,17 @@ export const MeshCoreChannelsView: React.FC<MeshCoreChannelsViewProps> = ({
   // count from the counts endpoint, and for the active channel the merged
   // stream length when larger, so a just-arrived live message counts before
   // the next refetch. The Message count sort (#5503) uses the same numbers.
+  const filteredMessageCount = useMemo(() => filtered.filter(m => !m.reactionEmoji).length, [filtered]);
   const channelCounts = useMemo(() => {
     const map: Record<number, number> = {};
     for (const c of displayChannels) {
-      const persisted = counts[c.id] ?? messages.filter(buildChannelFilter(c.id)).length;
-      map[c.id] = c.id === active.id ? Math.max(persisted, filtered.length) : persisted;
+      // Reactions are not messages (#5759); the server count skips them too.
+      const persisted = counts[c.id]
+        ?? messages.filter(buildChannelFilter(c.id)).filter(m => !m.reactionEmoji).length;
+      map[c.id] = c.id === active.id ? Math.max(persisted, filteredMessageCount) : persisted;
     }
     return map;
-  }, [displayChannels, counts, messages, active.id, filtered.length]);
+  }, [displayChannels, counts, messages, active.id, filteredMessageCount]);
 
   // Base order from the sort dropdown (#5385): device slot order, name, last
   // message, message count (#5503), or the saved custom order (#5379).
@@ -1019,6 +1025,7 @@ export const MeshCoreChannelsView: React.FC<MeshCoreChannelsViewProps> = ({
         )}
         <MeshCoreMessageStream
           messages={filtered}
+          reactionResolutions={reactionResolutions}
           contacts={contacts}
           sourceId={sourceId}
           selfPublicKey={selfKey}

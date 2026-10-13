@@ -253,6 +253,27 @@ Below every MeshCore composer (channel and DM) a live **`<bytes>/<limit>`** coun
 
 The counter appears only once the draft is non-empty, turns **yellow at 90%** of the limit and **red when over**, and the **Send button is disabled while over the limit** (the backend rejects an over-budget send as well).
 
+### Reactions
+
+MeshMonitor reads emoji reactions sent by [MeshCore One](https://github.com/Avi0n/MeshCoreOne) (1.4.1 and later) and meshcore-open. MeshCore has no reaction packet: these apps send a short text message that names the target by a hash, so without this support a reaction shows as a line like `@[Alice]👍` followed by eight odd characters.
+
+- A reaction shows as a **chip** under the message it answers. The chip carries a count when more than one node sent the same emoji; hover it for the names.
+- When this source never heard the target message, the reaction shows as one dim line: *"Bob reacted 👍 to a message not seen here"*. Hover it for the original text. If the target arrives later, the line turns into a chip.
+- A reaction is not a message. It does not mark a channel or DM unread, raise a mention alert, or trigger Auto-Responder, Forwarding or an automation.
+- Reactions are matched per source. A reaction heard on one source does not attach to a message only another source heard.
+- Sending reactions from MeshMonitor is not built yet.
+
+Two switches sit under **MeshCore → Settings → Reactions**:
+
+| Setting | Scope | Default | Effect |
+|---|---|---|---|
+| Show MeshCore reactions | This source | On | Off stores and shows reactions as plain text, as before. |
+| Auto-Acknowledge may answer reactions | All MeshCore sources | Off | On lets a reaction that matches your Auto-Acknowledge rules trigger a reply. |
+
+::: warning Airtime
+A reaction is one tap for the sender. With the second switch on, each one can trigger an Auto-Acknowledge reply on the air. Leave it off on busy channels.
+:::
+
 ### Node Info
 
 A dashboard-style view of the connected local companion or repeater. It graphs the data collected by the local-telemetry poller (see [Local-Node Telemetry](#local-node-telemetry) below) across 1h / 6h / 24h / 3d / 7d ranges, plus identity (firmware version, build, model), current radio settings, current health, and cumulative counters.

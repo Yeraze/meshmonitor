@@ -108,6 +108,34 @@ describe('MeshCoreMentionNotificationService', () => {
     expect(h.notify).not.toHaveBeenCalled();
   });
 
+  it('never alerts on a reaction naming us, and never claims a cooldown slot (#5759)', async () => {
+    const h = harness();
+    const reaction = channelMsg({
+      text: '\u{1F44D}',
+      reactionEmoji: '\u{1F44D}',
+      reactionTargetSender: 'MC-Sandbox',
+      reactionRawText: '@[MC-Sandbox]\u{1F44D}\nb45pc4ek',
+    } as Partial<MeshCoreMessage>);
+    expect(await h.service.handleMessage(reaction, SRC)).toBe('reaction');
+    expect(h.notify).not.toHaveBeenCalled();
+    expect(h.settings.size).toBe(0);
+    // The slot is still free for a real mention from the same sender.
+    expect(await h.service.handleMessage(channelMsg({ id: 'm2' }), SRC)).toBe('sent');
+  });
+
+  it('raw reaction text (inbound off) is not a mention either (#5759)', async () => {
+    const h = harness();
+    const raw = channelMsg({ text: '@[MC-Sandbox]\u{1F44D}\nb45pc4ek' });
+    expect(await h.service.handleMessage(raw, SRC)).toBe('reaction');
+    expect(h.notify).not.toHaveBeenCalled();
+    expect(h.settings.size).toBe(0);
+  });
+
+  it('chat that only looks like a reaction still alerts', async () => {
+    const h = harness();
+    expect(await h.service.handleMessage(channelMsg({ text: '@[MC-Sandbox] \u{1F44D} nice' }), SRC)).toBe('sent');
+  });
+
   it('skips an ignored sender', async () => {
     const h = harness();
     expect(await h.service.handleMessage(channelMsg({ filtered: 'ignore' }), SRC)).toBe('out_of_scope');
