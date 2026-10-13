@@ -1,0 +1,150 @@
+# MeshCore Reactions Epic (#5759)
+
+Sub-issues: #5760 (A), #5761 (B), #5762 (C), #5763 (D), #5764 (E).
+
+## Goal
+
+Read and send MeshCore emoji reactions so they interoperate with the MeshCore
+One (MC1) iOS app, and read the meshcore-open client's reactions.
+
+## What the issues got wrong
+
+The issues assume MeshCore messages sit in `messages` with `emoji` / `replyId`.
+They do not. The plan below replaces "normalize to `emoji=1` + `replyId`".
+
+- MeshCore messages live in `meshcore_messages`: string ids, no `emoji`, no
+  `replyId`. Reactions get their own columns there and their own chips in
+  `MeshCoreMessageStream`.
+- The hash needs the sender's wire timestamp. We keep it only for our own
+  channel sends. Received rows lose it when the sender's clock is implausible;
+  our own DMs do not store it.
+- One message is one row per source (merged at read time), so a reaction and
+  its target resolve per source.
+- Most `emoji` readers in #5763 never see a MeshCore message. The real leaks: a
+  channel reaction to our message fires a false "mentioned you" alert, and a
+  reaction passes through auto-ack, auto-responder, forwarding and automations
+  as plain text.
+
+## Wire formats
+
+### MC1 (read and send)
+
+Verified against `Avi0n/MeshCoreOne` at `8b141a48` (v1.5.2) and its
+`docs/Reactions.md`. **MC1 is GPL-3.0 and MeshMonitor is BSD-3-Clause: do not
+copy or translate its code. Implement from the format described here.**
+
+- Channel, current: `@[{targetSender}]{emoji}\n{hash}`
+- Channel, legacy (MC1 < 1.4.1), read only: `{emoji}@[{targetSender}]\n{hash}`
+- DM: `{emoji}\n{hash}`
+- `hash` = Crockford Base32 of `SHA256(utf8(text) || u32le(timestamp))[0:5]`:
+  8 chars, **lowercase**, alphabet `0123456789abcdefghjkmnpqrstvwxyz`, 40 bits
+  MSB first.
+  - `text` for a channel message is the body **without** the `Sender: ` prefix:
+    everything after the first `:`, spaces and tabs trimmed at both ends.
+  - `timestamp` is the sender's packet timestamp in seconds.
+- Hash read rules: exactly 8 chars; both cases; `O`/`o` → `0`; `I`/`i`/`L`/`l`
+  → `1`; `U`, hyphen and non-ASCII are invalid; normalize to lowercase.
+- Parse, channel: split at the **last** `\n` (no trimming anywhere); the tail
+  must be a valid hash; find the **first** `@[` in the head. If nothing comes
+  before it: sender runs to the **first** `]`, the rest is the emoji. Otherwise
+  (legacy): the text before `@[` is the emoji, the rest must **end** with `]`
+  and the sender is what lies between. The emoji must be a reaction emoji and
+  the sender non-empty.
+- Parse, DM: reject any text containing `@[`; split at the last `\n`; valid
+  hash; the head must be a reaction emoji.
+- Reaction emoji: exactly one extended grapheme cluster, whose first scalar has
+  the Unicode `Emoji` property, and either that scalar is above U+238C or the
+  cluster has more than one scalar. Skin tones, ZWJ sequences, flags, VS16 and
+  keycaps pass; a bare `1`, `#`, `©` fails.
+- Published vector: text `Hello`, timestamp `1704067200` → `b45pc4ek`.
+  Others (same algorithm): `Hello world`/1704067200 → `7a6r3xy1`;
+  `Hello`/1704067201 → `3wh8x8z5`; `World`/1704067200 → `vp1vxnf4`;
+  `Message 0`/0 → `7mt5pe1m`; `café 👍 ok`/1760000000 → `8b5qzwf6`;
+  empty/4294967295 → `npah66y0`.
+- MC1 behaviour worth matching: target lookup is exact, case-sensitive on
+  sender name, newest match wins; a reaction with no target is held and
+  resolved when the target arrives; dedupe on (target, reactor name, emoji); no
+  un-react; several emojis per message allowed; **no reactions in rooms**.
+
+### meshcore-open (read only)
+
+`zjs81/meshcore-open` is MIT. Take the format and the emoji table from **its**
+source, with attribution, not from MC1's copy.
+
+- v3: `r:{4 hex}:{2 hex emoji index}` (9 chars). Hash = Dart `String.hashCode`
+  over the UTF-16 of `"{timestamp}" + senderName (channel only) + first 5
+  UTF-16 units of the text`, masked to 16 bits. Emoji index into a 184-entry
+  table.
+- v1 (before Jan 2026): `r:{millis}_{senderNameHash}_{textHash}:{emoji}`.
+- The Phase 1 architect must confirm both against the meshcore-open source.
+
+## Decisions (user interview, 2026-10-12)
+
+| Topic | Decision |
+|---|---|
+| Unmatched reaction | Store as a reaction with no target; show one dim line ("Alice reacted 👍 to a message not seen here"); becomes a chip if the target arrives later |
+| meshcore-open format | Read it too; never send it |
+| Send limits | Existing HTTP message limiter; one send per (message, emoji) from us; never auto-retry or resend a reaction; automations keep their own limits |
+| Reaction to my message | No alert; stop the false mention alert |
+| `meshcoreReactionsAckOnReceive` | Build it: global, default **off**, warning beside the toggle. Off = Auto-Acknowledge never answers a reaction |
+| Auto-Responder, Forwarding | Always skip reactions |
+| Outbound off for a source | Hide the picker; the API refuses; automations record a skip |
+| Rooms | No reactions |
+| Rig tests | Allowed on `gauntlet` only, between MC-Sandbox and MC-BLESandbox. The user checks against a real MC1 device |
+
+## Mesh impact
+
+- Airtime: one reaction = one channel or DM text packet, flooded like any chat
+  message. No timer, no per-node fan-out.
+- Spam: capped by `messageLimiter`, the per-(message, emoji) dedupe, and no
+  retry. Inbound reactions fire no notification, no auto-responder and no
+  forward. Auto-ack of reactions is off unless the operator turns it on.
+- Timers: none added.
+
+## Phases
+
+- [x] **Phase 1 — codec** (#5760, version constant from #5764). Pure,
+  browser-safe module in `src/utils/`: MC1 hash, build, parse (both channel
+  orders), reaction-emoji test, meshcore-open v3/v1 parse and hash,
+  `MC_REACTION_FORMAT_VERSION`. Unit tests with the vectors above. No wiring.
+  *Exit:* tests green; nothing imports it at runtime.
+- [ ] **Phase 2 — inbound** (#5761, inbound + ack settings from #5764).
+  Migration 203: wire `senderTimestamp` kept on every new row, reaction columns
+  on `meshcore_messages`. Ingest detection and target lookup on every ingest
+  path (companion, repeater, MQTT); late-target resolution; reaction rows kept
+  out of mention alerts, auto-responder, forwarding and (by default) auto-ack;
+  chips and the unmatched-reaction line in the MeshCore channel and DM views;
+  `meshcoreReactionsInboundEnabled` (per source) and
+  `meshcoreReactionsAckOnReceive` (global) with their toggles.
+  *Exit:* an MC1-format channel and DM reaction shows as a chip; no raw
+  reaction text in chat; inbound off stores raw text.
+- [ ] **Phase 3 — outbound** (#5762, outbound setting from #5764). Send route,
+  emoji picker in the MeshCore stream, optimistic local row, dedupe, no retry,
+  `meshcoreReactionsOutboundEnabled` (per source), automation tapback on
+  MeshCore, wire second stored for our own DMs.
+  *Exit:* a reaction sent from MeshMonitor is read back as a reaction by a
+  second source; rig test on `gauntlet`.
+- [ ] **Phase 4 — downstream** (#5763). Unified Messages chips, CSV export,
+  automation trigger `isTapback` and reply target for MeshCore, docs.
+  *Exit:* the audit table in #5763 is answered row by row, with a test or a
+  stated "MeshCore never reaches this".
+
+## Log
+
+- 2026-10-12: plan written; Phase 1 started.
+- 2026-10-12: Phase 1 done. Codec in `src/utils/meshcoreReactions.ts`, table in
+  `src/utils/meshcoreOpenEmojiTable.ts`. Checked against meshcore-open at
+  `3bee159c`; its source corrects the summary above:
+  - The hash is the app's own `stableStringHash` (Jenkins one-at-a-time over
+    UTF-16 units, 30-bit mask, 0 → 1), which upstream tests pin to the Dart VM
+    value. Web builds before `25f197c` (2026-10-11) used another hash and will
+    never match a target.
+  - The table has 184 entries, 178 distinct. Every index is valid.
+  - v1 has two shapes: channel `r:{ms}_{nameHash}_{textHash}:{emoji}` and 1:1
+    `r:{ms}_{8 hex of sender key}:{emoji}`. Ship v1 as parse + best-effort match.
+  - meshcore-open splits a channel body differently from MC1: it strips one
+    space after the colon and does not trim.
+  - **For Phase 2:** our stored channel bodies are `.trim()`ed, wider than MC1's
+    space-and-tab trim. Decide whether to keep the raw wire body for hashing.
+    `@[Alice]👍\nreceived` parses as a reaction (hash `rece1ved`), as in MC1, so
+    expect some unmatched reactions that are really chat.
