@@ -294,6 +294,9 @@ export const VALID_SETTINGS_KEYS = [
   // Auto-Acknowledge, auto-responder, auto-announce, timer triggers) — never to
   // user-initiated sends. Distinct from the always-on DM ack-retry (#3977/#3980).
   'meshcoreChannelRetryEnabled',
+  // MeshCore reactions (#5759): global opt-in. When on, a received reaction is
+  // still offered to Auto-Acknowledge with its raw text. Default off.
+  'meshcoreReactionsAckOnReceive',
   // Global reply-timeout (seconds) for the MeshCore CLI console — the window the
   // server waits for a repeater/room-server to answer a `/admin/cli` or `/cli`
   // command before returning a 504 (issue #4027). Lower it when your repeater is
@@ -428,6 +431,8 @@ export const VALID_SETTINGS_KEYS = [
   // MeshCore strict receive-only mode (#4547) — per source. Blocks every
   // RF-transmitting command/scheduler on this MeshCore source when true.
   'meshcoreReceiveOnly',
+  // MeshCore reactions (#5759) — per source. Unset or anything but 'false' = on.
+  'meshcoreReactionsInboundEnabled',
   // Terrain Link Profile / elevation backend (#4111 Phase 1). Global (not
   // per-source) — elevation is source-agnostic public DEM data.
   // `elevationEnabled` is the public availability flag the Map Analysis page
@@ -677,6 +682,8 @@ export const PER_SOURCE_SETTINGS_KEYS = [
   'meshcoreDefaultPathHashSize',
   // MeshCore strict receive-only mode (#4547) — per source (#4547 §2.1)
   'meshcoreReceiveOnly',
+  // MeshCore inbound reactions (#5759) — per source; unset reads as on
+  'meshcoreReactionsInboundEnabled',
   // Node Display (#4412 / per-source node display epic). All ten keys in the
   // Settings → Node Display section are per-source as of Phase 1; Phase 2 converts
   // the server reads to getSettingForSource(). `localStatsIntervalMinutes` is
@@ -837,6 +844,7 @@ export const GLOBAL_ONLY_SETTINGS_KEYS = new Set<string>([
   'termsOfServiceUrl',                      // "
   'contactUrl',                             // "
   'meshcoreChannelRetryEnabled',            // :189 global opt-in (#3979)
+  'meshcoreReactionsAckOnReceive',          // global opt-in: Auto-Ack may answer reactions (#5759)
   'meshcoreCliTimeoutSeconds',              // :195 global CLI reply timeout (#4027)
   'adminRetryAttempts',                     // :201 global admin retry count (#4487)
   'elevationEnabled',                       // :305 "Global (not per-source)" (#4111)

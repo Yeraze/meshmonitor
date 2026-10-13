@@ -438,6 +438,9 @@ setTimeout(async () => {
     // message or room post names the source's own node. Sends nothing on air.
     startMeshCoreMentionNotifications();
 
+    // Once per process: which MeshCore reaction wire format this build speaks.
+    logger.info(`[MeshCore] reaction wire format version ${MC_REACTION_FORMAT_VERSION} (MC1 >= 1.4.1; reads meshcore-open v3/v1)`);
+
     // Seed the global "discard invalid GPS positions" ingest gate from settings
     // (default ON = discard, the historical behavior). Refreshed live on save via
     // the setDiscardInvalidPositions callback registered below.
@@ -717,6 +720,7 @@ const apiRouter = express.Router();
 import authRoutes from './routes/authRoutes.js';
 import automationRoutes from './routes/automationRoutes.js';
 import autoAckConverterRoutes from './routes/autoAckConverterRoutes.js';
+import { MC_REACTION_FORMAT_VERSION } from '../utils/meshcoreReactions.js';
 import { startMeshCoreMentionNotifications } from './services/meshcoreMentionNotificationService.js';
 import { startAutomationEngine } from './services/automation/automationEngineSingleton.js';
 import { startMeshBeaconOfferIngestion } from './services/meshBeaconOfferService.js';
