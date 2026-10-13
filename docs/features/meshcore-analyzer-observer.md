@@ -27,7 +27,7 @@ Because it only ever publishes outbound to a broker over the network, the Analyz
 To start contributing:
 
 1. Open the Dashboard, edit your MeshCore source, and expand the **Analyzer Observer** fieldset.
-2. Check the enable box, and set the **Region (IATA)** code for your area (e.g. `MCO`).
+2. Check the enable box, and set the **Observer location (IATA)** code for where you publish from (e.g. `MCO`).
 3. Click the **MeshMapper** preset button — it fills in a broker row with the right URL and token audience, no typing required.
 4. Optionally, also click **LetsMesh US** or **LetsMesh EU** for redundancy. MeshMapper ingests from both LetsMesh regions too and dedupes packets it sees from more than one broker, so publishing to both gives you a fallback path for free.
 5. Save. Then, on the source's **MeshCore → Configuration** page, fetch or paste the signing key so the presets (all signed-token mode) can authenticate — see [Step 2](#step-2-provide-broker-credentials).
@@ -51,7 +51,7 @@ Open the Dashboard, edit the MeshCore source, and expand the **Analyzer Observer
 
 | Field | Example | Notes |
 |---|---|---|
-| Region (IATA) | `MCO` | A 3-letter IATA code for your region, or `test` for a local broker. Case-insensitive — MeshMonitor uppercases it on save. This is shared by every broker on the source — it's the region segment of the MQTT topic, not a per-broker setting. |
+| Observer location (IATA) | `MCO` | A 3-letter IATA airport code for where this observer publishes from, or `test` for a local test broker. It is the location part of the MQTT topic, not a MeshCore RF region or repeater forwarding scope. Case-insensitive — MeshMonitor uppercases it on save. This is shared by every broker on the source — it's the region segment of the MQTT topic, not a per-broker setting. |
 
 ### Brokers
 

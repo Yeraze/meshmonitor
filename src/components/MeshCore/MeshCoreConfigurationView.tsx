@@ -225,13 +225,14 @@ export const MeshCoreConfigurationView: React.FC<MeshCoreConfigurationViewProps>
   const handleSaveTelemetry = async () => {
     setSavingTelemetry(true);
     setTelemetrySaved(false);
-    const results = await Promise.all([
-      actions.setTelemetryModeBase(telBase),
-      actions.setTelemetryModeLoc(telLoc),
-      actions.setTelemetryModeEnv(telEnv),
-    ]);
+    // One after the other, never together (#5773). Each write rewrites all
+    // three modes on the device from a fresh read, so parallel writes undo
+    // each other and only the last one sticks.
+    const okBase = await actions.setTelemetryModeBase(telBase);
+    const okLoc = await actions.setTelemetryModeLoc(telLoc);
+    const okEnv = await actions.setTelemetryModeEnv(telEnv);
     setSavingTelemetry(false);
-    if (results.every(Boolean)) {
+    if (okBase && okLoc && okEnv) {
       setTelemetrySaved(true);
       setTimeout(() => setTelemetrySaved(false), 2500);
     }
