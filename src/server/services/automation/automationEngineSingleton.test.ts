@@ -20,9 +20,9 @@ describe('shouldRouteMeshCoreMessageToAutomations', () => {
   it('lets an ordinary message in', () => {
     expect(shouldRouteMeshCoreMessageToAutomations({})).toBe(true);
   });
-  it('keeps out an ignored message and a reaction row', () => {
+  it('keeps out an ignored message and lets a reaction row in', () => {
     expect(shouldRouteMeshCoreMessageToAutomations({ filtered: 'ignore' })).toBe(false);
-    expect(shouldRouteMeshCoreMessageToAutomations({ reactionEmoji: '\u{1F44D}' })).toBe(false);
+    expect(shouldRouteMeshCoreMessageToAutomations({ filtered: undefined })).toBe(true);
   });
 });
 
@@ -33,9 +33,15 @@ describe('routeEventToEngine meshcore:message', () => {
     expect(onMeshCoreMessage).toHaveBeenCalledTimes(1);
   });
 
-  it('does not call it for a reaction row', async () => {
+  it('calls it for a reaction row (the rule opt-in gates it later)', async () => {
     const { engine, onMeshCoreMessage } = engineStub();
     await routeEventToEngine(engine, ev({ ...base, text: '\u{1F44D}', reactionEmoji: '\u{1F44D}' }));
+    expect(onMeshCoreMessage).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not call it for an ignored reaction row', async () => {
+    const { engine, onMeshCoreMessage } = engineStub();
+    await routeEventToEngine(engine, ev({ ...base, text: '\u{1F44D}', reactionEmoji: '\u{1F44D}', filtered: 'ignore' }));
     expect(onMeshCoreMessage).not.toHaveBeenCalled();
   });
 

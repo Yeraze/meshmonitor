@@ -180,6 +180,11 @@ export const TRIGGERS: BlockDef[] = [
       { name: 'channelName', label: 'On channel (name)', kind: 'text', placeholder: 'any', advanced: true, help: 'Match by channel name (case-insensitive) — portable across sources where the same channel sits in a different slot. Preferred over the channel # below. Ignored when "On channels" above is set.' },
       { name: 'channel', label: 'On channel #', kind: 'number', placeholder: 'any', advanced: true, help: 'Match by raw channel index. Note: the same channel can be a different index on different sources — use the name above for cross-source automations. Ignored when "On channels" above is set.' },
       { name: 'from', label: 'From node #', kind: 'number', placeholder: 'any', advanced: true, help: 'Only fire for messages from this node number.' },
+      {
+        name: 'includeMeshCoreReactions', label: 'Also fire on MeshCore reactions', kind: 'checkbox', advanced: true,
+        warning: 'A reaction is one tap for the sender. A rule that sends a message for each one can flood a channel; set a cooldown.',
+        help: 'Off: a MeshCore emoji reaction never fires this rule. On: it fires with the emoji as the text and trigger.isTapback = 1. Meshtastic tapbacks always fire; filter them with trigger.isTapback.',
+      },
       COOLDOWN,
       COOLDOWN_SCOPE,
       // `includeSelf` (bypasses the engine's #3914 self-origin guard, #4694) is
@@ -405,6 +410,7 @@ const EVENT_NUMERIC: Record<string, FieldOpt[]> = {
     // them). Needed to express Auto-Acknowledge's {Channel,Direct} ×
     // {ZeroHop,MultiHop} matrix, where ZeroHop means hops == 0 AND NOT viaMqtt.
     { value: 'isDM', label: 'Is a direct message (1 = yes, 0 = channel)' },
+    { value: 'isTapback', label: 'Is a tapback / reaction (1 = yes, 0 = no)' },
     { value: 'viaMqtt', label: 'Arrived via MQTT (1 = yes, 0 = RF)' },
     // #4340 Phase 4: derived, total (never NaN) form of the ZeroHop half of the
     // matrix above — computed via Auto-Acknowledge's own autoAckIsZeroHop() on
@@ -477,6 +483,8 @@ const EVENT_STRING: Record<string, FieldOpt[]> = {
   'trigger.message': [
     { value: 'text', label: 'Message text' }, { value: 'fromId', label: 'Sender node id' }, { value: 'toId', label: 'Recipient node id' },
     { value: 'scopeName', label: 'MeshCore scope/region' },
+    { value: 'reactionTargetText', label: 'MeshCore: text of the message reacted to' },
+    { value: 'reactionTargetSender', label: 'MeshCore: sender of the message reacted to' },
   ],
   'trigger.telemetry': [{ value: 'telemetryType', label: 'Metric name' }],
   'trigger.nodeUpdated': MESHCORE_NODE_EVENT_STRING_FIELDS,
@@ -724,7 +732,7 @@ export const ACTIONS: BlockDef[] = [
       { name: 'sourceIds', label: 'Send via sources', kind: 'sendSourceMulti', help: 'Which radios to send through (MQTT sources are receive-only and excluded). Leave none to use the source that triggered the automation — but a source IS required for source-less triggers like System events and Schedules.' },
       { name: 'channels', label: 'On channels', kind: 'channelMulti', help: 'Channels to post to, unified by name + key across your sources (the correct local slot is resolved per source). Leave none to use the triggering channel.' },
       { name: 'to', label: 'DM to node #', kind: 'text', tokens: true, placeholder: 'blank = channel; {{ trigger.from }} replies to sender', advanced: true },
-      { name: 'replyToTrigger', label: 'Reply to the triggering message', kind: 'checkbox', advanced: true, help: 'Meshtastic: threads the reply as a tapback. MeshCore has no tapback, so instead it auto-prepends the @[sender]: mention (using {{ trigger.senderLabel }} — sender name, else channel name, else id) to your text, so you don’t have to write it yourself. An existing @[…] mention in your text = no change.' },
+      { name: 'replyToTrigger', label: 'Reply to the triggering message', kind: 'checkbox', advanced: true, help: 'Meshtastic: threads the reply as a tapback. MeshCore sends no threaded reply, so instead it auto-prepends the @[sender]: mention (using {{ trigger.senderLabel }} — sender name, else channel name, else id) to your text, so you don’t have to write it yourself. An existing @[…] mention in your text = no change.' },
       {
         name: 'maxAttempts', label: 'DM resend attempts', kind: 'number', advanced: true,
         placeholder: '1', // 1–3; mirrors SEND_MAX_ATTEMPTS_* in src/types/automation.ts.

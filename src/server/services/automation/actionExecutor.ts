@@ -638,6 +638,11 @@ export async function executeAction(node: AutomationNode, ctx: EngineEvalContext
         // MeshCore (#5762): react only to a MeshCore message this same source
         // received. Anything else is a recorded skip, not a failed run.
         if (await isMeshCoreSource(ctx, sid)) {
+          // A reaction is not itself reactable (#5763): record the skip.
+          if (ctx.trigger.fields.protocol === 'meshcore' && ctx.trigger.fields.isTapback === true) {
+            results.push({ skipped: true, reason: 'meshcore reaction: TARGET_IS_REACTION' });
+            continue;
+          }
           const meshcoreMessageId = ctx.trigger.fields.meshcoreMessageId;
           if (ctx.trigger.fields.protocol !== 'meshcore' || sid !== ctx.trigger.sourceId || typeof meshcoreMessageId !== 'string') {
             results.push({ skipped: true, reason: 'tapback on MeshCore needs a triggering MeshCore message on the same source' });

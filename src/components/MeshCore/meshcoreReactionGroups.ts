@@ -18,9 +18,20 @@ export interface ReactionChip {
   pending: boolean;
 }
 
-export interface ReactionGrouping {
+/** The fields grouping reads; MeshCore stream rows and Unified adapters both fit. */
+export interface ReactionGroupRow {
+  id: string;
+  fromPublicKey: string;
+  fromName?: string | null;
+  reactionEmoji?: string | null;
+  reactionTargetId?: string | null;
+  reactionPending?: boolean;
+  filtered?: 'ignore' | 'block';
+}
+
+export interface ReactionGrouping<M extends ReactionGroupRow = MeshCoreMessage> {
   /** Rows to draw: everything but reactions that became a chip or are hidden. */
-  rows: MeshCoreMessage[];
+  rows: M[];
   /** Target id → chips, in first-seen order. */
   chipsByTarget: Map<string, ReactionChip[]>;
 }
@@ -36,14 +47,14 @@ export interface ReactionGroupingOptions {
 /** Received DMs carry a 6-byte key prefix; compare reactors at that width. */
 const REACTOR_KEY_HEX = 12;
 
-export function isReactionRow(m: Pick<MeshCoreMessage, 'reactionEmoji'>): boolean {
+export function isReactionRow(m: Pick<ReactionGroupRow, 'reactionEmoji'>): boolean {
   return !!m.reactionEmoji;
 }
 
-export function groupMeshCoreReactions(
-  messages: MeshCoreMessage[],
+export function groupMeshCoreReactions<M extends ReactionGroupRow>(
+  messages: M[],
   opts: ReactionGroupingOptions,
-): ReactionGrouping {
+): ReactionGrouping<M> {
   const { resolutions, selfPublicKey, youLabel, nameForKey } = opts;
   if (!messages.some(isReactionRow)) return { rows: messages, chipsByTarget: new Map() };
 
@@ -52,7 +63,7 @@ export function groupMeshCoreReactions(
     if (!isReactionRow(m)) present.add(m.id);
   }
 
-  const rows: MeshCoreMessage[] = [];
+  const rows: M[] = [];
   const chipsByTarget = new Map<string, ReactionChip[]>();
   // `${targetId}\n${foldedEmoji}` → reactor identities already counted.
   const seen = new Map<string, Set<string>>();

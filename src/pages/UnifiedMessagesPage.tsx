@@ -14,6 +14,10 @@
  *    view — you can see where the signal actually landed.
  *  - Reactions (emoji tapbacks) are hidden from the main feed and rendered as
  *    small bubbles on their parent message, matching MessagesTab behavior.
+ *  - MeshCore reactions become read-only chips on their target message. Row
+ *    refs from the server resolve across every loaded page; a reaction whose
+ *    target is not loaded is hidden, and one with no target shows as a dim
+ *    line (#5763).
  *  - Reply threading shows a quoted preview of the parent when `replyId` is
  *    set, resolved from the already-loaded page cache.
  *  - Source filter: optional dropdown that narrows to messages heard by a
@@ -40,6 +44,11 @@ import { MESH_PROTOCOL_LABEL, sourceTypeMeshProtocol } from '../utils/meshProtoc
 import protocolStripe from '../components/messages/ProtocolStripe.module.css';
 import { ALL_CHANNELS_PARAM } from '../utils/unifiedChannelFilter';
 import { hopDisplay } from './unifiedHops';
+import { groupUnifiedMeshCoreReactions } from './unifiedMeshCoreReactions';
+import {
+  MeshCoreReactionChips,
+  MeshCoreUnmatchedReaction,
+} from '../components/MeshCore/MeshCoreReactionChips';
 import HopBadge from '../components/unified/HopBadge';
 import MessageExportDialog from '../components/MessageExportDialog/MessageExportDialog';
 
@@ -82,6 +91,12 @@ interface UnifiedMessage {
   timestamp: number; // canonical device time (earliest heard) — for display
   createdAt: number; // earliest server DB arrival time — for ordering / pagination cursor (#3122)
   receptions: Reception[];
+  /** Non-reaction MeshCore entries: ids other entries' reaction refs point at. */
+  meshcoreRowRefs?: string[];
+  /** MeshCore reaction entries: `text` is the emoji. */
+  reactionEmoji?: string;
+  /** Refs of the targeted rows; empty means unmatched. */
+  reactionTargetRefs?: string[];
 }
 
 interface UnifiedChannel {
@@ -290,6 +305,9 @@ export default function UnifiedMessagesPage() {
     return foldUnifiedMessagePages(accumulatorRef.current, data?.pages);
   }, [data?.pages, selectedChannel]);
 
+  // MeshCore reactions fold into chips on their target (#5763).
+  const mcReactions = useMemo(() => groupUnifiedMeshCoreReactions(allMessages), [allMessages]);
+
   // ── All distinct sources heard across the loaded set ──────────────────
   const sourcesInView = useMemo(() => {
     const map = new Map<string, string>();
@@ -312,9 +330,10 @@ export default function UnifiedMessagesPage() {
 
   // ── Apply source filter ───────────────────────────────────────────────
   const filteredMessages = useMemo(() => {
-    if (!sourceFilter) return allMessages;
-    return allMessages.filter((m) => m.receptions.some((r) => r.sourceId === sourceFilter));
-  }, [allMessages, sourceFilter]);
+    const rows = mcReactions.rows;
+    if (!sourceFilter) return rows;
+    return rows.filter((m) => m.receptions.some((r) => r.sourceId === sourceFilter));
+  }, [mcReactions, sourceFilter]);
 
   // Build a quick index by packet id for reply preview + reaction grouping.
   // Meshtastic firmware sets `reply_id` to the parent's meshpacket id, not its
@@ -560,6 +579,19 @@ export default function UnifiedMessagesPage() {
           const protocol = sourceTypeMeshProtocol(msg.receptions[0]?.sourceType);
           const receptionCount = msg.receptions.length;
 
+          if (msg.reactionEmoji) {
+            return (
+              <div key={msg.dedupKey}>
+                {showDivider && (
+                  <div className="unified-date-divider">
+                    <span>{dateLabel}</span>
+                  </div>
+                )}
+                <MeshCoreUnmatchedReaction name={senderLabel(msg)} emoji={msg.reactionEmoji} />
+              </div>
+            );
+          }
+
           const reactions = msg.packetId != null ? reactionsByParent.get(msg.packetId) ?? [] : [];
 
           // Reply preview: look up parent by packet id (firmware's reply_id
@@ -662,6 +694,7 @@ export default function UnifiedMessagesPage() {
                     ))}
                   </div>
                 )}
+                <MeshCoreReactionChips chips={mcReactions.chipsByTarget.get(msg.dedupKey) ?? []} />
               </div>
             </div>
           );

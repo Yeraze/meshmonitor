@@ -56,7 +56,7 @@ const PARAMS: ParamSpec[] = [
       { value: 'fixed', label: 'Tapback: thumbs up' },
       { value: 'text', label: 'Reply message' },
     ],
-    help: 'The hop-count and thumbs-up tapbacks react to the triggering message (Meshtastic only — MeshCore has no tapback). '
+    help: 'The hop-count and thumbs-up tapbacks react to the triggering message (on MeshCore they react to the triggering message too). '
       + 'Reply message sends a short reply and works on both protocols.',
   },
 ];

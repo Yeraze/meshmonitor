@@ -16,7 +16,7 @@
  *   start=<ms> end=<ms>  inclusive UTC epoch-ms range on the message time
  *   sender=<id>          Meshtastic node id (!abcd1234) or MeshCore public key
  *                        prefix / channel sender name
- *   includeReactions=true
+ *   includeReactions=true  emoji reactions, both networks (default: left out)
  *   tz=<IANA zone>       zone for the local_time column (default UTC)
  *
  * Permissions: the same rules as reading messages (see
@@ -193,6 +193,8 @@ async function buildMeshtasticStream(
         rssi: m.rxRssi ?? null,
         snr: m.rxSnr ?? null,
         hops: hopsFrom(m.hopStart, m.hopLimit),
+        reaction: Number(m.emoji) > 0 ? 1 : null,
+        reply_to_id: m.replyId ?? null,
       },
     };
   };
@@ -275,10 +277,12 @@ async function buildMeshcoreStream(
         sender_id: fromIsChannelKey ? '' : m.fromPublicKey,
         destination: idx === null ? (m.toPublicKey ?? '') : 'broadcast',
         message: m.text,
-        message_id: null,
+        message_id: m.id,
         rssi: m.rssi ?? null,
         snr: m.snr ?? null,
         hops: m.hopCount ?? null,
+        reaction: m.reactionEmoji ? 1 : null,
+        reply_to_id: m.reactionTargetId ?? null,
       },
     };
   };
@@ -296,6 +300,7 @@ async function buildMeshcoreStream(
         startMs: filters.startMs,
         endMs: filters.endMs,
         sender: filters.sender,
+        includeReactions: filters.includeReactions,
         after,
         limit: EXPORT_BATCH_SIZE,
       });

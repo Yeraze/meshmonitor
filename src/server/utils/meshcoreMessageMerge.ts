@@ -45,6 +45,12 @@
  * fixed by the row that opened it. New rows always sort last, so a reception
  * that arrives later can join a cluster but can never change the key of one
  * already shown.
+ *
+ * ## Reactions (#5759)
+ *
+ * A reaction row's body is just its emoji, so `reactionTargetHash` joins its
+ * identity (plain rows are untouched). A second copy on a source already in a
+ * cluster is kept in `absorbed` so refs can still name it.
  */
 import { createHash } from 'node:crypto';
 import {
@@ -71,6 +77,12 @@ export interface MeshCoreMergeRow {
   createdAt: number;
   senderTimestamp?: number | null;
   messageType?: string | null;
+  /** Set on a reaction row (#5759); its emoji. */
+  reactionEmoji?: string | null;
+  /** Wire hash of the message a reaction targets. Never leaves the server. */
+  reactionTargetHash?: string | null;
+  /** Row id of the target on the same source, once resolved. */
+  reactionTargetId?: string | null;
 }
 
 /** One permitted row, tagged with where it came from. */
@@ -89,6 +101,11 @@ export interface MeshCoreMergeCluster<I extends MeshCoreMergeItem> {
   dedupKey: string;
   /** One member per source, in `createdAt` order. `members[0]` opened the cluster. */
   members: I[];
+  /**
+   * Later copies from a source already in the cluster (a DM retry heard twice).
+   * They are the same message but not receptions; refs still name them.
+   */
+  absorbed: I[];
 }
 
 const CHANNEL_PREFIX = 'channel-';
@@ -182,13 +199,20 @@ export function meshcoreLogicalIdentity(item: MeshCoreMergeItem): string | null 
   if (meshcoreChannelIndexOf(row) !== null) {
     if (!item.channelIdentity) return null;
     const { name, body } = normaliseMeshCoreChannelContent(row);
-    return ['c', item.channelIdentity, name, body].join('\u0000');
+    const parts = ['c', item.channelIdentity, name, body];
+    // A reaction's body is only its emoji, so the target joins the identity:
+    // the same emoji sent to two messages in one second stays two reactions.
+    // Plain rows add nothing, so their keys are unchanged.
+    if (row.reactionEmoji) parts.push('rx', row.reactionTargetHash ?? '');
+    return parts.join('\u0000');
   }
   const from = keyPrefix(row.fromPublicKey);
   const to = keyPrefix(row.toPublicKey);
   if (!from || !to) return null;
   const kind = row.messageType === 'room_post' ? 'r' : 'd';
-  return [kind, from, to, (row.text ?? '').trim()].join('\u0000');
+  const parts = [kind, from, to, (row.text ?? '').trim()];
+  if (row.reactionEmoji) parts.push('rx', row.reactionTargetHash ?? '');
+  return parts.join('\u0000');
 }
 
 /** dedupKey of a cluster opened by a row with an exact sender second. */
@@ -205,6 +229,7 @@ export function meshcoreRowDedupKey(sourceId: string, rowId: string): string {
 interface OpenCluster<I extends MeshCoreMergeItem> {
   dedupKey: string;
   members: I[];
+  absorbed: I[];
   sources: Set<string>;
   exactSec: number | null;
   openedAt: number;
@@ -234,6 +259,7 @@ export function clusterMeshCoreReceptions<I extends MeshCoreMergeItem>(
     const c: OpenCluster<I> = {
       dedupKey,
       members: [item],
+      absorbed: [],
       sources: new Set([item.sourceId]),
       exactSec,
       openedAt: item.row.createdAt,
@@ -285,10 +311,45 @@ export function clusterMeshCoreReceptions<I extends MeshCoreMergeItem>(
     if (sec !== null && target.exactSec === null) target.exactSec = sec;
     // A second copy on a source already in the cluster (a DM retry heard
     // twice) is the same message: keep that source's first reception.
-    if (target.sources.has(item.sourceId)) continue;
+    if (target.sources.has(item.sourceId)) {
+      target.absorbed.push(item);
+      continue;
+    }
     target.sources.add(item.sourceId);
     target.members.push(item);
   }
 
-  return out.map(({ dedupKey, members }) => ({ dedupKey, members }));
+  return out.map(({ dedupKey, members, absorbed }) => ({ dedupKey, members, absorbed }));
+}
+
+export interface MeshCoreClusterRefs {
+  /** Plain cluster: a ref for every member and absorbed row. */
+  rowRefs?: string[];
+  /** Reaction cluster: the emoji. */
+  reactionEmoji?: string;
+  /** Reaction cluster: refs of the target rows; empty when unmatched. */
+  reactionTargetRefs?: string[];
+}
+
+/**
+ * Page-independent refs for a cluster, so a client holding several pages can
+ * attach a reaction to its target. Built from the cluster's own (already
+ * permitted) rows only.
+ */
+export function meshcoreClusterRefs<I extends MeshCoreMergeItem>(
+  cluster: MeshCoreMergeCluster<I>,
+): MeshCoreClusterRefs {
+  const all = [...cluster.members, ...cluster.absorbed];
+  const emoji = cluster.members[0]?.row.reactionEmoji;
+  if (emoji) {
+    const refs: string[] = [];
+    for (const x of all) {
+      const t = x.row.reactionTargetId;
+      if (!t) continue;
+      const ref = meshcoreRowDedupKey(x.sourceId, t);
+      if (!refs.includes(ref)) refs.push(ref);
+    }
+    return { reactionEmoji: emoji, reactionTargetRefs: refs };
+  }
+  return { rowRefs: all.map((x) => meshcoreRowDedupKey(x.sourceId, x.row.id)) };
 }

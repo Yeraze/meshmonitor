@@ -362,7 +362,7 @@ describe('GET /api/unified/messages — MeshCore cross-source merge (#5587)', ()
     });
   });
 
-  describe('reaction rows (#5759, interim until the chips ship)', () => {
+  describe('reaction rows (#5759)', () => {
     const reactionRow = (sourceId: string, over: Record<string, unknown> = {}) =>
       companionRow(sourceId, {
         fromName: 'Bob',

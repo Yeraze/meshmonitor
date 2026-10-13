@@ -259,8 +259,11 @@ MeshMonitor reads emoji reactions sent by [MeshCore One](https://github.com/Avi0
 
 - A reaction shows as a **chip** under the message it answers. The chip carries a count when more than one node sent the same emoji; hover it for the names.
 - When this source never heard the target message, the reaction shows as one dim line: *"Bob reacted 👍 to a message not seen here"*. Hover it for the original text. If the target arrives later, the line turns into a chip.
-- A reaction is not a message. It does not mark a channel or DM unread, raise a mention alert, or trigger Auto-Responder, Forwarding or an automation.
+- A reaction is not a message. It does not mark a channel or DM unread, raise a mention alert, or trigger Auto-Responder or Forwarding. It fires an automation only when that rule has **Also fire on MeshCore reactions** ticked (see [Automation Engine](/features/automation-engine)).
 - Reactions are matched per source. A reaction heard on one source does not attach to a message only another source heard.
+- **Unified Messages** shows the same chips on the merged message. A reaction heard on several sources counts once. You see only what the sources you can read have matched, and chips there are read-only: send reactions from the source's own MeshCore page.
+- **CSV export** leaves reactions out unless you tick **Include emoji reactions**. A reaction row has `reaction` = 1 and `reply_to_id` = the id of the message it answers.
+- **Search** leaves reactions out.
 - To **send** a reaction, use the react button on a message and pick an emoji, or click a chip another node left to add the same one. Your own reaction shows with an accent border. MeshMonitor sends the MeshCore One format.
 - You can send each emoji once per message. A reaction is never resent, and there is no way to take one back (MeshCore One has none either).
 - You cannot react to a room post, to another reaction, or to a message stored before reactions were supported.
@@ -272,6 +275,8 @@ Three switches sit under **MeshCore → Settings → Reactions**:
 | Show MeshCore reactions | This source | On | Off stores and shows reactions as plain text, as before. |
 | Auto-Acknowledge may answer reactions | All MeshCore sources | Off | On lets a reaction that matches your Auto-Acknowledge rules trigger a reply. |
 | Send reactions from MeshMonitor | This source | On | Off hides the react button, makes the API refuse, and makes automations skip their reaction. |
+
+The Auto-Acknowledge switch covers the built-in Auto-Acknowledge only. It has no effect on automations.
 
 ::: warning Airtime
 A reaction is one tap for the sender. With the second switch on, each one can trigger an Auto-Acknowledge reply on the air. Leave it off on busy channels.

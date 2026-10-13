@@ -67,6 +67,13 @@ export interface NodeDataProvider {
    */
   getChannelName?(sourceId: string | null, channelIndex: number): Promise<string | null>;
   /**
+   * Text and sender name of a stored MeshCore message, for the target of a
+   * reaction (#5763). Optional; absent or null = the target fields stay unset.
+   */
+  getMeshCoreMessage?(sourceId: string | null, messageId: string): Promise<{ text: string; fromName: string | null } | null>;
+  /** True when `name` is the local node name of any MeshCore source (#5763 self guard). */
+  isOwnMeshCoreName?(name: string): Promise<boolean>;
+  /**
    * Current position of a waypoint, for a geofence anchored to one rather than
    * to a drawn region (#4722). Resolved on every geofence check so moving the
    * waypoint moves the fence with no edit to the automation.

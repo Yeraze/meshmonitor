@@ -757,3 +757,57 @@ describe('resolveTriggerPath', () => {
     expect(resolveTriggerPath(ctx, 'var.x', 9999)).toBeUndefined();
   });
 });
+
+describe('MeshCore reaction trigger fields (#5763)', () => {
+  const THUMB = '\u{1F44D}';
+  const rx = (o: Partial<MeshCoreMessage> = {}) =>
+    mcMsg({ fromPublicKey: 'channel-0', fromName: 'Bob', text: THUMB, reactionEmoji: THUMB, reactionTargetId: 't1', ...o });
+
+  it('a plain message is not a tapback', () => {
+    const f = buildMeshCoreMessageContext(mcMsg(), 'default', 1).fields;
+    expect(f.isTapback).toBe(false);
+    expect(f.replyContext).toBe('');
+    expect(f.emoji).toBeUndefined();
+    expect(f.reactionTargetId).toBeUndefined();
+  });
+
+  it('a resolved reaction carries the target fields', () => {
+    const f = buildMeshCoreMessageContext(rx(), 'default', 1, {
+      reactionTarget: { text: 'hello', fromName: 'Alice' },
+    }).fields;
+    expect(f).toMatchObject({
+      isTapback: true, emoji: 1, replyContext: REPLY_CONTEXT_TAPBACK, text: THUMB, 
+      reactionTargetId: 't1', reactionTargetText: 'hello', reactionTargetSender: 'Alice',
+    });
+  });
+
+  it('an unmatched reaction leaves target text unset', () => {
+    const f = buildMeshCoreMessageContext(rx({ reactionTargetId: null }), 'default', 1).fields;
+    expect(f.isTapback).toBe(true);
+    expect(f.reactionTargetId).toBeUndefined();
+    expect(f.reactionTargetText).toBeUndefined();
+  });
+
+  it('the filter drops a reaction unless includeMeshCoreReactions is exactly true', () => {
+    expect(meshCoreMessageMatchesFilter(rx(), {})).toBe(false);
+    expect(meshCoreMessageMatchesFilter(rx(), { includeMeshCoreReactions: false })).toBe(false);
+    expect(meshCoreMessageMatchesFilter(rx(), { includeMeshCoreReactions: 'true' })).toBe(false);
+    expect(meshCoreMessageMatchesFilter(rx(), { includeMeshCoreReactions: true })).toBe(true);
+    expect(meshCoreMessageMatchesFilter(rx(), { includeMeshCoreReactions: true, textContains: 'zzz' })).toBe(false);
+    expect(meshCoreMessageMatchesFilter(rx(), { includeMeshCoreReactions: true, channel: 1 })).toBe(false);
+  });
+
+  it('a plain message ignores the param', () => {
+    expect(meshCoreMessageMatchesFilter(mcMsg(), { includeMeshCoreReactions: true })).toBe(true);
+  });
+
+  it('explains the miss', () => {
+    expect(describeMeshCoreFilterMiss(rx(), {})).toContain('Also fire on MeshCore reactions');
+    expect(describeMeshCoreFilterMiss(rx(), { includeMeshCoreReactions: true })).toBeUndefined();
+  });
+
+  it('Meshtastic exposes isTapback', () => {
+    expect(buildMessageContext(msg({ emoji: 1, replyId: 5 }), 'default', 1).fields.isTapback).toBe(true);
+    expect(buildMessageContext(msg(), 'default', 1).fields.isTapback).toBe(false);
+  });
+});

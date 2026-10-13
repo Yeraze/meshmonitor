@@ -48,6 +48,7 @@ import {
   buildScheduleContext,
   messageMatchesFilter,
   meshCoreMessageMatchesFilter,
+  messageFilterIncludesMeshCoreReactions,
   reticulumMessageMatchesFilter,
   describeMessageFilterMiss,
   describeMeshCoreFilterMiss,
@@ -1044,19 +1045,32 @@ export class AutomationEngineService {
     // `selfOrigin` (#5551) marks a repeater-decrypted channel message whose
     // sender is one of our own nodes — channel traffic has no sender key to
     // match, so the ingest path flags it instead.
-    const isSelf = msg.selfOrigin === true || await this.isSelfMeshCore(sourceId, msg.fromPublicKey);
+    const channelIdx = parseMeshCoreChannelIdx(msg.fromPublicKey);
+    const isReaction = !!msg.reactionEmoji;
+    // A reaction is also ours when stored as 'local', or when its channel
+    // reactor name is a local MeshCore node name on any source (#5763).
+    const isSelf = msg.selfOrigin === true
+      || await this.isSelfMeshCore(sourceId, msg.fromPublicKey)
+      || (isReaction && msg.fromPublicKey === 'local')
+      || (isReaction && channelIdx !== undefined && !!msg.fromName
+        && !!this.data.isOwnMeshCoreName && await this.data.isOwnMeshCoreName(msg.fromName));
     // Same reconciliation as onMessage: resolve the channel name when any message
     // automation is loaded (subsumes #3974's channelName/`channels` filter gate),
     // feeding both the universal channelName/senderLabel tokens and the matcher's
     // single-/multi-channel matching. `channel-<idx>` is parsed straight from the
     // sender key so we can resolve BEFORE building the context (to pass it in).
     const hasMessageAutomations = (this.index.get('trigger.message') ?? []).length > 0;
-    const channelIdx = parseMeshCoreChannelIdx(msg.fromPublicKey);
     let channelName: string | null | undefined;
     if (hasMessageAutomations && this.data.getChannelName && typeof channelIdx === 'number') {
       channelName = await this.data.getChannelName(sourceId, channelIdx);
     }
-    const ctx = buildMeshCoreMessageContext(msg, sourceId, this.now(), { channelName });
+    // Look the reaction target up only when a loaded rule opted in (no DB read otherwise).
+    const wantsReactions = isReaction
+      && (this.index.get('trigger.message') ?? []).some((a) => messageFilterIncludesMeshCoreReactions(a.triggerNode.params ?? {}));
+    const reactionTarget = wantsReactions && msg.reactionTargetId && this.data.getMeshCoreMessage
+      ? await this.data.getMeshCoreMessage(sourceId, msg.reactionTargetId)
+      : null;
+    const ctx = buildMeshCoreMessageContext(msg, sourceId, this.now(), { channelName, reactionTarget });
     return this.runTrigger(
       ctx,
       (a) => (!isSelf || this.includesSelfOrigin(a)) && meshCoreMessageMatchesFilter(msg, a.triggerNode.params ?? {}, channelName),

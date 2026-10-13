@@ -98,7 +98,7 @@ Pick what to include:
 | **From / To** | Date and time range, entered in your browser's time zone. |
 | **Sender ID** | One sender: a Meshtastic node ID (`!abcd1234`), or a MeshCore public key prefix or channel sender name. |
 | **Time zone** | IANA zone (for example `America/New_York`) for the `local_time` column. Defaults to your browser's zone. |
-| **Include emoji reactions** | Reactions (tapbacks) are left out unless you tick this. |
+| **Include emoji reactions** | Reactions are left out unless you tick this. Covers Meshtastic tapbacks and MeshCore reactions. |
 
 The file has one row per stored message, oldest first, across all selected sources. A message heard by two sources appears twice, once per source; the `source` column tells them apart. Traceroute replies are never exported.
 
@@ -113,8 +113,10 @@ The file has one row per stored message, oldest first, across all selected sourc
 | `sender_id` | Node ID or MeshCore public key (blank for MeshCore channel messages, which carry only a name) |
 | `destination` | `broadcast` for channel messages, else the recipient ID |
 | `message` | Message text |
-| `message_id` | Meshtastic packet ID (blank for MeshCore) |
+| `message_id` | Meshtastic packet ID, or the MeshCore message's row id |
 | `rssi`, `snr`, `hops` | Reception details where known |
+| `reaction` | `1` on an emoji reaction (the emoji is in `message`), else blank |
+| `reply_to_id` | The `message_id` this row answers: a reply's or reaction's target. Blank when there is none, or when a MeshCore reaction's target was never seen |
 
 The file is UTF-8 with a byte-order mark and CRLF line endings, so Excel opens it with emoji and accented names intact. Cells that start with `=`, `+`, `-` or `@` get a leading `'` so a message can never run as a spreadsheet formula.
 

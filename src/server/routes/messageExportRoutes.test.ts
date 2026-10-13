@@ -128,7 +128,7 @@ describe('GET /api/messages/export', () => {
       expect(res.headers['content-disposition']).toMatch(/attachment; filename="meshmonitor-messages-.*\.csv"/);
       expect(res.text.charCodeAt(0)).toBe(0xfeff);
       expect(res.text.split('\r\n')[0].replace(/^\uFEFF/, '')).toBe(
-        'timestamp_utc,local_time,network,source,channel,sender_name,sender_id,destination,message,message_id,rssi,snr,hops',
+        'timestamp_utc,local_time,network,source,channel,sender_name,sender_id,destination,message,message_id,rssi,snr,hops,reaction,reply_to_id',
       );
       const [row] = records(res.text);
       expect(row).toMatchObject({
@@ -176,8 +176,31 @@ describe('GET /api/messages/export', () => {
         sender_id: '',
         snr: '-4.25',
         hops: '2',
-        message_id: '',
+        message_id: 'mc-2',
+        reaction: '',
+        reply_to_id: '',
       });
+    });
+
+    it('leaves MeshCore reactions out by default and exports them with includeReactions', async () => {
+      await seedMc('hello');
+      const target = `mc-${seq}`;
+      await seedMc('\u{1F44D}', { reactionEmoji: '\u{1F44D}', reactionTargetHash: 'b45pc4ek', reactionTargetId: target });
+      await seedMc('\u{1F389}', { reactionEmoji: '\u{1F389}', reactionTargetHash: 'deadbeef' });
+      const agent = await harness.loginAs(harness.admin);
+      expect(records((await agent.get('/export')).text).map((r) => r.message)).toEqual(['hello']);
+      const rows = records((await agent.get('/export?includeReactions=true')).text);
+      expect(rows.map((r) => r.message)).toEqual(['hello', '\u{1F44D}', '\u{1F389}']);
+      expect(rows[0]).toMatchObject({ reaction: '', reply_to_id: '' });
+      expect(rows[1]).toMatchObject({ reaction: '1', reply_to_id: target });
+      expect(rows[2]).toMatchObject({ reaction: '1', reply_to_id: '' });
+    });
+
+    it('marks a Meshtastic tapback with reaction=1 and its reply_to_id', async () => {
+      await seed(harness.sourceA, 2, '\u{1F44D}', { emoji: 1, replyId: 4242 });
+      const agent = await harness.loginAs(harness.admin);
+      const [row] = records((await agent.get('/export?includeReactions=true')).text);
+      expect(row).toMatchObject({ reaction: '1', reply_to_id: '4242' });
     });
   });
 

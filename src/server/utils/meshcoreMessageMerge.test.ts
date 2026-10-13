@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   clusterMeshCoreReceptions,
+  meshcoreClusterRefs,
   meshcoreChannelIndexOf,
   meshcoreExactDedupKey,
   meshcoreLogicalIdentity,
@@ -331,5 +332,66 @@ describe('own DM merge key (#5759)', () => {
     const out = clusterMeshCoreReceptions([own, theirs]);
     expect(shape(out)).toEqual([['A', 'B']]);
     expect(out[0].dedupKey).toBe(meshcoreExactDedupKey(meshcoreLogicalIdentity(own)!, SEC));
+  });
+});
+
+describe('reactions in the merge (#5759)', () => {
+  const rx = (over: Partial<MeshCoreMergeRow> = {}): Partial<MeshCoreMergeRow> => ({
+    text: '\u{1F44D}',
+    reactionEmoji: '\u{1F44D}',
+    reactionTargetHash: 'aaaa1111',
+    ...over,
+  });
+
+  it('keeps a plain row key byte-identical (pinned literal)', () => {
+    const [c] = clusterMeshCoreReceptions([
+      { row: { ...row({ id: 'pin', timestamp: 1_790_000_000_000, createdAt: 1_790_000_000_400 }) }, sourceId: 's1', channelIdentity: FP },
+    ]);
+    expect(c.dedupKey).toBe('mcx:481d6ae050d3052e8c71866b5e1ee8e4');
+  });
+
+  it('keeps two reactions with different targets (same reactor, emoji, second) apart', () => {
+    const a = item('s1', rx());
+    const b = item('s1', rx({ reactionTargetHash: 'bbbb2222' }));
+    expect(clusterMeshCoreReceptions([a, b])).toHaveLength(2);
+  });
+
+  it('merges the same reaction heard on two sources', () => {
+    const clusters = clusterMeshCoreReceptions([item('s1', rx()), item('s2', rx())]);
+    expect(shape(clusters)).toEqual([['s1', 's2']]);
+  });
+
+  it('puts a second copy on the same source in absorbed, not members', () => {
+    const [c] = clusterMeshCoreReceptions([item('s1', rx({ id: 'first' })), item('s1', rx({ id: 'second', createdAt: T0 + 500 }))]);
+    expect(c.members.map((m) => m.row.id)).toEqual(['first']);
+    expect(c.absorbed.map((m) => m.row.id)).toEqual(['second']);
+  });
+
+  describe('meshcoreClusterRefs', () => {
+    it('lists every member and absorbed row of a plain cluster', () => {
+      const [c] = clusterMeshCoreReceptions([
+        item('s1', { id: 'a' }),
+        item('s2', { id: 'b' }),
+        item('s1', { id: 'c', createdAt: T0 + 500 }),
+      ]);
+      expect(meshcoreClusterRefs(c)).toEqual({ rowRefs: ['mc:s1:a', 'mc:s2:b', 'mc:s1:c'] });
+    });
+
+    it('lists de-duplicated target refs of a reaction cluster', () => {
+      const [c] = clusterMeshCoreReceptions([
+        item('s1', rx({ id: 'r1', reactionTargetId: 't1' })),
+        item('s2', rx({ id: 'r2', reactionTargetId: 't2' })),
+        item('s1', rx({ id: 'r3', reactionTargetId: 't1', createdAt: T0 + 500 })),
+      ]);
+      expect(meshcoreClusterRefs(c)).toEqual({
+        reactionEmoji: '\u{1F44D}',
+        reactionTargetRefs: ['mc:s1:t1', 'mc:s2:t2'],
+      });
+    });
+
+    it('gives an empty target list when nothing resolved', () => {
+      const [c] = clusterMeshCoreReceptions([item('s1', rx())]);
+      expect(meshcoreClusterRefs(c)).toEqual({ reactionEmoji: '\u{1F44D}', reactionTargetRefs: [] });
+    });
   });
 });
