@@ -108,12 +108,23 @@
   max-width: 100%;
 }
 
+/* `.meshcore-form-view button` (MeshCorePage.css) paints every button in the
+   form as a filled accent button. Two classes outrank it; the bare selector
+   covers the confirm button, which the Modal draws outside the form. */
+.section .dangerButton,
 .dangerButton {
   color: var(--color-error);
   border: 1px solid var(--color-error);
   background: transparent;
 }
 
+.section .dangerButton:hover:not(:disabled),
+.dangerButton:hover:not(:disabled) {
+  background: var(--color-surface-hover);
+}
+
+.section .dangerButton:disabled,
 .dangerButton:disabled {
   opacity: 0.5;
+  cursor: not-allowed;
 }
