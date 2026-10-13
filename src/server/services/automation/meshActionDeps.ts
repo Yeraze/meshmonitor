@@ -206,7 +206,7 @@ export function createMeshActionDeps(): ActionDeps {
             if (MESHCORE_REACTION_SKIP_CODES.has(error.code)) {
               return { skipped: true, reason: `meshcore reaction: ${error.code}` };
             }
-            throw new Error(`meshcore reaction failed: ${error.code}: ${error.message}`);
+            throw new Error(`meshcore reaction failed: ${error.code}: ${error.message}`, { cause: error });
           }
           throw error;
         }
