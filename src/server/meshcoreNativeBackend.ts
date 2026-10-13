@@ -402,6 +402,12 @@ const OTHER_PARAMS_COMMANDS: ReadonlySet<string> = new Set([
   'set_auto_add_contacts',
 ]);
 
+type AutoAddExchangeResult =
+  | { kind: 'reply'; config: number; maxHops: number }
+  | { kind: 'ok' }
+  | { kind: 'err' }
+  | { kind: 'timeout' };
+
 export class MeshCoreNativeBackend extends EventEmitter {
   /** Latest raw ContactMsgRecv frame, awaiting its decoded event (#5774). */
   private lastContactMsgFrame: Uint8Array | null = null;
@@ -1579,18 +1585,13 @@ export class MeshCoreNativeBackend extends EventEmitter {
    * `timeout` = silence. Err and timeout both mean "old firmware" to a reader.
    */
   private autoAddExchange(
-    c: any,
+    c: AnyConnection,
     frame: Uint8Array,
-  ): Promise<
-    | { kind: 'reply'; config: number; maxHops: number }
-    | { kind: 'ok' }
-    | { kind: 'err' }
-    | { kind: 'timeout' }
-  > {
+  ): Promise<AutoAddExchangeResult> {
     const K = this.constants!;
     const RESP_AUTOADD_CONFIG = 25;
     return new Promise((resolve) => {
-      const done = (v: any) => {
+      const done = (v: AutoAddExchangeResult) => {
         clearTimeout(timer);
         c.off('rx', onRx);
         resolve(v);

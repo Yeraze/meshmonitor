@@ -7810,7 +7810,13 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
     return { ok: true, config };
   }
 
-  private toAutoAddConfig(data: any): AutoAddConfig {
+  private toAutoAddConfig(raw: unknown): AutoAddConfig {
+    const data = raw as {
+      supported?: boolean;
+      overwrite_oldest?: boolean;
+      types?: Record<string, boolean | undefined>;
+      max_hops?: number;
+    } | null | undefined;
     return {
       supported: data?.supported === true,
       overwriteOldest: data?.overwrite_oldest === true,
