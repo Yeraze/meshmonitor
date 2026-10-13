@@ -111,3 +111,24 @@ export function isOwnReticulumAddress(hash: string | null | undefined): boolean 
   if (!hash) return false;
   return getOwnReticulumAddresses().includes(hash.toLowerCase());
 }
+
+/**
+ * True when `name` (trimmed, case-insensitive) is the local node name of ANY
+ * registered MeshCore source. A channel reaction carries only the reactor's
+ * display name, so this is the self check for our own reactions (#5763).
+ */
+export function isOwnMeshCoreName(name: string | null | undefined): boolean {
+  const wanted = name?.trim().toLowerCase();
+  if (!wanted) return false;
+  for (const manager of sourceManagerRegistry.getAllManagers()) {
+    if (!isMeshCoreManager(manager)) continue;
+    let own: unknown;
+    try {
+      own = manager.getLocalNode()?.name;
+    } catch {
+      continue; // a manager mid-connect must never break the caller
+    }
+    if (typeof own === 'string' && own.trim().toLowerCase() === wanted) return true;
+  }
+  return false;
+}

@@ -4,7 +4,7 @@
  * self-origin guard (#3914) cannot recognise our own traffic arriving there.
  */
 import { describe, it, expect, afterEach } from 'vitest';
-import { getOwnNodeNums, isOwnNodeNum, getOwnPublicKeys, isOwnPublicKey, getOwnReticulumAddresses, isOwnReticulumAddress } from './ownNodes.js';
+import { getOwnNodeNums, isOwnNodeNum, getOwnPublicKeys, isOwnPublicKey, getOwnReticulumAddresses, isOwnReticulumAddress, isOwnMeshCoreName } from './ownNodes.js';
 import { sourceManagerRegistry, type ISourceManager } from '../sourceManagerRegistry.js';
 
 function fakeManager(
@@ -191,6 +191,32 @@ describe('ownNodes', () => {
       expect(isOwnReticulumAddress(null)).toBe(false);
       expect(isOwnReticulumAddress(undefined)).toBe(false);
       expect(isOwnReticulumAddress('')).toBe(false);
+    });
+  });
+
+  describe('MeshCore node names (#5763)', () => {
+    const named = (id: string, type: any, name: string): ISourceManager => ({
+      ...fakeManager(id, type, null, 'AA'),
+      getLocalNode: () => ({ publicKey: 'AA', name, advType: 1 }),
+    }) as ISourceManager;
+
+    it('is false with no managers or a blank name', () => {
+      expect(isOwnMeshCoreName('Bob')).toBe(false);
+      expect(isOwnMeshCoreName('  ')).toBe(false);
+      expect(isOwnMeshCoreName(null)).toBe(false);
+    });
+
+    it('matches case-insensitively and trims, across sources', async () => {
+      await add(named('mc-a', 'meshcore', 'Alpha'));
+      await add(named('mc-b', 'meshcore', 'Bravo Node'));
+      expect(isOwnMeshCoreName(' alpha ')).toBe(true);
+      expect(isOwnMeshCoreName('BRAVO NODE')).toBe(true);
+      expect(isOwnMeshCoreName('Charlie')).toBe(false);
+    });
+
+    it('ignores non-MeshCore managers', async () => {
+      await add(named('tcp-a', 'meshtastic_tcp', 'Alpha'));
+      expect(isOwnMeshCoreName('Alpha')).toBe(false);
     });
   });
 });

@@ -12,7 +12,7 @@ import { sourceManagerRegistry } from '../../sourceManagerRegistry.js';
 import { isAnyMeshCoreSourceType } from '../../../utils/nodeTypeCategory.js';
 import { isMeshCoreManager } from '../../sourceManagerTypes.js';
 import { CHANNEL_DB_OFFSET } from '../../constants/meshtastic.js';
-import { isOwnNodeNum as isOwnedByAnySource, isOwnPublicKey as isOwnedPubkeyByAnySource } from '../../utils/ownNodes.js';
+import { isOwnNodeNum as isOwnedByAnySource, isOwnPublicKey as isOwnedPubkeyByAnySource, isOwnMeshCoreName as isOwnMeshCoreNameAnySource } from '../../utils/ownNodes.js';
 
 function nodeIdOf(nodeNum: number): string {
   return `!${(nodeNum >>> 0).toString(16).padStart(8, '0')}`;
@@ -95,6 +95,24 @@ export function createMeshNodeDataProvider(): NodeDataProvider {
         return await virtualChannelName(sourceId, channelIndex);
       } catch {
         return null;
+      }
+    },
+
+    async getMeshCoreMessage(sourceId, messageId) {
+      if (!sourceId) return null;
+      try {
+        const row = await databaseService.meshcore.getMessageForSource(messageId, sourceId);
+        return row ? { text: row.text, fromName: row.fromName ?? null } : null;
+      } catch {
+        return null;
+      }
+    },
+
+    async isOwnMeshCoreName(name) {
+      try {
+        return isOwnMeshCoreNameAnySource(name);
+      } catch {
+        return false;
       }
     },
 
