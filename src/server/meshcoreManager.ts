@@ -7805,7 +7805,7 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
     if (!response.success) return { ok: false, error: response.error || 'The radio did not accept the options' };
     const config = this.toAutoAddConfig(response.data);
     if (config.supported) {
-      logger.info(`[MeshCore:${this.sourceId}] Auto-add options set: ${JSON.stringify(config)}`);
+      logger.info(`[MeshCore:${this.sourceId}] Auto-add options set: ${safeJson(config)}`);
     }
     return { ok: true, config };
   }
