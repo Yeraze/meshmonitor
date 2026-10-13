@@ -672,7 +672,7 @@ router.post('/config/autoadd-config', meshcoreDeviceLimiter, requireAuth(), requ
     const manager = managerFor(req, res);
     const result = await manager.setAutoAddConfig(patch);
     if (!result.ok) {
-      const code = /needs a connected/.test(result.error) ? 'SOURCE_NOT_CONNECTED' : 'AUTOADD_UPDATE_FAILED';
+      const code = /need a connected/.test(result.error) ? 'SOURCE_NOT_CONNECTED' : 'AUTOADD_UPDATE_FAILED';
       return fail(res, code === 'SOURCE_NOT_CONNECTED' ? 409 : 502, code, result.error);
     }
     if (!result.config.supported) {
