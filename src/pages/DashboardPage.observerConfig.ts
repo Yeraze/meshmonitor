@@ -535,11 +535,11 @@ export const OBSERVER_BLOCK_FIELDS: readonly ObserverBlockFieldDef[] = [
   {
     key: 'iataCode',
     labelKey: 'meshcore.form.observer_iata',
-    labelFallback: 'Region (IATA)',
+    labelFallback: 'Observer location (IATA)',
     placeholder: 'MCO',
     helpKey: 'meshcore.form.observer_iata_help',
     helpFallback:
-      "Three-letter IATA code for your region (e.g. MCO for Central Florida), or 'test' for a local broker.",
+      "Three-letter IATA airport code for where this observer publishes from (e.g. MCO for Central Florida). It becomes the location part of the MQTT topic (meshcore/{IATA}/{PUBLIC_KEY}/packets). It is not a MeshCore RF region or a repeater forwarding scope. Use 'test' only with a local test broker.",
   },
 ];
 

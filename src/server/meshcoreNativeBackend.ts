@@ -377,6 +377,16 @@ function khzToLibBw(v: number): number {
 
 // ---------------- backend ----------------
 
+/** Bridge commands that read-modify-write the shared SetOtherParams frame (#5773). */
+const OTHER_PARAMS_COMMANDS: ReadonlySet<string> = new Set([
+  'set_advert_loc_policy',
+  'set_telemetry_mode_base',
+  'set_telemetry_mode_loc',
+  'set_telemetry_mode_env',
+  'set_other_params',
+  'set_auto_add_contacts',
+]);
+
 export class MeshCoreNativeBackend extends EventEmitter {
   public readonly sourceId: string;
   private config: NativeBackendConfig;
@@ -1376,7 +1386,10 @@ export class MeshCoreNativeBackend extends EventEmitter {
     }
     const id = `${++this.commandSeq}`;
     try {
-      const data = await this.withTimeout(this.dispatch(cmd, params), timeoutMs, cmd);
+      const op = OTHER_PARAMS_COMMANDS.has(cmd)
+        ? this.runOtherParamsOp(() => this.dispatch(cmd, params))
+        : this.dispatch(cmd, params);
+      const data = await this.withTimeout(op, timeoutMs, cmd);
       return { id, success: true, data };
     } catch (err) {
       return {
@@ -1390,6 +1403,25 @@ export class MeshCoreNativeBackend extends EventEmitter {
           : {}),
       };
     }
+  }
+
+  /**
+   * One at a time for every command that rewrites SetOtherParams (#5773).
+   *
+   * CMD_SET_OTHER_PARAMS (38) carries five settings in one frame, so each
+   * setter is a read-modify-write: read SelfInfo, patch one field, write all
+   * five back. Run together, they all read the same old snapshot and the last
+   * frame to arrive wins, undoing the others. The UI saved three telemetry
+   * modes at once and only one stuck.
+   *
+   * The chain advances however an op settles, so a failure never wedges it.
+   */
+  private otherParamsChain: Promise<unknown> = Promise.resolve();
+
+  private runOtherParamsOp<T>(fn: () => Promise<T>): Promise<T> {
+    const run = this.otherParamsChain.then(fn, fn);
+    this.otherParamsChain = run.catch(() => undefined);
+    return run;
   }
 
   private async withTimeout<T>(p: Promise<T>, timeoutMs: number, label: string): Promise<T> {
