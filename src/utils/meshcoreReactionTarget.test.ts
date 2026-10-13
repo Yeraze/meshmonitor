@@ -10,7 +10,12 @@ import {
   candidateMatchesReaction,
   pendingKeyOfReaction,
   pendingKeysOfMessage,
+  MESHCORE_REACTIONS_OUTBOUND_DEFAULT,
+  resolveReactionsOutbound,
+  storedMc1Hash,
+  reactionTargetBlocker,
   type ReactionCandidate,
+  type ReactionTargetRow,
 } from './meshcoreReactionTarget.js';
 import { parseMeshCoreReaction, dartStringHash, meshcoreOpenV3Hash } from './meshcoreReactions.js';
 
@@ -188,5 +193,57 @@ describe('pending keys', () => {
   it('offers no mc1 key without a hash, and nothing without a second', () => {
     expect(pendingKeysOfMessage(row({ mc1Hash: null }), chan).some((k) => k.startsWith('mc1:'))).toBe(false);
     expect(pendingKeysOfMessage(row({ mc1Hash: null, senderTimestamp: null, timestamp: 5 }), chan)).toEqual([]);
+  });
+});
+
+describe('resolveReactionsOutbound', () => {
+  it('reads true/false spellings and falls back to the default', () => {
+    for (const v of [true, 'true', '1']) expect(resolveReactionsOutbound(v)).toBe(true);
+    for (const v of [false, 'false', '0']) expect(resolveReactionsOutbound(v)).toBe(false);
+    for (const v of [undefined, null, '', 'maybe', {}]) {
+      expect(resolveReactionsOutbound(v)).toBe(MESHCORE_REACTIONS_OUTBOUND_DEFAULT);
+    }
+  });
+});
+
+describe('storedMc1Hash', () => {
+  it('prefers the stored hash, else rebuilds per scope', () => {
+    expect(storedMc1Hash(row({ mc1Hash: 'abcdefgh' }), 'channel')).toBe('abcdefgh');
+    expect(storedMc1Hash(row({ mc1Hash: null }), 'channel')).toBe(mc1HashForOwnChannelText('Hello', SEC));
+    expect(storedMc1Hash(row({ mc1Hash: null }), 'dm')).toBe(mc1HashForDm('Hello', SEC));
+    expect(storedMc1Hash(row({ mc1Hash: null, senderTimestamp: null, timestamp: 5 }), 'dm')).toBeNull();
+  });
+});
+
+describe('reactionTargetBlocker', () => {
+  const t = (over: Partial<ReactionTargetRow> = {}): ReactionTargetRow => ({
+    id: 'r1',
+    fromPublicKey: 'channel-0',
+    fromName: 'Bob',
+    text: 'Hello',
+    timestamp: SEC * 1000 + 7,
+    senderTimestamp: SEC,
+    ...over,
+  });
+  const chan = { scope: 'channel' as const, selfKey: 'aa'.repeat(32), selfName: 'Me' };
+  const dm = { scope: 'dm' as const, selfKey: 'aa'.repeat(32), selfName: 'Me' };
+
+  it('allows a plain row', () => {
+    expect(reactionTargetBlocker(t(), chan)).toBeNull();
+    expect(reactionTargetBlocker(t({ fromName: null, fromPublicKey: 'b'.repeat(64) }), dm)).toBeNull();
+  });
+  it('checks in order', () => {
+    expect(reactionTargetBlocker(t({ reactionEmoji: '\u{1F44D}', messageType: 'room_post' }), chan)).toBe('TARGET_IS_REACTION');
+    expect(reactionTargetBlocker(t({ text: `@[Bob]\u{1F44D}\n${HELLO}`, keyFingerprint: 'ff' }), chan)).toBe('TARGET_IS_REACTION');
+    expect(reactionTargetBlocker(t({ messageType: 'room_post', keyFingerprint: 'ff' }), chan)).toBe('TARGET_IS_ROOM_POST');
+    expect(reactionTargetBlocker(t({ keyFingerprint: 'ff', fromName: null }), chan)).toBe('TARGET_NOT_REACTABLE');
+    expect(reactionTargetBlocker(t({ fromName: 'a]b', senderTimestamp: null, timestamp: 5 }), chan)).toBe('TARGET_NOT_REACTABLE');
+    expect(reactionTargetBlocker(t({ senderTimestamp: null, timestamp: 5 }), chan)).toBe('TARGET_NO_HASH');
+  });
+  it('names an unnamed channel sender only for our own row', () => {
+    expect(reactionTargetBlocker(t({ fromName: null }), chan)).toBe('TARGET_NOT_REACTABLE');
+    expect(reactionTargetBlocker(t({ fromName: null, fromPublicKey: 'local' }), chan)).toBeNull();
+    expect(reactionTargetBlocker(t({ fromName: null, fromPublicKey: chan.selfKey }), chan)).toBeNull();
+    expect(reactionTargetBlocker(t({ fromName: 'x\ny' }), chan)).toBe('TARGET_NOT_REACTABLE');
   });
 });

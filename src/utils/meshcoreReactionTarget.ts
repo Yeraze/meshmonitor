@@ -12,6 +12,7 @@ import {
   mc1ChannelBody,
   mc1ReactionHash,
   meshcoreOpenV3Hash,
+  parseMeshCoreReaction,
   type MeshCoreReaction,
 } from './meshcoreReactions.js';
 
@@ -83,6 +84,16 @@ export function foldReactionEmoji(emoji: string): string {
   return emoji.replace(/️/g, '');
 }
 
+/** The single place the outbound default lives. Flip here. */
+export const MESHCORE_REACTIONS_OUTBOUND_DEFAULT: boolean = true;
+
+/** true/'true'/'1' -> on; false/'false'/'0' -> off; anything else -> the default. */
+export function resolveReactionsOutbound(value: unknown): boolean {
+  if (value === true || value === 'true' || value === '1' || value === 1) return true;
+  if (value === false || value === 'false' || value === '0' || value === 0) return false;
+  return MESHCORE_REACTIONS_OUTBOUND_DEFAULT;
+}
+
 export interface ReactionCandidate {
   id: string;
   fromPublicKey: string;
@@ -106,12 +117,18 @@ function isOwnRow(c: ReactionCandidate, ctx: ReactionMatchContext): boolean {
   return c.fromPublicKey === 'local' || (!!ctx.selfKey && c.fromPublicKey === ctx.selfKey);
 }
 
-/** The MC1 hash of a stored candidate: the stored value, else rebuilt from the stored fields. */
-function candidateMc1Hash(c: ReactionCandidate, ctx: ReactionMatchContext): string | null {
+/**
+ * The MC1 hash of a stored row: the stored value, else rebuilt from the stored
+ * fields. The sender (outbound reactions) and the matcher share this one rule.
+ */
+export function storedMc1Hash(
+  c: Pick<ReactionCandidate, 'id' | 'text' | 'timestamp' | 'senderTimestamp' | 'mc1Hash'>,
+  scope: 'channel' | 'dm',
+): string | null {
   if (c.mc1Hash) return c.mc1Hash;
   const sec = storedWireSecond(c);
   if (sec === null) return null;
-  return ctx.scope === 'channel' ? mc1HashForOwnChannelText(c.text, sec) : mc1HashForDm(c.text, sec);
+  return scope === 'channel' ? mc1HashForOwnChannelText(c.text, sec) : mc1HashForDm(c.text, sec);
 }
 
 /**
@@ -126,13 +143,13 @@ export function candidateMatchesReaction(
   switch (r.format) {
     case 'mc1-channel':
     case 'mc1-channel-legacy': {
-      if (candidateMc1Hash(c, ctx) !== r.hash) return false;
+      if (storedMc1Hash(c, ctx.scope) !== r.hash) return false;
       const name = c.fromName ?? '';
       if (name === r.targetSender || name === r.targetSender.trim()) return true;
       return isOwnRow(c, ctx) && !!ctx.selfName && r.targetSender === ctx.selfName;
     }
     case 'mc1-dm':
-      return candidateMc1Hash(c, ctx) === r.hash;
+      return storedMc1Hash(c, ctx.scope) === r.hash;
     case 'mco-v3': {
       const sec = storedWireSecond(c);
       if (sec === null) return false;
@@ -174,4 +191,44 @@ export function pendingKeysOfMessage(c: ReactionCandidate, ctx: ReactionMatchCon
     keys.push('v1:' + sec * 1000);
   }
   return keys;
+}
+
+export type ReactionTargetBlocker =
+  | 'TARGET_IS_REACTION'
+  | 'TARGET_IS_ROOM_POST'
+  | 'TARGET_NOT_REACTABLE'
+  | 'TARGET_NO_HASH';
+
+export interface ReactionTargetRow {
+  id: string;
+  text: string;
+  timestamp: number;
+  fromPublicKey: string;
+  toPublicKey?: string | null;
+  fromName?: string | null;
+  senderTimestamp?: number | null;
+  mc1Hash?: string | null;
+  messageType?: string | null;
+  reactionEmoji?: string | null;
+  keyFingerprint?: string | null;
+}
+
+/**
+ * Why a row cannot take an outbound reaction, or null when it can. Shared by
+ * the server (authority) and the client (hides the button). Checks in order.
+ */
+export function reactionTargetBlocker(
+  row: ReactionTargetRow,
+  ctx: { scope: 'channel' | 'dm'; selfKey?: string | null; selfName?: string | null },
+): ReactionTargetBlocker | null {
+  if (row.reactionEmoji || parseMeshCoreReaction(row.text, ctx.scope) !== null) return 'TARGET_IS_REACTION';
+  if (row.messageType === 'room_post') return 'TARGET_IS_ROOM_POST';
+  if (row.keyFingerprint) return 'TARGET_NOT_REACTABLE';
+  if (ctx.scope === 'channel') {
+    const own = row.fromPublicKey === 'local' || (!!ctx.selfKey && row.fromPublicKey === ctx.selfKey);
+    const sender = row.fromName || (own ? ctx.selfName : null);
+    if (!sender || sender.includes(']') || sender.includes('\n')) return 'TARGET_NOT_REACTABLE';
+  }
+  if (storedMc1Hash(row, ctx.scope) === null) return 'TARGET_NO_HASH';
+  return null;
 }
