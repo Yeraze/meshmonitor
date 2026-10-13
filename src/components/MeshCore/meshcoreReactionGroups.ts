@@ -6,12 +6,17 @@
  * clock, so the stream can call it in a memo.
  */
 import type { MeshCoreMessage } from './hooks/useMeshCore';
+import type { MeshCoreMessageWithPending } from './meshcoreReactionClient';
 import { foldReactionEmoji } from '../../utils/meshcoreReactionTarget';
 
 export interface ReactionChip {
   emoji: string;
   count: number;
   reactors: string[];
+  /** We reacted with this emoji. */
+  mine: boolean;
+  /** Our reaction is still on its way to the server. */
+  pending: boolean;
 }
 
 export interface ReactionGrouping {
@@ -87,7 +92,14 @@ export function groupMeshCoreReactions(
       reactors = new Set();
       seen.set(seenKey, reactors);
     }
-    if (reactors.has(identity)) continue;
+    if (reactors.has(identity)) {
+      // The real row after its optimistic copy: the chip is no longer pending.
+      if (ours && !(m as MeshCoreMessageWithPending).reactionPending) {
+        const dup = chipsByTarget.get(targetId)?.find(c => foldReactionEmoji(c.emoji) === folded);
+        if (dup) dup.pending = false;
+      }
+      continue;
+    }
     reactors.add(identity);
 
     let chips = chipsByTarget.get(targetId);
@@ -95,12 +107,17 @@ export function groupMeshCoreReactions(
       chips = [];
       chipsByTarget.set(targetId, chips);
     }
+    const isPending = ours && !!(m as MeshCoreMessageWithPending).reactionPending;
     const chip = chips.find(c => foldReactionEmoji(c.emoji) === folded);
     if (chip) {
       chip.count += 1;
       chip.reactors.push(label);
+      if (ours) {
+        chip.mine = true;
+        chip.pending = isPending;
+      }
     } else {
-      chips.push({ emoji, count: 1, reactors: [label] });
+      chips.push({ emoji, count: 1, reactors: [label], mine: ours, pending: isPending });
     }
   }
   return { rows, chipsByTarget };

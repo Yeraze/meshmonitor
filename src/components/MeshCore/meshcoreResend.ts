@@ -23,6 +23,7 @@ export type ResendAvailability =
 
 /** Our own channel send that carries a stored wire timestamp. */
 function isOwnChannelSend(m: MeshCoreMessage, selfPublicKey: string | undefined): boolean {
+  if (m.reactionEmoji) return false;
   if (!selfPublicKey || m.fromPublicKey !== selfPublicKey) return false;
   if (!m.toPublicKey || !m.toPublicKey.startsWith('channel-')) return false;
   return typeof m.senderTimestamp === 'number';

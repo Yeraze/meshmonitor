@@ -28,6 +28,26 @@
   background: var(--color-surface-active);
 }
 
+.chipButton {
+  color: inherit;
+  font-family: inherit;
+  line-height: inherit;
+  cursor: pointer;
+}
+
+.chipButton:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 1px;
+}
+
+.mine {
+  border-color: var(--color-accent);
+}
+
+.pending {
+  opacity: 0.6;
+}
+
 .count {
   color: var(--color-text-subtle);
   font-size: 11px;

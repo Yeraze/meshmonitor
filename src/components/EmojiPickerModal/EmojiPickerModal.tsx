@@ -57,19 +57,22 @@ export const DEFAULT_TAPBACK_EMOJIS: TapbackEmoji[] = [
   { emoji: '💯', title: '100' },
 ];
 
-interface EmojiPickerModalProps {
-  message: MeshMessage | null;
-  onSelectEmoji: (emoji: string, message: MeshMessage) => void;
+interface EmojiPickerModalProps<T> {
+  message: T | null;
+  onSelectEmoji: (emoji: string, message: T) => void;
   onClose: () => void;
   customEmojis?: TapbackEmoji[];
+  /** When given, grid entries and custom input that fail it are not offered. */
+  isEmojiAllowed?: (emoji: string) => boolean;
 }
 
-export const EmojiPickerModal: React.FC<EmojiPickerModalProps> = ({
+export function EmojiPickerModal<T = MeshMessage>({
   message,
   onSelectEmoji,
   onClose,
   customEmojis,
-}) => {
+  isEmojiAllowed,
+}: EmojiPickerModalProps<T>): React.ReactElement | null {
   const { t } = useTranslation();
   const [showCustomInput, setShowCustomInput] = useState(false);
   const [customEmoji, setCustomEmoji] = useState('');
@@ -85,11 +88,14 @@ export const EmojiPickerModal: React.FC<EmojiPickerModalProps> = ({
   if (!message) return null;
 
   // Use custom emojis if provided, otherwise use defaults
-  const emojis = customEmojis && customEmojis.length > 0 ? customEmojis : DEFAULT_TAPBACK_EMOJIS;
+  const baseEmojis = customEmojis && customEmojis.length > 0 ? customEmojis : DEFAULT_TAPBACK_EMOJIS;
+  const emojis = isEmojiAllowed ? baseEmojis.filter(e => isEmojiAllowed(e.emoji)) : baseEmojis;
+  const customTrimmed = customEmoji.trim();
+  const customOk = !!customTrimmed && (!isEmojiAllowed || isEmojiAllowed(customTrimmed));
 
   const handleCustomSubmit = () => {
     const trimmed = customEmoji.trim();
-    if (trimmed) {
+    if (customOk) {
       onSelectEmoji(trimmed, message);
       onClose();
     }
@@ -151,7 +157,7 @@ export const EmojiPickerModal: React.FC<EmojiPickerModalProps> = ({
             />
             <button
               onClick={handleCustomSubmit}
-              disabled={!customEmoji.trim()}
+              disabled={!customOk}
               title={t('emoji_picker.send_custom', 'Send')}
             >
               {t('common.send', 'Send')}
@@ -161,4 +167,4 @@ export const EmojiPickerModal: React.FC<EmojiPickerModalProps> = ({
       </div>
     </div>
   );
-};
+}
