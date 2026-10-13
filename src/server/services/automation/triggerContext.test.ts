@@ -493,6 +493,11 @@ describe('packetHash token (#5357)', () => {
     expect(ctx.fields.packetHash).toBe('931D5DA9D6054F49');
   });
 
+  it('exposes the message row id as meshcoreMessageId (#5762)', () => {
+    const ctx = buildMeshCoreMessageContext(mcMsg({ id: 'row-7' }), 'default', 1);
+    expect(ctx.fields.meshcoreMessageId).toBe('row-7');
+  });
+
   it('is undefined on a MeshCore message with no matched frame', () => {
     const ctx = buildMeshCoreMessageContext(mcMsg({ fromPublicKey: 'aabbcc', toPublicKey: 'me' }), 'default', 1);
     expect(ctx.fields.packetHash).toBeUndefined();

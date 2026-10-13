@@ -250,6 +250,8 @@ export function buildMeshCoreMessageContext(
     to: msg.toPublicKey,
     toId: msg.toPublicKey,
     text: msg.text,
+    // Row id of the received message (#5762): a MeshCore tapback reacts to it.
+    meshcoreMessageId: msg.id,
     channel: channelIdx,
     isDM,
     isChannel,

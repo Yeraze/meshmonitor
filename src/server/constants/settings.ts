@@ -433,6 +433,8 @@ export const VALID_SETTINGS_KEYS = [
   'meshcoreReceiveOnly',
   // MeshCore reactions (#5759) — per source. Unset or anything but 'false' = on.
   'meshcoreReactionsInboundEnabled',
+  // MeshCore outbound reactions (#5762) — per source; default in MESHCORE_REACTIONS_OUTBOUND_DEFAULT
+  'meshcoreReactionsOutboundEnabled',
   // Terrain Link Profile / elevation backend (#4111 Phase 1). Global (not
   // per-source) — elevation is source-agnostic public DEM data.
   // `elevationEnabled` is the public availability flag the Map Analysis page
@@ -684,6 +686,8 @@ export const PER_SOURCE_SETTINGS_KEYS = [
   'meshcoreReceiveOnly',
   // MeshCore inbound reactions (#5759) — per source; unset reads as on
   'meshcoreReactionsInboundEnabled',
+  // MeshCore outbound reactions (#5762) — per source; default in MESHCORE_REACTIONS_OUTBOUND_DEFAULT
+  'meshcoreReactionsOutboundEnabled',
   // Node Display (#4412 / per-source node display epic). All ten keys in the
   // Settings → Node Display section are per-source as of Phase 1; Phase 2 converts
   // the server reads to getSettingForSource(). `localStatsIntervalMinutes` is

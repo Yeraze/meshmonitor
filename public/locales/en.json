@@ -7177,5 +7177,21 @@
   "meshcore.reactions.settings.ack_label": "Auto-Acknowledge may answer reactions (all MeshCore sources)",
   "meshcore.reactions.settings.ack_warning": "A reaction is one tap for the sender. With this on, each one can trigger an Auto-Acknowledge reply on the air. Leave it off on busy channels.",
   "meshcore.reactions.settings.format_note": "Wire format v{{version}} (MeshCore One 1.4.1 and later).",
-  "meshcore.reactions.settings.save_failed": "Failed to save the reaction setting"
+    "meshcore.reactions.react_button": "React",
+  "meshcore.reactions.chip_add_tooltip": "React with {{emoji}}",
+  "meshcore.reactions.send_failed": "Could not send the reaction",
+  "meshcore.reactions.error.REACTIONS_OUTBOUND_DISABLED": "Sending reactions is off for this source.",
+  "meshcore.reactions.error.SOURCE_NOT_CONNECTED": "This source is not connected.",
+  "meshcore.reactions.error.TARGET_IS_REACTION": "You cannot react to a reaction.",
+  "meshcore.reactions.error.TARGET_IS_ROOM_POST": "You cannot react to a room post.",
+  "meshcore.reactions.error.TARGET_NO_HASH": "This message is too old to react to.",
+  "meshcore.reactions.error.TARGET_NOT_REACTABLE": "You cannot react to this message.",
+  "meshcore.reactions.error.MESSAGE_NOT_FOUND": "That message is gone.",
+  "meshcore.reactions.error.INVALID_EMOJI": "MeshCore cannot send that emoji.",
+  "meshcore.reactions.error.MESSAGE_TOO_LONG": "The reaction is too long to send.",
+  "meshcore.reactions.error.SEND_FAILED": "The radio could not send the reaction.",
+  "meshcore.reactions.settings.outbound_label": "Send reactions from MeshMonitor",
+  "meshcore.reactions.settings.outbound_help": "Adds a react button to MeshCore messages on this source and lets automations send reactions. Sent in MeshCore One format.",
+  "meshcore.reactions.settings.outbound_warning": "Each reaction is one short packet. On a channel, every repeater in range sends it again.",
+"meshcore.reactions.settings.save_failed": "Failed to save the reaction setting"
 }

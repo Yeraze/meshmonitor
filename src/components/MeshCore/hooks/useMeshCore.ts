@@ -24,6 +24,7 @@ import { useWebSocketContext } from '../../../contexts/WebSocketContext';
 import { useToast } from '../../ToastContainer';
 import { isTxDisabledBody } from '../../../utils/txDisabled';
 import { parseJsonResponse } from '../../../utils/parseJsonResponse';
+import { buildOptimisticReaction } from '../meshcoreReactionClient';
 import { createNeighboursFetchActions, type MeshCoreNeighboursFetchActions } from './meshcoreNeighboursFetchApi';
 import type { MeshCoreAdvertMode } from '../../../types/meshcoreAdvert';
 import type {
@@ -198,6 +199,8 @@ export interface MeshCoreMessage {
   reactionEmoji?: string | null;
   /** Wire format the reaction arrived in (`mc1-channel`, `mc1-dm`, `mco-v3`, …). */
   reactionFormat?: string | null;
+  /** Client-only: this reaction row is the optimistic copy, not yet confirmed by the server (#5762). */
+  reactionPending?: boolean;
   /** Id of the message reacted to. Null/absent on a reaction row = unmatched. */
   reactionTargetId?: string | null;
   /** Sender the reaction names (MC1 channel form only). */
@@ -245,6 +248,8 @@ export interface MeshCoreMessage {
 
 export interface ConnectionStatus {
   connected: boolean;
+  /** Outbound reactions switch for this source (#5762); absent on older servers. */
+  reactionsOutboundEnabled?: boolean;
   deviceType: number;
   deviceTypeName: string;
   config: {
@@ -401,6 +406,11 @@ export interface MeshCoreActions {
    *  send re-asserts the channel/default scope. Omit (or pass `undefined`) for
    *  the normal channel/default resolution. */
   sendMessage: (text: string, toPublicKey?: string, channelIdx?: number, scope?: string | null) => Promise<boolean>;
+  /** Send an emoji reaction to a message (#5762). Shows an optimistic chip at once;
+   *  resolves `true` when the server sent it. */
+  sendReaction: (target: MeshCoreMessage, emoji: string) => Promise<boolean>;
+  /** Re-read the connection status now (resolves `connected`). */
+  refreshStatus: () => Promise<boolean>;
   /** Delete a single stored message by id (#3981). Resolves `true` on success. */
   deleteMessage: (id: string) => Promise<boolean>;
   /** Resend a channel message no repeater relayed (#5512). Resolves the new
@@ -2039,6 +2049,49 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
     }
   }, [mcPrefix, csrfFetch, reportTxDisabled]);
 
+  const sendReaction = useCallback(async (target: MeshCoreMessage, emoji: string): Promise<boolean> => {
+    const selfKey = localNodeRef.current?.publicKey ?? '';
+    const optimistic = buildOptimisticReaction(
+      target,
+      emoji,
+      { publicKey: selfKey, name: localNodeRef.current?.name },
+      Date.now(),
+    );
+    setMessages(prev => (prev.some(m => m.id === optimistic.id) ? prev : [...prev, optimistic]));
+    const dropOptimistic = () => setMessages(prev => prev.filter(m => m.id !== optimistic.id));
+    try {
+      const response = await csrfFetch(`${mcPrefix}/messages/${encodeURIComponent(target.id)}/reaction`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ emoji }),
+      });
+      const data = await parseJsonResponse(response);
+      if (data.success) {
+        const sent = data.data?.message as MeshCoreMessage | undefined;
+        setMessages(prev => {
+          const rest = prev.filter(m => m.id !== optimistic.id);
+          return sent && !rest.some(m => m.id === sent.id) ? [...rest, sent] : rest;
+        });
+        return true;
+      }
+      dropOptimistic();
+      if (reportTxDisabled(response.status, data)) return false;
+      if (data.code === 'DUPLICATE_REACTION') return false;
+      showToast(
+        t(
+          `meshcore.reactions.error.${data.code}`,
+          t('meshcore.reactions.send_failed', 'Could not send the reaction'),
+        ),
+        'error',
+      );
+      return false;
+    } catch (_err) {
+      dropOptimistic();
+      showToast(t('meshcore.reactions.send_failed', 'Could not send the reaction'), 'error');
+      return false;
+    }
+  }, [mcPrefix, csrfFetch, reportTxDisabled, showToast, t]);
+
   const clearConversation = useCallback(async (publicKey: string): Promise<boolean> => {
     try {
       const response = await csrfFetch(`${mcPrefix}/messages/conversation/${encodeURIComponent(publicKey)}`, {
@@ -2405,6 +2458,8 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
       sendMessage,
       deleteMessage,
       resendMessage,
+      sendReaction,
+      refreshStatus: fetchStatus,
       clearConversation,
       clearChannelMessages,
       purgeAllMessages,

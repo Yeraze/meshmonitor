@@ -21,6 +21,8 @@ vi.mock('../waypointService.js', () => ({
 }));
 
 import { createMeshActionDeps } from './meshActionDeps.js';
+import { MeshCoreReactionError } from '../../errors/meshcoreReactionError.js';
+import { TxDisabledError } from '../../errors/txDisabledError.js';
 
 /** Every Meshtastic send from the Automation Engine is tagged (#5414). */
 const AUTOMATION = { origin: 'automation' };
@@ -523,5 +525,38 @@ describe('createMeshActionDeps broadcastWaypoint (#5482)', () => {
     };
     await expect(createMeshActionDeps().broadcastWaypoint(args)).resolves.toEqual({ waypointId: 3, sent: true, packetId: 9 });
     expect(mockUpsertAndBroadcast).toHaveBeenCalledWith(args);
+  });
+});
+
+describe('createMeshActionDeps sendTapback — MeshCore reactions (#5762)', () => {
+  beforeEach(() => { getManager.mockReset(); });
+
+  it('calls sendReaction(messageId, emoji) on a MeshCore manager', async () => {
+    const sendReaction = vi.fn().mockResolvedValue({ id: 'r1' });
+    getManager.mockReturnValue({ sourceType: 'meshcore', sendReaction });
+    const out = await createMeshActionDeps().sendTapback({ sourceId: 'mc', emoji: '👍', meshcoreMessageId: 'm1' });
+    expect(sendReaction).toHaveBeenCalledWith('m1', '👍');
+    expect(out).toEqual({ id: 'r1' });
+  });
+
+  it('turns a skip-code refusal into a recorded skip', async () => {
+    const sendReaction = vi.fn().mockRejectedValue(new MeshCoreReactionError('DUPLICATE_REACTION', 'dup'));
+    getManager.mockReturnValue({ sourceType: 'meshcore', sendReaction });
+    await expect(createMeshActionDeps().sendTapback({ sourceId: 'mc', emoji: '👍', meshcoreMessageId: 'm1' }))
+      .resolves.toEqual({ skipped: true, reason: 'meshcore reaction: DUPLICATE_REACTION' });
+  });
+
+  it.each(['SEND_FAILED', 'SOURCE_NOT_CONNECTED'] as const)('rethrows %s as a failed step', async (code) => {
+    const sendReaction = vi.fn().mockRejectedValue(new MeshCoreReactionError(code, 'boom'));
+    getManager.mockReturnValue({ sourceType: 'meshcore', sendReaction });
+    await expect(createMeshActionDeps().sendTapback({ sourceId: 'mc', emoji: '👍', meshcoreMessageId: 'm1' }))
+      .rejects.toThrow(code);
+  });
+
+  it('lets TxDisabledError propagate', async () => {
+    const sendReaction = vi.fn().mockRejectedValue(new TxDisabledError());
+    getManager.mockReturnValue({ sourceType: 'meshcore', sendReaction });
+    await expect(createMeshActionDeps().sendTapback({ sourceId: 'mc', emoji: '👍', meshcoreMessageId: 'm1' }))
+      .rejects.toBeInstanceOf(TxDisabledError);
   });
 });

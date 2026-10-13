@@ -105,7 +105,7 @@ export const MeshCoreDirectMessagesView: React.FC<MeshCoreDirectMessagesViewProp
   // Honor the user's Temperature Unit + telemetry time-range settings on the
   // per-node telemetry graph, consistent with the Meshtastic DM view and the
   // MeshCore Telemetry dashboard (#3659).
-  const { temperatureUnit, telemetryVisualizationHours } = useSettings();
+  const { temperatureUnit, telemetryVisualizationHours, tapbackEmojis } = useSettings();
   const canSend = hasPermission('messages', 'write');
   const canWriteNodes = hasPermission('nodes', 'write');
   const canRemoteAdmin = hasPermission('remote_admin', 'write');
@@ -134,6 +134,8 @@ export const MeshCoreDirectMessagesView: React.FC<MeshCoreDirectMessagesViewProp
 
   const selfKey = status?.localNode?.publicKey;
   const connected = status?.connected ?? false;
+  // Outbound reactions (#5762): needs the per-source switch and a live, non-receive-only link.
+  const canReact = canSend && connected && !receiveOnly && status?.reactionsOutboundEnabled === true;
   // CMD_RESET_PATH / CMD_SHARE_CONTACT / CMD_ADD_UPDATE_CONTACT are all
   // companion-only (firmware deviceType=1).
   const isCompanion = (status?.deviceType ?? 0) === 1;
@@ -588,6 +590,8 @@ export const MeshCoreDirectMessagesView: React.FC<MeshCoreDirectMessagesViewProp
                   emptyText={t('meshcore.no_messages', 'No messages with this contact yet')}
                   onSend={text => actions.sendMessage(text, selected)}
                   onDeleteMessage={canSend ? handleDeleteMessage : undefined}
+                  onReact={canReact ? (m, e) => actions.sendReaction(m, e) : undefined}
+                  reactionEmojis={tapbackEmojis}
                   conversationKey={`dm-${selected}`}
                   unreadAnchorMs={entryLastRead}
                   maxBytes={150}

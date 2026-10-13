@@ -41,8 +41,9 @@ import {
 } from './meshcoreDeviceContactErrors.js';
 import { resolveMessageScope } from './meshcoreScopeResolve.js';
 import type { DbMeshCoreMessage } from '../db/repositories/meshcore.js';
-import { isReactionText, mc1ChannelBody } from '../utils/meshcoreReactions.js';
+import { isReactionText, isReactionEmoji, mc1ChannelBody } from '../utils/meshcoreReactions.js';
 import {
+  foldReactionEmoji,
   meshcoreWireSecond,
   meshcoreWireChannelText,
   mc1HashForChannelWire,
@@ -73,6 +74,12 @@ import {
 } from './meshcoreChannelReorder.js';
 import { remapMeshCoreChannelReferences, type ChannelRemapSummary } from './services/meshcoreChannelRemapService.js';
 import { TxDisabledError } from './errors/txDisabledError.js';
+import { MeshCoreReactionError } from './errors/meshcoreReactionError.js';
+import {
+  isReactionsOutboundEnabled,
+  planOutboundReaction,
+  type OutboundReactionMeta,
+} from './services/meshcoreReactionSend.js';
 import { meshcoreMessageByteCap } from './constants/meshcoreMessageLimits.js';
 import { splitUtf8Message, utf8ByteLength } from './utils/splitUtf8Message.js';
 import { MeshCoreResendError } from './errors/meshcoreResendError.js';
@@ -891,6 +898,9 @@ export interface MeshCoreSendResult {
    *  channel echo-miss) must reuse this value rather than letting a resend
    *  mint a fresh one — see {@link MeshCoreManager.performScopedSend}. */
   senderTimestamp?: number;
+  /** The row this send stored (and emitted), when it stored one. Not set on a
+   *  failed send or an auto-retry resend (#5762). */
+  message?: MeshCoreMessage;
 }
 
 /** MeshCore PAYLOAD_TYPE_GRP_TXT — a channel text message. */
@@ -5624,6 +5634,11 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
      * updated. Used by the #3979 auto-retry and the user resend.
      */
     existingMessageId?: string,
+    /**
+     * Set for an outbound reaction (#5762). The stored row is the emoji with
+     * the reaction fields; no ack-timeout or echo-miss retry is ever armed.
+     */
+    reaction?: OutboundReactionMeta,
   ): Promise<MeshCoreSendResult> {
     this.requireTransmit();
     try {
@@ -5716,7 +5731,25 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
         // re-emit a `message` event — that would produce a duplicate bubble in
         // the UI and a duplicate DB row. The retry reuses the ORIGINAL message;
         // `handleDmAckTimeout` updates that message's tracked ack CRC instead.
-        if (!isAutoRetry) {
+        if (!isAutoRetry && reaction) {
+          // Outbound reaction (#5762): stored as the emoji with the reaction
+          // fields, never as a reaction target (no mc1Hash), with no ack
+          // fields so the client starts no delivery timer.
+          sentMessage.text = reaction.emoji;
+          sentMessage.reactionEmoji = reaction.emoji;
+          sentMessage.reactionFormat = reaction.format;
+          sentMessage.reactionTargetHash = reaction.targetHash;
+          sentMessage.reactionTargetSender = reaction.targetSender;
+          sentMessage.reactionTargetId = reaction.targetId;
+          sentMessage.reactionRawText = text;
+          sentMessage.expectedAckCrc = undefined;
+          sentMessage.estTimeout = undefined;
+          sentMessage.deliveryStatus = undefined;
+          // Insert is awaited so the dedupe read of the next send sees it.
+          await this.addMessage(sentMessage);
+          this.emit('message', { ...sentMessage, text }); // raw wire copy: Virtual Node only
+          dataEventEmitter.emitMeshCoreMessage(sentMessage, this.sourceId);
+        } else if (!isAutoRetry) {
           const mc1Hash = isChannelSend
             ? mc1HashForOwnChannelText(text, senderTimestamp)
             : mc1HashForDm(text, senderTimestamp);
@@ -5762,12 +5795,18 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
           // opt-in setting (default off). A resend (isAutoRetry=true) is
           // re-registered above for echo correlation but never re-armed, so at
           // most ONE retry ever fires per logical send.
-          if (autoRetryOnMiss && !isAutoRetry) {
+          if (autoRetryOnMiss && !isAutoRetry && !reaction) {
             await this.maybeArmChannelRetry(msgId, text, channelIdx!, scopeOverride, senderTimestamp);
           }
         }
 
-        return { ok: true, expectedAckCrc: ackCrc ?? undefined, estTimeout: estTimeout ?? undefined, senderTimestamp };
+        return {
+          ok: true,
+          expectedAckCrc: ackCrc ?? undefined,
+          estTimeout: estTimeout ?? undefined,
+          senderTimestamp,
+          message: isAutoRetry ? undefined : sentMessage,
+        };
       } else {
         logger.error('[MeshCore] Send failed:', response.error);
         return { ok: false };
@@ -6272,6 +6311,65 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
   private readonly resendLedger = new Map<string, { count: number; last: number }>();
 
   /**
+   * Send an emoji reaction to a stored message in MeshCore One format (#5762).
+   * One packet, never retried (no echo-miss resend, no DM ack-timeout retry).
+   * The row is stored when the radio accepts the packet; a refusal is a typed
+   * {@link MeshCoreReactionError}. Dedupes per (target, folded emoji) from us.
+   */
+  async sendReaction(messageId: string, emoji: string): Promise<MeshCoreMessage> {
+    this.requireTransmit();
+    const self = this.localNode;
+    if (!this.connected || this.deviceType === MeshCoreDeviceType.REPEATER || !self?.publicKey) {
+      throw new MeshCoreReactionError('SOURCE_NOT_CONNECTED', 'Source is not connected to a companion radio');
+    }
+    if (!isReactionEmoji(emoji)) {
+      throw new MeshCoreReactionError('INVALID_EMOJI', 'Not a reaction emoji');
+    }
+    if (!(await isReactionsOutboundEnabled(this.sourceId))) {
+      throw new MeshCoreReactionError('REACTIONS_OUTBOUND_DISABLED', 'Sending reactions is turned off for this source');
+    }
+    // A reorder moves channel slots; let it finish so the row names the right one.
+    if (this.channelReorder) {
+      await this.channelReorder.done.catch(() => undefined);
+    }
+
+    return this.runSerialized(async () => {
+      this.requireTransmit();
+      const row = await databaseService.meshcore.getMessageForSource(messageId, this.sourceId);
+      if (!row) throw new MeshCoreReactionError('MESSAGE_NOT_FOUND', 'Message not found');
+      const selfKey = this.localNode?.publicKey ?? self.publicKey;
+      const selfName = this.localNode?.name ?? null;
+      const plan = planOutboundReaction(row, emoji, {
+        selfKey,
+        selfName,
+        resolvePeerKey: p => this.resolveContactByPrefix(p)?.publicKey ?? null,
+        isRoomPeer: k => this.contacts.get(k)?.advType === MeshCoreDeviceType.ROOM_SERVER,
+      });
+
+      const folded = foldReactionEmoji(emoji);
+      const isOurs = (m: { fromPublicKey: string; fromName?: string | null }): boolean =>
+        m.fromPublicKey === 'local'
+        || m.fromPublicKey === selfKey
+        || (plan.scope === 'channel' && !!selfName && m.fromName === selfName);
+      const existing = [
+        ...(await databaseService.meshcore.findReactionRows(this.sourceId, { targetId: row.id })),
+        ...this.messages.filter(m => m.reactionTargetId === row.id),
+      ].find(m => !!m.reactionEmoji && isOurs(m) && foldReactionEmoji(m.reactionEmoji) === folded);
+      if (existing) {
+        throw new MeshCoreReactionError('DUPLICATE_REACTION', 'You already sent that reaction', existing.id);
+      }
+
+      const res = await this.performScopedSend(
+        plan.wireText, plan.toPublicKey, plan.channelIdx, undefined, false, false, undefined, undefined, plan.meta,
+      );
+      if (!res.ok || !res.message) {
+        throw new MeshCoreReactionError('SEND_FAILED', 'The radio did not accept the reaction');
+      }
+      return res.message;
+    });
+  }
+
+  /**
    * User-initiated resend of one of our channel messages that no repeater was
    * heard relaying (#5512).
    *
@@ -6307,6 +6405,9 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
       const row = await databaseService.meshcore.getMessageForSource(messageId, this.sourceId);
       if (!row) {
         throw new MeshCoreResendError('MESSAGE_NOT_FOUND', 'Message not found');
+      }
+      if (row.reactionEmoji) {
+        throw new MeshCoreResendError('RESEND_UNAVAILABLE', 'A reaction is never resent');
       }
       const selfKey = this.localNode?.publicKey;
       if (row.fromPublicKey !== 'local' && row.fromPublicKey !== selfKey) {
@@ -10386,7 +10487,8 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
         m.senderTimestamp != null
         && typeof m.toPublicKey === 'string'
         && m.toPublicKey.startsWith('channel-')
-        && !m.fromPublicKey.startsWith('channel-'))
+        && !m.fromPublicKey.startsWith('channel-')
+        && !m.reactionEmoji)
       .map(m => m.id);
     if (ids.length === 0) return messages;
     try {

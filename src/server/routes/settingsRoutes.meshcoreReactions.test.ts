@@ -23,6 +23,7 @@ describe('POST /api/settings — MeshCore reaction settings (#5759)', () => {
     await harness.db.settings.deleteSourceSettings(harness.sourceB).catch(() => {});
     await harness.db.settings.deleteSetting('meshcoreReactionsAckOnReceive').catch(() => {});
     await harness.db.settings.deleteSetting('meshcoreReactionsInboundEnabled').catch(() => {});
+    await harness.db.settings.deleteSetting('meshcoreReactionsOutboundEnabled').catch(() => {});
     await harness.cleanup();
   });
 
@@ -36,6 +37,18 @@ describe('POST /api/settings — MeshCore reaction settings (#5759)', () => {
     expect(await harness.db.settings.getSettingForSource(harness.sourceA, 'meshcoreReactionsInboundEnabled')).toBe('false');
     expect(await harness.db.settings.getSettingForSource(harness.sourceB, 'meshcoreReactionsInboundEnabled')).toBeNull();
     expect(await harness.db.settings.getSetting('meshcoreReactionsInboundEnabled')).toBeNull();
+  });
+
+  it('stores the outbound key for source A only', async () => {
+    const agent = await harness.loginAs(harness.admin);
+    const res = await agent
+      .post(`/api/settings?sourceId=${harness.sourceA}`)
+      .send({ meshcoreReactionsOutboundEnabled: 'false' });
+
+    expect(res.status).toBe(200);
+    expect(await harness.db.settings.getSettingForSource(harness.sourceA, 'meshcoreReactionsOutboundEnabled')).toBe('false');
+    expect(await harness.db.settings.getSettingForSource(harness.sourceB, 'meshcoreReactionsOutboundEnabled')).toBeNull();
+    expect(await harness.db.settings.getSetting('meshcoreReactionsOutboundEnabled')).toBeNull();
   });
 
   it('drops the global-only ack key when it is sent with a sourceId', async () => {

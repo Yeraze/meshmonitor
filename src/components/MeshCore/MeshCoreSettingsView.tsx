@@ -289,7 +289,11 @@ export const MeshCoreSettingsView: React.FC<MeshCoreSettingsViewProps> = ({
         </p>
       </div>
 
-      <MeshCoreReactionsSection baseUrl={baseUrl} sourceId={sourceId} />
+      <MeshCoreReactionsSection
+        baseUrl={baseUrl}
+        sourceId={sourceId}
+        onOutboundChanged={() => { void actions.refreshStatus(); }}
+      />
 
       {/* Radio contact list sync and the device actions live on Device
           Configuration (#5683 follow-up). A viewer who cannot open that page

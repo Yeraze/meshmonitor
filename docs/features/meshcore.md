@@ -261,17 +261,22 @@ MeshMonitor reads emoji reactions sent by [MeshCore One](https://github.com/Avi0
 - When this source never heard the target message, the reaction shows as one dim line: *"Bob reacted 👍 to a message not seen here"*. Hover it for the original text. If the target arrives later, the line turns into a chip.
 - A reaction is not a message. It does not mark a channel or DM unread, raise a mention alert, or trigger Auto-Responder, Forwarding or an automation.
 - Reactions are matched per source. A reaction heard on one source does not attach to a message only another source heard.
-- Sending reactions from MeshMonitor is not built yet.
+- To **send** a reaction, use the react button on a message and pick an emoji, or click a chip another node left to add the same one. Your own reaction shows with an accent border. MeshMonitor sends the MeshCore One format.
+- You can send each emoji once per message. A reaction is never resent, and there is no way to take one back (MeshCore One has none either).
+- You cannot react to a room post, to another reaction, or to a message stored before reactions were supported.
 
-Two switches sit under **MeshCore → Settings → Reactions**:
+Three switches sit under **MeshCore → Settings → Reactions**:
 
 | Setting | Scope | Default | Effect |
 |---|---|---|---|
 | Show MeshCore reactions | This source | On | Off stores and shows reactions as plain text, as before. |
 | Auto-Acknowledge may answer reactions | All MeshCore sources | Off | On lets a reaction that matches your Auto-Acknowledge rules trigger a reply. |
+| Send reactions from MeshMonitor | This source | On | Off hides the react button, makes the API refuse, and makes automations skip their reaction. |
 
 ::: warning Airtime
 A reaction is one tap for the sender. With the second switch on, each one can trigger an Auto-Acknowledge reply on the air. Leave it off on busy channels.
+
+Each reaction you send is one short packet. On a channel, every repeater in range sends it again. Sends share the normal message rate limit, and [receive-only mode](/features/meshcore-receive-only) blocks them.
 :::
 
 ### Node Info

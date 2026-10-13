@@ -705,7 +705,7 @@ export const ACTIONS: BlockDef[] = [
         help: `Hop count reacts with ${HOP_COUNT_EMOJIS[0]} for a direct (0-hop) message and ${HOP_COUNT_EMOJIS[1]}–${HOP_COUNT_EMOJIS[HOP_EMOJI_MAX]} above, clamping at ${HOP_COUNT_EMOJIS[HOP_EMOJI_MAX]} — the same table Auto-Acknowledge uses. A message that came in through an MQTT source (bridge or broker) reacts with ${MQTT_SOURCE_EMOJI} instead, whatever its hop count, because it never crossed this radio's RF link. Triggers with no hop information (Schedule, System) record a skipped no-op.`,
       },
       { name: 'emoji', label: 'Emoji', kind: 'emoji', placeholder: '👍', showIf: { field: 'emojiMode', notEquals: 'hopCount' } },
-      { name: 'sourceIds', label: 'Send via sources', kind: 'sendSourceMulti', help: 'Which radios send the reaction (MeshCore sources are skipped — tapbacks are Meshtastic-only). Leave none to use the source that triggered the automation — but a source IS required for source-less triggers like System events and Schedules.' },
+      { name: 'sourceIds', label: 'Send via sources', kind: 'sendSourceMulti', help: 'Which radios send the reaction (a MeshCore source reacts only to a MeshCore message it received itself; hop limit does not apply there). Leave none to use the source that triggered the automation — but a source IS required for source-less triggers like System events and Schedules.' },
       HOP_LIMIT_FIELD,
     ],
   },

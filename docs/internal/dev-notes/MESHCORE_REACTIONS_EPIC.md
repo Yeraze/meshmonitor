@@ -118,7 +118,7 @@ source, with attribution, not from MC1's copy.
   `meshcoreReactionsAckOnReceive` (global) with their toggles.
   *Exit:* an MC1-format channel and DM reaction shows as a chip; no raw
   reaction text in chat; inbound off stores raw text.
-- [ ] **Phase 3 — outbound** (#5762, outbound setting from #5764). Send route,
+- [x] **Phase 3 — outbound** (#5762, outbound setting from #5764). Send route,
   emoji picker in the MeshCore stream, optimistic local row, dedupe, no retry,
   `meshcoreReactionsOutboundEnabled` (per source), automation tapback on
   MeshCore, wire second stored for our own DMs.
@@ -176,3 +176,26 @@ source, with attribution, not from MC1's copy.
     is hidden until that page loads.
   - **For Phase 3:** the send route, the optimistic row, and a "mine" look for
     our own chip. `groupMeshCoreReactions` already labels our reaction "You".
+- 2026-10-13: Phase 3 done. One send function, `MeshCoreManager.sendReaction`,
+  behind `POST /api/sources/:id/meshcore/messages/:messageId/reaction` and the
+  automation tapback action. Planning is pure, in
+  `src/server/services/meshcoreReactionSend.ts`; target rules shared with the
+  client in `reactionTargetBlocker`. Decisions made on the way:
+  - `meshcoreReactionsOutboundEnabled` is per source, default **on** (maintainer).
+    The default lives in `MESHCORE_REACTIONS_OUTBOUND_DEFAULT`. A settings read
+    error means off. The client reads the resolved value from the status object.
+  - The row is stored when the radio accepts the packet, so a failed send leaves
+    nothing behind. The chip shown at once is a client-side optimistic row.
+  - No retry of any kind: no echo-miss retry, no DM ack-timeout retry, and
+    Resend refuses a reaction row.
+  - Dedupe is one send per (target, folded emoji) from us, checked inside the
+    serialized send queue against the database and the in-memory pool.
+  - A message whose text is itself reaction-shaped cannot be reacted to, even
+    with inbound off, so two tapback automations cannot answer each other.
+  - The route needs `messages:write` on the source, as a normal send does.
+  - Automation tapback on MeshCore reacts only to the triggering message, on
+    the source that received it. Every refusal is a recorded skip.
+  - **Known limits:** a reaction to a row stored before migration 203 uses a
+    rebuilt hash and may not match on other devices; if the insert fails after
+    the radio accepted the packet, a restart could allow one repeat send.
+  - **For Phase 4:** Unified Messages chips, CSV columns, `isTapback` triggers.
