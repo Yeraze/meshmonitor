@@ -40,6 +40,24 @@ import {
   MeshCoreContactNotOnDeviceError,
 } from './meshcoreDeviceContactErrors.js';
 import { resolveMessageScope } from './meshcoreScopeResolve.js';
+import type { DbMeshCoreMessage } from '../db/repositories/meshcore.js';
+import { isReactionText, mc1ChannelBody } from '../utils/meshcoreReactions.js';
+import {
+  meshcoreWireSecond,
+  meshcoreWireChannelText,
+  mc1HashForChannelWire,
+  mc1HashForDm,
+  mc1HashForOwnChannelText,
+} from '../utils/meshcoreReactionTarget.js';
+import {
+  emitReactionResolutions,
+  invalidatePendingReactions,
+  isReactionsInboundEnabled,
+  notePendingReaction,
+  resolveInboundReaction,
+  resolvePendingReactionsFor,
+  type MeshCoreReactionFields,
+} from './services/meshcoreReactionIngest.js';
 import {
   UNKNOWN_SLOT,
   ChannelReorderPlanError,
@@ -93,7 +111,7 @@ import {
 import type { MeshCoreObserverConfig, MeshCoreSourceConfig, NormalizedObserverConfig } from './meshcoreConfig.js';
 import meshcorePacketLogService from './services/meshcorePacketLogService.js';
 import { notificationService } from './services/notificationService.js';
-import { meshcoreMessageFilter } from './services/meshcoreMessageFilter.js';
+import { meshcoreMessageFilter, type MeshCoreClassifyResult } from './services/meshcoreMessageFilter.js';
 import { DistanceDeleteScheduler } from './services/distanceDeleteScheduler.js';
 import { HeartbeatScheduler } from './services/heartbeatScheduler.js';
 import type { DbMeshCorePacket, DbMeshCoreNode, MeshCoreKeyAccessFilter } from '../db/repositories/meshcore.js';
@@ -904,7 +922,20 @@ async function isLocalMeshCoreSenderName(name: string | null | undefined): Promi
   return false;
 }
 
-export interface MeshCoreMessage {
+/** Shared inputs of the received-message tail (#5759). */
+interface ReceivedMessageOpts {
+  isDM: boolean;
+  channelIdx?: number;
+  hopCount: number | null;
+  route: string | null;
+  verdict: MeshCoreClassifyResult;
+  mc1Hash: string | null;
+  logLine: string;
+  /** False for the legacy serial `MSG:` path: no auto-ack / responder / forwarding. */
+  autoReplies?: boolean;
+}
+
+export interface MeshCoreMessage extends MeshCoreReactionFields {
   id: string;
   fromPublicKey: string;
   /** Sender display name. For channel messages, parsed from the "Name: " prefix
@@ -1008,9 +1039,11 @@ export interface MeshCoreMessage {
    * overheard by the repeater cannot re-trigger the rule that sent it.
    */
   selfOrigin?: boolean;
-  /** Wire sender_timestamp (epoch SECONDS) of our own outgoing channel send
-   *  (#5512). Persisted; a user resend reuses it so repeaters dedupe the copy.
-   *  Undefined for received messages and for sends made before migration 187. */
+  /** Wire sender_timestamp (epoch SECONDS) as stamped by the sender, raw.
+   *  (#5512) Persisted for our own sends; a user resend reuses it so repeaters
+   *  dedupe the copy. (#5759) Received DM / channel rows and our own DMs carry
+   *  it too, as the MC1 reaction hash input. A resendable row is only our own
+   *  channel send (see `withResendInfo`). Undefined for rooms and old rows. */
   senderTimestamp?: number;
   /** User-initiated resends so far (#5512), counted from persisted `retry`
    *  events marked `userInitiated`, so a restart doesn't reset the cap. */
@@ -1862,31 +1895,7 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
         this.sourceId,
       );
       // DB returns newest-first; reverse to oldest-first for the in-memory array.
-      this.messages = stored.reverse().map(dbMsg => ({
-        id: dbMsg.id,
-        fromPublicKey: dbMsg.fromPublicKey,
-        fromName: dbMsg.fromName ?? undefined,
-        toPublicKey: dbMsg.toPublicKey ?? undefined,
-        text: dbMsg.text,
-        timestamp: dbMsg.timestamp,
-        rssi: dbMsg.rssi ?? undefined,
-        snr: dbMsg.snr ?? undefined,
-        sourceId: dbMsg.sourceId ?? undefined,
-        // Without this a reloaded room post loses its tag and drops out of
-        // the Rooms view after a restart (#5682).
-        messageType: dbMsg.messageType ?? undefined,
-        // The DB's createdAt IS our own observation clock — same semantic as
-        // receivedAt — so historical rows order correctly too, with no migration.
-        receivedAt: dbMsg.createdAt ?? undefined,
-        hopCount: dbMsg.hopCount ?? null,
-        routePath: dbMsg.routePath ?? null,
-        scopeCode: dbMsg.scopeCode ?? null,
-        scopeName: dbMsg.scopeName ?? null,
-        senderTimestamp: dbMsg.senderTimestamp ?? undefined,
-        keySourceId: dbMsg.keySourceId ?? null,
-        keyChannelIdx: dbMsg.keyChannelIdx ?? null,
-        keyFingerprint: dbMsg.keyFingerprint ?? null,
-      }));
+      this.messages = stored.reverse().map(dbMsg => MeshCoreManager.dbRowToMessage(dbMsg));
       // Enrich with heardBy so relay info survives server restarts (#3813).
       if (this.messages.length > 0) {
         const heardByMap = await databaseService.meshcore.getHeardRepeatersForMessages(
@@ -2484,6 +2493,7 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
       // behavior) so an ack can still cite a route when no LogRxData surfaced.
       const ackRoute = observedRoute || senderContact?.outPath || null;
       const scope = resolveMessageScope(data.raw_hex, this.knownScopes);
+      const dmWireSec = meshcoreWireSecond(data.sender_timestamp);
       const message: MeshCoreMessage = {
         id: `${Date.now()}-${Math.random().toString(36).substring(2, 11)}`,
         fromPublicKey: data.pubkey_prefix,
@@ -2515,17 +2525,27 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
         scopeName: scope.scopeName,
         // Best-effort for DMs (src_hash + path_len correlation, #5357).
         packetHash: typeof data.packet_hash === 'string' ? data.packet_hash : undefined,
+        // Raw wire second (#5759): the MC1 reaction hash input, kept even when
+        // the clock is implausible (`timestamp` above has its own fallback).
+        senderTimestamp: dmWireSec ?? undefined,
       };
-      this.addMessage(message);
-      if (verdict.action === 'ignore') {
-        this.emitIgnoredMessage(message);
+      const dmOpts: ReceivedMessageOpts = {
+        isDM: true,
+        hopCount,
+        route: ackRoute,
+        verdict,
+        mc1Hash: mc1HashForDm(data.text, dmWireSec),
+        logLine: `[MeshCore:${this.sourceId}] Contact message from ${data.pubkey_prefix} (${data.text.length} chars)`,
+      };
+      if (isReactionText(data.text)) {
+        void this.ingestPossibleReaction(message, {
+          ...dmOpts,
+          parseBody: data.text,
+          peerKey: data.pubkey_prefix,
+          reactorKey: data.pubkey_prefix,
+        });
       } else {
-        this.emit('message', message);
-        dataEventEmitter.emitMeshCoreMessage(message, this.sourceId);
-        logger.debug(`[MeshCore:${this.sourceId}] Contact message from ${data.pubkey_prefix} (${data.text.length} chars)`);
-        void this.checkAutoAcknowledge(message, true, undefined, hopCount, ackRoute);
-        void this.checkAutoResponder(message, true, undefined, hopCount, ackRoute);
-        void this.checkForwarding(message, true, undefined);
+        this.deliverReceivedMessage(message, dmOpts);
       }
       // A direct message is itself a "we just heard this contact" event —
       // without this, Last Heard/Last Seen only advance on `contact_advertised`
@@ -2566,6 +2586,7 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
       const scope = resolveMessageScope(data.raw_hex, this.knownScopes);
       // #5379: during an on-device reorder, file under the channel's original slot.
       const channelIdx = this.reorderSafeChannelIdx(data.channel_idx);
+      const chWireSec = meshcoreWireSecond(data.sender_timestamp);
       const message: MeshCoreMessage = {
         id: `${Date.now()}-${Math.random().toString(36).substring(2, 11)}`,
         fromPublicKey: MeshCoreManager.channelPublicKey(channelIdx),
@@ -2593,17 +2614,23 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
         scopeName: scope.scopeName,
         // Set only when the backend verified the raw frame by decrypting it (#5357).
         packetHash: typeof data.packet_hash === 'string' ? data.packet_hash : undefined,
+        // Raw wire second (#5759), as in the contact_message case.
+        senderTimestamp: chWireSec ?? undefined,
       };
-      this.addMessage(message);
-      if (verdict.action === 'ignore') {
-        this.emitIgnoredMessage(message);
+      const chOpts: ReceivedMessageOpts = {
+        isDM: false,
+        channelIdx,
+        hopCount,
+        route,
+        verdict,
+        mc1Hash: mc1HashForChannelWire(rawText, chWireSec),
+        logLine: `[MeshCore] Channel ${channelIdx} message (${data.text.length} chars)`,
+      };
+      const parseBody = rawText.includes(':') ? mc1ChannelBody(rawText) : rawText;
+      if (isReactionText(parseBody)) {
+        void this.ingestPossibleReaction(message, { ...chOpts, parseBody, reactorKey: null });
       } else {
-        this.emit('message', message);
-        dataEventEmitter.emitMeshCoreMessage(message, this.sourceId);
-        logger.debug(`[MeshCore] Channel ${channelIdx} message (${data.text.length} chars)`);
-        void this.checkAutoAcknowledge(message, false, channelIdx, hopCount, route);
-        void this.checkAutoResponder(message, false, channelIdx, hopCount, route);
-        void this.checkForwarding(message, false, channelIdx);
+        this.deliverReceivedMessage(message, chOpts);
       }
     } else if (event_type === 'room_message') {
       // Room server post (TXT_TYPE_SIGNED_PLAIN). The room's pubkey prefix
@@ -4462,11 +4489,14 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
     const channelIdx = keyedChannelIndex(plain.key.secretHex);
     const id = frameChannelMessageId('rpt', this.sourceId, fingerprint, plain.timestampSec, plain.text);
     const now = Date.now();
+    // Raw wire second (#5759): the MC1 reaction hash input.
+    const sec = meshcoreWireSecond(plain.timestampSec);
     const message: MeshCoreMessage = {
       id,
       fromPublicKey: `channel-${channelIdx}`,
       fromName: plain.senderName ?? undefined,
       text: plain.text,
+      senderTimestamp: sec ?? undefined,
       // Sender's clock when it has one, else when we heard it.
       timestamp: plain.timestampSec > 0 ? plain.timestampSec * 1000 : now,
       receivedAt: now,
@@ -4491,12 +4521,35 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
     }, { countHit: false });
     if (verdict.action === 'block') return;
 
+    // Reaction? (#5759) The id above stays derived from the RAW text.
+    let fields: Required<MeshCoreReactionFields> | null = null;
+    const parseBody = plain.senderName ? plain.text : mc1ChannelBody(plain.text);
+    if (isReactionText(parseBody) && (await isReactionsInboundEnabled(this.sourceId))) {
+      const res = await resolveInboundReaction({
+        sourceId: this.sourceId,
+        scope: 'channel',
+        channelIdx,
+        body: parseBody,
+        reactorName: plain.senderName ?? null,
+        reactorKey: null,
+        selfName: this.localNode?.name ?? null,
+        selfKey: this.localNode?.publicKey ?? null,
+        now,
+      });
+      if (res.kind === 'duplicate') return;
+      if (res.kind === 'reaction') fields = res.fields;
+    }
+    const mc1Hash = fields ? null : mc1HashForChannelWire(meshcoreWireChannelText(plain.senderName, plain.text), sec);
+
     const inserted = await databaseService.meshcore.insertMessage({
       id,
       fromPublicKey: message.fromPublicKey,
       fromName: message.fromName ?? null,
       toPublicKey: null,
-      text: message.text,
+      text: fields?.reactionEmoji ?? message.text,
+      senderTimestamp: sec,
+      mc1Hash,
+      ...(fields ?? {}),
       timestamp: message.timestamp,
       rssi: message.rssi ?? null,
       snr: message.snr ?? null,
@@ -4513,20 +4566,29 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
     meshcoreMessageFilter.countHit(this.sourceId, verdict);
     noteVirtualChannelDecrypt(plain.key);
 
-    this.messages.push(message);
+    const poolMessage: MeshCoreMessage = fields ? { ...message, text: fields.reactionEmoji ?? message.text, ...fields } : message;
+    this.messages.push(poolMessage);
     if (this.messages.length > MeshCoreManager.MAX_MESSAGES) {
       this.messages = this.messages.slice(-MeshCoreManager.MAX_MESSAGES);
+    }
+    if (fields && !fields.reactionTargetId && fields.reactionFormat && fields.reactionTargetHash) {
+      notePendingReaction(this.sourceId, {
+        id,
+        reactionFormat: fields.reactionFormat,
+        reactionTargetHash: fields.reactionTargetHash,
+      });
     }
 
     const packetHash = meshCorePacketHashOrUndefined(p.rawHex);
     const selfOrigin = await isLocalMeshCoreSenderName(plain.senderName);
     const event: MeshCoreMessage = {
-      ...message,
+      ...poolMessage,
       packetHash,
       ...(selfOrigin ? { selfOrigin: true } : {}),
       ...(verdict.action === 'ignore' ? { filtered: 'ignore' as const } : {}),
     };
     dataEventEmitter.emitMeshCoreMessage(event, this.sourceId);
+    if (!fields) await this.afterMessageStored(message, mc1Hash, Promise.resolve(true));
   }
 
   /** True once this connection has seen a `MESH_PACKET_LOGGING` RAW line. */
@@ -4559,14 +4621,20 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
         kind: 'dm',
       });
       if (verdict.action === 'block') return;
-      this.addMessage(message);
-      if (verdict.action === 'ignore') {
-        this.emitIgnoredMessage(message);
-        return;
+      const opts: ReceivedMessageOpts = {
+        isDM: true,
+        hopCount: null,
+        route: null,
+        verdict,
+        mc1Hash: null,
+        autoReplies: false,
+        logLine: `[MeshCore] Message from ${match[1].substring(0, 8)}... (${match[2].length} chars)`,
+      };
+      if (isReactionText(match[2])) {
+        void this.ingestPossibleReaction(message, { ...opts, parseBody: match[2], peerKey: match[1], reactorKey: match[1] });
+      } else {
+        this.deliverReceivedMessage(message, opts);
       }
-      this.emit('message', message);
-      dataEventEmitter.emitMeshCoreMessage(message, this.sourceId);
-      logger.debug(`[MeshCore] Message from ${match[1].substring(0, 8)}... (${match[2].length} chars)`);
     }
   }
 
@@ -4583,14 +4651,55 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
   }
 
   /**
+   * The one DB row -> API message mapping, for the connect-time load and
+   * `getChannelMessages`. Carries the six reaction fields (#5759); `mc1Hash`
+   * stays internal and is never copied out.
+   */
+  private static dbRowToMessage(dbMsg: DbMeshCoreMessage): MeshCoreMessage {
+    return {
+      id: dbMsg.id,
+      fromPublicKey: dbMsg.fromPublicKey,
+      fromName: dbMsg.fromName ?? undefined,
+      toPublicKey: dbMsg.toPublicKey ?? undefined,
+      text: dbMsg.text,
+      timestamp: dbMsg.timestamp,
+      rssi: dbMsg.rssi ?? undefined,
+      snr: dbMsg.snr ?? undefined,
+      sourceId: dbMsg.sourceId ?? undefined,
+      // Without this a reloaded room post loses its tag and drops out of
+      // the Rooms view after a restart (#5682).
+      messageType: dbMsg.messageType ?? undefined,
+      // The DB's createdAt IS our own observation clock — same semantic as
+      // receivedAt — so historical rows order correctly too, with no migration.
+      receivedAt: dbMsg.createdAt ?? undefined,
+      hopCount: dbMsg.hopCount ?? null,
+      routePath: dbMsg.routePath ?? null,
+      scopeCode: dbMsg.scopeCode ?? null,
+      scopeName: dbMsg.scopeName ?? null,
+      senderTimestamp: dbMsg.senderTimestamp ?? undefined,
+      keySourceId: dbMsg.keySourceId ?? null,
+      keyChannelIdx: dbMsg.keyChannelIdx ?? null,
+      keyFingerprint: dbMsg.keyFingerprint ?? null,
+      reactionEmoji: dbMsg.reactionEmoji ?? null,
+      reactionFormat: dbMsg.reactionFormat ?? null,
+      reactionTargetHash: dbMsg.reactionTargetHash ?? null,
+      reactionTargetSender: dbMsg.reactionTargetSender ?? null,
+      reactionTargetId: dbMsg.reactionTargetId ?? null,
+      reactionRawText: dbMsg.reactionRawText ?? null,
+    };
+  }
+
+  /**
    * Add message with limit to prevent unbounded growth
    */
-  private addMessage(message: MeshCoreMessage): void {
+  private addMessage(message: MeshCoreMessage, extra?: { mc1Hash?: string | null }): Promise<boolean> {
     this.messages.push(message);
     if (this.messages.length > MeshCoreManager.MAX_MESSAGES) {
       this.messages = this.messages.slice(-MeshCoreManager.MAX_MESSAGES);
     }
-    databaseService.meshcore.insertMessage(
+    // `mc1Hash` rides as a second argument, not on the message, so it can
+    // never leak into an emitted event or the API (#5759).
+    return databaseService.meshcore.insertMessage(
       {
         id: message.id,
         fromPublicKey: message.fromPublicKey,
@@ -4607,12 +4716,141 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
         scopeCode: message.scopeCode ?? null,
         scopeName: message.scopeName ?? null,
         senderTimestamp: message.senderTimestamp ?? null,
+        mc1Hash: extra?.mc1Hash ?? null,
+        reactionEmoji: message.reactionEmoji ?? null,
+        reactionFormat: message.reactionFormat ?? null,
+        reactionTargetHash: message.reactionTargetHash ?? null,
+        reactionTargetSender: message.reactionTargetSender ?? null,
+        reactionTargetId: message.reactionTargetId ?? null,
+        reactionRawText: message.reactionRawText ?? null,
         createdAt: Date.now(),
       },
       this.sourceId,
-    ).catch(err => {
+    ).then(ok => ok !== false).catch(err => {
       logger.warn(`[MeshCore:${this.sourceId}] Failed to persist message ${message.id}: ${(err as Error).message}`);
+      return false;
     });
+  }
+
+  /**
+   * After an ORDINARY row is stored: resolve reactions that were waiting for
+   * it, patch the in-memory pool and tell the sockets (#5759). Never throws.
+   * Sends nothing and arms no timer.
+   */
+  private async afterMessageStored(
+    message: MeshCoreMessage,
+    mc1Hash: string | null,
+    stored: Promise<boolean>,
+  ): Promise<void> {
+    try {
+      if (!(await stored)) return;
+      const results = await resolvePendingReactionsFor(
+        this.sourceId,
+        {
+          id: message.id,
+          fromPublicKey: message.fromPublicKey,
+          toPublicKey: message.toPublicKey ?? null,
+          fromName: message.fromName ?? null,
+          text: message.text,
+          timestamp: message.timestamp,
+          senderTimestamp: message.senderTimestamp ?? null,
+          mc1Hash,
+          messageType: message.messageType ?? null,
+        },
+        { selfName: this.localNode?.name ?? null, selfKey: this.localNode?.publicKey ?? null },
+      );
+      if (results.length === 0) return;
+      const dropped = new Set(results.filter(r => r.droppedDuplicate).map(r => r.reactionId));
+      const patched = new Map(results.filter(r => !r.droppedDuplicate).map(r => [r.reactionId, r.targetId]));
+      this.messages = this.messages
+        .filter(m => !dropped.has(m.id))
+        .map(m => (patched.has(m.id) ? { ...m, reactionTargetId: patched.get(m.id) } : m));
+      emitReactionResolutions(this.sourceId, results);
+    } catch (err) {
+      logger.warn(`[MeshCore:${this.sourceId}] late reaction resolution failed: ${(err as Error).message}`);
+    }
+  }
+
+  /**
+   * The tail every received DM / channel message ran inline until #5759:
+   * store, then (ignored ? flag : emit + auto-replies), then late reaction
+   * resolution. `autoReplies` is false for the legacy serial `MSG:` path,
+   * which never had an auto-reply tail.
+   */
+  private deliverReceivedMessage(message: MeshCoreMessage, o: ReceivedMessageOpts): void {
+    const stored = this.addMessage(message, { mc1Hash: o.mc1Hash });
+    if (o.verdict.action === 'ignore') {
+      this.emitIgnoredMessage(message);
+    } else {
+      this.emit('message', message);
+      dataEventEmitter.emitMeshCoreMessage(message, this.sourceId);
+      logger.debug(o.logLine);
+      if (o.autoReplies !== false) {
+        void this.checkAutoAcknowledge(message, o.isDM, o.channelIdx, o.hopCount, o.route);
+        void this.checkAutoResponder(message, o.isDM, o.channelIdx, o.hopCount, o.route);
+        void this.checkForwarding(message, o.isDM, o.channelIdx);
+      }
+    }
+    void this.afterMessageStored(message, o.mc1Hash, stored);
+  }
+
+  /**
+   * A received text that looks like a reaction (#5759). Falls back to
+   * `deliverReceivedMessage` when it is not one, when inbound is off, or on
+   * any error, so a message is never lost.
+   *
+   * A reaction row: no Auto-Responder, no Forwarding; Auto-Acknowledge only
+   * when the global `meshcoreReactionsAckOnReceive` is on, and then it gets
+   * the RAW text copy. The local `'message'` event also carries the raw text
+   * so the Virtual Node relays the wire bytes unchanged.
+   */
+  private async ingestPossibleReaction(
+    message: MeshCoreMessage,
+    o: ReceivedMessageOpts & { parseBody: string; peerKey?: string; reactorKey: string | null },
+  ): Promise<void> {
+    try {
+      if (!(await isReactionsInboundEnabled(this.sourceId))) return this.deliverReceivedMessage(message, o);
+      const res = await resolveInboundReaction({
+        sourceId: this.sourceId,
+        scope: o.isDM ? 'dm' : 'channel',
+        body: o.parseBody,
+        channelIdx: o.channelIdx,
+        peerKey: o.peerKey,
+        reactorName: message.fromName ?? null,
+        reactorKey: o.reactorKey,
+        selfName: this.localNode?.name ?? null,
+        selfKey: this.localNode?.publicKey ?? null,
+        now: Date.now(),
+      });
+      if (res.kind === 'not_reaction') return this.deliverReceivedMessage(message, o);
+      if (res.kind === 'duplicate') {
+        logger.debug(`[MeshCore:${this.sourceId}] Duplicate reaction dropped (of ${res.existingId})`);
+        return;
+      }
+      const reaction: MeshCoreMessage = { ...message, text: res.fields.reactionEmoji ?? message.text, ...res.fields };
+      // No mc1Hash: a reaction is never a reaction target.
+      const stored = this.addMessage(reaction);
+      const { reactionFormat, reactionTargetHash } = res.fields;
+      if (!res.fields.reactionTargetId && reactionFormat && reactionTargetHash) {
+        void stored.then(ok => {
+          if (ok) notePendingReaction(this.sourceId, { id: reaction.id, reactionFormat, reactionTargetHash });
+        });
+      }
+      if (o.verdict.action === 'ignore') {
+        this.emitIgnoredMessage(reaction);
+        return;
+      }
+      this.emit('message', message); // RAW text copy: Virtual Node only
+      dataEventEmitter.emitMeshCoreMessage(reaction, this.sourceId); // emoji copy: socket, engine gate, mention gate
+      logger.debug(o.logLine);
+      // Auto-Responder and Forwarding: never fired for a reaction.
+      if (await databaseService.settings.getSettingAsBoolean('meshcoreReactionsAckOnReceive', false)) {
+        void this.checkAutoAcknowledge(message, o.isDM, o.channelIdx, o.hopCount, o.route);
+      }
+    } catch (err) {
+      logger.warn(`[MeshCore:${this.sourceId}] reaction ingest failed, storing as plain message: ${(err as Error).message}`);
+      this.deliverReceivedMessage(message, o);
+    }
   }
 
   /**
@@ -5469,15 +5707,21 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
           // `region` is '' for an explicit-unscoped send (#4932) — coalesce that
           // (and null) to null so unscoped shows no scope row.
           scopeName: region || null,
-          // Kept for channel sends only (#5512): a user resend reuses it.
-          senderTimestamp: isChannelSend ? senderTimestamp : undefined,
+          // Kept on channel sends for a user resend (#5512) and, since #5759,
+          // on DMs too: it is the MC1 reaction hash input. Only a channel
+          // send is resendable (`withResendInfo` and the resend guard).
+          senderTimestamp,
         };
         // An auto-retry resend (#3977) must NOT create a second message row or
         // re-emit a `message` event — that would produce a duplicate bubble in
         // the UI and a duplicate DB row. The retry reuses the ORIGINAL message;
         // `handleDmAckTimeout` updates that message's tracked ack CRC instead.
         if (!isAutoRetry) {
-          this.addMessage(sentMessage);
+          const mc1Hash = isChannelSend
+            ? mc1HashForOwnChannelText(text, senderTimestamp)
+            : mc1HashForDm(text, senderTimestamp);
+          const storedSent = this.addMessage(sentMessage, { mc1Hash });
+          void this.afterMessageStored(sentMessage, mc1Hash, storedSent);
           this.emit('message', sentMessage);
           dataEventEmitter.emitMeshCoreMessage(sentMessage, this.sourceId);
 
@@ -10120,31 +10364,10 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
     // DB returns newest-first; reverse to oldest-first for the UI.
     const mapped: MeshCoreMessage[] = stored.reverse().map(dbMsg => {
       const heard = heardByMap[dbMsg.id];
-      return {
-        id: dbMsg.id,
-        fromPublicKey: dbMsg.fromPublicKey,
-        fromName: dbMsg.fromName ?? undefined,
-        toPublicKey: dbMsg.toPublicKey ?? undefined,
-        text: dbMsg.text,
-        timestamp: dbMsg.timestamp,
-        rssi: dbMsg.rssi ?? undefined,
-        snr: dbMsg.snr ?? undefined,
-        sourceId: dbMsg.sourceId ?? undefined,
-        // The DB's createdAt IS our own observation clock — same semantic as
-        // receivedAt — so historical rows order correctly too, with no migration.
-        receivedAt: dbMsg.createdAt ?? undefined,
-        hopCount: dbMsg.hopCount ?? null,
-        routePath: dbMsg.routePath ?? null,
-        scopeCode: dbMsg.scopeCode ?? null,
-        scopeName: dbMsg.scopeName ?? null,
-        senderTimestamp: dbMsg.senderTimestamp ?? undefined,
-        keySourceId: dbMsg.keySourceId ?? null,
-        keyChannelIdx: dbMsg.keyChannelIdx ?? null,
-        keyFingerprint: dbMsg.keyFingerprint ?? null,
-        heardBy: heard && heard.length > 0
-          ? heard.map(r => ({ hash: r.repeaterHash, name: r.repeaterName, snr: r.snr }))
-          : undefined,
-      };
+      const base = MeshCoreManager.dbRowToMessage(dbMsg);
+      return heard && heard.length > 0
+        ? { ...base, heardBy: heard.map(r => ({ hash: r.repeaterHash, name: r.repeaterName, snr: r.snr })) }
+        : base;
     });
     return this.withAutoRetryFlag(await this.withResendInfo(mapped));
   }
@@ -10156,7 +10379,15 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
    * throws — on a DB hiccup the messages come back unchanged.
    */
   private async withResendInfo(messages: MeshCoreMessage[]): Promise<MeshCoreMessage[]> {
-    const ids = messages.filter(m => m.senderTimestamp != null).map(m => m.id);
+    // Only our own channel sends are resendable. Since #5759 received rows and
+    // own DMs carry a senderTimestamp too; they must not be asked about.
+    const ids = messages
+      .filter(m =>
+        m.senderTimestamp != null
+        && typeof m.toPublicKey === 'string'
+        && m.toPublicKey.startsWith('channel-')
+        && !m.fromPublicKey.startsWith('channel-'))
+      .map(m => m.id);
     if (ids.length === 0) return messages;
     try {
       const events = await databaseService.messageEvents.getEventsForMessages(this.sourceId, ids, 'retry');
@@ -10244,14 +10475,28 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
     return a.startsWith(b) || b.startsWith(a);
   }
 
+  /** Delete the reactions that point at `targetIds` (#5759). Never throws; returns their ids. */
+  private async deleteReactionsOf(targetIds: string[]): Promise<string[]> {
+    try {
+      return await databaseService.meshcore.deleteReactionsForTargets(targetIds, this.sourceId);
+    } catch (err) {
+      logger.warn(`[MeshCore:${this.sourceId}] reaction cleanup failed: ${(err as Error).message}`);
+      return [];
+    }
+  }
+
   /**
    * Delete a single stored message (#3981). Returns true if a row was deleted.
    */
   async deleteStoredMessage(id: string): Promise<boolean> {
     const deleted = await databaseService.meshcore.deleteMessageForSource(id, this.sourceId);
     if (deleted) {
-      this.messages = this.messages.filter(m => m.id !== id);
-      dataEventEmitter.emitMeshCoreMessagesDeleted({ ids: [id] }, this.sourceId);
+      // A message takes its reactions with it (#5759).
+      const gone = await this.deleteReactionsOf([id]);
+      const all = new Set([id, ...gone]);
+      this.messages = this.messages.filter(m => !all.has(m.id));
+      invalidatePendingReactions(this.sourceId);
+      dataEventEmitter.emitMeshCoreMessagesDeleted({ ids: [id, ...gone] }, this.sourceId);
     }
     return deleted;
   }
@@ -10284,8 +10529,12 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
     if (ids.length === 0) return 0;
     const count = await databaseService.meshcore.deleteMessagesByIds(ids, this.sourceId);
     if (count > 0) {
-      const deleted = new Set(ids);
+      // Reactions to the removed rows go too (#5759). The conversation event
+      // carries no ids, so the client prunes any left over via its own match.
+      const gone = await this.deleteReactionsOf(ids);
+      const deleted = new Set([...ids, ...gone]);
       this.messages = this.messages.filter(m => !deleted.has(m.id));
+      invalidatePendingReactions(this.sourceId);
       dataEventEmitter.emitMeshCoreMessagesDeleted({ conversationPublicKey: publicKey }, this.sourceId);
     }
     return count;
@@ -10296,6 +10545,7 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
    */
   async purgeChannelMessages(channelIdx: number): Promise<number> {
     const count = await databaseService.meshcore.deleteChannelMessagesForSource(channelIdx, this.sourceId);
+    invalidatePendingReactions(this.sourceId);
     if (count > 0) {
       const key = `channel-${channelIdx}`;
       this.messages = this.messages.filter(m => {
@@ -10315,6 +10565,7 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
    */
   async purgeAllMessages(): Promise<number> {
     const count = await databaseService.meshcore.deleteAllMessagesForSource(this.sourceId);
+    invalidatePendingReactions(this.sourceId);
     this.messages = [];
     dataEventEmitter.emitMeshCoreMessagesDeleted({ all: true }, this.sourceId);
     return count;
@@ -11328,6 +11579,8 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
     route: string | null = null,
   ): Promise<void> {
     try {
+      // A reaction row (#5759) never fires the Auto-Responder.
+      if (message.reactionEmoji) return;
       // Receive-only (#4547): first statement inside the try, before any
       // guarded send primitive (and before the settings reads below).
       if (!this.canTransmit()) {
@@ -11460,6 +11713,8 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
     channelIdx: number | undefined,
   ): Promise<void> {
     try {
+      // A reaction row (#5759) is never forwarded.
+      if (message.reactionEmoji) return;
       // Source-level master switch (#5537): off = no rule fires, whatever its
       // own flag. Checked before the rules are even parsed.
       if (!(await isForwardingEnabled(this.sourceId))) return;

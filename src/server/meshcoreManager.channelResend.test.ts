@@ -13,6 +13,7 @@ import { dataEventEmitter } from './services/dataEventEmitter.js';
 import { encodeGroupTextPayload } from './utils/meshcoreGroupEcho.js';
 import { isMeshCoreResendError } from './errors/meshcoreResendError.js';
 import { isTxDisabledError } from './errors/txDisabledError.js';
+import { mc1HashForDm, mc1HashForOwnChannelText } from '../utils/meshcoreReactionTarget.js';
 
 interface BridgeCall { cmd: string; params: Record<string, unknown>; }
 
@@ -112,6 +113,26 @@ describe('MeshCoreManager.resendChannelMessage (#5512)', () => {
     const row = await databaseService.meshcore.getMessageForSource(id, sourceId);
     expect(row?.senderTimestamp).toBe(sends(calls)[0].params.sender_timestamp);
     expect(row?.senderTimestamp).toBe(Math.floor(T0 / 1000));
+  });
+
+  it('stores the MC1 hash of our own channel send and DM next to the wire second (#5759)', async () => {
+    const { manager } = makeManager(sourceId);
+    const sec = Math.floor(T0 / 1000);
+    const chId = await sendOne(manager, 'hello mesh');
+    const chRow = await databaseService.meshcore.getMessageForSource(chId, sourceId);
+    expect(chRow?.mc1Hash).toBe(mc1HashForOwnChannelText('hello mesh', sec));
+    expect(chRow?.mc1Hash).toHaveLength(8);
+
+    const peer = 'b'.repeat(64);
+    await manager.sendMessage('hi there', peer);
+    await settle();
+    const msgs = (manager as any).messages as Array<{ id: string; text: string; senderTimestamp?: number }>;
+    const dm = msgs[msgs.length - 1];
+    expect(dm.text).toBe('hi there');
+    expect(dm.senderTimestamp).toBe(sec);
+    const dmRow = await databaseService.meshcore.getMessageForSource(dm.id, sourceId);
+    expect(dmRow?.senderTimestamp).toBe(sec);
+    expect(dmRow?.mc1Hash).toBe(mc1HashForDm('hi there', sec));
   });
 
   it('resends the same text on the same channel with the ORIGINAL timestamp, adding no row or message event', async () => {
