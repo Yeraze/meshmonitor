@@ -118,7 +118,8 @@ import { resolveBroadcastChannel } from './utils/resolveDestinationChannel.js';
 import { applyHomoglyphOptimization } from '../utils/homoglyph.js';
 import { PortNum, RoutingError, isPkiError, getRoutingErrorName, CHANNEL_DB_OFFSET, TransportMechanism, resolveRadioPacketTransport, isViaMqtt, MIN_TRACEROUTE_INTERVAL_MS, StoreForwardRequestResponse, getStoreForwardRequestResponseName, isUdpBroadcastEnabled, resolveHopLimit, PacketSignaturePolicy } from './constants/meshtastic.js';
 import { normalizeChannelRole } from './constants/channelRole.js';
-import { MODULE_FIELD_BY_ADMIN_TYPE } from './constants/configTypes.js';
+import { MODULE_FIELD_BY_ADMIN_TYPE, CONFIG_TYPE_MAP } from './constants/configTypes.js';
+import { runStatusMessageReapply } from './services/statusMessageReapply.js';
 import { createRequire } from 'module';
 import { validateCron, scheduleCron, type CronJob } from './utils/cronScheduler.js';
 import {
@@ -1200,6 +1201,8 @@ class MeshtasticManager implements ISourceManager {
   private localModuleConfigWaiters: Map<string, Array<(section: Record<string, unknown> | null) => void>> = new Map();
   // Track whether module configs have ever been fetched this process lifetime (skip on reconnect)
   private moduleConfigsEverFetched: boolean = false;
+  // This connection already ran its Status Message re-apply check (#5745).
+  private statusReapplyAttempted: boolean = false;
   // Per-node channel storage for remote nodes
   private remoteNodeChannels: Map<number, Map<number, any>> = new Map();
   // Per-node owner storage for remote nodes
@@ -2346,6 +2349,8 @@ class MeshtasticManager implements ISourceManager {
       // Replace (not chain) the config capture callback on each reconnect.
       // Chaining would accumulate scheduler starts across reconnects, causing
       // duplicate cron jobs (e.g., 4 reconnects = 4x auto-welcome messages).
+      // A new connection earns one Status Message re-apply check (#5745).
+      this.statusReapplyAttempted = false;
       this.onConfigCaptureComplete = () => {
         // Manual resync completed successfully — clear the in-flight latch and
         // cancel the watchdog so the operator's button re-enables (after cooldown).
@@ -2367,6 +2372,13 @@ class MeshtasticManager implements ISourceManager {
         // server-side and surfaced in the unified view (#3441).
         this.maybeExtractAndStorePkiKey().catch(e =>
           logger.warn(`[MeshtasticManager:${this.sourceId}] PKI key extraction failed: ${(e as Error).message}`));
+
+        // Opt-in: put back a Status Message the node lost in a reboot (#5745).
+        // Local admin packets only, never in passive mode, and at most one
+        // check per connection (a second configComplete is a no-op).
+        if (!this.passiveMode) {
+          void this.maybeReapplyStatusMessage();
+        }
 
         // Stagger scheduler starts to avoid overwhelming the device (#2474)
         // Each scheduler gets its own delay so outbound requests are spread out
@@ -15237,6 +15249,26 @@ class MeshtasticManager implements ISourceManager {
       settle(null);
     }
     return answer;
+  }
+
+  /**
+   * Opt-in "re-apply the Status Message after a reboot" (#5745). Runs once per
+   * connection, from the configComplete callback. Decision and action live in
+   * services/statusMessageReapply.ts; the write is the verified save from #5769.
+   */
+  async maybeReapplyStatusMessage(): Promise<void> {
+    const alreadyAttempted = this.statusReapplyAttempted;
+    this.statusReapplyAttempted = true;
+    const settings = databaseService.settings;
+    await runStatusMessageReapply({
+      sourceId: this.sourceId,
+      getSetting: (key) => settings.getSettingForSource(this.sourceId, key),
+      setSetting: (key, value) => settings.setSourceSetting(this.sourceId, key, value),
+      supported: () => this.supportsStatusMessage(),
+      saveInFlight: () => this.deviceAdminService.isVerifiedSaveInFlight(),
+      readNodeSection: () => this.readLocalModuleConfig(CONFIG_TYPE_MAP.statusmessage.type),
+      saveVerified: (nodeStatus) => this.setGenericModuleConfig('statusmessage', { nodeStatus }, { verify: true }),
+    }, alreadyAttempted);
   }
 
   /** Wake every readLocalModuleConfig() caller waiting on `key`. */

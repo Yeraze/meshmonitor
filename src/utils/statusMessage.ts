@@ -155,3 +155,11 @@ export function statusMessageSaveErrorText(code: string | undefined): { key: str
       return undefined;
   }
 }
+
+/** Per-source setting key for the opt-in re-apply after a reboot (#5745). */
+export const STATUS_MESSAGE_REAPPLY_SETTING = 'statusMessageReapplyAfterReboot';
+
+/** Only 'true' / '1' turn it on; absent or anything else is off. */
+export function isReapplyEnabled(raw: string | null | undefined): boolean {
+  return raw === 'true' || raw === '1';
+}

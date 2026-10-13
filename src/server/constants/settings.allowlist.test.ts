@@ -169,8 +169,9 @@ describe('per-source settings key allowlist invariants', () => {
     // #5537 added forwardingEnabled (same dedicated route).
     // #5704 added aircraftPositionRequestStarts (persisted hourly cap).
     // #5723 added tracePathScheduleState (persisted trace intervals + cap).
+    // #5745 added statusMessageLastVerified (last verified Status Message).
     // MeshCore mention alerts added meshcoreMentionNotifyState (per-sender cooldown).
-    expect(PER_SOURCE_KEYS_NOT_POSTABLE.size).toBe(32);
+    expect(PER_SOURCE_KEYS_NOT_POSTABLE.size).toBe(33);
   });
 
   // #5101 Phase 3 WP3: the transport-traffic writer's checkpoint is
@@ -243,4 +244,15 @@ describe('per-source settings key allowlist invariants', () => {
     expect(GLOBAL_ONLY_SETTINGS_KEYS.has(key)).toBe(true);
     expect((PER_SOURCE_SETTINGS_KEYS as readonly string[]).includes(key)).toBe(false);
   });
+
+it('statusMessageReapplyAfterReboot is user-postable and per-source; statusMessageLastVerified is server-only (#5745)', () => {
+const perSource = new Set<string>(PER_SOURCE_SETTINGS_KEYS as readonly string[]);
+const valid = new Set<string>(VALID_SETTINGS_KEYS as readonly string[]);
+expect(perSource.has('statusMessageReapplyAfterReboot')).toBe(true);
+expect(valid.has('statusMessageReapplyAfterReboot')).toBe(true);
+expect(PER_SOURCE_KEYS_NOT_POSTABLE.has('statusMessageReapplyAfterReboot')).toBe(false);
+expect(perSource.has('statusMessageLastVerified')).toBe(true);
+expect(valid.has('statusMessageLastVerified')).toBe(false);
+expect(PER_SOURCE_KEYS_NOT_POSTABLE.has('statusMessageLastVerified')).toBe(true);
+});
 });
