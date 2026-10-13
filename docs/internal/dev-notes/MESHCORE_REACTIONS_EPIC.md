@@ -124,7 +124,7 @@ source, with attribution, not from MC1's copy.
   MeshCore, wire second stored for our own DMs.
   *Exit:* a reaction sent from MeshMonitor is read back as a reaction by a
   second source; rig test on `gauntlet`.
-- [ ] **Phase 4 — downstream** (#5763). Unified Messages chips, CSV export,
+- [x] **Phase 4 — downstream** (#5763). Unified Messages chips, CSV export,
   automation trigger `isTapback` and reply target for MeshCore, docs.
   *Exit:* the audit table in #5763 is answered row by row, with a test or a
   stated "MeshCore never reaches this".
@@ -199,3 +199,37 @@ source, with attribution, not from MC1's copy.
     rebuilt hash and may not match on other devices; if the insert fails after
     the radio accepted the packet, a restart could allow one repeat send.
   - **For Phase 4:** Unified Messages chips, CSV columns, `isTapback` triggers.
+- 2026-10-13: Phase 4 done; epic complete. Decisions made on the way:
+  - **#5763's premise did not hold.** It assumed MeshCore reactions would be
+    stored in the Meshtastic `emoji=1` / `replyId` shape. They use their own
+    columns on `meshcore_messages` (no packet id to put in `replyId`; a target
+    can be unknown and resolve later; two wire formats). So most of its audit
+    rows are "MeshCore never reaches this code": per-message notifications,
+    translation, the v1 message API, Meshtastic threading and MQTT publish all
+    read the Meshtastic table only. The doc comments #5763 asked for at each
+    `emoji`-reading site were not added, because they would be false.
+  - At the edges MeshCore uses the Meshtastic vocabulary: automation fields
+    `isTapback`, `emoji = 1`, `replyContext`; CSV columns `reaction` and
+    `reply_to_id`; a chip in Unified Messages.
+  - **Unified Messages**: the server sends page-independent refs
+    (`meshcoreRowRefs`, `reactionTargetRefs`) built only from rows the viewer
+    may read; the client resolves them across loaded pages. One reaction heard
+    on several sources is one entry. Chips are read-only. No cross-source
+    target matching. `reactionTargetHash` joined the logical identity of
+    reaction rows only, so plain-row dedup keys did not change.
+  - **CSV**: reactions follow the existing "Include emoji reactions" box
+    (default off); `reaction` and `reply_to_id` appended; MeshCore
+    `message_id` is now the row id (maintainer approved).
+  - **Automation trigger**: opt-in per rule with `includeMeshCoreReactions`;
+    absent means today's behaviour. No built-in cooldown (maintainer chose a
+    warning only). Own reactions are dropped by key, `'local'`, `selfOrigin`,
+    or own node name on a channel. A tapback action on a reaction trigger is a
+    recorded skip, so reaction-for-reaction loops are closed; a
+    message-for-reaction loop with a foreign auto-reactor is not, hence the
+    warning.
+  - **Left open:** resolution is per source; the 16-bit meshcore-open hash can
+    mismatch; no un-react; no sending from Unified; the MT-MC bridge template
+    does not relay MeshCore reactions; rooms take no reactions; rows from
+    before migration 203 use a rebuilt hash. Separate gap found, not fixed
+    here: a plain channel message from one of our own sources, heard by
+    another on the companion path, is not flagged `selfOrigin`.
