@@ -72,6 +72,7 @@ import {
   PkiExchangeStateRepository,
   MapMarkersRepository,
   MeshCoreHopSnrRepository,
+  MeshCoreAdminSessionsRepository,
   CoverageReceptionsRepository,
   CrossSourceLinksRepository,
   CoverageSurveysRepository,
@@ -636,6 +637,7 @@ class DatabaseService {
   public pkiExchangeStateRepo: PkiExchangeStateRepository | null = null;
   public mapMarkersRepo: MapMarkersRepository | null = null;
   public meshcoreHopSnrRepo: MeshCoreHopSnrRepository | null = null;
+  public meshcoreAdminSessionsRepo: MeshCoreAdminSessionsRepository | null = null;
   public coverageReceptionsRepo: CoverageReceptionsRepository | null = null;
   public coverageSurveysRepo: CoverageSurveysRepository | null = null;
   public crossSourceLinksRepo: CrossSourceLinksRepository | null = null;
@@ -741,6 +743,12 @@ class DatabaseService {
   get meshcoreHopSnr(): MeshCoreHopSnrRepository {
     if (!this.meshcoreHopSnrRepo) throw new Error('Database not initialized');
     return this.meshcoreHopSnrRepo;
+  }
+
+  /** Remembered MeshCore remote-admin logins (#5785). */
+  get meshcoreAdminSessions(): MeshCoreAdminSessionsRepository {
+    if (!this.meshcoreAdminSessionsRepo) throw new Error('Database not initialized');
+    return this.meshcoreAdminSessionsRepo;
   }
 
   get coverageReceptions(): CoverageReceptionsRepository {
@@ -1231,6 +1239,7 @@ class DatabaseService {
       this.pkiExchangeStateRepo = new PkiExchangeStateRepository(drizzleDb, this.drizzleDbType);
       this.mapMarkersRepo = new MapMarkersRepository(drizzleDb, this.drizzleDbType);
       this.meshcoreHopSnrRepo = new MeshCoreHopSnrRepository(drizzleDb, this.drizzleDbType);
+      this.meshcoreAdminSessionsRepo = new MeshCoreAdminSessionsRepository(drizzleDb, this.drizzleDbType);
       this.coverageReceptionsRepo = new CoverageReceptionsRepository(drizzleDb, this.drizzleDbType);
       this.coverageSurveysRepo = new CoverageSurveysRepository(drizzleDb, this.drizzleDbType);
       this.crossSourceLinksRepo = new CrossSourceLinksRepository(drizzleDb, this.drizzleDbType);

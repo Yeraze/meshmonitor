@@ -1719,6 +1719,13 @@ router.delete('/:id', requirePermission('sources', 'write'), async (req: Request
       logger.warn(`Failed to purge MeshCore hop SNR history for deleted source ${req.params.id}:`, hopSnrError);
     }
 
+    // #5785: remembered MeshCore remote-admin logins belong to the source.
+    try {
+      await databaseService.meshcoreAdminSessions.deleteBySourceId(req.params.id);
+    } catch (adminSessionError) {
+      logger.warn(`Failed to purge MeshCore admin sessions for deleted source ${req.params.id}:`, adminSessionError);
+    }
+
     // NOTE: `mesh_beacon_offers` (#4723) is cleaned up inside
     // purgeAllNodesAsync above, alongside ATAK contacts (#3691) and Coverage
     // Report RF receptions (#5277) — all three are per-source received state.

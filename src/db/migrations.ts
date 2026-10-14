@@ -222,6 +222,7 @@ import { migration as aircraftManualMarkMigration, runMigration200Postgres, runM
 import { migration as createMeshcoreHopSnrMigration, runMigration201Postgres, runMigration201Mysql } from '../server/migrations/201_create_meshcore_hop_snr.js';
 import { migration as addNotifyOnMentionMigration, runMigration202Postgres, runMigration202Mysql } from '../server/migrations/202_add_notify_on_mention.js';
 import { migration as addMeshcoreReactionColumnsMigration, runMigration203Postgres, runMigration203Mysql } from '../server/migrations/203_add_meshcore_reaction_columns.js';
+import { migration as createMeshcoreAdminSessionsMigration, runMigration204Postgres, runMigration204Mysql } from '../server/migrations/204_create_meshcore_admin_sessions.js';
 
 // ============================================================================
 // Registry
@@ -3286,4 +3287,19 @@ registry.register({
   sqlite: (db) => addMeshcoreReactionColumnsMigration.up(db),
   postgres: (client) => runMigration203Postgres(client),
   mysql: (pool) => runMigration203Mysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 204: meshcore_admin_sessions (#5785). PER-SOURCE. Remembered
+// remote-admin logins so the console and scheduled jobs can resume without a
+// fresh login exchange.
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 204,
+  name: 'create_meshcore_admin_sessions',
+  settingsKey: 'migration_204_create_meshcore_admin_sessions',
+  sqlite: (db) => createMeshcoreAdminSessionsMigration.up(db),
+  postgres: (client) => runMigration204Postgres(client),
+  mysql: (pool) => runMigration204Mysql(pool),
 });

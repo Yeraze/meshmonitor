@@ -13,6 +13,7 @@
 
 import { Router, Request, Response } from 'express';
 import { logger } from '../../utils/logger.js';
+import databaseService from '../../services/database.js';
 import { requireAuth, requirePermission } from '../auth/authMiddleware.js';
 import { meshcoreDeviceLimiter } from '../middleware/rateLimiters.js';
 import { getMeshCoreCredentialStore } from '../services/meshcoreCredentialStore.js';
@@ -100,15 +101,20 @@ router.post('/admin/login', extendRequestTimeout(LOGIN_TIMEOUT_MS), meshcoreDevi
 
     const tracked = startTrackedLogin(req, res);
     if (!tracked) return;
+    const manager = managerFor(req, res);
     let finalOutcome: MeshCoreLoginRetryOutcome = 'no_reply';
     let loginResult;
     try {
-      loginResult = await managerFor(req, res).loginToNodeWithRetry(publicKey, password, tracked.opts);
+      loginResult = await manager.loginToNodeWithRetry(publicKey, password, tracked.opts);
       finalOutcome = loginResult.outcome;
     } finally {
       tracked.finish(finalOutcome);
     }
     const { result: success, outcome, attempts } = loginResult;
+    // Remember the session so the console can resume it later (#5785); a
+    // refusal means any remembered one is no good either.
+    if (success) await manager.recordAdminSession(publicKey, success);
+    else if (outcome === 'rejected') await manager.clearAdminSession(publicKey);
     if (outcome === 'cancelled') {
       auditMeshcoreEvent(req, 'meshcore_remote_login_cancelled', 'remote_admin', { sourceId, publicKey, attempts });
       return respondLoginCancelled(res);
@@ -454,15 +460,19 @@ router.post('/admin/login-with-saved', extendRequestTimeout(LOGIN_TIMEOUT_MS), m
     // log it, do not echo it, do not include it in any response field.
     const tracked = startTrackedLogin(req, res);
     if (!tracked) return;
+    const manager = managerFor(req, res);
     let finalOutcome: MeshCoreLoginRetryOutcome = 'no_reply';
     let loginResult;
     try {
-      loginResult = await managerFor(req, res).loginToNodeWithRetry(publicKey, result.password, tracked.opts);
+      loginResult = await manager.loginToNodeWithRetry(publicKey, result.password, tracked.opts);
       finalOutcome = loginResult.outcome;
     } finally {
       tracked.finish(finalOutcome);
     }
     const { result: loggedIn, outcome, attempts } = loginResult;
+    // Remember / forget the session (#5785), as in /admin/login.
+    if (loggedIn) await manager.recordAdminSession(publicKey, loggedIn);
+    else if (outcome === 'rejected') await manager.clearAdminSession(publicKey);
     if (outcome === 'cancelled') {
       auditMeshcoreEvent(req, 'meshcore_remote_login_saved_cancelled', 'remote_admin', { sourceId, publicKey, attempts });
       return respondLoginCancelled(res);
@@ -560,6 +570,9 @@ router.delete('/admin/credentials/:publicKey', requireAuth(), requirePermission(
       return res.status(400).json({ success: false, error: 'Invalid public key format (expected 64-character hex string)' });
     }
     await getMeshCoreCredentialStore().clear(sourceId, publicKey);
+    // Forgetting the password also forgets the remembered session (#5785):
+    // the user is saying "stop acting as admin on this node".
+    await managerFor(req, res).clearAdminSession(publicKey);
     auditMeshcoreEvent(req, 'meshcore_credential_forget', 'remote_admin', {
       sourceId, publicKey,
     });
@@ -567,6 +580,50 @@ router.delete('/admin/credentials/:publicKey', requireAuth(), requirePermission(
   } catch (error) {
     logger.error('[API] Error clearing credential:', error);
     res.status(500).json({ success: false, error: 'Clear failed' });
+  }
+});
+
+/**
+ * GET /api/sources/:id/meshcore/admin/session/:publicKey
+ * Is there a remembered login to this node that the console can resume
+ * (#5785)? Database only — NO radio traffic, so the console calls it on
+ * every mount. `active` is true only while the connected companion still
+ * has the key the login was made with; `reason` says why not otherwise
+ * (`none` | `other_radio` | `not_connected`).
+ */
+router.get('/admin/session/:publicKey', requireAuth(), requirePermission('remote_admin', 'read', { sourceIdFrom: 'params.id' }), async (req: Request, res: Response) => {
+  try {
+    const { publicKey } = req.params;
+    if (!isValidPublicKey(publicKey)) {
+      return fail(res, 400, 'INVALID_PUBLIC_KEY', 'Invalid public key format (expected 64-character hex string)');
+    }
+    return ok(res, await managerFor(req, res).getAdminSession(publicKey));
+  } catch (error) {
+    logger.error('[API] Error reading admin session:', error);
+    return fail(res, 500, 'ADMIN_SESSION_LOOKUP_FAILED', 'Session lookup failed');
+  }
+});
+
+/**
+ * DELETE /api/sources/:id/meshcore/admin/session/:publicKey
+ * "Log out" (#5785): forget the remembered session. Sends nothing to the
+ * node — the firmware has no logout verb, and our key stays in its ACL until
+ * it is evicted or removed with `setperm`. The next use logs in again. The
+ * saved password, if any, is kept.
+ */
+router.delete('/admin/session/:publicKey', requireAuth(), requirePermission('remote_admin', 'write', { sourceIdFrom: 'params.id' }), async (req: Request, res: Response) => {
+  try {
+    const { publicKey } = req.params;
+    if (!isValidPublicKey(publicKey)) {
+      return fail(res, 400, 'INVALID_PUBLIC_KEY', 'Invalid public key format (expected 64-character hex string)');
+    }
+    // Straight to the repository so a DB failure reaches the user.
+    await databaseService.meshcoreAdminSessions.clear(req.params.id!, publicKey);
+    auditMeshcoreEvent(req, 'meshcore_remote_logout', 'remote_admin', { sourceId: req.params.id, publicKey });
+    return ok(res);
+  } catch (error) {
+    logger.error('[API] Error clearing admin session:', error);
+    return fail(res, 500, 'ADMIN_SESSION_CLEAR_FAILED', 'Log out failed');
   }
 });
 

@@ -134,6 +134,9 @@ import {
   meshcoreHopSnrSqlite, meshcoreHopSnrPostgres, meshcoreHopSnrMysql,
 } from './schema/meshcoreHopSnr.js';
 import {
+  meshcoreAdminSessionsSqlite, meshcoreAdminSessionsPostgres, meshcoreAdminSessionsMysql,
+} from './schema/meshcoreAdminSessions.js';
+import {
   coverageReceptionsSqlite, coverageReceptionsPostgres, coverageReceptionsMysql,
 } from './schema/coverageReceptions.js';
 import {
@@ -348,6 +351,10 @@ export interface ActiveSchema {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any -- #5722 matches the existing ActiveSchema per-dialect table pattern
   meshcoreHopSnr: any;
 
+  // MeshCore remote-admin sessions (#5785)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- #5785 matches the existing ActiveSchema per-dialect table pattern
+  meshcoreAdminSessions: any;
+
   // Coverage Report RF receptions (#5277 Phase 1 WP1)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any -- #5277 matches the existing ActiveSchema per-dialect table pattern; typing burn-down is #3962 Phase 6
   coverageReceptions: any;
@@ -512,6 +519,7 @@ const SCHEMA_MAP: Record<DatabaseType, ActiveSchema> = {
     pkiExchangeState: pkiExchangeStateSqlite,
     mapMarkers: mapMarkersSqlite,
     meshcoreHopSnr: meshcoreHopSnrSqlite,
+    meshcoreAdminSessions: meshcoreAdminSessionsSqlite,
     coverageReceptions: coverageReceptionsSqlite,
     coverageSurveys: coverageSurveysSqlite,
     crossSourceLinks: crossSourceLinksSqlite,
@@ -600,6 +608,7 @@ const SCHEMA_MAP: Record<DatabaseType, ActiveSchema> = {
     pkiExchangeState: pkiExchangeStatePostgres,
     mapMarkers: mapMarkersPostgres,
     meshcoreHopSnr: meshcoreHopSnrPostgres,
+    meshcoreAdminSessions: meshcoreAdminSessionsPostgres,
     coverageReceptions: coverageReceptionsPostgres,
     coverageSurveys: coverageSurveysPostgres,
     crossSourceLinks: crossSourceLinksPostgres,
@@ -688,6 +697,7 @@ const SCHEMA_MAP: Record<DatabaseType, ActiveSchema> = {
     pkiExchangeState: pkiExchangeStateMysql,
     mapMarkers: mapMarkersMysql,
     meshcoreHopSnr: meshcoreHopSnrMysql,
+    meshcoreAdminSessions: meshcoreAdminSessionsMysql,
     coverageReceptions: coverageReceptionsMysql,
     coverageSurveys: coverageSurveysMysql,
     crossSourceLinks: crossSourceLinksMysql,

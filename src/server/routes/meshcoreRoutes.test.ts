@@ -87,6 +87,10 @@ const meshcoreManager = {
     const result = await meshcoreManager.loginToNode(publicKey, password);
     return { result: result || null, outcome: result ? 'ok' : 'rejected', attempts: 1 };
   }),
+  // #5785 remembered admin sessions.
+  recordAdminSession: vi.fn().mockResolvedValue(undefined),
+  clearAdminSession: vi.fn().mockResolvedValue(undefined),
+  getAdminSession: vi.fn().mockResolvedValue({ active: false, loggedInAt: null, isAdmin: null, reason: 'none' }),
   requestNodeStatus: vi.fn().mockResolvedValue({ batteryMv: 4200, uptimeSecs: 3600 }),
   requestNodeStatusDetailed: vi.fn(async (publicKey: string) => ({
     status: await meshcoreManager.requestNodeStatus(publicKey),

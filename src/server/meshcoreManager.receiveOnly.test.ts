@@ -590,9 +590,11 @@ describe('MeshCoreManager guard insertion-point / orphaned-state checks (#4547 W
     companionConnectedSetup(m);
     m.setReceiveOnly(true);
     const ensureSpy = vi.spyOn(m, 'ensureSavedLogin');
+    const ensureDetailedSpy = vi.spyOn(m, 'ensureSavedLoginDetailed');
 
     await expect(m.getNeighbours(HEX_PUBKEY)).rejects.toMatchObject({ isTxDisabledError: true });
     expect(ensureSpy).not.toHaveBeenCalled();
+    expect(ensureDetailedSpy).not.toHaveBeenCalled();
   });
 });
 

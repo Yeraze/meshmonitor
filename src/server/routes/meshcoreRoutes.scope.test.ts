@@ -602,6 +602,9 @@ const CLASSIFIED: Record<string, Record<string, Kind>> = {
     'POST /admin/login-cancel': 'owner',
     'DELETE /admin/credentials/:publicKey': 'admin',
     'GET /admin/status/:publicKey': 'admin',
+    // #5785 remembered admin session: status (DB only) and Log out.
+    'GET /admin/session/:publicKey': 'admin',
+    'DELETE /admin/session/:publicKey': 'admin',
   },
   automation: {
     'GET /automation/pathfinding': 'read',

@@ -126,6 +126,9 @@ export const TABLE_ORDER = [
   'map_markers',
   // #5722: per-hop SNR history from MeshCore traces (reception history).
   'meshcore_hop_snr',
+  // #5785: remembered MeshCore remote-admin logins (honoured only while the
+  // source's companion key matches selfPublicKey).
+  'meshcore_admin_sessions',
   'solar_estimates',
   'system_backup_history',
   // 3271: global estimated positions (no sourceId, no FK — one row per nodeNum)
