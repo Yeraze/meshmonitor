@@ -158,6 +158,7 @@ The settings change only what radios receive. What MeshMonitor stores, and what 
 Before you turn on downlink anywhere:
 
 - [ ] Each node uses **one** MQTT path: its own module, the client proxy, or the sidecar.
+- [ ] **Uplink Enabled** is on for each channel you want published, and off for the rest.
 - [ ] **Downlink Enabled** is on only for channels whose broker traffic you want transmitted, and on only one node per RF area.
 - [ ] The broker's **Cap forwarded hop count** is set, usually to `0`.
 - [ ] Each bridge subscribes to the narrowest topic that covers your area.
