@@ -350,7 +350,7 @@ This is a managed-infrastructure knob: enable it when you have a specific backha
 
 - **Target** — `1`–`3`. Deliberately capped well below the protocol maximum; backhaul is local injection into the receiving cluster, not a wide-area flood.
 - **Packet types** — Position, Telemetry, NodeInfo, NeighborInfo and Text messages, chosen individually. The first four are the ones firmware hop scaling lowers, so raising them undoes that scaling. **Text messages** (channel text and DMs, which share one packet type) are there for a different reason: to undo an upstream broker's zero-hop delivery (see the next section). Traceroutes cannot be raised, because a raised traceroute would no longer measure the real path.
-- **Encrypted packets are never raised.** Without a readable packet type there is no way to know the raise applies, so it does not fire.
+- **Encrypted packets need a matching channel key.** A phone's MQTT client proxy uplinks packets encrypted, so the broker reads their packet type with the keys in the [channel database](/features/channel-database) (server-side decryption must be on). The packet goes out still encrypted; only its hop limit changes. A packet none of those keys opens has no readable type, so it is never raised (the clamp still applies).
 
 Typical uses: a dense urban site whose NodeInfo is scaled to 1 hop needs 2 hops of spread at a rural peer site; MQTT-observed nodes from a neighbouring valley need to reach gateways a couple of hops into the local mesh.
 
