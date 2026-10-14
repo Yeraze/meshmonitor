@@ -37,6 +37,7 @@ import { UiIcon } from '../icons';
 import { useSaveBar } from '../../hooks/useSaveBar';
 import { MQTT_BRIDGE_SETTINGS_HASH } from '../../utils/tabHashRedirect';
 import styles from './MqttBridgeConfigurationView.module.css';
+import { MqttDocsLinks } from './MqttDocsLinks';
 import {
   buildBridgeConfig,
   formFromBridgeConfig,
@@ -355,6 +356,7 @@ export const MqttBridgeConfigurationView: React.FC<MqttBridgeConfigurationViewPr
   return (
     <div id={MQTT_BRIDGE_SETTINGS_SECTION_ID} className={sectionClass}>
       {heading}
+      <MqttDocsLinks />
       {!canWrite && (
         <p className={styles.readOnly} role="status">
           {t(
@@ -456,7 +458,7 @@ export const MqttBridgeConfigurationView: React.FC<MqttBridgeConfigurationViewPr
           <span style={labelStyle}>
             {t(
               'source.form.mqtt_bridge_mode_help',
-              'Use "Publish only" for public servers (e.g. mqtt.meshtastic.org) that reject SUBSCRIBE — avoids permission-denied noise. "Subscribe only" disables uplink forwarding for read-only monitoring.',
+              'Bidirectional brings the upstream server\'s traffic down to the parent broker (and from there to any radios with Downlink Enabled) and sends local traffic up. "Publish only" sends up and brings nothing down; use it for servers that reject SUBSCRIBE. "Subscribe only" brings traffic down and never sends anything up, for read-only monitoring.',
             )}
           </span>
         </label>

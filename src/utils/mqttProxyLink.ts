@@ -19,6 +19,15 @@
 /** Docs section the warnings link to. */
 export const MQTT_TRAFFIC_DOCS_URL = 'https://meshmonitor.org/features/mqtt-broker#why-no-mqtt-traffic';
 
+/** Step-by-step guide to the common broker and bridge setups (#5013). */
+export const MQTT_SETUP_GUIDE_URL = 'https://meshmonitor.org/features/mqtt-setups';
+
+/** Full reference for the broker and bridge options. */
+export const MQTT_BROKER_DOCS_URL = 'https://meshmonitor.org/features/mqtt-broker';
+
+/** How far broker traffic travels on the air, and the hop-limit settings. */
+export const MQTT_AIRTIME_DOCS_URL = 'https://meshmonitor.org/features/mqtt-setups#how-much-airtime-downlink-costs';
+
 /** The slice of a source row the rule reads. */
 export interface MqttProxyLinkSource {
   id: string;
