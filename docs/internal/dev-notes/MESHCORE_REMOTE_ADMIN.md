@@ -200,6 +200,12 @@ reporter restarts on every upgrade). Repository:
 `MeshCoreManager` (`getAdminSession` / `recordAdminSession` /
 `clearAdminSession` / `retryAfterStaleSession`).
 
+**Admin only.** `recordAdminSession` stores nothing for a guest login: the
+LoginSuccess frame says `isAdmin: false`, or, when the frame does not say, the
+`/admin/login` password was empty. A guest login also CLEARS any stored row,
+because the repeater's ACL entry for us is now the guest one, and CLI from a
+guest is dropped (`onPeerDataRecv` above).
+
 **Rules.**
 
 - **Honoured only while the connected companion's key equals

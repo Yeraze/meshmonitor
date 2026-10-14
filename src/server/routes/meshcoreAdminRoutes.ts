@@ -113,7 +113,7 @@ router.post('/admin/login', extendRequestTimeout(LOGIN_TIMEOUT_MS), meshcoreDevi
     const { result: success, outcome, attempts } = loginResult;
     // Remember the session so the console can resume it later (#5785); a
     // refusal means any remembered one is no good either.
-    if (success) await manager.recordAdminSession(publicKey, success);
+    if (success) await manager.recordAdminSession(publicKey, success, { guest: password === '' });
     else if (outcome === 'rejected') await manager.clearAdminSession(publicKey);
     if (outcome === 'cancelled') {
       auditMeshcoreEvent(req, 'meshcore_remote_login_cancelled', 'remote_admin', { sourceId, publicKey, attempts });

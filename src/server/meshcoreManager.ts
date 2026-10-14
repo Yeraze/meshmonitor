@@ -9111,8 +9111,23 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
   /**
    * Remember a successful login to `publicKey`. Best-effort: a DB failure is
    * logged, never thrown, since the login itself already worked.
+   *
+   * Admin logins only: the repeater ignores CLI text from a guest, so a
+   * resumed guest session would only ever time out. A guest login (the reply
+   * says not admin, or `opts.guest` for an empty password when the reply does
+   * not say) also forgets any earlier admin session, because the repeater's
+   * ACL entry for us is now the guest one.
    */
-  async recordAdminSession(publicKey: string, result: MeshCoreLoginResult | null): Promise<void> {
+  async recordAdminSession(
+    publicKey: string,
+    result: MeshCoreLoginResult | null,
+    opts: { guest?: boolean } = {},
+  ): Promise<void> {
+    const isGuest = result?.isAdmin === false || (result?.isAdmin === undefined && opts.guest === true);
+    if (isGuest) {
+      await this.clearAdminSession(publicKey);
+      return;
+    }
     const self = this.getSelfPublicKey();
     if (!self) return;
     try {

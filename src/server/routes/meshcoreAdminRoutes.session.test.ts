@@ -139,8 +139,15 @@ describe('meshcore admin routes — remembered sessions (#5785)', () => {
       const agent = await harness.loginAs(harness.admin);
       const res = await agent.post(`/sources/${harness.sourceA}/meshcore/admin/login`).send({ publicKey: PK, password: 'pw' });
       expect(res.status).toBe(200);
-      expect(recordMock).toHaveBeenCalledWith(PK, { isAdmin: true });
+      expect(recordMock).toHaveBeenCalledWith(PK, { isAdmin: true }, { guest: false });
       expect(clearMock).not.toHaveBeenCalled();
+    });
+
+    it('/admin/login marks an empty-password login as a guest', async () => {
+      retryMock.mockResolvedValue({ result: {}, outcome: 'ok', attempts: 1 });
+      const agent = await harness.loginAs(harness.admin);
+      await agent.post(`/sources/${harness.sourceA}/meshcore/admin/login`).send({ publicKey: PK, password: '' });
+      expect(recordMock).toHaveBeenCalledWith(PK, {}, { guest: true });
     });
 
     it('/admin/login clears it when the node refuses the password', async () => {

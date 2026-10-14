@@ -125,6 +125,33 @@ describe('ensureSavedLogin — remembered sessions', () => {
   });
 });
 
+describe('recordAdminSession — admin logins only', () => {
+  it('records an admin login', async () => {
+    const { m } = makeManager();
+    await m.recordAdminSession(TARGET, { isAdmin: true });
+    expect(await repo.get(SOURCE, TARGET)).toMatchObject({ isAdmin: true });
+  });
+
+  it('does not record a login the repeater says is a guest, and forgets an older admin one', async () => {
+    await repo.record({ sourceId: SOURCE, targetPublicKey: TARGET, selfPublicKey: SELF, loggedInAt: 1, isAdmin: true });
+    const { m } = makeManager();
+    await m.recordAdminSession(TARGET, { isAdmin: false });
+    expect(await repo.get(SOURCE, TARGET)).toBeFalsy();
+  });
+
+  it('treats an empty-password login as a guest when the reply does not say', async () => {
+    const { m } = makeManager();
+    await m.recordAdminSession(TARGET, {}, { guest: true });
+    expect(await repo.get(SOURCE, TARGET)).toBeFalsy();
+  });
+
+  it('records a password login whose reply does not say', async () => {
+    const { m } = makeManager();
+    await m.recordAdminSession(TARGET, {}, { guest: false });
+    expect(await repo.get(SOURCE, TARGET)).toBeTruthy();
+  });
+});
+
 describe('syncNodeTime — stale-session fallback', () => {
   const resumed = async () => {
     await repo.record({ sourceId: SOURCE, targetPublicKey: TARGET, selfPublicKey: SELF, loggedInAt: 1, isAdmin: true });

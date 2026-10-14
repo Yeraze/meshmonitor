@@ -479,7 +479,7 @@ Every login screen (remote console, contact details, direct messages and rooms) 
 
 #### Resuming a session
 
-A repeater keeps you logged in until its client table fills up; there is no idle timeout, and an admin login even survives a reboot of the repeater. So MeshMonitor remembers each successful login, per source and per node, in its database. The record survives a MeshMonitor restart or upgrade.
+A repeater keeps you logged in until its client table fills up; there is no idle timeout, and an admin login even survives a reboot of the repeater. So MeshMonitor remembers each successful **admin** login, per source and per node, in its database. The record survives a MeshMonitor restart or upgrade. A guest login (blank password) is not remembered, because a repeater ignores commands from a guest; it also replaces any admin login remembered before it.
 
 - When you open the console and a login is remembered, it shows **Resume session**. Resume turns the console on without sending anything over the air. **Log in again** does a fresh login (with the saved password, or the password dialog when none is saved).
 - The console never logs in or resumes on its own. You always click.
