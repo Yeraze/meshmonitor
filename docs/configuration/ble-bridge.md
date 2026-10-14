@@ -192,8 +192,23 @@ services:
       - /var/lib/bluetooth:/var/lib/bluetooth:ro  # Pairing information
     environment:
       - BLE_ADDRESS=${BLE_ADDRESS:-}
+      - HEALTH_FILE=/tmp/ble-bridge.health
     command: ${BLE_ADDRESS:-}
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import os, sys, time; f = '/tmp/ble-bridge.health'; sys.exit(0 if os.path.exists(f) and time.time() - os.path.getmtime(f) < 60 else 1)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
 ```
+
+#### Health check and recovery
+
+The bridge touches the file named by `HEALTH_FILE` every 10 seconds while the BLE link is up and data is flowing. The health check reports the container healthy only while that file is fresh, so `docker ps` shows `unhealthy` when the link is down, even though port 4403 still accepts connections.
+
+When the bridge cannot reconnect after 10 attempts, it exits with code 1 and `restart: unless-stopped` starts it again. Docker does not restart a container just because it is unhealthy; recovery comes from the exit.
+
+MeshMonitor depends on the bridge with `condition: service_started`, so MeshMonitor still starts when the node is out of range, and reconnects once the bridge is up.
 
 ### Key Configuration Options
 
