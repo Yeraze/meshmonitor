@@ -46,6 +46,11 @@ import { ALL_CHANNELS_PARAM } from '../utils/unifiedChannelFilter';
 import { hopDisplay } from './unifiedHops';
 import { groupUnifiedMeshCoreReactions } from './unifiedMeshCoreReactions';
 import {
+  readStoredUnifiedChannel,
+  resolveInitialUnifiedChannel,
+  writeStoredUnifiedChannel,
+} from './unifiedChannelPreference';
+import {
   MeshCoreReactionChips,
   MeshCoreUnmatchedReaction,
 } from '../components/MeshCore/MeshCoreReactionChips';
@@ -192,12 +197,17 @@ export default function UnifiedMessagesPage() {
     staleTime: 60_000,
   });
 
-  // Auto-select the first channel when the list loads if nothing is picked yet.
+  // Pick a channel when the list loads if nothing is picked yet: the one the
+  // user last chose in this browser (#5792), else Primary / LongFast, else the
+  // first channel. Only a manual pick is remembered, not this automatic one.
   useEffect(() => {
     if (!selectedChannel && channels.length > 0) {
-      // Prefer a channel literally named "Primary" or "LongFast" if present.
-      const preferred = channels.find((c) => /^(primary|longfast)$/i.test(c.name));
-      setSelectedChannel(preferred?.name ?? channels[0].name);
+      setSelectedChannel(
+        resolveInitialUnifiedChannel(
+          channels.map((c) => c.name),
+          readStoredUnifiedChannel(),
+        ),
+      );
     }
   }, [channels, selectedChannel]);
 
@@ -474,7 +484,10 @@ export default function UnifiedMessagesPage() {
           <select
             className="unified-select"
             value={selectedChannel}
-            onChange={(e) => setSelectedChannel(e.target.value)}
+            onChange={(e) => {
+              setSelectedChannel(e.target.value);
+              writeStoredUnifiedChannel(e.target.value);
+            }}
             disabled={loadingChannels || channels.length === 0}
             aria-label={t('unified.messages.channel_aria')}
           >

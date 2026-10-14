@@ -6,6 +6,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased]
 
+### Changed
+- **Unified Messages remembers the channel you last picked**, per browser, including All Channels. If that channel is gone from the list, or you never picked one, the page opens on Primary / LongFast or the first channel as before. (#5792)
+
 ## [4.17.0] - 2026-10-12
 
 The full release of the 4.17.0 line. It ships everything in 4.17.0-rc1 below, plus the work in this section, which went out in rc2 through rc9 and the merges after rc9. Highlights since 4.16.2: inline message translation with a shared cache, cross-source correlation and map links, MeshCore Repeater sources that fill Nodes, Messages and telemetry over serial, MeshCore TRACE SNR history and scheduled traces, the All Channels view, local map markers, Reliable PKI, timed automations, per-source permission checks on every route, and a hardened Docker image. Upgrading from 4.16.2 runs migrations 183 to 202 automatically (183 to 185 are described under rc1). Read **Upgrade notes** at the end of this section before you upgrade a Docker install or one with non-admin users.
