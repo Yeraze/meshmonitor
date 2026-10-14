@@ -29,6 +29,8 @@ vi.mock('../sourceManagerRegistry.js', () => {
     sourceType: 'meshcore' as const,
     addContactToDevice: addMock,
     loginToNodeWithRetry: loginMock,
+    recordAdminSession: async () => {},
+    clearAdminSession: async () => {},
     requestNodeStatusDetailed: statusMock,
     sendCliCommand: cliMock,
     loginToRoomWithOutcome: roomLoginMock,

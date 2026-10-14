@@ -98,6 +98,8 @@ function makeStubManager(sourceId: string) {
     // ---- admin ----
     loginToNode: async (..._args: unknown[]) => true,
     loginToNodeWithRetry: async (..._args: unknown[]) => ({ result: {}, outcome: 'ok' as const, attempts: 1 }),
+    recordAdminSession: async (..._args: unknown[]) => {},
+    clearAdminSession: async (..._args: unknown[]) => {},
     sendCliCommand: async (..._args: unknown[]) => ({ reply: 'ok', elapsedMs: 1 }),
     sendLocalCliCommand: async (command: string) => ({ reply: `ok:${command}`, elapsedMs: 1 }),
     requestNodeStatus: async (..._args: unknown[]) => ({ battery: 100 }),

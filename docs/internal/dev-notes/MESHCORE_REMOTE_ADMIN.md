@@ -26,6 +26,11 @@ remote dispatch, and the shared frontend primitive.
 - **Local and remote consoles share `CliConsoleBody`.** The difference
   is what wraps it: remote layers login + capability + auto-login + stats
   on top; local does not.
+- **Logins are remembered per source in the database (#5785).** The console
+  can "Resume session" and the schedulers skip the login exchange while the
+  connected companion's key matches the one that logged in. No timer
+  expires them; a stale one costs one unanswered command, then one fresh
+  login and one retry.
 
 ## The MeshCore protocol surface
 
@@ -79,8 +84,11 @@ ACL on the remote node keyed on that pubkey.
 `CMD_SEND_LOGIN` (companion-protocol opcode 26) populates that ACL. After
 a successful login, the remote stores `{pubkey → permission_level}` and
 subsequent CLI commands from that pubkey are dispatched at the granted
-level. The ACL slot can be evicted (LRU when full) or wiped on reboot,
-which is why `loginToNode` is treated as cheap to repeat.
+level. The slot is evicted only when the table is full, and then only the
+least-recently-active NON-admin (`ClientACL::putClient`). Admin entries are
+written to flash 5 s after the login and reloaded at boot, so they survive a
+repeater reboot; guest entries are not written and do not (see "Remembered
+admin sessions" below for the citations).
 
 The login replay-protection check is a timestamp in the request, so
 clocks must be roughly aligned. The companion firmware doesn't sync
@@ -131,10 +139,12 @@ larger table (up to MAX_NEIGHBOURS, 50) is read with `offset`. Code:
 - **Every page waits the shared 60 s `lastMeshTxAt` floor** and stamps it
   before it sends, so a full manual read takes about 5 minutes and never
   crowds out the other schedulers.
-- **One login per fetch.** The repeater keeps a logged-in client in its ACL
-  until the table fills and evicts the least-recently-active non-admin
-  (`helpers/ClientACL.cpp`); there is no idle timeout. Pages after the first
-  pass `skipLogin`.
+- **One login per fetch, or none.** The repeater keeps a logged-in client in
+  its ACL until the table fills and evicts the least-recently-active
+  non-admin (`helpers/ClientACL.cpp`); there is no idle timeout. Page 1
+  resumes a remembered session when one is valid (#5785) and otherwise logs
+  in; pages after the first pass `skipLogin`. No reply on a resumed page 1
+  triggers the one-relogin, one-retry fallback.
 - The repeater re-sorts per request, so pages are **merged by prefix**, and
   the walk stops once the offset passes the table size, a page is empty, the
   cap is hit, the user cancels, or a page gets no reply.
@@ -149,6 +159,87 @@ larger table (up to MAX_NEIGHBOURS, 50) is read with `offset`. Code:
   stops further pages. Private to the user and source
   (`meshcoreNeighboursFetchProgress.ts`), one running fetch per source.
 
+### Remembered admin sessions (#5785)
+
+MeshMonitor remembers that a source's companion logged in to a node, so the
+console and the schedulers can skip the login exchange (a DM and its reply,
+each flooded when the path is unknown).
+
+**What the firmware does** (meshcore-dev/MeshCore, MIT, checked at `main`
+a366955cb2, 2026-09-30):
+
+- `src/Mesh.cpp`, `Mesh::onRecvPacket`, the `PAYLOAD_TYPE_TXT_MSG` case
+  (~L133-190): a DM addressed to the repeater is matched against
+  `searchPeersByHash(src_hash)`, which on a repeater scans ONLY the client
+  ACL (`examples/simple_repeater/MyMesh.cpp` `MyMesh::searchPeersByHash`,
+  ~L623). With no match there is no shared secret to try, the packet is not
+  decrypted, and the only trace is a `MESH_DEBUG` line "recv matches no
+  peers". **No reply, no error, no LoginFail.**
+- `MyMesh::onPeerDataRecv` (~L702) runs a CLI command only when
+  `client->isAdmin()`. A guest in the ACL sending CLI text is also dropped
+  silently.
+- `MyMesh::handleLoginReq` (~L90-128) adds the client and, for any level but
+  guest, schedules `acl.save()` after `LAZY_CONTACTS_WRITE_DELAY` (5 s).
+  `MyMesh::begin` (~L948) reloads `/s_contacts` at boot. So an ADMIN login
+  survives a reboot (if it was more than 5 s before it); a guest login does
+  not.
+- `helpers/ClientACL.cpp` `ClientACL::putClient` (~L97): when the table is
+  full the least-recently-active non-admin is evicted. There is no idle
+  timeout anywhere.
+
+So a stale session shows up as exactly one thing: **a CLI timeout** (or a
+binary request with no reply). Nothing on the wire tells it apart from a lost
+packet, which is why nothing below treats one timeout as proof.
+
+**Storage.** `meshcore_admin_sessions` (migration 204), PER-SOURCE, unique on
+`(sourceId, targetPublicKey)`: `selfPublicKey` (our companion's key at login
+time), `loggedInAt` (ms), `isAdmin` (from the LoginSuccess frame on firmware
+>= 1.16, else null). In the DATABASE so a MeshMonitor restart keeps it (the
+reporter restarts on every upgrade). Repository:
+`src/db/repositories/meshcoreAdminSessions.ts`; policy in
+`MeshCoreManager` (`getAdminSession` / `recordAdminSession` /
+`clearAdminSession` / `retryAfterStaleSession`).
+
+**Admin only.** `recordAdminSession` stores nothing for a guest login: the
+LoginSuccess frame says `isAdmin: false`, or, when the frame does not say, the
+`/admin/login` password was empty. A guest login also CLEARS any stored row,
+because the repeater's ACL entry for us is now the guest one, and CLI from a
+guest is dropped (`onPeerDataRecv` above).
+
+**Rules.**
+
+- **Honoured only while the connected companion's key equals
+  `selfPublicKey`.** The remote ACL is keyed on that key, so a different
+  radio on the source has no session (`reason: 'other_radio'`). While
+  disconnected the key is unknown and nothing is honoured
+  (`reason: 'not_connected'`).
+- **Never cleared on disconnect, never expires on a timer.** The ACL lives on
+  the remote and our identity does not change. The user can always log in
+  again.
+- **Recorded** on every successful login: `/admin/login`,
+  `/admin/login-with-saved`, `ensureSavedLogin`.
+- **Cleared** on a refused login (`rejected`, not `no_reply`), on forgetting
+  the saved password (`DELETE /admin/credentials/:pk`), on Log out
+  (`DELETE /admin/session/:pk`, which sends NOTHING; the firmware has no
+  logout verb, and our key stays in its ACL until evicted or `setperm`'d
+  away), and with the source.
+- **The console never auto-resumes.** `GET /admin/session/:pk` (DB only, no
+  airtime) drives a "Resume session" button that enables the console with
+  zero radio traffic, next to "Log in again". A CLI timeout on a resumed
+  session does NOT clear the record (it may be link loss); the transcript
+  adds "No reply. If the node rebooted or dropped the session, log in again."
+  (`CliConsoleBody`'s `timeoutHint` prop).
+- **Scheduled jobs reuse it.** `ensureSavedLogin()` returns true without a
+  login while a valid record exists (`ensureSavedLoginDetailed()` says
+  `resumed`). When a request on a RESUMED session gets no reply,
+  `syncNodeTime`, `getNeighbours` and `requestNeighbors` call
+  `retryAfterStaleSession`: clear the record, ONE fresh saved-password
+  login, ONE retry. No loops. A timeout after a FRESH login is not retried.
+- **Backed up, not excluded.** A row is not a credential (the remote's ACL is
+  the authority, and Log out never touched it), and a restore onto another
+  radio leaves rows inert through the key check. The worst a stale restored
+  row can cost is the one-retry fallback above.
+
 ### Scheduled clock pushes (#4916)
 
 `MeshCoreTimeSyncScheduler` (`src/server/services/meshcoreTimeSyncScheduler.ts`)
@@ -160,12 +251,14 @@ the button. Points worth knowing before touching it:
   enabled but no stored credential fails every cycle; the config panel warns
   about this up front (`hasSavedCredential` on the GET) rather than leaving it
   to the logs.
-- **One sync is FOUR packets, not one.** `ensureSavedLogin()` deliberately does
-  not cache the way `guestLoggedInNodes` does, so every sync is a login DM plus
-  its reply, then the CLI command plus its reply — and each floods when the
-  target's `out_path` is unknown. That is the whole reason the default cadence
-  is 12h with a 1h floor, versus the 15 minutes Meshtastic's equivalent uses.
-  Do not "harmonise" the two numbers; they are not measuring the same thing.
+- **One sync is 2 to 5 packets, not one.** With a remembered admin session
+  (#5785) it is the CLI command plus its reply: 2. Without one, a login DM
+  plus its reply goes first: 4. When the remembered session turns out stale,
+  the worst case is 1 + 4: the unanswered command, then one fresh login and
+  one retry. Each floods when the target's `out_path` is unknown. That is why
+  the default cadence is 12h with a 1h floor, versus the 15 minutes
+  Meshtastic's equivalent uses. Do not "harmonise" the two numbers; they are
+  not measuring the same thing. (Before #5785 every sync was 4.)
 - **`rewriteClockSync()` still does the real work.** The scheduler passes the
   `clock sync` spelling into `sendCliCommand` rather than building
   `time <epoch>` itself, so the epoch is stamped at the chokepoint — after the
@@ -455,6 +548,7 @@ then prints `"  -> " + reply`. There is no end marker, and a multi-line reply
 - The quick-action button row driven by `actionCatalog` prop.
 - The danger-confirm modal.
 - The ↑/↓ command history (in-memory, component-scoped, cap of 50).
+- The optional `timeoutHint` info line after a `CLI_TIMEOUT` error (#5785).
 
 Wrappers layer additional state on top via the imperative handle
 (`CliConsoleBodyHandle`):
@@ -501,6 +595,8 @@ glance whether something needs attention.
 | `src/components/MeshCore/MeshCoreLocalConsole.tsx` | Local wrapper: device-type-aware catalog, no auth layer. |
 | `src/components/MeshCore/MeshCoreAclManager.tsx` | Setperm form, mounted alongside the body for Repeater / RoomServer targets. |
 | `src/components/MeshCore/MeshCoreRemoteStatsPanel.tsx` | Structured status panel for the remote console. |
+| `src/db/repositories/meshcoreAdminSessions.ts` + `src/server/migrations/204_create_meshcore_admin_sessions.ts` | Remembered admin sessions (#5785). |
+| `src/server/routes/meshcoreAdminRoutes.ts` `/admin/session/:pk` | Session status (GET, DB only) and Log out (DELETE, no radio traffic). |
 | `src/server/constants/meshcoreLogin.ts` | Login attempt count, retry pause, per-attempt wait (#5400). |
 | `src/server/services/meshcoreLoginProgress.ts` | In-memory progress + cancel for tracked logins (#5400). |
 | `src/components/MeshCore/MeshCoreLoginProgress.tsx` + `hooks/useMeshCoreLoginProgress.ts` | "Attempt n of 3" line with countdown and Cancel (#5400). |
@@ -513,6 +609,7 @@ glance whether something needs attention.
 | #3161 | Phase 4a: stats panel, quick-action buttons, danger-command guard. Catppuccin theming pass. |
 | #3162 | Local CLI console in the Configuration view; `CliConsoleBody` extracted as a shared primitive. |
 | (this) | ACL manager form, command history, this doc. |
+| #5785 | Remembered admin sessions: Resume / Log out in the console, session reuse in the schedulers. |
 
 ## Things that look tempting but aren't worth doing
 

@@ -502,6 +502,12 @@ export interface MeshCoreActions {
   /** Forget the saved admin password for a remote node. No-op when none is
    *  saved; resolves `true` on success. */
   forgetRemoteCredential: (publicKey: string) => Promise<boolean>;
+  /** Is there a remembered login to this node the console can resume
+   *  (#5785)? Server/DB lookup only, no radio traffic. Null on error. */
+  getRemoteAdminSession: (publicKey: string) => Promise<MeshCoreRemoteAdminSession | null>;
+  /** "Log out" (#5785): forget the remembered session. Sends nothing to the
+   *  node; the next use logs in again. Resolves `true` on success. */
+  logoutRemote: (publicKey: string) => Promise<boolean>;
   /** Fetch typed status from a remote node (SendStatusReq → StatusResponse).
    *  Populated fields depend on the remote's role: Repeater / Room Server
    *  return the full counter set; Companion firmware returns only battery
@@ -533,6 +539,19 @@ export interface MeshCoreActions {
  * server-side `MeshCoreStatus` in src/server/meshcoreManager.ts; defined
  * separately here so the frontend doesn't pull in server-only modules.
  */
+/** A remembered remote-admin login (#5785), from GET /admin/session/:pk. */
+export interface MeshCoreRemoteAdminSession {
+  /** True when the console can resume it: recorded by the companion that is
+   *  connected now. */
+  active: boolean;
+  /** Epoch ms of the login, or null when nothing is remembered. */
+  loggedInAt: number | null;
+  /** The node's admin flag from the login reply; null when it did not say. */
+  isAdmin: boolean | null;
+  /** Why not active: nothing remembered, another radio, or not connected. */
+  reason?: 'none' | 'other_radio' | 'not_connected';
+}
+
 export interface MeshCoreRemoteStatus {
   batteryMv?: number;
   uptimeSecs?: number;
@@ -1601,6 +1620,29 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
     }
   }, [mcPrefix, csrfFetch]);
 
+  const getRemoteAdminSession = useCallback(async (publicKey: string): Promise<MeshCoreRemoteAdminSession | null> => {
+    try {
+      const response = await csrfFetch(`${mcPrefix}/admin/session/${encodeURIComponent(publicKey)}`);
+      const data = await parseJsonResponse(response);
+      return data.success && data.data ? (data.data as MeshCoreRemoteAdminSession) : null;
+    } catch (_err) {
+      return null;
+    }
+  }, [mcPrefix, csrfFetch]);
+
+  const logoutRemote = useCallback(async (publicKey: string): Promise<boolean> => {
+    try {
+      const response = await csrfFetch(
+        `${mcPrefix}/admin/session/${encodeURIComponent(publicKey)}`,
+        { method: 'DELETE' },
+      );
+      const data = await parseJsonResponse(response);
+      return !!data.success;
+    } catch (_err) {
+      return false;
+    }
+  }, [mcPrefix, csrfFetch]);
+
   const getRemoteStatus = useCallback(async (publicKey: string): Promise<MeshCoreRemoteStatus | null> => {
     try {
       const response = await csrfFetch(
@@ -2477,6 +2519,8 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
       sendCliCommand,
       getRemoteAdminCapability,
       forgetRemoteCredential,
+      getRemoteAdminSession,
+      logoutRemote,
       getRemoteStatus,
       loginRemoteWithSaved,
       getLoginProgress,

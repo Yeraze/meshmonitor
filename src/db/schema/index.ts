@@ -53,6 +53,7 @@ export * from './meshtasticHeardRepeaters.js';
 export * from './pkiExchangeState.js';
 export * from './mapMarkers.js';
 export * from './meshcoreHopSnr.js';
+export * from './meshcoreAdminSessions.js';
 
 // Coverage Report RF receptions (#5277 Phase 1 WP1)
 export * from './coverageReceptions.js';

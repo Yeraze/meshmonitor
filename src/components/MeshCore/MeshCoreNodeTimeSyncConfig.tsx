@@ -20,8 +20,9 @@
  *    decrypts — rotating SESSION_SECRET leaves it `true` while every sync
  *    fails. The manual "Sync Now" path is what surfaces the real answer, so
  *    its no-credential error names rotation as a possible cause.
- *  - The interval floor is 60 minutes, not 1. One sync costs four packets on
- *    the air (login + reply, then the CLI command + reply), so the cheap-looking
+ *  - The interval floor is 60 minutes, not 1. One sync costs two packets on
+ *    a remembered admin session (#5785) and four when it must log in first
+ *    (worst case five when the session is stale), so the cheap-looking
  *    small numbers the other panels accept would be genuinely harmful here.
  *    The server rejects sub-floor values too — this is not a UI-only guard.
  *
@@ -252,7 +253,7 @@ export const MeshCoreNodeTimeSyncConfig: React.FC<MeshCoreNodeTimeSyncConfigProp
       <p className="hint" style={{ marginBottom: '0.75rem' }}>
         {t(
           'meshcore.time_sync_config.hint',
-          "Periodically push this server's clock to the repeater's RTC, which has no NTP or GPS of its own. Each sync costs four packets on the air (an admin login and its reply, then the time command and its reply), so the minimum interval is 1 hour and the default is 12. Spacing is shared with Telemetry and Neighbours Retrieval, and tracked separately from both.",
+          "Periodically push this server's clock to the repeater's RTC, which has no NTP or GPS of its own. Each sync costs two packets on the air (the time command and its reply) while the admin session is remembered, and four when it must log in first, so the minimum interval is 1 hour and the default is 12. Spacing is shared with Telemetry and Neighbours Retrieval, and tracked separately from both.",
         )}
       </p>
 
