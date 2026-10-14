@@ -159,6 +159,14 @@ export interface MqttBridgeSourceConfig {
    * traffic you want to watch but not re-flood locally. Absent ⇒ raise as before.
    */
   skipRaise?: boolean;
+  /**
+   * #5013: uplink packets that ANOTHER bridge on the same parent broker
+   * brought down from its upstream. Off (absent) by default: a bridge then
+   * uplinks only traffic that really originated locally, so two bridges to
+   * two upstreams do not relay each other's feeds. Turn on only to relay one
+   * upstream into another on purpose.
+   */
+  relayOtherBridges?: boolean;
 }
 
 /**
@@ -245,6 +253,8 @@ export interface MqttBridgeStatus extends SourceStatus {
    * them and `dropAutomationUplinks` is on (#5414).
    */
   uplinkAutomationDrops: number;
+  /** #5013: uplinks skipped because another bridge brought the packet in. */
+  uplinkBridgeRelayDrops: number;
   /**
    * True once the SUBSCRIBER client gave up after
    * {@link BRIDGE_MAX_AUTH_FAILURES} rejected logins in a row. Intake is
@@ -328,6 +338,7 @@ export class MqttBridgeManager extends EventEmitter implements ISourceManager {
   private uplinkOut = 0;
   private uplinkOkToMqttDrops = 0;
   private uplinkAutomationDrops = 0;
+  private uplinkBridgeRelayDrops = 0;
   private lastError: string | null = null;
   private readonly downlinkEchoes: EchoEntry[] = [];
   private readonly uplinkEchoes: EchoEntry[] = [];
@@ -645,6 +656,7 @@ export class MqttBridgeManager extends EventEmitter implements ISourceManager {
       publishers: this.publisherPool?.getStatus() ?? {},
       uplinkOkToMqttDrops: this.uplinkOkToMqttDrops,
       uplinkAutomationDrops: this.uplinkAutomationDrops,
+      uplinkBridgeRelayDrops: this.uplinkBridgeRelayDrops,
       lastGeoSweep: this.lastGeoSweep,
     };
   }
@@ -950,15 +962,26 @@ export class MqttBridgeManager extends EventEmitter implements ISourceManager {
       // original topic. Echo recorded under the post-rewrite topic so the
       // uplink direction sees the same topic the parent broker emits.
       const publishTopic = applyTopicRewrite(topic, this.config.downlinkTopicRewrite);
+      // #5013: a copy of a packet this bridge already handed to the broker in
+      // the last minute is not handed over again.
+      if (packetId !== null && this.matchesEcho(this.downlinkEchoes, publishTopic, packetId)) return;
       // #5708: tell the broker not to raise this packet on its way to a radio.
       if (this.config.skipRaise && fromNum !== null && packetId !== null) {
         this.parentBroker.markSkipRaise(fromNum, packetId);
       }
+      // #5013: tell the other bridges on this broker where it came from.
+      if (fromNum !== null && packetId !== null) {
+        this.parentBroker.markBridgeOrigin(this.sourceId, fromNum, packetId);
+      }
+      // Record the echo BEFORE publishing. Aedes emits `publish` (and so the
+      // broker's `local-packet`, and so our own handleUplink) synchronously
+      // inside publish(); recording in .then() let this bridge re-uplink its
+      // own downlink once. The mqttLink path records first for the same reason.
+      this.recordEcho(this.downlinkEchoes, publishTopic, packetId);
       this.parentBroker
         .publish(publishTopic, payload, retained)
         .then(() => {
           this.downlinkRepublished++;
-          this.recordEcho(this.downlinkEchoes, publishTopic, packetId);
         })
         .catch((err) => {
           this.lastError = `local republish failed: ${err.message}`;
@@ -972,6 +995,19 @@ export class MqttBridgeManager extends EventEmitter implements ISourceManager {
     const packetId = p.envelope.packet?.id !== undefined ? (p.envelope.packet.id >>> 0) : null;
     if (packetId !== null && this.matchesEcho(this.downlinkEchoes, p.topic, packetId)) {
       return;
+    }
+
+    // #5013: a packet another bridge brought down from its upstream is not
+    // local traffic. Uplinking it would relay upstream A into upstream B (and,
+    // per gateway, under a foreign gateway's client id). Opt-in only.
+    if (!this.config.relayOtherBridges && this.parentBroker) {
+      const rawFrom = p.envelope.packet?.from;
+      const from = rawFrom === undefined || rawFrom === null ? null : Number(rawFrom) >>> 0;
+      const origin = this.parentBroker.bridgeOriginOf(from, packetId);
+      if (origin !== null && origin !== this.sourceId) {
+        this.uplinkBridgeRelayDrops++;
+        return;
+      }
     }
 
     if (!this.uplinkFilter.preFilter(p.topic, p.envelope)) return;
@@ -1018,6 +1054,10 @@ export class MqttBridgeManager extends EventEmitter implements ISourceManager {
     // under the post-rewrite topic so the downlink direction can suppress
     // the upstream broker's re-emission of this same packet.
     const publishTopic = applyTopicRewrite(p.topic, this.config.uplinkTopicRewrite);
+    // #5013: never send the same packet upstream twice in a minute. With
+    // relayOtherBridges on and two bridges whose upstreams share traffic,
+    // each copy coming back down would otherwise be sent up again, forever.
+    if (packetId !== null && this.matchesEcho(this.uplinkEchoes, publishTopic, packetId)) return;
     // Per-gateway dispatch: when the pool is active and the envelope's
     // gateway_id parses to a nodeNum different from the broker's own
     // gateway nodeId, publish through the pool entry whose clientId is

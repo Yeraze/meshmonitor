@@ -343,6 +343,36 @@ export class MqttBrokerManager extends EventEmitter implements ISourceManager {
     this.skipRaiseUntil.set(`${fromNum >>> 0}:${packetId >>> 0}`, now + SKIP_RAISE_TTL_MS);
   }
 
+  /**
+   * #5013: packets (by sender + packet id) a bridge brought down from its
+   * upstream and republished into this broker, mapped to that bridge's source
+   * id. Every other bridge on this broker sees the republish as a local packet,
+   * and without this it would uplink upstream A's traffic to upstream B. A
+   * bridge asks {@link bridgeOriginOf} before it uplinks. Same lifetime and
+   * bound as the skip-raise marks.
+   */
+  private readonly bridgeOrigin = new Map<string, { bridgeId: string; until: number }>();
+
+  markBridgeOrigin(bridgeId: string, fromNum: number, packetId: number): void {
+    const now = Date.now();
+    if (this.bridgeOrigin.size >= SKIP_RAISE_MAX_ENTRIES) {
+      for (const [k, v] of this.bridgeOrigin) if (v.until <= now) this.bridgeOrigin.delete(k);
+      while (this.bridgeOrigin.size >= SKIP_RAISE_MAX_ENTRIES) {
+        const oldest = this.bridgeOrigin.keys().next().value;
+        if (oldest === undefined) break;
+        this.bridgeOrigin.delete(oldest);
+      }
+    }
+    this.bridgeOrigin.set(`${fromNum >>> 0}:${packetId >>> 0}`, { bridgeId, until: now + SKIP_RAISE_TTL_MS });
+  }
+
+  /** The bridge that brought this packet in within the last minute, or null. */
+  bridgeOriginOf(fromNum: number | null | undefined, packetId: number | null | undefined): string | null {
+    if (fromNum === null || fromNum === undefined || packetId === null || packetId === undefined) return null;
+    const entry = this.bridgeOrigin.get(`${fromNum >>> 0}:${packetId >>> 0}`);
+    return entry !== undefined && entry.until > Date.now() ? entry.bridgeId : null;
+  }
+
   private shouldSkipRaise(fromNum: number | undefined, packetId: number | undefined): boolean {
     if (fromNum === undefined || packetId === undefined) return false;
     const until = this.skipRaiseUntil.get(`${fromNum >>> 0}:${packetId >>> 0}`);

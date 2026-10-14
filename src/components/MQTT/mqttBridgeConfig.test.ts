@@ -272,6 +272,7 @@ describe('mqttBridgeConfig', () => {
         ignoreOkToMqtt: true,
         dropAutomationUplinks: true,
         skipRaise: true,
+        relayOtherBridges: true,
         useTopicBlock: true,
         topicBlock: 'msh/CA/#',
         useGeo: true,

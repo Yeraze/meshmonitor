@@ -81,6 +81,7 @@ interface GeoFilterSourceStatus {
   /** Bridge-level uplink policy drops (outside the filter chain). */
   uplinkOkToMqttDrops?: number;
   uplinkAutomationDrops?: number;
+  uplinkBridgeRelayDrops?: number;
   lastGeoSweep?: {
     timestamp: number;
     scanned: number;
@@ -139,6 +140,7 @@ export const MqttBridgeConfigurationView: React.FC<MqttBridgeConfigurationViewPr
   const lastGeoSweep = geoStatus?.lastGeoSweep ?? null;
   const uplinkOkToMqttDrops = geoStatus?.uplinkOkToMqttDrops ?? 0;
   const uplinkAutomationDrops = geoStatus?.uplinkAutomationDrops ?? 0;
+  const uplinkBridgeRelayDrops = geoStatus?.uplinkBridgeRelayDrops ?? 0;
 
   const [form, setForm] = useState<BridgeConfigForm>(emptyBridgeForm());
   // The form as last loaded or saved: what "unsaved changes" is measured
@@ -547,6 +549,29 @@ export const MqttBridgeConfigurationView: React.FC<MqttBridgeConfigurationViewPr
                 'source.form.mqtt_bridge_skip_raise_help',
                 "The parent broker's \"Raise hop count for backhaul\" never raises packets this bridge brings in; its clamp still applies. Use it for an upstream such as mqtt.meshtastic.org that you want to watch but not re-flood on your local mesh.",
               )}
+            </span>
+          </span>
+        </label>
+        <label className="dashboard-form-field" style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 8 }}>
+          <input
+            type="checkbox"
+            checked={form.relayOtherBridges}
+            disabled={!canWrite}
+            onChange={(e) => patch('relayOtherBridges', e.target.checked)}
+            style={{ marginTop: 3 }}
+          />
+          <span>
+            <span className="dashboard-form-label" style={{ display: 'block' }}>
+              {t('source.form.mqtt_bridge_relay_other_bridges', 'Relay traffic from other bridges')}
+            </span>
+            <span style={labelStyle}>
+              {t(
+                'source.form.mqtt_bridge_relay_other_bridges_help',
+                'Off: this bridge uplinks only traffic that started on your side (your nodes and local MQTT clients). Packets another bridge on the same broker brought down from its upstream are not sent to this upstream. Turn on only to relay one upstream broker into another on purpose.',
+              )}
+            </span>
+            <span style={{ ...labelStyle, display: 'block' }}>
+              {t('source.form.mqtt_bridge_relay_drops', 'Not relayed so far: {{count}}', { count: uplinkBridgeRelayDrops })}
             </span>
           </span>
         </label>

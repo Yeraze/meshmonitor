@@ -148,6 +148,7 @@ const FIXTURES: Record<Source['type'], Record<string, unknown>> = {
     ignoreOkToMqtt: true,
     dropAutomationUplinks: true,
     skipRaise: true,
+    relayOtherBridges: true,
     autoConnect: false,
     [UNCLASSIFIED]: `${SEC}-future-bridge`,
   },

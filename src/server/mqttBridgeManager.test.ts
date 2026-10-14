@@ -795,16 +795,96 @@ describe('MqttBridgeManager', () => {
     // messages in that window.
     await new Promise((r) => setTimeout(r, 1000));
 
-    // Count appearances on upstream of THIS packet (any topic). Cap at a
-    // small number — 1 original + at most 1 echo before suppression kicks
-    // in is fine; 10+ would indicate runaway.
+    // The echo is recorded before the local republish (#5013), so the
+    // bridge never uplinks its own downlink: upstream sees only the original.
     const matchingPayloads = upstreamSeen.filter((m) => Buffer.compare(m.payload, envelope) === 0);
-    expect(matchingPayloads.length).toBeLessThan(5);
-
-    // Also confirm the bridge's uplinkOut counter is bounded (not 100+).
-    expect(bridge.getStatus().uplinkOut).toBeLessThan(5);
+    expect(matchingPayloads.length).toBe(1);
+    expect(bridge.getStatus().uplinkOut).toBe(0);
 
     await new Promise<void>((r) => pub.end(true, {}, () => r()));
+  });
+
+  // #5013: two bridges on one broker must not relay each other's upstream.
+  describe('a second bridge on the same broker', () => {
+    async function runTwoBridges(relayOtherBridges?: boolean): Promise<{
+      upstreamCopies: number;
+      other: MqttBridgeManager;
+    }> {
+      // Bridge A brings msh/US/TX down; bridge B only subscribes elsewhere,
+      // so any TX packet it sends upstream is a relay of A's traffic. Both
+      // reach the one test upstream, so single mode keeps their client ids
+      // apart (per_gateway would give both the broker's gateway id).
+      bridge = new MqttBridgeManager('bridge-a', 'A', {
+        brokerSourceId: 'local-broker',
+        forwardingMode: 'single',
+        upstream: { url: `mqtt://127.0.0.1:${upstreamPort}` },
+        subscriptions: ['msh/US/TX/#'],
+      });
+      const other = new MqttBridgeManager('bridge-b', 'B', {
+        brokerSourceId: 'local-broker',
+        forwardingMode: 'single',
+        upstream: { url: `mqtt://127.0.0.1:${upstreamPort}` },
+        subscriptions: ['msh/US/CA/#'],
+        ...(relayOtherBridges ? { relayOtherBridges } : {}),
+      });
+      await sourceManagerRegistry.addManager(bridge);
+      await sourceManagerRegistry.addManager(other);
+
+      await connectUpstream();
+      const seen: Buffer[] = [];
+      await new Promise<void>((resolve, reject) => {
+        upstreamClient!.subscribe('msh/#', { qos: 0 }, (err) => (err ? reject(err) : resolve()));
+      });
+      upstreamClient!.on('message', (_topic, payload) => seen.push(payload));
+
+      const envelope = buildPositionEnvelope({
+        from: 0x44444444,
+        latI: 440_000_000,
+        lngI: -780_000_000,
+        channelId: 'LongFast',
+        gatewayId: '!44444444',
+        packetId: 0x30000044,
+      });
+      upstreamClient!.publish('msh/US/TX/2/e/LongFast/!44444444', envelope);
+      await new Promise((r) => setTimeout(r, 800));
+      return {
+        upstreamCopies: seen.filter((p) => Buffer.compare(p, envelope) === 0).length,
+        other,
+      };
+    }
+
+    it('does not uplink a packet the other bridge brought down', async () => {
+      const { upstreamCopies, other } = await runTwoBridges();
+      expect(upstreamCopies).toBe(1); // the original publish only
+      expect(other.getStatus().uplinkOut).toBe(0);
+      expect(other.getStatus().uplinkBridgeRelayDrops).toBe(1);
+      expect(bridge.getStatus().uplinkOut).toBe(0);
+    });
+
+    it('relays it when relayOtherBridges is on', async () => {
+      const { upstreamCopies, other } = await runTwoBridges(true);
+      expect(other.getStatus().uplinkOut).toBe(1);
+      expect(other.getStatus().uplinkBridgeRelayDrops).toBe(0);
+      expect(upstreamCopies).toBe(2);
+    });
+
+    it('still uplinks traffic that started locally', async () => {
+      const { other } = await runTwoBridges();
+      const local = await connectLocalSubscriber();
+      const envelope = buildPositionEnvelope({
+        from: 0x55555555,
+        latI: 440_000_000,
+        lngI: -780_000_000,
+        channelId: 'LongFast',
+        gatewayId: '!55555555',
+        packetId: 0x30000055,
+      });
+      local.client.publish('msh/US/FL/2/e/LongFast/!55555555', envelope);
+      await new Promise((r) => setTimeout(r, 500));
+      expect(other.getStatus().uplinkOut).toBe(1);
+      expect(bridge.getStatus().uplinkOut).toBe(1);
+      await new Promise<void>((r) => local.client.end(true, {}, () => r()));
+    });
   });
 
   it('no rewrite configured: republish topic matches the original (regression guard)', async () => {

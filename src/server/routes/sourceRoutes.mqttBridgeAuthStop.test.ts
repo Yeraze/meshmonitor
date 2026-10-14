@@ -116,6 +116,9 @@ describe('mqtt_bridge auth stop through the source routes', () => {
     parent.getStatus = () => ({ sourceId: parentId, sourceName: 'Parent', sourceType: 'mqtt_broker', connected: true });
     parent.getLocalNodeInfo = () => ({ nodeNum: BROKER_NODE });
     parent.publish = vi.fn().mockResolvedValue(undefined);
+    parent.markSkipRaise = vi.fn();
+    parent.markBridgeOrigin = vi.fn();
+    parent.bridgeOriginOf = vi.fn().mockReturnValue(null);
     await sourceManagerRegistry.addManager(parent);
   });
 
