@@ -396,42 +396,7 @@ class ChannelDecryptionService {
 
     // Build the nonce once (same for all attempts)
     const nonce = this.buildNonce(packetId, fromNode);
-
-    // Build the ordered list of channels to try. Channels are pre-sorted by
-    // sortOrder during cache refresh.
-    //
-    // 1. Hard skip (name validation): when a channel enforces name validation
-    //    and the packet carries a channel hash that doesn't match, the channel
-    //    is never attempted (and never attributed). Unchanged from before.
-    // 2. Hash-aware preference: when the packet carries a channel hash, try the
-    //    channels whose computed hash matches it FIRST (preserving sortOrder
-    //    within each group), then the rest. This disambiguates channels that
-    //    share a key — the correct same-key channel claims the packet instead
-    //    of whichever happens to sort first. It is only a *preference*: if no
-    //    hash-matching channel decrypts (e.g. a 1-byte hash collision across
-    //    different keys, or the real channel isn't in the database), we still
-    //    fall back to the others, so decryption is never lost — only
-    //    attribution improves. With no channel hash, order is unchanged.
-    const candidates: CachedChannel[] = [];
-    for (const [, channel] of this.sortedChannels) {
-      if (
-        channel.enforceNameValidation &&
-        channel.expectedChannelHash !== undefined &&
-        channelHash !== undefined &&
-        channel.expectedChannelHash !== channelHash
-      ) {
-        continue;
-      }
-      candidates.push(channel);
-    }
-
-    const ordered =
-      channelHash === undefined
-        ? candidates
-        : [
-            ...candidates.filter((c) => c.expectedChannelHash === channelHash),
-            ...candidates.filter((c) => c.expectedChannelHash !== channelHash),
-          ];
+    const ordered = this.orderedCandidates(channelHash);
 
     let attempts = 0;
     for (const channel of ordered) {
@@ -468,6 +433,73 @@ class ChannelDecryptionService {
       success: false,
       error: `Failed to decrypt with any of ${attempts} channel(s)`,
     };
+  }
+
+  /**
+   * Read the portnum of an encrypted packet with the keys already cached,
+   * synchronously (#5791). For hot paths that cannot await, such as the MQTT
+   * broker's per-subscriber forward hook, which needs the portnum to decide a
+   * hop-limit raise.
+   *
+   * Never refreshes the cache, never counts a decryption against a channel,
+   * never logs: the ingest path calls {@link tryDecrypt} for the same packet,
+   * which does all three. An empty or stale cache returns null, which callers
+   * treat as "portnum unknown", the behaviour before this method existed.
+   */
+  peekPortnum(
+    encryptedPayload: Uint8Array,
+    packetId: number,
+    fromNode: number,
+    channelHash?: number
+  ): number | null {
+    if (!this.enabled || !encryptedPayload || encryptedPayload.length === 0) return null;
+    const nonce = this.buildNonce(packetId, fromNode);
+    const ordered = this.orderedCandidates(channelHash).slice(0, this.maxDecryptionAttempts);
+    for (const channel of ordered) {
+      const result = this.attemptDecryptSingleChannel(encryptedPayload, nonce, channel);
+      if (result.success && typeof result.portnum === 'number') return result.portnum;
+    }
+    return null;
+  }
+
+  /**
+   * The cached channels to try for a packet, in order. Channels are pre-sorted
+   * by sortOrder during cache refresh.
+   */
+  private orderedCandidates(channelHash?: number): CachedChannel[] {
+    // Build the ordered list of channels to try.
+    //
+    // 1. Hard skip (name validation): when a channel enforces name validation
+    //    and the packet carries a channel hash that doesn't match, the channel
+    //    is never attempted (and never attributed). Unchanged from before.
+    // 2. Hash-aware preference: when the packet carries a channel hash, try the
+    //    channels whose computed hash matches it FIRST (preserving sortOrder
+    //    within each group), then the rest. This disambiguates channels that
+    //    share a key — the correct same-key channel claims the packet instead
+    //    of whichever happens to sort first. It is only a *preference*: if no
+    //    hash-matching channel decrypts (e.g. a 1-byte hash collision across
+    //    different keys, or the real channel isn't in the database), we still
+    //    fall back to the others, so decryption is never lost — only
+    //    attribution improves. With no channel hash, order is unchanged.
+    const candidates: CachedChannel[] = [];
+    for (const [, channel] of this.sortedChannels) {
+      if (
+        channel.enforceNameValidation &&
+        channel.expectedChannelHash !== undefined &&
+        channelHash !== undefined &&
+        channel.expectedChannelHash !== channelHash
+      ) {
+        continue;
+      }
+      candidates.push(channel);
+    }
+
+    return channelHash === undefined
+      ? candidates
+      : [
+          ...candidates.filter((c) => c.expectedChannelHash === channelHash),
+          ...candidates.filter((c) => c.expectedChannelHash !== channelHash),
+        ];
   }
 
   /**

@@ -4,20 +4,31 @@
  *
  * The policy arithmetic itself is covered in `mqttHopLimitPolicy.test.ts`;
  * this suite pins the encode/decode seam: which packets get rewritten, that
- * `hop_start` survives, and that a packet we cannot read the portnum of is
- * clamped but never raised.
+ * `hop_start` survives, that an encrypted packet one of our channel keys opens
+ * is raised by its real portnum (#5791), and that a packet we cannot read the
+ * portnum of is clamped but never raised.
  */
 import { describe, it, expect, vi, beforeAll } from 'vitest';
+import { createCipheriv } from 'crypto';
 
+// The channel_database holds the default key ("AQ==") as channel 1.
 vi.mock('../services/database.js', () => ({
   default: {
     settings: { getSettingForSource: async () => null },
+    channelDatabase: {
+      getEnabledAsync: async () => [
+        { id: 1, name: 'LongFast', psk: 'AQ==', sortOrder: 0, enforceNameValidation: false },
+      ],
+      incrementDecryptedCountAsync: async () => undefined,
+    },
   },
 }));
 
 import { MqttBrokerManager, type MqttBrokerSourceConfig } from './mqttBrokerManager.js';
 import meshtasticProtobufService from './meshtasticProtobufService.js';
-import { PortNum } from './constants/meshtastic.js';
+import { PortNum, expandShorthandPsk } from './constants/meshtastic.js';
+import { channelDecryptionService } from './services/channelDecryptionService.js';
+import { getProtobufRoot } from './protobufLoader.js';
 
 const TOPIC = 'msh/US/2/e/LongFast/!12345678';
 
@@ -35,7 +46,9 @@ function buildEnvelope(opts: {
   hopLimit: number;
   hopStart?: number;
   portnum?: number;
-  encrypted?: boolean;
+  /** true: four bytes no key opens. 'default-key': a real Data message
+   *  encrypted with the default channel key, as a phone's client proxy sends. */
+  encrypted?: boolean | 'default-key';
 }): Buffer {
   const packet: Record<string, unknown> = {
     from: 0x12345678,
@@ -45,7 +58,9 @@ function buildEnvelope(opts: {
     hopLimit: opts.hopLimit,
     hopStart: opts.hopStart ?? opts.hopLimit,
   };
-  if (opts.encrypted) {
+  if (opts.encrypted === 'default-key') {
+    packet.encrypted = encryptWithDefaultKey(opts.portnum ?? PortNum.TEXT_MESSAGE_APP);
+  } else if (opts.encrypted) {
     packet.encrypted = new Uint8Array([0xde, 0xad, 0xbe, 0xef]);
   } else {
     packet.decoded = {
@@ -60,6 +75,18 @@ function buildEnvelope(opts: {
   });
   if (!bytes) throw new Error('encode failed');
   return Buffer.from(bytes);
+}
+
+/** Encrypt a Data message the way firmware does for packet 0xabcdef01 from 0x12345678. */
+function encryptWithDefaultKey(portnum: number): Uint8Array {
+  const DataType = getProtobufRoot()!.lookupType('meshtastic.Data');
+  const plain = DataType.encode(DataType.create({ portnum, payload: Buffer.from('hi') })).finish();
+  const nonce = Buffer.alloc(16);
+  nonce.writeUInt32LE(0xabcdef01, 0);
+  nonce.writeUInt32LE(0x12345678, 8);
+  const key = expandShorthandPsk(Buffer.from('AQ==', 'base64'))!;
+  const cipher = createCipheriv('aes-128-ctr', key, nonce);
+  return new Uint8Array(Buffer.concat([cipher.update(plain), cipher.final()]));
 }
 
 function readBack(payload: Buffer): { hopLimit: number; hopStart: number | undefined } {
@@ -127,7 +154,7 @@ describe('MqttBrokerManager hop-limit policy', () => {
     ).toBeNull();
   });
 
-  it('never raises an encrypted packet, whose portnum it cannot read', () => {
+  it('never raises an encrypted packet that none of our keys opens', () => {
     const mgr = makeManager({
       hopLimitPolicy: { raise: { enabled: true, target: 3, portnums: [PortNum.POSITION_APP] } },
     });
@@ -140,6 +167,57 @@ describe('MqttBrokerManager hop-limit policy', () => {
     const mgr = makeManager({ hopLimitPolicy: { clamp: { enabled: true, max: 2 } } });
     const out = mgr.transformForwardedPayload(TOPIC, buildEnvelope({ hopLimit: 7, encrypted: true }));
     expect(readBack(out!).hopLimit).toBe(2);
+  });
+
+  describe('encrypted uplinks (#5791)', () => {
+    const raiseText = {
+      hopLimitPolicy: { raise: { enabled: true, target: 2, portnums: [PortNum.TEXT_MESSAGE_APP] } },
+    };
+
+    beforeAll(async () => {
+      await channelDecryptionService.refreshChannelCache();
+    });
+
+    it('raises encrypted text when a held channel key reveals the portnum', () => {
+      const mgr = makeManager(raiseText);
+      const env = buildEnvelope({ hopLimit: 0, hopStart: 3, encrypted: 'default-key' });
+      const out = mgr.transformForwardedPayload(TOPIC, env);
+      expect(readBack(out!)).toEqual({ hopLimit: 2, hopStart: 3 });
+    });
+
+    it('keeps the ciphertext byte for byte', () => {
+      const mgr = makeManager(raiseText);
+      const env = buildEnvelope({ hopLimit: 0, encrypted: 'default-key' });
+      const before = meshtasticProtobufService.decodeServiceEnvelope(env)!.packet.encrypted;
+      const after = meshtasticProtobufService.decodeServiceEnvelope(mgr.transformForwardedPayload(TOPIC, env)!)!.packet;
+      expect(Buffer.from(after.encrypted)).toEqual(Buffer.from(before));
+      expect(after.decoded).toBeFalsy();
+    });
+
+    it('leaves an encrypted portnum the operator did not opt in alone', () => {
+      const mgr = makeManager(raiseText);
+      const env = buildEnvelope({ hopLimit: 0, portnum: PortNum.POSITION_APP, encrypted: 'default-key' });
+      expect(mgr.transformForwardedPayload(TOPIC, env)).toBeNull();
+    });
+
+    it('honours a clamp exemption on an encrypted packet it can read', () => {
+      const mgr = makeManager({
+        hopLimitPolicy: { clamp: { enabled: true, max: 1, exemptPortnums: [PortNum.TEXT_MESSAGE_APP] } },
+      });
+      const env = buildEnvelope({ hopLimit: 4, encrypted: 'default-key' });
+      expect(mgr.transformForwardedPayload(TOPIC, env)).toBeNull();
+    });
+
+    it('raises nothing when server-side decryption is turned off', () => {
+      const mgr = makeManager(raiseText);
+      channelDecryptionService.setEnabled(false);
+      try {
+        const env = buildEnvelope({ hopLimit: 0, encrypted: 'default-key' });
+        expect(mgr.transformForwardedPayload(TOPIC, env)).toBeNull();
+      } finally {
+        channelDecryptionService.setEnabled(true);
+      }
+    });
   });
 
   it('applies the clamp after the raise', () => {

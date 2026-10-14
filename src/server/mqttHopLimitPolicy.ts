@@ -174,7 +174,7 @@ function selectorMatches(selector: PortnumSelector, portnum: number | null): boo
  * Apply a resolved policy to one packet.
  *
  * @param portnum - the packet's portnum, or null when it cannot be read
- *   (encrypted payload). A null portnum never matches a raise — raises are
+ *   (encrypted payload none of our channel keys opens, #5791). A null portnum never matches a raise — raises are
  *   opt-in per portnum — but is still clamped, because the clamp is a
  *   whole-airtime ceiling and an exemption list cannot be evaluated against a
  *   portnum we do not know.
