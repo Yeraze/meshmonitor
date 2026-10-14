@@ -61,6 +61,8 @@ export interface BridgeConfigForm {
   dropAutomationUplinks: boolean;
   /** Packets from this bridge are clamped but never raised by the parent broker (#5708). */
   skipRaise: boolean;
+  /** Uplink packets another bridge on the parent broker brought in (#5013). */
+  relayOtherBridges: boolean;
   // Subscribe-side (downlink) filtering.
   useTopicBlock: boolean;
   topicBlock: string;
@@ -209,6 +211,10 @@ export function buildBridgeConfig(
     if (form.skipRaise) cfg.skipRaise = true;
     else delete cfg.skipRaise;
   }
+  if (form.relayOtherBridges !== undefined) {
+    if (form.relayOtherBridges) cfg.relayOtherBridges = true;
+    else delete cfg.relayOtherBridges;
+  }
 
   // --- Subscribe-side (downlink) filters: manage topics.block / geo only when
   // the caller supplies them; preserve other downlink subkeys (channels/nodes/
@@ -317,6 +323,7 @@ export function formFromBridgeConfig(config: Record<string, any> | null | undefi
     ignoreOkToMqtt: cfg.ignoreOkToMqtt === true,
     dropAutomationUplinks: cfg.dropAutomationUplinks === true,
     skipRaise: cfg.skipRaise === true,
+    relayOtherBridges: cfg.relayOtherBridges === true,
     useTopicBlock: downTopicBlock.length > 0,
     topicBlock: downTopicBlock.join('\n'),
     useGeo: hasGeo,
@@ -352,6 +359,7 @@ export function emptyBridgeForm(): BridgeConfigForm {
     ignoreOkToMqtt: false,
     dropAutomationUplinks: false,
     skipRaise: false,
+    relayOtherBridges: false,
     useTopicBlock: false,
     topicBlock: '',
     useGeo: false,

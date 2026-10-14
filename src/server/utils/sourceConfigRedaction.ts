@@ -510,6 +510,7 @@ const MQTT_BRIDGE: Spec<MqttBridgeSourceConfig> = {
   ignoreOkToMqtt: withheld,
   dropAutomationUplinks: withheld,
   skipRaise: withheld,
+  relayOtherBridges: withheld,
 };
 
 const MQTT_BROKER: Spec<MqttBrokerSourceConfig> = {
