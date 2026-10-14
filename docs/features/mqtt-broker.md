@@ -92,7 +92,7 @@ The field is stored in the bridge's `config.mode` JSON field; omitting it (or st
 | **Per-source filter pipeline (topic / channel / node / portnum / geo)?** | No (broker is dumb relay) | **Yes** — downlink _and_ uplink | **Yes** — downlink only |
 | **Topic rewriting (cross-root bridging)?** | No | **Yes** — `downlinkTopicRewrite` + `uplinkTopicRewrite` ([details](#topic-rewriting)) | No (requires parent broker) |
 | **Server-side ingestion of decoded packets?** | Yes — under broker `sourceId` | Yes — under bridge `sourceId` (downlink) | Yes — under bridge `sourceId` (downlink) |
-| **Echo suppression (no feedback loops)?** | n/a | Yes (60s `topic+packetId` cache) | Yes |
+| **Echo suppression (no feedback loops)?** | n/a | Yes (60s `topic+packetId` cache; never uplinks another bridge's downlink unless **Relay traffic from other bridges** is on) | Yes |
 | **Hop-limit rewrite on delivery?** | Yes — clamp `0`–`7` and/or raise `1`–`3` ([details](#hop-limit-on-delivery)) | n/a | n/a |
 | **Synthetic gateway identity for outbound publishes?** | Yes (auto-generated at create) | Inherited from parent broker | n/a (no outbound until used as proxy target) |
 | **Default-deny authentication on the listener?** | Yes | n/a | n/a |
@@ -108,7 +108,7 @@ The field is stored in the bridge's `config.mode` JSON field; omitting it (or st
 - **"My devices on the LAN should fan out to each other, plus selectively reach a public broker."** Create one **broker** + one **attached bridge**. Devices connect to the broker (direct TCP or client-proxy). The bridge applies a filter pipeline in both directions and forwards the selected slice upstream.
 - **"My BLE-only node should publish MQTT through MeshMonitor straight to a public broker, no embedded broker required."** Create one **standalone bridge** pointed at the public broker. On the Meshtastic source, set `mqttLink → <bridge>` (Sources → Edit → "Bridge MQTT proxy to", or use the Quick Configure dropdown on Device Configuration → MQTT). Enable `proxy_to_client_enabled` on the firmware. Device Configuration → MeshMonitor (over BLE/serial) → bridge → upstream.
 - **"Same as above, plus I want a Home Assistant box on the LAN to subscribe to my devices."** Create one **broker** + one **attached bridge**. Devices use client-proxy mode pointing at the broker; Home Assistant subscribes to the broker on port 1883. Bridge handles the upstream fan-out.
-- **"Two upstream brokers, one regional and one global, with different filters per upstream."** Create one **broker** + **two attached bridges**, each with its own topic/geo/portnum rules. Devices publish once; each bridge independently decides what to forward.
+- **"Two upstream brokers, one regional and one global, with different filters per upstream."** Create one **broker** + **two attached bridges**, each with its own topic/geo/portnum rules. Devices publish once; each bridge independently decides what to forward. Each bridge uplinks only traffic that started on your side, never what the other bridge brought down (see [Bridges do not relay each other](#bridges-do-not-relay-each-other)).
 - **"Cross-mesh routing between two MQTT roots (e.g. our LA mesh on `msh/US/LA` and the Houston mesh on `msh/US/TX`)."** Create one **broker** + one **attached bridge** to the foreign upstream. Set the bridge's downlink rewrite `msh/US/TX → msh/US/LA` and uplink rewrite `msh/US/LA → msh/US/TX` so the foreign-root traffic appears under your local root (and vice versa). See [Topic rewriting](#topic-rewriting) below for the details and caveats (PSK match, hop-limit cap, loop suppression).
 
 ## Three ways a device can reach MQTT through MeshMonitor
@@ -267,7 +267,9 @@ Filters run on the original (pre-rewrite) topic; the rewrite only changes what g
 
 ### Loop suppression
 
-Echo suppression is keyed on the **post-rewrite** topic — so an inbound TX packet republished to the parent broker as `msh/US/LA/...` is recorded under that rewritten topic. When the parent broker re-emits the same packet through the uplink path, the bridge sees `msh/US/LA/...` + the same packetId in the downlink echo cache and suppresses the uplink. The reverse direction works the same way. The existing 60-second `(topic, packetId)` cache covers it; no new infrastructure was needed.
+Echo suppression is keyed on the **post-rewrite** topic — so an inbound TX packet republished to the parent broker as `msh/US/LA/...` is recorded under that rewritten topic. When the parent broker re-emits the same packet through the uplink path, the bridge sees `msh/US/LA/...` + the same packetId in the downlink echo cache and suppresses the uplink. The reverse direction works the same way. The 60-second `(topic, packetId)` cache covers it.
+
+The bridge records the echo **before** it hands the packet to the broker, because the broker passes the packet back to the uplink side at once. Before 4.17.1 it recorded it afterwards, and a bridge could send its own downlinked packet back upstream once. A bridge also never sends the same packet upstream, or hands the same packet to the broker, twice within that minute.
 
 ### Caveats
 
@@ -279,6 +281,14 @@ Echo suppression is keyed on the **post-rewrite** topic — so an inbound TX pac
 - **No wildcards.** `from` / `to` are literal prefixes only. `msh/US/+` is rejected by the validator.
 - **Single rule per direction.** v1 supports one `{from, to}` per direction. Folding multiple foreign roots into one local root (`msh/US/TX/* → msh/US/LA/*` AND `msh/CA/QC/* → msh/US/LA/*`) would need separate bridges today.
 :::
+
+## Bridges do not relay each other
+
+When two or more bridges share one parent broker, each upstream's traffic lands in the broker, and the broker offers every packet to every bridge's uplink. Before 4.17.1 that meant upstream A's packets were published to upstream B (and, in per-gateway mode, under the foreign gateway's client ID). Two upstreams that already share traffic could then pass the same packet back and forth without end.
+
+Now a bridge **does not uplink a packet another bridge on the same broker brought down** in the last minute. It still uplinks everything that started on your side: your nodes, client-proxy devices and other local MQTT clients. Each skipped packet adds one to `uplinkBridgeRelayDrops` in `/api/sources/:id/status`, shown on the bridge's **Settings → MQTT Bridge Configuration** page as **Not relayed so far**.
+
+To relay one upstream into another on purpose, tick **Relay traffic from other bridges** on the bridge that should carry it (stored as `relayOtherBridges: true`). Off by default. Even then, a bridge never sends the same packet upstream twice within a minute, so two bridges cannot loop a packet between them.
 
 ## Keep automation traffic off the upstream broker
 
