@@ -66,3 +66,39 @@ describe('CliConsoleBody — command input focus (#3752)', () => {
     expect(input.value).toBe('');
   });
 });
+
+describe('CliConsoleBody — timeoutHint (#5785)', () => {
+  const send = (cmd: string) => {
+    const input = screen.getByPlaceholderText(/Type a command/) as HTMLInputElement;
+    fireEvent.change(input, { target: { value: cmd } });
+    fireEvent.click(screen.getByText('Send'));
+  };
+  const HINT = 'No reply. If the node rebooted or dropped the session, log in again.';
+
+  it('appends the hint after a CLI_TIMEOUT error, after the error line', async () => {
+    const runCommand = vi.fn().mockResolvedValue({ ok: false, error: 'timed out', code: 'CLI_TIMEOUT' });
+    render(<CliConsoleBody targetId="t-hint-1" targetName="R" runCommand={runCommand} actionCatalog={[]} timeoutHint={HINT} />);
+    send('ver');
+    const hint = await screen.findByText(HINT);
+    const error = screen.getByText(/timed out/);
+    // The hint follows the error in the transcript.
+    expect(error.compareDocumentPosition(hint) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it('does not append it for other errors, or without the prop', async () => {
+    const runCommand = vi.fn().mockResolvedValue({ ok: false, error: 'send failed', code: 'OTHER' });
+    const { unmount } = render(
+      <CliConsoleBody targetId="t-hint-2" targetName="R" runCommand={runCommand} actionCatalog={[]} timeoutHint={HINT} />,
+    );
+    send('ver');
+    await screen.findByText(/send failed/);
+    expect(screen.queryByText(HINT)).toBeNull();
+    unmount();
+
+    const timeout = vi.fn().mockResolvedValue({ ok: false, error: 'timed out', code: 'CLI_TIMEOUT' });
+    render(<CliConsoleBody targetId="t-hint-3" targetName="R" runCommand={timeout} actionCatalog={[]} />);
+    send('ver');
+    await screen.findByText(/timed out/);
+    expect(screen.queryByText(HINT)).toBeNull();
+  });
+});

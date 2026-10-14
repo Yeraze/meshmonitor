@@ -633,6 +633,8 @@ export const MeshCoreDirectMessagesView: React.FC<MeshCoreDirectMessagesViewProp
                   getRemoteAdminCapability: actions.getRemoteAdminCapability,
                   forgetRemoteCredential: actions.forgetRemoteCredential,
                   getRemoteStatus: actions.getRemoteStatus,
+                  getRemoteAdminSession: actions.getRemoteAdminSession,
+                  logoutRemote: actions.logoutRemote,
                 }}
                 receiveOnly={receiveOnly}
                 firstHeard={firstHeardByKey.get(selected)}

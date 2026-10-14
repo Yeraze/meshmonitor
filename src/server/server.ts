@@ -675,9 +675,10 @@ setTimeout(async () => {
 
 // MeshCore Time-Sync Scheduler (#4916) — periodically pushes the server's wall
 // clock to each opt-in remote repeater's RTC via the absolute `time <epoch>`
-// verb. The most expensive of the MeshCore schedulers: one sync is FOUR
-// packets (login + reply, then the CLI command + reply), because
-// `ensureSavedLogin` deliberately does not cache. It therefore honours the
+// verb. The most expensive of the MeshCore schedulers: one sync is 2 packets
+// (CLI command + reply) on a remembered admin session (#5785), 4 when a login
+// must go first, and at worst 1 + 4 when the remembered session is stale (one
+// fresh login, one retry, never more). It therefore honours the
 // same per-source 60s minimum through the shared `MeshCoreManager.lastMeshTxAt`
 // primitive, and its per-node cadence defaults to 12h with a 1h floor. That
 // cadence lives in a THIRD separate column set (`lastTimeSyncAt`, migration

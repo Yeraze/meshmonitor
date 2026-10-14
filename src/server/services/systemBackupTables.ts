@@ -163,6 +163,12 @@ export const BACKUP_TABLES: string[] = [
   'map_markers',
   // #5722: per-hop SNR history from MeshCore traces (reception history).
   'meshcore_hop_snr',
+  // #5785: remembered MeshCore remote-admin logins. Backed up rather than
+  // excluded: a row is not a credential (the remote's ACL is the authority,
+  // and Log out never touches it), and every read requires the connected
+  // companion's key to equal `selfPublicKey`, so a restore onto another radio
+  // leaves the rows inert. A stale row costs one CLI timeout, then a re-login.
+  'meshcore_admin_sessions',
   'geofence_cooldowns',
   'news_cache',
 ];

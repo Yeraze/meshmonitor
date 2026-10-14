@@ -8368,14 +8368,26 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
     // in before page 1 only: the repeater keeps the session in its ACL, so
     // later pages pass `skipLogin`.
     this.requireTransmit();
-    if (!opts?.skipLogin) await this.ensureSavedLogin(publicKey);
+    const login = opts?.skipLogin ? 'skipped' : await this.ensureSavedLoginDetailed(publicKey);
+    const ask = () => this.sendBridgeCommand('get_neighbours', {
+      public_key: publicKey,
+      count: opts?.count ?? 10,
+      offset: opts?.offset ?? 0,
+      order_by: opts?.orderBy ?? 0,
+    }, 30000);
     try {
-      const response = await this.sendBridgeCommand('get_neighbours', {
-        public_key: publicKey,
-        count: opts?.count ?? 10,
-        offset: opts?.offset ?? 0,
-        order_by: opts?.orderBy ?? 0,
-      }, 30000);
+      let response = await ask();
+      // No reply on a resumed session (#5785): it may be stale. One fresh
+      // login, one retry. A contact missing from the radio sent nothing, so
+      // a login cannot help there.
+      if (
+        !response.success &&
+        login === 'resumed' &&
+        response.error !== MESHCORE_CONTACT_NOT_ON_DEVICE &&
+        (await this.retryAfterStaleSession(publicKey))
+      ) {
+        response = await ask();
+      }
       if (!response.success) {
         logger.warn(`[MeshCore] get_neighbours failed for ${publicKey}: ${response.error}`);
         return null;
@@ -8540,16 +8552,20 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
    * per-source 60s TX gate or the `lastTimeSyncAt` stamp — callers enforce
    * those.
    *
-   * Two round-trips on the air, which is why the scheduler's default cadence
-   * is 12h rather than the 15 min Meshtastic uses:
-   *   1. `ensureSavedLogin()` — `time` is a mutating verb, so a guest session
-   *      is not enough. This deliberately does not cache, so it re-logs in on
-   *      every sync.
+   * Up to two round-trips on the air, which is why the scheduler's default
+   * cadence is 12h rather than the 15 min Meshtastic uses:
+   *   1. `ensureSavedLoginDetailed()` — `time` is a mutating verb, so a guest
+   *      session is not enough. It resumes a remembered session (#5785) with
+   *      no packets; otherwise it logs in (2 packets).
    *   2. `sendCliCommand(publicKey, 'clock sync')` — rewritten at the
    *      chokepoint by `rewriteClockSync()` into the absolute
    *      `time <epoch>` verb (#3954). We pass the `clock sync` spelling
    *      rather than building `time <epoch>` here so the epoch is stamped as
    *      late as possible, after the login round-trip has already elapsed.
+   *
+   * So a sync costs 2 packets on a live session, 4 without one, and at worst
+   * 1 + 4 when a resumed session turns out stale: the unanswered command,
+   * then one fresh login and one retry (`retryAfterStaleSession`).
    *
    * Returns a discriminated result rather than a bare boolean because the
    * failure modes need to be told apart in the UI:
@@ -8577,23 +8593,43 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
       return { status: 'failed', error: 'MeshCore source not connected' };
     }
 
-    if (!(await this.ensureSavedLogin(publicKey))) {
+    const login = await this.ensureSavedLoginDetailed(publicKey);
+    if (login === 'failed') {
       return { status: 'no-credential' };
     }
 
-    try {
-      // 'clock sync' is rewritten to `time <epoch>` inside sendCliCommand.
-      const { reply, elapsedMs } = await this.sendCliCommand(publicKey, 'clock sync');
-      // Firmware answers an accepted `time` with an OK/ack line and a refused
-      // one with an "ERR: ..." line — most commonly "clock cannot go
-      // backwards" when the target's RTC is ahead of ours.
-      if (/^\s*err\b/i.test(reply) || /cannot go backwards/i.test(reply)) {
-        return { status: 'rejected', reply: reply.trim() };
+    const push = async (): Promise<
+      | { status: 'ok'; reply: string; elapsedMs: number }
+      | { status: 'rejected'; reply: string }
+      | { status: 'failed'; error: string; timedOut: boolean }
+    > => {
+      try {
+        // 'clock sync' is rewritten to `time <epoch>` inside sendCliCommand.
+        const { reply, elapsedMs } = await this.sendCliCommand(publicKey, 'clock sync');
+        // Firmware answers an accepted `time` with an OK/ack line and a refused
+        // one with an "ERR: ..." line — most commonly "clock cannot go
+        // backwards" when the target's RTC is ahead of ours.
+        if (/^\s*err\b/i.test(reply) || /cannot go backwards/i.test(reply)) {
+          return { status: 'rejected', reply: reply.trim() };
+        }
+        return { status: 'ok', reply: reply.trim(), elapsedMs };
+      } catch (error) {
+        const message = (error as Error).message;
+        return { status: 'failed', error: message, timedOut: /timed out/i.test(message) };
       }
-      return { status: 'ok', reply: reply.trim(), elapsedMs };
-    } catch (error) {
-      return { status: 'failed', error: (error as Error).message };
+    };
+
+    let result = await push();
+    // A resumed session that gets no reply may be stale (#5785): the remote
+    // drops a CLI DM from a sender not in its ACL without a word. Log in
+    // fresh once and push once more; never more.
+    if (result.status === 'failed' && result.timedOut && login === 'resumed') {
+      if (await this.retryAfterStaleSession(publicKey)) {
+        result = await push();
+      }
     }
+    if (result.status === 'failed') return { status: 'failed', error: result.error };
+    return result;
   }
 
   /**
@@ -8969,11 +9005,38 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
    *
    * The decrypted plaintext is used in-process only; it never leaves the
    * server (same invariant as the login-with-saved route).
+   *
+   * Resumes a remembered session (#5785): when `meshcore_admin_sessions`
+   * holds a row for this node whose `selfPublicKey` is the connected
+   * companion's key, this returns true with NO login exchange. A caller that
+   * then gets no reply must use `ensureSavedLoginDetailed` to learn it
+   * resumed, clear the row, log in fresh once and retry once (see
+   * `retryAfterStaleSession`).
    */
   async ensureSavedLogin(publicKey: string): Promise<boolean> {
-    if (this.deviceType !== MeshCoreDeviceType.COMPANION) return false;
-    if (!this.connected) return false;
+    return (await this.ensureSavedLoginDetailed(publicKey)) !== 'failed';
+  }
+
+  /**
+   * `ensureSavedLogin` that says HOW it succeeded:
+   *  - `resumed`   — a remembered session was honoured; nothing was sent.
+   *  - `logged_in` — a fresh saved-password login succeeded (and was recorded).
+   *  - `failed`    — no session, and no usable saved password or no reply.
+   *
+   * `opts.fresh` skips the remembered session and always logs in.
+   */
+  async ensureSavedLoginDetailed(
+    publicKey: string,
+    opts: { fresh?: boolean } = {},
+  ): Promise<'resumed' | 'logged_in' | 'failed'> {
+    if (this.deviceType !== MeshCoreDeviceType.COMPANION) return 'failed';
+    if (!this.connected) return 'failed';
     this.requireTransmit();
+
+    if (!opts.fresh && (await this.getAdminSession(publicKey)).active) {
+      logger.debug(`[MeshCore:${this.sourceId}] Resuming admin session with ${publicKey.substring(0, 8)}… (no login sent)`);
+      return 'resumed';
+    }
 
     let cred;
     try {
@@ -8981,15 +9044,128 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
       cred = await getMeshCoreCredentialStore().load(this.sourceId, publicKey);
     } catch (err) {
       logger.warn(`[MeshCore:${this.sourceId}] credential lookup failed for ${publicKey.substring(0, 8)}…: ${(err as Error).message}`);
-      return false;
+      return 'failed';
     }
     // No saved password (or unreadable/rotated): do NOT anonymous-login.
-    if (cred.kind !== 'ok') return false;
+    if (cred.kind !== 'ok') return 'failed';
 
-    const { outcome, attempts } = await this.loginToNodeWithRetry(publicKey, cred.password);
-    if (outcome === 'ok') return true;
+    const { result, outcome, attempts } = await this.loginToNodeWithRetry(publicKey, cred.password);
+    if (outcome === 'ok') {
+      await this.recordAdminSession(publicKey, result);
+      return 'logged_in';
+    }
+    if (outcome === 'rejected') await this.clearAdminSession(publicKey);
     logger.warn(`[MeshCore:${this.sourceId}] saved-credential login ${outcome} after ${attempts} attempt(s) for ${publicKey.substring(0, 8)}…`);
-    return false;
+    return 'failed';
+  }
+
+  // ============ Remembered admin sessions (#5785) ============
+  //
+  // A repeater keeps a logged-in client in its ACL (helpers/ClientACL.cpp)
+  // with no idle timeout; admin entries are even written to flash and survive
+  // a reboot. So a login is usually still valid long after it happened, and
+  // repeating it is pure airtime. These rows remember "this source's companion
+  // logged in to that node" in the DATABASE, so a MeshMonitor restart keeps
+  // them. They never expire on a timer and are NOT cleared on disconnect: the
+  // ACL lives on the remote and our identity does not change.
+  //
+  // A row only counts while the connected companion still has the key it was
+  // recorded with. A different radio on the source is a different ACL entry.
+
+  /** Our companion's own 64-hex key, lower-cased, or null when unknown. */
+  private getSelfPublicKey(): string | null {
+    if (this.deviceType !== MeshCoreDeviceType.COMPANION || !this.connected) return null;
+    const key = this.localNode?.publicKey?.toLowerCase() ?? '';
+    return /^[0-9a-f]{64}$/.test(key) ? key : null;
+  }
+
+  /**
+   * Is there a session we can resume with `publicKey`? DB only, no radio
+   * traffic. `reason` says why not:
+   *  - `none`          — nothing remembered.
+   *  - `other_radio`   — remembered for a different companion key.
+   *  - `not_connected` — the companion's key is unknown (not connected).
+   */
+  async getAdminSession(publicKey: string): Promise<{
+    active: boolean;
+    loggedInAt: number | null;
+    isAdmin: boolean | null;
+    reason?: 'none' | 'other_radio' | 'not_connected';
+  }> {
+    let row;
+    try {
+      row = await databaseService.meshcoreAdminSessions.get(this.sourceId, publicKey);
+    } catch (err) {
+      logger.warn(`[MeshCore:${this.sourceId}] admin session lookup failed: ${(err as Error).message}`);
+      return { active: false, loggedInAt: null, isAdmin: null, reason: 'none' };
+    }
+    if (!row) return { active: false, loggedInAt: null, isAdmin: null, reason: 'none' };
+    const self = this.getSelfPublicKey();
+    if (!self) return { active: false, loggedInAt: row.loggedInAt, isAdmin: row.isAdmin, reason: 'not_connected' };
+    if (row.selfPublicKey !== self) {
+      return { active: false, loggedInAt: row.loggedInAt, isAdmin: row.isAdmin, reason: 'other_radio' };
+    }
+    return { active: true, loggedInAt: row.loggedInAt, isAdmin: row.isAdmin };
+  }
+
+  /**
+   * Remember a successful login to `publicKey`. Best-effort: a DB failure is
+   * logged, never thrown, since the login itself already worked.
+   *
+   * Admin logins only: the repeater ignores CLI text from a guest, so a
+   * resumed guest session would only ever time out. A guest login (the reply
+   * says not admin, or `opts.guest` for an empty password when the reply does
+   * not say) also forgets any earlier admin session, because the repeater's
+   * ACL entry for us is now the guest one.
+   */
+  async recordAdminSession(
+    publicKey: string,
+    result: MeshCoreLoginResult | null,
+    opts: { guest?: boolean } = {},
+  ): Promise<void> {
+    const isGuest = result?.isAdmin === false || (result?.isAdmin === undefined && opts.guest === true);
+    if (isGuest) {
+      await this.clearAdminSession(publicKey);
+      return;
+    }
+    const self = this.getSelfPublicKey();
+    if (!self) return;
+    try {
+      await databaseService.meshcoreAdminSessions.record({
+        sourceId: this.sourceId,
+        targetPublicKey: publicKey,
+        selfPublicKey: self,
+        loggedInAt: Date.now(),
+        isAdmin: result?.isAdmin ?? null,
+      });
+    } catch (err) {
+      logger.warn(`[MeshCore:${this.sourceId}] failed to record admin session: ${(err as Error).message}`);
+    }
+  }
+
+  /** Forget the remembered session with `publicKey`. Best-effort; sends nothing. */
+  async clearAdminSession(publicKey: string): Promise<void> {
+    try {
+      await databaseService.meshcoreAdminSessions.clear(this.sourceId, publicKey);
+    } catch (err) {
+      logger.warn(`[MeshCore:${this.sourceId}] failed to clear admin session: ${(err as Error).message}`);
+    }
+  }
+
+  /**
+   * The stale-session fallback (#5785). Call after a request that followed a
+   * RESUMED session got no reply: the remote may have rebooted before its
+   * lazy ACL write, or evicted us. Clears the row and logs in fresh ONCE with
+   * the saved password. Returns true when the caller should retry its request
+   * once; false when it should give up. Never loops.
+   */
+  private async retryAfterStaleSession(publicKey: string): Promise<boolean> {
+    logger.info(
+      `[MeshCore:${this.sourceId}] No reply on a resumed session with ${publicKey.substring(0, 8)}…; ` +
+        'forgetting it and logging in again once',
+    );
+    await this.clearAdminSession(publicKey);
+    return (await this.ensureSavedLoginDetailed(publicKey, { fresh: true })) === 'logged_in';
   }
 
   // ============ Room Server Support ============
@@ -9359,8 +9535,22 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
       // Log in with the SAVED password (repeaters gate `neighbors` behind a
       // guest/admin password). Never anonymous-login: an empty-password login
       // downgrades to anonymous and the command returns nothing.
-      await this.ensureSavedLogin(sanitizedTargetKey);
-      const result = await this.sendCliCommand(sanitizedTargetKey, 'neighbors');
+      const login = await this.ensureSavedLoginDetailed(sanitizedTargetKey);
+      let result;
+      try {
+        result = await this.sendCliCommand(sanitizedTargetKey, 'neighbors');
+      } catch (err) {
+        // A resumed session that gets no reply may be stale (#5785): one
+        // fresh login, one retry, then the original error.
+        if (
+          login !== 'resumed' ||
+          !/timed out/i.test((err as Error).message) ||
+          !(await this.retryAfterStaleSession(sanitizedTargetKey))
+        ) {
+          throw err;
+        }
+        result = await this.sendCliCommand(sanitizedTargetKey, 'neighbors');
+      }
       reply = result.reply;
     } else if (this.deviceType === MeshCoreDeviceType.REPEATER) {
       // Local Repeater (#5500): the same ingest the 5-minute poll uses —

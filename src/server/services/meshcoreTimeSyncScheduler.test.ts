@@ -10,7 +10,7 @@
  * outcomes.
  *
  * The stamp-before-send ordering is the load-bearing one here. A time-sync is
- * four packets, and its two most likely failure modes — an offline repeater
+ * two to five packets (#5785), and its two most likely failure modes — an offline repeater
  * and one whose RTC runs ahead (firmware refuses to move a clock backwards) —
  * are both persistent. If the stamp only landed on success, either would be
  * retried on every single tick forever.
@@ -48,8 +48,9 @@ const HOUR = 60 * 60_000;
 
 describe('constants', () => {
   it('defaults to 12 hours — far slower than the 15-minute Meshtastic equivalent', () => {
-    // One MeshCore sync is four packets (login + reply, then the CLI command
-    // + reply) versus Meshtastic's one admin packet, so the cadence is not
+    // One MeshCore sync is 2-5 packets (CLI command + reply, plus a login +
+    // reply without a remembered session, #5785) versus Meshtastic's one
+    // admin packet, so the cadence is not
     // comparable and must not be "harmonised" with it.
     expect(DEFAULT_INTERVAL_MINUTES).toBe(720);
   });

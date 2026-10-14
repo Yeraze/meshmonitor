@@ -1689,7 +1689,7 @@ router.get(
  *
  * `intervalMinutes` is rejected below TIME_SYNC_MIN_INTERVAL_MINUTES (60)
  * rather than silently clamped, so an API caller learns the floor exists.
- * One sync is four packets on the air, so a mistyped small value would be
+ * One sync is two to five packets on the air, so a mistyped small value would be
  * genuinely harmful to the mesh.
  *
  * Gated by `configuration:write`, mirroring the neighbours-config PATCH.

@@ -57,7 +57,7 @@ describe('Migration 156 — meshcore_nodes time-sync columns', () => {
     // Opt-in, never on by default: enabling this puts packets on the air.
     expect(row.timeSyncEnabled).toBe(0);
     // 720 minutes = 12h, NOT the 60 the other two trios default to — one sync
-    // is four packets, so the cadence is deliberately an order slower.
+    // is 2-5 packets (#5785), so the cadence is deliberately an order slower.
     expect(row.timeSyncIntervalMinutes).toBe(720);
     expect(row.lastTimeSyncAt).toBeNull();
   });
