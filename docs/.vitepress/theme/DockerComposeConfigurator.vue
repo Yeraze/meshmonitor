@@ -807,13 +807,17 @@ function buildComposeLines(portainer) {
     lines.push('      - /var/lib/bluetooth:/var/lib/bluetooth:ro')
     lines.push('    environment:')
     lines.push('      - BLE_ADDRESS=${BLE_ADDRESS}')
+    lines.push('      # Touched every 10s while the BLE link is up; read by the healthcheck')
+    lines.push('      - HEALTH_FILE=/tmp/ble-bridge.health')
     lines.push('    command: ${BLE_ADDRESS}')
+    lines.push('    # Healthy only while the BLE link is up. The bridge exits when it cannot')
+    lines.push('    # reconnect, and restart: unless-stopped starts it again.')
     lines.push('    healthcheck:')
-    lines.push('      test: ["CMD", "python3", "-c", "import socket; s=socket.socket(); s.settimeout(1); s.connect((\'localhost\', 4403)); s.close()"]')
+    lines.push('      test: ["CMD", "python3", "-c", "import os, sys, time; f = \'/tmp/ble-bridge.health\'; sys.exit(0 if os.path.exists(f) and time.time() - os.path.getmtime(f) < 60 else 1)"]')
     lines.push('      interval: 30s')
     lines.push('      timeout: 10s')
     lines.push('      retries: 3')
-    lines.push('      start_period: 10s')
+    lines.push('      start_period: 60s')
     lines.push('')
   } else if (config.value.connectionType === 'serial') {
     lines.push('  serial-bridge:')
@@ -939,8 +943,10 @@ function buildComposeLines(portainer) {
   if (hasDeps) {
     lines.push('    depends_on:')
     if (config.value.connectionType === 'ble') {
+      // service_started, not service_healthy: the bridge is healthy only while
+      // the BLE link is up, and MeshMonitor reconnects on its own.
       lines.push('      ble-bridge:')
-      lines.push('        condition: service_healthy')
+      lines.push('        condition: service_started')
     } else if (config.value.connectionType === 'serial') {
       lines.push('      - serial-bridge')
     }

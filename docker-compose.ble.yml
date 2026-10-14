@@ -24,13 +24,18 @@ services:
       # BLE MAC address of your Meshtastic device
       # Find it using: docker compose -f docker-compose.ble.yml run --rm ble-bridge --scan
       - BLE_ADDRESS=${BLE_ADDRESS:-}
+      # Touched every 10s while the BLE link is up; read by the healthcheck below
+      - HEALTH_FILE=/tmp/ble-bridge.health
     command: ${BLE_ADDRESS:-}
+    # Healthy only while the BLE link is up, not just while port 4403 accepts
+    # connections. The bridge exits with code 1 when it cannot reconnect, and
+    # restart: unless-stopped starts it again.
     healthcheck:
-      test: ["CMD-SHELL", "netstat -tln | grep -q :4403 || exit 1"]
+      test: ["CMD", "python3", "-c", "import os, sys, time; f = '/tmp/ble-bridge.health'; sys.exit(0 if os.path.exists(f) and time.time() - os.path.getmtime(f) < 60 else 1)"]
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 10s
+      start_period: 60s
 
   # Override meshmonitor service to connect to BLE bridge
   meshmonitor:
@@ -38,6 +43,9 @@ services:
       # Configure MeshMonitor to connect to the BLE bridge via Docker service name
       - MESHTASTIC_NODE_IP=meshmonitor-ble-bridge
       - MESHTASTIC_NODE_PORT=4403
+    # service_started, not service_healthy: the bridge is healthy only while the
+    # BLE link is up, and MeshMonitor reconnects on its own. A node out of range
+    # must not stop MeshMonitor from starting.
     depends_on:
       ble-bridge:
-        condition: service_healthy
+        condition: service_started
