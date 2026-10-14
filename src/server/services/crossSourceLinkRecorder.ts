@@ -222,7 +222,7 @@ export function evaluateMeshtasticLink(
   if (isStaleCoverageRxTime(rxTimeSec, nowMs)) return none('stale');
   // Firmware 2.8 replays its NodeDB on connect as "LoRa" packets with no RSSI
   // and an old rx_time (#5426). Cached history, not a hearing.
-  if (isNodeDbReplayForPacketLog(transport, rxTimeSec, p.rxRssi ?? null, nowMs)) return none('nodedb-replay');
+  if (isNodeDbReplayForPacketLog(transport, rxTimeSec, p.rxRssi ?? null, nowMs, { fromNum, packetId })) return none('nodedb-replay');
 
   const hopStart = p.hopStart ?? null;
   const hopLimit = p.hopLimit ?? null;

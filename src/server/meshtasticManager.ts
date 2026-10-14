@@ -97,7 +97,7 @@ import { compileUserRegex } from '../utils/safeRegex.js';
 import { shouldGateAutomations, averageStrongestNeighborUtilization, DEFAULT_AIRTIME_CUTOFF_THRESHOLD, DEFAULT_AIRTIME_CUTOFF_SOURCE, DEFAULT_NEIGHBOR_UTIL_MAX_HOPS, MAX_NEIGHBOR_UTIL_MAX_HOPS, NEIGHBOR_UTIL_SAMPLE_COUNT, type AirtimeCutoffSource, type NeighborUtilContributor } from './utils/airtimeCutoff.js';
 import { resolveLastHopName } from './utils/lastHop.js';
 import { isRelayedReception } from './utils/packetHops.js';
-import { resolveLastHeardSec, isLiveReception, resolvePositionObservedAtMs, resolveNodeDbPositionObservedAtMs } from './utils/replayGuard.js';
+import { resolveLastHeardSec, isLiveReception, isFirmwareReplayPacket, resolvePositionObservedAtMs, resolveNodeDbPositionObservedAtMs } from './utils/replayGuard.js';
 import { isLiveNodeDiscovery } from './utils/nodeDiscovery.js';
 import { isUptimeReboot } from './utils/rebootDetection.js';
 import { isPowered, detectPowerTransition } from './utils/poweredState.js';
@@ -6705,7 +6705,8 @@ class MeshtasticManager implements ISourceManager {
           resolveRadioPacketTransport(meshPacket),
           dedupRxTime,
           meshPacket.rxRssi,
-          packetLogNow
+          packetLogNow,
+          { fromNum, packetId: dedupPacketId }
         )) {
           // Firmware 2.8 NodeDB replay (#5426): cached history, not a reception.
           logger.debug(`📦 Skipping NodeDB-replay packet-log entry for id ${dedupPacketId} from ${fromNum}`);
@@ -6807,6 +6808,7 @@ class MeshtasticManager implements ISourceManager {
         fromNum,
         localNodeNum: this.localNodeInfo?.nodeNum,
         rxTimeSec: meshPacket.rxTime != null ? Number(meshPacket.rxTime) : undefined,
+        packetId: meshPacket.id,
         nowMs: Date.now(),
       })) {
         discoveredNodeNum = fromNum;
@@ -6876,7 +6878,10 @@ class MeshtasticManager implements ISourceManager {
       if (
         heardSec !== undefined &&
         fromNum !== this.localNodeInfo?.nodeNum &&
-        isLiveReception(meshPacket.rxTime != null ? Number(meshPacket.rxTime) : undefined, Date.now())
+        isLiveReception(meshPacket.rxTime != null ? Number(meshPacket.rxTime) : undefined, Date.now()) &&
+        // #5426: a 2.8 replay's rx_time is the node's last_heard, so it can
+        // look live; its packet id still gives it away.
+        !isFirmwareReplayPacket(fromNum, meshPacket.id, meshPacket.rxTime != null ? Number(meshPacket.rxTime) : null)
       ) {
         transportTrafficService.recordRx(
           this.sourceId,

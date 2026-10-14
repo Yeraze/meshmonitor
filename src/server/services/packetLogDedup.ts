@@ -55,7 +55,7 @@
  */
 
 import { TransportMechanism } from '../constants/meshtastic.js';
-import { isLiveReception } from '../utils/replayGuard.js';
+import { isLiveReception, isFirmwareReplayPacket, MIN_PLAUSIBLE_UNIX_SEC } from '../utils/replayGuard.js';
 
 /**
  * How long a non-RF (MQTT / multicast UDP / API) tuple suppresses a repeat.
@@ -205,6 +205,10 @@ export function isDuplicatePacketLog(
  *
  * Requiring both keeps a genuine packet logged when the receiving node's clock
  * runs minutes behind the server's (stale-looking `rx_time`, but real RSSI).
+ *
+ * Firmware 2.8.0+ replays are also caught by their packet id (pass `sender`),
+ * because their `rx_time` is the node's last-heard time and can look live;
+ * see {@link isFirmwareReplayPacket}.
  * Non-RF transports never match: MQTT and UDP receptions carry no RSSI and are
  * real data.
  */
@@ -213,8 +217,20 @@ export function isNodeDbReplayForPacketLog(
   rxTimeSec: number | null | undefined,
   rxRssi: number | null | undefined,
   nowMs: number,
+  sender?: { fromNum: number | null | undefined; packetId: number | null | undefined },
 ): boolean {
   if (!isRfTransport(transportMechanism)) return false;
+  // Firmware >= 2.8.0 (#5426 regression): the replay's id is a hash of the
+  // sender and its rx_time, and that rx_time is the node's last_heard, so a
+  // replay of a node heard in the last two minutes looks live. The id
+  // identifies it whatever its age.
+  if (sender && isFirmwareReplayPacket(sender.fromNum, sender.packetId, rxTimeSec)) return true;
   if (rxRssi != null && rxRssi !== 0) return false;
+  // A replay from a node with no wall clock carries no rx_time at all, so
+  // neither its age nor its id can be checked. Firmware 2.8 sets rx_rssi on
+  // every real reception and leaves it off a replay (explicit presence), so
+  // "no rx_time and no RSSI at all" is a replay. A bare 0 (pre-2.8 decoding
+  // of an unset field) is not enough here.
+  if (rxRssi === null && (rxTimeSec == null || rxTimeSec < MIN_PLAUSIBLE_UNIX_SEC)) return true;
   return !isLiveReception(rxTimeSec, nowMs);
 }
