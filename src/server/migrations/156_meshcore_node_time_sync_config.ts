@@ -13,10 +13,12 @@
  *   lastTimeSyncAt           BIGINT   (ms; null until first attempt)
  *
  * The 12h default is deliberately far slower than the Meshtastic auto
- * time-sync default (15 min). One MeshCore repeater sync costs FOUR packets
- * on the air, not one — `ensureSavedLogin()` does not cache, so every sync is
- * a login DM plus its reply, then the `time <epoch>` CliData DM plus its
- * reply — and each of those floods when the target's out_path is unknown.
+ * time-sync default (15 min). One MeshCore repeater sync costs more than one
+ * packet: the `time <epoch>` CliData DM plus its reply (2) on a remembered
+ * admin session (#5785, migration 204), FOUR when a login must go first, and
+ * at worst 1 + 4 when a remembered session is stale — and each of those
+ * floods when the target's out_path is unknown. (When this migration was
+ * written there was no session reuse and every sync was four packets.)
  * Repeater RTC drift is seconds-to-minutes per day, so 12h has ample margin.
  *
  * `lastTimeSyncAt` lives in the DATABASE rather than on the scheduler

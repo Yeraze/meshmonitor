@@ -19,11 +19,13 @@
  *
  * WHY THE CADENCE IS SO MUCH SLOWER THAN MESHTASTIC'S. The Meshtastic auto
  * time-sync defaults to 15 minutes and costs one admin packet. One MeshCore
- * repeater sync costs FOUR packets: `ensureSavedLogin()` does not cache, so
- * every sync is a login DM plus its reply, then the `time <epoch>` CliData DM
- * plus its reply — and each of those floods when the target's `out_path` is
- * unknown, which multiplies it again. At 12h across ten repeaters that is
- * roughly 3 packets/hour; at 15 min it would be roughly 160/hour, which no
+ * repeater sync costs TWO packets with a remembered admin session (#5785):
+ * the `time <epoch>` CliData DM plus its reply. Without one it is FOUR (a
+ * login DM plus its reply first), and when a remembered session turns out
+ * stale the worst case is 1 + 4: the unanswered command, then one fresh login
+ * and one retry. Each of those floods when the target's `out_path` is unknown,
+ * which multiplies it again. At 12h across ten repeaters that is at most
+ * roughly 4 packets/hour; at 15 min it could be roughly 200/hour, which no
  * LoRa mesh should be asked to carry. Repeater RTC drift is seconds-to-minutes
  * per day, so 12h has ample margin. (The "~22 minutes behind" in #3954 was
  * inherited drift from our own unsynced companion, since fixed — not the
@@ -66,7 +68,8 @@ const MIN_TICK_MS = 1_000;
 export const DEFAULT_INTERVAL_MINUTES = 720;
 
 /**
- * Floor on the per-node interval, in minutes (1h). A sync is four packets, so
+ * Floor on the per-node interval, in minutes (1h). A sync is two to five
+ * packets (see the file header), so
  * a mistyped `5` would put a repeater's worth of traffic on the air every five
  * minutes. Enforced here AND at the route, so neither the UI nor a direct API
  * call can go below it.
@@ -105,7 +108,7 @@ export function resolveTickMs(envValue: string | undefined): number {
  * oversight, because the two are answering different questions:
  *
  *   - The route is talking to a person. Someone who types `5` probably meant
- *     seconds, or did not realise a sync is four packets; silently storing 60
+ *     seconds, or did not realise a sync is several packets; silently storing 60
  *     would hide their mistake. So it refuses and names the floor.
  *   - This helper is the last line of defence for a value that is ALREADY in
  *     the database — written before the floor existed, or edited by hand. At

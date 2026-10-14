@@ -12,6 +12,10 @@
  *  - Auto-login on mount when a non-rotated stored credential exists.
  *  - KEY_ROTATED banner + "Forget stored password" action.
  *  - Stats panel mounting (only once logged in).
+ *  - Remembered sessions (#5785): on mount it asks the server (DB only, no
+ *    airtime) whether a login to this node is remembered. If so, "Resume
+ *    session" enables the console with ZERO radio traffic. "Log out" forgets
+ *    the remembered session. Still never logs in on its own.
  *
  * Wire model: see meshcoreCredentialStore + POST /admin/login-with-saved
  * for the security invariant that the saved plaintext password never
@@ -20,13 +24,14 @@
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import type { MeshCoreActions } from './hooks/useMeshCore';
+import type { MeshCoreActions, MeshCoreRemoteAdminSession } from './hooks/useMeshCore';
 import { MeshCoreRemoteStatsPanel } from './MeshCoreRemoteStatsPanel';
 import { MeshCoreAclManager } from './MeshCoreAclManager';
 import { CliConsoleBody, type ActionCommand, type CliConsoleBodyHandle } from './CliConsoleBody';
 import { MeshCoreLoginProgress } from './MeshCoreLoginProgress';
 import { useMeshCoreLoginProgress } from './hooks/useMeshCoreLoginProgress';
 import './MeshCoreRemoteConsole.css';
+import styles from './MeshCoreRemoteConsole.module.css';
 import { UiIcon } from '../icons';
 
 /**
@@ -73,6 +78,8 @@ interface MeshCoreRemoteConsoleProps {
     | 'getRemoteAdminCapability'
     | 'forgetRemoteCredential'
     | 'getRemoteStatus'
+    | 'getRemoteAdminSession'
+    | 'logoutRemote'
   >;
   /** True when this MeshCore source is in strict receive-only mode (#4547
    *  Phase 2). Threaded to MeshCoreRemoteStatsPanel; WP3 wires the actual
@@ -107,6 +114,10 @@ export const MeshCoreRemoteConsole: React.FC<MeshCoreRemoteConsoleProps> = ({
   const [rememberPassword, setRememberPassword] = useState(false);
   const [loginBusy, setLoginBusy] = useState(false);
   const [loginError, setLoginError] = useState<string | null>(null);
+  // Remembered login on the server (#5785), and whether the console is
+  // running on it (resumed, not freshly logged in).
+  const [session, setSession] = useState<MeshCoreRemoteAdminSession | null>(null);
+  const [resumed, setResumed] = useState(false);
   // Live "attempt n of 3" progress + cancel for the login in flight (#5400).
   const { progress: loginProgressState, run: runLogin, cancel: cancelLoginAttempt } = useMeshCoreLoginProgress(actions);
 
@@ -122,6 +133,8 @@ export const MeshCoreRemoteConsole: React.FC<MeshCoreRemoteConsoleProps> = ({
     setLoginPassword('');
     setRememberPassword(false);
     setLoginError(null);
+    setSession(null);
+    setResumed(false);
   }, [publicKey]);
 
   const refreshCapability = useCallback(async () => {
@@ -138,6 +151,20 @@ export const MeshCoreRemoteConsole: React.FC<MeshCoreRemoteConsoleProps> = ({
   useEffect(() => {
     void refreshCapability();
   }, [publicKey, refreshCapability]);
+
+  // Remembered session (#5785): a server/DB lookup, NO radio airtime. A
+  // failure just means "nothing to resume".
+  const refreshSession = useCallback(async () => {
+    try {
+      setSession(await actions.getRemoteAdminSession(publicKey));
+    } catch {
+      setSession(null);
+    }
+  }, [actions, publicKey]);
+
+  useEffect(() => {
+    void refreshSession();
+  }, [refreshSession]);
 
   // Human text for a failed login. `no_reply` and `rejected` get their own
   // wording: "Login failed" hid whether to check the password or the link.
@@ -197,15 +224,17 @@ export const MeshCoreRemoteConsole: React.FC<MeshCoreRemoteConsoleProps> = ({
       return;
     }
     setLoggedIn(true);
+    setResumed(false);
     setShowLogin(false);
     setLoginPassword('');
+    void refreshSession();
     bodyRef.current?.appendInfo(
       result.persisted
         ? t('meshcore.remoteConsole.login_success_persisted', 'Logged in — password saved on this server')
         : t('meshcore.remoteConsole.login_success', 'Logged in'),
     );
     void refreshCapability();
-  }, [actions, handleLoginCancelled, loginFailureText, loginPassword, publicKey, runLogin, refreshCapability, rememberPassword, t]);
+  }, [actions, handleLoginCancelled, loginFailureText, loginPassword, publicKey, runLogin, refreshCapability, refreshSession, rememberPassword, t]);
 
   // On-demand login using the saved password (one click, no re-typing). This
   // is the only place the saved credential is used from the console, and only
@@ -223,17 +252,49 @@ export const MeshCoreRemoteConsole: React.FC<MeshCoreRemoteConsoleProps> = ({
     }
     if (result.success) {
       setLoggedIn(true);
+      setResumed(false);
       bodyRef.current?.appendInfo(
         t('meshcore.remoteConsole.login_success_saved', 'Logged in with saved password'),
       );
       void refreshCapability();
+      void refreshSession();
       return;
     }
     if (result.code === 'CREDENTIAL_KEY_ROTATED') {
       void refreshCapability();
     }
+    // A refused password also drops the remembered session server-side.
+    if (result.reason === 'rejected') void refreshSession();
     setLoginError(loginFailureText(result));
-  }, [actions, handleLoginCancelled, loginFailureText, publicKey, refreshCapability, runLogin, t]);
+  }, [actions, handleLoginCancelled, loginFailureText, publicKey, refreshCapability, refreshSession, runLogin, t]);
+
+  // Resume the remembered session (#5785): no packet is sent. The node keeps
+  // us in its ACL until it is evicted or wiped; if it has dropped us, the
+  // first command times out and the transcript says to log in again.
+  const handleResume = useCallback(() => {
+    setLoggedIn(true);
+    setResumed(true);
+    setLoginError(null);
+    bodyRef.current?.appendInfo(
+      t('meshcore.remoteConsole.session_resumed', 'Resumed the saved session. Nothing was sent to the node.'),
+    );
+  }, [t]);
+
+  // Log out (#5785): forget the remembered session on the server. Sends
+  // nothing to the node; the next use logs in again.
+  const handleLogout = useCallback(async () => {
+    const ok = await actions.logoutRemote(publicKey);
+    if (ok) {
+      setLoggedIn(false);
+      setResumed(false);
+    }
+    bodyRef.current?.appendInfo(
+      ok
+        ? t('meshcore.remoteConsole.logged_out', 'Logged out. The next use will log in again.')
+        : t('meshcore.remoteConsole.logout_failed', 'Failed to log out'),
+    );
+    void refreshSession();
+  }, [actions, publicKey, refreshSession, t]);
 
   const handleForgetCredential = useCallback(async () => {
     const ok = await actions.forgetRemoteCredential(publicKey);
@@ -243,7 +304,9 @@ export const MeshCoreRemoteConsole: React.FC<MeshCoreRemoteConsoleProps> = ({
         : t('meshcore.remoteConsole.credential_forget_failed', 'Failed to forget stored password'),
     );
     void refreshCapability();
-  }, [actions, publicKey, refreshCapability, t]);
+    // Forgetting the password also forgets the remembered session.
+    void refreshSession();
+  }, [actions, publicKey, refreshCapability, refreshSession, t]);
 
   const isRotatedForThisContact =
     capability?.rotated.some((r) => r.publicKey.toLowerCase() === publicKey.toLowerCase()) ?? false;
@@ -254,6 +317,27 @@ export const MeshCoreRemoteConsole: React.FC<MeshCoreRemoteConsoleProps> = ({
   const hasSavedCredential =
     (capability?.stored.some((s) => s.publicKey.toLowerCase() === publicKey.toLowerCase()) ?? false) &&
     !isRotatedForThisContact;
+
+  const canResume = !loggedIn && session?.active === true;
+  const sessionWhen = session?.loggedInAt ? new Date(session.loggedInAt).toLocaleString() : null;
+
+  const loginAgainButton = (
+    <button
+      type="button"
+      className="mrc-btn-secondary"
+      onClick={() => {
+        setLoginError(null);
+        if (hasSavedCredential) void handleLoginWithSaved();
+        else setShowLogin(true);
+      }}
+      disabled={loginBusy || blocked}
+      title={blockedTitle}
+    >
+      {loginBusy
+        ? t('meshcore.remoteConsole.logging_in', 'Logging in…')
+        : t('meshcore.remoteConsole.login_again_button', 'Log in again')}
+    </button>
+  );
 
   const runCommand = useCallback(
     (text: string, opts?: { confirm?: boolean }) => actions.sendCliCommand(publicKey, text, opts),
@@ -270,6 +354,10 @@ export const MeshCoreRemoteConsole: React.FC<MeshCoreRemoteConsoleProps> = ({
           {loggedIn ? (
             <span className="mrc-status-chip mrc-status-ok">
               {t('meshcore.remoteConsole.session_active', 'Session active')}
+            </span>
+          ) : canResume ? (
+            <span className="mrc-status-chip mrc-status-saved">
+              <UiIcon name="check" size={14} /> {t('meshcore.remoteConsole.session_saved', 'Saved session')}
             </span>
           ) : hasSavedCredential ? (
             <span className="mrc-status-chip mrc-status-saved">
@@ -316,9 +404,30 @@ export const MeshCoreRemoteConsole: React.FC<MeshCoreRemoteConsoleProps> = ({
 
       <div className="mrc-actions">
         {loggedIn ? (
-          <button type="button" className="mrc-btn-secondary" onClick={handleForgetCredential}>
-            {t('meshcore.remoteConsole.forget_credential', 'Forget stored password')}
-          </button>
+          <>
+            {/* On a resumed session the node may have dropped us: offer a
+                fresh login without logging out first. */}
+            {resumed && loginAgainButton}
+            <button type="button" className="mrc-btn-secondary" onClick={() => void handleLogout()}>
+              <UiIcon name="power" size={14} /> {t('meshcore.remoteConsole.logout_button', 'Log out')}
+            </button>
+            <button type="button" className="mrc-btn-secondary" onClick={handleForgetCredential}>
+              {t('meshcore.remoteConsole.forget_credential', 'Forget stored password')}
+            </button>
+          </>
+        ) : canResume ? (
+          <>
+            <button
+              type="button"
+              className="mrc-btn-primary"
+              onClick={handleResume}
+              disabled={loginBusy || blocked}
+              title={blockedTitle}
+            >
+              <UiIcon name="play" size={14} /> {t('meshcore.remoteConsole.resume_button', 'Resume session')}
+            </button>
+            {loginAgainButton}
+          </>
         ) : hasSavedCredential ? (
           <>
             <button
@@ -358,6 +467,14 @@ export const MeshCoreRemoteConsole: React.FC<MeshCoreRemoteConsoleProps> = ({
         )}
       </div>
 
+      {canResume && (
+        <p className={styles.sessionNote}>
+          {sessionWhen
+            ? t('meshcore.remoteConsole.session_note', 'Logged in {{when}}. Resuming sends nothing; the node keeps the login until it drops it.', { when: sessionWhen })
+            : t('meshcore.remoteConsole.session_note_no_time', 'Resuming sends nothing; the node keeps the login until it drops it.')}
+        </p>
+      )}
+
       {loginProgressState && !showLogin && (
         <MeshCoreLoginProgress progress={loginProgressState} onCancel={() => void cancelLoginAttempt()} />
       )}
@@ -381,6 +498,11 @@ export const MeshCoreRemoteConsole: React.FC<MeshCoreRemoteConsoleProps> = ({
         actionCatalog={loggedIn ? REMOTE_ACTION_CATALOG : []}
         disabled={!loggedIn || blocked}
         disabledPlaceholder={blockedTitle}
+        timeoutHint={
+          resumed
+            ? t('meshcore.remoteConsole.resumed_timeout_hint', 'No reply. If the node rebooted or dropped the session, log in again.')
+            : undefined
+        }
       />
 
       {loggedIn && <MeshCoreAclManager bodyRef={bodyRef} disabled={receiveOnly} />}

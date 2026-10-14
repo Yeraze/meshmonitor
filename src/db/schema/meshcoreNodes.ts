@@ -99,8 +99,9 @@ export const meshcoreNodesSqlite = sqliteTable('meshcore_nodes', {
   // Per-node time-sync config (migration 156, #4916). Read by the
   // MeshCoreTimeSyncScheduler; a THIRD separate column set so time-sync,
   // telemetry, and neighbours each keep an independent per-node cadence.
-  // Default 720 min (12h) — one sync costs four packets on the air (login +
-  // reply, then `time <epoch>` + reply), so this is far slower than the
+  // Default 720 min (12h) — one sync costs 2-4 packets on the air
+  // (`time <epoch>` + reply, plus login + reply when no admin session is
+  // remembered, #5785), so this is far slower than the
   // 15-min Meshtastic auto time-sync default.
   timeSyncEnabled: integer('timeSyncEnabled', { mode: 'boolean' }).default(false),
   timeSyncIntervalMinutes: integer('timeSyncIntervalMinutes').default(720),
@@ -186,8 +187,9 @@ export const meshcoreNodesPostgres = pgTable('meshcore_nodes', {
   // Per-node time-sync config (migration 156, #4916). Read by the
   // MeshCoreTimeSyncScheduler; a THIRD separate column set so time-sync,
   // telemetry, and neighbours each keep an independent per-node cadence.
-  // Default 720 min (12h) — one sync costs four packets on the air (login +
-  // reply, then `time <epoch>` + reply), so this is far slower than the
+  // Default 720 min (12h) — one sync costs 2-4 packets on the air
+  // (`time <epoch>` + reply, plus login + reply when no admin session is
+  // remembered, #5785), so this is far slower than the
   // 15-min Meshtastic auto time-sync default.
   timeSyncEnabled: pgBoolean('timeSyncEnabled').default(false),
   timeSyncIntervalMinutes: pgInteger('timeSyncIntervalMinutes').default(720),
@@ -263,8 +265,9 @@ export const meshcoreNodesMysql = mysqlTable('meshcore_nodes', {
   // Per-node time-sync config (migration 156, #4916). Read by the
   // MeshCoreTimeSyncScheduler; a THIRD separate column set so time-sync,
   // telemetry, and neighbours each keep an independent per-node cadence.
-  // Default 720 min (12h) — one sync costs four packets on the air (login +
-  // reply, then `time <epoch>` + reply), so this is far slower than the
+  // Default 720 min (12h) — one sync costs 2-4 packets on the air
+  // (`time <epoch>` + reply, plus login + reply when no admin session is
+  // remembered, #5785), so this is far slower than the
   // 15-min Meshtastic auto time-sync default.
   timeSyncEnabled: myBoolean('timeSyncEnabled').default(false),
   timeSyncIntervalMinutes: myInt('timeSyncIntervalMinutes').default(720),

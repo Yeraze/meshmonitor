@@ -123,6 +123,8 @@ interface MeshCoreContactDetailPanelProps {
     | 'getRemoteAdminCapability'
     | 'forgetRemoteCredential'
     | 'getRemoteStatus'
+    | 'getRemoteAdminSession'
+    | 'logoutRemote'
   >;
   /** Whether the current user may invoke write actions on this source's
    *  `remote_admin` resource. When false the console is hidden even if

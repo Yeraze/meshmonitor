@@ -1,0 +1,7 @@
+/* Remembered admin session note (#5785). New console styles live here, not
+   in the legacy MeshCoreRemoteConsole.css. */
+.sessionNote {
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--color-text-subtle);
+}

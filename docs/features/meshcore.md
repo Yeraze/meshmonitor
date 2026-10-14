@@ -477,6 +477,19 @@ MeshMonitor never retries when the node **refuses the password**. It shows the r
 
 Every login screen (remote console, contact details, direct messages and rooms) shows live progress, such as "Attempt 2 of 3: waiting for a reply (14 s left)". Click **Cancel** to stop the login.
 
+#### Resuming a session
+
+A repeater keeps you logged in until its client table fills up; there is no idle timeout, and an admin login even survives a reboot of the repeater. So MeshMonitor remembers each successful login, per source and per node, in its database. The record survives a MeshMonitor restart or upgrade.
+
+- When you open the console and a login is remembered, it shows **Resume session**. Resume turns the console on without sending anything over the air. **Log in again** does a fresh login (with the saved password, or the password dialog when none is saved).
+- The console never logs in or resumes on its own. You always click.
+- **Log out** forgets the remembered login on this server. It sends nothing to the node: MeshCore has no logout command, so the node keeps you in its table until it drops you or someone removes you with `setperm`.
+- A remembered login only counts for the radio that made it. If you swap the companion radio on a source, you need to log in again.
+- If the node has dropped you (for example it rebooted within a few seconds of your login, or its table filled up), it ignores your commands without a reply. The transcript then says "No reply. If the node rebooted or dropped the session, log in again." A single missed reply can also be a lost packet, so MeshMonitor keeps the record until you log in again or log out.
+- A refused password, or **Forget stored password**, also forgets the remembered login.
+
+Scheduled jobs reuse the same record. A scheduled clock push to a repeater with a remembered login costs 2 packets (the command and its reply) instead of 4. If the repeater does not answer, MeshMonitor forgets the record, logs in once with the saved password and tries once more, then gives up until the next scheduled run.
+
 ### Local console (Configuration view)
 
 The Device Configuration tab gets a **Device console** for the locally connected node. Dispatch depends on the firmware:
@@ -490,7 +503,7 @@ No login flow: the connection is physical (USB serial or direct TCP), so there's
 
 ### Credential store
 
-When the user ticks "Remember this password" at login, the plaintext is encrypted with **AES-256-GCM** using a key derived from `SESSION_SECRET` via HKDF and stored in `meshcore_nodes.adminCredential` (added by migration 070). Each envelope includes a 4-byte `kid` fingerprint of the current secret; on subsequent visits the console silently logs in using the saved password if `kid` matches. If `SESSION_SECRET` rotates, the mismatched `kid` triggers a yellow banner asking the user to re-enter the password — never a silent auth-tag failure.
+When the user ticks "Remember this password" at login, the plaintext is encrypted with **AES-256-GCM** using a key derived from `SESSION_SECRET` via HKDF and stored in `meshcore_nodes.adminCredential` (added by migration 070). Each envelope includes a 4-byte `kid` fingerprint of the current secret; on later visits the console offers a one-click **Log in with saved password** button when `kid` matches (it never logs in by itself). If `SESSION_SECRET` rotates, the mismatched `kid` triggers a yellow banner asking the user to re-enter the password — never a silent auth-tag failure.
 
 ::: warning Capability gating
 When `SESSION_SECRET` was auto-generated rather than explicitly configured, the "Remember password" checkbox is disabled with a tooltip explanation. Persisting against an ephemeral key would lose every saved password on every restart, which is worse than re-prompting. Set `SESSION_SECRET=$(openssl rand -hex 32)` in your environment to enable credential persistence.

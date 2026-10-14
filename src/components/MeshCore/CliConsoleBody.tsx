@@ -99,6 +99,10 @@ interface CliConsoleBodyProps {
   emptyTextDisabled?: string;
   /** Empty-transcript text when enabled. */
   emptyTextEnabled?: string;
+  /** Extra info line appended after a CLI_TIMEOUT error. The remote console
+   *  sets it while running on a resumed session (#5785), where silence may
+   *  mean the node dropped the session. */
+  timeoutHint?: string;
 }
 
 const nextId = (() => {
@@ -117,6 +121,7 @@ export const CliConsoleBody = forwardRef<CliConsoleBodyHandle, CliConsoleBodyPro
     placeholder,
     emptyTextDisabled,
     emptyTextEnabled,
+    timeoutHint,
   },
   ref,
 ) {
@@ -241,8 +246,11 @@ export const CliConsoleBody = forwardRef<CliConsoleBodyHandle, CliConsoleBodyPro
             )
           : '';
       appendTranscript({ kind: 'error', text: `${result.error}${hint}` });
+      if (result.code === 'CLI_TIMEOUT' && timeoutHint) {
+        appendTranscript({ kind: 'info', text: timeoutHint });
+      }
     }
-  }, [appendTranscript, runCommand, sending, t]);
+  }, [appendTranscript, runCommand, sending, t, timeoutHint]);
 
   // Once a send completes and the input re-enables, return keyboard focus to
   // the command line (#3752). The flag keeps this from grabbing focus on mount
