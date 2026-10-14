@@ -101,6 +101,48 @@ export function resolveLastHeardSec(
 export const LIVE_RECEPTION_WINDOW_SEC = 120;
 
 /**
+ * The `kind` values firmware 2.8 hashes into a replayed packet's id
+ * (`PhoneAPI::makeReplayPacketId` call sites, meshtastic/firmware#11014):
+ * POSITION_APP (3), NODE_STATUS_APP (36), and the Telemetry oneof tags
+ * device_metrics (2) and environment_metrics (3, the same number as
+ * POSITION_APP).
+ */
+const FIRMWARE_REPLAY_KINDS = [2, 3, 36] as const;
+
+/** `PhoneAPI.cpp` `makeReplayPacketId`, in uint32 arithmetic. */
+function firmwareReplayPacketId(fromNum: number, rxTimeSec: number, kind: number): number {
+  let h = fromNum >>> 0;
+  h = (Math.imul(h, 2654435761) + (rxTimeSec >>> 0)) >>> 0;
+  h = (Math.imul(h, 2654435761) + kind) >>> 0;
+  return h === 0 ? 1 : h;
+}
+
+/**
+ * True when a packet is one firmware 2.8 synthesized from its NodeDB
+ * (#5426), recognised by its packet id rather than by its age.
+ *
+ * Since meshtastic/firmware#11014 (2.8.0) a replay's id is a hash of the
+ * sender, its `rx_time` and the packet kind, and its `rx_time` is the node's
+ * `last_heard`, NOT when that position or telemetry was received. So a replay
+ * of a node heard in the last two minutes passes {@link isLiveReception}, and
+ * only the id gives it away. A real packet id matches by chance about once in
+ * 4 billion.
+ *
+ * Needs a plausible `rx_time`: firmware leaves it off a replay when the node
+ * has no wall clock, and then the id cannot be recomputed.
+ */
+export function isFirmwareReplayPacket(
+  fromNum: number | null | undefined,
+  packetId: number | null | undefined,
+  rxTimeSec: number | null | undefined,
+): boolean {
+  if (fromNum == null || !packetId || rxTimeSec == null) return false;
+  if (!Number.isFinite(rxTimeSec) || rxTimeSec < MIN_PLAUSIBLE_UNIX_SEC) return false;
+  const id = Number(packetId) >>> 0;
+  return FIRMWARE_REPLAY_KINDS.some((kind) => firmwareReplayPacketId(Number(fromNum), Number(rxTimeSec), kind) === id);
+}
+
+/**
  * True when a packet's `rx_time` marks it as a genuinely live reception, for
  * counters that must exclude replayed/retained frames entirely — as opposed
  * to {@link isStaleReplayRxTime}, which decides whether to *refresh* a node's
