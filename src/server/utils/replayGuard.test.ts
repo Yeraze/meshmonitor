@@ -8,6 +8,7 @@ import {
   LIVE_RECEPTION_WINDOW_SEC,
   resolvePositionObservedAtMs,
   resolveNodeDbPositionObservedAtMs,
+  isFirmwareReplayPacket,
 } from './replayGuard.js';
 
 // A fixed "now" well after the 2020 floor: 2026-06-19T00:00:00Z.
@@ -159,5 +160,46 @@ describe('resolveNodeDbPositionObservedAtMs (#5401)', () => {
   it('returns undefined when neither time is plausible, so the stored stamp is kept', () => {
     expect(resolveNodeDbPositionObservedAtMs(0, 0, NOW_MS)).toBeUndefined();
     expect(resolveNodeDbPositionObservedAtMs(MIN_PLAUSIBLE_UNIX_SEC - 1, null, NOW_MS)).toBeUndefined();
+  });
+});
+
+describe('isFirmwareReplayPacket (#5426)', () => {
+  // A real replay row captured from a firmware 2.8 node: a POSITION_APP whose
+  // rx_time was the node's last_heard, 99 s old, so it passed isLiveReception.
+  const FROM = 0xa2e4ff4c;
+  const RX_TIME = 1_791_994_849;
+  const REPLAY_ID = 329_743_200;
+
+  it('recognises the id firmware hashes from the sender and rx_time', () => {
+    expect(isFirmwareReplayPacket(FROM, REPLAY_ID, RX_TIME)).toBe(true);
+  });
+
+  it('does not match a different id, sender or rx_time', () => {
+    expect(isFirmwareReplayPacket(FROM, REPLAY_ID + 1, RX_TIME)).toBe(false);
+    expect(isFirmwareReplayPacket(FROM + 1, REPLAY_ID, RX_TIME)).toBe(false);
+    expect(isFirmwareReplayPacket(FROM, REPLAY_ID, RX_TIME + 1)).toBe(false);
+  });
+
+  it('covers every replayed kind: device metrics (2), position / environment (3), node status (36)', () => {
+    // Recompute makeReplayPacketId independently, in BigInt uint32 arithmetic.
+    const replayId = (num: number, t: number, kind: number): number => {
+      const M = 2654435761n;
+      const MASK = 0xffffffffn;
+      let h = BigInt(num);
+      h = (h * M + BigInt(t)) & MASK;
+      h = (h * M + BigInt(kind)) & MASK;
+      return Number(h === 0n ? 1n : h);
+    };
+    for (const kind of [2, 3, 36]) {
+      expect(isFirmwareReplayPacket(FROM, replayId(FROM, RX_TIME, kind), RX_TIME)).toBe(true);
+    }
+    expect(isFirmwareReplayPacket(FROM, replayId(FROM, RX_TIME, 4), RX_TIME)).toBe(false);
+  });
+
+  it('cannot decide without a sender, an id or a plausible rx_time', () => {
+    expect(isFirmwareReplayPacket(null, REPLAY_ID, RX_TIME)).toBe(false);
+    expect(isFirmwareReplayPacket(FROM, 0, RX_TIME)).toBe(false);
+    expect(isFirmwareReplayPacket(FROM, REPLAY_ID, null)).toBe(false);
+    expect(isFirmwareReplayPacket(FROM, REPLAY_ID, 12345)).toBe(false);
   });
 });

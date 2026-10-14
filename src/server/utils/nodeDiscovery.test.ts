@@ -22,6 +22,17 @@ describe('isLiveNodeDiscovery (#5534)', () => {
     expect(isLiveNodeDiscovery({ ...base, rxTimeSec: nowSec - 30 * 60 })).toBe(false);
   });
 
+  it('is not a discovery for a 2.8 replay whose rx_time looks live (#5426)', () => {
+    // Real capture: makeReplayPacketId(0xa2e4ff4c, 1791994849, POSITION_APP).
+    const rx = 1_791_994_849;
+    expect(isLiveNodeDiscovery({
+      ...base, fromNum: 0xa2e4ff4c, rxTimeSec: rx, packetId: 329_743_200, nowMs: (rx + 99) * 1000,
+    })).toBe(false);
+    expect(isLiveNodeDiscovery({
+      ...base, fromNum: 0xa2e4ff4c, rxTimeSec: rx, packetId: 7, nowMs: (rx + 99) * 1000,
+    })).toBe(true);
+  });
+
   it('is not a discovery for our own node or node 0', () => {
     expect(isLiveNodeDiscovery({ ...base, fromNum: 0x9999 })).toBe(false);
     expect(isLiveNodeDiscovery({ ...base, fromNum: 0 })).toBe(false);

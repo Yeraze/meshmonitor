@@ -260,6 +260,25 @@ describe('isNodeDbReplayForPacketLog (#5426)', () => {
     expect(isNodeDbReplayForPacketLog(TransportMechanism.LORA, 0, undefined, now)).toBe(false);
   });
 
+  it('flags a 2.8 replay with a FRESH rx_time by its packet id (regression on 4.17.0)', () => {
+    // Real capture: rx_time was the node's last_heard, 99 s before logging.
+    const from = 0xa2e4ff4c;
+    const rx = 1_791_994_849;
+    const at = (rx + 99) * 1000;
+    expect(isNodeDbReplayForPacketLog(TransportMechanism.LORA, rx, null, at)).toBe(false); // age alone misses it
+    expect(isNodeDbReplayForPacketLog(TransportMechanism.LORA, rx, null, at, { fromNum: from, packetId: 329_743_200 })).toBe(true);
+    // A real reception from the same node (another id) is kept.
+    expect(isNodeDbReplayForPacketLog(TransportMechanism.LORA, rx, -88, at, { fromNum: from, packetId: 12345 })).toBe(false);
+  });
+
+  it('flags a replay from a node with no wall clock: no rx_time and RSSI explicitly absent', () => {
+    expect(isNodeDbReplayForPacketLog(TransportMechanism.LORA, null, null, now)).toBe(true);
+    expect(isNodeDbReplayForPacketLog(TransportMechanism.LORA, 12345, null, now)).toBe(true);
+    // RSSI present, or a pre-2.8 bare 0: still a reception.
+    expect(isNodeDbReplayForPacketLog(TransportMechanism.LORA, null, -90, now)).toBe(false);
+    expect(isNodeDbReplayForPacketLog(TransportMechanism.LORA, null, 0, now)).toBe(false);
+  });
+
   it('never flags non-RF transports, whose receptions carry no RSSI', () => {
     expect(isNodeDbReplayForPacketLog(TransportMechanism.MQTT, staleRx, undefined, now)).toBe(false);
     expect(isNodeDbReplayForPacketLog(TransportMechanism.MULTICAST_UDP, staleRx, undefined, now)).toBe(false);

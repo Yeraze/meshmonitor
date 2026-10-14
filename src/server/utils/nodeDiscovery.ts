@@ -16,7 +16,7 @@
  * There is no "ever seen" memory: a node deleted from MeshMonitor and then
  * heard again has no row, so it is discovered again.
  */
-import { isLiveReception } from './replayGuard.js';
+import { isLiveReception, isFirmwareReplayPacket } from './replayGuard.js';
 
 export interface LiveNodeDiscoveryInput {
   /** A row for this node already exists on this source. */
@@ -26,6 +26,8 @@ export interface LiveNodeDiscoveryInput {
   localNodeNum: number | null | undefined;
   /** MeshPacket.rx_time (epoch seconds), when present. */
   rxTimeSec: number | undefined;
+  /** MeshPacket.id, to recognise a firmware 2.8 NodeDB replay (#5426). */
+  packetId?: number | null;
   nowMs: number;
 }
 
@@ -35,6 +37,8 @@ export function isLiveNodeDiscovery(input: LiveNodeDiscoveryInput): boolean {
   if (!Number.isFinite(input.fromNum) || input.fromNum === 0) return false;
   // #3914: our own node is never "discovered".
   if (input.localNodeNum != null && Number(input.localNodeNum) === input.fromNum) return false;
+  // #5426: a 2.8 replay's rx_time is the node's last_heard and can look live.
+  if (isFirmwareReplayPacket(input.fromNum, input.packetId, input.rxTimeSec)) return false;
   return isLiveReception(input.rxTimeSec, input.nowMs);
 }
 
