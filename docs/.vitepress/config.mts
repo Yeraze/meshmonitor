@@ -154,6 +154,7 @@ const featuresSidebar = [
     text: 'Integrations',
     collapsed: false,
     items: [
+      { text: 'MQTT Setup Guide', link: '/features/mqtt-setups' },
       { text: 'Embedded MQTT Broker & Bridge', link: '/features/mqtt-broker' },
       { text: 'ATAK / CoT Integration', link: '/features/atak' }
     ]

@@ -13,6 +13,7 @@ import { NumberInput } from '../common/NumberInput';
 import { NumberInputScope } from '../common/NumberInputScope';
 import { useNumberInputScope } from '../common/numberInputScopeContext';
 import BrokerPresetSelector from '../MQTT/BrokerPresetSelector';
+import { MqttDocsLinks } from '../MQTT/MqttDocsLinks';
 import {
   applyPresetToDevice,
   matchDevicePreset,
@@ -464,6 +465,7 @@ const MQTTConfigSection: React.FC<MQTTConfigSectionProps> = ({
               )}
             </span>
           </label>
+          <MqttDocsLinks />
           <select
             id="mqttQuickConfig"
             className="setting-input"

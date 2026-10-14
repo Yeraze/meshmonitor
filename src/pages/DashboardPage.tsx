@@ -62,6 +62,7 @@ import {
   type ObserverBrokerForm,
   type ObserverBrokerPreset,
 } from './DashboardPage.observerConfig';
+import { MqttDocsLinks } from '../components/MQTT/MqttDocsLinks';
 import observerBrokerStyles from './DashboardPage.observerBrokers.module.css';
 import LoginModal from '../components/LoginModal';
 import UserMenu from '../components/UserMenu';
@@ -1462,6 +1463,7 @@ function DashboardInner() {
                 </select>
               </label>
             )}
+            {(formType === 'mqtt_broker' || formType === 'mqtt_bridge') && <MqttDocsLinks />}
 
             <label className="dashboard-form-field">
               <span className="dashboard-form-label">{t('source.form.name')}</span>
@@ -2448,7 +2450,7 @@ function DashboardInner() {
                 <p style={{ fontSize: 11, color: 'var(--color-text-subtle)', margin: '4px 0 0' }}>
                   {t(
                     'source.form.mqtt_proxy_link_help',
-                    'When set, MeshMonitor relays the device’s mqttClientProxyMessage traffic to the selected embedded broker. Requires the device’s MQTT module to have proxy_to_client_enabled = true.',
+                    'When set, MeshMonitor relays the device’s MQTT traffic to the selected embedded broker and feeds broker traffic back to it. Requires Proxy to Client on in the device’s MQTT module. To link the device straight to a bridge instead, use Quick configure on its Device Configuration → MQTT Module page.',
                   )}
                 </p>
               </label>

@@ -11,6 +11,7 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { UiIcon } from '../icons';
 import styles from './HopLimitPolicyFields.module.css';
+import { MQTT_AIRTIME_DOCS_URL } from '../../utils/mqttProxyLink';
 import {
   CLAMP_EXEMPTABLE_PORTNUMS,
   MAX_HOP_LIMIT,
@@ -51,6 +52,9 @@ export function HopLimitPolicyFields({ value, onChange, legacyNotice }: HopLimit
           'Applies to packets this broker hands to a radio — both radios subscribed over MQTT and a device linked to this broker over TCP. Ingestion, the packet log, and upstream re-publishes always see the hop limit the packet arrived with.',
         )}
       </span>
+      <a className={styles.help} href={MQTT_AIRTIME_DOCS_URL} target="_blank" rel="noopener noreferrer">
+        {t('source.form.hop_policy_docs', 'How much airtime broker traffic costs, and which setting to pick')}
+      </a>
 
       {legacyNotice && (
         <div className={styles.notice}>
