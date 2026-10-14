@@ -16,6 +16,7 @@ import { MqttPacketFilter, type ServiceEnvelopeShape } from './mqttPacketFilter.
 import { ingestServiceEnvelope, bootstrapMqttChannelDatabase } from './mqttIngestion.js';
 import { parseGatewayNodeNum } from './utils/okToMqtt.js';
 import meshtasticProtobufService from './meshtasticProtobufService.js';
+import { channelDecryptionService } from './services/channelDecryptionService.js';
 import type { ISourceManager, SourceStatus } from './sourceManagerRegistry.js';
 import type { Source } from '../db/repositories/sources.js';
 import { loadAllNodesAsDeviceInfo } from './utils/dbNodeMapper.js';
@@ -112,6 +113,32 @@ export interface MqttBrokerLocalPacket {
 const SKIP_RAISE_TTL_MS = 60_000;
 const SKIP_RAISE_MAX_ENTRIES = 5_000;
 
+/**
+ * #5791: the portnum of a channel-encrypted packet, read with the channel
+ * keys MeshMonitor already holds, or null when none of them fits. A phone's
+ * MQTT client proxy uplinks encrypted unless the channel is unencrypted, so
+ * without this a "raise text messages" policy never matched a phone's text.
+ *
+ * Only the portnum is read. `hop_limit` sits in the MeshPacket header, outside
+ * the encrypted bytes, so a raise re-encodes the envelope around the same
+ * ciphertext and nothing is re-encrypted.
+ */
+function peekEncryptedPortnum(packet: {
+  from?: number;
+  id?: number;
+  channel?: number;
+  encrypted?: Uint8Array;
+}): number | null {
+  if (!packet.encrypted || packet.encrypted.length === 0) return null;
+  if (typeof packet.from !== 'number' || typeof packet.id !== 'number') return null;
+  return channelDecryptionService.peekPortnum(
+    packet.encrypted,
+    packet.id >>> 0,
+    packet.from >>> 0,
+    typeof packet.channel === 'number' ? packet.channel : undefined,
+  );
+}
+
 export class MqttBrokerManager extends EventEmitter implements ISourceManager {
   readonly sourceId: string;
   readonly sourceType: Source['type'] = 'mqtt_broker';
@@ -150,6 +177,9 @@ export class MqttBrokerManager extends EventEmitter implements ISourceManager {
   async start(): Promise<void> {
     if (this.broker) return;
     await bootstrapMqttChannelDatabase(this.sourceId);
+    // #5791: the forward hook reads encrypted portnums from the cached channel
+    // keys and cannot load them itself, so load them before the first packet.
+    if (this.hopLimitPolicy?.raise) void channelDecryptionService.refreshChannelCache();
     this.broker = new MqttBroker({
       port: this.config.listener.port,
       host: this.config.listener.host,
@@ -328,13 +358,15 @@ export class MqttBrokerManager extends EventEmitter implements ISourceManager {
     const packet = decoded.packet as {
       from?: number;
       id?: number;
+      channel?: number;
       hopLimit?: number;
       hopStart?: number;
       decoded?: { portnum?: number };
+      encrypted?: Uint8Array;
     };
-    // An encrypted payload has no readable portnum. Null means "unknown":
-    // never raised, still clamped. See applyHopLimitPolicy().
-    const portnum = typeof packet.decoded?.portnum === 'number' ? packet.decoded.portnum : null;
+    const portnum = typeof packet.decoded?.portnum === 'number'
+      ? packet.decoded.portnum
+      : peekEncryptedPortnum(packet);
     // proto3 omits zero on the wire, so an absent field means hop_limit 0.
     const arrived = packet.hopLimit ?? 0;
     // #5708: a packet from a skip-raise bridge is clamped but never raised.
