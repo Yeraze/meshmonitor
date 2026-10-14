@@ -15,9 +15,15 @@ env:
 
 jobs:
   # Build for amd64 and arm64 using Node.js 24 (Alpine)
+  #
+  # The arm64 half runs under QEMU. Its "Build and push" step took 29-40 min
+  # across v4.17.0-rc5..v4.17.1-rc1 (v4.17.0 39m18s, rc8 39m57s), right at the
+  # old 40-min step cap, and v4.17.1-rc2 timed out twice. Same story as
+  # build-armv7 below: generous headroom, because a timeout here means no
+  # `-main` image and so no multi-arch release tag.
   build-main:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 75
     permissions:
       contents: read
       packages: write
@@ -68,7 +74,7 @@ jobs:
           cache-to: type=gha,mode=max,scope=main
           provenance: true
           sbom: true
-        timeout-minutes: 40
+        timeout-minutes: 70
 
   # Build for armv7 using Node.js 22 (Debian slim)
   #
