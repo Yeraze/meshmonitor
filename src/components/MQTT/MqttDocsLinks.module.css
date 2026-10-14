@@ -1,0 +1,9 @@
+/* Docs links on the MQTT settings surfaces (#5013). */
+.links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin: 0.25rem 0 0.75rem;
+  font-size: 0.85rem;
+  color: var(--color-text-subtle);
+}
