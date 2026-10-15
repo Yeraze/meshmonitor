@@ -1213,7 +1213,7 @@ describe('MeshCoreChannelsView — display order (#5385, #5379)', () => {
     const { container } = renderView(actions);
     await waitFor(() => expect(rowNames(container)).toEqual(['# Public', '# zulu', '# alpha']));
 
-    fireEvent.click(screen.getByRole('button', { name: /Reorder/ }));
+    fireEvent.click(screen.getByRole('button', { name: /^Sort$/ }));
     expect(await screen.findAllByTestId('mc-channel-reorder-row')).toHaveLength(3);
 
     // Move alpha to the top with the keyboard-friendly arrow buttons.
@@ -1253,14 +1253,14 @@ describe('MeshCoreChannelsView — display order (#5385, #5379)', () => {
     await waitFor(() => expect(rowNames(container)).toEqual(['# Public', '# zulu', '# alpha']));
   });
 
-  it('hides the Reorder button when there is only one channel', async () => {
+  it('hides the Sort button when there is only one channel', async () => {
     csrfFetchMock.mockImplementation((url: string) => {
       if (url.includes('/channels/all')) return Promise.resolve(jsonResponse([{ id: 0, name: 'Public' }]));
       return Promise.resolve(jsonResponse({ success: true, data: [] }));
     });
     renderView();
     await waitFor(() => expect(screen.getByText('# Public')).toBeTruthy());
-    expect(screen.queryByRole('button', { name: /Reorder/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: /^Sort$/ })).toBeNull();
   });
 
   it('keeps the Custom display order after an on-device slot reorder (#5379)', async () => {
@@ -1306,7 +1306,7 @@ describe('MeshCoreChannelsView — display order (#5385, #5379)', () => {
     const { container } = renderView();
     const opened = await new Promise<boolean>((resolve) => {
       const mo = new MutationObserver(() => {
-        const btn = Array.from(container.querySelectorAll('button')).find(b => /Reorder/.test(b.textContent ?? ''));
+        const btn = Array.from(container.querySelectorAll('button')).find(b => /Sort/.test(b.textContent ?? ''));
         if (!btn) return;
         mo.disconnect();
         fireEvent.click(btn);
@@ -1340,7 +1340,7 @@ describe('MeshCoreChannelsView — display order (#5385, #5379)', () => {
     const { container, rerender } = render(view(true));
     await waitFor(() => expect(rowNames(container)).toEqual(['# Public', '# zulu', '# alpha']));
 
-    fireEvent.click(screen.getByRole('button', { name: /Reorder/ }));
+    fireEvent.click(screen.getByRole('button', { name: /^Sort$/ }));
     expect(await screen.findAllByTestId('mc-channel-reorder-row')).toHaveLength(3);
 
     // Same channel set again: the panel stays open.
@@ -1362,7 +1362,7 @@ describe('MeshCoreChannelsView — display order (#5385, #5379)', () => {
     const { container } = renderView();
     await waitFor(() => expect(rowNames(container)).toEqual(['# Public', '# zulu', '# alpha']));
 
-    fireEvent.click(screen.getByRole('button', { name: /Reorder/ }));
+    fireEvent.click(screen.getByRole('button', { name: /^Sort$/ }));
     fireEvent.click(await screen.findByLabelText('Move # Public down'));
     fireEvent.click(screen.getByText('Cancel'));
 
