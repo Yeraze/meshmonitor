@@ -12,6 +12,8 @@ import { useModuleExcluded } from './moduleAvailabilityContext';
 import { ConfigSection } from '../shared/config/ConfigSection';
 
 interface RangeTestConfigSectionProps {
+  /** False disables every control: no configuration:write on this source (#5830). */
+  canWrite?: boolean;
   enabled: boolean;
   setEnabled: (value: boolean) => void;
   sender: number;
@@ -32,6 +34,7 @@ interface RangeTestConfigSectionProps {
 }
 
 const RangeTestConfigSection: React.FC<RangeTestConfigSectionProps> = ({
+  canWrite = true,
   enabled,
   setEnabled,
   sender,
@@ -81,7 +84,7 @@ const RangeTestConfigSection: React.FC<RangeTestConfigSectionProps> = ({
 
   return (
     <NumberInputScope scope={numberScope}>
-    <ConfigSection title={t('rangetest_config.title')} docsUrl="https://meshtastic.org/docs/configuration/module/range-test/" notice={<ModuleAvailabilityNotice detail={isDisabled ? t('rangetest_config.removed_in_28_detail', 'It was removed from Meshtastic firmware in 2.8.') : undefined} />}>
+    <ConfigSection canWrite={canWrite} title={t('rangetest_config.title')} docsUrl="https://meshtastic.org/docs/configuration/module/range-test/" notice={<ModuleAvailabilityNotice detail={isDisabled ? t('rangetest_config.removed_in_28_detail', 'It was removed from Meshtastic firmware in 2.8.') : undefined} />}>
 
       {isDisabled && !gateExcluded && (
         <div className={styles.removedNotice} role="status">

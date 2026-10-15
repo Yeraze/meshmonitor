@@ -235,8 +235,7 @@ export interface ConfigurationNavOptions {
 /** Sections of the per-source Configuration (device radio config) tab. */
 export function configurationNavItems(t: Translate, options: ConfigurationNavOptions = {}): NavItem[] {
   const items: NavItem[] = [
-    { id: 'config-danger', label: t('config.warning_title', 'Warning') },
-    { id: 'config-import-export', label: t('config.import_export_title', 'Import/Export'), keywords: ['backup', 'restore', 'yaml'] },
+    { id: 'config-import-export', label: t('config.import_export_title', 'Import/Export'), keywords: ['backup', 'restore', 'yaml', 'reload', 'refresh'] },
     { id: 'config-node-identity', label: t('config.node_identity', 'Node Identity'), keywords: ['name', 'shortname', 'longname', 'role'] },
     { id: 'config-device', label: t('config.device_config', 'Device'), keywords: ['role', 'rebroadcast', 'button', 'buzzer'] },
     { id: 'config-lora', label: t('config.lora_config', 'LoRa'), keywords: ['radio', 'region', 'preset', 'frequency', 'hops', 'bandwidth', 'spreading', 'tx', 'power'] },
@@ -265,6 +264,8 @@ export function configurationNavItems(t: Translate, options: ConfigurationNavOpt
     { id: 'config-channels', label: t('config.channels', 'Channels'), keywords: ['psk', 'primary', 'slots'] },
     { id: 'config-backup', label: t('config.backup_management', 'Backup'), keywords: ['restore', 'snapshot'] },
     { id: 'config-firmware', label: t('firmware.title', 'Firmware Updates'), keywords: ['ota', 'update', 'flash', 'firmware'] },
+    // Last on the page, as on MeshCore (#5830).
+    { id: 'config-danger', label: t('config.danger_zone', 'Danger zone'), keywords: ['reboot', 'restart', 'purge', 'shutdown', 'factory reset'] },
   ];
   return items.filter((item) => item.id !== 'config-firmware' || options.showFirmware === true);
 }

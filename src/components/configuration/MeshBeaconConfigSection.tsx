@@ -34,6 +34,8 @@ import { ConfigSection } from '../shared/config/ConfigSection';
  * device does not report (issue #5062).
  */
 interface MeshBeaconConfigSectionProps {
+  /** False disables every control: no configuration:write on this source (#5830). */
+  canWrite?: boolean;
   listenEnabled: boolean;
   setListenEnabled: (value: boolean) => void;
   broadcastEnabled: boolean;
@@ -64,6 +66,7 @@ interface MeshBeaconConfigSectionProps {
 }
 
 const MeshBeaconConfigSection: React.FC<MeshBeaconConfigSectionProps> = ({
+  canWrite = true,
   listenEnabled,
   setListenEnabled,
   broadcastEnabled,
@@ -155,7 +158,7 @@ const MeshBeaconConfigSection: React.FC<MeshBeaconConfigSectionProps> = ({
 
   return (
     <NumberInputScope scope={numberScope}>
-    <ConfigSection title={t('meshbeacon_config.title', 'MeshBeacon')}>
+    <ConfigSection canWrite={canWrite} title={t('meshbeacon_config.title', 'MeshBeacon')}>
 
       {isDisabled && (
         <div style={{

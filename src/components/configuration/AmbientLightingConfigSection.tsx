@@ -9,6 +9,8 @@ import ModuleAvailabilityNotice from './ModuleAvailabilityNotice';
 import { ConfigSection } from '../shared/config/ConfigSection';
 
 interface AmbientLightingConfigSectionProps {
+  /** False disables every control: no configuration:write on this source (#5830). */
+  canWrite?: boolean;
   ledState: boolean;
   setLedState: (value: boolean) => void;
   current: number;
@@ -25,6 +27,7 @@ interface AmbientLightingConfigSectionProps {
 }
 
 const AmbientLightingConfigSection: React.FC<AmbientLightingConfigSectionProps> = ({
+  canWrite = true,
   ledState,
   setLedState,
   current,
@@ -77,7 +80,7 @@ const AmbientLightingConfigSection: React.FC<AmbientLightingConfigSectionProps> 
 
   return (
     <NumberInputScope scope={numberScope}>
-    <ConfigSection title={t('ambientlighting_config.title')} docsUrl="https://meshtastic.org/docs/configuration/module/ambient-lighting/" notice={<ModuleAvailabilityNotice />}>
+    <ConfigSection canWrite={canWrite} title={t('ambientlighting_config.title')} docsUrl="https://meshtastic.org/docs/configuration/module/ambient-lighting/" notice={<ModuleAvailabilityNotice />}>
 
       {/* Enable LED */}
       <div className="setting-item">

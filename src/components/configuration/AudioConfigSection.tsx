@@ -23,6 +23,8 @@ const AUDIO_BAUD_OPTIONS = [
 ];
 
 interface AudioConfigSectionProps {
+  /** False disables every control: no configuration:write on this source (#5830). */
+  canWrite?: boolean;
   codec2Enabled: boolean;
   setCodec2Enabled: (value: boolean) => void;
   pttPin: number;
@@ -43,6 +45,7 @@ interface AudioConfigSectionProps {
 }
 
 const AudioConfigSection: React.FC<AudioConfigSectionProps> = ({
+  canWrite = true,
   codec2Enabled,
   setCodec2Enabled,
   pttPin,
@@ -99,7 +102,7 @@ const AudioConfigSection: React.FC<AudioConfigSectionProps> = ({
 
   return (
     <NumberInputScope scope={numberScope}>
-    <ConfigSection title={t('audio_config.title')} docsUrl="https://meshtastic.org/docs/configuration/module/audio/" notice={<ModuleAvailabilityNotice />}>
+    <ConfigSection canWrite={canWrite} title={t('audio_config.title')} docsUrl="https://meshtastic.org/docs/configuration/module/audio/" notice={<ModuleAvailabilityNotice />}>
 
       {/* Enable Codec2 */}
       <div className="setting-item">

@@ -6,6 +6,8 @@ import ModuleAvailabilityNotice from './ModuleAvailabilityNotice';
 import { ConfigSection } from '../shared/config/ConfigSection';
 
 interface RemoteHardwareConfigSectionProps {
+  /** False disables every control: no configuration:write on this source (#5830). */
+  canWrite?: boolean;
   enabled: boolean;
   setEnabled: (value: boolean) => void;
   allowUndefinedPinAccess: boolean;
@@ -16,6 +18,7 @@ interface RemoteHardwareConfigSectionProps {
 }
 
 const RemoteHardwareConfigSection: React.FC<RemoteHardwareConfigSectionProps> = ({
+  canWrite = true,
   enabled,
   setEnabled,
   allowUndefinedPinAccess,
@@ -53,7 +56,7 @@ const RemoteHardwareConfigSection: React.FC<RemoteHardwareConfigSectionProps> = 
   });
 
   return (
-    <ConfigSection title={t('remotehw_config.title')} docsUrl="https://meshtastic.org/docs/configuration/module/remote-hardware/" notice={<ModuleAvailabilityNotice />}>
+    <ConfigSection canWrite={canWrite} title={t('remotehw_config.title')} docsUrl="https://meshtastic.org/docs/configuration/module/remote-hardware/" notice={<ModuleAvailabilityNotice />}>
 
       {/* Enable Module */}
       <div className="setting-item">

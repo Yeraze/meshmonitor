@@ -7,6 +7,8 @@ import { NODE_STATUS_MAX_BYTES, truncateToUtf8Bytes, utf8ByteLength } from '../.
 import { ConfigSection } from '../shared/config/ConfigSection';
 
 interface StatusMessageConfigSectionProps {
+  /** False disables every control: no configuration:write on this source (#5830). */
+  canWrite?: boolean;
   nodeStatus: string;
   setNodeStatus: (value: string) => void;
   isDisabled: boolean;
@@ -16,6 +18,7 @@ interface StatusMessageConfigSectionProps {
 }
 
 const StatusMessageConfigSection: React.FC<StatusMessageConfigSectionProps> = ({
+  canWrite = true,
   nodeStatus,
   setNodeStatus,
   isDisabled,
@@ -52,7 +55,7 @@ const StatusMessageConfigSection: React.FC<StatusMessageConfigSectionProps> = ({
   });
 
   return (
-    <ConfigSection title={t('statusmessage_config.title', 'Status Message')} docsUrl="https://meshtastic.org/docs/configuration/module/status-message/">
+    <ConfigSection canWrite={canWrite} title={t('statusmessage_config.title', 'Status Message')} docsUrl="https://meshtastic.org/docs/configuration/module/status-message/">
 
       {isDisabled && (
         <div style={{

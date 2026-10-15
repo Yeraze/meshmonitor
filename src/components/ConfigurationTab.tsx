@@ -66,6 +66,11 @@ import GpioPinSummary from './configuration/GpioPinSummary';
 import BackupManagementSection from './configuration/BackupManagementSection';
 import { ImportConfigModal } from './configuration/ImportConfigModal';
 import { ExportConfigModal } from './configuration/ExportConfigModal';
+import { ConfirmDialog } from './shared/automation/ConfirmDialog';
+import { ConfigSection } from './shared/config/ConfigSection';
+import { TypedConfirmDialog } from './common/TypedConfirmDialog';
+import { DangerZone, DangerZoneActions, DangerZoneButton } from './shared/config/DangerZone';
+import { buildAdminCommandsPath } from '../utils/adminDeepLink';
 import { ROLE_MAP, REGION_MAP, resolveModemPresetValue, UNKNOWN_MODEM_PRESET } from './configuration/constants';
 import SectionNav from './SectionNav';
 import { configurationNavItems } from './search/configSections';
@@ -101,6 +106,10 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ baseUrl = '', nodes
   // Settings page. A viewer who cannot open that page keeps it here: its
   // routes check `configuration`, the grant this page already needs.
   const canViewSourceSettings = hasPermission('settings', 'read', { anySource: true });
+  // Every save on this page, and reboot / purge, needs configuration:write on
+  // this source (#5830). Read-only viewers see the values with the controls
+  // disabled; the routes refuse the write regardless.
+  const canWrite = hasPermission('configuration', 'write', { sourceId });
   const queryClient = useQueryClient();
 
   // Device Config State
@@ -402,6 +411,8 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ baseUrl = '', nodes
   const [statusMessage, setStatusMessage] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [isReloading, setIsReloading] = useState(false);
+  // Which danger-zone action is waiting on its confirm dialog (#5830).
+  const [confirmAction, setConfirmAction] = useState<'reboot' | 'purge' | null>(null);
   const [configChanges, setConfigChanges] = useState<{ field: string; oldValue: string; newValue: string }[]>([]);
   const [showChanges, setShowChanges] = useState(false);
 
@@ -1767,13 +1778,10 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ baseUrl = '', nodes
     }
   };
 
+  // Reboot and purge each confirm in an in-app dialog (#5830); the handlers
+  // below run only from that dialog's Confirm.
   const handleRebootDevice = async () => {
-    const confirmed = window.confirm(t('config.reboot_confirm'));
-
-    if (!confirmed) {
-      return;
-    }
-
+    setConfirmAction(null);
     setIsSaving(true);
     setStatusMessage('');
     try {
@@ -1806,12 +1814,7 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ baseUrl = '', nodes
   };
 
   const handlePurgeNodeDb = async () => {
-    const confirmed = window.confirm(t('config.purge_confirm'));
-
-    if (!confirmed) {
-      return;
-    }
-
+    setConfirmAction(null);
     setIsSaving(true);
     setStatusMessage('');
     try {
@@ -2178,72 +2181,69 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ baseUrl = '', nodes
         </div>
       ) : (
       <>
-      <div id="config-danger" className="settings-section danger-zone" style={{ marginBottom: '2rem' }}>
-        <h2 style={{ color: '#ff4444', marginTop: 0 }}><UiIcon name="alert" /> {t('config.warning_title')}</h2>
-        <p style={{ fontSize: '1.1rem', fontWeight: 'bold' }}>
-          {t('config.warning_text')}
-        </p>
-        <p>
-          {t('config.warning_description')}
-        </p>
-        <div className={styles.dangerActions} style={{ marginTop: '1.5rem', display: 'flex', gap: '1rem' }}>
+      {/* Reload, import and export (#5830). Nothing here restarts or erases
+          the node, so it stays at the top; reboot and purge moved to the
+          danger zone at the end of the page. */}
+      <div className={styles.topSection}>
+      <ConfigSection
+        id="config-import-export"
+        title={t('config.import_export_title')}
+        description={t('config.import_export_description')}
+        headerActions={
           <button
-            onClick={handleRebootDevice}
-            disabled={isSaving}
-            style={{
-              backgroundColor: '#ff6b6b',
-              color: '#fff',
-              padding: '0.75rem 1.5rem',
-              border: 'none',
-              borderRadius: '4px',
-              cursor: isSaving ? 'not-allowed' : 'pointer',
-              fontSize: '1rem',
-              fontWeight: 'bold',
-              opacity: isSaving ? 0.6 : 1
-            }}
-          >
-            <UiIcon name="refresh" /> {t('config.reboot_device')}
-          </button>
-          <button
-            onClick={handlePurgeNodeDb}
-            disabled={isSaving}
-            style={{
-              backgroundColor: '#d32f2f',
-              color: '#fff',
-              padding: '0.75rem 1.5rem',
-              border: 'none',
-              borderRadius: '4px',
-              cursor: isSaving ? 'not-allowed' : 'pointer',
-              fontSize: '1rem',
-              fontWeight: 'bold',
-              opacity: isSaving ? 0.6 : 1
-            }}
-          >
-            <UiIcon name="delete" /> {t('config.purge_node_db')}
-          </button>
-          <button
+            type="button"
+            className={styles.reloadButton}
             onClick={handleReloadConfig}
             disabled={isReloading}
-            style={{
-              backgroundColor: 'var(--color-info)',
-              color: 'var(--color-bg)',
-              padding: '0.75rem 1.5rem',
-              border: 'none',
-              borderRadius: '4px',
-              cursor: isReloading ? 'not-allowed' : 'pointer',
-              fontSize: '1rem',
-              fontWeight: 'bold',
-              opacity: isReloading ? 0.6 : 1
-            }}
           >
             {isReloading ? (
               <>
-                <span style={{ display: 'inline-block', animation: 'spin 1s linear infinite' }}><UiIcon name="refresh" /></span>
+                <span className={styles.spin}><UiIcon name="refresh" /></span>
                 {' '}{t('config.reloading')}
               </>
             ) : (
               <><UiIcon name="refresh" /> {t('config.reload_config')}</>
             )}
+          </button>
+        }
+        notice={
+          <p className={styles.pageWarning} role="note">
+            <UiIcon name="alert" /> <span>{t('config.warning_text')}</span>
+          </p>
+        }
+      >
+        <div style={{ display: 'flex', gap: '1rem', marginBottom: '1rem', flexWrap: 'wrap' }}>
+          <button
+            onClick={() => setIsImportModalOpen(true)}
+            disabled={!canWrite}
+            style={{
+              backgroundColor: 'var(--color-accent)',
+              color: '#fff',
+              padding: '0.75rem 1.5rem',
+              border: 'none',
+              borderRadius: '4px',
+              cursor: canWrite ? 'pointer' : 'not-allowed',
+              opacity: canWrite ? 1 : 0.6,
+              fontSize: '1rem',
+              fontWeight: 'bold'
+            }}
+          >
+            <UiIcon name="import" /> {t('config.import_config')}
+          </button>
+          <button
+            onClick={() => setIsExportModalOpen(true)}
+            style={{
+              backgroundColor: 'var(--color-success)',
+              color: '#fff',
+              padding: '0.75rem 1.5rem',
+              border: 'none',
+              borderRadius: '4px',
+              cursor: 'pointer',
+              fontSize: '1rem',
+              fontWeight: 'bold'
+            }}
+          >
+            <UiIcon name="upload" /> {t('config.export_config')}
           </button>
         </div>
         {/* Config Changes Display */}
@@ -2296,47 +2296,7 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ baseUrl = '', nodes
             )}
           </div>
         )}
-      </div>
-
-      {/* Import/Export Configuration Section */}
-      <div id="config-import-export" className="settings-section" style={{ marginBottom: '2rem' }}>
-        <h3>{t('config.import_export_title')}</h3>
-        <p style={{ color: 'var(--color-text-subtle)', marginBottom: '1rem' }}>
-          {t('config.import_export_description')}
-        </p>
-        <div style={{ display: 'flex', gap: '1rem', marginBottom: '1.5rem' }}>
-          <button
-            onClick={() => setIsImportModalOpen(true)}
-            style={{
-              backgroundColor: 'var(--color-accent)',
-              color: '#fff',
-              padding: '0.75rem 1.5rem',
-              border: 'none',
-              borderRadius: '4px',
-              cursor: 'pointer',
-              fontSize: '1rem',
-              fontWeight: 'bold'
-            }}
-          >
-            <UiIcon name="import" /> {t('config.import_config')}
-          </button>
-          <button
-            onClick={() => setIsExportModalOpen(true)}
-            style={{
-              backgroundColor: 'var(--color-success)',
-              color: '#fff',
-              padding: '0.75rem 1.5rem',
-              border: 'none',
-              borderRadius: '4px',
-              cursor: 'pointer',
-              fontSize: '1rem',
-              fontWeight: 'bold'
-            }}
-          >
-            <UiIcon name="upload" /> {t('config.export_config')}
-          </button>
-        </div>
-
+      </ConfigSection>
       </div>
 
       {statusMessage && (
@@ -2358,6 +2318,7 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ baseUrl = '', nodes
       <div className={`settings-content ${styles.sectionStack}`}>
         <div id="config-node-identity">
           <NodeIdentitySection
+            canWrite={canWrite}
             configVersion={configVersion}
             longName={longName}
             shortName={shortName}
@@ -2374,6 +2335,7 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ baseUrl = '', nodes
 
         <div id="config-device">
           <DeviceConfigSection
+            canWrite={canWrite}
             configVersion={configVersion}
             role={role}
             setRole={setRole}
@@ -2402,6 +2364,7 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ baseUrl = '', nodes
 
         <div id="config-lora">
           <LoRaConfigSection
+            canWrite={canWrite}
             configVersion={configVersion}
             usePreset={usePreset}
             setUsePreset={setUsePreset}
@@ -2448,6 +2411,7 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ baseUrl = '', nodes
 
         <div id="config-position">
           <PositionConfigSection
+            canWrite={canWrite}
             configVersion={configVersion}
             positionBroadcastSecs={positionBroadcastSecs}
             setPositionBroadcastSecs={setPositionBroadcastSecs}
@@ -2484,6 +2448,7 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ baseUrl = '', nodes
 
         <div id="config-power">
           <PowerConfigSection
+            canWrite={canWrite}
             configVersion={configVersion}
             isPowerSaving={isPowerSaving}
             setIsPowerSaving={setIsPowerSaving}
@@ -2508,6 +2473,7 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ baseUrl = '', nodes
 
         <div id="config-display">
           <DisplayConfigSection
+            canWrite={canWrite}
             configVersion={configVersion}
             screenOnSecs={screenOnSecs}
             setScreenOnSecs={setScreenOnSecs}
@@ -2535,6 +2501,7 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ baseUrl = '', nodes
         <div id="config-telemetry">
           <ModuleAvailabilityGate available={supportedModules?.telemetry} moduleName="Telemetry">
             <TelemetryConfigSection
+              canWrite={canWrite}
               configVersion={configVersion}
               deviceUpdateInterval={deviceUpdateInterval}
               setDeviceUpdateInterval={setDeviceUpdateInterval}
@@ -2611,6 +2578,7 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ baseUrl = '', nodes
         <div id="config-neighbor">
           <ModuleAvailabilityGate available={supportedModules?.neighborinfo} moduleName="Neighbor Info">
             <NeighborInfoSection
+              canWrite={canWrite}
               configVersion={configVersion}
               neighborInfoEnabled={neighborInfoEnabled}
               setNeighborInfoEnabled={setNeighborInfoEnabled}
@@ -2627,6 +2595,7 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ baseUrl = '', nodes
         <div id="config-network">
           <ModuleAvailabilityGate available={supportedModules?.network} moduleName="Network">
             <NetworkConfigSection
+              canWrite={canWrite}
               configVersion={configVersion}
               wifiEnabled={wifiEnabled}
               setWifiEnabled={setWifiEnabled}
@@ -2660,6 +2629,7 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ baseUrl = '', nodes
         <div id="config-extnotif">
           <ModuleAvailabilityGate available={supportedModules?.extnotif} moduleName="External Notification">
             <ExternalNotificationConfigSection
+              canWrite={canWrite}
               enabled={extNotifEnabled}
               setEnabled={setExtNotifEnabled}
               outputMs={extNotifOutputMs}
@@ -2699,6 +2669,7 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ baseUrl = '', nodes
         <div id="config-storeforward">
           <ModuleAvailabilityGate available={supportedModules?.storeforward} moduleName="Store & Forward">
             <StoreForwardConfigSection
+              canWrite={canWrite}
               enabled={storeForwardEnabled}
               setEnabled={setStoreForwardEnabled}
               heartbeat={storeForwardHeartbeat}
@@ -2720,6 +2691,7 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ baseUrl = '', nodes
         <div id="config-rangetest">
           <ModuleAvailabilityGate available={supportedModules?.rangetest} moduleName="Range Test">
           <RangeTestConfigSection
+            canWrite={canWrite}
             enabled={rangeTestEnabled}
             setEnabled={setRangeTestEnabled}
             sender={rangeTestSender}
@@ -2740,6 +2712,7 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ baseUrl = '', nodes
         <div id="config-cannedmsg">
           <ModuleAvailabilityGate available={supportedModules?.cannedmsg} moduleName="Canned Messages">
             <CannedMessageConfigSection
+              canWrite={canWrite}
               enabled={cannedMsgEnabled}
               setEnabled={setCannedMsgEnabled}
               rotary1Enabled={cannedMsgRotary1Enabled}
@@ -2771,6 +2744,7 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ baseUrl = '', nodes
         <div id="config-audio">
           <ModuleAvailabilityGate available={supportedModules?.audio} moduleName="Audio">
             <AudioConfigSection
+              canWrite={canWrite}
               codec2Enabled={audioCodec2Enabled}
               setCodec2Enabled={setAudioCodec2Enabled}
               pttPin={audioPttPin}
@@ -2794,6 +2768,7 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ baseUrl = '', nodes
         <div id="config-remotehardware">
           <ModuleAvailabilityGate available={supportedModules?.remotehardware} moduleName="Remote Hardware">
             <RemoteHardwareConfigSection
+              canWrite={canWrite}
               enabled={remoteHardwareEnabled}
               setEnabled={setRemoteHardwareEnabled}
               allowUndefinedPinAccess={remoteHardwareAllowUndefinedPinAccess}
@@ -2807,6 +2782,7 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ baseUrl = '', nodes
         <div id="config-detectionsensor">
           <ModuleAvailabilityGate available={supportedModules?.detectionsensor} moduleName="Detection Sensor">
             <DetectionSensorConfigSection
+              canWrite={canWrite}
               enabled={detectionSensorEnabled}
               setEnabled={setDetectionSensorEnabled}
               minimumBroadcastSecs={detectionSensorMinimumBroadcastSecs}
@@ -2832,6 +2808,7 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ baseUrl = '', nodes
         <div id="config-paxcounter">
           <ModuleAvailabilityGate available={supportedModules?.paxcounter} moduleName="Paxcounter">
             <PaxcounterConfigSection
+              canWrite={canWrite}
               enabled={paxcounterEnabled}
               setEnabled={setPaxcounterEnabled}
               paxcounterUpdateInterval={paxcounterUpdateInterval}
@@ -2848,6 +2825,7 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ baseUrl = '', nodes
 
         <div id="config-statusmessage">
           <StatusMessageConfigSection
+            canWrite={canWrite}
             nodeStatus={statusMessageNodeStatus}
             setNodeStatus={setStatusMessageNodeStatus}
             isDisabled={!supportedModules?.statusmessage}
@@ -2859,6 +2837,7 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ baseUrl = '', nodes
 
         <div id="config-trafficmanagement">
           <TrafficManagementConfigSection
+            canWrite={canWrite}
             positionMinIntervalSecs={trafficManagementPositionMinIntervalSecs}
             setPositionMinIntervalSecs={setTrafficManagementPositionMinIntervalSecs}
             nodeinfoDirectResponseMaxHops={trafficManagementNodeinfoDirectResponseMaxHops}
@@ -2877,6 +2856,7 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ baseUrl = '', nodes
 
         <div id="config-meshbeacon">
           <MeshBeaconConfigSection
+            canWrite={canWrite}
             listenEnabled={meshBeaconListenEnabled}
             setListenEnabled={setMeshBeaconListenEnabled}
             broadcastEnabled={meshBeaconBroadcastEnabled}
@@ -2910,6 +2890,7 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ baseUrl = '', nodes
         <div id="config-tak">
           <ModuleAvailabilityGate available={supportedModules?.tak} moduleName="TAK">
             <TAKConfigSection
+              canWrite={canWrite}
               team={takTeam}
               setTeam={setTakTeam}
               role={takRole}
@@ -2924,6 +2905,7 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ baseUrl = '', nodes
         <div id="config-serial">
           <ModuleAvailabilityGate available={supportedModules?.serial} moduleName="Serial">
             <SerialConfigSection
+              canWrite={canWrite}
               enabled={serialEnabled}
               setEnabled={setSerialEnabled}
               echo={serialEcho}
@@ -2949,6 +2931,7 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ baseUrl = '', nodes
         <div id="config-ambientlighting">
           <ModuleAvailabilityGate available={supportedModules?.ambientlighting} moduleName="Ambient Lighting">
             <AmbientLightingConfigSection
+              canWrite={canWrite}
               ledState={ambientLedState}
               setLedState={setAmbientLedState}
               current={ambientCurrent}
@@ -2967,6 +2950,7 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ baseUrl = '', nodes
 
         <div id="config-security">
           <SecurityConfigSection
+            canWrite={canWrite}
             publicKey={securityPublicKey}
             privateKey={securityPrivateKey}
             setPrivateKey={setSecurityPrivateKey}
@@ -3000,7 +2984,7 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ baseUrl = '', nodes
               />
             )
           ) : (
-            <PkiDmDecryptionSection canWrite={hasPermission('configuration', 'write')} />
+            <PkiDmDecryptionSection canWrite={canWrite} />
           )}
         </div>
 
@@ -3025,6 +3009,42 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ baseUrl = '', nodes
           purpose: see the comment on this return. It keeps every guard it had
           on Settings; only the page changed. */}
       {showFirmware && <FirmwareUpdateSection baseUrl={baseUrl} />}
+
+      {/* Danger zone, last on the page as on MeshCore (#5830). Each action
+          confirms in an in-app dialog; purge needs a typed word. Shutdown and
+          factory reset stay on Admin Commands, linked below. */}
+      {!isLoading && (
+        <DangerZone
+          id="config-danger"
+          canWrite={canWrite}
+          description={t('config.danger_zone_description', 'These actions restart the node or erase data. They cannot be undone.')}
+          footer={isAdmin && sourceId ? (
+            <MovedSettingNote
+              testId="danger-admin-commands-link"
+              text={t('config.danger_zone_admin_note', 'Shutdown, DFU mode and factory reset are on Admin Commands.')}
+              linkLabel={t('config.danger_zone_admin_link', 'Open Admin Commands')}
+              to={buildAdminCommandsPath(sourceId)}
+            />
+          ) : undefined}
+        >
+          <DangerZoneActions>
+            <DangerZoneButton
+              onClick={() => setConfirmAction('reboot')}
+              disabled={isSaving || !canWrite}
+              data-testid="config-reboot-button"
+            >
+              <UiIcon name="refresh" /> {t('config.reboot_device')}
+            </DangerZoneButton>
+            <DangerZoneButton
+              onClick={() => setConfirmAction('purge')}
+              disabled={isSaving || !canWrite}
+              data-testid="config-purge-button"
+            >
+              <UiIcon name="delete" /> {t('config.purge_node_db')}
+            </DangerZoneButton>
+          </DangerZoneActions>
+        </DangerZone>
+      )}
 
         </div>{/* End main content column */}
 
@@ -3088,6 +3108,29 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ baseUrl = '', nodes
         )}
       </div>{/* End two-column layout */}
       </div>{/* End landscape rail shell */}
+
+      {confirmAction === 'reboot' && (
+        <ConfirmDialog
+          title={t('config.reboot_dialog_title', 'Reboot the device?')}
+          message={t('config.reboot_dialog_message', 'The device restarts and is offline for about 30 to 60 seconds.')}
+          confirmLabel={t('config.reboot_device')}
+          cancelLabel={t('common.cancel')}
+          onConfirm={() => { void handleRebootDevice(); }}
+          onCancel={() => setConfirmAction(null)}
+        />
+      )}
+      <TypedConfirmDialog
+        isOpen={confirmAction === 'purge'}
+        title={t('config.purge_dialog_title', 'Purge the node database?')}
+        confirmWord="PURGE"
+        confirmLabel={t('config.purge_node_db')}
+        danger
+        busy={isSaving}
+        onConfirm={() => { void handlePurgeNodeDb(); }}
+        onCancel={() => setConfirmAction(null)}
+      >
+        <p>{t('config.purge_dialog_body', 'This deletes every stored node from the device and from MeshMonitor\'s database for this source. It cannot be undone. The device rebuilds its list as it hears nodes on the mesh.')}</p>
+      </TypedConfirmDialog>
 
       {/* Import/Export Modals */}
       {!isLoading && (

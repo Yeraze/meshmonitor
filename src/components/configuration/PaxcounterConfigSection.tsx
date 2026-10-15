@@ -9,6 +9,8 @@ import ModuleAvailabilityNotice from './ModuleAvailabilityNotice';
 import { ConfigSection } from '../shared/config/ConfigSection';
 
 interface PaxcounterConfigSectionProps {
+  /** False disables every control: no configuration:write on this source (#5830). */
+  canWrite?: boolean;
   enabled: boolean;
   setEnabled: (value: boolean) => void;
   paxcounterUpdateInterval: number;
@@ -23,6 +25,7 @@ interface PaxcounterConfigSectionProps {
 }
 
 const PaxcounterConfigSection: React.FC<PaxcounterConfigSectionProps> = ({
+  canWrite = true,
   enabled,
   setEnabled,
   paxcounterUpdateInterval,
@@ -69,7 +72,7 @@ const PaxcounterConfigSection: React.FC<PaxcounterConfigSectionProps> = ({
 
   return (
     <NumberInputScope scope={numberScope}>
-    <ConfigSection title={t('paxcounter_config.title')} docsUrl="https://meshtastic.org/docs/configuration/module/paxcounter/" notice={<ModuleAvailabilityNotice />}>
+    <ConfigSection canWrite={canWrite} title={t('paxcounter_config.title')} docsUrl="https://meshtastic.org/docs/configuration/module/paxcounter/" notice={<ModuleAvailabilityNotice />}>
 
       {/* Enable Module */}
       <div className="setting-item">

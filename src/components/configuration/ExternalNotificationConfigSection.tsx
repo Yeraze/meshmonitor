@@ -10,6 +10,8 @@ import ModuleAvailabilityNotice from './ModuleAvailabilityNotice';
 import { ConfigSection } from '../shared/config/ConfigSection';
 
 interface ExternalNotificationConfigSectionProps {
+  /** False disables every control: no configuration:write on this source (#5830). */
+  canWrite?: boolean;
   // Main settings
   enabled: boolean;
   setEnabled: (value: boolean) => void;
@@ -50,6 +52,7 @@ interface ExternalNotificationConfigSectionProps {
 }
 
 const ExternalNotificationConfigSection: React.FC<ExternalNotificationConfigSectionProps> = ({
+  canWrite = true,
   enabled,
   setEnabled,
   outputMs,
@@ -134,7 +137,7 @@ const ExternalNotificationConfigSection: React.FC<ExternalNotificationConfigSect
 
   return (
     <NumberInputScope scope={numberScope}>
-    <ConfigSection title={t('extnotif_config.title')} docsUrl="https://meshtastic.org/docs/configuration/module/external-notification/" notice={<ModuleAvailabilityNotice />}>
+    <ConfigSection canWrite={canWrite} title={t('extnotif_config.title')} docsUrl="https://meshtastic.org/docs/configuration/module/external-notification/" notice={<ModuleAvailabilityNotice />}>
 
       {/* Enable Module */}
       <div className="setting-item">
