@@ -21,6 +21,7 @@ import { MESHCORE_ADVERT_MODES, isMeshCoreAdvertMode, resolveMeshCoreAdvertMode 
 import type { MeshcorePathfindingFilterSettings } from '../../services/database.js';
 import { managerFor, requireMeshcoreTx, failIfTxDisabled } from './meshcoreRouteShared.js';
 import { extendRequestTimeout } from '../middleware/requestTimeout.js';
+import { keepServerRunState, parseStoredTriggers } from '../utils/timerRunState.js';
 
 // Manual announce-send / timer-run routes trigger a radio send + wait that
 // can legitimately run past the 30s default socket timeout; extend it so
@@ -671,7 +672,10 @@ router.post(
       if (badMode) {
         return fail(res, 400, 'INVALID_ADVERT_MODE', `Trigger ${String(badMode.id ?? '')}: advertMode must be one of: ${MESHCORE_ADVERT_MODES.join(', ')}`);
       }
-      await databaseService.settings.setSourceSetting(sourceId, 'meshcoreTimerTriggers', JSON.stringify(body.triggers));
+      // Run state belongs to the scheduler; keep the stored values (#5827).
+      const storedJson = await databaseService.settings.getSettingForSource(sourceId, 'meshcoreTimerTriggers');
+      const triggers = keepServerRunState(body.triggers as unknown[], parseStoredTriggers(storedJson));
+      await databaseService.settings.setSourceSetting(sourceId, 'meshcoreTimerTriggers', JSON.stringify(triggers));
 
       await managerFor(req, res).startTimerTriggers().catch((err: Error) =>
         logger.warn(`[API] timer-trigger restart after save failed: ${err.message}`));

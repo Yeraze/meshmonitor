@@ -303,7 +303,7 @@ const TimerTriggersSection: React.FC<TimerTriggersSectionProps> = ({
 
   return (
     <ConfigSection
-      title={t('automation.timer_triggers.section_title', 'Timed Events')}
+      title={t('automation.timer_triggers.section_title', 'Timer Triggers')}
       docsUrl="https://meshmonitor.org/features/automation#timer-triggers"
       headerActions={
         <ConfigHeaderCount>
