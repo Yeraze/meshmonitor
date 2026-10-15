@@ -130,4 +130,12 @@ describe('AutoAcknowledgeSection — Convert to an Automation button', () => {
     // not the rendered English copy.
     expect(button).toHaveAttribute('title', 'automation.auto_ack.convert_meshtastic_only');
   });
+
+  it('disables the button without automation write permission (#5807)', () => {
+    render(<AutoAcknowledgeSection {...defaultProps} canWrite={false} />);
+
+    const button = screen.getByRole('button', { name: /Convert to an Automation/ });
+    expect(button).toBeDisabled();
+    expect(button).toHaveAttribute('title', 'automation.auto_ack.convert_no_permission');
+  });
 });

@@ -94,6 +94,10 @@ export interface AutoResponderSectionProps {
   onEnabledChange: (enabled: boolean) => void;
   onTriggersChange: (triggers: AutoResponderTrigger[]) => void;
   onSkipIncompleteNodesChange: (enabled: boolean) => void;
+  /** False disables every control (no automation write permission). Default true. */
+  canWrite?: boolean;
+  /** True when the source cannot transmit; shows the paused note. */
+  receiveOnly?: boolean;
 }
 
 export interface TriggerItemProps {

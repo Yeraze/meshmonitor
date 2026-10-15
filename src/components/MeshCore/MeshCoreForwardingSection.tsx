@@ -76,6 +76,7 @@ export const MeshCoreForwardingSection: React.FC<MeshCoreForwardingSectionProps>
       receiveOnly={receiveOnly}
       saveBarId="meshcore-forwarding"
       controlVariant="meshcore"
+      docsUrl="https://meshmonitor.org/features/meshcore#forwarding"
     />
   );
 };

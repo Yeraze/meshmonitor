@@ -40,12 +40,11 @@
     "react-hooks/exhaustive-deps": 1
   },
   "src/components/AutoAcknowledgeSection.tsx": {
-    "meshmonitor-ui/no-hardcoded-color": 2,
     "react-hooks/exhaustive-deps": 1
   },
   "src/components/AutoAnnounceSection.tsx": {
     "@typescript-eslint/no-explicit-any": 1,
-    "meshmonitor-ui/no-hardcoded-color": 3,
+    "meshmonitor-ui/no-hardcoded-color": 1,
     "react-hooks/exhaustive-deps": 3
   },
   "src/components/AutoDeleteByDistanceSection.tsx": {
@@ -74,7 +73,6 @@
   },
   "src/components/AutoResponderSection.tsx": {
     "@typescript-eslint/no-explicit-any": 6,
-    "meshmonitor-ui/no-hardcoded-color": 2,
     "react-hooks/exhaustive-deps": 1
   },
   "src/components/AutoTimeSyncSection.tsx": {
@@ -182,16 +180,13 @@
     "react-hooks/exhaustive-deps": 1
   },
   "src/components/MeshCore/MeshCoreAutoAckSection.tsx": {
-    "@typescript-eslint/no-explicit-any": 2,
-    "meshmonitor-ui/no-hardcoded-color": 1
+    "@typescript-eslint/no-explicit-any": 2
   },
   "src/components/MeshCore/MeshCoreAutoAnnounceSection.tsx": {
-    "@typescript-eslint/no-explicit-any": 2,
-    "meshmonitor-ui/no-hardcoded-color": 1
+    "@typescript-eslint/no-explicit-any": 2
   },
   "src/components/MeshCore/MeshCoreAutoResponderSection.tsx": {
-    "@typescript-eslint/no-explicit-any": 3,
-    "meshmonitor-ui/no-hardcoded-color": 1
+    "@typescript-eslint/no-explicit-any": 3
   },
   "src/components/MeshCore/MeshCoreChannelsConfigSection.tsx": {
     "@typescript-eslint/no-explicit-any": 3
@@ -212,8 +207,7 @@
     "meshmonitor-ui/no-hardcoded-color": 2
   },
   "src/components/MeshCore/MeshCoreTimerTriggersSection.tsx": {
-    "@typescript-eslint/no-explicit-any": 5,
-    "meshmonitor-ui/no-hardcoded-color": 1
+    "@typescript-eslint/no-explicit-any": 5
   },
   "src/components/MeshCore/hooks/useMeshCoreUnread.ts": {
     "@typescript-eslint/no-explicit-any": 2
@@ -295,7 +289,7 @@
   },
   "src/components/TimerTriggersSection.tsx": {
     "@typescript-eslint/no-unused-vars": 1,
-    "meshmonitor-ui/no-hardcoded-color": 3,
+    "meshmonitor-ui/no-hardcoded-color": 1,
     "react-hooks/exhaustive-deps": 1
   },
   "src/components/Toast.tsx": {

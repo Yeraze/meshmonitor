@@ -17,6 +17,7 @@ import {
 } from '../utils/autoAckMatrix';
 import { hasRE2IncompatibleConstructs } from '../utils/autoAckRegex';
 import { UiIcon } from './icons';
+import { ConfigSection } from './shared/config/ConfigSection';
 import AutoAckConvertDialog from './autoack/AutoAckConvertDialog';
 import { HopLimitOverrideSelect } from './HopLimitOverrideSelect';
 import { NumberInput } from './common/NumberInput';
@@ -61,6 +62,10 @@ interface AutoAcknowledgeSectionProps {
   onMaxResponsesChange?: (value: number) => void;
   testMessages: string;
   onTestMessagesChange: (messages: string) => void;
+  /** False disables every control (no automation write permission). Default true. */
+  canWrite?: boolean;
+  /** True when the source cannot transmit; shows the paused note. */
+  receiveOnly?: boolean;
 }
 
 const DEFAULT_MESSAGE = '🤖 Copy, {NUMBER_HOPS} hops at {TIME}';
@@ -97,6 +102,8 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
   onMaxResponsesChange,
   testMessages: testMessagesProp,
   onTestMessagesChange,
+  canWrite = true,
+  receiveOnly = false,
 }) => {
   const { t } = useTranslation();
   const { timeFormat, dateFormat } = useSettings();
@@ -374,9 +381,11 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
   // intentionally falls through to "not MeshCore" so the button stays enabled
   // there, matching pre-#4420 behavior for those views.
   const isMeshCoreSource = sourceType === 'meshcore';
-  const isConvertDisabled = hasChanges || isMeshCoreSource;
+  const isConvertDisabled = hasChanges || isMeshCoreSource || !canWrite;
   const convertDisabledReason = isMeshCoreSource
     ? t('automation.auto_ack.convert_meshtastic_only', 'Convert to an Automation is only available for Meshtastic sources.')
+    : !canWrite
+    ? t('automation.auto_ack.convert_no_permission', 'You need write permission for automations on this source to convert.')
     : hasChanges
       ? 'Save your changes first — converting now would use the last saved configuration, not your unsaved edits.'
       : undefined;
@@ -384,39 +393,21 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
   return (
     <NumberInputScope scope={numberScope}>
     <>
-      <div className="automation-section-header" style={{
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        marginBottom: '1.5rem',
-        padding: '1rem 1.25rem',
-        background: 'var(--color-surface-hover)',
-        border: '1px solid var(--color-surface-active)',
-        borderRadius: '8px'
-      }}>
-        <h2 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-          <input
-            type="checkbox"
-            checked={localEnabled}
-            onChange={(e) => setLocalEnabled(e.target.checked)}
-            style={{ width: 'auto', margin: 0, cursor: 'pointer' }}
-          />
-          {t('automation.auto_ack.title')}
-          <a
-            href="https://meshmonitor.org/features/automation#auto-acknowledge"
-            target="_blank"
-            rel="noopener noreferrer"
-            style={{
-              fontSize: '1.2rem',
-              color: '#89b4fa',
-              textDecoration: 'none',
-              marginLeft: '0.5rem'
-            }}
-            title={t('automation.view_docs')}
-          >
-            <UiIcon name="help" />
-          </a>
-        </h2>
+      <ConfigSection
+        title={t('automation.auto_ack.title')}
+        enabled={localEnabled}
+        onEnabledChange={setLocalEnabled}
+        enableLabel={t('automation.auto_ack.title')}
+        docsUrl="https://meshmonitor.org/features/automation#auto-acknowledge"
+        canWrite={canWrite}
+        receiveOnly={receiveOnly}
+        description={
+          <>
+            {t('automation.auto_ack.description')}
+            {' '}{t('automation.auto_ack.tokens_info')}
+          </>
+        }
+        headerActions={<>
         {/* #4340 Phase 4 WP4 — one-way door into the Automation Engine. Disabled while
             there are unsaved edits: converting now would convert the *saved* config,
             not what's on screen, and silently discard the user's in-progress changes.
@@ -446,21 +437,8 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
           <UiIcon name="bot" size={16} />
           Convert to an Automation…
         </button>
-      </div>
-
-      <AutoAckConvertDialog
-        isOpen={isConvertDialogOpen}
-        onClose={() => setIsConvertDialogOpen(false)}
-        baseUrl={baseUrl}
-        onEnabledChange={onEnabledChange}
-      />
-
-      <div className="settings-section" style={{ opacity: localEnabled ? 1 : 0.5, transition: 'opacity 0.2s' }}>
-        <p style={{ marginBottom: '1rem', color: '#666', lineHeight: '1.5', marginLeft: '1.75rem' }}>
-          {t('automation.auto_ack.description')}
-          {' '}{t('automation.auto_ack.tokens_info')}
-        </p>
-
+        </>}
+      >
         <div className="setting-item" style={{ marginTop: '1rem' }}>
           <label htmlFor="autoAckRegex">
             {t('automation.auto_ack.regex_label')}
@@ -911,7 +889,14 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
             </div>
           </div>
         </div>
-      </div>
+      </ConfigSection>
+
+      <AutoAckConvertDialog
+        isOpen={isConvertDialogOpen}
+        onClose={() => setIsConvertDialogOpen(false)}
+        baseUrl={baseUrl}
+        onEnabledChange={onEnabledChange}
+      />
     </>
     </NumberInputScope>
   );

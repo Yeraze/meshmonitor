@@ -1,0 +1,14 @@
+/*
+ * ReceiveOnlyNote (#5807, from MeshCoreReceiveOnlyNote #4547). CSS module, per
+ * the CLAUDE.md CSS containment rule. A small, muted inline note shown while a
+ * source cannot transmit.
+ */
+
+.note {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--color-text-subtle);
+  font-size: 0.85em;
+  margin: 0.35rem 0;
+}
