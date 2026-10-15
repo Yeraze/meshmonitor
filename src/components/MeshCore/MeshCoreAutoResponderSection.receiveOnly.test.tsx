@@ -10,7 +10,7 @@
  */
 import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 
 vi.mock('react-i18next', async () => {
   const { createReactI18nextMock } = await import('../../test/mockI18n');
@@ -91,6 +91,8 @@ describe('MeshCoreAutoResponderSection receive-only', () => {
 
   it('leaves an existing trigger\'s pattern input editable when receive-only', async () => {
     render(<MeshCoreAutoResponderSection baseUrl="" sourceId="src1" receiveOnly />);
+    // #5808: triggers show collapsed; open the editor first.
+    fireEvent.click(await screen.findByRole('button', { name: /edit/i }));
     await waitFor(() => {
       const input = screen.queryByDisplayValue('^ping') as HTMLInputElement | null;
       expect(input).not.toBeNull();

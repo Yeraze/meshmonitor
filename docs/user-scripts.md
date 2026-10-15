@@ -96,10 +96,11 @@ Scripts must output JSON to stdout:
 4. **Make it executable**: `chmod +x ./scripts/YourScript.py`
 5. **Configure in MeshMonitor**:
    - Navigate to **Settings → Automation → Auto Responder**
-   - Click **"Add Trigger"**
+   - Click **"Add Trigger"** to open a new trigger card
    - Set the trigger pattern (see script's example trigger)
    - Select **"Script"** as response type
-   - Enter the script path: `/data/scripts/YourScript.py`
+   - Pick the script: `/data/scripts/YourScript.py`
+   - Click **"Done"**, then **"Save"**
 6. **Test your trigger** by sending a message matching the pattern
 
 ## Installing Dependencies

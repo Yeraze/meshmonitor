@@ -76,7 +76,8 @@ describe('auto responder pattern placeholder fits', () => {
     expect(layoutCss).toMatch(
       /@container\s*\(max-width:[^)]*\)\s*\{\s*\.patternField\s*\{[^}]*flex-basis:\s*100%/,
     );
-    const tsx = read('AutoResponderSection.tsx');
+    // #5808: the pattern row lives in the TriggerCard editor now.
+    const tsx = read('auto-responder/TriggerEditor.tsx');
     expect(tsx).toContain('className={`${layout.wrapRow} ${layout.patternRow}`}');
     expect(tsx).toContain('className={`${layout.growField} ${layout.patternField}`}');
     // An inline `flex: '1'` would pin flex-basis to 0 and defeat the query.

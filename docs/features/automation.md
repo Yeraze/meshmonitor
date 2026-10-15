@@ -1330,20 +1330,29 @@ See the [examples/auto-responder-scripts/README.md](https://github.com/MeshAddic
 
 ### Managing Triggers
 
+Each trigger shows as a card with its pattern, a one-line summary of the response, and small tags for the type, channels, multiline, verify and cooldown. MeshCore's Auto-Responder uses the same cards.
+
 **Adding Triggers**:
-1. Enter your trigger pattern (e.g., "weather {location}")
-2. Select response type (text, http, or script)
-3. Enter your response (text message, URL, or script path)
-4. Click "Add Trigger"
+1. Click **Add Trigger**. A new card opens below the list.
+2. Enter your trigger pattern (e.g., "weather {location}")
+3. Select the response type (text, HTTP, script, traceroute or mailbox) and enter the response (text message, URL, or script)
+4. Set the cooldown, channels, multiline and verify options as needed
+5. Click **Done**. MeshMonitor checks the trigger and shows any problem under the field.
+6. Click **Save** in the save bar
 
 **Editing Triggers**:
-1. Click the "Edit" button next to any trigger
-2. Modify the pattern, type, or response
-3. Click "Save" to apply changes or "Cancel" to discard
-4. Edited triggers show a blue border while in edit mode
+1. Click **Edit** on a trigger card
+2. Change any field, then click **Done**
+3. Click **Save** in the save bar, or **Dismiss** to drop your changes
 
 **Removing Triggers**:
-- Click the "Remove" button next to any trigger
+- Click **Delete** on a trigger card and confirm. The trigger is deleted when you click **Save**.
+
+**Testing Patterns**:
+- Type sample messages in **Test Pattern Matching**, one per line. Each line shows which trigger matches, the parameters it pulls out, and the reply it would send. Only the first matching trigger replies. Nothing is sent, and channel filters are not applied.
+- For HTTP and script triggers, the **Test** button in the open card runs the request or script on the server once, using example values. A script test runs the script for real, so a script that talks to the node itself can still reach the mesh.
+
+With more than five triggers, a search box and type filter appear above the list.
 
 **Multiline Text Support**:
 - Text responses automatically use a multiline textarea

@@ -1,0 +1,131 @@
+/* PatternTestBox (#5808). */
+
+.box {
+  margin-top: 1.5rem;
+  padding: 0.75rem;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 6px;
+}
+
+.label {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-weight: bold;
+}
+
+.description {
+  margin: 0.25rem 0 0.75rem;
+  font-size: 0.85rem;
+  color: var(--color-text-subtle);
+}
+
+/* Input and results side by side when there is room, stacked when not. */
+.layout {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: flex-start;
+}
+
+.input {
+  flex: 1 1 14rem;
+  min-width: 0;
+  width: auto;
+  min-height: 8rem;
+  font-family: monospace;
+  resize: vertical;
+}
+
+.results {
+  flex: 1 1 14rem;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  max-height: 24rem;
+  overflow-y: auto;
+}
+
+.line {
+  margin-bottom: 0.5rem;
+  padding: 0.5rem;
+  border-radius: 4px;
+  border: 1px solid var(--color-border-subtle);
+  font-size: 0.85rem;
+}
+
+.matched {
+  border-color: var(--color-success);
+  background: color-mix(in srgb, var(--color-success) 8%, transparent);
+}
+
+.conflict {
+  border-color: var(--color-caution);
+  background: color-mix(in srgb, var(--color-caution) 8%, transparent);
+}
+
+.noMatch {
+  border-color: color-mix(in srgb, var(--color-error) 60%, transparent);
+  background: color-mix(in srgb, var(--color-error) 6%, transparent);
+}
+
+.message {
+  font-family: monospace;
+  font-weight: bold;
+  overflow-wrap: anywhere;
+}
+
+.none {
+  margin-top: 0.25rem;
+  color: var(--color-text-subtle);
+  font-style: italic;
+}
+
+.warning {
+  margin-top: 0.25rem;
+  color: var(--color-caution);
+  font-size: 0.8rem;
+}
+
+.hit {
+  margin-top: 0.4rem;
+  padding-left: 0.5rem;
+  border-left: 2px solid var(--color-success);
+}
+
+.shadowed {
+  border-left-color: var(--color-border-subtle);
+  opacity: 0.7;
+}
+
+.hitLabel {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  flex-wrap: wrap;
+  font-family: monospace;
+  overflow-wrap: anywhere;
+}
+
+.detail {
+  margin-top: 0.2rem;
+  font-size: 0.75rem;
+  color: var(--color-text-subtle);
+  font-family: monospace;
+  overflow-wrap: anywhere;
+}
+
+.response {
+  margin-top: 0.3rem;
+  padding: 0.35rem 0.5rem;
+  background: var(--color-surface-active);
+  border-radius: 3px;
+  font-family: monospace;
+  overflow-wrap: anywhere;
+}
+
+.multiline {
+  white-space: pre-wrap;
+}

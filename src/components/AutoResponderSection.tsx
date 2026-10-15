@@ -1,6 +1,4 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { COOLDOWN_SECONDS_MAX } from './automationInputLimits';
-import { NumberInput } from './common/NumberInput';
 import { NumberInputScope } from './common/NumberInputScope';
 import { useNumberInputScope } from './common/numberInputScopeContext';
 import { useTranslation, Trans } from 'react-i18next';
@@ -11,34 +9,34 @@ import { useSaveBar } from '../hooks/useSaveBar';
 import {
   AutoResponderTrigger,
   AutoResponderSectionProps,
-  ResponseType,
   ScriptMetadata
 } from './auto-responder/types';
-import { 
-  getFileIcon, 
-  splitTriggerPatterns, 
-  formatTriggerPatterns,
-  extractParameters,
-  buildRegexPattern,
-  getMatchPositions,
-  testSinglePattern,
-  getExampleValueForParam
-} from './auto-responder/utils';
-import TriggerItem from './auto-responder/TriggerItem';
+import { getFileIcon, formatTriggerPatterns } from './auto-responder/utils';
+import {
+  type TriggerErrors,
+  validateAutoResponderTrigger,
+  hasErrors,
+  finalizeTrigger,
+  newAutoResponderTrigger,
+  matchAutoResponderTrigger,
+  renderSampleResponse,
+  channelsLabel,
+  patternText,
+} from './auto-responder/triggerModel';
+import TriggerEditor from './auto-responder/TriggerEditor';
+import PatternHighlight from './auto-responder/PatternHighlight';
 import AutoResponderDialog from './auto-responder/AutoResponderDialog';
 import PatternExamples from './auto-responder/PatternExamples';
 import ScriptManagement from './auto-responder/ScriptManagement';
 import { UiIcon } from './icons';
 import { ConfigSection, ConfigHeaderCount } from './shared/config/ConfigSection';
+import { ConfigEmptyState } from './shared/config/ConfigEmptyState';
+import { TriggerCard, type TriggerChip } from './shared/automation/TriggerCard';
+import { TriggerListFilter } from './shared/automation/TriggerListFilter';
+import { PatternTestBox, type PatternTestResult } from './shared/automation/PatternTestBox';
+import { TRIGGER_FILTER_THRESHOLD, matchesSearch } from './shared/automation/triggerList';
 import apiService from '../services/api';
-import layout from './AutomationFormLayout.module.css';
-
-/**
- * Right padding the trigger input reserves for its "N patterns" badge: the
- * badge's 0.5rem inset plus "12 patterns" at 0.7rem (~74px measured), with
- * a little room so the caret never touches it.
- */
-const PATTERN_BADGE_RESERVE = '6rem';
+import styles from './AutoResponderSection.module.css';
 
 const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
   enabled,
@@ -61,28 +59,15 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
   const [localSkipIncompleteNodes, setLocalSkipIncompleteNodes] = useState(skipIncompleteNodes);
   const [hasChanges, setHasChanges] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
-  const [newTrigger, setNewTrigger] = useState('');
-  const [newResponseType, setNewResponseType] = useState<ResponseType>('text');
-  const [newResponse, setNewResponse] = useState('');
-  const [newMultiline, setNewMultiline] = useState(false);
-  const [newVerifyResponse, setNewVerifyResponse] = useState(false);
-  const [newChannels, setNewChannels] = useState<Array<number | 'dm'>>(['dm']);
-  const [newCooldownSeconds, setNewCooldownSeconds] = useState(0);
-  // #5649: covers the add-trigger cooldown only; each TriggerItem gates its own edit.
-  const addNumberScope = useNumberInputScope();
-  const [testMessages, setTestMessages] = useState('w 33076\ntemp 72\nmsg hello world\nset temperature to 72');
-  const [editingId, setEditingId] = useState<string | null>(null);
+  // #5649 / #5808: every trigger editor's number fields report here (through
+  // their TriggerCard's scope), so the SaveBar stays off while one is invalid.
+  const numberScope = useNumberInputScope();
+  // #5808: one trigger is open in its TriggerCard at a time.
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [errorsById, setErrorsById] = useState<Record<string, TriggerErrors>>({});
   const [availableScripts, setAvailableScripts] = useState<ScriptMetadata[]>([]);
-  const [newTriggerValidation, setNewTriggerValidation] = useState<{ valid: boolean; error?: string }>({ valid: true });
-  const [currentTestLine, setCurrentTestLine] = useState<string>('');
-  const [quickTestResult, setQuickTestResult] = useState<{ loading: boolean; result: string | null; error?: string } | null>(null);
-  const [showMatchDetails, setShowMatchDetails] = useState<Record<number, boolean>>({});
-  const [showDebugInfo, setShowDebugInfo] = useState<Record<number, boolean>>({});
   const [triggerSearch, setTriggerSearch] = useState('');
-  const [triggerFilter, setTriggerFilter] = useState<'all' | 'text' | 'http' | 'script'>('all');
-  const [liveTestResults, setLiveTestResults] = useState<Record<number, { loading: boolean; result: string | null; error?: string }>>({});
-  const [newTriggerTestInput, setNewTriggerTestInput] = useState('');
-  const [newTriggerLiveTestResult, setNewTriggerLiveTestResult] = useState<{ loading: boolean; result: string | null; error?: string } | null>(null);
+  const [triggerFilter, setTriggerFilter] = useState<string>('all');
   const [selectedScripts, setSelectedScripts] = useState<Set<string>>(new Set());
   const [isImporting, setIsImporting] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
@@ -121,17 +106,95 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
     setLocalEnabled(enabled);
     setLocalTriggers(triggers);
     setLocalSkipIncompleteNodes(skipIncompleteNodes);
+    setExpandedId(null);
+    setErrorsById({});
   }, [enabled, triggers, skipIncompleteNodes]);
 
-  // Validate new trigger in realtime
+  // A trigger counts as edited when it differs from its saved copy. Only
+  // edited (or new) triggers are validated and normalised, so a save never
+  // rewrites a trigger the user did not touch.
+  const savedJsonById = useMemo(
+    () => new Map(triggers.map((tr) => [tr.id, JSON.stringify(tr)])),
+    [triggers],
+  );
+  const isEdited = useCallback(
+    (tr: AutoResponderTrigger) => savedJsonById.get(tr.id) !== JSON.stringify(tr),
+    [savedJsonById],
+  );
+
+  // Once a trigger shows errors, re-check it as the user types so they clear.
   useEffect(() => {
-    if (newTrigger.trim()) {
-      const validation = validateTrigger(newTrigger);
-      setNewTriggerValidation(validation);
-    } else {
-      setNewTriggerValidation({ valid: true });
+    setErrorsById((prev) => {
+      const ids = Object.keys(prev);
+      if (ids.length === 0) return prev;
+      const next: Record<string, TriggerErrors> = {};
+      for (const id of ids) {
+        const tr = localTriggers.find((x) => x.id === id);
+        if (!tr) continue;
+        const errs = validateAutoResponderTrigger(tr, t);
+        if (hasErrors(errs)) next[id] = errs;
+      }
+      return next;
+    });
+  }, [localTriggers, t]);
+
+  const updateTrigger = (id: string, patch: Partial<AutoResponderTrigger>) => {
+    setLocalTriggers((prev) => prev.map((tr) => (tr.id === id ? { ...tr, ...patch } : tr)));
+  };
+
+  /** Validate and normalise the open trigger, then collapse it. False when it has errors. */
+  const finishEditing = (id: string | null): boolean => {
+    if (!id) return true;
+    const tr = localTriggers.find((x) => x.id === id);
+    if (tr && isEdited(tr)) {
+      const errs = validateAutoResponderTrigger(tr, t);
+      if (hasErrors(errs)) {
+        setErrorsById((prev) => ({ ...prev, [id]: errs }));
+        setExpandedId(id);
+        return false;
+      }
+      setLocalTriggers((prev) => prev.map((x) => (x.id === id ? finalizeTrigger(x) : x)));
     }
-  }, [newTrigger]);
+    setErrorsById((prev) => {
+      if (!(id in prev)) return prev;
+      const next = { ...prev };
+      delete next[id];
+      return next;
+    });
+    setExpandedId((cur) => (cur === id ? null : cur));
+    return true;
+  };
+
+  const startEditing = (id: string) => {
+    if (expandedId && expandedId !== id && !finishEditing(expandedId)) return;
+    setExpandedId(id);
+  };
+
+  const addTrigger = (pattern = '') => {
+    if (!finishEditing(expandedId)) return;
+    const tr = { ...newAutoResponderTrigger(), trigger: pattern };
+    setLocalTriggers((prev) => [...prev, tr]);
+    setTriggerSearch('');
+    setTriggerFilter('all');
+    setExpandedId(tr.id);
+  };
+
+  const removeTrigger = (id: string) => {
+    setLocalTriggers((prev) => prev.filter((tr) => tr.id !== id));
+    setExpandedId((cur) => (cur === id ? null : cur));
+    setErrorsById((prev) => {
+      if (!(id in prev)) return prev;
+      const next = { ...prev };
+      delete next[id];
+      return next;
+    });
+  };
+
+  // A pattern example fills the open trigger, or starts a new one.
+  const selectExamplePattern = (pattern: string) => {
+    if (expandedId) updateTrigger(expandedId, { trigger: pattern });
+    else addTrigger(pattern);
+  };
 
   // Fetch available scripts when component mounts and after import/delete
     const fetchScripts = async () => {
@@ -296,261 +359,21 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
   };
 
 
-  const validateTrigger = (trigger: string | string[]): { valid: boolean; error?: string } => {
-    // Handle array format
-    if (Array.isArray(trigger)) {
-      if (trigger.length === 0) {
-      return { valid: false, error: t('auto_responder.trigger_empty') };
-    }
-      // Validate each pattern in the array
-      for (const pattern of trigger) {
-        if (typeof pattern !== 'string' || !pattern.trim()) {
-          continue; // Skip empty patterns
-        }
-        const validation = validateTrigger(pattern);
-        if (!validation.valid) {
-          return validation;
-        }
-      }
-      return { valid: true };
-    }
-    
-    // Handle string format
-    if (!trigger || typeof trigger !== 'string' || !trigger.trim()) {
-      return { valid: false, error: t('auto_responder.trigger_empty') };
-    }
-    
-    // Split into individual patterns and validate each
-    const patterns = splitTriggerPatterns(trigger);
-    
-    if (patterns.length === 0) {
-      return { valid: false, error: t('auto_responder.trigger_empty') };
-    }
-    
-    // Validate each pattern individually
-    for (let i = 0; i < patterns.length; i++) {
-      const pattern = patterns[i];
-      if (!pattern.trim()) {
-        return { valid: false, error: t('auto_responder.pattern_empty', { index: i + 1 }) };
-      }
-      if (pattern.length > 100) {
-        return { valid: false, error: t('auto_responder.pattern_too_long', { index: i + 1 }) };
-      }
-    }
-    
-    return { valid: true };
-  };
-
-  const validateResponse = (response: string, type: ResponseType): { valid: boolean; error?: string } => {
-    // Mailbox is a built-in handler that parses the message itself — it needs
-    // no response text, so skip the non-empty check entirely.
-    if (type === 'mailbox') {
-      return { valid: true };
-    }
-
-    if (!response.trim()) {
-      return { valid: false, error: t('auto_responder.response_empty') };
-    }
-
-    if (type === 'http') {
-      try {
-        // Test URL parsing (replace parameters with dummy values for validation)
-        const urlObj = new URL(response.replace(/{[^}]+}/g, 'test'));
-        if (!['http:', 'https:'].includes(urlObj.protocol)) {
-          return { valid: false, error: t('auto_responder.url_protocol') };
-        }
-      } catch (_error) {
-        return { valid: false, error: t('auto_responder.invalid_url') };
-      }
-    } else if (type === 'script') {
-      // Script path validation
-      if (!response.startsWith('/data/scripts/')) {
-        return { valid: false, error: t('auto_responder.script_path_prefix') };
-      }
-      const ext = response.split('.').pop()?.toLowerCase();
-      if (!ext || !['js', 'mjs', 'py', 'sh'].includes(ext)) {
-        return { valid: false, error: t('auto_responder.script_extension') };
-      }
-      if (response.includes('..')) {
-        return { valid: false, error: t('auto_responder.script_path_dotdot') };
-      }
-    } else {
-      // Text response
-      if (response.length > 200) {
-        return { valid: false, error: t('auto_responder.text_too_long') };
-      }
-    }
-
-    return { valid: true };
-  };
-
-  const addTrigger = () => {
-    if (addNumberScope.invalid) return;
-    const triggerValidation = validateTrigger(newTrigger);
-    if (!triggerValidation.valid) {
-      showToast(triggerValidation.error || t('auto_responder.invalid_trigger'), 'error');
-      return;
-    }
-
-    const responseValidation = validateResponse(newResponse, newResponseType);
-    if (!responseValidation.valid) {
-      showToast(responseValidation.error || t('auto_responder.invalid_response'), 'error');
-      return;
-    }
-
-    if (newChannels.length === 0) {
-      showToast(t('auto_responder.no_channels_selected'), 'error');
-      return;
-    }
-
-    const trigger: AutoResponderTrigger = {
-      id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-      trigger: newTrigger.trim(),
-      responseType: newResponseType,
-      response: newResponse.trim(),
-      multiline: newResponseType !== 'script' ? newMultiline : undefined,
-      verifyResponse: newChannels.includes('dm') ? newVerifyResponse : false, // Only allow verify for DM
-      channels: newChannels,
-      cooldownSeconds: newCooldownSeconds || undefined,
-    };
-
-    setLocalTriggers([...localTriggers, trigger]);
-    setNewTrigger('');
-    setNewResponse('');
-    setNewMultiline(false);
-    setNewVerifyResponse(false);
-    setNewChannels(['dm']);
-    setNewCooldownSeconds(0);
-  };
-
-  const removeTrigger = (id: string) => {
-    setLocalTriggers(localTriggers.filter(t => t.id !== id));
-    if (editingId === id) {
-      setEditingId(null);
-    }
-  };
-
-  const startEditing = (id: string) => {
-    setEditingId(id);
-  };
-
-  const cancelEditing = () => {
-    setEditingId(null);
-  };
-
-  const saveEdit = (id: string, trigger: string | string[], responseType: ResponseType, response: string, multiline: boolean, verifyResponse: boolean, channels: Array<number | 'dm' | 'none'>, scriptArgs?: string, cooldownSeconds?: number) => {
-    const triggerValidation = validateTrigger(trigger);
-    if (!triggerValidation.valid) {
-      showToast(triggerValidation.error || t('auto_responder.invalid_trigger'), 'error');
-      return;
-    }
-
-    const responseValidation = validateResponse(response, responseType);
-    if (!responseValidation.valid) {
-      showToast(responseValidation.error || t('auto_responder.invalid_response'), 'error');
-      return;
-    }
-
-    setLocalTriggers(localTriggers.map(t =>
-      t.id === id
-        ? { ...t, trigger: Array.isArray(trigger) ? trigger : trigger.trim(), responseType, response: response.trim(), multiline: responseType !== 'script' ? multiline : undefined, verifyResponse, channels, channel: undefined, scriptArgs: responseType === 'script' ? scriptArgs : undefined, cooldownSeconds: cooldownSeconds || undefined }
-        : t
-    ));
-    setEditingId(null);
-  };
-
-
-  /**
-   * Tests a message against all triggers and returns the first match.
-   * For conflict detection, use testAllTriggerMatches instead.
-   */
-  const testTriggerMatch = (message: string): { trigger?: AutoResponderTrigger; params?: Record<string, string>; matchedPattern?: string; regexPattern?: string; matchPositions?: Array<{ start: number; end: number; type: 'literal' | 'parameter' }> } | null => {
-    for (const trigger of localTriggers) {
-      // Split trigger into individual patterns
-      const patterns = splitTriggerPatterns(trigger.trigger);
-      
-      // Try each pattern until one matches
-      for (const pattern of patterns) {
-        const match = testSinglePattern(pattern, message);
-        if (match) {
-          // Build regex pattern for display
-          const regexPattern = buildRegexPattern(pattern);
-          // Get match positions
-          const matchPositions = getMatchPositions(pattern, message, match.params || {});
-          
-          return { 
-            trigger, 
-            params: match.params,
-            matchedPattern: pattern,
-            regexPattern,
-            matchPositions
-          };
-        }
-      }
-    }
-    return null;
-  };
-
-  /**
-   * Tests a message against all triggers and returns ALL matches (for conflict detection).
-   */
-  const testAllTriggerMatches = (message: string): Array<{ trigger: AutoResponderTrigger; params?: Record<string, string>; matchedPattern?: string; regexPattern?: string }> => {
-    const matches: Array<{ trigger: AutoResponderTrigger; params?: Record<string, string>; matchedPattern?: string; regexPattern?: string }> = [];
-    
-    for (const trigger of localTriggers) {
-      const patterns = splitTriggerPatterns(trigger.trigger);
-      
-      for (const pattern of patterns) {
-        const match = testSinglePattern(pattern, message);
-        if (match) {
-          const regexPattern = buildRegexPattern(pattern);
-          matches.push({
-            trigger,
-            params: match.params,
-            matchedPattern: pattern,
-            regexPattern
-          });
-          break; // Only add one match per trigger (first matching pattern)
-        }
-      }
-    }
-    
-    return matches;
-  };
-
-
-  /**
-   * Generates a sample response with parameter substitution.
-   * Enhanced version that shows preview with example values if no match.
-   */
-  const generateSampleResponse = (trigger: AutoResponderTrigger, message?: string): string => {
-    let response = trigger.response;
-    
-    // If message provided, try to match and extract real parameters
-    if (message) {
-      const match = testTriggerMatch(message);
-      if (match && match.trigger?.id === trigger.id && match.params) {
-        Object.entries(match.params).forEach(([key, value]) => {
-      response = response.replace(new RegExp(`\\{${key}\\}`, 'g'), value);
-    });
-        return response;
-      }
-    }
-    
-    // Otherwise, use example values for preview
-    const triggerStr = Array.isArray(trigger.trigger) ? trigger.trigger.join(', ') : trigger.trigger;
-    const params = extractParameters(triggerStr);
-    params.forEach((param) => {
-      const exampleValue = getExampleValueForParam(param.name, param.pattern);
-      response = response.replace(new RegExp(`\\{${param.name}\\}`, 'g'), exampleValue);
-    });
-    
-    return response;
-  };
-
-
-
   const handleSaveForSaveBar = useCallback(async () => {
+    // Normalise every edited or new trigger the way Done does, and refuse to
+    // save while one is invalid: open it and show its errors instead.
+    const prepared = localTriggers.map((tr) => (isEdited(tr) ? finalizeTrigger(tr) : tr));
+    for (const tr of prepared) {
+      if (!isEdited(tr)) continue;
+      const errs = validateAutoResponderTrigger(tr, t);
+      if (hasErrors(errs)) {
+        setErrorsById((prev) => ({ ...prev, [tr.id]: errs }));
+        setExpandedId(tr.id);
+        showToast(errs.trigger || errs.response || errs.channels || t('auto_responder.invalid_trigger'), 'error');
+        return;
+      }
+    }
+
     setIsSaving(true);
     try {
       // Sync to backend
@@ -559,7 +382,7 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           autoResponderEnabled: String(localEnabled),
-          autoResponderTriggers: JSON.stringify(localTriggers),
+          autoResponderTriggers: JSON.stringify(prepared),
           autoResponderSkipIncompleteNodes: String(localSkipIncompleteNodes)
         })
       });
@@ -573,8 +396,11 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
       }
 
       // Update parent state after successful API call
+      setLocalTriggers(prepared);
+      setExpandedId(null);
+      setErrorsById({});
       onEnabledChange(localEnabled);
-      onTriggersChange(localTriggers);
+      onTriggersChange(prepared);
       onSkipIncompleteNodesChange(localSkipIncompleteNodes);
 
       setHasChanges(false);
@@ -585,10 +411,11 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
     } finally {
       setIsSaving(false);
     }
-  }, [localEnabled, localTriggers, localSkipIncompleteNodes, baseUrl, csrfFetch, sourceQuery, showToast, t, onEnabledChange, onTriggersChange, onSkipIncompleteNodesChange]);
+  }, [localEnabled, localTriggers, localSkipIncompleteNodes, baseUrl, csrfFetch, sourceQuery, showToast, t, onEnabledChange, onTriggersChange, onSkipIncompleteNodesChange, isEdited]);
 
   // Register with SaveBar
   useSaveBar({
+    numberScope,
     id: 'auto-responder',
     sectionName: t('auto_responder.title'),
     hasChanges,
@@ -597,7 +424,58 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
     onDismiss: resetChanges
   });
 
+  const visibleTriggers = localTriggers.filter((tr) =>
+    tr.id === expandedId || (
+      matchesSearch(triggerSearch, patternText(tr.trigger), tr.response)
+      && (triggerFilter === 'all' || tr.responseType === triggerFilter)
+    ));
+
+  const triggerSummary = (tr: AutoResponderTrigger): React.ReactNode => {
+    switch (tr.responseType) {
+      case 'script':
+        return <code>{tr.response}{tr.scriptArgs ? ` ${tr.scriptArgs}` : ''}</code>;
+      case 'traceroute':
+        return <><UiIcon name="forward" size={13} /> {tr.response}</>;
+      case 'mailbox':
+        return t('auto_responder.mailbox_description');
+      default:
+        return tr.response;
+    }
+  };
+
+  const triggerChips = (tr: AutoResponderTrigger): TriggerChip[] => {
+    const chips: TriggerChip[] = [
+      { label: tr.responseType.toUpperCase(), tone: 'accent' },
+      { label: channelsLabel(tr), tone: 'info', title: t('auto_responder.channels_label') },
+    ];
+    if (tr.multiline) chips.push({ label: t('auto_responder.badge_multiline') });
+    if (tr.verifyResponse) chips.push({ label: t('auto_responder.badge_verify'), tone: 'caution' });
+    if (tr.cooldownSeconds && tr.cooldownSeconds > 0) {
+      chips.push({ label: <><UiIcon name="timer" size={12} /> {tr.cooldownSeconds}s {t('auto_responder.cooldown_badge')}</> });
+    }
+    return chips;
+  };
+
+  // Mirrors the server: patterns tried in order, the first matching trigger
+  // replies. Channel filters are not applied (the test message has no channel).
+  const matchForTest = (tr: AutoResponderTrigger, text: string): PatternTestResult => {
+    const m = matchAutoResponderTrigger(tr, text);
+    if (!m) return { matched: false };
+    const params = Object.entries(m.params);
+    const detail = (
+      <>
+        {t('auto_responder.pattern_label')} {m.matchedPattern}
+        {params.length > 0 && ` · ${params.map(([k, v]) => `${k}="${v}"`).join(', ')}`}
+      </>
+    );
+    if (tr.responseType === 'text' || tr.responseType === 'http') {
+      return { matched: true, detail, response: renderSampleResponse(tr, m.params), multiline: !!tr.multiline };
+    }
+    return { matched: true, detail: <>{detail}{tr.response ? ` · ${tr.response}` : ''}</> };
+  };
+
   return (
+    <NumberInputScope scope={numberScope}>
     <ConfigSection
       title={t('auto_responder.title')}
       enabled={localEnabled}
@@ -638,8 +516,110 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
           </div>
         </div>
 
+        {/* Configured triggers (#5808: one TriggerCard each; Add opens a new one) */}
+        <div className="setting-item" style={{ marginTop: '1.5rem' }}>
+          <label>
+            {t('auto_responder.configured_triggers_heading')}
+            <span className="setting-description">
+              {t('auto_responder.add_trigger_description')}
+            </span>
+          </label>
+
+          {localTriggers.length > TRIGGER_FILTER_THRESHOLD && (
+            <TriggerListFilter
+              search={triggerSearch}
+              onSearchChange={setTriggerSearch}
+              type={triggerFilter}
+              onTypeChange={setTriggerFilter}
+              searchPlaceholder={t('auto_responder.search_triggers')}
+              typeOptions={[
+                { value: 'all', label: t('auto_responder.filter_all') },
+                { value: 'text', label: t('auto_responder.type_text') },
+                { value: 'http', label: t('auto_responder.type_http') },
+                { value: 'script', label: t('auto_responder.type_script') },
+                { value: 'traceroute', label: t('auto_responder.type_traceroute') },
+                { value: 'mailbox', label: t('auto_responder.type_mailbox') },
+              ]}
+            />
+          )}
+
+          {localTriggers.length > 0 && (
+            <div className={styles.legend}>
+              <span className={styles.legendTitle}>{t('auto_responder.legend')}</span>
+              <span className={styles.legendItem}><span className={styles.swatchLiteral} />{t('auto_responder.literal')}</span>
+              <span className={styles.legendItem}><span className={styles.swatchParameter} />{t('auto_responder.parameter')}</span>
+            </div>
+          )}
+
+          {localTriggers.length === 0 && (
+            <ConfigEmptyState className={styles.empty}>{t('auto_responder.no_triggers_yet')}</ConfigEmptyState>
+          )}
+
+          {visibleTriggers.map((tr) => {
+            const errors = errorsById[tr.id] ?? {};
+            return (
+              <TriggerCard
+                key={tr.id}
+                titleMono
+                title={patternText(tr.trigger).trim()
+                  ? <PatternHighlight trigger={tr.trigger} />
+                  : <span className={styles.untitled}>{t('auto_responder.new_trigger')}</span>}
+                summary={triggerSummary(tr)}
+                chips={triggerChips(tr)}
+                expanded={expandedId === tr.id}
+                onEdit={() => startEditing(tr.id)}
+                onDone={() => finishEditing(tr.id)}
+                onDelete={() => removeTrigger(tr.id)}
+                disabled={!localEnabled}
+                invalid={hasErrors(errors)}
+                deleteTitle={t('auto_responder.remove_trigger_title')}
+                deleteMessage={t('auto_responder.remove_trigger_draft_confirm')}
+                deletePreview={formatTriggerPatterns(tr.trigger) || undefined}
+              >
+                <TriggerEditor
+                  trigger={tr}
+                  onChange={(patch) => updateTrigger(tr.id, patch)}
+                  errors={errors}
+                  availableScripts={availableScripts}
+                  channels={channels}
+                  baseUrl={baseUrl}
+                  disabled={!localEnabled}
+                />
+              </TriggerCard>
+            );
+          })}
+
+          {localTriggers.length > 0 && visibleTriggers.length === 0 && (
+            <ConfigEmptyState className={styles.empty}>{t('auto_responder.no_triggers_match')}</ConfigEmptyState>
+          )}
+
+          <button
+            type="button"
+            className={styles.addButton}
+            onClick={() => addTrigger()}
+            disabled={!localEnabled}
+          >
+            <UiIcon name="plus" size={14} /> {t('auto_responder.add_trigger')}
+          </button>
+        </div>
+
+        {/* Local pattern test: never sends, never calls the server */}
+        {localTriggers.length > 0 && (
+          <PatternTestBox
+            triggers={localTriggers}
+            mode="first"
+            getKey={(tr) => tr.id}
+            getLabel={(tr) => <>{formatTriggerPatterns(tr.trigger)} <span className={styles.typeTag}>{tr.responseType.toUpperCase()}</span></>}
+            match={matchForTest}
+            defaultText={'w 33076\ntemp 72\nmsg hello world\nset temperature to 72'}
+            title={t('auto_responder.test_pattern_matching')}
+            description={t('auto_responder.test_box_description')}
+            noMatchLabel={t('auto_responder.no_matching_trigger')}
+          />
+        )}
+
         {/* Pattern Examples Section */}
-        <PatternExamples onSelectPattern={setNewTrigger} disabled={!localEnabled} />
+        <PatternExamples onSelectPattern={selectExamplePattern} disabled={!localEnabled} />
 
         {/* Script Management Section */}
         <ScriptManagement
@@ -664,1716 +644,6 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
           onSelectAll={selectAllScripts}
           onDeselectAll={deselectAllScripts}
         />
-
-        <div className="setting-item" style={{ marginTop: '1.5rem' }}>
-          <label>
-            {t('auto_responder.add_trigger')}
-            <span className="setting-description">
-              {t('auto_responder.add_trigger_description')}
-            </span>
-          </label>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', marginTop: '0.5rem' }}>
-            <div className={`${layout.wrapRow} ${layout.patternRow}`} style={{ display: 'flex', gap: '0.5rem', alignItems: 'flex-start' }}>
-              <div className={`${layout.growField} ${layout.patternField}`} style={{ position: 'relative' }}>
-            <input
-              type="text"
-              value={newTrigger}
-              onChange={(e) => setNewTrigger(e.target.value)}
-                  placeholder={t('auto_responder.trigger_placeholder')}
-              disabled={!localEnabled}
-              className={`setting-input ${layout.scrollTarget}`}
-                  style={{ 
-                    width: '100%',
-                    fontFamily: 'monospace',
-                    borderColor: newTriggerValidation.valid ? undefined : 'var(--color-error)',
-                    borderWidth: newTriggerValidation.valid ? undefined : '2px',
-                    // Keep typed text clear of the "N patterns" badge drawn
-                    // over the right edge. Only while the badge shows, so the
-                    // empty field keeps its full width for the placeholder.
-                    paddingRight: newTrigger.trim() ? PATTERN_BADGE_RESERVE : undefined
-                  }}
-                  title={t('auto_responder.trigger_pattern_title')}
-                />
-                {newTrigger.trim() && (
-                  <div style={{
-                    position: 'absolute',
-                    right: '0.5rem',
-                    top: '50%',
-                    transform: 'translateY(-50%)',
-                    fontSize: '0.7rem',
-                    color: 'var(--color-text-subtle)',
-                    pointerEvents: 'none',
-                    whiteSpace: 'nowrap'
-                  }}>
-                    {t('auto_responder.pattern_count', { count: splitTriggerPatterns(newTrigger).length })}
-                  </div>
-                )}
-              </div>
-            <select
-              value={newResponseType}
-              onChange={(e) => setNewResponseType(e.target.value as ResponseType)}
-              disabled={!localEnabled}
-              className="setting-input"
-              style={{ width: '120px', minWidth: '120px' }}
-                title={t('auto_responder.response_type_title')}
-            >
-              <option value="text">{t('auto_responder.type_text')}</option>
-              <option value="http">{t('auto_responder.type_http')}</option>
-              <option value="script">{t('auto_responder.type_script')}</option>
-              <option value="mailbox">{t('auto_responder.type_mailbox')}</option>
-            </select>
-            <div className={`${layout.growField} ${layout.responseField}`}>
-              {newResponseType === 'mailbox' ? (
-                <span style={{ fontSize: '0.75rem', color: 'var(--color-text-subtle)' }}>
-                  {t('auto_responder.mailbox_description')}{' '}
-                  {t('auto_responder.mailbox_pattern_hint')}{' '}
-                  <code>msg &#123;recipient&#125; &#123;body:.+&#125;,inbox,inbox play &#123;sender&#125;,inbox play,inbox delete &#123;id&#125;,inbox clear</code>
-                </span>
-              ) : newResponseType === 'text' ? (
-                <textarea
-                  value={newResponse}
-                  onChange={(e) => setNewResponse(e.target.value)}
-                  placeholder={t('auto_responder.response_text_placeholder')}
-                  disabled={!localEnabled}
-                  className="setting-input"
-                  style={{ width: '100%', fontFamily: 'monospace', minHeight: '60px', resize: 'vertical' }}
-                  rows={3}
-                  title={t('auto_responder.text_response_title')}
-                />
-              ) : newResponseType === 'script' ? (
-                <select
-                  value={newResponse}
-                  onChange={(e) => setNewResponse(e.target.value)}
-                  disabled={!localEnabled || availableScripts.length === 0}
-                  className="setting-input"
-                  style={{ width: '100%', minWidth: 'min(100%, 200px)', fontFamily: 'monospace' }}
-                  title={t('auto_responder.script_select_title')}
-                >
-                  <option value="">
-                    {availableScripts.length === 0 ? t('auto_responder.no_scripts_found') : t('auto_responder.select_script')}
-                  </option>
-                  {availableScripts.map((script) => {
-                    const display = script.name
-                      ? `${script.emoji ? `${script.emoji} ` : ''}${script.name} | ${script.filename} | ${script.language}`
-                      : script.filename;
-                    return (
-                    <option key={script.path} value={script.path}>
-                        {display}
-                    </option>
-                    );
-                  })}
-                </select>
-              ) : (
-                <input
-                  type="text"
-                  value={newResponse}
-                  onChange={(e) => setNewResponse(e.target.value)}
-                  placeholder={t('auto_responder.http_url_placeholder')}
-                  disabled={!localEnabled}
-                  className="setting-input"
-                  style={{ width: '100%', fontFamily: 'monospace' }}
-                  title={t('auto_responder.http_url_title')}
-                />
-              )}
-            </div>
-            {/* Cooldown for new trigger */}
-            <div className={layout.cooldownGroup} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.5rem' }}>
-              <label style={{ fontSize: '0.9rem', fontWeight: 'bold' }}>{t('auto_responder.cooldown_label')}</label>
-              <NumberInputScope scope={addNumberScope}>
-                <NumberInput
-                  value={newCooldownSeconds}
-                  onChange={setNewCooldownSeconds}
-                  min={0}
-                  max={COOLDOWN_SECONDS_MAX}
-                  integer
-                  disabled={!localEnabled}
-                  className="setting-input"
-                  style={{ width: '80px' }}
-                />
-              </NumberInputScope>
-              <span className={layout.cooldownHint} style={{ fontSize: '0.75rem', color: 'var(--color-text-subtle)' }}>
-                {t('auto_responder.cooldown_help')}
-              </span>
-            </div>
-            <div className={layout.buttonGroup}>
-            <button
-              onClick={addTrigger}
-              disabled={!localEnabled || !newTrigger.trim() || (newResponseType !== 'mailbox' && !newResponse.trim()) || !newTriggerValidation.valid || addNumberScope.invalid}
-              className="btn-primary"
-              style={{
-                padding: '0.5rem 1rem',
-                fontSize: '14px',
-                opacity: (localEnabled && newTrigger.trim() && (newResponseType === 'mailbox' || !!newResponse.trim()) && newTriggerValidation.valid && !addNumberScope.invalid) ? 1 : 0.5,
-                cursor: (localEnabled && newTrigger.trim() && (newResponseType === 'mailbox' || !!newResponse.trim()) && newTriggerValidation.valid && !addNumberScope.invalid) ? 'pointer' : 'not-allowed'
-              }}
-            >
-              {t('common.add')}
-            </button>
-            <button
-              onClick={() => {
-                setNewTrigger('');
-                setNewResponse('');
-                setNewResponseType('text');
-                setNewMultiline(false);
-                setNewVerifyResponse(false);
-                setNewChannels(['dm']);
-                setNewTriggerTestInput('');
-              }}
-              disabled={!localEnabled}
-              style={{
-                padding: '0.5rem 1rem',
-                fontSize: '14px',
-                background: 'var(--color-error)',
-                color: 'white',
-                border: 'none',
-                borderRadius: '4px',
-                opacity: localEnabled ? 1 : 0.5,
-                cursor: localEnabled ? 'pointer' : 'not-allowed'
-              }}
-              title={t('auto_responder.clear_fields')}
-            >
-              {t('common.clear')}
-            </button>
-            </div>
-            </div>
-            {!newTriggerValidation.valid && newTriggerValidation.error && (
-              <div style={{ 
-                fontSize: '0.75rem', 
-                color: 'var(--color-error)',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '0.25rem',
-                marginTop: '0.25rem'
-              }}>
-                <UiIcon name="alert" size={14} />
-                <span>{newTriggerValidation.error}</span>
-              </div>
-            )}
-            {newTriggerValidation.valid && newTrigger.trim() && (() => {
-              const patterns = splitTriggerPatterns(newTrigger);
-              const allParams = patterns.flatMap(p => extractParameters(p));
-              const uniqueParams = Array.from(new Set(allParams.map(p => p.name)));
-              
-              // Test the trigger against test input if provided
-              // Create a temporary trigger to test against
-              const testMatch = newTriggerTestInput.trim() ? (() => {
-                // Test each pattern individually
-                for (const pattern of patterns) {
-                  const regexPattern = buildRegexPattern(pattern);
-                  const regex = new RegExp(regexPattern, 'i');
-                  const match = newTriggerTestInput.trim().match(regex);
-                  
-                  if (match) {
-                    // Extract parameters
-                    const params: Record<string, string> = {};
-                    const patternParams = extractParameters(pattern);
-                    patternParams.forEach((param, idx) => {
-                      if (match[idx + 1]) {
-                        params[param.name] = match[idx + 1];
-                      }
-                    });
-                    
-                    // Get match positions
-                    const matchPositions = getMatchPositions(pattern, newTriggerTestInput.trim(), params);
-                    
-                    return {
-                      matchedPattern: pattern,
-                      params,
-                      matchPositions,
-                      regexPattern
-                    };
-                  }
-                }
-                return null;
-              })() : null;
-              
-              return (
-                <div style={{ marginTop: '0.5rem', padding: '0.75rem', background: 'var(--color-surface)', border: '1px solid var(--color-border-subtle)', borderRadius: '4px' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
-                    <span style={{ fontSize: '0.75rem', color: 'var(--color-success)', fontWeight: 'bold' }}><UiIcon name="check" size={14} /> {t('auto_responder.valid')}</span>
-                    <span style={{ fontSize: '0.7rem', color: 'var(--color-text-subtle)' }}>
-                      {t('auto_responder.pattern_count', { count: patterns.length })}
-                      {uniqueParams.length > 0 && ` • ${t('auto_responder.parameter_count', { count: uniqueParams.length })}`}
-                    </span>
-                  </div>
-                  
-                  {/* Real-time Pattern Preview with Highlighting */}
-                  <div style={{ marginTop: '0.75rem', marginBottom: '0.75rem' }}>
-                    <div style={{ fontSize: '0.7rem', color: 'var(--color-text-subtle)', marginBottom: '0.25rem', fontWeight: 'bold' }}>{t('auto_responder.pattern_preview')}</div>
-                    <div style={{ 
-                      padding: '0.5rem', 
-                      background: 'var(--color-surface-hover)', 
-                      borderRadius: '4px', 
-                      fontFamily: 'monospace', 
-                      fontSize: '0.85rem',
-                      lineHeight: '1.6',
-                      minHeight: '30px',
-                      display: 'flex',
-                      flexWrap: 'wrap',
-                      alignItems: 'center'
-                    }}>
-                      {patterns.map((pattern, patternIdx) => {
-                        const segments: Array<{ text: string; type: 'literal' | 'parameter'; paramName?: string; startPos: number; endPos: number }> = [];
-
-                        // Parse pattern into segments
-                        let i = 0;
-                        while (i < pattern.length) {
-                          if (pattern[i] === '{') {
-                            const start = i + 1;
-                            let depth = 1;
-                            let end = start;
-                            while (end < pattern.length && depth > 0) {
-                              if (pattern[end] === '{') depth++;
-                              else if (pattern[end] === '}') depth--;
-                              end++;
-                            }
-                            const paramMatch = pattern.substring(start, end - 1);
-                            const colonPos = paramMatch.indexOf(':');
-                            const paramName = colonPos >= 0 ? paramMatch.substring(0, colonPos) : paramMatch;
-                            segments.push({ text: pattern.substring(i, end), type: 'parameter', paramName, startPos: i, endPos: end });
-                            i = end;
-                          } else {
-                            const literalStart = i;
-                            while (i < pattern.length && pattern[i] !== '{') {
-                              i++;
-                            }
-                            const literalText = pattern.substring(literalStart, i);
-                            if (literalText.trim()) {
-                              segments.push({ text: literalText, type: 'literal', startPos: literalStart, endPos: i });
-                            }
-                          }
-                        }
-
-                        // Merge adjacent segments (no whitespace between them)
-                        const mergedSegments: Array<Array<{ text: string; type: 'literal' | 'parameter'; paramName?: string }>> = [];
-                        let currentGroup: Array<{ text: string; type: 'literal' | 'parameter'; paramName?: string }> = [];
-
-                        for (let j = 0; j < segments.length; j++) {
-                          currentGroup.push(segments[j]);
-
-                          const isLastSegment = j === segments.length - 1;
-                          let nextSegmentIsAdjacent = false;
-
-                          if (!isLastSegment) {
-                            const current = segments[j];
-                            const next = segments[j + 1];
-                            const positionsAdjacent = next.startPos === current.endPos;
-                            const currentEndsWithSpace = current.type === 'literal' && current.text.endsWith(' ');
-                            const nextStartsWithSpace = next.type === 'literal' && next.text.startsWith(' ');
-                            nextSegmentIsAdjacent = positionsAdjacent && !currentEndsWithSpace && !nextStartsWithSpace;
-                          }
-
-                          if (!nextSegmentIsAdjacent) {
-                            mergedSegments.push(currentGroup);
-                            currentGroup = [];
-                          }
-                        }
-
-                        return (
-                          <div key={patternIdx} style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '0.1rem' }}>
-                            {mergedSegments.map((group, groupIdx) => {
-                              if (group.length === 1) {
-                                const segment = group[0];
-                                return (
-                                  <span
-                                    key={groupIdx}
-                                    style={{
-                                      backgroundColor: segment.type === 'parameter' ? 'color-mix(in srgb, var(--color-success) 40%, transparent)' : 'color-mix(in srgb, var(--color-accent) 40%, transparent)',
-                                      padding: '2px 4px',
-                                      borderRadius: '2px',
-                                      fontWeight: segment.type === 'parameter' ? 'bold' : 'normal',
-                                      color: 'var(--color-text)'
-                                    }}
-                                    title={segment.type === 'parameter' ? t('auto_responder.parameter_title', { name: segment.paramName }) : t('auto_responder.literal_text')}
-                                  >
-                                    {segment.type === 'literal' ? segment.text.trim() : segment.text}
-                                  </span>
-                                );
-                              } else {
-                                return (
-                                  <span
-                                    key={groupIdx}
-                                    style={{
-                                      display: 'inline-flex',
-                                      alignItems: 'center',
-                                      borderRadius: '2px',
-                                      overflow: 'hidden',
-                                      border: '1px solid color-mix(in srgb, var(--color-success) 50%, transparent)'
-                                    }}
-                                    title={group.map(s => s.type === 'parameter' ? `{${s.paramName}}` : s.text).join('')}
-                                  >
-                                    {group.map((segment, segIdx) => (
-                                      <React.Fragment key={segIdx}>
-                                        <span
-                                          style={{
-                                            backgroundColor: segment.type === 'parameter' ? 'color-mix(in srgb, var(--color-success) 40%, transparent)' : 'color-mix(in srgb, var(--color-accent) 40%, transparent)',
-                                            padding: '2px 4px',
-                                            fontWeight: segment.type === 'parameter' ? 'bold' : 'normal',
-                                            color: 'var(--color-text)'
-                                          }}
-                                        >
-                                          {segment.type === 'literal' ? segment.text.trim() : segment.text}
-                                        </span>
-                                        {segIdx < group.length - 1 && (
-                                          <span style={{
-                                            width: '1px',
-                                            height: '100%',
-                                            backgroundColor: 'color-mix(in srgb, var(--color-text) 30%, transparent)',
-                                            margin: '0'
-                                          }} />
-                                        )}
-                                      </React.Fragment>
-                                    ))}
-                                  </span>
-                                );
-                              }
-                            })}
-                            {patternIdx < patterns.length - 1 && (
-                              <span style={{ color: 'var(--color-text-subtle)', margin: '0 0.25rem' }}>,</span>
-                            )}
-                          </div>
-                        );
-                      })}
-                    </div>
-                    <div style={{ marginTop: '0.5rem', fontSize: '0.7rem', color: 'var(--color-text-subtle)', display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}>
-                        <span style={{ display: 'inline-block', width: '12px', height: '12px', backgroundColor: 'color-mix(in srgb, var(--color-accent) 40%, transparent)', borderRadius: '2px' }}></span>
-                        {t('auto_responder.literal_text')}
-                      </span>
-                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}>
-                        <span style={{ display: 'inline-block', width: '12px', height: '12px', backgroundColor: 'color-mix(in srgb, var(--color-success) 40%, transparent)', borderRadius: '2px' }}></span>
-                        {t('auto_responder.parameter')}
-                      </span>
-                    </div>
-                  </div>
-                  
-                  {uniqueParams.length > 0 && (
-                    <div style={{ marginTop: '0.5rem' }}>
-                      <div style={{ fontSize: '0.7rem', color: 'var(--color-text-subtle)', marginBottom: '0.25rem', fontWeight: 'bold' }}>{t('auto_responder.detected_parameters')}</div>
-                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.25rem' }}>
-                        {uniqueParams.map((paramName, idx) => {
-                          const param = allParams.find(p => p.name === paramName);
-                          return (
-                            <span
-                              key={idx}
-                              style={{
-                                display: 'inline-flex',
-                                alignItems: 'center',
-                                gap: '0.25rem',
-                                padding: '0.2rem 0.5rem',
-                                background: 'var(--color-accent)',
-                                color: 'var(--color-bg)',
-                                borderRadius: '3px',
-                                fontSize: '0.7rem',
-                                fontFamily: 'monospace',
-                                fontWeight: 'bold'
-                              }}
-                              title={param?.pattern ? t('auto_responder.pattern_title', { pattern: param.pattern }) : t('auto_responder.default_pattern_title')}
-                            >
-                              {`{${paramName}${param?.pattern ? `:${param.pattern}` : ''}}`}
-                            </span>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  )}
-                  
-                  {/* Test Section - Merged pattern matching and response testing */}
-                  <div style={{ marginTop: '0.75rem', paddingTop: '0.75rem', borderTop: '1px solid var(--color-border-subtle)' }}>
-                    <div style={{ fontSize: '0.7rem', color: 'var(--color-text-subtle)', marginBottom: '0.5rem', fontWeight: 'bold' }}><UiIcon name="test" size={14} /> {t('auto_responder.test_label')}</div>
-                    <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'stretch' }}>
-                      <input
-                        type="text"
-                        value={newTriggerTestInput}
-                        onChange={(e) => {
-                          setNewTriggerTestInput(e.target.value);
-                          setNewTriggerLiveTestResult(null);
-                        }}
-                        placeholder={t('auto_responder.test_message_placeholder')}
-                        className="setting-input"
-                        style={{ 
-                          flex: '1',
-                          fontSize: '0.9rem',
-                          padding: '0.5rem 0.75rem',
-                          fontFamily: 'monospace',
-                          borderColor: newTriggerTestInput.trim() ? (testMatch ? 'var(--color-success)' : 'var(--color-error)') : undefined,
-                          borderWidth: newTriggerTestInput.trim() ? '2px' : undefined
-                        }}
-                        title={t('auto_responder.test_input_title')}
-                      />
-                      {(newResponseType === 'http' || newResponseType === 'script') && testMatch && (
-                        <button
-                          onClick={async () => {
-                            if (!newTriggerTestInput.trim() || !testMatch) return;
-                            setNewTriggerLiveTestResult({ loading: true, result: null });
-                            try {
-                              if (newResponseType === 'http') {
-                                let url = newResponse;
-                                if (testMatch.params) {
-                                  Object.entries(testMatch.params).forEach(([paramName, paramValue]) => {
-                                    url = url.replace(new RegExp(`\\{${paramName}\\}`, 'g'), paramValue);
-                                  });
-                                }
-                                const response = await csrfFetch(`${baseUrl}/api/http/test`, {
-                                  method: 'POST',
-                                  headers: { 'Content-Type': 'application/json' },
-                                  body: JSON.stringify({ url })
-                                });
-                                if (!response.ok) {
-                                  let errorMessage = `HTTP ${response.status}`;
-                                  try {
-                                    const errorData = await response.json();
-                                    errorMessage = errorData.error || errorMessage;
-                                  } catch {
-                                    try {
-                                      const errorText = await response.text();
-                                      errorMessage = errorText || errorMessage;
-                                    } catch {
-                                      // Use default error message
-                                    }
-                                  }
-                                  throw new Error(errorMessage);
-                                }
-                                const result = await response.json();
-                                setNewTriggerLiveTestResult({ loading: false, result: result.result || t('auto_responder.no_output') });
-                              } else if (newResponseType === 'script') {
-                                const response = await csrfFetch(`${baseUrl}/api/scripts/test`, {
-                                  method: 'POST',
-                                  headers: { 'Content-Type': 'application/json' },
-                                  body: JSON.stringify({
-                                    script: newResponse,
-                                    trigger: newTrigger,
-                                    testMessage: newTriggerTestInput.trim()
-                                  })
-                                });
-                                if (!response.ok) {
-                                  let errorMessage = `HTTP ${response.status}`;
-                                  try {
-                                    const errorData = await response.json();
-                                    errorMessage = errorData.error || errorMessage;
-                                  } catch {
-                                    try {
-                                      const errorText = await response.text();
-                                      errorMessage = errorText || errorMessage;
-                                    } catch {
-                                      // Use default error message
-                                    }
-                                  }
-                                  throw new Error(errorMessage);
-                                }
-                                const result = await response.json();
-                                let output = result.output || t('auto_responder.no_output');
-                                if (result.stderr) {
-                                  output += `\n\n[stderr]\n${result.stderr}`;
-                                }
-                                if (result.params && Object.keys(result.params).length > 0) {
-                                  output += `\n\n[Parameters: ${JSON.stringify(result.params)}]`;
-                                }
-                                setNewTriggerLiveTestResult({ loading: false, result: output });
-                              }
-                            } catch (error: any) {
-                              // Handle network errors more gracefully
-                              let errorMessage = error.message || error.toString();
-                              if (errorMessage.includes('NetworkError') || errorMessage.includes('Failed to fetch')) {
-                                errorMessage = t('auto_responder.network_error');
-                              }
-                              setNewTriggerLiveTestResult({ loading: false, result: null, error: errorMessage });
-                            }
-                          }}
-                          disabled={newTriggerLiveTestResult?.loading || !testMatch || !newResponse.trim()}
-                          style={{
-                            padding: '0.5rem 1rem',
-                            fontSize: '0.875rem',
-                            background: (newTriggerLiveTestResult?.loading || !testMatch || !newResponse.trim()) ? 'var(--color-surface-active)' : 'var(--color-accent)',
-                            color: (newTriggerLiveTestResult?.loading || !testMatch || !newResponse.trim()) ? 'var(--color-text-subtle)' : 'var(--color-bg)',
-                            border: 'none',
-                            borderRadius: '4px',
-                            cursor: (newTriggerLiveTestResult?.loading || !testMatch || !newResponse.trim()) ? 'not-allowed' : 'pointer',
-                            fontWeight: 'bold',
-                            whiteSpace: 'nowrap'
-                          }}
-                          title={t('auto_responder.live_test_title')}
-                        >
-                          {newTriggerLiveTestResult?.loading ? t('auto_responder.testing') : <><UiIcon name="test" size={14} /> {t('common.test')}</>}
-                        </button>
-                      )}
-                    </div>
-                    {newTriggerTestInput.trim() && (
-                      <div style={{ marginTop: '0.5rem' }}>
-                        {testMatch ? (
-                          <div style={{ 
-                            padding: '0.75rem', 
-                            background: 'color-mix(in srgb, var(--color-success) 10%, transparent)', 
-                            border: '1px solid var(--color-success)', 
-                            borderRadius: '4px' 
-                          }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
-                              <span style={{ color: 'var(--color-success)', fontWeight: 'bold', fontSize: '0.85rem' }}><UiIcon name="check" size={14} /> {t('auto_responder.match_found')}</span>
-                              <span style={{ fontSize: '0.7rem', color: 'var(--color-text-subtle)' }}>
-                                {t('auto_responder.pattern_label')} {testMatch.matchedPattern || formatTriggerPatterns(newTrigger)}
-                              </span>
-                            </div>
-                            
-                            {/* Highlighted Message Preview */}
-                            {testMatch.matchPositions && testMatch.matchPositions.length > 0 && (
-                              <div style={{ marginBottom: '0.5rem' }}>
-                                <div style={{ fontSize: '0.7rem', color: 'var(--color-text-subtle)', marginBottom: '0.25rem', fontWeight: 'bold' }}>{t('auto_responder.match_highlight')}</div>
-                                <div style={{ 
-                                  padding: '0.5rem', 
-                                  background: 'var(--color-surface-active)', 
-                                  borderRadius: '4px', 
-                                  fontFamily: 'monospace', 
-                                  fontSize: '0.85rem',
-                                  lineHeight: '1.6'
-                                }}>
-                                  {newTriggerTestInput.trim().split('').map((char, pos) => {
-                                    const posInfo = testMatch.matchPositions?.find(p => pos >= p.start && pos < p.end);
-                                    return (
-                                      <span
-                                        key={pos}
-                                        style={{
-                                          backgroundColor: posInfo ? (posInfo.type === 'parameter' ? 'color-mix(in srgb, var(--color-success) 40%, transparent)' : 'color-mix(in srgb, var(--color-accent) 40%, transparent)') : 'transparent',
-                                          padding: '2px',
-                                          borderRadius: posInfo ? '2px' : '0',
-                                          fontWeight: posInfo?.type === 'parameter' ? 'bold' : 'normal'
-                                        }}
-                                        title={posInfo ? `${posInfo.type}: ${posInfo.start}-${posInfo.end}` : ''}
-                                      >
-                                        {char}
-                                      </span>
-                                    );
-                                  })}
-                                </div>
-                              </div>
-                            )}
-                            
-                            {testMatch.params && Object.keys(testMatch.params).length > 0 && (
-                              <div style={{ marginBottom: '0.5rem' }}>
-                                <div style={{ fontSize: '0.7rem', color: 'var(--color-text-subtle)', marginBottom: '0.25rem', fontWeight: 'bold' }}>{t('auto_responder.extracted_parameters')}</div>
-                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.25rem' }}>
-                                  {Object.entries(testMatch.params).map(([key, value]) => (
-                                    <span
-                                      key={key}
-                                      style={{
-                                        padding: '0.2rem 0.5rem',
-                                        background: 'var(--color-accent)',
-                                        color: 'var(--color-bg)',
-                                        borderRadius: '3px',
-                                        fontSize: '0.7rem',
-                                        fontFamily: 'monospace',
-                                        fontWeight: 'bold'
-                                      }}
-                                    >
-                                      {key}="{value}"
-                                    </span>
-                                  ))}
-                                </div>
-                              </div>
-                            )}
-                            
-                            {newResponse.trim() && newResponseType === 'text' && (
-                              <div style={{ marginTop: '0.5rem', paddingTop: '0.5rem', borderTop: '1px solid var(--color-border-subtle)' }}>
-                                <div style={{ fontSize: '0.7rem', color: 'var(--color-text-subtle)', marginBottom: '0.25rem', fontWeight: 'bold', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                  <span>{t('auto_responder.response_preview')}</span>
-                                  <button
-                                    onClick={() => setNewResponse('')}
-                                    disabled={!localEnabled}
-                                    style={{
-                                      background: 'var(--color-error)',
-                                      border: 'none',
-                                      borderRadius: '3px',
-                                      color: 'white',
-                                      cursor: localEnabled ? 'pointer' : 'not-allowed',
-                                      padding: '0.15rem 0.4rem',
-                                      fontSize: '0.65rem',
-                                      fontWeight: 'bold',
-                                      opacity: localEnabled ? 1 : 0.5
-                                    }}
-                                    title={t('auto_responder.clear_response')}
-                                  >
-                                    {t('common.clear')}
-                                  </button>
-                                </div>
-                                <div style={{
-                                  padding: '0.5rem',
-                                  background: 'var(--color-surface-active)',
-                                  borderRadius: '4px',
-                                  fontFamily: 'monospace',
-                                  fontSize: '0.85rem',
-                                  color: 'var(--color-text)'
-                                }}>
-                                  {generateSampleResponse({ trigger: newTrigger, responseType: newResponseType, response: newResponse } as AutoResponderTrigger, newTriggerTestInput.trim())}
-                                </div>
-                              </div>
-                            )}
-                            
-                            {/* Test Results */}
-                            {newTriggerLiveTestResult && !newTriggerLiveTestResult.loading && (
-                              <div style={{ marginTop: '0.5rem', paddingTop: '0.5rem', borderTop: '1px solid var(--color-border-subtle)' }}>
-                                <div style={{ fontSize: '0.7rem', color: 'var(--color-text-subtle)', marginBottom: '0.25rem', fontWeight: 'bold', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                  <span>{t('auto_responder.test_result')}</span>
-                                  <button
-                                    onClick={() => setNewTriggerLiveTestResult(null)}
-                                    disabled={!localEnabled}
-                                    style={{
-                                      background: 'var(--color-error)',
-                                      border: 'none',
-                                      borderRadius: '3px',
-                                      color: 'white',
-                                      cursor: localEnabled ? 'pointer' : 'not-allowed',
-                                      padding: '0.15rem 0.4rem',
-                                      fontSize: '0.65rem',
-                                      fontWeight: 'bold',
-                                      opacity: localEnabled ? 1 : 0.5
-                                    }}
-                                    title={t('auto_responder.clear_test_result')}
-                                  >
-                                    {t('common.clear')}
-                                  </button>
-                                </div>
-                                {newTriggerLiveTestResult.error ? (
-                                  <div style={{ 
-                                    padding: '0.5rem', 
-                                    background: 'color-mix(in srgb, var(--color-error) 10%, transparent)', 
-                                    border: '1px solid var(--color-error)', 
-                                    borderRadius: '4px',
-                                    color: 'var(--color-error)',
-                                    fontSize: '0.85rem'
-                                  }}>
-                                    {t('auto_responder.error_label')} {newTriggerLiveTestResult.error}
-                                  </div>
-                                ) : newTriggerLiveTestResult.result ? (
-                                  <div>
-                                    <div style={{ 
-                                      padding: '0.5rem', 
-                                      background: 'var(--color-surface-active)', 
-                                      borderRadius: '4px', 
-                                      fontFamily: 'monospace', 
-                                      fontSize: '0.85rem',
-                                      color: 'var(--color-text)',
-                                      whiteSpace: 'pre-wrap',
-                                      maxHeight: '200px',
-                                      overflowY: 'auto'
-                                    }}>
-                                      {newTriggerLiveTestResult.result}
-                                    </div>
-                                    <button
-                                      onClick={() => {
-                                        if (newTriggerLiveTestResult?.result) {
-                                          void navigator.clipboard.writeText(newTriggerLiveTestResult.result);
-                                          showToast(t('common.copied_to_clipboard'), 'success');
-                                        }
-                                      }}
-                                      style={{
-                                        marginTop: '0.25rem',
-                                        padding: '0.2rem 0.4rem',
-                                        fontSize: '0.7rem',
-                                        background: 'var(--color-surface-active)',
-                                        color: 'var(--color-text)',
-                                        border: '1px solid var(--color-border-subtle)',
-                                        borderRadius: '3px',
-                                        cursor: 'pointer'
-                                      }}
-                                    >
-                                      <UiIcon name="copy" size={14} /> {t('common.copy')}
-                                    </button>
-                                  </div>
-                                ) : null}
-                              </div>
-                            )}
-                          </div>
-                        ) : (
-                          <div style={{ 
-                            padding: '0.75rem', 
-                            background: 'color-mix(in srgb, var(--color-error) 10%, transparent)', 
-                            border: '1px solid var(--color-error)', 
-                            borderRadius: '4px',
-                            color: 'var(--color-error)',
-                            fontSize: '0.85rem'
-                          }}>
-                            <UiIcon name="close" size={14} /> {t('auto_responder.no_match_message')}
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              );
-            })()}
-          </div>
-          <div style={{ marginTop: '0.5rem', paddingLeft: '0.5rem' }}>
-            <label style={{ fontSize: '0.85rem', fontWeight: 'bold', color: 'var(--color-text-subtle)', marginBottom: '0.25rem', display: 'block' }}>
-              {t('auto_responder.channels_label')}
-            </label>
-            <div className="channel-checkbox-list" style={{ marginTop: '0.25rem' }}>
-              <div className="channel-checkbox-row">
-                <input
-                  type="checkbox"
-                  id="new-trigger-channel-dm"
-                  checked={newChannels.includes('dm')}
-                  onChange={(e) => {
-                    if (e.target.checked) {
-                      setNewChannels([...newChannels, 'dm']);
-                    } else {
-                      setNewChannels(newChannels.filter(ch => ch !== 'dm'));
-                      setNewVerifyResponse(false);
-                    }
-                  }}
-                  disabled={!localEnabled}
-                />
-                <label htmlFor="new-trigger-channel-dm" className="dm-channel">
-                  {t('auto_responder.direct_messages')}
-                </label>
-              </div>
-              {channels.map((channel) => (
-                <div key={channel.id} className="channel-checkbox-row">
-                  <input
-                    type="checkbox"
-                    id={`new-trigger-channel-${channel.id}`}
-                    checked={newChannels.includes(channel.id)}
-                    onChange={(e) => {
-                      if (e.target.checked) {
-                        setNewChannels([...newChannels, channel.id]);
-                      } else {
-                        setNewChannels(newChannels.filter(ch => ch !== channel.id));
-                      }
-                    }}
-                    disabled={!localEnabled}
-                  />
-                  <label
-                    htmlFor={`new-trigger-channel-${channel.id}`}
-                    className={channel.id === 0 ? 'primary-channel' : undefined}
-                  >
-                    {t('auto_responder.channel_option', { id: channel.id, name: channel.name })}
-                  </label>
-                </div>
-              ))}
-            </div>
-          </div>
-          {newResponseType !== 'script' && (
-            <div style={{ marginTop: '0.5rem', paddingLeft: '0.5rem' }}>
-              <label style={{ display: 'block', fontSize: '0.85rem', cursor: localEnabled ? 'pointer' : 'not-allowed', color: 'var(--color-text-subtle)' }}>
-                <input
-                  type="checkbox"
-                  checked={newMultiline}
-                  onChange={(e) => setNewMultiline(e.target.checked)}
-                  disabled={!localEnabled}
-                  style={{ marginRight: '0.5rem', cursor: localEnabled ? 'pointer' : 'not-allowed', verticalAlign: 'middle' }}
-                />
-                <span style={{ verticalAlign: 'middle' }}>{t('auto_responder.multiline_label')}</span>
-              </label>
-            </div>
-          )}
-          <div style={{ marginTop: '0.5rem', paddingLeft: '0.5rem' }}>
-            <label style={{ display: 'block', fontSize: '0.85rem', cursor: (localEnabled && newChannels.includes('dm')) ? 'pointer' : 'not-allowed', color: 'var(--color-text-subtle)', opacity: newChannels.includes('dm') ? 1 : 0.5 }}>
-              <input
-                type="checkbox"
-                checked={newVerifyResponse}
-                onChange={(e) => setNewVerifyResponse(e.target.checked)}
-                disabled={!localEnabled || !newChannels.includes('dm')}
-                style={{ marginRight: '0.5rem', cursor: localEnabled ? 'pointer' : 'not-allowed', verticalAlign: 'middle' }}
-              />
-              <span style={{ verticalAlign: 'middle' }}>{t('auto_responder.verify_response_label')}</span>
-            </label>
-          </div>
-        </div>
-
-        {/* Separator between Add Trigger and Configured Triggers */}
-        <div style={{ 
-          marginTop: '2rem', 
-          marginBottom: '1.5rem',
-          height: '1px',
-          background: 'linear-gradient(to right, transparent, var(--color-surface-inactive), transparent)',
-          position: 'relative'
-        }}>
-          <div style={{
-            position: 'absolute',
-            left: '50%',
-            top: '50%',
-            transform: 'translate(-50%, -50%)',
-            background: 'var(--color-bg)',
-            padding: '0 1rem',
-            color: 'var(--color-text-subtle)',
-            fontSize: '0.75rem',
-            fontWeight: 'bold'
-          }}>
-            {t('auto_responder.configured_triggers_heading')}
-          </div>
-        </div>
-
-        {localTriggers.length > 0 && (
-          <div className="setting-item" style={{ marginTop: '1.5rem' }}>
-            <label>
-              {t('auto_responder.configured_triggers', { count: localTriggers.length })}
-              <span className="setting-description">
-                {t('auto_responder.current_triggers_description')}
-              </span>
-            </label>
-            {/* Search and Filter */}
-            <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem', marginBottom: '0.5rem', flexWrap: 'wrap' }}>
-              <input
-                type="text"
-                value={triggerSearch}
-                onChange={(e) => setTriggerSearch(e.target.value)}
-                placeholder={t('auto_responder.search_triggers')}
-                className="setting-input"
-                style={{ flex: '1', minWidth: '200px', fontFamily: 'monospace', fontSize: '0.9rem' }}
-              />
-              <select
-                value={triggerFilter}
-                onChange={(e) => setTriggerFilter(e.target.value as 'all' | 'text' | 'http' | 'script')}
-                className="setting-input"
-                style={{ width: '120px' }}
-              >
-                <option value="all">{t('auto_responder.filter_all')}</option>
-                <option value="text">{t('auto_responder.type_text')}</option>
-                <option value="http">{t('auto_responder.type_http')}</option>
-                <option value="script">{t('auto_responder.type_script')}</option>
-              </select>
-            </div>
-            {/* Color Legend */}
-            <div style={{ 
-              display: 'flex', 
-              gap: '1rem', 
-              marginBottom: '0.75rem', 
-              padding: '0.5rem',
-              background: 'var(--color-surface)',
-              borderRadius: '4px',
-              fontSize: '0.75rem',
-              alignItems: 'center',
-              flexWrap: 'wrap'
-            }}>
-              <span style={{ color: 'var(--color-text-subtle)', fontWeight: 'bold' }}>{t('auto_responder.legend')}</span>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                <span style={{ 
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: '0.25rem'
-                }}>
-                  <span style={{ 
-                    display: 'inline-block',
-                    width: '12px', 
-                    height: '12px', 
-                    backgroundColor: 'color-mix(in srgb, var(--color-accent) 30%, transparent)', 
-                    border: '1px solid color-mix(in srgb, var(--color-accent) 50%, transparent)',
-                    borderRadius: '2px' 
-                  }}></span>
-                  <span style={{ color: 'var(--color-text)' }}>{t('auto_responder.literal')}</span>
-                </span>
-                <span style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: '0.25rem'
-                }}>
-                  <span style={{
-                    display: 'inline-block',
-                    width: '12px',
-                    height: '12px',
-                    backgroundColor: 'color-mix(in srgb, var(--color-success) 30%, transparent)',
-                    border: '1px solid color-mix(in srgb, var(--color-success) 50%, transparent)',
-                    borderRadius: '2px'
-                  }}></span>
-                  <span style={{ color: 'var(--color-text)' }}>{t('auto_responder.parameter')}</span>
-                </span>
-              </div>
-            </div>
-            <div style={{ marginTop: '0.5rem' }}>
-              {localTriggers
-                .filter(trigger => {
-                  const triggerStr = Array.isArray(trigger.trigger) ? trigger.trigger.join(', ') : trigger.trigger;
-                  const matchesSearch = !triggerSearch.trim() || 
-                    triggerStr.toLowerCase().includes(triggerSearch.toLowerCase()) ||
-                    trigger.response.toLowerCase().includes(triggerSearch.toLowerCase());
-                  const matchesFilter = triggerFilter === 'all' || trigger.responseType === triggerFilter;
-                  return matchesSearch && matchesFilter;
-                })
-                .map((trigger) => (
-                <TriggerItem
-                  key={trigger.id}
-                  trigger={trigger}
-                  isEditing={editingId === trigger.id}
-                  localEnabled={localEnabled}
-                  availableScripts={availableScripts}
-                  channels={channels}
-                  baseUrl={baseUrl}
-                  onStartEdit={() => startEditing(trigger.id)}
-                  onCancelEdit={cancelEditing}
-                  onSaveEdit={(t, rt, r, m, v, c, sa, cd) => saveEdit(trigger.id, t, rt, r, m, v, c, sa, cd)}
-                  onRemove={() => removeTrigger(trigger.id)}
-                  showToast={showToast}
-                />
-              ))}
-              {localTriggers.filter(trigger => {
-                const triggerStr = Array.isArray(trigger.trigger) ? trigger.trigger.join(', ') : trigger.trigger;
-                const matchesSearch = !triggerSearch.trim() || 
-                  triggerStr.toLowerCase().includes(triggerSearch.toLowerCase()) ||
-                  trigger.response.toLowerCase().includes(triggerSearch.toLowerCase());
-                const matchesFilter = triggerFilter === 'all' || trigger.responseType === triggerFilter;
-                return matchesSearch && matchesFilter;
-              }).length === 0 && (
-                <div style={{ 
-                  padding: '1rem', 
-                  textAlign: 'center', 
-                  color: 'var(--color-text-subtle)', 
-                  fontStyle: 'italic',
-                  background: 'var(--color-surface)',
-                  borderRadius: '4px'
-                }}>
-                  {t('auto_responder.no_triggers_match')}
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-
-        {localTriggers.length > 0 && (
-          <div className="setting-item" style={{ marginTop: '1.5rem' }}>
-            <label htmlFor="testMessages">
-              {t('auto_responder.test_pattern_matching')}
-              <span className="setting-description">
-                {t('auto_responder.test_patterns_description')}
-              </span>
-            </label>
-            {/* Real-time test input */}
-            <div style={{ marginTop: '0.5rem', marginBottom: '0.5rem' }}>
-              <label style={{ fontSize: '0.85rem', color: 'var(--color-text-subtle)', marginBottom: '0.25rem', display: 'block' }}>
-                {t('auto_responder.quick_test')}
-              </label>
-              <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'stretch' }}>
-                <input
-                  type="text"
-                  value={currentTestLine}
-                  onChange={(e) => {
-                    setCurrentTestLine(e.target.value);
-                    setQuickTestResult(null);
-                  }}
-                  onKeyPress={(e) => {
-                    if (e.key === 'Enter') {
-                      const match = testTriggerMatch(currentTestLine.trim());
-                      if (match?.trigger && match.trigger.responseType === 'text') {
-                        // For text responses, Enter key just triggers the preview (which is already shown)
-                        // No additional action needed as preview is live
-                      }
-                    }
-                  }}
-                  placeholder={t('auto_responder.quick_test_placeholder')}
-                  className="setting-input"
-                  style={{
-                    fontFamily: 'monospace',
-                    flex: '1',
-                    borderColor: currentTestLine.trim() ? (testTriggerMatch(currentTestLine.trim()) ? 'var(--color-success)' : 'var(--color-error)') : undefined,
-                    borderWidth: currentTestLine.trim() ? '2px' : undefined
-                  }}
-                />
-                {(() => {
-                  const match = testTriggerMatch(currentTestLine.trim());
-                  return match?.trigger && (match.trigger.responseType === 'http' || match.trigger.responseType === 'script') && (
-                    <button
-                      onClick={async () => {
-                        if (!currentTestLine.trim() || !match || !match.trigger) return;
-                        setQuickTestResult({ loading: true, result: null });
-                        try {
-                          if (match.trigger.responseType === 'http') {
-                            let url = match.trigger.response;
-                            if (match.params) {
-                              Object.entries(match.params).forEach(([paramName, paramValue]) => {
-                                url = url.replace(new RegExp(`\\{${paramName}\\}`, 'g'), paramValue);
-                              });
-                            }
-                            const response = await csrfFetch(`${baseUrl}/api/http/test`, {
-                              method: 'POST',
-                              headers: { 'Content-Type': 'application/json' },
-                              body: JSON.stringify({ url })
-                            });
-                            if (!response.ok) {
-                              let errorMessage = `HTTP ${response.status}`;
-                              try {
-                                const errorData = await response.json();
-                                errorMessage = errorData.error || errorMessage;
-                              } catch {
-                                try {
-                                  const errorText = await response.text();
-                                  errorMessage = errorText || errorMessage;
-                                } catch {
-                                  // Use default error message
-                                }
-                              }
-                              throw new Error(errorMessage);
-                            }
-                            const result = await response.json();
-                            setQuickTestResult({ loading: false, result: result.result || t('auto_responder.no_output') });
-                          } else if (match.trigger.responseType === 'script') {
-                            const triggerStr = Array.isArray(match.trigger.trigger)
-                              ? match.trigger.trigger.join(', ')
-                              : match.trigger.trigger;
-                            const response = await csrfFetch(`${baseUrl}/api/scripts/test`, {
-                              method: 'POST',
-                              headers: { 'Content-Type': 'application/json' },
-                              body: JSON.stringify({
-                                script: match.trigger.response,
-                                trigger: triggerStr,
-                                testMessage: currentTestLine.trim()
-                              })
-                            });
-                            if (!response.ok) {
-                              let errorMessage = `HTTP ${response.status}`;
-                              try {
-                                const errorData = await response.json();
-                                errorMessage = errorData.error || errorMessage;
-                              } catch {
-                                try {
-                                  const errorText = await response.text();
-                                  errorMessage = errorText || errorMessage;
-                                } catch {
-                                  // Use default error message
-                                }
-                              }
-                              throw new Error(errorMessage);
-                            }
-                            const result = await response.json();
-                            let output = result.output || t('auto_responder.no_output');
-                            if (result.stderr) {
-                              output += `\n\n[stderr]\n${result.stderr}`;
-                            }
-                            if (result.params && Object.keys(result.params).length > 0) {
-                              output += `\n\n[Parameters: ${JSON.stringify(result.params)}]`;
-                            }
-                            setQuickTestResult({ loading: false, result: output });
-                          }
-                        } catch (error: any) {
-                          let errorMessage = error.message || error.toString();
-                          if (errorMessage.includes('NetworkError') || errorMessage.includes('Failed to fetch')) {
-                            errorMessage = t('auto_responder.network_error');
-                          }
-                          setQuickTestResult({ loading: false, result: null, error: errorMessage });
-                        }
-                      }}
-                      className="btn-primary"
-                      disabled={quickTestResult?.loading}
-                      style={{
-                        padding: '0.5rem 1rem',
-                        fontSize: '14px',
-                        minWidth: '80px',
-                        opacity: quickTestResult?.loading ? 0.6 : 1,
-                        cursor: quickTestResult?.loading ? 'wait' : 'pointer'
-                      }}
-                    >
-                      {quickTestResult?.loading ? t('auto_responder.testing') : <><UiIcon name="test" size={14} /> {t('common.test')}</>}
-                    </button>
-                  );
-                })()}
-              </div>
-              {currentTestLine.trim() && (() => {
-                const realtimeMatch = testTriggerMatch(currentTestLine.trim());
-                const allMatches = testAllTriggerMatches(currentTestLine.trim());
-                return (
-                  <div style={{
-                    marginTop: '0.5rem',
-                    padding: '0.5rem',
-                    background: realtimeMatch ? 'color-mix(in srgb, var(--color-success) 10%, transparent)' : 'color-mix(in srgb, var(--color-error) 10%, transparent)',
-                    border: `1px solid ${realtimeMatch ? 'var(--color-success)' : 'var(--color-error)'}`,
-                    borderRadius: '4px',
-                    fontSize: '0.85rem'
-                  }}>
-                    {realtimeMatch ? (
-                      <div>
-                        <div style={{ marginBottom: '0.25rem', display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
-                          <span style={{ color: 'var(--color-success)', fontWeight: 'bold' }}><UiIcon name="check" size={14} /> {t('auto_responder.matches_label')}</span>
-                          {(() => {
-                            const pattern = realtimeMatch.matchedPattern || '';
-                            const segments: Array<{ text: string; type: 'literal' | 'parameter'; paramName?: string; startPos: number; endPos: number }> = [];
-
-                            let i = 0;
-                            while (i < pattern.length) {
-                              if (pattern[i] === '{') {
-                                const start = i + 1;
-                                let depth = 1;
-                                let end = start;
-                                while (end < pattern.length && depth > 0) {
-                                  if (pattern[end] === '{') depth++;
-                                  else if (pattern[end] === '}') depth--;
-                                  end++;
-                                }
-                                const paramMatch = pattern.substring(start, end - 1);
-                                const colonPos = paramMatch.indexOf(':');
-                                const paramName = colonPos >= 0 ? paramMatch.substring(0, colonPos) : paramMatch;
-                                segments.push({ text: pattern.substring(i, end), type: 'parameter', paramName, startPos: i, endPos: end });
-                                i = end;
-                              } else {
-                                const literalStart = i;
-                                while (i < pattern.length && pattern[i] !== '{') {
-                                  i++;
-                                }
-                                const literalText = pattern.substring(literalStart, i);
-                                if (literalText.trim()) {
-                                  segments.push({ text: literalText, type: 'literal', startPos: literalStart, endPos: i });
-                                }
-                              }
-                            }
-
-                            // Merge adjacent segments
-                            const mergedSegments: Array<Array<{ text: string; type: 'literal' | 'parameter'; paramName?: string }>> = [];
-                            let currentGroup: Array<{ text: string; type: 'literal' | 'parameter'; paramName?: string }> = [];
-
-                            for (let j = 0; j < segments.length; j++) {
-                              currentGroup.push(segments[j]);
-                              const isLastSegment = j === segments.length - 1;
-                              let nextSegmentIsAdjacent = false;
-
-                              if (!isLastSegment) {
-                                const current = segments[j];
-                                const next = segments[j + 1];
-                                const positionsAdjacent = next.startPos === current.endPos;
-                                const currentEndsWithSpace = current.type === 'literal' && current.text.endsWith(' ');
-                                const nextStartsWithSpace = next.type === 'literal' && next.text.startsWith(' ');
-                                nextSegmentIsAdjacent = positionsAdjacent && !currentEndsWithSpace && !nextStartsWithSpace;
-                              }
-
-                              if (!nextSegmentIsAdjacent) {
-                                mergedSegments.push(currentGroup);
-                                currentGroup = [];
-                              }
-                            }
-
-                            return mergedSegments.map((group, groupIdx) => {
-                              if (group.length === 1) {
-                                const segment = group[0];
-                                return (
-                                  <span
-                                    key={groupIdx}
-                                    style={{
-                                      backgroundColor: segment.type === 'parameter' ? 'color-mix(in srgb, var(--color-success) 30%, transparent)' : 'color-mix(in srgb, var(--color-accent) 20%, transparent)',
-                                      padding: '0.2rem 0.4rem',
-                                      borderRadius: '4px',
-                                      fontWeight: segment.type === 'parameter' ? 'bold' : 'normal',
-                                      color: segment.type === 'parameter' ? 'var(--color-success)' : 'var(--color-accent)',
-                                      fontFamily: 'monospace',
-                                      fontSize: '0.85rem',
-                                      border: segment.type === 'parameter' ? '1px solid color-mix(in srgb, var(--color-success) 50%, transparent)' : '1px solid color-mix(in srgb, var(--color-accent) 30%, transparent)'
-                                    }}
-                                  >
-                                    {segment.type === 'literal' ? segment.text.trim() : segment.text}
-                                  </span>
-                                );
-                              } else {
-                                return (
-                                  <span
-                                    key={groupIdx}
-                                    style={{
-                                      display: 'inline-flex',
-                                      alignItems: 'center',
-                                      borderRadius: '4px',
-                                      overflow: 'hidden',
-                                      border: '1px solid color-mix(in srgb, var(--color-success) 50%, transparent)',
-                                      fontFamily: 'monospace',
-                                      fontSize: '0.85rem'
-                                    }}
-                                  >
-                                    {group.map((segment, segIdx) => (
-                                      <React.Fragment key={segIdx}>
-                                        <span
-                                          style={{
-                                            backgroundColor: segment.type === 'parameter' ? 'color-mix(in srgb, var(--color-success) 30%, transparent)' : 'color-mix(in srgb, var(--color-accent) 20%, transparent)',
-                                            padding: '0.2rem 0.4rem',
-                                            fontWeight: segment.type === 'parameter' ? 'bold' : 'normal',
-                                            color: segment.type === 'parameter' ? 'var(--color-success)' : 'var(--color-accent)'
-                                          }}
-                                        >
-                                          {segment.type === 'literal' ? segment.text.trim() : segment.text}
-                                        </span>
-                                        {segIdx < group.length - 1 && (
-                                          <span style={{
-                                            width: '1px',
-                                            height: '100%',
-                                            backgroundColor: 'color-mix(in srgb, var(--color-text) 30%, transparent)',
-                                            margin: '0'
-                                          }} />
-                                        )}
-                                      </React.Fragment>
-                                    ))}
-                                  </span>
-                                );
-                              }
-                            });
-                          })()}
-                        </div>
-                        {allMatches.length > 1 && (
-                          <div style={{ color: 'var(--color-caution)', marginTop: '0.25rem', fontSize: '0.75rem' }}>
-                            <UiIcon name="alert" size={14} /> {t('auto_responder.conflict_warning', { count: allMatches.length })}
-                          </div>
-                        )}
-
-                        {/* Response Preview for text responses */}
-                        {realtimeMatch.trigger && realtimeMatch.trigger.responseType === 'text' && (
-                          <div style={{ marginTop: '0.5rem', paddingTop: '0.5rem', borderTop: '1px solid var(--color-border-subtle)' }}>
-                            <div style={{ fontSize: '0.7rem', color: 'var(--color-text-subtle)', marginBottom: '0.25rem', fontWeight: 'bold', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                              <span>{t('auto_responder.response_preview')}</span>
-                              <button
-                                onClick={() => setCurrentTestLine('')}
-                                disabled={!localEnabled}
-                                style={{
-                                  background: 'var(--color-error)',
-                                  border: 'none',
-                                  borderRadius: '3px',
-                                  color: 'white',
-                                  cursor: localEnabled ? 'pointer' : 'not-allowed',
-                                  padding: '0.15rem 0.4rem',
-                                  fontSize: '0.65rem',
-                                  fontWeight: 'bold',
-                                  opacity: localEnabled ? 1 : 0.5
-                                }}
-                                title={t('auto_responder.clear_test_input')}
-                              >
-                                {t('common.clear')}
-                              </button>
-                            </div>
-                            <div style={{
-                              padding: '0.5rem',
-                              background: 'var(--color-surface-active)',
-                              borderRadius: '4px',
-                              fontFamily: 'monospace',
-                              fontSize: '0.85rem',
-                              color: 'var(--color-text)',
-                              whiteSpace: realtimeMatch.trigger.multiline ? 'pre-wrap' : 'nowrap',
-                              overflowX: 'auto'
-                            }}>
-                              {generateSampleResponse(realtimeMatch.trigger, currentTestLine.trim())}
-                            </div>
-                          </div>
-                        )}
-
-                        {/* Test Results for HTTP/script */}
-                        {quickTestResult && !quickTestResult.loading && (
-                          <div style={{ marginTop: '0.5rem', paddingTop: '0.5rem', borderTop: '1px solid var(--color-border-subtle)' }}>
-                            <div style={{ fontSize: '0.7rem', color: 'var(--color-text-subtle)', marginBottom: '0.25rem', fontWeight: 'bold', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                              <span>{t('auto_responder.test_result')}</span>
-                              <button
-                                onClick={() => setQuickTestResult(null)}
-                                disabled={!localEnabled}
-                                style={{
-                                  background: 'var(--color-error)',
-                                  border: 'none',
-                                  borderRadius: '3px',
-                                  color: 'white',
-                                  cursor: localEnabled ? 'pointer' : 'not-allowed',
-                                  padding: '0.15rem 0.4rem',
-                                  fontSize: '0.65rem',
-                                  fontWeight: 'bold',
-                                  opacity: localEnabled ? 1 : 0.5
-                                }}
-                                title={t('auto_responder.clear_test_result')}
-                              >
-                                {t('common.clear')}
-                              </button>
-                            </div>
-                            {quickTestResult.error ? (
-                              <div style={{
-                                padding: '0.5rem',
-                                background: 'color-mix(in srgb, var(--color-error) 10%, transparent)',
-                                border: '1px solid var(--color-error)',
-                                borderRadius: '4px',
-                                color: 'var(--color-error)',
-                                fontSize: '0.85rem'
-                              }}>
-                                {t('auto_responder.error_label')} {quickTestResult.error}
-                              </div>
-                            ) : quickTestResult.result ? (
-                              <div>
-                                <div style={{
-                                  padding: '0.5rem',
-                                  background: 'var(--color-surface-active)',
-                                  borderRadius: '4px',
-                                  fontFamily: 'monospace',
-                                  fontSize: '0.85rem',
-                                  color: 'var(--color-text)',
-                                  whiteSpace: 'pre-wrap',
-                                  maxHeight: '200px',
-                                  overflowY: 'auto'
-                                }}>
-                                  {quickTestResult.result}
-                                </div>
-                                <button
-                                  onClick={() => {
-                                    if (quickTestResult?.result) {
-                                      void navigator.clipboard.writeText(quickTestResult.result);
-                                      showToast(t('common.copied_to_clipboard'), 'success');
-                                    }
-                                  }}
-                                  className="btn-secondary"
-                                  style={{
-                                    padding: '0.25rem 0.5rem',
-                                    fontSize: '0.75rem',
-                                    marginTop: '0.25rem'
-                                  }}
-                                >
-                                  <UiIcon name="copy" size={14} /> {t('common.copy')}
-                                </button>
-                              </div>
-                            ) : null}
-                          </div>
-                        )}
-                      </div>
-                    ) : (
-                      <div style={{ color: 'var(--color-error)' }}><UiIcon name="close" size={14} /> {t('auto_responder.no_matching_trigger')}</div>
-                    )}
-                  </div>
-                );
-              })()}
-            </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginTop: '0.5rem' }}>
-              <div>
-                <textarea
-                  id="testMessages"
-                  value={testMessages}
-                  onChange={(e) => setTestMessages(e.target.value)}
-                  placeholder={t('auto_responder.test_messages_placeholder')}
-                  disabled={!localEnabled}
-                  className="setting-input"
-                  rows={8}
-                  style={{
-                    fontFamily: 'monospace',
-                    resize: 'vertical',
-                    minHeight: '200px',
-                    width: '100%'
-                  }}
-                />
-              </div>
-              <div style={{ maxHeight: '400px', overflowY: 'auto' }}>
-                {testMessages.split('\n').filter(line => line.trim()).map((message, index) => {
-                  const match = testTriggerMatch(message);
-                  const allMatches = testAllTriggerMatches(message);
-                  const hasConflict = allMatches.length > 1;
-                  const showDetails = showMatchDetails[index] || false;
-                  const showDebug = showDebugInfo[index] || false;
-                  
-                  return (
-                    <div
-                      key={index}
-                      style={{
-                        padding: '0.5rem',
-                        marginBottom: '0.5rem',
-                        backgroundColor: match ? 'color-mix(in srgb, var(--color-success) 10%, transparent)' : 'color-mix(in srgb, var(--color-error) 10%, transparent)',
-                        border: `1px solid ${match ? (hasConflict ? 'var(--color-caution)' : 'var(--color-success)') : 'var(--color-error)'}`,
-                        borderRadius: '4px',
-                        fontFamily: 'monospace',
-                        fontSize: '0.85rem',
-                        lineHeight: '1.4'
-                      }}
-                    >
-                      <div style={{ display: 'flex', alignItems: 'center', marginBottom: '0.25rem', flexWrap: 'wrap', gap: '0.25rem' }}>
-                        <span
-                          style={{
-                            display: 'inline-block',
-                            width: '12px',
-                            height: '12px',
-                            borderRadius: '50%',
-                            backgroundColor: match ? (hasConflict ? 'var(--color-caution)' : 'var(--color-success)') : 'var(--color-error)',
-                            marginRight: '0.5rem',
-                            flexShrink: 0
-                          }}
-                        />
-                        <span style={{ color: 'var(--color-text)', fontWeight: 'bold', wordBreak: 'break-word', flex: '1' }}>
-                          {message}
-                        </span>
-                        {match && (
-                          <button
-                            onClick={() => setShowMatchDetails({ ...showMatchDetails, [index]: !showDetails })}
-                            style={{
-                              fontSize: '0.7rem',
-                              padding: '0.2rem 0.4rem',
-                              background: 'var(--color-surface-hover)',
-                              border: '1px solid var(--color-border-subtle)',
-                              borderRadius: '3px',
-                              cursor: 'pointer',
-                              color: 'var(--color-text)'
-                            }}
-                          >
-                            <UiIcon name={showDetails ? 'chevronDown' : 'forward'} size={14} /> {t('common.details')}
-                          </button>
-                        )}
-                        {match && (
-                          <button
-                            onClick={() => setShowDebugInfo({ ...showDebugInfo, [index]: !showDebug })}
-                            style={{
-                              fontSize: '0.7rem',
-                              padding: '0.2rem 0.4rem',
-                              background: 'var(--color-surface-hover)',
-                              border: '1px solid var(--color-border-subtle)',
-                              borderRadius: '3px',
-                              cursor: 'pointer',
-                              color: 'var(--color-text)'
-                            }}
-                          >
-                            <UiIcon name={showDebug ? 'chevronDown' : 'forward'} size={14} /> {t('auto_responder.debug_button')}
-                          </button>
-                        )}
-                      </div>
-                      {hasConflict && (
-                        <div style={{ 
-                          marginLeft: '1.25rem', 
-                          marginBottom: '0.25rem',
-                          padding: '0.25rem',
-                          background: 'color-mix(in srgb, var(--color-caution) 20%, transparent)',
-                          borderRadius: '3px',
-                          fontSize: '0.75rem',
-                          color: 'var(--color-caution)'
-                        }}>
-                          <UiIcon name="alert" size={14} /> {t('auto_responder.conflict_count', { count: allMatches.length })}
-                        </div>
-                      )}
-                      {match ? (
-                        <div style={{ marginLeft: '1.25rem', fontSize: '0.8rem' }}>
-                          <div style={{ color: 'var(--color-accent)', marginBottom: '0.15rem' }}>
-                            ▸ {match.matchedPattern ? match.matchedPattern : formatTriggerPatterns(match.trigger?.trigger || (Array.isArray(match.trigger?.trigger) ? match.trigger.trigger : ''))}
-                            <span style={{
-                              fontSize: '0.65rem',
-                              padding: '0.1rem 0.3rem',
-                              background: match.trigger?.responseType === 'text' ? 'var(--color-success)' : match.trigger?.responseType === 'script' ? 'var(--color-warning)' : 'var(--color-accent-alt)',
-                              color: 'var(--color-bg)',
-                              borderRadius: '2px',
-                              fontWeight: 'bold',
-                              marginLeft: '0.5rem'
-                            }}>
-                              {match.trigger?.responseType.toUpperCase()}
-                            </span>
-                          </div>
-                          {match.params && Object.keys(match.params).length > 0 && (
-                            <div style={{ color: 'var(--color-text-subtle)', marginBottom: '0.15rem' }}>
-                              <UiIcon name="copy" size={14} /> {Object.entries(match.params).map(([k, v]) => `${k}="${v}"`).join(', ')}
-                            </div>
-                          )}
-                          <div style={{ color: 'var(--color-text-muted)', marginBottom: '0.15rem' }}>
-                            <UiIcon name="messages" size={14} /> {generateSampleResponse(match.trigger!, message)}
-                          </div>
-                          {(match.trigger?.responseType === 'http' || match.trigger?.responseType === 'script') && (
-                            <div style={{ marginTop: '0.5rem', marginBottom: '0.5rem' }}>
-                              <button
-                                onClick={async () => {
-                                  setLiveTestResults({ ...liveTestResults, [index]: { loading: true, result: null } });
-                                  try {
-                                    if (match.trigger?.responseType === 'http') {
-                                      let url = match.trigger.response;
-                                      if (match.params) {
-                                        Object.entries(match.params).forEach(([paramName, paramValue]) => {
-                                          url = url.replace(new RegExp(`\\{${paramName}\\}`, 'g'), paramValue);
-                                        });
-                                      }
-                                      const response = await csrfFetch(`${baseUrl}/api/http/test`, {
-                                        method: 'POST',
-                                        headers: { 'Content-Type': 'application/json' },
-                                        body: JSON.stringify({ url })
-                                      });
-                                      if (!response.ok) {
-                                        let errorMessage = `HTTP ${response.status}`;
-                                        try {
-                                          const errorData = await response.json();
-                                          errorMessage = errorData.error || errorMessage;
-                                        } catch {
-                                          try {
-                                            const errorText = await response.text();
-                                            errorMessage = errorText || errorMessage;
-                                          } catch {
-                                            // Use default error message
-                                          }
-                                        }
-                                        throw new Error(errorMessage);
-                                      }
-                                      const result = await response.json();
-                                      setLiveTestResults({ ...liveTestResults, [index]: { loading: false, result: result.result || t('auto_responder.no_output') } });
-                                    } else if (match.trigger?.responseType === 'script') {
-                                      const response = await csrfFetch(`${baseUrl}/api/scripts/test`, {
-                                        method: 'POST',
-                                        headers: { 'Content-Type': 'application/json' },
-                                        body: JSON.stringify({
-                                          script: match.trigger.response,
-                                          trigger: Array.isArray(match.trigger.trigger) ? match.trigger.trigger.join(', ') : match.trigger.trigger,
-                                          testMessage: message
-                                        })
-                                      });
-                                      if (!response.ok) {
-                                        const errorData = await response.json();
-                                        throw new Error(errorData.error || `HTTP ${response.status}`);
-                                      }
-                                      const result = await response.json();
-                                      let output = result.output || t('auto_responder.no_output');
-                                      if (result.stderr) {
-                                        output += `\n\n[stderr]\n${result.stderr}`;
-                                      }
-                                      if (result.params && Object.keys(result.params).length > 0) {
-                                        output += `\n\n[Parameters: ${JSON.stringify(result.params)}]`;
-                                      }
-                                      setLiveTestResults({ ...liveTestResults, [index]: { loading: false, result: output } });
-                                    }
-                                  } catch (error: any) {
-                                    setLiveTestResults({ ...liveTestResults, [index]: { loading: false, result: null, error: error.message || error.toString() } });
-                                  }
-                                }}
-                                disabled={liveTestResults[index]?.loading}
-                                style={{
-                                  padding: '0.25rem 0.5rem',
-                                  fontSize: '0.7rem',
-                                  background: liveTestResults[index]?.loading ? 'var(--color-surface-active)' : 'var(--color-accent)',
-                                  color: liveTestResults[index]?.loading ? 'var(--color-text-subtle)' : 'var(--color-bg)',
-                                  border: 'none',
-                                  borderRadius: '3px',
-                                  cursor: liveTestResults[index]?.loading ? 'not-allowed' : 'pointer',
-                                  fontWeight: 'bold'
-                                }}
-                              >
-                                {liveTestResults[index]?.loading ? t('auto_responder.testing') : <><UiIcon name="test" size={14} /> {t('common.test')}</>}
-                              </button>
-                              {liveTestResults[index] && !liveTestResults[index].loading && (
-                                <div style={{ marginTop: '0.5rem', padding: '0.5rem', background: 'var(--color-surface-hover)', borderRadius: '4px', fontSize: '0.75rem' }}>
-                                  {liveTestResults[index].error ? (
-                                    <div style={{ color: 'var(--color-error)' }}>{t('auto_responder.error_label')} {liveTestResults[index].error}</div>
-                                  ) : liveTestResults[index].result ? (
-                                    <div>
-                                      <div style={{ fontWeight: 'bold', marginBottom: '0.25rem' }}>{t('auto_responder.live_test_result')}</div>
-                                      <div style={{ fontFamily: 'monospace', whiteSpace: 'pre-wrap', maxHeight: '200px', overflowY: 'auto' }}>
-                                        {liveTestResults[index].result}
-                                      </div>
-                                      <button
-                                        onClick={() => {
-                                          if (liveTestResults[index]?.result) {
-                                            void navigator.clipboard.writeText(liveTestResults[index].result!);
-                                            showToast(t('common.copied_to_clipboard'), 'success');
-                                          }
-                                        }}
-                                        style={{
-                                          marginTop: '0.25rem',
-                                          padding: '0.2rem 0.4rem',
-                                          fontSize: '0.7rem',
-                                          background: 'var(--color-surface-active)',
-                                          color: 'var(--color-text)',
-                                          border: '1px solid var(--color-border-subtle)',
-                                          borderRadius: '3px',
-                                          cursor: 'pointer'
-                                        }}
-                                      >
-                                        <UiIcon name="copy" size={14} /> {t('common.copy')}
-                                      </button>
-                                    </div>
-                                  ) : null}
-                                </div>
-                              )}
-                            </div>
-                          )}
-                          {showDetails && (
-                            <div style={{ 
-                              marginTop: '0.5rem', 
-                              padding: '0.5rem', 
-                              background: 'var(--color-surface-hover)', 
-                              borderRadius: '4px',
-                              fontSize: '0.75rem'
-                            }}>
-                              <div style={{ fontWeight: 'bold', marginBottom: '0.25rem' }}>{t('auto_responder.match_details')}</div>
-                              <div style={{ marginBottom: '0.15rem' }}>
-                                <strong>{t('auto_responder.trigger_id_label')}</strong> {match.trigger?.id}
-                              </div>
-                              <div style={{ marginBottom: '0.15rem' }}>
-                                <strong>{t('auto_responder.channel_label')}</strong> {match.trigger?.channel === 'dm' ? 'DM' : t('auto_responder.channel_number', { id: match.trigger?.channel })}
-                              </div>
-                              {match.trigger?.multiline && (
-                                <div style={{ marginBottom: '0.15rem' }}>
-                                  <strong>{t('auto_responder.multiline_detail_label')}</strong> {t('common.enabled')}
-                                </div>
-                              )}
-                              {match.trigger?.verifyResponse && (
-                                <div style={{ marginBottom: '0.15rem' }}>
-                                  <strong>{t('auto_responder.verify_response_detail_label')}</strong> {t('auto_responder.verify_enabled_retries')}
-                                </div>
-                              )}
-                              {hasConflict && (
-                                <div style={{ marginTop: '0.5rem', paddingTop: '0.5rem', borderTop: '1px solid var(--color-border-subtle)' }}>
-                                  <div style={{ fontWeight: 'bold', marginBottom: '0.25rem', color: 'var(--color-caution)' }}>
-                                    {t('auto_responder.all_matching_triggers', { count: allMatches.length })}
-                                  </div>
-                                  {allMatches.map((m, idx) => (
-                                    <div key={idx} style={{ marginBottom: '0.25rem', paddingLeft: '0.5rem', borderLeft: '2px solid var(--color-caution)' }}>
-                                      {m.matchedPattern} ({m.trigger.responseType})
-                                    </div>
-                                  ))}
-                                </div>
-                              )}
-                            </div>
-                          )}
-                          {showDebug && match.regexPattern && (
-                            <div style={{ 
-                              marginTop: '0.5rem', 
-                              padding: '0.5rem', 
-                              background: 'var(--color-surface-hover)', 
-                              borderRadius: '4px',
-                              fontSize: '0.75rem',
-                              fontFamily: 'monospace'
-                            }}>
-                              <div style={{ fontWeight: 'bold', marginBottom: '0.25rem' }}>{t('auto_responder.debug_info')}</div>
-                              <div style={{ marginBottom: '0.15rem' }}>
-                                <strong>{t('auto_responder.regex_pattern_label')}</strong> <code style={{ background: 'var(--color-surface-active)', padding: '2px 4px', borderRadius: '2px' }}>{match.regexPattern}</code>
-                              </div>
-                              {match.matchPositions && match.matchPositions.length > 0 && (
-                                <div style={{ marginTop: '0.25rem' }}>
-                                  <strong>{t('auto_responder.match_positions_label')}</strong>
-                                  <div style={{ marginTop: '0.25rem', padding: '0.5rem', background: 'var(--color-surface-active)', borderRadius: '4px', fontFamily: 'monospace', fontSize: '0.85rem', lineHeight: '1.6' }}>
-                                    {message.split('').map((char, pos) => {
-                                      const posInfo = match.matchPositions?.find(p => pos >= p.start && pos < p.end);
-                                      return (
-                                        <span
-                                          key={pos}
-                                          style={{
-                                            backgroundColor: posInfo ? (posInfo.type === 'parameter' ? 'color-mix(in srgb, var(--color-success) 40%, transparent)' : 'color-mix(in srgb, var(--color-accent) 40%, transparent)') : 'transparent',
-                                            padding: '2px',
-                                            borderRadius: posInfo ? '2px' : '0',
-                                            fontWeight: posInfo?.type === 'parameter' ? 'bold' : 'normal'
-                                          }}
-                                          title={posInfo ? `${posInfo.type}: ${posInfo.start}-${posInfo.end}` : ''}
-                                        >
-                                          {char}
-                                        </span>
-                                      );
-                                    })}
-                                  </div>
-                                  <div style={{ marginTop: '0.5rem', fontSize: '0.7rem', color: 'var(--color-text-subtle)', display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-                                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}>
-                                      <span style={{ display: 'inline-block', width: '12px', height: '12px', backgroundColor: 'color-mix(in srgb, var(--color-accent) 40%, transparent)', borderRadius: '2px' }}></span>
-                                      {t('auto_responder.literal_text')}
-                                    </span>
-                                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}>
-                                      <span style={{ display: 'inline-block', width: '12px', height: '12px', backgroundColor: 'color-mix(in srgb, var(--color-success) 40%, transparent)', borderRadius: '2px' }}></span>
-                                      {t('auto_responder.parameter_match')}
-                                    </span>
-                                  </div>
-                                </div>
-                              )}
-                            </div>
-                          )}
-                        </div>
-                      ) : (
-                        <div style={{ marginLeft: '1.25rem', fontSize: '0.8rem', color: 'var(--color-text-subtle)', fontStyle: 'italic' }}>
-                          <UiIcon name="close" size={14} /> {t('auto_responder.no_matching_trigger')}
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          </div>
-        )}
-
-        {localTriggers.length === 0 && (
-          <div style={{
-            marginTop: '1.5rem',
-            padding: '1rem',
-            background: 'var(--color-surface)',
-            border: '1px solid var(--color-border-subtle)',
-            borderRadius: '4px',
-            color: 'var(--color-text-subtle)',
-            textAlign: 'center',
-            fontStyle: 'italic'
-          }}>
-            {t('auto_responder.no_triggers_configured')}
-          </div>
-        )}
 
         {/* Import Modal */}
         {showImportModal && (
@@ -2605,6 +875,7 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
           </AutoResponderDialog>
         )}
     </ConfigSection>
+    </NumberInputScope>
   );
 };
 

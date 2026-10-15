@@ -99,18 +99,3 @@ export interface AutoResponderSectionProps {
   /** True when the source cannot transmit; shows the paused note. */
   receiveOnly?: boolean;
 }
-
-export interface TriggerItemProps {
-  trigger: AutoResponderTrigger;
-  isEditing: boolean;
-  localEnabled: boolean;
-  availableScripts: ScriptMetadata[];
-  channels: Channel[];
-  baseUrl: string;
-  onStartEdit: () => void;
-  onCancelEdit: () => void;
-  onSaveEdit: (trigger: string | string[], responseType: ResponseType, response: string, multiline: boolean, verifyResponse: boolean, channels: Array<number | 'dm' | 'none'>, scriptArgs?: string, cooldownSeconds?: number) => void;
-  onRemove: () => void;
-  showToast?: (message: string, type: 'success' | 'error' | 'warning') => void;
-}
-

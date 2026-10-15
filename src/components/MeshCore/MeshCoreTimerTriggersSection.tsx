@@ -323,7 +323,7 @@ export const MeshCoreTimerTriggersSection: React.FC<MeshCoreTimerTriggersSection
         receiveOnlyNote={meshCoreReceiveOnlyText(t)}
         headerActions={
           <ConfigHeaderCount>
-            {t('meshcore.automation.timers.count', '{{count}} triggers', { count: triggers.length })}
+            {t('automation.trigger_count', '{{count}} triggers', { count: triggers.length })}
           </ConfigHeaderCount>
         }
         description={t(

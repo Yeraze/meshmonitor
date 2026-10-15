@@ -91,12 +91,12 @@ services:
 ### 3. Configure Auto Responder
 
 1. Navigate to **Settings → Automation → Auto Responder**
-2. Click **Add Trigger**
+2. Click **Add Trigger** to open a new trigger card
 3. Configure:
    - **Trigger:** `hello {name}`
    - **Type:** `Script`
    - **Response:** `/data/scripts/hello.js` (select from dropdown)
-4. Click **Save Changes**
+4. Click **Done**, then **Save**
 
 ### 4. Test
 

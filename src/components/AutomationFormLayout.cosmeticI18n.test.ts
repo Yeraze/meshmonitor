@@ -48,34 +48,23 @@ function flexOf(selector: string): [number, number, number] {
   return [Number(m![1]), Number(m![2]), Number(m![3]) * REM];
 }
 
-describe('auto responder add row keeps Add and Clear on one line', () => {
-  const tsx = read('AutoResponderSection.tsx');
+describe('auto responder trigger editor rows (#5808: the add row became the TriggerCard editor)', () => {
+  const editor = read('auto-responder/TriggerEditor.tsx');
+  const section = read('AutoResponderSection.tsx');
 
-  it('Add and Clear sit in one nowrap group', () => {
-    expect(rule('buttonGroup')).toMatch(/flex-wrap:\s*nowrap/);
-    expect(rule('buttonGroup')).toMatch(/flex:\s*0\s+0\s+auto/);
-    const group = tsx.indexOf('<div className={layout.buttonGroup}>');
-    expect(group).toBeGreaterThan(0);
-    const add = tsx.indexOf("{t('common.add')}", group);
-    const clear = tsx.indexOf("{t('common.clear')}", group);
-    expect(add).toBeGreaterThan(group);
-    expect(clear).toBeGreaterThan(add);
-    // Both buttons close before the group does.
-    const between = tsx.slice(group, clear);
-    expect(between.match(/<button/g)?.length).toBe(2);
+  it('the inline add row with its Add / Clear buttons is gone; one Add trigger button opens a card', () => {
+    expect(section).not.toContain('<div className={layout.buttonGroup}>');
+    expect(section).toContain('onClick={() => addTrigger()}');
+    expect(section).toContain("{t('auto_responder.add_trigger')}");
   });
 
-  it('the Cooldown group gives up width before the buttons move', () => {
-    const [grow, shrink, basis] = flexOf('cooldownGroup');
+  it('the Cooldown group gives up width before anything else moves', () => {
+    const [grow, shrink] = flexOf('cooldownGroup');
     expect(grow).toBeGreaterThan(0);
     expect(shrink).toBeGreaterThan(0);
     expect(rule('cooldownGroup')).toMatch(/min-width:\s*0/);
     expect(rule('cooldownGroup')).toMatch(/flex-wrap:\s*wrap/);
-    // 1280px row is 599px. German buttons: 122 (Hinzufügen) + ~80 (Leeren) + gap.
-    const row = 599;
-    const germanButtons = 122 + 80 + 8;
-    expect(basis + 8 + germanButtons).toBeLessThanOrEqual(row);
-    expect(tsx).toContain('<div className={layout.cooldownGroup}');
+    expect(editor).toContain('layout.cooldownGroup');
   });
 
   it('keeps the #5465 pattern / response layout', () => {
@@ -94,12 +83,11 @@ describe('script select placeholder fits the Response field', () => {
     const text = en['auto_responder.select_script'];
     // Monospace at 14px is ~8.4px a character; ~40px goes to padding and arrow.
     expect(text.length * 8.4 + 40).toBeLessThanOrEqual(181);
-    expect(read('AutoResponderSection.tsx')).toContain("t('auto_responder.select_script')");
-    expect(read('auto-responder/TriggerItem.tsx')).toContain("t('auto_responder.select_script')");
+    expect(read('auto-responder/TriggerEditor.tsx')).toContain("t('auto_responder.select_script')");
   });
 
   it('the full description stays in the tooltip', () => {
-    expect(read('AutoResponderSection.tsx')).toContain("title={t('auto_responder.script_select_title')}");
+    expect(read('auto-responder/TriggerEditor.tsx')).toContain("title={t('auto_responder.script_select_title')}");
     expect(en['auto_responder.script_select_title']).toMatch(/data\/scripts/);
   });
 });
@@ -107,7 +95,9 @@ describe('script select placeholder fits the Response field', () => {
 describe('auto responder strings are translatable', () => {
   const files = {
     section: read('AutoResponderSection.tsx'),
-    item: read('auto-responder/TriggerItem.tsx'),
+    item: read('auto-responder/TriggerEditor.tsx'),
+    model: read('auto-responder/triggerModel.ts'),
+    highlight: read('auto-responder/PatternHighlight.tsx'),
     scripts: read('auto-responder/ScriptManagement.tsx'),
     examples: read('auto-responder/PatternExamples.tsx'),
   };
@@ -223,7 +213,7 @@ describe('pattern examples are translatable', () => {
 });
 
 describe('pattern count badge does not cover the pattern', () => {
-  const tsx = read('AutoResponderSection.tsx');
+  const tsx = read('auto-responder/TriggerEditor.tsx');
 
   it('the input reserves room for the badge while it shows', () => {
     const m = tsx.match(/const PATTERN_BADGE_RESERVE = '([\d.]+)rem';/);
@@ -246,7 +236,8 @@ describe('pattern count badge does not cover the pattern', () => {
 
 describe('examples do nothing while the trigger field is disabled', () => {
   it('the section passes the field state', () => {
-    expect(read('AutoResponderSection.tsx')).toContain('<PatternExamples onSelectPattern={setNewTrigger} disabled={!localEnabled} />');
+    // #5808: an example fills the open trigger, or starts a new one.
+    expect(read('AutoResponderSection.tsx')).toContain('<PatternExamples onSelectPattern={selectExamplePattern} disabled={!localEnabled} />');
     expect(en['auto_responder.examples_disabled_title']).toBeTruthy();
   });
 
@@ -295,7 +286,7 @@ describe('click targets clear the sticky tab strip', () => {
   it('the examples and the trigger input carry the class', () => {
     const examples = read('auto-responder/PatternExamples.tsx');
     expect(examples.match(/className=\{layout\.scrollTarget\}/g)?.length).toBe(2);
-    expect(read('AutoResponderSection.tsx')).toContain('className={`setting-input ${layout.scrollTarget}`}');
+    expect(read('auto-responder/TriggerEditor.tsx')).toContain('className={`setting-input ${layout.scrollTarget}');
   });
 });
 

@@ -4,13 +4,24 @@ import { useCsrfFetch } from '../../hooks/useCsrfFetch';
 import { useToast } from '../ToastContainer';
 import { useAuth } from '../../contexts/AuthContext';
 import { useSaveBar } from '../../hooks/useSaveBar';
-import { NumberInput } from '../common/NumberInput';
 import { NumberInputScope } from '../common/NumberInputScope';
 import { useNumberInputScope } from '../common/numberInputScopeContext';
-import { ScopeSelectField, type ScopeMode } from './ScopeSelectField';
+import { UiIcon } from '../icons';
 import { ConfigSection, ConfigHeaderCount } from '../shared/config/ConfigSection';
 import { ConfigEmptyState } from '../shared/config/ConfigEmptyState';
+import { TriggerCard, type TriggerChip } from '../shared/automation/TriggerCard';
+import { TriggerListFilter } from '../shared/automation/TriggerListFilter';
+import { PatternTestBox, type PatternTestResult } from '../shared/automation/PatternTestBox';
+import { TRIGGER_FILTER_THRESHOLD, matchesSearch, newTriggerId } from '../shared/automation/triggerList';
+import { MeshCoreResponderTriggerEditor } from './MeshCoreResponderTriggerEditor';
+import { validateMeshCoreResponderPattern, meshCoreResponderPatternMatches } from './meshcoreResponderMatch';
+import type {
+  MeshCoreAutoResponderTrigger,
+  MeshCoreChannelRow,
+  MeshCoreScriptMetadata as ScriptMetadata,
+} from './meshcoreResponderTypes';
 import { meshCoreReceiveOnlyText } from './meshCoreReceiveOnlyText';
+import styles from './MeshCoreAutoResponderSection.module.css';
 
 interface MeshCoreAutoResponderSectionProps {
   baseUrl: string;
@@ -21,66 +32,8 @@ interface MeshCoreAutoResponderSectionProps {
   receiveOnly?: boolean;
 }
 
-/**
- * Mirrors the backend `MeshCoreAutoResponderTrigger` shape. Kept inline
- * for the same reason as the timer trigger: it's a server-only type
- * that crosses the wire as JSON.
- */
-interface MeshCoreAutoResponderTrigger {
-  id: string;
-  name: string;
-  enabled: boolean;
-  pattern: string;
-  /**
-   * `text` (default) sends `response`; `script` runs `scriptPath` and
-   * sends each entry of the script's wouldSendMessages output.
-   */
-  responseType?: 'text' | 'script';
-  response: string;
-  scriptPath?: string;
-  scriptArgs?: string;
-  channels: number[];
-  listenDMs: boolean;
-  replyAsDM: boolean;
-  cooldownSeconds: number;
-  /** Delay (s) after a match before sending the reply. 0 = immediate, max 120 (#3953). */
-  preSendDelaySeconds?: number;
-  /** MeshCore scope/region for the reply (#3833). */
-  scopeMode?: ScopeMode;
-  scopeName?: string;
-}
-
-interface ScriptMetadata {
-  path: string;
-  filename: string;
-  name?: string;
-  emoji?: string;
-  language?: string;
-}
-
-interface MeshCoreChannelRow {
-  id: number;
-  name: string;
-}
-
-const validateRegex = (pattern: string): { valid: boolean; error?: string } => {
-  if (!pattern) return { valid: false, error: 'Pattern is required' };
-  if (pattern.length > 100) return { valid: false, error: 'Pattern too long (max 100 chars)' };
-  if (/(\.\*){2,}|(\+.*\+)|(\*.*\*)|(\{[0-9]{3,}\})|(\{[0-9]+,\})/.test(pattern)) {
-    return { valid: false, error: 'Pattern too complex (possible ReDoS)' };
-  }
-  try {
-    new RegExp(pattern, 'i');
-    return { valid: true };
-  } catch {
-    return { valid: false, error: 'Invalid regex syntax' };
-  }
-};
-
 const newTrigger = (): MeshCoreAutoResponderTrigger => ({
-  id: typeof crypto !== 'undefined' && 'randomUUID' in crypto
-    ? crypto.randomUUID()
-    : `r-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+  id: newTriggerId(),
   name: '',
   enabled: true,
   pattern: '',
@@ -111,7 +64,13 @@ export const MeshCoreAutoResponderSection: React.FC<MeshCoreAutoResponderSection
   const [hasChanges, setHasChanges] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [loaded, setLoaded] = useState(false);
-  const [draft, setDraft] = useState<MeshCoreAutoResponderTrigger>(newTrigger());
+  // #5808: one trigger open in its TriggerCard at a time. Regex errors show
+  // live, as before; a missing name or empty pattern shows once Done or Save
+  // has been tried (`attemptedIds`), so a new trigger does not open in red.
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [attemptedIds, setAttemptedIds] = useState<Set<string>>(new Set());
+  const [search, setSearch] = useState('');
+  const [typeFilter, setTypeFilter] = useState('all');
 
   // Load triggers
   useEffect(() => {
@@ -179,13 +138,27 @@ export const MeshCoreAutoResponderSection: React.FC<MeshCoreAutoResponderSection
     setHasChanges(enabled !== initialEnabled || triggersChanged);
   }, [enabled, initialEnabled, triggers, initialTriggers, loaded]);
 
+  // A new trigger needs a name (the old Add card's rule); a saved one keeps
+  // whatever name it has, as before. Every regex is checked.
+  const savedIds = useMemo(() => new Set(initialTriggers.map((tr) => tr.id)), [initialTriggers]);
+  const nameMissing = useCallback(
+    (tr: MeshCoreAutoResponderTrigger) => !savedIds.has(tr.id) && !tr.name.trim(),
+    [savedIds],
+  );
+
   const handleSave = useCallback(async () => {
-    // Validate every trigger's regex up front so the operator sees the
-    // bad one before a round-trip.
+    // Validate every trigger up front so the operator sees the bad one
+    // before a round-trip; open it so the error shows in place.
     for (const tr of triggers) {
-      const v = validateRegex(tr.pattern);
-      if (!v.valid) {
-        showToast(`Trigger "${tr.name || tr.id}": ${v.error}`, 'error');
+      const v = validateMeshCoreResponderPattern(tr.pattern);
+      const noName = nameMissing(tr);
+      if (!v.valid || noName) {
+        setAttemptedIds((prev) => new Set(prev).add(tr.id));
+        setExpandedId(tr.id);
+        showToast(
+          `Trigger "${tr.name || tr.id}": ${v.error ?? t('meshcore.automation.responder.name_required', 'Name is required')}`,
+          'error',
+        );
         return;
       }
     }
@@ -210,6 +183,8 @@ export const MeshCoreAutoResponderSection: React.FC<MeshCoreAutoResponderSection
       setInitialEnabled(enabled);
       setInitialTriggers(triggers);
       setHasChanges(false);
+      setExpandedId(null);
+      setAttemptedIds(new Set());
       showToast(t('automation.settings_saved', 'Settings saved'), 'success');
     } catch (err) {
       console.error('Failed to save MeshCore auto-responder settings:', err);
@@ -217,12 +192,14 @@ export const MeshCoreAutoResponderSection: React.FC<MeshCoreAutoResponderSection
     } finally {
       setIsSaving(false);
     }
-  }, [enabled, triggers, baseUrl, sourceId, csrfFetch, showToast, t]);
+  }, [enabled, triggers, baseUrl, sourceId, csrfFetch, showToast, t, nameMissing]);
 
   const handleDismiss = useCallback(() => {
     setEnabled(initialEnabled);
     setTriggers(initialTriggers);
     setHasChanges(false);
+    setExpandedId(null);
+    setAttemptedIds(new Set());
   }, [initialEnabled, initialTriggers]);
 
   const numberScope = useNumberInputScope();
@@ -241,20 +218,42 @@ export const MeshCoreAutoResponderSection: React.FC<MeshCoreAutoResponderSection
   };
   const removeTrigger = (id: string) => {
     setTriggers(prev => prev.filter(t => t.id !== id));
+    setExpandedId((cur) => (cur === id ? null : cur));
+  };
+
+  /** Collapse the open trigger if it is valid. False keeps it open with its errors. */
+  const finishEditing = (id: string | null): boolean => {
+    if (!id) return true;
+    const tr = triggers.find((x) => x.id === id);
+    if (tr) {
+      if (!validateMeshCoreResponderPattern(tr.pattern).valid || nameMissing(tr)) {
+        setAttemptedIds((prev) => new Set(prev).add(id));
+        setExpandedId(id);
+        return false;
+      }
+    }
+    setAttemptedIds((prev) => {
+      if (!prev.has(id)) return prev;
+      const next = new Set(prev);
+      next.delete(id);
+      return next;
+    });
+    setExpandedId((cur) => (cur === id ? null : cur));
+    return true;
+  };
+
+  const startEditing = (id: string) => {
+    if (expandedId && expandedId !== id && !finishEditing(expandedId)) return;
+    setExpandedId(id);
   };
 
   const addTrigger = () => {
-    const v = validateRegex(draft.pattern);
-    if (!v.valid) {
-      showToast(v.error || 'Invalid pattern', 'error');
-      return;
-    }
-    if (!draft.name.trim()) {
-      showToast(t('meshcore.automation.responder.name_required', 'Name is required'), 'error');
-      return;
-    }
-    setTriggers(prev => [...prev, draft]);
-    setDraft(newTrigger());
+    if (!finishEditing(expandedId)) return;
+    const tr = newTrigger();
+    setTriggers(prev => [...prev, tr]);
+    setSearch('');
+    setTypeFilter('all');
+    setExpandedId(tr.id);
   };
 
   const channelMap = useMemo(() => {
@@ -265,9 +264,53 @@ export const MeshCoreAutoResponderSection: React.FC<MeshCoreAutoResponderSection
 
   const disabled = !enabled;
 
+  const visible = triggers.filter((tr) =>
+    tr.id === expandedId || (
+      matchesSearch(search, tr.name, tr.pattern, tr.response, tr.scriptPath)
+      && (typeFilter === 'all' || (tr.responseType || 'text') === typeFilter)
+    ));
+
+  const summaryOf = (tr: MeshCoreAutoResponderTrigger): React.ReactNode => (
+    <>
+      <code>/{tr.pattern}/</code> <UiIcon name="forward" size={12} />{' '}
+      {(tr.responseType || 'text') === 'script'
+        ? <code>{tr.scriptPath || t('meshcore.automation.responder.select_script', '(select script)')}{tr.scriptArgs ? ` ${tr.scriptArgs}` : ''}</code>
+        : tr.response}
+    </>
+  );
+
+  const chipsOf = (tr: MeshCoreAutoResponderTrigger): TriggerChip[] => {
+    const chips: TriggerChip[] = [];
+    if ((tr.responseType || 'text') === 'script') {
+      chips.push({ label: t('meshcore.automation.responder.response_script', 'Run script'), tone: 'accent' });
+    }
+    if (tr.listenDMs) chips.push({ label: t('meshcore.automation.responder.chip_dm', 'DMs'), tone: 'info' });
+    tr.channels.forEach((id) => chips.push({ label: channelMap.get(id) ?? `Channel ${id}`, tone: 'info' }));
+    if (tr.replyAsDM) chips.push({ label: t('meshcore.automation.responder.reply_dm', 'Reply as DM') });
+    if (tr.cooldownSeconds > 0) {
+      chips.push({ label: <><UiIcon name="timer" size={12} /> {tr.cooldownSeconds}s</>, title: t('meshcore.automation.responder.cooldown', 'Cooldown (s)') });
+    }
+    if ((tr.preSendDelaySeconds ?? 0) > 0) {
+      chips.push({ label: t('meshcore.automation.responder.chip_delay', '+{{seconds}}s delay', { seconds: tr.preSendDelaySeconds }) });
+    }
+    if (tr.scopeMode && tr.scopeMode !== 'inherit') {
+      chips.push({ label: tr.scopeMode === 'named' ? `#${tr.scopeName ?? ''}` : tr.scopeMode, tone: 'caution' });
+    }
+    return chips;
+  };
+
+  // Mirrors the server: every enabled trigger whose regex matches replies.
+  // Channel / DM filters are not applied (the test message has neither).
+  const matchForTest = (tr: MeshCoreAutoResponderTrigger, text: string): PatternTestResult => {
+    if (!tr.enabled || !meshCoreResponderPatternMatches(tr.pattern, text)) return { matched: false };
+    if ((tr.responseType || 'text') === 'script') {
+      return { matched: true, detail: <>/{tr.pattern}/ · {tr.scriptPath}</> };
+    }
+    return { matched: true, detail: <>/{tr.pattern}/</>, response: tr.response };
+  };
+
   return (
     <NumberInputScope scope={numberScope}>
-    <>
       <ConfigSection
         title={t('meshcore.automation.responder.title', 'Auto-Responder')}
         enabled={enabled}
@@ -279,7 +322,7 @@ export const MeshCoreAutoResponderSection: React.FC<MeshCoreAutoResponderSection
         receiveOnlyNote={meshCoreReceiveOnlyText(t)}
         headerActions={
           <ConfigHeaderCount>
-            {t('meshcore.automation.responder.count', '{{count}} triggers', { count: triggers.length })}
+            {t('automation.trigger_count', '{{count}} triggers', { count: triggers.length })}
           </ConfigHeaderCount>
         }
         description={t(
@@ -287,263 +330,95 @@ export const MeshCoreAutoResponderSection: React.FC<MeshCoreAutoResponderSection
           'Match incoming messages against operator-defined patterns and reply with a text response. Each trigger supports per-channel filtering, DM listening, and a per-sender cooldown.',
         )}
       >
+        {triggers.length > TRIGGER_FILTER_THRESHOLD && (
+          <TriggerListFilter
+            search={search}
+            onSearchChange={setSearch}
+            type={typeFilter}
+            onTypeChange={setTypeFilter}
+            typeOptions={[
+              { value: 'all', label: t('meshcore.automation.responder.filter_all', 'All actions') },
+              { value: 'text', label: t('meshcore.automation.responder.response_text', 'Send text') },
+              { value: 'script', label: t('meshcore.automation.responder.response_script', 'Run script') },
+            ]}
+          />
+        )}
+
         {triggers.length === 0 && (
-          <ConfigEmptyState>
+          <ConfigEmptyState className={styles.empty}>
             {t('meshcore.automation.responder.empty', 'No triggers configured yet.')}
           </ConfigEmptyState>
         )}
 
-        {triggers.map(tr => {
-          const v = validateRegex(tr.pattern);
+        {visible.map(tr => {
+          const v = validateMeshCoreResponderPattern(tr.pattern);
+          const attempted = attemptedIds.has(tr.id);
+          const patternError = !v.valid && (tr.pattern || attempted) ? v.error : undefined;
+          const nameError = attempted && nameMissing(tr)
+            ? t('meshcore.automation.responder.name_required', 'Name is required')
+            : undefined;
           return (
-            <div key={tr.id} className="meshcore-trigger-card">
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.75rem' }}>
-                <input
-                  type="checkbox"
-                  checked={tr.enabled}
-                  onChange={(e) => updateTrigger(tr.id, { enabled: e.target.checked })}
-                  disabled={disabled || !canWrite}
-                  style={{ width: 'auto', margin: 0 }}
-                  aria-label={`Enable ${tr.name}`}
-                />
-                <input
-                  type="text"
-                  value={tr.name}
-                  onChange={(e) => updateTrigger(tr.id, { name: e.target.value })}
-                  disabled={disabled || !canWrite}
-                  placeholder={t('meshcore.automation.responder.name_placeholder', 'Trigger name')}
-                  className="meshcore-input"
-                  style={{ flex: 1 }}
-                />
-                <button
-                  type="button"
-                  onClick={() => removeTrigger(tr.id)}
-                  disabled={!canWrite}
-                  className="meshcore-btn meshcore-btn-danger"
-                >
-                  {t('meshcore.automation.responder.remove', 'Remove')}
-                </button>
-              </div>
-
-              <label style={{ fontSize: '0.85rem', display: 'block', marginBottom: '0.5rem' }}>
-                {t('meshcore.automation.responder.pattern', 'Pattern (regex, case-insensitive)')}
-                <input
-                  type="text"
-                  value={tr.pattern}
-                  onChange={(e) => updateTrigger(tr.id, { pattern: e.target.value })}
-                  disabled={disabled || !canWrite}
-                  placeholder="^(test|ping)"
-                  className="meshcore-input"
-                  style={{ width: '100%', marginTop: '0.25rem', fontFamily: 'monospace' }}
-                />
-                {!v.valid && tr.pattern && (
-                  <div style={{ fontSize: '0.8rem', color: 'var(--color-error)', marginTop: '0.25rem' }}>
-                    {v.error}
-                  </div>
-                )}
-              </label>
-
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: '0.75rem', marginBottom: '0.5rem' }}>
-                <label style={{ fontSize: '0.85rem' }}>
-                  {t('meshcore.automation.responder.response_type', 'Action')}
-                  <select
-                    value={tr.responseType || 'text'}
-                    onChange={(e) => updateTrigger(tr.id, { responseType: e.target.value as 'text' | 'script' })}
-                    disabled={disabled || !canWrite}
-                    className="meshcore-select"
-                    style={{ width: '100%', marginTop: '0.25rem' }}
-                  >
-                    <option value="text">{t('meshcore.automation.responder.response_text', 'Send text')}</option>
-                    <option value="script">{t('meshcore.automation.responder.response_script', 'Run script')}</option>
-                  </select>
-                </label>
-                {(tr.responseType || 'text') === 'text' ? (
-                  <label style={{ fontSize: '0.85rem' }}>
-                    {t('meshcore.automation.responder.response', 'Response (token expansion supported)')}
-                    <textarea
-                      value={tr.response}
-                      onChange={(e) => updateTrigger(tr.id, { response: e.target.value })}
-                      disabled={disabled || !canWrite}
-                      rows={2}
-                      className="meshcore-input"
-                      style={{ width: '100%', marginTop: '0.25rem', fontFamily: 'monospace' }}
-                    />
-                  </label>
-                ) : (
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
-                    <label style={{ fontSize: '0.85rem' }}>
-                      {t('meshcore.automation.responder.script', 'Script')}
-                      <select
-                        value={tr.scriptPath || ''}
-                        onChange={(e) => updateTrigger(tr.id, { scriptPath: e.target.value })}
-                        disabled={disabled || !canWrite}
-                        className="meshcore-select"
-                        style={{ width: '100%', marginTop: '0.25rem' }}
-                      >
-                        <option value="">{scripts.length === 0 ? t('meshcore.automation.responder.no_scripts', '(no scripts available)') : t('meshcore.automation.responder.select_script', '(select script)')}</option>
-                        {scripts.map(s => (
-                          <option key={s.path} value={s.path}>
-                            {s.emoji ? `${s.emoji} ` : ''}{s.name || s.filename} ({s.language || '?'})
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                    <label style={{ fontSize: '0.85rem' }}>
-                      {t('meshcore.automation.responder.script_args', 'Script args (token expansion)')}
-                      <input
-                        type="text"
-                        value={tr.scriptArgs || ''}
-                        onChange={(e) => updateTrigger(tr.id, { scriptArgs: e.target.value })}
-                        disabled={disabled || !canWrite}
-                        className="meshcore-input"
-                        style={{ width: '100%', marginTop: '0.25rem', fontFamily: 'monospace' }}
-                      />
-                    </label>
-                  </div>
-                )}
-              </div>
-
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.75rem', alignItems: 'center', marginBottom: '0.5rem' }}>
-                <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.85rem' }}>
-                  <input
-                    type="checkbox"
-                    checked={tr.listenDMs}
-                    onChange={(e) => updateTrigger(tr.id, { listenDMs: e.target.checked })}
-                    disabled={disabled || !canWrite}
-                    style={{ width: 'auto', margin: 0 }}
-                  />
-                  {t('meshcore.automation.responder.listen_dms', 'Listen on DMs')}
-                </label>
-                <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.85rem' }}>
-                  <input
-                    type="checkbox"
-                    checked={tr.replyAsDM}
-                    onChange={(e) => updateTrigger(tr.id, { replyAsDM: e.target.checked })}
-                    disabled={disabled || !canWrite}
-                    style={{ width: 'auto', margin: 0 }}
-                  />
-                  {t('meshcore.automation.responder.reply_dm', 'Reply as DM')}
-                </label>
-                <label style={{ fontSize: '0.85rem' }}>
-                  {t('meshcore.automation.responder.cooldown', 'Cooldown (s)')}{' '}
-                  <NumberInput
-                    min={0}
-                    max={3600}
-                    integer
-                    value={tr.cooldownSeconds}
-                    onChange={(v) => updateTrigger(tr.id, { cooldownSeconds: v })}
-                    disabled={disabled || !canWrite}
-                    className="meshcore-input"
-                    style={{ width: '80px' }}
-                  />
-                </label>
-                <label
-                  style={{ fontSize: '0.85rem' }}
-                  title={t(
-                    'meshcore.automation.responder.presend_delay_help',
-                    'Wait this long after a match before replying, so a relaying repeater can finish its own transmission first (0 = send immediately, max 120).',
-                  )}
-                >
-                  {t('meshcore.automation.responder.presend_delay', 'Pre-Send Delay (s)')}{' '}
-                  <NumberInput
-                    min={0}
-                    max={120}
-                    integer
-                    value={tr.preSendDelaySeconds ?? 0}
-                    onChange={(v) => updateTrigger(tr.id, { preSendDelaySeconds: v })}
-                    disabled={disabled || !canWrite}
-                    className="meshcore-input"
-                    style={{ width: '80px' }}
-                  />
-                </label>
-              </div>
-
-              {/* Channels */}
-              <fieldset style={{ border: '1px solid var(--color-surface-active)', borderRadius: '4px', padding: '0.5rem' }}>
-                <legend style={{ fontSize: '0.8rem', padding: '0 0.5rem' }}>
-                  {t('meshcore.automation.responder.channels', 'Listen on channels')}
-                </legend>
-                {channels.length === 0 && (
-                  <span style={{ fontSize: '0.8rem', color: 'var(--color-text-subtle)' }}>
-                    {t('meshcore.automation.responder.no_channels', 'No channels loaded')}
-                  </span>
-                )}
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
-                  {channels.map(ch => (
-                    <label key={ch.id} style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', fontSize: '0.8rem' }}>
-                      <input
-                        type="checkbox"
-                        checked={tr.channels.includes(ch.id)}
-                        onChange={(e) => {
-                          if (e.target.checked) updateTrigger(tr.id, { channels: [...tr.channels, ch.id] });
-                          else updateTrigger(tr.id, { channels: tr.channels.filter(c => c !== ch.id) });
-                        }}
-                        disabled={disabled || !canWrite}
-                        style={{ width: 'auto', margin: 0 }}
-                      />
-                      {channelMap.get(ch.id)}
-                    </label>
-                  ))}
-                </div>
-              </fieldset>
-
-              {/* MeshCore scope/region for the reply (#3833) */}
-              <ScopeSelectField
+            <TriggerCard
+              key={tr.id}
+              title={tr.name.trim() || <span className={styles.untitled}>{t('meshcore.automation.responder.untitled', 'New trigger')}</span>}
+              summary={summaryOf(tr)}
+              chips={chipsOf(tr)}
+              enabled={tr.enabled}
+              onEnabledChange={(on) => updateTrigger(tr.id, { enabled: on })}
+              enableLabel={t('meshcore.automation.responder.enable_trigger', 'Enable {{name}}', { name: tr.name.trim() || t('meshcore.automation.responder.untitled', 'New trigger') })}
+              expanded={expandedId === tr.id}
+              onEdit={() => startEditing(tr.id)}
+              onDone={() => finishEditing(tr.id)}
+              onDelete={() => removeTrigger(tr.id)}
+              disabled={disabled}
+              invalid={!!patternError || !!nameError}
+              deletePreview={tr.name || tr.pattern || undefined}
+            >
+              <MeshCoreResponderTriggerEditor
+                trigger={tr}
+                onChange={(patch) => updateTrigger(tr.id, patch)}
+                patternError={patternError}
+                nameError={nameError}
+                channels={channels}
+                scripts={scripts}
                 baseUrl={baseUrl}
                 sourceId={sourceId}
-                allowTrigger
-                idPrefix={`responder-${tr.id}`}
-                value={{ scopeMode: tr.scopeMode, scopeName: tr.scopeName }}
-                onChange={(v) => updateTrigger(tr.id, { scopeMode: v.scopeMode, scopeName: v.scopeName })}
+                disabled={disabled}
               />
-            </div>
+            </TriggerCard>
           );
         })}
 
-        {/* Add new trigger */}
-        <div className="meshcore-add-card" style={{ opacity: disabled ? 0.6 : 1 }}>
-          <h3 style={{ marginTop: 0, fontSize: '1rem' }}>
-            {t('meshcore.automation.responder.add', 'Add trigger')}
-          </h3>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginBottom: '0.5rem' }}>
-            <input
-              type="text"
-              value={draft.name}
-              onChange={(e) => setDraft({ ...draft, name: e.target.value })}
-              placeholder={t('meshcore.automation.responder.name_placeholder', 'Trigger name')}
-              disabled={disabled || !canWrite}
-              className="meshcore-input"
-            />
-            <input
-              type="text"
-              value={draft.pattern}
-              onChange={(e) => setDraft({ ...draft, pattern: e.target.value })}
-              placeholder="^(test|ping)"
-              disabled={disabled || !canWrite}
-              className="meshcore-input"
-              style={{ fontFamily: 'monospace' }}
-            />
-          </div>
-          <textarea
-            value={draft.response}
-            onChange={(e) => setDraft({ ...draft, response: e.target.value })}
-            placeholder={t('meshcore.automation.responder.response_placeholder', 'Response text (supports {VERSION}, {DURATION}, …)')}
-            rows={2}
-            disabled={disabled || !canWrite}
-            className="meshcore-input"
-            style={{ width: '100%', marginBottom: '0.5rem', fontFamily: 'monospace' }}
+        {triggers.length > 0 && visible.length === 0 && (
+          <ConfigEmptyState className={styles.empty}>
+            {t('meshcore.automation.responder.no_match', 'No triggers match your search.')}
+          </ConfigEmptyState>
+        )}
+
+        <button
+          type="button"
+          onClick={addTrigger}
+          disabled={disabled}
+          className="meshcore-btn meshcore-btn-primary"
+        >
+          <UiIcon name="plus" size={14} /> {t('meshcore.automation.responder.add_button', 'Add trigger')}
+        </button>
+
+        {/* Local pattern test: never sends, never calls the server */}
+        {triggers.length > 0 && (
+          <PatternTestBox
+            triggers={triggers}
+            mode="all"
+            getKey={(tr) => tr.id}
+            getLabel={(tr) => tr.name || `/${tr.pattern}/`}
+            match={matchForTest}
+            description={t(
+              'meshcore.automation.responder.test_description',
+              'Type sample messages, one per line. Every enabled trigger whose pattern matches (case-insensitive, anywhere in the message) replies. Tokens such as {VERSION} are filled in when the reply is sent. Nothing is sent from here, and channel filters are not applied.',
+            )}
           />
-          <button
-            type="button"
-            onClick={addTrigger}
-            disabled={disabled || !canWrite}
-            className="meshcore-btn meshcore-btn-primary"
-          >
-            {t('meshcore.automation.responder.add_button', 'Add trigger')}
-          </button>
-        </div>
+        )}
       </ConfigSection>
-    </>
     </NumberInputScope>
   );
 };
