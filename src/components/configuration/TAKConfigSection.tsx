@@ -8,6 +8,8 @@ import styles from './TAKConfigSection.module.css';
 import { ConfigSection } from '../shared/config/ConfigSection';
 
 interface TAKConfigSectionProps {
+  /** False disables every control: no configuration:write on this source (#5830). */
+  canWrite?: boolean;
   team: number;
   setTeam: (value: number) => void;
   role: number;
@@ -25,6 +27,7 @@ interface TAKConfigSectionProps {
  * builds only when its device role is TAK_TRACKER.
  */
 const TAKConfigSection: React.FC<TAKConfigSectionProps> = ({
+  canWrite = true,
   team,
   setTeam,
   role,
@@ -59,7 +62,7 @@ const TAKConfigSection: React.FC<TAKConfigSectionProps> = ({
   });
 
   return (
-    <ConfigSection title={t('tak_config.title')} notice={<ModuleAvailabilityNotice />}>
+    <ConfigSection canWrite={canWrite} title={t('tak_config.title')} notice={<ModuleAvailabilityNotice />}>
 
       {isDisabled && (
         <div className={styles.unsupported} data-testid="tak-config-unsupported">

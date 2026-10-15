@@ -1,4 +1,4 @@
-/* TriggerCard (#5808). */
+/* ConfigItemCard (#5829), first built as TriggerCard (#5808). */
 
 .card {
   margin-bottom: 0.5rem;
@@ -150,5 +150,31 @@
 .footer {
   display: flex;
   justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 0.5rem;
   margin-top: 0.75rem;
+}
+
+/* Accent outline, e.g. a Meshtastic primary channel. */
+.highlight {
+  border: 2px solid var(--color-accent);
+}
+
+/* A small leading badge, e.g. a channel's slot number. */
+.leading {
+  flex: 0 0 auto;
+  align-self: center;
+  padding: 0.15rem 0.5rem;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: bold;
+  white-space: nowrap;
+  background: var(--color-surface-active);
+  color: var(--color-text-muted);
+}
+
+.notice {
+  margin-top: 0.4rem;
+  font-size: 0.8rem;
+  color: var(--color-warning);
 }

@@ -1,0 +1,60 @@
+/*
+ * DangerZone (#5830). CSS module, per the CLAUDE.md CSS containment rule.
+ * Colours are role tokens only.
+ */
+
+.body {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.dangerButton,
+.plainButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.6rem 1.2rem;
+  border-radius: 4px;
+  font-size: 0.95rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.dangerButton {
+  background: transparent;
+  color: var(--color-error);
+  border: 1px solid var(--color-error);
+}
+
+.dangerButton:hover:not(:disabled) {
+  background: var(--color-error);
+  color: var(--color-bg);
+}
+
+.plainButton {
+  background: transparent;
+  color: var(--color-text);
+  border: 1px solid var(--color-surface-active);
+}
+
+.plainButton:hover:not(:disabled) {
+  background: var(--color-surface-hover);
+}
+
+.dangerButton:disabled,
+.plainButton:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.footer {
+  color: var(--color-text-subtle);
+  font-size: 0.9rem;
+}

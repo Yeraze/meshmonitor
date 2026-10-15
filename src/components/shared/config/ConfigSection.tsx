@@ -54,6 +54,8 @@ export interface ConfigSectionProps {
   collapsible?: boolean;
   /** With `collapsible`, start with the body hidden. Default false. */
   defaultCollapsed?: boolean;
+  /** `danger` marks the header in the error colour (the shared DangerZone). */
+  tone?: 'default' | 'danger';
   children?: React.ReactNode;
 }
 
@@ -75,6 +77,7 @@ export const ConfigSection: React.FC<ConfigSectionProps> = ({
   bodyClassName,
   collapsible = false,
   defaultCollapsed = false,
+  tone = 'default',
   children,
 }) => {
   const { t } = useTranslation();
@@ -86,7 +89,10 @@ export const ConfigSection: React.FC<ConfigSectionProps> = ({
 
   return (
     <>
-      <div id={id} className={`automation-section-header ${styles.header}`}>
+      <div
+        id={id}
+        className={`automation-section-header ${styles.header}${tone === 'danger' ? ` ${styles.danger}` : ''}`}
+      >
         <h2 className={styles.title}>
           {onEnabledChange && (
             <input

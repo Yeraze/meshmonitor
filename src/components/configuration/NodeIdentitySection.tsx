@@ -5,6 +5,8 @@ import { useSectionBaseline } from '../../hooks/useSectionBaseline';
 import { ConfigSection } from '../shared/config/ConfigSection';
 
 interface NodeIdentitySectionProps {
+  /** False disables every control: no configuration:write on this source (#5830). */
+  canWrite?: boolean;
   /** Bumped when the page reloads config from the node (#5797). */
   configVersion?: number;
   longName: string;
@@ -21,6 +23,7 @@ interface NodeIdentitySectionProps {
 }
 
 const NodeIdentitySection: React.FC<NodeIdentitySectionProps> = ({
+  canWrite = true,
   configVersion,
   longName,
   shortName,
@@ -63,7 +66,7 @@ const NodeIdentitySection: React.FC<NodeIdentitySectionProps> = ({
   });
 
   return (
-    <ConfigSection title={t('node_identity.title')} docsUrl="https://meshmonitor.org/features/device#node-identity">
+    <ConfigSection canWrite={canWrite} title={t('node_identity.title')} docsUrl="https://meshmonitor.org/features/device#node-identity">
       <div className="setting-item">
         <label htmlFor="longName">
           {t('node_identity.long_name')}

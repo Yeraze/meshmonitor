@@ -20,6 +20,8 @@ const TRIGGER_TYPE_OPTIONS = [
 ];
 
 interface DetectionSensorConfigSectionProps {
+  /** False disables every control: no configuration:write on this source (#5830). */
+  canWrite?: boolean;
   enabled: boolean;
   setEnabled: (value: boolean) => void;
   minimumBroadcastSecs: number;
@@ -42,6 +44,7 @@ interface DetectionSensorConfigSectionProps {
 }
 
 const DetectionSensorConfigSection: React.FC<DetectionSensorConfigSectionProps> = ({
+  canWrite = true,
   enabled,
   setEnabled,
   minimumBroadcastSecs,
@@ -103,7 +106,7 @@ const DetectionSensorConfigSection: React.FC<DetectionSensorConfigSectionProps> 
 
   return (
     <NumberInputScope scope={numberScope}>
-    <ConfigSection title={t('detectionsensor_config.title')} docsUrl="https://meshtastic.org/docs/configuration/module/detection-sensor/" notice={<ModuleAvailabilityNotice />}>
+    <ConfigSection canWrite={canWrite} title={t('detectionsensor_config.title')} docsUrl="https://meshtastic.org/docs/configuration/module/detection-sensor/" notice={<ModuleAvailabilityNotice />}>
 
       {/* Enable Module */}
       <div className="setting-item">

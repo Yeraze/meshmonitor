@@ -352,7 +352,7 @@ const MQTTConfigSection: React.FC<MQTTConfigSectionProps> = ({
 
   return (
     <NumberInputScope scope={numberScope}>
-    <ConfigSection title={t('mqtt_config.title')} docsUrl="https://meshmonitor.org/features/device#mqtt-configuration" notice={<ModuleAvailabilityNotice />}>
+    <ConfigSection canWrite={canEditMqtt} title={t('mqtt_config.title')} docsUrl="https://meshmonitor.org/features/device#mqtt-configuration" notice={<ModuleAvailabilityNotice />}>
       {isBridged && (
         <div
           role="note"

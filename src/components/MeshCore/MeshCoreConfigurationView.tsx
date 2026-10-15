@@ -11,6 +11,9 @@ import { MeshCoreDeviceActionsSection } from './MeshCoreDeviceActionsSection';
 import { MeshCorePathHashSection } from './MeshCorePathHashSection';
 import { MeshCoreDefaultScopeSection } from './MeshCoreDefaultScopeSection';
 import { ConfigSection } from '../shared/config/ConfigSection';
+import { DangerZone, DangerZoneActions, DangerZoneButton } from '../shared/config/DangerZone';
+import { ConfirmDialog } from '../shared/automation/ConfirmDialog';
+import { TypedConfirmDialog } from '../common/TypedConfirmDialog';
 import { MESHCORE_DOCS } from './meshcoreDocs';
 import { UiIcon } from '../icons';
 import { NumberInput } from '../common/NumberInput';
@@ -696,26 +699,32 @@ export const MeshCoreConfigurationView: React.FC<MeshCoreConfigurationViewProps>
 /**
  * Danger-zone device management: reboot + key backup/restore.
  * Extracted as a sub-component to keep ConfigurationView manageable.
+ *
+ * Reboot and key import each confirm in an in-app dialog (#5830); key import
+ * needs a typed word. The hook sends `confirm: true` to satisfy the server's
+ * DANGER_CONFIRM_REQUIRED check, so these dialogs are the only guard: the
+ * action runs from the dialog's Confirm and nowhere else.
  */
+const IMPORT_KEY_CONFIRM_WORD = 'IMPORT';
+
 const MeshCoreDeviceManagement: React.FC<{
   actions: MeshCoreActions;
   deviceName?: string;
 }> = ({ actions, deviceName }) => {
   const { t } = useTranslation();
   const [rebooting, setRebooting] = useState(false);
+  const [rebootConfirmOpen, setRebootConfirmOpen] = useState(false);
   const [exportingKey, setExportingKey] = useState(false);
   const [exportedKey, setExportedKey] = useState<string | null>(null);
   const [importKeyOpen, setImportKeyOpen] = useState(false);
   const [importKeyDraft, setImportKeyDraft] = useState('');
   const [importingKey, setImportingKey] = useState(false);
   const [importKeyError, setImportKeyError] = useState<string | null>(null);
+  // The validated key waiting on the typed-word dialog.
+  const [pendingImportKey, setPendingImportKey] = useState<string | null>(null);
 
   const handleReboot = async () => {
-    const msg = t(
-      'meshcore.config.reboot_confirm',
-      `Reboot ${deviceName ?? 'the device'}? It will disconnect and restart.`,
-    );
-    if (typeof window !== 'undefined' && !window.confirm(msg)) return;
+    setRebootConfirmOpen(false);
     setRebooting(true);
     try {
       await actions.rebootDevice({ confirm: true });
@@ -746,18 +755,21 @@ const MeshCoreDeviceManagement: React.FC<{
     }
   };
 
-  const handleImportKey = async () => {
+  /** Validates the draft, then asks for the typed word. Sends nothing. */
+  const requestImportKey = () => {
     if (importingKey) return;
     const hex = importKeyDraft.trim();
     if (!/^[0-9a-fA-F]{128}$/.test(hex)) {
       setImportKeyError(t('meshcore.config.import_key_invalid', 'Key must be a 128-character hex string.'));
       return;
     }
-    const msg = t(
-      'meshcore.config.import_key_confirm',
-      'Import this private key? This REPLACES the device identity. All contacts will need to re-discover this node.',
-    );
-    if (typeof window !== 'undefined' && !window.confirm(msg)) return;
+    setImportKeyError(null);
+    setPendingImportKey(hex);
+  };
+
+  const handleImportKey = async () => {
+    const hex = pendingImportKey;
+    if (!hex || importingKey) return;
     setImportingKey(true);
     setImportKeyError(null);
     try {
@@ -770,55 +782,45 @@ const MeshCoreDeviceManagement: React.FC<{
       }
     } finally {
       setImportingKey(false);
+      setPendingImportKey(null);
     }
   };
 
   return (
-    <div id="meshcore-device-management" className="meshcore-config-section" style={{ borderTop: '2px solid var(--color-error)', marginTop: '1.5rem', paddingTop: '1rem' }}>
-      <h3 style={{ color: 'var(--color-error)' }}>
-        {t('meshcore.config.device_management', 'Device Management')}
-      </h3>
-
-      <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', marginBottom: '1rem' }}>
-        <button
-          type="button"
-          className="btn-secondary"
-          onClick={handleReboot}
+    <DangerZone id="meshcore-device-management">
+      <DangerZoneActions>
+        <DangerZoneButton
+          onClick={() => setRebootConfirmOpen(true)}
           disabled={rebooting}
-          style={{ color: 'var(--color-error)' }}
+          data-testid="meshcore-reboot-button"
         >
           {rebooting
             ? t('meshcore.config.rebooting', 'Rebooting…')
             : t('meshcore.config.reboot_button', 'Reboot Device')}
-        </button>
+        </DangerZoneButton>
 
-        <button
-          type="button"
-          className="btn-secondary"
+        <DangerZoneButton
+          variant="plain"
           onClick={handleExportKey}
           disabled={exportingKey}
         >
           {exportingKey
             ? t('meshcore.config.exporting_key', 'Exporting…')
             : t('meshcore.config.export_key_button', 'Backup Private Key')}
-        </button>
+        </DangerZoneButton>
 
-        <button
-          type="button"
-          className="btn-secondary"
+        <DangerZoneButton
           onClick={() => { setImportKeyDraft(''); setImportKeyError(null); setImportKeyOpen(true); }}
-          style={{ color: 'var(--color-error)' }}
         >
           {t('meshcore.config.import_key_button', 'Restore Private Key')}
-        </button>
-      </div>
+        </DangerZoneButton>
+      </DangerZoneActions>
 
       {exportedKey && (
         <div style={{
           background: 'var(--color-surface)',
           padding: '0.75rem',
           borderRadius: '6px',
-          marginBottom: '1rem',
           fontFamily: 'var(--font-mono, monospace)',
           fontSize: '0.85em',
           wordBreak: 'break-all',
@@ -843,7 +845,6 @@ const MeshCoreDeviceManagement: React.FC<{
           background: 'var(--color-surface)',
           padding: '0.75rem',
           borderRadius: '6px',
-          marginBottom: '1rem',
         }}>
           <div style={{ marginBottom: '0.5rem', color: 'var(--color-error)' }}>
             {t('meshcore.config.import_key_warning', 'This replaces the device identity. All contacts will need to re-discover this node.')}
@@ -854,6 +855,7 @@ const MeshCoreDeviceManagement: React.FC<{
             onChange={(e) => setImportKeyDraft(e.target.value)}
             disabled={importingKey}
             placeholder="128-character hex private key"
+            aria-label={t('meshcore.config.import_key_input', 'Private key (hex)')}
             style={{
               width: '100%',
               padding: '0.5rem',
@@ -869,7 +871,7 @@ const MeshCoreDeviceManagement: React.FC<{
             <button type="button" className="btn-secondary" onClick={() => setImportKeyOpen(false)} disabled={importingKey}>
               {t('meshcore.config.cancel', 'Cancel')}
             </button>
-            <button type="button" className="btn-primary" onClick={handleImportKey} disabled={importingKey || importKeyDraft.trim().length === 0}
+            <button type="button" className="btn-primary" onClick={requestImportKey} disabled={importingKey || importKeyDraft.trim().length === 0}
               style={{ color: 'var(--color-error)' }}>
               {importingKey
                 ? t('meshcore.config.importing_key', 'Importing…')
@@ -878,6 +880,38 @@ const MeshCoreDeviceManagement: React.FC<{
           </div>
         </div>
       )}
-    </div>
+
+      {rebootConfirmOpen && (
+        <ConfirmDialog
+          title={t('meshcore.config.reboot_dialog_title', 'Reboot the device?')}
+          message={t('meshcore.config.reboot_dialog_message', {
+            name: deviceName ?? t('meshcore.config.this_device', 'this device'),
+            defaultValue: '{{name}} disconnects and restarts.',
+          })}
+          confirmLabel={t('meshcore.config.reboot_button', 'Reboot Device')}
+          cancelLabel={t('common.cancel', 'Cancel')}
+          onConfirm={() => { void handleReboot(); }}
+          onCancel={() => setRebootConfirmOpen(false)}
+        />
+      )}
+
+      <TypedConfirmDialog
+        isOpen={pendingImportKey !== null}
+        title={t('meshcore.config.import_key_dialog_title', 'Replace the device identity?')}
+        confirmWord={IMPORT_KEY_CONFIRM_WORD}
+        confirmLabel={t('meshcore.config.import_key_confirm_button', 'Import Key')}
+        danger
+        busy={importingKey}
+        onConfirm={() => { void handleImportKey(); }}
+        onCancel={() => setPendingImportKey(null)}
+      >
+        <p>
+          {t(
+            'meshcore.config.import_key_dialog_body',
+            'This REPLACES the device identity with the imported private key. Every contact will need to re-discover this node. It cannot be undone without the old key.',
+          )}
+        </p>
+      </TypedConfirmDialog>
+    </DangerZone>
   );
 };

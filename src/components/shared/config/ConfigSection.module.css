@@ -19,6 +19,15 @@
   border-radius: 8px;
 }
 
+/* `tone="danger"`: the shared DangerZone header (#5830). */
+.danger {
+  border-color: var(--color-error);
+}
+
+.danger .title {
+  color: var(--color-error);
+}
+
 .title {
   margin: 0;
   display: flex;

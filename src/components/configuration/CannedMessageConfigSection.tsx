@@ -22,6 +22,8 @@ const INPUT_EVENT_OPTIONS = [
 ];
 
 interface CannedMessageConfigSectionProps {
+  /** False disables every control: no configuration:write on this source (#5830). */
+  canWrite?: boolean;
   enabled: boolean;
   setEnabled: (value: boolean) => void;
   rotary1Enabled: boolean;
@@ -50,6 +52,7 @@ interface CannedMessageConfigSectionProps {
 }
 
 const CannedMessageConfigSection: React.FC<CannedMessageConfigSectionProps> = ({
+  canWrite = true,
   enabled,
   setEnabled,
   rotary1Enabled,
@@ -122,7 +125,7 @@ const CannedMessageConfigSection: React.FC<CannedMessageConfigSectionProps> = ({
 
   return (
     <NumberInputScope scope={numberScope}>
-    <ConfigSection title={t('cannedmsg_config.title')} docsUrl="https://meshmonitor.org/features/device#canned-message-configuration" notice={<ModuleAvailabilityNotice />}>
+    <ConfigSection canWrite={canWrite} title={t('cannedmsg_config.title')} docsUrl="https://meshmonitor.org/features/device#canned-message-configuration" notice={<ModuleAvailabilityNotice />}>
 
       {/* Enable Module */}
       <div className="setting-item">

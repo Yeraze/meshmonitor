@@ -43,6 +43,8 @@ const SERIAL_MODE_OPTIONS = [
 ];
 
 interface SerialConfigSectionProps {
+  /** False disables every control: no configuration:write on this source (#5830). */
+  canWrite?: boolean;
   enabled: boolean;
   setEnabled: (value: boolean) => void;
   echo: boolean;
@@ -65,6 +67,7 @@ interface SerialConfigSectionProps {
 }
 
 const SerialConfigSection: React.FC<SerialConfigSectionProps> = ({
+  canWrite = true,
   enabled,
   setEnabled,
   echo,
@@ -124,7 +127,7 @@ const SerialConfigSection: React.FC<SerialConfigSectionProps> = ({
 
   return (
     <NumberInputScope scope={numberScope}>
-    <ConfigSection title={t('serial_config.title')} docsUrl="https://meshtastic.org/docs/configuration/module/serial/" notice={<ModuleAvailabilityNotice />}>
+    <ConfigSection canWrite={canWrite} title={t('serial_config.title')} docsUrl="https://meshtastic.org/docs/configuration/module/serial/" notice={<ModuleAvailabilityNotice />}>
 
       {/* Enable Module */}
       <div className="setting-item">

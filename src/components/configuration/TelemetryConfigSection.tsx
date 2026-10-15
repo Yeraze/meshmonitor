@@ -9,6 +9,8 @@ import { useNumberInputScope } from '../common/numberInputScopeContext';
 import { ConfigSection } from '../shared/config/ConfigSection';
 
 interface TelemetryConfigSectionProps {
+  /** False disables every control: no configuration:write on this source (#5830). */
+  canWrite?: boolean;
   // Config version - increment when config is loaded from device to sync saved state
   configVersion?: number;
   // Device Telemetry
@@ -51,6 +53,7 @@ interface TelemetryConfigSectionProps {
 }
 
 const TelemetryConfigSection: React.FC<TelemetryConfigSectionProps> = ({
+  canWrite = true,
   configVersion,
   deviceUpdateInterval,
   setDeviceUpdateInterval,
@@ -182,7 +185,7 @@ const TelemetryConfigSection: React.FC<TelemetryConfigSectionProps> = ({
 
   return (
     <NumberInputScope scope={numberScope}>
-    <ConfigSection title={t('telemetry_config.title')} docsUrl="https://meshmonitor.org/features/device#telemetry-configuration" notice={<ModuleAvailabilityNotice />}>
+    <ConfigSection canWrite={canWrite} title={t('telemetry_config.title')} docsUrl="https://meshmonitor.org/features/device#telemetry-configuration" notice={<ModuleAvailabilityNotice />}>
 
       {/* Device Telemetry Section */}
       <h4 style={{ marginTop: '1.5rem', marginBottom: '0.5rem', color: 'var(--color-text-subtle)' }}>

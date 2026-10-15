@@ -10,6 +10,8 @@ import { useNumberInputScope } from '../common/numberInputScopeContext';
 import { ConfigSection } from '../shared/config/ConfigSection';
 
 interface PositionConfigSectionProps {
+  /** False disables every control: no configuration:write on this source (#5830). */
+  canWrite?: boolean;
   positionBroadcastSecs: number;
   positionSmartEnabled: boolean;
   fixedPosition: boolean;
@@ -46,6 +48,7 @@ interface PositionConfigSectionProps {
 }
 
 const PositionConfigSection: React.FC<PositionConfigSectionProps> = ({
+  canWrite = true,
   configVersion,
   positionBroadcastSecs,
   positionSmartEnabled,
@@ -168,7 +171,7 @@ const PositionConfigSection: React.FC<PositionConfigSectionProps> = ({
 
   return (
     <NumberInputScope scope={numberScope}>
-    <ConfigSection title={t('position_config.title')} docsUrl="https://meshmonitor.org/features/device#position-configuration">
+    <ConfigSection canWrite={canWrite} title={t('position_config.title')} docsUrl="https://meshmonitor.org/features/device#position-configuration">
       <div className="setting-item">
         <label htmlFor="positionBroadcastSecs">
           {t('position_config.broadcast_interval')}

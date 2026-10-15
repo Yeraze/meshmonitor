@@ -43,12 +43,54 @@
  */
 
 /*
- * Reboot / Purge / Reload buttons in the warning box. As a single-line flex
- * row the last button ended at x=421 on a 390px viewport, so the page
- * scrolled sideways. Wrapping has no effect when they fit, so no media query.
+ * Top section: reload, import, export (#5830). Reboot and purge moved to the
+ * shared DangerZone at the end of the page, whose action row wraps on a
+ * phone (DangerZone.module.css).
  */
-.dangerActions {
-  flex-wrap: wrap;
+.topSection {
+  margin-bottom: 2rem;
+}
+
+.reloadButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.5rem 1rem;
+  background: var(--color-info);
+  color: var(--color-bg);
+  border: none;
+  border-radius: 4px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.reloadButton:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.spin {
+  display: inline-block;
+  animation: reloadSpin 1s linear infinite;
+}
+
+@keyframes reloadSpin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* The page-wide "this writes to your node" warning, now a one-line note. */
+.pageWarning {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0 0 1rem;
+  padding: 0.6rem 0.9rem;
+  border: 1px solid var(--color-warning);
+  border-radius: 6px;
+  color: var(--color-warning);
+  font-weight: 600;
 }
 
 /*
