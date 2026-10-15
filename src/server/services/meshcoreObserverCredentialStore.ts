@@ -358,6 +358,43 @@ export class MeshCoreObserverCredentialStore {
     }));
   }
 
+  /**
+   * Remove ONLY the pre-#5014 legacy (shared, no-broker) credential (#5825).
+   * Every per-broker entry is kept. Deletes the whole row once nothing is left,
+   * matching `clearForBroker`. No-op when there is no row or no legacy entry.
+   *
+   * A row we cannot decrypt (key_rotated) is deleted outright: none of its
+   * entries — legacy or per-broker — can ever be read again, so nothing usable
+   * is lost, and forgetting an unrecoverable secret must always be possible
+   * (even when `capability.canStore` is false and nothing can be re-entered).
+   */
+  async clearLegacy(sourceId: string): Promise<void> {
+    const existing = await this.readDoc(sourceId);
+    if (existing.kind === 'none') return;
+    if (existing.kind === 'key_rotated') {
+      await databaseService.meshcoreObserverCredentials.deleteBySourceId(sourceId);
+      return;
+    }
+    if (!existing.doc.legacy) return;
+    if (existing.doc.brokers.size === 0) {
+      await databaseService.meshcoreObserverCredentials.deleteBySourceId(sourceId);
+      return;
+    }
+    await this.persistDoc(sourceId, { v: 2, brokers: new Map(existing.doc.brokers) });
+  }
+
+  /**
+   * The legacy credential's username, or null when there is none (or the row
+   * cannot be decrypted). Non-secret — never returns the password. Lets the UI
+   * say an old shared credential exists without guessing from `status()`,
+   * whose `username` falls back to a broker entry (#5825).
+   */
+  async getLegacyUsername(sourceId: string): Promise<string | null> {
+    const existing = await this.readDoc(sourceId);
+    if (existing.kind !== 'ok' || !existing.doc.legacy) return null;
+    return existing.doc.legacy.username;
+  }
+
   /** Clear any stored credentials for a source. No-op if none exists. */
   async clear(sourceId: string): Promise<void> {
     await databaseService.meshcoreObserverCredentials.deleteBySourceId(sourceId);

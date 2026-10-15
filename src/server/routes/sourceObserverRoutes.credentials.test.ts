@@ -434,7 +434,12 @@ describe('sourceObserverRoutes — /credentials brokerKey (#5014 Phase 1)', () =
     expect(await store.load(MULTI_SOURCE_ID)).toEqual({ kind: 'ok', username: 'legacy-user', password: PASSWORD });
   });
 
-  it('DELETE with no param still wipes everything (legacy + all brokers)', async () => {
+  // #5825: a key-less DELETE used to wipe every broker's credential. It now
+  // removes the legacy (shared) credential only, same as ?legacy=1.
+  it.each([
+    ['no param', ''],
+    ['?legacy=1', '?legacy=1'],
+  ])('DELETE with %s removes ONLY the legacy credential; per-broker entries survive', async (_label, query) => {
     const agent = await multiAgent();
     await agent
       .put(`/api/sources/${MULTI_SOURCE_ID}/observer/credentials`)
@@ -443,10 +448,75 @@ describe('sourceObserverRoutes — /credentials brokerKey (#5014 Phase 1)', () =
       .put(`/api/sources/${MULTI_SOURCE_ID}/observer/credentials`)
       .send({ username: 'second-user', password: PASSWORD, brokerKey: SECOND_BROKER_KEY });
 
-    const delRes = await agent.delete(`/api/sources/${MULTI_SOURCE_ID}/observer/credentials`);
+    const before = await agent.get(`/api/sources/${MULTI_SOURCE_ID}/observer/credentials`);
+    expect(before.body.data.legacy).toEqual({ username: 'legacy-user' });
+
+    const delRes = await agent.delete(`/api/sources/${MULTI_SOURCE_ID}/observer/credentials${query}`);
     expect(delRes.status).toBe(200);
-    expect(delRes.body.data.stored).toBe(false);
+    expect(delRes.body.data.legacy).toBeNull();
+    expect(delRes.body.data.stored).toBe(true);
+    expect(delRes.body.data.brokers).toEqual([{ brokerKey: SECOND_BROKER_KEY, username: 'second-user' }]);
+    expect(JSON.stringify(delRes.body)).not.toContain(PASSWORD);
+
+    const store = new MeshCoreObserverCredentialStore('test-secret', true);
+    expect(await store.load(MULTI_SOURCE_ID)).toEqual({ kind: 'none' });
+    expect(await store.loadForBroker(MULTI_SOURCE_ID, SECOND_BROKER_KEY)).toEqual({
+      kind: 'ok',
+      username: 'second-user',
+      password: PASSWORD,
+    });
+
+    const entries = await harness.db.auth.getAuditLogEntries(20, 0);
+    const clearEntry = entries.find((e) => e.action === 'meshcore_observer_credentials_clear');
+    expect(JSON.parse(clearEntry!.details!)).toMatchObject({ sourceId: MULTI_SOURCE_ID, legacy: true });
+  });
+
+  it('DELETE ?legacy=1 with no legacy credential leaves per-broker entries alone', async () => {
+    const agent = await multiAgent();
+    await agent
+      .put(`/api/sources/${MULTI_SOURCE_ID}/observer/credentials`)
+      .send({ username: 'second-user', password: PASSWORD, brokerKey: SECOND_BROKER_KEY });
+    const delRes = await agent.delete(`/api/sources/${MULTI_SOURCE_ID}/observer/credentials?legacy=1`);
+    expect(delRes.status).toBe(200);
+    expect(delRes.body.data.brokers).toEqual([{ brokerKey: SECOND_BROKER_KEY, username: 'second-user' }]);
+  });
+
+  it('DELETE ?brokerKey= on the last broker keeps the legacy credential', async () => {
+    const agent = await multiAgent();
+    await agent
+      .put(`/api/sources/${MULTI_SOURCE_ID}/observer/credentials`)
+      .send({ username: 'legacy-user', password: PASSWORD });
+    await agent
+      .put(`/api/sources/${MULTI_SOURCE_ID}/observer/credentials`)
+      .send({ username: 'second-user', password: PASSWORD, brokerKey: SECOND_BROKER_KEY });
+    const delRes = await agent.delete(
+      `/api/sources/${MULTI_SOURCE_ID}/observer/credentials?brokerKey=${encodeURIComponent(SECOND_BROKER_KEY)}`,
+    );
     expect(delRes.body.data.brokers).toEqual([]);
+    expect(delRes.body.data.legacy).toEqual({ username: 'legacy-user' });
+  });
+
+  it('DELETE rejects a bad legacy value and legacy together with brokerKey', async () => {
+    const agent = await multiAgent();
+    const bad = await agent.delete(`/api/sources/${MULTI_SOURCE_ID}/observer/credentials?legacy=yes`);
+    expect(bad.status).toBe(400);
+    expect(bad.body.code).toBe('INVALID_PARAMETER');
+
+    const both = await agent.delete(
+      `/api/sources/${MULTI_SOURCE_ID}/observer/credentials?legacy=1&brokerKey=${encodeURIComponent(SECOND_BROKER_KEY)}`,
+    );
+    expect(both.status).toBe(400);
+    expect(both.body.code).toBe('INVALID_PARAMETER');
+  });
+
+  it('GET reports legacy:null when only per-broker credentials exist', async () => {
+    const agent = await multiAgent();
+    await agent
+      .put(`/api/sources/${MULTI_SOURCE_ID}/observer/credentials`)
+      .send({ username: 'second-user', password: PASSWORD, brokerKey: SECOND_BROKER_KEY });
+    const res = await agent.get(`/api/sources/${MULTI_SOURCE_ID}/observer/credentials`);
+    expect(res.body.data.legacy).toBeNull();
+    expect(res.body.data.stored).toBe(true);
   });
 
   it('DELETE with an unconfigured brokerKey -> 400 UNKNOWN_BROKER', async () => {

@@ -201,6 +201,7 @@ describe('sourceObserverRoutes — broker URLs per caller', () => {
       expect(res.status).toBe(200);
       expect(text(res.body)).not.toContain(sec);
       expect(res.body.data.username).toBe(`${EP}-legacy-user`);
+      expect(res.body.data.legacy).toEqual({ username: `${EP}-legacy-user` });
       expect(res.body.data.brokers).toEqual([
         { brokerKey: SHOWN_KEY, username: `${EP}-broker-user` },
       ]);
@@ -214,6 +215,8 @@ describe('sourceObserverRoutes — broker URLs per caller', () => {
       expect(res.body.data.stored).toBe(true);
       expect(res.body.data.username).toBeNull();
       expect(res.body.data.brokers).toEqual([{ brokerKey: 'broker-0', username: null }]);
+      // #5825: says a shared credential exists, never whose.
+      expect(res.body.data.legacy).toEqual({ username: null });
     });
   });
 

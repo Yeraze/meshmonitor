@@ -140,7 +140,9 @@ The signing key is the same key that proves your node's identity on the mesh. Tr
 
 ### Username / password — the broker login
 
-Each username/password broker has its own separate credential, matched to it by its URL. Enter the **broker username** and **broker password** your region's operator publishes for that specific broker, then save.
+Each username/password broker has its own separate credential, matched to it by its URL. Enter the **broker username** and **broker password** your region's operator publishes for that specific broker, then save. You can do this in the Dashboard source form, or on the **MeshCore → Configuration** page, where each username/password broker's card in the **Brokers** panel shows whether a login is stored for it and has its own **Set** and **Clear** buttons. **Clear** removes that one broker's login and names the broker before it does; other brokers keep theirs.
+
+Installs that stored a single shared login before per-broker credentials may still hold it. Only a broker whose URL matches the old single broker URL uses it. While it exists, the Configuration page shows a note with a **Remove old shared credential** button, which removes that shared login and nothing else.
 
 Each password gets the same treatment as the signing key: it is encrypted at rest with a key derived from `SESSION_SECRET`, it is never written into the source's config, and **no API ever returns it**. Only the username comes back (it isn't a secret — a non-TLS broker sees it in the clear anyway), so the page can show which account is configured for that broker. A password sent inside a source's config block is rejected outright.
 
@@ -158,7 +160,7 @@ A static-credential broker on `mqtt://…:1883` has no TLS, so your username and
 
 ### If SESSION_SECRET changes
 
-If `SESSION_SECRET` changes after a credential is stored, that credential can no longer be decrypted. The Configuration page shows a **rotated** warning for the affected broker in that case — re-import/re-paste the signing key, or re-enter that broker's password, to recover. In signed-token mode the public key stays correct and visible throughout, for every broker.
+If `SESSION_SECRET` changes after a credential is stored, that credential can no longer be decrypted. The Configuration page shows a **rotated** warning for the affected broker in that case — re-import/re-paste the signing key, or re-enter that broker's password, to recover. **Remove unreadable credentials** deletes broker logins that can no longer be decrypted, which you need when no new password can be stored. In signed-token mode the public key stays correct and visible throughout, for every broker.
 
 ### Backups
 
