@@ -1,6 +1,7 @@
-import React, { useRef, useMemo, useCallback } from 'react';
+import React, { useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSaveBar } from '../../hooks/useSaveBar';
+import { useSectionBaseline } from '../../hooks/useSectionBaseline';
 import { NumberInput } from '../common/NumberInput';
 import { NumberInputScope } from '../common/NumberInputScope';
 import { useNumberInputScope } from '../common/numberInputScopeContext';
@@ -36,7 +37,8 @@ interface TrafficManagementConfigSectionProps {
   setUnknownPacketThreshold: (value: number) => void;
   isDisabled: boolean;
   isSaving: boolean;
-  onSave: () => Promise<void>;
+  /** Resolves true when the node accepted the save. */
+  onSave: () => Promise<boolean>;
 }
 
 const TrafficManagementConfigSection: React.FC<TrafficManagementConfigSectionProps> = ({
@@ -56,47 +58,27 @@ const TrafficManagementConfigSection: React.FC<TrafficManagementConfigSectionPro
 }) => {
   const { t } = useTranslation();
 
-  const initialValuesRef = useRef({
+  const values = {
     positionMinIntervalSecs,
     nodeinfoDirectResponseMaxHops,
     rateLimitWindowSecs,
     rateLimitMaxPackets,
     unknownPacketThreshold
-  });
-
-  const hasChanges = useMemo(() => {
-    const initial = initialValuesRef.current;
-    return (
-      positionMinIntervalSecs !== initial.positionMinIntervalSecs ||
-      nodeinfoDirectResponseMaxHops !== initial.nodeinfoDirectResponseMaxHops ||
-      rateLimitWindowSecs !== initial.rateLimitWindowSecs ||
-      rateLimitMaxPackets !== initial.rateLimitMaxPackets ||
-      unknownPacketThreshold !== initial.unknownPacketThreshold
-    );
-  }, [positionMinIntervalSecs, nodeinfoDirectResponseMaxHops,
-    rateLimitWindowSecs, rateLimitMaxPackets, unknownPacketThreshold]);
+  };
+  const { baseline, hasChanges, commit } = useSectionBaseline(values);
 
   const resetChanges = useCallback(() => {
-    const initial = initialValuesRef.current;
-    setPositionMinIntervalSecs(initial.positionMinIntervalSecs);
-    setNodeinfoDirectResponseMaxHops(initial.nodeinfoDirectResponseMaxHops);
-    setRateLimitWindowSecs(initial.rateLimitWindowSecs);
-    setRateLimitMaxPackets(initial.rateLimitMaxPackets);
-    setUnknownPacketThreshold(initial.unknownPacketThreshold);
-  }, [setPositionMinIntervalSecs, setNodeinfoDirectResponseMaxHops,
+    setPositionMinIntervalSecs(baseline.positionMinIntervalSecs);
+    setNodeinfoDirectResponseMaxHops(baseline.nodeinfoDirectResponseMaxHops);
+    setRateLimitWindowSecs(baseline.rateLimitWindowSecs);
+    setRateLimitMaxPackets(baseline.rateLimitMaxPackets);
+    setUnknownPacketThreshold(baseline.unknownPacketThreshold);
+  }, [baseline, setPositionMinIntervalSecs, setNodeinfoDirectResponseMaxHops,
     setRateLimitWindowSecs, setRateLimitMaxPackets, setUnknownPacketThreshold]);
 
-  const handleSave = useCallback(async () => {
-    await onSave();
-    initialValuesRef.current = {
-      positionMinIntervalSecs,
-      nodeinfoDirectResponseMaxHops,
-      rateLimitWindowSecs,
-      rateLimitMaxPackets,
-      unknownPacketThreshold
-    };
-  }, [onSave, positionMinIntervalSecs, nodeinfoDirectResponseMaxHops,
-    rateLimitWindowSecs, rateLimitMaxPackets, unknownPacketThreshold]);
+  const handleSave = async () => {
+    if (await onSave()) commit(values);
+  };
 
   const numberScope = useNumberInputScope();
   useSaveBar({

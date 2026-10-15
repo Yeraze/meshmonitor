@@ -1,8 +1,9 @@
-import React, { useState, useRef, useMemo, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { UiIcon } from '../icons';
 import { GPS_MODE_OPTIONS, POSITION_FLAGS } from './constants';
 import { useSaveBar } from '../../hooks/useSaveBar';
+import { useSectionBaseline } from '../../hooks/useSectionBaseline';
 import { NumberInput } from '../common/NumberInput';
 import { NumberInputScope } from '../common/NumberInputScope';
 import { useNumberInputScope } from '../common/numberInputScopeContext';
@@ -37,10 +38,14 @@ interface PositionConfigSectionProps {
   setTxGpio: (value: number) => void;
   setGpsEnGpio: (value: number) => void;
   isSaving: boolean;
-  onSave: () => Promise<void>;
+  /** Resolves true when the node accepted the save. */
+  onSave: () => Promise<boolean>;
+  /** Bumped when the page reloads config from the node (#5797). */
+  configVersion?: number;
 }
 
 const PositionConfigSection: React.FC<PositionConfigSectionProps> = ({
+  configVersion,
   positionBroadcastSecs,
   positionSmartEnabled,
   fixedPosition,
@@ -75,105 +80,69 @@ const PositionConfigSection: React.FC<PositionConfigSectionProps> = ({
   const { t } = useTranslation();
   const [showAdvanced, setShowAdvanced] = useState(false);
 
-  // Track initial values for change detection
-  const initialValuesRef = useRef({
+  // What the node holds; moves on a successful save or a reload (#5797).
+  // Reload config does not refresh the fixed position, so its baseline stays.
+  const values = {
     positionBroadcastSecs, positionSmartEnabled, fixedPosition, fixedLatitude,
     fixedLongitude, fixedAltitude, gpsUpdateInterval, gpsMode,
     broadcastSmartMinimumDistance, broadcastSmartMinimumIntervalSecs,
     positionFlags, rxGpio, txGpio, gpsEnGpio
+  };
+  const { baseline, hasChanges: differsFromBaseline, commit } = useSectionBaseline(values, {
+    reseedKey: configVersion,
+    keepOnReseed: ['fixedLatitude', 'fixedLongitude', 'fixedAltitude']
   });
 
   // Track whether data has been loaded from server (use state to trigger re-render)
   const [isDataLoaded, setIsDataLoaded] = useState(false);
 
-  // Update initial values when data is loaded from server
-  // This is detected by lat/long changing from default (0) to real values
+  // Update the baseline when position data is loaded from the server.
+  // This is detected by lat/long changing from default (0) to real values.
   useEffect(() => {
     if (isDataLoaded) return; // Already loaded
 
-    const initial = initialValuesRef.current;
-    const latChanged = initial.fixedLatitude === 0 && fixedLatitude !== 0;
-    const lonChanged = initial.fixedLongitude === 0 && fixedLongitude !== 0;
+    const latChanged = baseline.fixedLatitude === 0 && fixedLatitude !== 0;
+    const lonChanged = baseline.fixedLongitude === 0 && fixedLongitude !== 0;
 
-    // When position data loads from server, update the initial values
     if (latChanged || lonChanged) {
-      initialValuesRef.current = {
-        positionBroadcastSecs, positionSmartEnabled, fixedPosition, fixedLatitude,
-        fixedLongitude, fixedAltitude, gpsUpdateInterval, gpsMode,
-        broadcastSmartMinimumDistance, broadcastSmartMinimumIntervalSecs,
-        positionFlags, rxGpio, txGpio, gpsEnGpio
-      };
-      setIsDataLoaded(true); // Trigger re-render to recalculate hasChanges
+      commit(values);
+      setIsDataLoaded(true);
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- #5797 values and baseline derive from these fields
   }, [isDataLoaded, fixedLatitude, fixedLongitude, positionBroadcastSecs, positionSmartEnabled, fixedPosition,
       fixedAltitude, gpsUpdateInterval, gpsMode, broadcastSmartMinimumDistance,
       broadcastSmartMinimumIntervalSecs, positionFlags, rxGpio, txGpio, gpsEnGpio]);
 
-  // Calculate if there are unsaved changes
-  const hasChanges = useMemo(() => {
-    // Check if data is still loading (lat/long will change from 0 to real values)
-    // Don't report changes until data has been loaded from the server
-    const initial = initialValuesRef.current;
-    const stillLoading = !isDataLoaded && initial.fixedLatitude === 0 && initial.fixedLongitude === 0 &&
-                         (fixedLatitude !== 0 || fixedLongitude !== 0);
-    if (stillLoading) return false;
+  // Don't report changes until the position has been loaded from the server
+  const stillLoading = !isDataLoaded && baseline.fixedLatitude === 0 && baseline.fixedLongitude === 0 &&
+                       (fixedLatitude !== 0 || fixedLongitude !== 0);
+  const hasChanges = !stillLoading && differsFromBaseline;
 
-    return (
-      positionBroadcastSecs !== initial.positionBroadcastSecs ||
-      positionSmartEnabled !== initial.positionSmartEnabled ||
-      fixedPosition !== initial.fixedPosition ||
-      fixedLatitude !== initial.fixedLatitude ||
-      fixedLongitude !== initial.fixedLongitude ||
-      fixedAltitude !== initial.fixedAltitude ||
-      gpsUpdateInterval !== initial.gpsUpdateInterval ||
-      gpsMode !== initial.gpsMode ||
-      broadcastSmartMinimumDistance !== initial.broadcastSmartMinimumDistance ||
-      broadcastSmartMinimumIntervalSecs !== initial.broadcastSmartMinimumIntervalSecs ||
-      positionFlags !== initial.positionFlags ||
-      rxGpio !== initial.rxGpio ||
-      txGpio !== initial.txGpio ||
-      gpsEnGpio !== initial.gpsEnGpio
-    );
-  }, [isDataLoaded, positionBroadcastSecs, positionSmartEnabled, fixedPosition, fixedLatitude,
-      fixedLongitude, fixedAltitude, gpsUpdateInterval, gpsMode,
-      broadcastSmartMinimumDistance, broadcastSmartMinimumIntervalSecs,
-      positionFlags, rxGpio, txGpio, gpsEnGpio]);
-
-  // Reset to initial values (for SaveBar dismiss)
+  // Reset to saved values (for SaveBar dismiss)
   const resetChanges = useCallback(() => {
-    const initial = initialValuesRef.current;
-    setPositionBroadcastSecs(initial.positionBroadcastSecs);
-    setPositionSmartEnabled(initial.positionSmartEnabled);
-    setFixedPosition(initial.fixedPosition);
-    setFixedLatitude(initial.fixedLatitude);
-    setFixedLongitude(initial.fixedLongitude);
-    setFixedAltitude(initial.fixedAltitude);
-    setGpsUpdateInterval(initial.gpsUpdateInterval);
-    setGpsMode(initial.gpsMode);
-    setBroadcastSmartMinimumDistance(initial.broadcastSmartMinimumDistance);
-    setBroadcastSmartMinimumIntervalSecs(initial.broadcastSmartMinimumIntervalSecs);
-    setPositionFlags(initial.positionFlags);
-    setRxGpio(initial.rxGpio);
-    setTxGpio(initial.txGpio);
-    setGpsEnGpio(initial.gpsEnGpio);
-  }, [setPositionBroadcastSecs, setPositionSmartEnabled, setFixedPosition, setFixedLatitude,
+    setPositionBroadcastSecs(baseline.positionBroadcastSecs);
+    setPositionSmartEnabled(baseline.positionSmartEnabled);
+    setFixedPosition(baseline.fixedPosition);
+    setFixedLatitude(baseline.fixedLatitude);
+    setFixedLongitude(baseline.fixedLongitude);
+    setFixedAltitude(baseline.fixedAltitude);
+    setGpsUpdateInterval(baseline.gpsUpdateInterval);
+    setGpsMode(baseline.gpsMode);
+    setBroadcastSmartMinimumDistance(baseline.broadcastSmartMinimumDistance);
+    setBroadcastSmartMinimumIntervalSecs(baseline.broadcastSmartMinimumIntervalSecs);
+    setPositionFlags(baseline.positionFlags);
+    setRxGpio(baseline.rxGpio);
+    setTxGpio(baseline.txGpio);
+    setGpsEnGpio(baseline.gpsEnGpio);
+  }, [baseline, setPositionBroadcastSecs, setPositionSmartEnabled, setFixedPosition, setFixedLatitude,
       setFixedLongitude, setFixedAltitude, setGpsUpdateInterval, setGpsMode,
       setBroadcastSmartMinimumDistance, setBroadcastSmartMinimumIntervalSecs,
       setPositionFlags, setRxGpio, setTxGpio, setGpsEnGpio]);
 
-  // Update initial values after successful save
-  const handleSave = useCallback(async () => {
-    await onSave();
-    initialValuesRef.current = {
-      positionBroadcastSecs, positionSmartEnabled, fixedPosition, fixedLatitude,
-      fixedLongitude, fixedAltitude, gpsUpdateInterval, gpsMode,
-      broadcastSmartMinimumDistance, broadcastSmartMinimumIntervalSecs,
-      positionFlags, rxGpio, txGpio, gpsEnGpio
-    };
-  }, [onSave, positionBroadcastSecs, positionSmartEnabled, fixedPosition, fixedLatitude,
-      fixedLongitude, fixedAltitude, gpsUpdateInterval, gpsMode,
-      broadcastSmartMinimumDistance, broadcastSmartMinimumIntervalSecs,
-      positionFlags, rxGpio, txGpio, gpsEnGpio]);
+  // Move the baseline only when the node took the save
+  const handleSave = async () => {
+    if (await onSave()) commit(values);
+  };
 
   // Register with SaveBar
   const numberScope = useNumberInputScope();

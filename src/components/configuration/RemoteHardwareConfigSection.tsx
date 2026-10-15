@@ -1,6 +1,7 @@
-import React, { useRef, useMemo, useCallback } from 'react';
+import React, { useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSaveBar } from '../../hooks/useSaveBar';
+import { useSectionBaseline } from '../../hooks/useSectionBaseline';
 import ModuleAvailabilityNotice from './ModuleAvailabilityNotice';
 
 interface RemoteHardwareConfigSectionProps {
@@ -9,7 +10,8 @@ interface RemoteHardwareConfigSectionProps {
   allowUndefinedPinAccess: boolean;
   setAllowUndefinedPinAccess: (value: boolean) => void;
   isSaving: boolean;
-  onSave: () => Promise<void>;
+  /** Resolves true when the node accepted the save. */
+  onSave: () => Promise<boolean>;
 }
 
 const RemoteHardwareConfigSection: React.FC<RemoteHardwareConfigSectionProps> = ({
@@ -22,34 +24,22 @@ const RemoteHardwareConfigSection: React.FC<RemoteHardwareConfigSectionProps> = 
 }) => {
   const { t } = useTranslation();
 
-  // Track initial values for change detection
-  const initialValuesRef = useRef({
+  // What the node holds; moves on a successful save (#5797)
+  const values = {
     enabled, allowUndefinedPinAccess
-  });
-
-  // Calculate if there are unsaved changes
-  const hasChanges = useMemo(() => {
-    const initial = initialValuesRef.current;
-    return (
-      enabled !== initial.enabled ||
-      allowUndefinedPinAccess !== initial.allowUndefinedPinAccess
-    );
-  }, [enabled, allowUndefinedPinAccess]);
+  };
+  const { baseline, hasChanges, commit } = useSectionBaseline(values);
 
   // Reset to initial values (for SaveBar dismiss)
   const resetChanges = useCallback(() => {
-    const initial = initialValuesRef.current;
-    setEnabled(initial.enabled);
-    setAllowUndefinedPinAccess(initial.allowUndefinedPinAccess);
-  }, [setEnabled, setAllowUndefinedPinAccess]);
+    setEnabled(baseline.enabled);
+    setAllowUndefinedPinAccess(baseline.allowUndefinedPinAccess);
+  }, [baseline, setEnabled, setAllowUndefinedPinAccess]);
 
-  // Update initial values after successful save
-  const handleSave = useCallback(async () => {
-    await onSave();
-    initialValuesRef.current = {
-      enabled, allowUndefinedPinAccess
-    };
-  }, [onSave, enabled, allowUndefinedPinAccess]);
+  // Move the baseline only when the node took the save
+  const handleSave = async () => {
+    if (await onSave()) commit(values);
+  };
 
   // Register with SaveBar
   useSaveBar({

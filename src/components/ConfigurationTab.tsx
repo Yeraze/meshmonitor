@@ -49,7 +49,7 @@ import StatusMessageReapplyOption from './configuration/StatusMessageReapplyOpti
 import TAKConfigSection from './configuration/TAKConfigSection';
 import { normalizeTakConfig } from '../utils/takConfig';
 import { statusMessageSaveErrorText } from '../utils/statusMessage';
-import { floorKeepingZero, NODE_INFO_BROADCAST_FLOOR_SECS, POSITION_BROADCAST_FLOOR_SECS } from '../utils/broadcastIntervalFloor';
+import { floorKeepingZero, neighborInfoIntervalToSend, NODE_INFO_BROADCAST_FLOOR_SECS, POSITION_BROADCAST_FLOOR_SECS } from '../utils/broadcastIntervalFloor';
 import TrafficManagementConfigSection from './configuration/TrafficManagementConfigSection';
 import MeshBeaconConfigSection from './configuration/MeshBeaconConfigSection';
 import { unpackMeshBeaconFlags, pskToBase64, buildMeshBeaconConfigPayload, MESH_BEACON_MIN_INTERVAL_SECS, type BroadcastTarget } from './admin-commands/useAdminCommandsState';
@@ -240,7 +240,9 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ baseUrl = '', nodes
   const [healthMeasurementEnabled, setHealthMeasurementEnabled] = useState(false);
   const [healthUpdateInterval, setHealthUpdateInterval] = useState(900);
   const [healthScreenEnabled, setHealthScreenEnabled] = useState(false);
-  const [telemetryConfigVersion, setTelemetryConfigVersion] = useState(0);
+  // Bumped whenever config is (re)loaded from the node, so each section can
+  // move its SaveBar baseline to the loaded values (#5797).
+  const [configVersion, setConfigVersion] = useState(0);
 
   // External Notification Config State
   const [extNotifEnabled, setExtNotifEnabled] = useState(false);
@@ -654,7 +656,7 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ baseUrl = '', nodes
           setHealthUpdateInterval(config.moduleConfig.telemetry.healthUpdateInterval ?? 900);
           setHealthScreenEnabled(config.moduleConfig.telemetry.healthScreenEnabled || false);
           // Increment version to signal config load to TelemetryConfigSection
-          setTelemetryConfigVersion(v => v + 1);
+          setConfigVersion(v => v + 1);
         }
 
         // Populate External Notification config
@@ -933,7 +935,7 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ baseUrl = '', nodes
     void loadPositionFromNodes();
   }, [nodes]); // Run when nodes first populate
 
-  const handleSaveDeviceConfig = async () => {
+  const handleSaveDeviceConfig = async (): Promise<boolean> => {
     setIsSaving(true);
     setStatusMessage('');
     try {
@@ -944,7 +946,7 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ baseUrl = '', nodes
         setNodeInfoBroadcastSecs(validNodeInfoBroadcastSecs);
         showToast(t('config.node_info_adjusted'), 'warning');
         setIsSaving(false);
-        return;
+        return false;
       }
 
       await apiService.setDeviceConfig({
@@ -962,17 +964,19 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ baseUrl = '', nodes
       setStatusMessage(t('config.device_config_saved'));
       showToast(t('config.device_config_saved_toast'), 'success');
       // Device config changes don't require reboot
+      return true;
     } catch (error) {
       logger.error('Error saving device config:', error);
       const errorMsg = error instanceof Error ? error.message : t('config.device_config_failed');
       setStatusMessage(`Error: ${errorMsg}`);
       showToast(`${t('config.device_config_failed')}: ${errorMsg}`, 'error');
+      return false;
     } finally {
       setIsSaving(false);
     }
   };
 
-  const handleSaveNodeOwner = async () => {
+  const handleSaveNodeOwner = async (): Promise<boolean> => {
     setIsSaving(true);
     setStatusMessage('');
     try {
@@ -980,17 +984,19 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ baseUrl = '', nodes
       setStatusMessage(t('config.node_names_saved'));
       showToast(t('config.node_names_saved_toast'), 'success');
       // Node owner changes don't require reboot
+      return true;
     } catch (error) {
       logger.error('Error saving node owner:', error);
       const errorMsg = error instanceof Error ? error.message : t('config.node_names_failed');
       setStatusMessage(`Error: ${errorMsg}`);
       showToast(`${t('config.node_names_failed')}: ${errorMsg}`, 'error');
+      return false;
     } finally {
       setIsSaving(false);
     }
   };
 
-  const handleSaveLoRaConfig = async () => {
+  const handleSaveLoRaConfig = async (): Promise<boolean> => {
     setIsSaving(true);
     setStatusMessage('');
     try {
@@ -1000,7 +1006,7 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ baseUrl = '', nodes
         setHopLimit(validHopLimit);
         showToast(t('config.hop_limit_adjusted'), 'warning');
         setIsSaving(false);
-        return;
+        return false;
       }
 
       // An unrecognised preset must never be written back as a guess (#5547).
@@ -1011,7 +1017,7 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ baseUrl = '', nodes
       if (presetUnknown && usePreset) {
         showToast(t('config.lora_unknown_preset', { name: unknownModemPresetName ?? '?' }), 'error');
         setIsSaving(false);
-        return;
+        return false;
       }
 
       await apiService.setLoRaConfig({
@@ -1040,17 +1046,19 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ baseUrl = '', nodes
       // the new txEnabled value without waiting for the 30s poll (#4294).
       void queryClient.invalidateQueries({ queryKey: ['txStatus'] });
       onConfigChangeTriggeringReboot?.();
+      return true;
     } catch (error) {
       logger.error('Error saving LoRa config:', error);
       const errorMsg = error instanceof Error ? error.message : t('config.lora_failed');
       setStatusMessage(`Error: ${errorMsg}`);
       showToast(`${t('config.lora_failed')}: ${errorMsg}`, 'error');
+      return false;
     } finally {
       setIsSaving(false);
     }
   };
 
-  const handleSavePositionConfig = async () => {
+  const handleSavePositionConfig = async (): Promise<boolean> => {
     setIsSaving(true);
     setStatusMessage('');
     try {
@@ -1061,7 +1069,7 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ baseUrl = '', nodes
         setPositionBroadcastSecs(validPositionBroadcastSecs);
         showToast(t('config.position_interval_adjusted'), 'warning');
         setIsSaving(false);
-        return;
+        return false;
       }
 
       // Validate lat/long ranges if fixed position is enabled
@@ -1069,12 +1077,12 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ baseUrl = '', nodes
         if (fixedLatitude < -90 || fixedLatitude > 90) {
           showToast(t('config.latitude_range_error'), 'error');
           setIsSaving(false);
-          return;
+          return false;
         }
         if (fixedLongitude < -180 || fixedLongitude > 180) {
           showToast(t('config.longitude_range_error'), 'error');
           setIsSaving(false);
-          return;
+          return false;
         }
       }
 
@@ -1097,17 +1105,19 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ baseUrl = '', nodes
       setStatusMessage(t('config.position_saved'));
       showToast(t('config.position_saved_toast'), 'success');
       // Position config changes don't require reboot
+      return true;
     } catch (error) {
       logger.error('Error saving position config:', error);
       const errorMsg = error instanceof Error ? error.message : t('config.position_failed');
       setStatusMessage(`Error: ${errorMsg}`);
       showToast(`${t('config.position_failed')}: ${errorMsg}`, 'error');
+      return false;
     } finally {
       setIsSaving(false);
     }
   };
 
-  const handleSaveMQTTConfig = async () => {
+  const handleSaveMQTTConfig = async (): Promise<boolean> => {
     setIsSaving(true);
     setStatusMessage('');
     try {
@@ -1131,22 +1141,24 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ baseUrl = '', nodes
       setStatusMessage(t('config.mqtt_saved'));
       showToast(t('config.mqtt_saved_toast'), 'success');
       // MQTT config changes don't require reboot
+      return true;
     } catch (error) {
       logger.error('Error saving MQTT config:', error);
       const errorMsg = error instanceof Error ? error.message : t('config.mqtt_failed');
       setStatusMessage(`Error: ${errorMsg}`);
       showToast(`${t('config.mqtt_failed')}: ${errorMsg}`, 'error');
+      return false;
     } finally {
       setIsSaving(false);
     }
   };
 
-  const handleSaveNeighborInfoConfig = async () => {
+  const handleSaveNeighborInfoConfig = async (): Promise<boolean> => {
     setIsSaving(true);
     setStatusMessage('');
     try {
       // Enforce minimum interval
-      const validInterval = Math.max(14400, neighborInfoInterval);
+      const validInterval = neighborInfoIntervalToSend(neighborInfoInterval);
       if (validInterval !== neighborInfoInterval) {
         setNeighborInfoInterval(validInterval);
         showToast(t('config.neighbor_interval_adjusted'), 'warning');
@@ -1160,17 +1172,19 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ baseUrl = '', nodes
       setStatusMessage(t('config.neighbor_saved'));
       showToast(t('config.neighbor_saved_toast'), 'success');
       // NeighborInfo config changes don't require reboot
+      return true;
     } catch (error) {
       logger.error('Error saving NeighborInfo config:', error);
       const errorMsg = error instanceof Error ? error.message : t('config.neighbor_failed');
       setStatusMessage(`Error: ${errorMsg}`);
       showToast(`${t('config.neighbor_failed')}: ${errorMsg}`, 'error');
+      return false;
     } finally {
       setIsSaving(false);
     }
   };
 
-  const handleSaveNetworkConfig = async () => {
+  const handleSaveNetworkConfig = async (): Promise<boolean> => {
     setIsSaving(true);
     setStatusMessage('');
     try {
@@ -1198,17 +1212,19 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ baseUrl = '', nodes
       setStatusMessage(t('config.network_saved'));
       showToast(t('config.network_saved_toast'), 'success');
       onConfigChangeTriggeringReboot?.();
+      return true;
     } catch (error) {
       logger.error('Error saving Network config:', error);
       const errorMsg = error instanceof Error ? error.message : t('config.network_failed');
       setStatusMessage(`Error: ${errorMsg}`);
       showToast(`${t('config.network_failed')}: ${errorMsg}`, 'error');
+      return false;
     } finally {
       setIsSaving(false);
     }
   };
 
-  const handleSavePowerConfig = async () => {
+  const handleSavePowerConfig = async (): Promise<boolean> => {
     setIsSaving(true);
     setStatusMessage('');
     try {
@@ -1225,17 +1241,19 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ baseUrl = '', nodes
       setStatusMessage(t('config.power_saved'));
       showToast(t('config.power_saved_toast'), 'success');
       // Power config changes don't require reboot
+      return true;
     } catch (error) {
       logger.error('Error saving Power config:', error);
       const errorMsg = error instanceof Error ? error.message : t('config.power_failed');
       setStatusMessage(`Error: ${errorMsg}`);
       showToast(`${t('config.power_failed')}: ${errorMsg}`, 'error');
+      return false;
     } finally {
       setIsSaving(false);
     }
   };
 
-  const handleSaveDisplayConfig = async () => {
+  const handleSaveDisplayConfig = async (): Promise<boolean> => {
     setIsSaving(true);
     setStatusMessage('');
     try {
@@ -1253,17 +1271,19 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ baseUrl = '', nodes
       setStatusMessage(t('config.display_saved'));
       showToast(t('config.display_saved_toast'), 'success');
       // Display config changes don't require reboot
+      return true;
     } catch (error) {
       logger.error('Error saving Display config:', error);
       const errorMsg = error instanceof Error ? error.message : t('config.display_failed');
       setStatusMessage(`Error: ${errorMsg}`);
       showToast(`${t('config.display_failed')}: ${errorMsg}`, 'error');
+      return false;
     } finally {
       setIsSaving(false);
     }
   };
 
-  const handleSaveTelemetryConfig = async () => {
+  const handleSaveTelemetryConfig = async (): Promise<boolean> => {
     setIsSaving(true);
     setStatusMessage('');
     try {
@@ -1286,17 +1306,19 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ baseUrl = '', nodes
       setStatusMessage(t('config.telemetry_saved'));
       showToast(t('config.telemetry_saved_toast'), 'success');
       // Telemetry config changes don't require reboot
+      return true;
     } catch (error) {
       logger.error('Error saving Telemetry config:', error);
       const errorMsg = error instanceof Error ? error.message : t('config.telemetry_failed');
       setStatusMessage(`Error: ${errorMsg}`);
       showToast(`${t('config.telemetry_failed')}: ${errorMsg}`, 'error');
+      return false;
     } finally {
       setIsSaving(false);
     }
   };
 
-  const handleSaveExternalNotificationConfig = async () => {
+  const handleSaveExternalNotificationConfig = async (): Promise<boolean> => {
     setIsSaving(true);
     setStatusMessage('');
     try {
@@ -1319,17 +1341,19 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ baseUrl = '', nodes
       }, sourceId);
       setStatusMessage(t('config.extnotif_saved'));
       showToast(t('config.extnotif_saved_toast'), 'success');
+      return true;
     } catch (error) {
       logger.error('Error saving External Notification config:', error);
       const errorMsg = error instanceof Error ? error.message : t('config.extnotif_failed');
       setStatusMessage(`Error: ${errorMsg}`);
       showToast(`${t('config.extnotif_failed')}: ${errorMsg}`, 'error');
+      return false;
     } finally {
       setIsSaving(false);
     }
   };
 
-  const handleSaveStoreForwardConfig = async () => {
+  const handleSaveStoreForwardConfig = async (): Promise<boolean> => {
     setIsSaving(true);
     setStatusMessage('');
     try {
@@ -1343,17 +1367,19 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ baseUrl = '', nodes
       }, sourceId);
       setStatusMessage(t('config.storeforward_saved'));
       showToast(t('config.storeforward_saved_toast'), 'success');
+      return true;
     } catch (error) {
       logger.error('Error saving Store & Forward config:', error);
       const errorMsg = error instanceof Error ? error.message : t('config.storeforward_failed');
       setStatusMessage(`Error: ${errorMsg}`);
       showToast(`${t('config.storeforward_failed')}: ${errorMsg}`, 'error');
+      return false;
     } finally {
       setIsSaving(false);
     }
   };
 
-  const handleSaveRangeTestConfig = async () => {
+  const handleSaveRangeTestConfig = async (): Promise<boolean> => {
     setIsSaving(true);
     setStatusMessage('');
     try {
@@ -1364,17 +1390,19 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ baseUrl = '', nodes
       }, sourceId);
       setStatusMessage(t('config.rangetest_saved'));
       showToast(t('config.rangetest_saved_toast'), 'success');
+      return true;
     } catch (error) {
       logger.error('Error saving Range Test config:', error);
       const errorMsg = error instanceof Error ? error.message : t('config.rangetest_failed');
       setStatusMessage(`Error: ${errorMsg}`);
       showToast(`${t('config.rangetest_failed')}: ${errorMsg}`, 'error');
+      return false;
     } finally {
       setIsSaving(false);
     }
   };
 
-  const handleSaveCannedMessageConfig = async () => {
+  const handleSaveCannedMessageConfig = async (): Promise<boolean> => {
     setIsSaving(true);
     setStatusMessage('');
     try {
@@ -1393,17 +1421,19 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ baseUrl = '', nodes
       }, sourceId);
       setStatusMessage(t('config.cannedmsg_saved'));
       showToast(t('config.cannedmsg_saved_toast'), 'success');
+      return true;
     } catch (error) {
       logger.error('Error saving Canned Message config:', error);
       const errorMsg = error instanceof Error ? error.message : t('config.cannedmsg_failed');
       setStatusMessage(`Error: ${errorMsg}`);
       showToast(`${t('config.cannedmsg_failed')}: ${errorMsg}`, 'error');
+      return false;
     } finally {
       setIsSaving(false);
     }
   };
 
-  const handleSaveAudioConfig = async () => {
+  const handleSaveAudioConfig = async (): Promise<boolean> => {
     setIsSaving(true);
     setStatusMessage('');
     try {
@@ -1418,17 +1448,19 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ baseUrl = '', nodes
       }, sourceId);
       setStatusMessage(t('config.audio_saved'));
       showToast(t('config.audio_saved_toast'), 'success');
+      return true;
     } catch (error) {
       logger.error('Error saving Audio config:', error);
       const errorMsg = error instanceof Error ? error.message : t('config.audio_failed');
       setStatusMessage(`Error: ${errorMsg}`);
       showToast(`${t('config.audio_failed')}: ${errorMsg}`, 'error');
+      return false;
     } finally {
       setIsSaving(false);
     }
   };
 
-  const handleSaveRemoteHardwareConfig = async () => {
+  const handleSaveRemoteHardwareConfig = async (): Promise<boolean> => {
     setIsSaving(true);
     setStatusMessage('');
     try {
@@ -1438,17 +1470,19 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ baseUrl = '', nodes
       }, sourceId);
       setStatusMessage(t('config.remotehardware_saved'));
       showToast(t('config.remotehardware_saved_toast'), 'success');
+      return true;
     } catch (error) {
       logger.error('Error saving Remote Hardware config:', error);
       const errorMsg = error instanceof Error ? error.message : t('config.remotehardware_failed');
       setStatusMessage(`Error: ${errorMsg}`);
       showToast(`${t('config.remotehardware_failed')}: ${errorMsg}`, 'error');
+      return false;
     } finally {
       setIsSaving(false);
     }
   };
 
-  const handleSaveDetectionSensorConfig = async () => {
+  const handleSaveDetectionSensorConfig = async (): Promise<boolean> => {
     setIsSaving(true);
     setStatusMessage('');
     try {
@@ -1464,17 +1498,19 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ baseUrl = '', nodes
       }, sourceId);
       setStatusMessage(t('config.detectionsensor_saved'));
       showToast(t('config.detectionsensor_saved_toast'), 'success');
+      return true;
     } catch (error) {
       logger.error('Error saving Detection Sensor config:', error);
       const errorMsg = error instanceof Error ? error.message : t('config.detectionsensor_failed');
       setStatusMessage(`Error: ${errorMsg}`);
       showToast(`${t('config.detectionsensor_failed')}: ${errorMsg}`, 'error');
+      return false;
     } finally {
       setIsSaving(false);
     }
   };
 
-  const handleSavePaxcounterConfig = async () => {
+  const handleSavePaxcounterConfig = async (): Promise<boolean> => {
     setIsSaving(true);
     setStatusMessage('');
     try {
@@ -1486,17 +1522,19 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ baseUrl = '', nodes
       }, sourceId);
       setStatusMessage(t('config.paxcounter_saved'));
       showToast(t('config.paxcounter_saved_toast'), 'success');
+      return true;
     } catch (error) {
       logger.error('Error saving Paxcounter config:', error);
       const errorMsg = error instanceof Error ? error.message : t('config.paxcounter_failed');
       setStatusMessage(`Error: ${errorMsg}`);
       showToast(`${t('config.paxcounter_failed')}: ${errorMsg}`, 'error');
+      return false;
     } finally {
       setIsSaving(false);
     }
   };
 
-  const handleSaveStatusMessageConfig = async () => {
+  const handleSaveStatusMessageConfig = async (): Promise<boolean> => {
     setIsSaving(true);
     setStatusMessage('');
     try {
@@ -1505,6 +1543,7 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ baseUrl = '', nodes
       }, sourceId);
       setStatusMessage(t('config.statusmessage_saved', 'Status Message config saved'));
       showToast(t('config.statusmessage_saved_toast', 'Status Message config saved successfully'), 'success');
+      return true;
     } catch (error) {
       logger.error('Error saving Status Message config:', error);
       // A save the node did not confirm (#5745) gets its own text.
@@ -1514,29 +1553,32 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ baseUrl = '', nodes
         : error instanceof Error ? error.message : t('config.statusmessage_failed', 'Failed to save Status Message config');
       setStatusMessage(`Error: ${errorMsg}`);
       showToast(`${t('config.statusmessage_failed', 'Failed to save Status Message config')}: ${errorMsg}`, 'error');
+      return false;
     } finally {
       setIsSaving(false);
     }
   };
 
-  const handleSaveTAKConfig = async () => {
+  const handleSaveTAKConfig = async (): Promise<boolean> => {
     setIsSaving(true);
     setStatusMessage('');
     try {
       await apiService.setModuleConfig('tak', { team: takTeam, role: takRole }, sourceId);
       setStatusMessage(t('config.tak_saved'));
       showToast(t('config.tak_saved_toast'), 'success');
+      return true;
     } catch (error) {
       logger.error('Error saving TAK config:', error);
       const errorMsg = error instanceof Error ? error.message : t('config.tak_failed');
       setStatusMessage(`Error: ${errorMsg}`);
       showToast(`${t('config.tak_failed')}: ${errorMsg}`, 'error');
+      return false;
     } finally {
       setIsSaving(false);
     }
   };
 
-  const handleSaveTrafficManagementConfig = async () => {
+  const handleSaveTrafficManagementConfig = async (): Promise<boolean> => {
     setIsSaving(true);
     setStatusMessage('');
     try {
@@ -1549,17 +1591,19 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ baseUrl = '', nodes
       }, sourceId);
       setStatusMessage(t('config.trafficmanagement_saved', 'Traffic Management config saved'));
       showToast(t('config.trafficmanagement_saved_toast', 'Traffic Management config saved successfully'), 'success');
+      return true;
     } catch (error) {
       logger.error('Error saving Traffic Management config:', error);
       const errorMsg = error instanceof Error ? error.message : t('config.trafficmanagement_failed', 'Failed to save Traffic Management config');
       setStatusMessage(`Error: ${errorMsg}`);
       showToast(`${t('config.trafficmanagement_failed', 'Failed to save Traffic Management config')}: ${errorMsg}`, 'error');
+      return false;
     } finally {
       setIsSaving(false);
     }
   };
 
-  const handleSaveMeshBeaconConfig = async () => {
+  const handleSaveMeshBeaconConfig = async (): Promise<boolean> => {
     setIsSaving(true);
     setStatusMessage('');
     try {
@@ -1581,17 +1625,19 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ baseUrl = '', nodes
       await apiService.setModuleConfig('meshbeacon', config, sourceId);
       setStatusMessage(t('config.meshbeacon_saved', 'MeshBeacon config saved'));
       showToast(t('config.meshbeacon_saved_toast', 'MeshBeacon config saved successfully'), 'success');
+      return true;
     } catch (error) {
       logger.error('Error saving MeshBeacon config:', error);
       const errorMsg = error instanceof Error ? error.message : t('config.meshbeacon_failed', 'Failed to save MeshBeacon config');
       setStatusMessage(`Error: ${errorMsg}`);
       showToast(`${t('config.meshbeacon_failed', 'Failed to save MeshBeacon config')}: ${errorMsg}`, 'error');
+      return false;
     } finally {
       setIsSaving(false);
     }
   };
 
-  const handleSaveSerialConfig = async () => {
+  const handleSaveSerialConfig = async (): Promise<boolean> => {
     setIsSaving(true);
     setStatusMessage('');
     try {
@@ -1607,17 +1653,19 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ baseUrl = '', nodes
       }, sourceId);
       setStatusMessage(t('config.serial_saved'));
       showToast(t('config.serial_saved_toast'), 'success');
+      return true;
     } catch (error) {
       logger.error('Error saving Serial config:', error);
       const errorMsg = error instanceof Error ? error.message : t('config.serial_failed');
       setStatusMessage(`Error: ${errorMsg}`);
       showToast(`${t('config.serial_failed')}: ${errorMsg}`, 'error');
+      return false;
     } finally {
       setIsSaving(false);
     }
   };
 
-  const handleSaveAmbientLightingConfig = async () => {
+  const handleSaveAmbientLightingConfig = async (): Promise<boolean> => {
     setIsSaving(true);
     setStatusMessage('');
     try {
@@ -1630,17 +1678,19 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ baseUrl = '', nodes
       }, sourceId);
       setStatusMessage(t('config.ambientlighting_saved'));
       showToast(t('config.ambientlighting_saved_toast'), 'success');
+      return true;
     } catch (error) {
       logger.error('Error saving Ambient Lighting config:', error);
       const errorMsg = error instanceof Error ? error.message : t('config.ambientlighting_failed');
       setStatusMessage(`Error: ${errorMsg}`);
       showToast(`${t('config.ambientlighting_failed')}: ${errorMsg}`, 'error');
+      return false;
     } finally {
       setIsSaving(false);
     }
   };
 
-  const handleSaveSecurityConfig = async () => {
+  const handleSaveSecurityConfig = async (): Promise<boolean> => {
     setIsSaving(true);
     setStatusMessage('');
     try {
@@ -1678,11 +1728,13 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ baseUrl = '', nodes
       setStatusMessage(t('config.security_saved'));
       showToast(t('config.security_saved_toast'), 'success');
       // Security config changes may require reboot for some settings
+      return true;
     } catch (error) {
       logger.error('Error saving Security config:', error);
       const errorMsg = error instanceof Error ? error.message : t('config.security_failed');
       setStatusMessage(`Error: ${errorMsg}`);
       showToast(`${t('config.security_failed')}: ${errorMsg}`, 'error');
+      return false;
     } finally {
       setIsSaving(false);
     }
@@ -2030,8 +2082,6 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ baseUrl = '', nodes
         if (tel.healthMeasurementEnabled !== undefined) setHealthMeasurementEnabled(tel.healthMeasurementEnabled);
         if (tel.healthUpdateInterval !== undefined) setHealthUpdateInterval(tel.healthUpdateInterval);
         if (tel.healthScreenEnabled !== undefined) setHealthScreenEnabled(tel.healthScreenEnabled);
-        // Increment version to signal config update to TelemetryConfigSection
-        setTelemetryConfigVersion(v => v + 1);
       }
 
       // Update Node Identity
@@ -2042,6 +2092,11 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ baseUrl = '', nodes
         if (config.localNodeInfo.isLicensed !== undefined) setIsLicensed(config.localNodeInfo.isLicensed);
         if (config.localNodeInfo.firmwareVersion !== undefined) setLocalFirmwareVersion(config.localNodeInfo.firmwareVersion ?? null);
       }
+
+      // The reloaded values are what the node holds now: re-baseline the
+      // sections this reload refreshed. Batched with the setters above, so the
+      // first render with the new values already compares against them.
+      setConfigVersion(v => v + 1);
 
       setConfigChanges(changes);
       if (changes.length > 0) {
@@ -2276,6 +2331,7 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ baseUrl = '', nodes
       <div className={`settings-content ${styles.sectionStack}`}>
         <div id="config-node-identity">
           <NodeIdentitySection
+            configVersion={configVersion}
             longName={longName}
             shortName={shortName}
             isUnmessagable={isUnmessagable}
@@ -2291,6 +2347,7 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ baseUrl = '', nodes
 
         <div id="config-device">
           <DeviceConfigSection
+            configVersion={configVersion}
             role={role}
             setRole={setRole}
             nodeInfoBroadcastSecs={nodeInfoBroadcastSecs}
@@ -2318,6 +2375,7 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ baseUrl = '', nodes
 
         <div id="config-lora">
           <LoRaConfigSection
+            configVersion={configVersion}
             usePreset={usePreset}
             setUsePreset={setUsePreset}
             modemPreset={modemPreset}
@@ -2363,6 +2421,7 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ baseUrl = '', nodes
 
         <div id="config-position">
           <PositionConfigSection
+            configVersion={configVersion}
             positionBroadcastSecs={positionBroadcastSecs}
             setPositionBroadcastSecs={setPositionBroadcastSecs}
             positionSmartEnabled={positionSmartEnabled}
@@ -2398,6 +2457,7 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ baseUrl = '', nodes
 
         <div id="config-power">
           <PowerConfigSection
+            configVersion={configVersion}
             isPowerSaving={isPowerSaving}
             setIsPowerSaving={setIsPowerSaving}
             onBatteryShutdownAfterSecs={onBatteryShutdownAfterSecs}
@@ -2421,6 +2481,7 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ baseUrl = '', nodes
 
         <div id="config-display">
           <DisplayConfigSection
+            configVersion={configVersion}
             screenOnSecs={screenOnSecs}
             setScreenOnSecs={setScreenOnSecs}
             autoScreenCarouselSecs={autoScreenCarouselSecs}
@@ -2447,7 +2508,7 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ baseUrl = '', nodes
         <div id="config-telemetry">
           <ModuleAvailabilityGate available={supportedModules?.telemetry} moduleName="Telemetry">
             <TelemetryConfigSection
-              configVersion={telemetryConfigVersion}
+              configVersion={configVersion}
               deviceUpdateInterval={deviceUpdateInterval}
               setDeviceUpdateInterval={setDeviceUpdateInterval}
               deviceTelemetryEnabled={deviceTelemetryEnabled}
@@ -2485,6 +2546,7 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ baseUrl = '', nodes
         <div id="config-mqtt">
           <ModuleAvailabilityGate available={supportedModules?.mqtt} moduleName="MQTT">
             <MQTTConfigSection
+              configVersion={configVersion}
               mqttEnabled={mqttEnabled}
               setMqttEnabled={setMqttEnabled}
               mqttAddress={mqttAddress}
@@ -2522,6 +2584,7 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ baseUrl = '', nodes
         <div id="config-neighbor">
           <ModuleAvailabilityGate available={supportedModules?.neighborinfo} moduleName="Neighbor Info">
             <NeighborInfoSection
+              configVersion={configVersion}
               neighborInfoEnabled={neighborInfoEnabled}
               setNeighborInfoEnabled={setNeighborInfoEnabled}
               neighborInfoInterval={neighborInfoInterval}
@@ -2537,6 +2600,7 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ baseUrl = '', nodes
         <div id="config-network">
           <ModuleAvailabilityGate available={supportedModules?.network} moduleName="Network">
             <NetworkConfigSection
+              configVersion={configVersion}
               wifiEnabled={wifiEnabled}
               setWifiEnabled={setWifiEnabled}
               wifiSsid={wifiSsid}

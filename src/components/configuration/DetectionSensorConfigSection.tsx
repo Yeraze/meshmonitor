@@ -1,7 +1,8 @@
-import React, { useState, useRef, useMemo, useCallback } from 'react';
+import React, { useState, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { UiIcon } from '../icons';
 import { useSaveBar } from '../../hooks/useSaveBar';
+import { useSectionBaseline } from '../../hooks/useSectionBaseline';
 import { NumberInput } from '../common/NumberInput';
 import { NumberInputScope } from '../common/NumberInputScope';
 import { useNumberInputScope } from '../common/numberInputScopeContext';
@@ -35,7 +36,8 @@ interface DetectionSensorConfigSectionProps {
   usePullup: boolean;
   setUsePullup: (value: boolean) => void;
   isSaving: boolean;
-  onSave: () => Promise<void>;
+  /** Resolves true when the node accepted the save. */
+  onSave: () => Promise<boolean>;
 }
 
 const DetectionSensorConfigSection: React.FC<DetectionSensorConfigSectionProps> = ({
@@ -61,51 +63,30 @@ const DetectionSensorConfigSection: React.FC<DetectionSensorConfigSectionProps> 
   const { t } = useTranslation();
   const [showAdvanced, setShowAdvanced] = useState(false);
 
-  // Track initial values for change detection
-  const initialValuesRef = useRef({
+  // What the node holds; moves on a successful save (#5797)
+  const values = {
     enabled, minimumBroadcastSecs, stateBroadcastSecs, sendBell, name,
     monitorPin, detectionTriggerType, usePullup
-  });
-
-  // Calculate if there are unsaved changes
-  const hasChanges = useMemo(() => {
-    const initial = initialValuesRef.current;
-    return (
-      enabled !== initial.enabled ||
-      minimumBroadcastSecs !== initial.minimumBroadcastSecs ||
-      stateBroadcastSecs !== initial.stateBroadcastSecs ||
-      sendBell !== initial.sendBell ||
-      name !== initial.name ||
-      monitorPin !== initial.monitorPin ||
-      detectionTriggerType !== initial.detectionTriggerType ||
-      usePullup !== initial.usePullup
-    );
-  }, [enabled, minimumBroadcastSecs, stateBroadcastSecs, sendBell, name,
-      monitorPin, detectionTriggerType, usePullup]);
+  };
+  const { baseline, hasChanges, commit } = useSectionBaseline(values);
 
   // Reset to initial values (for SaveBar dismiss)
   const resetChanges = useCallback(() => {
-    const initial = initialValuesRef.current;
-    setEnabled(initial.enabled);
-    setMinimumBroadcastSecs(initial.minimumBroadcastSecs);
-    setStateBroadcastSecs(initial.stateBroadcastSecs);
-    setSendBell(initial.sendBell);
-    setName(initial.name);
-    setMonitorPin(initial.monitorPin);
-    setDetectionTriggerType(initial.detectionTriggerType);
-    setUsePullup(initial.usePullup);
-  }, [setEnabled, setMinimumBroadcastSecs, setStateBroadcastSecs, setSendBell,
+    setEnabled(baseline.enabled);
+    setMinimumBroadcastSecs(baseline.minimumBroadcastSecs);
+    setStateBroadcastSecs(baseline.stateBroadcastSecs);
+    setSendBell(baseline.sendBell);
+    setName(baseline.name);
+    setMonitorPin(baseline.monitorPin);
+    setDetectionTriggerType(baseline.detectionTriggerType);
+    setUsePullup(baseline.usePullup);
+  }, [baseline, setEnabled, setMinimumBroadcastSecs, setStateBroadcastSecs, setSendBell,
       setName, setMonitorPin, setDetectionTriggerType, setUsePullup]);
 
-  // Update initial values after successful save
-  const handleSave = useCallback(async () => {
-    await onSave();
-    initialValuesRef.current = {
-      enabled, minimumBroadcastSecs, stateBroadcastSecs, sendBell, name,
-      monitorPin, detectionTriggerType, usePullup
-    };
-  }, [onSave, enabled, minimumBroadcastSecs, stateBroadcastSecs, sendBell, name,
-      monitorPin, detectionTriggerType, usePullup]);
+  // Move the baseline only when the node took the save
+  const handleSave = async () => {
+    if (await onSave()) commit(values);
+  };
 
   // Register with SaveBar
   const numberScope = useNumberInputScope();

@@ -1,7 +1,8 @@
-import React, { useRef, useMemo, useCallback, useState } from 'react';
+import React, { useMemo, useCallback, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { UiIcon } from '../icons';
 import { useSaveBar } from '../../hooks/useSaveBar';
+import { useSectionBaseline } from '../../hooks/useSectionBaseline';
 import { useDashboardSources } from '../../hooks/useDashboardData';
 import { useSource } from '../../contexts/SourceContext';
 import { useAuth } from '../../contexts/AuthContext';
@@ -57,10 +58,14 @@ interface MQTTConfigSectionProps {
   setMapPositionPrecision: (value: number) => void;
   setMapShouldReportLocation: (value: boolean) => void;
   isSaving: boolean;
-  onSave: () => Promise<void>;
+  /** Resolves true when the node accepted the save. */
+  onSave: () => Promise<boolean>;
+  /** Bumped when the page reloads config from the node (#5797). */
+  configVersion?: number;
 }
 
 const MQTTConfigSection: React.FC<MQTTConfigSectionProps> = ({
+  configVersion,
   mqttEnabled,
   mqttAddress,
   mqttUsername,
@@ -232,36 +237,14 @@ const MQTTConfigSection: React.FC<MQTTConfigSectionProps> = ({
     [mqttAddress, mqttUsername, mqttPassword, tlsEnabled, setMqttAddress, setMqttUsername, setMqttPassword, setTlsEnabled],
   );
 
-  // Track initial values for change detection
-  const initialValuesRef = useRef({
+  // What the node holds; moves on a successful save or a reload (#5797)
+  const values = {
     mqttEnabled, mqttAddress, mqttUsername, mqttPassword,
     mqttEncryptionEnabled, mqttJsonEnabled, mqttRoot, tlsEnabled,
     proxyToClientEnabled, mapReportingEnabled, mapPublishIntervalSecs, mapPositionPrecision,
     mapShouldReportLocation
-  });
-
-  // Calculate if there are unsaved changes
-  const hasChanges = useMemo(() => {
-    const initial = initialValuesRef.current;
-    return (
-      mqttEnabled !== initial.mqttEnabled ||
-      mqttAddress !== initial.mqttAddress ||
-      mqttUsername !== initial.mqttUsername ||
-      mqttPassword !== initial.mqttPassword ||
-      mqttEncryptionEnabled !== initial.mqttEncryptionEnabled ||
-      mqttJsonEnabled !== initial.mqttJsonEnabled ||
-      mqttRoot !== initial.mqttRoot ||
-      tlsEnabled !== initial.tlsEnabled ||
-      proxyToClientEnabled !== initial.proxyToClientEnabled ||
-      mapReportingEnabled !== initial.mapReportingEnabled ||
-      mapPublishIntervalSecs !== initial.mapPublishIntervalSecs ||
-      mapPositionPrecision !== initial.mapPositionPrecision ||
-      mapShouldReportLocation !== initial.mapShouldReportLocation
-    );
-  }, [mqttEnabled, mqttAddress, mqttUsername, mqttPassword,
-      mqttEncryptionEnabled, mqttJsonEnabled, mqttRoot, tlsEnabled,
-      proxyToClientEnabled, mapReportingEnabled, mapPublishIntervalSecs, mapPositionPrecision,
-      mapShouldReportLocation]);
+  };
+  const { baseline, hasChanges, commit } = useSectionBaseline(values, { reseedKey: configVersion, keepOnReseed: ['mapShouldReportLocation'] });
 
   // Detect the "client proxy on, but nothing to proxy through" misconfiguration:
   // the form has MQTT and proxyToClientEnabled on, and the parent Meshtastic
@@ -285,38 +268,28 @@ const MQTTConfigSection: React.FC<MQTTConfigSectionProps> = ({
 
   // Reset to initial values (for SaveBar dismiss)
   const resetChanges = useCallback(() => {
-    const initial = initialValuesRef.current;
-    setMqttEnabled(initial.mqttEnabled);
-    setMqttAddress(initial.mqttAddress);
-    setMqttUsername(initial.mqttUsername);
-    setMqttPassword(initial.mqttPassword);
-    setMqttEncryptionEnabled(initial.mqttEncryptionEnabled);
-    setMqttJsonEnabled(initial.mqttJsonEnabled);
-    setMqttRoot(initial.mqttRoot);
-    setTlsEnabled(initial.tlsEnabled);
-    setProxyToClientEnabled(initial.proxyToClientEnabled);
-    setMapReportingEnabled(initial.mapReportingEnabled);
-    setMapPublishIntervalSecs(initial.mapPublishIntervalSecs);
-    setMapPositionPrecision(initial.mapPositionPrecision);
-    setMapShouldReportLocation(initial.mapShouldReportLocation);
-  }, [setMqttEnabled, setMqttAddress, setMqttUsername, setMqttPassword,
+    setMqttEnabled(baseline.mqttEnabled);
+    setMqttAddress(baseline.mqttAddress);
+    setMqttUsername(baseline.mqttUsername);
+    setMqttPassword(baseline.mqttPassword);
+    setMqttEncryptionEnabled(baseline.mqttEncryptionEnabled);
+    setMqttJsonEnabled(baseline.mqttJsonEnabled);
+    setMqttRoot(baseline.mqttRoot);
+    setTlsEnabled(baseline.tlsEnabled);
+    setProxyToClientEnabled(baseline.proxyToClientEnabled);
+    setMapReportingEnabled(baseline.mapReportingEnabled);
+    setMapPublishIntervalSecs(baseline.mapPublishIntervalSecs);
+    setMapPositionPrecision(baseline.mapPositionPrecision);
+    setMapShouldReportLocation(baseline.mapShouldReportLocation);
+  }, [baseline, setMqttEnabled, setMqttAddress, setMqttUsername, setMqttPassword,
       setMqttEncryptionEnabled, setMqttJsonEnabled, setMqttRoot, setTlsEnabled,
       setProxyToClientEnabled, setMapReportingEnabled, setMapPublishIntervalSecs, setMapPositionPrecision,
       setMapShouldReportLocation]);
 
-  // Update initial values after successful save
-  const handleSave = useCallback(async () => {
-    await onSave();
-    initialValuesRef.current = {
-      mqttEnabled, mqttAddress, mqttUsername, mqttPassword,
-      mqttEncryptionEnabled, mqttJsonEnabled, mqttRoot, tlsEnabled,
-      proxyToClientEnabled, mapReportingEnabled, mapPublishIntervalSecs, mapPositionPrecision,
-      mapShouldReportLocation
-    };
-  }, [onSave, mqttEnabled, mqttAddress, mqttUsername, mqttPassword,
-      mqttEncryptionEnabled, mqttJsonEnabled, mqttRoot, tlsEnabled,
-      proxyToClientEnabled, mapReportingEnabled, mapPublishIntervalSecs, mapPositionPrecision,
-      mapShouldReportLocation]);
+  // Move the baseline only when the node took the save
+  const handleSave = async () => {
+    if (await onSave()) commit(values);
+  };
 
   // Register with SaveBar — but only surface unsaved-changes state to the bar
   // when the caller can actually persist them. If they can't write to this
