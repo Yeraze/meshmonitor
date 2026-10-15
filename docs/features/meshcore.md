@@ -184,7 +184,7 @@ The resend count lives in the database, so restarting MeshMonitor does not reset
 
 ### Channel order
 
-The Channels page has a **Sort channels by** dropdown with five choices: **Device order**, **Channel name**, **Last message**, **Message count** and **Custom**. **Last message** puts the most recently active channel first and shows how long ago each channel's last message arrived. **Message count** puts the busiest channel first. Channels with no messages sink to the bottom in both. Pick **Custom** and click **Reorder** to drag channels (or use the arrows) into the order you want. MeshMonitor saves the sort choice and the custom order in your browser, per source. This changes only how MeshMonitor lists the channels. The slots on the device stay as they are.
+The Channels page has a **Sort channels by** dropdown with five choices: **Device order**, **Channel name**, **Last message**, **Message count** and **Custom**. **Last message** puts the most recently active channel first and shows how long ago each channel's last message arrived. **Message count** puts the busiest channel first. Channels with no messages sink to the bottom in both. Pick **Custom** and click **Sort** to drag channels (or use the arrows) into the order you want. MeshMonitor saves the sort choice and the custom order in your browser, per source. This changes only how MeshMonitor lists the channels. The slots on the device stay as they are.
 
 #### Reordering channel slots on the companion
 
