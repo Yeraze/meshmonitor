@@ -18,6 +18,7 @@ import {
 import { hasRE2IncompatibleConstructs } from '../utils/autoAckRegex';
 import { UiIcon } from './icons';
 import { ConfigSection } from './shared/config/ConfigSection';
+import { ConfigGroup } from './shared/config/ConfigGroup';
 import AutoAckConvertDialog from './autoack/AutoAckConvertDialog';
 import { HopLimitOverrideSelect } from './HopLimitOverrideSelect';
 import { NumberInput } from './common/NumberInput';
@@ -439,7 +440,8 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
         </button>
         </>}
       >
-        <div className="setting-item" style={{ marginTop: '1rem' }}>
+        <ConfigGroup name="trigger" title={t('automation.group.trigger', 'Trigger')}>
+        <div className="setting-item">
           <label htmlFor="autoAckRegex">
             {t('automation.auto_ack.regex_label')}
             <span className="setting-description">
@@ -458,8 +460,10 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
             style={{ fontFamily: 'monospace' }}
           />
         </div>
+        </ConfigGroup>
 
-        <div className="setting-item" style={{ marginTop: '1.5rem' }}>
+        <ConfigGroup name="where" title={t('automation.group.where', 'Where')}>
+        <div className="setting-item">
           <label>
             {t('automation.auto_ack.active_channels')}
             <span className="setting-description">
@@ -490,15 +494,15 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
             ))}
           </div>
         </div>
+        </ConfigGroup>
 
-        <div className="setting-item" style={{ marginTop: '1.5rem' }}>
-          <label>
-            {t('automation.auto_ack.security')}
-            <span className="setting-description">
-              {t('automation.auto_ack.security_description')}
-            </span>
-          </label>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.5rem' }}>
+        <ConfigGroup
+          name="who"
+          title={t('automation.group.who', 'Who')}
+          hint={t('automation.auto_ack.security_description')}
+        >
+        <div className="setting-item">
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
             <input
               type="checkbox"
               id="autoAckSkipIncomplete"
@@ -537,8 +541,12 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
               }}
             />
           </div>
+        </div>
+        </ConfigGroup>
 
-          <div style={{ marginTop: '1rem' }}>
+        <ConfigGroup name="timing" title={t('automation.group.timing', 'Timing')}>
+        <div className="setting-item">
+          <div>
             <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 'bold' }}>
               {t('automation.auto_ack.cooldown_label')}
             </label>
@@ -638,6 +646,11 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
             </div>
           </div>
 
+        </div>
+        </ConfigGroup>
+
+        <ConfigGroup name="delivery" title={t('automation.group.delivery', 'Delivery')}>
+        <div className="setting-item">
           {/* Hop-limit override (#5121) for replies and tapbacks. */}
           <HopLimitOverrideSelect
             id="autoAckHopLimit"
@@ -650,9 +663,11 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
             )}
           />
         </div>
+        </ConfigGroup>
 
+        <ConfigGroup name="message" title={t('automation.group.message', 'Message')}>
         {/* Response matrix: {Channel | Direct} × {0 hops | Multi-hop} */}
-        <div className="setting-item" style={{ marginTop: '1.5rem' }}>
+        <div className="setting-item">
           <label>
             {t('automation.auto_ack.response_matrix')}
             <span className="setting-description">
@@ -824,8 +839,10 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
             </div>
           </div>
         </div>
+        </ConfigGroup>
 
-        <div className="setting-item" style={{ marginTop: '1.5rem' }}>
+        <ConfigGroup name="test" title={t('automation.group.test', 'Test')}>
+        <div className="setting-item">
           <label htmlFor="testMessages">
             {t('automation.auto_ack.pattern_testing')}
             <span className="setting-description">
@@ -889,6 +906,7 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
             </div>
           </div>
         </div>
+        </ConfigGroup>
       </ConfigSection>
 
       <AutoAckConvertDialog

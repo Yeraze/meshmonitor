@@ -148,7 +148,7 @@ describe.skip('AutoAnnounceSection Component', () => {
     it('should display sample message preview', () => {
       render(<AutoAnnounceSection {...defaultProps} />);
 
-      expect(screen.getByText('Sample Message Preview')).toBeInTheDocument();
+      expect(screen.getByText('Live Preview')).toBeInTheDocument();
     });
 
     it('should show VERSION token substitution in preview', () => {
@@ -728,7 +728,7 @@ describe.skip('AutoAnnounceSection Component', () => {
     it('should render scheduled sends checkbox', () => {
       render(<AutoAnnounceSection {...defaultProps} />);
 
-      const scheduleCheckbox = screen.getByLabelText(/Scheduled Sends/i);
+      const scheduleCheckbox = screen.getByLabelText(/Use Cron Schedule/i);
       expect(scheduleCheckbox).toBeInTheDocument();
       expect(scheduleCheckbox).not.toBeChecked();
     });
@@ -737,7 +737,7 @@ describe.skip('AutoAnnounceSection Component', () => {
       const user = userEvent.setup({ delay: null });
       render(<AutoAnnounceSection {...defaultProps} />);
 
-      const scheduleCheckbox = screen.getByLabelText(/Scheduled Sends/i);
+      const scheduleCheckbox = screen.getByLabelText(/Use Cron Schedule/i);
       await user.click(scheduleCheckbox);
 
       await waitFor(() => {
@@ -752,7 +752,7 @@ describe.skip('AutoAnnounceSection Component', () => {
       // Initially, interval input should be visible
       expect(screen.getByLabelText(/Announcement Interval/i)).toBeInTheDocument();
 
-      const scheduleCheckbox = screen.getByLabelText(/Scheduled Sends/i);
+      const scheduleCheckbox = screen.getByLabelText(/Use Cron Schedule/i);
       await user.click(scheduleCheckbox);
 
       // After enabling scheduled sends, interval input should be hidden
@@ -811,7 +811,7 @@ describe.skip('AutoAnnounceSection Component', () => {
       render(<AutoAnnounceSection {...defaultProps} />);
 
       // Enable scheduled sends
-      const scheduleCheckbox = screen.getByLabelText(/Scheduled Sends/i);
+      const scheduleCheckbox = screen.getByLabelText(/Use Cron Schedule/i);
       await user.click(scheduleCheckbox);
 
       // Set a cron expression

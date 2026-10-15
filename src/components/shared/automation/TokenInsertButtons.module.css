@@ -1,0 +1,28 @@
+/* TokenInsertButtons (#5816). */
+
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-top: 0.5rem;
+}
+
+.button {
+  padding: 0.25rem 0.5rem;
+  font-family: monospace;
+  font-size: 0.8rem;
+  color: var(--color-text);
+  background: var(--color-surface-active);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.button:hover:not(:disabled) {
+  border-color: var(--color-accent);
+}
+
+.button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
