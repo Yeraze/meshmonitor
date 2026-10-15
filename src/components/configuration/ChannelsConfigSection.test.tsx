@@ -48,8 +48,10 @@ vi.mock('../../contexts/AuthContext', () => ({
   }),
 }));
 
+const toast = vi.hoisted(() => ({ calls: [] as unknown[][] }));
+
 vi.mock('../ToastContainer', () => ({
-  useToast: () => ({ showToast: vi.fn() }),
+  useToast: () => ({ showToast: (...args: unknown[]) => { toast.calls.push(args); } }),
 }));
 
 vi.mock('../../contexts/SettingsContext', () => ({
@@ -89,6 +91,7 @@ beforeEach(() => {
   vi.restoreAllMocks();
   auth.canWrite = true;
   auth.calls.length = 0;
+  toast.calls.length = 0;
   sortable.contextItems.length = 0;
   sortable.cardIds.length = 0;
   vi.spyOn(apiService, 'get').mockResolvedValue([] as never);
@@ -240,6 +243,55 @@ describe('ChannelsConfigSection delete (#5324, #5829)', () => {
     fireEvent.click(within(dialog).getByRole('button', { name: 'channels_config.delete_confirm' }));
 
     await waitFor(() => expect(del).toHaveBeenCalledWith('/api/channels/4?sourceId=src-1'));
+    await waitFor(() => expect(toast.calls).toContainEqual(['channels_config.toast_channel_deleted', 'success']));
+  });
+
+  it('warns, without claiming a delete, when the message purge fails after the device write', async () => {
+    vi.spyOn(apiService, 'updateChannel').mockResolvedValue({} as never);
+    vi.spyOn(apiService, 'delete').mockRejectedValue(new Error('boom'));
+    renderSection();
+
+    fireEvent.click(within(cardFor('Four')).getByRole('button', { name: 'common.delete' }));
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'channels_config.delete_confirm' }));
+
+    await waitFor(() => expect(toast.calls).toContainEqual(['channels_config.toast_channel_disabled_purge_failed', 'warning']));
+    expect(toast.calls.some(c => c[0] === 'channels_config.toast_channel_deleted')).toBe(false);
+  });
+});
+
+describe('ChannelsConfigSection role options (#5829 review)', () => {
+  const roleValues = () =>
+    Array.from((screen.getByLabelText(/channels_config\.channel_role/, { selector: 'select' }) as HTMLSelectElement).options)
+      .map(o => Number(o.value));
+
+  it('a new card on a non-zero slot offers Secondary only', () => {
+    renderSection();
+    fireEvent.click(screen.getByTestId('channel-add'));
+    expect(roleValues()).toEqual([2]);
+  });
+
+  it('a new card on slot 0 offers Primary only', () => {
+    renderSection([{ id: 3, name: 'Three', role: 2 } as Channel]);
+    fireEvent.click(screen.getByTestId('channel-add'));
+    expect(roleValues()).toEqual([1]);
+  });
+
+  it('an existing secondary cannot become a second primary', () => {
+    renderSection();
+    editCard('Four');
+    expect(roleValues()).toEqual([0, 2]);
+  });
+
+  it('an existing secondary may become primary when no channel is primary', () => {
+    renderSection([{ id: 4, name: 'Four', psk: KEY, role: 2 } as Channel]);
+    editCard('Four');
+    expect(roleValues()).toEqual([0, 1, 2]);
+  });
+
+  it('the primary keeps all three choices', () => {
+    renderSection();
+    editCard('Primary');
+    expect(roleValues()).toEqual([0, 1, 2]);
   });
 });
 

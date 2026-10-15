@@ -70,6 +70,11 @@ const MAX_NAME_LENGTH = 11;
 /** Key lengths the firmware accepts: none, the 1-byte default index, AES-128, AES-256. */
 const PSK_ALLOWED_BYTES = [0, 1, 16, 32] as const;
 const PSK_GENERATE_BYTES = 32;
+const ROLE_LABEL_KEYS: Record<number, string> = {
+  0: 'channels_config.role_disabled',
+  1: 'channels_config.role_primary',
+  2: 'channels_config.role_secondary',
+};
 
 // Resolve encryption status for a Channel: prefer the server-derived
 // `encryptionStatus` field (always present on API responses) and fall back
@@ -376,17 +381,27 @@ const ChannelsConfigSection: React.FC<ChannelsConfigSectionProps> = ({
         uplinkEnabled: false,
         downlinkEnabled: false,
       }, sourceId);
-      // 2. Delete channel record and messages from database
-      try {
-        // The route requires sourceId; without it the 400 was swallowed below
-        // and the row and its messages were never removed (#5324).
-        if (sourceId) {
+      // 2. Delete channel record and messages from database. The route
+      // requires sourceId (#5324). The device write already went through, so
+      // a failure here is reported as a partial result, not as a delete.
+      let purged = false;
+      if (sourceId) {
+        try {
           await apiService.delete(`/api/channels/${slotId}?sourceId=${encodeURIComponent(sourceId)}`);
+          purged = true;
+        } catch (error) {
+          logger.error('Error deleting channel message history:', error);
         }
-      } catch {
-        // DB cleanup is best-effort — channel is already disabled on device
       }
-      showToast(t('channels_config.toast_channel_deleted', { slot: slotId }), 'success');
+      if (purged) {
+        showToast(t('channels_config.toast_channel_deleted', { slot: slotId }), 'success');
+      } else {
+        showToast(t(
+          'channels_config.toast_channel_disabled_purge_failed',
+          'Channel {{slot}} was disabled on the device, but its message history could not be deleted.',
+          { slot: slotId },
+        ), 'warning');
+      }
       onChannelsUpdated?.();
     } catch (error) {
       logger.error('Error deleting channel:', error);
@@ -465,6 +480,19 @@ const ChannelsConfigSection: React.FC<ChannelsConfigSectionProps> = ({
     ? t('channels_config.reorder_blocks_edit', 'Apply or cancel the new channel order first.')
     : undefined;
 
+  /**
+   * Roles the select offers. A new card is Primary on slot 0 and Secondary
+   * elsewhere; Delete stands in for Disabled. An existing card offers Primary
+   * only on slot 0, when it already is primary, or when no other channel is,
+   * so the UI never sets up two primaries (the server does not check).
+   */
+  const roleOptions = (edit: EditingState): number[] => {
+    if (edit.isNew) return edit.slotId === 0 ? [1] : [2];
+    const otherPrimary = channels.some(c => c.id !== edit.slotId && c.id >= 0 && c.id < SLOT_COUNT && c.role === 1);
+    const allowPrimary = edit.slotId === 0 || edit.original.role === 1 || !otherPrimary;
+    return allowPrimary ? [0, 1, 2] : [0, 2];
+  };
+
   const renderEditor = (edit: EditingState) => (
     <>
       <div className="setting-item">
@@ -507,9 +535,9 @@ const ChannelsConfigSection: React.FC<ChannelsConfigSectionProps> = ({
           onChange={(e) => updateDraft({ role: parseInt(e.target.value, 10) })}
           className="setting-input"
         >
-          <option value={0}>{t('channels_config.role_disabled')}</option>
-          <option value={1}>{t('channels_config.role_primary')}</option>
-          <option value={2}>{t('channels_config.role_secondary')}</option>
+          {roleOptions(edit).map(role => (
+            <option key={role} value={role}>{t(ROLE_LABEL_KEYS[role])}</option>
+          ))}
         </select>
       </div>
 

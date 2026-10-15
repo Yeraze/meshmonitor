@@ -4292,6 +4292,7 @@
   "channels_config.reorder_success": "Channels reordered successfully. Device will reboot.",
   "channels_config.toast_cannot_delete_primary": "Cannot delete the primary channel",
   "channels_config.toast_channel_deleted": "Channel {{slot}} deleted",
+  "channels_config.toast_channel_disabled_purge_failed": "Channel {{slot}} was disabled on the device, but its message history could not be deleted.",
   "channels_config.toast_delete_failed": "Failed to delete channel",
   "mqtt_config.title": "MQTT Module",
   "mqtt_config.view_docs": "View MQTT Configuration Documentation",
