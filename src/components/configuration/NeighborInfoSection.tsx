@@ -1,7 +1,9 @@
-import React, { useRef, useMemo, useCallback } from 'react';
+import React, { useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { UiIcon } from '../icons';
 import { useSaveBar } from '../../hooks/useSaveBar';
+import { useSectionBaseline } from '../../hooks/useSectionBaseline';
+import { neighborInfoIntervalToSend } from '../../utils/broadcastIntervalFloor';
 import ModuleAvailabilityNotice from './ModuleAvailabilityNotice';
 import { NumberInput } from '../common/NumberInput';
 import { NumberInputScope } from '../common/NumberInputScope';
@@ -15,10 +17,14 @@ interface NeighborInfoSectionProps {
   setNeighborInfoInterval: (value: number) => void;
   setNeighborInfoTransmitOverLora: (value: boolean) => void;
   isSaving: boolean;
-  onSave: () => Promise<void>;
+  /** Resolves true when the node accepted the save. */
+  onSave: () => Promise<boolean>;
+  /** Bumped when the page reloads config from the node (#5797). */
+  configVersion?: number;
 }
 
 const NeighborInfoSection: React.FC<NeighborInfoSectionProps> = ({
+  configVersion,
   neighborInfoEnabled,
   neighborInfoInterval,
   neighborInfoTransmitOverLora,
@@ -30,36 +36,24 @@ const NeighborInfoSection: React.FC<NeighborInfoSectionProps> = ({
 }) => {
   const { t } = useTranslation();
 
-  // Track initial values for change detection
-  const initialValuesRef = useRef({
-    neighborInfoEnabled, neighborInfoInterval, neighborInfoTransmitOverLora
-  });
+  // What the node holds; moves on a successful save or a reload (#5797)
+  const values = { neighborInfoEnabled, neighborInfoInterval, neighborInfoTransmitOverLora };
+  const { baseline, hasChanges, commit } = useSectionBaseline(values, { reseedKey: configVersion });
 
-  // Calculate if there are unsaved changes
-  const hasChanges = useMemo(() => {
-    const initial = initialValuesRef.current;
-    return (
-      neighborInfoEnabled !== initial.neighborInfoEnabled ||
-      neighborInfoInterval !== initial.neighborInfoInterval ||
-      neighborInfoTransmitOverLora !== initial.neighborInfoTransmitOverLora
-    );
-  }, [neighborInfoEnabled, neighborInfoInterval, neighborInfoTransmitOverLora]);
-
-  // Reset to initial values (for SaveBar dismiss)
+  // Reset to saved values (for SaveBar dismiss)
   const resetChanges = useCallback(() => {
-    const initial = initialValuesRef.current;
-    setNeighborInfoEnabled(initial.neighborInfoEnabled);
-    setNeighborInfoInterval(initial.neighborInfoInterval);
-    setNeighborInfoTransmitOverLora(initial.neighborInfoTransmitOverLora);
-  }, [setNeighborInfoEnabled, setNeighborInfoInterval, setNeighborInfoTransmitOverLora]);
+    setNeighborInfoEnabled(baseline.neighborInfoEnabled);
+    setNeighborInfoInterval(baseline.neighborInfoInterval);
+    setNeighborInfoTransmitOverLora(baseline.neighborInfoTransmitOverLora);
+  }, [baseline, setNeighborInfoEnabled, setNeighborInfoInterval, setNeighborInfoTransmitOverLora]);
 
-  // Update initial values after successful save
-  const handleSave = useCallback(async () => {
-    await onSave();
-    initialValuesRef.current = {
-      neighborInfoEnabled, neighborInfoInterval, neighborInfoTransmitOverLora
-    };
-  }, [onSave, neighborInfoEnabled, neighborInfoInterval, neighborInfoTransmitOverLora]);
+  // Move the baseline only when the node took the save, and record the
+  // interval that was sent: the save raises it to the floor.
+  const handleSave = async () => {
+    if (await onSave()) {
+      commit({ ...values, neighborInfoInterval: neighborInfoIntervalToSend(neighborInfoInterval) });
+    }
+  };
 
   // Register with SaveBar
   const numberScope = useNumberInputScope();

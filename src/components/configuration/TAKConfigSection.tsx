@@ -1,6 +1,7 @@
-import React, { useRef, useMemo, useCallback } from 'react';
+import React, { useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSaveBar } from '../../hooks/useSaveBar';
+import { useSectionBaseline } from '../../hooks/useSectionBaseline';
 import TAKConfigFields from './TAKConfigFields';
 import ModuleAvailabilityNotice from './ModuleAvailabilityNotice';
 import styles from './TAKConfigSection.module.css';
@@ -13,7 +14,8 @@ interface TAKConfigSectionProps {
   /** Firmware older than 2.8.0: the node drops this config. */
   isDisabled: boolean;
   isSaving: boolean;
-  onSave: () => Promise<void>;
+  /** Resolves true when the node accepted the save. */
+  onSave: () => Promise<boolean>;
 }
 
 /**
@@ -32,24 +34,19 @@ const TAKConfigSection: React.FC<TAKConfigSectionProps> = ({
 }) => {
   const { t } = useTranslation();
 
-  // Track initial values for change detection
-  const initialValuesRef = useRef({ team, role });
-
-  const hasChanges = useMemo(() => {
-    const initial = initialValuesRef.current;
-    return team !== initial.team || role !== initial.role;
-  }, [team, role]);
+  // What the node holds; moves on a successful save (#5797)
+  const values = { team, role };
+  const { baseline, hasChanges, commit } = useSectionBaseline(values);
 
   const resetChanges = useCallback(() => {
-    const initial = initialValuesRef.current;
-    setTeam(initial.team);
-    setRole(initial.role);
-  }, [setTeam, setRole]);
+    setTeam(baseline.team);
+    setRole(baseline.role);
+  }, [baseline, setTeam, setRole]);
 
-  const handleSave = useCallback(async () => {
-    await onSave();
-    initialValuesRef.current = { team, role };
-  }, [onSave, team, role]);
+  // Move the baseline only when the node took the save
+  const handleSave = async () => {
+    if (await onSave()) commit(values);
+  };
 
   useSaveBar({
     id: 'tak-config',

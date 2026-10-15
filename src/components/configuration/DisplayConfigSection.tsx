@@ -1,7 +1,8 @@
-import React, { useState, useRef, useMemo, useCallback } from 'react';
+import React, { useState, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { UiIcon } from '../icons';
 import { useSaveBar } from '../../hooks/useSaveBar';
+import { useSectionBaseline } from '../../hooks/useSectionBaseline';
 import { NumberInput } from '../common/NumberInput';
 import { NumberInputScope } from '../common/NumberInputScope';
 import { useNumberInputScope } from '../common/numberInputScopeContext';
@@ -65,10 +66,14 @@ interface DisplayConfigSectionProps {
   setCompassOrientation: (value: number) => void;
   // UI state
   isSaving: boolean;
-  onSave: () => Promise<void>;
+  /** Resolves true when the node accepted the save. */
+  onSave: () => Promise<boolean>;
+  /** Bumped when the page reloads config from the node (#5797). */
+  configVersion?: number;
 }
 
 const DisplayConfigSection: React.FC<DisplayConfigSectionProps> = ({
+  configVersion,
   screenOnSecs,
   setScreenOnSecs,
   autoScreenCarouselSecs,
@@ -93,53 +98,31 @@ const DisplayConfigSection: React.FC<DisplayConfigSectionProps> = ({
   const { t } = useTranslation();
   const [showAdvanced, setShowAdvanced] = useState(false);
 
-  // Track initial values for change detection
-  const initialValuesRef = useRef({
+  // What the node holds; moves on a successful save or a reload (#5797)
+  const values = {
     screenOnSecs, autoScreenCarouselSecs, flipScreen, units, oled,
     displayMode, headingBold, wakeOnTapOrMotion, compassOrientation
-  });
-
-  // Calculate if there are unsaved changes
-  const hasChanges = useMemo(() => {
-    const initial = initialValuesRef.current;
-    return (
-      screenOnSecs !== initial.screenOnSecs ||
-      autoScreenCarouselSecs !== initial.autoScreenCarouselSecs ||
-      flipScreen !== initial.flipScreen ||
-      units !== initial.units ||
-      oled !== initial.oled ||
-      displayMode !== initial.displayMode ||
-      headingBold !== initial.headingBold ||
-      wakeOnTapOrMotion !== initial.wakeOnTapOrMotion ||
-      compassOrientation !== initial.compassOrientation
-    );
-  }, [screenOnSecs, autoScreenCarouselSecs, flipScreen, units, oled,
-      displayMode, headingBold, wakeOnTapOrMotion, compassOrientation]);
+  };
+  const { baseline, hasChanges, commit } = useSectionBaseline(values, { reseedKey: configVersion });
 
   // Reset to initial values (for SaveBar dismiss)
   const resetChanges = useCallback(() => {
-    const initial = initialValuesRef.current;
-    setScreenOnSecs(initial.screenOnSecs);
-    setAutoScreenCarouselSecs(initial.autoScreenCarouselSecs);
-    setFlipScreen(initial.flipScreen);
-    setUnits(initial.units);
-    setOled(initial.oled);
-    setDisplayMode(initial.displayMode);
-    setHeadingBold(initial.headingBold);
-    setWakeOnTapOrMotion(initial.wakeOnTapOrMotion);
-    setCompassOrientation(initial.compassOrientation);
-  }, [setScreenOnSecs, setAutoScreenCarouselSecs, setFlipScreen, setUnits, setOled,
+    setScreenOnSecs(baseline.screenOnSecs);
+    setAutoScreenCarouselSecs(baseline.autoScreenCarouselSecs);
+    setFlipScreen(baseline.flipScreen);
+    setUnits(baseline.units);
+    setOled(baseline.oled);
+    setDisplayMode(baseline.displayMode);
+    setHeadingBold(baseline.headingBold);
+    setWakeOnTapOrMotion(baseline.wakeOnTapOrMotion);
+    setCompassOrientation(baseline.compassOrientation);
+  }, [baseline, setScreenOnSecs, setAutoScreenCarouselSecs, setFlipScreen, setUnits, setOled,
       setDisplayMode, setHeadingBold, setWakeOnTapOrMotion, setCompassOrientation]);
 
-  // Update initial values after successful save
-  const handleSave = useCallback(async () => {
-    await onSave();
-    initialValuesRef.current = {
-      screenOnSecs, autoScreenCarouselSecs, flipScreen, units, oled,
-      displayMode, headingBold, wakeOnTapOrMotion, compassOrientation
-    };
-  }, [onSave, screenOnSecs, autoScreenCarouselSecs, flipScreen, units, oled,
-      displayMode, headingBold, wakeOnTapOrMotion, compassOrientation]);
+  // Move the baseline only when the node took the save
+  const handleSave = async () => {
+    if (await onSave()) commit(values);
+  };
 
   // Register with SaveBar
   const numberScope = useNumberInputScope();

@@ -1,7 +1,8 @@
-import React, { useState, useRef, useMemo, useCallback } from 'react';
+import React, { useState, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { UiIcon } from '../icons';
 import { useSaveBar } from '../../hooks/useSaveBar';
+import { useSectionBaseline } from '../../hooks/useSectionBaseline';
 import { NumberInput } from '../common/NumberInput';
 import { NumberInputScope } from '../common/NumberInputScope';
 import { useNumberInputScope } from '../common/numberInputScopeContext';
@@ -58,7 +59,8 @@ interface SerialConfigSectionProps {
   overrideConsoleSerialPort: boolean;
   setOverrideConsoleSerialPort: (value: boolean) => void;
   isSaving: boolean;
-  onSave: () => Promise<void>;
+  /** Resolves true when the node accepted the save. */
+  onSave: () => Promise<boolean>;
 }
 
 const SerialConfigSection: React.FC<SerialConfigSectionProps> = ({
@@ -84,46 +86,28 @@ const SerialConfigSection: React.FC<SerialConfigSectionProps> = ({
   const { t } = useTranslation();
   const [showAdvanced, setShowAdvanced] = useState(false);
 
-  // Track initial values for change detection
-  const initialValuesRef = useRef({
+  // What the node holds; moves on a successful save (#5797)
+  const values = {
     enabled, echo, rxd, txd, baud, timeout, mode, overrideConsoleSerialPort
-  });
-
-  // Calculate if there are unsaved changes
-  const hasChanges = useMemo(() => {
-    const initial = initialValuesRef.current;
-    return (
-      enabled !== initial.enabled ||
-      echo !== initial.echo ||
-      rxd !== initial.rxd ||
-      txd !== initial.txd ||
-      baud !== initial.baud ||
-      timeout !== initial.timeout ||
-      mode !== initial.mode ||
-      overrideConsoleSerialPort !== initial.overrideConsoleSerialPort
-    );
-  }, [enabled, echo, rxd, txd, baud, timeout, mode, overrideConsoleSerialPort]);
+  };
+  const { baseline, hasChanges, commit } = useSectionBaseline(values);
 
   // Reset to initial values (for SaveBar dismiss)
   const resetChanges = useCallback(() => {
-    const initial = initialValuesRef.current;
-    setEnabled(initial.enabled);
-    setEcho(initial.echo);
-    setRxd(initial.rxd);
-    setTxd(initial.txd);
-    setBaud(initial.baud);
-    setTimeout(initial.timeout);
-    setMode(initial.mode);
-    setOverrideConsoleSerialPort(initial.overrideConsoleSerialPort);
-  }, [setEnabled, setEcho, setRxd, setTxd, setBaud, setTimeout, setMode, setOverrideConsoleSerialPort]);
+    setEnabled(baseline.enabled);
+    setEcho(baseline.echo);
+    setRxd(baseline.rxd);
+    setTxd(baseline.txd);
+    setBaud(baseline.baud);
+    setTimeout(baseline.timeout);
+    setMode(baseline.mode);
+    setOverrideConsoleSerialPort(baseline.overrideConsoleSerialPort);
+  }, [baseline, setEnabled, setEcho, setRxd, setTxd, setBaud, setTimeout, setMode, setOverrideConsoleSerialPort]);
 
-  // Update initial values after successful save
-  const handleSave = useCallback(async () => {
-    await onSave();
-    initialValuesRef.current = {
-      enabled, echo, rxd, txd, baud, timeout, mode, overrideConsoleSerialPort
-    };
-  }, [onSave, enabled, echo, rxd, txd, baud, timeout, mode, overrideConsoleSerialPort]);
+  // Move the baseline only when the node took the save
+  const handleSave = async () => {
+    if (await onSave()) commit(values);
+  };
 
   // Register with SaveBar
   const numberScope = useNumberInputScope();

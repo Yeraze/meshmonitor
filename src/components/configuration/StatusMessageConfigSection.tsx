@@ -1,6 +1,7 @@
-import React, { useRef, useMemo, useCallback } from 'react';
+import React, { useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSaveBar } from '../../hooks/useSaveBar';
+import { useSectionBaseline } from '../../hooks/useSectionBaseline';
 import styles from './StatusMessageConfigSection.module.css';
 import { NODE_STATUS_MAX_BYTES, truncateToUtf8Bytes, utf8ByteLength } from '../../utils/statusMessage';
 
@@ -9,7 +10,8 @@ interface StatusMessageConfigSectionProps {
   setNodeStatus: (value: string) => void;
   isDisabled: boolean;
   isSaving: boolean;
-  onSave: () => Promise<void>;
+  /** Resolves true when the node accepted the save. */
+  onSave: () => Promise<boolean>;
 }
 
 const StatusMessageConfigSection: React.FC<StatusMessageConfigSectionProps> = ({
@@ -22,28 +24,21 @@ const StatusMessageConfigSection: React.FC<StatusMessageConfigSectionProps> = ({
   const { t } = useTranslation();
   const nodeStatusBytes = utf8ByteLength(nodeStatus);
 
-  // Track initial values for change detection
-  const initialValuesRef = useRef({
+  // What the node holds; moves on a successful save (#5797)
+  const values = {
     nodeStatus
-  });
-
-  // Calculate if there are unsaved changes
-  const hasChanges = useMemo(() => {
-    const initial = initialValuesRef.current;
-    return nodeStatus !== initial.nodeStatus;
-  }, [nodeStatus]);
+  };
+  const { baseline, hasChanges, commit } = useSectionBaseline(values);
 
   // Reset to initial values (for SaveBar dismiss)
   const resetChanges = useCallback(() => {
-    const initial = initialValuesRef.current;
-    setNodeStatus(initial.nodeStatus);
-  }, [setNodeStatus]);
+    setNodeStatus(baseline.nodeStatus);
+  }, [baseline, setNodeStatus]);
 
-  // Update initial values after successful save
-  const handleSave = useCallback(async () => {
-    await onSave();
-    initialValuesRef.current = { nodeStatus };
-  }, [onSave, nodeStatus]);
+  // Move the baseline only when the node took the save
+  const handleSave = async () => {
+    if (await onSave()) commit(values);
+  };
 
   // Register with SaveBar
   useSaveBar({

@@ -1,7 +1,8 @@
-import React, { useState, useRef, useMemo, useCallback } from 'react';
+import React, { useState, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { UiIcon } from '../icons';
 import { useSaveBar } from '../../hooks/useSaveBar';
+import { useSectionBaseline } from '../../hooks/useSectionBaseline';
 import ModuleAvailabilityNotice from './ModuleAvailabilityNotice';
 
 // Address mode options from protobufs
@@ -43,10 +44,14 @@ interface NetworkConfigSectionProps {
   isBridged?: boolean;
   // UI state
   isSaving: boolean;
-  onSave: () => Promise<void>;
+  /** Resolves true when the node accepted the save. */
+  onSave: () => Promise<boolean>;
+  /** Bumped when the page reloads config from the node (#5797). */
+  configVersion?: number;
 }
 
 const NetworkConfigSection: React.FC<NetworkConfigSectionProps> = ({
+  configVersion,
   wifiEnabled,
   setWifiEnabled,
   wifiSsid,
@@ -76,57 +81,33 @@ const NetworkConfigSection: React.FC<NetworkConfigSectionProps> = ({
   const { t } = useTranslation();
   const [showPassword, setShowPassword] = useState(false);
 
-  // Track initial values for change detection
-  const initialValuesRef = useRef({
+  // What the node holds; moves on a successful save or a reload (#5797)
+  const values = {
     wifiEnabled, wifiSsid, wifiPsk, ntpServer, rsyslogServer, addressMode, enabledProtocols,
     ipv4Address, ipv4Gateway, ipv4Subnet, ipv4Dns
-  });
-
-  // Calculate if there are unsaved changes
-  const hasChanges = useMemo(() => {
-    const initial = initialValuesRef.current;
-    return (
-      wifiEnabled !== initial.wifiEnabled ||
-      wifiSsid !== initial.wifiSsid ||
-      wifiPsk !== initial.wifiPsk ||
-      ntpServer !== initial.ntpServer ||
-      rsyslogServer !== initial.rsyslogServer ||
-      addressMode !== initial.addressMode ||
-      enabledProtocols !== initial.enabledProtocols ||
-      ipv4Address !== initial.ipv4Address ||
-      ipv4Gateway !== initial.ipv4Gateway ||
-      ipv4Subnet !== initial.ipv4Subnet ||
-      ipv4Dns !== initial.ipv4Dns
-    );
-  }, [wifiEnabled, wifiSsid, wifiPsk, ntpServer, rsyslogServer, addressMode, enabledProtocols,
-      ipv4Address, ipv4Gateway, ipv4Subnet, ipv4Dns]);
+  };
+  const { baseline, hasChanges, commit } = useSectionBaseline(values, { reseedKey: configVersion });
 
   // Reset to initial values (for SaveBar dismiss)
   const resetChanges = useCallback(() => {
-    const initial = initialValuesRef.current;
-    setWifiEnabled(initial.wifiEnabled);
-    setWifiSsid(initial.wifiSsid);
-    setWifiPsk(initial.wifiPsk);
-    setNtpServer(initial.ntpServer);
-    setRsyslogServer(initial.rsyslogServer);
-    setAddressMode(initial.addressMode);
-    setEnabledProtocols(initial.enabledProtocols);
-    setIpv4Address(initial.ipv4Address);
-    setIpv4Gateway(initial.ipv4Gateway);
-    setIpv4Subnet(initial.ipv4Subnet);
-    setIpv4Dns(initial.ipv4Dns);
-  }, [setWifiEnabled, setWifiSsid, setWifiPsk, setNtpServer, setRsyslogServer, setAddressMode, setEnabledProtocols,
+    setWifiEnabled(baseline.wifiEnabled);
+    setWifiSsid(baseline.wifiSsid);
+    setWifiPsk(baseline.wifiPsk);
+    setNtpServer(baseline.ntpServer);
+    setRsyslogServer(baseline.rsyslogServer);
+    setAddressMode(baseline.addressMode);
+    setEnabledProtocols(baseline.enabledProtocols);
+    setIpv4Address(baseline.ipv4Address);
+    setIpv4Gateway(baseline.ipv4Gateway);
+    setIpv4Subnet(baseline.ipv4Subnet);
+    setIpv4Dns(baseline.ipv4Dns);
+  }, [baseline, setWifiEnabled, setWifiSsid, setWifiPsk, setNtpServer, setRsyslogServer, setAddressMode, setEnabledProtocols,
       setIpv4Address, setIpv4Gateway, setIpv4Subnet, setIpv4Dns]);
 
-  // Update initial values after successful save
-  const handleSave = useCallback(async () => {
-    await onSave();
-    initialValuesRef.current = {
-      wifiEnabled, wifiSsid, wifiPsk, ntpServer, rsyslogServer, addressMode, enabledProtocols,
-      ipv4Address, ipv4Gateway, ipv4Subnet, ipv4Dns
-    };
-  }, [onSave, wifiEnabled, wifiSsid, wifiPsk, ntpServer, rsyslogServer, addressMode, enabledProtocols,
-      ipv4Address, ipv4Gateway, ipv4Subnet, ipv4Dns]);
+  // Move the baseline only when the node took the save
+  const handleSave = async () => {
+    if (await onSave()) commit(values);
+  };
 
   // Register with SaveBar
   useSaveBar({
