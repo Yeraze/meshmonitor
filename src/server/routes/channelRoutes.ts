@@ -34,7 +34,8 @@ import { requireMeshtasticDeviceSource } from '../utils/requireMeshtasticDeviceS
 import { migrateAutomationChannels } from '../utils/automationChannelMigration.js';
 import { detectChannelMoves, snapshotFromDecodedChannels, type ChannelSnapshot } from '../utils/channelMoveDetection.js';
 import { modemPresetChannelName, CHANNEL_DB_OFFSET } from '../constants/meshtastic.js';
-import { getEncryptionStatus, getRoleName, NO_ENCRYPTION_PSK } from '../utils/channelView.js';
+import { getEncryptionStatus, getRoleName } from '../utils/channelView.js';
+import { NO_ENCRYPTION_PSK } from '../utils/channelPsk.js';
 import { sourceManagerRegistry } from '../sourceManagerRegistry.js';
 import { isMeshCoreManager } from '../sourceManagerTypes.js';
 import { fail } from '../utils/apiResponse.js';
@@ -489,12 +490,6 @@ router.put('/:id', requireAuth(), requireSourceId('body'), async (req: Request, 
       : null;
     const sourceType = sourceRowForType?.type ?? 'meshtastic_tcp';
 
-    // A MeshCore MQTT ingest source has no radio and no channel slots of its
-    // own. Without this it fell through to the Meshtastic branch (#5826).
-    if (sourceType === 'meshcore_mqtt') {
-      return refuseIngestSourceChannelWrite(res, chanSourceId);
-    }
-
     if (sourceType !== 'meshcore' && channelId > 7) {
       return res.status(400).json({ error: 'Invalid channel ID. Must be between 0-7' });
     }
@@ -521,6 +516,14 @@ router.put('/:id', requireAuth(), requireSourceId('body'), async (req: Request, 
         code: 'FORBIDDEN',
         required: { resource: channelResource, action: 'write' },
       });
+    }
+
+    // A MeshCore MQTT ingest source has no radio and no channel slots of its
+    // own. Without this it fell through to the Meshtastic branch (#5826).
+    // Checked after the permission gate so a caller without write access gets
+    // 403 and learns nothing about the source's type.
+    if (sourceType === 'meshcore_mqtt') {
+      return refuseIngestSourceChannelWrite(res, chanSourceId);
     }
 
     const { name, psk, role, uplinkEnabled, downlinkEnabled, positionPrecision, scope } = req.body;
@@ -735,11 +738,6 @@ router.delete('/:id', requireAuth(), async (req: Request, res: Response) => {
     // Same 0-7 cap softening as the PUT route — MeshCore allows higher idx.
     const sourceRowForType = await databaseService.sources.getSource(deleteChannelSourceId);
     const sourceType = sourceRowForType?.type ?? 'meshtastic_tcp';
-    // Same as PUT: an ingest source has no slots to delete, and the Meshtastic
-    // branch below would purge its messages (#5826).
-    if (sourceType === 'meshcore_mqtt') {
-      return refuseIngestSourceChannelWrite(res, deleteChannelSourceId);
-    }
     if (sourceType !== 'meshcore' && channelId > 7) {
       return res.status(400).json({ error: 'Invalid channel ID (0-7)' });
     }
@@ -755,6 +753,13 @@ router.delete('/:id', requireAuth(), async (req: Request, res: Response) => {
         code: 'FORBIDDEN',
         required: { resource: channelResource, action: 'write' },
       });
+    }
+
+    // Same as PUT, and after the permission gate for the same reason: an
+    // ingest source has no slots to delete, and the Meshtastic branch below
+    // would purge its messages (#5826).
+    if (sourceType === 'meshcore_mqtt') {
+      return refuseIngestSourceChannelWrite(res, deleteChannelSourceId);
     }
 
     if (sourceType === 'meshcore') {

@@ -12,16 +12,10 @@
  *   - `server.ts` /api/channels, /api/channels/all, and the poll handler
  */
 
+import { NO_ENCRYPTION_PSK } from './channelPsk.js';
+
 /** Default public PSK (base64 of single byte 0x01) — known publicly, not secure. */
 export const DEFAULT_PUBLIC_PSK = 'AQ==';
-
-/**
- * "Encryption off" PSK (base64 of the single byte 0x00, the `none` shorthand).
- * Firmware turns encryption off for it on any role. A 0-byte PSK is NOT the
- * same: on a SECONDARY channel the firmware borrows the primary's key for it
- * (`Channels::getKey`), so a cleared key is written as this byte (#5826).
- */
-export const NO_ENCRYPTION_PSK = 'AA==';
 
 export type ChannelEncryptionStatus = 'none' | 'default' | 'secure';
 

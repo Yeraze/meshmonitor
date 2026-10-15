@@ -136,6 +136,17 @@ describe('channel PUT/DELETE fixes (#5826)', () => {
       expect((await harness.db.channels.getChannelById(1, MC_MQTT))!.name).toBe('Keep');
     });
 
+    it('a caller without write access gets 403 first, not the source-type 400', async () => {
+      const agent = await harness.loginAs(harness.limited);
+      const put = await agent.put('/1').send({ sourceId: MC_MQTT, name: 'Changed', psk: KEY });
+      expect(put.status).toBe(403);
+      expect(put.body.code).toBe('FORBIDDEN');
+      const del = await agent.delete('/1').query({ sourceId: MC_MQTT });
+      expect(del.status).toBe(403);
+      expect(del.body.code).toBe('FORBIDDEN');
+      expect(await harness.db.channels.getChannelById(1, MC_MQTT)).not.toBeNull();
+    });
+
     it('DELETE is refused and the row stays', async () => {
       const agent = await harness.loginAs(harness.admin);
       const res = await agent.delete('/1').query({ sourceId: MC_MQTT });

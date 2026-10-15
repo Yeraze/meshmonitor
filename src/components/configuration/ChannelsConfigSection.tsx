@@ -31,7 +31,7 @@ import { useResolvedSourceId } from '../../hooks/useResolvedSourceId';
 import { formatPrecisionAccuracy } from '../../utils/distance';
 // Default public PSK (base64 encoded value of single byte 0x01) — shared
 // definition lives in utils/publicChannel.ts (#4705).
-import { DEFAULT_PUBLIC_PSK, NO_ENCRYPTION_PSK } from '../../utils/publicChannel';
+import { NO_ENCRYPTION_PSK, pskEncryptionStatus } from '../../utils/publicChannel';
 import { NumberInput } from '../common/NumberInput';
 import { NumberInputScope } from '../common/NumberInputScope';
 import { useNumberInputScope } from '../common/numberInputScopeContext';
@@ -50,15 +50,7 @@ type EncryptionStatus = 'none' | 'default' | 'secure';
 
 // Helper to determine encryption status from a raw PSK (fallback for cases
 // where only the key is available locally).
-const getEncryptionStatus = (psk: string | undefined | null): EncryptionStatus => {
-  if (!psk || psk === '' || psk === NO_ENCRYPTION_PSK) {
-    return 'none'; // No encryption
-  }
-  if (psk === DEFAULT_PUBLIC_PSK) {
-    return 'default'; // Default/public key - not secure
-  }
-  return 'secure'; // Custom key - encrypted
-}
+const getEncryptionStatus = (psk: string | undefined | null): EncryptionStatus => pskEncryptionStatus(psk);
 
 // Resolve encryption status for a Channel: prefer the server-derived
 // `encryptionStatus` field (always present on API responses) and fall back

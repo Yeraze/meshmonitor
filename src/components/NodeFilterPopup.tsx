@@ -8,7 +8,7 @@ import { useChannels } from '../hooks/useServerData';
 import { UiIcon } from './icons';
 // Meshtastic default PSK (base64 encoded single byte 0x01 = default/unencrypted)
 // — shared definition lives in utils/publicChannel.ts (#4705).
-import { DEFAULT_PUBLIC_PSK as DEFAULT_UNENCRYPTED_PSK } from '../utils/publicChannel';
+import { hasPrivatePsk } from '../utils/publicChannel';
 
 interface NodeFilterPopupProps {
   isOpen: boolean;
@@ -42,7 +42,7 @@ export const NodeFilterPopup: React.FC<NodeFilterPopupProps> = ({ isOpen, onClos
     const channel = channels.find(ch => ch.id === channelId);
     if (!channel) return false;
     if (channel.encryptionStatus) return channel.encryptionStatus === 'secure';
-    return !!(channel.psk && channel.psk !== DEFAULT_UNENCRYPTED_PSK);
+    return hasPrivatePsk(channel.psk);
   };
 
   // Auto-hide incomplete nodes when switching to a secure channel

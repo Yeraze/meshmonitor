@@ -19,6 +19,7 @@
  * to authorized writers — readers (e.g. the Unified Messaging view) can't do the
  * comparison client-side.
  */
+import { NO_ENCRYPTION_PSK } from './channelPsk.js';
 
 /**
  * Normalize a base64 PSK for comparison. Trims surrounding whitespace and maps
@@ -29,7 +30,8 @@
 export function normalizePsk(psk: string | null | undefined): string | null {
   if (psk == null) return null;
   const trimmed = psk.trim();
-  return trimmed === '' ? null : trimmed;
+  // `AA==` is the "encryption off" byte (#5826): no key, so no collision.
+  return trimmed === '' || trimmed === NO_ENCRYPTION_PSK ? null : trimmed;
 }
 
 export interface CollisionChannel {

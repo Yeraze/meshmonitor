@@ -7,6 +7,9 @@ describe('normalizePsk', () => {
     expect(normalizePsk(undefined)).toBeNull();
     expect(normalizePsk('')).toBeNull();
     expect(normalizePsk('   ')).toBeNull();
+    // The "encryption off" byte is no key either (#5826).
+    expect(normalizePsk('AA==')).toBeNull();
+    expect(normalizePsk(' AA== ')).toBeNull();
   });
   it('trims but otherwise preserves a base64 PSK', () => {
     expect(normalizePsk(' AQ== ')).toBe('AQ==');
