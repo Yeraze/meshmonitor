@@ -169,5 +169,10 @@
     "@rollup/rollup-linux-arm64-musl": "^4.64.3",
     "@serialport/parser-readline": "^13.0.0",
     "serialport": "^13.0.0"
+  },
+  "overrides": {
+    "express-mysql-session": {
+      "mysql2": "$mysql2"
+    }
   }
 }
