@@ -1,0 +1,32 @@
+/* MeshCoreChannelsConfigSection (#5829). */
+
+.list {
+  display: grid;
+  gap: 0.25rem;
+}
+
+.field {
+  margin-bottom: 1rem;
+}
+
+.field label {
+  display: block;
+  margin-bottom: 0.35rem;
+}
+
+.input {
+  width: 100%;
+}
+
+.hint {
+  margin: 0.35rem 0 0;
+  font-size: 0.8rem;
+  color: var(--color-text-subtle);
+}
+
+.addBar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+}
