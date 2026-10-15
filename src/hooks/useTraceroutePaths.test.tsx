@@ -312,4 +312,61 @@ describe('useTraceroutePaths - Route Segment Filtering', () => {
       expect(result.current.tracerouteBounds).toBeNull();
     });
   });
+
+  // #5821: auto-traceroute writes a pending row (route NULL) for every request
+  // it sends. When that row is the newest one for the tapped node, the hook
+  // used to pick it and draw nothing, while NodesTab still hid the popup
+  // because an older row had a full route. Tapping the node did nothing.
+  describe('selected node — skips pending/unanswered rows (#5821)', () => {
+    const nodes: NodePositionDigest[] = [
+      { nodeNum: 100, position: { latitude: 40.0, longitude: -75.0 }, user: { id: '!64', longName: 'Node A' } },
+      { nodeNum: 200, position: { latitude: 40.2, longitude: -75.2 }, user: { id: '!c8', longName: 'Node B' } },
+    ];
+    const themeColors: ThemeColors = { mauve: '#c6a0f6', red: '#ed8796', blue: '#8aadf4', overlay0: '#6e738d' };
+    const callbacks = { onSelectNode: () => {}, onSelectRouteSegment: () => {} };
+    const baseParams = {
+      showPaths: false,
+      showRoute: true,
+      currentNodeId: '!64',
+      nodesPositionDigest: nodes,
+      distanceUnit: 'metric' as const,
+      maxNodeAgeHours: 24,
+      themeColors,
+      callbacks,
+    };
+    const now = Date.now();
+    // Newest first, as the poll serves them.
+    const pending = {
+      fromNodeNum: 100, toNodeNum: 200, fromNodeId: '!64', toNodeId: '!c8',
+      route: null as unknown as string, routeBack: null as unknown as string,
+      snrTowards: null as unknown as string, snrBack: null as unknown as string,
+      timestamp: now,
+    };
+    const complete: TracerouteDigest = {
+      fromNodeNum: 100, toNodeNum: 200, fromNodeId: '!64', toNodeId: '!c8',
+      route: '[]', routeBack: '[]', snrTowards: '[40]', snrBack: '[32]',
+      timestamp: now - 10 * 60 * 1000,
+    };
+
+    it('draws the newest answered run when the newest row is a pending request', () => {
+      const { result } = renderHook(() =>
+        useTraceroutePaths({ ...baseParams, selectedNodeId: '!c8', traceroutesDigest: [pending, complete] })
+      );
+
+      expect(result.current.selectedNodeTraceroute).not.toBeNull();
+      // tracerouteNodeNums drives the Dismiss Traceroute button.
+      expect(result.current.tracerouteNodeNums).not.toBeNull();
+      expect(result.current.tracerouteBounds).not.toBeNull();
+    });
+
+    it('draws nothing when the node has only pending rows', () => {
+      const { result } = renderHook(() =>
+        useTraceroutePaths({ ...baseParams, selectedNodeId: '!c8', traceroutesDigest: [pending] })
+      );
+
+      expect(result.current.selectedNodeTraceroute).toBeNull();
+      expect(result.current.tracerouteNodeNums).toBeNull();
+      expect(result.current.tracerouteBounds).toBeNull();
+    });
+  });
 });
