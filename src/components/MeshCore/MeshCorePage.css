@@ -976,6 +976,15 @@
   max-width: 320px;
 }
 
+/* The rule above is for text fields. A checkbox or radio keeps its natural
+   size, or it stretches and pushes its label into a narrow column. */
+.meshcore-form-view input[type="checkbox"],
+.meshcore-form-view input[type="radio"] {
+  width: auto;
+  max-width: none;
+  padding: 0;
+}
+
 .meshcore-form-view input:focus,
 .meshcore-form-view select:focus {
   outline: none;
