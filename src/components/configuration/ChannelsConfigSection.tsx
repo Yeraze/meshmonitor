@@ -31,7 +31,7 @@ import { useResolvedSourceId } from '../../hooks/useResolvedSourceId';
 import { formatPrecisionAccuracy } from '../../utils/distance';
 // Default public PSK (base64 encoded value of single byte 0x01) — shared
 // definition lives in utils/publicChannel.ts (#4705).
-import { DEFAULT_PUBLIC_PSK } from '../../utils/publicChannel';
+import { NO_ENCRYPTION_PSK, pskEncryptionStatus } from '../../utils/publicChannel';
 import { NumberInput } from '../common/NumberInput';
 import { NumberInputScope } from '../common/NumberInputScope';
 import { useNumberInputScope } from '../common/numberInputScopeContext';
@@ -50,15 +50,7 @@ type EncryptionStatus = 'none' | 'default' | 'secure';
 
 // Helper to determine encryption status from a raw PSK (fallback for cases
 // where only the key is available locally).
-const getEncryptionStatus = (psk: string | undefined | null): EncryptionStatus => {
-  if (!psk || psk === '') {
-    return 'none'; // No encryption
-  }
-  if (psk === DEFAULT_PUBLIC_PSK) {
-    return 'default'; // Default/public key - not secure
-  }
-  return 'secure'; // Custom key - encrypted
-}
+const getEncryptionStatus = (psk: string | undefined | null): EncryptionStatus => pskEncryptionStatus(psk);
 
 // Resolve encryption status for a Channel: prefer the server-derived
 // `encryptionStatus` field (always present on API responses) and fall back
@@ -71,6 +63,17 @@ const channelEncryptionStatus = (channel: Pick<Channel, 'encryptionStatus' | 'ps
   return getEncryptionStatus(channel.psk);
 };
 
+/**
+ * The `psk` to send on save (#5826). The server keeps the stored key when
+ * `psk` is absent and turns encryption off for an explicit ''. So send '' only
+ * when the user emptied a field that held a key; a field that opened empty
+ * (no key, or a reader who never got one) keeps whatever the device has.
+ */
+const pskForSave = (edit: Pick<ChannelEditState, 'psk' | 'originalPsk'>): string | undefined => {
+  if (edit.psk !== '') return edit.psk;
+  return edit.originalPsk !== '' ? '' : undefined;
+};
+
 interface ChannelsConfigSectionProps {
   baseUrl?: string;
   channels: Channel[];
@@ -81,6 +84,9 @@ interface ChannelEditState {
   slotId: number;
   name: string;
   psk: string;
+  /** The key the form opened with, so a cleared field is told apart from one
+   *  that was always empty (#5826). */
+  originalPsk: string;
   role: number;
   uplinkEnabled: boolean;
   downlinkEnabled: boolean;
@@ -277,10 +283,14 @@ const ChannelsConfigSection: React.FC<ChannelsConfigSectionProps> = ({
 
   const handleEditChannel = (slotId: number) => {
     const existingChannel = channels.find(ch => ch.id === slotId);
+    // The "encryption off" key shows as an empty field, which is how the user
+    // asked for it (#5826).
+    const shownPsk = existingChannel?.psk === NO_ENCRYPTION_PSK ? '' : (existingChannel?.psk ?? '');
     setEditingChannel({
       slotId,
       name: existingChannel?.name ?? `Channel ${slotId}`,
-      psk: existingChannel?.psk ?? '',
+      psk: shownPsk,
+      originalPsk: shownPsk,
       role: (existingChannel?.role !== undefined && existingChannel?.role !== null) ? existingChannel.role : (slotId === 0 ? 1 : 2), // Default: 1 for slot 0 (Primary), 2 for others (Secondary)
       uplinkEnabled: existingChannel?.uplinkEnabled !== undefined ? existingChannel.uplinkEnabled : true,
       downlinkEnabled: existingChannel?.downlinkEnabled !== undefined ? existingChannel.downlinkEnabled : true,
@@ -303,7 +313,7 @@ const ChannelsConfigSection: React.FC<ChannelsConfigSectionProps> = ({
     try {
       await apiService.updateChannel(editingChannel.slotId, {
         name: editingChannel.name,
-        psk: editingChannel.psk || undefined,
+        psk: pskForSave(editingChannel),
         role: editingChannel.role,
         uplinkEnabled: editingChannel.uplinkEnabled,
         downlinkEnabled: editingChannel.downlinkEnabled,
@@ -330,7 +340,7 @@ const ChannelsConfigSection: React.FC<ChannelsConfigSectionProps> = ({
       return;
     }
 
-    if (!confirm(t('channels_config.confirm_delete', `Are you sure you want to delete channel ${slotId}? This will disable the channel on the device.`))) {
+    if (!confirm(t('channels_config.confirm_delete', 'Are you sure you want to delete channel {{slot}}? This will disable the channel on the device.', { slot: slotId }))) {
       return;
     }
 

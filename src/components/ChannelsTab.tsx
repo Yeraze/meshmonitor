@@ -46,7 +46,7 @@ import { TranslatedMessage } from './translation/TranslatedMessage';
 import { useViewTranslations } from '../hooks/useViewTranslations';
 // Default PSK value (publicly known key - not truly secure) — shared
 // definition lives in utils/publicChannel.ts (#4705).
-import { DEFAULT_PUBLIC_PSK } from '../utils/publicChannel';
+import { pskEncryptionStatus } from '../utils/publicChannel';
 import { useSource } from '../contexts/SourceContext';
 import { sourceTypeMeshProtocol } from '../utils/meshProtocol';
 import protocolStripe from './messages/ProtocolStripe.module.css';
@@ -61,15 +61,7 @@ type EncryptionStatus = 'none' | 'default' | 'secure';
 
 // Helper to determine encryption status from a raw PSK (used for virtual /
 // channel-database entries where we have the key locally).
-const getEncryptionStatus = (psk: string | undefined | null): EncryptionStatus => {
-  if (!psk || psk === '') {
-    return 'none'; // No encryption
-  }
-  if (psk === DEFAULT_PUBLIC_PSK) {
-    return 'default'; // Default/public key - not secure
-  }
-  return 'secure'; // Custom key - encrypted
-};
+const getEncryptionStatus = (psk: string | undefined | null): EncryptionStatus => pskEncryptionStatus(psk);
 
 // Resolve encryption status for a Channel: prefer the server-derived
 // `encryptionStatus` field (always present and safe to expose) and fall

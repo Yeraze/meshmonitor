@@ -112,12 +112,12 @@ describe('MeshCoreChannelsConfigSection — list rendering', () => {
 
   it('disables Edit/Delete when canWrite=false', async () => {
     csrfFetchMock.mockResolvedValueOnce(
-      jsonResponse([{ id: 0, name: 'Public', psk: 'AAECAwQFBgcICQoLDA0ODw==' }]),
+      jsonResponse([{ id: 1, name: 'Town', psk: 'AAECAwQFBgcICQoLDA0ODw==' }]),
     );
     render(
       <MeshCoreChannelsConfigSection baseUrl="" sourceId="src-a" canWrite={false} />,
     );
-    await waitFor(() => screen.getByText('# Public'));
+    await waitFor(() => screen.getByText('# Town'));
     expect((screen.getByText('Edit') as HTMLButtonElement).disabled).toBe(true);
     expect((screen.getByText('Delete') as HTMLButtonElement).disabled).toBe(true);
     expect((screen.getByText('+ Add channel') as HTMLButtonElement).disabled).toBe(true);
@@ -373,10 +373,11 @@ describe('MeshCoreChannelsConfigSection — delete + secret-visibility', () => {
     await waitFor(() => screen.getByText('# GoneSoon'));
 
     // Find the row with GoneSoon and click its Delete button (the second one).
+    // Slot 0 (Public) has no Delete (#5826), so GoneSoon's is the only one.
     const deleteButtons = screen.getAllByText('Delete') as HTMLButtonElement[];
-    expect(deleteButtons.length).toBe(2);
+    expect(deleteButtons.length).toBe(1);
     await act(async () => {
-      fireEvent.click(deleteButtons[1]);
+      fireEvent.click(deleteButtons[0]);
     });
 
     const deleteCall = channelCalls.find(
@@ -394,13 +395,13 @@ describe('MeshCoreChannelsConfigSection — delete + secret-visibility', () => {
 
   it('Secret input is type=password by default and switches to text when Show is clicked', async () => {
     csrfFetchMock.mockResolvedValueOnce(
-      jsonResponse([{ id: 0, name: 'Public', psk: 'AAECAwQFBgcICQoLDA0ODw==' }]),
+      jsonResponse([{ id: 1, name: 'Town', psk: 'AAECAwQFBgcICQoLDA0ODw==' }]),
     );
 
     render(
       <MeshCoreChannelsConfigSection baseUrl="" sourceId="src-a" canWrite={true} />,
     );
-    await waitFor(() => screen.getByText('# Public'));
+    await waitFor(() => screen.getByText('# Town'));
 
     fireEvent.click(screen.getByText('Edit'));
     const secretInput = screen.getByLabelText('Secret (hex, 32 chars)') as HTMLInputElement;
@@ -410,5 +411,40 @@ describe('MeshCoreChannelsConfigSection — delete + secret-visibility', () => {
     expect(secretInput.type).toBe('text');
     // Hex of the base64 'AAECAwQFBgcICQoLDA0ODw==' is 000102030405060708090a0b0c0d0e0f.
     expect(secretInput.value).toBe('000102030405060708090a0b0c0d0e0f');
+  });
+});
+
+describe('MeshCoreChannelsConfigSection — slot 0 is the Public channel (#5826)', () => {
+  it('offers no Edit or Delete on the stock Public slot, only a note', async () => {
+    csrfFetchMock.mockResolvedValueOnce(jsonResponse([
+      { id: 0, name: 'Public', psk: null },
+      { id: 1, name: 'Town', psk: 'EBESExQVFhcYGRobHB0eHw==' },
+    ]));
+    render(<MeshCoreChannelsConfigSection baseUrl="" sourceId="src-a" canWrite={true} />);
+    await waitFor(() => screen.getByText('# Town'));
+
+    expect(screen.getAllByText('Edit')).toHaveLength(1);
+    expect(screen.getAllByText('Delete')).toHaveLength(1);
+    expect(screen.queryByText('Reset to Public')).toBeNull();
+    expect(screen.getByTestId('mc-public-slot-hint').textContent).toBe('Public channel, fixed by the firmware');
+  });
+
+  it('a misconfigured slot 0 offers Reset, which sends the DELETE the server allows', async () => {
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
+    csrfFetchMock
+      .mockResolvedValueOnce(jsonResponse([{ id: 0, name: 'Wrong', psk: 'EBESExQVFhcYGRobHB0eHw==' }]))
+      .mockResolvedValueOnce(jsonResponse({ success: true }))
+      .mockResolvedValueOnce(jsonResponse([{ id: 0, name: 'Public', psk: null }]));
+    render(<MeshCoreChannelsConfigSection baseUrl="" sourceId="src-a" canWrite={true} />);
+    await waitFor(() => screen.getByText('# Wrong'));
+
+    expect(screen.queryByText('Edit')).toBeNull();
+    await act(async () => {
+      fireEvent.click(screen.getByText('Reset to Public'));
+    });
+    expect(confirmSpy.mock.calls[0][0]).toMatch(/slot 0/);
+    const deleteCall = channelCalls.find(c => c[1]?.method === 'DELETE');
+    expect(deleteCall![0]).toBe('/api/channels/0?sourceId=src-a');
+    confirmSpy.mockRestore();
   });
 });

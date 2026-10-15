@@ -16,6 +16,13 @@
 export const DEFAULT_PUBLIC_PSK = 'AQ==';
 
 /**
+ * Meshtastic's "encryption off" PSK: base64 of the single byte 0x00. The
+ * server stores it when a user clears a channel key (#5826); a channel
+ * holding it is unencrypted. Mirrors `NO_ENCRYPTION_PSK` in channelView.ts.
+ */
+export const NO_ENCRYPTION_PSK = 'AA==';
+
+/**
  * Firmware clamps `position_precision` to this many bits on known-public
  * channels (~564 m accuracy).
  *
@@ -38,8 +45,27 @@ export const PUBLIC_CHANNEL_PRECISION_MAX_METERS = 564;
  * private channel and is not clamped.
  */
 export function isKnownPublicChannel(psk: string | null | undefined): boolean {
-  if (psk == null || psk === '') return true; // no encryption at all
-  return psk === DEFAULT_PUBLIC_PSK;
+  return pskEncryptionStatus(psk) !== 'secure';
+}
+
+export type PskEncryptionStatus = 'none' | 'default' | 'secure';
+
+/**
+ * Classify a raw base64 PSK (#5826). The one client-side reading of a key:
+ *   - 'none'    no key, or the `AA==` "encryption off" byte
+ *   - 'default' the publicly known default key (`AQ==`)
+ *   - 'secure'  any other (custom) key
+ * Mirrors `getEncryptionStatus` in src/server/utils/channelView.ts.
+ */
+export function pskEncryptionStatus(psk: string | null | undefined): PskEncryptionStatus {
+  if (psk == null || psk === '' || psk === NO_ENCRYPTION_PSK) return 'none';
+  if (psk === DEFAULT_PUBLIC_PSK) return 'default';
+  return 'secure';
+}
+
+/** True when the PSK is a private (custom) key, i.e. neither off nor the public default. */
+export function hasPrivatePsk(psk: string | null | undefined): boolean {
+  return pskEncryptionStatus(psk) === 'secure';
 }
 
 /**

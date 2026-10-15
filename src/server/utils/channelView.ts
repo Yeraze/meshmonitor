@@ -12,6 +12,8 @@
  *   - `server.ts` /api/channels, /api/channels/all, and the poll handler
  */
 
+import { NO_ENCRYPTION_PSK } from './channelPsk.js';
+
 /** Default public PSK (base64 of single byte 0x01) — known publicly, not secure. */
 export const DEFAULT_PUBLIC_PSK = 'AQ==';
 
@@ -19,12 +21,12 @@ export type ChannelEncryptionStatus = 'none' | 'default' | 'secure';
 
 /**
  * Classify a channel's PSK without exposing the key itself.
- *   - 'none'    no PSK configured (unencrypted)
+ *   - 'none'    no PSK configured, or the `AA==` "encryption off" byte
  *   - 'default' the publicly known default key (`AQ==`)
  *   - 'secure'  any other (custom) key
  */
 export function getEncryptionStatus(psk: string | null | undefined): ChannelEncryptionStatus {
-  if (!psk || psk === '') return 'none';
+  if (!psk || psk === '' || psk === NO_ENCRYPTION_PSK) return 'none';
   if (psk === DEFAULT_PUBLIC_PSK) return 'default';
   return 'secure';
 }

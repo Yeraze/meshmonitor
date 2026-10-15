@@ -6,6 +6,7 @@ import { useNumberInputScope } from '../common/numberInputScopeContext';
 import { UiIcon } from '../icons';
 import { MODEM_PRESET_OPTIONS, REGION_OPTIONS, isAmateurRadioRegion, getLegalPresetOptions } from '../configuration/constants';
 import type { Channel } from '../../types/device';
+import { hasPrivatePsk } from '../../utils/publicChannel';
 
 interface RadioConfigurationSectionProps {
   // CollapsibleSection component (passed from parent)
@@ -523,7 +524,7 @@ export const RadioConfigurationSection: React.FC<RadioConfigurationSectionProps>
                     </h4>
                     {channel && (
                       <div style={{ marginTop: '0.5rem', fontSize: '0.9rem', color: 'var(--color-text-muted)' }}>
-                        <div><UiIcon name={channel.psk && channel.psk !== 'AQ==' ? 'encrypted' : 'unencrypted'} /> {channel.psk && channel.psk !== 'AQ==' ? t('admin_commands.encrypted') : t('admin_commands.unencrypted')}</div>
+                        <div><UiIcon name={hasPrivatePsk(channel.psk) ? 'encrypted' : 'unencrypted'} /> {hasPrivatePsk(channel.psk) ? t('admin_commands.encrypted') : t('admin_commands.unencrypted')}</div>
                         <div>
                           {channel.uplinkEnabled && <><UiIcon name="sortAscending" /> {t('admin_commands.uplink')} </>}
                           {channel.downlinkEnabled && <><UiIcon name="sortDescending" /> {t('admin_commands.downlink')}</>}
