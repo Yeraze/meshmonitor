@@ -12,7 +12,7 @@
  * the node's neighbour table into Node Details on the chosen cadence. Gated by
  * `configuration:write` for edits, `nodes:read` for the manual poll.
  */
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../../contexts/AuthContext';
 import { useCsrfFetch } from '../../hooks/useCsrfFetch';
@@ -71,6 +71,9 @@ export const MeshCoreNodeNeighboursConfig: React.FC<MeshCoreNodeNeighboursConfig
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const endpoint = `${baseUrl}/api/sources/${encodeURIComponent(sourceId)}/meshcore/nodes/${encodeURIComponent(publicKey)}/neighbours-config`;
+  // The endpoint names the node. A reply that lands after the user has moved
+  // to another node belongs to the old one, so it is dropped (#5797).
+  const currentEndpoint = useRef(endpoint);
   const mcPrefix = `${baseUrl}/api/sources/${encodeURIComponent(sourceId)}/meshcore`;
   const fetchActions = useMemo(() => createNeighboursFetchActions(csrfFetch, mcPrefix), [csrfFetch, mcPrefix]);
   const neighboursFetch = useMeshCoreNeighboursFetch(fetchActions);
@@ -93,6 +96,7 @@ export const MeshCoreNodeNeighboursConfig: React.FC<MeshCoreNodeNeighboursConfig
   // Refetch whenever the selected node or source changes.
   useEffect(() => {
     let cancelled = false;
+    currentEndpoint.current = endpoint;
     setLoading(true);
     setError(null);
     setSaved(false);
@@ -125,7 +129,10 @@ export const MeshCoreNodeNeighboursConfig: React.FC<MeshCoreNodeNeighboursConfig
     };
   }, [endpoint, csrfFetch, t]);
 
-  const save = async (patch: { enabled?: boolean; intervalMinutes?: number }) => {
+  // `rollback` restores what the control showed before this save. It runs
+  // only when the save fails for the node still on screen.
+  const save = async (patch: { enabled?: boolean; intervalMinutes?: number }, rollback: () => void) => {
+    const isStale = () => currentEndpoint.current !== endpoint;
     setSaving(true);
     setSaved(false);
     setError(null);
@@ -136,6 +143,7 @@ export const MeshCoreNodeNeighboursConfig: React.FC<MeshCoreNodeNeighboursConfig
         body: JSON.stringify(patch),
       });
       const data = await response.json();
+      if (isStale()) return;
       if (data.success && data.data) {
         setCfg({
           enabled: Boolean(data.data.enabled),
@@ -145,9 +153,12 @@ export const MeshCoreNodeNeighboursConfig: React.FC<MeshCoreNodeNeighboursConfig
         setSaved(true);
         window.setTimeout(() => setSaved(false), 1800);
       } else {
+        rollback();
         setError(data.error || t('meshcore.neighbours_config.save_error', 'Failed to save'));
       }
     } catch (_err) {
+      if (isStale()) return;
+      rollback();
       setError(t('meshcore.neighbours_config.save_error', 'Failed to save'));
     } finally {
       setSaving(false);
@@ -155,8 +166,9 @@ export const MeshCoreNodeNeighboursConfig: React.FC<MeshCoreNodeNeighboursConfig
   };
 
   const handleToggle = (next: boolean) => {
+    const before = cfg.enabled;
     setCfg((prev) => ({ ...prev, enabled: next }));
-    void save({ enabled: next });
+    void save({ enabled: next }, () => setCfg((prev) => ({ ...prev, enabled: before })));
   };
 
   const showIntervalRangeError = () => {
@@ -170,7 +182,8 @@ export const MeshCoreNodeNeighboursConfig: React.FC<MeshCoreNodeNeighboursConfig
       return;
     }
     if (n === cfg.intervalMinutes) return;
-    void save({ intervalMinutes: n });
+    const before = cfg.intervalMinutes;
+    void save({ intervalMinutes: n }, () => setIntervalDraft(String(before)));
   };
 
   const poll = () => {
