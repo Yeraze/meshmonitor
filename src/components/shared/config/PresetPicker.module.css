@@ -1,0 +1,53 @@
+/* PresetPicker (#5831): the shared broker preset chips. Role tokens only. */
+
+.picker {
+  margin: 0.5rem 0 0.75rem;
+}
+
+.label {
+  font-weight: 500;
+  color: var(--color-text);
+}
+
+.description {
+  margin: 0.2rem 0 0;
+  font-size: 0.85rem;
+  line-height: 1.4;
+  color: var(--color-text-subtle);
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-top: 0.4rem;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.25rem 0.65rem;
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--color-text);
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.chip:hover:not(:disabled) {
+  background: var(--color-surface-hover);
+}
+
+.chipSelected {
+  border-color: var(--color-accent);
+  background: var(--color-surface-active);
+  color: var(--color-accent);
+  font-weight: 600;
+}
+
+.chip:disabled {
+  color: var(--color-text-disabled);
+  cursor: not-allowed;
+}

@@ -1,10 +1,12 @@
 /**
  * MeshCore Analyzer Observer (#4457 Phase 3, extended #5014 Phase 2) — pure
- * form <-> config mapping for the source add/edit modal.
+ * form <-> config mapping for the Observer broker editor.
  *
- * Extracted out of DashboardPage.tsx deliberately: the page is 1,700+ lines
- * and every branch here is worth a unit test. Mirrors the split used by
- * DashboardPage.bboxSeed.ts and components/MQTT/mqttBridgeConfig.ts.
+ * The editor lived in the Dashboard source modal until #5831 moved it to the
+ * MeshCore Configuration page (MeshCoreObserverBrokerEditor +
+ * hooks/useObserverConfigDraft). The modal now only carries the stored block
+ * through a save (`observerConfigForSourceSave`). Every branch here is worth
+ * a unit test, hence the separate module.
  *
  * The client-side checks here MIRROR the server's validateObserverConfig
  * (src/server/routes/sourceRoutes.ts, spec'd in
@@ -14,8 +16,8 @@
  * #5014 Phase 2 replaced the single-broker `brokerUrl` / block-level
  * `tokenAudience` shape with a `brokers[]` list. The legacy shape is still
  * read (see `observerFormFromConfig`, mirroring `normalizeObserverBrokers` in
- * src/server/meshcoreConfig.ts), but never written — the first save of any
- * source migrates it to `brokers[0]`.
+ * src/server/meshcoreConfig.ts), but never written — the first save from the
+ * Configuration page's broker editor migrates it to `brokers[0]`.
  */
 
 /**
@@ -512,6 +514,25 @@ const ERROR_CODE_KEY_MAP: Record<string, string> = {
 export function observerErrorMessageKey(code: string | undefined | null): string | null {
   if (!code) return null;
   return ERROR_CODE_KEY_MAP[code] ?? null;
+}
+
+/**
+ * The observer block the Dashboard source form sends back on save (#5831).
+ *
+ * The form no longer edits the Observer, but the source PUT stores the config
+ * it is sent, so a save that left `observer` out would drop it. This returns
+ * the stored block unchanged, minus the read-only `brokerCount` the source
+ * list adds, or undefined when the source has none. A repeater cannot run the
+ * Observer (the server refuses an enabled block there), so switching the
+ * device type to repeater turns it off rather than failing the save.
+ */
+export function observerConfigForSourceSave(
+  stored: unknown,
+  isRepeater: boolean,
+): Record<string, unknown> | undefined {
+  if (typeof stored !== 'object' || stored === null || Array.isArray(stored)) return undefined;
+  const { brokerCount: _brokerCount, ...block } = stored as Record<string, unknown>;
+  return isRepeater && block.enabled === true ? { ...block, enabled: false } : block;
 }
 
 // ---------------------------------------------------------------------------

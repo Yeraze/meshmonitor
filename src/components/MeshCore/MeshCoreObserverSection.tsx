@@ -24,6 +24,7 @@ import { useSourceStatuses } from '../../hooks/useDashboardData';
 import { formatRelativeTime } from '../../utils/datetime';
 import { UiIcon } from '../icons';
 import { ConfigSection } from '../shared/config/ConfigSection';
+import { ConfigGroup } from '../shared/config/ConfigGroup';
 import { PasswordField } from '../shared/config/PasswordField';
 import { MESHCORE_DOCS } from './meshcoreDocs';
 import { useObserverKey, type ObserverKeyError, type ObserverKeyAction } from './hooks/useObserverKey';
@@ -31,6 +32,8 @@ import { useObserverCredentials } from './hooks/useObserverCredentials';
 import { useObserverStatus } from './hooks/useObserverStatus';
 import { MeshCoreObserverBrokerPanel } from './MeshCoreObserverBrokerPanel';
 import { MeshCoreObserverBrokerCredentials } from './MeshCoreObserverBrokerCredentials';
+import { MeshCoreObserverBrokerEditor } from './MeshCoreObserverBrokerEditor';
+import { useObserverConfigDraft } from './hooks/useObserverConfigDraft';
 import { ConfirmDialog } from '../shared/automation/ConfirmDialog';
 import type { ObserverBrokerStatus } from '../../services/api';
 import styles from './MeshCoreObserverSection.module.css';
@@ -161,6 +164,9 @@ export const MeshCoreObserverSection: React.FC<MeshCoreObserverSectionProps> = (
   const { hasPermission } = useAuth();
   const canRead = hasPermission('configuration', 'read', { sourceId });
   const canWrite = hasPermission('configuration', 'write', { sourceId });
+  // The broker list is saved into the source's config (PUT /api/sources/:id),
+  // which checks sources:write, so editing it needs that grant too (#5831).
+  const canEditBrokers = canWrite && hasPermission('sources', 'write', { sourceId });
 
   const {
     status,
@@ -184,6 +190,13 @@ export const MeshCoreObserverSection: React.FC<MeshCoreObserverSectionProps> = (
   // poll between them.
   const observerStatus = useObserverStatus(sourceId, { enabled: canRead });
   const observerBrokers = observerStatus.status?.brokers ?? [];
+
+  // Enable / region / brokers[] as a SaveBar draft (#5831). Secrets are not
+  // part of it: they keep their own routes and buttons below.
+  const observerDraft = useObserverConfigDraft(sourceId, {
+    canEdit: canEditBrokers,
+    sectionName: t('meshcore.observer.title', 'Analyzer Observer'),
+  });
 
   const [manualOpen, setManualOpen] = useState(false);
   const [manualDraft, setManualDraft] = useState('');
@@ -310,10 +323,20 @@ export const MeshCoreObserverSection: React.FC<MeshCoreObserverSectionProps> = (
       docsUrl={`${MESHCORE_DOCS}#analyzer-observer`}
       description={t(
           'meshcore.observer.intro',
-          "Publishes every packet this node hears to a MeshCore Analyzer MQTT broker. Configure the broker and its authentication mode on the source's edit form; manage the credentials here.",
+          'Publishes every packet this node hears to MeshCore Analyzer MQTT brokers. MeshMonitor only publishes over the internet: it never receives from a broker or transmits on the mesh.',
         )}
       collapsible
     >
+      <ConfigGroup title={t('meshcore.observer.group_status', 'Status')} name="status">
+        <label className={styles.enableRow}>
+          <input
+            type="checkbox"
+            checked={observerDraft.draft.enabled}
+            disabled={!canEditBrokers || !observerDraft.loaded}
+            onChange={(e) => observerDraft.setEnabled(e.target.checked)}
+          />
+          {t('meshcore.form.observer_enable', 'Publish heard packets to a MeshCore Analyzer broker')}
+        </label>
 
       {/* [A] Live publish status — absent means either not configured/running
           or the caller lacks nodes:read (D-6); both silent, neither an error. */}
@@ -335,7 +358,7 @@ export const MeshCoreObserverSection: React.FC<MeshCoreObserverSectionProps> = (
             >
               {t(
                 'meshcore.observer.not_configured',
-                'Enabled, but the broker URL, region, or audience is missing. Edit the source to complete it.',
+                'Enabled, but the broker URL, region, or audience is missing. Complete it under Brokers below.',
               )}
             </div>
           )}
@@ -401,7 +424,41 @@ export const MeshCoreObserverSection: React.FC<MeshCoreObserverSectionProps> = (
         </div>
       )}
 
-      {/* Per-broker breakdown of the aggregate block above (#5014 Phase 2 WP3). */}
+      </ConfigGroup>
+
+      <ConfigGroup
+        title={t('meshcore.observer.group_brokers', 'Brokers')}
+        name="brokers"
+        hint={t(
+          'meshcore.observer.brokers_hint',
+          'Where the observer publishes. Changes apply when you save; the brokers then reconnect once.',
+        )}
+      >
+        {canWrite && !canEditBrokers && (
+          <p className={styles.hint} data-testid="observer-brokers-readonly">
+            {t('meshcore.observer.brokers_need_sources_write', 'Changing the broker list also needs permission to edit sources.')}
+          </p>
+        )}
+        {observerDraft.loaded && (
+          <MeshCoreObserverBrokerEditor
+            form={observerDraft.draft}
+            canEdit={canEditBrokers}
+            onIataCodeChange={observerDraft.setIataCode}
+            onAddBroker={observerDraft.addBroker}
+            onUpdateBroker={observerDraft.updateBroker}
+            onRemoveBroker={observerDraft.removeBroker}
+          />
+        )}
+        {observerDraft.error && (
+          <div role="alert" className={styles.error} data-testid="observer-config-error">
+            {observerDraft.error}
+          </div>
+        )}
+      </ConfigGroup>
+
+      <ConfigGroup title={t('meshcore.observer.group_credentials', 'Credentials')} name="credentials">
+      {/* Per-broker breakdown of the aggregate status (#5014 Phase 2 WP3);
+          each password broker's login sits in its card (#5825). */}
       <MeshCoreObserverBrokerPanel
         sourceId={sourceId}
         enabled={canRead}
@@ -651,6 +708,8 @@ export const MeshCoreObserverSection: React.FC<MeshCoreObserverSectionProps> = (
           )}
         </div>
       )}
+
+      </ConfigGroup>
 
       {legacyConfirmOpen && (
         <ConfirmDialog

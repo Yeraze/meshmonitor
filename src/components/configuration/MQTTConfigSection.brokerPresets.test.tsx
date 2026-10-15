@@ -85,7 +85,12 @@ function Harness({ initial }: { initial: Initial }) {
   );
 }
 
-const select = () => screen.getByTestId('broker-preset-select') as HTMLSelectElement;
+/** The shared PresetPicker chips (#5831): the pressed chip, and a click on one. */
+const presetChips = (root: ParentNode) => root.querySelector('[data-testid="broker-preset-picker"]') as HTMLElement;
+const chosenPreset = (root: ParentNode) =>
+  (presetChips(root).querySelector('[aria-pressed="true"]') as HTMLElement | null)?.dataset.presetId;
+const pickPreset = (root: ParentNode, id: string) =>
+  fireEvent.click(presetChips(root).querySelector(`[data-preset-id="${id}"]`) as HTMLElement);
 const field = (id: string) => document.getElementById(id) as HTMLInputElement;
 
 beforeEach(() => {
@@ -100,18 +105,18 @@ describe('device MQTT config — broker presets (#5689)', () => {
     [{ address: 'broker.example.org' }, 'custom'],
   ])('opens on the preset the stored values match: %j → %s', (initial, expected) => {
     render(<Harness initial={initial} />);
-    expect(select().value).toBe(expected);
+    expect(chosenPreset(document)).toBe(expected);
   });
 
   it('fills host, TLS and an empty login, and leaves every other field alone', () => {
     render(<Harness initial={{ address: 'broker.example.org' }} />);
-    fireEvent.change(select(), { target: { value: 'meshtastic_public_tls' } });
+    pickPreset(document, 'meshtastic_public_tls');
 
     expect(field('mqttAddress').value).toBe('mqtt.meshtastic.org');
     expect(field('tlsEnabled').checked).toBe(true);
     expect(field('mqttUsername').value).toBe('meshdev');
     expect(field('mqttPassword').value).toBe('large4cats');
-    expect(select().value).toBe('meshtastic_public_tls');
+    expect(chosenPreset(document)).toBe('meshtastic_public_tls');
     expect(field('mqttRoot').value).toBe('msh/US/FL');
     for (const fn of Object.values(untouched)) expect(fn).not.toHaveBeenCalled();
   });
@@ -119,7 +124,7 @@ describe('device MQTT config — broker presets (#5689)', () => {
   it('sends and saves nothing on select: the save bar just shows a change', () => {
     render(<Harness initial={{ address: 'broker.example.org' }} />);
     expect(saveBarRef.current?.hasChanges).toBe(false);
-    fireEvent.change(select(), { target: { value: 'meshtastic_public' } });
+    pickPreset(document, 'meshtastic_public');
     expect(onSave).not.toHaveBeenCalled();
     expect(putMock).not.toHaveBeenCalled();
     expect(saveBarRef.current?.hasChanges).toBe(true);
@@ -127,7 +132,7 @@ describe('device MQTT config — broker presets (#5689)', () => {
 
   it('keeps a typed login and says which parts it kept', () => {
     render(<Harness initial={{ address: 'broker.example.org', username: 'me', password: 'secret' }} />);
-    fireEvent.change(select(), { target: { value: 'meshtastic_public' } });
+    pickPreset(document, 'meshtastic_public');
     expect(field('mqttUsername').value).toBe('me');
     expect(field('mqttPassword').value).toBe('secret');
     expect(screen.getByTestId('broker-preset-kept').textContent).toContain('meshdev / large4cats');
@@ -135,8 +140,8 @@ describe('device MQTT config — broker presets (#5689)', () => {
 
   it('Custom… changes no field and stays selected while the values still match a preset', () => {
     render(<Harness initial={{ address: '' }} />);
-    fireEvent.change(select(), { target: { value: 'custom' } });
-    expect(select().value).toBe('custom');
+    pickPreset(document, 'custom');
+    expect(chosenPreset(document)).toBe('custom');
     expect(field('mqttAddress').value).toBe('');
     expect(field('mqttUsername').value).toBe('');
     expect(field('tlsEnabled').checked).toBe(false);
@@ -144,18 +149,18 @@ describe('device MQTT config — broker presets (#5689)', () => {
 
   it('Custom… ends once the fields change: put back to a preset (e.g. Dismiss), the preset shows', () => {
     render(<Harness initial={{ address: '' }} />);
-    fireEvent.change(select(), { target: { value: 'custom' } });
+    pickPreset(document, 'custom');
     fireEvent.change(field('mqttAddress'), { target: { value: 'my.broker' } });
-    expect(select().value).toBe('custom');
+    expect(chosenPreset(document)).toBe('custom');
     // What the save bar's Dismiss does: the stored values come back.
     fireEvent.change(field('mqttAddress'), { target: { value: '' } });
-    expect(select().value).toBe('meshtastic_public');
+    expect(chosenPreset(document)).toBe('meshtastic_public');
   });
 
   it('falls back to Custom… once the user edits the address away from the preset', () => {
     render(<Harness initial={{ address: '' }} />);
     fireEvent.change(field('mqttAddress'), { target: { value: 'my.broker' } });
-    expect(select().value).toBe('custom');
+    expect(chosenPreset(document)).toBe('custom');
   });
 
   it('shows the discovery links and the public-broker line', () => {

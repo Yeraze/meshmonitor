@@ -48,23 +48,8 @@ import {
   legacyHopOverrideNotice,
   type HopLimitPolicyForm,
 } from '../components/MQTT/hopLimitPolicyForm';
-import {
-  emptyObserverForm,
-  observerFormFromConfig,
-  buildObserverConfig,
-  observerErrorMessageKey,
-  observerBrokerFormFromPreset,
-  observerBrokerFormKey,
-  OBSERVER_BROKER_PRESETS,
-  OBSERVER_BLOCK_FIELDS,
-  OBSERVER_BROKER_FIELDS,
-  MAX_OBSERVER_BROKERS,
-  type ObserverForm,
-  type ObserverBrokerForm,
-  type ObserverBrokerPreset,
-} from './DashboardPage.observerConfig';
+import { observerErrorMessageKey, observerConfigForSourceSave } from '../components/MeshCore/observerConfig';
 import { MqttDocsLinks } from '../components/MQTT/MqttDocsLinks';
-import observerBrokerStyles from './DashboardPage.observerBrokers.module.css';
 import LoginModal from '../components/LoginModal';
 import UserMenu from '../components/UserMenu';
 import { NewsPopup } from '../components/NewsPopup';
@@ -186,17 +171,10 @@ function DashboardInner() {
   // switching a form between source types.
   const [formVnAllowPkiExport, setFormVnAllowPkiExport] = useState(false);
   const [formVnAllowPkiImport, setFormVnAllowPkiImport] = useState(false);
-  // MeshCore Analyzer Observer (#4457) — publishes heard packets to a
-  // MeshCore-Analyzer MQTT broker. Key management lives on the source's
-  // MeshCore Configuration page, not here (see the fieldset hint).
-  const [formObserver, setFormObserver] = useState<ObserverForm>(emptyObserverForm());
-  // Per-broker password-mode credential drafts, keyed by the row's client
-  // `id` (never the server's brokerKey — that's resolved at save time via
-  // getObserverStatus, §3.5). Never seeded from the server (the password is
-  // never returned) and always cleared when the modal opens.
-  const [formObserverCreds, setFormObserverCreds] = useState<
-    Record<string, { username: string; password: string }>
-  >({});
+  // MeshCore Analyzer Observer (#4457). Edited on the source's MeshCore
+  // Configuration page since #5831; this form only carries the stored block
+  // through a save unchanged, so editing the source never drops it.
+  const [formObserverStored, setFormObserverStored] = useState<unknown>(undefined);
   const [formHeartbeat, setFormHeartbeat] = useState('30'); // seconds, 0 = disabled (issue 2609)
   // True once the user types in the heartbeat field, or when the form holds a
   // saved source. Until then, picking a MeshCore device type sets the default:
@@ -442,8 +420,7 @@ function DashboardInner() {
     setFormVnAllowAdmin(false);
     setFormVnAllowPkiExport(false);
     setFormVnAllowPkiImport(false);
-    setFormObserver(emptyObserverForm());
-    setFormObserverCreds({});
+    setFormObserverStored(undefined);
     setFormHeartbeat('30');
     setFormHeartbeatTouched(false);
     setFormAutoConnect(true);
@@ -496,9 +473,6 @@ function DashboardInner() {
     if (!source) return;
     const cfg = source.config as Record<string, any> | undefined;
     setEditingSourceId(id);
-    // Cleared on every modal open, regardless of source type — drafts are
-    // never seeded from the server (§3.5).
-    setFormObserverCreds({});
     if (source.type === 'meshcore_mqtt') {
       setFormType('meshcore_mqtt');
       setFormName(source.name);
@@ -601,7 +575,7 @@ function DashboardInner() {
     setFormVnAllowAdmin(vn?.allowAdminCommands === true);
     setFormVnAllowPkiExport(vn?.allowPkiExport === true);
     setFormVnAllowPkiImport(vn?.allowPkiImport === true);
-    setFormObserver(observerFormFromConfig(cfg?.observer));
+    setFormObserverStored(cfg?.observer);
     setFormHeartbeat(String(cfg?.heartbeatIntervalSeconds ?? 0));
     setFormHeartbeatTouched(true);
     // Default to true when unset (legacy sources pre-#2773 auto-connected).
@@ -627,40 +601,6 @@ function DashboardInner() {
     setFormMtMqttLinkBrokerId(link?.enabled && link.mqttBrokerSourceId ? link.mqttBrokerSourceId : '');
     setFormError('');
     setShowSourceModal(true);
-  };
-
-  // Analyzer Observer broker-list editing (#5014 Phase 2 WP2). Plain
-  // functions, no new useEffect — no react-hooks/exhaustive-deps surface.
-  const addObserverBroker = (preset: ObserverBrokerPreset) => {
-    setFormObserver((prev) =>
-      prev.brokers.length >= MAX_OBSERVER_BROKERS
-        ? prev
-        : { ...prev, brokers: [...prev.brokers, observerBrokerFormFromPreset(preset)] },
-    );
-  };
-
-  const removeObserverBroker = (rowId: string) => {
-    setFormObserver((prev) => ({ ...prev, brokers: prev.brokers.filter((row) => row.id !== rowId) }));
-    setFormObserverCreds((prev) => {
-      if (!(rowId in prev)) return prev;
-      const next = { ...prev };
-      delete next[rowId];
-      return next;
-    });
-  };
-
-  const updateObserverBroker = (rowId: string, patch: Partial<ObserverBrokerForm>) => {
-    setFormObserver((prev) => ({
-      ...prev,
-      brokers: prev.brokers.map((row) => (row.id === rowId ? { ...row, ...patch } : row)),
-    }));
-  };
-
-  const updateObserverCred = (rowId: string, patch: Partial<{ username: string; password: string }>) => {
-    setFormObserverCreds((prev) => {
-      const existing = prev[rowId] ?? { username: '', password: '' };
-      return { ...prev, [rowId]: { ...existing, ...patch } };
-    });
   };
 
   const onSaveSource = async () => {
@@ -797,16 +737,11 @@ function DashboardInner() {
         };
       }
 
-      // Analyzer Observer (#4457, brokers[] #5014 Phase 2): client-side check
-      // for fast feedback; the server's validateObserverConfig remains the
-      // authority.
-      const observerResult = buildObserverConfig(formObserver);
-      if (observerResult.error) {
-        setFormError(t(observerResult.error.key, observerResult.error.fallback, observerResult.error.params));
-        return;
-      }
-      if (!observerResult.config) return; // buildObserverConfig always returns config when error is unset.
-      cfg.observer = observerResult.config;
+      // Analyzer Observer (#4457): edited on the MeshCore Configuration page
+      // since #5831. Carry the stored block through unchanged so this save
+      // does not drop it (the server stores the config it is sent).
+      const observer = observerConfigForSourceSave(formObserverStored, formMcDeviceType === 'repeater');
+      if (observer) cfg.observer = observer;
     } else if (formType === 'meshcore_mqtt') {
       // Mirrors the server-side validation in sourceRoutes.ts: both fields are
       // structural. The subscribe topic is built from the region, so a source
@@ -1023,73 +958,6 @@ function DashboardInner() {
           );
           refreshSources();
           return;
-        }
-      }
-
-      // Analyzer Observer per-broker credentials (#5014 Phase 2 WP2, §3.5).
-      // Only for an existing source — a new source has no id yet, and the
-      // observer needs a device-derived signing key anyway (the fieldset's
-      // "Configuration" shortcut tells the user where to finish). Order is
-      // mandatory: the source config PUT above must land first, or the
-      // credential route's brokerKey bound check 400s with UNKNOWN_BROKER.
-      if (formType === 'meshcore' && editingSourceId) {
-        const pushableRows = formObserver.brokers.filter((row) => {
-          const draft = formObserverCreds[row.id];
-          return !!draft && draft.username.trim() !== '' && draft.password.trim() !== '';
-        });
-        if (pushableRows.length > 0) {
-          const credErrors: string[] = [];
-          try {
-            // Authoritative brokerKey values come from the server — never
-            // the client-side observerBrokerFormKey mirror, which exists
-            // only for local duplicate detection (§1.6/§3.5).
-            const status = await api.getObserverStatus(editingSourceId);
-            for (const row of pushableRows) {
-              const draft = formObserverCreds[row.id]!;
-              const rowLabel = row.label.trim() || row.url.trim();
-              const rowKey = observerBrokerFormKey(row.url);
-              const matched = status.brokers.find((b) => b.key === rowKey);
-              if (!matched) {
-                credErrors.push(
-                  `${rowLabel}: ${t(
-                    'meshcore.form.observer_error_credential_no_match',
-                    'not found in the saved configuration',
-                  )}`,
-                );
-                continue;
-              }
-              try {
-                // Serialized on purpose — never Promise.all. The credential
-                // store is read-modify-write and explicitly requires it
-                // (meshcoreObserverCredentialStore.ts, §1.6).
-                await api.putObserverCredentials(editingSourceId, {
-                  brokerKey: matched.key,
-                  username: draft.username,
-                  password: draft.password,
-                });
-              } catch (e) {
-                const message = e instanceof ApiError ? e.message : (e as Error).message;
-                credErrors.push(`${rowLabel}: ${message}`);
-              }
-            }
-          } catch (e) {
-            const message = e instanceof ApiError ? e.message : (e as Error).message;
-            credErrors.push(message);
-          }
-
-          if (credErrors.length > 0) {
-            // Source is already saved; only the credential PUTs partially
-            // failed. Keep the modal open so the user can retry, mirroring
-            // the mqtt_bridge rewrite partial-failure handling above.
-            setFormError(
-              t(
-                'meshcore.form.observer_credentials_partial_error',
-                'Source saved, but some broker credentials failed to save: ',
-              ) + credErrors.join('; '),
-            );
-            refreshSources();
-            return;
-          }
         }
       }
 
@@ -1916,172 +1784,27 @@ function DashboardInner() {
                   )}
                 </fieldset>
 
-                <fieldset style={{ border: '1px solid var(--color-surface-hover)', borderRadius: 6, padding: '8px 12px 12px', margin: '8px 0' }}>
+                <fieldset style={{ border: '1px solid var(--color-surface-hover)', borderRadius: 6, padding: '8px 12px 12px', margin: '8px 0' }} data-testid="observer-moved-note">
                   <legend style={{ fontSize: 12, padding: '0 6px', color: 'var(--color-text-subtle)' }}>{t('meshcore.form.observer', 'Analyzer Observer')}</legend>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, marginTop: 4 }}>
-                    <input type="checkbox" checked={formObserver.enabled} disabled={formMcDeviceType === 'repeater'} onChange={(e) => setFormObserver({ ...formObserver, enabled: e.target.checked })} />
-                    {t('meshcore.form.observer_enable', 'Publish heard packets to a MeshCore Analyzer broker')}
-                  </label>
-                  <p style={{ fontSize: 11, color: 'var(--color-text-subtle)', margin: '4px 0 0' }}>{t('meshcore.form.observer_help', 'Relays every packet this Companion hears to a MeshCore Analyzer MQTT broker so your node counts as an observer. MeshMonitor only publishes — it never receives from the broker or transmits on the mesh. Companion devices only.')}</p>
-                  {formMcDeviceType === 'repeater' ? (
-                    <p role="alert" style={{ fontSize: 11, color: 'var(--color-warning)', margin: '4px 0 0' }}>{t('meshcore.form.observer_repeater_note', 'The Analyzer Observer requires a Companion device — a repeater cannot export the signing key it needs.')}</p>
-                  ) : formObserver.enabled && (
-                    <>
-                      {OBSERVER_BLOCK_FIELDS.map((f) => (
-                        <label key={f.key} className="dashboard-form-field" style={{ marginTop: 8 }}>
-                          <span className="dashboard-form-label">{t(f.labelKey, f.labelFallback)}</span>
-                          <input
-                            className="dashboard-form-input"
-                            type="text"
-                            value={formObserver.iataCode}
-                            onChange={(e) => setFormObserver({ ...formObserver, iataCode: e.target.value })}
-                            placeholder={f.placeholder}
-                          />
-                          <p style={{ fontSize: 11, color: 'var(--color-text-subtle)', margin: '4px 0 0' }}>{t(f.helpKey, f.helpFallback)}</p>
-                        </label>
-                      ))}
-
-                      <div className={observerBrokerStyles.brokerList} data-testid="observer-broker-list">
-                        {formObserver.brokers.map((row, i) => {
-                          const index = i + 1;
-                          const creds = formObserverCreds[row.id] ?? { username: '', password: '' };
-                          return (
-                            <div key={row.id} className={observerBrokerStyles.brokerRow} data-testid={`observer-broker-row-${index}`}>
-                              <div className={observerBrokerStyles.brokerHead}>
-                                <span>
-                                  {t('meshcore.form.observer_broker_heading', 'Broker {{index}}', { index })}
-                                  {row.label.trim() ? ` — ${row.label.trim()}` : ''}
-                                </span>
-                                <button
-                                  type="button"
-                                  className={observerBrokerStyles.removeButton}
-                                  onClick={() => removeObserverBroker(row.id)}
-                                  aria-label={t('meshcore.form.observer_broker_remove', 'Remove broker {{index}}', { index })}
-                                >
-                                  <UiIcon name="delete" size={14} />
-                                  <span className={observerBrokerStyles.srOnly}>
-                                    {t('meshcore.form.observer_broker_remove', 'Remove broker {{index}}', { index })}
-                                  </span>
-                                </button>
-                              </div>
-                              <div className={observerBrokerStyles.brokerFields}>
-                                {OBSERVER_BROKER_FIELDS.filter((f) => f.key !== 'tokenAudience' || row.authMode === 'token').map((f) => (
-                                  <label key={f.key} className="dashboard-form-field" style={{ marginTop: 8 }}>
-                                    <span className="dashboard-form-label">{t(f.labelKey, f.labelFallback)}</span>
-                                    <input
-                                      className="dashboard-form-input"
-                                      type="text"
-                                      value={row[f.key]}
-                                      onChange={(e) => updateObserverBroker(row.id, { [f.key]: e.target.value })}
-                                      placeholder={f.placeholder}
-                                      // Explicit: several rows share the same
-                                      // visible label text, so the implicit
-                                      // accessible name wouldn't disambiguate
-                                      // rows (§4.5 accessibility note).
-                                      aria-label={t(f.labelKey, f.labelFallback, { index })}
-                                    />
-                                    <p style={{ fontSize: 11, color: 'var(--color-text-subtle)', margin: '4px 0 0' }}>{t(f.helpKey, f.helpFallback)}</p>
-                                  </label>
-                                ))}
-                                <label className="dashboard-form-field" style={{ marginTop: 8 }}>
-                                  <span className="dashboard-form-label">{t('meshcore.form.observer_auth_mode', 'Broker authentication')}</span>
-                                  <select
-                                    className="dashboard-form-input"
-                                    // Explicit: the wrapping <label> also
-                                    // contains the help <p>, so the implicit
-                                    // accessible name would be label + help
-                                    // text concatenated (§1.2).
-                                    aria-label={t('meshcore.form.observer_auth_mode', 'Broker authentication', { index })}
-                                    value={row.authMode}
-                                    onChange={(e) =>
-                                      updateObserverBroker(row.id, {
-                                        authMode: e.target.value === 'password' ? 'password' : 'token',
-                                      })
-                                    }
-                                  >
-                                    <option value="token">{t('meshcore.form.observer_auth_mode_token', 'Signed token (FL Mesh / LetsMesh)')}</option>
-                                    <option value="password">{t('meshcore.form.observer_auth_mode_password', 'Username / password')}</option>
-                                  </select>
-                                  <p style={{ fontSize: 11, color: 'var(--color-text-subtle)', margin: '4px 0 0' }}>
-                                    {row.authMode === 'password'
-                                      ? t('meshcore.form.observer_auth_mode_password_help', 'For regional brokers that use a fixed MQTT login (e.g. meshcoretel.ru). Set the username and password below — they are stored encrypted, never in the source config.')
-                                      : t('meshcore.form.observer_auth_mode_token_help', 'MeshMonitor signs a token with the node\'s own key and connects as v1_{PUBLIC_KEY}. The default, and what FL Mesh / LetsMesh brokers expect.')}
-                                  </p>
-                                </label>
-                                {row.authMode === 'password' && (
-                                  <div className={observerBrokerStyles.credRow}>
-                                    <label className="dashboard-form-field">
-                                      <span className="dashboard-form-label">{t('meshcore.form.observer_broker_username', 'Broker username')}</span>
-                                      <input
-                                        className="dashboard-form-input"
-                                        type="text"
-                                        autoComplete="new-password"
-                                        value={creds.username}
-                                        onChange={(e) => updateObserverCred(row.id, { username: e.target.value })}
-                                        aria-label={t('meshcore.form.observer_broker_username', 'Broker username', { index })}
-                                        disabled={!editingSourceId}
-                                      />
-                                    </label>
-                                    <label className="dashboard-form-field" style={{ marginTop: 8 }}>
-                                      <span className="dashboard-form-label">{t('meshcore.form.observer_broker_password', 'Broker password')}</span>
-                                      <PasswordField
-                                        className="dashboard-form-input"
-                                        autoComplete="new-password"
-                                        value={creds.password}
-                                        onChange={(e) => updateObserverCred(row.id, { password: e.target.value })}
-                                        aria-label={t('meshcore.form.observer_broker_password', 'Broker password', { index })}
-                                        disabled={!editingSourceId}
-                                      />
-                                    </label>
-                                    <p style={{ fontSize: 11, color: 'var(--color-text-subtle)', margin: '4px 0 0' }}>
-                                      {editingSourceId
-                                        ? t('meshcore.form.observer_broker_password_hint', 'Leave blank to keep the stored password.')
-                                        : t(
-                                            'meshcore.form.observer_broker_password_new_source_hint',
-                                            'Save the source first, then set the password from the Configuration page.',
-                                          )}
-                                    </p>
-                                  </div>
-                                )}
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-
-                      <div className={observerBrokerStyles.presetBar}>
-                        {OBSERVER_BROKER_PRESETS.map((preset) => (
-                          <button
-                            key={preset.id}
-                            type="button"
-                            className={observerBrokerStyles.presetButton}
-                            disabled={formObserver.brokers.length >= MAX_OBSERVER_BROKERS}
-                            onClick={() => addObserverBroker(preset)}
-                          >
-                            <UiIcon name="plus" size={12} /> {t(preset.labelKey, preset.labelFallback)}
-                          </button>
-                        ))}
-                      </div>
-
-                      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginTop: 8 }}>
-                        <span style={{ fontSize: 11, color: 'var(--color-text-subtle)', flex: 1 }}>
-                          {formObserver.brokers.some((row) => row.authMode === 'password')
-                            ? t('meshcore.form.observer_credentials_hint', "The broker username/password and live publish status are on this source's MeshCore → Configuration page.")
-                            : t('meshcore.form.observer_key_hint', "The signing key and live publish status are on this source's MeshCore → Configuration page.")}
-                        </span>
-                        {editingSourceId && (
-                          <button
-                            type="button"
-                            style={{ flexShrink: 0, whiteSpace: 'nowrap', fontSize: 11, padding: '4px 8px', background: 'transparent', color: 'var(--color-accent)', border: '1px solid var(--color-accent)', borderRadius: 4, cursor: 'pointer' }}
-                            title={t('meshcore.form.observer_open_config', 'Open Configuration page')}
-                            onClick={() => { setShowSourceModal(false); void navigate(`/source/${editingSourceId}`); }}
-                          >
-                            {t('meshcore.form.observer_open_config', 'Configuration')} <UiIcon name="forward" size={14} />
-                          </button>
-                        )}
-                      </div>
-                    </>
-                  )}
+                  <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
+                    <span style={{ fontSize: 11, color: 'var(--color-text-subtle)', flex: 1 }}>
+                      {formMcDeviceType === 'repeater'
+                        ? t('meshcore.form.observer_repeater_note', 'The Analyzer Observer requires a Companion device — a repeater cannot export the signing key it needs.')
+                        : editingSourceId
+                          ? t('meshcore.form.observer_moved', "Turn the Analyzer Observer on, choose its brokers and set their logins on this source's MeshCore → Configuration page.")
+                          : t('meshcore.form.observer_moved_new', "Save the source first. Then turn the Analyzer Observer on and choose its brokers on its MeshCore → Configuration page.")}
+                    </span>
+                    {editingSourceId && formMcDeviceType !== 'repeater' && (
+                      <button
+                        type="button"
+                        style={{ flexShrink: 0, whiteSpace: 'nowrap', fontSize: 11, padding: '4px 8px', background: 'transparent', color: 'var(--color-accent)', border: '1px solid var(--color-accent)', borderRadius: 4, cursor: 'pointer' }}
+                        title={t('meshcore.form.observer_open_config', 'Open Configuration page')}
+                        onClick={() => { setShowSourceModal(false); void navigate(`/source/${editingSourceId}/#configuration`); }}
+                      >
+                        {t('meshcore.form.observer_open_config', 'Configuration')} <UiIcon name="forward" size={14} />
+                      </button>
+                    )}
+                  </div>
                 </fieldset>
               </>
             ) : formType === 'meshcore_mqtt' ? (
