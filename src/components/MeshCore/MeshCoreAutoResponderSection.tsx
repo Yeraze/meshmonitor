@@ -365,7 +365,7 @@ export const MeshCoreAutoResponderSection: React.FC<MeshCoreAutoResponderSection
               chips={chipsOf(tr)}
               enabled={tr.enabled}
               onEnabledChange={(on) => updateTrigger(tr.id, { enabled: on })}
-              enableLabel={`Enable ${tr.name}`}
+              enableLabel={t('meshcore.automation.responder.enable_trigger', 'Enable {{name}}', { name: tr.name.trim() || t('meshcore.automation.responder.untitled', 'New trigger') })}
               expanded={expandedId === tr.id}
               onEdit={() => startEditing(tr.id)}
               onDone={() => finishEditing(tr.id)}
