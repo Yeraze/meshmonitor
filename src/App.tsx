@@ -170,6 +170,10 @@ function App() {
   const [channelInfoModal, setChannelInfoModal] = useState<number | null>(null);
   const [showPsk, setShowPsk] = useState(false);
   const [showRebootModal, setShowRebootModal] = useState(false);
+  const [rebootExpectation, setRebootExpectation] = useState<'always' | 'possible'>('always');
+  // Read by the reboot handler, which "Save All" can call several times from
+  // one stale closure, so it can't rely on `showRebootModal` (#5823).
+  const rebootModalOpenRef = useRef(false);
   const [configRefreshTrigger, setConfigRefreshTrigger] = useState(0);
   const [showTracerouteHistoryModal, setShowTracerouteHistoryModal] = useState(false);
   const [showPurgeDataModal, setShowPurgeDataModal] = useState(false);
@@ -1630,17 +1634,25 @@ function App() {
     }
   };
 
-  const handleConfigChangeTriggeringReboot = () => {
-    logger.debug('⚙️ Config change sent, device will reboot to apply changes...');
+  // The firmware reboots on its own after most config saves (#5823). This only
+  // waits for it: it sends no reboot command and writes nothing to the node.
+  const handleConfigChangeTriggeringReboot = (expectation: 'always' | 'possible' = 'always') => {
+    logger.debug(`⚙️ Config change sent, device ${expectation === 'always' ? 'will' : 'may'} reboot to apply changes...`);
+    // "Save All" can save several sections in a row. While the modal is up,
+    // keep the stronger expectation: one certain reboot outweighs a possible one.
+    const alreadyOpen = rebootModalOpenRef.current;
+    setRebootExpectation((prev) => (alreadyOpen && prev === 'always' ? 'always' : expectation));
     setConnectionStatus('rebooting');
 
     // Show reboot modal
+    rebootModalOpenRef.current = true;
     setShowRebootModal(true);
   };
 
   const handleRebootModalClose = () => {
     logger.debug('✅ Device reboot complete and verified');
     console.log('[App] Reboot modal closing - will trigger config refresh');
+    rebootModalOpenRef.current = false;
     setShowRebootModal(false);
     setConnectionStatus('connected');
 
@@ -3478,7 +3490,7 @@ function App() {
       />
 
       <LoginModal isOpen={showLoginModal} onClose={() => setShowLoginModal(false)} />
-      <RebootModal isOpen={showRebootModal} onClose={handleRebootModalClose} />
+      <RebootModal isOpen={showRebootModal} expectation={rebootExpectation} onClose={handleRebootModalClose} />
 
       {/* Emoji Picker Modal */}
       <EmojiPickerModal

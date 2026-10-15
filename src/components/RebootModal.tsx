@@ -6,10 +6,19 @@ import { useSource } from '../contexts/SourceContext';
 
 interface RebootModalProps {
   isOpen: boolean;
+  /**
+   * `always`: the save reboots the node. `possible`: it reboots only if
+   * certain fields changed, so a node that stays up is not an error (#5823).
+   */
+  expectation?: 'always' | 'possible';
   onClose: () => void;
 }
 
-export const RebootModal: React.FC<RebootModalProps> = ({ isOpen, onClose }) => {
+/** Config polls before a `possible` reboot is judged not to have happened. */
+const POSSIBLE_REBOOT_POLLS = 5;
+const ALWAYS_REBOOT_POLLS = 20;
+
+export const RebootModal: React.FC<RebootModalProps> = ({ isOpen, expectation = 'always', onClose }) => {
   const { t } = useTranslation();
   const { sourceId } = useSource();
   const [statusKey, setStatusKey] = useState<string>('reboot.rebooting');
@@ -38,13 +47,26 @@ export const RebootModal: React.FC<RebootModalProps> = ({ isOpen, onClose }) => 
       setElapsedSeconds(elapsed);
     }, 1000);
 
+    const maybe = expectation === 'possible';
+
     // Polling-based reboot sequence
     const waitForReboot = async () => {
       try {
         console.log('[RebootModal] ===== REBOOT SEQUENCE STARTED =====');
 
+        // Read the reboot count now, before the node restarts (~7 s after the
+        // save), so a restart that is already over by the first poll still
+        // shows. This reads the server's copy; nothing goes to the node.
+        let initialRebootCount: number | undefined;
+        try {
+          const before = await apiService.getCurrentConfig(sourceId);
+          initialRebootCount = before?.localNodeInfo?.rebootCount;
+        } catch (err) {
+          console.warn('[RebootModal] Failed to read rebootCount before reboot:', err);
+        }
+
         // Wait 30 seconds for device to reboot (typical reboot time)
-        setStatusKey('reboot.rebooting_please_wait');
+        setStatusKey(maybe ? 'reboot.possible_please_wait' : 'reboot.rebooting_please_wait');
         setStatusParams({});
         console.log('[RebootModal] Waiting 30 seconds for device reboot...');
         await new Promise(resolve => setTimeout(resolve, 30000));
@@ -109,24 +131,27 @@ export const RebootModal: React.FC<RebootModalProps> = ({ isOpen, onClose }) => 
       setStatusParams({});
       console.log('[RebootModal] Device connected, starting configuration polling...');
 
-      // Get initial reboot count to compare against
-      let initialRebootCount: number | undefined;
-      try {
-        const initialConfig = await apiService.getCurrentConfig(sourceId);
-        initialRebootCount = initialConfig?.localNodeInfo?.rebootCount;
-        console.log('[RebootModal] Initial rebootCount:', initialRebootCount);
-      } catch (err) {
-        console.warn('[RebootModal] Failed to get initial config:', err);
+      // Fall back to a baseline read now if the one before the wait failed.
+      if (initialRebootCount === undefined) {
+        try {
+          const initialConfig = await apiService.getCurrentConfig(sourceId);
+          initialRebootCount = initialConfig?.localNodeInfo?.rebootCount;
+        } catch (err) {
+          console.warn('[RebootModal] Failed to get initial config:', err);
+        }
       }
+      console.log('[RebootModal] Initial rebootCount:', initialRebootCount);
 
-      // Poll for up to 60 seconds (20 attempts, 3 seconds apart)
+      // Poll up to 20 times, 3 seconds apart. A possible reboot gets fewer
+      // polls: a node that restarted reports the new count on the first one.
+      const totalPolls = maybe ? POSSIBLE_REBOOT_POLLS : ALWAYS_REBOOT_POLLS;
       let configUpdated = false;
-      for (let pollAttempt = 1; pollAttempt <= 20; pollAttempt++) {
+      for (let pollAttempt = 1; pollAttempt <= totalPolls; pollAttempt++) {
         if (aborted) return;
 
         console.log(`[RebootModal] Poll attempt ${pollAttempt}/20 - requesting config refresh...`);
         setStatusKey('reboot.checking_config');
-        setStatusParams({ attempt: pollAttempt, total: 20 });
+        setStatusParams({ attempt: pollAttempt, total: totalPolls });
 
         try {
           // Request fresh config from device
@@ -157,7 +182,7 @@ export const RebootModal: React.FC<RebootModalProps> = ({ isOpen, onClose }) => 
         }
 
         // Wait before next poll (unless this was the last attempt)
-        if (pollAttempt < 20 && !aborted) {
+        if (pollAttempt < totalPolls && !aborted) {
           await new Promise(resolve => setTimeout(resolve, 3000));
         }
       }
@@ -169,7 +194,7 @@ export const RebootModal: React.FC<RebootModalProps> = ({ isOpen, onClose }) => 
 
       if (!configUpdated) {
         console.log('[RebootModal] ⏱️ Configuration polling timeout - config may not have changed or device is slow');
-        setStatusKey('reboot.config_saved_reload');
+        setStatusKey(maybe ? 'reboot.not_needed' : 'reboot.config_saved_reload');
         setStatusParams({});
         await new Promise(resolve => setTimeout(resolve, 3000));
       }
@@ -226,7 +251,7 @@ export const RebootModal: React.FC<RebootModalProps> = ({ isOpen, onClose }) => 
       >
         <div style={{ textAlign: 'center' }}>
           <div style={{ fontSize: '1.5rem', fontWeight: 'bold', color: 'var(--color-accent)', marginBottom: '1rem' }}>
-            <UiIcon name={isVerifying ? 'check' : 'refresh'} /> {t('reboot.title')}
+            <UiIcon name={isVerifying ? 'check' : 'refresh'} /> {t(expectation === 'possible' ? 'reboot.title_possible' : 'reboot.title')}
           </div>
 
           <div style={{ fontSize: '1rem', color: 'var(--color-text)', marginBottom: '1.5rem' }}>
