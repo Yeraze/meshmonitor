@@ -34,7 +34,7 @@ import { requireMeshtasticDeviceSource } from '../utils/requireMeshtasticDeviceS
 import { migrateAutomationChannels } from '../utils/automationChannelMigration.js';
 import { detectChannelMoves, snapshotFromDecodedChannels, type ChannelSnapshot } from '../utils/channelMoveDetection.js';
 import { modemPresetChannelName, CHANNEL_DB_OFFSET } from '../constants/meshtastic.js';
-import { getEncryptionStatus, getRoleName } from '../utils/channelView.js';
+import { getEncryptionStatus, getRoleName, NO_ENCRYPTION_PSK } from '../utils/channelView.js';
 import { sourceManagerRegistry } from '../sourceManagerRegistry.js';
 import { isMeshCoreManager } from '../sourceManagerTypes.js';
 import { fail } from '../utils/apiResponse.js';
@@ -463,6 +463,15 @@ async function migrateMessagesIfChannelsMoved(
   }
 }
 
+/**
+ * Refuse a channel write on a `meshcore_mqtt` ingest source (#5826). It
+ * listens to an analyzer broker, has no radio, and holds no channel slots.
+ */
+function refuseIngestSourceChannelWrite(res: Response, sourceId: string) {
+  return fail(res, 400, 'SOURCE_HAS_NO_DEVICE',
+    `Source ${sourceId} is a MeshCore MQTT ingest source and has no device; its channels cannot be edited or deleted.`);
+}
+
 // Update a channel configuration
 router.put('/:id', requireAuth(), requireSourceId('body'), async (req: Request, res: Response) => {
   try {
@@ -479,6 +488,12 @@ router.put('/:id', requireAuth(), requireSourceId('body'), async (req: Request, 
       ? await databaseService.sources.getSource(chanSourceId)
       : null;
     const sourceType = sourceRowForType?.type ?? 'meshtastic_tcp';
+
+    // A MeshCore MQTT ingest source has no radio and no channel slots of its
+    // own. Without this it fell through to the Meshtastic branch (#5826).
+    if (sourceType === 'meshcore_mqtt') {
+      return refuseIngestSourceChannelWrite(res, chanSourceId);
+    }
 
     if (sourceType !== 'meshcore' && channelId > 7) {
       return res.status(400).json({ error: 'Invalid channel ID. Must be between 0-7' });
@@ -578,11 +593,25 @@ router.put('/:id', requireAuth(), requireSourceId('body'), async (req: Request, 
     // Snapshot channels before change for message migration (per-source — #3712)
     const beforeSnapshot = await snapshotChannelsBeforeChange(scopedSourceId);
 
+    // PSK contract (#5826): absent or null keeps the stored key; an explicit
+    // '' is a user clearing the field, which on Meshtastic means "no
+    // encryption". That is stored and sent as the 1-byte 0x00 key, not as an
+    // empty key: the firmware gives a SECONDARY channel with an empty key the
+    // primary's key (Channels::getKey), so an empty key would stay encrypted.
+    let effectivePsk: string | null;
+    if (psk === undefined || psk === null) {
+      effectivePsk = existingChannel?.psk ?? null;
+    } else if (psk === '' && sourceType !== 'meshcore') {
+      effectivePsk = NO_ENCRYPTION_PSK;
+    } else {
+      effectivePsk = psk;
+    }
+
     // Prepare the updated channel data
     const updatedChannelData = {
       id: channelId,
       name: name !== undefined && name !== null ? name : (existingChannel?.name ?? ''),
-      psk: psk !== undefined && psk !== null ? psk : (existingChannel?.psk ?? null),
+      psk: effectivePsk,
       role: role !== undefined && role !== null ? role : (existingChannel?.role ?? null),
       uplinkEnabled: uplinkEnabled !== undefined ? uplinkEnabled : (existingChannel?.uplinkEnabled ?? null),
       downlinkEnabled: downlinkEnabled !== undefined ? downlinkEnabled : (existingChannel?.downlinkEnabled ?? null),
@@ -658,7 +687,9 @@ router.put('/:id', requireAuth(), requireSourceId('body'), async (req: Request, 
       try {
         await chanUpdateManager.setChannelConfig(channelId, {
           name: updatedChannelData.name,
-          psk: updatedChannelData.psk === '' ? undefined : updatedChannelData.psk,
+          // A cleared key is NO_ENCRYPTION_PSK here, never ''. A row with no
+          // stored key (null) sends none, as '' always did.
+          psk: updatedChannelData.psk || undefined,
           role: updatedChannelData.role,
           uplinkEnabled: updatedChannelData.uplinkEnabled,
           downlinkEnabled: updatedChannelData.downlinkEnabled,
@@ -704,6 +735,11 @@ router.delete('/:id', requireAuth(), async (req: Request, res: Response) => {
     // Same 0-7 cap softening as the PUT route — MeshCore allows higher idx.
     const sourceRowForType = await databaseService.sources.getSource(deleteChannelSourceId);
     const sourceType = sourceRowForType?.type ?? 'meshtastic_tcp';
+    // Same as PUT: an ingest source has no slots to delete, and the Meshtastic
+    // branch below would purge its messages (#5826).
+    if (sourceType === 'meshcore_mqtt') {
+      return refuseIngestSourceChannelWrite(res, deleteChannelSourceId);
+    }
     if (sourceType !== 'meshcore' && channelId > 7) {
       return res.status(400).json({ error: 'Invalid channel ID (0-7)' });
     }

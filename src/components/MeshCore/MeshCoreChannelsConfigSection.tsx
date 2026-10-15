@@ -97,6 +97,19 @@ function isValid16ByteHex(hex: string): boolean {
   return /^[0-9a-fA-F]{32}$/.test(clean);
 }
 
+/** MeshCore's implicit Public channel lives in slot 0 (#4733). */
+const PUBLIC_SLOT = 0;
+
+/**
+ * True when slot 0 already reads as the stock Public channel (the synthetic
+ * row the server keeps, or the firmware's own "Public"), so a reset would only
+ * cost a device write. A blank name is the empty slot the firmware reports.
+ */
+function isStockPublicRow(row: ChannelRow): boolean {
+  const name = row.name.trim().toLowerCase();
+  return name === '' || name === 'public';
+}
+
 // --- component -------------------------------------------------------------
 
 export const MeshCoreChannelsConfigSection: React.FC<MeshCoreChannelsConfigSectionProps> = ({
@@ -315,7 +328,10 @@ export const MeshCoreChannelsConfigSection: React.FC<MeshCoreChannelsConfigSecti
   }, [editingIdx, editName, editSecretHex, editScope, baseUrl, sourceId, csrfFetch, showToast, t, cancelEdit, reload]);
 
   const handleDelete = useCallback(async (idx: number) => {
-    if (!confirm(t('meshcore.channels.confirm_delete', 'Delete channel {{idx}}? This will remove it from the device.', { idx }))) {
+    const question = idx === PUBLIC_SLOT
+      ? t('meshcore.channels.confirm_reset_public', 'Clear slot 0 on the device so it goes back to the Public channel? Whatever channel is in slot 0 now will be removed.')
+      : t('meshcore.channels.confirm_delete', 'Delete channel {{idx}}? This will remove it from the device.', { idx });
+    if (!confirm(question)) {
       return;
     }
     try {
@@ -328,7 +344,9 @@ export const MeshCoreChannelsConfigSection: React.FC<MeshCoreChannelsConfigSecti
         showToast(t('meshcore.channels.delete_failed', 'Failed to delete channel: {{msg}}', { msg }), 'error');
         return;
       }
-      showToast(t('meshcore.channels.deleted', 'Channel {{idx}} deleted', { idx }), 'success');
+      showToast(idx === PUBLIC_SLOT
+        ? t('meshcore.channels.reset_public_done', 'Slot 0 reset to the Public channel')
+        : t('meshcore.channels.deleted', 'Channel {{idx}} deleted', { idx }), 'success');
       reload();
     } catch (err) {
       logger.error('MeshCore channel delete error:', err);
@@ -398,21 +416,45 @@ export const MeshCoreChannelsConfigSection: React.FC<MeshCoreChannelsConfigSecti
                         {t('meshcore.channels.idx_label', 'Index')}: {row.id}
                       </div>
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => startEdit(row)}
-                      disabled={!canConfigure}
-                    >
-                      {t('common.edit', 'Edit')}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => handleDelete(row.id)}
-                      disabled={!canConfigure}
-                      style={{ color: 'var(--color-error)' }}
-                    >
-                      {t('common.delete', 'Delete')}
-                    </button>
+                    {row.id === PUBLIC_SLOT ? (
+                      // Slot 0 is MeshCore's Public channel: the server refuses
+                      // writes to it (#4733), so there is no Edit (#5826). A
+                      // slot 0 that holds something else can be reset, which is
+                      // the DELETE the server still allows for slot 0.
+                      <>
+                        <span className="hint" style={{ fontSize: '0.8rem' }} data-testid="mc-public-slot-hint">
+                          {t('meshcore.channels.public_slot_hint', 'Public channel, fixed by the firmware')}
+                        </span>
+                        {!isStockPublicRow(row) && (
+                          <button
+                            type="button"
+                            onClick={() => handleDelete(row.id)}
+                            disabled={!canConfigure}
+                            style={{ color: 'var(--color-error)' }}
+                          >
+                            {t('meshcore.channels.reset_public', 'Reset to Public')}
+                          </button>
+                        )}
+                      </>
+                    ) : (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => startEdit(row)}
+                          disabled={!canConfigure}
+                        >
+                          {t('common.edit', 'Edit')}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleDelete(row.id)}
+                          disabled={!canConfigure}
+                          style={{ color: 'var(--color-error)' }}
+                        >
+                          {t('common.delete', 'Delete')}
+                        </button>
+                      </>
+                    )}
                   </div>
                 )}
 

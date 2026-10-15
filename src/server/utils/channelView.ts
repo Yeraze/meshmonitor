@@ -15,16 +15,24 @@
 /** Default public PSK (base64 of single byte 0x01) — known publicly, not secure. */
 export const DEFAULT_PUBLIC_PSK = 'AQ==';
 
+/**
+ * "Encryption off" PSK (base64 of the single byte 0x00, the `none` shorthand).
+ * Firmware turns encryption off for it on any role. A 0-byte PSK is NOT the
+ * same: on a SECONDARY channel the firmware borrows the primary's key for it
+ * (`Channels::getKey`), so a cleared key is written as this byte (#5826).
+ */
+export const NO_ENCRYPTION_PSK = 'AA==';
+
 export type ChannelEncryptionStatus = 'none' | 'default' | 'secure';
 
 /**
  * Classify a channel's PSK without exposing the key itself.
- *   - 'none'    no PSK configured (unencrypted)
+ *   - 'none'    no PSK configured, or the `AA==` "encryption off" byte
  *   - 'default' the publicly known default key (`AQ==`)
  *   - 'secure'  any other (custom) key
  */
 export function getEncryptionStatus(psk: string | null | undefined): ChannelEncryptionStatus {
-  if (!psk || psk === '') return 'none';
+  if (!psk || psk === '' || psk === NO_ENCRYPTION_PSK) return 'none';
   if (psk === DEFAULT_PUBLIC_PSK) return 'default';
   return 'secure';
 }

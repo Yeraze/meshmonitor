@@ -16,6 +16,13 @@
 export const DEFAULT_PUBLIC_PSK = 'AQ==';
 
 /**
+ * Meshtastic's "encryption off" PSK: base64 of the single byte 0x00. The
+ * server stores it when a user clears a channel key (#5826); a channel
+ * holding it is unencrypted. Mirrors `NO_ENCRYPTION_PSK` in channelView.ts.
+ */
+export const NO_ENCRYPTION_PSK = 'AA==';
+
+/**
  * Firmware clamps `position_precision` to this many bits on known-public
  * channels (~564 m accuracy).
  *
