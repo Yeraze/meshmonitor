@@ -83,7 +83,7 @@ describe('every Automation-page number input declares max', () => {
     'AirtimeCutoffSection', 'AutoWelcomeSection', 'AutoFavoriteSection', 'AutoTracerouteSection',
     'AutoLocalStatsSection', 'AutoPingSection', 'AutoHeapManagementSection', 'RemoteAdminScannerSection',
     'AutoTimeSyncSection', 'AutoAcknowledgeSection', 'AutoAnnounceSection', 'AutoResponderSection',
-    'auto-responder/TriggerEditor', 'AutoKeyManagementSection', 'TimerTriggersSection', 'GeofenceTriggersSection', 'GeofenceMapEditor',
+    'auto-responder/TriggerEditor', 'AutoKeyManagementSection', 'TimerTriggersSection', 'timer-triggers/TimerTriggerEditor', 'MeshCore/MeshCoreTimerTriggerEditor', 'GeofenceTriggersSection', 'GeofenceMapEditor',
     'AutoDeleteByDistanceSection', 'IgnoredNodesSection', 'forwarding/ForwardingSection',
   ];
 

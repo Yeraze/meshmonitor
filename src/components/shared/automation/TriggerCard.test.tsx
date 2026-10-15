@@ -8,7 +8,7 @@ import React, { useState } from 'react';
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { TriggerCard, type TriggerCardProps } from './TriggerCard';
+import { TriggerCard, TriggerCardAction, type TriggerCardProps } from './TriggerCard';
 import { NumberInput } from '../../common/NumberInput';
 
 vi.mock('react-i18next', async () => {
@@ -122,6 +122,20 @@ describe('TriggerCard', () => {
   it('shows a "needs attention" chip when collapsed with errors', () => {
     renderCard({ invalid: true });
     expect(screen.getByText(/needs attention/i)).toBeInTheDocument();
+  });
+
+  it('renders protocol actions before Edit, collapsed and expanded (#5812)', () => {
+    const onRun = vi.fn();
+    const action = <TriggerCardAction onClick={onRun}>Run now</TriggerCardAction>;
+    const { rerender, props } = renderCard({ actions: action });
+    const buttons = screen.getAllByRole('button').map((b) => b.textContent?.trim());
+    expect(buttons.indexOf('Run now')).toBeLessThan(buttons.findIndex((b) => /edit/i.test(b ?? '')));
+    fireEvent.click(screen.getByRole('button', { name: 'Run now' }));
+    expect(onRun).toHaveBeenCalledTimes(1);
+    expect(props.onEdit).not.toHaveBeenCalled();
+
+    rerender(<TriggerCard {...props} expanded actions={action} />);
+    expect(screen.getByRole('button', { name: 'Run now' })).toBeInTheDocument();
   });
 
   it('keeps Done off while a number field in the editor holds invalid text', async () => {

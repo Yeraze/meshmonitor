@@ -8,6 +8,9 @@
  * - A new trigger is created with zero_hop.
  * - Switching an older text trigger to "Send advert" picks zero_hop.
  * - The chosen mode is saved with the trigger.
+ *
+ * #5812: the fields live in each trigger's TriggerCard editor, so a test
+ * opens the card (Edit) before it reaches them.
  */
 import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -77,6 +80,11 @@ function mockFetch(triggers: unknown[]) {
 const actionSelects = () => screen.getAllByRole('combobox')
   .filter((el) => el.querySelector('option[value="advert"]')) as HTMLSelectElement[];
 
+/** Open the (only) collapsed trigger card. */
+async function openCard() {
+  fireEvent.click(await screen.findByRole('button', { name: /edit/i }));
+}
+
 async function savedTriggers(): Promise<Array<Record<string, unknown>>> {
   await waitFor(() => expect(saveBarCapture.current?.hasChanges).toBe(true));
   await act(async () => { await saveBarCapture.current!.onSave(); });
@@ -94,6 +102,7 @@ describe('MeshCoreTimerTriggersSection advert mode', () => {
   it('shows a legacy advert trigger (no advertMode) as flood, with the warning', async () => {
     csrfFetchMock.mockReset().mockImplementation(mockFetch([{ ...base, id: 'a1', name: 'Old advert', responseType: 'advert' }]));
     render(<MeshCoreTimerTriggersSection baseUrl="" sourceId="src1" />);
+    await openCard();
     await waitFor(() => expect(screen.getByRole('radio', { name: 'Flood (whole mesh, costly)' })).toBeChecked());
     expect(screen.getByRole('note')).toHaveTextContent(/at most once per hour per source/);
   });
@@ -101,6 +110,7 @@ describe('MeshCoreTimerTriggersSection advert mode', () => {
   it('switching an older text trigger to advert picks zero-hop, and the choice is saved', async () => {
     csrfFetchMock.mockReset().mockImplementation(mockFetch([{ ...base, id: 't1', name: 'Text', responseType: 'text', response: 'hi' }]));
     render(<MeshCoreTimerTriggersSection baseUrl="" sourceId="src1" />);
+    await openCard();
     await waitFor(() => expect(actionSelects()).toHaveLength(1));
     fireEvent.change(actionSelects()[0], { target: { value: 'advert' } });
     expect(screen.getByRole('radio', { name: 'Zero-hop (nearby nodes only)' })).toBeChecked();
@@ -113,9 +123,9 @@ describe('MeshCoreTimerTriggersSection advert mode', () => {
   it('a new trigger is created with zero_hop', async () => {
     csrfFetchMock.mockReset().mockImplementation(mockFetch([]));
     render(<MeshCoreTimerTriggersSection baseUrl="" sourceId="src1" />);
-    const nameInputs = await screen.findAllByPlaceholderText('Trigger name');
-    fireEvent.change(nameInputs[nameInputs.length - 1], { target: { value: 'New' } });
+    await waitFor(() => expect(csrfFetchMock).toHaveBeenCalled());
     fireEvent.click(screen.getByRole('button', { name: 'Add trigger' }));
+    fireEvent.change(await screen.findByPlaceholderText('Trigger name'), { target: { value: 'New' } });
 
     const triggers = await savedTriggers();
     expect(triggers[0]).toMatchObject({ name: 'New', advertMode: 'zero_hop' });
@@ -124,6 +134,7 @@ describe('MeshCoreTimerTriggersSection advert mode', () => {
   it('saves a switch from flood to zero-hop on an existing advert trigger', async () => {
     csrfFetchMock.mockReset().mockImplementation(mockFetch([{ ...base, id: 'a1', name: 'Old advert', responseType: 'advert' }]));
     render(<MeshCoreTimerTriggersSection baseUrl="" sourceId="src1" />);
+    await openCard();
     const zero = await screen.findByRole('radio', { name: 'Zero-hop (nearby nodes only)' });
     fireEvent.click(zero);
     const triggers = await savedTriggers();

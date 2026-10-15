@@ -1,105 +1,47 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { isValidCron } from 'cron-validator';
 import { useCsrfFetch } from '../../hooks/useCsrfFetch';
 import { useToast } from '../ToastContainer';
 import { useAuth } from '../../contexts/AuthContext';
 import { useSaveBar } from '../../hooks/useSaveBar';
-import { NumberInput } from '../common/NumberInput';
 import { NumberInputScope } from '../common/NumberInputScope';
 import { useNumberInputScope } from '../common/numberInputScopeContext';
-import { ScopeSelectField, type ScopeMode } from './ScopeSelectField';
+import { UiIcon } from '../icons';
 import { ConfigSection, ConfigHeaderCount } from '../shared/config/ConfigSection';
 import { ConfigEmptyState } from '../shared/config/ConfigEmptyState';
+import { TriggerCard, TriggerCardAction, type TriggerChip } from '../shared/automation/TriggerCard';
+import { TriggerListFilter } from '../shared/automation/TriggerListFilter';
+import { TRIGGER_FILTER_THRESHOLD, matchesSearch } from '../shared/automation/triggerList';
 import { meshCoreReceiveOnlyText } from './meshCoreReceiveOnlyText';
 import { isTxDisabledBody } from '../../utils/txDisabled';
-import { MeshCoreAdvertModeField } from './MeshCoreAdvertModeField';
+import { LEGACY_MESHCORE_ADVERT_MODE, resolveMeshCoreAdvertMode } from '../../types/meshcoreAdvert';
+import { MeshCoreTimerTriggerEditor } from './MeshCoreTimerTriggerEditor';
 import {
-  DEFAULT_MESHCORE_ADVERT_MODE,
-  LEGACY_MESHCORE_ADVERT_MODE,
-  resolveMeshCoreAdvertMode,
-  type MeshCoreAdvertMode,
-} from '../../types/meshcoreAdvert';
+  type MeshCoreContactRow,
+  type MeshCoreTimerErrors,
+  type MeshCoreTimerTrigger,
+  hasMeshCoreTimerErrors,
+  isValidMeshCoreTimerCron,
+  newMeshCoreTimerTrigger,
+  validateMeshCoreTimer,
+} from './meshcoreTimerModel';
+import type { MeshCoreChannelRow, MeshCoreScriptMetadata as ScriptMetadata } from './meshcoreResponderTypes';
+import styles from './MeshCoreTimerTriggersSection.module.css';
 
 interface MeshCoreTimerTriggersSectionProps {
   baseUrl: string;
   sourceId: string;
   /** True when this MeshCore source is in strict receive-only mode (#4547
-   *  Phase 2). Plumbed here in WP1; WP4 renders the paused note and gates
-   *  "Run now". */
+   *  Phase 2): renders the paused note and gates "Run now". */
   receiveOnly?: boolean;
 }
 
 /**
- * Mirrors the backend `MeshCoreTimerTrigger` shape exactly. Kept inline
- * because the type isn't exported to the client bundle — it's a server-
- * only interface that crosses the wire as JSON.
+ * MeshCore Timer Triggers (#5812): one TriggerCard per trigger. Add appends a
+ * new trigger opened in its card; Done and Save validate it. Triggers are
+ * saved exactly as edited, so one the user did not touch is sent back as
+ * loaded.
  */
-interface MeshCoreTimerTrigger {
-  id: string;
-  name: string;
-  enabled: boolean;
-  scheduleType: 'cron' | 'interval';
-  cronExpression?: string;
-  intervalMinutes?: number;
-  responseType: 'text' | 'advert' | 'script';
-  response?: string;
-  /** Advert reach for `advert` triggers. Absent on older triggers = flood. */
-  advertMode?: MeshCoreAdvertMode;
-  scriptPath?: string;
-  scriptArgs?: string;
-  destination?: 'channel' | 'dm';
-  channelIndex?: number;
-  contactPublicKey?: string;
-  /** MeshCore scope/region for the sent message (#3833). */
-  scopeMode?: ScopeMode;
-  scopeName?: string;
-  lastRun?: number;
-  lastResult?: 'success' | 'error';
-  lastError?: string;
-}
-
-interface ScriptMetadata {
-  path: string;
-  filename: string;
-  name?: string;
-  emoji?: string;
-  language?: string;
-}
-
-interface MeshCoreChannelRow {
-  id: number;
-  name: string;
-}
-
-interface MeshCoreContactRow {
-  publicKey: string;
-  name: string;
-}
-
-const newTrigger = (): MeshCoreTimerTrigger => ({
-  id: typeof crypto !== 'undefined' && 'randomUUID' in crypto
-    ? crypto.randomUUID()
-    : `t-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-  name: '',
-  enabled: true,
-  scheduleType: 'cron',
-  cronExpression: '0 */6 * * *',
-  intervalMinutes: 60,
-  responseType: 'text',
-  response: '',
-  advertMode: DEFAULT_MESHCORE_ADVERT_MODE,
-  destination: 'channel',
-  channelIndex: 0,
-  scopeMode: 'inherit',
-  scopeName: '',
-});
-
-const triggersEqual = (a: MeshCoreTimerTrigger[], b: MeshCoreTimerTrigger[]): boolean => {
-  if (a.length !== b.length) return false;
-  return JSON.stringify(a) === JSON.stringify(b);
-};
-
 export const MeshCoreTimerTriggersSection: React.FC<MeshCoreTimerTriggersSectionProps> = ({ baseUrl, sourceId, receiveOnly = false }) => {
   const { t } = useTranslation();
   const csrfFetch = useCsrfFetch();
@@ -112,11 +54,16 @@ export const MeshCoreTimerTriggersSection: React.FC<MeshCoreTimerTriggersSection
   const [channels, setChannels] = useState<MeshCoreChannelRow[]>([]);
   const [contacts, setContacts] = useState<MeshCoreContactRow[]>([]);
   const [scripts, setScripts] = useState<ScriptMetadata[]>([]);
-  const [hasChanges, setHasChanges] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [loaded, setLoaded] = useState(false);
-  const [draft, setDraft] = useState<MeshCoreTimerTrigger>(newTrigger());
   const [runningId, setRunningId] = useState<string | null>(null);
+  // #5812: one trigger open in its TriggerCard at a time. A bad cron shows
+  // live; a missing name or a bad interval shows once Done or Save has been
+  // tried (`attemptedIds`), so a new trigger does not open in red.
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [attemptedIds, setAttemptedIds] = useState<Set<string>>(new Set());
+  const [search, setSearch] = useState('');
+  const [typeFilter, setTypeFilter] = useState('all');
 
   // Load triggers
   useEffect(() => {
@@ -201,21 +148,40 @@ export const MeshCoreTimerTriggersSection: React.FC<MeshCoreTimerTriggersSection
     return () => { cancelled = true; };
   }, [baseUrl, sourceId, csrfFetch]);
 
-  // Detect changes
-  useEffect(() => {
-    if (!loaded) return;
-    setHasChanges(!triggersEqual(triggers, initial));
-  }, [triggers, initial, loaded]);
+  const hasChanges = loaded && JSON.stringify(triggers) !== JSON.stringify(initial);
+
+  // Saved copies by id: a trigger not in here is new, and one that differs
+  // from its copy is dirty. "Run now" fires the SAVED trigger on the server,
+  // so it is offered only for a saved, unchanged trigger.
+  const savedJsonById = useMemo(
+    () => new Map(initial.map((tr) => [tr.id, JSON.stringify(tr)])),
+    [initial],
+  );
+  const isNew = useCallback((tr: MeshCoreTimerTrigger) => !savedJsonById.has(tr.id), [savedJsonById]);
+  const isDirty = (tr: MeshCoreTimerTrigger) => savedJsonById.get(tr.id) !== JSON.stringify(tr);
+
+  const errorsFor = useCallback(
+    (tr: MeshCoreTimerTrigger) => validateMeshCoreTimer(tr, isNew(tr), t),
+    [isNew, t],
+  );
 
   const handleSave = useCallback(async () => {
-    // Validate every cron + interval combo before persisting
+    // Validate every cron + interval combo (and a new trigger's name) before
+    // persisting; open the bad one so the error shows in place.
     for (const tr of triggers) {
-      if (tr.scheduleType === 'cron' && !isValidCron(tr.cronExpression || '', { seconds: false, alias: true, allowBlankDay: true })) {
-        showToast(t('meshcore.automation.timers.invalid_cron', `Invalid cron for "${tr.name || tr.id}"`), 'error');
-        return;
-      }
-      if (tr.scheduleType === 'interval' && (!Number.isFinite(tr.intervalMinutes) || (tr.intervalMinutes ?? 0) <= 0)) {
-        showToast(t('meshcore.automation.timers.invalid_interval', `Invalid interval for "${tr.name || tr.id}"`), 'error');
+      const errs = errorsFor(tr);
+      if (hasMeshCoreTimerErrors(errs)) {
+        setAttemptedIds((prev) => new Set(prev).add(tr.id));
+        setExpandedId(tr.id);
+        const label = tr.name || tr.id;
+        showToast(
+          errs.cronExpression
+            ? t('meshcore.automation.timers.invalid_cron', `Invalid cron for "${label}"`)
+            : errs.intervalMinutes
+              ? t('meshcore.automation.timers.invalid_interval', `Invalid interval for "${label}"`)
+              : (errs.name ?? ''),
+          'error',
+        );
         return;
       }
     }
@@ -237,7 +203,8 @@ export const MeshCoreTimerTriggersSection: React.FC<MeshCoreTimerTriggersSection
         throw new Error(`Server returned ${res.status}`);
       }
       setInitial(triggers);
-      setHasChanges(false);
+      setExpandedId(null);
+      setAttemptedIds(new Set());
       showToast(t('automation.settings_saved', 'Settings saved'), 'success');
     } catch (err) {
       console.error('Failed to save MeshCore timer triggers:', err);
@@ -245,11 +212,12 @@ export const MeshCoreTimerTriggersSection: React.FC<MeshCoreTimerTriggersSection
     } finally {
       setIsSaving(false);
     }
-  }, [triggers, baseUrl, sourceId, csrfFetch, showToast, t]);
+  }, [triggers, baseUrl, sourceId, csrfFetch, showToast, t, errorsFor]);
 
   const handleDismiss = useCallback(() => {
     setTriggers(initial);
-    setHasChanges(false);
+    setExpandedId(null);
+    setAttemptedIds(new Set());
   }, [initial]);
 
   const numberScope = useNumberInputScope();
@@ -268,19 +236,40 @@ export const MeshCoreTimerTriggersSection: React.FC<MeshCoreTimerTriggersSection
   };
   const removeTrigger = (id: string) => {
     setTriggers(prev => prev.filter(t => t.id !== id));
+    setExpandedId((cur) => (cur === id ? null : cur));
+  };
+
+  /** Collapse the open trigger if it is valid. False keeps it open with its errors. */
+  const finishEditing = (id: string | null): boolean => {
+    if (!id) return true;
+    const tr = triggers.find((x) => x.id === id);
+    if (tr && hasMeshCoreTimerErrors(errorsFor(tr))) {
+      setAttemptedIds((prev) => new Set(prev).add(id));
+      setExpandedId(id);
+      return false;
+    }
+    setAttemptedIds((prev) => {
+      if (!prev.has(id)) return prev;
+      const next = new Set(prev);
+      next.delete(id);
+      return next;
+    });
+    setExpandedId((cur) => (cur === id ? null : cur));
+    return true;
+  };
+
+  const startEditing = (id: string) => {
+    if (expandedId && expandedId !== id && !finishEditing(expandedId)) return;
+    setExpandedId(id);
   };
 
   const addTrigger = () => {
-    if (!draft.name.trim()) {
-      showToast(t('meshcore.automation.timers.name_required', 'Name is required'), 'error');
-      return;
-    }
-    if (draft.scheduleType === 'cron' && !isValidCron(draft.cronExpression || '', { seconds: false, alias: true, allowBlankDay: true })) {
-      showToast(t('meshcore.automation.timers.invalid_cron_draft', 'Invalid cron expression'), 'error');
-      return;
-    }
-    setTriggers(prev => [...prev, draft]);
-    setDraft(newTrigger());
+    if (!finishEditing(expandedId)) return;
+    const tr = newMeshCoreTimerTrigger();
+    setTriggers(prev => [...prev, tr]);
+    setSearch('');
+    setTypeFilter('all');
+    setExpandedId(tr.id);
   };
 
   const runNow = useCallback(async (id: string) => {
@@ -309,12 +298,80 @@ export const MeshCoreTimerTriggersSection: React.FC<MeshCoreTimerTriggersSection
     }
   }, [baseUrl, sourceId, csrfFetch, showToast, t]);
 
-  const channelOptions = useMemo(() => channels.map(c => ({ value: c.id, label: c.name || `Channel ${c.id}` })), [channels]);
-  const contactOptions = useMemo(() => contacts.map(c => ({ value: c.publicKey, label: c.name })), [contacts]);
+  const channelMap = useMemo(() => {
+    const m = new Map<number, string>();
+    channels.forEach(c => m.set(c.id, c.name || `Channel ${c.id}`));
+    return m;
+  }, [channels]);
+  const contactMap = useMemo(() => new Map(contacts.map(c => [c.publicKey, c.name])), [contacts]);
+
+  const scheduleText = (tr: MeshCoreTimerTrigger): React.ReactNode => (
+    tr.scheduleType === 'interval'
+      ? t('meshcore.automation.timers.every_minutes', 'every {{count}} min', { count: tr.intervalMinutes ?? 60 })
+      : <code>{tr.cronExpression || ''}</code>
+  );
+
+  const actionLabel = (tr: MeshCoreTimerTrigger): string => {
+    switch (tr.responseType) {
+      case 'advert': return t('meshcore.automation.timers.response_advert', 'Send advert');
+      case 'script': return t('meshcore.automation.timers.response_script', 'Run script');
+      default: return t('meshcore.automation.timers.response_text', 'Send text');
+    }
+  };
+
+  const summaryOf = (tr: MeshCoreTimerTrigger): React.ReactNode => {
+    let action: React.ReactNode;
+    if (tr.responseType === 'advert') {
+      action = resolveMeshCoreAdvertMode(tr.advertMode, LEGACY_MESHCORE_ADVERT_MODE) === 'flood'
+        ? t('meshcore.advert.mode_flood', 'Flood (whole mesh, costly)')
+        : t('meshcore.advert.mode_zero_hop', 'Zero-hop (nearby nodes only)');
+    } else if (tr.responseType === 'script') {
+      action = <code>{tr.scriptPath || t('meshcore.automation.timers.select_script', '(select script)')}{tr.scriptArgs ? ` ${tr.scriptArgs}` : ''}</code>;
+    } else {
+      action = tr.response;
+    }
+    return <>{scheduleText(tr)} <UiIcon name="forward" size={12} /> {action}</>;
+  };
+
+  const chipsOf = (tr: MeshCoreTimerTrigger): TriggerChip[] => {
+    const chips: TriggerChip[] = [{ label: actionLabel(tr), tone: 'accent' }];
+    if (tr.responseType === 'text' || tr.responseType === 'script') {
+      if (tr.destination === 'dm') {
+        chips.push({
+          label: <><UiIcon name="directMessages" size={12} /> {tr.contactPublicKey ? (contactMap.get(tr.contactPublicKey) ?? tr.contactPublicKey.substring(0, 12)) : t('meshcore.automation.timers.dest_dm', 'Direct Message')}</>,
+          tone: 'info',
+          title: t('meshcore.automation.timers.destination', 'Destination'),
+        });
+      } else {
+        const idx = tr.channelIndex ?? 0;
+        chips.push({ label: channelMap.get(idx) ?? `Channel ${idx}`, tone: 'info', title: t('meshcore.automation.timers.destination', 'Destination') });
+      }
+      if (tr.scopeMode && tr.scopeMode !== 'inherit') {
+        chips.push({ label: tr.scopeMode === 'named' ? `#${tr.scopeName ?? ''}` : tr.scopeMode, tone: 'caution' });
+      }
+    }
+    if (tr.lastRun) {
+      chips.push({
+        label: <><UiIcon name="time" size={12} /> {t('meshcore.automation.timers.last_run', 'Last run')}: {new Date(tr.lastRun).toLocaleString()}{tr.lastResult ? ` — ${tr.lastResult === 'error' ? (tr.lastError || 'error') : 'success'}` : ''}</>,
+        tone: tr.lastResult === 'error' ? 'caution' : 'neutral',
+        title: tr.lastError,
+      });
+    }
+    return chips;
+  };
+
+  const visible = triggers.filter((tr) =>
+    tr.id === expandedId || (
+      matchesSearch(search, tr.name, tr.cronExpression, tr.response, tr.scriptPath, tr.scriptArgs)
+      && (typeFilter === 'all' || tr.responseType === typeFilter)
+    ));
+
+  const untitled = t('meshcore.automation.timers.untitled', 'New trigger');
+  const receiveOnlyTooltip = t('meshcore.receive_only.control_tooltip', 'Receive-only mode is on for this MeshCore source. Turn it off in MeshCore Settings to use this.');
+  const saveFirstTooltip = t('meshcore.automation.timers.save_before_run', 'Save your changes before running this trigger.');
 
   return (
     <NumberInputScope scope={numberScope}>
-    <>
       <ConfigSection
         title={t('meshcore.automation.timers.title', 'Timer Triggers')}
         docsUrl="https://meshmonitor.org/features/meshcore#timer-triggers"
@@ -331,287 +388,93 @@ export const MeshCoreTimerTriggersSection: React.FC<MeshCoreTimerTriggersSection
           'Schedule recurring actions — send a message to a channel or contact, or fire a MeshCore advert. Each trigger runs on its own cron or interval.',
         )}
       >
-        {/* List of existing triggers */}
+        {triggers.length > TRIGGER_FILTER_THRESHOLD && (
+          <TriggerListFilter
+            search={search}
+            onSearchChange={setSearch}
+            type={typeFilter}
+            onTypeChange={setTypeFilter}
+            typeOptions={[
+              { value: 'all', label: t('meshcore.automation.timers.filter_all', 'All actions') },
+              { value: 'text', label: t('meshcore.automation.timers.response_text', 'Send text') },
+              { value: 'advert', label: t('meshcore.automation.timers.response_advert', 'Send advert') },
+              { value: 'script', label: t('meshcore.automation.timers.response_script', 'Run script') },
+            ]}
+          />
+        )}
+
         {triggers.length === 0 && (
-          <ConfigEmptyState>
+          <ConfigEmptyState className={styles.empty}>
             {t('meshcore.automation.timers.empty', 'No timer triggers configured yet.')}
           </ConfigEmptyState>
         )}
 
-        {triggers.map(tr => (
-          <div key={tr.id} className="meshcore-trigger-card">
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.75rem' }}>
-              <input
-                type="checkbox"
-                checked={tr.enabled}
-                onChange={(e) => updateTrigger(tr.id, { enabled: e.target.checked })}
-                disabled={!canWrite}
-                style={{ width: 'auto', margin: 0 }}
-                aria-label={`Enable ${tr.name}`}
-              />
-              <input
-                type="text"
-                value={tr.name}
-                onChange={(e) => updateTrigger(tr.id, { name: e.target.value })}
-                disabled={!canWrite}
-                placeholder={t('meshcore.automation.timers.name_placeholder', 'Trigger name')}
-                className="meshcore-input"
-                style={{ flex: 1 }}
-              />
-              <button
-                type="button"
-                onClick={() => runNow(tr.id)}
-                disabled={!canWrite || runningId === tr.id || !tr.enabled || receiveOnly}
-                title={receiveOnly ? t('meshcore.receive_only.control_tooltip', 'Receive-only mode is on for this MeshCore source. Turn it off in MeshCore Settings to use this.') : undefined}
-                className="meshcore-btn meshcore-btn-secondary"
-              >
-                {runningId === tr.id ? t('meshcore.automation.timers.running', 'Running…') : t('meshcore.automation.timers.run_now', 'Run now')}
-              </button>
-              <button
-                type="button"
-                onClick={() => removeTrigger(tr.id)}
-                disabled={!canWrite}
-                className="meshcore-btn meshcore-btn-danger"
-              >
-                {t('meshcore.automation.timers.remove', 'Remove')}
-              </button>
-            </div>
-
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginBottom: '0.5rem' }}>
-              <label style={{ fontSize: '0.85rem' }}>
-                {t('meshcore.automation.timers.schedule_type', 'Schedule')}
-                <select
-                  value={tr.scheduleType}
-                  onChange={(e) => updateTrigger(tr.id, { scheduleType: e.target.value as 'cron' | 'interval' })}
-                  disabled={!canWrite}
-                  className="meshcore-select"
-                  style={{ width: '100%', marginTop: '0.25rem' }}
+        {visible.map(tr => {
+          const all = errorsFor(tr);
+          const attempted = attemptedIds.has(tr.id);
+          const errors: MeshCoreTimerErrors = {
+            name: attempted ? all.name : undefined,
+            // A typed cron that does not parse shows live, as a bad regex does.
+            cronExpression: attempted || (tr.cronExpression && !isValidMeshCoreTimerCron(tr.cronExpression)) ? all.cronExpression : undefined,
+            intervalMinutes: attempted ? all.intervalMinutes : undefined,
+          };
+          const unsaved = isNew(tr) || isDirty(tr);
+          const runDisabled = !canWrite || runningId === tr.id || !tr.enabled || receiveOnly || unsaved;
+          return (
+            <TriggerCard
+              key={tr.id}
+              title={tr.name.trim() || <span className={styles.untitled}>{untitled}</span>}
+              summary={summaryOf(tr)}
+              chips={chipsOf(tr)}
+              enabled={tr.enabled}
+              onEnabledChange={(on) => updateTrigger(tr.id, { enabled: on })}
+              enableLabel={t('meshcore.automation.timers.enable_trigger', 'Enable {{name}}', { name: tr.name.trim() || untitled })}
+              expanded={expandedId === tr.id}
+              onEdit={() => startEditing(tr.id)}
+              onDone={() => finishEditing(tr.id)}
+              onDelete={() => removeTrigger(tr.id)}
+              invalid={hasMeshCoreTimerErrors(errors)}
+              deletePreview={tr.name || undefined}
+              actions={(
+                <TriggerCardAction
+                  onClick={() => runNow(tr.id)}
+                  disabled={runDisabled}
+                  title={receiveOnly ? receiveOnlyTooltip : unsaved ? saveFirstTooltip : undefined}
                 >
-                  <option value="cron">{t('meshcore.automation.timers.cron', 'Cron')}</option>
-                  <option value="interval">{t('meshcore.automation.timers.interval', 'Interval (minutes)')}</option>
-                </select>
-              </label>
-              {tr.scheduleType === 'cron' ? (
-                <label style={{ fontSize: '0.85rem' }}>
-                  {t('meshcore.automation.timers.cron_expr', 'Cron expression')}
-                  <input
-                    type="text"
-                    value={tr.cronExpression || ''}
-                    onChange={(e) => updateTrigger(tr.id, { cronExpression: e.target.value })}
-                    disabled={!canWrite}
-                    placeholder="0 */6 * * *"
-                    className="meshcore-input"
-                    style={{ width: '100%', marginTop: '0.25rem', fontFamily: 'monospace' }}
-                  />
-                </label>
-              ) : (
-                <label style={{ fontSize: '0.85rem' }}>
-                  {t('meshcore.automation.timers.interval_minutes', 'Interval (minutes)')}
-                  <NumberInput
-                    min={1}
-                    max={10080}
-                    integer
-                    value={tr.intervalMinutes ?? 60}
-                    onChange={(v) => updateTrigger(tr.id, { intervalMinutes: v })}
-                    disabled={!canWrite}
-                    className="meshcore-input"
-                    style={{ width: '100%', marginTop: '0.25rem' }}
-                  />
-                </label>
+                  <UiIcon name="play" size={14} />{' '}
+                  {runningId === tr.id ? t('meshcore.automation.timers.running', 'Running…') : t('meshcore.automation.timers.run_now', 'Run now')}
+                </TriggerCardAction>
               )}
-            </div>
+            >
+              <MeshCoreTimerTriggerEditor
+                trigger={tr}
+                onChange={(patch) => updateTrigger(tr.id, patch)}
+                errors={errors}
+                channels={channels}
+                contacts={contacts}
+                scripts={scripts}
+                baseUrl={baseUrl}
+                sourceId={sourceId}
+              />
+            </TriggerCard>
+          );
+        })}
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: '0.75rem', marginBottom: '0.5rem' }}>
-              <label style={{ fontSize: '0.85rem' }}>
-                {t('meshcore.automation.timers.response_type', 'Action')}
-                <select
-                  value={tr.responseType}
-                  onChange={(e) => {
-                    const responseType = e.target.value as 'text' | 'advert' | 'script';
-                    // Turning an older trigger into an advert is a new advert
-                    // config: give it the zero-hop default rather than the
-                    // legacy flood an absent mode would mean.
-                    updateTrigger(tr.id, responseType === 'advert' && tr.advertMode === undefined
-                      ? { responseType, advertMode: DEFAULT_MESHCORE_ADVERT_MODE }
-                      : { responseType });
-                  }}
-                  disabled={!canWrite}
-                  className="meshcore-select"
-                  style={{ width: '100%', marginTop: '0.25rem' }}
-                >
-                  <option value="text">{t('meshcore.automation.timers.response_text', 'Send text')}</option>
-                  <option value="advert">{t('meshcore.automation.timers.response_advert', 'Send advert')}</option>
-                  <option value="script">{t('meshcore.automation.timers.response_script', 'Run script')}</option>
-                </select>
-              </label>
-              {tr.responseType === 'advert' && (
-                <MeshCoreAdvertModeField
-                  value={resolveMeshCoreAdvertMode(tr.advertMode, LEGACY_MESHCORE_ADVERT_MODE)}
-                  onChange={(mode) => updateTrigger(tr.id, { advertMode: mode })}
-                  disabled={!canWrite}
-                />
-              )}
-              {tr.responseType === 'text' && (
-                <label style={{ fontSize: '0.85rem' }}>
-                  {t('meshcore.automation.timers.response_message', 'Message (token expansion supported)')}
-                  <textarea
-                    value={tr.response || ''}
-                    onChange={(e) => updateTrigger(tr.id, { response: e.target.value })}
-                    disabled={!canWrite}
-                    rows={2}
-                    className="meshcore-input"
-                    style={{ width: '100%', marginTop: '0.25rem', fontFamily: 'monospace' }}
-                  />
-                </label>
-              )}
-              {tr.responseType === 'script' && (
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
-                  <label style={{ fontSize: '0.85rem' }}>
-                    {t('meshcore.automation.timers.script', 'Script')}
-                    <select
-                      value={tr.scriptPath || ''}
-                      onChange={(e) => updateTrigger(tr.id, { scriptPath: e.target.value })}
-                      disabled={!canWrite}
-                      className="meshcore-select"
-                      style={{ width: '100%', marginTop: '0.25rem' }}
-                    >
-                      <option value="">{scripts.length === 0 ? t('meshcore.automation.timers.no_scripts', '(no scripts available)') : t('meshcore.automation.timers.select_script', '(select script)')}</option>
-                      {scripts.map(s => (
-                        <option key={s.path} value={s.path}>
-                          {s.emoji ? `${s.emoji} ` : ''}{s.name || s.filename} ({s.language || '?'})
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  <label style={{ fontSize: '0.85rem' }}>
-                    {t('meshcore.automation.timers.script_args', 'Script args (token expansion)')}
-                    <input
-                      type="text"
-                      value={tr.scriptArgs || ''}
-                      onChange={(e) => updateTrigger(tr.id, { scriptArgs: e.target.value })}
-                      disabled={!canWrite}
-                      className="meshcore-input"
-                      style={{ width: '100%', marginTop: '0.25rem', fontFamily: 'monospace' }}
-                    />
-                  </label>
-                </div>
-              )}
-            </div>
+        {triggers.length > 0 && visible.length === 0 && (
+          <ConfigEmptyState className={styles.empty}>
+            {t('meshcore.automation.timers.no_match', 'No triggers match your search.')}
+          </ConfigEmptyState>
+        )}
 
-            {(tr.responseType === 'text' || tr.responseType === 'script') && (
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: '0.75rem' }}>
-                <label style={{ fontSize: '0.85rem' }}>
-                  {t('meshcore.automation.timers.destination', 'Destination')}
-                  <select
-                    value={tr.destination || 'channel'}
-                    onChange={(e) => updateTrigger(tr.id, { destination: e.target.value as 'channel' | 'dm' })}
-                    disabled={!canWrite}
-                    className="meshcore-select"
-                    style={{ width: '100%', marginTop: '0.25rem' }}
-                  >
-                    <option value="channel">{t('meshcore.automation.timers.dest_channel', 'Channel')}</option>
-                    <option value="dm">{t('meshcore.automation.timers.dest_dm', 'Direct Message')}</option>
-                  </select>
-                </label>
-                {tr.destination === 'channel' ? (
-                  <label style={{ fontSize: '0.85rem' }}>
-                    {t('meshcore.automation.timers.channel', 'Channel')}
-                    <select
-                      value={tr.channelIndex ?? 0}
-                      onChange={(e) => updateTrigger(tr.id, { channelIndex: parseInt(e.target.value, 10) })}
-                      disabled={!canWrite}
-                      className="meshcore-select"
-                      style={{ width: '100%', marginTop: '0.25rem' }}
-                    >
-                      {channelOptions.length === 0 && <option value={0}>(no channels loaded)</option>}
-                      {channelOptions.map(o => (
-                        <option key={o.value} value={o.value}>{o.label}</option>
-                      ))}
-                    </select>
-                  </label>
-                ) : (
-                  <label style={{ fontSize: '0.85rem' }}>
-                    {t('meshcore.automation.timers.contact', 'Contact')}
-                    <select
-                      value={tr.contactPublicKey || ''}
-                      onChange={(e) => updateTrigger(tr.id, { contactPublicKey: e.target.value })}
-                      disabled={!canWrite}
-                      className="meshcore-select"
-                      style={{ width: '100%', marginTop: '0.25rem' }}
-                    >
-                      <option value="">(select contact)</option>
-                      {contactOptions.map(o => (
-                        <option key={o.value} value={o.value}>{o.label}</option>
-                      ))}
-                    </select>
-                  </label>
-                )}
-              </div>
-            )}
-
-            {(tr.responseType === 'text' || tr.responseType === 'script') && (
-              <div style={{ marginTop: '0.5rem' }}>
-                {/* MeshCore scope/region for the sent message (#3833). No trigger
-                    message here, so the "respond on trigger scope" option is omitted. */}
-                <ScopeSelectField
-                  baseUrl={baseUrl}
-                  sourceId={sourceId}
-                  idPrefix={`timer-${tr.id}`}
-                  value={{ scopeMode: tr.scopeMode, scopeName: tr.scopeName }}
-                  onChange={(v) => updateTrigger(tr.id, { scopeMode: v.scopeMode, scopeName: v.scopeName })}
-                />
-              </div>
-            )}
-
-            {tr.lastRun && (
-              <div style={{ marginTop: '0.5rem', fontSize: '0.8rem', color: 'var(--color-text-subtle)' }}>
-                {t('meshcore.automation.timers.last_run', 'Last run')}: {new Date(tr.lastRun).toLocaleString()}{' '}
-                {tr.lastResult === 'error' && (
-                  <span style={{ color: 'var(--color-error)' }}>— {tr.lastError || 'error'}</span>
-                )}
-                {tr.lastResult === 'success' && (
-                  <span style={{ color: 'var(--color-success)' }}>— success</span>
-                )}
-              </div>
-            )}
-          </div>
-        ))}
-
-        {/* Add a new trigger */}
-        <div className="meshcore-add-card">
-          <h3 style={{ marginTop: 0, fontSize: '1rem' }}>
-            {t('meshcore.automation.timers.add', 'Add trigger')}
-          </h3>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginBottom: '0.5rem' }}>
-            <input
-              type="text"
-              value={draft.name}
-              onChange={(e) => setDraft({ ...draft, name: e.target.value })}
-              placeholder={t('meshcore.automation.timers.name_placeholder', 'Trigger name')}
-              disabled={!canWrite}
-              className="meshcore-input"
-            />
-            <input
-              type="text"
-              value={draft.cronExpression || ''}
-              onChange={(e) => setDraft({ ...draft, cronExpression: e.target.value })}
-              placeholder="0 */6 * * *"
-              disabled={!canWrite}
-              className="meshcore-input"
-              style={{ fontFamily: 'monospace' }}
-            />
-          </div>
-          <button
-            type="button"
-            onClick={addTrigger}
-            disabled={!canWrite}
-            className="meshcore-btn meshcore-btn-primary"
-          >
-            {t('meshcore.automation.timers.add_button', 'Add trigger')}
-          </button>
-        </div>
+        <button
+          type="button"
+          onClick={addTrigger}
+          disabled={!canWrite}
+          className="meshcore-btn meshcore-btn-primary"
+        >
+          <UiIcon name="plus" size={14} /> {t('meshcore.automation.timers.add_button', 'Add trigger')}
+        </button>
       </ConfigSection>
-    </>
     </NumberInputScope>
   );
 };

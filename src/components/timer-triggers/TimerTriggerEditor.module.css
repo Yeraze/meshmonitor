@@ -1,0 +1,94 @@
+/* Meshtastic Timer Trigger editor (#5812). */
+
+.editor {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.editor [aria-invalid='true'] {
+  border-color: var(--color-error);
+  border-width: 2px;
+}
+
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.mono {
+  font-family: monospace;
+}
+
+.hint {
+  margin-top: 0.25rem;
+  font-size: 0.75rem;
+  color: var(--color-text-subtle);
+}
+
+.link {
+  color: var(--color-accent);
+}
+
+.error {
+  margin-top: 0.25rem;
+  font-size: 0.75rem;
+  color: var(--color-error);
+}
+
+.radios {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+}
+
+.radio {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  cursor: pointer;
+}
+
+.radio input {
+  width: auto;
+  margin: 0;
+}
+
+.message {
+  width: 100%;
+  min-height: 60px;
+  resize: vertical;
+  box-sizing: border-box;
+}
+
+.messageFooter {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 0.5rem;
+}
+
+.token {
+  padding: 0 0.25rem;
+  border-radius: 2px;
+  background: var(--color-surface-hover);
+}
+
+.counter,
+.counterNear,
+.counterOver {
+  margin-top: 0.25rem;
+  font-size: 0.75rem;
+  font-weight: bold;
+  white-space: nowrap;
+  color: var(--color-text-subtle);
+}
+
+.counterNear {
+  color: var(--color-warning);
+}
+
+.counterOver {
+  color: var(--color-error);
+}
