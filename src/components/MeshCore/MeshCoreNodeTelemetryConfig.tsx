@@ -10,7 +10,7 @@
  * per the PR #3019 pattern — read-only users see the current values but
  * the controls are disabled and an explanation banner is shown.
  */
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../../contexts/AuthContext';
 import { useCsrfFetch } from '../../hooks/useCsrfFetch';
@@ -73,11 +73,15 @@ export const MeshCoreNodeTelemetryConfig: React.FC<MeshCoreNodeTelemetryConfigPr
   const [pollMsg, setPollMsg] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null);
 
   const endpoint = `${baseUrl}/api/sources/${encodeURIComponent(sourceId)}/meshcore/nodes/${encodeURIComponent(publicKey)}/telemetry-config`;
+  // The endpoint names the node. A reply that lands after the user has moved
+  // to another node belongs to the old one, so it is dropped (#5797).
+  const currentEndpoint = useRef(endpoint);
   const pollEndpoint = `${baseUrl}/api/sources/${encodeURIComponent(sourceId)}/meshcore/nodes/${encodeURIComponent(publicKey)}/telemetry/poll`;
 
   // Refetch whenever the selected node or source changes.
   useEffect(() => {
     let cancelled = false;
+    currentEndpoint.current = endpoint;
     setLoading(true);
     setError(null);
     setSaved(false);
@@ -111,7 +115,10 @@ export const MeshCoreNodeTelemetryConfig: React.FC<MeshCoreNodeTelemetryConfigPr
     };
   }, [endpoint, csrfFetch, t]);
 
-  const save = async (patch: { enabled?: boolean; intervalMinutes?: number }) => {
+  // `rollback` restores what the control showed before this save. It runs
+  // only when the save fails for the node still on screen.
+  const save = async (patch: { enabled?: boolean; intervalMinutes?: number }, rollback: () => void) => {
+    const isStale = () => currentEndpoint.current !== endpoint;
     setSaving(true);
     setSaved(false);
     setError(null);
@@ -122,6 +129,7 @@ export const MeshCoreNodeTelemetryConfig: React.FC<MeshCoreNodeTelemetryConfigPr
         body: JSON.stringify(patch),
       });
       const data = await response.json();
+      if (isStale()) return;
       if (data.success && data.data) {
         setCfg({
           enabled: Boolean(data.data.enabled),
@@ -131,9 +139,12 @@ export const MeshCoreNodeTelemetryConfig: React.FC<MeshCoreNodeTelemetryConfigPr
         setSaved(true);
         window.setTimeout(() => setSaved(false), 1800);
       } else {
+        rollback();
         setError(data.error || t('meshcore.telemetry_config.save_error', 'Failed to save'));
       }
     } catch (_err) {
+      if (isStale()) return;
+      rollback();
       setError(t('meshcore.telemetry_config.save_error', 'Failed to save'));
     } finally {
       setSaving(false);
@@ -141,8 +152,9 @@ export const MeshCoreNodeTelemetryConfig: React.FC<MeshCoreNodeTelemetryConfigPr
   };
 
   const handleToggle = (next: boolean) => {
+    const before = cfg.enabled;
     setCfg((prev) => ({ ...prev, enabled: next }));
-    void save({ enabled: next });
+    void save({ enabled: next }, () => setCfg((prev) => ({ ...prev, enabled: before })));
   };
 
   const showIntervalRangeError = () => {
@@ -156,7 +168,8 @@ export const MeshCoreNodeTelemetryConfig: React.FC<MeshCoreNodeTelemetryConfigPr
       return;
     }
     if (n === cfg.intervalMinutes) return;
-    void save({ intervalMinutes: n });
+    const before = cfg.intervalMinutes;
+    void save({ intervalMinutes: n }, () => setIntervalDraft(String(before)));
   };
 
   const poll = async (type: 'status' | 'lpp') => {
