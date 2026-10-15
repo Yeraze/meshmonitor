@@ -766,7 +766,7 @@ When enabled, MeshMonitor sends a scheduled message to the configured channel at
   - 🗺️ = Auto Traceroute enabled
   - 🤖 = Auto Acknowledge enabled
   - 📢 = Auto Announce enabled
-  - 👋 Auto Welcome, 🏓 Auto Ping, 🔑 Auto Key Management, 💬 Auto Responder, ⏱️ Timed Events, 📍 Geofence Triggers, 🔍 Remote Admin Scanner, 🕐 Auto Time Sync
+  - 👋 Auto Welcome, 🏓 Auto Ping, 🔑 Auto Key Management, 💬 Auto Responder, ⏱️ Timer Triggers, 📍 Geofence Triggers, 🔍 Remote Admin Scanner, 🕐 Auto Time Sync
 - **`{NODECOUNT}`**: Number of active nodes (e.g., "42 nodes")
 - **`{DIRECTCOUNT}`**: Number of direct nodes at 0 hops
 - **`{DATE}`**: Current date when the announcement is sent, formatted per your Date Format preference (e.g., "1/15/2025")
@@ -1581,7 +1581,7 @@ Timer Triggers run on a schedule defined by cron expressions. A timer either sen
 
 **Adding a Timer**:
 1. Open the source's **Automation** tab
-2. Scroll to the "Timed Events" section
+2. Scroll to the "Timer Triggers" section
 3. Fill out the timer configuration:
    - **Name**: A descriptive name for your timer (e.g., "Daily Weather Report")
    - **Schedule**: A cron expression defining when to run

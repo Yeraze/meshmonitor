@@ -3104,7 +3104,7 @@
   "automation.auto_favorite.exclude_aircraft_label": "Exclude likely aircraft",
   "automation.auto_favorite.exclude_aircraft_hint": "Likely aircraft are never auto-favorited. An auto-favorite that is flagged at two hourly sweeps in a row is removed. Your own and locked favorites are never touched.",
   "automation.auto_favorite.exclude_aircraft_needs_detection": "Needs aircraft detection, which is off for this source (<link>Settings → Node Display</link>).",
-  "automation.timer_triggers.section_title": "Timed Events",
+  "automation.timer_triggers.section_title": "Timer Triggers",
   "automation.timer_triggers.description": "Schedule scripts or text messages to run automatically using cron expressions",
   "automation.timer_triggers.view_docs": "View documentation",
   "automation.timer_triggers.add_new": "Add New Timer",

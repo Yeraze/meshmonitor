@@ -58,6 +58,7 @@ import {
 } from '../autoAckResponseCap.js';
 import { clampIntervalSetting, GEOFENCE_WHILE_INSIDE_MINUTES } from '../utils/schedulerInterval.js';
 import { GEOFENCE_RADIUS_KM_MAX } from '../../utils/geofenceLimits.js';
+import { keepServerRunState, parseStoredTriggers } from '../utils/timerRunState.js';
 
 // ─── Tile URL validation ─────────────────────────────────────────────────
 
@@ -1059,6 +1060,18 @@ router.post('/', requirePermission('settings', 'write', { sourceIdFrom: 'query' 
           }
         }
       }
+    }
+
+    // Timer run state (lastRun / lastResult / lastError) is the scheduler's,
+    // not the page's: keep the stored values so a save can't roll back a
+    // newer run (#5827).
+    if ('timerTriggers' in filteredSettings) {
+      const storedJson = sourceId
+        ? await databaseService.settings.getSettingForSource(sourceId, 'timerTriggers')
+        : await databaseService.settings.getSetting('timerTriggers');
+      filteredSettings.timerTriggers = JSON.stringify(
+        keepServerRunState(JSON.parse(filteredSettings.timerTriggers), parseStoredTriggers(storedJson)),
+      );
     }
 
     // Save to database
