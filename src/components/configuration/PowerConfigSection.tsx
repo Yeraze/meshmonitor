@@ -9,6 +9,8 @@ import { useNumberInputScope } from '../common/numberInputScopeContext';
 import { ConfigSection } from '../shared/config/ConfigSection';
 
 interface PowerConfigSectionProps {
+  /** False disables every control: no configuration:write on this source (#5830). */
+  canWrite?: boolean;
   // Power saving
   isPowerSaving: boolean;
   setIsPowerSaving: (value: boolean) => void;
@@ -39,6 +41,7 @@ interface PowerConfigSectionProps {
 }
 
 const PowerConfigSection: React.FC<PowerConfigSectionProps> = ({
+  canWrite = true,
   configVersion,
   isPowerSaving,
   setIsPowerSaving,
@@ -110,7 +113,7 @@ const PowerConfigSection: React.FC<PowerConfigSectionProps> = ({
 
   return (
     <NumberInputScope scope={numberScope}>
-    <ConfigSection title={t('power_config.title')} docsUrl="https://meshmonitor.org/features/device#power-configuration">
+    <ConfigSection canWrite={canWrite} title={t('power_config.title')} docsUrl="https://meshmonitor.org/features/device#power-configuration">
 
       {/* Power Saving Mode */}
       <div className="setting-item">

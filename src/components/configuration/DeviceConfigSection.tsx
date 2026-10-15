@@ -10,6 +10,8 @@ import { useNumberInputScope } from '../common/numberInputScopeContext';
 import { ConfigSection } from '../shared/config/ConfigSection';
 
 interface DeviceConfigSectionProps {
+  /** False disables every control: no configuration:write on this source (#5830). */
+  canWrite?: boolean;
   role: number;
   nodeInfoBroadcastSecs: number;
   tzdef: string;
@@ -38,6 +40,7 @@ interface DeviceConfigSectionProps {
 }
 
 const DeviceConfigSection: React.FC<DeviceConfigSectionProps> = ({
+  canWrite = true,
   configVersion,
   role,
   nodeInfoBroadcastSecs,
@@ -163,7 +166,7 @@ const DeviceConfigSection: React.FC<DeviceConfigSectionProps> = ({
 
   return (
     <NumberInputScope scope={numberScope}>
-    <ConfigSection title={t('device_config.title')} docsUrl="https://meshmonitor.org/features/device#device-configuration">
+    <ConfigSection canWrite={canWrite} title={t('device_config.title')} docsUrl="https://meshmonitor.org/features/device#device-configuration">
       <div className="setting-item">
         <label htmlFor="role">
           {t('device_config.device_role')}

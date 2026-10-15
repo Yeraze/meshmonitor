@@ -23,6 +23,8 @@ import { useNumberInputScope } from '../common/numberInputScopeContext';
 import { ConfigSection } from '../shared/config/ConfigSection';
 
 interface LoRaConfigSectionProps {
+  /** False disables every control: no configuration:write on this source (#5830). */
+  canWrite?: boolean;
   usePreset: boolean;
   modemPreset: number;
   /**
@@ -77,6 +79,7 @@ interface LoRaConfigSectionProps {
 }
 
 const LoRaConfigSection: React.FC<LoRaConfigSectionProps> = ({
+  canWrite = true,
   configVersion,
   usePreset,
   modemPreset,
@@ -227,7 +230,7 @@ const LoRaConfigSection: React.FC<LoRaConfigSectionProps> = ({
 
   return (
     <NumberInputScope scope={numberScope}>
-    <ConfigSection title={t('lora_config.title')} docsUrl="https://meshmonitor.org/features/device#lora-radio-configuration">
+    <ConfigSection canWrite={canWrite} title={t('lora_config.title')} docsUrl="https://meshmonitor.org/features/device#lora-radio-configuration">
       <div className="setting-item">
         <label htmlFor="usePreset" style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '0.5rem', width: '100%' }}>
           <input

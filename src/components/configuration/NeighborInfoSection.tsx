@@ -10,6 +10,8 @@ import { useNumberInputScope } from '../common/numberInputScopeContext';
 import { ConfigSection } from '../shared/config/ConfigSection';
 
 interface NeighborInfoSectionProps {
+  /** False disables every control: no configuration:write on this source (#5830). */
+  canWrite?: boolean;
   neighborInfoEnabled: boolean;
   neighborInfoInterval: number;
   neighborInfoTransmitOverLora: boolean;
@@ -24,6 +26,7 @@ interface NeighborInfoSectionProps {
 }
 
 const NeighborInfoSection: React.FC<NeighborInfoSectionProps> = ({
+  canWrite = true,
   configVersion,
   neighborInfoEnabled,
   neighborInfoInterval,
@@ -69,7 +72,7 @@ const NeighborInfoSection: React.FC<NeighborInfoSectionProps> = ({
 
   return (
     <NumberInputScope scope={numberScope}>
-    <ConfigSection title={t('neighbor_info.title')} docsUrl="https://meshmonitor.org/features/device#neighbor-info" notice={<ModuleAvailabilityNotice />}>
+    <ConfigSection canWrite={canWrite} title={t('neighbor_info.title')} docsUrl="https://meshmonitor.org/features/device#neighbor-info" notice={<ModuleAvailabilityNotice />}>
       <div className="setting-item">
         <label htmlFor="neighborInfoEnabled" style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '0.5rem', width: '100%' }}>
           <input

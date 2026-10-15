@@ -17,6 +17,8 @@ const ADDRESS_MODE_OPTIONS = [
 const UDP_BROADCAST_FLAG = 0x0001;
 
 interface NetworkConfigSectionProps {
+  /** False disables every control: no configuration:write on this source (#5830). */
+  canWrite?: boolean;
   wifiEnabled: boolean;
   setWifiEnabled: (value: boolean) => void;
   wifiSsid: string;
@@ -53,6 +55,7 @@ interface NetworkConfigSectionProps {
 }
 
 const NetworkConfigSection: React.FC<NetworkConfigSectionProps> = ({
+  canWrite = true,
   configVersion,
   wifiEnabled,
   setWifiEnabled,
@@ -121,7 +124,7 @@ const NetworkConfigSection: React.FC<NetworkConfigSectionProps> = ({
   });
 
   return (
-    <ConfigSection title={t('network_config.title')} docsUrl="https://meshmonitor.org/features/device#network-configuration" notice={<ModuleAvailabilityNotice />}>
+    <ConfigSection canWrite={canWrite} title={t('network_config.title')} docsUrl="https://meshmonitor.org/features/device#network-configuration" notice={<ModuleAvailabilityNotice />}>
 
       {isBridged && (
         <div

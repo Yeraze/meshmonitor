@@ -88,6 +88,14 @@ describe('configSections', () => {
       expect(configurationNavItems(t).map((i) => i.id)).not.toContain('config-firmware');
     });
 
+    it('lists the Device Configuration danger zone last, matching the page (#5830)', () => {
+      for (const showFirmware of [true, false]) {
+        const ids = configurationNavItems(t, { showFirmware }).map((i) => i.id);
+        expect(ids[ids.length - 1]).toBe('config-danger');
+        expect(ids[0]).toBe('config-import-export');
+      }
+    });
+
     it('lists PKI DM decryption under a radio source\'s Settings, for configuration:read', () => {
       const radio = { ...baseOptions, mode: 'source' as const, sourceType: 'meshtastic_tcp', canReadConfiguration: true };
       expect(settingsNavItems(t, radio).map((i) => i.id)).toContain('settings-pki-dm');
