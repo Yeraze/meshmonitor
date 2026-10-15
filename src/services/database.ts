@@ -5697,6 +5697,13 @@ class DatabaseService {
   }): Promise<void> {
     return this.mapPreferences!.saveMapPreferences(userId, preferences);
   }
+
+  /**
+   * Set the per-source "Show MQTT/Bridge Messages" toggle (#5824).
+   */
+  async setShowMqttMessagesForSourceAsync(userId: number, sourceId: string, value: boolean): Promise<void> {
+    return this.mapPreferences!.setShowMqttMessagesForSource(userId, sourceId, value);
+  }
   // ============================================================
   // Async wrappers for sync methods (Phase 4 migration)
   // These allow callers to use await consistently.
