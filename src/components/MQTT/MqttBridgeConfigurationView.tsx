@@ -34,6 +34,7 @@ import { bboxToFormStrings } from '../../pages/DashboardPage.bboxSeed';
 import { useSourceStatuses } from '../../hooks/useDashboardData';
 import { formatRelativeTime } from '../../utils/datetime';
 import { UiIcon } from '../icons';
+import { PasswordField } from '../shared/config/PasswordField';
 import { useSaveBar } from '../../hooks/useSaveBar';
 import { MQTT_BRIDGE_SETTINGS_HASH } from '../../utils/tabHashRedirect';
 import styles from './MqttBridgeConfigurationView.module.css';
@@ -425,9 +426,8 @@ export const MqttBridgeConfigurationView: React.FC<MqttBridgeConfigurationViewPr
         </label>
         <label className="dashboard-form-field">
           <span className="dashboard-form-label">{t('source.form.mqtt_password', 'Password')}</span>
-          <input
+          <PasswordField
             className="dashboard-form-input"
-            type="password"
             value={form.password}
             disabled={!canWrite}
             onChange={(e) => patch('password', e.target.value)}

@@ -7,6 +7,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useTranslation, Trans } from 'react-i18next';
 import { UiIcon } from './icons';
+import { PasswordField } from './shared/config/PasswordField';
 import '../styles/users.css';
 import { useAuth } from '../contexts/AuthContext';
 import api from '../services/api';
@@ -1264,8 +1265,7 @@ const UsersTab: React.FC = () => {
 
               <div className="form-group">
                 <label>{t('users.password_label')} *</label>
-                <input
-                  type="password"
+                <PasswordField
                   value={createForm.password}
                   onChange={(e) => setCreateForm({ ...createForm, password: e.target.value })}
                   placeholder={t('users.at_least_8_chars')}
@@ -1343,9 +1343,8 @@ const UsersTab: React.FC = () => {
             <div className="modal-body">
               <div className="form-group">
                 <label htmlFor="new-password">{t('users.new_password')} *</label>
-                <input
+                <PasswordField
                   id="new-password"
-                  type="password"
                   value={passwordForm.newPassword}
                   onChange={(e) => setPasswordForm({ ...passwordForm, newPassword: e.target.value })}
                   placeholder={t('users.at_least_8_chars')}
@@ -1356,9 +1355,8 @@ const UsersTab: React.FC = () => {
 
               <div className="form-group">
                 <label htmlFor="confirm-password">{t('users.confirm_password')} *</label>
-                <input
+                <PasswordField
                   id="confirm-password"
-                  type="password"
                   value={passwordForm.confirmPassword}
                   onChange={(e) => setPasswordForm({ ...passwordForm, confirmPassword: e.target.value })}
                   placeholder={t('users.reenter_password')}
