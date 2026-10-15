@@ -1833,7 +1833,7 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
 
       if (isLocalNode) {
         // For local node, use the standard export endpoint
-        await apiService.exportChannel(channelId);
+        await apiService.exportChannel(channelId, sourceId);
         showToast(t('admin_commands.channel_exported_successfully', { channelId }), 'success');
       } else {
         // For remote node, get channel data and export it manually

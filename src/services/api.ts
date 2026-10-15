@@ -885,8 +885,10 @@ class ApiService {
     });
   }
 
-  async exportChannel(channelId: number): Promise<void> {
-    return this.download(`/api/channels/${channelId}/export`, {
+  async exportChannel(channelId: number, sourceId?: string | null): Promise<void> {
+    // The route requires ?sourceId (requireSourceId('query')); without it every export 400s.
+    const qs = sourceId ? `?sourceId=${encodeURIComponent(sourceId)}` : '';
+    return this.download(`/api/channels/${channelId}/export${qs}`, {
       defaultName: `channel-${channelId}-${Date.now()}.json`,
     });
   }

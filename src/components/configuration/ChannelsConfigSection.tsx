@@ -364,7 +364,7 @@ const ChannelsConfigSection: React.FC<ChannelsConfigSectionProps> = ({
 
   const handleExportChannel = async (channelId: number) => {
     try {
-      await apiService.exportChannel(channelId);
+      await apiService.exportChannel(channelId, sourceId);
       showToast(t('channels_config.toast_channel_exported', { slot: channelId }), 'success');
     } catch (error) {
       logger.error('Error exporting channel:', error);
