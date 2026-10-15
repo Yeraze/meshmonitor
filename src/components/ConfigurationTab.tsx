@@ -70,13 +70,18 @@ import { ROLE_MAP, REGION_MAP, resolveModemPresetValue, UNKNOWN_MODEM_PRESET } f
 import SectionNav from './SectionNav';
 import { configurationNavItems } from './search/configSections';
 import styles from './ConfigurationTab.module.css';
+import { rebootExpectation, type ConfigSaveSection } from '../utils/configRebootRules';
 
 interface ConfigurationTabProps {
   baseUrl?: string; // Optional, not used in component but passed from App.tsx
   nodes?: DeviceInfo[]; // Pass nodes from App to avoid separate API call
   channels?: Channel[]; // Pass channels from App
   onRebootDevice?: () => Promise<boolean>;
-  onConfigChangeTriggeringReboot?: () => void;
+  /**
+   * Called after a save the node reboots to apply (#5823). `possible` means
+   * the node restarts only if certain fields changed.
+   */
+  onConfigChangeTriggeringReboot?: (expectation: 'always' | 'possible') => void;
   onChannelsUpdated?: () => void; // Callback when channels are updated
   refreshTrigger?: number; // Increment this to trigger config refresh
 }
@@ -935,6 +940,14 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ baseUrl = '', nodes
     void loadPositionFromNodes();
   }, [nodes]); // Run when nodes first populate
 
+  // After a successful save, tell the parent to expect the reboot the firmware
+  // starts on its own about 7 s later. This sends nothing to the node.
+  // configRebootRules.ts says which saves reboot (#5823).
+  const expectRebootAfterSave = (section: ConfigSaveSection) => {
+    const expectation = rebootExpectation(section, localFirmwareVersion);
+    if (expectation !== 'never') onConfigChangeTriggeringReboot?.(expectation);
+  };
+
   const handleSaveDeviceConfig = async (): Promise<boolean> => {
     setIsSaving(true);
     setStatusMessage('');
@@ -963,7 +976,7 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ baseUrl = '', nodes
       }, sourceId);
       setStatusMessage(t('config.device_config_saved'));
       showToast(t('config.device_config_saved_toast'), 'success');
-      // Device config changes don't require reboot
+      expectRebootAfterSave('device');
       return true;
     } catch (error) {
       logger.error('Error saving device config:', error);
@@ -983,7 +996,7 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ baseUrl = '', nodes
       await apiService.setNodeOwner(longName, shortName, isUnmessagable, isLicensed, sourceId);
       setStatusMessage(t('config.node_names_saved'));
       showToast(t('config.node_names_saved_toast'), 'success');
-      // Node owner changes don't require reboot
+      expectRebootAfterSave('owner');
       return true;
     } catch (error) {
       logger.error('Error saving node owner:', error);
@@ -1045,7 +1058,7 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ baseUrl = '', nodes
       // Refresh TX status promptly so the global banner + gated controls reflect
       // the new txEnabled value without waiting for the 30s poll (#4294).
       void queryClient.invalidateQueries({ queryKey: ['txStatus'] });
-      onConfigChangeTriggeringReboot?.();
+      expectRebootAfterSave('lora');
       return true;
     } catch (error) {
       logger.error('Error saving LoRa config:', error);
@@ -1104,7 +1117,7 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ baseUrl = '', nodes
       }, sourceId);
       setStatusMessage(t('config.position_saved'));
       showToast(t('config.position_saved_toast'), 'success');
-      // Position config changes don't require reboot
+      expectRebootAfterSave('position');
       return true;
     } catch (error) {
       logger.error('Error saving position config:', error);
@@ -1140,7 +1153,7 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ baseUrl = '', nodes
       }), sourceId);
       setStatusMessage(t('config.mqtt_saved'));
       showToast(t('config.mqtt_saved_toast'), 'success');
-      // MQTT config changes don't require reboot
+      expectRebootAfterSave('mqtt');
       return true;
     } catch (error) {
       logger.error('Error saving MQTT config:', error);
@@ -1171,7 +1184,7 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ baseUrl = '', nodes
       }, sourceId);
       setStatusMessage(t('config.neighbor_saved'));
       showToast(t('config.neighbor_saved_toast'), 'success');
-      // NeighborInfo config changes don't require reboot
+      expectRebootAfterSave('neighborinfo');
       return true;
     } catch (error) {
       logger.error('Error saving NeighborInfo config:', error);
@@ -1211,7 +1224,7 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ baseUrl = '', nodes
       setFullNetworkConfig(updatedConfig);
       setStatusMessage(t('config.network_saved'));
       showToast(t('config.network_saved_toast'), 'success');
-      onConfigChangeTriggeringReboot?.();
+      expectRebootAfterSave('network');
       return true;
     } catch (error) {
       logger.error('Error saving Network config:', error);
@@ -1240,7 +1253,7 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ baseUrl = '', nodes
       }, sourceId);
       setStatusMessage(t('config.power_saved'));
       showToast(t('config.power_saved_toast'), 'success');
-      // Power config changes don't require reboot
+      expectRebootAfterSave('power');
       return true;
     } catch (error) {
       logger.error('Error saving Power config:', error);
@@ -1270,7 +1283,7 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ baseUrl = '', nodes
       }, sourceId);
       setStatusMessage(t('config.display_saved'));
       showToast(t('config.display_saved_toast'), 'success');
-      // Display config changes don't require reboot
+      expectRebootAfterSave('display');
       return true;
     } catch (error) {
       logger.error('Error saving Display config:', error);
@@ -1305,7 +1318,7 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ baseUrl = '', nodes
       }, sourceId);
       setStatusMessage(t('config.telemetry_saved'));
       showToast(t('config.telemetry_saved_toast'), 'success');
-      // Telemetry config changes don't require reboot
+      expectRebootAfterSave('telemetry');
       return true;
     } catch (error) {
       logger.error('Error saving Telemetry config:', error);
@@ -1341,6 +1354,7 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ baseUrl = '', nodes
       }, sourceId);
       setStatusMessage(t('config.extnotif_saved'));
       showToast(t('config.extnotif_saved_toast'), 'success');
+      expectRebootAfterSave('extnotif');
       return true;
     } catch (error) {
       logger.error('Error saving External Notification config:', error);
@@ -1367,6 +1381,7 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ baseUrl = '', nodes
       }, sourceId);
       setStatusMessage(t('config.storeforward_saved'));
       showToast(t('config.storeforward_saved_toast'), 'success');
+      expectRebootAfterSave('storeforward');
       return true;
     } catch (error) {
       logger.error('Error saving Store & Forward config:', error);
@@ -1390,6 +1405,7 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ baseUrl = '', nodes
       }, sourceId);
       setStatusMessage(t('config.rangetest_saved'));
       showToast(t('config.rangetest_saved_toast'), 'success');
+      expectRebootAfterSave('rangetest');
       return true;
     } catch (error) {
       logger.error('Error saving Range Test config:', error);
@@ -1421,6 +1437,7 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ baseUrl = '', nodes
       }, sourceId);
       setStatusMessage(t('config.cannedmsg_saved'));
       showToast(t('config.cannedmsg_saved_toast'), 'success');
+      expectRebootAfterSave('cannedmsg');
       return true;
     } catch (error) {
       logger.error('Error saving Canned Message config:', error);
@@ -1448,6 +1465,7 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ baseUrl = '', nodes
       }, sourceId);
       setStatusMessage(t('config.audio_saved'));
       showToast(t('config.audio_saved_toast'), 'success');
+      expectRebootAfterSave('audio');
       return true;
     } catch (error) {
       logger.error('Error saving Audio config:', error);
@@ -1470,6 +1488,7 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ baseUrl = '', nodes
       }, sourceId);
       setStatusMessage(t('config.remotehardware_saved'));
       showToast(t('config.remotehardware_saved_toast'), 'success');
+      expectRebootAfterSave('remotehardware');
       return true;
     } catch (error) {
       logger.error('Error saving Remote Hardware config:', error);
@@ -1498,6 +1517,7 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ baseUrl = '', nodes
       }, sourceId);
       setStatusMessage(t('config.detectionsensor_saved'));
       showToast(t('config.detectionsensor_saved_toast'), 'success');
+      expectRebootAfterSave('detectionsensor');
       return true;
     } catch (error) {
       logger.error('Error saving Detection Sensor config:', error);
@@ -1522,6 +1542,7 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ baseUrl = '', nodes
       }, sourceId);
       setStatusMessage(t('config.paxcounter_saved'));
       showToast(t('config.paxcounter_saved_toast'), 'success');
+      expectRebootAfterSave('paxcounter');
       return true;
     } catch (error) {
       logger.error('Error saving Paxcounter config:', error);
@@ -1543,6 +1564,7 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ baseUrl = '', nodes
       }, sourceId);
       setStatusMessage(t('config.statusmessage_saved', 'Status Message config saved'));
       showToast(t('config.statusmessage_saved_toast', 'Status Message config saved successfully'), 'success');
+      expectRebootAfterSave('statusmessage');
       return true;
     } catch (error) {
       logger.error('Error saving Status Message config:', error);
@@ -1566,6 +1588,7 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ baseUrl = '', nodes
       await apiService.setModuleConfig('tak', { team: takTeam, role: takRole }, sourceId);
       setStatusMessage(t('config.tak_saved'));
       showToast(t('config.tak_saved_toast'), 'success');
+      expectRebootAfterSave('tak');
       return true;
     } catch (error) {
       logger.error('Error saving TAK config:', error);
@@ -1591,6 +1614,7 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ baseUrl = '', nodes
       }, sourceId);
       setStatusMessage(t('config.trafficmanagement_saved', 'Traffic Management config saved'));
       showToast(t('config.trafficmanagement_saved_toast', 'Traffic Management config saved successfully'), 'success');
+      expectRebootAfterSave('trafficmanagement');
       return true;
     } catch (error) {
       logger.error('Error saving Traffic Management config:', error);
@@ -1625,6 +1649,7 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ baseUrl = '', nodes
       await apiService.setModuleConfig('meshbeacon', config, sourceId);
       setStatusMessage(t('config.meshbeacon_saved', 'MeshBeacon config saved'));
       showToast(t('config.meshbeacon_saved_toast', 'MeshBeacon config saved successfully'), 'success');
+      expectRebootAfterSave('meshbeacon');
       return true;
     } catch (error) {
       logger.error('Error saving MeshBeacon config:', error);
@@ -1653,6 +1678,7 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ baseUrl = '', nodes
       }, sourceId);
       setStatusMessage(t('config.serial_saved'));
       showToast(t('config.serial_saved_toast'), 'success');
+      expectRebootAfterSave('serial');
       return true;
     } catch (error) {
       logger.error('Error saving Serial config:', error);
@@ -1678,6 +1704,7 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ baseUrl = '', nodes
       }, sourceId);
       setStatusMessage(t('config.ambientlighting_saved'));
       showToast(t('config.ambientlighting_saved_toast'), 'success');
+      expectRebootAfterSave('ambientlighting');
       return true;
     } catch (error) {
       logger.error('Error saving Ambient Lighting config:', error);
@@ -1727,7 +1754,7 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ baseUrl = '', nodes
       }
       setStatusMessage(t('config.security_saved'));
       showToast(t('config.security_saved_toast'), 'success');
-      // Security config changes may require reboot for some settings
+      expectRebootAfterSave('security');
       return true;
     } catch (error) {
       logger.error('Error saving Security config:', error);

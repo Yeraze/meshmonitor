@@ -170,6 +170,7 @@ function App() {
   const [channelInfoModal, setChannelInfoModal] = useState<number | null>(null);
   const [showPsk, setShowPsk] = useState(false);
   const [showRebootModal, setShowRebootModal] = useState(false);
+  const [rebootExpectation, setRebootExpectation] = useState<'always' | 'possible'>('always');
   const [configRefreshTrigger, setConfigRefreshTrigger] = useState(0);
   const [showTracerouteHistoryModal, setShowTracerouteHistoryModal] = useState(false);
   const [showPurgeDataModal, setShowPurgeDataModal] = useState(false);
@@ -1630,8 +1631,11 @@ function App() {
     }
   };
 
-  const handleConfigChangeTriggeringReboot = () => {
-    logger.debug('⚙️ Config change sent, device will reboot to apply changes...');
+  // The firmware reboots on its own after most config saves (#5823). This only
+  // waits for it: it sends no reboot command and writes nothing to the node.
+  const handleConfigChangeTriggeringReboot = (expectation: 'always' | 'possible' = 'always') => {
+    logger.debug(`⚙️ Config change sent, device ${expectation === 'always' ? 'will' : 'may'} reboot to apply changes...`);
+    setRebootExpectation(expectation);
     setConnectionStatus('rebooting');
 
     // Show reboot modal
@@ -3478,7 +3482,7 @@ function App() {
       />
 
       <LoginModal isOpen={showLoginModal} onClose={() => setShowLoginModal(false)} />
-      <RebootModal isOpen={showRebootModal} onClose={handleRebootModalClose} />
+      <RebootModal isOpen={showRebootModal} expectation={rebootExpectation} onClose={handleRebootModalClose} />
 
       {/* Emoji Picker Modal */}
       <EmojiPickerModal
