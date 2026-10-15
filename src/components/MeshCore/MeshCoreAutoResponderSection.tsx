@@ -138,19 +138,12 @@ export const MeshCoreAutoResponderSection: React.FC<MeshCoreAutoResponderSection
     setHasChanges(enabled !== initialEnabled || triggersChanged);
   }, [enabled, initialEnabled, triggers, initialTriggers, loaded]);
 
-  // A trigger counts as edited when it differs from its saved copy; only
-  // those need a name (the old Add card's rule). Every regex is checked.
-  const savedJsonById = useMemo(
-    () => new Map(initialTriggers.map((tr) => [tr.id, JSON.stringify(tr)])),
-    [initialTriggers],
-  );
-  const isEdited = useCallback(
-    (tr: MeshCoreAutoResponderTrigger) => savedJsonById.get(tr.id) !== JSON.stringify(tr),
-    [savedJsonById],
-  );
+  // A new trigger needs a name (the old Add card's rule); a saved one keeps
+  // whatever name it has, as before. Every regex is checked.
+  const savedIds = useMemo(() => new Set(initialTriggers.map((tr) => tr.id)), [initialTriggers]);
   const nameMissing = useCallback(
-    (tr: MeshCoreAutoResponderTrigger) => isEdited(tr) && !tr.name.trim(),
-    [isEdited],
+    (tr: MeshCoreAutoResponderTrigger) => !savedIds.has(tr.id) && !tr.name.trim(),
+    [savedIds],
   );
 
   const handleSave = useCallback(async () => {
