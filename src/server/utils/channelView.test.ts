@@ -29,6 +29,9 @@ describe('channelView', () => {
       expect(getEncryptionStatus(null)).toBe('none');
       expect(getEncryptionStatus('')).toBe('none');
     });
+    it('returns "none" for the AA== "encryption off" byte (#5826)', () => {
+      expect(getEncryptionStatus('AA==')).toBe('none');
+    });
     it('returns "default" for the publicly known default key', () => {
       expect(getEncryptionStatus(DEFAULT_PUBLIC_PSK)).toBe('default');
       expect(getEncryptionStatus('AQ==')).toBe('default');

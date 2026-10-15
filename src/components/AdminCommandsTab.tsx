@@ -41,6 +41,7 @@ import {
   PUBLIC_CHANNEL_PRECISION_MAX_BITS,
   PUBLIC_CHANNEL_PRECISION_MAX_METERS,
   exceedsPublicChannelPrecisionClamp,
+  hasPrivatePsk,
 } from '../utils/publicChannel';
 import { buildNodeOptions, filterNodes, sortNodeOptionsForRemoteAdmin, type NodeOption } from './admin-commands/nodeOptionsUtils';
 import { createEmptyChannelSlot, createChannelFromResponse, countLoadedChannels } from './admin-commands/channelLoadingUtils';
@@ -2867,7 +2868,7 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
                     </h4>
                     {channel && (
                       <div style={{ marginTop: '0.5rem', fontSize: '0.9rem', color: 'var(--color-text-muted)' }}>
-                        <div><UiIcon name={channel.psk && channel.psk !== 'AQ==' ? 'encrypted' : 'unencrypted'} /> {channel.psk && channel.psk !== 'AQ==' ? t('admin_commands.encrypted') : t('admin_commands.unencrypted')}</div>
+                        <div><UiIcon name={hasPrivatePsk(channel.psk) ? 'encrypted' : 'unencrypted'} /> {hasPrivatePsk(channel.psk) ? t('admin_commands.encrypted') : t('admin_commands.unencrypted')}</div>
                         <div>
                           {channel.uplinkEnabled && <><UiIcon name="sortAscending" /> {t('admin_commands.uplink')} </>}
                           {channel.downlinkEnabled && <><UiIcon name="sortDescending" /> {t('admin_commands.downlink')}</>}

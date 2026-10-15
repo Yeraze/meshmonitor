@@ -4,6 +4,9 @@ import {
   PUBLIC_CHANNEL_PRECISION_MAX_BITS,
   isKnownPublicChannel,
   exceedsPublicChannelPrecisionClamp,
+  NO_ENCRYPTION_PSK,
+  pskEncryptionStatus,
+  hasPrivatePsk,
 } from './publicChannel';
 
 /**
@@ -62,5 +65,32 @@ describe('exceedsPublicChannelPrecisionClamp', () => {
     // Matches meshtastic/firmware#10665; if firmware changes this, the
     // warning text's "~564 m" figure has to move with it.
     expect(PUBLIC_CHANNEL_PRECISION_MAX_BITS).toBe(15);
+  });
+});
+
+// #5826: a cleared Meshtastic key is stored as AA== (the 0x00 "encryption
+// off" byte). Every client reading of a key must treat it as no key.
+describe('AA== "encryption off" key (#5826)', () => {
+  it('is a known-public channel, so the precision clamp still warns', () => {
+    expect(NO_ENCRYPTION_PSK).toBe('AA==');
+    expect(isKnownPublicChannel('AA==')).toBe(true);
+    expect(exceedsPublicChannelPrecisionClamp('AA==', 32)).toBe(true);
+  });
+
+  it('pskEncryptionStatus classifies every key form', () => {
+    expect(pskEncryptionStatus(null)).toBe('none');
+    expect(pskEncryptionStatus(undefined)).toBe('none');
+    expect(pskEncryptionStatus('')).toBe('none');
+    expect(pskEncryptionStatus('AA==')).toBe('none');
+    expect(pskEncryptionStatus(DEFAULT_PUBLIC_PSK)).toBe('default');
+    expect(pskEncryptionStatus('BwcHBwcHBwcHBwcHBwcHBw==')).toBe('secure');
+  });
+
+  it('hasPrivatePsk is true only for a custom key', () => {
+    expect(hasPrivatePsk('AA==')).toBe(false);
+    expect(hasPrivatePsk('AQ==')).toBe(false);
+    expect(hasPrivatePsk('')).toBe(false);
+    expect(hasPrivatePsk(null)).toBe(false);
+    expect(hasPrivatePsk('BwcHBwcHBwcHBwcHBwcHBw==')).toBe(true);
   });
 });

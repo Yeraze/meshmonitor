@@ -91,6 +91,59 @@ describe('ChannelsConfigSection delete (#5324)', () => {
   });
 });
 
+describe('ChannelsConfigSection PSK clearing (#5826)', () => {
+  const KEY = 'BwcHBwcHBwcHBwcHBwcHBw==';
+
+  // Card order is slot order, so the n-th Edit button edits slot n.
+  const editSlot = (slot: number, list: Channel[]) => {
+    render(
+      <MemoryRouter>
+        <ChannelsConfigSection channels={list} />
+      </MemoryRouter>,
+    );
+    const edits = screen.getAllByRole('button', { name: /common\.edit/ }).filter(el => el.tagName === 'BUTTON');
+    fireEvent.click(edits[slot]);
+    return screen.getByLabelText(/channels_config\.psk/, { selector: 'input' }) as HTMLInputElement;
+  };
+  const save = () => fireEvent.click(screen.getByRole('button', { name: 'channels_config.save_channel' }));
+
+  it('sends an explicit empty psk when the user clears a key', async () => {
+    const update = vi.spyOn(apiService, 'updateChannel').mockResolvedValue({} as never);
+    const input = editSlot(2, [{ id: 2, name: 'Secret', psk: KEY, role: 2 } as Channel]);
+    expect(input.value).toBe(KEY);
+    fireEvent.change(input, { target: { value: '' } });
+    save();
+    await waitFor(() => expect(update).toHaveBeenCalled());
+    expect(update.mock.calls[0][1]).toHaveProperty('psk', '');
+  });
+
+  it('leaves psk out when the field opened empty and stayed empty', async () => {
+    const update = vi.spyOn(apiService, 'updateChannel').mockResolvedValue({} as never);
+    // A reader without write access never receives the key.
+    editSlot(2, [{ id: 2, name: 'Secret', role: 2 } as Channel]);
+    save();
+    await waitFor(() => expect(update).toHaveBeenCalled());
+    expect(update.mock.calls[0][1].psk).toBeUndefined();
+  });
+
+  it('shows the AA== "encryption off" key as an empty field and keeps it on save', async () => {
+    const update = vi.spyOn(apiService, 'updateChannel').mockResolvedValue({} as never);
+    const input = editSlot(2, [{ id: 2, name: 'Open', psk: 'AA==', role: 2 } as Channel]);
+    expect(input.value).toBe('');
+    save();
+    await waitFor(() => expect(update).toHaveBeenCalled());
+    expect(update.mock.calls[0][1].psk).toBeUndefined();
+  });
+
+  it('sends an unchanged key as is', async () => {
+    const update = vi.spyOn(apiService, 'updateChannel').mockResolvedValue({} as never);
+    editSlot(2, [{ id: 2, name: 'Secret', psk: KEY, role: 2 } as Channel]);
+    save();
+    await waitFor(() => expect(update).toHaveBeenCalled());
+    expect(update.mock.calls[0][1].psk).toBe(KEY);
+  });
+});
+
 describe('ChannelsConfigSection drag ids (#5324)', () => {
   it('registers every card under an id SortableContext can find', () => {
     renderSection();
