@@ -288,7 +288,6 @@
   },
   "src/components/TimerTriggersSection.tsx": {
     "@typescript-eslint/no-unused-vars": 1,
-    "meshmonitor-ui/no-hardcoded-color": 1,
     "react-hooks/exhaustive-deps": 1
   },
   "src/components/Toast.tsx": {
@@ -357,17 +356,11 @@
     "react-refresh/only-export-components": 1
   },
   "src/components/configuration/AmbientLightingConfigSection.tsx": {
-    "meshmonitor-ui/no-hardcoded-color": 4
-  },
-  "src/components/configuration/AudioConfigSection.tsx": {
-    "meshmonitor-ui/no-hardcoded-color": 1
+    "meshmonitor-ui/no-hardcoded-color": 3
   },
   "src/components/configuration/BackupManagementSection.tsx": {
     "meshmonitor-ui/no-hardcoded-color": 2,
     "react-hooks/exhaustive-deps": 1
-  },
-  "src/components/configuration/CannedMessageConfigSection.tsx": {
-    "meshmonitor-ui/no-hardcoded-color": 1
   },
   "src/components/configuration/ChannelDatabaseSection.tsx": {
     "@typescript-eslint/no-explicit-any": 1,
@@ -376,27 +369,21 @@
   },
   "src/components/configuration/ChannelsConfigSection.tsx": {
     "@typescript-eslint/no-explicit-any": 1,
-    "meshmonitor-ui/no-hardcoded-color": 5
+    "meshmonitor-ui/no-hardcoded-color": 4
   },
   "src/components/configuration/DatabaseMaintenanceSection.tsx": {
     "react-hooks/exhaustive-deps": 1
   },
-  "src/components/configuration/DetectionSensorConfigSection.tsx": {
-    "meshmonitor-ui/no-hardcoded-color": 1
-  },
   "src/components/configuration/DeviceConfigSection.tsx": {
-    "meshmonitor-ui/no-hardcoded-color": 32,
+    "meshmonitor-ui/no-hardcoded-color": 31,
     "react-hooks/exhaustive-deps": 1
   },
   "src/components/configuration/DisplayConfigSection.tsx": {
-    "meshmonitor-ui/no-hardcoded-color": 3
+    "meshmonitor-ui/no-hardcoded-color": 2
   },
   "src/components/configuration/ExportConfigModal.tsx": {
     "@typescript-eslint/no-explicit-any": 3,
     "meshmonitor-ui/no-hardcoded-color": 2
-  },
-  "src/components/configuration/ExternalNotificationConfigSection.tsx": {
-    "meshmonitor-ui/no-hardcoded-color": 1
   },
   "src/components/configuration/FirmwareUpdateSection.tsx": {
     "@typescript-eslint/no-explicit-any": 1,
@@ -412,52 +399,25 @@
     "meshmonitor-ui/no-hardcoded-color": 1
   },
   "src/components/configuration/LoRaConfigSection.tsx": {
-    "meshmonitor-ui/no-hardcoded-color": 12
+    "meshmonitor-ui/no-hardcoded-color": 11
   },
   "src/components/configuration/MQTTConfigSection.tsx": {
-    "meshmonitor-ui/no-hardcoded-color": 2
-  },
-  "src/components/configuration/NeighborInfoSection.tsx": {
-    "meshmonitor-ui/no-hardcoded-color": 1
-  },
-  "src/components/configuration/NetworkConfigSection.tsx": {
-    "meshmonitor-ui/no-hardcoded-color": 1
-  },
-  "src/components/configuration/NodeIdentitySection.tsx": {
-    "meshmonitor-ui/no-hardcoded-color": 1
-  },
-  "src/components/configuration/PaxcounterConfigSection.tsx": {
     "meshmonitor-ui/no-hardcoded-color": 1
   },
   "src/components/configuration/PositionConfigSection.tsx": {
-    "meshmonitor-ui/no-hardcoded-color": 2
+    "meshmonitor-ui/no-hardcoded-color": 1
   },
   "src/components/configuration/PowerConfigSection.tsx": {
-    "meshmonitor-ui/no-hardcoded-color": 5
-  },
-  "src/components/configuration/RangeTestConfigSection.tsx": {
-    "meshmonitor-ui/no-hardcoded-color": 1
-  },
-  "src/components/configuration/RemoteHardwareConfigSection.tsx": {
-    "meshmonitor-ui/no-hardcoded-color": 1
+    "meshmonitor-ui/no-hardcoded-color": 4
   },
   "src/components/configuration/SecurityConfigSection.tsx": {
-    "meshmonitor-ui/no-hardcoded-color": 3
-  },
-  "src/components/configuration/SerialConfigSection.tsx": {
-    "meshmonitor-ui/no-hardcoded-color": 1
-  },
-  "src/components/configuration/StatusMessageConfigSection.tsx": {
-    "meshmonitor-ui/no-hardcoded-color": 1
-  },
-  "src/components/configuration/StoreForwardConfigSection.tsx": {
-    "meshmonitor-ui/no-hardcoded-color": 1
+    "meshmonitor-ui/no-hardcoded-color": 2
   },
   "src/components/configuration/SystemBackupSection.tsx": {
     "react-hooks/exhaustive-deps": 1
   },
   "src/components/configuration/TelemetryConfigSection.tsx": {
-    "meshmonitor-ui/no-hardcoded-color": 6,
+    "meshmonitor-ui/no-hardcoded-color": 5,
     "react-hooks/exhaustive-deps": 1
   },
   "src/components/settings/EmbedSettings.tsx": {

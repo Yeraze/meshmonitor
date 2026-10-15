@@ -93,7 +93,7 @@ describe('MeshCoreSettingsView: controls that moved to Device Configuration', ()
     for (const name of MOVED_BUTTONS) expect(screen.queryByRole('button', { name })).toBeNull();
     expect(screen.queryByRole('heading', { name: 'Default path hash size' })).toBeNull();
     expect(screen.queryByRole('heading', { name: 'Default region / scope' })).toBeNull();
-    expect(screen.queryByRole('heading', { name: 'Device actions' })).toBeNull();
+    expect(screen.queryByRole('heading', { name: /^Device actions/ })).toBeNull();
     expect(screen.queryByTestId('contact-sync')).toBeNull();
   });
 
@@ -139,7 +139,7 @@ describe('MeshCoreSettingsView: controls that moved to Device Configuration', ()
 describe('MeshCoreSettingsView: a viewer who cannot open Device Configuration', () => {
   it('keeps the device actions and the contact sync here, so the move costs them nothing', () => {
     renderView({ canOpenDeviceConfiguration: false });
-    expect(screen.getByRole('heading', { name: 'Device actions' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /^Device actions/ })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Refresh contacts' })).not.toBeDisabled();
     expect(screen.getByRole('button', { name: 'Discover Nearby Nodes' })).not.toBeDisabled();
     expect(screen.getByTestId('contact-sync')).toBeInTheDocument();

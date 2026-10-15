@@ -124,7 +124,7 @@ async function renderPage(props: { receiveOnly?: boolean } = {}) {
   // Connected and the moved sections have read their values.
   await waitFor(() => expect(find('GET', '/config/default-scope')).toHaveLength(1));
   await waitFor(() => expect(find('GET', '/config/default-path-hash-size')).toHaveLength(1));
-  await screen.findByRole('heading', { name: 'Device actions' });
+  await screen.findByRole('heading', { name: /^Device actions/ });
 }
 
 const button = (name: string) => screen.getByRole('button', { name });

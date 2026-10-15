@@ -6,6 +6,7 @@ import ModuleAvailabilityNotice from './ModuleAvailabilityNotice';
 import { NumberInput } from '../common/NumberInput';
 import { NumberInputScope } from '../common/NumberInputScope';
 import { useNumberInputScope } from '../common/numberInputScopeContext';
+import { ConfigSection } from '../shared/config/ConfigSection';
 
 interface TelemetryConfigSectionProps {
   // Config version - increment when config is loaded from device to sync saved state
@@ -181,24 +182,7 @@ const TelemetryConfigSection: React.FC<TelemetryConfigSectionProps> = ({
 
   return (
     <NumberInputScope scope={numberScope}>
-    <div className="settings-section">
-      <h3 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-        {t('telemetry_config.title')}
-        <a
-          href="https://meshmonitor.org/features/device#telemetry-configuration"
-          target="_blank"
-          rel="noopener noreferrer"
-          style={{
-            fontSize: '1.2rem',
-            color: '#89b4fa',
-            textDecoration: 'none'
-          }}
-          title={t('telemetry_config.view_docs')}
-        >
-          <UiIcon name="help" />
-        </a>
-      </h3>
-      <ModuleAvailabilityNotice />
+    <ConfigSection title={t('telemetry_config.title')} docsUrl="https://meshmonitor.org/features/device#telemetry-configuration" notice={<ModuleAvailabilityNotice />}>
 
       {/* Device Telemetry Section */}
       <h4 style={{ marginTop: '1.5rem', marginBottom: '0.5rem', color: 'var(--color-text-subtle)' }}>
@@ -540,7 +524,7 @@ const TelemetryConfigSection: React.FC<TelemetryConfigSectionProps> = ({
           )}
         </div>
       )}
-    </div>
+    </ConfigSection>
     </NumberInputScope>
   );
 };

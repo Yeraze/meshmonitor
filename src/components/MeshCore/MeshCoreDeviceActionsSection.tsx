@@ -26,6 +26,8 @@ import { DiscoveredNode, MeshCoreActions } from './hooks/useMeshCore';
 import { useToast } from '../ToastContainer';
 import { MeshCoreAdvertButtons } from './MeshCoreAdvertButtons';
 import styles from './MeshCoreDeviceActionsSection.module.css';
+import { ConfigSection } from '../shared/config/ConfigSection';
+import { MESHCORE_DOCS } from './meshcoreDocs';
 
 type DiscoverMode = 'nearby' | 'repeaters' | 'sensors';
 
@@ -120,102 +122,106 @@ export const MeshCoreDeviceActionsSection: React.FC<MeshCoreDeviceActionsSection
   );
 
   return (
-    <div className={`form-section ${styles.group}`} id="meshcore-device-actions" data-testid="meshcore-device-actions">
-      <h3>{t('meshcore.settings.actions', 'Device actions')}</h3>
-      <p className="hint">
-        {t(
+    <div data-testid="meshcore-device-actions">
+      <ConfigSection
+        id="meshcore-device-actions"
+        title={t('meshcore.settings.actions', 'Device actions')}
+        docsUrl={`${MESHCORE_DOCS}#adverts`}
+        bodyClassName={styles.group}
+        description={t(
           'meshcore.device_actions.group_hint',
           'These act on the radio when you press them. Nothing here is a saved setting.',
         )}
-      </p>
+      >
 
-      <div className={styles.action}>
-        <h4 className={styles.actionTitle}>
-          {t('meshcore.device_actions.contacts_and_adverts', 'Contacts and adverts')}
-        </h4>
-        <p className="hint">
-          {t('meshcore.settings.actions_hint',
-            'Refresh the contact list from the device, or announce this node. A zero-hop advert reaches nodes in direct radio range; a flood advert crosses the whole mesh and costs much more airtime.')}
-        </p>
-        <div className={styles.buttons}>
-          <button
-            type="button"
-            onClick={() => void actions.refreshContacts()}
-            disabled={!canWriteNodes || !connected || loading}
-            title={!canWriteNodes ? needsNodesWrite : undefined}
-          >
-            {t('meshcore.refresh', 'Refresh contacts')}
-          </button>
-          <MeshCoreAdvertButtons
-            onSend={(mode) => actions.sendAdvert(mode)}
-            disabled={!canWriteConnection || !connected || loading || receiveOnly}
-            disabledTitle={!canWriteConnection ? needsConnectionWrite : receiveOnlyTooltip}
-          />
-        </div>
-      </div>
-
-      {isCompanion && (
         <div className={styles.action}>
-          <h4 className={styles.actionTitle}>{t('meshcore.discover.title', 'Discover nodes')}</h4>
+          <h4 className={styles.actionTitle}>
+            {t('meshcore.device_actions.contacts_and_adverts', 'Contacts and adverts')}
+          </h4>
           <p className="hint">
-            {t('meshcore.discover.hint',
-              'Ask nodes in direct radio range to announce themselves. Responders are added as contacts. ' +
-              'Multi-hop nodes will not appear — discovery is zero-hop.')}
+            {t('meshcore.settings.actions_hint',
+              'Refresh the contact list from the device, or announce this node. A zero-hop advert reaches nodes in direct radio range; a flood advert crosses the whole mesh and costs much more airtime.')}
           </p>
           <div className={styles.buttons}>
-            {discoverButton('nearby', t('meshcore.discover.nearby', 'Discover Nearby Nodes'))}
-            {discoverButton('repeaters', t('meshcore.discover.repeaters', 'Discover Repeaters'))}
-            {discoverButton('sensors', t('meshcore.discover.sensors', 'Discover Sensors'))}
+            <button
+              type="button"
+              onClick={() => void actions.refreshContacts()}
+              disabled={!canWriteNodes || !connected || loading}
+              title={!canWriteNodes ? needsNodesWrite : undefined}
+            >
+              {t('meshcore.refresh', 'Refresh contacts')}
+            </button>
+            <MeshCoreAdvertButtons
+              onSend={(mode) => actions.sendAdvert(mode)}
+              disabled={!canWriteConnection || !connected || loading || receiveOnly}
+              disabledTitle={!canWriteConnection ? needsConnectionWrite : receiveOnlyTooltip}
+            />
           </div>
-
-          {/* Who answered the last sweep (#4516). A discovery response carries
-              only key + type + signal, so a name is present only for a node
-              that has advertised or answered the ANON_REQ OWNER pass. */}
-          {discoveredNodes && discoveredNodes.length > 0 && (
-            <div className={styles.results}>
-              <table className={styles.table}>
-                <thead>
-                  <tr>
-                    <th>{t('meshcore.discover.col_node', 'Node')}</th>
-                    <th className={styles.mono}>{t('meshcore.discover.col_key', 'Key')}</th>
-                    <th className={styles.number}>
-                      {t('meshcore.contact_details.ping_zero_hop_snr_in', 'SNR here')}
-                    </th>
-                    <th className={styles.number}>
-                      {t('meshcore.contact_details.ping_zero_hop_snr_out', 'SNR at node')}
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {discoveredNodes.map((node) => (
-                    <tr key={node.publicKey}>
-                      <td>
-                        {node.name || (
-                          <span className={styles.unnamed}>
-                            {t('meshcore.discover.unnamed', 'Unknown')}
-                          </span>
-                        )}
-                        {node.isNew && (
-                          <span className={styles.newBadge}>
-                            {t('meshcore.discover.new_badge', 'NEW')}
-                          </span>
-                        )}
-                      </td>
-                      <td className={styles.mono}>{node.publicKey.substring(0, 12)}…</td>
-                      <td className={styles.number}>
-                        {node.snr !== null ? `${node.snr.toFixed(2)} dB` : '—'}
-                      </td>
-                      <td className={styles.number}>
-                        {node.snrToNode !== null ? `${node.snrToNode.toFixed(2)} dB` : '—'}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
         </div>
-      )}
+
+        {isCompanion && (
+          <div className={styles.action}>
+            <h4 className={styles.actionTitle}>{t('meshcore.discover.title', 'Discover nodes')}</h4>
+            <p className="hint">
+              {t('meshcore.discover.hint',
+                'Ask nodes in direct radio range to announce themselves. Responders are added as contacts. ' +
+                'Multi-hop nodes will not appear — discovery is zero-hop.')}
+            </p>
+            <div className={styles.buttons}>
+              {discoverButton('nearby', t('meshcore.discover.nearby', 'Discover Nearby Nodes'))}
+              {discoverButton('repeaters', t('meshcore.discover.repeaters', 'Discover Repeaters'))}
+              {discoverButton('sensors', t('meshcore.discover.sensors', 'Discover Sensors'))}
+            </div>
+
+            {/* Who answered the last sweep (#4516). A discovery response carries
+                only key + type + signal, so a name is present only for a node
+                that has advertised or answered the ANON_REQ OWNER pass. */}
+            {discoveredNodes && discoveredNodes.length > 0 && (
+              <div className={styles.results}>
+                <table className={styles.table}>
+                  <thead>
+                    <tr>
+                      <th>{t('meshcore.discover.col_node', 'Node')}</th>
+                      <th className={styles.mono}>{t('meshcore.discover.col_key', 'Key')}</th>
+                      <th className={styles.number}>
+                        {t('meshcore.contact_details.ping_zero_hop_snr_in', 'SNR here')}
+                      </th>
+                      <th className={styles.number}>
+                        {t('meshcore.contact_details.ping_zero_hop_snr_out', 'SNR at node')}
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {discoveredNodes.map((node) => (
+                      <tr key={node.publicKey}>
+                        <td>
+                          {node.name || (
+                            <span className={styles.unnamed}>
+                              {t('meshcore.discover.unnamed', 'Unknown')}
+                            </span>
+                          )}
+                          {node.isNew && (
+                            <span className={styles.newBadge}>
+                              {t('meshcore.discover.new_badge', 'NEW')}
+                            </span>
+                          )}
+                        </td>
+                        <td className={styles.mono}>{node.publicKey.substring(0, 12)}…</td>
+                        <td className={styles.number}>
+                          {node.snr !== null ? `${node.snr.toFixed(2)} dB` : '—'}
+                        </td>
+                        <td className={styles.number}>
+                          {node.snrToNode !== null ? `${node.snrToNode.toFixed(2)} dB` : '—'}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
+      </ConfigSection>
     </div>
   );
 };

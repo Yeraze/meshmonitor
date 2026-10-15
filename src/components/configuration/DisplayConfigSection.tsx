@@ -6,6 +6,7 @@ import { useSectionBaseline } from '../../hooks/useSectionBaseline';
 import { NumberInput } from '../common/NumberInput';
 import { NumberInputScope } from '../common/NumberInputScope';
 import { useNumberInputScope } from '../common/numberInputScopeContext';
+import { ConfigSection } from '../shared/config/ConfigSection';
 
 // OLED type options from protobufs
 const OLED_TYPES = [
@@ -146,23 +147,7 @@ const DisplayConfigSection: React.FC<DisplayConfigSectionProps> = ({
 
   return (
     <NumberInputScope scope={numberScope}>
-    <div className="settings-section">
-      <h3 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-        {t('display_config.title')}
-        <a
-          href="https://meshmonitor.org/features/device#display-configuration"
-          target="_blank"
-          rel="noopener noreferrer"
-          style={{
-            fontSize: '1.2rem',
-            color: '#89b4fa',
-            textDecoration: 'none'
-          }}
-          title={t('display_config.view_docs')}
-        >
-          <UiIcon name="help" />
-        </a>
-      </h3>
+    <ConfigSection title={t('display_config.title')} docsUrl="https://meshmonitor.org/features/device#display-configuration">
 
       {/* Screen On Seconds */}
       <div className="setting-item">
@@ -376,7 +361,7 @@ const DisplayConfigSection: React.FC<DisplayConfigSectionProps> = ({
           </div>
         </div>
       )}
-    </div>
+    </ConfigSection>
     </NumberInputScope>
   );
 };

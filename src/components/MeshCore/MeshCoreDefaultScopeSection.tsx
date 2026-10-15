@@ -24,7 +24,8 @@ import { useTranslation } from 'react-i18next';
 import { MeshCoreActions, SavedRegion } from './hooks/useMeshCore';
 import { useToast } from '../ToastContainer';
 import { UiIcon } from '../icons';
-import { CollapsibleSection } from './CollapsibleSection';
+import { ConfigSection } from '../shared/config/ConfigSection';
+import { MESHCORE_DOCS } from './meshcoreDocs';
 import styles from './MeshCoreDeviceSettingSections.module.css';
 
 export interface MeshCoreDefaultScopeSectionProps {
@@ -164,14 +165,17 @@ export const MeshCoreDefaultScopeSection: React.FC<MeshCoreDefaultScopeSectionPr
   const scopeDisabled = !canWriteConfig || !connected || loading || savingScope;
 
   return (
-    <CollapsibleSection title={t('meshcore.scope.title', 'Default region / scope')} className="form-section">
-      <div id="meshcore-default-scope">
-        <p className="hint">
-          {t('meshcore.scope.hint',
+    <ConfigSection
+      id="meshcore-default-scope"
+      title={t('meshcore.scope.title', 'Default region / scope')}
+      docsUrl={`${MESHCORE_DOCS}#setting-a-scope`}
+      description={t('meshcore.scope.hint',
             'Region applied to all outgoing flood traffic (direct messages, adverts, requests) that has no channel-specific scope. ' +
             'Use a large region that includes you and the contacts you message — both your messages and the returning ACKs are scoped to it. ' +
             'Leave blank to send unscoped (legacy). Letters, digits and hyphens only.')}
-        </p>
+      collapsible
+    >
+      <div>
         <div className={styles.row}>
           <input
             type="text"
@@ -243,7 +247,7 @@ export const MeshCoreDefaultScopeSection: React.FC<MeshCoreDefaultScopeSectionPr
           )}
         </div>
       </div>
-    </CollapsibleSection>
+    </ConfigSection>
   );
 };
 

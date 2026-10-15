@@ -9,6 +9,7 @@ import { NumberInputScope } from '../common/NumberInputScope';
 import { useNumberInputScope } from '../common/numberInputScopeContext';
 import { useSource } from '../../contexts/SourceContext';
 import '../../styles/BackupManagement.css';
+import { ConfigSection } from '../shared/config/ConfigSection';
 
 interface BackupFile {
   filename: string;
@@ -260,8 +261,7 @@ const BackupManagementSection: React.FC<BackupManagementSectionProps> = ({ onBac
 
   return (
     <NumberInputScope scope={numberScope}>
-    <div className="settings-section" style={{ marginTop: '2rem' }}>
-      <h3>{t('backup_management.title')}</h3>
+    <ConfigSection title={t('backup_management.title')}>
 
       <div style={{
         backgroundColor: 'var(--color-surface)',
@@ -482,7 +482,7 @@ const BackupManagementSection: React.FC<BackupManagementSectionProps> = ({ onBac
           </div>
         </div>
       )}
-    </div>
+    </ConfigSection>
     </NumberInputScope>
   );
 };

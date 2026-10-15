@@ -157,6 +157,27 @@ describe('ConfigEmptyState / ConfigField / ReceiveOnlyNote', () => {
     expect(screen.getByLabelText(/Interval/)).toHaveAttribute('id', 'iv');
   });
 
+  it('collapsible: the title toggles the body, which stays mounted', () => {
+    render(
+      <ConfigSection title="Radio" collapsible defaultCollapsed>
+        <input aria-label="freq" defaultValue="869" />
+      </ConfigSection>,
+    );
+    const toggle = screen.getByRole('button', { name: 'Radio' });
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    // Hidden, not unmounted: the draft survives a collapse.
+    expect(screen.getByLabelText('freq')).not.toBeVisible();
+    fireEvent.click(toggle);
+    expect(toggle).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByLabelText('freq')).toBeVisible();
+    expect(screen.getByRole('heading', { name: /Radio/ })).toBeInTheDocument();
+  });
+
+  it('is not collapsible by default', () => {
+    render(<ConfigSection title="Plain"><input aria-label="x" /></ConfigSection>);
+    expect(screen.queryByRole('button', { name: 'Plain' })).toBeNull();
+  });
+
   it('ReceiveOnlyNote renders nothing unless receiveOnly', () => {
     const { container, rerender } = render(<ReceiveOnlyNote />);
     expect(container).toBeEmptyDOMElement();

@@ -6,6 +6,7 @@ import { NumberInput } from '../common/NumberInput';
 import { NumberInputScope } from '../common/NumberInputScope';
 import { useNumberInputScope } from '../common/numberInputScopeContext';
 import ModuleAvailabilityNotice from './ModuleAvailabilityNotice';
+import { ConfigSection } from '../shared/config/ConfigSection';
 
 interface AmbientLightingConfigSectionProps {
   ledState: boolean;
@@ -76,24 +77,7 @@ const AmbientLightingConfigSection: React.FC<AmbientLightingConfigSectionProps> 
 
   return (
     <NumberInputScope scope={numberScope}>
-    <div className="settings-section">
-      <h3 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-        {t('ambientlighting_config.title')}
-        <a
-          href="https://meshtastic.org/docs/configuration/module/ambient-lighting/"
-          target="_blank"
-          rel="noopener noreferrer"
-          style={{
-            fontSize: '1.2rem',
-            color: '#89b4fa',
-            textDecoration: 'none'
-          }}
-          title={t('ambientlighting_config.view_docs')}
-        >
-          ?
-        </a>
-      </h3>
-      <ModuleAvailabilityNotice />
+    <ConfigSection title={t('ambientlighting_config.title')} docsUrl="https://meshtastic.org/docs/configuration/module/ambient-lighting/" notice={<ModuleAvailabilityNotice />}>
 
       {/* Enable LED */}
       <div className="setting-item">
@@ -232,7 +216,7 @@ const AmbientLightingConfigSection: React.FC<AmbientLightingConfigSectionProps> 
           </div>
         </>
       )}
-    </div>
+    </ConfigSection>
     </NumberInputScope>
   );
 };

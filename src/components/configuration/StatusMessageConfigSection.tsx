@@ -4,6 +4,7 @@ import { useSaveBar } from '../../hooks/useSaveBar';
 import { useSectionBaseline } from '../../hooks/useSectionBaseline';
 import styles from './StatusMessageConfigSection.module.css';
 import { NODE_STATUS_MAX_BYTES, truncateToUtf8Bytes, utf8ByteLength } from '../../utils/statusMessage';
+import { ConfigSection } from '../shared/config/ConfigSection';
 
 interface StatusMessageConfigSectionProps {
   nodeStatus: string;
@@ -51,23 +52,7 @@ const StatusMessageConfigSection: React.FC<StatusMessageConfigSectionProps> = ({
   });
 
   return (
-    <div className="settings-section">
-      <h3 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-        {t('statusmessage_config.title', 'Status Message')}
-        <a
-          href="https://meshtastic.org/docs/configuration/module/status-message/"
-          target="_blank"
-          rel="noopener noreferrer"
-          style={{
-            fontSize: '1.2rem',
-            color: '#89b4fa',
-            textDecoration: 'none'
-          }}
-          title={t('statusmessage_config.view_docs', 'View Meshtastic docs')}
-        >
-          ?
-        </a>
-      </h3>
+    <ConfigSection title={t('statusmessage_config.title', 'Status Message')} docsUrl="https://meshtastic.org/docs/configuration/module/status-message/">
 
       {isDisabled && (
         <div style={{
@@ -117,7 +102,7 @@ const StatusMessageConfigSection: React.FC<StatusMessageConfigSectionProps> = ({
           </div>
         </div>
       </div>
-    </div>
+    </ConfigSection>
   );
 };
 

@@ -8,6 +8,7 @@ import { useNumberInputScope } from '../common/numberInputScopeContext';
 import { UiIcon } from '../icons';
 import TrafficManagementReplayPanel from './TrafficManagementReplayPanel';
 import replayStyles from './TrafficManagementReplayPanel.module.css';
+import { ConfigSection } from '../shared/config/ConfigSection';
 
 /**
  * Traffic Management (TMM) module config — v2.8 "non-zero implies enabled" schema.
@@ -108,10 +109,7 @@ const TrafficManagementConfigSection: React.FC<TrafficManagementConfigSectionPro
 
   return (
     <NumberInputScope scope={numberScope}>
-    <div className="settings-section">
-      <h3 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-        {t('trafficmanagement_config.title', 'Traffic Management')}
-      </h3>
+    <ConfigSection title={t('trafficmanagement_config.title', 'Traffic Management')}>
 
       {isDisabled && (
         <div style={{
@@ -247,7 +245,7 @@ const TrafficManagementConfigSection: React.FC<TrafficManagementConfigSectionPro
         rateLimitMaxPackets={rateLimitMaxPackets}
         disabled={isDisabled}
       />
-    </div>
+    </ConfigSection>
     </NumberInputScope>
   );
 };

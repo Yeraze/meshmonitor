@@ -20,6 +20,7 @@ import styles from './LoRaConfigSection.module.css';
 import { NumberInput } from '../common/NumberInput';
 import { NumberInputScope } from '../common/NumberInputScope';
 import { useNumberInputScope } from '../common/numberInputScopeContext';
+import { ConfigSection } from '../shared/config/ConfigSection';
 
 interface LoRaConfigSectionProps {
   usePreset: boolean;
@@ -226,23 +227,7 @@ const LoRaConfigSection: React.FC<LoRaConfigSectionProps> = ({
 
   return (
     <NumberInputScope scope={numberScope}>
-    <div className="settings-section">
-      <h3 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-        {t('lora_config.title')}
-        <a
-          href="https://meshmonitor.org/features/device#lora-radio-configuration"
-          target="_blank"
-          rel="noopener noreferrer"
-          style={{
-            fontSize: '1.2rem',
-            color: '#89b4fa',
-            textDecoration: 'none'
-          }}
-          title={t('lora_config.view_docs')}
-        >
-          <UiIcon name="help" />
-        </a>
-      </h3>
+    <ConfigSection title={t('lora_config.title')} docsUrl="https://meshmonitor.org/features/device#lora-radio-configuration">
       <div className="setting-item">
         <label htmlFor="usePreset" style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '0.5rem', width: '100%' }}>
           <input
@@ -688,7 +673,7 @@ const LoRaConfigSection: React.FC<LoRaConfigSectionProps> = ({
           </div>
         </label>
       </div>
-    </div>
+    </ConfigSection>
     </NumberInputScope>
   );
 };

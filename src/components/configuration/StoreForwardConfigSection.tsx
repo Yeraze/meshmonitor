@@ -1,12 +1,12 @@
 import React, { useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
-import { UiIcon } from '../icons';
 import { useSaveBar } from '../../hooks/useSaveBar';
 import { useSectionBaseline } from '../../hooks/useSectionBaseline';
 import { NumberInput } from '../common/NumberInput';
 import { NumberInputScope } from '../common/NumberInputScope';
 import { useNumberInputScope } from '../common/numberInputScopeContext';
 import ModuleAvailabilityNotice from './ModuleAvailabilityNotice';
+import { ConfigSection } from '../shared/config/ConfigSection';
 
 interface StoreForwardConfigSectionProps {
   enabled: boolean;
@@ -79,24 +79,7 @@ const StoreForwardConfigSection: React.FC<StoreForwardConfigSectionProps> = ({
 
   return (
     <NumberInputScope scope={numberScope}>
-    <div className="settings-section">
-      <h3 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-        {t('storeforward_config.title')}
-        <a
-          href="https://meshmonitor.org/features/device#store-and-forward-configuration"
-          target="_blank"
-          rel="noopener noreferrer"
-          style={{
-            fontSize: '1.2rem',
-            color: '#89b4fa',
-            textDecoration: 'none'
-          }}
-          title={t('storeforward_config.view_docs')}
-        >
-          <UiIcon name="help" />
-        </a>
-      </h3>
-      <ModuleAvailabilityNotice />
+    <ConfigSection title={t('storeforward_config.title')} docsUrl="https://meshmonitor.org/features/device#store-and-forward-configuration" notice={<ModuleAvailabilityNotice />}>
 
       {/* Enable Module */}
       <div className="setting-item">
@@ -206,7 +189,7 @@ const StoreForwardConfigSection: React.FC<StoreForwardConfigSectionProps> = ({
           </div>
         </>
       )}
-    </div>
+    </ConfigSection>
     </NumberInputScope>
   );
 };

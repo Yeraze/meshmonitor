@@ -175,6 +175,68 @@ describe('MeshCoreConfigurationView permission gating', () => {
       authPermission = () => true;
     }
   });
+
+  it('disables the name, location and radio inputs for a read-only user (#5818)', () => {
+    authPermission = (_resource, action) => action !== 'write';
+    try {
+      render(<MeshCoreConfigurationView status={makeStatus()} actions={makeActions()} />);
+
+      expect(screen.getByLabelText('meshcore.config.name_label')).toBeDisabled();
+      expect(screen.getByLabelText('meshcore.config.latitude')).toBeDisabled();
+      expect(screen.getByLabelText('meshcore.config.longitude')).toBeDisabled();
+      expect(screen.getByLabelText('meshcore.config.preset')).toBeDisabled();
+      expect(screen.getByLabelText('meshcore.config.frequency')).toBeDisabled();
+    } finally {
+      authPermission = () => true;
+    }
+  });
+
+  it('leaves the name and location inputs enabled for a writer', () => {
+    render(<MeshCoreConfigurationView status={makeStatus()} actions={makeActions()} />);
+    expect(screen.getByLabelText('meshcore.config.name_label')).toBeEnabled();
+    expect(screen.getByLabelText('meshcore.config.latitude')).toBeEnabled();
+    expect(screen.getByLabelText('meshcore.config.longitude')).toBeEnabled();
+  });
+});
+
+describe('MeshCoreConfigurationView section shell (#5818)', () => {
+  it('gives each saved-setting section an anchor id and a docs link', () => {
+    const { container } = render(
+      <MeshCoreConfigurationView status={makeStatus()} actions={makeActions()} />,
+    );
+    const docs: Record<string, string> = {
+      'meshcore-config-name': '#configuration',
+      'meshcore-config-location': '#configuration',
+      'meshcore-config-radio': '#radio-configuration',
+      'meshcore-config-tx-power': '#radio-configuration',
+      'meshcore-config-telemetry': '#telemetry-modes',
+      'meshcore-path-hash': '#per-source-settings',
+      'meshcore-default-scope': '#setting-a-scope',
+      'meshcore-device-actions': '#adverts',
+    };
+    for (const [id, anchor] of Object.entries(docs)) {
+      const header = container.querySelector(`#${id}`);
+      expect(header, id).not.toBeNull();
+      const link = header!.querySelector('a[href]');
+      expect(link?.getAttribute('href'), id).toBe(`https://meshmonitor.org/features/meshcore${anchor}`);
+    }
+  });
+
+  it('collapses and expands a section without losing its draft', () => {
+    render(<MeshCoreConfigurationView status={makeStatus()} actions={makeActions()} />);
+    const name = screen.getByLabelText('meshcore.config.name_label') as HTMLInputElement;
+    fireEvent.change(name, { target: { value: 'draft' } });
+
+    const toggle = screen.getByRole('button', { name: 'meshcore.config.device_name' });
+    expect(toggle).toHaveAttribute('aria-expanded', 'true');
+    fireEvent.click(toggle);
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    expect(name).not.toBeVisible();
+
+    fireEvent.click(toggle);
+    expect(name).toBeVisible();
+    expect(name.value).toBe('draft');
+  });
 });
 
 describe('MeshCoreConfigurationView radio preset picker (#5137)', () => {

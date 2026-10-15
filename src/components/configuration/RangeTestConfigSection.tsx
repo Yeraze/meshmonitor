@@ -9,6 +9,7 @@ import { UiIcon } from '../icons';
 import styles from './RangeTestConfigSection.module.css';
 import ModuleAvailabilityNotice from './ModuleAvailabilityNotice';
 import { useModuleExcluded } from './moduleAvailabilityContext';
+import { ConfigSection } from '../shared/config/ConfigSection';
 
 interface RangeTestConfigSectionProps {
   enabled: boolean;
@@ -80,26 +81,7 @@ const RangeTestConfigSection: React.FC<RangeTestConfigSectionProps> = ({
 
   return (
     <NumberInputScope scope={numberScope}>
-    <div className="settings-section">
-      <h3 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-        {t('rangetest_config.title')}
-        <a
-          href="https://meshtastic.org/docs/configuration/module/range-test/"
-          target="_blank"
-          rel="noopener noreferrer"
-          style={{
-            fontSize: '1.2rem',
-            color: '#89b4fa',
-            textDecoration: 'none'
-          }}
-          title={t('rangetest_config.view_docs')}
-        >
-          ?
-        </a>
-      </h3>
-      <ModuleAvailabilityNotice
-        detail={isDisabled ? t('rangetest_config.removed_in_28_detail', 'It was removed from Meshtastic firmware in 2.8.') : undefined}
-      />
+    <ConfigSection title={t('rangetest_config.title')} docsUrl="https://meshtastic.org/docs/configuration/module/range-test/" notice={<ModuleAvailabilityNotice detail={isDisabled ? t('rangetest_config.removed_in_28_detail', 'It was removed from Meshtastic firmware in 2.8.') : undefined} />}>
 
       {isDisabled && !gateExcluded && (
         <div className={styles.removedNotice} role="status">
@@ -174,7 +156,7 @@ const RangeTestConfigSection: React.FC<RangeTestConfigSectionProps> = ({
           </>
         )}
       </div>
-    </div>
+    </ConfigSection>
     </NumberInputScope>
   );
 };

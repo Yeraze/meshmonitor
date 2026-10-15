@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { useSaveBar } from '../../hooks/useSaveBar';
 import { useSectionBaseline } from '../../hooks/useSectionBaseline';
 import ModuleAvailabilityNotice from './ModuleAvailabilityNotice';
+import { ConfigSection } from '../shared/config/ConfigSection';
 
 interface RemoteHardwareConfigSectionProps {
   enabled: boolean;
@@ -52,24 +53,7 @@ const RemoteHardwareConfigSection: React.FC<RemoteHardwareConfigSectionProps> = 
   });
 
   return (
-    <div className="settings-section">
-      <h3 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-        {t('remotehw_config.title')}
-        <a
-          href="https://meshtastic.org/docs/configuration/module/remote-hardware/"
-          target="_blank"
-          rel="noopener noreferrer"
-          style={{
-            fontSize: '1.2rem',
-            color: '#89b4fa',
-            textDecoration: 'none'
-          }}
-          title={t('remotehw_config.view_docs')}
-        >
-          ?
-        </a>
-      </h3>
-      <ModuleAvailabilityNotice />
+    <ConfigSection title={t('remotehw_config.title')} docsUrl="https://meshtastic.org/docs/configuration/module/remote-hardware/" notice={<ModuleAvailabilityNotice />}>
 
       {/* Enable Module */}
       <div className="setting-item">
@@ -119,7 +103,7 @@ const RemoteHardwareConfigSection: React.FC<RemoteHardwareConfigSectionProps> = 
           </div>
         </>
       )}
-    </div>
+    </ConfigSection>
   );
 };
 

@@ -1,8 +1,8 @@
 import React, { useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
-import { UiIcon } from '../icons';
 import { useSaveBar } from '../../hooks/useSaveBar';
 import { useSectionBaseline } from '../../hooks/useSectionBaseline';
+import { ConfigSection } from '../shared/config/ConfigSection';
 
 interface NodeIdentitySectionProps {
   /** Bumped when the page reloads config from the node (#5797). */
@@ -63,23 +63,7 @@ const NodeIdentitySection: React.FC<NodeIdentitySectionProps> = ({
   });
 
   return (
-    <div className="settings-section">
-      <h3 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-        {t('node_identity.title')}
-        <a
-          href="https://meshmonitor.org/features/device#node-identity"
-          target="_blank"
-          rel="noopener noreferrer"
-          style={{
-            fontSize: '1.2rem',
-            color: '#89b4fa',
-            textDecoration: 'none'
-          }}
-          title={t('node_identity.view_docs')}
-        >
-          <UiIcon name="help" />
-        </a>
-      </h3>
+    <ConfigSection title={t('node_identity.title')} docsUrl="https://meshmonitor.org/features/device#node-identity">
       <div className="setting-item">
         <label htmlFor="longName">
           {t('node_identity.long_name')}
@@ -140,7 +124,7 @@ const NodeIdentitySection: React.FC<NodeIdentitySectionProps> = ({
           </div>
         </label>
       </div>
-    </div>
+    </ConfigSection>
   );
 };
 

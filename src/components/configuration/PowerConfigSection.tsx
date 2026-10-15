@@ -6,6 +6,7 @@ import { useSectionBaseline } from '../../hooks/useSectionBaseline';
 import { NumberInput } from '../common/NumberInput';
 import { NumberInputScope } from '../common/NumberInputScope';
 import { useNumberInputScope } from '../common/numberInputScopeContext';
+import { ConfigSection } from '../shared/config/ConfigSection';
 
 interface PowerConfigSectionProps {
   // Power saving
@@ -109,23 +110,7 @@ const PowerConfigSection: React.FC<PowerConfigSectionProps> = ({
 
   return (
     <NumberInputScope scope={numberScope}>
-    <div className="settings-section">
-      <h3 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-        {t('power_config.title')}
-        <a
-          href="https://meshmonitor.org/features/device#power-configuration"
-          target="_blank"
-          rel="noopener noreferrer"
-          style={{
-            fontSize: '1.2rem',
-            color: '#89b4fa',
-            textDecoration: 'none'
-          }}
-          title={t('power_config.view_docs')}
-        >
-          <UiIcon name="help" />
-        </a>
-      </h3>
+    <ConfigSection title={t('power_config.title')} docsUrl="https://meshmonitor.org/features/device#power-configuration">
 
       {/* Power Saving Mode */}
       <div className="setting-item">
@@ -327,7 +312,7 @@ const PowerConfigSection: React.FC<PowerConfigSectionProps> = ({
           </div>
         </div>
       )}
-    </div>
+    </ConfigSection>
     </NumberInputScope>
   );
 };

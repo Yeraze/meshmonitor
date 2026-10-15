@@ -1,6 +1,5 @@
 import React, { useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
-import { UiIcon } from '../icons';
 import { useSaveBar } from '../../hooks/useSaveBar';
 import { useSectionBaseline } from '../../hooks/useSectionBaseline';
 import { neighborInfoIntervalToSend } from '../../utils/broadcastIntervalFloor';
@@ -8,6 +7,7 @@ import ModuleAvailabilityNotice from './ModuleAvailabilityNotice';
 import { NumberInput } from '../common/NumberInput';
 import { NumberInputScope } from '../common/NumberInputScope';
 import { useNumberInputScope } from '../common/numberInputScopeContext';
+import { ConfigSection } from '../shared/config/ConfigSection';
 
 interface NeighborInfoSectionProps {
   neighborInfoEnabled: boolean;
@@ -69,24 +69,7 @@ const NeighborInfoSection: React.FC<NeighborInfoSectionProps> = ({
 
   return (
     <NumberInputScope scope={numberScope}>
-    <div className="settings-section">
-      <h3 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-        {t('neighbor_info.title')}
-        <a
-          href="https://meshmonitor.org/features/device#neighbor-info"
-          target="_blank"
-          rel="noopener noreferrer"
-          style={{
-            fontSize: '1.2rem',
-            color: '#89b4fa',
-            textDecoration: 'none'
-          }}
-          title={t('neighbor_info.view_docs')}
-        >
-          <UiIcon name="help" />
-        </a>
-      </h3>
-      <ModuleAvailabilityNotice />
+    <ConfigSection title={t('neighbor_info.title')} docsUrl="https://meshmonitor.org/features/device#neighbor-info" notice={<ModuleAvailabilityNotice />}>
       <div className="setting-item">
         <label htmlFor="neighborInfoEnabled" style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '0.5rem', width: '100%' }}>
           <input
@@ -136,7 +119,7 @@ const NeighborInfoSection: React.FC<NeighborInfoSectionProps> = ({
           </div>
         </>
       )}
-    </div>
+    </ConfigSection>
     </NumberInputScope>
   );
 };

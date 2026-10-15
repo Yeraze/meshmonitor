@@ -12,6 +12,7 @@ import { buildOtaGateway } from '../../utils/otaGateway';
 import { firmwareUpdateSupport } from '../../utils/firmwareHardwareMap';
 import FirmwareUpdateUnsupportedCard from './FirmwareUpdateUnsupportedCard';
 import styles from './FirmwareUpdateSection.module.css';
+import { ConfigSection } from '../shared/config/ConfigSection';
 
 interface FirmwareUpdateSectionProps {
   baseUrl: string;
@@ -691,9 +692,7 @@ const FirmwareUpdateSection: React.FC<FirmwareUpdateSectionProps> = ({ baseUrl, 
       : null;
 
   return (
-    <div id={sectionId} className="settings-section" style={{ marginTop: '2rem' }}>
-      <h3>{t('firmware.title', 'Firmware Updates')}</h3>
-      <p className="setting-description">{t('firmware.description', 'Manage firmware updates for your gateway node.')}</p>
+    <ConfigSection title={t('firmware.title', 'Firmware Updates')} description={t('firmware.description', 'Manage firmware updates for your gateway node.')} id={sectionId}>
 
       {/* Issue #2981: surface a clear notice when the active source can't be
           flashed over IP, instead of silently defaulting to 192.168.1.100.
@@ -1508,7 +1507,7 @@ const FirmwareUpdateSection: React.FC<FirmwareUpdateSectionProps> = ({ baseUrl, 
           </table>
         )}
       </div>
-    </div>
+    </ConfigSection>
   );
 };
 
