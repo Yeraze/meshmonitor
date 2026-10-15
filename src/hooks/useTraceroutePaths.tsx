@@ -21,6 +21,7 @@ import {
   resolveSegmentPosition,
   buildLiveNodePositionMap,
   decomposeTraceroute,
+  findSelectedNodeTraceroute,
   hasReturnPath,
   isUnknownSnr,
   isValidRouteNode,
@@ -819,9 +820,7 @@ export function useTraceroutePaths({
     // Skip rendering traceroute if the selected node is the current/local node
     if (!showRoute || !selectedNodeId || selectedNodeId === currentNodeId) return null;
 
-    const selectedTrace = traceroutesDigest.find(
-      tr => tr.toNodeId === selectedNodeId || tr.fromNodeId === selectedNodeId
-    );
+    const selectedTrace = findSelectedNodeTraceroute(traceroutesDigest, selectedNodeId);
 
     if (!selectedTrace) return null;
 
@@ -977,9 +976,7 @@ export function useTraceroutePaths({
     // Only compute when showRoute is enabled and there's a selected node
     if (!showRoute || !selectedNodeId || selectedNodeId === currentNodeId) return null;
 
-    const selectedTrace = traceroutesDigest.find(
-      tr => tr.toNodeId === selectedNodeId || tr.fromNodeId === selectedNodeId
-    );
+    const selectedTrace = findSelectedNodeTraceroute(traceroutesDigest, selectedNodeId);
 
     if (!selectedTrace) return null;
 
@@ -1023,12 +1020,11 @@ export function useTraceroutePaths({
   // (typeof-based #1862 snapshot checks) — the same resolution the rendered
   // segments use — so zoom-to-fit frames exactly what is drawn.
   const tracerouteBounds = useMemo((): [[number, number], [number, number]] | null => {
-    if (!tracerouteNodeNums || tracerouteNodeNums.size === 0) return null;
+    if (!selectedNodeId || !tracerouteNodeNums || tracerouteNodeNums.size === 0) return null;
 
-    // Parse snapshot positions from the selected traceroute (#1862, shared util)
-    const selectedTrace = traceroutesDigest.find(
-      tr => tr.toNodeId === selectedNodeId || tr.fromNodeId === selectedNodeId
-    );
+    // Parse snapshot positions from the selected traceroute (#1862, shared util).
+    // Same pick as the two memos above (#5821), so the bounds frame the drawn row.
+    const selectedTrace = findSelectedNodeTraceroute(traceroutesDigest, selectedNodeId);
     if (!selectedTrace) return null;
 
     // Zoom-to-fit only kicks in for a *complete* (both-leg) traceroute. This
