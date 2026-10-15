@@ -1,0 +1,31 @@
+/* Meshtastic Timer Triggers section (#5812). */
+
+.empty {
+  margin-left: 0;
+}
+
+.untitled {
+  font-style: italic;
+  font-weight: normal;
+  color: var(--color-text-subtle);
+}
+
+.addButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin-top: 0.5rem;
+  padding: 0.45rem 0.9rem;
+  border-radius: 4px;
+  border: 1px solid var(--color-accent);
+  background: var(--color-accent);
+  color: var(--color-bg);
+  font-size: 0.9rem;
+  font-weight: bold;
+  cursor: pointer;
+}
+
+.addButton:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}

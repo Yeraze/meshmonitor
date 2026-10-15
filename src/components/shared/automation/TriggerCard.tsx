@@ -54,9 +54,28 @@ export interface TriggerCardProps {
   deletePreview?: React.ReactNode;
   /** Shown on the collapsed card, e.g. "has errors". */
   invalid?: boolean;
+  /**
+   * Protocol-only buttons placed before Edit / Delete, e.g. MeshCore "Run
+   * now" or a script "Test" (#5812). Shown collapsed and expanded; the
+   * caller owns their disabled state.
+   */
+  actions?: React.ReactNode;
   /** The expanded edit form. Mounted only while expanded. */
   children?: React.ReactNode;
 }
+
+/** A button styled like Edit / Delete, for the `actions` slot (#5812). */
+export const TriggerCardAction: React.FC<React.ButtonHTMLAttributes<HTMLButtonElement>> = ({
+  className,
+  type = 'button',
+  ...rest
+}) => (
+  <button
+    type={type}
+    className={className ? `${styles.button} ${className}` : styles.button}
+    {...rest}
+  />
+);
 
 export const TriggerCard: React.FC<TriggerCardProps> = ({
   title,
@@ -75,6 +94,7 @@ export const TriggerCard: React.FC<TriggerCardProps> = ({
   deleteMessage,
   deletePreview,
   invalid = false,
+  actions,
   children,
 }) => {
   const { t } = useTranslation();
@@ -136,6 +156,7 @@ export const TriggerCard: React.FC<TriggerCardProps> = ({
           ) : null}
         </div>
         <div className={styles.actions}>
+          {actions}
           {!expanded && (
             <button
               type="button"

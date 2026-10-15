@@ -1,0 +1,51 @@
+/* MeshCore Timer Trigger editor (#5812). */
+
+.editor {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-size: 0.85rem;
+  min-width: 0;
+}
+
+.field input,
+.field select,
+.field textarea {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.field [aria-invalid='true'] {
+  border-color: var(--color-error);
+}
+
+.mono {
+  font-family: monospace;
+}
+
+.error {
+  font-size: 0.8rem;
+  color: var(--color-error);
+}
+
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: flex-start;
+}
+
+.row > .field:first-child {
+  flex: 0 1 10rem;
+}
+
+.grow {
+  flex: 1 1 12rem;
+  min-width: 0;
+}

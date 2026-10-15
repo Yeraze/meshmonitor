@@ -45,7 +45,7 @@ describe('automation forms wrap instead of overflowing on a phone', () => {
     expect(tsx.match(/className=\{`?\$?\{?layout\.growField\}/g)?.length).toBe(2);
   });
 
-  it.each(['TimerTriggersSection.tsx', 'GeofenceTriggersSection.tsx'])(
+  it.each(['timer-triggers/TimerTriggerEditor.tsx', 'GeofenceTriggersSection.tsx'])(
     '%s channel row wraps',
     (file) => {
       const tsx = read(file);

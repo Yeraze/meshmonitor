@@ -124,6 +124,7 @@ describe('MeshCoreTimerTriggersSection receive-only', () => {
 
   it('leaves the trigger name input editable when receive-only', async () => {
     render(<MeshCoreTimerTriggersSection baseUrl="" sourceId="src1" receiveOnly />);
+    fireEvent.click(await screen.findByRole('button', { name: /edit/i }));
     await waitFor(() => {
       const input = screen.queryByDisplayValue('Beacon') as HTMLInputElement | null;
       expect(input).not.toBeNull();
@@ -133,6 +134,7 @@ describe('MeshCoreTimerTriggersSection receive-only', () => {
 
   it('leaves the cron expression input editable when receive-only', async () => {
     render(<MeshCoreTimerTriggersSection baseUrl="" sourceId="src1" receiveOnly />);
+    fireEvent.click(await screen.findByRole('button', { name: /edit/i }));
     await waitFor(() => {
       const input = screen.queryByDisplayValue('0 */6 * * *') as HTMLInputElement | null;
       expect(input).not.toBeNull();
