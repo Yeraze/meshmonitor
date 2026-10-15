@@ -31,6 +31,8 @@ import {
   validateForwardingRules,
   type ForwardingRule,
 } from '../../types/forwarding';
+import { ConfigSection, ConfigHeaderCount } from '../shared/config/ConfigSection';
+import { ConfigEmptyState } from '../shared/config/ConfigEmptyState';
 import styles from './ForwardingSection.module.css';
 
 export interface ForwardingChannelOption {
@@ -60,6 +62,8 @@ export interface ForwardingSectionProps {
    * (MeshCore Automations view).
    */
   controlVariant?: 'settings' | 'meshcore';
+  /** Docs page for the header help link. */
+  docsUrl?: string;
 }
 
 const newId = (): string =>
@@ -88,6 +92,7 @@ export const ForwardingSection: React.FC<ForwardingSectionProps> = ({
   receiveOnly = false,
   saveBarId = 'forwarding',
   controlVariant = 'settings',
+  docsUrl = 'https://meshmonitor.org/features/automation#forwarding',
 }) => {
   const { t } = useTranslation();
   const csrfFetch = useCsrfFetch();
@@ -220,34 +225,40 @@ export const ForwardingSection: React.FC<ForwardingSectionProps> = ({
     c.name ? `${c.index}: ${c.name}` : t('forwarding.channel_n', 'Channel {{index}}', { index: c.index });
 
   return (
-    <>
-      <div className={styles.header}>
-        <h2>
-          <UiIcon name="forward" size={20} />
-          {t('forwarding.title', 'Forwarding')}
-        </h2>
-        <span className={styles.count}>
-          {t('forwarding.count', { count: rules.length })}
-        </span>
-        <label className={styles.masterSwitch}>
-          <input
-            type="checkbox"
-            checked={masterEnabled}
-            disabled={!canWrite || masterBusy}
-            onChange={e => void handleMasterToggle(e.target.checked)}
-            data-testid="forwarding-master-switch"
-          />
-          {t('forwarding.master_label', 'Forwarding on for this source')}
-        </label>
-      </div>
-
-      <div className={`settings-section ${styles.body}`}>
-        <p className={styles.description}>
-          {t(
-            'forwarding.description',
-            'Copy matching incoming messages to another channel or to one node on this source, for example your DMs to your phone while you are away. Turn each rule on or off with its checkbox.',
-          )}
-        </p>
+    <ConfigSection
+      title={t('forwarding.title', 'Forwarding')}
+      icon={<UiIcon name="forward" size={20} />}
+      docsUrl={docsUrl}
+      canWrite={canWrite}
+      receiveOnly={receiveOnly}
+      receiveOnlyNote={t(
+        'forwarding.paused',
+        'Paused: this source cannot transmit (receive-only or TX disabled). Rules are shown read-only and nothing is forwarded.',
+      )}
+      bodyClassName={styles.body}
+      description={t(
+        'forwarding.description',
+        'Copy matching incoming messages to another channel or to one node on this source, for example your DMs to your phone while you are away. Turn each rule on or off with its checkbox.',
+      )}
+      headerActions={
+        <>
+          <ConfigHeaderCount>
+            {t('forwarding.count', { count: rules.length })}
+          </ConfigHeaderCount>
+          {/* Saves at once via PUT, apart from the save bar (#5537). */}
+          <label className={styles.masterSwitch}>
+            <input
+              type="checkbox"
+              checked={masterEnabled}
+              disabled={!canWrite || masterBusy}
+              onChange={e => void handleMasterToggle(e.target.checked)}
+              data-testid="forwarding-master-switch"
+            />
+            {t('forwarding.master_label', 'Forwarding on for this source')}
+          </label>
+        </>
+      }
+    >
         <p className={styles.limits}>
           {t(
             'forwarding.limits',
@@ -255,16 +266,6 @@ export const ForwardingSection: React.FC<ForwardingSectionProps> = ({
             { max: FORWARDING_MAX_PER_WINDOW, chars: FORWARDING_MAX_TEXT_CHARS, marker: FORWARDED_MARKER.trim() },
           )}
         </p>
-
-        {receiveOnly && (
-          <p role="status" className={styles.paused}>
-            <UiIcon name="pause" size={14} />
-            {t(
-              'forwarding.paused',
-              'Paused: this source cannot transmit (receive-only or TX disabled). Rules are shown read-only and nothing is forwarded.',
-            )}
-          </p>
-        )}
 
         {!masterEnabled && (
           <p role="status" className={styles.paused}>
@@ -277,7 +278,7 @@ export const ForwardingSection: React.FC<ForwardingSectionProps> = ({
         )}
 
         {rules.length === 0 && (
-          <p className={styles.empty}>{t('forwarding.empty', 'No forwarding rules yet.')}</p>
+          <ConfigEmptyState>{t('forwarding.empty', 'No forwarding rules yet.')}</ConfigEmptyState>
         )}
 
         {rules.map(rule => {
@@ -481,8 +482,7 @@ export const ForwardingSection: React.FC<ForwardingSectionProps> = ({
             {t('forwarding.add', 'Add forwarding rule')}
           </button>
         </div>
-      </div>
-    </>
+    </ConfigSection>
   );
 };
 

@@ -8,7 +8,9 @@ import { NumberInput } from '../common/NumberInput';
 import { NumberInputScope } from '../common/NumberInputScope';
 import { useNumberInputScope } from '../common/numberInputScopeContext';
 import { ScopeSelectField, type ScopeMode } from './ScopeSelectField';
-import { MeshCoreReceiveOnlyNote } from './MeshCoreReceiveOnlyNote';
+import { ConfigSection, ConfigHeaderCount } from '../shared/config/ConfigSection';
+import { ConfigEmptyState } from '../shared/config/ConfigEmptyState';
+import { meshCoreReceiveOnlyText } from './meshCoreReceiveOnlyText';
 
 interface MeshCoreAutoResponderSectionProps {
   baseUrl: string;
@@ -266,45 +268,29 @@ export const MeshCoreAutoResponderSection: React.FC<MeshCoreAutoResponderSection
   return (
     <NumberInputScope scope={numberScope}>
     <>
-      <div className="automation-section-header" style={{
-        display: 'flex',
-        alignItems: 'center',
-        marginBottom: '1.5rem',
-        marginTop: '2rem',
-        padding: '1rem 1.25rem',
-        background: 'var(--color-surface-hover)',
-        border: '1px solid var(--color-surface-active)',
-        borderRadius: '8px',
-      }}>
-        <h2 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-          <input
-            type="checkbox"
-            checked={enabled}
-            onChange={(e) => setEnabled(e.target.checked)}
-            disabled={!canWrite}
-            style={{ width: 'auto', margin: 0, cursor: canWrite ? 'pointer' : 'not-allowed' }}
-          />
-          {t('meshcore.automation.responder.title', 'Auto-Responder')}
-        </h2>
-        <span style={{ marginLeft: 'auto', fontSize: '0.85rem', color: 'var(--color-text-subtle)' }}>
-          {t('meshcore.automation.responder.count', '{{count}} triggers', { count: triggers.length })}
-        </span>
-      </div>
-
-      <MeshCoreReceiveOnlyNote receiveOnly={receiveOnly} />
-
-      <div className="settings-section" style={{ opacity: enabled ? 1 : 0.5, transition: 'opacity 0.2s' }}>
-        <p style={{ marginBottom: '1rem', color: '#666', lineHeight: 1.5, marginLeft: '1.75rem' }}>
-          {t(
-            'meshcore.automation.responder.description',
-            'Match incoming messages against operator-defined patterns and reply with a text response. Each trigger supports per-channel filtering, DM listening, and a per-sender cooldown.',
-          )}
-        </p>
-
+      <ConfigSection
+        title={t('meshcore.automation.responder.title', 'Auto-Responder')}
+        enabled={enabled}
+        onEnabledChange={setEnabled}
+        enableLabel={t('meshcore.automation.responder.title', 'Auto-Responder')}
+        docsUrl="https://meshmonitor.org/features/meshcore#auto-responder"
+        canWrite={canWrite}
+        receiveOnly={receiveOnly}
+        receiveOnlyNote={meshCoreReceiveOnlyText(t)}
+        headerActions={
+          <ConfigHeaderCount>
+            {t('meshcore.automation.responder.count', '{{count}} triggers', { count: triggers.length })}
+          </ConfigHeaderCount>
+        }
+        description={t(
+          'meshcore.automation.responder.description',
+          'Match incoming messages against operator-defined patterns and reply with a text response. Each trigger supports per-channel filtering, DM listening, and a per-sender cooldown.',
+        )}
+      >
         {triggers.length === 0 && (
-          <p style={{ marginLeft: '1.75rem', fontSize: '0.9rem', color: 'var(--color-text-subtle)' }}>
+          <ConfigEmptyState>
             {t('meshcore.automation.responder.empty', 'No triggers configured yet.')}
-          </p>
+          </ConfigEmptyState>
         )}
 
         {triggers.map(tr => {
@@ -556,7 +542,7 @@ export const MeshCoreAutoResponderSection: React.FC<MeshCoreAutoResponderSection
             {t('meshcore.automation.responder.add_button', 'Add trigger')}
           </button>
         </div>
-      </div>
+      </ConfigSection>
     </>
     </NumberInputScope>
   );

@@ -9,7 +9,9 @@ import { NumberInput } from '../common/NumberInput';
 import { NumberInputScope } from '../common/NumberInputScope';
 import { useNumberInputScope } from '../common/numberInputScopeContext';
 import { ScopeSelectField, type ScopeMode } from './ScopeSelectField';
-import { MeshCoreReceiveOnlyNote } from './MeshCoreReceiveOnlyNote';
+import { ConfigSection, ConfigHeaderCount } from '../shared/config/ConfigSection';
+import { ConfigEmptyState } from '../shared/config/ConfigEmptyState';
+import { meshCoreReceiveOnlyText } from './meshCoreReceiveOnlyText';
 import { isTxDisabledBody } from '../../utils/txDisabled';
 import { MeshCoreAdvertModeField } from './MeshCoreAdvertModeField';
 import {
@@ -313,39 +315,27 @@ export const MeshCoreTimerTriggersSection: React.FC<MeshCoreTimerTriggersSection
   return (
     <NumberInputScope scope={numberScope}>
     <>
-      <div className="automation-section-header" style={{
-        display: 'flex',
-        alignItems: 'center',
-        marginBottom: '1.5rem',
-        marginTop: '2rem',
-        padding: '1rem 1.25rem',
-        background: 'var(--color-surface-hover)',
-        border: '1px solid var(--color-surface-active)',
-        borderRadius: '8px',
-      }}>
-        <h2 style={{ margin: 0 }}>
-          {t('meshcore.automation.timers.title', 'Timer Triggers')}
-        </h2>
-        <span style={{ marginLeft: 'auto', fontSize: '0.85rem', color: 'var(--color-text-subtle)' }}>
-          {t('meshcore.automation.timers.count', '{{count}} triggers', { count: triggers.length })}
-        </span>
-      </div>
-
-      <MeshCoreReceiveOnlyNote receiveOnly={receiveOnly} />
-
-      <div className="settings-section">
-        <p style={{ marginBottom: '1rem', color: '#666', lineHeight: 1.5, marginLeft: '1.75rem' }}>
-          {t(
-            'meshcore.automation.timers.description',
-            'Schedule recurring actions — send a message to a channel or contact, or fire a MeshCore advert. Each trigger runs on its own cron or interval.',
-          )}
-        </p>
-
+      <ConfigSection
+        title={t('meshcore.automation.timers.title', 'Timer Triggers')}
+        docsUrl="https://meshmonitor.org/features/meshcore#timer-triggers"
+        canWrite={canWrite}
+        receiveOnly={receiveOnly}
+        receiveOnlyNote={meshCoreReceiveOnlyText(t)}
+        headerActions={
+          <ConfigHeaderCount>
+            {t('meshcore.automation.timers.count', '{{count}} triggers', { count: triggers.length })}
+          </ConfigHeaderCount>
+        }
+        description={t(
+          'meshcore.automation.timers.description',
+          'Schedule recurring actions — send a message to a channel or contact, or fire a MeshCore advert. Each trigger runs on its own cron or interval.',
+        )}
+      >
         {/* List of existing triggers */}
         {triggers.length === 0 && (
-          <p style={{ marginLeft: '1.75rem', fontSize: '0.9rem', color: 'var(--color-text-subtle)' }}>
+          <ConfigEmptyState>
             {t('meshcore.automation.timers.empty', 'No timer triggers configured yet.')}
-          </p>
+          </ConfigEmptyState>
         )}
 
         {triggers.map(tr => (
@@ -620,7 +610,7 @@ export const MeshCoreTimerTriggersSection: React.FC<MeshCoreTimerTriggersSection
             {t('meshcore.automation.timers.add_button', 'Add trigger')}
           </button>
         </div>
-      </div>
+      </ConfigSection>
     </>
     </NumberInputScope>
   );

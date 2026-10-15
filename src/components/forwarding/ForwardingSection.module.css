@@ -9,31 +9,10 @@
  * airtime warning.
  */
 
-.header {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  margin: 2rem 0 1rem;
-  padding: 1rem 1.25rem;
-  background: var(--color-surface-hover);
-  border: 1px solid var(--color-surface-active);
-  border-radius: 8px;
-}
-
-.header h2 {
-  margin: 0;
-  display: flex;
-  align-items: center;
-  gap: 0.6rem;
-  min-width: 0;
-}
-
-.count {
-  margin-left: auto;
-  font-size: 0.85rem;
-  color: var(--color-text-subtle);
-  white-space: nowrap;
-}
+/*
+ * The header bar, description, count and empty state come from the shared
+ * ConfigSection shell (src/components/shared/config, #5807).
+ */
 
 /* Source-level master switch (#5537) — sits after the rule count. */
 .masterSwitch {
@@ -48,12 +27,6 @@
 
 .masterSwitch input {
   margin: 0;
-}
-
-@media (max-width: 768px) {
-  .header {
-    flex-wrap: wrap;
-  }
 }
 
 .body {
@@ -82,12 +55,6 @@
   }
 }
 
-.description {
-  margin: 0;
-  color: var(--color-text-subtle);
-  line-height: 1.5;
-}
-
 .limits {
   margin: 0;
   font-size: 0.85rem;
@@ -102,12 +69,6 @@
   margin: 0;
   font-size: 0.9rem;
   color: var(--color-warning);
-}
-
-.empty {
-  margin: 0;
-  font-size: 0.9rem;
-  color: var(--color-text-subtle);
 }
 
 .card {

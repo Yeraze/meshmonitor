@@ -10,7 +10,8 @@ import { NumberInputScope } from '../common/NumberInputScope';
 import { useNumberInputScope } from '../common/numberInputScopeContext';
 import { ScopeSelectField, type ScopeMode } from './ScopeSelectField';
 import { MESHCORE_AUTOMATION_TOKENS } from './meshcoreAutomationTokens';
-import { MeshCoreReceiveOnlyNote } from './MeshCoreReceiveOnlyNote';
+import { ConfigSection } from '../shared/config/ConfigSection';
+import { meshCoreReceiveOnlyText } from './meshCoreReceiveOnlyText';
 import { isTxDisabledBody } from '../../utils/txDisabled';
 import { MeshCoreAdvertModeField } from './MeshCoreAdvertModeField';
 import { DEFAULT_MESHCORE_ADVERT_MODE, isMeshCoreAdvertMode, type MeshCoreAdvertMode } from '../../types/meshcoreAdvert';
@@ -335,47 +336,32 @@ export const MeshCoreAutoAnnounceSection: React.FC<MeshCoreAutoAnnounceSectionPr
   return (
     <NumberInputScope scope={numberScope}>
     <>
-      <div className="automation-section-header" style={{
-        display: 'flex',
-        alignItems: 'center',
-        marginBottom: '1.5rem',
-        marginTop: '2rem',
-        padding: '1rem 1.25rem',
-        background: 'var(--color-surface-hover)',
-        border: '1px solid var(--color-surface-active)',
-        borderRadius: '8px',
-      }}>
-        <h2 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-          <input
-            type="checkbox"
-            checked={settings.enabled}
-            onChange={(e) => update('enabled', e.target.checked)}
-            disabled={!canWrite}
-            style={{ width: 'auto', margin: 0, cursor: canWrite ? 'pointer' : 'not-allowed' }}
-          />
-          {t('meshcore.automation.announce.title', 'Auto-Announce')}
-        </h2>
-        <button
-          onClick={sendNow}
-          disabled={sendNowDisabled || receiveOnly}
-          title={receiveOnly ? t('meshcore.receive_only.control_tooltip', 'Receive-only mode is on for this MeshCore source. Turn it off in MeshCore Settings to use this.') : undefined}
-          className="meshcore-btn meshcore-btn-primary meshcore-send-now"
-        >
-          {isSendingNow
-            ? t('meshcore.automation.announce.sending', 'Sending…')
-            : t('meshcore.automation.announce.send_now', 'Send Now')}
-        </button>
-      </div>
-
-      <MeshCoreReceiveOnlyNote receiveOnly={receiveOnly} />
-
-      <div className="settings-section" style={{ opacity: settings.enabled ? 1 : 0.5, transition: 'opacity 0.2s' }}>
-        <p style={{ marginBottom: '1rem', color: '#666', lineHeight: 1.5, marginLeft: '1.75rem' }}>
-          {t(
-            'meshcore.automation.announce.description',
-            'Periodically send a status message to one or more MeshCore channels. Supports interval-based or cron scheduling and an optional advert burst.',
-          )}
-        </p>
+      <ConfigSection
+        title={t('meshcore.automation.announce.title', 'Auto-Announce')}
+        enabled={settings.enabled}
+        onEnabledChange={(v) => update('enabled', v)}
+        enableLabel={t('meshcore.automation.announce.title', 'Auto-Announce')}
+        docsUrl="https://meshmonitor.org/features/meshcore#auto-announce"
+        canWrite={canWrite}
+        receiveOnly={receiveOnly}
+        receiveOnlyNote={meshCoreReceiveOnlyText(t)}
+        description={t(
+          'meshcore.automation.announce.description',
+          'Periodically send a status message to one or more MeshCore channels. Supports interval-based or cron scheduling and an optional advert burst.',
+        )}
+        headerActions={
+          <button
+            onClick={sendNow}
+            disabled={sendNowDisabled || receiveOnly}
+            title={receiveOnly ? t('meshcore.receive_only.control_tooltip', 'Receive-only mode is on for this MeshCore source. Turn it off in MeshCore Settings to use this.') : undefined}
+            className="meshcore-btn meshcore-btn-primary meshcore-send-now"
+          >
+            {isSendingNow
+              ? t('meshcore.automation.announce.sending', 'Sending…')
+              : t('meshcore.automation.announce.send_now', 'Send Now')}
+          </button>
+        }
+      >
 
         {/* On-start announcement */}
         <div className="setting-item" style={{ marginTop: '1rem' }}>
@@ -631,7 +617,7 @@ export const MeshCoreAutoAnnounceSection: React.FC<MeshCoreAutoAnnounceSectionPr
             {new Date(lastRunAt).toLocaleString()}
           </p>
         )}
-      </div>
+      </ConfigSection>
     </>
     </NumberInputScope>
   );
