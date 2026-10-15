@@ -80,3 +80,11 @@
   font-size: 11px;
   color: var(--color-text-subtle);
 }
+
+/* Observer enable toggle at the top of the Status group (#5831). */
+.enableRow {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}

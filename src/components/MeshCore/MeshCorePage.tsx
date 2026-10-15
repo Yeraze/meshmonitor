@@ -92,7 +92,11 @@ export const MeshCorePage: React.FC<MeshCorePageProps> = ({ baseUrl, sourceId, e
   // blank pane, whichever way it was asked for: a nav click, the status bar's
   // Connect button, or a jump to Node Details. Derived, so the asked-for tab
   // appears once the grants have loaded.
-  const [requestedView, setView] = useState<MeshCoreView>('nodes');
+  // `#configuration` opens straight on Configuration: the source form's
+  // Analyzer Observer note links here (#5831).
+  const [requestedView, setView] = useState<MeshCoreView>(() =>
+    typeof window !== 'undefined' && window.location.hash === '#configuration' ? 'configuration' : 'nodes',
+  );
   const visibleViews = useMeshCoreViewAccess();
   const view = resolveMeshCoreView(requestedView, visibleViews);
   const canOpenSettings = visibleViews.includes('settings');
@@ -278,14 +282,18 @@ export const MeshCorePage: React.FC<MeshCorePageProps> = ({ baseUrl, sourceId, e
           <MeshCoreInfoView baseUrl={baseUrl} sourceId={sourceId} status={status} onSyncTime={actions.syncDeviceTime} />
         )}
         {view === 'configuration' && (
-          <MeshCoreConfigurationView
-            status={status}
-            actions={actions}
-            baseUrl={baseUrl}
-            sourceId={sourceId}
-            receiveOnly={receiveOnly}
-            loading={loading}
-          />
+          // The Analyzer Observer's broker list saves through the SaveBar (#5831).
+          <SaveBarProvider>
+            <MeshCoreConfigurationView
+              status={status}
+              actions={actions}
+              baseUrl={baseUrl}
+              sourceId={sourceId}
+              receiveOnly={receiveOnly}
+              loading={loading}
+            />
+            <SaveBar />
+          </SaveBarProvider>
         )}
         {view === 'automations' && (
           <SaveBarProvider>

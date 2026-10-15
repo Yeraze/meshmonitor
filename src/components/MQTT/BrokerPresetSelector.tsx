@@ -1,5 +1,5 @@
 /**
- * The broker preset chooser that sits above the broker address in the three
+ * The broker preset chooser (shared PresetPicker chips, #5831) that sits above the broker address in the three
  * Meshtastic MQTT forms (#5689). Presets live in `./brokerPresets`; each form
  * passes the preset its stored values already match and an `onApplyPreset`
  * that maps the chosen preset onto its own fields.
@@ -10,6 +10,7 @@
 import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { UiIcon } from '../icons';
+import { PresetPicker } from '../shared/config/PresetPicker';
 import {
   BROKER_DISCOVERY_LINKS,
   BROKER_PRESETS,
@@ -21,7 +22,7 @@ import {
 import styles from './BrokerPresetSelector.module.css';
 
 interface BrokerPresetSelectorProps {
-  /** id of the <select>, for its label. */
+  /** id of the wrapper element. */
   id: string;
   /** The preset the form's current values describe, or null for none. */
   matchedPresetId: string | null;
@@ -85,23 +86,14 @@ export const BrokerPresetSelector: React.FC<BrokerPresetSelectorProps> = ({
       'Your password was left as it was. This broker’s password is {{password}}; type it in to use it.',
   };
 
-  const select = (
-    <select
-      id={id}
-      data-testid="broker-preset-select"
-      className={`${layout === 'settings' ? `setting-input ${styles.selectSettings}` : 'dashboard-form-input'} ${styles.select}`}
-      value={value}
-      disabled={disabled}
-      onChange={(e) => handleChange(e.target.value)}
-    >
-      {BROKER_PRESETS.map((p) => (
-        <option key={p.id} value={p.id}>
-          {t(p.labelKey, p.labelFallback)}
-        </option>
-      ))}
-      <option value={CUSTOM_PRESET_ID}>{t('mqtt_presets.custom', 'Custom…')}</option>
-    </select>
-  );
+  const options = [
+    ...BROKER_PRESETS.map((p) => ({
+      id: p.id,
+      label: t(p.labelKey, p.labelFallback),
+      title: `${p.tls ? 'mqtts' : 'mqtt'}://${p.host}:${p.port}`,
+    })),
+    { id: CUSTOM_PRESET_ID, label: t('mqtt_presets.custom', 'Custom…') },
+  ];
 
   const notes = (
     <>
@@ -135,31 +127,27 @@ export const BrokerPresetSelector: React.FC<BrokerPresetSelectorProps> = ({
     </>
   );
 
-  if (layout === 'dashboard') {
-    return (
-      <div className="dashboard-form-field" data-testid="broker-preset-selector">
-        <label className="dashboard-form-label" htmlFor={id}>
-          {t('mqtt_presets.label', 'Broker preset')}
-        </label>
-        {select}
-        {notes}
-      </div>
-    );
-  }
-
   return (
-    <div className="setting-item" data-testid="broker-preset-selector">
-      <label htmlFor={id}>
-        {t('mqtt_presets.label', 'Broker preset')}
-        <span className="setting-description">
-          {t(
-            'mqtt_presets.description',
-            'Fills in the broker address, TLS and login. Nothing is sent until you save.',
-          )}
-        </span>
-      </label>
-      {select}
-      {notes}
+    <div
+      className={layout === 'dashboard' ? 'dashboard-form-field' : `setting-item ${styles.settings}`}
+      data-testid="broker-preset-selector"
+      id={id}
+    >
+      <PresetPicker
+        label={t('mqtt_presets.label', 'Broker preset')}
+        description={
+          layout === 'settings'
+            ? t('mqtt_presets.description', 'Fills in the broker address, TLS and login. Nothing is sent until you save.')
+            : undefined
+        }
+        options={options}
+        selectedId={value}
+        onPick={handleChange}
+        disabled={disabled}
+        data-testid="broker-preset-picker"
+      >
+        {notes}
+      </PresetPicker>
     </div>
   );
 };

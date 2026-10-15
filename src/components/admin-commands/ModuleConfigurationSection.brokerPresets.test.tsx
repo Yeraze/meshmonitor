@@ -129,7 +129,12 @@ function Harness({ initial }: { initial: Partial<Mqtt> }) {
 }
 
 const mqttSection = () => screen.getByTestId('admin-mqtt-config');
-const select = () => mqttSection().querySelector('[data-testid="broker-preset-select"]') as HTMLSelectElement;
+/** The shared PresetPicker chips (#5831): the pressed chip, and a click on one. */
+const presetChips = (root: ParentNode) => root.querySelector('[data-testid="broker-preset-picker"]') as HTMLElement;
+const chosenPreset = (root: ParentNode) =>
+  (presetChips(root).querySelector('[aria-pressed="true"]') as HTMLElement | null)?.dataset.presetId;
+const pickPreset = (root: ParentNode, id: string) =>
+  fireEvent.click(presetChips(root).querySelector(`[data-preset-id="${id}"]`) as HTMLElement);
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -143,12 +148,12 @@ describe('remote-admin MQTT config — broker presets (#5689)', () => {
     [{ address: '10.0.0.5' }, 'custom'],
   ])('opens on the preset the loaded values match: %j → %s', (initial, expected) => {
     render(<Harness initial={initial} />);
-    expect(select().value).toBe(expected);
+    expect(chosenPreset(mqttSection())).toBe(expected);
   });
 
   it('changes only address, login and TLS, and never sends to the node', () => {
     render(<Harness initial={{ address: '10.0.0.5' }} />);
-    fireEvent.change(select(), { target: { value: 'meshtastic_public_tls' } });
+    pickPreset(mqttSection(), 'meshtastic_public_tls');
     expect(changes.map(([f]) => f).sort()).toEqual(['address', 'password', 'tlsEnabled', 'username']);
     expect(Object.fromEntries(changes)).toEqual({
       address: 'mqtt.meshtastic.org',
@@ -157,21 +162,21 @@ describe('remote-admin MQTT config — broker presets (#5689)', () => {
       tlsEnabled: true,
     });
     expect(saveMqtt).not.toHaveBeenCalled();
-    expect(select().value).toBe('meshtastic_public_tls');
+    expect(chosenPreset(mqttSection())).toBe('meshtastic_public_tls');
   });
 
   it('keeps a loaded login and says so', () => {
     render(<Harness initial={{ address: '10.0.0.5', username: 'ops', password: 'pw' }} />);
-    fireEvent.change(select(), { target: { value: 'meshtastic_public' } });
+    pickPreset(mqttSection(), 'meshtastic_public');
     expect(Object.fromEntries(changes)).toMatchObject({ username: 'ops', password: 'pw' });
     expect(screen.getByTestId('broker-preset-kept')).toBeInTheDocument();
   });
 
   it('Custom… changes nothing', () => {
     render(<Harness initial={{ address: '' }} />);
-    fireEvent.change(select(), { target: { value: 'custom' } });
+    pickPreset(mqttSection(), 'custom');
     expect(changes).toEqual([]);
-    expect(select().value).toBe('custom');
+    expect(chosenPreset(mqttSection())).toBe('custom');
   });
 
   it('has a TLS checkbox that edits tlsEnabled, and labels payload encryption correctly', () => {

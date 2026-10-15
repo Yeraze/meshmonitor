@@ -222,7 +222,7 @@ Operators of a private broker on their own network can subscribe to `msh/#` safe
 | Username / Password | Decorative in proxy mode |
 | `proxy_to_client_enabled` | **true** (firmware hands every publish off via the TCP API) |
 
-Then link the Meshtastic source in MeshMonitor to its target. **Device Configuration → MQTT Module → Quick configure from a MeshMonitor MQTT source** lists both embedded brokers and bridges; **Dashboard → Sources → Edit → Bridge MQTT proxy to** lists embedded brokers only. The **Quick Configure** dropdown on the Device Configuration → MQTT page does all three of these things (firmware flag, firmware fields, source link) in one click and shows the target type next to the name.
+Then link the Meshtastic source in MeshMonitor to its target. **Device Configuration → MQTT Module → Quick configure from a MeshMonitor MQTT source** lists both embedded brokers and bridges; **Dashboard → Sources → Edit → Bridge MQTT proxy to** lists embedded brokers only. The **Quick Configure** dropdown on the Device Configuration → MQTT page does all three of these things (firmware flag, firmware fields, source link) in one pick and one **Save**, and shows the target type next to the name. Nothing is written until you save; **Dismiss** undoes the pick.
 
 - Picking a **broker** routes the device's MQTT traffic into the embedded broker (and from there, optionally onward via any attached bridge). Other LAN clients connected to the broker also see this traffic.
 - Picking a **bridge** (typically a standalone one) routes the device's MQTT traffic straight to that bridge's upstream connection with no embedded broker in between. Useful when you have no other local MQTT clients.
@@ -495,8 +495,8 @@ To fix it:
 
 1. If you have no MQTT source yet, add one: **Dashboard → Sources → Add Source**, then pick **MQTT Bridge (forward to/from an upstream broker)** for an outside broker, or **Embedded MQTT Broker (devices connect here)** to host one. See [Quick setup](#quick-setup).
 2. Open the node's source and go to **Device Configuration → MQTT Module**.
-3. In **Quick configure from a MeshMonitor MQTT source**, pick the bridge or broker. This links the two sources at once and fills in the form.
-4. Save, so the node gets the new MQTT settings.
+3. In **Quick configure from a MeshMonitor MQTT source**, pick the bridge or broker. This fills in the form and stages the link between the two sources.
+4. Save. MeshMonitor sends the node its new MQTT settings, then links the sources. **Dismiss** instead undoes both.
 5. Check that the channel has **Downlink Enabled** and that **Ignore MQTT** is off.
 6. Send a test packet from a node that reaches the broker only over MQTT.
 
@@ -530,7 +530,7 @@ If a source is linked and the packet is still missing, set `LOG_LEVEL=debug` and
 ### "Client proxy is enabled but no broker is linked" (yellow banner on Device Configuration → MQTT)
 
 `proxy_to_client_enabled` is set on the firmware, but the Meshtastic source has no `mqttLink` to an existing, enabled MQTT source. The source's dashboard card shows **MQTT not linked** for the same reason. MeshMonitor will silently drop the proxy publishes, and the node gets nothing from the broker, unless:
-1. You pick an embedded broker or a bridge from the **Quick Configure** dropdown on Device Configuration → MQTT (one click — also stamps the link via PUT); **or**
+1. You pick an embedded broker or a bridge from the **Quick Configure** dropdown on Device Configuration → MQTT and save (the save also stamps the link); **or**
 2. You have the [MQTT Proxy Sidecar](/add-ons/mqtt-proxy) attached to this source's Virtual Node Server, which publishes to its own configured upstream.
 
 See [Why don't I see MQTT traffic?](#why-no-mqtt-traffic) for the full list of causes and a test that tells them apart.
