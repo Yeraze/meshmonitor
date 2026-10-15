@@ -1,3 +1,16 @@
+/**
+ * ChannelsConfigSection — Meshtastic channel slots (#5829).
+ *
+ * Lists the configured channels (role != DISABLED) as cards that open in
+ * place, the same model the MeshCore channel list and the automation lists
+ * use. Each card has its own "Save to device": one set_channel admin write,
+ * with no SaveBar and no batching across channels. "Add channel" opens a new
+ * card on the next free slot (0-7).
+ *
+ * Kept from before: drag-to-reorder followed by "Apply Order" (the device
+ * reboots), JSON export / import per slot, the Channel Database key-collision
+ * warning (#3644), the AEAD badge and the position-precision readout.
+ */
 import React, { useState, useRef, useMemo, useCallback, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { UiIcon } from '../icons';
@@ -27,15 +40,20 @@ import { useToast } from '../ToastContainer';
 import { Channel } from '../../types/device';
 import { logger } from '../../utils/logger';
 import { useSettings } from '../../contexts/SettingsContext';
+import { useAuth } from '../../contexts/AuthContext';
 import { useResolvedSourceId } from '../../hooks/useResolvedSourceId';
 import { formatPrecisionAccuracy } from '../../utils/distance';
-// Default public PSK (base64 encoded value of single byte 0x01) — shared
-// definition lives in utils/publicChannel.ts (#4705).
-import { NO_ENCRYPTION_PSK, pskEncryptionStatus } from '../../utils/publicChannel';
+import { NO_ENCRYPTION_PSK, pskEncryptionStatus, type PskEncryptionStatus } from '../../utils/publicChannel';
 import { NumberInput } from '../common/NumberInput';
-import { NumberInputScope } from '../common/NumberInputScope';
-import { useNumberInputScope } from '../common/numberInputScopeContext';
+import Modal from '../common/Modal';
 import { ConfigSection } from '../shared/config/ConfigSection';
+import { ConfigItemCard, ConfigItemCardButton, type ConfigItemChip } from '../shared/config/ConfigItemCard';
+import { ChannelKeyField } from '../shared/config/ChannelKeyField';
+import { ChannelEncryptionLabel } from '../shared/config/ChannelEncryptionLabel';
+import { DiscardChangesDialog } from '../shared/config/DiscardChangesDialog';
+import { useDiscardGuard } from '../shared/config/useDiscardGuard';
+import { generateChannelKey, isValidChannelKey } from '../shared/config/channelKey';
+import styles from './ChannelsConfigSection.module.css';
 
 /** A device channel sharing its key with a differently-named Channel Database
  *  (server-decryption) entry (#3644). */
@@ -46,33 +64,66 @@ interface ChannelCollision {
   dbName: string;
 }
 
-type EncryptionStatus = 'none' | 'default' | 'secure';
-
-// Helper to determine encryption status from a raw PSK (fallback for cases
-// where only the key is available locally).
-const getEncryptionStatus = (psk: string | undefined | null): EncryptionStatus => pskEncryptionStatus(psk);
+const SLOT_COUNT = 8;
+const ALL_SLOTS = [0, 1, 2, 3, 4, 5, 6, 7];
+const MAX_NAME_LENGTH = 11;
+/** Key lengths the firmware accepts: none, the 1-byte default index, AES-128, AES-256. */
+const PSK_ALLOWED_BYTES = [0, 1, 16, 32] as const;
+const PSK_GENERATE_BYTES = 32;
+const ROLE_LABEL_KEYS: Record<number, string> = {
+  0: 'channels_config.role_disabled',
+  1: 'channels_config.role_primary',
+  2: 'channels_config.role_secondary',
+};
 
 // Resolve encryption status for a Channel: prefer the server-derived
 // `encryptionStatus` field (always present on API responses) and fall back
 // to deriving from `psk`. The API only sends `psk` to authorized writers
-// (issue #2951), so unauthorized callers MUST rely on `encryptionStatus`
-// to render the correct icon.
-const channelEncryptionStatus = (channel: Pick<Channel, 'encryptionStatus' | 'psk'> | null | undefined): EncryptionStatus => {
-  if (!channel) return 'none';
-  if (channel.encryptionStatus) return channel.encryptionStatus;
-  return getEncryptionStatus(channel.psk);
-};
+// (issue #2951), so unauthorized callers MUST rely on `encryptionStatus`.
+const channelEncryptionStatus = (channel: Pick<Channel, 'encryptionStatus' | 'psk'>): PskEncryptionStatus =>
+  channel.encryptionStatus ?? pskEncryptionStatus(channel.psk);
+
+/** A slot holds a channel unless it is missing or DISABLED (role 0). */
+const isConfigured = (channel: Channel | undefined): channel is Channel =>
+  !!channel && channel.role !== 0;
+
+interface ChannelDraft {
+  name: string;
+  psk: string;
+  role: number;
+  uplinkEnabled: boolean;
+  downlinkEnabled: boolean;
+  positionPrecision: number;
+}
+
+interface EditingState {
+  slotId: number;
+  /** A slot opened by "Add channel" rather than an existing channel. */
+  isNew: boolean;
+  draft: ChannelDraft;
+  /** The draft the card opened with, for Cancel and the unsaved check. */
+  original: ChannelDraft;
+}
 
 /**
  * The `psk` to send on save (#5826). The server keeps the stored key when
  * `psk` is absent and turns encryption off for an explicit ''. So send '' only
- * when the user emptied a field that held a key; a field that opened empty
- * (no key, or a reader who never got one) keeps whatever the device has.
+ * when the user emptied a field that held a key (or a new channel); a field
+ * that opened empty (no key, or a reader who never got one) keeps whatever
+ * the device has.
  */
-const pskForSave = (edit: Pick<ChannelEditState, 'psk' | 'originalPsk'>): string | undefined => {
-  if (edit.psk !== '') return edit.psk;
-  return edit.originalPsk !== '' ? '' : undefined;
+const pskForSave = (edit: EditingState): string | undefined => {
+  if (edit.draft.psk !== '') return edit.draft.psk;
+  return edit.isNew || edit.original.psk !== '' ? '' : undefined;
 };
+
+const draftsEqual = (a: ChannelDraft, b: ChannelDraft): boolean =>
+  a.name === b.name &&
+  a.psk === b.psk &&
+  a.role === b.role &&
+  a.uplinkEnabled === b.uplinkEnabled &&
+  a.downlinkEnabled === b.downlinkEnabled &&
+  a.positionPrecision === b.positionPrecision;
 
 interface ChannelsConfigSectionProps {
   baseUrl?: string;
@@ -80,27 +131,16 @@ interface ChannelsConfigSectionProps {
   onChannelsUpdated?: () => void;
 }
 
-interface ChannelEditState {
-  slotId: number;
-  name: string;
-  psk: string;
-  /** The key the form opened with, so a cleared field is told apart from one
-   *  that was always empty (#5826). */
-  originalPsk: string;
-  role: number;
-  uplinkEnabled: boolean;
-  downlinkEnabled: boolean;
-  positionPrecision: number;
-}
-
-/** Wrapper that makes a channel card draggable */
+/** Wrapper that makes a channel card draggable. */
 const SortableChannelCard: React.FC<{
   // Must match the SortableContext `items` entries exactly — dnd-kit looks
   // items up with `indexOf`, so a string id against numeric items leaves every
   // card at index -1 and nothing shifts while dragging (#5324).
   id: number;
+  disabled: boolean;
+  dragLabel: string;
   children: React.ReactNode;
-}> = ({ id, children }) => {
+}> = ({ id, disabled, dragLabel, children }) => {
   const {
     attributes,
     listeners,
@@ -109,50 +149,27 @@ const SortableChannelCard: React.FC<{
     transform,
     transition,
     isDragging,
-  } = useSortable({ id });
-
-  const style: React.CSSProperties = {
-    transform: CSS.Transform.toString(transform),
-    transition,
-    opacity: isDragging ? 0.8 : 1,
-    zIndex: isDragging ? 10 : 'auto',
-    boxShadow: isDragging ? '0 8px 24px rgba(0, 0, 0, 0.4)' : 'none',
-    borderRadius: '8px',
-  };
+  } = useSortable({ id, disabled });
 
   return (
-    <div ref={setNodeRef} style={style} {...attributes}>
-      <div style={{ display: 'flex', alignItems: 'stretch' }}>
-        <div
-          ref={setActivatorNodeRef}
-          {...listeners}
-          data-testid="channel-drag-handle"
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            width: '2.5rem',
-            minHeight: '100%',
-            cursor: isDragging ? 'grabbing' : 'grab',
-            backgroundColor: isDragging ? 'var(--color-surface-active)' : 'var(--color-surface)',
-            borderRadius: '8px 0 0 8px',
-            borderRight: '1px solid var(--color-surface-hover)',
-            color: isDragging ? 'var(--color-accent)' : 'var(--color-text-disabled)',
-            flexShrink: 0,
-            transition: 'background-color 0.15s, color 0.15s',
-            // #5233 — this handle was the one reorder activator in the app
-            // missing these, so it was the only one that would not drag on a
-            // phone. See DRAG_HANDLE_TOUCH_STYLE for why each property matters.
-            ...DRAG_HANDLE_TOUCH_STYLE,
-          }}
-          title="Drag to reorder"
-        >
-          <UiIcon name="dragHandle" size={20} />
-        </div>
-        <div style={{ flex: 1 }}>
-          {children}
-        </div>
+    <div
+      ref={setNodeRef}
+      className={`${styles.sortable} ${isDragging ? styles.dragging : ''}`}
+      style={{ transform: CSS.Transform.toString(transform), transition }}
+      {...attributes}
+    >
+      <div
+        ref={setActivatorNodeRef}
+        {...listeners}
+        data-testid="channel-drag-handle"
+        className={`${styles.handle} ${disabled ? styles.handleDisabled : ''}`}
+        // #5233 — see DRAG_HANDLE_TOUCH_STYLE for why each property matters on a phone.
+        style={DRAG_HANDLE_TOUCH_STYLE}
+        title={dragLabel}
+      >
+        <UiIcon name="dragHandle" size={20} />
       </div>
+      <div className={styles.sortableBody}>{children}</div>
     </div>
   );
 };
@@ -164,12 +181,14 @@ const ChannelsConfigSection: React.FC<ChannelsConfigSectionProps> = ({
   const { t } = useTranslation();
   const { showToast } = useToast();
   const { distanceUnit } = useSettings();
+  const { hasPermission } = useAuth();
   // Channel writes require a concrete sourceId; resolve context source or primary.
   const sourceId = useResolvedSourceId();
+  // The server also checks channel_N:write on each channel write.
+  const canWrite = hasPermission('configuration', 'write', { sourceId });
 
   // #3644: device channels whose PSK matches a server-side decryption (Channel
-  // Database) entry under a DIFFERENT name. Messages on such a channel get filed
-  // under that entry's tab instead of this channel. Detected server-side because
+  // Database) entry under a DIFFERENT name. Detected server-side because
   // readers don't receive raw PSKs.
   const [channelCollisions, setChannelCollisions] = useState<ChannelCollision[]>([]);
   useEffect(() => {
@@ -190,40 +209,46 @@ const ChannelsConfigSection: React.FC<ChannelsConfigSectionProps> = ({
     return m;
   }, [channelCollisions]);
 
-  const [editingChannel, setEditingChannel] = useState<ChannelEditState | null>(null);
-  const [showEditModal, setShowEditModal] = useState(false);
-  // #5649: a blank or out-of-range number in the edit modal blocks Save Channel.
-  const numberScope = useNumberInputScope();
+  const channelBySlot = useMemo(() => {
+    const m = new Map<number, Channel>();
+    for (const ch of channels) if (ch.id >= 0 && ch.id < SLOT_COUNT) m.set(ch.id, ch);
+    return m;
+  }, [channels]);
+
+  const [editing, setEditing] = useState<EditingState | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
+  const dirty = !!editing && (editing.isNew || !draftsEqual(editing.draft, editing.original));
+  const discard = useDiscardGuard(dirty);
+
   const [showImportModal, setShowImportModal] = useState(false);
   const [importSlotId, setImportSlotId] = useState<number>(0);
   const [importFileContent, setImportFileContent] = useState<string>('');
-  const [isSaving, setIsSaving] = useState(false);
-  const [isReordering, setIsReordering] = useState(false);
-  const [activeDragId, setActiveDragId] = useState<number | null>(null);
+  const [isImporting, setIsImporting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  const [isReordering, setIsReordering] = useState(false);
+  const [activeDragId, setActiveDragId] = useState<number | null>(null);
   // Track the current slot order for drag-and-drop (array of original slot indices)
-  const [slotOrder, setSlotOrder] = useState<number[]>([0, 1, 2, 3, 4, 5, 6, 7]);
-  const originalOrder = useRef<number[]>([0, 1, 2, 3, 4, 5, 6, 7]);
+  const [slotOrder, setSlotOrder] = useState<number[]>(ALL_SLOTS);
+  const originalOrder = useRef<number[]>(ALL_SLOTS);
 
   // Reset slot order when channels are refreshed from server (e.g., after successful reorder)
-  React.useEffect(() => {
-    const identity = [0, 1, 2, 3, 4, 5, 6, 7];
-    setSlotOrder(identity);
-    originalOrder.current = identity;
+  useEffect(() => {
+    setSlotOrder(ALL_SLOTS);
+    originalOrder.current = ALL_SLOTS;
   }, [channels]);
 
-  // Detect if user has reordered channels
-  const hasReorderChanges = useMemo(() => {
-    return slotOrder.some((v, i) => v !== originalOrder.current[i]);
-  }, [slotOrder]);
+  const hasReorderChanges = useMemo(
+    () => slotOrder.some((v, i) => v !== originalOrder.current[i]),
+    [slotOrder],
+  );
 
-  // DnD sensors
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
   );
 
+  // Drag only reorders the local list; nothing is written until Apply Order.
   const handleDragStart = useCallback((event: DragStartEvent) => {
     setActiveDragId(Number(event.active.id));
   }, []);
@@ -232,11 +257,7 @@ const ChannelsConfigSection: React.FC<ChannelsConfigSectionProps> = ({
     setActiveDragId(null);
     const { active, over } = event;
     if (over && active.id !== over.id) {
-      setSlotOrder(prev => {
-        const oldIndex = prev.indexOf(Number(active.id));
-        const newIndex = prev.indexOf(Number(over.id));
-        return arrayMove(prev, oldIndex, newIndex);
-      });
+      setSlotOrder(prev => arrayMove(prev, prev.indexOf(Number(active.id)), prev.indexOf(Number(over.id))));
     }
   }, []);
 
@@ -252,7 +273,6 @@ const ChannelsConfigSection: React.FC<ChannelsConfigSectionProps> = ({
       logger.error('Error reordering channels:', error);
       const errorMsg = error instanceof Error ? error.message : t('channels_config.reorder_failed', 'Failed to reorder channels');
       showToast(errorMsg, 'error');
-      // Revert
       setSlotOrder([...originalOrder.current]);
     } finally {
       setIsReordering(false);
@@ -263,66 +283,78 @@ const ChannelsConfigSection: React.FC<ChannelsConfigSectionProps> = ({
     setSlotOrder([...originalOrder.current]);
   };
 
-  // Compute auto-position channel: lowest-index channel with positionPrecision > 0
+  // Auto-position channel: lowest-index channel with positionPrecision > 0
   const autoPositionChannelId = useMemo(() => {
-    const sorted = [...channels]
+    const sorted = channels
       .filter(ch => (ch.positionPrecision ?? 0) > 0)
       .sort((a, b) => a.id - b.id);
     return sorted.length > 0 ? sorted[0].id : null;
   }, [channels]);
 
-  // Create array of 8 slots based on current drag order
-  const channelSlots = slotOrder.map((originalSlot, displayIndex) => {
-    const existingChannel = channels.find(ch => ch.id === originalSlot);
-    return {
-      slotId: originalSlot,
-      displaySlot: displayIndex,
-      channel: existingChannel || null
-    };
-  });
+  // Configured slots, in the current drag order.
+  const visibleSlots = slotOrder.filter(slot => isConfigured(channelBySlot.get(slot)));
 
-  const handleEditChannel = (slotId: number) => {
-    const existingChannel = channels.find(ch => ch.id === slotId);
-    // The "encryption off" key shows as an empty field, which is how the user
-    // asked for it (#5826).
-    const shownPsk = existingChannel?.psk === NO_ENCRYPTION_PSK ? '' : (existingChannel?.psk ?? '');
-    setEditingChannel({
-      slotId,
-      name: existingChannel?.name ?? `Channel ${slotId}`,
-      psk: shownPsk,
-      originalPsk: shownPsk,
-      role: (existingChannel?.role !== undefined && existingChannel?.role !== null) ? existingChannel.role : (slotId === 0 ? 1 : 2), // Default: 1 for slot 0 (Primary), 2 for others (Secondary)
-      uplinkEnabled: existingChannel?.uplinkEnabled !== undefined ? existingChannel.uplinkEnabled : true,
-      downlinkEnabled: existingChannel?.downlinkEnabled !== undefined ? existingChannel.downlinkEnabled : true,
-      positionPrecision: (existingChannel?.positionPrecision !== undefined && existingChannel?.positionPrecision !== null) ? existingChannel.positionPrecision : 32 // Default: full precision
-    });
-    setShowEditModal(true);
+  // The lowest slot without a channel; null when all eight are in use.
+  const nextFreeSlot = useMemo(() => {
+    for (const slot of ALL_SLOTS) if (!isConfigured(channelBySlot.get(slot))) return slot;
+    return null;
+  }, [channelBySlot]);
+
+  const openEditor = (slotId: number, isNew: boolean) => {
+    const ch = channelBySlot.get(slotId);
+    let draft: ChannelDraft;
+    if (isNew) {
+      draft = {
+        name: `Channel ${slotId}`,
+        // A new channel starts with its own random key rather than whatever
+        // the disabled slot last held.
+        psk: generateChannelKey(PSK_GENERATE_BYTES, 'base64'),
+        role: slotId === 0 ? 1 : 2,
+        uplinkEnabled: false,
+        downlinkEnabled: false,
+        positionPrecision: 0,
+      };
+    } else {
+      draft = {
+        name: ch?.name ?? '',
+        // The "encryption off" key shows as an empty field, which is how the
+        // user asked for it (#5826).
+        psk: ch?.psk === NO_ENCRYPTION_PSK ? '' : (ch?.psk ?? ''),
+        role: ch?.role ?? (slotId === 0 ? 1 : 2),
+        uplinkEnabled: ch?.uplinkEnabled ?? true,
+        downlinkEnabled: ch?.downlinkEnabled ?? true,
+        positionPrecision: ch?.positionPrecision ?? 32,
+      };
+    }
+    setEditing({ slotId, isNew, draft, original: draft });
   };
 
-  const handleSaveChannel = async () => {
-    if (!editingChannel) return;
-    if (numberScope.invalid) return;
+  const updateDraft = (patch: Partial<ChannelDraft>) => {
+    setEditing(prev => (prev ? { ...prev, draft: { ...prev.draft, ...patch } } : prev));
+  };
 
-    // Allow empty names (Meshtastic supports unnamed channels)
-    if (editingChannel.name && editingChannel.name.length > 11) {
+  const keyValid = !!editing && isValidChannelKey(editing.draft.psk, 'base64', PSK_ALLOWED_BYTES);
+
+  // One set_channel write for this card, and only on an explicit click.
+  const handleSaveChannel = async () => {
+    if (!editing || !keyValid) return;
+    const { slotId, draft } = editing;
+    if (draft.name.length > MAX_NAME_LENGTH) {
       showToast(t('channels_config.toast_name_too_long'), 'error');
       return;
     }
-
     setIsSaving(true);
     try {
-      await apiService.updateChannel(editingChannel.slotId, {
-        name: editingChannel.name,
-        psk: pskForSave(editingChannel),
-        role: editingChannel.role,
-        uplinkEnabled: editingChannel.uplinkEnabled,
-        downlinkEnabled: editingChannel.downlinkEnabled,
-        positionPrecision: editingChannel.positionPrecision
+      await apiService.updateChannel(slotId, {
+        name: draft.name,
+        psk: pskForSave(editing),
+        role: draft.role,
+        uplinkEnabled: draft.uplinkEnabled,
+        downlinkEnabled: draft.downlinkEnabled,
+        positionPrecision: draft.positionPrecision
       }, sourceId);
-
-      showToast(t('channels_config.toast_channel_updated', { slot: editingChannel.slotId }), 'success');
-      setShowEditModal(false);
-      setEditingChannel(null);
+      showToast(t('channels_config.toast_channel_updated', { slot: slotId }), 'success');
+      setEditing(null);
       onChannelsUpdated?.();
     } catch (error) {
       logger.error('Error updating channel:', error);
@@ -339,11 +371,7 @@ const ChannelsConfigSection: React.FC<ChannelsConfigSectionProps> = ({
       showToast(t('channels_config.toast_cannot_delete_primary', 'Cannot delete the primary channel'), 'error');
       return;
     }
-
-    if (!confirm(t('channels_config.confirm_delete', 'Are you sure you want to delete channel {{slot}}? This will disable the channel on the device.', { slot: slotId }))) {
-      return;
-    }
-
+    if (editing?.slotId === slotId) setEditing(null);
     try {
       // 1. Disable channel on the device
       await apiService.updateChannel(slotId, {
@@ -353,17 +381,27 @@ const ChannelsConfigSection: React.FC<ChannelsConfigSectionProps> = ({
         uplinkEnabled: false,
         downlinkEnabled: false,
       }, sourceId);
-      // 2. Delete channel record and messages from database
-      try {
-        // The route requires sourceId; without it the 400 was swallowed below
-        // and the row and its messages were never removed (#5324).
-        if (sourceId) {
+      // 2. Delete channel record and messages from database. The route
+      // requires sourceId (#5324). The device write already went through, so
+      // a failure here is reported as a partial result, not as a delete.
+      let purged = false;
+      if (sourceId) {
+        try {
           await apiService.delete(`/api/channels/${slotId}?sourceId=${encodeURIComponent(sourceId)}`);
+          purged = true;
+        } catch (error) {
+          logger.error('Error deleting channel message history:', error);
         }
-      } catch {
-        // DB cleanup is best-effort — channel is already disabled on device
       }
-      showToast(t('channels_config.toast_channel_deleted', { slot: slotId }), 'success');
+      if (purged) {
+        showToast(t('channels_config.toast_channel_deleted', { slot: slotId }), 'success');
+      } else {
+        showToast(t(
+          'channels_config.toast_channel_disabled_purge_failed',
+          'Channel {{slot}} was disabled on the device, but its message history could not be deleted.',
+          { slot: slotId },
+        ), 'warning');
+      }
       onChannelsUpdated?.();
     } catch (error) {
       logger.error('Error deleting channel:', error);
@@ -371,7 +409,6 @@ const ChannelsConfigSection: React.FC<ChannelsConfigSectionProps> = ({
       showToast(errorMsg, 'error');
     }
   };
-
 
   const handleExportChannel = async (channelId: number) => {
     try {
@@ -393,11 +430,9 @@ const ChannelsConfigSection: React.FC<ChannelsConfigSectionProps> = ({
   const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
-
     const reader = new FileReader();
     reader.onload = (e) => {
-      const content = e.target?.result as string;
-      setImportFileContent(content);
+      setImportFileContent(e.target?.result as string);
     };
     reader.readAsText(file);
   };
@@ -407,589 +442,398 @@ const ChannelsConfigSection: React.FC<ChannelsConfigSectionProps> = ({
       showToast(t('channels_config.toast_select_file'), 'error');
       return;
     }
-
-    setIsSaving(true);
+    setIsImporting(true);
     try {
-      // Parse the imported JSON
       const importData = JSON.parse(importFileContent);
-
       if (!importData.channel) {
         throw new Error(t('channels_config.toast_invalid_format'));
       }
-
       // Normalize boolean values - handle both boolean (true/false) and numeric (1/0) formats
-      const normalizeBoolean = (value: any, defaultValue: boolean = true): boolean => {
-        if (value === undefined || value === null) {
-          return defaultValue;
-        }
-        // Handle boolean values
-        if (typeof value === 'boolean') {
-          return value;
-        }
-        // Handle numeric values (0/1)
-        if (typeof value === 'number') {
-          return value !== 0;
-        }
-        // Handle string values ("true"/"false", "1"/"0")
-        if (typeof value === 'string') {
-          return value.toLowerCase() === 'true' || value === '1';
-        }
-        // Default to truthy check
+      const normalizeBoolean = (value: unknown, defaultValue: boolean = true): boolean => {
+        if (value === undefined || value === null) return defaultValue;
+        if (typeof value === 'boolean') return value;
+        if (typeof value === 'number') return value !== 0;
+        if (typeof value === 'string') return value.toLowerCase() === 'true' || value === '1';
         return !!value;
       };
-
-      // Normalize the channel data before sending
       const normalizedChannelData = {
         ...importData.channel,
         uplinkEnabled: normalizeBoolean(importData.channel.uplinkEnabled, true),
         downlinkEnabled: normalizeBoolean(importData.channel.downlinkEnabled, true)
       };
-
-      // Import the channel
       await apiService.importChannel(importSlotId, normalizedChannelData, sourceId);
-
       showToast(t('channels_config.toast_channel_imported', { slot: importSlotId }), 'success');
       setShowImportModal(false);
       setImportFileContent('');
-      if (fileInputRef.current) {
-        fileInputRef.current.value = '';
-      }
+      if (fileInputRef.current) fileInputRef.current.value = '';
       onChannelsUpdated?.();
     } catch (error) {
       logger.error('Error importing channel:', error);
       const errorMsg = error instanceof Error ? error.message : t('channels_config.toast_import_failed');
       showToast(errorMsg, 'error');
     } finally {
-      setIsSaving(false);
+      setIsImporting(false);
     }
   };
 
-  const handleGeneratePSK = () => {
-    // Generate 32 random bytes (256 bits for AES256)
-    const randomBytes = new Uint8Array(32);
-    crypto.getRandomValues(randomBytes);
+  const reorderBlockReason = hasReorderChanges
+    ? t('channels_config.reorder_blocks_edit', 'Apply or cancel the new channel order first.')
+    : undefined;
 
-    // Convert to base64
-    const base64Key = btoa(String.fromCharCode(...randomBytes));
+  /**
+   * Roles the select offers. A new card is Primary on slot 0 and Secondary
+   * elsewhere; Delete stands in for Disabled. An existing card offers Primary
+   * only on slot 0, when it already is primary, or when no other channel is,
+   * so the UI never sets up two primaries (the server does not check).
+   */
+  const roleOptions = (edit: EditingState): number[] => {
+    if (edit.isNew) return edit.slotId === 0 ? [1] : [2];
+    const otherPrimary = channels.some(c => c.id !== edit.slotId && c.id >= 0 && c.id < SLOT_COUNT && c.role === 1);
+    const allowPrimary = edit.slotId === 0 || edit.original.role === 1 || !otherPrimary;
+    return allowPrimary ? [0, 1, 2] : [0, 2];
+  };
 
-    if (editingChannel) {
-      setEditingChannel({ ...editingChannel, psk: base64Key });
-      showToast(t('channels_config.toast_key_generated'), 'success');
+  const renderEditor = (edit: EditingState) => (
+    <>
+      <div className="setting-item">
+        <label htmlFor="edit-channel-name">
+          {t('channels_config.channel_name')}
+          <span className="setting-description">{t('channels_config.channel_name_description')}</span>
+        </label>
+        <input
+          id="edit-channel-name"
+          type="text"
+          maxLength={MAX_NAME_LENGTH}
+          value={edit.draft.name}
+          onChange={(e) => updateDraft({ name: e.target.value })}
+          className="setting-input"
+          placeholder={t('channels_config.channel_name_placeholder')}
+        />
+      </div>
+
+      <ChannelKeyField
+        id="edit-channel-psk"
+        label={t('channels_config.psk')}
+        description={t('channels_config.psk_description')}
+        value={edit.draft.psk}
+        onChange={(psk) => updateDraft({ psk })}
+        format="base64"
+        generateBytes={PSK_GENERATE_BYTES}
+        allowedBytes={PSK_ALLOWED_BYTES}
+        invalidMessage={t('channels_config.psk_invalid', 'Enter a base64 key of 1, 16 or 32 bytes, or leave it empty for no encryption.')}
+        placeholder={t('channels_config.psk_placeholder')}
+      />
+
+      <div className="setting-item">
+        <label htmlFor="edit-channel-role">
+          {t('channels_config.channel_role')}
+          <span className="setting-description">{t('channels_config.channel_role_description')}</span>
+        </label>
+        <select
+          id="edit-channel-role"
+          value={edit.draft.role}
+          onChange={(e) => updateDraft({ role: parseInt(e.target.value, 10) })}
+          className="setting-input"
+        >
+          {roleOptions(edit).map(role => (
+            <option key={role} value={role}>{t(ROLE_LABEL_KEYS[role])}</option>
+          ))}
+        </select>
+      </div>
+
+      <div className="setting-item">
+        <label htmlFor="edit-channel-precision">
+          {t('channels_config.position_precision')}
+          <span className="setting-description">{t('channels_config.position_precision_description')}</span>
+        </label>
+        <NumberInput
+          id="edit-channel-precision"
+          min={0}
+          max={32}
+          integer
+          value={edit.draft.positionPrecision}
+          onChange={(value) => updateDraft({ positionPrecision: value })}
+          className="setting-input"
+          placeholder="32"
+        />
+        <span className={`setting-description ${styles.accuracy}`}>
+          {t('channels_config.estimated_accuracy', { accuracy: formatPrecisionAccuracy(edit.draft.positionPrecision, distanceUnit) })}
+        </span>
+      </div>
+
+      <div className="setting-item">
+        <label className={styles.checkLabel}>
+          <span className={styles.checkRow}>
+            <input
+              type="checkbox"
+              checked={edit.draft.uplinkEnabled}
+              onChange={(e) => updateDraft({ uplinkEnabled: e.target.checked })}
+            />
+            <span>{t('channels_config.uplink_enabled')}</span>
+          </span>
+          <span className={`setting-description ${styles.checkDescription}`}>{t('channels_config.uplink_description')}</span>
+        </label>
+      </div>
+
+      <div className="setting-item">
+        <label className={styles.checkLabel}>
+          <span className={styles.checkRow}>
+            <input
+              type="checkbox"
+              checked={edit.draft.downlinkEnabled}
+              onChange={(e) => updateDraft({ downlinkEnabled: e.target.checked })}
+            />
+            <span>{t('channels_config.downlink_enabled')}</span>
+          </span>
+          <span className={`setting-description ${styles.checkDescription}`}>{t('channels_config.downlink_description')}</span>
+        </label>
+      </div>
+    </>
+  );
+
+  const renderFooter = (edit: EditingState) => ({ numberInvalid }: { numberInvalid: boolean }) => (
+    <>
+      <ConfigItemCardButton onClick={() => setEditing(null)} disabled={isSaving}>
+        {t('common.cancel', 'Cancel')}
+      </ConfigItemCardButton>
+      <ConfigItemCardButton
+        variant="primary"
+        onClick={() => { void handleSaveChannel(); }}
+        disabled={isSaving || numberInvalid || !keyValid || (!edit.isNew && !dirty)}
+      >
+        <UiIcon name="save" size={14} />
+        {isSaving ? t('common.saving', 'Saving...') : t('channels_config.save_to_device', 'Save to device')}
+      </ConfigItemCardButton>
+    </>
+  );
+
+  const chipsFor = (channel: Channel, slotId: number, displaySlot: number): ConfigItemChip[] => {
+    const chips: ConfigItemChip[] = [
+      { label: <ChannelEncryptionLabel status={channelEncryptionStatus(channel)} /> },
+    ];
+    const isPrimary = hasReorderChanges ? displaySlot === 0 : channel.role === 1;
+    chips.push(isPrimary
+      ? { label: <><UiIcon name="favorite" size={12} /> {t('channels_config.primary')}</>, tone: 'accent' }
+      : { label: t('channels_config.role_secondary') });
+    if (channel.uplinkEnabled) {
+      chips.push({ label: <><UiIcon name="sortAscending" size={12} /> {t('channels_config.uplink')}</>, tone: 'info' });
     }
+    if (channel.downlinkEnabled) {
+      chips.push({ label: <><UiIcon name="sortDescending" size={12} /> {t('channels_config.downlink')}</>, tone: 'info' });
+    }
+    if ((channel.positionPrecision ?? 0) > 0) {
+      const auto = slotId === autoPositionChannelId;
+      chips.push({
+        label: (
+          <>
+            <UiIcon name={auto ? 'location' : 'pin'} size={12} />{' '}
+            {auto ? t('channels_config.location_auto_broadcast') : t('channels_config.location_enabled')}
+            {` (${formatPrecisionAccuracy(channel.positionPrecision ?? 0, distanceUnit)})`}
+          </>
+        ),
+      });
+    }
+    return chips;
   };
 
   return (
-    <NumberInputScope scope={numberScope}>
     <>
-      <ConfigSection title={t('channels_config.title')} docsUrl="https://meshtastic.org/docs/configuration/radio/channels/" description={t('channels_config.description')}>
-
+      <ConfigSection
+        title={t('channels_config.title')}
+        docsUrl="https://meshtastic.org/docs/configuration/radio/channels/"
+        description={t('channels_config.description')}
+        canWrite={canWrite}
+      >
         {/* Reorder action bar */}
         {hasReorderChanges && (
-          <div style={{
-            display: 'flex',
-            gap: '0.5rem',
-            marginBottom: '1rem',
-            padding: '0.75rem',
-            backgroundColor: 'var(--color-surface)',
-            borderRadius: '8px',
-            border: '1px solid var(--color-accent)',
-            alignItems: 'center'
-          }}>
-            <span style={{ flex: 1, color: 'var(--color-text)' }}>
+          <div className={styles.reorderBar}>
+            <span className={styles.reorderText}>
               {t('channels_config.reorder_pending', 'Channel order changed. Apply to device?')}
             </span>
-            <button
-              onClick={handleApplyReorder}
-              disabled={isReordering}
-              style={{
-                padding: '0.5rem 1rem',
-                backgroundColor: 'var(--color-accent)',
-                color: 'var(--color-bg)',
-                border: 'none',
-                borderRadius: '4px',
-                cursor: isReordering ? 'not-allowed' : 'pointer',
-                opacity: isReordering ? 0.6 : 1
-              }}
-            >
+            <ConfigItemCardButton variant="primary" onClick={() => { void handleApplyReorder(); }} disabled={isReordering}>
               {isReordering ? t('common.saving', 'Saving...') : t('channels_config.apply_order', 'Apply Order')}
-            </button>
-            <button
-              onClick={handleCancelReorder}
-              disabled={isReordering}
-              style={{
-                padding: '0.5rem 1rem',
-                backgroundColor: 'var(--color-surface-hover)',
-                color: 'var(--color-text)',
-                border: 'none',
-                borderRadius: '4px',
-                cursor: isReordering ? 'not-allowed' : 'pointer'
-              }}
-            >
+            </ConfigItemCardButton>
+            <ConfigItemCardButton onClick={handleCancelReorder} disabled={isReordering}>
               {t('common.cancel', 'Cancel')}
-            </button>
+            </ConfigItemCardButton>
           </div>
         )}
 
+        {visibleSlots.length === 0 && !editing?.isNew && (
+          <p className={styles.empty}>{t('channels_config.no_channels', 'No channels are configured.')}</p>
+        )}
+
         <DndContext sensors={sensors} collisionDetection={closestCenter} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
-          <SortableContext items={slotOrder} strategy={verticalListSortingStrategy}>
-            <div style={{ display: 'grid', gap: '1rem' }}>
-              {channelSlots.map(({ slotId, displaySlot, channel }) => (
-                <SortableChannelCard key={slotId} id={slotId}>
-                  <div
-                    style={{
-                      border: (hasReorderChanges ? displaySlot === 0 : channel?.role === 1)
-                        ? '2px solid var(--color-accent)'
-                        : '1px solid var(--color-surface-hover)',
-                      borderRadius: '8px',
-                      padding: '1rem',
-                      backgroundColor: channel ? 'var(--color-surface)' : 'var(--color-bg-raised)',
-                      opacity: channel?.role === 0 ? 0.5 : 1,
-                      boxShadow: (hasReorderChanges ? displaySlot === 0 : channel?.role === 1)
-                        ? '0 0 10px color-mix(in srgb, var(--color-accent) 30%, transparent)' : 'none'
-                    }}
+          <SortableContext items={visibleSlots} strategy={verticalListSortingStrategy}>
+            <div className={styles.list}>
+              {visibleSlots.map(slotId => {
+                const channel = channelBySlot.get(slotId)!;
+                const displaySlot = slotOrder.indexOf(slotId);
+                const isEditing = editing !== null && !editing.isNew && editing.slotId === slotId;
+                const collisions = collisionDbNamesByChannelId.get(channel.id);
+                return (
+                  <SortableChannelCard
+                    key={slotId}
+                    id={slotId}
+                    disabled={!canWrite || editing !== null}
+                    dragLabel={t('channels_config.drag_to_reorder', 'Drag to reorder')}
                   >
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.75rem' }}>
-                      <div>
-                        <h4 style={{ margin: 0, color: 'var(--color-text)' }}>
-                          {t('channels_config.slot', { slot: hasReorderChanges ? displaySlot : slotId })}: {channel ? (
-                            <>
-                              {channel.name || <span style={{ color: 'var(--color-text-subtle)', fontStyle: 'italic' }}>{t('channels_config.unnamed')}</span>}
-                              {!hasReorderChanges && channel.role === 1 && <span style={{ marginLeft: '0.5rem', color: 'var(--color-accent)', fontSize: '0.8rem' }}><UiIcon name="favorite" size={13} /> {t('channels_config.primary')}</span>}
-                              {hasReorderChanges && displaySlot === 0 && <span style={{ marginLeft: '0.5rem', color: 'var(--color-accent)', fontSize: '0.8rem' }}><UiIcon name="favorite" size={13} /> {t('channels_config.primary')}</span>}
-                              {channel.role === 0 && <span style={{ marginLeft: '0.5rem', color: 'var(--color-text-faint)', fontSize: '0.8rem' }}><UiIcon name="blocked" size={13} /> {t('channels_config.disabled')}</span>}
-                              <AeadBadge useAead={channel.useAead} />
-                            </>
-                          ) : <span style={{ color: 'var(--color-text-subtle)', fontStyle: 'italic' }}>{t('channels_config.empty')}</span>}
-                        </h4>
-                  {channel && (
-                    <div style={{ marginTop: '0.5rem', fontSize: '0.9rem', color: 'var(--color-text-muted)' }}>
-                      {(() => {
-                        const status = channelEncryptionStatus(channel);
-                        if (status === 'secure') {
-                          return <div title={t('channels.encrypted_secure')}><UiIcon name="encrypted" /> {t('channels_config.encrypted_secure')}</div>;
-                        } else if (status === 'default') {
-                          return <div title={t('channels.encrypted_default')}><UiIcon name="encryptedKey" /> {t('channels_config.encrypted_default')}</div>;
-                        } else {
-                          return <div title={t('channels.unencrypted')}><UiIcon name="unencrypted" /> {t('channels_config.unencrypted')}</div>;
-                        }
-                      })()}
-                      <div>
-                        {channel.uplinkEnabled && <><UiIcon name="sortAscending" /> {t('channels_config.uplink')} </>}
-                        {channel.downlinkEnabled && <><UiIcon name="sortDescending" /> {t('channels_config.downlink')}</>}
-                        {!channel.uplinkEnabled && !channel.downlinkEnabled && t('channels_config.no_bridge')}
-                      </div>
-                      {(channel.positionPrecision ?? 0) > 0 && (
-                        <div>
-                          <UiIcon name={slotId === autoPositionChannelId ? 'location' : 'pin'} /> {slotId === autoPositionChannelId
-                            ? t('channels_config.location_auto_broadcast')
-                            : t('channels_config.location_enabled')}
-                          {` (${formatPrecisionAccuracy(channel.positionPrecision ?? 0, distanceUnit)})`}
-                        </div>
-                      )}
-                      {collisionDbNamesByChannelId.has(channel.id) && (
-                        <div
-                          style={{ marginTop: '0.5rem', color: 'var(--color-warning)', fontSize: '0.85rem' }}
-                          title={t('channels_config.collision_tooltip', 'This channel shares its encryption key with a Channel Database (server-side decryption) entry under a different name, so its messages are filed under that entry instead.')}
-                        >
-                          <UiIcon name="alert" /> {t('channels_config.collision_warning', {
+                    <ConfigItemCard
+                      testId="channel-card"
+                      leading={t('channels_config.slot', { slot: hasReorderChanges ? displaySlot : slotId })}
+                      title={
+                        <>
+                          {channel.name || <span className={styles.unnamed}>{t('channels_config.unnamed')}</span>}
+                          <AeadBadge useAead={channel.useAead} />
+                        </>
+                      }
+                      chips={chipsFor(channel, slotId, displaySlot)}
+                      highlighted={hasReorderChanges ? displaySlot === 0 : channel.role === 1}
+                      notice={collisions && (
+                        <span title={t('channels_config.collision_tooltip', 'This channel shares its encryption key with a Channel Database (server-side decryption) entry under a different name, so its messages are filed under that entry instead.')}>
+                          <UiIcon name="alert" size={12} /> {t('channels_config.collision_warning', {
                             defaultValue: 'Key shared with Channel Database entry "{{names}}" — messages may appear under that name instead of here.',
-                            names: collisionDbNamesByChannelId.get(channel.id)!.join('", "'),
+                            names: collisions.join('", "'),
                           })}
-                        </div>
+                        </span>
                       )}
-                    </div>
-                  )}
-                </div>
-                <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-                  <button
-                    onClick={() => handleEditChannel(slotId)}
-                    style={{
-                      padding: '0.5rem 0.75rem',
-                      fontSize: '0.9rem',
-                      backgroundColor: 'var(--color-accent)',
-                      color: 'var(--color-bg)',
-                      border: 'none',
-                      borderRadius: '4px',
-                      cursor: 'pointer'
-                    }}
-                  >
-                    <UiIcon name="edit" /> {t('common.edit')}
-                  </button>
-                  {channel && (
-                    <button
-                      onClick={() => handleExportChannel(slotId)}
-                      style={{
-                        padding: '0.5rem 0.75rem',
-                        fontSize: '0.9rem',
-                        backgroundColor: 'var(--color-success)',
-                        color: 'var(--color-bg)',
-                        border: 'none',
-                        borderRadius: '4px',
-                        cursor: 'pointer'
-                      }}
+                      expanded={isEditing}
+                      disabled={!canWrite}
+                      editDisabled={hasReorderChanges}
+                      editTitle={reorderBlockReason}
+                      onEdit={() => discard.guard(() => openEditor(slotId, false))}
+                      onDelete={slotId > 0 && !hasReorderChanges ? () => { void handleDeleteChannel(slotId); } : undefined}
+                      deleteTitle={t('channels_config.delete_title', 'Delete channel {{slot}}?', { slot: slotId })}
+                      deleteMessage={t(
+                        'channels_config.delete_message',
+                        'This disables the channel on the device and permanently deletes its message history in MeshMonitor. The messages cannot be recovered.',
+                      )}
+                      deletePreview={channel.name || t('channels_config.unnamed')}
+                      deleteConfirmLabel={t('channels_config.delete_confirm', 'Delete channel and messages')}
+                      actions={
+                        <>
+                          <ConfigItemCardButton onClick={() => { void handleExportChannel(slotId); }} disabled={!canWrite}>
+                            <UiIcon name="download" size={14} /> {t('common.export')}
+                          </ConfigItemCardButton>
+                          <ConfigItemCardButton
+                            onClick={() => discard.guard(() => { setEditing(null); handleImportClick(slotId); })}
+                            disabled={!canWrite || hasReorderChanges}
+                            title={reorderBlockReason}
+                          >
+                            <UiIcon name="upload" size={14} /> {t('common.import')}
+                          </ConfigItemCardButton>
+                        </>
+                      }
+                      footer={isEditing && editing ? renderFooter(editing) : undefined}
                     >
-                      <UiIcon name="download" /> {t('common.export')}
-                    </button>
-                  )}
-                  <button
-                    onClick={() => handleImportClick(slotId)}
-                    style={{
-                      padding: '0.5rem 0.75rem',
-                      fontSize: '0.9rem',
-                      backgroundColor: 'var(--color-warning)',
-                      color: 'var(--color-bg)',
-                      border: 'none',
-                      borderRadius: '4px',
-                      cursor: 'pointer'
-                    }}
-                  >
-                    <UiIcon name="upload" /> {t('common.import')}
-                  </button>
-                  {slotId > 0 && channel && channel.role !== 0 && (
-                    <button
-                      onClick={() => handleDeleteChannel(slotId)}
-                      style={{
-                        padding: '0.5rem 0.75rem',
-                        fontSize: '0.9rem',
-                        backgroundColor: 'var(--color-error)',
-                        color: 'var(--color-bg)',
-                        border: 'none',
-                        borderRadius: '4px',
-                        cursor: 'pointer'
-                      }}
-                    >
-                      <UiIcon name="delete" /> {t('common.delete')}
-                    </button>
-                  )}
-                </div>
-              </div>
-            </div>
-          </SortableChannelCard>
-              ))}
+                      {isEditing && editing && renderEditor(editing)}
+                    </ConfigItemCard>
+                  </SortableChannelCard>
+                );
+              })}
             </div>
           </SortableContext>
           <DragOverlay>
             {activeDragId !== null && (() => {
-              const ch = channels.find(c => c.id === activeDragId);
+              const ch = channelBySlot.get(activeDragId);
               return (
-                <div style={{
-                  border: '2px solid var(--color-accent)',
-                  borderRadius: '8px',
-                  padding: '1rem',
-                  backgroundColor: 'var(--color-surface)',
-                  boxShadow: '0 12px 32px rgba(0, 0, 0, 0.5)',
-                  opacity: 0.95,
-                }}>
-                  <h4 style={{ margin: 0, color: 'var(--color-text)' }}>
-                    {ch?.name || t('channels_config.empty')}
-                    {ch?.role === 1 && <span style={{ marginLeft: '0.5rem', color: 'var(--color-accent)', fontSize: '0.8rem' }}><UiIcon name="favorite" size={13} /> {t('channels_config.primary')}</span>}
-                  </h4>
+                <div className={styles.dragPreview}>
+                  {ch?.name || t('channels_config.unnamed')}
                 </div>
               );
             })()}
           </DragOverlay>
         </DndContext>
+
+        {editing?.isNew && (
+          <ConfigItemCard
+            testId="channel-card-new"
+            leading={t('channels_config.slot', { slot: editing.slotId })}
+            title={t('channels_config.new_channel', 'New channel')}
+            expanded
+            footer={renderFooter(editing)}
+          >
+            {renderEditor(editing)}
+          </ConfigItemCard>
+        )}
+
+        <div className={styles.addBar}>
+          <ConfigItemCardButton
+            onClick={() => {
+              if (nextFreeSlot !== null) discard.guard(() => openEditor(nextFreeSlot, true));
+            }}
+            disabled={!canWrite || nextFreeSlot === null || hasReorderChanges || !!editing?.isNew}
+            title={nextFreeSlot === null
+              ? t('channels_config.add_channel_full', 'All 8 channel slots are in use. Delete a channel to free a slot.')
+              : reorderBlockReason}
+            data-testid="channel-add"
+          >
+            <UiIcon name="plus" size={14} />
+            {nextFreeSlot === null
+              ? t('channels_config.add_channel', 'Add channel')
+              : t('channels_config.add_channel_slot', 'Add channel (slot {{slot}})', { slot: nextFreeSlot })}
+          </ConfigItemCardButton>
+          {nextFreeSlot !== null && (
+            <ConfigItemCardButton
+              onClick={() => discard.guard(() => { setEditing(null); handleImportClick(nextFreeSlot); })}
+              disabled={!canWrite || hasReorderChanges}
+              title={reorderBlockReason}
+            >
+              <UiIcon name="upload" size={14} />
+              {t('channels_config.import_to_slot', 'Import to slot {{slot}}', { slot: nextFreeSlot })}
+            </ConfigItemCardButton>
+          )}
+          {nextFreeSlot === null && (
+            <span className={styles.addReason}>
+              {t('channels_config.add_channel_full', 'All 8 channel slots are in use. Delete a channel to free a slot.')}
+            </span>
+          )}
+        </div>
       </ConfigSection>
 
-      {/* Edit Channel Modal */}
-      {showEditModal && editingChannel && (
-        <div
-          style={{
-            position: 'fixed',
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            backgroundColor: 'rgba(0, 0, 0, 0.7)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            zIndex: 1000
-          }}
-          onClick={() => !isSaving && setShowEditModal(false)}
-        >
-          <div
-            style={{
-              backgroundColor: 'var(--color-bg)',
-              borderRadius: '8px',
-              padding: '1.5rem',
-              maxWidth: '500px',
-              width: '90%',
-              maxHeight: '80vh',
-              overflowY: 'auto'
-            }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <h3 style={{ marginTop: 0 }}>{t('channels_config.edit_channel', { slot: editingChannel.slotId })}</h3>
+      <DiscardChangesDialog guard={discard} />
 
-            <div className="setting-item">
-              <label htmlFor="edit-channel-name">
-                {t('channels_config.channel_name')}
-                <span className="setting-description">{t('channels_config.channel_name_description')}</span>
-              </label>
-              <input
-                id="edit-channel-name"
-                type="text"
-                maxLength={11}
-                value={editingChannel.name}
-                onChange={(e) => setEditingChannel({ ...editingChannel, name: e.target.value })}
-                className="setting-input"
-                placeholder={t('channels_config.channel_name_placeholder')}
-              />
-            </div>
-
-            <div className="setting-item">
-              <label htmlFor="edit-channel-psk">
-                {t('channels_config.psk')}
-                <span className="setting-description">
-                  {t('channels_config.psk_description')}
-                </span>
-              </label>
-              <div style={{ display: 'flex', gap: '0.5rem' }}>
-                <input
-                  id="edit-channel-psk"
-                  type="text"
-                  value={editingChannel.psk}
-                  onChange={(e) => setEditingChannel({ ...editingChannel, psk: e.target.value })}
-                  className="setting-input"
-                  placeholder={t('channels_config.psk_placeholder')}
-                  style={{ flex: 1 }}
-                />
-                <button
-                  onClick={handleGeneratePSK}
-                  type="button"
-                  style={{
-                    padding: '0.5rem 1rem',
-                    backgroundColor: 'var(--color-success)',
-                    color: 'var(--color-bg)',
-                    border: 'none',
-                    borderRadius: '4px',
-                    cursor: 'pointer',
-                    whiteSpace: 'nowrap'
-                  }}
-                  title={t('channels_config.generate_key_title')}
-                >
-                  {t('channels_config.generate')}
-                </button>
-              </div>
-            </div>
-
-            <div className="setting-item">
-              <label htmlFor="edit-channel-role">
-                {t('channels_config.channel_role')}
-                <span className="setting-description">
-                  {t('channels_config.channel_role_description')}
-                </span>
-              </label>
-              <select
-                id="edit-channel-role"
-                value={editingChannel.role}
-                onChange={(e) => setEditingChannel({ ...editingChannel, role: parseInt(e.target.value) })}
-                className="setting-input"
-              >
-                <option value={0}>{t('channels_config.role_disabled')}</option>
-                <option value={1}>{t('channels_config.role_primary')}</option>
-                <option value={2}>{t('channels_config.role_secondary')}</option>
-              </select>
-            </div>
-
-            <div className="setting-item">
-              <label htmlFor="edit-channel-precision">
-                {t('channels_config.position_precision')}
-                <span className="setting-description">
-                  {t('channels_config.position_precision_description')}
-                </span>
-              </label>
-              <NumberInput
-                id="edit-channel-precision"
-                min={0}
-                max={32}
-                integer
-                value={editingChannel.positionPrecision}
-                onChange={(value) => setEditingChannel({ ...editingChannel, positionPrecision: value })}
-                className="setting-input"
-                placeholder="32"
-              />
-              <span className="setting-description" style={{ marginTop: '0.25rem' }}>
-                {t('channels_config.estimated_accuracy', { accuracy: formatPrecisionAccuracy(editingChannel.positionPrecision, distanceUnit) })}
-              </span>
-            </div>
-
-            <div className="setting-item">
-              <label style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                  <input
-                    type="checkbox"
-                    checked={editingChannel.uplinkEnabled}
-                    onChange={(e) => setEditingChannel({ ...editingChannel, uplinkEnabled: e.target.checked })}
-                  />
-                  <span>{t('channels_config.uplink_enabled')}</span>
-                </div>
-                <span className="setting-description" style={{ marginLeft: '1.75rem' }}>
-                  {t('channels_config.uplink_description')}
-                </span>
-              </label>
-            </div>
-
-            <div className="setting-item">
-              <label style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                  <input
-                    type="checkbox"
-                    checked={editingChannel.downlinkEnabled}
-                    onChange={(e) => setEditingChannel({ ...editingChannel, downlinkEnabled: e.target.checked })}
-                  />
-                  <span>{t('channels_config.downlink_enabled')}</span>
-                </div>
-                <span className="setting-description" style={{ marginLeft: '1.75rem' }}>
-                  {t('channels_config.downlink_description')}
-                </span>
-              </label>
-            </div>
-
-            <div style={{ display: 'flex', gap: '0.5rem', marginTop: '1.5rem' }}>
-              <button
-                onClick={handleSaveChannel}
-                disabled={isSaving || numberScope.invalid}
-                style={{
-                  flex: 1,
-                  padding: '0.75rem',
-                  backgroundColor: 'var(--color-accent)',
-                  color: 'var(--color-bg)',
-                  border: 'none',
-                  borderRadius: '4px',
-                  cursor: isSaving || numberScope.invalid ? 'not-allowed' : 'pointer',
-                  opacity: isSaving || numberScope.invalid ? 0.6 : 1
-                }}
-              >
-                {isSaving ? t('common.saving') : t('channels_config.save_channel')}
-              </button>
-              <button
-                onClick={() => setShowEditModal(false)}
-                disabled={isSaving}
-                style={{
-                  flex: 1,
-                  padding: '0.75rem',
-                  backgroundColor: 'var(--color-surface-hover)',
-                  color: 'var(--color-text)',
-                  border: 'none',
-                  borderRadius: '4px',
-                  cursor: isSaving ? 'not-allowed' : 'pointer'
-                }}
-              >
-                {t('common.cancel')}
-              </button>
-            </div>
-          </div>
+      <Modal
+        isOpen={showImportModal}
+        onClose={() => { if (!isImporting) setShowImportModal(false); }}
+        title={t('channels_config.import_channel', { slot: importSlotId })}
+      >
+        <div className="setting-item">
+          <label htmlFor="import-file">
+            {t('channels_config.select_file')}
+            <span className="setting-description">{t('channels_config.select_file_description')}</span>
+          </label>
+          <input
+            ref={fileInputRef}
+            id="import-file"
+            type="file"
+            accept=".json"
+            onChange={handleFileSelect}
+            className={styles.fileInput}
+          />
         </div>
-      )}
 
-      {/* Import Channel Modal */}
-      {showImportModal && (
-        <div
-          style={{
-            position: 'fixed',
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            backgroundColor: 'rgba(0, 0, 0, 0.7)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            zIndex: 1000
-          }}
-          onClick={() => !isSaving && setShowImportModal(false)}
-        >
-          <div
-            style={{
-              backgroundColor: 'var(--color-bg)',
-              borderRadius: '8px',
-              padding: '1.5rem',
-              maxWidth: '500px',
-              width: '90%',
-              maxHeight: '80vh',
-              overflowY: 'auto'
-            }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <h3 style={{ marginTop: 0 }}>{t('channels_config.import_channel', { slot: importSlotId })}</h3>
-
-            <div className="setting-item">
-              <label htmlFor="import-file">
-                {t('channels_config.select_file')}
-                <span className="setting-description">{t('channels_config.select_file_description')}</span>
-              </label>
-              <input
-                ref={fileInputRef}
-                id="import-file"
-                type="file"
-                accept=".json"
-                onChange={handleFileSelect}
-                style={{
-                  width: '100%',
-                  padding: '0.5rem',
-                  marginTop: '0.5rem'
-                }}
-              />
-            </div>
-
-            {importFileContent && (
-              <div style={{ marginTop: '1rem' }}>
-                <label>{t('channels_config.preview')}:</label>
-                <pre
-                  style={{
-                    backgroundColor: 'var(--color-surface)',
-                    padding: '0.75rem',
-                    borderRadius: '4px',
-                    fontSize: '0.85rem',
-                    maxHeight: '200px',
-                    overflowY: 'auto'
-                  }}
-                >
-                  {importFileContent}
-                </pre>
-              </div>
-            )}
-
-            <div style={{ display: 'flex', gap: '0.5rem', marginTop: '1.5rem' }}>
-              <button
-                onClick={handleImportChannel}
-                disabled={isSaving || !importFileContent}
-                style={{
-                  flex: 1,
-                  padding: '0.75rem',
-                  backgroundColor: 'var(--color-success)',
-                  color: 'var(--color-bg)',
-                  border: 'none',
-                  borderRadius: '4px',
-                  cursor: (isSaving || !importFileContent) ? 'not-allowed' : 'pointer',
-                  opacity: (isSaving || !importFileContent) ? 0.6 : 1
-                }}
-              >
-                {isSaving ? t('channels_config.importing') : t('channels_config.import_channel_button')}
-              </button>
-              <button
-                onClick={() => setShowImportModal(false)}
-                disabled={isSaving}
-                style={{
-                  flex: 1,
-                  padding: '0.75rem',
-                  backgroundColor: 'var(--color-surface-hover)',
-                  color: 'var(--color-text)',
-                  border: 'none',
-                  borderRadius: '4px',
-                  cursor: isSaving ? 'not-allowed' : 'pointer'
-                }}
-              >
-                {t('common.cancel')}
-              </button>
-            </div>
+        {importFileContent && (
+          <div className={styles.previewBlock}>
+            <label>{t('channels_config.preview')}:</label>
+            <pre className={styles.preview}>{importFileContent}</pre>
           </div>
+        )}
+
+        <div className={styles.modalActions}>
+          <ConfigItemCardButton
+            variant="primary"
+            onClick={() => { void handleImportChannel(); }}
+            disabled={isImporting || !importFileContent}
+          >
+            {isImporting ? t('channels_config.importing') : t('channels_config.import_channel_button')}
+          </ConfigItemCardButton>
+          <ConfigItemCardButton onClick={() => setShowImportModal(false)} disabled={isImporting}>
+            {t('common.cancel')}
+          </ConfigItemCardButton>
         </div>
-      )}
+      </Modal>
     </>
-    </NumberInputScope>
   );
 };
 

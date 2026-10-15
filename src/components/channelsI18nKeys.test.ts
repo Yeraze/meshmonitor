@@ -35,7 +35,7 @@ describe('channel i18n keys (#5826)', () => {
   it('finds the keys it checks', () => {
     // Guards the scan itself: a broken regex would pass the next test vacuously.
     expect(used.has('channels_config.toast_channel_deleted')).toBe(true);
-    expect(used.has('meshcore.channels.confirm_delete')).toBe(true);
+    expect(used.has('meshcore.channels.confirm_reset_public')).toBe(true);
   });
 
   it('every key used in code is in en.json', () => {

@@ -806,9 +806,9 @@ export const MeshCoreChannelsView: React.FC<MeshCoreChannelsViewProps> = ({
               className={`${styles.reorderButton} ${reordering ? styles.active : ''}`}
               onClick={() => setReorderingFor(prev => (prev === channelIdsKey ? null : channelIdsKey))}
               aria-pressed={reordering}
-              title={t('meshcore.channels.order.reorder_title', 'Set a custom channel order (MeshMonitor display only)')}
+              title={t('meshcore.channels.order.reorder_title', 'Sort the channel list in your own order (MeshMonitor display only)')}
             >
-              <UiIcon name="dragHandle" size={14} /> {t('meshcore.channels.order.reorder', 'Reorder')}
+              <UiIcon name="dragHandle" size={14} /> {t('meshcore.channels.order.reorder', 'Sort')}
             </button>
           )}
         </div>

@@ -74,7 +74,9 @@ describe('every Auto Responder dialog uses it', () => {
   });
 
   it('Remove Trigger goes through the shared TriggerCard confirm (#5808)', () => {
-    const card = read('../shared/automation/TriggerCard.tsx');
+    // TriggerCard wraps the shared ConfigItemCard (#5829), which owns the confirm.
+    expect(read('../shared/automation/TriggerCard.tsx')).toContain('<ConfigItemCard');
+    const card = read('../shared/config/ConfigItemCard.tsx');
     expect(card).toContain('<ConfirmDialog');
     expect(card).toContain('onCancel={() => setConfirming(false)}');
     const dialog = read('../shared/automation/ConfirmDialog.tsx');
