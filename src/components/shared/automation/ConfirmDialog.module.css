@@ -1,0 +1,84 @@
+/* ConfirmDialog (#5808). */
+
+.overlay {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  background: color-mix(in srgb, var(--color-bg-sunken) 75%, transparent);
+  backdrop-filter: blur(2px);
+  z-index: 10000;
+}
+
+.panel {
+  width: min(100%, 500px);
+  padding: 1.5rem;
+  background: var(--color-bg);
+  color: var(--color-text);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 8px;
+}
+
+.panel:focus {
+  outline: none;
+}
+
+.title {
+  margin: 0 0 0.75rem;
+  font-size: 1.1rem;
+}
+
+.message {
+  margin: 0 0 1rem;
+  font-size: 0.875rem;
+  color: var(--color-text-subtle);
+  line-height: 1.5;
+}
+
+.preview {
+  margin-bottom: 1rem;
+  padding: 0.75rem;
+  background: var(--color-surface);
+  border-radius: 4px;
+  font-family: monospace;
+  font-size: 0.85rem;
+  overflow-wrap: anywhere;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+
+.cancel,
+.confirm,
+.danger {
+  padding: 0.5rem 1rem;
+  border-radius: 4px;
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+
+.cancel {
+  background: var(--color-surface-hover);
+  color: var(--color-text);
+  border: 1px solid var(--color-border-subtle);
+}
+
+.confirm {
+  background: var(--color-accent);
+  color: var(--color-bg);
+  border: none;
+  font-weight: bold;
+}
+
+.danger {
+  background: var(--color-error);
+  color: var(--color-bg);
+  border: none;
+  font-weight: bold;
+}

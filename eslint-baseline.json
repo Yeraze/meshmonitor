@@ -72,8 +72,7 @@
     "meshmonitor-ui/no-hardcoded-color": 2
   },
   "src/components/AutoResponderSection.tsx": {
-    "@typescript-eslint/no-explicit-any": 6,
-    "react-hooks/exhaustive-deps": 1
+    "@typescript-eslint/no-explicit-any": 3
   },
   "src/components/AutoTimeSyncSection.tsx": {
     "meshmonitor-ui/no-hardcoded-color": 2
@@ -335,9 +334,6 @@
   "src/components/admin-commands/useAdminCommandsState.ts": {
     "@typescript-eslint/no-explicit-any": 1,
     "no-case-declarations": 1
-  },
-  "src/components/auto-responder/TriggerItem.tsx": {
-    "react-hooks/exhaustive-deps": 2
   },
   "src/components/automations/AutomationBuilder.tsx": {
     "@typescript-eslint/no-explicit-any": 1

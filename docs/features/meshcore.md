@@ -726,6 +726,8 @@ Auto-Responder matches incoming messages against operator-defined patterns and r
 - **Two actions** — reply with a **text response** (same token expansion as Auto-Announce) or **run a script** (with token-expanded script args). Script execution reuses the shared script runner, with `MESHCORE_*` environment variables injected so a script can branch on which stack invoked it.
 - **Reply scope/region** — choose which region the reply floods to: **Inherit** the channel/source default, **Match the triggering message's scope** (answer back on the same region it arrived on), send **Unscoped**, or pick **a specific region**. This mirrors the MeshCore scope control in the [Automation Engine](/features/automation-engine#actions).
 
+Triggers work the same way as on Meshtastic: each one is a card with its own on/off switch, a summary and tags. Click **Add trigger** or **Edit** to open a card, then **Done**, then **Save**. **Delete** asks first. The **Test a message** box shows which triggers a sample message fires (case-insensitive, anywhere in the message) and their reply text, with tokens such as `{VERSION}` left as written. It sends nothing and does not apply channel filters.
+
 ### Route tokens
 
 Auto-Acknowledge and Auto-Responder templates can quote the path the triggering message took:
