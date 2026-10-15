@@ -259,4 +259,72 @@ describe('userPreferencesRoutes', () => {
       expect(get.body.preferences.aircraftTrailHours).toBe(168);
     });
   });
+  /**
+   * #5824: "Show MQTT/Bridge Messages" is stored per source, so flipping it on
+   * one source must not change another, and the value must survive a fresh
+   * browser (i.e. come back from GET).
+   */
+  describe('per-source showMqttMessages (#5824)', () => {
+    it('stores one value per source and leaves other sources alone', async () => {
+      const agent = await harness.loginAs(harness.limited);
+
+      let res = await agent.post('/map-preferences').send({ showMqttMessages: true, sourceId: harness.sourceA });
+      expect(res.status).toBe(200);
+      res = await agent.post('/map-preferences').send({ showMqttMessages: false, sourceId: harness.sourceB });
+      expect(res.status).toBe(200);
+
+      let getRes = await agent.get('/map-preferences');
+      expect(getRes.body.preferences.showMqttMessagesBySource).toEqual({
+        [harness.sourceA]: true,
+        [harness.sourceB]: false,
+      });
+
+      res = await agent.post('/map-preferences').send({ showMqttMessages: false, sourceId: harness.sourceA });
+      expect(res.status).toBe(200);
+      getRes = await agent.get('/map-preferences');
+      expect(getRes.body.preferences.showMqttMessagesBySource).toEqual({
+        [harness.sourceA]: false,
+        [harness.sourceB]: false,
+      });
+    });
+
+    it('keeps the map when other preferences are saved', async () => {
+      const agent = await harness.loginAs(harness.limited);
+      await agent.post('/map-preferences').send({ showMqttMessages: true, sourceId: harness.sourceA });
+      await agent.post('/map-preferences').send({ showPaths: true });
+
+      const getRes = await agent.get('/map-preferences');
+      expect(getRes.body.preferences).toMatchObject({
+        showPaths: true,
+        showMqttMessagesBySource: { [harness.sourceA]: true },
+      });
+    });
+
+    it('reads an empty map for a user who never toggled it', async () => {
+      const agent = await harness.loginAs(harness.limited);
+      await agent.post('/map-preferences').send({ showPaths: true });
+
+      const getRes = await agent.get('/map-preferences');
+      expect(getRes.body.preferences.showMqttMessagesBySource).toEqual({});
+    });
+
+    it('400s on a non-boolean value or a missing sourceId', async () => {
+      const agent = await harness.loginAs(harness.limited);
+
+      let res = await agent.post('/map-preferences').send({ showMqttMessages: 'yes', sourceId: harness.sourceA });
+      expect(res.status).toBe(400);
+      res = await agent.post('/map-preferences').send({ showMqttMessages: true });
+      expect(res.status).toBe(400);
+      expect(res.body.code).toBe('MISSING_SOURCE_ID');
+    });
+
+    it('404s an unknown source and stores nothing', async () => {
+      const agent = await harness.loginAs(harness.limited);
+      const res = await agent.post('/map-preferences').send({ showMqttMessages: true, sourceId: 'no-such-source' });
+      expect(res.status).toBe(404);
+
+      const getRes = await agent.get('/map-preferences');
+      expect(getRes.body.preferences?.showMqttMessagesBySource ?? {}).toEqual({});
+    });
+  });
 });

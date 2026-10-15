@@ -138,6 +138,9 @@ export const userMapPreferencesSqlite = sqliteTable('user_map_preferences', {
   mapMaxAgeHours: integer('map_max_age_hours'),
   // Position history "points only" toggle (#3492): omit the connecting line.
   positionHistoryPointsOnly: integer('position_history_points_only', { mode: 'boolean' }).default(false),
+  // Per-source "Show MQTT/Bridge Messages" (#5824, migration 205): JSON
+  // object { [sourceId]: boolean }. NULL = never set on any source.
+  showMqttMessagesBySource: text('show_mqtt_messages_by_source'),
   createdAt: integer('createdAt'),
   updatedAt: integer('updatedAt'),
 });
@@ -173,6 +176,7 @@ export const userMapPreferencesPostgres = pgTable('user_map_preferences', {
   positionHistoryHours: pgInteger('position_history_hours'),
   mapMaxAgeHours: pgInteger('map_max_age_hours'),
   positionHistoryPointsOnly: pgBoolean('position_history_points_only').default(false),
+  showMqttMessagesBySource: pgText('show_mqtt_messages_by_source'),
   createdAt: pgBigint('createdAt', { mode: 'number' }),
   updatedAt: pgBigint('updatedAt', { mode: 'number' }),
 });
@@ -432,6 +436,7 @@ export const userMapPreferencesMysql = mysqlTable('user_map_preferences', {
   positionHistoryHours: myInt('position_history_hours'),
   mapMaxAgeHours: myInt('map_max_age_hours'),
   positionHistoryPointsOnly: myBoolean('position_history_points_only').default(false),
+  showMqttMessagesBySource: myText('show_mqtt_messages_by_source'),
   createdAt: myBigint('createdAt', { mode: 'number' }),
   updatedAt: myBigint('updatedAt', { mode: 'number' }),
 });

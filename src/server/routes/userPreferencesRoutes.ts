@@ -2,7 +2,8 @@
  * User Preferences Routes
  *
  * GET /user/map-preferences  — read the caller's saved map preferences (optionalAuth)
- * POST /user/map-preferences — save the caller's map preferences (requireAuth)
+ * POST /user/map-preferences — save the caller's map preferences (requireAuth).
+ *   `{ showMqttMessages, sourceId }` sets the per-source MQTT message toggle (#5824).
  *
  * Extracted verbatim from server.ts (was `apiRouter.get/post('/user/map-preferences', ...)`,
  * L4204/L4220) as part of #3502. Mounted at '/user' in server.ts. Distinct from
@@ -40,6 +41,23 @@ router.post('/map-preferences', requireAuth(), async (req, res) => {
     // Prevent saving preferences for anonymous user
     if (req.user!.username === 'anonymous') {
       return fail(res, 403, 'ANONYMOUS_USER', 'Cannot save preferences for anonymous user');
+    }
+
+    // Per-source "Show MQTT/Bridge Messages" (#5824): `{ showMqttMessages, sourceId }`.
+    // Validated and stored before the shared fields so a bad pair saves nothing.
+    const { showMqttMessages, sourceId } = req.body;
+    if (showMqttMessages !== undefined) {
+      if (typeof showMqttMessages !== 'boolean') {
+        return fail(res, 400, 'INVALID_PREFERENCE', 'showMqttMessages must be a boolean');
+      }
+      if (typeof sourceId !== 'string' || sourceId === '') {
+        return fail(res, 400, 'MISSING_SOURCE_ID', 'sourceId is required with showMqttMessages');
+      }
+      // Only known sources get a key, so the stored map cannot grow without bound.
+      if (!(await databaseService.sources.getSource(sourceId))) {
+        return fail(res, 404, 'SOURCE_NOT_FOUND', 'Source not found');
+      }
+      await databaseService.setShowMqttMessagesForSourceAsync(req.user!.id, sourceId, showMqttMessages);
     }
 
     const { mapTileset, mapTilesetLight, mapTilesetDark, showPaths, showNeighborInfo, showRoute, showMotion, showMqttNodes, showUdpNodes, showRfNodes, showMeshCoreNodes, showWaypoints, showAnimations, showAccuracyRegions, showEstimatedPositions, showAtakContacts, positionHistoryPointsOnly, positionHistoryHours, mapMaxAgeHours, unreadIndicatorEnabled, spreadNodes, aircraftDisplayMode, showAircraftTrails, aircraftTrailHours } = req.body;

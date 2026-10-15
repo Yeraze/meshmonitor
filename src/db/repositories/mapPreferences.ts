@@ -61,6 +61,9 @@ export class MapPreferencesRepository extends BaseRepository {
         positionHistoryHours: row.positionHistoryHours ?? null,
         mapMaxAgeHours: row.mapMaxAgeHours ?? null,
         positionHistoryPointsOnly: row.positionHistoryPointsOnly ?? false,
+        // Per-source "Show MQTT/Bridge Messages" (#5824). Sources the user has
+        // never toggled are absent, so the client keeps its own default.
+        showMqttMessagesBySource: parseBooleanMap(row.showMqttMessagesBySource),
       };
     } catch (error) {
       logger.error('[MapPreferencesRepository] Failed to get map preferences:', error);
@@ -174,5 +177,50 @@ export class MapPreferencesRepository extends BaseRepository {
       logger.error('[MapPreferencesRepository] Failed to save map preferences:', error);
       throw error;
     }
+  }
+
+  /**
+   * Set the "Show MQTT/Bridge Messages" toggle for one source (#5824).
+   * Read-modify-write of the JSON map so other sources keep their values.
+   * Creates the preferences row (with defaults) when the user has none.
+   */
+  async setShowMqttMessagesForSource(userId: number, sourceId: string, value: boolean): Promise<void> {
+    try {
+      const table = this.tables.userMapPreferences;
+      const rows = await this.db
+        .select({ id: table.id, showMqttMessagesBySource: table.showMqttMessagesBySource })
+        .from(table)
+        .where(eq(table.userId, userId))
+        .limit(1);
+
+      if (rows.length === 0) {
+        await this.saveMapPreferences(userId, {});
+      }
+      const map = parseBooleanMap(rows[0]?.showMqttMessagesBySource);
+      map[sourceId] = value;
+      await this.db
+        .update(table)
+        .set({ showMqttMessagesBySource: JSON.stringify(map) })
+        .where(eq(table.userId, userId));
+    } catch (error) {
+      logger.error('[MapPreferencesRepository] Failed to save per-source MQTT message toggle:', error);
+      throw error;
+    }
+  }
+}
+
+/** Parse a stored `{ [sourceId]: boolean }` JSON map; anything malformed reads as empty. */
+export function parseBooleanMap(raw: unknown): Record<string, boolean> {
+  if (typeof raw !== 'string' || raw === '') return {};
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
+    const out: Record<string, boolean> = {};
+    for (const [key, val] of Object.entries(parsed as Record<string, unknown>)) {
+      if (typeof val === 'boolean') out[key] = val;
+    }
+    return out;
+  } catch {
+    return {};
   }
 }

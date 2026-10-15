@@ -1,6 +1,12 @@
-import React, { createContext, useContext, useState, useMemo, useCallback, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useMemo, useCallback, useEffect, useRef, ReactNode } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { TabType, SortField, SortDirection, VALID_TABS, type NodePopupState } from '../types/ui';
+import {
+  readLocalShowMqttMessages,
+  writeLocalShowMqttMessages,
+  fetchServerShowMqttMessages,
+  saveServerShowMqttMessages,
+} from './showMqttMessagesPreference';
 
 interface UIContextType {
   activeTab: TabType;
@@ -85,10 +91,15 @@ export const UIProvider: React.FC<UIProviderProps> = ({ children }) => {
     void navigate(`/source/${sourceId}/${tab}`);
   }, [navigate, sourceId, activeTab]);
 
-  const [showMqttMessagesState, setShowMqttMessagesState] = useState<boolean>(() => {
-    const saved = localStorage.getItem('showMqttMessages');
-    return saved !== null ? saved === 'true' : false; // Default to false
-  });
+  // Per-source (#5824). App remounts on a source switch (key={sourceId} in
+  // main.tsx), so this initialiser runs once per source.
+  const [showMqttMessagesState, setShowMqttMessagesState] = useState<boolean>(() =>
+    readLocalShowMqttMessages(sourceId),
+  );
+  const showMqttMessagesRef = useRef(showMqttMessagesState);
+  showMqttMessagesRef.current = showMqttMessagesState;
+  // Set once the user flips the toggle, so a slow server read cannot undo it.
+  const showMqttMessagesTouchedRef = useRef(false);
   const [error, setError] = useState<string | null>(null);
   const [tracerouteLoading, setTracerouteLoading] = useState<string | null>(null);
   const [nodeFilter, setNodeFilter] = useState<string>(''); // Deprecated - kept for backward compatibility
@@ -130,14 +141,38 @@ export const UIProvider: React.FC<UIProviderProps> = ({ children }) => {
   const [showIgnoredNodes, setShowIgnoredNodes] = useState<boolean>(false);
   const [filterRemoteAdminOnly, setFilterRemoteAdminOnly] = useState<boolean>(false);
 
-  // Wrapper setter for showMqttMessages that persists to localStorage
+  // The server copy wins over the local cache once it loads (#5824).
+  useEffect(() => {
+    if (!sourceId) return;
+    let cancelled = false;
+    fetchServerShowMqttMessages(sourceId)
+      .then((value) => {
+        if (cancelled || value === undefined || showMqttMessagesTouchedRef.current) return;
+        setShowMqttMessagesState(value);
+        writeLocalShowMqttMessages(sourceId, value);
+      })
+      .catch(() => {
+        // Offline or not signed in: keep the local value.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [sourceId]);
+
+  // Wrapper setter for showMqttMessages that persists per source, locally and
+  // on the server (#5824).
   const setShowMqttMessages = React.useCallback((value: React.SetStateAction<boolean>) => {
-    setShowMqttMessagesState(prevValue => {
-      const newValue = typeof value === 'function' ? value(prevValue) : value;
-      localStorage.setItem('showMqttMessages', newValue.toString());
-      return newValue;
-    });
-  }, []);
+    const newValue = typeof value === 'function' ? value(showMqttMessagesRef.current) : value;
+    showMqttMessagesTouchedRef.current = true;
+    showMqttMessagesRef.current = newValue;
+    setShowMqttMessagesState(newValue);
+    writeLocalShowMqttMessages(sourceId, newValue);
+    if (sourceId) {
+      saveServerShowMqttMessages(sourceId, newValue).catch(() => {
+        // Anonymous users cannot save; the local cache still holds the value.
+      });
+    }
+  }, [sourceId]);
 
   const value = useMemo<UIContextType>(() => ({
     activeTab,
