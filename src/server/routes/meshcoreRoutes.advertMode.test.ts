@@ -189,5 +189,20 @@ describe('meshcoreRoutes — advert mode', () => {
       expect(res.status).toBe(400);
       expect(res.body).toMatchObject({ success: false, code: 'INVALID_ADVERT_MODE' });
     });
+
+    it('keeps the stored run state when a save sends a stale copy (#5827)', async () => {
+      const agent = await automationWriter();
+      await harness.db.settings.setSourceSetting(harness.sourceA, 'meshcoreTimerTriggers', JSON.stringify([
+        { ...trigger, lastRun: 2000, lastResult: 'error', lastError: 'no route' },
+      ]));
+      const res = await agent.post(url()).send({ triggers: [
+        { ...trigger, name: 'renamed', lastRun: 1000, lastResult: 'success' },
+        { ...trigger, id: 'new', lastRun: 999 },
+      ] });
+      expect(res.status).toBe(200);
+      const saved = JSON.parse((await harness.db.settings.getSettingForSource(harness.sourceA, 'meshcoreTimerTriggers'))!);
+      expect(saved[0]).toMatchObject({ name: 'renamed', lastRun: 2000, lastResult: 'error', lastError: 'no route' });
+      expect(saved[1].lastRun).toBeUndefined();
+    });
   });
 });
