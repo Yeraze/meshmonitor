@@ -1,9 +1,11 @@
 /**
  * @vitest-environment jsdom
  *
- * PR-C: MQTT section now gates the form on `sources:write` for the active
- * source. The fieldset is `disabled` and a banner is rendered when the
- * caller lacks the grant.
+ * The MQTT section gates the form on `configuration:write` for the active
+ * source, the permission `POST /api/config/mqtt` checks. The fieldset is
+ * `disabled` and a banner is rendered when the caller lacks the grant. Quick
+ * configure also writes the source's `mqttLink`, so it needs `sources:write`
+ * as well.
  */
 import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -111,10 +113,42 @@ describe('MQTTConfigSection — permission gate (PR-C)', () => {
     expect(banner.textContent).toMatch(/permission/i);
   });
 
-  it('hasPermission is called with sources/write on the current sourceId', () => {
+  it('gates the form on configuration/write, the permission the save route checks', () => {
     hasPermissionMock.mockReturnValue(true);
     render(<MQTTConfigSection {...baseProps} />);
-    expect(hasPermissionMock).toHaveBeenCalledWith('sources', 'write', { sourceId: 'src-a' });
+    expect(hasPermissionMock).toHaveBeenCalledWith('configuration', 'write', { sourceId: 'src-a' });
+  });
+
+  const grant = (allowed: string[]) =>
+    hasPermissionMock.mockImplementation((resource: string, action: string) => allowed.includes(`${resource}:${action}`));
+  const withProxyTarget = () => {
+    sourcesRef.current = [
+      { id: 'src-a', name: 'A', type: 'meshtastic_tcp', enabled: true, config: {} },
+      { id: 'brk', name: 'B', type: 'mqtt_broker', enabled: true, config: {} },
+    ];
+  };
+
+  it('configuration:write without sources:write: form editable, quick configure disabled', () => {
+    grant(['configuration:write']);
+    withProxyTarget();
+    render(<MQTTConfigSection {...baseProps} />);
+    expect((document.querySelector('fieldset fieldset') as HTMLFieldSetElement).disabled).toBe(false);
+    expect(screen.queryByTestId('mqtt-permission-banner')).toBeNull();
+    expect((document.getElementById('mqttQuickConfig') as HTMLSelectElement).disabled).toBe(true);
+  });
+
+  it('sources:write without configuration:write: form locked (its save would be refused)', () => {
+    grant(['sources:write']);
+    render(<MQTTConfigSection {...baseProps} />);
+    expect((document.querySelector('fieldset fieldset') as HTMLFieldSetElement).disabled).toBe(true);
+    expect(screen.getByTestId('mqtt-permission-banner')).toBeInTheDocument();
+  });
+
+  it('both grants: quick configure enabled', () => {
+    grant(['configuration:write', 'sources:write']);
+    withProxyTarget();
+    render(<MQTTConfigSection {...baseProps} />);
+    expect((document.getElementById('mqttQuickConfig') as HTMLSelectElement).disabled).toBe(false);
   });
 });
 
