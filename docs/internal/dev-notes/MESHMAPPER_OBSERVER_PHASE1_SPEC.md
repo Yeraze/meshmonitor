@@ -851,7 +851,7 @@ does today.**
 |---|---|
 | `GET /observer/credentials` | Response gains `brokers: Array<{ brokerKey, username }>` from `listBrokers()`. Every existing field is unchanged. |
 | `PUT /observer/credentials` | Body gains optional `brokerKey: string`. Absent -> `store()` (unchanged legacy path). Present -> validate, then `storeForBroker()`. |
-| `DELETE /observer/credentials` | Gains optional `?brokerKey=` query param. Absent -> `clear()` (unchanged, wipes everything). Present -> `clearForBroker()`. |
+| `DELETE /observer/credentials` | Gains optional `?brokerKey=` query param. Absent -> `clear()` (unchanged, wipes everything). Present -> `clearForBroker()`. **Superseded by #5825:** absent (or `?legacy=1`) now removes only the legacy credential via `clearLegacy()`; per-broker credentials are never touched by a key-less DELETE. |
 
 `brokerKey` validation on PUT/DELETE, in that order:
 

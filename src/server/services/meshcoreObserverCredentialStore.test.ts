@@ -284,6 +284,55 @@ describe('MeshCoreObserverCredentialStore', () => {
     expect(await store.load(SOURCE)).toEqual({ kind: 'ok', username: 'legacy-user', password: 'legacy-pw' });
   });
 
+  describe('clearLegacy / getLegacyUsername (#5825)', () => {
+    it('removes only the legacy entry and keeps every broker entry', async () => {
+      const store = new MeshCoreObserverCredentialStore(SECRET_A, true);
+      await store.store(SOURCE, 'legacy-user', 'legacy-pw');
+      await store.storeForBroker(SOURCE, BROKER_A, 'user-a', 'pw-a');
+      await store.storeForBroker(SOURCE, BROKER_B, 'user-b', 'pw-b');
+      expect(await store.getLegacyUsername(SOURCE)).toBe('legacy-user');
+
+      await store.clearLegacy(SOURCE);
+
+      expect(await store.load(SOURCE)).toEqual({ kind: 'none' });
+      expect(await store.getLegacyUsername(SOURCE)).toBeNull();
+      expect(await store.loadForBroker(SOURCE, BROKER_A)).toEqual({ kind: 'ok', username: 'user-a', password: 'pw-a' });
+      expect(await store.loadForBroker(SOURCE, BROKER_B)).toEqual({ kind: 'ok', username: 'user-b', password: 'pw-b' });
+      // The clear username column now follows a broker, not the gone legacy entry.
+      expect(['user-a', 'user-b']).toContain(credRows.get(SOURCE)?.username);
+    });
+
+    it('deletes the row when the legacy entry was all there was', async () => {
+      const store = new MeshCoreObserverCredentialStore(SECRET_A, true);
+      await store.store(SOURCE, 'legacy-user', 'legacy-pw');
+      await store.clearLegacy(SOURCE);
+      expect(credRows.has(SOURCE)).toBe(false);
+    });
+
+    it('is a no-op with no row, or a row with no legacy entry', async () => {
+      const store = new MeshCoreObserverCredentialStore(SECRET_A, true);
+      await expect(store.clearLegacy(SOURCE)).resolves.toBeUndefined();
+
+      await store.storeForBroker(SOURCE, BROKER_A, 'user-a', 'pw-a');
+      const before = credRows.get(SOURCE)?.encryptedPassword;
+      await store.clearLegacy(SOURCE);
+      // Not even re-encrypted: the row is untouched.
+      expect(credRows.get(SOURCE)?.encryptedPassword).toBe(before);
+      expect(await store.getLegacyUsername(SOURCE)).toBeNull();
+    });
+
+    it('removes an undecryptable (key-rotated) row whole, since nothing in it is readable', async () => {
+      const original = new MeshCoreObserverCredentialStore(SECRET_A, true);
+      await original.store(SOURCE, 'legacy-user', 'legacy-pw');
+      await original.storeForBroker(SOURCE, BROKER_A, 'user-a', 'pw-a');
+
+      const rotated = new MeshCoreObserverCredentialStore(SECRET_B, true);
+      expect(await rotated.getLegacyUsername(SOURCE)).toBeNull();
+      await rotated.clearLegacy(SOURCE);
+      expect(credRows.has(SOURCE)).toBe(false);
+    });
+  });
+
   it('[21] listBrokers returns {brokerKey, username} pairs and never a password field', async () => {
     const store = new MeshCoreObserverCredentialStore(SECRET_A, true);
     await store.storeForBroker(SOURCE, BROKER_A, 'user-a', 'pw-a');

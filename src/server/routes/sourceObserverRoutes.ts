@@ -258,7 +258,28 @@ function redactObserverStatus<T extends MeshCoreObserverStatus>(
 type CredentialStatusBody = Record<string, unknown> & {
   username?: string | null;
   brokers: Array<{ brokerKey: string; username: string | null }>;
+  /** The pre-#5014 shared credential, when one is still stored (#5825). */
+  legacy: { username: string | null } | null;
 };
+
+/**
+ * The credential status every `/credentials` route returns. `brokers` is
+ * always present (even `[]`), sourced from `listBrokers()` directly — unlike
+ * `status()`'s own conditional `brokers` field (kept omitted-when-empty there
+ * for its pre-#5014 `Object.keys` back-compat contract), so the UI never has
+ * to special-case its absence. `legacy` (#5825) says whether the old shared
+ * credential is still stored, since `status().username` falls back to a
+ * broker entry and cannot tell the two apart. Never carries a password.
+ */
+async function credentialStatusBody(sourceId: string): Promise<CredentialStatusBody> {
+  const store = getMeshCoreObserverCredentialStore();
+  const [status, brokers, legacyUsername] = await Promise.all([
+    store.status(sourceId),
+    store.listBrokers(sourceId),
+    store.getLegacyUsername(sourceId),
+  ]);
+  return { ...status, brokers, legacy: legacyUsername !== null ? { username: legacyUsername } : null };
+}
 
 function redactCredentialStatus(body: CredentialStatusBody, audience: ObserverUrlAudience): CredentialStatusBody {
   if (audience === 'admin') return body;
@@ -267,6 +288,7 @@ function redactCredentialStatus(body: CredentialStatusBody, audience: ObserverUr
       ...body,
       username: null,
       brokers: body.brokers.map((_b, i) => ({ brokerKey: `broker-${i}`, username: null })),
+      legacy: body.legacy ? { username: null } : null,
     };
   }
   return {
@@ -517,14 +539,7 @@ router.get(
     try {
       const source = await resolveMeshCoreSource(req, res);
       if (!source) return;
-      const store = getMeshCoreObserverCredentialStore();
-      const [status, brokers] = await Promise.all([store.status(source.id), store.listBrokers(source.id)]);
-      // `brokers` is always present here (even `[]`), sourced from
-      // `listBrokers()` directly — unlike `status()`'s own conditional
-      // `brokers` field (kept omitted-when-empty there for its pre-#5014
-      // `Object.keys` back-compat contract), the route response always
-      // carries the array so the UI never has to special-case its absence.
-      ok(res, redactCredentialStatus({ ...status, brokers }, observerUrlAudience(req)));
+      ok(res, redactCredentialStatus(await credentialStatusBody(source.id), observerUrlAudience(req)));
     } catch (error) {
       logger.error(`[API] Observer credential status error for ${req.params.id}:`, error);
       fail(res, 500, 'INTERNAL_ERROR', 'Failed to get Analyzer Observer credential status');
@@ -602,8 +617,7 @@ router.put(
         ...(brokerKey ? { brokerKey } : {}),
       });
       await refreshObserverPublisher(source);
-      const [status, brokers] = await Promise.all([store.status(source.id), store.listBrokers(source.id)]);
-      ok(res, redactCredentialStatus({ ...status, brokers }, observerUrlAudience(req)));
+      ok(res, redactCredentialStatus(await credentialStatusBody(source.id), observerUrlAudience(req)));
     } catch (error) {
       logger.error(`[API] Observer credential set error for ${req.params.id}:`, error);
       fail(res, 500, 'INTERNAL_ERROR', 'Failed to set Analyzer Observer broker credentials');
@@ -614,6 +628,18 @@ router.put(
 // DELETE /api/sources/:id/observer/credentials — forget them. Idempotent.
 // Deliberately NOT gated on `capability.canStore`, for the same reason as the
 // key DELETE above: forgetting an unrecoverable secret must always be possible.
+//
+//   ?brokerKey=<key>  removes that one broker's credential (#5014).
+//   ?legacy=1         removes ONLY the pre-#5014 shared credential (#5825).
+//   (no parameter)    same as ?legacy=1. Before #5825 this wiped the whole
+//                     row, every broker's credential included, and the
+//                     Configuration page's single "Clear" button hit it while
+//                     its confirm named one credential. No caller relied on
+//                     the wipe, so it now touches the legacy entry only.
+//
+// A row that can no longer be decrypted (SESSION_SECRET changed) is removed
+// whole by the legacy path: nothing in it is readable, and this is the only
+// way to forget it when a new credential cannot be stored.
 router.delete(
   '/credentials',
   requirePermission('configuration', 'write', { sourceIdFrom: 'params.id' }),
@@ -622,11 +648,6 @@ router.delete(
       const source = await resolveMeshCoreSource(req, res);
       if (!source) return;
 
-      // Optional per-broker targeting (#5014 Phase 1). Absent -> the
-      // pre-#5014 "wipe everything" path below, byte-compatible. Deliberately
-      // NOT gated on `capability.canStore`, for the same reason as the
-      // single-credential path: forgetting an unrecoverable secret must
-      // always be possible.
       const brokerKeyResult = validateBrokerKeyParam(req.query.brokerKey, resolveNormalizedObserverConfig(source));
       if (brokerKeyResult.error) {
         fail(res, brokerKeyResult.error.status, brokerKeyResult.error.code, brokerKeyResult.error.message);
@@ -634,19 +655,28 @@ router.delete(
       }
       const brokerKey = brokerKeyResult.brokerKey;
 
+      const rawLegacy = req.query.legacy;
+      if (rawLegacy !== undefined && rawLegacy !== '1' && rawLegacy !== 'true') {
+        fail(res, 400, 'INVALID_PARAMETER', 'legacy must be 1 or true');
+        return;
+      }
+      if (rawLegacy !== undefined && brokerKey) {
+        fail(res, 400, 'INVALID_PARAMETER', 'Pass either brokerKey or legacy, not both');
+        return;
+      }
+
       const store = getMeshCoreObserverCredentialStore();
       if (brokerKey) {
         await store.clearForBroker(source.id, brokerKey);
       } else {
-        await store.clear(source.id);
+        await store.clearLegacy(source.id);
       }
       auditMeshcoreEvent(req, 'meshcore_observer_credentials_clear', 'configuration', {
         sourceId: source.id,
-        ...(brokerKey ? { brokerKey } : {}),
+        ...(brokerKey ? { brokerKey } : { legacy: true }),
       });
       await refreshObserverPublisher(source);
-      const [status, brokers] = await Promise.all([store.status(source.id), store.listBrokers(source.id)]);
-      ok(res, redactCredentialStatus({ ...status, brokers }, observerUrlAudience(req)));
+      ok(res, redactCredentialStatus(await credentialStatusBody(source.id), observerUrlAudience(req)));
     } catch (error) {
       logger.error(`[API] Observer credential clear error for ${req.params.id}:`, error);
       fail(res, 500, 'INTERNAL_ERROR', 'Failed to clear Analyzer Observer broker credentials');
