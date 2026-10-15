@@ -4,6 +4,7 @@ import { NumberInput } from '../common/NumberInput';
 import { NumberInputScope } from '../common/NumberInputScope';
 import { useNumberInputScope } from '../common/numberInputScopeContext';
 import { UiIcon } from '../icons';
+import { PasswordField } from '../shared/config/PasswordField';
 import { ROLE_OPTIONS, REBROADCAST_MODE_OPTIONS, BUZZER_MODE_OPTIONS, TIMEZONE_PRESETS } from '../configuration/constants';
 
 interface DeviceConfigurationSectionProps {
@@ -1079,8 +1080,7 @@ export const DeviceConfigurationSection: React.FC<DeviceConfigurationSectionProp
                 {t('admin_commands.wifi_psk', 'WiFi Password')}
                 <span className="setting-description">{t('admin_commands.wifi_psk_description', 'Network password')}</span>
               </label>
-              <input
-                type="password"
+              <PasswordField
                 value={networkWifiPsk}
                 onChange={(e) => onNetworkConfigChange('wifiPsk', e.target.value)}
                 disabled={isExecuting}

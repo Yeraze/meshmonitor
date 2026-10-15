@@ -1,5 +1,6 @@
 import React from 'react';
 import { useTranslation } from 'react-i18next';
+import { PasswordField } from '../shared/config/PasswordField';
 import { NumberInput } from '../common/NumberInput';
 import { NumberInputScope } from '../common/NumberInputScope';
 import { useNumberInputScope } from '../common/numberInputScopeContext';
@@ -322,8 +323,7 @@ export const ModuleConfigurationSection: React.FC<ModuleConfigurationSectionProp
                 Password
                 <span className="setting-description">MQTT broker password</span>
               </label>
-              <input
-                type="password"
+              <PasswordField
                 value={mqttPassword}
                 onChange={(e) => onMQTTConfigChange('password', e.target.value)}
                 disabled={isExecuting}

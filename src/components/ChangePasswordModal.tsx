@@ -9,6 +9,7 @@ import { useTranslation } from 'react-i18next';
 import api from '../services/api';
 import { logger } from '../utils/logger';
 import Modal from './common/Modal';
+import { PasswordField } from './shared/config/PasswordField';
 
 interface ChangePasswordModalProps {
   isOpen: boolean;
@@ -90,9 +91,8 @@ const ChangePasswordModal: React.FC<ChangePasswordModalProps> = ({ isOpen, onClo
       <form onSubmit={handleSubmit}>
         <div className="form-group">
           <label htmlFor="current-password">{t('change_password.current_password')}</label>
-          <input
+          <PasswordField
             id="current-password"
-            type="password"
             value={currentPassword}
             onChange={(e) => setCurrentPassword(e.target.value)}
             disabled={loading || success}
@@ -103,9 +103,8 @@ const ChangePasswordModal: React.FC<ChangePasswordModalProps> = ({ isOpen, onClo
 
         <div className="form-group">
           <label htmlFor="new-password">{t('change_password.new_password')}</label>
-          <input
+          <PasswordField
             id="new-password"
-            type="password"
             value={newPassword}
             onChange={(e) => setNewPassword(e.target.value)}
             disabled={loading || success}
@@ -118,9 +117,8 @@ const ChangePasswordModal: React.FC<ChangePasswordModalProps> = ({ isOpen, onClo
 
         <div className="form-group">
           <label htmlFor="confirm-password">{t('change_password.confirm_password')}</label>
-          <input
+          <PasswordField
             id="confirm-password"
-            type="password"
             value={confirmPassword}
             onChange={(e) => setConfirmPassword(e.target.value)}
             disabled={loading || success}

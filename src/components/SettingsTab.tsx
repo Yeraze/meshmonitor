@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback, useReducer, useRef, useMemo, u
 import { QueryClientContext } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { UiIcon } from './icons';
+import { PasswordField } from './shared/config/PasswordField';
 import '../styles/settings.css';
 import { useSaveBar } from '../hooks/useSaveBar';
 import { NumberInput } from './common/NumberInput';
@@ -3421,9 +3422,8 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
                 {t('settings.adsb_api_key_description', 'Leave empty. Kept for adsb.lol\'s announced future key; sent only when set. Stored server-side and never shown to non-admins.')}
               </span>
             </label>
-            <input
+            <PasswordField
               id="adsbApiToken"
-              type="password"
               value={draft.adsbApiToken}
               onChange={(e) => updateField('adsbApiToken', e.target.value)}
               className="setting-input"

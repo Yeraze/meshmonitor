@@ -1,10 +1,11 @@
-import React, { useState, useCallback } from 'react';
+import React, { useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { UiIcon } from '../icons';
 import { useSaveBar } from '../../hooks/useSaveBar';
 import { useSectionBaseline } from '../../hooks/useSectionBaseline';
 import ModuleAvailabilityNotice from './ModuleAvailabilityNotice';
 import { ConfigSection } from '../shared/config/ConfigSection';
+import { PasswordField } from '../shared/config/PasswordField';
 
 // Address mode options from protobufs
 const ADDRESS_MODE_OPTIONS = [
@@ -80,7 +81,6 @@ const NetworkConfigSection: React.FC<NetworkConfigSectionProps> = ({
   onSave
 }) => {
   const { t } = useTranslation();
-  const [showPassword, setShowPassword] = useState(false);
 
   // What the node holds; moves on a successful save or a reload (#5797)
   const values = {
@@ -192,32 +192,15 @@ const NetworkConfigSection: React.FC<NetworkConfigSectionProps> = ({
               {t('network_config.wifi_psk')}
               <span className="setting-description">{t('network_config.wifi_psk_description')}</span>
             </label>
-            <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-              <input
-                id="wifiPsk"
-                type={showPassword ? 'text' : 'password'}
-                value={wifiPsk}
-                onChange={(e) => setWifiPsk(e.target.value)}
-                placeholder="••••••••"
-                maxLength={63}
-                className="setting-input"
-                style={{ width: '300px' }}
-              />
-              <button
-                type="button"
-                onClick={() => setShowPassword(!showPassword)}
-                style={{
-                  background: 'transparent',
-                  border: '1px solid var(--color-surface-active)',
-                  color: 'var(--color-text-subtle)',
-                  padding: '0.5rem',
-                  borderRadius: '4px',
-                  cursor: 'pointer'
-                }}
-              >
-                <UiIcon name={showPassword ? 'visibilityOff' : 'unencrypted'} />
-              </button>
-            </div>
+            <PasswordField
+              id="wifiPsk"
+              value={wifiPsk}
+              onChange={(e) => setWifiPsk(e.target.value)}
+              placeholder="••••••••"
+              maxLength={63}
+              className="setting-input"
+              style={{ width: '300px' }}
+            />
           </div>
 
           {/* Address Mode */}
