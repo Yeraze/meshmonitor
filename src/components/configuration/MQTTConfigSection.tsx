@@ -100,12 +100,16 @@ const MQTTConfigSection: React.FC<MQTTConfigSectionProps> = ({
 }) => {
   const { t } = useTranslation();
   const { sourceId: currentSourceId } = useSource();
-  // PR-C: gate the form by `sources:write` on the current source. `useAuth()`
-  // binds the check to the active SourceContext, so passing the explicit
-  // sourceId here just makes the intent obvious to readers. Admins are
-  // short-circuited to true inside hasPermission.
+  // Gate the form on the permission the save route checks:
+  // `POST /api/config/mqtt` requires `configuration:write`. It used to check
+  // `sources:write`, which locked out users who could save and let others
+  // edit a form whose save was then refused. Admins are short-circuited to
+  // true inside hasPermission.
   const { hasPermission } = useAuth();
-  const canEditMqtt = hasPermission('sources', 'write', { sourceId: currentSourceId });
+  const canEditMqtt = hasPermission('configuration', 'write', { sourceId: currentSourceId });
+  // Quick configure also writes `mqttLink` into this source's config
+  // (PUT /api/sources/:id), so it needs `sources:write` as well.
+  const canQuickConfig = canEditMqtt && hasPermission('sources', 'write', { sourceId: currentSourceId });
 
   // Quick-configure: list of valid client-proxy targets the user can point
   // this device at with one click. Two shapes (issue #3134):
@@ -428,6 +432,7 @@ const MQTTConfigSection: React.FC<MQTTConfigSectionProps> = ({
             className="setting-input"
             value={quickConfigSelection}
             onChange={(e) => applyQuickConfig(e.target.value)}
+            disabled={!canQuickConfig}
           >
             <option value="">{t('common.select', 'Select…')}</option>
             {proxyTargets.map((s) => (
