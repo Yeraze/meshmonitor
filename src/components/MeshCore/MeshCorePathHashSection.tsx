@@ -16,7 +16,8 @@ import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { MeshCoreActions } from './hooks/useMeshCore';
 import { useToast } from '../ToastContainer';
-import { CollapsibleSection } from './CollapsibleSection';
+import { ConfigSection } from '../shared/config/ConfigSection';
+import { MESHCORE_DOCS } from './meshcoreDocs';
 import styles from './MeshCoreDeviceSettingSections.module.css';
 
 type PathHashSize = 1 | 2 | 3;
@@ -68,15 +69,19 @@ export const MeshCorePathHashSection: React.FC<MeshCorePathHashSectionProps> = (
   const disabled = !canWriteConfig || !connected || loading || savingPathHash;
 
   return (
-    <CollapsibleSection title={t('meshcore.path_hash.title', 'Default path hash size')} className="form-section">
-      <div id="meshcore-path-hash">
-        <p className="hint">
-          {t('meshcore.path_hash.hint',
+    <ConfigSection
+      id="meshcore-path-hash"
+      title={t('meshcore.path_hash.title', 'Default path hash size')}
+      docsUrl={`${MESHCORE_DOCS}#per-source-settings`}
+      description={t('meshcore.path_hash.hint',
             'Number of bytes used for path/loop-detection hashes on outgoing messages. ' +
             '1 byte (256 values) is enough for small meshes; 2 bytes (65,536 values) is recommended for ' +
             'mid-to-large deployments to avoid path-table collisions that drop packets on valid routes. ' +
             'Applied to the device immediately and re-asserted on reconnect.')}
-        </p>
+      canWrite={canWriteConfig}
+      collapsible
+    >
+      <div>
         <div className={styles.row}>
           <select
             value={pathHashInput}
@@ -98,7 +103,7 @@ export const MeshCorePathHashSection: React.FC<MeshCorePathHashSectionProps> = (
           </button>
         </div>
       </div>
-    </CollapsibleSection>
+    </ConfigSection>
   );
 };
 

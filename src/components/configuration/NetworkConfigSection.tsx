@@ -4,6 +4,7 @@ import { UiIcon } from '../icons';
 import { useSaveBar } from '../../hooks/useSaveBar';
 import { useSectionBaseline } from '../../hooks/useSectionBaseline';
 import ModuleAvailabilityNotice from './ModuleAvailabilityNotice';
+import { ConfigSection } from '../shared/config/ConfigSection';
 
 // Address mode options from protobufs
 const ADDRESS_MODE_OPTIONS = [
@@ -120,24 +121,7 @@ const NetworkConfigSection: React.FC<NetworkConfigSectionProps> = ({
   });
 
   return (
-    <div className="settings-section">
-      <h3 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-        {t('network_config.title')}
-        <a
-          href="https://meshmonitor.org/features/device#network-configuration"
-          target="_blank"
-          rel="noopener noreferrer"
-          style={{
-            fontSize: '1.2rem',
-            color: '#89b4fa',
-            textDecoration: 'none'
-          }}
-          title={t('network_config.view_docs')}
-        >
-          <UiIcon name="help" />
-        </a>
-      </h3>
-      <ModuleAvailabilityNotice />
+    <ConfigSection title={t('network_config.title')} docsUrl="https://meshmonitor.org/features/device#network-configuration" notice={<ModuleAvailabilityNotice />}>
 
       {isBridged && (
         <div
@@ -394,7 +378,7 @@ const NetworkConfigSection: React.FC<NetworkConfigSectionProps> = ({
           className="setting-checkbox"
         />
       </div>
-    </div>
+    </ConfigSection>
   );
 };
 

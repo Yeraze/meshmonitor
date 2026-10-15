@@ -23,7 +23,8 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useSourceStatuses } from '../../hooks/useDashboardData';
 import { formatRelativeTime } from '../../utils/datetime';
 import { UiIcon } from '../icons';
-import { CollapsibleSection } from './CollapsibleSection';
+import { ConfigSection } from '../shared/config/ConfigSection';
+import { MESHCORE_DOCS } from './meshcoreDocs';
 import { useObserverKey, type ObserverKeyError, type ObserverKeyAction } from './hooks/useObserverKey';
 import { useObserverCredentials } from './hooks/useObserverCredentials';
 import { MeshCoreObserverBrokerPanel } from './MeshCoreObserverBrokerPanel';
@@ -285,13 +286,16 @@ export const MeshCoreObserverSection: React.FC<MeshCoreObserverSectionProps> = (
     publicKey && publicKey.length > 16 ? `${publicKey.slice(0, 8)}…${publicKey.slice(-8)}` : (publicKey ?? '');
 
   return (
-    <CollapsibleSection title={t('meshcore.observer.title', 'Analyzer Observer')} className="form-section">
-      <p className="hint">
-        {t(
+    <ConfigSection
+      id="meshcore-observer"
+      title={t('meshcore.observer.title', 'Analyzer Observer')}
+      docsUrl={`${MESHCORE_DOCS}#analyzer-observer`}
+      description={t(
           'meshcore.observer.intro',
           "Publishes every packet this node hears to a MeshCore Analyzer MQTT broker. Configure the broker and its authentication mode on the source's edit form; manage the credentials here.",
         )}
-      </p>
+      collapsible
+    >
 
       {/* [A] Live publish status — absent means either not configured/running
           or the caller lacks nodes:read (D-6); both silent, neither an error. */}
@@ -684,6 +688,6 @@ export const MeshCoreObserverSection: React.FC<MeshCoreObserverSectionProps> = (
           )}
         </div>
       )}
-    </CollapsibleSection>
+    </ConfigSection>
   );
 };

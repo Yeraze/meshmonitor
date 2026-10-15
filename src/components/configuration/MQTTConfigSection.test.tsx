@@ -89,7 +89,8 @@ describe('MQTTConfigSection — permission gate (PR-C)', () => {
     hasPermissionMock.mockReturnValue(true);
     render(<MQTTConfigSection {...baseProps} />);
 
-    const fieldset = document.querySelector('fieldset');
+    // The section's own permission fieldset, inside ConfigSection's body one (#5818).
+    const fieldset = document.querySelector('fieldset fieldset');
     expect(fieldset).not.toBeNull();
     expect((fieldset as HTMLFieldSetElement).disabled).toBe(false);
 
@@ -100,7 +101,8 @@ describe('MQTTConfigSection — permission gate (PR-C)', () => {
     hasPermissionMock.mockReturnValue(false);
     render(<MQTTConfigSection {...baseProps} />);
 
-    const fieldset = document.querySelector('fieldset');
+    // The section's own permission fieldset, inside ConfigSection's body one (#5818).
+    const fieldset = document.querySelector('fieldset fieldset');
     expect(fieldset).not.toBeNull();
     expect((fieldset as HTMLFieldSetElement).disabled).toBe(true);
 

@@ -7,6 +7,7 @@ import { NumberInput } from '../common/NumberInput';
 import { NumberInputScope } from '../common/NumberInputScope';
 import { useNumberInputScope } from '../common/numberInputScopeContext';
 import ModuleAvailabilityNotice from './ModuleAvailabilityNotice';
+import { ConfigSection } from '../shared/config/ConfigSection';
 
 // Audio bitrate options matching protobuf enum
 const AUDIO_BAUD_OPTIONS = [
@@ -98,24 +99,7 @@ const AudioConfigSection: React.FC<AudioConfigSectionProps> = ({
 
   return (
     <NumberInputScope scope={numberScope}>
-    <div className="settings-section">
-      <h3 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-        {t('audio_config.title')}
-        <a
-          href="https://meshtastic.org/docs/configuration/module/audio/"
-          target="_blank"
-          rel="noopener noreferrer"
-          style={{
-            fontSize: '1.2rem',
-            color: '#89b4fa',
-            textDecoration: 'none'
-          }}
-          title={t('audio_config.view_docs')}
-        >
-          ?
-        </a>
-      </h3>
-      <ModuleAvailabilityNotice />
+    <ConfigSection title={t('audio_config.title')} docsUrl="https://meshtastic.org/docs/configuration/module/audio/" notice={<ModuleAvailabilityNotice />}>
 
       {/* Enable Codec2 */}
       <div className="setting-item">
@@ -284,7 +268,7 @@ const AudioConfigSection: React.FC<AudioConfigSectionProps> = ({
           )}
         </>
       )}
-    </div>
+    </ConfigSection>
     </NumberInputScope>
   );
 };

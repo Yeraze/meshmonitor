@@ -7,6 +7,7 @@ import { useSectionBaseline } from '../../hooks/useSectionBaseline';
 import { NumberInput } from '../common/NumberInput';
 import { NumberInputScope } from '../common/NumberInputScope';
 import { useNumberInputScope } from '../common/numberInputScopeContext';
+import { ConfigSection } from '../shared/config/ConfigSection';
 
 interface PositionConfigSectionProps {
   positionBroadcastSecs: number;
@@ -167,23 +168,7 @@ const PositionConfigSection: React.FC<PositionConfigSectionProps> = ({
 
   return (
     <NumberInputScope scope={numberScope}>
-    <div className="settings-section">
-      <h3 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-        {t('position_config.title')}
-        <a
-          href="https://meshmonitor.org/features/device#position-configuration"
-          target="_blank"
-          rel="noopener noreferrer"
-          style={{
-            fontSize: '1.2rem',
-            color: '#89b4fa',
-            textDecoration: 'none'
-          }}
-          title={t('position_config.view_docs')}
-        >
-          <UiIcon name="help" />
-        </a>
-      </h3>
+    <ConfigSection title={t('position_config.title')} docsUrl="https://meshmonitor.org/features/device#position-configuration">
       <div className="setting-item">
         <label htmlFor="positionBroadcastSecs">
           {t('position_config.broadcast_interval')}
@@ -474,7 +459,7 @@ const PositionConfigSection: React.FC<PositionConfigSectionProps> = ({
           </div>
         </div>
       )}
-    </div>
+    </ConfigSection>
     </NumberInputScope>
   );
 };

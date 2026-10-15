@@ -10,6 +10,7 @@ import { policyToSend } from '../../utils/packetSignaturePolicy';
 import { usePolicyChangeConfirm } from '../../hooks/usePolicyChangeConfirm';
 import { PacketSignaturePolicyPicker } from './PacketSignaturePolicyPicker';
 import { PacketSignaturePolicyConfirmDialog } from './PacketSignaturePolicyConfirmDialog';
+import { ConfigSection } from '../shared/config/ConfigSection';
 
 /**
  * Validates if a string is valid base64 format
@@ -232,23 +233,7 @@ const SecurityConfigSection: React.FC<SecurityConfigSectionProps> = ({
   }, [privateKey, t]);
 
   return (
-    <div className="settings-section">
-      <h3 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-        {t('security_config.title')}
-        <a
-          href="https://meshtastic.org/docs/configuration/radio/security/"
-          target="_blank"
-          rel="noopener noreferrer"
-          style={{
-            fontSize: '1.2rem',
-            color: '#89b4fa',
-            textDecoration: 'none'
-          }}
-          title={t('security_config.view_docs')}
-        >
-          <UiIcon name="help" />
-        </a>
-      </h3>
+    <ConfigSection title={t('security_config.title')} docsUrl="https://meshtastic.org/docs/configuration/radio/security/">
 
       {/* Public Key (Read-only) */}
       <div className="setting-item">
@@ -532,7 +517,7 @@ const SecurityConfigSection: React.FC<SecurityConfigSectionProps> = ({
         disabled={isSaving}
       />
       <PacketSignaturePolicyConfirmDialog {...policyConfirmProps} />
-    </div>
+    </ConfigSection>
   );
 };
 

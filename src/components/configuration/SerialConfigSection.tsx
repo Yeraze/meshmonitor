@@ -7,6 +7,7 @@ import { NumberInput } from '../common/NumberInput';
 import { NumberInputScope } from '../common/NumberInputScope';
 import { useNumberInputScope } from '../common/numberInputScopeContext';
 import ModuleAvailabilityNotice from './ModuleAvailabilityNotice';
+import { ConfigSection } from '../shared/config/ConfigSection';
 
 // Serial baud rate options matching protobuf enum
 const SERIAL_BAUD_OPTIONS = [
@@ -123,24 +124,7 @@ const SerialConfigSection: React.FC<SerialConfigSectionProps> = ({
 
   return (
     <NumberInputScope scope={numberScope}>
-    <div className="settings-section">
-      <h3 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-        {t('serial_config.title')}
-        <a
-          href="https://meshtastic.org/docs/configuration/module/serial/"
-          target="_blank"
-          rel="noopener noreferrer"
-          style={{
-            fontSize: '1.2rem',
-            color: '#89b4fa',
-            textDecoration: 'none'
-          }}
-          title={t('serial_config.view_docs')}
-        >
-          ?
-        </a>
-      </h3>
-      <ModuleAvailabilityNotice />
+    <ConfigSection title={t('serial_config.title')} docsUrl="https://meshtastic.org/docs/configuration/module/serial/" notice={<ModuleAvailabilityNotice />}>
 
       {/* Enable Module */}
       <div className="setting-item">
@@ -322,7 +306,7 @@ const SerialConfigSection: React.FC<SerialConfigSectionProps> = ({
           )}
         </>
       )}
-    </div>
+    </ConfigSection>
     </NumberInputScope>
   );
 };

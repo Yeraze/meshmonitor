@@ -97,7 +97,7 @@ describe('MeshCoreDeviceActionsSection: what each button sends', () => {
 
   it('is headed "Device actions" and says nothing here is saved', () => {
     renderSection();
-    expect(screen.getByRole('heading', { name: 'Device actions' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /^Device actions/ })).toBeInTheDocument();
     expect(screen.getByText(/Nothing here is a saved setting/)).toBeInTheDocument();
   });
 
