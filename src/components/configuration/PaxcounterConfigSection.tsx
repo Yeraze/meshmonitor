@@ -1,6 +1,7 @@
-import React, { useRef, useMemo, useCallback } from 'react';
+import React, { useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSaveBar } from '../../hooks/useSaveBar';
+import { useSectionBaseline } from '../../hooks/useSectionBaseline';
 import { NumberInput } from '../common/NumberInput';
 import { NumberInputScope } from '../common/NumberInputScope';
 import { useNumberInputScope } from '../common/numberInputScopeContext';
@@ -16,7 +17,8 @@ interface PaxcounterConfigSectionProps {
   bleThreshold: number;
   setBleThreshold: (value: number) => void;
   isSaving: boolean;
-  onSave: () => Promise<void>;
+  /** Resolves true when the node accepted the save. */
+  onSave: () => Promise<boolean>;
 }
 
 const PaxcounterConfigSection: React.FC<PaxcounterConfigSectionProps> = ({
@@ -33,38 +35,24 @@ const PaxcounterConfigSection: React.FC<PaxcounterConfigSectionProps> = ({
 }) => {
   const { t } = useTranslation();
 
-  // Track initial values for change detection
-  const initialValuesRef = useRef({
+  // What the node holds; moves on a successful save (#5797)
+  const values = {
     enabled, paxcounterUpdateInterval, wifiThreshold, bleThreshold
-  });
-
-  // Calculate if there are unsaved changes
-  const hasChanges = useMemo(() => {
-    const initial = initialValuesRef.current;
-    return (
-      enabled !== initial.enabled ||
-      paxcounterUpdateInterval !== initial.paxcounterUpdateInterval ||
-      wifiThreshold !== initial.wifiThreshold ||
-      bleThreshold !== initial.bleThreshold
-    );
-  }, [enabled, paxcounterUpdateInterval, wifiThreshold, bleThreshold]);
+  };
+  const { baseline, hasChanges, commit } = useSectionBaseline(values);
 
   // Reset to initial values (for SaveBar dismiss)
   const resetChanges = useCallback(() => {
-    const initial = initialValuesRef.current;
-    setEnabled(initial.enabled);
-    setPaxcounterUpdateInterval(initial.paxcounterUpdateInterval);
-    setWifiThreshold(initial.wifiThreshold);
-    setBleThreshold(initial.bleThreshold);
-  }, [setEnabled, setPaxcounterUpdateInterval, setWifiThreshold, setBleThreshold]);
+    setEnabled(baseline.enabled);
+    setPaxcounterUpdateInterval(baseline.paxcounterUpdateInterval);
+    setWifiThreshold(baseline.wifiThreshold);
+    setBleThreshold(baseline.bleThreshold);
+  }, [baseline, setEnabled, setPaxcounterUpdateInterval, setWifiThreshold, setBleThreshold]);
 
-  // Update initial values after successful save
-  const handleSave = useCallback(async () => {
-    await onSave();
-    initialValuesRef.current = {
-      enabled, paxcounterUpdateInterval, wifiThreshold, bleThreshold
-    };
-  }, [onSave, enabled, paxcounterUpdateInterval, wifiThreshold, bleThreshold]);
+  // Move the baseline only when the node took the save
+  const handleSave = async () => {
+    if (await onSave()) commit(values);
+  };
 
   // Register with SaveBar
   const numberScope = useNumberInputScope();

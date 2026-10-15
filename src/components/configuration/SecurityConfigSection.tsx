@@ -1,7 +1,8 @@
-import React, { useCallback, useRef, useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { UiIcon } from '../icons';
 import { useSaveBar } from '../../hooks/useSaveBar';
+import { useSectionBaseline } from '../../hooks/useSectionBaseline';
 // Shared with the server so the client's save gate can't drift from what the
 // backend accepts (#4632).
 import { isValidMeshtasticKey } from '../../utils/meshtasticKeyFormat';
@@ -64,7 +65,8 @@ interface SecurityConfigSectionProps {
   nodeLabel: string;
   // Common
   isSaving: boolean;
-  onSave: () => Promise<void>;
+  /** Resolves true when the node accepted the save. */
+  onSave: () => Promise<boolean>;
 }
 
 const SecurityConfigSection: React.FC<SecurityConfigSectionProps> = ({
@@ -109,26 +111,21 @@ const SecurityConfigSection: React.FC<SecurityConfigSectionProps> = ({
   // AFTER getSecurityKeys() has resolved, so `privateKey` is already the loaded
   // value here, not the empty initial state. If that gate is ever removed this
   // baseline would capture '' and the loaded key would read as a change.
-  const initialValuesRef = useRef({
-    adminKeys: [...adminKeys],
-    isManaged,
-    serialEnabled,
-    debugLogApiEnabled,
-    adminChannelEnabled,
-    privateKey
-  });
+  // It moves only after a save the node accepted (#5797).
+  const values = { adminKeys, isManaged, serialEnabled, debugLogApiEnabled, adminChannelEnabled, privateKey };
+  const { baseline, commit } = useSectionBaseline(values);
 
   // A private key counts as changed only once it is non-empty AND differs from
   // the loaded one — an empty box (edit opened, nothing pasted) is not a change
   // to save, and must never be sent as a key.
   const trimmedPrivateKey = privateKey.trim();
   const privateKeyChanged =
-    trimmedPrivateKey.length > 0 && trimmedPrivateKey !== initialValuesRef.current.privateKey.trim();
+    trimmedPrivateKey.length > 0 && trimmedPrivateKey !== baseline.privateKey.trim();
   const privateKeyValid = !privateKeyChanged || isValidMeshtasticKey(trimmedPrivateKey);
 
   // Calculate if there are unsaved changes
   const hasChanges = useMemo(() => {
-    const initial = initialValuesRef.current;
+    const initial = baseline;
     // Check if adminKeys array has changed
     const adminKeysChanged = adminKeys.length !== initial.adminKeys.length ||
       adminKeys.some((key, i) => key !== initial.adminKeys[i]);
@@ -142,11 +139,11 @@ const SecurityConfigSection: React.FC<SecurityConfigSectionProps> = ({
       privateKeyChanged ||
       policyChanged
     );
-  }, [adminKeys, isManaged, serialEnabled, debugLogApiEnabled, adminChannelEnabled, privateKeyChanged, policyChanged]);
+  }, [baseline, adminKeys, isManaged, serialEnabled, debugLogApiEnabled, adminChannelEnabled, privateKeyChanged, policyChanged]);
 
   // Reset to initial values (for SaveBar dismiss)
   const resetChanges = useCallback(() => {
-    const initial = initialValuesRef.current;
+    const initial = baseline;
     setAdminKeys([...initial.adminKeys]);
     setIsManaged(initial.isManaged);
     setSerialEnabled(initial.serialEnabled);
@@ -155,7 +152,7 @@ const SecurityConfigSection: React.FC<SecurityConfigSectionProps> = ({
     setPrivateKey?.(initial.privateKey);
     setIsEditingPrivateKey(false);
     setPacketSignaturePolicy(loadedPacketSignaturePolicy);
-  }, [setAdminKeys, setIsManaged, setSerialEnabled, setDebugLogApiEnabled, setAdminChannelEnabled, setPrivateKey, setPacketSignaturePolicy, loadedPacketSignaturePolicy]);
+  }, [baseline, setAdminKeys, setIsManaged, setSerialEnabled, setDebugLogApiEnabled, setAdminChannelEnabled, setPrivateKey, setPacketSignaturePolicy, loadedPacketSignaturePolicy]);
 
   // Check if any admin keys have invalid format
   const hasInvalidKeys = adminKeys.some(key => key.trim() && !isValidBase64(key));
@@ -191,17 +188,11 @@ const SecurityConfigSection: React.FC<SecurityConfigSectionProps> = ({
       });
       if (!confirmed) return;
     }
-    await onSave();
-    initialValuesRef.current = {
-      adminKeys: [...adminKeys],
-      isManaged,
-      serialEnabled,
-      debugLogApiEnabled,
-      adminChannelEnabled,
-      privateKey
-    };
+    // A failed save stays pending, and Dismiss still goes back to the node's values
+    if (!(await onSave())) return;
+    commit({ adminKeys, isManaged, serialEnabled, debugLogApiEnabled, adminChannelEnabled, privateKey });
     setIsEditingPrivateKey(false);
-  }, [onSave, adminKeys, isManaged, serialEnabled, debugLogApiEnabled, adminChannelEnabled, privateKey, privateKeyChanged, privateKeyValid, hasInvalidKeys, t, policyChanged, confirmPolicyChange, loadedPacketSignaturePolicy, packetSignaturePolicy, nodeLabel, nodeShortName]);
+  }, [onSave, commit, adminKeys, isManaged, serialEnabled, debugLogApiEnabled, adminChannelEnabled, privateKey, privateKeyChanged, privateKeyValid, hasInvalidKeys, t, policyChanged, confirmPolicyChange, loadedPacketSignaturePolicy, packetSignaturePolicy, nodeLabel, nodeShortName]);
 
   // Register with SaveBar
   useSaveBar({
@@ -364,7 +355,7 @@ const SecurityConfigSection: React.FC<SecurityConfigSectionProps> = ({
           {isEditingPrivateKey && (
             <button
               type="button"
-              onClick={() => { setPrivateKey?.(initialValuesRef.current.privateKey); setIsEditingPrivateKey(false); }}
+              onClick={() => { setPrivateKey?.(baseline.privateKey); setIsEditingPrivateKey(false); }}
               style={{
                 padding: '0.5rem 0.75rem',
                 backgroundColor: 'var(--color-surface-hover)',

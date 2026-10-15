@@ -29,6 +29,21 @@ export function floorKeepingZero(value: number, floor: number): number {
 }
 
 /**
+ * Lowest `neighbor_info.update_interval` the Device Configuration page sends.
+ * Unlike the two floors above, a 0 is raised too.
+ */
+export const NEIGHBOR_INFO_INTERVAL_FLOOR_SECS = 14400;
+
+/**
+ * The NeighborInfo interval a save sends. The section uses the same rule to
+ * record what the node now holds, so a raised value does not read as an
+ * unsaved change (#5797).
+ */
+export function neighborInfoIntervalToSend(value: number): number {
+  return Math.max(NEIGHBOR_INFO_INTERVAL_FLOOR_SECS, value);
+}
+
+/**
  * True when a submitted interval must be refused: present, and not 0, and
  * either not a whole number of seconds or under the floor. `undefined` and
  * `null` mean "field not sent" and pass.

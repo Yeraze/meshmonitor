@@ -1,6 +1,7 @@
-import React, { useRef, useMemo, useCallback } from 'react';
+import React, { useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSaveBar } from '../../hooks/useSaveBar';
+import { useSectionBaseline } from '../../hooks/useSectionBaseline';
 import { NumberInput } from '../common/NumberInput';
 import { NumberInputScope } from '../common/NumberInputScope';
 import { useNumberInputScope } from '../common/numberInputScopeContext';
@@ -18,7 +19,8 @@ interface AmbientLightingConfigSectionProps {
   blue: number;
   setBlue: (value: number) => void;
   isSaving: boolean;
-  onSave: () => Promise<void>;
+  /** Resolves true when the node accepted the save. */
+  onSave: () => Promise<boolean>;
 }
 
 const AmbientLightingConfigSection: React.FC<AmbientLightingConfigSectionProps> = ({
@@ -37,40 +39,25 @@ const AmbientLightingConfigSection: React.FC<AmbientLightingConfigSectionProps> 
 }) => {
   const { t } = useTranslation();
 
-  // Track initial values for change detection
-  const initialValuesRef = useRef({
+  // What the node holds; moves on a successful save (#5797)
+  const values = {
     ledState, current, red, green, blue
-  });
-
-  // Calculate if there are unsaved changes
-  const hasChanges = useMemo(() => {
-    const initial = initialValuesRef.current;
-    return (
-      ledState !== initial.ledState ||
-      current !== initial.current ||
-      red !== initial.red ||
-      green !== initial.green ||
-      blue !== initial.blue
-    );
-  }, [ledState, current, red, green, blue]);
+  };
+  const { baseline, hasChanges, commit } = useSectionBaseline(values);
 
   // Reset to initial values (for SaveBar dismiss)
   const resetChanges = useCallback(() => {
-    const initial = initialValuesRef.current;
-    setLedState(initial.ledState);
-    setCurrent(initial.current);
-    setRed(initial.red);
-    setGreen(initial.green);
-    setBlue(initial.blue);
-  }, [setLedState, setCurrent, setRed, setGreen, setBlue]);
+    setLedState(baseline.ledState);
+    setCurrent(baseline.current);
+    setRed(baseline.red);
+    setGreen(baseline.green);
+    setBlue(baseline.blue);
+  }, [baseline, setLedState, setCurrent, setRed, setGreen, setBlue]);
 
-  // Update initial values after successful save
-  const handleSave = useCallback(async () => {
-    await onSave();
-    initialValuesRef.current = {
-      ledState, current, red, green, blue
-    };
-  }, [onSave, ledState, current, red, green, blue]);
+  // Move the baseline only when the node took the save
+  const handleSave = async () => {
+    if (await onSave()) commit(values);
+  };
 
   // Register with SaveBar
   const numberScope = useNumberInputScope();

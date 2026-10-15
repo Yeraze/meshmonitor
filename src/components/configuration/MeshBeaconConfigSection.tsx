@@ -1,6 +1,7 @@
-import React, { useRef, useMemo, useCallback } from 'react';
+import React, { useMemo, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSaveBar } from '../../hooks/useSaveBar';
+import { useSectionBaseline } from '../../hooks/useSectionBaseline';
 import { MODEM_PRESET_OPTIONS, REGION_OPTIONS } from './constants';
 import BroadcastTargetsEditor from './BroadcastTargetsEditor';
 import {
@@ -57,7 +58,8 @@ interface MeshBeaconConfigSectionProps {
   channels?: Channel[];
   isDisabled: boolean;
   isSaving: boolean;
-  onSave: () => Promise<void>;
+  /** Resolves true when the node accepted the save. */
+  onSave: () => Promise<boolean>;
 }
 
 const MeshBeaconConfigSection: React.FC<MeshBeaconConfigSectionProps> = ({
@@ -88,63 +90,33 @@ const MeshBeaconConfigSection: React.FC<MeshBeaconConfigSectionProps> = ({
 }) => {
   const { t } = useTranslation();
 
-  const initialValuesRef = useRef({
+  const values = {
     listenEnabled, broadcastEnabled, legacySplit, broadcastMessage,
     broadcastOfferChannelName, broadcastOfferChannelPsk,
     broadcastOfferRegion, broadcastOfferPreset, broadcastIntervalSecs,
     broadcastTargets
-  });
-
-  const hasChanges = useMemo(() => {
-    const initial = initialValuesRef.current;
-    return (
-      listenEnabled !== initial.listenEnabled ||
-      broadcastEnabled !== initial.broadcastEnabled ||
-      legacySplit !== initial.legacySplit ||
-      broadcastMessage !== initial.broadcastMessage ||
-      broadcastOfferChannelName !== initial.broadcastOfferChannelName ||
-      broadcastOfferChannelPsk !== initial.broadcastOfferChannelPsk ||
-      broadcastOfferRegion !== initial.broadcastOfferRegion ||
-      broadcastOfferPreset !== initial.broadcastOfferPreset ||
-      broadcastIntervalSecs !== initial.broadcastIntervalSecs ||
-      // Array field — the neighbouring scalars are compared by value, so the
-      // targets list needs a structural compare rather than an identity check.
-      JSON.stringify(broadcastTargets) !== JSON.stringify(initial.broadcastTargets)
-    );
-  }, [listenEnabled, broadcastEnabled, legacySplit, broadcastMessage,
-    broadcastOfferChannelName, broadcastOfferChannelPsk,
-    broadcastOfferRegion, broadcastOfferPreset, broadcastIntervalSecs,
-    broadcastTargets]);
+  };
+  const { baseline, hasChanges, commit } = useSectionBaseline(values);
 
   const resetChanges = useCallback(() => {
-    const initial = initialValuesRef.current;
-    setListenEnabled(initial.listenEnabled);
-    setBroadcastEnabled(initial.broadcastEnabled);
-    setLegacySplit(initial.legacySplit);
-    setBroadcastMessage(initial.broadcastMessage);
-    setBroadcastOfferChannelName(initial.broadcastOfferChannelName);
-    setBroadcastOfferChannelPsk(initial.broadcastOfferChannelPsk);
-    setBroadcastOfferRegion(initial.broadcastOfferRegion);
-    setBroadcastOfferPreset(initial.broadcastOfferPreset);
-    setBroadcastIntervalSecs(initial.broadcastIntervalSecs);
-    setBroadcastTargets(initial.broadcastTargets);
-  }, [setListenEnabled, setBroadcastEnabled, setLegacySplit, setBroadcastMessage,
+    setListenEnabled(baseline.listenEnabled);
+    setBroadcastEnabled(baseline.broadcastEnabled);
+    setLegacySplit(baseline.legacySplit);
+    setBroadcastMessage(baseline.broadcastMessage);
+    setBroadcastOfferChannelName(baseline.broadcastOfferChannelName);
+    setBroadcastOfferChannelPsk(baseline.broadcastOfferChannelPsk);
+    setBroadcastOfferRegion(baseline.broadcastOfferRegion);
+    setBroadcastOfferPreset(baseline.broadcastOfferPreset);
+    setBroadcastIntervalSecs(baseline.broadcastIntervalSecs);
+    setBroadcastTargets(baseline.broadcastTargets);
+  }, [baseline, setListenEnabled, setBroadcastEnabled, setLegacySplit, setBroadcastMessage,
     setBroadcastOfferChannelName, setBroadcastOfferChannelPsk,
     setBroadcastOfferRegion, setBroadcastOfferPreset, setBroadcastIntervalSecs,
     setBroadcastTargets]);
 
-  const handleSave = useCallback(async () => {
-    await onSave();
-    initialValuesRef.current = {
-      listenEnabled, broadcastEnabled, legacySplit, broadcastMessage,
-      broadcastOfferChannelName, broadcastOfferChannelPsk,
-      broadcastOfferRegion, broadcastOfferPreset, broadcastIntervalSecs,
-      broadcastTargets
-    };
-  }, [onSave, listenEnabled, broadcastEnabled, legacySplit, broadcastMessage,
-    broadcastOfferChannelName, broadcastOfferChannelPsk,
-    broadcastOfferRegion, broadcastOfferPreset, broadcastIntervalSecs,
-    broadcastTargets]);
+  const handleSave = async () => {
+    if (await onSave()) commit(values);
+  };
 
   const messageBytes = useMemo(
     () => new TextEncoder().encode(broadcastMessage).length,

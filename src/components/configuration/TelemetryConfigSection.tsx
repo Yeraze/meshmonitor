@@ -45,7 +45,8 @@ interface TelemetryConfigSectionProps {
   setHealthScreenEnabled: (value: boolean) => void;
   // UI state
   isSaving: boolean;
-  onSave: () => Promise<void>;
+  /** Resolves true when the node accepted the save. */
+  onSave: () => Promise<boolean>;
 }
 
 const TelemetryConfigSection: React.FC<TelemetryConfigSectionProps> = ({
@@ -142,9 +143,9 @@ const TelemetryConfigSection: React.FC<TelemetryConfigSectionProps> = ({
       setAirQualityInterval, setPowerMeasurementEnabled, setPowerUpdateInterval, setPowerScreenEnabled,
       setHealthMeasurementEnabled, setHealthUpdateInterval, setHealthScreenEnabled]);
 
-  // Update saved values after successful save
+  // Update saved values after successful save; a failed save stays pending (#5797)
   const handleSave = useCallback(async () => {
-    await onSave();
+    if (!(await onSave())) return;
     // Update savedValues to match current props - this clears hasChanges
     setSavedValues({
       deviceUpdateInterval, deviceTelemetryEnabled, environmentUpdateInterval, environmentMeasurementEnabled,
