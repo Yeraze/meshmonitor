@@ -196,11 +196,12 @@ export class MapPreferencesRepository extends BaseRepository {
       if (rows.length === 0) {
         await this.saveMapPreferences(userId, {});
       }
-      const map = parseBooleanMap(rows[0]?.showMqttMessagesBySource);
-      map[sourceId] = value;
+      // A Map, not a plain object, so a sourceId can never name a prototype key.
+      const map = new Map(Object.entries(parseBooleanMap(rows[0]?.showMqttMessagesBySource)));
+      map.set(sourceId, value);
       await this.db
         .update(table)
-        .set({ showMqttMessagesBySource: JSON.stringify(map) })
+        .set({ showMqttMessagesBySource: JSON.stringify(Object.fromEntries(map)) })
         .where(eq(table.userId, userId));
     } catch (error) {
       logger.error('[MapPreferencesRepository] Failed to save per-source MQTT message toggle:', error);
@@ -215,11 +216,10 @@ export function parseBooleanMap(raw: unknown): Record<string, boolean> {
   try {
     const parsed: unknown = JSON.parse(raw);
     if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
-    const out: Record<string, boolean> = {};
-    for (const [key, val] of Object.entries(parsed as Record<string, unknown>)) {
-      if (typeof val === 'boolean') out[key] = val;
-    }
-    return out;
+    const entries = Object.entries(parsed as Record<string, unknown>).filter(
+      (entry): entry is [string, boolean] => typeof entry[1] === 'boolean',
+    );
+    return Object.fromEntries(entries);
   } catch {
     return {};
   }
