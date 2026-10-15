@@ -29,6 +29,7 @@ import AutoResponderDialog from './auto-responder/AutoResponderDialog';
 import PatternExamples from './auto-responder/PatternExamples';
 import ScriptManagement from './auto-responder/ScriptManagement';
 import { UiIcon } from './icons';
+import { ConfigSection, ConfigHeaderCount } from './shared/config/ConfigSection';
 import apiService from '../services/api';
 import layout from './AutomationFormLayout.module.css';
 
@@ -48,6 +49,8 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
   onEnabledChange,
   onTriggersChange,
   onSkipIncompleteNodesChange,
+  canWrite = true,
+  receiveOnly = false,
 }) => {
   const { t } = useTranslation();
   const csrfFetch = useCsrfFetch();
@@ -595,47 +598,21 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
   });
 
   return (
-    <>
-      <div className="automation-section-header" style={{
-        display: 'flex',
-        alignItems: 'center',
-        marginBottom: '1.5rem',
-        padding: '1rem 1.25rem',
-        background: 'var(--color-surface-hover)',
-        border: '1px solid var(--color-surface-active)',
-        borderRadius: '8px'
-      }}>
-        <h2 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-          <input
-            type="checkbox"
-            checked={localEnabled}
-            onChange={(e) => setLocalEnabled(e.target.checked)}
-            aria-label={t('auto_responder.enable_aria', 'Enable Auto Responder')}
-            style={{ width: 'auto', margin: 0, cursor: 'pointer' }}
-          />
-          {t('auto_responder.title')}
-          <a
-            href="https://meshmonitor.org/features/automation#auto-responder"
-            target="_blank"
-            rel="noopener noreferrer"
-            style={{
-              fontSize: '1.2rem',
-              color: '#89b4fa',
-              textDecoration: 'none',
-              marginLeft: '0.5rem'
-            }}
-            title={t('auto_responder.view_docs')}
-          >
-            <UiIcon name="help" size={18} />
-          </a>
-        </h2>
-      </div>
-
-      <div className="settings-section" style={{ opacity: localEnabled ? 1 : 0.5, transition: 'opacity 0.2s' }}>
-        <p style={{ marginBottom: '1rem', color: '#666', lineHeight: '1.5', marginLeft: '1.75rem' }}>
-          {t('auto_responder.description')}
-        </p>
-
+    <ConfigSection
+      title={t('auto_responder.title')}
+      enabled={localEnabled}
+      onEnabledChange={setLocalEnabled}
+      enableLabel={t('auto_responder.enable_aria', 'Enable Auto Responder')}
+      docsUrl="https://meshmonitor.org/features/automation#auto-responder"
+      headerActions={
+        <ConfigHeaderCount>
+          {t('automation.trigger_count', '{{count}} triggers', { count: localTriggers.length })}
+        </ConfigHeaderCount>
+      }
+      description={t('auto_responder.description')}
+      canWrite={canWrite}
+      receiveOnly={receiveOnly}
+    >
         <div className="setting-item" style={{ marginTop: '1rem', marginBottom: '1.5rem' }}>
           <label>
             {t('auto_responder.security')}
@@ -2627,8 +2604,7 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
               </div>
           </AutoResponderDialog>
         )}
-      </div>
-    </>
+    </ConfigSection>
   );
 };
 

@@ -8,7 +8,7 @@ import { useCsrfFetch } from '../hooks/useCsrfFetch';
 import { useSourceQuery } from '../hooks/useSourceQuery';
 import { useSource } from '../contexts/SourceContext';
 import { useSaveBar } from '../hooks/useSaveBar';
-import { UiIcon } from './icons';
+import { ConfigSection } from './shared/config/ConfigSection';
 import apiService from '../services/api';
 import { HopLimitOverrideSelect } from './HopLimitOverrideSelect';
 import { NumberInput } from './common/NumberInput';
@@ -42,6 +42,10 @@ interface AutoAnnounceSectionProps {
   onNodeInfoEnabledChange?: (enabled: boolean) => void;
   onNodeInfoChannelsChange?: (channels: number[]) => void;
   onNodeInfoDelayChange?: (seconds: number) => void;
+  /** False disables every control, Send Now included. Default true. */
+  canWrite?: boolean;
+  /** True when the source cannot transmit; shows the paused note and disables Send Now. */
+  receiveOnly?: boolean;
 }
 
 const DEFAULT_MESSAGE = 'MeshMonitor {VERSION} online for {DURATION} {FEATURES}';
@@ -77,6 +81,8 @@ const AutoAnnounceSection: React.FC<AutoAnnounceSectionProps> = ({
   onNodeInfoEnabledChange,
   onNodeInfoChannelsChange,
   onNodeInfoDelayChange,
+  canWrite = true,
+  receiveOnly = false,
 }) => {
   const { t } = useTranslation();
   const csrfFetch = useCsrfFetch();
@@ -341,6 +347,10 @@ const AutoAnnounceSection: React.FC<AutoAnnounceSectionProps> = ({
     }
   };
 
+  // Send Now stays off while the section is off, while a send is in flight,
+  // and (#5807) when the source cannot transmit or the user cannot write.
+  const sendNowDisabled = isSendingNow || !localEnabled || receiveOnly || !canWrite;
+
   // Stable callbacks
   const handleSendNowClick = useCallback(() => {
     void handleSendNow();
@@ -352,60 +362,33 @@ const AutoAnnounceSection: React.FC<AutoAnnounceSectionProps> = ({
 
   return (
     <NumberInputScope scope={numberScope}>
-    <>
-      <div className="automation-section-header" style={{
-        display: 'flex',
-        alignItems: 'center',
-        marginBottom: '1.5rem',
-        padding: '1rem 1.25rem',
-        background: 'var(--color-surface-hover)',
-        border: '1px solid var(--color-surface-active)',
-        borderRadius: '8px'
-      }}>
-        <h2 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-          <input
-            type="checkbox"
-            checked={localEnabled}
-            onChange={(e) => setLocalEnabled(e.target.checked)}
-            style={{ width: 'auto', margin: 0, cursor: 'pointer' }}
-          />
-          {t('automation.auto_announce.title')}
-          <a
-            href="https://meshmonitor.org/features/automation#auto-announce"
-            target="_blank"
-            rel="noopener noreferrer"
-            style={{
-              fontSize: '1.2rem',
-              color: '#89b4fa',
-              textDecoration: 'none',
-              marginLeft: '0.5rem'
-            }}
-            title={t('automation.view_docs')}
-          >
-            <UiIcon name="help" size={18} />
-          </a>
-        </h2>
+    <ConfigSection
+      title={t('automation.auto_announce.title')}
+      enabled={localEnabled}
+      onEnabledChange={setLocalEnabled}
+      enableLabel={t('automation.auto_announce.title')}
+      docsUrl="https://meshmonitor.org/features/automation#auto-announce"
+      canWrite={canWrite}
+      receiveOnly={receiveOnly}
+      description={t('automation.auto_announce.description')}
+      headerActions={
         <div className="automation-button-container" style={{ display: 'flex', gap: '0.75rem' }}>
           <button
             onClick={handleSendNowClick}
-            disabled={isSendingNow || !localEnabled}
+            disabled={sendNowDisabled}
             className="btn-primary"
             style={{
               padding: '0.5rem 1.5rem',
               fontSize: '14px',
-              opacity: (localEnabled && !isSendingNow) ? 1 : 0.5,
-              cursor: (localEnabled && !isSendingNow) ? 'pointer' : 'not-allowed'
+              opacity: sendNowDisabled ? 0.5 : 1,
+              cursor: sendNowDisabled ? 'not-allowed' : 'pointer'
             }}
           >
             {isSendingNow ? t('automation.auto_announce.sending') : t('automation.auto_announce.send_now')}
           </button>
         </div>
-      </div>
-
-      <div className="settings-section" style={{ opacity: localEnabled ? 1 : 0.5, transition: 'opacity 0.2s' }}>
-        <p style={{ marginBottom: '1rem', color: '#666', lineHeight: '1.5' }}>
-          {t('automation.auto_announce.description')}
-        </p>
+      }
+    >
 
         {/* #4731: point users at the firmware-native alternative, worded to the
             verified 2.8 behavior — MeshBeacon is a periodic broadcaster (overlaps
@@ -885,8 +868,7 @@ const AutoAnnounceSection: React.FC<AutoAnnounceSectionProps> = ({
             </>
           )}
         </div>
-      </div>
-    </>
+    </ConfigSection>
     </NumberInputScope>
   );
 };

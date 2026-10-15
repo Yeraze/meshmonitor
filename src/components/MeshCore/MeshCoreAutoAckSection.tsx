@@ -8,7 +8,8 @@ import { NumberInput } from '../common/NumberInput';
 import { NumberInputScope } from '../common/NumberInputScope';
 import { useNumberInputScope } from '../common/numberInputScopeContext';
 import { ScopeSelectField, type ScopeMode } from './ScopeSelectField';
-import { MeshCoreReceiveOnlyNote } from './MeshCoreReceiveOnlyNote';
+import { ConfigSection } from '../shared/config/ConfigSection';
+import { meshCoreReceiveOnlyText } from './meshCoreReceiveOnlyText';
 import { UiIcon } from '../icons';
 import styles from './MeshCoreAutoAckSection.module.css';
 
@@ -270,37 +271,20 @@ export const MeshCoreAutoAckSection: React.FC<MeshCoreAutoAckSectionProps> = ({ 
   return (
     <NumberInputScope scope={numberScope}>
     <>
-      <div className="automation-section-header" style={{
-        display: 'flex',
-        alignItems: 'center',
-        marginBottom: '1.5rem',
-        marginTop: '2rem',
-        padding: '1rem 1.25rem',
-        background: 'var(--color-surface-hover)',
-        border: '1px solid var(--color-surface-active)',
-        borderRadius: '8px',
-      }}>
-        <h2 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-          <input
-            type="checkbox"
-            checked={settings.enabled}
-            onChange={(e) => update('enabled', e.target.checked)}
-            disabled={!canWrite}
-            style={{ width: 'auto', margin: 0, cursor: canWrite ? 'pointer' : 'not-allowed' }}
-          />
-          {t('meshcore.automation.autoack.title', 'Auto-Acknowledge')}
-        </h2>
-      </div>
-
-      <MeshCoreReceiveOnlyNote receiveOnly={receiveOnly} />
-
-      <div className="settings-section" style={{ opacity: settings.enabled ? 1 : 0.5, transition: 'opacity 0.2s' }}>
-        <p style={{ marginBottom: '1rem', color: '#666', lineHeight: 1.5, marginLeft: '1.75rem' }}>
-          {t(
-            'meshcore.automation.autoack.description',
-            'Automatically reply to incoming MeshCore messages that match a regex pattern. Supports per-channel allowlist, DM trigger, and template macros.',
-          )}
-        </p>
+      <ConfigSection
+        title={t('meshcore.automation.autoack.title', 'Auto-Acknowledge')}
+        enabled={settings.enabled}
+        onEnabledChange={(v) => update('enabled', v)}
+        enableLabel={t('meshcore.automation.autoack.title', 'Auto-Acknowledge')}
+        docsUrl="https://meshmonitor.org/features/automation#auto-acknowledge"
+        canWrite={canWrite}
+        receiveOnly={receiveOnly}
+        receiveOnlyNote={meshCoreReceiveOnlyText(t)}
+        description={t(
+          'meshcore.automation.autoack.description',
+          'Automatically reply to incoming MeshCore messages that match a regex pattern. Supports per-channel allowlist, DM trigger, and template macros.',
+        )}
+      >
 
         {/* Regex */}
         <div className="setting-item" style={{ marginTop: '1rem' }}>
@@ -660,7 +644,7 @@ export const MeshCoreAutoAckSection: React.FC<MeshCoreAutoAckSectionProps> = ({ 
             </div>
           </div>
         </div>
-      </div>
+      </ConfigSection>
     </>
     </NumberInputScope>
   );

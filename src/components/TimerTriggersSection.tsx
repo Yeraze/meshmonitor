@@ -9,6 +9,7 @@ import { Channel } from '../types/device';
 import { useSaveBar } from '../hooks/useSaveBar';
 import ScriptTestModal from './ScriptTestModal';
 import { UiIcon } from './icons';
+import { ConfigSection, ConfigHeaderCount } from './shared/config/ConfigSection';
 import apiService from '../services/api';
 import layout from './AutomationFormLayout.module.css';
 
@@ -38,6 +39,10 @@ interface TimerTriggersSectionProps {
   channels: Channel[];
   baseUrl: string;
   onTriggersChange: (triggers: TimerTrigger[]) => void;
+  /** False disables every control (no automation write permission). Default true. */
+  canWrite?: boolean;
+  /** True when the source cannot transmit; shows the paused note. */
+  receiveOnly?: boolean;
 }
 
 const TimerTriggersSection: React.FC<TimerTriggersSectionProps> = ({
@@ -45,6 +50,8 @@ const TimerTriggersSection: React.FC<TimerTriggersSectionProps> = ({
   channels,
   baseUrl,
   onTriggersChange,
+  canWrite = true,
+  receiveOnly = false,
 }) => {
   const { t } = useTranslation();
   const csrfFetch = useCsrfFetch();
@@ -243,38 +250,18 @@ const TimerTriggersSection: React.FC<TimerTriggersSectionProps> = ({
 
   return (
     <>
-      <div className="automation-section-header" style={{
-        display: 'flex',
-        alignItems: 'center',
-        marginBottom: '1.5rem',
-        padding: '1rem 1.25rem',
-        background: 'var(--color-surface-hover)',
-        border: '1px solid var(--color-surface-active)',
-        borderRadius: '8px'
-      }}>
-        <h2 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-          {t('automation.timer_triggers.section_title', 'Timed Events')}
-          <a
-            href="https://meshmonitor.org/features/automation#timer-triggers"
-            target="_blank"
-            rel="noopener noreferrer"
-            style={{
-              fontSize: '1.2rem',
-              color: '#89b4fa',
-              textDecoration: 'none',
-              marginLeft: '0.5rem'
-            }}
-            title={t('automation.timer_triggers.view_docs', 'View documentation')}
-          >
-            ?
-          </a>
-        </h2>
-      </div>
-
-      <div className="settings-section">
-        <p style={{ marginBottom: '1rem', color: '#666', lineHeight: '1.5', marginLeft: '1.75rem' }}>
-          {t('automation.timer_triggers.description', 'Schedule scripts to run automatically using cron expressions')}
-        </p>
+      <ConfigSection
+        title={t('automation.timer_triggers.section_title', 'Timed Events')}
+        docsUrl="https://meshmonitor.org/features/automation#timer-triggers"
+        headerActions={
+          <ConfigHeaderCount>
+            {t('automation.trigger_count', '{{count}} triggers', { count: localTriggers.length })}
+          </ConfigHeaderCount>
+        }
+        description={t('automation.timer_triggers.description', 'Schedule scripts to run automatically using cron expressions')}
+        canWrite={canWrite}
+        receiveOnly={receiveOnly}
+      >
         {/* Add New Timer Form */}
         <div style={{
           padding: '1rem',
@@ -536,7 +523,7 @@ const TimerTriggersSection: React.FC<TimerTriggersSectionProps> = ({
             {t('automation.timer_triggers.no_timers', 'No timer triggers configured. Add one above to schedule automatic script execution.')}
           </div>
         )}
-      </div>
+      </ConfigSection>
     </>
   );
 };

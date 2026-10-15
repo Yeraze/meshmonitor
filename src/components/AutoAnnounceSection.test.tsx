@@ -902,3 +902,52 @@ describe('AutoAnnounceSection — firmware 2.8 MeshBeacon notice (#4731)', () =>
     expect(notice.textContent || '').not.toMatch(/auto[- ]?welcome/i);
   });
 });
+
+describe('AutoAnnounceSection — TX-disabled and permission gating (#5807)', () => {
+  const props = {
+    enabled: true,
+    intervalHours: 6,
+    message: 'hi',
+    channelIndexes: [0],
+    announceOnStart: false,
+    useSchedule: false,
+    schedule: '0 */6 * * *',
+    channels: [] as Channel[],
+    baseUrl: '',
+    onEnabledChange: vi.fn(),
+    onIntervalChange: vi.fn(),
+    onMessageChange: vi.fn(),
+    onChannelIndexesChange: vi.fn(),
+    onAnnounceOnStartChange: vi.fn(),
+    onUseScheduleChange: vi.fn(),
+    onScheduleChange: vi.fn(),
+  };
+
+  beforeEach(() => {
+    (global.fetch as any) = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ lastAnnouncementTime: Date.now() }),
+    });
+  });
+
+  it('enables Send Now by default and shows no paused note', () => {
+    render(<AutoAnnounceSection {...props} />);
+    expect(screen.getByText('Send Now').closest('button')).not.toBeDisabled();
+    expect(screen.queryByRole('status')).toBeNull();
+  });
+
+  it('disables Send Now and shows the paused note when the source cannot transmit', () => {
+    render(<AutoAnnounceSection {...props} receiveOnly />);
+    expect(screen.getByText('Send Now').closest('button')).toBeDisabled();
+    expect(screen.getByRole('status')).toBeInTheDocument();
+  });
+
+  it('disables Send Now, the enable toggle and the fields without write permission', () => {
+    render(<AutoAnnounceSection {...props} canWrite={false} />);
+    expect(screen.getByText('Send Now').closest('button')).toBeDisabled();
+    expect(screen.getByRole('checkbox', { name: 'Auto Announce' })).toBeDisabled();
+    const textboxes = screen.getAllByRole('textbox');
+    expect(textboxes.length).toBeGreaterThan(0);
+    textboxes.forEach(box => expect(box).toBeDisabled());
+  });
+});

@@ -24,6 +24,7 @@ import AutoAnnounceSection from './AutoAnnounceSection';
 import AutoResponderSection from './AutoResponderSection';
 import ForwardingSection from './forwarding/ForwardingSection';
 import { useSource } from '../contexts/SourceContext';
+import { useAuth } from '../contexts/AuthContext';
 import AutoKeyManagementSection from './AutoKeyManagementSection';
 import TimerTriggersSection from './TimerTriggersSection';
 import GeofenceTriggersSection from './GeofenceTriggersSection';
@@ -50,6 +51,11 @@ interface AutomationTabProps {
 const AutomationTab: React.FC<AutomationTabProps> = ({ baseUrl, channels, nodes, currentNodeId, txDisabled = false }) => {
   const { t } = useTranslation();
   const { sourceId } = useSource();
+  const { hasPermission } = useAuth();
+  // #5807: UI gating only (the server enforces). Outside a SourceProvider
+  // there is no source to check, so fall back to a grant on any source rather
+  // than locking every section for non-admins in legacy views.
+  const canWrite = hasPermission('automation', 'write', sourceId ? { sourceId } : { anySource: true });
   const forwardingChannels = React.useMemo(
     () => channels.map(c => ({ index: c.id, name: c.displayName || c.name || '' })).sort((a, b) => a.index - b.index),
     [channels],
@@ -238,6 +244,8 @@ const AutomationTab: React.FC<AutomationTabProps> = ({ baseUrl, channels, nodes,
               onIgnoredNodesChange={setAutoAckIgnoredNodes}
               onMatrixChange={setAutoAckMatrix}
               onTestMessagesChange={setAutoAckTestMessages}
+              canWrite={canWrite}
+              receiveOnly={txDisabled}
             />
           </div>
           <div id="auto-announce">
@@ -266,6 +274,8 @@ const AutomationTab: React.FC<AutomationTabProps> = ({ baseUrl, channels, nodes,
               onNodeInfoEnabledChange={setAutoAnnounceNodeInfoEnabled}
               onNodeInfoChannelsChange={setAutoAnnounceNodeInfoChannels}
               onNodeInfoDelayChange={setAutoAnnounceNodeInfoDelaySeconds}
+              canWrite={canWrite}
+              receiveOnly={txDisabled}
             />
           </div>
           <div id="auto-responder">
@@ -278,6 +288,8 @@ const AutomationTab: React.FC<AutomationTabProps> = ({ baseUrl, channels, nodes,
               onEnabledChange={setAutoResponderEnabled}
               onTriggersChange={setAutoResponderTriggers}
               onSkipIncompleteNodesChange={setAutoResponderSkipIncompleteNodes}
+              canWrite={canWrite}
+              receiveOnly={txDisabled}
             />
           </div>
           {sourceId && (
@@ -312,6 +324,8 @@ const AutomationTab: React.FC<AutomationTabProps> = ({ baseUrl, channels, nodes,
               channels={channels}
               baseUrl={baseUrl}
               onTriggersChange={setTimerTriggers}
+              canWrite={canWrite}
+              receiveOnly={txDisabled}
             />
           </div>
           <div id="geofence-triggers">

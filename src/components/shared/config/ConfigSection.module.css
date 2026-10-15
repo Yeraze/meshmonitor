@@ -1,0 +1,99 @@
+/*
+ * ConfigSection (#5807). CSS module, per the CLAUDE.md CSS containment rule.
+ *
+ * The header keeps the global `.automation-section-header` class (mobile
+ * wrap rules in App.css, first-section margin reset in settings.css); this
+ * module owns the rest of the look. The body keeps the global
+ * `.settings-section` class so `.setting-item` field styles still apply.
+ */
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-top: 1.5rem;
+  margin-bottom: 1.5rem;
+  padding: 1rem 1.25rem;
+  background: var(--color-surface-hover);
+  border: 1px solid var(--color-surface-active);
+  border-radius: 8px;
+}
+
+.title {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  min-width: 0;
+}
+
+.toggle {
+  width: auto;
+  margin: 0;
+  cursor: pointer;
+}
+
+.toggle:disabled {
+  cursor: not-allowed;
+}
+
+.icon {
+  display: inline-flex;
+  flex: 0 0 auto;
+}
+
+.docsLink {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 0.5rem;
+  font-size: 1.2rem;
+  color: var(--color-accent);
+  text-decoration: none;
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-left: auto;
+}
+
+.body {
+  transition: opacity 0.2s;
+}
+
+.faded {
+  opacity: 0.5;
+}
+
+/*
+ * The body sits in a <fieldset> so `canWrite={false}` disables every control
+ * inside natively. Reset its default chrome so it lays out like a plain div.
+ */
+.fieldset {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+}
+
+.description {
+  margin: 0 0 1rem 1.75rem;
+  color: var(--color-text-subtle);
+  line-height: 1.5;
+}
+
+/* Muted empty-state line, e.g. "No triggers configured yet." */
+.empty {
+  margin: 0 0 1rem 1.75rem;
+  font-size: 0.9rem;
+  color: var(--color-text-subtle);
+}
+
+/* Small count / status text for the header's right-hand slot. */
+.count {
+  font-size: 0.85rem;
+  color: var(--color-text-subtle);
+  white-space: nowrap;
+}
