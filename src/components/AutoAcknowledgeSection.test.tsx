@@ -88,7 +88,7 @@ describe.skip('AutoAcknowledgeSection Component', () => {
       render(<AutoAcknowledgeSection {...defaultProps} />);
 
       expect(screen.getByText('Auto Acknowledge')).toBeInTheDocument();
-      expect(screen.getByLabelText(/Message Pattern/)).toBeInTheDocument();
+      expect(screen.getByLabelText(/Trigger Pattern/)).toBeInTheDocument();
       expect(screen.getByText('Active Channels')).toBeInTheDocument();
       expect(screen.getByText('Pattern Testing')).toBeInTheDocument();
     });
@@ -110,14 +110,14 @@ describe.skip('AutoAcknowledgeSection Component', () => {
     it('should render regex input with correct value', () => {
       render(<AutoAcknowledgeSection {...defaultProps} regex="^(hello|hi)" />);
 
-      const input = screen.getByLabelText(/Message Pattern/) as HTMLInputElement;
+      const input = screen.getByLabelText(/Trigger Pattern/) as HTMLInputElement;
       expect(input.value).toBe('^(hello|hi)');
     });
 
     it('should disable inputs when auto-acknowledge is disabled', () => {
       render(<AutoAcknowledgeSection {...defaultProps} enabled={false} />);
 
-      const regexInput = screen.getByLabelText(/Message Pattern/);
+      const regexInput = screen.getByLabelText(/Trigger Pattern/);
       expect(regexInput).toBeDisabled();
     });
   });
@@ -222,7 +222,7 @@ describe.skip('AutoAcknowledgeSection Component', () => {
       const user = userEvent.setup();
       render(<AutoAcknowledgeSection {...defaultProps} />);
 
-      const regexInput = screen.getByLabelText(/Message Pattern/);
+      const regexInput = screen.getByLabelText(/Trigger Pattern/);
       await user.clear(regexInput);
       await user.type(regexInput, '^newpattern');
 
@@ -440,7 +440,7 @@ describe.skip('AutoAcknowledgeSection Component', () => {
       const user = userEvent.setup();
       render(<AutoAcknowledgeSection {...defaultProps} />);
 
-      const regexInput = screen.getByLabelText(/Message Pattern/);
+      const regexInput = screen.getByLabelText(/Trigger Pattern/);
       await user.clear(regexInput);
       await user.type(regexInput, 'a'.repeat(101));
 
@@ -459,7 +459,7 @@ describe.skip('AutoAcknowledgeSection Component', () => {
       const user = userEvent.setup();
       render(<AutoAcknowledgeSection {...defaultProps} />);
 
-      const regexInput = screen.getByLabelText(/Message Pattern/);
+      const regexInput = screen.getByLabelText(/Trigger Pattern/);
       await user.clear(regexInput);
       await user.type(regexInput, '.*.*.*');
 
@@ -478,7 +478,7 @@ describe.skip('AutoAcknowledgeSection Component', () => {
       const user = userEvent.setup();
       render(<AutoAcknowledgeSection {...defaultProps} />);
 
-      const regexInput = screen.getByLabelText(/Message Pattern/);
+      const regexInput = screen.getByLabelText(/Trigger Pattern/);
       await user.clear(regexInput);
       await user.type(regexInput, '(unclosed');
 
@@ -511,7 +511,7 @@ describe.skip('AutoAcknowledgeSection Component', () => {
       render(<AutoAcknowledgeSection {...defaultProps} regex="^test" />);
 
       // Change regex to match different pattern
-      const regexInput = screen.getByLabelText(/Message Pattern/);
+      const regexInput = screen.getByLabelText(/Trigger Pattern/);
       await user.clear(regexInput);
       await user.type(regexInput, '^ping');
 

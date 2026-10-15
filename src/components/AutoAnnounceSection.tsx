@@ -9,6 +9,8 @@ import { useSourceQuery } from '../hooks/useSourceQuery';
 import { useSource } from '../contexts/SourceContext';
 import { useSaveBar } from '../hooks/useSaveBar';
 import { ConfigSection } from './shared/config/ConfigSection';
+import { ConfigGroup } from './shared/config/ConfigGroup';
+import { TokenInsertButtons } from './shared/automation/TokenInsertButtons';
 import apiService from '../services/api';
 import { HopLimitOverrideSelect } from './HopLimitOverrideSelect';
 import { NumberInput } from './common/NumberInput';
@@ -49,6 +51,18 @@ interface AutoAnnounceSectionProps {
 }
 
 const DEFAULT_MESSAGE = 'MeshMonitor {VERSION} online for {DURATION} {FEATURES}';
+
+/** Tokens offered as insert buttons under the announcement template. */
+const ANNOUNCE_TOKENS: readonly string[] = [
+  '{VERSION}',
+  '{DURATION}',
+  '{FEATURES}',
+  '{NODECOUNT}',
+  '{DIRECTCOUNT}',
+  '{TOTALNODES}',
+  '{DATE}',
+  '{TIME}',
+];
 
 // Stable default for `nodeInfoChannels`. An inline `= []` default is a new
 // array every render; the re-seed effect below depends on it and sets state,
@@ -356,10 +370,6 @@ const AutoAnnounceSection: React.FC<AutoAnnounceSectionProps> = ({
     void handleSendNow();
   }, [handleSendNow]);
 
-  const createInsertTokenHandler = useCallback((token: string) => {
-    return () => insertToken(token);
-  }, [insertToken]);
-
   return (
     <NumberInputScope scope={numberScope}>
     <ConfigSection
@@ -406,21 +416,8 @@ const AutoAnnounceSection: React.FC<AutoAnnounceSectionProps> = ({
           {t('automation.auto_announce.native_notice', "Heads up: firmware 2.8's MeshBeacon module can broadcast a periodic message natively (see the MeshBeacon settings). It's more limited than Auto Announce, though — it's zero-hop (only direct neighbors hear it), capped at a minimum one-hour interval, and currently only in 2.8.0 alpha/prerelease builds, not a stable release — so it isn't a full replacement.")}
         </div>
 
-        {lastAnnouncementTime && (
-          <div style={{
-            marginBottom: '1rem',
-            padding: '0.75rem',
-            background: 'var(--color-surface)',
-            border: '1px solid var(--color-surface-active)',
-            borderRadius: '4px',
-            fontSize: '0.9rem',
-            color: 'var(--color-text-subtle)'
-          }}>
-            <strong>{t('automation.auto_announce.last_announcement')}:</strong> {new Date(lastAnnouncementTime).toLocaleString()}
-          </div>
-        )}
-
-        <div className="setting-item" style={{ marginTop: '1rem' }}>
+        <ConfigGroup name="when" title={t('automation.group.when', 'When')}>
+        <div className="setting-item">
           <label htmlFor="announceOnStart">
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
               <input
@@ -439,7 +436,7 @@ const AutoAnnounceSection: React.FC<AutoAnnounceSectionProps> = ({
           </label>
         </div>
 
-        <div className="setting-item" style={{ marginTop: '1rem' }}>
+        <div className="setting-item">
           <label htmlFor="useSchedule">
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
               <input
@@ -459,7 +456,7 @@ const AutoAnnounceSection: React.FC<AutoAnnounceSectionProps> = ({
         </div>
 
         {localUseSchedule && (
-          <div className="setting-item" style={{ marginTop: '1rem', marginLeft: '1.5rem' }}>
+          <div className="setting-item" style={{ marginLeft: '1.5rem' }}>
             <label htmlFor="scheduleExpression">
               {t('automation.auto_announce.cron_expression')}
               <span className="setting-description">
@@ -468,7 +465,7 @@ const AutoAnnounceSection: React.FC<AutoAnnounceSectionProps> = ({
                   href="https://crontab.guru/"
                   target="_blank"
                   rel="noopener noreferrer"
-                  style={{ color: '#89b4fa', textDecoration: 'underline' }}
+                  style={{ color: 'var(--color-accent)', textDecoration: 'underline' }}
                 >
                   {t('automation.auto_announce.cron_help_link')}
                 </a>
@@ -509,7 +506,7 @@ const AutoAnnounceSection: React.FC<AutoAnnounceSectionProps> = ({
         )}
 
         {!localUseSchedule && (
-          <div className="setting-item" style={{ marginTop: '1rem' }}>
+          <div className="setting-item">
             <label htmlFor="announceInterval">
                 {t('automation.auto_announce.interval')}
               <span className="setting-description">
@@ -529,7 +526,10 @@ const AutoAnnounceSection: React.FC<AutoAnnounceSectionProps> = ({
           </div>
         )}
 
-        <div className="setting-item" style={{ marginTop: '1rem' }}>
+        </ConfigGroup>
+
+        <ConfigGroup name="where" title={t('automation.group.where', 'Where')}>
+        <div className="setting-item">
           <label htmlFor="announceChannel">
             {t('automation.auto_announce.broadcast_channel')}
             <span className="setting-description">
@@ -568,8 +568,10 @@ const AutoAnnounceSection: React.FC<AutoAnnounceSectionProps> = ({
             disabled={!localEnabled}
           />
         </div>
+        </ConfigGroup>
 
-        <div className="setting-item" style={{ marginTop: '1rem' }}>
+        <ConfigGroup name="message" title={t('automation.group.message', 'Message')}>
+        <div className="setting-item">
           <label htmlFor="announceMessage">
             {t('automation.auto_announce.message_label')}
             <span className="setting-description">
@@ -590,139 +592,14 @@ const AutoAnnounceSection: React.FC<AutoAnnounceSectionProps> = ({
               minHeight: '80px'
             }}
           />
-          <div style={{ marginTop: '0.5rem', display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-            <button
-              type="button"
-              onClick={createInsertTokenHandler('{VERSION}')}
-              disabled={!localEnabled}
-              style={{
-                padding: '0.25rem 0.5rem',
-                fontSize: '12px',
-                background: 'var(--color-surface-active)',
-                border: '1px solid var(--color-border-subtle)',
-                borderRadius: '4px',
-                cursor: localEnabled ? 'pointer' : 'not-allowed',
-                opacity: localEnabled ? 1 : 0.5
-              }}
-            >
-              + {'{VERSION}'}
-            </button>
-            <button
-              type="button"
-              onClick={createInsertTokenHandler('{DURATION}')}
-              disabled={!localEnabled}
-              style={{
-                padding: '0.25rem 0.5rem',
-                fontSize: '12px',
-                background: 'var(--color-surface-active)',
-                border: '1px solid var(--color-border-subtle)',
-                borderRadius: '4px',
-                cursor: localEnabled ? 'pointer' : 'not-allowed',
-                opacity: localEnabled ? 1 : 0.5
-              }}
-            >
-              + {'{DURATION}'}
-            </button>
-            <button
-              type="button"
-              onClick={createInsertTokenHandler('{FEATURES}')}
-              disabled={!localEnabled}
-              style={{
-                padding: '0.25rem 0.5rem',
-                fontSize: '12px',
-                background: 'var(--color-surface-active)',
-                border: '1px solid var(--color-border-subtle)',
-                borderRadius: '4px',
-                cursor: localEnabled ? 'pointer' : 'not-allowed',
-                opacity: localEnabled ? 1 : 0.5
-              }}
-            >
-              + {'{FEATURES}'}
-            </button>
-            <button
-              type="button"
-              onClick={createInsertTokenHandler('{NODECOUNT}')}
-              disabled={!localEnabled}
-              style={{
-                padding: '0.25rem 0.5rem',
-                fontSize: '12px',
-                background: 'var(--color-surface-active)',
-                border: '1px solid var(--color-border-subtle)',
-                borderRadius: '4px',
-                cursor: localEnabled ? 'pointer' : 'not-allowed',
-                opacity: localEnabled ? 1 : 0.5
-              }}
-            >
-              + {'{NODECOUNT}'}
-            </button>
-            <button
-              type="button"
-              onClick={createInsertTokenHandler('{DIRECTCOUNT}')}
-              disabled={!localEnabled}
-              style={{
-                padding: '0.25rem 0.5rem',
-                fontSize: '12px',
-                background: 'var(--color-surface-active)',
-                border: '1px solid var(--color-border-subtle)',
-                borderRadius: '4px',
-                cursor: localEnabled ? 'pointer' : 'not-allowed',
-                opacity: localEnabled ? 1 : 0.5
-              }}
-            >
-              + {'{DIRECTCOUNT}'}
-            </button>
-            <button
-              type="button"
-              onClick={createInsertTokenHandler('{TOTALNODES}')}
-              disabled={!localEnabled}
-              style={{
-                padding: '0.25rem 0.5rem',
-                fontSize: '12px',
-                background: 'var(--color-surface-active)',
-                border: '1px solid var(--color-border-subtle)',
-                borderRadius: '4px',
-                cursor: localEnabled ? 'pointer' : 'not-allowed',
-                opacity: localEnabled ? 1 : 0.5
-              }}
-            >
-              + {'{TOTALNODES}'}
-            </button>
-            <button
-              type="button"
-              onClick={createInsertTokenHandler('{DATE}')}
-              disabled={!localEnabled}
-              style={{
-                padding: '0.25rem 0.5rem',
-                fontSize: '12px',
-                background: 'var(--color-surface-active)',
-                border: '1px solid var(--color-border-subtle)',
-                borderRadius: '4px',
-                cursor: localEnabled ? 'pointer' : 'not-allowed',
-                opacity: localEnabled ? 1 : 0.5
-              }}
-            >
-              + {'{DATE}'}
-            </button>
-            <button
-              type="button"
-              onClick={createInsertTokenHandler('{TIME}')}
-              disabled={!localEnabled}
-              style={{
-                padding: '0.25rem 0.5rem',
-                fontSize: '12px',
-                background: 'var(--color-surface-active)',
-                border: '1px solid var(--color-border-subtle)',
-                borderRadius: '4px',
-                cursor: localEnabled ? 'pointer' : 'not-allowed',
-                opacity: localEnabled ? 1 : 0.5
-              }}
-            >
-              + {'{TIME}'}
-            </button>
-          </div>
+          <TokenInsertButtons
+            tokens={ANNOUNCE_TOKENS}
+            onInsert={insertToken}
+            disabled={!localEnabled}
+          />
         </div>
 
-        <div className="setting-item" style={{ marginTop: '1rem' }}>
+        <div className="setting-item">
           <label>
             {t('automation.auto_announce.sample_preview')}
             <span className="setting-description">
@@ -772,10 +649,11 @@ const AutoAnnounceSection: React.FC<AutoAnnounceSectionProps> = ({
             <li>{t('automation.auto_announce.feature_time_sync')}</li>
           </ul>
         </div>
+        </ConfigGroup>
 
+        <ConfigGroup name="extras" title={t('automation.group.extras', 'Extras')}>
         {/* NodeInfo Broadcasting Section */}
         <div style={{
-          marginTop: '2rem',
           padding: '1rem',
           background: 'var(--color-surface)',
           border: '1px solid var(--color-surface-active)',
@@ -799,7 +677,7 @@ const AutoAnnounceSection: React.FC<AutoAnnounceSectionProps> = ({
 
           {localNodeInfoEnabled && (
             <>
-              <div className="setting-item" style={{ marginTop: '1rem' }}>
+              <div className="setting-item">
                 <label>
                   {t('automation.auto_announce.nodeinfo_channels')}
                   <span className="setting-description">
@@ -843,7 +721,7 @@ const AutoAnnounceSection: React.FC<AutoAnnounceSectionProps> = ({
                 )}
               </div>
 
-              <div className="setting-item" style={{ marginTop: '1rem' }}>
+              <div className="setting-item">
                 <label htmlFor="nodeInfoDelay">
                   {t('automation.auto_announce.nodeinfo_delay')}
                   <span className="setting-description">
@@ -868,6 +746,21 @@ const AutoAnnounceSection: React.FC<AutoAnnounceSectionProps> = ({
             </>
           )}
         </div>
+
+        {lastAnnouncementTime && (
+          <div style={{
+            marginTop: '1rem',
+            padding: '0.75rem',
+            background: 'var(--color-surface)',
+            border: '1px solid var(--color-surface-active)',
+            borderRadius: '4px',
+            fontSize: '0.9rem',
+            color: 'var(--color-text-subtle)'
+          }}>
+            <strong>{t('automation.auto_announce.last_announcement')}:</strong> {new Date(lastAnnouncementTime).toLocaleString()}
+          </div>
+        )}
+        </ConfigGroup>
     </ConfigSection>
     </NumberInputScope>
   );
