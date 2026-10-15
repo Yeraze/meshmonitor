@@ -4530,7 +4530,10 @@ class MeshtasticManager implements ISourceManager {
           delete trigger.lastError;
         }
 
-        await databaseService.settings.setSetting('geofenceTriggers', JSON.stringify(triggers));
+        // Write back to the SAME per-source key read above. The global setter
+        // copied this source's geofence list into the global key on every fire,
+        // where it bled into other sources (the timer-trigger bug, again).
+        await databaseService.settings.setSourceSetting(this.sourceId, 'geofenceTriggers', JSON.stringify(triggers));
         logger.debug(`📍 Updated geofence trigger ${triggerId} result: ${result}`);
       }
     } catch (e) {
