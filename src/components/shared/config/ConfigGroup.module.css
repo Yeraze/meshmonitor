@@ -1,0 +1,33 @@
+/*
+ * ConfigGroup (#5816). CSS module, per the CLAUDE.md CSS containment rule.
+ *
+ * The heading sits inside `.settings-section`, whose global `h3` rule
+ * (settings.css) would give it a large title look. `.group > .title` is more
+ * specific, so this module sets the group heading look on its own.
+ */
+
+.group {
+  margin-top: 1.75rem;
+}
+
+.group:first-of-type {
+  margin-top: 1rem;
+}
+
+.group > .title {
+  margin: 0 0 0.75rem 0;
+  padding: 0 0 0.4rem 0;
+  font-size: 0.8rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-text-subtle);
+  border-bottom: 1px solid var(--color-surface-active);
+}
+
+.hint {
+  margin: 0 0 0.75rem 0;
+  font-size: 0.85rem;
+  line-height: 1.4;
+  color: var(--color-text-subtle);
+}

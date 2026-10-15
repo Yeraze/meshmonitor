@@ -11,6 +11,8 @@ import { useNumberInputScope } from '../common/numberInputScopeContext';
 import { ScopeSelectField, type ScopeMode } from './ScopeSelectField';
 import { MESHCORE_AUTOMATION_TOKENS } from './meshcoreAutomationTokens';
 import { ConfigSection } from '../shared/config/ConfigSection';
+import { ConfigGroup } from '../shared/config/ConfigGroup';
+import { TokenInsertButtons } from '../shared/automation/TokenInsertButtons';
 import { meshCoreReceiveOnlyText } from './meshCoreReceiveOnlyText';
 import { isTxDisabledBody } from '../../utils/txDisabled';
 import { MeshCoreAdvertModeField } from './MeshCoreAdvertModeField';
@@ -362,9 +364,9 @@ export const MeshCoreAutoAnnounceSection: React.FC<MeshCoreAutoAnnounceSectionPr
           </button>
         }
       >
-
+        <ConfigGroup name="when" title={t('automation.group.when', 'When')}>
         {/* On-start announcement */}
-        <div className="setting-item" style={{ marginTop: '1rem' }}>
+        <div className="setting-item">
           <label style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '0.5rem' }}>
             <input
               type="checkbox"
@@ -386,7 +388,7 @@ export const MeshCoreAutoAnnounceSection: React.FC<MeshCoreAutoAnnounceSectionPr
         </div>
 
         {/* Schedule type toggle */}
-        <div className="setting-item" style={{ marginTop: '1.5rem' }}>
+        <div className="setting-item">
           <label style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '0.5rem' }}>
             <input
               type="checkbox"
@@ -396,7 +398,7 @@ export const MeshCoreAutoAnnounceSection: React.FC<MeshCoreAutoAnnounceSectionPr
               style={{ width: 'auto', margin: 0 }}
             />
             <span style={{ fontWeight: 'bold' }}>
-              {t('meshcore.automation.announce.use_schedule', 'Use cron schedule')}
+              {t('automation.auto_announce.scheduled_sends', 'Use Cron Schedule')}
             </span>
           </label>
           <div style={{ marginTop: '0.25rem', marginLeft: '1.75rem', fontSize: '0.85rem', color: 'var(--color-text-subtle)' }}>
@@ -409,9 +411,9 @@ export const MeshCoreAutoAnnounceSection: React.FC<MeshCoreAutoAnnounceSectionPr
 
         {/* Interval vs schedule */}
         {!settings.useSchedule ? (
-          <div className="setting-item" style={{ marginTop: '1rem' }}>
+          <div className="setting-item">
             <label htmlFor="meshcoreAnnounceInterval">
-              {t('meshcore.automation.announce.interval_label', 'Interval (hours)')}
+              {t('automation.auto_announce.interval', 'Announcement Interval (hours)')}
             </label>
             <NumberInput
               id="meshcoreAnnounceInterval"
@@ -426,9 +428,12 @@ export const MeshCoreAutoAnnounceSection: React.FC<MeshCoreAutoAnnounceSectionPr
             />
           </div>
         ) : (
-          <div className="setting-item" style={{ marginTop: '1rem' }}>
+          <div className="setting-item">
             <label htmlFor="meshcoreAnnounceSchedule">
-              {t('meshcore.automation.announce.schedule_label', 'Cron schedule (min hour dom mon dow)')}
+              {t('automation.auto_announce.cron_expression', 'Cron Expression')}
+              <span className="setting-description">
+                {t('automation.auto_announce.cron_expression_description', 'Schedule format: minute hour day month weekday.')}
+              </span>
             </label>
             <input
               id="meshcoreAnnounceSchedule"
@@ -447,11 +452,13 @@ export const MeshCoreAutoAnnounceSection: React.FC<MeshCoreAutoAnnounceSectionPr
             )}
           </div>
         )}
+        </ConfigGroup>
 
+        <ConfigGroup name="where" title={t('automation.group.where', 'Where')}>
         {/* Channel selection */}
-        <div className="setting-item" style={{ marginTop: '1.5rem' }}>
+        <div className="setting-item">
           <label>
-            {t('meshcore.automation.announce.channels', 'Target channels')}
+            {t('automation.auto_announce.broadcast_channel', 'Broadcast Channels')}
             <span className="setting-description">
               {t(
                 'meshcore.automation.announce.channels_description',
@@ -491,7 +498,7 @@ export const MeshCoreAutoAnnounceSection: React.FC<MeshCoreAutoAnnounceSectionPr
         </div>
 
         {/* MeshCore scope/region for the announcement (#3833) */}
-        <div className="setting-item" style={{ marginTop: '1.5rem' }}>
+        <div className="setting-item">
           <label>
             {t('meshcore.automation.announce.scope_label', 'Scope')}
             <span className="setting-description">
@@ -511,11 +518,13 @@ export const MeshCoreAutoAnnounceSection: React.FC<MeshCoreAutoAnnounceSectionPr
             />
           </div>
         </div>
+        </ConfigGroup>
 
+        <ConfigGroup name="message" title={t('automation.group.message', 'Message')}>
         {/* Message template */}
-        <div className="setting-item" style={{ marginTop: '1.5rem' }}>
+        <div className="setting-item">
           <label htmlFor="meshcoreAnnounceMessage">
-            {t('meshcore.automation.announce.message_label', 'Message template')}
+            {t('automation.auto_announce.message_label', 'Announcement Message')}
             <span className="setting-description" style={{ display: 'block', marginTop: '0.25rem' }}>
               {t('meshcore.automation.announce.tokens_hint', 'Insert a token below, or see the reference at the top of this page.')}
             </span>
@@ -530,23 +539,14 @@ export const MeshCoreAutoAnnounceSection: React.FC<MeshCoreAutoAnnounceSectionPr
             rows={3}
             style={{ fontFamily: 'monospace', resize: 'vertical', minHeight: '60px' }}
           />
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.25rem', marginTop: '0.5rem' }}>
-            {TOKENS.map((tok) => (
-              <button
-                key={tok}
-                type="button"
-                onClick={() => insertToken(tok)}
-                disabled={disabled || !canWrite}
-                className="meshcore-btn meshcore-btn-secondary"
-                style={{ padding: '0.2rem 0.5rem', fontSize: '0.8rem', fontFamily: 'monospace' }}
-              >
-                {tok}
-              </button>
-            ))}
-          </div>
+          <TokenInsertButtons
+            tokens={TOKENS}
+            onInsert={insertToken}
+            disabled={disabled || !canWrite}
+          />
           <div style={{ marginTop: '0.5rem' }}>
             <label style={{ fontSize: '0.9rem', color: 'var(--color-text-subtle)' }}>
-              {t('meshcore.automation.announce.preview', 'Live preview')}:
+              {t('automation.auto_announce.sample_preview', 'Live Preview')}:
             </label>
             <div style={{
               marginTop: '0.25rem',
@@ -563,9 +563,11 @@ export const MeshCoreAutoAnnounceSection: React.FC<MeshCoreAutoAnnounceSectionPr
             </div>
           </div>
         </div>
+        </ConfigGroup>
 
+        <ConfigGroup name="extras" title={t('automation.group.extras', 'Extras')}>
         {/* Advert burst */}
-        <div className="setting-item" style={{ marginTop: '1.5rem' }}>
+        <div className="setting-item">
           <label style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '0.5rem' }}>
             <input
               type="checkbox"
@@ -613,10 +615,11 @@ export const MeshCoreAutoAnnounceSection: React.FC<MeshCoreAutoAnnounceSectionPr
 
         {lastRunAt && (
           <p style={{ fontSize: '0.85rem', color: 'var(--color-text-subtle)', marginTop: '1rem' }}>
-            {t('meshcore.automation.announce.last_run', 'Last run')}:{' '}
+            {t('automation.auto_announce.last_announcement', 'Last Announcement')}:{' '}
             {new Date(lastRunAt).toLocaleString()}
           </p>
         )}
+        </ConfigGroup>
       </ConfigSection>
     </>
     </NumberInputScope>

@@ -51,7 +51,7 @@ const lastBody = () => JSON.parse((posts()[posts().length - 1][1] as RequestInit
 
 async function renderLoaded() {
   render(<MeshCoreAutoAnnounceSection baseUrl="" sourceId="src1" />);
-  const input = (await screen.findByLabelText('Interval (hours)')) as HTMLInputElement;
+  const input = (await screen.findByLabelText('Announcement Interval (hours)')) as HTMLInputElement;
   await waitFor(() => expect(input.value).toBe('6'));
   return input;
 }
