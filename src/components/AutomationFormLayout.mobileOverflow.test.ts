@@ -37,9 +37,10 @@ describe('automation forms wrap instead of overflowing on a phone', () => {
     expect(layoutCss).toMatch(/\.growField\s*\{[^}]*min-width:\s*min\(100%,/);
   });
 
-  it('Auto Responder add row and its text fields use the classes', () => {
-    const tsx = read('AutoResponderSection.tsx');
-    expect(tsx).toContain("import layout from './AutomationFormLayout.module.css'");
+  it('Auto Responder trigger editor row and its text fields use the classes', () => {
+    // #5808: the add row became the TriggerCard editor.
+    const tsx = read('auto-responder/TriggerEditor.tsx');
+    expect(tsx).toContain("import layout from '../AutomationFormLayout.module.css'");
     expect(tsx).toMatch(/className=\{`\$\{layout\.wrapRow\} \$\{layout\.patternRow\}`\}[^\n]*alignItems: 'flex-start'/);
     expect(tsx.match(/className=\{`?\$?\{?layout\.growField\}/g)?.length).toBe(2);
   });

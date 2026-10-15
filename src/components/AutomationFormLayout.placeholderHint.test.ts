@@ -60,7 +60,7 @@ describe('auto responder pattern field on a wide row', () => {
   });
 
   it('the Response field uses the class, not an inline flex', () => {
-    const tsx = read('AutoResponderSection.tsx');
+    const tsx = read('auto-responder/TriggerEditor.tsx');
     expect(tsx).toContain('className={`${layout.growField} ${layout.responseField}`}>');
     expect(tsx).not.toContain("style={{ flex: '2' }}");
     // The script select must not force the Response field past its share.

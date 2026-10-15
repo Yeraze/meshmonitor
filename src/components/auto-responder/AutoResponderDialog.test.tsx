@@ -73,10 +73,13 @@ describe('every Auto Responder dialog uses it', () => {
     expect(src).not.toMatch(/position: 'fixed'/);
   });
 
-  it('Remove Trigger in TriggerItem', () => {
-    const src = read('TriggerItem.tsx');
-    expect(src).toContain('<AutoResponderDialog');
-    expect(src).toContain('onClose={() => setShowRemoveModal(false)}');
-    expect(src).not.toMatch(/position: 'fixed'/);
+  it('Remove Trigger goes through the shared TriggerCard confirm (#5808)', () => {
+    const card = read('../shared/automation/TriggerCard.tsx');
+    expect(card).toContain('<ConfirmDialog');
+    expect(card).toContain('onCancel={() => setConfirming(false)}');
+    const dialog = read('../shared/automation/ConfirmDialog.tsx');
+    expect(dialog).toContain('useDialogA11y(onCancel)');
+    expect(dialog).toContain('role="dialog"');
+    expect(dialog).not.toMatch(/position: 'fixed'/);
   });
 });

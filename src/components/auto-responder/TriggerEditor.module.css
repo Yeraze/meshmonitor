@@ -1,0 +1,175 @@
+/* Meshtastic Auto Responder trigger editor (#5808). */
+
+.editor {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.label {
+  font-size: 0.9rem;
+  font-weight: bold;
+}
+
+.hint {
+  font-size: 0.75rem;
+  color: var(--color-text-subtle);
+}
+
+.subHint {
+  font-size: 0.75rem;
+  color: var(--color-text-subtle);
+}
+
+.muted {
+  font-size: 0.75rem;
+  color: var(--color-text-subtle);
+}
+
+.invalidInput {
+  border-color: var(--color-error);
+  border-width: 2px;
+}
+
+.error {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 0.8rem;
+  color: var(--color-error);
+}
+
+.patternInfo {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.valid {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 0.75rem;
+  font-weight: bold;
+  color: var(--color-success);
+}
+
+.params {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+}
+
+.param {
+  padding: 0.1rem 0.4rem;
+  border-radius: 3px;
+  background: var(--color-accent);
+  color: var(--color-bg);
+  font-size: 0.7rem;
+  font-weight: bold;
+}
+
+.channels {
+  margin: 0.25rem 0 0;
+  padding: 0.5rem;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 4px;
+  min-width: 0;
+}
+
+.option {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.85rem;
+  color: var(--color-text-subtle);
+  cursor: pointer;
+}
+
+.option input {
+  width: auto;
+  margin: 0;
+}
+
+.optionOff {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.preview {
+  padding: 0.5rem;
+  background: var(--color-surface);
+  border-radius: 4px;
+}
+
+.previewLabel {
+  margin-bottom: 0.25rem;
+  font-size: 0.75rem;
+  font-weight: bold;
+  color: var(--color-text-subtle);
+}
+
+.previewBody {
+  padding: 0.5rem;
+  background: var(--color-surface-active);
+  border-radius: 3px;
+  font-family: monospace;
+  font-size: 0.85rem;
+  overflow-x: auto;
+  white-space: nowrap;
+}
+
+.multiline {
+  white-space: pre-wrap;
+}
+
+.liveTest {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.35rem;
+}
+
+.testButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.3rem 0.65rem;
+  font-size: 0.8rem;
+  border-radius: 4px;
+  border: 1px solid var(--color-border-subtle);
+  background: var(--color-surface-active);
+  color: var(--color-text);
+  cursor: pointer;
+}
+
+.testButton:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
+
+.testResult {
+  margin: 0;
+  max-height: 200px;
+  overflow: auto;
+  padding: 0.5rem;
+  background: var(--color-surface-active);
+  border-radius: 4px;
+  font-size: 0.8rem;
+  white-space: pre-wrap;
+  width: 100%;
+  box-sizing: border-box;
+}

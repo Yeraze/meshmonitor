@@ -67,6 +67,8 @@ const posts = () => csrfFetchMock.mock.calls.filter(([url, init]) =>
 
 async function renderLoaded() {
   render(<MeshCoreAutoResponderSection baseUrl="" sourceId="src1" />);
+  // #5808: triggers show collapsed; open the editor first.
+  await userEvent.setup().click(await screen.findByRole('button', { name: /edit/i }));
   return (await screen.findByDisplayValue('60')) as HTMLInputElement;
 }
 

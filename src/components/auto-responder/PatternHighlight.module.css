@@ -1,0 +1,56 @@
+/* PatternHighlight (#5808): literal vs {param} colouring, matching the legend. */
+
+.root {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.2rem;
+  font-family: monospace;
+}
+
+.pattern {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.2rem;
+}
+
+.bracket {
+  color: var(--color-text-subtle);
+  font-weight: normal;
+}
+
+.literal,
+.parameter {
+  padding: 0.1rem 0.35rem;
+  border-radius: 4px;
+  font-size: 0.85rem;
+}
+
+.literal {
+  background: color-mix(in srgb, var(--color-accent) 20%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-accent) 30%, transparent);
+  color: var(--color-accent);
+  font-weight: normal;
+}
+
+.parameter {
+  background: color-mix(in srgb, var(--color-success) 30%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-success) 50%, transparent);
+  color: var(--color-success);
+  font-weight: bold;
+}
+
+/* Adjacent segments with no space between them share one outline. */
+.joined {
+  display: inline-flex;
+  border-radius: 4px;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--color-success) 50%, transparent);
+}
+
+.joined .literal,
+.joined .parameter {
+  border: none;
+  border-radius: 0;
+}

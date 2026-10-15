@@ -1,0 +1,154 @@
+/* TriggerCard (#5808). */
+
+.card {
+  margin-bottom: 0.5rem;
+  padding: 0.75rem;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 6px;
+}
+
+.expanded {
+  background: var(--color-surface-hover);
+  border: 1px solid var(--color-accent);
+}
+
+.off .main {
+  opacity: 0.6;
+}
+
+.invalid {
+  border-color: var(--color-error);
+}
+
+.head {
+  display: flex;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.toggle {
+  width: auto;
+  margin: 0.2rem 0 0;
+  cursor: pointer;
+}
+
+.toggle:disabled {
+  cursor: not-allowed;
+}
+
+.main {
+  flex: 1 1 14rem;
+  min-width: 0;
+}
+
+.title {
+  font-weight: bold;
+  overflow-wrap: anywhere;
+}
+
+.mono {
+  font-family: monospace;
+}
+
+.summary {
+  margin-top: 0.25rem;
+  font-size: 0.85rem;
+  color: var(--color-text-subtle);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin-top: 0.4rem;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.1rem 0.45rem;
+  border-radius: 3px;
+  font-size: 0.7rem;
+  font-weight: bold;
+  line-height: 1.4;
+  border: 1px solid var(--color-border-subtle);
+  background: var(--color-surface-active);
+  color: var(--color-text);
+}
+
+.tone_accent {
+  background: color-mix(in srgb, var(--color-accent) 20%, transparent);
+  border-color: color-mix(in srgb, var(--color-accent) 50%, transparent);
+}
+
+.tone_info {
+  background: color-mix(in srgb, var(--color-info) 20%, transparent);
+  border-color: color-mix(in srgb, var(--color-info) 50%, transparent);
+}
+
+.tone_caution {
+  background: color-mix(in srgb, var(--color-caution) 20%, transparent);
+  border-color: color-mix(in srgb, var(--color-caution) 50%, transparent);
+}
+
+.chipError {
+  background: color-mix(in srgb, var(--color-error) 15%, transparent);
+  border-color: var(--color-error);
+  color: var(--color-error);
+}
+
+.actions {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 0.5rem;
+  margin-left: auto;
+}
+
+.button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.3rem 0.65rem;
+  font-size: 0.8rem;
+  border-radius: 4px;
+  border: 1px solid var(--color-border-subtle);
+  background: var(--color-surface-active);
+  color: var(--color-text);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.primary {
+  background: var(--color-accent);
+  border-color: var(--color-accent);
+  color: var(--color-bg);
+  font-weight: bold;
+}
+
+.danger {
+  color: var(--color-error);
+  border-color: color-mix(in srgb, var(--color-error) 50%, transparent);
+}
+
+.editor {
+  margin-top: 0.75rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--color-border-subtle);
+}
+
+.footer {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 0.75rem;
+}

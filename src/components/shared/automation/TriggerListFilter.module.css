@@ -1,0 +1,29 @@
+/* TriggerListFilter (#5808). */
+
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.search {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex: 1 1 14rem;
+  min-width: 0;
+  color: var(--color-text-subtle);
+}
+
+.input {
+  flex: 1 1 auto;
+  min-width: 0;
+  width: auto;
+}
+
+.select {
+  flex: 0 0 auto;
+  width: auto;
+  min-width: 8rem;
+}
