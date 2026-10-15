@@ -9,6 +9,8 @@ import ModuleAvailabilityNotice from './ModuleAvailabilityNotice';
 import { ConfigSection } from '../shared/config/ConfigSection';
 
 interface StoreForwardConfigSectionProps {
+  /** False disables every control: no configuration:write on this source (#5830). */
+  canWrite?: boolean;
   enabled: boolean;
   setEnabled: (value: boolean) => void;
   heartbeat: boolean;
@@ -27,6 +29,7 @@ interface StoreForwardConfigSectionProps {
 }
 
 const StoreForwardConfigSection: React.FC<StoreForwardConfigSectionProps> = ({
+  canWrite = true,
   enabled,
   setEnabled,
   heartbeat,
@@ -79,7 +82,7 @@ const StoreForwardConfigSection: React.FC<StoreForwardConfigSectionProps> = ({
 
   return (
     <NumberInputScope scope={numberScope}>
-    <ConfigSection title={t('storeforward_config.title')} docsUrl="https://meshmonitor.org/features/device#store-and-forward-configuration" notice={<ModuleAvailabilityNotice />}>
+    <ConfigSection canWrite={canWrite} title={t('storeforward_config.title')} docsUrl="https://meshmonitor.org/features/device#store-and-forward-configuration" notice={<ModuleAvailabilityNotice />}>
 
       {/* Enable Module */}
       <div className="setting-item">

@@ -34,6 +34,8 @@ const isValidBase64 = (str: string): boolean => {
 };
 
 interface SecurityConfigSectionProps {
+  /** False disables every control: no configuration:write on this source (#5830). */
+  canWrite?: boolean;
   // Keys (read-only display)
   publicKey: string;
   privateKey: string;
@@ -71,6 +73,7 @@ interface SecurityConfigSectionProps {
 }
 
 const SecurityConfigSection: React.FC<SecurityConfigSectionProps> = ({
+  canWrite = true,
   publicKey,
   privateKey,
   setPrivateKey,
@@ -233,7 +236,7 @@ const SecurityConfigSection: React.FC<SecurityConfigSectionProps> = ({
   }, [privateKey, t]);
 
   return (
-    <ConfigSection title={t('security_config.title')} docsUrl="https://meshtastic.org/docs/configuration/radio/security/">
+    <ConfigSection canWrite={canWrite} title={t('security_config.title')} docsUrl="https://meshtastic.org/docs/configuration/radio/security/">
 
       {/* Public Key (Read-only) */}
       <div className="setting-item">

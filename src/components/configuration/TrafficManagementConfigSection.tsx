@@ -26,6 +26,8 @@ import { ConfigSection } from '../shared/config/ConfigSection';
  * `enabled` field to send.
  */
 interface TrafficManagementConfigSectionProps {
+  /** False disables every control: no configuration:write on this source (#5830). */
+  canWrite?: boolean;
   positionMinIntervalSecs: number;
   setPositionMinIntervalSecs: (value: number) => void;
   nodeinfoDirectResponseMaxHops: number;
@@ -43,6 +45,7 @@ interface TrafficManagementConfigSectionProps {
 }
 
 const TrafficManagementConfigSection: React.FC<TrafficManagementConfigSectionProps> = ({
+  canWrite = true,
   positionMinIntervalSecs,
   setPositionMinIntervalSecs,
   nodeinfoDirectResponseMaxHops,
@@ -109,7 +112,7 @@ const TrafficManagementConfigSection: React.FC<TrafficManagementConfigSectionPro
 
   return (
     <NumberInputScope scope={numberScope}>
-    <ConfigSection title={t('trafficmanagement_config.title', 'Traffic Management')}>
+    <ConfigSection canWrite={canWrite} title={t('trafficmanagement_config.title', 'Traffic Management')}>
 
       {isDisabled && (
         <div style={{

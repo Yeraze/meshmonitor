@@ -74,9 +74,10 @@ describe('configuration page fits a phone', () => {
     }
   });
 
-  it('warning-box buttons wrap', () => {
-    expect(readCss('ConfigurationTab.module.css')).toMatch(/\.dangerActions\s*\{[^}]*flex-wrap:\s*wrap/);
-    expect(read('ConfigurationTab.tsx')).toContain('className={styles.dangerActions}');
+  it('danger-zone buttons wrap', () => {
+    // Reboot / purge moved to the shared DangerZone at the end (#5830).
+    expect(readCss('shared/config/DangerZone.module.css')).toMatch(/\.actions\s*\{[^}]*flex-wrap:\s*wrap/);
+    expect(read('ConfigurationTab.tsx')).toContain('<DangerZoneActions>');
   });
 
   it('private key row wraps', () => {

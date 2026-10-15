@@ -44,6 +44,8 @@ const COMPASS_ORIENTATION_OPTIONS = [
 ];
 
 interface DisplayConfigSectionProps {
+  /** False disables every control: no configuration:write on this source (#5830). */
+  canWrite?: boolean;
   // Screen settings
   screenOnSecs: number;
   setScreenOnSecs: (value: number) => void;
@@ -74,6 +76,7 @@ interface DisplayConfigSectionProps {
 }
 
 const DisplayConfigSection: React.FC<DisplayConfigSectionProps> = ({
+  canWrite = true,
   configVersion,
   screenOnSecs,
   setScreenOnSecs,
@@ -147,7 +150,7 @@ const DisplayConfigSection: React.FC<DisplayConfigSectionProps> = ({
 
   return (
     <NumberInputScope scope={numberScope}>
-    <ConfigSection title={t('display_config.title')} docsUrl="https://meshmonitor.org/features/device#display-configuration">
+    <ConfigSection canWrite={canWrite} title={t('display_config.title')} docsUrl="https://meshmonitor.org/features/device#display-configuration">
 
       {/* Screen On Seconds */}
       <div className="setting-item">
