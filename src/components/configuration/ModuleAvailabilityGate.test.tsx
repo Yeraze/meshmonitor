@@ -5,8 +5,10 @@
  * DeviceMetadata.excluded_modules bitmask says which module configs a firmware
  * build left out; an unknown bitmask must leave every section alone.
  *
- * The notice must sit under the gated section's own <h3>, not above it, or it
- * reads as a warning about the section above (#5447).
+ * The notice must sit under the gated section's own header, not above it, or
+ * it reads as a warning about the section above (#5447). Since #5818 each
+ * section passes it as ConfigSection's `notice`, which renders right after
+ * the header.
  */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -108,7 +110,7 @@ describe('ModuleAvailabilityGate notice placement (#5447)', () => {
     const notice = screen.getByRole('status');
     const rhSection = document.getElementById('config-remotehardware')!;
     const audioSection = document.getElementById('config-audio')!;
-    const rhHeader = rhSection.querySelector('h3')!;
+    const rhHeader = rhSection.querySelector('.automation-section-header')!;
 
     // The notice lives inside the Remote Hardware wrapper, after its header.
     expect(rhSection.contains(notice)).toBe(true);
@@ -118,7 +120,7 @@ describe('ModuleAvailabilityGate notice placement (#5447)', () => {
     expect(rhHeader.nextElementSibling).toBe(notice);
   });
 
-  it('every gated section in ConfigurationTab renders the notice after its h3', () => {
+  it('every gated section in ConfigurationTab renders the notice under its header', () => {
     // Guard: a gated section that forgets <ModuleAvailabilityNotice /> would
     // grey out with no explanation.
     const tab = fs.readFileSync(path.resolve(__dirname, '../ConfigurationTab.tsx'), 'utf8');
@@ -126,8 +128,8 @@ describe('ModuleAvailabilityGate notice placement (#5447)', () => {
     expect(gated.length).toBeGreaterThan(0);
     for (const name of gated) {
       const src = fs.readFileSync(path.resolve(__dirname, `${name}.tsx`), 'utf8');
-      expect(src, `${name} must render <ModuleAvailabilityNotice /> after its </h3>`).toMatch(
-        /<\/h3>\s*<ModuleAvailabilityNotice\b[^>]*\/>/
+      expect(src, `${name} must pass <ModuleAvailabilityNotice /> as its ConfigSection notice`).toMatch(
+        /<ConfigSection\b[^\n]*\bnotice=\{<ModuleAvailabilityNotice\b/
       );
     }
   });

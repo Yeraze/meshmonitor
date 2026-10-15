@@ -35,6 +35,7 @@ import { DEFAULT_PUBLIC_PSK } from '../../utils/publicChannel';
 import { NumberInput } from '../common/NumberInput';
 import { NumberInputScope } from '../common/NumberInputScope';
 import { useNumberInputScope } from '../common/numberInputScopeContext';
+import { ConfigSection } from '../shared/config/ConfigSection';
 
 /** A device channel sharing its key with a differently-named Channel Database
  *  (server-decryption) entry (#3644). */
@@ -470,26 +471,7 @@ const ChannelsConfigSection: React.FC<ChannelsConfigSectionProps> = ({
   return (
     <NumberInputScope scope={numberScope}>
     <>
-      <div className="settings-section">
-        <h3 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-          {t('channels_config.title')}
-          <a
-            href="https://meshtastic.org/docs/configuration/radio/channels/"
-            target="_blank"
-            rel="noopener noreferrer"
-            style={{
-              fontSize: '1.2rem',
-              color: '#89b4fa',
-              textDecoration: 'none'
-            }}
-            title={t('channels_config.view_docs')}
-          >
-            <UiIcon name="help" />
-          </a>
-        </h3>
-        <p className="setting-description" style={{ marginBottom: '1rem' }}>
-          {t('channels_config.description')}
-        </p>
+      <ConfigSection title={t('channels_config.title')} docsUrl="https://meshtastic.org/docs/configuration/radio/channels/" description={t('channels_config.description')}>
 
         {/* Reorder action bar */}
         {hasReorderChanges && (
@@ -697,7 +679,7 @@ const ChannelsConfigSection: React.FC<ChannelsConfigSectionProps> = ({
             })()}
           </DragOverlay>
         </DndContext>
-      </div>
+      </ConfigSection>
 
       {/* Edit Channel Modal */}
       {showEditModal && editingChannel && (

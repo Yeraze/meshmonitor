@@ -13,6 +13,7 @@ import type { Channel } from '../../types/device';
 import { NumberInput } from '../common/NumberInput';
 import { NumberInputScope } from '../common/NumberInputScope';
 import { useNumberInputScope } from '../common/numberInputScopeContext';
+import { ConfigSection } from '../shared/config/ConfigSection';
 
 /**
  * MeshBeacon module config editor (firmware 2.8+, issue #3854).
@@ -154,10 +155,7 @@ const MeshBeaconConfigSection: React.FC<MeshBeaconConfigSectionProps> = ({
 
   return (
     <NumberInputScope scope={numberScope}>
-    <div className="settings-section">
-      <h3 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-        {t('meshbeacon_config.title', 'MeshBeacon')}
-      </h3>
+    <ConfigSection title={t('meshbeacon_config.title', 'MeshBeacon')}>
 
       {isDisabled && (
         <div style={{
@@ -358,7 +356,7 @@ const MeshBeaconConfigSection: React.FC<MeshBeaconConfigSectionProps> = ({
           </>
         )}
       </div>
-    </div>
+    </ConfigSection>
     </NumberInputScope>
   );
 };

@@ -7,6 +7,7 @@ import { useSaveBar } from '../../hooks/useSaveBar';
 import { NumberInput } from '../common/NumberInput';
 import { NumberInputScope } from '../common/NumberInputScope';
 import { useNumberInputScope } from '../common/numberInputScopeContext';
+import { ConfigSection } from '../shared/config/ConfigSection';
 
 interface DeviceConfigSectionProps {
   role: number;
@@ -162,23 +163,7 @@ const DeviceConfigSection: React.FC<DeviceConfigSectionProps> = ({
 
   return (
     <NumberInputScope scope={numberScope}>
-    <div className="settings-section">
-      <h3 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-        {t('device_config.title')}
-        <a
-          href="https://meshmonitor.org/features/device#device-configuration"
-          target="_blank"
-          rel="noopener noreferrer"
-          style={{
-            fontSize: '1.2rem',
-            color: '#89b4fa',
-            textDecoration: 'none'
-          }}
-          title={t('device_config.view_docs')}
-        >
-          <UiIcon name="help" />
-        </a>
-      </h3>
+    <ConfigSection title={t('device_config.title')} docsUrl="https://meshmonitor.org/features/device#device-configuration">
       <div className="setting-item">
         <label htmlFor="role">
           {t('device_config.device_role')}
@@ -657,7 +642,7 @@ const DeviceConfigSection: React.FC<DeviceConfigSectionProps> = ({
           </div>
         </div>
       )}
-    </div>
+    </ConfigSection>
     </NumberInputScope>
   );
 };

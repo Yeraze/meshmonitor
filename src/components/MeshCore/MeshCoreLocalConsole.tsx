@@ -124,7 +124,7 @@ export const MeshCoreLocalConsole: React.FC<MeshCoreLocalConsoleProps> = ({
     : basePlaceholder;
 
   return (
-    <section className="meshcore-remote-console" aria-label={t('meshcore.localConsole.title', 'Device console')}>
+    <section id="meshcore-local-console" className="meshcore-remote-console" aria-label={t('meshcore.localConsole.title', 'Device console')}>
       <header className="mrc-header">
         <h3 className="mrc-title">{t('meshcore.localConsole.title', 'Device console')}</h3>
         <div className="mrc-status">

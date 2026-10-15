@@ -10,7 +10,8 @@ import { MeshCoreContactSyncSection } from './MeshCoreContactSyncSection';
 import { MeshCoreDeviceActionsSection } from './MeshCoreDeviceActionsSection';
 import { MeshCorePathHashSection } from './MeshCorePathHashSection';
 import { MeshCoreDefaultScopeSection } from './MeshCoreDefaultScopeSection';
-import { CollapsibleSection } from './CollapsibleSection';
+import { ConfigSection } from '../shared/config/ConfigSection';
+import { MESHCORE_DOCS } from './meshcoreDocs';
 import { UiIcon } from '../icons';
 import { NumberInput } from '../common/NumberInput';
 import { NumberInputScope } from '../common/NumberInputScope';
@@ -263,10 +264,14 @@ export const MeshCoreConfigurationView: React.FC<MeshCoreConfigurationViewProps>
         </div>
       )}
 
-      <CollapsibleSection title={t('meshcore.config.device_name', 'Device name')} className="form-section">
-        <p className="hint">
-          {t('meshcore.config.device_name_hint', 'Friendly name advertised to other nodes (max 32 chars).')}
-        </p>
+      <ConfigSection
+        id="meshcore-config-name"
+        title={t('meshcore.config.device_name', 'Device name')}
+        docsUrl={`${MESHCORE_DOCS}#configuration`}
+        description={t('meshcore.config.device_name_hint', 'Friendly name advertised to other nodes (max 32 chars).')}
+        canWrite={canWriteConfig}
+        collapsible
+      >
         <label htmlFor="mc-cfg-name">{t('meshcore.config.name_label', 'Name')}</label>
         <input
           id="mc-cfg-name"
@@ -291,13 +296,17 @@ export const MeshCoreConfigurationView: React.FC<MeshCoreConfigurationViewProps>
             </span>
           )}
         </div>
-      </CollapsibleSection>
+      </ConfigSection>
 
-      <CollapsibleSection title={t('meshcore.config.location', 'Location')} className="form-section">
-        <p className="hint">
-          {t('meshcore.config.location_hint',
-            'GPS coordinates reported by the device. Latitude (-90 to 90), Longitude (-180 to 180).')}
-        </p>
+      <ConfigSection
+        id="meshcore-config-location"
+        title={t('meshcore.config.location', 'Location')}
+        docsUrl={`${MESHCORE_DOCS}#configuration`}
+        description={t('meshcore.config.location_hint',
+          'GPS coordinates reported by the device. Latitude (-90 to 90), Longitude (-180 to 180).')}
+        canWrite={canWriteConfig}
+        collapsible
+      >
         <div className="form-row">
           <div>
             <label htmlFor="mc-cfg-lat">{t('meshcore.config.latitude', 'Latitude')}</label>
@@ -357,13 +366,17 @@ export const MeshCoreConfigurationView: React.FC<MeshCoreConfigurationViewProps>
             {t('meshcore.config.advert_loc_policy', 'Include location in adverts')}
           </label>
         </div>
-      </CollapsibleSection>
+      </ConfigSection>
 
-      <CollapsibleSection title={t('meshcore.config.radio_params', 'Radio parameters')} className="form-section">
-        <p className="hint">
-          {t('meshcore.config.radio_hint',
-            'Frequency (137–1020 MHz), Bandwidth (kHz), Spreading Factor (5–12), Coding Rate (5–8 → 4/5 – 4/8).')}
-        </p>
+      <ConfigSection
+        id="meshcore-config-radio"
+        title={t('meshcore.config.radio_params', 'Radio parameters')}
+        docsUrl={`${MESHCORE_DOCS}#radio-configuration`}
+        description={t('meshcore.config.radio_hint',
+          'Frequency (137–1020 MHz), Bandwidth (kHz), Spreading Factor (5–12), Coding Rate (5–8 → 4/5 – 4/8).')}
+        canWrite={canWriteConfig}
+        collapsible
+      >
         <div>
           <label htmlFor="mc-cfg-preset">{t('meshcore.config.preset', 'Preset')}</label>
           <select
@@ -454,13 +467,17 @@ export const MeshCoreConfigurationView: React.FC<MeshCoreConfigurationViewProps>
             </span>
           )}
         </div>
-      </CollapsibleSection>
+      </ConfigSection>
 
-      <CollapsibleSection title={t('meshcore.config.tx_power', 'TX Power')} className="form-section">
-        <p className="hint">
-          {t('meshcore.config.tx_power_hint',
-            `Transmit power in dBm (1–${maxTxPower}). This controls the LoRa chip output only; boards with an external PA may amplify further.`)}
-        </p>
+      <ConfigSection
+        id="meshcore-config-tx-power"
+        title={t('meshcore.config.tx_power', 'TX Power')}
+        docsUrl={`${MESHCORE_DOCS}#radio-configuration`}
+        description={t('meshcore.config.tx_power_hint',
+          `Transmit power in dBm (1–${maxTxPower}). This controls the LoRa chip output only; boards with an external PA may amplify further.`)}
+        canWrite={canWriteConfig}
+        collapsible
+      >
         <div className="form-row" style={{ alignItems: 'center' }}>
           <div style={{ flex: 1 }}>
             <label htmlFor="mc-cfg-txpower">{t('meshcore.config.tx_power_label', 'Power (dBm)')}</label>
@@ -494,13 +511,17 @@ export const MeshCoreConfigurationView: React.FC<MeshCoreConfigurationViewProps>
             </span>
           )}
         </div>
-      </CollapsibleSection>
+      </ConfigSection>
 
-      <CollapsibleSection title={t('meshcore.config.telemetry', 'Telemetry')} className="form-section">
-        <p className="hint">
-          {t('meshcore.config.telemetry_hint',
-            'Control what telemetry this node shares. Always = broadcast on advert; Device only = only respond to direct requests from your contacts; Never = disable.')}
-        </p>
+      <ConfigSection
+        id="meshcore-config-telemetry"
+        title={t('meshcore.config.telemetry', 'Telemetry')}
+        docsUrl={`${MESHCORE_DOCS}#telemetry-modes`}
+        description={t('meshcore.config.telemetry_hint',
+          'Control what telemetry this node shares. Always = broadcast on advert; Device only = only respond to direct requests from your contacts; Never = disable.')}
+        canWrite={canWriteConfig}
+        collapsible
+      >
         {connected && isCompanionOnly && (
           <p className="hint" style={{ color: 'var(--color-warning)' }}>
             {t('meshcore.config.telemetry_companion_only',
@@ -578,7 +599,7 @@ export const MeshCoreConfigurationView: React.FC<MeshCoreConfigurationViewProps>
             </span>
           )}
         </div>
-      </CollapsibleSection>
+      </ConfigSection>
 
       {/* Written to the device, so they sit with the other saved device
           settings (#5683 follow-up; both came from the Settings tab). */}
@@ -753,7 +774,7 @@ const MeshCoreDeviceManagement: React.FC<{
   };
 
   return (
-    <div className="meshcore-config-section" style={{ borderTop: '2px solid var(--color-error)', marginTop: '1.5rem', paddingTop: '1rem' }}>
+    <div id="meshcore-device-management" className="meshcore-config-section" style={{ borderTop: '2px solid var(--color-error)', marginTop: '1.5rem', paddingTop: '1rem' }}>
       <h3 style={{ color: 'var(--color-error)' }}>
         {t('meshcore.config.device_management', 'Device Management')}
       </h3>

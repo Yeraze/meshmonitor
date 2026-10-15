@@ -10,8 +10,12 @@
  * `<fieldset disabled>`, so every native control inside is disabled without
  * each input checking the permission. Header actions are outside the
  * fieldset; the caller gates them.
+ *
+ * `collapsible` adds a disclosure button around the title that hides the
+ * body (#5818). The body stays mounted while hidden, so unsaved input
+ * survives a collapse.
  */
-import React from 'react';
+import React, { useId, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { UiIcon } from '../../icons';
 import { ReceiveOnlyNote } from './ReceiveOnlyNote';
@@ -46,6 +50,10 @@ export interface ConfigSectionProps {
   fadeWhenDisabled?: boolean;
   /** Extra class on the body's inner container (the fieldset). */
   bodyClassName?: string;
+  /** Title becomes a button that shows and hides the body. */
+  collapsible?: boolean;
+  /** With `collapsible`, start with the body hidden. Default false. */
+  defaultCollapsed?: boolean;
   children?: React.ReactNode;
 }
 
@@ -65,9 +73,14 @@ export const ConfigSection: React.FC<ConfigSectionProps> = ({
   receiveOnlyNote,
   fadeWhenDisabled,
   bodyClassName,
+  collapsible = false,
+  defaultCollapsed = false,
   children,
 }) => {
   const { t } = useTranslation();
+  const bodyId = useId();
+  const [collapsed, setCollapsed] = useState(collapsible && defaultCollapsed);
+  const hidden = collapsible && collapsed;
   const fade = (fadeWhenDisabled ?? enabled !== undefined) && enabled === false;
   const docsTitle = t('automation.view_docs', 'View Documentation');
 
@@ -86,7 +99,20 @@ export const ConfigSection: React.FC<ConfigSectionProps> = ({
             />
           )}
           {icon && <span className={styles.icon}>{icon}</span>}
-          {title}
+          {collapsible ? (
+            <button
+              type="button"
+              className={styles.collapseToggle}
+              aria-expanded={!collapsed}
+              aria-controls={bodyId}
+              onClick={() => setCollapsed((v) => !v)}
+            >
+              <UiIcon name={collapsed ? 'chevronRight' : 'chevronDown'} size={16} />
+              {title}
+            </button>
+          ) : (
+            title
+          )}
           {docsUrl && (
             <a
               href={docsUrl}
@@ -106,7 +132,11 @@ export const ConfigSection: React.FC<ConfigSectionProps> = ({
       <ReceiveOnlyNote receiveOnly={receiveOnly}>{receiveOnlyNote}</ReceiveOnlyNote>
       {notice}
 
-      <div className={`settings-section ${styles.body}${fade ? ` ${styles.faded}` : ''}`}>
+      <div
+        id={collapsible ? bodyId : undefined}
+        hidden={hidden}
+        className={`settings-section ${styles.body}${fade ? ` ${styles.faded}` : ''}`}
+      >
         <fieldset
           className={bodyClassName ? `${styles.fieldset} ${bodyClassName}` : styles.fieldset}
           disabled={!canWrite}

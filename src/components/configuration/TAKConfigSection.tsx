@@ -5,6 +5,7 @@ import { useSectionBaseline } from '../../hooks/useSectionBaseline';
 import TAKConfigFields from './TAKConfigFields';
 import ModuleAvailabilityNotice from './ModuleAvailabilityNotice';
 import styles from './TAKConfigSection.module.css';
+import { ConfigSection } from '../shared/config/ConfigSection';
 
 interface TAKConfigSectionProps {
   team: number;
@@ -58,9 +59,7 @@ const TAKConfigSection: React.FC<TAKConfigSectionProps> = ({
   });
 
   return (
-    <div className="settings-section">
-      <h3>{t('tak_config.title')}</h3>
-      <ModuleAvailabilityNotice />
+    <ConfigSection title={t('tak_config.title')} notice={<ModuleAvailabilityNotice />}>
 
       {isDisabled && (
         <div className={styles.unsupported} data-testid="tak-config-unsupported">
@@ -77,7 +76,7 @@ const TAKConfigSection: React.FC<TAKConfigSectionProps> = ({
           idPrefix="takConfig"
         />
       </div>
-    </div>
+    </ConfigSection>
   );
 };
 

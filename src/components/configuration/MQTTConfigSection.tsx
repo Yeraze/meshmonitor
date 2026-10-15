@@ -21,6 +21,7 @@ import {
   type BrokerPreset,
   type KeptCredentials,
 } from '../MQTT/brokerPresets';
+import { ConfigSection } from '../shared/config/ConfigSection';
 
 interface MQTTConfigSectionProps {
   mqttEnabled: boolean;
@@ -309,24 +310,7 @@ const MQTTConfigSection: React.FC<MQTTConfigSectionProps> = ({
 
   return (
     <NumberInputScope scope={numberScope}>
-    <div className="settings-section">
-      <h3 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-        {t('mqtt_config.title')}
-        <a
-          href="https://meshmonitor.org/features/device#mqtt-configuration"
-          target="_blank"
-          rel="noopener noreferrer"
-          style={{
-            fontSize: '1.2rem',
-            color: '#89b4fa',
-            textDecoration: 'none'
-          }}
-          title={t('mqtt_config.view_docs')}
-        >
-          <UiIcon name="help" />
-        </a>
-      </h3>
-      <ModuleAvailabilityNotice />
+    <ConfigSection title={t('mqtt_config.title')} docsUrl="https://meshmonitor.org/features/device#mqtt-configuration" notice={<ModuleAvailabilityNotice />}>
       {isBridged && (
         <div
           role="note"
@@ -681,7 +665,7 @@ const MQTTConfigSection: React.FC<MQTTConfigSectionProps> = ({
         </>
       )}
       </fieldset>
-    </div>
+    </ConfigSection>
     </NumberInputScope>
   );
 };

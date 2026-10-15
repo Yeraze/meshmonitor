@@ -31,6 +31,8 @@ import {
   isHashtagChannelName,
 } from '../../utils/meshcoreHelpers';
 import { MeshCoreChannelReorderPanel } from './MeshCoreChannelReorderPanel';
+import { ConfigSection } from '../shared/config/ConfigSection';
+import { MESHCORE_DOCS } from './meshcoreDocs';
 
 interface MeshCoreChannelsConfigSectionProps {
   baseUrl: string;
@@ -335,14 +337,16 @@ export const MeshCoreChannelsConfigSection: React.FC<MeshCoreChannelsConfigSecti
   }, [baseUrl, sourceId, csrfFetch, showToast, t, reload]);
 
   return (
-    <div className="form-section">
-      <h3>{t('meshcore.channels.title', 'Channels')}</h3>
-      <p className="hint">
-        {t(
-          'meshcore.channels.hint',
-          'Channels on this MeshCore device. Each channel is a name plus a 16-byte (AES-128) shared secret. Name a channel with a leading "#" (e.g. #general) to join a public hashtag channel — its secret is derived from the name so it matches everyone else on that topic.',
-        )}
-      </p>
+    <ConfigSection
+      id="meshcore-channels"
+      title={t('meshcore.channels.title', 'Channels')}
+      docsUrl={`${MESHCORE_DOCS}#channels`}
+      canWrite={hasPermission('configuration', 'write')}
+      description={t(
+        'meshcore.channels.hint',
+        'Channels on this MeshCore device. Each channel is a name plus a 16-byte (AES-128) shared secret. Name a channel with a leading "#" (e.g. #general) to join a public hashtag channel — its secret is derived from the name so it matches everyone else on that topic.',
+      )}
+    >
 
       {loading && channels.length === 0 && (
         <div className="meshcore-empty-state" aria-busy="true">
@@ -493,7 +497,7 @@ export const MeshCoreChannelsConfigSection: React.FC<MeshCoreChannelsConfigSecti
           </button>
         </div>
       )}
-    </div>
+    </ConfigSection>
   );
 };
 

@@ -7,6 +7,7 @@ import { NumberInput } from '../common/NumberInput';
 import { NumberInputScope } from '../common/NumberInputScope';
 import { useNumberInputScope } from '../common/numberInputScopeContext';
 import ModuleAvailabilityNotice from './ModuleAvailabilityNotice';
+import { ConfigSection } from '../shared/config/ConfigSection';
 
 // Input event character options matching protobuf enum
 const INPUT_EVENT_OPTIONS = [
@@ -121,24 +122,7 @@ const CannedMessageConfigSection: React.FC<CannedMessageConfigSectionProps> = ({
 
   return (
     <NumberInputScope scope={numberScope}>
-    <div className="settings-section">
-      <h3 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-        {t('cannedmsg_config.title')}
-        <a
-          href="https://meshmonitor.org/features/device#canned-message-configuration"
-          target="_blank"
-          rel="noopener noreferrer"
-          style={{
-            fontSize: '1.2rem',
-            color: '#89b4fa',
-            textDecoration: 'none'
-          }}
-          title={t('cannedmsg_config.view_docs')}
-        >
-          <UiIcon name="help" />
-        </a>
-      </h3>
-      <ModuleAvailabilityNotice />
+    <ConfigSection title={t('cannedmsg_config.title')} docsUrl="https://meshmonitor.org/features/device#canned-message-configuration" notice={<ModuleAvailabilityNotice />}>
 
       {/* Enable Module */}
       <div className="setting-item">
@@ -387,7 +371,7 @@ const CannedMessageConfigSection: React.FC<CannedMessageConfigSectionProps> = ({
         )}
         </>
       )}
-    </div>
+    </ConfigSection>
     </NumberInputScope>
   );
 };
