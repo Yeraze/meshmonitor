@@ -33,7 +33,7 @@ describe('trigger form fields stay inside their card', () => {
     expect(layoutCss).not.toMatch(/@media/);
   });
 
-  it.each(['TimerTriggersSection.tsx', 'GeofenceTriggersSection.tsx'])(
+  it.each(['timer-triggers/TimerTriggerEditor.tsx', 'GeofenceTriggersSection.tsx'])(
     '%s: every flex: 1 field beside a label has the floor, in a wrapping row',
     (file) => {
       const tsx = read(file);
@@ -60,7 +60,7 @@ describe('trigger form fields stay inside their card', () => {
   );
 
   it.each([
-    ['TimerTriggersSection.tsx', 'timer_triggers.name_placeholder'],
+    ['timer-triggers/TimerTriggerEditor.tsx', 'timer_triggers.name_placeholder'],
     ['GeofenceTriggersSection.tsx', 'geofence_triggers.name_placeholder'],
   ])('%s Name input carries the floor', (file, key) => {
     const tsx = read(file);
