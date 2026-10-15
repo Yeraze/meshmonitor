@@ -1200,6 +1200,17 @@ describe('ApiService BASE_URL Support', () => {
       );
       expect(appendedAnchor.download).toMatch(/^channel-42-\d+\.json$/);
     });
+
+    it('exportChannel sends the sourceId the route requires', async () => {
+      mockFetch.mockResolvedValue(mockBlobResponse(true));
+
+      await apiService.exportChannel(3, 'src a');
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        '/api/channels/3/export?sourceId=src%20a',
+        expect.objectContaining({ method: 'GET', credentials: 'include' })
+      );
+    });
   });
 
   describe('getText() (#3962 Task 5.5 PR1)', () => {
