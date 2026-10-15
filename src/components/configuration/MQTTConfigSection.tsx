@@ -22,6 +22,7 @@ import {
   type KeptCredentials,
 } from '../MQTT/brokerPresets';
 import { ConfigSection } from '../shared/config/ConfigSection';
+import { PasswordField } from '../shared/config/PasswordField';
 
 interface MQTTConfigSectionProps {
   mqttEnabled: boolean;
@@ -500,9 +501,8 @@ const MQTTConfigSection: React.FC<MQTTConfigSectionProps> = ({
               {t('mqtt_config.password')}
               <span className="setting-description">{t('mqtt_config.password_description')}</span>
             </label>
-            <input
+            <PasswordField
               id="mqttPassword"
-              type="password"
               value={mqttPassword}
               onChange={(e) => setMqttPassword(e.target.value)}
               className="setting-input"

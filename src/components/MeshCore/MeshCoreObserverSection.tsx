@@ -24,6 +24,7 @@ import { useSourceStatuses } from '../../hooks/useDashboardData';
 import { formatRelativeTime } from '../../utils/datetime';
 import { UiIcon } from '../icons';
 import { ConfigSection } from '../shared/config/ConfigSection';
+import { PasswordField } from '../shared/config/PasswordField';
 import { MESHCORE_DOCS } from './meshcoreDocs';
 import { useObserverKey, type ObserverKeyError, type ObserverKeyAction } from './hooks/useObserverKey';
 import { useObserverCredentials } from './hooks/useObserverCredentials';
@@ -539,8 +540,7 @@ export const MeshCoreObserverSection: React.FC<MeshCoreObserverSectionProps> = (
           {manualOpen && (
             <div className={styles.panel}>
               <p>{t('meshcore.observer.manual_heading', "Paste the node's 128-character hex private key")}</p>
-              <input
-                type="password"
+              <PasswordField
                 autoComplete="off"
                 value={manualDraft}
                 onChange={(e) => setManualDraft(e.target.value)}

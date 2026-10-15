@@ -33,6 +33,7 @@ import { useMeshCoreLoginProgress } from './hooks/useMeshCoreLoginProgress';
 import './MeshCoreRemoteConsole.css';
 import styles from './MeshCoreRemoteConsole.module.css';
 import { UiIcon } from '../icons';
+import { PasswordField } from '../shared/config/PasswordField';
 
 /**
  * Quick-action catalog for remote Repeater / Room Server contacts.
@@ -521,10 +522,10 @@ export const MeshCoreRemoteConsole: React.FC<MeshCoreRemoteConsoleProps> = ({
             </h4>
             <label className="mrc-modal-label">
               {t('meshcore.remoteConsole.password_label', 'Password')}
-              <input
-                type="password"
+              <PasswordField
                 value={loginPassword}
                 onChange={(e) => setLoginPassword(e.target.value)}
+                autoComplete="off"
                 autoFocus
                 disabled={loginBusy}
                 className="mrc-input"

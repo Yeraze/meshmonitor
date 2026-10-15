@@ -228,6 +228,8 @@
   "common.copy": "Copy",
   "common.copy_to_clipboard": "Copy to clipboard",
   "common.copied_to_clipboard": "Copied to clipboard",
+  "common.show_password": "Show password",
+  "common.hide_password": "Hide password",
   "common.dismiss": "Dismiss",
   "common.ok": "OK",
   "common.done": "Done",

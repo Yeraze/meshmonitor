@@ -10,6 +10,7 @@ import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { UiIcon } from '../icons';
 import { ConfirmDialog } from '../shared/automation/ConfirmDialog';
+import { PasswordField } from '../shared/config/PasswordField';
 import type { ObserverBrokerStatus } from '../../services/api';
 import type { ObserverCredentialBusy } from './hooks/useObserverCredentials';
 import sectionStyles from './MeshCoreObserverSection.module.css';
@@ -150,8 +151,7 @@ export const MeshCoreObserverBrokerCredentials: React.FC<MeshCoreObserverBrokerC
           </label>
           <label>
             {t('meshcore.observer.credentials_password', 'Broker password')}
-            <input
-              type="password"
+            <PasswordField
               autoComplete="new-password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}

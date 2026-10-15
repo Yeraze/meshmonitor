@@ -33,6 +33,7 @@ import {
 } from './DashboardPage.maskedFields';
 import { DroppedSecretNote, HiddenUrlPartsNote } from '../components/Dashboard/StoredSecretNotes';
 import DashboardSidebar from '../components/Dashboard/DashboardSidebar';
+import { PasswordField } from '../components/shared/config/PasswordField';
 import DashboardMap from '../components/Dashboard/DashboardMap';
 import type { NodeSourceRef } from '../components/Dashboard/DashboardNodePopup';
 import { buildBridgeConfig, formFromBridgeConfig } from '../components/MQTT/mqttBridgeConfig';
@@ -1505,9 +1506,8 @@ function DashboardInner() {
                 </label>
                 <label className="dashboard-form-field">
                   <span className="dashboard-form-label">{t('source.form.mqtt_password', 'Password')}</span>
-                  <input
+                  <PasswordField
                     className="dashboard-form-input"
-                    type="password"
                     value={formMqttPassword}
                     onChange={(e) => setFormMqttPassword(e.target.value)}
                     autoComplete="new-password"
@@ -1682,9 +1682,8 @@ function DashboardInner() {
                 </label>
                 <label className="dashboard-form-field">
                   <span className="dashboard-form-label">{t('source.form.mqtt_password', 'Password')}</span>
-                  <input
+                  <PasswordField
                     className="dashboard-form-input"
-                    type="password"
                     value={formMqttBridgePassword}
                     onChange={(e) => setFormMqttBridgePassword(e.target.value)}
                     autoComplete="new-password"
@@ -2025,9 +2024,8 @@ function DashboardInner() {
                                     </label>
                                     <label className="dashboard-form-field" style={{ marginTop: 8 }}>
                                       <span className="dashboard-form-label">{t('meshcore.form.observer_broker_password', 'Broker password')}</span>
-                                      <input
+                                      <PasswordField
                                         className="dashboard-form-input"
-                                        type="password"
                                         autoComplete="new-password"
                                         value={creds.password}
                                         onChange={(e) => updateObserverCred(row.id, { password: e.target.value })}
@@ -2137,9 +2135,8 @@ function DashboardInner() {
 
                 <label className="dashboard-form-field">
                   <span className="dashboard-form-label">{t('source.form.mc_mqtt_password', 'Password (optional)')}</span>
-                  <input
+                  <PasswordField
                     className="dashboard-form-input"
-                    type="password"
                     value={formMcMqttPassword}
                     onChange={(e) => setFormMcMqttPassword(e.target.value)}
                     autoComplete="new-password"
@@ -2258,9 +2255,8 @@ function DashboardInner() {
 
                 <label className="dashboard-form-field">
                   <span className="dashboard-form-label">{t('reticulum.form.token', 'Bridge token')}</span>
-                  <input
+                  <PasswordField
                     className="dashboard-form-input"
-                    type="password"
                     // Explicit: the wrapping <label> also contains the help
                     // <p>, so the implicit accessible name would be label +
                     // help text concatenated.

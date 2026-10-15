@@ -19,6 +19,7 @@ import { MeshCoreContact } from '../../utils/meshcoreHelpers';
 import { MeshCoreMessageStream } from './MeshCoreMessageStream';
 import { useAuth } from '../../contexts/AuthContext';
 import { UiIcon } from '../icons';
+import { PasswordField } from '../shared/config/PasswordField';
 import { MeshCoreReceiveOnlyNote } from './MeshCoreReceiveOnlyNote';
 import { MeshCoreLoginProgress } from './MeshCoreLoginProgress';
 import { useMeshCoreLoginProgress } from './hooks/useMeshCoreLoginProgress';
@@ -386,9 +387,9 @@ export const MeshCoreRoomsView: React.FC<MeshCoreRoomsViewProps> = ({
               <p className="meshcore-room-login-name">
                 {activeRoom?.advName || activeRoom?.name || selectedRoom.substring(0, 16) + '…'}
               </p>
-              <input
-                type="password"
+              <PasswordField
                 className="meshcore-room-login-input"
+                autoComplete="off"
                 value={loginPassword}
                 onChange={e => setLoginPassword(e.target.value)}
                 onKeyDown={e => e.key === 'Enter' && !loginLoading && !receiveOnly && handleLogin()}
