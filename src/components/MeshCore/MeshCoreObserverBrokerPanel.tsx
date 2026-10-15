@@ -12,6 +12,7 @@ import React from 'react';
 import { useTranslation } from 'react-i18next';
 import { formatRelativeTime } from '../../utils/datetime';
 import { UiIcon } from '../icons';
+import type { ObserverBrokerStatus } from '../../services/api';
 import { useObserverStatus } from './hooks/useObserverStatus';
 import sectionStyles from './MeshCoreObserverSection.module.css';
 import styles from './MeshCoreObserverBrokerPanel.module.css';
@@ -20,11 +21,15 @@ export interface MeshCoreObserverBrokerPanelProps {
   sourceId: string;
   /** Parent has already checked configuration:read; false suspends polling. */
   enabled?: boolean;
+  /** Extra content rendered at the end of one broker's card — the Observer
+   *  section puts that broker's credential controls here (#5825). */
+  renderBrokerExtra?: (broker: ObserverBrokerStatus) => React.ReactNode;
 }
 
 export const MeshCoreObserverBrokerPanel: React.FC<MeshCoreObserverBrokerPanelProps> = ({
   sourceId,
   enabled = true,
+  renderBrokerExtra,
 }) => {
   const { t } = useTranslation();
   const { status, error } = useObserverStatus(sourceId, { enabled });
@@ -125,6 +130,8 @@ export const MeshCoreObserverBrokerPanel: React.FC<MeshCoreObserverBrokerPanelPr
                 <UiIcon name="alert" size={14} /> {t('meshcore.observer.last_error', 'Last error')}: {broker.lastError}
               </div>
             )}
+
+            {renderBrokerExtra?.(broker)}
           </div>
         ))}
       </div>

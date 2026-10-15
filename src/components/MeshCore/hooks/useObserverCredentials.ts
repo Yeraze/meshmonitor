@@ -1,11 +1,20 @@
 /**
- * MeshCore Analyzer Observer static-credential management (issue #4595).
+ * MeshCore Analyzer Observer static-credential management (issue #4595,
+ * per-broker since #5825).
  *
  * Wraps GET/PUT/DELETE /api/sources/:id/observer/credentials — the
  * username/password auth mode used by Analyzer brokers that don't verify the
  * Ed25519-signed token. Structural twin of `useObserverKey`, including the
  * envelope unwrap (those routes use `{success, data}` and neither
  * ApiService.request() nor csrfFetch unwraps `data`).
+ *
+ * Every set and clear names a broker by its `brokerKey` (#5825). The server
+ * still accepts a PUT with no key (it stores a shared "legacy" credential that
+ * only a broker matching the old `brokerUrl` reads), but nothing here sends
+ * one: that credential was invisible to most brokers, and the old key-less
+ * DELETE wiped every broker's credential at once. The only key-less request
+ * left is `clearLegacyCredential`, which sends `?legacy=1` and removes the old
+ * shared credential alone.
  *
  * The password is write-only: it is sent on PUT and NEVER returned by any
  * response, so nothing here ever holds it after the request resolves.
@@ -15,33 +24,52 @@ import { useCsrfFetch } from '../../../hooks/useCsrfFetch';
 import { appBasename } from '../../../init';
 import type { ObserverKeyError } from './useObserverKey';
 
-/** Mirrors ObserverCredentialStatus from
- *  server/services/meshcoreObserverCredentialStore.ts. Re-declared here
- *  because the client/server boundary is plain JSON. */
+/** Mirrors the GET /observer/credentials body built in
+ *  server/routes/sourceObserverRoutes.ts. Re-declared here because the
+ *  client/server boundary is plain JSON. */
 export interface ObserverCredentialStatus {
+  /** A credential row exists at all (any broker, or the legacy entry). */
   stored: boolean;
   /** NOT secret. The password is never present in this shape. */
   username: string | null;
   updatedAt: number | null;
-  /** SESSION_SECRET changed since the password was stored — it is now
-   *  undecryptable and must be re-entered. */
+  /** SESSION_SECRET changed since the row was stored — every password in it
+   *  is now undecryptable and must be re-entered. */
   keyRotated: boolean;
   /** false when SESSION_SECRET is auto-generated: storing is impossible. */
   canStore: boolean;
   reason: string | null;
+  /** One entry per broker with a stored credential. */
+  brokers: Array<{ brokerKey: string; username: string | null }>;
+  /** The pre-#5014 shared credential, when one is still stored. Absent on a
+   *  server older than #5825. */
+  legacy?: { username: string | null } | null;
 }
 
-export type ObserverCredentialAction = 'save' | 'clear';
+export type ObserverCredentialAction = 'save' | 'clear' | 'clearLegacy';
+
+export interface ObserverCredentialBusy {
+  action: ObserverCredentialAction;
+  /** null for `clearLegacy`. */
+  brokerKey: string | null;
+}
+
+export interface ObserverCredentialActionError {
+  error: ObserverKeyError;
+  /** The broker the failed action targeted; null for `clearLegacy`. */
+  brokerKey: string | null;
+}
 
 export interface UseObserverCredentialsResult {
   status: ObserverCredentialStatus | null;
   loading: boolean;
   loadError: ObserverKeyError | null;
-  busy: ObserverCredentialAction | null;
-  actionError: ObserverKeyError | null;
+  busy: ObserverCredentialBusy | null;
+  actionError: ObserverCredentialActionError | null;
   refresh: () => Promise<void>;
-  saveCredentials: (username: string, password: string) => Promise<boolean>;
-  clearCredentials: () => Promise<boolean>;
+  saveCredentials: (brokerKey: string, username: string, password: string) => Promise<boolean>;
+  clearCredentials: (brokerKey: string) => Promise<boolean>;
+  clearLegacyCredential: () => Promise<boolean>;
   clearActionError: () => void;
 }
 
@@ -66,7 +94,8 @@ async function readEnvelope(res: Response): Promise<EnvelopeResult> {
       },
     };
   }
-  return { ok: true, data: record.data as ObserverCredentialStatus };
+  const data = (record.data ?? {}) as ObserverCredentialStatus;
+  return { ok: true, data: { ...data, brokers: Array.isArray(data.brokers) ? data.brokers : [] } };
 }
 
 type CsrfFetch = ReturnType<typeof useCsrfFetch>;
@@ -104,11 +133,14 @@ export function useObserverCredentials(
   const [status, setStatus] = useState<ObserverCredentialStatus | null>(null);
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState<ObserverKeyError | null>(null);
-  const [busy, setBusy] = useState<ObserverCredentialAction | null>(null);
-  const [actionError, setActionError] = useState<ObserverKeyError | null>(null);
+  const [busy, setBusy] = useState<ObserverCredentialBusy | null>(null);
+  const [actionError, setActionError] = useState<ObserverCredentialActionError | null>(null);
 
   // Synchronous re-entry guard — see useObserverKey for why this is a ref.
-  const busyRef = useRef<ObserverCredentialAction | null>(null);
+  // One request at a time across ALL brokers: the store is read-modify-write
+  // over a single row, so two concurrent writes can lose one (see
+  // meshcoreObserverCredentialStore.storeForBroker).
+  const busyRef = useRef<ObserverCredentialBusy | null>(null);
   const cancelledRef = useRef(false);
 
   const refresh = useCallback(async (): Promise<void> => {
@@ -127,55 +159,47 @@ export function useObserverCredentials(
     }
   }, [base, csrfFetch]);
 
-  const saveCredentials = useCallback(
-    async (username: string, password: string): Promise<boolean> => {
+  const run = useCallback(
+    async (next: ObserverCredentialBusy, url: string, method: string, body?: string): Promise<boolean> => {
       if (busyRef.current) return false;
-      busyRef.current = 'save';
-      setBusy('save');
+      busyRef.current = next;
+      setBusy(next);
       setActionError(null);
       try {
-        // Password sent verbatim — the server deliberately does NOT trim it
-        // (whitespace can be part of the secret), so neither do we.
-        const result = await request(
-          csrfFetch,
-          base,
-          'PUT',
-          JSON.stringify({ username, password }),
-        );
+        const result = await request(csrfFetch, url, method, body);
         if (cancelledRef.current) return false;
         if (result.ok) {
           setStatus(result.data);
           return true;
         }
-        setActionError(result.error);
+        setActionError({ error: result.error, brokerKey: next.brokerKey });
         return false;
       } finally {
         busyRef.current = null;
         if (!cancelledRef.current) setBusy(null);
       }
     },
-    [base, csrfFetch],
+    [csrfFetch],
   );
 
-  const clearCredentials = useCallback(async (): Promise<boolean> => {
-    if (busyRef.current) return false;
-    busyRef.current = 'clear';
-    setBusy('clear');
-    setActionError(null);
-    try {
-      const result = await request(csrfFetch, base, 'DELETE');
-      if (cancelledRef.current) return false;
-      if (result.ok) {
-        setStatus(result.data);
-        return true;
-      }
-      setActionError(result.error);
-      return false;
-    } finally {
-      busyRef.current = null;
-      if (!cancelledRef.current) setBusy(null);
-    }
-  }, [base, csrfFetch]);
+  const saveCredentials = useCallback(
+    (brokerKey: string, username: string, password: string): Promise<boolean> =>
+      // Password sent verbatim — the server deliberately does NOT trim it
+      // (whitespace can be part of the secret), so neither do we.
+      run({ action: 'save', brokerKey }, base, 'PUT', JSON.stringify({ brokerKey, username, password })),
+    [base, run],
+  );
+
+  const clearCredentials = useCallback(
+    (brokerKey: string): Promise<boolean> =>
+      run({ action: 'clear', brokerKey }, `${base}?brokerKey=${encodeURIComponent(brokerKey)}`, 'DELETE'),
+    [base, run],
+  );
+
+  const clearLegacyCredential = useCallback(
+    (): Promise<boolean> => run({ action: 'clearLegacy', brokerKey: null }, `${base}?legacy=1`, 'DELETE'),
+    [base, run],
+  );
 
   const clearActionError = useCallback(() => setActionError(null), []);
 
@@ -198,6 +222,7 @@ export function useObserverCredentials(
     refresh,
     saveCredentials,
     clearCredentials,
+    clearLegacyCredential,
     clearActionError,
   };
 }
