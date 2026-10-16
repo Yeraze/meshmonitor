@@ -65,6 +65,8 @@ export interface ChannelDatabaseInput {
   description?: string | null;
   isEnabled?: boolean;
   enforceNameValidation?: boolean;
+  /** AES-CCM (AEAD) channel (#5248). Defaults to false. */
+  useAead?: boolean;
   createdBy?: number | null;
 }
 
@@ -78,6 +80,7 @@ export interface ChannelDatabaseUpdate {
   description?: string | null;
   isEnabled?: boolean;
   enforceNameValidation?: boolean;
+  useAead?: boolean;
   sortOrder?: number;
 }
 
@@ -322,6 +325,7 @@ export class ChannelDatabaseRepository extends BaseRepository {
       description: data.description ?? null,
       isEnabled: data.isEnabled ?? true,
       enforceNameValidation: data.enforceNameValidation ?? false,
+      useAead: data.useAead ?? false,
       decryptedPacketCount: 0,
       lastDecryptedAt: null,
       createdBy: data.createdBy ?? null,
@@ -550,6 +554,7 @@ export class ChannelDatabaseRepository extends BaseRepository {
       description: row.description,
       isEnabled: Boolean(row.isEnabled),
       enforceNameValidation: Boolean(row.enforceNameValidation),
+      useAead: Boolean(row.useAead),
       sortOrder: row.sortOrder ?? 0,
       decryptedPacketCount: row.decryptedPacketCount,
       lastDecryptedAt: row.lastDecryptedAt ? Number(row.lastDecryptedAt) : null,

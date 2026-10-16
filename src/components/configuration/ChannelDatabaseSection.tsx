@@ -25,6 +25,7 @@ import { REBROADCAST_MODE_OPTIONS } from './constants';
 import { normalizeChannelUrlPskToBase64, getPskBase64ByteLength } from '../../utils/channelUrl';
 import styles from './ChannelDatabaseSection.module.css';
 import MeshCoreChannelImport from './MeshCoreChannelImport';
+import AeadBadge from '../channels/AeadBadge';
 
 /**
  * Shape of a decoded channel returned by `apiService.decodeChannelUrl`
@@ -39,6 +40,8 @@ interface DecodedUrlChannel {
   role?: number;
   uplinkEnabled?: boolean;
   downlinkEnabled?: boolean;
+  /** ChannelSettings.use_aead (#5248). */
+  useAead?: boolean;
 }
 
 // Meshtastic Channel.Role enum (subset we render labels for).
@@ -58,6 +61,8 @@ interface ChannelEditState {
   description: string;
   isEnabled: boolean;
   enforceNameValidation: boolean;
+  /** AES-CCM channel, firmware 2.8.1+ (#5248). Meshtastic only. */
+  useAead: boolean;
   /** 'meshcore' rows hold a 16-byte MeshCore secret (#5552). */
   protocol: 'meshtastic' | 'meshcore';
 }
@@ -159,6 +164,7 @@ const SortableChannelCard: React.FC<SortableChannelCardProps> = ({
                 ? t('channel_database.protocol_meshcore', 'MeshCore')
                 : t('channel_database.protocol_meshtastic', 'Meshtastic')}
             </span>
+            {channel.protocol !== 'meshcore' && <AeadBadge useAead={channel.useAead} />}
             {channel.isEnabled ? (
               <span style={{ color: 'var(--color-success)', fontSize: '0.8rem' }}>{t('channel_database.enabled')}</span>
             ) : (
@@ -393,6 +399,7 @@ const ChannelDatabaseSection: React.FC<ChannelDatabaseSectionProps> = ({ isAdmin
       description: '',
       isEnabled: true,
       enforceNameValidation: false,
+      useAead: false,
       protocol: 'meshtastic'
     });
     setShowEditModal(true);
@@ -406,6 +413,7 @@ const ChannelDatabaseSection: React.FC<ChannelDatabaseSectionProps> = ({ isAdmin
       description: channel.description || '',
       isEnabled: channel.isEnabled,
       enforceNameValidation: channel.enforceNameValidation ?? false,
+      useAead: channel.useAead ?? false,
       protocol: channel.protocol === 'meshcore' ? 'meshcore' : 'meshtastic'
     });
     setShowEditModal(true);
@@ -458,7 +466,8 @@ const ChannelDatabaseSection: React.FC<ChannelDatabaseSectionProps> = ({ isAdmin
           psk: finalPsk,
           description: editingChannel.description || undefined,
           isEnabled: editingChannel.isEnabled,
-          enforceNameValidation: editingChannel.enforceNameValidation
+          enforceNameValidation: editingChannel.enforceNameValidation,
+          useAead: editingChannel.useAead
         });
         showToast(t('channel_database.toast_channel_updated'), 'success');
       } else {
@@ -468,7 +477,8 @@ const ChannelDatabaseSection: React.FC<ChannelDatabaseSectionProps> = ({ isAdmin
           psk: finalPsk,
           description: editingChannel.description || undefined,
           isEnabled: editingChannel.isEnabled,
-          enforceNameValidation: editingChannel.enforceNameValidation
+          enforceNameValidation: editingChannel.enforceNameValidation,
+          useAead: editingChannel.useAead
         });
         showToast(t('channel_database.toast_channel_created'), 'success');
 
@@ -620,6 +630,7 @@ const ChannelDatabaseSection: React.FC<ChannelDatabaseSectionProps> = ({ isAdmin
           description: ch.description ?? '',
           isEnabled: ch.isEnabled,
           enforceNameValidation: ch.enforceNameValidation ?? false,
+          useAead: ch.useAead ?? false,
           protocol: ch.protocol === 'meshcore' ? 'meshcore' : 'meshtastic',
         }));
 
@@ -679,7 +690,9 @@ const ChannelDatabaseSection: React.FC<ChannelDatabaseSectionProps> = ({ isAdmin
             psk: channelData.psk,
             description: channelData.description,
             isEnabled: channelData.isEnabled ?? true,
-            ...(channelData.protocol === 'meshcore' ? { protocol: 'meshcore' as const } : {})
+            ...(channelData.protocol === 'meshcore'
+              ? { protocol: 'meshcore' as const }
+              : { useAead: Boolean(channelData.useAead) })
           });
           imported++;
         }
@@ -808,6 +821,7 @@ const ChannelDatabaseSection: React.FC<ChannelDatabaseSectionProps> = ({ isAdmin
             pskLength: getPskBase64ByteLength(psk),
             description: t('channel_database.imported_from_url_description'),
             isEnabled: true,
+            useAead: Boolean(ch.useAead),
           });
           imported++;
         } catch (err) {
@@ -1225,6 +1239,24 @@ const ChannelDatabaseSection: React.FC<ChannelDatabaseSectionProps> = ({ isAdmin
                 </div>
                 <span className="setting-description" style={{ marginLeft: '1.75rem' }}>
                   {t('channel_database.enforce_name_validation_description')}
+                </span>
+              </label>
+            </div>
+
+            {/* AES-CCM is a Meshtastic cipher mode (#5248). */}
+            <div className="setting-item" hidden={editingChannel.protocol === 'meshcore'}>
+              <label style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <input
+                    type="checkbox"
+                    checked={editingChannel.useAead}
+                    onChange={(e) => setEditingChannel({ ...editingChannel, useAead: e.target.checked })}
+                    data-testid="channel-db-use-aead"
+                  />
+                  <span>{t('channel_database.use_aead')}</span>
+                </div>
+                <span className="setting-description" style={{ marginLeft: '1.75rem' }}>
+                  {t('channel_database.use_aead_description')}
                 </span>
               </label>
             </div>

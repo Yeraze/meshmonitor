@@ -175,6 +175,7 @@ class RetroactiveDecryptionService {
           id: packet.id ?? 0,
           packetId: metadata.id ?? packet.packet_id ?? 0,
           fromNode: packet.from_node,
+          toNode: packet.to_node != null ? Number(packet.to_node) >>> 0 : undefined,
           encryptedPayload: new Uint8Array(encryptedPayload),
           metadata,
         });
@@ -199,7 +200,8 @@ class RetroactiveDecryptionService {
         packet.encryptedPayload,
         packet.packetId,
         packet.fromNode,
-        channelDatabaseId
+        channelDatabaseId,
+        packet.toNode
       );
 
       if (!result.success) {
@@ -285,6 +287,8 @@ interface EncryptedPacketInfo {
   id: number;
   packetId: number;
   fromNode: number;
+  /** `packet.to`: part of the authenticated data on AEAD channels (#5248). */
+  toNode?: number;
   encryptedPayload: Uint8Array;
   metadata: Record<string, unknown>;
 }

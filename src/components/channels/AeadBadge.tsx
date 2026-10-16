@@ -1,7 +1,6 @@
 /**
  * Read-only "AEAD" badge for a channel whose ChannelSettings.use_aead is set
- * (#5248 Phase 1). The flag is stored and sent back on every edit, but not
- * editable yet; Phase 2 adds the checkbox.
+ * (#5248), on device channels and Channel Database rows.
  */
 import { useTranslation } from 'react-i18next';
 import { UiIcon } from '../icons';
