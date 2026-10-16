@@ -187,6 +187,45 @@ function runSharedTests(getCtx: () => Ctx) {
     await auth.setPasskeyRecoveryCodes(alice, null);
     expect(await auth.getPasskeyLoginState(alice)).toEqual({ passwordLoginDisabled: false, passkeyRecoveryCodes: null });
   });
+
+  it('enablePasswordLogin clears the switch and the codes in one write', async () => {
+    const { auth, alice } = getCtx();
+    await auth.setPasswordLoginDisabled(alice, true);
+    await auth.setPasskeyRecoveryCodes(alice, '["h1"]');
+    await auth.enablePasswordLogin(alice);
+    expect(await auth.getPasskeyLoginState(alice)).toEqual({ passwordLoginDisabled: false, passkeyRecoveryCodes: null });
+  });
+
+  it('consumePasskeyRecovery wins only while the stored codes match', async () => {
+    const { auth, alice, bob } = getCtx();
+    await auth.setPasswordLoginDisabled(alice, true);
+    await auth.setPasskeyRecoveryCodes(alice, '["h1","h2"]');
+    await auth.setPasswordLoginDisabled(bob, true);
+    await auth.setPasskeyRecoveryCodes(bob, '["h1","h2"]');
+
+    expect(await auth.consumePasskeyRecovery(alice, '["other"]')).toBe(false);
+    expect((await auth.getPasskeyLoginState(alice))?.passwordLoginDisabled).toBe(true);
+
+    expect(await auth.consumePasskeyRecovery(alice, '["h1","h2"]')).toBe(true);
+    expect(await auth.getPasskeyLoginState(alice)).toEqual({ passwordLoginDisabled: false, passkeyRecoveryCodes: null });
+    // Second use of the same snapshot loses.
+    expect(await auth.consumePasskeyRecovery(alice, '["h1","h2"]')).toBe(false);
+    // Bob is untouched.
+    expect(await auth.getPasskeyLoginState(bob)).toEqual({ passwordLoginDisabled: true, passkeyRecoveryCodes: '["h1","h2"]' });
+  });
+
+  it('countAllByUser groups by user and leaves out users with none', async () => {
+    const { repo, alice, bob } = getCtx();
+    expect((await repo.countAllByUser()).size).toBe(0);
+    await repo.create(makePasskey(alice));
+    await repo.create(makePasskey(alice));
+    await repo.create(makePasskey(bob));
+    const counts = await repo.countAllByUser();
+    expect(counts.get(alice)).toBe(2);
+    expect(counts.get(bob)).toBe(1);
+    await repo.deleteAllForUser(bob);
+    expect((await repo.countAllByUser()).has(bob)).toBe(false);
+  });
 }
 
 // --- SQLite (full migration registry) ---

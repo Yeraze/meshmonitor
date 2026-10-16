@@ -20,7 +20,7 @@ interface UserMenuProps {
 
 const UserMenu: React.FC<UserMenuProps> = ({ onLogout }) => {
   const { t } = useTranslation();
-  const { authStatus, logout } = useAuth();
+  const { authStatus, logout, refreshAuth } = useAuth();
   const [showMenu, setShowMenu] = useState(false);
   const [showChangePassword, setShowChangePassword] = useState(false);
   const [showAPIToken, setShowAPIToken] = useState(false);
@@ -71,7 +71,10 @@ const UserMenu: React.FC<UserMenuProps> = ({ onLogout }) => {
   const displayName = authStatus.user.displayName || authStatus.user.username;
   const isAdmin = authStatus.user.isAdmin;
   const isLocalAuth = authStatus.user.authProvider === 'local';
-  const canChangePassword = isLocalAuth && !authStatus.user.passwordLocked;
+  // A passkey-only account has no password to change (#5841).
+  const canChangePassword = isLocalAuth && !authStatus.user.passwordLocked && !authStatus.user.passwordLoginDisabled;
+  // Signed in with a recovery code: a new password before anything else.
+  const mustChangePassword = authStatus.passwordChangeRequired === true;
 
   return (
     <div className="user-menu">
@@ -158,6 +161,14 @@ const UserMenu: React.FC<UserMenuProps> = ({ onLogout }) => {
         isOpen={showChangePassword}
         onClose={() => setShowChangePassword(false)}
       />
+
+      {mustChangePassword && (
+        <ChangePasswordModal
+          isOpen
+          forced
+          onClose={() => void refreshAuth()}
+        />
+      )}
 
       {showAPIToken && (
         <div className="modal-overlay" onClick={() => setShowAPIToken(false)}>

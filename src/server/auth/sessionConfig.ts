@@ -33,8 +33,11 @@ declare module 'express-session' {
     // WebAuthn ceremony in flight (#5841). Single use, 5-minute expiry.
     webauthnChallenge?: {
       challenge: string;
-      purpose: 'register' | 'login';
-      /** The user registering; unset for login (the passkey names the user). */
+      purpose: 'register' | 'login' | 'step-up';
+      /**
+       * The user registering, or proving it is them (step-up); unset for
+       * login (the passkey names the user).
+       */
       userId?: number;
       /** RP ID the options were made for; the response must match it. */
       rpId: string;
@@ -43,6 +46,9 @@ declare module 'express-session' {
       /** Epoch ms. */
       expiresAt: number;
     };
+    // Set when this session signed in with a passkey recovery code (#5841):
+    // the user must pick a new password, and may do so without the old one.
+    passwordChangeRequired?: boolean;
   }
 }
 

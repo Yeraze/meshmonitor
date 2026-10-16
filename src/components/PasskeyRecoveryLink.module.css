@@ -1,0 +1,39 @@
+/* Recovery-code sign-in on the login page and modal (#5841). Scoped module. */
+
+.link {
+  align-self: center;
+  margin-top: 0.5rem;
+  padding: 0.25rem;
+  border: none;
+  background: none;
+  color: var(--color-accent);
+  font-size: 0.8125rem;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.link:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--color-border);
+}
+
+.intro {
+  margin: 0;
+  font-size: 0.875rem;
+  color: var(--color-text-muted);
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}

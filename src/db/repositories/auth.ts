@@ -352,6 +352,28 @@ export class AuthRepository extends BaseRepository {
     await this.updateUser(userId, { passkeyRecoveryCodes: codes });
   }
 
+  /** Turn password login back on and drop the recovery codes, in one write. */
+  async enablePasswordLogin(userId: number): Promise<void> {
+    await this.updateUser(userId, { passwordLoginDisabled: false, passkeyRecoveryCodes: null });
+  }
+
+  /**
+   * Spend a recovery code: turn password login back on and clear the codes,
+   * but only while the stored codes are still `expectedCodes`. Two requests
+   * racing with the same code both match the old list; only the first write
+   * wins, so a code works once. False when another write got there first.
+   */
+  async consumePasskeyRecovery(userId: number, expectedCodes: string): Promise<boolean> {
+    const { users } = this.tables;
+    const set: Record<string, unknown> = { passwordLoginDisabled: false, passkeyRecoveryCodes: null };
+    if (!this.isSQLite()) set.updatedAt = Date.now();
+    const result = await this.db
+      .update(users)
+      .set(set)
+      .where(and(eq(users.id, userId), eq(users.passkeyRecoveryCodes, expectedCodes)));
+    return this.getAffectedRows(result) > 0;
+  }
+
   /**
    * Get user count
    */

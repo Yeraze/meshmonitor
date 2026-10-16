@@ -2,7 +2,7 @@
  * Passkey management for the signed-in local user (#5841): list, add, rename,
  * delete. Shown from the user menu next to two-factor auth.
  *
- * The turn-off-password switch and recovery codes come in PR 3.
+ * Below the list, the passkey-only switch and its recovery codes (PR 3).
  */
 import React, { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -19,6 +19,7 @@ import {
   renamePasskey,
   type PasskeySummary,
 } from '../services/passkeyClient';
+import PasswordLoginControl from './PasswordLoginControl';
 import styles from './PasskeyManagement.module.css';
 
 const NICKNAME_MAX = 64;
@@ -246,6 +247,10 @@ const PasskeyManagement: React.FC<PasskeyManagementProps> = ({ showHeading = tru
             {t('passkey.add')}
           </button>
         )
+      )}
+
+      {passkeys !== null && (
+        <PasswordLoginControl passkeyCount={passkeys.length} supported={supported} />
       )}
     </section>
   );

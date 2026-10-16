@@ -13,6 +13,7 @@ import { ApiError } from '../services/api';
 import { passkeysSupported } from '../services/passkeyClient';
 import { usePasskeyAutofill, passkeyLoginErrorMessage } from '../hooks/usePasskeyLogin';
 import PasskeyLoginButton from './PasskeyLoginButton';
+import PasskeyRecoveryLink from './PasskeyRecoveryLink';
 import Modal from './common/Modal';
 
 interface LoginModalProps {
@@ -279,6 +280,9 @@ const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
               </button>
             </form>
           )}
+
+          {/* Passkey-only accounts sign in with a recovery code here (#5841). */}
+          {!localAuthDisabled && <PasskeyRecoveryLink disabled={loading} />}
 
           {/* Divider between auth methods */}
           {!localAuthDisabled && oidcEnabled && (

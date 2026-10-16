@@ -14,6 +14,7 @@ import { ApiError } from '../services/api';
 import { passkeysSupported } from '../services/passkeyClient';
 import { usePasskeyAutofill, passkeyLoginErrorMessage } from '../hooks/usePasskeyLogin';
 import PasskeyLoginButton from './PasskeyLoginButton';
+import PasskeyRecoveryLink from './PasskeyRecoveryLink';
 import { version } from '../../package.json';
 import PrivacyLinks from './PrivacyLinks';
 import { appBasename } from '../init';
@@ -297,6 +298,9 @@ const LoginPage: React.FC = () => {
                   </button>
                 </form>
               )}
+
+              {/* Passkey-only accounts sign in with a recovery code here (#5841). */}
+              {!localAuthDisabled && <PasskeyRecoveryLink disabled={loading} />}
 
               {/* Divider between auth methods */}
               {!localAuthDisabled && oidcEnabled && (

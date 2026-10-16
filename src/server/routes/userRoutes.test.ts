@@ -164,6 +164,10 @@ describe('User Management Routes', () => {
     (DatabaseService as any).updatePasswordAsync = async (userId: number, newPassword: string) => {
       return userModel.updatePassword(userId, newPassword);
     };
+    // Passkeys (#5841): the users list counts them; an admin-set password
+    // turns password login back on.
+    (DatabaseService as any).countPasskeysByUserAsync = async () => new Map<number, number>();
+    (DatabaseService as any).enablePasswordLoginAsync = async (userId: number) => authRepo.enablePasswordLogin(userId);
     (DatabaseService as any).getUserPermissionSetAsync = async (userId: number) => {
       return permissionModel.getUserPermissionSet(userId);
     };

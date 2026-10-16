@@ -116,6 +116,81 @@ export async function deletePasskey(id: number): Promise<void> {
   await api.delete(`${BASE}/${id}`);
 }
 
+// ── Passkey-only accounts (#5841 PR 3) ───────────────────────────────────────
+
+export interface PasswordLoginState {
+  disabled: boolean;
+  recoveryCodesLeft: number;
+}
+
+/** The server's reply to a password-login change. */
+export type PasswordLoginResult =
+  | { requireConfirm: true }
+  | { disabled: true; recoveryCodes: string[] }
+  | { disabled: false };
+
+/** What the last admin types to confirm turning password sign-in off (D3). */
+export const LAST_ADMIN_CONFIRM = 'DISABLE';
+
+export async function getPasswordLoginState(): Promise<PasswordLoginState> {
+  const result = await api.get<Envelope<PasswordLoginState>>(`${BASE}/password-login`);
+  return result.data;
+}
+
+/**
+ * Run the step-up passkey prompt (D6): options limited to the caller's own
+ * passkeys, then the browser's prompt. The assertion goes to
+ * `turnOffPasswordLogin`.
+ */
+export async function runStepUp(): Promise<AuthenticationResponseJSON> {
+  const lib = await loadBrowserLib();
+  const options = await api.post<Envelope<PublicKeyCredentialRequestOptionsJSON>>(`${BASE}/step-up/options`, {});
+  return lib.startAuthentication({ optionsJSON: options.data });
+}
+
+/**
+ * Turn password sign-in off with a step-up assertion. Resolves with
+ * `requireConfirm` when the caller is the only admin and has not yet typed
+ * the confirmation; send the same assertion again with `confirm`.
+ */
+export async function turnOffPasswordLogin(
+  assertion: AuthenticationResponseJSON,
+  confirm?: string,
+): Promise<PasswordLoginResult> {
+  const result = await api.post<Envelope<PasswordLoginResult>>(`${BASE}/password-login`, {
+    disabled: true,
+    assertion,
+    ...(confirm ? { confirm } : {}),
+  });
+  return result.data;
+}
+
+export async function turnOnPasswordLogin(): Promise<void> {
+  await api.post(`${BASE}/password-login`, { disabled: false });
+}
+
+/** Sign in with a recovery code. Password sign-in comes back on. */
+export async function recoverWithCode(username: string, code: string): Promise<void> {
+  await api.post(`${BASE}/recover`, { username, code });
+}
+
+/** Admin: one user's passkeys and passkey-only state. */
+export interface AdminUserPasskeys {
+  userId: number;
+  username: string;
+  passwordLoginDisabled: boolean;
+  passkeys: PasskeySummary[];
+}
+
+export async function adminListUserPasskeys(userId: number): Promise<AdminUserPasskeys> {
+  const result = await api.get<Envelope<AdminUserPasskeys>>(`${BASE}/admin/users/${userId}`);
+  return result.data;
+}
+
+export async function adminRevokeUserPasskey(userId: number, id: number): Promise<void> {
+  await api.delete(`${BASE}/admin/users/${userId}/${id}`);
+}
+
 /**
  * True when the error means the user closed the browser's passkey prompt (or
  * it timed out). Not worth an error message.

@@ -5114,6 +5114,10 @@ class DatabaseService {
     const isValid = await bcrypt.compare(password, dbUser.passwordHash);
     if (!isValid) return null;
 
+    // Passkey-only account (#5841): the password no longer signs in. Checked
+    // after the bcrypt compare so the reply takes as long as a wrong password.
+    if (dbUser.passwordLoginDisabled) return null;
+
     // Update last login
     await this.auth.updateUser(dbUser.id, { lastLoginAt: Date.now() });
 
@@ -5437,6 +5441,20 @@ class DatabaseService {
   /** `codes` is a JSON array of bcrypt hashes, or null to clear. */
   async setPasskeyRecoveryCodesAsync(userId: number, codes: string | null): Promise<void> {
     await this.auth.setPasskeyRecoveryCodes(userId, codes);
+  }
+
+  /** Password login back on, recovery codes gone (one write). */
+  async enablePasswordLoginAsync(userId: number): Promise<void> {
+    await this.auth.enablePasswordLogin(userId);
+  }
+
+  /** Spend a recovery code; false when the stored codes changed underneath. */
+  async consumePasskeyRecoveryAsync(userId: number, expectedCodes: string): Promise<boolean> {
+    return this.auth.consumePasskeyRecovery(userId, expectedCodes);
+  }
+
+  async countPasskeysByUserAsync(): Promise<Map<number, number>> {
+    return this.passkeys.countAllByUser();
   }
 
   // ============ SESSION METHODS ============

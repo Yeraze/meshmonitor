@@ -33,6 +33,14 @@ export async function authenticateLocal(
       return null;
     }
 
+    // Passkey-only account (#5841). authenticateAsync already refuses it; this
+    // keeps the rule if that ever changes. The caller sends the same 401 as a
+    // wrong password, so the switch is not revealed.
+    if (user.passwordLoginDisabled) {
+      logger.debug(`❌ Password login is off for user: ${username}`);
+      return null;
+    }
+
     logger.debug(`✅ Authentication successful for user: ${username}`);
     return user;
   } catch (error) {
@@ -127,6 +135,36 @@ export async function createLocalUser(
   }
 }
 
+/** Thrown when a passkey-only account tries to use or change its password (#5841). */
+export class PasswordLoginDisabledError extends Error {
+  constructor() {
+    super('Password sign-in is turned off for this account. Turn it back on from Passkeys first.');
+    this.name = 'PasswordLoginDisabledError';
+  }
+}
+
+/**
+ * Set a new password for a user who signed in with a passkey recovery code
+ * (#5841). No current password: they may not have it. Callers must only use
+ * this for the session that redeemed the code.
+ */
+export async function setPasswordAfterRecovery(userId: number, newPassword: string): Promise<void> {
+  const user = await databaseService.findUserByIdAsync(userId);
+  if (!user) throw new Error('User not found');
+  if (user.authProvider !== 'local') throw new Error('Cannot change password for non-local user');
+  if (user.passwordLoginDisabled) throw new PasswordLoginDisabledError();
+  if (newPassword.length < 8) throw new Error('New password must be at least 8 characters long');
+
+  await databaseService.updatePasswordAsync(userId, newPassword);
+  void databaseService.auditLogAsync(
+    userId,
+    'password_changed',
+    'users',
+    JSON.stringify({ userId, afterPasskeyRecovery: true }),
+    null
+  );
+}
+
 /**
  * Change user password
  */
@@ -144,6 +182,11 @@ export async function changePassword(
 
     if (user.authProvider !== 'local') {
       throw new Error('Cannot change password for non-local user');
+    }
+
+    // Passkey-only account (#5841): the password cannot be checked or changed.
+    if (user.passwordLoginDisabled) {
+      throw new PasswordLoginDisabledError();
     }
 
     // Verify current password
@@ -209,6 +252,9 @@ export async function resetUserPassword(
 
     // Update password - use async method for PostgreSQL
     await databaseService.updatePasswordAsync(userId, newPassword);
+    // An admin-set password is how a locked-out passkey-only user gets back
+    // in (#5841): password login turns back on and the recovery codes go.
+    await databaseService.enablePasswordLoginAsync(userId);
 
     logger.debug(`✅ Password reset for user: ${user.username}`);
 
@@ -258,6 +304,8 @@ export async function setUserPassword(
 
     // Update password - use async method for PostgreSQL
     await databaseService.updatePasswordAsync(userId, newPassword);
+    // Admin recovery for a passkey-only user (#5841): password login back on.
+    await databaseService.enablePasswordLoginAsync(userId);
 
     logger.debug(`✅ Password set for user: ${user.username}`);
 
