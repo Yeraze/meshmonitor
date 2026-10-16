@@ -7,6 +7,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import type { Express } from 'express';
 import passkeyRoutes, { CHALLENGE_TTL_MS } from './passkeyRoutes.js';
+import request from 'supertest';
 import { createRouteTestApp, type RouteTestHarness } from '../test-helpers/routeTestApp.js';
 
 const h = vi.hoisted(() => ({
@@ -599,6 +600,24 @@ describe('passkeyRoutes', () => {
       const oidcUser = await createUser({ authMethod: 'oidc' });
       const agent = await harness.loginAs(oidcUser);
       expect((await agent.get('/api/auth/passkey/')).status).toBe(403);
+    });
+  });
+
+  // A leaked API token must not manage passkeys; only a browser session can.
+  describe('API tokens are refused', () => {
+    it.each([
+      ['post', '/api/auth/passkey/register/options'],
+      ['post', '/api/auth/passkey/register/verify'],
+      ['get', '/api/auth/passkey/'],
+      ['patch', '/api/auth/passkey/1'],
+      ['delete', '/api/auth/passkey/1'],
+    ] as const)('%s %s with a Bearer token is 401 SESSION_REQUIRED', async (method, path) => {
+      const token = await harness.tokenFor(harness.limited);
+      const res = await request(harness.app)[method](path)
+        .set('Authorization', `Bearer ${token}`)
+        .send({ nickname: 'x' });
+      expect(res.status).toBe(401);
+      expect(res.body.code).toBe('SESSION_REQUIRED');
     });
   });
 });

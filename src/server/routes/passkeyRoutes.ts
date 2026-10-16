@@ -38,6 +38,20 @@ import type { User } from '../../types/auth.js';
 
 const router = Router();
 
+/**
+ * Passkey management needs a signed-in browser session, not an API token.
+ * `requireAuth` also accepts a Bearer token, and a leaked token must not be
+ * able to remove a user's passkeys (or, from PR 3, turn off their password
+ * login). Registration needs the session for its challenge anyway.
+ */
+function requireSessionUser(req: Request, res: Response, next: () => void): void {
+  if (!req.session?.userId) {
+    fail(res, 401, 'SESSION_REQUIRED', 'Passkeys can only be managed from a signed-in browser session');
+    return;
+  }
+  next();
+}
+
 /** How long a challenge stays valid (spec §6). */
 export const CHALLENGE_TTL_MS = 5 * 60 * 1000;
 
@@ -136,7 +150,7 @@ function requireLocalUser(req: Request, res: Response): User | null {
 
 // ── Registration ─────────────────────────────────────────────────────────────
 
-router.post('/register/options', requireAuth(), async (req: Request, res: Response) => {
+router.post('/register/options', requireAuth(), requireSessionUser, async (req: Request, res: Response) => {
   try {
     if (getEnvironmentConfig().disableLocalAuth) {
       return fail(res, 403, 'LOCAL_AUTH_DISABLED', 'Local authentication is disabled');
@@ -178,7 +192,7 @@ router.post('/register/options', requireAuth(), async (req: Request, res: Respon
   }
 });
 
-router.post('/register/verify', requireAuth(), async (req: Request, res: Response) => {
+router.post('/register/verify', requireAuth(), requireSessionUser, async (req: Request, res: Response) => {
   try {
     if (getEnvironmentConfig().disableLocalAuth) {
       req.session.webauthnChallenge = undefined;
@@ -382,7 +396,7 @@ router.post('/login/verify', authLimiter, async (req: Request, res: Response) =>
 
 // ── The caller's own passkeys ────────────────────────────────────────────────
 
-router.get('/', requireAuth(), async (req: Request, res: Response) => {
+router.get('/', requireAuth(), requireSessionUser, async (req: Request, res: Response) => {
   try {
     const user = requireLocalUser(req, res);
     if (!user) return;
@@ -394,7 +408,7 @@ router.get('/', requireAuth(), async (req: Request, res: Response) => {
   }
 });
 
-router.patch('/:id', requireAuth(), async (req: Request, res: Response) => {
+router.patch('/:id', requireAuth(), requireSessionUser, async (req: Request, res: Response) => {
   try {
     const user = requireLocalUser(req, res);
     if (!user) return;
@@ -417,7 +431,7 @@ router.patch('/:id', requireAuth(), async (req: Request, res: Response) => {
   }
 });
 
-router.delete('/:id', requireAuth(), async (req: Request, res: Response) => {
+router.delete('/:id', requireAuth(), requireSessionUser, async (req: Request, res: Response) => {
   try {
     const user = requireLocalUser(req, res);
     if (!user) return;
