@@ -933,10 +933,21 @@
    and the scrollbar never appears (content is clipped by the parent's
    overflow:hidden but not scrollable). */
 .meshcore-notifications-view {
+  --meshcore-pane-padding: 1.5rem;
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  padding: 1.5rem;
+  padding: var(--meshcore-pane-padding);
+}
+
+/* NotificationsTab's SectionNav (#5855 follow-up). App.css parks
+   `.section-nav` at `top: var(--app-header-height)` for the window-scrolled
+   Meshtastic pages; this pane is the scroller and already sits below that
+   bar, so the stuck nav floated a header plus a padding below the pane top.
+   Same fix as MeshCoreSectionNav.module.css: pull it up by the pane padding
+   so it sits flush. Two classes (0,2,0) beat `.section-nav` (0,1,0). */
+.meshcore-notifications-view .section-nav {
+  top: calc(-1 * var(--meshcore-pane-padding));
 }
 
 .meshcore-form-view .form-section {
