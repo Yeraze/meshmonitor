@@ -122,9 +122,8 @@ export const MeshCoreDeviceActionsSection: React.FC<MeshCoreDeviceActionsSection
   );
 
   return (
-    <div data-testid="meshcore-device-actions">
+    <div id="meshcore-device-actions" data-testid="meshcore-device-actions">
       <ConfigSection
-        id="meshcore-device-actions"
         title={t('meshcore.settings.actions', 'Device actions')}
         docsUrl={`${MESHCORE_DOCS}#adverts`}
         bodyClassName={styles.group}

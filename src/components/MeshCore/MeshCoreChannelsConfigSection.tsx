@@ -425,149 +425,150 @@ export const MeshCoreChannelsConfigSection: React.FC<MeshCoreChannelsConfigSecti
   const publicRow = channels.find(c => c.id === PUBLIC_SLOT);
 
   return (
-    <ConfigSection
-      id="meshcore-channels"
-      title={t('meshcore.channels.title', 'Channels')}
-      docsUrl={`${MESHCORE_DOCS}#channels`}
-      canWrite={canWriteConfig}
-      description={t(
-        'meshcore.channels.hint',
-        'Channels on this MeshCore device. Each channel is a name plus a 16-byte (AES-128) shared secret. Name a channel with a leading "#" (e.g. #general) to join a public hashtag channel — its secret is derived from the name so it matches everyone else on that topic.',
-      )}
-    >
+    <div id="meshcore-channels">
+      <ConfigSection
+        title={t('meshcore.channels.title', 'Channels')}
+        docsUrl={`${MESHCORE_DOCS}#channels`}
+        canWrite={canWriteConfig}
+        description={t(
+          'meshcore.channels.hint',
+          'Channels on this MeshCore device. Each channel is a name plus a 16-byte (AES-128) shared secret. Name a channel with a leading "#" (e.g. #general) to join a public hashtag channel — its secret is derived from the name so it matches everyone else on that topic.',
+        )}
+      >
 
-      {loading && channels.length === 0 && (
-        <div className="meshcore-empty-state" aria-busy="true">
-          {t('meshcore.channels.loading_list', 'Loading channels…')}
-        </div>
-      )}
+        {loading && channels.length === 0 && (
+          <div className="meshcore-empty-state" aria-busy="true">
+            {t('meshcore.channels.loading_list', 'Loading channels…')}
+          </div>
+        )}
 
-      {!loading && channels.length === 0 && (
-        <div className="meshcore-empty-state">
-          {t('meshcore.channels.empty', 'No channels reported by the device yet.')}
-        </div>
-      )}
+        {!loading && channels.length === 0 && (
+          <div className="meshcore-empty-state">
+            {t('meshcore.channels.empty', 'No channels reported by the device yet.')}
+          </div>
+        )}
 
-      {reordering && (
-        <MeshCoreChannelReorderPanel
-          baseUrl={baseUrl}
-          sourceId={sourceId}
-          channels={channels.filter(c => c.id >= 1).map(c => ({ id: c.id, name: c.name }))}
-          onFinished={reload}
-          onClose={() => setReordering(false)}
-        />
-      )}
+        {reordering && (
+          <MeshCoreChannelReorderPanel
+            baseUrl={baseUrl}
+            sourceId={sourceId}
+            channels={channels.filter(c => c.id >= 1).map(c => ({ id: c.id, name: c.name }))}
+            onFinished={reload}
+            onClose={() => setReordering(false)}
+          />
+        )}
 
-      {!reordering && channels.length > 0 && (
-        <div className={styles.list}>
-          {channels.map(row => {
-            const isEditing = editing !== null && !editing.isNew && editing.idx === row.id;
-            const title = formatMeshCoreChannelName(
-              row.name,
-              t('meshcore.channels.unnamed', 'Channel {{idx}}', { idx: row.id }),
-            );
-            if (row.id === PUBLIC_SLOT) {
-              // Slot 0 is MeshCore's Public channel: the server refuses writes
-              // to it (#4733), so there is no Edit (#5826). A slot 0 that holds
-              // something else can be reset, which is the DELETE the server
-              // still allows for slot 0.
+        {!reordering && channels.length > 0 && (
+          <div className={styles.list}>
+            {channels.map(row => {
+              const isEditing = editing !== null && !editing.isNew && editing.idx === row.id;
+              const title = formatMeshCoreChannelName(
+                row.name,
+                t('meshcore.channels.unnamed', 'Channel {{idx}}', { idx: row.id }),
+              );
+              if (row.id === PUBLIC_SLOT) {
+                // Slot 0 is MeshCore's Public channel: the server refuses writes
+                // to it (#4733), so there is no Edit (#5826). A slot 0 that holds
+                // something else can be reset, which is the DELETE the server
+                // still allows for slot 0.
+                return (
+                  <ConfigItemCard
+                    key={row.id}
+                    testId="mc-channel-card"
+                    leading={t('meshcore.channels.slot_badge', 'Slot {{idx}}', { idx: row.id })}
+                    title={title}
+                    summary={
+                      <span data-testid="mc-public-slot-hint">
+                        {t('meshcore.channels.public_slot_hint', 'Public channel, fixed by the firmware')}
+                      </span>
+                    }
+                    chips={chipsFor(row)}
+                    expanded={false}
+                    actions={!isStockPublicRow(row) ? (
+                      <ConfigItemCardButton
+                        variant="danger"
+                        onClick={() => setConfirmResetPublic(true)}
+                        disabled={!canConfigure}
+                      >
+                        {t('meshcore.channels.reset_public', 'Reset to Public')}
+                      </ConfigItemCardButton>
+                    ) : undefined}
+                  />
+                );
+              }
               return (
                 <ConfigItemCard
                   key={row.id}
                   testId="mc-channel-card"
                   leading={t('meshcore.channels.slot_badge', 'Slot {{idx}}', { idx: row.id })}
                   title={title}
-                  summary={
-                    <span data-testid="mc-public-slot-hint">
-                      {t('meshcore.channels.public_slot_hint', 'Public channel, fixed by the firmware')}
-                    </span>
-                  }
                   chips={chipsFor(row)}
-                  expanded={false}
-                  actions={!isStockPublicRow(row) ? (
-                    <ConfigItemCardButton
-                      variant="danger"
-                      onClick={() => setConfirmResetPublic(true)}
-                      disabled={!canConfigure}
-                    >
-                      {t('meshcore.channels.reset_public', 'Reset to Public')}
-                    </ConfigItemCardButton>
-                  ) : undefined}
-                />
+                  expanded={isEditing}
+                  disabled={!canConfigure}
+                  onEdit={() => discard.guard(() => startEdit(row))}
+                  onDelete={() => { void handleDelete(row.id); }}
+                  deleteTitle={t('meshcore.channels.delete_title', 'Delete channel {{idx}}?', { idx: row.id })}
+                  deleteMessage={t('meshcore.channels.delete_message', 'This removes the channel from the device.')}
+                  deletePreview={title}
+                  footer={isEditing && editing ? renderFooter(editing) : undefined}
+                >
+                  {isEditing && editing && renderEditor(editing)}
+                </ConfigItemCard>
               );
-            }
-            return (
-              <ConfigItemCard
-                key={row.id}
-                testId="mc-channel-card"
-                leading={t('meshcore.channels.slot_badge', 'Slot {{idx}}', { idx: row.id })}
-                title={title}
-                chips={chipsFor(row)}
-                expanded={isEditing}
-                disabled={!canConfigure}
-                onEdit={() => discard.guard(() => startEdit(row))}
-                onDelete={() => { void handleDelete(row.id); }}
-                deleteTitle={t('meshcore.channels.delete_title', 'Delete channel {{idx}}?', { idx: row.id })}
-                deleteMessage={t('meshcore.channels.delete_message', 'This removes the channel from the device.')}
-                deletePreview={title}
-                footer={isEditing && editing ? renderFooter(editing) : undefined}
-              >
-                {isEditing && editing && renderEditor(editing)}
-              </ConfigItemCard>
-            );
-          })}
-        </div>
-      )}
+            })}
+          </div>
+        )}
 
-      {!reordering && editing?.isNew && (
-        <ConfigItemCard
-          testId="mc-channel-card-new"
-          leading={t('meshcore.channels.slot_badge', 'Slot {{idx}}', { idx: editing.idx })}
-          title={t('meshcore.channels.adding', 'Adding channel {{idx}}', { idx: editing.idx })}
-          expanded
-          footer={renderFooter(editing)}
-        >
-          {renderEditor(editing)}
-        </ConfigItemCard>
-      )}
-
-      {!reordering && (
-        <div className={styles.addBar}>
-          <ConfigItemCardButton
-            onClick={() => discard.guard(startAdd)}
-            disabled={!canConfigure || !!editing?.isNew}
-            data-testid="mc-channel-add"
+        {!reordering && editing?.isNew && (
+          <ConfigItemCard
+            testId="mc-channel-card-new"
+            leading={t('meshcore.channels.slot_badge', 'Slot {{idx}}', { idx: editing.idx })}
+            title={t('meshcore.channels.adding', 'Adding channel {{idx}}', { idx: editing.idx })}
+            expanded
+            footer={renderFooter(editing)}
           >
-            <UiIcon name="plus" size={14} /> {t('meshcore.channels.add', 'Add channel')}
-          </ConfigItemCardButton>
-          <ConfigItemCardButton
-            onClick={() => discard.guard(() => { setEditing(null); setReordering(true); })}
-            disabled={!canConfigure || !channels.some(c => c.id >= 1)}
-            title={t('meshcore.channels.reorder.button_title', 'Change the order of the channel slots stored on the device')}
-            data-testid="mc-reorder-open"
-          >
-            {t('meshcore.channels.reorder.button', 'Reorder slots on device')}
-          </ConfigItemCardButton>
-        </div>
-      )}
+            {renderEditor(editing)}
+          </ConfigItemCard>
+        )}
 
-      <DiscardChangesDialog guard={discard} />
+        {!reordering && (
+          <div className={styles.addBar}>
+            <ConfigItemCardButton
+              onClick={() => discard.guard(startAdd)}
+              disabled={!canConfigure || !!editing?.isNew}
+              data-testid="mc-channel-add"
+            >
+              <UiIcon name="plus" size={14} /> {t('meshcore.channels.add', 'Add channel')}
+            </ConfigItemCardButton>
+            <ConfigItemCardButton
+              onClick={() => discard.guard(() => { setEditing(null); setReordering(true); })}
+              disabled={!canConfigure || !channels.some(c => c.id >= 1)}
+              title={t('meshcore.channels.reorder.button_title', 'Change the order of the channel slots stored on the device')}
+              data-testid="mc-reorder-open"
+            >
+              {t('meshcore.channels.reorder.button', 'Reorder slots on device')}
+            </ConfigItemCardButton>
+          </div>
+        )}
 
-      {confirmResetPublic && publicRow && (
-        <ConfirmDialog
-          title={t('meshcore.channels.reset_public_title', 'Reset slot 0 to Public?')}
-          message={t('meshcore.channels.confirm_reset_public', 'Clear slot 0 on the device so it goes back to the Public channel? Whatever channel is in slot 0 now will be removed.')}
-          preview={formatMeshCoreChannelName(publicRow.name, t('meshcore.channels.unnamed', 'Channel {{idx}}', { idx: 0 }))}
-          confirmLabel={t('meshcore.channels.reset_public', 'Reset to Public')}
-          cancelLabel={t('common.cancel', 'Cancel')}
-          onCancel={() => setConfirmResetPublic(false)}
-          onConfirm={() => {
-            setConfirmResetPublic(false);
-            void handleDelete(PUBLIC_SLOT);
-          }}
-        />
-      )}
-    </ConfigSection>
+        <DiscardChangesDialog guard={discard} />
+
+        {confirmResetPublic && publicRow && (
+          <ConfirmDialog
+            title={t('meshcore.channels.reset_public_title', 'Reset slot 0 to Public?')}
+            message={t('meshcore.channels.confirm_reset_public', 'Clear slot 0 on the device so it goes back to the Public channel? Whatever channel is in slot 0 now will be removed.')}
+            preview={formatMeshCoreChannelName(publicRow.name, t('meshcore.channels.unnamed', 'Channel {{idx}}', { idx: 0 }))}
+            confirmLabel={t('meshcore.channels.reset_public', 'Reset to Public')}
+            cancelLabel={t('common.cancel', 'Cancel')}
+            onCancel={() => setConfirmResetPublic(false)}
+            onConfirm={() => {
+              setConfirmResetPublic(false);
+              void handleDelete(PUBLIC_SLOT);
+            }}
+          />
+        )}
+      </ConfigSection>
+    </div>
   );
 };
 

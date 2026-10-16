@@ -297,9 +297,8 @@ export const MeshCoreContactSyncSection: React.FC<MeshCoreContactSyncSectionProp
     pushResult?.skipped.filter((s) => s.reason === reason).length ?? 0;
 
   return (
-    <div data-testid="meshcore-contact-sync">
+    <div id="meshcore-contact-sync" data-testid="meshcore-contact-sync">
       <ConfigSection
-        id="meshcore-contact-sync"
         title={t('meshcore.contact_sync.title', 'Radio contact list')}
         docsUrl={`${MESHCORE_DOCS}#radio-contact-table-vs-meshmonitor`}
         bodyClassName={styles.section}
