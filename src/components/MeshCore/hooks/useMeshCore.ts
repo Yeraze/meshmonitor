@@ -315,6 +315,15 @@ export interface AddContactToDeviceResponse {
   evicted?: string[];
 }
 
+/** Body for `setNodePositionOverride` (#5842), same fields as the Meshtastic modal. */
+export interface MeshCorePositionOverrideInput {
+  enabled: boolean;
+  latitude?: number;
+  longitude?: number;
+  altitude?: number;
+  isPrivate?: boolean;
+}
+
 export interface MeshCoreActions {
   connect: () => Promise<boolean>;
   disconnect: () => Promise<void>;
@@ -380,6 +389,10 @@ export interface MeshCoreActions {
    *  contact is protected from contact-table eviction (#4838). Resolves `true`
    *  on success. */
   setNodeFavorite: (publicKey: string, isFavorite: boolean) => Promise<boolean>;
+  /** Set (enabled) or clear (disabled) a contact's location override (#5842).
+   *  MeshMonitor-only, no airtime. Reloads the snapshot so every view picks
+   *  up the new position. Rejects with the server's message on failure. */
+  setNodePositionOverride: (publicKey: string, data: MeshCorePositionOverrideInput) => Promise<void>;
   /** Export a contact as a signed advert blob for sharing. Pass 'self' to
    *  export the local node's identity. Returns the raw bytes or null. */
   exportContact: (publicKey: string) => Promise<number[] | null>;
@@ -1873,6 +1886,22 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
     }
   }, [mcPrefix, csrfFetch]);
 
+  const setNodePositionOverride = useCallback(async (publicKey: string, input: MeshCorePositionOverrideInput): Promise<void> => {
+    const url = `${mcPrefix}/nodes/${encodeURIComponent(publicKey)}/position-override`;
+    const response = input.enabled
+      ? await csrfFetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(input),
+        })
+      : await csrfFetch(url, { method: 'DELETE' });
+    const data = await parseJsonResponse(response);
+    if (!data.success) {
+      throw new Error(data.error || 'Failed to save position override');
+    }
+    await loadSnapshot();
+  }, [mcPrefix, csrfFetch, loadSnapshot]);
+
   const exportContact = useCallback(async (publicKey: string): Promise<number[] | null> => {
     try {
       const response = await csrfFetch(
@@ -2489,6 +2518,7 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
       removeContact,
       addContactToDevice,
       setNodeFavorite,
+      setNodePositionOverride,
       exportContact,
       importContact,
       syncDeviceTime,

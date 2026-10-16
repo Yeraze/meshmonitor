@@ -301,8 +301,12 @@ const replayGuard = new MeshCoreReplayGuard();
  */
 async function meshCoreObserverPositionLoader(sourceId: string, publicKey: string): Promise<ReceiverPos> {
   const node = await databaseService.meshcore.getNodeByPublicKeyAndSource(publicKey, sourceId);
-  const lat = node?.latitude ?? null;
-  const lon = node?.longitude ?? null;
+  // #5842: a location override wins, as `nodeCoveragePosition` does for a
+  // Meshtastic gateway.
+  const hasOverride = !!node?.positionOverrideEnabled
+    && node.latitudeOverride != null && node.longitudeOverride != null;
+  const lat = (hasOverride ? node!.latitudeOverride : node?.latitude) ?? null;
+  const lon = (hasOverride ? node!.longitudeOverride : node?.longitude) ?? null;
   if (shouldDiscardPosition(lat, lon, undefined, getDiscardInvalidPositions())) {
     return { lat: null, lon: null };
   }

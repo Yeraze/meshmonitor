@@ -15,7 +15,8 @@ import { useSettings } from '../../contexts/SettingsContext';
 import { useSource } from '../../contexts/SourceContext';
 import { MeshCoreRemoteConsole } from './MeshCoreRemoteConsole';
 import { MeshCoreNotOnDeviceNotice } from './MeshCoreNotOnDeviceNotice';
-import type { AddContactToDeviceResponse, DiscoverPathStart, MeshCoreActions, TracePathResult, TracePathTimeout, ZeroHopPingResult } from './hooks/useMeshCore';
+import type { AddContactToDeviceResponse, DiscoverPathStart, MeshCoreActions, MeshCorePositionOverrideInput, TracePathResult, TracePathTimeout, ZeroHopPingResult } from './hooks/useMeshCore';
+import { PositionOverrideModal } from '../PositionOverrideModal';
 import styles from './MeshCoreContactDetailPanel.module.css';
 import api from '../../services/api';
 import '../NodeDetailsBlock.css';
@@ -82,6 +83,13 @@ interface MeshCoreContactDetailPanelProps {
    *  (#3588), including its #4840 best-effort device-flag push, so the
    *  list, map, and this panel's star all agree. Unset hides the star. */
   onToggleFavorite?: (publicKey: string, isFavorite: boolean) => Promise<boolean>;
+  /** Set or clear this contact's location override (#5842). MeshMonitor-only,
+   *  so it works on Companion and Repeater sources and while disconnected.
+   *  Unset hides the Override location button. */
+  onSetPositionOverride?: (publicKey: string, data: MeshCorePositionOverrideInput) => Promise<void>;
+  /** `nodes:write` on this source, the permission the Meshtastic override
+   *  route takes. Not tied to the connection, unlike `canWriteNodes`. */
+  canEditPositionOverride?: boolean;
   /** Whether the current user may invoke write actions on this source's
    *  `nodes` resource. Required to gate the Reset Path / Share / Edit
    *  buttons, and (issue #5507) the favorite star. */
@@ -167,6 +175,8 @@ export const MeshCoreContactDetailPanel: React.FC<MeshCoreContactDetailPanelProp
   publicKey,
   isFavorite = false,
   onToggleFavorite,
+  onSetPositionOverride,
+  canEditPositionOverride = false,
   onResetPath,
   onShareContact,
   onSetOutPath,
@@ -219,6 +229,8 @@ export const MeshCoreContactDetailPanel: React.FC<MeshCoreContactDetailPanelProp
   const [isCollapsed, setIsCollapsed] = useState<boolean>(() => {
     return localStorage.getItem(COLLAPSED_KEY) === 'true';
   });
+  // Location override modal (#5842).
+  const [overrideModalOpen, setOverrideModalOpen] = useState(false);
   // Favorite toggle state (#5507).
   const [favoriteBusy, setFavoriteBusy] = useState(false);
   const [favoriteError, setFavoriteError] = useState<string | null>(null);
@@ -386,6 +398,8 @@ export const MeshCoreContactDetailPanel: React.FC<MeshCoreContactDetailPanelProp
   // device-flag push it triggers server-side is already best-effort and
   // companion-only on its own (meshcoreManager.pushFavoriteToDevice).
   const canShowFavoriteButton = !!onToggleFavorite && canWriteNodes;
+  // #5842: MeshMonitor-only, so not companion-only and not tied to the link.
+  const canShowOverrideButton = !!onSetPositionOverride && canEditPositionOverride;
   const canShowResetButton =
     !!onResetPath && canWriteNodes && isCompanion;
   const canShowShareButton =
@@ -1309,6 +1323,14 @@ export const MeshCoreContactDetailPanel: React.FC<MeshCoreContactDetailPanelProp
               <div className="node-detail-value">
                 {`${latitude!.toFixed(5)}, ${longitude!.toFixed(5)}`}
               </div>
+              {contact?.positionIsOverride && (
+                <div className={styles.overrideNote}>
+                  <UiIcon name="location" size={12} />
+                  {contact.positionOverrideIsPrivate
+                    ? t('meshcore.contact_details.position_override_private', 'Location override (private)')
+                    : t('meshcore.contact_details.position_override_active', 'Location override')}
+                </div>
+              )}
               {/* #5363: the coords above are the mirror of what the node sent. */}
               {contact?.positionSignFlipCorrected
                 && contact.reportedLatitude != null
@@ -1318,6 +1340,25 @@ export const MeshCoreContactDetailPanel: React.FC<MeshCoreContactDetailPanelProp
                   reportedLongitude={contact.reportedLongitude}
                 />
               )}
+            </div>
+          )}
+
+          {/* Location override (#5842) */}
+          {canShowOverrideButton && (
+            <div className="node-detail-card">
+              <div className="node-detail-label">
+                {t('meshcore.contact_details.location_override', 'Location Override')}
+              </div>
+              <div className="node-detail-value">
+                <button
+                  type="button"
+                  className={styles.overrideButton}
+                  onClick={() => setOverrideModalOpen(true)}
+                >
+                  <UiIcon name="location" size={14} />
+                  {t('meshcore.contact_details.override_location', 'Override location')}
+                </button>
+              </div>
             </div>
           )}
 
@@ -1534,6 +1575,17 @@ export const MeshCoreContactDetailPanel: React.FC<MeshCoreContactDetailPanelProp
           actions={remoteAdminActions}
           receiveOnly={receiveOnly}
           notOnDevice={contact?.onDevice === false}
+        />
+      )}
+
+      {canShowOverrideButton && (
+        <PositionOverrideModal
+          protocol="meshcore"
+          isOpen={overrideModalOpen}
+          selectedNode={{ nodeNum: 0, user: { id: publicKey, longName: name } }}
+          onClose={() => setOverrideModalOpen(false)}
+          onSave={(_nodeNum, data) => onSetPositionOverride!(publicKey, data)}
+          getNodeName={() => name}
         />
       )}
     </div>

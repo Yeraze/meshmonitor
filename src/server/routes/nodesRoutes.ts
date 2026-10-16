@@ -36,6 +36,7 @@ import {
 } from '../utils/sourceScopedAccess.js';
 import { isMeshCoreManager, getPrimaryMeshtasticManager } from '../sourceManagerTypes.js';
 import { loadNodeViewAccess, enhanceNodeForClient, checkNodeChannelAccess, resolveNodePositionScope, attachUptimeToNodes } from '../utils/nodeEnhancer.js';
+import { applyMeshCorePositionOverrides, loadMeshCorePositionOverrides } from '../utils/meshcorePositionOverride.js';
 import { createSignFlipResolver, applySignFlipCorrection, rowSourceId } from '../services/signFlipCorrection.js';
 import { pivotPositionHistory } from '../utils/positionHistoryPivot.js';
 import { requireSourceId } from '../utils/requireSourceId.js';
@@ -180,7 +181,10 @@ router.get('/nodes', optionalAuth(), async (req, res) => {
       const canViewOnMap = access.permissions.can('nodes', 'viewOnMap', mgr.sourceId);
       if (!canRead && !canViewOnMap) continue;
       const mcSignFlipCtx = await signFlipFor(mgr.sourceId); // #5363
-      for (const n of await mgr.getAllNodes()) {
+      // #5842: an enabled location override wins over the advert position.
+      const mcOverrides = canViewOnMap ? await loadMeshCorePositionOverrides(mgr.sourceId) : new Map();
+      const mcRows = applyMeshCorePositionOverrides(await mgr.getAllNodes(), mcOverrides, access.canViewPrivate(mgr.sourceId));
+      for (const n of mcRows) {
         const hasPosition = canViewOnMap
           && n.latitude != null && n.longitude != null && !(n.latitude === 0 && n.longitude === 0);
         // A row with no position to show needs `nodes:read` AND the caller's
@@ -206,14 +210,16 @@ router.get('/nodes', optionalAuth(), async (req, res) => {
                 latitude: n.latitude,
                 longitude: n.longitude,
                 position: { latitude: n.latitude, longitude: n.longitude },
+                ...(n.positionIsOverride ? { positionIsOverride: true } : {}),
               }
             : {}),
           lastHeard,
           hopsAway: 0,
           role: 0,
           // #5578: latest-advert position flag for the map's hide toggle.
-          // Position data too, so it follows the same `viewOnMap` gate.
-          lastAdvertHadPosition: canViewOnMap ? n.lastAdvertHadPosition ?? null : null,
+          // Position data too, so it follows the same `viewOnMap` gate. An
+          // override (#5842) is a known location, so it reads as "has one".
+          lastAdvertHadPosition: canViewOnMap && !n.positionIsOverride ? n.lastAdvertHadPosition ?? null : null,
           positionSource: canViewOnMap ? n.positionSource ?? null : null,
         }, mcSignFlipCtx));
       }

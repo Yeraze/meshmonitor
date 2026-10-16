@@ -604,6 +604,8 @@ export const MeshCoreDirectMessagesView: React.FC<MeshCoreDirectMessagesViewProp
                 publicKey={selected}
                 isFavorite={favoriteByKey.get(selected) ?? false}
                 onToggleFavorite={actions.setNodeFavorite}
+                onSetPositionOverride={actions.setNodePositionOverride}
+                canEditPositionOverride={canWriteNodes}
                 onResetPath={actions.resetContactPath}
                 onShareContact={actions.shareContact}
                 onSetOutPath={actions.setContactOutPath}

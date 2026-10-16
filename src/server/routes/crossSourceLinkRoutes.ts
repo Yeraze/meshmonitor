@@ -33,7 +33,7 @@ import { logger } from '../../utils/logger.js';
 import { ok, fail } from '../utils/apiResponse.js';
 import { parseSourcesParam, resolvePermittedSourceIds } from '../utils/permittedSources.js';
 import { resolveLocalNodeNums } from '../utils/localNodeNums.js';
-import { maskTraceroutesByChannel } from '../utils/nodeEnhancer.js';
+import { maskTraceroutesByChannel, getEffectiveDbNodePosition } from '../utils/nodeEnhancer.js';
 import { getEnvironmentConfig } from '../config/environment.js';
 import { buildConfirmedLinks } from '../services/tracerouteConfirmedLinks.js';
 import { resolveCorrelationSourceIds } from '../services/crossSourceCorrelation.js';
@@ -177,8 +177,10 @@ router.get('/', async (req: Request, res: Response) => {
           const n = mcIndex.get(`${srcId}:${key}`);
           if (n && srcId === ownSource && (!mcFilter || !mcFilter({ sourceId: srcId, publicKey: key }))) return null;
           if (!n || !mcFilter || !mcFilter({ sourceId: srcId, publicKey: key })) continue;
-          if (n.latitude == null || n.longitude == null || (n.latitude === 0 && n.longitude === 0)) continue;
-          return { pos: [n.latitude, n.longitude], name: n.name ?? null };
+          // #5842: an enabled location override wins over the advert fix.
+          const eff = getEffectiveDbNodePosition(n);
+          if (eff.latitude == null || eff.longitude == null || (eff.latitude === 0 && eff.longitude === 0)) continue;
+          return { pos: [eff.latitude, eff.longitude], name: n.name ?? null };
         }
         const nodeNum = parseNodeNum(nodeId);
         if (nodeNum === null) return null;
