@@ -294,6 +294,67 @@ export function automationNavItems(t: Translate): NavItem[] {
   ];
 }
 
+/**
+ * Which optional sections the MeshCore Device Configuration page renders.
+ * Each flag is the exact mount condition the view uses, so a chip never
+ * points at a section that is not on the page.
+ */
+export interface MeshCoreConfigurationNavOptions {
+  /** Path hash size and default scope: companion firmware only. */
+  isCompanion?: boolean;
+  showChannels?: boolean;
+  showContactSync?: boolean;
+  showConsole?: boolean;
+  showObserver?: boolean;
+  showDangerZone?: boolean;
+}
+
+/**
+ * Sections of a MeshCore source's Device Configuration page.
+ *
+ * The id sits on a wrapper around the WHOLE section (header and body), not on
+ * the ConfigSection header, so the in-page filter hides a section entirely
+ * instead of leaving its body behind.
+ *
+ * Not in the cross-page palette: MeshCore sources render their own page
+ * (MeshCoreSourcePage), which does not mount the palette, and its views are
+ * picked from in-page state rather than a route a deep link could reach.
+ */
+export function meshcoreConfigurationNavItems(t: Translate, options: MeshCoreConfigurationNavOptions = {}): NavItem[] {
+  // `show` absent means the section is always on the page.
+  const items: Array<NavItem & { show?: boolean }> = [
+    { id: 'meshcore-config-name', label: t('meshcore.config.device_name', 'Device name'), keywords: ['identity', 'rename', 'advert'] },
+    { id: 'meshcore-config-location', label: t('meshcore.config.location', 'Location'), keywords: ['gps', 'position', 'coordinates', 'advert'] },
+    { id: 'meshcore-config-radio', label: t('meshcore.config.radio_params', 'Radio parameters'), keywords: ['lora', 'preset', 'frequency', 'bandwidth', 'spreading factor', 'coding rate', 'region'] },
+    { id: 'meshcore-config-tx-power', label: t('meshcore.config.tx_power', 'TX Power'), keywords: ['transmit', 'dbm', 'output'] },
+    { id: 'meshcore-config-telemetry', label: t('meshcore.config.telemetry', 'Telemetry'), keywords: ['battery', 'sensors', 'environment'] },
+    { id: 'meshcore-path-hash', label: t('meshcore.path_hash.title', 'Default path hash size'), keywords: ['path', 'hash', 'routing', 'bytes'], show: options.isCompanion === true },
+    { id: 'meshcore-default-scope', label: t('meshcore.scope.title', 'Default region / scope'), keywords: ['region', 'scope', 'flood'], show: options.isCompanion === true },
+    { id: 'meshcore-channels', label: t('meshcore.channels.title', 'Channels'), keywords: ['psk', 'secret', 'hashtag', 'slots'], show: options.showChannels === true },
+    { id: 'meshcore-contact-sync', label: t('meshcore.contact_sync.title', 'Radio contact list'), keywords: ['contacts', 'sync', 'auto add', 'favorites'], show: options.showContactSync === true },
+    { id: 'meshcore-device-actions', label: t('meshcore.settings.actions', 'Device actions'), keywords: ['advert', 'flood', 'zero hop', 'discover', 'clock', 'time'] },
+    { id: 'meshcore-local-console', label: t('meshcore.localConsole.title', 'Device console'), keywords: ['cli', 'terminal', 'commands', 'serial'], show: options.showConsole === true },
+    { id: 'meshcore-observer', label: t('meshcore.observer.title', 'Analyzer Observer'), keywords: ['mqtt', 'analyzer', 'broker', 'upload', 'keys'], show: options.showObserver === true },
+    // Last on the page, as on Meshtastic.
+    { id: 'meshcore-device-management', label: t('config.danger_zone', 'Danger zone'), keywords: ['reboot', 'restart', 'private key', 'backup', 'restore', 'identity'], show: options.showDangerZone === true },
+  ];
+  return items
+    .filter((item) => item.show !== false)
+    .map(({ id, label, keywords }) => ({ id, label, keywords }));
+}
+
+/** Sections of a MeshCore source's Automations page. */
+export function meshcoreAutomationNavItems(t: Translate): NavItem[] {
+  return [
+    { id: 'meshcore-automation-pathfinding', label: t('meshcore.automation.pathfinding.title', 'Auto-Pathfinding'), keywords: ['path discovery', 'neighbors', 'neighbours', 'repeaters', 'schedule', 'target filter'] },
+    { id: 'meshcore-automation-auto-ack', label: t('meshcore.automation.autoack.title', 'Auto-Acknowledge'), keywords: ['ack', 'reply', 'ping', 'test'] },
+    { id: 'meshcore-automation-auto-announce', label: t('meshcore.automation.announce.title', 'Auto-Announce'), keywords: ['broadcast', 'scheduled', 'advert', 'message'] },
+    { id: 'meshcore-automation-auto-responder', label: t('meshcore.automation.responder.title', 'Auto-Responder'), keywords: ['reply', 'bot', 'keyword', 'trigger'] },
+    { id: 'meshcore-automation-forwarding', label: t('forwarding.title', 'Forwarding'), keywords: ['forward', 'relay', 'bridge', 'copy'] },
+    { id: 'meshcore-automation-timer-triggers', label: t('meshcore.automation.timers.title', 'Timer Triggers'), keywords: ['schedule', 'cron', 'timed events'] },
+  ];
+}
+
 /** Sections of the per-source Notifications tab. */
 export function notificationsNavItems(t: Translate): NavItem[] {
   return [

@@ -914,12 +914,15 @@
   border-radius: var(--radius-xs);
 }
 
-/* Form view (Configuration / Settings) */
+/* Form view (Configuration / Settings). `--meshcore-pane-padding` is also
+   read by the sticky SectionNav (MeshCoreSectionNav.module.css) so it can
+   stick flush with the pane's top edge instead of one padding below it. */
 .meshcore-form-view {
+  --meshcore-pane-padding: 1.5rem;
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  padding: 1.5rem;
+  padding: var(--meshcore-pane-padding);
 }
 
 /* Notifications view: NotificationsTab supplies its own .tab-content with no
@@ -964,8 +967,12 @@
   margin-bottom: 0.25rem;
 }
 
-.meshcore-form-view input,
-.meshcore-form-view select {
+/* The form-control rules below skip the SectionNav (its chips and search box
+   keep their own look, as on the Meshtastic pages). `:where()` keeps the
+   exclusion at zero specificity, so every rule wins and loses exactly as
+   before. */
+.meshcore-form-view input:where(:not(.section-nav *)),
+.meshcore-form-view select:where(:not(.section-nav *)) {
   background: var(--color-surface-hover);
   border: 1px solid var(--color-surface-active);
   color: var(--color-text);
@@ -978,15 +985,15 @@
 
 /* The rule above is for text fields. A checkbox or radio keeps its natural
    size, or it stretches and pushes its label into a narrow column. */
-.meshcore-form-view input[type="checkbox"],
-.meshcore-form-view input[type="radio"] {
+.meshcore-form-view input[type="checkbox"]:where(:not(.section-nav *)),
+.meshcore-form-view input[type="radio"]:where(:not(.section-nav *)) {
   width: auto;
   max-width: none;
   padding: 0;
 }
 
-.meshcore-form-view input:focus,
-.meshcore-form-view select:focus {
+.meshcore-form-view input:focus:where(:not(.section-nav *)),
+.meshcore-form-view select:focus:where(:not(.section-nav *)) {
   outline: none;
   border-color: var(--color-accent-alt);
 }
@@ -1003,7 +1010,7 @@
   min-width: 140px;
 }
 
-.meshcore-form-view button {
+.meshcore-form-view button:where(:not(.section-nav *)) {
   background: var(--color-accent-alt);
   color: var(--color-accent-text);
   border: none;
@@ -1014,8 +1021,8 @@
   margin-top: 0.5rem;
 }
 
-.meshcore-form-view button:hover { background: color-mix(in srgb, var(--color-accent-alt) 85%, var(--color-text)); }
-.meshcore-form-view button:disabled {
+.meshcore-form-view button:hover:where(:not(.section-nav *)) { background: color-mix(in srgb, var(--color-accent-alt) 85%, var(--color-text)); }
+.meshcore-form-view button:disabled:where(:not(.section-nav *)) {
   background: var(--color-surface-active);
   color: var(--color-text-faint);
   cursor: not-allowed;
@@ -1697,7 +1704,7 @@
 
   /* --- Form views: tighter padding --- */
   .meshcore-form-view {
-    padding: 0.75rem;
+    --meshcore-pane-padding: 0.75rem;
   }
 
   .meshcore-form-view .form-section {
@@ -1709,8 +1716,8 @@
     font-size: 1.1rem;
   }
 
-  .meshcore-form-view input,
-  .meshcore-form-view select {
+  .meshcore-form-view input:where(:not(.section-nav *)),
+  .meshcore-form-view select:where(:not(.section-nav *)) {
     max-width: none;
   }
 

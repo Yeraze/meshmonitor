@@ -89,7 +89,8 @@ describe('MeshCore danger zone (#5830)', () => {
     const zone = document.getElementById('meshcore-device-management');
     expect(zone).toBeTruthy();
     const headers = container.querySelectorAll('.automation-section-header');
-    expect(headers[headers.length - 1]).toBe(zone);
+    // The id wraps the whole zone (header and body) for the section filter.
+    expect(zone!.contains(headers[headers.length - 1])).toBe(true);
   });
 
   it('reboot opens an in-app dialog and sends only on Confirm', async () => {

@@ -6,7 +6,7 @@
  * the tests query against.
  */
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import { DEVICE_CONFIGURATION_NAV_ENTRY } from '../nav/sourceNavEntries';
 
 // Auth: default to write-permitted; individual tests can override before
@@ -227,7 +227,9 @@ describe('MeshCoreConfigurationView section shell (#5818)', () => {
     const name = screen.getByLabelText('meshcore.config.name_label') as HTMLInputElement;
     fireEvent.change(name, { target: { value: 'draft' } });
 
-    const toggle = screen.getByRole('button', { name: 'meshcore.config.device_name' });
+    // Scoped to the section: the section nav has a chip with the same name.
+    const toggle = within(document.getElementById('meshcore-config-name')!)
+      .getByRole('button', { name: 'meshcore.config.device_name' });
     expect(toggle).toHaveAttribute('aria-expanded', 'true');
     fireEvent.click(toggle);
     expect(toggle).toHaveAttribute('aria-expanded', 'false');
