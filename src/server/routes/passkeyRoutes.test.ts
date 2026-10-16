@@ -382,7 +382,7 @@ describe('passkeyRoutes', () => {
       expect(mockVerifyAuth).not.toHaveBeenCalled();
     });
 
-    it('rejects a user handle that names another user', async () => {
+    it('signs in the credential owner even when the user handle names another user', async () => {
       const { credentialId } = await seedPasskey(harness.limited.id);
       const agent = await harness.loginAs(null);
       await agent.post('/api/auth/passkey/login/options').send({});
@@ -391,7 +391,18 @@ describe('passkeyRoutes', () => {
       const res = await agent
         .post('/api/auth/passkey/login/verify')
         .send(assertion(credentialId, { userHandle: wrongHandle }));
+      expect(res.status).toBe(200);
+      const session = await agent.get('/__test__/session');
+      expect(session.body.userId).toBe(harness.limited.id);
+      expect(session.body.isAdmin).not.toBe(true);
+    });
+
+    it('treats a missing response as a failed login', async () => {
+      const agent = await harness.loginAs(null);
+      await agent.post('/api/auth/passkey/login/options').send({});
+      const res = await agent.post('/api/auth/passkey/login/verify').send({});
       expect(res.status).toBe(401);
+      expect(res.body.code).toBe('PASSKEY_LOGIN_FAILED');
     });
 
     it('refuses both login routes when DISABLE_LOCAL_AUTH is set', async () => {

@@ -214,10 +214,8 @@ router.post('/register/verify', requireAuth(), requireSessionUser, async (req: R
       return fail(res, 400, 'INVALID_NICKNAME', nickname.message);
     }
 
-    const response = req.body?.response as RegistrationResponseJSON | undefined;
-    if (!response || typeof response !== 'object' || typeof response.id !== 'string') {
-      return fail(res, 400, 'INVALID_REQUEST', 'A passkey response is required');
-    }
+    // A missing or malformed response fails inside verifyRegistrationResponse.
+    const response = (req.body?.response ?? {}) as RegistrationResponseJSON;
 
     let verification;
     try {
@@ -311,17 +309,17 @@ router.post('/login/verify', authLimiter, async (req: Request, res: Response) =>
       return fail(res, 400, 'PASSKEY_CHALLENGE_EXPIRED', 'The passkey request expired. Please try again.');
     }
 
-    const response = req.body?.response as AuthenticationResponseJSON | undefined;
-    if (!response || typeof response !== 'object' || typeof response.id !== 'string') {
-      return fail(res, 400, 'INVALID_REQUEST', 'A passkey response is required');
-    }
+    // A missing or malformed response finds no credential, or fails inside
+    // verifyAuthenticationResponse; both end as a failed login.
+    const response = (req.body?.response ?? {}) as AuthenticationResponseJSON;
+    const credentialId = String(response.id ?? '');
 
     const loginFailed = (userId: number | null, reason: string) => {
       audit(userId, 'login_failed', { method: 'passkey', reason }, req);
       return fail(res, 401, 'PASSKEY_LOGIN_FAILED', LOGIN_FAILED_MESSAGE);
     };
 
-    const passkey = await databaseService.getPasskeyByCredentialIdAsync(response.id);
+    const passkey = await databaseService.getPasskeyByCredentialIdAsync(credentialId);
     if (!passkey) return loginFailed(null, 'unknown_credential');
 
     const user = await databaseService.findUserByIdAsync(passkey.userId) as User | null;
@@ -329,12 +327,8 @@ router.post('/login/verify', authLimiter, async (req: Request, res: Response) =>
     if (!user.isActive) return loginFailed(user.id, 'inactive');
     if (user.authProvider !== 'local') return loginFailed(user.id, 'not_local');
 
-    // A discoverable passkey reports the user handle it was made with; it
-    // must name the user the credential row belongs to.
-    const userHandle = response.response?.userHandle;
-    if (userHandle && userHandle !== isoBase64URL.fromUTF8String(userHandleText(user.id))) {
-      return loginFailed(user.id, 'user_handle_mismatch');
-    }
+    // The account comes from the stored credential row, never from the
+    // response: the user handle is unsigned, so it is not consulted.
 
     let verification;
     try {
