@@ -23,6 +23,7 @@ describe('ChangePasswordModal', () => {
     expect(screen.getByText('change_password.forced_title')).toBeInTheDocument();
     expect(screen.queryByLabelText('change_password.current_password')).toBeNull();
     expect(screen.queryByText('common.cancel')).toBeNull();
+    expect(screen.queryByLabelText('Close dialog')).toBeNull();
 
     fireEvent.keyDown(document, { key: 'Escape' });
     fireEvent.click(screen.getByRole('presentation'));
@@ -40,6 +41,7 @@ describe('ChangePasswordModal', () => {
     const onClose = vi.fn();
     render(<ChangePasswordModal isOpen onClose={onClose} />);
     expect(screen.getByLabelText('change_password.current_password')).toBeInTheDocument();
+    expect(screen.getByLabelText('Close dialog')).toBeInTheDocument();
     fireEvent.click(screen.getByText('common.cancel'));
     expect(onClose).toHaveBeenCalled();
   });

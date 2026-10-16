@@ -56,6 +56,7 @@ const RecoveryCodesDialog: React.FC<RecoveryCodesDialogProps> = ({ codes, userna
       title={t('passkey_only.codes_title')}
       closeOnOverlayClick={false}
       closeOnEsc={saved}
+      showCloseButton={saved}
     >
       <div className={styles.section}>
         <p className={styles.description}>{t('passkey_only.codes_intro')}</p>

@@ -99,6 +99,7 @@ const ChangePasswordModal: React.FC<ChangePasswordModalProps> = ({ isOpen, onClo
       title={forced ? t('change_password.forced_title') : t('change_password.title')}
       closeOnOverlayClick={!forced}
       closeOnEsc={!forced}
+      showCloseButton={!forced}
     >
       <form onSubmit={handleSubmit}>
         {forced ? (

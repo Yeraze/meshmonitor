@@ -135,9 +135,12 @@ describe('RecoveryCodesDialog', () => {
     fireEvent.click(screen.getByRole('presentation'));
     expect(onClose).not.toHaveBeenCalled();
     expect(screen.getByText('AAAA1111')).toBeInTheDocument();
+    // No header close button until the codes are saved.
+    expect(screen.queryByLabelText('Close dialog')).toBeNull();
 
     fireEvent.click(screen.getByRole('checkbox'));
     expect(done).toBeEnabled();
+    expect(screen.getByLabelText('Close dialog')).toBeInTheDocument();
     fireEvent.click(done);
     expect(onClose).toHaveBeenCalledTimes(1);
   });
