@@ -27,7 +27,12 @@ function formatTime(ms: number | null, never: string): string {
   return ms ? new Date(ms).toLocaleString() : never;
 }
 
-const PasskeyManagement: React.FC = () => {
+interface PasskeyManagementProps {
+  /** False when a surrounding dialog already shows the "Passkeys" title. */
+  showHeading?: boolean;
+}
+
+const PasskeyManagement: React.FC<PasskeyManagementProps> = ({ showHeading = true }) => {
   const { t } = useTranslation();
   const { showToast } = useToast();
   const supported = passkeysSupported();
@@ -105,11 +110,17 @@ const PasskeyManagement: React.FC = () => {
   };
 
   return (
-    <section className={styles.section} aria-labelledby="passkey-heading">
-      <h3 id="passkey-heading" className={styles.heading}>
-        <UiIcon name="key" size={18} />
-        {t('passkey.title')}
-      </h3>
+    <section
+      className={styles.section}
+      aria-labelledby={showHeading ? 'passkey-heading' : undefined}
+      aria-label={showHeading ? undefined : t('passkey.title')}
+    >
+      {showHeading && (
+        <h3 id="passkey-heading" className={styles.heading}>
+          <UiIcon name="key" size={18} />
+          {t('passkey.title')}
+        </h3>
+      )}
       <p className={styles.description}>{t('passkey.description')}</p>
 
       {!supported && <p className={styles.unsupported}>{t('passkey.unsupported')}</p>}

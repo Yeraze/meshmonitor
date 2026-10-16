@@ -135,4 +135,14 @@ describe('PasskeyManagement', () => {
     expect(await screen.findByText('Laptop')).toBeInTheDocument();
     expect(screen.queryByText('passkey.add')).toBeNull();
   });
+
+  it('leaves the heading to the surrounding dialog when showHeading is false', async () => {
+    client.listPasskeys.mockResolvedValue([]);
+    const { container } = render(<PasskeyManagement showHeading={false} />);
+    await waitFor(() => expect(client.listPasskeys).toHaveBeenCalled());
+    const section = container.querySelector('section');
+    expect(section?.getAttribute('aria-label')).toBeTruthy();
+    expect(section?.hasAttribute('aria-labelledby')).toBe(false);
+    expect(container.querySelector('h3')).toBeNull();
+  });
 });

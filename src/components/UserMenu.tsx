@@ -197,7 +197,7 @@ const UserMenu: React.FC<UserMenuProps> = ({ onLogout }) => {
               </button>
             </div>
             <div className="modal-body">
-              <PasskeyManagement />
+              <PasskeyManagement showHeading={false} />
             </div>
           </div>
         </div>
