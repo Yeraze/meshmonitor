@@ -1,0 +1,9 @@
+/* Passkey sign-in button (#5841). Scoped module — see CLAUDE.md. */
+
+.button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  width: 100%;
+}

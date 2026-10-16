@@ -21,26 +21,9 @@ import { logger } from '../../utils/logger.js';
 import { getEnvironmentConfig } from '../config/environment.js';
 import { notifyAccessChange } from '../../db/accessChanges.js';
 import { stripUserSecrets } from '../utils/userSecrets.js';
+import { regenerateSession } from '../auth/regenerateSession.js';
 
 const router = Router();
-
-function regenerateSession(req: Request): Promise<void> {
-  // Preserve CSRF token across session regeneration so the frontend's
-  // cached token remains valid after login (session regeneration creates
-  // a new session ID but should not invalidate the CSRF token)
-  const csrfToken = req.session.csrfToken;
-  return new Promise((resolve, reject) => {
-    req.session.regenerate((err) => {
-      if (err) reject(err);
-      else {
-        if (csrfToken) {
-          req.session.csrfToken = csrfToken;
-        }
-        resolve();
-      }
-    });
-  });
-}
 
 // Get authentication status
 router.get('/status', async (req: Request, res: Response) => {

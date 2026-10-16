@@ -719,6 +719,7 @@ const apiRouter = express.Router();
 
 // Import route handlers
 import authRoutes from './routes/authRoutes.js';
+import passkeyRoutes from './routes/passkeyRoutes.js';
 import automationRoutes from './routes/automationRoutes.js';
 import autoAckConverterRoutes from './routes/autoAckConverterRoutes.js';
 import { MC_REACTION_FORMAT_VERSION } from '../utils/meshcoreReactions.js';
@@ -843,6 +844,8 @@ if (!env.isProduction) {
 }
 
 // Authentication routes
+// Passkeys (#5841) mount first so '/auth' never sees '/auth/passkey/*'.
+apiRouter.use('/auth/passkey', passkeyRoutes);
 apiRouter.use('/auth', authRoutes);
 
 // API Token management routes (requires auth)
