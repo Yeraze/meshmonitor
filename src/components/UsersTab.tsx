@@ -15,6 +15,7 @@ import { logger } from '../utils/logger';
 import type { PermissionSet, ResourceType } from '../types/permission';
 import { RESOURCES, SOURCEY_RESOURCES } from '../types/permission';
 import { useToast } from './ToastContainer';
+import AdminPasskeysDialog from './AdminPasskeysDialog';
 import { isAnyMeshCoreSourceType } from '../utils/nodeTypeCategory';
 
 interface Source {
@@ -34,6 +35,10 @@ interface User {
   passwordLocked: boolean;
   createdAt: number;
   lastLoginAt: number | null;
+  /** Passkey-only account (#5841). */
+  passwordLoginDisabled?: boolean;
+  /** How many passkeys the user has (#5841). */
+  passkeyCount?: number;
 }
 
 interface ChannelDatabaseEntry {
@@ -85,6 +90,7 @@ const UsersTab: React.FC = () => {
   const [permissions, setPermissions] = useState<PermissionSet>({});
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showSetPasswordModal, setShowSetPasswordModal] = useState(false);
+  const [showPasskeysDialog, setShowPasskeysDialog] = useState(false);
   const [showDeactivateConfirm, setShowDeactivateConfirm] = useState(false);
   const [userToDeactivate, setUserToDeactivate] = useState<User | null>(null);
   const [showPermanentDeleteConfirm, setShowPermanentDeleteConfirm] = useState(false);
@@ -376,6 +382,11 @@ const UsersTab: React.FC = () => {
       await api.post(`/api/users/${selectedUser.id}/set-password`, {
         newPassword: passwordForm.newPassword
       });
+
+      // An admin-set password turns password sign-in back on (#5841).
+      const resetId = selectedUser.id;
+      setSelectedUser({ ...selectedUser, passwordLoginDisabled: false });
+      setUsers(prev => prev.map(u => (u.id === resetId ? { ...u, passwordLoginDisabled: false } : u)));
 
       // Reset form and close modal
       setPasswordForm({ newPassword: '', confirmPassword: '' });
@@ -708,6 +719,7 @@ const UsersTab: React.FC = () => {
                 </div>
                 <div className="user-item-meta">
                   @{user.username} • {user.authProvider.toUpperCase()}
+                  {(user.passkeyCount ?? 0) > 0 && ` • ${t('passkey_admin.count', { count: user.passkeyCount })}`}
                 </div>
               </div>
               {!user.isActive && <span className="inactive-badge">{t('users.inactive')}</span>}
@@ -771,6 +783,15 @@ const UsersTab: React.FC = () => {
                   </div>
                 </div>
               )}
+              {selectedUser.authProvider === 'local' && (
+                <div className="info-item">
+                  <label>{t('passkey_admin.label')}</label>
+                  <div>
+                    {t('passkey_admin.count', { count: selectedUser.passkeyCount ?? 0 })}
+                    {selectedUser.passwordLoginDisabled && ` • ${t('passkey_admin.password_off_short')}`}
+                  </div>
+                </div>
+              )}
             </div>
 
             <div className="user-actions">
@@ -789,6 +810,14 @@ const UsersTab: React.FC = () => {
                   title={selectedUser.passwordLocked ? t('users.password_locked_hint') : ''}
                 >
                   {t('users.set_password')}
+                </button>
+              )}
+              {selectedUser.authProvider === 'local' && (
+                <button
+                  className="button button-secondary"
+                  onClick={() => setShowPasskeysDialog(true)}
+                >
+                  {t('passkey_admin.open')}
                 </button>
               )}
               <button
@@ -1332,6 +1361,19 @@ const UsersTab: React.FC = () => {
       )}
 
       {/* Set Password Modal */}
+      {showPasskeysDialog && selectedUser && (
+        <AdminPasskeysDialog
+          userId={selectedUser.id}
+          username={selectedUser.username}
+          onClose={() => setShowPasskeysDialog(false)}
+          onChanged={(passkeyCount) => {
+            const changedId = selectedUser.id;
+            setSelectedUser({ ...selectedUser, passkeyCount });
+            setUsers(prev => prev.map(u => (u.id === changedId ? { ...u, passkeyCount } : u)));
+          }}
+        />
+      )}
+
       {showSetPasswordModal && selectedUser && (
         <div className="modal-overlay" onClick={handleCloseSetPasswordModal}>
           <div className="modal-content" onClick={(e) => e.stopPropagation()}>

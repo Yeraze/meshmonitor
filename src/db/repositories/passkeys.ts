@@ -217,6 +217,20 @@ export class PasskeysRepository extends BaseRepository {
     return Number(rows[0]?.n ?? 0);
   }
 
+  /** Passkey count per user id, for the admin Users tab. Users with none are absent. */
+  async countAllByUser(): Promise<Map<number, number>> {
+    const t = this.tables.userPasskeys;
+    const rows = await this.db
+      .select({ userId: t.userId, n: count() })
+      .from(t)
+      .groupBy(t.userId);
+    const counts = new Map<number, number>();
+    for (const r of rows as Array<{ userId: unknown; n: unknown }>) {
+      counts.set(Number(r.userId), Number(r.n));
+    }
+    return counts;
+  }
+
   private async ownedBy(userId: number, id: number): Promise<boolean> {
     const t = this.tables.userPasskeys;
     const rows = await this.db

@@ -24,6 +24,12 @@ vi.mock('../services/passkeyClient', () => ({
   renamePasskey: client.renamePasskey,
   registerPasskey: client.registerPasskey,
   isPasskeyCancel: (err: { name?: string }) => err?.name === 'NotAllowedError',
+  // The passkey-only switch below the list (PR 3); PasswordLoginControl.test.tsx covers it.
+  LAST_ADMIN_CONFIRM: 'DISABLE',
+  getPasswordLoginState: vi.fn().mockResolvedValue({ disabled: false, recoveryCodesLeft: 0 }),
+  runStepUp: vi.fn(),
+  turnOffPasswordLogin: vi.fn(),
+  turnOnPasswordLogin: vi.fn(),
 }));
 
 const showToast = vi.fn();

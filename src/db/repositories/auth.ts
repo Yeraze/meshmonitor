@@ -322,7 +322,7 @@ export class AuthRepository extends BaseRepository {
    * The passkey-only switch and the stored recovery-code hashes for one user,
    * or null when the user does not exist.
    */
-  async getPasskeyLoginState(
+  async getPasskeyOnlyState(
     userId: number,
   ): Promise<{ passwordLoginDisabled: boolean; passkeyRecoveryCodes: string | null } | null> {
     const { users } = this.tables;
@@ -343,13 +343,35 @@ export class AuthRepository extends BaseRepository {
   }
 
   /** Turn password login off (true) or back on (false) for one user. */
-  async setPasswordLoginDisabled(userId: number, disabled: boolean): Promise<void> {
+  async setPasskeyOnly(userId: number, disabled: boolean): Promise<void> {
     await this.updateUser(userId, { passwordLoginDisabled: disabled });
   }
 
   /** Store the recovery-code hashes (JSON array) for one user, or clear them with null. */
   async setPasskeyRecoveryCodes(userId: number, codes: string | null): Promise<void> {
     await this.updateUser(userId, { passkeyRecoveryCodes: codes });
+  }
+
+  /** Turn password login back on and drop the recovery codes, in one write. */
+  async clearPasskeyOnly(userId: number): Promise<void> {
+    await this.updateUser(userId, { passwordLoginDisabled: false, passkeyRecoveryCodes: null });
+  }
+
+  /**
+   * Spend a recovery code: turn password login back on and clear the codes,
+   * but only while the stored codes are still `expectedCodes`. Two requests
+   * racing with the same code both match the old list; only the first write
+   * wins, so a code works once. False when another write got there first.
+   */
+  async consumePasskeyRecovery(userId: number, expectedCodes: string): Promise<boolean> {
+    const { users } = this.tables;
+    const set: Record<string, unknown> = { passwordLoginDisabled: false, passkeyRecoveryCodes: null };
+    if (!this.isSQLite()) set.updatedAt = Date.now();
+    const result = await this.db
+      .update(users)
+      .set(set)
+      .where(and(eq(users.id, userId), eq(users.passkeyRecoveryCodes, expectedCodes)));
+    return this.getAffectedRows(result) > 0;
   }
 
   /**

@@ -21,11 +21,18 @@ router.use(requireAdmin());
 router.get('/', async (_req: Request, res: Response) => {
   try {
     const users = await databaseService.auth.getAllUsers();
+    // Passkeys per user for the admin list (#5841). One grouped query.
+    const passkeyCounts = await databaseService.countPasskeysByUserAsync();
 
     // Remove sensitive fields and normalize field names (authMethod -> authProvider for frontend)
     const usersWithoutPasswords = users.map((dbUser) => {
       const { authMethod, ...user } = stripUserSecrets(dbUser);
-      return { ...user, authProvider: authMethod || 'local' };
+      return {
+        ...user,
+        authProvider: authMethod || 'local',
+        passwordLoginDisabled: Boolean(dbUser.passwordLoginDisabled),
+        passkeyCount: passkeyCounts.get(dbUser.id) ?? 0,
+      };
     });
 
     return res.json({ users: usersWithoutPasswords });

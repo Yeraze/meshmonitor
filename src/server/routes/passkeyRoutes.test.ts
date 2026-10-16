@@ -577,7 +577,7 @@ describe('passkeyRoutes', () => {
 
     it('refuses to delete the last passkey of a passkey-only account', async () => {
       const { id } = await seedPasskey(harness.limited.id);
-      await harness.db.setPasswordLoginDisabledAsync(harness.limited.id, true);
+      await harness.db.setPasskeyOnlyAsync(harness.limited.id, true);
       const agent = await harness.loginAs(harness.limited);
       const res = await agent.delete(`/api/auth/passkey/${id}`);
       expect(res.status).toBe(409);
@@ -588,7 +588,7 @@ describe('passkeyRoutes', () => {
     it('allows deleting one of two passkeys on a passkey-only account', async () => {
       const { id } = await seedPasskey(harness.limited.id);
       await seedPasskey(harness.limited.id);
-      await harness.db.setPasswordLoginDisabledAsync(harness.limited.id, true);
+      await harness.db.setPasskeyOnlyAsync(harness.limited.id, true);
       const agent = await harness.loginAs(harness.limited);
       const res = await agent.delete(`/api/auth/passkey/${id}`);
       expect(res.status).toBe(200);

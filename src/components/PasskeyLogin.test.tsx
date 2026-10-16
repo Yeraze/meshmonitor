@@ -5,12 +5,13 @@
  * secure context or WebAuthn, shown and wired up with both.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import LoginModal from './LoginModal';
 import LoginPage from './LoginPage';
 
 const auth = vi.hoisted(() => ({
   loginWithPasskey: vi.fn(),
+  recoverWithCode: vi.fn(),
   login: vi.fn(),
   verifyMfa: vi.fn(),
   loginWithOIDC: vi.fn(),
@@ -23,6 +24,7 @@ vi.mock('../contexts/AuthContext', () => ({
     verifyMfa: auth.verifyMfa,
     loginWithOIDC: auth.loginWithOIDC,
     loginWithPasskey: auth.loginWithPasskey,
+    recoverWithCode: auth.recoverWithCode,
     authStatus: {
       authenticated: false,
       user: null,
@@ -126,5 +128,48 @@ describe('passkey sign-in button', () => {
     setBrowser({ secure: false, webauthn: true });
     render(<LoginPage />);
     expect(screen.queryByText(BUTTON)).toBeNull();
+  });
+});
+
+describe('recovery-code link (#5841 PR 3)', () => {
+  const LINK = 'passkey_only.lost_passkey';
+
+  beforeEach(() => {
+    auth.recoverWithCode.mockReset().mockResolvedValue(undefined);
+    auth.localAuthDisabled = false;
+    setBrowser({ secure: true, webauthn: true });
+  });
+  afterEach(restoreBrowser);
+
+  it('opens a small form and signs in with a code', async () => {
+    render(<LoginModal isOpen onClose={() => {}} />);
+    fireEvent.click(screen.getByText(LINK));
+    const form = screen.getByRole('form', { name: 'passkey_only.recover_title' });
+    fireEvent.change(within(form).getByLabelText('auth.username'), { target: { value: '  alice ' } });
+    fireEvent.change(within(form).getByLabelText('passkey_only.recovery_code'), { target: { value: ' abcd1234 ' } });
+    fireEvent.click(within(form).getByText('passkey_only.recover_submit'));
+    await waitFor(() => expect(auth.recoverWithCode).toHaveBeenCalledWith('alice', 'abcd1234'));
+  });
+
+  it('shows one generic error when the code does not work', async () => {
+    auth.recoverWithCode.mockRejectedValueOnce(new Error('401'));
+    render(<LoginPage />);
+    fireEvent.click(screen.getByText(LINK));
+    const form = screen.getByRole('form', { name: 'passkey_only.recover_title' });
+    fireEvent.change(within(form).getByLabelText('auth.username'), { target: { value: 'alice' } });
+    fireEvent.change(within(form).getByLabelText('passkey_only.recovery_code'), { target: { value: 'WRONG' } });
+    fireEvent.click(within(form).getByText('passkey_only.recover_submit'));
+    expect(await screen.findByText('passkey_only.recover_failed')).toBeInTheDocument();
+  });
+
+  it('shows without WebAuthn too (codes need no passkey), but not when local auth is off', () => {
+    setBrowser({ secure: false, webauthn: false });
+    const { unmount } = render(<LoginModal isOpen onClose={() => {}} />);
+    expect(screen.getByText(LINK)).toBeInTheDocument();
+    unmount();
+
+    auth.localAuthDisabled = true;
+    render(<LoginModal isOpen onClose={() => {}} />);
+    expect(screen.queryByText(LINK)).toBeNull();
   });
 });

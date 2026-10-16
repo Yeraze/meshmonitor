@@ -14,9 +14,14 @@ import { PasswordField } from './shared/config/PasswordField';
 interface ChangePasswordModalProps {
   isOpen: boolean;
   onClose: () => void;
+  /**
+   * The user signed in with a passkey recovery code (#5841) and must choose a
+   * new password: no current-password field, and no way to dismiss it.
+   */
+  forced?: boolean;
 }
 
-const ChangePasswordModal: React.FC<ChangePasswordModalProps> = ({ isOpen, onClose }) => {
+const ChangePasswordModal: React.FC<ChangePasswordModalProps> = ({ isOpen, onClose, forced = false }) => {
   const { t } = useTranslation();
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
@@ -31,7 +36,7 @@ const ChangePasswordModal: React.FC<ChangePasswordModalProps> = ({ isOpen, onClo
     setSuccess(false);
 
     // Validation
-    if (!currentPassword || !newPassword || !confirmPassword) {
+    if ((!forced && !currentPassword) || !newPassword || !confirmPassword) {
       setError(t('change_password.all_fields_required'));
       return;
     }
@@ -46,7 +51,7 @@ const ChangePasswordModal: React.FC<ChangePasswordModalProps> = ({ isOpen, onClo
       return;
     }
 
-    if (currentPassword === newPassword) {
+    if (!forced && currentPassword === newPassword) {
       setError(t('change_password.must_be_different'));
       return;
     }
@@ -54,7 +59,7 @@ const ChangePasswordModal: React.FC<ChangePasswordModalProps> = ({ isOpen, onClo
     setLoading(true);
 
     try {
-      await api.post('/api/auth/change-password', {
+      await api.post('/api/auth/change-password', forced ? { newPassword } : {
         currentPassword,
         newPassword
       });
@@ -78,6 +83,7 @@ const ChangePasswordModal: React.FC<ChangePasswordModalProps> = ({ isOpen, onClo
   };
 
   const handleClose = () => {
+    if (forced && !success) return;
     setCurrentPassword('');
     setNewPassword('');
     setConfirmPassword('');
@@ -87,19 +93,30 @@ const ChangePasswordModal: React.FC<ChangePasswordModalProps> = ({ isOpen, onClo
   };
 
   return (
-    <Modal isOpen={isOpen} onClose={handleClose} title={t('change_password.title')}>
+    <Modal
+      isOpen={isOpen}
+      onClose={handleClose}
+      title={forced ? t('change_password.forced_title') : t('change_password.title')}
+      closeOnOverlayClick={!forced}
+      closeOnEsc={!forced}
+      showCloseButton={!forced}
+    >
       <form onSubmit={handleSubmit}>
-        <div className="form-group">
-          <label htmlFor="current-password">{t('change_password.current_password')}</label>
-          <PasswordField
-            id="current-password"
-            value={currentPassword}
-            onChange={(e) => setCurrentPassword(e.target.value)}
-            disabled={loading || success}
-            required
-            autoComplete="current-password"
-          />
-        </div>
+        {forced ? (
+          <p className="form-hint">{t('change_password.forced_intro')}</p>
+        ) : (
+          <div className="form-group">
+            <label htmlFor="current-password">{t('change_password.current_password')}</label>
+            <PasswordField
+              id="current-password"
+              value={currentPassword}
+              onChange={(e) => setCurrentPassword(e.target.value)}
+              disabled={loading || success}
+              required
+              autoComplete="current-password"
+            />
+          </div>
+        )}
 
         <div className="form-group">
           <label htmlFor="new-password">{t('change_password.new_password')}</label>
@@ -141,18 +158,20 @@ const ChangePasswordModal: React.FC<ChangePasswordModalProps> = ({ isOpen, onClo
         )}
 
         <div className="modal-actions">
-          <button
-            type="button"
-            className="button button-secondary"
-            onClick={handleClose}
-            disabled={loading}
-          >
-            {t('common.cancel')}
-          </button>
+          {!forced && (
+            <button
+              type="button"
+              className="button button-secondary"
+              onClick={handleClose}
+              disabled={loading}
+            >
+              {t('common.cancel')}
+            </button>
+          )}
           <button
             type="submit"
             className="button button-primary"
-            disabled={loading || success || !currentPassword || !newPassword || !confirmPassword}
+            disabled={loading || success || (!forced && !currentPassword) || !newPassword || !confirmPassword}
           >
             {loading ? t('change_password.changing') : t('change_password.title')}
           </button>
