@@ -1,6 +1,6 @@
 # Passkey login — spec (#5841)
 
-Status: **draft for maintainer review**. No code until this is approved.
+Status: **approved** (open questions answered 2026-10-15, §12).
 
 ## 1. Decisions already made (interview, 2026-10-15)
 
@@ -10,6 +10,10 @@ Status: **draft for maintainer review**. No code until this is approved.
 | D2 | Passkey-only recovery = **one-time recovery codes**, shown when password login is turned off. |
 | D3 | The last admin **may** turn off their own password, after a warning and typed confirmation. |
 | D4 | **Local-auth users only.** OIDC and proxy-auth users cannot register passkeys. |
+| D5 | Passkey login **skips TOTP** (Q1). |
+| D6 | Turning off password login needs a **fresh passkey prompt** in that dialog (Q2). |
+| D7 | `WEBAUTHN_RP_ID` / `WEBAUTHN_ORIGINS` are **optional**; derive from the request when unset (Q3). |
+| D8 | Ship as **four PRs**, merged in order as each goes green; deploy to dev after the last. |
 
 ## 2. What exists today
 
@@ -72,7 +76,8 @@ All use `ok()` / `fail()`. Challenges live in the session (`req.session.webauthn
 | `GET /` | requireAuth | List the caller's passkeys (no key material). |
 | `PATCH /:id` | requireAuth, owner | Rename. |
 | `DELETE /:id` | requireAuth, owner | Delete. **Refused** if it is the last passkey while `password_login_disabled` is true (would lock the user out). |
-| `POST /password-login` | requireAuth, owner | Body `{ disabled: boolean, confirm?: string }`. See §8. |
+| `POST /step-up/options` | requireAuth, owner | Authentication options limited to the caller's own credentials (`allowCredentials`), for the D6 step-up. |
+| `POST /password-login` | requireAuth, owner | Body `{ disabled: boolean, assertion?, confirm?: string }`. See §8. |
 | `POST /recover` | none, `authLimiter` | Body `{ username, code }`. See §8. |
 | `GET /admin/users/:userId` · `DELETE /admin/users/:userId/:id` | admin | D1 admin view/revoke; audit `passkey_revoked_by_admin`. |
 
@@ -80,7 +85,7 @@ Every route that ends a session or changes credentials calls `notifyAccessChange
 
 ## 7. Security rules
 
-- **TOTP and passkeys:** a passkey login **does not** ask for the TOTP code. A passkey with user verification is already two factors (device + biometric/PIN). Password login keeps asking for TOTP as today. *(Open question Q1.)*
+- **TOTP and passkeys (D5):** a passkey login **does not** ask for the TOTP code. A passkey with user verification is already two factors (device + biometric/PIN). Password login keeps asking for TOTP as today.
 - **Counter:** reject an authentication whose counter is non-zero and not greater than the stored one (cloned authenticator). Synced passkeys report 0 forever; 0 is accepted.
 - **Rate limiting:** `/login/*` and `/recover` share `authLimiter` with password login.
 - **Audit:** register, rename, delete, admin revoke, password-login on/off, recovery-code use, and failed passkey verifications (`login_failed`, `method: 'passkey'`).
@@ -90,7 +95,7 @@ Every route that ends a session or changes credentials calls `notifyAccessChange
 
 **Turning password login off** (`POST /password-login { disabled: true }`):
 
-1. Requires at least one registered passkey **and** a passkey login in this session within the last 10 minutes (stops someone at an unlocked, password-logged-in browser from doing it).
+1. Requires at least one registered passkey **and** a fresh passkey assertion made in that dialog (D6). The client calls `POST /step-up/options`, the browser prompts for a passkey, and the assertion goes in the request body as `assertion`. The server verifies that it belongs to the caller and uses a single-use challenge. This stops someone at an unlocked browser that is signed in with a password, and proves the passkey works before the password goes.
 2. Generates 10 recovery codes with `mfaService.generateBackupCodes()`, stores bcrypt hashes in `passkey_recovery_codes`, returns the plain codes **once**. The UI makes the user tick "I saved these" before closing.
 3. **Last admin (D3):** if the caller is the only active admin, the response first returns `requireConfirm: true`; the client shows a warning and the user types `DISABLE` to resend with `confirm: 'DISABLE'`. Allowed, not blocked.
 
@@ -118,15 +123,15 @@ Every route that ends a session or changes credentials calls `notifyAccessChange
 
 None. No packets, notifications or timers.
 
-## 12. Open questions for the maintainer
+## 12. Answered questions
 
-- **Q1.** Skip TOTP on passkey login (recommended, §7), or ask for it anyway?
-- **Q2.** Is the 10-minute "recent passkey login" requirement before turning password login off acceptable, or too strict?
-- **Q3.** Ship `WEBAUTHN_RP_ID` / `WEBAUTHN_ORIGINS` as optional (derive from request when unset, recommended), or require them for passkeys to appear at all?
+- **Q1.** Skip TOTP on passkey login → **yes** (D5).
+- **Q2.** Guard on turning off password login → **a fresh passkey prompt in the dialog**, not a recent-login window (D6).
+- **Q3.** RP ID config → **optional env, derive from the request when unset** (D7).
 
 ## 13. Delivery
 
-One PR is too big to review well. Proposed split:
+One PR is too big to review well. Split (D8), merged in order as each goes green:
 
 1. Schema + migration + repository + backup classification.
 2. Register / login / list / rename / delete routes + login-page button + profile list.
