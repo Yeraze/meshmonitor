@@ -21,7 +21,7 @@ import { getEnvironmentConfig } from '../config/environment.js';
  * before the user's identity is written.
  *
  * Preserves the CSRF token across regeneration so the frontend's cached token
- * remains valid — same reasoning as `authRoutes.regenerateSession`.
+ * remains valid — same reasoning as `regenerateSession` (auth/regenerateSession.ts).
  */
 function regenerateProxyAuthSession(req: Request, user: User): Promise<void> {
   const csrfToken = req.session.csrfToken;

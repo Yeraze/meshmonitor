@@ -12,6 +12,7 @@ import { logger } from '../utils/logger';
 import ChangePasswordModal from './ChangePasswordModal';
 import APITokenManagement from './APITokenManagement';
 import MFAManagement from './MFAManagement';
+import PasskeyManagement from './PasskeyManagement';
 
 interface UserMenuProps {
   onLogout?: () => void;
@@ -24,6 +25,7 @@ const UserMenu: React.FC<UserMenuProps> = ({ onLogout }) => {
   const [showChangePassword, setShowChangePassword] = useState(false);
   const [showAPIToken, setShowAPIToken] = useState(false);
   const [showMFA, setShowMFA] = useState(false);
+  const [showPasskeys, setShowPasskeys] = useState(false);
   const [loading, setLoading] = useState(false);
 
   if (!authStatus?.authenticated || !authStatus.user) {
@@ -59,6 +61,11 @@ const UserMenu: React.FC<UserMenuProps> = ({ onLogout }) => {
   const handleMFA = () => {
     setShowMenu(false);
     setShowMFA(true);
+  };
+
+  const handlePasskeys = () => {
+    setShowMenu(false);
+    setShowPasskeys(true);
   };
 
   const displayName = authStatus.user.displayName || authStatus.user.username;
@@ -118,6 +125,16 @@ const UserMenu: React.FC<UserMenuProps> = ({ onLogout }) => {
               </button>
             )}
 
+            {isLocalAuth && (
+              <button
+                className="user-menu-item"
+                onClick={handlePasskeys}
+                disabled={loading}
+              >
+                {t('user_menu.passkeys')}
+              </button>
+            )}
+
             <button
               className="user-menu-item"
               onClick={handleAPIToken}
@@ -165,6 +182,22 @@ const UserMenu: React.FC<UserMenuProps> = ({ onLogout }) => {
             </div>
             <div className="modal-body">
               <MFAManagement />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showPasskeys && (
+        <div className="modal-overlay" onClick={() => setShowPasskeys(false)}>
+          <div className="modal-content api-token-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2>{t('passkey.modal_title')}</h2>
+              <button className="modal-close" onClick={() => setShowPasskeys(false)} aria-label={t('common.close')}>
+                <UiIcon name="close" size={18} />
+              </button>
+            </div>
+            <div className="modal-body">
+              <PasskeyManagement showHeading={false} />
             </div>
           </div>
         </div>
