@@ -272,14 +272,17 @@ export const MeshCoreConfigurationView: React.FC<MeshCoreConfigurationViewProps>
         {t('nav.device_configuration', 'Device Configuration')}
       </h2>
 
-      <SectionNav
-        className={navStyles.nav}
-        searchable
-        searchPlaceholder={t('config_search.filter_configuration', 'Search configuration...')}
-        searchLabel={t('config_search.filter_configuration', 'Search configuration...')}
-        noMatchesLabel={t('config_search.no_sections', 'No matching sections')}
-        items={navItems}
-      />
+      {/* No sections, no nav: a chip must always have a section to jump to. */}
+      {navItems.length > 0 && (
+        <SectionNav
+          className={navStyles.nav}
+          searchable
+          searchPlaceholder={t('config_search.filter_configuration', 'Search configuration...')}
+          searchLabel={t('config_search.filter_configuration', 'Search configuration...')}
+          noMatchesLabel={t('config_search.no_sections', 'No matching sections')}
+          items={navItems}
+        />
+      )}
 
       {!connected && (
         <div className="meshcore-empty-state" style={{ marginBottom: '1rem' }}>

@@ -173,8 +173,26 @@ describe('MeshCore Device Configuration section nav', () => {
     expectChipsMatchPage(container);
   });
 
-  it('drops the danger zone chip while disconnected', () => {
+  it('while disconnected, offers a chip only for each section still on the page', () => {
     const { container } = renderView({ connected: false });
+    // The "connect first" note shows, and the saved-setting sections stay on
+    // the page (disabled), so their chips stay; the danger zone does not.
+    expect(screen.getByText('Connect to a device to change its configuration.')).toBeInTheDocument();
+    expect(chipIds()).toEqual(ALL_IDS.filter((id) => id !== 'meshcore-device-management'));
+    expectChipsMatchPage(container);
+    for (const id of chipIds()) {
+      const section = document.getElementById(id)!;
+      expect(section.textContent?.trim(), `${id} renders something`).not.toBe('');
+    }
+  });
+
+  it('while disconnected with no node info yet, still matches chips to sections', () => {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const { container } = render(
+      <QueryClientProvider client={client}>
+        <MeshCoreConfigurationView status={null} actions={makeActions()} baseUrl="" sourceId="src-1" />
+      </QueryClientProvider>,
+    );
     expect(chipIds()).not.toContain('meshcore-device-management');
     expectChipsMatchPage(container);
   });
