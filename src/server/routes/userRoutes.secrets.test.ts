@@ -28,7 +28,7 @@ describe('userRoutes — secret fields are stripped (#5841)', () => {
       mfaSecret: 'TOTPSECRET',
       mfaBackupCodes: '["$2b$a"]',
     });
-    await harness.db.setPasswordLoginDisabledAsync(harness.limited.id, true);
+    await harness.db.setPasskeyOnlyAsync(harness.limited.id, true);
     await harness.db.setPasskeyRecoveryCodesAsync(harness.limited.id, '["$2b$recovery"]');
   });
 

@@ -79,7 +79,7 @@ describe('Authentication Routes', () => {
     (DatabaseService as any).drizzleDbType = 'sqlite';
     (DatabaseService as any).updatePasswordAsync = async (userId: number, newPassword: string) => userModel.updatePassword(userId, newPassword);
     // Passkey-only switch (#5841): change-password reads it.
-    (DatabaseService as any).getPasskeyLoginStateAsync = async (userId: number) => authRepo.getPasskeyLoginState(userId);
+    (DatabaseService as any).getPasskeyOnlyStateAsync = async (userId: number) => authRepo.getPasskeyOnlyState(userId);
 
     app.use('/api/auth', authRoutes);
   });

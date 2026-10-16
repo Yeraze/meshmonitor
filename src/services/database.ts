@@ -5428,14 +5428,14 @@ class DatabaseService {
     return this.passkeys.countByUser(userId);
   }
 
-  async getPasskeyLoginStateAsync(
+  async getPasskeyOnlyStateAsync(
     userId: number,
   ): Promise<{ passwordLoginDisabled: boolean; passkeyRecoveryCodes: string | null } | null> {
-    return this.auth.getPasskeyLoginState(userId);
+    return this.auth.getPasskeyOnlyState(userId);
   }
 
-  async setPasswordLoginDisabledAsync(userId: number, disabled: boolean): Promise<void> {
-    await this.auth.setPasswordLoginDisabled(userId, disabled);
+  async setPasskeyOnlyAsync(userId: number, disabled: boolean): Promise<void> {
+    await this.auth.setPasskeyOnly(userId, disabled);
   }
 
   /** `codes` is a JSON array of bcrypt hashes, or null to clear. */
@@ -5444,8 +5444,8 @@ class DatabaseService {
   }
 
   /** Password login back on, recovery codes gone (one write). */
-  async enablePasswordLoginAsync(userId: number): Promise<void> {
-    await this.auth.enablePasswordLogin(userId);
+  async clearPasskeyOnlyAsync(userId: number): Promise<void> {
+    await this.auth.clearPasskeyOnly(userId);
   }
 
   /** Spend a recovery code; false when the stored codes changed underneath. */

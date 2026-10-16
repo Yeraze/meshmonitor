@@ -468,7 +468,7 @@ router.delete('/:id', requireAuth(), requireSessionUser, async (req: Request, re
     if (!owned.some(p => p.id === id)) return fail(res, 404, 'PASSKEY_NOT_FOUND', 'Passkey not found');
 
     // A passkey-only account with one passkey left would be locked out.
-    const state = await databaseService.getPasskeyLoginStateAsync(user.id);
+    const state = await databaseService.getPasskeyOnlyStateAsync(user.id);
     if (state?.passwordLoginDisabled && owned.length <= 1) {
       return fail(
         res,
@@ -565,7 +565,7 @@ router.get('/password-login', requireAuth(), requireSessionUser, async (req: Req
   try {
     const user = requireLocalUser(req, res);
     if (!user) return;
-    const state = await databaseService.getPasskeyLoginStateAsync(user.id);
+    const state = await databaseService.getPasskeyOnlyStateAsync(user.id);
     return ok(res, {
       disabled: state?.passwordLoginDisabled ?? false,
       recoveryCodesLeft: parseCodeHashes(state?.passkeyRecoveryCodes ?? null).length,
@@ -592,7 +592,7 @@ router.post('/password-login', requireAuth(), requireSessionUser, async (req: Re
     }
 
     if (!disabled) {
-      await databaseService.enablePasswordLoginAsync(user.id);
+      await databaseService.clearPasskeyOnlyAsync(user.id);
       audit(user.id, 'password_login_enabled', { username: user.username }, req);
       notifyAccessChange({ kind: 'user', userId: user.id });
       return ok(res, { disabled: false });
@@ -635,7 +635,7 @@ router.post('/password-login', requireAuth(), requireSessionUser, async (req: Re
     const codes = mfaService.generateBackupCodes();
     const hashes = await mfaService.hashBackupCodes(codes);
     await databaseService.setPasskeyRecoveryCodesAsync(user.id, JSON.stringify(hashes));
-    await databaseService.setPasswordLoginDisabledAsync(user.id, true);
+    await databaseService.setPasskeyOnlyAsync(user.id, true);
 
     audit(user.id, 'password_login_disabled', {
       username: user.username,
@@ -676,7 +676,7 @@ router.post('/recover', authLimiter, async (req: Request, res: Response) => {
     if (!user) return recoveryFailed(null, 'unknown_user');
     if (!user.isActive || user.authProvider !== 'local') return recoveryFailed(user.id, 'not_eligible');
 
-    const state = await databaseService.getPasskeyLoginStateAsync(user.id);
+    const state = await databaseService.getPasskeyOnlyStateAsync(user.id);
     const stored = state?.passkeyRecoveryCodes ?? null;
     if (!state?.passwordLoginDisabled || !stored) return recoveryFailed(user.id, 'no_codes');
 
@@ -723,7 +723,7 @@ router.get('/admin/users/:userId', requireAdmin(), requireSessionUser, async (re
     const target = await databaseService.findUserByIdAsync(userId) as User | null;
     if (!target) return fail(res, 404, 'USER_NOT_FOUND', 'User not found');
 
-    const state = await databaseService.getPasskeyLoginStateAsync(userId);
+    const state = await databaseService.getPasskeyOnlyStateAsync(userId);
     const passkeys = await databaseService.listPasskeySummariesForUserAsync(userId);
     return ok(res, {
       userId,
@@ -753,7 +753,7 @@ router.delete('/admin/users/:userId/:id', requireAdmin(), requireSessionUser, as
     // Revoking a passkey-only user's last passkey would lock them out. Refuse
     // rather than turn the password back on behind the admin's back: setting a
     // new password for them does that, and tells them what it is.
-    const state = await databaseService.getPasskeyLoginStateAsync(userId);
+    const state = await databaseService.getPasskeyOnlyStateAsync(userId);
     if (state?.passwordLoginDisabled && owned.length <= 1) {
       return fail(
         res,

@@ -254,7 +254,7 @@ export async function resetUserPassword(
     await databaseService.updatePasswordAsync(userId, newPassword);
     // An admin-set password is how a locked-out passkey-only user gets back
     // in (#5841): password login turns back on and the recovery codes go.
-    await databaseService.enablePasswordLoginAsync(userId);
+    await databaseService.clearPasskeyOnlyAsync(userId);
 
     logger.debug(`✅ Password reset for user: ${user.username}`);
 
@@ -305,7 +305,7 @@ export async function setUserPassword(
     // Update password - use async method for PostgreSQL
     await databaseService.updatePasswordAsync(userId, newPassword);
     // Admin recovery for a passkey-only user (#5841): password login back on.
-    await databaseService.enablePasswordLoginAsync(userId);
+    await databaseService.clearPasskeyOnlyAsync(userId);
 
     logger.debug(`✅ Password set for user: ${user.username}`);
 

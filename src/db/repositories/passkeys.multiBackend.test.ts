@@ -176,42 +176,42 @@ function runSharedTests(getCtx: () => Ctx) {
 
   it('passkey-only state: defaults, set, clear', async () => {
     const { auth, alice } = getCtx();
-    expect(await auth.getPasskeyLoginState(alice)).toEqual({ passwordLoginDisabled: false, passkeyRecoveryCodes: null });
-    expect(await auth.getPasskeyLoginState(999_999)).toBeNull();
+    expect(await auth.getPasskeyOnlyState(alice)).toEqual({ passwordLoginDisabled: false, passkeyRecoveryCodes: null });
+    expect(await auth.getPasskeyOnlyState(999_999)).toBeNull();
 
-    await auth.setPasswordLoginDisabled(alice, true);
+    await auth.setPasskeyOnly(alice, true);
     await auth.setPasskeyRecoveryCodes(alice, '["$2b$hash"]');
-    expect(await auth.getPasskeyLoginState(alice)).toEqual({ passwordLoginDisabled: true, passkeyRecoveryCodes: '["$2b$hash"]' });
+    expect(await auth.getPasskeyOnlyState(alice)).toEqual({ passwordLoginDisabled: true, passkeyRecoveryCodes: '["$2b$hash"]' });
 
-    await auth.setPasswordLoginDisabled(alice, false);
+    await auth.setPasskeyOnly(alice, false);
     await auth.setPasskeyRecoveryCodes(alice, null);
-    expect(await auth.getPasskeyLoginState(alice)).toEqual({ passwordLoginDisabled: false, passkeyRecoveryCodes: null });
+    expect(await auth.getPasskeyOnlyState(alice)).toEqual({ passwordLoginDisabled: false, passkeyRecoveryCodes: null });
   });
 
-  it('enablePasswordLogin clears the switch and the codes in one write', async () => {
+  it('clearPasskeyOnly clears the switch and the codes in one write', async () => {
     const { auth, alice } = getCtx();
-    await auth.setPasswordLoginDisabled(alice, true);
+    await auth.setPasskeyOnly(alice, true);
     await auth.setPasskeyRecoveryCodes(alice, '["h1"]');
-    await auth.enablePasswordLogin(alice);
-    expect(await auth.getPasskeyLoginState(alice)).toEqual({ passwordLoginDisabled: false, passkeyRecoveryCodes: null });
+    await auth.clearPasskeyOnly(alice);
+    expect(await auth.getPasskeyOnlyState(alice)).toEqual({ passwordLoginDisabled: false, passkeyRecoveryCodes: null });
   });
 
   it('consumePasskeyRecovery wins only while the stored codes match', async () => {
     const { auth, alice, bob } = getCtx();
-    await auth.setPasswordLoginDisabled(alice, true);
+    await auth.setPasskeyOnly(alice, true);
     await auth.setPasskeyRecoveryCodes(alice, '["h1","h2"]');
-    await auth.setPasswordLoginDisabled(bob, true);
+    await auth.setPasskeyOnly(bob, true);
     await auth.setPasskeyRecoveryCodes(bob, '["h1","h2"]');
 
     expect(await auth.consumePasskeyRecovery(alice, '["other"]')).toBe(false);
-    expect((await auth.getPasskeyLoginState(alice))?.passwordLoginDisabled).toBe(true);
+    expect((await auth.getPasskeyOnlyState(alice))?.passwordLoginDisabled).toBe(true);
 
     expect(await auth.consumePasskeyRecovery(alice, '["h1","h2"]')).toBe(true);
-    expect(await auth.getPasskeyLoginState(alice)).toEqual({ passwordLoginDisabled: false, passkeyRecoveryCodes: null });
+    expect(await auth.getPasskeyOnlyState(alice)).toEqual({ passwordLoginDisabled: false, passkeyRecoveryCodes: null });
     // Second use of the same snapshot loses.
     expect(await auth.consumePasskeyRecovery(alice, '["h1","h2"]')).toBe(false);
     // Bob is untouched.
-    expect(await auth.getPasskeyLoginState(bob)).toEqual({ passwordLoginDisabled: true, passkeyRecoveryCodes: '["h1","h2"]' });
+    expect(await auth.getPasskeyOnlyState(bob)).toEqual({ passwordLoginDisabled: true, passkeyRecoveryCodes: '["h1","h2"]' });
   });
 
   it('countAllByUser groups by user and leaves out users with none', async () => {

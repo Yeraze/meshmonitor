@@ -322,7 +322,7 @@ export class AuthRepository extends BaseRepository {
    * The passkey-only switch and the stored recovery-code hashes for one user,
    * or null when the user does not exist.
    */
-  async getPasskeyLoginState(
+  async getPasskeyOnlyState(
     userId: number,
   ): Promise<{ passwordLoginDisabled: boolean; passkeyRecoveryCodes: string | null } | null> {
     const { users } = this.tables;
@@ -343,7 +343,7 @@ export class AuthRepository extends BaseRepository {
   }
 
   /** Turn password login off (true) or back on (false) for one user. */
-  async setPasswordLoginDisabled(userId: number, disabled: boolean): Promise<void> {
+  async setPasskeyOnly(userId: number, disabled: boolean): Promise<void> {
     await this.updateUser(userId, { passwordLoginDisabled: disabled });
   }
 
@@ -353,7 +353,7 @@ export class AuthRepository extends BaseRepository {
   }
 
   /** Turn password login back on and drop the recovery codes, in one write. */
-  async enablePasswordLogin(userId: number): Promise<void> {
+  async clearPasskeyOnly(userId: number): Promise<void> {
     await this.updateUser(userId, { passwordLoginDisabled: false, passkeyRecoveryCodes: null });
   }
 

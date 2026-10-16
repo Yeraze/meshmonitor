@@ -476,7 +476,7 @@ router.post('/change-password', requireAuth(), async (req: Request, res: Respons
     }
 
     // Passkey-only account (#5841): no password to change.
-    const loginState = await databaseService.getPasskeyLoginStateAsync(req.user.id);
+    const loginState = await databaseService.getPasskeyOnlyStateAsync(req.user.id);
     if (loginState?.passwordLoginDisabled) {
       return fail(res, 403, 'PASSWORD_LOGIN_DISABLED', new PasswordLoginDisabledError().message);
     }

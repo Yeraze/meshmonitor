@@ -152,7 +152,7 @@ describe('passkey-only accounts', () => {
     const codes = mfaService.generateBackupCodes();
     const hashes = await mfaService.hashBackupCodes(codes);
     await harness.db.setPasskeyRecoveryCodesAsync(userId, JSON.stringify(hashes));
-    await harness.db.setPasswordLoginDisabledAsync(userId, true);
+    await harness.db.setPasskeyOnlyAsync(userId, true);
     return codes;
   }
 
@@ -267,7 +267,7 @@ describe('passkey-only accounts', () => {
       expect(verifyArgs.expectedChallenge).toMatch(/^auth-challenge-/);
       expect(verifyArgs.credential.id).toBe(pk.credentialId);
 
-      const state = await harness.db.getPasskeyLoginStateAsync(user.id);
+      const state = await harness.db.getPasskeyOnlyStateAsync(user.id);
       expect(state?.passwordLoginDisabled).toBe(true);
       const hashes = JSON.parse(state!.passkeyRecoveryCodes!) as string[];
       expect(hashes).toHaveLength(10);
@@ -293,12 +293,12 @@ describe('passkey-only accounts', () => {
 
       const body = { disabled: true, assertion: signed(pk.credentialId) };
       expect((await agent.post('/api/auth/passkey/password-login').send(body)).status).toBe(200);
-      await harness.db.enablePasswordLoginAsync(user.id);
+      await harness.db.clearPasskeyOnlyAsync(user.id);
 
       const again = await agent.post('/api/auth/passkey/password-login').send(body);
       expect(again.status).toBe(400);
       expect(again.body.code).toBe('PASSKEY_CHALLENGE_EXPIRED');
-      expect((await harness.db.getPasskeyLoginStateAsync(user.id))?.passwordLoginDisabled).toBe(false);
+      expect((await harness.db.getPasskeyOnlyStateAsync(user.id))?.passwordLoginDisabled).toBe(false);
     });
 
     it('a failed step-up also spends the challenge', async () => {
@@ -316,7 +316,7 @@ describe('passkey-only accounts', () => {
       const retry = await agent.post('/api/auth/passkey/password-login').send({ disabled: true, assertion: signed(pk.credentialId) });
       expect(retry.status).toBe(400);
       expect(retry.body.code).toBe('PASSKEY_CHALLENGE_EXPIRED');
-      expect((await harness.db.getPasskeyLoginStateAsync(user.id))?.passwordLoginDisabled).toBe(false);
+      expect((await harness.db.getPasskeyOnlyStateAsync(user.id))?.passwordLoginDisabled).toBe(false);
     });
 
     it('a login challenge cannot stand in for step-up', async () => {
@@ -384,7 +384,7 @@ describe('passkey-only accounts', () => {
       expect(res.status).toBe(401);
       expect(res.body.code).toBe('STEP_UP_FAILED');
       expect(mockVerifyAuth).not.toHaveBeenCalled();
-      expect((await harness.db.getPasskeyLoginStateAsync(user.id))?.passwordLoginDisabled).toBe(false);
+      expect((await harness.db.getPasskeyOnlyStateAsync(user.id))?.passwordLoginDisabled).toBe(false);
     });
 
     it('refuses a counter that went backwards', async () => {
@@ -396,7 +396,7 @@ describe('passkey-only accounts', () => {
 
       const res = await agent.post('/api/auth/passkey/password-login').send({ disabled: true, assertion: signed(pk.credentialId) });
       expect(res.status).toBe(401);
-      expect((await harness.db.getPasskeyLoginStateAsync(user.id))?.passwordLoginDisabled).toBe(false);
+      expect((await harness.db.getPasskeyOnlyStateAsync(user.id))?.passwordLoginDisabled).toBe(false);
     });
 
     it('needs at least one passkey', async () => {
@@ -432,7 +432,7 @@ describe('passkey-only accounts', () => {
         expect(first.status).toBe(200);
         expect(first.body.data).toEqual({ requireConfirm: true });
         expect(mockVerifyAuth).not.toHaveBeenCalled();
-        expect((await harness.db.getPasskeyLoginStateAsync(admin.id))?.passwordLoginDisabled).toBe(false);
+        expect((await harness.db.getPasskeyOnlyStateAsync(admin.id))?.passwordLoginDisabled).toBe(false);
         expect((await agent.get('/__test__/session')).body.challengePurpose).toBe('step-up');
 
         // Wrong word: still asks.
@@ -444,7 +444,7 @@ describe('passkey-only accounts', () => {
         expect(confirmed.body.data.disabled).toBe(true);
         expect(confirmed.body.data.recoveryCodes).toHaveLength(10);
       });
-      expect((await harness.db.getPasskeyLoginStateAsync(admin.id))?.passwordLoginDisabled).toBe(true);
+      expect((await harness.db.getPasskeyOnlyStateAsync(admin.id))?.passwordLoginDisabled).toBe(true);
     });
 
     it('an admin with another active admin needs no confirmation', async () => {
@@ -470,7 +470,7 @@ describe('passkey-only accounts', () => {
 
     const res = await agent.post('/api/auth/passkey/password-login').send({ disabled: false });
     expect(res.status).toBe(200);
-    expect(await harness.db.getPasskeyLoginStateAsync(user.id)).toEqual({ passwordLoginDisabled: false, passkeyRecoveryCodes: null });
+    expect(await harness.db.getPasskeyOnlyStateAsync(user.id)).toEqual({ passwordLoginDisabled: false, passkeyRecoveryCodes: null });
     expect(await auditHas(user.id, 'password_login_enabled')).toBe(true);
   });
 
@@ -529,7 +529,7 @@ describe('passkey-only accounts', () => {
     it('password sign-in works again once it is back on', async () => {
       const user = await createUser();
       await makePasskeyOnly(user.id);
-      await harness.db.enablePasswordLoginAsync(user.id);
+      await harness.db.clearPasskeyOnlyAsync(user.id);
       const res = await request(harness.app).post('/api/auth/login').send({ username: user.username, password: PASSWORD });
       expect(res.status).toBe(200);
     });
@@ -560,7 +560,7 @@ describe('passkey-only accounts', () => {
       const session = await agent.get('/__test__/session');
       expect(session.body).toMatchObject({ userId: user.id, authProvider: 'local', isAdmin: false, passwordChangeRequired: true });
 
-      expect(await harness.db.getPasskeyLoginStateAsync(user.id)).toEqual({ passwordLoginDisabled: false, passkeyRecoveryCodes: null });
+      expect(await harness.db.getPasskeyOnlyStateAsync(user.id)).toEqual({ passwordLoginDisabled: false, passkeyRecoveryCodes: null });
       expect(h.authLimiterCalls).toContain('/recover');
       expect(await auditHas(user.id, 'passkey_recovery_used')).toBe(true);
 
@@ -581,7 +581,7 @@ describe('passkey-only accounts', () => {
       expect(first.status).toBe(200);
 
       // Put the account back into passkey-only mode with the OLD hashes gone.
-      await harness.db.setPasswordLoginDisabledAsync(user.id, true);
+      await harness.db.setPasskeyOnlyAsync(user.id, true);
       const again = await request(harness.app).post('/api/auth/passkey/recover').send({ username: user.username, code: codes[0] });
       expect(again.status).toBe(401);
       const other = await request(harness.app).post('/api/auth/passkey/recover').send({ username: user.username, code: codes[1] });
@@ -621,7 +621,7 @@ describe('passkey-only accounts', () => {
       expect(replies[0].body.code).toBe('RECOVERY_FAILED');
 
       // None of them spent a code.
-      expect((await harness.db.getPasskeyLoginStateAsync(user.id))?.passwordLoginDisabled).toBe(true);
+      expect((await harness.db.getPasskeyOnlyStateAsync(user.id))?.passwordLoginDisabled).toBe(true);
     });
 
     it('an inactive user cannot recover', async () => {
@@ -700,7 +700,7 @@ describe('passkey-only accounts', () => {
       expect(res.status).toBe(409);
       expect(res.body.code).toBe('LAST_PASSKEY');
       expect(await harness.db.countPasskeysForUserAsync(user.id)).toBe(1);
-      expect((await harness.db.getPasskeyLoginStateAsync(user.id))?.passwordLoginDisabled).toBe(true);
+      expect((await harness.db.getPasskeyOnlyStateAsync(user.id))?.passwordLoginDisabled).toBe(true);
     });
 
     it("cannot revoke a passkey through another user's id", async () => {
@@ -722,7 +722,7 @@ describe('passkey-only accounts', () => {
 
       const res = await admin.post(`/api/users/${user.id}/set-password`).send({ newPassword: 'admin-chosen-1' });
       expect(res.status).toBe(200);
-      expect(await harness.db.getPasskeyLoginStateAsync(user.id)).toEqual({ passwordLoginDisabled: false, passkeyRecoveryCodes: null });
+      expect(await harness.db.getPasskeyOnlyStateAsync(user.id)).toEqual({ passwordLoginDisabled: false, passkeyRecoveryCodes: null });
 
       const login = await request(harness.app).post('/api/auth/login').send({ username: user.username, password: 'admin-chosen-1' });
       expect(login.status).toBe(200);
@@ -735,7 +735,7 @@ describe('passkey-only accounts', () => {
 
       const res = await admin.post(`/api/users/${user.id}/reset-password`).send({});
       expect(res.status).toBe(200);
-      expect(await harness.db.getPasskeyLoginStateAsync(user.id)).toEqual({ passwordLoginDisabled: false, passkeyRecoveryCodes: null });
+      expect(await harness.db.getPasskeyOnlyStateAsync(user.id)).toEqual({ passwordLoginDisabled: false, passkeyRecoveryCodes: null });
     });
 
     it('the users list carries passkey counts and the switch', async () => {
