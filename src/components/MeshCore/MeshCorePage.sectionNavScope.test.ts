@@ -28,6 +28,13 @@ describe('MeshCore form-view controls leave the SectionNav alone', () => {
     expect(controlSelectors().length).toBeGreaterThanOrEqual(7);
   });
 
+  it('sticks the Notifications pane nav flush with the pane top', () => {
+    expect(css).toMatch(/\.meshcore-notifications-view\s*\{[^}]*--meshcore-pane-padding:/);
+    expect(css).toMatch(
+      /\.meshcore-notifications-view \.section-nav\s*\{[^}]*top:\s*calc\(-1 \* var\(--meshcore-pane-padding\)\)/,
+    );
+  });
+
   it('excludes the nav at zero specificity in every control rule', () => {
     for (const selector of controlSelectors()) {
       expect(selector, selector).toMatch(/:where\(:not\(\.section-nav \*\)\)$/);
