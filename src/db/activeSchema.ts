@@ -41,6 +41,7 @@ import {
   sessionsSqlite, sessionsPostgres, sessionsMysql,
   auditLogSqlite, auditLogPostgres, auditLogMysql,
   apiTokensSqlite, apiTokensPostgres, apiTokensMysql,
+  userPasskeysSqlite, userPasskeysPostgres, userPasskeysMysql,
 } from './schema/auth.js';
 
 // Notification tables
@@ -281,6 +282,7 @@ export interface ActiveSchema {
   sessions: any;
   auditLog: any;
   apiTokens: any;
+  userPasskeys: any;
 
   // Notification tables
   pushSubscriptions: any;
@@ -482,6 +484,7 @@ const SCHEMA_MAP: Record<DatabaseType, ActiveSchema> = {
     sessions: sessionsSqlite,
     auditLog: auditLogSqlite,
     apiTokens: apiTokensSqlite,
+    userPasskeys: userPasskeysSqlite,
     pushSubscriptions: pushSubscriptionsSqlite,
     userNotificationPreferences: userNotificationPreferencesSqlite,
     waypointNotifications: waypointNotificationsSqlite,
@@ -571,6 +574,7 @@ const SCHEMA_MAP: Record<DatabaseType, ActiveSchema> = {
     sessions: sessionsPostgres,
     auditLog: auditLogPostgres,
     apiTokens: apiTokensPostgres,
+    userPasskeys: userPasskeysPostgres,
     pushSubscriptions: pushSubscriptionsPostgres,
     userNotificationPreferences: userNotificationPreferencesPostgres,
     waypointNotifications: waypointNotificationsPostgres,
@@ -660,6 +664,7 @@ const SCHEMA_MAP: Record<DatabaseType, ActiveSchema> = {
     sessions: sessionsMysql,
     auditLog: auditLogMysql,
     apiTokens: apiTokensMysql,
+    userPasskeys: userPasskeysMysql,
     pushSubscriptions: pushSubscriptionsMysql,
     userNotificationPreferences: userNotificationPreferencesMysql,
     waypointNotifications: waypointNotificationsMysql,

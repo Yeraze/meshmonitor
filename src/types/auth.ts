@@ -18,6 +18,8 @@ export interface User {
   mfaEnabled: boolean; // Whether TOTP MFA is enabled
   mfaSecret: string | null; // NEVER sent to frontend
   mfaBackupCodes: string | null; // NEVER sent to frontend
+  passwordLoginDisabled?: boolean; // #5841: passkey-only account
+  passkeyRecoveryCodes?: string | null; // #5841: NEVER sent to frontend
   createdAt: number; // Unix timestamp
   lastLoginAt: number | null; // Unix timestamp
   createdBy: number | null; // User ID who created this account

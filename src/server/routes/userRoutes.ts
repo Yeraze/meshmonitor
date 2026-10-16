@@ -11,6 +11,7 @@ import databaseService from '../../services/database.js';
 import { logger } from '../../utils/logger.js';
 import { PermissionSet, isSourceyResource, ResourceType } from '../../types/permission.js';
 import { fail } from '../utils/apiResponse.js';
+import { stripUserSecrets } from '../utils/userSecrets.js';
 const router = Router();
 
 // All routes require admin
@@ -22,10 +23,10 @@ router.get('/', async (_req: Request, res: Response) => {
     const users = await databaseService.auth.getAllUsers();
 
     // Remove sensitive fields and normalize field names (authMethod -> authProvider for frontend)
-    const usersWithoutPasswords = users.map(({ passwordHash, authMethod, mfaSecret, mfaBackupCodes, ...user }) => ({
-      ...user,
-      authProvider: authMethod || 'local'
-    }));
+    const usersWithoutPasswords = users.map((dbUser) => {
+      const { authMethod, ...user } = stripUserSecrets(dbUser);
+      return { ...user, authProvider: authMethod || 'local' };
+    });
 
     return res.json({ users: usersWithoutPasswords });
   } catch (error) {
@@ -51,7 +52,7 @@ router.get('/:id', async (req: Request, res: Response) => {
     }
 
     // Remove sensitive fields and normalize field names (authMethod -> authProvider for frontend)
-    const { passwordHash, authMethod, mfaSecret, mfaBackupCodes, ...userWithoutPassword } = user;
+    const { authMethod, ...userWithoutPassword } = stripUserSecrets(user);
 
     return res.json({
       user: {
@@ -86,7 +87,7 @@ router.post('/', async (req: Request, res: Response) => {
     );
 
     // Remove password hash
-    const { passwordHash, ...userWithoutPassword } = user;
+    const userWithoutPassword = stripUserSecrets(user);
 
     return res.json({
       success: true,
@@ -133,7 +134,7 @@ router.put('/:id', async (req: Request, res: Response) => {
     );
 
     // Remove password hash
-    const { passwordHash, ...userWithoutPassword } = user;
+    const userWithoutPassword = stripUserSecrets(user);
 
     return res.json({
       success: true,
