@@ -55,6 +55,7 @@ export const TABLE_ORDER = [
   'sessions',
   'audit_log',
   'api_tokens',
+  'user_passkeys', // #5841, FK to users
   // 4.0 per-source tables that depend on users
   'channel_database',
   'channel_database_permissions',

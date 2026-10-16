@@ -282,6 +282,8 @@ export interface ActiveSchema {
   sessions: any;
   auditLog: any;
   apiTokens: any;
+  // WebAuthn passkeys on local users (#5841)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- #5841 matches the existing ActiveSchema per-dialect table pattern
   userPasskeys: any;
 
   // Notification tables
