@@ -287,22 +287,25 @@ different set — this is how If / ElseIf / Else is built.
 A missing or undefined field never throws — numeric/string comparisons against it simply evaluate
 **false**.
 
-### `isDM` / `viaMqtt` / `zeroHop` — booleans as `1`/`0`
+### `isDM` / `viaMqtt` / `viaIp` / `zeroHop` — booleans as `1`/`0`
 
 The message trigger's **Number comparison** field picker offers **Is a direct message** (`isDM`),
-**Arrived via MQTT** (`viaMqtt`), and **Direct RF, 0 hops** (`zeroHop`) alongside hop count, SNR,
-and RSSI. All three resolve as a number — `1` for true, `0` for false — because a boolean value
+**Arrived via MQTT** (`viaMqtt`), **Arrived over IP** (`viaIp`), and **Direct RF, 0 hops**
+(`zeroHop`) alongside hop count, SNR, and RSSI. All four resolve as a number — `1` for true, `0` for false — because a boolean value
 compared with `condition.numeric` is coerced the same way (`true → 1`, `false → 0`). Compare with
 `== 1` / `== 0` rather than a boolean literal:
 
 - `isDM == 1` — the message is a direct message; `isDM == 0` — it's a channel/broadcast post.
 - `viaMqtt == 1` — it arrived over an MQTT bridge; `viaMqtt == 0` — it arrived over RF.
+- `viaIp == 1` — it reached your node over MQTT or multicast UDP; `viaIp == 0` — it came over RF.
+  This is the test Auto-Acknowledge uses for its IP row.
 - `zeroHop == 1` — it arrived direct over RF with 0 hops; `zeroHop == 0` — it was relayed (1+
-  hops) or arrived via MQTT.
+  hops) or arrived over IP (MQTT or UDP).
 
 `zeroHop` is a precomputed convenience for the same "zero-hop, heard directly" test — `hops == 0`
-**and** `viaMqtt == 0` — that Auto-Acknowledge uses to define "ZeroHop" for its own
-{Channel,Direct} × {ZeroHop,MultiHop} response matrix, collapsed into one field. Prefer it over
+**and** `viaIp == 0` — that Auto-Acknowledge uses to define "ZeroHop" for its own
+{Channel,Direct} × {ZeroHop,MultiHop,IP} response matrix, collapsed into one field. Auto-Acknowledge's
+MultiHop row is `zeroHop == 0` **and** `viaIp == 0`; its IP row is `viaIp == 1`. Prefer it over
 hand-rolling the two-condition version, and especially over branching a single `hops > 0` node on
 its true/false ports: a packet with no hop information at all resolves `hops` to `undefined`, so
 both `hops == 0` and `hops > 0` evaluate **false** and neither branch of a `hops`-based split ever
@@ -1102,12 +1105,8 @@ blank instead of Auto-Acknowledge's literal `N/A` when unavailable; `{DATE}`/`{T
 format; and a pre-send delay becomes one blocking `action.delay` before the first send, rather than
 Auto-Acknowledge's own non-blocking timer applied independently to the tapback and the reply.
 
-One further gap isn't itemized in the report because it isn't tied to any one setting: Auto
-Acknowledge itself selects the *Direct* vs. standard reply template on the raw "0 hops travelled"
-value, not on the same `viaMqtt`-aware ZeroHop test its own toggles use — so an MQTT-relayed,
-0-hop message can be routed to the *MultiHop* cell for enable/disable purposes while still getting
-the *Direct* message's wording. The converter reproduces this quirk faithfully (it also keys the
-message-text choice off `zeroHop`), rather than "fixing" it into a behavior change.
+Auto-Acknowledge and the converter pick the *Direct* reply template the same way: on ZeroHop cells
+only. An IP message at 0 hops lands in the IP row and gets the standard template.
 
 ## Variables
 

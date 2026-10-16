@@ -1,29 +1,59 @@
 /**
- * Pure decision helpers for the Auto-Acknowledge 2×2 matrix (discussion #3564).
+ * Pure decision helpers for the Auto-Acknowledge matrix (discussion #3564, #5796).
  *
- * The matrix is {Channel,Direct} × {ZeroHop,MultiHop}. These helpers isolate the
- * two non-trivial decisions from `MeshtasticManager.checkAutoAcknowledge` so they
+ * The matrix is {Channel,Direct} × {ZeroHop,MultiHop,Ip}. These helpers isolate
+ * the non-trivial decisions from `MeshtasticManager.checkAutoAcknowledge` so they
  * can be unit-tested without a full manager/messageQueue harness:
  *   1. which cell a packet falls into, and
  *   2. how a reply is routed (on-channel vs DM, and whether it can be threaded).
+ *
+ * The Automation Engine's derived `zeroHop` / `viaIp` trigger fields
+ * (triggerContext.ts) call the same helpers, so the matrix and a converted
+ * automation always agree on which row a packet belongs to.
  */
+import { TransportMechanism } from '../constants/meshtastic.js';
 
 /**
- * A packet is "zero hop" when it travelled 0 hops over RF. MQTT-relayed packets
- * are never zero-hop even at 0 hops — they traversed the internet, not a direct
- * RF link, so RF metrics (SNR/RSSI) and the 0-hop notion don't apply.
+ * A packet is "IP" when it reached the node over an IP link rather than LoRa:
+ * the legacy `viaMqtt` flag, or a transport mechanism of MQTT (5) or multicast
+ * UDP (6). API (7) is a client on the node's own API link, not an IP hop
+ * between nodes, so it is NOT IP.
  */
-export function autoAckIsZeroHop(hopsTraveled: number, viaMqtt: boolean | undefined | null): boolean {
-  return hopsTraveled === 0 && viaMqtt !== true;
+export function autoAckIsIp(
+  viaMqtt: boolean | undefined | null,
+  transportMechanism?: number | null,
+): boolean {
+  return (
+    viaMqtt === true ||
+    transportMechanism === TransportMechanism.MQTT ||
+    transportMechanism === TransportMechanism.MULTICAST_UDP
+  );
+}
+
+/**
+ * A packet is "zero hop" when it travelled 0 hops over RF. IP packets (MQTT /
+ * multicast UDP) are never zero-hop even at 0 hops — they crossed an IP link,
+ * not a direct RF one, so RF metrics (SNR/RSSI) and the 0-hop notion don't apply.
+ */
+export function autoAckIsZeroHop(
+  hopsTraveled: number,
+  viaMqtt: boolean | undefined | null,
+  transportMechanism?: number | null,
+): boolean {
+  return hopsTraveled === 0 && !autoAckIsIp(viaMqtt, transportMechanism);
 }
 
 /**
  * Settings-key prefix for the matrix cell a packet falls into, e.g.
  * `autoAckChannelMultiHop`. Append `ReplyEnabled` / `TapbackEnabled` /
  * `ReplyDmEnabled` to read a specific toggle.
+ *
+ * IP is checked first (#5796): an IP packet lands in the Ip row whatever its
+ * hop count, never in ZeroHop or MultiHop.
  */
-export function autoAckCellKey(isDirectMessage: boolean, isZeroHop: boolean): string {
-  return `autoAck${isDirectMessage ? 'Direct' : 'Channel'}${isZeroHop ? 'ZeroHop' : 'MultiHop'}`;
+export function autoAckCellKey(isDirectMessage: boolean, isZeroHop: boolean, isIp = false): string {
+  const hop = isIp ? 'Ip' : isZeroHop ? 'ZeroHop' : 'MultiHop';
+  return `autoAck${isDirectMessage ? 'Direct' : 'Channel'}${hop}`;
 }
 
 export interface AutoAckReplyRouting {

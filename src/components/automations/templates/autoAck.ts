@@ -101,8 +101,8 @@ function build(values: Record<string, unknown>): BuiltAutomation {
   // Mirrors autoAckConverter.ts's own S1 ordering (source filter first).
   if (sourceIds.length > 0) conditions.push({ type: 'condition.sourceFilter', params: { sourceIds } });
   // zeroHop (#4340 Phase 4): the derived, TOTAL (never NaN) "direct RF, 0 hops"
-  // field — 1 when the message arrived direct over RF, 0 when relayed or via
-  // MQTT. Verified present in EVENT_NUMERIC['trigger.message'] (catalog.ts)
+  // field — 1 when the message arrived direct over RF, 0 when relayed or over
+  // IP (MQTT or UDP, #5796). Verified present in EVENT_NUMERIC['trigger.message'] (catalog.ts)
   // and computed in buildMessageContext (triggerContext.ts).
   conditions.push({ type: 'condition.numeric', params: { field: 'zeroHop', op: '==', value: '1' } });
 

@@ -13,7 +13,7 @@ import type { MeshCoreNodeEventFacts, NodeAircraftData, NodeUpdateOrigin } from 
 import type { TriggerType } from '../../../types/automation.js';
 import { compileUserRegex } from '../../../utils/safeRegex.js';
 import { hopCountEmoji, hopOrMqttEmoji } from '../../../utils/hopEmoji.js';
-import { autoAckIsZeroHop } from '../../utils/autoAckDecision.js';
+import { autoAckIsIp, autoAckIsZeroHop } from '../../utils/autoAckDecision.js';
 import { REPLY_CONTEXT_TAPBACK, REPLY_CONTEXT_REPLY } from '../../../utils/replyContext.js';
 
 /** Meshtastic broadcast address (0xFFFFFFFF); also defined inline in the manager. */
@@ -172,7 +172,14 @@ export function buildMessageContext(
     // deriveHops' raw value (undefined / possibly negative) — see the Phase 1 note.
     // `zeroHop` is the AutoAck-faithful, TOTAL 1/0 form: it is never NaN, so a rule
     // can branch on it inside a flat AND-chain instead of needing condition ports.
-    zeroHop: autoAckIsZeroHop(typeof hops === 'number' && hops > 0 ? hops : 0, msg.viaMqtt) ? 1 : 0,
+    // #5796: an IP message (MQTT or multicast UDP, by flag or transport) is
+    // never zero-hop, exactly as in checkAutoAcknowledge.
+    zeroHop: autoAckIsZeroHop(typeof hops === 'number' && hops > 0 ? hops : 0, msg.viaMqtt, msg.transportMechanism) ? 1 : 0,
+    // #5796: the matrix's IP row as a TOTAL 1/0 field (never NaN). 1 when the
+    // packet reached the node over MQTT or multicast UDP — the same
+    // autoAckIsIp() that picks the IP row in checkAutoAcknowledge. Distinct
+    // from viaMqttSource (the SOURCE type) and wider than viaMqtt (adds UDP).
+    viaIp: autoAckIsIp(msg.viaMqtt, msg.transportMechanism) ? 1 : 0,
     isDM,
     isChannel: isBroadcast,
     isBroadcast,
@@ -281,6 +288,7 @@ export function buildMeshCoreMessageContext(
     // #4340 Phase 4: same derivation as buildMessageContext. MeshCore messages
     // carry no viaMqtt concept — `undefined` reads as not-MQTT, never NaN.
     zeroHop: autoAckIsZeroHop(typeof hops === 'number' && hops > 0 ? hops : 0, undefined) ? 1 : 0,
+    viaIp: 0,
     snr: msg.snr,
     rssi: msg.rssi,
     // MeshCore scope/region (#3833). `scopeCode` 0 = explicitly unscoped, null/
@@ -364,6 +372,7 @@ export function buildReticulumMessageContext(
     hopEmoji: hopCountEmoji(undefined),
     viaMqttSource: false,
     zeroHop: 0,
+    viaIp: 0,
     snr: msg.snr,
     rssi: msg.rssi,
     quality: msg.quality,

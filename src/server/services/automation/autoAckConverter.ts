@@ -475,12 +475,25 @@ export function buildAutoAckAutomations(input: AutoAckConverterInput): AutoAckCo
 
     const isDirectCell = cellMeta.type === 'direct';
     const isZeroHop = cellMeta.hop === 'zeroHop';
+    const isIpCell = cellMeta.hop === 'ip';
 
     const conditions: FormBlock[] = [S1];
     if (S2) conditions.push(S2);
     if (S3) conditions.push(S3);
     conditions.push({ type: 'condition.numeric', params: { field: 'isDM', op: '==', value: isDirectCell ? '1' : '0' } });
-    conditions.push({ type: 'condition.numeric', params: { field: 'zeroHop', op: '==', value: isZeroHop ? '1' : '0' } });
+    // Row selection (#5796), matching checkAutoAcknowledge's IP-first order:
+    //  - Ip:       viaIp == 1
+    //  - ZeroHop:  zeroHop == 1 (already 0 for every IP packet, so no viaIp test)
+    //  - MultiHop: zeroHop == 0 AND viaIp == 0 (an IP packet is not multi-hop)
+    // Both fields are total 1/0 values, so this stays a flat AND-chain.
+    if (isIpCell) {
+      conditions.push({ type: 'condition.numeric', params: { field: 'viaIp', op: '==', value: '1' } });
+    } else {
+      conditions.push({ type: 'condition.numeric', params: { field: 'zeroHop', op: '==', value: isZeroHop ? '1' : '0' } });
+      if (!isZeroHop) {
+        conditions.push({ type: 'condition.numeric', params: { field: 'viaIp', op: '==', value: '0' } });
+      }
+    }
 
     const actions: FormBlock[] = [];
     if (preSendDelaySeconds > 0) actions.push({ type: 'action.delay', params: { seconds: preSendDelaySeconds } });

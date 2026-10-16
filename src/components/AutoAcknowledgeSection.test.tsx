@@ -802,9 +802,9 @@ describe('AutoAcknowledgeSection — response matrix', () => {
     return document.getElementById(`autoAck-${cellId}-reply`) as HTMLInputElement;
   };
 
-  it('renders all four matrix cells with three checkboxes each', () => {
+  it('renders all six matrix cells (incl. the IP row) with three checkboxes each', () => {
     render(<AutoAcknowledgeSection {...matrixProps} />);
-    for (const cellId of ['channelZeroHop', 'channelMultiHop', 'directZeroHop', 'directMultiHop']) {
+    for (const cellId of ['channelZeroHop', 'channelMultiHop', 'channelIp', 'directZeroHop', 'directMultiHop', 'directIp']) {
       expect(document.getElementById(`autoAck-${cellId}-reply`)).toBeInTheDocument();
       expect(document.getElementById(`autoAck-${cellId}-tapback`)).toBeInTheDocument();
       expect(document.getElementById(`autoAck-${cellId}-replyDm`)).toBeInTheDocument();
@@ -830,11 +830,57 @@ describe('AutoAcknowledgeSection — response matrix', () => {
   it('renders "Respond via DM" as checked + disabled for direct cells', () => {
     render(<AutoAcknowledgeSection {...matrixProps} />);
 
-    for (const cellId of ['directZeroHop', 'directMultiHop']) {
+    for (const cellId of ['directZeroHop', 'directMultiHop', 'directIp']) {
       const replyDm = replyDmCheckboxFor(cellId);
       expect(replyDm).toBeChecked();
       expect(replyDm).toBeDisabled();
     }
+  });
+
+  it('lays out one row per path: 0 hops, multi-hop, then IP last (#5796)', () => {
+    render(<AutoAcknowledgeSection {...matrixProps} />);
+    const order = Array.from(document.querySelectorAll<HTMLInputElement>('input[id^="autoAck-"][id$="-reply"]'))
+      .map((el) => el.id.replace(/^autoAck-/, '').replace(/-reply$/, ''));
+    expect(order).toEqual(['channelZeroHop', 'directZeroHop', 'channelMultiHop', 'directMultiHop', 'channelIp', 'directIp']);
+  });
+
+  it('starts the IP row off and shows the note that MQTT/UDP now needs it', () => {
+    render(<AutoAcknowledgeSection {...matrixProps} />);
+    for (const cellId of ['channelIp', 'directIp']) {
+      expect(replyCheckboxFor(cellId)).not.toBeChecked();
+      expect((document.getElementById(`autoAck-${cellId}-tapback`) as HTMLInputElement)).not.toBeChecked();
+    }
+    expect(screen.getByTestId('autoAck-ip-row-note').textContent).toBe('automation.auto_ack.ip_row_note');
+    expect(enLocale['automation.auto_ack.ip_row_note']).toMatch(/MQTT or UDP/);
+    expect(enLocale['automation.auto_ack.ip_row_note']).toMatch(/used to answer/);
+  });
+
+  it('saves the six IP-row keys with the rest of the matrix', async () => {
+    mockCsrfFetch.mockResolvedValue({ ok: true, json: async () => ({ success: true }) });
+    const onMatrixChange = vi.fn();
+    const user = userEvent.setup();
+    render(<AutoAcknowledgeSection {...matrixProps} onMatrixChange={onMatrixChange} />);
+
+    await user.click(replyCheckboxFor('channelIp'));
+    await user.click(document.getElementById('autoAck-directIp-tapback') as HTMLInputElement);
+
+    const { useSaveBar } = await import('../hooks/useSaveBar');
+    const latest = () => vi.mocked(useSaveBar).mock.calls.at(-1)![0] as { hasChanges: boolean; onSave: () => Promise<void> };
+    await waitFor(() => expect(latest().hasChanges).toBe(true));
+    await latest().onSave();
+
+    await waitFor(() => expect(mockCsrfFetch).toHaveBeenCalled());
+    const body = JSON.parse(mockCsrfFetch.mock.calls[0][1].body);
+    expect(body.autoAckChannelIpReplyEnabled).toBe('true');
+    expect(body.autoAckChannelIpTapbackEnabled).toBe('false');
+    expect(body.autoAckChannelIpReplyDmEnabled).toBe('false');
+    expect(body.autoAckDirectIpReplyEnabled).toBe('false');
+    expect(body.autoAckDirectIpTapbackEnabled).toBe('true');
+    expect(body.autoAckDirectIpReplyDmEnabled).toBe('false');
+    await waitFor(() => expect(onMatrixChange).toHaveBeenCalledWith(expect.objectContaining({
+      channelIp: { reply: true, tapback: false, replyDm: false },
+      directIp: { reply: false, tapback: true, replyDm: false },
+    })));
   });
 });
 

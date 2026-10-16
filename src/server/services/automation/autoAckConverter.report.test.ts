@@ -36,11 +36,11 @@ const PARITY_DEPRECATED_KEYS = [
 ].sort();
 
 describe('report cross-check sanity', () => {
-  it('every pinned key is one of the 35 autoAck* VALID_SETTINGS_KEYS entries', () => {
+  it('every pinned key is one of the 41 autoAck* VALID_SETTINGS_KEYS entries', () => {
     for (const key of [...PARITY_NOT_CONVERTIBLE_KEYS, ...PARITY_DEPRECATED_KEYS]) {
       expect(AUTOACK_KEYS, `${key} missing from VALID_SETTINGS_KEYS`).toContain(key);
     }
-    expect(AUTOACK_KEYS.length).toBe(35);
+    expect(AUTOACK_KEYS.length).toBe(41);
   });
 });
 
@@ -52,6 +52,8 @@ describe('buildAutoAckAutomations report (maximal config)', () => {
     channelMultiHop: { reply: true, tapback: true, replyDm: false },
     directZeroHop: { reply: true, tapback: true, replyDm: false },
     directMultiHop: { reply: true, tapback: true, replyDm: false },
+    channelIp: { reply: true, tapback: true, replyDm: false },
+    directIp: { reply: true, tapback: true, replyDm: false },
   };
 
   const messageTemplate =
