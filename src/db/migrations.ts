@@ -226,6 +226,7 @@ import { migration as createMeshcoreAdminSessionsMigration, runMigration204Postg
 import { migration as userMapPreferencesMqttMessagesBySourceMigration, runMigration205Postgres, runMigration205Mysql } from '../server/migrations/205_user_map_preferences_mqtt_messages_by_source.js';
 import { migration as addMeshcorePositionOverrideMigration, runMigration206Postgres, runMigration206Mysql } from '../server/migrations/206_add_meshcore_position_override.js';
 import { migration as createUserPasskeysMigration, runMigration207Postgres, runMigration207Mysql } from '../server/migrations/207_create_user_passkeys.js';
+import { migration as addChannelDatabaseUseAeadMigration, runMigration208Postgres, runMigration208Mysql } from '../server/migrations/208_add_channel_database_use_aead.js';
 
 // ============================================================================
 // Registry
@@ -3350,4 +3351,18 @@ registry.register({
   sqlite: (db) => createUserPasskeysMigration.up(db),
   postgres: (client) => runMigration207Postgres(client),
   mysql: (pool) => runMigration207Mysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 208: `channel_database.useAead` (#5248 Phase 2). GLOBAL (decryption
+// keys). Marks a key as an AES-CCM channel for server-side decryption.
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 208,
+  name: 'add_channel_database_use_aead',
+  settingsKey: 'migration_208_add_channel_database_use_aead',
+  sqlite: (db) => addChannelDatabaseUseAeadMigration.up(db),
+  postgres: (client) => runMigration208Postgres(client),
+  mysql: (pool) => runMigration208Mysql(pool),
 });

@@ -92,14 +92,15 @@ describe('resolveOkToMqttForEnvelope', () => {
     expect(tryDecrypt).not.toHaveBeenCalled();
   });
 
-  it('decoded present, bitfield absent, encrypted present ⇒ decrypt attempted with (enc, id, from, channelHash)', async () => {
+  it('decoded present, bitfield absent, encrypted present ⇒ decrypt attempted with (enc, id, from, channelHash, to)', async () => {
     tryDecrypt.mockResolvedValue({ success: false });
     const enc = new Uint8Array([1, 2, 3]);
     await resolveOkToMqttForEnvelope(
-      envelope({ hasDecoded: true, encrypted: enc, id: 42, from: ORIGINATOR, channel: 7 }),
+      envelope({ hasDecoded: true, encrypted: enc, id: 42, from: ORIGINATOR, to: 0xffffffff, channel: 7 }),
     );
     expect(tryDecrypt).toHaveBeenCalledTimes(1);
-    expect(tryDecrypt).toHaveBeenCalledWith(enc, 42, ORIGINATOR, 7);
+    // `to` is part of the AEAD authenticated data (#5248).
+    expect(tryDecrypt).toHaveBeenCalledWith(enc, 42, ORIGINATOR, 7, 0xffffffff);
   });
 
   it('decrypt success with numeric bitfield ⇒ mapped through readBitfieldOkToMqtt', async () => {

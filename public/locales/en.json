@@ -5436,6 +5436,8 @@
   "channel_database.toast_decryption_completed": "Decryption completed: {{decrypted}} of {{total}} packets decrypted",
   "channel_database.enforce_name_validation": "Enforce Channel Name Validation",
   "channel_database.enforce_name_validation_description": "Only attempt decryption if the packet's channel hash matches. Allows multiple virtual channels with the same key but different names.",
+  "channel_database.use_aead": "AEAD channel (AES-CCM, Experimental)",
+  "channel_database.use_aead_description": "Turn on for a channel that uses AEAD on firmware 2.8.1 or later. With it on, this key opens only AEAD packets, and with it off only plain ones.",
   "channel_database.sort_order_note": "Channels are tried in order during decryption. Only the first matching channel will be used. Drag to reorder.",
   "channel_database.drag_to_reorder": "Drag to reorder",
   "channel_database.reorder_success": "Channel order updated",

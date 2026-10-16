@@ -6438,7 +6438,8 @@ class MeshtasticManager implements ISourceManager {
           meshPacket.encrypted,
           packetId,
           fromNum,
-          meshPacket.channel
+          meshPacket.channel,
+          meshPacket.to != null ? Number(meshPacket.to) >>> 0 : undefined
         );
 
         if (decryptionResult.success) {

@@ -288,6 +288,7 @@ async function ingestServiceEnvelopeInner(input: MqttIngestionInput): Promise<Mq
         pid,
         fromNum,
         typeof packet.channel === 'number' ? packet.channel : undefined,
+        typeof packet.to === 'number' ? packet.to >>> 0 : undefined,
       );
       if (r.success) {
         // Carry tapback metadata (emoji, replyId) onto the synthesized

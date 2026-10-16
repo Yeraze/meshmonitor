@@ -2299,6 +2299,7 @@ class ApiService {
     description?: string;
     isEnabled?: boolean;
     enforceNameValidation?: boolean;
+    useAead?: boolean;
     /** Defaults to 'meshtastic'. A MeshCore `#name` may omit `psk`. */
     protocol?: 'meshtastic' | 'meshcore';
   }): Promise<{
@@ -2320,6 +2321,7 @@ class ApiService {
       description?: string;
       isEnabled?: boolean;
       enforceNameValidation?: boolean;
+      useAead?: boolean;
     }
   ): Promise<{
     success: boolean;
@@ -2716,6 +2718,8 @@ export interface ChannelDatabaseEntry {
   description: string | null;
   isEnabled: boolean;
   enforceNameValidation: boolean;
+  /** AES-CCM channel, firmware 2.8.1+ (#5248). */
+  useAead?: boolean;
   sortOrder: number;
   decryptedPacketCount: number;
   lastDecryptedAt: number | null;

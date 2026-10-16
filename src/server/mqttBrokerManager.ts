@@ -125,6 +125,7 @@ const SKIP_RAISE_MAX_ENTRIES = 5_000;
  */
 function peekEncryptedPortnum(packet: {
   from?: number;
+  to?: number;
   id?: number;
   channel?: number;
   encrypted?: Uint8Array;
@@ -136,6 +137,7 @@ function peekEncryptedPortnum(packet: {
     packet.id >>> 0,
     packet.from >>> 0,
     typeof packet.channel === 'number' ? packet.channel : undefined,
+    typeof packet.to === 'number' ? packet.to >>> 0 : undefined,
   );
 }
 

@@ -87,7 +87,8 @@ export async function resolveOkToMqttForEnvelope(
   const channelHash = typeof envelope.packet?.channel === 'number'
     ? envelope.packet.channel
     : undefined;
-  const result = await channelDecryptionService.tryDecrypt(enc, id, from, channelHash);
+  const to = typeof envelope.packet?.to === 'number' ? envelope.packet.to >>> 0 : undefined;
+  const result = await channelDecryptionService.tryDecrypt(enc, id, from, channelHash, to);
   if (!result.success || typeof result.bitfield !== 'number') return 'unknown';
   return readBitfieldOkToMqtt(result.bitfield);
 }

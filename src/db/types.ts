@@ -499,6 +499,8 @@ export interface DbChannelDatabase {
   description?: string | null;
   isEnabled: boolean;
   enforceNameValidation: boolean;
+  /** AES-CCM (AEAD) channel, firmware 2.8.1+ (#5248). */
+  useAead: boolean;
   sortOrder: number; // Order for decryption priority (lower = tried first)
   decryptedPacketCount: number;
   lastDecryptedAt?: number | null;

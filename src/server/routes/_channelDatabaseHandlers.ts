@@ -113,6 +113,8 @@ export function transformChannelForResponse(channel: any, includeFullPsk: boolea
     description: channel.description,
     isEnabled: channel.isEnabled,
     enforceNameValidation: channel.enforceNameValidation ?? false,
+    // AES-CCM channel, firmware 2.8.1+ (#5248). Meshtastic rows only.
+    useAead: channel.useAead ?? false,
     sortOrder: channel.sortOrder ?? 0,
     decryptedPacketCount: channel.decryptedPacketCount,
     lastDecryptedAt: channel.lastDecryptedAt,
@@ -327,7 +329,7 @@ export async function createChannelHandler(req: Request, res: Response) {
       return forbidden(res, 'channel_database:write permission required to create channel database entries');
     }
 
-    const { name, psk, pskLength, description, isEnabled, enforceNameValidation, protocol } = req.body;
+    const { name, psk, pskLength, description, isEnabled, enforceNameValidation, protocol, useAead } = req.body;
 
     if (!name || typeof name !== 'string') {
       return res.status(400).json({
@@ -426,6 +428,7 @@ export async function createChannelHandler(req: Request, res: Response) {
       description: description ?? null,
       isEnabled: isEnabled ?? true,
       enforceNameValidation: enforceNameValidation ?? false,
+      useAead: Boolean(useAead),
       createdBy: scope.user?.id ?? null,
     });
 
@@ -545,7 +548,7 @@ export async function updateChannelHandler(req: Request, res: Response) {
       });
     }
 
-    const { name, psk, pskLength, description, isEnabled, enforceNameValidation, sortOrder } = req.body;
+    const { name, psk, pskLength, description, isEnabled, enforceNameValidation, sortOrder, useAead } = req.body;
     const updates: any = {};
 
     if (name !== undefined) {
@@ -620,6 +623,8 @@ export async function updateChannelHandler(req: Request, res: Response) {
     // Name validation is a Meshtastic channel-hash check; it has no meaning
     // for a MeshCore row.
     if (enforceNameValidation !== undefined && !isMeshcore) updates.enforceNameValidation = Boolean(enforceNameValidation);
+    // AEAD is a Meshtastic cipher mode; a MeshCore row has none.
+    if (useAead !== undefined && !isMeshcore) updates.useAead = Boolean(useAead);
 
     if (sortOrder !== undefined) {
       if (typeof sortOrder !== 'number' || !Number.isInteger(sortOrder)) {
@@ -643,7 +648,9 @@ export async function updateChannelHandler(req: Request, res: Response) {
     await databaseService.channelDatabase.updateAsync(id, updates);
     channelDecryptionService.invalidateCache();
 
-    if (!isMeshcore && psk !== undefined && (isEnabled ?? existing.isEnabled)) {
+    // A new key, or a cipher mode switch (#5248), can open packets the old row could not.
+    const aeadChanged = updates.useAead !== undefined && updates.useAead !== Boolean(existing.useAead);
+    if (!isMeshcore && (psk !== undefined || aeadChanged) && (isEnabled ?? existing.isEnabled)) {
       retroactiveDecryptionService.processForChannel(id).catch((err) => {
         logger.warn(`Background retroactive decryption failed for channel ${id}:`, err);
       });

@@ -1345,6 +1345,7 @@ describe('MqttBridgeManager', () => {
             0x40000005,
             0x33333333,
             0,
+            0xffffffff,
           ),
         { timeout: 5000, interval: 25 },
       );

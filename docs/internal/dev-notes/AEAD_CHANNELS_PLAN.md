@@ -1,6 +1,6 @@
 # AEAD (AES-CCM) PSK Channels — Implementation Plan (#5248)
 
-Status: **plan**, 2026-09-30. Protobufs submodule bumped to master `2542e06` in the PR that adds this file.
+Status: Phase 1 shipped (#5492). Phase 2a (server decrypt) in progress, 2026-10-16. Protobufs submodule bumped to master `2542e06` in the PR that adds this file.
 
 ## Upstream status (verified 2026-09-30)
 
@@ -46,7 +46,19 @@ No firmware needed to build or test; a synthetic `ChannelSettings` with `useAead
 
 Mesh impact: none new. One admin packet per edit, as today.
 
-## Phase 2 — decrypt and edit (after a 2.8.1 build ships AEAD)
+## Phase 2 — decrypt and edit
+
+Unblocked 2026-10-16: firmware `v2.8.1.8e6a88d` (2026-10-01, GitHub pre-release) contains #9749. Wire format re-checked against that tag: unchanged from the section above.
+
+Split into two PRs (maintainer, 2026-10-16):
+- **2a, server decrypt:** items 1-4 and the Channel Database checkbox from item 5. No packets sent, no mesh impact.
+- **2b, device channel:** the editable device-channel checkbox from item 5, gated on firmware ≥ 2.8.1, with the warning and confirm dialog.
+
+Findings at implementation (2a):
+- Item 2's stored-hash backfill is not needed: enabled rows compute their hash from name + key; only passive (no-PSK) rows store one, and those never decrypt.
+- The AAD binds `packet.to`, so every decrypt caller now passes it. An AEAD row is skipped when the destination is unknown.
+- Item 6 needs no change: `MAX_MESSAGE_BYTES` is 200, and 200 bytes of text plus `Data` framing, the 16-byte header and the 12-byte tag stays under 255.
+- Known answers: the firmware tests carry RFC 3610 vectors only (no packet capture). The test suite checks Node's CCM against one of them and round-trips packets built with the firmware's nonce and AAD layout. Hardware validation (item 8) is still required before release.
 
 1. **Migration:** `useAead` on `channel_database` (global table, per CLAUDE.md exception). Backfill nothing; default false.
 2. **Hash:** `computeChannelHash(name, psk, useAead)` in `channelDecryptionService.ts:73` applies `^ 0xAE`. Extend the hash lookup at `:156-167`, and add AEAD hashes to the stored-hash backfill (migration 104 pattern).
@@ -63,4 +75,5 @@ Mesh impact: none new. One admin packet per edit, as today.
 - Bump protobufs to untagged master: **yes** (done in this PR).
 - Phase 1 read-only now; Phase 2 editable, marked Experimental: **yes**.
 - MQTT hint at debug level only: **yes**.
-- Warning text above: **pending sign-off**.
+- Warning text above: **approved as written** (2026-10-16).
+- Phase 2 as two PRs (2a server decrypt, 2b device-channel checkbox): **yes** (2026-10-16).
