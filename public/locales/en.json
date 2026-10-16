@@ -4990,6 +4990,8 @@
   "position_override.save_error": "Failed to save position override",
   "position_override.private": "Private Position",
   "position_override.private_description": "Only visible to logged in users of this MeshMonitor instance. Anonymous users will see the original node position.",
+  "position_override.description_meshcore": "Override this contact's position on the map. When enabled, this custom position is used instead of the position from its adverts. Nothing is sent to the radio.",
+  "position_override.private_description_meshcore": "Only visible to logged in users of this MeshMonitor instance. Anonymous users will see the contact's advertised position.",
   "node_info.title": "Node Information",
   "node_info.node_name": "Node Name",
   "node_info.short_name": "Short Name",

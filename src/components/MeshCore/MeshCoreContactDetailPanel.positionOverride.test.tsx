@@ -101,6 +101,16 @@ describe('MeshCoreContactDetailPanel location override', () => {
     }));
   });
 
+  it('uses contact wording, not Meshtastic node wording, in the modal', async () => {
+    renderPanel();
+    await userEvent.click(screen.getByRole('button', { name: /Override location/ }));
+
+    // The i18n mock renders keys, so assert the MeshCore keys are the ones used.
+    expect(await screen.findByText('position_override.description_meshcore')).toBeInTheDocument();
+    expect(screen.queryByText('position_override.description')).toBeNull();
+    expect(screen.getByText('position_override.private_description_meshcore')).toBeInTheDocument();
+  });
+
   it('labels an applied override under the Position card', () => {
     renderPanel({ contact: { ...CONTACT, positionIsOverride: true, positionOverrideIsPrivate: true } });
     expect(screen.getByText('Location override (private)')).toBeInTheDocument();

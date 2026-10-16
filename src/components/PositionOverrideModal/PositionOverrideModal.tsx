@@ -199,7 +199,7 @@ export const PositionOverrideModal: React.FC<PositionOverrideModalProps> = ({
       ) : (
         <>
           <p className="position-override-description">
-            {t('position_override.description')}
+            {t(protocol === 'meshcore' ? 'position_override.description_meshcore' : 'position_override.description')}
           </p>
 
           <div className="position-override-checkbox-group">
@@ -226,7 +226,7 @@ export const PositionOverrideModal: React.FC<PositionOverrideModalProps> = ({
                   />
                   {t('position_override.private')}
                   <span className="field-description">
-                    {t('position_override.private_description')}
+                    {t(protocol === 'meshcore' ? 'position_override.private_description_meshcore' : 'position_override.private_description')}
                   </span>
                 </label>
               </div>
