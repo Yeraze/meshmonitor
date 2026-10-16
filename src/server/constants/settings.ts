@@ -55,7 +55,7 @@ export const VALID_SETTINGS_KEYS = [
   // have answered the same message. 0 = no cap; default 2; 0-10 enforced on
   // save (settingsRoutes) and clamped on read (autoAckResponseCap.ts).
   'autoAckMaxResponses',
-  // Auto-ack 2x2 matrix (discussion #3564): {Channel,Direct} × {ZeroHop,MultiHop},
+  // Auto-ack matrix (discussion #3564, #5796): {Channel,Direct} × {ZeroHop,MultiHop,Ip},
   // each cell with Reply / Tapback / Respond-via-DM. These supersede the legacy
   // hop-only keys above (autoAckDirect*/autoAckMultihop*/autoAckUseDM/
   // autoAckDirectMessages), which migration 093 folds into these.
@@ -71,6 +71,13 @@ export const VALID_SETTINGS_KEYS = [
   'autoAckDirectMultiHopReplyEnabled',
   'autoAckDirectMultiHopTapbackEnabled',
   'autoAckDirectMultiHopReplyDmEnabled',
+  // IP row (#5796): messages that reached the node over MQTT or multicast UDP.
+  'autoAckChannelIpReplyEnabled',
+  'autoAckChannelIpTapbackEnabled',
+  'autoAckChannelIpReplyDmEnabled',
+  'autoAckDirectIpReplyEnabled',
+  'autoAckDirectIpTapbackEnabled',
+  'autoAckDirectIpReplyDmEnabled',
   'customTapbackEmojis',
   'automationAirtimeCutoffThreshold',
   'automationAirtimeCutoffSource',
@@ -530,6 +537,13 @@ export const PER_SOURCE_SETTINGS_KEYS = [
   'autoAckDirectMultiHopReplyEnabled',
   'autoAckDirectMultiHopTapbackEnabled',
   'autoAckDirectMultiHopReplyDmEnabled',
+  // IP row (#5796): messages that reached the node over MQTT or multicast UDP.
+  'autoAckChannelIpReplyEnabled',
+  'autoAckChannelIpTapbackEnabled',
+  'autoAckChannelIpReplyDmEnabled',
+  'autoAckDirectIpReplyEnabled',
+  'autoAckDirectIpTapbackEnabled',
+  'autoAckDirectIpReplyDmEnabled',
   // Automation airtime cutoff (pauses all automations above channel-utilization threshold)
   'automationAirtimeCutoffThreshold',
   'automationAirtimeCutoffSource',

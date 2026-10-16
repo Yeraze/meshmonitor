@@ -10,7 +10,7 @@
  */
 import { describe, it, expect } from 'vitest';
 import { buildMessageContext, buildMeshCoreMessageContext, BROADCAST_ADDR } from './triggerContext.js';
-import { autoAckIsZeroHop } from '../../utils/autoAckDecision.js';
+import { autoAckIsIp, autoAckIsZeroHop } from '../../utils/autoAckDecision.js';
 import type { DbMessage } from '../../../services/database.js';
 import type { MeshCoreMessage } from '../../meshcoreManager.js';
 
@@ -151,5 +151,35 @@ describe('zeroHop (MeshCore buildMeshCoreMessageContext)', () => {
   it('is never NaN after asNumber', () => {
     const ctx = buildMeshCoreMessageContext(mcMsg(), 'mc-source', 1);
     expect(Number.isNaN(asNumber(ctx.fields.zeroHop))).toBe(false);
+  });
+});
+
+describe('viaIp + zeroHop on the IP transports (#5796)', () => {
+  // Transport values from meshtastic.MeshPacket.TransportMechanism.
+  const LORA = 1;
+  const MQTT = 5;
+  const MULTICAST_UDP = 6;
+  const API = 7;
+
+  it.each([
+    { label: 'LoRa, 0 hops', viaMqtt: false, transportMechanism: LORA, hopLimit: 3, viaIp: 0, zeroHop: 1 },
+    { label: 'LoRa, 2 hops', viaMqtt: false, transportMechanism: LORA, hopLimit: 1, viaIp: 0, zeroHop: 0 },
+    { label: 'viaMqtt flag, 0 hops', viaMqtt: true, transportMechanism: LORA, hopLimit: 3, viaIp: 1, zeroHop: 0 },
+    { label: 'transport MQTT, 0 hops', viaMqtt: false, transportMechanism: MQTT, hopLimit: 3, viaIp: 1, zeroHop: 0 },
+    { label: 'transport UDP, 0 hops', viaMqtt: false, transportMechanism: MULTICAST_UDP, hopLimit: 3, viaIp: 1, zeroHop: 0 },
+    { label: 'transport UDP, 2 hops', viaMqtt: false, transportMechanism: MULTICAST_UDP, hopLimit: 1, viaIp: 1, zeroHop: 0 },
+    { label: 'transport API, 0 hops', viaMqtt: false, transportMechanism: API, hopLimit: 3, viaIp: 0, zeroHop: 1 },
+    { label: 'pre-#5101 row (null transport), 0 hops', viaMqtt: false, transportMechanism: null, hopLimit: 3, viaIp: 0, zeroHop: 1 },
+  ])('$label → viaIp=$viaIp zeroHop=$zeroHop', ({ viaMqtt, transportMechanism, hopLimit, viaIp, zeroHop }) => {
+    const ctx = buildMessageContext(msg({ hopStart: 3, hopLimit, viaMqtt, transportMechanism }), 'default', 1);
+    expect(ctx.fields.viaIp).toBe(viaIp);
+    expect(ctx.fields.zeroHop).toBe(zeroHop);
+    // Same helper checkAutoAcknowledge uses to pick the row.
+    expect(ctx.fields.viaIp).toBe(autoAckIsIp(viaMqtt, transportMechanism) ? 1 : 0);
+  });
+
+  it('is a constant 0 (never NaN) on MeshCore messages', () => {
+    const ctx = buildMeshCoreMessageContext(mcMsg(), 'mc-source', 1);
+    expect(ctx.fields.viaIp).toBe(0);
   });
 });

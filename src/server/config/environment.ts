@@ -271,6 +271,13 @@ export interface EnvironmentConfig {
   adminUsername: string;
   adminUsernameProvided: boolean;
 
+  // Passkeys / WebAuthn (#5841). Both optional: when unset the RP ID and
+  // origin come from each request (req.hostname / req.protocol).
+  webauthnRpId: string | undefined;
+  webauthnRpIdProvided: boolean;
+  webauthnOrigins: string[];
+  webauthnOriginsProvided: boolean;
+
   // Proxy Authentication
   proxyAuthEnabled: boolean;
   proxyAuthEnabledProvided: boolean;
@@ -634,6 +641,29 @@ export function loadEnvironmentConfig(): EnvironmentConfig {
     wasProvided: process.env.ADMIN_USERNAME !== undefined
   };
 
+  // ============ PASSKEYS / WEBAUTHN (#5841) ============
+  // A passkey is bound to one hostname (the RP ID). Behind a reverse proxy the
+  // request-derived value is right only when TRUST_PROXY is right, so say so.
+  const webauthnRpIdRaw = process.env.WEBAUTHN_RP_ID?.trim();
+  const webauthnRpId = {
+    value: webauthnRpIdRaw ? webauthnRpIdRaw.toLowerCase() : undefined,
+    wasProvided: !!webauthnRpIdRaw,
+  };
+  const webauthnOriginList = (process.env.WEBAUTHN_ORIGINS || '')
+    .split(',')
+    .map(o => o.trim().replace(/\/+$/, ''))
+    .filter(Boolean);
+  const webauthnOrigins = {
+    value: webauthnOriginList,
+    wasProvided: webauthnOriginList.length > 0,
+  };
+  if (!webauthnRpId.wasProvided || !webauthnOrigins.wasProvided) {
+    logger.warn(
+      '⚠️  WEBAUTHN_RP_ID / WEBAUTHN_ORIGINS not set: passkeys take the hostname and origin from each request. ' +
+      'Behind a reverse proxy, set TRUST_PROXY or these two variables.'
+    );
+  }
+
   // ============ PROXY AUTHENTICATION ============
   const proxyAuthEnabled = parseBoolean('PROXY_AUTH_ENABLED', process.env.PROXY_AUTH_ENABLED, false);
   const proxyAuthAutoProvision = parseBoolean('PROXY_AUTH_AUTO_PROVISION', process.env.PROXY_AUTH_AUTO_PROVISION, false);
@@ -920,6 +950,12 @@ export function loadEnvironmentConfig(): EnvironmentConfig {
     disableAnonymousProvided: disableAnonymous.wasProvided,
     adminUsername: adminUsername.value,
     adminUsernameProvided: adminUsername.wasProvided,
+
+    // Passkeys / WebAuthn
+    webauthnRpId: webauthnRpId.value,
+    webauthnRpIdProvided: webauthnRpId.wasProvided,
+    webauthnOrigins: webauthnOrigins.value,
+    webauthnOriginsProvided: webauthnOrigins.wasProvided,
 
     // Proxy Authentication
     proxyAuthEnabled: proxyAuthEnabled.value,

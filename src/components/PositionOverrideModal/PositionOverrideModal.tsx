@@ -31,6 +31,15 @@ interface PositionOverrideModalProps {
   onClose: () => void;
   onSave: (nodeNum: number, data: PositionOverride) => Promise<void>;
   getNodeName: (nodeId: string) => string;
+  /**
+   * Which node kind this edits (#5842). `meshtastic` (default): `selectedNode`
+   * is a Meshtastic node and the override loads from `/api/nodes/:id`.
+   * `meshcore`: `selectedNode.user.id` is the contact's public key and the
+   * override loads from `/api/sources/:id/meshcore/nodes/:publicKey`.
+   * `onSave` is called the same way for both; a MeshCore caller ignores the
+   * `nodeNum` argument.
+   */
+  protocol?: 'meshtastic' | 'meshcore';
 }
 
 export const PositionOverrideModal: React.FC<PositionOverrideModalProps> = ({
@@ -39,6 +48,7 @@ export const PositionOverrideModal: React.FC<PositionOverrideModalProps> = ({
   onClose,
   onSave,
   getNodeName,
+  protocol = 'meshtastic',
 }) => {
   const { t } = useTranslation();
   const sourceId = useResolvedSourceId();
@@ -69,8 +79,16 @@ export const PositionOverrideModal: React.FC<PositionOverrideModalProps> = ({
       loadedForNodeRef.current = nodeId;
       setLoading(true);
       setError(null);
-      const sourceQuery = `?sourceId=${encodeURIComponent(sourceId)}`;
-      apiService.get<PositionOverride>(`/api/nodes/${nodeId}/position-override${sourceQuery}`)
+      const load = protocol === 'meshcore'
+        ? apiService
+          .get<{ data: PositionOverride }>(
+            `/api/sources/${encodeURIComponent(sourceId)}/meshcore/nodes/${encodeURIComponent(nodeId)}/position-override`,
+          )
+          .then((body) => body.data)
+        : apiService.get<PositionOverride>(
+          `/api/nodes/${nodeId}/position-override?sourceId=${encodeURIComponent(sourceId)}`,
+        );
+      load
         .then((data) => {
           setEnabled(data.enabled);
           setIsPrivate(data.isPrivate ?? false);
@@ -93,7 +111,7 @@ export const PositionOverrideModal: React.FC<PositionOverrideModalProps> = ({
     if (!isOpen) {
       loadedForNodeRef.current = null;
     }
-  }, [isOpen, nodeId, sourceId]);
+  }, [isOpen, nodeId, sourceId, protocol]);
 
   // Reset error state when values change
   useEffect(() => {
@@ -181,7 +199,7 @@ export const PositionOverrideModal: React.FC<PositionOverrideModalProps> = ({
       ) : (
         <>
           <p className="position-override-description">
-            {t('position_override.description')}
+            {t(protocol === 'meshcore' ? 'position_override.description_meshcore' : 'position_override.description')}
           </p>
 
           <div className="position-override-checkbox-group">
@@ -208,7 +226,7 @@ export const PositionOverrideModal: React.FC<PositionOverrideModalProps> = ({
                   />
                   {t('position_override.private')}
                   <span className="field-description">
-                    {t('position_override.private_description')}
+                    {t(protocol === 'meshcore' ? 'position_override.private_description_meshcore' : 'position_override.private_description')}
                   </span>
                 </label>
               </div>

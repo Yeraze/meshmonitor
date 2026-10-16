@@ -1,0 +1,19 @@
+/*
+ * SectionNav on the MeshCore Configuration and Automations pages.
+ *
+ * App.css parks `.section-nav` at `top: var(--app-header-height)` because on
+ * the Meshtastic pages the window scrolls under a fixed bar. Here the view
+ * itself is the scroller and already starts below that bar, so that offset
+ * would leave a header-sized gap above the stuck nav.
+ *
+ * A sticky box sticks inside the scroller's padding, so `top: 0` would still
+ * leave one padding of gap, with content showing through it. Pulling it up by
+ * the pane's own padding (`--meshcore-pane-padding`, set on the pane) puts it
+ * flush with the pane's visible top edge.
+ *
+ * The class is doubled so it out-specifies `.section-nav` (0,2,0 vs 0,1,0)
+ * whichever sheet the bundler emits first.
+ */
+.nav.nav {
+  top: calc(-1 * var(--meshcore-pane-padding, 0px));
+}

@@ -16,6 +16,9 @@ import { MeshCorePathfindingFilterSection } from './MeshCorePathfindingFilterSec
 import { AutomationTokenReference } from '../AutomationTokenReference';
 import { buildMeshCoreTokenGroups } from './meshcoreAutomationTokens';
 import { UiIcon } from '../icons';
+import SectionNav from '../SectionNav';
+import { meshcoreAutomationNavItems } from '../search/configSections';
+import navStyles from './MeshCoreSectionNav.module.css';
 
 interface MeshCoreAutomationsViewProps {
   baseUrl: string;
@@ -155,10 +158,19 @@ export const MeshCoreAutomationsView: React.FC<MeshCoreAutomationsViewProps> = (
 
   return (
     <NumberInputScope scope={numberScope}>
-    <div className="meshcore-automations-view" style={{ padding: '1rem', overflowY: 'auto', height: '100%', minHeight: 0 }}>
+    <div className="meshcore-automations-view" style={{ padding: 'var(--meshcore-pane-padding, 1rem)', overflowY: 'auto', height: '100%', minHeight: 0 }}>
       <h1 style={{ marginBottom: '1.5rem' }}>
         {t('meshcore.automation.title', 'Automations')}
       </h1>
+
+      <SectionNav
+        className={navStyles.nav}
+        searchable
+        searchPlaceholder={t('config_search.filter_automation', 'Search automations...')}
+        searchLabel={t('config_search.filter_automation', 'Search automations...')}
+        noMatchesLabel={t('config_search.no_sections', 'No matching sections')}
+        items={meshcoreAutomationNavItems(t)}
+      />
 
       {/* Single source-of-truth token reference for the whole page. */}
       <AutomationTokenReference
@@ -184,171 +196,184 @@ export const MeshCoreAutomationsView: React.FC<MeshCoreAutomationsViewProps> = (
         }
       />
 
-      {/* Auto-Pathfinding Section */}
-      <div className="automation-section-header" style={{
-        display: 'flex',
-        alignItems: 'center',
-        marginBottom: '1.5rem',
-        padding: '1rem 1.25rem',
-        background: 'var(--color-surface-hover)',
-        border: '1px solid var(--color-surface-active)',
-        borderRadius: '8px',
-      }}>
-        <h2 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-          <input
-            type="checkbox"
-            checked={settings.enabled}
-            onChange={(e) => update('enabled', e.target.checked)}
-            disabled={!canWrite}
-            style={{ width: 'auto', margin: 0, cursor: canWrite ? 'pointer' : 'default' }}
-          />
-          {t('meshcore.automation.pathfinding.title', 'Auto-Pathfinding')}
-        </h2>
-        {settings.schedulerRunning && (
-          <span style={{
-            marginLeft: 'auto',
-            fontSize: '0.8rem',
-            padding: '0.25rem 0.5rem',
-            borderRadius: '4px',
-            background: 'var(--color-success)',
-            color: 'var(--color-bg)',
-          }}>
-            {t('meshcore.automation.running', 'Running')}
-          </span>
-        )}
-      </div>
-
-      <div className="settings-section" style={{
-        opacity: settings.enabled ? 1 : 0.5,
-        transition: 'opacity 0.2s',
-        pointerEvents: settings.enabled ? 'auto' : 'none',
-      }}>
-        <p style={{ marginBottom: '1.5rem', color: 'var(--color-text-subtle)', lineHeight: '1.5', marginLeft: '1.75rem' }}>
-          {t('meshcore.automation.pathfinding.description',
-            'Automatically discover paths and collect neighbor information from your MeshCore contacts on a recurring schedule.')}
-        </p>
-
-        {/* Path Discovery for Companions */}
-        <div style={{
-          padding: '1rem 1.25rem',
-          marginBottom: '1rem',
-          background: 'var(--color-surface)',
-          border: '1px solid var(--color-surface-hover)',
-          borderRadius: '8px',
-        }}>
-          <label style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', cursor: canWrite ? 'pointer' : 'default' }}>
-            <input
-              type="checkbox"
-              checked={settings.pathDiscoveryEnabled}
-              onChange={(e) => update('pathDiscoveryEnabled', e.target.checked)}
-              disabled={!canWrite}
-              style={{ width: 'auto', margin: 0 }}
-            />
-            <div>
-              <strong>{t('meshcore.automation.pathfinding.path_discovery', 'Path Discovery for Companions')}</strong>
-              <p style={{ margin: '0.25rem 0 0', fontSize: '0.85rem', color: 'var(--color-text-subtle)' }}>
-                {t('meshcore.automation.pathfinding.path_discovery_desc',
-                  'Sends a path discovery request to each Companion contact. The device learns the forwarding route via its normal path return mechanism.')}
-              </p>
-            </div>
-          </label>
-        </div>
-
-        {/* Neighbors for Repeaters */}
-        <div style={{
-          padding: '1rem 1.25rem',
+      {/* Auto-Pathfinding Section. Header and body share one wrapper so the
+          section filter hides both. */}
+      <div id="meshcore-automation-pathfinding">
+        <div className="automation-section-header" style={{
+          display: 'flex',
+          alignItems: 'center',
           marginBottom: '1.5rem',
-          background: 'var(--color-surface)',
-          border: '1px solid var(--color-surface-hover)',
+          padding: '1rem 1.25rem',
+          background: 'var(--color-surface-hover)',
+          border: '1px solid var(--color-surface-active)',
           borderRadius: '8px',
         }}>
-          <label style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', cursor: canWrite ? 'pointer' : 'default' }}>
+          <h2 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
             <input
               type="checkbox"
-              checked={settings.neighborsEnabled}
-              onChange={(e) => update('neighborsEnabled', e.target.checked)}
+              checked={settings.enabled}
+              onChange={(e) => update('enabled', e.target.checked)}
               disabled={!canWrite}
-              style={{ width: 'auto', margin: 0 }}
+              style={{ width: 'auto', margin: 0, cursor: canWrite ? 'pointer' : 'default' }}
             />
-            <div>
-              <strong>{t('meshcore.automation.pathfinding.neighbors', 'Neighbors for Repeaters')}</strong>
-              <p style={{ margin: '0.25rem 0 0', fontSize: '0.85rem', color: 'var(--color-text-subtle)' }}>
-                {t('meshcore.automation.pathfinding.neighbors_desc',
-                  'Queries the neighbor list from each Repeater contact. Returns nearby nodes with signal quality information.')}
-              </p>
-            </div>
-          </label>
-        </div>
-
-        {/* Interval between commands */}
-        <div className="setting-item" style={{ marginBottom: '1rem' }}>
-          <label htmlFor="pathfindingInterval">
-            {t('meshcore.automation.pathfinding.interval', 'Time between commands (minutes)')}
-            <span className="setting-description" style={{ display: 'block', fontSize: '0.85rem', color: 'var(--color-text-subtle)' }}>
-              {t('meshcore.automation.pathfinding.interval_desc',
-                'Delay between each individual path discovery or neighbor request to avoid flooding the mesh.')}
+            {t('meshcore.automation.pathfinding.title', 'Auto-Pathfinding')}
+          </h2>
+          {settings.schedulerRunning && (
+            <span style={{
+              marginLeft: 'auto',
+              fontSize: '0.8rem',
+              padding: '0.25rem 0.5rem',
+              borderRadius: '4px',
+              background: 'var(--color-success)',
+              color: 'var(--color-bg)',
+            }}>
+              {t('meshcore.automation.running', 'Running')}
             </span>
-          </label>
-          <NumberInput
-            id="pathfindingInterval"
-            min={3}
-            max={60}
-            integer
-            value={settings.intervalMinutes}
-            onChange={(v) => update('intervalMinutes', v)}
-            disabled={!canWrite}
-            className="setting-input"
-            style={{ width: '100px', marginTop: '0.5rem' }}
-          />
+          )}
         </div>
 
-        {/* Repeat interval */}
-        <div className="setting-item" style={{ marginBottom: '1rem' }}>
-          <label htmlFor="pathfindingRepeat">
-            {t('meshcore.automation.pathfinding.repeat', 'Repeat every (hours)')}
-            <span className="setting-description" style={{ display: 'block', fontSize: '0.85rem', color: 'var(--color-text-subtle)' }}>
-              {t('meshcore.automation.pathfinding.repeat_desc',
-                'How often the full cycle runs. All eligible contacts are processed in each cycle.')}
-            </span>
-          </label>
-          <NumberInput
-            id="pathfindingRepeat"
-            min={1}
-            max={168}
-            integer
-            value={settings.repeatHours}
-            onChange={(v) => update('repeatHours', v)}
-            disabled={!canWrite}
-            className="setting-input"
-            style={{ width: '100px', marginTop: '0.5rem' }}
-          />
-        </div>
-
-        {/* Last run info */}
-        {settings.lastRunAt ? (
-          <p style={{ fontSize: '0.85rem', color: 'var(--color-text-subtle)', marginTop: '1rem' }}>
-            {t('meshcore.automation.pathfinding.last_run', 'Last run')}: {new Date(settings.lastRunAt).toLocaleString()}
+        <div className="settings-section" style={{
+          opacity: settings.enabled ? 1 : 0.5,
+          transition: 'opacity 0.2s',
+          pointerEvents: settings.enabled ? 'auto' : 'none',
+        }}>
+          <p style={{ marginBottom: '1.5rem', color: 'var(--color-text-subtle)', lineHeight: '1.5', marginLeft: '1.75rem' }}>
+            {t('meshcore.automation.pathfinding.description',
+              'Automatically discover paths and collect neighbor information from your MeshCore contacts on a recurring schedule.')}
           </p>
-        ) : null}
 
-        {/* Target Filter (#4024) */}
-        <MeshCorePathfindingFilterSection baseUrl={baseUrl} sourceId={sourceId} canWrite={canWrite} receiveOnly={receiveOnly} />
+          {/* Path Discovery for Companions */}
+          <div style={{
+            padding: '1rem 1.25rem',
+            marginBottom: '1rem',
+            background: 'var(--color-surface)',
+            border: '1px solid var(--color-surface-hover)',
+            borderRadius: '8px',
+          }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', cursor: canWrite ? 'pointer' : 'default' }}>
+              <input
+                type="checkbox"
+                checked={settings.pathDiscoveryEnabled}
+                onChange={(e) => update('pathDiscoveryEnabled', e.target.checked)}
+                disabled={!canWrite}
+                style={{ width: 'auto', margin: 0 }}
+              />
+              <div>
+                <strong>{t('meshcore.automation.pathfinding.path_discovery', 'Path Discovery for Companions')}</strong>
+                <p style={{ margin: '0.25rem 0 0', fontSize: '0.85rem', color: 'var(--color-text-subtle)' }}>
+                  {t('meshcore.automation.pathfinding.path_discovery_desc',
+                    'Sends a path discovery request to each Companion contact. The device learns the forwarding route via its normal path return mechanism.')}
+                </p>
+              </div>
+            </label>
+          </div>
+
+          {/* Neighbors for Repeaters */}
+          <div style={{
+            padding: '1rem 1.25rem',
+            marginBottom: '1.5rem',
+            background: 'var(--color-surface)',
+            border: '1px solid var(--color-surface-hover)',
+            borderRadius: '8px',
+          }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', cursor: canWrite ? 'pointer' : 'default' }}>
+              <input
+                type="checkbox"
+                checked={settings.neighborsEnabled}
+                onChange={(e) => update('neighborsEnabled', e.target.checked)}
+                disabled={!canWrite}
+                style={{ width: 'auto', margin: 0 }}
+              />
+              <div>
+                <strong>{t('meshcore.automation.pathfinding.neighbors', 'Neighbors for Repeaters')}</strong>
+                <p style={{ margin: '0.25rem 0 0', fontSize: '0.85rem', color: 'var(--color-text-subtle)' }}>
+                  {t('meshcore.automation.pathfinding.neighbors_desc',
+                    'Queries the neighbor list from each Repeater contact. Returns nearby nodes with signal quality information.')}
+                </p>
+              </div>
+            </label>
+          </div>
+
+          {/* Interval between commands */}
+          <div className="setting-item" style={{ marginBottom: '1rem' }}>
+            <label htmlFor="pathfindingInterval">
+              {t('meshcore.automation.pathfinding.interval', 'Time between commands (minutes)')}
+              <span className="setting-description" style={{ display: 'block', fontSize: '0.85rem', color: 'var(--color-text-subtle)' }}>
+                {t('meshcore.automation.pathfinding.interval_desc',
+                  'Delay between each individual path discovery or neighbor request to avoid flooding the mesh.')}
+              </span>
+            </label>
+            <NumberInput
+              id="pathfindingInterval"
+              min={3}
+              max={60}
+              integer
+              value={settings.intervalMinutes}
+              onChange={(v) => update('intervalMinutes', v)}
+              disabled={!canWrite}
+              className="setting-input"
+              style={{ width: '100px', marginTop: '0.5rem' }}
+            />
+          </div>
+
+          {/* Repeat interval */}
+          <div className="setting-item" style={{ marginBottom: '1rem' }}>
+            <label htmlFor="pathfindingRepeat">
+              {t('meshcore.automation.pathfinding.repeat', 'Repeat every (hours)')}
+              <span className="setting-description" style={{ display: 'block', fontSize: '0.85rem', color: 'var(--color-text-subtle)' }}>
+                {t('meshcore.automation.pathfinding.repeat_desc',
+                  'How often the full cycle runs. All eligible contacts are processed in each cycle.')}
+              </span>
+            </label>
+            <NumberInput
+              id="pathfindingRepeat"
+              min={1}
+              max={168}
+              integer
+              value={settings.repeatHours}
+              onChange={(v) => update('repeatHours', v)}
+              disabled={!canWrite}
+              className="setting-input"
+              style={{ width: '100px', marginTop: '0.5rem' }}
+            />
+          </div>
+
+          {/* Last run info */}
+          {settings.lastRunAt ? (
+            <p style={{ fontSize: '0.85rem', color: 'var(--color-text-subtle)', marginTop: '1rem' }}>
+              {t('meshcore.automation.pathfinding.last_run', 'Last run')}: {new Date(settings.lastRunAt).toLocaleString()}
+            </p>
+          ) : null}
+
+          {/* Target Filter (#4024) */}
+          <MeshCorePathfindingFilterSection baseUrl={baseUrl} sourceId={sourceId} canWrite={canWrite} receiveOnly={receiveOnly} />
+        </div>
       </div>
 
       {/* Auto-Acknowledge Section */}
-      <MeshCoreAutoAckSection baseUrl={baseUrl} sourceId={sourceId} receiveOnly={receiveOnly} />
+      <div id="meshcore-automation-auto-ack">
+        <MeshCoreAutoAckSection baseUrl={baseUrl} sourceId={sourceId} receiveOnly={receiveOnly} />
+      </div>
 
       {/* Auto-Announce Section */}
-      <MeshCoreAutoAnnounceSection baseUrl={baseUrl} sourceId={sourceId} receiveOnly={receiveOnly} />
+      <div id="meshcore-automation-auto-announce">
+        <MeshCoreAutoAnnounceSection baseUrl={baseUrl} sourceId={sourceId} receiveOnly={receiveOnly} />
+      </div>
 
       {/* Auto-Responder Section */}
-      <MeshCoreAutoResponderSection baseUrl={baseUrl} sourceId={sourceId} receiveOnly={receiveOnly} />
+      <div id="meshcore-automation-auto-responder">
+        <MeshCoreAutoResponderSection baseUrl={baseUrl} sourceId={sourceId} receiveOnly={receiveOnly} />
+      </div>
 
       {/* Forwarding Section (#5446) */}
-      <MeshCoreForwardingSection baseUrl={baseUrl} sourceId={sourceId} receiveOnly={receiveOnly} />
+      <div id="meshcore-automation-forwarding">
+        <MeshCoreForwardingSection baseUrl={baseUrl} sourceId={sourceId} receiveOnly={receiveOnly} />
+      </div>
 
       {/* Timer Triggers Section */}
-      <MeshCoreTimerTriggersSection baseUrl={baseUrl} sourceId={sourceId} receiveOnly={receiveOnly} />
+      <div id="meshcore-automation-timer-triggers">
+        <MeshCoreTimerTriggersSection baseUrl={baseUrl} sourceId={sourceId} receiveOnly={receiveOnly} />
+      </div>
     </div>
     </NumberInputScope>
   );

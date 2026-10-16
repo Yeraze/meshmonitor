@@ -177,9 +177,8 @@ export async function loadMeshCoreNodesBySource(sourceIds: string[]): Promise<Ma
 /**
  * The MeshCore twin of `buildPositionFilter` (#5277 Phase 3 WP2, Decision
  * D10). MeshCore coverage rows key on `(sourceId, publicKey)`, not a
- * Meshtastic `nodeNum`, and `meshcore_nodes` has no `hideFromMap` /
- * private-position columns (yet — if those land later, add the gates here).
- * The rule is narrower than `buildPositionFilter`'s three-part gate:
+ * Meshtastic `nodeNum`, and `meshcore_nodes` has no `hideFromMap` column
+ * (yet — if it lands later, add the gate here). The rule:
  *
  *  - **Presence** (display gate, applied to EVERYONE, admins included):
  *    `(sourceId, publicKey)` must have a `meshcore_nodes` row (compared
@@ -192,6 +191,10 @@ export async function loadMeshCoreNodesBySource(sourceIds: string[]): Promise<Ma
  *    `true` for `user.isAdmin`, so admins skip this check but never the
  *    presence gate above. Anonymous (`user` null/
  *    undefined) never passes.
+ *  - **Private location override** (#5842, non-admins only): a node whose
+ *    override is marked private passes only with `nodes_private:read` on
+ *    that row's source, the same rule `buildPositionFilter` applies to
+ *    `positionOverrideIsPrivate`.
  *
  * Branches ONLY on the row's own `(sourceId, publicKey)` — callers select
  * which rows are MeshCore via `isMeshCoreReceptionRow` / `isMeshCorePubKeyId`
@@ -209,9 +212,12 @@ export async function buildMeshCorePositionFilter(
   // Presence set, keyed the same way for every source so a coincidental
   // pubkey collision across two independent sources can't cross-satisfy.
   const present = new Set<string>();
+  const privateOverride = new Set<string>();
   for (const srcId of sourceIds) {
     for (const n of nodesBySourceResolved.get(srcId) ?? []) {
-      present.add(`${srcId}:${n.publicKey.toLowerCase()}`);
+      const key = `${srcId}:${n.publicKey.toLowerCase()}`;
+      present.add(key);
+      if (n.positionOverrideIsPrivate) privateOverride.add(key);
     }
   }
 
@@ -221,7 +227,9 @@ export async function buildMeshCorePositionFilter(
   const grants = permissions ?? (await loadSourcePermissions(user?.id != null ? user : null));
 
   return (row: MeshCoreVisibilityRow): boolean => {
-    if (!present.has(`${row.sourceId}:${row.publicKey.toLowerCase()}`)) return false;
+    const key = `${row.sourceId}:${row.publicKey.toLowerCase()}`;
+    if (!present.has(key)) return false;
+    if (privateOverride.has(key) && !grants.can('nodes_private', 'read', row.sourceId)) return false;
     return grants.can('nodes', 'viewOnMap', row.sourceId);
   };
 }

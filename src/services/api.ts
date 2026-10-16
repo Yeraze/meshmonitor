@@ -506,6 +506,11 @@ class ApiService {
     return this.request<T>('PUT', endpoint, body);
   }
 
+  // Generic PATCH method
+  async patch<T>(endpoint: string, body?: unknown): Promise<T> {
+    return this.request<T>('PATCH', endpoint, body);
+  }
+
   // Generic DELETE method
   async delete<T>(endpoint: string): Promise<T> {
     return this.request<T>('DELETE', endpoint);

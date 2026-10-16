@@ -132,6 +132,7 @@ const featuresSidebar = [
     collapsed: false,
     items: [
       { text: 'Security Overview', link: '/features/security' },
+      { text: 'Passkeys', link: '/features/passkeys' },
       { text: 'Duplicate Encryption Keys', link: '/security-duplicate-keys' },
       { text: 'Low-Entropy Encryption Keys', link: '/security-low-entropy-keys' },
       { text: 'Impersonation Detection', link: '/features/impersonation-detection' },
@@ -273,6 +274,7 @@ export default defineConfig({
           collapsed: false,
           items: [
             { text: 'SSO (OpenID Connect)', link: '/configuration/sso' },
+            { text: 'Passkeys', link: '/features/passkeys' },
             { text: 'Fail2ban Integration', link: '/configuration/fail2ban' }
           ]
         },

@@ -14,6 +14,7 @@
  * Mounted BEFORE `meshcoreRouteGuard` in the barrel; see `anyMeshCoreRouteGuard`.
  */
 import { resolveMeshcoreKeyAccess, filterKeyedMessages } from '../utils/meshcoreKeyAccess.js';
+import { applyMeshCorePositionOverridesForViewer } from '../utils/meshcorePositionOverride.js';
 import { Router, type Request, type Response } from 'express';
 import { optionalAuth, requirePermission } from '../auth/authMiddleware.js';
 import { sourceManagerRegistry } from '../sourceManagerRegistry.js';
@@ -120,7 +121,9 @@ router.get(
     try {
       const mgr = ingestManagerFor(req);
       if (!mgr) return refuseDeviceSource(res);
-      const nodes = await mgr.getAllNodes();
+      // #5842: an enabled location override wins over the advert position;
+      // a private one only for a caller with nodes_private:read.
+      const nodes = await applyMeshCorePositionOverridesForViewer(await mgr.getAllNodes(), req.user, (req.params as { id: string }).id);
       return ok(res, { nodes, count: nodes.length });
     } catch (error) {
       logger.error('[API] MeshCore ingest nodes failed:', error);

@@ -54,6 +54,8 @@ function mapDbUserToUser(row: any): User {
     mfaEnabled: Boolean(row.mfaEnabled),
     mfaSecret: row.mfaSecret ?? null,
     mfaBackupCodes: row.mfaBackupCodes ?? null,
+    passwordLoginDisabled: Boolean(row.passwordLoginDisabled),
+    passkeyRecoveryCodes: row.passkeyRecoveryCodes ?? null,
     createdAt: row.createdAt,
     lastLoginAt: row.lastLoginAt ?? null,
     createdBy: row.createdBy ?? null,

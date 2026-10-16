@@ -165,89 +165,90 @@ export const MeshCoreDefaultScopeSection: React.FC<MeshCoreDefaultScopeSectionPr
   const scopeDisabled = !canWriteConfig || !connected || loading || savingScope;
 
   return (
-    <ConfigSection
-      id="meshcore-default-scope"
-      title={t('meshcore.scope.title', 'Default region / scope')}
-      docsUrl={`${MESHCORE_DOCS}#setting-a-scope`}
-      description={t('meshcore.scope.hint',
-            'Region applied to all outgoing flood traffic (direct messages, adverts, requests) that has no channel-specific scope. ' +
-            'Use a large region that includes you and the contacts you message — both your messages and the returning ACKs are scoped to it. ' +
-            'Leave blank to send unscoped (legacy). Letters, digits and hyphens only.')}
-      collapsible
-    >
-      <div>
-        <div className={styles.row}>
-          <input
-            type="text"
-            className={styles.grow}
-            value={scopeInput}
-            onChange={(e) => setScopeInput(e.target.value)}
-            placeholder={t('meshcore.scope.placeholder', 'e.g. muenchen — blank for unscoped')}
-            aria-label={t('meshcore.scope.title', 'Default region / scope')}
-            disabled={scopeDisabled}
-            maxLength={63}
-            spellCheck={false}
-            autoComplete="off"
-          />
-          <button
-            type="button"
-            onClick={() => void handleSaveScope()}
-            disabled={scopeDisabled || normalize(scopeInput) === defaultScope}
-            aria-label={t('meshcore.scope.save', 'Save default scope')}
-          >
-            {savingScope ? t('common.saving', 'Saving…') : t('common.save', 'Save')}
-          </button>
-        </div>
+    <div id="meshcore-default-scope">
+      <ConfigSection
+        title={t('meshcore.scope.title', 'Default region / scope')}
+        docsUrl={`${MESHCORE_DOCS}#setting-a-scope`}
+        description={t('meshcore.scope.hint',
+              'Region applied to all outgoing flood traffic (direct messages, adverts, requests) that has no channel-specific scope. ' +
+              'Use a large region that includes you and the contacts you message — both your messages and the returning ACKs are scoped to it. ' +
+              'Leave blank to send unscoped (legacy). Letters, digits and hyphens only.')}
+        collapsible
+      >
+        <div>
+          <div className={styles.row}>
+            <input
+              type="text"
+              className={styles.grow}
+              value={scopeInput}
+              onChange={(e) => setScopeInput(e.target.value)}
+              placeholder={t('meshcore.scope.placeholder', 'e.g. muenchen — blank for unscoped')}
+              aria-label={t('meshcore.scope.title', 'Default region / scope')}
+              disabled={scopeDisabled}
+              maxLength={63}
+              spellCheck={false}
+              autoComplete="off"
+            />
+            <button
+              type="button"
+              onClick={() => void handleSaveScope()}
+              disabled={scopeDisabled || normalize(scopeInput) === defaultScope}
+              aria-label={t('meshcore.scope.save', 'Save default scope')}
+            >
+              {savingScope ? t('common.saving', 'Saving…') : t('common.save', 'Save')}
+            </button>
+          </div>
 
-        <div className={styles.block}>
-          <button
-            type="button"
-            onClick={() => void handleDiscoverRegions()}
-            disabled={!canWriteNodes || !connected || loading || discoveringRegions || otherSweepRunning || receiveOnly}
-            title={!canWriteNodes ? needsNodesWrite : receiveOnlyTooltip}
-          >
-            {discoveringRegions
-              ? t('meshcore.scope.discovering', 'Discovering regions…')
-              : t('meshcore.scope.discover', 'Discover regions from repeaters')}
-          </button>
-          <p className={`hint ${styles.smallHint}`}>
-            {t('meshcore.scope.discover_hint',
-              'Sweeps for nearby (0-hop / direct-range) repeaters and asks each one which regions it serves.')}
-          </p>
-          {discoveredRegions && discoveredRegions.length > 0 && (
-            <div className={styles.chips}>
-              {discoveredRegions.map((region) => {
-                const isSaved = savedRegionNames.has(region.toLowerCase());
-                const selected = normalize(scopeInput) === region;
-                return (
-                  <span key={region} className={`${styles.chip} ${selected ? styles.chipSelected : ''}`.trim()}>
-                    <button
-                      type="button"
-                      className={styles.chipButton}
-                      onClick={() => setScopeInput(region)}
-                      title={t('meshcore.scope.use_region', 'Use "{{region}}" as the default scope', { region })}
-                    >
-                      {region}
-                    </button>
-                    <button
-                      type="button"
-                      className={styles.chipSave}
-                      disabled={isSaved || savingRegion}
-                      onClick={() => void handleSaveRegion(region)}
-                      title={isSaved
-                        ? t('meshcore.regions.already_saved', 'Already in saved regions')
-                        : t('meshcore.regions.save_this', 'Save "{{region}}" to your regions list', { region })}
-                    >
-                      <UiIcon name={isSaved ? 'check' : 'plus'} size={14} />
-                    </button>
-                  </span>
-                );
-              })}
-            </div>
-          )}
+          <div className={styles.block}>
+            <button
+              type="button"
+              onClick={() => void handleDiscoverRegions()}
+              disabled={!canWriteNodes || !connected || loading || discoveringRegions || otherSweepRunning || receiveOnly}
+              title={!canWriteNodes ? needsNodesWrite : receiveOnlyTooltip}
+            >
+              {discoveringRegions
+                ? t('meshcore.scope.discovering', 'Discovering regions…')
+                : t('meshcore.scope.discover', 'Discover regions from repeaters')}
+            </button>
+            <p className={`hint ${styles.smallHint}`}>
+              {t('meshcore.scope.discover_hint',
+                'Sweeps for nearby (0-hop / direct-range) repeaters and asks each one which regions it serves.')}
+            </p>
+            {discoveredRegions && discoveredRegions.length > 0 && (
+              <div className={styles.chips}>
+                {discoveredRegions.map((region) => {
+                  const isSaved = savedRegionNames.has(region.toLowerCase());
+                  const selected = normalize(scopeInput) === region;
+                  return (
+                    <span key={region} className={`${styles.chip} ${selected ? styles.chipSelected : ''}`.trim()}>
+                      <button
+                        type="button"
+                        className={styles.chipButton}
+                        onClick={() => setScopeInput(region)}
+                        title={t('meshcore.scope.use_region', 'Use "{{region}}" as the default scope', { region })}
+                      >
+                        {region}
+                      </button>
+                      <button
+                        type="button"
+                        className={styles.chipSave}
+                        disabled={isSaved || savingRegion}
+                        onClick={() => void handleSaveRegion(region)}
+                        title={isSaved
+                          ? t('meshcore.regions.already_saved', 'Already in saved regions')
+                          : t('meshcore.regions.save_this', 'Save "{{region}}" to your regions list', { region })}
+                      >
+                        <UiIcon name={isSaved ? 'check' : 'plus'} size={14} />
+                      </button>
+                    </span>
+                  );
+                })}
+              </div>
+            )}
+          </div>
         </div>
-      </div>
-    </ConfigSection>
+      </ConfigSection>
+    </div>
   );
 };
 

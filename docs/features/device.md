@@ -1159,7 +1159,7 @@ Every channel with **uplink** on publishes its traffic to the broker. On the pub
 ::: tip MeshMonitor Integration
 With this option on, the node opens no broker connection of its own, so something must carry MQTT for it. Pick one:
 
-- **A linked MQTT source.** Pick an [embedded broker or MQTT bridge](/features/mqtt-broker) in **Quick configure from a MeshMonitor MQTT source** at the top of this section. MeshMonitor then carries the traffic itself.
+- **A linked MQTT source.** Pick an [embedded broker or MQTT bridge](/features/mqtt-broker) in **Quick configure from a MeshMonitor MQTT source** at the top of this section, then save: the save sends the node its MQTT settings and links the sources. MeshMonitor then carries the traffic itself.
 - **The [MQTT Client Proxy sidecar](/add-ons/mqtt-proxy)**, a separate container by [LN4CY](https://github.com/LN4CY/mqtt-proxy) attached to the source's Virtual Node.
 
 With neither, the node gets no MQTT traffic. MeshMonitor warns you here and on the source's dashboard card.

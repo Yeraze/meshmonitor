@@ -125,6 +125,8 @@ See the [Virtual Node Server guide](/configuration/virtual-node) for details.
 | `SESSION_ROLLING` | Reset session expiry on each request (keeps active users logged in) | `true` |
 | `ALLOWED_ORIGINS` | **REQUIRED for HTTPS/reverse proxy**: Comma-separated list of allowed CORS origins | `http://localhost:8080, http://localhost:3001` |
 | `IFRAME_ALLOWED_ORIGINS` | Comma-separated list of origins allowed to embed MeshMonitor in an `<iframe>` (e.g. a Node-RED dashboard). Use `*` to allow any origin. When unset, iframe embedding is blocked. | *(unset - iframe blocked)* |
+| `WEBAUTHN_RP_ID` | Hostname that [passkeys](/features/passkeys) bind to (bare hostname, no scheme or port). Optional. | request hostname |
+| `WEBAUTHN_ORIGINS` | Comma-separated origins allowed to use [passkeys](/features/passkeys), for example `https://mesh.example.com`. Optional. | `<scheme>://<host>` of the request |
 
 ::: tip Embedding MeshMonitor in an iframe
 By default MeshMonitor sends `X-Frame-Options: DENY`, which blocks browsers from rendering it inside an `<iframe>`. To embed MeshMonitor in another page (for example a Node-RED dashboard, Home Assistant panel, or internal portal), set `IFRAME_ALLOWED_ORIGINS` to the origin(s) that will host the frame:

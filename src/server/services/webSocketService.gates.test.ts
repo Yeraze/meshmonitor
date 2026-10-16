@@ -16,6 +16,7 @@ import { notifyAccessChange } from '../../db/accessChanges.js';
 import { automationTraceBus } from './automation/automationTraceBus.js';
 import { getSocketIO } from './webSocketService.js';
 import { CHANNEL_DB_OFFSET } from '../constants/meshtastic.js';
+import databaseService from '../../services/database.js';
 
 const NODE_NUM = 0x10203040;
 const NODE_ID = '!10203040';
@@ -509,6 +510,36 @@ describe('WebSocket event gates', () => {
       expect(user.payloads('meshcore:contact:updated')).toEqual([
         { sourceId: 'CONTACT-A', contact: { publicKey: 'ef'.repeat(32), advName: 'CONTACT-A' } },
       ]);
+    });
+
+    it('a contact update carries the location override; a private one only with nodes_private:read (#5842)', async () => {
+      const key = 'ef'.repeat(32);
+      await databaseService.meshcore.setNodePositionOverride(A, key, { enabled: true, latitude: 28.5, longitude: -81.4, isPrivate: true });
+      try {
+        await harness.grantRow(harness.limited.id, 'nodes', { read: true, viewOnMap: true }, A);
+        const user = await harness.connectAs(harness.limited, { join: A });
+        const admin = await harness.connectAs(harness.admin, { join: A });
+        emit('meshcore:contact:updated', A, 'PIN-1');
+        await user.settle();
+        await admin.settle();
+        // No nodes_private:read: the advert position, no override fields.
+        expect(user.payloads('meshcore:contact:updated')).toEqual([
+          { sourceId: 'PIN-1', contact: { publicKey: key, advName: 'PIN-1', latitude: 30.5, longitude: -90.5 } },
+        ]);
+        expect(admin.payloads('meshcore:contact:updated')).toEqual([
+          { sourceId: 'PIN-1', contact: expect.objectContaining({ latitude: 28.5, longitude: -81.4, positionIsOverride: true, positionOverrideIsPrivate: true }) },
+        ]);
+
+        // A public override reaches a viewOnMap holder too.
+        await databaseService.meshcore.setNodePositionOverride(A, key, { enabled: true, latitude: 28.5, longitude: -81.4, isPrivate: false });
+        emit('meshcore:contact:updated', A, 'PIN-2');
+        await user.settle();
+        expect(user.payloads('meshcore:contact:updated')[1]).toEqual(
+          { sourceId: 'PIN-2', contact: expect.objectContaining({ latitude: 28.5, longitude: -81.4, positionIsOverride: true }) },
+        );
+      } finally {
+        await databaseService.meshcore.clearNodePositionOverride(A, key);
+      }
     });
 
     it('parses the channel slot from either end of a message', () => {

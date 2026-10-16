@@ -6,6 +6,7 @@
 
 import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
 import api from '../services/api';
+import { signInWithPasskey, recoverWithCode as postRecoveryCode } from '../services/passkeyClient';
 import { logger } from '../utils/logger';
 import type { PermissionSet, SourcedPermissionSet } from '../types/permission';
 import { isSourceyResource } from '../types/permission';
@@ -21,6 +22,8 @@ export interface User {
   isActive: boolean;
   passwordLocked: boolean;
   mfaEnabled: boolean;
+  /** Passkey-only account (#5841): the password does not sign in. */
+  passwordLoginDisabled?: boolean;
   createdAt: number;
   lastLoginAt: number | null;
 }
@@ -48,6 +51,11 @@ export interface AuthStatus {
    */
   customTitle: string | null;
   customLogoUrl: string | null;
+  /**
+   * This session signed in with a passkey recovery code (#5841) and must
+   * choose a new password. Only sent when authenticated.
+   */
+  passwordChangeRequired?: boolean;
 }
 
 export interface LoginResult {
@@ -60,6 +68,17 @@ interface AuthContextType {
   loading: boolean;
   login: (username: string, password: string) => Promise<LoginResult>;
   verifyMfa: (code: string, isBackupCode?: boolean) => Promise<void>;
+  /**
+   * Sign in with a passkey (#5841). No TOTP step follows (D5). With
+   * `autofill`, waits for a pick from the username field's autofill list.
+   * Reloads the page on success, like password login.
+   */
+  loginWithPasskey: (opts?: { autofill?: boolean }) => Promise<void>;
+  /**
+   * Sign in with a passkey recovery code (#5841). Turns password sign-in back
+   * on; the next page asks for a new password. Reloads on success.
+   */
+  recoverWithCode: (username: string, code: string) => Promise<void>;
   loginWithOIDC: () => Promise<void>;
   logout: () => Promise<void>;
   refreshAuth: () => Promise<void>;
@@ -210,6 +229,33 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, [refreshAuth]);
 
+  // Passkey authentication (#5841). passkeyClient loads the WebAuthn library on first use.
+  const loginWithPasskey = useCallback(async (opts?: { autofill?: boolean }) => {
+    try {
+      await signInWithPasskey(opts);
+      await refreshAuth();
+
+      const statusCheck = await api.get<AuthStatus>('/api/auth/status');
+      if (!statusCheck.authenticated) {
+        throw new Error('Session cookie not working after passkey sign-in.');
+      }
+
+      logger.debug('Passkey login successful - reloading page');
+      window.location.reload();
+    } catch (error) {
+      logger.debug('Passkey login did not complete:', error);
+      throw error;
+    }
+  }, [refreshAuth]);
+
+  // Passkey recovery code (#5841).
+  const recoverWithCode = useCallback(async (username: string, code: string) => {
+    await postRecoveryCode(username, code);
+    await refreshAuth();
+    logger.debug('Recovery-code sign-in successful - reloading page');
+    window.location.reload();
+  }, [refreshAuth]);
+
   // OIDC authentication
   const loginWithOIDC = useCallback(async () => {
     try {
@@ -316,12 +362,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     loading,
     login,
     verifyMfa,
+    loginWithPasskey,
+    recoverWithCode,
     loginWithOIDC,
     logout,
     refreshAuth,
     hasPermission,
     hasChannelDbPermission
-  }), [authStatus, loading, login, verifyMfa, loginWithOIDC, logout, refreshAuth, hasPermission, hasChannelDbPermission]);
+  }), [authStatus, loading, login, verifyMfa, loginWithPasskey, recoverWithCode, loginWithOIDC, logout, refreshAuth, hasPermission, hasChannelDbPermission]);
 
   return (
     <AuthContext.Provider value={value}>

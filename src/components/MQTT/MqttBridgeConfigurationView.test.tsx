@@ -304,20 +304,26 @@ describe('MQTT bridge setup: gated on sources:write', () => {
   });
 });
 
+/** The shared PresetPicker chips (#5831): the pressed chip, and a click on one. */
+const presetChips = (root: ParentNode) => root.querySelector('[data-testid="broker-preset-picker"]') as HTMLElement;
+const chosenPreset = (root: ParentNode) =>
+  (presetChips(root).querySelector('[aria-pressed="true"]') as HTMLElement | null)?.dataset.presetId;
+const pickPreset = (root: ParentNode, id: string) =>
+  fireEvent.click(presetChips(root).querySelector(`[data-preset-id="${id}"]`) as HTMLElement);
+
 describe('MQTT bridge setup: broker presets (#5689)', () => {
-  const presetSelect = () => screen.getByTestId('broker-preset-select') as HTMLSelectElement;
   const passwordField = () => screen.getByPlaceholderText('••••••••') as HTMLInputElement;
 
   it('opens on Custom… for a URL that matches no preset, and on the preset for one that does', async () => {
     await renderSection();
-    expect(presetSelect().value).toBe('custom');
+    expect(chosenPreset(document)).toBe('custom');
     fireEvent.change(urlField(), { target: { value: 'mqtts://mqtt.meshtastic.org:8883' } });
-    expect(presetSelect().value).toBe('meshtastic_public_tls');
+    expect(chosenPreset(document)).toBe('meshtastic_public_tls');
   });
 
   it('fills the URL with scheme and port, sends nothing, and keeps the typed username', async () => {
     await renderSection();
-    fireEvent.change(presetSelect(), { target: { value: 'meshtastic_public_tls' } });
+    pickPreset(document, 'meshtastic_public_tls');
     expect(screen.getByDisplayValue('mqtts://mqtt.meshtastic.org:8883')).toBeInTheDocument();
     expect(screen.getByDisplayValue('bridge-user')).toBeInTheDocument();
     // A password is stored (admin view), so the field stays blank and says why.
@@ -332,7 +338,7 @@ describe('MQTT bridge setup: broker presets (#5689)', () => {
   it('fills an empty login when no password is stored, and Save sends it', async () => {
     installFetch({ config: { ...STORED_CONFIG, upstream: { url: 'mqtt://upstream.example:1883' } } });
     await renderSection();
-    fireEvent.change(presetSelect(), { target: { value: 'meshtastic_public' } });
+    pickPreset(document, 'meshtastic_public');
     expect(passwordField().value).toBe('large4cats');
     expect(screen.queryByTestId('broker-preset-kept')).toBeNull();
     fireEvent.click(saveButton());
@@ -344,7 +350,7 @@ describe('MQTT bridge setup: broker presets (#5689)', () => {
   it('a non-admin editor: the preset neither blanks nor replaces the masked secret', async () => {
     installFetch({ config: MASKED_CONFIG, maskedConfigFields: MASKED_FIELDS });
     await renderSection();
-    fireEvent.change(presetSelect(), { target: { value: 'meshtastic_public' } });
+    pickPreset(document, 'meshtastic_public');
     expect(passwordField().value).toBe('');
     expect(screen.getByTestId('broker-preset-kept')).toBeInTheDocument();
     expect(puts()).toHaveLength(0);
@@ -361,7 +367,7 @@ describe('MQTT bridge setup: broker presets (#5689)', () => {
 
   it('Custom… leaves the URL as typed', async () => {
     await renderSection();
-    fireEvent.change(presetSelect(), { target: { value: 'custom' } });
+    pickPreset(document, 'custom');
     expect(urlField().value).toBe('mqtt://upstream.example:1883');
     expect(puts()).toHaveLength(0);
   });
@@ -369,6 +375,6 @@ describe('MQTT bridge setup: broker presets (#5689)', () => {
   it('a reader cannot pick a preset', async () => {
     state.canWrite = false;
     await renderSection();
-    expect(presetSelect().disabled).toBe(true);
+    presetChips(document).querySelectorAll('button').forEach((b) => expect((b as HTMLButtonElement).disabled).toBe(true));
   });
 });

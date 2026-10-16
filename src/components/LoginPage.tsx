@@ -11,6 +11,10 @@ import { useTranslation } from 'react-i18next';
 import { useAuth } from '../contexts/AuthContext';
 import { logger } from '../utils/logger';
 import { ApiError } from '../services/api';
+import { passkeysSupported } from '../services/passkeyClient';
+import { usePasskeyAutofill, passkeyLoginErrorMessage } from '../hooks/usePasskeyLogin';
+import PasskeyLoginButton from './PasskeyLoginButton';
+import PasskeyRecoveryLink from './PasskeyRecoveryLink';
 import { version } from '../../package.json';
 import PrivacyLinks from './PrivacyLinks';
 import { appBasename } from '../init';
@@ -18,7 +22,7 @@ import './LoginPage.css';
 
 const LoginPage: React.FC = () => {
   const { t } = useTranslation();
-  const { login, verifyMfa, loginWithOIDC, authStatus } = useAuth();
+  const { login, verifyMfa, loginWithOIDC, loginWithPasskey, authStatus } = useAuth();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -31,6 +35,13 @@ const LoginPage: React.FC = () => {
 
   const localAuthDisabled = authStatus?.localAuthDisabled ?? false;
   const oidcEnabled = authStatus?.oidcEnabled ?? false;
+  // Passkeys (#5841): local accounts only, and only in a secure context.
+  const passkeysOn = !localAuthDisabled && passkeysSupported();
+
+  // Offer saved passkeys in the username field's autofill list.
+  usePasskeyAutofill(passkeysOn && !mfaRequired, loginWithPasskey, (err) => {
+    setError(passkeyLoginErrorMessage(err, t));
+  });
 
   // Optional login-page branding from CUSTOM_TITLE / CUSTOM_LOGO_URL env vars.
   // The server already trims/validates these and sends null when unset, so we
@@ -225,6 +236,19 @@ const LoginPage: React.FC = () => {
           ) : (
             /* Normal Login Step */
             <>
+              {passkeysOn && (
+                <>
+                  <PasskeyLoginButton
+                    className="login-button"
+                    disabled={loading}
+                    onError={setError}
+                  />
+                  <div className="login-divider">
+                    <span>{t('common.or')}</span>
+                  </div>
+                </>
+              )}
+
               {!localAuthDisabled && (
                 <form onSubmit={handleLocalLogin} className="login-form">
                   <div className="form-group">
@@ -237,7 +261,7 @@ const LoginPage: React.FC = () => {
                       onChange={(e) => setUsername(e.target.value)}
                       disabled={loading}
                       required
-                      autoComplete="username"
+                      autoComplete={passkeysOn ? 'username webauthn' : 'username'}
                       autoCapitalize="none"
                       autoCorrect="off"
                       spellCheck={false}
@@ -274,6 +298,9 @@ const LoginPage: React.FC = () => {
                   </button>
                 </form>
               )}
+
+              {/* Passkey-only accounts sign in with a recovery code here (#5841). */}
+              {!localAuthDisabled && <PasskeyRecoveryLink disabled={loading} />}
 
               {/* Divider between auth methods */}
               {!localAuthDisabled && oidcEnabled && (

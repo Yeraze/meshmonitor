@@ -39,7 +39,7 @@ export const MeshCoreObserverBrokerPanel: React.FC<MeshCoreObserverBrokerPanelPr
 
   return (
     <div className={sectionStyles.section}>
-      <h4>{t('meshcore.observer.brokers_heading', 'Brokers')}</h4>
+      <h4>{t('meshcore.observer.broker_status_heading', 'Each broker')}</h4>
 
       {status.running === false && (
         <p className={sectionStyles.hint}>

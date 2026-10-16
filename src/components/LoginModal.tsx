@@ -10,6 +10,10 @@ import { useTranslation } from 'react-i18next';
 import { useAuth } from '../contexts/AuthContext';
 import { logger } from '../utils/logger';
 import { ApiError } from '../services/api';
+import { passkeysSupported } from '../services/passkeyClient';
+import { usePasskeyAutofill, passkeyLoginErrorMessage } from '../hooks/usePasskeyLogin';
+import PasskeyLoginButton from './PasskeyLoginButton';
+import PasskeyRecoveryLink from './PasskeyRecoveryLink';
 import Modal from './common/Modal';
 
 interface LoginModalProps {
@@ -19,7 +23,7 @@ interface LoginModalProps {
 
 const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
   const { t } = useTranslation();
-  const { login, verifyMfa, loginWithOIDC, authStatus } = useAuth();
+  const { login, verifyMfa, loginWithOIDC, loginWithPasskey, authStatus } = useAuth();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -34,6 +38,13 @@ const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
 
   const localAuthDisabled = authStatus?.localAuthDisabled ?? false;
   const oidcEnabled = authStatus?.oidcEnabled ?? false;
+  // Passkeys (#5841): local accounts only, and only in a secure context.
+  const passkeysOn = !localAuthDisabled && passkeysSupported();
+
+  // Offer saved passkeys in the username field's autofill list while open.
+  usePasskeyAutofill(isOpen && passkeysOn && !mfaRequired, loginWithPasskey, (err) => {
+    setError(passkeyLoginErrorMessage(err, t));
+  });
 
   // Auto-focus username field when modal opens, or MFA field when MFA step shows
   useEffect(() => {
@@ -210,6 +221,15 @@ const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
         </form>
       ) : (
         <>
+          {passkeysOn && (
+            <>
+              <PasskeyLoginButton disabled={loading} onError={setError} />
+              <div className="login-divider">
+                <span>{t('common.or')}</span>
+              </div>
+            </>
+          )}
+
           {/* Local Authentication */}
           {!localAuthDisabled && (
             <form onSubmit={handleLocalLogin}>
@@ -224,7 +244,7 @@ const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
                   onChange={(e) => setUsername(e.target.value)}
                   disabled={loading}
                   required
-                  autoComplete="username"
+                  autoComplete={passkeysOn ? 'username webauthn' : 'username'}
                   autoCapitalize="none"
                   autoCorrect="off"
                   spellCheck={false}
@@ -260,6 +280,9 @@ const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
               </button>
             </form>
           )}
+
+          {/* Passkey-only accounts sign in with a recovery code here (#5841). */}
+          {!localAuthDisabled && <PasskeyRecoveryLink disabled={loading} />}
 
           {/* Divider between auth methods */}
           {!localAuthDisabled && oidcEnabled && (

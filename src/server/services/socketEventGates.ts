@@ -21,8 +21,44 @@ import { withholdPrivateOverride } from '../utils/nodeEnhancer.js';
 import { transformChannel } from '../utils/channelView.js';
 import { canSeeKeyedMessage } from '../utils/meshcoreKeyAccess.js';
 import { stripPositions } from '../utils/meshcorePositions.js';
+import { applyMeshCorePositionOverride, type MeshCorePositionOverride } from '../utils/meshcorePositionOverride.js';
 import { getCachedSignFlipContext, applySignFlipToTraceroute, applySignFlipCorrection } from './signFlipCorrection.js';
 import { logger } from '../../utils/logger.js';
+
+type ContactUpdatePayload = { sourceId: string; contact: { publicKey?: string; latitude?: number; longitude?: number } };
+interface ContactUpdatePrep {
+  payload: ContactUpdatePayload;
+  override: MeshCorePositionOverride | undefined;
+}
+
+/**
+ * A `meshcore:contact:updated` payload with the #5363 sign-flip correction
+ * applied, plus the contact's #5842 location override (if enabled). Errors
+ * read as "no correction" / "no override", as before.
+ */
+async function loadContactUpdate(event: DataEvent): Promise<ContactUpdatePrep> {
+  let payload = event.data as ContactUpdatePayload;
+  try {
+    const ctx = await getCachedSignFlipContext(event.sourceId);
+    if (ctx && payload?.contact) {
+      const contact = applySignFlipCorrection(payload.contact, ctx);
+      if (contact !== payload.contact) payload = { ...payload, contact };
+    }
+  } catch (err) {
+    logger.warn('[WebSocket] Sign-flip contact correction failed:', err);
+  }
+  let override: MeshCorePositionOverride | undefined;
+  const publicKey = payload?.contact?.publicKey;
+  if (event.sourceId && typeof publicKey === 'string') {
+    try {
+      const ov = await databaseService.meshcore.getNodePositionOverride(event.sourceId, publicKey);
+      if (ov?.enabled) override = ov;
+    } catch (err) {
+      logger.warn('[WebSocket] MeshCore position override read failed:', err);
+    }
+  }
+  return { payload, override };
+}
 
 /** Returned by a gate's `filter` when the viewer gets nothing. */
 export const WITHHOLD: unique symbol = Symbol('socket.withhold');
@@ -354,26 +390,28 @@ export const SOCKET_EVENT_GATES: Record<DataEventType, SocketEventGate> = {
   'meshcore:contact:updated': {
     scope: 'source',
     rest: 'GET /api/sources/:id/meshcore/contacts',
-    rule: '`nodes:read` on the source. Position: `nodes:viewOnMap` on the source.',
+    rule: '`nodes:read` on the source. Position: `nodes:viewOnMap` on the source. A private location override: `nodes_private:read` on the source.',
     // #5363: a live contact update carries the same corrected position as
-    // the snapshot/contacts routes. A copy only.
+    // the snapshot/contacts routes. #5842: and the same location override,
+    // so an advert never moves a pinned contact back. Admins see it all.
     shape: async (event) => {
-      const payload = event.data as { sourceId: string; contact: object };
-      try {
-        const ctx = await getCachedSignFlipContext(event.sourceId);
-        if (ctx && payload?.contact) {
-          const contact = applySignFlipCorrection(payload.contact, ctx);
-          if (contact !== payload.contact) return { ...payload, contact };
-        }
-      } catch (err) {
-        logger.warn('[WebSocket] Sign-flip contact correction failed:', err);
-      }
-      return payload;
+      const { payload, override } = await loadContactUpdate(event);
+      if (!payload?.contact) return payload;
+      return { ...payload, contact: applyMeshCorePositionOverride(payload.contact, override, true) };
     },
-    filter: (viewer, sourceId, payload: { contact?: { latitude?: number; longitude?: number } }) => {
+    // The advert-only contact and the override, so `filter` can answer per viewer.
+    prepare: (event) => loadContactUpdate(event),
+    filter: (viewer, sourceId, payload: { contact?: { latitude?: number; longitude?: number } }, prep: ContactUpdatePrep | undefined) => {
       if (!viewer.can('nodes', 'read', sourceId)) return WITHHOLD;
-      if (!payload?.contact || viewer.can('nodes', 'viewOnMap', sourceId)) return payload;
-      return { ...payload, contact: stripPositions([payload.contact])[0] };
+      const base = prep?.payload ?? payload;
+      if (!base?.contact) return base;
+      if (!viewer.can('nodes', 'viewOnMap', sourceId)) {
+        return { ...base, contact: stripPositions([base.contact])[0] };
+      }
+      return {
+        ...base,
+        contact: applyMeshCorePositionOverride(base.contact, prep?.override, viewer.can('nodes_private', 'read', sourceId)),
+      };
     },
   },
   'meshcore:status:updated': needs('connection', 'read', MESHCORE_STATUS),

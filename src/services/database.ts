@@ -73,6 +73,7 @@ import {
   MapMarkersRepository,
   MeshCoreHopSnrRepository,
   MeshCoreAdminSessionsRepository,
+  PasskeysRepository,
   CoverageReceptionsRepository,
   CrossSourceLinksRepository,
   CoverageSurveysRepository,
@@ -118,6 +119,7 @@ import type { MeshIssueFinding } from '../server/services/meshIssues/types.js';
 import type { ConversationReadStateMap, AircraftFlightMatchRow, FlightMatchLookupWrite, AssetNode, AssetNodeSettings } from '../db/repositories/index.js';
 import type { MeshCoreIgnoredNodeRow, MeshCoreMessageFilterRow, MeshCoreMessageFilterInput, MeshCoreFilterMode } from '../db/repositories/index.js';
 import type { MessageSourceScope } from '../db/repositories/index.js';
+import type { PasskeySummary, DbPasskey, CreatePasskeyInput } from '../db/repositories/index.js';
 import { assetRetentionCutoff } from '../utils/assetTracking.js';
 import type { ConversationKind } from '../db/schema/conversationReadState.js';
 import type { DatabaseType, DbPacketLog as DbTypesPacketLog, DbPacketCountByNode, DbPacketCountByPortnum, DbDistinctRelayNode } from '../db/types.js';
@@ -638,6 +640,7 @@ class DatabaseService {
   public mapMarkersRepo: MapMarkersRepository | null = null;
   public meshcoreHopSnrRepo: MeshCoreHopSnrRepository | null = null;
   public meshcoreAdminSessionsRepo: MeshCoreAdminSessionsRepository | null = null;
+  public passkeysRepo: PasskeysRepository | null = null;
   public coverageReceptionsRepo: CoverageReceptionsRepository | null = null;
   public coverageSurveysRepo: CoverageSurveysRepository | null = null;
   public crossSourceLinksRepo: CrossSourceLinksRepository | null = null;
@@ -749,6 +752,12 @@ class DatabaseService {
   get meshcoreAdminSessions(): MeshCoreAdminSessionsRepository {
     if (!this.meshcoreAdminSessionsRepo) throw new Error('Database not initialized');
     return this.meshcoreAdminSessionsRepo;
+  }
+
+  /** WebAuthn passkeys on local users (#5841). */
+  get passkeys(): PasskeysRepository {
+    if (!this.passkeysRepo) throw new Error('Database not initialized');
+    return this.passkeysRepo;
   }
 
   get coverageReceptions(): CoverageReceptionsRepository {
@@ -1240,6 +1249,7 @@ class DatabaseService {
       this.mapMarkersRepo = new MapMarkersRepository(drizzleDb, this.drizzleDbType);
       this.meshcoreHopSnrRepo = new MeshCoreHopSnrRepository(drizzleDb, this.drizzleDbType);
       this.meshcoreAdminSessionsRepo = new MeshCoreAdminSessionsRepository(drizzleDb, this.drizzleDbType);
+      this.passkeysRepo = new PasskeysRepository(drizzleDb, this.drizzleDbType);
       this.coverageReceptionsRepo = new CoverageReceptionsRepository(drizzleDb, this.drizzleDbType);
       this.coverageSurveysRepo = new CoverageSurveysRepository(drizzleDb, this.drizzleDbType);
       this.crossSourceLinksRepo = new CrossSourceLinksRepository(drizzleDb, this.drizzleDbType);
@@ -5062,6 +5072,8 @@ class DatabaseService {
       mfaEnabled: dbUser.mfaEnabled ?? false,
       mfaSecret: dbUser.mfaSecret ?? null,
       mfaBackupCodes: dbUser.mfaBackupCodes ?? null,
+      passwordLoginDisabled: Boolean(dbUser.passwordLoginDisabled),
+      passkeyRecoveryCodes: dbUser.passkeyRecoveryCodes ?? null,
       createdAt: dbUser.createdAt,
       lastLoginAt: dbUser.lastLoginAt,
     };
@@ -5101,6 +5113,10 @@ class DatabaseService {
     const bcrypt = await import('bcrypt');
     const isValid = await bcrypt.compare(password, dbUser.passwordHash);
     if (!isValid) return null;
+
+    // Passkey-only account (#5841): the password no longer signs in. Checked
+    // after the bcrypt compare so the reply takes as long as a wrong password.
+    if (dbUser.passwordLoginDisabled) return null;
 
     // Update last login
     await this.auth.updateUser(dbUser.id, { lastLoginAt: Date.now() });
@@ -5368,6 +5384,77 @@ class DatabaseService {
    */
   async consumeBackupCodeAsync(userId: number, remainingCodes: string): Promise<void> {
     await this.auth.updateUser(userId, { mfaBackupCodes: remainingCodes });
+  }
+
+  // ============ ASYNC PASSKEY METHODS (#5841) ============
+
+  async createPasskeyAsync(input: CreatePasskeyInput): Promise<number> {
+    return this.passkeys.create(input);
+  }
+
+  /** Full row with key material: WebAuthn verification only. */
+  async getPasskeyByCredentialIdAsync(credentialId: string): Promise<DbPasskey | null> {
+    return this.passkeys.getByCredentialId(credentialId);
+  }
+
+  /** Full rows with key material: excludeCredentials / allowCredentials only. */
+  async listPasskeysForUserAsync(userId: number): Promise<DbPasskey[]> {
+    return this.passkeys.listByUser(userId);
+  }
+
+  /** No key material: safe to send to the owner or an admin. */
+  async listPasskeySummariesForUserAsync(userId: number): Promise<PasskeySummary[]> {
+    return this.passkeys.listSummariesByUser(userId);
+  }
+
+  async renamePasskeyAsync(userId: number, id: number, nickname: string | null): Promise<boolean> {
+    return this.passkeys.rename(userId, id, nickname);
+  }
+
+  /** Deletes only when the passkey belongs to `userId`. */
+  async deletePasskeyAsync(userId: number, id: number): Promise<boolean> {
+    return this.passkeys.delete(userId, id);
+  }
+
+  async deleteAllPasskeysForUserAsync(userId: number): Promise<number> {
+    return this.passkeys.deleteAllForUser(userId);
+  }
+
+  async updatePasskeyCounterAsync(id: number, counter: number, lastUsedAt?: number): Promise<void> {
+    return this.passkeys.updateCounterAndLastUsed(id, counter, lastUsedAt);
+  }
+
+  async countPasskeysForUserAsync(userId: number): Promise<number> {
+    return this.passkeys.countByUser(userId);
+  }
+
+  async getPasskeyOnlyStateAsync(
+    userId: number,
+  ): Promise<{ passwordLoginDisabled: boolean; passkeyRecoveryCodes: string | null } | null> {
+    return this.auth.getPasskeyOnlyState(userId);
+  }
+
+  async setPasskeyOnlyAsync(userId: number, disabled: boolean): Promise<void> {
+    await this.auth.setPasskeyOnly(userId, disabled);
+  }
+
+  /** `codes` is a JSON array of bcrypt hashes, or null to clear. */
+  async setPasskeyRecoveryCodesAsync(userId: number, codes: string | null): Promise<void> {
+    await this.auth.setPasskeyRecoveryCodes(userId, codes);
+  }
+
+  /** Password login back on, recovery codes gone (one write). */
+  async clearPasskeyOnlyAsync(userId: number): Promise<void> {
+    await this.auth.clearPasskeyOnly(userId);
+  }
+
+  /** Spend a recovery code; false when the stored codes changed underneath. */
+  async consumePasskeyRecoveryAsync(userId: number, expectedCodes: string): Promise<boolean> {
+    return this.auth.consumePasskeyRecovery(userId, expectedCodes);
+  }
+
+  async countPasskeysByUserAsync(): Promise<Map<number, number>> {
+    return this.passkeys.countAllByUser();
   }
 
   // ============ SESSION METHODS ============
@@ -5696,6 +5783,13 @@ class DatabaseService {
       aircraftTrailHours?: number;
   }): Promise<void> {
     return this.mapPreferences!.saveMapPreferences(userId, preferences);
+  }
+
+  /**
+   * Set the per-source "Show MQTT/Bridge Messages" toggle (#5824).
+   */
+  async setShowMqttMessagesForSourceAsync(userId: number, sourceId: string, value: boolean): Promise<void> {
+    return this.mapPreferences!.setShowMqttMessagesForSource(userId, sourceId, value);
   }
   // ============================================================
   // Async wrappers for sync methods (Phase 4 migration)

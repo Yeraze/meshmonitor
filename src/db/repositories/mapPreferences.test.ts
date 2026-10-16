@@ -13,6 +13,7 @@
  */
 import { describe, it, expect } from 'vitest';
 import * as schema from '../schema/index.js';
+import { parseBooleanMap } from './mapPreferences.js';
 
 describe('userMapPreferencesSqlite — SQL column alignment (#2713)', () => {
   it('maps JS `userId` → SQL column `user_id` to match v3.7 baseline DDL', () => {
@@ -114,5 +115,26 @@ describe('userMapPreferences — aircraft flight trails (#5364/#5365 Phase 3)', 
       expect(columns.showAircraftTrails.name).toBe('show_aircraft_trails');
       expect(columns.aircraftTrailHours.name).toBe('aircraft_trail_hours');
     }
+  });
+});
+
+describe('userMapPreferences — per-source MQTT message toggle (#5824, migration 205)', () => {
+  it('maps showMqttMessagesBySource to a snake_case column on all three backends', () => {
+    for (const table of [
+      schema.userMapPreferencesSqlite,
+      schema.userMapPreferencesPostgres,
+      schema.userMapPreferencesMysql,
+    ]) {
+      const columns = table as unknown as { showMqttMessagesBySource: { name: string } };
+      expect(columns.showMqttMessagesBySource.name).toBe('show_mqtt_messages_by_source');
+    }
+  });
+
+  it('parseBooleanMap keeps boolean entries and reads anything malformed as empty', () => {
+    expect(parseBooleanMap('{"a":true,"b":false,"c":"yes","d":1}')).toEqual({ a: true, b: false });
+    expect(parseBooleanMap(null)).toEqual({});
+    expect(parseBooleanMap('')).toEqual({});
+    expect(parseBooleanMap('not json')).toEqual({});
+    expect(parseBooleanMap('[true]')).toEqual({});
   });
 });

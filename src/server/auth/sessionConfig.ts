@@ -30,6 +30,25 @@ declare module 'express-session' {
     csrfToken?: string;
     // MFA pending verification
     pendingMfaUserId?: number;
+    // WebAuthn ceremony in flight (#5841). Single use, 5-minute expiry.
+    webauthnChallenge?: {
+      challenge: string;
+      purpose: 'register' | 'login' | 'step-up';
+      /**
+       * The user registering, or proving it is them (step-up); unset for
+       * login (the passkey names the user).
+       */
+      userId?: number;
+      /** RP ID the options were made for; the response must match it. */
+      rpId: string;
+      /** Origins the response may come from. */
+      origins: string[];
+      /** Epoch ms. */
+      expiresAt: number;
+    };
+    // Set when this session signed in with a passkey recovery code (#5841):
+    // the user must pick a new password, and may do so without the old one.
+    passwordChangeRequired?: boolean;
   }
 }
 

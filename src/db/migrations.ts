@@ -223,6 +223,9 @@ import { migration as createMeshcoreHopSnrMigration, runMigration201Postgres, ru
 import { migration as addNotifyOnMentionMigration, runMigration202Postgres, runMigration202Mysql } from '../server/migrations/202_add_notify_on_mention.js';
 import { migration as addMeshcoreReactionColumnsMigration, runMigration203Postgres, runMigration203Mysql } from '../server/migrations/203_add_meshcore_reaction_columns.js';
 import { migration as createMeshcoreAdminSessionsMigration, runMigration204Postgres, runMigration204Mysql } from '../server/migrations/204_create_meshcore_admin_sessions.js';
+import { migration as userMapPreferencesMqttMessagesBySourceMigration, runMigration205Postgres, runMigration205Mysql } from '../server/migrations/205_user_map_preferences_mqtt_messages_by_source.js';
+import { migration as addMeshcorePositionOverrideMigration, runMigration206Postgres, runMigration206Mysql } from '../server/migrations/206_add_meshcore_position_override.js';
+import { migration as createUserPasskeysMigration, runMigration207Postgres, runMigration207Mysql } from '../server/migrations/207_create_user_passkeys.js';
 
 // ============================================================================
 // Registry
@@ -3302,4 +3305,49 @@ registry.register({
   sqlite: (db) => createMeshcoreAdminSessionsMigration.up(db),
   postgres: (client) => runMigration204Postgres(client),
   mysql: (pool) => runMigration204Mysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 205: `user_map_preferences.show_mqtt_messages_by_source` (#5824).
+// Per-user JSON map { sourceId: boolean } for the "Show MQTT/Bridge Messages"
+// toggle, which used to be one browser-global localStorage key.
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 205,
+  name: 'user_map_preferences_mqtt_messages_by_source',
+  settingsKey: 'migration_205_user_map_preferences_mqtt_messages_by_source',
+  sqlite: (db) => userMapPreferencesMqttMessagesBySourceMigration.up(db),
+  postgres: (client) => runMigration205Postgres(client),
+  mysql: (pool) => runMigration205Mysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 206: `meshcore_nodes` position override columns (#5842). PER-SOURCE.
+// A MeshMonitor-only pinned location for a MeshCore contact, parallel to the
+// Meshtastic `nodes.positionOverride*` columns. Never written to the radio.
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 206,
+  name: 'add_meshcore_position_override',
+  settingsKey: 'migration_206_add_meshcore_position_override',
+  sqlite: (db) => addMeshcorePositionOverrideMigration.up(db),
+  postgres: (client) => runMigration206Postgres(client),
+  mysql: (pool) => runMigration206Mysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 207: passkey storage (#5841, PR 1 of 4). GLOBAL (account data).
+// New `user_passkeys` table (FK users, cascade) plus
+// `users.password_login_disabled` / `users.passkey_recovery_codes`.
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 207,
+  name: 'create_user_passkeys',
+  settingsKey: 'migration_207_create_user_passkeys',
+  sqlite: (db) => createUserPasskeysMigration.up(db),
+  postgres: (client) => runMigration207Postgres(client),
+  mysql: (pool) => runMigration207Mysql(pool),
 });

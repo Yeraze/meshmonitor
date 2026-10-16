@@ -41,6 +41,8 @@ export interface AdvertPositionFields {
   lastAdvertHadPosition?: boolean | null;
   /** `'telemetry'` = the stored fix is a live GNSS reading, not an advert's. */
   positionSource?: string | null;
+  /** #5842: the position is a user-set location override, so it never hides. */
+  positionIsOverride?: boolean;
 }
 
 /**
@@ -50,6 +52,7 @@ export interface AdvertPositionFields {
  * - Toggle off: never.
  * - Unknown (`null`/`undefined`): shown. Only a recorded `false` hides.
  * - A telemetry-sourced position is a live fix, so it is never hidden.
+ * - A location override (#5842) is a known position, so it is never hidden.
  */
 export function isHiddenByPositionlessAdvert(
   node: AdvertPositionFields | null | undefined,
@@ -57,6 +60,7 @@ export function isHiddenByPositionlessAdvert(
 ): boolean {
   if (!hideEnabled || !node) return false;
   if (node.positionSource === 'telemetry') return false;
+  if (node.positionIsOverride === true) return false;
   return node.lastAdvertHadPosition === false;
 }
 

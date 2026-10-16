@@ -12,6 +12,7 @@ import { logger } from '../utils/logger';
 import ChangePasswordModal from './ChangePasswordModal';
 import APITokenManagement from './APITokenManagement';
 import MFAManagement from './MFAManagement';
+import PasskeyManagement from './PasskeyManagement';
 
 interface UserMenuProps {
   onLogout?: () => void;
@@ -19,11 +20,12 @@ interface UserMenuProps {
 
 const UserMenu: React.FC<UserMenuProps> = ({ onLogout }) => {
   const { t } = useTranslation();
-  const { authStatus, logout } = useAuth();
+  const { authStatus, logout, refreshAuth } = useAuth();
   const [showMenu, setShowMenu] = useState(false);
   const [showChangePassword, setShowChangePassword] = useState(false);
   const [showAPIToken, setShowAPIToken] = useState(false);
   const [showMFA, setShowMFA] = useState(false);
+  const [showPasskeys, setShowPasskeys] = useState(false);
   const [loading, setLoading] = useState(false);
 
   if (!authStatus?.authenticated || !authStatus.user) {
@@ -61,10 +63,18 @@ const UserMenu: React.FC<UserMenuProps> = ({ onLogout }) => {
     setShowMFA(true);
   };
 
+  const handlePasskeys = () => {
+    setShowMenu(false);
+    setShowPasskeys(true);
+  };
+
   const displayName = authStatus.user.displayName || authStatus.user.username;
   const isAdmin = authStatus.user.isAdmin;
   const isLocalAuth = authStatus.user.authProvider === 'local';
-  const canChangePassword = isLocalAuth && !authStatus.user.passwordLocked;
+  // A passkey-only account has no password to change (#5841).
+  const canChangePassword = isLocalAuth && !authStatus.user.passwordLocked && !authStatus.user.passwordLoginDisabled;
+  // Signed in with a recovery code: a new password before anything else.
+  const mustChangePassword = authStatus.passwordChangeRequired === true;
 
   return (
     <div className="user-menu">
@@ -118,6 +128,16 @@ const UserMenu: React.FC<UserMenuProps> = ({ onLogout }) => {
               </button>
             )}
 
+            {isLocalAuth && (
+              <button
+                className="user-menu-item"
+                onClick={handlePasskeys}
+                disabled={loading}
+              >
+                {t('user_menu.passkeys')}
+              </button>
+            )}
+
             <button
               className="user-menu-item"
               onClick={handleAPIToken}
@@ -142,6 +162,14 @@ const UserMenu: React.FC<UserMenuProps> = ({ onLogout }) => {
         onClose={() => setShowChangePassword(false)}
       />
 
+      {mustChangePassword && (
+        <ChangePasswordModal
+          isOpen
+          forced
+          onClose={() => void refreshAuth()}
+        />
+      )}
+
       {showAPIToken && (
         <div className="modal-overlay" onClick={() => setShowAPIToken(false)}>
           <div className="modal-content api-token-modal" onClick={(e) => e.stopPropagation()}>
@@ -165,6 +193,22 @@ const UserMenu: React.FC<UserMenuProps> = ({ onLogout }) => {
             </div>
             <div className="modal-body">
               <MFAManagement />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showPasskeys && (
+        <div className="modal-overlay" onClick={() => setShowPasskeys(false)}>
+          <div className="modal-content api-token-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2>{t('passkey.modal_title')}</h2>
+              <button className="modal-close" onClick={() => setShowPasskeys(false)} aria-label={t('common.close')}>
+                <UiIcon name="close" size={18} />
+              </button>
+            </div>
+            <div className="modal-body">
+              <PasskeyManagement showHeading={false} />
             </div>
           </div>
         </div>

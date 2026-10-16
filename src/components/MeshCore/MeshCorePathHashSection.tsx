@@ -69,41 +69,42 @@ export const MeshCorePathHashSection: React.FC<MeshCorePathHashSectionProps> = (
   const disabled = !canWriteConfig || !connected || loading || savingPathHash;
 
   return (
-    <ConfigSection
-      id="meshcore-path-hash"
-      title={t('meshcore.path_hash.title', 'Default path hash size')}
-      docsUrl={`${MESHCORE_DOCS}#per-source-settings`}
-      description={t('meshcore.path_hash.hint',
-            'Number of bytes used for path/loop-detection hashes on outgoing messages. ' +
-            '1 byte (256 values) is enough for small meshes; 2 bytes (65,536 values) is recommended for ' +
-            'mid-to-large deployments to avoid path-table collisions that drop packets on valid routes. ' +
-            'Applied to the device immediately and re-asserted on reconnect.')}
-      canWrite={canWriteConfig}
-      collapsible
-    >
-      <div>
-        <div className={styles.row}>
-          <select
-            value={pathHashInput}
-            onChange={(e) => setPathHashInput(Number(e.target.value) as PathHashSize)}
-            disabled={disabled}
-            aria-label={t('meshcore.path_hash.title', 'Default path hash size')}
-          >
-            <option value={1}>{t('meshcore.path_hash.one', '1 byte')}</option>
-            <option value={2}>{t('meshcore.path_hash.two', '2 bytes (recommended)')}</option>
-            <option value={3}>{t('meshcore.path_hash.three', '3 bytes')}</option>
-          </select>
-          <button
-            type="button"
-            onClick={() => void handleSave(pathHashInput)}
-            disabled={disabled || pathHashInput === pathHashSize}
-            aria-label={t('meshcore.path_hash.save', 'Save path hash size')}
-          >
-            {savingPathHash ? t('common.saving', 'Saving…') : t('common.save', 'Save')}
-          </button>
+    <div id="meshcore-path-hash">
+      <ConfigSection
+        title={t('meshcore.path_hash.title', 'Default path hash size')}
+        docsUrl={`${MESHCORE_DOCS}#per-source-settings`}
+        description={t('meshcore.path_hash.hint',
+              'Number of bytes used for path/loop-detection hashes on outgoing messages. ' +
+              '1 byte (256 values) is enough for small meshes; 2 bytes (65,536 values) is recommended for ' +
+              'mid-to-large deployments to avoid path-table collisions that drop packets on valid routes. ' +
+              'Applied to the device immediately and re-asserted on reconnect.')}
+        canWrite={canWriteConfig}
+        collapsible
+      >
+        <div>
+          <div className={styles.row}>
+            <select
+              value={pathHashInput}
+              onChange={(e) => setPathHashInput(Number(e.target.value) as PathHashSize)}
+              disabled={disabled}
+              aria-label={t('meshcore.path_hash.title', 'Default path hash size')}
+            >
+              <option value={1}>{t('meshcore.path_hash.one', '1 byte')}</option>
+              <option value={2}>{t('meshcore.path_hash.two', '2 bytes (recommended)')}</option>
+              <option value={3}>{t('meshcore.path_hash.three', '3 bytes')}</option>
+            </select>
+            <button
+              type="button"
+              onClick={() => void handleSave(pathHashInput)}
+              disabled={disabled || pathHashInput === pathHashSize}
+              aria-label={t('meshcore.path_hash.save', 'Save path hash size')}
+            >
+              {savingPathHash ? t('common.saving', 'Saving…') : t('common.save', 'Save')}
+            </button>
+          </div>
         </div>
-      </div>
-    </ConfigSection>
+      </ConfigSection>
+    </div>
   );
 };
 

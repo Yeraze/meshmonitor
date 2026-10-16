@@ -198,7 +198,12 @@ const SectionNav: React.FC<SectionNavProps> = ({
       scrollContainer !== document.documentElement
     ) {
       // Inner pane scrolling — offset only for the sticky nav (~50px).
-      const offset = Math.max(PANE_SCROLL_OFFSET, stuckNavBottom(navRef.current));
+      // A sticky `top` counts from inside the pane's padding, while the rects
+      // below count from its border edge, so the padding belongs in the
+      // offset too. Without it a nav pulled up over the padding (MeshCore,
+      // negative `top`) left the clicked header under the nav.
+      const paddingTop = parseFloat(window.getComputedStyle(scrollContainer).paddingTop) || 0;
+      const offset = Math.max(PANE_SCROLL_OFFSET, paddingTop + stuckNavBottom(navRef.current));
       const containerRect = scrollContainer.getBoundingClientRect();
       const elementRect = element.getBoundingClientRect();
       scrollContainer.scrollBy({

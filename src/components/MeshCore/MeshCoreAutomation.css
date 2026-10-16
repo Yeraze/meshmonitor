@@ -9,6 +9,14 @@
  * the new sections introduced).
  */
 
+/* --- Pane ------------------------------------------------------------ */
+
+/* The view scrolls itself. The sticky SectionNav reads this padding so it
+   sticks flush with the pane's top edge (MeshCoreSectionNav.module.css). */
+.meshcore-automations-view {
+  --meshcore-pane-padding: 1rem;
+}
+
 /* --- Form controls ------------------------------------------------- */
 
 /* Apply setting-input visual treatment to selects too. */

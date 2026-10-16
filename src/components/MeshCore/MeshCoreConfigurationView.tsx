@@ -19,6 +19,9 @@ import { UiIcon } from '../icons';
 import { NumberInput } from '../common/NumberInput';
 import { NumberInputScope } from '../common/NumberInputScope';
 import { useNumberInputScope } from '../common/numberInputScopeContext';
+import SectionNav from '../SectionNav';
+import { meshcoreConfigurationNavItems } from '../search/configSections';
+import navStyles from './MeshCoreSectionNav.module.css';
 
 const TELEMETRY_MODE_OPTIONS: TelemetryMode[] = ['always', 'device', 'never'];
 // MeshCore device types: COMPANION=1, REPEATER=2, ROOM_SERVER=3.
@@ -226,6 +229,27 @@ export const MeshCoreConfigurationView: React.FC<MeshCoreConfigurationViewProps>
   const isCompanionOnly = typeof advType === 'number' && COMPANION_ONLY_DEVICES.has(advType);
   const telemetryDisabled = !connected || isCompanionOnly || !canWriteConfig;
 
+  // Mount conditions for the optional sections. The nav reads the same flags,
+  // so it never offers a chip for a section that is not on the page. (The
+  // mounts repeat the sourceId/baseUrl checks only to narrow their types.)
+  const notCompanionOnlyDevice = !COMPANION_ONLY_DEVICES.has(local?.advType ?? 1);
+  const hasSourceAddressing = baseUrl !== undefined && !!sourceId;
+  const showChannels = hasSourceAddressing && notCompanionOnlyDevice;
+  const showContactSync = isCompanion && hasSourceAddressing;
+  const showConsole = !!sourceId && canWriteConfig;
+  const showObserver = !!sourceId && notCompanionOnlyDevice;
+  const showDangerZone = connected && canWriteConfig && notCompanionOnlyDevice;
+  // MeshCoreObserverSection renders nothing without this grant (its own gate).
+  const canReadObserver = hasPermission('configuration', 'read', { sourceId });
+  const navItems = meshcoreConfigurationNavItems(t, {
+    isCompanion,
+    showChannels,
+    showContactSync,
+    showConsole,
+    showObserver: showObserver && canReadObserver,
+    showDangerZone,
+  });
+
   const handleSaveTelemetry = async () => {
     setSavingTelemetry(true);
     setTelemetrySaved(false);
@@ -248,6 +272,18 @@ export const MeshCoreConfigurationView: React.FC<MeshCoreConfigurationViewProps>
         {t('nav.device_configuration', 'Device Configuration')}
       </h2>
 
+      {/* No sections, no nav: a chip must always have a section to jump to. */}
+      {navItems.length > 0 && (
+        <SectionNav
+          className={navStyles.nav}
+          searchable
+          searchPlaceholder={t('config_search.filter_configuration', 'Search configuration...')}
+          searchLabel={t('config_search.filter_configuration', 'Search configuration...')}
+          noMatchesLabel={t('config_search.no_sections', 'No matching sections')}
+          items={navItems}
+        />
+      )}
+
       {!connected && (
         <div className="meshcore-empty-state" style={{ marginBottom: '1rem' }}>
           {t('meshcore.config.not_connected', 'Connect to a device to change its configuration.')}
@@ -267,342 +303,347 @@ export const MeshCoreConfigurationView: React.FC<MeshCoreConfigurationViewProps>
         </div>
       )}
 
-      <ConfigSection
-        id="meshcore-config-name"
-        title={t('meshcore.config.device_name', 'Device name')}
-        docsUrl={`${MESHCORE_DOCS}#configuration`}
-        description={t('meshcore.config.device_name_hint', 'Friendly name advertised to other nodes (max 32 chars).')}
-        canWrite={canWriteConfig}
-        collapsible
-      >
-        <label htmlFor="mc-cfg-name">{t('meshcore.config.name_label', 'Name')}</label>
-        <input
-          id="mc-cfg-name"
-          type="text"
-          value={name}
-          maxLength={32}
-          onChange={e => setName(e.target.value)}
-          disabled={!connected || savingName}
-        />
-        <div>
-          <button
-            onClick={() => void handleSaveName()}
-            disabled={!connected || savingName || !name.trim() || !canWriteConfig}
-          >
-            {savingName
-              ? t('meshcore.config.saving', 'Saving…')
-              : t('meshcore.config.save_name', 'Save name')}
-          </button>
-          {nameSaved && (
-            <span style={{ marginLeft: '0.75rem', color: 'var(--color-success)' }}>
-              <UiIcon name="check" size={14} /> {t('meshcore.config.saved', 'Saved')}
-            </span>
-          )}
-        </div>
-      </ConfigSection>
-
-      <ConfigSection
-        id="meshcore-config-location"
-        title={t('meshcore.config.location', 'Location')}
-        docsUrl={`${MESHCORE_DOCS}#configuration`}
-        description={t('meshcore.config.location_hint',
-          'GPS coordinates reported by the device. Latitude (-90 to 90), Longitude (-180 to 180).')}
-        canWrite={canWriteConfig}
-        collapsible
-      >
-        <div className="form-row">
+      <div id="meshcore-config-name">
+        <ConfigSection
+          title={t('meshcore.config.device_name', 'Device name')}
+          docsUrl={`${MESHCORE_DOCS}#configuration`}
+          description={t('meshcore.config.device_name_hint', 'Friendly name advertised to other nodes (max 32 chars).')}
+          canWrite={canWriteConfig}
+          collapsible
+        >
+          <label htmlFor="mc-cfg-name">{t('meshcore.config.name_label', 'Name')}</label>
+          <input
+            id="mc-cfg-name"
+            type="text"
+            value={name}
+            maxLength={32}
+            onChange={e => setName(e.target.value)}
+            disabled={!connected || savingName}
+          />
           <div>
-            <label htmlFor="mc-cfg-lat">{t('meshcore.config.latitude', 'Latitude')}</label>
-            <NumberInputScope scope={locationNumbers}>
-              <NumberInput
-                id="mc-cfg-lat"
-                step={0.000001}
-                min={-90}
-                max={90}
-                value={lat}
-                onChange={setLat}
-                disabled={!connected || savingLocation}
-              />
-            </NumberInputScope>
+            <button
+              onClick={() => void handleSaveName()}
+              disabled={!connected || savingName || !name.trim() || !canWriteConfig}
+            >
+              {savingName
+                ? t('meshcore.config.saving', 'Saving…')
+                : t('meshcore.config.save_name', 'Save name')}
+            </button>
+            {nameSaved && (
+              <span style={{ marginLeft: '0.75rem', color: 'var(--color-success)' }}>
+                <UiIcon name="check" size={14} /> {t('meshcore.config.saved', 'Saved')}
+              </span>
+            )}
+          </div>
+        </ConfigSection>
+      </div>
+
+      <div id="meshcore-config-location">
+        <ConfigSection
+          title={t('meshcore.config.location', 'Location')}
+          docsUrl={`${MESHCORE_DOCS}#configuration`}
+          description={t('meshcore.config.location_hint',
+            'GPS coordinates reported by the device. Latitude (-90 to 90), Longitude (-180 to 180).')}
+          canWrite={canWriteConfig}
+          collapsible
+        >
+          <div className="form-row">
+            <div>
+              <label htmlFor="mc-cfg-lat">{t('meshcore.config.latitude', 'Latitude')}</label>
+              <NumberInputScope scope={locationNumbers}>
+                <NumberInput
+                  id="mc-cfg-lat"
+                  step={0.000001}
+                  min={-90}
+                  max={90}
+                  value={lat}
+                  onChange={setLat}
+                  disabled={!connected || savingLocation}
+                />
+              </NumberInputScope>
+            </div>
+            <div>
+              <label htmlFor="mc-cfg-lon">{t('meshcore.config.longitude', 'Longitude')}</label>
+              <NumberInputScope scope={locationNumbers}>
+                <NumberInput
+                  id="mc-cfg-lon"
+                  step={0.000001}
+                  min={-180}
+                  max={180}
+                  value={lon}
+                  onChange={setLon}
+                  disabled={!connected || savingLocation}
+                />
+              </NumberInputScope>
+            </div>
           </div>
           <div>
-            <label htmlFor="mc-cfg-lon">{t('meshcore.config.longitude', 'Longitude')}</label>
-            <NumberInputScope scope={locationNumbers}>
-              <NumberInput
-                id="mc-cfg-lon"
-                step={0.000001}
-                min={-180}
-                max={180}
-                value={lon}
-                onChange={setLon}
-                disabled={!connected || savingLocation}
-              />
-            </NumberInputScope>
+            <button
+              onClick={() => void handleSaveLocation()}
+              disabled={
+                !connected || savingLocation || !Number.isFinite(lat) || !Number.isFinite(lon) || !canWriteConfig
+                || locationNumbers.invalid
+              }
+            >
+              {savingLocation
+                ? t('meshcore.config.saving', 'Saving…')
+                : t('meshcore.config.save_location', 'Save location')}
+            </button>
+            {locationSaved && (
+              <span style={{ marginLeft: '0.75rem', color: 'var(--color-success)' }}>
+                <UiIcon name="check" size={14} /> {t('meshcore.config.saved', 'Saved')}
+              </span>
+            )}
           </div>
-        </div>
-        <div>
-          <button
-            onClick={() => void handleSaveLocation()}
-            disabled={
-              !connected || savingLocation || !Number.isFinite(lat) || !Number.isFinite(lon) || !canWriteConfig
-              || locationNumbers.invalid
-            }
-          >
-            {savingLocation
-              ? t('meshcore.config.saving', 'Saving…')
-              : t('meshcore.config.save_location', 'Save location')}
-          </button>
-          {locationSaved && (
-            <span style={{ marginLeft: '0.75rem', color: 'var(--color-success)' }}>
-              <UiIcon name="check" size={14} /> {t('meshcore.config.saved', 'Saved')}
-            </span>
-          )}
-        </div>
-        <div style={{ marginTop: '0.75rem' }}>
-          <label style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem' }}>
-            <input
-              type="checkbox"
-              checked={advLoc}
-              onChange={e => void handleToggleAdvLoc(e.target.checked)}
-              disabled={!connected || savingAdvLoc || !canWriteConfig}
-            />
-            {t('meshcore.config.advert_loc_policy', 'Include location in adverts')}
-          </label>
-        </div>
-      </ConfigSection>
+          <div style={{ marginTop: '0.75rem' }}>
+            <label style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem' }}>
+              <input
+                type="checkbox"
+                checked={advLoc}
+                onChange={e => void handleToggleAdvLoc(e.target.checked)}
+                disabled={!connected || savingAdvLoc || !canWriteConfig}
+              />
+              {t('meshcore.config.advert_loc_policy', 'Include location in adverts')}
+            </label>
+          </div>
+        </ConfigSection>
+      </div>
 
-      <ConfigSection
-        id="meshcore-config-radio"
-        title={t('meshcore.config.radio_params', 'Radio parameters')}
-        docsUrl={`${MESHCORE_DOCS}#radio-configuration`}
-        description={t('meshcore.config.radio_hint',
-          'Frequency (137–1020 MHz), Bandwidth (kHz), Spreading Factor (5–12), Coding Rate (5–8 → 4/5 – 4/8).')}
-        canWrite={canWriteConfig}
-        collapsible
-      >
-        <div>
-          <label htmlFor="mc-cfg-preset">{t('meshcore.config.preset', 'Preset')}</label>
-          <select
-            id="mc-cfg-preset"
-            value={presetId}
-            onChange={e => handlePresetChange(e.target.value)}
-            disabled={!connected || savingRadio}
-          >
-            <option value="custom">{t('meshcore.config.preset.custom', 'Custom')}</option>
-            {RADIO_PRESETS.map(p => (
-              <option key={p.id} value={p.id}>{p.label}</option>
-            ))}
-          </select>
-          {presetNote && (
-            <p className="hint" data-testid="mc-cfg-preset-note">
-              <UiIcon name="info" size={14} /> {presetNote}
+      <div id="meshcore-config-radio">
+        <ConfigSection
+          title={t('meshcore.config.radio_params', 'Radio parameters')}
+          docsUrl={`${MESHCORE_DOCS}#radio-configuration`}
+          description={t('meshcore.config.radio_hint',
+            'Frequency (137–1020 MHz), Bandwidth (kHz), Spreading Factor (5–12), Coding Rate (5–8 → 4/5 – 4/8).')}
+          canWrite={canWriteConfig}
+          collapsible
+        >
+          <div>
+            <label htmlFor="mc-cfg-preset">{t('meshcore.config.preset', 'Preset')}</label>
+            <select
+              id="mc-cfg-preset"
+              value={presetId}
+              onChange={e => handlePresetChange(e.target.value)}
+              disabled={!connected || savingRadio}
+            >
+              <option value="custom">{t('meshcore.config.preset.custom', 'Custom')}</option>
+              {RADIO_PRESETS.map(p => (
+                <option key={p.id} value={p.id}>{p.label}</option>
+              ))}
+            </select>
+            {presetNote && (
+              <p className="hint" data-testid="mc-cfg-preset-note">
+                <UiIcon name="info" size={14} /> {presetNote}
+              </p>
+            )}
+          </div>
+          <div className="form-row">
+            <div>
+              <label htmlFor="mc-cfg-freq">{t('meshcore.config.frequency', 'Frequency (MHz)')}</label>
+              <NumberInputScope scope={radioNumbers}>
+                <NumberInput
+                  id="mc-cfg-freq"
+                  step={0.001}
+                  min={137}
+                  max={1020}
+                  value={freq}
+                  onChange={setFreq}
+                  disabled={!connected || savingRadio}
+                />
+              </NumberInputScope>
+            </div>
+            <div>
+              <label htmlFor="mc-cfg-bw">{t('meshcore.config.bandwidth', 'Bandwidth (kHz)')}</label>
+              <select
+                id="mc-cfg-bw"
+                value={bw}
+                onChange={e => setBw(parseFloat(e.target.value))}
+                disabled={!connected || savingRadio}
+              >
+                {[7.8, 10.4, 15.6, 20.8, 31.25, 41.7, 62.5, 125, 250, 500].map(v => (
+                  <option key={v} value={v}>{v}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label htmlFor="mc-cfg-sf">{t('meshcore.config.sf', 'Spreading Factor')}</label>
+              <select
+                id="mc-cfg-sf"
+                value={sf}
+                onChange={e => setSf(parseInt(e.target.value, 10))}
+                disabled={!connected || savingRadio}
+              >
+                {[5, 6, 7, 8, 9, 10, 11, 12].map(v => (
+                  <option key={v} value={v}>{v}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label htmlFor="mc-cfg-cr">{t('meshcore.config.cr', 'Coding Rate')}</label>
+              <select
+                id="mc-cfg-cr"
+                value={cr}
+                onChange={e => setCr(parseInt(e.target.value, 10))}
+                disabled={!connected || savingRadio}
+              >
+                <option value={5}>4/5</option>
+                <option value={6}>4/6</option>
+                <option value={7}>4/7</option>
+                <option value={8}>4/8</option>
+              </select>
+            </div>
+          </div>
+          <div>
+            <button
+              onClick={() => void handleSaveRadio()}
+              disabled={!connected || savingRadio || !canWriteConfig || radioNumbers.invalid}
+            >
+              {savingRadio
+                ? t('meshcore.config.saving', 'Saving…')
+                : t('meshcore.config.save_radio', 'Save radio settings')}
+            </button>
+            {radioSaved && (
+              <span style={{ marginLeft: '0.75rem', color: 'var(--color-success)' }}>
+                <UiIcon name="check" size={14} /> {t('meshcore.config.saved', 'Saved')}
+              </span>
+            )}
+          </div>
+        </ConfigSection>
+      </div>
+
+      <div id="meshcore-config-tx-power">
+        <ConfigSection
+          title={t('meshcore.config.tx_power', 'TX Power')}
+          docsUrl={`${MESHCORE_DOCS}#radio-configuration`}
+          description={t('meshcore.config.tx_power_hint',
+            `Transmit power in dBm (1–${maxTxPower}). This controls the LoRa chip output only; boards with an external PA may amplify further.`)}
+          canWrite={canWriteConfig}
+          collapsible
+        >
+          <div className="form-row" style={{ alignItems: 'center' }}>
+            <div style={{ flex: 1 }}>
+              <label htmlFor="mc-cfg-txpower">{t('meshcore.config.tx_power_label', 'Power (dBm)')}</label>
+              <input
+                id="mc-cfg-txpower"
+                type="range"
+                min={1}
+                max={maxTxPower}
+                step={1}
+                value={txPower}
+                onChange={e => setTxPower(parseInt(e.target.value, 10))}
+                disabled={!connected || savingTxPower || !canWriteConfig}
+              />
+            </div>
+            <div style={{ minWidth: '4rem', textAlign: 'center', fontWeight: 600, fontSize: '1.1rem' }}>
+              {txPower} dBm
+            </div>
+          </div>
+          <div>
+            <button
+              onClick={() => void handleSaveTxPower()}
+              disabled={!connected || savingTxPower || !canWriteConfig || txPower < 1 || txPower > maxTxPower}
+            >
+              {savingTxPower
+                ? t('meshcore.config.saving', 'Saving…')
+                : t('meshcore.config.save_tx_power', 'Save TX power')}
+            </button>
+            {txPowerSaved && (
+              <span style={{ marginLeft: '0.75rem', color: 'var(--color-success)' }}>
+                <UiIcon name="check" size={14} /> {t('meshcore.config.saved', 'Saved')}
+              </span>
+            )}
+          </div>
+        </ConfigSection>
+      </div>
+
+      <div id="meshcore-config-telemetry">
+        <ConfigSection
+          title={t('meshcore.config.telemetry', 'Telemetry')}
+          docsUrl={`${MESHCORE_DOCS}#telemetry-modes`}
+          description={t('meshcore.config.telemetry_hint',
+            'Control what telemetry this node shares. Always = broadcast on advert; Device only = only respond to direct requests from your contacts; Never = disable.')}
+          canWrite={canWriteConfig}
+          collapsible
+        >
+          {connected && isCompanionOnly && (
+            <p className="hint" style={{ color: 'var(--color-warning)' }}>
+              {t('meshcore.config.telemetry_companion_only',
+                'Telemetry mode is only configurable on companion devices.')}
             </p>
           )}
-        </div>
-        <div className="form-row">
-          <div>
-            <label htmlFor="mc-cfg-freq">{t('meshcore.config.frequency', 'Frequency (MHz)')}</label>
-            <NumberInputScope scope={radioNumbers}>
-              <NumberInput
-                id="mc-cfg-freq"
-                step={0.001}
-                min={137}
-                max={1020}
-                value={freq}
-                onChange={setFreq}
-                disabled={!connected || savingRadio}
-              />
-            </NumberInputScope>
+          <div className="form-row">
+            <div>
+              <label htmlFor="mc-cfg-tel-base">
+                {t('meshcore.config.telemetry_base', 'Basic telemetry')}
+              </label>
+              <select
+                id="mc-cfg-tel-base"
+                value={telBase}
+                onChange={e => setTelBase(e.target.value as TelemetryMode)}
+                disabled={telemetryDisabled || savingTelemetry}
+              >
+                {TELEMETRY_MODE_OPTIONS.map(mode => (
+                  <option key={mode} value={mode}>
+                    {t(`meshcore.config.telemetry_mode.${mode}`,
+                      mode === 'always' ? 'Always' : mode === 'device' ? 'Device only' : 'Never')}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label htmlFor="mc-cfg-tel-loc">
+                {t('meshcore.config.telemetry_loc', 'Location telemetry')}
+              </label>
+              <select
+                id="mc-cfg-tel-loc"
+                value={telLoc}
+                onChange={e => setTelLoc(e.target.value as TelemetryMode)}
+                disabled={telemetryDisabled || savingTelemetry}
+              >
+                {TELEMETRY_MODE_OPTIONS.map(mode => (
+                  <option key={mode} value={mode}>
+                    {t(`meshcore.config.telemetry_mode.${mode}`,
+                      mode === 'always' ? 'Always' : mode === 'device' ? 'Device only' : 'Never')}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label htmlFor="mc-cfg-tel-env">
+                {t('meshcore.config.telemetry_env', 'Environment telemetry')}
+              </label>
+              <select
+                id="mc-cfg-tel-env"
+                value={telEnv}
+                onChange={e => setTelEnv(e.target.value as TelemetryMode)}
+                disabled={telemetryDisabled || savingTelemetry}
+              >
+                {TELEMETRY_MODE_OPTIONS.map(mode => (
+                  <option key={mode} value={mode}>
+                    {t(`meshcore.config.telemetry_mode.${mode}`,
+                      mode === 'always' ? 'Always' : mode === 'device' ? 'Device only' : 'Never')}
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
           <div>
-            <label htmlFor="mc-cfg-bw">{t('meshcore.config.bandwidth', 'Bandwidth (kHz)')}</label>
-            <select
-              id="mc-cfg-bw"
-              value={bw}
-              onChange={e => setBw(parseFloat(e.target.value))}
-              disabled={!connected || savingRadio}
-            >
-              {[7.8, 10.4, 15.6, 20.8, 31.25, 41.7, 62.5, 125, 250, 500].map(v => (
-                <option key={v} value={v}>{v}</option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label htmlFor="mc-cfg-sf">{t('meshcore.config.sf', 'Spreading Factor')}</label>
-            <select
-              id="mc-cfg-sf"
-              value={sf}
-              onChange={e => setSf(parseInt(e.target.value, 10))}
-              disabled={!connected || savingRadio}
-            >
-              {[5, 6, 7, 8, 9, 10, 11, 12].map(v => (
-                <option key={v} value={v}>{v}</option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label htmlFor="mc-cfg-cr">{t('meshcore.config.cr', 'Coding Rate')}</label>
-            <select
-              id="mc-cfg-cr"
-              value={cr}
-              onChange={e => setCr(parseInt(e.target.value, 10))}
-              disabled={!connected || savingRadio}
-            >
-              <option value={5}>4/5</option>
-              <option value={6}>4/6</option>
-              <option value={7}>4/7</option>
-              <option value={8}>4/8</option>
-            </select>
-          </div>
-        </div>
-        <div>
-          <button
-            onClick={() => void handleSaveRadio()}
-            disabled={!connected || savingRadio || !canWriteConfig || radioNumbers.invalid}
-          >
-            {savingRadio
-              ? t('meshcore.config.saving', 'Saving…')
-              : t('meshcore.config.save_radio', 'Save radio settings')}
-          </button>
-          {radioSaved && (
-            <span style={{ marginLeft: '0.75rem', color: 'var(--color-success)' }}>
-              <UiIcon name="check" size={14} /> {t('meshcore.config.saved', 'Saved')}
-            </span>
-          )}
-        </div>
-      </ConfigSection>
-
-      <ConfigSection
-        id="meshcore-config-tx-power"
-        title={t('meshcore.config.tx_power', 'TX Power')}
-        docsUrl={`${MESHCORE_DOCS}#radio-configuration`}
-        description={t('meshcore.config.tx_power_hint',
-          `Transmit power in dBm (1–${maxTxPower}). This controls the LoRa chip output only; boards with an external PA may amplify further.`)}
-        canWrite={canWriteConfig}
-        collapsible
-      >
-        <div className="form-row" style={{ alignItems: 'center' }}>
-          <div style={{ flex: 1 }}>
-            <label htmlFor="mc-cfg-txpower">{t('meshcore.config.tx_power_label', 'Power (dBm)')}</label>
-            <input
-              id="mc-cfg-txpower"
-              type="range"
-              min={1}
-              max={maxTxPower}
-              step={1}
-              value={txPower}
-              onChange={e => setTxPower(parseInt(e.target.value, 10))}
-              disabled={!connected || savingTxPower || !canWriteConfig}
-            />
-          </div>
-          <div style={{ minWidth: '4rem', textAlign: 'center', fontWeight: 600, fontSize: '1.1rem' }}>
-            {txPower} dBm
-          </div>
-        </div>
-        <div>
-          <button
-            onClick={() => void handleSaveTxPower()}
-            disabled={!connected || savingTxPower || !canWriteConfig || txPower < 1 || txPower > maxTxPower}
-          >
-            {savingTxPower
-              ? t('meshcore.config.saving', 'Saving…')
-              : t('meshcore.config.save_tx_power', 'Save TX power')}
-          </button>
-          {txPowerSaved && (
-            <span style={{ marginLeft: '0.75rem', color: 'var(--color-success)' }}>
-              <UiIcon name="check" size={14} /> {t('meshcore.config.saved', 'Saved')}
-            </span>
-          )}
-        </div>
-      </ConfigSection>
-
-      <ConfigSection
-        id="meshcore-config-telemetry"
-        title={t('meshcore.config.telemetry', 'Telemetry')}
-        docsUrl={`${MESHCORE_DOCS}#telemetry-modes`}
-        description={t('meshcore.config.telemetry_hint',
-          'Control what telemetry this node shares. Always = broadcast on advert; Device only = only respond to direct requests from your contacts; Never = disable.')}
-        canWrite={canWriteConfig}
-        collapsible
-      >
-        {connected && isCompanionOnly && (
-          <p className="hint" style={{ color: 'var(--color-warning)' }}>
-            {t('meshcore.config.telemetry_companion_only',
-              'Telemetry mode is only configurable on companion devices.')}
-          </p>
-        )}
-        <div className="form-row">
-          <div>
-            <label htmlFor="mc-cfg-tel-base">
-              {t('meshcore.config.telemetry_base', 'Basic telemetry')}
-            </label>
-            <select
-              id="mc-cfg-tel-base"
-              value={telBase}
-              onChange={e => setTelBase(e.target.value as TelemetryMode)}
+            <button
+              onClick={() => void handleSaveTelemetry()}
               disabled={telemetryDisabled || savingTelemetry}
             >
-              {TELEMETRY_MODE_OPTIONS.map(mode => (
-                <option key={mode} value={mode}>
-                  {t(`meshcore.config.telemetry_mode.${mode}`,
-                    mode === 'always' ? 'Always' : mode === 'device' ? 'Device only' : 'Never')}
-                </option>
-              ))}
-            </select>
+              {savingTelemetry
+                ? t('meshcore.config.saving', 'Saving…')
+                : t('meshcore.config.save_telemetry', 'Save telemetry settings')}
+            </button>
+            {telemetrySaved && (
+              <span style={{ marginLeft: '0.75rem', color: 'var(--color-success)' }}>
+                <UiIcon name="check" size={14} /> {t('meshcore.config.saved', 'Saved')}
+              </span>
+            )}
           </div>
-          <div>
-            <label htmlFor="mc-cfg-tel-loc">
-              {t('meshcore.config.telemetry_loc', 'Location telemetry')}
-            </label>
-            <select
-              id="mc-cfg-tel-loc"
-              value={telLoc}
-              onChange={e => setTelLoc(e.target.value as TelemetryMode)}
-              disabled={telemetryDisabled || savingTelemetry}
-            >
-              {TELEMETRY_MODE_OPTIONS.map(mode => (
-                <option key={mode} value={mode}>
-                  {t(`meshcore.config.telemetry_mode.${mode}`,
-                    mode === 'always' ? 'Always' : mode === 'device' ? 'Device only' : 'Never')}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label htmlFor="mc-cfg-tel-env">
-              {t('meshcore.config.telemetry_env', 'Environment telemetry')}
-            </label>
-            <select
-              id="mc-cfg-tel-env"
-              value={telEnv}
-              onChange={e => setTelEnv(e.target.value as TelemetryMode)}
-              disabled={telemetryDisabled || savingTelemetry}
-            >
-              {TELEMETRY_MODE_OPTIONS.map(mode => (
-                <option key={mode} value={mode}>
-                  {t(`meshcore.config.telemetry_mode.${mode}`,
-                    mode === 'always' ? 'Always' : mode === 'device' ? 'Device only' : 'Never')}
-                </option>
-              ))}
-            </select>
-          </div>
-        </div>
-        <div>
-          <button
-            onClick={() => void handleSaveTelemetry()}
-            disabled={telemetryDisabled || savingTelemetry}
-          >
-            {savingTelemetry
-              ? t('meshcore.config.saving', 'Saving…')
-              : t('meshcore.config.save_telemetry', 'Save telemetry settings')}
-          </button>
-          {telemetrySaved && (
-            <span style={{ marginLeft: '0.75rem', color: 'var(--color-success)' }}>
-              <UiIcon name="check" size={14} /> {t('meshcore.config.saved', 'Saved')}
-            </span>
-          )}
-        </div>
-      </ConfigSection>
+        </ConfigSection>
+      </div>
 
       {/* Written to the device, so they sit with the other saved device
           settings (#5683 follow-up; both came from the Settings tab). */}
@@ -629,7 +670,7 @@ export const MeshCoreConfigurationView: React.FC<MeshCoreConfigurationViewProps>
 
       {/* Channels — Companion-only and only when the per-source addressing
           props are available (sourceId/baseUrl come from the MeshCorePage). */}
-      {baseUrl !== undefined && sourceId && !COMPANION_ONLY_DEVICES.has(local?.advType ?? 1) && (
+      {showChannels && baseUrl !== undefined && sourceId && (
         <MeshCoreChannelsConfigSection
           baseUrl={baseUrl}
           sourceId={sourceId}
@@ -639,7 +680,7 @@ export const MeshCoreConfigurationView: React.FC<MeshCoreConfigurationViewProps>
 
       {/* Radio contact list vs MeshMonitor (#5502). Gates itself: the auto-add
           switch on configuration:write, the push on nodes:write. */}
-      {isCompanion && baseUrl !== undefined && sourceId && (
+      {showContactSync && baseUrl !== undefined && sourceId && (
         <MeshCoreContactSyncSection
           baseUrl={baseUrl}
           sourceId={sourceId}
@@ -666,7 +707,7 @@ export const MeshCoreConfigurationView: React.FC<MeshCoreConfigurationViewProps>
       {/* Local CLI console — gated on configuration:write (matches the
           form fields above) and per-source via the route. Available for
           all firmware types; the catalog adapts. */}
-      {sourceId && canWriteConfig && (
+      {showConsole && sourceId && (
         <MeshCoreLocalConsole
           sourceId={sourceId}
           deviceName={local?.name}
@@ -684,12 +725,12 @@ export const MeshCoreConfigurationView: React.FC<MeshCoreConfigurationViewProps>
           Device Management mount below): read-only users get the status
           display, and disconnected sources still need key management. The
           component does its own configuration:read / configuration:write gating. */}
-      {sourceId && !COMPANION_ONLY_DEVICES.has(local?.advType ?? 1) && (
+      {showObserver && sourceId && (
         <MeshCoreObserverSection sourceId={sourceId} connected={connected} deviceType={local?.advType} />
       )}
 
       {/* Device Management — danger zone operations. Companion only. */}
-      {connected && canWriteConfig && !COMPANION_ONLY_DEVICES.has(local?.advType ?? 1) && (
+      {showDangerZone && (
         <MeshCoreDeviceManagement actions={actions} deviceName={local?.name} />
       )}
     </div>
@@ -787,131 +828,134 @@ const MeshCoreDeviceManagement: React.FC<{
   };
 
   return (
-    <DangerZone id="meshcore-device-management">
-      <DangerZoneActions>
-        <DangerZoneButton
-          onClick={() => setRebootConfirmOpen(true)}
-          disabled={rebooting}
-          data-testid="meshcore-reboot-button"
-        >
-          {rebooting
-            ? t('meshcore.config.rebooting', 'Rebooting…')
-            : t('meshcore.config.reboot_button', 'Reboot Device')}
-        </DangerZoneButton>
-
-        <DangerZoneButton
-          variant="plain"
-          onClick={handleExportKey}
-          disabled={exportingKey}
-        >
-          {exportingKey
-            ? t('meshcore.config.exporting_key', 'Exporting…')
-            : t('meshcore.config.export_key_button', 'Backup Private Key')}
-        </DangerZoneButton>
-
-        <DangerZoneButton
-          onClick={() => { setImportKeyDraft(''); setImportKeyError(null); setImportKeyOpen(true); }}
-        >
-          {t('meshcore.config.import_key_button', 'Restore Private Key')}
-        </DangerZoneButton>
-      </DangerZoneActions>
-
-      {exportedKey && (
-        <div style={{
-          background: 'var(--color-surface)',
-          padding: '0.75rem',
-          borderRadius: '6px',
-          fontFamily: 'var(--font-mono, monospace)',
-          fontSize: '0.85em',
-          wordBreak: 'break-all',
-        }}>
-          <div style={{ marginBottom: '0.5rem', color: 'var(--color-warning)' }}>
-            {t('meshcore.config.export_key_warning', 'Store this key securely. Anyone with it can impersonate this device.')}
-          </div>
-          <div>{exportedKey}</div>
-          <button
-            type="button"
-            className="btn-secondary"
-            style={{ marginTop: '0.5rem', fontSize: '0.85em' }}
-            onClick={handleCopyKey}
+    // The id wraps the whole zone so the section filter hides all of it.
+    <div id="meshcore-device-management">
+      <DangerZone>
+        <DangerZoneActions>
+          <DangerZoneButton
+            onClick={() => setRebootConfirmOpen(true)}
+            disabled={rebooting}
+            data-testid="meshcore-reboot-button"
           >
-            {t('meshcore.config.copy_key', 'Copy to clipboard')}
-          </button>
-        </div>
-      )}
+            {rebooting
+              ? t('meshcore.config.rebooting', 'Rebooting…')
+              : t('meshcore.config.reboot_button', 'Reboot Device')}
+          </DangerZoneButton>
 
-      {importKeyOpen && (
-        <div style={{
-          background: 'var(--color-surface)',
-          padding: '0.75rem',
-          borderRadius: '6px',
-        }}>
-          <div style={{ marginBottom: '0.5rem', color: 'var(--color-error)' }}>
-            {t('meshcore.config.import_key_warning', 'This replaces the device identity. All contacts will need to re-discover this node.')}
+          <DangerZoneButton
+            variant="plain"
+            onClick={handleExportKey}
+            disabled={exportingKey}
+          >
+            {exportingKey
+              ? t('meshcore.config.exporting_key', 'Exporting…')
+              : t('meshcore.config.export_key_button', 'Backup Private Key')}
+          </DangerZoneButton>
+
+          <DangerZoneButton
+            onClick={() => { setImportKeyDraft(''); setImportKeyError(null); setImportKeyOpen(true); }}
+          >
+            {t('meshcore.config.import_key_button', 'Restore Private Key')}
+          </DangerZoneButton>
+        </DangerZoneActions>
+
+        {exportedKey && (
+          <div style={{
+            background: 'var(--color-surface)',
+            padding: '0.75rem',
+            borderRadius: '6px',
+            fontFamily: 'var(--font-mono, monospace)',
+            fontSize: '0.85em',
+            wordBreak: 'break-all',
+          }}>
+            <div style={{ marginBottom: '0.5rem', color: 'var(--color-warning)' }}>
+              {t('meshcore.config.export_key_warning', 'Store this key securely. Anyone with it can impersonate this device.')}
+            </div>
+            <div>{exportedKey}</div>
+            <button
+              type="button"
+              className="btn-secondary"
+              style={{ marginTop: '0.5rem', fontSize: '0.85em' }}
+              onClick={handleCopyKey}
+            >
+              {t('meshcore.config.copy_key', 'Copy to clipboard')}
+            </button>
           </div>
-          <input
-            type="text"
-            value={importKeyDraft}
-            onChange={(e) => setImportKeyDraft(e.target.value)}
-            disabled={importingKey}
-            placeholder="128-character hex private key"
-            aria-label={t('meshcore.config.import_key_input', 'Private key (hex)')}
-            style={{
-              width: '100%',
-              padding: '0.5rem',
-              fontFamily: 'var(--font-mono, monospace)',
-              boxSizing: 'border-box',
-              marginBottom: '0.5rem',
-            }}
+        )}
+
+        {importKeyOpen && (
+          <div style={{
+            background: 'var(--color-surface)',
+            padding: '0.75rem',
+            borderRadius: '6px',
+          }}>
+            <div style={{ marginBottom: '0.5rem', color: 'var(--color-error)' }}>
+              {t('meshcore.config.import_key_warning', 'This replaces the device identity. All contacts will need to re-discover this node.')}
+            </div>
+            <input
+              type="text"
+              value={importKeyDraft}
+              onChange={(e) => setImportKeyDraft(e.target.value)}
+              disabled={importingKey}
+              placeholder="128-character hex private key"
+              aria-label={t('meshcore.config.import_key_input', 'Private key (hex)')}
+              style={{
+                width: '100%',
+                padding: '0.5rem',
+                fontFamily: 'var(--font-mono, monospace)',
+                boxSizing: 'border-box',
+                marginBottom: '0.5rem',
+              }}
+            />
+            {importKeyError && (
+              <div style={{ color: 'var(--color-error)', marginBottom: '0.5rem' }} role="alert">{importKeyError}</div>
+            )}
+            <div style={{ display: 'flex', gap: '0.5rem' }}>
+              <button type="button" className="btn-secondary" onClick={() => setImportKeyOpen(false)} disabled={importingKey}>
+                {t('meshcore.config.cancel', 'Cancel')}
+              </button>
+              <button type="button" className="btn-primary" onClick={requestImportKey} disabled={importingKey || importKeyDraft.trim().length === 0}
+                style={{ color: 'var(--color-error)' }}>
+                {importingKey
+                  ? t('meshcore.config.importing_key', 'Importing…')
+                  : t('meshcore.config.import_key_confirm_button', 'Import Key')}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {rebootConfirmOpen && (
+          <ConfirmDialog
+            title={t('meshcore.config.reboot_dialog_title', 'Reboot the device?')}
+            message={t('meshcore.config.reboot_dialog_message', {
+              name: deviceName ?? t('meshcore.config.this_device', 'this device'),
+              defaultValue: '{{name}} disconnects and restarts.',
+            })}
+            confirmLabel={t('meshcore.config.reboot_button', 'Reboot Device')}
+            cancelLabel={t('common.cancel', 'Cancel')}
+            onConfirm={() => { void handleReboot(); }}
+            onCancel={() => setRebootConfirmOpen(false)}
           />
-          {importKeyError && (
-            <div style={{ color: 'var(--color-error)', marginBottom: '0.5rem' }} role="alert">{importKeyError}</div>
-          )}
-          <div style={{ display: 'flex', gap: '0.5rem' }}>
-            <button type="button" className="btn-secondary" onClick={() => setImportKeyOpen(false)} disabled={importingKey}>
-              {t('meshcore.config.cancel', 'Cancel')}
-            </button>
-            <button type="button" className="btn-primary" onClick={requestImportKey} disabled={importingKey || importKeyDraft.trim().length === 0}
-              style={{ color: 'var(--color-error)' }}>
-              {importingKey
-                ? t('meshcore.config.importing_key', 'Importing…')
-                : t('meshcore.config.import_key_confirm_button', 'Import Key')}
-            </button>
-          </div>
-        </div>
-      )}
+        )}
 
-      {rebootConfirmOpen && (
-        <ConfirmDialog
-          title={t('meshcore.config.reboot_dialog_title', 'Reboot the device?')}
-          message={t('meshcore.config.reboot_dialog_message', {
-            name: deviceName ?? t('meshcore.config.this_device', 'this device'),
-            defaultValue: '{{name}} disconnects and restarts.',
-          })}
-          confirmLabel={t('meshcore.config.reboot_button', 'Reboot Device')}
-          cancelLabel={t('common.cancel', 'Cancel')}
-          onConfirm={() => { void handleReboot(); }}
-          onCancel={() => setRebootConfirmOpen(false)}
-        />
-      )}
-
-      <TypedConfirmDialog
-        isOpen={pendingImportKey !== null}
-        title={t('meshcore.config.import_key_dialog_title', 'Replace the device identity?')}
-        confirmWord={IMPORT_KEY_CONFIRM_WORD}
-        confirmLabel={t('meshcore.config.import_key_confirm_button', 'Import Key')}
-        danger
-        busy={importingKey}
-        onConfirm={() => { void handleImportKey(); }}
-        onCancel={() => setPendingImportKey(null)}
-      >
-        <p>
-          {t(
-            'meshcore.config.import_key_dialog_body',
-            'This REPLACES the device identity with the imported private key. Every contact will need to re-discover this node. It cannot be undone without the old key.',
-          )}
-        </p>
-      </TypedConfirmDialog>
-    </DangerZone>
+        <TypedConfirmDialog
+          isOpen={pendingImportKey !== null}
+          title={t('meshcore.config.import_key_dialog_title', 'Replace the device identity?')}
+          confirmWord={IMPORT_KEY_CONFIRM_WORD}
+          confirmLabel={t('meshcore.config.import_key_confirm_button', 'Import Key')}
+          danger
+          busy={importingKey}
+          onConfirm={() => { void handleImportKey(); }}
+          onCancel={() => setPendingImportKey(null)}
+        >
+          <p>
+            {t(
+              'meshcore.config.import_key_dialog_body',
+              'This REPLACES the device identity with the imported private key. Every contact will need to re-discover this node. It cannot be undone without the old key.',
+            )}
+          </p>
+        </TypedConfirmDialog>
+      </DangerZone>
+    </div>
   );
 };

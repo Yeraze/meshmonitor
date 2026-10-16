@@ -39,6 +39,7 @@ import { Router, Request, Response } from 'express';
 import databaseService from '../../services/database.js';
 import { optionalAuth } from '../auth/authMiddleware.js';
 import { logger } from '../../utils/logger.js';
+import { getEffectiveDbNodePosition } from '../utils/nodeEnhancer.js';
 import { ok, fail } from '../utils/apiResponse.js';
 import { resolvePermittedSourceIds, parseSourcesParam } from '../utils/permittedSources.js';
 import {
@@ -375,15 +376,16 @@ router.get('/receivers', async (req: Request, res: Response) => {
     const receivers: CoverageReceiverDto[] = rows.map((r) => {
       if (isMeshCoreReceptionRow(r)) {
         // MeshCore branch (§2.5 D10): name and current position come from
-        // `meshcore_nodes` (no override concept there), else the latest
+        // `meshcore_nodes` (override-aware since #5842), else the latest
         // reception snapshot. `mcFilter` folds presence (#4163-equivalent —
         // no `meshcore_nodes` row means no marker anywhere, admins included)
         // and, for non-admins, per-source `nodes:viewOnMap` into one check;
         // failing it nulls the coordinate pair, same asymmetry as the
         // Meshtastic branch below (name is never nulled by the gate).
         const mcNode = mcNodeByKey.get(`${r.sourceId}:${r.receiverId.toLowerCase()}`) ?? null;
-        let latitude: number | null = mcNode?.latitude ?? null;
-        let longitude: number | null = mcNode?.longitude ?? null;
+        const mcPos = getEffectiveDbNodePosition(mcNode);
+        let latitude: number | null = mcPos.latitude ?? null;
+        let longitude: number | null = mcPos.longitude ?? null;
         if (latitude == null || longitude == null) {
           latitude = r.receiverLatitude;
           longitude = r.receiverLongitude;

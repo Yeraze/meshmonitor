@@ -6,7 +6,13 @@
 
 import { Router, Request, Response } from 'express';
 import bcrypt from 'bcrypt';
-import { authenticateLocal, changePassword } from '../auth/localAuth.js';
+import {
+  authenticateLocal,
+  changePassword,
+  setPasswordAfterRecovery,
+  PasswordLoginDisabledError,
+} from '../auth/localAuth.js';
+import { fail } from '../utils/apiResponse.js';
 import {
   isOIDCEnabled,
   generateAuthorizationUrl,
@@ -20,26 +26,10 @@ import databaseService from '../../services/database.js';
 import { logger } from '../../utils/logger.js';
 import { getEnvironmentConfig } from '../config/environment.js';
 import { notifyAccessChange } from '../../db/accessChanges.js';
+import { stripUserSecrets } from '../utils/userSecrets.js';
+import { regenerateSession } from '../auth/regenerateSession.js';
 
 const router = Router();
-
-function regenerateSession(req: Request): Promise<void> {
-  // Preserve CSRF token across session regeneration so the frontend's
-  // cached token remains valid after login (session regeneration creates
-  // a new session ID but should not invalidate the CSRF token)
-  const csrfToken = req.session.csrfToken;
-  return new Promise((resolve, reject) => {
-    req.session.regenerate((err) => {
-      if (err) reject(err);
-      else {
-        if (csrfToken) {
-          req.session.csrfToken = csrfToken;
-        }
-        resolve();
-      }
-    });
-  });
-}
 
 // Get authentication status
 router.get('/status', async (req: Request, res: Response) => {
@@ -118,11 +108,13 @@ router.get('/status', async (req: Request, res: Response) => {
     const permissions = await databaseService.getUserPermissionSetsBySourceAsync(user.id);
 
     // Don't send sensitive fields to client
-    const { passwordHash, mfaSecret, mfaBackupCodes, ...safeUser } = user;
+    const safeUser = stripUserSecrets(user);
 
     return res.json({
       authenticated: true,
       user: safeUser,
+      // Signed in with a passkey recovery code: the UI asks for a new password (#5841).
+      passwordChangeRequired: req.session.passwordChangeRequired === true,
       permissions,
       oidcEnabled: isOIDCEnabled(),
       localAuthDisabled,
@@ -310,7 +302,7 @@ router.post('/login', authLimiter, async (req: Request, res: Response) => {
     );
 
     // Don't send sensitive fields to client
-    const { passwordHash, mfaSecret, mfaBackupCodes, ...safeUser } = user;
+    const safeUser = stripUserSecrets(user);
 
     return res.json({
       success: true,
@@ -377,7 +369,10 @@ router.post('/verify-mfa', authLimiter, async (req: Request, res: Response) => {
     }
 
     const user = await databaseService.findUserByIdAsync(pendingUserId);
-    if (!user || !user.isActive || !user.mfaEnabled || !user.mfaSecret) {
+    // A pending MFA step only ever follows a password login, so a passkey-only
+    // account (#5841) cannot finish one, even if password login was turned off
+    // between the two steps. Same reply as any other bad state.
+    if (!user || !user.isActive || !user.mfaEnabled || !user.mfaSecret || user.passwordLoginDisabled) {
       req.session.pendingMfaUserId = undefined;
       return res.status(401).json({ error: 'Invalid MFA state' });
     }
@@ -435,7 +430,7 @@ router.post('/verify-mfa', authLimiter, async (req: Request, res: Response) => {
     );
 
     // Don't send sensitive fields to client
-    const { passwordHash, mfaSecret, mfaBackupCodes, ...safeUser } = user;
+    const safeUser = stripUserSecrets(user);
 
     return res.json({
       success: true,
@@ -452,14 +447,20 @@ router.post('/change-password', requireAuth(), async (req: Request, res: Respons
   try {
     const { currentPassword, newPassword } = req.body;
 
-    if (!currentPassword || !newPassword) {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    // A session that signed in with a passkey recovery code may set a new
+    // password without the old one (#5841). The flag lives in the server-side
+    // session, never in the request, and only that user's own session has it.
+    const afterRecovery =
+      req.session?.passwordChangeRequired === true && req.session.userId === req.user.id;
+
+    if (!newPassword || (!currentPassword && !afterRecovery)) {
       return res.status(400).json({
         error: 'Current password and new password are required'
       });
-    }
-
-    if (!req.user) {
-      return res.status(401).json({ error: 'Not authenticated' });
     }
 
     if (req.user.authProvider !== 'local') {
@@ -474,7 +475,18 @@ router.post('/change-password', requireAuth(), async (req: Request, res: Respons
       });
     }
 
-    await changePassword(req.user.id, currentPassword, newPassword);
+    // Passkey-only account (#5841): no password to change.
+    const loginState = await databaseService.getPasskeyOnlyStateAsync(req.user.id);
+    if (loginState?.passwordLoginDisabled) {
+      return fail(res, 403, 'PASSWORD_LOGIN_DISABLED', new PasswordLoginDisabledError().message);
+    }
+
+    if (afterRecovery) {
+      await setPasswordAfterRecovery(req.user.id, String(newPassword));
+    } else {
+      await changePassword(req.user.id, currentPassword, newPassword);
+    }
+    req.session.passwordChangeRequired = undefined;
 
     return res.json({
       success: true,

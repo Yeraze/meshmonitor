@@ -1,5 +1,5 @@
 /**
- * Pure unit tests for DashboardPage.observerConfig.ts (#4457 Phase 3,
+ * Pure unit tests for observerConfig.ts (was DashboardPage.observerConfig.ts) (#4457 Phase 3,
  * extended #5014 Phase 2 WP1). No DOM required — table-driven over spec
  * MESHMAPPER_OBSERVER_PHASE2_SPEC.md §3 (form <-> config mapping, the
  * `brokers[]` migration, `buildObserverConfig` check order) and §3.2
@@ -20,7 +20,7 @@ import {
   MAX_OBSERVER_BROKERS,
   type ObserverForm,
   type ObserverBrokerForm,
-} from './DashboardPage.observerConfig';
+} from './observerConfig';
 
 function brokerRow(overrides: Partial<ObserverBrokerForm> = {}): ObserverBrokerForm {
   return {

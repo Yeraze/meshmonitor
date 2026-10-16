@@ -127,8 +127,10 @@ export const BACKUP_TABLES: string[] = [
   'reticulum_paths',
 
   // ── Secrets ──────────────────────────────────────────────────────────────
-  // All three are described in BACKUP_SECRET_TABLES.
+  // All of these are described in BACKUP_SECRET_TABLES.
   'api_tokens',
+  // #5841: WebAuthn passkeys. FK to users (cascade).
+  'user_passkeys',
   'source_pki_keys',
   'meshcore_observer_credentials',
 
@@ -202,8 +204,15 @@ export const BACKUP_EXCLUDED_TABLES: Readonly<Record<string, string>> = {
  * (systemRestoreService.findUnreadableSecrets).
  */
 export const BACKUP_SECRET_TABLES: Readonly<Record<string, { protection: string; sessionSecret: boolean }>> = {
-  users: { protection: 'password hashes (bcrypt); MFA secrets as stored', sessionSecret: false },
+  users: {
+    protection: 'password hashes (bcrypt); MFA secrets as stored; MFA backup and passkey recovery codes as bcrypt hashes',
+    sessionSecret: false,
+  },
   api_tokens: { protection: 'bcrypt hash of each token; the token itself is never stored', sessionSecret: false },
+  user_passkeys: {
+    protection: 'public keys only (no private key leaves the authenticator); credential ids tied to user ids are account data',
+    sessionSecret: false,
+  },
   channels: { protection: 'NONE — channel PSKs in the clear', sessionSecret: false },
   channel_database: { protection: 'NONE — channel decryption PSKs in the clear', sessionSecret: false },
   mesh_beacon_offers: { protection: 'NONE — offered channel PSKs in the clear', sessionSecret: false },

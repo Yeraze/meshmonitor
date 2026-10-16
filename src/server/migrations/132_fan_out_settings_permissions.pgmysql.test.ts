@@ -332,6 +332,8 @@ const PG_CREATE = `
     "mfaEnabled" BOOLEAN NOT NULL DEFAULT false,
     "mfaSecret" TEXT,
     "mfaBackupCodes" TEXT,
+    "passwordLoginDisabled" BOOLEAN NOT NULL DEFAULT false,
+    "passkeyRecoveryCodes" TEXT,
     "createdAt" BIGINT NOT NULL,
     "updatedAt" BIGINT NOT NULL,
     "lastLoginAt" BIGINT
@@ -381,6 +383,8 @@ const MYSQL_CREATE = `
     mfaEnabled BOOLEAN NOT NULL DEFAULT false,
     mfaSecret TEXT,
     mfaBackupCodes TEXT,
+    passwordLoginDisabled BOOLEAN NOT NULL DEFAULT false,
+    passkeyRecoveryCodes TEXT,
     createdAt BIGINT NOT NULL,
     updatedAt BIGINT NOT NULL,
     lastLoginAt BIGINT

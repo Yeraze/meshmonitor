@@ -227,6 +227,32 @@ const AUTOACK_PARITY: Record<string, ParityRow> = {
     perSource: true, status: 'exists',
     engine: ['param:action.sendMessage.to'],
   },
+  // 34-39 — IP row (#5796): cell = isDM==0|1 AND viaIp==1. viaIp is the derived,
+  // total field built from the same autoAckIsIp() checkAutoAcknowledge uses.
+  autoAckChannelIpReplyEnabled: {
+    perSource: true, status: 'exists',
+    engine: ['type:action.sendMessage', 'field:isDM', 'field:viaIp', 'op:=='],
+  },
+  autoAckChannelIpTapbackEnabled: {
+    perSource: true, status: 'exists',
+    engine: ['type:action.tapback', 'param:action.tapback.emojiMode'],
+  },
+  autoAckChannelIpReplyDmEnabled: {
+    perSource: true, status: 'exists',
+    engine: ['type:action.sendMessage', 'param:action.sendMessage.to'],
+  },
+  autoAckDirectIpReplyEnabled: {
+    perSource: true, status: 'exists',
+    engine: ['type:action.sendMessage', 'field:isDM', 'field:viaIp', 'op:=='],
+  },
+  autoAckDirectIpTapbackEnabled: {
+    perSource: true, status: 'exists',
+    engine: ['type:action.tapback', 'param:action.tapback.emojiMode'],
+  },
+  autoAckDirectIpReplyDmEnabled: {
+    perSource: true, status: 'exists',
+    engine: ['param:action.sendMessage.to'],
+  },
 };
 
 /**
@@ -264,7 +290,7 @@ describe('autoAckParity (#4340 Phase 3 exit criterion)', () => {
     // ...and a new autoAck* key added to VALID_SETTINGS_KEYS without a row here.
     const extraInTable = tableKeys.filter((k) => !settingsAutoAckKeys.includes(k));
     expect(extraInTable, `keys in AUTOACK_PARITY but not in VALID_SETTINGS_KEYS: ${extraInTable.join(', ')}`).toEqual([]);
-    expect(tableKeys.length).toBe(35);
+    expect(tableKeys.length).toBe(41);
   });
 
   it('perSource flag matches PER_SOURCE_SETTINGS_KEYS membership for every row', () => {

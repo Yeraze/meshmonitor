@@ -32,7 +32,15 @@ vi.mock('../../contexts/AuthContext', () => ({
 let sourceStatusMap: Map<string, Record<string, unknown> | null> = new Map();
 vi.mock('../../hooks/useDashboardData', () => ({
   useSourceStatuses: () => sourceStatusMap,
+  useDashboardSources: () => ({ data: [] }),
 }));
+
+// --- Broker list draft (#5831) ----------------------------------------------
+// The editable broker list has its own test file
+// (MeshCoreObserverSection.brokerEditor.test.tsx). Here the source list is
+// empty and the SaveBar is a no-op, so these tests stay about the key and
+// credential blocks.
+vi.mock('../../hooks/useSaveBar', () => ({ useSaveBar: vi.fn() }));
 
 // --- useObserverKey ----------------------------------------------------------
 type MockResult = { ok: boolean; data?: ObserverKeyStatus; error?: ObserverKeyError };

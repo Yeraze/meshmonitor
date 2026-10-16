@@ -39,6 +39,10 @@ export interface DbUser {
   mfaEnabled: boolean;
   mfaSecret: string | null;
   mfaBackupCodes: string | null;
+  /** #5841: password login off; the user signs in with a passkey only. */
+  passwordLoginDisabled: boolean;
+  /** #5841: JSON array of bcrypt hashes. NEVER sent to the frontend. */
+  passkeyRecoveryCodes: string | null;
   createdAt: number;
   updatedAt?: number; // PostgreSQL only
   lastLoginAt: number | null;
@@ -78,6 +82,8 @@ export interface UpdateUserInput {
   mfaEnabled?: boolean;
   mfaSecret?: string | null;
   mfaBackupCodes?: string | null;
+  passwordLoginDisabled?: boolean;
+  passkeyRecoveryCodes?: string | null;
   updatedAt?: number;
   lastLoginAt?: number | null;
 }
@@ -308,6 +314,64 @@ export class AuthRepository extends BaseRepository {
     await this.db.delete(users).where(eq(users.id, id));
     notifyAccessChange({ kind: 'user', userId: id });
     return true;
+  }
+
+  // ============ PASSKEY-ONLY ACCOUNTS (#5841) ============
+
+  /**
+   * The passkey-only switch and the stored recovery-code hashes for one user,
+   * or null when the user does not exist.
+   */
+  async getPasskeyOnlyState(
+    userId: number,
+  ): Promise<{ passwordLoginDisabled: boolean; passkeyRecoveryCodes: string | null } | null> {
+    const { users } = this.tables;
+    const rows = await this.db
+      .select({
+        passwordLoginDisabled: users.passwordLoginDisabled,
+        passkeyRecoveryCodes: users.passkeyRecoveryCodes,
+      })
+      .from(users)
+      .where(eq(users.id, userId))
+      .limit(1);
+    if (rows.length === 0) return null;
+    return {
+      // MySQL can hand back 0/1.
+      passwordLoginDisabled: Boolean(rows[0].passwordLoginDisabled),
+      passkeyRecoveryCodes: rows[0].passkeyRecoveryCodes ?? null,
+    };
+  }
+
+  /** Turn password login off (true) or back on (false) for one user. */
+  async setPasskeyOnly(userId: number, disabled: boolean): Promise<void> {
+    await this.updateUser(userId, { passwordLoginDisabled: disabled });
+  }
+
+  /** Store the recovery-code hashes (JSON array) for one user, or clear them with null. */
+  async setPasskeyRecoveryCodes(userId: number, codes: string | null): Promise<void> {
+    await this.updateUser(userId, { passkeyRecoveryCodes: codes });
+  }
+
+  /** Turn password login back on and drop the recovery codes, in one write. */
+  async clearPasskeyOnly(userId: number): Promise<void> {
+    await this.updateUser(userId, { passwordLoginDisabled: false, passkeyRecoveryCodes: null });
+  }
+
+  /**
+   * Spend a recovery code: turn password login back on and clear the codes,
+   * but only while the stored codes are still `expectedCodes`. Two requests
+   * racing with the same code both match the old list; only the first write
+   * wins, so a code works once. False when another write got there first.
+   */
+  async consumePasskeyRecovery(userId: number, expectedCodes: string): Promise<boolean> {
+    const { users } = this.tables;
+    const set: Record<string, unknown> = { passwordLoginDisabled: false, passkeyRecoveryCodes: null };
+    if (!this.isSQLite()) set.updatedAt = Date.now();
+    const result = await this.db
+      .update(users)
+      .set(set)
+      .where(and(eq(users.id, userId), eq(users.passkeyRecoveryCodes, expectedCodes)));
+    return this.getAffectedRows(result) > 0;
   }
 
   /**

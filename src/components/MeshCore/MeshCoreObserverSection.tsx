@@ -24,6 +24,7 @@ import { useSourceStatuses } from '../../hooks/useDashboardData';
 import { formatRelativeTime } from '../../utils/datetime';
 import { UiIcon } from '../icons';
 import { ConfigSection } from '../shared/config/ConfigSection';
+import { ConfigGroup } from '../shared/config/ConfigGroup';
 import { PasswordField } from '../shared/config/PasswordField';
 import { MESHCORE_DOCS } from './meshcoreDocs';
 import { useObserverKey, type ObserverKeyError, type ObserverKeyAction } from './hooks/useObserverKey';
@@ -31,6 +32,8 @@ import { useObserverCredentials } from './hooks/useObserverCredentials';
 import { useObserverStatus } from './hooks/useObserverStatus';
 import { MeshCoreObserverBrokerPanel } from './MeshCoreObserverBrokerPanel';
 import { MeshCoreObserverBrokerCredentials } from './MeshCoreObserverBrokerCredentials';
+import { MeshCoreObserverBrokerEditor } from './MeshCoreObserverBrokerEditor';
+import { useObserverConfigDraft } from './hooks/useObserverConfigDraft';
 import { ConfirmDialog } from '../shared/automation/ConfirmDialog';
 import type { ObserverBrokerStatus } from '../../services/api';
 import styles from './MeshCoreObserverSection.module.css';
@@ -161,6 +164,9 @@ export const MeshCoreObserverSection: React.FC<MeshCoreObserverSectionProps> = (
   const { hasPermission } = useAuth();
   const canRead = hasPermission('configuration', 'read', { sourceId });
   const canWrite = hasPermission('configuration', 'write', { sourceId });
+  // The broker list is saved into the source's config (PUT /api/sources/:id),
+  // which checks sources:write, so editing it needs that grant too (#5831).
+  const canEditBrokers = canWrite && hasPermission('sources', 'write', { sourceId });
 
   const {
     status,
@@ -184,6 +190,13 @@ export const MeshCoreObserverSection: React.FC<MeshCoreObserverSectionProps> = (
   // poll between them.
   const observerStatus = useObserverStatus(sourceId, { enabled: canRead });
   const observerBrokers = observerStatus.status?.brokers ?? [];
+
+  // Enable / region / brokers[] as a SaveBar draft (#5831). Secrets are not
+  // part of it: they keep their own routes and buttons below.
+  const observerDraft = useObserverConfigDraft(sourceId, {
+    canEdit: canEditBrokers,
+    sectionName: t('meshcore.observer.title', 'Analyzer Observer'),
+  });
 
   const [manualOpen, setManualOpen] = useState(false);
   const [manualDraft, setManualDraft] = useState('');
@@ -304,379 +317,426 @@ export const MeshCoreObserverSection: React.FC<MeshCoreObserverSectionProps> = (
     publicKey && publicKey.length > 16 ? `${publicKey.slice(0, 8)}…${publicKey.slice(-8)}` : (publicKey ?? '');
 
   return (
-    <ConfigSection
-      id="meshcore-observer"
-      title={t('meshcore.observer.title', 'Analyzer Observer')}
-      docsUrl={`${MESHCORE_DOCS}#analyzer-observer`}
-      description={t(
-          'meshcore.observer.intro',
-          "Publishes every packet this node hears to a MeshCore Analyzer MQTT broker. Configure the broker and its authentication mode on the source's edit form; manage the credentials here.",
-        )}
-      collapsible
-    >
+    <div id="meshcore-observer">
+      <ConfigSection
+        title={t('meshcore.observer.title', 'Analyzer Observer')}
+        docsUrl={`${MESHCORE_DOCS}#analyzer-observer`}
+        description={t(
+            'meshcore.observer.intro',
+            'Publishes every packet this node hears to MeshCore Analyzer MQTT brokers. MeshMonitor only publishes over the internet: it never receives from a broker or transmits on the mesh.',
+          )}
+        collapsible
+      >
+        <ConfigGroup title={t('meshcore.observer.group_status', 'Status')} name="status">
+          <label className={styles.enableRow}>
+            <input
+              type="checkbox"
+              checked={observerDraft.draft.enabled}
+              disabled={!canEditBrokers || !observerDraft.loaded}
+              onChange={(e) => observerDraft.setEnabled(e.target.checked)}
+            />
+            {t('meshcore.form.observer_enable', 'Publish heard packets to a MeshCore Analyzer broker')}
+          </label>
 
-      {/* [A] Live publish status — absent means either not configured/running
-          or the caller lacks nodes:read (D-6); both silent, neither an error. */}
-      {observer && (
-        <div className={styles.statusGrid}>
-          <div className={styles.statusLabel}>{t('meshcore.observer.status_heading', 'Publisher status')}</div>
-          <div className={styles.statusValue}>
-            <UiIcon name={observer.connected ? 'statusOn' : 'statusOff'} size={14} />{' '}
-            {observer.connected
-              ? t('meshcore.observer.status_connected', 'Connected to broker')
-              : t('meshcore.observer.status_disconnected', 'Not connected to broker')}
-          </div>
-
-          {!observer.configured && (
-            <div
-              className={`${styles.statusValue} ${styles.warning}`}
-              role="alert"
-              style={{ gridColumn: '1 / -1' }}
-            >
-              {t(
-                'meshcore.observer.not_configured',
-                'Enabled, but the broker URL, region, or audience is missing. Edit the source to complete it.',
-              )}
+        {/* [A] Live publish status — absent means either not configured/running
+            or the caller lacks nodes:read (D-6); both silent, neither an error. */}
+        {observer && (
+          <div className={styles.statusGrid}>
+            <div className={styles.statusLabel}>{t('meshcore.observer.status_heading', 'Publisher status')}</div>
+            <div className={styles.statusValue}>
+              <UiIcon name={observer.connected ? 'statusOn' : 'statusOff'} size={14} />{' '}
+              {observer.connected
+                ? t('meshcore.observer.status_connected', 'Connected to broker')
+                : t('meshcore.observer.status_disconnected', 'Not connected to broker')}
             </div>
-          )}
 
-          {!observer.keyStored && (
-            <div
-              className={`${styles.statusValue} ${styles.warning}`}
-              role="alert"
-              style={{ gridColumn: '1 / -1' }}
-            >
-              {observer.authMode === 'password'
-                ? t(
-                    'meshcore.observer.no_credentials_running',
-                    'No usable broker username/password — the publisher will not connect. Enter them below.',
-                  )
-                : t(
-                    'meshcore.observer.no_key_running',
-                    'No usable signing key — the publisher will not connect. Import or paste one below.',
-                  )}
-            </div>
-          )}
-
-          <div className={styles.statusLabel}>{t('meshcore.observer.published_count', 'Packets published')}</div>
-          <div className={styles.statusValue}>{observer.publishes}</div>
-
-          <div className={styles.statusLabel}>{t('meshcore.observer.dropped_count', 'Packets dropped')}</div>
-          <div className={styles.statusValue}>
-            {observer.dropped}
-            {observer.dropped > 0 && (
-              <span className={styles.hint}>
-                {' '}
-                {t('meshcore.observer.dropped_help', 'Packets heard while the broker socket was down.')}
-              </span>
-            )}
-          </div>
-
-          <div className={styles.statusLabel}>{t('meshcore.observer.last_publish', 'Last publish')}</div>
-          <div className={styles.statusValue}>
-            {observer.lastPublishAt ? formatRelativeTime(observer.lastPublishAt) : t('common.never', 'Never')}
-          </div>
-
-          {/* Static credentials never expire, so the row is meaningless in
-              password mode (#4595) — hidden rather than shown as a dash. */}
-          {observer.authMode !== 'password' && (
-            <>
-              <div className={styles.statusLabel}>{t('meshcore.observer.token_expires', 'Auth token expires')}</div>
-              <div className={styles.statusValue}>
-                {/* tokenExpiresAt is unix SECONDS — ×1000 here only; lastPublishAt
-                    above is already milliseconds and must NOT be converted.
-                    Rendered as an absolute local time: formatRelativeTime clamps
-                    FUTURE timestamps to "just now", which reads wrong for a +24h
-                    expiry (caught in Phase 3 browser validation). */}
-                {observer.tokenExpiresAt ? new Date(observer.tokenExpiresAt * 1000).toLocaleString() : '—'}
-              </div>
-            </>
-          )}
-
-          {observer.lastError && (
-            <div className={`${styles.statusValue} ${styles.error}`} role="alert" style={{ gridColumn: '1 / -1' }}>
-              <UiIcon name="alert" size={14} /> {t('meshcore.observer.last_error', 'Last error')}: {observer.lastError}
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Per-broker breakdown of the aggregate block above (#5014 Phase 2 WP3). */}
-      <MeshCoreObserverBrokerPanel
-        sourceId={sourceId}
-        enabled={canRead}
-        renderBrokerExtra={renderBrokerCredentials}
-      />
-
-      {/* [B] Key status — token mode (or unknown mode) only. */}
-      {showKeyBlock && (
-      <div className={styles.section}>
-        <h4>{t('meshcore.observer.key_heading', 'Signing key')}</h4>
-
-        {loading && <p>{t('meshcore.observer.key_loading', 'Checking…')}</p>}
-
-        {!loading && loadError && (
-          <div className={styles.error} role="alert">
-            {describeObserverError(t, loadError, null)}
-          </div>
-        )}
-
-        {!loading && !loadError && status?.canStore === false && (
-          <div className={styles.warning} role="alert">
-            <p>
-              {t('meshcore.observer.cannot_store', 'MeshMonitor cannot store the signing key: {{reason}}', {
-                reason: status.reason ?? '',
-              })}
-            </p>
-            <p>
-              {t(
-                'meshcore.observer.cannot_store_fix',
-                'Set a fixed SESSION_SECRET and restart to enable observer key storage.',
-              )}
-            </p>
-          </div>
-        )}
-
-        {!loading && !loadError && status?.canStore !== false && status?.stored === false && (
-          <p>
-            {t(
-              'meshcore.observer.key_none',
-              'No signing key stored. The observer cannot authenticate to the broker until you add one.',
-            )}
-          </p>
-        )}
-
-        {!loading && !loadError && status?.stored === true && (
-          <div>
-            <p>
-              <span className={styles.pubkey} title={publicKey ?? ''}>
-                {truncatedPublicKey}
-              </span>{' '}
-              <button
-                type="button"
-                className="btn-secondary"
-                onClick={() => void handleCopyPublicKey(publicKey ?? '')}
+            {!observer.configured && (
+              <div
+                className={`${styles.statusValue} ${styles.warning}`}
+                role="alert"
+                style={{ gridColumn: '1 / -1' }}
               >
-                <UiIcon name="copy" size={14} /> {t('meshcore.observer.copy_public_key', 'Copy public key')}
-              </button>
-            </p>
-            <p className={styles.hint}>
-              {t('meshcore.observer.public_key', 'Node public key')} —{' '}
-              {t(
-                'meshcore.observer.public_key_help',
-                "This is the node's public key — safe to share. It is also the broker username and part of the topic path.",
-              )}
-            </p>
-            <p className={styles.hint}>
-              {status.origin === 'manual'
-                ? t('meshcore.observer.origin_manual', 'Entered manually')
-                : t('meshcore.observer.origin_device', 'Read from device')}
-              {' · '}
-              {t('meshcore.observer.key_updated', 'Stored')} {status.updatedAt ? formatRelativeTime(status.updatedAt) : ''}
-            </p>
-            {status.keyRotated && (
-              <div className={styles.warning} role="alert">
                 {t(
-                  'meshcore.observer.key_rotated',
-                  'The stored signing key can no longer be decrypted — SESSION_SECRET changed since it was saved. The observer will not connect until you re-import or re-paste the key. The public key above is still correct.',
+                  'meshcore.observer.not_configured',
+                  'Enabled, but the broker URL, region, or audience is missing. Complete it under Brokers below.',
                 )}
               </div>
             )}
-          </div>
-        )}
-      </div>
-      )}
 
-      {/* [C] Key actions — configuration:write only */}
-      {showKeyBlock && canWrite && (
-        <div className={styles.actions}>
-          <button
-            type="button"
-            className="btn-secondary"
-            onClick={() => void handleImport()}
-            disabled={!connected || busy !== null || status?.canStore === false}
-            title={
-              !connected
-                ? t(
-                    'meshcore.observer.fetch_needs_connection',
-                    'Connect to the device first — the key is read over the live link.',
-                  )
-                : undefined
-            }
-          >
-            <UiIcon name="import" size={14} />{' '}
-            {busy === 'import'
-              ? t('meshcore.observer.fetching', 'Fetching…')
-              : t('meshcore.observer.fetch_button', 'Fetch from device')}
-          </button>
-          {importedFlash && (
-            <span style={{ color: 'var(--color-success)' }}>
-              <UiIcon name="check" size={14} /> {t('meshcore.observer.key_imported', 'Key saved')}
-            </span>
-          )}
-
-          <button
-            type="button"
-            className="btn-secondary"
-            onClick={openManualPanel}
-            disabled={busy !== null || status?.canStore === false}
-          >
-            <UiIcon name="key" size={14} /> {t('meshcore.observer.manual_button', 'Enter key manually')}
-          </button>
-
-          <button
-            type="button"
-            className="btn-secondary"
-            style={{ color: 'var(--color-error)' }}
-            onClick={() => void handleClear()}
-            disabled={busy !== null || !status?.stored}
-          >
-            <UiIcon name="delete" size={14} />{' '}
-            {busy === 'clear'
-              ? t('meshcore.observer.clearing', 'Clearing…')
-              : t('meshcore.observer.clear_button', 'Clear stored key')}
-          </button>
-
-          {manualOpen && (
-            <div className={styles.panel}>
-              <p>{t('meshcore.observer.manual_heading', "Paste the node's 128-character hex private key")}</p>
-              <PasswordField
-                autoComplete="off"
-                value={manualDraft}
-                onChange={(e) => setManualDraft(e.target.value)}
-                placeholder={t('meshcore.observer.manual_placeholder', '128-character hex private key')}
-                disabled={busy !== null}
-              />
-              {manualError && (
-                <div role="alert" className={styles.error}>
-                  {manualError}
-                </div>
-              )}
-              <div>
-                <button
-                  type="button"
-                  className="btn-secondary"
-                  onClick={cancelManualPanel}
-                  disabled={busy !== null}
-                >
-                  {t('common.cancel', 'Cancel')}
-                </button>
-                <button
-                  type="button"
-                  className="btn-primary"
-                  onClick={() => void handleManualSave()}
-                  disabled={busy !== null || manualDraft.trim().length === 0}
-                >
-                  {busy === 'manual'
-                    ? t('meshcore.observer.manual_saving', 'Saving…')
-                    : t('meshcore.observer.manual_save', 'Save key')}
-                </button>
-              </div>
-            </div>
-          )}
-
-          {actionError && (
-            <div role="alert" className={styles.error}>
-              {describeObserverError(t, actionError, lastAction)}
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* [D] Static broker credentials (#4595, per broker since #5825). Each
-          password broker's username/password lives in its card above; this
-          block only carries notes that apply to the whole source. */}
-      {showCredentialNotes && (
-        <div className={styles.section}>
-          {creds.loadError && (
-            <div className={styles.error} role="alert">
-              {describeObserverError(t, creds.loadError, null)}
-            </div>
-          )}
-
-          {creds.status?.canStore === false && hasPasswordBroker && (
-            <div className={styles.warning} role="alert">
-              {t('meshcore.observer.credentials_cannot_store', 'MeshMonitor cannot store the broker password: {{reason}}', {
-                reason: creds.status.reason ?? '',
-              })}
-            </div>
-          )}
-
-          {credentialsRotated && (
-            <div className={styles.warning} role="alert">
-              {t(
-                'meshcore.observer.credentials_rotated_per_broker',
-                "The stored broker passwords can no longer be decrypted — SESSION_SECRET changed since they were saved. Set each broker's username and password again.",
-              )}
-            </div>
-          )}
-
-          {(legacyCredential !== null || credentialsRotated) && (
-            <div className={styles.actions}>
-              <span className={styles.hint}>
-                {credentialsRotated
+            {!observer.keyStored && (
+              <div
+                className={`${styles.statusValue} ${styles.warning}`}
+                role="alert"
+                style={{ gridColumn: '1 / -1' }}
+              >
+                {observer.authMode === 'password'
                   ? t(
-                      'meshcore.observer.credentials_unreadable_note',
-                      'Unreadable broker credentials are still saved for this source.',
+                      'meshcore.observer.no_credentials_running',
+                      'No usable broker username/password — the publisher will not connect. Enter them below.',
                     )
                   : t(
-                      'meshcore.observer.legacy_credential_note',
-                      'An old shared username/password ({{username}}) from before per-broker credentials is still saved. No broker uses it unless it matches the old broker URL.',
-                      { username: legacyCredential?.username ?? '' },
+                      'meshcore.observer.no_key_running',
+                      'No usable signing key — the publisher will not connect. Import or paste one below.',
                     )}
-              </span>
-              {canWrite && (
+              </div>
+            )}
+
+            <div className={styles.statusLabel}>{t('meshcore.observer.published_count', 'Packets published')}</div>
+            <div className={styles.statusValue}>{observer.publishes}</div>
+
+            <div className={styles.statusLabel}>{t('meshcore.observer.dropped_count', 'Packets dropped')}</div>
+            <div className={styles.statusValue}>
+              {observer.dropped}
+              {observer.dropped > 0 && (
+                <span className={styles.hint}>
+                  {' '}
+                  {t('meshcore.observer.dropped_help', 'Packets heard while the broker socket was down.')}
+                </span>
+              )}
+            </div>
+
+            <div className={styles.statusLabel}>{t('meshcore.observer.last_publish', 'Last publish')}</div>
+            <div className={styles.statusValue}>
+              {observer.lastPublishAt ? formatRelativeTime(observer.lastPublishAt) : t('common.never', 'Never')}
+            </div>
+
+            {/* Static credentials never expire, so the row is meaningless in
+                password mode (#4595) — hidden rather than shown as a dash. */}
+            {observer.authMode !== 'password' && (
+              <>
+                <div className={styles.statusLabel}>{t('meshcore.observer.token_expires', 'Auth token expires')}</div>
+                <div className={styles.statusValue}>
+                  {/* tokenExpiresAt is unix SECONDS — ×1000 here only; lastPublishAt
+                      above is already milliseconds and must NOT be converted.
+                      Rendered as an absolute local time: formatRelativeTime clamps
+                      FUTURE timestamps to "just now", which reads wrong for a +24h
+                      expiry (caught in Phase 3 browser validation). */}
+                  {observer.tokenExpiresAt ? new Date(observer.tokenExpiresAt * 1000).toLocaleString() : '—'}
+                </div>
+              </>
+            )}
+
+            {observer.lastError && (
+              <div className={`${styles.statusValue} ${styles.error}`} role="alert" style={{ gridColumn: '1 / -1' }}>
+                <UiIcon name="alert" size={14} /> {t('meshcore.observer.last_error', 'Last error')}: {observer.lastError}
+              </div>
+            )}
+          </div>
+        )}
+
+        </ConfigGroup>
+
+        <ConfigGroup
+          title={t('meshcore.observer.group_brokers', 'Brokers')}
+          name="brokers"
+          hint={t(
+            'meshcore.observer.brokers_hint',
+            'Where the observer publishes. Changes apply when you save; the brokers then reconnect once.',
+          )}
+        >
+          {canWrite && !canEditBrokers && (
+            <p className={styles.hint} data-testid="observer-brokers-readonly">
+              {t('meshcore.observer.brokers_need_sources_write', 'Changing the broker list also needs permission to edit sources.')}
+            </p>
+          )}
+          {observerDraft.loaded && (
+            <MeshCoreObserverBrokerEditor
+              form={observerDraft.draft}
+              canEdit={canEditBrokers}
+              onIataCodeChange={observerDraft.setIataCode}
+              onAddBroker={observerDraft.addBroker}
+              onUpdateBroker={observerDraft.updateBroker}
+              onRemoveBroker={observerDraft.removeBroker}
+            />
+          )}
+          {observerDraft.error && (
+            <div role="alert" className={styles.error} data-testid="observer-config-error">
+              {observerDraft.error}
+            </div>
+          )}
+        </ConfigGroup>
+
+        <ConfigGroup title={t('meshcore.observer.group_credentials', 'Credentials')} name="credentials">
+        {/* Per-broker breakdown of the aggregate status (#5014 Phase 2 WP3);
+            each password broker's login sits in its card (#5825). */}
+        <MeshCoreObserverBrokerPanel
+          sourceId={sourceId}
+          enabled={canRead}
+          renderBrokerExtra={renderBrokerCredentials}
+        />
+
+        {/* [B] Key status — token mode (or unknown mode) only. */}
+        {showKeyBlock && (
+        <div className={styles.section}>
+          <h4>{t('meshcore.observer.key_heading', 'Signing key')}</h4>
+
+          {loading && <p>{t('meshcore.observer.key_loading', 'Checking…')}</p>}
+
+          {!loading && loadError && (
+            <div className={styles.error} role="alert">
+              {describeObserverError(t, loadError, null)}
+            </div>
+          )}
+
+          {!loading && !loadError && status?.canStore === false && (
+            <div className={styles.warning} role="alert">
+              <p>
+                {t('meshcore.observer.cannot_store', 'MeshMonitor cannot store the signing key: {{reason}}', {
+                  reason: status.reason ?? '',
+                })}
+              </p>
+              <p>
+                {t(
+                  'meshcore.observer.cannot_store_fix',
+                  'Set a fixed SESSION_SECRET and restart to enable observer key storage.',
+                )}
+              </p>
+            </div>
+          )}
+
+          {!loading && !loadError && status?.canStore !== false && status?.stored === false && (
+            <p>
+              {t(
+                'meshcore.observer.key_none',
+                'No signing key stored. The observer cannot authenticate to the broker until you add one.',
+              )}
+            </p>
+          )}
+
+          {!loading && !loadError && status?.stored === true && (
+            <div>
+              <p>
+                <span className={styles.pubkey} title={publicKey ?? ''}>
+                  {truncatedPublicKey}
+                </span>{' '}
                 <button
                   type="button"
                   className="btn-secondary"
-                  style={{ color: 'var(--color-error)' }}
-                  onClick={() => setLegacyConfirmOpen(true)}
-                  disabled={creds.busy !== null}
+                  onClick={() => void handleCopyPublicKey(publicKey ?? '')}
                 >
-                  <UiIcon name="delete" size={14} />{' '}
-                  {creds.busy?.action === 'clearLegacy'
-                    ? t('meshcore.observer.clearing', 'Clearing…')
-                    : credentialsRotated
-                      ? t('meshcore.observer.credentials_unreadable_remove', 'Remove unreadable credentials')
-                      : t('meshcore.observer.legacy_credential_remove', 'Remove old shared credential')}
+                  <UiIcon name="copy" size={14} /> {t('meshcore.observer.copy_public_key', 'Copy public key')}
                 </button>
+              </p>
+              <p className={styles.hint}>
+                {t('meshcore.observer.public_key', 'Node public key')} —{' '}
+                {t(
+                  'meshcore.observer.public_key_help',
+                  "This is the node's public key — safe to share. It is also the broker username and part of the topic path.",
+                )}
+              </p>
+              <p className={styles.hint}>
+                {status.origin === 'manual'
+                  ? t('meshcore.observer.origin_manual', 'Entered manually')
+                  : t('meshcore.observer.origin_device', 'Read from device')}
+                {' · '}
+                {t('meshcore.observer.key_updated', 'Stored')} {status.updatedAt ? formatRelativeTime(status.updatedAt) : ''}
+              </p>
+              {status.keyRotated && (
+                <div className={styles.warning} role="alert">
+                  {t(
+                    'meshcore.observer.key_rotated',
+                    'The stored signing key can no longer be decrypted — SESSION_SECRET changed since it was saved. The observer will not connect until you re-import or re-paste the key. The public key above is still correct.',
+                  )}
+                </div>
               )}
             </div>
           )}
-
-          {creds.actionError && creds.actionError.brokerKey === null && (
-            <div role="alert" className={styles.error}>
-              {describeObserverError(t, creds.actionError.error, null)}
-            </div>
-          )}
         </div>
-      )}
+        )}
 
-      {legacyConfirmOpen && (
-        <ConfirmDialog
-          title={
-            credentialsRotated
-              ? t('meshcore.observer.credentials_unreadable_remove_title', 'Remove unreadable credentials?')
-              : t('meshcore.observer.legacy_credential_remove_title', 'Remove the old shared credential?')
-          }
-          message={
-            credentialsRotated
-              ? t(
-                  'meshcore.observer.credentials_unreadable_remove_confirm',
-                  "MeshMonitor deletes the broker credentials it can no longer decrypt. None of them can be used again. Then set each password broker's username and password again.",
-                )
-              : t(
-                  'meshcore.observer.legacy_credential_remove_confirm',
-                  'MeshMonitor forgets the old shared username/password ({{username}}). Every per-broker username/password is kept.',
-                  { username: legacyCredential?.username ?? '' },
-                )
-          }
-          confirmLabel={t('meshcore.observer.legacy_credential_remove_button', 'Remove')}
-          cancelLabel={t('common.cancel', 'Cancel')}
-          onConfirm={() => void handleConfirmLegacyClear()}
-          onCancel={() => setLegacyConfirmOpen(false)}
-        />
-      )}
-    </ConfigSection>
+        {/* [C] Key actions — configuration:write only */}
+        {showKeyBlock && canWrite && (
+          <div className={styles.actions}>
+            <button
+              type="button"
+              className="btn-secondary"
+              onClick={() => void handleImport()}
+              disabled={!connected || busy !== null || status?.canStore === false}
+              title={
+                !connected
+                  ? t(
+                      'meshcore.observer.fetch_needs_connection',
+                      'Connect to the device first — the key is read over the live link.',
+                    )
+                  : undefined
+              }
+            >
+              <UiIcon name="import" size={14} />{' '}
+              {busy === 'import'
+                ? t('meshcore.observer.fetching', 'Fetching…')
+                : t('meshcore.observer.fetch_button', 'Fetch from device')}
+            </button>
+            {importedFlash && (
+              <span style={{ color: 'var(--color-success)' }}>
+                <UiIcon name="check" size={14} /> {t('meshcore.observer.key_imported', 'Key saved')}
+              </span>
+            )}
+
+            <button
+              type="button"
+              className="btn-secondary"
+              onClick={openManualPanel}
+              disabled={busy !== null || status?.canStore === false}
+            >
+              <UiIcon name="key" size={14} /> {t('meshcore.observer.manual_button', 'Enter key manually')}
+            </button>
+
+            <button
+              type="button"
+              className="btn-secondary"
+              style={{ color: 'var(--color-error)' }}
+              onClick={() => void handleClear()}
+              disabled={busy !== null || !status?.stored}
+            >
+              <UiIcon name="delete" size={14} />{' '}
+              {busy === 'clear'
+                ? t('meshcore.observer.clearing', 'Clearing…')
+                : t('meshcore.observer.clear_button', 'Clear stored key')}
+            </button>
+
+            {manualOpen && (
+              <div className={styles.panel}>
+                <p>{t('meshcore.observer.manual_heading', "Paste the node's 128-character hex private key")}</p>
+                <PasswordField
+                  autoComplete="off"
+                  value={manualDraft}
+                  onChange={(e) => setManualDraft(e.target.value)}
+                  placeholder={t('meshcore.observer.manual_placeholder', '128-character hex private key')}
+                  disabled={busy !== null}
+                />
+                {manualError && (
+                  <div role="alert" className={styles.error}>
+                    {manualError}
+                  </div>
+                )}
+                <div>
+                  <button
+                    type="button"
+                    className="btn-secondary"
+                    onClick={cancelManualPanel}
+                    disabled={busy !== null}
+                  >
+                    {t('common.cancel', 'Cancel')}
+                  </button>
+                  <button
+                    type="button"
+                    className="btn-primary"
+                    onClick={() => void handleManualSave()}
+                    disabled={busy !== null || manualDraft.trim().length === 0}
+                  >
+                    {busy === 'manual'
+                      ? t('meshcore.observer.manual_saving', 'Saving…')
+                      : t('meshcore.observer.manual_save', 'Save key')}
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {actionError && (
+              <div role="alert" className={styles.error}>
+                {describeObserverError(t, actionError, lastAction)}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* [D] Static broker credentials (#4595, per broker since #5825). Each
+            password broker's username/password lives in its card above; this
+            block only carries notes that apply to the whole source. */}
+        {showCredentialNotes && (
+          <div className={styles.section}>
+            {creds.loadError && (
+              <div className={styles.error} role="alert">
+                {describeObserverError(t, creds.loadError, null)}
+              </div>
+            )}
+
+            {creds.status?.canStore === false && hasPasswordBroker && (
+              <div className={styles.warning} role="alert">
+                {t('meshcore.observer.credentials_cannot_store', 'MeshMonitor cannot store the broker password: {{reason}}', {
+                  reason: creds.status.reason ?? '',
+                })}
+              </div>
+            )}
+
+            {credentialsRotated && (
+              <div className={styles.warning} role="alert">
+                {t(
+                  'meshcore.observer.credentials_rotated_per_broker',
+                  "The stored broker passwords can no longer be decrypted — SESSION_SECRET changed since they were saved. Set each broker's username and password again.",
+                )}
+              </div>
+            )}
+
+            {(legacyCredential !== null || credentialsRotated) && (
+              <div className={styles.actions}>
+                <span className={styles.hint}>
+                  {credentialsRotated
+                    ? t(
+                        'meshcore.observer.credentials_unreadable_note',
+                        'Unreadable broker credentials are still saved for this source.',
+                      )
+                    : t(
+                        'meshcore.observer.legacy_credential_note',
+                        'An old shared username/password ({{username}}) from before per-broker credentials is still saved. No broker uses it unless it matches the old broker URL.',
+                        { username: legacyCredential?.username ?? '' },
+                      )}
+                </span>
+                {canWrite && (
+                  <button
+                    type="button"
+                    className="btn-secondary"
+                    style={{ color: 'var(--color-error)' }}
+                    onClick={() => setLegacyConfirmOpen(true)}
+                    disabled={creds.busy !== null}
+                  >
+                    <UiIcon name="delete" size={14} />{' '}
+                    {creds.busy?.action === 'clearLegacy'
+                      ? t('meshcore.observer.clearing', 'Clearing…')
+                      : credentialsRotated
+                        ? t('meshcore.observer.credentials_unreadable_remove', 'Remove unreadable credentials')
+                        : t('meshcore.observer.legacy_credential_remove', 'Remove old shared credential')}
+                  </button>
+                )}
+              </div>
+            )}
+
+            {creds.actionError && creds.actionError.brokerKey === null && (
+              <div role="alert" className={styles.error}>
+                {describeObserverError(t, creds.actionError.error, null)}
+              </div>
+            )}
+          </div>
+        )}
+
+        </ConfigGroup>
+
+        {legacyConfirmOpen && (
+          <ConfirmDialog
+            title={
+              credentialsRotated
+                ? t('meshcore.observer.credentials_unreadable_remove_title', 'Remove unreadable credentials?')
+                : t('meshcore.observer.legacy_credential_remove_title', 'Remove the old shared credential?')
+            }
+            message={
+              credentialsRotated
+                ? t(
+                    'meshcore.observer.credentials_unreadable_remove_confirm',
+                    "MeshMonitor deletes the broker credentials it can no longer decrypt. None of them can be used again. Then set each password broker's username and password again.",
+                  )
+                : t(
+                    'meshcore.observer.legacy_credential_remove_confirm',
+                    'MeshMonitor forgets the old shared username/password ({{username}}). Every per-broker username/password is kept.',
+                    { username: legacyCredential?.username ?? '' },
+                  )
+            }
+            confirmLabel={t('meshcore.observer.legacy_credential_remove_button', 'Remove')}
+            cancelLabel={t('common.cancel', 'Cancel')}
+            onConfirm={() => void handleConfirmLegacyClear()}
+            onCancel={() => setLegacyConfirmOpen(false)}
+          />
+        )}
+      </ConfigSection>
+    </div>
   );
 };

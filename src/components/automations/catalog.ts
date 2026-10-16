@@ -408,7 +408,7 @@ const EVENT_NUMERIC: Record<string, FieldOpt[]> = {
     { value: 'channel', label: 'Channel #' }, { value: 'snr', label: 'SNR' }, { value: 'rssi', label: 'RSSI' },
     // #4340 Phase 3: booleans compared as 1/0 (the engine's asNumber() coerces
     // them). Needed to express Auto-Acknowledge's {Channel,Direct} ×
-    // {ZeroHop,MultiHop} matrix, where ZeroHop means hops == 0 AND NOT viaMqtt.
+    // {ZeroHop,MultiHop,Ip} matrix, where ZeroHop means hops == 0 AND NOT viaIp.
     { value: 'isDM', label: 'Is a direct message (1 = yes, 0 = channel)' },
     { value: 'isTapback', label: 'Is a tapback / reaction (1 = yes, 0 = no)' },
     { value: 'viaMqtt', label: 'Arrived via MQTT (1 = yes, 0 = RF)' },
@@ -416,7 +416,10 @@ const EVENT_NUMERIC: Record<string, FieldOpt[]> = {
     // matrix above — computed via Auto-Acknowledge's own autoAckIsZeroHop() on
     // its own floored hop count, so a hopless packet (no hopStart) reads 1, not
     // NaN. See triggerContext.ts buildMessageContext for the derivation.
-    { value: 'zeroHop', label: 'Direct RF, 0 hops (1 = yes; 0 = relayed or via MQTT)' },
+    { value: 'zeroHop', label: 'Direct RF, 0 hops (1 = yes; 0 = relayed, or via MQTT / UDP)' },
+    // #5796: the matrix's IP row — 1 when the packet reached the node over MQTT
+    // or multicast UDP. Same autoAckIsIp() the matrix uses; total, never NaN.
+    { value: 'viaIp', label: 'Arrived over IP: MQTT or UDP (1 = yes, 0 = RF)' },
     // #4594: the TRANSPORT the message reached MeshMonitor by — whether its
     // source is an MQTT Bridge / MQTT Broker rather than a radio. Distinct from
     // `viaMqtt` above, which is the packet's own upstream relay flag and is

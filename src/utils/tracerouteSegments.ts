@@ -275,6 +275,37 @@ export function hasRouteData(route: string | null | undefined): boolean {
   return route != null && route !== 'null' && route !== '';
 }
 
+/** Structural subset of a traceroute row needed to pick a node's route. */
+export interface SelectableTraceroute {
+  fromNodeId?: string | null;
+  toNodeId?: string | null;
+  route?: string | null;
+  routeBack?: string | null;
+  snrBack?: string | null;
+}
+
+/**
+ * The newest traceroute for `nodeId` that `decomposeTraceroute` can draw:
+ * either leg carries data (#5821). `rows` must be newest-first, as the poll
+ * serves them.
+ *
+ * A pending or unanswered request row (`route` NULL, no return leg) is skipped.
+ * Auto-traceroute writes one for every request it sends, so on a busy source
+ * the newest row for a node is often one of these. Picking it drew nothing and
+ * hid the Dismiss button, while the popup stayed suppressed because an older
+ * row had a full route: tapping the node did nothing at all.
+ */
+export function findSelectedNodeTraceroute<T extends SelectableTraceroute>(
+  rows: readonly T[],
+  nodeId: string,
+): T | undefined {
+  return rows.find(
+    (tr) =>
+      (tr.toNodeId === nodeId || tr.fromNodeId === nodeId) &&
+      (hasRouteData(tr.route) || hasReturnPath(parseHopArray(tr.routeBack), tr.snrBack)),
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Participation predicate (traceroute participation picker, epic phase 2)
 // ---------------------------------------------------------------------------
