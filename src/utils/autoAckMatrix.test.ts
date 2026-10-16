@@ -8,7 +8,7 @@ import {
   type AutoAckMatrix,
 } from './autoAckMatrix';
 
-const ALL_12_KEYS = [
+const ALL_KEYS = [
   'autoAckChannelZeroHopReplyEnabled',
   'autoAckChannelZeroHopTapbackEnabled',
   'autoAckChannelZeroHopReplyDmEnabled',
@@ -21,16 +21,24 @@ const ALL_12_KEYS = [
   'autoAckDirectMultiHopReplyEnabled',
   'autoAckDirectMultiHopTapbackEnabled',
   'autoAckDirectMultiHopReplyDmEnabled',
+  'autoAckChannelIpReplyEnabled',
+  'autoAckChannelIpTapbackEnabled',
+  'autoAckChannelIpReplyDmEnabled',
+  'autoAckDirectIpReplyEnabled',
+  'autoAckDirectIpTapbackEnabled',
+  'autoAckDirectIpReplyDmEnabled',
 ];
 
 describe('autoAckMatrix', () => {
   describe('AUTOACK_CELLS', () => {
-    it('has exactly four cells in the expected order', () => {
+    it('has exactly six cells in the expected order', () => {
       expect(AUTOACK_CELLS.map(c => c.id)).toEqual([
         'channelZeroHop',
         'channelMultiHop',
+        'channelIp',
         'directZeroHop',
         'directMultiHop',
+        'directIp',
       ]);
     });
 
@@ -40,6 +48,8 @@ describe('autoAckMatrix', () => {
       expect(byId.channelMultiHop).toMatchObject({ type: 'channel', hop: 'multiHop' });
       expect(byId.directZeroHop).toMatchObject({ type: 'direct', hop: 'zeroHop' });
       expect(byId.directMultiHop).toMatchObject({ type: 'direct', hop: 'multiHop' });
+      expect(byId.channelIp).toMatchObject({ type: 'channel', hop: 'ip' });
+      expect(byId.directIp).toMatchObject({ type: 'direct', hop: 'ip' });
     });
 
     it('gives every cell a non-empty human label', () => {
@@ -51,7 +61,7 @@ describe('autoAckMatrix', () => {
   });
 
   describe('DEFAULT_AUTOACK_MATRIX', () => {
-    it('has all four cells fully off', () => {
+    it('has all six cells fully off', () => {
       for (const cell of AUTOACK_CELLS) {
         expect(DEFAULT_AUTOACK_MATRIX[cell.id]).toEqual({ reply: false, tapback: false, replyDm: false });
       }
@@ -64,13 +74,28 @@ describe('autoAckMatrix', () => {
       expect(cellServerKeyPrefix('channelMultiHop')).toBe('autoAckChannelMultiHop');
       expect(cellServerKeyPrefix('directZeroHop')).toBe('autoAckDirectZeroHop');
       expect(cellServerKeyPrefix('directMultiHop')).toBe('autoAckDirectMultiHop');
+      expect(cellServerKeyPrefix('channelIp')).toBe('autoAckChannelIp');
+      expect(cellServerKeyPrefix('directIp')).toBe('autoAckDirectIp');
     });
   });
 
   describe('matrixToSettings', () => {
-    it('emits exactly the 12 known key names', () => {
+    it('emits exactly the 18 known key names', () => {
       const settings = matrixToSettings(DEFAULT_AUTOACK_MATRIX);
-      expect(Object.keys(settings).sort()).toEqual([...ALL_12_KEYS].sort());
+      expect(Object.keys(settings).sort()).toEqual([...ALL_KEYS].sort());
+    });
+
+    it('serializes a pre-#5796 matrix with no Ip cells as Ip off', () => {
+      const legacy = {
+        channelZeroHop: { reply: true, tapback: false, replyDm: false },
+        channelMultiHop: { reply: true, tapback: false, replyDm: false },
+        directZeroHop: { reply: false, tapback: false, replyDm: false },
+        directMultiHop: { reply: false, tapback: false, replyDm: false },
+      } as unknown as AutoAckMatrix;
+      const s = matrixToSettings(legacy);
+      expect(s.autoAckChannelIpReplyEnabled).toBe('false');
+      expect(s.autoAckDirectIpTapbackEnabled).toBe('false');
+      expect(s.autoAckChannelMultiHopReplyEnabled).toBe('true');
     });
 
     it('maps booleans to the strings true/false', () => {
@@ -79,8 +104,14 @@ describe('autoAckMatrix', () => {
         channelMultiHop: { reply: false, tapback: true, replyDm: false },
         directZeroHop: { reply: true, tapback: true, replyDm: true },
         directMultiHop: { reply: false, tapback: false, replyDm: false },
+        channelIp: { reply: true, tapback: false, replyDm: true },
+        directIp: { reply: false, tapback: true, replyDm: false },
       };
       const s = matrixToSettings(m);
+      expect(s.autoAckChannelIpReplyEnabled).toBe('true');
+      expect(s.autoAckChannelIpReplyDmEnabled).toBe('true');
+      expect(s.autoAckDirectIpTapbackEnabled).toBe('true');
+      expect(s.autoAckDirectIpReplyEnabled).toBe('false');
       expect(s.autoAckChannelZeroHopReplyEnabled).toBe('true');
       expect(s.autoAckChannelZeroHopTapbackEnabled).toBe('false');
       expect(s.autoAckChannelZeroHopReplyDmEnabled).toBe('true');
@@ -95,6 +126,8 @@ describe('autoAckMatrix', () => {
         channelMultiHop: { reply: true, tapback: true, replyDm: true },
         directZeroHop: { reply: false, tapback: true, replyDm: false },
         directMultiHop: { reply: true, tapback: false, replyDm: true },
+        channelIp: { reply: false, tapback: true, replyDm: false },
+        directIp: { reply: true, tapback: true, replyDm: true },
       };
       for (const value of Object.values(matrixToSettings(m))) {
         expect(value === 'true' || value === 'false').toBe(true);
@@ -113,6 +146,9 @@ describe('autoAckMatrix', () => {
       expect(m.channelZeroHop.tapback).toBe(false);
       expect(m.channelZeroHop.replyDm).toBe(false);
       expect(m.directMultiHop).toEqual({ reply: false, tapback: false, replyDm: false });
+      // #5796: Ip cells are unset on every existing install and read as off.
+      expect(m.channelIp).toEqual({ reply: false, tapback: false, replyDm: false });
+      expect(m.directIp).toEqual({ reply: false, tapback: false, replyDm: false });
     });
 
     it('accepts both string "true" and boolean true', () => {
@@ -145,6 +181,8 @@ describe('autoAckMatrix', () => {
         channelMultiHop: { reply: false, tapback: true, replyDm: false },
         directZeroHop: { reply: true, tapback: true, replyDm: false },
         directMultiHop: { reply: false, tapback: false, replyDm: true },
+        channelIp: { reply: true, tapback: true, replyDm: false },
+        directIp: { reply: false, tapback: true, replyDm: true },
       };
       expect(settingsToMatrix(matrixToSettings(m))).toEqual(m);
     });

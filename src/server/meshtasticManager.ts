@@ -101,7 +101,7 @@ import { resolveLastHeardSec, isLiveReception, isFirmwareReplayPacket, resolvePo
 import { isLiveNodeDiscovery } from './utils/nodeDiscovery.js';
 import { isUptimeReboot } from './utils/rebootDetection.js';
 import { isPowered, detectPowerTransition } from './utils/poweredState.js';
-import { autoAckIsZeroHop, autoAckCellKey, resolveAutoAckReplyRouting } from './utils/autoAckDecision.js';
+import { autoAckIsIp, autoAckIsZeroHop, autoAckCellKey, resolveAutoAckReplyRouting } from './utils/autoAckDecision.js';
 import { hopCountEmoji, HOP_COUNT_EMOJIS } from '../utils/hopEmoji.js';
 import { scriptDependencyEnv } from './utils/scriptRunner.js';
 import { canonicalMessageTime, plausibleRxTime } from './utils/messageTime.js';
@@ -12025,13 +12025,16 @@ class MeshtasticManager implements ISourceManager {
           ? message.hopStart - message.hopLimit
           : 0;
 
-      // 2x2 matrix (discussion #3564): {Channel,Direct} × {ZeroHop,MultiHop}.
-      // Message type comes from isDirectMessage (DM vs channel); hop distance
-      // from hopsTraveled. MQTT-relayed packets are never "zero hop" even at 0
-      // hops — they traversed the internet, not a direct RF link, so RF metrics
-      // (SNR/RSSI) and the 0-hop notion don't apply.
-      const isZeroHop = autoAckIsZeroHop(hopsTraveled, message.viaMqtt);
-      const cellKey = autoAckCellKey(isDirectMessage, isZeroHop);
+      // Matrix (discussion #3564, #5796): {Channel,Direct} × {ZeroHop,MultiHop,Ip}.
+      // Message type comes from isDirectMessage (DM vs channel). IP is checked
+      // first: a packet that reached the node over MQTT or multicast UDP lands
+      // in the Ip row whatever its hop count. `message.transportMechanism` is
+      // the value processTextMessageProtobuf stored on the row
+      // (resolveRadioPacketTransport), and `message.viaMqtt` the legacy flag,
+      // so this matches what the Automation Engine sees for the same message.
+      const isIp = autoAckIsIp(message.viaMqtt, message.transportMechanism);
+      const isZeroHop = autoAckIsZeroHop(hopsTraveled, message.viaMqtt, message.transportMechanism);
+      const cellKey = autoAckCellKey(isDirectMessage, isZeroHop, isIp);
 
       // Per-cell toggles. Unset reads as OFF — the matrix is opt-in per cell;
       // migration 093 backfills explicit values for pre-existing configs so they
@@ -12185,7 +12188,12 @@ class MeshtasticManager implements ISourceManager {
         // Use the direct message template for 0 hops if available, otherwise fall back to standard template
         const autoAckMessageDirect = await settings.getSettingForSource(sourceId, 'autoAckMessageDirect') || '';
         const autoAckMessageStandard = await settings.getSettingForSource(sourceId, 'autoAckMessage') || '🤖 Copy, {NUMBER_HOPS} hops at {TIME}';
-        const autoAckMessage = (hopsTraveled === 0 && autoAckMessageDirect)
+        // Keyed on the ZeroHop cell, not on hopsTraveled === 0: an IP message at
+        // 0 hops (#5796) did not come over a direct RF link, so the 0-hop
+        // template (often carrying {SNR}/{RSSI}) does not fit it. This also
+        // matches the converter, which uses the direct template on ZeroHop
+        // cells only.
+        const autoAckMessage = (isZeroHop && autoAckMessageDirect)
           ? autoAckMessageDirect
           : autoAckMessageStandard;
 

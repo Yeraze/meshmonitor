@@ -30,6 +30,16 @@ import {
 import { NumberInputScope } from './common/NumberInputScope';
 import { useNumberInputScope } from './common/numberInputScopeContext';
 
+/**
+ * Display order for the response matrix grid: two columns (Channel | Direct),
+ * one row per path (0 hops, multi-hop, then IP — #5796).
+ */
+const MATRIX_DISPLAY_CELLS = (['zeroHop', 'multiHop', 'ip'] as const).flatMap((hop) =>
+  (['channel', 'direct'] as const).map(
+    (type) => AUTOACK_CELLS.find((c) => c.hop === hop && c.type === type)!,
+  ),
+);
+
 interface AutoAcknowledgeSectionProps {
   enabled: boolean;
   regex: string;
@@ -666,7 +676,7 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
         </ConfigGroup>
 
         <ConfigGroup name="message" title={t('automation.group.message', 'Message')}>
-        {/* Response matrix: {Channel | Direct} × {0 hops | Multi-hop} */}
+        {/* Response matrix: columns {Channel | Direct}, rows {0 hops | Multi-hop | IP} */}
         <div className="setting-item">
           <label>
             {t('automation.auto_ack.response_matrix')}
@@ -683,10 +693,12 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
               opacity: localEnabled ? 1 : 0.5,
             }}
           >
-            {AUTOACK_CELLS.map((cell) => {
+            {MATRIX_DISPLAY_CELLS.map((cell) => {
               const config = localMatrix[cell.id];
               const isDirect = cell.type === 'direct';
-              const borderColor = cell.hop === 'zeroHop' ? 'var(--color-success)' : 'var(--color-accent)';
+              const borderColor = cell.hop === 'zeroHop'
+                ? 'var(--color-success)'
+                : cell.hop === 'ip' ? 'var(--color-info)' : 'var(--color-accent)';
               // Direct replies are inherently DMs: show the "Respond via DM" checkbox
               // checked + disabled. Channel cells gate it on the cell's reply toggle.
               const replyDmChecked = isDirect ? true : config.replyDm;
@@ -756,6 +768,16 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
               );
             })}
           </div>
+          <p
+            className="setting-description"
+            data-testid="autoAck-ip-row-note"
+            style={{ display: 'block', marginTop: '0.75rem' }}
+          >
+            {t(
+              'automation.auto_ack.ip_row_note',
+              'The IP row covers messages your node got over MQTT or UDP. The 0-hop and multi-hop rows used to answer these. Turn on the IP row to keep answering them.',
+            )}
+          </p>
         </div>
 
         {/* Multi-hop reply template */}

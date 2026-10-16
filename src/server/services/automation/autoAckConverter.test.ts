@@ -25,12 +25,9 @@ function allOffMatrixRaw(): Record<string, string | undefined> {
 
 /** A matrix with exactly one cell overridden from all-off, serialised as raw settings. */
 function matrixWith(cell: AutoAckCellId, cfg: Partial<AutoAckCellConfig>): Record<string, string | undefined> {
-  const m: AutoAckMatrix = {
-    channelZeroHop: { ...DEFAULT_AUTOACK_MATRIX.channelZeroHop },
-    channelMultiHop: { ...DEFAULT_AUTOACK_MATRIX.channelMultiHop },
-    directZeroHop: { ...DEFAULT_AUTOACK_MATRIX.directZeroHop },
-    directMultiHop: { ...DEFAULT_AUTOACK_MATRIX.directMultiHop },
-  };
+  const m = Object.fromEntries(
+    AUTOACK_CELLS.map((c) => [c.id, { ...DEFAULT_AUTOACK_MATRIX[c.id] }]),
+  ) as AutoAckMatrix;
   m[cell] = { ...m[cell], ...cfg };
   return matrixToSettings(m);
 }
@@ -85,12 +82,17 @@ describe('buildAutoAckAutomations', () => {
   });
 
   // ─── (b) ───────────────────────────────────────────────────────────────────
+  // `zeroHop` / `viaIp` undefined = that condition must NOT be emitted (#5796):
+  // ZeroHop rows need no viaIp test (zeroHop is already 0 for IP), and the Ip
+  // row tests viaIp alone (IP wins whatever the hop count).
   it.each([
-    { cell: 'channelZeroHop' as const, isDM: '0', zeroHop: '1' },
-    { cell: 'channelMultiHop' as const, isDM: '0', zeroHop: '0' },
-    { cell: 'directZeroHop' as const, isDM: '1', zeroHop: '1' },
-    { cell: 'directMultiHop' as const, isDM: '1', zeroHop: '0' },
-  ])('(b) cell $cell alone produces one automation, one rule, correct isDM/zeroHop, correct actions', ({ cell, isDM, zeroHop }) => {
+    { cell: 'channelZeroHop' as const, isDM: '0', zeroHop: '1', viaIp: undefined },
+    { cell: 'channelMultiHop' as const, isDM: '0', zeroHop: '0', viaIp: '0' },
+    { cell: 'channelIp' as const, isDM: '0', zeroHop: undefined, viaIp: '1' },
+    { cell: 'directZeroHop' as const, isDM: '1', zeroHop: '1', viaIp: undefined },
+    { cell: 'directMultiHop' as const, isDM: '1', zeroHop: '0', viaIp: '0' },
+    { cell: 'directIp' as const, isDM: '1', zeroHop: undefined, viaIp: '1' },
+  ])('(b) cell $cell alone produces one automation, one rule, correct isDM/zeroHop/viaIp, correct actions', ({ cell, isDM, zeroHop, viaIp }) => {
     const isChannelCell = cell.startsWith('channel');
     const input = baseInput({
       settings: baseSettings({
@@ -106,8 +108,10 @@ describe('buildAutoAckAutomations', () => {
     expect(result.automations[0].form.rules).toHaveLength(1);
     const c1 = rule.conditions.find((c) => c.type === 'condition.numeric' && c.params.field === 'isDM');
     const c2 = rule.conditions.find((c) => c.type === 'condition.numeric' && c.params.field === 'zeroHop');
+    const c3 = rule.conditions.find((c) => c.type === 'condition.numeric' && c.params.field === 'viaIp');
     expect(c1?.params.value).toBe(isDM);
     expect(c2?.params.value).toBe(zeroHop);
+    expect(c3?.params.value).toBe(viaIp);
     expect(rule.actions.map((a) => a.type)).toEqual(['action.sendMessage']);
   });
 
@@ -528,6 +532,57 @@ describe('buildAutoAckAutomations', () => {
     const multiHopRule = chan.form.rules.find((r) => r.conditions.some((c) => c.type === 'condition.numeric' && c.params.field === 'zeroHop' && c.params.value === '0'))!;
     expect(zeroHopRule.actions.find((a) => a.type === 'action.sendMessage')!.params.text).toBe('direct-only');
     expect(multiHopRule.actions.find((a) => a.type === 'action.sendMessage')!.params.text).toBe('standard');
+  });
+
+  // ─── IP row (#5796) ──────────────────────────────────────────────────────
+  it('(n2) Ip cells use the standard template, not messageDirect, and carry their own tapback/DM routing', () => {
+    const matrix = Object.fromEntries(
+      AUTOACK_CELLS.map((c) => [c.id, { reply: false, tapback: false, replyDm: false }]),
+    ) as AutoAckMatrix;
+    matrix.channelIp = { reply: true, tapback: true, replyDm: true };
+    matrix.directIp = { reply: true, tapback: false, replyDm: false };
+    const input = baseInput({
+      settings: baseSettings({
+        ...VALID_CHANNEL_ALLOWLIST,
+        message: 'standard', messageDirect: 'direct-only', rawMatrixAndLegacy: matrixToSettings(matrix),
+      }),
+      channels: VALID_CHANNEL_ROWS,
+    });
+    const result = buildAutoAckAutomations(input);
+    expect(result.blocking).toBeUndefined();
+    const chan = result.automations.find((a) => a.key === 'channel')!;
+    const dir = result.automations.find((a) => a.key === 'direct')!;
+    expect(chan.description).toContain('Channel · IP (MQTT / UDP)');
+    expect(dir.description).toContain('Direct Message · IP (MQTT / UDP)');
+    const chanRule = chan.form.rules[0];
+    expect(chanRule.actions.map((a) => a.type)).toEqual(['action.tapback', 'action.sendMessage']);
+    const chanSend = chanRule.actions.find((a) => a.type === 'action.sendMessage')!;
+    expect(chanSend.params.text).toBe('standard');
+    // Channel trigger + Respond via DM → DM to the sender, not threaded.
+    expect(chanSend.params.to).toBe('{{ trigger.from }}');
+    expect(chanSend.params.replyToTrigger).toBeUndefined();
+    const dirSend = dir.form.rules[0].actions.find((a) => a.type === 'action.sendMessage')!;
+    expect(dirSend.params.text).toBe('standard');
+  });
+
+  it('(n3) with ZeroHop, MultiHop and Ip all on, each row is mutually exclusive on (zeroHop, viaIp)', () => {
+    const matrix = Object.fromEntries(
+      AUTOACK_CELLS.map((c) => [c.id, { reply: c.type === 'direct', tapback: false, replyDm: false }]),
+    ) as AutoAckMatrix;
+    const result = buildAutoAckAutomations(baseInput({ settings: baseSettings({ rawMatrixAndLegacy: matrixToSettings(matrix) }) }));
+    const dir = result.automations.find((a) => a.key === 'direct')!;
+    expect(dir.form.rules).toHaveLength(3);
+    const val = (r: (typeof dir.form.rules)[number], field: string) =>
+      r.conditions.find((c) => c.type === 'condition.numeric' && c.params.field === field)?.params.value;
+    // A packet's (zeroHop, viaIp) can be (1,0), (0,0) or (0,1) — never (1,1).
+    const matches = (zeroHop: string, viaIp: string) => dir.form.rules.filter((r) => {
+      const z = val(r, 'zeroHop');
+      const ip = val(r, 'viaIp');
+      return (z === undefined || z === zeroHop) && (ip === undefined || ip === viaIp);
+    }).length;
+    expect(matches('1', '0')).toBe(1);
+    expect(matches('0', '0')).toBe(1);
+    expect(matches('0', '1')).toBe(1);
   });
 
   // ─── (o) ───────────────────────────────────────────────────────────────────

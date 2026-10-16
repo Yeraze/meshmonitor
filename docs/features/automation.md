@@ -120,6 +120,14 @@ Auto Acknowledge supports two independent response modes, each with separate tog
 
 Both modes can be enabled simultaneously — for example, you can send a tapback reaction *and* a text reply to every matched message. Each mode has independent toggles for direct and multi-hop, giving you full control over which connection types get which response.
 
+### IP Row (MQTT / UDP)
+
+The response matrix has a third row, **IP (MQTT / UDP)**, for messages your node got over MQTT or multicast UDP instead of over the air. Auto Acknowledge checks this first: an IP message always uses the IP row, whatever its hop count, and never the 0-hop or multi-hop rows. RF numbers like SNR mean nothing for these messages, so this row lets you answer them in their own way, or not at all.
+
+The IP row starts off on every install. Before this row existed, the 0-hop and multi-hop rows answered MQTT messages. If you want to keep answering them, turn on the IP row. An IP row reply still goes out over your radio, so a channel reply floods the mesh like any other. The cooldown, the reply cap, and the channel wait apply to it the same way.
+
+IP messages use the standard reply template, not the 0-hop one.
+
 ### Always Use Direct Message
 
 When enabled, auto-ack responses are sent as direct messages (DMs) to the sender, even when the triggering message was received on a channel.
