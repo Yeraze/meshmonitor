@@ -876,10 +876,11 @@ export class MqttBridgeManager extends EventEmitter implements ISourceManager {
     const packetId =
       typeof envelope.packet?.id === 'number' ? envelope.packet.id >>> 0 : null;
 
-    // If we just sent this upstream, ignore the echo coming back down.
-    if (packetId !== null && this.matchesEcho(this.uplinkEchoes, topic, packetId)) {
-      return;
-    }
+    // A copy of a packet we just sent upstream. It still counts as received on
+    // this source (#5858: the user's own messages never showed up here), but
+    // it must not go back to devices or the local broker, which already have it.
+    const isOwnUplinkEcho =
+      packetId !== null && this.matchesEcho(this.uplinkEchoes, topic, packetId);
 
     if (!this.downlinkFilter.preFilter(topic, envelope)) return;
 
@@ -937,6 +938,8 @@ export class MqttBridgeManager extends EventEmitter implements ISourceManager {
         const msg = err instanceof Error ? err.message : String(err);
         logger.warn(`MQTT bridge ${this.sourceId} ingest failed: ${msg}`);
       });
+
+    if (isOwnUplinkEcho) return;
 
     // Emit local-packet so consumers (e.g. a meshtastic_tcp source using
     // this bridge as its `mqttLink` client-proxy target — issue #3134) can
