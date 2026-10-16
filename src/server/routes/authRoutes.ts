@@ -20,6 +20,7 @@ import databaseService from '../../services/database.js';
 import { logger } from '../../utils/logger.js';
 import { getEnvironmentConfig } from '../config/environment.js';
 import { notifyAccessChange } from '../../db/accessChanges.js';
+import { stripUserSecrets } from '../utils/userSecrets.js';
 
 const router = Router();
 
@@ -118,7 +119,7 @@ router.get('/status', async (req: Request, res: Response) => {
     const permissions = await databaseService.getUserPermissionSetsBySourceAsync(user.id);
 
     // Don't send sensitive fields to client
-    const { passwordHash, mfaSecret, mfaBackupCodes, ...safeUser } = user;
+    const safeUser = stripUserSecrets(user);
 
     return res.json({
       authenticated: true,
@@ -310,7 +311,7 @@ router.post('/login', authLimiter, async (req: Request, res: Response) => {
     );
 
     // Don't send sensitive fields to client
-    const { passwordHash, mfaSecret, mfaBackupCodes, ...safeUser } = user;
+    const safeUser = stripUserSecrets(user);
 
     return res.json({
       success: true,
@@ -435,7 +436,7 @@ router.post('/verify-mfa', authLimiter, async (req: Request, res: Response) => {
     );
 
     // Don't send sensitive fields to client
-    const { passwordHash, mfaSecret, mfaBackupCodes, ...safeUser } = user;
+    const safeUser = stripUserSecrets(user);
 
     return res.json({
       success: true,

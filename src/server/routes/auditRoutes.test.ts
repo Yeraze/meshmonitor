@@ -17,6 +17,7 @@ import { PermissionTestHelper } from '../test-helpers/permissionTestHelper.js';
 import { UserTestHelper } from '../test-helpers/userTestHelper.js';
 import { migration as baselineMigration } from '../migrations/001_v37_baseline.js';
 import { migration as sourceIdPermsMigration } from '../migrations/022_add_source_id_to_permissions.js';
+import { migration as passkeysMigration } from '../migrations/207_create_user_passkeys.js';
 import auditRoutes from './auditRoutes.js';
 import authRoutes from './authRoutes.js';
 
@@ -79,6 +80,8 @@ describe('Audit Log Routes', () => {
     baselineMigration.up(db);
     // Add sourceId column to permissions (migration 022)
     sourceIdPermsMigration.up(db);
+    // Passkey columns on users (migration 207, #5841)
+    passkeysMigration.up(db);
 
     const drizzleDb = drizzle(db, { schema });
     const authRepo = new AuthRepository(drizzleDb, 'sqlite');

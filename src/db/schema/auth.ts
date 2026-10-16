@@ -1,6 +1,6 @@
 /**
  * Drizzle schema definition for authentication tables
- * Includes: users, permissions, sessions, audit_log, api_tokens
+ * Includes: users, permissions, sessions, audit_log, api_tokens, user_passkeys
  * Supports SQLite, PostgreSQL, and MySQL
  */
 import { sqliteTable, text, integer } from 'drizzle-orm/sqlite-core';
@@ -23,6 +23,10 @@ export const usersSqlite = sqliteTable('users', {
   mfaEnabled: integer('mfa_enabled', { mode: 'boolean' }).notNull().default(false),
   mfaSecret: text('mfa_secret'),
   mfaBackupCodes: text('mfa_backup_codes'),
+  // #5841 passkey-only accounts: password login off, and one-time recovery
+  // codes (JSON array of bcrypt hashes, same format as mfa_backup_codes).
+  passwordLoginDisabled: integer('password_login_disabled', { mode: 'boolean' }).notNull().default(false),
+  passkeyRecoveryCodes: text('passkey_recovery_codes'),
   createdAt: integer('created_at').notNull(),
   // Note: SQLite doesn't have updated_at column
   lastLoginAt: integer('last_login_at'),
@@ -42,6 +46,8 @@ export const usersPostgres = pgTable('users', {
   mfaEnabled: pgBoolean('mfaEnabled').notNull().default(false),
   mfaSecret: pgText('mfaSecret'),
   mfaBackupCodes: pgText('mfaBackupCodes'),
+  passwordLoginDisabled: pgBoolean('passwordLoginDisabled').notNull().default(false),
+  passkeyRecoveryCodes: pgText('passkeyRecoveryCodes'),
   createdAt: pgBigint('createdAt', { mode: 'number' }).notNull(),
   updatedAt: pgBigint('updatedAt', { mode: 'number' }).notNull(),
   lastLoginAt: pgBigint('lastLoginAt', { mode: 'number' }),
@@ -147,6 +153,44 @@ export const apiTokensPostgres = pgTable('api_tokens', {
   revokedBy: pgInteger('revokedBy'),
 });
 
+// ============ USER PASSKEYS (#5841) ============
+//
+// One row per WebAuthn credential. A passkey is a second credential on a local
+// user (no new authProvider). `credentialId` and `publicKey` are base64url text
+// so one column type works on every backend. `counter` is the signature
+// counter (synced passkeys report 0 forever). `rpId` is the hostname the
+// passkey was registered on; it does not work on any other. Times are epoch ms.
+
+export const userPasskeysSqlite = sqliteTable('user_passkeys', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  userId: integer('user_id').notNull().references(() => usersSqlite.id, { onDelete: 'cascade' }),
+  credentialId: text('credential_id').notNull().unique(),
+  publicKey: text('public_key').notNull(),
+  counter: integer('counter').notNull().default(0),
+  transports: text('transports'),
+  deviceType: text('device_type'),
+  backedUp: integer('backed_up', { mode: 'boolean' }).notNull().default(false),
+  rpId: text('rp_id').notNull(),
+  nickname: text('nickname'),
+  createdAt: integer('created_at').notNull(),
+  lastUsedAt: integer('last_used_at'),
+});
+
+export const userPasskeysPostgres = pgTable('user_passkeys', {
+  id: pgSerial('id').primaryKey(),
+  userId: pgInteger('userId').notNull().references(() => usersPostgres.id, { onDelete: 'cascade' }),
+  credentialId: pgText('credentialId').notNull().unique(),
+  publicKey: pgText('publicKey').notNull(),
+  counter: pgBigint('counter', { mode: 'number' }).notNull().default(0),
+  transports: pgText('transports'),
+  deviceType: pgText('deviceType'),
+  backedUp: pgBoolean('backedUp').notNull().default(false),
+  rpId: pgText('rpId').notNull(),
+  nickname: pgText('nickname'),
+  createdAt: pgBigint('createdAt', { mode: 'number' }).notNull(),
+  lastUsedAt: pgBigint('lastUsedAt', { mode: 'number' }),
+});
+
 // ============ MYSQL SCHEMAS ============
 
 export const usersMysql = mysqlTable('users', {
@@ -163,6 +207,8 @@ export const usersMysql = mysqlTable('users', {
   mfaEnabled: myBoolean('mfaEnabled').notNull().default(false),
   mfaSecret: myText('mfaSecret'),
   mfaBackupCodes: myText('mfaBackupCodes'),
+  passwordLoginDisabled: myBoolean('passwordLoginDisabled').notNull().default(false),
+  passkeyRecoveryCodes: myText('passkeyRecoveryCodes'),
   createdAt: myBigint('createdAt', { mode: 'number' }).notNull(),
   updatedAt: myBigint('updatedAt', { mode: 'number' }).notNull(),
   lastLoginAt: myBigint('lastLoginAt', { mode: 'number' }),
@@ -214,6 +260,23 @@ export const apiTokensMysql = mysqlTable('api_tokens', {
   revokedBy: myInt('revokedBy'),
 });
 
+// The migration gives credentialId an ASCII binary collation: base64url is
+// case-sensitive, and utf8mb4_unicode_ci would call two distinct IDs equal.
+export const userPasskeysMysql = mysqlTable('user_passkeys', {
+  id: mySerial('id').primaryKey(),
+  userId: myInt('userId').notNull().references(() => usersMysql.id, { onDelete: 'cascade' }),
+  credentialId: myVarchar('credentialId', { length: 1400 }).notNull().unique(),
+  publicKey: myText('publicKey').notNull(),
+  counter: myBigint('counter', { mode: 'number' }).notNull().default(0),
+  transports: myText('transports'),
+  deviceType: myVarchar('deviceType', { length: 32 }),
+  backedUp: myBoolean('backedUp').notNull().default(false),
+  rpId: myVarchar('rpId', { length: 255 }).notNull(),
+  nickname: myVarchar('nickname', { length: 255 }),
+  createdAt: myBigint('createdAt', { mode: 'number' }).notNull(),
+  lastUsedAt: myBigint('lastUsedAt', { mode: 'number' }),
+});
+
 // Type inference
 export type UserSqlite = typeof usersSqlite.$inferSelect;
 export type NewUserSqlite = typeof usersSqlite.$inferInsert;
@@ -241,6 +304,10 @@ export type ApiTokenPostgres = typeof apiTokensPostgres.$inferSelect;
 export type NewApiTokenPostgres = typeof apiTokensPostgres.$inferInsert;
 export type ApiTokenMysql = typeof apiTokensMysql.$inferSelect;
 export type NewApiTokenMysql = typeof apiTokensMysql.$inferInsert;
+
+export type UserPasskeySqlite = typeof userPasskeysSqlite.$inferSelect;
+export type UserPasskeyPostgres = typeof userPasskeysPostgres.$inferSelect;
+export type UserPasskeyMysql = typeof userPasskeysMysql.$inferSelect;
 
 export type UserMysql = typeof usersMysql.$inferSelect;
 export type NewUserMysql = typeof usersMysql.$inferInsert;

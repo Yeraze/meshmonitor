@@ -122,6 +122,8 @@ export { MeshCoreHopSnrRepository } from './meshcoreHopSnr.js';
 export type { MeshCoreHopSnrRow } from './meshcoreHopSnr.js';
 export { MeshCoreAdminSessionsRepository } from './meshcoreAdminSessions.js';
 export type { MeshCoreAdminSessionRow } from './meshcoreAdminSessions.js';
+export { PasskeysRepository, PASSKEY_NICKNAME_MAX } from './passkeys.js';
+export type { PasskeySummary, DbPasskey, CreatePasskeyInput } from './passkeys.js';
 export type {
   PkiExchangeStateRow,
   PkiExchangeStateValue,

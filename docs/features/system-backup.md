@@ -42,8 +42,9 @@ A restore replaces the `users` table, and the database removes each replaced use
 | What | Table | How it is protected inside the backup |
 |------|-------|---------------------------------------|
 | Channel keys (PSKs) | `channels`, `channel_database`, `mesh_beacon_offers` | **Not protected.** Stored in the clear. Anyone who reads the backup can decrypt those channels. |
-| Account passwords | `users` | bcrypt hashes. MFA secrets are stored as the database holds them. |
+| Account passwords | `users` | bcrypt hashes. MFA secrets are stored as the database holds them. MFA backup codes and passkey recovery codes are bcrypt hashes. |
 | API tokens | `api_tokens` | bcrypt hash of each token. The token itself is never stored. |
+| Passkeys | `user_passkeys` | Public keys only. The private key never leaves the user's device, but the credential IDs tie each passkey to an account. |
 | PKI private keys (direct-message decryption) | `source_pki_keys` | AES-256-GCM, keyed from `SESSION_SECRET` |
 | Analyzer Observer signing keys | `meshcore_observer_keys` | AES-256-GCM, keyed from `SESSION_SECRET` |
 | Analyzer Observer broker passwords | `meshcore_observer_credentials` | AES-256-GCM, keyed from `SESSION_SECRET` |
