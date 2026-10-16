@@ -136,7 +136,7 @@ async function startLocalSession(req: Request, user: User): Promise<boolean> {
  * both use the same library call and the same counter rule (§7). Returns null
  * on success, or the failure reason.
  */
-async function verifyAssertion(
+async function checkPasskeyAssertion(
   passkey: DbPasskey,
   response: AuthenticationResponseJSON,
   challenge: TakenChallenge,
@@ -398,7 +398,7 @@ router.post('/login/verify', authLimiter, async (req: Request, res: Response) =>
     // The account comes from the stored credential row, never from the
     // response: the user handle is unsigned, so it is not consulted.
 
-    const failure = await verifyAssertion(passkey, response, challenge);
+    const failure = await checkPasskeyAssertion(passkey, response, challenge);
     if (failure) return loginFailed(user.id, failure);
 
     // Same session as POST /api/auth/login. No TOTP step (D5).
@@ -510,6 +510,14 @@ function parseCodeHashes(raw: string | null): string[] {
   } catch {
     return [];
   }
+}
+
+/**
+ * The stored codes left after spending `code`, or null when it matches none.
+ * Kept as its own helper so the route reads as input checks, then one lookup.
+ */
+function matchRecoveryCode(code: string, stored: string): Promise<string[] | null> {
+  return mfaService.verifyBackupCode(code, parseCodeHashes(stored));
 }
 
 /** True when no other active admin exists besides `userId`. */
@@ -624,7 +632,7 @@ router.post('/password-login', requireAuth(), requireSessionUser, async (req: Re
     const response = (req.body?.assertion ?? {}) as AuthenticationResponseJSON;
     const credentialId = String(response?.id ?? '');
     const passkey = owned.find(p => p.credentialId === credentialId) ?? null;
-    const failure = passkey ? await verifyAssertion(passkey, response, challenge) : 'not_owned';
+    const failure = passkey ? await checkPasskeyAssertion(passkey, response, challenge) : 'not_owned';
     if (!passkey || failure) {
       audit(user.id, 'passkey_step_up_failed', { username: user.username, reason: failure }, req);
       return fail(res, 401, 'STEP_UP_FAILED', 'The passkey could not be verified');
@@ -680,7 +688,7 @@ router.post('/recover', authLimiter, async (req: Request, res: Response) => {
     const stored = state?.passkeyRecoveryCodes ?? null;
     if (!state?.passwordLoginDisabled || !stored) return recoveryFailed(user.id, 'no_codes');
 
-    const remaining = await mfaService.verifyBackupCode(code, parseCodeHashes(stored));
+    const remaining = await matchRecoveryCode(code, stored);
     if (remaining === null) return recoveryFailed(user.id, 'wrong_code');
 
     // Spend it: only the first of two racing requests changes the row.
