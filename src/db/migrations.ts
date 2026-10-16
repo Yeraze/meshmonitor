@@ -224,6 +224,7 @@ import { migration as addNotifyOnMentionMigration, runMigration202Postgres, runM
 import { migration as addMeshcoreReactionColumnsMigration, runMigration203Postgres, runMigration203Mysql } from '../server/migrations/203_add_meshcore_reaction_columns.js';
 import { migration as createMeshcoreAdminSessionsMigration, runMigration204Postgres, runMigration204Mysql } from '../server/migrations/204_create_meshcore_admin_sessions.js';
 import { migration as userMapPreferencesMqttMessagesBySourceMigration, runMigration205Postgres, runMigration205Mysql } from '../server/migrations/205_user_map_preferences_mqtt_messages_by_source.js';
+import { migration as addMeshcorePositionOverrideMigration, runMigration206Postgres, runMigration206Mysql } from '../server/migrations/206_add_meshcore_position_override.js';
 
 // ============================================================================
 // Registry
@@ -3318,4 +3319,19 @@ registry.register({
   sqlite: (db) => userMapPreferencesMqttMessagesBySourceMigration.up(db),
   postgres: (client) => runMigration205Postgres(client),
   mysql: (pool) => runMigration205Mysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 206: `meshcore_nodes` position override columns (#5842). PER-SOURCE.
+// A MeshMonitor-only pinned location for a MeshCore contact, parallel to the
+// Meshtastic `nodes.positionOverride*` columns. Never written to the radio.
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 206,
+  name: 'add_meshcore_position_override',
+  settingsKey: 'migration_206_add_meshcore_position_override',
+  sqlite: (db) => addMeshcorePositionOverrideMigration.up(db),
+  postgres: (client) => runMigration206Postgres(client),
+  mysql: (pool) => runMigration206Mysql(pool),
 });

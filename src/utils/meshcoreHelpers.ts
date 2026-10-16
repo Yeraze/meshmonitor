@@ -25,6 +25,11 @@ export interface MeshCoreContact {
   positionSignFlipCorrected?: boolean;
   reportedLatitude?: number;
   reportedLongitude?: number;
+  /** #5842: latitude/longitude are the user's location override, not the
+   *  advert fix. The server applies it; the override fields ride along. */
+  positionIsOverride?: boolean;
+  positionOverrideEnabled?: boolean;
+  positionOverrideIsPrivate?: boolean;
   /** Hop count of the cached forwarding route. `null` / undefined = unknown
    *  (next send floods). */
   pathLen?: number | null;

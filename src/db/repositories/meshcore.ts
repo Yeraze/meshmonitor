@@ -22,6 +22,46 @@ import { resolveFirstHeard } from '../../utils/firstHeard.js';
 const CLEARABLE_VIA_NULL = new Set<string>(['outPath', 'pathLen']);
 
 /**
+ * The #5842 location-override columns. Only the dedicated override methods
+ * write them; `upsertNode` strips them from its input.
+ */
+const OVERRIDE_KEYS = [
+  'positionOverrideEnabled',
+  'latitudeOverride',
+  'longitudeOverride',
+  'altitudeOverride',
+  'positionOverrideIsPrivate',
+] as const;
+
+/** A MeshCore contact's location override (#5842). */
+export interface MeshCorePositionOverride {
+  publicKey: string;
+  enabled: boolean;
+  latitude?: number;
+  longitude?: number;
+  altitude?: number;
+  isPrivate: boolean;
+}
+
+function toOverride(row: {
+  publicKey: string;
+  positionOverrideEnabled?: boolean | number | null;
+  latitudeOverride?: number | null;
+  longitudeOverride?: number | null;
+  altitudeOverride?: number | null;
+  positionOverrideIsPrivate?: boolean | number | null;
+}): MeshCorePositionOverride {
+  return {
+    publicKey: row.publicKey,
+    enabled: !!row.positionOverrideEnabled,
+    latitude: row.latitudeOverride ?? undefined,
+    longitude: row.longitudeOverride ?? undefined,
+    altitude: row.altitudeOverride ?? undefined,
+    isPrivate: !!row.positionOverrideIsPrivate,
+  };
+}
+
+/**
  * MeshCore node data for database operations
  */
 export interface DbMeshCoreNode {
@@ -52,6 +92,18 @@ export interface DbMeshCoreNode {
    * NULL = unknown.
    */
   lastAdvertHadPosition?: boolean | null;
+  /**
+   * #5842 (migration 206): MeshMonitor-only location override, parallel to
+   * the Meshtastic `nodes.positionOverride*` columns. Written only by
+   * `setNodePositionOverride` / `clearNodePositionOverride`; `upsertNode`
+   * drops these keys so advert ingest can never touch them. Read sides apply
+   * them through `src/server/utils/meshcorePositionOverride.ts`.
+   */
+  positionOverrideEnabled?: boolean | null;
+  latitudeOverride?: number | null;
+  longitudeOverride?: number | null;
+  altitudeOverride?: number | null;
+  positionOverrideIsPrivate?: boolean | null;
   batteryMv?: number | null;
   uptimeSecs?: number | null;
   rssi?: number | null;
@@ -541,6 +593,14 @@ export class MeshCoreRepository extends BaseRepository {
       }
     }
 
+    // #5842: the location override has its own writer. An ingest caller that
+    // spreads a stored row back in must not rewrite (or clear) it here.
+    if (OVERRIDE_KEYS.some((k) => k in node)) {
+      const stripped = { ...node } as Record<string, unknown>;
+      for (const k of OVERRIDE_KEYS) delete stripped[k];
+      node = stripped as typeof node;
+    }
+
     if (shouldDiscardPosition(node.latitude ?? null, node.longitude ?? null, undefined, getDiscardInvalidPositions())) {
       const { latitude: _blat, longitude: _blon, ...rest } = node;
       node = rest as typeof node;
@@ -799,6 +859,131 @@ export class MeshCoreRepository extends BaseRepository {
     if (cfg.enabled !== undefined) seed.timeSyncEnabled = cfg.enabled;
     if (cfg.intervalMinutes !== undefined) seed.timeSyncIntervalMinutes = cfg.intervalMinutes;
     await this.db.insert(meshcoreNodes).values(seed);
+  }
+
+  /**
+   * The location override for one (sourceId, publicKey) node (#5842), or
+   * null when the node has no row on that source.
+   */
+  async getNodePositionOverride(
+    sourceId: string,
+    publicKey: string,
+  ): Promise<MeshCorePositionOverride | null> {
+    if (!sourceId) {
+      throw new Error('MeshCoreRepository.getNodePositionOverride requires a sourceId');
+    }
+    const { meshcoreNodes } = this.tables;
+    const rows = await this.db
+      .select({
+        publicKey: meshcoreNodes.publicKey,
+        positionOverrideEnabled: meshcoreNodes.positionOverrideEnabled,
+        latitudeOverride: meshcoreNodes.latitudeOverride,
+        longitudeOverride: meshcoreNodes.longitudeOverride,
+        altitudeOverride: meshcoreNodes.altitudeOverride,
+        positionOverrideIsPrivate: meshcoreNodes.positionOverrideIsPrivate,
+      })
+      .from(meshcoreNodes)
+      .where(and(eq(meshcoreNodes.publicKey, publicKey), this.withSourceScope(meshcoreNodes, sourceId)))
+      .limit(1);
+    return rows[0] ? toOverride(rows[0]) : null;
+  }
+
+  /**
+   * Every ENABLED location override on one source (#5842), keyed by
+   * lowercased public key. Read sides call this once per request and apply
+   * the result to the rows they serve.
+   */
+  async getPositionOverridesBySource(sourceId: string): Promise<Map<string, MeshCorePositionOverride>> {
+    if (!sourceId) {
+      throw new Error('MeshCoreRepository.getPositionOverridesBySource requires a sourceId');
+    }
+    const { meshcoreNodes } = this.tables;
+    const rows = await this.db
+      .select({
+        publicKey: meshcoreNodes.publicKey,
+        positionOverrideEnabled: meshcoreNodes.positionOverrideEnabled,
+        latitudeOverride: meshcoreNodes.latitudeOverride,
+        longitudeOverride: meshcoreNodes.longitudeOverride,
+        altitudeOverride: meshcoreNodes.altitudeOverride,
+        positionOverrideIsPrivate: meshcoreNodes.positionOverrideIsPrivate,
+      })
+      .from(meshcoreNodes)
+      .where(and(this.withSourceScope(meshcoreNodes, sourceId), eq(meshcoreNodes.positionOverrideEnabled, true)));
+    const out = new Map<string, MeshCorePositionOverride>();
+    for (const r of this.normalizeBigInts(rows) as typeof rows) {
+      const ov = toOverride(r);
+      if (ov.enabled && ov.latitude != null && ov.longitude != null) out.set(ov.publicKey.toLowerCase(), ov);
+    }
+    return out;
+  }
+
+  /**
+   * Set (or, with `enabled: false`, disable) the location override for a
+   * (sourceId, publicKey) node (#5842). MeshMonitor-only: nothing goes to the
+   * radio. The advert `latitude`/`longitude` are never touched.
+   *
+   * Inserts a stub row when the node has only been seen in-memory, like
+   * `setNodeFavorite`.
+   */
+  async setNodePositionOverride(
+    sourceId: string,
+    publicKey: string,
+    override: { enabled: boolean; latitude?: number | null; longitude?: number | null; altitude?: number | null; isPrivate?: boolean | null },
+  ): Promise<void> {
+    if (!sourceId) {
+      throw new Error('MeshCoreRepository.setNodePositionOverride requires a sourceId');
+    }
+    const now = this.now();
+    const { meshcoreNodes } = this.tables;
+    const values = override.enabled
+      ? {
+          positionOverrideEnabled: true,
+          latitudeOverride: override.latitude ?? null,
+          longitudeOverride: override.longitude ?? null,
+          altitudeOverride: override.altitude ?? null,
+          positionOverrideIsPrivate: override.isPrivate === true,
+        }
+      : {
+          positionOverrideEnabled: false,
+          latitudeOverride: null,
+          longitudeOverride: null,
+          altitudeOverride: null,
+          positionOverrideIsPrivate: false,
+        };
+    const existing = await this.getNodeByPublicKeyAndSource(publicKey, sourceId);
+    if (existing) {
+      await this.db
+        .update(meshcoreNodes)
+        .set({ ...values, updatedAt: now })
+        .where(and(eq(meshcoreNodes.publicKey, publicKey), this.withSourceScope(meshcoreNodes, sourceId)));
+      return;
+    }
+    await this.db.insert(meshcoreNodes).values({
+      publicKey,
+      sourceId,
+      ...values,
+      createdAt: now,
+      updatedAt: now,
+    });
+  }
+
+  /** Clear the location override for a (sourceId, publicKey) node (#5842). */
+  async clearNodePositionOverride(sourceId: string, publicKey: string): Promise<void> {
+    if (!sourceId) {
+      throw new Error('MeshCoreRepository.clearNodePositionOverride requires a sourceId');
+    }
+    const { meshcoreNodes } = this.tables;
+    await this.db
+      .update(meshcoreNodes)
+      .set({
+        positionOverrideEnabled: false,
+        latitudeOverride: null,
+        longitudeOverride: null,
+        altitudeOverride: null,
+        positionOverrideIsPrivate: false,
+        updatedAt: this.now(),
+      })
+      .where(and(eq(meshcoreNodes.publicKey, publicKey), this.withSourceScope(meshcoreNodes, sourceId)));
   }
 
   /**

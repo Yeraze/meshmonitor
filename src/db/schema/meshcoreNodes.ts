@@ -48,6 +48,14 @@ export const meshcoreNodesSqlite = sqliteTable('meshcore_nodes', {
   // position? false = it did not, though latitude/longitude above still hold
   // the last known fix (#3504). NULL = unknown (no advert seen since 194).
   lastAdvertHadPosition: integer('lastAdvertHadPosition', { mode: 'boolean' }),
+  // #5842 (migration 206): MeshMonitor-only location override, parallel to the
+  // Meshtastic `nodes.positionOverride*` columns. Advert ingest never writes
+  // these, and the override is never copied into latitude/longitude above.
+  positionOverrideEnabled: integer('positionOverrideEnabled', { mode: 'boolean' }).default(false),
+  latitudeOverride: real('latitudeOverride'),
+  longitudeOverride: real('longitudeOverride'),
+  altitudeOverride: real('altitudeOverride'),
+  positionOverrideIsPrivate: integer('positionOverrideIsPrivate', { mode: 'boolean' }).default(false),
 
   // Telemetry
   batteryMv: integer('batteryMv'),   // Battery voltage in millivolts
@@ -155,6 +163,11 @@ export const meshcoreNodesPostgres = pgTable('meshcore_nodes', {
   altitude: pgDoublePrecision('altitude'),
   positionSource: pgText('positionSource'),
   lastAdvertHadPosition: pgBoolean('lastAdvertHadPosition'),
+  positionOverrideEnabled: pgBoolean('positionOverrideEnabled').default(false),
+  latitudeOverride: pgDoublePrecision('latitudeOverride'),
+  longitudeOverride: pgDoublePrecision('longitudeOverride'),
+  altitudeOverride: pgDoublePrecision('altitudeOverride'),
+  positionOverrideIsPrivate: pgBoolean('positionOverrideIsPrivate').default(false),
 
   batteryMv: pgInteger('batteryMv'),
   uptimeSecs: pgBigint('uptimeSecs', { mode: 'number' }),
@@ -233,6 +246,11 @@ export const meshcoreNodesMysql = mysqlTable('meshcore_nodes', {
   altitude: myDouble('altitude'),
   positionSource: myVarchar('positionSource', { length: 16 }),
   lastAdvertHadPosition: myBoolean('lastAdvertHadPosition'),
+  positionOverrideEnabled: myBoolean('positionOverrideEnabled').default(false),
+  latitudeOverride: myDouble('latitudeOverride'),
+  longitudeOverride: myDouble('longitudeOverride'),
+  altitudeOverride: myDouble('altitudeOverride'),
+  positionOverrideIsPrivate: myBoolean('positionOverrideIsPrivate').default(false),
 
   batteryMv: myInt('batteryMv'),
   uptimeSecs: myBigint('uptimeSecs', { mode: 'number' }),

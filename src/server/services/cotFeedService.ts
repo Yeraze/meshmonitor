@@ -225,8 +225,14 @@ export function buildMeshCoreNodeEvent(
   sourceName: string | undefined,
   now: number,
 ): string | null {
-  const lat = node.latitude;
-  const lon = node.longitude;
+  // #5842: same rule as buildNodeEvent. A private location override never
+  // reaches this unauthenticated feed; a public one wins over the advert fix.
+  if (node.positionOverrideEnabled && node.positionOverrideIsPrivate) {
+    return null;
+  }
+  const effPos = getEffectiveDbNodePosition(node);
+  const lat = effPos.latitude;
+  const lon = effPos.longitude;
   if (
     lat == null || lon == null || !Number.isFinite(lat) || !Number.isFinite(lon) ||
     isBogusPosition(lat, lon)
@@ -263,7 +269,7 @@ export function buildMeshCoreNodeEvent(
     staleMs,
     lat,
     lon,
-    hae: node.altitude != null ? node.altitude : COT_UNKNOWN_SENTINEL,
+    hae: effPos.altitude != null ? effPos.altitude : COT_UNKNOWN_SENTINEL,
     callsign,
     // batteryMv is millivolts, not a percentage — intentionally NOT mapped
     // to <status battery>.

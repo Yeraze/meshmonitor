@@ -19,6 +19,7 @@
  * middleware is applied per-dataset by `buildSourceDashboard`.
  */
 import databaseService from '../../services/database.js';
+import { applyMeshCorePositionOverridesForViewer } from '../utils/meshcorePositionOverride.js';
 import { hasPermission } from '../auth/authMiddleware.js';
 import { logger } from '../../utils/logger.js';
 import { sourceManagerRegistry } from '../sourceManagerRegistry.js';
@@ -47,8 +48,8 @@ export async function buildSourceNodes(source: SourceRow, user: ReqUser): Promis
   // MeshCore sources don't share the meshtastic node table — pull contacts
   // (and localNode) directly from the per-source MeshCoreManager and map
   // them into the dashboard's flat node shape. These return early and never
-  // reach the position-override logic below: MeshCore contacts have no
-  // override columns (that's a Meshtastic-node feature, #3551).
+  // reach the Meshtastic position-override logic below; MeshCore contacts get
+  // their own override (#5842) through applyMeshCorePositionOverridesForViewer.
   // isAnyMeshCoreSourceType, not === 'meshcore' (#5094): this outer gate was
   // the reason the isAnyMeshCoreManager narrow below never ran for an ingest
   // source. The comment there described behaviour this line prevented.
@@ -72,7 +73,8 @@ export async function buildSourceNodes(source: SourceRow, user: ReqUser): Promis
     // #5363: display-only sign-flip correction against this source's reference.
     const mcSignFlipCtx = mcManager ? await loadSignFlipContext(source.id) : null;
     if (mcManager) {
-      for (const n of await mcManager.getAllNodes()) {
+      // #5842: an enabled location override wins over the advert position.
+      for (const n of await applyMeshCorePositionOverridesForViewer(await mcManager.getAllNodes(), user, source.id)) {
         if (n.latitude == null || n.longitude == null) continue;
         if (n.latitude === 0 && n.longitude === 0) continue;
         const lastHeard = typeof n.lastHeard === 'number'
@@ -102,13 +104,15 @@ export async function buildSourceNodes(source: SourceRow, user: ReqUser): Promis
           latitude: n.latitude,
           longitude: n.longitude,
           position: { latitude: n.latitude, longitude: n.longitude },
+          ...(n.positionIsOverride ? { positionIsOverride: true } : {}),
           lastHeard,
           hopsAway: 0,
           role: 0,
           advType: typeof n.advType === 'number' ? n.advType : 0,
           // #5578: lets the map hide a node whose latest advert had no
-          // position (`false`), unless the fix is a live telemetry one.
-          lastAdvertHadPosition: n.lastAdvertHadPosition ?? null,
+          // position (`false`), unless the fix is a live telemetry one. An
+          // override (#5842) is a known location, so it never hides.
+          lastAdvertHadPosition: n.positionIsOverride ? null : n.lastAdvertHadPosition ?? null,
           positionSource: n.positionSource ?? null,
         }, mcSignFlipCtx));
       }

@@ -29,6 +29,7 @@ import { MeshCoreZeroHopAdvertUnsupportedError } from '../utils/meshcoreAdvert.j
 import { buildLocalContactRow, withoutLocalFlag, type MeshCoreContactResponse } from './meshcoreLocalContactRow.js';
 import { applySignFlipToMeshCoreRows } from '../services/signFlipCorrection.js';
 import { extendRequestTimeout } from '../middleware/requestTimeout.js';
+import { applyMeshCorePositionOverrides, loadMeshCorePositionOverrides } from '../utils/meshcorePositionOverride.js';
 
 /** Device connect: serial/TCP/BLE handshake + capability probe over RF. */
 const CONNECT_TIMEOUT_MS = 90_000;
@@ -244,8 +245,17 @@ router.get('/snapshot', optionalAuth(), requirePermission('connection', 'read', 
       // Resolved once for both arrays.
       const canViewOnMap = await can('nodes', 'viewOnMap');
       // #5363: display-only sign-flip correction of the positions that remain.
-      maskedContacts = canViewOnMap ? await applySignFlipToMeshCoreRows(allContacts, sourceId) : stripPositions(allContacts);
-      maskedNodes = canViewOnMap ? await applySignFlipToMeshCoreRows(nodes, sourceId) : stripPositions(nodes);
+      // #5842: an enabled location override wins over the advert position.
+      // Applied only when positions are shown at all; stripPositions drops it.
+      if (canViewOnMap) {
+        const overrides = await loadMeshCorePositionOverrides(sourceId);
+        const canViewPrivate = overrides.size > 0 && await can('nodes_private', 'read');
+        maskedContacts = await applySignFlipToMeshCoreRows(applyMeshCorePositionOverrides(allContacts, overrides, canViewPrivate), sourceId);
+        maskedNodes = await applySignFlipToMeshCoreRows(applyMeshCorePositionOverrides(nodes, overrides, canViewPrivate), sourceId);
+      } else {
+        maskedContacts = stripPositions(allContacts);
+        maskedNodes = stripPositions(nodes);
+      }
     }
 
     res.json({
