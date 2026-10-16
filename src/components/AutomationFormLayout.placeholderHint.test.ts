@@ -94,10 +94,19 @@ describe('geofence number-input hints wrap under the input on a phone', () => {
 describe('trigger placeholder locales', () => {
   const localeDir = join(here, '../../public/locales');
 
-  it('non-English locales drop the stale long placeholder and fall back to English', () => {
+  // #5465 dropped the stale translations: a long list of examples
+  // ("Przykład: pogoda, pogoda {location}, p {location}") or an empty string,
+  // which overflowed the field or blanked it. A locale may still translate the
+  // current short English text (Weblate adds it back, e.g. pl "np. weather
+  // {location}"); it just must not be the old list shape or empty.
+  it('non-English locales carry no stale long placeholder (absent falls back to English)', () => {
     for (const file of readdirSync(localeDir).filter((f) => f.endsWith('.json') && f !== 'en.json')) {
       const d = JSON.parse(readFileSync(join(localeDir, file), 'utf8')) as Record<string, unknown>;
-      expect(d, file).not.toHaveProperty(['auto_responder.trigger_placeholder']);
+      const value = d['auto_responder.trigger_placeholder'];
+      if (value === undefined) continue;
+      expect(typeof value, file).toBe('string');
+      expect((value as string).trim(), file).not.toBe('');
+      expect(value as string, file).not.toMatch(/,/);
     }
     const i18n = read('../config/i18n.ts');
     expect(i18n).toMatch(/fallbackLng:\s*'en'/);
