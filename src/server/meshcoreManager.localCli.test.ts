@@ -293,3 +293,59 @@ describe('sendLocalCliCommand', () => {
 beforeEach(() => {
   vi.clearAllMocks();
 });
+
+describe('Companion remote CLI (#5867)', () => {
+  const PEER = 'cd'.repeat(32);
+
+  function makeManager(firmwareVer: number, advType = 1) {
+    const m = new MeshCoreManager('test-source');
+    (m as any).deviceType = MeshCoreDeviceType.COMPANION;
+    (m as any).connected = true;
+    (m as any).localNode = { publicKey: 'ab'.repeat(32), name: 'C', firmwareVer };
+    (m as any).contacts.set(PEER, { publicKey: PEER, advType, flags: 0x01 });
+    (m as any).sendWithDefaultScope = (fn: () => Promise<unknown>) => fn();
+    const calls: BridgeCall[] = [];
+    (m as any).sendBridgeCommand = async (cmd: string, params: Record<string, unknown>) => {
+      calls.push({ cmd, params });
+      if (cmd === 'set_contact_remote_cli') return { id: '1', success: true, data: { flags: 0x11 } };
+      if (cmd === 'send_cli') {
+        setTimeout(() => (m as any).pendingCliReplies.get(PEER.substring(0, 12))?.resolve('> Peer'), 1);
+        return { id: '1', success: true, data: { sent: true } };
+      }
+      return { id: '1', success: false, error: `no stub for ${cmd}` };
+    };
+    return { m, calls };
+  }
+
+  it('sets the permission and mirrors the new flags onto the contact', async () => {
+    const { m, calls } = makeManager(14);
+    await expect(m.setContactRemoteCli(PEER, true)).resolves.toEqual({ flags: 0x11 });
+    expect(calls).toEqual([{ cmd: 'set_contact_remote_cli', params: { public_key: PEER, allowed: true } }]);
+    expect((m as any).contacts.get(PEER).flags).toBe(0x11);
+  });
+
+  it('refuses the permission on fw before 1.18.0', async () => {
+    const { m, calls } = makeManager(13);
+    await expect(m.setContactRemoteCli(PEER, true)).rejects.toThrow(/1\.18\.0/);
+    expect(calls).toHaveLength(0);
+  });
+
+  it('sends TXT_TYPE_CLI_COMMAND to a companion contact', async () => {
+    const { m, calls } = makeManager(14);
+    const result = await m.sendCliCommand(PEER, 'get name');
+    expect(calls[0]).toEqual({ cmd: 'send_cli', params: { public_key: PEER, text: 'get name', txt_type: 'command' } });
+    expect(result.reply).toBe('> Peer');
+  });
+
+  it('keeps CliData for a repeater contact, whatever the local firmware', async () => {
+    const { m, calls } = makeManager(13, 2);
+    await m.sendCliCommand(PEER, 'ver');
+    expect(calls[0].params).toEqual({ public_key: PEER, text: 'ver' });
+  });
+
+  it('refuses remote CLI to a companion from fw before 1.18.0', async () => {
+    const { m, calls } = makeManager(13);
+    await expect(m.sendCliCommand(PEER, 'ver')).rejects.toThrow(/1\.18\.0/);
+    expect(calls).toHaveLength(0);
+  });
+});

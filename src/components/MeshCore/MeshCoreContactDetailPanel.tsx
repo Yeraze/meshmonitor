@@ -14,6 +14,8 @@ import { meshcoreLastHeardMs } from '../../utils/meshcoreAge';
 import { useSettings } from '../../contexts/SettingsContext';
 import { useSource } from '../../contexts/SourceContext';
 import { MeshCoreRemoteConsole } from './MeshCoreRemoteConsole';
+import { MeshCoreCompanionRemoteConsole } from './MeshCoreCompanionRemoteConsole';
+import companionCliStyles from './MeshCoreCompanionCli.module.css';
 import { MeshCoreNotOnDeviceNotice } from './MeshCoreNotOnDeviceNotice';
 import type { AddContactToDeviceResponse, DiscoverPathStart, MeshCoreActions, MeshCorePositionOverrideInput, TracePathResult, TracePathTimeout, ZeroHopPingResult } from './hooks/useMeshCore';
 import { PositionOverrideModal } from '../PositionOverrideModal';
@@ -147,7 +149,18 @@ interface MeshCoreContactDetailPanelProps {
   /** #5390: when this source first heard the node, epoch MILLISECONDS (the
    *  durable `meshcore_nodes.firstHeard`). Unset hides the row. */
   firstHeard?: number;
+  /** The connected radio runs fw 1.18.0+ (companion protocol 14), so it can
+   *  grant and send remote CLI to other companions (#5867). */
+  localNativeCli?: boolean;
+  /** Allow or stop this contact running CLI commands on the radio (#5867).
+   *  Resolves an error message, or null. Unset hides the toggle. */
+  onSetRemoteCli?: (publicKey: string, allowed: boolean) => Promise<string | null>;
+  /** `configuration:write` on this source; the toggle needs it. */
+  canWriteConfig?: boolean;
 }
+
+/** ContactInfo.flags bit: this contact may run CLI commands on us (#5867). */
+const CONTACT_FLAG_REMOTE_CLI = 0x10;
 
 const COLLAPSED_KEY = 'meshcoreContactDetailsCollapsed';
 
@@ -197,8 +210,14 @@ export const MeshCoreContactDetailPanel: React.FC<MeshCoreContactDetailPanelProp
   canRemoteAdmin = false,
   receiveOnly = false,
   firstHeard,
+  localNativeCli = false,
+  onSetRemoteCli,
+  canWriteConfig = false,
 }) => {
   const { t } = useTranslation();
+  const [remoteCliBusy, setRemoteCliBusy] = useState(false);
+  const [remoteCliError, setRemoteCliError] = useState<string | null>(null);
+  useEffect(() => { setRemoteCliError(null); }, [publicKey]);
   const { timeFormat, dateFormat } = useSettings();
   const { sourceId } = useSource();
   // Tracks the currently-selected contact synchronously (unlike the
@@ -1573,6 +1592,62 @@ export const MeshCoreContactDetailPanel: React.FC<MeshCoreContactDetailPanelProp
       <MeshCoreTraceSnrCard sourceId={sourceId} publicKey={publicKey} contacts={repeaters} localPublicKey={selfPublicKey} />
       {/* #5765: the same data as full-size charts, one per link direction. */}
       <MeshCoreTraceSnrCharts sourceId={sourceId} publicKey={publicKey} contacts={repeaters} localPublicKey={selfPublicKey} />
+
+      {onSetRemoteCli && canWriteConfig && isCompanion && advType === 1 && (() => {
+        const allowed = ((contact?.flags ?? 0) & CONTACT_FLAG_REMOTE_CLI) !== 0;
+        const notOnDevice = contact?.onDevice === false;
+        const unavailable = !localNativeCli || notOnDevice;
+        const title = !localNativeCli
+          ? t('meshcore.remote_cli.needs_firmware', 'Needs firmware 1.18.0 or later on this radio.')
+          : notOnDevice
+            ? t('meshcore.not_on_device.control_tooltip', "This node is not in the radio's contact list. Add it to the radio first.")
+            : undefined;
+        const toggle = async (next: boolean) => {
+          const stillCurrent = beginContactAction();
+          setRemoteCliBusy(true);
+          setRemoteCliError(null);
+          const err = await onSetRemoteCli(publicKey, next);
+          setRemoteCliBusy(false);
+          if (stillCurrent()) setRemoteCliError(err);
+        };
+        return (
+          <div className={companionCliStyles.permission} data-testid="remote-cli-permission">
+            <h4 className={companionCliStyles.permissionTitle}>
+              {t('meshcore.remote_cli.title', 'Remote CLI')}
+            </h4>
+            <label className={companionCliStyles.toggle} title={title}>
+              <input
+                type="checkbox"
+                checked={allowed}
+                disabled={unavailable || remoteCliBusy}
+                onChange={e => { void toggle(e.target.checked); }}
+              />
+              {t('meshcore.remote_cli.allow', 'Allow this contact to run CLI commands on this radio')}
+            </label>
+            <p className={companionCliStyles.warning}>
+              {t(
+                'meshcore.remote_cli.warning',
+                'This contact could run any command on this radio, including reboot and radio settings, and every command makes this radio reply over the air.',
+              )}
+            </p>
+            {remoteCliError && <p className={companionCliStyles.error} role="alert">{remoteCliError}</p>}
+          </div>
+        );
+      })()}
+
+      {remoteAdminActions
+        && canRemoteAdmin
+        && isCompanion
+        && localNativeCli
+        && advType === 1 && (
+        <MeshCoreCompanionRemoteConsole
+          publicKey={publicKey}
+          contactName={name}
+          actions={remoteAdminActions}
+          receiveOnly={receiveOnly}
+          notOnDevice={contact?.onDevice === false}
+        />
+      )}
 
       {remoteAdminActions
         && canRemoteAdmin

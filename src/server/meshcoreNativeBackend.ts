@@ -216,6 +216,13 @@ interface ConsumedRxPath {
 
 const CONTACT_MSG_RECV_CODE = 7;
 
+/** TXT_TYPE_CLI_COMMAND (fw 1.18.0, #5867): a CLI line for another companion.
+ *  meshcore.js's TxtTypes stops at SignedPlain (2). */
+const TXT_TYPE_CLI_COMMAND = 3;
+
+/** ContactInfo.flags bit that lets this contact run CLI lines on us (#5867). */
+export const CONTACT_FLAG_REMOTE_CLI = 0x10;
+
 /**
  * Split a raw ContactMsgRecv frame carrying a SignedPlain (room) post:
  * `[7][pubKeyPrefix x6][pathLen][txtType][senderTimestamp u32le][author x4][body…]`.
@@ -1002,6 +1009,18 @@ export class MeshCoreNativeBackend extends EventEmitter {
         txtTypes && typeof msg.txtType === 'number' && msg.txtType === txtTypes.CliData;
       const isRoomPost =
         txtTypes && typeof msg.txtType === 'number' && msg.txtType === txtTypes.SignedPlain;
+
+      if (msg.txtType === TXT_TYPE_CLI_COMMAND) {
+        // fw 1.18.0 (#5867): a peer sent us a CLI line and its contact entry
+        // lacks the remote-CLI bit, so the firmware handed it to the app
+        // instead of running it. It is not a chat message: storing it as a DM
+        // would let auto-ack / auto-responders answer it over the air.
+        this.consumePendingPath({ kind: 'dm', pubKeyPrefix: msg.pubKeyPrefix, pathLen: msg.pathLen });
+        logger.info(
+          `[MeshCoreNative:${this.sourceId}] dropped a CLI command from ${bytesToHex(msg.pubKeyPrefix)} (remote CLI not allowed for that contact)`,
+        );
+        return;
+      }
 
       if (isRoomPost) {
         // SignedPlain: room server post. The first 4 bytes of the text body
@@ -2571,8 +2590,33 @@ export class MeshCoreNativeBackend extends EventEmitter {
         // The firmware addresses the CLI text from its own contact table; a
         // target it doesn't hold fails instantly with no RF (#5349).
         await this.requireDeviceContact(c, fullKey);
-        await c.sendTextMessage(fullKey, text, K.TxtTypes.CliData);
+        // A Companion target (fw 1.18.0+, #5867) runs only TXT_TYPE_CLI_COMMAND
+        // (3); CliData (1) is what repeaters take and what every reply carries.
+        const txtType = params.txt_type === 'command' ? TXT_TYPE_CLI_COMMAND : K.TxtTypes.CliData;
+        await c.sendTextMessage(fullKey, text, txtType);
         return { sent: true };
+      }
+
+      case 'set_contact_remote_cli': {
+        // Set/clear ContactInfo.flags bit 4 (mask 0x10, fw 1.18.0+, #5867):
+        // when set, the companion runs TXT_TYPE_CLI_COMMAND lines from this
+        // contact and replies over the air. Same read-modify-write as the
+        // favourite bit, then a read-back. Local serial write, no RF.
+        const publicKey = await this.resolvePublicKey(params.public_key as string);
+        if (!publicKey) throw new Error('Remote-CLI target not found');
+        const allowed = params.allowed === true;
+        const targetHex = bytesToHex(publicKey);
+        const contacts = (await c.getContacts()) as RawDeviceContact[];
+        const contact = contacts.find((ct) => bytesToHex(ct.publicKey) === targetHex);
+        if (!contact) throw new Error('Remote-CLI target not in device contact list');
+        await this.applyContactFlag(contact, CONTACT_FLAG_REMOTE_CLI, allowed);
+        const back = ((await c.getContacts()) as RawDeviceContact[])
+          .find((ct) => bytesToHex(ct.publicKey) === targetHex);
+        const flags = typeof back?.flags === 'number' ? back.flags : 0;
+        if (((flags & CONTACT_FLAG_REMOTE_CLI) !== 0) !== allowed) {
+          throw new Error('Remote-CLI permission not confirmed on device: read-back shows the old value');
+        }
+        return { ok: true, allowed, flags };
       }
 
       case 'login': {
@@ -3359,12 +3403,21 @@ export class MeshCoreNativeBackend extends EventEmitter {
    * record via AddUpdateContact only when the bit actually changes. Shared by
    * the `set_contact_favorite` and `set_contacts_favorite` dispatch cases.
    */
-  private async applyContactFavorite(
+  private applyContactFavorite(
     contact: RawDeviceContact,
     favorite: boolean,
   ): Promise<{ changed: boolean; flags: number }> {
+    return this.applyContactFlag(contact, 0x01, favorite);
+  }
+
+  /** Set or clear one ContactInfo.flags bit, keeping the others. */
+  private async applyContactFlag(
+    contact: RawDeviceContact,
+    mask: number,
+    on: boolean,
+  ): Promise<{ changed: boolean; flags: number }> {
     const currentFlags = typeof contact.flags === 'number' ? contact.flags : 0;
-    const newFlags = (favorite ? (currentFlags | 0x01) : (currentFlags & ~0x01)) & 0xff;
+    const newFlags = (on ? (currentFlags | mask) : (currentFlags & ~mask)) & 0xff;
     const changed = newFlags !== currentFlags;
     if (changed && this.connection) {
       await this.connection.addOrUpdateContact(

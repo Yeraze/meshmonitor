@@ -459,7 +459,29 @@ sent. The reply frame has no tag, so the exchange holds the radio-op lock.
 Do not confuse this with the over-the-air CLI. `CMD_SEND_TXT_MSG` with
 `TXT_TYPE_CLI_COMMAND (3)` sends a command to *another* companion, which runs
 it only when its contact entry for us has flag `0x10` (remote CLI allowed) and
-answers with a `TXT_TYPE_CLI_DATA` message. That transmits, and it is #5867.
+answers with a `TXT_TYPE_CLI_DATA` message.
+
+### Companion-to-Companion remote CLI (#5867)
+
+- **Sending.** `sendCliCommand` to a contact with `advType === 1` passes
+  `txt_type: 'command'`, and `send_cli` sends type 3. Repeaters keep
+  CliData (1). Our radio must be protocol 14+, or the firmware answers
+  ERR_CODE_UNSUPPORTED_CMD. There is no login: a target that has not
+  allowed us stays silent, so the command times out (the timeout message
+  says why). The console is `MeshCoreCompanionRemoteConsole`, under the same
+  `remote_admin:write`, danger guard, limiter and receive-only gate as
+  `/admin/cli`. Each command is one DM out and one reply back.
+- **Granting.** `POST /nodes/:publicKey/remote-cli` (`configuration:write`)
+  runs `set_contact_remote_cli`: read-modify-write of ContactInfo.flags bit
+  `0x10`, then a read-back. Local serial only. Once set, the firmware runs
+  that peer's commands and replies over the air on its own; MeshMonitor
+  never sees them and cannot rate-limit them. The panel says so next to the
+  toggle. The flags byte is not stored: it comes from the device contact
+  table on every refresh (`MeshCoreContact.flags`).
+- **Inbound type 3 is dropped.** A peer we have not allowed reaches us as a
+  ContactMsgRecv with `txtType 3`. The backend logs and drops it. Before
+  #5867 it fell through to `contact_message`, so a stranger's `reboot`
+  became a DM that auto-ack and auto-responders could answer.
 
 **The pre-1.18 synthetic CLI is intentionally small.** It covers
 read-only state inspection. Mutating verbs (`set name`, `set radio`,

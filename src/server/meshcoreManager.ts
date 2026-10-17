@@ -9700,6 +9700,13 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
 
     this.requireTransmit();
 
+    // A Companion target (advType 1) takes TXT_TYPE_CLI_COMMAND, which this
+    // radio can only send on fw 1.18.0+ (#5867). Repeaters keep CliData.
+    const toCompanion = this.contacts.get(normalizedKey)?.advType === 1;
+    if (toCompanion && !(await this.companionHasNativeCli())) {
+      throw new Error('Remote CLI to a companion needs firmware 1.18.0 or later on this radio');
+    }
+
     const prefixKey = normalizedKey.substring(0, 12);
     const timeoutMs = opts.timeoutMs ?? 15_000;
 
@@ -9708,7 +9715,7 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
     // rejections — each command is independent.
     const prior = this.cliCommandLocks.get(prefixKey) ?? Promise.resolve();
     const runNext = prior.catch(() => undefined).then(() =>
-      this.runCliCommandLocked(normalizedKey, prefixKey, trimmed, timeoutMs),
+      this.runCliCommandLocked(normalizedKey, prefixKey, trimmed, timeoutMs, toCompanion),
     );
     this.cliCommandLocks.set(prefixKey, runNext);
     try {
@@ -9728,6 +9735,7 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
     prefixKey: string,
     command: string,
     timeoutMs: number,
+    toCompanion = false,
   ): Promise<{ reply: string; elapsedMs: number }> {
     this.requireTransmit();
     return new Promise<{ reply: string; elapsedMs: number }>((resolve, reject) => {
@@ -9744,7 +9752,10 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
       const sentAt = Date.now();
       const timer = setTimeout(() => {
         this.pendingCliReplies.delete(prefixKey);
-        reject(new Error(`CLI command timed out after ${timeoutMs}ms`));
+        // A companion that has not allowed us remote CLI sends nothing back.
+        reject(new Error(toCompanion
+          ? `CLI command timed out after ${timeoutMs}ms. The contact may not allow remote CLI from this radio, or runs firmware before 1.18.0.`
+          : `CLI command timed out after ${timeoutMs}ms`));
       }, timeoutMs);
 
       this.pendingCliReplies.set(prefixKey, {
@@ -9766,7 +9777,11 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
       // Keeping it non-awaited means neither lock is held while waiting on the
       // other. A scope-assert failure still surfaces — it rejects via the
       // `.catch` below, which clears the timer and rejects the outer promise.
-      void this.sendWithDefaultScope(() => this.sendBridgeCommand('send_cli', { public_key: fullKey, text: command }, timeoutMs))
+      void this.sendWithDefaultScope(() => this.sendBridgeCommand('send_cli', {
+        public_key: fullKey,
+        text: command,
+        ...(toCompanion ? { txt_type: 'command' } : {}),
+      }, timeoutMs))
         .then((resp) => {
           if (!resp.success) {
             clearTimeout(timer);
@@ -10715,6 +10730,35 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
    * re-asserts local favourites onto the device and mirrors device-side
    * favourites back into the DB.
    */
+  /**
+   * Allow or stop a contact running CLI lines on this radio (ContactInfo.flags
+   * 0x10, fw 1.18.0+, #5867). When allowed, the firmware runs that peer's
+   * commands, including `reboot` and `set radio`, and answers over the air;
+   * MeshMonitor sees none of it. Local serial write, so receive-only mode
+   * does not block it. Throws rather than failing soft: a permission the user
+   * thinks is set must be set.
+   */
+  async setContactRemoteCli(publicKey: string, allowed: boolean): Promise<{ flags: number }> {
+    if (this.deviceType !== MeshCoreDeviceType.COMPANION) {
+      throw new Error('Remote CLI permission needs a Companion source');
+    }
+    if (!this.connected) throw new Error('MeshCore source not connected');
+    const key = publicKey.toLowerCase();
+    if (!(await this.companionHasNativeCli())) {
+      throw new Error('Remote CLI permission needs firmware 1.18.0 or later on this radio');
+    }
+    const response = await this.sendBridgeCommand('set_contact_remote_cli', { public_key: key, allowed });
+    if (!response.success) throw new Error(response.error || 'set_contact_remote_cli failed');
+    const flags = Number(response.data?.flags ?? 0);
+    const contact = this.contacts.get(key);
+    if (contact) {
+      contact.flags = flags;
+      dataEventEmitter.emitMeshCoreContactUpdated(contact, this.sourceId);
+    }
+    logger.info(`[MeshCore:${this.sourceId}] remote CLI ${allowed ? 'allowed' : 'revoked'} for ${key.substring(0, 16)}…`);
+    return { flags };
+  }
+
   async setNodeFavorite(publicKey: string, isFavorite: boolean): Promise<void> {
     await databaseService.meshcore.setNodeFavorite(this.sourceId, publicKey, isFavorite);
     await this.pushFavoriteToDevice(publicKey, isFavorite);

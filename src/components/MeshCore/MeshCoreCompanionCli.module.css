@@ -1,0 +1,42 @@
+/* Companion remote CLI (#5867): the remote console hint and the permission
+   toggle in the contact panel. CSS module per the containment rule in
+   CLAUDE.md. Theme tokens only, no fallbacks. */
+
+.hint {
+  margin: 0 0 0.5rem;
+  font-size: 0.85rem;
+  color: var(--color-text-muted);
+}
+
+.permission {
+  margin-top: 0.75rem;
+  padding: 0.75rem 1rem;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+}
+
+.permissionTitle {
+  margin: 0 0 0.5rem;
+  font-size: 0.95rem;
+  color: var(--color-text);
+}
+
+.toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--color-text);
+}
+
+.warning {
+  margin: 0.5rem 0 0;
+  font-size: 0.85rem;
+  color: var(--color-warning);
+}
+
+.error {
+  margin: 0.5rem 0 0;
+  font-size: 0.85rem;
+  color: var(--color-error);
+}

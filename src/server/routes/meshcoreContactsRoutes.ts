@@ -1963,6 +1963,50 @@ router.post(
 );
 
 /**
+ * POST /api/sources/:id/meshcore/nodes/:publicKey/remote-cli
+ *
+ * Allow or stop a contact running CLI commands on this Companion (contact
+ * flag 0x10, fw 1.18.0+, #5867). Body: { allowed: boolean }. Allowing hands
+ * that peer every CLI verb on this radio, `reboot` and `set radio` included,
+ * so it takes `configuration:write`, like the local console. A local serial
+ * write: no RF, and receive-only mode does not block it.
+ */
+router.post(
+  '/nodes/:publicKey/remote-cli',
+  meshcoreDeviceLimiter,
+  requireAuth(),
+  requirePermission('configuration', 'write', { sourceIdFrom: 'params.id' }),
+  async (req: Request, res: Response) => {
+    const { publicKey } = req.params;
+    if (!isValidPublicKey(publicKey)) {
+      return fail(res, 400, 'INVALID_PUBLIC_KEY', 'Invalid public key format (expected 64-character hex string)');
+    }
+    const { allowed } = req.body ?? {};
+    if (typeof allowed !== 'boolean') {
+      return fail(res, 400, 'INVALID_INPUT', 'allowed must be a boolean');
+    }
+    try {
+      const manager = managerFor(req, res);
+      const { flags } = await manager.setContactRemoteCli(publicKey, allowed);
+      auditMeshcoreEvent(req, 'meshcore_contact_remote_cli', 'configuration', {
+        sourceId: req.params.id,
+        publicKey,
+        allowed,
+      });
+      ok(res, { publicKey, allowed, flags });
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      logger.warn(`[API] remote-cli permission for ${publicKey.substring(0, 16)}… failed: ${msg}`);
+      if (/not connected/i.test(msg)) return fail(res, 409, 'SOURCE_NOT_CONNECTED', msg);
+      if (/needs|not in device contact list|not found/i.test(msg)) {
+        return fail(res, 409, 'REMOTE_CLI_UNAVAILABLE', msg);
+      }
+      fail(res, 502, 'REMOTE_CLI_FAILED', msg);
+    }
+  },
+);
+
+/**
  * Location override for one MeshCore contact (#5842), parity with the
  * Meshtastic `/api/nodes/:nodeId/position-override` routes.
  *

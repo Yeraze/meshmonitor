@@ -389,6 +389,9 @@ export interface MeshCoreActions {
    *  contact is protected from contact-table eviction (#4838). Resolves `true`
    *  on success. */
   setNodeFavorite: (publicKey: string, isFavorite: boolean) => Promise<boolean>;
+  /** Allow or stop a contact running CLI commands on this radio (contact flag
+   *  0x10, fw 1.18.0+, #5867). Resolves the error text on failure, else null. */
+  setContactRemoteCli: (publicKey: string, allowed: boolean) => Promise<string | null>;
   /** Set (enabled) or clear (disabled) a contact's location override (#5842).
    *  MeshMonitor-only, no airtime. Reloads the snapshot so every view picks
    *  up the new position. Rejects with the server's message on failure. */
@@ -1886,6 +1889,29 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
     }
   }, [mcPrefix, csrfFetch]);
 
+  const setContactRemoteCli = useCallback(async (publicKey: string, allowed: boolean): Promise<string | null> => {
+    try {
+      const response = await csrfFetch(
+        `${mcPrefix}/nodes/${encodeURIComponent(publicKey)}/remote-cli`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ allowed }),
+        },
+      );
+      const data = await parseJsonResponse(response);
+      if (!data.success) return data.error || 'Failed to update remote CLI permission';
+      const existing = contactsRef.current.get(publicKey);
+      if (existing && typeof data.data?.flags === 'number') {
+        contactsRef.current.set(publicKey, { ...existing, flags: data.data.flags });
+        setContacts(Array.from(contactsRef.current.values()));
+      }
+      return null;
+    } catch (_err) {
+      return 'Network error';
+    }
+  }, [mcPrefix, csrfFetch]);
+
   const setNodePositionOverride = useCallback(async (publicKey: string, input: MeshCorePositionOverrideInput): Promise<void> => {
     const url = `${mcPrefix}/nodes/${encodeURIComponent(publicKey)}/position-override`;
     const response = input.enabled
@@ -2518,6 +2544,7 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
       removeContact,
       addContactToDevice,
       setNodeFavorite,
+      setContactRemoteCli,
       setNodePositionOverride,
       exportContact,
       importContact,
