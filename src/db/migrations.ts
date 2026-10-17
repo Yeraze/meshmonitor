@@ -228,6 +228,7 @@ import { migration as addMeshcorePositionOverrideMigration, runMigration206Postg
 import { migration as createUserPasskeysMigration, runMigration207Postgres, runMigration207Mysql } from '../server/migrations/207_create_user_passkeys.js';
 import { migration as addChannelDatabaseUseAeadMigration, runMigration208Postgres, runMigration208Mysql } from '../server/migrations/208_add_channel_database_use_aead.js';
 import { migration as createNodeNameHistoryMigration, runMigration209Postgres, runMigration209Mysql } from '../server/migrations/209_create_node_name_history.js';
+import { migration as messagesChannelIndexMigration, runMigration210Postgres, runMigration210Mysql } from '../server/migrations/210_messages_channel_index_and_pg_autovacuum.js';
 
 // ============================================================================
 // Registry
@@ -3380,4 +3381,18 @@ registry.register({
   sqlite: (db) => createNodeNameHistoryMigration.up(db),
   postgres: (client) => runMigration209Postgres(client),
   mysql: (pool) => runMigration209Mysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 210: messages(sourceId, channel, timestamp) index for the MQTT
+// channel list, plus PostgreSQL per-table autovacuum thresholds (#5870).
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 210,
+  name: 'messages_channel_index_and_pg_autovacuum',
+  settingsKey: 'migration_210_messages_channel_index_and_pg_autovacuum',
+  sqlite: (db) => messagesChannelIndexMigration.up(db),
+  postgres: (client) => runMigration210Postgres(client),
+  mysql: (pool) => runMigration210Mysql(pool),
 });

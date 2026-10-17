@@ -112,7 +112,7 @@ export interface SettingsNavOptions {
   mode?: 'global' | 'source';
   isAdmin: boolean;
   canWriteSettings: boolean;
-  /** Database Maintenance is SQLite-only (it uses VACUUM). */
+  /** Unused since #5870: Database Maintenance runs on every backend. */
   databaseType?: 'sqlite' | 'postgres' | 'mysql' | null;
   firmwareOtaEnabled?: boolean;
   /**
@@ -156,7 +156,7 @@ export function hasDeviceConfigurationPage(sourceType: string | null | undefined
  * out deep links that land on nothing.
  */
 export function settingsNavItems(t: Translate, options: SettingsNavOptions): NavItem[] {
-  const { mode, isAdmin, canWriteSettings, databaseType, sourceType, canReadSources = false, canReadConfiguration = false } = options;
+  const { mode, isAdmin, canWriteSettings, sourceType, canReadSources = false, canReadConfiguration = false } = options;
   const inMode = (id: string) =>
     !mode || (mode === 'global' ? GLOBAL_SETTINGS_SECTIONS.has(id) : SOURCE_SETTINGS_SECTIONS.has(id));
 
@@ -209,8 +209,6 @@ export function settingsNavItems(t: Translate, options: SettingsNavOptions): Nav
     if (!inMode(item.id)) return false;
     if (adminOnly.has(item.id) && !isAdmin) return false;
     if (settingsWriteOnly.has(item.id) && !canWriteSettings) return false;
-    // Database Maintenance uses SQLite-specific features like VACUUM.
-    if (item.id === 'settings-maintenance' && databaseType !== 'sqlite') return false;
     if (item.id === 'settings-mqtt-bridge' && !(sourceType === 'mqtt_bridge' && canReadSources)) return false;
     if (item.id === 'settings-pki-dm' && !(hasDeviceConfigurationPage(sourceType) && canReadConfiguration)) return false;
     // Reliable PKI only acts on a Meshtastic radio source's own sends.

@@ -5,7 +5,7 @@
  * Includes: users, permissions, sessions, audit_log, api_tokens
  * Supports SQLite, PostgreSQL, and MySQL through Drizzle ORM.
  */
-import { eq, lt, desc, and, isNull, gte, lte, ne, count, sql } from 'drizzle-orm';
+import { eq, lt, desc, and, isNull, gte, lte, ne, count, sql, inArray } from 'drizzle-orm';
 import bcrypt from 'bcrypt';
 import crypto from 'crypto';
 import {
@@ -964,21 +964,29 @@ export class AuthRepository extends BaseRepository {
   }
 
   /**
-   * Cleanup old audit log entries
+   * Delete audit log entries older than `days` (#5870). Batched by id so the
+   * first run on a never-pruned table (millions of rows) is many short
+   * statements, not one long lock or one round-trip per row.
    */
-  async cleanupOldAuditLogs(days: number = 90): Promise<number> {
+  async cleanupOldAuditLogs(days: number = 90, batchSize: number = 5000): Promise<number> {
     const cutoff = this.now() - (days * 24 * 60 * 60 * 1000);
     const { auditLog } = this.tables;
 
-    const toDelete = await this.db
-      .select({ id: auditLog.id })
-      .from(auditLog)
-      .where(lt(auditLog.timestamp, cutoff));
-
-    for (const entry of toDelete) {
-      await this.db.delete(auditLog).where(eq(auditLog.id, entry.id));
+    let deleted = 0;
+    for (;;) {
+      const batch = await this.db
+        .select({ id: auditLog.id })
+        .from(auditLog)
+        .where(lt(auditLog.timestamp, cutoff))
+        .orderBy(auditLog.id)
+        .limit(batchSize);
+      if (batch.length === 0) break;
+      const ids = batch.map((r: { id: number }) => Number(r.id));
+      await this.db.delete(auditLog).where(inArray(auditLog.id, ids));
+      deleted += ids.length;
+      if (batch.length < batchSize) break;
     }
-    return toDelete.length;
+    return deleted;
   }
 
   // ============ SESSIONS ============

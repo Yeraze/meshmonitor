@@ -49,6 +49,7 @@ const STATUS = {
     tracerouteRetentionDays: 30,
     routeSegmentRetentionDays: 30,
     neighborInfoRetentionDays: 30,
+    auditLogRetentionDays: 90,
   },
 };
 
@@ -61,11 +62,11 @@ function renderSection() {
   );
 }
 
-/** The four retention fields, in form order; the first is message retention. */
+/** The five retention fields, in form order; the first is message retention. */
 async function retentionFields(): Promise<HTMLInputElement[]> {
   return waitFor(() => {
     const fields = screen.getAllByRole('spinbutton') as HTMLInputElement[];
-    expect(fields).toHaveLength(4);
+    expect(fields).toHaveLength(5);
     expect(fields[0].value).toBe('60');
     return fields;
   });
@@ -78,7 +79,6 @@ beforeEach(() => {
   apiPost.mockReset();
   apiPost.mockResolvedValue({});
   apiGet.mockImplementation(async (url: string) => {
-    if (url === '/api/health') return { databaseType: 'sqlite' };
     if (url === '/api/maintenance/status') return STATUS;
     if (url === '/api/maintenance/size') return { size: 1024 };
     return {};
@@ -115,7 +115,7 @@ describe('DatabaseMaintenanceSection number fields (#5649)', () => {
     // The server has always received these as numeric strings.
     expect(body.messageRetentionDays).toBe('120');
     expect(body.tracerouteRetentionDays).toBe('30');
-    for (const key of ['messageRetentionDays', 'tracerouteRetentionDays', 'routeSegmentRetentionDays', 'neighborInfoRetentionDays']) {
+    for (const key of ['messageRetentionDays', 'tracerouteRetentionDays', 'routeSegmentRetentionDays', 'neighborInfoRetentionDays', 'auditLogRetentionDays']) {
       expect(body[key]).toMatch(/^\d+$/);
     }
   });
@@ -163,6 +163,25 @@ describe('DatabaseMaintenanceSection number fields (#5649)', () => {
     await waitFor(() => expect(saveButton()!.disabled).toBe(true));
     await user.click(saveButton()!);
     expect(apiPost).not.toHaveBeenCalled();
+  });
+
+  it('renders on PostgreSQL and saves the audit log retention (#5870)', async () => {
+    const user = userEvent.setup();
+    apiGet.mockImplementation(async (url: string) => {
+      if (url === '/api/maintenance/status') return { ...STATUS, databaseType: 'postgres' };
+      if (url === '/api/maintenance/size') return { size: 1024 };
+      return {};
+    });
+    renderSection();
+    const fields = await retentionFields();
+    const audit = fields[4];
+    expect(audit.value).toBe('90');
+    await user.clear(audit);
+    await user.type(audit, '30');
+    await waitFor(() => expect(saveButton()!.disabled).toBe(false));
+    await user.click(saveButton()!);
+    await waitFor(() => expect(apiPost).toHaveBeenCalledTimes(1));
+    expect(apiPost.mock.calls[0][1]).toMatchObject({ auditLogRetentionDays: '30' });
   });
 
   it('Dismiss puts a blank field back to its saved value', async () => {
