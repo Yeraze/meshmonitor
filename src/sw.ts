@@ -107,6 +107,7 @@ registerRoute(
 
 // Navigation data + deep-link URL construction (shared with the app and tests)
 import { buildNotificationUrl, type NotificationNavigationData } from './utils/notificationUrl';
+import { renewPushSubscription } from './utils/pushRenewal';
 
 // Handle push events (background notifications)
 self.addEventListener('push', event => {
@@ -216,57 +217,28 @@ self.addEventListener('notificationclick', event => {
   );
 });
 
-// Handle push subscription changes (e.g., subscription expired)
+// Handle push subscription changes (endpoint rotated or expired). The server
+// moves this browser's rows to the new endpoint (#5863).
 self.addEventListener('pushsubscriptionchange', event => {
   console.log('[Service Worker] Push subscription changed:', event);
-
   event.waitUntil(
-    self.registration.pushManager
-      .subscribe(event.oldSubscription?.options || { userVisibleOnly: true })
-      .then(subscription => {
-        console.log('[Service Worker] Re-subscribed:', subscription);
-
-        const p256dh = subscription.getKey('p256dh');
-        const auth = subscription.getKey('auth');
-
-        if (!p256dh || !auth) {
-          throw new Error('Missing subscription keys');
+    renewPushSubscription(event, {
+      scope: self.registration.scope,
+      pushManager: self.registration.pushManager,
+      fetch: (input, init) => fetch(input, init),
+    })
+      .then(result => {
+        if (result.status === 'no-old-endpoint') {
+          console.warn('[Service Worker] No old subscription to renew from; re-subscribe from the Notifications tab');
+        } else {
+          console.log(`[Service Worker] Renewed ${result.renewed} subscription row(s), skipped ${result.skipped}`);
         }
-
-        // Send new subscription to backend. Resolve against the registration
-        // scope — a root-absolute '/api/...' misses the server entirely under
-        // a BASE_URL sub-path deployment, silently losing the re-subscription.
-        return fetch(new URL('api/push/subscribe', self.registration.scope).href, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            subscription: {
-              endpoint: subscription.endpoint,
-              keys: {
-                p256dh: arrayBufferToBase64(p256dh),
-                auth: arrayBufferToBase64(auth),
-              },
-            },
-          }),
-        });
       })
       .catch(error => {
         console.error('[Service Worker] Re-subscription failed:', error);
       })
   );
 });
-
-// Helper function to convert ArrayBuffer to Base64
-function arrayBufferToBase64(buffer: ArrayBuffer): string {
-  const bytes = new Uint8Array(buffer);
-  let binary = '';
-  for (let i = 0; i < bytes.byteLength; i++) {
-    binary += String.fromCharCode(bytes[i]);
-  }
-  return btoa(binary);
-}
 
 console.log('[Service Worker] MeshMonitor service worker with push notifications loaded');
 
