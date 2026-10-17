@@ -255,6 +255,62 @@ class PushNotificationService {
   }
 
   /**
+   * Move a browser's rows from its old push endpoint to its new one (#5863).
+   *
+   * The service worker's `pushsubscriptionchange` handler cannot know which
+   * sources the browser subscribed on, but the server does: it copies each
+   * row's user and source to the new endpoint, then drops the old rows.
+   *
+   * A row owned by a user moves only when that same user asks, so holding an
+   * old endpoint URL is not enough to redirect someone's notifications.
+   * Anonymous rows move on the endpoint alone, the same proof
+   * `/unsubscribe-all` relies on.
+   */
+  public async renewSubscription(
+    oldEndpoint: string,
+    subscription: PushSubscription,
+    requesterUserId: number | undefined,
+    userAgent: string | undefined,
+  ): Promise<{ renewed: number; skipped: number }> {
+    const repo = databaseService.notificationsRepo;
+    if (!repo) {
+      throw new Error('Notifications repository not initialized');
+    }
+    const keys = subscription.keys;
+    if (!keys || !keys.p256dh || !keys.auth) {
+      throw new Error('Invalid subscription: missing keys');
+    }
+
+    const rows = await repo.getSubscriptionsByEndpoint(oldEndpoint);
+    let renewed = 0;
+    let skipped = 0;
+    for (const row of rows) {
+      const owner = row.userId ?? null;
+      if (!row.sourceId || (owner !== null && owner !== (requesterUserId ?? null))) {
+        skipped++;
+        continue;
+      }
+      // Write the new row before removing the old one, so a failure part way
+      // through never leaves the browser with no row at all.
+      await repo.saveSubscription({
+        userId: owner,
+        sourceId: row.sourceId,
+        endpoint: subscription.endpoint,
+        p256dhKey: keys.p256dh,
+        authKey: keys.auth,
+        userAgent: userAgent ?? row.userAgent ?? null,
+      });
+      if (oldEndpoint !== subscription.endpoint) {
+        await repo.removeSubscriptionRow(oldEndpoint, row.sourceId, owner);
+      }
+      renewed++;
+    }
+
+    logger.info(`🔄 Renewed push subscription: ${renewed} row(s) moved, ${skipped} skipped`);
+    return { renewed, skipped };
+  }
+
+  /**
    * Distinct sourceIds that still hold a subscription row for this endpoint.
    */
   public async getSubscriptionSourceIds(endpoint: string): Promise<string[]> {

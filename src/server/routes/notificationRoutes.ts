@@ -202,6 +202,44 @@ pushRouter.post(
   }
 );
 
+/**
+ * Renew a browser's subscription after the push service rotates its endpoint
+ * (#5863). Called by the service worker's `pushsubscriptionchange` handler,
+ * which has the old endpoint but not the sources it was subscribed on; the
+ * server copies those from the old rows. No per-source permission check: the
+ * rows were permission-checked when created, and the service only moves rows
+ * owned by the caller (or anonymous rows).
+ */
+pushRouter.post(
+  '/renew',
+  optionalAuth(),
+  async (req: Request, res: Response) => {
+    try {
+      const { oldEndpoint, subscription } = req.body;
+
+      if (!oldEndpoint || typeof oldEndpoint !== 'string') {
+        return fail(res, 400, 'MISSING_ENDPOINT', 'oldEndpoint is required');
+      }
+      if (!subscription || typeof subscription.endpoint !== 'string' || !subscription.keys) {
+        return fail(res, 400, 'INVALID_SUBSCRIPTION', 'Invalid subscription data');
+      }
+
+      const userId = req.user?.id ?? req.session?.userId;
+      const result = await pushNotificationService.renewSubscription(
+        oldEndpoint,
+        subscription,
+        userId,
+        req.headers['user-agent'],
+      );
+
+      res.json({ success: true, ...result });
+    } catch (error) {
+      logger.error('Error renewing push subscription:', error);
+      return fail(res, 500, 'INTERNAL_ERROR', error instanceof Error && error.message ? error.message : 'Failed to renew subscription');
+    }
+  }
+);
+
 // Test push notification (admin only)
 pushRouter.post('/test', requireAdmin(), async (req: Request, res: Response) => {
   try {

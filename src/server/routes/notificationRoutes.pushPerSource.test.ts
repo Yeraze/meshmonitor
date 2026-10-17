@@ -120,6 +120,65 @@ describe('pushRouter — per-source subscriptions (#5493)', () => {
     expect(res.status).toBe(400);
   });
 
+  describe('POST /renew (#5863)', () => {
+    const NEW = `${ENDPOINT}-renewed`;
+    const newSubscription = { endpoint: NEW, keys: { p256dh: 'new-p256dh', auth: 'new-auth' } };
+
+    afterEach(async () => {
+      await harness.db.notificationsRepo!.removeSubscription(NEW);
+    });
+
+    it('moves every source the old endpoint held to the new endpoint', async () => {
+      await seedRow(harness.sourceA);
+      await seedRow(harness.sourceB);
+      const agent = await harness.loginAs(harness.limited);
+
+      const res = await agent.post('/push/renew').send({ oldEndpoint: ENDPOINT, subscription: newSubscription });
+
+      expect(res.status).toBe(200);
+      expect(res.body).toEqual({ success: true, renewed: 2, skipped: 0 });
+      expect(await sourcesFor()).toEqual([]);
+      expect((await sourcesFor(NEW)).sort()).toEqual([harness.sourceA, harness.sourceB].sort());
+
+      const rows = await harness.db.notificationsRepo!.getSubscriptionsByEndpoint(NEW);
+      expect(rows.every(r => r.userId === harness.limited.id && r.p256dhKey === 'new-p256dh' && r.authKey === 'new-auth')).toBe(true);
+    });
+
+    it("will not move another user's rows to the caller's endpoint", async () => {
+      await seedRow(harness.sourceA);
+      const agent = await harness.loginAs(harness.admin);
+
+      const res = await agent.post('/push/renew').send({ oldEndpoint: ENDPOINT, subscription: newSubscription });
+
+      expect(res.status).toBe(200);
+      expect(res.body).toEqual({ success: true, renewed: 0, skipped: 1 });
+      expect(await sourcesFor()).toEqual([harness.sourceA]);
+      expect(await sourcesFor(NEW)).toEqual([]);
+    });
+
+    it('answers 200 with nothing renewed for an endpoint it has never seen', async () => {
+      const agent = await harness.loginAs(harness.limited);
+
+      const res = await agent.post('/push/renew').send({ oldEndpoint: `${ENDPOINT}-unknown`, subscription: newSubscription });
+
+      expect(res.status).toBe(200);
+      expect(res.body).toEqual({ success: true, renewed: 0, skipped: 0 });
+      expect(await sourcesFor(NEW)).toEqual([]);
+    });
+
+    it('rejects a missing old endpoint or a malformed subscription', async () => {
+      const agent = await harness.loginAs(harness.limited);
+
+      const noOld = await agent.post('/push/renew').send({ subscription: newSubscription });
+      expect(noOld.status).toBe(400);
+      expect(noOld.body.code).toBe('MISSING_ENDPOINT');
+
+      const noKeys = await agent.post('/push/renew').send({ oldEndpoint: ENDPOINT, subscription: { endpoint: NEW } });
+      expect(noKeys.status).toBe(400);
+      expect(noKeys.body.code).toBe('INVALID_SUBSCRIPTION');
+    });
+  });
+
   it('denies status and unsubscribe on a source the user cannot read', async () => {
     await harness.revokeAll(harness.limited.id);
     await harness.grant(harness.limited.id, 'messages', 'read', harness.sourceA);

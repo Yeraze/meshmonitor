@@ -200,6 +200,30 @@ export class NotificationsRepository extends BaseRepository {
   }
 
   /**
+   * Remove the one row for this endpoint, source and owner (null = anonymous).
+   */
+  async removeSubscriptionRow(endpoint: string, sourceId: string, userId: number | null): Promise<void> {
+    const { pushSubscriptions } = this.tables;
+    await this.db.delete(pushSubscriptions).where(and(
+      eq(pushSubscriptions.endpoint, endpoint),
+      eq(pushSubscriptions.sourceId, sourceId),
+      userId === null ? isNull(pushSubscriptions.userId) : eq(pushSubscriptions.userId, userId),
+    ));
+  }
+
+  /**
+   * Every subscription row (one per user + source) for this endpoint.
+   */
+  async getSubscriptionsByEndpoint(endpoint: string): Promise<DbPushSubscription[]> {
+    const { pushSubscriptions } = this.tables;
+    const rows = await this.db
+      .select()
+      .from(pushSubscriptions)
+      .where(eq(pushSubscriptions.endpoint, endpoint));
+    return (rows as Record<string, unknown>[]).map(row => this.mapSubscriptionRow(row));
+  }
+
+  /**
    * Distinct sourceIds that hold a push subscription row for this endpoint.
    */
   async getSubscriptionSourceIds(endpoint: string): Promise<string[]> {

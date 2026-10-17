@@ -380,6 +380,7 @@ export interface DbDeadDropMessage {
 export interface DbPushSubscription {
   id?: number;
   userId?: number | null;
+  sourceId?: string | null;
   endpoint: string;
   p256dhKey: string;
   authKey: string;
