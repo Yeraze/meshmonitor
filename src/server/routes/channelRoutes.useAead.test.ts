@@ -1,9 +1,10 @@
 /**
- * Channel edits keep ChannelSettings.use_aead (#5248 Phase 1).
+ * Channel edits and ChannelSettings.use_aead (#5248).
  *
- * set_channel replaces the whole ChannelSettings on the device, and the UI
- * never sends the flag (read-only in Phase 1). A Channels-tab save must
- * therefore send the stored flag back, or it silently turns AES-CCM off.
+ * Phase 1: set_channel replaces the whole ChannelSettings on the device, so a
+ * save that omits the flag must send the stored one back, or it silently turns
+ * AES-CCM off. Phase 2b: the body may set it; turning it on needs firmware
+ * 2.8.1+ and a key.
  *
  * Real-middleware harness against real SQLite. The device manager is the only
  * mock, and its setChannelConfig runs the REAL DeviceAdminService, so the
@@ -11,12 +12,17 @@
  */
 import { describe, it, expect, beforeAll, beforeEach, afterEach, vi } from 'vitest';
 
-const holder: { setChannelConfig: (i: number, c: any) => Promise<void> } = {
+const holder: { setChannelConfig: (i: number, c: any) => Promise<void>; aead: boolean } = {
   setChannelConfig: async () => {},
+  aead: true,
 };
+const fakeManager = () => ({
+  setChannelConfig: (i: number, c: any) => holder.setChannelConfig(i, c),
+  supportsAeadChannels: () => holder.aead,
+});
 vi.mock('../utils/resolveSourceManager.js', () => ({
-  resolveSourceManager: () => ({ setChannelConfig: (i: number, c: any) => holder.setChannelConfig(i, c) }),
-  resolveOwnMeshtasticManager: () => ({ setChannelConfig: (i: number, c: any) => holder.setChannelConfig(i, c) }),
+  resolveSourceManager: () => fakeManager(),
+  resolveOwnMeshtasticManager: () => fakeManager(),
 }));
 
 import channelRoutes from './channelRoutes.js';
@@ -43,6 +49,7 @@ describe('channel edits preserve use_aead (#5248)', () => {
   beforeEach(async () => {
     harness = await createRouteTestApp({ mount: (app) => app.use('/', channelRoutes) });
     sent = [];
+    holder.aead = true;
     const fakeMgr = {
       sourceId: harness.sourceA,
       isTransportReady: () => true,
@@ -89,10 +96,39 @@ describe('channel edits preserve use_aead (#5248)', () => {
     expect(decodeSettings(sent[1]).uplinkEnabled).toBe(true);
   });
 
-  it('the body cannot turn it off in Phase 1 (read-only)', async () => {
+  it('the body can turn it off (Phase 2b), on any firmware', async () => {
+    holder.aead = false;
     const agent = await harness.loginAs(harness.admin);
-    await agent.put('/2').send({ sourceId: harness.sourceA, name: 'Secure', psk: KEY, role: 2, useAead: false });
+    const res = await agent.put('/2').send({ sourceId: harness.sourceA, name: 'Secure', psk: KEY, role: 2, useAead: false });
+    expect(res.status).toBe(200);
+    expect(decodeSettings(sent[0]).useAead).toBe(false);
+    expect((await harness.db.channels.getChannelById(2, harness.sourceA))!.useAead).toBe(false);
+  });
+
+  it('the body can turn it on when the node runs 2.8.1+ and the channel has a key', async () => {
+    const agent = await harness.loginAs(harness.admin);
+    const res = await agent.put('/2').send({ sourceId: harness.sourceB, name: 'Secure', psk: KEY, role: 2, useAead: true });
+    expect(res.status).toBe(200);
     expect(decodeSettings(sent[0]).useAead).toBe(true);
+    expect((await harness.db.channels.getChannelById(2, harness.sourceB))!.useAead).toBe(true);
+  });
+
+  it('refuses to turn it on before firmware 2.8.1, and sends nothing', async () => {
+    holder.aead = false;
+    const agent = await harness.loginAs(harness.admin);
+    const res = await agent.put('/2').send({ sourceId: harness.sourceB, name: 'Secure', psk: KEY, role: 2, useAead: true });
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe('AEAD_UNSUPPORTED');
+    expect(sent).toHaveLength(0);
+    expect((await harness.db.channels.getChannelById(2, harness.sourceB))!.useAead).toBe(false);
+  });
+
+  it('refuses to turn it on for a channel with no key', async () => {
+    const agent = await harness.loginAs(harness.admin);
+    const res = await agent.put('/2').send({ sourceId: harness.sourceB, name: 'Secure', psk: '', role: 2, useAead: true });
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe('AEAD_NEEDS_KEY');
+    expect(sent).toHaveLength(0);
   });
 
   it('single-channel export includes useAead, and importing it into another slot sends it', async () => {

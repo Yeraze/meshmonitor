@@ -14,6 +14,8 @@ type SupportedModules = Partial<Record<ExcludedModuleKey, boolean>> & {
   /** Firmware carries the TAK module config (2.8.0+). Absent on an older server. */
   takConfig?: boolean;
   rangeTest?: boolean;
+  /** AES-CCM channels, firmware 2.8.1+ (#5248). Absent on an older server. */
+  aeadChannels?: boolean;
 };
 import { useQueryClient } from '@tanstack/react-query';
 import { UiIcon } from './icons';
@@ -2992,6 +2994,7 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ baseUrl = '', nodes
           <ChannelsConfigSection
             channels={channels}
             onChannelsUpdated={onChannelsUpdated}
+            aeadSupported={supportedModules?.aeadChannels === true}
           />
         </div>
 

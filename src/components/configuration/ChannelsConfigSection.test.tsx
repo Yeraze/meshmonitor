@@ -356,3 +356,68 @@ describe('ChannelsConfigSection drag ids (#5324)', () => {
     }
   });
 });
+
+describe('ChannelsConfigSection AEAD (#5248 Phase 2b)', () => {
+  const renderAead = (aeadSupported: boolean, list: Channel[] = channels) =>
+    render(
+      <MemoryRouter>
+        <ChannelsConfigSection channels={list} aeadSupported={aeadSupported} />
+      </MemoryRouter>,
+    );
+  const aeadBox = () => screen.getByTestId('channel-use-aead') as HTMLInputElement;
+
+  it('asks before turning AEAD on, then saves it', async () => {
+    const update = vi.spyOn(apiService, 'updateChannel').mockResolvedValue({} as never);
+    renderAead(true);
+    editCard('Four');
+
+    fireEvent.click(aeadBox());
+    expect(aeadBox().checked).toBe(false);
+    const dialog = screen.getByRole('dialog');
+    expect(dialog.textContent).toContain('channels_config.aead_warning_title');
+    fireEvent.click(within(dialog).getByRole('button', { name: 'channels_config.aead_confirm' }));
+    expect(aeadBox().checked).toBe(true);
+
+    fireEvent.click(saveButton());
+    await waitFor(() => expect(update).toHaveBeenCalledTimes(1));
+    expect(update.mock.calls[0][1]).toMatchObject({ useAead: true });
+  });
+
+  it('cancelling the dialog leaves AEAD off and the card unchanged', () => {
+    renderAead(true);
+    editCard('Four');
+    fireEvent.click(aeadBox());
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'common.cancel' }));
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(aeadBox().checked).toBe(false);
+    expect(saveButton().disabled).toBe(true);
+  });
+
+  it('cannot be turned on before firmware 2.8.1', () => {
+    renderAead(false);
+    editCard('Four');
+    expect(aeadBox().disabled).toBe(true);
+    expect(screen.getByText('channels_config.aead_needs_firmware')).toBeTruthy();
+  });
+
+  it('can always be turned off, without a dialog', async () => {
+    const update = vi.spyOn(apiService, 'updateChannel').mockResolvedValue({} as never);
+    const list = channels.map(c => (c.id === 4 ? { ...c, useAead: true } : c)) as Channel[];
+    renderAead(false, list);
+    editCard('Four');
+    expect(aeadBox().disabled).toBe(false);
+    fireEvent.click(aeadBox());
+    expect(screen.queryByRole('dialog')).toBeNull();
+    fireEvent.click(saveButton());
+    await waitFor(() => expect(update).toHaveBeenCalledTimes(1));
+    expect(update.mock.calls[0][1]).toMatchObject({ useAead: false });
+  });
+
+  it('cannot be turned on without a key', () => {
+    renderAead(true);
+    editCard('Four');
+    fireEvent.change(pskInput(), { target: { value: '' } });
+    expect(aeadBox().disabled).toBe(true);
+    expect(screen.getByText('channels_config.aead_needs_key')).toBeTruthy();
+  });
+});

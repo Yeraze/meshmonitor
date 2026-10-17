@@ -30,6 +30,8 @@ type SupportedModules = Record<ExcludedModuleKey, boolean> & {
   takConfig: boolean;
   /** Legacy alias of `rangetest`, read by the Config tab since #5041. */
   rangeTest: boolean;
+  /** AES-CCM channels (`ChannelSettings.use_aead`), firmware 2.8.1+ (#5248). */
+  aeadChannels: boolean;
 };
 import { shouldDiscardPosition } from '../utils/nullIsland.js';
 import { getDiscardInvalidPositions } from '../utils/positionIngestConfig.js';
@@ -6223,6 +6225,8 @@ class MeshtasticManager implements ISourceManager {
         trafficManagement: this.supportsTrafficManagement(),
         meshBeacon: this.supportsMeshBeacon(),
         takConfig: this.supportsTakConfig(),
+        // AES-CCM channels (ChannelSettings.use_aead), firmware 2.8.1+ (#5248).
+        aeadChannels: this.supportsAeadChannels(),
         // Range Test has two reasons to be unavailable, and they get separate
         // keys because the UI explains them differently: `rangetest` (from the
         // bitmask spread above) means this build left the module out, while
@@ -14989,6 +14993,17 @@ class MeshtasticManager implements ISourceManager {
    */
   supportsMeshBeacon(): boolean {
     return this.firmwareVersionAtLeast(2, 8, 0);
+  }
+
+  /**
+   * Check if the local device firmware supports AEAD (AES-CCM) channels (#5248).
+   *
+   * `ChannelSettings.use_aead` arrived with meshtastic/firmware#9749, first
+   * released in 2.8.1 (`v2.8.1.8e6a88d`). Older firmware ignores the field, so
+   * turning it on would look saved while the channel stays plain.
+   */
+  supportsAeadChannels(): boolean {
+    return this.firmwareVersionAtLeast(2, 8, 1);
   }
 
   /**

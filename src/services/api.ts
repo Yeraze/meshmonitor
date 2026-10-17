@@ -750,6 +750,8 @@ class ApiService {
     uplinkEnabled?: boolean;
     downlinkEnabled?: boolean;
     positionPrecision?: number;
+    /** AES-CCM channel (#5248). Omit to keep the device's current setting. */
+    useAead?: boolean;
   }, sourceId?: string | null): Promise<Channel> {
     await this.ensureBaseUrl();
     const response = await fetch(`${this.baseUrl}/api/channels/${channelId}`, {
