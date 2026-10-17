@@ -45,12 +45,14 @@ export async function renewPushSubscription(
   deps: PushRenewalDeps,
 ): Promise<PushRenewalResult> {
   const oldEndpoint = event.oldSubscription?.endpoint;
-  const subscription = event.newSubscription
-    ?? await deps.pushManager.subscribe(event.oldSubscription?.options || { userVisibleOnly: true });
-
+  // Check first: with nothing to renew, a fresh subscription would hold no
+  // server rows. The Notifications tab subscribes again when the user asks.
   if (!oldEndpoint) {
     return { status: 'no-old-endpoint' };
   }
+
+  const subscription = event.newSubscription
+    ?? await deps.pushManager.subscribe(event.oldSubscription?.options || { userVisibleOnly: true });
 
   const p256dh = subscription.getKey('p256dh');
   const auth = subscription.getKey('auth');

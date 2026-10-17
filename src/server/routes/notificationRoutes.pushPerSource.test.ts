@@ -156,6 +156,16 @@ describe('pushRouter — per-source subscriptions (#5493)', () => {
       expect(await sourcesFor(NEW)).toEqual([]);
     });
 
+    it('answers 200 with nothing renewed for an endpoint it has never seen', async () => {
+      const agent = await harness.loginAs(harness.limited);
+
+      const res = await agent.post('/push/renew').send({ oldEndpoint: `${ENDPOINT}-unknown`, subscription: newSubscription });
+
+      expect(res.status).toBe(200);
+      expect(res.body).toEqual({ success: true, renewed: 0, skipped: 0 });
+      expect(await sourcesFor(NEW)).toEqual([]);
+    });
+
     it('rejects a missing old endpoint or a malformed subscription', async () => {
       const agent = await harness.loginAs(harness.limited);
 

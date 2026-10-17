@@ -86,11 +86,12 @@ describe('renewPushSubscription (#5863)', () => {
   });
 
   it('makes no server call without an old endpoint to look up', async () => {
-    const { deps, fetchMock } = makeDeps();
+    const { deps, fetchMock, subscribe } = makeDeps();
 
     const result = await renewPushSubscription({ oldSubscription: null }, deps);
 
     expect(result).toEqual({ status: 'no-old-endpoint' });
     expect(fetchMock).not.toHaveBeenCalled();
+    expect(subscribe).not.toHaveBeenCalled();
   });
 });
