@@ -91,6 +91,11 @@ import {
   MESHCORE_LOGIN_RETRY_PAUSE_MS,
 } from './constants/meshcoreLogin.js';
 import { isRfBridgeCommand, isTransmittingLocalCliVerb, MESHCORE_RECEIVE_ONLY_MESSAGE } from './constants/meshcoreTx.js';
+import {
+  companionHasNativeCli,
+  COMPANION_NATIVE_CLI_MAX_BYTES,
+  COMPANION_SYNTHETIC_CLI_VERBS,
+} from '../utils/meshcoreCompanionCli.js';
 import { meshcorePathDiscoveryTimeoutMs } from './constants/meshcorePathDiscovery.js';
 import { MESHCORE_TRACE_BRIDGE_TIMEOUT_MS } from './constants/meshcoreFirmwareTimeout.js';
 import {
@@ -9695,6 +9700,13 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
 
     this.requireTransmit();
 
+    // A Companion target (advType 1) takes TXT_TYPE_CLI_COMMAND, which this
+    // radio can only send on fw 1.18.0+ (#5867). Repeaters keep CliData.
+    const toCompanion = this.contacts.get(normalizedKey)?.advType === 1;
+    if (toCompanion && !(await this.companionHasNativeCli())) {
+      throw new Error('Remote CLI to a companion needs firmware 1.18.0 or later on this radio');
+    }
+
     const prefixKey = normalizedKey.substring(0, 12);
     const timeoutMs = opts.timeoutMs ?? 15_000;
 
@@ -9703,7 +9715,7 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
     // rejections — each command is independent.
     const prior = this.cliCommandLocks.get(prefixKey) ?? Promise.resolve();
     const runNext = prior.catch(() => undefined).then(() =>
-      this.runCliCommandLocked(normalizedKey, prefixKey, trimmed, timeoutMs),
+      this.runCliCommandLocked(normalizedKey, prefixKey, trimmed, timeoutMs, toCompanion),
     );
     this.cliCommandLocks.set(prefixKey, runNext);
     try {
@@ -9723,6 +9735,7 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
     prefixKey: string,
     command: string,
     timeoutMs: number,
+    toCompanion = false,
   ): Promise<{ reply: string; elapsedMs: number }> {
     this.requireTransmit();
     return new Promise<{ reply: string; elapsedMs: number }>((resolve, reject) => {
@@ -9739,7 +9752,10 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
       const sentAt = Date.now();
       const timer = setTimeout(() => {
         this.pendingCliReplies.delete(prefixKey);
-        reject(new Error(`CLI command timed out after ${timeoutMs}ms`));
+        // A companion that has not allowed us remote CLI sends nothing back.
+        reject(new Error(toCompanion
+          ? `CLI command timed out after ${timeoutMs}ms. The contact may not allow remote CLI from this radio, or runs firmware before 1.18.0.`
+          : `CLI command timed out after ${timeoutMs}ms`));
       }, timeoutMs);
 
       this.pendingCliReplies.set(prefixKey, {
@@ -9761,7 +9777,11 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
       // Keeping it non-awaited means neither lock is held while waiting on the
       // other. A scope-assert failure still surfaces — it rejects via the
       // `.catch` below, which clears the timer and rejects the outer promise.
-      void this.sendWithDefaultScope(() => this.sendBridgeCommand('send_cli', { public_key: fullKey, text: command }, timeoutMs))
+      void this.sendWithDefaultScope(() => this.sendBridgeCommand('send_cli', {
+        public_key: fullKey,
+        text: command,
+        ...(toCompanion ? { txt_type: 'command' } : {}),
+      }, timeoutMs))
         .then((resp) => {
           if (!resp.success) {
             clearTimeout(timer);
@@ -9790,8 +9810,10 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
    *  - Repeater / Room Server: forwards to `sendRepeaterCommand`, which
    *    drives the device's native serial text CLI. Whatever the device
    *    prints comes back as `reply`.
-   *  - Companion: there is no native text CLI on the companion-protocol
-   *    wire, so we run a small synthetic-CLI interpreter that maps a
+   *  - Companion on fw 1.18.0+ (protocol v14): the firmware's own text CLI
+   *    via CMD_RUN_CLI_COMMAND (#5866), except the verbs it lacks (stats,
+   *    clock, advert, help), which stay on the synthetic interpreter.
+   *  - Older Companion: a small synthetic-CLI interpreter that maps a
    *    handful of read-only verbs (ver, stats, clock, advert) to existing
    *    bridge commands and formats the structured response as text.
    *
@@ -9832,11 +9854,57 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
     }
 
     if (this.deviceType === MeshCoreDeviceType.COMPANION) {
-      const reply = await this.runSyntheticLocalCli(trimmed);
+      const verb = trimmed.split(/\s+/)[0]?.toLowerCase() ?? '';
+      const native = await this.companionHasNativeCli();
+      if (native && !COMPANION_SYNTHETIC_CLI_VERBS.has(verb)) {
+        const reply = await this.runNativeCompanionCli(trimmed, verb, timeoutMs);
+        return { reply, elapsedMs: Date.now() - sentAt };
+      }
+      const reply = await this.runSyntheticLocalCli(trimmed, native);
       return { reply, elapsedMs: Date.now() - sentAt };
     }
 
     throw new Error('Local CLI not available for this device type');
+  }
+
+  /**
+   * True when the connected Companion speaks companion protocol v14+
+   * (fw 1.18.0), which added CMD_RUN_CLI_COMMAND (#5866). The protocol byte
+   * is DeviceInfo's `fw ver`; v1.16/v1.17 report 13. Reads it once if the
+   * telemetry poller has not stamped it yet.
+   */
+  private async companionHasNativeCli(): Promise<boolean> {
+    if (!this.localNode) return false;
+    if (this.localNode.firmwareVer === undefined) {
+      const info = await this.deviceQuery();
+      if (info) this.applyDeviceInfo(info);
+    }
+    return companionHasNativeCli(this.localNode.firmwareVer);
+  }
+
+  /**
+   * Run one line through the Companion's own text CLI (fw 1.18.0+, #5866).
+   * `reboot`, `poweroff` and `shutdown` never answer (the board restarts or
+   * powers off inside the handler), so a timeout on those reads as sent.
+   */
+  private async runNativeCompanionCli(command: string, verb: string, timeoutMs: number): Promise<string> {
+    if (new TextEncoder().encode(command).length > COMPANION_NATIVE_CLI_MAX_BYTES) {
+      throw new Error(`Command too long for the companion CLI (max ${COMPANION_NATIVE_CLI_MAX_BYTES} bytes)`);
+    }
+    const noReply = verb === 'reboot' || verb === 'poweroff' || verb === 'shutdown';
+    const waitMs = noReply ? Math.min(timeoutMs, 3_000) : timeoutMs;
+    try {
+      const response = await this.sendBridgeCommand('run_cli', { command, timeout_ms: waitMs }, waitMs + 2_000);
+      if (!response.success) throw new Error(response.error || 'run_cli failed');
+      const reply = String(response.data?.reply ?? '').trim();
+      // The firmware marks a value with a leading "> " ("> 915.0"); drop it.
+      return reply.replace(/^>\s?/, '') || 'OK';
+    } catch (err) {
+      if (noReply && err instanceof Error && /timed out/i.test(err.message)) {
+        return verb === 'reboot' ? 'Reboot sent; the device is restarting' : 'Power-off sent; the device is shutting down';
+      }
+      throw err;
+    }
   }
 
   /**
@@ -9849,7 +9917,7 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
    * Unrecognized commands return a usage hint instead of throwing —
    * matches the Repeater path's behavior for the same input.
    */
-  private async runSyntheticLocalCli(command: string): Promise<string> {
+  private async runSyntheticLocalCli(command: string, nativeCli = false): Promise<string> {
     const parts = command.split(/\s+/);
     const verb = parts[0]?.toLowerCase() ?? '';
     const arg = parts[1]?.toLowerCase() ?? '';
@@ -9897,7 +9965,7 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
     }
 
     if (verb === 'help' || verb === '?') {
-      return [
+      const lines = [
         'Available local commands (Companion):',
         '  ver           — firmware version + model',
         '  stats [core|radio|packets] — local device stats',
@@ -9905,7 +9973,18 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
         '  advert.zerohop — advert to nodes in direct radio range',
         '  advert        — flood advert across the whole mesh (costly)',
         '  help          — this list',
-      ].join('\n');
+      ];
+      if (nativeCli) {
+        lines.push(
+          '',
+          'Firmware CLI (1.18.0+): any other line goes to the device, e.g.',
+          '  get radio | get tx | get af | get name | get tz.offset',
+          '  set tx <dbm> | set name <name> | set tz.offset <h>',
+          '  get wifi.status | get wifi.ip   (WiFi builds)',
+          '  board | reboot | poweroff',
+        );
+      }
+      return lines.join('\n');
     }
 
     return `Unknown command: ${command}\nType "help" for the list of available commands.`;
@@ -10651,6 +10730,35 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
    * re-asserts local favourites onto the device and mirrors device-side
    * favourites back into the DB.
    */
+  /**
+   * Allow or stop a contact running CLI lines on this radio (ContactInfo.flags
+   * 0x10, fw 1.18.0+, #5867). When allowed, the firmware runs that peer's
+   * commands, including `reboot` and `set radio`, and answers over the air;
+   * MeshMonitor sees none of it. Local serial write, so receive-only mode
+   * does not block it. Throws rather than failing soft: a permission the user
+   * thinks is set must be set.
+   */
+  async setContactRemoteCli(publicKey: string, allowed: boolean): Promise<{ flags: number }> {
+    if (this.deviceType !== MeshCoreDeviceType.COMPANION) {
+      throw new Error('Remote CLI permission needs a Companion source');
+    }
+    if (!this.connected) throw new Error('MeshCore source not connected');
+    const key = publicKey.toLowerCase();
+    if (!(await this.companionHasNativeCli())) {
+      throw new Error('Remote CLI permission needs firmware 1.18.0 or later on this radio');
+    }
+    const response = await this.sendBridgeCommand('set_contact_remote_cli', { public_key: key, allowed });
+    if (!response.success) throw new Error(response.error || 'set_contact_remote_cli failed');
+    const flags = Number(response.data?.flags ?? 0);
+    const contact = this.contacts.get(key);
+    if (contact) {
+      contact.flags = flags;
+      dataEventEmitter.emitMeshCoreContactUpdated(contact, this.sourceId);
+    }
+    logger.info(`[MeshCore:${this.sourceId}] remote CLI ${allowed ? 'allowed' : 'revoked'} for ${key.substring(0, 16)}…`);
+    return { flags };
+  }
+
   async setNodeFavorite(publicKey: string, isFavorite: boolean): Promise<void> {
     await databaseService.meshcore.setNodeFavorite(this.sourceId, publicKey, isFavorite);
     await this.pushFavoriteToDevice(publicKey, isFavorite);

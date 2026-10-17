@@ -386,7 +386,9 @@ possibly transient.
 
 ## The danger guard
 
-Pattern: `/\b(reboot|erase|clkreboot|factory)\b(?!\.)/i`.
+Pattern: `/\b(reboot|erase|clkreboot|factory|poweroff|shutdown)\b(?!\.)/i`.
+`poweroff` / `shutdown` joined with the Companion native CLI (#5866): a
+powered-off board needs someone at the device to come back.
 
 The `(?!\.)` after the word boundary exists because these firmwares expose
 config keys as dotted paths that legitimately contain the danger words as
@@ -439,10 +441,49 @@ different.
 | Local firmware | What you get |
 |---|---|
 | Repeater / Room Server (2/3) | Forwarded to `sendRepeaterCommand`. The device has a real serial text CLI. Whatever the device prints comes back. |
-| Companion (1) | `runSyntheticLocalCli` — a small interpreter mapping `ver` / `stats [core\|radio\|packets]` / `clock` / `advert` / `help` to existing companion-protocol bridge commands. Unknown verbs return a usage hint, NOT an error. |
+| Companion (1), protocol v14+ (fw 1.18.0) | Native: `run_cli` bridge command sends CMD_RUN_CLI_COMMAND (66) and reads RESP_CODE_CLI_REPLY (29). The verbs in `COMPANION_SYNTHETIC_CLI_VERBS` (`stats`, `clock`, `advert`, `advert.zerohop`, `help`, ...) still go to the shim, because the firmware CLI has none of them. |
+| Companion (1), protocol < 14 | `runSyntheticLocalCli` — a small interpreter mapping `ver` / `stats [core\|radio\|packets]` / `clock` / `advert` / `help` to existing companion-protocol bridge commands. Unknown verbs return a usage hint, NOT an error. |
 | Unknown (0) | 400 — "not available for this device type". The catalog also hides the quick-action row so the user can't blindly click commands that won't work. |
 
-**The Companion synthetic CLI is intentionally small.** It covers
+**Companion native CLI (#5866).** The gate is DeviceInfo's `fw ver` byte, which
+is the companion *protocol* version (1.16/1.17 report 13, 1.18 reports 14), read
+once through `deviceQuery()` if the telemetry poller has not stamped it. The
+firmware verbs come from `MyMesh::handleCommand`, `CommonRadioPrefs` and the
+board's own hook: config `get`/`set` (`radio`, `freq`, `tx`, `af`,
+`dutycycle`, `cad`, `txdelay`, `name`, `pin`, `tz.offset`, `wifi.*`), `ver`,
+`board`, `reboot`, `poweroff`/`shutdown`. None of them transmit, so `run_cli`
+is serial-only for receive-only mode. A value reply starts with `> `, which the
+manager strips. `reboot`/`poweroff` never answer, so a timeout on those reads as
+sent. The reply frame has no tag, so the exchange holds the radio-op lock.
+
+Do not confuse this with the over-the-air CLI. `CMD_SEND_TXT_MSG` with
+`TXT_TYPE_CLI_COMMAND (3)` sends a command to *another* companion, which runs
+it only when its contact entry for us has flag `0x10` (remote CLI allowed) and
+answers with a `TXT_TYPE_CLI_DATA` message.
+
+### Companion-to-Companion remote CLI (#5867)
+
+- **Sending.** `sendCliCommand` to a contact with `advType === 1` passes
+  `txt_type: 'command'`, and `send_cli` sends type 3. Repeaters keep
+  CliData (1). Our radio must be protocol 14+, or the firmware answers
+  ERR_CODE_UNSUPPORTED_CMD. There is no login: a target that has not
+  allowed us stays silent, so the command times out (the timeout message
+  says why). The console is `MeshCoreCompanionRemoteConsole`, under the same
+  `remote_admin:write`, danger guard, limiter and receive-only gate as
+  `/admin/cli`. Each command is one DM out and one reply back.
+- **Granting.** `POST /nodes/:publicKey/remote-cli` (`configuration:write`)
+  runs `set_contact_remote_cli`: read-modify-write of ContactInfo.flags bit
+  `0x10`, then a read-back. Local serial only. Once set, the firmware runs
+  that peer's commands and replies over the air on its own; MeshMonitor
+  never sees them and cannot rate-limit them. The panel says so next to the
+  toggle. The flags byte is not stored: it comes from the device contact
+  table on every refresh (`MeshCoreContact.flags`).
+- **Inbound type 3 is dropped.** A peer we have not allowed reaches us as a
+  ContactMsgRecv with `txtType 3`. The backend logs and drops it. Before
+  #5867 it fell through to `contact_message`, so a stranger's `reboot`
+  became a DM that auto-ack and auto-responders could answer.
+
+**The pre-1.18 synthetic CLI is intentionally small.** It covers
 read-only state inspection. Mutating verbs (`set name`, `set radio`,
 etc.) are deliberately omitted because the existing form UI in
 `MeshCoreConfigurationView` already handles them with proper validation.

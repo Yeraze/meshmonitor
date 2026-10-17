@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { companionHasNativeCli } from '../../utils/meshcoreCompanionCli';
 import { MeshCoreIgnoreBlockControls } from './MeshCoreIgnoreBlockControls';
 import type { MeshCoreFilterMode } from '../../hooks/useMeshCoreFilters';
 import { useTranslation } from 'react-i18next';
@@ -109,6 +110,7 @@ export const MeshCoreDirectMessagesView: React.FC<MeshCoreDirectMessagesViewProp
   const canSend = hasPermission('messages', 'write');
   const canWriteNodes = hasPermission('nodes', 'write');
   const canRemoteAdmin = hasPermission('remote_admin', 'write');
+  const canWriteConfig = hasPermission('configuration', 'write');
   const [selected, setSelected] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [sortField, setSortField] = useState<DmSortField>('lastMessage');
@@ -139,6 +141,8 @@ export const MeshCoreDirectMessagesView: React.FC<MeshCoreDirectMessagesViewProp
   // CMD_RESET_PATH / CMD_SHARE_CONTACT / CMD_ADD_UPDATE_CONTACT are all
   // companion-only (firmware deviceType=1).
   const isCompanion = (status?.deviceType ?? 0) === 1;
+  // fw 1.18.0+ can grant and send remote CLI to other companions (#5867).
+  const localNativeCli = isCompanion && companionHasNativeCli(status?.localNode?.firmwareVer);
 
   // Lazy-read the advanced path-edit toggle from /api/settings. Off by
   // default; flipping it on/off in the Settings tab takes effect on the
@@ -640,6 +644,9 @@ export const MeshCoreDirectMessagesView: React.FC<MeshCoreDirectMessagesViewProp
                 }}
                 receiveOnly={receiveOnly}
                 firstHeard={firstHeardByKey.get(selected)}
+                localNativeCli={localNativeCli}
+                onSetRemoteCli={actions.setContactRemoteCli}
+                canWriteConfig={canWriteConfig && connected}
               />
               {onSetIgnoredNode && onRemoveIgnoredNode && isRealNodeKey(selected) && (
                 <MeshCoreIgnoreBlockControls

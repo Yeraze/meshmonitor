@@ -21,6 +21,8 @@ describe('CliConsoleBody — DANGER_COMMAND_PATTERN', () => {
     ['clkreboot'],
     ['factory reset'],
     ['set factory mode'],
+    ['poweroff'],
+    ['shutdown'],
   ])('flags danger command %s', (cmd) => {
     expect(DANGER_COMMAND_PATTERN.test(cmd)).toBe(true);
   });

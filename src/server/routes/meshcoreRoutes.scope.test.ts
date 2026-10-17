@@ -542,6 +542,8 @@ const CLASSIFIED: Record<string, Record<string, Kind>> = {
     'PATCH /nodes/:publicKey/time-sync-config': 'write',
     'POST /nodes/:publicKey/time-sync': 'write',
     'POST /nodes/:publicKey/favorite': 'write',
+    // #5867: configuration:write; covered by meshcoreRemoteCliRoutes.test.ts.
+    'POST /nodes/:publicKey/remote-cli': 'write',
     'GET /nodes/:publicKey/position-override': 'read',
     'POST /nodes/:publicKey/position-override': 'write',
     'DELETE /nodes/:publicKey/position-override': 'write',

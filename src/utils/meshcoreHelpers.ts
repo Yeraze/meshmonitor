@@ -53,6 +53,9 @@ export interface MeshCoreContact {
    * query, or message it until it is added. `undefined` = unknown.
    */
   onDevice?: boolean;
+  /** ContactInfo.flags from the radio's contact table: 0x01 favourite,
+   *  0x02-0x08 telemetry permissions, 0x10 remote CLI (fw 1.18.0, #5867). */
+  flags?: number;
   /** #5508: server epoch ms of the last PATH_DISCOVERY_RESPONSE for this
    *  contact (in-memory on the server; may be absent after a device re-read). */
   pathDiscoveredAt?: number;
