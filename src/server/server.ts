@@ -819,6 +819,7 @@ import configRoutes from './routes/configRoutes.js';
 import userPreferencesRoutes from './routes/userPreferencesRoutes.js';
 import adminRoutes from './routes/adminRoutes.js';
 import nodesRoutes from './routes/nodesRoutes.js';
+import nodeNameHistoryRoutes from './routes/nodeNameHistoryRoutes.js';
 import translationRoutes from './routes/translationRoutes.js';
 
 // CSRF token endpoint (must be before CSRF protection middleware)
@@ -1059,6 +1060,8 @@ apiRouter.use('/', pollRoutes);
 // mount-placement rules (none of nodesRoutes' paths overlap an existing
 // '/'-mounted module's paths).
 apiRouter.use('/', nodesRoutes);
+// #5862: GET /nodes/:nodeId/name-history
+apiRouter.use('/', nodeNameHistoryRoutes);
 
 // Wire up side-effect callbacks for settingsRoutes
 setSettingsCallbacks({

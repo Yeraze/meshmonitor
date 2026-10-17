@@ -72,6 +72,7 @@ import {
   PkiExchangeStateRepository,
   MapMarkersRepository,
   MeshCoreHopSnrRepository,
+  NodeNameHistoryRepository,
   MeshCoreAdminSessionsRepository,
   PasskeysRepository,
   CoverageReceptionsRepository,
@@ -639,6 +640,7 @@ class DatabaseService {
   public pkiExchangeStateRepo: PkiExchangeStateRepository | null = null;
   public mapMarkersRepo: MapMarkersRepository | null = null;
   public meshcoreHopSnrRepo: MeshCoreHopSnrRepository | null = null;
+  public nodeNameHistoryRepo: NodeNameHistoryRepository | null = null;
   public meshcoreAdminSessionsRepo: MeshCoreAdminSessionsRepository | null = null;
   public passkeysRepo: PasskeysRepository | null = null;
   public coverageReceptionsRepo: CoverageReceptionsRepository | null = null;
@@ -746,6 +748,11 @@ class DatabaseService {
   get meshcoreHopSnr(): MeshCoreHopSnrRepository {
     if (!this.meshcoreHopSnrRepo) throw new Error('Database not initialized');
     return this.meshcoreHopSnrRepo;
+  }
+
+  get nodeNameHistory(): NodeNameHistoryRepository {
+    if (!this.nodeNameHistoryRepo) throw new Error('Database not initialized');
+    return this.nodeNameHistoryRepo;
   }
 
   /** Remembered MeshCore remote-admin logins (#5785). */
@@ -1248,6 +1255,7 @@ class DatabaseService {
       this.pkiExchangeStateRepo = new PkiExchangeStateRepository(drizzleDb, this.drizzleDbType);
       this.mapMarkersRepo = new MapMarkersRepository(drizzleDb, this.drizzleDbType);
       this.meshcoreHopSnrRepo = new MeshCoreHopSnrRepository(drizzleDb, this.drizzleDbType);
+      this.nodeNameHistoryRepo = new NodeNameHistoryRepository(drizzleDb, this.drizzleDbType);
       this.meshcoreAdminSessionsRepo = new MeshCoreAdminSessionsRepository(drizzleDb, this.drizzleDbType);
       this.passkeysRepo = new PasskeysRepository(drizzleDb, this.drizzleDbType);
       this.coverageReceptionsRepo = new CoverageReceptionsRepository(drizzleDb, this.drizzleDbType);

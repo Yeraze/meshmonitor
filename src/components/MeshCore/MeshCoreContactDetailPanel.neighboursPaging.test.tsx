@@ -29,6 +29,8 @@ vi.mock('../../contexts/SourceContext', () => ({
 
 vi.mock('../../services/api', () => ({
   default: {
+    // #5862: Name History self-fetches; no renames in these suites.
+    getNodeNameHistory: vi.fn().mockResolvedValue([]),
     get: vi.fn().mockResolvedValue({ success: true, data: { items: [] } }),
     setBaseUrl: vi.fn(),
   },

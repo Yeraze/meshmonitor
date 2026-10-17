@@ -1719,6 +1719,13 @@ router.delete('/:id', requirePermission('sources', 'write'), async (req: Request
       logger.warn(`Failed to purge MeshCore hop SNR history for deleted source ${req.params.id}:`, hopSnrError);
     }
 
+    // #5862: node rename history is what this source heard.
+    try {
+      await databaseService.nodeNameHistory.deleteBySourceId(req.params.id);
+    } catch (nameHistoryError) {
+      logger.warn(`Failed to purge node name history for deleted source ${req.params.id}:`, nameHistoryError);
+    }
+
     // #5785: remembered MeshCore remote-admin logins belong to the source.
     try {
       await databaseService.meshcoreAdminSessions.deleteBySourceId(req.params.id);

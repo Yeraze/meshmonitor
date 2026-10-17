@@ -68,6 +68,8 @@ vi.mock('../services/api', () => ({
     exportChannel: vi.fn(),
     importChannel: vi.fn(),
     getAllChannels: vi.fn().mockResolvedValue([]),
+    // #5862: Name History self-fetches; no renames in this suite.
+    getNodeNameHistory: vi.fn().mockResolvedValue([]),
     // #4110 signal-trend badge: NodeDetailsBlock fetches this once a sourceId
     // is present. Resolve to null (no trend) -- the badge itself isn't what
     // this test is about.

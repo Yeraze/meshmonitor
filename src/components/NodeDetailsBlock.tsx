@@ -25,6 +25,7 @@ import FlightMatchLine from './FlightMatchLine';
 import AircraftMarkNote from './AircraftMarkNote';
 import PkiExchangeStatusCard from './PkiExchangeStatusCard';
 import AssetTrackingSection from './AssetTrackingSection';
+import NodeNameHistory from './NodeNameHistory';
 
 interface NodeDetailsBlockProps {
   node: DeviceInfo | null;
@@ -892,6 +893,14 @@ const NodeDetailsBlock: React.FC<NodeDetailsBlockProps> = ({ node, timeFormat = 
             </div>
           ) : null}
         </div>
+
+        {/* Name history (#5862) — renders nothing until the node is renamed. */}
+        <NodeNameHistory
+          nodeId={node.user?.id ?? (node.nodeNum != null ? String(node.nodeNum) : null)}
+          currentName={`${node.user?.longName ?? ''}\u0000${node.user?.shortName ?? ''}`}
+          timeFormat={timeFormat}
+          dateFormat={dateFormat}
+        />
 
         {/* Asset tracking (#5354) — sits right below Notes. */}
         {assetTracking && node.nodeNum != null && (

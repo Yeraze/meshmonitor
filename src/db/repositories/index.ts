@@ -120,6 +120,8 @@ export { PkiExchangeStateRepository } from './pkiExchangeState.js';
 export { MapMarkersRepository } from './mapMarkers.js';
 export { MeshCoreHopSnrRepository } from './meshcoreHopSnr.js';
 export type { MeshCoreHopSnrRow } from './meshcoreHopSnr.js';
+export { NodeNameHistoryRepository, NODE_NAME_HISTORY_CAP } from './nodeNameHistory.js';
+export type { NodeNameHistoryRow, NodeNameProtocol } from './nodeNameHistory.js';
 export { MeshCoreAdminSessionsRepository } from './meshcoreAdminSessions.js';
 export type { MeshCoreAdminSessionRow } from './meshcoreAdminSessions.js';
 export { PasskeysRepository, PASSKEY_NICKNAME_MAX } from './passkeys.js';
