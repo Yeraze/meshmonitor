@@ -12,6 +12,8 @@ import { sanitizeMeshCoreName } from '../../utils/meshcoreName.js';
 import { getDiscardInvalidPositions } from '../../utils/positionIngestConfig.js';
 import { isFutureDriftedMeshCoreTimeMs } from '../../utils/meshcoreTimestamp.js';
 import { resolveFirstHeard } from '../../utils/firstHeard.js';
+import { NodeNameHistoryRepository, isMeshCoreRename } from './nodeNameHistory.js';
+import { logger } from '../../utils/logger.js';
 
 /**
  * meshcore_nodes columns where an incoming `null` in upsertNode means "clear
@@ -561,6 +563,18 @@ export class MeshCoreRepository extends BaseRepository {
    * every row in `meshcore_nodes` is stamped with its owning source —
    * non-negotiable since the multi-source MeshCore refactor (slice 1).
    */
+  private nameHistoryRepo: NodeNameHistoryRepository | null = null;
+
+  /** Remove rename history alongside nodes (#5862). Best-effort, like the write. */
+  private async dropNameHistory(op: (repo: NodeNameHistoryRepository) => Promise<void>): Promise<void> {
+    try {
+      this.nameHistoryRepo ??= new NodeNameHistoryRepository(this.db, this.dbType);
+      await op(this.nameHistoryRepo);
+    } catch (error) {
+      logger.warn('Failed to remove node name history:', error);
+    }
+  }
+
   async upsertNode(
     node: Partial<DbMeshCoreNode> & { publicKey: string },
     sourceId: string,
@@ -694,6 +708,25 @@ export class MeshCoreRepository extends BaseRepository {
         .update(meshcoreNodes)
         .set(updateSet)
         .where(and(eq(meshcoreNodes.publicKey, node.publicKey), eq(meshcoreNodes.sourceId, sourceId)));
+
+      // #5862: log a rename for Node Details.
+      if (typeof updateSet.name === 'string' && isMeshCoreRename(existing.name, updateSet.name)) {
+        try {
+          this.nameHistoryRepo ??= new NodeNameHistoryRepository(this.db, this.dbType);
+          await this.nameHistoryRepo.record({
+            sourceId,
+            protocol: 'meshcore',
+            nodeKey: node.publicKey,
+            oldLongName: existing.name ?? null,
+            newLongName: updateSet.name,
+            oldShortName: null,
+            newShortName: null,
+            changedAt: now,
+          });
+        } catch (error) {
+          logger.warn(`Failed to record name history for MeshCore node ${node.publicKey.slice(0, 12)} on ${sourceId}:`, error);
+        }
+      }
     } else {
       await this.db
         .insert(meshcoreNodes)
@@ -1498,6 +1531,8 @@ export class MeshCoreRepository extends BaseRepository {
     const result = await this.db
       .delete(meshcoreNodes)
       .where(and(eq(meshcoreNodes.publicKey, publicKey), eq(meshcoreNodes.sourceId, sourceId)));
+    // #5862: the node's rename history on this source goes with it.
+    await this.dropNameHistory(h => h.deleteForNode('meshcore', publicKey, sourceId));
     return this.getAffectedRows(result) > 0;
   }
 
@@ -1517,6 +1552,7 @@ export class MeshCoreRepository extends BaseRepository {
     const count = await this.getNodeCount();
     const { meshcoreNodes } = this.tables;
     await this.db.delete(meshcoreNodes);
+    await this.dropNameHistory(h => h.deleteAllForProtocol('meshcore'));
     return count;
   }
 

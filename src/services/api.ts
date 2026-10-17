@@ -89,6 +89,17 @@ export interface SignalTrendMetric {
 }
 
 /** Response of GET /api/telemetry/:nodeId/signal-trend (#4110). */
+/** One rename in a node's history (#5862), merged across readable sources. */
+export interface NodeNameHistoryEntry {
+  oldLongName: string | null;
+  newLongName: string | null;
+  oldShortName: string | null;
+  newShortName: string | null;
+  /** ms since epoch */
+  changedAt: number;
+  sourceIds: string[];
+}
+
 export interface SignalTrendResult {
   trend: SignalTrend;
   basis: 'rssi' | 'snr' | null;
@@ -1288,6 +1299,17 @@ class ApiService {
    * (issue #4110). `sourceId` is required by the endpoint — callers must only
    * invoke this when a concrete source is selected.
    */
+  /**
+   * A node's rename history (#5862). `nodeId` is `!aabbccdd`, a decimal
+   * nodeNum, or a MeshCore public key. Newest first.
+   */
+  async getNodeNameHistory(nodeId: string): Promise<NodeNameHistoryEntry[]> {
+    const body = await this.get<{ success: boolean; data: { entries: NodeNameHistoryEntry[] } }>(
+      `/api/nodes/${encodeURIComponent(nodeId)}/name-history`,
+    );
+    return body.data?.entries ?? [];
+  }
+
   async getSignalTrend(nodeId: string, sourceId: string): Promise<SignalTrendResult> {
     // Validate the node id up front (throws on a malformed id) for consistency
     // with getTelemetry and the other node-scoped methods.

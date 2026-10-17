@@ -227,6 +227,7 @@ import { migration as userMapPreferencesMqttMessagesBySourceMigration, runMigrat
 import { migration as addMeshcorePositionOverrideMigration, runMigration206Postgres, runMigration206Mysql } from '../server/migrations/206_add_meshcore_position_override.js';
 import { migration as createUserPasskeysMigration, runMigration207Postgres, runMigration207Mysql } from '../server/migrations/207_create_user_passkeys.js';
 import { migration as addChannelDatabaseUseAeadMigration, runMigration208Postgres, runMigration208Mysql } from '../server/migrations/208_add_channel_database_use_aead.js';
+import { migration as createNodeNameHistoryMigration, runMigration209Postgres, runMigration209Mysql } from '../server/migrations/209_create_node_name_history.js';
 
 // ============================================================================
 // Registry
@@ -3365,4 +3366,18 @@ registry.register({
   sqlite: (db) => addChannelDatabaseUseAeadMigration.up(db),
   postgres: (client) => runMigration208Postgres(client),
   mysql: (pool) => runMigration208Mysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 209: `node_name_history` (#5862). PER-SOURCE. One row per rename a
+// source saw, for both Meshtastic and MeshCore nodes.
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 209,
+  name: 'create_node_name_history',
+  settingsKey: 'migration_209_create_node_name_history',
+  sqlite: (db) => createNodeNameHistoryMigration.up(db),
+  postgres: (client) => runMigration209Postgres(client),
+  mysql: (pool) => runMigration209Mysql(pool),
 });

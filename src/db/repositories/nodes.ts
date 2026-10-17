@@ -10,6 +10,7 @@ import { DatabaseType, DbNode } from '../types.js';
 import { logger } from '../../utils/logger.js';
 import { isValidNodeNum } from '../../server/constants/meshtastic.js';
 import { isBlankMacAddr } from '../../utils/nodeFieldBlanks.js';
+import { NodeNameHistoryRepository, isMeshtasticRename } from './nodeNameHistory.js';
 import type { TransportCounts } from '../../utils/transportSeries.js';
 import type { AircraftBasis } from '../../utils/aircraftClassification.js';
 import { resolveFirstHeard } from '../../utils/firstHeard.js';
@@ -680,6 +681,46 @@ export class NodesRepository extends BaseRepository {
    * - Update path: coerceBigintField needed for MySQL/Postgres BIGINT timestamps (harmless for SQLite, now unified)
    * - Insert path: MySQL uses onDuplicateKeyUpdate vs onConflictDoUpdate
    */
+  private nameHistoryRepo: NodeNameHistoryRepository | null = null;
+
+  /**
+   * Record a rename in `node_name_history` (#5862). Best-effort: a failure
+   * here must never fail the node write that triggered it.
+   */
+  private async recordRenameIfChanged(
+    existing: DbNode,
+    next: { longName?: string | null; shortName?: string | null },
+    sourceId: string,
+    now: number,
+  ): Promise<void> {
+    if (!isMeshtasticRename(existing, next, existing.nodeId)) return;
+    try {
+      this.nameHistoryRepo ??= new NodeNameHistoryRepository(this.db, this.dbType);
+      await this.nameHistoryRepo.record({
+        sourceId,
+        protocol: 'meshtastic',
+        nodeKey: String(Number(existing.nodeNum)),
+        oldLongName: existing.longName ?? null,
+        newLongName: next.longName ?? null,
+        oldShortName: existing.shortName ?? null,
+        newShortName: next.shortName ?? null,
+        changedAt: now,
+      });
+    } catch (error) {
+      logger.warn(`Failed to record name history for node ${existing.nodeId} on ${sourceId}:`, error);
+    }
+  }
+
+  /** Remove rename history alongside nodes (#5862). Best-effort, like the write. */
+  private async dropNameHistory(op: (repo: NodeNameHistoryRepository) => Promise<void>): Promise<void> {
+    try {
+      this.nameHistoryRepo ??= new NodeNameHistoryRepository(this.db, this.dbType);
+      await op(this.nameHistoryRepo);
+    } catch (error) {
+      logger.warn('Failed to remove node name history:', error);
+    }
+  }
+
   async upsertNode(nodeData: Partial<DbNode>, sourceId?: string): Promise<void> {
     if (nodeData.nodeNum === undefined || nodeData.nodeNum === null || !nodeData.nodeId) {
       logger.error('Cannot upsert node: missing nodeNum or nodeId');
@@ -799,6 +840,17 @@ export class NodesRepository extends BaseRepository {
           updatedAt: now,
         })
         .where(and(eq(nodes.nodeNum, nodeData.nodeNum), eq(nodes.sourceId, effectiveSourceId)));
+
+      // #5862: log a rename (real name to real name) for Node Details.
+      await this.recordRenameIfChanged(
+        existingNode,
+        {
+          longName: nameOrExisting(nodeData.longName, existingNode.longName),
+          shortName: nameOrExisting(nodeData.shortName, existingNode.shortName),
+        },
+        effectiveSourceId,
+        now,
+      );
     } else {
       // Insert new node - coerce BIGINT fields for PostgreSQL
       const newNode = {
@@ -1305,6 +1357,8 @@ export class NodesRepository extends BaseRepository {
     await this.db
       .delete(nodes)
       .where(and(eq(nodes.nodeNum, nodeNum), eq(nodes.sourceId, sourceId)));
+    // #5862: the node's rename history on this source goes with it.
+    await this.dropNameHistory(h => h.deleteForNode('meshtastic', String(nodeNum), sourceId));
 
     this.removeCacheNode(nodeNum, sourceId);
     return true;
@@ -1468,8 +1522,10 @@ export class NodesRepository extends BaseRepository {
       : baseSelect);
     if (sourceId) {
       await this.db.delete(nodes).where(eq(nodes.sourceId, sourceId));
+      await this.dropNameHistory(h => h.deleteForSourceProtocol(sourceId, 'meshtastic'));
     } else {
       await this.db.delete(nodes);
+      await this.dropNameHistory(h => h.deleteAllForProtocol('meshtastic'));
     }
     this.clearCacheAll();
     return result.length;

@@ -27,6 +27,8 @@ const getSignalTrend = vi.fn();
 const getMeshtasticContactUrl = vi.fn();
 vi.mock('../services/api', () => ({
   default: {
+    // #5862: Name History self-fetches; no renames in these suites.
+    getNodeNameHistory: vi.fn().mockResolvedValue([]),
     // Called at import by ../init (pulled in transitively via NodeSkyView's
     // telemetry hook chain, #4729); stubbed so the module loads under this mock.
     setBaseUrl: () => {},

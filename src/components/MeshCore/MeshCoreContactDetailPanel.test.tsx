@@ -29,6 +29,8 @@ vi.mock('../../contexts/SourceContext', () => ({
 
 vi.mock('../../services/api', () => ({
   default: {
+    // #5862: Name History self-fetches; no renames in these suites.
+    getNodeNameHistory: vi.fn().mockResolvedValue([]),
     get: vi.fn().mockRejectedValue(new Error('no stub configured')),
     // Called at import by ../../init (pulled in transitively via
     // ShowCoverageLink, #5277 P4a WP5); stubbed so the module loads under

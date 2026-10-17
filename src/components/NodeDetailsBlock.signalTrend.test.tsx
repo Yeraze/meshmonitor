@@ -37,6 +37,8 @@ vi.mock('../services/api', () => ({
   default: {
     setBaseUrl: () => {},
     getSignalTrend: (...args: unknown[]) => getSignalTrend(...args),
+    // #5862: Name History self-fetches; no renames in this suite.
+    getNodeNameHistory: vi.fn().mockResolvedValue([]),
   },
 }));
 

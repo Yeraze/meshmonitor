@@ -127,6 +127,8 @@ export const TABLE_ORDER = [
   'map_markers',
   // #5722: per-hop SNR history from MeshCore traces (reception history).
   'meshcore_hop_snr',
+  // #5862: node rename history (names the nodes broadcast).
+  'node_name_history',
   // #5785: remembered MeshCore remote-admin logins (honoured only while the
   // source's companion key matches selfPublicKey).
   'meshcore_admin_sessions',

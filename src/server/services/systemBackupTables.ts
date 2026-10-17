@@ -165,6 +165,8 @@ export const BACKUP_TABLES: string[] = [
   'map_markers',
   // #5722: per-hop SNR history from MeshCore traces (reception history).
   'meshcore_hop_snr',
+  // #5862: node rename history (names the nodes broadcast).
+  'node_name_history',
   // #5785: remembered MeshCore remote-admin logins. Backed up rather than
   // excluded: a row is not a credential (the remote's ACL is the authority,
   // and Log out never touches it), and every read requires the connected

@@ -28,6 +28,7 @@ import { MeshCoreTraceSnrCard } from './MeshCoreTraceSnrCard';
 import { MeshCoreTraceSnrCharts } from './MeshCoreTraceSnrCharts';
 import { useMeshCoreNeighboursFetch } from './hooks/useMeshCoreNeighboursFetch';
 import type { MeshCoreNeighboursFetchActions } from './hooks/meshcoreNeighboursFetchApi';
+import NodeNameHistory from '../NodeNameHistory';
 
 /** Stand-in so the fetch hook can run unconditionally when no actions are wired. */
 const NO_NEIGHBOURS_FETCH_ACTIONS: MeshCoreNeighboursFetchActions = {
@@ -1371,6 +1372,14 @@ export const MeshCoreContactDetailPanel: React.FC<MeshCoreContactDetailPanelProp
           </div>
         </div>
       )}
+
+      {/* Name history (#5862) — renders nothing until the node is renamed. */}
+      <NodeNameHistory
+        nodeId={publicKey}
+        currentName={contact?.advName || contact?.name || null}
+        timeFormat={timeFormat}
+        dateFormat={dateFormat}
+      />
 
       {editorOpen && (
         <div
