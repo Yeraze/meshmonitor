@@ -7,8 +7,10 @@
  * - Traceroutes older than tracerouteRetentionDays (default 30)
  * - Route segments older than routeSegmentRetentionDays (default 30)
  * - Neighbor info older than neighborInfoRetentionDays (default 30)
+ * - Audit log entries older than auditLogRetentionDays (default 90, #5870)
  *
- * After cleanup, runs VACUUM to reclaim disk space.
+ * After cleanup, runs VACUUM (SQLite/PostgreSQL) or OPTIMIZE TABLE (MySQL).
+ * Runs on every backend; only `maintenanceEnabled` turns it on.
  */
 
 import databaseService from '../../services/database.js';
@@ -21,6 +23,7 @@ export interface MaintenanceStats {
   traceroutesDeleted: number;
   routeSegmentsDeleted: number;
   neighborInfoDeleted: number;
+  auditLogDeleted: number;
   sizeBefore: number;
   sizeAfter: number;
   duration: number;
@@ -41,8 +44,12 @@ export interface MaintenanceStatus {
     tracerouteRetentionDays: number;
     routeSegmentRetentionDays: number;
     neighborInfoRetentionDays: number;
+    auditLogRetentionDays: number;
   };
 }
+
+/** Audit history is kept longer than mesh data: it is the security record (#5870). */
+export const DEFAULT_AUDIT_LOG_RETENTION_DAYS = 90;
 
 /** Minimum allowed retention days to prevent accidental data wipe */
 const MIN_RETENTION_DAYS = 1;
@@ -210,6 +217,7 @@ class DatabaseMaintenanceService {
       traceroutesDeleted: 0,
       routeSegmentsDeleted: 0,
       neighborInfoDeleted: 0,
+      auditLogDeleted: 0,
       sizeBefore: 0,
       sizeAfter: 0,
       duration: 0,
@@ -218,15 +226,16 @@ class DatabaseMaintenanceService {
 
     try {
       // Get retention settings (defaults: 30 days, minimum: 1 day)
-      const [messageRetention, tracerouteRetention, routeSegmentRetention, neighborInfoRetention] =
+      const [messageRetention, tracerouteRetention, routeSegmentRetention, neighborInfoRetention, auditLogRetention] =
         await Promise.all([
           this.getRetentionDays('messageRetentionDays'),
           this.getRetentionDays('tracerouteRetentionDays'),
           this.getRetentionDays('routeSegmentRetentionDays'),
           this.getRetentionDays('neighborInfoRetentionDays'),
+          this.getRetentionDays('auditLogRetentionDays', DEFAULT_AUDIT_LOG_RETENTION_DAYS),
         ]);
 
-      logger.debug(`🔧 Running database maintenance with retention: messages=${messageRetention}d, traceroutes=${tracerouteRetention}d, routeSegments=${routeSegmentRetention}d, neighborInfo=${neighborInfoRetention}d`);
+      logger.debug(`🔧 Running database maintenance with retention: messages=${messageRetention}d, traceroutes=${tracerouteRetention}d, routeSegments=${routeSegmentRetention}d, neighborInfo=${neighborInfoRetention}d, auditLog=${auditLogRetention}d`);
 
       // Get database size before cleanup
       stats.sizeBefore = await databaseService.getDatabaseSizeAsync();
@@ -251,6 +260,11 @@ class DatabaseMaintenanceService {
       stats.neighborInfoDeleted = await databaseService.cleanupOldNeighborInfoAsync(neighborInfoRetention);
       if (stats.neighborInfoDeleted > 0) {
         logger.info(`🗑️ Deleted ${stats.neighborInfoDeleted} old neighbor info records`);
+      }
+
+      stats.auditLogDeleted = await databaseService.cleanupAuditLogsAsync(auditLogRetention);
+      if (stats.auditLogDeleted > 0) {
+        logger.info(`🗑️ Deleted ${stats.auditLogDeleted} old audit log entries`);
       }
 
       // Sweep expired waypoints (24h grace by default).
@@ -286,7 +300,7 @@ class DatabaseMaintenanceService {
       this.lastRunStats = stats;
 
       const totalDeleted = stats.messagesDeleted + stats.traceroutesDeleted +
-                          stats.routeSegmentsDeleted + stats.neighborInfoDeleted;
+                          stats.routeSegmentsDeleted + stats.neighborInfoDeleted + stats.auditLogDeleted;
       const spaceSaved = stats.sizeBefore - stats.sizeAfter;
 
       logger.info(`✅ Database maintenance complete in ${(stats.duration / 1000).toFixed(1)}s: ` +
@@ -317,7 +331,7 @@ class DatabaseMaintenanceService {
    */
   async getStatus(): Promise<MaintenanceStatus> {
     // Fetch all settings in parallel to reduce DB round-trips
-    const [enabledStr, maintenanceTime, messageRet, tracerouteRet, routeSegmentRet, neighborInfoRet] =
+    const [enabledStr, maintenanceTime, messageRet, tracerouteRet, routeSegmentRet, neighborInfoRet, auditLogRet] =
       await Promise.all([
         databaseService.settings.getSetting('maintenanceEnabled'),
         databaseService.settings.getSetting('maintenanceTime'),
@@ -325,6 +339,7 @@ class DatabaseMaintenanceService {
         this.getRetentionDays('tracerouteRetentionDays'),
         this.getRetentionDays('routeSegmentRetentionDays'),
         this.getRetentionDays('neighborInfoRetentionDays'),
+        this.getRetentionDays('auditLogRetentionDays', DEFAULT_AUDIT_LOG_RETENTION_DAYS),
       ]);
 
     const enabled = enabledStr === 'true';
@@ -358,7 +373,8 @@ class DatabaseMaintenanceService {
         messageRetentionDays: messageRet,
         tracerouteRetentionDays: tracerouteRet,
         routeSegmentRetentionDays: routeSegmentRet,
-        neighborInfoRetentionDays: neighborInfoRet
+        neighborInfoRetentionDays: neighborInfoRet,
+        auditLogRetentionDays: auditLogRet,
       }
     };
   }

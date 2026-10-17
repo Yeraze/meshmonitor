@@ -564,6 +564,24 @@ function runAuthTests(getBackend: () => TestBackend) {
     expect(remaining[0].action).toBe('recent_action');
   });
 
+  it('cleanupOldAuditLogs - deletes across several batches and keeps recent rows (#5870)', async () => {
+    const backend = getBackend();
+    if (!backend.available) { console.log(`⚠ Skipped: ${backend.skipReason}`); return; }
+
+    const now = Date.now();
+    const old = now - (100 * 24 * 60 * 60 * 1000);
+    for (let i = 0; i < 7; i++) {
+      await repo.createAuditLogEntry({ userId: null, action: `old_${i}`, resource: null, details: null, ipAddress: null, userAgent: null, timestamp: old + i });
+    }
+    await repo.createAuditLogEntry({ userId: null, action: 'recent_action', resource: null, details: null, ipAddress: null, userAgent: null, timestamp: now });
+
+    // Batch of 3: 3 + 3 + 1 rows.
+    expect(await repo.cleanupOldAuditLogs(90, 3)).toBe(7);
+    const remaining = await repo.getAuditLogEntries();
+    expect(remaining.map((r) => r.action)).toEqual(['recent_action']);
+    expect(await repo.cleanupOldAuditLogs(90, 3)).toBe(0);
+  });
+
   // ---- getAuditLogsFiltered ----
 
   it('getAuditLogsFiltered - returns all entries unfiltered', async () => {

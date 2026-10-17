@@ -130,6 +130,40 @@ POSTGRES_USER=meshmonitor
 POSTGRES_PASSWORD=your_secure_password_here
 ```
 
+#### PostgreSQL Memory and Maintenance
+
+The `postgres` image starts with `shared_buffers=128MB`. That is too small once a busy install holds a few GB, and queries start reading from disk. For a host with 4 GB or more of RAM, pass larger settings to the server:
+
+```yaml
+  postgres:
+    image: postgres:16-alpine
+    command:
+      - postgres
+      - -c
+      - shared_buffers=1GB          # about 25% of the RAM you give PostgreSQL
+      - -c
+      - effective_cache_size=3GB    # about 75% of that RAM
+      - -c
+      - work_mem=16MB
+      - -c
+      - maintenance_work_mem=256MB
+    shm_size: 1gb                   # must be at least shared_buffers
+```
+
+To check, run `SELECT sum(blks_hit) * 100.0 / nullif(sum(blks_hit + blks_read), 0) FROM pg_stat_database;` in `psql`. A healthy cache hit ratio is above 99%.
+
+Turn on **Settings → Database Maintenance** too. It deletes messages, traceroutes, route segments, neighbor info and audit log entries past their retention periods, then runs `VACUUM`. It is off by default. Older releases hid the section on PostgreSQL and MySQL, so an install that started on one of those has probably never been cleaned up.
+
+After the first large cleanup, rebuild the bloated indexes once. These commands do not block the app:
+
+```sql
+REINDEX TABLE CONCURRENTLY route_segments;
+REINDEX TABLE CONCURRENTLY telemetry;
+REINDEX TABLE CONCURRENTLY nodes;
+REINDEX TABLE CONCURRENTLY audit_log;
+VACUUM (ANALYZE) route_segments, telemetry, nodes, audit_log;
+```
+
 ### MySQL / MariaDB Configuration
 
 To use MySQL or MariaDB, set the `DATABASE_URL` environment variable:

@@ -73,9 +73,9 @@ describe('configSections', () => {
       expect(ids).toContain('settings-language');
     });
 
-    it('hides Database Maintenance on a non-SQLite backend', () => {
-      const ids = settingsNavItems(t, { ...baseOptions, databaseType: 'postgres' }).map((i) => i.id);
-      expect(ids).not.toContain('settings-maintenance');
+    it.each(['sqlite', 'postgres', 'mysql'] as const)('lists Database Maintenance on %s (#5870)', (databaseType) => {
+      const ids = settingsNavItems(t, { ...baseOptions, databaseType }).map((i) => i.id);
+      expect(ids).toContain('settings-maintenance');
     });
 
     it('lists Firmware Updates under Device Configuration, never under Settings (#5683 follow-up)', () => {
