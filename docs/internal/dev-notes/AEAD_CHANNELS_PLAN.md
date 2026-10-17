@@ -1,6 +1,6 @@
 # AEAD (AES-CCM) PSK Channels — Implementation Plan (#5248)
 
-Status: Phase 1 shipped (#5492). Phase 2a (server decrypt) in progress, 2026-10-16. Protobufs submodule bumped to master `2542e06` in the PR that adds this file.
+Status: Phase 1 shipped (#5492), Phase 2a shipped (#5860), Phase 2b (device-channel checkbox) in review, 2026-10-16. Hardware validation pending. Protobufs submodule bumped to master `2542e06` in the PR that adds this file.
 
 ## Upstream status (verified 2026-09-30)
 
@@ -58,6 +58,7 @@ Findings at implementation (2a):
 - Item 2's stored-hash backfill is not needed: enabled rows compute their hash from name + key; only passive (no-PSK) rows store one, and those never decrypt.
 - The AAD binds `packet.to`, so every decrypt caller now passes it. An AEAD row is skipped when the destination is unknown.
 - Item 6 needs no change: `MAX_MESSAGE_BYTES` is 200, and 200 bytes of text plus `Data` framing, the 16-byte header and the 12-byte tag stays under 255.
+- 2b gates on `supportedModules.aeadChannels` (firmware ≥ 2.8.1, `MeshtasticManager.supportsAeadChannels()`) and a non-empty key, in the UI and in `PUT /api/channels/:id` (`AEAD_UNSUPPORTED`, `AEAD_NEEDS_KEY`). Turning AEAD off is always allowed. The UI sends `useAead` only when it changed, so other edits keep the device's flag.
 - Known answers: the firmware tests carry RFC 3610 vectors only (no packet capture). The test suite checks Node's CCM against one of them and round-trips packets built with the firmware's nonce and AAD layout. Hardware validation (item 8) is still required before release.
 
 1. **Migration:** `useAead` on `channel_database` (global table, per CLAUDE.md exception). Backfill nothing; default false.

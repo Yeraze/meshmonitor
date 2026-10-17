@@ -10,6 +10,10 @@
  * Kept from before: drag-to-reorder followed by "Apply Order" (the device
  * reboots), JSON export / import per slot, the Channel Database key-collision
  * warning (#3644), the AEAD badge and the position-precision readout.
+ *
+ * AEAD (#5248 Phase 2b): an Experimental checkbox, offered when the node runs
+ * firmware 2.8.1+ and the channel has a key. Turning it on asks first, because
+ * nodes without AEAD can no longer read the channel.
  */
 import React, { useState, useRef, useMemo, useCallback, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -51,6 +55,7 @@ import { ConfigItemCard, ConfigItemCardButton, type ConfigItemChip } from '../sh
 import { ChannelKeyField } from '../shared/config/ChannelKeyField';
 import { ChannelEncryptionLabel } from '../shared/config/ChannelEncryptionLabel';
 import { DiscardChangesDialog } from '../shared/config/DiscardChangesDialog';
+import { ConfirmDialog } from '../shared/automation/ConfirmDialog';
 import { useDiscardGuard } from '../shared/config/useDiscardGuard';
 import { generateChannelKey, isValidChannelKey } from '../shared/config/channelKey';
 import styles from './ChannelsConfigSection.module.css';
@@ -94,6 +99,8 @@ interface ChannelDraft {
   uplinkEnabled: boolean;
   downlinkEnabled: boolean;
   positionPrecision: number;
+  /** ChannelSettings.use_aead (#5248). */
+  useAead: boolean;
 }
 
 interface EditingState {
@@ -117,18 +124,33 @@ const pskForSave = (edit: EditingState): string | undefined => {
   return edit.isNew || edit.original.psk !== '' ? '' : undefined;
 };
 
+/**
+ * The `useAead` to send on save (#5248). Absent keeps the device's setting
+ * (the server sends the stored flag back), so send it only when the user
+ * changed it, or when the key was cleared: firmware clears use_aead on a
+ * keyless channel, so the stored flag should follow.
+ */
+const aeadForSave = (edit: EditingState): { useAead?: boolean } => {
+  const keyless = edit.draft.psk === '';
+  if (edit.draft.useAead && keyless) return { useAead: false };
+  return edit.draft.useAead !== edit.original.useAead ? { useAead: edit.draft.useAead } : {};
+};
+
 const draftsEqual = (a: ChannelDraft, b: ChannelDraft): boolean =>
   a.name === b.name &&
   a.psk === b.psk &&
   a.role === b.role &&
   a.uplinkEnabled === b.uplinkEnabled &&
   a.downlinkEnabled === b.downlinkEnabled &&
-  a.positionPrecision === b.positionPrecision;
+  a.positionPrecision === b.positionPrecision &&
+  a.useAead === b.useAead;
 
 interface ChannelsConfigSectionProps {
   baseUrl?: string;
   channels: Channel[];
   onChannelsUpdated?: () => void;
+  /** The node's firmware supports AEAD channels (2.8.1+, #5248). */
+  aeadSupported?: boolean;
 }
 
 /** Wrapper that makes a channel card draggable. */
@@ -176,7 +198,8 @@ const SortableChannelCard: React.FC<{
 
 const ChannelsConfigSection: React.FC<ChannelsConfigSectionProps> = ({
   channels,
-  onChannelsUpdated
+  onChannelsUpdated,
+  aeadSupported = false,
 }) => {
   const { t } = useTranslation();
   const { showToast } = useToast();
@@ -217,6 +240,7 @@ const ChannelsConfigSection: React.FC<ChannelsConfigSectionProps> = ({
 
   const [editing, setEditing] = useState<EditingState | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [confirmAead, setConfirmAead] = useState(false);
   const dirty = !!editing && (editing.isNew || !draftsEqual(editing.draft, editing.original));
   const discard = useDiscardGuard(dirty);
 
@@ -313,6 +337,7 @@ const ChannelsConfigSection: React.FC<ChannelsConfigSectionProps> = ({
         uplinkEnabled: false,
         downlinkEnabled: false,
         positionPrecision: 0,
+        useAead: false,
       };
     } else {
       draft = {
@@ -324,6 +349,7 @@ const ChannelsConfigSection: React.FC<ChannelsConfigSectionProps> = ({
         uplinkEnabled: ch?.uplinkEnabled ?? true,
         downlinkEnabled: ch?.downlinkEnabled ?? true,
         positionPrecision: ch?.positionPrecision ?? 32,
+        useAead: !!ch?.useAead,
       };
     }
     setEditing({ slotId, isNew, draft, original: draft });
@@ -351,7 +377,8 @@ const ChannelsConfigSection: React.FC<ChannelsConfigSectionProps> = ({
         role: draft.role,
         uplinkEnabled: draft.uplinkEnabled,
         downlinkEnabled: draft.downlinkEnabled,
-        positionPrecision: draft.positionPrecision
+        positionPrecision: draft.positionPrecision,
+        ...aeadForSave(editing),
       }, sourceId);
       showToast(t('channels_config.toast_channel_updated', { slot: slotId }), 'success');
       setEditing(null);
@@ -588,8 +615,51 @@ const ChannelsConfigSection: React.FC<ChannelsConfigSectionProps> = ({
           <span className={`setting-description ${styles.checkDescription}`}>{t('channels_config.downlink_description')}</span>
         </label>
       </div>
+
+      {renderAeadField(edit)}
     </>
   );
+
+  /**
+   * AEAD checkbox (#5248). Turning it on needs firmware 2.8.1+ and a key, and
+   * asks first; turning it off is always allowed, so a channel set elsewhere
+   * can be switched back.
+   */
+  const renderAeadField = (edit: EditingState) => {
+    const hasKey = edit.draft.psk !== '';
+    const canEnable = aeadSupported && hasKey;
+    const disabled = !edit.draft.useAead && !canEnable;
+    const reason = !aeadSupported
+      ? t('channels_config.aead_needs_firmware')
+      : !hasKey
+        ? t('channels_config.aead_needs_key')
+        : undefined;
+    return (
+      <div className="setting-item">
+        <label className={styles.checkLabel} title={disabled ? reason : undefined}>
+          <span className={styles.checkRow}>
+            <input
+              type="checkbox"
+              data-testid="channel-use-aead"
+              checked={edit.draft.useAead}
+              disabled={disabled}
+              onChange={(e) => {
+                if (e.target.checked) setConfirmAead(true);
+                else updateDraft({ useAead: false });
+              }}
+            />
+            <span>{t('channels_config.aead_label')}</span>
+          </span>
+          <span className={`setting-description ${styles.checkDescription}`}>
+            <strong>{t('channels_config.aead_warning_title')}</strong> {t('channels_config.aead_warning_body')}
+          </span>
+          {disabled && reason && (
+            <span className={`setting-description ${styles.checkDescription}`}>{reason}</span>
+          )}
+        </label>
+      </div>
+    );
+  };
 
   const renderFooter = (edit: EditingState) => ({ numberInvalid }: { numberInvalid: boolean }) => (
     <>
@@ -792,6 +862,17 @@ const ChannelsConfigSection: React.FC<ChannelsConfigSectionProps> = ({
       </ConfigSection>
 
       <DiscardChangesDialog guard={discard} />
+
+      {confirmAead && (
+        <ConfirmDialog
+          title={t('channels_config.aead_confirm_title')}
+          message={<><strong>{t('channels_config.aead_warning_title')}</strong> {t('channels_config.aead_warning_body')}</>}
+          confirmLabel={t('channels_config.aead_confirm')}
+          cancelLabel={t('common.cancel', 'Cancel')}
+          onConfirm={() => { updateDraft({ useAead: true }); setConfirmAead(false); }}
+          onCancel={() => setConfirmAead(false)}
+        />
+      )}
 
       <Modal
         isOpen={showImportModal}

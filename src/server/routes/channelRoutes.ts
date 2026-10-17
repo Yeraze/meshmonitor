@@ -526,7 +526,7 @@ router.put('/:id', requireAuth(), requireSourceId('body'), async (req: Request, 
       return refuseIngestSourceChannelWrite(res, chanSourceId);
     }
 
-    const { name, psk, role, uplinkEnabled, downlinkEnabled, positionPrecision, scope } = req.body;
+    const { name, psk, role, uplinkEnabled, downlinkEnabled, positionPrecision, scope, useAead } = req.body;
 
     // Validate MeshCore region/scope if provided (#3667). Plain region name —
     // alphanumeric + hyphen, optional leading '#' which we strip. Empty string
@@ -622,10 +622,23 @@ router.put('/:id', requireAuth(), requireSourceId('body'), async (req: Request, 
         positionPrecision !== undefined && positionPrecision !== null
           ? positionPrecision
           : (existingChannel?.positionPrecision ?? null),
-      // Read-only in Phase 1 (#5248): the UI never edits it, so always keep
-      // the stored flag. set_channel replaces the whole ChannelSettings.
-      useAead: existingChannel?.useAead ?? false,
+      // set_channel replaces the whole ChannelSettings, so an absent flag
+      // keeps the stored one rather than turning AEAD off (#5248).
+      useAead: typeof useAead === 'boolean' ? useAead : (existingChannel?.useAead ?? false),
     };
+
+    // Turning AEAD on (#5248 Phase 2b) needs firmware that knows the field
+    // and a real key: firmware clears use_aead on a keyless channel, and an
+    // older build drops it, so either would look saved and stay plain.
+    if (sourceType !== 'meshcore' && updatedChannelData.useAead && !existingChannel?.useAead) {
+      const aeadManager = resolveOwnMeshtasticManager(chanSourceId);
+      if (!aeadManager || !aeadManager.supportsAeadChannels()) {
+        return fail(res, 400, 'AEAD_UNSUPPORTED', 'AEAD channels need firmware 2.8.1 or later on this node.');
+      }
+      if (!effectivePsk || effectivePsk === NO_ENCRYPTION_PSK) {
+        return fail(res, 400, 'AEAD_NEEDS_KEY', 'An AEAD channel needs an encryption key.');
+      }
+    }
 
     if (sourceType === 'meshcore') {
       // MeshCore write path: push the channel to the device first, then
