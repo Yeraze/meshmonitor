@@ -191,6 +191,102 @@ describe('sendLocalCliCommand', () => {
       });
       await expect(manager.sendLocalCliCommand('ver')).rejects.toThrow(/transport closed/);
     });
+
+    it('stays on the shim for protocol 13 (fw 1.17) and never sends run_cli', async () => {
+      const { manager, bridgeCalls } = makeCompanionManager({});
+      (manager as any).localNode = { publicKey: 'ab'.repeat(32), name: 'C', firmwareVer: 13 };
+      const result = await manager.sendLocalCliCommand('get radio');
+      expect(bridgeCalls.map(c => c.cmd)).not.toContain('run_cli');
+      expect(result.reply).toContain('Unknown command');
+    });
+  });
+
+  describe('Companion native CLI (fw 1.18.0+, #5866)', () => {
+    function makeNative(runCli: (command: string) => { success: boolean; data?: any; error?: string }) {
+      const made = makeCompanionManager({});
+      (made.manager as any).localNode = { publicKey: 'ab'.repeat(32), name: 'C', firmwareVer: 14 };
+      const base = (made.manager as any).sendBridgeCommand;
+      (made.manager as any).sendBridgeCommand = async (cmd: string, params: Record<string, unknown>, timeout?: number) => {
+        if (cmd === 'run_cli') {
+          made.bridgeCalls.push({ cmd, params: { ...params, timeout } });
+          return { id: '1', ...runCli(String(params.command)) };
+        }
+        return base(cmd, params);
+      };
+      return made;
+    }
+
+    it('sends a config verb to the firmware and strips the "> " value marker', async () => {
+      const { manager, bridgeCalls } = makeNative(() => ({ success: true, data: { reply: '> 915.0,250,11,5' } }));
+      const result = await manager.sendLocalCliCommand('get radio');
+      expect(bridgeCalls).toHaveLength(1);
+      expect(bridgeCalls[0].cmd).toBe('run_cli');
+      expect(bridgeCalls[0].params.command).toBe('get radio');
+      expect(result.reply).toBe('915.0,250,11,5');
+    });
+
+    it('sends `ver` to the firmware too', async () => {
+      const { manager, bridgeCalls } = makeNative(() => ({ success: true, data: { reply: 'v1.18.0 (Build: 15-Oct-2026)' } }));
+      const result = await manager.sendLocalCliCommand('ver');
+      expect(bridgeCalls.map(c => c.cmd)).toEqual(['run_cli']);
+      expect(result.reply).toBe('v1.18.0 (Build: 15-Oct-2026)');
+    });
+
+    it.each(['stats', 'clock', 'advert.zerohop', 'help'])('keeps `%s` on the shim (the firmware CLI has no such verb)', async (cmd) => {
+      const { manager, bridgeCalls } = makeNative(() => ({ success: true, data: { reply: 'Unknown command' } }));
+      (manager as any).sendAdvert = vi.fn().mockResolvedValue(true);
+      await manager.sendLocalCliCommand(cmd).catch(() => undefined);
+      expect(bridgeCalls.map(c => c.cmd)).not.toContain('run_cli');
+    });
+
+    it('lists the firmware verbs in `help`', async () => {
+      const { manager } = makeNative(() => ({ success: true, data: { reply: '' } }));
+      const result = await manager.sendLocalCliCommand('help');
+      expect(result.reply).toContain('Firmware CLI');
+      expect(result.reply).toContain('get radio');
+    });
+
+    it('reads the protocol byte once when the poller has not stamped it', async () => {
+      const { manager, bridgeCalls } = makeCompanionManager({
+        device_query: { success: true, data: { 'fw ver': 14, ver: 'v1.18.0' } },
+        run_cli: { success: true, data: { reply: '> 22' } },
+      });
+      (manager as any).localNode = { publicKey: 'ab'.repeat(32), name: 'C' };
+      const result = await manager.sendLocalCliCommand('get tx');
+      expect(bridgeCalls.map(c => c.cmd)).toEqual(['device_query', 'run_cli']);
+      expect(result.reply).toBe('22');
+      expect((manager as any).localNode.firmwareVer).toBe(14);
+    });
+
+    it('treats a timeout on `reboot` as sent', async () => {
+      const { manager, bridgeCalls } = makeNative(() => ({ success: false, error: 'CLI command timed out after 3000ms' }));
+      const result = await manager.sendLocalCliCommand('reboot');
+      expect(result.reply).toMatch(/restarting/i);
+      expect(bridgeCalls[0].params.timeout_ms).toBe(3000);
+    });
+
+    it('still throws a timeout on an ordinary verb', async () => {
+      const { manager } = makeNative(() => ({ success: false, error: 'CLI command timed out after 10000ms' }));
+      await expect(manager.sendLocalCliCommand('get name')).rejects.toThrow(/timed out/);
+    });
+
+    it('rejects a line longer than the firmware frame', async () => {
+      const { manager, bridgeCalls } = makeNative(() => ({ success: true, data: { reply: 'OK' } }));
+      await expect(manager.sendLocalCliCommand(`set name ${'x'.repeat(200)}`)).rejects.toThrow(/too long/);
+      expect(bridgeCalls).toHaveLength(0);
+    });
+
+    it('runs in receive-only mode (no firmware CLI verb transmits)', async () => {
+      const m = new MeshCoreManager('test-source');
+      (m as any).deviceType = MeshCoreDeviceType.COMPANION;
+      (m as any).connected = true;
+      (m as any).receiveOnly = true;
+      (m as any).localNode = { publicKey: 'ab'.repeat(32), name: 'C', firmwareVer: 14 };
+      const sendCommand = vi.fn().mockResolvedValue({ id: '1', success: true, data: { reply: '> 22' } });
+      (m as any).nativeBackend = { sendCommand };
+      await expect(m.sendLocalCliCommand('get tx')).resolves.toMatchObject({ reply: '22' });
+      expect(sendCommand).toHaveBeenCalledWith('run_cli', expect.objectContaining({ command: 'get tx' }), expect.any(Number));
+    });
   });
 });
 

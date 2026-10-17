@@ -250,7 +250,7 @@ export const VALIDATION = {
  * dotted config key (e.g. `get reboot.interval`, `set clkreboot.retries 3`)
  * — those are read/write config-path operations, not the standalone verb.
  */
-export const DANGER_COMMAND_PATTERN = /\b(reboot|erase|clkreboot|factory)\b(?!\.)/i;
+export const DANGER_COMMAND_PATTERN = /\b(reboot|erase|clkreboot|factory|poweroff|shutdown)\b(?!\.)/i;
 
 /**
  * Resolve the effective CLI reply-timeout (ms) for a MeshCore console command

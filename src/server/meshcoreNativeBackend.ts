@@ -1612,6 +1612,43 @@ export class MeshCoreNativeBackend extends EventEmitter {
     });
   }
 
+  /**
+   * Send one CMD_RUN_CLI_COMMAND (66) frame and wait for RESP_CODE_CLI_REPLY
+   * (29), whose body is the reply text. Call inside runExclusiveRadioOp.
+   * Firmware before protocol v14 answers Err (unknown command).
+   */
+  private cliExchange(
+    c: AnyConnection,
+    command: string,
+    timeoutMs: number,
+  ): Promise<{ kind: 'reply'; text: string } | { kind: 'err' } | { kind: 'timeout' }> {
+    const K = this.constants!;
+    const CMD_RUN_CLI_COMMAND = 66;
+    const RESP_CODE_CLI_REPLY = 29;
+    const body = new TextEncoder().encode(command);
+    const frame = new Uint8Array(1 + body.length);
+    frame[0] = CMD_RUN_CLI_COMMAND;
+    frame.set(body, 1);
+    return new Promise((resolve) => {
+      const done = (v: { kind: 'reply'; text: string } | { kind: 'err' } | { kind: 'timeout' }) => {
+        clearTimeout(timer);
+        c.off('rx', onRx);
+        resolve(v);
+      };
+      const onRx = (f: Uint8Array) => {
+        if (!f || f.length < 1) return;
+        if (f[0] === RESP_CODE_CLI_REPLY) {
+          done({ kind: 'reply', text: new TextDecoder().decode(f.subarray(1)) });
+        } else if (f[0] === K.ResponseCodes.Err) {
+          done({ kind: 'err' });
+        }
+      };
+      const timer = setTimeout(() => done({ kind: 'timeout' }), timeoutMs);
+      c.on('rx', onRx);
+      void c.sendToRadioFrame(frame);
+    });
+  }
+
   /** Bridge-shaped auto-add payload; `config === null` means unsupported. */
   private autoAddToData(config: number | null, maxHops: number) {
     const cfg = config ?? 0;
@@ -2828,6 +2865,23 @@ export class MeshCoreNativeBackend extends EventEmitter {
           if (back.kind !== 'reply') throw new Error('Could not read back the auto-add options');
           return this.autoAddToData(back.config, back.maxHops);
         }, 'set_autoadd_config');
+      }
+
+      case 'run_cli': {
+        // CMD_RUN_CLI_COMMAND (66) -> RESP_CODE_CLI_REPLY (29), companion
+        // protocol v14+ (fw 1.18.0, #5866). The device runs the line through
+        // its own text CLI and answers in the same frame exchange. Local serial
+        // only: none of the companion's CLI verbs transmit. The reply carries
+        // no tag, so it shares the radio-op lock like the auto-add frames.
+        const text = String(params.command ?? '');
+        const timeoutMs = Number(params.timeout_ms) > 0 ? Number(params.timeout_ms) : 5_000;
+        const reply = await this.runExclusiveRadioOp(
+          () => this.cliExchange(c, text, timeoutMs),
+          'run_cli',
+        );
+        if (reply.kind === 'err') throw new Error('Device rejected the CLI command');
+        if (reply.kind === 'timeout') throw new Error(`CLI command timed out after ${timeoutMs}ms`);
+        return { reply: reply.text };
       }
 
       case 'get_stats': {

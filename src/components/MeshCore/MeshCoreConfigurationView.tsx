@@ -712,6 +712,7 @@ export const MeshCoreConfigurationView: React.FC<MeshCoreConfigurationViewProps>
           sourceId={sourceId}
           deviceName={local?.name}
           deviceType={local?.advType}
+          firmwareVer={local?.firmwareVer}
           connected={connected}
           actions={{ sendLocalCliCommand: actions.sendLocalCliCommand }}
           receiveOnly={receiveOnly}

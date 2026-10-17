@@ -854,6 +854,8 @@ describe('MeshCore Routes', () => {
       ['clkreboot'],
       ['factory reset'],
       ['set factory mode'],
+      ['poweroff'],
+      ['shutdown'],
     ])('rejects danger command %s without confirm', async (cmd) => {
       const response = await authenticatedAgent
         .post('/api/sources/test-source/meshcore/admin/cli')
@@ -1003,6 +1005,8 @@ describe('MeshCore Routes', () => {
       ['clkreboot'],
       ['factory reset'],
       ['set factory mode'],
+      ['poweroff'],
+      ['shutdown'],
     ])('rejects danger command %s without confirm', async (cmd) => {
       const response = await authenticatedAgent
         .post('/api/sources/test-source/meshcore/cli')

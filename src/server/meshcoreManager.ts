@@ -91,6 +91,11 @@ import {
   MESHCORE_LOGIN_RETRY_PAUSE_MS,
 } from './constants/meshcoreLogin.js';
 import { isRfBridgeCommand, isTransmittingLocalCliVerb, MESHCORE_RECEIVE_ONLY_MESSAGE } from './constants/meshcoreTx.js';
+import {
+  companionHasNativeCli,
+  COMPANION_NATIVE_CLI_MAX_BYTES,
+  COMPANION_SYNTHETIC_CLI_VERBS,
+} from '../utils/meshcoreCompanionCli.js';
 import { meshcorePathDiscoveryTimeoutMs } from './constants/meshcorePathDiscovery.js';
 import { MESHCORE_TRACE_BRIDGE_TIMEOUT_MS } from './constants/meshcoreFirmwareTimeout.js';
 import {
@@ -9790,8 +9795,10 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
    *  - Repeater / Room Server: forwards to `sendRepeaterCommand`, which
    *    drives the device's native serial text CLI. Whatever the device
    *    prints comes back as `reply`.
-   *  - Companion: there is no native text CLI on the companion-protocol
-   *    wire, so we run a small synthetic-CLI interpreter that maps a
+   *  - Companion on fw 1.18.0+ (protocol v14): the firmware's own text CLI
+   *    via CMD_RUN_CLI_COMMAND (#5866), except the verbs it lacks (stats,
+   *    clock, advert, help), which stay on the synthetic interpreter.
+   *  - Older Companion: a small synthetic-CLI interpreter that maps a
    *    handful of read-only verbs (ver, stats, clock, advert) to existing
    *    bridge commands and formats the structured response as text.
    *
@@ -9832,11 +9839,57 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
     }
 
     if (this.deviceType === MeshCoreDeviceType.COMPANION) {
-      const reply = await this.runSyntheticLocalCli(trimmed);
+      const verb = trimmed.split(/\s+/)[0]?.toLowerCase() ?? '';
+      const native = await this.companionHasNativeCli();
+      if (native && !COMPANION_SYNTHETIC_CLI_VERBS.has(verb)) {
+        const reply = await this.runNativeCompanionCli(trimmed, verb, timeoutMs);
+        return { reply, elapsedMs: Date.now() - sentAt };
+      }
+      const reply = await this.runSyntheticLocalCli(trimmed, native);
       return { reply, elapsedMs: Date.now() - sentAt };
     }
 
     throw new Error('Local CLI not available for this device type');
+  }
+
+  /**
+   * True when the connected Companion speaks companion protocol v14+
+   * (fw 1.18.0), which added CMD_RUN_CLI_COMMAND (#5866). The protocol byte
+   * is DeviceInfo's `fw ver`; v1.16/v1.17 report 13. Reads it once if the
+   * telemetry poller has not stamped it yet.
+   */
+  private async companionHasNativeCli(): Promise<boolean> {
+    if (!this.localNode) return false;
+    if (this.localNode.firmwareVer === undefined) {
+      const info = await this.deviceQuery();
+      if (info) this.applyDeviceInfo(info);
+    }
+    return companionHasNativeCli(this.localNode.firmwareVer);
+  }
+
+  /**
+   * Run one line through the Companion's own text CLI (fw 1.18.0+, #5866).
+   * `reboot`, `poweroff` and `shutdown` never answer (the board restarts or
+   * powers off inside the handler), so a timeout on those reads as sent.
+   */
+  private async runNativeCompanionCli(command: string, verb: string, timeoutMs: number): Promise<string> {
+    if (new TextEncoder().encode(command).length > COMPANION_NATIVE_CLI_MAX_BYTES) {
+      throw new Error(`Command too long for the companion CLI (max ${COMPANION_NATIVE_CLI_MAX_BYTES} bytes)`);
+    }
+    const noReply = verb === 'reboot' || verb === 'poweroff' || verb === 'shutdown';
+    const waitMs = noReply ? Math.min(timeoutMs, 3_000) : timeoutMs;
+    try {
+      const response = await this.sendBridgeCommand('run_cli', { command, timeout_ms: waitMs }, waitMs + 2_000);
+      if (!response.success) throw new Error(response.error || 'run_cli failed');
+      const reply = String(response.data?.reply ?? '').trim();
+      // The firmware marks a value with a leading "> " ("> 915.0"); drop it.
+      return reply.replace(/^>\s?/, '') || 'OK';
+    } catch (err) {
+      if (noReply && err instanceof Error && /timed out/i.test(err.message)) {
+        return verb === 'reboot' ? 'Reboot sent; the device is restarting' : 'Power-off sent; the device is shutting down';
+      }
+      throw err;
+    }
   }
 
   /**
@@ -9849,7 +9902,7 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
    * Unrecognized commands return a usage hint instead of throwing —
    * matches the Repeater path's behavior for the same input.
    */
-  private async runSyntheticLocalCli(command: string): Promise<string> {
+  private async runSyntheticLocalCli(command: string, nativeCli = false): Promise<string> {
     const parts = command.split(/\s+/);
     const verb = parts[0]?.toLowerCase() ?? '';
     const arg = parts[1]?.toLowerCase() ?? '';
@@ -9897,7 +9950,7 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
     }
 
     if (verb === 'help' || verb === '?') {
-      return [
+      const lines = [
         'Available local commands (Companion):',
         '  ver           — firmware version + model',
         '  stats [core|radio|packets] — local device stats',
@@ -9905,7 +9958,18 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
         '  advert.zerohop — advert to nodes in direct radio range',
         '  advert        — flood advert across the whole mesh (costly)',
         '  help          — this list',
-      ].join('\n');
+      ];
+      if (nativeCli) {
+        lines.push(
+          '',
+          'Firmware CLI (1.18.0+): any other line goes to the device, e.g.',
+          '  get radio | get tx | get af | get name | get tz.offset',
+          '  set tx <dbm> | set name <name> | set tz.offset <h>',
+          '  get wifi.status | get wifi.ip   (WiFi builds)',
+          '  board | reboot | poweroff',
+        );
+      }
+      return lines.join('\n');
     }
 
     return `Unknown command: ${command}\nType "help" for the list of available commands.`;

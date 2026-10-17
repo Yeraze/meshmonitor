@@ -280,9 +280,11 @@ router.post('/admin/cli', extendRequestTimeout(REMOTE_CLI_TIMEOUT_MS), meshcoreD
  * `MeshCoreManager.sendLocalCliCommand`):
  *   - Repeater / Room Server: forwarded to the device's native text CLI
  *     over serial.
- *   - Companion: handled by a small synthetic-CLI interpreter that
- *     covers ver / stats / clock / advert / help. Unknown commands
- *     return a usage hint.
+ *   - Companion fw 1.18.0+: the firmware's own text CLI (#5866), with
+ *     stats / clock / advert / help still answered by the shim.
+ *   - Older Companion: a small synthetic-CLI interpreter that covers
+ *     ver / stats / clock / advert / help. Unknown commands return a
+ *     usage hint.
  *
  * Reuses the same `DANGER_COMMAND_PATTERN` guard as the remote /admin/cli
  * route — destructive verbs (reboot / erase / clkreboot / factory)
