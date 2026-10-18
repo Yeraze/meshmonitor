@@ -51,6 +51,7 @@ import {
   defaultMqttPort,
   deviceFieldsReachEndpoint,
   MESHTASTIC_DEFAULT_SERVER,
+  parseBridgeUrl,
   splitDeviceAddress,
 } from '../../utils/mqttBrokerEndpoint';
 
@@ -291,16 +292,14 @@ export function bridgeUrlForPreset(preset: BrokerPreset): string {
   return `${preset.tls ? 'mqtts' : 'mqtt'}://${preset.host}:${preset.port}`;
 }
 
-const BRIDGE_URL_RE = /^(mqtts?):\/\/(?:[^@/]*@)?([^:/?#]+)(?::(\d+))?\/?$/i;
-
-/** The preset a bridge URL already points at, if any. */
+/**
+ * The preset a bridge URL already points at, if any. A bare host is read the
+ * way the bridge connects to it, the same as the server's preset fill.
+ */
 export function matchBridgePreset(url: string, presets: readonly BrokerPreset[] = BROKER_PRESETS): BrokerPreset | null {
-  const m = BRIDGE_URL_RE.exec(url.trim());
-  if (!m) return null;
-  const tls = m[1].toLowerCase() === 'mqtts';
-  const host = m[2].toLowerCase();
-  const port = m[3] ? Number(m[3]) : tls ? 8883 : 1883;
-  return presets.find((p) => p.tls === tls && p.host === host && p.port === port) ?? null;
+  const endpoint = parseBridgeUrl(url);
+  if (!endpoint) return null;
+  return presets.find((p) => p.tls === endpoint.tls && p.host === endpoint.host && p.port === endpoint.port) ?? null;
 }
 
 /**

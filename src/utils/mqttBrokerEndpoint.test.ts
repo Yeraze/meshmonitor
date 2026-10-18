@@ -34,6 +34,10 @@ describe('mqttBrokerEndpoint (#5794)', () => {
   it('parses and matches bridge URLs', () => {
     expect(parseBridgeUrl('mqtts://u:p@Host.example')).toEqual({ host: 'host.example', port: 8883, tls: true });
     expect(parseBridgeUrl('ws://host')).toBeNull();
+    // A bare host is read the way the bridge connects to it.
+    expect(parseBridgeUrl('mqtt.areyoumeshingwith.us')).toEqual({ host: 'mqtt.areyoumeshingwith.us', port: 1883, tls: false });
+    expect(parseBridgeUrl('h.example:8883')).toEqual({ host: 'h.example', port: 8883, tls: true });
+    expect(parseBridgeUrl('')).toBeNull();
     expect(bridgeUrlReachesEndpoint('mqtt://broker.fl-mesh.org', FL)).toBe(true);
     expect(bridgeUrlReachesEndpoint('mqtt://broker.fl-mesh.org:1884', FL)).toBe(false);
     expect(bridgeUrlForEndpoint(FL)).toBe('mqtt://broker.fl-mesh.org:1883');

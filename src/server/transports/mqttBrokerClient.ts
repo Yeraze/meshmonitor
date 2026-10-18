@@ -11,6 +11,7 @@ import { connect, type IClientOptions, type IClientSubscribeOptions, type MqttCl
 import { logger } from '../../utils/logger.js';
 import { createCachingLookup } from './cachingDnsLookup.js';
 import { redactBrokerUrl } from '../utils/brokerUrl.js';
+import { normalizeBrokerUrl } from '../../utils/mqttBrokerEndpoint.js';
 
 // One DNS cache shared across every upstream MQTT connection. The publisher
 // pool opens one socket per gateway and reconnects re-resolve, so without this
@@ -819,16 +820,6 @@ export class MqttBrokerClient extends EventEmitter {
   }
 }
 
-// Bare host → mqtt://host; canonical TLS ports get mqtts://.
-export function normalizeBrokerUrl(input: string): string {
-  const trimmed = input.trim();
-  if (/^(mqtt|mqtts|ws|wss|tcp|tls):\/\//i.test(trimmed)) {
-    return trimmed;
-  }
-  const colonIdx = trimmed.lastIndexOf(':');
-  if (colonIdx > 0) {
-    const port = Number(trimmed.slice(colonIdx + 1));
-    if (port === 8883 || port === 8884) return 'mqtts://' + trimmed;
-  }
-  return 'mqtt://' + trimmed;
-}
+// Bare host → mqtt://host; canonical TLS ports get mqtts://. Lives in the
+// shared util so the bridge form and the preset fill read URLs the same way (#5794).
+export { normalizeBrokerUrl };

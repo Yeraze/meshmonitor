@@ -55,11 +55,33 @@ export function deviceFieldsReachEndpoint(
   return fields.tlsEnabled === endpoint.tls && hostOk && (port ?? defaultMqttPort(fields.tlsEnabled)) === endpoint.port;
 }
 
+/**
+ * How the MQTT client reads a broker URL: a bare host becomes `mqtt://host`,
+ * and a bare `host:8883` / `host:8884` becomes `mqtts://`. The bridge connects
+ * with exactly this (transports/mqttBrokerClient.ts).
+ */
+export function normalizeBrokerUrl(input: string): string {
+  const trimmed = input.trim();
+  if (/^(mqtt|mqtts|ws|wss|tcp|tls):\/\//i.test(trimmed)) {
+    return trimmed;
+  }
+  const colonIdx = trimmed.lastIndexOf(':');
+  if (colonIdx > 0) {
+    const port = Number(trimmed.slice(colonIdx + 1));
+    if (port === 8883 || port === 8884) return 'mqtts://' + trimmed;
+  }
+  return 'mqtt://' + trimmed;
+}
+
 const BRIDGE_URL_RE = /^(mqtts?):\/\/(?:[^@/]*@)?([^:/?#]+)(?::(\d+))?\/?$/i;
 
-/** The endpoint a bridge URL names, or null when it is not an mqtt(s) URL. */
+/**
+ * The endpoint a bridge URL names, or null when it is not an mqtt(s) URL. A
+ * bare host is read as the bridge reads it (`normalizeBrokerUrl`).
+ */
 export function parseBridgeUrl(url: string): BrokerEndpoint | null {
-  const m = BRIDGE_URL_RE.exec(url.trim());
+  if (url.trim() === '') return null;
+  const m = BRIDGE_URL_RE.exec(normalizeBrokerUrl(url));
   if (!m) return null;
   const tls = m[1].toLowerCase() === 'mqtts';
   return {
