@@ -820,6 +820,7 @@ import userPreferencesRoutes from './routes/userPreferencesRoutes.js';
 import adminRoutes from './routes/adminRoutes.js';
 import nodesRoutes from './routes/nodesRoutes.js';
 import nodeNameHistoryRoutes from './routes/nodeNameHistoryRoutes.js';
+import mqttBrokerPresetRoutes from './routes/mqttBrokerPresetRoutes.js';
 import translationRoutes from './routes/translationRoutes.js';
 
 // CSRF token endpoint (must be before CSRF protection middleware)
@@ -1062,6 +1063,8 @@ apiRouter.use('/', pollRoutes);
 apiRouter.use('/', nodesRoutes);
 // #5862: GET /nodes/:nodeId/name-history
 apiRouter.use('/', nodeNameHistoryRoutes);
+// #5794: saved MQTT broker presets (global, admin-managed)
+apiRouter.use('/mqtt-broker-presets', mqttBrokerPresetRoutes);
 
 // Wire up side-effect callbacks for settingsRoutes
 setSettingsCallbacks({

@@ -18,6 +18,7 @@ import BrokerPresetSelector from '../MQTT/BrokerPresetSelector';
 import { MqttDocsLinks } from '../MQTT/MqttDocsLinks';
 import {
   applyPresetToDevice,
+  devicePresetDraft,
   matchDevicePreset,
   type BrokerPreset,
   type KeptCredentials,
@@ -62,8 +63,11 @@ interface MQTTConfigSectionProps {
   setMapPositionPrecision: (value: number) => void;
   setMapShouldReportLocation: (value: boolean) => void;
   isSaving: boolean;
-  /** Resolves true when the node accepted the save. */
-  onSave: () => Promise<boolean>;
+  /**
+   * Resolves true when the node accepted the save. `brokerPresetId`: a saved
+   * preset whose hidden login the server fills in (#5794).
+   */
+  onSave: (extra?: { brokerPresetId?: number }) => Promise<boolean>;
   /** Bumped when the page reloads config from the node (#5797). */
   configVersion?: number;
 }
@@ -213,12 +217,15 @@ const MQTTConfigSection: React.FC<MQTTConfigSectionProps> = ({
     ],
   );
 
-  // Broker presets (#5689): fill address, TLS and login only. The fields
-  // reach the radio only through the existing Save, unchanged.
-  const matchedPreset = useMemo(
-    () => matchDevicePreset({ address: mqttAddress, tlsEnabled }),
+  // Broker presets (#5689): fill address, TLS and login only (a saved preset
+  // may add the root topic, #5794). The fields reach the radio only through
+  // the existing Save, unchanged.
+  const matchPreset = useCallback(
+    (candidates: readonly BrokerPreset[]) => matchDevicePreset({ address: mqttAddress, tlsEnabled }, candidates),
     [mqttAddress, tlsEnabled],
   );
+  // A saved preset whose hidden login the server fills in on save (#5794).
+  const [serverFillPreset, setServerFillPreset] = useState<BrokerPreset | null>(null);
   const applyBrokerPreset = useCallback(
     (preset: BrokerPreset): KeptCredentials => {
       const { fields, kept } = applyPresetToDevice(preset, {
@@ -231,9 +238,11 @@ const MQTTConfigSection: React.FC<MQTTConfigSectionProps> = ({
       setMqttUsername(fields.username);
       setMqttPassword(fields.password);
       setTlsEnabled(fields.tlsEnabled);
+      if (fields.root !== undefined) setMqttRoot(fields.root);
+      setServerFillPreset(kept.serverFill ? preset : null);
       return kept;
     },
-    [mqttAddress, mqttUsername, mqttPassword, tlsEnabled, setMqttAddress, setMqttUsername, setMqttPassword, setTlsEnabled],
+    [mqttAddress, mqttUsername, mqttPassword, tlsEnabled, setMqttAddress, setMqttUsername, setMqttPassword, setTlsEnabled, setMqttRoot],
   );
 
   // What the node holds; moves on a successful save or a reload (#5797)
@@ -326,7 +335,13 @@ const MQTTConfigSection: React.FC<MQTTConfigSectionProps> = ({
   const handleSave = async () => {
     setMqttLinkError(null);
     if (deviceHasChanges) {
-      if (!(await onSave())) return;
+      // Only while the address still reaches that preset; the server checks again.
+      const brokerPresetId =
+        serverFillPreset?.savedId !== undefined && matchDevicePreset({ address: mqttAddress, tlsEnabled }, [serverFillPreset])
+          ? serverFillPreset.savedId
+          : undefined;
+      if (!(await onSave(brokerPresetId !== undefined ? { brokerPresetId } : undefined))) return;
+      setServerFillPreset(null);
       commit(values);
     }
     if (stagedLinkTarget && (await writeMqttLink(stagedLinkTarget))) {
@@ -518,8 +533,15 @@ const MQTTConfigSection: React.FC<MQTTConfigSectionProps> = ({
             <BrokerPresetSelector
               id="mqttBrokerPreset"
               layout="settings"
-              matchedPresetId={matchedPreset?.id ?? null}
+              matchPreset={matchPreset}
               onApplyPreset={applyBrokerPreset}
+              getDraft={() => devicePresetDraft({
+                address: mqttAddress,
+                tlsEnabled,
+                username: mqttUsername,
+                password: mqttPassword,
+                root: mqttRoot,
+              })}
             />
             <div className="setting-item">
               <label htmlFor="mqttAddress">

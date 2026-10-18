@@ -17,7 +17,7 @@ import {
 } from './useAdminCommandsState';
 import type { Channel } from '../../types/device';
 import BrokerPresetSelector from '../MQTT/BrokerPresetSelector';
-import { applyPresetToDevice, matchDevicePreset } from '../MQTT/brokerPresets';
+import { applyPresetToDevice, devicePresetDraft, matchDevicePreset } from '../MQTT/brokerPresets';
 
 const MQTT_SAVE_NEEDS_LOAD =
   'Load this node\u2019s MQTT configuration first. Saving without it would replace the node\u2019s MQTT settings with defaults.';
@@ -272,7 +272,14 @@ export const ModuleConfigurationSection: React.FC<ModuleConfigurationSectionProp
               id="adminMqttBrokerPreset"
               layout="settings"
               disabled={isExecuting}
-              matchedPresetId={matchDevicePreset({ address: mqttAddress, tlsEnabled: mqttTlsEnabled })?.id ?? null}
+              matchPreset={(candidates) => matchDevicePreset({ address: mqttAddress, tlsEnabled: mqttTlsEnabled }, candidates)}
+              getDraft={() => devicePresetDraft({
+                address: mqttAddress,
+                tlsEnabled: mqttTlsEnabled,
+                username: mqttUsername,
+                password: mqttPassword,
+                root: mqttRoot,
+              })}
               onApplyPreset={(preset) => {
                 // #5689: edits the form only; the remote node hears nothing
                 // until the MQTT Save button below.
@@ -286,6 +293,9 @@ export const ModuleConfigurationSection: React.FC<ModuleConfigurationSectionProp
                 onMQTTConfigChange('username', fields.username);
                 onMQTTConfigChange('password', fields.password);
                 onMQTTConfigChange('tlsEnabled', fields.tlsEnabled);
+                if (fields.root !== undefined) onMQTTConfigChange('root', fields.root);
+                // Remote admin is admin-only, and admins are shown every saved
+                // login, so `kept.serverFill` never happens here (#5794).
                 return kept;
               }}
             />

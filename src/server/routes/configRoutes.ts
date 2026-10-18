@@ -33,6 +33,7 @@ import {
 import { isTxDisabledError } from '../errors/txDisabledError.js';
 import { isModuleConfigNotAppliedError, isModuleConfigUnverifiedError } from '../errors/moduleConfigVerifyError.js';
 import { safeJson } from '../utils/redactSecrets.js';
+import { fillDeviceMqttFromPreset } from '../services/mqttBrokerPresetFill.js';
 
 const env = getEnvironmentConfig();
 const BASE_URL = env.baseUrl;
@@ -240,6 +241,9 @@ router.post('/position', requireDeviceSourcePermission('configuration', 'write',
 router.post('/mqtt', requireDeviceSourcePermission('configuration', 'write', 'body'), async (req, res) => {
   try {
     const { sourceId: _sourceId, ...config } = req.body;
+    // A saved broker preset's login, for a caller who was not shown it (#5794).
+    const presetErr = await fillDeviceMqttFromPreset(config);
+    if (presetErr) return fail(res, presetErr.status, presetErr.code, presetErr.message);
     const { manager: cfgMqttManager } = getDeviceSourceTarget(req);
     await cfgMqttManager.setMQTTConfig(config);
     res.json({ success: true, message: 'MQTT configuration sent' });

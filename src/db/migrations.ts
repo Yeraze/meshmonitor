@@ -229,6 +229,7 @@ import { migration as createUserPasskeysMigration, runMigration207Postgres, runM
 import { migration as addChannelDatabaseUseAeadMigration, runMigration208Postgres, runMigration208Mysql } from '../server/migrations/208_add_channel_database_use_aead.js';
 import { migration as createNodeNameHistoryMigration, runMigration209Postgres, runMigration209Mysql } from '../server/migrations/209_create_node_name_history.js';
 import { migration as messagesChannelIndexMigration, runMigration210Postgres, runMigration210Mysql } from '../server/migrations/210_messages_channel_index_and_pg_autovacuum.js';
+import { migration as createMqttBrokerPresetsMigration, runMigration211Postgres, runMigration211Mysql } from '../server/migrations/211_create_mqtt_broker_presets.js';
 
 // ============================================================================
 // Registry
@@ -3395,4 +3396,18 @@ registry.register({
   sqlite: (db) => messagesChannelIndexMigration.up(db),
   postgres: (client) => runMigration210Postgres(client),
   mysql: (pool) => runMigration210Mysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 211: `mqtt_broker_presets` (#5794). GLOBAL. MQTT brokers an admin
+// saved for reuse across the Meshtastic MQTT forms.
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 211,
+  name: 'create_mqtt_broker_presets',
+  settingsKey: 'migration_211_create_mqtt_broker_presets',
+  sqlite: (db) => createMqttBrokerPresetsMigration.up(db),
+  postgres: (client) => runMigration211Postgres(client),
+  mysql: (pool) => runMigration211Mysql(pool),
 });

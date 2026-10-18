@@ -178,6 +178,19 @@ Once the bridge exists, its **Settings** page has a **Broker preset** chooser ab
 
 Choosing one only edits the form; nothing is saved until you press Save. It fills the username and password only when they are empty. If a password is already stored for the bridge, the password field stays blank (blank means "keep the stored one") and a note gives you the public password to type in. Topics, mode and filters are not touched. The same chooser is on the device MQTT settings; see [Broker Preset](/features/device#broker-preset).
 
+#### Saved presets
+
+An admin can save any broker as a preset and reuse it in every MQTT form: the bridge **Settings** page, the device MQTT settings, and remote admin. Under the built-in chips, admins get two buttons:
+
+- **Save as preset** saves the form's current host, port, TLS, login and root topic under a name. The bridge form never shows a stored password, so type it into the dialog if the preset should include it.
+- **Manage saved presets** edits, renames, duplicates and deletes them.
+
+Saved presets appear in a second row, **My saved presets**. Picking one fills the broker address, TLS and login, the same as a built-in preset. If the preset has a root topic, it also fills the device's root topic, or sets the bridge's subscription to `<root>/#`.
+
+Presets are copied in, not linked. Editing or deleting a preset changes no source or radio that already uses its values; pick it again to apply the new ones.
+
+Only admins see a preset's username and password. Anyone else who can edit a source or a device's config sees the preset without its login. When they pick it, the login fields stay blank and a note says the login is added when they save: the server copies it in, but only if the address still points at the preset's host, port and TLS setting. Once a password is written to a radio, anyone who can read that device's MQTT config can read it, as with any device MQTT password.
+
 Sources for the official broker: the [MQTT module docs](https://meshtastic.org/docs/configuration/module/mqtt/#mqtt-module-config-client-availability) list `mqtt.meshtastic.org`, `meshdev` and `large4cats` as the defaults; the firmware uses port 1883, or 8883 when TLS is on. A new preset needs its operator's consent.
 
 A standalone bridge is the right starting point when you have **no embedded broker** (pure upstream monitoring) or when you plan to wire a Meshtastic source's `mqttLink` directly at the bridge for client-proxy traffic — both are also covered in [Use-case recipes](#use-case-recipes) above.

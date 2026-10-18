@@ -1,0 +1,91 @@
+/* Saved MQTT broker preset dialogs (#5794). */
+
+.editor {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.3rem;
+  margin: 0.5rem 0;
+}
+
+.editor label {
+  font-size: 0.85rem;
+  color: var(--color-text-subtle);
+  margin-top: 0.3rem;
+}
+
+.editor input[type='text'],
+.editor input[type='number'],
+.editor input[type='password'] {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.checkbox {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.hint {
+  margin: 0.3rem 0;
+  font-size: 0.85rem;
+  line-height: 1.4;
+  color: var(--color-text-subtle);
+}
+
+.error {
+  margin: 0.4rem 0;
+  font-size: 0.85rem;
+  color: var(--color-error);
+}
+
+.subtitle {
+  margin: 0.6rem 0 0.2rem;
+}
+
+.actions {
+  display: flex;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.8rem;
+}
+
+.list {
+  list-style: none;
+  margin: 0.5rem 0;
+  padding: 0;
+}
+
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.5rem 0;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.rowText {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.endpoint {
+  font-size: 0.8rem;
+  color: var(--color-text-subtle);
+  overflow-wrap: anywhere;
+}
+
+.rowActions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.danger {
+  color: var(--color-error);
+}

@@ -12,6 +12,8 @@ import {
   findBrokerPreset,
   matchBridgePreset,
   matchDevicePreset,
+  savedPresetToBroker,
+  devicePresetDraft,
 } from './brokerPresets';
 
 const tcp = findBrokerPreset('meshtastic_public')!;
@@ -137,5 +139,72 @@ describe('bridge form (URL with scheme and port)', () => {
   it('keeps a URL that already points at the preset', () => {
     const url = 'mqtt://mqtt.meshtastic.org';
     expect(applyPresetToBridge(tcp, { url, username: '', password: '' }, { passwordStored: false }).fields.url).toBe(url);
+  });
+});
+
+describe('saved presets (#5794)', () => {
+  const row = {
+    id: 9,
+    name: 'FL',
+    host: 'broker.fl-mesh.org',
+    port: 1883,
+    tls: false,
+    rootTopic: 'msh/US/FL',
+    hasUsername: true,
+    hasPassword: true,
+  };
+  const hidden = savedPresetToBroker(row);
+  const shown = savedPresetToBroker({ ...row, username: 'fluser', password: 'flpass' });
+
+  it('maps a row to a chip id that never collides with built-ins', () => {
+    expect(hidden.id).toBe('saved:9');
+    expect(hidden).toMatchObject({ savedId: 9, usernameHidden: true, passwordHidden: true, username: '', password: '' });
+    expect(shown).toMatchObject({ usernameHidden: false, passwordHidden: false, username: 'fluser', password: 'flpass' });
+  });
+
+  it('device: a hidden login leaves blank fields for the server, and fills the root', () => {
+    const { fields, kept } = applyPresetToDevice(hidden, { address: '', username: '', password: '', tlsEnabled: true });
+    expect(fields).toEqual({ address: 'broker.fl-mesh.org', username: '', password: '', tlsEnabled: false, root: 'msh/US/FL' });
+    expect(kept).toEqual({ username: false, password: false, storedPassword: false, serverFill: true });
+  });
+
+  it('device: a typed login beside a hidden one is kept, with no server fill', () => {
+    const { fields, kept } = applyPresetToDevice(hidden, { address: '', username: 'me', password: 'x', tlsEnabled: false });
+    expect(fields).toMatchObject({ username: 'me', password: 'x' });
+    expect(kept).toEqual({ username: true, password: true, storedPassword: false });
+  });
+
+  it('device: a non-default port goes into the address', () => {
+    const odd = savedPresetToBroker({ ...row, port: 1884, rootTopic: null });
+    const { fields } = applyPresetToDevice(odd, { address: '', username: '', password: '', tlsEnabled: false });
+    expect(fields.address).toBe('broker.fl-mesh.org:1884');
+    expect('root' in fields).toBe(false);
+    expect(matchDevicePreset({ address: 'broker.fl-mesh.org:1884', tlsEnabled: false }, [odd])?.id).toBe('saved:9');
+    expect(matchDevicePreset({ address: 'broker.fl-mesh.org', tlsEnabled: false }, [odd])).toBeNull();
+  });
+
+  it('bridge: fills URL and a <root>/# subscription, and the shown login', () => {
+    const { fields, kept } = applyPresetToBridge(shown, { url: '', username: '', password: '' }, { passwordStored: false });
+    expect(fields).toEqual({
+      url: 'mqtt://broker.fl-mesh.org:1883',
+      username: 'fluser',
+      password: 'flpass',
+      subscriptions: 'msh/US/FL/#',
+    });
+    expect(kept).toEqual({ username: false, password: false, storedPassword: false });
+    expect(matchBridgePreset('mqtt://broker.fl-mesh.org', [shown])?.id).toBe('saved:9');
+  });
+
+  it('bridge: a stored password still wins over a hidden preset login', () => {
+    const { kept } = applyPresetToBridge(hidden, { url: '', username: '', password: '' }, { passwordStored: true, usernameStored: true });
+    expect(kept).toEqual({ username: true, password: true, storedPassword: true });
+  });
+
+  it('devicePresetDraft turns device fields into a preset draft', () => {
+    expect(devicePresetDraft({ address: 'h.example:1884', tlsEnabled: false, username: 'u', password: 'p', root: 'msh/x' })).toEqual({
+      host: 'h.example', port: 1884, tls: false, username: 'u', password: 'p', rootTopic: 'msh/x',
+    });
+    expect(devicePresetDraft({ address: 'h.example', tlsEnabled: true, username: '', password: '' })?.port).toBe(8883);
+    expect(devicePresetDraft({ address: '', tlsEnabled: false, username: '', password: '' })).toBeNull();
   });
 });

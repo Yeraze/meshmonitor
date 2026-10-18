@@ -25,6 +25,7 @@ vi.mock('react-i18next', async () => {
 const { state } = vi.hoisted(() => ({
   state: {
     canWrite: true,
+    savedPresets: { canManage: false, presets: [] } as { canManage: boolean; presets: unknown[] },
     fetch: null as unknown as ReturnType<typeof import('vitest')['vi']['fn']>,
     saveBar: null as null | {
       id: string;
@@ -50,6 +51,15 @@ vi.mock('../../hooks/useCsrfFetch', () => {
   return { useCsrfFetch: () => csrfFetch };
 });
 vi.mock('../../init', () => ({ appBasename: '' }));
+vi.mock('../../hooks/useMqttBrokerPresets', () => {
+  const action = () => ({ mutateAsync: vi.fn(), isPending: false });
+  return {
+    useMqttBrokerPresets: () => state.savedPresets,
+    useCreateBrokerPreset: action,
+    useUpdateBrokerPreset: action,
+    useDeleteBrokerPreset: action,
+  };
+});
 vi.mock('../../hooks/useDashboardData', () => ({ useSourceStatuses: () => new Map() }));
 vi.mock('../BBoxMapEditor', () => ({ default: () => <div data-testid="bbox-editor" /> }));
 vi.mock('../../hooks/useSaveBar', () => ({
@@ -118,6 +128,7 @@ const saveButton = () => screen.getByRole('button', { name: 'Save' });
 
 beforeEach(() => {
   state.canWrite = true;
+  state.savedPresets = { canManage: false, presets: [] };
   state.saveBar = null;
   installFetch({ config: STORED_CONFIG });
 });
@@ -376,5 +387,84 @@ describe('MQTT bridge setup: broker presets (#5689)', () => {
     state.canWrite = false;
     await renderSection();
     presetChips(document).querySelectorAll('button').forEach((b) => expect((b as HTMLButtonElement).disabled).toBe(true));
+  });
+});
+
+/** A saved preset (#5794) as a non-admin editor gets it: no login, only that it has one. */
+const SAVED_FOR_EDITOR = {
+  id: 7,
+  name: 'Florida Mesh Broker',
+  host: 'broker.fl-mesh.org',
+  port: 1883,
+  tls: false,
+  rootTopic: 'msh/US/FL',
+  hasUsername: true,
+  hasPassword: true,
+};
+
+const savedChips = () => screen.getByTestId('broker-preset-saved-picker');
+
+describe('MQTT bridge setup: saved broker presets (#5794)', () => {
+  it('a non-admin: fills URL and subscription, leaves the login blank, and Save sends the preset id', async () => {
+    state.savedPresets = { canManage: false, presets: [SAVED_FOR_EDITOR] };
+    installFetch({ config: { ...MASKED_CONFIG, upstream: { url: 'mqtt://upstream.example:1883' } } });
+    await renderSection();
+    expect(screen.queryByTestId('broker-preset-save-as')).toBeNull();
+    expect(screen.queryByTestId('broker-preset-manage')).toBeNull();
+
+    fireEvent.click(savedChips().querySelector('[data-preset-id="saved:7"]') as HTMLElement);
+    expect(screen.getByDisplayValue('mqtt://broker.fl-mesh.org:1883')).toBeInTheDocument();
+    expect(screen.getByDisplayValue('msh/US/FL/#')).toBeInTheDocument();
+    expect(screen.getByTestId('broker-preset-kept').textContent).toMatch(/added when you save/);
+    expect(savedChips().querySelector('[aria-pressed="true"]')?.getAttribute('data-preset-id')).toBe('saved:7');
+
+    fireEvent.click(saveButton());
+    await waitFor(() => expect(puts()).toHaveLength(1));
+    const upstream = (puts()[0].body as { config: { upstream: Record<string, unknown> } }).config.upstream;
+    expect(upstream).toEqual({ url: 'mqtt://broker.fl-mesh.org:1883', brokerPresetId: 7 });
+  });
+
+  it('does not send the preset id once the URL no longer reaches the preset', async () => {
+    state.savedPresets = { canManage: false, presets: [SAVED_FOR_EDITOR] };
+    installFetch({ config: { ...MASKED_CONFIG, upstream: { url: 'mqtt://upstream.example:1883' } } });
+    await renderSection();
+    fireEvent.click(savedChips().querySelector('[data-preset-id="saved:7"]') as HTMLElement);
+    fireEvent.change(screen.getByDisplayValue('mqtt://broker.fl-mesh.org:1883'), {
+      target: { value: 'mqtt://elsewhere.example:1883' },
+    });
+    fireEvent.click(saveButton());
+    await waitFor(() => expect(puts()).toHaveLength(1));
+    const upstream = (puts()[0].body as { config: { upstream: Record<string, unknown> } }).config.upstream;
+    expect('brokerPresetId' in upstream).toBe(false);
+  });
+
+  it('an admin gets the login filled in directly, plus Save as / Manage', async () => {
+    state.savedPresets = {
+      canManage: true,
+      presets: [{ ...SAVED_FOR_EDITOR, username: 'fluser', password: 'flpass' }],
+    };
+    installFetch({ config: { ...STORED_CONFIG, upstream: { url: 'mqtt://upstream.example:1883' } } });
+    await renderSection();
+    expect(screen.getByTestId('broker-preset-save-as')).toBeInTheDocument();
+    expect(screen.getByTestId('broker-preset-manage')).toBeInTheDocument();
+    fireEvent.click(savedChips().querySelector('[data-preset-id="saved:7"]') as HTMLElement);
+    expect((screen.getByPlaceholderText('••••••••') as HTMLInputElement).value).toBe('flpass');
+    fireEvent.click(saveButton());
+    await waitFor(() => expect(puts()).toHaveLength(1));
+    const upstream = (puts()[0].body as { config: { upstream: Record<string, unknown> } }).config.upstream;
+    expect(upstream).toEqual({ url: 'mqtt://broker.fl-mesh.org:1883', username: 'fluser', password: 'flpass' });
+  });
+
+  it('Save as preset opens prefilled from the form', async () => {
+    state.savedPresets = { canManage: true, presets: [] };
+    await renderSection();
+    fireEvent.click(screen.getByTestId('broker-preset-save-as'));
+    const dialog = await screen.findByTestId('save-broker-preset-dialog');
+    expect((dialog.querySelector('#save-broker-preset-host') as HTMLInputElement).value).toBe('upstream.example');
+    expect((dialog.querySelector('#save-broker-preset-port') as HTMLInputElement).value).toBe('1883');
+    expect((dialog.querySelector('#save-broker-preset-username') as HTMLInputElement).value).toBe('bridge-user');
+    expect((dialog.querySelector('#save-broker-preset-rootTopic') as HTMLInputElement).value).toBe('msh/US');
+    // The stored password is not in the form, so the dialog says so.
+    expect(screen.getByTestId('save-broker-preset-no-password')).toBeInTheDocument();
   });
 });
