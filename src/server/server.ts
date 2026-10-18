@@ -821,6 +821,7 @@ import adminRoutes from './routes/adminRoutes.js';
 import nodesRoutes from './routes/nodesRoutes.js';
 import nodeNameHistoryRoutes from './routes/nodeNameHistoryRoutes.js';
 import mqttBrokerPresetRoutes from './routes/mqttBrokerPresetRoutes.js';
+import ductingRoutes from './routes/ductingRoutes.js';
 import translationRoutes from './routes/translationRoutes.js';
 
 // CSRF token endpoint (must be before CSRF protection middleware)
@@ -1065,6 +1066,8 @@ apiRouter.use('/', nodesRoutes);
 apiRouter.use('/', nodeNameHistoryRoutes);
 // #5794: saved MQTT broker presets (global, admin-managed)
 apiRouter.use('/mqtt-broker-presets', mqttBrokerPresetRoutes);
+// #5734 spike: tropospheric ducting forecast from NOAA GFS (admin-only)
+apiRouter.use('/ducting', ductingRoutes);
 
 // Wire up side-effect callbacks for settingsRoutes
 setSettingsCallbacks({
