@@ -25,6 +25,11 @@ export interface AdminMqttSavePayload {
     positionPrecision: number;
     shouldReportLocation: boolean;
   };
+  /**
+   * Not an MQTTConfig field: a saved broker preset whose login the server
+   * fills in, then removes before the config reaches the radio (#5794).
+   */
+  brokerPresetId?: number;
 }
 
 /** The form fields the payload is built from (the local form has no load gate). */

@@ -39,7 +39,21 @@
  * Adding a broker (Phase 2 of #5689) needs its operator's consent: one entry
  * here, its `labelKey` in public/locales/en.json, a source line above, and a
  * row in docs/features/mqtt-broker.md.
+ *
+ * Saved presets (#5794) are the brokers an admin saved; `savedPresetToBroker`
+ * turns one into a `BrokerPreset` so the same apply/match functions serve
+ * both. A saved preset may also carry a root topic, and for a non-admin its
+ * login is HIDDEN: the form leaves those fields blank and the server copies
+ * the login in on save (see `serverFill`).
  */
+import type { SavedBrokerPreset } from '../../hooks/useMqttBrokerPresets';
+import {
+  defaultMqttPort,
+  deviceFieldsReachEndpoint,
+  MESHTASTIC_DEFAULT_SERVER,
+  parseBridgeUrl,
+  splitDeviceAddress,
+} from '../../utils/mqttBrokerEndpoint';
 
 export interface BrokerPreset {
   /** Stable handle: the <option> value and test id. Never `'custom'`. */
@@ -52,12 +66,47 @@ export interface BrokerPreset {
   /** The broker's published login. Public by design, so safe to show. */
   username: string;
   password: string;
+  /** Saved presets only (#5794): the row id. */
+  savedId?: number;
+  /** Saved presets only: the name, shown as typed (no translation). */
+  label?: string;
+  /** Saved presets only: fills the root topic (device) or subscription (bridge). */
+  rootTopic?: string | null;
+  /** Saved presets only: the preset has a username this user is not shown. */
+  usernameHidden?: boolean;
+  /** Saved presets only: the preset has a password this user is not shown. */
+  passwordHidden?: boolean;
+}
+
+/** The chip id of a saved preset. Never collides with a built-in id or `'custom'`. */
+export function savedPresetChipId(savedId: number): string {
+  return `saved:${savedId}`;
+}
+
+export function savedPresetToBroker(p: SavedBrokerPreset): BrokerPreset {
+  const usernameHidden = p.username === undefined && p.hasUsername;
+  const passwordHidden = p.password === undefined && p.hasPassword;
+  return {
+    id: savedPresetChipId(p.id),
+    labelKey: '',
+    labelFallback: p.name,
+    label: p.name,
+    host: p.host,
+    port: p.port,
+    tls: p.tls,
+    username: p.username ?? '',
+    password: p.password ?? '',
+    savedId: p.id,
+    rootTopic: p.rootTopic,
+    usernameHidden,
+    passwordHidden,
+  };
 }
 
 /** The selector's escape hatch: today's free-text fields, untouched. */
 export const CUSTOM_PRESET_ID = 'custom';
 
-export const MESHTASTIC_PUBLIC_HOST = 'mqtt.meshtastic.org';
+export const MESHTASTIC_PUBLIC_HOST = MESHTASTIC_DEFAULT_SERVER;
 
 export const BROKER_PRESETS: readonly BrokerPreset[] = [
   {
@@ -105,6 +154,11 @@ export interface KeptCredentials {
   password: boolean;
   /** The kept password is a stored one the form does not show (bridge only). */
   storedPassword: boolean;
+  /**
+   * A saved preset's hidden login goes in on save (#5794): the form left the
+   * field blank and must send the preset's id with the save.
+   */
+  serverFill?: boolean;
 }
 
 /**
@@ -117,6 +171,23 @@ function fillCredential(current: string, presetValue: string): { value: string; 
   return { value: current, kept: true };
 }
 
+/**
+ * The same rule for a credential this user is not shown: an empty field stays
+ * empty and the server fills it on save; anything typed is kept.
+ */
+function fillHiddenCredential(current: string): { value: string; kept: boolean; serverFill: boolean } {
+  if (current === '') return { value: '', kept: false, serverFill: true };
+  return { value: current, kept: true, serverFill: false };
+}
+
+function fillAnyCredential(
+  current: string,
+  presetValue: string,
+  hidden: boolean | undefined,
+): { value: string; kept: boolean; serverFill: boolean } {
+  return hidden ? fillHiddenCredential(current) : { ...fillCredential(current, presetValue), serverFill: false };
+}
+
 // ---------------------------------------------------------------------------
 // Device MQTT config (local and remote admin): host + tlsEnabled flag
 // ---------------------------------------------------------------------------
@@ -126,31 +197,22 @@ export interface DeviceMqttFields {
   username: string;
   password: string;
   tlsEnabled: boolean;
+  /** Root topic. Changed only by a saved preset that has one. */
+  root?: string;
 }
 
-/**
- * Split firmware's `address` the way firmware does: on the first `:`.
- * Returns a null port when none is given.
- */
-function splitDeviceAddress(address: string): { host: string; port: number | null } {
-  const trimmed = address.trim();
-  const i = trimmed.indexOf(':');
-  if (i < 0) return { host: trimmed.toLowerCase(), port: null };
-  const port = Number(trimmed.slice(i + 1));
-  return { host: trimmed.slice(0, i).toLowerCase(), port: Number.isInteger(port) ? port : NaN };
-}
-
-/** Does this firmware address reach the preset's host and port? */
+/** Does this firmware address, under the preset's TLS mode, reach the preset's host and port? */
 function deviceAddressReaches(address: string, preset: BrokerPreset): boolean {
-  const { host, port } = splitDeviceAddress(address);
-  // Firmware reads an empty address as the default public server.
-  const hostOk = host === preset.host || (host === '' && preset.host === MESHTASTIC_PUBLIC_HOST);
-  return hostOk && (port === null || port === preset.port);
+  // Shared with the server's preset fill (#5794), so both agree on a match.
+  return deviceFieldsReachEndpoint({ address, tlsEnabled: preset.tls }, preset);
 }
 
 /** The preset a device's stored MQTT settings already describe, if any. */
-export function matchDevicePreset(fields: Pick<DeviceMqttFields, 'address' | 'tlsEnabled'>): BrokerPreset | null {
-  return BROKER_PRESETS.find((p) => p.tls === fields.tlsEnabled && deviceAddressReaches(fields.address, p)) ?? null;
+export function matchDevicePreset(
+  fields: Pick<DeviceMqttFields, 'address' | 'tlsEnabled'>,
+  presets: readonly BrokerPreset[] = BROKER_PRESETS,
+): BrokerPreset | null {
+  return presets.find((p) => p.tls === fields.tlsEnabled && deviceAddressReaches(fields.address, p)) ?? null;
 }
 
 /**
@@ -161,19 +223,55 @@ export function applyPresetToDevice(
   preset: BrokerPreset,
   current: DeviceMqttFields,
 ): { fields: DeviceMqttFields; kept: KeptCredentials } {
-  const username = fillCredential(current.username, preset.username);
-  const password = fillCredential(current.password, preset.password);
+  const username = fillAnyCredential(current.username, preset.username, preset.usernameHidden);
+  const password = fillAnyCredential(current.password, preset.password, preset.passwordHidden);
   // An address with a port that is right for the other mode (":1883" under
-  // TLS) must go; a bare host or the empty default can stay.
+  // TLS) must go; a bare host or the empty default can stay. A saved preset
+  // on a non-default port writes `host:port`, since firmware has no port field.
   const keepAddress = deviceAddressReaches(current.address, preset);
+  const presetAddress =
+    preset.savedId !== undefined && preset.port !== (preset.tls ? 8883 : 1883)
+      ? `${preset.host}:${preset.port}`
+      : preset.host;
+  const fields: DeviceMqttFields = {
+    address: keepAddress ? current.address : presetAddress,
+    username: username.value,
+    password: password.value,
+    tlsEnabled: preset.tls,
+  };
+  if (preset.rootTopic) fields.root = preset.rootTopic;
   return {
-    fields: {
-      address: keepAddress ? current.address : preset.host,
-      username: username.value,
-      password: password.value,
-      tlsEnabled: preset.tls,
+    fields,
+    kept: {
+      username: username.kept,
+      password: password.kept,
+      storedPassword: false,
+      ...(username.serverFill || password.serverFill ? { serverFill: true } : {}),
     },
-    kept: { username: username.kept, password: password.kept, storedPassword: false },
+  };
+}
+
+/**
+ * A device form's values for "Save as preset" (#5794), or null when the
+ * address names no broker. No port means firmware's default for the mode.
+ */
+export function devicePresetDraft(fields: DeviceMqttFields): {
+  host: string;
+  port: number;
+  tls: boolean;
+  username: string;
+  password: string;
+  rootTopic: string;
+} | null {
+  const { host, port } = splitDeviceAddress(fields.address);
+  if (!host || Number.isNaN(port)) return null;
+  return {
+    host,
+    port: port ?? defaultMqttPort(fields.tlsEnabled),
+    tls: fields.tlsEnabled,
+    username: fields.username,
+    password: fields.password,
+    rootTopic: fields.root ?? '',
   };
 }
 
@@ -186,22 +284,22 @@ export interface BridgeMqttFields {
   username: string;
   /** '' on edit means "keep the stored password" (server-side merge). */
   password: string;
+  /** Upstream topics, one per line. Changed only by a saved preset with a root topic. */
+  subscriptions?: string;
 }
 
 export function bridgeUrlForPreset(preset: BrokerPreset): string {
   return `${preset.tls ? 'mqtts' : 'mqtt'}://${preset.host}:${preset.port}`;
 }
 
-const BRIDGE_URL_RE = /^(mqtts?):\/\/(?:[^@/]*@)?([^:/?#]+)(?::(\d+))?\/?$/i;
-
-/** The preset a bridge URL already points at, if any. */
-export function matchBridgePreset(url: string): BrokerPreset | null {
-  const m = BRIDGE_URL_RE.exec(url.trim());
-  if (!m) return null;
-  const tls = m[1].toLowerCase() === 'mqtts';
-  const host = m[2].toLowerCase();
-  const port = m[3] ? Number(m[3]) : tls ? 8883 : 1883;
-  return BROKER_PRESETS.find((p) => p.tls === tls && p.host === host && p.port === port) ?? null;
+/**
+ * The preset a bridge URL already points at, if any. A bare host is read the
+ * way the bridge connects to it, the same as the server's preset fill.
+ */
+export function matchBridgePreset(url: string, presets: readonly BrokerPreset[] = BROKER_PRESETS): BrokerPreset | null {
+  const endpoint = parseBridgeUrl(url);
+  if (!endpoint) return null;
+  return presets.find((p) => p.tls === endpoint.tls && p.host === endpoint.host && p.port === endpoint.port) ?? null;
 }
 
 /**
@@ -221,18 +319,25 @@ export function applyPresetToBridge(
 ): { fields: BridgeMqttFields; kept: KeptCredentials } {
   const username =
     opts.usernameStored && current.username === ''
-      ? { value: '', kept: true }
-      : fillCredential(current.username, preset.username);
+      ? { value: '', kept: true, serverFill: false }
+      : fillAnyCredential(current.username, preset.username, preset.usernameHidden);
   const storedPassword = opts.passwordStored && current.password === '';
   const password = storedPassword
-    ? { value: '', kept: true }
-    : fillCredential(current.password, preset.password);
+    ? { value: '', kept: true, serverFill: false }
+    : fillAnyCredential(current.password, preset.password, preset.passwordHidden);
+  const fields: BridgeMqttFields = {
+    url: matchBridgePreset(current.url, [preset])?.id === preset.id ? current.url : bridgeUrlForPreset(preset),
+    username: username.value,
+    password: password.value,
+  };
+  if (preset.rootTopic) fields.subscriptions = `${preset.rootTopic}/#`;
   return {
-    fields: {
-      url: matchBridgePreset(current.url)?.id === preset.id ? current.url : bridgeUrlForPreset(preset),
-      username: username.value,
-      password: password.value,
+    fields,
+    kept: {
+      username: username.kept,
+      password: password.kept,
+      storedPassword,
+      ...(username.serverFill || password.serverFill ? { serverFill: true } : {}),
     },
-    kept: { username: username.kept, password: password.kept, storedPassword },
   };
 }

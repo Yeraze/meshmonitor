@@ -167,6 +167,8 @@ export const BACKUP_TABLES: string[] = [
   'meshcore_hop_snr',
   // #5862: node rename history (names the nodes broadcast).
   'node_name_history',
+  // #5794: saved MQTT broker presets (admin-curated; holds broker logins).
+  'mqtt_broker_presets',
   // #5785: remembered MeshCore remote-admin logins. Backed up rather than
   // excluded: a row is not a credential (the remote's ACL is the authority,
   // and Log out never touches it), and every read requires the connected
@@ -218,6 +220,7 @@ export const BACKUP_SECRET_TABLES: Readonly<Record<string, { protection: string;
   channels: { protection: 'NONE — channel PSKs in the clear', sessionSecret: false },
   channel_database: { protection: 'NONE — channel decryption PSKs in the clear', sessionSecret: false },
   mesh_beacon_offers: { protection: 'NONE — offered channel PSKs in the clear', sessionSecret: false },
+  mqtt_broker_presets: { protection: 'NONE — saved MQTT broker passwords in the clear, as in sources.config', sessionSecret: false },
   source_pki_keys: { protection: 'AES-256-GCM envelope keyed from SESSION_SECRET', sessionSecret: true },
   meshcore_observer_keys: { protection: 'AES-256-GCM envelope keyed from SESSION_SECRET', sessionSecret: true },
   meshcore_observer_credentials: { protection: 'AES-256-GCM envelope keyed from SESSION_SECRET', sessionSecret: true },

@@ -31,3 +31,15 @@
 .note a {
   color: var(--color-accent);
 }
+
+/* #5794: saved presets row and the admin actions under it. */
+.savedPicker {
+  margin-top: 0.6rem;
+}
+
+.manageRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}

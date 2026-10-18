@@ -36,6 +36,7 @@ import { normalizeBrokerUrl } from '../transports/mqttBrokerClient.js';
 import { observerBrokerKey } from '../meshcoreConfig.js';
 import { getForwardingSummary } from '../services/forwardingStateService.js';
 import { getMeshCoreObserverCredentialStore } from '../services/meshcoreObserverCredentialStore.js';
+import { detachBridgePresetId, fillBridgeConfigFromPreset } from '../services/mqttBrokerPresetFill.js';
 import {
   mayViewSourceEndpoint,
   maskSourceConfigForEditor,
@@ -969,6 +970,12 @@ router.post('/', requirePermission('sources', 'write'), async (req: Request, res
       return res.status(vnErr.status).json({ error: vnErr.error });
     }
 
+    // A saved broker preset's login, for a caller who was not shown it (#5794).
+    if (type === 'mqtt_bridge') {
+      const presetErr = await fillBridgeConfigFromPreset(config);
+      if (presetErr) return fail(res, presetErr.status, presetErr.code, presetErr.message);
+    }
+
     // Analyzer Observer config gate (#4457 Phase 1).
     const observerErr = validateObserverConfig(type, config);
     if (observerErr) {
@@ -1159,6 +1166,12 @@ router.put('/:id', requirePermission('sources', 'write'), async (req: Request, r
     // shown everything; anyone else saved the masked config. Everything below
     // validates and compares THIS config — it is what the row will hold.
     const audience = await resolveSourceConfigAudience(req);
+    // A saved broker preset (#5794) is resolved after the merge, so the merge
+    // never sees its id and a stored password still wins over the preset's.
+    const brokerPresetId =
+      incomingConfig !== undefined && existing.type === 'mqtt_bridge'
+        ? detachBridgePresetId(incomingConfig)
+        : undefined;
     const config: Record<string, any> | undefined =
       incomingConfig === undefined
         ? undefined
@@ -1170,6 +1183,14 @@ router.put('/:id', requirePermission('sources', 'write'), async (req: Request, r
             incomingConfig,
             audience === 'admin' ? 'admin' : 'editor',
           );
+    if (config !== undefined && brokerPresetId !== undefined) {
+      const upstream = config.upstream;
+      if (upstream && typeof upstream === 'object' && !Array.isArray(upstream)) {
+        config.upstream = { ...upstream, brokerPresetId };
+        const presetErr = await fillBridgeConfigFromPreset(config);
+        if (presetErr) return fail(res, presetErr.status, presetErr.code, presetErr.message);
+      }
+    }
 
     // The Observer's stored broker login (the single, pre-#5014 one) is used
     // for whichever broker `observer.brokerUrl` names. A non-admin may not

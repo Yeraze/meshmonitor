@@ -129,6 +129,8 @@ export const TABLE_ORDER = [
   'meshcore_hop_snr',
   // #5862: node rename history (names the nodes broadcast).
   'node_name_history',
+  // #5794: saved MQTT broker presets (global, admin-curated).
+  'mqtt_broker_presets',
   // #5785: remembered MeshCore remote-admin logins (honoured only while the
   // source's companion key matches selfPublicKey).
   'meshcore_admin_sessions',

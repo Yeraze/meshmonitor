@@ -138,6 +138,9 @@ import {
   nodeNameHistorySqlite, nodeNameHistoryPostgres, nodeNameHistoryMysql,
 } from './schema/nodeNameHistory.js';
 import {
+  mqttBrokerPresetsSqlite, mqttBrokerPresetsPostgres, mqttBrokerPresetsMysql,
+} from './schema/mqttBrokerPresets.js';
+import {
   meshcoreAdminSessionsSqlite, meshcoreAdminSessionsPostgres, meshcoreAdminSessionsMysql,
 } from './schema/meshcoreAdminSessions.js';
 import {
@@ -360,6 +363,9 @@ export interface ActiveSchema {
   // Node rename history (#5862)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any -- #5862 matches the existing ActiveSchema per-dialect table pattern
   nodeNameHistory: any;
+  // Saved MQTT broker presets (#5794)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- #5794 matches the existing ActiveSchema per-dialect table pattern
+  mqttBrokerPresets: any;
 
   // MeshCore remote-admin sessions (#5785)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any -- #5785 matches the existing ActiveSchema per-dialect table pattern
@@ -531,6 +537,7 @@ const SCHEMA_MAP: Record<DatabaseType, ActiveSchema> = {
     mapMarkers: mapMarkersSqlite,
     meshcoreHopSnr: meshcoreHopSnrSqlite,
     nodeNameHistory: nodeNameHistorySqlite,
+    mqttBrokerPresets: mqttBrokerPresetsSqlite,
     meshcoreAdminSessions: meshcoreAdminSessionsSqlite,
     coverageReceptions: coverageReceptionsSqlite,
     coverageSurveys: coverageSurveysSqlite,
@@ -622,6 +629,7 @@ const SCHEMA_MAP: Record<DatabaseType, ActiveSchema> = {
     mapMarkers: mapMarkersPostgres,
     meshcoreHopSnr: meshcoreHopSnrPostgres,
     nodeNameHistory: nodeNameHistoryPostgres,
+    mqttBrokerPresets: mqttBrokerPresetsPostgres,
     meshcoreAdminSessions: meshcoreAdminSessionsPostgres,
     coverageReceptions: coverageReceptionsPostgres,
     coverageSurveys: coverageSurveysPostgres,
@@ -713,6 +721,7 @@ const SCHEMA_MAP: Record<DatabaseType, ActiveSchema> = {
     mapMarkers: mapMarkersMysql,
     meshcoreHopSnr: meshcoreHopSnrMysql,
     nodeNameHistory: nodeNameHistoryMysql,
+    mqttBrokerPresets: mqttBrokerPresetsMysql,
     meshcoreAdminSessions: meshcoreAdminSessionsMysql,
     coverageReceptions: coverageReceptionsMysql,
     coverageSurveys: coverageSurveysMysql,

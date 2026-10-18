@@ -55,6 +55,8 @@ import {
   type BrokerPreset,
   type KeptCredentials,
 } from './brokerPresets';
+import type { BrokerPresetDraft } from './SavedBrokerPresetDialogs';
+import { parseBridgeUrl } from '../../utils/mqttBrokerEndpoint';
 
 /**
  * Is a password saved for this bridge that the form does not show? The form
@@ -161,6 +163,8 @@ export const MqttBridgeConfigurationView: React.FC<MqttBridgeConfigurationViewPr
   const baseConfigRef = useRef<Record<string, any> | null>(null);
   const [passwordStored, setPasswordStored] = useState(false);
   const [usernameMasked, setUsernameMasked] = useState(false);
+  // A saved preset (#5794) whose hidden login the server fills in on save.
+  const [serverFillPreset, setServerFillPreset] = useState<BrokerPreset | null>(null);
 
   // Shallow patch helper for the form state.
   const patch = useCallback(
@@ -239,6 +243,14 @@ export const MqttBridgeConfigurationView: React.FC<MqttBridgeConfigurationViewPr
       setSaveError(t(result.error.key, result.error.fallback));
       return;
     }
+    // Only while the URL still reaches that preset; the server checks again.
+    if (
+      result.config &&
+      serverFillPreset?.savedId !== undefined &&
+      matchBridgePreset(form.url, [serverFillPreset])
+    ) {
+      result.config.upstream = { ...result.config.upstream, brokerPresetId: serverFillPreset.savedId };
+    }
     setSaving(true);
     try {
       const res = await csrfFetch(`${appBasename}/api/sources/${sourceId}`, {
@@ -258,6 +270,7 @@ export const MqttBridgeConfigurationView: React.FC<MqttBridgeConfigurationViewPr
       setUsernameMasked(isMaskedField(updated, 'upstream.username'));
       setForm(formFromBridgeConfig(updated?.config));
       setSavedForm(formFromBridgeConfig(updated?.config));
+      setServerFillPreset(null);
       setSaved(true);
     } catch (err) {
       logger.error('Failed to save bridge config:', err);
@@ -265,7 +278,7 @@ export const MqttBridgeConfigurationView: React.FC<MqttBridgeConfigurationViewPr
     } finally {
       setSaving(false);
     }
-  }, [form, sourceId, csrfFetch, t]);
+  }, [form, sourceId, csrfFetch, t, serverFillPreset]);
 
   // One section of the page's shared save bar. `hasChanges` is false until the
   // user edits a field, so opening the page or saving another section never
@@ -295,11 +308,22 @@ export const MqttBridgeConfigurationView: React.FC<MqttBridgeConfigurationViewPr
         { passwordStored, usernameStored: usernameMasked },
       );
       setForm((prev) => ({ ...prev, ...fields }));
+      setServerFillPreset(kept.serverFill ? preset : null);
       setSaved(false);
       return kept;
     },
     [form.url, form.username, form.password, passwordStored, usernameMasked],
   );
+
+  // "Save as preset" (#5794, admins): the URL's endpoint, the login as shown,
+  // and the root of a single `<root>/#` subscription.
+  const getPresetDraft = useCallback((): BrokerPresetDraft | null => {
+    const endpoint = parseBridgeUrl(form.url);
+    if (!endpoint) return null;
+    const subs = form.subscriptions.split('\n').map((x) => x.trim()).filter(Boolean);
+    const root = subs.length === 1 && subs[0].endsWith('/#') ? subs[0].slice(0, -2) : '';
+    return { ...endpoint, username: form.username, password: form.password, rootTopic: root };
+  }, [form.url, form.subscriptions, form.username, form.password]);
 
   const selectedChannels = form.uplinkChannels ?? [];
   const toggleChannel = (name: string, checked: boolean) => {
@@ -400,8 +424,10 @@ export const MqttBridgeConfigurationView: React.FC<MqttBridgeConfigurationViewPr
           id="mqttBridgeBrokerPreset"
           layout="dashboard"
           disabled={!canWrite}
-          matchedPresetId={matchBridgePreset(form.url)?.id ?? null}
+          matchPreset={(candidates) => matchBridgePreset(form.url, candidates)}
           onApplyPreset={applyBrokerPreset}
+          getDraft={getPresetDraft}
+          draftPasswordNotIncluded={passwordStored && form.password === ''}
         />
         <label className="dashboard-form-field">
           <span className="dashboard-form-label">{t('source.form.mqtt_upstream_url', 'Upstream URL')}</span>

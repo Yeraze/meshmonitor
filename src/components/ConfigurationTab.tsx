@@ -1143,13 +1143,13 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ baseUrl = '', nodes
     }
   };
 
-  const handleSaveMQTTConfig = async (): Promise<boolean> => {
+  const handleSaveMQTTConfig = async (extra?: { brokerPresetId?: number }): Promise<boolean> => {
     setIsSaving(true);
     setStatusMessage('');
     try {
       // Firmware replaces the whole MQTT struct, so every field goes out,
       // map report settings included even while map reporting is off.
-      await apiService.setMQTTConfig(buildAdminMqttSavePayload({
+      await apiService.setMQTTConfig({ ...buildAdminMqttSavePayload({
         enabled: mqttEnabled,
         address: mqttAddress,
         username: mqttUsername,
@@ -1163,7 +1163,7 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ baseUrl = '', nodes
         mapPublishIntervalSecs: mqttMapPublishIntervalSecs,
         mapPositionPrecision: mqttMapPositionPrecision,
         mapShouldReportLocation: mqttMapShouldReportLocation,
-      }), sourceId);
+      }), ...(extra?.brokerPresetId !== undefined ? { brokerPresetId: extra.brokerPresetId } : {}) }, sourceId);
       setStatusMessage(t('config.mqtt_saved'));
       showToast(t('config.mqtt_saved_toast'), 'success');
       expectRebootAfterSave('mqtt');
