@@ -14,6 +14,7 @@ const mockDb = vi.hoisted(() => ({
   upsertEstimatedPositionsAsync: vi.fn(),
   deleteEstimatedPositionsByNodeNumsAsync: vi.fn(),
   replaceEstimatedPositionAnchorsAsync: vi.fn(),
+  getAllEstimatedPositionsAsync: vi.fn(async () => [] as Array<{ nodeNum: number }>),
 }));
 vi.mock('../../services/database.js', () => ({ default: mockDb }));
 
@@ -706,6 +707,26 @@ describe('estimate rationale (#4609)', () => {
         vi.useRealTimers();
       }
     });
+  });
+
+  it('clears a stored estimate this run did not rewrite (#5900)', async () => {
+    vi.clearAllMocks();
+    mockDb.sources.getAllSources.mockResolvedValue([{ id: 'src-a', type: 'meshtastic_tcp' }]);
+    mockDb.nodes.getAllNodes.mockResolvedValue([]);
+    mockDb.traceroutes.getAllTraceroutes.mockResolvedValue([]);
+    mockDb.neighbors.getAllNeighborInfo.mockResolvedValue([]);
+    mockDb.upsertEstimatedPositionsAsync.mockResolvedValue(undefined);
+    mockDb.deleteEstimatedPositionsByNodeNumsAsync.mockResolvedValue(0);
+    mockDb.replaceEstimatedPositionAnchorsAsync.mockResolvedValue(undefined);
+    // A row left over from an older run (e.g. the pre-#5900 50 m estimate),
+    // for a node with no observation left in the lookback window.
+    mockDb.getAllEstimatedPositionsAsync.mockResolvedValueOnce([{ nodeNum: 4242 }]);
+
+    await positionEstimationService.recomputeAll({ lookbackMs: 1000 });
+
+    expect(mockDb.deleteEstimatedPositionsByNodeNumsAsync).toHaveBeenCalledWith(
+      expect.arrayContaining([4242]),
+    );
   });
 
   describe('selectAnchorsToStore (#5900)', () => {

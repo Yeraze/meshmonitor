@@ -592,7 +592,19 @@ class PositionEstimationService {
     // to keep under the configured maximum. The repository cascades the
     // matching anchor rows.
     const anchorNodeNums = [...anchors.keys()];
-    await databaseService.deleteEstimatedPositionsByNodeNumsAsync([...anchorNodeNums, ...rejectedNodeNums]);
+    // Also clear rows this run did not write (#5900): a node with no
+    // observation left in the lookback window would otherwise keep its old
+    // estimate forever, including one written by the pre-#5900 math with a
+    // false 50 m radius. Every estimate on disk now comes from the current
+    // window and the current math.
+    const written = new Set(inputs.map((i) => i.nodeNum));
+    const existing = await databaseService.getAllEstimatedPositionsAsync();
+    const staleNodeNums = existing
+      .map((e) => Number(e.nodeNum))
+      .filter((n) => !written.has(n));
+    await databaseService.deleteEstimatedPositionsByNodeNumsAsync([
+      ...new Set([...anchorNodeNums, ...rejectedNodeNums, ...staleNodeNums]),
+    ]);
 
     const durationMs = Date.now() - start;
     logger.debug(
