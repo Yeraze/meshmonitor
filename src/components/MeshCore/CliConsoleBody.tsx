@@ -32,6 +32,7 @@ import {
 } from 'react';
 import { useTranslation } from 'react-i18next';
 import './MeshCoreRemoteConsole.css';
+import { CliHistoryPanel, type CliHistoryTarget } from './CliHistoryPanel';
 
 export interface ActionCommand {
   key: string;
@@ -103,6 +104,9 @@ interface CliConsoleBodyProps {
    *  sets it while running on a resumed session (#5785), where silence may
    *  mean the node dropped the session. */
   timeoutHint?: string;
+  /** When set, a collapsible panel under the input shows the server-side
+   *  history of commands sent to this target (#5892). */
+  history?: CliHistoryTarget;
 }
 
 const nextId = (() => {
@@ -122,6 +126,7 @@ export const CliConsoleBody = forwardRef<CliConsoleBodyHandle, CliConsoleBodyPro
     emptyTextDisabled,
     emptyTextEnabled,
     timeoutHint,
+    history,
   },
   ref,
 ) {
@@ -417,6 +422,8 @@ export const CliConsoleBody = forwardRef<CliConsoleBodyHandle, CliConsoleBodyPro
             : t('meshcore.remoteConsole.send', 'Send')}
         </button>
       </form>
+
+      {history && <CliHistoryPanel sourceId={history.sourceId} target={history.target} />}
 
       {dangerConfirm && (
         <div

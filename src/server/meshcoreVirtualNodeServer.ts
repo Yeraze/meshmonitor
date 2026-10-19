@@ -3,6 +3,8 @@ import { EventEmitter } from 'events';
 import { randomBytes } from 'crypto';
 import { logger } from '../utils/logger.js';
 import databaseService from '../services/database.js';
+import { recordMeshcoreCliHistory, cliErrorOutcome } from './services/meshcoreCliHistoryService.js';
+import type { MeshCoreCliOutcome } from '../db/repositories/meshcoreCliHistory.js';
 import type {
   MeshCoreNode,
   TelemetryMode,
@@ -1878,6 +1880,7 @@ export class MeshCoreVirtualNodeServer extends EventEmitter {
   private async handleSendCliTxtMsg(clientId: string, targetPublicKey: string, command: string): Promise<void> {
     if (!this.allowAdminCommands) {
       logger.debug(`[MeshCore VN ${this.sourceId}] CLI command blocked from ${clientId} (allowAdminCommands off)`);
+      this.recordCliHistory(clientId, targetPublicKey, command, { outcome: 'blocked', error: 'ADMIN_COMMANDS_DISABLED' });
       this.send(clientId, encodeErr(ErrorCodes.UnsupportedCmd));
       return;
     }
@@ -1885,7 +1888,8 @@ export class MeshCoreVirtualNodeServer extends EventEmitter {
     const timeoutMs = await this.resolveCliReplyTimeoutMs();
     this.send(clientId, encodeSent(0, 0, timeoutMs));
     try {
-      const { reply } = await this.options.manager.sendCliCommand(targetPublicKey, command, { timeoutMs });
+      const { reply, elapsedMs } = await this.options.manager.sendCliCommand(targetPublicKey, command, { timeoutMs });
+      this.recordCliHistory(clientId, targetPublicKey, command, { outcome: 'ok', reply, elapsedMs });
       const client = this.clients.get(clientId);
       if (!client) return; // client disconnected while the CLI round-trip was in flight
       client.pendingMessages.push({
@@ -1898,8 +1902,35 @@ export class MeshCoreVirtualNodeServer extends EventEmitter {
       this.send(clientId, encodeMsgWaitingPush());
       logger.debug(`[MeshCore VN ${this.sourceId}] CLI reply from ${keyShort}… queued for ${clientId} (${reply.length} chars)`);
     } catch (err) {
-      logger.warn(`[MeshCore VN ${this.sourceId}] CLI command to ${keyShort}… from ${clientId} failed: ${(err as Error).message}`);
+      const message = (err as Error).message;
+      this.recordCliHistory(clientId, targetPublicKey, command, { outcome: cliErrorOutcome(message), error: message });
+      logger.warn(`[MeshCore VN ${this.sourceId}] CLI command to ${keyShort}… from ${clientId} failed: ${message}`);
     }
+  }
+
+  /**
+   * Record a CLI command a phone app sent through this Virtual Node (#5892).
+   * There is no MeshMonitor user, so the row names the VN client and its IP.
+   */
+  private recordCliHistory(
+    clientId: string,
+    targetPublicKey: string,
+    command: string,
+    result: { outcome: MeshCoreCliOutcome; reply?: string; error?: string; elapsedMs?: number },
+  ): void {
+    const contact = this.options.manager.getContacts().find((c) => c.publicKey === targetPublicKey);
+    void recordMeshcoreCliHistory({
+      sourceId: this.sourceId,
+      targetKind: 'remote',
+      targetPublicKey,
+      targetName: contact?.advName ?? contact?.name ?? null,
+      origin: 'vn',
+      userId: null,
+      username: `vn:${clientId}`,
+      ipAddress: this.clients.get(clientId)?.socket.remoteAddress ?? null,
+      command,
+      ...result,
+    });
   }
 
   /**

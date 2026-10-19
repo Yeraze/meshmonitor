@@ -45,6 +45,7 @@ import { MANUAL_NEIGHBOURS_MAX_PAGES } from '../services/meshcoreNeighboursPagin
 import { buildLocalContactRow, withoutLocalFlag, type MeshCoreContactResponse } from './meshcoreLocalContactRow.js';
 import { applySignFlipToMeshCoreRows } from '../services/signFlipCorrection.js';
 import { extendRequestTimeout } from '../middleware/requestTimeout.js';
+import { recordMeshcoreCliHistory, cliRequester, cliErrorOutcome } from '../services/meshcoreCliHistoryService.js';
 import { applyMeshCorePositionOverridesForViewer } from '../utils/meshcorePositionOverride.js';
 import { MESHCORE_TRACE_SOCKET_TIMEOUT_MS } from '../constants/meshcoreFirmwareTimeout.js';
 
@@ -1843,6 +1844,25 @@ router.post(
       await databaseService.meshcore.markTimeSyncRequested(sourceId, publicKey, now);
 
       const result = await manager.syncNodeTime(publicKey);
+      // #5892: a person pressed the button, so it goes in the CLI history.
+      // The scheduler calls syncNodeTime directly and is never recorded.
+      const contact = manager.getContact(publicKey);
+      void recordMeshcoreCliHistory({
+        sourceId,
+        targetKind: 'remote',
+        targetPublicKey: publicKey,
+        targetName: contact?.advName ?? contact?.name ?? null,
+        origin: 'user',
+        ...cliRequester(req),
+        command: 'clock sync',
+        ...(result.status === 'ok'
+          ? { outcome: 'ok' as const, reply: result.reply, elapsedMs: result.elapsedMs }
+          : result.status === 'rejected'
+            ? { outcome: 'failed' as const, reply: result.reply, error: 'CLOCK_PUSH_REJECTED' }
+            : result.status === 'no-credential'
+              ? { outcome: 'failed' as const, error: 'NO_SAVED_CREDENTIAL' }
+              : { outcome: cliErrorOutcome(result.error), error: result.error }),
+      });
       if (result.status === 'no-credential') {
         return res.status(409).json({
           success: false,

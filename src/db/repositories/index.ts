@@ -122,6 +122,8 @@ export { MeshCoreHopSnrRepository } from './meshcoreHopSnr.js';
 export type { MeshCoreHopSnrRow } from './meshcoreHopSnr.js';
 export { NodeNameHistoryRepository, NODE_NAME_HISTORY_CAP } from './nodeNameHistory.js';
 export type { NodeNameHistoryRow, NodeNameProtocol } from './nodeNameHistory.js';
+export { MeshCoreCliHistoryRepository } from './meshcoreCliHistory.js';
+export type { MeshCoreCliHistoryRow, MeshCoreCliHistoryScope, MeshCoreCliHistoryQuery, MeshCoreCliTargetKind, MeshCoreCliOrigin, MeshCoreCliOutcome } from './meshcoreCliHistory.js';
 export { MqttBrokerPresetsRepository } from './mqttBrokerPresets.js';
 export type { MqttBrokerPreset, MqttBrokerPresetInput } from './mqttBrokerPresets.js';
 export { MeshCoreAdminSessionsRepository } from './meshcoreAdminSessions.js';

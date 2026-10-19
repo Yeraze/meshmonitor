@@ -169,6 +169,8 @@ export const BACKUP_TABLES: string[] = [
   'node_name_history',
   // #5794: saved MQTT broker presets (admin-curated; holds broker logins).
   'mqtt_broker_presets',
+  // #5892: MeshCore CLI commands people issued (command/reply text redacted).
+  'meshcore_cli_history',
   // #5785: remembered MeshCore remote-admin logins. Backed up rather than
   // excluded: a row is not a credential (the remote's ACL is the authority,
   // and Log out never touches it), and every read requires the connected

@@ -620,6 +620,36 @@ the user had typed and pressed Send.
 Keep these distinct so a user scanning the transcript can tell at a
 glance whether something needs attention.
 
+## Stored CLI history (#5892)
+
+The transcript and the ↑/↓ buffer live in the browser. The server also keeps
+every CLI command a **person** issued, in the per-source
+`meshcore_cli_history` table (migration 212), for 90 days by default
+(`meshcoreCliHistoryRetentionDays`, pruned by the nightly maintenance job).
+
+- **Recorded at the entry point, not in the manager.** `recordMeshcoreCliHistory`
+  (`src/server/services/meshcoreCliHistoryService.ts`) is called from
+  `/admin/cli`, `/cli`, `POST /nodes/:pk/time-sync`, and the Virtual Node's
+  `handleSendCliTxtMsg`. Background callers (stats and neighbour polls, config
+  reads, `meshcoreTimeSyncScheduler`, automations) call the manager directly
+  and are never recorded. Do not move the call into `sendCliCommand`.
+- **Outcomes:** `ok`, `blocked` (danger guard, receive-only, VN admin commands
+  off; nothing was sent), `failed`, `timeout`.
+- **VN rows** have `origin: 'vn'`, no user id, `username: 'vn:<clientId>'`
+  and the app's IP.
+- **Redaction.** `src/server/utils/meshcoreCliRedact.ts` masks the secret
+  argument of `password`, `login`, and `set <key>` when the key is a password,
+  `*.key`, `*.psk` or `*.secret`; it masks the reply to `get` of such a key and
+  any echo of a written secret. `auditMeshcoreEvent` runs `details.command`
+  through the same redactor, so audit rows no longer hold passwords in clear.
+  The radio still gets the real text.
+- **Reads** (`GET /api/sources/:id/meshcore/cli-history`,
+  `GET /api/meshcore/cli-history`): remote rows need `remote_admin:read`, local
+  rows `configuration:read`, per source. The unified route only lists sources
+  the caller can read. The consoles show the target's rows in a collapsed
+  "Command history" panel (`CliConsoleBody`'s `history` prop); the Audit Log
+  page has a "MeshCore CLI activity" tab.
+
 ## File map
 
 | Path | Role |

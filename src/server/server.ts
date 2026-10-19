@@ -745,6 +745,7 @@ import newsRoutes from './routes/newsRoutes.js';
 import tileServerRoutes from './routes/tileServerTest.js';
 import v1Router from './routes/v1/index.js';
 import meshcoreRoutes from './routes/meshcoreRoutes.js';
+import { unifiedCliHistoryRouter } from './routes/meshcoreCliHistoryRoutes.js';
 import { meshcoreMessageFilter } from './services/meshcoreMessageFilter.js';
 import mqttPacketRoutes from './routes/mqttPacketRoutes.js';
 import forwardingRoutes from './routes/forwardingRoutes.js';
@@ -898,6 +899,8 @@ apiRouter.use('/read-state', readStateRoutes);
 // the global `meshcore` permission resource; the new frontend talks to
 // the per-source surface only.
 apiRouter.use('/sources/:id/meshcore', meshcoreRoutes);
+// MeshCore CLI command history across every readable source (#5892).
+apiRouter.use('/meshcore/cli-history', unifiedCliHistoryRouter);
 
 // MQTT Packet Monitor routes — nested under `/api/sources/:id/mqtt/packets`
 // so each request resolves the retention log bound to a specific source.

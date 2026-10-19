@@ -1747,6 +1747,13 @@ router.delete('/:id', requirePermission('sources', 'write'), async (req: Request
       logger.warn(`Failed to purge node name history for deleted source ${req.params.id}:`, nameHistoryError);
     }
 
+    // #5892: MeshCore CLI command history was issued through this source.
+    try {
+      await databaseService.meshcoreCliHistory.deleteBySourceId(req.params.id);
+    } catch (cliHistoryError) {
+      logger.warn(`Failed to purge MeshCore CLI history for deleted source ${req.params.id}:`, cliHistoryError);
+    }
+
     // #5785: remembered MeshCore remote-admin logins belong to the source.
     try {
       await databaseService.meshcoreAdminSessions.deleteBySourceId(req.params.id);

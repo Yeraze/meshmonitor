@@ -37,6 +37,27 @@ import { ok, fail } from '../utils/apiResponse.js';
 import { MeshCoreContactNotOnDeviceError } from '../meshcoreDeviceContactErrors.js';
 import { isTransmittingLocalCliVerb } from '../constants/meshcoreTx.js';
 import { extendRequestTimeout } from '../middleware/requestTimeout.js';
+import { recordMeshcoreCliHistory, cliRequester, cliErrorOutcome } from '../services/meshcoreCliHistoryService.js';
+import type { MeshCoreManager } from '../meshcoreManager.js';
+
+/** Contact name for a history row; best effort, never throws. */
+function contactNameOf(manager: MeshCoreManager | undefined, publicKey: string): string | null {
+  try {
+    const contact = manager?.getContact(publicKey);
+    return contact?.advName ?? contact?.name ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/** Local node name for a history row; best effort, never throws. */
+function localNameOf(manager: MeshCoreManager | undefined): string | null {
+  try {
+    return manager?.getLocalNode()?.name ?? null;
+  } catch {
+    return null;
+  }
+}
 
 // Radio round trips on these routes legitimately run past the 30s default
 // socket timeout; extend it per-route so the caller gets the real result
@@ -209,6 +230,17 @@ router.post('/admin/cli', extendRequestTimeout(REMOTE_CLI_TIMEOUT_MS), meshcoreD
         command,
         reason: 'DANGER_CONFIRM_REQUIRED',
       });
+      void recordMeshcoreCliHistory({
+        sourceId: req.params.id!,
+        targetKind: 'remote',
+        targetPublicKey: publicKey,
+        targetName: contactNameOf(res.locals.meshcoreManager as MeshCoreManager | undefined, publicKey),
+        origin: 'user',
+        ...cliRequester(req),
+        command,
+        outcome: 'blocked',
+        error: 'DANGER_CONFIRM_REQUIRED',
+      });
       return res.status(400).json({
         success: false,
         error: 'Destructive command requires confirm:true in the request body',
@@ -233,8 +265,34 @@ router.post('/admin/cli', extendRequestTimeout(REMOTE_CLI_TIMEOUT_MS), meshcoreD
         replyChars: result.reply?.length ?? 0,
         elapsedMs: result.elapsedMs,
       });
+      void recordMeshcoreCliHistory({
+        sourceId: req.params.id!,
+        targetKind: 'remote',
+        targetPublicKey: publicKey,
+        targetName: contactNameOf(manager, publicKey),
+        origin: 'user',
+        ...cliRequester(req),
+        command,
+        outcome: 'ok',
+        reply: result.reply ?? null,
+        elapsedMs: result.elapsedMs ?? null,
+      });
       res.json({ success: true, data: result });
     } catch (err) {
+      const errMsg = err instanceof MeshCoreContactNotOnDeviceError
+        ? 'CONTACT_NOT_ON_DEVICE'
+        : err instanceof Error ? err.message : String(err);
+      void recordMeshcoreCliHistory({
+        sourceId: req.params.id!,
+        targetKind: 'remote',
+        targetPublicKey: publicKey,
+        targetName: contactNameOf(res.locals.meshcoreManager as MeshCoreManager | undefined, publicKey),
+        origin: 'user',
+        ...cliRequester(req),
+        command,
+        outcome: cliErrorOutcome(errMsg),
+        error: errMsg,
+      });
       if (failIfTxDisabled(res, err)) return;
       if (err instanceof MeshCoreContactNotOnDeviceError) {
         auditMeshcoreEvent(req, 'meshcore_remote_cli_failed', 'remote_admin', {
@@ -313,6 +371,16 @@ router.post('/cli', extendRequestTimeout(LOCAL_CLI_TIMEOUT_MS), meshcoreDeviceLi
         command,
         reason: 'DANGER_CONFIRM_REQUIRED',
       });
+      void recordMeshcoreCliHistory({
+        sourceId: req.params.id!,
+        targetKind: 'local',
+        targetName: localNameOf(res.locals.meshcoreManager as MeshCoreManager | undefined),
+        origin: 'user',
+        ...cliRequester(req),
+        command,
+        outcome: 'blocked',
+        error: 'DANGER_CONFIRM_REQUIRED',
+      });
       return res.status(400).json({
         success: false,
         error: 'Destructive command requires confirm:true in the request body',
@@ -323,6 +391,16 @@ router.post('/cli', extendRequestTimeout(LOCAL_CLI_TIMEOUT_MS), meshcoreDeviceLi
     // purely local/serial verbs (ver, stats, clock, help, get/set config).
     // Gate only the transmitting ones so the console stays usable.
     if (isTransmittingLocalCliVerb(command) && rejectIfReceiveOnly(req, res)) {
+      void recordMeshcoreCliHistory({
+        sourceId: req.params.id!,
+        targetKind: 'local',
+        targetName: localNameOf(res.locals.meshcoreManager as MeshCoreManager | undefined),
+        origin: 'user',
+        ...cliRequester(req),
+        command,
+        outcome: 'blocked',
+        error: 'TX_DISABLED',
+      });
       return;
     }
     const effectiveTimeout = await resolveCliTimeoutMs(timeoutMs);
@@ -342,10 +420,32 @@ router.post('/cli', extendRequestTimeout(LOCAL_CLI_TIMEOUT_MS), meshcoreDeviceLi
         replyChars: result.reply?.length ?? 0,
         elapsedMs: result.elapsedMs,
       });
+      void recordMeshcoreCliHistory({
+        sourceId: req.params.id!,
+        targetKind: 'local',
+        targetName: localNameOf(manager),
+        origin: 'user',
+        ...cliRequester(req),
+        command,
+        outcome: 'ok',
+        reply: result.reply ?? null,
+        elapsedMs: result.elapsedMs ?? null,
+      });
       res.json({ success: true, data: result });
     } catch (err) {
+      const errMsg = err instanceof Error ? err.message : String(err);
+      void recordMeshcoreCliHistory({
+        sourceId: req.params.id!,
+        targetKind: 'local',
+        targetName: localNameOf(res.locals.meshcoreManager as MeshCoreManager | undefined),
+        origin: 'user',
+        ...cliRequester(req),
+        command,
+        outcome: cliErrorOutcome(errMsg),
+        error: errMsg,
+      });
       if (failIfTxDisabled(res, err)) return;
-      const msg = err instanceof Error ? err.message : String(err);
+      const msg = errMsg;
       auditMeshcoreEvent(req, 'meshcore_local_cli_failed', 'configuration', {
         sourceId: req.params.id,
         command,

@@ -73,6 +73,7 @@ import {
   MapMarkersRepository,
   MeshCoreHopSnrRepository,
   NodeNameHistoryRepository,
+  MeshCoreCliHistoryRepository,
   MqttBrokerPresetsRepository,
   MeshCoreAdminSessionsRepository,
   PasskeysRepository,
@@ -642,6 +643,7 @@ class DatabaseService {
   public mapMarkersRepo: MapMarkersRepository | null = null;
   public meshcoreHopSnrRepo: MeshCoreHopSnrRepository | null = null;
   public nodeNameHistoryRepo: NodeNameHistoryRepository | null = null;
+  public meshcoreCliHistoryRepo: MeshCoreCliHistoryRepository | null = null;
   public mqttBrokerPresetsRepo: MqttBrokerPresetsRepository | null = null;
   public meshcoreAdminSessionsRepo: MeshCoreAdminSessionsRepository | null = null;
   public passkeysRepo: PasskeysRepository | null = null;
@@ -755,6 +757,12 @@ class DatabaseService {
   get nodeNameHistory(): NodeNameHistoryRepository {
     if (!this.nodeNameHistoryRepo) throw new Error('Database not initialized');
     return this.nodeNameHistoryRepo;
+  }
+
+  /** MeshCore CLI commands people issued (#5892). */
+  get meshcoreCliHistory(): MeshCoreCliHistoryRepository {
+    if (!this.meshcoreCliHistoryRepo) throw new Error('Database not initialized');
+    return this.meshcoreCliHistoryRepo;
   }
 
   get mqttBrokerPresets(): MqttBrokerPresetsRepository {
@@ -1263,6 +1271,7 @@ class DatabaseService {
       this.mapMarkersRepo = new MapMarkersRepository(drizzleDb, this.drizzleDbType);
       this.meshcoreHopSnrRepo = new MeshCoreHopSnrRepository(drizzleDb, this.drizzleDbType);
       this.nodeNameHistoryRepo = new NodeNameHistoryRepository(drizzleDb, this.drizzleDbType);
+      this.meshcoreCliHistoryRepo = new MeshCoreCliHistoryRepository(drizzleDb, this.drizzleDbType);
       this.mqttBrokerPresetsRepo = new MqttBrokerPresetsRepository(drizzleDb, this.drizzleDbType);
       this.meshcoreAdminSessionsRepo = new MeshCoreAdminSessionsRepository(drizzleDb, this.drizzleDbType);
       this.passkeysRepo = new PasskeysRepository(drizzleDb, this.drizzleDbType);

@@ -22,6 +22,12 @@ import { decodeOutPathLen, formatOutPath } from './meshcoreNativeBackend.js';
 // to null (unset) so most tests exercise the built-in 15s fallback. Declared via
 // vi.hoisted so the hoisted vi.mock factory can reference it without a TDZ error.
 const { getSettingMock } = vi.hoisted(() => ({ getSettingMock: vi.fn().mockResolvedValue(null) }));
+// CLI history (#5892): spy on the recorder, keep the real outcome helper.
+const { recordCliHistoryMock } = vi.hoisted(() => ({ recordCliHistoryMock: vi.fn().mockResolvedValue(undefined) }));
+vi.mock('./services/meshcoreCliHistoryService.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./services/meshcoreCliHistoryService.js')>()),
+  recordMeshcoreCliHistory: recordCliHistoryMock,
+}));
 vi.mock('../services/database.js', () => ({
   default: {
     auditLogAsync: vi.fn().mockResolvedValue(undefined),
@@ -1513,6 +1519,42 @@ describe('MeshCoreVirtualNodeServer — SendTxtMsg CLI relay (#4106)', () => {
     expect(res[1]).toBe(ErrorCodes.UnsupportedCmd);
     expect(manager.sendCliCommandMock).not.toHaveBeenCalled();
     expect(manager.sendMessageWithResultMock).not.toHaveBeenCalled();
+  });
+
+  it('records each relayed CLI command in the history as origin vn (#5892)', async () => {
+    await startWith(true);
+    recordCliHistoryMock.mockClear();
+    manager.sendCliCommandMock.mockResolvedValueOnce({ reply: 'name: MyRepeater', elapsedMs: 120 });
+    const frames = client.expectFrames(2);
+    client.send(cliFrame('get name'));
+    await frames;
+    await vi.waitFor(() => expect(recordCliHistoryMock).toHaveBeenCalledTimes(1));
+    expect(recordCliHistoryMock).toHaveBeenCalledWith(expect.objectContaining({
+      targetKind: 'remote',
+      targetPublicKey: REMOTE_KEY,
+      origin: 'vn',
+      userId: null,
+      username: expect.stringMatching(/^vn:/),
+      command: 'get name',
+      outcome: 'ok',
+      reply: 'name: MyRepeater',
+      elapsedMs: 120,
+    }));
+    expect(recordCliHistoryMock.mock.calls[0][0].ipAddress).toBeTruthy();
+
+    manager.sendCliCommandMock.mockRejectedValueOnce(new Error('CLI command timed out after 15000ms'));
+    await client.request(cliFrame('stats'));
+    await vi.waitFor(() => expect(recordCliHistoryMock).toHaveBeenCalledTimes(2));
+    expect(recordCliHistoryMock.mock.calls[1][0]).toMatchObject({ command: 'stats', outcome: 'timeout', origin: 'vn' });
+  });
+
+  it('records a CLI command refused because admin commands are off as blocked (#5892)', async () => {
+    await startWith(false);
+    recordCliHistoryMock.mockClear();
+    await client.request(cliFrame('reboot'));
+    expect(recordCliHistoryMock).toHaveBeenCalledWith(expect.objectContaining({
+      origin: 'vn', command: 'reboot', outcome: 'blocked', error: 'ADMIN_COMMANDS_DISABLED',
+    }));
   });
 
   it('replies Sent but pushes nothing when the CLI command rejects (timeout / not Companion)', async () => {

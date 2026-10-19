@@ -28,6 +28,7 @@ import type { MeshCoreActions, MeshCoreRemoteAdminSession } from './hooks/useMes
 import { MeshCoreRemoteStatsPanel } from './MeshCoreRemoteStatsPanel';
 import { MeshCoreAclManager } from './MeshCoreAclManager';
 import { CliConsoleBody, type ActionCommand, type CliConsoleBodyHandle } from './CliConsoleBody';
+import { useSource } from '../../contexts/SourceContext';
 import { MeshCoreLoginProgress } from './MeshCoreLoginProgress';
 import { useMeshCoreLoginProgress } from './hooks/useMeshCoreLoginProgress';
 import './MeshCoreRemoteConsole.css';
@@ -100,6 +101,7 @@ export const MeshCoreRemoteConsole: React.FC<MeshCoreRemoteConsoleProps> = ({
   notOnDevice = false,
 }) => {
   const { t } = useTranslation();
+  const { sourceId } = useSource();
   // Controls that make the radio address this node are unavailable when
   // receive-only is on OR the radio doesn't hold the node (#5349).
   const blocked = receiveOnly || notOnDevice;
@@ -495,6 +497,7 @@ export const MeshCoreRemoteConsole: React.FC<MeshCoreRemoteConsoleProps> = ({
         ref={bodyRef}
         targetId={publicKey}
         targetName={contactName}
+        history={sourceId ? { sourceId, target: publicKey } : undefined}
         runCommand={runCommand}
         actionCatalog={loggedIn ? REMOTE_ACTION_CATALOG : []}
         disabled={!loggedIn || blocked}

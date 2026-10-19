@@ -27,6 +27,7 @@ import packetRoutes from './meshcorePacketRoutes.js';
 import ingestReadRoutes from './meshcoreIngestReadRoutes.js';
 import filterRoutes from './meshcoreFilterRoutes.js';
 import traceRoutes from './meshcoreTraceRoutes.js';
+import { perSourceCliHistoryRouter } from './meshcoreCliHistoryRoutes.js';
 
 const router = Router({ mergeParams: true });
 
@@ -43,6 +44,8 @@ router.use(ingestReadRoutes);
 router.use(filterRoutes);
 // Per-hop trace SNR history (#5722): stored data, read-only.
 router.use(traceRoutes);
+// CLI command history (#5892): stored data, readable while disconnected.
+router.use(perSourceCliHistoryRouter);
 
 // DEVICE routes from here down. This guard refuses an ingest source, and
 // everything below it is connection lifecycle, local-node status, contacts,

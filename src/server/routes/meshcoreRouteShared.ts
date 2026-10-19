@@ -24,6 +24,7 @@ import { sourceManagerRegistry } from '../sourceManagerRegistry.js';
 import { isMeshCoreManager, isMeshCoreMqttManager, isAnyMeshCoreManager } from '../sourceManagerTypes.js';
 import databaseService from '../../services/database.js';
 import { logger } from '../../utils/logger.js';
+import { redactCliCommand } from '../utils/meshcoreCliRedact.js';
 import { fail } from '../utils/apiResponse.js';
 import { TX_DISABLED_CODE, isTxDisabledError } from '../errors/txDisabledError.js';
 import { MESHCORE_RECEIVE_ONLY_MESSAGE } from '../constants/meshcoreTx.js';
@@ -331,8 +332,13 @@ export function auditMeshcoreEvent(
 ): void {
   const userId = req.session?.userId ?? null;
   const ip = req.ip || req.socket?.remoteAddress || null;
+  // #5892: a CLI line can carry a password or key (`password <new>`,
+  // `set guest.password ...`, `set prv.key ...`). Never store it in clear.
+  const safeDetails = typeof details.command === 'string'
+    ? { ...details, command: redactCliCommand(details.command) }
+    : details;
   databaseService
-    .auditLogAsync(userId, action, resource, JSON.stringify(details), ip)
+    .auditLogAsync(userId, action, resource, JSON.stringify(safeDetails), ip)
     .catch((err) => logger.error('[API] audit write failed:', err));
 }
 

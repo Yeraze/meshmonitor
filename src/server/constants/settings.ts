@@ -180,6 +180,7 @@ export const VALID_SETTINGS_KEYS = [
   'routeSegmentRetentionDays',
   'neighborInfoRetentionDays',
   'auditLogRetentionDays', // #5870
+  'meshcoreCliHistoryRetentionDays', // #5892
   // Position estimation (global, batch — issue #3271)
   'position_estimation_enabled',
   'position_estimation_frequency_hours',
