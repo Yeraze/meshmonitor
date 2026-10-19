@@ -70,6 +70,7 @@ const { default: packetRoutes } = await import('./meshcorePacketRoutes.js');
 const { default: ingestReadRoutes } = await import('./meshcoreIngestReadRoutes.js');
 const { default: filterRoutes } = await import('./meshcoreFilterRoutes.js');
 const { default: traceRoutes } = await import('./meshcoreTraceRoutes.js');
+const { perSourceCliHistoryRouter } = await import('./meshcoreCliHistoryRoutes.js');
 
 /**
  * A MeshCore manager that serves marked reads and records everything else.
@@ -495,8 +496,12 @@ function registeredRoutes(router: Router): RegisteredRoute[] {
  *    channel's own grant or `messages` on the source. Writes need `requireAuth()`.
  *  - `listed`: no permission middleware; the handler answers only for the
  *    channels the caller may read.
+ *  - `handler-scoped`: `requireAuth()` only (so it looks like `owner`); the
+ *    handler checks the grants itself because the answer depends on two
+ *    resources. CLI history (#5892): remote rows need `remote_admin:read`,
+ *    local rows `configuration:read`, on this source; neither is a 403.
  */
-type Kind = 'read' | 'read-signed-in' | 'write' | 'admin' | 'owner' | 'channel-read' | 'channel-write' | 'listed';
+type Kind = 'read' | 'read-signed-in' | 'write' | 'admin' | 'owner' | 'channel-read' | 'channel-write' | 'listed' | 'handler-scoped';
 
 const CLASSIFIED: Record<string, Record<string, Kind>> = {
   device: {
@@ -656,6 +661,10 @@ const CLASSIFIED: Record<string, Record<string, Kind>> = {
   trace: {
     'GET /hop-snr': 'read',
   },
+  // #5892: stored CLI history. Sends nothing; grants checked per row kind.
+  cliHistory: {
+    'GET /cli-history': 'handler-scoped',
+  },
 };
 
 /**
@@ -686,6 +695,7 @@ describe('guard: every MeshCore route is classified', () => {
     ingest: ingestReadRoutes,
     filter: filterRoutes,
     trace: traceRoutes,
+    cliHistory: perSourceCliHistoryRouter,
   };
   const key = (r: RegisteredRoute): string => `${r.method.toUpperCase()} ${r.path}`;
 
@@ -725,7 +735,8 @@ describe('guard: every MeshCore route is classified', () => {
     // A new route must be added to CLASSIFIED, with a test for who it admits.
     expect(routes.map(key).sort()).toEqual(Object.keys(CLASSIFIED[name]).sort());
     for (const route of routes) {
-      expect(detected(route), `${name} ${key(route)}`).toBe(CLASSIFIED[name][key(route)]);
+      const expected = CLASSIFIED[name][key(route)];
+      expect(detected(route), `${name} ${key(route)}`).toBe(expected === 'handler-scoped' ? 'owner' : expected);
     }
   });
 

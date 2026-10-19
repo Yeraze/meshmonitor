@@ -12,6 +12,7 @@ import { UNKNOWN_ROOM_AUTHOR } from '../utils/meshcoreKeyMatch.js';
 import { advertHasPosition } from '../utils/meshcoreAdvertPosition.js';
 import { EventEmitter } from 'events';
 import { logger } from '../utils/logger.js';
+import { redactCliCommand } from './utils/meshcoreCliRedact.js';
 import { meshcoreTraceIngestService, type TraceIngestOptions } from './services/meshcoreTraceIngestService.js';
 import { decodeTracePacket, traceDataEventFromPacket, type TraceDataEvent } from '../utils/meshcoreTrace.js';
 import {
@@ -5044,7 +5045,7 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
       this.pendingCommands.set(cmdId, { resolve, reject: abort, timeout: timeoutHandle });
       this.on('serial_data', dataHandler);
 
-      logger.debug(`[MeshCore] TX: ${command}`);
+      logger.debug(`[MeshCore] TX: ${redactCliCommand(command)}`);
       this.serialPort!.write(command + '\r');
     });
   }
