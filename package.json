@@ -80,7 +80,7 @@
     "morgan": "^1.12.1",
     "mqtt": "^5.16.1",
     "mysql2": "^3.24.6",
-    "node-notifier": "^10.0.1",
+    "node-notifier": "^11.0.0",
     "openid-client": "^6.8.8",
     "otplib": "^13.5.0",
     "pg": "^8.23.1",
