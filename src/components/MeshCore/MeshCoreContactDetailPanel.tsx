@@ -97,6 +97,9 @@ interface MeshCoreContactDetailPanelProps {
    *  `nodes` resource. Required to gate the Reset Path / Share / Edit
    *  buttons, and (issue #5507) the favorite star. */
   canWriteNodes?: boolean;
+  /** `traceroute:write` on this source (#5898). Gates the Trace Path button,
+   *  which sends a trace over the mesh. */
+  canTraceroute?: boolean;
   /** Is the source's device a Companion? Reset Path / Share Contact /
    *  manual edit are all companion-only. Defaults to `true` so callers
    *  that don't pass this still see the buttons when handlers are
@@ -205,6 +208,7 @@ export const MeshCoreContactDetailPanel: React.FC<MeshCoreContactDetailPanelProp
   onGetNeighbours,
   neighboursFetchActions,
   canWriteNodes = false,
+  canTraceroute = false,
   isCompanion = true,
   remoteAdminActions,
   canRemoteAdmin = false,
@@ -433,7 +437,7 @@ export const MeshCoreContactDetailPanel: React.FC<MeshCoreContactDetailPanelProp
     [repeaters, editorHashBytes],
   );
   const canShowTraceButton =
-    !!onTracePath && canWriteNodes && isCompanion && pathKnown && pathLen! > 0;
+    !!onTracePath && canTraceroute && isCompanion && pathKnown && pathLen! > 0;
   // Ping needs no cached path (that is the point — it builds a synthetic
   // one-hop path from the contact's own key hash), so unlike Trace Path it is
   // offered whether or not an out_path is known.

@@ -109,6 +109,7 @@ export const MeshCoreDirectMessagesView: React.FC<MeshCoreDirectMessagesViewProp
   const { temperatureUnit, telemetryVisualizationHours, tapbackEmojis } = useSettings();
   const canSend = hasPermission('messages', 'write');
   const canWriteNodes = hasPermission('nodes', 'write');
+  const canTraceroute = hasPermission('traceroute', 'write');
   const canRemoteAdmin = hasPermission('remote_admin', 'write');
   const canWriteConfig = hasPermission('configuration', 'write');
   const [selected, setSelected] = useState<string | null>(null);
@@ -626,6 +627,7 @@ export const MeshCoreDirectMessagesView: React.FC<MeshCoreDirectMessagesViewProp
                   cancelNeighboursFetch: actions.cancelNeighboursFetch,
                 }}
                 canWriteNodes={canWriteNodes && connected}
+                canTraceroute={canTraceroute && connected}
                 isCompanion={isCompanion}
                 repeaters={contacts}
                 selfPublicKey={selfKey}

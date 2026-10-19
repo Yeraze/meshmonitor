@@ -231,6 +231,7 @@ import { migration as createNodeNameHistoryMigration, runMigration209Postgres, r
 import { migration as messagesChannelIndexMigration, runMigration210Postgres, runMigration210Mysql } from '../server/migrations/210_messages_channel_index_and_pg_autovacuum.js';
 import { migration as createMqttBrokerPresetsMigration, runMigration211Postgres, runMigration211Mysql } from '../server/migrations/211_create_mqtt_broker_presets.js';
 import { migration as createMeshcoreCliHistoryMigration, runMigration212Postgres, runMigration212Mysql } from '../server/migrations/212_create_meshcore_cli_history.js';
+import { migration as backfillTracerouteWriteMigration, runMigration213Postgres, runMigration213Mysql } from '../server/migrations/213_backfill_traceroute_write_for_meshcore_trace.js';
 
 // ============================================================================
 // Registry
@@ -3425,4 +3426,19 @@ registry.register({
   sqlite: (db) => createMeshcoreCliHistoryMigration.up(db),
   postgres: (client) => runMigration212Postgres(client),
   mysql: (pool) => runMigration212Mysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 213: backfill `traceroute:write` for `nodes:write` holders on
+// MeshCore sources (#5898). MeshCore trace-path moved from nodes:write to
+// traceroute:write; this keeps every current user's Trace Path button.
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 213,
+  name: 'backfill_traceroute_write_for_meshcore_trace',
+  settingsKey: 'migration_213_backfill_traceroute_write_for_meshcore_trace',
+  sqlite: (db) => backfillTracerouteWriteMigration.up(db),
+  postgres: (client) => runMigration213Postgres(client),
+  mysql: (pool) => runMigration213Mysql(pool),
 });

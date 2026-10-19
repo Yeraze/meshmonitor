@@ -310,6 +310,18 @@ describe('MeshCoreContactDetailPanel', () => {
       expect(screen.queryByRole('button', { name: 'Trace Path' })).toBeNull();
     });
 
+    it('gates Trace Path on traceroute:write, not nodes:write (#5898)', () => {
+      const contact: MeshCoreContact = { publicKey: PK, advType: 2, pathLen: 1, outPath: '5e' } as MeshCoreContact;
+      const { rerender } = render(
+        <MeshCoreContactDetailPanel contact={contact} publicKey={PK} onTracePath={vi.fn()} canWriteNodes isCompanion />,
+      );
+      expect(screen.queryByRole('button', { name: 'Trace Path' })).toBeNull();
+      rerender(
+        <MeshCoreContactDetailPanel contact={contact} publicKey={PK} onTracePath={vi.fn()} canWriteNodes={false} canTraceroute isCompanion />,
+      );
+      expect(screen.getByRole('button', { name: 'Trace Path' })).toBeTruthy();
+    });
+
     it('hides Ping without nodes:write', () => {
       const contact: MeshCoreContact = { publicKey: PK, advType: 2 };
       render(
@@ -504,7 +516,7 @@ describe('MeshCoreContactDetailPanel', () => {
    */
   describe('auto return path (#5485)', () => {
     const contact: MeshCoreContact = { publicKey: PK, advType: 2, pathLen: 1, outPath: '5e' } as MeshCoreContact;
-    const props = { canWriteNodes: true, isCompanion: true } as const;
+    const props = { canWriteNodes: true, canTraceroute: true, isCompanion: true } as const;
 
     beforeEach(() => {
       try { localStorage.removeItem('meshcoreTraceAutoReturn'); } catch { /* ignore */ }
@@ -595,7 +607,7 @@ describe('MeshCoreContactDetailPanel', () => {
       const d = deferred<{ hops: { index: number; snr: number }[]; lastSnr: number }>();
       const onTracePath = vi.fn().mockReturnValue(d.promise);
 
-      const props = { onTracePath, canWriteNodes: true, isCompanion: true } as const;
+      const props = { onTracePath, canWriteNodes: true, canTraceroute: true, isCompanion: true } as const;
       const { rerender } = render(
         <MeshCoreContactDetailPanel contact={contactA} publicKey={PK} {...props} />,
       );
@@ -636,7 +648,7 @@ describe('MeshCoreContactDetailPanel', () => {
       render(
         <MeshCoreContactDetailPanel
           contact={contactA} publicKey={PK}
-          onTracePath={onTracePath} canWriteNodes isCompanion
+          onTracePath={onTracePath} canWriteNodes canTraceroute isCompanion
         />,
       );
       fireEvent.click(screen.getByRole('button', { name: 'Trace Path' }));

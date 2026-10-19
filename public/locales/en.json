@@ -2842,7 +2842,7 @@
   "users.can_control_connection": "Can Control Connection",
   "users.connection_view_status": "View status",
   "users.connection_control_device": "Control device",
-  "users.can_initiate_traceroutes": "Can Initiate Traceroutes",
+  "users.traceroute_permission": "Traceroute",
   "users.read": "Read",
   "users.write": "Write",
   "users.view_on_map": "View on Map",

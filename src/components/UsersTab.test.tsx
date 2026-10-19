@@ -297,6 +297,35 @@ describe('UsersTab — PR-C grid additions', () => {
     expect(body.permissions.nodes).toMatchObject({ viewOnMap: true });
   });
 
+  it('traceroute has separate Read and Write boxes and saves them apart (#5898)', async () => {
+    render(<UsersTab />);
+    fireEvent.click(await screen.findByText(/Alice/));
+    await waitFor(() => expect(screen.getByText('Traceroute')).toBeInTheDocument());
+    const row = screen.getByText('Traceroute').closest('.permission-item')!;
+    const boxes = Array.from(row.querySelectorAll('input[type="checkbox"]')) as HTMLInputElement[];
+    expect(boxes).toHaveLength(2);
+    expect(row.textContent).toContain('users.read');
+    expect(row.textContent).toContain('users.write');
+    const [readBox, writeBox] = boxes;
+
+    // Read alone: write stays off.
+    fireEvent.click(readBox);
+    expect(readBox.checked).toBe(true);
+    expect(writeBox.checked).toBe(false);
+    fireEvent.click(screen.getByText('users.save_permissions'));
+    await waitFor(() => expect(apiPutMock).toHaveBeenCalledTimes(1));
+    expect(apiPutMock.mock.calls[0][1].permissions.traceroute).toEqual({ read: true, write: false });
+
+    // Write alone: read is not forced on.
+    fireEvent.click(readBox);
+    fireEvent.click(writeBox);
+    expect(readBox.checked).toBe(false);
+    expect(writeBox.checked).toBe(true);
+    fireEvent.click(screen.getByText('users.save_permissions'));
+    await waitFor(() => expect(apiPutMock).toHaveBeenCalledTimes(2));
+    expect(apiPutMock.mock.calls[1][1].permissions.traceroute).toEqual({ read: false, write: true });
+  });
+
   it('channel-database section renders a canWrite checkbox column', async () => {
     setupApi({
       channelDbEntries: [
