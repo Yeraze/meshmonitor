@@ -1,5 +1,13 @@
 import { describe, it, expect } from 'vitest';
-import { HOP_COUNT_EMOJIS, HOP_EMOJI_MAX, hopCountEmoji, hopOrMqttEmoji, MQTT_SOURCE_EMOJI } from './hopEmoji';
+import {
+  HOP_COUNT_EMOJIS,
+  HOP_EMOJI_MAX,
+  hopCountEmoji,
+  hopOrMqttEmoji,
+  isValidHopEmojiSetting,
+  MQTT_SOURCE_EMOJI,
+  parseHopEmojiOverrides,
+} from './hopEmoji';
 
 describe('hopEmoji', () => {
   describe('HOP_COUNT_EMOJIS', () => {
@@ -107,5 +115,46 @@ describe('hopEmoji', () => {
       expect(hopOrMqttEmoji(2, '' as unknown as boolean)).toBe('2️⃣');
       expect(hopOrMqttEmoji(2, 'mqtt_bridge' as unknown as boolean)).toBe('2️⃣');
     });
+  });
+});
+
+describe('operator glyphs (#5890)', () => {
+  const custom = parseHopEmojiOverrides('0️⃣', '🌐');
+
+  it('replaces only the 0-hop glyph', () => {
+    expect(hopCountEmoji(0, custom)).toBe('0️⃣');
+    expect(hopCountEmoji(-1, custom)).toBe('0️⃣');
+    expect(hopCountEmoji(1, custom)).toBe('1️⃣');
+    expect(hopCountEmoji(9, custom)).toBe('7️⃣');
+    expect(hopCountEmoji(undefined, custom)).toBeUndefined();
+  });
+
+  it('replaces the MQTT glyph, and passes the 0-hop one through', () => {
+    expect(hopOrMqttEmoji(3, true, custom)).toBe('🌐');
+    expect(hopOrMqttEmoji(0, false, custom)).toBe('0️⃣');
+  });
+
+  it('keeps the built-in glyphs when nothing is set', () => {
+    const none = parseHopEmojiOverrides(null, '');
+    expect(none).toEqual({ zeroHop: undefined, mqtt: undefined });
+    expect(hopCountEmoji(0, none)).toBe(HOP_COUNT_EMOJIS[0]);
+    expect(hopOrMqttEmoji(0, true, none)).toBe(MQTT_SOURCE_EMOJI);
+  });
+
+  it('drops a stored value that is not a valid glyph', () => {
+    expect(parseHopEmojiOverrides('hello world', 'x'.repeat(40))).toEqual({ zeroHop: undefined, mqtt: undefined });
+  });
+
+  it.each([
+    ['', true],
+    ['0️⃣', true],
+    ['👨‍👩‍👧', true],
+    [' 0️⃣', false],
+    ['a b', false],
+    ['x'.repeat(17), false],
+    [5, false],
+    [null, false],
+  ])('isValidHopEmojiSetting(%j) is %s', (value, valid) => {
+    expect(isValidHopEmojiSetting(value)).toBe(valid);
   });
 });

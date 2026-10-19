@@ -12,7 +12,7 @@ import type { ReticulumMessageRow } from '../../../db/repositories/reticulum.js'
 import type { MeshCoreNodeEventFacts, NodeAircraftData, NodeUpdateOrigin } from '../dataEventEmitter.js';
 import type { TriggerType } from '../../../types/automation.js';
 import { compileUserRegex } from '../../../utils/safeRegex.js';
-import { hopCountEmoji, hopOrMqttEmoji } from '../../../utils/hopEmoji.js';
+import { hopCountEmoji, hopOrMqttEmoji, type HopEmojiOverrides } from '../../../utils/hopEmoji.js';
 import { autoAckIsIp, autoAckIsZeroHop } from '../../utils/autoAckDecision.js';
 import { REPLY_CONTEXT_TAPBACK, REPLY_CONTEXT_REPLY } from '../../../utils/replyContext.js';
 
@@ -97,6 +97,8 @@ export interface MessageContextLabels {
    * DB access. Absent/false → today's hop-count behaviour.
    */
   viaMqttSource?: boolean;
+  /** The source's chosen 0-hop / MQTT glyphs (#5890). Absent → built-in. */
+  hopEmojis?: HopEmojiOverrides;
 }
 
 /** Build the trigger context for a `message:new` event. */
@@ -159,7 +161,7 @@ export function buildMessageContext(
     // over RF), so keying on it would silently change the glyph existing
     // automations already emit. Keyed this way, the new glyph is unreachable for
     // every source type that can fire an automation today.
-    hopEmoji: hopOrMqttEmoji(hops, labels?.viaMqttSource),
+    hopEmoji: hopOrMqttEmoji(hops, labels?.viaMqttSource, labels?.hopEmojis),
     /**
      * True when the message arrived through an MQTT source. Exposed as its own
      * token so a rule can branch on transport without string-matching hopEmoji.
@@ -232,6 +234,7 @@ export function buildMeshCoreMessageContext(
   labels?: {
     channelName?: string | null;
     reactionTarget?: { text: string; fromName: string | null } | null;
+    hopEmojis?: HopEmojiOverrides;
   },
 ): TriggerContext {
   const isTapback = !!msg.reactionEmoji;
@@ -283,7 +286,7 @@ export function buildMeshCoreMessageContext(
     // #4594: MeshCore sources are never `mqtt_broker`/`mqtt_bridge`, so the MQTT
     // glyph is unreachable here — `hopCountEmoji` directly, and the companion
     // token is a constant false so it is never undefined on a message trigger.
-    hopEmoji: hopCountEmoji(hops),
+    hopEmoji: hopCountEmoji(hops, labels?.hopEmojis),
     viaMqttSource: false,
     // #4340 Phase 4: same derivation as buildMessageContext. MeshCore messages
     // carry no viaMqtt concept — `undefined` reads as not-MQTT, never NaN.

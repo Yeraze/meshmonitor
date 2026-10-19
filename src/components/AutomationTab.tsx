@@ -87,6 +87,8 @@ const AutomationTab: React.FC<AutomationTabProps> = ({ baseUrl, channels, nodes,
     autoAckMaxAttempts, setAutoAckMaxAttempts,
     autoAckHopLimit, setAutoAckHopLimit,
     autoAckMaxResponses, setAutoAckMaxResponses,
+    hopEmojiZeroHop, setHopEmojiZeroHop,
+    hopEmojiMqtt, setHopEmojiMqtt,
     autoAckTestMessages, setAutoAckTestMessages,
     autoAnnounceEnabled, setAutoAnnounceEnabled,
     autoAnnounceIntervalHours, setAutoAnnounceIntervalHours,
@@ -233,6 +235,10 @@ const AutomationTab: React.FC<AutomationTabProps> = ({ baseUrl, channels, nodes,
               hopLimit={autoAckHopLimit}
               maxResponses={autoAckMaxResponses}
               onMaxResponsesChange={setAutoAckMaxResponses}
+              hopEmojiZeroHop={hopEmojiZeroHop}
+              onHopEmojiZeroHopChange={setHopEmojiZeroHop}
+              hopEmojiMqtt={hopEmojiMqtt}
+              onHopEmojiMqttChange={setHopEmojiMqtt}
               onHopLimitChange={setAutoAckHopLimit}
               baseUrl={baseUrl}
               onEnabledChange={setAutoAckEnabled}

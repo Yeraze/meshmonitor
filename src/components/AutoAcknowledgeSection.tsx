@@ -1,3 +1,4 @@
+import { HOP_COUNT_EMOJIS, HOP_EMOJI_SETTING_MAX_LENGTH } from '../utils/hopEmoji';
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { COOLDOWN_SECONDS_MAX } from './automationInputLimits';
 import { useTranslation } from 'react-i18next';
@@ -71,6 +72,12 @@ interface AutoAcknowledgeSectionProps {
   /** Response cap for channel acks: 0 = no cap, default 2, max 10. */
   maxResponses?: number;
   onMaxResponsesChange?: (value: number) => void;
+  /** Tapback glyph for a 0-hop message (#5890): '' = built-in *️⃣. */
+  hopEmojiZeroHop?: string;
+  onHopEmojiZeroHopChange?: (value: string) => void;
+  /** Tapback glyph for a message that came over MQTT (#5890): '' = hop glyph. */
+  hopEmojiMqtt?: string;
+  onHopEmojiMqttChange?: (value: string) => void;
   testMessages: string;
   onTestMessagesChange: (messages: string) => void;
   /** False disables every control (no automation write permission). Default true. */
@@ -111,6 +118,10 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
   onHopLimitChange,
   maxResponses = AUTO_ACK_MAX_RESPONSES_DEFAULT,
   onMaxResponsesChange,
+  hopEmojiZeroHop = '',
+  onHopEmojiZeroHopChange,
+  hopEmojiMqtt = '',
+  onHopEmojiMqttChange,
   testMessages: testMessagesProp,
   onTestMessagesChange,
   canWrite = true,
@@ -135,6 +146,8 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
   const [localMaxAttempts, setLocalMaxAttempts] = useState(maxAttempts);
   const [localHopLimit, setLocalHopLimit] = useState(hopLimit);
   const [localMaxResponses, setLocalMaxResponses] = useState(maxResponses);
+  const [localHopEmojiZeroHop, setLocalHopEmojiZeroHop] = useState(hopEmojiZeroHop);
+  const [localHopEmojiMqtt, setLocalHopEmojiMqtt] = useState(hopEmojiMqtt);
   const [hasChanges, setHasChanges] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [testMessages, setTestMessages] = useState(testMessagesProp || 'test\nTest message\nping\nPING\nHello world\nTESTING 123');
@@ -157,10 +170,12 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
     setLocalMaxAttempts(maxAttempts);
     setLocalHopLimit(hopLimit);
     setLocalMaxResponses(maxResponses);
+    setLocalHopEmojiZeroHop(hopEmojiZeroHop);
+    setLocalHopEmojiMqtt(hopEmojiMqtt);
     if (testMessagesProp) {
       setTestMessages(testMessagesProp);
     }
-  }, [enabled, regex, message, messageDirect, enabledChannels, skipIncompleteNodes, ignoredNodes, matrix, cooldownSeconds, preSendDelaySeconds, maxAttempts, hopLimit, maxResponses, testMessagesProp]);
+  }, [enabled, regex, message, messageDirect, enabledChannels, skipIncompleteNodes, ignoredNodes, matrix, cooldownSeconds, preSendDelaySeconds, maxAttempts, hopLimit, maxResponses, hopEmojiZeroHop, hopEmojiMqtt, testMessagesProp]);
 
   // Check if any settings have changed.
   // Compare each local value against the SAME normalized baseline the local
@@ -178,9 +193,9 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
     const maxAttemptsChanged = localMaxAttempts !== maxAttempts;
     const hopLimitChanged = localHopLimit !== hopLimit;
     const matrixChanged = JSON.stringify(localMatrix) !== JSON.stringify(matrix);
-    const changed = localEnabled !== enabled || localRegex !== (regex || '^(test|ping)') || localMessage !== (message || DEFAULT_MESSAGE) || localMessageDirect !== (messageDirect || DEFAULT_MESSAGE_DIRECT) || channelsChanged || localSkipIncompleteNodes !== skipIncompleteNodes || localIgnoredNodes !== (ignoredNodes || '') || matrixChanged || cooldownChanged || preSendDelayChanged || maxAttemptsChanged || hopLimitChanged || localMaxResponses !== maxResponses || testMessages !== (testMessagesProp || 'test\nTest message\nping\nPING\nHello world\nTESTING 123');
+    const changed = localEnabled !== enabled || localRegex !== (regex || '^(test|ping)') || localMessage !== (message || DEFAULT_MESSAGE) || localMessageDirect !== (messageDirect || DEFAULT_MESSAGE_DIRECT) || channelsChanged || localSkipIncompleteNodes !== skipIncompleteNodes || localIgnoredNodes !== (ignoredNodes || '') || matrixChanged || cooldownChanged || preSendDelayChanged || maxAttemptsChanged || hopLimitChanged || localMaxResponses !== maxResponses || localHopEmojiZeroHop !== hopEmojiZeroHop || localHopEmojiMqtt !== hopEmojiMqtt || testMessages !== (testMessagesProp || 'test\nTest message\nping\nPING\nHello world\nTESTING 123');
     setHasChanges(changed);
-  }, [localEnabled, localRegex, localMessage, localMessageDirect, localEnabledChannels, localSkipIncompleteNodes, localIgnoredNodes, localMatrix, localCooldownSeconds, localPreSendDelaySeconds, localMaxAttempts, localHopLimit, localMaxResponses, testMessages, enabled, regex, message, messageDirect, enabledChannels, skipIncompleteNodes, ignoredNodes, matrix, cooldownSeconds, preSendDelaySeconds, maxAttempts, hopLimit, maxResponses, testMessagesProp]);
+  }, [localEnabled, localRegex, localMessage, localMessageDirect, localEnabledChannels, localSkipIncompleteNodes, localIgnoredNodes, localMatrix, localCooldownSeconds, localPreSendDelaySeconds, localMaxAttempts, localHopLimit, localMaxResponses, localHopEmojiZeroHop, localHopEmojiMqtt, testMessages, enabled, regex, message, messageDirect, enabledChannels, skipIncompleteNodes, ignoredNodes, matrix, cooldownSeconds, preSendDelaySeconds, maxAttempts, hopLimit, maxResponses, hopEmojiZeroHop, hopEmojiMqtt, testMessagesProp]);
 
   // Reset local state to props (used by SaveBar dismiss)
   const resetChanges = useCallback(() => {
@@ -197,8 +212,10 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
     setLocalMaxAttempts(maxAttempts);
     setLocalHopLimit(hopLimit);
     setLocalMaxResponses(maxResponses);
+    setLocalHopEmojiZeroHop(hopEmojiZeroHop);
+    setLocalHopEmojiMqtt(hopEmojiMqtt);
     setTestMessages(testMessagesProp || 'test\nTest message\nping\nPING\nHello world\nTESTING 123');
-  }, [enabled, regex, message, messageDirect, enabledChannels, skipIncompleteNodes, ignoredNodes, matrix, cooldownSeconds, preSendDelaySeconds, maxAttempts, hopLimit, maxResponses, testMessagesProp]);
+  }, [enabled, regex, message, messageDirect, enabledChannels, skipIncompleteNodes, ignoredNodes, matrix, cooldownSeconds, preSendDelaySeconds, maxAttempts, hopLimit, maxResponses, hopEmojiZeroHop, hopEmojiMqtt, testMessagesProp]);
 
   // Validate regex pattern for safety
   const validateRegex = (pattern: string): { valid: boolean; error?: string } => {
@@ -326,6 +343,8 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
           autoAckMaxAttempts: String(localMaxAttempts),
           autoAckHopLimit: localHopLimit,
           autoAckMaxResponses: String(localMaxResponses),
+          hopEmojiZeroHop: localHopEmojiZeroHop.trim(),
+          hopEmojiMqtt: localHopEmojiMqtt.trim(),
           autoAckTestMessages: testMessages
         })
       });
@@ -363,6 +382,8 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
       onMaxAttemptsChange(localMaxAttempts);
       onHopLimitChange?.(localHopLimit);
       onMaxResponsesChange?.(localMaxResponses);
+      onHopEmojiZeroHopChange?.(localHopEmojiZeroHop.trim());
+      onHopEmojiMqttChange?.(localHopEmojiMqtt.trim());
       onTestMessagesChange(testMessages);
 
       setHasChanges(false);
@@ -373,7 +394,7 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
     } finally {
       setIsSaving(false);
     }
-  }, [localRegex, localEnabled, localMessage, localMessageDirect, localEnabledChannels, localSkipIncompleteNodes, localIgnoredNodes, localMatrix, localCooldownSeconds, localPreSendDelaySeconds, localMaxAttempts, localHopLimit, localMaxResponses, testMessages, baseUrl, csrfFetch, sourceQuery, showToast, t, onEnabledChange, onRegexChange, onMessageChange, onMessageDirectChange, onChannelsChange, onSkipIncompleteNodesChange, onIgnoredNodesChange, onMatrixChange, onCooldownSecondsChange, onPreSendDelaySecondsChange, onMaxAttemptsChange, onHopLimitChange, onMaxResponsesChange, onTestMessagesChange]);
+  }, [localRegex, localEnabled, localMessage, localMessageDirect, localEnabledChannels, localSkipIncompleteNodes, localIgnoredNodes, localMatrix, localCooldownSeconds, localPreSendDelaySeconds, localMaxAttempts, localHopLimit, localMaxResponses, localHopEmojiZeroHop, localHopEmojiMqtt, testMessages, baseUrl, csrfFetch, sourceQuery, showToast, t, onEnabledChange, onRegexChange, onMessageChange, onMessageDirectChange, onChannelsChange, onSkipIncompleteNodesChange, onIgnoredNodesChange, onMatrixChange, onCooldownSecondsChange, onPreSendDelaySecondsChange, onMaxAttemptsChange, onHopLimitChange, onMaxResponsesChange, onHopEmojiZeroHopChange, onHopEmojiMqttChange, onTestMessagesChange]);
 
   // Register with SaveBar
   const numberScope = useNumberInputScope();
@@ -778,6 +799,45 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
               'The IP row covers messages your node got over MQTT or UDP. The 0-hop and multi-hop rows used to answer these. Turn on the IP row to keep answering them.',
             )}
           </p>
+        </div>
+
+        {/* Tapback glyphs (#5890). Blank keeps the built-in glyph. */}
+        <div className="setting-item" style={{ opacity: localEnabled ? 1 : 0.5 }}>
+          <label htmlFor="hopEmojiZeroHop">
+            {t('automation.auto_ack.zero_hop_emoji', '0-hop tapback')}
+            <span className="setting-description">
+              {t('automation.auto_ack.zero_hop_emoji_description', 'The tapback for a message heard directly. Leave blank for *️⃣; some meshes use 0️⃣. Hop-count tapbacks in automations use it too.')}
+            </span>
+          </label>
+          <input
+            id="hopEmojiZeroHop"
+            type="text"
+            className="setting-input"
+            value={localHopEmojiZeroHop}
+            placeholder={HOP_COUNT_EMOJIS[0]}
+            maxLength={HOP_EMOJI_SETTING_MAX_LENGTH}
+            onChange={(e) => setLocalHopEmojiZeroHop(e.target.value)}
+            disabled={!localEnabled}
+            style={{ width: '6rem' }}
+          />
+        </div>
+        <div className="setting-item" style={{ opacity: localEnabled ? 1 : 0.5 }}>
+          <label htmlFor="hopEmojiMqtt">
+            {t('automation.auto_ack.mqtt_emoji', 'MQTT tapback')}
+            <span className="setting-description">
+              {t('automation.auto_ack.mqtt_emoji_description', 'The tapback for a message that came over MQTT or UDP (the IP row). Leave blank to use its hop-count glyph. Automations use it for messages from an MQTT source, in place of #️⃣.')}
+            </span>
+          </label>
+          <input
+            id="hopEmojiMqtt"
+            type="text"
+            className="setting-input"
+            value={localHopEmojiMqtt}
+            maxLength={HOP_EMOJI_SETTING_MAX_LENGTH}
+            onChange={(e) => setLocalHopEmojiMqtt(e.target.value)}
+            disabled={!localEnabled}
+            style={{ width: '6rem' }}
+          />
         </div>
 
         {/* Multi-hop reply template */}

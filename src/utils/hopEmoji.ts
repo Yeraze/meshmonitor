@@ -16,20 +16,57 @@ export const HOP_COUNT_EMOJIS = ['*️⃣', '1️⃣', '2️⃣', '3️⃣', '4�
 export const HOP_EMOJI_MAX = 7;
 
 /**
+ * Operator-chosen glyphs (#5890), read from the per-source settings
+ * `hopEmojiZeroHop` and `hopEmojiMqtt`. A blank or absent field means the
+ * built-in glyph, so an install that never sets them behaves as before.
+ */
+export interface HopEmojiOverrides {
+  /** Replaces `*️⃣` for a 0-hop message (some meshes use `0️⃣`). */
+  zeroHop?: string | null;
+  /** Replaces `#️⃣` for a message that came in over MQTT. */
+  mqtt?: string | null;
+}
+
+/** Longest glyph a setting may hold: a keycap or ZWJ sequence, not text. */
+export const HOP_EMOJI_SETTING_MAX_LENGTH = 16;
+
+/** A saved glyph is blank (= built-in) or one short, non-space string. */
+export function isValidHopEmojiSetting(value: unknown): boolean {
+  if (typeof value !== 'string') return false;
+  if (value === '') return true;
+  return value.length <= HOP_EMOJI_SETTING_MAX_LENGTH && value.trim() === value && !/\s/.test(value);
+}
+
+/** Overrides from raw setting values; blank or invalid values drop out. */
+export function parseHopEmojiOverrides(
+  zeroHop: string | null | undefined,
+  mqtt: string | null | undefined,
+): HopEmojiOverrides {
+  const pick = (v: string | null | undefined) => (v && isValidHopEmojiSetting(v) ? v : undefined);
+  return { zeroHop: pick(zeroHop), mqtt: pick(mqtt) };
+}
+
+/**
  * Emoji for a hop count, or `undefined` when the hop count is unknown.
  *
  * - null / undefined / non-finite → `undefined` (caller decides)
  * - negative (a malformed hopStart < hopLimit packet) → clamped to 0 → `*️⃣`
  * - fractional → truncated toward zero
  * - >= HOP_EMOJI_MAX → `7️⃣`
+ * - `overrides.zeroHop`, when set, replaces `*️⃣`
  *
  * Returning `undefined` rather than `*️⃣` for "unknown" is deliberate: telling a
  * range-tester they were direct when we do not know the hop count is a lie, and
  * both engine call sites have a meaningful "unknown" branch.
  */
-export function hopCountEmoji(hops: number | null | undefined): string | undefined {
+export function hopCountEmoji(
+  hops: number | null | undefined,
+  overrides?: HopEmojiOverrides,
+): string | undefined {
   if (hops == null || !Number.isFinite(hops)) return undefined;
-  return HOP_COUNT_EMOJIS[Math.min(Math.max(Math.trunc(hops), 0), HOP_EMOJI_MAX)];
+  const n = Math.min(Math.max(Math.trunc(hops), 0), HOP_EMOJI_MAX);
+  if (n === 0 && overrides?.zeroHop) return overrides.zeroHop;
+  return HOP_COUNT_EMOJIS[n];
 }
 
 /**
@@ -68,6 +105,8 @@ export const MQTT_SOURCE_EMOJI = '#️⃣';
 export function hopOrMqttEmoji(
   hops: number | null | undefined,
   viaMqttSource: boolean | null | undefined,
+  overrides?: HopEmojiOverrides,
 ): string | undefined {
-  return viaMqttSource === true ? MQTT_SOURCE_EMOJI : hopCountEmoji(hops);
+  if (viaMqttSource === true) return overrides?.mqtt || MQTT_SOURCE_EMOJI;
+  return hopCountEmoji(hops, overrides);
 }

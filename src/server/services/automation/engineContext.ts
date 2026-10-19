@@ -10,6 +10,7 @@
  * `node.*` (hydrated subject node incl. calculated `ageMinutes`/`roleName`), and
  * `telemetry.*` (latest reading per metric for the subject node).
  */
+import type { HopEmojiOverrides } from '../../../utils/hopEmoji.js';
 import { type TriggerContext, resolveTriggerPath, subjectKeyOf, meshCoreSubjectKey, ageMinutesSince } from './triggerContext.js';
 import type { VariableResolver, VarContext } from './variableResolver.js';
 import { interpolate, extractPaths, type InterpolationValue } from './interpolate.js';
@@ -116,6 +117,11 @@ export interface NodeDataProvider {
    * Optional; absent → treated as not-MQTT, i.e. today's behaviour.
    */
   getSourceType?(sourceId: string | null): Promise<string | null>;
+  /**
+   * The source's chosen 0-hop and MQTT glyphs (#5890). Optional; absent →
+   * the built-in glyphs.
+   */
+  getHopEmojiOverrides?(sourceId: string | null): Promise<HopEmojiOverrides>;
   /**
    * Own/local node number for a Meshtastic source — used to drop self-originated
    * events (messages/telemetry/node updates our own node produced) so automations

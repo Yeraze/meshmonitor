@@ -12,6 +12,7 @@ import { sourceManagerRegistry } from '../../sourceManagerRegistry.js';
 import { isAnyMeshCoreSourceType } from '../../../utils/nodeTypeCategory.js';
 import { isMeshCoreManager } from '../../sourceManagerTypes.js';
 import { CHANNEL_DB_OFFSET } from '../../constants/meshtastic.js';
+import { parseHopEmojiOverrides } from '../../../utils/hopEmoji.js';
 import { isOwnNodeNum as isOwnedByAnySource, isOwnPublicKey as isOwnedPubkeyByAnySource, isOwnMeshCoreName as isOwnMeshCoreNameAnySource } from '../../utils/ownNodes.js';
 
 function nodeIdOf(nodeNum: number): string {
@@ -133,6 +134,18 @@ export function createMeshNodeDataProvider(): NodeDataProvider {
         return s ? sourceProtocol(s.type) : null;
       } catch {
         return null;
+      }
+    },
+
+    async getHopEmojiOverrides(sourceId) {
+      try {
+        const s = databaseService.settings;
+        return parseHopEmojiOverrides(
+          await s.getSettingForSource(sourceId, 'hopEmojiZeroHop'),
+          await s.getSettingForSource(sourceId, 'hopEmojiMqtt'),
+        );
+      } catch {
+        return {};
       }
     },
 

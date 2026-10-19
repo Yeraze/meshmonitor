@@ -55,6 +55,9 @@ export const VALID_SETTINGS_KEYS = [
   // have answered the same message. 0 = no cap; default 2; 0-10 enforced on
   // save (settingsRoutes) and clamped on read (autoAckResponseCap.ts).
   'autoAckMaxResponses',
+  // #5890: operator-chosen 0-hop / MQTT tapback glyphs (blank = built-in).
+  'hopEmojiZeroHop',
+  'hopEmojiMqtt',
   // Auto-ack matrix (discussion #3564, #5796): {Channel,Direct} × {ZeroHop,MultiHop,Ip},
   // each cell with Reply / Tapback / Respond-via-DM. These supersede the legacy
   // hop-only keys above (autoAckDirect*/autoAckMultihop*/autoAckUseDM/
@@ -511,6 +514,8 @@ export const PER_SOURCE_SETTINGS_KEYS = [
   'autoAckMaxAttempts',
   'autoAckHopLimit',
   'autoAckMaxResponses',
+  'hopEmojiZeroHop',
+  'hopEmojiMqtt',
   'autoAckDirectEnabled',
   'autoAckDirectMessages',
   'autoAckDirectReplyEnabled',
