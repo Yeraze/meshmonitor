@@ -11,6 +11,7 @@ import React, { useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { MeshCoreActions } from './hooks/useMeshCore';
 import { CliConsoleBody, type ActionCommand } from './CliConsoleBody';
+import { useSource } from '../../contexts/SourceContext';
 import './MeshCoreRemoteConsole.css';
 import styles from './MeshCoreCompanionCli.module.css';
 
@@ -39,6 +40,7 @@ export const MeshCoreCompanionRemoteConsole: React.FC<MeshCoreCompanionRemoteCon
   notOnDevice = false,
 }) => {
   const { t } = useTranslation();
+  const { sourceId } = useSource();
   const blocked = receiveOnly || notOnDevice;
   const runCommand = useCallback(
     (text: string, opts?: { confirm?: boolean }) => actions.sendCliCommand(publicKey, text, opts),
@@ -59,6 +61,7 @@ export const MeshCoreCompanionRemoteConsole: React.FC<MeshCoreCompanionRemoteCon
       <CliConsoleBody
         targetId={publicKey}
         targetName={contactName}
+        history={sourceId ? { sourceId, target: publicKey } : undefined}
         runCommand={runCommand}
         actionCatalog={blocked ? [] : COMPANION_REMOTE_ACTION_CATALOG}
         disabled={blocked}

@@ -230,6 +230,7 @@ import { migration as addChannelDatabaseUseAeadMigration, runMigration208Postgre
 import { migration as createNodeNameHistoryMigration, runMigration209Postgres, runMigration209Mysql } from '../server/migrations/209_create_node_name_history.js';
 import { migration as messagesChannelIndexMigration, runMigration210Postgres, runMigration210Mysql } from '../server/migrations/210_messages_channel_index_and_pg_autovacuum.js';
 import { migration as createMqttBrokerPresetsMigration, runMigration211Postgres, runMigration211Mysql } from '../server/migrations/211_create_mqtt_broker_presets.js';
+import { migration as createMeshcoreCliHistoryMigration, runMigration212Postgres, runMigration212Mysql } from '../server/migrations/212_create_meshcore_cli_history.js';
 
 // ============================================================================
 // Registry
@@ -3410,4 +3411,18 @@ registry.register({
   sqlite: (db) => createMqttBrokerPresetsMigration.up(db),
   postgres: (client) => runMigration211Postgres(client),
   mysql: (pool) => runMigration211Mysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 212: `meshcore_cli_history` (#5892). PER-SOURCE. One row per
+// MeshCore CLI command a person issued through MeshMonitor (redacted).
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 212,
+  name: 'create_meshcore_cli_history',
+  settingsKey: 'migration_212_create_meshcore_cli_history',
+  sqlite: (db) => createMeshcoreCliHistoryMigration.up(db),
+  postgres: (client) => runMigration212Postgres(client),
+  mysql: (pool) => runMigration212Mysql(pool),
 });

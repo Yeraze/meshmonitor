@@ -1,0 +1,225 @@
+/* MeshCore CLI history (#5892): the console History panel, the shared row
+   list, and the unified CLI activity view. CSS module per the containment
+   rule in CLAUDE.md. Theme tokens only, no fallbacks. */
+
+.panel {
+  margin-top: 0.75rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+}
+
+.panelHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.25rem 0.5rem;
+}
+
+.toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.35rem 0.25rem;
+  background: none;
+  border: none;
+  color: var(--color-text);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.iconButton {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.3rem;
+  background: none;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  color: var(--color-text-subtle);
+  cursor: pointer;
+}
+
+.iconButton:hover:not(:disabled) {
+  background: var(--color-surface-hover);
+}
+
+.panelBody {
+  padding: 0 0.75rem 0.75rem;
+}
+
+.hint,
+.empty {
+  margin: 0.25rem 0 0.5rem;
+  font-size: 0.85rem;
+  color: var(--color-text-muted);
+}
+
+.error {
+  margin: 0.25rem 0 0.5rem;
+  font-size: 0.85rem;
+  color: var(--color-error);
+}
+
+.list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 22rem;
+  overflow-y: auto;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg-sunken);
+}
+
+.item + .item {
+  border-top: 1px solid var(--color-border-subtle);
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  width: 100%;
+  padding: 0.4rem 0.5rem;
+  background: none;
+  border: none;
+  color: var(--color-text);
+  text-align: left;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.row:hover {
+  background: var(--color-surface-hover);
+}
+
+.time {
+  color: var(--color-text-subtle);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.meta {
+  color: var(--color-text-subtle);
+  white-space: nowrap;
+  max-width: 14rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.command {
+  flex: 1 1 10rem;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-mono);
+  color: var(--color-text);
+}
+
+.outcome {
+  padding: 0.05rem 0.45rem;
+  border-radius: var(--radius-sm);
+  font-size: 0.75rem;
+  font-weight: 600;
+  border: 1px solid currentColor;
+}
+
+.outcomeOk {
+  color: var(--color-success);
+}
+
+.outcomeBlocked {
+  color: var(--color-warning);
+}
+
+.outcomeFailed {
+  color: var(--color-error);
+}
+
+.detail {
+  padding: 0 0.75rem 0.6rem 2rem;
+}
+
+.reply,
+.detailError {
+  margin: 0;
+  padding: 0.5rem;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  background: var(--color-bg);
+  border-radius: var(--radius-sm);
+}
+
+.reply {
+  color: var(--color-text);
+}
+
+.detailError {
+  color: var(--color-error);
+}
+
+p.detailError {
+  margin-bottom: 0.4rem;
+  background: none;
+  padding: 0;
+}
+
+.detailMeta {
+  margin: 0.3rem 0 0;
+  font-size: 0.75rem;
+  color: var(--color-text-faint);
+}
+
+.more {
+  margin-top: 0.5rem;
+  padding: 0.35rem 0.75rem;
+  background: var(--color-surface-active);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  color: var(--color-text);
+  cursor: pointer;
+}
+
+/* ---- Unified CLI activity view ---- */
+
+.activity {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.filters {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr));
+  gap: 0.75rem;
+  padding: 0.75rem;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-size: 0.85rem;
+  color: var(--color-text-subtle);
+}
+
+.field select,
+.field input {
+  padding: 0.4rem;
+  background: var(--color-bg);
+  color: var(--color-text);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+}
+
+.activity .list {
+  max-height: none;
+}

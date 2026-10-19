@@ -8,6 +8,7 @@
  * - Route segments older than routeSegmentRetentionDays (default 30)
  * - Neighbor info older than neighborInfoRetentionDays (default 30)
  * - Audit log entries older than auditLogRetentionDays (default 90, #5870)
+ * - MeshCore CLI history older than meshcoreCliHistoryRetentionDays (default 90, #5892)
  *
  * After cleanup, runs VACUUM (SQLite/PostgreSQL) or OPTIMIZE TABLE (MySQL).
  * Runs on every backend; only `maintenanceEnabled` turns it on.
@@ -17,6 +18,7 @@ import databaseService from '../../services/database.js';
 import { logger } from '../../utils/logger.js';
 import { waypointService } from './waypointService.js';
 import { EXPIRY_MS as DEAD_DROP_EXPIRY_MS } from './deadDropService.js';
+import { DEFAULT_MESHCORE_CLI_HISTORY_RETENTION_DAYS, MESHCORE_CLI_HISTORY_RETENTION_SETTING } from './meshcoreCliHistoryService.js';
 
 export interface MaintenanceStats {
   messagesDeleted: number;
@@ -24,6 +26,7 @@ export interface MaintenanceStats {
   routeSegmentsDeleted: number;
   neighborInfoDeleted: number;
   auditLogDeleted: number;
+  meshcoreCliHistoryDeleted: number;
   sizeBefore: number;
   sizeAfter: number;
   duration: number;
@@ -45,6 +48,7 @@ export interface MaintenanceStatus {
     routeSegmentRetentionDays: number;
     neighborInfoRetentionDays: number;
     auditLogRetentionDays: number;
+    meshcoreCliHistoryRetentionDays: number;
   };
 }
 
@@ -218,6 +222,7 @@ class DatabaseMaintenanceService {
       routeSegmentsDeleted: 0,
       neighborInfoDeleted: 0,
       auditLogDeleted: 0,
+      meshcoreCliHistoryDeleted: 0,
       sizeBefore: 0,
       sizeAfter: 0,
       duration: 0,
@@ -226,16 +231,17 @@ class DatabaseMaintenanceService {
 
     try {
       // Get retention settings (defaults: 30 days, minimum: 1 day)
-      const [messageRetention, tracerouteRetention, routeSegmentRetention, neighborInfoRetention, auditLogRetention] =
+      const [messageRetention, tracerouteRetention, routeSegmentRetention, neighborInfoRetention, auditLogRetention, cliHistoryRetention] =
         await Promise.all([
           this.getRetentionDays('messageRetentionDays'),
           this.getRetentionDays('tracerouteRetentionDays'),
           this.getRetentionDays('routeSegmentRetentionDays'),
           this.getRetentionDays('neighborInfoRetentionDays'),
           this.getRetentionDays('auditLogRetentionDays', DEFAULT_AUDIT_LOG_RETENTION_DAYS),
+          this.getRetentionDays(MESHCORE_CLI_HISTORY_RETENTION_SETTING, DEFAULT_MESHCORE_CLI_HISTORY_RETENTION_DAYS),
         ]);
 
-      logger.debug(`🔧 Running database maintenance with retention: messages=${messageRetention}d, traceroutes=${tracerouteRetention}d, routeSegments=${routeSegmentRetention}d, neighborInfo=${neighborInfoRetention}d, auditLog=${auditLogRetention}d`);
+      logger.debug(`🔧 Running database maintenance with retention: messages=${messageRetention}d, traceroutes=${tracerouteRetention}d, routeSegments=${routeSegmentRetention}d, neighborInfo=${neighborInfoRetention}d, auditLog=${auditLogRetention}d, meshcoreCliHistory=${cliHistoryRetention}d`);
 
       // Get database size before cleanup
       stats.sizeBefore = await databaseService.getDatabaseSizeAsync();
@@ -265,6 +271,16 @@ class DatabaseMaintenanceService {
       stats.auditLogDeleted = await databaseService.cleanupAuditLogsAsync(auditLogRetention);
       if (stats.auditLogDeleted > 0) {
         logger.info(`🗑️ Deleted ${stats.auditLogDeleted} old audit log entries`);
+      }
+
+      // MeshCore CLI history (#5892): its own retention, like the audit log.
+      try {
+        stats.meshcoreCliHistoryDeleted = await databaseService.meshcoreCliHistory.pruneOlderThan(cliHistoryRetention);
+        if (stats.meshcoreCliHistoryDeleted > 0) {
+          logger.info(`🗑️ Deleted ${stats.meshcoreCliHistoryDeleted} old MeshCore CLI history entries`);
+        }
+      } catch (error) {
+        logger.error('MeshCore CLI history prune failed:', error);
       }
 
       // Sweep expired waypoints (24h grace by default).
@@ -300,7 +316,8 @@ class DatabaseMaintenanceService {
       this.lastRunStats = stats;
 
       const totalDeleted = stats.messagesDeleted + stats.traceroutesDeleted +
-                          stats.routeSegmentsDeleted + stats.neighborInfoDeleted + stats.auditLogDeleted;
+                          stats.routeSegmentsDeleted + stats.neighborInfoDeleted + stats.auditLogDeleted +
+                          stats.meshcoreCliHistoryDeleted;
       const spaceSaved = stats.sizeBefore - stats.sizeAfter;
 
       logger.info(`✅ Database maintenance complete in ${(stats.duration / 1000).toFixed(1)}s: ` +
@@ -331,7 +348,7 @@ class DatabaseMaintenanceService {
    */
   async getStatus(): Promise<MaintenanceStatus> {
     // Fetch all settings in parallel to reduce DB round-trips
-    const [enabledStr, maintenanceTime, messageRet, tracerouteRet, routeSegmentRet, neighborInfoRet, auditLogRet] =
+    const [enabledStr, maintenanceTime, messageRet, tracerouteRet, routeSegmentRet, neighborInfoRet, auditLogRet, cliHistoryRet] =
       await Promise.all([
         databaseService.settings.getSetting('maintenanceEnabled'),
         databaseService.settings.getSetting('maintenanceTime'),
@@ -340,6 +357,7 @@ class DatabaseMaintenanceService {
         this.getRetentionDays('routeSegmentRetentionDays'),
         this.getRetentionDays('neighborInfoRetentionDays'),
         this.getRetentionDays('auditLogRetentionDays', DEFAULT_AUDIT_LOG_RETENTION_DAYS),
+        this.getRetentionDays(MESHCORE_CLI_HISTORY_RETENTION_SETTING, DEFAULT_MESHCORE_CLI_HISTORY_RETENTION_DAYS),
       ]);
 
     const enabled = enabledStr === 'true';
@@ -375,6 +393,7 @@ class DatabaseMaintenanceService {
         routeSegmentRetentionDays: routeSegmentRet,
         neighborInfoRetentionDays: neighborInfoRet,
         auditLogRetentionDays: auditLogRet,
+        meshcoreCliHistoryRetentionDays: cliHistoryRet,
       }
     };
   }

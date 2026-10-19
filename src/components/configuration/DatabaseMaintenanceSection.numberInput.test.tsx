@@ -50,6 +50,7 @@ const STATUS = {
     routeSegmentRetentionDays: 30,
     neighborInfoRetentionDays: 30,
     auditLogRetentionDays: 90,
+    meshcoreCliHistoryRetentionDays: 90,
   },
 };
 
@@ -62,11 +63,11 @@ function renderSection() {
   );
 }
 
-/** The five retention fields, in form order; the first is message retention. */
+/** The six retention fields, in form order; the first is message retention. */
 async function retentionFields(): Promise<HTMLInputElement[]> {
   return waitFor(() => {
     const fields = screen.getAllByRole('spinbutton') as HTMLInputElement[];
-    expect(fields).toHaveLength(5);
+    expect(fields).toHaveLength(6);
     expect(fields[0].value).toBe('60');
     return fields;
   });
@@ -115,7 +116,7 @@ describe('DatabaseMaintenanceSection number fields (#5649)', () => {
     // The server has always received these as numeric strings.
     expect(body.messageRetentionDays).toBe('120');
     expect(body.tracerouteRetentionDays).toBe('30');
-    for (const key of ['messageRetentionDays', 'tracerouteRetentionDays', 'routeSegmentRetentionDays', 'neighborInfoRetentionDays', 'auditLogRetentionDays']) {
+    for (const key of ['messageRetentionDays', 'tracerouteRetentionDays', 'routeSegmentRetentionDays', 'neighborInfoRetentionDays', 'auditLogRetentionDays', 'meshcoreCliHistoryRetentionDays']) {
       expect(body[key]).toMatch(/^\d+$/);
     }
   });

@@ -11,6 +11,8 @@ import { useAuth } from '../contexts/AuthContext';
 import api from '../services/api';
 import { logger } from '../utils/logger';
 import { useToast } from './ToastContainer';
+import { MeshCoreCliActivity } from './MeshCore/MeshCoreCliActivity';
+import tabStyles from './AuditLogTab.module.css';
 
 interface AuditLogEntry {
   id: number;
@@ -48,6 +50,8 @@ const AuditLogTab: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [total, setTotal] = useState(0);
   const [expandedLog, setExpandedLog] = useState<number | null>(null);
+  // #5892: the page also hosts the MeshCore CLI activity view.
+  const [view, setView] = useState<'events' | 'cli'>('events');
 
   // Filters
   const [filters, setFilters] = useState({
@@ -244,6 +248,41 @@ const AuditLogTab: React.FC = () => {
     );
   }
 
+  const viewTabs = (
+    <div className={tabStyles.tabs} role="tablist" aria-label={t('audit.views', 'Audit views')}>
+      <button
+        type="button"
+        role="tab"
+        aria-selected={view === 'events'}
+        className={view === 'events' ? `${tabStyles.tab} ${tabStyles.active}` : tabStyles.tab}
+        onClick={() => setView('events')}
+      >
+        {t('audit.view_events', 'Audit events')}
+      </button>
+      <button
+        type="button"
+        role="tab"
+        aria-selected={view === 'cli'}
+        className={view === 'cli' ? `${tabStyles.tab} ${tabStyles.active}` : tabStyles.tab}
+        onClick={() => setView('cli')}
+      >
+        {t('audit.view_meshcore_cli', 'MeshCore CLI activity')}
+      </button>
+    </div>
+  );
+
+  if (view === 'cli') {
+    return (
+      <div className="audit-log-tab">
+        <div className="audit-log-header">
+          <h2>{t('audit.title')}</h2>
+        </div>
+        {viewTabs}
+        <MeshCoreCliActivity />
+      </div>
+    );
+  }
+
   return (
     <div className="audit-log-tab">
       <div className="audit-log-header">
@@ -256,6 +295,7 @@ const AuditLogTab: React.FC = () => {
           {t('audit.export_csv')}
         </button>
       </div>
+      {viewTabs}
 
       {/* Statistics Summary */}
       {stats && (

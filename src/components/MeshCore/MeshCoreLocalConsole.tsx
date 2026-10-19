@@ -170,6 +170,7 @@ export const MeshCoreLocalConsole: React.FC<MeshCoreLocalConsoleProps> = ({
         ref={bodyRef}
         targetId={sourceId}
         targetName={targetName}
+        history={{ sourceId, target: 'local' }}
         runCommand={runCommand}
         actionCatalog={connected ? actionCatalog : []}
         disabled={!connected}
