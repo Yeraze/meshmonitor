@@ -21,6 +21,7 @@ import {
   canReadVirtualChannel,
 } from '../utils/virtualChannelPermissions.js';
 import { buildSourceDashboard } from '../services/sourceDashboardData.js';
+import { loadNodeViewAccess, omitPositionTelemetry } from '../utils/nodeEnhancer.js';
 import {
   unifiedChannelDisplayName,
   loadSourcePresetNames,
@@ -925,7 +926,13 @@ router.get('/telemetry', async (req: Request, res: Response) => {
     const user = (req as any).user;
     const isAdmin = user?.isAdmin ?? false;
 
-    const sources = await databaseService.sources.getAllSources();
+    const [sources, access] = await Promise.all([
+      databaseService.sources.getAllSources(),
+      // The per-node rules of GET /api/telemetry/:nodeId (#5896), loaded once:
+      // channel access per node, and position rows of a private-position node
+      // only with `nodes_private:read` on that source.
+      loadNodeViewAccess(user),
+    ]);
 
     const sourceResults = await Promise.allSettled(
       sources.map(async (source) => {
@@ -940,22 +947,34 @@ router.get('/telemetry', async (req: Request, res: Response) => {
         // the Meshtastic `nodes` table's nodeId — enumerate from the right
         // table per source type so MeshCore telemetry rows (also keyed by
         // publicKey) actually get looked up (#4700).
+        //
+        // Each node passes the same check `checkNodeChannelAccess` applies on
+        // the per-node route: a MeshCore peer (no channel) needs
+        // `nodes:viewOnMap` on the source; a Meshtastic node needs `viewOnMap`
+        // on the channel it was heard on there.
         const nodeList: Array<{
           telemetryNodeId: string;
           longName?: string | null;
           shortName?: string | null;
+          hidePosition: boolean;
         }> =
           isAnyMeshCoreSourceType(source.type)
-            ? (await databaseService.meshcore.getNodesBySource(source.id)).map((n) => ({
-                telemetryNodeId: n.publicKey,
-                longName: n.name,
-                shortName: null,
-              }))
-            : (await databaseService.nodes.getAllNodes(source.id)).map((n) => ({
-                telemetryNodeId: n.nodeId,
-                longName: n.longName,
-                shortName: n.shortName,
-              }));
+            ? (access.isAdmin || access.permissions.can('nodes', 'viewOnMap', source.id)
+              ? (await databaseService.meshcore.getNodesBySource(source.id)).map((n) => ({
+                  telemetryNodeId: n.publicKey,
+                  longName: n.name,
+                  shortName: null,
+                  hidePosition: false,
+                }))
+              : [])
+            : (await databaseService.nodes.getAllNodes(source.id))
+                .filter((n) => access.canViewNode(source.id, n.channel))
+                .map((n) => ({
+                  telemetryNodeId: n.nodeId,
+                  longName: n.longName,
+                  shortName: n.shortName,
+                  hidePosition: !!n.positionOverrideIsPrivate && !access.canViewPrivate(source.id),
+                }));
 
         const entries: Array<Record<string, unknown>> = [];
 
@@ -979,7 +998,10 @@ router.get('/telemetry', async (req: Request, res: Response) => {
         );
 
         for (const { node, latest } of perNodeLatest) {
-          for (const t of latest as any[]) {
+          const rows = node.hidePosition
+            ? omitPositionTelemetry(latest as Array<{ telemetryType: string; timestamp: number }>)
+            : latest;
+          for (const t of rows as any[]) {
             if (t.timestamp >= cutoff) {
               entries.push({
                 ...t,

@@ -208,7 +208,7 @@ export class TraceroutesRepository extends BaseRepository {
    * local TCP mesh) from bleeding into a view scoped to a different source
    * (e.g. an MQTT feed) where the same nodeNums may also be present.
    */
-  async getTraceroutesByNodes(fromNodeNum: number, toNodeNum: number, limit: number = 10, sourceId?: SourceScope): Promise<DbTraceroute[]> {
+  async getTraceroutesByNodes(fromNodeNum: number, toNodeNum: number, limit: number = 10, sourceId?: SourceSetScope): Promise<DbTraceroute[]> {
     const { traceroutes } = this.tables;
     // Search bidirectionally to capture traceroutes initiated from either direction
     // This is especially important for 3rd party traceroutes (e.g., via Virtual Node)
@@ -453,7 +453,7 @@ export class TraceroutesRepository extends BaseRepository {
    * a genuinely longer non-record segment has since been seen. The ordinary
    * (unflagged) twin of the record-setting segment stays eligible.
    */
-  async getLongestActiveRouteSegment(sourceId?: SourceScope, transportClass?: NodeTransportClass): Promise<DbRouteSegment| null> {
+  async getLongestActiveRouteSegment(sourceId?: SourceSetScope, transportClass?: NodeTransportClass): Promise<DbRouteSegment| null> {
     const { routeSegments } = this.tables;
     const result = await this.db
       .select()
@@ -475,7 +475,7 @@ export class TraceroutesRepository extends BaseRepository {
    * and/or a transport class (#5101) — records are now kept per
    * (source, transport class).
    */
-  async getRecordHolderRouteSegment(sourceId?: SourceScope, transportClass?: NodeTransportClass): Promise<DbRouteSegment| null> {
+  async getRecordHolderRouteSegment(sourceId?: SourceSetScope, transportClass?: NodeTransportClass): Promise<DbRouteSegment| null> {
     const { routeSegments } = this.tables;
     const result = await this.db
       .select()

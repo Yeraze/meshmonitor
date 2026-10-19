@@ -18,6 +18,7 @@ import {
   checkNodeChannelAccess,
   getEffectiveDbNodePosition,
   loadNodeViewAccess,
+  omitPositionTelemetry,
 } from '../utils/nodeEnhancer.js';
 import { listPermittedSourceIds, loadSourcePermissions } from '../utils/sourceScopedAccess.js';
 import type { SourceSetScope } from '../../db/repositories/index.js';
@@ -155,9 +156,7 @@ router.get('/telemetry/:nodeId', optionalAuth(), requireSourceId('query'), async
     // Filter out location telemetry if private and unauthorized
     let processedTelemetry = telemetry;
     if (isPrivate && !canViewPrivate) {
-      processedTelemetry = telemetry.filter(t =>
-        !['latitude', 'longitude', 'altitude'].includes(t.telemetryType)
-      );
+      processedTelemetry = omitPositionTelemetry(telemetry);
     }
 
     res.json(processedTelemetry);

@@ -9,6 +9,7 @@ import { isSourceyResource } from '../../types/permission.js';
 import type { ResourceType, PermissionAction, PermissionSet } from '../../types/permission.js';
 import type { User } from '../../types/auth.js';
 import databaseService from '../../services/database.js';
+import { ALL_SOURCES, type SourceSetScope } from '../../db/repositories/base.js';
 
 /** One user's grants, loaded once, answered per source with no further query. */
 export interface SourcePermissions {
@@ -89,4 +90,23 @@ export async function loadSourcePermissions(user: User | null | undefined): Prom
     on: (sourceId) => sets[sourceId] ?? NO_GRANTS,
     sourcesWhere: (test) => Object.keys(sets).filter((sourceId) => test(sets[sourceId])),
   };
+}
+
+/**
+ * The scope of a read gated by `requirePermission(resource, 'read', { sourceIdFrom })`.
+ * That gate checks the named source, but with no source named it passes on a
+ * grant for ANY source, so the handler must not then read every source. A named
+ * source (already checked by the gate) is read as is; with none named, an admin
+ * reads every source and anyone else the sources they hold `resource:read` on
+ * (an empty list reads nothing). #5898.
+ */
+export async function permittedReadScope(
+  user: User | null | undefined,
+  resource: ResourceType,
+  sourceId: string | undefined,
+): Promise<SourceSetScope> {
+  if (sourceId) return sourceId;
+  const permissions = await loadSourcePermissions(user);
+  if (permissions.isAdmin) return ALL_SOURCES;
+  return permissions.sourcesWhere((grants) => grants[resource]?.read === true);
 }
