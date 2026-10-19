@@ -115,6 +115,7 @@ Auto Acknowledge supports two independent response modes, each with separate tog
 **Tapback (Emoji Reaction)**: React to the triggering message with an emoji instead of (or in addition to) a text reply:
 - Direct (0-hop) messages receive a *️⃣ reaction
 - Multi-hop messages receive a keycap digit emoji for the hop count (1️⃣ through 7️⃣, with 7️⃣ for 7 or more)
+- **0-hop tapback** and **MQTT tapback** (per source) change these glyphs. Set the 0-hop one to 0️⃣ if your mesh uses that for "heard directly". The MQTT one is used for messages in the IP row (received over MQTT or UDP); left blank, those get their hop-count glyph as before. Automations' hop-count tapbacks and the `trigger.hopEmoji` token use the same two glyphs, the MQTT one in place of `#️⃣` for messages from an MQTT source.
 
 **Text Reply**: Send the configured message template as a text response. This is the traditional auto-ack behavior.
 

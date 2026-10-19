@@ -138,6 +138,8 @@ function validTestValue(key: string, suffix = ''): string {
     autoAckChannels: '0,1',
     autoAckIgnoredNodes: '!b29fa8d4,!a1b2c3d4',
     autoAckMaxResponses: '3',
+    hopEmojiZeroHop: '0️⃣',
+    hopEmojiMqtt: '🌐',
     maxNodeAgeHours: '24',
     maxInfraNodeAgeHours: '168',
     txTargetMaxAgeHoursWhenUnlimited: '48',

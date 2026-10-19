@@ -105,7 +105,7 @@ import { isLiveNodeDiscovery } from './utils/nodeDiscovery.js';
 import { isUptimeReboot } from './utils/rebootDetection.js';
 import { isPowered, detectPowerTransition } from './utils/poweredState.js';
 import { autoAckIsIp, autoAckIsZeroHop, autoAckCellKey, resolveAutoAckReplyRouting } from './utils/autoAckDecision.js';
-import { hopCountEmoji, HOP_COUNT_EMOJIS } from '../utils/hopEmoji.js';
+import { hopCountEmoji, HOP_COUNT_EMOJIS, parseHopEmojiOverrides } from '../utils/hopEmoji.js';
 import { scriptDependencyEnv } from './utils/scriptRunner.js';
 import { canonicalMessageTime, plausibleRxTime } from './utils/messageTime.js';
 import { canonicalTelemetryType, canonicalTelemetryUnit } from './utils/telemetryKeys.js';
@@ -12162,7 +12162,13 @@ class MeshtasticManager implements ISourceManager {
         // Hop count emojis: *️⃣ for 0 (direct), 1️⃣-7️⃣ for 1-7+ hops. Shared with the
         // Automation Engine's action.tapback emojiMode=hopCount (src/utils/hopEmoji.ts).
         // `hopsTraveled` is already floored at 0 above, so the fallback is unreachable.
-        const hopEmoji = hopCountEmoji(hopsTraveled) ?? HOP_COUNT_EMOJIS[0];
+        // #5890: the source's chosen glyphs replace *️⃣, and (for an IP packet)
+        // the hop glyph. With no MQTT glyph set, an IP packet keeps its hop glyph.
+        const hopEmojis = parseHopEmojiOverrides(
+          await settings.getSettingForSource(sourceId, 'hopEmojiZeroHop'),
+          await settings.getSettingForSource(sourceId, 'hopEmojiMqtt'),
+        );
+        const hopEmoji = (isIp && hopEmojis.mqtt) || (hopCountEmoji(hopsTraveled, hopEmojis) ?? HOP_COUNT_EMOJIS[0]);
         const tapbackTarget = isDirectMessage
           ? `!${fromNum.toString(16).padStart(8, '0')}`
           : `channel ${channelIndex}`;

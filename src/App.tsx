@@ -654,6 +654,8 @@ function App() {
     setAutoAckPreSendDelaySeconds,
     setAutoAckMaxAttempts,
     setAutoAckMaxResponses,
+    setHopEmojiZeroHop,
+    setHopEmojiMqtt,
     setAutoAckHopLimit,
     setAutoAnnounceHopLimit,
     setAutoAckTestMessages,
@@ -1095,6 +1097,8 @@ function App() {
           }
           setAutoAckHopLimit(hopLimitSettingValue(settings.autoAckHopLimit));
           setAutoAckMaxResponses(resolveAutoAckMaxResponses(settings.autoAckMaxResponses));
+          setHopEmojiZeroHop(settings.hopEmojiZeroHop ?? '');
+          setHopEmojiMqtt(settings.hopEmojiMqtt ?? '');
           setAutoAnnounceHopLimit(hopLimitSettingValue(settings.autoAnnounceHopLimit));
 
           if (settings.autoAckTestMessages) {

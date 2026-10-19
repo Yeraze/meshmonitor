@@ -13,6 +13,7 @@
  */
 import { logger } from '../../../utils/logger.js';
 import type { DbMessage } from '../../../services/database.js';
+import type { HopEmojiOverrides } from '../../../utils/hopEmoji.js';
 import type { AutomationsRepository, AutomationRecord } from '../../../db/repositories/automations.js';
 import type { AutomationHomeAnchorsRepository } from '../../../db/repositories/automationHomeAnchors.js';
 import { isMqttSourceType } from '../../../db/repositories/sources.js';
@@ -1013,7 +1014,9 @@ export class AutomationEngineService {
     // without the accessor (older/unit-test providers) yields false = today's
     // behaviour.
     let viaMqttSource = false;
+    let hopEmojis: HopEmojiOverrides | undefined;
     if (hasMessageAutomations) {
+      if (this.data.getHopEmojiOverrides) hopEmojis = await this.data.getHopEmojiOverrides(sourceId);
       if (this.data.getChannelName) {
         channelName = await this.data.getChannelName(sourceId, Number(msg.channel));
       }
@@ -1025,7 +1028,7 @@ export class AutomationEngineService {
         viaMqttSource = isMqttSourceType(await this.data.getSourceType(sourceId));
       }
     }
-    const ctx = buildMessageContext(msg, sourceId, this.now(), { channelName, fromName, viaMqttSource });
+    const ctx = buildMessageContext(msg, sourceId, this.now(), { channelName, fromName, viaMqttSource, hopEmojis });
     return this.runTrigger(
       ctx,
       (a) => (!isSelf || this.includesSelfOrigin(a)) && messageMatchesFilter(msg, a.triggerNode.params ?? {}, channelName),
@@ -1064,13 +1067,16 @@ export class AutomationEngineService {
     if (hasMessageAutomations && this.data.getChannelName && typeof channelIdx === 'number') {
       channelName = await this.data.getChannelName(sourceId, channelIdx);
     }
+    const hopEmojis = hasMessageAutomations && this.data.getHopEmojiOverrides
+      ? await this.data.getHopEmojiOverrides(sourceId)
+      : undefined;
     // Look the reaction target up only when a loaded rule opted in (no DB read otherwise).
     const wantsReactions = isReaction
       && (this.index.get('trigger.message') ?? []).some((a) => messageFilterIncludesMeshCoreReactions(a.triggerNode.params ?? {}));
     const reactionTarget = wantsReactions && msg.reactionTargetId && this.data.getMeshCoreMessage
       ? await this.data.getMeshCoreMessage(sourceId, msg.reactionTargetId)
       : null;
-    const ctx = buildMeshCoreMessageContext(msg, sourceId, this.now(), { channelName, reactionTarget });
+    const ctx = buildMeshCoreMessageContext(msg, sourceId, this.now(), { channelName, reactionTarget, hopEmojis });
     return this.runTrigger(
       ctx,
       (a) => (!isSelf || this.includesSelfOrigin(a)) && meshCoreMessageMatchesFilter(msg, a.triggerNode.params ?? {}, channelName),

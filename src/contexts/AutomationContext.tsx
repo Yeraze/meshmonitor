@@ -33,6 +33,11 @@ interface AutomationContextType {
   autoAckHopLimit: string;
   autoAckMaxResponses: number;
   setAutoAckMaxResponses: React.Dispatch<React.SetStateAction<number>>;
+  /** Tapback glyphs (#5890): '' = built-in. */
+  hopEmojiZeroHop: string;
+  setHopEmojiZeroHop: React.Dispatch<React.SetStateAction<string>>;
+  hopEmojiMqtt: string;
+  setHopEmojiMqtt: React.Dispatch<React.SetStateAction<string>>;
   setAutoAckHopLimit: React.Dispatch<React.SetStateAction<string>>;
   autoAckTestMessages: string;
   setAutoAckTestMessages: React.Dispatch<React.SetStateAction<string>>;
@@ -129,6 +134,8 @@ export const AutomationProvider: React.FC<AutomationProviderProps> = ({ children
   const [autoAckMaxAttempts, setAutoAckMaxAttempts] = useState<number>(3);
   const [autoAckHopLimit, setAutoAckHopLimit] = useState<string>('');
   const [autoAckMaxResponses, setAutoAckMaxResponses] = useState<number>(AUTO_ACK_MAX_RESPONSES_DEFAULT);
+  const [hopEmojiZeroHop, setHopEmojiZeroHop] = useState<string>('');
+  const [hopEmojiMqtt, setHopEmojiMqtt] = useState<string>('');
   const [autoAckTestMessages, setAutoAckTestMessages] = useState<string>('');
   const [autoAnnounceEnabled, setAutoAnnounceEnabled] = useState<boolean>(false);
   const [autoAnnounceIntervalHours, setAutoAnnounceIntervalHours] = useState<number>(6);
@@ -221,6 +228,8 @@ export const AutomationProvider: React.FC<AutomationProviderProps> = ({ children
         setAutoAckHopLimit(hopLimitSettingValue(s.autoAckHopLimit));
         // Always set: unset reads as the default (2) and a stored 0 stays 0.
         setAutoAckMaxResponses(resolveAutoAckMaxResponses(s.autoAckMaxResponses));
+        setHopEmojiZeroHop(s.hopEmojiZeroHop ?? '');
+        setHopEmojiMqtt(s.hopEmojiMqtt ?? '');
         if (s.autoAckTestMessages !== undefined) setAutoAckTestMessages(s.autoAckTestMessages);
 
         if (s.autoAnnounceEnabled !== undefined) setAutoAnnounceEnabled(bool('autoAnnounceEnabled'));
@@ -283,6 +292,8 @@ export const AutomationProvider: React.FC<AutomationProviderProps> = ({ children
     autoAckMaxAttempts, setAutoAckMaxAttempts,
     autoAckHopLimit, setAutoAckHopLimit,
     autoAckMaxResponses, setAutoAckMaxResponses,
+    hopEmojiZeroHop, setHopEmojiZeroHop,
+    hopEmojiMqtt, setHopEmojiMqtt,
     autoAckTestMessages, setAutoAckTestMessages,
     autoAnnounceEnabled, setAutoAnnounceEnabled,
     autoAnnounceIntervalHours, setAutoAnnounceIntervalHours,
@@ -331,6 +342,8 @@ export const AutomationProvider: React.FC<AutomationProviderProps> = ({ children
     autoAckMaxAttempts, setAutoAckMaxAttempts,
     autoAckHopLimit, setAutoAckHopLimit,
     autoAckMaxResponses, setAutoAckMaxResponses,
+    hopEmojiZeroHop, setHopEmojiZeroHop,
+    hopEmojiMqtt, setHopEmojiMqtt,
     autoAckTestMessages, setAutoAckTestMessages,
     autoAnnounceEnabled, setAutoAnnounceEnabled,
     autoAnnounceIntervalHours, setAutoAnnounceIntervalHours,

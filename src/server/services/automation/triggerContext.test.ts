@@ -208,6 +208,15 @@ describe('buildMessageContext', () => {
       }
     });
 
+    it("uses the source's chosen 0-hop and MQTT glyphs (#5890)", () => {
+      const hopEmojis = { zeroHop: '0️⃣', mqtt: '🌐' };
+      expect(buildMessageContext(msg({ hopStart: 3, hopLimit: 3 }), 'default', 1, { hopEmojis }).fields.hopEmoji).toBe('0️⃣');
+      expect(buildMessageContext(msg({ hopStart: 3, hopLimit: 1 }), 'default', 1, { hopEmojis }).fields.hopEmoji).toBe('2️⃣');
+      expect(
+        buildMessageContext(msg({ hopStart: 3, hopLimit: 3 }), 'default', 1, { viaMqttSource: true, hopEmojis }).fields.hopEmoji,
+      ).toBe('🌐');
+    });
+
     it('an MQTT source yields #️⃣ even when the hop count is unknown', () => {
       const ctx = buildMessageContext(
         msg({ hopStart: undefined, hopLimit: undefined }), 'default', 1, { viaMqttSource: true },

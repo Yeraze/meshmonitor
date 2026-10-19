@@ -9,6 +9,7 @@
  * can be tested without importing the entire monolith.
  */
 
+import { isValidHopEmojiSetting, HOP_EMOJI_SETTING_MAX_LENGTH } from '../../utils/hopEmoji.js';
 import { Router, Request, Response } from 'express';
 import { optionalAuth, requirePermission, requireAdmin } from '../auth/authMiddleware.js';
 import databaseService from '../../services/database.js';
@@ -509,6 +510,14 @@ router.post('/', requirePermission('settings', 'write', { sourceIdFrom: 'query' 
     if ('autoAckMaxResponses' in filteredSettings && !isValidAutoAckMaxResponses(filteredSettings.autoAckMaxResponses)) {
       return fail(res, 400, 'INVALID_AUTO_ACK_MAX_RESPONSES',
         `autoAckMaxResponses must be a whole number between ${AUTO_ACK_MAX_RESPONSES_MIN} and ${AUTO_ACK_MAX_RESPONSES_MAX} (0 = no cap)`);
+    }
+
+    // #5890: blank (= built-in glyph) or one short emoji, never message text.
+    for (const key of ['hopEmojiZeroHop', 'hopEmojiMqtt'] as const) {
+      if (key in filteredSettings && !isValidHopEmojiSetting(filteredSettings[key])) {
+        return fail(res, 400, 'INVALID_INPUT',
+          `${key} must be blank or a single emoji (at most ${HOP_EMOJI_SETTING_MAX_LENGTH} characters, no spaces)`);
+      }
     }
 
     if ('autoAckIgnoredNodes' in filteredSettings) {
