@@ -532,6 +532,18 @@ export async function maskTraceroutesByChannel<T>(
  * Check if a user has viewOnMap permission for the channel that a specific node belongs to.
  * Used to enforce per-node channel-based access control on telemetry/position endpoints.
  */
+/** Telemetry types that carry a node's position. */
+const POSITION_TELEMETRY_TYPES: ReadonlySet<string> = new Set(['latitude', 'longitude', 'altitude']);
+
+/**
+ * Drop the position rows (latitude/longitude/altitude) from a node's
+ * telemetry: what a caller without `nodes_private:read` on the source gets
+ * for a node whose position override is private.
+ */
+export function omitPositionTelemetry<T extends { telemetryType: string }>(rows: T[]): T[] {
+  return rows.filter((t) => !POSITION_TELEMETRY_TYPES.has(t.telemetryType));
+}
+
 export async function checkNodeChannelAccess(
   nodeId: string,
   user: User | null | undefined,

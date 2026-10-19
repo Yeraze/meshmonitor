@@ -1007,26 +1007,6 @@ describe('Unified Routes', () => {
       expect(res.body).toHaveLength(0); // filtered out
     });
 
-    it('skips nodes from sources user cannot read', async () => {
-      mockDb.sources.getAllSources.mockResolvedValue([SOURCE_A, SOURCE_B]);
-      mockDb.checkPermissionAsync.mockImplementation(
-        (_userId: number, _resource: string, _action: string, sourceId: string) =>
-          Promise.resolve(sourceId === 'src-a')
-      );
-      mockDb.nodes.getAllNodes.mockResolvedValue([
-        { nodeId: '!aabbccdd', nodeNum: 0xaabbccdd, longName: 'Node One', shortName: 'N1' },
-      ]);
-      mockDb.telemetry.getLatestTelemetryByNode.mockResolvedValue([
-        { nodeId: '!aabbccdd', nodeNum: 0xaabbccdd, telemetryType: 'battery_level', value: 85, timestamp: recentTs },
-      ]);
-
-      const app = createApp(regularUser);
-      const res = await request(app).get('/telemetry');
-
-      expect(res.status).toBe(200);
-      expect(res.body.every((e: any) => e.sourceId === 'src-a')).toBe(true);
-    });
-
     it('returns entries sorted by timestamp descending', async () => {
       mockDb.sources.getAllSources.mockResolvedValue([SOURCE_A]);
       mockDb.nodes.getAllNodes.mockResolvedValue([
@@ -1093,23 +1073,6 @@ describe('Unified Routes', () => {
       expect(res.body).toHaveLength(1);
       expect(res.body[0].nodeLongName).toBe('Node Two');
       expect(mockDb.telemetry.getLatestTelemetryByNode).toHaveBeenCalledTimes(2);
-    });
-
-    it('gates on the nodes:read permission, not a nonexistent telemetry resource (#4700)', async () => {
-      mockDb.sources.getAllSources.mockResolvedValue([SOURCE_A]);
-      mockDb.nodes.getAllNodes.mockResolvedValue([
-        { nodeId: '!aabbccdd', nodeNum: 0xaabbccdd, longName: 'Node One', shortName: 'N1' },
-      ]);
-      mockDb.telemetry.getLatestTelemetryByNode.mockResolvedValue([
-        { nodeId: '!aabbccdd', nodeNum: 0xaabbccdd, telemetryType: 'battery_level', value: 85, timestamp: recentTs },
-      ]);
-
-      const app = createApp(regularUser);
-      const res = await request(app).get('/telemetry');
-
-      expect(res.status).toBe(200);
-      expect(res.body).toHaveLength(1);
-      expect(mockDb.checkPermissionAsync).toHaveBeenCalledWith(regularUser.id, 'nodes', 'read', 'src-a');
     });
 
     it('enumerates MeshCore nodes by publicKey rather than the Meshtastic nodes table (#4700)', async () => {

@@ -10,6 +10,7 @@ import { hasRouteData, parseHopArray } from '../../utils/tracerouteSegments.js';
 import { getMaxNodeAgeHours } from '../services/nodeDisplaySettings.js';
 import { applySignFlipToTraceroutes, loadSignFlipContexts, rowSourceId } from '../services/signFlipCorrection.js';
 import { resolvePermittedSourceIds, parseSourcesParam } from '../utils/permittedSources.js';
+import { permittedReadScope } from '../utils/sourcePermissions.js';
 import { mergeExplorerNodes, type ExplorerNodeRow } from '../utils/tracerouteExplorerNodes.js';
 import { getEnvironmentConfig } from '../config/environment.js';
 
@@ -106,7 +107,11 @@ router.get('/history/:fromNodeNum/:toNodeNum', requirePermission('traceroute', '
       return;
     }
 
-    const traceroutes = await databaseService.traceroutes.getTraceroutesByNodes(fromNodeNum, toNodeNum, limit, historySourceId ?? ALL_SOURCES); // intentional cross-source when sourceId omitted
+    // With no sourceId, the sources the caller holds traceroute:read on (every
+    // source for an admin). The gate above passes on a grant for ANY source
+    // when none is named, so it alone does not scope this read (#5898).
+    const scope = await permittedReadScope(req.user, 'traceroute', historySourceId || undefined);
+    const traceroutes = await databaseService.traceroutes.getTraceroutesByNodes(fromNodeNum, toNodeNum, limit, scope);
 
     const traceroutesWithHops = traceroutes.map(tr => {
       let hopCount = 999;
