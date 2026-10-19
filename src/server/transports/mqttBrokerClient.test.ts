@@ -463,7 +463,8 @@ describe('MqttBrokerClient', () => {
         up(fake);
         vi.advanceTimersByTime(400);
         down(fake);
-        vi.advanceTimersByTime(600);
+        // Past the jittered retry, so it never fires while the fake is up.
+        vi.advanceTimersByTime(70_000);
       }
       const hint = warnLines(logger).find((l: string) => l.includes('duplicate Client ID signature'));
       expect(hint).toBeDefined();
